@@ -379,7 +379,7 @@ fn dismiss_key_repaints_the_rows_a_docked_popup_vacated_on_the_very_next_frame()
         "sanity: model closed by the dismiss key"
     );
 
-    let pid = ed.state.focus.id();
+    let pid = ed.view.focused_pane();
     let buf = ed.render_to_buf(rect); // frame 2: the close frame
     assert_eq!(
         ed.view.panes[pid].viewport.height,
@@ -436,7 +436,7 @@ fn popup_closed_out_of_band_repaints_the_rows_a_docked_popup_vacated_on_the_very
     // apparatus.
     ed.state.input.clear_popups();
 
-    let pid = ed.state.focus.id();
+    let pid = ed.view.focused_pane();
     let buf = ed.render_to_buf(rect); // frame 2: must notice the popup is gone and repaint its rows
     assert_eq!(
         ed.view.panes[pid].viewport.height,
@@ -572,7 +572,7 @@ fn popup_content_is_rebuilt_after_a_theme_reload() {
     ed.prepare_frame(&mut ctx);
     let first = popup_view_lines_arc(&ed).expect("popup must be showing after a frame");
 
-    let fp = FocusedPane::current(&ed.state);
+    let fp = FocusedPane::current(&ed.view);
     crate::editor::commands::typed_theme(&mut ed, fp, Some("gruvbox"), false)
         .expect(":theme gruvbox must succeed");
 

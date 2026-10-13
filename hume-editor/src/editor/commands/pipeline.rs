@@ -123,15 +123,15 @@ impl CommandPane {
 /// typed command, or a helper they call receives the pane instead of
 /// minting it.
 ///
-/// `Copy`, and valid only until the next focus change (`focus::focus_pane`);
-/// never held across one.
+/// `Copy`, and valid only until the next focus change (a function of the
+/// `focus` module); never held across one.
 #[derive(Clone, Copy, Debug)]
 pub(in crate::editor) struct FocusedPane(CommandPane);
 
 impl FocusedPane {
     /// The one mint for focus-context code; see this type's own doc.
-    pub(in crate::editor) fn current(state: &EditorState) -> Self {
-        Self(CommandPane(state.focus.id()))
+    pub(in crate::editor) fn current(view: &EngineView) -> Self {
+        Self(CommandPane(view.focused_pane()))
     }
 
     /// [`CommandPane::resolve`], additionally requiring the pane to be the
@@ -144,7 +144,7 @@ impl FocusedPane {
         handle: PaneHandle,
     ) -> Result<Self, TargetError> {
         let target = CommandPane::resolve(state, view, handle)?;
-        if target.pid() != state.focus.id() {
+        if target.pid() != view.focused_pane() {
             return Err(TargetError::NotFocused);
         }
         Ok(Self(target))
@@ -202,7 +202,7 @@ impl Target {
         handle: PaneHandle,
     ) -> Result<Self, TargetError> {
         let t = CommandPane::resolve(state, view, handle)?;
-        Ok(if t.pid() == state.focus.id() {
+        Ok(if t.pid() == view.focused_pane() {
             Self::Focused(FocusedPane(t))
         } else {
             Self::Pane(t)

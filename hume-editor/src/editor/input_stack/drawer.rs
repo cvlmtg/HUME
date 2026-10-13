@@ -442,7 +442,7 @@ fn select_row(ed: &mut Editor, r: LayerRef) {
             if ed.state.buffers.try_get(target).is_none() {
                 ed.report(Severity::Warning, "buffer was closed".to_string());
             } else {
-                ed.enter_buffer(FocusedPane::current(&ed.state), target);
+                ed.enter_buffer(FocusedPane::current(&ed.view), target);
             }
             ed.state.refresh_buffer_list_drawer(ed.focused_buffer_id());
             clamp_drawer_scroll(ed, r);

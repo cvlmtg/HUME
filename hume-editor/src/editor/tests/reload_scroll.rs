@@ -17,7 +17,7 @@ use super::*;
 #[test]
 fn reload_shrinking_the_document_leaves_the_next_frames_top_inside_it() {
     let mut ed = editor_from("-[a]>\nb\nc\nd\ne\nf\ng\nh\ni\nj\n"); // 10 lines
-    let pid = ed.state.focus.id();
+    let pid = ed.view.focused_pane();
 
     // Scroll down near the 10-line original's end: line 8 is valid there,
     // but past the end of the 2-line replacement below.
@@ -30,7 +30,7 @@ fn reload_shrinking_the_document_leaves_the_next_frames_top_inside_it() {
 
     let replacement = Buffer::at_start(BufferText::from("x\ny\n"));
     ed.reload_buffer_in_place(
-        FocusedPane::current(&ed.state),
+        FocusedPane::current(&ed.view),
         ReplaceSource::disk(replacement),
     );
 

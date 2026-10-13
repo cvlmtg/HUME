@@ -85,7 +85,7 @@ fn hint_arriving_this_frame_is_visible_to_the_scroll_step_that_places_the_cursor
     type_text(&mut ed, "x\na\nb");
     let bid = ed.focused_buffer_id();
     select(&mut ed, &[(4, 4)], 0);
-    let pid = ed.state.focus.id();
+    let pid = ed.view.focused_pane();
     ed.view.panes[pid].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(hume_engine::pane::WrapMode::Soft { width: 3 }),
         saved: None,
@@ -200,7 +200,7 @@ fn clearing_the_store_removes_the_hint_next_frame() {
     ed.sync_viewport_dims(40, 8);
     ed.settle();
     ed.prepare_frame(&mut ctx);
-    let pid = ed.state.focus.id();
+    let pid = ed.view.focused_pane();
     let has_hint_before = ed
         .state
         .panes

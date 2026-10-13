@@ -408,16 +408,13 @@ fn stale_response_after_a_pane_switch_shows_no_popup() {
     let other_bid = ed
         .open_extra_file(&extra)
         .expect("extra file must open as a buffer");
-    let start_pid = ed.state.focus.id();
     let other_pid = open_pane_in_layout(
         &mut ed.state,
         &mut ed.view,
-        start_pid,
         other_bid,
         hume_engine::pipeline::Direction::Horizontal,
-    )
-    .unwrap();
-    ed.state.focus.set_for_test(other_pid);
+    );
+    ed.state.focus.set_for_test(&mut ed.view, other_pid);
 
     std::thread::sleep(Duration::from_millis(250));
     ed.drain_async_sources(); // debounce fires, request sent and (dropped) delivered

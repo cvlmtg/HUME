@@ -74,7 +74,7 @@ fn set_option_applies_jump_list_capacity() {
     // settings::ops::apply_global's resync step. The post-push assertion at
     // the bottom is the one that checks the live jump list's capacity.
     let mut ed = editor_from("-[h]>ello\n");
-    let pid = ed.state.focus.id();
+    let pid = ed.view.focused_pane();
     let bid = ed.focused_buffer_id();
     let text = ed.doc().text();
     let at_start = test_fixtures::testing::single(text, test_fixtures::testing::cursor(text, 0));
@@ -143,7 +143,7 @@ fn set_global_mouse_resyncs_applied_mode_next_frame() {
         "default EditorSettings has mouse=true, mouse_select=false"
     );
 
-    let fp = FocusedPane::current(&ed.state);
+    let fp = FocusedPane::current(&ed.view);
     crate::editor::commands::typed_set(&mut ed, fp, Some("global mouse=false"), false)
         .expect("set mouse");
     assert_eq!(
@@ -309,7 +309,7 @@ fn typed_set_theme_failure_does_not_persist() {
     // `:set global theme=bad` would persist "bad" (store-then-load) while
     // `:theme bad` would not (load-then-store).
     let mut ed = editor_from("-[h]>ello\n");
-    let fp = FocusedPane::current(&ed.state);
+    let fp = FocusedPane::current(&ed.view);
     let result = crate::editor::commands::typed_set(
         &mut ed,
         fp,
@@ -341,7 +341,7 @@ fn typed_theme_bad_name_leaves_setting() {
     // above, so without it settings.theme would end up "no_such_theme_xyz"
     // here too.
     let mut ed = editor_from("-[h]>ello\n");
-    let fp = FocusedPane::current(&ed.state);
+    let fp = FocusedPane::current(&ed.view);
     let result =
         crate::editor::commands::typed_theme(&mut ed, fp, Some("no_such_theme_xyz"), false);
     assert!(
@@ -362,7 +362,7 @@ fn typed_theme_sets_setting_on_success() {
     // would make write_global return Err("unknown setting").
     let mut ed = editor_from("-[h]>ello\n");
     ed.state.dirs = repo_runtime_dirs();
-    let fp = FocusedPane::current(&ed.state);
+    let fp = FocusedPane::current(&ed.view);
     let result = crate::editor::commands::typed_theme(&mut ed, fp, Some("gruvbox"), false);
     assert!(result.is_ok(), "command must not error: {result:?}");
     assert_eq!(ed.state.settings.theme, "gruvbox");
@@ -647,7 +647,7 @@ fn cursor_shape_insert_only_applies_to_insert_mode() {
 fn cursor_shape_insert_gates_head_painting_in_the_focused_pane_only() {
     let mut ed = editor_from("-[a]>bc\n");
     ed.execute_typed("vsplit", None).unwrap();
-    let focused = ed.state.focus.id();
+    let focused = ed.view.focused_pane();
     let other = ed
         .view
         .panes

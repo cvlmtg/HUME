@@ -37,7 +37,7 @@ fn p6_edit_deduplicates_open_file() {
     let count_after_first = ed.state.buffers.len();
     // Switch back to scratch.
     let scratch_bid = ed.state.buffers.prev(bid_first_open);
-    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), scratch_bid);
+    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.view), scratch_bid);
     // Open the same file again: should switch to existing buffer, not create new.
     let r2 = ed.execute_typed("e", Some(path.to_str().unwrap()));
     assert!(r2.is_ok());
@@ -199,7 +199,7 @@ fn p6_e_bang_undo_then_edit_branches_off_old_tree() {
     );
 
     // The reload revision survives as a reachable sibling (tree-monotonicity).
-    let pane = crate::editor::commands::CommandPane::existing(&ed.view, ed.state.focus.id())
+    let pane = crate::editor::commands::CommandPane::existing(&ed.view, ed.view.focused_pane())
         .expect("the focused pane exists");
     crate::editor::commands::goto_revision(&mut ed.state, &ed.view, pane, r_reload.index())
         .expect("the reload revision is live");

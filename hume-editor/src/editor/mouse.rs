@@ -92,7 +92,7 @@ impl Editor {
         // still current: `end_insert_session` can shrink that pane's
         // buffer (the blank-line indent trim), so computing `click_to_cluster`
         // first would resolve against a buffer the exit is about to change.
-        super::focus::focus_pane(&mut self.state, &self.view, pid);
+        super::focus::focus_pane(&mut self.state, &mut self.view, pid);
 
         if let Some(pos) = self.click_to_cluster(pid, pane_x, pane_y) {
             // Collapse the selections to one cursor on the clicked cluster.
@@ -135,7 +135,7 @@ impl Editor {
         // pane still has focus. Hit-test only that pane's own rect, so a drag
         // that leaves it (as a fast mouse move easily can) is ignored rather
         // than resolving against the wrong pane.
-        let pid = self.state.focus.id();
+        let pid = self.view.focused_pane();
         if self.state.mouse_drag != Some(pid) {
             return;
         }
@@ -167,7 +167,7 @@ impl Editor {
         // instead of being a no-op like a click's own miss.
         let pid = self
             .pane_at_screen_pos(x, y)
-            .map_or(self.state.focus.id(), |(pid, _, _)| pid);
+            .map_or(self.view.focused_pane(), |(pid, _, _)| pid);
         let scroll_lines = self.state.settings.mouse_scroll_lines;
         commands::scroll_view(
             &mut self.state,

@@ -1,5 +1,5 @@
 use crate::editor::registry::Count;
-use hume_engine::pipeline::{Direction, EngineView, LayoutRefusal, Rotation};
+use hume_engine::pipeline::{Direction, EngineView, Rotation};
 use hume_ops::MotionMode;
 
 use super::super::EditorState;
@@ -165,7 +165,7 @@ enum Dir {
 /// per-pane maps for every existing pane, so nothing else needs seeding here.
 fn focus_in_direction(
     state: &mut EditorState,
-    view: &EngineView,
+    view: &mut EngineView,
     fp: FocusedPane,
     dir: Dir,
 ) -> Result<(), CommandError> {
@@ -308,14 +308,12 @@ pub(in crate::editor) fn cmd_vsplit_pane(
 pub(in crate::editor) fn cmd_close_pane(
     state: &mut EditorState,
     view: &mut EngineView,
-    fp: FocusedPane,
+    _fp: FocusedPane,
     _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    super::close_focused_pane(state, view, fp).map_err(|why| match why {
-        LayoutRefusal::SinglePane => CommandError::transient("cannot close last pane"),
-        LayoutRefusal::MissingTarget => super::pane_missing_from_layout(fp.pid()),
-    })
+    super::close_focused_pane(state, view)
+        .map_err(|_| CommandError::transient("cannot close last pane"))
 }
 
 /// `Ctrl-p r`: rotate the focused pane's row or column forward by `count`
@@ -323,34 +321,29 @@ pub(in crate::editor) fn cmd_close_pane(
 pub(in crate::editor) fn cmd_pane_rotate_forward(
     _state: &mut EditorState,
     view: &mut EngineView,
-    fp: FocusedPane,
+    _fp: FocusedPane,
     count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    rotate_focused(view, fp, Rotation::Forward, count)
+    rotate_focused(view, Rotation::Forward, count)
 }
 
 /// `Ctrl-p R`: the reverse of `Ctrl-p r`.
 pub(in crate::editor) fn cmd_pane_rotate_backward(
     _state: &mut EditorState,
     view: &mut EngineView,
-    fp: FocusedPane,
+    _fp: FocusedPane,
     count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    rotate_focused(view, fp, Rotation::Backward, count)
+    rotate_focused(view, Rotation::Backward, count)
 }
 
 fn rotate_focused(
     view: &mut EngineView,
-    fp: FocusedPane,
     rotation: Rotation,
     count: Count,
 ) -> Result<(), CommandError> {
-    let pid = fp.pid();
-    view.rotate_layout(pid, rotation, count.get())
-        .map_err(|why| match why {
-            LayoutRefusal::SinglePane => CommandError::transient("no other pane to rotate"),
-            LayoutRefusal::MissingTarget => super::pane_missing_from_layout(pid),
-        })
+    view.rotate_focused(rotation, count.get())
+        .map_err(|_| CommandError::transient("no other pane to rotate"))
 }

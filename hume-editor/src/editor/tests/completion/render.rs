@@ -25,7 +25,7 @@ fn completion_menu_clamps_to_a_short_pane_instead_of_vanishing() {
 
     frame(&mut ed, 40, 6);
 
-    let pane_rect = ed.view.pane_rect(ed.state.focus.id()).expect("rect");
+    let pane_rect = ed.view.pane_rect(ed.view.focused_pane()).expect("rect");
     let view = ed.state.views.completion_menu.read();
     let state = view
         .as_ref()
@@ -44,7 +44,7 @@ fn completion_menu_clamps_to_a_narrow_pane_instead_of_vanishing() {
 
     frame(&mut ed, 20, 8);
 
-    let pane_rect = ed.view.pane_rect(ed.state.focus.id()).expect("rect");
+    let pane_rect = ed.view.pane_rect(ed.view.focused_pane()).expect("rect");
     let view = ed.state.views.completion_menu.read();
     let state = view
         .as_ref()
@@ -186,7 +186,7 @@ fn doc_box_content_is_rebuilt_after_a_theme_reload() {
     frame(&mut ed, 60, 16);
     let first = doc_lines(&ed).expect("doc box showing");
 
-    let fp = FocusedPane::current(&ed.state);
+    let fp = FocusedPane::current(&ed.view);
     commands::typed_theme(&mut ed, fp, Some("gruvbox"), false)
         .expect(":theme gruvbox must succeed");
     frame(&mut ed, 60, 16);
@@ -481,7 +481,7 @@ fn markdown_documentation_is_highlighted_below_a_fenced_detail() {
 #[test]
 fn completion_popup_anchor_matches_an_independent_content_pos_walk_when_wrapped() {
     let mut ed = open_headless(None);
-    let pid = ed.state.focus.id();
+    let pid = ed.view.focused_pane();
     ed.view.panes[pid].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(WrapMode::Soft { width: 6 }),
         saved: None,

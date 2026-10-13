@@ -975,10 +975,10 @@ fn undotree_enter_acts_through_the_focused_pane() {
     let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup(tmp.path());
     two_branches(&mut ed);
-    let first = ed.state.focus.id();
+    let first = ed.view.focused_pane();
     toggle(&mut ed);
     ed.execute_typed("split", None).unwrap();
-    let second = ed.state.focus.id();
+    let second = ed.view.focused_pane();
     assert_ne!(first, second, "setup: focus moved to the new pane");
 
     ed.handle_key(key_down());

@@ -375,8 +375,8 @@ impl Editor {
     }
 
     /// Observation point for `OnBufferEnter` and the buffer-enter disk
-    /// check. `focused_buffer_id()` is a derived join of `state.focus` and
-    /// `pane.buffer_id`, each written by its own chokepoint (`focus_pane`,
+    /// check. `focused_buffer_id()` is a derived join of `view.focused_pane()`
+    /// and `pane.buffer_id`, each written by its own chokepoint (`focus`,
     /// `switch_pane_to_buffer`), so it has no single write-site chokepoint
     /// to hang a raise on: a raise wired into just one of those two would
     /// miss a switch caused through the other. Diffed against
@@ -392,7 +392,7 @@ impl Editor {
         if self.state.last_entered_buffer != Some(now) {
             self.state.last_entered_buffer = Some(now);
             self.state.queue_event(EditorEvent::OnBufferEnter {
-                target: PaneHandle::with_pane(now, self.state.focus.id()),
+                target: PaneHandle::with_pane(now, self.view.focused_pane()),
             });
         }
     }

@@ -33,7 +33,7 @@ fn plugin_sign_editor(signcolumn: Option<&str>, arm_body: &str) -> (Editor, Pane
     run(&mut ed, tmp.path(), &source);
     type_cmd(&mut ed, ":arm");
 
-    let pid = ed.state.focus.id();
+    let pid = ed.view.focused_pane();
     render(&mut ed);
     (ed, pid)
 }

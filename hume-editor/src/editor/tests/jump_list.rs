@@ -632,13 +632,13 @@ fn redo_after_undo_remaps_jump_entry_forward_again() {
 #[test]
 fn edit_remaps_jump_entries_in_every_pane_viewing_the_buffer() {
     let mut ed = jump_editor(10);
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
 
     ed.handle_key(key('g'));
     ed.handle_key(key('g')); // pane A records a jump entry at line 10
 
     ed.execute_typed("vsplit", None).unwrap();
-    let pid_b = ed.state.focus.id();
+    let pid_b = ed.view.focused_pane();
     assert_ne!(pid_a, pid_b, "focus moved to the new pane");
     assert_eq!(
         ed.state.panes.jumps[pid_b].len(),
@@ -735,7 +735,7 @@ fn reload_remaps_jump_entries_through_line_diff() {
     ed.handle_key(key('g')); // records an entry at line 10, lands at line 0
     // 2 entries: `:e` itself recorded leaving the initial scratch buffer,
     // then `gg` recorded line 10.
-    assert_eq!(ed.state.panes.jumps[ed.state.focus.id()].len(), 2);
+    assert_eq!(ed.state.panes.jumps[ed.view.focused_pane()].len(), 2);
 
     // Reload with 3 new lines prepended on disk.
     let new_content = format!("new0\nnew1\nnew2\n{content}");
@@ -760,7 +760,7 @@ fn reload_remaps_jump_entries_through_line_diff() {
 fn view_buffer_refresh_drops_its_jump_entries() {
     let mut ed = editor_from("-[a]>b\n");
     let bid = ed.open_read_only_view(
-        FocusedPane::current(&ed.state),
+        FocusedPane::current(&ed.view),
         &view_label("jump-list-test"),
         "one\ntwo\nthree\nfour\nfive\n",
         Some(hume_rope::line::ContentLine::new(0)),
@@ -770,7 +770,7 @@ fn view_buffer_refresh_drops_its_jump_entries() {
     ed.handle_key(key('g'));
     ed.handle_key(key('e'));
 
-    let pid = ed.state.focus.id();
+    let pid = ed.view.focused_pane();
     assert!(
         ed.state.panes.jumps[pid].entries_for_buffer(bid),
         "goto-last-line should have recorded an entry for the view buffer"
@@ -778,7 +778,7 @@ fn view_buffer_refresh_drops_its_jump_entries() {
 
     // Re-open the same label: refreshes content in place via `set_view_content`.
     ed.open_read_only_view(
-        FocusedPane::current(&ed.state),
+        FocusedPane::current(&ed.view),
         &view_label("jump-list-test"),
         "brand new content\n",
         Some(hume_rope::line::ContentLine::new(0)),
@@ -797,9 +797,9 @@ fn view_buffer_refresh_drops_its_jump_entries() {
 #[test]
 fn view_buffer_refresh_reseeds_every_pane_viewing_it() {
     let mut ed = editor_from("-[a]>b\n");
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
     ed.open_read_only_view(
-        FocusedPane::current(&ed.state),
+        FocusedPane::current(&ed.view),
         &view_label("jump-list-test"),
         "one\ntwo\nthree\nfour\nfive\n",
         Some(hume_rope::line::ContentLine::new(0)),
@@ -807,7 +807,7 @@ fn view_buffer_refresh_reseeds_every_pane_viewing_it() {
 
     // Split so a second pane also views the view buffer; focus moves to it.
     ed.execute_typed("vsplit", None).unwrap();
-    let pid_b = ed.state.focus.id();
+    let pid_b = ed.view.focused_pane();
     assert_ne!(pid_a, pid_b, "focus moved to the new pane");
     let bid = ed.focused_buffer_id();
 
@@ -825,7 +825,7 @@ fn view_buffer_refresh_reseeds_every_pane_viewing_it() {
     // pane B's stale offset to remain valid.
     ed.switch_focused_pane(pid_a);
     ed.open_read_only_view(
-        FocusedPane::current(&ed.state),
+        FocusedPane::current(&ed.view),
         &view_label("jump-list-test"),
         "x\n",
         Some(hume_rope::line::ContentLine::new(0)),
@@ -851,9 +851,9 @@ fn view_buffer_refresh_reseeds_every_pane_viewing_it() {
 fn view_buffer_refresh_reseeds_a_pane_that_switched_away_before_the_refresh() {
     let mut ed = editor_from("-[a]>b\n");
     let bid_scratch = ed.focused_buffer_id();
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
     let bid = ed.open_read_only_view(
-        FocusedPane::current(&ed.state),
+        FocusedPane::current(&ed.view),
         &view_label("jump-list-test"),
         "one\ntwo\nthree\nfour\nfive\n",
         Some(hume_rope::line::ContentLine::new(0)),
@@ -861,7 +861,7 @@ fn view_buffer_refresh_reseeds_a_pane_that_switched_away_before_the_refresh() {
 
     // Split so pane B also views the view buffer; focus moves to it.
     ed.execute_typed("vsplit", None).unwrap();
-    let pid_b = ed.state.focus.id();
+    let pid_b = ed.view.focused_pane();
     assert_ne!(pid_a, pid_b, "focus moved to the new pane");
 
     // Pane A moves deep into content that won't exist after the refresh below.
@@ -876,13 +876,13 @@ fn view_buffer_refresh_reseeds_a_pane_that_switched_away_before_the_refresh() {
 
     // Pane A switches away to a different buffer: it is no longer a viewer
     // of the view buffer when it gets refreshed below.
-    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), bid_scratch);
+    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.view), bid_scratch);
 
     // Refresh from pane B, with content too short for pane A's stale cached
     // selection to remain valid.
     ed.switch_focused_pane(pid_b);
     ed.open_read_only_view(
-        FocusedPane::current(&ed.state),
+        FocusedPane::current(&ed.view),
         &view_label("jump-list-test"),
         "x\n",
         Some(hume_rope::line::ContentLine::new(0)),
@@ -891,7 +891,7 @@ fn view_buffer_refresh_reseeds_a_pane_that_switched_away_before_the_refresh() {
     // Pane A switches back to the view buffer. Its cached selection for
     // `bid` must have been reseeded by the refresh, not left stale.
     ed.switch_focused_pane(pid_a);
-    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), bid);
+    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.view), bid);
     let text = ed.state.buffers.get(bid).text();
     assert_eq!(
         test_fixtures::testing::serialize_state(text, ed.current_selections()),
@@ -906,9 +906,9 @@ fn view_buffer_refresh_reseeds_a_pane_that_switched_away_before_the_refresh() {
 #[test]
 fn search_confirm_records_the_jump_in_the_pane_the_search_started_in() {
     let mut ed = jump_editor(0);
-    let pid_left = ed.state.focus.id();
+    let pid_left = ed.view.focused_pane();
     ed.execute_typed("vsplit", None).unwrap();
-    let pid_right = ed.state.focus.id();
+    let pid_right = ed.view.focused_pane();
     assert_ne!(pid_left, pid_right, "setup: the split moves focus");
 
     ed.handle_key(key('/'));
@@ -920,7 +920,7 @@ fn search_confirm_records_the_jump_in_the_pane_the_search_started_in() {
     ed.handle_input(mouse_left_down(0, 0));
     ed.settle();
     assert_eq!(
-        ed.state.focus.id(),
+        ed.view.focused_pane(),
         pid_left,
         "setup: the click moved focus"
     );
@@ -952,7 +952,7 @@ fn a_pending_jump_into_a_buffer_the_navigation_closed_is_dropped() {
     use crate::editor::jump_list::{JumpRule, with_jump};
 
     let mut ed = editor_from("-[a]>\n");
-    let pid = ed.state.focus.id();
+    let pid = ed.view.focused_pane();
     let closing = ed.open_buffer(Buffer::at_start(BufferText::from("other\n")));
     ed.execute_typed("bn", None).unwrap();
     assert_eq!(ed.focused_buffer_id(), closing, "setup: the pane shows it");

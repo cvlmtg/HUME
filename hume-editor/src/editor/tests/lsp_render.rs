@@ -37,16 +37,13 @@ fn setup_with_diagnostics(content: &str, diags: &[DiagFixture]) -> DiagCtx {
     let tmp = tempfile::tempdir().unwrap();
     let marked = format!("-[{}]>{}", &content[..1], &content[1..]);
     let mut rig = LspRig::rust(tmp.path(), &marked, serde_json::json!({"capabilities": {}}));
-    let bare = rig.ed.state.focus.id();
     let pid = open_pane_in_layout(
         &mut rig.ed.state,
         &mut rig.ed.view,
-        bare,
         rig.bid,
         Direction::Horizontal,
-    )
-    .expect("split must succeed");
-    rig.ed.state.focus.set_for_test(pid);
+    );
+    rig.ed.state.focus.set_for_test(&mut rig.ed.view, pid);
 
     if !diags.is_empty() {
         let diagnostics: Vec<serde_json::Value> = diags
@@ -117,7 +114,7 @@ fn severity_floor_hides_less_severe_diagnostics() {
         "sanity: default floor (Hint) keeps everything"
     );
 
-    let fp = FocusedPane::current(&c.ed.state);
+    let fp = FocusedPane::current(&c.ed.view);
     crate::editor::commands::typed_set(
         &mut c.ed,
         fp,
@@ -213,7 +210,7 @@ fn diagnostic_underline_is_hidden_on_the_insert_cursor_line_and_returns_on_esc()
 #[test]
 fn diagnostic_underline_stays_in_insert_with_the_option_on() {
     let mut c = setup_with_diagnostics("abc\ndef\n", &[((0, 0), (0, 1), 1), ((1, 0), (1, 1), 1)]);
-    let fp = FocusedPane::current(&c.ed.state);
+    let fp = FocusedPane::current(&c.ed.view);
     crate::editor::commands::typed_set(
         &mut c.ed,
         fp,
@@ -262,7 +259,7 @@ fn extra_highlight_gets_its_runtime_interned_scope() {
     ed.scripting = Some(host);
     type_cmd(&mut ed, ":arm");
 
-    let pid = ed.state.focus.id();
+    let pid = ed.view.focused_pane();
     let mut ctx = RenderContext::new();
     ed.sync_viewport_dims(80, 25);
     ed.settle();
@@ -300,7 +297,7 @@ fn extra_highlight_scope_is_cached_not_reinterned() {
     type_cmd(&mut ed, ":arm-a");
     type_cmd(&mut ed, ":arm-b");
 
-    let pid = ed.state.focus.id();
+    let pid = ed.view.focused_pane();
     let mut ctx = RenderContext::new();
     ed.sync_viewport_dims(80, 25);
     ed.settle();
@@ -340,7 +337,7 @@ fn overlapping_extra_highlights_from_two_sources_resolve_alphabetically() {
     type_cmd(&mut ed, ":arm-zzz");
     type_cmd(&mut ed, ":arm-aaa");
 
-    let pid = ed.state.focus.id();
+    let pid = ed.view.focused_pane();
     let mut ctx = RenderContext::new();
     ed.sync_viewport_dims(80, 25);
     ed.settle();

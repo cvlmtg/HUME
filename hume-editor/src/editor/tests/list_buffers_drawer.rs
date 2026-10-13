@@ -115,7 +115,7 @@ fn a_buffers_label_shows_in_the_name_column() {
 fn opening_pushes_no_jump_entry() {
     let mut ed = editor_from("-[h]>ello\n");
     let bid = ed.focused_buffer_id();
-    let pid = ed.state.focus.id();
+    let pid = ed.view.focused_pane();
     ed.execute_typed("ls", None).unwrap();
     assert!(!ed.state.panes.jumps[pid].entries_for_buffer(bid));
 }
@@ -124,7 +124,7 @@ fn opening_pushes_no_jump_entry() {
 fn enter_switches_buffer_with_a_jump_and_keeps_the_drawer_open() {
     let (mut ed, _tmp) = three_buffers();
     let departed = ed.focused_buffer_id();
-    let pid = ed.state.focus.id();
+    let pid = ed.view.focused_pane();
     ed.handle_key(key_up());
     ed.handle_key(key_up());
     assert_eq!(selected(&ed), 0);

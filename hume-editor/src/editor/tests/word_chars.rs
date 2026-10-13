@@ -130,7 +130,8 @@ fn select_word_nearest_on_line_follows_word_chars() {
 fn select_word_nearest_on_line_follows_word_chars_across_a_wrapped_display_line() {
     let mut ed = editor_from("hello world foo-b-[a]>r\n");
     ed.state.settings.word_chars = "-".into();
-    ed.view.panes[ed.state.focus.id()].set_wrap(hume_engine::pane::WrapOverride {
+    let focused_pid = ed.view.focused_pane();
+    ed.view.panes[focused_pid].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(hume_engine::pane::WrapMode::Indent { width: 12 }),
         saved: None,
     });
@@ -145,7 +146,7 @@ fn select_word_nearest_on_line_follows_word_chars_across_a_wrapped_display_line(
 #[test]
 fn invalid_word_chars_is_rejected() {
     let mut ed = editor_from("-[a]>b\n");
-    let fp = FocusedPane::current(&ed.state);
+    let fp = FocusedPane::current(&ed.view);
     let result =
         crate::editor::commands::typed_set(&mut ed, fp, Some("global word-chars=- "), false);
     assert!(result.is_err(), "a space in word-chars must be rejected");

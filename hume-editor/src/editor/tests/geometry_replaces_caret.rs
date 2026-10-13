@@ -168,7 +168,7 @@ fn a_buffer_switch_replaces_the_caret_even_when_the_recalled_head_matches() {
     let second_bid = ed.open_buffer(Buffer::at_start(second_text));
     ed.seed_selections(second_bid, second_sels);
 
-    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), second_bid);
+    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.view), second_bid);
 
     assert!(
         frame(&mut ed, 80, 15).cursor_content_pos.is_some(),
@@ -191,7 +191,8 @@ fn a_buffer_switch_replaces_the_caret_even_when_the_recalled_head_matches() {
 fn wrap_earlier_line_fixture() -> (Editor, BufferId, hume_rope::offset::CharOffset) {
     let mut ed = open_headless(None);
     ed.state.settings.scroll_margin = 0;
-    ed.view.panes[ed.state.focus.id()].set_wrap(hume_engine::pane::WrapOverride {
+    let focused_pid = ed.view.focused_pane();
+    ed.view.panes[focused_pid].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(hume_engine::pane::WrapMode::Soft { width: 10 }),
         saved: None,
     });
@@ -307,7 +308,8 @@ fn a_tab_width_change_replaces_the_caret_even_when_the_cursor_has_not_moved() {
     let sels = sels_at(&text, &[(0, 0)], 0);
     let mut ed = Editor::for_testing_with(test_fixtures::testing::state(text, sels));
     ed.state.settings.scroll_margin = 0;
-    ed.view.panes[ed.state.focus.id()].set_wrap(hume_engine::pane::WrapOverride {
+    let focused_pid = ed.view.focused_pane();
+    ed.view.panes[focused_pid].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(hume_engine::pane::WrapMode::Soft { width: 10 }),
         saved: None,
     });
@@ -345,7 +347,7 @@ fn a_gutter_growth_replaces_the_caret_even_when_the_cursor_has_not_moved() {
     // registers one (`pane_state.rs`'s `new_pane`).
     let mut ed = open_headless(None);
     ed.state.settings.scroll_margin = 0;
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
     ed.view.panes[pid_a].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(hume_engine::pane::WrapMode::Soft { width: 0 }),
         saved: None,
@@ -386,11 +388,9 @@ fn a_gutter_growth_replaces_the_caret_even_when_the_cursor_has_not_moved() {
     let pid_b = open_pane_in_layout(
         &mut ed.state,
         &mut ed.view,
-        pid_a,
         bid,
         hume_engine::pipeline::Direction::Horizontal,
-    )
-    .unwrap();
+    );
     ed.switch_focused_pane(pid_b);
     seek_to_line(&mut ed, 96);
     ed.feed_key(key('o'));
@@ -398,7 +398,7 @@ fn a_gutter_growth_replaces_the_caret_even_when_the_cursor_has_not_moved() {
     ed.feed_key(key_esc());
     ed.execute_typed("quit", None).unwrap();
     assert_eq!(
-        ed.state.focus.id(),
+        ed.view.focused_pane(),
         pid_a,
         "sanity: focus returns to pane A"
     );
@@ -426,7 +426,7 @@ fn a_scroll_margin_change_replaces_the_caret_even_when_the_cursor_has_not_moved(
     let content: String = numbered_lines(60);
     let mut ed = unwrapped_editor(&content, 0);
     seek_to_line(&mut ed, 40);
-    let pid = ed.state.focus.id();
+    let pid = ed.view.focused_pane();
 
     frame(&mut ed, 80, 20);
     let top_before = ed.view.panes[pid].viewport.top();
@@ -455,7 +455,7 @@ fn a_revisit_with_nothing_changed_leaves_a_parked_view_parked() {
     let content: String = numbered_lines(60);
     let mut ed = unwrapped_editor(&content, 0);
     seek_to_line(&mut ed, 40);
-    let pid = ed.state.focus.id();
+    let pid = ed.view.focused_pane();
     let bid = ed.focused_buffer_id();
 
     frame(&mut ed, 80, 20);
@@ -473,9 +473,9 @@ fn a_revisit_with_nothing_changed_leaves_a_parked_view_parked() {
     let top_before = ed.view.panes[pid].viewport.top();
 
     let second_bid = ed.open_buffer(Buffer::at_start(BufferText::from("x\n")));
-    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), second_bid);
+    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.view), second_bid);
     frame(&mut ed, 80, 20);
-    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), bid);
+    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.view), bid);
 
     assert_eq!(
         frame(&mut ed, 80, 20).cursor_content_pos,

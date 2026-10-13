@@ -8,7 +8,7 @@ use hume_engine::render::Canvas;
 
 use crate::editor::EditorState;
 use colors::EditorColors;
-use hume_engine::pipeline::BufferId;
+use hume_engine::pipeline::{BufferId, PaneId};
 use hume_ui::width::text_width;
 
 pub(crate) mod colors;
@@ -316,11 +316,12 @@ fn draw_section(
 ///
 /// Narrow on purpose: `EngineView::render` takes `&mut self`, so a provider
 /// holding `&Editor` would keep the whole editor (`view` included) borrowed
-/// across it. The one thing here that comes from `view` is the focused pane's
-/// buffer, read out once up front as a `Copy` id.
+/// across it. The things here that come from `view` are the focused pane and
+/// its buffer, read out once up front as `Copy` ids.
 pub(crate) struct HumeStatusline<'a> {
     pub(crate) state: &'a EditorState,
     pub(crate) kitty_enabled: bool,
+    pub(crate) focused_pid: PaneId,
     pub(crate) focused_bid: BufferId,
 }
 
@@ -337,7 +338,7 @@ impl HumeStatusline<'_> {
 
     pub(in crate::statusline) fn current_view(&self) -> hume_editing::selection::EditView<'_> {
         self.state
-            .focused_buffer_state_or_panic(self.focused_bid)
+            .shown_buffer_state(self.focused_pid, self.focused_bid)
             .view(self.doc().text())
     }
 
@@ -346,7 +347,7 @@ impl HumeStatusline<'_> {
     ) -> &crate::editor::search::SearchCursor {
         &self
             .state
-            .focused_buffer_state_or_panic(self.focused_bid)
+            .shown_buffer_state(self.focused_pid, self.focused_bid)
             .search_cursor
     }
 

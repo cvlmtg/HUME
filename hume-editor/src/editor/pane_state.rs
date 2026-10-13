@@ -463,24 +463,25 @@ impl super::EditorState {
     /// reads `state.panes.state[t.pid()][t.bid(view)]` directly instead.
     pub(in crate::editor) fn focused_buffer_state(
         &self,
+        view: &EngineView,
         bid: BufferId,
     ) -> Option<&PaneBufferState> {
-        self.panes.buffer_state(self.focus.id(), bid)
+        self.panes.buffer_state(view.focused_pane(), bid)
     }
 
-    /// [`focused_buffer_state`](Self::focused_buffer_state) for the buffer the
-    /// focused pane is currently *showing*, where absence is a violated
-    /// invariant rather than a case to handle: opening or switching to a
-    /// buffer seeds its state in that pane, so an unseeded focused buffer
-    /// means a pane and its state map disagree.
+    /// `bid`'s state in `pid`, where `bid` is the buffer `pid` is currently
+    /// *showing*, so absence is a violated invariant rather than a case to
+    /// handle: opening or switching to a buffer seeds its state in that
+    /// pane, so an unseeded shown buffer means a pane and its state map
+    /// disagree.
     ///
     /// The one lookup behind every "the cursor/search state right now" reader
-    /// (`commands::current_selections`, the statusline's own accessors),
-    /// which would otherwise each index `panes.state[..][..]` and each panic
-    /// with slotmap's own message instead of naming what actually broke.
-    pub(crate) fn focused_buffer_state_or_panic(&self, bid: BufferId) -> &PaneBufferState {
-        self.focused_buffer_state(bid).expect(
-            "focused pane has no seeded state for the buffer it is showing: \
+    /// (`search::ops`, the statusline's own accessors), which would otherwise
+    /// each index `panes.state[..][..]` and each panic with slotmap's own
+    /// message instead of naming what actually broke.
+    pub(crate) fn shown_buffer_state(&self, pid: PaneId, bid: BufferId) -> &PaneBufferState {
+        self.panes.buffer_state(pid, bid).expect(
+            "pane has no seeded state for the buffer it is showing: \
              pane.buffer_id and panes.state are out of sync",
         )
     }
@@ -494,7 +495,7 @@ impl super::EditorState {
     /// picks via `.first()` at its own call site. Pane counts are small, so
     /// the final dedup is a linear `out.contains` rather than a `HashSet`.
     pub(in crate::editor) fn buffer_panes(&self, view: &EngineView, bid: BufferId) -> Vec<PaneId> {
-        let focused = self.focus.id();
+        let focused = view.focused_pane();
         let active = view.active_pane_ids();
         let mut out = Vec::new();
         if view.panes.get(focused).is_some_and(|p| p.buffer_id == bid) {
@@ -524,7 +525,7 @@ impl Editor {
     /// override → global default (see `commands::effective_wrap_mode`).
     #[cfg(test)]
     pub(in crate::editor) fn focused_wrap_mode(&self) -> hume_engine::pane::WrapMode {
-        self.pane_wrap_mode(self.state.focus.id())
+        self.pane_wrap_mode(self.view.focused_pane())
     }
 
     /// `pid`'s effective wrap mode for the buffer it currently views.

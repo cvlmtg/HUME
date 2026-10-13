@@ -17,20 +17,13 @@ use hume_scripting::host::NativeCall;
 /// stays on A.
 fn split_two_buffers(ed: &mut Editor, b: &str) -> (PaneId, BufferId, PaneId, BufferId) {
     let bid_a = ed.focused_buffer_id();
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
     let bid_b = ed.open_buffer(Buffer::at_start(BufferText::from(b)));
-    let pid_b = open_pane_in_layout(
-        &mut ed.state,
-        &mut ed.view,
-        pid_a,
-        bid_b,
-        Direction::Horizontal,
-    )
-    .expect("split onto B must succeed");
+    let pid_b = open_pane_in_layout(&mut ed.state, &mut ed.view, bid_b, Direction::Horizontal);
     // `open_pane_in_layout` itself does not move focus (unlike
     // `split_pane_onto`/`:vsplit` in production), so pin it back to A
     // explicitly so every caller's premise holds regardless.
-    ed.state.focus.set_for_test(pid_a);
+    ed.state.focus.set_for_test(&mut ed.view, pid_a);
     (pid_a, bid_a, pid_b, bid_b)
 }
 
@@ -60,7 +53,7 @@ fn pane_category_remote_call_edits_target_pane_leaves_focus_untouched() {
         "A must be untouched by a remote dispatch on B"
     );
     assert_eq!(
-        ed.state.focus.id(),
+        ed.view.focused_pane(),
         pid_a,
         "a remote dispatch must not move focus"
     );
@@ -117,7 +110,7 @@ fn focused_pane_category_errors_on_a_non_focused_pane() {
         &sels_before,
         "A's selections must be unchanged"
     );
-    assert_eq!(ed.state.focus.id(), pid_a);
+    assert_eq!(ed.view.focused_pane(), pid_a);
 }
 
 // ── Two categories only: every native command needs a pane ────────────────
@@ -189,7 +182,7 @@ fn focus_commands_refuse_a_non_focused_pane() {
         "tab-new must not have run"
     );
     assert_eq!(ed.state.mode(), Mode::Normal, "no mode change may have run");
-    assert_eq!(ed.state.focus.id(), pid_a);
+    assert_eq!(ed.view.focused_pane(), pid_a);
 }
 
 #[test]
@@ -233,7 +226,7 @@ fn tab_new_opens_a_tab_on_the_focused_buffer() {
     assert!(ran);
 
     assert_eq!(ed.state.tabs.len(), tabs_before + 1);
-    assert_eq!(ed.view.panes[ed.state.focus.id()].buffer_id, bid);
+    assert_eq!(ed.view.panes[ed.view.focused_pane()].buffer_id, bid);
 }
 
 #[test]
@@ -389,7 +382,7 @@ fn mock_host_records_a_non_focused_pane_unchanged() {
 #[test]
 fn remote_edit_is_refused_while_another_pane_has_an_open_insert_session() {
     let mut ed = editor_from("-[a]>aaa\n");
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
     let bid = ed.focused_buffer_id();
 
     // Split onto the *same* buffer, then refocus A. `pane-vsplit` focuses
@@ -404,9 +397,9 @@ fn remote_edit_is_refused_while_another_pane_has_an_open_insert_session() {
             },
         )
         .expect("pane-vsplit must succeed");
-    let pid_b = ed.state.focus.id();
+    let pid_b = ed.view.focused_pane();
     assert_ne!(pid_b, pid_a, "setup: vsplit must open a second pane");
-    ed.state.focus.set_for_test(pid_a);
+    ed.state.focus.set_for_test(&mut ed.view, pid_a);
 
     // Open an insert session on A.
     ed.feed_key(key('i'));
@@ -453,7 +446,7 @@ fn remote_edit_is_refused_while_another_pane_has_an_open_insert_session() {
 #[test]
 fn remote_undo_is_refused_while_another_pane_has_an_open_insert_session() {
     let mut ed = editor_from("-[a]>aaa\n");
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
     let bid = ed.focused_buffer_id();
 
     live_host!(ed)
@@ -466,8 +459,8 @@ fn remote_undo_is_refused_while_another_pane_has_an_open_insert_session() {
             },
         )
         .expect("pane-vsplit must succeed");
-    let pid_b = ed.state.focus.id();
-    ed.state.focus.set_for_test(pid_a);
+    let pid_b = ed.view.focused_pane();
+    ed.state.focus.set_for_test(&mut ed.view, pid_a);
 
     ed.feed_key(key('i'));
     ed.feed_key(key('X'));
@@ -506,7 +499,7 @@ fn remote_undo_is_refused_while_another_pane_has_an_open_insert_session() {
 #[test]
 fn try_ensure_errors_instead_of_panicking_once_the_pane_s_slot_is_reused() {
     let mut ed = editor_from("-[a]>aaa\n");
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
     let bid = ed.focused_buffer_id();
 
     // B, a sibling on the same buffer, survives A's close so the buffer
@@ -521,10 +514,10 @@ fn try_ensure_errors_instead_of_panicking_once_the_pane_s_slot_is_reused() {
             },
         )
         .expect("pane-vsplit must succeed");
-    let pid_b = ed.state.focus.id();
+    let pid_b = ed.view.focused_pane();
 
     // Close A while it's focused (`pane-close` is a FocusedPane command).
-    ed.state.focus.set_for_test(pid_a);
+    ed.state.focus.set_for_test(&mut ed.view, pid_a);
     live_host!(ed)
         .run_command_sync(
             "pane-close",
@@ -536,14 +529,14 @@ fn try_ensure_errors_instead_of_panicking_once_the_pane_s_slot_is_reused() {
         )
         .expect("pane-close must succeed");
     assert_ne!(
-        ed.state.focus.id(),
+        ed.view.focused_pane(),
         pid_a,
         "setup: closing A must move focus off it"
     );
 
     // Open a new pane from B: slotmap reuses A's freed index (LIFO free
     // list), so the new pane's id shares A's index with a newer version.
-    ed.state.focus.set_for_test(pid_b);
+    ed.state.focus.set_for_test(&mut ed.view, pid_b);
     live_host!(ed)
         .run_command_sync(
             "pane-vsplit",
@@ -554,7 +547,7 @@ fn try_ensure_errors_instead_of_panicking_once_the_pane_s_slot_is_reused() {
             },
         )
         .expect("pane-vsplit must succeed");
-    let pid_c = ed.state.focus.id();
+    let pid_c = ed.view.focused_pane();
     assert_ne!(pid_a, pid_c, "setup: C must be a distinct pane from A");
     // Touch C's own pane_state so its slot in the *secondary* map records
     // the newer version too. Otherwise `pid_a`'s stale version would read
@@ -619,7 +612,7 @@ fn try_ensure_errors_for_a_closed_pane_whose_slot_is_not_reused() {
 #[test]
 fn a_refused_delete_clears_the_register_prefix_and_writes_nothing() {
     let mut ed = editor_from("-[a]>aaa\n");
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
     let bid = ed.focused_buffer_id();
     live_host!(ed)
         .run_command_sync(
@@ -631,8 +624,8 @@ fn a_refused_delete_clears_the_register_prefix_and_writes_nothing() {
             },
         )
         .expect("pane-vsplit must succeed");
-    let pid_b = ed.state.focus.id();
-    ed.state.focus.set_for_test(pid_a);
+    let pid_b = ed.view.focused_pane();
+    ed.state.focus.set_for_test(&mut ed.view, pid_a);
     ed.feed_key(key('i'));
     ed.feed_key(key('X'));
 

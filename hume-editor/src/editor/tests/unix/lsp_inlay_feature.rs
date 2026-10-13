@@ -105,15 +105,12 @@ fn setup_two_servers(
         .open_extra_file(&file_b)
         .expect("main.py opens as a buffer");
     // Both buffers must be *shown*: `lsp/refresh-hints` skips a hidden bid.
-    let pid_a = rig.ed.state.focus.id();
     let pane_b = open_pane_in_layout(
         &mut rig.ed.state,
         &mut rig.ed.view,
-        pid_a,
         bid_b,
         hume_engine::pipeline::Direction::Horizontal,
-    )
-    .unwrap();
+    );
     rig.ed.drain_lsp();
     rig.ed.settle();
 
@@ -151,7 +148,7 @@ fn fire_viewport_change(ed: &mut Editor) {
     ed.sync_viewport_dims(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
-    let pid = ed.state.focus.id();
+    let pid = ed.view.focused_pane();
     ed.queue_viewport_change(pid);
 }
 
@@ -362,7 +359,7 @@ fn toggle_leaves_other_buffers_alone() {
     let tmp = tempfile::tempdir().unwrap();
     let caps = || serde_json::json!({"capabilities": {"inlayHintProvider": true}});
     let mut t = setup_two_servers(tmp.path(), caps(), caps(), 1);
-    let pane_a = t.ed.state.focus.id();
+    let pane_a = t.ed.view.focused_pane();
 
     type_cmd(&mut t.ed, ":toggle-inlay-hints");
     settle_after_debounce(&mut t.ed);

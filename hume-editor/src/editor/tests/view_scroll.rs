@@ -120,7 +120,8 @@ fn zz_in_wrap_mode_walks_display_lines() {
         + 8);
     let sels = sels_at(&text, &[(head.index(), head.index())], 0);
     let mut ed = Editor::for_testing_with(test_fixtures::testing::state(text, sels));
-    ed.view.panes[ed.state.focus.id()].set_wrap(hume_engine::pane::WrapOverride {
+    let focused_pid = ed.view.focused_pane();
+    ed.view.panes[focused_pid].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(hume_engine::pane::WrapMode::Soft { width: 4 }),
         saved: None,
     });
@@ -155,7 +156,8 @@ fn zk_in_wrap_mode_anchors_cursor_display_line_at_top() {
         + 9);
     let sels = sels_at(&text, &[(head.index(), head.index())], 0);
     let mut ed = Editor::for_testing_with(test_fixtures::testing::state(text, sels));
-    ed.view.panes[ed.state.focus.id()].set_wrap(hume_engine::pane::WrapOverride {
+    let focused_pid = ed.view.focused_pane();
+    ed.view.panes[focused_pid].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(hume_engine::pane::WrapMode::Soft { width: 4 }),
         saved: None,
     });

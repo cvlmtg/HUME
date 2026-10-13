@@ -35,8 +35,8 @@ pub(in crate::editor) enum EditorEvent {
     /// Fires when the focused pane's buffer changes: a diff taken inside
     /// `Editor::settle()`'s fixpoint against `EditorState::last_entered_buffer`,
     /// not a hook on any individual switch primitive. `focused_buffer_id()` is
-    /// a derived join of `state.focus` and `pane.buffer_id`, each written by
-    /// its own chokepoint (`focus_pane`, `switch_pane_to_buffer`), but no
+    /// a derived join of `view.focused_pane()` and `pane.buffer_id`, each
+    /// written by its own chokepoint (`focus`, `switch_pane_to_buffer`), but no
     /// single one of those covers both, so neither alone can host the raise.
     /// Fires once at startup (the initial buffer entering focus) and once
     /// more per subsequent switch, coalescing a pane-focus move and a buffer

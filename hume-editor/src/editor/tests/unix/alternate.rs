@@ -223,23 +223,18 @@ fn alternate_follows_pane_focus_moves_alone() {
     // Two extra panes, each pinned to an older buffer. From here on, moving
     // focus between them (never `:e`, which is already covered above) is the
     // only thing that can reorder A or B.
-    let start_pid = ed.state.focus.id();
     let pid_a = crate::editor::commands::open_pane_in_layout(
         &mut ed.state,
         &mut ed.view,
-        start_pid,
         id_a,
         hume_engine::pipeline::Direction::Horizontal,
-    )
-    .unwrap();
+    );
     let pid_b = crate::editor::commands::open_pane_in_layout(
         &mut ed.state,
         &mut ed.view,
-        start_pid,
         id_b,
         hume_engine::pipeline::Direction::Horizontal,
-    )
-    .unwrap();
+    );
 
     // Visit A, then B (both by pane focus alone), then revisit A. If focus
     // moves promote MRU, A's alternate is now B (visited in between); an

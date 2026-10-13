@@ -732,7 +732,7 @@ fn doc_pos_for_another_buffer_fills_the_slot_with_an_error() {
     let other = rig.root.join("src/other.rs");
     std::fs::write(&other, "fn other() {}\n").unwrap();
     let other = rig.ed.open_extra_file(&other).expect("the file opens");
-    let fp = crate::editor::commands::FocusedPane::current(&rig.ed.state);
+    let fp = crate::editor::commands::FocusedPane::current(&rig.ed.view);
     rig.ed.switch_to_buffer_without_jump(fp, other);
     rig.ed.drain_lsp();
 
@@ -957,7 +957,7 @@ fn unsent_err_is_tagged() {
     let other = rig.root.join("src/other.rs");
     std::fs::write(&other, "fn other() {}\n").unwrap();
     let other = rig.ed.open_extra_file(&other).expect("the file opens");
-    let fp = crate::editor::commands::FocusedPane::current(&rig.ed.state);
+    let fp = crate::editor::commands::FocusedPane::current(&rig.ed.view);
     rig.ed.switch_to_buffer_without_jump(fp, other);
     rig.ed.drain_lsp();
 

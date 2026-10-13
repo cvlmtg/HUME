@@ -256,7 +256,7 @@ fn reload_buffer_in_place_ends_insert_session_on_focused_pane() {
     assert_eq!(ed.state.mode(), Mode::Insert, "sanity: Insert is open");
 
     ed.reload_buffer_in_place(
-        FocusedPane::current(&ed.state),
+        FocusedPane::current(&ed.view),
         ReplaceSource::disk(Buffer::at_start(BufferText::from("xyz\n"))),
     );
 
@@ -324,20 +324,13 @@ fn switch_to_buffer_on_a_non_focused_pane_leaves_focused_insert_session_open() {
     use hume_engine::pipeline::Direction;
 
     let mut ed = editor_from("-[a]>bc\n");
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
     let bid_a = ed.focused_buffer_id();
     let bid_b = ed.open_buffer(Buffer::at_start(BufferText::from("baz\n")));
-    let pid_b = open_pane_in_layout(
-        &mut ed.state,
-        &mut ed.view,
-        pid_a,
-        bid_b,
-        Direction::Horizontal,
-    )
-    .expect("split must succeed");
+    let pid_b = open_pane_in_layout(&mut ed.state, &mut ed.view, bid_b, Direction::Horizontal);
     // `open_pane_in_layout` does not move focus itself; pin it back to A
     // explicitly so the premise below holds regardless.
-    ed.state.focus.set_for_test(pid_a);
+    ed.state.focus.set_for_test(&mut ed.view, pid_a);
     let bid_c = ed.open_buffer(Buffer::at_start(BufferText::from("qux\n")));
 
     ed.feed_key(key('i'));
@@ -388,17 +381,10 @@ fn insert_teardown_commits_on_the_sessions_own_pane_not_current_focus() {
     use hume_engine::pipeline::Direction;
 
     let mut ed = editor_from("-[a]>bc\n");
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
     let bid = ed.focused_buffer_id();
-    let pid_b = open_pane_in_layout(
-        &mut ed.state,
-        &mut ed.view,
-        pid_a,
-        bid,
-        Direction::Horizontal,
-    )
-    .expect("split must succeed");
-    ed.state.focus.set_for_test(pid_a);
+    let pid_b = open_pane_in_layout(&mut ed.state, &mut ed.view, bid, Direction::Horizontal);
+    ed.state.focus.set_for_test(&mut ed.view, pid_a);
 
     ed.feed_key(key('A'));
     type_chars(&mut ed, "Q");
@@ -411,7 +397,7 @@ fn insert_teardown_commits_on_the_sessions_own_pane_not_current_focus() {
         "sanity: the two panes must be distinguishable"
     );
 
-    ed.state.focus.set_for_test(pid_b);
+    ed.state.focus.set_for_test(&mut ed.view, pid_b);
     ed.end_insert_session();
 
     assert!(

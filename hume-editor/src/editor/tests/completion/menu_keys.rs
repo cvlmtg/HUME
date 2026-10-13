@@ -613,7 +613,7 @@ fn a_stale_session_after_a_buffer_reload_is_dismissed_at_settle() {
 
     let replacement = Buffer::at_start(BufferText::from("hi\n"));
     ed.reload_buffer_in_place(
-        FocusedPane::current(&ed.state),
+        FocusedPane::current(&ed.view),
         ReplaceSource::disk(replacement),
     );
 

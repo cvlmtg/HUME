@@ -63,7 +63,7 @@ Core text-editing model: the document, selections, edits as data, and the undo t
 - hume-ui
 - hume-decorations
 ## Description
-Rendering pipeline and pane geometry: the layout tree, frame rendering, and theming.
+Rendering pipeline and pane geometry: the layout tree and its focused pane, frame rendering, and theming.
 
 # hume-ops
 ### Depends on

@@ -14,7 +14,7 @@ fn bracket_match_highlight_resolves_nearest_bracket_in_selection() {
     let mut ed = open_headless(None);
     type_text(&mut ed, "(x) y");
 
-    let pid = ed.state.focus.id();
+    let pid = ed.view.focused_pane();
     // "(x) y\n": '(' 0, 'x' 1, ')' 2, ' ' 3, 'y' 4, '\n' 5. Selection covers
     // ") " with the head on the space (3), same shape as a `w` landing.
     select(&mut ed, &[(2, 3)], 0);

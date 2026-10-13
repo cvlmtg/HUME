@@ -28,7 +28,7 @@ fn editor_with_before_line() -> Editor {
     let text = BufferText::from("x\ny\n");
     let sels = sels_at(&text, &[(0, 0)], 0);
     let mut ed = Editor::for_testing_with(test_fixtures::testing::state(text, sels));
-    let pid = ed.state.focus.id();
+    let pid = ed.view.focused_pane();
     ed.view.panes[pid].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(WrapMode::Soft { width: 0 }),
         saved: None,
@@ -65,7 +65,7 @@ fn content_pos_agrees_with_the_actual_render_for_a_top_line_before_block() {
     // `render_to_buf` already ran `prepare_frame` (settling the viewport);
     // ask `content_pos` with that same settled state, exactly as production
     // code does after `prepare_frame`.
-    let pid = ed.state.focus.id();
+    let pid = ed.view.focused_pane();
     let mut vp = ed.view.panes[pid].viewport.clone();
     let cursor_char = ed.current_view().primary().head();
     let bid = ed.view.panes[pid].buffer_id;
@@ -96,7 +96,8 @@ fn mouse_wheel_moves_one_display_line_at_a_time_through_a_before_block() {
     // notch alone already reaches.
     let mut ed = editor_with_before_line();
     ed.state.settings.mouse_scroll_lines = 1;
-    ed.view.panes[ed.state.focus.id()].viewport.height = 2;
+    let focused_pid = ed.view.focused_pane();
+    ed.view.panes[focused_pid].viewport.height = 2;
 
     let scroll_down = || mouse_wheel(true);
 
@@ -161,7 +162,8 @@ fn wheel_passes_a_mid_buffer_ghost_block() {
     let mut ed = unwrapped_editor(&content, 0);
     seek_to_line(&mut ed, 5);
     ed.state.settings.mouse_scroll_lines = 3;
-    ed.view.panes[ed.state.focus.id()]
+    let focused_pid = ed.view.focused_pane();
+    ed.view.panes[focused_pid]
         .providers
         .add_decoration_source(Box::new(VirtualLineBlock::uniform(
             VirtualLineAnchor::After(hume_rope::line::ContentLine::new(8)),
@@ -223,7 +225,8 @@ fn trailing_block_editor() -> (Editor, Rect) {
     let mut ed = unwrapped_editor(&content, 0);
     seek_to_line(&mut ed, 3);
     ed.state.settings.mouse_scroll_lines = 3;
-    ed.view.panes[ed.state.focus.id()]
+    let focused_pid = ed.view.focused_pane();
+    ed.view.panes[focused_pid]
         .providers
         .add_decoration_source(Box::new(VirtualLineBlock::uniform(
             VirtualLineAnchor::After(hume_rope::line::ContentLine::new(9)),
@@ -329,15 +332,13 @@ fn a_parked_view_survives_a_decoration_change() {
 fn a_parked_view_survives_a_sibling_panes_edit() {
     let (mut ed, rect) = trailing_block_editor();
     let bid = ed.focused_buffer_id();
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
     let pid_b = open_pane_in_layout(
         &mut ed.state,
         &mut ed.view,
-        pid_a,
         bid,
         hume_engine::pipeline::Direction::Horizontal,
-    )
-    .unwrap();
+    );
     park_behind_trailing_block(&mut ed, rect);
     let top_before = ed.viewport().top();
 
@@ -449,7 +450,7 @@ fn view_scroll_cursor_follow_counts_virtual_lines_toward_its_budget() {
     for wrap in [WrapMode::None, WrapMode::Soft { width: 0 }] {
         let mut ed =
             Editor::for_testing_with(test_fixtures::testing::state(text.clone(), sels.clone()));
-        let pid = ed.state.focus.id();
+        let pid = ed.view.focused_pane();
         ed.view.panes[pid].set_wrap(hume_engine::pane::WrapOverride {
             mode: Some(wrap),
             saved: None,
@@ -497,7 +498,7 @@ fn content_pos_counts_an_inline_hints_extra_wrap_display_line() {
     let sels = sels_at(&text, &[(7, 7)], 0);
     let mut ed = Editor::for_testing_with(test_fixtures::testing::state(text, sels));
     ed.state.settings.scroll_margin = 0;
-    let pid = ed.state.focus.id();
+    let pid = ed.view.focused_pane();
     ed.view.panes[pid].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(WrapMode::Soft { width: 0 }),
         saved: None,

@@ -470,7 +470,7 @@ impl CommandRegistry {
         .reg(self);
 
         // ── Editor commands — tab pages ─────────────────────────────────────────
-        // No `.jump()`: switching tabs changes `state.focus` itself (a
+        // No `.jump()`: switching tabs changes the focused pane itself (a
         // different pane, possibly in a different tab), same as the
         // pane-focus commands below; see `commands::tab`'s module doc for
         // why that disqualifies the jump-list recording `.jump()` triggers.

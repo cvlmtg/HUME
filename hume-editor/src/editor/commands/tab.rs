@@ -10,10 +10,10 @@
 //!
 //! `goto-next-tab`/`goto-prev-tab` carry no `.jump()` meta,
 //! unlike `goto-next-buffer`/`goto-prev-buffer`: a tab switch changes
-//! `state.focus` itself (a different pane, possibly in a different tab), and
-//! the jump list is written to `state.panes.jumps[state.focus.id()]` read
-//! *after* the switch, the same reason `pane-focus-next`/`-left`/`-right`/
-//! `-up`/`-down` (which also change `state.focus`) carry no `.jump()`
+//! the focused pane itself (a different pane, possibly in a different tab),
+//! and the jump list is written to `state.panes.jumps[view.focused_pane()]`
+//! read *after* the switch, the same reason `pane-focus-next`/`-left`/
+//! `-right`/`-up`/`-down` (which also change the focused pane) carry no `.jump()`
 //! either, while buffer-switch commands (which keep the same pane) do.
 
 use crate::editor::registry::Count;
@@ -56,25 +56,25 @@ pub(in crate::editor) fn open_tab(
 /// assert `len() > 1`, so checking that precondition before anything is
 /// destroyed keeps `view`/`state` consistent at every point in between.
 ///
-/// Routes the closing tab's own layout/focus through `tab::take_live` rather
-/// than reading `view.layout` directly: `take_live` ends the closing tab's
-/// open Insert/paste session at the one moment `view.layout`/`state.focus`
-/// still jointly name it, before `install_live` swaps them to the survivor.
+/// Routes the closing tab's own layout through `tab::take_live` rather than
+/// reading `view.layout` directly: `take_live` ends the closing tab's open
+/// Insert/paste session while `view` still holds that tab's layout, before
+/// `install_live` swaps it for the survivor.
 /// Left any later, the teardown's per-(pane, buffer) writes would land after
 /// `drop_pane_state` has already removed the closing pane's own state below.
 /// `close_current` only mutates `TabStore`, not `view`, so running it after
 /// `take_live` is safe.
 ///
-/// `closing_layout.into_detached()` is what makes discarding the closing
+/// `into_detached()` on the closing tree is what makes discarding the closing
 /// tab's tree and freeing every pane it reached a single step. There is no
 /// window where the tree is gone but the pool still holds one of its panes,
 /// or a token exists for a pane no tree ever named.
 pub(in crate::editor) fn close_tab(state: &mut EditorState, view: &mut EngineView) {
     let survivor = state.tabs.adjacent();
-    let (closing_layout, _outgoing_focus) = take_live(state, view);
-    let (layout, focus) = state.tabs.close_current(survivor);
-    install_live(state, view, layout, focus);
-    for detached in closing_layout.into_detached() {
+    let closing = take_live(state, view);
+    let layout = state.tabs.close_current(survivor);
+    install_live(state, view, layout);
+    for detached in closing.into_tree().into_detached() {
         drop_pane_state(state, view, detached);
     }
 }

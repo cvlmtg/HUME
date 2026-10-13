@@ -303,12 +303,9 @@ pub(crate) struct EditorState {
     pub(in crate::editor) shown_theme: String,
     /// The character and kind from the last find/till motion.
     pub(super) last_find: Option<commands::FindChar>,
-    /// The single pane focused in the current editing session, i.e. the
-    /// *active tab's* focused pane. Every other open tab's own focused pane
-    /// is stashed on `tabs` instead (see its module doc). `pub(in
-    /// crate::editor)` on the field itself only gets a reader `Focus::id()`
-    /// (see `focus`'s module doc for why the `PaneId` inside stays
-    /// unreachable to a raw write from anywhere but `focus::focus_pane`).
+    /// The permission to move the active tab's focused pane, which the
+    /// engine stores (`EngineView::focused_pane`). See `focus`'s module doc
+    /// for why only that module can use it.
     pub(in crate::editor) focus: focus::Focus,
     /// Every open tab's display order and stashed window layout. See
     /// `tab::store`'s module doc for the model (the active tab's layout
@@ -441,18 +438,20 @@ pub(crate) struct EditorState {
     pub(super) wake: Arc<dyn Fn() + Send + Sync>,
 }
 
-/// The trivial-field baseline both `EditorState` constructors build on.
-///
-/// Not a usable editor on its own: no buffers, no panes, a null
-/// `focus`, an OSC 52 clipboard, and a no-op waker. It exists
-/// so the fields that are identical at both construction sites (`Editor::open`
-/// and `Editor::for_testing`) are written once. Every field whose real value
-/// differs between those two sites is set here to an inert form (`lsp` is
-/// the threaded backend with a no-op waker) and named explicitly by
-/// `Editor::open`, so no production value is inherited by accident. A field added later whose production value must differ from its
-/// baseline needs the same treatment; the compiler will not ask for it.
-impl Default for EditorState {
-    fn default() -> Self {
+impl EditorState {
+    /// The trivial-field baseline both `EditorState` constructors build on,
+    /// around the `focus` and `tabs` they seeded with the first pane.
+    ///
+    /// Not a usable editor on its own: no buffers, an OSC 52 clipboard, and
+    /// a no-op waker. It exists so the fields that are identical at both
+    /// construction sites (`Editor::open` and `Editor::for_testing`) are
+    /// written once. Every field whose real value differs between those two
+    /// sites is set here to an inert form (`lsp` is the threaded backend
+    /// with a no-op waker) and named explicitly by `Editor::open`, so no
+    /// production value is inherited by accident. A field added later whose
+    /// production value must differ from its baseline needs the same
+    /// treatment; the compiler will not ask for it.
+    pub(in crate::editor) fn base(focus: focus::Focus, tabs: tab::TabStore) -> Self {
         let settings = EditorSettings::default();
         let history_capacity = settings.history_capacity;
         Self {
@@ -481,11 +480,8 @@ impl Default for EditorState {
             settings,
             shown_theme: String::new(),
             last_find: None,
-            focus: focus::Focus::default(),
-            // Placeholder, like `focus` above: every real caller
-            // (`Editor::open`, `for_testing`) overrides both together with a
-            // real seeded pane, never relies on this default.
-            tabs: tab::TabStore::new(PaneId::default()).0,
+            focus,
+            tabs,
             panes: PaneView::default(),
             history: minibuf::history::HistoryStore::new(history_capacity),
             force_full_redraw: false,
@@ -901,7 +897,7 @@ impl Editor {
 
     /// The `BufferId` the focused pane is currently viewing.
     pub(crate) fn focused_buffer_id(&self) -> BufferId {
-        self.view.panes[self.state.focus.id()].buffer_id
+        self.view.panes[self.view.focused_pane()].buffer_id
     }
 
     /// Shared reference to the focused buffer.
@@ -927,19 +923,19 @@ impl Editor {
 
     /// The focused pane's selections for the current buffer.
     pub(super) fn current_selections(&self) -> &SelectionSet {
-        let t = commands::FocusedPane::current(&self.state).pane();
+        let t = commands::FocusedPane::current(&self.view).pane();
         commands::pane_selections(&self.state, &self.view, t)
     }
 
     /// The focused pane's selections, bound to the current buffer's text.
     pub(in crate::editor) fn current_view(&self) -> hume_editing::selection::EditView<'_> {
-        let t = commands::FocusedPane::current(&self.state).pane();
+        let t = commands::FocusedPane::current(&self.view).pane();
         commands::pane_view(&self.state, &self.view, t)
     }
 
     /// Replace the focused pane's selections for the current buffer.
     pub(in crate::editor) fn set_current_selections(&mut self, sels: SelectionSet) {
-        let t = commands::FocusedPane::current(&self.state).pane();
+        let t = commands::FocusedPane::current(&self.view).pane();
         commands::set_pane_selections(&mut self.state, &self.view, t, sels);
     }
 

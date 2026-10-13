@@ -281,15 +281,12 @@ fn accept_after_the_session_pane_loses_focus_errors_instead_of_writing_at_char_z
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     let bid_a = ed.focused_buffer_id();
-    let pid_a = ed.state.focus.id();
     let pid_b = open_pane_in_layout(
         &mut ed.state,
         &mut ed.view,
-        pid_a,
         bid_a,
         hume_engine::pipeline::Direction::Horizontal,
-    )
-    .unwrap();
+    );
     raw_insert_with_source(
         &mut ed,
         tmp.path(),
@@ -303,7 +300,7 @@ fn accept_after_the_session_pane_loses_focus_errors_instead_of_writing_at_char_z
     // pane B. A raw `set_for_test`: `switch_focused_pane`'s Normal-mode
     // precondition doesn't hold here on purpose. Taking the session for
     // accept reconciles it first, which dismisses it.
-    ed.state.focus.set_for_test(pid_b);
+    ed.state.focus.set_for_test(&mut ed.view, pid_b);
 
     accept_via_steel(&mut ed);
     assert_eq!(ed.doc().text().to_string(), "abcdef\n");
@@ -338,7 +335,7 @@ fn accept_after_the_pane_switched_buffers_errors() {
     assert!(ed.state.input.buffer_completion().is_some(), "sanity");
 
     let scratch = ed.open_buffer(crate::editor::buffer::Buffer::scratch());
-    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), scratch);
+    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.view), scratch);
     assert_eq!(
         ed.state.mode(),
         Mode::Normal,
@@ -391,7 +388,7 @@ fn accept_while_a_paste_session_is_open_here_errors_instead_of_panicking() {
     // `raw_insert_with_source` opens no group at all (see its own doc): a
     // Paste session open here is not reachable through it directly, but is
     // exactly the shape an out-of-band `completion-accept!` could observe.
-    let pid = ed.state.focus.id();
+    let pid = ed.view.focused_pane();
     let bid = ed.focused_buffer_id();
     let text = ed.doc().text().clone();
     let pre_sels = ed.state.panes.state[pid][bid].selections().clone();

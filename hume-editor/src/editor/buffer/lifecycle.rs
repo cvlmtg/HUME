@@ -121,7 +121,7 @@ pub(in crate::editor) fn switch_pane_to_buffer(
     pid: PaneId,
     target: BufferId,
 ) {
-    let is_focused_switch = pid == state.focus.id() && ev.panes[pid].buffer_id != target;
+    let is_focused_switch = pid == ev.focused_pane() && ev.panes[pid].buffer_id != target;
     if is_focused_switch {
         crate::editor::focus::end_focus_sessions(state, ev);
     }

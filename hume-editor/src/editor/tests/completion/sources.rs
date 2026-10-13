@@ -977,7 +977,7 @@ fn a_buffer_switch_dismisses_the_session_at_settle() {
     assert!(ed.state.input.buffer_completion().is_some(), "sanity: open");
 
     let other = ed.open_buffer(Buffer::at_start(BufferText::from("other\n")));
-    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.state), other);
+    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), other);
     ed.settle();
     assert!(
         ed.state.input.buffer_completion().is_none(),

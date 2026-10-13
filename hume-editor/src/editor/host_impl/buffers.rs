@@ -28,7 +28,7 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
     }
 
     fn focused_pane(&self) -> PaneHandle {
-        FocusedPane::current(self.state).handle(self.view)
+        FocusedPane::current(self.view).handle(self.view)
     }
 
     fn buffer_panes(&self, pane: PaneHandle) -> Vec<PaneHandle> {

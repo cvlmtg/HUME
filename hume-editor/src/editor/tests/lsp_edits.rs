@@ -577,16 +577,13 @@ fn apply_workspace_edit_conflicting_session_on_another_pane_leaves_earlier_files
     // A second, unrelated pane issues the workspace edit, "remote" relative
     // to the focused pane's own open session, the same shape a `call!`
     // targeting a different pane would produce.
-    let pid_a = ed.state.focus.id();
     let other_bid = ed.open_buffer(Buffer::at_start(BufferText::from("misc\n")));
     let pid_b = open_pane_in_layout(
         &mut ed.state,
         &mut ed.view,
-        pid_a,
         other_bid,
         Direction::Horizontal,
-    )
-    .expect("split must succeed");
+    );
 
     // ok.txt listed first, conflict.txt second. A check made only at commit
     // time would already have committed ok.txt by the time conflict.txt's
@@ -825,7 +822,7 @@ fn goto_location_centers_by_display_line_not_buffer_line_under_wrap() {
     let text = hume_editing::text::BufferText::from(content.as_str());
     let sels = sels_at(&text, &[(0, 0)], 0);
     let mut ed = Editor::for_testing_with(test_fixtures::testing::state(text, sels));
-    let pid = ed.state.focus.id();
+    let pid = ed.view.focused_pane();
     ed.execute_typed("set", Some("pane wrap-mode=soft:10"))
         .unwrap();
     ed.view.panes[pid].viewport.height = 10;

@@ -596,16 +596,13 @@ fn selections_linewise_true_for_a_buffer_shown_in_a_non_focused_pane() {
         .buffers
         .find_by_path(&std::fs::canonicalize(&extra).unwrap())
         .expect("extra file must be open in the buffer list");
-    let start_pid = ed.state.focus.id();
     let other_pid = open_pane_in_layout(
         &mut ed.state,
         &mut ed.view,
-        start_pid,
         other_bid,
         hume_engine::pipeline::Direction::Horizontal,
-    )
-    .unwrap();
-    ed.state.focus.set_for_test(other_pid);
+    );
+    ed.state.focus.set_for_test(&mut ed.view, other_pid);
 
     let fired = run_probe(
         &mut ed,

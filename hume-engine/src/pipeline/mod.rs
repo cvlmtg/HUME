@@ -21,7 +21,9 @@ use layout::{
     ARM_E, ARM_N, ARM_S, ARM_W, collect_seam_arms, focused_pane_corners, focused_seam_segment,
     junction_glyph,
 };
-pub use layout::{DetachedPane, Direction, LayoutRefusal, LayoutTree, Pruned, Rotation, Seam};
+pub use layout::{
+    DetachedPane, Direction, FocusedLayout, LayoutTree, NotInLayout, Rotation, Seam, SinglePane,
+};
 pub use pane_pool::{PanePool, UnattachedPane};
 use pane_render::render_pane;
 
@@ -83,8 +85,6 @@ pub struct FrameInputs<'a, R, S> {
     /// Same per-frame-borrow contract as `get_rope`.
     pub get_syntax: S,
     pub statusline: &'a dyn StatuslineProvider,
-    /// Drives seam-accent styling and non-focused dimming.
-    pub focused_pane_id: PaneId,
     /// The `pane-dividers` setting: `true` reserves and paints a 1-cell seam
     /// between sibling panes; `false` tiles panes edge-to-edge with no
     /// reserved gap. Non-focused panes are dimmed either way: dimming is the
@@ -171,17 +171,24 @@ impl Default for RenderContext {
 // Editor view: top-level owner
 // ---------------------------------------------------------------------------
 
+/// Permission to change which pane is focused. [`EngineView::new`] mints the
+/// only one, and every `EngineView` method that moves focus takes it. The
+/// editor keeps it beside the steps a focus change must run, so a focus
+/// change cannot skip them.
+#[derive(Debug)]
+pub struct FocusKey(());
+
 /// The root of the editor's rendering state.
 pub struct EngineView {
-    /// The active tab's tree, private so every whole-tree replacement
-    /// routes through [`Self::replace_layout`], which is `#[must_use]`: an
-    /// outgoing tree silently dropped here would leak every pane it still
-    /// reaches (see [`DetachedPane`]'s own doc). In-place mutation goes
-    /// through [`Self::split_leaf`]/[`Self::remove_leaf`], which themselves
-    /// mint or consume a pool token. There is no general `&mut LayoutTree`
-    /// accessor, so a caller can't reach `LayoutTree`'s own mutating methods
-    /// (`split_leaf`/`remove_leaf`) without going through one of these two.
-    layout: LayoutTree,
+    /// The active tab's layout and focused pane, private so every
+    /// whole-layout replacement routes through [`Self::replace_layout`],
+    /// which is `#[must_use]`: an outgoing layout dropped here unnoticed
+    /// would leak every pane it still reaches (see [`DetachedPane`]'s own doc).
+    /// In-place changes go through [`Self::split_focused`],
+    /// [`Self::close_focused`], [`Self::rotate_focused`] and
+    /// [`Self::focus`]. The two that add or remove a pane consume or mint a
+    /// pool token, and the ones that move focus take the [`FocusKey`].
+    layout: FocusedLayout,
     pub panes: PanePool,
     /// Pure `BufferId` allocator: a buffer's content, syntax, and rope all
     /// live in the editor's `Document`/`Buffer`; this slotmap only mints and
@@ -228,14 +235,15 @@ pub struct EngineView {
 const PANE_DIM_FACTOR: f32 = 0.5;
 
 impl EngineView {
-    pub fn new(theme: Theme) -> Self {
+    /// A view with no panes yet, and the one [`FocusKey`] for it.
+    pub fn new(theme: Theme) -> (Self, FocusKey) {
         let panes = PanePool::with_key();
         let buffers = SlotMap::with_key();
         let mut registry = ScopeRegistry::new();
         let default_gutter_scope = registry.intern(DEFAULT_GUTTER_SCOPE.0);
-        Self {
-            // Placeholder layout: will be replaced before the first render.
-            layout: LayoutTree::Leaf(PaneId::default()),
+        let view = Self {
+            // Replaced before the first render.
+            layout: FocusedLayout::placeholder(),
             panes,
             buffers,
             theme,
@@ -246,7 +254,8 @@ impl EngineView {
             last_pane_area: Rect::default(),
             last_terminal_area: Rect::default(),
             reserve_seam: true,
-        }
+        };
+        (view, FocusKey(()))
     }
 
     /// Recompute the current pane partition from `layout` and
@@ -255,6 +264,7 @@ impl EngineView {
     pub fn pane_rects(&self) -> Vec<(PaneId, Rect)> {
         let mut out = Vec::new();
         self.layout
+            .tree()
             .collect_rects_into(self.last_pane_area, self.reserve_seam, &mut out);
         out
     }
@@ -263,6 +273,7 @@ impl EngineView {
     /// no area yet (before the first `prepare_frame`).
     pub fn pane_rect(&self, pid: PaneId) -> Option<Rect> {
         self.layout
+            .tree()
             .find_rect(pid, self.last_pane_area, self.reserve_seam)
     }
 
@@ -323,51 +334,57 @@ impl EngineView {
 
     /// The active tab's tree.
     pub fn layout(&self) -> &LayoutTree {
+        self.layout.tree()
+    }
+
+    /// The active tab's focused pane, always a leaf of [`Self::layout`].
+    pub fn focused_pane(&self) -> PaneId {
+        self.layout.focused()
+    }
+
+    /// The active tab's layout and focus as one value, for stashing a tab
+    /// that is about to be replaced.
+    pub fn focused_layout(&self) -> &FocusedLayout {
         &self.layout
     }
 
-    /// Replace the whole active-tab tree, returning what was there before.
-    /// `#[must_use]`: the outgoing tree may still reach live panes (see
+    /// Replace the whole active-tab layout, returning what was there before.
+    /// `#[must_use]`: the outgoing layout may still reach live panes (see
     /// [`DetachedPane`]'s own doc). A caller that means to discard it
-    /// outright (installing a placeholder over a tree with nothing real
-    /// left in it, or replacing it with a tree that names the exact same
-    /// pool entries just reshaped) must say so explicitly with `let _ = `.
+    /// outright (installing a layout over one with nothing real left in
+    /// it, or one that names the exact same pool entries) must say so
+    /// explicitly with `let _ = `.
     #[must_use]
-    pub fn replace_layout(&mut self, layout: LayoutTree) -> LayoutTree {
+    pub fn replace_layout(&mut self, _key: &FocusKey, layout: FocusedLayout) -> FocusedLayout {
         std::mem::replace(&mut self.layout, layout)
     }
 
+    /// Focus `pid`, refused when it is not a leaf of the active tab's tree.
+    pub fn focus(&mut self, _key: &FocusKey, pid: PaneId) -> Result<(), NotInLayout> {
+        self.layout.focus(pid)
+    }
+
     /// Splice a freshly inserted, not-yet-attached pane into the active
-    /// tab's tree beside `target`. See [`LayoutTree::split_leaf`].
-    pub fn split_leaf(
-        &mut self,
-        target: PaneId,
-        pane: UnattachedPane,
-        direction: Direction,
-    ) -> Result<PaneId, UnattachedPane> {
-        self.layout.split_leaf(target, pane, direction)
+    /// tab's tree beside the focused pane, which keeps focus.
+    pub fn split_focused(&mut self, pane: UnattachedPane, direction: Direction) -> PaneId {
+        self.layout.split_focused(pane, direction)
     }
 
-    /// Prune `target` from the active tab's tree. See
-    /// [`LayoutTree::remove_leaf`].
-    pub fn remove_leaf(&mut self, target: PaneId) -> Result<Pruned, LayoutRefusal> {
-        self.layout.remove_leaf(target)
+    /// Prune the focused pane from the active tab's tree. Focus moves to the
+    /// leftmost leaf of the sibling that takes its place.
+    pub fn close_focused(&mut self, _key: &FocusKey) -> Result<DetachedPane, SinglePane> {
+        self.layout.close_focused()
     }
 
-    /// Rotate the row or column `target` sits in within the active tab's
-    /// tree. See [`LayoutTree::rotate`].
-    pub fn rotate_layout(
-        &mut self,
-        target: PaneId,
-        rotation: Rotation,
-        steps: usize,
-    ) -> Result<(), LayoutRefusal> {
-        self.layout.rotate(target, rotation, steps)
+    /// Rotate the row or column the focused pane sits in by `steps` places.
+    /// Focus stays on the same pane.
+    pub fn rotate_focused(&mut self, rotation: Rotation, steps: usize) -> Result<(), SinglePane> {
+        self.layout.rotate_focused(rotation, steps)
     }
 
     /// Insert a pane into the pool, returning the [`UnattachedPane`] token
     /// proving it isn't yet reachable from any layout tree. Splice it in
-    /// with [`Self::split_leaf`] or [`LayoutTree::leaf`].
+    /// with [`Self::split_focused`] or [`FocusedLayout::new`].
     pub fn insert_pane(&mut self, pane: Pane) -> UnattachedPane {
         self.panes.insert(pane)
     }
@@ -388,7 +405,7 @@ impl EngineView {
     /// since been resized. It re-enters this set, and catches up, the moment
     /// its tab is switched back to.
     pub fn active_pane_ids(&self) -> Vec<PaneId> {
-        self.layout.leaves()
+        self.layout.tree().leaves()
     }
 
     /// Drop the line-store entries of every active pane (see
@@ -493,9 +510,9 @@ impl EngineView {
             get_rope,
             get_syntax,
             statusline,
-            focused_pane_id,
             draw_dividers,
         } = input;
+        let focused_pane_id = self.layout.focused();
         let scratch = &mut ctx.frame;
         let pane_settings = &ctx.pane_settings;
         let pane_rects = &mut ctx.pane_rects;
@@ -559,6 +576,7 @@ impl EngineView {
         // ── Compute pane rects once; reuse for panes and overlays ─────────────
         pane_rects.clear();
         self.layout
+            .tree()
             .collect_rects_into(pane_area, draw_dividers, pane_rects);
 
         // ── Render panes ──────────────────────────────────────────────────────
@@ -629,7 +647,9 @@ impl EngineView {
                 .find(|(pid, _)| *pid == focused_pane_id)
                 .map(|(_, r)| *r);
             ctx.seams.clear();
-            self.layout.collect_seams_into(pane_area, &mut ctx.seams);
+            self.layout
+                .tree()
+                .collect_seams_into(pane_area, &mut ctx.seams);
             ctx.seam_arms.clear();
             collect_seam_arms(&ctx.seams, &mut ctx.seam_arms);
 

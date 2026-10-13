@@ -23,7 +23,7 @@ use super::super::pane_state::PaneBufferState;
 
 /// `pane`'s selections as they were the moment this session opened, with the
 /// buffer they were read from, plus the pane itself, never
-/// `state.focus.id()`, which may have moved on since (a mouse click always
+/// `view.focused_pane()`, which may have moved on since (a mouse click always
 /// falls through under these layers, so focus can change while the session
 /// stays open). The buffer is recorded rather than re-read from the pane,
 /// because the pane may show another buffer by the time the snapshot is

@@ -937,7 +937,7 @@ fn find_containing_matches_collect_rects_into_by_position() {
     assert_eq!(tree.find_containing(seam_pos, area, true), None);
 }
 
-// ── LayoutTree::rotate ───────────────────────────────────────────────
+// ── FocusedLayout ────────────────────────────────────────────────────
 
 fn split(direction: Direction, ratio: f32, a: LayoutTree, b: LayoutTree) -> LayoutTree {
     LayoutTree::Split {
@@ -982,19 +982,65 @@ fn column_of_two(top: PaneId, bottom: PaneId) -> LayoutTree {
     )
 }
 
+fn focused_on(tree: LayoutTree, focus: PaneId) -> FocusedLayout {
+    FocusedLayout::from_parts(tree, focus).expect("focus is a leaf of the tree")
+}
+
+#[test]
+fn a_new_layout_is_its_pane_alone_and_focused() {
+    let [a] = pane_ids();
+    let layout = FocusedLayout::new(UnattachedPane::for_test(a));
+    assert_eq!(layout.tree(), &LayoutTree::Leaf(a));
+    assert_eq!(layout.focused(), a);
+}
+
+#[test]
+fn from_parts_refuses_a_focus_outside_the_tree() {
+    let [a, b, missing] = pane_ids();
+    assert_eq!(
+        FocusedLayout::from_parts(column_of_two(a, b), missing),
+        Err(NotInLayout)
+    );
+}
+
+#[test]
+fn focus_moves_to_a_leaf_and_refuses_a_pane_outside_the_tree() {
+    let [a, b, missing] = pane_ids();
+    let mut layout = focused_on(column_of_two(a, b), a);
+
+    assert_eq!(layout.focus(b), Ok(()));
+    assert_eq!(layout.focused(), b);
+
+    assert_eq!(layout.focus(missing), Err(NotInLayout));
+    assert_eq!(layout.focused(), b);
+}
+
+#[test]
+fn split_focused_adds_the_pane_beside_the_focus_and_keeps_focus() {
+    let [a, b] = pane_ids();
+    let mut layout = FocusedLayout::new(UnattachedPane::for_test(a));
+
+    let new_pane = layout.split_focused(UnattachedPane::for_test(b), Direction::Vertical);
+
+    assert_eq!(new_pane, b);
+    assert_eq!(layout.tree(), &column_of_two(a, b));
+    assert_eq!(layout.focused(), a);
+}
+
 #[test]
 fn rotate_forward_moves_each_pane_one_place_along_its_row() {
     let [a, b, c] = pane_ids();
-    let mut tree = row_of_three(a, b, c);
+    let mut layout = focused_on(row_of_three(a, b, c), b);
     let area = rect(0, 0, 100, 50);
     let mut before = Vec::new();
-    tree.collect_rects_into(area, true, &mut before);
+    layout.tree().collect_rects_into(area, true, &mut before);
 
-    assert_eq!(tree.rotate(b, Rotation::Forward, 1), Ok(()));
+    assert_eq!(layout.rotate_focused(Rotation::Forward, 1), Ok(()));
 
-    assert_eq!(tree, row_of_three(c, a, b));
+    assert_eq!(layout.tree(), &row_of_three(c, a, b));
+    assert_eq!(layout.focused(), b, "focus stays on the pane it was on");
     let mut after = Vec::new();
-    tree.collect_rects_into(area, true, &mut after);
+    layout.tree().collect_rects_into(area, true, &mut after);
     let member_rects = |v: &[(PaneId, Rect)]| v.iter().map(|&(_, r)| r).collect::<Vec<_>>();
     assert_eq!(member_rects(&after), member_rects(&before));
 }
@@ -1002,29 +1048,29 @@ fn rotate_forward_moves_each_pane_one_place_along_its_row() {
 #[test]
 fn rotate_backward_moves_each_pane_one_place_back_along_its_row() {
     let [a, b, c] = pane_ids();
-    let mut tree = row_of_three(a, b, c);
-    assert_eq!(tree.rotate(b, Rotation::Backward, 1), Ok(()));
-    assert_eq!(tree, row_of_three(b, c, a));
+    let mut layout = focused_on(row_of_three(a, b, c), b);
+    assert_eq!(layout.rotate_focused(Rotation::Backward, 1), Ok(()));
+    assert_eq!(layout.tree(), &row_of_three(b, c, a));
 }
 
 #[test]
 fn rotate_by_a_count_moves_each_pane_that_many_places() {
     let [a, b, c, d] = pane_ids();
-    let mut forward = row_of_four(a, b, c, d);
-    assert_eq!(forward.rotate(a, Rotation::Forward, 2), Ok(()));
-    assert_eq!(forward, row_of_four(c, d, a, b));
+    let mut forward = focused_on(row_of_four(a, b, c, d), a);
+    assert_eq!(forward.rotate_focused(Rotation::Forward, 2), Ok(()));
+    assert_eq!(forward.tree(), &row_of_four(c, d, a, b));
 
-    let mut backward = row_of_four(a, b, c, d);
-    assert_eq!(backward.rotate(a, Rotation::Backward, 3), Ok(()));
-    assert_eq!(backward, row_of_four(d, a, b, c));
+    let mut backward = focused_on(row_of_four(a, b, c, d), a);
+    assert_eq!(backward.rotate_focused(Rotation::Backward, 3), Ok(()));
+    assert_eq!(backward.tree(), &row_of_four(d, a, b, c));
 }
 
 #[test]
 fn rotate_by_the_member_count_leaves_the_row_unchanged() {
     let [a, b, c] = pane_ids();
-    let mut tree = row_of_three(a, b, c);
-    assert_eq!(tree.rotate(a, Rotation::Forward, 3), Ok(()));
-    assert_eq!(tree, row_of_three(a, b, c));
+    let mut layout = focused_on(row_of_three(a, b, c), a);
+    assert_eq!(layout.rotate_focused(Rotation::Forward, 3), Ok(()));
+    assert_eq!(layout.tree(), &row_of_three(a, b, c));
 }
 
 #[test]
@@ -1043,28 +1089,31 @@ fn rotate_treats_a_left_nested_chain_as_one_row() {
             LayoutTree::Leaf(z),
         )
     };
-    let mut tree = left_nested(a, b, c);
+    let mut layout = focused_on(left_nested(a, b, c), c);
 
-    assert_eq!(tree.rotate(c, Rotation::Forward, 1), Ok(()));
+    assert_eq!(layout.rotate_focused(Rotation::Forward, 1), Ok(()));
 
-    assert_eq!(tree, left_nested(c, a, b));
+    assert_eq!(layout.tree(), &left_nested(c, a, b));
 }
 
 #[test]
 fn rotate_moves_a_perpendicular_split_as_one_member() {
     let [a, b, c] = pane_ids();
-    let mut tree = split(
-        Direction::Horizontal,
-        0.5,
-        LayoutTree::Leaf(a),
-        column_of_two(b, c),
+    let mut layout = focused_on(
+        split(
+            Direction::Horizontal,
+            0.5,
+            LayoutTree::Leaf(a),
+            column_of_two(b, c),
+        ),
+        a,
     );
 
-    assert_eq!(tree.rotate(a, Rotation::Forward, 1), Ok(()));
+    assert_eq!(layout.rotate_focused(Rotation::Forward, 1), Ok(()));
 
     assert_eq!(
-        tree,
-        split(
+        layout.tree(),
+        &split(
             Direction::Horizontal,
             0.5,
             column_of_two(b, c),
@@ -1076,18 +1125,21 @@ fn rotate_moves_a_perpendicular_split_as_one_member() {
 #[test]
 fn rotate_inside_a_perpendicular_split_rotates_only_that_column() {
     let [a, b, c] = pane_ids();
-    let mut tree = split(
-        Direction::Horizontal,
-        0.5,
-        LayoutTree::Leaf(a),
-        column_of_two(b, c),
+    let mut layout = focused_on(
+        split(
+            Direction::Horizontal,
+            0.5,
+            LayoutTree::Leaf(a),
+            column_of_two(b, c),
+        ),
+        b,
     );
 
-    assert_eq!(tree.rotate(b, Rotation::Forward, 1), Ok(()));
+    assert_eq!(layout.rotate_focused(Rotation::Forward, 1), Ok(()));
 
     assert_eq!(
-        tree,
-        split(
+        layout.tree(),
+        &split(
             Direction::Horizontal,
             0.5,
             LayoutTree::Leaf(a),
@@ -1117,33 +1169,19 @@ fn rotate_two_levels_below_a_perpendicular_split_rotates_only_the_innermost_row(
             ),
         )
     };
-    let mut tree = nested(c, d);
+    let mut layout = focused_on(nested(c, d), c);
 
-    assert_eq!(tree.rotate(c, Rotation::Forward, 1), Ok(()));
+    assert_eq!(layout.rotate_focused(Rotation::Forward, 1), Ok(()));
 
-    assert_eq!(tree, nested(d, c));
+    assert_eq!(layout.tree(), &nested(d, c));
 }
 
 #[test]
-fn rotate_refuses_a_single_leaf_and_a_missing_target() {
-    let [a, b, c, missing] = pane_ids();
-    let mut single = LayoutTree::Leaf(a);
-    assert_eq!(
-        single.rotate(a, Rotation::Forward, 1),
-        Err(LayoutRefusal::SinglePane)
-    );
-    assert_eq!(
-        single.rotate(b, Rotation::Forward, 1),
-        Err(LayoutRefusal::MissingTarget)
-    );
-    assert_eq!(single, LayoutTree::Leaf(a));
-
-    let mut tree = row_of_three(a, b, c);
-    assert_eq!(
-        tree.rotate(missing, Rotation::Forward, 1),
-        Err(LayoutRefusal::MissingTarget)
-    );
-    assert_eq!(tree, row_of_three(a, b, c));
+fn rotate_refuses_a_sole_pane() {
+    let [a] = pane_ids();
+    let mut layout = FocusedLayout::new(UnattachedPane::for_test(a));
+    assert_eq!(layout.rotate_focused(Rotation::Forward, 1), Err(SinglePane));
+    assert_eq!(layout.tree(), &LayoutTree::Leaf(a));
 }
 
 // ── Seams ────────────────────────────────────────────────────────────
@@ -1568,94 +1606,56 @@ fn split_leaf_counts_perpendicular_subtree_as_one_share() {
 }
 
 #[test]
-fn remove_leaf_collapses_parent() {
+fn close_focused_collapses_the_parent_onto_the_sibling() {
     let [a, b] = pane_ids();
-    let mut tree = LayoutTree::Split {
-        direction: Direction::Horizontal,
-        ratio: 0.5,
-        children: Box::new((LayoutTree::Leaf(a), LayoutTree::Leaf(b))),
-    };
-    let Pruned { detached, survivor } = tree.remove_leaf(a).unwrap();
+    let mut layout = focused_on(column_of_two(a, b), a);
+    let detached = layout.close_focused().expect("two panes");
     assert_eq!(detached.pane_id(), a);
-    assert_eq!(survivor, b);
-    assert_eq!(tree, LayoutTree::Leaf(b));
+    assert_eq!(layout.tree(), &LayoutTree::Leaf(b));
+    assert_eq!(layout.focused(), b);
 }
 
 #[test]
-fn remove_leaf_promotes_subtree_and_returns_its_leftmost_leaf() {
+fn close_focused_moves_focus_to_the_promoted_subtree_leftmost_leaf() {
     let [a, b, c] = pane_ids();
-    let mut tree = LayoutTree::Split {
-        direction: Direction::Horizontal,
-        ratio: 0.5,
-        children: Box::new((
+    let mut layout = focused_on(
+        split(
+            Direction::Horizontal,
+            0.5,
             LayoutTree::Leaf(a),
-            LayoutTree::Split {
-                direction: Direction::Vertical,
-                ratio: 0.5,
-                children: Box::new((LayoutTree::Leaf(b), LayoutTree::Leaf(c))),
-            },
-        )),
-    };
-    let Pruned { detached, survivor } = tree.remove_leaf(a).unwrap();
+            column_of_two(b, c),
+        ),
+        a,
+    );
+    let detached = layout.close_focused().expect("three panes");
     assert_eq!(detached.pane_id(), a);
-    assert_eq!(survivor, b);
-    assert_eq!(
-        tree,
-        LayoutTree::Split {
-            direction: Direction::Vertical,
-            ratio: 0.5,
-            children: Box::new((LayoutTree::Leaf(b), LayoutTree::Leaf(c))),
-        }
-    );
+    assert_eq!(layout.tree(), &column_of_two(b, c));
+    assert_eq!(layout.focused(), b);
 }
 
 #[test]
-fn remove_leaf_refuses_a_sole_leaf() {
-    let [a, b] = pane_ids();
-    let mut tree = LayoutTree::Leaf(a);
-    assert_eq!(tree.remove_leaf(a).err(), Some(LayoutRefusal::SinglePane));
-    assert_eq!(
-        tree.remove_leaf(b).err(),
-        Some(LayoutRefusal::MissingTarget)
-    );
-    assert_eq!(tree, LayoutTree::Leaf(a));
+fn close_focused_refuses_a_sole_pane() {
+    let [a] = pane_ids();
+    let mut layout = FocusedLayout::new(UnattachedPane::for_test(a));
+    assert_eq!(layout.close_focused().err(), Some(SinglePane));
+    assert_eq!(layout.tree(), &LayoutTree::Leaf(a));
+    assert_eq!(layout.focused(), a);
 }
 
 #[test]
-fn remove_leaf_refuses_a_missing_target() {
-    let [a, b, missing] = pane_ids();
-    let mut tree = LayoutTree::Split {
-        direction: Direction::Horizontal,
-        ratio: 0.5,
-        children: Box::new((LayoutTree::Leaf(a), LayoutTree::Leaf(b))),
-    };
-    let before = tree.clone();
-    assert_eq!(
-        tree.remove_leaf(missing).err(),
-        Some(LayoutRefusal::MissingTarget)
-    );
-    assert_eq!(tree, before);
-}
-
-#[test]
-fn remove_leaf_equalizes_survivors() {
+fn close_focused_equalizes_survivors() {
     let [a, b, c] = pane_ids();
-    let mut tree = LayoutTree::Leaf(a);
-    assert!(
-        tree.split_leaf(a, UnattachedPane::for_test(b), Direction::Horizontal)
-            .is_ok()
-    );
-    assert!(
-        tree.split_leaf(a, UnattachedPane::for_test(c), Direction::Horizontal)
-            .is_ok()
-    );
+    let mut layout = FocusedLayout::new(UnattachedPane::for_test(a));
+    layout.split_focused(UnattachedPane::for_test(b), Direction::Horizontal);
+    let new_pane = layout.split_focused(UnattachedPane::for_test(c), Direction::Horizontal);
+    assert_eq!(layout.focus(new_pane), Ok(()));
 
-    let Pruned { detached, survivor } = tree.remove_leaf(c).unwrap();
+    let detached = layout.close_focused().expect("three panes");
     assert_eq!(detached.pane_id(), c);
-    assert_eq!(survivor, a);
+    assert_eq!(layout.focused(), a);
     assert_eq!(
-        tree,
-        LayoutTree::Split {
+        layout.tree(),
+        &LayoutTree::Split {
             direction: Direction::Horizontal,
             ratio: 0.5,
             children: Box::new((LayoutTree::Leaf(a), LayoutTree::Leaf(b))),
@@ -1769,7 +1769,7 @@ impl crate::providers::TabBarProvider for NoopTabBar {
 
 #[test]
 fn pane_area_reserves_drawer_height_above_statusline() {
-    let mut view = EngineView::new(Theme::default());
+    let (mut view, _) = EngineView::new(Theme::default());
     view.bottom_bands = vec![Box::new(FixedHeightDrawer(3))];
 
     let area = view.pane_area(rect(0, 0, 40, 20));
@@ -1782,7 +1782,7 @@ fn pane_area_reserves_drawer_height_above_statusline() {
 
 #[test]
 fn pane_area_folds_tabbar_and_drawer_together() {
-    let mut view = EngineView::new(Theme::default());
+    let (mut view, _) = EngineView::new(Theme::default());
     view.tabbar = Some(Box::new(NoopTabBar));
     view.bottom_bands = vec![Box::new(FixedHeightDrawer(3))];
 
@@ -1796,7 +1796,7 @@ fn pane_area_folds_tabbar_and_drawer_together() {
 
 #[test]
 fn pane_area_drawer_height_is_capped_by_35_percent_of_the_terminal_height() {
-    let mut view = EngineView::new(Theme::default());
+    let (mut view, _) = EngineView::new(Theme::default());
     // Wants 50 rows, way more than 35% of a 20-row terminal (max = 7).
     view.bottom_bands = vec![Box::new(FixedHeightDrawer(50))];
 
@@ -1808,7 +1808,7 @@ fn pane_area_drawer_height_is_capped_by_35_percent_of_the_terminal_height() {
 
 #[test]
 fn pane_area_degenerate_when_terminal_too_small_for_chrome_plus_drawer() {
-    let mut view = EngineView::new(Theme::default());
+    let (mut view, _) = EngineView::new(Theme::default());
     view.tabbar = Some(Box::new(NoopTabBar));
     view.bottom_bands = vec![Box::new(FixedHeightDrawer(50))];
 
@@ -1824,7 +1824,7 @@ fn pane_area_degenerate_when_terminal_too_small_for_chrome_plus_drawer() {
 fn pane_area_sums_multiple_bottom_bands() {
     // Two bands stacked (e.g. drawer + docked popup, though in practice only
     // one is ever non-empty) reserve the sum of their heights.
-    let mut view = EngineView::new(Theme::default());
+    let (mut view, _) = EngineView::new(Theme::default());
     view.bottom_bands = vec![
         Box::new(FixedHeightDrawer(3)),
         Box::new(FixedHeightDrawer(2)),

@@ -67,7 +67,7 @@ impl Editor {
         let pane = &self.view.panes[pid];
         let doc = self.state.buffers.get(pane.buffer_id);
         let indent_guides = doc.overrides.indent_guides(&self.state.settings);
-        let is_focused = pid == self.state.focus.id();
+        let is_focused = pid == self.view.focused_pane();
         let mode = if is_focused {
             self.state.mode()
         } else {
@@ -109,7 +109,7 @@ impl Editor {
                 .iter()
                 .map(|&pid| (pid, self.resolve_pane_settings(pid))),
         );
-        let focused_pane_id = self.state.focus.id();
+        let focused_pid = self.view.focused_pane();
         let draw_dividers = self.state.settings.pane_dividers;
         let focused_bid = self.focused_buffer_id();
 
@@ -125,6 +125,7 @@ impl Editor {
         let statusline = crate::statusline::HumeStatusline {
             state,
             kitty_enabled: *kitty_enabled,
+            focused_pid,
             focused_bid,
         };
         let buffers = &state.buffers;
@@ -140,7 +141,6 @@ impl Editor {
                         .map(|s| s as &dyn hume_engine::providers::SyntaxSpans)
                 },
                 statusline: &statusline,
-                focused_pane_id,
                 draw_dividers,
             },
             ctx,
@@ -156,6 +156,7 @@ impl Editor {
         crate::statusline::HumeStatusline {
             state: &self.state,
             kitty_enabled: self.kitty_enabled,
+            focused_pid: self.view.focused_pane(),
             focused_bid: self.focused_buffer_id(),
         }
     }
@@ -338,7 +339,7 @@ impl Editor {
             for &id in self.state.tabs.order() {
                 id.hash(&mut hasher);
                 let pid = if id == current {
-                    self.state.focus.id()
+                    self.view.focused_pane()
                 } else {
                     self.state.tabs.stashed_focus(id)
                 };
@@ -401,7 +402,7 @@ impl Editor {
             .iter()
             .map(|&id| {
                 let pid = if id == current {
-                    self.state.focus.id()
+                    self.view.focused_pane()
                 } else {
                     self.state.tabs.stashed_focus(id)
                 };
@@ -573,7 +574,7 @@ impl Editor {
                 reveal,
             );
             self.state.panes.state[pid][buf_id].parked = outcome.parked;
-            if pid == self.state.focus.id() {
+            if pid == self.view.focused_pane() {
                 ctx.cursor_content_pos = outcome.cursor_screen;
             }
 
@@ -634,7 +635,7 @@ impl Editor {
 
     #[cfg(test)]
     pub(in crate::editor) fn viewport(&self) -> &hume_engine::pane::Viewport {
-        &self.view.panes[self.state.focus.id()].viewport
+        &self.view.panes[self.view.focused_pane()].viewport
     }
 
     /// How many times `ensure_inline_output_screen` has actually entered the
@@ -650,7 +651,8 @@ impl Editor {
 
     #[cfg(test)]
     pub(in crate::editor) fn viewport_mut(&mut self) -> &mut hume_engine::pane::Viewport {
-        &mut self.view.panes[self.state.focus.id()].viewport
+        let focused_pid = self.view.focused_pane();
+        &mut self.view.panes[focused_pid].viewport
     }
 }
 

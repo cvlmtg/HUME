@@ -2,7 +2,7 @@
 //! tearing down a pane's per-pane state maps.
 
 use hume_engine::pipeline::{
-    BufferId, DetachedPane, Direction, EngineView, LayoutRefusal, LayoutTree, PaneId, Pruned,
+    BufferId, DetachedPane, Direction, EngineView, FocusedLayout, PaneId, SinglePane,
     UnattachedPane,
 };
 use slotmap::SecondaryMap;
@@ -10,7 +10,7 @@ use slotmap::SecondaryMap;
 use crate::editor::EditorState;
 use crate::editor::commands::FocusedPane;
 use crate::editor::error::CommandError;
-use crate::editor::focus::focus_pane;
+use crate::editor::focus::{self, focus_pane};
 use crate::editor::tab::{TabId, install_live, take_live};
 
 /// Create a new pane viewing `buffer_id`, seed all per-pane maps, return its
@@ -56,29 +56,19 @@ fn open_pane(
     unattached
 }
 
-/// Create a pane viewing `bid` and splice it into the layout beside
-/// `target`, on `direction`'s axis, in one step. `open_pane` alone only
+/// Create a pane viewing `bid` and splice it into the layout beside the
+/// focused pane, on `direction`'s axis, in one step. `open_pane` alone only
 /// does the first half (see its own doc), leaving the new pane outside
 /// every tab's layout until a caller does the second half itself. Returns
-/// the new pane's id, or an error naming `target` if it isn't present in
-/// the layout (an invariant violation), checked before `open_pane` runs,
-/// so there is never a pane to roll back: no caller can create one with no
-/// layout leaf to begin with.
+/// the new pane's id; focus stays where it was.
 pub(in crate::editor) fn open_pane_in_layout(
     state: &mut EditorState,
     view: &mut EngineView,
-    target: PaneId,
     bid: BufferId,
     direction: Direction,
-) -> Result<PaneId, CommandError> {
-    if !view.layout().contains_leaf(target) {
-        return Err(pane_missing_from_layout(target));
-    }
+) -> PaneId {
     let unattached = open_pane(state, view, bid);
-    let new_pid = view
-        .split_leaf(target, unattached, direction)
-        .expect("contains_leaf just confirmed target is present");
-    Ok(new_pid)
+    view.split_focused(unattached, direction)
 }
 
 /// Create a pane viewing `bid` as the sole content of a brand-new tab
@@ -96,16 +86,11 @@ pub(in crate::editor) fn open_pane_as_new_tab(
     view: &mut EngineView,
     bid: BufferId,
 ) -> (PaneId, TabId) {
-    let unattached = open_pane(state, view, bid);
-    let new_pid = unattached.pane_id();
-    let (outgoing_layout, outgoing_focus) = take_live(state, view);
-    let tab_id = state.tabs.open_after_current(
-        outgoing_layout,
-        outgoing_focus,
-        LayoutTree::leaf(unattached),
-        new_pid,
-    );
-    install_live(state, view, LayoutTree::Leaf(new_pid), new_pid);
+    let layout = FocusedLayout::new(open_pane(state, view, bid));
+    let new_pid = layout.focused();
+    let outgoing = take_live(state, view);
+    let tab_id = state.tabs.open_after_current(outgoing, layout.clone());
+    install_live(state, view, layout);
     (new_pid, tab_id)
 }
 
@@ -126,25 +111,14 @@ pub(super) fn drop_pane_state(state: &mut EditorState, view: &mut EngineView, pa
 
 /// Close the focused pane: prune it from the active tab's layout, move focus
 /// to the promoted sibling, and drop all its per-pane state. Refused, with
-/// nothing changed, when it is the tab's only pane or the layout does not
-/// reach it.
+/// nothing changed, when it is the tab's only pane.
 pub(super) fn close_focused_pane(
     state: &mut EditorState,
     view: &mut EngineView,
-    fp: FocusedPane,
-) -> Result<(), LayoutRefusal> {
-    let Pruned { detached, survivor } = view.remove_leaf(fp.pid())?;
-    focus_pane(state, view, survivor);
+) -> Result<(), SinglePane> {
+    let detached = focus::close_focused(state, view)?;
     drop_pane_state(state, view, detached);
     Ok(())
-}
-
-/// The error for a pane the active tab's layout does not reach, which is an
-/// invariant violation.
-pub(super) fn pane_missing_from_layout(pid: PaneId) -> CommandError {
-    CommandError::new(format!(
-        "internal error: pane {pid:?} missing from pane layout"
-    ))
 }
 
 /// Status message reported when a split is rejected for being too small.
@@ -221,7 +195,7 @@ pub(in crate::editor) fn split_pane_onto(
     }
     let old_focused = fp.pid();
     let old_buffer_id = view.panes[old_focused].buffer_id;
-    let new_pid = open_pane_in_layout(state, view, old_focused, bid, direction)?;
+    let new_pid = open_pane_in_layout(state, view, bid, direction);
 
     // A bare split (same buffer as the source pane) inherits its cursor and
     // scroll position: `open_pane` seeds fresh state at the buffer's initial
@@ -250,8 +224,7 @@ pub(in crate::editor) fn split_pane_onto(
     }
 
     // `open_pane` already seeded every per-pane map for `new_pid`, so
-    // `focus_pane` is complete here: the single pane-focus writer, used
-    // for every focus change rather than special-cased per caller.
+    // `focus_pane` is complete here.
     focus_pane(state, view, new_pid);
     Ok(())
 }

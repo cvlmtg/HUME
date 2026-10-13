@@ -86,7 +86,8 @@ fn mouse_click_in_insert_fires_on_mode_change() {
     use termina::event::Event as TerminalEvent;
 
     let mut ed = editor_from("-[a]>b\n");
-    ed.view.panes[ed.state.focus.id()].viewport = hume_engine::pane::Viewport::new(80, 24);
+    let focused_pid = ed.view.focused_pane();
+    ed.view.panes[focused_pid].viewport = hume_engine::pane::Viewport::new(80, 24);
     // The click below is hit-tested against pane rects, which only
     // `prepare_frame` normally populates. Set it directly, matching the
     // viewport size above, since this test exercises hook dispatch, not a
@@ -484,17 +485,14 @@ fn hook_call_is_dispatched() {
 fn propagate_cs_syncs_engine_pane_for_non_focused_pane() {
     let mut ed = editor_from("-[a]>b\n");
     let buf_id = ed.focused_buffer_id();
-    let first_pane = ed.state.focus.id();
 
     // Create a second pane (not the focused one) viewing the same buffer.
     let second_pane = open_pane_in_layout(
         &mut ed.state,
         &mut ed.view,
-        first_pane,
         buf_id,
         hume_engine::pipeline::Direction::Horizontal,
-    )
-    .unwrap();
+    );
     assert!(ed.view.panes.contains_key(second_pane));
 
     // Edit in the focused pane (insert 'x' → "xab\n").
@@ -799,21 +797,14 @@ fn on_buffer_save_native_call_on_a_split_bid_edits_that_pane() {
 
     let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("aaa\n")));
     let bid_a = ed.focused_buffer_id();
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
     let bid_b = ed.open_buffer(Buffer::at_start(BufferText::from("bbb\n")));
-    open_pane_in_layout(
-        &mut ed.state,
-        &mut ed.view,
-        pid_a,
-        bid_b,
-        Direction::Horizontal,
-    )
-    .expect("split onto B must succeed");
+    open_pane_in_layout(&mut ed.state, &mut ed.view, bid_b, Direction::Horizontal);
     // The split moves focus onto the new pane in production
     // (`split_pane_onto`/`:vsplit`), but `open_pane_in_layout` itself does
     // not. Restore focus to A explicitly so this test's premise (A stays
     // focused, B lives in a background split) holds regardless.
-    ed.state.focus.set_for_test(pid_a);
+    ed.state.focus.set_for_test(&mut ed.view, pid_a);
     assert_eq!(ed.focused_buffer_id(), bid_a, "setup: A stays focused");
 
     let tmp = tempfile::tempdir().unwrap();
@@ -843,7 +834,7 @@ fn on_buffer_save_native_call_on_a_split_bid_edits_that_pane() {
          delete applied: a native call! does not require focus"
     );
     assert_eq!(
-        ed.state.focus.id(),
+        ed.view.focused_pane(),
         pid_a,
         "a remote dispatch on B must not move focus off A"
     );
@@ -1028,7 +1019,7 @@ fn settle_with_no_focus_change_raises_no_further_on_buffer_enter() {
 /// several Steel effects landing in one batch) must coalesce into a single
 /// `OnBufferEnter`, for the *final* buffer, not one per intermediate write.
 /// The diff is taken against `last_entered_buffer`, not against every raw
-/// write to `state.focus`/`pane.buffer_id`.
+/// write to the focused pane or `pane.buffer_id`.
 #[test]
 fn consecutive_switches_before_settle_coalesce_into_one_event_for_the_final_buffer() {
     use crate::editor::buffer::Buffer;
@@ -1056,8 +1047,8 @@ fn consecutive_switches_before_settle_coalesce_into_one_event_for_the_final_buff
 
     let buf1 = ed.open_buffer(Buffer::scratch());
     let buf2 = ed.open_buffer(Buffer::scratch());
-    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.state), buf1);
-    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.state), buf2);
+    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), buf1);
+    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), buf2);
 
     ed.settle();
 
@@ -1077,7 +1068,7 @@ fn consecutive_switches_before_settle_coalesce_into_one_event_for_the_final_buff
 }
 
 /// The mixed case: a pass that changes **both**
-/// `state.focus` (a bare field write via `set_for_test`, standing in for a
+/// the focused pane (a direct write via `set_for_test`, standing in for a
 /// real focus change like pane-focus cycling) *and* `pane.buffer_id` (like a
 /// buffer switch) before any `settle()` runs must
 /// still coalesce into a single `OnBufferEnter` for wherever focus ends up
@@ -1108,22 +1099,20 @@ fn pane_focus_write_and_buffer_write_in_one_pass_coalesce_into_one_event() {
         .count();
     assert_eq!(baseline, 1, "sanity: the startup buffer fires once");
 
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
     let bid = ed.focused_buffer_id();
     let pid_b = open_pane_in_layout(
         &mut ed.state,
         &mut ed.view,
-        pid_a,
         bid,
         hume_engine::pipeline::Direction::Horizontal,
-    )
-    .unwrap();
+    );
     let buf2 = ed.open_buffer(Buffer::scratch());
 
     // Bare `focus` write (no settle() in between)...
-    ed.state.focus.set_for_test(pid_b);
+    ed.state.focus.set_for_test(&mut ed.view, pid_b);
     // ...then a `pane.buffer_id` write on the pane that write just focused.
-    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.state), buf2);
+    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), buf2);
     assert_ne!(pid_a, pid_b, "sanity: a genuinely different pane");
 
     ed.settle();
@@ -1140,7 +1129,7 @@ fn pane_focus_write_and_buffer_write_in_one_pass_coalesce_into_one_event() {
         "a pane-focus move and a buffer switch in the same pass must coalesce \
          into a single OnBufferEnter"
     );
-    assert_eq!(ed.state.focus.id(), pid_b);
+    assert_eq!(ed.view.focused_pane(), pid_b);
     assert_eq!(ed.focused_buffer_id(), buf2);
 }
 
@@ -1606,7 +1595,7 @@ fn e_bang_reload_fires_on_text_changed() {
 
     let replacement = Buffer::at_start(BufferText::from("reloaded\n"));
     ed.reload_buffer_in_place(
-        FocusedPane::current(&ed.state),
+        FocusedPane::current(&ed.view),
         ReplaceSource::disk(replacement),
     );
     ed.settle();
@@ -1646,7 +1635,7 @@ fn read_only_refused_edit_fires_no_on_text_changed() {
     ed.scripting = Some(host);
     ed.settle();
 
-    let focused = ed.state.focus.id();
+    let focused = ed.view.focused_pane();
     let before_gen = ed.state.buffers.get(bid).text().generation();
     doc_ops::apply_doc_edit(
         &mut ed.state.buffers,
@@ -1871,7 +1860,7 @@ fn read_only_view_refresh_fires_on_text_changed() {
     };
 
     ed.open_read_only_view(
-        FocusedPane::current(&ed.state),
+        FocusedPane::current(&ed.view),
         &view_label("test-view"),
         "one\n",
         Some(hume_rope::line::ContentLine::new(0)),
@@ -1884,7 +1873,7 @@ fn read_only_view_refresh_fires_on_text_changed() {
     );
 
     ed.open_read_only_view(
-        FocusedPane::current(&ed.state),
+        FocusedPane::current(&ed.view),
         &view_label("test-view"),
         "two\n",
         Some(hume_rope::line::ContentLine::new(0)),
@@ -1922,7 +1911,7 @@ fn identity_edit_fires_no_on_text_changed() {
     ed.scripting = Some(host);
     ed.settle();
 
-    let focused = ed.state.focus.id();
+    let focused = ed.view.focused_pane();
     let before_gen = ed.state.buffers.get(bid).text().generation();
     let before_edit_seq = ed.state.buffers.edit_seq();
     doc_ops::apply_doc_edit(
@@ -1986,7 +1975,7 @@ fn identity_edit_records_no_undo_revision() {
     );
 
     // An identity edit: no-op, must not land on the undo stack.
-    let focused = ed.state.focus.id();
+    let focused = ed.view.focused_pane();
     doc_ops::apply_doc_edit(
         &mut ed.state.buffers,
         &mut crate::editor::position_stores::PositionStores::new(
@@ -2130,7 +2119,7 @@ fn identity_reload_fires_no_on_text_changed() {
     let before_gen = ed.state.buffers.get(bid).text().generation();
     let replacement = Buffer::at_start(text_before);
     ed.reload_buffer_in_place(
-        FocusedPane::current(&ed.state),
+        FocusedPane::current(&ed.view),
         ReplaceSource::disk(replacement),
     );
     ed.settle();
@@ -2165,7 +2154,7 @@ fn on_text_changed_skips_a_buffer_closed_earlier_in_the_batch() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>b\n");
     let bid_b = ed.open_buffer(Buffer::at_start(BufferText::from("hello\n")));
-    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.state), bid_b);
+    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid_b);
 
     let mut host = hume_scripting::ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
@@ -2221,7 +2210,7 @@ fn on_text_changed_skips_a_buffer_closed_earlier_in_the_batch() {
 
 /// **Exactly one `OnBufferEnter` per focus-changing action.** Pane-focus
 /// cycling and a mouse click into another pane both move focus with no
-/// write to `pane.buffer_id` at all: `state.focus` is the only field
+/// write to `pane.buffer_id` at all: the focused pane is the only thing
 /// that changes. Counting fires (not just checking a confirm opened, which
 /// a duplicate fire would still satisfy) pins that `settle()`'s diff raises
 /// exactly one event per action, not once per write site it happens to
@@ -2362,15 +2351,7 @@ fn pane_scoped_event_is_skipped_once_its_pane_has_closed() {
 
     let mut ed = editor_from("-[a]>bbbbbbbbbb\n");
     let bid = ed.focused_buffer_id();
-    let pid_a = ed.state.focus.id();
-    let pid_b = open_pane_in_layout(
-        &mut ed.state,
-        &mut ed.view,
-        pid_a,
-        bid,
-        Direction::Horizontal,
-    )
-    .expect("split must succeed");
+    let pid_b = open_pane_in_layout(&mut ed.state, &mut ed.view, bid, Direction::Horizontal);
 
     let mut host = ScriptingHost::new(&Dirs::none());
     let mut mock = MockHost::new();
@@ -2387,7 +2368,7 @@ fn pane_scoped_event_is_skipped_once_its_pane_has_closed() {
     // a direct close here, rather than an earlier-queued timer's own
     // pane-close; the observable failure (the batch reaches a dead pane) is
     // identical either way. The buffer stays open in A throughout.
-    ed.state.focus.set_for_test(pid_b);
+    ed.state.focus.set_for_test(&mut ed.view, pid_b);
     live_host!(ed)
         .run_command_sync(
             "pane-close",

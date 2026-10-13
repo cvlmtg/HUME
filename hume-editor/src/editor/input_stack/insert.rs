@@ -109,7 +109,7 @@ fn handle_insert(ed: &mut Editor, key: KeyEvent) {
     // Recorded only when the key has default behaviour: an unbound key with
     // none (an unbound Ctrl-chord, an F-key) did nothing, so replaying it
     // would be a silent no-op entry.
-    let fp = commands::FocusedPane::current(&ed.state);
+    let fp = commands::FocusedPane::current(&ed.view);
     if commands::insert_default_key(&mut ed.state, &ed.view, fp, key) {
         ed.state.record_input(Input::Key(key));
     }
@@ -127,7 +127,7 @@ impl Editor {
     /// refiltering: auto-pairing pasted brackets would corrupt already-balanced
     /// text, and refiltering a completion against a pasted blob is meaningless.
     pub(in crate::editor) fn apply_insert_mode_paste(&mut self, text: &str) {
-        let focused = self.state.focus.id();
+        let focused = self.view.focused_pane();
         let buf = self.focused_buffer_id();
         doc_ops::apply_doc_edit_grouped(
             &mut self.state.buffers,

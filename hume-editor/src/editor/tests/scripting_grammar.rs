@@ -545,7 +545,7 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
     let mut replacement = Buffer::at_start(BufferText::from(new_text));
     replacement.set_path(Some(std::path::PathBuf::from("data.json")));
     ed.reload_buffer_in_place(
-        FocusedPane::current(&ed.state),
+        FocusedPane::current(&ed.view),
         ReplaceSource::disk(replacement),
     );
     assert!(
@@ -592,7 +592,7 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
     let mut identical = Buffer::at_start(BufferText::from(new_text));
     identical.set_path(Some(std::path::PathBuf::from("data.json")));
     ed.reload_buffer_in_place(
-        FocusedPane::current(&ed.state),
+        FocusedPane::current(&ed.view),
         ReplaceSource::disk(identical),
     );
     ed.reparse_stale_buffers();

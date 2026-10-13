@@ -24,7 +24,7 @@ pub(in crate::editor) fn popup_placement(
     ctx: &mut RenderContext,
     anchor: ClusterStart,
 ) -> Option<hume_ui::popup::PopupPlacement> {
-    let focused = ed.state.focus.id();
+    let focused = ed.view.focused_pane();
     let pane_rect = ed.view.pane_rect(focused)?;
     let gutter_w = ed.pane_gutter_width(focused);
     let content_width = ed.view.panes[focused]

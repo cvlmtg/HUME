@@ -18,7 +18,7 @@ use crate::editor::settings::EditorSettings;
 use hume_editing::selection::{EditView, SelectionSet};
 use hume_editing::text::BufferText;
 use hume_engine::pane::Pane;
-use hume_engine::pipeline::{BufferId, EngineView, LayoutTree, PaneId};
+use hume_engine::pipeline::{BufferId, EngineView, FocusedLayout, PaneId};
 use hume_engine::types::ScopeId;
 use hume_treesitter::parse_worker::InlineParseBackend;
 use hume_treesitter::registry::{GrammarBundle, QueryPaths};
@@ -95,7 +95,7 @@ fn editor_from_kitty(input: &str) -> Editor {
 /// bare `BufferId`: the test-harness counterpart of what dispatch injects
 /// for a real keypress.
 fn focused_pane(ed: &Editor) -> hume_scripting::PaneHandle {
-    hume_scripting::PaneHandle::with_pane(ed.focused_buffer_id(), ed.state.focus.id())
+    hume_scripting::PaneHandle::with_pane(ed.focused_buffer_id(), ed.view.focused_pane())
 }
 
 /// Pin the focused pane to `WrapMode::None`, so a display line is a buffer
@@ -103,7 +103,8 @@ fn focused_pane(ed: &Editor) -> hume_scripting::PaneHandle {
 /// `hume-engine/src/pane.rs`). Shared by every test that reasons about
 /// buffer-line columns or viewport rows rather than display-line wrapping.
 fn pin_no_wrap(ed: &mut Editor) {
-    ed.view.panes[ed.state.focus.id()].set_wrap(hume_engine::pane::WrapOverride {
+    let focused_pid = ed.view.focused_pane();
+    ed.view.panes[focused_pid].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(hume_engine::pane::WrapMode::None),
         saved: None,
     });
@@ -541,7 +542,7 @@ fn type_cmd_event(ed: &mut Editor, cmd: &str) {
 /// success/error result, not the end-to-end minibuffer path `type_cmd`
 /// exercises.
 fn run_set(ed: &mut Editor, cmd: &str) -> Result<(), crate::editor::error::CommandError> {
-    let fp = FocusedPane::current(&ed.state);
+    let fp = FocusedPane::current(&ed.view);
     crate::editor::commands::typed_set(ed, fp, Some(cmd), false)
 }
 
@@ -769,7 +770,7 @@ pub(super) fn close_pane_leaving_slot_vacant(ed: &mut Editor) -> (PaneId, Buffer
     use hume_scripting::PaneHandle;
     use hume_scripting::host::CommandHost;
 
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
     let bid = ed.focused_buffer_id();
 
     live_host!(ed)
@@ -783,7 +784,7 @@ pub(super) fn close_pane_leaving_slot_vacant(ed: &mut Editor) -> (PaneId, Buffer
         )
         .expect("pane-vsplit must succeed");
 
-    ed.state.focus.set_for_test(pid_a);
+    ed.state.focus.set_for_test(&mut ed.view, pid_a);
     live_host!(ed)
         .run_command_sync(
             "pane-close",
@@ -795,7 +796,7 @@ pub(super) fn close_pane_leaving_slot_vacant(ed: &mut Editor) -> (PaneId, Buffer
         )
         .expect("pane-close must succeed");
     assert_ne!(
-        ed.state.focus.id(),
+        ed.view.focused_pane(),
         pid_a,
         "setup: closing A must move focus off it"
     );
@@ -847,7 +848,7 @@ impl Editor {
     /// Start the focused pane on `sels` for `bid`, as though it had first
     /// shown `bid` on them.
     pub(crate) fn seed_selections(&mut self, bid: BufferId, sels: SelectionSet) {
-        let pid = self.state.focus.id();
+        let pid = self.view.focused_pane();
         super::pane_state::ensure(
             &mut self.state.panes.state,
             &self.state.buffers,
@@ -866,7 +867,7 @@ impl Editor {
     pub(crate) fn for_testing(doc: Buffer) -> Self {
         // Minimal engine view for test contexts. Uses 80×24 with tab_width=4.
         let theme = crate::editor::theme::fallback_theme();
-        let mut engine_view = EngineView::new(theme);
+        let (mut engine_view, focus_key) = EngineView::new(theme);
         // Unlike `bottom_bands` (which needs real Steel-callback wiring
         // `for_testing` skips, see `tests/lsp_popup.rs`), the
         // tab bar's view state is a plain struct with no such dependency,
@@ -885,9 +886,11 @@ impl Editor {
         let pane = Pane::new(buffer_id);
         let unattached = engine_view.insert_pane(pane);
         let pane_id = unattached.pane_id();
+        let layout = FocusedLayout::new(unattached);
+        let tabs = super::tab::TabStore::new(layout.clone()).0;
         // Discards the placeholder EngineView::new seeded: no real pane
         // behind it to leak.
-        let _ = engine_view.replace_layout(LayoutTree::leaf(unattached));
+        let _ = engine_view.replace_layout(&focus_key, layout);
 
         let mut buffers = BufferStore::new();
         buffers.open(buffer_id, doc);
@@ -923,11 +926,9 @@ impl Editor {
                     }
                 },
                 history: super::minibuf::history::HistoryStore::new(history_capacity),
-                focus: super::focus::Focus::new(pane_id),
-                tabs: super::tab::TabStore::new(pane_id).0,
                 tabline_view,
                 cwd: std::env::temp_dir(),
-                ..Default::default()
+                ..EditorState::base(super::focus::Focus::new(focus_key), tabs)
             },
             view: engine_view,
             kitty_enabled: false,
@@ -967,7 +968,7 @@ impl Editor {
     /// Switch focus to `target`, seeding its per-pane maps if not yet present.
     ///
     /// Precondition: editor must be in Normal mode. Test-only shortcut, not
-    /// `focus_pane`. This writes `focus` directly for tests that only need
+    /// `focus_pane`. This moves focus directly for tests that only need
     /// `mode()` to read Normal at the call site, skipping the production
     /// focus-change side effects (`focus_pane`'s own Insert-exit handling).
     pub(in crate::editor) fn switch_focused_pane(&mut self, target: PaneId) {
@@ -976,7 +977,7 @@ impl Editor {
             "focus-switch must only happen in Normal mode, got {:?}",
             self.state.mode(),
         );
-        self.state.focus.set_for_test(target);
+        self.state.focus.set_for_test(&mut self.view, target);
         if !self.state.panes.jumps.contains_key(target) {
             self.state.panes.jumps.insert(
                 target,
@@ -1022,7 +1023,7 @@ impl Editor {
         match self.state.config.registry.get_typed(cmd) {
             Some(tc) => match tc.body {
                 super::registry::TypedBody::Native(fun) => {
-                    let fp = FocusedPane::current(&self.state);
+                    let fp = FocusedPane::current(&self.view);
                     let result = fun(self, fp, arg, force);
                     if let Err(ref e) = result {
                         self.report(e.severity(), e.message().to_owned());
@@ -1420,7 +1421,7 @@ pub(super) struct BookkeepingSnapshot {
 /// Call once before dispatch and once after; `assert_eq!` the two snapshots on
 /// a path-parity test or diff them for targeted assertions.
 pub(super) fn snapshot_bookkeeping(ed: &Editor) -> BookkeepingSnapshot {
-    let pane_id = ed.state.focus.id();
+    let pane_id = ed.view.focused_pane();
     // The "does any (pane, buffer) pair satisfy this predicate" walk,
     // factored out so a second field needing it below reuses this instead
     // of copying it.

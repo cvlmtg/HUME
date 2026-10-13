@@ -20,7 +20,7 @@ use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal};
 pub(in crate::editor) struct SearchLayer {
     pub(in crate::editor) minibuf: MiniBuffer,
     /// This session's pane and its pre-entry selection snapshot. Restore
-    /// and clear always target `snap`'s own pane, never `state.focus.id()`,
+    /// and clear always target `snap`'s own pane, never `view.focused_pane()`,
     /// which may have moved on since: a mouse click always falls through
     /// under this layer (`minibuf_input`'s `Mouse` arm), so focus (and
     /// whatever it opens next) can move to a different pane while Search

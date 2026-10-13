@@ -83,7 +83,8 @@ fn line_background_tint_survives_every_wrap_display_line_of_a_wrapped_line() {
     // the tinted line. This test isolates wrap-row persistence from the
     // cursorline-precedence case covered separately below.
     type_text(&mut ed, "aaaaaaaaaaaaaaaaaaaa\nb");
-    ed.view.panes[ed.state.focus.id()].set_wrap(hume_engine::pane::WrapOverride {
+    let focused_pid = ed.view.focused_pane();
+    ed.view.panes[focused_pid].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(hume_engine::pane::WrapMode::Soft { width: 0 }),
         saved: None,
     });
@@ -271,7 +272,7 @@ fn line_background_reflects_the_post_scroll_viewport_not_the_pre_scroll_one() {
     );
     type_cmd(&mut ed, ":go");
 
-    let pid = ed.state.focus.id();
+    let pid = ed.view.focused_pane();
     frame(&mut ed, 20, 5); // rect height 5 → 4 content rows, forces the scroll
 
     assert_eq!(

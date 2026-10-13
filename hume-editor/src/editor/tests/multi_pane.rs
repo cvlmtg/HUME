@@ -18,16 +18,14 @@ use pretty_assertions::assert_eq;
 fn d1_selections_are_pane_owned() {
     let mut ed = editor_from("-[h]>ello world\n");
     let bid = ed.focused_buffer_id();
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
 
     let pid_b = open_pane_in_layout(
         &mut ed.state,
         &mut ed.view,
-        pid_a,
         bid,
         hume_engine::pipeline::Direction::Horizontal,
-    )
-    .unwrap();
+    );
 
     // Pane A → position 2 ('l').
     ed.switch_focused_pane(pid_a);
@@ -62,15 +60,13 @@ fn d4a_search_pattern_is_per_buffer() {
 
     let mut ed = editor_from("-[f]>oo foo foo\n");
     let bid = ed.focused_buffer_id();
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
     let pid_b = open_pane_in_layout(
         &mut ed.state,
         &mut ed.view,
-        pid_a,
         bid,
         hume_engine::pipeline::Direction::Horizontal,
-    )
-    .unwrap();
+    );
 
     // Both panes see Buffer.search_pattern: it's a single field on `doc`.
     // Verify independence of search_cursor: write distinct values per pane.
@@ -180,15 +176,13 @@ fn d4b_sticky_display_col_is_per_selection() {
 fn d5_insert_session_is_pane_buffer_scoped() {
     let mut ed = editor_from("-[a]>bc\n");
     let bid = ed.focused_buffer_id();
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
     let pid_b = open_pane_in_layout(
         &mut ed.state,
         &mut ed.view,
-        pid_a,
         bid,
         hume_engine::pipeline::Direction::Horizontal,
-    )
-    .unwrap();
+    );
 
     // Pane A insert session: type 'X' at the start.
     ed.switch_focused_pane(pid_a);
@@ -254,7 +248,7 @@ fn d5_insert_session_is_pane_buffer_scoped() {
 /// clear *that pane's buffer's* search state, not whatever the click just
 /// focused.
 ///
-/// The click moves focus to B. A restore/clear that read `state.focus.id()`
+/// The click moves focus to B. A restore/clear that read `view.focused_pane()`
 /// or `ed.focused_buffer_id()` would restore nothing on A (B has no stash)
 /// and clear B's search state, leaving A's matches highlighted and its
 /// cursor wherever live-search's last preview left it.
@@ -266,16 +260,14 @@ fn d6_search_cancel_targets_the_originating_pane_not_the_focused_one() {
 
     let mut ed =
         editor_from("-[0]>123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz\n");
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
     let bid_a = ed.focused_buffer_id();
     let pid_b = open_pane_in_layout(
         &mut ed.state,
         &mut ed.view,
-        pid_a,
         bid_a,
         hume_engine::pipeline::Direction::Horizontal,
-    )
-    .unwrap();
+    );
     ed.switch_focused_pane(pid_b);
     ed.execute_typed("e", Some(path_b.to_str().unwrap()))
         .unwrap();
@@ -315,7 +307,11 @@ fn d6_search_cancel_targets_the_originating_pane_not_the_focused_one() {
     // horizontal, i.e. left/right, split). Falls through under the
     // still-open Search layer.
     ed.handle_input(mouse_left_down(70, 0));
-    assert_eq!(ed.state.focus.id(), pid_b, "sanity: click moved focus to B");
+    assert_eq!(
+        ed.view.focused_pane(),
+        pid_b,
+        "sanity: click moved focus to B"
+    );
     assert_eq!(
         ed.state.mode(),
         hume_engine::types::EditorMode::Search,
@@ -347,15 +343,13 @@ fn d2_edit_in_pane_a_translates_pane_b_selections() {
     // "abcdefghij\n" (11 chars including trailing \n); cursor on 'a'.
     let mut ed = editor_from("-[a]>bcdefghij\n");
     let bid = ed.focused_buffer_id();
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
     let pid_b = open_pane_in_layout(
         &mut ed.state,
         &mut ed.view,
-        pid_a,
         bid,
         hume_engine::pipeline::Direction::Horizontal,
-    )
-    .unwrap();
+    );
 
     // Position pane B's cursor at char 9 ('j').
     ed.switch_focused_pane(pid_b);
@@ -387,15 +381,13 @@ fn d2_edit_in_pane_a_translates_pane_b_selections() {
 fn d3_undo_restores_acting_pane_and_translates_others() {
     let mut ed = editor_from("-[a]>bcdefghij\n");
     let bid = ed.focused_buffer_id();
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
     let pid_b = open_pane_in_layout(
         &mut ed.state,
         &mut ed.view,
-        pid_a,
         bid,
         hume_engine::pipeline::Direction::Horizontal,
-    )
-    .unwrap();
+    );
 
     // Position pane B at char 9.
     ed.switch_focused_pane(pid_b);
@@ -441,15 +433,13 @@ fn indent_sibling_pane_cursor_at_line_start_clamps_past_new_indent() {
     // "  foo\n": two spaces of existing indent.
     let mut ed = editor_from("  -[f]>oo\n");
     let bid = ed.focused_buffer_id();
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
     let pid_b = open_pane_in_layout(
         &mut ed.state,
         &mut ed.view,
-        pid_a,
         bid,
         hume_engine::pipeline::Direction::Horizontal,
-    )
-    .unwrap();
+    );
 
     // Pane B's cursor sits at column 0, an ordinary cursor that merely
     // happens to be at the line start, not a linewise selection.
@@ -482,15 +472,13 @@ fn propagate_cs_merges_collapsed_non_acting_pane_selections() {
     // "abcde\n": 6 chars.
     let mut ed = editor_from("-[a]>bcde\n");
     let bid = ed.focused_buffer_id();
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
     let pid_b = open_pane_in_layout(
         &mut ed.state,
         &mut ed.view,
-        pid_a,
         bid,
         hume_engine::pipeline::Direction::Horizontal,
-    )
-    .unwrap();
+    );
 
     // Pane B: two cursors at positions 2 ('c') and 4 ('e').
     ed.switch_focused_pane(pid_b);
@@ -533,15 +521,13 @@ fn pane_engine_mirror_synced_for_non_focused_pane_after_edit() {
     // "abcdefghij\n", cursor on 'a'.
     let mut ed = editor_from("-[a]>bcdefghij\n");
     let bid = ed.focused_buffer_id();
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
     let pid_b = open_pane_in_layout(
         &mut ed.state,
         &mut ed.view,
-        pid_a,
         bid,
         hume_engine::pipeline::Direction::Horizontal,
-    )
-    .unwrap();
+    );
 
     // Position pane B's cursor at char 5 ('f').
     ed.switch_focused_pane(pid_b);
@@ -592,7 +578,7 @@ fn ensure_is_idempotent() {
     use crate::editor::pane_state;
 
     let mut ed = editor_from("-[h]>ello\n");
-    let pid = ed.state.focus.id();
+    let pid = ed.view.focused_pane();
     let bid = ed.focused_buffer_id();
 
     // Move the cursor away from its initial position.
@@ -641,7 +627,7 @@ fn ensure_seeds_new_entry_with_initial_sels() {
     use crate::editor::pane_state;
 
     let mut ed = editor_from("-[h]>ello\n");
-    let pid = ed.state.focus.id();
+    let pid = ed.view.focused_pane();
 
     // Open a second buffer; the focused pane has never viewed it.
     let doc2 = Buffer::scratch();
@@ -676,12 +662,12 @@ fn split_stacks_pane_on_same_buffer() {
 
     let mut ed = editor_from("-[h]>ello\n");
     let bid = ed.focused_buffer_id();
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
 
     ed.execute_typed("split", None).unwrap();
 
     assert_eq!(ed.view.panes.len(), 2, "split creates exactly one new pane");
-    let pid_b = ed.state.focus.id();
+    let pid_b = ed.view.focused_pane();
     assert_ne!(pid_b, pid_a, "focus moves to the new pane");
     assert_eq!(
         ed.view.panes[pid_b].buffer_id, bid,
@@ -738,11 +724,11 @@ fn split_via_command_mode_moves_focus() {
     use hume_engine::pipeline::LayoutTree;
 
     let mut ed = editor_from("-[h]>ello\n");
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
 
     type_cmd(&mut ed, ":split");
 
-    let pid_b = ed.state.focus.id();
+    let pid_b = ed.view.focused_pane();
     assert_ne!(
         pid_b, pid_a,
         "focus moves to the new pane through the real command-mode path"
@@ -761,9 +747,9 @@ fn split_via_command_mode_moves_focus() {
 #[test]
 fn vsplit_sizes_both_panes_from_layout() {
     let mut ed = editor_from("-[h]>ello\n");
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
     ed.execute_typed("vsplit", None).unwrap();
-    let pid_b = ed.state.focus.id();
+    let pid_b = ed.view.focused_pane();
     assert_ne!(pid_a, pid_b);
 
     let mut ctx = hume_engine::pipeline::RenderContext::new();
@@ -790,9 +776,9 @@ fn vsplit_sizes_both_panes_from_layout() {
 #[test]
 fn split_sizes_both_panes_stacked() {
     let mut ed = editor_from("-[h]>ello\n");
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
     ed.execute_typed("split", None).unwrap();
-    let pid_b = ed.state.focus.id();
+    let pid_b = ed.view.focused_pane();
 
     let mut ctx = hume_engine::pipeline::RenderContext::new();
     ed.sync_viewport_dims(80, 41);
@@ -881,13 +867,13 @@ fn split_twice_sizes_three_panes_equally() {
 #[test]
 fn close_pane_redistributes_space_equally() {
     let mut ed = editor_from("-[h]>ello\n");
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
     ed.execute_typed("vsplit", None).unwrap();
-    let pid_b = ed.state.focus.id();
+    let pid_b = ed.view.focused_pane();
     ed.execute_typed("vsplit", None).unwrap();
-    let pid_c = ed.state.focus.id();
+    let pid_c = ed.view.focused_pane();
 
-    ed.state.focus.set_for_test(pid_b);
+    ed.state.focus.set_for_test(&mut ed.view, pid_b);
     ed.execute_typed("quit", None).unwrap();
     assert_eq!(ed.view.panes.len(), 2);
 
@@ -909,34 +895,34 @@ fn close_pane_redistributes_space_equally() {
 #[test]
 fn ctrl_p_r_and_shift_r_rotate_the_focused_row() {
     let mut ed = editor_from("-[h]>ello\n");
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
     ed.execute_typed("vsplit", None).unwrap();
-    let pid_b = ed.state.focus.id();
+    let pid_b = ed.view.focused_pane();
     ed.execute_typed("vsplit", None).unwrap();
-    let pid_c = ed.state.focus.id();
+    let pid_c = ed.view.focused_pane();
     assert_eq!(ed.view.layout().leaves(), vec![pid_a, pid_b, pid_c]);
 
     ed.handle_key(key_ctrl('p'));
     ed.handle_key(key('r'));
     assert_eq!(ed.view.layout().leaves(), vec![pid_c, pid_a, pid_b]);
-    assert_eq!(ed.state.focus.id(), pid_c, "focus moves with the pane");
+    assert_eq!(ed.view.focused_pane(), pid_c, "focus moves with the pane");
 
     ed.handle_key(key_ctrl('p'));
     ed.handle_key(key('R'));
     assert_eq!(ed.view.layout().leaves(), vec![pid_a, pid_b, pid_c]);
-    assert_eq!(ed.state.focus.id(), pid_c);
+    assert_eq!(ed.view.focused_pane(), pid_c);
 }
 
 #[test]
 fn a_count_rotates_the_row_that_many_places() {
     let mut ed = editor_from("-[h]>ello\n");
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
     ed.execute_typed("vsplit", None).unwrap();
-    let pid_b = ed.state.focus.id();
+    let pid_b = ed.view.focused_pane();
     ed.execute_typed("vsplit", None).unwrap();
-    let pid_c = ed.state.focus.id();
+    let pid_c = ed.view.focused_pane();
     ed.execute_typed("vsplit", None).unwrap();
-    let pid_d = ed.state.focus.id();
+    let pid_d = ed.view.focused_pane();
     assert_eq!(ed.view.layout().leaves(), vec![pid_a, pid_b, pid_c, pid_d]);
 
     ed.handle_key(key('2'));
@@ -944,7 +930,7 @@ fn a_count_rotates_the_row_that_many_places() {
     ed.handle_key(key('r'));
 
     assert_eq!(ed.view.layout().leaves(), vec![pid_c, pid_d, pid_a, pid_b]);
-    assert_eq!(ed.state.focus.id(), pid_d);
+    assert_eq!(ed.view.focused_pane(), pid_d);
 }
 
 #[test]
@@ -952,7 +938,7 @@ fn rotate_with_a_single_pane_is_refused() {
     use hume_engine::pipeline::LayoutTree;
 
     let mut ed = editor_from("-[h]>ello\n");
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
 
     ed.handle_key(key_ctrl('p'));
     ed.handle_key(key('r'));
@@ -973,7 +959,7 @@ fn vsplit_too_narrow_is_noop_with_warning() {
     use hume_engine::pipeline::LayoutTree;
 
     let mut ed = editor_from("-[h]>ello\n");
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
 
     let mut ctx = hume_engine::pipeline::RenderContext::new();
     ed.sync_viewport_dims(20, 25);
@@ -987,7 +973,7 @@ fn vsplit_too_narrow_is_noop_with_warning() {
     assert_eq!(err.message(), "pane too small to split");
 
     assert_eq!(
-        ed.state.focus.id(),
+        ed.view.focused_pane(),
         pid_a,
         "focus does not move: split was rejected"
     );
@@ -1007,7 +993,7 @@ fn split_too_short_is_noop_with_warning() {
     use hume_engine::pipeline::LayoutTree;
 
     let mut ed = editor_from("-[h]>ello\n");
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
 
     let mut ctx = hume_engine::pipeline::RenderContext::new();
     ed.sync_viewport_dims(80, 7);
@@ -1021,7 +1007,7 @@ fn split_too_short_is_noop_with_warning() {
     assert_eq!(err.message(), "pane too small to split");
 
     assert_eq!(
-        ed.state.focus.id(),
+        ed.view.focused_pane(),
         pid_a,
         "focus does not move: split was rejected"
     );
@@ -1040,7 +1026,7 @@ fn split_too_short_is_noop_with_warning() {
 #[test]
 fn vsplit_at_minimum_width_still_splits() {
     let mut ed = editor_from("-[h]>ello\n");
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
 
     let mut ctx = hume_engine::pipeline::RenderContext::new();
     ed.sync_viewport_dims(21, 25);
@@ -1050,7 +1036,7 @@ fn vsplit_at_minimum_width_still_splits() {
     ed.execute_typed("vsplit", None).unwrap();
 
     assert_ne!(
-        ed.state.focus.id(),
+        ed.view.focused_pane(),
         pid_a,
         "split succeeds at the threshold"
     );
@@ -1060,7 +1046,7 @@ fn vsplit_at_minimum_width_still_splits() {
 #[test]
 fn split_at_minimum_height_still_splits() {
     let mut ed = editor_from("-[h]>ello\n");
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
 
     let mut ctx = hume_engine::pipeline::RenderContext::new();
     ed.sync_viewport_dims(80, 8);
@@ -1070,7 +1056,7 @@ fn split_at_minimum_height_still_splits() {
     ed.execute_typed("split", None).unwrap();
 
     assert_ne!(
-        ed.state.focus.id(),
+        ed.view.focused_pane(),
         pid_a,
         "split succeeds at the threshold"
     );
@@ -1223,10 +1209,10 @@ fn grid_of_four_panes_renders_cross_junction_glyph() {
 
     let mut ed = editor_from("-[a]>bc\n");
     ed.view.theme = crate::testing::build_snapshot_theme();
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
 
     ed.execute_typed("split", None).unwrap(); // A/B stacked.
-    let pid_b = ed.state.focus.id();
+    let pid_b = ed.view.focused_pane();
 
     ed.switch_focused_pane(pid_a);
     ed.execute_typed("vsplit", None).unwrap(); // A/D side by side, top row.
@@ -1273,7 +1259,7 @@ fn insert_mode_hides_cursor_only_in_focused_pane() {
 #[test]
 fn split_pane_gets_gutter_column() {
     let mut ed = open_headless(None);
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
     let initial_gutter_column_count = ed.view.panes[pid_a].providers.gutter_columns().count();
     assert!(
         initial_gutter_column_count > 0,
@@ -1284,11 +1270,9 @@ fn split_pane_gets_gutter_column() {
     let pid_b = open_pane_in_layout(
         &mut ed.state,
         &mut ed.view,
-        pid_a,
         bid,
         hume_engine::pipeline::Direction::Horizontal,
-    )
-    .unwrap();
+    );
 
     assert_eq!(
         ed.view.panes[pid_b].providers.gutter_columns().count(),
@@ -1309,9 +1293,9 @@ fn quit_with_multiple_panes_closes_focused_pane_not_editor() {
     use hume_engine::pipeline::LayoutTree;
 
     let mut ed = editor_from("-[h]>ello\n");
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
     ed.execute_typed("split", None).unwrap();
-    let pid_b = ed.state.focus.id();
+    let pid_b = ed.view.focused_pane();
     assert_ne!(pid_a, pid_b);
 
     ed.execute_typed("quit", None).unwrap();
@@ -1322,7 +1306,7 @@ fn quit_with_multiple_panes_closes_focused_pane_not_editor() {
     );
     assert_eq!(ed.view.panes.len(), 1, "the focused pane is closed");
     assert_eq!(
-        ed.state.focus.id(),
+        ed.view.focused_pane(),
         pid_a,
         "focus returns to the surviving pane"
     );
@@ -1361,9 +1345,9 @@ fn quit_with_multiple_panes_ignores_dirty_buffer() {
 #[test]
 fn wq_with_multiple_panes_closes_focused_pane_not_editor() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
     ed.execute_typed("split", None).unwrap();
-    let pid_b = ed.state.focus.id();
+    let pid_b = ed.view.focused_pane();
     assert_ne!(pid_a, pid_b);
 
     // Dirty the buffer both panes are viewing.
@@ -1385,7 +1369,7 @@ fn wq_with_multiple_panes_closes_focused_pane_not_editor() {
     );
     assert_eq!(ed.view.panes.len(), 1, "the focused pane is closed");
     assert_eq!(
-        ed.state.focus.id(),
+        ed.view.focused_pane(),
         pid_a,
         "focus returns to the surviving pane"
     );
@@ -1411,7 +1395,7 @@ fn closing_a_pane_reclaims_its_entries_from_the_frame_caches() {
     ed.prepare_frame(&mut ctx);
 
     ed.execute_typed("split", None).unwrap();
-    let pid_b = ed.state.focus.id();
+    let pid_b = ed.view.focused_pane();
     ed.sync_viewport_dims(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
@@ -1463,15 +1447,12 @@ fn switching_a_panes_buffer_rebuilds_its_virtual_lines() {
     // no `panes.render` entry (see `Editor::for_testing`'s comment); only
     // `open_pane` seeds one, so this test opens a second pane rather than
     // using the bootstrap one.
-    let pid_a = ed.state.focus.id();
     let pid = open_pane_in_layout(
         &mut ed.state,
         &mut ed.view,
-        pid_a,
         bid_a,
         hume_engine::pipeline::Direction::Horizontal,
-    )
-    .unwrap();
+    );
     ed.switch_focused_pane(pid);
 
     let scope = ed.view.registry.intern("ui.virtual");
@@ -1500,7 +1481,7 @@ fn switching_a_panes_buffer_rebuilds_its_virtual_lines() {
 
     // Switch the same pane to a fresh buffer with no virtual lines set.
     let bid_b = ed.open_buffer(Buffer::scratch());
-    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.state), bid_b);
+    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid_b);
     ed.sync_viewport_dims(80, 25);
     ed.settle();
     ed.prepare_frame(&mut hume_engine::pipeline::RenderContext::new());
@@ -1522,21 +1503,21 @@ fn quit_in_grid_promotes_correct_sibling() {
     use hume_engine::pipeline::LayoutTree;
 
     let mut ed = editor_from("-[h]>ello\n");
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
 
     // A/B stacked.
     ed.execute_typed("split", None).unwrap();
-    let pid_b = ed.state.focus.id();
+    let pid_b = ed.view.focused_pane();
 
     // A/D side by side, top row.
     ed.switch_focused_pane(pid_a);
     ed.execute_typed("vsplit", None).unwrap();
-    let pid_d = ed.state.focus.id();
+    let pid_d = ed.view.focused_pane();
 
     // B/C side by side, bottom row. Grid is now: top (A, D), bottom (B, C).
     ed.switch_focused_pane(pid_b);
     ed.execute_typed("vsplit", None).unwrap();
-    let pid_c = ed.state.focus.id();
+    let pid_c = ed.view.focused_pane();
 
     assert_eq!(ed.view.panes.len(), 4, "sanity: four panes in the grid");
 
@@ -1547,7 +1528,7 @@ fn quit_in_grid_promotes_correct_sibling() {
 
     assert_eq!(ed.view.panes.len(), 3, "one pane closed");
     assert_eq!(
-        ed.state.focus.id(),
+        ed.view.focused_pane(),
         pid_a,
         "A is promoted as D's surviving sibling"
     );
@@ -1590,7 +1571,7 @@ fn quit_in_grid_promotes_correct_sibling() {
 #[test]
 fn same_buffer_split_inherits_source_panes_wrap_override() {
     let mut ed = editor_from("-[h]>ello\n");
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
     ed.view.panes[pid_a].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(hume_engine::pane::WrapMode::Soft { width: 40 }),
         saved: None,
@@ -1599,7 +1580,7 @@ fn same_buffer_split_inherits_source_panes_wrap_override() {
     ed.state.settings.wrap_mode = hume_engine::pane::WrapMode::None;
 
     ed.execute_typed("split", None).unwrap();
-    let pid_b = ed.state.focus.id();
+    let pid_b = ed.view.focused_pane();
 
     assert_eq!(
         ed.view.panes[pid_b].wrap().mode,
@@ -1617,11 +1598,11 @@ fn same_buffer_split_inherits_source_panes_wrap_override() {
 #[test]
 fn same_buffer_split_of_an_unpinned_pane_stays_unpinned() {
     let mut ed = editor_from("-[h]>ello\n");
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
     assert_eq!(ed.view.panes[pid_a].wrap().mode, None, "sanity: unpinned");
 
     ed.execute_typed("split", None).unwrap();
-    let pid_b = ed.state.focus.id();
+    let pid_b = ed.view.focused_pane();
 
     assert_eq!(
         ed.view.panes[pid_b].wrap().mode,
@@ -1641,10 +1622,10 @@ fn wrap_toggle_affects_only_focused_pane() {
     // Global is resolved lazily on every read, so this reaches pid_a's
     // effective mode retroactively; no pane pin needed for A to start off.
     ed.state.settings.wrap_mode = hume_engine::pane::WrapMode::None;
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
 
     ed.execute_typed("split", None).unwrap();
-    let pid_b = ed.state.focus.id();
+    let pid_b = ed.view.focused_pane();
     assert_ne!(pid_a, pid_b);
     assert_eq!(
         ed.view.panes[pid_a].buffer_id, ed.view.panes[pid_b].buffer_id,
@@ -1694,9 +1675,9 @@ fn close_then_focus_next_without_reframe_lands_on_live_pane() {
     use hume_ops::MotionMode;
 
     let mut ed = editor_from("-[h]>ello\n");
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
     ed.execute_typed("split", None).unwrap();
-    let pid_b = ed.state.focus.id();
+    let pid_b = ed.view.focused_pane();
     assert_ne!(pid_a, pid_b);
 
     let mut ctx = hume_engine::pipeline::RenderContext::new();
@@ -1707,7 +1688,7 @@ fn close_then_focus_next_without_reframe_lands_on_live_pane() {
     // Close B, then immediately focus-next, no `prepare_frame` in between.
     ed.execute_typed("quit", None).unwrap();
     assert_eq!(ed.view.panes.len(), 1, "sanity: B is closed");
-    let fp = FocusedPane::current(&ed.state);
+    let fp = FocusedPane::current(&ed.view);
     cmd_pane_focus_next(
         &mut ed.state,
         &mut ed.view,
@@ -1718,11 +1699,11 @@ fn close_then_focus_next_without_reframe_lands_on_live_pane() {
     .unwrap();
 
     assert_eq!(
-        ed.state.focus.id(),
+        ed.view.focused_pane(),
         pid_a,
         "focus-next after a same-batch close must land on the live survivor"
     );
-    assert!(ed.view.panes.contains_key(ed.state.focus.id()));
+    assert!(ed.view.panes.contains_key(ed.view.focused_pane()));
 }
 
 /// Splitting and then focusing directionally, with no `prepare_frame` in
@@ -1735,7 +1716,7 @@ fn split_then_focus_left_without_reframe_reaches_new_pane() {
     use hume_ops::MotionMode;
 
     let mut ed = editor_from("-[h]>ello\n");
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
 
     let mut ctx = hume_engine::pipeline::RenderContext::new();
     ed.sync_viewport_dims(100, 51);
@@ -1745,10 +1726,10 @@ fn split_then_focus_left_without_reframe_reaches_new_pane() {
     // :vsplit puts the new pane on the right and moves focus to it, with no
     // `prepare_frame` in between.
     ed.execute_typed("vsplit", None).unwrap();
-    let pid_b = ed.state.focus.id();
+    let pid_b = ed.view.focused_pane();
     assert_ne!(pid_a, pid_b);
 
-    let fp = FocusedPane::current(&ed.state);
+    let fp = FocusedPane::current(&ed.view);
     cmd_pane_focus_left(
         &mut ed.state,
         &mut ed.view,
@@ -1758,7 +1739,7 @@ fn split_then_focus_left_without_reframe_reaches_new_pane() {
     )
     .unwrap();
     assert_eq!(
-        ed.state.focus.id(),
+        ed.view.focused_pane(),
         pid_a,
         "focus-left from the freshly split pane must reach the original pane"
     );
@@ -1773,7 +1754,7 @@ fn split_inherits_focused_panes_selection_and_scroll() {
     let sels = sels_at(&text, &[(0, 0)], 0);
     let mut ed = Editor::for_testing_with(test_fixtures::testing::state(text, sels));
     let bid = ed.focused_buffer_id();
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
 
     // Move A's cursor and scroll well away from the top of the file.
     let cursor_pos = ed
@@ -1786,7 +1767,7 @@ fn split_inherits_focused_panes_selection_and_scroll() {
     );
 
     ed.execute_typed("vsplit", None).unwrap();
-    let pid_b = ed.state.focus.id();
+    let pid_b = ed.view.focused_pane();
     assert_ne!(pid_a, pid_b);
 
     assert_eq!(
@@ -1811,7 +1792,7 @@ fn same_buffer_split_inherits_saved_scrolls() {
     use hume_engine::pane::ScrollPosition;
 
     let mut ed = editor_from("-[h]>ello\n");
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
 
     // A second buffer the source pane visited (and scrolled) before the
     // split, then switched away from. This is what populates
@@ -1829,7 +1810,7 @@ fn same_buffer_split_inherits_saved_scrolls() {
     );
 
     ed.execute_typed("split", None).unwrap();
-    let pid_b = ed.state.focus.id();
+    let pid_b = ed.view.focused_pane();
     assert_ne!(pid_a, pid_b);
 
     assert_eq!(
@@ -1847,7 +1828,7 @@ fn fits_split_allows_before_first_frame() {
     use hume_engine::pipeline::Direction;
 
     let ed = editor_from("-[h]>ello\n");
-    let fp = FocusedPane::current(&ed.state);
+    let fp = FocusedPane::current(&ed.view);
     assert!(crate::editor::commands::fits_split(
         &ed.view,
         fp,
@@ -1858,87 +1839,6 @@ fn fits_split_allows_before_first_frame() {
         fp,
         Direction::Horizontal
     ));
-}
-
-/// A split active tab whose focus names a pane the active layout does not
-/// reach. The desync goes through a real pane: the focus is set to the pane
-/// of a second tab, which is attached to that tab's layout, so no pane ever
-/// exists that was never attached to any tab.
-fn editor_with_focus_missing_from_split_layout() -> Editor {
-    let mut ed = editor_from("-[h]>ello\n");
-    ed.execute_typed("vsplit", None).unwrap();
-    ed.execute_typed("tabnew", None).unwrap();
-    let other_tab_pid = ed.state.focus.id();
-    ed.execute_typed("tabprev", None).unwrap();
-    ed.state.focus.set_for_test(other_tab_pid);
-    ed
-}
-
-/// If the focused pane isn't reachable in the active layout tree (an
-/// invariant violation that should never happen), `split_pane_onto` must
-/// refuse before creating anything: `open_pane_in_layout` checks
-/// `contains_leaf` up front, so there is never a speculatively created pane
-/// to roll back, and no window where one exists with no layout leaf (which
-/// closing it would later report as missing from the layout).
-#[test]
-fn split_pane_onto_refuses_when_focused_pane_missing_from_layout() {
-    use hume_engine::pipeline::Direction;
-
-    let mut ed = editor_with_focus_missing_from_split_layout();
-    let bid = ed.focused_buffer_id();
-    let fp = FocusedPane::current(&ed.state);
-    let panes_before = ed.view.panes.len();
-
-    let result = crate::editor::commands::split_pane_onto(
-        &mut ed.state,
-        &mut ed.view,
-        fp,
-        bid,
-        Direction::Vertical,
-    );
-
-    assert!(
-        result.is_err(),
-        "a missing split target must surface as an error"
-    );
-    assert_eq!(
-        ed.view.panes.len(),
-        panes_before,
-        "no pane is created at all when the split target is unreachable"
-    );
-}
-
-#[test]
-fn close_pane_reports_a_focused_pane_missing_from_the_layout() {
-    let mut ed = editor_with_focus_missing_from_split_layout();
-    let layout_before = ed.view.layout().clone();
-
-    ed.handle_key(key_ctrl('p'));
-    ed.handle_key(key('c'));
-
-    assert_eq!(*ed.view.layout(), layout_before);
-    assert!(
-        ed.state
-            .status_msg
-            .as_deref()
-            .is_some_and(|m| m.contains("missing from pane layout")),
-        "status: {:?}",
-        ed.state.status_msg
-    );
-}
-
-#[test]
-fn quit_reports_a_focused_pane_missing_from_the_layout() {
-    let mut ed = editor_with_focus_missing_from_split_layout();
-    let layout_before = ed.view.layout().clone();
-
-    let err = ed.execute_typed("q", None).unwrap_err();
-
-    assert!(
-        err.to_string().contains("missing from pane layout"),
-        "{err}"
-    );
-    assert_eq!(*ed.view.layout(), layout_before);
 }
 
 /// `pane-dividers=false` reclaims the seam column: sibling panes tile
@@ -1989,7 +1889,7 @@ fn vsplit_dividers_off_tiles_edge_to_edge_and_still_dims() {
 #[test]
 fn split_same_buffer_clones_jump_list_then_diverges() {
     let mut ed = jump_editor(10);
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
 
     // `gg` (goto-first-line) is a jump command: records the pre-jump position.
     ed.handle_key(key('g'));
@@ -2002,7 +1902,7 @@ fn split_same_buffer_clones_jump_list_then_diverges() {
 
     // Same-buffer split: new pane inherits the source pane's jump history.
     ed.execute_typed("vsplit", None).unwrap();
-    let pid_b = ed.state.focus.id();
+    let pid_b = ed.view.focused_pane();
     assert_ne!(pid_a, pid_b, "focus moved to the new pane");
     assert_eq!(
         ed.state.panes.jumps[pid_b].len(),
@@ -2048,7 +1948,7 @@ fn split_same_buffer_clones_jump_list_then_diverges() {
 #[test]
 fn multiline_search_match_splits_into_per_line_highlight_spans() {
     let mut ed = open_headless(None);
-    let pid = ed.state.focus.id();
+    let pid = ed.view.focused_pane();
 
     ed.feed_key(key('i'));
     for ch in "abc".chars() {
@@ -2097,15 +1997,13 @@ fn close_pane_under_open_session(ed: &mut Editor, keys: &str) -> PaneId {
     use hume_scripting::host::CommandHost;
 
     let bid = ed.focused_buffer_id();
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
     let pid_b = open_pane_in_layout(
         &mut ed.state,
         &mut ed.view,
-        pid_a,
         bid,
         hume_engine::pipeline::Direction::Horizontal,
-    )
-    .expect("split must succeed");
+    );
     ed.switch_focused_pane(pid_b);
     for ch in keys.chars() {
         ed.feed_key(key(ch));
@@ -2128,7 +2026,7 @@ fn closing_the_pane_of_an_open_search_ends_the_search() {
     assert_eq!(ed.state.mode(), hume_engine::types::EditorMode::Normal);
     ed.feed_key(key_esc());
     ed.feed_key(key('l'));
-    assert_eq!(ed.state.focus.id(), pid_a);
+    assert_eq!(ed.view.focused_pane(), pid_a);
     assert_eq!(state(&ed), "a-[b]>c abc\n");
     assert!(
         ed.state
@@ -2147,6 +2045,6 @@ fn closing_the_pane_of_an_open_sift_ends_the_sift() {
     assert_eq!(ed.state.mode(), hume_engine::types::EditorMode::Normal);
     ed.feed_key(key_esc());
     ed.feed_key(key('l'));
-    assert_eq!(ed.state.focus.id(), pid_a);
+    assert_eq!(ed.view.focused_pane(), pid_a);
     assert_eq!(state(&ed), "a-[b]>c abc\n");
 }

@@ -256,7 +256,7 @@ fn call_bang_count_arg_dispatches_synchronously() {
         .state
         .panes
         .state
-        .get(ed.state.focus.id())
+        .get(ed.view.focused_pane())
         .unwrap()
         .values()
         .next()
@@ -557,7 +557,7 @@ fn steel_call_jump_cmd_records_jump_entry() {
                  (lambda (bid) (call! "goto-last-line" bid)))"#,
     );
 
-    let pane_id = ed.state.focus.id();
+    let pane_id = ed.view.focused_pane();
     let bid = ed.focused_buffer_id();
     let _pane = focused_pane(&ed);
     // Fresh editor: no jump entries yet.
@@ -723,7 +723,8 @@ fn mouse_click_leaves_hook_queued_until_the_next_settle() {
     ));
 
     // Give the pane a viewport big enough that a click at row=0,col=0 lands in content.
-    ed.view.panes[ed.state.focus.id()].viewport = hume_engine::pane::Viewport::new(80, 24);
+    let focused_pid = ed.view.focused_pane();
+    ed.view.panes[focused_pid].viewport = hume_engine::pane::Viewport::new(80, 24);
 
     // Seed a pending hook (OnBufferSave, no handler registered, so
     // settle() skips the Steel call but still removes it from the queue).
@@ -792,7 +793,7 @@ fn steel_lambda_receives_bid_count_and_extend() {
         .state
         .panes
         .state
-        .get(ed.state.focus.id())
+        .get(ed.view.focused_pane())
         .unwrap()
         .values()
         .next()
@@ -814,7 +815,7 @@ fn steel_lambda_receives_bid_count_and_extend() {
         .state
         .panes
         .state
-        .get(ed.state.focus.id())
+        .get(ed.view.focused_pane())
         .unwrap()
         .values()
         .next()
@@ -852,7 +853,7 @@ fn steel_zero_arity_lambda_ignores_injection() {
         .state
         .panes
         .state
-        .get(ed.state.focus.id())
+        .get(ed.view.focused_pane())
         .unwrap()
         .values()
         .next()
@@ -866,7 +867,7 @@ fn steel_zero_arity_lambda_ignores_injection() {
         .state
         .panes
         .state
-        .get(ed.state.focus.id())
+        .get(ed.view.focused_pane())
         .unwrap()
         .values()
         .next()
@@ -914,7 +915,7 @@ fn steel_arity_1_lambda_receives_bid_only() {
         .state
         .panes
         .state
-        .get(ed.state.focus.id())
+        .get(ed.view.focused_pane())
         .unwrap()
         .values()
         .next()
@@ -928,7 +929,7 @@ fn steel_arity_1_lambda_receives_bid_only() {
         .state
         .panes
         .state
-        .get(ed.state.focus.id())
+        .get(ed.view.focused_pane())
         .unwrap()
         .values()
         .next()
@@ -972,7 +973,7 @@ fn steel_arity_2_lambda_receives_bid_and_count() {
         .state
         .panes
         .state
-        .get(ed.state.focus.id())
+        .get(ed.view.focused_pane())
         .unwrap()
         .values()
         .next()

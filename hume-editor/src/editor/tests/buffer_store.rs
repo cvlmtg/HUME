@@ -21,13 +21,13 @@ fn p6_open_buffer_defers_pane_state_seeding() {
     let bid2 = ed.open_buffer(doc2);
     assert_ne!(bid2, initial_bid);
     assert!(
-        ed.selections_for(ed.state.focus.id(), bid2).is_none(),
+        ed.selections_for(ed.view.focused_pane(), bid2).is_none(),
         "pane_state not yet seeded for a buffer no pane shows"
     );
 
-    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.state), bid2);
+    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid2);
     assert!(
-        ed.selections_for(ed.state.focus.id(), bid2).is_some(),
+        ed.selections_for(ed.view.focused_pane(), bid2).is_some(),
         "pane_state seeded once the focused pane switches to it"
     );
 }
@@ -39,7 +39,7 @@ fn p6_close_buffer_redirects_to_mru() {
     let bid_alpha = ed.focused_buffer_id();
     let doc_beta = Buffer::at_start(BufferText::from("beta\n"));
     let bid_beta = ed.open_buffer(doc_beta);
-    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.state), bid_beta);
+    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid_beta);
     assert_eq!(ed.focused_buffer_id(), bid_beta);
     // Close beta: should redirect focused pane back to alpha.
     ed.close_buffer(bid_beta);
@@ -120,7 +120,7 @@ fn p6_close_last_buffer_reseeds_selections() {
     let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("old content\n")));
     let bid = ed.focused_buffer_id();
     // Move the cursor somewhere non-zero.
-    let focused = ed.state.focus.id();
+    let focused = ed.view.focused_pane();
     doc_ops::apply_doc_motion(
         &ed.state.buffers,
         &mut ed.state.panes.state,
@@ -256,7 +256,7 @@ fn p6_bd_closes_focused_buffer() {
     let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("first\n")));
     let bid_first = ed.focused_buffer_id();
     let bid_second = ed.open_buffer(Buffer::at_start(BufferText::from("second\n")));
-    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.state), bid_second);
+    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid_second);
     let _ = ed.execute_typed("bd", None);
     assert_eq!(
         ed.focused_buffer_id(),
@@ -275,7 +275,7 @@ fn p6_bd_force_closes_dirty_buffer() {
     let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("clean\n")));
     let bid_clean = ed.focused_buffer_id();
     let bid_dirty = ed.open_buffer(Buffer::at_start(BufferText::from("dirty\n")));
-    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.state), bid_dirty);
+    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid_dirty);
     // Make it dirty by inserting a character.
     ed.handle_key(key('i'));
     ed.handle_key(key('x'));
@@ -304,16 +304,14 @@ fn p6_close_buffer_redirects_all_panes_to_mru() {
     // open_buffer seeds pane_state for the focused pane but doesn't switch the pane view.
     let bid_b = ed.open_buffer(Buffer::at_start(BufferText::from("b\n")));
 
-    let pid_1 = ed.state.focus.id();
+    let pid_1 = ed.view.focused_pane();
     // Second pane also views A.
     let pid_2 = open_pane_in_layout(
         &mut ed.state,
         &mut ed.view,
-        pid_1,
         bid_a,
         hume_engine::pipeline::Direction::Horizontal,
-    )
-    .unwrap();
+    );
 
     assert_eq!(
         ed.view.panes[pid_1].buffer_id, bid_a,
@@ -351,7 +349,7 @@ fn p6_reload_preserves_cursor_same_content() {
     let content = "line0\nline1\nline2\nline3\nline4\n";
     let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from(content)));
     let bid = ed.focused_buffer_id();
-    let focused = ed.state.focus.id();
+    let focused = ed.view.focused_pane();
 
     // Place cursor at line 2, col 3 (char offset = 6+6+3 = 15).
     let expected_head = co(15);
@@ -369,7 +367,7 @@ fn p6_reload_preserves_cursor_same_content() {
     // Reload with identical content.
     let replacement = Buffer::at_start(BufferText::from(content));
     ed.reload_buffer_in_place(
-        FocusedPane::current(&ed.state),
+        FocusedPane::current(&ed.view),
         ReplaceSource::disk(replacement),
     );
 
@@ -388,7 +386,7 @@ fn p6_reload_clamps_cursor_to_last_line() {
     let content = "line0\nline1\nline2\nline3\nline4\n";
     let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from(content)));
     let bid = ed.focused_buffer_id();
-    let focused = ed.state.focus.id();
+    let focused = ed.view.focused_pane();
 
     // line 4 starts at char 24.
     doc_ops::apply_doc_motion(
@@ -405,7 +403,7 @@ fn p6_reload_clamps_cursor_to_last_line() {
     // Reload with a 1-line file.
     let replacement = Buffer::at_start(BufferText::from("short\n"));
     ed.reload_buffer_in_place(
-        FocusedPane::current(&ed.state),
+        FocusedPane::current(&ed.view),
         ReplaceSource::disk(replacement),
     );
 
@@ -426,7 +424,7 @@ fn p6_reload_cursor_follows_its_line_when_a_line_is_added_above() {
 
     let replacement = Buffer::at_start(BufferText::from("new\nabc\ndef\n"));
     ed.reload_buffer_in_place(
-        FocusedPane::current(&ed.state),
+        FocusedPane::current(&ed.view),
         ReplaceSource::disk(replacement),
     );
 
@@ -441,7 +439,7 @@ fn p6_reload_cursor_on_a_rewritten_line_lands_at_its_start() {
 
     let replacement = Buffer::at_start(BufferText::from("abc\nhi\n"));
     ed.reload_buffer_in_place(
-        FocusedPane::current(&ed.state),
+        FocusedPane::current(&ed.view),
         ReplaceSource::disk(replacement),
     );
 
@@ -456,7 +454,7 @@ fn p6_reload_keeps_every_selection() {
 
     let replacement = Buffer::at_start(BufferText::from("top\nline0\nline1\nline2\n"));
     ed.reload_buffer_in_place(
-        FocusedPane::current(&ed.state),
+        FocusedPane::current(&ed.view),
         ReplaceSource::disk(replacement),
     );
 

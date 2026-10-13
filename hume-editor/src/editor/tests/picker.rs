@@ -407,7 +407,7 @@ fn close_picker_tears_down_an_insert_session_stacked_above_it() {
     assert!(ed.state.input.picker().is_some(), "sanity: picker open");
 
     // Lands above the picker the same ungated way a timer would.
-    let fp = FocusedPane::current(&ed.state);
+    let fp = FocusedPane::current(&ed.view);
     cmd_insert_before(
         &mut ed.state,
         &mut ed.view,

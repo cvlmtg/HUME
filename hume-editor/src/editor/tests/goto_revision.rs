@@ -9,7 +9,7 @@ use pretty_assertions::assert_eq;
 fn undo_through_funnel(
     ed: &mut Editor,
 ) -> Result<doc_ops::HistoryWalk, crate::editor::error::CommandError> {
-    let pane = ed.state.focus.id();
+    let pane = ed.view.focused_pane();
     let buffer = ed.focused_buffer_id();
     doc_ops::apply_doc_history_walk(
         &mut ed.state.buffers,
@@ -31,7 +31,7 @@ fn history_walk_commits_own_paste_session_first() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.feed_key(key('y'));
     ed.feed_key(key('p'));
-    let (pane, buffer) = (ed.state.focus.id(), ed.focused_buffer_id());
+    let (pane, buffer) = (ed.view.focused_pane(), ed.focused_buffer_id());
     assert!(
         ed.state
             .active_session
@@ -57,7 +57,7 @@ fn history_walk_refuses_own_insert_session() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.feed_key(key('i'));
     ed.feed_key(key('x'));
-    let (pane, buffer) = (ed.state.focus.id(), ed.focused_buffer_id());
+    let (pane, buffer) = (ed.view.focused_pane(), ed.focused_buffer_id());
     assert!(
         ed.state
             .active_session
@@ -89,7 +89,7 @@ fn goto(
     ed: &mut Editor,
     revision: usize,
 ) -> Result<doc_ops::HistoryWalk, crate::editor::error::CommandError> {
-    let pane = crate::editor::commands::CommandPane::existing(&ed.view, ed.state.focus.id())
+    let pane = crate::editor::commands::CommandPane::existing(&ed.view, ed.view.focused_pane())
         .expect("the focused pane exists");
     crate::editor::commands::goto_revision(&mut ed.state, &ed.view, pane, revision)
 }
@@ -180,7 +180,7 @@ fn goto_revision_on_read_only_buffer_is_refused() {
 /// the new pane's cursor three right. Returns `(original pane, new pane,
 /// buffer)`; focus is on the new pane.
 fn split_with_moved_cursor(ed: &mut Editor) -> (PaneId, PaneId, BufferId) {
-    let pane_a = ed.state.focus.id();
+    let pane_a = ed.view.focused_pane();
     let bid = ed.focused_buffer_id();
     ed.feed_key(key('d'));
     let handle = focused_pane(ed);
@@ -194,7 +194,7 @@ fn split_with_moved_cursor(ed: &mut Editor) -> (PaneId, PaneId, BufferId) {
             },
         )
         .expect("pane-vsplit must succeed");
-    let pane_b = ed.state.focus.id();
+    let pane_b = ed.view.focused_pane();
     assert_ne!(pane_a, pane_b);
     for _ in 0..3 {
         ed.feed_key(key('l'));
@@ -305,7 +305,11 @@ fn goto_revision_host_acts_on_the_given_pane_not_focus() {
         .goto_revision(target_a, 0)
         .expect("the root is live");
 
-    assert_eq!(ed.state.focus.id(), pane_b, "the walk does not move focus");
+    assert_eq!(
+        ed.view.focused_pane(),
+        pane_b,
+        "the walk does not move focus"
+    );
     ed.switch_focused_pane(pane_a);
     assert_eq!(
         state(&ed),
@@ -338,7 +342,7 @@ fn goto_revision_errors_when_the_paste_commit_evicts_the_target() {
     ed.doc_mut().set_undo_levels(2);
     ed.feed_key(key('y'));
     ed.feed_key(key('p'));
-    let (pane, buffer) = (ed.state.focus.id(), ed.focused_buffer_id());
+    let (pane, buffer) = (ed.view.focused_pane(), ed.focused_buffer_id());
     assert!(
         ed.state
             .active_session
@@ -361,7 +365,7 @@ fn goto_revision_errors_when_the_paste_commit_evicts_the_target() {
 fn history_walk_refuses_own_replay_placeholder() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.feed_key(key('d'));
-    let (pane, buffer) = (ed.state.focus.id(), ed.focused_buffer_id());
+    let (pane, buffer) = (ed.view.focused_pane(), ed.focused_buffer_id());
     let sels = ed.state.panes.state[pane][buffer].selections().clone();
     crate::editor::edit_session::open_or_retarget(
         &mut ed.state.active_session,

@@ -17,7 +17,8 @@ pub enum Direction {
     Vertical,
 }
 
-/// Which way [`LayoutTree::rotate`] moves the members of a row or column.
+/// Which way [`EngineView::rotate_focused`](super::EngineView::rotate_focused)
+/// moves the members of a row or column.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Rotation {
     /// Each member moves right or down; the last wraps to the first.
@@ -26,15 +27,15 @@ pub enum Rotation {
     Backward,
 }
 
-/// Why an operation on one pane's leaf ([`LayoutTree::rotate`],
-/// [`LayoutTree::remove_leaf`]) changed nothing.
+/// Refusal of [`EngineView::close_focused`](super::EngineView::close_focused)
+/// and [`EngineView::rotate_focused`](super::EngineView::rotate_focused): the
+/// focused pane is the layout's only pane.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum LayoutRefusal {
-    /// The tree is the target's own leaf, with no other pane beside it.
-    SinglePane,
-    /// The target is not a leaf of the tree.
-    MissingTarget,
-}
+pub struct SinglePane;
+
+/// Refusal to focus a pane that is not a leaf of the layout.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct NotInLayout;
 
 /// A single 1-cell divider segment drawn between two sibling panes at one
 /// split node.
@@ -54,7 +55,7 @@ pub struct Seam {
 }
 
 /// Proof that a `PaneId` has been detached from every `LayoutTree` that
-/// could reach it. Minted only by [`LayoutTree::remove_leaf`] and
+/// could reach it. Minted only by `FocusedLayout::close_focused` and
 /// [`LayoutTree::into_detached`], both in this module, and consumed by
 /// `hume-editor`'s `drop_pane_state` to free the pane's state. Not
 /// `Clone`/`Copy`: a duplicable token would let the same pane be freed
@@ -71,13 +72,6 @@ impl DetachedPane {
     pub fn pane_id(&self) -> PaneId {
         self.0
     }
-}
-
-/// What [`LayoutTree::remove_leaf`] yields: the detached pane, plus the
-/// leftmost leaf of the promoted sibling subtree to focus next.
-pub struct Pruned {
-    pub detached: DetachedPane,
-    pub survivor: PaneId,
 }
 
 /// Recursive layout tree. Leaves reference panes; splits partition space.
@@ -232,7 +226,7 @@ impl LayoutTree {
     /// `target` isn't found. The token is consumed only on the success
     /// path, so a caller can never end up with a pane the tree lost track
     /// of.
-    pub fn split_leaf(
+    pub(crate) fn split_leaf(
         &mut self,
         target: PaneId,
         new_pane: UnattachedPane,
@@ -245,14 +239,6 @@ impl LayoutTree {
         } else {
             Err(new_pane)
         }
-    }
-
-    /// A freshly inserted, not-yet-attached pane as the sole content of a
-    /// brand-new tree: the new-tab and first-pane-bootstrap counterpart of
-    /// [`Self::split_leaf`]. Infallible: there is no existing tree to fail
-    /// to find a target in.
-    pub fn leaf(new_pane: UnattachedPane) -> LayoutTree {
-        LayoutTree::Leaf(new_pane.pane_id())
     }
 
     /// The recursive body of [`Self::split_leaf`], without the equalize pass,
@@ -416,36 +402,8 @@ impl LayoutTree {
         probe.find_rect(target, area, reserve_seam)
     }
 
-    /// Rotate the row or column `target` sits in by `steps` places. That row
-    /// is the largest run of same-direction splits holding `Leaf(target)` as
-    /// a direct member; a split on the other axis inside it is one member and
-    /// moves whole. The tree's shape and ratios are kept: every member is one
-    /// share along the run's axis (see `shares_along`), so each place keeps
-    /// its size and only its contents move.
-    pub fn rotate(
-        &mut self,
-        target: PaneId,
-        rotation: Rotation,
-        steps: usize,
-    ) -> Result<(), LayoutRefusal> {
-        self.refuse_sole_leaf(target)?;
-        if self.rotate_run(target, rotation, steps) {
-            Ok(())
-        } else {
-            Err(LayoutRefusal::MissingTarget)
-        }
-    }
-
-    /// [`LayoutRefusal::SinglePane`] when the whole tree is `Leaf(target)`.
-    fn refuse_sole_leaf(&self, target: PaneId) -> Result<(), LayoutRefusal> {
-        match self {
-            LayoutTree::Leaf(id) if *id == target => Err(LayoutRefusal::SinglePane),
-            _ => Ok(()),
-        }
-    }
-
-    /// The recursive body of [`Self::rotate`]: `false` when `target` is not
-    /// a leaf below `self`.
+    /// The recursive body of [`FocusedLayout::rotate_focused`]: `false`
+    /// when `target` is not a leaf below `self`.
     fn rotate_run(&mut self, target: PaneId, rotation: Rotation, steps: usize) -> bool {
         let LayoutTree::Split { direction, .. } = self else {
             return false;
@@ -500,23 +458,9 @@ impl LayoutTree {
     }
 
     /// Prune `Leaf(target)`, collapsing its parent `Split` onto the sibling,
-    /// then re-derive every split ratio so the survivors stay equal-sized
-    /// (see `equalize`). Returns the detached pane plus the leftmost leaf of
-    /// the promoted sibling (the new focus target).
-    pub fn remove_leaf(&mut self, target: PaneId) -> Result<Pruned, LayoutRefusal> {
-        self.refuse_sole_leaf(target)?;
-        let survivor = self
-            .prune_leaf(target)
-            .ok_or(LayoutRefusal::MissingTarget)?;
-        self.equalize();
-        Ok(Pruned {
-            detached: DetachedPane(target),
-            survivor,
-        })
-    }
-
-    /// The recursive body of [`Self::remove_leaf`], without the equalize pass,
-    /// kept separate for the same reason as [`Self::insert_split`].
+    /// and return the leftmost leaf of that promoted sibling. `None` when
+    /// `target` is not a leaf below a split of `self`. Leaves the ratios to
+    /// the caller's `equalize`, for the same reason as [`Self::insert_split`].
     fn prune_leaf(&mut self, target: PaneId) -> Option<PaneId> {
         match self {
             LayoutTree::Leaf(_) => None,
@@ -542,6 +486,112 @@ impl LayoutTree {
                         .or_else(|| children.1.prune_leaf(target))
                 }
             }
+        }
+    }
+}
+
+/// A tab's layout together with its focused pane, which is always a leaf of
+/// the tree. Every method that changes either one keeps that true, so a
+/// focus outside the layout cannot be represented.
+#[derive(Clone, Debug, PartialEq)]
+pub struct FocusedLayout {
+    tree: LayoutTree,
+    focus: PaneId,
+}
+
+impl FocusedLayout {
+    /// A freshly inserted pane as the sole, focused leaf of a new layout.
+    pub fn new(pane: UnattachedPane) -> Self {
+        let id = pane.pane_id();
+        Self {
+            tree: LayoutTree::Leaf(id),
+            focus: id,
+        }
+    }
+
+    /// `tree` focused on `focus`, refused when `focus` is not one of its
+    /// leaves.
+    pub fn from_parts(tree: LayoutTree, focus: PaneId) -> Result<Self, NotInLayout> {
+        if tree.contains_leaf(focus) {
+            Ok(Self { tree, focus })
+        } else {
+            Err(NotInLayout)
+        }
+    }
+
+    /// The layout `EngineView::new` holds until the editor installs the
+    /// first real one: the null pane id, focused.
+    pub(super) fn placeholder() -> Self {
+        Self {
+            tree: LayoutTree::Leaf(PaneId::default()),
+            focus: PaneId::default(),
+        }
+    }
+
+    pub fn tree(&self) -> &LayoutTree {
+        &self.tree
+    }
+
+    pub fn focused(&self) -> PaneId {
+        self.focus
+    }
+
+    pub fn into_tree(self) -> LayoutTree {
+        self.tree
+    }
+
+    pub(crate) fn focus(&mut self, pid: PaneId) -> Result<(), NotInLayout> {
+        if !self.tree.contains_leaf(pid) {
+            return Err(NotInLayout);
+        }
+        self.focus = pid;
+        Ok(())
+    }
+
+    /// Split the focused pane, placing `pane` after it along `direction`.
+    /// Focus stays where it was.
+    pub(crate) fn split_focused(&mut self, pane: UnattachedPane, direction: Direction) -> PaneId {
+        self.tree
+            .split_leaf(self.focus, pane, direction)
+            .expect("the focused pane is a leaf of the tree")
+    }
+
+    /// Rotate the row or column the focused pane sits in by `steps` places.
+    /// That row is the largest run of same-direction splits holding the
+    /// focused leaf as a direct member; a split on the other axis inside it
+    /// is one member and moves whole. The tree's shape and ratios are kept:
+    /// every member is one share along the run's axis (see `shares_along`),
+    /// so each place keeps its size and only its contents move. Focus stays
+    /// on the same pane.
+    pub(crate) fn rotate_focused(
+        &mut self,
+        rotation: Rotation,
+        steps: usize,
+    ) -> Result<(), SinglePane> {
+        self.refuse_single_pane()?;
+        let rotated = self.tree.rotate_run(self.focus, rotation, steps);
+        assert!(rotated, "the focused pane is a leaf of the tree");
+        Ok(())
+    }
+
+    /// Prune the focused leaf, collapsing its parent split onto the sibling,
+    /// then re-derive every split ratio so the survivors stay equal-sized
+    /// (see `equalize`). Focus moves to the leftmost leaf of the promoted
+    /// sibling.
+    pub(crate) fn close_focused(&mut self) -> Result<DetachedPane, SinglePane> {
+        self.refuse_single_pane()?;
+        let survivor = self
+            .tree
+            .prune_leaf(self.focus)
+            .expect("the focused pane is a leaf of the tree");
+        self.tree.equalize();
+        Ok(DetachedPane(std::mem::replace(&mut self.focus, survivor)))
+    }
+
+    fn refuse_single_pane(&self) -> Result<(), SinglePane> {
+        match self.tree {
+            LayoutTree::Leaf(_) => Err(SinglePane),
+            LayoutTree::Split { .. } => Ok(()),
         }
     }
 }

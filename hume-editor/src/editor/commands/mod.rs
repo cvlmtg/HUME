@@ -399,7 +399,7 @@ pub(in crate::editor) use collect::{collect_operand, run_collected};
 pub(in crate::editor) use insert_session::{
     arm_autoindent, autoindent_owned, end_insert_session, is_group_open_at, tear_down_insert,
 };
-use pane::{SPLIT_TOO_SMALL_MSG, close_focused_pane, pane_missing_from_layout};
+use pane::{SPLIT_TOO_SMALL_MSG, close_focused_pane};
 pub(in crate::editor) use pane::{fits_split, split_pane_onto};
 // `open_pane` itself (the raw, unspliced constructor) is private to
 // `pane.rs`, not re-exported here or anywhere. `open_pane_in_layout` and

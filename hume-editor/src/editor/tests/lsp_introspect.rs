@@ -526,7 +526,7 @@ fn viewport_range_matches_the_on_viewport_change_hooks_own_computation() {
     );
     ed.scripting = Some(host);
 
-    let pid = ed.state.focus.id();
+    let pid = ed.view.focused_pane();
     ed.queue_viewport_change(pid);
     ed.settle();
 
@@ -580,7 +580,7 @@ fn viewport_range_end_is_one_past_the_last_content_line_at_eof() {
 fn viewport_range_end_is_one_past_the_last_visible_row() {
     let mut ed = editor_from("-[a]>\nb\nc\nd\ne\nf\n");
     ed.viewport_mut().height = 3;
-    let t = crate::editor::commands::FocusedPane::current(&ed.state).pane();
+    let t = crate::editor::commands::FocusedPane::current(&ed.view).pane();
 
     let got = crate::editor::lsp::introspect::viewport_range(&ed.state, &ed.view, t);
     assert_eq!(
@@ -659,7 +659,7 @@ fn viewport_range_succeeds_for_a_buffer_shown_only_in_a_background_tab() {
     let mut ed = editor_from("-[a]>bcdef\n");
     ed.execute_typed("tabnew", Some(path.to_str().unwrap()))
         .unwrap();
-    let hidden_pid = ed.state.focus.id();
+    let hidden_pid = ed.view.focused_pane();
     let hidden_bid = ed.focused_buffer_id();
     ed.execute_typed("tabprev", None).unwrap();
     assert_ne!(
@@ -750,7 +750,7 @@ fn lsp_position_params_raises_for_a_paneless_buffer_handle() {
         .find_by_path(&std::fs::canonicalize(&extra).unwrap())
         .expect("extra file must be open in the buffer list");
     rig.ed
-        .switch_to_buffer_with_jump(FocusedPane::current(&rig.ed.state), other_bid);
+        .switch_to_buffer_with_jump(FocusedPane::current(&rig.ed.view), other_bid);
 
     let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
@@ -800,16 +800,13 @@ fn lsp_position_params_resolves_a_buffer_shown_in_a_non_focused_pane() {
         .buffers
         .find_by_path(&std::fs::canonicalize(&extra).unwrap())
         .expect("extra file must be open in the buffer list");
-    let start_pid = rig.ed.state.focus.id();
     let other_pid = open_pane_in_layout(
         &mut rig.ed.state,
         &mut rig.ed.view,
-        start_pid,
         other_bid,
         hume_engine::pipeline::Direction::Horizontal,
-    )
-    .unwrap();
-    rig.ed.state.focus.set_for_test(other_pid);
+    );
+    rig.ed.state.focus.set_for_test(&mut rig.ed.view, other_pid);
 
     let fired = run_probe(
         &mut rig.ed,

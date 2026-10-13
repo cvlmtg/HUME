@@ -13,7 +13,7 @@ use hume_scripting::host::NativeCall;
 #[test]
 fn tabnew_opens_a_fresh_pane_in_a_new_tab_and_focuses_it() {
     let mut ed = editor_from("-[h]>ello\n");
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
     let tab_a = ed.state.tabs.current();
 
     ed.execute_typed("tabnew", None).unwrap();
@@ -25,7 +25,7 @@ fn tabnew_opens_a_fresh_pane_in_a_new_tab_and_focuses_it() {
         "the new tab becomes current"
     );
     assert_ne!(
-        ed.state.focus.id(),
+        ed.view.focused_pane(),
         pid_a,
         "focus moves to the new tab's own pane"
     );
@@ -35,7 +35,7 @@ fn tabnew_opens_a_fresh_pane_in_a_new_tab_and_focuses_it() {
         "the new tab's pane is a real, separate pane, not a rename of A's"
     );
     assert!(
-        matches!(*ed.view.layout(), LayoutTree::Leaf(id) if id == ed.state.focus.id()),
+        matches!(*ed.view.layout(), LayoutTree::Leaf(id) if id == ed.view.focused_pane()),
         "the new tab's layout is a fresh single-leaf tree, not inherited from A's"
     );
 }
@@ -64,7 +64,7 @@ fn tab_new_mappable_command_opens_a_fresh_tab_viewing_the_focused_buffer() {
     use hume_scripting::host::CommandHost;
 
     let mut ed = editor_from("-[h]>ello\n");
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
     let tab_a = ed.state.tabs.current();
     let bid_a = ed.focused_buffer_id();
 
@@ -80,7 +80,7 @@ fn tab_new_mappable_command_opens_a_fresh_tab_viewing_the_focused_buffer() {
         "the new tab becomes current"
     );
     assert_ne!(
-        ed.state.focus.id(),
+        ed.view.focused_pane(),
         pid_a,
         "focus moves to the new tab's own pane"
     );
@@ -113,7 +113,7 @@ fn tabclose_is_refused_on_the_last_tab() {
 #[test]
 fn tabclose_frees_every_pane_the_closed_tab_owns_and_restores_the_previous_tab() {
     let mut ed = editor_from("-[h]>ello\n");
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
     let tab_a = ed.state.tabs.current();
 
     ed.execute_typed("tabnew", None).unwrap();
@@ -126,7 +126,11 @@ fn tabclose_frees_every_pane_the_closed_tab_owns_and_restores_the_previous_tab()
 
     assert_eq!(ed.state.tabs.len(), 1);
     assert_eq!(ed.state.tabs.current(), tab_a);
-    assert_eq!(ed.state.focus.id(), pid_a, "focus returns to A's own pane");
+    assert_eq!(
+        ed.view.focused_pane(),
+        pid_a,
+        "focus returns to A's own pane"
+    );
     assert_eq!(
         ed.view.panes.len(),
         1,
@@ -153,7 +157,7 @@ fn a_hidden_tab_s_pane_keeps_its_decoration_state_until_its_tab_is_focused() {
     let bid = ed.focused_buffer_id();
 
     ed.execute_typed("tabnew", None).unwrap();
-    let pid_b = ed.state.focus.id();
+    let pid_b = ed.view.focused_pane();
     ed.execute_typed("tabprev", None).unwrap();
 
     let scope = ed.view.registry.intern("ui.virtual");
@@ -196,7 +200,7 @@ fn a_hidden_tab_s_pane_keeps_its_decoration_state_until_its_tab_is_focused() {
 fn resizing_while_a_tab_is_hidden_still_resyncs_its_viewport() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.execute_typed("tabnew", None).unwrap();
-    let pid_b = ed.state.focus.id();
+    let pid_b = ed.view.focused_pane();
     frame(&mut ed, 80, 25);
     let width_before = ed.view.panes[pid_b].viewport.width;
     assert!(

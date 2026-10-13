@@ -596,7 +596,7 @@ pub(in crate::editor) fn apply_edit_request_response(
     // Server-initiated, no Steel invocation pane to resolve: the
     // focused pane is the only sensible "current" pane to seed selection
     // state through for a file this edit newly opens.
-    let pid = state.focus.id();
+    let pid = view.focused_pane();
     // No request-time buffer to check staleness against: this answers a
     // server-initiated request, not a Steel round-trip with its own
     // captured generation.

@@ -1143,7 +1143,7 @@ impl Editor {
     /// [`Editor::dispatch`], the funnel their live keypress went through.
     fn replay_action(&mut self, action: &RepeatableAction, count: usize) {
         // Read once, at entry: recipe steps never move focus.
-        let fp = commands::FocusedPane::current(&self.state);
+        let fp = commands::FocusedPane::current(&self.view);
         let pid = fp.pid();
         let bid = fp.bid(&self.view);
 
@@ -1346,7 +1346,7 @@ impl Editor {
         binding: Option<BindingId>,
         f: impl FnOnce(&mut Self),
     ) {
-        let fp = commands::FocusedPane::current(&self.state);
+        let fp = commands::FocusedPane::current(&self.view);
         let (pane, buffer) = (fp.pid(), fp.bid(&self.view));
         let armed = commands::is_group_open_at(&self.state, &self.view, fp);
         if armed {

@@ -47,7 +47,7 @@ fn many_lines_editor() -> Editor {
 #[test]
 fn buffer_tag_changes_within_an_open_insert_session() {
     let mut ed = editor_from("-[h]>ello\n");
-    let pid = ed.state.focus.id();
+    let pid = ed.view.focused_pane();
     let before = ed.state.format_key(&ed.view.panes[pid]).buffer_tag;
 
     ed.feed_key(key('i'));
@@ -71,7 +71,7 @@ fn buffer_tag_changes_within_an_open_insert_session() {
 #[test]
 fn buffer_tag_changes_across_a_set_view_content_refresh() {
     let mut ed = editor_from("-[s]>cratch\n");
-    let pid = ed.state.focus.id();
+    let pid = ed.view.focused_pane();
     let bid = ed.focused_buffer_id();
     let before = ed.state.format_key(&ed.view.panes[pid]).buffer_tag;
 
@@ -105,7 +105,7 @@ fn buffer_tag_changes_across_a_set_view_content_refresh() {
 #[test]
 fn line_store_does_not_leak_between_panes() {
     let mut ed = many_lines_editor();
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
     const TARGET: usize = 25;
 
     let calls_a = Rc::new(Cell::new(0));
@@ -130,7 +130,7 @@ fn line_store_does_not_leak_between_panes() {
     // an unsized pane B walks a different display-line list from pane A's, which
     // would mask the isolation this test exists to check.
     ed.sync_viewport_dims(80, 24);
-    let pid_b = ed.state.focus.id();
+    let pid_b = ed.view.focused_pane();
     assert_ne!(pid_b, pid_a, "split must move focus to the new pane");
 
     let calls_b = Rc::new(Cell::new(0));
@@ -166,7 +166,7 @@ fn line_store_does_not_leak_between_panes() {
 #[test]
 fn a_between_frame_walk_does_not_survive_a_frame() {
     let mut ed = many_lines_editor();
-    let pid = ed.state.focus.id();
+    let pid = ed.view.focused_pane();
     const TARGET: usize = 25;
 
     let calls = Rc::new(Cell::new(0));
@@ -241,7 +241,7 @@ fn a_rendered_frames_entries_do_not_survive_it() {
     let sels = sels_at(&text, &[(7, 7)], 0);
     let mut ed = Editor::for_testing_with(test_fixtures::testing::state(text, sels));
     ed.state.settings.scroll_margin = 0;
-    let pid = ed.state.focus.id();
+    let pid = ed.view.focused_pane();
     ed.view.panes[pid].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(hume_engine::pane::WrapMode::Soft { width: 0 }),
         saved: None,
@@ -302,7 +302,7 @@ fn the_two_frame_passes_format_each_visible_line_once() {
         .map(|i| format!("line{i} with enough text to wrap\n"))
         .collect();
     let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from(text.as_str())));
-    let pid = ed.state.focus.id();
+    let pid = ed.view.focused_pane();
     ed.state.settings.wrap_mode = hume_engine::pane::WrapMode::Soft { width: 0 };
 
     let formats = Rc::new(Cell::new(0));

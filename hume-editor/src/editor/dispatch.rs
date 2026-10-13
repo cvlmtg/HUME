@@ -53,7 +53,7 @@ impl Editor {
         let cmd = match cmd {
             Dispatchable::Native(cmd) => {
                 // A keypress always acts at the focused pane.
-                let fp = commands::FocusedPane::current(&self.state);
+                let fp = commands::FocusedPane::current(&self.view);
                 return match commands::BoundCommand::focused(cmd, fp, None) {
                     Ok(bound) => commands::run(&mut self.state, &mut self.view, bound, ctx),
                     Err(commands::FocusedBindError::NeedsOperand(missing)) => {
@@ -226,7 +226,7 @@ impl Editor {
         let effective_args = match marshal_leading_args(
             cmd.arity,
             cmd.is_variadic,
-            crate::editor::commands::FocusedPane::current(&self.state).handle(&self.view),
+            crate::editor::commands::FocusedPane::current(&self.view).handle(&self.view),
             steel::rvals::SteelVal::IntV(count as isize),
             steel::rvals::SteelVal::BoolV(extend),
             "keymap injection supplies at most 3 (pane, count, extend)",
@@ -305,7 +305,7 @@ impl Editor {
         let effective_args = match marshal_leading_args(
             cmd_arity,
             cmd_is_variadic,
-            crate::editor::commands::FocusedPane::current(&self.state).handle(&self.view),
+            crate::editor::commands::FocusedPane::current(&self.view).handle(&self.view),
             arg_val,
             steel::rvals::SteelVal::BoolV(force),
             "typed-command injection supplies at most 3 (pane, arg, force)",

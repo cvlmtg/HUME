@@ -29,7 +29,7 @@ fn goto_alternate_buffer_on_a_remote_pane_uses_the_global_history_and_toggles_on
 
     let mut ed = editor_from("-[b]>ar\n"); // "bar\n"
     let bar_bid = ed.focused_buffer_id();
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
 
     let baz_bid = ed.open_buffer(Buffer::at_start(BufferText::from("baz\n")));
     let foo_bid = ed.open_buffer(Buffer::at_start(BufferText::from("foo\n")));
@@ -55,14 +55,7 @@ fn goto_alternate_buffer_on_a_remote_pane_uses_the_global_history_and_toggles_on
         pid_a,
         foo_bid,
     );
-    let pid_b = open_pane_in_layout(
-        &mut ed.state,
-        &mut ed.view,
-        pid_a,
-        baz_bid,
-        Direction::Horizontal,
-    )
-    .expect("split must succeed");
+    let pid_b = open_pane_in_layout(&mut ed.state, &mut ed.view, baz_bid, Direction::Horizontal);
     assert_eq!(
         ed.focused_buffer_id(),
         foo_bid,

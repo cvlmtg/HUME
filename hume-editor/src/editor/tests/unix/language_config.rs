@@ -449,7 +449,7 @@ fn reload_config_leaves_a_read_only_view_without_a_language() {
     );
     let label = ViewLabel::named("report").expect("view name");
     ed.open_read_only_view(
-        FocusedPane::current(&ed.state),
+        FocusedPane::current(&ed.view),
         &label,
         "#!/usr/bin/env python\nprint(1)\n",
         None,

@@ -86,12 +86,12 @@ impl EditorState {
             }
             return;
         }
-        let pid = self.focus.id();
+        let pid = view.focused_pane();
         let Some(bid) = view.panes.get(pid).map(|p| p.buffer_id) else {
             return;
         };
         let Some(head) = self
-            .focused_buffer_state(bid)
+            .focused_buffer_state(view, bid)
             .map(|pbs| pbs.view(self.buffers.get(bid).text()).primary().head())
         else {
             return;
@@ -146,13 +146,14 @@ impl EditorState {
             return;
         };
         let (bid, pid) = (session.bid(), session.pane_id());
-        let shown = self.focus.id() == pid && view.panes.get(pid).map(|p| p.buffer_id) == Some(bid);
+        let shown =
+            view.focused_pane() == pid && view.panes.get(pid).map(|p| p.buffer_id) == Some(bid);
         let Some(buf) = self.buffers.try_get(bid).filter(|_| shown) else {
             self.dismiss_completion(view);
             return;
         };
         let Some(head) = self
-            .focused_buffer_state(bid)
+            .focused_buffer_state(view, bid)
             .map(|pbs| pbs.view(buf.text()).primary().head().offset())
         else {
             self.dismiss_completion(view);
@@ -456,7 +457,7 @@ impl EditorState {
             .is_some_and(BufferSession::is_explicit);
         let live = self.input.buffer_completion().and_then(|s| {
             let bid = s.bid();
-            self.focused_buffer_state(bid)
+            self.focused_buffer_state(view, bid)
                 .map(|pbs| (bid, pbs.view(self.buffers.get(bid).text()).primary().head()))
         });
         let Some(session) = self.input.buffer_completion_mut() else {

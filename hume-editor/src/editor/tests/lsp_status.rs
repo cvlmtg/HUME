@@ -112,7 +112,7 @@ fn lsp_stop_targets_the_named_buffer_regardless_of_focus() {
     let other = rig
         .ed
         .open_buffer(Buffer::at_start(BufferText::from("other\n")));
-    let fp = FocusedPane::current(&rig.ed.state);
+    let fp = FocusedPane::current(&rig.ed.view);
     rig.ed.switch_to_buffer_without_jump(fp, other);
     assert_ne!(rig.ed.focused_buffer_id(), rig.bid);
 

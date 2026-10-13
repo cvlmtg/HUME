@@ -404,7 +404,7 @@ pub(in crate::editor) fn with_jump<R>(
             )
         }
     };
-    if state.mode() == Mode::Insert && state.focus.id() == pid {
+    if state.mode() == Mode::Insert && view.focused_pane() == pid {
         t.state_mut(&mut state.panes.state, view).typed_run = None;
     }
     let pending = state.panes.jumps[pid].begin_pending(entry);

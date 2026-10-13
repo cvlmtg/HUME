@@ -26,7 +26,7 @@ fn typed_set_applies_to_open_buffers() {
     // The "undo-levels" arm in settings::ops::resync_derived_state pushes the
     // cap to the buffer. Without it both edits would stay undoable.
     let mut ed = editor_from("-[h]>ello\n");
-    let fp = FocusedPane::current(&ed.state);
+    let fp = FocusedPane::current(&ed.view);
     crate::editor::commands::typed_set(&mut ed, fp, Some("global undo-levels=1"), false)
         .expect("set undo-levels");
 
@@ -45,12 +45,12 @@ fn new_buffer_inherits_undo_levels() {
     // lifecycle::open_buffer must thread undo_levels through, or this second
     // buffer would keep both edits undoable.
     let mut ed = editor_from("-[h]>ello\n");
-    let fp = FocusedPane::current(&ed.state);
+    let fp = FocusedPane::current(&ed.view);
     crate::editor::commands::typed_set(&mut ed, fp, Some("global undo-levels=1"), false)
         .expect("set undo-levels");
 
     let bid2 = ed.open_buffer(Buffer::scratch());
-    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.state), bid2);
+    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid2);
 
     let after_first_edit = two_edits(&mut ed);
     assert!(ed.doc().can_undo());

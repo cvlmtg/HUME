@@ -144,7 +144,7 @@ fn scrolling_leaves_the_read_pending() {
     let mut ed = editor_from(&lines);
     ed.feed_key(key('f'));
     ed.handle_input(mouse_wheel(true));
-    let pid = ed.state.focus.id();
+    let pid = ed.view.focused_pane();
     assert!(ed.view.panes[pid].viewport.top().line > hume_rope::line::ContentLine::new(0));
     assert!(reading_char(&ed));
     ed.feed_key(key('e'));
@@ -248,7 +248,7 @@ fn search_history(ed: &Editor, kind: HistoryKind) -> Vec<String> {
 }
 
 fn jump_count(ed: &Editor) -> usize {
-    ed.state.panes.jumps[ed.state.focus.id()].len()
+    ed.state.panes.jumps[ed.view.focused_pane()].len()
 }
 
 #[test]

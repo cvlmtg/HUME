@@ -411,16 +411,13 @@ fn symbol_under_cursor_finds_a_word_in_a_non_focused_pane() {
     let extra = tmp.path().join("other.rs");
     std::fs::write(&extra, "fn other() {}\n").unwrap();
     let other_bid = ed.open_extra_file(&extra).expect("extra file must open");
-    let start_pid = ed.state.focus.id();
     let other_pid = open_pane_in_layout(
         &mut ed.state,
         &mut ed.view,
-        start_pid,
         other_bid,
         hume_engine::pipeline::Direction::Horizontal,
-    )
-    .unwrap();
-    ed.state.focus.set_for_test(other_pid);
+    );
+    ed.state.focus.set_for_test(&mut ed.view, other_pid);
 
     let fired = run_probe(
         &mut ed,
@@ -451,7 +448,7 @@ fn symbol_under_cursor_raises_once_no_pane_shows_the_buffer() {
     let extra = tmp.path().join("other.rs");
     std::fs::write(&extra, "fn other() {}\n").unwrap();
     let other_bid = ed.open_extra_file(&extra).expect("extra file must open");
-    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.state), other_bid);
+    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), other_bid);
 
     let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(

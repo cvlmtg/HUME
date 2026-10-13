@@ -514,7 +514,7 @@ fn refresh_hints(ed: &mut Editor) {
     ed.sync_viewport_dims(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
-    let pid = ed.state.focus.id();
+    let pid = ed.view.focused_pane();
     ed.queue_viewport_change(pid);
     ed.settle();
     std::thread::sleep(Duration::from_millis(300));

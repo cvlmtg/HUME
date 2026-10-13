@@ -8,8 +8,8 @@ use super::{DetachedPane, PaneId};
 
 /// Proof that a pane was just inserted into the pool and isn't yet reachable
 /// from any `LayoutTree`. Minted only by `PanePool::insert`, in this
-/// module, and consumed by [`super::LayoutTree::split_leaf`]/
-/// [`super::LayoutTree::leaf`] to splice it in. Not `Clone`/`Copy`: a
+/// module, and consumed by [`super::EngineView::split_focused`]/
+/// [`super::FocusedLayout::new`] to splice it in. Not `Clone`/`Copy`: a
 /// duplicable token would defeat the "exactly one tree ends up naming this
 /// pane" guarantee. Mirrors [`DetachedPane`]'s enforcement on the opposite
 /// transition (a pane about to leave the pool) at the same strength: this is
@@ -31,10 +31,11 @@ impl UnattachedPane {
 #[cfg(test)]
 impl UnattachedPane {
     /// Mint a token for a `PaneId` never actually inserted into a pool:
-    /// `LayoutTree`'s own unit tests (`pipeline::tests`) exercise tree
-    /// shape in isolation from `PanePool`, off ids minted by a throwaway
-    /// `SlotMap` (see that module's own `pane_ids` helper), and need a
-    /// token to hand `split_leaf` without building a real `EngineView`.
+    /// the layout unit tests (`pipeline::tests`) exercise tree shape in
+    /// isolation from `PanePool`, off ids minted by a throwaway `SlotMap`
+    /// (see that module's own `pane_ids` helper), and need a token to hand
+    /// `split_leaf`/`FocusedLayout::new` without building a real
+    /// `EngineView`.
     pub(crate) fn for_test(id: PaneId) -> Self {
         Self(id)
     }

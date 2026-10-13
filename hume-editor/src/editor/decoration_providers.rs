@@ -177,8 +177,14 @@ impl Editor {
                 r.set_bracket(None);
             }
         }
-        if !in_insert && self.state.panes.render.contains_key(self.state.focus.id()) {
-            let focused = self.state.focus.id();
+        if !in_insert
+            && self
+                .state
+                .panes
+                .render
+                .contains_key(self.view.focused_pane())
+        {
+            let focused = self.view.focused_pane();
             let text = self.doc().text();
             let pbs = &self.state.panes.state[focused][self.focused_buffer_id()];
             if let Some(match_pos) = matching_bracket(pbs.view(text).primary()) {

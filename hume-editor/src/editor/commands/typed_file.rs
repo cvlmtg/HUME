@@ -1,4 +1,4 @@
-use hume_engine::pipeline::{BufferId, LayoutRefusal};
+use hume_engine::pipeline::BufferId;
 use hume_platform::io::FileMeta;
 
 use super::super::Editor;
@@ -42,12 +42,8 @@ pub(in crate::editor) fn typed_quit(
     // pane, not the tab or the editor. The buffer stays open (no edits lost),
     // so no dirty check. That guard belongs to the steps below, which
     // actually close something the user can't get back without saving.
-    match super::close_focused_pane(&mut ed.state, &mut ed.view, fp) {
-        Ok(()) => return Ok(()),
-        Err(LayoutRefusal::SinglePane) => {}
-        Err(LayoutRefusal::MissingTarget) => {
-            return Err(super::pane_missing_from_layout(fp.pid()));
-        }
+    if super::close_focused_pane(&mut ed.state, &mut ed.view).is_ok() {
+        return Ok(());
     }
 
     // The active tab is down to its last pane, but other tabs remain open:

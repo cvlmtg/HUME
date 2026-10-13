@@ -2188,7 +2188,7 @@ fn dot_repeat_ignores_a_foreign_edit_made_while_a_picker_is_open() {
     // A foreign edit, far from the cursor, landing on the same buffer while
     // the picker sits open, standing in for a timer/LSP edit unrelated to
     // the pick.
-    let fp = FocusedPane::current(&ed.state);
+    let fp = FocusedPane::current(&ed.view);
     let (pid, bid) = (fp.pid(), fp.bid(&ed.view));
     crate::editor::doc_ops::apply_doc_edit_grouped(
         &mut ed.state.buffers,
@@ -2260,7 +2260,7 @@ fn dot_repeat_keeps_a_pick_when_a_foreign_edit_follows_the_bindings_own_edit() {
 
     // A foreign edit, landing on the same buffer while the picker sits open,
     // standing in for a timer/LSP edit unrelated to the pick.
-    let fp = FocusedPane::current(&ed.state);
+    let fp = FocusedPane::current(&ed.view);
     let (pid, bid) = (fp.pid(), fp.bid(&ed.view));
     crate::editor::doc_ops::apply_doc_edit_grouped(
         &mut ed.state.buffers,
@@ -3669,16 +3669,13 @@ fn a_refused_picker_in_an_insert_binding_leaves_the_next_change_recordable() {
     use crate::editor::commands::open_pane_in_layout;
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bc def\n");
-    let first = ed.state.focus.id();
     let bid = ed.focused_buffer_id();
     open_pane_in_layout(
         &mut ed.state,
         &mut ed.view,
-        first,
         bid,
         hume_engine::pipeline::Direction::Horizontal,
-    )
-    .unwrap();
+    );
     run(
         &mut ed,
         tmp.path(),

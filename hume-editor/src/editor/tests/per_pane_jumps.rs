@@ -87,7 +87,7 @@ fn p7_switch_to_buffer_with_jump_same_buffer_is_noop() {
 
     // Switch to the buffer already focused, a no-op.
     let current = ed.focused_buffer_id();
-    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.state), current);
+    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), current);
     assert_eq!(
         state(&ed),
         back_at_start,
@@ -125,7 +125,7 @@ fn p7_close_buffer_prunes_pane_jumps() {
     assert_ne!(buf1, buf2);
 
     // Close file1. Its jump entries should be pruned from pane_jumps.
-    let pid = ed.state.focus.id();
+    let pid = ed.view.focused_pane();
     ed.close_buffer(buf1);
     // The jump list for this pane must not contain any file1 entries.
     let has_buf1_entry = ed.state.panes.jumps[pid].entries_for_buffer(buf1);

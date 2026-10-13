@@ -98,7 +98,7 @@ pub(in crate::editor) fn base_input(ed: &mut Editor, _r: LayerRef, ev: InputEven
 /// Bulk-insert `text` at every selection in the focused buffer as one
 /// edit: the `Base` layer's paste policy (Normal and Extend alike).
 fn apply_normal_mode_paste(ed: &mut Editor, text: &str) {
-    let focused = ed.state.focus.id();
+    let focused = ed.view.focused_pane();
     let buf = ed.focused_buffer_id();
     // Bracketed-paste terminal events bypass the dispatch pipeline entirely
     // (no `commands::run` to report a refusal), so a refusal here
@@ -160,7 +160,7 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
         ed.state.register_prefix = None; // drop a "<reg> prefix not yet used
         // Esc exits Extend mode; Normal is the reset state.
         ed.state.input.set_extend(false);
-        let t = crate::editor::commands::FocusedPane::current(&ed.state).pane();
+        let t = crate::editor::commands::FocusedPane::current(&ed.view).pane();
         cmd_clear_search(
             &mut ed.state,
             &mut ed.view,

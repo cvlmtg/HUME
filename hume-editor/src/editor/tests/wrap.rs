@@ -6,7 +6,7 @@ use hume_grid::Rect;
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 fn focused_pane(ed: &Editor) -> &hume_engine::pane::Pane {
-    &ed.view.panes[ed.state.focus.id()]
+    &ed.view.panes[ed.view.focused_pane()]
 }
 
 /// `pane`'s effective wrap mode, resolved pane → buffer → global: the same
@@ -208,9 +208,9 @@ fn set_global_wrap_mode_is_retroactive_for_unpinned_panes() {
 #[test]
 fn set_buffer_wrap_mode_affects_only_the_unpinned_sibling() {
     let mut ed = editor_from("-[a]>b\n");
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
     ed.execute_typed("split", None).unwrap();
-    let pid_b = ed.state.focus.id();
+    let pid_b = ed.view.focused_pane();
     assert_ne!(pid_a, pid_b);
 
     // Focus is on B after the split, so pin it explicitly. A stays unpinned.
@@ -370,7 +370,8 @@ fn wrap_toggle_off_then_on_restores_an_explicit_pane_pin() {
 fn wrap_toggle_on_zeroes_horizontal_offset_only() {
     let mut ed = editor_from("-[a]>b\n");
     {
-        let pane = &mut ed.view.panes[ed.state.focus.id()];
+        let focused_pid = ed.view.focused_pane();
+        let pane = &mut ed.view.panes[focused_pid];
         pane.set_wrap(hume_engine::pane::WrapOverride {
             mode: Some(WrapMode::None),
             saved: None,
@@ -445,7 +446,8 @@ fn wrap_toggle_off_leaves_top_slot_for_the_next_frame_to_clamp() {
     let mut ed = editor_from("-[a]>b\n");
     run_set(&mut ed, "pane wrap-mode=soft").expect(":set pane wrap-mode=soft failed");
     {
-        let pane = &mut ed.view.panes[ed.state.focus.id()];
+        let focused_pid = ed.view.focused_pane();
+        let pane = &mut ed.view.panes[focused_pid];
         pane.viewport
             .seed_top_for_test(hume_engine::display_lines::DisplayLinePos::new(
                 pane.viewport.top().line,
@@ -482,7 +484,8 @@ fn set_pane_wrap_mode_change_while_wrapping_leaves_top_slot_for_the_next_frame_t
     let mut ed = editor_from("-[a]>b\n");
     run_set(&mut ed, "pane wrap-mode=soft:80").expect(":set pane wrap-mode=soft:80 failed");
     {
-        let pane = &mut ed.view.panes[ed.state.focus.id()];
+        let focused_pid = ed.view.focused_pane();
+        let pane = &mut ed.view.panes[focused_pid];
         pane.viewport
             .seed_top_for_test(hume_engine::display_lines::DisplayLinePos::new(
                 pane.viewport.top().line,
@@ -517,7 +520,8 @@ fn set_pane_wrap_mode_change_while_wrapping_leaves_top_slot_for_the_next_frame_t
 fn wrap_toggle_off_does_not_discard_a_still_valid_offset_inside_a_before_block() {
     let mut ed = editor_from("-[a]>b\n");
     run_set(&mut ed, "pane wrap-mode=soft").expect(":set pane wrap-mode=soft failed");
-    ed.view.panes[ed.state.focus.id()]
+    let focused_pid = ed.view.focused_pane();
+    ed.view.panes[focused_pid]
         .providers
         .add_decoration_source(Box::new(VirtualLineBlock::uniform(
             hume_engine::providers::VirtualLineAnchor::Before(hume_rope::line::ContentLine::new(0)),
@@ -525,7 +529,8 @@ fn wrap_toggle_off_does_not_discard_a_still_valid_offset_inside_a_before_block()
             "V",
         )));
     {
-        let pane = &mut ed.view.panes[ed.state.focus.id()];
+        let focused_pid = ed.view.focused_pane();
+        let pane = &mut ed.view.panes[focused_pid];
         pane.viewport
             .seed_top_for_test(hume_engine::display_lines::DisplayLinePos::new(
                 hume_rope::line::ContentLine::new(0),
@@ -576,7 +581,7 @@ fn resolve_pane_settings_honours_the_buffer_rung() {
     let mut ed = editor_from("-[a]>b\n");
     // Global default (Indent) wraps; only a buffer override can produce None.
     run_set(&mut ed, "buffer wrap-mode=none").expect("set buffer failed");
-    let pid = ed.state.focus.id();
+    let pid = ed.view.focused_pane();
     let settings = ed.resolve_pane_settings(pid);
     assert_eq!(
         settings.format.wrap_mode,
@@ -595,7 +600,7 @@ fn resolve_pane_settings_honours_the_buffer_rung() {
 fn open_second_buffer(ed: &mut Editor) -> BufferId {
     let text = BufferText::from("other buffer\n");
     let bid = ed.open_buffer(Buffer::at_start(text));
-    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.state), bid);
+    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid);
     bid
 }
 
@@ -638,7 +643,7 @@ fn wrap_off_pin_is_restored_on_switching_back() {
     assert_eq!(focused_pane(&ed).wrap().mode, Some(WrapMode::None));
 
     open_second_buffer(&mut ed);
-    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.state), bid_first);
+    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid_first);
     assert_eq!(
         focused_pane(&ed).wrap().mode,
         Some(WrapMode::None),
@@ -677,7 +682,7 @@ fn closing_a_buffer_drops_its_wrap_override() {
         "sanity: closing bid_first leaves the pane on the other open buffer"
     );
 
-    let pid = ed.state.focus.id();
+    let pid = ed.view.focused_pane();
     assert!(
         !ed.view.panes[pid].wraps.contains_key(bid_first),
         "the closed buffer's wrap override is dropped, not leaked in the map forever"

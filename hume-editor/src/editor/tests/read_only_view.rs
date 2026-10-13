@@ -70,7 +70,7 @@ fn messages_reuses_existing_view_buffer() {
         .find(|(_, buf)| buf.label.is_none() && buf.path().is_none())
         .map(|(id, _)| id)
         .expect("scratch buffer must exist");
-    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), scratch_id);
+    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.view), scratch_id);
     ed.report(Severity::Warning, "msg2".to_string());
     ed.execute_typed("messages", None).unwrap();
 
@@ -142,7 +142,7 @@ fn insert_entry_on_a_read_only_buffer_leaves_the_selection_in_place() {
 #[test]
 fn insert_entry_beside_another_panes_insert_session_leaves_the_selection_in_place() {
     let mut ed = editor_from("he-[ll]>o world\n");
-    let pid_a = ed.state.focus.id();
+    let pid_a = ed.view.focused_pane();
     let bid = ed.focused_buffer_id();
     live_host!(ed)
         .run_command_sync(
@@ -154,12 +154,12 @@ fn insert_entry_beside_another_panes_insert_session_leaves_the_selection_in_plac
             },
         )
         .expect("pane-vsplit must succeed");
-    let pid_b = ed.state.focus.id();
+    let pid_b = ed.view.focused_pane();
     assert_ne!(pid_a, pid_b, "setup: the split must focus a new pane");
-    ed.state.focus.set_for_test(pid_a);
+    ed.state.focus.set_for_test(&mut ed.view, pid_a);
     ed.feed_key(key('i'));
     assert_eq!(ed.state.mode(), Mode::Insert, "setup: pane A is in Insert");
-    ed.state.focus.set_for_test(pid_b);
+    ed.state.focus.set_for_test(&mut ed.view, pid_b);
     let before = state(&ed);
 
     ed.execute_keymap_command("insert-after".to_string().into(), None, false);
@@ -234,7 +234,7 @@ fn apply_doc_history_walk_distinguishes_refusal_from_exhaustion() {
     ed.handle_key(key('d')); // creates one undo step, not exhausted
     ed.doc_mut().read_only = true;
 
-    let focused = ed.state.focus.id();
+    let focused = ed.view.focused_pane();
     let bid = ed.focused_buffer_id();
     let result = doc_ops::apply_doc_history_walk(
         &mut ed.state.buffers,

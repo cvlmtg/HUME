@@ -4,7 +4,7 @@ use crate::editor::commands::{
     cmd_pane_focus_right, cmd_pane_focus_up, open_pane_in_layout,
 };
 use crate::editor::registry::Count;
-use hume_engine::pipeline::{Direction, LayoutTree, PaneId, RenderContext};
+use hume_engine::pipeline::{Direction, FocusedLayout, LayoutTree, PaneId, RenderContext};
 use hume_ops::MotionMode;
 
 type Cmd = crate::editor::registry::FocusedCmdFn;
@@ -17,25 +17,12 @@ type Cmd = crate::editor::registry::FocusedCmdFn;
 fn build_2x2() -> (Editor, [PaneId; 4]) {
     let mut ed = editor_from("-[a]>bc\n");
     let bid = ed.focused_buffer_id();
-    let pid_a = ed.state.focus.id(); // top-left
-    let pid_b =
-        open_pane_in_layout(&mut ed.state, &mut ed.view, pid_a, bid, Direction::Vertical).unwrap(); // stack a over b
-    let pid_c = open_pane_in_layout(
-        &mut ed.state,
-        &mut ed.view,
-        pid_a,
-        bid,
-        Direction::Horizontal,
-    )
-    .unwrap(); // a | c (top row)
-    let pid_d = open_pane_in_layout(
-        &mut ed.state,
-        &mut ed.view,
-        pid_b,
-        bid,
-        Direction::Horizontal,
-    )
-    .unwrap(); // b | d (bottom row)
+    let pid_a = ed.view.focused_pane(); // top-left
+    let pid_b = open_pane_in_layout(&mut ed.state, &mut ed.view, bid, Direction::Vertical); // stack a over b
+    let pid_c = open_pane_in_layout(&mut ed.state, &mut ed.view, bid, Direction::Horizontal); // a | c (top row)
+    ed.state.focus.set_for_test(&mut ed.view, pid_b);
+    let pid_d = open_pane_in_layout(&mut ed.state, &mut ed.view, bid, Direction::Horizontal); // b | d (bottom row)
+    ed.state.focus.set_for_test(&mut ed.view, pid_a);
     let mut ctx = RenderContext::new();
     ed.sync_viewport_dims(100, 51);
     ed.settle();
@@ -46,8 +33,8 @@ fn build_2x2() -> (Editor, [PaneId; 4]) {
 /// Drive `cmd` on `ed`, asserting `focus` is `expected` afterwards and no
 /// status message was raised.
 fn expect_focus(ed: &mut Editor, start: PaneId, expected: PaneId, cmd: Cmd) {
-    ed.state.focus.set_for_test(start);
-    let fp = FocusedPane::current(&ed.state);
+    ed.state.focus.set_for_test(&mut ed.view, start);
+    let fp = FocusedPane::current(&ed.view);
     cmd(
         &mut ed.state,
         &mut ed.view,
@@ -56,7 +43,7 @@ fn expect_focus(ed: &mut Editor, start: PaneId, expected: PaneId, cmd: Cmd) {
         MotionMode::Move,
     )
     .unwrap();
-    assert_eq!(ed.state.focus.id(), expected);
+    assert_eq!(ed.view.focused_pane(), expected);
     assert!(ed.state.status_msg.is_none());
 }
 
@@ -108,23 +95,9 @@ fn t4_directional_focus_in_2x2_grid() {
 fn t4_tie_break_uses_center_distance_not_origin() {
     let mut ed = editor_from("-[a]>bc\n");
     let bid = ed.focused_buffer_id();
-    let pid_a = ed.state.focus.id();
-    let pid_b = open_pane_in_layout(
-        &mut ed.state,
-        &mut ed.view,
-        pid_a,
-        bid,
-        Direction::Horizontal,
-    )
-    .unwrap();
-    let pid_c = open_pane_in_layout(
-        &mut ed.state,
-        &mut ed.view,
-        pid_a,
-        bid,
-        Direction::Horizontal,
-    )
-    .unwrap();
+    let pid_a = ed.view.focused_pane();
+    let pid_b = open_pane_in_layout(&mut ed.state, &mut ed.view, bid, Direction::Horizontal);
+    let pid_c = open_pane_in_layout(&mut ed.state, &mut ed.view, bid, Direction::Horizontal);
     // The tree `open_pane_in_layout` grafted `pid_b`/`pid_c` into above is
     // overwritten wholesale here; only that both were created through it
     // matters, not where its own `split_leaf` call placed them. Built
@@ -133,7 +106,7 @@ fn t4_tie_break_uses_center_distance_not_origin() {
     // tie-break test needs. Rebuilds the tree over the same pane set created
     // above; nothing detached or leaked: the discarded tree names the same
     // pool entries the replacement does, just reshaped.
-    let _ = ed.view.replace_layout(LayoutTree::Split {
+    let tree = LayoutTree::Split {
         direction: Direction::Horizontal,
         ratio: 0.5,
         children: Box::new((
@@ -144,14 +117,16 @@ fn t4_tie_break_uses_center_distance_not_origin() {
                 children: Box::new((LayoutTree::Leaf(pid_b), LayoutTree::Leaf(pid_c))),
             },
         )),
-    });
+    };
+    let layout = FocusedLayout::from_parts(tree, pid_a).expect("pid_a is a leaf of the tree");
+    let _ = ed.state.focus.replace_layout_for_test(&mut ed.view, layout);
     let mut ctx = RenderContext::new();
     ed.sync_viewport_dims(100, 51);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
-    ed.state.focus.set_for_test(pid_a);
-    let fp = FocusedPane::current(&ed.state);
+    ed.state.focus.set_for_test(&mut ed.view, pid_a);
+    let fp = FocusedPane::current(&ed.view);
     cmd_pane_focus_right(
         &mut ed.state,
         &mut ed.view,
@@ -160,7 +135,7 @@ fn t4_tie_break_uses_center_distance_not_origin() {
         MotionMode::Move,
     )
     .unwrap();
-    assert_eq!(ed.state.focus.id(), pid_c);
+    assert_eq!(ed.view.focused_pane(), pid_c);
 }
 
 #[test]
@@ -174,8 +149,8 @@ fn t4_pane_focus_next_cycles_dfs_order_and_wraps() {
         (pid_b, pid_d),
         (pid_d, pid_a),
     ] {
-        ed.state.focus.set_for_test(start);
-        let fp = FocusedPane::current(&ed.state);
+        ed.state.focus.set_for_test(&mut ed.view, start);
+        let fp = FocusedPane::current(&ed.view);
         cmd_pane_focus_next(
             &mut ed.state,
             &mut ed.view,
@@ -184,7 +159,7 @@ fn t4_pane_focus_next_cycles_dfs_order_and_wraps() {
             MotionMode::Move,
         )
         .unwrap();
-        assert_eq!(ed.state.focus.id(), expected);
+        assert_eq!(ed.view.focused_pane(), expected);
         assert!(ed.state.status_msg.is_none());
     }
 }
@@ -192,8 +167,8 @@ fn t4_pane_focus_next_cycles_dfs_order_and_wraps() {
 #[test]
 fn t4_pane_focus_next_single_pane_is_noop() {
     let mut ed = editor_from("-[h]>ello\n");
-    let before = ed.state.focus.id();
-    let fp = FocusedPane::current(&ed.state);
+    let before = ed.view.focused_pane();
+    let fp = FocusedPane::current(&ed.view);
     cmd_pane_focus_next(
         &mut ed.state,
         &mut ed.view,
@@ -202,15 +177,15 @@ fn t4_pane_focus_next_single_pane_is_noop() {
         MotionMode::Move,
     )
     .unwrap();
-    assert_eq!(ed.state.focus.id(), before);
+    assert_eq!(ed.view.focused_pane(), before);
     assert!(ed.state.status_msg.is_none());
 }
 
 #[test]
 fn t4_directional_no_neighbour_is_noop() {
     let mut ed = editor_from("-[h]>ello\n");
-    let before = ed.state.focus.id();
-    let fp = FocusedPane::current(&ed.state);
+    let before = ed.view.focused_pane();
+    let fp = FocusedPane::current(&ed.view);
     for cmd in [
         cmd_pane_focus_left as Cmd,
         cmd_pane_focus_right as Cmd,
@@ -225,7 +200,7 @@ fn t4_directional_no_neighbour_is_noop() {
             MotionMode::Move,
         )
         .unwrap();
-        assert_eq!(ed.state.focus.id(), before);
+        assert_eq!(ed.view.focused_pane(), before);
         assert!(ed.state.status_msg.is_none());
     }
 }

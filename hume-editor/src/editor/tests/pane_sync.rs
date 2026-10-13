@@ -10,7 +10,7 @@ use pretty_assertions::assert_eq;
 
 /// Return the pane's primary cursor as an absolute char offset.
 fn pane_head(ed: &Editor) -> hume_rope::offset::CharOffset {
-    ed.view.panes[ed.state.focus.id()]
+    ed.view.panes[ed.view.focused_pane()]
         .selections
         .as_ref()
         .expect("a written mirror")
@@ -97,7 +97,7 @@ fn pane_selections_primary_is_first_even_when_not_earliest() {
     ed.sync_all_pane_mirrors(&ed.view.active_pane_ids());
 
     // Selections are passed in document order; an index names the primary.
-    let mirror = ed.view.panes[ed.state.focus.id()]
+    let mirror = ed.view.panes[ed.view.focused_pane()]
         .selections
         .as_ref()
         .expect("a written mirror");

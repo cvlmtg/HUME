@@ -15,7 +15,7 @@ fn reload_carries_the_selections_of_a_pane_showing_another_buffer() {
     let bid = ed.focused_buffer_id();
 
     ed.execute_typed("split", None).unwrap();
-    let away = ed.state.focus.id();
+    let away = ed.view.focused_pane();
     select(&mut ed, &[(24, 24)], 0);
     ed.open_buffer(Buffer::at_start(BufferText::from("other\n")));
     ed.execute_typed("bn", None).unwrap();
@@ -33,13 +33,13 @@ fn reload_carries_the_selections_of_a_pane_showing_another_buffer() {
     );
     let replacement = Buffer::at_start(BufferText::from("short\n"));
     ed.reload_buffer_in_place(
-        FocusedPane::current(&ed.state),
+        FocusedPane::current(&ed.view),
         ReplaceSource::disk(replacement),
     );
 
     ed.feed_event(key_ctrl('p'));
     ed.feed_event(key('p'));
-    assert_eq!(ed.state.focus.id(), away);
+    assert_eq!(ed.view.focused_pane(), away);
     ed.execute_typed("bp", None).unwrap();
     assert_eq!(ed.focused_buffer_id(), bid);
     assert_eq!(
@@ -83,7 +83,7 @@ fn sift_cancel_after_an_out_of_band_edit_restores_the_carried_selection() {
     ed.handle_key(key('s'));
     assert_eq!(ed.state.mode(), Mode::Sift, "setup: sift is open");
 
-    let pid = ed.state.focus.id();
+    let pid = ed.view.focused_pane();
     let bid = ed.focused_buffer_id();
     let delete_prefix = lsp_types::TextEdit {
         range: lsp_types::Range::new(
@@ -139,11 +139,15 @@ fn a_net_identity_undo_walk_keeps_another_panes_selections_paired() {
     let bid = ed.focused_buffer_id();
     let root = ed.doc().text().version();
     ed.execute_typed("split", None).unwrap();
-    let away = ed.state.focus.id();
+    let away = ed.view.focused_pane();
     select(&mut ed, &[(3, 3)], 0);
     ed.feed_event(key_ctrl('p'));
     ed.feed_event(key('p'));
-    assert_ne!(ed.state.focus.id(), away, "setup: back on the editing pane");
+    assert_ne!(
+        ed.view.focused_pane(),
+        away,
+        "setup: back on the editing pane"
+    );
 
     for k in [
         key('i'),
@@ -176,7 +180,7 @@ fn a_net_identity_undo_walk_keeps_another_panes_selections_paired() {
 #[test]
 fn a_tracked_position_follows_an_insertion_above_it() {
     let mut ed = editor_from("abc\nd-[e]>f\n");
-    let pid = ed.state.focus.id();
+    let pid = ed.view.focused_pane();
     let bid = ed.focused_buffer_id();
     let head = ed.current_view().primary().head();
     let text = ed.doc().text().clone();
@@ -223,7 +227,7 @@ fn a_tracked_position_follows_a_reload() {
 
     let replacement = Buffer::at_start(BufferText::from("zero\none\ntwo\nthree\n"));
     ed.reload_buffer_in_place(
-        FocusedPane::current(&ed.state),
+        FocusedPane::current(&ed.view),
         ReplaceSource::disk(replacement),
     );
 
@@ -238,7 +242,7 @@ fn a_tracked_position_follows_a_reload() {
 #[test]
 fn a_tracked_position_is_dropped_when_its_buffer_is_replaced() {
     let mut ed = editor_from("-[a]>\n");
-    let fp = FocusedPane::current(&ed.state);
+    let fp = FocusedPane::current(&ed.view);
     let view = ed.open_read_only_view(fp, &view_label("tracked"), "one\ntwo\n", None);
     let head = ed.state.buffers.get(view).text().snap(co(0));
     let token = ed
@@ -256,7 +260,7 @@ fn a_tracked_position_is_dropped_when_its_buffer_is_replaced() {
     );
 
     ed.open_read_only_view(
-        FocusedPane::current(&ed.state),
+        FocusedPane::current(&ed.view),
         &view_label("tracked"),
         "other\n",
         None,

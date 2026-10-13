@@ -191,7 +191,7 @@ fn execute_command(ed: &mut Editor, input: &str) {
         && !force
         && arg.is_some_and(|a| !a.is_empty() && a.bytes().all(|b| b.is_ascii_digit()))
     {
-        let fp = commands::FocusedPane::current(&ed.state);
+        let fp = commands::FocusedPane::current(&ed.view);
         if let Err(e) = commands::typed_goto_line(ed, fp, arg, false) {
             ed.report(e.severity(), e.message().to_owned());
         }
@@ -224,7 +224,7 @@ fn execute_command(ed: &mut Editor, input: &str) {
         Some(tc) => match &tc.body {
             TypedBody::Native(fun) => {
                 let fun = *fun;
-                let fp = commands::FocusedPane::current(&ed.state);
+                let fp = commands::FocusedPane::current(&ed.view);
                 if let Err(e) = fun(ed, fp, expanded.as_deref(), force) {
                     ed.report(e.severity(), e.message().to_owned());
                 }

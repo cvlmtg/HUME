@@ -369,7 +369,7 @@ impl Editor {
         verb: &str,
     ) -> Option<crate::editor::commands::FocusedPane> {
         let name = self.state.buffers.try_get(bid)?.display_name();
-        let fp = crate::editor::commands::FocusedPane::current(&self.state);
+        let fp = crate::editor::commands::FocusedPane::current(&self.view);
         if bid != fp.bid(&self.view) {
             self.report(
                 Severity::Warning,

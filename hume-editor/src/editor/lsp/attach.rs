@@ -544,7 +544,7 @@ impl Editor {
                 let content = self.lsp_status_text();
                 // Applied from the effect log after the eval that queued it,
                 // so the pane focused now is where the status view opens.
-                let fp = crate::editor::commands::FocusedPane::current(&self.state);
+                let fp = crate::editor::commands::FocusedPane::current(&self.view);
                 self.open_read_only_view(
                     fp,
                     &ViewLabel::editor(EditorView::LspStatus),
