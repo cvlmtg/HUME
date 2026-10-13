@@ -352,10 +352,12 @@
 (define (%bundled-language-config name)
   (let ((data (%read-language-data name)))
     (and data
-         (hash 'roots (%language-data-ref data 'roots)
-               'language-id (%language-data-ref data 'language-id)
-               'comment-tokens (%language-data-ref data 'comment-tokens)
-               'block-comment-tokens (%language-data-ref data 'block-comment-tokens)))))
+         (let loop ((rest data) (fields (hash)))
+           (cond
+             ((null? rest) fields)
+             ((equal? (car (car rest)) 'grammar) (loop (cdr rest) fields))
+             (else (loop (cdr rest)
+                         (hash-insert fields (car (car rest)) (cdr (car rest))))))))))
 
 (define (bundled-language-grammar name)
   (let ((data (%read-language-data name)))

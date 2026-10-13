@@ -222,8 +222,9 @@ macro_rules! builtins {
 // %read-language-data: the one reader of `<runtime>/scheme/languages/<name>.scm`
 // (record format: runtime/scheme/README.md), on data-file and read-data-file;
 // an unlisted name, or a missing runtime dir, reads as #f.
-// %bundled-language-config is the editor's view (ScriptingHost::bundled_language
-// decodes it); bundled-language-grammar and bundled-grammar-languages are the
+// %bundled-language-config is the editor's view: every entry but `grammar`,
+// as a hash whose keys ScriptingHost::bundled_language's decoder defines and
+// checks. bundled-language-grammar and bundled-grammar-languages are the
 // plugins' view.
 const BOOTSTRAP: &str = include_str!("bootstrap.scm");
 
