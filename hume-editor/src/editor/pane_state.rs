@@ -289,7 +289,7 @@ impl PaneEntry {
         self.buffers.get(bid)
     }
 
-    /// [`Self::buffer`], mutably.
+    /// The pane's state for `bid`, if it has ever shown it, mutably.
     pub(in crate::editor) fn buffer_mut(&mut self, bid: BufferId) -> Option<&mut PaneBufferState> {
         self.buffers.get_mut(bid)
     }
