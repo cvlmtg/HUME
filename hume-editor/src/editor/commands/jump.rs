@@ -39,7 +39,8 @@ pub(in crate::editor) fn cmd_jump_backward(
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     let current = current_jump_entry(state, view, t);
-    let nav = state.panes.jumps[t.pid()]
+    let nav = state.panes.entries[t.pid()]
+        .jumps
         .backward(current)
         .map(|e| (e.buffer_id, e.selections.clone()));
     apply_jump_nav(state, view, t, nav);
@@ -53,7 +54,8 @@ pub(in crate::editor) fn cmd_jump_forward(
     _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let nav = state.panes.jumps[t.pid()]
+    let nav = state.panes.entries[t.pid()]
+        .jumps
         .forward()
         .map(|e| (e.buffer_id, e.selections.clone()));
     apply_jump_nav(state, view, t, nav);

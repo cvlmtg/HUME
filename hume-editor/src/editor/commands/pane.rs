@@ -5,7 +5,6 @@ use hume_engine::pipeline::{
     BufferId, DetachedPane, Direction, EngineView, FocusedLayout, PaneId, SinglePane,
     UnattachedPane,
 };
-use slotmap::SecondaryMap;
 
 use crate::editor::EditorState;
 use crate::editor::commands::FocusedPane;
@@ -38,20 +37,13 @@ fn open_pane(
     let (pane, render_handles) =
         crate::editor::pane_state::build_pane(&mut view.registry, buffer_id);
     let unattached = view.insert_pane(pane);
-    let pid = unattached.pane_id();
-    state.panes.state.insert(pid, SecondaryMap::new());
-    crate::editor::pane_state::ensure(
-        &mut state.panes.state,
-        &state.buffers,
-        &view.panes,
-        pid,
+    state.panes.open(
+        unattached.pane_id(),
         buffer_id,
+        crate::editor::pane_state::fresh_from_buf(state.buffers.get(buffer_id)),
+        state.settings.jump_list_capacity,
+        render_handles,
     );
-    state.panes.jumps.insert(
-        pid,
-        crate::editor::jump_list::JumpList::new(state.settings.jump_list_capacity),
-    );
-    state.panes.render.insert(pid, render_handles);
     unattached
 }
 
@@ -97,9 +89,7 @@ pub(super) fn drop_pane_state(state: &mut EditorState, view: &mut EngineView, pa
     let pid = pane.pane_id();
     state.retire_bound_to(view, pid);
     view.remove_pane(pane);
-    state.panes.state.remove(pid);
-    state.panes.jumps.remove(pid);
-    state.panes.render.remove(pid);
+    state.panes.remove(pid);
 }
 
 /// Close the focused pane: prune it from the active tab's layout, move focus
@@ -185,8 +175,11 @@ pub(in crate::editor) fn split_pane_onto(
     // file regardless of where the source pane was scrolled to. `:split
     // <path>` (a different buffer) intentionally starts fresh.
     if bid == old_buffer_id {
-        let selections = state.panes.state[old_focused][bid].selections().clone();
-        state.panes.state[new_pid][bid].set_selections(selections, state.buffers.get(bid).text());
+        let selections = state.panes.entries[old_focused].buffers[bid]
+            .selections()
+            .clone();
+        state.panes.entries[new_pid].buffers[bid]
+            .set_selections(selections, state.buffers.get(bid).text());
         // A same-buffer split inherits the source pane's live view state
         // (viewport, scroll memory, wrap mode) so the new pane matches where
         // the source was instead of falling back to fresh/global seeds. A
@@ -202,7 +195,7 @@ pub(in crate::editor) fn split_pane_onto(
         // split. The two lists diverge from here: later jumps in either pane
         // don't affect the other. Cursor position within the history is
         // preserved too, so a split mid-navigation stays mid-navigation.
-        state.panes.jumps[new_pid] = state.panes.jumps[old_focused].clone();
+        state.panes.entries[new_pid].jumps = state.panes.entries[old_focused].jumps.clone();
     }
 
     // `open_pane` already seeded every per-pane map for `new_pid`, so

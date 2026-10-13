@@ -531,7 +531,7 @@ impl Editor {
             let format_key = layout_key.format_key();
             // Per (pane, buffer) state: a pane that just switched buffers
             // reads a fresh entry whose `last_layout_key` is `None`.
-            let pbs = &mut self.state.panes.state[pid][buf_id];
+            let pbs = &mut self.state.panes.entries[pid].buffers[buf_id];
             let cursor = pbs
                 .view(self.state.buffers.get(buf_id).text())
                 .primary()
@@ -551,7 +551,7 @@ impl Editor {
                 scroll_margin,
                 reveal,
             );
-            self.state.panes.state[pid][buf_id].parked = outcome.parked;
+            self.state.panes.entries[pid].buffers[buf_id].parked = outcome.parked;
             if pid == self.view.focused_pane() {
                 ctx.cursor_content_pos = outcome.cursor_screen;
             }
@@ -604,7 +604,7 @@ impl Editor {
             write_pane_mirror(
                 pane,
                 state.buffers.get(bid).text(),
-                state.panes.state[pid][bid].selections(),
+                state.panes.entries[pid].buffers[bid].selections(),
             );
         }
     }

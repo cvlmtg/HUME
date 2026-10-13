@@ -391,7 +391,9 @@ fn accept_while_a_paste_session_is_open_here_errors_instead_of_panicking() {
     let pid = ed.view.focused_pane();
     let bid = ed.focused_buffer_id();
     let text = ed.doc().text().clone();
-    let pre_sels = ed.state.panes.state[pid][bid].selections().clone();
+    let pre_sels = ed.state.panes.entries[pid].buffers[bid]
+        .selections()
+        .clone();
     let mut group = ed
         .state
         .buffers

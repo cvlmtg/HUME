@@ -117,7 +117,7 @@ fn opening_pushes_no_jump_entry() {
     let bid = ed.focused_buffer_id();
     let pid = ed.view.focused_pane();
     ed.execute_typed("ls", None).unwrap();
-    assert!(!ed.state.panes.jumps[pid].entries_for_buffer(bid));
+    assert!(!ed.state.panes.entries[pid].jumps.entries_for_buffer(bid));
 }
 
 #[test]
@@ -134,7 +134,11 @@ fn enter_switches_buffer_with_a_jump_and_keeps_the_drawer_open() {
     assert_eq!(ed.focused_buffer_id(), listed(&ed)[0]);
     assert!(ed.doc().path().is_none(), "row 0 is the scratch buffer");
     assert!(drawer_open(&ed));
-    assert!(ed.state.panes.jumps[pid].entries_for_buffer(departed));
+    assert!(
+        ed.state.panes.entries[pid]
+            .jumps
+            .entries_for_buffer(departed)
+    );
     assert_eq!(ed.state.buffers.second_most_recent(), Some(departed));
 }
 

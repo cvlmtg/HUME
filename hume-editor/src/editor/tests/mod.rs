@@ -12,7 +12,7 @@ use crate::editor::buffer::ReplaceSource;
 use crate::editor::buffer::store::BufferStore;
 use crate::editor::buffer::{Buffer, ViewLabel};
 use crate::editor::commands::FocusedPane;
-use crate::editor::pane_state::{PaneBufferState, PaneView};
+use crate::editor::pane_state::PaneView;
 use crate::editor::search::SearchPattern;
 use crate::editor::settings::EditorSettings;
 use hume_editing::selection::{EditView, SelectionSet};
@@ -22,7 +22,6 @@ use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 use hume_engine::types::ScopeId;
 use hume_treesitter::parse_worker::InlineParseBackend;
 use hume_treesitter::registry::{GrammarBundle, QueryPaths};
-use slotmap::SecondaryMap;
 use termina::event::{
     Event as TerminalEvent, KeyCode, KeyEvent, Modifiers, MouseButton, MouseEvent, MouseEventKind,
 };
@@ -574,7 +573,7 @@ fn pane_signs(
     hume_rope::line::ContentLine,
     Vec<hume_engine::builtins::sign_column::Sign>,
 > {
-    ed.state.panes.render[pid].signs()
+    ed.state.panes.entries[pid].render.signs()
 }
 
 /// The highlight spans synced onto pane `pid`'s given tier (bracket, search,
@@ -590,7 +589,7 @@ fn pane_highlights(
     hume_rope::column::ByteCol,
     ScopeId,
 )> {
-    ed.state.panes.render[pid].highlights(tier)
+    ed.state.panes.entries[pid].render.highlights(tier)
 }
 
 /// The sign column's currently synced gutter width for pane `pid`.
@@ -855,7 +854,7 @@ impl Editor {
     pub(crate) fn seed_selections(&mut self, bid: BufferId, sels: SelectionSet) {
         let pid = self.view.focused_pane();
         super::pane_state::ensure(
-            &mut self.state.panes.state,
+            &mut self.state.panes.entries,
             &self.state.buffers,
             &self.view.panes,
             pid,
@@ -896,15 +895,23 @@ impl Editor {
         let mut buffers = BufferStore::new();
         buffers.open(buffer_id, doc);
 
-        let mut pane_buf_state: SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>> =
-            SecondaryMap::new();
-        pane_buf_state.insert(pane_id, SecondaryMap::new());
-        super::pane_state::ensure(
-            &mut pane_buf_state,
-            &buffers,
-            &engine_view.panes,
+        // The pane is built by `Pane::new`, with no gutter or decoration
+        // providers, so test geometry has no gutter. Its render handles feed
+        // a provider set nothing renders.
+        let linenr_scope = engine_view
+            .registry
+            .intern(hume_engine::providers::DEFAULT_GUTTER_SCOPE.0);
+        let render_handles = hume_decorations::build_providers(
+            &mut hume_engine::providers::ProviderSet::new(),
+            linenr_scope,
+        );
+        let mut panes = PaneView::default();
+        panes.open(
             pane_id,
             buffer_id,
+            crate::editor::pane_state::fresh_from_buf(buffers.get(buffer_id)),
+            jump_list_capacity,
+            render_handles,
         );
 
         Self {
@@ -912,20 +919,7 @@ impl Editor {
                 buffers,
                 lsp: super::lsp::LspState::new_inline(),
                 settings,
-                panes: {
-                    let mut jumps = super::jump_list::JumpLists::default();
-                    jumps.insert(pane_id, super::jump_list::JumpList::new(jump_list_capacity));
-                    // No render entry: this pane is built via `Pane::new`
-                    // directly (not `build_pane`), so it has no `ScopedHighlighter`/
-                    // `SignSource` providers to feed. The write sides skip panes
-                    // with no entry.
-                    PaneView {
-                        state: pane_buf_state,
-                        jumps,
-                        tracked: Default::default(),
-                        render: SecondaryMap::new(),
-                    }
-                },
+                panes,
                 history: super::minibuf::history::HistoryStore::new(history_capacity),
                 tabline_view,
                 cwd: std::env::temp_dir(),
@@ -966,7 +960,7 @@ impl Editor {
 
     // ── Pane choke-points (test-only) ─────────────────────────────────────────
 
-    /// Switch focus to `target`, seeding its per-pane maps if not yet present.
+    /// Switch focus to `target`.
     ///
     /// Precondition: editor must be in Normal mode. Test-only shortcut, not
     /// `focus_pane`. This moves focus directly for tests that only need
@@ -979,20 +973,6 @@ impl Editor {
             self.state.mode(),
         );
         self.state.focus.set_for_test(&mut self.view, target);
-        if !self.state.panes.jumps.contains_key(target) {
-            self.state.panes.jumps.insert(
-                target,
-                super::jump_list::JumpList::new(self.state.settings.jump_list_capacity),
-            );
-        }
-        let bid = self.focused_buffer_id();
-        super::pane_state::ensure(
-            &mut self.state.panes.state,
-            &self.state.buffers,
-            &self.view.panes,
-            target,
-            bid,
-        );
     }
 
     /// Read-only accessor used by tests to inspect any pane's selections.
@@ -1003,9 +983,7 @@ impl Editor {
     ) -> Option<&hume_editing::selection::SelectionSet> {
         self.state
             .panes
-            .state
-            .get(pane)
-            .and_then(|m| m.get(buf))
+            .buffer_state(pane, buf)
             .map(|s| s.selections())
     }
 
@@ -1429,10 +1407,10 @@ pub(super) fn snapshot_bookkeeping(ed: &Editor) -> BookkeepingSnapshot {
     let any_pbs = |pred: fn(&crate::editor::pane_state::PaneBufferState) -> bool| {
         ed.state
             .panes
-            .state
-            .iter()
-            .flat_map(|(_, inner)| inner.iter())
-            .any(|(_, pbs)| pred(pbs))
+            .entries
+            .values()
+            .flat_map(|entry| entry.buffers.values())
+            .any(pred)
     };
     BookkeepingSnapshot {
         last_repeatable: ed.state.last_action().map(|a| {
@@ -1443,7 +1421,7 @@ pub(super) fn snapshot_bookkeeping(ed: &Editor) -> BookkeepingSnapshot {
             (a.command.to_string(), a.count, operand)
         }),
         // JumpList::len() is cfg(test)-only; safe to call here.
-        jump_len: ed.state.panes.jumps[pane_id].len(),
+        jump_len: ed.state.panes.entries[pane_id].jumps.len(),
         paste_session_open: ed.state.active_session.as_ref().is_some_and(|s| {
             matches!(
                 s.kind(),
@@ -1474,7 +1452,6 @@ mod copy_selection;
 mod count_prefix;
 mod crash_dump;
 mod cwd_report;
-mod decoration_providers;
 mod diff_steel;
 mod disk_change;
 mod dump_restore;

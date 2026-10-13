@@ -85,7 +85,9 @@ fn focused_pane_category_errors_on_a_non_focused_pane() {
     let mut ed = editor_from("-[a]>bc\n");
     let (pid_a, bid_a, pid_b, bid_b) = split_two_buffers(&mut ed, "bbb\n");
     let mode_before = ed.state.mode();
-    let sels_before = ed.state.panes.state[pid_a][bid_a].selections().clone();
+    let sels_before = ed.state.panes.entries[pid_a].buffers[bid_a]
+        .selections()
+        .clone();
 
     let err = live_host!(ed)
         .run_command_sync(
@@ -106,7 +108,9 @@ fn focused_pane_category_errors_on_a_non_focused_pane() {
         "A must be untouched"
     );
     assert_eq!(
-        &ed.state.panes.state[pid_a][bid_a].selections().clone(),
+        &ed.state.panes.entries[pid_a].buffers[bid_a]
+            .selections()
+            .clone(),
         &sels_before,
         "A's selections must be unchanged"
     );
@@ -288,7 +292,7 @@ fn remote_call_leaves_focused_panes_dot_repeat_recipe_untouched() {
         Some("delete"),
         "setup: A staged delete"
     );
-    let jump_len_before = ed.state.panes.jumps[pid_a].len();
+    let jump_len_before = ed.state.panes.entries[pid_a].jumps.len();
 
     live_host!(ed)
         .run_command_sync(
@@ -304,7 +308,7 @@ fn remote_call_leaves_focused_panes_dot_repeat_recipe_untouched() {
         "A's dot-repeat target must survive a remote dispatch on B"
     );
     assert_eq!(
-        ed.state.panes.jumps[pid_a].len(),
+        ed.state.panes.entries[pid_a].jumps.len(),
         jump_len_before,
         "A's own jump list must be untouched by a dispatch that targeted B"
     );
@@ -323,8 +327,8 @@ fn remote_call_leaves_focused_panes_dot_repeat_recipe_untouched() {
 fn remote_call_jump_list_follows_the_target_pane() {
     let mut ed = editor_from("-[a]>bc\n");
     let (pid_a, _bid_a, pid_b, bid_b) = split_two_buffers(&mut ed, &"line\n".repeat(10));
-    let jump_len_a_before = ed.state.panes.jumps[pid_a].len();
-    let jump_len_b_before = ed.state.panes.jumps[pid_b].len();
+    let jump_len_a_before = ed.state.panes.entries[pid_a].jumps.len();
+    let jump_len_b_before = ed.state.panes.entries[pid_b].jumps.len();
 
     live_host!(ed)
         .run_command_sync(
@@ -335,12 +339,12 @@ fn remote_call_jump_list_follows_the_target_pane() {
         .expect("goto-last-line on B must not error");
 
     assert_eq!(
-        ed.state.panes.jumps[pid_b].len(),
+        ed.state.panes.entries[pid_b].jumps.len(),
         jump_len_b_before + 1,
         "the jump this remote dispatch recorded must land on B's own pane"
     );
     assert_eq!(
-        ed.state.panes.jumps[pid_a].len(),
+        ed.state.panes.entries[pid_a].jumps.len(),
         jump_len_a_before,
         "A's jump list must be untouched"
     );
@@ -554,7 +558,7 @@ fn try_ensure_errors_instead_of_panicking_once_the_pane_s_slot_is_reused() {
     // back the same as the vacant-and-never-reused case covered by
     // `try_ensure_errors_for_a_closed_pane_whose_slot_is_not_reused` below.
     crate::editor::pane_state::ensure(
-        &mut ed.state.panes.state,
+        &mut ed.state.panes.entries,
         &ed.state.buffers,
         &ed.view.panes,
         pid_c,
@@ -562,7 +566,7 @@ fn try_ensure_errors_instead_of_panicking_once_the_pane_s_slot_is_reused() {
     );
 
     let result = crate::editor::pane_state::try_ensure(
-        &mut ed.state.panes.state,
+        &mut ed.state.panes.entries,
         &ed.state.buffers,
         &ed.view.panes,
         pid_a,
@@ -588,7 +592,7 @@ fn try_ensure_errors_for_a_closed_pane_whose_slot_is_not_reused() {
     let (pid_a, bid) = close_pane_leaving_slot_vacant(&mut ed);
 
     let result = crate::editor::pane_state::try_ensure(
-        &mut ed.state.panes.state,
+        &mut ed.state.panes.entries,
         &ed.state.buffers,
         &ed.view.panes,
         pid_a,

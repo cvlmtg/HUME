@@ -366,7 +366,9 @@ fn history_walk_refuses_own_replay_placeholder() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.feed_key(key('d'));
     let (pane, buffer) = (ed.view.focused_pane(), ed.focused_buffer_id());
-    let sels = ed.state.panes.state[pane][buffer].selections().clone();
+    let sels = ed.state.panes.entries[pane].buffers[buffer]
+        .selections()
+        .clone();
     crate::editor::edit_session::open_or_retarget(
         &mut ed.state.active_session,
         pane,

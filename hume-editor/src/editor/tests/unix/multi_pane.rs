@@ -210,7 +210,7 @@ fn split_path_arg_does_not_inherit_source_panes_view() {
     assert_eq!(
         test_fixtures::testing::serialize_state(
             text,
-            ed.state.panes.state[pid_b][bid_b].selections()
+            ed.state.panes.entries[pid_b].buffers[bid_b].selections()
         ),
         test_fixtures::testing::serialize_state(text, &ed.state.buffers.get(bid_b).initial_sels()),
         "new pane starts at the opened file's initial selection, not A's cursor"
@@ -229,7 +229,7 @@ fn split_different_buffer_keeps_empty_jump_list() {
     // Seed the source pane's jump list with one entry.
     ed.handle_key(key('g'));
     ed.handle_key(key('g'));
-    assert_eq!(ed.state.panes.jumps[pid_a].len(), 1);
+    assert_eq!(ed.state.panes.entries[pid_a].jumps.len(), 1);
 
     ed.execute_typed("vsplit", Some(path.to_str().unwrap()))
         .unwrap();
@@ -239,7 +239,7 @@ fn split_different_buffer_keeps_empty_jump_list() {
         "sanity: new pane views a different buffer"
     );
     assert_eq!(
-        ed.state.panes.jumps[pid_b].len(),
+        ed.state.panes.entries[pid_b].jumps.len(),
         0,
         "different-buffer split starts with an empty jump list"
     );
@@ -282,13 +282,17 @@ fn cross_buffer_search_highlight_does_not_bleed_into_other_pane() {
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
-    let a_matches = ed.state.panes.render[pid_a].highlights(HighlightTier::SearchMatch);
+    let a_matches = ed.state.panes.entries[pid_a]
+        .render
+        .highlights(HighlightTier::SearchMatch);
     assert!(
         !a_matches.is_empty(),
         "sanity: pane A's own search highlights must be populated"
     );
 
-    let b_matches = ed.state.panes.render[pid_b].highlights(HighlightTier::SearchMatch);
+    let b_matches = ed.state.panes.entries[pid_b]
+        .render
+        .highlights(HighlightTier::SearchMatch);
     assert!(
         b_matches.is_empty(),
         "pane B (different buffer, no search of its own) must not show pane A's matches, got {b_matches:?}"

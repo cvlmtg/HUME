@@ -88,7 +88,7 @@ impl Editor {
                     .as_ref()
                     .is_some_and(|s| s.is_insert_at(pid, bid))
                     .then(|| {
-                        self.state.panes.state[pid][bid]
+                        self.state.panes.entries[pid].buffers[bid]
                             .view(text)
                             .primary()
                             .head_line()
@@ -125,15 +125,10 @@ impl Editor {
         // ── Search match highlights — one pane at a time ─────────────────────
         for p in panes {
             let (pid, bid) = (p.pid, p.bid);
-            // No render entry: this pane has no `ScopedHighlighter`/`SignSource`
-            // providers to feed, so skip the computation, not just the write.
-            if !self.state.panes.render.contains_key(pid) {
-                continue;
-            }
             // Hidden in Insert mode: matches aren't actionable while typing and
             // clutter the view. Same pattern as bracket match highlights below.
             if in_insert {
-                self.state.panes.render[pid].set_search(Vec::new());
+                self.state.panes.entries[pid].render.set_search(Vec::new());
                 continue;
             }
 
@@ -160,7 +155,7 @@ impl Editor {
                 }
                 push_match_highlight_lines(text, span.chars(), search_scope, &mut spans);
             }
-            self.state.panes.render[pid].set_search(spans);
+            self.state.panes.entries[pid].render.set_search(spans);
         }
 
         // ── Bracket match highlight — cursor concept, focused pane only ──────
@@ -173,14 +168,12 @@ impl Editor {
         // Clear every pane first: a bracket match lingers only on whichever
         // pane last had focus, so moving focus away must blank the old one.
         for p in panes {
-            if let Some(r) = self.state.panes.render.get(p.pid) {
-                r.set_bracket(None);
-            }
+            self.state.panes.entries[p.pid].render.set_bracket(None);
         }
         let focused = self.view.focused_pane();
-        if !in_insert && self.state.panes.render.contains_key(focused) {
+        if !in_insert {
             let text = self.doc().text();
-            let pbs = &self.state.panes.state[focused][self.focused_buffer_id()];
+            let pbs = &self.state.panes.entries[focused].buffers[self.focused_buffer_id()];
             if let Some(match_pos) = matching_bracket(pbs.view(text).primary()) {
                 let (line, byte) = text.columns().byte_position(match_pos.offset());
                 // The whole cluster holding the partner bracket.
@@ -189,7 +182,7 @@ impl Editor {
                 // Trusted narrow: a bracket match is always a real
                 // selection position, never the buffer's phantom line.
                 let line = hume_rope::line::ContentLine::new(line.index());
-                self.state.panes.render[focused].set_bracket(Some((
+                self.state.panes.entries[focused].render.set_bracket(Some((
                     line,
                     byte,
                     byte_end,
@@ -221,9 +214,6 @@ impl Editor {
             .map(|name| self.view.registry.intern(name));
             for p in panes {
                 let (pid, bid) = (p.pid, p.bid);
-                if !self.state.panes.render.contains_key(pid) {
-                    continue;
-                }
                 let visible = p.chars;
 
                 let buf = self.state.buffers.get(bid);
@@ -287,8 +277,10 @@ impl Editor {
                     flatten_priority_overlaps(raw)
                 };
 
-                self.state.panes.render[pid].set_diagnostics(diag_spans);
-                self.state.panes.render[pid].set_extra(extra_spans);
+                self.state.panes.entries[pid]
+                    .render
+                    .set_diagnostics(diag_spans);
+                self.state.panes.entries[pid].render.set_extra(extra_spans);
             }
         }
     }
@@ -307,9 +299,6 @@ impl Editor {
 
         for p in panes {
             let (pid, bid) = (p.pid, p.bid);
-            if !self.state.panes.render.contains_key(pid) {
-                continue;
-            }
             let visible = p.chars;
             let visible_lines = p.lines;
 
@@ -384,7 +373,7 @@ impl Editor {
                 _ => SignColumn::width_for_slots(slots),
             };
 
-            self.state.panes.render[pid].set_signs(by_line);
+            self.state.panes.entries[pid].render.set_signs(by_line);
             self.view.panes[pid].providers.sync_sign_column_width(width);
         }
     }
@@ -406,9 +395,6 @@ impl Editor {
         let scope = self.view.registry.intern(ui_scopes::VIRTUAL_INLAY_HINT);
         for p in panes {
             let (pid, bid) = (p.pid, p.bid);
-            if !self.state.panes.render.contains_key(pid) {
-                continue;
-            }
             let visible = p.chars;
             let text = self.state.buffers.get(bid).text();
 
@@ -445,7 +431,9 @@ impl Editor {
                 });
             }
 
-            self.state.panes.render[pid].set_inlay_hints(by_line);
+            self.state.panes.entries[pid]
+                .render
+                .set_inlay_hints(by_line);
         }
     }
 
@@ -472,9 +460,6 @@ impl Editor {
 
         for p in panes {
             let (pid, bid) = (p.pid, p.bid);
-            if !self.state.panes.render.contains_key(pid) {
-                continue;
-            }
             // Each entry's `pos` is its line's line-start char offset
             // (`EolTextEntry::pos`); resolved to its *current* line here.
             let visible_lines = p.lines;
@@ -512,7 +497,7 @@ impl Editor {
                     .map(|(line, insert)| (line, vec![insert]))
                     .collect();
 
-            self.state.panes.render[pid].set_eol_text(by_line);
+            self.state.panes.entries[pid].render.set_eol_text(by_line);
         }
     }
 
@@ -552,12 +537,6 @@ impl Editor {
 
         for p in panes {
             let (pid, bid) = (p.pid, p.bid);
-            // No render entry: nothing to sync into, and no stamp to write:
-            // a stamp here would claim data reached a handle that doesn't
-            // exist, suppressing the real sync once one is added later.
-            if !self.state.panes.render.contains_key(pid) {
-                continue;
-            }
             let current_gen = self.state.config.decorations.generation(bid);
             if self.virtual_lines_synced.get(&pid) == Some(&(bid, current_gen)) {
                 continue;
@@ -593,7 +572,9 @@ impl Editor {
                 });
             }
 
-            self.state.panes.render[pid].set_virtual_lines(by_line);
+            self.state.panes.entries[pid]
+                .render
+                .set_virtual_lines(by_line);
             self.virtual_lines_synced.insert(pid, (bid, current_gen));
             // A virtual-line block appearing or changing shape above the
             // cursor can move its own display line relative to the
@@ -616,9 +597,6 @@ impl Editor {
     pub(super) fn update_line_bg_providers(&mut self, panes: &[DecoratedPane]) {
         for p in panes {
             let (pid, bid) = (p.pid, p.bid);
-            if !self.state.panes.render.contains_key(pid) {
-                continue;
-            }
 
             // Like the sign path above (`update_sign_providers`): a tinted
             // line scrolled out of view costs nothing but the filter check.
@@ -641,7 +619,9 @@ impl Editor {
             .collect();
             let by_line = last_writer_per_line(per_line);
 
-            self.state.panes.render[pid].set_line_backgrounds(by_line);
+            self.state.panes.entries[pid]
+                .render
+                .set_line_backgrounds(by_line);
         }
     }
 }

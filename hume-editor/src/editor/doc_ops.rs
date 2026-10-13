@@ -7,15 +7,13 @@
 //! and written back afterwards: the stored set stays valid for the whole
 //! edit, so the text change carries it like every other stored position.
 
-use slotmap::SecondaryMap;
-
 use hume_engine::pipeline::{BufferId, PaneId};
 
 use crate::editor::buffer::store::BufferStore;
 use crate::editor::buffer::{Buffer, HistoryWalkResult};
 use crate::editor::edit_session::{self, EditSession, EditSessionKind, InsertState};
 use crate::editor::error::CommandError;
-use crate::editor::pane_state::PaneBufferState;
+use crate::editor::pane_state::PaneEntries;
 use crate::editor::position_stores::PositionStores;
 use crate::editor::replay::SourceTicket;
 use hume_editing::changeset::ChangeSet;
@@ -45,7 +43,7 @@ pub(in crate::editor) enum HistoryWalk {
 /// mutator already carried them through the change.
 fn finish_edit(
     buffers: &mut BufferStore,
-    pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
+    pane_state: &mut PaneEntries,
     pane_id: PaneId,
     buf_id: BufferId,
     new_sels: SelectionSet,
@@ -58,13 +56,13 @@ fn finish_edit(
     // edit. Selections are still written: a no-op edit can still move
     // cursors.
     if cs.is_identity() {
-        pane_state[pane_id][buf_id].set_selections(new_sels, buffers.get(buf_id).text());
+        pane_state[pane_id].buffers[buf_id].set_selections(new_sels, buffers.get(buf_id).text());
         return;
     }
     // A real edit reveals the acting pane even when it didn't move the
     // primary head (`r` replacing the character under the cursor). `install`
     // left this pane's selections for the new ones to replace.
-    pane_state[pane_id][buf_id].set_selections_after_edit(new_sels);
+    pane_state[pane_id].buffers[buf_id].set_selections_after_edit(new_sels);
     buffers.bump_edit_seq();
 }
 
@@ -152,7 +150,7 @@ pub(in crate::editor) fn apply_doc_edit(
     {
         commit_paste_group(buffers, stores.panes, active_session);
     }
-    let sels = stores.panes[pane_id][buf_id].selections().clone();
+    let sels = stores.panes[pane_id].buffers[buf_id].selections().clone();
     let (new_sels, cs) = buffers
         .get_mut(buf_id)
         .apply_edit(buf_id, stores, pane_id, sels, cmd);
@@ -188,7 +186,7 @@ pub(in crate::editor) fn apply_doc_edit_grouped(
         return ChangeSet::identity(buffers.get(buf_id).text().len_chars());
     }
     let text_pre = buffers.get(buf_id).text().clone();
-    let sels = stores.panes[pane_id][buf_id].selections().clone();
+    let sels = stores.panes[pane_id].buffers[buf_id].selections().clone();
     let doc = buffers.get_mut(buf_id);
     // Bound once, reused below for the capture-feed push too: both need
     // the same `is_insert_at`-filtered session.
@@ -325,15 +323,15 @@ pub(in crate::editor) fn apply_doc_history_walk(
 /// Apply a motion function and store the resulting selection in `pane_state`.
 pub(in crate::editor) fn apply_doc_motion(
     buffers: &BufferStore,
-    pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
+    pane_state: &mut PaneEntries,
     pane_id: PaneId,
     buf_id: BufferId,
     f: impl FnOnce(EditState) -> EditState,
 ) {
     let text = buffers.get(buf_id).text();
-    let sels = pane_state[pane_id][buf_id].selections().clone();
+    let sels = pane_state[pane_id].buffers[buf_id].selections().clone();
     let new_sels = f(EditState::bind(text, sels)).into_selections();
-    pane_state[pane_id][buf_id].set_selections(new_sels, text);
+    pane_state[pane_id].buffers[buf_id].set_selections(new_sels, text);
 }
 
 /// Open an Insert-kind session on `(pane_id, buf_id)`, always the focused
@@ -355,7 +353,7 @@ pub(in crate::editor) fn apply_doc_motion(
 /// instead of refused.
 pub(in crate::editor) fn begin_edit_group(
     buffers: &BufferStore,
-    pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
+    pane_state: &mut PaneEntries,
     active_session: &mut Option<EditSession>,
     pane_id: PaneId,
     buf_id: BufferId,
@@ -370,7 +368,7 @@ pub(in crate::editor) fn begin_edit_group(
         // solely for a fresh open. A refusal or a placeholder retarget
         // never needs it.
         || {
-            let sels = pane_state[pane_id][buf_id].selections();
+            let sels = pane_state[pane_id].buffers[buf_id].selections();
             buffers
                 .get(buf_id)
                 .begin_edit_group(sels.clone(), sels.clone())
@@ -378,7 +376,7 @@ pub(in crate::editor) fn begin_edit_group(
     )?;
     // A fresh group never inherits a typed run, an autoindent record, or exit
     // flags from a previous session (interactive or replay-preopened).
-    let pbs = &mut pane_state[pane_id][buf_id];
+    let pbs = &mut pane_state[pane_id].buffers[buf_id];
     pbs.typed_run = None;
     pbs.autoindent = None;
     pbs.step_back_on_exit = false;
@@ -402,7 +400,7 @@ pub(in crate::editor) fn begin_edit_group(
 /// state outlives it.
 pub(in crate::editor) fn commit_open_session(
     buffers: &mut BufferStore,
-    pane_state: &SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
+    pane_state: &PaneEntries,
     active_session: &mut Option<EditSession>,
 ) {
     let Some(session) = active_session.take() else {
@@ -412,7 +410,7 @@ pub(in crate::editor) fn commit_open_session(
     let group = session.into_group();
     let post_sels = pane_state
         .get(pane)
-        .and_then(|m| m.get(buffer))
+        .and_then(|entry| entry.buffers.get(buffer))
         .map(|pbs| pbs.selections().clone())
         .expect("an open session's (pane, buffer) state outlives it");
     buffers.get_mut(buffer).commit_edit_group(group, post_sels);
@@ -425,7 +423,7 @@ pub(in crate::editor) fn commit_open_session(
 /// instead of checking first.
 pub(in crate::editor) fn commit_paste_group(
     buffers: &mut BufferStore,
-    pane_state: &SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
+    pane_state: &PaneEntries,
     active_session: &mut Option<EditSession>,
 ) {
     let is_paste = active_session
@@ -445,7 +443,7 @@ pub(in crate::editor) fn commit_paste_group(
 /// `EditorState::commit_paste_session`'s own kind check.
 pub(in crate::editor) fn commit_edit_group(
     buffers: &mut BufferStore,
-    pane_state: &SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
+    pane_state: &PaneEntries,
     active_session: &mut Option<EditSession>,
 ) {
     match active_session.as_ref() {

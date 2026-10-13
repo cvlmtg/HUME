@@ -183,10 +183,9 @@ fn resync_derived_state(state: &mut EditorState, view: &mut EngineView, rk: Resy
             true
         }
         ResyncKey::jump_list_capacity => {
-            state
-                .panes
-                .jumps
-                .set_capacity(state.settings.jump_list_capacity);
+            for entry in state.panes.entries.values_mut() {
+                entry.jumps.set_capacity(state.settings.jump_list_capacity);
+            }
             true
         }
         ResyncKey::theme if !state.settings.theme.is_empty() => theme::load_theme_by_name(

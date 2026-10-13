@@ -71,7 +71,7 @@ pub(in crate::editor) fn end_focus_sessions(state: &mut EditorState, view: &Engi
     super::commands::end_insert_session(state, view);
     doc_ops::commit_open_session(
         &mut state.buffers,
-        &state.panes.state,
+        &state.panes.entries,
         &mut state.active_session,
     );
 }

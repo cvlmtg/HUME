@@ -592,7 +592,7 @@ fn picker_accept_switching_buffers_mid_frame_scrolls_new_buffer_into_view() {
         "sanity: switched to the tall buffer"
     );
 
-    let cursor_char = ed.state.panes.state[pid][bid]
+    let cursor_char = ed.state.panes.entries[pid].buffers[bid]
         .view(ed.state.buffers.get(bid).text())
         .primary()
         .head()

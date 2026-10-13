@@ -83,7 +83,7 @@ pub(in crate::editor) fn linewise_ranges_params(
     let bid = t.bid(view);
     let uri = state.lsp_doc_uri(bid)?.as_str().to_string();
     let text = state.buffers.get(bid).text();
-    let selections = t.state(&state.panes.state, view).view(text);
+    let selections = t.state(&state.panes.entries, view).view(text);
     let linewise: Vec<ClusterRange> = selections
         .iter()
         .filter(|sel| sel.linewise_classification() == Some(true))

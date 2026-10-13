@@ -215,7 +215,7 @@ fn search_jump(
         let Some((new_state, primary_wrapped)) = scan.advance_all(current, count) else {
             return Err(CommandError::transient("no match"));
         };
-        t.state_mut(&mut state.panes.state, view)
+        t.state_mut(&mut state.panes.entries, view)
             .search_cursor
             .wrapped = primary_wrapped;
         set_pane_selections(state, view, t, new_state.into_selections());
@@ -224,7 +224,7 @@ fn search_jump(
 
     match scan.advance(current.view().primary(), count) {
         Some((new_sel, wrapped)) => {
-            t.state_mut(&mut state.panes.state, view)
+            t.state_mut(&mut state.panes.entries, view)
                 .search_cursor
                 .wrapped = wrapped;
             set_primary_selection(state, view, t, new_sel);
@@ -243,7 +243,11 @@ pub(in crate::editor) fn cmd_clear_search(
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     let bid = t.bid(view);
-    super::super::search::ops::clear_buffer_search(&mut state.buffers, &mut state.panes.state, bid);
+    super::super::search::ops::clear_buffer_search(
+        &mut state.buffers,
+        &mut state.panes.entries,
+        bid,
+    );
     Ok(())
 }
 

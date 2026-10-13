@@ -5,8 +5,9 @@
 //! bookkeeping. Adding a new per-(pane, buffer) field later requires changing
 //! exactly one struct and one Default impl, not four parallel maps.
 //!
-//! [`PaneView`] groups the three per-pane maps (`state`, `jumps`, `render`)
-//! so callers deal with one field on [`super::EditorState`] instead of three.
+//! [`PaneEntry`] is one pane's whole editor-side state: its per-buffer
+//! state, jump list and render handles. [`PaneView`] holds every pane's
+//! entry, added and removed only as a whole.
 //!
 //! The in-progress insert/paste undo group itself is not here; see
 //! [`super::edit_session::EditSession`], `EditorState::active_session`.
@@ -17,6 +18,7 @@ use slotmap::SecondaryMap;
 use super::Editor;
 use super::LayoutKey;
 use super::commands::FocusedPane;
+use super::jump_list::JumpList;
 use super::search::SearchCursor;
 use crate::editor::buffer::Buffer;
 use crate::editor::buffer::store::BufferStore;
@@ -49,8 +51,7 @@ pub(crate) struct TypedRun {
 
 /// All per-(pane, buffer) editor state bundled into one struct.
 ///
-/// Stored in `EditorState.panes.state: SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>`.
-/// Every seed site goes through [`fresh_from_buf`], which starts from the
+/// Stored in [`PaneEntry::buffers`]. Every seed site goes through [`fresh_from_buf`], which starts from the
 /// buffer's initial selections.
 pub(crate) struct PaneBufferState {
     /// This pane's selections for this buffer. Private: every write goes
@@ -269,7 +270,7 @@ pub(in crate::editor) fn fresh_from_buf(buf: &Buffer) -> PaneBufferState {
     }
 }
 
-/// Ensure `pane_state[pid][bid]` exists, seeding with [`fresh_from_buf`] if absent.
+/// Ensure `pane_state[pid].buffers[bid]` exists, seeding with [`fresh_from_buf`] if absent.
 /// Idempotent: safe to call even if the entry was already seeded.
 ///
 /// Panics if `pid` or `bid` is not a live key; that is a caller-contract
@@ -279,7 +280,7 @@ pub(in crate::editor) fn fresh_from_buf(buf: &Buffer) -> PaneBufferState {
 /// call). See [`try_ensure`] for a caller crossing an async boundary, where
 /// that's no longer guaranteed.
 pub(in crate::editor) fn ensure<'a>(
-    pane_state: &'a mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
+    pane_state: &'a mut PaneEntries,
     buffers: &BufferStore,
     panes: &PanePool,
     pid: PaneId,
@@ -307,7 +308,7 @@ pub(in crate::editor) fn ensure<'a>(
 /// first means a closed pane errors here every time, not only once its slot
 /// happens to be recycled.
 pub(in crate::editor) fn try_ensure<'a>(
-    pane_state: &'a mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
+    pane_state: &'a mut PaneEntries,
     buffers: &BufferStore,
     panes: &PanePool,
     pid: PaneId,
@@ -316,28 +317,20 @@ pub(in crate::editor) fn try_ensure<'a>(
     if !panes.contains_key(pid) {
         return Err(super::commands::TargetError::PaneClosed.to_string());
     }
-    // `pid` is confirmed live in `panes` above, and every `PaneId` in
-    // existence is minted from that same slotmap, so `pane_state` (a
-    // `SecondaryMap` over the same keyspace) can never hold a *newer*
-    // version at this index than the one `pid` already carries. `entry`
-    // therefore cannot return `None` here.
-    let inner = pane_state
-        .entry(pid)
-        .expect("pid confirmed live by panes.contains_key above")
-        .or_default();
-    Ok(inner
+    Ok(pane_state[pid]
+        .buffers
         .entry(bid)
         .expect("bid must be a live BufferId")
         .or_insert_with(|| fresh_from_buf(buffers.get(bid))))
 }
 
-/// Collapse `pane_state[pid][bid]`'s selection onto `pos`, without
+/// Collapse `pane_state[pid].buffers[bid]`'s selection onto `pos`, without
 /// switching focus or recording a jump entry. The primitive every cursor
 /// placement outside the focused-buffer fast path (`set_current_selections`)
 /// reduces to: [`park_cursor_at`] is its line/grapheme-column convenience for
 /// a caller with no char position yet.
 pub(in crate::editor) fn write_cursor(
-    pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
+    pane_state: &mut PaneEntries,
     buffers: &BufferStore,
     panes: &PanePool,
     pid: PaneId,
@@ -359,12 +352,12 @@ pub(in crate::editor) fn line_grapheme_to_cluster(
     text.columns().place_grapheme(line.into(), grapheme_col0)
 }
 
-/// Collapse `pane_state[pid][bid]`'s selection onto a 0-based
+/// Collapse `pane_state[pid].buffers[bid]`'s selection onto a 0-based
 /// `(line, grapheme_col)`, clamping the line to the buffer's last content
 /// line. Shared by every caller that parks a cursor at a line/column pair
 /// with no char position yet.
 pub(in crate::editor) fn park_cursor_at(
-    pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
+    pane_state: &mut PaneEntries,
     buffers: &BufferStore,
     panes: &PanePool,
     pid: PaneId,
@@ -376,26 +369,94 @@ pub(in crate::editor) fn park_cursor_at(
     write_cursor(pane_state, buffers, panes, pid, bid, pos);
 }
 
-/// The pane-keyed maps that live on [`super::EditorState`], plus the
-/// positions scripts track.
-///
-/// Bundles `state` (per-(pane,buffer) selections/groups), `jumps` (cursor
-/// history), `tracked` (positions scripts asked the editor to remember,
-/// keyed by token rather than pane), and `render` (per-pane
-/// highlight/sign/inlay-hint/virtual-line handles, bundled in
-/// [`hume_decorations::PaneDecorationHandles`] since `build_pane` always
-/// allocates and `drop_pane_state` always drops them together). NLL allows
-/// simultaneous mutable borrows of different fields, as `PositionStores::new`
-/// takes `state`, `jumps` and `tracked` at once.
+/// One pane's editor-side state.
+pub(in crate::editor) struct PaneEntry {
+    /// The pane's state for each buffer it has shown.
+    pub(in crate::editor) buffers: SecondaryMap<BufferId, PaneBufferState>,
+    /// The pane's cursor history.
+    pub(in crate::editor) jumps: JumpList,
+    /// The handles feeding the pane's highlight, sign, inlay-hint and
+    /// virtual-line providers (see `build_pane`).
+    pub(in crate::editor) render: hume_decorations::PaneDecorationHandles,
+}
+
+/// Every pane's [`PaneEntry`]. An entry is added only by [`PaneView::open`]
+/// and removed only by [`PaneView::remove`], so a pane has all of its state
+/// or none of it.
+#[derive(Default)]
+pub(in crate::editor) struct PaneEntries(SecondaryMap<PaneId, PaneEntry>);
+
+impl PaneEntries {
+    pub(in crate::editor) fn get(&self, pid: PaneId) -> Option<&PaneEntry> {
+        self.0.get(pid)
+    }
+
+    #[cfg(test)]
+    pub(in crate::editor) fn values(&self) -> impl Iterator<Item = &PaneEntry> {
+        self.0.values()
+    }
+
+    pub(in crate::editor) fn iter_mut(&mut self) -> impl Iterator<Item = (PaneId, &mut PaneEntry)> {
+        self.0.iter_mut()
+    }
+
+    pub(in crate::editor) fn values_mut(&mut self) -> impl Iterator<Item = &mut PaneEntry> {
+        self.0.values_mut()
+    }
+}
+
+impl std::ops::Index<PaneId> for PaneEntries {
+    type Output = PaneEntry;
+    fn index(&self, pid: PaneId) -> &PaneEntry {
+        &self.0[pid]
+    }
+}
+
+impl std::ops::IndexMut<PaneId> for PaneEntries {
+    fn index_mut(&mut self, pid: PaneId) -> &mut PaneEntry {
+        &mut self.0[pid]
+    }
+}
+
+/// Every pane's [`PaneEntry`], plus the positions scripts track (keyed by
+/// token rather than pane). The two are separate fields so a caller can
+/// borrow both at once, as `PositionStores::new` does.
 #[derive(Default)]
 pub(crate) struct PaneView {
-    pub(in crate::editor) state: SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
-    pub(in crate::editor) jumps: super::jump_list::JumpLists,
+    pub(in crate::editor) entries: PaneEntries,
     pub(in crate::editor) tracked: super::tracked_positions::TrackedPositions,
-    pub(in crate::editor) render: SecondaryMap<PaneId, hume_decorations::PaneDecorationHandles>,
 }
 
 impl PaneView {
+    /// Give the new pane `pid` its entry: `shown` as its state for `bid`,
+    /// the buffer it shows ([`fresh_from_buf`] for a pane just created), an
+    /// empty jump list, and the render handles `build_pane` returned with it.
+    pub(in crate::editor) fn open(
+        &mut self,
+        pid: PaneId,
+        bid: BufferId,
+        shown: PaneBufferState,
+        jump_list_capacity: usize,
+        render: hume_decorations::PaneDecorationHandles,
+    ) {
+        let mut per_buffer = SecondaryMap::new();
+        per_buffer.insert(bid, shown);
+        let replaced = self.entries.0.insert(
+            pid,
+            PaneEntry {
+                buffers: per_buffer,
+                jumps: JumpList::new(jump_list_capacity),
+                render,
+            },
+        );
+        assert!(replaced.is_none(), "a pane is opened once");
+    }
+
+    /// Drop the closed pane `pid`'s entry.
+    pub(in crate::editor) fn remove(&mut self, pid: PaneId) {
+        self.entries.0.remove(pid);
+    }
+
     /// The seeded [`PaneBufferState`] for `(pid, bid)`, or `None` when the
     /// pane has no map yet or never showed `bid`. Read-side counterpart of
     /// [`ensure`], which seeds rather than reporting absence.
@@ -404,7 +465,7 @@ impl PaneView {
         pid: PaneId,
         bid: BufferId,
     ) -> Option<&PaneBufferState> {
-        self.state.get(pid)?.get(bid)
+        self.entries.get(pid)?.buffers.get(bid)
     }
 }
 
@@ -414,7 +475,7 @@ impl PaneView {
 /// `ProviderSet`.
 ///
 /// Returns the pane with its own `PaneDecorationHandles` (never shared
-/// between panes), which the caller stores in `EditorState.panes.render`.
+/// between panes), which the caller hands to [`PaneView::open`].
 /// Wrap mode is not seeded: it resolves lazily via
 /// `commands::effective_wrap_mode`. The gutter's seeded style never reaches a
 /// frame, since `prepare_frame` syncs `line-number-style` before each render.
@@ -458,7 +519,7 @@ impl super::EditorState {
     /// the explicit id rather than assuming it matches the focused buffer.
     /// Strictly focused-pane callers only. A caller with an explicit
     /// [`crate::editor::commands::CommandPane`] (not necessarily focused)
-    /// reads `state.panes.state[t.pid()][t.bid(view)]` directly instead.
+    /// reads `state.panes.entries[t.pid()].buffers[t.bid(view)]` directly instead.
     pub(in crate::editor) fn focused_buffer_state(
         &self,
         view: &EngineView,
@@ -475,12 +536,12 @@ impl super::EditorState {
     ///
     /// The one lookup behind every "the cursor/search state right now" reader
     /// (`search::ops`, the statusline's own accessors), which would otherwise
-    /// each index `panes.state[..][..]` and each panic with slotmap's own
+    /// each index `panes.entries[..].buffers[..]` and each panic with slotmap's own
     /// message instead of naming what actually broke.
     pub(crate) fn shown_buffer_state(&self, pid: PaneId, bid: BufferId) -> &PaneBufferState {
         self.panes.buffer_state(pid, bid).expect(
             "pane has no seeded state for the buffer it is showing: \
-             pane.buffer_id and panes.state are out of sync",
+             pane.buffer_id and its pane entry are out of sync",
         )
     }
 

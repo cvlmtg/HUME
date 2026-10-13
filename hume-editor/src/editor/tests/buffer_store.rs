@@ -123,7 +123,7 @@ fn p6_close_last_buffer_reseeds_selections() {
     let focused = ed.view.focused_pane();
     doc_ops::apply_doc_motion(
         &ed.state.buffers,
-        &mut ed.state.panes.state,
+        &mut ed.state.panes.entries,
         focused,
         bid,
         |st| {
@@ -355,7 +355,7 @@ fn p6_reload_preserves_cursor_same_content() {
     let expected_head = co(15);
     doc_ops::apply_doc_motion(
         &ed.state.buffers,
-        &mut ed.state.panes.state,
+        &mut ed.state.panes.entries,
         focused,
         bid,
         |st| {
@@ -391,7 +391,7 @@ fn p6_reload_clamps_cursor_to_last_line() {
     // line 4 starts at char 24.
     doc_ops::apply_doc_motion(
         &ed.state.buffers,
-        &mut ed.state.panes.state,
+        &mut ed.state.panes.entries,
         focused,
         bid,
         |st| {

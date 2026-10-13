@@ -26,7 +26,8 @@ impl<'a> EditorHostImpl<'a> {
         let buf = self.buffer(bid).expect("resolved CommandPane's own buffer");
         (
             buf,
-            t.state(&self.state.panes.state, self.view).view(buf.text()),
+            t.state(&self.state.panes.entries, self.view)
+                .view(buf.text()),
         )
     }
 

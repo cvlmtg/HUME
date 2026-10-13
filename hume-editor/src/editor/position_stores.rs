@@ -15,10 +15,9 @@ use hume_rope::cluster::ClusterRange;
 use slotmap::SecondaryMap;
 
 use super::input_stack::InputStack;
-use super::jump_list::JumpLists;
 use super::lsp::diagnostics::DiagnosticsStore;
 use super::lsp::document::LspDocuments;
-use super::pane_state::{PaneBufferState, PaneView};
+use super::pane_state::{PaneBufferState, PaneEntries, PaneView};
 use super::tracked_positions::TrackedPositions;
 
 /// The positions each buffer carries that no pane owns.
@@ -62,9 +61,7 @@ impl BufferPositions {
 }
 
 pub(crate) struct PositionStores<'a> {
-    pub(in crate::editor) panes:
-        &'a mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
-    jumps: &'a mut JumpLists,
+    pub(in crate::editor) panes: &'a mut PaneEntries,
     tracked: &'a mut TrackedPositions,
     input: &'a mut InputStack,
     buffers: &'a mut BufferPositions,
@@ -79,8 +76,7 @@ impl<'a> PositionStores<'a> {
         decorations: &'a mut DecorationStores,
     ) -> Self {
         Self {
-            panes: &mut panes.state,
-            jumps: &mut panes.jumps,
+            panes: &mut panes.entries,
             tracked: &mut panes.tracked,
             input,
             buffers,
@@ -106,15 +102,18 @@ impl<'a> PositionStores<'a> {
         acting: Option<PaneId>,
     ) {
         let acting = acting.filter(|_| !change.changes().is_identity());
-        for (pane, buffers) in self.panes.iter_mut() {
-            if let Some(state) = buffers.get_mut(buffer) {
+        for (pane, entry) in self.panes.iter_mut() {
+            if let Some(state) = entry.buffers.get_mut(buffer) {
                 if Some(pane) != acting {
                     state.carry_selections(change);
                 }
                 state.carry_marks(change);
             }
+            // Every pane's list, not only those showing `buffer`: a list
+            // holds entries for buffers its pane is not showing right now,
+            // which is what makes cross-buffer Ctrl-o work.
+            entry.jumps.translate_in_place(buffer, change);
         }
-        self.jumps.translate(buffer, change);
         self.tracked.carry(buffer, change);
         for snapshot in self.input.snapshots_mut() {
             snapshot.carry(buffer, change);
@@ -135,8 +134,8 @@ impl<'a> PositionStores<'a> {
         buffer: BufferId,
         fresh: impl Fn() -> PaneBufferState,
     ) {
-        for buffers in self.panes.values_mut() {
-            if let Some(state) = buffers.get_mut(buffer) {
+        for entry in self.panes.values_mut() {
+            if let Some(state) = entry.buffers.get_mut(buffer) {
                 *state = fresh();
             }
         }
@@ -147,8 +146,8 @@ impl<'a> PositionStores<'a> {
     /// each pane's state for it is removed, and what `reset` drops beyond the
     /// panes goes with it.
     pub(in crate::editor) fn forget_buffer(&mut self, buffer: BufferId) {
-        for buffers in self.panes.values_mut() {
-            buffers.remove(buffer);
+        for entry in self.panes.values_mut() {
+            entry.buffers.remove(buffer);
         }
         self.drop_shared(buffer);
     }
@@ -162,7 +161,9 @@ impl<'a> PositionStores<'a> {
             !self.buffers.lsp.has_doc(buffer),
             "drop_shared: buffer still attached to a language server"
         );
-        self.jumps.prune_buffer(buffer);
+        for entry in self.panes.values_mut() {
+            entry.jumps.prune_buffer(buffer);
+        }
         self.tracked.prune_buffer(buffer);
         for snapshot in self.input.snapshots_mut() {
             snapshot.forget(buffer);
@@ -208,9 +209,12 @@ impl DetachedStores {
         let buffer = slotmap::SlotMap::<BufferId, ()>::with_key().insert(());
         let mut state = super::pane_state::fresh_from_buf(buf);
         state.set_selections(selections, buf.text());
+        let render = hume_decorations::build_providers(
+            &mut hume_engine::providers::ProviderSet::new(),
+            hume_engine::types::ScopeId(0),
+        );
         let mut stores = Self::default();
-        stores.panes.state.insert(pane, SecondaryMap::new());
-        stores.panes.state[pane].insert(buffer, state);
+        stores.panes.open(pane, buffer, state, 1, render);
         (stores, pane, buffer)
     }
 
@@ -220,6 +224,8 @@ impl DetachedStores {
         pane: PaneId,
         buffer: BufferId,
     ) -> hume_editing::selection::SelectionSet {
-        self.panes.state[pane][buffer].selections().clone()
+        self.panes.entries[pane].buffers[buffer]
+            .selections()
+            .clone()
     }
 }

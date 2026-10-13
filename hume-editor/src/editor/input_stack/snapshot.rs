@@ -11,15 +11,13 @@
 //! lifecycle (`capture` on `Layer::setup`, `restore`/`take_restore` on
 //! `Layer::tear_down`), which is `input_stack/` vocabulary.
 
-use slotmap::SecondaryMap;
-
 use hume_editing::edit::TextChange;
 use hume_editing::selection::SelectionSet;
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 
 use super::super::EditorState;
 use super::super::buffer::store::BufferStore;
-use super::super::pane_state::PaneBufferState;
+use super::super::pane_state::PaneEntries;
 
 /// `pane`'s selections as they were the moment this session opened, with the
 /// buffer they were read from, plus the pane itself, never
@@ -59,7 +57,9 @@ impl PaneSnapshot {
     /// capture would have caught.
     pub(in crate::editor) fn capture(&mut self, state: &EditorState, view: &EngineView) {
         let bid = view.panes[self.pane].buffer_id;
-        let sels = state.panes.state[self.pane][bid].selections().clone();
+        let sels = state.panes.entries[self.pane].buffers[bid]
+            .selections()
+            .clone();
         self.captured = Some((bid, sels));
     }
 
@@ -72,13 +72,10 @@ impl PaneSnapshot {
 
     /// Writes the captured selections back into `pane`'s state for the
     /// captured buffer without consuming the snapshot.
-    pub(in crate::editor) fn restore(
-        &self,
-        pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
-        buffers: &BufferStore,
-    ) {
+    pub(in crate::editor) fn restore(&self, pane_state: &mut PaneEntries, buffers: &BufferStore) {
         if let Some((bid, sels)) = &self.captured {
-            pane_state[self.pane][*bid].set_selections(sels.clone(), buffers.get(*bid).text());
+            pane_state[self.pane].buffers[*bid]
+                .set_selections(sels.clone(), buffers.get(*bid).text());
         }
     }
 
@@ -89,11 +86,11 @@ impl PaneSnapshot {
     /// was already taken by a `Confirm` arm.
     pub(in crate::editor) fn take_restore(
         &mut self,
-        pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
+        pane_state: &mut PaneEntries,
         buffers: &BufferStore,
     ) -> Option<BufferId> {
         let (bid, sels) = self.captured.take()?;
-        pane_state[self.pane][bid].set_selections(sels, buffers.get(bid).text());
+        pane_state[self.pane].buffers[bid].set_selections(sels, buffers.get(bid).text());
         Some(bid)
     }
 

@@ -92,7 +92,7 @@ impl EditorState {
     pub(in crate::editor) fn commit_paste_session(&mut self) {
         doc_ops::commit_paste_group(
             &mut self.buffers,
-            &self.panes.state,
+            &self.panes.entries,
             &mut self.active_session,
         );
     }
@@ -169,7 +169,7 @@ fn do_paste(
     let ResolvedPaste { values, from, bare } = resolved;
 
     let base = sels.clone();
-    state.panes.state[focused][buf].set_selections(sels, state.buffers.get(buf).text());
+    state.panes.entries[focused].buffers[buf].set_selections(sels, state.buffers.get(buf).text());
     edit_session::open_or_retarget(
         &mut state.active_session,
         focused,
@@ -377,7 +377,7 @@ fn do_normal_paste(
     edit_session::check_can_open(&state.active_session, pid, buf)?;
     super::ensure_writable(state, view, fp.pane())?;
     let resolved = resolve_plain(state)?;
-    let sels = state.panes.state[pid][buf].selections().clone();
+    let sels = state.panes.entries[pid].buffers[buf].selections().clone();
     do_paste(state, pid, buf, before, resolved, sels.clone(), sels)
 }
 
@@ -396,7 +396,7 @@ fn do_smart_paste(
     edit_session::check_can_open(&state.active_session, pid, buf)?;
     super::ensure_writable(state, view, fp.pane())?;
     let resolved = resolve_smart(state)?;
-    let pbs = &state.panes.state[pid][buf];
+    let pbs = &state.panes.entries[pid].buffers[buf];
     let sels = pbs.selections().clone();
     let base = if resolved.bare {
         collapse_if_repeat(
@@ -478,7 +478,7 @@ fn do_paste_cycle(
         return Err(CommandError::transient("no paste to cycle"));
     };
     // Eagerly convert to owned Vec so the borrow of state.kill_ring ends before
-    // state.buffers and state.panes.state are borrowed mutably below.
+    // state.buffers and state.panes.entries are borrowed mutably below.
     let values = if older {
         state.kill_ring.cycle_older()
     } else {

@@ -42,7 +42,7 @@ fn full_message_reaches_the_render_provider_untruncated() {
     ed.settle();
     ed.prepare_frame(&mut ctx);
     let pid = ed.view.focused_pane();
-    let by_line = ed.state.panes.render.get(pid).unwrap().eol_text();
+    let by_line = ed.state.panes.entries[pid].render.eol_text();
     let inserts = by_line
         .get(&hume_rope::line::ContentLine::new(0))
         .expect("line 0 must have an insert");
@@ -93,7 +93,7 @@ fn two_entries_from_one_source_on_the_same_line_collapse_to_the_last_one() {
     ed.settle();
     ed.prepare_frame(&mut ctx);
     let pid = ed.view.focused_pane();
-    let by_line = ed.state.panes.render.get(pid).unwrap().eol_text();
+    let by_line = ed.state.panes.entries[pid].render.eol_text();
     let inserts = by_line
         .get(&hume_rope::line::ContentLine::new(0))
         .expect("line 0 must have an insert");
@@ -148,7 +148,7 @@ fn two_sources_on_the_same_line_break_ties_alphabetically_first() {
     ed.settle();
     ed.prepare_frame(&mut ctx);
     let pid = ed.view.focused_pane();
-    let by_line = ed.state.panes.render.get(pid).unwrap().eol_text();
+    let by_line = ed.state.panes.entries[pid].render.eol_text();
     let inserts = by_line
         .get(&hume_rope::line::ContentLine::new(0))
         .expect("line 0 must have an insert");
@@ -192,12 +192,8 @@ fn two_line_editor_with_eol(
 
 fn eol_lines(ed: &mut Editor, pid: hume_engine::pipeline::PaneId) -> Vec<usize> {
     frame(ed, 60, 8);
-    let mut lines: Vec<usize> = ed
-        .state
-        .panes
+    let mut lines: Vec<usize> = ed.state.panes.entries[pid]
         .render
-        .get(pid)
-        .unwrap()
         .eol_text()
         .keys()
         .map(|l| l.index())
@@ -239,7 +235,7 @@ fn a_hidden_entry_lets_another_source_show_on_that_line() {
     ]);
     ed.feed_key(key('i'));
     frame(&mut ed, 60, 8);
-    let by_line = ed.state.panes.render.get(pid).unwrap().eol_text();
+    let by_line = ed.state.panes.entries[pid].render.eol_text();
     let inserts = by_line
         .get(&hume_rope::line::ContentLine::new(0))
         .expect("the unflagged source still shows on line 0");

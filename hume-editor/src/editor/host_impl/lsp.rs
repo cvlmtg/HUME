@@ -59,7 +59,7 @@ impl<'a> LspHost for EditorHostImpl<'a> {
         let bid = t.bid(self.view);
         let text = self.state.buffers.get(bid).text().clone();
         let head = t
-            .state(&self.state.panes.state, self.view)
+            .state(&self.state.panes.entries, self.view)
             .view(&text)
             .primary()
             .head();

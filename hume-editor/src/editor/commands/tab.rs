@@ -11,7 +11,7 @@
 //! `goto-next-tab`/`goto-prev-tab` carry no `.jump()` meta,
 //! unlike `goto-next-buffer`/`goto-prev-buffer`: a tab switch changes
 //! the focused pane itself (a different pane, possibly in a different tab),
-//! and the jump list is written to `state.panes.jumps[view.focused_pane()]`
+//! and the jump list is written to `state.panes.entries[view.focused_pane()].jumps`
 //! read *after* the switch, the same reason `pane-focus-next`/`-left`/
 //! `-right`/`-up`/`-down` (which also change the focused pane) carry no `.jump()`
 //! either, while buffer-switch commands (which keep the same pane) do.

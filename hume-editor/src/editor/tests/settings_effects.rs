@@ -79,33 +79,37 @@ fn set_option_applies_jump_list_capacity() {
     let text = ed.doc().text();
     let at_start = test_fixtures::testing::single(text, test_fixtures::testing::cursor(text, 0));
     for i in 0..5 {
-        ed.state.panes.jumps[pid].push(crate::editor::jump_list::JumpEntry {
-            buffer_id: bid,
-            selections: at_start.clone(),
-            primary_line: hume_rope::line::ContentLine::new(i),
-        });
+        ed.state.panes.entries[pid]
+            .jumps
+            .push(crate::editor::jump_list::JumpEntry {
+                buffer_id: bid,
+                selections: at_start.clone(),
+                primary_line: hume_rope::line::ContentLine::new(i),
+            });
     }
-    assert_eq!(ed.state.panes.jumps[pid].len(), 5);
+    assert_eq!(ed.state.panes.entries[pid].jumps.len(), 5);
 
     let result = eval_set_option(&mut ed, r#"(set-option! "jump-list-capacity" 2)"#);
     assert!(result.is_ok(), "eval must succeed: {result:?}");
 
     assert_eq!(ed.state.settings.jump_list_capacity, 2);
     assert_eq!(
-        ed.state.panes.jumps[pid].len(),
+        ed.state.panes.entries[pid].jumps.len(),
         5,
         "lowering the cap must not retroactively trim existing entries"
     );
 
     // The overshoot (5 -> new cap 2) is more than one entry; the next push
     // must still converge to the cap in this one call.
-    ed.state.panes.jumps[pid].push(crate::editor::jump_list::JumpEntry {
-        buffer_id: bid,
-        selections: at_start.clone(),
-        primary_line: hume_rope::line::ContentLine::new(5),
-    });
+    ed.state.panes.entries[pid]
+        .jumps
+        .push(crate::editor::jump_list::JumpEntry {
+            buffer_id: bid,
+            selections: at_start.clone(),
+            primary_line: hume_rope::line::ContentLine::new(5),
+        });
     assert_eq!(
-        ed.state.panes.jumps[pid].len(),
+        ed.state.panes.entries[pid].jumps.len(),
         2,
         "the next push must apply the resynced capacity with no manual pickup"
     );

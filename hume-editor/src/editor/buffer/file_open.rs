@@ -296,7 +296,7 @@ impl Editor {
     }
 
     /// Redirect `fp` to `target`, recording the outgoing position in
-    /// `panes.jumps[fp]`.
+    /// `panes.entries[fp].jumps`.
     ///
     /// Caller contract: all fallible steps (path resolution, file read, etc.)
     /// must succeed before calling this: `push()` truncates forward history.

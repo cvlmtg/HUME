@@ -140,7 +140,7 @@ pub(in crate::editor) fn switch_pane_to_buffer(
     // differs from `PaneBufferState::last_layout_key`: the very first read
     // for a `(pane, buffer)` pair is `None`, which differs from anything.
     pane_state::ensure(
-        &mut state.panes.state,
+        &mut state.panes.entries,
         &state.buffers,
         &ev.panes,
         pid,
@@ -214,7 +214,7 @@ pub(in crate::editor) fn show_read_only_view(
     let cursor_line =
         cursor_line.unwrap_or_else(|| state.buffers.get(bid).text().last_content_line());
     pane_state::park_cursor_at(
-        &mut state.panes.state,
+        &mut state.panes.entries,
         &state.buffers,
         &ev.panes,
         t.pid(),

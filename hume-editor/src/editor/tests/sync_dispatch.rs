@@ -252,12 +252,8 @@ fn call_bang_count_arg_dispatches_synchronously() {
     );
     ed.execute_keymap_command("move-right-5".into(), Some(1), false);
 
-    let idx = ed
-        .state
-        .panes
-        .state
-        .get(ed.view.focused_pane())
-        .unwrap()
+    let idx = ed.state.panes.entries[ed.view.focused_pane()]
+        .buffers
         .values()
         .next()
         .unwrap()
@@ -561,9 +557,13 @@ fn steel_call_jump_cmd_records_jump_entry() {
     let bid = ed.focused_buffer_id();
     let _pane = focused_pane(&ed);
     // Fresh editor: no jump entries yet.
-    let had_entries_before = ed.state.panes.jumps[pane_id].entries_for_buffer(bid);
+    let had_entries_before = ed.state.panes.entries[pane_id]
+        .jumps
+        .entries_for_buffer(bid);
     ed.execute_keymap_command("steel-goto-end".into(), Some(1), false);
-    let has_entries_after = ed.state.panes.jumps[pane_id].entries_for_buffer(bid);
+    let has_entries_after = ed.state.panes.entries[pane_id]
+        .jumps
+        .entries_for_buffer(bid);
     assert!(
         !had_entries_before && has_entries_after,
         "jump list must gain entries after Steel (call! \"goto-last-line\" bid)"
@@ -788,12 +788,8 @@ fn steel_lambda_receives_bid_count_and_extend() {
 
     // Dispatch with count=4: cursor must land at position 4.
     ed.execute_keymap_command("step-right".into(), Some(4), false);
-    let idx = ed
-        .state
-        .panes
-        .state
-        .get(ed.view.focused_pane())
-        .unwrap()
+    let idx = ed.state.panes.entries[ed.view.focused_pane()]
+        .buffers
         .values()
         .next()
         .unwrap()
@@ -810,12 +806,8 @@ fn steel_lambda_receives_bid_count_and_extend() {
     // If injection were disabled, the cursor would be at 1 (count defaults to 1).
     // Restate with count=1 to prove the assert is live.
     ed.execute_keymap_command("step-right".into(), Some(1), false);
-    let idx2 = ed
-        .state
-        .panes
-        .state
-        .get(ed.view.focused_pane())
-        .unwrap()
+    let idx2 = ed.state.panes.entries[ed.view.focused_pane()]
+        .buffers
         .values()
         .next()
         .unwrap()
@@ -848,12 +840,8 @@ fn steel_zero_arity_lambda_ignores_injection() {
     );
 
     // Dispatch with count=5: the 0-arg lambda ignores count, moves exactly 1.
-    let before = ed
-        .state
-        .panes
-        .state
-        .get(ed.view.focused_pane())
-        .unwrap()
+    let before = ed.state.panes.entries[ed.view.focused_pane()]
+        .buffers
         .values()
         .next()
         .unwrap()
@@ -862,12 +850,8 @@ fn steel_zero_arity_lambda_ignores_injection() {
         .head()
         .offset();
     ed.execute_keymap_command("fixed-right".into(), Some(5), false);
-    let after = ed
-        .state
-        .panes
-        .state
-        .get(ed.view.focused_pane())
-        .unwrap()
+    let after = ed.state.panes.entries[ed.view.focused_pane()]
+        .buffers
         .values()
         .next()
         .unwrap()
@@ -910,12 +894,8 @@ fn steel_arity_1_lambda_receives_bid_only() {
 
     // Dispatch with count=5: an arity-1 lambda ignores count (it isn't
     // injected), so the cursor moves exactly 1.
-    let before = ed
-        .state
-        .panes
-        .state
-        .get(ed.view.focused_pane())
-        .unwrap()
+    let before = ed.state.panes.entries[ed.view.focused_pane()]
+        .buffers
         .values()
         .next()
         .unwrap()
@@ -924,12 +904,8 @@ fn steel_arity_1_lambda_receives_bid_only() {
         .head()
         .offset();
     ed.execute_keymap_command("step-bid-only".into(), Some(5), false);
-    let after = ed
-        .state
-        .panes
-        .state
-        .get(ed.view.focused_pane())
-        .unwrap()
+    let after = ed.state.panes.entries[ed.view.focused_pane()]
+        .buffers
         .values()
         .next()
         .unwrap()
@@ -968,12 +944,8 @@ fn steel_arity_2_lambda_receives_bid_and_count() {
 
     // Dispatch with count=3: cursor must land 3 positions to the right.
     ed.execute_keymap_command("step-count-only".into(), Some(3), false);
-    let idx = ed
-        .state
-        .panes
-        .state
-        .get(ed.view.focused_pane())
-        .unwrap()
+    let idx = ed.state.panes.entries[ed.view.focused_pane()]
+        .buffers
         .values()
         .next()
         .unwrap()

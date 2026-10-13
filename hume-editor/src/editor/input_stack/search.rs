@@ -95,11 +95,11 @@ impl SearchLayer {
     fn end(&mut self, state: &mut EditorState, confirmed: Option<&str>) {
         if let Some(bid) = self
             .snap
-            .take_restore(&mut state.panes.state, &state.buffers)
+            .take_restore(&mut state.panes.entries, &state.buffers)
         {
             let previewed = state.buffers.get(bid).search_pattern.as_ref();
             if !confirmed.is_some_and(|raw| previewed.is_some_and(|sp| sp.pattern_str == raw)) {
-                search::ops::clear_buffer_search(&mut state.buffers, &mut state.panes.state, bid);
+                search::ops::clear_buffer_search(&mut state.buffers, &mut state.panes.entries, bid);
             }
         }
         state.history.begin_session_all();
@@ -135,7 +135,11 @@ fn handle_search_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
             let Some((bid, _)) = search.snap.selections() else {
                 return;
             };
-            search::ops::clear_buffer_search(&mut ed.state.buffers, &mut ed.state.panes.state, bid);
+            search::ops::clear_buffer_search(
+                &mut ed.state.buffers,
+                &mut ed.state.panes.entries,
+                bid,
+            );
         }
         MiniBufferEvent::BackspaceOnEmpty => {
             // Input already empty: user pressed Backspace a second time to
@@ -211,7 +215,11 @@ fn update_live_search(ed: &mut Editor, r: LayerRef) {
         Ok(false) => restore_search_snapshot(ed, r),
         // Invalid regex in progress: clear pattern so highlights disappear.
         Err(InvalidPattern) => {
-            search::ops::clear_buffer_search(&mut ed.state.buffers, &mut ed.state.panes.state, bid);
+            search::ops::clear_buffer_search(
+                &mut ed.state.buffers,
+                &mut ed.state.panes.entries,
+                bid,
+            );
         }
     }
 }
@@ -282,7 +290,7 @@ pub(in crate::editor) fn preview_search(
         return Ok(false);
     };
     let text = moved.text().clone();
-    state.panes.state[pane][bid].set_selections(moved.into_selections(), &text);
+    state.panes.entries[pane].buffers[bid].set_selections(moved.into_selections(), &text);
     Ok(true)
 }
 
@@ -321,5 +329,5 @@ fn restore_search_snapshot(ed: &mut Editor, r: LayerRef) {
     };
     search
         .snap
-        .restore(&mut ed.state.panes.state, &ed.state.buffers);
+        .restore(&mut ed.state.panes.entries, &ed.state.buffers);
 }

@@ -70,12 +70,12 @@ fn d4a_search_pattern_is_per_buffer() {
 
     // Both panes see Buffer.search_pattern: it's a single field on `doc`.
     // Verify independence of search_cursor: write distinct values per pane.
-    ed.state.panes.state[pid_a][bid].search_cursor = SearchCursor {
+    ed.state.panes.entries[pid_a].buffers[bid].search_cursor = SearchCursor {
         match_count: Some((1, 3)),
         wrapped: false,
         ..SearchCursor::default()
     };
-    ed.state.panes.state[pid_b][bid].search_cursor = SearchCursor {
+    ed.state.panes.entries[pid_b].buffers[bid].search_cursor = SearchCursor {
         match_count: Some((2, 3)),
         wrapped: true,
         ..SearchCursor::default()
@@ -83,16 +83,28 @@ fn d4a_search_pattern_is_per_buffer() {
 
     // Pane A and pane B see different cursors even though they share the buffer.
     assert_eq!(
-        ed.state.panes.state[pid_a][bid].search_cursor.match_count,
+        ed.state.panes.entries[pid_a].buffers[bid]
+            .search_cursor
+            .match_count,
         Some((1, 3))
     );
-    assert!(!ed.state.panes.state[pid_a][bid].search_cursor.wrapped);
+    assert!(
+        !ed.state.panes.entries[pid_a].buffers[bid]
+            .search_cursor
+            .wrapped
+    );
 
     assert_eq!(
-        ed.state.panes.state[pid_b][bid].search_cursor.match_count,
+        ed.state.panes.entries[pid_b].buffers[bid]
+            .search_cursor
+            .match_count,
         Some((2, 3))
     );
-    assert!(ed.state.panes.state[pid_b][bid].search_cursor.wrapped);
+    assert!(
+        ed.state.panes.entries[pid_b].buffers[bid]
+            .search_cursor
+            .wrapped
+    );
 }
 
 /// D4b: `Selection.sticky_display_col` travels with the selection; resets
@@ -287,7 +299,7 @@ fn d6_search_cancel_targets_the_originating_pane_not_the_focused_one() {
         ed.state.buffers.get(bid_a).search_pattern.is_some(),
         "sanity: live search armed on A"
     );
-    let head_during_preview = ed.state.panes.state[pid_a][bid_a]
+    let head_during_preview = ed.state.panes.entries[pid_a].buffers[bid_a]
         .view(ed.state.buffers.get(bid_a).text())
         .primary()
         .head()
@@ -321,7 +333,7 @@ fn d6_search_cancel_targets_the_originating_pane_not_the_focused_one() {
     ed.feed_key(key_esc());
 
     assert_eq!(
-        ed.state.panes.state[pid_a][bid_a]
+        ed.state.panes.entries[pid_a].buffers[bid_a]
             .view(ed.state.buffers.get(bid_a).text())
             .primary()
             .head()
@@ -586,7 +598,7 @@ fn ensure_is_idempotent() {
 
     // ensure() on an already-seeded entry must not reset to initial_sels.
     pane_state::ensure(
-        &mut ed.state.panes.state,
+        &mut ed.state.panes.entries,
         &ed.state.buffers,
         &ed.view.panes,
         pid,
@@ -612,7 +624,7 @@ fn ensure_panics_on_a_closed_pane() {
     let (pid_a, bid) = close_pane_leaving_slot_vacant(&mut ed);
 
     pane_state::ensure(
-        &mut ed.state.panes.state,
+        &mut ed.state.panes.entries,
         &ed.state.buffers,
         &ed.view.panes,
         pid_a,
@@ -637,7 +649,7 @@ fn ensure_seeds_new_entry_with_initial_sels() {
 
     // The focused pane has never viewed `bid2`, so this is its first-visit seed.
     let state = pane_state::ensure(
-        &mut ed.state.panes.state,
+        &mut ed.state.panes.entries,
         &ed.state.buffers,
         &ed.view.panes,
         pid,
@@ -1515,10 +1527,6 @@ fn switching_a_panes_buffer_rebuilds_its_virtual_lines() {
 
     let mut ed = editor_from("-[h]>ello\n");
     let bid_a = ed.focused_buffer_id();
-    // `editor_from`'s bootstrap pane is built via `Pane::new` directly, with
-    // no `panes.render` entry (see `Editor::for_testing`'s comment); only
-    // `open_pane` seeds one, so this test opens a second pane rather than
-    // using the bootstrap one.
     let pid = open_pane_in_layout(
         &mut ed.state,
         &mut ed.view,
@@ -1545,7 +1553,8 @@ fn switching_a_panes_buffer_rebuilds_its_virtual_lines() {
     ed.prepare_frame(&mut hume_engine::pipeline::RenderContext::new());
 
     assert!(
-        ed.state.panes.render[pid]
+        ed.state.panes.entries[pid]
+            .render
             .virtual_lines()
             .contains_key(&hume_rope::line::ContentLine::new(0)),
         "sanity: pane A mirrors buffer A's virtual line at line 0"
@@ -1559,7 +1568,10 @@ fn switching_a_panes_buffer_rebuilds_its_virtual_lines() {
     ed.prepare_frame(&mut hume_engine::pipeline::RenderContext::new());
 
     assert!(
-        ed.state.panes.render[pid].virtual_lines().is_empty(),
+        ed.state.panes.entries[pid]
+            .render
+            .virtual_lines()
+            .is_empty(),
         "after switching to buffer B, the pane must no longer mirror buffer \
          A's virtual lines; a generation-only sync gate would leave line 0 \
          populated with A's stale entry"
@@ -1843,8 +1855,8 @@ fn split_inherits_focused_panes_selection_and_scroll() {
     assert_ne!(pid_a, pid_b);
 
     assert_eq!(
-        ed.state.panes.state[pid_b][bid].selections(),
-        ed.state.panes.state[pid_a][bid].selections(),
+        ed.state.panes.entries[pid_b].buffers[bid].selections(),
+        ed.state.panes.entries[pid_a].buffers[bid].selections(),
         "new pane inherits the source pane's selection"
     );
     assert_eq!(
@@ -1964,7 +1976,7 @@ fn split_same_buffer_clones_jump_list_then_diverges() {
     ed.handle_key(key('g'));
     ed.handle_key(key('g'));
     assert_eq!(
-        ed.state.panes.jumps[pid_a].len(),
+        ed.state.panes.entries[pid_a].jumps.len(),
         1,
         "source pane has one jump entry after gg"
     );
@@ -1974,7 +1986,7 @@ fn split_same_buffer_clones_jump_list_then_diverges() {
     let pid_b = ed.view.focused_pane();
     assert_ne!(pid_a, pid_b, "focus moved to the new pane");
     assert_eq!(
-        ed.state.panes.jumps[pid_b].len(),
+        ed.state.panes.entries[pid_b].jumps.len(),
         1,
         "new pane inherited the source pane's jump entry"
     );
@@ -1985,12 +1997,12 @@ fn split_same_buffer_clones_jump_list_then_diverges() {
     ed.handle_key(key('g'));
     ed.handle_key(key('e'));
     assert_eq!(
-        ed.state.panes.jumps[pid_b].len(),
+        ed.state.panes.entries[pid_b].jumps.len(),
         2,
         "new pane recorded its own jump after the split"
     );
     assert_eq!(
-        ed.state.panes.jumps[pid_a].len(),
+        ed.state.panes.entries[pid_a].jumps.len(),
         1,
         "source pane's jump list is unchanged after the new pane's jump"
     );

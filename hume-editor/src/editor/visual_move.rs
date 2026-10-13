@@ -164,74 +164,80 @@ pub(super) fn apply_visual_vertical(
     // Not `apply_focused_motion`: the closure also captures the display-line
     // map and the sticky-column buffer, disjoint fields of `state` that must
     // be borrowed separately from `state.panes`.
-    doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, pid, buf_id, |st| {
-        // Pass 1: resolve each selection's sticky display column. A
-        // latch matching this call's own family (`BufferLine` when
-        // `treat_as_line`, `DisplayLine` at the current wrap width
-        // otherwise) is reused as-is; any other latch (the other
-        // family, or a `DisplayLine` latch from a stale wrap geometry)
-        // is re-derived instead, the same as no latch at all.
-        let current_wrap_width = dlm.resolved_wrap_width();
-        target_display_cols.extend(st.view().iter().map(|sel| {
-            match sel.selection().sticky_display_col() {
-                Some(StickyDisplayCol::BufferLine { display_col }) if treat_as_line => {
-                    StickyDisplayCol::BufferLine { display_col }
-                }
-                Some(StickyDisplayCol::DisplayLine {
-                    display_col,
-                    wrap_width,
-                }) if !treat_as_line && wrap_width == current_wrap_width => {
-                    StickyDisplayCol::DisplayLine {
+    doc_ops::apply_doc_motion(
+        &state.buffers,
+        &mut state.panes.entries,
+        pid,
+        buf_id,
+        |st| {
+            // Pass 1: resolve each selection's sticky display column. A
+            // latch matching this call's own family (`BufferLine` when
+            // `treat_as_line`, `DisplayLine` at the current wrap width
+            // otherwise) is reused as-is; any other latch (the other
+            // family, or a `DisplayLine` latch from a stale wrap geometry)
+            // is re-derived instead, the same as no latch at all.
+            let current_wrap_width = dlm.resolved_wrap_width();
+            target_display_cols.extend(st.view().iter().map(|sel| {
+                match sel.selection().sticky_display_col() {
+                    Some(StickyDisplayCol::BufferLine { display_col }) if treat_as_line => {
+                        StickyDisplayCol::BufferLine { display_col }
+                    }
+                    Some(StickyDisplayCol::DisplayLine {
                         display_col,
                         wrap_width,
+                    }) if !treat_as_line && wrap_width == current_wrap_width => {
+                        StickyDisplayCol::DisplayLine {
+                            display_col,
+                            wrap_width,
+                        }
                     }
+                    _ if treat_as_line => StickyDisplayCol::BufferLine {
+                        display_col: dlm.buffer_line_col(sel.head()),
+                    },
+                    _ => StickyDisplayCol::DisplayLine {
+                        display_col: dlm.locate(sel.head()).1,
+                        wrap_width: current_wrap_width,
+                    },
                 }
-                _ if treat_as_line => StickyDisplayCol::BufferLine {
-                    display_col: dlm.buffer_line_col(sel.head()),
-                },
-                _ => StickyDisplayCol::DisplayLine {
-                    display_col: dlm.locate(sel.head()).1,
-                    wrap_width: current_wrap_width,
-                },
-            }
-        }));
+            }));
 
-        // Pass 2: rebuild each selection, resolving its new head from the
-        // sticky column pass 1 just latched and preserving that column so
-        // consecutive presses in the same family reuse it.
-        let mut targets = target_display_cols.iter();
-        st.map(|sel| {
-            let text = sel.text();
-            let &target = targets.next().expect("one column per selection");
-            let head = match target {
-                StickyDisplayCol::BufferLine { display_col } if is_buffer_line => {
-                    move_buffer_line(&mut dlm, text, sel.head(), down, count, display_col)
-                }
-                // No-wrap (`treat_as_line` without `is_buffer_line`):
-                // display-line-relative and buffer-line-relative columns
-                // coincide, and pass 1 resolved this latch via
-                // `buffer_line_col` in that case:
-                // `as_display_line_unwrapped` is the sound
-                // reinterpretation `move_vertical` needs.
-                StickyDisplayCol::BufferLine { display_col } => move_vertical(
-                    &mut dlm,
-                    sel.head(),
-                    down,
-                    count,
-                    display_col.as_display_line_unwrapped(),
-                ),
-                StickyDisplayCol::DisplayLine { display_col, .. } => {
-                    move_vertical(&mut dlm, sel.head(), down, count, display_col)
-                }
-            };
-            let anchor = if mode == MotionMode::Extend {
-                sel.anchor()
-            } else {
-                head
-            };
-            Selection::new(anchor, head).with_sticky(target)
-        })
-    });
+            // Pass 2: rebuild each selection, resolving its new head from the
+            // sticky column pass 1 just latched and preserving that column so
+            // consecutive presses in the same family reuse it.
+            let mut targets = target_display_cols.iter();
+            st.map(|sel| {
+                let text = sel.text();
+                let &target = targets.next().expect("one column per selection");
+                let head = match target {
+                    StickyDisplayCol::BufferLine { display_col } if is_buffer_line => {
+                        move_buffer_line(&mut dlm, text, sel.head(), down, count, display_col)
+                    }
+                    // No-wrap (`treat_as_line` without `is_buffer_line`):
+                    // display-line-relative and buffer-line-relative columns
+                    // coincide, and pass 1 resolved this latch via
+                    // `buffer_line_col` in that case:
+                    // `as_display_line_unwrapped` is the sound
+                    // reinterpretation `move_vertical` needs.
+                    StickyDisplayCol::BufferLine { display_col } => move_vertical(
+                        &mut dlm,
+                        sel.head(),
+                        down,
+                        count,
+                        display_col.as_display_line_unwrapped(),
+                    ),
+                    StickyDisplayCol::DisplayLine { display_col, .. } => {
+                        move_vertical(&mut dlm, sel.head(), down, count, display_col)
+                    }
+                };
+                let anchor = if mode == MotionMode::Extend {
+                    sel.anchor()
+                } else {
+                    head
+                };
+                Selection::new(anchor, head).with_sticky(target)
+            })
+        },
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -370,7 +376,7 @@ fn copy_selection_on_line(
 
     doc_ops::apply_doc_motion(
         &state.buffers,
-        &mut state.panes.state,
+        &mut state.panes.entries,
         t.pid(),
         buf_id,
         |st| copy_selection_vertically(&mut dlm, st, down, count),
@@ -497,7 +503,7 @@ pub(super) fn cmd_visual_select_word_nearest_on_line(
     // Not `apply_pane_motion`: the closure also captures the display-line map.
     doc_ops::apply_doc_motion(
         &state.buffers,
-        &mut state.panes.state,
+        &mut state.panes.entries,
         t.pid(),
         buf_id,
         |st| {

@@ -101,7 +101,9 @@ pub(in crate::editor) fn arm_autoindent(
         })
         .collect();
     let record = Tracked::new(ranges, text);
-    fp.pane().state_mut(&mut state.panes.state, view).autoindent = Some(record);
+    fp.pane()
+        .state_mut(&mut state.panes.entries, view)
+        .autoindent = Some(record);
 }
 
 /// Where an *empty* typed run's cursor lands on exit. See
@@ -160,7 +162,7 @@ pub(super) fn begin_typed_run(
         },
         doc(state, view, fp.pane()).text(),
     );
-    let pbs = fp.pane().state_mut(&mut state.panes.state, view);
+    let pbs = fp.pane().state_mut(&mut state.panes.entries, view);
     pbs.typed_run = Some(run);
     pbs.step_back_on_exit = matches!(exit, ExitCursor::StepBack);
 }
@@ -228,7 +230,7 @@ pub(super) fn begin_insert_session_preserving_register(
         let recording = state.open_scope_source();
         doc_ops::begin_edit_group(
             &state.buffers,
-            &mut state.panes.state,
+            &mut state.panes.entries,
             &mut state.active_session,
             pid,
             bid,
@@ -299,7 +301,7 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState) {
     // `has_blank_line_cursor` also skips the edit in the common case
     // (cursor not on a line this session owns) rather than running an
     // identity one on every Insert-mode exit.
-    let pbs = &state.panes.state[pid][bid];
+    let pbs = &state.panes.entries[pid].buffers[bid];
     let allowed = autoindent_owned(pbs, state.buffers.get(bid).text());
     if has_blank_line_cursor(pbs.view(state.buffers.get(bid).text()), &allowed) {
         doc_ops::apply_doc_edit_grouped(
@@ -318,7 +320,7 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState) {
     }
     doc_ops::commit_edit_group(
         &mut state.buffers,
-        &state.panes.state,
+        &state.panes.entries,
         &mut state.active_session,
     );
     // Every insert entry pins one typed run via `begin_typed_run`, so
@@ -328,7 +330,7 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState) {
     // nothing to the `mii` stash and, for an empty run, falls back to
     // `exit_cursor`'s step-back handling below.
     let (typed_run, step_back, kill_opened, sel_count) = {
-        let pbs = &mut state.panes.state[pid][bid];
+        let pbs = &mut state.panes.entries[pid].buffers[bid];
         let sel_count = pbs.view(state.buffers.get(bid).text()).len();
         (
             pbs.typed_run.take(),
@@ -376,7 +378,7 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState) {
     if spans.is_some() || step_back {
         doc_ops::apply_doc_motion(
             &state.buffers,
-            &mut state.panes.state,
+            &mut state.panes.entries,
             pid,
             bid,
             move |st| {

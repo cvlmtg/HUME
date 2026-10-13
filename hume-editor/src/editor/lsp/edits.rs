@@ -168,7 +168,7 @@ fn commit_changeset(
     bid: BufferId,
     cs: ChangeSet,
 ) -> Result<ChangeSet, String> {
-    pane_state::try_ensure(&mut state.panes.state, &state.buffers, panes, pid, bid)?;
+    pane_state::try_ensure(&mut state.panes.entries, &state.buffers, panes, pid, bid)?;
     let cs_for_return = cs.clone();
     doc_ops::apply_doc_edit(
         &mut state.buffers,

@@ -123,7 +123,7 @@ pub(in crate::editor) fn insert_default_key(
         // copied indent, so the next Enter/Esc on it trims.
         KeyCode::Enter => {
             let allowed = autoindent_owned(
-                fp.pane().state(&state.panes.state, view),
+                fp.pane().state(&state.panes.entries, view),
                 doc(state, view, fp.pane()).text(),
             );
             apply_focused_edit_grouped(state, view, fp, move |s| {

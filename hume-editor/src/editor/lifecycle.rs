@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use termina::event::{Event as TerminalEvent, KeyEvent, KeyEventKind};
 
-use hume_engine::pipeline::{BufferId, EngineView, PaneId, RenderContext};
+use hume_engine::pipeline::{BufferId, EngineView, RenderContext};
 use hume_engine::types::EditorMode;
 
 use hume_platform::screen::Screen;
@@ -64,11 +64,10 @@ impl Editor {
         use super::clipboard;
         use crate::editor::buffer::Buffer;
         use crate::editor::buffer::store::BufferStore;
+        use crate::editor::pane_state::PaneView;
         use crate::editor::pane_state::build_pane;
-        use crate::editor::pane_state::{PaneBufferState, PaneView};
         use crate::editor::settings::EditorSettings;
         use hume_editing::text::BufferText;
-        use slotmap::SecondaryMap;
 
         let mut doc = match file_path {
             // Missing file, valid basename: `hume newfile.txt` opens an
@@ -125,15 +124,16 @@ impl Editor {
         let history_capacity = settings.history_capacity;
         let initial_mouse_mode = (settings.mouse, settings.mouse_select);
 
-        // Seed per-pane state from the buffer's history-root selections.
-        let mut per_pane_bufs: SecondaryMap<BufferId, PaneBufferState> = SecondaryMap::new();
-        per_pane_bufs.insert(buffer_id, crate::editor::pane_state::fresh_from_buf(&doc));
-        let mut pane_buf_state: SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>> =
-            SecondaryMap::new();
-        pane_buf_state.insert(pane_id, per_pane_bufs);
-
         let mut buffers = BufferStore::new();
         buffers.open(buffer_id, doc);
+        let mut panes = PaneView::default();
+        panes.open(
+            pane_id,
+            buffer_id,
+            crate::editor::pane_state::fresh_from_buf(buffers.get(buffer_id)),
+            jump_list_capacity,
+            render_handles,
+        );
 
         let mut editor = Self {
             state: super::EditorState {
@@ -143,18 +143,7 @@ impl Editor {
                 lsp: super::lsp::LspState::new_threaded(std::sync::Arc::clone(&wake)),
                 clipboard: clipboard::SystemClipboard::new(),
                 settings,
-                panes: {
-                    let mut jumps = super::jump_list::JumpLists::default();
-                    jumps.insert(pane_id, super::jump_list::JumpList::new(jump_list_capacity));
-                    let mut render = SecondaryMap::new();
-                    render.insert(pane_id, render_handles);
-                    PaneView {
-                        state: pane_buf_state,
-                        jumps,
-                        tracked: Default::default(),
-                        render,
-                    }
-                },
+                panes,
                 history: super::minibuf::history::HistoryStore::new(history_capacity),
                 cwd: startup_cwd,
                 views,
@@ -262,7 +251,7 @@ impl Editor {
         let mut center_focused = false;
         for (bid, pos) in placements {
             crate::editor::pane_state::park_cursor_at(
-                &mut self.state.panes.state,
+                &mut self.state.panes.entries,
                 &self.state.buffers,
                 &self.view.panes,
                 pid,

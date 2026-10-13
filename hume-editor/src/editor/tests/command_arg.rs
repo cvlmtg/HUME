@@ -248,7 +248,7 @@ fn search_history(ed: &Editor, kind: HistoryKind) -> Vec<String> {
 }
 
 fn jump_count(ed: &Editor) -> usize {
-    ed.state.panes.jumps[ed.view.focused_pane()].len()
+    ed.state.panes.entries[ed.view.focused_pane()].jumps.len()
 }
 
 #[test]

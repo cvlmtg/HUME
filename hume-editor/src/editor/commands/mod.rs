@@ -92,7 +92,7 @@ pub(super) fn apply_pane_motion(
     f: impl FnOnce(hume_editing::state::EditState) -> hume_editing::state::EditState,
 ) {
     let buf = t.bid(view);
-    doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, t.pid(), buf, f);
+    doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.entries, t.pid(), buf, f);
 }
 
 /// Apply an edit to `t`'s (pane, buffer) pair.
@@ -188,7 +188,7 @@ pub(super) fn pane_selections<'a>(
     view: &EngineView,
     t: CommandPane,
 ) -> &'a SelectionSet {
-    t.state(&state.panes.state, view).selections()
+    t.state(&state.panes.entries, view).selections()
 }
 
 /// `t`'s selections bound to its buffer's text: the read side of
@@ -199,7 +199,7 @@ pub(in crate::editor) fn pane_view<'a>(
     t: CommandPane,
 ) -> hume_editing::selection::EditView<'a> {
     let text = state.buffers.get(t.bid(view)).text();
-    t.state(&state.panes.state, view).view(text)
+    t.state(&state.panes.entries, view).view(text)
 }
 
 /// Viewport state of pane `pid`.
@@ -316,7 +316,7 @@ pub(super) fn jump_pane_to(
     with_jump(state, view, t, JumpRule::IfMoved, |state, view| {
         crate::editor::buffer::lifecycle::switch_pane_to_buffer(state, view, pid, bid);
         crate::editor::pane_state::write_cursor(
-            &mut state.panes.state,
+            &mut state.panes.entries,
             &state.buffers,
             &view.panes,
             pid,
@@ -335,7 +335,7 @@ pub(super) fn set_pane_selections(
     sels: SelectionSet,
 ) {
     let text = state.buffers.get(t.bid(view)).text();
-    t.state_mut(&mut state.panes.state, view)
+    t.state_mut(&mut state.panes.entries, view)
         .set_selections(sels, text);
 }
 
@@ -347,7 +347,7 @@ pub(super) fn set_primary_selection(
     new_sel: hume_editing::selection::Selection,
 ) {
     let text = state.buffers.get(t.bid(view)).text();
-    let pbs = t.state_mut(&mut state.panes.state, view);
+    let pbs = t.state_mut(&mut state.panes.entries, view);
     let replaced = pbs.state(text).replace_primary(new_sel);
     pbs.store(replaced);
 }

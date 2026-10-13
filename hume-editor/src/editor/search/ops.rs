@@ -15,8 +15,6 @@
 use hume_editing::tracked::Tracked;
 use std::sync::Arc;
 
-use slotmap::SecondaryMap;
-
 use hume_engine::pipeline::{BufferId, PaneId};
 
 #[cfg(test)]
@@ -24,21 +22,21 @@ use super::SearchPattern;
 use super::{SearchCursor, SearchMatches};
 use crate::editor::Editor;
 use crate::editor::buffer::store::BufferStore;
-use crate::editor::pane_state::PaneBufferState;
+use crate::editor::pane_state::PaneEntries;
 use hume_ops::search::{find_all_matches, search_match_info};
 
 /// Clear the active search state for buffer `bid`: drop the pattern,
 /// reset the match cache, and reset every pane's search cursor.
 pub(in crate::editor) fn clear_buffer_search(
     buffers: &mut BufferStore,
-    pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
+    pane_state: &mut PaneEntries,
     bid: BufferId,
 ) {
     let buf = buffers.get_mut(bid);
     buf.search_pattern = None;
     buf.search_matches = SearchMatches::default();
-    for buf_map in pane_state.values_mut() {
-        if let Some(state) = buf_map.get_mut(bid) {
+    for entry in pane_state.values_mut() {
+        if let Some(state) = entry.buffers.get_mut(bid) {
             state.search_cursor = SearchCursor::default();
         }
     }
@@ -85,23 +83,23 @@ pub(in crate::editor) fn update_buffer_matches(buffers: &mut BufferStore, bid: B
     }
 }
 
-/// Recompute `pane_state[pid][bid].search_cursor.match_count` if stale.
+/// Recompute `pane_state[pid].buffers[bid].search_cursor.match_count` if stale.
 ///
 /// Takes `buffers: &BufferStore` and `pane_state: &mut ...` as separate
 /// parameters: the match-list reference and the cursor write are disjoint,
 /// so no intermediate owned variable is needed.
 pub(in crate::editor::search::ops) fn update_pane_cursor(
     buffers: &BufferStore,
-    pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
+    pane_state: &mut PaneEntries,
     pid: PaneId,
     bid: BufferId,
 ) {
     let text = buffers.get(bid).text();
-    let head = pane_state[pid][bid].view(text).primary().head();
+    let head = pane_state[pid].buffers[bid].view(text).primary().head();
     let Some((pattern, matches)) = buffers.get(bid).search_matches.found(text) else {
         return;
     };
-    let cur = &pane_state[pid][bid].search_cursor;
+    let cur = &pane_state[pid].buffers[bid].search_cursor;
     if cur
         .computed_for
         .as_ref()
@@ -113,7 +111,7 @@ pub(in crate::editor::search::ops) fn update_pane_cursor(
     let count = search_match_info(matches, head);
     // The matches borrow from buffers; the cursor borrows from pane_state:
     // disjoint params.
-    let cursor = &mut pane_state[pid][bid].search_cursor;
+    let cursor = &mut pane_state[pid].buffers[bid].search_cursor;
     cursor.match_count = Some(count);
     cursor.computed_for = Some(Tracked::new((pattern.to_owned(), head), text));
 }
@@ -122,7 +120,7 @@ pub(in crate::editor::search::ops) fn update_pane_cursor(
 /// specific pane/buffer pair.
 pub(in crate::editor) fn sync_search_cache(
     buffers: &mut BufferStore,
-    pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
+    pane_state: &mut PaneEntries,
     pid: PaneId,
     bid: BufferId,
 ) {
@@ -167,7 +165,7 @@ impl Editor {
         let bid = self.focused_buffer_id();
         sync_search_cache(
             &mut self.state.buffers,
-            &mut self.state.panes.state,
+            &mut self.state.panes.entries,
             pid,
             bid,
         );

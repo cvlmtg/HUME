@@ -9,9 +9,8 @@ use hume_editing::tracked::Tracked;
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 use hume_scripting::PaneHandle;
 use hume_scripting::host::CommandArg;
-use slotmap::SecondaryMap;
 
-use crate::editor::pane_state::PaneBufferState;
+use crate::editor::pane_state::{PaneBufferState, PaneEntries};
 
 use crate::editor::dispatch::CmdCtx;
 use crate::editor::jump_list::{JumpRule, with_jump};
@@ -83,26 +82,26 @@ impl CommandPane {
     }
 
     /// `t`'s own seeded state: the shared tail every
-    /// `pane_state[t.pid()][t.bid(view)]` hand-index reduces to. Panics with
+    /// `pane_state[t.pid()].buffers[t.bid(view)]` hand-index reduces to. Panics with
     /// slotmap's own message if unseeded, which never happens for a
     /// resolved `CommandPane`: every pane creation or buffer switch seeds
     /// its `PaneBufferState` first.
     pub(in crate::editor) fn state<'a>(
         self,
-        pane_state: &'a SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
+        pane_state: &'a PaneEntries,
         view: &EngineView,
     ) -> &'a PaneBufferState {
-        &pane_state[self.0][self.bid(view)]
+        &pane_state[self.0].buffers[self.bid(view)]
     }
 
     /// [`Self::state`]'s mutable counterpart.
     pub(in crate::editor) fn state_mut<'a>(
         self,
-        pane_state: &'a mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
+        pane_state: &'a mut PaneEntries,
         view: &EngineView,
     ) -> &'a mut PaneBufferState {
         let bid = self.bid(view);
-        &mut pane_state[self.0][bid]
+        &mut pane_state[self.0].buffers[bid]
     }
 }
 
@@ -695,12 +694,12 @@ pub(in crate::editor) fn run_body(
                     // Can't route through `apply_pane_motion` (takes `&mut
                     // EditorState` wholesale): `ctx.chars` borrows out of
                     // `state.buffers`, which must stay borrowed alongside
-                    // the `&mut state.panes.state` the motion itself needs:
+                    // the `&mut state.panes.entries` the motion itself needs:
                     // exactly the disjoint-borrow case `apply_doc_motion`
                     // exists to take directly.
                     crate::editor::doc_ops::apply_doc_motion(
                         &state.buffers,
-                        &mut state.panes.state,
+                        &mut state.panes.entries,
                         t.pid(),
                         buf,
                         |st| fun(st, count.get(), ctx),
@@ -716,7 +715,7 @@ pub(in crate::editor) fn run_body(
                     // byte offset).
                     ensure_syntax_current(state, buf, SyntaxUse::TextObjects);
                     // Collected before `apply_pane_motion`'s call below, which
-                    // needs `&state.buffers` and `&mut state.panes.state` at
+                    // needs `&state.buffers` and `&mut state.panes.entries` at
                     // once. `ObjectSpans` is owned precisely so its tree borrow
                     // ends here, before that call.
                     let spans = object_spans(state.buffers.get(buf), body);

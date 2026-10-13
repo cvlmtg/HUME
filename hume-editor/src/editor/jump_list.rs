@@ -13,8 +13,7 @@
 
 use std::collections::VecDeque;
 
-use hume_engine::pipeline::{BufferId, EngineView, PaneId};
-use slotmap::SecondaryMap;
+use hume_engine::pipeline::{BufferId, EngineView};
 
 use hume_editing::edit::TextChange;
 use hume_editing::selection::{EditView, Selection, SelectionSet};
@@ -356,7 +355,7 @@ pub(in crate::editor) fn current_jump_entry(
     t: CommandPane,
 ) -> JumpEntry {
     let bid = t.bid(view);
-    let sels = t.state(&state.panes.state, view).selections().clone();
+    let sels = t.state(&state.panes.entries, view).selections().clone();
     JumpEntry::new(sels, state.buffers.get(bid).text(), bid)
 }
 
@@ -394,7 +393,7 @@ pub(in crate::editor) fn with_jump<R>(
         JumpRule::IfMoved => current_jump_entry(state, view, t),
         JumpRule::Threshold { .. } => {
             let text = state.buffers.get(pre_bid).text();
-            let selections = t.state(&state.panes.state, view).selections().clone();
+            let selections = t.state(&state.panes.entries, view).selections().clone();
             JumpEntry::new(
                 EditState::bind(text, selections)
                     .keep_primary()
@@ -405,14 +404,14 @@ pub(in crate::editor) fn with_jump<R>(
         }
     };
     if state.mode() == Mode::Insert && view.focused_pane() == pid {
-        t.state_mut(&mut state.panes.state, view).typed_run = None;
+        t.state_mut(&mut state.panes.entries, view).typed_run = None;
     }
-    let pending = state.panes.jumps[pid].begin_pending(entry);
+    let pending = state.panes.entries[pid].jumps.begin_pending(entry);
     let result = body(state, view);
     let Some(t) = CommandPane::existing(view, pid) else {
         return (result, false);
     };
-    let entry = state.panes.jumps[pid].end_pending(pending);
+    let entry = state.panes.entries[pid].jumps.end_pending(pending);
     let post_bid = t.bid(view);
     let moved = match (rule, entry) {
         (JumpRule::IfMoved, Some(entry)) => record_if_moved(state, view, t, entry),
@@ -425,7 +424,7 @@ pub(in crate::editor) fn with_jump<R>(
                     || entry.primary_line.abs_diff(post.head_line())
                         > state.settings.jump_line_threshold)
             {
-                state.panes.jumps[pid].push(entry);
+                state.panes.entries[pid].jumps.push(entry);
             }
             moved
         }
@@ -446,87 +445,11 @@ pub(in crate::editor) fn record_if_moved(
     pre: JumpEntry,
 ) -> bool {
     let moved = pre.buffer_id != t.bid(view)
-        || pre.selections != *t.state(&state.panes.state, view).selections();
+        || pre.selections != *t.state(&state.panes.entries, view).selections();
     if moved {
-        state.panes.jumps[t.pid()].push(pre);
+        state.panes.entries[t.pid()].jumps.push(pre);
     }
     moved
-}
-
-/// Every pane's [`JumpList`], keyed by `PaneId`.
-///
-/// A newtype rather than a bare `SecondaryMap` so "do X to every pane's jump
-/// list" (remap through an edit, drop a buffer's entries, apply a capacity
-/// change) is one named method instead of a `for jumps in
-/// …values_mut() { … }` loop hand-written at each call site.
-#[derive(Debug, Clone, Default)]
-pub(in crate::editor) struct JumpLists(SecondaryMap<PaneId, JumpList>);
-
-impl JumpLists {
-    pub(in crate::editor) fn insert(&mut self, pid: PaneId, list: JumpList) {
-        self.0.insert(pid, list);
-    }
-
-    pub(in crate::editor) fn remove(&mut self, pid: PaneId) {
-        self.0.remove(pid);
-    }
-
-    /// Test-only: production seeding always goes through [`Self::insert`]
-    /// unconditionally (`commands::pane::open_pane`, `Editor::new`), never
-    /// guarded by a presence check. Only the `switch_focused_pane` test
-    /// choke-point lazily seeds a pane it didn't create through the normal
-    /// path.
-    #[cfg(test)]
-    pub(in crate::editor) fn contains_key(&self, pid: PaneId) -> bool {
-        self.0.contains_key(pid)
-    }
-
-    /// Remap every pane's jump-list entries for `buf_id` through `change`:
-    /// one of the stores `PositionStores::carry` carries.
-    ///
-    /// Unlike sibling-pane selection propagation, this does **not** filter by
-    /// which panes currently view `buf_id`: a pane's jump list holds entries
-    /// for buffers that pane isn't showing right now (that's what makes
-    /// cross-buffer Ctrl-o work), so every pane's list must be checked,
-    /// including the focused one (its own live cursor isn't a jump-list
-    /// entry, so nothing is mapped twice).
-    pub(in crate::editor) fn translate(&mut self, buf_id: BufferId, change: &TextChange<'_>) {
-        for jumps in self.0.values_mut() {
-            jumps.translate_in_place(buf_id, change);
-        }
-    }
-
-    /// Drop every pane's entries for `id`, when `id` closed or its content
-    /// was replaced wholesale (a full `Buffer` swap, or `set_view_content`'s
-    /// history-resetting in-place replace) rather than edited: there is no
-    /// `ChangeSet` to remap through, and same-buffer-id survival alone isn't
-    /// enough, since the new content shares nothing but its id with the old.
-    pub(in crate::editor) fn prune_buffer(&mut self, id: BufferId) {
-        for jumps in self.0.values_mut() {
-            jumps.prune_buffer(id);
-        }
-    }
-
-    /// Apply a `jump-list-capacity` change to every pane's list. Takes
-    /// effect on each list's next `push`, per `JumpList::set_capacity`.
-    pub(in crate::editor) fn set_capacity(&mut self, capacity: usize) {
-        for jumps in self.0.values_mut() {
-            jumps.set_capacity(capacity);
-        }
-    }
-}
-
-impl std::ops::Index<PaneId> for JumpLists {
-    type Output = JumpList;
-    fn index(&self, pid: PaneId) -> &JumpList {
-        &self.0[pid]
-    }
-}
-
-impl std::ops::IndexMut<PaneId> for JumpLists {
-    fn index_mut(&mut self, pid: PaneId) -> &mut JumpList {
-        &mut self.0[pid]
-    }
 }
 
 #[cfg(test)]

@@ -201,12 +201,8 @@ fn clearing_the_store_removes_the_hint_next_frame() {
     ed.settle();
     ed.prepare_frame(&mut ctx);
     let pid = ed.view.focused_pane();
-    let has_hint_before = ed
-        .state
-        .panes
+    let has_hint_before = ed.state.panes.entries[pid]
         .render
-        .get(pid)
-        .unwrap()
         .inlay_hints()
         .values()
         .any(|v| !v.is_empty());
@@ -219,12 +215,8 @@ fn clearing_the_store_removes_the_hint_next_frame() {
     ed.sync_viewport_dims(40, 8);
     ed.settle();
     ed.prepare_frame(&mut ctx);
-    let has_hint_after = ed
-        .state
-        .panes
+    let has_hint_after = ed.state.panes.entries[pid]
         .render
-        .get(pid)
-        .unwrap()
         .inlay_hints()
         .values()
         .any(|v| !v.is_empty());

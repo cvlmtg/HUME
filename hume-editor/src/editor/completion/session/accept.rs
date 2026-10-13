@@ -88,7 +88,7 @@ impl BufferSession {
         if opened_group {
             crate::editor::doc_ops::begin_edit_group(
                 &state.buffers,
-                &mut state.panes.state,
+                &mut state.panes.entries,
                 &mut state.active_session,
                 pid,
                 bid,
@@ -104,7 +104,7 @@ impl BufferSession {
         if opened_group {
             crate::editor::doc_ops::commit_edit_group(
                 &mut state.buffers,
-                &state.panes.state,
+                &state.panes.entries,
                 &mut state.active_session,
             );
         }

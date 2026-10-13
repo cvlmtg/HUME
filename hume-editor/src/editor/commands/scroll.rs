@@ -60,22 +60,28 @@ pub(in crate::editor) fn scroll_view(
     // virtual block, or already at a document edge) leaves that selection's
     // head unchanged, which is exactly the case the funnel already treats
     // as "nothing to reveal".
-    doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, pid, buf_id, |st| {
-        st.map(|sel| {
-            let (head_pos, target_col) = dlm.locate(sel.head());
-            let Some(landed) = carry(&mut dlm, geo, top, head_pos, delta) else {
-                // Parked behind a virtual block or at a document edge.
-                return sel.selection();
-            };
-            let new_head = dlm.char_at(landed, target_col, DisplayColTarget::NearestContent);
-            let anchor = if mode == MotionMode::Extend {
-                sel.anchor()
-            } else {
-                new_head
-            };
-            Selection::new(anchor, new_head)
-        })
-    });
+    doc_ops::apply_doc_motion(
+        &state.buffers,
+        &mut state.panes.entries,
+        pid,
+        buf_id,
+        |st| {
+            st.map(|sel| {
+                let (head_pos, target_col) = dlm.locate(sel.head());
+                let Some(landed) = carry(&mut dlm, geo, top, head_pos, delta) else {
+                    // Parked behind a virtual block or at a document edge.
+                    return sel.selection();
+                };
+                let new_head = dlm.char_at(landed, target_col, DisplayColTarget::NearestContent);
+                let anchor = if mode == MotionMode::Extend {
+                    sel.anchor()
+                } else {
+                    new_head
+                };
+                Selection::new(anchor, new_head)
+            })
+        },
+    );
 }
 
 /// How far `Ctrl-d`/`Ctrl-u` move given `visible_rows` rows on screen. The
@@ -161,7 +167,7 @@ fn cmd_view_scroll_to_display_line(
         .buffer_state(pid, buf_id)
         .expect(
             "pane has no seeded state for the buffer it is showing: \
-             pane.buffer_id and panes.state are out of sync",
+             pane.buffer_id and its pane entry are out of sync",
         )
         .view(state.buffers.get(buf_id).text())
         .primary()

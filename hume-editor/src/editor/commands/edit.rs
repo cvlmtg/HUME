@@ -88,7 +88,7 @@ pub(in crate::editor) fn cmd_change(
     // its doc).
     if state.route_kill(yanked) {
         let bid = fp.bid(view);
-        state.panes.state[fp.pid()][bid].kill_opened_session = true;
+        state.panes.entries[fp.pid()].buffers[bid].kill_opened_session = true;
     }
     Ok(())
 }
@@ -163,7 +163,7 @@ pub(in crate::editor) fn cmd_yank(
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     let text = super::doc(state, view, t).text();
-    let yanked = yank_selections(&t.state(&state.panes.state, view).state(text));
+    let yanked = yank_selections(&t.state(&state.panes.entries, view).state(text));
     let prefix = state.take_register_prefix();
     if yanked.iter().all(Piece::is_empty) {
         return Ok(());

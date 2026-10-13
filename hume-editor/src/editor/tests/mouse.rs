@@ -329,7 +329,7 @@ fn vsplit_click_focuses_and_resolves_against_the_clicked_pane() {
     ed.prepare_frame(&mut ctx);
 
     let head = |ed: &Editor, pid| {
-        ed.state.panes.state[pid][bid]
+        ed.state.panes.entries[pid].buffers[bid]
             .view(ed.state.buffers.get(bid).text())
             .primary()
             .head()
@@ -432,7 +432,7 @@ fn vsplit_wheel_scrolls_the_pane_under_the_pointer_without_moving_focus() {
         .get(bid)
         .text()
         .line_to_char(hume_rope::line::RopeyLine::new(15));
-    ed.state.panes.state[pid_a][bid].set_selections(
+    ed.state.panes.entries[pid_a].buffers[bid].set_selections(
         test_fixtures::testing::single(
             ed.state.buffers.get(bid).text(),
             test_fixtures::testing::cursor(ed.state.buffers.get(bid).text(), head_a.index()),
@@ -440,7 +440,7 @@ fn vsplit_wheel_scrolls_the_pane_under_the_pointer_without_moving_focus() {
         ed.state.buffers.get(bid).text(),
     );
 
-    let head_b_before = ed.state.panes.state[pid_b][bid]
+    let head_b_before = ed.state.panes.entries[pid_b].buffers[bid]
         .view(ed.state.buffers.get(bid).text())
         .primary()
         .head()
@@ -461,7 +461,7 @@ fn vsplit_wheel_scrolls_the_pane_under_the_pointer_without_moving_focus() {
         "pane A's viewport must scroll up by mouse_scroll_lines (3)"
     );
     assert_eq!(
-        ed.state.panes.state[pid_a][bid]
+        ed.state.panes.entries[pid_a].buffers[bid]
             .view(ed.state.buffers.get(bid).text())
             .primary()
             .head()
@@ -479,7 +479,7 @@ fn vsplit_wheel_scrolls_the_pane_under_the_pointer_without_moving_focus() {
         "pane B's viewport must be untouched"
     );
     assert_eq!(
-        ed.state.panes.state[pid_b][bid]
+        ed.state.panes.entries[pid_b].buffers[bid]
             .view(ed.state.buffers.get(bid).text())
             .primary()
             .head()
@@ -513,7 +513,7 @@ fn a_wheel_notch_outside_every_pane_scrolls_the_focused_pane() {
         .get(bid)
         .text()
         .line_to_char(hume_rope::line::RopeyLine::new(10));
-    ed.state.panes.state[pid_b][bid].set_selections(
+    ed.state.panes.entries[pid_b].buffers[bid].set_selections(
         test_fixtures::testing::single(
             ed.state.buffers.get(bid).text(),
             test_fixtures::testing::cursor(ed.state.buffers.get(bid).text(), head_b.index()),
@@ -562,7 +562,7 @@ fn stacked_split_click_translates_row_by_the_panes_rect_origin() {
     // 0..3 lands on 'D': the whole line is the same character).
     ed.handle_input(mouse_left_down(6, 15));
 
-    let sel = ed.state.panes.state[pid_b][bid]
+    let sel = ed.state.panes.entries[pid_b].buffers[bid]
         .view(ed.state.buffers.get(bid).text())
         .primary();
     assert_eq!(

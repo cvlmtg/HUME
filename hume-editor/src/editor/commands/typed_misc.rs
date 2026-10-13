@@ -466,7 +466,7 @@ pub(in crate::editor) fn typed_goto_line(
         |state, view| {
             let (pid, bid) = (t.pid(), t.bid(view));
             crate::editor::pane_state::park_cursor_at(
-                &mut state.panes.state,
+                &mut state.panes.entries,
                 &state.buffers,
                 &view.panes,
                 pid,

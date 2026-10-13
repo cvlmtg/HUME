@@ -149,10 +149,6 @@ fn tabclose_frees_every_pane_the_closed_tab_owns_and_restores_the_previous_tab()
 /// same decoration data.
 #[test]
 fn a_hidden_tab_s_pane_keeps_its_decoration_state_until_its_tab_is_focused() {
-    // `editor_from`'s bootstrap pane is built via `Pane::new` directly, with
-    // no `panes.render` entry (see `Editor::for_testing`'s comment). Only
-    // `open_pane` seeds one, so this test inspects B's decoration state
-    // only (B's pane comes from `open_pane_as_new_tab` → `open_pane`), not A's.
     let mut ed = editor_from("-[h]>ello\n");
     let bid = ed.focused_buffer_id();
 
@@ -175,7 +171,7 @@ fn a_hidden_tab_s_pane_keeps_its_decoration_state_until_its_tab_is_focused() {
 
     frame(&mut ed, 80, 25);
 
-    let virtual_lines_b = |ed: &Editor| ed.state.panes.render.get(pid_b).unwrap().virtual_lines();
+    let virtual_lines_b = |ed: &Editor| ed.state.panes.entries[pid_b].render.virtual_lines();
     assert!(
         virtual_lines_b(&ed).is_empty(),
         "the hidden tab's pane, viewing the same buffer, must be left untouched"

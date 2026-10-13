@@ -118,7 +118,7 @@ impl SiftLayer {
     fn end(&mut self, state: &mut EditorState, confirmed: Option<&str>) {
         let bid = self
             .snap
-            .take_restore(&mut state.panes.state, &state.buffers);
+            .take_restore(&mut state.panes.entries, &state.buffers);
         if let (Some(raw), Some(bid), Some(preview)) = (confirmed, bid, self.preview.take())
             && preview.pattern == raw
         {
@@ -195,7 +195,7 @@ fn update_live_sift(ed: &mut Editor, r: LayerRef) {
         Ok(new_state) => {
             let text = new_state.text().clone();
             let sifted = new_state.into_selections();
-            ed.state.panes.state[pane][bid].set_selections(sifted.clone(), &text);
+            ed.state.panes.entries[pane].buffers[bid].set_selections(sifted.clone(), &text);
             if let Some(sift) = ed.state.input.at_mut::<SiftLayer>(r) {
                 sift.preview = Some(SiftPreview {
                     pattern,
@@ -241,5 +241,5 @@ fn restore_sift_snapshot(ed: &mut Editor, r: LayerRef) {
     };
     sift.preview = None;
     sift.snap
-        .restore(&mut ed.state.panes.state, &ed.state.buffers);
+        .restore(&mut ed.state.panes.entries, &ed.state.buffers);
 }

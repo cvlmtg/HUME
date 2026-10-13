@@ -641,7 +641,7 @@ fn edit_remaps_jump_entries_in_every_pane_viewing_the_buffer() {
     let pid_b = ed.view.focused_pane();
     assert_ne!(pid_a, pid_b, "focus moved to the new pane");
     assert_eq!(
-        ed.state.panes.jumps[pid_b].len(),
+        ed.state.panes.entries[pid_b].jumps.len(),
         1,
         "split clones the source pane's jump list"
     );
@@ -735,7 +735,10 @@ fn reload_remaps_jump_entries_through_line_diff() {
     ed.handle_key(key('g')); // records an entry at line 10, lands at line 0
     // 2 entries: `:e` itself recorded leaving the initial scratch buffer,
     // then `gg` recorded line 10.
-    assert_eq!(ed.state.panes.jumps[ed.view.focused_pane()].len(), 2);
+    assert_eq!(
+        ed.state.panes.entries[ed.view.focused_pane()].jumps.len(),
+        2
+    );
 
     // Reload with 3 new lines prepended on disk.
     let new_content = format!("new0\nnew1\nnew2\n{content}");
@@ -772,7 +775,7 @@ fn view_buffer_refresh_drops_its_jump_entries() {
 
     let pid = ed.view.focused_pane();
     assert!(
-        ed.state.panes.jumps[pid].entries_for_buffer(bid),
+        ed.state.panes.entries[pid].jumps.entries_for_buffer(bid),
         "goto-last-line should have recorded an entry for the view buffer"
     );
 
@@ -785,7 +788,7 @@ fn view_buffer_refresh_drops_its_jump_entries() {
     );
 
     assert!(
-        !ed.state.panes.jumps[pid].entries_for_buffer(bid),
+        !ed.state.panes.entries[pid].jumps.entries_for_buffer(bid),
         "a regenerated view buffer's stale jump entries must be dropped"
     );
 }
@@ -835,7 +838,7 @@ fn view_buffer_refresh_reseeds_every_pane_viewing_it() {
     assert_eq!(
         test_fixtures::testing::serialize_state(
             text,
-            ed.state.panes.state[pid_b][bid].selections()
+            ed.state.panes.entries[pid_b].buffers[bid].selections()
         ),
         test_fixtures::testing::serialize_state(text, &ed.state.buffers.get(bid).initial_sels()),
         "a sibling pane's selection must be reseeded on a view-buffer refresh, not left stale"
@@ -931,12 +934,12 @@ fn search_confirm_records_the_jump_in_the_pane_the_search_started_in() {
     ed.handle_key(key_enter());
 
     assert_eq!(
-        ed.state.panes.jumps[pid_right].len(),
+        ed.state.panes.entries[pid_right].jumps.len(),
         1,
         "the pane the search started in records the jump"
     );
     assert_eq!(
-        ed.state.panes.jumps[pid_left].len(),
+        ed.state.panes.entries[pid_left].jumps.len(),
         0,
         "the pane that only took the click does not"
     );
@@ -956,7 +959,7 @@ fn a_pending_jump_into_a_buffer_the_navigation_closed_is_dropped() {
     let closing = ed.open_buffer(Buffer::at_start(BufferText::from("other\n")));
     ed.execute_typed("bn", None).unwrap();
     assert_eq!(ed.focused_buffer_id(), closing, "setup: the pane shows it");
-    let before = ed.state.panes.jumps[pid].len();
+    let before = ed.state.panes.entries[pid].jumps.len();
 
     let t = CommandPane::existing(&ed.view, pid).expect("the pane exists");
     let ((), moved) = with_jump(
@@ -970,6 +973,10 @@ fn a_pending_jump_into_a_buffer_the_navigation_closed_is_dropped() {
     );
 
     assert!(moved, "the pane now shows another buffer");
-    assert_eq!(ed.state.panes.jumps[pid].len(), before);
-    assert!(!ed.state.panes.jumps[pid].entries_for_buffer(closing));
+    assert_eq!(ed.state.panes.entries[pid].jumps.len(), before);
+    assert!(
+        !ed.state.panes.entries[pid]
+            .jumps
+            .entries_for_buffer(closing)
+    );
 }

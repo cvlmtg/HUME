@@ -793,7 +793,7 @@ fn apply_startup_positions_parks_a_non_focused_buffer_without_switching_focus() 
     assert_eq!(
         test_fixtures::testing::serialize_state(
             text,
-            ed.state.panes.state[pid][extra_bid].selections()
+            ed.state.panes.entries[pid].buffers[extra_bid].selections()
         ),
         test_fixtures::testing::serialize_state(
             text,
