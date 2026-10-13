@@ -404,9 +404,9 @@ pub(in crate::editor) use pane::{fits_split, split_pane_onto};
 // `open_pane` itself (the raw, unspliced constructor) is private to
 // `pane.rs`, not re-exported here or anywhere. `open_pane_in_layout` and
 // `open_pane_as_new_tab` are the only two ways, anywhere in the crate, to
-// create a pane. `open_pane_as_new_tab` has exactly one caller
-// (`commands::tab::open_tab`, which imports it directly from `pane`, not
-// through this re-export) so it isn't re-exported here at all.
+// create a pane. `open_pane_as_new_tab`'s callers are `:tabnew` and
+// `tab-new`, both inside `commands`.
+use pane::open_pane_as_new_tab;
 // `open_pane_in_layout` has no non-test caller outside `pane.rs` itself
 // (which reaches it directly too). Only `editor::tests` calls it through
 // this path, so the re-export is test-only to avoid an "unused import"

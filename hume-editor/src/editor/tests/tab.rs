@@ -58,7 +58,7 @@ fn tabnew_with_no_arg_views_the_same_buffer_as_the_source_pane() {
 /// `bind-key!`/`call!` callers that have no typed-command dispatch path.
 /// Same assertions as `tabnew_opens_a_fresh_pane_in_a_new_tab_and_focuses_it`
 /// and `tabnew_with_no_arg_views_the_same_buffer_as_the_source_pane`, since
-/// both share the same `open_tab` core.
+/// both share the same `open_pane_as_new_tab` core.
 #[test]
 fn tab_new_mappable_command_opens_a_fresh_tab_viewing_the_focused_buffer() {
     use hume_scripting::host::CommandHost;
@@ -152,7 +152,7 @@ fn a_hidden_tab_s_pane_keeps_its_decoration_state_until_its_tab_is_focused() {
     // `editor_from`'s bootstrap pane is built via `Pane::new` directly, with
     // no `panes.render` entry (see `Editor::for_testing`'s comment). Only
     // `open_pane` seeds one, so this test inspects B's decoration state
-    // only (B's pane comes from `open_tab` → `open_pane`), not A's.
+    // only (B's pane comes from `open_pane_as_new_tab` → `open_pane`), not A's.
     let mut ed = editor_from("-[h]>ello\n");
     let bid = ed.focused_buffer_id();
 

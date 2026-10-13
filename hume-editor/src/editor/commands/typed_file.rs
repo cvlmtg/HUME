@@ -51,8 +51,7 @@ pub(in crate::editor) fn typed_quit(
     // of a tab closes the tab, not the editor). Same no-dirty-check reasoning:
     // the buffer stays open in whichever other tab(s) show it, or in the
     // buffer list if none do.
-    if ed.state.tabs.len() > 1 {
-        super::close_tab(&mut ed.state, &mut ed.view);
+    if super::close_tab(&mut ed.state, &mut ed.view).is_ok() {
         return Ok(());
     }
 

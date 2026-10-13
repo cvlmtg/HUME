@@ -6,9 +6,9 @@
 //! never shared across tabs, but all live in the single global pool
 //! (`EngineView::panes`) regardless of which tab is active. Only which
 //! panes a tab's `LayoutTree` *reaches* differs.
-//! **Never mutate `ids`/`stash`/`order`/`current` directly outside this file**:
-//! go through `TabStore`'s own methods, mirroring `BufferStore`'s own
-//! module-doc convention.
+//! The fields are private to this file, and the methods that move a layout
+//! in or out are private to `editor::tab`, whose functions pair each with
+//! the `EngineView` side of the exchange.
 
 use slotmap::{SecondaryMap, SlotMap, new_key_type};
 
@@ -24,6 +24,10 @@ new_key_type! {
     /// visible on both sides of that boundary.
     pub(crate) struct TabId;
 }
+
+/// Refusal of `tab::close_tab`: the current tab is the only one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::editor) struct SingleTab;
 
 /// Display/cycle order for every open tab, and the layout of each one not
 /// on screen. The active tab's layout lives in `EngineView` instead, so
@@ -114,7 +118,7 @@ impl TabStore {
 
     /// Move inactive tab `id`'s layout out, for the caller to install in
     /// `EngineView` before finishing the switch (see the struct doc).
-    pub(in crate::editor) fn take(&mut self, id: TabId) -> FocusedLayout {
+    pub(in crate::editor::tab) fn take(&mut self, id: TabId) -> FocusedLayout {
         self.stash
             .remove(id)
             .expect("only an inactive tab is taken, and only once")
@@ -122,7 +126,7 @@ impl TabStore {
 
     /// Stash `outgoing`, the layout `EngineView` displaced, as the current
     /// tab's, and make `target` current. `target`'s layout was taken first.
-    pub(in crate::editor) fn switch(&mut self, outgoing: FocusedLayout, target: TabId) {
+    pub(in crate::editor::tab) fn switch(&mut self, outgoing: FocusedLayout, target: TabId) {
         self.stash_current(outgoing);
         self.current = target;
     }
@@ -131,7 +135,7 @@ impl TabStore {
     /// allocate a fresh id for the new tab whose layout `EngineView` now
     /// holds, insert it into `order` right after `current` (Vim's `:tabnew`
     /// placement), and make it current.
-    pub(in crate::editor) fn open_after_current(&mut self, outgoing: FocusedLayout) -> TabId {
+    pub(in crate::editor::tab) fn open_after_current(&mut self, outgoing: FocusedLayout) -> TabId {
         let pos = self.current_pos() + 1;
         self.stash_current(outgoing);
         let id = self.ids.insert(());
@@ -148,27 +152,23 @@ impl TabStore {
     /// The tab that should gain focus once `current` closes: its right
     /// neighbour, or its left one when `current` is already the rightmost
     /// tab (Vim's own `:tabclose` placement: adjacent, never a wrap to the
-    /// far end). Only meaningful with more than one tab open; panics
-    /// otherwise, same precondition [`Self::close_current`] asserts.
-    pub(in crate::editor) fn adjacent(&self) -> TabId {
-        assert!(self.order.len() > 1, "adjacent requires more than one tab");
+    /// far end). Refused when `current` is the only tab.
+    pub(in crate::editor::tab) fn adjacent(&self) -> Result<TabId, SingleTab> {
+        if self.order.len() == 1 {
+            return Err(SingleTab);
+        }
         let pos = self.current_pos();
         let neighbor = if pos + 1 < self.order.len() {
             pos + 1
         } else {
             pos - 1
         };
-        self.order[neighbor]
+        Ok(self.order[neighbor])
     }
 
-    /// Remove `current` from the store and make `survivor`, whose layout
-    /// was taken first, current. Panics if `current` is the only tab;
-    /// callers check `len() > 1` first.
-    pub(in crate::editor) fn close_current(&mut self, survivor: TabId) {
-        assert!(
-            self.order.len() > 1,
-            "close_current requires more than one tab"
-        );
+    /// Remove `current` from the store and make `survivor`, the
+    /// [`Self::adjacent`] tab whose layout was taken first, current.
+    pub(in crate::editor::tab) fn close_current(&mut self, survivor: TabId) {
         let closed = self.current;
         self.order.retain(|&t| t != closed);
         self.ids.remove(closed);

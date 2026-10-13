@@ -177,7 +177,7 @@ pub(in crate::editor) fn typed_tabnew(
         Some(path) => open_path_arg(ed, path)?,
         None => fp.bid(&ed.view),
     };
-    super::open_tab(&mut ed.state, &mut ed.view, bid);
+    super::open_pane_as_new_tab(&mut ed.state, &mut ed.view, bid);
     Ok(())
 }
 
@@ -192,11 +192,9 @@ pub(in crate::editor) fn typed_tabclose(
     _arg: Option<&str>,
     _force: bool,
 ) -> Result<(), CommandError> {
-    if ed.state.tabs.len() <= 1 {
+    if super::close_tab(&mut ed.state, &mut ed.view).is_err() {
         ed.report(Severity::Info, "cannot close the last tab page".to_string());
-        return Ok(());
     }
-    super::close_tab(&mut ed.state, &mut ed.view);
     Ok(())
 }
 

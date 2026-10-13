@@ -83,8 +83,7 @@ pub(in crate::editor) fn open_pane_as_new_tab(
 ) -> (PaneId, TabId) {
     let layout = FocusedLayout::new(open_pane(state, view, bid));
     let new_pid = layout.focused();
-    let outgoing = crate::editor::focus::install_layout(state, view, layout);
-    let tab_id = state.tabs.open_after_current(outgoing);
+    let tab_id = crate::editor::tab::open_tab(state, view, layout);
     (new_pid, tab_id)
 }
 

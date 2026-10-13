@@ -3,19 +3,19 @@
 //! [`store`]'s module doc for the full model and why panes are never
 //! duplicated per tab.
 //!
-//! This module holds the one chokepoint every tab *switch* goes through,
-//! [`switch_to_tab`]. Opening/closing a tab also has to create or tear down
-//! panes (`commands::pane::open_pane_as_new_tab`/`drop_pane_state`), which
-//! is a `commands`-layer concern. See `commands::tab::open_tab`/`close_tab`,
-//! which call `TabStore`'s lower-level `open_after_current`/`close_current`
-//! directly rather than through `switch_to_tab`, but still exchange the live
-//! tab's layout through `focus::install_layout`.
+//! Every change of the active tab goes through this module's three
+//! operations, [`switch_to_tab`], [`open_tab`] and [`close_tab`]: each moves
+//! a layout between `TabStore` and `EngineView` through
+//! `focus::install_layout`, so no tab is ever left with a layout in neither
+//! place. Creating and freeing the panes themselves
+//! (`commands::pane::open_pane_as_new_tab`, `commands::tab::close_tab`) is a
+//! `commands`-layer concern.
 
 pub(crate) mod store;
 pub(crate) use store::TabId;
-pub(in crate::editor) use store::TabStore;
+pub(in crate::editor) use store::{SingleTab, TabStore};
 
-use hume_engine::pipeline::EngineView;
+use hume_engine::pipeline::{EngineView, FocusedLayout};
 
 use crate::editor::EditorState;
 
@@ -30,7 +30,37 @@ pub(in crate::editor) fn switch_to_tab(
     if target == state.tabs.current() {
         return;
     }
-    let incoming = state.tabs.take(target);
-    let outgoing = super::focus::install_layout(state, view, incoming);
+    let outgoing = enter(state, view, target);
     state.tabs.switch(outgoing, target);
+}
+
+/// Make `layout` the live layout of a new tab inserted right after the
+/// current one (Vim's `:tabnew` placement), and switch to it.
+pub(in crate::editor) fn open_tab(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    layout: FocusedLayout,
+) -> TabId {
+    let outgoing = super::focus::install_layout(state, view, layout);
+    state.tabs.open_after_current(outgoing)
+}
+
+/// Close the current tab, switching to its neighbour (see
+/// `TabStore::adjacent`), and return the closed tab's layout for the caller
+/// to free. Refused, with nothing changed, when it is the only tab.
+pub(in crate::editor) fn close_tab(
+    state: &mut EditorState,
+    view: &mut EngineView,
+) -> Result<FocusedLayout, SingleTab> {
+    let survivor = state.tabs.adjacent()?;
+    let closing = enter(state, view, survivor);
+    state.tabs.close_current(survivor);
+    Ok(closing)
+}
+
+/// Install inactive tab `target`'s layout as the live one, returning the
+/// layout it displaces. The caller finishes the exchange in `TabStore`.
+fn enter(state: &mut EditorState, view: &mut EngineView, target: TabId) -> FocusedLayout {
+    let incoming = state.tabs.take(target);
+    super::focus::install_layout(state, view, incoming)
 }

@@ -96,15 +96,6 @@ fn close_current_removes_from_order_and_promotes_survivor() {
 }
 
 #[test]
-#[should_panic(expected = "close_current requires more than one tab")]
-fn close_current_panics_on_the_last_tab() {
-    let mut store = TabStore::new();
-    let t1 = store.current();
-
-    store.close_current(t1);
-}
-
-#[test]
 fn next_and_prev_wrap_around() {
     let (mut ev, _) = EngineView::new(Theme::default());
     let l1 = make_layout(&mut ev);
@@ -138,7 +129,7 @@ fn adjacent_of_the_rightmost_tab_is_its_left_neighbour() {
     let t2 = store.current();
     store.open_after_current(l2);
 
-    assert_eq!(store.adjacent(), t2);
+    assert_eq!(store.adjacent(), Ok(t2));
 }
 
 #[test]
@@ -152,15 +143,14 @@ fn adjacent_of_the_leftmost_tab_is_its_right_neighbour() {
     store.take(t1);
     store.switch(l2, t1);
 
-    assert_eq!(store.adjacent(), t2);
+    assert_eq!(store.adjacent(), Ok(t2));
 }
 
 #[test]
-#[should_panic(expected = "adjacent requires more than one tab")]
-fn adjacent_panics_on_the_last_tab() {
+fn adjacent_refuses_the_last_tab() {
     let store = TabStore::new();
 
-    store.adjacent();
+    assert_eq!(store.adjacent(), Err(SingleTab));
 }
 
 #[test]

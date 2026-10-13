@@ -17,62 +17,40 @@
 //! either, while buffer-switch commands (which keep the same pane) do.
 
 use crate::editor::registry::Count;
-use hume_engine::pipeline::{BufferId, EngineView};
+use hume_engine::pipeline::EngineView;
 use hume_ops::MotionMode;
 
 use crate::editor::EditorState;
 use crate::editor::error::CommandError;
-use crate::editor::tab::{TabId, switch_to_tab};
+use crate::editor::tab::{SingleTab, switch_to_tab};
 
 use super::FocusedPane;
 use super::pane::{drop_pane_state, open_pane_as_new_tab};
 
-/// `:tabnew [path]`'s core: open a fresh pane viewing `bid` in a brand new
-/// tab inserted right after the current one (Vim's placement), and switch
-/// to it. A new tab never inherits the source tab's cursor/scroll state:
-/// it's a different window entirely, matching `:split <path>`'s
-/// fresh-buffer semantics (see `split_pane_onto`'s doc), never a
-/// same-buffer split's inherited-state semantics.
+/// `:tabclose`'s core, and `typed_quit`'s tab-close step for `:q` on a
+/// tab's last pane: close the current tab and free every pane it reached.
+/// Refused, with nothing changed, when it is the only tab.
 ///
-/// Thin delegate to `pane::open_pane_as_new_tab`, kept as its own
-/// meaningfully-named entry point in this file (alongside `close_tab`,
-/// `goto_tab_in_order`) rather than inlined at the one caller, matching how
-/// every other typed tab-command core lives here.
-pub(in crate::editor) fn open_tab(
-    state: &mut EditorState,
-    view: &mut EngineView,
-    bid: BufferId,
-) -> TabId {
-    open_pane_as_new_tab(state, view, bid).1
-}
-
-/// `:tabclose`'s core. Precondition: more than one tab exists. Callers
-/// check `state.tabs.len() > 1` first, reported to the user as "cannot close
-/// the last tab page" rather than reaching this function at all. Also
-/// `typed_quit`'s own tab-close step, for `:q` on a tab's last pane.
-///
-/// Commits the adjacent tab (Vim's placement, see `TabStore::adjacent`) as
-/// live before dropping any pane state: `adjacent`/`close_current` both
-/// assert `len() > 1`, so checking that precondition before anything is
-/// destroyed keeps `view`/`state` consistent at every point in between.
-///
-/// `focus::install_layout` ends the closing tab's open Insert/paste session while
-/// `view` still holds that tab's layout, before swapping in the survivor's.
-/// Left any later, the teardown's per-(pane, buffer) writes would land after
-/// `drop_pane_state` has already removed the closing pane's own state below.
+/// The adjacent tab (Vim's placement, see `TabStore::adjacent`) goes live
+/// before any pane state is dropped. `focus::install_layout` ends the
+/// closing tab's open Insert/paste session while `view` still holds that
+/// tab's layout. Left any later, the teardown's per-(pane, buffer) writes
+/// would land after `drop_pane_state` has already removed the closing
+/// pane's own state below.
 ///
 /// `into_detached()` on the closing tree is what makes discarding the closing
 /// tab's tree and freeing every pane it reached a single step. There is no
 /// window where the tree is gone but the pool still holds one of its panes,
 /// or a token exists for a pane no tree ever named.
-pub(in crate::editor) fn close_tab(state: &mut EditorState, view: &mut EngineView) {
-    let survivor = state.tabs.adjacent();
-    let incoming = state.tabs.take(survivor);
-    let closing = crate::editor::focus::install_layout(state, view, incoming);
-    state.tabs.close_current(survivor);
+pub(in crate::editor) fn close_tab(
+    state: &mut EditorState,
+    view: &mut EngineView,
+) -> Result<(), SingleTab> {
+    let closing = crate::editor::tab::close_tab(state, view)?;
     for detached in closing.into_tree().into_detached() {
         drop_pane_state(state, view, detached);
     }
+    Ok(())
 }
 
 pub(super) enum TabStep {
@@ -102,7 +80,7 @@ pub(crate) fn cmd_tab_new(
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     let bid = fp.bid(view);
-    open_tab(state, view, bid);
+    open_pane_as_new_tab(state, view, bid);
     Ok(())
 }
 
