@@ -104,13 +104,10 @@ impl Editor {
         // undo state (`EditorState::active_session`), not a Steel value:
         // the "outgoing engine, nothing left to observe the fire" reasoning
         // below doesn't excuse it from proper teardown the way it does the
-        // remaining mode layers/overlays. Left open, `input.truncate_to_base()`
-        // further down would drop the `Insert` layer without ever ending
-        // the session, leaving `active_session` open on a buffer the
-        // reload's own resets are about to invalidate: the next keystroke
-        // would panic in `doc_ops::apply_doc_edit_grouped`'s `.expect()`.
-        // Must run before `truncate_to_base`, which drops layers without
-        // running their teardown.
+        // remaining mode layers/overlays. Ended here, while the outgoing
+        // config is still installed, since the Insert teardown's own edit
+        // reaches hooks and language servers; `input.truncate_to_base()`
+        // further down panics on an Insert layer left on the stack.
         super::focus::end_focus_sessions(&mut self.state, &self.view);
 
         // ── Steel values rooted in the outgoing engine ──

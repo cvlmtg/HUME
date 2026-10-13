@@ -544,7 +544,15 @@ impl InputStack {
     /// [`BaseLayer`]: a reload must not leave Extend on, or a
     /// signature-help popup visible, for hooks that never saw either turned
     /// on.
+    ///
+    /// Panics on an Insert layer: its teardown commits the Insert session,
+    /// which dropping the layer would leave open with no layer over it. The
+    /// caller ends it first (`focus::end_focus_sessions`).
     pub(in crate::editor) fn truncate_to_base(&mut self) {
+        assert!(
+            self.ref_of::<super::InsertLayer>().is_none(),
+            "truncate_to_base would drop an Insert layer: end its session first"
+        );
         self.layers.truncate(1);
         self.layers[0].1 = Box::new(BaseLayer {
             extend: false,

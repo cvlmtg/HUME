@@ -34,6 +34,17 @@ use hume_lsp::test_util::RecordingLspBackend;
 /// not stay overridden, not end up unbound. Compared against a fresh
 /// `Keymap::default()` rather than a hardcoded
 /// expectation for 'Q', which has no default binding at all.
+/// The stack reset a reload ends with drops layers without running their
+/// teardown, so dropping an Insert layer would leave its session open under
+/// Normal mode.
+#[test]
+#[should_panic(expected = "truncate_to_base would drop an Insert layer")]
+fn truncate_to_base_refuses_an_insert_layer() {
+    let mut ed = editor_from("-[a]>bc\n");
+    ed.feed_key(key('i'));
+    ed.state.input.truncate_to_base();
+}
+
 #[test]
 fn reset_reverts_bind_key_to_default() {
     let tmp = tempfile::tempdir().unwrap();
