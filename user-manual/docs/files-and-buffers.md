@@ -67,15 +67,7 @@ A **pane** is a viewport onto a buffer. A buffer is the open file itself; a pane
 
 `<path>` is optional. Without it, the new pane views the same buffer as the focused one. With it, the new pane opens that file instead.
 
-| Key | Effect |
-|-----|--------|
-| `Ctrl-p s` | Split the focused pane, stacking the new pane below it |
-| `Ctrl-p v` | Split the focused pane side by side |
-| `Ctrl-p p` | Focus next pane |
-| `Ctrl-p h` / `j` / `k` / `l` | Focus the pane to the left / below / above / to the right |
-| `Ctrl-p c` | Close the focused pane (does nothing if it's the only pane) |
-| `Ctrl-p r` | Move each pane in the focused pane's row or column one place right or down (that many places with a count); the last one wraps to the first |
-| `Ctrl-p R` | Move each pane in the focused pane's row or column one place left or up (that many places with a count); the first one wraps to the last |
+The keys for splitting, focusing, closing and rotating panes are listed under [Pane prefix](default-keys.md#pane-prefix-ctrl-p) in Default Keys.
 
 Splitting is refused with a message when the pane is already too small to divide. Every pane sharing a split axis is kept an equal size (three `:vsplit`s in a row give three equal columns, not one half and two quarters), and closing a pane redistributes its space equally between the survivors.
 
