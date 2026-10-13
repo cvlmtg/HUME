@@ -17,7 +17,6 @@ use crate::editor::search::SearchPattern;
 use crate::editor::settings::EditorSettings;
 use hume_editing::selection::{EditView, SelectionSet};
 use hume_editing::text::BufferText;
-use hume_engine::pane::Pane;
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 use hume_engine::types::ScopeId;
 use hume_treesitter::parse_worker::InlineParseBackend;
@@ -884,35 +883,20 @@ impl Editor {
         }));
         let buffer_id = engine_view.buffers.insert(());
         let settings = EditorSettings::default();
-        let jump_list_capacity = settings.jump_list_capacity;
         let history_capacity = settings.history_capacity;
         let initial_mouse_mode = (settings.mouse, settings.mouse_select);
-        let pane = Pane::new(buffer_id);
-        let unattached = engine_view.insert_pane(pane);
-        let pane_id = unattached.pane_id();
-        let focus = super::focus::Focus::new(&mut engine_view, focus_key, unattached);
 
         let mut buffers = BufferStore::new();
         buffers.open(buffer_id, doc);
-
-        // The pane is built by `Pane::new`, with no gutter or decoration
-        // providers, so test geometry has no gutter. Its render handles feed
-        // a provider set nothing renders.
-        let linenr_scope = engine_view
-            .registry
-            .intern(hume_engine::providers::DEFAULT_GUTTER_SCOPE.0);
-        let render_handles = hume_decorations::build_providers(
-            &mut hume_engine::providers::ProviderSet::new(),
-            linenr_scope,
-        );
         let mut panes = PaneView::default();
-        panes.open(
-            pane_id,
+        let unattached = panes.open(
+            &mut engine_view,
             buffer_id,
-            crate::editor::pane_state::fresh_from_buf(buffers.get(buffer_id)),
-            jump_list_capacity,
-            render_handles,
+            buffers.get(buffer_id),
+            settings.jump_list_capacity,
+            crate::editor::pane_state::PaneChrome::Bare,
         );
+        let focus = super::focus::Focus::new(&mut engine_view, focus_key, unattached);
 
         Self {
             state: EditorState {

@@ -64,8 +64,7 @@ impl Editor {
         use super::clipboard;
         use crate::editor::buffer::Buffer;
         use crate::editor::buffer::store::BufferStore;
-        use crate::editor::pane_state::PaneView;
-        use crate::editor::pane_state::build_pane;
+        use crate::editor::pane_state::{PaneChrome, PaneView};
         use crate::editor::settings::EditorSettings;
         use hume_editing::text::BufferText;
 
@@ -112,28 +111,20 @@ impl Editor {
 
         let settings = EditorSettings::default();
 
-        // Build the initial pane. Every later split-created pane goes through
-        // the same `build_pane` (see `commands::pane::open_pane`, reached
-        // only through `open_pane_in_layout`/`open_pane_as_new_tab`).
-        let (pane, render_handles) = build_pane(&mut engine_view.registry, buffer_id);
-        let unattached = engine_view.insert_pane(pane);
-        let pane_id = unattached.pane_id();
-        let focus = super::focus::Focus::new(&mut engine_view, focus_key, unattached);
-
-        let jump_list_capacity = settings.jump_list_capacity;
         let history_capacity = settings.history_capacity;
         let initial_mouse_mode = (settings.mouse, settings.mouse_select);
 
         let mut buffers = BufferStore::new();
         buffers.open(buffer_id, doc);
         let mut panes = PaneView::default();
-        panes.open(
-            pane_id,
+        let unattached = panes.open(
+            &mut engine_view,
             buffer_id,
-            crate::editor::pane_state::fresh_from_buf(buffers.get(buffer_id)),
-            jump_list_capacity,
-            render_handles,
+            buffers.get(buffer_id),
+            settings.jump_list_capacity,
+            PaneChrome::Full,
         );
+        let focus = super::focus::Focus::new(&mut engine_view, focus_key, unattached);
 
         let mut editor = Self {
             state: super::EditorState {

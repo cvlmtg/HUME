@@ -12,7 +12,7 @@
 //! autoindent records included; see [`super::edit_session::EditSession`],
 //! `EditorState::active_session`.
 
-use hume_engine::pipeline::{BufferId, EngineView, PaneId, PanePool};
+use hume_engine::pipeline::{BufferId, EngineView, PaneId, PanePool, UnattachedPane};
 use slotmap::SecondaryMap;
 
 use super::Editor;
@@ -397,22 +397,36 @@ pub(crate) struct PaneView {
     pub(in crate::editor) tracked: super::tracked_positions::TrackedPositions,
 }
 
+/// What a new pane draws besides its text.
+#[derive(Clone, Copy)]
+pub(in crate::editor) enum PaneChrome {
+    /// The line-number gutter and every decoration provider.
+    Full,
+    /// Nothing: no gutter, so test geometry has none, and render handles
+    /// that feed a provider set nothing renders.
+    #[cfg(test)]
+    Bare,
+}
+
 impl PaneView {
-    /// Give the new pane `pid` its entry: `shown` as its state for `bid`,
-    /// the buffer it shows ([`fresh_from_buf`] for a pane just created), an
-    /// empty jump list, and the render handles `build_pane` returned with it.
+    /// Create a pane showing `bid` (whose buffer is `buffer`) in `view`'s
+    /// pool, and its entry: fresh state for `bid`, an empty jump list, and
+    /// the pane's render handles. The returned token must be spliced into a
+    /// layout.
     pub(in crate::editor) fn open(
         &mut self,
-        pid: PaneId,
+        view: &mut EngineView,
         bid: BufferId,
-        shown: PaneBufferState,
+        buffer: &Buffer,
         jump_list_capacity: usize,
-        render: hume_decorations::PaneDecorationHandles,
-    ) {
+        chrome: PaneChrome,
+    ) -> UnattachedPane {
+        let (pane, render) = build_pane(&mut view.registry, bid, chrome);
+        let unattached = view.insert_pane(pane);
         let mut per_buffer = SecondaryMap::new();
-        per_buffer.insert(bid, shown);
+        per_buffer.insert(bid, fresh_from_buf(buffer));
         let replaced = self.entries.0.insert(
-            pid,
+            unattached.pane_id(),
             PaneEntry {
                 buffers: per_buffer,
                 jumps: JumpList::new(jump_list_capacity),
@@ -420,6 +434,7 @@ impl PaneView {
             },
         );
         assert!(replaced.is_none(), "a pane is opened once");
+        unattached
     }
 
     /// Drop the closed pane `pid`'s entry.
@@ -440,19 +455,19 @@ impl PaneView {
     }
 }
 
-/// Build a new pane viewing `buffer_id`, with its decoration providers
-/// ([`hume_decorations::build_providers`]) and line-number column. Every
-/// pane creation site goes through here; `Pane::new` alone has an empty
-/// `ProviderSet`.
+/// Build a new pane viewing `buffer_id`. With [`PaneChrome::Full`] it gets
+/// its decoration providers ([`hume_decorations::build_providers`]) and
+/// line-number column; `Pane::new` alone has an empty `ProviderSet`.
 ///
-/// Returns the pane with its own `PaneDecorationHandles` (never shared
-/// between panes), which the caller hands to [`PaneView::open`].
+/// Returns the pane with its own `PaneDecorationHandles`, never shared
+/// between panes, so per-pane decoration data cannot bleed across panes.
 /// Wrap mode is not seeded: it resolves lazily via
 /// `commands::effective_wrap_mode`. The gutter's seeded style never reaches a
 /// frame, since `prepare_frame` syncs `line-number-style` before each render.
-pub(in crate::editor) fn build_pane(
+fn build_pane(
     registry: &mut hume_engine::theme::ScopeRegistry,
     buffer_id: BufferId,
+    chrome: PaneChrome,
 ) -> (
     hume_engine::pane::Pane,
     hume_decorations::PaneDecorationHandles,
@@ -465,19 +480,24 @@ pub(in crate::editor) fn build_pane(
     // `ScopeId` than the row-fill fallback would silently disagree on
     // styling.
     let linenr_scope = registry.intern(hume_engine::providers::DEFAULT_GUTTER_SCOPE.0);
-    let linenr_selected_scope = registry.intern(hume_engine::theme::ui_scopes::LINENR_SELECTED);
-
     let mut providers = hume_engine::providers::ProviderSet::new();
     let decoration_handles = hume_decorations::build_providers(&mut providers, linenr_scope);
-    providers.add_gutter_column(Box::new(
-        hume_engine::builtins::line_number::LineNumberColumn::new(
-            linenr_scope,
-            linenr_selected_scope,
-        ),
-    ));
-
     let mut pane = hume_engine::pane::Pane::new(buffer_id);
-    pane.providers = providers;
+    match chrome {
+        PaneChrome::Full => {
+            let linenr_selected_scope =
+                registry.intern(hume_engine::theme::ui_scopes::LINENR_SELECTED);
+            providers.add_gutter_column(Box::new(
+                hume_engine::builtins::line_number::LineNumberColumn::new(
+                    linenr_scope,
+                    linenr_selected_scope,
+                ),
+            ));
+            pane.providers = providers;
+        }
+        #[cfg(test)]
+        PaneChrome::Bare => {}
+    }
     (pane, decoration_handles)
 }
 

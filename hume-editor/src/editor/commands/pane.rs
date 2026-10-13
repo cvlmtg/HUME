@@ -10,47 +10,23 @@ use crate::editor::EditorState;
 use crate::editor::commands::FocusedPane;
 use crate::editor::error::CommandError;
 use crate::editor::focus::{self, focus_pane};
+use crate::editor::pane_state::PaneChrome;
 
-/// Create a new pane viewing `buffer_id`, seed all per-pane maps, return its
-/// id, but leave it outside every tab's layout (see `TabStore`'s own doc:
-/// a pane is meant to be reachable from exactly one tab's `LayoutTree` at
-/// all times, active or stashed; this alone doesn't make that true yet).
-///
-/// Private on purpose: this is the one raw constructor, and the two
-/// functions below it, `open_pane_in_layout` (splice beside an existing
-/// pane) and `open_pane_as_new_tab` (splice as a brand-new tab), are the
-/// *only* sanctioned ways to reach it, in production or in tests. Nothing
-/// else, anywhere, may call this directly; there is no third legitimate way
-/// to create a pane.
-fn open_pane(
-    state: &mut EditorState,
-    view: &mut EngineView,
-    buffer_id: BufferId,
-) -> UnattachedPane {
-    // Every pane gets the same providers (sign column + gutter + bracket/
-    // search/diagnostic/extra highlight + inlay hints + virtual lines) as
-    // the initial pane; see `build_pane`. Each pane's Arcs are freshly
-    // allocated here, never shared with any other pane (see
-    // `PaneHighlights`/`SignMap`), so per-pane decoration data can never
-    // bleed across panes.
-    let (pane, render_handles) =
-        crate::editor::pane_state::build_pane(&mut view.registry, buffer_id);
-    let unattached = view.insert_pane(pane);
+/// A new pane viewing `bid`, with the full chrome, not yet in any layout.
+/// The returned token makes the caller splice it into one.
+fn open_pane(state: &mut EditorState, view: &mut EngineView, bid: BufferId) -> UnattachedPane {
     state.panes.open(
-        unattached.pane_id(),
-        buffer_id,
-        crate::editor::pane_state::fresh_from_buf(state.buffers.get(buffer_id)),
+        view,
+        bid,
+        state.buffers.get(bid),
         state.settings.jump_list_capacity,
-        render_handles,
-    );
-    unattached
+        PaneChrome::Full,
+    )
 }
 
 /// Create a pane viewing `bid` and splice it into the layout beside the
-/// focused pane, on `direction`'s axis, in one step. `open_pane` alone only
-/// does the first half (see its own doc), leaving the new pane outside
-/// every tab's layout until a caller does the second half itself. Returns
-/// the new pane's id; focus stays where it was.
+/// focused pane, on `direction`'s axis, in one step. Returns the new pane's
+/// id; focus stays where it was.
 pub(in crate::editor) fn open_pane_in_layout(
     state: &mut EditorState,
     view: &mut EngineView,

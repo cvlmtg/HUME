@@ -239,16 +239,24 @@ impl DetachedStores {
         buf: &super::buffer::Buffer,
         selections: hume_editing::selection::SelectionSet,
     ) -> (Self, PaneId, BufferId) {
-        let pane = slotmap::SlotMap::<PaneId, ()>::with_key().insert(());
-        let buffer = slotmap::SlotMap::<BufferId, ()>::with_key().insert(());
-        let mut state = super::pane_state::fresh_from_buf(buf);
-        state.set_selections(selections, buf.text());
-        let render = hume_decorations::build_providers(
-            &mut hume_engine::providers::ProviderSet::new(),
-            hume_engine::types::ScopeId(0),
-        );
+        let (mut view, _) = hume_engine::pipeline::EngineView::new(super::theme::fallback_theme());
+        let buffer = view.buffers.insert(());
         let mut stores = Self::default();
-        stores.panes.open(pane, buffer, state, 1, render);
+        let pane = stores
+            .panes
+            .open(
+                &mut view,
+                buffer,
+                buf,
+                1,
+                super::pane_state::PaneChrome::Bare,
+            )
+            .pane_id();
+        stores
+            .panes
+            .entries
+            .seeded_mut(pane, buffer)
+            .set_selections(selections, buf.text());
         (stores, pane, buffer)
     }
 
