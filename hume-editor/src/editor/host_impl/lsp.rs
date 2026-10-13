@@ -5,7 +5,7 @@ use hume_engine::pipeline::BufferId;
 use super::EditorHostImpl;
 use hume_lsp::backend::ServerId;
 use hume_scripting::host::{
-    HostToken, LocationDisplay, LspHost, PositionParams, RangeParams, RangesParams,
+    HostToken, LocationDisplay, LspHost, PositionParams, RangeParams, RangesParams, TrackedHold,
 };
 use hume_scripting::{CapabilityQuery, LspFeature, PaneHandle, ServerRef};
 
@@ -81,6 +81,10 @@ impl<'a> LspHost for EditorHostImpl<'a> {
 
     fn keep_tracked_position(&mut self, token: HostToken) {
         self.state.panes.tracked.keep(token);
+    }
+
+    fn hold_tracked_position(&self, token: HostToken) -> Option<TrackedHold> {
+        self.state.panes.tracked.hold(token)
     }
 
     fn lsp_primary_range_params(&self, pane: PaneHandle) -> Result<Option<RangeParams>, String> {

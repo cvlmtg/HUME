@@ -724,12 +724,11 @@ fn lsp_request_queues_the_supersede_key() {
     assert_eq!(requests[0].supersede, Some("completion".to_string()));
 }
 
+/// `#:tracked` takes a token or `#f`. The hold on the position comes from
+/// the editor's `LspHost`, which this harness has none of.
 #[test]
-fn lsp_request_queues_the_tracked_token_and_none_for_false() {
-    for (tracked, expected) in [
-        (SteelVal::IntV(7), Some(crate::host::HostToken::from_raw(7))),
-        (SteelVal::BoolV(false), None),
-    ] {
+fn lsp_request_accepts_a_tracked_token_or_false() {
+    for tracked in [SteelVal::IntV(7), SteelVal::BoolV(false)] {
         let mut h = SteelCtxTestHarness::new();
         let mut ctx = h.ctx();
         request(
@@ -740,7 +739,9 @@ fn lsp_request_queues_the_tracked_token_and_none_for_false() {
             },
         )
         .expect("a well-formed request queues");
-        assert_eq!(lsp_requests(&ctx)[0].tracked, expected);
+        let requests = lsp_requests(&ctx);
+        assert_eq!(requests.len(), 1);
+        assert!(requests[0].tracked.is_none(), "no host holds a position");
     }
 }
 

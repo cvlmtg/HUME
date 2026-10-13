@@ -600,9 +600,10 @@ pub struct PendingLspRequest {
     /// completion), which delivers regardless of focus. The decode refuses
     /// `#:require-focus` with no pane.
     pub require_focus: Option<PaneId>,
-    /// `#:tracked`: a tracked position this request holds, released once its
-    /// callback has run or will never run, unless the callback kept it.
-    pub tracked: Option<crate::host::HostToken>,
+    /// `#:tracked`: the request's hold on a tracked position, which releases
+    /// it once dropped, when the callback has run or will never run, unless
+    /// the callback kept it.
+    pub tracked: Option<crate::host::TrackedHold>,
 }
 
 // Manual (not derived): the callback prints as a placeholder instead of

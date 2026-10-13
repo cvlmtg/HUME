@@ -271,14 +271,13 @@ impl EditorState {
         req: PendingLspRequest,
     ) {
         self.lsp_flush_pending();
-        let tracked = req.tracked.and_then(|token| self.panes.tracked.hold(token));
         if let Some(key) = &req.supersede {
             self.cancel_superseded(key);
         }
         let members = match self.request_members(&req) {
             Ok(members) => members,
             Err(reason) => {
-                self.fail_request(req, tracked, reason);
+                self.fail_request(req, reason);
                 return;
             }
         };
@@ -294,7 +293,7 @@ impl EditorState {
             supersede: req.supersede,
             responder: Responder::Steel {
                 callback: req.callback,
-                tracked,
+                tracked: req.tracked,
             },
         };
         if let Some(did) = self.begin_delivery(spec, members) {
@@ -490,14 +489,8 @@ impl EditorState {
     /// `'unavailable` error saying `reason` and no result, or with no error
     /// and an empty answer when it asked for `#:unavailable 'empty`. The
     /// call carries no anchor, so a focus move or an edit before it runs
-    /// cannot drop the answer, and `tracked`, the request's hold on its
-    /// tracked position.
-    fn fail_request(
-        &mut self,
-        req: PendingLspRequest,
-        tracked: Option<TrackedHold>,
-        reason: String,
-    ) {
+    /// cannot drop the answer.
+    fn fail_request(&mut self, req: PendingLspRequest, reason: String) {
         let args = match (req.when_unavailable, req.mode) {
             (WhenUnavailable::Error, RequestMode::Single) => {
                 vec![
@@ -517,7 +510,7 @@ impl EditorState {
                 SteelVal::ListV(Vec::<SteelVal>::new().into()),
             ],
         };
-        self.queue_lsp_callback(req.callback, args, None, tracked);
+        self.queue_lsp_callback(req.callback, args, None, req.tracked);
     }
 
     /// Hands `server`'s answer to `request` to the delivery waiting for it,

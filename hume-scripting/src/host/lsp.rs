@@ -7,7 +7,7 @@ use hume_rope::position_encoding::PositionEncoding;
 
 use hume_lsp::backend::ServerId;
 
-use super::token::HostToken;
+use super::token::{HostToken, TrackedHold};
 use crate::builtins::ids::{DocPos, DocRange, ServerRef};
 use crate::types::{CapabilityQuery, LspFeature, PaneHandle};
 
@@ -106,6 +106,12 @@ pub trait LspHost {
     /// holds through `#:tracked` past its callback. A released or unknown
     /// token is a no-op.
     fn keep_tracked_position(&mut self, token: HostToken);
+
+    /// `lsp-request!`'s `#:tracked`: the request's hold on `token`'s
+    /// position, taken as the request is queued, so a request discarded
+    /// with the code that queued it releases the position too. `None` for a
+    /// released or unknown token.
+    fn hold_tracked_position(&self, token: HostToken) -> Option<TrackedHold>;
 
     /// Same as [`lsp_position_params`](Self::lsp_position_params) but the
     /// range the primary selection covers.

@@ -891,6 +891,33 @@ fn drain_cap_releases_tracked_position_of_dropped_callback() {
     assert_eq!(rig.warnings(), vec!["released".to_string()]);
 }
 
+/// A request queued by code that then raises is discarded with the rest of
+/// what that code queued, and never calls back: the position it held is
+/// released.
+#[test]
+fn a_request_discarded_with_its_failed_code_releases_its_tracked_position() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (backend, _, _) = RecordingLspBackend::new();
+    let mut rig = LspRig::open(
+        tmp.path(),
+        RigSpec::rust("fn -[m]>ain() {}\n").with_init(""),
+        backend,
+    );
+    rig.eval("(define *tok* #f)");
+
+    rig.probe(
+        r#"(begin
+             (set! *tok* (track-position! pane))
+             (lsp-request! pane "custom/ping" (hash)
+               (lambda (err res) (log! 'warn "called"))
+               #:tracked *tok*)
+             (error "the code fails after queuing the request"))"#,
+    );
+    rig.probe(r#"(log! 'warn (if (tracked-position-params *tok*) "held" "released"))"#);
+
+    assert_eq!(rig.warnings(), vec!["released".to_string()]);
+}
+
 #[test]
 fn notification_hook_receives_server_handle() {
     let tmp = tempfile::tempdir().unwrap();

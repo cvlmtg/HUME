@@ -355,7 +355,8 @@ fn queue_request(
             })
         })
         .transpose()?;
-    let tracked = optional_token_arg(tracked, &format!("{verb} #:tracked"))?;
+    let tracked = optional_token_arg(tracked, &format!("{verb} #:tracked"))?
+        .and_then(|token| ctx.host.lsp()?.hold_tracked_position(token));
     ctx.push_effect(Effect::LspRequest(PendingLspRequest {
         bid: pane.buffer(),
         method,

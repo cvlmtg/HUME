@@ -54,6 +54,7 @@
 - `:plum-list-plugins`, `:plum-list-grammars` and `:plum-list-themes` show their lists in a read-only buffer, where every list stays visible. `:plum-list-grammars` shows the installed grammars and the orphans.
 - `:lsp-catalog` shows the server list in a read-only buffer, sorted by name, instead of printing it over the editor.
 - `core:lsp-install` reports a server whose install receipt is damaged as an interrupted install, instead of failing to load.
+- A position an `lsp-request!` holds through `#:tracked` is released when the code that sent the request raises an error afterwards, instead of staying tracked.
 
 ## [0.14.1] - 2026-10-08
 
