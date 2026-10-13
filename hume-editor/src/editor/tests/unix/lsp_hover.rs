@@ -266,7 +266,7 @@ fn popup_is_scrollable_and_closes_on_any_key_except_ctrl_u_d() {
 fn short_popup_falls_through_ctrl_d_instead_of_swallowing_it() {
     // A hover popup whose content fits on screen has nothing to scroll:
     // Ctrl-d/Ctrl-u must not become a silent no-op that also blocks the
-    // buffer's own half-page scroll. `scroll_popup` must not consume the key
+    // buffer's own half-page scroll. `scroll_box_on_key` must not consume the key
     // when `max_scroll == 0`.
     let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _sid) = setup(

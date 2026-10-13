@@ -3,7 +3,7 @@
 //! layer's `sticky_popup` slot instead, never its own layer; see
 //! [`super::stack::Layer::sticky_popup_slot`]'s doc.
 
-use termina::event::{KeyCode, Modifiers};
+use termina::event::{KeyCode, KeyEvent, Modifiers};
 
 use hume_engine::pipeline::RenderContext;
 use hume_engine::theme::Theme;
@@ -29,7 +29,7 @@ use super::stack::{InputEvent, Layer, LayerHandler, LayerRef};
 pub(in crate::editor) struct PopupLayer {
     pub(in crate::editor) text: String,
     /// First visible wrapped row, for a `Scrollable` popup. Clamped against
-    /// `max_scroll` in [`scroll_popup`] before each delta is applied, since
+    /// `max_scroll` in [`scroll_box_on_key`] before each delta is applied, since
     /// content height (and so `max_scroll`) can shrink between key presses
     /// (e.g. the terminal grows) without this field being touched.
     /// `Editor::sync_popup_view`/`sync_popup_band_view` additionally clamp a
@@ -217,7 +217,7 @@ impl Editor {
 /// Handles one event while a `Scrollable` popup is open (a `PopupLayer`; a
 /// `Sticky` popup lives in a mode layer's slot instead and is never
 /// dispatch's target). Ctrl-u/Ctrl-d consume the key only when
-/// [`scroll_popup`] finds content past one screenful; every other key, a
+/// [`scroll_box_on_key`] finds content past one screenful; every other key, a
 /// paste, and any mouse gesture retire the layer and fall through this same
 /// call, so a short popup never blocks the buffer's own half-page scroll
 /// and a click still moves the cursor underneath it. Unlike
@@ -233,66 +233,38 @@ pub(in crate::editor) fn popup_input(ed: &mut Editor, r: LayerRef, ev: InputEven
             return;
         }
     };
-    if key.modifiers.contains(Modifiers::CONTROL)
-        && let KeyCode::Char(c @ ('u' | 'd')) = key.code
-        && scroll_popup(ed, c == 'd')
-    {
-        return;
+    let band_max =
+        hume_engine::pipeline::EngineView::bottom_band_max(ed.view.last_terminal_area.height);
+    let views = &ed.state.views;
+    if let Some(popup) = ed.state.input.popup_mut() {
+        let layout = &popup.layout;
+        if scroll_box_on_key(&key, &mut popup.scroll, || {
+            popup_rows(layout, views, band_max)
+        }) {
+            return;
+        }
     }
     ed.state.truncate_layers(&ed.view, r);
     ed.fall_through(r, InputEvent::Key(key));
 }
 
-/// Scrolls the open popup half its visible content height, in the
-/// direction given by `down`. Reads the visible height and total row
-/// count from the *already-resolved* view for the popup's current
-/// layout (this same frame's paint) rather than recomputing geometry,
-/// so the scroll step always matches what's on screen. Both views are
-/// re-synced every frame regardless (`Editor::sync_popup_view`/
-/// `sync_popup_band_view`), so no explicit sync is needed here. Before
-/// the first frame both are empty, a documented no-op, same as
-/// `picker_input`'s own geometry.
-///
-/// Returns `true` if the popup actually has content past one screenful.
-/// [`popup_input`] uses this to tell a real scroll from a popup too short
-/// to scroll, so Ctrl-d/Ctrl-u fall through to their usual buffer effect
-/// instead of being eaten.
-fn scroll_popup(ed: &mut Editor, down: bool) -> bool {
-    let Some(layout) = ed.state.input.popup().map(|p| &p.layout) else {
-        return false;
-    };
-    let (inner_h, total) = match layout {
-        hume_ui::popup::PopupLayout::Cursor => {
-            let Some(pair) = ed.state.views.popup.read().as_ref().map(boxed_popup_rows) else {
-                return false;
-            };
-            pair
-        }
+/// The open popup's visible content height and total row count, read from
+/// the *already-resolved* view for its `layout` (this same frame's paint)
+/// rather than recomputing geometry, so the scroll step always matches
+/// what's on screen. `band_max` is the docked band's row ceiling. `None`
+/// before the first frame resolves a view.
+fn popup_rows(
+    layout: &hume_ui::popup::PopupLayout,
+    views: &hume_ui::OverlayViews,
+    band_max: u16,
+) -> Option<(usize, usize)> {
+    match layout {
+        hume_ui::popup::PopupLayout::Cursor => views.popup.read().as_ref().map(boxed_popup_rows),
         hume_ui::popup::PopupLayout::Docked => {
-            let Some(total) = ed
-                .state
-                .views
-                .popup_band
-                .read()
-                .as_ref()
-                .map(|s| s.total_rows)
-            else {
-                return false;
-            };
-            let max = hume_engine::pipeline::EngineView::bottom_band_max(
-                ed.view.last_terminal_area.height,
-            );
-            (hume_ui::popup::band_visible_rows(total, max), total)
+            let total = views.popup_band.read().as_ref()?.total_rows;
+            Some((hume_ui::popup::band_visible_rows(total, band_max), total))
         }
-    };
-    let Some(popup) = ed.state.input.popup_mut() else {
-        return false;
-    };
-    let Some(scroll) = half_page_scroll(popup.scroll, inner_h, total, down) else {
-        return false;
-    };
-    popup.scroll = scroll;
-    true
+    }
 }
 
 /// A boxed popup's visible content height and total row count, read from
@@ -304,29 +276,42 @@ pub(super) fn boxed_popup_rows(state: &hume_ui::popup::PopupState) -> (usize, us
     )
 }
 
-/// `scroll` moved half of `inner_h` in the direction given by `down`,
-/// within the `total - inner_h` rows a box `inner_h` rows tall can scroll:
-/// `None` when the content fits and there is nothing to scroll.
+/// Ctrl-d/Ctrl-u on a scrollable text box (a hover popup, the completion
+/// documentation box): moves `scroll` half the box's visible height, within
+/// what `rows` (visible height, total row count, read from the box's
+/// resolved view) leaves scrollable. `false` for any other key, before the
+/// box's first frame, or when its content fits, so the key falls through.
 ///
 /// `scroll` is the model value, clamped for rendering only in the
 /// per-frame view sync, so it can be stale-large after the content
 /// shrinks (the terminal grows between key presses). It is clamped before
 /// the step, not after.
-pub(super) fn half_page_scroll(
-    scroll: usize,
-    inner_h: usize,
-    total: usize,
-    down: bool,
-) -> Option<usize> {
+pub(super) fn scroll_box_on_key(
+    key: &KeyEvent,
+    scroll: &mut usize,
+    rows: impl FnOnce() -> Option<(usize, usize)>,
+) -> bool {
+    if !key.modifiers.contains(Modifiers::CONTROL) {
+        return false;
+    }
+    let down = match key.code {
+        KeyCode::Char('d') => true,
+        KeyCode::Char('u') => false,
+        _ => return false,
+    };
+    let Some((inner_h, total)) = rows() else {
+        return false;
+    };
     let max_scroll = total.saturating_sub(inner_h);
     if max_scroll == 0 {
-        return None;
+        return false;
     }
     let half = half_page(inner_h);
-    let clamped = scroll.min(max_scroll);
-    Some(if down {
+    let clamped = (*scroll).min(max_scroll);
+    *scroll = if down {
         (clamped + half).min(max_scroll)
     } else {
         clamped.saturating_sub(half)
-    })
+    };
+    true
 }

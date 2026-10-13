@@ -9,7 +9,7 @@
 //! and menu navigation stay written once, in the free functions below, and
 //! called from both.
 
-use termina::event::{KeyCode, Modifiers};
+use termina::event::KeyCode;
 
 use hume_engine::pipeline::{EngineView, RenderContext};
 use hume_engine::theme::Theme;
@@ -23,7 +23,7 @@ use super::super::keymap::WalkResult;
 use super::super::popup_syntax::{build_markup_syntax, popup_content};
 use super::super::{Editor, EditorState, Severity};
 use super::placement::popup_placement;
-use super::popup::{boxed_popup_rows, half_page_scroll};
+use super::popup::{boxed_popup_rows, scroll_box_on_key};
 use super::stack::{
     InputEvent, Layer, LayerHandler, LayerRef, PopupEviction, Removal, RemovalScope,
 };
@@ -69,7 +69,7 @@ struct DocView {
     /// on a selection change is enough.
     built: Vec<(Documentation, hume_ui::popup::PopupContent)>,
     /// First visible wrapped row of `current`, back to 0 whenever `shown`
-    /// changes. Rendering clamps a copy; [`scroll_completion_doc`] clamps
+    /// changes. Rendering clamps a copy; [`scroll_box_on_key`] clamps
     /// it before each step.
     scroll: usize,
 }
@@ -325,16 +325,16 @@ fn completion_input_buffer(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
             return;
         }
     };
-    let non_empty = ed
+    let views = &ed.state.views;
+    let layer = ed
         .state
         .input
-        .at::<BufferCompletionLayer>(r)
-        .is_some_and(|l| !l.session.is_empty());
-    if non_empty {
-        if key.modifiers.contains(Modifiers::CONTROL)
-            && let KeyCode::Char(c @ ('u' | 'd')) = key.code
-            && scroll_completion_doc(ed, r, c == 'd')
-        {
+        .at_mut::<BufferCompletionLayer>(r)
+        .filter(|l| !l.session.is_empty());
+    if let Some(layer) = layer {
+        if scroll_box_on_key(&key, &mut layer.doc.scroll, || {
+            views.completion_doc.read().as_ref().map(boxed_popup_rows)
+        }) {
             return;
         }
         match key.code {
@@ -465,30 +465,6 @@ fn move_minibuf_completion_selection(ed: &mut Editor, r: LayerRef, forward: bool
     if let Some(layer) = ed.state.input.at_mut::<MinibufCompletionLayer>(r) {
         layer.session.step_selection(forward);
     }
-}
-
-/// Scrolls the documentation box half its visible height, in the
-/// direction given by `down`, against the geometry this frame resolved.
-/// `false` when no box is showing or its content fits.
-fn scroll_completion_doc(ed: &mut Editor, r: LayerRef, down: bool) -> bool {
-    let Some((inner_h, total)) = ed
-        .state
-        .views
-        .completion_doc
-        .read()
-        .as_ref()
-        .map(boxed_popup_rows)
-    else {
-        return false;
-    };
-    let Some(layer) = ed.state.input.at_mut::<BufferCompletionLayer>(r) else {
-        return false;
-    };
-    let Some(scroll) = half_page_scroll(layer.doc.scroll, inner_h, total, down) else {
-        return false;
-    };
-    layer.doc.scroll = scroll;
-    true
 }
 
 /// Accepts the currently-selected completion item through the same

@@ -965,7 +965,7 @@ fn scrollable_popup_paints_its_scrolled_window() {
     type_cmd(&mut ed, ":go");
     let rect = Rect::new(0, 0, 30, 15);
     // Render once to resolve `popup_view` geometry before scrolling:
-    // `scroll_popup` reads the previous frame's resolved height, same as
+    // `scroll_box_on_key` reads the previous frame's resolved height, same as
     // real interactive use (a keystroke always follows at least one paint).
     let _ = render_snapshot::render_to_styled_string(&mut ed, rect);
     ed.feed_key(key_ctrl('d'));
