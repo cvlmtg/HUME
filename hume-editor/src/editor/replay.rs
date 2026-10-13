@@ -30,7 +30,7 @@ use termina::event::{Event as TerminalEvent, KeyEvent};
 
 use super::dispatch::CmdCtx;
 use super::dot_chain::{ChainBroken, DotChain};
-use super::edit_session::{self, DotCapture, EditSession, EditSessionKind, InsertState};
+use super::edit_session::{self, DotCapture, EditSessionKind, InsertSession};
 use super::input_stack::char::{AfterRead, CharRead};
 use super::keymap::CanonicalKey;
 use super::registry::{Dispatchable, MappableCommand};
@@ -755,18 +755,11 @@ impl EditorState {
         }
     }
 
-    /// The open session's Insert state, if it is an Insert session.
-    fn insert_state_mut(&mut self) -> Option<&mut InsertState> {
-        self.active_session
-            .as_mut()
-            .and_then(EditSession::insert_mut)
-    }
-
     /// The recording the open Insert session holds a source on, while it
     /// accepts input: the one change every Insert-session input records
     /// into, whatever else is accepting.
     fn session_recording(&mut self) -> Option<&mut Recording> {
-        let ticket = self.active_session.as_ref()?.insert()?.recording()?;
+        let ticket = self.input.insert_session()?.recording()?;
         self.recording.as_mut().filter(|rec| rec.feeds(ticket))
     }
 
@@ -889,8 +882,9 @@ impl EditorState {
             return Err(dot_refusal(what));
         }
         if let Some(cap) = self
-            .insert_state_mut()
-            .and_then(InsertState::dot_capture_mut)
+            .input
+            .insert_session_mut()
+            .and_then(InsertSession::dot_capture_mut)
         {
             cap.interactive = true;
         }
@@ -1047,14 +1041,16 @@ impl EditorState {
     /// in one body), before `with_dot_capture` takes it back.
     pub(in crate::editor) fn end_insert_recording(&mut self) {
         if let Some(cap) = self
-            .insert_state_mut()
-            .and_then(InsertState::take_dot_capture)
+            .input
+            .insert_session_mut()
+            .and_then(InsertSession::take_dot_capture)
         {
             self.finalize_dot_capture(cap);
         }
         drop(
-            self.insert_state_mut()
-                .and_then(InsertState::release_recording),
+            self.input
+                .insert_session_mut()
+                .and_then(InsertSession::release_recording),
         );
     }
 }
@@ -1100,7 +1096,7 @@ impl Editor {
     /// have closed the pane or buffer; `focus::end_focus_sessions` already
     /// committed a still-live session before that happened.
     fn finish_replay_session(&mut self) {
-        if self.state.active_session.is_none() {
+        if self.state.open_session().is_none() {
             return;
         }
         if self.state.mode() == Mode::Insert {
@@ -1182,17 +1178,14 @@ impl Editor {
                 .shown(&self.view.panes, pid)
                 .selections()
                 .clone();
+            let buffers = &self.state.buffers;
             let opened = edit_session::open_or_retarget(
+                self.state.input.insert_session(),
                 &mut self.state.active_session,
                 pid,
                 bid,
                 EditSessionKind::Replay,
-                || {
-                    self.state
-                        .buffers
-                        .get(bid)
-                        .begin_edit_group(sels.clone(), sels)
-                },
+                || buffers.get(bid).begin_edit_group(sels.clone(), sels),
             );
             if opened.is_err() {
                 return;
@@ -1374,7 +1367,7 @@ impl Editor {
                 .primary()
                 .head();
             let chain = DotChain::new(head, self.state.buffers.get(buffer).text());
-            if let Some(insert) = self.state.insert_state_mut() {
+            if let Some(insert) = self.state.input.insert_session_mut() {
                 insert.arm_dot_capture(DotCapture {
                     chain,
                     interactive: false,
@@ -1388,10 +1381,10 @@ impl Editor {
         }
         if let Some(cap) = self
             .state
-            .active_session
-            .as_mut()
-            .and_then(|s| s.insert_at_mut(pane, buffer))
-            .and_then(InsertState::take_dot_capture)
+            .input
+            .insert_session_mut()
+            .filter(|s| s.owned_by(pane, buffer))
+            .and_then(InsertSession::take_dot_capture)
         {
             self.state.finalize_dot_capture(cap);
         }

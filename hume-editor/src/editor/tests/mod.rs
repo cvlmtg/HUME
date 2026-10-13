@@ -1404,9 +1404,8 @@ pub(super) fn snapshot_bookkeeping(ed: &Editor) -> BookkeepingSnapshot {
         mode: ed.state.mode(),
         typed_run_open: ed
             .state
-            .active_session
-            .as_ref()
-            .and_then(crate::editor::edit_session::EditSession::insert)
+            .input
+            .insert_session()
             .is_some_and(|insert| insert.typed_run.is_some()),
     }
 }

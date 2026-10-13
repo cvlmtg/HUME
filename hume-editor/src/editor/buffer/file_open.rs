@@ -229,9 +229,8 @@ impl Editor {
         // End any open Insert/paste session the same way every other
         // buffer/focus-invalidating path does (`switch_pane_to_buffer`,
         // `reset_config_state`), before the replacement invalidates the text
-        // it was snapshotted against. Leaving it open would keep
-        // `state.active_session` and the `Insert` mode layer pointing at a
-        // session whose group no longer matches the buffer.
+        // it was snapshotted against. Leaving it open would keep a session
+        // whose group no longer matches the buffer.
         crate::editor::focus::end_focus_sessions(&mut self.state, &self.view);
 
         let (buffers, mut stores) = self.state.edit_parts();

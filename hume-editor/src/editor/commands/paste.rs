@@ -6,11 +6,8 @@
 //!
 //! This module owns opening/closing the `EditSessionKind::Paste` variant of
 //! `EditorState::active_session` (`do_paste`, `commit_paste_session`) via
-//! `edit_session::open_or_retarget` (the same primitive
-//! `edit_session::open_insert` uses for the `Insert` variant) rather than
-//! `doc_ops::begin_edit_group`/`commit_edit_group` themselves, which are
-//! typed to `Insert` alone: a paste session's own `before` direction has
-//! nowhere to live in those.
+//! `edit_session::open_or_retarget`, which applies the same open rule as
+//! `edit_session::open_insert` does for an Insert session.
 
 use crate::editor::registry::Count;
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
@@ -171,12 +168,14 @@ fn do_paste(
         .entries
         .seeded_mut(focused, buf)
         .set_selections(sels, state.buffers.get(buf).text());
+    let buffers = &state.buffers;
     edit_session::open_or_retarget(
+        state.input.insert_session(),
         &mut state.active_session,
         focused,
         buf,
         EditSessionKind::Paste { before },
-        || state.buffers.get(buf).begin_edit_group(base, undo_sels),
+        || buffers.get(buf).begin_edit_group(base, undo_sels),
     )?;
     let paste_fn = if before { paste_before } else { paste_after };
     let (buffers, mut stores) = state.edit_parts();
@@ -364,7 +363,7 @@ fn do_normal_paste(
     // Checked here, not left to `do_paste`'s own `open_or_retarget` call,
     // which runs after `do_paste` has written the selections it pastes at:
     // a refusal here leaves the pane untouched.
-    edit_session::check_can_open(&state.active_session, pid, buf)?;
+    edit_session::check_can_open(state.open_session(), pid, buf)?;
     super::ensure_writable(state, view, fp.pane())?;
     let resolved = resolve_plain(state)?;
     let sels = state
@@ -388,7 +387,7 @@ fn do_smart_paste(
     before: bool,
 ) -> Result<(), CommandError> {
     let (pid, buf) = (fp.pid(), fp.bid(view));
-    edit_session::check_can_open(&state.active_session, pid, buf)?;
+    edit_session::check_can_open(state.open_session(), pid, buf)?;
     super::ensure_writable(state, view, fp.pane())?;
     let resolved = resolve_smart(state)?;
     let pbs = state.panes.entries.shown(&view.panes, pid);

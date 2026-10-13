@@ -123,7 +123,7 @@ fn enter_repeated_preserves_indent() {
 //
 // `end_insert_session` vacates a blank line's leading whitespace on Esc, but
 // only when the cursor's current line is the one *this* insert session
-// auto-inserted it onto via Enter (`InsertState::autoindent`). These
+// auto-inserted it onto via Enter (`InsertSession::autoindent`). These
 // tests pin the three-way distinction vim makes: pre-existing blank-line
 // whitespace and hand-typed whitespace are both left alone; only the
 // session's own auto-indent gets vacated.

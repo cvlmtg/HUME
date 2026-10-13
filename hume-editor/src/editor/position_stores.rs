@@ -15,7 +15,7 @@ use hume_rope::cluster::ClusterRange;
 use slotmap::SecondaryMap;
 
 use super::buffer::store::BufferStore;
-use super::edit_session::EditSession;
+use super::edit_session::{self, EditSession, InsertSession, OpenSession};
 use super::input_stack::InputStack;
 use super::lsp::diagnostics::DiagnosticsStore;
 use super::lsp::document::LspDocuments;
@@ -64,8 +64,7 @@ impl BufferPositions {
 
 pub(crate) struct PositionStores<'a> {
     pub(in crate::editor) panes: &'a mut PaneEntries,
-    /// The open edit session, whose Insert records are carried with the
-    /// rest, and which grouped edits compose into.
+    /// The open Paste session or dot-repeat placeholder.
     pub(in crate::editor) session: &'a mut Option<EditSession>,
     tracked: &'a mut TrackedPositions,
     input: &'a mut InputStack,
@@ -89,6 +88,23 @@ impl<'a> PositionStores<'a> {
             buffers,
             decorations,
         }
+    }
+
+    /// The open session, of any kind.
+    pub(in crate::editor) fn open_session(&self) -> Option<OpenSession<'_>> {
+        edit_session::open_session(self.input.insert_session(), self.session)
+    }
+
+    /// The open Insert session, when it is on `(pane, buffer)`: the session
+    /// a grouped edit there composes into, and whose records it carries.
+    pub(in crate::editor) fn insert_at_mut(
+        &mut self,
+        pane: PaneId,
+        buffer: BufferId,
+    ) -> Option<&mut InsertSession> {
+        self.input
+            .insert_session_mut()
+            .filter(|s| s.owned_by(pane, buffer))
     }
 
     /// Carry every position stored for `buffer` through `change`: the
@@ -122,10 +138,9 @@ impl<'a> PositionStores<'a> {
             entry.jumps.translate_in_place(buffer, change);
         }
         if let Some(insert) = self
-            .session
-            .as_mut()
+            .input
+            .insert_session_mut()
             .filter(|s| s.buffer() == buffer)
-            .and_then(EditSession::insert_mut)
         {
             insert.carry_marks(change);
         }
@@ -193,6 +208,11 @@ impl<'a> PositionStores<'a> {
 }
 
 impl super::EditorState {
+    /// The open session, of any kind.
+    pub(in crate::editor) fn open_session(&self) -> Option<OpenSession<'_>> {
+        edit_session::open_session(self.input.insert_session(), &self.active_session)
+    }
+
     /// The buffers, and every position stored against their text, borrowed
     /// apart so a `Buffer` method that changes text can carry them.
     pub(in crate::editor) fn edit_parts(&mut self) -> (&mut BufferStore, PositionStores<'_>) {

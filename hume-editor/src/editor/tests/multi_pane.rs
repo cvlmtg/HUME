@@ -210,19 +210,19 @@ fn d5_insert_session_is_pane_buffer_scoped() {
 
     // Pane A insert session: type 'X' at the start.
     ed.switch_focused_pane(pid_a);
-    assert!(ed.state.active_session.is_none(), "no session before i");
+    assert!(ed.state.open_session().is_none(), "no session before i");
     ed.handle_key(key('i'));
     assert!(
         ed.state
-            .active_session
-            .as_ref()
+            .input
+            .insert_session()
             .is_some_and(|s| s.pane() == pid_a),
         "session open on A after i"
     );
     ed.handle_key(key('X'));
     ed.handle_key(key_esc());
     assert!(
-        ed.state.active_session.is_none(),
+        ed.state.open_session().is_none(),
         "session committed on Esc"
     );
 
@@ -231,21 +231,21 @@ fn d5_insert_session_is_pane_buffer_scoped() {
     // Pane B insert session: type 'Y'.
     ed.switch_focused_pane(pid_b);
     assert!(
-        ed.state.active_session.is_none(),
+        ed.state.open_session().is_none(),
         "pane B starts with no session"
     );
     ed.handle_key(key('i'));
     assert!(
         ed.state
-            .active_session
-            .as_ref()
+            .input
+            .insert_session()
             .is_some_and(|s| s.pane() == pid_b),
         "session opens on B"
     );
     ed.handle_key(key('Y'));
     ed.handle_key(key_esc());
     assert!(
-        ed.state.active_session.is_none(),
+        ed.state.open_session().is_none(),
         "pane B session committed"
     );
 

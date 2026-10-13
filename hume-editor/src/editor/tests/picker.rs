@@ -421,7 +421,7 @@ fn close_picker_tears_down_an_insert_session_stacked_above_it() {
         Mode::Insert,
         "sanity: Insert above the picker"
     );
-    assert!(ed.state.active_session.is_some(), "sanity: session open");
+    assert!(ed.state.open_session().is_some(), "sanity: session open");
     // Insert is `top()` now, so this reaches its own key handler, same as
     // ordinary typing, not the picker's query.
     ed.handle_key(key('X'));
@@ -431,7 +431,7 @@ fn close_picker_tears_down_an_insert_session_stacked_above_it() {
 
     assert!(ed.state.input.picker().is_none(), "the picker must be gone");
     assert!(
-        ed.state.active_session.is_none(),
+        ed.state.open_session().is_none(),
         "Insert's own teardown must have run, clearing the session"
     );
     assert_eq!(

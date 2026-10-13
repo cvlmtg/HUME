@@ -3,10 +3,9 @@
 //! under it: `focus::end_focus_sessions`, called from
 //! `focus::switch_pane_to_buffer` (gated to the focused pane and
 //! a genuine buffer change), `Editor::reset_config_state`, and
-//! `buffer::file_open::reload_buffer_in_place`. Left open, the session's
-//! `EditorState::active_session` stays keyed to a `(pane, buffer)` pair no
-//! longer being typed into, and the next dispatch panics in
-//! `doc_ops::commit_edit_group`'s own consistency check.
+//! `buffer::file_open::reload_buffer_in_place`. Left open, the session stays
+//! keyed to a `(pane, buffer)` pair no longer being typed into, and refuses
+//! the next Insert entry.
 //!
 //! Covers every path that can swap the focused pane's buffer, or replace its
 //! content, mid-session (`switch-to-buffer!`, `goto-location!`,
@@ -51,7 +50,7 @@ fn switch_to_buffer_ends_insert_session_on_focused_pane() {
     assert_eq!(ed.focused_buffer_id(), new_bid);
 
     // A follow-up insert session in the new buffer must apply cleanly: no
-    // stale `active_session` left over to panic `commit_edit_group`'s `.expect()`.
+    // stale session left over to refuse it.
     ed.feed_key(key('i'));
     type_chars(&mut ed, "Z");
     ed.feed_key(key_esc());
@@ -226,12 +225,12 @@ fn reload_config_ends_insert_session_on_focused_pane() {
         "reload must end the open Insert session before dropping its mode layers"
     );
     assert!(
-        ed.state.active_session.is_none(),
+        ed.state.open_session().is_none(),
         "reload must not leave a stale open session behind"
     );
 
-    // A follow-up insert session must work cleanly: no stale group left to
-    // panic `commit_edit_group`'s `.expect()` on the next Esc.
+    // A follow-up insert session must work cleanly: no stale session left
+    // over to refuse it.
     ed.feed_key(key('i'));
     type_chars(&mut ed, "Z");
     ed.feed_key(key_esc());
@@ -266,12 +265,12 @@ fn reload_buffer_in_place_ends_insert_session_on_focused_pane() {
         "reload must end the open Insert session before dropping its mode layers"
     );
     assert!(
-        ed.state.active_session.is_none(),
+        ed.state.open_session().is_none(),
         "reload must not leave a stale open session behind"
     );
 
-    // A follow-up insert session must work cleanly: no stale group left to
-    // panic `commit_edit_group`'s `.expect()` on the next Esc.
+    // A follow-up insert session must work cleanly: no stale session left
+    // over to refuse it.
     ed.feed_key(key('i'));
     type_chars(&mut ed, "Z");
     ed.feed_key(key_esc());
@@ -302,7 +301,7 @@ fn switch_to_buffer_commits_open_paste_session_on_focused_pane() {
         .expect("switch must succeed");
 
     assert!(
-        ed.state.active_session.is_none(),
+        ed.state.open_session().is_none(),
         "the switch must commit the open paste session on the old buffer, not leave it dangling"
     );
 
@@ -402,7 +401,7 @@ fn insert_teardown_commits_on_the_sessions_own_pane_not_current_focus() {
     ed.end_insert_session();
 
     assert!(
-        ed.state.active_session.is_none(),
+        ed.state.open_session().is_none(),
         "the session must be closed"
     );
     assert_eq!(ed.state.mode(), Mode::Normal);

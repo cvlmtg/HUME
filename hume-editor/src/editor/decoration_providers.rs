@@ -84,9 +84,9 @@ impl Editor {
                 let past_end = hume_rope::line::RopeyLine::new(text.ropey_line_count().get());
                 let insert_line = self
                     .state
-                    .active_session
-                    .as_ref()
-                    .is_some_and(|s| s.is_insert_at(pid, bid))
+                    .input
+                    .insert_session()
+                    .is_some_and(|s| s.owned_by(pid, bid))
                     .then(|| {
                         self.state
                             .panes

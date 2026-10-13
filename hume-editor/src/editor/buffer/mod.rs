@@ -812,9 +812,8 @@ impl Buffer {
     /// from.
     ///
     /// Returns a fresh [`EditGroup`] rather than writing through a pointer.
-    /// The caller (`doc_ops::begin_edit_group`) is the one that knows whether
-    /// a session is already open, since it owns `EditorState::active_session`;
-    /// that check belongs there, not here.
+    /// Whether a session may open is the caller's check
+    /// (`edit_session::check_can_open`), not this one's.
     pub(in crate::editor) fn begin_edit_group(
         &self,
         base: SelectionSet,
@@ -832,7 +831,7 @@ impl Buffer {
     /// If no edits were applied since `begin_edit_group` (empty group), or the
     /// composed `ChangeSet` cancelled out to the identity transform (e.g. type
     /// a char, then backspace it), no revision is recorded. Takes `group` by
-    /// value: the caller already `.take()`n it from `EditorState::active_session`.
+    /// value: the caller has already closed the session that held it.
     pub(in crate::editor) fn commit_edit_group(
         &mut self,
         group: EditGroup,
@@ -1027,8 +1026,7 @@ impl crate::editor::EditorState {
     /// Insert or paste session on it as part of the live text.
     pub(crate) fn revision_diff(&self, bid: BufferId, n: usize) -> Result<Vec<ChangeHunk>, String> {
         let unrecorded = self
-            .active_session
-            .as_ref()
+            .open_session()
             .filter(|s| s.buffer() == bid)
             .and_then(|s| s.unrecorded_inverse());
         self.buffers
@@ -1047,8 +1045,7 @@ impl crate::editor::EditorState {
         buf.revision_dirty()
             || buf.line_ending_changed()
             || self
-                .active_session
-                .as_ref()
+                .open_session()
                 .is_some_and(|s| s.buffer() == bid && s.has_edits())
     }
 }

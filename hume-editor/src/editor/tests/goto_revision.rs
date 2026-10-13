@@ -43,7 +43,7 @@ fn history_walk_commits_own_paste_session_first() {
         "hello\n",
         "the committed paste is the one revision the walk undoes"
     );
-    assert!(ed.state.active_session.is_none());
+    assert!(ed.state.open_session().is_none());
 }
 
 #[test]
@@ -54,9 +54,9 @@ fn history_walk_refuses_own_insert_session() {
     let (pane, buffer) = (ed.view.focused_pane(), ed.focused_buffer_id());
     assert!(
         ed.state
-            .active_session
-            .as_ref()
-            .is_some_and(|s| s.is_insert_at(pane, buffer)),
+            .input
+            .insert_session()
+            .is_some_and(|s| s.owned_by(pane, buffer)),
         "setup: `i` leaves an insert session open"
     );
 
@@ -69,9 +69,9 @@ fn history_walk_refuses_own_insert_session() {
     assert_eq!(ed.doc().text().to_string(), "xhello\n");
     assert!(
         ed.state
-            .active_session
-            .as_ref()
-            .is_some_and(|s| s.is_insert_at(pane, buffer)),
+            .input
+            .insert_session()
+            .is_some_and(|s| s.owned_by(pane, buffer)),
         "the refused walk leaves the session open"
     );
 }
@@ -368,6 +368,7 @@ fn history_walk_refuses_own_replay_placeholder() {
         .selections()
         .clone();
     crate::editor::edit_session::open_or_retarget(
+        None,
         &mut ed.state.active_session,
         pane,
         buffer,

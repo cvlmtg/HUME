@@ -383,9 +383,9 @@ pub(crate) struct EditorState {
     /// passes before it opens, to refuse one reached during `.`, and by a
     /// character read, which takes its answer from it.
     pub(in crate::editor) dot_replay: Option<replay::DotReplay>,
-    /// The editor's one live Insert or paste undo group, if any. See
-    /// [`edit_session::EditSession`]'s own doc, including its own
-    /// `dot_capture` field.
+    /// The editor's open Paste session or dot-repeat placeholder, if any.
+    /// An open Insert session lives on the input stack instead; see
+    /// [`EditorState::open_session`] for the one open session of any kind.
     pub(in crate::editor) active_session: Option<edit_session::EditSession>,
     pub(super) macros: macros::MacroState,
     /// Set by `Editor::handle_input` right after dispatch whenever that

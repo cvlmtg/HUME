@@ -410,7 +410,7 @@ pub(in crate::editor) fn apply_workspace_edit(
         // earlier file in this same batch already applied. See this
         // function's own doc for why that's the one thing a multi-file edit
         // must not do.
-        crate::editor::doc_ops::check_no_conflicting_session(&state.active_session, pid, bid)
+        crate::editor::doc_ops::check_no_conflicting_session(state.open_session(), pid, bid)
             .map_err(|e| format!("{}: {e}", display()))?;
         if planned.iter().any(|(planned_bid, _)| *planned_bid == bid) {
             return Err(format!(

@@ -22,6 +22,7 @@ use termina::event::{KeyEvent, MouseEvent};
 use hume_engine::pipeline::{EngineView, PaneId};
 use hume_engine::types::EditorMode;
 
+use super::super::edit_session::InsertSession;
 use super::super::event::mode_name;
 use super::super::minibuf::MiniBuffer;
 use super::super::{Editor, EditorState, Severity};
@@ -298,6 +299,8 @@ pub(in crate::editor) struct InputStack {
     /// stale `LayerRef` from a fresh layer that landed at the same index.
     layers: Vec<(u64, Box<dyn Layer>)>,
     next_id: u64,
+    /// The open Insert session, under the `InsertLayer` its opening pushed.
+    insert: Option<InsertSession>,
 }
 
 impl InputStack {
@@ -311,7 +314,28 @@ impl InputStack {
                 }),
             )],
             next_id: 1,
+            insert: None,
         }
+    }
+
+    /// The open Insert session, if any.
+    pub(in crate::editor) fn insert_session(&self) -> Option<&InsertSession> {
+        self.insert.as_ref()
+    }
+
+    /// [`Self::insert_session`], mutably.
+    pub(in crate::editor) fn insert_session_mut(&mut self) -> Option<&mut InsertSession> {
+        self.insert.as_mut()
+    }
+
+    /// Where `edit_session::open_insert` opens an Insert session.
+    pub(in crate::editor) fn insert_slot(&mut self) -> &mut Option<InsertSession> {
+        &mut self.insert
+    }
+
+    /// Take the open Insert session out, for its commit.
+    pub(in crate::editor) fn take_insert(&mut self) -> Option<InsertSession> {
+        self.insert.take()
     }
 
     /// The topmost layer. Every key dispatch starts here.

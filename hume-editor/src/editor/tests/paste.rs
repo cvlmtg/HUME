@@ -236,7 +236,7 @@ fn smart_p_dp_reads_ring() {
 /// `c` <text> Esc then `p` reads the kill ring, not the clipboard: the swap
 /// idiom. Every keystroke typed during the session bumps `edit_seq`, which
 /// would otherwise strand the stamp `c`'s own `route_kill` wrote; the
-/// insert session is marked kill-opened (`InsertState::kill_opened_session`)
+/// insert session is marked kill-opened (`InsertSession::kill_opened_session`)
 /// so `end_insert_session` refreshes the stamp's `seq` once typing stops.
 ///
 /// Without the `kill_opened_session` refresh in `end_insert_session`, the
@@ -1686,11 +1686,11 @@ fn a_cancelled_operand_read_commits_the_paste_session() {
         let mut ed = editor_from("-[ab]>c\n");
         ed.feed_key(key('d'));
         ed.feed_key(key('p'));
-        assert!(ed.state.active_session.is_some(), "p opens a paste session");
+        assert!(ed.state.open_session().is_some(), "p opens a paste session");
         ed.feed_key(key(read_key));
         ed.feed_key(key_esc());
         assert!(
-            ed.state.active_session.is_none(),
+            ed.state.open_session().is_none(),
             "{read_key} then Esc left the paste session open"
         );
     }

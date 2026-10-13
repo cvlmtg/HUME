@@ -243,7 +243,7 @@ fn prompt_from_insert_ends_the_insert_session_cleanly() {
     ed.feed_key(key('X'));
     assert_eq!(ed.state.mode(), hume_engine::types::EditorMode::Insert);
     assert!(
-        ed.state.active_session.is_some(),
+        ed.state.open_session().is_some(),
         "sanity: an insert session is open"
     );
     assert_eq!(ed.doc().text().to_string(), "Xabc\n");
@@ -255,7 +255,7 @@ fn prompt_from_insert_ends_the_insert_session_cleanly() {
         "prompt! must have taken over the mode layer"
     );
     assert!(
-        ed.state.active_session.is_none(),
+        ed.state.open_session().is_none(),
         "the insert session must be finalized, not left dangling under Prompt"
     );
     assert_eq!(

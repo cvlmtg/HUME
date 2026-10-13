@@ -784,7 +784,7 @@ fn clicking_another_tab_commits_the_outgoing_pane_s_open_paste_session() {
 
     assert_eq!(ed.state.tabs.current(), tab_b, "click switched to tab B");
     assert!(
-        ed.state.active_session.is_none(),
+        ed.state.open_session().is_none(),
         "focus_pane must commit A's open paste session before leaving it"
     );
 

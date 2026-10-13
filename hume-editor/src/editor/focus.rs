@@ -53,7 +53,7 @@ impl Focus {
 /// leaves Insert mode.
 ///
 /// Both teardowns act on the `(pane, buffer)` the session itself recorded
-/// (`EditorState::active_session`), never on current focus, so their
+/// (`EditorState::open_session`), never on current focus, so their
 /// correctness does not depend on running before or after the focus write.
 /// Callers still run this first for their own reasons: a pane close drops
 /// the pane's state right after, and a reload's `truncate_to_base` drops

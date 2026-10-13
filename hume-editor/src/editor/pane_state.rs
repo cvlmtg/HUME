@@ -9,8 +9,7 @@
 //! entry, added and removed only as a whole.
 //!
 //! The in-progress insert/paste session is not here, typed-run and
-//! autoindent records included; see [`super::edit_session::EditSession`],
-//! `EditorState::active_session`.
+//! autoindent records included; see [`super::edit_session`].
 
 use hume_engine::pipeline::{BufferId, EngineView, PaneId, PanePool, UnattachedPane};
 use slotmap::SecondaryMap;

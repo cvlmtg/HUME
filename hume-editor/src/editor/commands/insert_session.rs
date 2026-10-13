@@ -12,7 +12,7 @@ use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 use crate::editor::EditorState;
 use crate::editor::doc_ops;
-use crate::editor::edit_session::{self, EditSession, InsertOpened, InsertState, TypedRun};
+use crate::editor::edit_session::{self, InsertOpened, InsertSession, TypedRun};
 use crate::editor::error::CommandError;
 use hume_ops::edit::clear_blank_line_indent;
 
@@ -33,11 +33,11 @@ pub(in crate::editor) fn insert_state_at<'a>(
     state: &'a EditorState,
     view: &EngineView,
     fp: FocusedPane,
-) -> Option<&'a InsertState> {
+) -> Option<&'a InsertSession> {
     state
-        .active_session
-        .as_ref()
-        .and_then(|s| s.insert_at(fp.pid(), fp.bid(view)))
+        .input
+        .insert_session()
+        .filter(|s| s.owned_by(fp.pid(), fp.bid(view)))
 }
 
 /// [`insert_state_at`], mutably.
@@ -45,11 +45,11 @@ pub(in crate::editor) fn insert_state_at_mut<'a>(
     state: &'a mut EditorState,
     view: &EngineView,
     fp: FocusedPane,
-) -> Option<&'a mut InsertState> {
+) -> Option<&'a mut InsertSession> {
     state
-        .active_session
-        .as_mut()
-        .and_then(|s| s.insert_at_mut(fp.pid(), fp.bid(view)))
+        .input
+        .insert_session_mut()
+        .filter(|s| s.owned_by(fp.pid(), fp.bid(view)))
 }
 
 /// `true` if any current selection is a collapsed cursor sitting on a blank
@@ -75,7 +75,7 @@ fn has_blank_line_cursor(sels: EditView<'_>, allowed: &[ExclusiveRange<CharOffse
 }
 
 /// The live session's per-selection autoindent ownership record (see
-/// `InsertState::autoindent`'s doc) for `sels`, the session pane's
+/// `InsertSession::autoindent`'s doc) for `sels`, the session pane's
 /// selections, or empty if none was armed, or its length no longer matches
 /// the live selection count (a mid-session merge; same rule
 /// [`tear_down_insert`] applies to `typed_run` via `valid_run`). An
@@ -86,7 +86,7 @@ fn has_blank_line_cursor(sels: EditView<'_>, allowed: &[ExclusiveRange<CharOffse
 /// session before running the edit whose `ChangeSet` will remap (or, for
 /// Enter, replace) that same record.
 pub(in crate::editor) fn autoindent_owned(
-    insert: &InsertState,
+    insert: &InsertSession,
     sels: &EditView<'_>,
 ) -> Vec<ExclusiveRange<CharOffset>> {
     match insert
@@ -102,7 +102,7 @@ pub(in crate::editor) fn autoindent_owned(
 /// Record each current selection's freshly auto-inserted indent (`[line_start,
 /// head)` on the post-edit buffer) as this session's own, so a later Enter
 /// or exit knows that whitespace is its own to vacate (see
-/// `InsertState::autoindent`'s doc). Called once, right after the
+/// `InsertSession::autoindent`'s doc). Called once, right after the
 /// structural newline + indent lands, by every entry point that copies one
 /// (`o`, `O`, Enter). No-op if no edit group is open (read-only refusal),
 /// same guard as [`begin_typed_run`]: a refused `o`/`O` has no session to
@@ -132,7 +132,7 @@ pub(in crate::editor) fn arm_autoindent(
 }
 
 /// Where an *empty* typed run's cursor lands on exit. See
-/// `InsertState::step_back_on_exit`'s doc. Passed to [`begin_typed_run`]
+/// `InsertSession::step_back_on_exit`'s doc. Passed to [`begin_typed_run`]
 /// so every entry command arms it in the same call that pins the run,
 /// instead of a separate step that could be forgotten or reordered.
 pub(super) enum ExitCursor {
@@ -158,7 +158,7 @@ pub(super) enum ExitCursor {
 /// only, never the newline or the pre-edit selection.
 ///
 /// Every later text change carries the pinned run
-/// (`InsertState::carry_marks`); a cursor-motion command during the session
+/// (`InsertSession::carry_marks`); a cursor-motion command during the session
 /// clears it (`with_jump`, `jump_list.rs`). An entry command dispatched from
 /// inside an already-open session (a Steel `call!`, an Insert-mode
 /// keybinding) replaces the run and the step-back flag the previous entry
@@ -233,16 +233,15 @@ pub(super) fn begin_insert_session_preserving_register(
     let (pid, bid) = (fp.pid(), fp.bid(view));
     // Already open here means this entry runs inside a live Insert session
     // (a binding re-entering Insert), whose group and layer it joins.
-    // Otherwise open one or, under `replay_dot`, retarget its `Replay`-kind
-    // placeholder to `Insert` in place (`doc_ops::begin_edit_group`'s own
-    // `open_or_retarget` delegation), so the replayed session folds into the
-    // same undo revision as the rest of the replay.
+    // Otherwise open one or, under `replay_dot`, take over its `Replay`-kind
+    // placeholder (`edit_session::open_insert`), so the replayed session
+    // folds into the same undo revision as the rest of the replay.
     let already_insert = state
-        .active_session
-        .as_ref()
-        .is_some_and(|s| s.is_insert_at(pid, bid));
+        .input
+        .insert_session()
+        .is_some_and(|s| s.owned_by(pid, bid));
     if !already_insert {
-        edit_session::check_can_open(&state.active_session, pid, bid)?;
+        edit_session::check_can_open(state.open_session(), pid, bid)?;
     }
     super::apply_pane_motion(state, view, fp.pane(), place);
     if already_insert {
@@ -256,6 +255,7 @@ pub(super) fn begin_insert_session_preserving_register(
     let opened = doc_ops::begin_edit_group(
         &state.buffers,
         &state.panes.entries,
+        state.input.insert_slot(),
         &mut state.active_session,
         pid,
         bid,
@@ -298,10 +298,10 @@ pub(in crate::editor) fn end_insert_session(state: &mut EditorState, view: &Engi
 /// `pane_state`/`buffers` directly through `doc_ops` rather than through a
 /// `CommandPane`/`FocusedPane`: this is not a command body, and those types
 /// can only be minted by resolving a target, not from a bare pair.
-pub(in crate::editor) fn tear_down_insert(state: &mut EditorState, opened: &InsertOpened) {
+pub(in crate::editor) fn tear_down_insert(state: &mut EditorState, _opened: &InsertOpened) {
     let (pid, bid) = state
-        .active_session
-        .as_ref()
+        .input
+        .insert_session()
         .map(|s| (s.pane(), s.buffer()))
         .expect("an Insert layer on the stack always has its session open");
     // Before the autoindent-trim edit below, which must not itself be swept
@@ -328,11 +328,7 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState, opened: &Inse
         .entries
         .seeded(pid, bid)
         .view(state.buffers.get(bid).text());
-    let insert = state
-        .active_session
-        .as_ref()
-        .and_then(EditSession::insert)
-        .expect("checked open above");
+    let insert = state.input.insert_session().expect("checked open above");
     let allowed = autoindent_owned(insert, &sels);
     if has_blank_line_cursor(sels, &allowed) {
         let (buffers, mut stores) = state.edit_parts();
@@ -345,36 +341,24 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState, opened: &Inse
     // mismatch (selections merged mid-session, e.g. via Backspace) drops the
     // run entirely: `spans` stays `None`, so this session contributes
     // nothing to the `mii` stash and, for an empty run, falls back to
-    // `exit_cursor`'s step-back handling below. Taken before the commit
-    // below closes the session that holds them.
-    let (typed_run, step_back, kill_opened) = {
-        let insert = state
-            .active_session
-            .as_mut()
-            .and_then(EditSession::insert_mut)
-            .expect("checked open above");
-        (
-            insert.typed_run.take(),
-            insert.step_back_on_exit,
-            insert.kill_opened_session,
-        )
-    };
+    // `exit_cursor`'s step-back handling below.
+    let mut session = state.input.take_insert().expect("checked open above");
+    let (typed_run, step_back, kill_opened) = (
+        session.typed_run.take(),
+        session.step_back_on_exit,
+        session.kill_opened_session,
+    );
     let sel_count = state
         .panes
         .entries
         .seeded(pid, bid)
         .view(state.buffers.get(bid).text())
         .len();
-    doc_ops::commit_edit_group(
-        &mut state.buffers,
-        &state.panes.entries,
-        &mut state.active_session,
-        opened,
-    );
+    doc_ops::commit_insert(&mut state.buffers, &state.panes.entries, session);
     // `cmd_change` stamped `PasteStamp` right after the deletion, but every
     // keystroke since has bumped `edit_seq`. Refresh the stamp to the
     // session's final `seq` (source unchanged) so `c <text> <Esc> p` still
-    // reads the ring. See `InsertState::kill_opened_session`'s doc.
+    // reads the ring. See `InsertSession::kill_opened_session`'s doc.
     if kill_opened && let Some(stamp) = state.paste_stamp.as_mut() {
         stamp.seq = state.buffers.edit_seq();
     }

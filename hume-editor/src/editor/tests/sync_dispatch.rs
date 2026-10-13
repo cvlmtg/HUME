@@ -1166,7 +1166,7 @@ fn parity_steel_branch_cluster_vs_native() {
     ed2.execute_keymap_command("pure-noop".into(), Some(1), false);
 
     assert!(
-        ed2.state.active_session.is_none(),
+        ed2.state.open_session().is_none(),
         "step_paste_commit must close the paste session on the Steel path"
     );
 }

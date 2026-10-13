@@ -404,9 +404,9 @@ pub(in crate::editor) fn with_jump<R>(
         }
     };
     if let Some(insert) = state
-        .active_session
-        .as_mut()
-        .and_then(|s| s.insert_at_mut(pid, pre_bid))
+        .input
+        .insert_session_mut()
+        .filter(|s| s.owned_by(pid, pre_bid))
     {
         insert.typed_run = None;
     }

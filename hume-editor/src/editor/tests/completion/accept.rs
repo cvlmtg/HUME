@@ -433,10 +433,10 @@ fn accept_whose_additional_text_edits_overlap_each_other_leaves_the_buffer_untou
         status(&ed)
     );
     assert!(
-        ed.state
-            .active_session
-            .as_ref()
-            .is_some_and(|s| !s.has_edits()),
+        matches!(
+            ed.state.open_session(),
+            Some(s @ crate::editor::edit_session::OpenSession::Insert(_)) if !s.has_edits()
+        ),
         "the Insert session stays open with nothing composed into it"
     );
 }
