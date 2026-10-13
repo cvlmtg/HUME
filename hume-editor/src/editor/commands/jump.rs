@@ -1,5 +1,5 @@
 use crate::editor::registry::Count;
-use hume_engine::pipeline::{Direction, EngineView};
+use hume_engine::pipeline::{Direction, EngineView, Rotation};
 use hume_ops::MotionMode;
 
 use super::super::EditorState;
@@ -316,5 +316,45 @@ pub(in crate::editor) fn cmd_close_pane(
         return Err(CommandError::transient("cannot close last pane"));
     }
     super::close_focused_pane(state, view, fp);
+    Ok(())
+}
+
+/// `Ctrl-p r`: rotate the focused pane's row or column forward, focus staying
+/// on the pane it was on.
+pub(in crate::editor) fn cmd_pane_rotate_forward(
+    _state: &mut EditorState,
+    view: &mut EngineView,
+    fp: FocusedPane,
+    _count: Count,
+    _mode: MotionMode,
+) -> Result<(), CommandError> {
+    rotate_focused(view, fp, Rotation::Forward)
+}
+
+/// `Ctrl-p R`: the reverse of `Ctrl-p r`.
+pub(in crate::editor) fn cmd_pane_rotate_backward(
+    _state: &mut EditorState,
+    view: &mut EngineView,
+    fp: FocusedPane,
+    _count: Count,
+    _mode: MotionMode,
+) -> Result<(), CommandError> {
+    rotate_focused(view, fp, Rotation::Backward)
+}
+
+fn rotate_focused(
+    view: &mut EngineView,
+    fp: FocusedPane,
+    rotation: Rotation,
+) -> Result<(), CommandError> {
+    if view.layout().is_single_pane() {
+        return Err(CommandError::transient("no other pane to rotate"));
+    }
+    let pid = fp.pid();
+    if !view.rotate_layout(pid, rotation) {
+        return Err(CommandError::new(format!(
+            "internal error: focused pane {pid:?} missing from pane layout"
+        )));
+    }
     Ok(())
 }

@@ -21,7 +21,7 @@ use layout::{
     ARM_E, ARM_N, ARM_S, ARM_W, collect_seam_arms, focused_pane_corners, focused_seam_segment,
     junction_glyph,
 };
-pub use layout::{DetachedPane, Direction, LayoutTree, Pruned, Seam};
+pub use layout::{DetachedPane, Direction, LayoutTree, Pruned, Rotation, Seam};
 pub use pane_pool::{PanePool, UnattachedPane};
 use pane_render::render_pane;
 
@@ -352,6 +352,12 @@ impl EngineView {
     /// [`LayoutTree::remove_leaf`].
     pub fn remove_leaf(&mut self, target: PaneId) -> Option<Pruned> {
         self.layout.remove_leaf(target)
+    }
+
+    /// Rotate the row or column `target` sits in within the active tab's
+    /// tree. See [`LayoutTree::rotate`].
+    pub fn rotate_layout(&mut self, target: PaneId, rotation: Rotation) -> bool {
+        self.layout.rotate(target, rotation)
     }
 
     /// Insert a pane into the pool, returning the [`UnattachedPane`] token

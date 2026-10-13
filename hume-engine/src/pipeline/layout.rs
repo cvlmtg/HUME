@@ -17,6 +17,15 @@ pub enum Direction {
     Vertical,
 }
 
+/// Which way [`LayoutTree::rotate`] moves the members of a row or column.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Rotation {
+    /// Each member moves one slot right or down; the last wraps to the first.
+    Forward,
+    /// Each member moves one slot left or up; the first wraps to the last.
+    Backward,
+}
+
 /// A single 1-cell divider segment drawn between two sibling panes at one
 /// split node.
 ///
@@ -404,6 +413,60 @@ impl LayoutTree {
         }
         probe.equalize();
         probe.find_rect(target, area, reserve_seam)
+    }
+
+    /// Rotate the row or column `target` sits in by one slot. That row is
+    /// the largest run of same-direction splits holding `Leaf(target)` as a
+    /// direct member; a split on the other axis inside it is one member and
+    /// moves whole. The tree's shape and ratios are kept: every member is one
+    /// share along the run's axis (see `shares_along`), so the slots keep
+    /// their sizes and only their contents move. `false` when `target` is
+    /// absent or `self` is a single leaf.
+    pub fn rotate(&mut self, target: PaneId, rotation: Rotation) -> bool {
+        let LayoutTree::Split { direction, .. } = self else {
+            return false;
+        };
+        let direction = *direction;
+        let mut members = Vec::new();
+        self.collect_run_members(direction, &mut members);
+        if !members
+            .iter()
+            .any(|m| matches!(m, LayoutTree::Leaf(id) if *id == target))
+        {
+            return members.into_iter().any(|m| m.rotate(target, rotation));
+        }
+        // Adjacent swaps carry one end member across the run to the other end.
+        let n = members.len();
+        let mut swap_at = |i: usize| {
+            let (head, tail) = members.split_at_mut(i);
+            std::mem::swap(&mut *head[i - 1], &mut *tail[0]);
+        };
+        match rotation {
+            Rotation::Forward => (1..n).rev().for_each(&mut swap_at),
+            Rotation::Backward => (1..n).for_each(&mut swap_at),
+        }
+        true
+    }
+
+    /// The members of the same-direction run rooted at `self`, in slot order:
+    /// every descendant reached through splits on `direction` only.
+    fn collect_run_members<'a>(
+        &'a mut self,
+        direction: Direction,
+        out: &mut Vec<&'a mut LayoutTree>,
+    ) {
+        // Tested apart from the binding: a guarded arm binding `children` for
+        // `'a` would keep `self` borrowed in the fallback arm too.
+        let in_run = matches!(self, LayoutTree::Split { direction: d, .. } if *d == direction);
+        if !in_run {
+            out.push(self);
+            return;
+        }
+        if let LayoutTree::Split { children, .. } = self {
+            let (first, second) = &mut **children;
+            first.collect_run_members(direction, out);
+            second.collect_run_members(direction, out);
+        }
     }
 
     /// Prune `Leaf(target)`, collapsing its parent `Split` onto the sibling,

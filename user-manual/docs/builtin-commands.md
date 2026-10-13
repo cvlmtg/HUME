@@ -248,6 +248,8 @@ Split, focus, and close panes; switch buffers; switch tabs.
 | `pane-focus-next` | `Tab` / `Ctrl-p p` | Focus the next pane. |
 | `pane-focus-right` | `Ctrl-p l` | Focus the pane to the right. |
 | `pane-focus-up` | `Ctrl-p k` | Focus the pane above. |
+| `pane-rotate-backward` | `Ctrl-p R` | Rotate the panes in the focused pane's row or column backward. |
+| `pane-rotate-forward` | `Ctrl-p r` | Rotate the panes in the focused pane's row or column forward. |
 | `pane-split` | `Ctrl-p s` | Split the focused pane, stacking the new pane below it. |
 | `pane-vsplit` | `Ctrl-p v` | Split the focused pane side by side. |
 | `tab-new` | — | Open a fresh pane viewing the focused buffer in a new tab. |

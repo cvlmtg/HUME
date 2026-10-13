@@ -244,6 +244,8 @@
 (#%register-global "pane-focus-right")
 (#%register-global "pane-focus-up")
 (#%register-global "pane-live?")
+(#%register-global "pane-rotate-backward")
+(#%register-global "pane-rotate-forward")
 (#%register-global "pane-split")
 (#%register-global "pane-vsplit")
 (#%register-global "pane?")

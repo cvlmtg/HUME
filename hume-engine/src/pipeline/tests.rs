@@ -937,6 +937,130 @@ fn find_containing_matches_collect_rects_into_by_position() {
     assert_eq!(tree.find_containing(seam_pos, area, true), None);
 }
 
+// ── LayoutTree::rotate ───────────────────────────────────────────────
+
+fn split(direction: Direction, ratio: f32, a: LayoutTree, b: LayoutTree) -> LayoutTree {
+    LayoutTree::Split {
+        direction,
+        ratio,
+        children: Box::new((a, b)),
+    }
+}
+
+/// `a | b | c` as the nested chain `a | (b | c)`, with equalized ratios.
+fn row_of_three(a: PaneId, b: PaneId, c: PaneId) -> LayoutTree {
+    split(
+        Direction::Horizontal,
+        1.0 / 3.0,
+        LayoutTree::Leaf(a),
+        split(
+            Direction::Horizontal,
+            0.5,
+            LayoutTree::Leaf(b),
+            LayoutTree::Leaf(c),
+        ),
+    )
+}
+
+#[test]
+fn rotate_forward_moves_each_pane_one_slot_along_its_row() {
+    let [a, b, c] = pane_ids();
+    let mut tree = row_of_three(a, b, c);
+    let area = rect(0, 0, 100, 50);
+    let mut before = Vec::new();
+    tree.collect_rects_into(area, true, &mut before);
+
+    assert!(tree.rotate(b, Rotation::Forward));
+
+    assert_eq!(tree, row_of_three(c, a, b));
+    let mut after = Vec::new();
+    tree.collect_rects_into(area, true, &mut after);
+    let slot_rects = |v: &[(PaneId, Rect)]| v.iter().map(|&(_, r)| r).collect::<Vec<_>>();
+    assert_eq!(slot_rects(&after), slot_rects(&before));
+}
+
+#[test]
+fn rotate_backward_moves_each_pane_one_slot_back_along_its_row() {
+    let [a, b, c] = pane_ids();
+    let mut tree = row_of_three(a, b, c);
+    assert!(tree.rotate(b, Rotation::Backward));
+    assert_eq!(tree, row_of_three(b, c, a));
+}
+
+#[test]
+fn rotate_moves_a_perpendicular_split_as_one_member() {
+    let [a, b, c] = pane_ids();
+    let stacked = |top, bottom| {
+        split(
+            Direction::Vertical,
+            0.5,
+            LayoutTree::Leaf(top),
+            LayoutTree::Leaf(bottom),
+        )
+    };
+    let mut tree = split(
+        Direction::Horizontal,
+        0.5,
+        LayoutTree::Leaf(a),
+        stacked(b, c),
+    );
+
+    assert!(tree.rotate(a, Rotation::Forward));
+
+    assert_eq!(
+        tree,
+        split(
+            Direction::Horizontal,
+            0.5,
+            stacked(b, c),
+            LayoutTree::Leaf(a)
+        )
+    );
+}
+
+#[test]
+fn rotate_inside_a_perpendicular_split_rotates_only_that_column() {
+    let [a, b, c] = pane_ids();
+    let stacked = |top, bottom| {
+        split(
+            Direction::Vertical,
+            0.5,
+            LayoutTree::Leaf(top),
+            LayoutTree::Leaf(bottom),
+        )
+    };
+    let mut tree = split(
+        Direction::Horizontal,
+        0.5,
+        LayoutTree::Leaf(a),
+        stacked(b, c),
+    );
+
+    assert!(tree.rotate(b, Rotation::Forward));
+
+    assert_eq!(
+        tree,
+        split(
+            Direction::Horizontal,
+            0.5,
+            LayoutTree::Leaf(a),
+            stacked(c, b)
+        )
+    );
+}
+
+#[test]
+fn rotate_refuses_a_single_leaf_and_a_missing_target() {
+    let [a, b, c, missing] = pane_ids();
+    let mut single = LayoutTree::Leaf(a);
+    assert!(!single.rotate(a, Rotation::Forward));
+    assert_eq!(single, LayoutTree::Leaf(a));
+
+    let mut tree = row_of_three(a, b, c);
+    assert!(!tree.rotate(missing, Rotation::Forward));
+    assert_eq!(tree, row_of_three(a, b, c));
+}
+
 // ── Seams ────────────────────────────────────────────────────────────
 
 #[test]

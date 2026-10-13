@@ -904,6 +904,46 @@ fn close_pane_redistributes_space_equally() {
     );
 }
 
+/// `Ctrl-p r` moves every pane of the row one slot right, the last wrapping
+/// to the first, and focus stays on the pane it was on; `Ctrl-p R` undoes it.
+#[test]
+fn ctrl_p_r_and_shift_r_rotate_the_focused_row() {
+    let mut ed = editor_from("-[h]>ello\n");
+    let pid_a = ed.state.focus.id();
+    ed.execute_typed("vsplit", None).unwrap();
+    let pid_b = ed.state.focus.id();
+    ed.execute_typed("vsplit", None).unwrap();
+    let pid_c = ed.state.focus.id();
+    assert_eq!(ed.view.layout().leaves(), vec![pid_a, pid_b, pid_c]);
+
+    ed.handle_key(key_ctrl('p'));
+    ed.handle_key(key('r'));
+    assert_eq!(ed.view.layout().leaves(), vec![pid_c, pid_a, pid_b]);
+    assert_eq!(ed.state.focus.id(), pid_c, "focus moves with the pane");
+
+    ed.handle_key(key_ctrl('p'));
+    ed.handle_key(key('R'));
+    assert_eq!(ed.view.layout().leaves(), vec![pid_a, pid_b, pid_c]);
+    assert_eq!(ed.state.focus.id(), pid_c);
+}
+
+#[test]
+fn rotate_with_a_single_pane_is_refused() {
+    use hume_engine::pipeline::LayoutTree;
+
+    let mut ed = editor_from("-[h]>ello\n");
+    let pid_a = ed.state.focus.id();
+
+    ed.handle_key(key_ctrl('p'));
+    ed.handle_key(key('r'));
+
+    assert_eq!(*ed.view.layout(), LayoutTree::Leaf(pid_a));
+    assert_eq!(
+        ed.state.status_msg.as_deref(),
+        Some("no other pane to rotate")
+    );
+}
+
 // ── T4: Split-too-small guard ────────────────────────────────────────────────
 
 /// `:vsplit` on a pane too narrow to fit two minimum-width panes plus the
