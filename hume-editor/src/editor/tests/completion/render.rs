@@ -299,6 +299,101 @@ fn doc_box_closes_with_the_menu() {
     assert_eq!(doc_box(&ed), None);
 }
 
+/// Two candidates, the first with 20 one-word documentation lines
+/// (`line0`..`line19`), more than the box shows in a 60x30 frame.
+fn long_doc_items() -> String {
+    let doc: Vec<String> = (0..20).map(|i| format!("line{i}")).collect();
+    format!(
+        r#"(list (hash "label" "foo" "documentation" "{}") (hash "label" "foobar"))"#,
+        doc.join("\\n")
+    )
+}
+
+fn doc_box_inner_height(ed: &Editor) -> usize {
+    let (rect, _) = doc_box(ed).expect("doc box showing");
+    usize::from(rect.height - 2)
+}
+
+#[test]
+fn ctrl_d_and_ctrl_u_scroll_the_doc_box() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = open_headless(None);
+    insert_with_source(&mut ed, tmp.path(), &long_doc_items());
+    frame(&mut ed, 60, 30);
+    let (_, lines) = doc_box(&ed).expect("doc box showing");
+    assert_eq!(lines[0], "line0");
+    let inner = doc_box_inner_height(&ed);
+    assert!(inner < 20, "sanity: the box cuts the documentation off");
+    let before = state(&ed);
+
+    ed.feed_key(key_ctrl('d'));
+    frame(&mut ed, 60, 30);
+    let (_, lines) = doc_box(&ed).expect("doc box still showing");
+    assert_eq!(lines[0], format!("line{}", inner / 2));
+    assert_eq!(selected_row(&ed), 0);
+    assert_eq!(state(&ed), before);
+
+    ed.feed_key(key_ctrl('u'));
+    frame(&mut ed, 60, 30);
+    let (_, lines) = doc_box(&ed).expect("doc box still showing");
+    assert_eq!(lines[0], "line0");
+}
+
+#[test]
+fn ctrl_d_stops_the_doc_box_at_its_end() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = open_headless(None);
+    insert_with_source(&mut ed, tmp.path(), &long_doc_items());
+    frame(&mut ed, 60, 30);
+
+    for _ in 0..20 {
+        ed.feed_key(key_ctrl('d'));
+        frame(&mut ed, 60, 30);
+    }
+    let (_, lines) = doc_box(&ed).expect("doc box showing");
+    assert_eq!(lines.last().map(String::as_str), Some("line19"));
+
+    ed.feed_key(key_ctrl('u'));
+    frame(&mut ed, 60, 30);
+    let (_, lines) = doc_box(&ed).expect("doc box showing");
+    assert_ne!(lines.last().map(String::as_str), Some("line19"));
+}
+
+#[test]
+fn doc_box_scroll_resets_when_the_selection_moves() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = open_headless(None);
+    insert_with_source(&mut ed, tmp.path(), &long_doc_items());
+    frame(&mut ed, 60, 30);
+    ed.feed_key(key_ctrl('d'));
+    frame(&mut ed, 60, 30);
+    let (_, lines) = doc_box(&ed).expect("doc box showing");
+    assert_ne!(lines[0], "line0", "sanity: scrolled");
+
+    ed.feed_key(key_tab());
+    frame(&mut ed, 60, 30);
+    ed.feed_key(key_shift_tab());
+    frame(&mut ed, 60, 30);
+    let (_, lines) = doc_box(&ed).expect("doc box showing");
+    assert_eq!(lines[0], "line0");
+}
+
+#[test]
+fn ctrl_d_on_a_doc_box_that_fits_changes_nothing() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = open_headless(None);
+    insert_with_source(&mut ed, tmp.path(), DOCUMENTED);
+    frame(&mut ed, 60, 16);
+    let before = state(&ed);
+
+    ed.feed_key(key_ctrl('d'));
+    frame(&mut ed, 60, 16);
+    let (_, lines) = doc_box(&ed).expect("doc box still showing");
+    assert_eq!(lines, ["fn foo()", "", "Does foo."]);
+    assert_eq!(selected_row(&ed), 0);
+    assert_eq!(state(&ed), before);
+}
+
 /// Markdown documentation is highlighted, its `detail` fenced above it.
 #[test]
 fn markdown_documentation_is_highlighted_below_a_fenced_detail() {

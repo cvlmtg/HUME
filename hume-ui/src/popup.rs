@@ -391,12 +391,14 @@ const MIN_SIDE_POPUP_WIDTH: u16 = 20;
 /// `anchor_row`, the row `beside` was placed against: below it, its top
 /// edge is level with `beside`'s and it stops at the pane's bottom; above
 /// it, its bottom edge is, and it stops at the pane's top. Either way it
-/// never covers the anchor row.
+/// never covers the anchor row. `scroll` is clamped the same way
+/// [`resolve_popup`] clamps it.
 pub fn resolve_side_popup(
     content: &mut PopupContent,
     beside: Rect,
     anchor_row: u16,
     pane_rect: Rect,
+    scroll: usize,
     border: bool,
 ) -> Option<PopupState> {
     let room_right = pane_rect.right().saturating_sub(beside.right());
@@ -433,7 +435,7 @@ pub fn resolve_side_popup(
     } else {
         beside.y
     };
-    Some(wrapped.popup_state(Rect::new(x, y, outer_w, outer_h), 0, border))
+    Some(wrapped.popup_state(Rect::new(x, y, outer_w, outer_h), scroll, border))
 }
 
 /// Resolve a docked popup's content for this frame: the [`PopupLayout::

@@ -325,6 +325,7 @@ fn side(text: &str, beside: Rect, pane: Rect) -> Option<PopupState> {
         beside,
         beside.y.saturating_sub(1),
         pane,
+        0,
         true,
     )
 }
@@ -342,6 +343,7 @@ fn side_popup_beside_a_box_above_its_anchor_grows_upward_from_its_bottom_edge() 
         beside,
         anchor_row,
         rect(0, 0, 80, 24),
+        0,
         true,
     )
     .expect("room on the right");

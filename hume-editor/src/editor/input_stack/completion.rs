@@ -9,7 +9,7 @@
 //! and menu navigation stay written once, in the free functions below, and
 //! called from both.
 
-use termina::event::KeyCode;
+use termina::event::{KeyCode, Modifiers};
 
 use hume_engine::pipeline::{EngineView, RenderContext};
 use hume_engine::theme::Theme;
@@ -23,6 +23,7 @@ use super::super::keymap::WalkResult;
 use super::super::popup_syntax::{build_markup_syntax, popup_content};
 use super::super::{Editor, EditorState, Severity};
 use super::placement::popup_placement;
+use super::popup::{boxed_popup_rows, half_page_scroll};
 use super::stack::{
     InputEvent, Layer, LayerHandler, LayerRef, PopupEviction, Removal, RemovalScope,
 };
@@ -67,6 +68,10 @@ struct DocView {
     /// included. One entry per distinct text visited, so a linear search
     /// on a selection change is enough.
     built: Vec<(Documentation, hume_ui::popup::PopupContent)>,
+    /// First visible wrapped row of `current`, back to 0 whenever `shown`
+    /// changes. Rendering clamps a copy; [`scroll_completion_doc`] clamps
+    /// it before each step.
+    scroll: usize,
 }
 
 impl DocView {
@@ -245,6 +250,7 @@ impl Editor {
                 .doc_box_text(fence_lang)
                 .map(|text| doc.content_for(text, languages, &self.view.theme));
             doc.shown = shown;
+            doc.scroll = 0;
         }
         let (_, content) = doc.built.get_mut(doc.current?)?;
         hume_ui::popup::resolve_side_popup(
@@ -252,6 +258,7 @@ impl Editor {
             menu_rect,
             placement.anchor.1,
             placement.pane_rect,
+            doc.scroll,
             settings.popup_border,
         )
     }
@@ -290,14 +297,15 @@ impl super::stack::InputStack {
 
 /// Handles one key while an Insert-mode completion session is open.
 /// Tab/Down/BackTab/Up/Enter/Esc are claimed only while the session has
-/// at least one visible match. A session narrowed to empty (continued
-/// typing, or a source still pending) shows no menu, so nothing here
-/// should intercept a key: Esc must leave Insert in one press and Enter
-/// must insert a newline, exactly as if no session were open. Every
-/// other key resolves through the Insert keymap: a bound command (a
-/// motion or an edit command) dismisses the session outright; anything
-/// else falls through and the session is reconciled with the buffer's new
-/// state.
+/// at least one visible match, and Ctrl-d/Ctrl-u only while the
+/// documentation box also has content past what it shows. A session
+/// narrowed to empty (continued typing, or a source still pending) shows
+/// no menu, so nothing here should intercept a key: Esc must leave
+/// Insert in one press and Enter must insert a newline, exactly as if no
+/// session were open. Every other key resolves through the Insert keymap:
+/// a bound command (a motion or an edit command) dismisses the session
+/// outright; anything else falls through and the session is reconciled
+/// with the buffer's new state.
 fn completion_input_buffer(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
     let key = match ev {
         InputEvent::Key(key) => key,
@@ -323,6 +331,12 @@ fn completion_input_buffer(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
         .at::<BufferCompletionLayer>(r)
         .is_some_and(|l| !l.session.is_empty());
     if non_empty {
+        if key.modifiers.contains(Modifiers::CONTROL)
+            && let KeyCode::Char(c @ ('u' | 'd')) = key.code
+            && scroll_completion_doc(ed, r, c == 'd')
+        {
+            return;
+        }
         match key.code {
             KeyCode::Tab | KeyCode::Down => {
                 move_buffer_completion_selection(ed, r, true);
@@ -451,6 +465,30 @@ fn move_minibuf_completion_selection(ed: &mut Editor, r: LayerRef, forward: bool
     if let Some(layer) = ed.state.input.at_mut::<MinibufCompletionLayer>(r) {
         layer.session.step_selection(forward);
     }
+}
+
+/// Scrolls the documentation box half its visible height, in the
+/// direction given by `down`, against the geometry this frame resolved.
+/// `false` when no box is showing or its content fits.
+fn scroll_completion_doc(ed: &mut Editor, r: LayerRef, down: bool) -> bool {
+    let Some((inner_h, total)) = ed
+        .state
+        .views
+        .completion_doc
+        .read()
+        .as_ref()
+        .map(boxed_popup_rows)
+    else {
+        return false;
+    };
+    let Some(layer) = ed.state.input.at_mut::<BufferCompletionLayer>(r) else {
+        return false;
+    };
+    let Some(scroll) = half_page_scroll(layer.doc.scroll, inner_h, total, down) else {
+        return false;
+    };
+    layer.doc.scroll = scroll;
+    true
 }
 
 /// Accepts the currently-selected completion item through the same

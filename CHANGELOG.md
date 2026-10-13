@@ -33,7 +33,7 @@
 - A completion item's `documentation` shows in the box beside the completion menu.
 
 ### Language servers
-- A box beside the completion menu shows the highlighted completion's details and documentation, asking the server for them when the completion came without, and the menu leaves the details out. `:set global completion-docs=false` turns the box off and shows the details in the menu.
+- A box beside the completion menu shows the highlighted completion's details and documentation, asking the server for them when the completion came without, and the menu leaves the details out. `Ctrl-d`/`Ctrl-u` scroll the box. `:set global completion-docs=false` turns the box off and shows the details in the menu.
 
 ### Fixes
 - The search and sift prompts report an invalid or unmatched pattern the same way scripts do. An invalid search pattern is not stored.

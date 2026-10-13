@@ -253,24 +253,17 @@ pub(in crate::editor) fn popup_input(ed: &mut Editor, r: LayerRef, ev: InputEven
 /// the first frame both are empty, a documented no-op, same as
 /// `picker_input`'s own geometry.
 ///
-/// Returns `true` if the popup actually has content past one screenful
-/// (`max_scroll > 0`). [`popup_input`] uses this to tell a real scroll
-/// from a popup too short to scroll, so Ctrl-d/Ctrl-u fall through to their
-/// usual buffer effect instead of being silently eaten.
+/// Returns `true` if the popup actually has content past one screenful.
+/// [`popup_input`] uses this to tell a real scroll from a popup too short
+/// to scroll, so Ctrl-d/Ctrl-u fall through to their usual buffer effect
+/// instead of being eaten.
 fn scroll_popup(ed: &mut Editor, down: bool) -> bool {
     let Some(layout) = ed.state.input.popup().map(|p| &p.layout) else {
         return false;
     };
     let (inner_h, total) = match layout {
         hume_ui::popup::PopupLayout::Cursor => {
-            let Some(pair) = ed
-                .state
-                .views
-                .popup
-                .read()
-                .as_ref()
-                .map(|s| (s.rect.height.saturating_sub(2) as usize, s.total_rows))
-            else {
+            let Some(pair) = ed.state.views.popup.read().as_ref().map(boxed_popup_rows) else {
                 return false;
             };
             pair
@@ -292,24 +285,48 @@ fn scroll_popup(ed: &mut Editor, down: bool) -> bool {
             (hume_ui::popup::band_visible_rows(total, max), total)
         }
     };
-    let max_scroll = total.saturating_sub(inner_h);
-    if max_scroll == 0 {
-        return false;
-    }
     let Some(popup) = ed.state.input.popup_mut() else {
         return false;
     };
+    let Some(scroll) = half_page_scroll(popup.scroll, inner_h, total, down) else {
+        return false;
+    };
+    popup.scroll = scroll;
+    true
+}
+
+/// A boxed popup's visible content height and total row count, read from
+/// its resolved view.
+pub(super) fn boxed_popup_rows(state: &hume_ui::popup::PopupState) -> (usize, usize) {
+    (
+        state.rect.height.saturating_sub(2) as usize,
+        state.total_rows,
+    )
+}
+
+/// `scroll` moved half of `inner_h` in the direction given by `down`,
+/// within the `total - inner_h` rows a box `inner_h` rows tall can scroll:
+/// `None` when the content fits and there is nothing to scroll.
+///
+/// `scroll` is the model value, clamped for rendering only in the
+/// per-frame view sync, so it can be stale-large after the content
+/// shrinks (the terminal grows between key presses). It is clamped before
+/// the step, not after.
+pub(super) fn half_page_scroll(
+    scroll: usize,
+    inner_h: usize,
+    total: usize,
+    down: bool,
+) -> Option<usize> {
+    let max_scroll = total.saturating_sub(inner_h);
+    if max_scroll == 0 {
+        return None;
+    }
     let half = half_page(inner_h);
-    // `popup.scroll` is the model value, re-clamped for rendering only in
-    // the per-frame view sync (see `PopupLayer::scroll`); it can be
-    // stale-large after the popup's content shrinks (e.g. terminal grows
-    // between frames without a key event dismissing it), so clamp before
-    // applying the delta rather than after.
-    let clamped = popup.scroll.min(max_scroll);
-    popup.scroll = if down {
+    let clamped = scroll.min(max_scroll);
+    Some(if down {
         (clamped + half).min(max_scroll)
     } else {
         clamped.saturating_sub(half)
-    };
-    true
+    })
 }
