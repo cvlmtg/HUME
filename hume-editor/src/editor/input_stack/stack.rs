@@ -943,7 +943,6 @@ mod tests {
     use crate::editor::input_stack::command::CommandLayer;
     use crate::editor::input_stack::confirm::{ConfirmAction, ConfirmLayer};
     use crate::editor::input_stack::drawer::{DrawerLayer, DrawerSelect};
-    use crate::editor::input_stack::insert::InsertLayer;
     use crate::editor::input_stack::menu::MenuLayer;
     use crate::editor::replay::WaitingInput;
     use steel::rvals::SteelVal;
@@ -1042,7 +1041,7 @@ mod tests {
     #[test]
     fn is_settled_for_true_with_a_mode_layer_alone_on_top() {
         let mut stack = InputStack::new();
-        stack.push(InsertLayer { sticky_popup: None });
+        stack.push(CommandLayer::new(WaitingInput::for_test()));
         assert!(stack.is_settled_for::<PickerLayer>());
     }
 
@@ -1097,7 +1096,7 @@ mod tests {
         let mut stack = InputStack::new();
         *stack.sticky_popup_slot_mut().expect("Base has a slot") =
             Some(popup_model("buried on base"));
-        stack.push(InsertLayer { sticky_popup: None });
+        stack.push(CommandLayer::new(WaitingInput::for_test()));
         assert!(stack.popup().is_none());
     }
 

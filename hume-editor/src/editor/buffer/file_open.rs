@@ -238,6 +238,7 @@ impl Editor {
         let buf = self.state.buffers.get_mut(id);
         let mut stores = PositionStores::new(
             &mut self.state.panes,
+            &mut self.state.active_session,
             &mut self.state.input,
             &mut self.state.buffer_positions,
             &mut self.state.config.decorations,

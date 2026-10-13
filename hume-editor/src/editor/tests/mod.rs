@@ -1401,17 +1401,6 @@ pub(super) struct BookkeepingSnapshot {
 /// a path-parity test or diff them for targeted assertions.
 pub(super) fn snapshot_bookkeeping(ed: &Editor) -> BookkeepingSnapshot {
     let pane_id = ed.view.focused_pane();
-    // The "does any (pane, buffer) pair satisfy this predicate" walk,
-    // factored out so a second field needing it below reuses this instead
-    // of copying it.
-    let any_pbs = |pred: fn(&crate::editor::pane_state::PaneBufferState) -> bool| {
-        ed.state
-            .panes
-            .entries
-            .values()
-            .flat_map(|entry| entry.buffers.values())
-            .any(pred)
-    };
     BookkeepingSnapshot {
         last_repeatable: ed.state.last_action().map(|a| {
             let operand = a.answers.first().and_then(|answer| match answer {
@@ -1429,7 +1418,12 @@ pub(super) fn snapshot_bookkeeping(ed: &Editor) -> BookkeepingSnapshot {
             )
         }),
         mode: ed.state.mode(),
-        typed_run_open: any_pbs(|pbs| pbs.typed_run.is_some()),
+        typed_run_open: ed
+            .state
+            .active_session
+            .as_ref()
+            .and_then(crate::editor::edit_session::EditSession::insert)
+            .is_some_and(|insert| insert.typed_run.is_some()),
     }
 }
 

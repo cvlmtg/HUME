@@ -81,14 +81,13 @@ pub(in crate::editor) fn cmd_change(
     // Kill-opened only when the yank actually captured to the ring: the
     // capture stamped `PasteStamp`, but every keystroke about to be typed in
     // the session bumps `edit_seq` and would strand it. The flag makes
-    // `end_insert_session` refresh the stamp's `seq` once typing stops. An
+    // `tear_down_insert` refresh the stamp's `seq` once typing stops. An
     // explicit-register change (`"5c`) writes no stamp, and refreshing
-    // whatever stale stamp might pre-exist would wrongly resurrect it. Lives
-    // on `PaneBufferState` for the same reason `step_back_on_exit` does (see
-    // its doc).
-    if state.route_kill(yanked) {
-        let bid = fp.bid(view);
-        state.panes.entries[fp.pid()].buffers[bid].kill_opened_session = true;
+    // whatever stale stamp might pre-exist would wrongly resurrect it.
+    if state.route_kill(yanked)
+        && let Some(insert) = super::insert_state_at_mut(state, view, fp)
+    {
+        insert.kill_opened_session = true;
     }
     Ok(())
 }
@@ -202,11 +201,11 @@ fn walk_history(
         &mut state.buffers,
         &mut PositionStores::new(
             &mut state.panes,
+            &mut state.active_session,
             &mut state.input,
             &mut state.buffer_positions,
             &mut state.config.decorations,
         ),
-        &mut state.active_session,
         t.pid(),
         buf,
         walk,

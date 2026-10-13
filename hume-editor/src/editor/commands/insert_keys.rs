@@ -25,7 +25,7 @@ use crate::editor::event::EditorEvent;
 
 use super::{
     FocusedPane, apply_focused_edit_grouped, apply_pane_motion, arm_autoindent, autoindent_owned,
-    doc, effective_word_chars, pane_view, tab_format,
+    doc, effective_word_chars, insert_state_at, pane_view, tab_format,
 };
 
 /// Runs `key`'s Insert-mode default behaviour against `fp`'s (pane,
@@ -122,10 +122,9 @@ pub(in crate::editor) fn insert_default_key(
         // yet. `arm_autoindent` after the edit records the *new* line's own
         // copied indent, so the next Enter/Esc on it trims.
         KeyCode::Enter => {
-            let allowed = autoindent_owned(
-                fp.pane().state(&state.panes.entries, view),
-                doc(state, view, fp.pane()).text(),
-            );
+            let insert = insert_state_at(state, view, fp)
+                .expect("an Insert-mode key runs in an open Insert session");
+            let allowed = autoindent_owned(insert, &pane_view(state, view, fp.pane()));
             apply_focused_edit_grouped(state, view, fp, move |s| {
                 insert_newline_indent(s, &allowed)
             });

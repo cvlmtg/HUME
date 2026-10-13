@@ -109,11 +109,11 @@ pub(in crate::editor::commands) fn apply_pane_edit(
         &mut state.buffers,
         &mut crate::editor::position_stores::PositionStores::new(
             &mut state.panes,
+            &mut state.active_session,
             &mut state.input,
             &mut state.buffer_positions,
             &mut state.config.decorations,
         ),
-        &mut state.active_session,
         t.pid(),
         buf,
         cmd,
@@ -143,11 +143,11 @@ pub(in crate::editor) fn apply_focused_edit_grouped(
         &mut state.buffers,
         &mut crate::editor::position_stores::PositionStores::new(
             &mut state.panes,
+            &mut state.active_session,
             &mut state.input,
             &mut state.buffer_positions,
             &mut state.config.decorations,
         ),
-        &mut state.active_session,
         fp.pid(),
         buf,
         cmd,
@@ -397,7 +397,8 @@ pub(super) use typed_misc::*;
 // tree; they need `pub(in editor)` breadth.
 pub(in crate::editor) use collect::{collect_operand, run_collected};
 pub(in crate::editor) use insert_session::{
-    arm_autoindent, autoindent_owned, end_insert_session, is_group_open_at, tear_down_insert,
+    arm_autoindent, autoindent_owned, end_insert_session, insert_state_at, insert_state_at_mut,
+    is_group_open_at, tear_down_insert,
 };
 use pane::{SPLIT_TOO_SMALL_MSG, close_focused_pane};
 pub(in crate::editor) use pane::{fits_split, split_pane_onto};

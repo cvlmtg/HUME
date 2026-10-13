@@ -15,11 +15,11 @@ fn undo_through_funnel(
         &mut ed.state.buffers,
         &mut PositionStores::new(
             &mut ed.state.panes,
+            &mut ed.state.active_session,
             &mut ed.state.input,
             &mut ed.state.buffer_positions,
             &mut ed.state.config.decorations,
         ),
-        &mut ed.state.active_session,
         pane,
         buffer,
         |b, id, stores, acting| Ok(b.undo_n(id, stores, acting, 1)),

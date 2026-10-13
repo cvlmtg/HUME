@@ -14,6 +14,7 @@ use hume_engine::pipeline::{BufferId, PaneId};
 use hume_rope::cluster::ClusterRange;
 use slotmap::SecondaryMap;
 
+use super::edit_session::EditSession;
 use super::input_stack::InputStack;
 use super::lsp::diagnostics::DiagnosticsStore;
 use super::lsp::document::LspDocuments;
@@ -62,6 +63,9 @@ impl BufferPositions {
 
 pub(crate) struct PositionStores<'a> {
     pub(in crate::editor) panes: &'a mut PaneEntries,
+    /// The open edit session, whose Insert records are carried with the
+    /// rest, and which grouped edits compose into.
+    pub(in crate::editor) session: &'a mut Option<EditSession>,
     tracked: &'a mut TrackedPositions,
     input: &'a mut InputStack,
     buffers: &'a mut BufferPositions,
@@ -71,12 +75,14 @@ pub(crate) struct PositionStores<'a> {
 impl<'a> PositionStores<'a> {
     pub(in crate::editor) fn new(
         panes: &'a mut PaneView,
+        session: &'a mut Option<EditSession>,
         input: &'a mut InputStack,
         buffers: &'a mut BufferPositions,
         decorations: &'a mut DecorationStores,
     ) -> Self {
         Self {
             panes: &mut panes.entries,
+            session,
             tracked: &mut panes.tracked,
             input,
             buffers,
@@ -86,7 +92,8 @@ impl<'a> PositionStores<'a> {
 
     /// Carry every position stored for `buffer` through `change`: the
     /// selections of each pane that has shown the buffer, whether or not it
-    /// shows it now, every jump list, every position a script is tracking,
+    /// shows it now, every jump list, the open Insert session's typed run
+    /// and autoindent records, every position a script is tracking,
     /// every open prompt's snapshot, the open completion session, the
     /// buffer's diagnostics and decorations, and its last insertion. The
     /// change is also queued for the buffer's language servers.
@@ -103,16 +110,23 @@ impl<'a> PositionStores<'a> {
     ) {
         let acting = acting.filter(|_| !change.changes().is_identity());
         for (pane, entry) in self.panes.iter_mut() {
-            if let Some(state) = entry.buffers.get_mut(buffer) {
-                if Some(pane) != acting {
-                    state.carry_selections(change);
-                }
-                state.carry_marks(change);
+            if Some(pane) != acting
+                && let Some(state) = entry.buffers.get_mut(buffer)
+            {
+                state.carry_selections(change);
             }
             // Every pane's list, not only those showing `buffer`: a list
             // holds entries for buffers its pane is not showing right now,
             // which is what makes cross-buffer Ctrl-o work.
             entry.jumps.translate_in_place(buffer, change);
+        }
+        if let Some(insert) = self
+            .session
+            .as_mut()
+            .filter(|s| s.buffer() == buffer)
+            .and_then(EditSession::insert_mut)
+        {
+            insert.carry_marks(change);
         }
         self.tracked.carry(buffer, change);
         for snapshot in self.input.snapshots_mut() {
@@ -183,6 +197,7 @@ impl<'a> PositionStores<'a> {
 #[derive(Default)]
 pub(crate) struct DetachedStores {
     panes: PaneView,
+    session: Option<EditSession>,
     input: InputStack,
     buffers: BufferPositions,
     decorations: DecorationStores,
@@ -193,6 +208,7 @@ impl DetachedStores {
     pub(crate) fn stores(&mut self) -> PositionStores<'_> {
         PositionStores::new(
             &mut self.panes,
+            &mut self.session,
             &mut self.input,
             &mut self.buffers,
             &mut self.decorations,

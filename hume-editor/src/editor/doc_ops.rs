@@ -11,7 +11,7 @@ use hume_engine::pipeline::{BufferId, PaneId};
 
 use crate::editor::buffer::store::BufferStore;
 use crate::editor::buffer::{Buffer, HistoryWalkResult};
-use crate::editor::edit_session::{self, EditSession, EditSessionKind, InsertState};
+use crate::editor::edit_session::{self, EditSession, EditSessionKind, InsertOpened, InsertState};
 use crate::editor::error::CommandError;
 use crate::editor::pane_state::PaneEntries;
 use crate::editor::position_stores::PositionStores;
@@ -122,7 +122,6 @@ pub(in crate::editor) fn check_no_conflicting_session(
 pub(in crate::editor) fn apply_doc_edit(
     buffers: &mut BufferStore,
     stores: &mut PositionStores<'_>,
-    active_session: &mut Option<EditSession>,
     pane_id: PaneId,
     buf_id: BufferId,
     cmd: impl FnOnce(EditState) -> Edited,
@@ -130,12 +129,13 @@ pub(in crate::editor) fn apply_doc_edit(
     if buffers.get(buf_id).is_read_only() {
         return Ok(());
     }
-    check_no_conflicting_session(active_session, pane_id, buf_id)?;
-    let insert_session_open_here = active_session
+    check_no_conflicting_session(stores.session, pane_id, buf_id)?;
+    let insert_session_open_here = stores
+        .session
         .as_ref()
         .is_some_and(|s| s.is_insert_at(pane_id, buf_id));
     if insert_session_open_here {
-        apply_doc_edit_grouped(buffers, stores, active_session, pane_id, buf_id, cmd);
+        apply_doc_edit_grouped(buffers, stores, pane_id, buf_id, cmd);
         return Ok(());
     }
     // Scoped to this exact (pane, buffer): `commit_paste_group` alone would
@@ -144,11 +144,12 @@ pub(in crate::editor) fn apply_doc_edit(
     // unrelated Paste session still open on the focused pane, for a
     // *different* buffer, must not be ended early just because a remote
     // `call!` is editing something else through a background pane.
-    if active_session
+    if stores
+        .session
         .as_ref()
         .is_some_and(|s| s.owned_by(pane_id, buf_id))
     {
-        commit_paste_group(buffers, stores.panes, active_session);
+        commit_paste_group(buffers, stores.panes, stores.session);
     }
     let sels = stores.panes[pane_id].buffers[buf_id].selections().clone();
     let (new_sels, cs) = buffers
@@ -166,15 +167,13 @@ pub(in crate::editor) fn apply_doc_edit(
 /// Returns the applied `ChangeSet`: completion accept maps positions a
 /// later resolve response computed against the pre-accept text through it.
 ///
-/// `active_session` must hold an Insert-kind session on `(pane_id,
-/// buf_id)`, a caller contract, same as `Buffer::apply_edit_grouped`'s own
-/// "must have called `begin_edit_group` first". Panics otherwise.
+/// `stores.session` must hold an Insert-kind session on `(pane_id,
+/// buf_id)`, a caller contract. Panics otherwise.
 // Same non-collapsible-params shape as `finish_edit`'s own allow, above.
 #[allow(clippy::too_many_arguments)]
 pub(in crate::editor) fn apply_doc_edit_grouped(
     buffers: &mut BufferStore,
     stores: &mut PositionStores<'_>,
-    active_session: &mut Option<EditSession>,
     pane_id: PaneId,
     buf_id: BufferId,
     cmd: impl FnOnce(EditState) -> Edited,
@@ -187,18 +186,22 @@ pub(in crate::editor) fn apply_doc_edit_grouped(
     }
     let text_pre = buffers.get(buf_id).text().clone();
     let sels = stores.panes[pane_id].buffers[buf_id].selections().clone();
-    let doc = buffers.get_mut(buf_id);
-    // Bound once, reused below for the capture-feed push too: both need
-    // the same `is_insert_at`-filtered session.
-    let session = active_session
-        .as_mut()
-        .filter(|s| s.is_insert_at(pane_id, buf_id))
-        .expect(
-            "apply_doc_edit_grouped called without an open Insert session on this (pane, buffer)",
-        );
-    let (new_sels, cs) =
-        doc.apply_edit_grouped(buf_id, stores, pane_id, sels, session.group_mut(), cmd);
+    assert!(
+        stores
+            .session
+            .as_ref()
+            .is_some_and(|s| s.is_insert_at(pane_id, buf_id)),
+        "apply_doc_edit_grouped called without an open Insert session on this (pane, buffer)"
+    );
+    let (new_sels, cs) = buffers
+        .get_mut(buf_id)
+        .apply_edit_grouped(buf_id, stores, pane_id, sels, cmd);
     finish_edit(buffers, stores.panes, pane_id, buf_id, new_sels, &cs);
+    let session = stores
+        .session
+        .as_mut()
+        .expect("checked above, and an edit closes no session");
+    session.group_mut().compose(&cs);
     // This is the one funnel every grouped edit goes through, so it's the
     // one place `DotCapture::chain` (`edit_session.rs`) can be fed without
     // every caller remembering to do it itself; see that type's own doc.
@@ -221,7 +224,6 @@ pub(in crate::editor) fn apply_doc_edit_grouped(
 pub(in crate::editor) fn apply_doc_edit_regrouped(
     buffers: &mut BufferStore,
     stores: &mut PositionStores<'_>,
-    active_session: &mut Option<EditSession>,
     pane_id: PaneId,
     buf_id: BufferId,
     cmd: impl FnOnce(EditState) -> Edited,
@@ -229,16 +231,29 @@ pub(in crate::editor) fn apply_doc_edit_regrouped(
     if buffers.get(buf_id).is_read_only() {
         return;
     }
-    let group = active_session
-        .as_mut()
+    let group = stores
+        .session
+        .as_ref()
         .filter(|s| s.is_paste_at(pane_id, buf_id))
         .expect(
             "apply_doc_edit_regrouped called without an open paste session on this (pane, buffer)",
         )
-        .group_mut();
-    let (new_sels, propagation_cs) = buffers
-        .get_mut(buf_id)
-        .apply_edit_regrouped(buf_id, stores, pane_id, group, cmd);
+        .group();
+    let (snapshot, to_snapshot) = (group.snapshot.clone(), group.inverse());
+    let (new_sels, propagation_cs, new_cs) = buffers.get_mut(buf_id).apply_edit_regrouped(
+        buf_id,
+        stores,
+        pane_id,
+        snapshot,
+        to_snapshot,
+        cmd,
+    );
+    stores
+        .session
+        .as_mut()
+        .expect("checked above, and an edit closes no session")
+        .group_mut()
+        .cs = Some(new_cs);
     finish_edit(
         buffers,
         stores.panes,
@@ -273,7 +288,6 @@ pub(in crate::editor) fn apply_doc_edit_regrouped(
 pub(in crate::editor) fn apply_doc_history_walk(
     buffers: &mut BufferStore,
     stores: &mut PositionStores<'_>,
-    active_session: &mut Option<EditSession>,
     pane_id: PaneId,
     buf_id: BufferId,
     walk: impl FnOnce(
@@ -286,15 +300,16 @@ pub(in crate::editor) fn apply_doc_history_walk(
     if buffers.get(buf_id).is_read_only() {
         return Ok(HistoryWalk::RefusedReadOnly);
     }
-    check_no_conflicting_session(active_session, pane_id, buf_id)?;
-    match active_session
+    check_no_conflicting_session(stores.session, pane_id, buf_id)?;
+    match stores
+        .session
         .as_ref()
         .filter(|s| s.owned_by(pane_id, buf_id))
         .map(EditSession::kind)
     {
         None => {}
         Some(EditSessionKind::Paste { .. }) => {
-            commit_paste_group(buffers, stores.panes, active_session);
+            commit_paste_group(buffers, stores.panes, stores.session);
         }
         Some(EditSessionKind::Insert(_) | EditSessionKind::Replay) => {
             return Err(CommandError::transient(
@@ -335,61 +350,54 @@ pub(in crate::editor) fn apply_doc_motion(
 }
 
 /// Open an Insert-kind session on `(pane_id, buf_id)`, always the focused
-/// pane, since Insert only ever opens there. The
-/// dedicated paste-session opener (`commands::paste`'s `do_paste`) builds
-/// its own `EditSession` directly instead of calling this: a paste session
-/// stores `before` in its `EditSessionKind::Paste`, which this function has
-/// no parameter for. The session holds `recording`, its source on the
-/// change whose code opens it, if any, until it ends.
+/// pane, since Insert only ever opens there, and return the proof its
+/// `InsertLayer` is built from. The session holds `recording`, its source on
+/// the change whose code opens it, if any, until it ends.
 ///
 /// Snapshots the current selections as the session's `undo_sels`, what undo
 /// restores: cloned, not taken, since the pane keeps editing with them.
 ///
 /// `Err` when a session is already open elsewhere, or a real `Insert`/`Paste`
-/// session is already open here; see [`edit_session::open_or_retarget`],
-/// which this delegates to. A `Replay`-kind placeholder already open here
-/// (`Editor::replay_dot`'s own pre-open, about to be superseded by whatever
-/// the replayed body actually needs) is retargeted to `Insert` in place
-/// instead of refused.
+/// session is already open here; see [`edit_session::open_or_retarget`]. A
+/// `Replay`-kind placeholder already open here (`Editor::replay_dot`'s own
+/// pre-open, about to be superseded by whatever the replayed body actually
+/// needs) is retargeted to `Insert` in place instead of refused.
 pub(in crate::editor) fn begin_edit_group(
     buffers: &BufferStore,
-    pane_state: &mut PaneEntries,
+    pane_state: &PaneEntries,
     active_session: &mut Option<EditSession>,
     pane_id: PaneId,
     buf_id: BufferId,
     recording: Option<SourceTicket>,
-) -> Result<(), CommandError> {
-    edit_session::open_or_retarget(
-        active_session,
-        pane_id,
-        buf_id,
-        EditSessionKind::Insert(InsertState::new(recording)),
-        // Cloned only here, inside the closure `open_or_retarget` calls
-        // solely for a fresh open. A refusal or a placeholder retarget
-        // never needs it.
-        || {
-            let sels = pane_state[pane_id].buffers[buf_id].selections();
-            buffers
-                .get(buf_id)
-                .begin_edit_group(sels.clone(), sels.clone())
-        },
-    )?;
-    // A fresh group never inherits a typed run, an autoindent record, or exit
-    // flags from a previous session (interactive or replay-preopened).
-    let pbs = &mut pane_state[pane_id].buffers[buf_id];
-    pbs.typed_run = None;
-    pbs.autoindent = None;
-    pbs.step_back_on_exit = false;
-    pbs.kill_opened_session = false;
-    Ok(())
+) -> Result<InsertOpened, CommandError> {
+    edit_session::open_insert(active_session, pane_id, buf_id, recording, || {
+        let sels = pane_state[pane_id].buffers[buf_id].selections();
+        buffers
+            .get(buf_id)
+            .begin_edit_group(sels.clone(), sels.clone())
+    })
 }
 
-/// Commit whatever session is open, read from the session's own `(pane,
-/// buffer)`, never from focus, so the commit lands correctly however focus
-/// moved in the meantime. No-op if nothing is open. Shared by
-/// [`commit_paste_group`] and [`commit_edit_group`], which each confirm the
-/// session's kind first (a no-op skip for the one that doesn't match, a
-/// panic for the one that must never mismatch) before delegating here.
+/// Commit the open Paste or Replay session, read from the session's own
+/// `(pane, buffer)`, never from focus, so the commit lands correctly however
+/// focus moved in the meantime. No-op if nothing is open.
+///
+/// Panics on an Insert session: one ends only with its `InsertLayer`
+/// ([`commit_edit_group`]), so a commit here would leave the layer over a
+/// closed session.
+pub(in crate::editor) fn commit_open_session(
+    buffers: &mut BufferStore,
+    pane_state: &PaneEntries,
+    active_session: &mut Option<EditSession>,
+) {
+    assert!(
+        active_session.as_ref().is_none_or(|s| s.insert().is_none()),
+        "an Insert session ends only with its layer (commit_edit_group)"
+    );
+    commit_session(buffers, pane_state, active_session);
+}
+
+/// Record the open session, whatever its kind, as one undo step.
 ///
 /// Snapshots the current selections as `post_sels` for the undo revision:
 /// cloned, not taken, since the pane keeps them.
@@ -398,7 +406,7 @@ pub(in crate::editor) fn begin_edit_group(
 /// Panics if `pane_state` has no entry for the session's `(pane, buffer)`:
 /// closing a pane or buffer ends its sessions first, so an open session's
 /// state outlives it.
-pub(in crate::editor) fn commit_open_session(
+fn commit_session(
     buffers: &mut BufferStore,
     pane_state: &PaneEntries,
     active_session: &mut Option<EditSession>,
@@ -435,16 +443,17 @@ pub(in crate::editor) fn commit_paste_group(
     commit_open_session(buffers, pane_state, active_session);
 }
 
-/// Close the open Insert-kind session and record it as a single undo step.
+/// Close the open Insert-kind session and record it as a single undo step:
+/// the leaving `InsertLayer`'s teardown, which holds `_opened`.
 ///
 /// Panics if no session is open, or if the open one isn't Insert-kind:
 /// committing a Paste or still-unclaimed Replay session as an Insert
-/// revision would record the wrong undo step silently. Mirrors
-/// `EditorState::commit_paste_session`'s own kind check.
+/// revision would record the wrong undo step.
 pub(in crate::editor) fn commit_edit_group(
     buffers: &mut BufferStore,
     pane_state: &PaneEntries,
     active_session: &mut Option<EditSession>,
+    _opened: &InsertOpened,
 ) {
     match active_session.as_ref() {
         None => panic!("commit_edit_group called without an open session"),
@@ -453,5 +462,5 @@ pub(in crate::editor) fn commit_edit_group(
             "commit_edit_group called on a non-Insert session"
         ),
     }
-    commit_open_session(buffers, pane_state, active_session);
+    commit_session(buffers, pane_state, active_session);
 }

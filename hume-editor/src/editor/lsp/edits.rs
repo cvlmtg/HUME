@@ -174,11 +174,11 @@ fn commit_changeset(
         &mut state.buffers,
         &mut crate::editor::position_stores::PositionStores::new(
             &mut state.panes,
+            &mut state.active_session,
             &mut state.input,
             &mut state.buffer_positions,
             &mut state.config.decorations,
         ),
-        &mut state.active_session,
         pid,
         bid,
         move |s| {

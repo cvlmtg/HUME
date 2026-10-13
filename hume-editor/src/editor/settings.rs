@@ -1029,7 +1029,7 @@ define_settings! {
             parser: bool;
         // Leaving Insert mode selects whatever text the session just typed
         // (empty run: falls back to the entry command's own exit position).
-        // See `begin_typed_run` and `end_insert_session`'s pinned-anchor
+        // See `begin_typed_run` and `tear_down_insert`'s pinned-anchor
         // finalization. Applies to every way of entering Insert mode:
         // `i`/`a`/`I`/`A`/`o`/`O`/`c`.
         "select-inserted-text" => select_inserted_text: bool = true,

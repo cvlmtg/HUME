@@ -16,10 +16,13 @@
 //! use (`BufferSession` stores its `pane_id` directly on the session, not
 //! keyed by a per-pane map).
 
-use hume_editing::changeset::ChangeSet;
+use hume_editing::changeset::{Assoc, ChangeSet};
+use hume_editing::edit::TextChange;
 use hume_editing::selection::SelectionSet;
 use hume_editing::state::EditState;
+use hume_editing::tracked::Tracked;
 use hume_engine::pipeline::{BufferId, PaneId};
+use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 use crate::editor::dot_chain::DotChain;
 use crate::editor::error::CommandError;
@@ -80,6 +83,10 @@ impl EditSession {
     /// `None` while the session has no edits.
     pub(in crate::editor) fn unrecorded_inverse(&self) -> Option<ChangeSet> {
         self.group.inverse()
+    }
+
+    pub(in crate::editor) fn group(&self) -> &EditGroup {
+        &self.group
     }
 
     pub(in crate::editor) fn group_mut(&mut self) -> &mut EditGroup {
@@ -170,6 +177,35 @@ pub(in crate::editor) fn check_can_open(
     Ok(())
 }
 
+/// Proof that an Insert session was opened, from which an `InsertLayer` is
+/// built. Minted only by [`open_insert`], so an Insert layer exists only over
+/// an open Insert session, and committing one takes the proof its layer
+/// holds.
+#[must_use]
+pub(in crate::editor) struct InsertOpened(());
+
+/// Open an Insert session on `(pane, buffer)` holding `recording`, its
+/// source on the change whose code opens it, or retarget the
+/// [`EditSessionKind::Replay`] placeholder open there to one. The only way to
+/// create an Insert-kind session: [`InsertState`] has no other constructor.
+/// See [`open_or_retarget`] for when it refuses.
+pub(in crate::editor) fn open_insert(
+    active_session: &mut Option<EditSession>,
+    pane: PaneId,
+    buffer: BufferId,
+    recording: Option<SourceTicket>,
+    mint_group: impl FnOnce() -> EditGroup,
+) -> Result<InsertOpened, CommandError> {
+    open_or_retarget(
+        active_session,
+        pane,
+        buffer,
+        EditSessionKind::Insert(InsertState::new(recording)),
+        mint_group,
+    )?;
+    Ok(InsertOpened(()))
+}
+
 /// Open a session of `kind` on `(pane, buffer)`, or take over the
 /// [`EditSessionKind::Replay`] placeholder already open there.
 ///
@@ -245,7 +281,26 @@ pub(in crate::editor) enum EditSessionKind {
     Replay,
 }
 
-/// The state only an Insert session has.
+/// The span typed since an open insert session's entry command positioned the
+/// cursor: one (anchor, end) pair per selection, index-paired and always the
+/// same length (both `Vec`s are seeded together by `begin_typed_run` and
+/// carried together by [`InsertState::carry_marks`], the only writer after
+/// seeding).
+pub(crate) struct TypedRun {
+    /// Start of each selection's typed span, kept in post-edit coordinates
+    /// with `Assoc::Before`: a keystroke exactly at the anchor is typed
+    /// content, so the anchor must stay left of it.
+    pub anchors: Vec<CharOffset>,
+    /// Exclusive end of each typed span, kept with `Assoc::After` (opposite
+    /// of `anchors`) so it tracks what was written rather than where the
+    /// cursor happens to sit: a real keystroke at the run's end pushes it
+    /// forward, an auto-paired closer pushes it past both inserted chars, and
+    /// a skip-close (which edits nothing) leaves it where it was.
+    pub ends: Vec<CharOffset>,
+}
+
+/// The state only an Insert session has. Built only by [`open_insert`], so
+/// a fresh session starts with none of a previous one's records.
 pub(in crate::editor) struct InsertState {
     /// Armed around an Insert-key binding dispatch or a completion-popup
     /// Enter, so a completion accept made there is recorded as its net
@@ -255,14 +310,78 @@ pub(in crate::editor) struct InsertState {
     /// released by `EditorState::end_insert_recording`. `None` for a session
     /// opened outside a recorded change's code.
     recording: Option<SourceTicket>,
+    /// The session's typed span, carried through every text change by
+    /// [`InsertState::carry_marks`]. `Some` from the moment the session's
+    /// entry command positions the cursor (`begin_typed_run`) until
+    /// `tear_down_insert` consumes it on exit, for every insert entry
+    /// (`i`/`a`/`o`/`O`/`A`/`I`/`c`/…).
+    pub(in crate::editor) typed_run: Option<Tracked<TypedRun>>,
+    /// Per-selection range of leading whitespace *this* session
+    /// auto-inserted (`o`/`O`/Enter's auto-indent), carried the same way
+    /// `typed_run` is. `None` when nothing has armed a record yet (`i`/`I`/`c`
+    /// entry, or before the first Enter/`o`/`O`).
+    ///
+    /// Read on exit (`hume_ops::edit::owned_blank_indent`) to decide whether
+    /// the cursor's current blank line is whitespace *this session itself*
+    /// inserted, rather than pre-existing or hand-typed whitespace. The
+    /// vacate-on-exit trim must never touch the latter. A positional record
+    /// rather than a bool ("is some trim pending") so ownership is re-derived
+    /// from the buffer at exit instead of relying on every cursor-motion key
+    /// handler remembering to invalidate a flag: a motion off this line
+    /// leaves the record pointing at a line the cursor no longer occupies,
+    /// which the containment check rejects on its own.
+    pub(in crate::editor) autoindent: Option<Tracked<Vec<ExclusiveRange<CharOffset>>>>,
+    /// Set by `begin_typed_run` from its `ExitCursor` parameter for `a`/`A`/
+    /// `o`/`O` entry (never for `i`/`I`/`c`). Decides where an *empty* typed
+    /// run's cursor lands on exit: step one grapheme back (so `a<Esc>` is a
+    /// round trip) rather than staying put.
+    pub(in crate::editor) step_back_on_exit: bool,
+    /// Whether the session was entered via a ring-capturing kill (bare or
+    /// `"k`-prefixed `c`; an explicit-register change writes no stamp and
+    /// must not set this). Set only by `cmd_change`. Read by
+    /// `tear_down_insert`: every keystroke typed during the session bumps
+    /// `BufferStore::edit_seq`, so the `PasteStamp` `cmd_change` wrote
+    /// (pointing at the just-replaced text) goes stale by the time the
+    /// session closes, and refreshing its `seq` there is what keeps
+    /// `c <text> <Esc> p` reading the kill ring instead of the clipboard.
+    pub(in crate::editor) kill_opened_session: bool,
 }
 
 impl InsertState {
     /// A session holding `recording` on the change whose code opens it.
-    pub(in crate::editor) fn new(recording: Option<SourceTicket>) -> Self {
+    fn new(recording: Option<SourceTicket>) -> Self {
         Self {
             dot_capture: None,
             recording,
+            typed_run: None,
+            autoindent: None,
+            step_back_on_exit: false,
+            kill_opened_session: false,
+        }
+    }
+
+    /// Carry the session's typed-run and autoindent records through `change`.
+    pub(in crate::editor) fn carry_marks(&mut self, change: &TextChange<'_>) {
+        // `ChangeSet::map_ranges` maps (start, end) pairs directly, but with
+        // `Assoc::After` on starts and `Assoc::Before` on ends: it shrinks a
+        // range around inserted text. A typed run needs the opposite: it must
+        // grow to include what was just typed, so anchors and ends are mapped
+        // separately with `Assoc` reversed from what `map_ranges` would use.
+        if let Some(run) = self.typed_run.as_mut() {
+            run.translate(change, |run| {
+                change
+                    .changes()
+                    .map_positions(&mut run.anchors, Assoc::Before);
+                change.changes().map_positions(&mut run.ends, Assoc::After);
+            });
+        }
+        // Shrinks each record around any edit landing at its
+        // start/end; see `map_ranges`' own doc. That is what makes ownership
+        // self-revoking: text typed past a record's end, or a line split
+        // before its start, falls outside the mapped range without any key
+        // handler needing to clear it.
+        if let Some(ranges) = self.autoindent.as_mut() {
+            ranges.translate(change, |ranges| change.changes().map_ranges(ranges));
         }
     }
 
@@ -347,6 +466,19 @@ impl EditGroup {
     /// edit or once the edits cancel out.
     pub(in crate::editor) fn edits(&self) -> Option<&ChangeSet> {
         self.cs.as_ref().filter(|cs| !cs.is_identity())
+    }
+
+    /// Fold `cs`, an edit applied since, into the group. An identity `cs`
+    /// leaves it untouched: a group whose every edit was identity commits
+    /// nothing.
+    pub(in crate::editor) fn compose(&mut self, cs: &ChangeSet) {
+        if cs.is_identity() {
+            return;
+        }
+        self.cs = Some(match self.cs.take() {
+            None => cs.clone(),
+            Some(acc) => acc.compose(cs.clone()),
+        });
     }
 
     /// The changeset that maps the live text back to `snapshot`'s text.

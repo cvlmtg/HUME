@@ -242,6 +242,7 @@ fn p6_e_bang_inverse_is_fine_grained() {
             bid,
             &mut crate::editor::position_stores::PositionStores::new(
                 &mut ed.state.panes,
+                &mut ed.state.active_session,
                 &mut ed.state.input,
                 &mut ed.state.buffer_positions,
                 &mut ed.state.config.decorations,

@@ -107,11 +107,11 @@ fn apply_normal_mode_paste(ed: &mut Editor, text: &str) {
         &mut ed.state.buffers,
         &mut crate::editor::position_stores::PositionStores::new(
             &mut ed.state.panes,
+            &mut ed.state.active_session,
             &mut ed.state.input,
             &mut ed.state.buffer_positions,
             &mut ed.state.config.decorations,
         ),
-        &mut ed.state.active_session,
         focused,
         buf,
         |s| hume_ops::edit::insert_str(s, text),

@@ -665,11 +665,12 @@ impl EditorState {
     /// `OnModeChange` fires later, from `Editor::detect_mode_change` at the
     /// next `settle()`.
     ///
-    /// No-op when both the current mode layer and `layer` are `Insert`;
-    /// `begin_insert_session`'s open-group guard relies on that. Any other
-    /// same-kind re-entry replaces the layer, since its payload may differ.
+    /// A same-kind re-entry replaces the layer, since its payload may
+    /// differ. An Insert layer is never re-entered this way: one is built
+    /// only from a freshly opened session, and `begin_insert_session` joins
+    /// an open one instead.
     ///
-    /// Otherwise tears down the current mode layer unless it is `Base`
+    /// Tears down the current mode layer unless it is `Base`
     /// (teardown is cancel), clears Extend, and calls [`Self::push_layer`].
     /// Overlays below the outgoing mode layer stay. `push_layer` evicts any
     /// popup in `Base`'s slot, so a popup is never buried.
@@ -683,9 +684,6 @@ impl EditorState {
         layer: L,
     ) {
         let mode_layer = self.input.mode_layer();
-        if self.input.is::<L>(mode_layer) && self.input.is::<input_stack::InsertLayer>(mode_layer) {
-            return;
-        }
         if !self.input.is::<input_stack::BaseLayer>(mode_layer) {
             self.truncate_layers(view, mode_layer);
         }

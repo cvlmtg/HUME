@@ -20,8 +20,9 @@ use hume_editing::selection::{EditView, Selection, SelectionSet};
 use hume_editing::state::EditState;
 use hume_editing::text::BufferText;
 
+use super::EditorState;
 use super::commands::{CommandPane, pane_view};
-use super::{EditorState, Mode};
+use super::edit_session::EditSession;
 
 /// Default capacity, used in tests to construct jump lists without importing `EditorSettings`.
 #[cfg(test)]
@@ -374,11 +375,11 @@ pub(in crate::editor) fn current_jump_entry(
 /// `Selection` is compared, not just its head: `select-all` from the buffer's
 /// own last char moves only the anchor.
 ///
-/// An Insert-mode typed run in the focused pane is invalidated before `body`
+/// An Insert session's typed run on `t`'s pane is invalidated before `body`
 /// runs: it would otherwise select across text the cursor jumped away from
-/// once Insert exits. The mode is read before the body, since an entry
-/// command (`i`/`a`/`o`/`c`) is already back in Insert by the time its own
-/// body returns and would wipe the pins `begin_typed_run` just installed.
+/// once Insert exits. Checked before the body, since an entry command
+/// (`i`/`a`/`o`/`c`) has opened its session by the time its own body
+/// returns and would wipe the pins `begin_typed_run` just installed.
 /// A pane `body` closed has no list left to record in.
 pub(in crate::editor) fn with_jump<R>(
     state: &mut EditorState,
@@ -403,8 +404,13 @@ pub(in crate::editor) fn with_jump<R>(
             )
         }
     };
-    if state.mode() == Mode::Insert && view.focused_pane() == pid {
-        t.state_mut(&mut state.panes.entries, view).typed_run = None;
+    if let Some(insert) = state
+        .active_session
+        .as_mut()
+        .filter(|s| s.is_insert_at(pid, pre_bid))
+        .and_then(EditSession::insert_mut)
+    {
+        insert.typed_run = None;
     }
     let pending = state.panes.entries[pid].jumps.begin_pending(entry);
     let result = body(state, view);

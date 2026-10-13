@@ -454,10 +454,12 @@ impl EditorState {
             .input
             .buffer_completion()
             .is_some_and(BufferSession::is_explicit);
-        let live = self.input.buffer_completion().and_then(|s| {
+        // The session's pane is the focused one, showing its buffer: a
+        // focus move or buffer switch ends Insert and the layer above it.
+        let live = self.input.buffer_completion().map(|s| {
             let bid = s.bid();
-            self.focused_buffer_state(view, bid)
-                .map(|pbs| (bid, pbs.view(self.buffers.get(bid).text()).primary().head()))
+            let pbs = self.panes.entries.shown(s.pane_id(), bid);
+            (bid, pbs.view(self.buffers.get(bid).text()).primary().head())
         });
         let Some(session) = self.input.buffer_completion_mut() else {
             return;

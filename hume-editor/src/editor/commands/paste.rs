@@ -7,13 +7,10 @@
 //! This module owns opening/closing the `EditSessionKind::Paste` variant of
 //! `EditorState::active_session` (`do_paste`, `commit_paste_session`) via
 //! `edit_session::open_or_retarget` (the same primitive
-//! `doc_ops::begin_edit_group` uses for the `Insert` variant) rather than
+//! `edit_session::open_insert` uses for the `Insert` variant) rather than
 //! `doc_ops::begin_edit_group`/`commit_edit_group` themselves, which are
 //! typed to `Insert` alone: a paste session's own `before` direction has
-//! nowhere to live in those. `PaneBufferState::kill_opened_session`
-//! (`pane_state.rs`) stays put; pane state is the SSOT for per-(pane, buffer)
-//! facts unrelated to session ownership, and this module reaches into it
-//! rather than owning it.
+//! nowhere to live in those.
 
 use crate::editor::registry::Count;
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
@@ -182,11 +179,11 @@ fn do_paste(
         &mut state.buffers,
         &mut crate::editor::position_stores::PositionStores::new(
             &mut state.panes,
+            &mut state.active_session,
             &mut state.input,
             &mut state.buffer_positions,
             &mut state.config.decorations,
         ),
-        &mut state.active_session,
         focused,
         buf,
         |s| paste_fn(s, &values),
@@ -497,11 +494,11 @@ fn do_paste_cycle(
         &mut state.buffers,
         &mut crate::editor::position_stores::PositionStores::new(
             &mut state.panes,
+            &mut state.active_session,
             &mut state.input,
             &mut state.buffer_positions,
             &mut state.config.decorations,
         ),
-        &mut state.active_session,
         focused,
         buf,
         |s| paste_fn(s, &values),

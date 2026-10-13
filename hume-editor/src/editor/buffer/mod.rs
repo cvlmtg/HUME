@@ -732,19 +732,15 @@ impl Buffer {
         (post_sels, cs)
     }
 
-    /// Apply an edit within the current open group, composing its CS into the
-    /// group accumulator rather than recording a history revision.
-    ///
-    /// Caller must have called `begin_edit_group` and still hold its result.
-    /// There is no `None` case to guard here, since the caller already
-    /// proved a group is open by having an `&mut EditGroup` at all.
+    /// Apply an edit that belongs to the open edit group, without recording
+    /// a history revision: the caller composes the returned `ChangeSet` into
+    /// the group.
     pub(in crate::editor) fn apply_edit_grouped(
         &mut self,
         id: BufferId,
         stores: &mut PositionStores<'_>,
         acting: PaneId,
         sels: SelectionSet,
-        group: &mut EditGroup,
         cmd: impl FnOnce(EditState) -> Edited,
     ) -> (SelectionSet, ChangeSet) {
         let (post, cs) = self
@@ -753,52 +749,42 @@ impl Buffer {
         let new_text = post.text().clone();
         let new_sels = post.into_selections();
 
-        // An identity `cs` moved no bytes: composing it into the group
-        // accumulator would still be a no-op, but a new text generation would
-        // fire `on-text-changed` for one. Leave the accumulator untouched:
-        // a group whose every edit was identity commits nothing.
+        // An identity `cs` moved no bytes, but a new text generation would
+        // fire `on-text-changed` for one.
         if cs.is_identity() {
             return (new_sels, cs);
         }
-
-        group.cs = Some(match group.cs.take() {
-            None => cs.clone(),
-            Some(acc) => acc.compose(cs.clone()),
-        });
-
         self.install(id, stores, new_text, Change::Edit(&cs), Some(acting));
         (new_sels, cs)
     }
 
     /// Re-paste from the paste-session snapshot, replacing the accumulated CS.
     ///
-    /// Always starts from `group.snapshot`, so every
-    /// cycle cleanly discards the previous paste output (including added lines).
-    /// Returns the new selections and a propagation CS mapping the current
-    /// buffer text to the new text, which `install` carries every stored
-    /// position through.
-    ///
-    /// Caller must have called `begin_edit_group` and still hold its result,
-    /// the same contract as [`Buffer::apply_edit_grouped`].
+    /// Always starts from `snapshot`, the group's, so every cycle cleanly
+    /// discards the previous paste output (including added lines).
+    /// `to_snapshot` maps the live text back to `snapshot`'s, `None` while
+    /// the group has no edits. Returns the new selections, a propagation CS
+    /// mapping the current buffer text to the new text, which `install`
+    /// carries every stored position through, and the CS from `snapshot`'s
+    /// text, the group's new accumulated edits.
     pub(in crate::editor) fn apply_edit_regrouped(
         &mut self,
         id: BufferId,
         stores: &mut PositionStores<'_>,
         acting: PaneId,
-        group: &mut EditGroup,
+        snapshot: EditState,
+        to_snapshot: Option<ChangeSet>,
         cmd: impl FnOnce(EditState) -> Edited,
-    ) -> (SelectionSet, ChangeSet) {
-        let edited = cmd(group.snapshot.clone());
+    ) -> (SelectionSet, ChangeSet, ChangeSet) {
+        let edited = cmd(snapshot);
         let new_cs = edited.changes().clone();
 
-        // Build the propagation CS: maps current buffer text → the edit's
-        // result. With no edits yet the live text is the snapshot's, so
-        // propagation CS == new_cs.
-        let propagation_cs = match group.inverse() {
+        // With no edits yet the live text is the snapshot's, so propagation
+        // CS == new_cs.
+        let propagation_cs = match to_snapshot {
             None => new_cs.clone(),
             Some(to_snapshot) => to_snapshot.compose(new_cs.clone()),
         };
-        group.cs = Some(new_cs);
 
         // An identity `propagation_cs` relabels the live text without
         // changing it, so `install` retags the stores and nothing else sees
@@ -816,7 +802,7 @@ impl Buffer {
                 Some(acting),
             );
         }
-        (post.into_selections(), cs)
+        (post.into_selections(), cs, new_cs)
     }
 
     /// Open an edit group. Snapshots the current text with `base`, the

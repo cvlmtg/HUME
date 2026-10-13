@@ -13,6 +13,7 @@ use termina::event::KeyEvent;
 use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
 
+use super::super::edit_session::InsertOpened;
 use super::super::keymap::WalkResult;
 use super::super::replay::{Input, dispatch_insert_key};
 use super::super::{Editor, EditorState, commands, doc_ops};
@@ -21,6 +22,18 @@ use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal};
 
 pub(in crate::editor) struct InsertLayer {
     pub(in crate::editor) sticky_popup: Option<PopupLayer>,
+    /// The proof its Insert session's opening returned, which the
+    /// session's commit takes: the layer exists only over an open session.
+    opened: InsertOpened,
+}
+
+impl InsertLayer {
+    pub(in crate::editor) fn new(opened: InsertOpened) -> Self {
+        Self {
+            sticky_popup: None,
+            opened,
+        }
+    }
 }
 
 impl Layer for InsertLayer {
@@ -35,7 +48,7 @@ impl Layer for InsertLayer {
         Some(EditorMode::Insert)
     }
     fn tear_down(&mut self, state: &mut EditorState, _view: &EngineView, _why: Removal) {
-        commands::tear_down_insert(state);
+        commands::tear_down_insert(state, &self.opened);
     }
     fn sticky_popup_slot(&self) -> Option<&Option<PopupLayer>> {
         Some(&self.sticky_popup)
@@ -133,11 +146,11 @@ impl Editor {
             &mut self.state.buffers,
             &mut crate::editor::position_stores::PositionStores::new(
                 &mut self.state.panes,
+                &mut self.state.active_session,
                 &mut self.state.input,
                 &mut self.state.buffer_positions,
                 &mut self.state.config.decorations,
             ),
-            &mut self.state.active_session,
             focused,
             buf,
             |s| hume_ops::edit::insert_str(s, text),

@@ -430,6 +430,7 @@ fn insert_teardown_commits_on_the_sessions_own_pane_not_current_focus() {
             bid,
             &mut crate::editor::position_stores::PositionStores::new(
                 &mut ed.state.panes,
+                &mut ed.state.active_session,
                 &mut ed.state.input,
                 &mut ed.state.buffer_positions,
                 &mut ed.state.config.decorations,
@@ -447,6 +448,7 @@ fn insert_teardown_commits_on_the_sessions_own_pane_not_current_focus() {
             bid,
             &mut crate::editor::position_stores::PositionStores::new(
                 &mut ed.state.panes,
+                &mut ed.state.active_session,
                 &mut ed.state.input,
                 &mut ed.state.buffer_positions,
                 &mut ed.state.config.decorations,

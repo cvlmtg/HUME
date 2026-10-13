@@ -104,7 +104,7 @@ pub(in crate::editor) fn cmd_insert_at_selection_start(
 /// For a collapsed cursor this is identical to `a`.
 ///
 /// `ExitCursor::StepBack` arms a step-back that applies when there is no
-/// typed span to fall back on instead; see `PaneBufferState::step_back_on_exit`'s
+/// typed span to fall back on instead; see `InsertState::step_back_on_exit`'s
 /// doc for the full rule.
 ///
 /// If the selection ends on a `\n` (e.g. after `select-line` / `x`, or on an empty

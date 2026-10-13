@@ -42,14 +42,14 @@ impl DocHelper {
             .edit_group
             .as_mut()
             .expect("apply_edit_grouped called without an open group");
-        let (new_sels, _cs) = self.buf.apply_edit_grouped(
+        let (new_sels, cs) = self.buf.apply_edit_grouped(
             BufferId::default(),
             &mut DetachedStores::default().stores(),
             PaneId::default(),
             sels,
-            group,
             cmd,
         );
+        group.compose(&cs);
         self.sels = new_sels;
     }
 

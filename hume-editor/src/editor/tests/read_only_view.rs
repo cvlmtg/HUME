@@ -240,11 +240,11 @@ fn apply_doc_history_walk_distinguishes_refusal_from_exhaustion() {
         &mut ed.state.buffers,
         &mut crate::editor::position_stores::PositionStores::new(
             &mut ed.state.panes,
+            &mut ed.state.active_session,
             &mut ed.state.input,
             &mut ed.state.buffer_positions,
             &mut ed.state.config.decorations,
         ),
-        &mut ed.state.active_session,
         focused,
         bid,
         |b, id, stores, pane| Ok(b.undo_n(id, stores, pane, 1)),

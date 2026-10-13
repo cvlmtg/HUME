@@ -147,6 +147,7 @@ pub(in crate::editor) fn show_read_only_view(
             existing,
             &mut PositionStores::new(
                 &mut state.panes,
+                &mut state.active_session,
                 &mut state.input,
                 &mut state.buffer_positions,
                 &mut state.config.decorations,
@@ -288,6 +289,7 @@ fn forget_closed_buffer(state: &mut EditorState, ev: &mut EngineView, id: Buffer
     forget_saved_views(ev, id);
     PositionStores::new(
         &mut state.panes,
+        &mut state.active_session,
         &mut state.input,
         &mut state.buffer_positions,
         &mut state.config.decorations,
