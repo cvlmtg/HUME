@@ -277,8 +277,11 @@ not drawn. It grows away from the cursor row as the menu does: top edges
 level when the menu opens below the cursor, bottom edges level when it opens
 above, so it never covers the line being typed. It shows the selected item's `detail` and
 `documentation` (`CompletionItem::doc_box_text`), each the item's own or
-else a resolve's answer, and is not drawn for an item without documentation,
-whose `detail` the menu row already shows. A resolve's answer is kept apart
+else a resolve's answer, and is not drawn for an item with neither. With
+`completion-docs` on, the box is where `detail` shows: menu rows leave it
+out (`CompletionItem::menu_row`); with it off, rows carry it and no box is
+drawn. The `:` line has no box, so its rows always carry `detail`. A
+resolve's answer is kept apart
 from the item's own fields (`CompletionItem::resolution`), so it never
 changes the menu row. Markdown documentation is highlighted. The box's
 content is built once per text in a session (`DocView`): going back to a
@@ -400,7 +403,8 @@ instead, at the same per-keystroke, Rust-side cost as `core:lsp`'s own
 matching.
 
 **Q-A7 — kind display.** `kind: i64` is display-unused (`menu_row` puts
-`label` in the main column and `detail` right-aligned in a trailing one).
+`label` in the main column and, with `completion-docs` off, `detail`
+right-aligned in a trailing one).
 *Default: a static Rust map (LSP kind numbers as the universal enum), a
 single-char column, no per-kind theming — a separate task from the
 two-column layout `resolve_menu` already gives every menu.*

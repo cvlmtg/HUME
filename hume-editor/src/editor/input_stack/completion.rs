@@ -185,6 +185,7 @@ impl Editor {
         // `self.state.input`: the session's shared borrow has to end
         // before `popup_placement` takes `&mut self`.
         let border = self.state.settings.popup_border;
+        let with_detail = !self.state.settings.completion_docs;
         let resolved =
             (|| -> Option<(hume_ui::popup::PopupState, hume_ui::popup::PopupPlacement)> {
                 let session = self.state.input.buffer_completion()?;
@@ -200,7 +201,7 @@ impl Editor {
                     Some(session.selected()),
                     placement.pane_rect,
                 );
-                let rows = session.rows_in(window.range.clone());
+                let rows = session.rows_in(window.range.clone(), with_detail);
                 let menu = hume_ui::popup::resolve_menu(&rows, window, placement, border);
                 Some((menu, placement))
             })();

@@ -270,22 +270,27 @@ impl CompletionItem {
     /// What the documentation box shows for this item: `detail`, a blank
     /// line, then `documentation`, each the item's own or else the resolved
     /// one. Markdown documentation fences `detail` as `fence_lang` code, so
-    /// the whole text reads as markdown. `None` without documentation: the
-    /// menu row already shows `detail`.
+    /// the whole text reads as markdown; a `detail` alone is plain text.
+    /// `None` with neither.
     pub(in crate::editor) fn doc_box_text(&self, fence_lang: &str) -> Option<Documentation> {
         let detail = self
             .detail
             .as_deref()
             .or_else(|| self.resolution.as_ref()?.detail.as_deref())
             .filter(|d| !d.is_empty());
-        let docs = self.documentation().filter(|d| !d.text.is_empty())?;
-        Some(match detail {
-            None => docs.clone(),
-            Some(detail) if docs.markdown => Documentation {
+        let docs = self.documentation().filter(|d| !d.text.is_empty());
+        Some(match (detail, docs) {
+            (None, None) => return None,
+            (None, Some(docs)) => docs.clone(),
+            (Some(detail), None) => Documentation {
+                text: detail.to_string(),
+                markdown: false,
+            },
+            (Some(detail), Some(docs)) if docs.markdown => Documentation {
                 text: format!("```{fence_lang}\n{detail}\n```\n\n{}", docs.text),
                 markdown: true,
             },
-            Some(detail) => Documentation {
+            (Some(detail), Some(docs)) => Documentation {
                 text: format!("{detail}\n\n{}", docs.text),
                 markdown: false,
             },
@@ -336,7 +341,9 @@ impl CompletionItem {
     }
 
     /// This item's menu row: `label` as the main column, `detail` (when
-    /// non-empty) as the right-aligned trailing one. Reads both directly
+    /// non-empty and `with_detail`) as the right-aligned trailing one.
+    /// `with_detail` is false while the documentation box shows `detail`
+    /// instead (`completion-docs`). Reads both directly
     /// rather than going through [`Self::to_json`], since the menu never
     /// needs `kind`. Column layout/alignment is `resolve_menu`'s job
     /// (`hume_ui::popup`), not this store's. Called fresh every frame the
@@ -344,10 +351,10 @@ impl CompletionItem {
     /// handful of rows in the visible window, and a `String` clone per row per
     /// frame there is cheaper than paying an `Arc<str>` conversion for
     /// every parsed item, most of which are never scrolled into view.
-    pub(super) fn menu_row(&self) -> hume_ui::popup::MenuRow {
+    pub(super) fn menu_row(&self, with_detail: bool) -> hume_ui::popup::MenuRow {
         hume_ui::popup::MenuRow {
             main: self.label.clone(),
-            trailing: self.detail.clone().filter(|d| !d.is_empty()),
+            trailing: self.detail.clone().filter(|d| with_detail && !d.is_empty()),
         }
     }
 }

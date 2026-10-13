@@ -98,7 +98,7 @@ For a `bool` option, `:set` accepts `true`/`false`, `on`/`off`, `yes`/`no`, or `
 | `steel-command-budget-ms` | integer ≥ 1 | `1000` | Max Steel command evaluation time (ms) |
 | `command-completion` | `common-prefix` \| `first-candidate` | `common-prefix` | What the first `Tab` on the `:` line does when several candidates match: `common-prefix` completes the longest text they share and picks nothing, so the next `Tab` picks the first candidate; `first-candidate` fills in the first candidate at once |
 | `popup-border` | bool | `#t` | Show popup borders |
-| `completion-docs` | bool | `#t` | Show the highlighted completion's details and documentation in a box beside the completion menu. When a language server's completion arrives without them, HUME asks the server for them as you highlight it |
+| `completion-docs` | bool | `#t` | Show the highlighted completion's details and documentation in a box beside the completion menu. When off, the details show in the menu instead. When a language server's completion arrives without them, HUME asks the server for them as you highlight it |
 | `syntax-highlight-max-bytes` | integer ≥ 1 | `1048576` | Max bytes for syntax highlighting |
 | `pane-dividers` | bool | `#t` | Draw a 1-cell divider between sibling panes |
 | `statusline` | `left` \| `center` \| `right` | see [Statusline](#statusline) | Three `\|`-separated sections of comma-separated element names. Set it with `configure-statusline!` |

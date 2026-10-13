@@ -168,8 +168,9 @@ impl MinibufSession {
         self.core.top(n, sources)
     }
 
+    /// Rows always carry `detail`: the `:` line has no documentation box.
     pub(in crate::editor) fn rows_in(&self, range: Range<usize>) -> Vec<hume_ui::popup::MenuRow> {
-        self.core.rows_in(range)
+        self.core.rows_in(range, true)
     }
 
     /// Where the menu anchors; see `BufferSession::menu_anchor`'s

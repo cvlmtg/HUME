@@ -364,19 +364,42 @@ fn a_resolved_detail_leaves_the_menu_row_unchanged() {
         serde_json::json!({"label": "foo", "detail": "fn foo() -> u8"}),
         version(),
     );
-    assert_eq!(item.menu_row().trailing, None);
+    assert_eq!(item.menu_row(true).trailing, None);
 }
 
 #[test]
-fn an_item_with_detail_but_no_documentation_has_no_doc_box() {
-    let mut item = from_json(serde_json::json!({"label": "foo", "detail": "fn foo()"}))
+fn the_menu_row_shows_detail_only_when_asked() {
+    let item = from_json(serde_json::json!({"label": "foo", "detail": "fn foo()"}))
         .expect("well-formed item");
-    assert_eq!(item.doc_box_text("rust"), None);
-    item.apply_resolved(
-        serde_json::json!({"label": "foo", "detail": "fn foo() -> u8"}),
+    assert_eq!(item.menu_row(true).trailing.as_deref(), Some("fn foo()"));
+    assert_eq!(item.menu_row(false).trailing, None);
+}
+
+#[test]
+fn a_detail_without_documentation_fills_the_doc_box_as_plain_text() {
+    let item = from_json(serde_json::json!({"label": "foo", "detail": "fn foo()"}))
+        .expect("well-formed item");
+    assert_eq!(
+        item.doc_box_text("rust"),
+        Some(Documentation {
+            text: "fn foo()".to_string(),
+            markdown: false,
+        })
+    );
+
+    let mut bare = from_json(serde_json::json!({"label": "bar"})).expect("well-formed item");
+    assert_eq!(bare.doc_box_text("rust"), None);
+    bare.apply_resolved(
+        serde_json::json!({"label": "bar", "detail": "fn bar() -> u8"}),
         version(),
     );
-    assert_eq!(item.doc_box_text("rust"), None);
+    assert_eq!(
+        bare.doc_box_text("rust"),
+        Some(Documentation {
+            text: "fn bar() -> u8".to_string(),
+            markdown: false,
+        })
+    );
 }
 
 #[test]

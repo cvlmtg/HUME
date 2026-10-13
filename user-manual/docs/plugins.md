@@ -561,7 +561,7 @@ A plugin can feed the completion menu by registering a *source*. A source is a p
 
 Press `Ctrl-Space` after typing `FI` and `FIXME` is offered alongside every other source's answers. The source can ignore `prefix`, the word being typed: the editor filters and ranks the items against it, and replaces it with the item you accept. An empty list means the source has nothing to offer.
 
-A bare string is shorthand for an item with only a label. For more control, pass a hashmap using the keys of an LSP `CompletionItem`: `label` is required; `detail` is shown next to it in the menu; `insertText` is what accepting it inserts (default: the label); `filterText` and `sortText` change what the typed text is matched and tie-broken against; `kind` is an LSP `CompletionItemKind` number; `documentation`, a string or a `(hash 'kind "markdown" 'value text)`, is shown below `detail` in a box beside the menu while the item is highlighted (`'kind "plaintext"` shows it as plain text).
+A bare string is shorthand for an item with only a label. For more control, pass a hashmap using the keys of an LSP `CompletionItem`: `label` is required; `detail`, such as a type or signature, is shown in the documentation box described below; `insertText` is what accepting it inserts (default: the label); `filterText` and `sortText` change what the typed text is matched and tie-broken against; `kind` is an LSP `CompletionItemKind` number; `documentation`, a string or a `(hash 'kind "markdown" 'value text)`, is shown below `detail` in a box beside the menu while the item is highlighted (`'kind "plaintext"` shows it as plain text).
 
 ```scheme
 (register-completion-source! "todo-markers"
@@ -572,7 +572,7 @@ A bare string is shorthand for an item with only a label. For more control, pass
   #:target 'buffer)
 ```
 
-The documentation box only appears in Insert mode, for an item that has `documentation`. An item with only a `detail` shows it in its menu row and opens no box. The box is drawn to the right of the menu, or to the left when there is no room on the right, and not at all when neither side fits. Turn it off with `:set global completion-docs=false`. Give each item its documentation along with the rest of the item: only a language server's items can have theirs fetched later, when highlighted.
+The documentation box only appears in Insert mode, for an item that has a `detail` or `documentation`. It is drawn to the right of the menu, or to the left when there is no room on the right, and not at all when neither side fits. Turn it off with `:set global completion-docs=false`: each item's `detail` then shows next to its label in the menu instead. Give each item its documentation along with the rest of the item: only a language server's items can have theirs fetched later, when highlighted.
 
 ```scheme
 (register-completion-source! "todo-markers"

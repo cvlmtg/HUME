@@ -589,9 +589,14 @@ impl BufferSession {
     /// Row content for the candidates at `range` in ranked order: the only
     /// way rows leave this session, and `range` is `menu_window`'s own
     /// window (`hume_ui::popup`), so a frame formats at most `MAX_MENU_ROWS`
-    /// rows and never the whole ranked list.
-    pub(in crate::editor) fn rows_in(&self, range: Range<usize>) -> Vec<hume_ui::popup::MenuRow> {
-        self.core.rows_in(range)
+    /// rows and never the whole ranked list. `with_detail` as
+    /// [`CompletionItem::menu_row`] takes it.
+    pub(in crate::editor) fn rows_in(
+        &self,
+        range: Range<usize>,
+        with_detail: bool,
+    ) -> Vec<hume_ui::popup::MenuRow> {
+        self.core.rows_in(range, with_detail)
     }
 }
 

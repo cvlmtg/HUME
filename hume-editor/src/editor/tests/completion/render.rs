@@ -54,13 +54,14 @@ fn completion_menu_clamps_to_a_narrow_pane_instead_of_vanishing() {
 
 // ── Snapshots ─────────────────────────────────────────────────────────────────
 
-/// The Insert-mode menu: two columns (`label`, then `detail` right-aligned),
-/// sized to its visible rows.
+/// The Insert-mode menu with `completion-docs` off: two columns (`label`,
+/// then `detail` right-aligned), sized to its visible rows.
 #[test]
 fn menu_appears_with_top_items_after_the_source_answers() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = open_headless(None);
     ed.view.theme = crate::testing::build_snapshot_theme();
+    ed.state.settings.completion_docs = false;
     insert_with_source(
         &mut ed,
         tmp.path(),
@@ -224,6 +225,36 @@ fn no_doc_box_without_room_beside_the_menu() {
         "sanity: menu showing"
     );
     assert_eq!(doc_box(&ed), None);
+}
+
+/// With `completion-docs` on, `detail` shows in the box, never in the menu.
+#[test]
+fn menu_leaves_detail_to_the_doc_box() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = open_headless(None);
+    insert_with_source(&mut ed, tmp.path(), DOCUMENTED);
+
+    frame(&mut ed, 60, 16);
+    let menu = ed.state.views.completion_menu.read();
+    let lines = &menu.as_ref().expect("menu showing").lines;
+    assert!(lines.iter().all(|line| !line.contains("fn foo()")));
+    let (_, lines) = doc_box(&ed).expect("doc box showing");
+    assert_eq!(lines, ["fn foo()", "", "Does foo."]);
+}
+
+#[test]
+fn doc_box_shows_a_detail_without_documentation() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = open_headless(None);
+    insert_with_source(
+        &mut ed,
+        tmp.path(),
+        r#"(list (hash "label" "foo" "detail" "fn foo()"))"#,
+    );
+
+    frame(&mut ed, 60, 8);
+    let (_, lines) = doc_box(&ed).expect("doc box showing");
+    assert_eq!(lines, ["fn foo()"]);
 }
 
 #[test]

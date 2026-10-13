@@ -437,10 +437,14 @@ impl<Id: Copy + PartialEq, S> SlotSet<Id, S> {
     /// way rows leave this set, and `range` is `menu_window`'s own window
     /// (`hume_ui::popup`), so a frame formats at most `MAX_MENU_ROWS` rows
     /// and never the whole ranked list.
-    pub(super) fn rows_in(&self, range: std::ops::Range<usize>) -> Vec<hume_ui::popup::MenuRow> {
+    pub(super) fn rows_in(
+        &self,
+        range: std::ops::Range<usize>,
+        with_detail: bool,
+    ) -> Vec<hume_ui::popup::MenuRow> {
         range
             .filter_map(|idx| self.selected_item(idx))
-            .map(CompletionItem::menu_row)
+            .map(|item| item.menu_row(with_detail))
             .collect()
     }
 
