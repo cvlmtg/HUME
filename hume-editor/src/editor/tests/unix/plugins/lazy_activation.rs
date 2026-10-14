@@ -153,6 +153,57 @@ fn first_dispatch_under_a_differently_cased_name_activates_and_runs() {
     );
 }
 
+/// A drawer render proc that `call!`s a declared plugin's command is refused
+/// the activation: the render fails, and the plugin stays `Declared` and
+/// still activates through a normal dispatch.
+#[test]
+fn a_drawer_render_cannot_activate_a_plugin_and_leaves_it_declared() {
+    use hume_scripting::attribution::{EntryId, PluginId};
+
+    let (mut ed, _dir) = setup_lazy_editor(
+        r#"(declare-plugin! "user/tp" #:commands '("fmt-row"))
+           (define-typed-command! "go" "" (lambda (pane)
+             (show-drawer-list! pane (list 1 2 3) (lambda (i tok) (begin))
+               #:render (lambda (start keys) (map (lambda (k) (call! "fmt-row")) keys)))))"#,
+        r#"(define-command! "fmt-row" "" (lambda () "row"))"#,
+    );
+    let tp = EntryId::main(PluginId::User {
+        user: "user".to_string(),
+        repo: "tp".to_string(),
+    });
+
+    type_cmd(&mut ed, ":go");
+    frame(&mut ed, 40, 12);
+
+    assert!(
+        matches!(
+            ed.scripting.as_ref().unwrap().plugin_status(&tp),
+            Some(PluginStatus::Declared)
+        ),
+        "a refused activation must leave the plugin Declared"
+    );
+    assert!(
+        ed.state.message_log.entries().any(|e| e.text.contains("drawer render error")
+            && e.text.contains("plugin activation")),
+        "the render must fail on the refused activation; messages: {:?}",
+        ed.state
+            .message_log
+            .entries()
+            .map(|e| e.text.clone())
+            .collect::<Vec<_>>()
+    );
+
+    ed.execute_keymap_command("fmt-row".into(), Some(1), false);
+
+    assert!(
+        matches!(
+            ed.state.config.registry.get_mappable("fmt-row"),
+            Some(MappableCommand::SteelBacked(_))
+        ),
+        "a normal dispatch must still activate the plugin"
+    );
+}
+
 /// A `#:typed-commands` stub names its plugin before activation. The real
 /// registry tells the two stub kinds apart, unlike `MockHost`, so this is the
 /// host that would catch `command-plugin` reading a mappable-only owner.

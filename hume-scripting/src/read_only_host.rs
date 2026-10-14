@@ -74,6 +74,12 @@ impl EditorHost for ReadOnlyHost<'_> {
     fn events(&mut self) -> &mut dyn EventHost {
         self
     }
+    // A plugin that renders a drawer is expected to have already activated
+    // every other plugin its renderer depends on. If that does not hold in
+    // practice, this refusal is to be reviewed.
+    fn permit_plugin_activation(&mut self, _plugin: &EntryId) -> Result<(), String> {
+        Err(self.refuse("plugin activation"))
+    }
 }
 
 impl CursorHost for ReadOnlyHost<'_> {

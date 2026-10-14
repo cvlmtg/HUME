@@ -615,6 +615,10 @@ pub(crate) fn begin_lazy_activation(
         }
     };
 
+    ctx.host
+        .permit_plugin_activation(&id)
+        .map_err(generic_err)?;
+
     if ctx.plugin_stack.len() >= MAX_ACTIVATION_DEPTH {
         fail_plugin_activation(ctx, &id);
         steel::stop!(Generic =>

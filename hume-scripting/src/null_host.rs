@@ -60,6 +60,9 @@ impl EditorHost for NullHost {
     fn events(&mut self) -> &mut dyn EventHost {
         self
     }
+    fn permit_plugin_activation(&mut self, _plugin: &EntryId) -> Result<(), String> {
+        Ok(())
+    }
 }
 
 impl EventHost for NullHost {
@@ -313,6 +316,9 @@ impl EditorHost for RecordingInlineOutputHost {
     fn events(&mut self) -> &mut dyn EventHost {
         &mut self.inner
     }
+    fn permit_plugin_activation(&mut self, plugin: &EntryId) -> Result<(), String> {
+        self.inner.permit_plugin_activation(plugin)
+    }
     fn output(&mut self) -> Option<&mut dyn OutputHost> {
         Some(self)
     }
@@ -370,6 +376,9 @@ impl EditorHost for CommandStoreHost {
     }
     fn events(&mut self) -> &mut dyn EventHost {
         &mut self.inner
+    }
+    fn permit_plugin_activation(&mut self, plugin: &EntryId) -> Result<(), String> {
+        self.inner.permit_plugin_activation(plugin)
     }
 }
 

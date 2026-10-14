@@ -717,9 +717,10 @@ impl ScriptingHost {
     /// Calls `proc` with `args` and returns its value: the one entry point
     /// for a proc whose result the editor uses, such as a drawer's row
     /// renderer. The proc sees `host` through `ReadOnlyHost`: it may read
-    /// the editor but not change it, and it may not queue commands with
-    /// `call!`. Either attempt fails the call, even when the proc caught the
-    /// error it raised, and whatever it queued is dropped. Runs under the
+    /// the editor but not change it, queue commands with `call!`, or start a
+    /// declared plugin's activation. Any such attempt fails the call, even
+    /// when the proc caught the error it raised, and whatever it queued is
+    /// dropped. Runs under the
     /// same watchdog budget as a command.
     pub fn call_for_value(
         &mut self,

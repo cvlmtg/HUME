@@ -221,6 +221,12 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
     fn events(&mut self) -> &mut dyn EventHost {
         self
     }
+    fn permit_plugin_activation(
+        &mut self,
+        _plugin: &hume_scripting::attribution::EntryId,
+    ) -> Result<(), String> {
+        Ok(())
+    }
 }
 
 #[cfg(test)]

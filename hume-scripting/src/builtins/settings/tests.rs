@@ -266,6 +266,12 @@ impl crate::host::EditorHost for RecordingBufferOptionHost {
     fn events(&mut self) -> &mut dyn crate::host::EventHost {
         &mut self.inner
     }
+    fn permit_plugin_activation(
+        &mut self,
+        plugin: &crate::attribution::EntryId,
+    ) -> Result<(), String> {
+        self.inner.permit_plugin_activation(plugin)
+    }
 }
 
 impl crate::host::BufferHost for RecordingBufferOptionHost {

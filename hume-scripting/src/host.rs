@@ -159,4 +159,12 @@ pub trait EditorHost {
     /// Event-name introspection. Required: every host has some notion (even
     /// if empty) of which event names it can raise.
     fn events(&mut self) -> &mut dyn EventHost;
+    /// Asked before `plugin` starts activating. Activation registers
+    /// commands, hooks and keys in the editor, so a host that refuses editor
+    /// writes refuses it here, before the plugin's state changes. Required,
+    /// so a restricted host decides rather than inherits "allowed".
+    fn permit_plugin_activation(
+        &mut self,
+        plugin: &crate::attribution::EntryId,
+    ) -> Result<(), String>;
 }

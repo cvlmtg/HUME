@@ -180,6 +180,12 @@ impl crate::host::EditorHost for ValidNameHost {
     fn events(&mut self) -> &mut dyn crate::host::EventHost {
         &mut self.inner
     }
+    fn permit_plugin_activation(
+        &mut self,
+        plugin: &crate::attribution::EntryId,
+    ) -> Result<(), String> {
+        self.inner.permit_plugin_activation(plugin)
+    }
 }
 
 impl crate::host::CommandHost for ValidNameHost {
@@ -266,6 +272,12 @@ impl crate::host::EditorHost for RegisterCapableHost {
     }
     fn events(&mut self) -> &mut dyn crate::host::EventHost {
         self.inner.events()
+    }
+    fn permit_plugin_activation(
+        &mut self,
+        plugin: &crate::attribution::EntryId,
+    ) -> Result<(), String> {
+        self.inner.permit_plugin_activation(plugin)
     }
     fn registers(&mut self) -> Option<&mut dyn crate::host::RegisterHost> {
         Some(self)
