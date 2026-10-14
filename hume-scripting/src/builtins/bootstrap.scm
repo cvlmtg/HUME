@@ -26,8 +26,8 @@
   (let ((prog (%begin-lazy-activation! plugin entry)))
     (when prog
       (with-handler
-        (lambda (e) (%finish-lazy-activation! plugin entry e))
-        (begin (hm.eval-string prog) (%finish-lazy-activation! plugin entry #f)))
+        (lambda (e) (%finish-lazy-activation! e))
+        (begin (hm.eval-string prog) (%finish-lazy-activation! #f)))
       (hume/yield!))))
 
 (define (define-command! name doc proc

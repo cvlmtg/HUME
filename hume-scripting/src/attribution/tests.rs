@@ -108,7 +108,7 @@ fn plugin_stack_push_makes_plugin_owner() {
 fn plugin_stack_pop_returns_to_user() {
     let mut stack = PluginStack::default();
     stack.push(EntryId::main(pid("user/x")));
-    stack.pop();
+    assert_eq!(stack.pop(), Some(EntryId::main(pid("user/x"))));
     assert_eq!(stack.current_owner(), Owner::User);
 }
 
@@ -128,9 +128,9 @@ fn plugin_stack_nested_plugins() {
 }
 
 #[test]
-fn plugin_stack_pop_on_empty_is_noop() {
+fn plugin_stack_pop_on_empty_returns_none() {
     let mut stack = PluginStack::default();
-    stack.pop(); // must not panic
+    assert_eq!(stack.pop(), None);
     assert_eq!(stack.current_owner(), Owner::User);
 }
 

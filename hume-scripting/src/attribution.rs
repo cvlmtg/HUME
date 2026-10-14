@@ -276,12 +276,10 @@ impl PluginStack {
         self.stack.push(id);
     }
 
-    /// Pop the top attribution when leaving a plugin body.
-    ///
-    /// Gracefully no-ops on an empty stack. Avoids panics on error-path
-    /// cleanup where the stack may already be empty.
-    pub(crate) fn pop(&mut self) {
-        self.stack.pop();
+    /// Pop the top attribution when leaving a plugin body, returning the entry
+    /// whose body just ended, or `None` when no plugin body is executing.
+    pub(crate) fn pop(&mut self) -> Option<EntryId> {
+        self.stack.pop()
     }
 
     /// Returns `true` if no plugin is currently executing.

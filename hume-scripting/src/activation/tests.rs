@@ -367,7 +367,7 @@ fn finish_lazy_activation_success_transitions_to_loaded() {
     // Seed the stack as begin_lazy_activation would have done.
     host.push_plugin_for_test(id.clone());
 
-    let program = r#"(%finish-lazy-activation! "core:finishing" "plugin.scm" #f)"#;
+    let program = r#"(%finish-lazy-activation! #f)"#;
     host.eval_source(program, &mut NullHost).unwrap();
 
     assert!(
@@ -382,6 +382,58 @@ fn finish_lazy_activation_success_transitions_to_loaded() {
         0,
         "plugin_stack must be empty after finish"
     );
+}
+
+/// `%finish-lazy-activation!` finishes the entry on top of `plugin_stack`:
+/// with two nested activations, only the inner one moves to `Loaded`.
+#[test]
+fn finish_lazy_activation_finishes_the_innermost_entry() {
+    let outer = plugin_id("core:outer");
+    let inner = plugin_id("core:inner");
+    let mut host = ScriptingHost::new(&Dirs::none());
+    for id in [&outer, &inner] {
+        host.registries
+            .lazy_registry
+            .plugins
+            .insert(id.clone(), PluginState::Loading);
+        host.push_plugin_for_test(id.clone());
+    }
+
+    host.eval_source("(%finish-lazy-activation! #f)", &mut NullHost)
+        .unwrap();
+
+    assert!(matches!(
+        host.registries.lazy_registry.plugins.get(&inner),
+        Some(PluginState::Loaded)
+    ));
+    assert!(matches!(
+        host.registries.lazy_registry.plugins.get(&outer),
+        Some(PluginState::Loading)
+    ));
+    assert_eq!(host.plugin_stack_depth_for_test(), 1);
+}
+
+/// `%finish-lazy-activation!` without a matching `%begin-lazy-activation!`
+/// raises and changes no plugin's state.
+#[test]
+fn finish_lazy_activation_with_no_activation_in_progress_errors() {
+    let id = plugin_id("core:idle");
+    let mut host = ScriptingHost::new(&Dirs::none());
+    host.registries
+        .lazy_registry
+        .plugins
+        .insert(id.clone(), PluginState::Loading);
+
+    let result = host.eval_source("(%finish-lazy-activation! #f)", &mut NullHost);
+
+    assert!(
+        result.is_err(),
+        "finish with an empty plugin_stack must raise"
+    );
+    assert!(matches!(
+        host.registries.lazy_registry.plugins.get(&id),
+        Some(PluginState::Loading)
+    ));
 }
 
 /// `%finish-lazy-activation!` with `error` bound to a caught exception value
@@ -402,7 +454,7 @@ fn finish_lazy_activation_failure_transitions_to_failed() {
 
     let program = r#"
 (define err-val (with-handler (lambda (e) e) (error "intentional")))
-(%finish-lazy-activation! "core:failing" "plugin.scm" err-val)
+(%finish-lazy-activation! err-val)
 "#;
     host.eval_source(program, &mut NullHost).unwrap();
 
@@ -1003,7 +1055,7 @@ fn manifest_declare_self_declared_then_failed_rolls_back_to_failed() {
 
 // ── `%finish-lazy-activation!` balances stack/marks even on a bad `error` ──
 
-/// `(%finish-lazy-activation! id garbage)` where `garbage` decodes as
+/// `(%finish-lazy-activation! garbage)` where `garbage` decodes as
 /// neither `#f` nor a caught error value: the plugin stack and the
 /// activation-effect marks must still be popped and balanced: a decode
 /// failure must become the failure *reason*, not skip the bookkeeping that
@@ -1029,7 +1081,7 @@ fn finish_lazy_activation_bad_error_value_still_balances_stack_and_marks() {
     let program = r#"
         (%begin-lazy-activation! "core:badvalue" "plugin.scm")
         (register-lsp-server! "badvalue-lang" #:command "bv")
-        (%finish-lazy-activation! "core:badvalue" "plugin.scm" 42)
+        (%finish-lazy-activation! 42)
     "#;
     host.eval_source(program, &mut NullHost)
         .expect("a bad error value must be folded into the failure, not raised");

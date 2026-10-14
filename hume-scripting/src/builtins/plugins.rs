@@ -584,8 +584,8 @@ fn entry_file_arg(entry: SteelVal) -> Result<Option<EntryFile>, SteelErr> {
         .transpose()
 }
 
-/// Parses the `(plugin entry-file)` pair every inline-activation primitive
-/// takes into the entry it names.
+/// Parses the `(plugin entry-file)` pair `%begin-lazy-activation!` and
+/// `%entry-loaded?` take into the entry it names.
 fn entry_id_from_args(plugin: &str, entry: SteelVal) -> Result<EntryId, SteelErr> {
     let plugin = PluginId::parse(plugin).map_err(generic_err)?;
     Ok(EntryId::new(
@@ -641,10 +641,11 @@ pub(crate) fn begin_lazy_activation(
     Ok(SteelVal::StringV(require_program.into()))
 }
 
-/// `(%finish-lazy-activation! plugin entry error)`: called by
-/// `%activate-plugin-inline!` after the plugin body's `eval-string`. `error` is
-/// `#f` on success or the caught exception value. Pops `plugin_stack` and
-/// moves the plugin to `Loaded` or `Failed`.
+/// `(%finish-lazy-activation! error)`: called by `%activate-plugin-inline!`
+/// after the plugin body's `eval-string`. `error` is `#f` on success or the
+/// caught exception value. Pops the entry `%begin-lazy-activation!` pushed
+/// onto `plugin_stack` and moves it to `Loaded` or `Failed`. Raises when no
+/// activation is in progress.
 ///
 /// A failure is recorded in `ctx.failed_activations` rather than returned, so
 /// a failing plugin never aborts the enclosing eval; `run_steel_session`
@@ -658,26 +659,19 @@ pub(crate) fn begin_lazy_activation(
 /// `register-hook!` must mutate the registry immediately: during startup
 /// `Editor::init_scripting` still holds the host in a local, so a queued hook
 /// effect would be dropped.
-pub(crate) fn finish_lazy_activation(
-    ctx: &mut SteelCtx,
-    plugin: String,
-    entry: SteelVal,
-    error: SteelVal,
-) -> SteelResult {
-    // `plugin_stack.pop()` and `pop_effect_marks` below must run
-    // unconditionally, before any fallible decode. `begin_lazy_activation`
-    // pushed both unconditionally, and this is their only pairing site. A
-    // `?` short-circuit on `error`'s decode here would leave them
-    // permanently unbalanced whenever `error` fails to decode as `#f` or a
-    // caught error value, skewing `EvalMode` for the rest of the session
-    // and leaking the queued effects a never-popped mark hides. A decode
-    // failure becomes the failure *reason* instead: `unwrap_or_else` folds
-    // it into `Some`, same shape as a body's own raised error.
-    ctx.plugin_stack.pop();
+pub(crate) fn finish_lazy_activation(ctx: &mut SteelCtx, error: SteelVal) -> SteelResult {
+    // `begin_lazy_activation` pushes the entry and an effect mark together,
+    // and this is their only pairing site. An empty stack means no mark of
+    // this activation exists either, so it raises before touching the marks.
+    // Past that point nothing may short-circuit: an unpopped mark would hide
+    // queued effects and leave the entry `Loading`. An `error` that decodes
+    // as neither `#f` nor a caught error value becomes the failure reason,
+    // same shape as a body's own raised error.
+    let Some(id) = ctx.plugin_stack.pop() else {
+        steel::stop!(Generic => "%finish-lazy-activation!: no plugin activation in progress");
+    };
     let error = optional_steel_error_arg(error, "%finish-lazy-activation!").unwrap_or_else(Some);
     ctx.pop_effect_marks(error.is_none());
-
-    let id = entry_id_from_args(&plugin, entry)?;
 
     if let Some(err) = error {
         fail_plugin_activation(ctx, &id);
