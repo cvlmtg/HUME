@@ -112,6 +112,10 @@ numbers directly.
 - **L39** — A workaround offered to the user must be possible in HUME. Check
   the plugin model before suggesting one; a plugin cannot `require` another
   plugin's library module.
+- **L41** — End-user docs describe a feature generically and briefly; no
+  per-language examples or engine detail in the manual.
+- **L42** — An on/off option turns its whole behaviour off. "Off" never falls
+  back to a lesser variant of the same feature unless the user says so.
 
 ---
 
@@ -1489,3 +1493,31 @@ sentence that explains how the change works rather than announcing it, and put
 that text in `user-manual/docs/` if the manual lacks it.
 
 **Files:** `CHANGELOG.md`, `CLAUDE.md`, `CONTRIBUTING.md`.
+
+## L41 — The manual's Indentation section read like the design doc (2026-10-14)
+
+**Root cause:** the section was written from the engine's test cases, so it
+listed which Python and C keywords dedent, the exact copy rules for a cursor in
+leading whitespace, and a Python-specific hook example. The user found it too
+technical and asked for a generic, shorter text.
+
+**Prevention rule:** A user-manual section says what the feature does for any
+language and how to switch or tune it, in a few short paragraphs. Per-language
+token lists, edge-case rules and engine terms stay in `docs/` or source
+comments; an example uses a neutral setting, not one language's syntax.
+
+**Files:** `user-manual/docs/editing.md`, `docs/TS-INDENT.md`.
+
+## L42 — `smart-indent` off fell back to copying the indent (2026-10-14)
+
+**Root cause:** the plan treated the option as an escape hatch for a bad
+indentation query and had "off" reuse the no-grammar fallback (copy the current
+line's indent). The user expected "off" to mean no automatic indentation at
+all.
+
+**Prevention rule:** When an option turns a feature off, off disables the
+whole feature, fallbacks included. If a plan wants "off" to keep a lesser
+behaviour, state it as a decision for the user to confirm.
+
+**Files:** `hume-ops/src/edit/insert.rs` (`NewLineIndent`),
+`hume-editor/src/editor/commands/smart_indent.rs`.
