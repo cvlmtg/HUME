@@ -110,24 +110,11 @@ impl CommandRegistry {
         self.commands.insert(key, Command::Mappable(cmd));
     }
 
-    /// Remove a single dynamic Steel-defined command by name: a mappable
-    /// `SteelBacked`/`Lazy`, or a typed `TypedBody::Steel`/`TypedBody::Lazy`.
-    ///
-    /// Native mappables and native typed commands are never removed: the
-    /// caller (Lazy-stub cleanup) only legitimately owns dynamic entries, so
-    /// refusing anything else keeps a buggy cleanup from deleting a built-in
-    /// command for the rest of the session.
+    /// Remove the command registered under `name`, standing in for a plugin
+    /// reload that drops a Steel command.
+    #[cfg(test)]
     pub(in crate::editor) fn unregister(&mut self, name: &str) {
-        let removable = match self.commands.get(name) {
-            Some(Command::Mappable(mc)) => !mc.is_native(),
-            Some(Command::Typed(tc)) => {
-                matches!(tc.body, TypedBody::Steel { .. } | TypedBody::Lazy(_))
-            }
-            None => false,
-        };
-        if removable {
-            self.commands.remove(name);
-        }
+        self.commands.remove(name);
     }
 
     /// Returns `true` if `name` is registered as either a mappable or typed command.

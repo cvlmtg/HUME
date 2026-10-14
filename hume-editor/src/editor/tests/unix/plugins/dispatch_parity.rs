@@ -94,12 +94,6 @@ fn lazy_typed_command_first_dispatch_via_command_line() {
 /// `body_error_removes_stub_and_marks_failed` (single-command case) to a
 /// plugin declaring two commands, only one of which is dispatched.
 ///
-/// Before `CommandHost::unregister_lazy_stubs_of` was called from
-/// `finish_lazy_activation`, a sibling stub survived as a dangling `Lazy`
-/// entry pointing at a now-`Failed` plugin until it was itself dispatched
-/// (and only then cleaned up by the per-dispatch loop guard), a behavior
-/// improvement this test pins.
-///
 /// Unregistering only the dispatched stub would leave `stub-b` as `Lazy`
 /// after `stub-a`'s activation fails.
 #[test]

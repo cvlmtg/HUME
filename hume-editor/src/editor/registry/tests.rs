@@ -474,42 +474,6 @@ fn steel_backed_names_filters_by_variant() {
     );
 }
 
-/// `unregister` removes dynamic (`SteelBacked`/`Lazy`) entries but refuses
-/// native commands: a failed-plugin rollback must never be able to delete
-/// a built-in for the rest of the session.
-#[test]
-fn unregister_removes_dynamic_but_not_native() {
-    use hume_scripting::attribution::PluginId;
-    let mut reg = CommandRegistry::with_defaults();
-    reg.register(MappableCommand::SteelBacked(SteelCommand {
-        name: Cow::Owned("steel-cmd".to_string()),
-        doc: Cow::Borrowed("doc"),
-        arity: 0,
-        is_variadic: false,
-        inline_output: false,
-        repeatable: false,
-        proc: hume_scripting::MappableProc::for_test(),
-    }));
-    reg.register(MappableCommand::Lazy {
-        name: Cow::Owned("lazy-cmd".to_string()),
-        plugin: hume_scripting::attribution::EntryId::main(PluginId::User {
-            user: "u".to_string(),
-            repo: "r".to_string(),
-        }),
-    });
-
-    reg.unregister("steel-cmd");
-    reg.unregister("lazy-cmd");
-    reg.unregister("move-left"); // native, must be a no-op
-
-    assert!(reg.get_mappable("steel-cmd").is_none());
-    assert!(reg.get_mappable("lazy-cmd").is_none());
-    assert!(
-        reg.get_mappable("move-left").is_some(),
-        "unregister must refuse to remove a native command"
-    );
-}
-
 #[test]
 fn clears_extend_flag_matches_expected_commands() {
     let reg = CommandRegistry::with_defaults();

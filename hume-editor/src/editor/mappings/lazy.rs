@@ -59,13 +59,13 @@ impl Editor {
     }
 
     /// Activate the plugin owning a lazy stub, register its commands, and
-    /// check whether `name` is now a real (non-Lazy) command.
+    /// check whether `name` (case-sensitive) is now registered.
     ///
-    /// Returns `true` when `name` resolved to a real command after activation
-    /// and dispatch may proceed.  Returns `false` when activation failed or
-    /// the plugin body never defined `name`; in that case the stub is removed
-    /// (preventing an infinite retry loop) and the caller should report an
-    /// "unknown command" warning.
+    /// Returns `true` when the plugin body defined `name` and dispatch may
+    /// proceed. Returns `false` when activation failed or the body never
+    /// defined `name`: either way, the end of activation dropped the
+    /// plugin's remaining stubs, so `name` is absent from the registry and
+    /// the caller reports "unknown command".
     pub(in crate::editor) fn activate_lazy_plugin(
         &mut self,
         plugin: &hume_scripting::attribution::EntryId,
@@ -76,19 +76,7 @@ impl Editor {
         }
         self.activate_and_trace(plugin, &format!("by command '{name}'"));
         self.flush_script_messages();
-        // Loop guard: if name is still a Lazy stub (mappable or typed, since the body
-        // never defined it) or gone, remove it and signal failure so the
-        // caller does not re-enter. `lazy_owner` covers both stub kinds so
-        // this check works whether `name` was declared via `#:commands` or
-        // `#:typed-commands`.
-        let unresolved = !self.state.config.registry.contains(name)
-            || self.state.config.registry.lazy_owner(name).is_some();
-        if unresolved {
-            self.state.config.registry.unregister(name);
-            false
-        } else {
-            true
-        }
+        self.state.config.registry.contains(name)
     }
 
     /// Activate every still-`Declared` lazy plugin registered for the event

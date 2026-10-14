@@ -630,8 +630,8 @@ fn plugin_config_scoped_correctly_after_nested_activation() {
 ///
 /// Two changes would each make `move-left` vanish from the registry: recording
 /// the proc before `host.register_command` in
-/// `define_command`, or having `CommandRegistry::unregister` remove
-/// unconditionally.
+/// `define_command`, or having `CommandRegistry::unregister_defined_by` match
+/// a native command.
 #[test]
 fn native_command_survives_failed_shadowing_plugin() {
     use hume_scripting::attribution::PluginId;

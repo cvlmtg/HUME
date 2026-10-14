@@ -233,7 +233,8 @@ fn execute_command(ed: &mut Editor, input: &str) {
             // inside `Editor::run_typed_steel_command`, so `:bar arg`
             // cannot silently drop `arg` on the plugin's first call.
             // The entry's own name, not `cmd`: `get_typed` matched `cmd`
-            // case-insensitively, and the lazy loop guard is case-sensitive.
+            // case-insensitively, and the check that activation defined it is
+            // case-sensitive.
             TypedBody::Steel { .. } => {
                 let name = tc.name.clone();
                 ed.run_typed_steel_command(&name, None, expanded, force);

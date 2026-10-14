@@ -222,12 +222,10 @@ fn command_plugin_names_a_typed_stubs_plugin_before_activation() {
     );
 }
 
-/// Loop guard: if the plugin body never defines the declared command, the stub
-/// is removed after dispatch and a Warning is reported.
-///
-/// Without the loop guard the stub would stay, and every dispatch would retry.
+/// A declared command the plugin body never defines is gone once the first
+/// dispatch activates the plugin, so a later dispatch does not retry it.
 #[test]
-fn loop_guard_removes_stub_when_body_never_defines_command() {
+fn activation_drops_a_stub_the_body_never_defined() {
     let (mut ed, _dir) = setup_lazy_editor(
         r#"(declare-plugin! "user/tp" #:typed-commands '("bar"))"#,
         // Plugin body exists but never defines "bar".
@@ -245,10 +243,9 @@ fn loop_guard_removes_stub_when_body_never_defines_command() {
 
     type_cmd(&mut ed, ":bar");
 
-    // Stub must have been removed by the loop guard.
     assert!(
         ed.state.config.registry.get_typed("bar").is_none(),
-        "stub must be removed when body never defines the command"
+        "activation must drop the stub the body never defined"
     );
 }
 
