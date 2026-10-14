@@ -136,7 +136,7 @@ The required fields, in order:
 - the C symbol that library exposes (each grammar's repo documents this)
 - a highlight query file
 
-Two optional keyword arguments follow, in either order, and either or both can be omitted:
+Three optional keyword arguments follow, in any order, and any of them can be omitted:
 
 If `my-lang` embeds other languages (like Markdown's fenced code blocks), pass its injections query with `#:injections`:
 
@@ -167,7 +167,17 @@ If it also defines structural text objects and navigation (functions, classes, a
   #:textobjects "/path/to/textobjects.scm")
 ```
 
-Omit both keywords for a language with nothing to offer there.
+If it also defines how new lines are indented, pass its indents query with `#:indents`, alone or alongside the others. It uses Helix's `indents.scm` captures; see [Indentation](editing.md#indentation) for what it drives:
+
+```scheme
+(register-grammar! "my-lang"
+  "/path/to/my_grammar.so"
+  "tree_sitter_my_lang"
+  "/path/to/highlights.scm"
+  #:indents "/path/to/indents.scm")
+```
+
+Omit all keywords for a language with nothing to offer there.
 
 ## Manage installed grammars
 

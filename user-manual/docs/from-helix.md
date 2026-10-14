@@ -77,6 +77,7 @@ Indentation (Helix's per-language `indent.tab-width`/`indent.unit` in `languages
 - `u` / `U` undo / redo
 - `>` / `<` indent / unindent the lines a selection touches, with count support (`3>`). HUME additionally re-renders each touched line's whole indent to the buffer's `tab-width`/`tab-style` rather than only prepending or trimming a fixed amount, so a mixed-tabs-and-spaces indent gets normalized as a side effect
 - `m i f`/`m a f`, `m i t`/`m a t`, `m i a`/`m a a`, `m i c`/`m a c`, `m i u`/`m a u`: the same letters as Helix's own match-mode textobjects except unit test (`T`→`u`; see below), selecting the enclosing function, class/type, argument, comment, or unit test for any language with a tree-sitter grammar that ships a textobjects query
+- Enter, `o` and `O` indent new lines with Helix's indentation queries (see [Indentation](editing.md#indentation)), written in the buffer's `tab-style`. There is no `indent-heuristic` setting: HUME always uses Helix's default, `hybrid`; `smart-indent` turns automatic indentation off. HUME also moves a closing bracket or keyword back as you type it
 
 ### Themes
 
@@ -212,7 +213,7 @@ Helix's bracket mode also binds `]f`/`[f`, `]t`/`[t`, `]a`/`[a`, `]c`/`[c`, and 
 
 Several features were intentionally adopted from Helix rather than reinvented:
 
-- **Tree-sitter grammars**: rather than curating our own grammar repository list, HUME pins a Helix commit and syncs grammar sources, revisions, language extensions, and file-glob associations from Helix's `languages.toml` via a script. Tree-sitter highlight queries are fetched directly from Helix's repository at the pinned revision at install time.
+- **Tree-sitter grammars**: rather than curating our own grammar repository list, HUME pins a Helix commit and syncs grammar sources, revisions, language extensions, and file-glob associations from Helix's `languages.toml` via a script. Tree-sitter queries (highlighting, injections, text objects and indentation) are fetched directly from Helix's repository at the pinned revision at install time.
 - **Language server registrations**: the same script and pinned Helix commit also sync which servers each language uses and in what order, how each server is started, its project root markers, its default settings, and any per-language feature limits (`only-features`/`except-features`, with Helix's own feature names). [`:lsp-install`](lsp.md#installing-servers) reads this list; `set-language-servers!` overrides it per language (see [Choosing which server a language uses](lsp.md#choosing-which-server-a-language-uses)).
 - **Helix-style surround**: the `core:helix-surround` plugin remaps surround operations to `ms` (wrap), `md` (delete), and `mr` (replace), matching Helix's keybindings. This is opt-in; HUME's default surround follows its own select-then-act model.
 - **Kitty keyboard protocol support**: HUME detects and uses the protocol the same way on Unix and Windows terminals, falling back to legacy key encoding where the protocol isn't available.

@@ -102,25 +102,31 @@ way the committed tree can be a generation behind by the time a query needs it.
 
 `Syntax::ensure_current` closes that window synchronously, at the query site: bake pending edits,
 build the next request (incremental when the baked chain is intact, a full parse otherwise), run
-it inline, install the result. Its own freshness gate requires `parsed_gen == Some(generation)`
-*and* `tree_gen == generation`, `generation` being the buffer text's. `parsed_gen` alone isn't enough, since a `ParseFailed` install
-advances it while leaving `layers`/`tree_gen` untouched, which would otherwise report "current"
-over a tree that predates a broken edit chain. `install`'s own "already installed" guard mirrors
-this concern from the other side — it must let a later successful result for a generation that
-already failed once actually land (whether a retried `ensure_current` call or a slow async result
-that finally arrives), so it's keyed on `parsed_gen`, `tree_gen`, *and* `layers.is_some()`
-together: no single field alone distinguishes "already installed" from every other state, since
-`bake` also advances `tree_gen` on the ordinary path, before `install`'s own successful arm ever
-runs.
+it inline, install the result. Its freshness gate, `Syntax::is_current`, holds when the committed
+layers were parsed for `generation`, the buffer text's; layers a bake only edited into that
+generation's coordinates are not current. `install`'s "already installed" guard is the same
+predicate, so it replaces baked layers and discards only a second result for a generation already
+parsed. A failed parse leaves the committed layers as they are and only marks the generation as
+attempted, which keeps `frame_tick` from posting it again; a later result for that same generation
+(a synchronous `ensure_current`, or a slow asynchronous result that finally arrives) still lands.
+
+When the baked chain is intact, the request, asynchronous or synchronous, carries the baked layers as
+its prior. The root reparses incrementally against its baked tree. An injected layer of the same
+grammar, depth and ranges as a prior one reparses against that layer's tree, or keeps that tree
+without a parse when no edit lies in its ranges, right after them, or before a range on its start
+row. Any other layer parses in full. A layer's injections query re-runs only over the bytes where
+its matches can have changed (the edited bytes and the ranges the reparse changed), and every other
+site is carried over from the prior layer.
 
 `hume-editor` wraps this in `syntax/parse.rs::ensure_syntax_current`, which no-ops instead
-of running the synchronous parse in three cases where it can't help: no committed tree yet (before
-the worker's first parse lands, `object_spans` already returns nothing regardless — a synchronous
-full parse here would just duplicate work the worker is already doing); the buffer is over
+of running the synchronous parse where it can't help: no committed tree yet (before the worker's
+first parse lands, `object_spans` already returns nothing regardless — a synchronous full parse
+here would just duplicate work the worker is already doing); the buffer is over
 `syntax-highlight-max-bytes` (closes a one-frame window `Editor::reparse_stale_buffers`'s own cap
-check doesn't cover); and no layer defines a textobjects query at all (a grammar with no
-`textobjects.scm` can never make `object_spans` return anything, so reparsing to answer it is pure
-waste, worst on a `.`-repeat or macro batch paying it once per step).
+check doesn't cover); and the caller's `SyntaxUse` has no query to answer from. For text objects
+that is no layer defining a textobjects query (reparsing to answer it is pure waste, worst on a
+`.`-repeat or macro batch paying it once per step); its siblings for indentation and injected
+languages are listed on the function.
 
 ## Selection policy (`hume-ops`)
 

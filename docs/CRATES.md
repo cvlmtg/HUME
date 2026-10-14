@@ -111,7 +111,7 @@ Steel (Scheme) scripting host: runs plugins and configuration, and exposes edito
 - hume-scripting
 - hume-editor
 ## Description
-Tree-sitter integration: grammar registry, incremental parsing, syntax highlighting, and structural text-object queries.
+Tree-sitter integration: grammar registry, incremental parsing, syntax highlighting, structural text-object queries, and indentation from the syntax tree.
 
 # test-fixtures
 ### Depends on

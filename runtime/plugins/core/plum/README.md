@@ -102,10 +102,10 @@ revision, tree-sitter symbol, subpath) lives in its bundled data file,
 `runtime/scheme/grammars.scm`. PLUM declares no copy of either. A language that borrows
 another's grammar (`jsx` uses javascript's) installs its own compiled copy under its own name.
 
-Highlighting and structural-text-object queries (`highlights.scm`, `injections.scm`,
-`textobjects.scm`) are not authored in HUME. They are fetched from the Helix project's
-`runtime/queries/` at a pinned commit (`runtime/scheme/helix-pin.scm`, read once when PLUM
-loads), so HUME uses Helix's query files without vendoring them.
+Highlighting, injection, structural-text-object and indentation queries (`highlights.scm`,
+`injections.scm`, `textobjects.scm`, `indents.scm`) are not authored in HUME. They are fetched
+from the Helix project's `runtime/queries/` at a pinned commit (`runtime/scheme/helix-pin.scm`,
+read once when PLUM loads), so HUME uses Helix's query files without vendoring them.
 
 ### Query fetching
 

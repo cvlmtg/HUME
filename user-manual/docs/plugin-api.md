@@ -196,7 +196,7 @@ Both ends speak the same list shape. A string a script writes pastes as whole li
 | `(bundled-language-grammar name)` | The grammar HUME ships for language `name`, as `(url rev symbol subpath)`, or `#f` when it ships none |
 | `(bundled-grammar-languages)` | Every language HUME ships a grammar for, sorted |
 | `(grammar-url g)`, `(grammar-rev g)`, `(grammar-symbol g)`, `(grammar-subpath g)` | One field of a grammar `bundled-language-grammar` returns |
-| `(register-grammar! name grammar-path symbol highlights-path #:injections #:textobjects)` | Register an already-compiled tree-sitter grammar |
+| `(register-grammar! name grammar-path symbol highlights-path #:injections #:textobjects #:indents)` | Register an already-compiled tree-sitter grammar |
 | `(language-has-grammar? name)` | `#t` if `name` has an attached grammar |
 
 `define-language!`/`configure-language!`/`register-grammar!` are covered with examples in [Teach HUME a new language](syntax-highlighting.md#teach-hume-a-new-language).

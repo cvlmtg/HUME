@@ -17,6 +17,7 @@
 - `G G` comments or uncomments the lines of each selection, in the language at the cursor. `prefer-line-comments` uses line comments instead of a block comment for several lines.
 - `.` reuses your answers to a `#:repeatable` command's character read, picker, prompt or menu instead of asking again.
 - With the kitty keyboard protocol, `Ctrl-?` searches backward and extends the selection.
+- Enter, `o` and `O` indent new lines from the language's syntax tree, and a closing token such as `}` typed on a new line moves that line back. Run `:plum-install-grammar <language>` again for each grammar installed before this release.
 - `:set buffer line-ending=lf|crlf` converts a buffer's line endings.
 - `:set word-selects-whitespace=after` makes `w`/`b`, `mm` and `maw` take the whitespace after the word.
 
@@ -34,6 +35,7 @@
 - New `stdlib/report-section` and `stdlib/show-report!` in `core:stdlib` show a list as titled sections in a read-only buffer.
 - `call!` can pass a pattern to `search-forward`, `search-backward` and `sift-within`, and a character to `find-forward`, `find-backward`, `till-forward`, `till-backward`, `replace` and `surround-add`.
 - A completion item's `documentation` and `detail` show in the completion documentation box.
+- `register-grammar!` takes an `#:indents` query that indents new lines from the syntax tree.
 
 ### Language servers
 - A box beside the completion menu shows the highlighted completion's documentation, asking the server for it when missing. `Ctrl-d`/`Ctrl-u` scroll it, and `completion-docs` turns it off.
@@ -55,6 +57,7 @@
 - `:lsp-catalog` shows the server list in a read-only buffer, sorted by name, instead of printing it over the editor.
 - `core:lsp-install` reports a server whose install receipt is damaged as an interrupted install, instead of failing to load.
 - A position an `lsp-request!` holds through `#:tracked` is released when the code that sent the request raises an error afterwards, instead of staying tracked.
+- Text objects and highlighting are faster in Markdown files with many code blocks.
 
 ## [0.14.1] - 2026-10-08
 

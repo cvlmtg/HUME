@@ -119,8 +119,8 @@ Text objects (use the `m` prefix):
 | `a` | `insert-at-selection-end` |  | Insert after selection |
 | `I` | `insert-at-line-start` |  | Insert at first non-blank on line |
 | `A` | `insert-at-line-end` |  | Insert at end of line |
-| `o` | `open-line-below` |  | Open new line below, insert |
-| `O` | `open-line-above` |  | Open new line above, insert |
+| `o` | `open-line-below` |  | Open new line below, insert (indented like `Enter`) |
+| `O` | `open-line-above` |  | Open new line above, insert (indented like `Enter`) |
 | `:` | `command-mode` |  | Open command mode prompt |
 | `/` | `search-forward` |  | Search forward |
 | `?` | `search-backward` |  | Search backward. `Ctrl-?` (kitty) extends the selection to the match |
@@ -240,7 +240,7 @@ Press `Ctrl-p` then a second key:
 | `Tab` | — |  | Insert tab (literal `\t`, or spaces to the next tab stop when `tab-style = soft`) |
 | `Backspace` | — |  | Delete character before cursor; snaps to previous tab stop when in leading whitespace (auto-pairs aware) |
 | `Delete` | — |  | Delete character under cursor |
-| `Enter` | — |  | Insert newline, copying leading whitespace from current line |
+| `Enter` | — |  | Insert newline, indented as described in [Indentation](editing.md#indentation) |
 | `Ctrl-w` | `delete-word-backward` |  | Delete word before cursor |
 | `Ctrl-Space` | `completion-trigger` |  | Show completions at the cursor, from every registered completion source (a language server's, say; see [Language servers](lsp.md)) |
 | Any other character | — |  | Insert character (auto-pairs aware) |

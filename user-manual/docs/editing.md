@@ -69,6 +69,16 @@ You can align to the left or the right depending on which end of the selection i
 
 `>`/`<` shift every line touched by a selection by one indent level, using the buffer's `tab-width` and `tab-style` (see [Configuration](configuration.md)). A prefix count shifts by that many levels at once (`3>`). A blank or whitespace-only line inside the selection is left alone, so it never picks up trailing whitespace. Each touched line's whole indent is re-rendered to the new width in the current `tab-style`, not just prepended to or trimmed from, so `<` immediately after `>` restores the previous indent width exactly (the characters themselves are re-rendered in `tab-style`, so a mixed tabs-and-spaces indent normalizes rather than coming back byte-identical). `<` on an indent narrower than one level flattens it to the left margin instead of going negative, so `>` afterward lands on a full level rather than back where the first `<` started.
 
+## Indentation
+
+Enter, `o` and `O` start the new line at the indent the surrounding code calls for: one level deeper inside a block you just opened, level with the code around it otherwise. With `auto-pairs` on, Enter between a pair of brackets opens a block: the cursor lands on an indented line and the closing bracket moves to the line below.
+
+When the first thing you type on a new line closes a block, such as a closing bracket or keyword, the line moves back to the block's indent. A closing word moves back once it is finished, when you type a space or punctuation after it or press Enter. A line whose indent you changed by hand is left alone.
+
+This uses the language's grammar and its indentation rules, which `:plum-install-grammar <language>` installs. Without them, a new line just copies the indent of the current line, and nothing moves back as you type. Set `smart-indent` to `#f` to turn automatic indentation off: new lines then start at the left margin.
+
+New indentation follows the buffer's `tab-width` and `tab-style`, as `>` and `<` do. To indent with spaces in a language, set its `tab-style` to `soft` (see [Configuration](configuration.md)).
+
 ## Comments
 
 | Key | Effect |
