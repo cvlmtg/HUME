@@ -109,6 +109,9 @@ numbers directly.
 - **L38** — Analyse the change the user proposed. Restructuring something they
   did not name is a separate proposal; offer it as optional, never as a
   requirement of theirs.
+- **L39** — A workaround offered to the user must be possible in HUME. Check
+  the plugin model before suggesting one; a plugin cannot `require` another
+  plugin's library module.
 
 ---
 
@@ -1456,3 +1459,19 @@ structure could also change, say so as a separate, optional proposal with its
 own reason, and keep it out of the analysis of the user's idea.
 
 **Files:** `runtime/scheme/languages.scm`, `runtime/scheme/README.md`.
+
+## L39 — A reply suggested a workaround the plugin model does not allow (2026-10-14)
+
+**Root cause:** Weighing how a drawer render proc should reach a lazy plugin's
+code, the reply told the user that a renderer needing a plugin's helpers could
+`require` that plugin's library module instead of calling its command. A plugin
+cannot `require` another plugin's library module, so the argument for the
+recommended option rested on something that does not exist. The user had to
+correct it.
+
+**Prevention rule:** Before suggesting a workaround, confirm that HUME supports
+it: read the plugin loading code or the user manual. If it cannot be confirmed,
+leave it out of the argument.
+
+**Files:** `hume-scripting/src/read_only_host.rs` (`permit_plugin_activation`),
+`hume-scripting/src/builtins/plugins.rs`.
