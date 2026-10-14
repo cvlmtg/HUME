@@ -1,8 +1,8 @@
 // Integration tests for incremental tree-sitter parsing.
 //
 // Verifies end-to-end: edits record pending InputEdits, reparse_stale_buffers
-// uses them to build old_tree for incremental re-parsing, and pending_edits are
-// drained after each successful install.
+// bakes them into the committed trees for incremental re-parsing, and
+// pending_edits are drained after each successful install.
 //
 // Requires grammar fixture: run scripts/fetch-test-grammars.sh.
 
@@ -234,7 +234,7 @@ fn bake_aligns_committed_tree_before_precise_install() {
     let syn = ed.state.buffers.get(bid).syntax.as_ref().unwrap();
     assert_eq!(
         syn.tree_gen(),
-        generation_after,
+        Some(generation_after),
         "tree_gen must equal generation after bake"
     );
     assert!(
@@ -300,7 +300,7 @@ fn bake_handles_multi_edit_chain_in_one_shot() {
     let syn = ed.state.buffers.get(bid).syntax.as_ref().unwrap();
     assert_eq!(
         syn.tree_gen(),
-        generation_after,
+        Some(generation_after),
         "tree_gen must jump to generation after bake"
     );
     assert!(
@@ -447,7 +447,7 @@ fn an_edit_from_a_queued_steel_call_is_carried_into_the_tree_before_the_frame() 
     let syn = buf.syntax.as_ref().unwrap();
     assert_eq!(
         syn.tree_gen(),
-        buf.text().generation(),
+        Some(buf.text().generation()),
         "the committed tree is carried to the text the frame will draw"
     );
 }

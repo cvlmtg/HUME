@@ -8,7 +8,10 @@ use std::thread;
 
 use hume_engine::pipeline::BufferId;
 
-use crate::injections::resolve_and_parse_injections;
+use crate::edited_bytes::EditedBytes;
+use crate::injections::{
+    InjectionContext, InjectionSites, PriorInjections, SitePrior, resolve_and_parse_injections,
+};
 use crate::registry::GrammarBundle;
 use hume_editing::text::BufferText;
 
@@ -54,17 +57,27 @@ pub struct ParseRequest {
     /// The grammar bundle to parse with. Read on the worker thread for
     /// `set_language` and injection resolution.
     pub bundle: Arc<GrammarBundle>,
-    /// O(1) rope clone (structural sharing), serialised to bytes on the worker
-    /// thread only when the parse succeeds, avoiding the main-thread allocation.
+    /// O(1) rope clone (structural sharing). The parser reads it chunk by
+    /// chunk, so the text is never copied into one buffer.
     pub text: BufferText,
-    /// Previous parse tree with all pending `InputEdit`s applied, enabling
-    /// incremental re-parsing.  `None` for a full reparse (first parse, grammar
-    /// swap, or broken edit chain).
-    pub old_tree: Option<tree_sitter::Tree>,
+    /// The committed layers with every pending `InputEdit` applied, which
+    /// each layer and its injection sites are reused or reparsed from.
+    /// `None` for a full parse (first parse, grammar swap, or broken edit
+    /// chain).
+    pub(crate) prior: Option<PriorLayers>,
     /// Snapshot of every grammared language, for resolving an injected
     /// language name (e.g. a fenced code block's info string) to its grammar
     /// without touching main-thread state from the worker.
     pub langs: Arc<FxHashMap<String, Arc<GrammarBundle>>>,
+}
+
+/// Committed layers edited to a request's text.
+pub(crate) struct PriorLayers {
+    pub(crate) root: tree_sitter::Tree,
+    pub(crate) root_sites: InjectionSites,
+    pub(crate) injected: PriorInjections,
+    /// The bytes the edits changed.
+    pub(crate) edited: EditedBytes,
 }
 
 pub enum ParseOutcome {
@@ -72,14 +85,18 @@ pub enum ParseOutcome {
     /// layer resolved from it; byte text is read from the live rope at render
     /// time via `RopeProvider` in the engine highlighter.
     Ok(ParsedLayers),
-    /// `Parser::parse` returned `None` (transient; currently unreachable without
-    /// a cancellation / timeout).  Syntax stays attached; the next frame retries.
+    /// `Parser::parse` returned `None`: the parse was cancelled. The
+    /// committed layers stay as they were and are not current. `frame_tick`
+    /// does not post this generation again; the next edit, or a
+    /// synchronous `Syntax::ensure_current`, parses again.
     ParseFailed,
 }
 
 /// The root parse tree plus every injected layer resolved from it.
 pub struct ParsedLayers {
     pub root: tree_sitter::Tree,
+    /// The root tree's injection sites.
+    pub root_sites: InjectionSites,
     pub injected: Vec<ParsedInjection>,
 }
 
@@ -92,6 +109,8 @@ pub struct ParsedInjection {
     /// Absolute byte ranges this layer was parsed over, sorted by start.
     pub ranges: Vec<tree_sitter::Range>,
     pub depth: u8,
+    /// The layer's own injection sites.
+    pub sites: InjectionSites,
 }
 
 pub struct ParseDone {
@@ -136,10 +155,9 @@ fn coalesce_one(batch: &mut FxHashMap<BufferId, ParseRequest>, req: ParseRequest
 /// a full `Vec<u8>` allocation. `chunk_at_byte` returns a &str slice directly
 /// into the rope's immutable B-tree nodes.
 ///
-/// Shared by the root parse and every injected-layer parse; injected layers
-/// always pass `old_tree: None` (only the root is incremental; injected
-/// regions are typically small enough that a full parse is cheap and avoids
-/// tracking per-layer identity across edits).
+/// Shared by the root parse and every injected-layer parse. `old_tree` is
+/// the layer's previous tree, edited to `rope`'s text, for an incremental
+/// parse; `None` parses in full.
 pub(crate) fn run_parse(
     parser: &mut tree_sitter::Parser,
     rope: &ropey::Rope,
@@ -170,9 +188,10 @@ pub(crate) fn run_parse(
 }
 
 /// Execute a parse request synchronously, returning the finished `ParseDone`.
-/// `pub(crate)` for `Syntax::attach_sync` (small one-shot content, e.g. a
-/// hover popup, where routing through the async worker isn't worth it),
-/// which lives in this crate's `syntax` module.
+/// `pub(crate)` for `Syntax::ensure_current`, which parses on the calling
+/// thread when a reader needs the tree of the current text now (and, through
+/// it, `Syntax::attach_sync` for small one-shot content such as a hover
+/// popup).
 ///
 /// Always calls `set_language` and resets `included_ranges` to whole-buffer
 /// before the root parse: layer parsing switches languages and ranges
@@ -194,18 +213,29 @@ pub(crate) fn do_parse(
         .expect("empty ranges are always valid: whole-buffer parse");
 
     let rope = req.text.rope();
-    let outcome = match run_parse(parser, rope, req.old_tree.as_ref(), cancel) {
+    let prior = req.prior.as_ref();
+    let outcome = match run_parse(parser, rope, prior.map(|prior| &prior.root), cancel) {
         Some(root) => {
-            let injected = resolve_and_parse_injections(
-                parser,
-                &root,
-                &req.bundle,
+            let cx = InjectionContext {
                 rope,
-                &req.langs,
+                langs: &req.langs,
+                prior: prior.map(|prior| (&prior.injected, &prior.edited)),
                 cancel,
-                1,
-            );
-            ParseOutcome::Ok(ParsedLayers { root, injected })
+            };
+            let root_prior = prior.map(|prior| SitePrior {
+                old_tree: &prior.root,
+                sites: &prior.root_sites,
+                hull: 0..=rope.len_bytes(),
+                reparsed: true,
+                edited: &prior.edited,
+            });
+            let (root_sites, injected) =
+                resolve_and_parse_injections(parser, &cx, &root, &req.bundle, 1, root_prior);
+            ParseOutcome::Ok(ParsedLayers {
+                root,
+                root_sites,
+                injected,
+            })
         }
         None => ParseOutcome::ParseFailed,
     };

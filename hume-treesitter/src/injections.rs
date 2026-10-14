@@ -1,9 +1,11 @@
 use rustc_hash::FxHashMap;
+use std::ops::{Range, RangeInclusive};
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
 use streaming_iterator::StreamingIterator;
 
+use crate::edited_bytes::{EditedBytes, push_merging};
 use crate::highlight::RopeProvider;
 
 use crate::parse_worker::{MAX_INJECTION_DEPTH, ParsedInjection, run_parse};
@@ -13,8 +15,9 @@ use crate::registry::GrammarBundle;
 /// resolve embedded-language regions at parse time (fenced code blocks,
 /// combined `markdown.inline` layers, doc-comment content, etc.).
 ///
-/// Built once per grammar attach (in `attach_grammar`), shared across every
-/// buffer of that language via `Arc`, mirroring `GrammarBundle.query`.
+/// Built once per grammar attach (in `attach_grammar`) and held by the
+/// language's `GrammarBundle`, which every buffer of that language shares
+/// through an `Arc`.
 pub struct InjectionsQuery {
     pub(crate) query: Arc<tree_sitter::Query>,
     /// Capture index for `@injection.content`, if the query defines it.
@@ -158,43 +161,120 @@ fn node_text(node: tree_sitter::Node, rope: &ropey::Rope) -> String {
     rope.byte_slice(node.start_byte()..node.end_byte()).into()
 }
 
-/// One resolved (but not yet parsed) injection site: the grammar to parse
-/// it with and the byte ranges to include. Carrying the resolved `bundle`
-/// (not just its name) makes a second, redundant `langs` lookup at
-/// consumption time structurally impossible instead of merely unreachable.
-struct InjectionGroup {
-    bundle: Arc<GrammarBundle>,
+/// The smallest range holding both `a` and `b`.
+fn hull(a: tree_sitter::Range, b: tree_sitter::Range) -> tree_sitter::Range {
+    let (start_byte, start_point) = if b.start_byte < a.start_byte {
+        (b.start_byte, b.start_point)
+    } else {
+        (a.start_byte, a.start_point)
+    };
+    let (end_byte, end_point) = if b.end_byte > a.end_byte {
+        (b.end_byte, b.end_point)
+    } else {
+        (a.end_byte, a.end_point)
+    };
+    tree_sitter::Range {
+        start_byte,
+        end_byte,
+        start_point,
+        end_point,
+    }
+}
+
+/// One match of a layer's injections query. It depends only on the layer's
+/// tree and text, not on which grammars are installed.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct InjectionSite {
+    pattern_index: usize,
+    /// The pattern's static `#set! injection.language`, else the lowercased
+    /// text of its `@injection.language` capture.
+    language: String,
+    /// The hull of every node the match captured.
+    span: tree_sitter::Range,
+    /// The content ranges, unnormalized. Never empty.
     ranges: Vec<tree_sitter::Range>,
 }
 
-/// Resolve and parse every embedded-language injection reachable from `tree`,
-/// recursing into each injected layer's own injections up to
-/// `MAX_INJECTION_DEPTH`.
-///
-/// `depth` is the depth being resolved *into* (1 for the root's direct
-/// injections). Runs on the parse worker thread; `parser` is reused across
-/// layers (language + included-ranges are reconfigured for each); `cancel`
-/// is checked by the same progress callback as the root parse.
-pub(crate) fn resolve_and_parse_injections(
-    parser: &mut tree_sitter::Parser,
+/// A layer's injection sites, ordered by the start byte of each site's
+/// first content range, then by pattern index.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct InjectionSites(Vec<InjectionSite>);
+
+impl InjectionSite {
+    fn order(&self) -> (usize, usize) {
+        (self.ranges[0].start_byte, self.pattern_index)
+    }
+}
+
+impl InjectionSites {
+    /// `sites` in order, each once. Sites tied on the order keep the order
+    /// they are given in.
+    fn canonical(mut sites: Vec<InjectionSite>) -> Self {
+        sites.sort_by_key(InjectionSite::order);
+        let mut unique: Vec<InjectionSite> = Vec::with_capacity(sites.len());
+        for site in sites {
+            let seen = unique
+                .iter()
+                .rev()
+                .take_while(|kept| kept.order() == site.order())
+                .any(|kept| *kept == site);
+            if !seen {
+                unique.push(site);
+            }
+        }
+        Self(unique)
+    }
+
+    /// Move every site's span and ranges through `edit`, as `Tree::edit`
+    /// moves a tree's included ranges.
+    pub(crate) fn edit(&mut self, edit: &tree_sitter::InputEdit) {
+        for site in &mut self.0 {
+            edit.edit_range(&mut site.span);
+            for range in &mut site.ranges {
+                edit.edit_range(range);
+            }
+        }
+    }
+}
+
+/// Every match of `inj` over `tree` that names a language and captures
+/// content, in match order: over the whole tree, or one bounded run per
+/// region of `within`, which finds the matches whose root node (the parent
+/// of a pattern without a single root) meets the region.
+fn query_sites(
+    inj: &InjectionsQuery,
     tree: &tree_sitter::Tree,
-    bundle: &GrammarBundle,
     rope: &ropey::Rope,
-    langs: &FxHashMap<String, Arc<GrammarBundle>>,
-    cancel: &AtomicBool,
-    depth: u8,
-) -> Vec<ParsedInjection> {
-    let mut out = Vec::new();
-    let Some(inj) = bundle.injections.as_ref() else {
-        return out;
+    within: Option<&[Range<usize>]>,
+) -> Vec<InjectionSite> {
+    let Some(content_idx) = inj.content_capture else {
+        return Vec::new();
     };
-
-    let mut non_combined: Vec<InjectionGroup> = Vec::new();
-    let mut combined: FxHashMap<(usize, String), InjectionGroup> = FxHashMap::default();
-
+    let mut sites = Vec::new();
     let mut cursor = tree_sitter::QueryCursor::new();
-    let root = tree.root_node();
-    let mut matches = cursor.matches(&inj.query, root, RopeProvider(rope));
+    match within {
+        None => push_sites(inj, content_idx, &mut cursor, tree, rope, &mut sites),
+        Some(regions) => {
+            for region in regions {
+                cursor.set_byte_range(region.clone());
+                push_sites(inj, content_idx, &mut cursor, tree, rope, &mut sites);
+            }
+        }
+    }
+    sites
+}
+
+/// Push onto `sites` every match `cursor` finds of `inj` over `tree` that
+/// names a language and captures content.
+fn push_sites(
+    inj: &InjectionsQuery,
+    content_idx: u32,
+    cursor: &mut tree_sitter::QueryCursor,
+    tree: &tree_sitter::Tree,
+    rope: &ropey::Rope,
+    sites: &mut Vec<InjectionSite>,
+) {
+    let mut matches = cursor.matches(&inj.query, tree.root_node(), RopeProvider(rope));
     while let Some(m) = matches.next() {
         let pattern = &inj.patterns[m.pattern_index];
 
@@ -210,21 +290,7 @@ pub(crate) fn resolve_and_parse_injections(
         });
         let Some(language) = language else { continue };
 
-        // Unknown injection language: skip silently. No lazy install: the
-        // user opts into grammars explicitly via PLUM. Every entry in `langs`
-        // is grammared, since it's built from the grammar table.
-        // Resolved here, before `combined` insertion, so its FxHashMap only
-        // ever keys on the trusted installed-grammar names. A dynamic
-        // `@injection.language` capture is raw buffer text, and unfiltered
-        // attacker-chosen keys in an unkeyed hash invite collision DoS.
-        let Some(child_bundle) = langs.get(&language) else {
-            continue;
-        };
-
-        let Some(content_idx) = inj.content_capture else {
-            continue;
-        };
-        let mut ranges: Vec<tree_sitter::Range> = m
+        let ranges: Vec<tree_sitter::Range> = m
             .captures()
             .iter()
             .filter(|c| c.index == content_idx)
@@ -233,20 +299,157 @@ pub(crate) fn resolve_and_parse_injections(
         if ranges.is_empty() {
             continue;
         }
+        let span = m
+            .captures()
+            .iter()
+            .map(|c| c.node.range())
+            .reduce(hull)
+            .expect("a match with content ranges captured its node");
+        sites.push(InjectionSite {
+            pattern_index: m.pattern_index,
+            language,
+            span,
+            ranges,
+        });
+    }
+}
 
-        if pattern.combined {
+/// A layer's committed sites and tree, edited to the text being parsed,
+/// and where they were found.
+pub(crate) struct SitePrior<'p> {
+    /// The layer's committed tree, edited to the text being parsed.
+    pub(crate) old_tree: &'p tree_sitter::Tree,
+    /// The sites of `old_tree`, edited with it.
+    pub(crate) sites: &'p InjectionSites,
+    /// The bytes from the layer's first range's start to its last one's
+    /// end.
+    pub(crate) hull: RangeInclusive<usize>,
+    /// Whether the new tree is a reparse of `old_tree`, rather than
+    /// `old_tree` itself.
+    pub(crate) reparsed: bool,
+    /// The bytes the edits changed.
+    pub(crate) edited: &'p EditedBytes,
+}
+
+/// The bytes where a layer's sites can differ from `prior`'s, as sorted,
+/// disjoint closed intervals: the edited bytes in the layer's hull and,
+/// when `tree` was reparsed from `prior.old_tree`, every range the two
+/// trees differ in, its end byte included.
+fn dirty_bytes(prior: &SitePrior<'_>, tree: &tree_sitter::Tree) -> Vec<RangeInclusive<usize>> {
+    let mut dirty: Vec<RangeInclusive<usize>> = prior.edited.within(prior.hull.clone()).collect();
+    if prior.reparsed {
+        dirty.extend(
+            prior
+                .old_tree
+                .changed_ranges(tree)
+                .map(|range| range.start_byte..=range.end_byte),
+        );
+    }
+    dirty.sort_unstable_by_key(|region| *region.start());
+    let mut merged: Vec<RangeInclusive<usize>> = Vec::with_capacity(dirty.len());
+    for region in dirty {
+        push_merging(&mut merged, region);
+    }
+    merged
+}
+
+/// The sites of `tree`: a full query without `prior`, else `prior`'s sites
+/// with those that can have changed queried again.
+///
+/// A match depends only on its root node's subtree: its structure, and the
+/// text its predicates and language capture read. A bounded run over the
+/// dirty bytes D, each region queried from one byte before it, finds the
+/// matches whose root meets the region, on the old tree and the new one
+/// alike. A match whose root misses D has the same root subtree and text in
+/// both trees: it is carried, and the new run does not find it again. A
+/// match whose root meets D is found by the old-tree run, so it is dropped,
+/// and by the new-tree run if it still holds. The changed ranges promise
+/// that a byte outside them has the same ancestor symbols in both trees,
+/// not the same extents; a node whose extent or children change has a
+/// changed byte inside or next to its old or new extent. The byte before a
+/// region is queried with it, and D's closed ends already hold the byte
+/// after each change. D also takes the edited bytes in the layer's hull,
+/// since tree-sitter can leave an edit out of the changed ranges (a
+/// deleted info string) and a node's text includes the gaps between the
+/// layer's ranges. A carried site's span must also clear D: the old-tree
+/// run reads the new text, so a predicate over a captured node an edit
+/// changed can fail there and leave a stale site undropped.
+fn resolve_sites(
+    inj: &InjectionsQuery,
+    tree: &tree_sitter::Tree,
+    rope: &ropey::Rope,
+    prior: Option<SitePrior<'_>>,
+) -> InjectionSites {
+    let Some(prior) = prior else {
+        return InjectionSites::canonical(query_sites(inj, tree, rope, None));
+    };
+    let dirty = dirty_bytes(&prior, tree);
+    if dirty.is_empty() {
+        return prior.sites.clone();
+    }
+    let regions: Vec<Range<usize>> = dirty
+        .iter()
+        .map(|region| region.start().saturating_sub(1)..region.end() + 1)
+        .collect();
+    let dropped = query_sites(inj, prior.old_tree, rope, Some(&regions));
+    let carried = prior.sites.0.iter().filter(|site| {
+        dirty.iter().all(|region| {
+            site.span.end_byte < *region.start() || site.span.start_byte > *region.end()
+        }) && !dropped.contains(site)
+    });
+    let new = if prior.reparsed {
+        query_sites(inj, tree, rope, Some(&regions))
+    } else {
+        dropped.clone()
+    };
+    InjectionSites::canonical(carried.cloned().chain(new).collect())
+}
+
+/// One resolved (but not yet parsed) injection: the grammar to parse it
+/// with and the normalized, non-empty byte ranges to include. Carrying the
+/// resolved `bundle` (not just its name) makes a second, redundant `langs`
+/// lookup at consumption time structurally impossible instead of merely
+/// unreachable.
+struct InjectionGroup {
+    bundle: Arc<GrammarBundle>,
+    ranges: Vec<tree_sitter::Range>,
+}
+
+/// The layers `sites` inject with the grammars in `langs`, in the order
+/// they are installed: each non-combined site in site order, then one
+/// layer per combined pattern and language, merging all of its sites, in
+/// (pattern index, language) order.
+fn group_sites(
+    inj: &InjectionsQuery,
+    sites: &InjectionSites,
+    langs: &FxHashMap<String, Arc<GrammarBundle>>,
+) -> Vec<InjectionGroup> {
+    let mut non_combined: Vec<InjectionGroup> = Vec::new();
+    let mut combined: FxHashMap<(usize, &str), InjectionGroup> = FxHashMap::default();
+    for site in &sites.0 {
+        // Unknown injection language: skip silently. No lazy install: the
+        // user opts into grammars explicitly via PLUM. Every entry in `langs`
+        // is grammared, since it's built from the grammar table.
+        // Resolved here, before `combined` insertion, so its FxHashMap only
+        // ever keys on the trusted installed-grammar names. A dynamic
+        // `@injection.language` capture is raw buffer text, and unfiltered
+        // attacker-chosen keys in an unkeyed hash invite collision DoS.
+        let Some(bundle) = langs.get(&site.language) else {
+            continue;
+        };
+        if inj.patterns[site.pattern_index].combined {
             combined
-                .entry((m.pattern_index, language))
+                .entry((site.pattern_index, site.language.as_str()))
                 .or_insert_with(|| InjectionGroup {
-                    bundle: Arc::clone(child_bundle),
+                    bundle: Arc::clone(bundle),
                     ranges: Vec::new(),
                 })
                 .ranges
-                .append(&mut ranges);
+                .extend_from_slice(&site.ranges);
         } else {
             non_combined.push(InjectionGroup {
-                bundle: Arc::clone(child_bundle),
-                ranges,
+                bundle: Arc::clone(bundle),
+                ranges: site.ranges.clone(),
             });
         }
     }
@@ -255,53 +458,210 @@ pub(crate) fn resolve_and_parse_injections(
     // (pattern_index, language) key so layer order (and thus same-depth `seq`
     // priority in `flatten_overlaps`) is stable across parses.
     let mut combined: Vec<_> = combined.into_iter().collect();
-    combined.sort_unstable_by(|(a, _), (b, _)| a.cmp(b));
+    combined.sort_unstable_by_key(|&(key, _)| key);
 
-    for group in non_combined
+    non_combined
         .into_iter()
-        .chain(combined.into_iter().map(|(_, g)| g))
-    {
-        let child_bundle = &group.bundle;
-        let ranges = normalize_ranges(group.ranges);
-        if ranges.is_empty() {
-            continue;
-        }
+        .chain(combined.into_iter().map(|(_, group)| group))
+        .filter_map(|group| {
+            let ranges = normalize_ranges(group.ranges);
+            (!ranges.is_empty()).then_some(InjectionGroup {
+                bundle: group.bundle,
+                ranges,
+            })
+        })
+        .collect()
+}
 
-        if parser
-            .set_language(child_bundle.grammar.language())
-            .is_err()
-        {
-            continue; // ABI mismatch on the injected grammar
-        }
-        if parser.set_included_ranges(&ranges).is_err() {
-            continue; // non-monotonic ranges (shouldn't happen post-normalize)
-        }
+/// An injected layer of the committed layers, edited to the text being
+/// parsed.
+pub(crate) struct PriorInjection {
+    pub(crate) bundle: Arc<GrammarBundle>,
+    pub(crate) depth: u8,
+    pub(crate) tree: tree_sitter::Tree,
+    /// Never empty, as no injected layer's ranges are.
+    pub(crate) ranges: Vec<tree_sitter::Range>,
+    pub(crate) sites: InjectionSites,
+}
 
-        let Some(child_tree) = run_parse(parser, rope, None, cancel) else {
-            continue; // cancelled mid-parse
+impl PriorInjection {
+    fn key(&self) -> (u8, usize) {
+        (self.depth, self.ranges[0].start_byte)
+    }
+
+    /// What the sites of this layer's next tree resolve from.
+    fn site_prior<'p>(&'p self, edited: &'p EditedBytes, reparsed: bool) -> SitePrior<'p> {
+        let last = self
+            .ranges
+            .last()
+            .expect("an injected layer's ranges are never empty");
+        SitePrior {
+            old_tree: &self.tree,
+            sites: &self.sites,
+            hull: self.ranges[0].start_byte..=last.end_byte,
+            reparsed,
+            edited,
+        }
+    }
+}
+
+/// The committed layers' injected layers, sorted by depth, then by the
+/// start byte of their first range.
+pub(crate) struct PriorInjections {
+    layers: Vec<PriorInjection>,
+}
+
+impl FromIterator<PriorInjection> for PriorInjections {
+    fn from_iter<I: IntoIterator<Item = PriorInjection>>(layers: I) -> Self {
+        let mut layers: Vec<PriorInjection> = layers.into_iter().collect();
+        layers.sort_by_key(PriorInjection::key);
+        Self { layers }
+    }
+}
+
+/// How a layer about to be parsed uses the committed layers.
+enum Reuse<'p> {
+    /// Install the prior layer's tree as it is, unparsed.
+    Unchanged(SitePrior<'p>),
+    /// Reparse against the prior layer's tree.
+    Incremental(SitePrior<'p>),
+    /// Parse with no old tree.
+    Fresh,
+}
+
+impl PriorInjections {
+    /// The prior layer of the same bundle, compared by identity, at the
+    /// same depth and over the same ranges, bytes and points alike, is
+    /// installed unchanged when `edited` does not touch its ranges and
+    /// reparsed against otherwise. A language name may since be bound to
+    /// another grammar, and tree-sitter refuses an old tree of another
+    /// language. Equal ranges leave the old tree no included-range
+    /// difference from the new parse. `ranges` is never empty.
+    ///
+    /// A parse reads only its grammar, its ranges, the text inside them
+    /// and the columns the ranges start at, all unchanged; the baked tree,
+    /// holding the same nodes at the positions the edits moved them to, is
+    /// a parse of the new text.
+    fn reuse<'p>(
+        &'p self,
+        bundle: &Arc<GrammarBundle>,
+        depth: u8,
+        ranges: &[tree_sitter::Range],
+        edited: &'p EditedBytes,
+    ) -> Reuse<'p> {
+        let key = (depth, ranges[0].start_byte);
+        let from = self.layers.partition_point(|prior| prior.key() < key);
+        let Some(prior) = self.layers[from..]
+            .iter()
+            .take_while(|prior| prior.key() == key)
+            .find(|prior| Arc::ptr_eq(&prior.bundle, bundle) && prior.ranges == ranges)
+        else {
+            return Reuse::Fresh;
+        };
+        if edited.touches(ranges) {
+            Reuse::Incremental(prior.site_prior(edited, true))
+        } else {
+            Reuse::Unchanged(prior.site_prior(edited, false))
+        }
+    }
+}
+
+/// `group`'s ranges parsed with its grammar against `old_tree`. `None` when
+/// the parser rejects the grammar or the ranges, or the parse is cancelled.
+fn parse_group(
+    parser: &mut tree_sitter::Parser,
+    cx: &InjectionContext<'_>,
+    group: &InjectionGroup,
+    old_tree: Option<&tree_sitter::Tree>,
+) -> Option<tree_sitter::Tree> {
+    // An ABI mismatch on the injected grammar.
+    parser.set_language(group.bundle.grammar.language()).ok()?;
+    // Non-monotonic ranges, which normalization rules out.
+    parser.set_included_ranges(&group.ranges).ok()?;
+    run_parse(parser, cx.rope, old_tree, cx.cancel)
+}
+
+/// What resolving a layer's injections reads besides the layer itself.
+pub(crate) struct InjectionContext<'a> {
+    pub(crate) rope: &'a ropey::Rope,
+    /// Every grammared language, by the name an injection gives.
+    pub(crate) langs: &'a FxHashMap<String, Arc<GrammarBundle>>,
+    /// The committed layers' injected layers, when they are edited to
+    /// `rope`'s text, and the bytes those edits changed.
+    pub(crate) prior: Option<(&'a PriorInjections, &'a EditedBytes)>,
+    /// Checked by the same progress callback as the root parse.
+    pub(crate) cancel: &'a AtomicBool,
+}
+
+/// The injection sites of `tree`, a layer of `bundle`'s grammar, resolved
+/// from `prior` as [`resolve_sites`] does, and every layer they inject,
+/// parsed, its own injections resolved the same way and listed right
+/// before it.
+///
+/// `depth` is the depth being resolved *into* (1 for the root's direct
+/// injections). A layer at `MAX_INJECTION_DEPTH`, or of a grammar without
+/// an injections query, has no sites and injects nothing. Each injected
+/// layer reuses or reparses against the prior layer
+/// [`PriorInjections::reuse`] picks, and parses in full without one.
+/// `parser` is reused across layers (language + included-ranges are
+/// reconfigured for each).
+pub(crate) fn resolve_and_parse_injections(
+    parser: &mut tree_sitter::Parser,
+    cx: &InjectionContext<'_>,
+    tree: &tree_sitter::Tree,
+    bundle: &GrammarBundle,
+    depth: u8,
+    prior: Option<SitePrior<'_>>,
+) -> (InjectionSites, Vec<ParsedInjection>) {
+    let Some(inj) = bundle
+        .injections
+        .as_ref()
+        .filter(|_| depth <= MAX_INJECTION_DEPTH)
+    else {
+        return (InjectionSites::default(), Vec::new());
+    };
+    let sites = resolve_sites(inj, tree, cx.rope, prior);
+
+    let mut out = Vec::new();
+    for group in group_sites(inj, &sites, cx.langs) {
+        let reuse = cx.prior.map_or(Reuse::Fresh, |(prior, edited)| {
+            prior.reuse(&group.bundle, depth, &group.ranges, edited)
+        });
+        let (child_tree, child_prior) = match reuse {
+            Reuse::Unchanged(prior) => (prior.old_tree.clone(), Some(prior)),
+            Reuse::Incremental(prior) => {
+                let Some(tree) = parse_group(parser, cx, &group, Some(prior.old_tree)) else {
+                    continue;
+                };
+                (tree, Some(prior))
+            }
+            Reuse::Fresh => {
+                let Some(tree) = parse_group(parser, cx, &group, None) else {
+                    continue;
+                };
+                (tree, None)
+            }
         };
 
-        if depth < MAX_INJECTION_DEPTH {
-            out.extend(resolve_and_parse_injections(
-                parser,
-                &child_tree,
-                child_bundle,
-                rope,
-                langs,
-                cancel,
-                depth + 1,
-            ));
-        }
-
+        let (child_sites, descendants) = resolve_and_parse_injections(
+            parser,
+            cx,
+            &child_tree,
+            &group.bundle,
+            depth + 1,
+            child_prior,
+        );
+        out.extend(descendants);
         out.push(ParsedInjection {
-            bundle: Arc::clone(child_bundle),
+            bundle: group.bundle,
             tree: child_tree,
-            ranges,
+            ranges: group.ranges,
             depth,
+            sites: child_sites,
         });
     }
 
-    out
+    (sites, out)
 }
 
 #[cfg(test)]

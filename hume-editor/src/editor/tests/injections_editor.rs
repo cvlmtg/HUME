@@ -383,6 +383,123 @@ fn a_selection_crossing_a_fence_takes_the_outer_language() {
     );
 }
 
+/// Types inside the first of two rust fences, then brings the layers
+/// current either by the background path (`reparse_stale_buffers` over the
+/// inline backend) or the foreground one (`ensure_syntax_current`).
+fn fence_edited_editor(foreground: bool) -> (Editor, hume_engine::pipeline::BufferId) {
+    let source = "# T\n\n```rust\nfn a() {}\n```\n\nText.\n\n```rust\nfn b() {}\n```\n";
+    let (mut ed, bid) = markdown_editor(source);
+    ed.feed_keys([key('j'), key('j'), key('j')]);
+    type_text(&mut ed, "let y = 1; ");
+    assert_eq!(
+        ed.state.buffers.get(bid).text().to_string(),
+        "# T\n\n```rust\nlet y = 1; fn a() {}\n```\n\nText.\n\n```rust\nfn b() {}\n```\n"
+    );
+    if foreground {
+        crate::editor::syntax::ensure_syntax_current(
+            &mut ed.state,
+            bid,
+            crate::editor::syntax::SyntaxUse::InjectedLanguages,
+        );
+    } else {
+        ed.reparse_stale_buffers(); // bakes and posts
+        ed.reparse_stale_buffers(); // installs
+    }
+    (ed, bid)
+}
+
+fn installed_shapes(
+    ed: &Editor,
+    bid: hume_engine::pipeline::BufferId,
+) -> Vec<hume_treesitter::layers::LayerShape> {
+    let buf = ed.state.buffers.get(bid);
+    let syn = buf.syntax.as_ref().unwrap();
+    assert!(
+        syn.is_current(buf.text().generation()),
+        "the installed layers describe the edited text"
+    );
+    syn.layers().unwrap().shapes()
+}
+
+fn injected_afresh(
+    ed: &Editor,
+    bid: hume_engine::pipeline::BufferId,
+) -> Vec<hume_treesitter::layers::LayerShape> {
+    let buf = ed.state.buffers.get(bid);
+    buf.syntax
+        .as_ref()
+        .unwrap()
+        .injected_shapes_resolved_afresh(buf.text(), &ed.state.config.languages.grammar_snapshot())
+}
+
+fn rust_fence_trees_changed(ed: &Editor, bid: hume_engine::pipeline::BufferId) -> Vec<bool> {
+    let rust = ed.state.config.languages.id_of("rust");
+    ed.state
+        .buffers
+        .get(bid)
+        .syntax
+        .as_ref()
+        .unwrap()
+        .layers()
+        .unwrap()
+        .layers
+        .iter()
+        .filter(|l| Some(l.bundle.language) == rust)
+        .map(|l| l.tree.root_node().has_changes())
+        .collect()
+}
+
+#[test]
+fn background_and_foreground_reparse_of_a_fence_edit_agree_with_a_fresh_resolution() {
+    require_fixtures();
+    let (background, background_bid) = fence_edited_editor(false);
+    let (foreground, foreground_bid) = fence_edited_editor(true);
+
+    let background_shapes = installed_shapes(&background, background_bid);
+    let foreground_shapes = installed_shapes(&foreground, foreground_bid);
+    // Each editor owns its grammar bundles, so the layers compare by language.
+    assert_eq!(background_shapes.len(), foreground_shapes.len());
+    for (b, f) in background_shapes.iter().zip(&foreground_shapes) {
+        assert_eq!(b.bundle.language, f.bundle.language);
+        assert_eq!(b.depth, f.depth);
+        assert_eq!(b.ranges, f.ranges);
+        assert_eq!(b.nodes, f.nodes);
+    }
+
+    let afresh = injected_afresh(&background, background_bid);
+    assert!(
+        !afresh.is_empty(),
+        "premise: the fences are injected layers"
+    );
+    assert_eq!(
+        hume_treesitter::layers::first_layer_mismatch(&afresh, &background_shapes[1..]),
+        None,
+        "the installed injected layers equal a resolution with no prior"
+    );
+    assert_eq!(
+        hume_treesitter::layers::first_layer_mismatch(
+            &injected_afresh(&foreground, foreground_bid),
+            &foreground_shapes[1..]
+        ),
+        None,
+        "the synchronously installed injected layers equal a resolution with no prior"
+    );
+}
+
+#[test]
+fn an_edit_in_one_fence_reuses_the_other_fences_tree_on_both_paths() {
+    require_fixtures();
+    for foreground in [false, true] {
+        let (ed, bid) = fence_edited_editor(foreground);
+
+        assert_eq!(
+            rust_fence_trees_changed(&ed, bid),
+            [false, true],
+            "foreground={foreground}: the edited fence reparses, the later fence keeps its baked tree"
+        );
+    }
+}
+
 // ---------------------------------------------------------------------------
 // PLUM pipeline syntax smoke test
 // ---------------------------------------------------------------------------

@@ -32,7 +32,7 @@ fn coalesce_one_keeps_higher_gen() {
             generation: 2,
             bundle: Arc::clone(&bundle),
             text: BufferText::from("bb\n"),
-            old_tree: None,
+            prior: None,
             langs: empty_langs(),
         },
     );
@@ -44,7 +44,7 @@ fn coalesce_one_keeps_higher_gen() {
             generation: 1,
             bundle: Arc::clone(&bundle),
             text: BufferText::from("a\n"),
-            old_tree: None,
+            prior: None,
             langs: empty_langs(),
         },
     );
@@ -66,7 +66,7 @@ fn coalesce_one_keeps_higher_gen() {
             generation: 3,
             bundle: Arc::clone(&bundle),
             text: BufferText::from("ccc\n"),
-            old_tree: None,
+            prior: None,
             langs: empty_langs(),
         },
     );
@@ -81,7 +81,7 @@ fn coalesce_one_keeps_higher_gen() {
             generation: 3,
             bundle: Arc::clone(&bundle),
             text: BufferText::from("REPLACED\n"),
-            old_tree: None,
+            prior: None,
             langs: empty_langs(),
         },
     );
@@ -108,7 +108,7 @@ fn coalesce_one_same_gen_different_lang_replaces() {
             generation: 5,
             bundle: Arc::clone(&bundle_a),
             text: BufferText::from("{}\n"),
-            old_tree: None,
+            prior: None,
             langs: empty_langs(),
         },
     );
@@ -120,7 +120,7 @@ fn coalesce_one_same_gen_different_lang_replaces() {
             generation: 5,
             bundle: Arc::clone(&bundle_b),
             text: BufferText::from("fn f(){}\n"),
-            old_tree: None,
+            prior: None,
             langs: empty_langs(),
         },
     );
@@ -143,7 +143,7 @@ fn coalesce_one_same_gen_different_lang_replaces() {
             generation: 5,
             bundle: Arc::clone(&bundle_b),
             text: BufferText::from("REPLACED\n"),
-            old_tree: None,
+            prior: None,
             langs: empty_langs(),
         },
     );
@@ -182,7 +182,7 @@ fn worker_language_switch_produces_trees_for_both() {
         generation: 1,
         bundle: Arc::clone(&json_bundle),
         text: BufferText::from("{\"x\": 1}\n"),
-        old_tree: None,
+        prior: None,
         langs: empty_langs(),
     });
     // Ensure json parse is done before sending rust, so the worker must
@@ -202,7 +202,7 @@ fn worker_language_switch_produces_trees_for_both() {
         generation: 2,
         bundle: Arc::clone(&rust_bundle),
         text: BufferText::from("fn main() {}\n"),
-        old_tree: None,
+        prior: None,
         langs: empty_langs(),
     });
     let done2 = worker
@@ -233,7 +233,7 @@ fn parse_completion_fires_waker() {
         generation: 1,
         bundle,
         text: BufferText::from("{}\n"),
-        old_tree: None,
+        prior: None,
         langs: empty_langs(),
     });
     worker

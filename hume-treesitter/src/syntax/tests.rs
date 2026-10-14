@@ -9,6 +9,7 @@ use hume_engine::providers::SyntaxSpans;
 use hume_rope::offset::CharOffset;
 
 use super::Syntax;
+use crate::injections::InjectionSites;
 use crate::parse_worker::{ParseDone, ParseOutcome, ParsedLayers};
 use crate::registry::{GrammarBundle, OptionalQuery};
 use crate::test_support::{empty_langs, fresh_bid};
@@ -63,6 +64,7 @@ fn parse_done_for(
         bundle: Arc::clone(bundle),
         outcome: ParseOutcome::Ok(ParsedLayers {
             root: tree,
+            root_sites: InjectionSites::default(),
             injected: Vec::new(),
         }),
     }
@@ -110,7 +112,7 @@ fn attach_nonempty_text_returns_request_and_sets_in_flight() {
         "non-empty text must produce a full-parse request"
     );
     assert!(
-        req.unwrap().old_tree.is_none(),
+        req.unwrap().prior.is_none(),
         "initial attach must request a full parse"
     );
     assert!(
@@ -202,7 +204,7 @@ fn frame_tick_reposts_after_further_edit() {
 }
 
 #[test]
-fn frame_tick_old_tree_present_iff_chain_baked() {
+fn frame_tick_prior_present_iff_chain_baked() {
     require_grammars(&["json"]);
     let bundle = make_bundle("json", "tree_sitter_json");
     let bid = fresh_bid();
@@ -215,13 +217,13 @@ fn frame_tick_old_tree_present_iff_chain_baked() {
     assert!(syn.layers().is_some(), "install must populate layers");
 
     // Record a contiguous edit and tick: chain bakes, tree_gen catches
-    // up to generation, so old_tree must be Some.
+    // up to generation, so the request carries the prior layers.
     let (t1, cs) = insert_into(&t0, 1, "\"a\":1");
     record(&mut syn, &t0, &t1, &cs);
     let outcome = syn.frame_tick(bid, &t1, &empty_langs());
     assert!(
-        outcome.request.unwrap().old_tree.is_some(),
-        "a baked contiguous chain must produce an old_tree for incremental parse"
+        outcome.request.unwrap().prior.is_some(),
+        "a baked contiguous chain must produce prior layers for incremental parse"
     );
 
     syn.install(
@@ -240,8 +242,8 @@ fn frame_tick_old_tree_present_iff_chain_baked() {
         "a gapped chain must be reported as a break"
     );
     assert!(
-        outcome2.request.unwrap().old_tree.is_none(),
-        "a broken chain must fall back to a full reparse (no old_tree)"
+        outcome2.request.unwrap().prior.is_none(),
+        "a broken chain must fall back to a full reparse (no prior layers)"
     );
 }
 
@@ -258,7 +260,7 @@ fn bake_contiguous_chain_advances_tree_gen_and_clears_pending() {
         parse_done_for(&bundle, bid, generation(&t0), "{}\n"),
         generation(&t0),
     );
-    assert_eq!(syn.tree_gen(), generation(&t0));
+    assert_eq!(syn.tree_gen(), Some(generation(&t0)));
 
     let (t1, cs) = insert_into(&t0, 1, "\"a\":1");
     record(&mut syn, &t0, &t1, &cs);
@@ -271,7 +273,7 @@ fn bake_contiguous_chain_advances_tree_gen_and_clears_pending() {
     );
     assert_eq!(
         syn.tree_gen(),
-        generation(&t1),
+        Some(generation(&t1)),
         "tree_gen must advance to the baked generation"
     );
     assert!(
@@ -312,8 +314,8 @@ fn bake_accepts_a_chain_whose_generations_skip_numbers() {
         outcome.chain_break.is_none(),
         "edits that each start where the previous one ended form a chain"
     );
-    assert_eq!(syn.tree_gen(), generation(&t2));
-    assert!(outcome.request.unwrap().old_tree.is_some());
+    assert_eq!(syn.tree_gen(), Some(generation(&t2)));
+    assert!(outcome.request.unwrap().prior.is_some());
 }
 
 #[test]
@@ -344,7 +346,7 @@ fn bake_mid_chain_gap_rejected() {
     );
     assert_eq!(
         syn.tree_gen(),
-        generation(&t0),
+        Some(generation(&t0)),
         "gapped chain must NOT advance tree_gen"
     );
     assert!(
@@ -352,7 +354,7 @@ fn bake_mid_chain_gap_rejected() {
         "broken chain must still clear pending_edits so the caller falls back to a full reparse"
     );
     assert!(
-        outcome.request.unwrap().old_tree.is_none(),
+        outcome.request.unwrap().prior.is_none(),
         "broken chain must request a full reparse"
     );
 }
@@ -390,14 +392,19 @@ fn bake_refreshes_injected_layer_ranges_after_an_edit_shifts_them() {
     let root = parser.parse(source, None).expect("parse root");
     let rope = ropey::Rope::from_str(source);
     let cancel = std::sync::atomic::AtomicBool::new(false);
-    let injected = crate::injections::resolve_and_parse_injections(
+    let cx = crate::injections::InjectionContext {
+        rope: &rope,
+        langs: &langs,
+        prior: None,
+        cancel: &cancel,
+    };
+    let (root_sites, injected) = crate::injections::resolve_and_parse_injections(
         &mut parser,
+        &cx,
         &root,
         &markdown,
-        &rope,
-        &langs,
-        &cancel,
         1,
+        None,
     );
     assert_eq!(injected.len(), 1, "expected one rust injection layer");
     let original_start = injected[0].ranges[0].start_byte;
@@ -407,7 +414,11 @@ fn bake_refreshes_injected_layer_ranges_after_an_edit_shifts_them() {
             bid,
             generation: generation(&t0),
             bundle: Arc::clone(&markdown),
-            outcome: ParseOutcome::Ok(ParsedLayers { root, injected }),
+            outcome: ParseOutcome::Ok(ParsedLayers {
+                root,
+                root_sites,
+                injected,
+            }),
         },
         generation(&t0),
     );
@@ -438,6 +449,75 @@ fn bake_refreshes_injected_layer_ranges_after_an_edit_shifts_them() {
         original_start + prefix.len(),
         "ranges must be refreshed to the tree's post-edit included_ranges, not left stale"
     );
+}
+
+// ── edited bytes ──────────────────────────────────────────────────────────
+
+/// The bytes the committed layers record as edited since they were parsed.
+fn edited_regions(syn: &Syntax) -> Vec<std::ops::RangeInclusive<usize>> {
+    syn.layers()
+        .expect("layers installed")
+        .edited()
+        .regions()
+        .to_vec()
+}
+
+#[test]
+fn bakes_accumulate_edited_bytes_until_an_install_resets_them() {
+    require_grammars(&["json"]);
+    let bundle = make_bundle("json", "tree_sitter_json");
+    let bid = fresh_bid();
+    let t0 = BufferText::from("{}\n");
+    let (mut syn, _req) = Syntax::attach(Arc::clone(&bundle), bid, &t0, &empty_langs());
+    syn.install(
+        parse_done_for(&bundle, bid, generation(&t0), "{}\n"),
+        generation(&t0),
+    );
+
+    let (t1, cs) = insert_into(&t0, 1, "\"a\":1");
+    record(&mut syn, &t0, &t1, &cs);
+    let _dropped = syn.frame_tick(bid, &t1, &empty_langs());
+    // The five inserted bytes and the one after them.
+    assert_eq!(edited_regions(&syn), vec![1..=6]);
+
+    let (t2, cs) = insert_into(&t1, 1, "b");
+    record(&mut syn, &t1, &t2, &cs);
+    let _dropped = syn.frame_tick(bid, &t2, &empty_langs());
+    // `b` at 1, then the first insertion moved to 2..7 and the byte after it.
+    assert_eq!(edited_regions(&syn), vec![1..=7]);
+
+    syn.install(
+        parse_done_for(&bundle, bid, generation(&t2), "{b\"a\":1}\n"),
+        generation(&t2),
+    );
+    assert_eq!(edited_regions(&syn), vec![]);
+}
+
+#[test]
+fn a_failed_parse_keeps_the_edited_bytes() {
+    require_grammars(&["json"]);
+    let bundle = make_bundle("json", "tree_sitter_json");
+    let bid = fresh_bid();
+    let t0 = BufferText::from("{}\n");
+    let (mut syn, _req) = Syntax::attach(Arc::clone(&bundle), bid, &t0, &empty_langs());
+    syn.install(
+        parse_done_for(&bundle, bid, generation(&t0), "{}\n"),
+        generation(&t0),
+    );
+
+    let (t1, cs) = insert_into(&t0, 1, "\"a\":1");
+    record(&mut syn, &t0, &t1, &cs);
+    let _dropped = syn.frame_tick(bid, &t1, &empty_langs());
+    syn.install(
+        ParseDone {
+            bid,
+            generation: generation(&t1),
+            bundle: Arc::clone(&bundle),
+            outcome: ParseOutcome::ParseFailed,
+        },
+        generation(&t1),
+    );
+    assert_eq!(edited_regions(&syn), vec![1..=6]);
 }
 
 // ── install ───────────────────────────────────────────────────────────────
@@ -542,7 +622,7 @@ fn install_matching_done_clears_in_flight_and_drains_pending() {
 
     assert!(!syn.is_in_flight(), "a matching done must clear in_flight");
     assert_eq!(syn.parsed_gen(), Some(generation(&t1)));
-    assert_eq!(syn.tree_gen(), generation(&t1));
+    assert_eq!(syn.tree_gen(), Some(generation(&t1)));
     assert!(
         syn.pending_edits().is_empty(),
         "a successful install must drain pending edits at or below the installed gen"
@@ -575,7 +655,7 @@ fn install_parse_failed_advances_parsed_gen_only() {
     );
     assert_eq!(
         syn.tree_gen(),
-        0,
+        None,
         "tree_gen must NOT advance on ParseFailed"
     );
     assert!(
@@ -620,7 +700,7 @@ fn install_recovers_from_a_parse_failed_for_the_same_generation() {
 
     assert_eq!(
         syn.tree_gen(),
-        0,
+        Some(0),
         "the successful retry must advance tree_gen"
     );
     assert!(
@@ -631,6 +711,70 @@ fn install_recovers_from_a_parse_failed_for_the_same_generation() {
 }
 
 // ── is_current ────────────────────────────────────────────────────────────
+
+/// `{}` with `"a":1` inserted, baked by a frame whose request was dropped,
+/// then that request's parse failing.
+fn baked_then_failed() -> (Arc<GrammarBundle>, BufferId, Syntax, BufferText) {
+    require_grammars(&["json"]);
+    let bundle = make_bundle("json", "tree_sitter_json");
+    let bid = fresh_bid();
+    let t0 = BufferText::from("{}\n");
+    let (mut syn, _req) = Syntax::attach(Arc::clone(&bundle), bid, &t0, &empty_langs());
+    syn.install(
+        parse_done_for(&bundle, bid, generation(&t0), "{}\n"),
+        generation(&t0),
+    );
+    let (t1, cs) = insert_into(&t0, 1, "\"a\":1");
+    record(&mut syn, &t0, &t1, &cs);
+    let outcome = syn.frame_tick(bid, &t1, &empty_langs());
+    assert!(outcome.chain_break.is_none());
+    assert_eq!(syn.tree_gen(), Some(generation(&t1)));
+    syn.install(
+        ParseDone {
+            bid,
+            generation: generation(&t1),
+            bundle: Arc::clone(&bundle),
+            outcome: ParseOutcome::ParseFailed,
+        },
+        generation(&t1),
+    );
+    (bundle, bid, syn, t1)
+}
+
+/// Whether the layers committed for `text` hold the pair `"a":1`.
+fn holds_the_pair(syn: &Syntax, text: &BufferText) -> bool {
+    syn.current_layers(generation(text))
+        .expect("the layers describe the text")
+        .root_tree()
+        .expect("a root layer")
+        .root_node()
+        .to_sexp()
+        .contains("(pair")
+}
+
+#[test]
+fn baked_layers_whose_parse_failed_are_not_current() {
+    let (_, _, syn, t1) = baked_then_failed();
+    assert!(!syn.is_current(generation(&t1)));
+    assert!(syn.current_layers(generation(&t1)).is_none());
+}
+
+#[test]
+fn a_parse_result_installs_after_a_failed_parse_of_the_same_text() {
+    let (bundle, bid, mut syn, t1) = baked_then_failed();
+    syn.install(
+        parse_done_for(&bundle, bid, generation(&t1), "{\"a\":1}\n"),
+        generation(&t1),
+    );
+    assert!(holds_the_pair(&syn, &t1));
+}
+
+#[test]
+fn ensure_current_parses_again_after_a_failed_parse_of_the_same_text() {
+    let (_, bid, mut syn, t1) = baked_then_failed();
+    syn.ensure_current(bid, &t1, &empty_langs());
+    assert!(holds_the_pair(&syn, &t1));
+}
 
 /// The freshness predicate every caller gates on. After a `ParseFailed` for
 /// a generation, `parsed_gen` has advanced to it but `layers`/`tree_gen`
@@ -668,7 +812,7 @@ fn is_current_is_false_when_a_failed_parse_advanced_parsed_gen_over_older_layers
     // `parsed_gen` alone would now claim the new text is current...
     assert_eq!(syn.parsed_gen(), Some(generation(&t1)));
     // ...but the committed layers still describe the first.
-    assert_eq!(syn.tree_gen(), generation(&t0));
+    assert_eq!(syn.tree_gen(), Some(generation(&t0)));
     assert!(
         !syn.is_current(generation(&t1)),
         "layers predate the new text: is_current must not report it as current"
@@ -741,7 +885,7 @@ fn ensure_current_reparses_a_stale_tree_after_a_recorded_edit() {
         expected_end_byte
     );
     assert_eq!(syn.parsed_gen(), Some(generation(&new_text)));
-    assert_eq!(syn.tree_gen(), generation(&new_text));
+    assert_eq!(syn.tree_gen(), Some(generation(&new_text)));
     assert!(syn.pending_edits().is_empty());
 }
 
@@ -765,7 +909,7 @@ fn ensure_current_up_to_date_does_not_reparse() {
     assert!(outcome.is_none());
     assert_eq!(
         syn.tree_gen(),
-        generation(&t0),
+        Some(generation(&t0)),
         "up-to-date attachment must not reparse"
     );
     assert_eq!(

@@ -2,6 +2,9 @@ use std::cmp::Reverse;
 use std::ops::Range;
 use std::sync::{Arc, Mutex};
 
+use crate::edited_bytes::EditedBytes;
+use crate::injections::{InjectionSites, PriorInjection};
+use crate::parse_worker::PriorLayers;
 use crate::registry::{GrammarBundle, LanguageId};
 use crate::textobjects::{ObjectSpans, SpanSelector};
 
@@ -23,6 +26,10 @@ pub struct SyntaxLayer {
     pub ranges: Vec<tree_sitter::Range>,
     /// Nesting depth: 0 for the root layer, 1+ for each level of injection.
     pub depth: u8,
+    /// The matches of the layer's injections query over its tree, moved
+    /// with the tree by every edit since the parse. Empty at the nesting
+    /// cap and for a grammar without an injections query.
+    pub sites: InjectionSites,
 }
 
 /// A buffer's full syntax tree: the root grammar's tree plus every embedded
@@ -37,11 +44,11 @@ pub struct SyntaxLayers {
     /// It lives here, rather than on `Syntax` keyed by a generation, because
     /// that placement is what makes invalidation total instead of careful.
     /// `Syntax::install` replaces this whole struct, so it loses the memo for
-    /// free; `Syntax::bake` is the only code
-    /// that mutates layers in place, and it clears this explicitly. A
-    /// `tree_gen` key could not do the same job: `bake` advances `tree_gen`
-    /// to a generation and a later `install` for that *same* generation
-    /// replaces the layers under an unchanged value.
+    /// free; [`Self::apply_edits`] is the only code that mutates layers in
+    /// place, and it clears this explicitly. A generation key could not do
+    /// the same job: `bake` moves the layers to a generation and a later
+    /// `install` for that *same* generation replaces them under an unchanged
+    /// value.
     ///
     /// `Mutex` for the reason `Syntax::span_scratch` is one: the collection
     /// entry point takes `&SyntaxLayers`, so the editor's dispatch path needs
@@ -51,20 +58,83 @@ pub struct SyntaxLayers {
     /// pressed again (key repeat, a macro or `.`-repeat step), not an
     /// alternating working set.
     pub(crate) textobject_memo: Mutex<Option<(SpanSelector, Arc<ObjectSpans>)>>,
+    /// The bytes the edits applied since these layers were parsed may have
+    /// changed. Placed here for the memo's reason: `Syntax::install`
+    /// replaces this struct, which empties it, and [`Self::apply_edits`] is
+    /// the only code that changes it.
+    edited: EditedBytes,
 }
 
 impl SyntaxLayers {
-    /// Wrap freshly parsed layers, memo empty. The only constructor:
-    /// `textobject_memo` is private so that nothing outside this module can
-    /// hand out a set of layers carrying someone else's cached spans.
+    /// Wrap freshly parsed layers, memo and edited bytes empty. The only
+    /// constructor: `textobject_memo` is private so that nothing outside
+    /// this module can hand out a set of layers carrying someone else's
+    /// cached spans.
     pub fn new(layers: Vec<SyntaxLayer>) -> Self {
         Self {
             layers,
             textobject_memo: Mutex::new(None),
+            edited: EditedBytes::default(),
         }
     }
 
+    /// Apply `edits`, in the order `Tree::edit` takes them, to every
+    /// layer's tree and sites, move each injected layer's `ranges` with its
+    /// tree, and record the edited bytes. Drops the text-object memo, whose
+    /// spans were collected at the pre-edit positions.
+    pub(crate) fn apply_edits<'e>(
+        &mut self,
+        edits: impl IntoIterator<Item = &'e tree_sitter::InputEdit>,
+    ) {
+        for edit in edits {
+            for layer in &mut self.layers {
+                layer.tree.edit(edit);
+                layer.sites.edit(edit);
+            }
+            self.edited.record(edit);
+        }
+        for layer in &mut self.layers {
+            // `ranges` is a cached copy of the tree's included ranges,
+            // consulted by `layer_covers_line`. The root's are always empty
+            // (whole buffer).
+            if layer.depth > 0 {
+                layer.ranges = layer.tree.included_ranges();
+            }
+        }
+        self.clear_textobject_memo();
+    }
+
+    /// These layers as the prior layers of a parse of the text they are
+    /// edited to.
+    ///
+    /// # Panics
+    /// If there are no layers: `layers[0]` is the root.
+    pub(crate) fn prior(&self) -> PriorLayers {
+        let (root, injected) = self.layers.split_first().expect("layers[0] is the root");
+        PriorLayers {
+            root: root.tree.clone(),
+            root_sites: root.sites.clone(),
+            injected: injected
+                .iter()
+                .map(|layer| PriorInjection {
+                    bundle: Arc::clone(&layer.bundle),
+                    depth: layer.depth,
+                    tree: layer.tree.clone(),
+                    ranges: layer.ranges.clone(),
+                    sites: layer.sites.clone(),
+                })
+                .collect(),
+            edited: self.edited.clone(),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn edited(&self) -> &EditedBytes {
+        &self.edited
+    }
+
     /// The root grammar's parse tree, if any layers are installed.
+    #[cfg(any(test, feature = "test-util"))]
     pub fn root_tree(&self) -> Option<&tree_sitter::Tree> {
         self.layers.first().map(|l| &l.tree)
     }
@@ -96,14 +166,155 @@ impl SyntaxLayers {
         containing.into_iter()
     }
 
-    /// Drop the text-object memo. Called from `Syntax::bake`, the only path
-    /// that edits these layers without replacing them (see the field's doc).
-    pub(crate) fn clear_textobject_memo(&mut self) {
+    fn clear_textobject_memo(&mut self) {
         *self
             .textobject_memo
             .lock()
             .expect("textobject memo lock poisoned") = None;
     }
+
+    /// Every layer's shape, in layer order.
+    #[cfg(any(test, feature = "test-util"))]
+    pub fn shapes(&self) -> Vec<LayerShape> {
+        self.layers
+            .iter()
+            .map(|layer| LayerShape::of(&layer.tree, &layer.bundle, layer.depth, &layer.ranges))
+            .collect()
+    }
+}
+
+impl SyntaxLayer {
+    /// The sites a fresh resolution finds in this layer's tree, and the
+    /// shapes of the layers it injects, their own injections included, in
+    /// the order a parse installs them.
+    #[cfg(any(test, feature = "test-util"))]
+    pub(crate) fn injections_resolved_afresh(
+        &self,
+        rope: &ropey::Rope,
+        langs: &rustc_hash::FxHashMap<String, Arc<GrammarBundle>>,
+    ) -> (InjectionSites, Vec<LayerShape>) {
+        let cancel = std::sync::atomic::AtomicBool::new(false);
+        let cx = crate::injections::InjectionContext {
+            rope,
+            langs,
+            prior: None,
+            cancel: &cancel,
+        };
+        let (sites, injected) = crate::injections::resolve_and_parse_injections(
+            &mut tree_sitter::Parser::new(),
+            &cx,
+            &self.tree,
+            &self.bundle,
+            self.depth + 1,
+            None,
+        );
+        let shapes = injected
+            .iter()
+            .map(|layer| LayerShape::of(&layer.tree, &layer.bundle, layer.depth, &layer.ranges))
+            .collect();
+        (sites, shapes)
+    }
+}
+
+/// A layer in comparable form: its grammar, place and every node of its
+/// tree. Two layers of equal shape hold the same syntax over the same text.
+#[cfg(any(test, feature = "test-util"))]
+#[derive(Clone)]
+pub struct LayerShape {
+    pub bundle: Arc<GrammarBundle>,
+    pub depth: u8,
+    pub ranges: Vec<tree_sitter::Range>,
+    /// Every node in pre-order: its kind, whether the parser inserted it as
+    /// missing, and its range.
+    pub nodes: Vec<(String, bool, tree_sitter::Range)>,
+}
+
+#[cfg(any(test, feature = "test-util"))]
+impl LayerShape {
+    pub(crate) fn of(
+        tree: &tree_sitter::Tree,
+        bundle: &Arc<GrammarBundle>,
+        depth: u8,
+        ranges: &[tree_sitter::Range],
+    ) -> Self {
+        let mut nodes = Vec::new();
+        let mut cursor = tree.walk();
+        'walk: loop {
+            let node = cursor.node();
+            nodes.push((node.kind().to_owned(), node.is_missing(), node.range()));
+            if cursor.goto_first_child() || cursor.goto_next_sibling() {
+                continue;
+            }
+            while cursor.goto_parent() {
+                if cursor.goto_next_sibling() {
+                    continue 'walk;
+                }
+            }
+            break;
+        }
+        Self {
+            bundle: Arc::clone(bundle),
+            depth,
+            ranges: ranges.to_vec(),
+            nodes,
+        }
+    }
+}
+
+/// Where two lists of layer shapes first differ.
+#[cfg(any(test, feature = "test-util"))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LayerMismatch {
+    pub index: usize,
+    pub field: LayerField,
+}
+
+/// The part of a [`LayerShape`] a [`LayerMismatch`] found different.
+#[cfg(any(test, feature = "test-util"))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LayerField {
+    /// Not the same grammar bundle, by identity.
+    Bundle,
+    Depth,
+    Ranges,
+    Nodes,
+    /// The layer exists in one list only.
+    Absent,
+}
+
+/// The first index at which `expected` and `actual` differ, and the first
+/// field, in declaration order, that differs there.
+#[cfg(any(test, feature = "test-util"))]
+pub fn first_layer_mismatch(
+    expected: &[LayerShape],
+    actual: &[LayerShape],
+) -> Option<LayerMismatch> {
+    let differing_field = |expected: &LayerShape, actual: &LayerShape| {
+        if !Arc::ptr_eq(&expected.bundle, &actual.bundle) {
+            Some(LayerField::Bundle)
+        } else if expected.depth != actual.depth {
+            Some(LayerField::Depth)
+        } else if expected.ranges != actual.ranges {
+            Some(LayerField::Ranges)
+        } else if expected.nodes != actual.nodes {
+            Some(LayerField::Nodes)
+        } else {
+            None
+        }
+    };
+    expected
+        .iter()
+        .zip(actual)
+        .enumerate()
+        .find_map(|(index, (expected, actual))| {
+            differing_field(expected, actual).map(|field| LayerMismatch { index, field })
+        })
+        .or_else(|| {
+            (expected.len() != actual.len()).then(|| LayerMismatch {
+                index: expected.len().min(actual.len()),
+                field: LayerField::Absent,
+            })
+        })
 }
 
 /// True if `layer` was parsed over the byte range `[line_start, line_end)`.

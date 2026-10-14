@@ -3,6 +3,7 @@ use std::sync::Arc;
 use hume_engine::theme::ScopeRegistry;
 use hume_treesitter::grammar::LoadedGrammar;
 use hume_treesitter::highlight::{TreeSitterHighlighter, layer_highlights_for_line};
+use hume_treesitter::injections::InjectionSites;
 use hume_treesitter::layers::{SyntaxLayer, SyntaxLayers};
 use hume_treesitter::registry::{GrammarBundle, LanguageRegistry};
 use test_fixtures::{grammar_parser_path, grammar_query_path, require_grammars};
@@ -66,6 +67,7 @@ fn highlights_for_line(
         bundle,
         ranges: vec![],
         depth: 0,
+        sites: InjectionSites::default(),
     }]);
     let mut raw = Vec::new();
     let mut stack = Vec::new();

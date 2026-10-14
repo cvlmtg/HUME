@@ -20,6 +20,7 @@ slotmap = "1"
 tempfile = "3"
 test-fixtures = { path = "../test-fixtures" }
 criterion = { version = "0.8.2", default-features = false, features = ["cargo_bench_support"] }
+proptest = "1.11.0"
 
 [features]
 # Exposes test-only registry methods (register_identity, remove) to

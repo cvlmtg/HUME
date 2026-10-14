@@ -1,7 +1,11 @@
 use test_fixtures::require_grammars;
 
+use hume_editing::text::BufferText;
+
 use super::{SyntaxLayer, SyntaxLayers, layer_covers_line};
+use crate::injections::InjectionSites;
 use crate::test_support::{make_bundle, open_grammar, range, test_language_id};
+use crate::textobjects::{ObjectKind, ObjectSpans, SpanSelector};
 
 // `layer_covers_line` and `languages_containing` read only a layer's
 // `ranges`, `depth` and language, so every layer parses an empty text.
@@ -17,6 +21,7 @@ fn layer_of(name: &str, ranges: Vec<tree_sitter::Range>, depth: u8) -> SyntaxLay
         bundle: make_bundle(name, &symbol, "", &[]),
         ranges,
         depth,
+        sites: InjectionSites::default(),
     }
 }
 
@@ -177,4 +182,28 @@ fn of_two_layers_at_one_depth_the_later_comes_first() {
             test_language_id("markdown")
         ]
     );
+}
+
+#[test]
+fn applying_edits_drops_the_textobject_memo() {
+    require_grammars(&["json"]);
+    let mut layers = SyntaxLayers::new(vec![layer_of("json", vec![], 0)]);
+    let text = BufferText::from("");
+    ObjectSpans::for_selector(
+        &layers,
+        &text,
+        SpanSelector::Navigation(ObjectKind::Function),
+    );
+    assert!(layers.textobject_memo.lock().unwrap().is_some());
+
+    let start = tree_sitter::Point { row: 0, column: 0 };
+    layers.apply_edits(&[tree_sitter::InputEdit {
+        start_byte: 0,
+        old_end_byte: 0,
+        new_end_byte: 1,
+        start_position: start,
+        old_end_position: start,
+        new_end_position: tree_sitter::Point { row: 0, column: 1 },
+    }]);
+    assert!(layers.textobject_memo.lock().unwrap().is_none());
 }
