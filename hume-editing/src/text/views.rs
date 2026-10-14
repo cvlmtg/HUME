@@ -106,6 +106,12 @@ impl<'a> LineView<'a> {
     pub fn indent_end(self, line: ContentLine) -> ClusterStart {
         hume_rope::lines::leading_whitespace_end(self.0.rope(), line)
     }
+
+    /// Whether `line` holds nothing but blanks before its `\n`, an empty
+    /// line included.
+    pub fn is_blank(self, line: ContentLine) -> bool {
+        self.indent_end(line) == self.newline(line)
+    }
 }
 
 impl<'a> ColumnView<'a> {

@@ -456,6 +456,7 @@ fn grammar_optional_queries_lists_every_kind_with_its_file() {
         [
             "(injections . \"injections.scm\")",
             "(textobjects . \"textobjects.scm\")",
+            "(indents . \"indents.scm\")",
         ]
     );
 }

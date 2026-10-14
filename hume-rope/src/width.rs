@@ -237,7 +237,6 @@ pub(crate) fn blank_advance(first: char, display_col: usize, tab_width: u8) -> O
 /// is `tab_width` display columns (a run of blank clusters or a tab stop).
 /// `tab_width < 1` is clamped to 1.
 pub fn indent_depth(line: &str, tab_width: u8) -> u8 {
-    let tw = (tab_width as usize).max(1);
     let mut display_col = 0usize;
     for g in line.graphemes(true) {
         let first = g.chars().next().expect("a grapheme is never empty");
@@ -246,15 +245,22 @@ pub fn indent_depth(line: &str, tab_width: u8) -> u8 {
         };
         display_col += advance;
     }
-    (display_col / tw).min(u8::MAX as usize) as u8
+    let width = u32::try_from(display_col).unwrap_or(u32::MAX);
+    indent_levels(width, tab_width).min(u32::from(u8::MAX)) as u8
 }
 
 /// Display column of the `k`-th indent stop (`k` indent levels of
-/// `tab_width` display columns each), the inverse of [`indent_depth`].
-/// `tab_width < 1` is clamped to 1, the same clamp `indent_depth` applies, so
-/// the two can never disagree about what one indent level is worth.
+/// `tab_width` display columns each). `tab_width < 1` is clamped to 1.
+/// [`indent_levels`] and [`indent_depth`] count levels through this, so
+/// they agree with it on what one indent level is worth.
 pub fn indent_stop(k: u32, tab_width: u8) -> u32 {
     k * (tab_width as u32).max(1)
+}
+
+/// Whole indent levels in `width` display columns, rounded down: the
+/// inverse of [`indent_stop`].
+pub fn indent_levels(width: u32, tab_width: u8) -> u32 {
+    width / indent_stop(1, tab_width)
 }
 
 /// Longest prefix of `s` whose display width fits within `max_display_width`

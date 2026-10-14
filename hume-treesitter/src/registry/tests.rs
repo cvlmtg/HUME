@@ -9,8 +9,7 @@ use super::{
 use hume_editing::comment::{BlockCommentTokens, LineCommentTokens};
 use hume_engine::theme::ScopeRegistry;
 use test_fixtures::{
-    grammar_parser_path, grammar_query_path, helix_query_path, require_fixture_file,
-    require_grammars,
+    grammar_parser_path, grammar_query_path, require_grammars, require_helix_query,
 };
 
 /// Write `src` to `<tmp>/<filename>` and return its path (kept alive via the
@@ -146,9 +145,7 @@ fn attach_grammar_with_valid_textobjects_populates_bundle() {
     require_grammars(&["rust"]);
     let parser_path = grammar_parser_path("rust");
     let hl_path = grammar_query_path("rust");
-    let to_path = helix_query_path("rust", OptionalQuery::TextObjects.file_name())
-        .expect("rust helix-textobjects.scm fixture (run scripts/fetch-test-grammars.sh)");
-    require_fixture_file(&to_path, "rust helix-textobjects.scm");
+    let to_path = require_helix_query("rust", OptionalQuery::TextObjects.file_name());
 
     let mut reg = LanguageRegistry::new();
     let mut scope_reg = ScopeRegistry::new();

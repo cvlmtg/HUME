@@ -9,6 +9,7 @@ use crate::highlight::TreeSitterHighlighter;
 use hume_editing::comment::{BlockCommentTokens, CommentTokens, LineCommentTokens};
 use hume_engine::theme::ScopeRegistry;
 
+use crate::indent::IndentQuery;
 use crate::injections::InjectionsQuery;
 use crate::textobjects::TextObjectsQuery;
 
@@ -173,6 +174,9 @@ pub struct GrammarBundle {
     /// Compiled `textobjects.scm`, if the grammar has one. `None` means this
     /// language ships no structural text objects or navigation.
     pub textobjects: Option<TextObjectsQuery>,
+    /// Compiled `indents.scm`, if the grammar has one. `None` means new
+    /// lines in this language are never indented from its syntax tree.
+    pub indents: Option<IndentQuery>,
     /// Unique per attach, issued by `LanguageRegistry::next_gen`. Grammar-swap
     /// / staleness checks compare this instead of `Arc::ptr_eq`, a plain
     /// integer identity that survives across the worker-thread boundary.
@@ -186,16 +190,18 @@ pub struct GrammarBundle {
 pub enum OptionalQuery {
     Injections,
     TextObjects,
+    Indents,
 }
 
 impl OptionalQuery {
-    pub const ALL: [Self; 2] = [Self::Injections, Self::TextObjects];
+    pub const ALL: [Self; 3] = [Self::Injections, Self::TextObjects, Self::Indents];
 
     /// The name scripting uses for this kind.
     pub const fn key(self) -> &'static str {
         match self {
             Self::Injections => "injections",
             Self::TextObjects => "textobjects",
+            Self::Indents => "indents",
         }
     }
 
@@ -204,6 +210,7 @@ impl OptionalQuery {
         match self {
             Self::Injections => "injections.scm",
             Self::TextObjects => "textobjects.scm",
+            Self::Indents => "indents.scm",
         }
     }
 }
@@ -215,6 +222,7 @@ pub struct QueryFiles {
     highlights: PathBuf,
     injections: Option<PathBuf>,
     textobjects: Option<PathBuf>,
+    indents: Option<PathBuf>,
 }
 
 impl QueryFiles {
@@ -224,6 +232,7 @@ impl QueryFiles {
             highlights,
             injections: None,
             textobjects: None,
+            indents: None,
         }
     }
 
@@ -232,6 +241,7 @@ impl QueryFiles {
         match kind {
             OptionalQuery::Injections => self.injections = Some(path),
             OptionalQuery::TextObjects => self.textobjects = Some(path),
+            OptionalQuery::Indents => self.indents = Some(path),
         }
         self
     }
@@ -244,6 +254,7 @@ impl QueryFiles {
         match kind {
             OptionalQuery::Injections => self.injections.as_deref(),
             OptionalQuery::TextObjects => self.textobjects.as_deref(),
+            OptionalQuery::Indents => self.indents.as_deref(),
         }
     }
 }
@@ -253,6 +264,7 @@ pub(crate) struct CompiledQueries {
     pub(crate) highlighter: Arc<TreeSitterHighlighter>,
     pub(crate) injections: Option<InjectionsQuery>,
     pub(crate) textobjects: Option<TextObjectsQuery>,
+    pub(crate) indents: Option<IndentQuery>,
 }
 
 /// Compiles a grammar's queries. This is the one place query sources become
@@ -268,6 +280,7 @@ pub(crate) fn compile_queries(
         Arc::new(tree_sitter::Query::new(language, highlights).map_err(RegisterError::QueryBuild)?);
     let mut injections = None;
     let mut textobjects = None;
+    let mut indents = None;
     for &(kind, src) in optional {
         let query = tree_sitter::Query::new(language, src)
             .map_err(|error| RegisterError::OptionalQueryBuild { kind, error })?;
@@ -278,6 +291,12 @@ pub(crate) fn compile_queries(
             OptionalQuery::TextObjects => {
                 textobjects.replace(TextObjectsQuery::new(query)).is_some()
             }
+            OptionalQuery::Indents => indents
+                .replace(
+                    IndentQuery::new(query, src, language)
+                        .map_err(|error| RegisterError::OptionalQueryBuild { kind, error })?,
+                )
+                .is_some(),
         };
         assert!(!duplicate, "{} given twice", kind.file_name());
     }
@@ -287,6 +306,7 @@ pub(crate) fn compile_queries(
         )),
         injections,
         textobjects,
+        indents,
     })
 }
 
@@ -775,6 +795,7 @@ impl LanguageRegistry {
             highlighter,
             injections,
             textobjects,
+            indents,
         } = compile_queries(grammar.language(), &highlights_src, &optional, scope_reg)?;
 
         let id = self.intern(name);
@@ -787,6 +808,7 @@ impl LanguageRegistry {
             highlighter,
             injections,
             textobjects,
+            indents,
             config_gen,
             language: id,
         });

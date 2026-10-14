@@ -99,27 +99,47 @@ fetch_grammar() {
   fi
 }
 
+HELIX_PIN="$(grep -v '^;' "$REPO_ROOT/runtime/scheme/helix-pin.scm" | tr -d '"[:space:]')"
+
+# Fetch `helix_path`, relative to the Helix repository root at the pin, to
+# `out` beside `name`'s grammar, unless it is already there. Best-effort: a
+# file Helix does not have is skipped.
+fetch_helix_file() {
+  local name="$1"
+  local helix_path="$2"
+  local out="$3"
+  if [[ -f "$out" ]]; then
+    echo "  $name: $(basename "$out") up to date"
+    return
+  fi
+  local url="https://raw.githubusercontent.com/helix-editor/helix/$HELIX_PIN/$helix_path"
+  if curl -fsSL -o "$out" "$url"; then
+    echo "  $name: fetched $(basename "$out")"
+  else
+    rm -f "$out"
+    echo "  $name: no $helix_path on Helix (skipped)"
+  fi
+}
+
 # Fetch a *Helix-maintained* query file for `name` — distinct from (and can
 # differ from!) the grammar's own bundled queries/<file>. PLUM installs the
 # Helix version, so tests need it too — a test fixture built from the
 # grammar-bundled file instead would validate a query PLUM never actually
 # installs. Best-effort: not every grammar has every query file.
-HELIX_PIN="$(grep -v '^;' "$REPO_ROOT/runtime/scheme/helix-pin.scm" | tr -d '"[:space:]')"
 fetch_helix_query() {
   local name="$1"
   local file="$2"
-  local out="$FIXTURES/$name/helix-$file"
-  if [[ -f "$out" ]]; then
-    echo "  $name: helix-$file up to date"
-    return
-  fi
-  local url="https://raw.githubusercontent.com/helix-editor/helix/$HELIX_PIN/runtime/queries/$name/$file"
-  if curl -fsSL -o "$out" "$url"; then
-    echo "  $name: fetched helix-$file"
-  else
-    rm -f "$out"
-    echo "  $name: no $file on Helix (skipped)"
-  fi
+  fetch_helix_file "$name" "runtime/queries/$name/$file" "$FIXTURES/$name/helix-$file"
+}
+
+# Fetch Helix's indent test corpus file `file` (tests/indent/<file> at the
+# pin) to helix-indent-corpus.<ext> beside `name`'s grammar. Helix's CI checks
+# its indents.scm against these files, so they are the expected indentation
+# for the queries fetched above. Best-effort, like fetch_helix_query.
+fetch_helix_indent_corpus() {
+  local name="$1"
+  local file="$2"
+  fetch_helix_file "$name" "tests/indent/$file" "$FIXTURES/$name/helix-indent-corpus.${file##*.}"
 }
 
 echo "Fetching tree-sitter grammar fixtures..."
@@ -127,8 +147,20 @@ fetch_grammar "rust"
 fetch_grammar "json"
 fetch_grammar "markdown"
 fetch_grammar "markdown.inline"
+fetch_grammar "python"
+fetch_grammar "c"
 fetch_helix_query "markdown" "injections.scm"
 # rust/textobjects.scm has no `; inherits:` header, so a plain fetch is
 # complete — a language whose file inherits would need PLUM's resolver.
 fetch_helix_query "rust" "textobjects.scm"
+fetch_helix_query "rust" "injections.scm"
+# None of these four indents.scm files has an `; inherits:` header.
+fetch_helix_query "rust" "indents.scm"
+fetch_helix_query "json" "indents.scm"
+fetch_helix_query "python" "indents.scm"
+fetch_helix_query "c" "indents.scm"
+fetch_helix_indent_corpus "rust" "rust.rs"
+fetch_helix_indent_corpus "json" "json.json"
+fetch_helix_indent_corpus "python" "python.py"
+fetch_helix_indent_corpus "c" "c.c"
 echo "Done."

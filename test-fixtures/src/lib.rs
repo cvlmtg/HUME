@@ -70,6 +70,37 @@ pub fn helix_query_path(name: &str, file: &str) -> Option<PathBuf> {
     path.exists().then_some(path)
 }
 
+/// [`helix_query_path_unchecked`], present.
+///
+/// # Panics
+/// With [`require_fixture_file`]'s message when the fetch script found no
+/// such query for `name`.
+pub fn require_helix_query(name: &str, file: &str) -> PathBuf {
+    let path = helix_query_path_unchecked(name, file);
+    require_fixture_file(&path, &format!("{name} helix-{file}"));
+    path
+}
+
+/// Where Helix's indent test corpus file `file` (e.g. `rust.rs`, from
+/// Helix's `tests/indent/`) for `name` lives: `helix-indent-corpus.<ext>`
+/// beside the grammar, `<ext>` being `file`'s extension. Helix checks its
+/// `indents.scm` against these files, so they hold the indentation the
+/// Helix-maintained indents query expects.
+///
+/// # Panics
+/// With [`require_fixture_file`]'s message when the fetch script found no
+/// such corpus file for `name`.
+pub fn require_helix_indent_corpus(name: &str, file: &str) -> PathBuf {
+    let (_, ext) = file
+        .rsplit_once('.')
+        .expect("a corpus file name has an extension");
+    let path = fixtures_root()
+        .join(name)
+        .join(format!("helix-indent-corpus.{ext}"));
+    require_fixture_file(&path, &format!("{name} helix indent corpus for {file}"));
+    path
+}
+
 /// Require `names`' compiled grammar fixtures to be present.
 ///
 /// Panics naming every missing fixture (not just the first) when one or more

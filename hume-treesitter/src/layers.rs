@@ -69,12 +69,23 @@ impl SyntaxLayers {
         self.layers.first().map(|l| &l.tree)
     }
 
-    /// The languages of the layers holding all of `bytes` inside one of
-    /// their included ranges, innermost first. A span that crosses a gap
-    /// between two of a layer's ranges is not in that layer: part of it is
-    /// another language's text. Of two layers at one depth, the later one
-    /// comes first, as it does in highlighting.
+    /// The languages of the layers holding all of `bytes`, innermost first,
+    /// in the order `layers_containing` gives.
     pub fn languages_containing(&self, bytes: Range<usize>) -> Vec<LanguageId> {
+        self.layers_containing(bytes)
+            .map(|(_, layer)| layer.bundle.language)
+            .collect()
+    }
+
+    /// The layers holding all of `bytes` inside one of their included
+    /// ranges, with their indices, innermost first. A span that crosses a
+    /// gap between two of a layer's ranges is not in that layer: part of it
+    /// is another language's text. Of two layers at one depth, the later
+    /// one comes first, as it does in highlighting.
+    pub(crate) fn layers_containing(
+        &self,
+        bytes: Range<usize>,
+    ) -> impl Iterator<Item = (usize, &SyntaxLayer)> {
         let mut containing: Vec<(usize, &SyntaxLayer)> = self
             .layers
             .iter()
@@ -82,10 +93,7 @@ impl SyntaxLayers {
             .filter(|(_, layer)| layer_contains(layer, &bytes))
             .collect();
         containing.sort_by_key(|&(index, layer)| Reverse((layer.depth, index)));
-        containing
-            .into_iter()
-            .map(|(_, layer)| layer.bundle.language)
-            .collect()
+        containing.into_iter()
     }
 
     /// Drop the text-object memo. Called from `Syntax::bake`, the only path
@@ -108,9 +116,17 @@ pub(crate) fn layer_covers_line(layer: &SyntaxLayer, line_start: usize, line_end
 /// True if one of `layer`'s included ranges holds all of `bytes`. The root
 /// layer (empty `ranges`) holds every span.
 fn layer_contains(layer: &SyntaxLayer, bytes: &Range<usize>) -> bool {
-    layer.ranges.is_empty()
-        || last_range_starting_before(layer, bytes.start + 1)
-            .is_some_and(|r| bytes.end <= r.end_byte)
+    layer.ranges.is_empty() || range_holding(layer, bytes).is_some()
+}
+
+/// The one of `layer`'s included ranges holding all of `bytes`. `None` for
+/// the root layer, which has no ranges, and for bytes the layer does not
+/// hold.
+pub(crate) fn range_holding<'l>(
+    layer: &'l SyntaxLayer,
+    bytes: &Range<usize>,
+) -> Option<&'l tree_sitter::Range> {
+    last_range_starting_before(layer, bytes.start + 1).filter(|r| bytes.end <= r.end_byte)
 }
 
 /// The last of `layer`'s ranges starting before byte `end`. `ranges` is

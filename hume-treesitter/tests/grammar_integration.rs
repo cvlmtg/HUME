@@ -22,8 +22,8 @@ fn open_and_parse(name: &str, symbol: &str, source: &str) -> (tree_sitter::Tree,
 
 /// Open `name`'s grammar fresh (leaked/mmap'd once per process, so a second
 /// open of a fixture already opened by `open_and_parse` is free) and compile
-/// `query_src` against it as a minimal `GrammarBundle` (no injections, no
-/// textobjects), interning captures into a fresh [`ScopeRegistry`]. A layer
+/// `query_src` against it as a minimal `GrammarBundle` (no optional
+/// queries), interning captures into a fresh [`ScopeRegistry`]. A layer
 /// now carries its whole bundle, not just a highlighter, so integration
 /// tests exercising `layer_highlights_for_line` need one too.
 fn bundle_for(name: &str, symbol: &str, query_src: &str) -> (Arc<GrammarBundle>, ScopeRegistry) {
@@ -41,6 +41,7 @@ fn bundle_for(name: &str, symbol: &str, query_src: &str) -> (Arc<GrammarBundle>,
         highlighter,
         injections: None,
         textobjects: None,
+        indents: None,
         config_gen: 0,
         language: LanguageRegistry::new().intern(name),
     });

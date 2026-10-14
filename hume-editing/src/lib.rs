@@ -29,6 +29,7 @@ pub mod edit;
 pub mod error;
 pub mod history;
 pub mod hunk;
+pub mod indent;
 #[cfg(any(test, feature = "test-util"))]
 pub mod marked;
 pub mod selection;

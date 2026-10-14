@@ -193,6 +193,28 @@ fn register_grammar_textobjects_only_populates_textobjects_not_injections() {
     );
 }
 
+/// `#:indents` alone populates the bundle's `indents` and leaves the other
+/// optional queries `None`.
+#[test]
+fn register_grammar_indents_only_populates_indents() {
+    require_grammars(&["json"]);
+    let (parser, hl) = grammar_fixture("json");
+    let tmp = tempfile::tempdir().unwrap();
+    let indents_path = tmp.path().join("indents.scm");
+    std::fs::write(&indents_path, "(object) @indent\n\"}\" @outdent\n").unwrap();
+    let body = format!(
+        r#"(register-grammar! "json" "{}" "tree_sitter_json" "{}" #:indents "{}")"#,
+        parser.display(),
+        hl.display(),
+        indents_path.display(),
+    );
+
+    let bundle = attach_json_via_init(&body);
+    assert!(bundle.indents.is_some());
+    assert!(bundle.injections.is_none());
+    assert!(bundle.textobjects.is_none());
+}
+
 /// `#:injections` alone still populates `injections` when `textobjects`
 /// isn't supplied at all: the sibling half of
 /// `register_grammar_textobjects_only_populates_textobjects_not_injections`.
@@ -1132,8 +1154,8 @@ fn installed_grammars_sorts_by_stem_not_filename() {
 }
 
 /// Startup registration reads every optional query file that exists beside
-/// `highlights.scm`: with only `textobjects.scm` present the bundle has text
-/// objects and no injections.
+/// `highlights.scm`: with `textobjects.scm` and `indents.scm` present the
+/// bundle has text objects and indents and no injections.
 #[test]
 fn register_grammar_from_sources_picks_up_only_the_optional_files_present() {
     require_grammars(&["json"]);
@@ -1147,6 +1169,7 @@ fn register_grammar_from_sources_picks_up_only_the_optional_files_present() {
         std::fs::copy(&parser, grammars.join(format!("json.{ext}"))).unwrap();
         std::fs::copy(&hl, src.join("highlights.scm")).unwrap();
         std::fs::write(src.join("textobjects.scm"), "(pair) @entry.inside\n").unwrap();
+        std::fs::write(src.join("indents.scm"), "(object) @indent\n").unwrap();
     });
 
     assert!(errors.is_empty(), "unexpected init errors: {errors:?}");
@@ -1163,6 +1186,7 @@ fn register_grammar_from_sources_picks_up_only_the_optional_files_present() {
         .grammar(id)
         .expect("json must have an attached grammar bundle");
     assert!(bundle.textobjects.is_some());
+    assert!(bundle.indents.is_some());
     assert!(bundle.injections.is_none());
 }
 

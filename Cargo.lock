@@ -943,6 +943,7 @@ dependencies = [
 name = "hume-treesitter"
 version = "0.15.0"
 dependencies = [
+ "criterion",
  "globset",
  "hume-editing",
  "hume-engine",

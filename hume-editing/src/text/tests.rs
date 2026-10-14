@@ -406,3 +406,12 @@ fn remove_grapheme_cluster_range() {
     let new = text.remove(0..2); // remove the 'e' + combining accent
     assert_eq!(new.to_string(), "hello\n");
 }
+
+#[test]
+fn a_line_is_blank_when_it_holds_only_whitespace() {
+    let text = BufferText::from("\n  \t\n  x\nx\n");
+    let blank: Vec<bool> = (0..4)
+        .map(|line| text.lines().is_blank(ContentLine::new(line)))
+        .collect();
+    assert_eq!(blank, [true, true, false, false]);
+}

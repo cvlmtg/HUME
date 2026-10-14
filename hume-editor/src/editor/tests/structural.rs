@@ -8,19 +8,13 @@
 
 use super::*;
 use hume_treesitter::registry::{OptionalQuery, QueryFiles};
-use test_fixtures::{
-    grammar_query_path, helix_query_path, helix_query_path_unchecked, require_fixture_file,
-    require_grammars,
-};
+use test_fixtures::{grammar_query_path, require_grammars, require_helix_query};
 
 /// Require this file's grammar fixture; see
-/// `test_fixtures::require_grammars`/`require_fixture_file`.
+/// `test_fixtures::require_grammars`/`require_helix_query`.
 fn require_fixtures() {
     require_grammars(&["rust"]);
-    require_fixture_file(
-        &helix_query_path_unchecked("rust", OptionalQuery::TextObjects.file_name()),
-        "rust helix-textobjects.scm",
-    );
+    require_helix_query("rust", OptionalQuery::TextObjects.file_name());
 }
 
 /// Build an editor from the marker DSL with the `rust` grammar (plus its
@@ -29,8 +23,7 @@ fn require_fixtures() {
 /// the window `ensure_syntax_current`'s no-committed-tree gate covers.
 fn rust_editor_undrained(source: &str) -> Editor {
     require_fixtures();
-    let to_path = helix_query_path("rust", OptionalQuery::TextObjects.file_name())
-        .expect("rust helix-textobjects.scm fixture: run scripts/fetch-test-grammars.sh");
+    let to_path = require_helix_query("rust", OptionalQuery::TextObjects.file_name());
     let mut ed = editor_from(source);
     let bid = ed.focused_buffer_id();
     attach_fixture_grammar_with(

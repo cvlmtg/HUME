@@ -3,7 +3,7 @@ use std::sync::Arc;
 use rustc_hash::FxHashMap;
 
 use hume_editing::text::BufferText;
-use test_fixtures::{helix_query_path, require_grammars};
+use test_fixtures::{require_grammars, require_helix_query};
 
 use super::*;
 use crate::registry::{GrammarBundle, OptionalQuery};
@@ -101,8 +101,7 @@ fn defines_is_false_for_a_pair_the_query_omits() {
 #[test]
 fn real_helix_rust_textobjects_defines_expected_pairs() {
     require_grammars(&["rust"]);
-    let path = helix_query_path("rust", OptionalQuery::TextObjects.file_name())
-        .expect("rust helix-textobjects.scm fixture (run scripts/fetch-test-grammars.sh)");
+    let path = require_helix_query("rust", OptionalQuery::TextObjects.file_name());
     let source = std::fs::read_to_string(path).expect("read helix-textobjects.scm");
     let q = compile(&source);
     assert!(q.defines(ObjectKind::Function, ObjectSpan::Inside));
@@ -198,8 +197,7 @@ fn adjacent_returns_none_at_buffer_edges() {
 /// injections; these tests probe single-layer trees.
 fn rust_bundle_with_real_textobjects() -> Arc<GrammarBundle> {
     require_grammars(&["rust"]);
-    let path = helix_query_path("rust", OptionalQuery::TextObjects.file_name())
-        .expect("rust helix-textobjects.scm fixture (run scripts/fetch-test-grammars.sh)");
+    let path = require_helix_query("rust", OptionalQuery::TextObjects.file_name());
     let source = std::fs::read_to_string(path).expect("read helix-textobjects.scm");
     make_bundle(
         "rust",
@@ -214,8 +212,7 @@ fn rust_bundle_with_real_textobjects() -> Arc<GrammarBundle> {
 /// why that's distinct from the grammar's own bundled query).
 fn markdown_bundle_with_helix_injections() -> Arc<GrammarBundle> {
     require_grammars(&["markdown"]);
-    let path = helix_query_path("markdown", OptionalQuery::Injections.file_name())
-        .expect("markdown helix-injections.scm fixture (run scripts/fetch-test-grammars.sh)");
+    let path = require_helix_query("markdown", OptionalQuery::Injections.file_name());
     let source = std::fs::read_to_string(path).expect("read helix-injections.scm");
     make_bundle(
         "markdown",

@@ -316,6 +316,18 @@ fn indent_stop_zero_tab_width_clamps_to_one() {
     assert_eq!(indent_stop(3, 0), 3);
 }
 
+#[test]
+fn indent_levels_rounds_down_to_whole_stops() {
+    assert_eq!(indent_levels(0, 4), 0);
+    assert_eq!(indent_levels(7, 4), 1);
+    assert_eq!(indent_levels(8, 4), 2);
+}
+
+#[test]
+fn indent_levels_zero_tab_width_counts_columns() {
+    assert_eq!(indent_levels(3, 0), 3);
+}
+
 // ── truncate_to_width ────────────────────────────────────────────────────
 
 #[test]
