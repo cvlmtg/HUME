@@ -2,7 +2,7 @@ use super::super::args::{cons_pair, string_list, symbol_hash};
 use super::*;
 use crate::{ConfigOrigin, PendingLanguageReg, test_support::SteelCtxTestHarness};
 use hume_editing::comment::{BlockCommentTokens, LineCommentTokens};
-use hume_treesitter::registry::LanguageFields;
+use hume_treesitter::registry::{LanguageFields, OptionalQuery};
 use steel::rvals::IntoSteelVal as _;
 
 fn str_val(s: &str) -> SteelVal {
@@ -304,7 +304,6 @@ fn register_grammar_init_mode_queues_pending_reg() {
             str_val("tree_sitter_rust"),
             str_val("/tmp/highlights.scm"),
             steel::rvals::SteelVal::BoolV(false),
-            steel::rvals::SteelVal::BoolV(false),
         );
         assert!(result.is_ok(), "register-grammar! in init must succeed");
     }
@@ -329,7 +328,6 @@ fn register_grammar_command_mode_calls_host() {
             str_val("tree_sitter_rust"),
             str_val("/tmp/highlights.scm"),
             steel::rvals::SteelVal::BoolV(false),
-            steel::rvals::SteelVal::BoolV(false),
         );
         // NullHost.attach_grammar returns Err.
         assert!(
@@ -344,40 +342,10 @@ fn register_grammar_command_mode_calls_host() {
     );
 }
 
-/// A string (not `#f`) in the 5th position must reach
-/// `PendingLanguageReg::Grammar.injections_path` as `Some`. If
-/// `optional_path_arg` ignored the string branch, it would be `None`, just
-/// like the `#f` case in the tests above.
+/// A `'textobjects` entry reaches `GrammarReg.queries` and leaves the other
+/// kinds absent.
 #[test]
-fn register_grammar_with_injections_path_populates_pending_reg() {
-    let mut h = SteelCtxTestHarness::new();
-    {
-        let mut ctx = h.ctx_init();
-        let result = register_grammar(
-            &mut ctx,
-            str_val("markdown"),
-            str_val("/tmp/markdown.so"),
-            str_val("tree_sitter_markdown"),
-            str_val("/tmp/highlights.scm"),
-            str_val("/tmp/injections.scm"),
-            steel::rvals::SteelVal::BoolV(false),
-        );
-        assert!(result.is_ok());
-    }
-    match lang_regs(&h)[0] {
-        PendingLanguageReg::Grammar(reg) => assert_eq!(
-            reg.injections_path.as_deref(),
-            Some(std::path::Path::new("/tmp/injections.scm")),
-        ),
-        other => panic!("expected a Grammar entry, got: {other:?}"),
-    }
-}
-
-/// A string (not `#f`) in the 6th position must reach
-/// `PendingLanguageReg::Grammar.textobjects_path` as `Some`, which it
-/// could not do if `optional_path_arg` dropped the string branch.
-#[test]
-fn register_grammar_with_textobjects_path_populates_pending_reg() {
+fn register_grammar_hash_with_textobjects_only_populates_that_kind() {
     let mut h = SteelCtxTestHarness::new();
     {
         let mut ctx = h.ctx_init();
@@ -387,18 +355,109 @@ fn register_grammar_with_textobjects_path_populates_pending_reg() {
             str_val("/tmp/rust.so"),
             str_val("tree_sitter_rust"),
             str_val("/tmp/highlights.scm"),
-            steel::rvals::SteelVal::BoolV(false),
-            str_val("/tmp/textobjects.scm"),
+            symbol_hash([("textobjects", str_val("/tmp/textobjects.scm"))]),
         );
         assert!(result.is_ok());
     }
     match lang_regs(&h)[0] {
-        PendingLanguageReg::Grammar(reg) => assert_eq!(
-            reg.textobjects_path.as_deref(),
-            Some(std::path::Path::new("/tmp/textobjects.scm")),
-        ),
+        PendingLanguageReg::Grammar(reg) => {
+            assert_eq!(
+                reg.queries.get(OptionalQuery::TextObjects),
+                Some(std::path::Path::new("/tmp/textobjects.scm")),
+            );
+            assert_eq!(reg.queries.get(OptionalQuery::Injections), None);
+        }
         other => panic!("expected a Grammar entry, got: {other:?}"),
     }
+}
+
+/// `#f` for the optional-queries argument yields no optional file, and a
+/// key bound to `#f` is the same as an absent key.
+#[test]
+fn register_grammar_false_optional_queries_yield_none() {
+    let mut h = SteelCtxTestHarness::new();
+    {
+        let mut ctx = h.ctx_init();
+        for optional in [
+            SteelVal::BoolV(false),
+            symbol_hash([("injections", SteelVal::BoolV(false))]),
+        ] {
+            register_grammar(
+                &mut ctx,
+                str_val("rust"),
+                str_val("/tmp/rust.so"),
+                str_val("tree_sitter_rust"),
+                str_val("/tmp/highlights.scm"),
+                optional,
+            )
+            .expect("register-grammar! must accept it");
+        }
+    }
+    for reg in lang_regs(&h) {
+        match reg {
+            PendingLanguageReg::Grammar(reg) => {
+                for kind in OptionalQuery::ALL {
+                    assert_eq!(reg.queries.get(kind), None, "{kind:?}");
+                }
+            }
+            other => panic!("expected a Grammar entry, got: {other:?}"),
+        }
+    }
+}
+
+/// A key outside `OptionalQuery::ALL` is reported, naming the key.
+#[test]
+fn register_grammar_unknown_optional_query_key_errors() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx_init();
+    let err = register_grammar(
+        &mut ctx,
+        str_val("rust"),
+        str_val("/tmp/rust.so"),
+        str_val("tree_sitter_rust"),
+        str_val("/tmp/highlights.scm"),
+        symbol_hash([("textobject", str_val("/tmp/t.scm"))]),
+    )
+    .expect_err("a misspelled key must be rejected");
+    let msg = err.to_string();
+    assert!(msg.contains("unknown key 'textobject"), "{msg}");
+}
+
+/// A value that is neither a path string nor `#f` is a type error.
+#[test]
+fn register_grammar_non_path_optional_query_value_errors() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx_init();
+    let result = register_grammar(
+        &mut ctx,
+        str_val("rust"),
+        str_val("/tmp/rust.so"),
+        str_val("tree_sitter_rust"),
+        str_val("/tmp/highlights.scm"),
+        symbol_hash([("injections", SteelVal::IntV(1))]),
+    );
+    let msg = result
+        .expect_err("a non-path value must be rejected")
+        .to_string();
+    assert!(msg.contains("injections"), "{msg}");
+}
+
+/// `grammar-optional-queries` lists every kind as `(key . file-name)`, in
+/// `OptionalQuery::ALL` order.
+#[test]
+fn grammar_optional_queries_lists_every_kind_with_its_file() {
+    let listed = grammar_optional_queries().expect("builtin must succeed");
+    let SteelVal::ListV(items) = listed else {
+        panic!("expected a list, got: {listed:?}");
+    };
+    let listed: Vec<String> = items.iter().map(SteelVal::to_string).collect();
+    assert_eq!(
+        listed,
+        [
+            "(injections . \"injections.scm\")",
+            "(textobjects . \"textobjects.scm\")",
+        ]
+    );
 }
 
 // ── language-has-grammar? ─────────────────────────────────────────────────
@@ -435,21 +494,26 @@ fn register_grammar_resolves_relative_paths_against_the_editor_cwd() {
             str_val("g/../rust.so"),
             str_val("tree_sitter_rust"),
             str_val("g/../highlights.scm"),
-            str_val("g/../injections.scm"),
-            str_val("g/../textobjects.scm"),
+            symbol_hash([
+                ("injections", str_val("g/../injections.scm")),
+                ("textobjects", str_val("g/../textobjects.scm")),
+            ]),
         );
         assert!(result.is_ok());
     }
     match lang_regs(&h)[0] {
         PendingLanguageReg::Grammar(reg) => {
             assert_eq!(reg.grammar_path, std::path::Path::new("rust.so"));
-            assert_eq!(reg.highlights_path, std::path::Path::new("highlights.scm"));
             assert_eq!(
-                reg.injections_path.as_deref(),
+                reg.queries.highlights(),
+                std::path::Path::new("highlights.scm")
+            );
+            assert_eq!(
+                reg.queries.get(OptionalQuery::Injections),
                 Some(std::path::Path::new("injections.scm"))
             );
             assert_eq!(
-                reg.textobjects_path.as_deref(),
+                reg.queries.get(OptionalQuery::TextObjects),
                 Some(std::path::Path::new("textobjects.scm"))
             );
         }

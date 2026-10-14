@@ -628,7 +628,6 @@ pub(crate) fn pair_fields(
 /// `ListV` rather than a `Pair` when `b` is itself list-shaped, and
 /// `pair_fields` would then reject the round-trip. Every caller's cdr is a
 /// scalar.
-#[cfg(test)]
 pub(crate) fn cons_pair(mut a: SteelVal, mut b: SteelVal) -> Result<SteelVal, SteelErr> {
     steel::primitives::lists::cons(&mut a, &mut b)
 }

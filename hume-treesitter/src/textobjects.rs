@@ -69,7 +69,7 @@ object_enum! {
 }
 
 object_enum! {
-    /// Which part of an object a capture spans. `Movement` is Helix's
+    /// Which part of an object a capture spans. `Movement` is the queries'
     /// optional navigation-only capture (a function's name node, say),
     /// narrower than `Around`, consumed only by navigation, never by
     /// selection.
@@ -107,7 +107,7 @@ pub enum Direction {
 /// A compiled `textobjects.scm` query plus a dense `(kind, span) → capture
 /// index` table, resolved once at attach time by splitting each capture
 /// name on its last `.` (`@parameter.inside.extra` would split on the last
-/// dot, but no Helix query defines such a name today). Names that don't
+/// dot, but no installed query defines such a name). Names that don't
 /// parse as `<kind>.<span>` (`@_helper`, `@function.x`) map to nothing.
 pub struct TextObjectsQuery {
     /// Read directly by [`collect_hulls`], which needs the compiled `Query`
@@ -207,13 +207,13 @@ impl ObjectSpans {
     }
 
     /// Navigation spans for `kind`: per layer, the first span in priority
-    /// order that layer's query defines. This is Helix's rule that `.movement`
-    /// exists precisely for the languages where `.around` is a poor
-    /// navigation target (a whole function body vs. just its name).
+    /// order that layer's query defines. `.movement` exists for the
+    /// languages where `.around` is a poor navigation target (a whole
+    /// function body vs. just its name).
     ///
     /// `Parameter` reorders rather than following the default priority:
-    /// `Inside` first, since Helix's `parameter.around` hull is the argument
-    /// *plus its trailing comma*, a wart `m i a` / `m a a` reject for
+    /// `Inside` first, since the queries' `parameter.around` hull is the
+    /// argument *plus its trailing comma*, a wart `m i a` / `m a a` reject for
     /// selection (`around_from_inner` recomputes the separator itself),
     /// while `parameter.inside` is exactly the span `m i a` selects, so
     /// `goto-next-argument` lands on that same trimmed span. `Movement` and
@@ -324,9 +324,9 @@ impl ObjectSpans {
     /// The next/previous object relative to `pos`.
     ///
     /// **Start-keyed in both directions**, not `end` for the backward
-    /// case, as Helix does: a backward press from inside an object must
-    /// land on that object's own start first (Vim `[m`), then walk further
-    /// back on a repeat. Keying backward on `end < pos` can never select
+    /// case: a backward press from inside an object must land on that
+    /// object's own start first (Vim `[m`), then walk further back on a
+    /// repeat. Keying backward on `end < pos` can never select
     /// the object currently enclosing the cursor, since its end is `>= pos`
     /// by definition.
     ///

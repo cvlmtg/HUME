@@ -7,9 +7,9 @@
 use super::*;
 
 use hume_scripting::ScriptingHost;
-use hume_treesitter::registry::QueryPaths;
+use hume_treesitter::registry::{OptionalQuery, QueryFiles};
 use test_fixtures::{
-    grammar_parser_path, grammar_query_path, helix_injections_path, require_fixture_file,
+    grammar_parser_path, grammar_query_path, helix_query_path, require_fixture_file,
     require_grammars,
 };
 
@@ -18,18 +18,14 @@ use test_fixtures::{
 /// `injections` selects between the real Helix-maintained injections.scm
 /// (what PLUM actually installs) and none.
 fn attach(ed: &mut Editor, name: &str, symbol: &str, injections: bool) {
-    let hl_path = grammar_query_path(name);
-    let inj_path = injections.then(|| helix_injections_path(name)).flatten();
-    attach_fixture_grammar_with(
-        ed,
-        name,
-        symbol,
-        QueryPaths {
-            highlights: &hl_path,
-            injections: inj_path.as_deref(),
-            textobjects: None,
-        },
-    );
+    let mut queries = QueryFiles::new(grammar_query_path(name));
+    if let Some(path) = injections
+        .then(|| helix_query_path(name, OptionalQuery::Injections.file_name()))
+        .flatten()
+    {
+        queries = queries.with(OptionalQuery::Injections, path);
+    }
+    attach_fixture_grammar_with(ed, name, symbol, &queries);
 }
 
 /// Require this file's grammar fixtures; see

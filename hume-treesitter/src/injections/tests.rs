@@ -2,7 +2,7 @@ use rustc_hash::FxHashMap;
 use std::sync::atomic::AtomicBool;
 
 use super::*;
-use crate::registry::GrammarBundle;
+use crate::registry::{GrammarBundle, OptionalQuery};
 use test_fixtures::{grammar_query_path, require_fixture_file, require_grammars};
 
 /// Load a real grammar fixture with an optional custom injections source
@@ -12,7 +12,14 @@ use test_fixtures::{grammar_query_path, require_fixture_file, require_grammars};
 fn make_bundle(name: &str, symbol: &str, injections_src: Option<&str>) -> Arc<GrammarBundle> {
     let highlights_src =
         std::fs::read_to_string(grammar_query_path(name)).expect("read highlights.scm");
-    crate::test_support::make_bundle(name, symbol, &highlights_src, injections_src, None)
+    crate::test_support::make_bundle(
+        name,
+        symbol,
+        &highlights_src,
+        injections_src
+            .map(|src| (OptionalQuery::Injections, src))
+            .as_slice(),
+    )
 }
 
 fn parse(bundle: &GrammarBundle, source: &str) -> (tree_sitter::Parser, tree_sitter::Tree) {

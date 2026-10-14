@@ -4,12 +4,12 @@ use globset::Glob;
 
 use super::{
     ConfigureOutcome, ConfiguredBy, LanguageField, LanguageFields, LanguageId, LanguageRegistry,
-    QueryPaths, detect_language,
+    OptionalQuery, QueryFiles, detect_language,
 };
 use hume_editing::comment::{BlockCommentTokens, LineCommentTokens};
 use hume_engine::theme::ScopeRegistry;
 use test_fixtures::{
-    grammar_parser_path, grammar_query_path, helix_textobjects_path, require_fixture_file,
+    grammar_parser_path, grammar_query_path, helix_query_path, require_fixture_file,
     require_grammars,
 };
 
@@ -48,11 +48,7 @@ fn attach_grammar_with_valid_injections_populates_bundle() {
             "rust",
             &parser_path,
             "tree_sitter_rust",
-            QueryPaths {
-                highlights: &hl_path,
-                injections: Some(&inj_path),
-                textobjects: None,
-            },
+            &QueryFiles::new(hl_path.clone()).with(OptionalQuery::Injections, inj_path.clone()),
             &mut scope_reg,
         )
         .expect("attach with valid injections must succeed");
@@ -74,7 +70,7 @@ fn attach_grammar_with_valid_injections_populates_bundle() {
 }
 
 #[test]
-fn attach_grammar_without_injections_path_leaves_injections_none() {
+fn attach_grammar_without_injections_file_leaves_injections_none() {
     require_grammars(&["rust"]);
     let parser_path = grammar_parser_path("rust");
     let hl_path = grammar_query_path("rust");
@@ -86,14 +82,14 @@ fn attach_grammar_without_injections_path_leaves_injections_none() {
             "rust",
             &parser_path,
             "tree_sitter_rust",
-            QueryPaths::highlights_only(&hl_path),
+            &QueryFiles::new(hl_path.clone()),
             &mut scope_reg,
         )
         .expect("attach without injections must succeed");
 
     assert!(
         bundle.injections.is_none(),
-        "no injections_path given → injections must stay None"
+        "no injections file given → injections must stay None"
     );
 }
 
@@ -113,27 +109,35 @@ fn attach_grammar_with_broken_injections_fails_whole_attach() {
 
     let mut reg = LanguageRegistry::new();
     let mut scope_reg = ScopeRegistry::new();
+    let scopes_before = scope_reg.len();
     let result = reg.attach_grammar(
         "rust",
         &parser_path,
         "tree_sitter_rust",
-        QueryPaths {
-            highlights: &hl_path,
-            injections: Some(&inj_path),
-            textobjects: None,
-        },
+        &QueryFiles::new(hl_path.clone()).with(OptionalQuery::Injections, inj_path.clone()),
         &mut scope_reg,
     );
     let Err(err) = result else {
         panic!("broken injections.scm must fail the attach");
     };
     assert!(
-        matches!(err, super::RegisterError::InjectionsQueryBuild(_)),
-        "broken injections.scm must surface as InjectionsQueryBuild, got: {err:?}"
+        matches!(
+            err,
+            super::RegisterError::OptionalQueryBuild {
+                kind: OptionalQuery::Injections,
+                ..
+            }
+        ),
+        "broken injections.scm must surface as OptionalQueryBuild for Injections, got: {err:?}"
     );
     assert!(
         reg.defined_id("rust").is_none(),
         "a failed attach must not leave a partial identity behind"
+    );
+    assert_eq!(
+        scope_reg.len(),
+        scopes_before,
+        "a failed attach must not intern highlight scopes"
     );
 }
 
@@ -142,7 +146,7 @@ fn attach_grammar_with_valid_textobjects_populates_bundle() {
     require_grammars(&["rust"]);
     let parser_path = grammar_parser_path("rust");
     let hl_path = grammar_query_path("rust");
-    let to_path = helix_textobjects_path("rust")
+    let to_path = helix_query_path("rust", OptionalQuery::TextObjects.file_name())
         .expect("rust helix-textobjects.scm fixture (run scripts/fetch-test-grammars.sh)");
     require_fixture_file(&to_path, "rust helix-textobjects.scm");
 
@@ -153,11 +157,7 @@ fn attach_grammar_with_valid_textobjects_populates_bundle() {
             "rust",
             &parser_path,
             "tree_sitter_rust",
-            QueryPaths {
-                highlights: &hl_path,
-                injections: None,
-                textobjects: Some(&to_path),
-            },
+            &QueryFiles::new(hl_path.clone()).with(OptionalQuery::TextObjects, to_path.clone()),
             &mut scope_reg,
         )
         .expect("attach with valid textobjects must succeed");
@@ -176,7 +176,7 @@ fn attach_grammar_with_valid_textobjects_populates_bundle() {
 }
 
 #[test]
-fn attach_grammar_without_textobjects_path_leaves_textobjects_none() {
+fn attach_grammar_without_textobjects_file_leaves_textobjects_none() {
     require_grammars(&["rust"]);
     let parser_path = grammar_parser_path("rust");
     let hl_path = grammar_query_path("rust");
@@ -188,14 +188,14 @@ fn attach_grammar_without_textobjects_path_leaves_textobjects_none() {
             "rust",
             &parser_path,
             "tree_sitter_rust",
-            QueryPaths::highlights_only(&hl_path),
+            &QueryFiles::new(hl_path.clone()),
             &mut scope_reg,
         )
         .expect("attach without textobjects must succeed");
 
     assert!(
         bundle.textobjects.is_none(),
-        "no textobjects_path given → textobjects must stay None"
+        "no textobjects file given → textobjects must stay None"
     );
 }
 
@@ -217,23 +217,74 @@ fn attach_grammar_with_broken_textobjects_fails_whole_attach() {
         "rust",
         &parser_path,
         "tree_sitter_rust",
-        QueryPaths {
-            highlights: &hl_path,
-            injections: None,
-            textobjects: Some(&to_path),
-        },
+        &QueryFiles::new(hl_path.clone()).with(OptionalQuery::TextObjects, to_path.clone()),
         &mut scope_reg,
     );
     let Err(err) = result else {
         panic!("broken textobjects.scm must fail the attach");
     };
     assert!(
-        matches!(err, super::RegisterError::TextObjectsQueryBuild(_)),
-        "broken textobjects.scm must surface as TextObjectsQueryBuild, got: {err:?}"
+        matches!(
+            err,
+            super::RegisterError::OptionalQueryBuild {
+                kind: OptionalQuery::TextObjects,
+                ..
+            }
+        ),
+        "broken textobjects.scm must surface as OptionalQueryBuild for TextObjects, got: {err:?}"
     );
     assert!(
         reg.defined_id("rust").is_none(),
         "a failed attach must not leave a partial identity behind"
+    );
+}
+
+#[test]
+fn query_files_get_returns_what_with_stored_per_kind() {
+    let files = QueryFiles::new("hl.scm".into());
+    assert_eq!(files.highlights(), Path::new("hl.scm"));
+    for kind in OptionalQuery::ALL {
+        assert_eq!(files.get(kind), None, "{kind:?} is unset on a fresh set");
+    }
+
+    for kind in OptionalQuery::ALL {
+        let path = format!("{}-path", kind.key());
+        let files = QueryFiles::new("hl.scm".into()).with(kind, path.clone().into());
+        assert_eq!(files.get(kind), Some(Path::new(&path)));
+        for other in OptionalQuery::ALL.into_iter().filter(|&k| k != kind) {
+            assert_eq!(files.get(other), None, "{other:?} stays unset");
+        }
+    }
+}
+
+#[test]
+fn attach_grammar_with_missing_injections_file_fails_with_read_error() {
+    require_grammars(&["rust"]);
+    let hl_path = grammar_query_path("rust");
+    let dir = tempfile::tempdir().unwrap();
+    let missing = dir.path().join("injections.scm");
+
+    let mut reg = LanguageRegistry::new();
+    let mut scope_reg = ScopeRegistry::new();
+    let result = reg.attach_grammar(
+        "rust",
+        &grammar_parser_path("rust"),
+        "tree_sitter_rust",
+        &QueryFiles::new(hl_path).with(OptionalQuery::Injections, missing),
+        &mut scope_reg,
+    );
+    let Err(err) = result else {
+        panic!("a missing injections.scm must fail the attach");
+    };
+    assert!(
+        matches!(
+            err,
+            super::RegisterError::OptionalQueryRead {
+                kind: OptionalQuery::Injections,
+                ..
+            }
+        ),
+        "got: {err:?}"
     );
 }
 
@@ -695,11 +746,7 @@ fn an_attached_bundle_names_its_language() {
             "rust",
             &grammar_parser_path("rust"),
             "tree_sitter_rust",
-            QueryPaths {
-                highlights: &hl_path,
-                injections: None,
-                textobjects: None,
-            },
+            &QueryFiles::new(hl_path.clone()),
             &mut scope_reg,
         )
         .expect("attach rust");
@@ -785,7 +832,7 @@ fn attached_grammar_survives_identity_re_registration() {
         "rust",
         &parser_path,
         "tree_sitter_rust",
-        QueryPaths::highlights_only(&hl_path),
+        &QueryFiles::new(hl_path.clone()),
         &mut scope_reg,
     )
     .expect("attach must succeed");

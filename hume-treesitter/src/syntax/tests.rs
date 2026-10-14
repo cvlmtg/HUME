@@ -10,12 +10,12 @@ use hume_rope::offset::CharOffset;
 
 use super::Syntax;
 use crate::parse_worker::{ParseDone, ParseOutcome, ParsedLayers};
-use crate::registry::GrammarBundle;
+use crate::registry::{GrammarBundle, OptionalQuery};
 use crate::test_support::{empty_langs, fresh_bid};
 use test_fixtures::{grammar_query_path, require_fixture_file, require_grammars};
 
 fn make_bundle(name: &str, symbol: &str) -> Arc<GrammarBundle> {
-    crate::test_support::make_bundle(name, symbol, "", None, None)
+    crate::test_support::make_bundle(name, symbol, "", &[])
 }
 
 /// Like `make_bundle`, but with a compiled injections query attached,
@@ -25,7 +25,12 @@ fn make_bundle_with_injections(
     symbol: &str,
     injections_src: &str,
 ) -> Arc<GrammarBundle> {
-    crate::test_support::make_bundle(name, symbol, "", Some(injections_src), None)
+    crate::test_support::make_bundle(
+        name,
+        symbol,
+        "",
+        &[(OptionalQuery::Injections, injections_src)],
+    )
 }
 
 /// Like `make_bundle`, but compiles the grammar's *real* `highlights.scm`
@@ -34,7 +39,7 @@ fn make_bundle_with_injections(
 fn make_bundle_with_real_highlights(name: &str, symbol: &str) -> Arc<GrammarBundle> {
     let highlights_src =
         std::fs::read_to_string(grammar_query_path(name)).expect("highlights.scm should exist");
-    crate::test_support::make_bundle(name, symbol, &highlights_src, None, None)
+    crate::test_support::make_bundle(name, symbol, &highlights_src, &[])
 }
 
 /// Real end-to-end parse via `do_parse`-equivalent: build a `ParseDone`

@@ -12,14 +12,11 @@
 (define (grammar-source-dir name)
   (path-join (grammar-sources-dir) name))
 
+(define (grammar-query-path name file)
+  (path-join (grammar-source-dir name) file))
+
 (define (grammar-highlights-path name)
-  (path-join (grammar-source-dir name) "highlights.scm"))
-
-(define (grammar-injections-path name)
-  (path-join (grammar-source-dir name) "injections.scm"))
-
-(define (grammar-textobjects-path name)
-  (path-join (grammar-source-dir name) "textobjects.scm"))
+  (grammar-query-path name "highlights.scm"))
 
 (define (platform-grammar-ext)
   (let ((os (current-os!)))
@@ -45,7 +42,23 @@
 (define (installed-grammars)
   (stems-with-suffix (grammars-dir) (string-append "." (platform-grammar-ext))))
 
-;; ── Startup registration ──────────────────────────────────────────────────────
+;; ── Registration ──────────────────────────────────────────────────────────────
+;; See README.md.
+
+(define (grammar-present-queries name)
+  (let loop ((kinds (grammar-optional-queries)) (present (hash)))
+    (if (null? kinds)
+        present
+        (let ((path (grammar-query-path name (cdr (car kinds)))))
+          (loop (cdr kinds)
+                (if (path-exists? path)
+                    (hash-insert present (car (car kinds)) path)
+                    present))))))
+
+(define (register-grammar-from-sources! name grammar-path symbol)
+  (%register-grammar! name grammar-path symbol
+                      (grammar-highlights-path name)
+                      (grammar-present-queries name)))
 
 (define (register-installed-grammars!)
   (for-each
@@ -57,14 +70,9 @@
                 (log! 'warn (string-append
                               "grammar \"" name "\" is compiled but missing its highlights "
                               "query — run :plum-install-grammar " name " to repair"))
-                (let ((inj (grammar-injections-path name))
-                      (to (grammar-textobjects-path name)))
-                  (register-grammar! name
-                                     (grammar-output-path name)
-                                     (grammar-symbol source)
-                                     hl
-                                     #:injections (if (path-exists? inj) inj #f)
-                                     #:textobjects (if (path-exists? to) to #f))))))))
+                (register-grammar-from-sources! name
+                                                (grammar-output-path name)
+                                                (grammar-symbol source)))))))
     (installed-grammars)))
 
 (when (data-dir)

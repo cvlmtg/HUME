@@ -63,7 +63,7 @@ impl LoadedGrammar {
             // `lib`) is dropped.
             let fn_ptr: unsafe extern "C" fn() -> *const () = *sym;
             let lang = Language::from(LanguageFn::from_raw(fn_ptr));
-            // Grammars are never unloaded (Helix model), so leak the library so
+            // Grammars are never unloaded, so leak the library so
             // the .so stays mapped for the process lifetime instead of tying
             // its lifetime to this struct or its wrappers.
             std::mem::forget(lib);

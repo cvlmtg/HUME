@@ -7,10 +7,10 @@
 // `textobjects.scm`: run scripts/fetch-test-grammars.sh.
 
 use super::*;
-use hume_treesitter::registry::QueryPaths;
+use hume_treesitter::registry::{OptionalQuery, QueryFiles};
 use test_fixtures::{
-    grammar_query_path, helix_textobjects_path, helix_textobjects_path_unchecked,
-    require_fixture_file, require_grammars,
+    grammar_query_path, helix_query_path, helix_query_path_unchecked, require_fixture_file,
+    require_grammars,
 };
 
 /// Require this file's grammar fixture; see
@@ -18,7 +18,7 @@ use test_fixtures::{
 fn require_fixtures() {
     require_grammars(&["rust"]);
     require_fixture_file(
-        &helix_textobjects_path_unchecked("rust"),
+        &helix_query_path_unchecked("rust", OptionalQuery::TextObjects.file_name()),
         "rust helix-textobjects.scm",
     );
 }
@@ -29,7 +29,7 @@ fn require_fixtures() {
 /// the window `ensure_syntax_current`'s no-committed-tree gate covers.
 fn rust_editor_undrained(source: &str) -> Editor {
     require_fixtures();
-    let to_path = helix_textobjects_path("rust")
+    let to_path = helix_query_path("rust", OptionalQuery::TextObjects.file_name())
         .expect("rust helix-textobjects.scm fixture: run scripts/fetch-test-grammars.sh");
     let mut ed = editor_from(source);
     let bid = ed.focused_buffer_id();
@@ -37,11 +37,7 @@ fn rust_editor_undrained(source: &str) -> Editor {
         &mut ed,
         "rust",
         "tree_sitter_rust",
-        QueryPaths {
-            highlights: &grammar_query_path("rust"),
-            injections: None,
-            textobjects: Some(&to_path),
-        },
+        &QueryFiles::new(grammar_query_path("rust")).with(OptionalQuery::TextObjects, to_path),
     );
     super::language::attach_host(&mut ed, "");
     let lang = ed.state.config.languages.intern("rust");
@@ -536,8 +532,8 @@ fn inner_argument_in_a_scratch_buffer_with_no_grammar_still_works() {
     assert_eq!(state(&ed), "foo(-[aaa]>, bbb);\n");
 }
 
-/// A grammar attached but with no `textobjects.scm` at all (`QueryPaths`
-/// leaves `textobjects: None`): `object_spans` finds nothing, so `m i a`
+/// A grammar attached but with no `textobjects.scm` at all (a `QueryFiles`
+/// with no textobjects path): `object_spans` finds nothing, so `m i a`
 /// falls back to the lexical scan exactly as the no-grammar case does, and
 /// `ensure_syntax_current`'s no-textobjects-anywhere gate must not break
 /// that fallback along the way.

@@ -13,10 +13,9 @@ use hume_engine::pipeline::BufferId;
 use hume_engine::theme::ScopeRegistry;
 
 use crate::grammar::LoadedGrammar;
-use crate::highlight::TreeSitterHighlighter;
-use crate::injections::InjectionsQuery;
-use crate::registry::{GrammarBundle, LanguageId, LanguageRegistry};
-use crate::textobjects::TextObjectsQuery;
+use crate::registry::{
+    CompiledQueries, GrammarBundle, LanguageId, LanguageRegistry, OptionalQuery, compile_queries,
+};
 
 /// Distinct per call, mirroring `LanguageRegistry`'s `config_gen` invariant
 /// so tests that compare bundles by gen see real identity.
@@ -41,33 +40,25 @@ pub(crate) fn open_grammar(name: &str, symbol: &str) -> LoadedGrammar {
 
 /// Build a `GrammarBundle` for `name`. `highlights_src` is compiled as the
 /// highlight query; pass `""` when a test only needs a parse tree, not real
-/// highlighting. `injections_src` / `textobjects_src`, if given, compile as
-/// the grammar's `injections.scm` / `textobjects.scm` query respectively.
+/// highlighting. Each `optional` source compiles as that kind's query.
 pub(crate) fn make_bundle(
     name: &str,
     symbol: &str,
     highlights_src: &str,
-    injections_src: Option<&str>,
-    textobjects_src: Option<&str>,
+    optional: &[(OptionalQuery, &str)],
 ) -> Arc<GrammarBundle> {
     let grammar = open_grammar(name, symbol);
-    let query = Arc::new(
-        tree_sitter::Query::new(grammar.language(), highlights_src).expect("compile highlights"),
-    );
-    let mut registry = ScopeRegistry::new();
-    let highlighter = Arc::new(TreeSitterHighlighter::from_shared_query(
-        query,
-        &mut registry,
-    ));
-    let injections = injections_src.map(|src| {
-        let q =
-            Arc::new(tree_sitter::Query::new(grammar.language(), src).expect("compile injections"));
-        InjectionsQuery::new(q)
-    });
-    let textobjects = textobjects_src.map(|src| {
-        let q = tree_sitter::Query::new(grammar.language(), src).expect("compile textobjects");
-        TextObjectsQuery::new(q)
-    });
+    let CompiledQueries {
+        highlighter,
+        injections,
+        textobjects,
+    } = compile_queries(
+        grammar.language(),
+        highlights_src,
+        optional,
+        &mut ScopeRegistry::new(),
+    )
+    .expect("compile queries");
     Arc::new(GrammarBundle {
         grammar,
         highlighter,

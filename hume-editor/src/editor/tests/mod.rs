@@ -20,7 +20,7 @@ use hume_editing::text::BufferText;
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 use hume_engine::types::ScopeId;
 use hume_treesitter::parse_worker::InlineParseBackend;
-use hume_treesitter::registry::{GrammarBundle, QueryPaths};
+use hume_treesitter::registry::{GrammarBundle, QueryFiles};
 use termina::event::{
     Event as TerminalEvent, KeyCode, KeyEvent, Modifiers, MouseButton, MouseEvent, MouseEventKind,
 };
@@ -259,7 +259,7 @@ fn register_markdown(ed: &mut Editor) {
 /// panic naming the fix, which is that helper's job, not this one's.
 fn attach_fixture_grammar(ed: &mut Editor, name: &str, symbol: &str) -> Arc<GrammarBundle> {
     let highlights = test_fixtures::grammar_query_path(name);
-    attach_fixture_grammar_with(ed, name, symbol, QueryPaths::highlights_only(&highlights))
+    attach_fixture_grammar_with(ed, name, symbol, &QueryFiles::new(highlights))
 }
 
 /// [`attach_fixture_grammar`] for a grammar that also needs an injections or
@@ -269,7 +269,7 @@ fn attach_fixture_grammar_with(
     ed: &mut Editor,
     name: &str,
     symbol: &str,
-    queries: QueryPaths<'_>,
+    queries: &QueryFiles,
 ) -> Arc<GrammarBundle> {
     ed.state
         .config

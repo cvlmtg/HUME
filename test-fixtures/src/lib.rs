@@ -52,34 +52,21 @@ pub fn grammar_query_path(name: &str) -> PathBuf {
     fixtures_root().join(name).join("queries/highlights.scm")
 }
 
-/// Absolute path to the *Helix-maintained* injections query for `name`,
-/// fetched by `scripts/fetch-test-grammars.sh` from the pinned Helix commit —
-/// distinct from (and can differ from!) the grammar's own bundled
-/// `queries/injections.scm`. PLUM installs the Helix version, so tests
-/// validating what PLUM actually ships should use this. `None` if the fetch
-/// script found no Helix injections query for `name` (most grammars have
-/// none).
-pub fn helix_injections_path(name: &str) -> Option<PathBuf> {
-    let path = fixtures_root().join(name).join("helix-injections.scm");
-    path.exists().then_some(path)
+/// Where the Helix-maintained query file `file` (e.g. `textobjects.scm`) for
+/// `name` lives, whether or not the fetch script found one. It is
+/// `helix-<file>` beside the grammar. These are fetched by
+/// `scripts/fetch-test-grammars.sh` from the pinned Helix commit and can
+/// differ from the grammar's own bundled queries; PLUM installs the Helix
+/// version. Callers that need the path before presence is known (to name it
+/// in a `require_fixture_file` panic) use this one.
+pub fn helix_query_path_unchecked(name: &str, file: &str) -> PathBuf {
+    fixtures_root().join(name).join(format!("helix-{file}"))
 }
 
-/// Where `name`'s Helix-maintained textobjects query would live, regardless
-/// of whether the fetch script actually found one. [`helix_textobjects_path`]
-/// is what every caller wants once the fixture is known to exist; this is
-/// the one other callers need — naming the path in a `require_fixture_file`
-/// panic before presence is known — so both read from the one join instead
-/// of a caller re-deriving "sits beside `grammar_parser_path`'s file" on its
-/// own.
-pub fn helix_textobjects_path_unchecked(name: &str) -> PathBuf {
-    fixtures_root().join(name).join("helix-textobjects.scm")
-}
-
-/// Absolute path to the *Helix-maintained* textobjects query for `name`,
-/// fetched by `scripts/fetch-test-grammars.sh` from the pinned Helix commit.
-/// `None` if the fetch script found no Helix textobjects query for `name`.
-pub fn helix_textobjects_path(name: &str) -> Option<PathBuf> {
-    let path = helix_textobjects_path_unchecked(name);
+/// [`helix_query_path_unchecked`], or `None` if the fetch script found no
+/// such query for `name`.
+pub fn helix_query_path(name: &str, file: &str) -> Option<PathBuf> {
+    let path = helix_query_path_unchecked(name, file);
     path.exists().then_some(path)
 }
 

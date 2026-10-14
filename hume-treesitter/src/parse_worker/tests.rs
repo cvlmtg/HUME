@@ -12,7 +12,7 @@ use crate::test_support::{empty_langs, fresh_bid};
 use test_fixtures::require_grammars;
 
 fn make_bundle(name: &str, symbol: &str) -> Arc<GrammarBundle> {
-    crate::test_support::make_bundle(name, symbol, "", None, None)
+    crate::test_support::make_bundle(name, symbol, "", &[])
 }
 
 // ── coalesce_one (pure) ───────────────────────────────────────────────────

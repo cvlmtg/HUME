@@ -7,12 +7,13 @@ use steel::rerrs::SteelErr;
 
 use crate::context::EvalMode;
 use crate::{ConfigOrigin, Effect, GrammarReg, PendingLanguageReg, SteelCtx};
-use hume_treesitter::registry::{LanguageField, LanguageFields};
+use hume_treesitter::registry::{LanguageField, LanguageFields, OptionalQuery, QueryFiles};
 
 use super::SteelResult;
 use super::args::{
-    HashEntry, hash_entry, list_to_strings, optional_hash_entry, optional_list_to_string_pairs,
-    optional_list_to_strings, optional_path_arg, optional_string_arg, path_arg, string_arg,
+    HashEntry, cons_pair, hash_entry, list_of, list_to_strings, optional_hash_entry,
+    optional_list_to_string_pairs, optional_list_to_strings, optional_path_arg,
+    optional_string_arg, path_arg, string_arg,
 };
 use super::errors::generic_err;
 
@@ -118,11 +119,11 @@ pub(crate) fn configure_language(
     Ok(SteelVal::Void)
 }
 
-/// `(%register-grammar! name grammar-path symbol highlights-path injections-path
-/// textobjects-path)`: init or command. `injections-path` and
-/// `textobjects-path` are each a string or `#f`; the Scheme-side
-/// `register-grammar!` wrapper (`prelude.scm`) supplies `#f` for either
-/// keyword the caller omits.
+/// `(%register-grammar! name grammar-path symbol highlights-path optional-queries)`:
+/// init or command. `optional-queries` is `#f` or a symbol-keyed hash from
+/// `OptionalQuery::key` to a path string or `#f`; any other key is an error.
+/// The Scheme-side `register-grammar!` wrapper (`prelude.scm`) builds the hash
+/// from its keyword arguments.
 ///
 /// - **Init mode**: pushes an `Effect::LanguageReg(PendingLanguageReg::Grammar)`.
 /// - **Command mode**: attaches immediately via the editor host and pushes
@@ -133,26 +134,37 @@ pub(crate) fn register_grammar(
     grammar_path: SteelVal,
     symbol: SteelVal,
     highlights_path: SteelVal,
-    injections_path: SteelVal,
-    textobjects_path: SteelVal,
+    optional_queries: SteelVal,
 ) -> SteelResult {
     let cwd = ctx.host.buffers().cwd();
     let under_cwd = |p: std::path::PathBuf| hume_platform::path::absolute_unresolved(&p, &cwd);
+    let mut queries = QueryFiles::new(under_cwd(path_arg(
+        highlights_path,
+        "register-grammar! highlights-path",
+    )?));
+    let keys = OptionalQuery::ALL.map(OptionalQuery::key);
+    if let Some(entry) = optional_hash_entry(
+        optional_queries,
+        "register-grammar! optional-queries",
+        &keys,
+    )? {
+        for kind in OptionalQuery::ALL {
+            let key = kind.key();
+            let path = entry
+                .optional(key)
+                .map(|val| optional_path_arg(val, &entry.label(key)))
+                .transpose()?
+                .flatten();
+            if let Some(path) = path {
+                queries = queries.with(kind, under_cwd(path));
+            }
+        }
+    }
     let reg = GrammarReg {
         name: string_arg(name, "register-grammar! name")?,
         grammar_path: under_cwd(path_arg(grammar_path, "register-grammar! grammar-path")?),
         symbol: string_arg(symbol, "register-grammar! symbol")?,
-        highlights_path: under_cwd(path_arg(
-            highlights_path,
-            "register-grammar! highlights-path",
-        )?),
-        injections_path: optional_path_arg(injections_path, "register-grammar! injections-path")?
-            .map(under_cwd),
-        textobjects_path: optional_path_arg(
-            textobjects_path,
-            "register-grammar! textobjects-path",
-        )?
-        .map(under_cwd),
+        queries,
     };
 
     if ctx.session == crate::context::EvalSession::Init {
@@ -169,6 +181,22 @@ pub(crate) fn register_grammar(
         .map_err(generic_err)?;
     ctx.push_effect(Effect::GrammarSweep(reg.name));
     Ok(SteelVal::Void)
+}
+
+/// `(grammar-optional-queries)` returns `((key . file-name) ...)` for every
+/// `OptionalQuery`: the keys `%register-grammar!` accepts and the file each
+/// one is read from.
+pub(crate) fn grammar_optional_queries() -> SteelResult {
+    let pairs = OptionalQuery::ALL
+        .into_iter()
+        .map(|kind| {
+            cons_pair(
+                SteelVal::SymbolV(kind.key().into()),
+                SteelVal::StringV(kind.file_name().into()),
+            )
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(list_of(pairs))
 }
 
 /// `(language-has-grammar? name)` returns `#t` if `name` has an attached grammar.

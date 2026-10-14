@@ -46,9 +46,9 @@ pub(crate) struct PatternConfig {
 
 impl InjectionsQuery {
     /// Build from a compiled `injections.scm` query. Unknown captures and
-    /// properties (Helix queries carry extras like `injection.filename`) are
-    /// silently ignored; only the standard tree-sitter injection convention
-    /// is interpreted.
+    /// properties (the installed queries carry extras like
+    /// `injection.filename`) are ignored; only the standard tree-sitter
+    /// injection convention is interpreted.
     pub(crate) fn new(query: Arc<tree_sitter::Query>) -> Self {
         let content_capture = query.capture_index_for_name("injection.content");
         let language_capture = query.capture_index_for_name("injection.language");

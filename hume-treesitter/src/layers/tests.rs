@@ -14,7 +14,7 @@ fn layer_of(name: &str, ranges: Vec<tree_sitter::Range>, depth: u8) -> SyntaxLay
         .expect("set language");
     SyntaxLayer {
         tree: parser.parse("", None).expect("parse"),
-        bundle: make_bundle(name, &symbol, "", None, None),
+        bundle: make_bundle(name, &symbol, "", &[]),
         ranges,
         depth,
     }

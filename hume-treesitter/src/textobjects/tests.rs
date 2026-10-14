@@ -3,10 +3,10 @@ use std::sync::Arc;
 use rustc_hash::FxHashMap;
 
 use hume_editing::text::BufferText;
-use test_fixtures::{helix_injections_path, helix_textobjects_path, require_grammars};
+use test_fixtures::{helix_query_path, require_grammars};
 
 use super::*;
-use crate::registry::GrammarBundle;
+use crate::registry::{GrammarBundle, OptionalQuery};
 use crate::syntax::Syntax;
 use crate::test_support::{empty_langs, fresh_bid, make_bundle};
 use hume_editing::changeset::ChangeSetBuilder;
@@ -101,7 +101,7 @@ fn defines_is_false_for_a_pair_the_query_omits() {
 #[test]
 fn real_helix_rust_textobjects_defines_expected_pairs() {
     require_grammars(&["rust"]);
-    let path = helix_textobjects_path("rust")
+    let path = helix_query_path("rust", OptionalQuery::TextObjects.file_name())
         .expect("rust helix-textobjects.scm fixture (run scripts/fetch-test-grammars.sh)");
     let source = std::fs::read_to_string(path).expect("read helix-textobjects.scm");
     let q = compile(&source);
@@ -198,10 +198,15 @@ fn adjacent_returns_none_at_buffer_edges() {
 /// injections; these tests probe single-layer trees.
 fn rust_bundle_with_real_textobjects() -> Arc<GrammarBundle> {
     require_grammars(&["rust"]);
-    let path = helix_textobjects_path("rust")
+    let path = helix_query_path("rust", OptionalQuery::TextObjects.file_name())
         .expect("rust helix-textobjects.scm fixture (run scripts/fetch-test-grammars.sh)");
     let source = std::fs::read_to_string(path).expect("read helix-textobjects.scm");
-    make_bundle("rust", "tree_sitter_rust", "", None, Some(&source))
+    make_bundle(
+        "rust",
+        "tree_sitter_rust",
+        "",
+        &[(OptionalQuery::TextObjects, &source)],
+    )
 }
 
 /// The real `markdown` bundle carrying the fetched Helix `injections.scm`:
@@ -209,10 +214,15 @@ fn rust_bundle_with_real_textobjects() -> Arc<GrammarBundle> {
 /// why that's distinct from the grammar's own bundled query).
 fn markdown_bundle_with_helix_injections() -> Arc<GrammarBundle> {
     require_grammars(&["markdown"]);
-    let path = helix_injections_path("markdown")
+    let path = helix_query_path("markdown", OptionalQuery::Injections.file_name())
         .expect("markdown helix-injections.scm fixture (run scripts/fetch-test-grammars.sh)");
     let source = std::fs::read_to_string(path).expect("read helix-injections.scm");
-    make_bundle("markdown", "tree_sitter_markdown", "", Some(&source), None)
+    make_bundle(
+        "markdown",
+        "tree_sitter_markdown",
+        "",
+        &[(OptionalQuery::Injections, &source)],
+    )
 }
 
 /// The buffer text at `span`, for asserting on the actual text a hull
@@ -317,8 +327,10 @@ fn collect_for_navigation_parameter_falls_back_to_around_without_inside() {
         "rust",
         "tree_sitter_rust",
         "",
-        None,
-        Some("(parameters (_) @parameter.around)"),
+        &[(
+            OptionalQuery::TextObjects,
+            "(parameters (_) @parameter.around)",
+        )],
     );
     let source = "fn add(a: i32, b: i32) -> i32 { a + b }\n";
     let text = BufferText::from(source);
@@ -527,7 +539,12 @@ fn movement_capture_priority_affects_navigation_not_selection() {
     require_grammars(&["rust"]);
     let query_src =
         "(function_item name: (identifier) @function.movement)\n(function_item) @function.around";
-    let bundle = make_bundle("rust", "tree_sitter_rust", "", None, Some(query_src));
+    let bundle = make_bundle(
+        "rust",
+        "tree_sitter_rust",
+        "",
+        &[(OptionalQuery::TextObjects, query_src)],
+    );
     let source = "fn foo() {\n    1\n}\n";
     let text = BufferText::from(source);
     let syn = Syntax::attach_sync(bundle, &text, &empty_langs());

@@ -1131,6 +1131,41 @@ fn installed_grammars_sorts_by_stem_not_filename() {
     );
 }
 
+/// Startup registration reads every optional query file that exists beside
+/// `highlights.scm`: with only `textobjects.scm` present the bundle has text
+/// objects and no injections.
+#[test]
+fn register_grammar_from_sources_picks_up_only_the_optional_files_present() {
+    require_grammars(&["json"]);
+    let (parser, hl) = grammar_fixture("json");
+    let ext = test_fixtures::grammar_platform_ext();
+
+    let (errors, ed, _dirs) = init_errors_with_json_data(JSON_DATA, |data| {
+        let grammars = data.join("grammars");
+        let src = grammars.join("sources").join("json");
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::copy(&parser, grammars.join(format!("json.{ext}"))).unwrap();
+        std::fs::copy(&hl, src.join("highlights.scm")).unwrap();
+        std::fs::write(src.join("textobjects.scm"), "(pair) @entry.inside\n").unwrap();
+    });
+
+    assert!(errors.is_empty(), "unexpected init errors: {errors:?}");
+    let id = ed
+        .state
+        .config
+        .languages
+        .id_of("json")
+        .expect("json must be interned");
+    let bundle = ed
+        .state
+        .config
+        .languages
+        .grammar(id)
+        .expect("json must have an attached grammar bundle");
+    assert!(bundle.textobjects.is_some());
+    assert!(bundle.injections.is_none());
+}
+
 /// The shipped language data carries each language's root markers:
 /// `go` lists two, `gomod` none.
 #[test]

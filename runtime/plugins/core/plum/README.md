@@ -124,10 +124,10 @@ bases `ecma`, `_typescript` and `_jsx` are leaves), so a grammar reached by two 
 paths does not occur; one would be spliced twice, and tree-sitter accepts duplicate
 patterns.
 
-`plum/try-fetch-injections!` and `plum/try-fetch-textobjects!` catch a failed fetch, log it
-at `'trace`, and continue. Most grammars have neither file, and the absence means no
-injection highlighting or no structural text objects for that grammar, not a broken
-install. A missing `highlights.scm` is not tolerated and aborts the install.
+`plum/try-fetch-query!` catches a failed fetch of an optional query, logs it at `'trace`, and
+continues. Most grammars lack some optional files, and the absence means that feature is off
+for the grammar, not a broken install. A missing `highlights.scm` is not tolerated and aborts
+the install.
 
 ### Grammar dependencies
 
@@ -149,9 +149,10 @@ left in a failed state (a source tree cloned but never compiled):
 4. Download the highlights query, resolving any `; inherits:` chain.
 5. Compile with tree-sitter build into a shared library, after a status line, since the C
    compiler prints nothing and a slow grammar would look hung.
-6. Download the Helix injections query, if any.
-7. Download the Helix textobjects query, if any.
-8. Register the grammar for its language in this session.
+6. Download each optional Helix query the editor can compile (the kinds
+   `grammar-optional-queries` lists), if any.
+7. Register the grammar for its language in this session with
+   `register-grammar-from-sources!`.
 
 ### Startup registration is core's job, and passive
 
@@ -237,7 +238,7 @@ offers.
   absent from `init.scm`.
 - **Theme repos are found by `.git`, not `themes/`.** See
   [Layout and discovery](#layout-and-discovery).
-- **Query fetches for injections and textobjects are best-effort.** See
+- **Optional query fetches are best-effort.** See
   [Query fetching](#query-fetching).
 - **Install commands start from a clean slate.** Purging the existing tree first makes a
   reinstall the repair path for grammars and themes.

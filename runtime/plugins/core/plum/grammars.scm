@@ -79,21 +79,11 @@
     (plum/grammar-deps name)))
 
 ;;; Tolerates a missing file — see README.md.
-(define (plum/try-fetch-query! name filename path-fn)
-  (let ((path (path-fn name)))
-    (with-handler
-      (lambda (err)
-        (log! 'trace (string-append "PLUM: no " filename " for " name " (" (to-string err) ")"))
-        #f)
-      (begin
-        (plum/fetch-query! name filename path)
-        path))))
-
-(define (plum/try-fetch-injections! name)
-  (plum/try-fetch-query! name "injections.scm" grammar-injections-path))
-
-(define (plum/try-fetch-textobjects! name)
-  (plum/try-fetch-query! name "textobjects.scm" grammar-textobjects-path))
+(define (plum/try-fetch-query! name filename)
+  (with-handler
+    (lambda (err)
+      (log! 'trace (string-append "PLUM: no " filename " for " name " (" (to-string err) ")")))
+    (plum/fetch-query! name filename (grammar-query-path name filename))))
 
 ;; ── Grammar discovery ─────────────────────────────────────────────────────────
 
@@ -140,9 +130,10 @@
     (plum/fetch-query! name "highlights.scm" hl-path)
     (displayln (string-append "Compiling grammar for " name "..."))
     (compile-grammar! build-dir out-path)
-    (register-grammar! name out-path symbol hl-path
-                       #:injections (plum/try-fetch-injections! name)
-                       #:textobjects (plum/try-fetch-textobjects! name))))
+    (for-each
+      (lambda (kind) (plum/try-fetch-query! name (cdr kind)))
+      (grammar-optional-queries))
+    (register-grammar-from-sources! name out-path symbol)))
 
 ;; ── Commands ──────────────────────────────────────────────────────────────────
 

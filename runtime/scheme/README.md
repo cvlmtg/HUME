@@ -96,9 +96,13 @@ absent from `init.scm`.
   user cleared `<data>/grammars/sources/` to reclaim disk) is repairable, so it warns instead,
   pointing at `:plum-install-grammar`, so `:plum-list-grammars` doesn't keep reporting it
   "installed" with no highlighting and no explanation.
-- **`injections.scm` and `textobjects.scm` are both optional, `highlights.scm` isn't.** Each is
-  passed as `#f` when absent from the grammar's source directory; only a missing
-  `highlights.scm` blocks registration.
+- **`highlights.scm` is required, every other query file is optional.** The optional kinds come
+  from the `grammar-optional-queries` builtin, an association list of `(key . file-name)`
+  pairs, one per kind the editor can compile. `register-grammar-from-sources!` registers
+  `highlights.scm` plus each of those files present in the grammar's source directory, so a
+  new kind needs no change here. Only a missing `highlights.scm` blocks registration.
+- **`grammar-query-path` names a query file in a grammar's source directory.** Startup
+  registration and PLUM's install both go through it.
 
 ## The prelude
 

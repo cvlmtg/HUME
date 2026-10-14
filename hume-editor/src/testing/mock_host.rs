@@ -266,11 +266,11 @@ impl LanguageHost for MockHost {
                 reg.grammar_path.display()
             ));
         }
-        if !reg.highlights_path.exists() {
+        if !reg.queries.highlights().exists() {
             return Err(format!(
                 "register-grammar! '{}': highlights.scm read failed: {}",
                 reg.name,
-                reg.highlights_path.display()
+                reg.queries.highlights().display()
             ));
         }
         self.grammars.insert(reg.name.clone());

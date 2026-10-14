@@ -12,7 +12,7 @@ pub(in crate::editor) use parse::{SyntaxUse, ensure_syntax_current};
 use hume_engine::pipeline::{BufferId, EngineView};
 use hume_scripting::{ConfigOrigin, GrammarReg};
 use hume_treesitter::registry::{
-    ConfigureOutcome, ConfiguredBy, LanguageFields, LanguageId, QueryPaths, detect_language,
+    ConfigureOutcome, ConfiguredBy, LanguageFields, LanguageId, detect_language,
 };
 
 use super::Editor;
@@ -26,7 +26,7 @@ use super::host_impl::EditorHostImpl;
 /// The one implementation of `register-grammar!`. Both entry points reach it
 /// (`EditorHostImpl::attach_grammar` for a command-mode call, and
 /// `apply_pending_language_regs` for the init-mode effect), so the
-/// `QueryPaths` conversion and the user-facing error prefix exist once.
+/// user-facing error prefix exists once.
 ///
 /// Free function over `(&mut EditorState, &mut EngineView)` rather than an
 /// `Editor` method because `EditorHostImpl` borrows those two fields
@@ -47,11 +47,7 @@ pub(in crate::editor) fn attach_grammar_from_reg(
             &reg.name,
             &reg.grammar_path,
             &reg.symbol,
-            QueryPaths {
-                highlights: &reg.highlights_path,
-                injections: reg.injections_path.as_deref(),
-                textobjects: reg.textobjects_path.as_deref(),
-            },
+            &reg.queries,
             &mut view.registry,
         )
         .map_err(|e| format!("register-grammar! '{}': {e}", reg.name))?;

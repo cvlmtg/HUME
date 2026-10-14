@@ -43,9 +43,9 @@ fn attach_grammar_errs_for_bad_path() {
             name: "rust".into(),
             grammar_path: Path::new("/no/such/lib.dylib").to_path_buf(),
             symbol: "rust_language".into(),
-            highlights_path: Path::new("/no/such/highlights.scm").to_path_buf(),
-            injections_path: None,
-            textobjects_path: None,
+            queries: hume_treesitter::registry::QueryFiles::new(
+                Path::new("/no/such/highlights.scm").to_path_buf(),
+            ),
         })
         .unwrap_err();
     assert!(

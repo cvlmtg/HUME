@@ -73,7 +73,7 @@ impl TreeSitterHighlighter {
     /// registration time (e.g. from `GrammarBundle.query`) to avoid
     /// re-parsing the `highlights.scm` source per buffer open.
     pub fn from_shared_query(query: Arc<Query>, registry: &mut ScopeRegistry) -> Self {
-        // Leading-underscore captures (e.g. `@_f`, `@_lib`) are Helix's
+        // Leading-underscore captures (e.g. `@_f`, `@_lib`) are the queries'
         // convention for pattern-internal predicate helpers, never meant to
         // be styled, so map them to `None` so they never emit a span.
         let capture_scopes: Vec<Option<ScopeId>> = query
@@ -99,7 +99,7 @@ impl TreeSitterHighlighter {
     /// depth-first priority. Does not flatten overlaps; the caller merges
     /// captures from every layer covering the line before flattening once.
     ///
-    /// Uses `cursor.captures()` (not `matches()`): Helix-style queries rely
+    /// Uses `cursor.captures()` (not `matches()`): the highlight queries rely
     /// on later patterns overriding earlier ones for the *same* node, e.g.
     /// a catch-all `(symbol) @variable` followed by a more specific
     /// `(list . (symbol) @keyword)`. `matches()` yields matches ordered by
@@ -109,7 +109,7 @@ impl TreeSitterHighlighter {
     /// same-range tiebreak then picks `@variable`, silently losing every
     /// keyword/function capture. `captures()` yields captures ordered by
     /// node position with pattern order as the same-position tiebreak,
-    /// matching Helix's own precedence semantics.
+    /// the precedence the queries are written for.
     pub(crate) fn collect_line_spans(
         &self,
         tree: &tree_sitter::Tree,

@@ -1,5 +1,5 @@
 use rustc_hash::FxHashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use globset::{Glob, GlobSet, GlobSetBuilder};
@@ -181,28 +181,113 @@ pub struct GrammarBundle {
     pub language: LanguageId,
 }
 
-/// The query files `attach_grammar` may compile for a grammar. `highlights`
-/// is required; `injections` and `textobjects` are each independently
-/// optional. Named fields, so the two optional paths can't be swapped at a
-/// call site.
-#[derive(Clone, Copy)]
-pub struct QueryPaths<'a> {
-    pub highlights: &'a Path,
-    pub injections: Option<&'a Path>,
-    pub textobjects: Option<&'a Path>,
+/// A query file a grammar may ship beyond its required highlights.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OptionalQuery {
+    Injections,
+    TextObjects,
 }
 
-impl<'a> QueryPaths<'a> {
-    /// `highlights` alone, no injections or textobjects query. The common
-    /// shape: most grammars (and most test fixtures) have nothing else to
-    /// offer.
-    pub fn highlights_only(highlights: &'a Path) -> Self {
+impl OptionalQuery {
+    pub const ALL: [Self; 2] = [Self::Injections, Self::TextObjects];
+
+    /// The name scripting uses for this kind.
+    pub const fn key(self) -> &'static str {
+        match self {
+            Self::Injections => "injections",
+            Self::TextObjects => "textobjects",
+        }
+    }
+
+    /// The query file's name inside a grammar's query directory.
+    pub const fn file_name(self) -> &'static str {
+        match self {
+            Self::Injections => "injections.scm",
+            Self::TextObjects => "textobjects.scm",
+        }
+    }
+}
+
+/// The query files `attach_grammar` may compile for a grammar. `highlights`
+/// is required; each `OptionalQuery` kind is independently optional.
+#[derive(Debug, Clone)]
+pub struct QueryFiles {
+    highlights: PathBuf,
+    injections: Option<PathBuf>,
+    textobjects: Option<PathBuf>,
+}
+
+impl QueryFiles {
+    /// `highlights` alone, with no optional query.
+    pub fn new(highlights: PathBuf) -> Self {
         Self {
             highlights,
             injections: None,
             textobjects: None,
         }
     }
+
+    /// These files plus `path` as the `kind` query.
+    pub fn with(mut self, kind: OptionalQuery, path: PathBuf) -> Self {
+        match kind {
+            OptionalQuery::Injections => self.injections = Some(path),
+            OptionalQuery::TextObjects => self.textobjects = Some(path),
+        }
+        self
+    }
+
+    pub fn highlights(&self) -> &Path {
+        &self.highlights
+    }
+
+    pub fn get(&self, kind: OptionalQuery) -> Option<&Path> {
+        match kind {
+            OptionalQuery::Injections => self.injections.as_deref(),
+            OptionalQuery::TextObjects => self.textobjects.as_deref(),
+        }
+    }
+}
+
+/// The compiled queries of one grammar, ready to become a `GrammarBundle`.
+pub(crate) struct CompiledQueries {
+    pub(crate) highlighter: Arc<TreeSitterHighlighter>,
+    pub(crate) injections: Option<InjectionsQuery>,
+    pub(crate) textobjects: Option<TextObjectsQuery>,
+}
+
+/// Compiles a grammar's queries. This is the one place query sources become
+/// compiled queries. Every compile happens before `scope_reg` is touched, so
+/// a failure leaves it unchanged.
+pub(crate) fn compile_queries(
+    language: &tree_sitter::Language,
+    highlights: &str,
+    optional: &[(OptionalQuery, &str)],
+    scope_reg: &mut ScopeRegistry,
+) -> Result<CompiledQueries, RegisterError> {
+    let highlights =
+        Arc::new(tree_sitter::Query::new(language, highlights).map_err(RegisterError::QueryBuild)?);
+    let mut injections = None;
+    let mut textobjects = None;
+    for &(kind, src) in optional {
+        let query = tree_sitter::Query::new(language, src)
+            .map_err(|error| RegisterError::OptionalQueryBuild { kind, error })?;
+        let duplicate = match kind {
+            OptionalQuery::Injections => injections
+                .replace(InjectionsQuery::new(Arc::new(query)))
+                .is_some(),
+            OptionalQuery::TextObjects => {
+                textobjects.replace(TextObjectsQuery::new(query)).is_some()
+            }
+        };
+        assert!(!duplicate, "{} given twice", kind.file_name());
+    }
+    Ok(CompiledQueries {
+        highlighter: Arc::new(TreeSitterHighlighter::from_shared_query(
+            highlights, scope_reg,
+        )),
+        injections,
+        textobjects,
+    })
 }
 
 /// Everything the registry holds for one interned language.
@@ -256,14 +341,16 @@ pub enum RegisterError {
     HighlightsRead(std::io::Error),
     /// Failed to compile the highlights query.
     QueryBuild(tree_sitter::QueryError),
-    /// Failed to read the injections query file.
-    InjectionsRead(std::io::Error),
-    /// Failed to compile the injections query.
-    InjectionsQueryBuild(tree_sitter::QueryError),
-    /// Failed to read the textobjects query file.
-    TextObjectsRead(std::io::Error),
-    /// Failed to compile the textobjects query.
-    TextObjectsQueryBuild(tree_sitter::QueryError),
+    /// Failed to read an optional query file.
+    OptionalQueryRead {
+        kind: OptionalQuery,
+        error: std::io::Error,
+    },
+    /// Failed to compile an optional query.
+    OptionalQueryBuild {
+        kind: OptionalQuery,
+        error: tree_sitter::QueryError,
+    },
     /// Grammar ABI version is outside the range the bundled tree-sitter
     /// library supports.  Recompile the grammar with a compatible generator.
     AbiIncompatible {
@@ -280,11 +367,11 @@ impl std::fmt::Display for RegisterError {
             Self::GrammarLoad(e) => write!(f, "grammar load failed: {e}"),
             Self::HighlightsRead(e) => write!(f, "highlights.scm read failed: {e}"),
             Self::QueryBuild(e) => write!(f, "highlight query compilation failed: {e}"),
-            Self::InjectionsRead(e) => write!(f, "injections.scm read failed: {e}"),
-            Self::InjectionsQueryBuild(e) => write!(f, "injections query compilation failed: {e}"),
-            Self::TextObjectsRead(e) => write!(f, "textobjects.scm read failed: {e}"),
-            Self::TextObjectsQueryBuild(e) => {
-                write!(f, "textobjects query compilation failed: {e}")
+            Self::OptionalQueryRead { kind, error } => {
+                write!(f, "{} read failed: {error}", kind.file_name())
+            }
+            Self::OptionalQueryBuild { kind, error } => {
+                write!(f, "{} compilation failed: {error}", kind.file_name())
             }
             Self::AbiIncompatible {
                 name,
@@ -370,9 +457,9 @@ impl LanguageRegistry {
     }
 
     /// The `languageId` LSP servers expect for `id`: the language name
-    /// unless an override was configured or bundled. HUME's names mirror
-    /// Helix's, which diverge from the LSP spec's well-known identifiers for a
-    /// handful of languages (`tsx` → `typescriptreact`).
+    /// unless an override was configured or bundled. HUME's names diverge
+    /// from the LSP spec's well-known identifiers for a handful of languages
+    /// (`tsx` → `typescriptreact`).
     pub fn lsp_language_id_of(&self, id: LanguageId) -> &str {
         self.entry(id)
             .config
@@ -636,17 +723,17 @@ impl LanguageRegistry {
 
     /// Attach a tree-sitter grammar to a language.
     ///
-    /// Reads the highlights query file, compiles it, builds the shared
-    /// highlighter (interning its capture names into `scope_reg`), optionally
-    /// reads and compiles `queries.injections` / `queries.textobjects` if
-    /// given, then installs the resulting `GrammarBundle` for `name`'s id.
+    /// Reads and compiles the highlights query and each optional query in
+    /// `queries`, builds the shared highlighter (interning its capture names
+    /// into `scope_reg`), then installs the resulting `GrammarBundle` for
+    /// `name`'s id.
     /// Detection indices (`by_ext`/globs/shebangs) are never touched.
     ///
-    /// A broken `injections.scm` or `textobjects.scm` fails the whole attach,
-    /// same as a broken `highlights.scm`: all three come from the same
-    /// trusted pinned source, so there is no separate soft-degrade path. All
-    /// fallible work happens before any registry mutation, so a failed
-    /// attach leaves no partial state.
+    /// A broken optional query fails the whole attach, same as a broken
+    /// `highlights.scm`: they all come from the same trusted pinned source,
+    /// so there is no separate soft-degrade path. All fallible work happens
+    /// before any registry mutation, so a failed attach leaves no partial
+    /// state.
     ///
     /// Auto-registers a bare identity (no extensions/globs/shebangs) if the
     /// language name has none yet.
@@ -655,7 +742,7 @@ impl LanguageRegistry {
         name: &str,
         grammar_path: &Path,
         symbol: &str,
-        queries: QueryPaths<'_>,
+        queries: &QueryFiles,
         scope_reg: &mut ScopeRegistry,
     ) -> Result<Arc<GrammarBundle>, RegisterError> {
         let grammar =
@@ -671,32 +758,24 @@ impl LanguageRegistry {
             });
         }
         let highlights_src =
-            std::fs::read_to_string(queries.highlights).map_err(RegisterError::HighlightsRead)?;
-        let query = Arc::new(
-            tree_sitter::Query::new(grammar.language(), &highlights_src)
-                .map_err(RegisterError::QueryBuild)?,
-        );
-        let highlighter = Arc::new(TreeSitterHighlighter::from_shared_query(query, scope_reg));
-        let injections = queries
-            .injections
-            .map(|path| {
-                let src = std::fs::read_to_string(path).map_err(RegisterError::InjectionsRead)?;
-                let query = Arc::new(
-                    tree_sitter::Query::new(grammar.language(), &src)
-                        .map_err(RegisterError::InjectionsQueryBuild)?,
-                );
-                Ok::<_, RegisterError>(InjectionsQuery::new(query))
-            })
-            .transpose()?;
-        let textobjects = queries
-            .textobjects
-            .map(|path| {
-                let src = std::fs::read_to_string(path).map_err(RegisterError::TextObjectsRead)?;
-                let query = tree_sitter::Query::new(grammar.language(), &src)
-                    .map_err(RegisterError::TextObjectsQueryBuild)?;
-                Ok::<_, RegisterError>(TextObjectsQuery::new(query))
-            })
-            .transpose()?;
+            std::fs::read_to_string(queries.highlights()).map_err(RegisterError::HighlightsRead)?;
+        let mut optional_src = Vec::new();
+        for kind in OptionalQuery::ALL {
+            if let Some(path) = queries.get(kind) {
+                let src = std::fs::read_to_string(path)
+                    .map_err(|error| RegisterError::OptionalQueryRead { kind, error })?;
+                optional_src.push((kind, src));
+            }
+        }
+        let optional: Vec<(OptionalQuery, &str)> = optional_src
+            .iter()
+            .map(|(kind, src)| (*kind, src.as_str()))
+            .collect();
+        let CompiledQueries {
+            highlighter,
+            injections,
+            textobjects,
+        } = compile_queries(grammar.language(), &highlights_src, &optional, scope_reg)?;
 
         let id = self.intern(name);
         self.entry_mut(id)
