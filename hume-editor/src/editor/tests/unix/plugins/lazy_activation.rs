@@ -132,6 +132,28 @@ fn call_bang_does_not_activate_a_typed_only_lazy_stub() {
     );
 }
 
+/// A lazy typed stub reached through a differently cased name activates its
+/// plugin and runs the command the plugin defined under the declared name.
+#[test]
+fn first_dispatch_under_a_differently_cased_name_activates_and_runs() {
+    let (mut ed, _dir) = setup_lazy_editor(
+        r#"(declare-plugin! "user/tp" #:typed-commands '("bar"))"#,
+        r#"(define-typed-command! "bar" "doc" (lambda () (call! "move-right" (focused-pane))))"#,
+    );
+    let before = state(&ed);
+
+    type_cmd(&mut ed, ":BAR");
+
+    assert_ne!(state(&ed), before, "`:BAR` must run `bar`'s body");
+    assert!(
+        matches!(
+            ed.state.config.registry.get_typed("bar").map(|tc| &tc.body),
+            Some(TypedBody::Steel { .. })
+        ),
+        "the stub must be replaced by the plugin's Steel typed command"
+    );
+}
+
 /// Loop guard: if the plugin body never defines the declared command, the stub
 /// is removed after dispatch and a Warning is reported.
 ///

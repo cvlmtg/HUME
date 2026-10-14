@@ -232,12 +232,15 @@ fn execute_command(ed: &mut Editor, input: &str) {
             // Lazy-stub activation and Steel arg marshalling both happen
             // inside `Editor::run_typed_steel_command`, so `:bar arg`
             // cannot silently drop `arg` on the plugin's first call.
+            // The entry's own name, not `cmd`: `get_typed` matched `cmd`
+            // case-insensitively, and the lazy loop guard is case-sensitive.
             TypedBody::Steel { .. } => {
-                ed.run_typed_steel_command(cmd, None, expanded, force);
+                let name = tc.name.clone();
+                ed.run_typed_steel_command(&name, None, expanded, force);
             }
             TypedBody::Lazy(plugin) => {
-                let plugin = plugin.clone();
-                ed.run_typed_steel_command(cmd, Some(plugin), expanded, force);
+                let (name, plugin) = (tc.name.clone(), plugin.clone());
+                ed.run_typed_steel_command(&name, Some(plugin), expanded, force);
             }
         },
         None => {

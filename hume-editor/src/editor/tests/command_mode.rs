@@ -58,6 +58,23 @@ fn typed_command_body_entering_insert_stays_in_insert() {
     assert_eq!(ed.doc().text().to_string(), "Xabc\n");
 }
 
+/// `:` resolves a Steel typed command case-insensitively, and the body it
+/// runs is the one the resolved entry names.
+#[test]
+fn typed_steel_command_runs_under_a_differently_cased_name() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bc\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "go" "" (lambda () (call! "insert-before" (focused-pane))))"#,
+    );
+
+    type_cmd(&mut ed, ":GO");
+
+    assert_eq!(ed.state.mode(), Mode::Insert, "`:GO` must run `go`'s body");
+}
+
 #[test]
 fn esc_cancels_command_mode() {
     let mut ed = editor_from("-[h]>ello\n");
