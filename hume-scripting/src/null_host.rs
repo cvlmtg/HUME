@@ -442,10 +442,10 @@ impl CommandHost for CommandStoreHost {
         self.inner.run_command_sync(name, pane, call)
     }
     fn register_command(&mut self, def: SteelCmdDef) -> Result<(), String> {
-        self.register_defined(def.name, CommandProc::Mappable(def.proc))
+        self.register_defined(def.name, CommandProc::Mappable(def.body.proc))
     }
     fn register_typed_command(&mut self, def: SteelTypedCmdDef) -> Result<(), String> {
-        self.register_defined(def.name, CommandProc::Typed(def.proc))
+        self.register_defined(def.name, CommandProc::Typed(def.body.proc))
     }
     fn defined_command(&self, name: &str) -> Option<CommandProc> {
         self.defined.get(name).cloned()

@@ -271,12 +271,12 @@ fn setup_typed_arity_test(src: &str, name: &str, arity: u16, is_variadic: bool) 
         name: name.to_owned().into(),
         doc: std::borrow::Cow::Borrowed(""),
         aliases: &[],
-        body: TypedBody::Steel {
+        body: TypedBody::Steel(hume_scripting::SteelTypedCmdBody {
             arity,
             is_variadic,
             inline_output: false,
             proc,
-        },
+        }),
         completer: None,
     });
     ed.scripting = Some(host);
@@ -471,12 +471,12 @@ fn typed_arity_rule_errors_on_arity_4() {
         name: "needs-four".to_owned().into(),
         doc: std::borrow::Cow::Borrowed(""),
         aliases: &[],
-        body: TypedBody::Steel {
+        body: TypedBody::Steel(hume_scripting::SteelTypedCmdBody {
             arity: 4,
             is_variadic: false,
             inline_output: false,
             proc: hume_scripting::TypedProc::for_test(),
-        },
+        }),
         completer: None,
     });
 

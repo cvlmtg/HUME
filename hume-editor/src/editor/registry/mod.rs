@@ -286,12 +286,12 @@ impl CommandRegistry {
     pub(in crate::editor) fn steel_proc(&self, name: &str) -> Option<hume_scripting::CommandProc> {
         match self.commands.get(name)? {
             Command::Mappable(MappableCommand::SteelBacked(cmd)) => {
-                Some(hume_scripting::CommandProc::Mappable(cmd.proc.clone()))
+                Some(hume_scripting::CommandProc::Mappable(cmd.body.proc.clone()))
             }
             Command::Typed(TypedCommand {
-                body: TypedBody::Steel { proc, .. },
+                body: TypedBody::Steel(body),
                 ..
-            }) => Some(hume_scripting::CommandProc::Typed(proc.clone())),
+            }) => Some(hume_scripting::CommandProc::Typed(body.proc.clone())),
             _ => None,
         }
     }
@@ -303,11 +303,13 @@ impl CommandRegistry {
         plugin: &hume_scripting::attribution::EntryId,
     ) {
         self.commands.retain(|_, cmd| match cmd {
-            Command::Mappable(MappableCommand::SteelBacked(cmd)) => !cmd.proc.defined_by(plugin),
+            Command::Mappable(MappableCommand::SteelBacked(cmd)) => {
+                !cmd.body.proc.defined_by(plugin)
+            }
             Command::Typed(TypedCommand {
-                body: TypedBody::Steel { proc, .. },
+                body: TypedBody::Steel(body),
                 ..
-            }) => !proc.defined_by(plugin),
+            }) => !body.proc.defined_by(plugin),
             _ => true,
         });
     }

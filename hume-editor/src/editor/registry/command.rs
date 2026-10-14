@@ -664,8 +664,8 @@ impl NativeCommand {
 /// A command implemented as a Steel (Scheme) lambda.
 ///
 /// Dispatched by [`hume_scripting::ScriptingHost::call_steel_cmd`], which
-/// applies `proc` directly; `call!` reaches it through `%dispatch-command!`,
-/// which applies it inside the VM.
+/// applies `body.proc` directly; `call!` reaches it through
+/// `%dispatch-command!`, which applies it inside the VM.
 ///
 /// All Steel commands are extendable (Ctrl-key delivers `extend = #t` to the
 /// lambda body). Dot-repeat is opt-in via `#:repeatable #t` in `(define-command! …)`.
@@ -675,31 +675,14 @@ pub(in crate::editor) struct SteelCommand {
     // Pending command-palette / :help integration.
     #[allow(dead_code)]
     pub(in crate::editor) doc: Cow<'static, str>,
-    /// Number of required positional parameters.
-    ///
-    /// Used at dispatch time to inject the right number of `[count, extend]`
-    /// leading args (0, 1, or 2) when the keymap calls the command with no
-    /// explicit arguments. Introspected from the closure arity at define time.
-    pub(in crate::editor) arity: u16,
-    /// `true` if the lambda accepts a rest parameter.
-    pub(in crate::editor) is_variadic: bool,
-    /// `true` if dispatch should bracket the call with an alt-screen exit
-    /// so subprocess output streams live to the terminal.
-    pub(in crate::editor) inline_output: bool,
-    /// `true` if pressing `.` should replay this command.
-    ///
-    /// Opt in via `#:repeatable #t` in `(define-command! …)`.
-    /// Never `true` when `inline_output` is `true`, enforced at definition time.
-    pub(in crate::editor) repeatable: bool,
-    /// The lambda and its owner.
-    pub(in crate::editor) proc: hume_scripting::MappableProc,
+    pub(in crate::editor) body: hume_scripting::SteelCmdBody,
 }
 
 impl SteelCommand {
     /// Declarative metadata for the dispatch pipeline. See
     /// [`NativeCommand::meta`].
     pub(in crate::editor) fn meta(&self) -> CmdMeta {
-        steel_meta(self.repeatable)
+        steel_meta(self.body.repeatable)
     }
 }
 
@@ -809,17 +792,7 @@ pub(in crate::editor) enum TypedBody {
     /// `(define-typed-command! …)`. The lambda receives `(arg force)`,
     /// `(arg)`, or `()` based on its declared arity; see
     /// `Editor::run_typed_steel_command` in `dispatch.rs`.
-    Steel {
-        /// Number of required positional parameters (0, 1, or 2).
-        arity: u16,
-        /// `true` if the lambda accepts a rest parameter.
-        is_variadic: bool,
-        /// `true` if dispatch should bracket the call with an alt-screen exit
-        /// so subprocess output streams live to the terminal.
-        inline_output: bool,
-        /// The lambda and its owner.
-        proc: hume_scripting::TypedProc,
-    },
+    Steel(hume_scripting::SteelTypedCmdBody),
     /// A placeholder for a lazy plugin's typed command that has not yet been
     /// loaded. Mirrors [`MappableCommand::Lazy`]; see its doc.
     Lazy(hume_scripting::attribution::EntryId),

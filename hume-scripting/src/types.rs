@@ -59,6 +59,13 @@ impl PaneHandle {
 pub struct SteelCmdDef {
     pub name: String,
     pub doc: String,
+    /// What the editor stores on the registry entry and dispatches from.
+    pub body: SteelCmdBody,
+}
+
+/// The part of a `define-command!` definition that only a Steel command has.
+#[derive(Clone, Debug)]
+pub struct SteelCmdBody {
     /// Number of required positional parameters the lambda accepts.
     /// Introspected once at `define-command!` time from the closure's arity.
     pub arity: u16,
@@ -83,15 +90,29 @@ pub struct SteelCmdDef {
 /// Passed immediately to [`crate::host::CommandHost::register_typed_command`]
 /// so the editor can insert a typed `Command::Typed` entry in its
 /// `CommandRegistry` inline, with no deferred second pass after a successful eval.
-/// No `repeatable` field: dot-repeat is meaningless for a `:` command, so
-/// `define-typed-command!`'s Scheme wrapper declares no `#:repeatable`
-/// keyword to carry one from (an unrecognized `#:key value` pair at the call
-/// site is silently ignored by Steel's keyword-arg lambda syntax, not
-/// rejected: there is no enforcement here beyond the absent keyword).
 #[derive(Debug)]
 pub struct SteelTypedCmdDef {
     pub name: String,
     pub doc: String,
+    /// `#:complete`: the name of the completion source (`register-
+    /// completion-source!`'s, or a native one such as `"path"`) that
+    /// completes this command's `:` argument on Tab. Resolved by name at
+    /// completion time, same as a built-in's declared completer.
+    pub completer: Option<String>,
+    /// What the editor stores on the registry entry and dispatches from.
+    pub body: SteelTypedCmdBody,
+}
+
+/// The part of a `define-typed-command!` definition that only a Steel typed
+/// command has.
+///
+/// No `repeatable` field: dot-repeat is meaningless for a `:` command, so
+/// `define-typed-command!`'s Scheme wrapper declares no `#:repeatable`
+/// keyword to carry one from (an unrecognized `#:key value` pair at the call
+/// site is ignored by Steel's keyword-arg lambda syntax, not rejected:
+/// there is no enforcement here beyond the absent keyword).
+#[derive(Clone, Debug)]
+pub struct SteelTypedCmdBody {
     /// Number of required positional parameters the lambda accepts (0, 1, or
     /// 2: `(arg)`/`(arg force)`). Introspected once at definition time from
     /// the closure's arity.
@@ -101,11 +122,6 @@ pub struct SteelTypedCmdDef {
     /// `true` if dispatch should bracket this command with an alt-screen exit
     /// so subprocess output streams live to the terminal.
     pub inline_output: bool,
-    /// `#:complete`: the name of the completion source (`register-
-    /// completion-source!`'s, or a native one such as `"path"`) that
-    /// completes this command's `:` argument on Tab. Resolved by name at
-    /// completion time, same as a built-in's declared completer.
-    pub completer: Option<String>,
     /// The lambda and the owner it was defined under.
     pub proc: TypedProc,
 }

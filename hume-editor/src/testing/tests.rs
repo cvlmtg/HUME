@@ -9,11 +9,13 @@ mod mock_host {
         hume_scripting::SteelCmdDef {
             name: name.to_string(),
             doc: String::new(),
-            arity: 0,
-            is_variadic: false,
-            inline_output: false,
-            repeatable: false,
-            proc: hume_scripting::MappableProc::for_test(),
+            body: hume_scripting::SteelCmdBody {
+                arity: 0,
+                is_variadic: false,
+                inline_output: false,
+                repeatable: false,
+                proc: hume_scripting::MappableProc::for_test(),
+            },
         }
     }
 

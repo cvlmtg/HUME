@@ -295,11 +295,13 @@ fn is_extendable_steel_backed_always_true() {
     let cmd = MappableCommand::SteelBacked(SteelCommand {
         name: "x".into(),
         doc: "".into(),
-        arity: 0,
-        is_variadic: false,
-        inline_output: false,
-        repeatable: false,
-        proc: hume_scripting::MappableProc::for_test(),
+        body: hume_scripting::SteelCmdBody {
+            arity: 0,
+            is_variadic: false,
+            inline_output: false,
+            repeatable: false,
+            proc: hume_scripting::MappableProc::for_test(),
+        },
     });
     assert!(cmd.is_extendable());
 }
@@ -425,20 +427,24 @@ fn steel_backed_names_filters_by_variant() {
     reg.register(MappableCommand::SteelBacked(SteelCommand {
         name: Cow::Owned("my-steel-cmd".to_string()),
         doc: Cow::Borrowed("doc"),
-        arity: 0,
-        is_variadic: false,
-        inline_output: false,
-        repeatable: false,
-        proc: hume_scripting::MappableProc::for_test(),
+        body: hume_scripting::SteelCmdBody {
+            arity: 0,
+            is_variadic: false,
+            inline_output: false,
+            repeatable: false,
+            proc: hume_scripting::MappableProc::for_test(),
+        },
     }));
     reg.register(MappableCommand::SteelBacked(SteelCommand {
         name: Cow::Owned("another-steel-cmd".to_string()),
         doc: Cow::Borrowed("doc"),
-        arity: 0,
-        is_variadic: false,
-        inline_output: false,
-        repeatable: false,
-        proc: hume_scripting::MappableProc::for_test(),
+        body: hume_scripting::SteelCmdBody {
+            arity: 0,
+            is_variadic: false,
+            inline_output: false,
+            repeatable: false,
+            proc: hume_scripting::MappableProc::for_test(),
+        },
     }));
     // An EditorCmd with a name that could be mistaken for a Steel proc:
     // the helper must still filter it out by variant, not by name shape.

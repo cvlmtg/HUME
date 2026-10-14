@@ -424,11 +424,11 @@ fn define_command_inline_output_sets_flag() {
         .find(|d| d.name == "plain-cmd")
         .expect("plain-cmd not found");
     assert!(
-        inline.inline_output,
+        inline.body.inline_output,
         "#:inline-output #t should set inline_output = true"
     );
     assert!(
-        !plain.inline_output,
+        !plain.body.inline_output,
         "plain define-command! should set inline_output = false"
     );
 }
@@ -457,11 +457,11 @@ fn define_command_repeatable_sets_flag() {
         .find(|d| d.name == "plain-cmd")
         .expect("plain-cmd not found");
     assert!(
-        rep.repeatable,
+        rep.body.repeatable,
         "#:repeatable #t should set repeatable = true"
     );
     assert!(
-        !plain.repeatable,
+        !plain.body.repeatable,
         "plain define-command! should set repeatable = false"
     );
 }

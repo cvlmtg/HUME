@@ -76,11 +76,11 @@ fn define_typed_command_inline_output_sets_flag() {
         .find(|d| d.name == "plain-typed")
         .expect("plain-typed not found");
     assert!(
-        inline.inline_output,
+        inline.body.inline_output,
         "#:inline-output #t should set inline_output = true"
     );
     assert!(
-        !plain.inline_output,
+        !plain.body.inline_output,
         "plain define-typed-command! should set inline_output = false"
     );
 }

@@ -235,7 +235,7 @@ fn execute_command(ed: &mut Editor, input: &str) {
             // The entry's own name, not `cmd`: `get_typed` matched `cmd`
             // case-insensitively, and the check that activation defined it is
             // case-sensitive.
-            TypedBody::Steel { .. } => {
+            TypedBody::Steel(_) => {
                 let name = tc.name.clone();
                 ed.run_typed_steel_command(&name, None, expanded, force);
             }

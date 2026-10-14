@@ -343,13 +343,14 @@ impl CommandHost for MockHost {
         let mappable = self.registered_cmds.iter().find(|d| d.name == name);
         let typed = self.registered_typed_cmds.iter().find(|d| d.name == name);
         mappable
-            .map(|d| hume_scripting::CommandProc::Mappable(d.proc.clone()))
-            .or_else(|| typed.map(|d| hume_scripting::CommandProc::Typed(d.proc.clone())))
+            .map(|d| hume_scripting::CommandProc::Mappable(d.body.proc.clone()))
+            .or_else(|| typed.map(|d| hume_scripting::CommandProc::Typed(d.body.proc.clone())))
     }
     fn unregister_commands_defined_by(&mut self, plugin: &hume_scripting::attribution::EntryId) {
-        self.registered_cmds.retain(|d| !d.proc.defined_by(plugin));
+        self.registered_cmds
+            .retain(|d| !d.body.proc.defined_by(plugin));
         self.registered_typed_cmds
-            .retain(|d| !d.proc.defined_by(plugin));
+            .retain(|d| !d.body.proc.defined_by(plugin));
     }
     fn register_lazy_command(
         &mut self,

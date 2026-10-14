@@ -224,8 +224,8 @@ impl Editor {
         // Inject pane, count, and extend as leading lambda args based on
         // declared arity.
         let effective_args = match marshal_leading_args(
-            cmd.arity,
-            cmd.is_variadic,
+            cmd.body.arity,
+            cmd.body.is_variadic,
             crate::editor::commands::FocusedPane::current(&self.view).handle(&self.view),
             steel::rvals::SteelVal::IntV(count as isize),
             steel::rvals::SteelVal::BoolV(extend),
@@ -240,9 +240,9 @@ impl Editor {
 
         self.call_steel_command_body(
             name,
-            hume_scripting::CommandProc::Mappable(cmd.proc.clone()),
+            hume_scripting::CommandProc::Mappable(cmd.body.proc.clone()),
             effective_args,
-            cmd.inline_output,
+            cmd.body.inline_output,
         )
     }
 
@@ -268,29 +268,24 @@ impl Editor {
             return false;
         }
 
-        let (inline_output, cmd_arity, cmd_is_variadic, proc) = match self
+        let body = match self
             .state
             .config
             .registry
             .get_typed(name)
             .map(|tc| &tc.body)
         {
-            Some(super::registry::TypedBody::Steel {
-                inline_output,
-                arity,
-                is_variadic,
-                proc,
-            }) => (*inline_output, *arity, *is_variadic, proc.clone()),
+            Some(super::registry::TypedBody::Steel(body)) => body.clone(),
             _ => return self.report_command_lost(name),
         };
 
         // A fixed parameter list is the lambda's whole input, so an argument
         // or `!` it has no parameter for is the user's mistake, not noise to
         // drop. A variadic lambda takes everything.
-        if !cmd_is_variadic {
-            let refused = if arg.is_some() && cmd_arity < 2 {
+        if !body.is_variadic {
+            let refused = if arg.is_some() && body.arity < 2 {
                 Some("takes no argument")
-            } else if force && cmd_arity < 3 {
+            } else if force && body.arity < 3 {
                 Some("takes no `!`")
             } else {
                 None
@@ -309,8 +304,8 @@ impl Editor {
             None => steel::rvals::SteelVal::BoolV(false),
         };
         let effective_args = match marshal_leading_args(
-            cmd_arity,
-            cmd_is_variadic,
+            body.arity,
+            body.is_variadic,
             crate::editor::commands::FocusedPane::current(&self.view).handle(&self.view),
             arg_val,
             steel::rvals::SteelVal::BoolV(force),
@@ -325,9 +320,9 @@ impl Editor {
 
         self.call_steel_command_body(
             name,
-            hume_scripting::CommandProc::Typed(proc),
+            hume_scripting::CommandProc::Typed(body.proc),
             effective_args,
-            inline_output,
+            body.inline_output,
         )
     }
 

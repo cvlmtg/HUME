@@ -52,7 +52,7 @@ fn first_dispatch_activates_plugin_and_runs() {
     assert!(
         matches!(
             ed.state.config.registry.get_typed("bar").map(|tc| &tc.body),
-            Some(TypedBody::Steel { .. })
+            Some(TypedBody::Steel(_))
         ),
         "stub must be replaced by a Steel typed command after first dispatch"
     );
@@ -147,7 +147,7 @@ fn first_dispatch_under_a_differently_cased_name_activates_and_runs() {
     assert!(
         matches!(
             ed.state.config.registry.get_typed("bar").map(|tc| &tc.body),
-            Some(TypedBody::Steel { .. })
+            Some(TypedBody::Steel(_))
         ),
         "the stub must be replaced by the plugin's Steel typed command"
     );
@@ -432,7 +432,7 @@ fn lazy_cmd_arg_passed_on_first_call() {
     assert!(
         matches!(
             ed.state.config.registry.get_typed("bar").map(|tc| &tc.body),
-            Some(TypedBody::Steel { .. })
+            Some(TypedBody::Steel(_))
         ),
         "stub must be replaced by a Steel typed command after first dispatch with arg"
     );

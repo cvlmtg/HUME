@@ -53,11 +53,7 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
             .register(MappableCommand::SteelBacked(SteelCommand {
                 name: def.name.into(),
                 doc: def.doc.into(),
-                arity: def.arity,
-                is_variadic: def.is_variadic,
-                inline_output: def.inline_output,
-                repeatable: def.repeatable,
-                proc: def.proc,
+                body: def.body,
             }));
         Ok(())
     }
@@ -80,12 +76,7 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
             name: def.name.into(),
             doc: def.doc.into(),
             aliases: &[],
-            body: TypedBody::Steel {
-                arity: def.arity,
-                is_variadic: def.is_variadic,
-                inline_output: def.inline_output,
-                proc: def.proc,
-            },
+            body: TypedBody::Steel(def.body),
             completer: def.completer.map(std::borrow::Cow::Owned),
         });
         Ok(())

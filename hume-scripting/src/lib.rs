@@ -60,8 +60,9 @@ pub use types::{
     CapabilityQuery, ConfigOrigin, DocSpan, Effect, EvalError, FeatureFilter, GrammarReg,
     ListEntry, ListLayer, LspFeature, LspServerStatusEntry, LspServerTarget, PaneHandle, Params,
     PendingLanguageReg, PendingLspNotify, PendingLspRequest, PendingLspServerOp,
-    PendingLspServerReg, RequestMode, RequestParams, RouteSpec, ServerName, SteelCmdDef,
-    SteelTypedCmdDef, TriggerKind, TriggerScope, VirtualLineSpec, WhenUnavailable,
+    PendingLspServerReg, RequestMode, RequestParams, RouteSpec, ServerName, SteelCmdBody,
+    SteelCmdDef, SteelTypedCmdBody, SteelTypedCmdDef, TriggerKind, TriggerScope, VirtualLineSpec,
+    WhenUnavailable,
 };
 // Test-only external visibility: the editor's own test suite arms/cancels a
 // real watchdog directly (hume-editor/tests/scripting.rs) rather than

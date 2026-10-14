@@ -23,7 +23,7 @@ use crate::attribution::Owner;
 use crate::command_procs::{CommandProc, MappableProc, TypedProc};
 use crate::host::{CommandArg, MAX_COUNT, NativeCall};
 use crate::log::LogLevel;
-use crate::types::{SteelCmdDef, SteelTypedCmdDef};
+use crate::types::{SteelCmdBody, SteelCmdDef, SteelTypedCmdBody, SteelTypedCmdDef};
 
 // ── Builtins ──────────────────────────────────────────────────────────────────
 
@@ -115,11 +115,13 @@ pub(crate) fn define_command(
         .register_command(SteelCmdDef {
             name,
             doc,
-            arity,
-            is_variadic,
-            inline_output,
-            repeatable,
-            proc,
+            body: SteelCmdBody {
+                arity,
+                is_variadic,
+                inline_output,
+                repeatable,
+                proc,
+            },
         })
         .map_err(generic_err)?;
     Ok(SteelVal::Void)
@@ -163,11 +165,13 @@ pub(crate) fn define_typed_command(
         .register_typed_command(SteelTypedCmdDef {
             name,
             doc,
-            arity,
-            is_variadic,
-            inline_output,
             completer,
-            proc,
+            body: SteelTypedCmdBody {
+                arity,
+                is_variadic,
+                inline_output,
+                proc,
+            },
         })
         .map_err(generic_err)?;
     Ok(SteelVal::Void)

@@ -51,7 +51,10 @@ impl<'a> OutputHost for EditorHostImpl<'a> {
         let declared = matches!(
             self.state.config.registry.get_mappable(name),
             Some(MappableCommand::SteelBacked(SteelCommand {
-                inline_output: true,
+                body: hume_scripting::SteelCmdBody {
+                    inline_output: true,
+                    ..
+                },
                 ..
             }))
         );

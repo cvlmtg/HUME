@@ -83,7 +83,7 @@ fn lazy_typed_command_first_dispatch_via_command_line() {
                 .registry
                 .get_typed("echo-arg")
                 .map(|tc| &tc.body),
-            Some(crate::editor::registry::TypedBody::Steel { .. })
+            Some(crate::editor::registry::TypedBody::Steel(_))
         ),
         "echo-arg stub must have activated on first dispatch"
     );

@@ -995,7 +995,7 @@ impl Editor {
                 }
                 // No Steel-typed-command test needs this helper yet. Extend
                 // it (mirroring Editor::run_typed_steel_command) when one does.
-                super::registry::TypedBody::Steel { .. } | super::registry::TypedBody::Lazy(_) => {
+                super::registry::TypedBody::Steel(_) | super::registry::TypedBody::Lazy(_) => {
                     panic!(
                         "execute_typed: '{cmd}' is a Steel-backed typed command, not supported by this test helper"
                     )
