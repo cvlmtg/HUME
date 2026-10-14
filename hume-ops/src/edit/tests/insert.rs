@@ -1,10 +1,15 @@
 use super::super::*;
+use crate::auto_pairs::{DEFAULT_PAIRS, Pair};
 use crate::edit::insert::line_indent_range;
-use hume_editing::selection::SelectionSet;
+use hume_editing::indent::BreakIndent;
+use hume_editing::selection::{EditView, SelectionSet};
 use hume_editing::tab_style::TabStyle;
 use hume_editing::text::BufferText;
+use hume_rope::cluster::ClusterStart;
+use hume_rope::column::BufferLineCol;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 use test_fixtures::assert_state;
+use test_fixtures::testing::IntoTestResult;
 
 /// Test-only stand-in for `arm_autoindent`: treats every current selection's
 /// line as owned, as a session that has copied indent onto every cursor's
@@ -16,9 +21,43 @@ fn owns_every_line(text: &BufferText, sels: &SelectionSet) -> Vec<ExclusiveRange
         .collect()
 }
 
-fn insert_newline_indent_owning(text: BufferText, sels: SelectionSet) -> Edited {
+fn line_break_owning(text: BufferText, sels: SelectionSet) -> Edited {
     let allowed = owns_every_line(&text, &sels);
-    insert_newline_indent(test_fixtures::testing::state(text, sels), &allowed)
+    break_with(
+        text,
+        sels,
+        LineBreak::AtCursor,
+        &allowed,
+        &[],
+        None,
+        &mut Vec::new(),
+    )
+}
+
+/// Plans and applies one line break with a provider that logs the offset of
+/// every split it is asked for and answers `indent`.
+fn break_with(
+    text: BufferText,
+    sels: SelectionSet,
+    place: LineBreak,
+    allowed: &[ExclusiveRange<CharOffset>],
+    pairs: &[Pair],
+    indent: Option<BreakIndent>,
+    asked: &mut Vec<usize>,
+) -> Edited {
+    let plan = plan_line_breaks(
+        EditView::bind(&text, &sels),
+        place,
+        allowed,
+        pairs,
+        TabStyle::Soft,
+        4,
+        NewLineIndent::Smart(|split: ClusterStart| {
+            asked.push(split.offset().index());
+            indent
+        }),
+    );
+    apply_line_break_plan(test_fixtures::testing::state(text, sels), plan)
 }
 
 fn clear_blank_line_indent_owning(text: BufferText, sels: SelectionSet) -> Edited {
@@ -454,14 +493,14 @@ fn insert_char_newline() {
     );
 }
 
-// ── insert_newline_indent (auto-indent on Enter) ──────────────────────────
+// ── Line break at the cursor (Enter, `o`) ──────────────────────────
 
 #[test]
 fn newline_indent_copies_tab_indent() {
     // "\tfoo" cursor on 'f' → new line gets "\t", cursor on 'f' (new line).
     assert_state!(
         "\t-[f]>oo\n",
-        |(text, sels)| insert_newline_indent_owning(text, sels),
+        |(text, sels)| line_break_owning(text, sels),
         "\t\n\t-[f]>oo\n"
     );
 }
@@ -471,7 +510,7 @@ fn newline_indent_copies_space_indent() {
     // "    bar" cursor on 'b' → new line gets "    ".
     assert_state!(
         "    -[b]>ar\n",
-        |(text, sels)| insert_newline_indent_owning(text, sels),
+        |(text, sels)| line_break_owning(text, sels),
         "    \n    -[b]>ar\n"
     );
 }
@@ -481,7 +520,7 @@ fn newline_indent_no_indent_on_bare_line() {
     // "foo" cursor on 'o' (last char) → new line bare.
     assert_state!(
         "fo-[o]>\n",
-        |(text, sels)| insert_newline_indent_owning(text, sels),
+        |(text, sels)| line_break_owning(text, sels),
         "fo\n-[o]>\n"
     );
 }
@@ -492,7 +531,7 @@ fn newline_indent_at_line_start_no_indent_before_cursor() {
     // is bare, original 'f' moves to new line.
     assert_state!(
         "-[f]>oo\n",
-        |(text, sels)| insert_newline_indent_owning(text, sels),
+        |(text, sels)| line_break_owning(text, sels),
         "\n-[f]>oo\n"
     );
 }
@@ -503,7 +542,7 @@ fn newline_indent_mid_line_preserves_content_before_cursor() {
     // old line; new line gets indent; cursor on 'o'.
     assert_state!(
         "\tfo-[o]>\n",
-        |(text, sels)| insert_newline_indent_owning(text, sels),
+        |(text, sels)| line_break_owning(text, sels),
         "\tfo\n\t-[o]>\n"
     );
 }
@@ -513,7 +552,7 @@ fn newline_indent_mixed_indent() {
     // "\t  x" cursor on 'x' → new line gets "\t  ".
     assert_state!(
         "\t  -[x]>\n",
-        |(text, sels)| insert_newline_indent_owning(text, sels),
+        |(text, sels)| line_break_owning(text, sels),
         "\t  \n\t  -[x]>\n"
     );
 }
@@ -524,7 +563,7 @@ fn newline_indent_replaces_selection() {
     // Cursor lands on the structural trailing '\n' (the retained original).
     assert_state!(
         "\t-[foo]>\n",
-        |(text, sels)| insert_newline_indent_owning(text, sels),
+        |(text, sels)| line_break_owning(text, sels),
         "\t\n\t-[\n]>"
     );
 }
@@ -534,7 +573,7 @@ fn newline_indent_second_line() {
     // "a\n\tb\n" cursor on 'b' (line 1, indented) → new line gets "\t".
     assert_state!(
         "a\n\t-[b]>\n",
-        |(text, sels)| insert_newline_indent_owning(text, sels),
+        |(text, sels)| line_break_owning(text, sels),
         "a\n\t\n\t-[b]>\n"
     );
 }
@@ -545,7 +584,7 @@ fn newline_indent_two_cursors_different_indents() {
     // Line 0 "  a" (cursor on 'a'), line 1 "\tb" (cursor on 'b').
     assert_state!(
         "  -{a}>\n\t-[b]>\n",
-        |(text, sels)| insert_newline_indent_owning(text, sels),
+        |(text, sels)| line_break_owning(text, sels),
         "  \n  -{a}>\n\t\n\t-[b]>\n"
     );
 }
@@ -558,7 +597,7 @@ fn newline_indent_cursor_on_structural_newline() {
     // `insert_char` behaviour for a cursor on the structural newline.
     assert_state!(
         "  x-[\n]>",
-        |(text, sels)| insert_newline_indent_owning(text, sels),
+        |(text, sels)| line_break_owning(text, sels),
         "  x\n  -[\n]>"
     );
 }
@@ -573,7 +612,7 @@ fn newline_indent_replaces_multi_line_selection() {
     // single-line selection case.
     assert_state!(
         "\t-[ab\n\txy]>\n",
-        |(text, sels)| insert_newline_indent_owning(text, sels),
+        |(text, sels)| line_break_owning(text, sels),
         "\t\n\t-[\n]>"
     );
 }
@@ -585,7 +624,7 @@ fn newline_indent_trims_blank_line_on_second_enter() {
     // forward) before opening a fresh indented line below it.
     assert_state!(
         "x\n  -[\n]>",
-        |(text, sels)| insert_newline_indent_owning(text, sels),
+        |(text, sels)| line_break_owning(text, sels),
         "x\n\n  -[\n]>"
     );
 }
@@ -597,7 +636,7 @@ fn newline_indent_trims_blank_line_cursor_mid_whitespace() {
     // not just the region before the cursor.
     assert_state!(
         "x\n -[ ]> \n",
-        |(text, sels)| insert_newline_indent_owning(text, sels),
+        |(text, sels)| line_break_owning(text, sels),
         "x\n\n   -[\n]>"
     );
 }
@@ -610,7 +649,15 @@ fn newline_indent_trim_blank_false_preserves_pre_existing_blank_line() {
     // gets a copied indent, same as the non-blank-line case.
     assert_state!(
         "x\n  -[\n]>",
-        |(text, sels)| insert_newline_indent(test_fixtures::testing::state(text, sels), &[]),
+        |(text, sels)| break_with(
+            text,
+            sels,
+            LineBreak::AtCursor,
+            &[],
+            &[],
+            None,
+            &mut Vec::new()
+        ),
         "x\n  \n  -[\n]>"
     );
 }
@@ -621,7 +668,7 @@ fn newline_indent_two_cursors_same_blank_line_each_open_a_line() {
     // line and each opens its own indented line.
     assert_state!(
         "-{ }> -[ ]>\n",
-        |(text, sels)| insert_newline_indent_owning(text, sels),
+        |(text, sels)| line_break_owning(text, sels),
         "\n   -{\n}>   -[\n]>"
     );
 }
@@ -633,65 +680,238 @@ fn newline_indent_two_cursors_second_on_blank_line_newline() {
     // indent.
     assert_state!(
         "-{ }> -[\n]>",
-        |(text, sels)| insert_newline_indent_owning(text, sels),
+        |(text, sels)| line_break_owning(text, sels),
         "\n  -{\n}>  -[\n]>"
     );
 }
 
-// ── open_line_above (auto-indent on `O`) ──────────────────────────────────
+// ── Line break above the line (`O`) ──────────────────────────────────
 
 #[test]
-fn open_line_above_copies_tab_indent() {
+fn above_line_copies_tab_indent() {
     // "\tfoo" cursor on 'f' → blank indented line inserted above it, cursor
     // on that line's own '\n'.
     assert_state!(
         "\t-[f]>oo\n",
-        |(text, sels)| open_line_above(test_fixtures::testing::state(text, sels)),
+        |(text, sels)| break_with(
+            text,
+            sels,
+            LineBreak::AboveLine,
+            &[],
+            &[],
+            None,
+            &mut Vec::new()
+        ),
         "\t-[\n]>\tfoo\n"
     );
 }
 
 #[test]
-fn open_line_above_copies_space_indent() {
+fn above_line_copies_space_indent() {
     assert_state!(
         "    -[b]>ar\n",
-        |(text, sels)| open_line_above(test_fixtures::testing::state(text, sels)),
+        |(text, sels)| break_with(
+            text,
+            sels,
+            LineBreak::AboveLine,
+            &[],
+            &[],
+            None,
+            &mut Vec::new()
+        ),
         "    -[\n]>    bar\n"
     );
 }
 
 #[test]
-fn open_line_above_no_indent_on_bare_line() {
+fn above_line_no_indent_on_bare_line() {
     assert_state!(
         "fo-[o]>\n",
-        |(text, sels)| open_line_above(test_fixtures::testing::state(text, sels)),
+        |(text, sels)| break_with(
+            text,
+            sels,
+            LineBreak::AboveLine,
+            &[],
+            &[],
+            None,
+            &mut Vec::new()
+        ),
         "-[\n]>foo\n"
     );
 }
 
 #[test]
-fn open_line_above_second_line_leaves_first_untouched() {
+fn above_line_second_line_leaves_first_untouched() {
     // Indent comes from the selection's own line, not the buffer's first
     // line: "foo" (no indent) stays untouched above the new blank line.
     assert_state!(
         "foo\n\t-[b]>ar\n",
-        |(text, sels)| open_line_above(test_fixtures::testing::state(text, sels)),
+        |(text, sels)| break_with(
+            text,
+            sels,
+            LineBreak::AboveLine,
+            &[],
+            &[],
+            None,
+            &mut Vec::new()
+        ),
         "foo\n\t-[\n]>\tbar\n"
     );
 }
 
 #[test]
-fn open_line_above_two_cursors_different_indents() {
+fn above_line_two_cursors_different_indents() {
     assert_state!(
         "\t-{a}>\n  -[b]>\n",
-        |(text, sels)| open_line_above(test_fixtures::testing::state(text, sels)),
+        |(text, sels)| break_with(
+            text,
+            sels,
+            LineBreak::AboveLine,
+            &[],
+            &[],
+            None,
+            &mut Vec::new()
+        ),
         "\t-{\n}>\ta\n  -[\n]>  b\n"
+    );
+}
+
+// ── Line breaks with automatic indentation off ────────────────────────────
+
+/// Plans and applies one line break with automatic indentation off, with
+/// the default auto-pairs in effect.
+fn break_unindented(
+    text: BufferText,
+    sels: SelectionSet,
+    place: LineBreak,
+    allowed: &[ExclusiveRange<CharOffset>],
+) -> Edited {
+    let plan = plan_line_breaks(
+        EditView::bind(&text, &sels),
+        place,
+        allowed,
+        DEFAULT_PAIRS,
+        TabStyle::Soft,
+        4,
+        NewLineIndent::<fn(ClusterStart) -> Option<BreakIndent>>::LeftMargin,
+    );
+    apply_line_break_plan(test_fixtures::testing::state(text, sels), plan)
+}
+
+#[test]
+fn unindented_line_break_mid_line_moves_the_rest_to_the_left_margin() {
+    assert_state!(
+        "\tfo-[o]>\n",
+        |(text, sels)| break_unindented(text, sels, LineBreak::AtCursor, &[]),
+        "\tfo\n-[o]>\n"
+    );
+}
+
+#[test]
+fn unindented_line_break_at_the_end_of_an_indented_line_opens_a_bare_line() {
+    assert_state!(
+        "  x-[\n]>",
+        |(text, sels)| break_unindented(text, sels, LineBreak::AtCursor, &[]),
+        "  x\n-[\n]>"
+    );
+}
+
+#[test]
+fn unindented_line_break_keeps_a_blank_lines_whitespace_it_does_not_own() {
+    assert_state!(
+        "x\n  -[\n]>",
+        |(text, sels)| break_unindented(text, sels, LineBreak::AtCursor, &[]),
+        "x\n  \n-[\n]>"
+    );
+}
+
+#[test]
+fn unindented_line_break_vacates_a_blank_lines_owned_whitespace() {
+    assert_state!(
+        "x\n  -[\n]>",
+        |(text, sels)| {
+            let allowed = owns_every_line(&text, &sels);
+            break_unindented(text, sels, LineBreak::AtCursor, &allowed)
+        },
+        "x\n\n-[\n]>"
+    );
+}
+
+#[test]
+fn unindented_line_break_between_a_pair_does_not_open_a_block() {
+    assert_state!(
+        "  f() {-[}]>\n",
+        |(text, sels)| break_unindented(text, sels, LineBreak::AtCursor, &[]),
+        "  f() {\n-[}]>\n"
+    );
+}
+
+#[test]
+fn unindented_line_breaks_at_cursors_on_several_lines() {
+    assert_state!(
+        "  -{a}>\n\t-[b]>\n",
+        |(text, sels)| break_unindented(text, sels, LineBreak::AtCursor, &[]),
+        "  \n-{a}>\n\t\n-[b]>\n"
+    );
+}
+
+#[test]
+fn unindented_line_breaks_at_cursors_on_one_line() {
+    assert_state!(
+        "\ta-{b}>c-[d]>\n",
+        |(text, sels)| break_unindented(text, sels, LineBreak::AtCursor, &[]),
+        "\ta\n-{b}>c\n-[d]>\n"
+    );
+}
+
+#[test]
+fn unindented_line_break_replaces_a_selection_with_a_bare_break() {
+    assert_state!(
+        "  a-[bc]>d\n",
+        |(text, sels)| break_unindented(text, sels, LineBreak::AtCursor, &[]),
+        "  a\n-[d]>\n"
+    );
+}
+
+#[test]
+fn unindented_line_break_over_a_selection_to_the_line_end() {
+    assert_state!(
+        "\t-[foo]>\n",
+        |(text, sels)| break_unindented(text, sels, LineBreak::AtCursor, &[]),
+        "\t\n-[\n]>"
+    );
+}
+
+#[test]
+fn unindented_above_line_on_line_zero_opens_an_empty_line() {
+    assert_state!(
+        "\t-[f]>oo\n",
+        |(text, sels)| break_unindented(text, sels, LineBreak::AboveLine, &[]),
+        "-[\n]>\tfoo\n"
+    );
+}
+
+#[test]
+fn unindented_above_line_below_line_zero_opens_an_empty_line() {
+    assert_state!(
+        "foo\n\t-[b]>ar\n",
+        |(text, sels)| break_unindented(text, sels, LineBreak::AboveLine, &[]),
+        "foo\n-[\n]>\tbar\n"
+    );
+}
+
+#[test]
+fn unindented_above_line_at_cursors_on_several_lines() {
+    assert_state!(
+        "\t-{a}>\n  -[b]>\n",
+        |(text, sels)| break_unindented(text, sels, LineBreak::AboveLine, &[]),
+        "-{\n}>\ta\n-[\n]>  b\n"
     );
 }
 
 // ── owned_blank_indent (autoindent ownership containment) ────────────────
 //
-// `insert_newline_indent_owning`/`clear_blank_line_indent_owning` above cover
+// `line_break_owning`/`clear_blank_line_indent_owning` above cover
 // the common case: a session that owns exactly its cursor's current line. These exercise the containment check itself: what
 // changes ownership once a session's record and the buffer diverge.
 
@@ -830,28 +1050,52 @@ fn insert_char_combining_codepoint() {
 // ── Clusters, wide chars and unicode indent ───────────────────────────────
 
 #[test]
-fn insert_newline_indent_copies_a_space_and_combining_mark_indent_whole() {
+fn line_break_copies_a_space_and_combining_mark_indent_whole() {
     assert_state!(
         " \u{301}-[x]>\n",
-        |(text, sels)| insert_newline_indent(test_fixtures::testing::state(text, sels), &[]),
+        |(text, sels)| break_with(
+            text,
+            sels,
+            LineBreak::AtCursor,
+            &[],
+            &[],
+            None,
+            &mut Vec::new()
+        ),
         " \u{301}\n \u{301}-[x]>\n"
     );
 }
 
 #[test]
-fn insert_newline_indent_copies_a_non_breaking_space_indent() {
+fn line_break_copies_a_non_breaking_space_indent() {
     assert_state!(
         "\u{a0}\u{3000}-[x]>\n",
-        |(text, sels)| insert_newline_indent(test_fixtures::testing::state(text, sels), &[]),
+        |(text, sels)| break_with(
+            text,
+            sels,
+            LineBreak::AtCursor,
+            &[],
+            &[],
+            None,
+            &mut Vec::new()
+        ),
         "\u{a0}\u{3000}\n\u{a0}\u{3000}-[x]>\n"
     );
 }
 
 #[test]
-fn open_line_above_copies_a_non_breaking_space_indent() {
+fn above_line_copies_a_non_breaking_space_indent() {
     assert_state!(
         "\u{a0}-[b]>ar\n",
-        |(text, sels)| open_line_above(test_fixtures::testing::state(text, sels)),
+        |(text, sels)| break_with(
+            text,
+            sels,
+            LineBreak::AboveLine,
+            &[],
+            &[],
+            None,
+            &mut Vec::new()
+        ),
         "\u{a0}-[\n]>\u{a0}bar\n"
     );
 }
@@ -876,28 +1120,392 @@ fn insert_tab_soft_counts_a_combining_cluster_as_one_column() {
 }
 
 #[test]
-fn insert_newline_indent_over_the_last_line_adds_no_blank_line() {
+fn line_break_over_the_last_line_adds_no_blank_line() {
     assert_state!(
         "abc\n-[def\n]>",
-        |(text, sels)| insert_newline_indent_owning(text, sels),
+        |(text, sels)| line_break_owning(text, sels),
         "abc\n-[\n]>"
     );
 }
 
 #[test]
-fn insert_newline_indent_over_an_indented_last_line_keeps_the_indent() {
+fn line_break_over_an_indented_last_line_keeps_the_indent() {
     assert_state!(
         "  abc\n  -[def\n]>",
-        |(text, sels)| insert_newline_indent_owning(text, sels),
+        |(text, sels)| line_break_owning(text, sels),
         "  abc\n  \n  -[\n]>"
     );
 }
 
 #[test]
-fn insert_newline_indent_over_a_middle_selection_lands_after_it() {
+fn line_break_over_a_middle_selection_lands_after_it() {
     assert_state!(
         "abc\n-[def\n]>ghi\n",
-        |(text, sels)| insert_newline_indent_owning(text, sels),
+        |(text, sels)| line_break_owning(text, sels),
         "abc\n\n-[g]>hi\n"
     );
+}
+
+// ── Line breaks with a computed indent ────────────────────────────────────
+
+fn indent(width: u32, after_token: bool) -> Option<BreakIndent> {
+    Some(BreakIndent {
+        width: BufferLineCol::new(width),
+        after_token,
+    })
+}
+
+#[test]
+fn line_break_after_content_uses_the_computed_width() {
+    let asked = std::cell::RefCell::new(Vec::new());
+    assert_state!(
+        "foo-[\n]>",
+        |(text, sels)| break_with(
+            text,
+            sels,
+            LineBreak::AtCursor,
+            &[],
+            &[],
+            indent(4, false),
+            &mut asked.borrow_mut()
+        ),
+        "foo\n    -[\n]>"
+    );
+    assert_eq!(*asked.borrow(), vec![3]);
+}
+
+#[test]
+fn line_break_renders_the_computed_width_in_the_tab_style() {
+    let (text, sels) = test_fixtures::testing::parse_state("a-[\n]>");
+    let plan = plan_line_breaks(
+        EditView::bind(&text, &sels),
+        LineBreak::AtCursor,
+        &[],
+        &[],
+        TabStyle::Hard,
+        4,
+        NewLineIndent::Smart(|_| indent(6, false)),
+    );
+    let (text, sels) =
+        apply_line_break_plan(test_fixtures::testing::state(text, sels), plan).into_test_result();
+    assert_eq!(
+        test_fixtures::testing::serialize_state(&text, &sels),
+        "a\n\t  -[\n]>"
+    );
+}
+
+#[test]
+fn line_break_copies_without_asking_when_the_cursor_is_in_leading_whitespace() {
+    let asked = std::cell::RefCell::new(Vec::new());
+    assert_state!(
+        "   -[ ]>x\n",
+        |(text, sels)| break_with(
+            text,
+            sels,
+            LineBreak::AtCursor,
+            &[],
+            &[],
+            indent(8, false),
+            &mut asked.borrow_mut()
+        ),
+        "   \n    -[ ]>x\n"
+    );
+    assert_eq!(*asked.borrow(), Vec::<usize>::new());
+}
+
+#[test]
+fn line_break_copies_without_asking_on_the_first_non_blank_char() {
+    let asked = std::cell::RefCell::new(Vec::new());
+    assert_state!(
+        "  -[x]>\n",
+        |(text, sels)| break_with(
+            text,
+            sels,
+            LineBreak::AtCursor,
+            &[],
+            &[],
+            indent(8, false),
+            &mut asked.borrow_mut()
+        ),
+        "  \n  -[x]>\n"
+    );
+    assert_eq!(*asked.borrow(), Vec::<usize>::new());
+}
+
+#[test]
+fn line_break_copies_without_asking_at_column_zero_of_an_unindented_line() {
+    let asked = std::cell::RefCell::new(Vec::new());
+    assert_state!(
+        "-[f]>oo\n",
+        |(text, sels)| break_with(
+            text,
+            sels,
+            LineBreak::AtCursor,
+            &[],
+            &[],
+            indent(8, false),
+            &mut asked.borrow_mut()
+        ),
+        "\n-[f]>oo\n"
+    );
+    assert_eq!(*asked.borrow(), Vec::<usize>::new());
+}
+
+#[test]
+fn line_break_on_an_owned_blank_line_vacates_it_and_uses_the_computed_width() {
+    let asked = std::cell::RefCell::new(Vec::new());
+    assert_state!(
+        "x\n  -[\n]>",
+        |(text, sels)| {
+            let allowed = owns_every_line(&text, &sels);
+            break_with(
+                text,
+                sels,
+                LineBreak::AtCursor,
+                &allowed,
+                &[],
+                indent(4, false),
+                &mut asked.borrow_mut(),
+            )
+        },
+        "x\n\n    -[\n]>"
+    );
+    assert_eq!(*asked.borrow(), vec![4]);
+}
+
+#[test]
+fn line_break_between_a_pair_after_a_token_opens_a_block() {
+    let asked = std::cell::RefCell::new(Vec::new());
+    assert_state!(
+        "x{-[}]>\n",
+        |(text, sels)| break_with(
+            text,
+            sels,
+            LineBreak::AtCursor,
+            &[],
+            DEFAULT_PAIRS,
+            indent(0, true),
+            &mut asked.borrow_mut()
+        ),
+        "x{\n    -[\n]>}\n"
+    );
+    assert_eq!(*asked.borrow(), vec![2]);
+}
+
+#[test]
+fn line_break_between_a_pair_not_after_a_token_is_plain() {
+    assert_state!(
+        "x{-[}]>\n",
+        |(text, sels)| break_with(
+            text,
+            sels,
+            LineBreak::AtCursor,
+            &[],
+            DEFAULT_PAIRS,
+            indent(0, false),
+            &mut Vec::new()
+        ),
+        "x{\n-[}]>\n"
+    );
+}
+
+#[test]
+fn line_break_between_a_symmetric_pair_does_not_open_a_block() {
+    assert_state!(
+        "x\"-[\"]>\n",
+        |(text, sels)| break_with(
+            text,
+            sels,
+            LineBreak::AtCursor,
+            &[],
+            DEFAULT_PAIRS,
+            indent(4, true),
+            &mut Vec::new()
+        ),
+        "x\"\n    -[\"]>\n"
+    );
+}
+
+#[test]
+fn line_break_between_a_pair_without_a_computed_indent_copies() {
+    let asked = std::cell::RefCell::new(Vec::new());
+    assert_state!(
+        "x{-[}]>\n",
+        |(text, sels)| break_with(
+            text,
+            sels,
+            LineBreak::AtCursor,
+            &[],
+            DEFAULT_PAIRS,
+            None,
+            &mut asked.borrow_mut()
+        ),
+        "x{\n-[}]>\n"
+    );
+    assert_eq!(*asked.borrow(), vec![2]);
+}
+
+#[test]
+fn line_break_over_a_selection_copies_without_asking() {
+    let asked = std::cell::RefCell::new(Vec::new());
+    assert_state!(
+        "\t-[foo]>\n",
+        |(text, sels)| break_with(
+            text,
+            sels,
+            LineBreak::AtCursor,
+            &[],
+            &[],
+            indent(8, false),
+            &mut asked.borrow_mut()
+        ),
+        "\t\n\t-[\n]>"
+    );
+    assert_eq!(*asked.borrow(), Vec::<usize>::new());
+}
+
+#[test]
+fn above_line_on_line_zero_copies_without_asking() {
+    let asked = std::cell::RefCell::new(Vec::new());
+    assert_state!(
+        "\t-[f]>oo\n",
+        |(text, sels)| break_with(
+            text,
+            sels,
+            LineBreak::AboveLine,
+            &[],
+            &[],
+            indent(8, false),
+            &mut asked.borrow_mut()
+        ),
+        "\t-[\n]>\tfoo\n"
+    );
+    assert_eq!(*asked.borrow(), Vec::<usize>::new());
+}
+
+#[test]
+fn above_line_asks_at_the_previous_lines_break() {
+    let asked = std::cell::RefCell::new(Vec::new());
+    assert_state!(
+        "a\nb\n-[c]>\n",
+        |(text, sels)| break_with(
+            text,
+            sels,
+            LineBreak::AboveLine,
+            &[],
+            &[],
+            indent(4, false),
+            &mut asked.borrow_mut()
+        ),
+        "a\nb\n    -[\n]>c\n"
+    );
+    assert_eq!(*asked.borrow(), vec![3]);
+}
+
+#[test]
+fn above_line_without_a_computed_indent_copies() {
+    assert_state!(
+        "a\n\t-[b]>\n",
+        |(text, sels)| break_with(
+            text,
+            sels,
+            LineBreak::AboveLine,
+            &[],
+            &[],
+            None,
+            &mut Vec::new()
+        ),
+        "a\n\t-[\n]>\tb\n"
+    );
+}
+
+#[test]
+fn line_breaks_at_several_cursors_ask_in_selection_order() {
+    let asked = std::cell::RefCell::new(Vec::new());
+    assert_state!(
+        "a-{\n}>b-[\n]>",
+        |(text, sels)| break_with(
+            text,
+            sels,
+            LineBreak::AtCursor,
+            &[],
+            &[],
+            indent(2, false),
+            &mut asked.borrow_mut()
+        ),
+        "a\n  -{\n}>b\n  -[\n]>"
+    );
+    assert_eq!(*asked.borrow(), vec![1, 3]);
+}
+
+#[test]
+fn line_break_asks_at_the_cluster_start_after_a_combining_mark_and_cjk() {
+    let asked = std::cell::RefCell::new(Vec::new());
+    assert_state!(
+        "\u{6f22}e\u{301}-[\n]>",
+        |(text, sels)| break_with(
+            text,
+            sels,
+            LineBreak::AtCursor,
+            &[],
+            &[],
+            indent(0, false),
+            &mut asked.borrow_mut()
+        ),
+        "\u{6f22}e\u{301}\n-[\n]>"
+    );
+    assert_eq!(*asked.borrow(), vec![3]);
+}
+
+#[test]
+fn above_line_asks_at_the_break_of_a_combining_mark_and_cjk_line() {
+    let asked = std::cell::RefCell::new(Vec::new());
+    assert_state!(
+        "\u{6f22}e\u{301}\n-[x]>\n",
+        |(text, sels)| break_with(
+            text,
+            sels,
+            LineBreak::AboveLine,
+            &[],
+            &[],
+            indent(0, false),
+            &mut asked.borrow_mut()
+        ),
+        "\u{6f22}e\u{301}\n-[\n]>x\n"
+    );
+    assert_eq!(*asked.borrow(), vec![3]);
+}
+
+#[test]
+#[should_panic(expected = "computed for another text")]
+fn applying_a_line_break_plan_to_another_text_panics() {
+    let (text, sels) = test_fixtures::testing::parse_state("-[a]>\n");
+    let plan = plan_line_breaks(
+        EditView::bind(&text, &sels),
+        LineBreak::AtCursor,
+        &[],
+        &[],
+        TabStyle::Soft,
+        4,
+        NewLineIndent::Smart(|_| None),
+    );
+    let (other_text, other_sels) = test_fixtures::testing::parse_state("-[b]>\n");
+    apply_line_break_plan(test_fixtures::testing::state(other_text, other_sels), plan);
+}
+
+#[test]
+#[should_panic(expected = "the plan has 2 breaks for 1 selections")]
+fn applying_a_line_break_plan_to_another_number_of_selections_panics() {
+    let (text, sels) = test_fixtures::testing::parse_state("-{a}>\n-[b]>\n");
+    let plan = plan_line_breaks(
+        EditView::bind(&text, &sels),
+        LineBreak::AtCursor,
+        &[],
+        &[],
+        TabStyle::Soft,
+        4,
+        NewLineIndent::Smart(|_| None),
+    );
+    let first = text.clusters().first();
+    apply_line_break_plan(EditState::with_cursor(text, first), plan);
 }

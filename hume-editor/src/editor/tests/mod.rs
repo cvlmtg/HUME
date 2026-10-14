@@ -1168,6 +1168,18 @@ fn run(ed: &mut Editor, tmp: &std::path::Path, source: &str) {
     install_source(ed, host, source, tmp);
 }
 
+/// Defines a one-arg Steel command whose body is `body` and binds it to
+/// `key` in Insert mode, for a test that presses `key` and expects `body`
+/// (typically an `insert-key!` call) to run instead of any built-in Insert
+/// binding for that key.
+fn bind_insert_key(ed: &mut Editor, tmp: &std::path::Path, key: &str, body: &str) {
+    let source = format!(
+        r#"(define-command! "insert-key-probe" "" (lambda (pane) {body}))
+           (bind-key! 'insert "{key}" "insert-key-probe")"#
+    );
+    run(ed, tmp, &source);
+}
+
 /// Runs `body` as a Steel command; the command moves the cursor iff `body`'s
 /// own assertion (embedded in the Scheme source) held. `body` may reference
 /// `bid`, the buffer the probe command was dispatched against.
@@ -1510,6 +1522,7 @@ mod search;
 mod select_all;
 mod settings_effects;
 mod shift_punctuation;
+mod smart_indent;
 mod statusline_steel;
 mod structural;
 mod surround;

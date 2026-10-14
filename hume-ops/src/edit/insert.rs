@@ -2,15 +2,18 @@
 
 use hume_editing::edit::Edited;
 use hume_editing::edit::Landing;
+use hume_editing::indent::BreakIndent;
+use hume_editing::selection::EditView;
 use hume_editing::state::EditState;
 use hume_editing::tab_style::TabStyle;
-use hume_editing::text::BufferText;
+use hume_editing::text::{BufferText, TextVersion};
 use hume_rope::cluster::{ClusterRange, ClusterStart};
 use hume_rope::line::ContentLine;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
-use hume_rope::width::{str_width, tab_advance};
+use hume_rope::width::{indent_stop, str_width, tab_advance};
 
 use super::apply_edit;
+use crate::auto_pairs::{Pair, pair_around};
 
 /// Insert `ch` at every selection.
 ///
@@ -42,7 +45,7 @@ pub fn insert_str(state: EditState, inserted: &str) -> Edited {
 /// Returns `true` if `line` has leading whitespace and nothing else before its
 /// `\n`: a blank, auto-indented line with no real content.
 fn is_blank_indented_line(indent: LineIndent) -> bool {
-    indent.ws_end > indent.start && indent.ws_end == indent.line_break
+    indent.ws_end > indent.start && indent.is_blank()
 }
 
 /// Where a line starts, where its leading whitespace ends, and its `\n`.
@@ -58,13 +61,21 @@ impl LineIndent {
     pub(in crate::edit) fn chars(self) -> ExclusiveRange<CharOffset> {
         ExclusiveRange::new(self.start.offset(), self.ws_end.offset())
     }
+
+    /// Whether the line holds nothing but blanks before its `\n`, an empty
+    /// line included.
+    pub(in crate::edit) fn is_blank(self) -> bool {
+        self.ws_end == self.line_break
+    }
 }
 
 /// The indent of the line containing `pos`. Single source of truth for that
 /// computation: every caller that needs a line's indent bounds (the
-/// blank-line ownership check below, `O`'s own indent copy, and the sibling
-/// test module's `owns_every_line` stand-in for `arm_autoindent`) goes
-/// through this instead of re-deriving it.
+/// blank-line ownership check below, the indent a line break copies and
+/// the line start a break above goes in at, electric dedent's check that a
+/// line still holds its armed indent, and the sibling test module's
+/// `owns_every_line` stand-in for `arm_autoindent`) goes through this
+/// instead of re-deriving it.
 pub(in crate::edit) fn line_indent_range(text: &BufferText, pos: CharOffset) -> LineIndent {
     let line_idx = text.char_to_line(pos);
     LineIndent {
@@ -90,9 +101,10 @@ pub(in crate::edit) fn line_indent_range(text: &BufferText, pos: CharOffset) -> 
 /// short of it; see `apply_doc_edit_grouped`'s own comment).
 ///
 /// Single source of truth for "is this whitespace the session's own to
-/// vacate": [`owned_blank_indent`] (the editor's exit pre-flight check) and
-/// [`clear_blank_line_indent`] (the trim itself) both read this, so gate and trim
-/// can never drift on what counts as owned.
+/// vacate": [`owned_blank_indent`] (the editor's exit pre-flight check),
+/// [`plan_line_breaks`] (a break vacating it) and [`clear_blank_line_indent`]
+/// (the trim itself) all read this, so gate, break and trim can never drift
+/// on what counts as owned.
 fn owned_indent(
     text: &BufferText,
     indent: LineIndent,
@@ -119,70 +131,196 @@ pub fn owned_blank_indent(
     owned_indent(text, line_indent_range(text, pos), allowed).map(ClusterRange::chars)
 }
 
-/// Insert a newline followed by the current line's leading whitespace at every
-/// selection.
-///
-/// This is auto-indent on Enter: the indent of the line containing each
-/// selection's `start` is copied verbatim onto the new line (no smart
-/// indent). Computed on the pre-edit buffer.
-///
-/// Cursor placement matches `insert_char`'s "stay on the original char" rule:
-/// the cursor lands on the first char after the inserted indent. For a
-/// collapsed cursor that is the char that was at `start`; for a selection,
-/// which the line break replaces, it is the char that followed the selection
-/// (the structural `\n` when the selection reached the end of the buffer).
-///
-/// `allowed`: per-selection (by sorted index) range of whitespace some
-/// earlier auto-indent recorded as its own; see `owned_indent` (this
-/// module). If a collapsed cursor's blank line is owned by its entry, that
-/// whitespace is vacated instead of retained, matching vim's `:help
-/// autoindent` behavior on Enter. Empty (or an index with no entry) for the
-/// first Enter on an already-blank line: nothing to vacate yet, since no
-/// earlier session inserted it.
-pub fn insert_newline_indent(state: EditState, allowed: &[ExclusiveRange<CharOffset>]) -> Edited {
-    apply_edit(state, |b, sel| {
-        let start = sel.start();
-        let indent = line_indent_range(b.text(), start.offset());
-        let inserted = format!("\n{}", b.text().slice(indent.chars()));
-        let mark = if sel.is_cursor() {
-            let owned = owned_indent(b.text(), indent, allowed.get(sel.index()).copied());
-            if let Some(owned) = owned {
-                b.delete(owned);
-            }
-            b.insert(start, &inserted)
-        } else {
-            b.replace(sel.covered(), &inserted)
-        };
-        Landing::cursor(mark.end())
-    })
+/// Where a line break goes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LineBreak {
+    /// Split the line at each cursor, or replace each selection with a
+    /// break (Enter, `o`).
+    AtCursor,
+    /// Open a blank line above each selection's line (`O`). Every
+    /// selection must be collapsed and on its own line.
+    AboveLine,
 }
 
-/// Open a blank, auto-indented line above each selection's line.
+/// The line breaks [`plan_line_breaks`] computed, for the text it read.
+#[derive(Debug)]
+pub struct LineBreakPlan {
+    version: TextVersion,
+    breaks: Vec<PlannedBreak>,
+}
+
+/// One selection's break: `removed` is deleted, then `lead` and `tail` are
+/// inserted at `at`, and the cursor lands between them.
+#[derive(Debug)]
+struct PlannedBreak {
+    removed: Option<ClusterRange>,
+    at: ClusterStart,
+    lead: String,
+    tail: String,
+}
+
+/// How [`plan_line_breaks`] indents a new line.
+pub enum NewLineIndent<F> {
+    /// Every new line starts at the left margin.
+    LeftMargin,
+    /// A new line copies the leading whitespace of the line it breaks,
+    /// unless the provider answers for the split point: the cursor for
+    /// [`LineBreak::AtCursor`], the previous line's `\n` for
+    /// [`LineBreak::AboveLine`]. It is asked about the pre-edit text, in
+    /// selection order, and never for:
+    /// - a non-collapsed selection;
+    /// - a cursor at or before the first non-blank character of a line with
+    ///   content;
+    /// - the first line, for `AboveLine`.
+    Smart(F),
+}
+
+impl<F: FnMut(ClusterStart) -> Option<BreakIndent>> NewLineIndent<F> {
+    /// The provider's answer for `split`; always `None` for
+    /// [`NewLineIndent::LeftMargin`].
+    fn computed(&mut self, split: ClusterStart) -> Option<BreakIndent> {
+        match self {
+            Self::LeftMargin => None,
+            Self::Smart(indent_at) => indent_at(split),
+        }
+    }
+
+    /// What a new line starts with when nothing is computed for it: the
+    /// leading whitespace of `broken`, the line it breaks, or nothing.
+    fn fallback(&self, text: &BufferText, broken: LineIndent) -> String {
+        match self {
+            Self::LeftMargin => String::new(),
+            Self::Smart(_) => text.slice(broken.chars()).to_string(),
+        }
+    }
+}
+
+/// Plan a line break for each selection of `view`, each new line indented
+/// as `new_indent` says.
 ///
-/// The `O` counterpart of [`insert_newline_indent`]: both split a line and
-/// copy its leading whitespace, but `O` keeps the copy on the line *above*
-/// the break, so the indent is inserted before the `\n`, not after it. The
-/// cursor lands on that inserted `\n`, the new blank line.
+/// A computed width is rendered in `style`. With `after_token` set and a
+/// cursor between the halves of an asymmetric pair of `pairs`, the break
+/// opens a block: an inner line one level deeper, then the closer on a line
+/// of its own.
 ///
-/// Unlike `insert_newline_indent`, this never deletes: each selection only
-/// inserts at its own line's start.
+/// `allowed`: per-selection (by sorted index) range of whitespace some
+/// earlier auto-indent recorded as its own; see `owned_indent`. A collapsed
+/// cursor on a blank line whose whitespace is owned vacates it. Empty (or an
+/// index with no entry) when nothing is owned yet.
+pub fn plan_line_breaks(
+    view: EditView<'_>,
+    place: LineBreak,
+    allowed: &[ExclusiveRange<CharOffset>],
+    pairs: &[Pair],
+    style: TabStyle,
+    tab_width: u8,
+    mut new_indent: NewLineIndent<impl FnMut(ClusterStart) -> Option<BreakIndent>>,
+) -> LineBreakPlan {
+    let text = view.text();
+    let breaks = view
+        .iter()
+        .map(|sel| {
+            let indent = line_indent_range(text, sel.start().offset());
+            match place {
+                LineBreak::AtCursor if !sel.is_cursor() => PlannedBreak {
+                    removed: Some(sel.covered()),
+                    at: sel.start(),
+                    lead: format!("\n{}", new_indent.fallback(text, indent)),
+                    tail: String::new(),
+                },
+                LineBreak::AtCursor => {
+                    let head = sel.head();
+                    let before_content =
+                        !indent.is_blank() && head.offset() <= indent.ws_end.offset();
+                    let computed = if before_content {
+                        None
+                    } else {
+                        new_indent.computed(head)
+                    };
+                    let (lead, tail) = match computed {
+                        None => (
+                            format!("\n{}", new_indent.fallback(text, indent)),
+                            String::new(),
+                        ),
+                        Some(BreakIndent { width, after_token }) => {
+                            let new_line =
+                                |width| format!("\n{}", style.render_indent(width, tab_width));
+                            let opens_block = after_token
+                                && pair_around(text, head, pairs)
+                                    .is_some_and(|p| !p.is_symmetric());
+                            if opens_block {
+                                let inner = width.advance_saturating(indent_stop(1, tab_width));
+                                (new_line(inner), new_line(width))
+                            } else {
+                                (new_line(width), String::new())
+                            }
+                        }
+                    };
+                    PlannedBreak {
+                        removed: owned_indent(text, indent, allowed.get(sel.index()).copied()),
+                        at: sel.start(),
+                        lead,
+                        tail,
+                    }
+                }
+                LineBreak::AboveLine => {
+                    debug_assert!(
+                        sel.is_cursor(),
+                        "plan_line_breaks: a line break above needs collapsed selections"
+                    );
+                    let line = text.char_to_line(sel.start().offset());
+                    let computed = (line != ContentLine::default())
+                        .then(|| {
+                            new_indent.computed(text.lines().newline(line.retreat_saturating(1)))
+                        })
+                        .flatten();
+                    PlannedBreak {
+                        removed: None,
+                        at: indent.start,
+                        lead: computed.map_or_else(
+                            || new_indent.fallback(text, indent),
+                            |c| style.render_indent(c.width, tab_width),
+                        ),
+                        tail: "\n".to_owned(),
+                    }
+                }
+            }
+        })
+        .collect();
+    LineBreakPlan {
+        version: text.version(),
+        breaks,
+    }
+}
+
+/// Apply `plan` to `state`. Each cursor lands at the end of its break's
+/// leading part: on the first char after a copied or computed indent, or on
+/// the new blank line's `\n` for [`LineBreak::AboveLine`].
 ///
-/// Two preconditions its only caller (`cmd_open_line_above`) satisfies but
-/// this function does not enforce: every selection must already be
-/// collapsed. Unlike every sibling insertion op in this module, a
-/// non-collapsed selection here is neither deleted nor preserved: the
-/// resulting cursor orphans it. Also at most one
-/// selection per line: two cursors on the same line each open their own
-/// blank line above it, rather than sharing one the way vim/Helix do. The
-/// caller supplies both: `cmd_goto_line_start` collapses every selection to
-/// its line start first, and the selection set's overlap merge folds
-/// same-line cursors into one before this ever runs.
-pub fn open_line_above(state: EditState) -> Edited {
-    apply_edit(state, |b, sel| {
-        let indent = line_indent_range(b.text(), sel.start().offset());
-        let copied = b.text().slice(indent.chars()).to_string();
-        let mark = b.insert(indent.start, &copied);
-        b.insert(indent.start, "\n");
+/// # Panics
+/// Panics if `plan` was computed for another text or another number of
+/// selections.
+pub fn apply_line_break_plan(state: EditState, plan: LineBreakPlan) -> Edited {
+    assert!(
+        state.text().version() == plan.version,
+        "apply_line_break_plan: the plan was computed for another text"
+    );
+    assert!(
+        state.view().len() == plan.breaks.len(),
+        "apply_line_break_plan: the plan has {} breaks for {} selections",
+        plan.breaks.len(),
+        state.view().len()
+    );
+    let mut breaks = plan.breaks.into_iter();
+    apply_edit(state, |b, _| {
+        let planned = breaks.next().expect("one break per selection");
+        if let Some(removed) = planned.removed {
+            b.delete(removed);
+        }
+        let mark = b.insert(planned.at, &planned.lead);
+        if !planned.tail.is_empty() {
+            b.insert(planned.at, &planned.tail);
+        }
         Landing::cursor(mark.end())
     })
 }
@@ -190,14 +328,14 @@ pub fn open_line_above(state: EditState) -> Edited {
 /// Clear a blank, auto-indented line's leading whitespace at every collapsed
 /// selection sitting on one. Leaves the cursor on the line's structural `\n`.
 ///
-/// The Esc/Ctrl-c half of vim autoindent parity: [`insert_newline_indent`]
+/// The Esc/Ctrl-c half of vim autoindent parity: [`plan_line_breaks`]
 /// handles trimming on Enter, this handles trimming when Insert mode exits
 /// with the cursor still on a blank auto-indented line (`:help autoindent`:
 /// "type `<Esc>` ... the indent is deleted again"). Selections not on a blank
 /// line are left untouched (identity edit).
 ///
-/// `allowed`: see [`insert_newline_indent`]'s own doc. Same per-selection
-/// ownership record, read here instead of armed.
+/// `allowed`: the per-selection ownership record [`plan_line_breaks`]
+/// reads, read here too.
 pub fn clear_blank_line_indent(state: EditState, allowed: &[ExclusiveRange<CharOffset>]) -> Edited {
     apply_edit(state, |b, sel| {
         if !sel.is_cursor() {

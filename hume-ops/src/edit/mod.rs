@@ -6,6 +6,7 @@ mod align;
 mod case;
 mod comment;
 mod delete;
+mod electric;
 mod indent;
 mod insert;
 mod join;
@@ -22,10 +23,14 @@ pub use delete::{
     Removal, dedent_tab_backward, delete_char_backward, delete_char_forward, delete_selection,
     delete_selection_content, delete_word_backward, yank_selections,
 };
+pub use electric::{
+    ArmedIndent, ElectricCandidates, ElectricPlan, apply_electric_plan, electric_candidates,
+    plan_electric_dedent,
+};
 pub use indent::{indent_lines, unindent_lines};
 pub use insert::{
-    clear_blank_line_indent, insert_char, insert_newline_indent, insert_str, insert_tab,
-    open_line_above, owned_blank_indent,
+    LineBreak, LineBreakPlan, NewLineIndent, apply_line_break_plan, clear_blank_line_indent,
+    insert_char, insert_str, insert_tab, owned_blank_indent, plan_line_breaks,
 };
 pub use join::join_lines_select_spaces;
 pub use paste::{paste_after, paste_before};

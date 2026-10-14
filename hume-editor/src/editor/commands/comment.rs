@@ -55,18 +55,14 @@ fn comment_tokens_at<'a>(
     span: ClusterRange,
 ) -> Result<CommentTokens<'a>, CommandError> {
     let text = buf.text();
-    let layered = buf
-        .syntax
-        .as_ref()
-        .and_then(|syn| syn.current_layers(text.generation()))
-        .and_then(|layers| {
-            let chars = span.chars();
-            let bytes = text.char_to_byte(chars.start)..text.char_to_byte(chars.end);
-            layers
-                .languages_containing(bytes)
-                .into_iter()
-                .find_map(|id| languages.comment_tokens_of(id))
-        });
+    let layered = buf.current_layers().and_then(|layers| {
+        let chars = span.chars();
+        let bytes = text.char_to_byte(chars.start)..text.char_to_byte(chars.end);
+        layers
+            .languages_containing(bytes)
+            .into_iter()
+            .find_map(|id| languages.comment_tokens_of(id))
+    });
     if let Some(tokens) = layered {
         return Ok(tokens);
     }

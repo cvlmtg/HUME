@@ -8,14 +8,15 @@ use hume_editing::text::BufferText;
 use hume_editing::tracked::Tracked;
 use hume_engine::pipeline::EngineView;
 use hume_rope::cluster::ClusterRange;
+use hume_rope::line::ContentLine;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 use crate::editor::EditorState;
 use crate::editor::doc_ops;
-use crate::editor::edit_session::{self, InsertSession, TypedRun};
+use crate::editor::edit_session::{self, AutoIndent, InsertSession, TypedRun};
 use crate::editor::error::CommandError;
 use crate::editor::input_stack::InsertEntry;
-use hume_ops::edit::clear_blank_line_indent;
+use hume_ops::edit::{ArmedIndent, clear_blank_line_indent};
 
 use super::{FocusedPane, doc, ensure_writable, pane_view};
 
@@ -41,11 +42,22 @@ fn has_blank_line_cursor(sels: EditView<'_>, allowed: &[ExclusiveRange<CharOffse
     })
 }
 
-/// The live session's per-selection autoindent ownership record (see
+/// The live session's per-selection autoindent record (see
 /// `InsertSession::autoindent`'s doc) for `sels`, the session pane's
-/// selections, or empty if none was armed, or its length no longer matches
-/// the live selection count (a mid-session merge; same rule
-/// [`tear_down_insert`] applies to `typed_run` via `valid_run`). An
+/// selections. `None` if none was armed, or its length differs from the
+/// live selection count (a mid-session merge; same rule
+/// [`tear_down_insert`] applies to `typed_run` via `valid_run`). Every
+/// reader of the record goes through this, so they agree on when it
+/// applies.
+fn autoindent_record<'s>(insert: &'s InsertSession, sels: &EditView<'_>) -> Option<&'s AutoIndent> {
+    insert
+        .autoindent
+        .as_ref()
+        .and_then(|record| record.get(sels.text()))
+        .filter(|record| record.ranges().len() == sels.len())
+}
+
+/// The ranges of [`autoindent_record`], or empty when it is `None`. An
 /// out-of-bounds index into the returned vec (via `.get(i)`) then reads as
 /// "no record for this selection", same as an empty vec would.
 ///
@@ -56,22 +68,34 @@ pub(in crate::editor) fn autoindent_owned(
     insert: &InsertSession,
     sels: &EditView<'_>,
 ) -> Vec<ExclusiveRange<CharOffset>> {
-    match insert
-        .autoindent
-        .as_ref()
-        .and_then(|record| record.get(sels.text()))
-    {
-        Some(ranges) if ranges.len() == sels.len() => ranges.clone(),
-        _ => Vec::new(),
-    }
+    autoindent_record(insert, sels).map_or_else(Vec::new, |record| record.ranges().to_vec())
+}
+
+/// Each selection's [`autoindent_record`] entry, its range with the text
+/// armed there, or empty when there is no record.
+pub(super) fn autoindent_armed<'s>(
+    insert: &'s InsertSession,
+    sels: &EditView<'_>,
+) -> Vec<ArmedIndent<'s>> {
+    autoindent_record(insert, sels).map_or_else(Vec::new, |record| {
+        record
+            .ranges()
+            .iter()
+            .zip(record.armed())
+            .map(|(&range, text)| ArmedIndent { range, text })
+            .collect()
+    })
 }
 
 /// Record each current selection's freshly auto-inserted indent (`[line_start,
-/// head)` on the post-edit buffer) as this session's own, so a later Enter
-/// or exit knows that whitespace is its own to vacate (see
+/// head)` on the post-edit buffer, and its text) as this session's own, so
+/// a later Enter or exit knows that whitespace is its own to vacate and a
+/// typed closing token knows the line is still as auto-indented (see
 /// `InsertSession::autoindent`'s doc). Called once, right after the
-/// structural newline + indent lands, by every entry point that copies one
-/// (`o`, `O`, Enter), into the session `entry` proves open.
+/// structural newline + indent lands, by every entry point that breaks a
+/// line (`o`, `O`, Enter), into the session `entry` proves open. The record
+/// ends at the head, not the line's indent end: whitespace the break
+/// carried down from the line it split stays the user's.
 pub(in crate::editor) fn arm_autoindent(
     state: &mut EditorState,
     view: &EngineView,
@@ -79,16 +103,70 @@ pub(in crate::editor) fn arm_autoindent(
     fp: FocusedPane,
 ) {
     let text = doc(state, view, fp.pane()).text();
-    let ranges: Vec<ExclusiveRange<CharOffset>> = pane_view(state, view, fp.pane())
+    let entries: Vec<_> = pane_view(state, view, fp.pane())
         .iter()
         .map(|sel| {
             let head = sel.head();
-            let line_idx = text.char_to_line(head.offset());
-            let line_start = text.line_to_char(line_idx.into());
-            ExclusiveRange::new(line_start, head.offset())
+            let line_start = text.lines().start(text.char_to_line(head.offset()));
+            armed_entry(
+                text,
+                ExclusiveRange::new(line_start.offset(), head.offset()),
+            )
         })
         .collect();
-    let record = Tracked::new(ranges, text);
+    let record = Tracked::new(AutoIndent::new(entries), text);
+    state.input.entered_mut(entry).autoindent = Some(record);
+}
+
+/// One selection's autoindent record entry: `range` and the text it holds.
+fn armed_entry(
+    text: &BufferText,
+    range: ExclusiveRange<CharOffset>,
+) -> (ExclusiveRange<CharOffset>, String) {
+    (range, text.slice(range).to_string())
+}
+
+/// Re-arm the selections at `rewritten` (sorted by selection index, each
+/// with the line the dedent rewrote) with that line's current indent, so
+/// the line stays this session's own and typing on is checked against the
+/// new whitespace. Every other selection keeps its record. The record is
+/// the whole leading whitespace: after the rewrite it is all the rendered
+/// indent.
+///
+/// # Panics
+/// If the session has no record that applies to the pane's selections.
+/// The rewritten lines came from that record, and the dedent keeps every
+/// selection, so it still applies.
+pub(super) fn rearm_autoindent_lines(
+    state: &mut EditorState,
+    view: &EngineView,
+    entry: &InsertEntry,
+    fp: FocusedPane,
+    rewritten: &[(usize, ContentLine)],
+) {
+    let text = doc(state, view, fp.pane()).text();
+    let sels = pane_view(state, view, fp.pane());
+    let record = autoindent_record(state.input.entered(entry), &sels)
+        .expect("the dedent's candidates came from this record, and it keeps every selection");
+    let entries: Vec<_> = sels
+        .iter()
+        .zip(record.ranges().iter().zip(record.armed()))
+        .map(|(sel, (&range, armed))| {
+            if let Ok(at) = rewritten.binary_search_by_key(&sel.index(), |&(index, _)| index) {
+                let (_, line) = rewritten[at];
+                armed_entry(
+                    text,
+                    ExclusiveRange::new(
+                        text.lines().start(line).offset(),
+                        text.lines().indent_end(line).offset(),
+                    ),
+                )
+            } else {
+                (range, armed.clone())
+            }
+        })
+        .collect();
+    let record = Tracked::new(AutoIndent::new(entries), text);
     state.input.entered_mut(entry).autoindent = Some(record);
 }
 
@@ -266,10 +344,10 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState, mut session: 
     // mouse click, a Steel-triggered mode change) triggered it. Nothing
     // completion-related belongs in this function.
     // Vim autoindent parity: trim a blank auto-indented line's whitespace
-    // before committing, so leaving Insert mode on one behaves like Enter
-    // does in `insert_newline_indent`. Joins the still-open session group,
-    // not a separate undo step. `allowed` re-derives ownership from the
-    // buffer (via `autoindent_owned`) rather than trusting a flag, and
+    // before committing, so leaving Insert mode on one vacates it the way a
+    // second Enter does. Joins the still-open session group, not a separate
+    // undo step. `allowed` re-derives ownership from the buffer (via
+    // `autoindent_owned`) rather than trusting a flag, and
     // `has_blank_line_cursor` also skips the edit in the common case
     // (cursor not on a line this session owns) rather than running an
     // identity one on every Insert-mode exit.

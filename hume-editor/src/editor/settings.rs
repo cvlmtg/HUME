@@ -1027,6 +1027,12 @@ define_settings! {
         "auto-pairs" => auto_pairs: bool = true,
             scope: [Scope::Global, Scope::Buffer],
             parser: bool;
+        // Enter, `o` and `O` indent a new line (see `break_line`), and a
+        // typed closing token dedents its line (`electric_dedent`). Off, a
+        // new line starts at the left margin and no line is dedented.
+        "smart-indent" => smart_indent: bool = true,
+            scope: [Scope::Global, Scope::Buffer],
+            parser: bool;
         // Leaving Insert mode selects whatever text the session just typed
         // (empty run: falls back to the entry command's own exit position).
         // See `begin_typed_run` and `tear_down_insert`'s pinned-anchor

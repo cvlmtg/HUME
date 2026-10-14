@@ -35,22 +35,6 @@ fn clamp_levels(levels: usize, tab_width: u8) -> u32 {
     })
 }
 
-/// Render a leading-whitespace run of exactly `width` display columns in
-/// `style`. Lives here rather than beside `hume_rope::width`'s `indent_depth`/
-/// `indent_stop` because it needs `TabStyle`, which sits in `hume-editing`,
-/// above `hume-rope` in the dependency graph.
-fn render_indent(width: usize, style: TabStyle, tab_width: u8) -> String {
-    match style {
-        TabStyle::Soft => " ".repeat(width),
-        TabStyle::Hard => {
-            let tw = (tab_width as usize).max(1);
-            std::iter::repeat_n('\t', width / tw)
-                .chain(std::iter::repeat_n(' ', width % tw))
-                .collect()
-        }
-    }
-}
-
 /// One signed display-column delta (positive indents, negative unindents),
 /// since the two are otherwise identical. Callers pass columns (via
 /// [`indent_stop`]) rather than levels, so this function never re-derives
@@ -107,7 +91,7 @@ fn shift_indent(
             // an already-flush line past width 0.
             continue;
         }
-        let new_indent = render_indent(new_width.get() as usize, style, tab_width);
+        let new_indent = style.render_indent(new_width, tab_width);
         let old_indent = ClusterRange::between(text.full_slice(), line_start, ws_end.into());
         rewrites.push((line_start, old_indent, new_indent));
     }

@@ -39,6 +39,7 @@ pub(in crate::editor) use file_open::ReplaceSource;
 mod file_open;
 pub(in crate::editor) mod lifecycle;
 pub(in crate::editor) mod store;
+use hume_treesitter::layers::SyntaxLayers;
 use hume_treesitter::registry::LanguageId;
 use hume_treesitter::syntax::Syntax;
 
@@ -252,6 +253,14 @@ enum Change<'a> {
 impl Buffer {
     /// Display name used for buffers that have no backing file.
     pub(in crate::editor) const SCRATCH_BUFFER_NAME: &'static str = "*scratch*";
+
+    /// The syntax layers parsed from the buffer's current text; `None` when
+    /// it has no syntax or the tree describes an older text.
+    pub(in crate::editor) fn current_layers(&self) -> Option<&SyntaxLayers> {
+        self.syntax
+            .as_ref()
+            .and_then(|syn| syn.current_layers(self.text().generation()))
+    }
 
     /// Create a new buffer holding `text`. A pane showing it starts with a
     /// cursor on its first cluster.

@@ -6,18 +6,6 @@ use super::*;
 use hume_editing::tab_style::TabStyle;
 use pretty_assertions::assert_eq;
 
-/// Defines a one-arg Steel command whose body is `body` and binds it to
-/// `key` in Insert mode, for a test that presses `key` and expects `body`
-/// (typically an `insert-key!` call) to run instead of any built-in Insert
-/// binding for that key.
-fn bind_insert_key(ed: &mut Editor, tmp: &std::path::Path, key: &str, body: &str) {
-    let source = format!(
-        r#"(define-command! "insert-key-probe" "" (lambda (pane) {body}))
-           (bind-key! 'insert "{key}" "insert-key-probe")"#
-    );
-    run(ed, tmp, &source);
-}
-
 /// `insert-key!` on Tab runs the same tab-style-aware insertion an unbound
 /// Tab would (see `tabs.rs`'s `insert_tab_hard_default`). Hard style
 /// inserts a literal `\t`.

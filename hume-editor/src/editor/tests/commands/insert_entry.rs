@@ -58,7 +58,7 @@ fn o_on_empty_line_places_cursor_on_new_blank_line() {
 }
 
 /// `o` on an indented line carries that line's leading whitespace onto the
-/// new line, the same auto-indent rule Enter uses (`insert_newline_indent`).
+/// new line, the same auto-indent rule Enter uses.
 #[test]
 fn o_carries_indent_from_current_line() {
     let mut ed = editor_from("\t-[f]>oo\n");

@@ -45,12 +45,7 @@ fn selector_for(body: StructuralBody) -> SpanSelector {
 /// "nothing here" through the same code path every other probe uses, making
 /// `Select`/`Goto` no-ops with no early return.
 pub(super) fn object_spans(buf: &Buffer, body: StructuralBody) -> Arc<ObjectSpans> {
-    let generation = buf.text().generation();
-    let Some(layers) = buf
-        .syntax
-        .as_ref()
-        .and_then(|syn| syn.current_layers(generation))
-    else {
+    let Some(layers) = buf.current_layers() else {
         return Arc::default();
     };
     ObjectSpans::for_selector(layers, buf.text(), selector_for(body))

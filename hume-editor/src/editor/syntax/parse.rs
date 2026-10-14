@@ -248,6 +248,8 @@ pub(in crate::editor) enum SyntaxUse {
     TextObjects,
     /// The language of each injected layer.
     InjectedLanguages,
+    /// The indent of a new line.
+    Indent,
 }
 
 /// Bring `bid`'s committed tree up to date with its current text,
@@ -271,6 +273,7 @@ pub(in crate::editor) enum SyntaxUse {
 /// - for [`SyntaxUse::TextObjects`], no layer has a textobjects query:
 ///   `object_spans` would return nothing anyway. An edit that adds a new
 ///   injected layer with one is missed for that one keypress;
+/// - for [`SyntaxUse::Indent`], no layer has an indents query;
 /// - for [`SyntaxUse::InjectedLanguages`], the root grammar has no
 ///   injections query, so there is no layer but the root.
 pub(in crate::editor) fn ensure_syntax_current(
@@ -301,6 +304,10 @@ pub(in crate::editor) fn ensure_syntax_current(
             .layers
             .iter()
             .any(|layer| layer.bundle.textobjects.is_some()),
+        SyntaxUse::Indent => layers
+            .layers
+            .iter()
+            .any(|layer| layer.bundle.indents.is_some()),
         SyntaxUse::InjectedLanguages => syn.bundle().injections.is_some(),
     };
     if !can_change {

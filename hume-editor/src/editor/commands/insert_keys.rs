@@ -10,12 +10,15 @@
 
 use termina::event::{KeyCode, KeyEvent, Modifiers};
 
+use hume_editing::indent::ElectricTrigger;
 use hume_engine::pipeline::EngineView;
 use hume_ops::MotionMode;
-use hume_ops::auto_pairs::{Pair, delete_pair, insert_pair_close, should_auto_pair_at};
+use hume_ops::auto_pairs::{
+    Pair, delete_pair, insert_pair_close, pair_around, should_auto_pair_at,
+};
 use hume_ops::edit::{
-    dedent_tab_backward, delete_char_backward, delete_char_forward, insert_char,
-    insert_newline_indent, insert_tab,
+    LineBreak, dedent_tab_backward, delete_char_backward, delete_char_forward, insert_char,
+    insert_tab,
 };
 use hume_ops::motion::cmd_move_right;
 
@@ -26,7 +29,7 @@ use crate::editor::input_stack::InsertEntry;
 
 use super::{
     FocusedPane, apply_focused_edit_grouped, apply_pane_motion, arm_autoindent, autoindent_owned,
-    doc, effective_word_chars, pane_view, tab_format,
+    break_line, doc, effective_word_chars, electric_dedent, pane_view, tab_format,
 };
 
 /// Runs `key`'s Insert-mode default behaviour against `fp`'s (pane,
@@ -84,6 +87,9 @@ pub(in crate::editor) fn insert_default_key(
                 apply_focused_edit_grouped(state, view, fp, |s| insert_char(s, ch));
             }
             if inserted {
+                // Before the triggers below, so they read the line as the
+                // dedent leaves it.
+                electric_dedent(state, view, entry, fp, ElectricTrigger::Typed);
                 let buf = fp.bid(view);
                 let triggered = state.triggered_by(ch, buf);
                 for source in triggered.hooks {
@@ -114,23 +120,25 @@ pub(in crate::editor) fn insert_default_key(
         }
 
         // ── Newline ───────────────────────────────────────────────────────
-        // Auto-indent: copy the current line's leading whitespace onto the
-        // new line. No smart indent.
+        // The line being left is dedented first when the break completes
+        // its closing token. The new line gets the indent `break_line`
+        // computes: the syntax tree's width, or a copy of the current
+        // line's leading whitespace when there is none, or no indent with
+        // `smart-indent` off.
         //
         // `allowed` (vim autoindent parity): only vacate a blank line's
         // whitespace if it's owned by an earlier auto-indent this session
         // itself made, never on the first Enter that lands on a
         // pre-existing blank line, since nothing has armed a record for it
-        // yet. `arm_autoindent` after the edit records the *new* line's own
-        // copied indent, so the next Enter/Esc on it trims.
+        // yet. `arm_autoindent` after the edit records the new line's own
+        // indent, so the next Enter/Esc on it trims.
         KeyCode::Enter => {
+            electric_dedent(state, view, entry, fp, ElectricTrigger::LineBreak);
             let allowed = autoindent_owned(
                 state.input.entered(entry),
                 &pane_view(state, view, fp.pane()),
             );
-            apply_focused_edit_grouped(state, view, fp, move |s| {
-                insert_newline_indent(s, &allowed)
-            });
+            break_line(state, view, fp, LineBreak::AtCursor, &allowed);
             arm_autoindent(state, view, entry, fp);
             true
         }
@@ -230,21 +238,9 @@ fn is_between_pair(
     pairs: &[Pair],
 ) -> bool {
     let text = doc(state, view, fp.pane()).text();
-    pane_view(state, view, fp.pane()).iter().all(|sel| {
-        if !sel.is_cursor() {
-            return false;
-        }
-        let Some(prev) = text.clusters().prev(sel.head().into()) else {
-            return false;
-        };
-        match (
-            text.char_at(prev.offset()),
-            text.char_at(sel.head().offset()),
-        ) {
-            (Some(before), Some(at)) => pairs.iter().any(|p| p.open == before && p.close == at),
-            _ => false,
-        }
-    })
+    pane_view(state, view, fp.pane())
+        .iter()
+        .all(|sel| sel.is_cursor() && pair_around(text, sel.head(), pairs).is_some())
 }
 
 /// Returns `true` if auto-pairing `pair` is appropriate given the current

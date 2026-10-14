@@ -5,7 +5,7 @@ use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
 
 use hume_ops::MotionMode;
-use hume_ops::edit::{insert_newline_indent, open_line_above};
+use hume_ops::edit::LineBreak;
 use hume_ops::motion::{
     cmd_goto_first_nonblank, cmd_goto_line_newline, cmd_goto_line_start, cmd_move_right,
 };
@@ -15,8 +15,8 @@ use super::super::EditorState;
 use super::super::input_stack::{BaseLayer, CommandLayer};
 use super::super::replay::{InputOpener, PendingRepeat};
 use super::{
-    ExitCursor, FocusedPane, apply_focused_edit_grouped, apply_pane_motion, arm_autoindent,
-    begin_insert_session, begin_typed_run, end_insert_session,
+    ExitCursor, FocusedPane, apply_pane_motion, arm_autoindent, begin_insert_session,
+    begin_typed_run, break_line, end_insert_session,
 };
 use crate::editor::error::CommandError;
 
@@ -122,17 +122,15 @@ pub(in crate::editor) fn cmd_insert_at_selection_end(
     })
 }
 
-/// Open a new line below the cursor, carrying over its indent, and enter
-/// insert mode.
+/// Open a new line below the cursor and enter insert mode. The line gets
+/// the indent `break_line` computes, as for Enter.
 ///
 /// `begin_insert_session` opens the edit group so the structural `\n` and
 /// everything typed before Esc form one undo step, the same pattern as
-/// `cmd_change`. Indent is copied verbatim from the current line, same
-/// fallback rule as Enter (`insert_newline_indent`'s own doc); no ownership
-/// record yet at this call, so a pre-existing blank line's whitespace isn't
-/// vacated here. `arm_autoindent` afterward records the copied indent as
-/// this session's own, so it gets trimmed on a bare Esc via the same path
-/// Enter uses.
+/// `cmd_change`. No ownership record exists at this call, so a pre-existing
+/// blank line's whitespace isn't vacated here. `arm_autoindent` afterward
+/// records the new line's indent as this session's own, so it gets trimmed
+/// on a bare Esc via the same path Enter uses.
 pub(in crate::editor) fn cmd_open_line_below(
     state: &mut EditorState,
     view: &mut EngineView,
@@ -144,7 +142,7 @@ pub(in crate::editor) fn cmd_open_line_below(
     apply_pane_motion(state, view, fp.pane(), |st| {
         cmd_goto_line_newline(st, 1, MotionMode::Move)
     });
-    apply_focused_edit_grouped(state, view, fp, |s| insert_newline_indent(s, &[]));
+    break_line(state, view, fp, LineBreak::AtCursor, &[]);
     // Pin after the structural newline, not before: the anchor must mark
     // the start of typed content, not the blank line's own `\n`.
     begin_typed_run(state, view, &entry, fp, ExitCursor::StepBack);
@@ -152,9 +150,9 @@ pub(in crate::editor) fn cmd_open_line_below(
     Ok(())
 }
 
-/// Open a new line above the cursor, carrying over its indent, and enter
-/// insert mode. See `cmd_open_line_below`'s doc for the indent/autoindent
-/// rationale; identical here.
+/// Open a new line above the cursor and enter insert mode. The line gets
+/// the indent `break_line` computes for a break above, and the session
+/// ownership rules are those of `cmd_open_line_below`.
 pub(in crate::editor) fn cmd_open_line_above(
     state: &mut EditorState,
     view: &mut EngineView,
@@ -166,8 +164,8 @@ pub(in crate::editor) fn cmd_open_line_above(
     apply_pane_motion(state, view, fp.pane(), |st| {
         cmd_goto_line_start(st, 1, MotionMode::Move)
     });
-    apply_focused_edit_grouped(state, view, fp, open_line_above);
-    // Pin after the indent + the structural newline `open_line_above` leaves
+    break_line(state, view, fp, LineBreak::AboveLine, &[]);
+    // Pin after the indent + the structural newline the break leaves
     // the cursor on, same reasoning as `cmd_open_line_below`.
     begin_typed_run(state, view, &entry, fp, ExitCursor::StepBack);
     arm_autoindent(state, view, &entry, fp);

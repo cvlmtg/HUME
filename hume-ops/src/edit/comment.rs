@@ -207,8 +207,11 @@ impl Unit<'_> {
             }
             CommentTokens::Line(line) | CommentTokens::Both(line, _) => {
                 let token = format!("{} ", line.primary());
-                let content: Vec<ContentLine> =
-                    self.lines.iter().filter(|&l| !is_blank(text, l)).collect();
+                let content: Vec<ContentLine> = self
+                    .lines
+                    .iter()
+                    .filter(|&l| !text.lines().is_blank(l))
+                    .collect();
                 // The least indent can fall inside another line's tab, so it
                 // is lowered to a column every line has a cluster boundary at.
                 let reach = |column| {
@@ -263,10 +266,6 @@ fn merged_lines(view: EditView<'_>) -> Vec<InclusiveRange<ContentLine>> {
     merged
 }
 
-fn is_blank(text: &BufferText, line: ContentLine) -> bool {
-    text.lines().indent_end(line) == text.lines().newline(line)
-}
-
 fn trimmed_span(text: &BufferText, lines: InclusiveRange<ContentLine>) -> Option<ClusterRange> {
     let from = text.lines().start(lines.start).into();
     let to = text.lines().newline(lines.end).into();
@@ -292,7 +291,7 @@ fn commented(
     }
     let line_commented = lines
         .iter()
-        .filter(|&l| !is_blank(text, l))
+        .filter(|&l| !text.lines().is_blank(l))
         .all(|l| line_token_deletion(text, l, tokens).is_some());
     if line_commented {
         Commented::Line

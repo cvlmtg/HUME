@@ -273,6 +273,33 @@ pub(in crate::editor) enum EditSessionKind {
     Replay,
 }
 
+/// The whitespace an insert session auto-inserted for each selection
+/// (`o`/`O`/Enter's auto-indent): the range it occupies, carried through
+/// every text change, and the text that was inserted there. Index-paired
+/// with the selections it was armed for; [`AutoIndent::new`] keeps the two
+/// `Vec`s the same length.
+pub(crate) struct AutoIndent {
+    ranges: Vec<ExclusiveRange<CharOffset>>,
+    armed: Vec<String>,
+}
+
+impl AutoIndent {
+    pub(in crate::editor) fn new(
+        entries: impl IntoIterator<Item = (ExclusiveRange<CharOffset>, String)>,
+    ) -> Self {
+        let (ranges, armed) = entries.into_iter().unzip();
+        Self { ranges, armed }
+    }
+
+    pub(in crate::editor) fn ranges(&self) -> &[ExclusiveRange<CharOffset>] {
+        &self.ranges
+    }
+
+    pub(in crate::editor) fn armed(&self) -> &[String] {
+        &self.armed
+    }
+}
+
 /// The span typed since an open insert session's entry command positioned the
 /// cursor: one (anchor, end) pair per selection, index-paired and always the
 /// same length (both `Vec`s are seeded together by `begin_typed_run` and
@@ -315,21 +342,24 @@ pub(in crate::editor) struct InsertSession {
     /// `tear_down_insert` consumes it on exit, for every insert entry
     /// (`i`/`a`/`o`/`O`/`A`/`I`/`c`/…).
     pub(in crate::editor) typed_run: Option<Tracked<TypedRun>>,
-    /// Per-selection range of leading whitespace *this* session
-    /// auto-inserted (`o`/`O`/Enter's auto-indent), carried the same way
+    /// Per-selection leading whitespace *this* session auto-inserted
+    /// (`o`/`O`/Enter's auto-indent), its ranges carried the same way
     /// `typed_run` is. `None` when nothing has armed a record yet (`i`/`I`/`c`
     /// entry, or before the first Enter/`o`/`O`).
     ///
-    /// Read on exit (`hume_ops::edit::owned_blank_indent`) to decide whether
-    /// the cursor's current blank line is whitespace *this session itself*
-    /// inserted, rather than pre-existing or hand-typed whitespace. The
-    /// vacate-on-exit trim must never touch the latter. A positional record
-    /// rather than a bool ("is some trim pending") so ownership is re-derived
-    /// from the buffer at exit instead of relying on every cursor-motion key
-    /// handler remembering to invalidate a flag: a motion off this line
-    /// leaves the record pointing at a line the cursor no longer occupies,
-    /// which the containment check rejects on its own.
-    pub(in crate::editor) autoindent: Option<Tracked<Vec<ExclusiveRange<CharOffset>>>>,
+    /// The armed text is what electric dedent compares a line's whitespace
+    /// with: a line still holding it is one the user has not re-indented.
+    ///
+    /// The ranges are read on exit (`hume_ops::edit::owned_blank_indent`)
+    /// to decide whether the cursor's current blank line is whitespace *this
+    /// session itself* inserted, rather than pre-existing or hand-typed
+    /// whitespace. The vacate-on-exit trim must never touch the latter. A
+    /// positional record rather than a bool ("is some trim pending") so
+    /// ownership is re-derived from the buffer at exit instead of relying on
+    /// every cursor-motion key handler remembering to invalidate a flag: a
+    /// motion off this line leaves the record pointing at a line the cursor
+    /// has left, which the containment check rejects on its own.
+    pub(in crate::editor) autoindent: Option<Tracked<AutoIndent>>,
     /// Set by `begin_typed_run` from its `ExitCursor` parameter for `a`/`A`/
     /// `o`/`O` entry (never for `i`/`I`/`c`). Decides where an *empty* typed
     /// run's cursor lands on exit: step one grapheme back (so `a<Esc>` is a
@@ -400,8 +430,10 @@ impl InsertSession {
         // self-revoking: text typed past a record's end, or a line split
         // before its start, falls outside the mapped range without any key
         // handler needing to clear it.
-        if let Some(ranges) = self.autoindent.as_mut() {
-            ranges.translate(change, |ranges| change.changes().map_ranges(ranges));
+        if let Some(record) = self.autoindent.as_mut() {
+            record.translate(change, |record| {
+                change.changes().map_ranges(&mut record.ranges)
+            });
         }
     }
 

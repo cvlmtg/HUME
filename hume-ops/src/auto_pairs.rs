@@ -4,7 +4,7 @@ use hume_editing::edit::Landing;
 use hume_editing::state::EditState;
 use hume_editing::text::BufferText;
 use hume_editing::word::{CharClass, WordChars};
-use hume_rope::cluster::{ClusterBound, ClusterRange};
+use hume_rope::cluster::{ClusterBound, ClusterRange, ClusterStart};
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -96,6 +96,18 @@ pub fn delete_pair(state: EditState) -> Edited {
 }
 
 // ── Context check ─────────────────────────────────────────────────────────────
+
+/// The pair whose open character is the first char of the cluster before
+/// `head` and whose close character is the char at `head`.
+pub fn pair_around<'p>(
+    text: &BufferText,
+    head: ClusterStart,
+    pairs: &'p [Pair],
+) -> Option<&'p Pair> {
+    let before = text.char_at(text.clusters().prev(head.into())?.offset())?;
+    let at = text.char_at(head.offset())?;
+    pairs.iter().find(|p| p.open == before && p.close == at)
+}
 
 /// Returns `true` if auto-pairing `pair` is appropriate when the cursor is at
 /// `head` in `text`.

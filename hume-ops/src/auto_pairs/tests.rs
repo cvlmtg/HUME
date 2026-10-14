@@ -1,5 +1,5 @@
 use super::*;
-use hume_editing::marked::bound_at;
+use hume_editing::marked::{bound_at, start_at};
 use hume_editing::word::WordChars;
 use test_fixtures::assert_state;
 
@@ -402,5 +402,60 @@ fn delete_pair_removes_a_close_delimiter_that_carries_a_combining_mark() {
         "(-[)\u{301}]>\n",
         |(text, sels)| delete_pair(test_fixtures::testing::state(text, sels)),
         "-[\n]>"
+    );
+}
+
+// ── pair_around ───────────────────────────────────────────────────────────
+
+#[test]
+fn pair_around_finds_the_pair_whose_open_precedes_and_close_sits_at_the_cursor() {
+    let text = BufferText::from("x{}\n");
+    let pairs = default_pairs();
+    assert_eq!(
+        pair_around(&text, start_at(&text, 2), &pairs),
+        Some(&Pair {
+            open: '{',
+            close: '}'
+        })
+    );
+}
+
+#[test]
+fn pair_around_finds_a_symmetric_pair() {
+    let text = BufferText::from("\"\"\n");
+    let pairs = default_pairs();
+    assert_eq!(
+        pair_around(&text, start_at(&text, 1), &pairs),
+        Some(&quote())
+    );
+}
+
+#[test]
+fn pair_around_rejects_mismatched_neighbours() {
+    let text = BufferText::from("{)\n");
+    assert_eq!(
+        pair_around(&text, start_at(&text, 1), &default_pairs()),
+        None
+    );
+}
+
+#[test]
+fn pair_around_is_none_at_the_text_start() {
+    let text = BufferText::from("}\n");
+    assert_eq!(
+        pair_around(&text, start_at(&text, 0), &default_pairs()),
+        None
+    );
+}
+
+#[test]
+fn pair_around_reads_the_cluster_before_the_cursor() {
+    let text = BufferText::from("{\u{301}}\n");
+    assert_eq!(
+        pair_around(&text, start_at(&text, 2), &default_pairs()),
+        Some(&Pair {
+            open: '{',
+            close: '}'
+        })
     );
 }
