@@ -1475,3 +1475,17 @@ leave it out of the argument.
 
 **Files:** `hume-scripting/src/read_only_host.rs` (`permit_plugin_activation`),
 `hume-scripting/src/builtins/plugins.rs`.
+
+## L40 — Changelog entries kept growing into manual text (2026-10-14)
+
+**Root cause:** L22's first rule, one line per change with detail left to the
+manual, lived only in this file. Each new entry was drafted next to the feature
+just built, with its options, defaults and edge cases fresh in mind, and they
+went into the changelog. The user had to trim 74 entries across every release.
+
+**Prevention rule:** The rule sits in `CLAUDE.md`'s end-user audience list,
+where it is loaded every session. Before adding a changelog entry, cut every
+sentence that explains how the change works rather than announcing it, and put
+that text in `user-manual/docs/` if the manual lacks it.
+
+**Files:** `CHANGELOG.md`, `CLAUDE.md`, `CONTRIBUTING.md`.

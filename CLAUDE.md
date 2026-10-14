@@ -156,5 +156,7 @@ The global Documentation audiences rules apply. In this repo:
 1. **End users**: `CHANGELOG.md`, `README.md`, `user-manual/docs/*.md`, `runtime/tutor.rst`, `runtime/init.scm.example`, and any `:help`-style content surfaced inside the editor.
    - ❌ "the next key pressed is passed as `(pending-char)`": `pending-char` is a code internal, so describe the *behaviour* instead.
    - ❌ "These are absent on a fresh setup": say what to do, not what the reader will or won't see.
+   - A `CHANGELOG.md` entry announces a change, a fix or a new feature in a line or two. How it works, its options, defaults and edge cases are the user manual's job. A breaking change also says what to change.
+   - ❌ "`Ctrl-p r` rotates the panes one place forward. A count rotates that many places. Focus stays on the same pane.": everything after the first sentence is manual text.
 2. **Learners**: `docs/LEARNING.md` and `docs/learning/*.md`. The text model, motions vs text objects, the undo tree, and so on. Snippets read as pseudocode with Rust syntax, not a tour of the implementation. If an explanation needs source paths to land, it belongs in a source comment instead.
 3. **Source readers**: source comments, plus per-directory READMEs (e.g. `scripts/README.md`, `runtime/scheme/README.md`, each `runtime/plugins/core/*/README.md`) for prose a comment can't carry without drowning the code or being repeated across files.

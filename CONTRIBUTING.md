@@ -107,7 +107,7 @@ Every editing command, text object, and selection operation needs tests. No unte
 
 ## Changelog
 
-User-visible changes get an entry under `## Unreleased` in `CHANGELOG.md`, written for the person running the editor rather than the person reading the diff. Prefix a breaking change with `**Breaking**:` and say what to change.
+User-visible changes get an entry under `## Unreleased` in `CHANGELOG.md`, written for the person running the editor rather than the person reading the diff. An entry announces the change, fix or feature in a line or two; how it works, its options and its edge cases belong in the user manual. A breaking change goes under the release's `### Breaking changes` heading and says what to change.
 
 ## Documentation
 
@@ -115,7 +115,7 @@ Every piece of writing in this repository targets exactly one audience — do no
 
 | Audience | Lives in |
 |---|---|
-| End users | `README.md`, `user-manual/docs/`, `runtime/tutor.rst`, `runtime/init.scm.example` |
+| End users | `CHANGELOG.md`, `README.md`, `user-manual/docs/`, `runtime/tutor.rst`, `runtime/init.scm.example` |
 | Learners | `docs/LEARNING.md`, `docs/learning/` |
 | Contributors | Inline source comments, plus a per-directory `README.md` (`scripts/`, `runtime/scheme/`, each `runtime/plugins/core/*/`) |
 
