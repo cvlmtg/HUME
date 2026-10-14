@@ -90,6 +90,33 @@ fn a_lazily_activated_typed_commands_declared_completer_works_on_first_use() {
     );
 }
 
+/// Tab after a differently cased name of a lazy typed command activates its
+/// plugin too, so the declared completer works on first use.
+#[test]
+fn a_lazy_typed_commands_completer_works_under_a_differently_cased_name() {
+    let (mut ed, _dir) = setup_lazy_editor(
+        r#"(declare-plugin! "user/tp" #:typed-commands '("myfetch"))"#,
+        r#"(define-typed-command! "myfetch" "doc" (lambda (bid arg) (log! 'info arg)) #:complete "path")"#,
+    );
+    let files_dir = tempfile::tempdir().unwrap();
+    std::fs::write(files_dir.path().join("hello.txt"), b"").unwrap();
+
+    ed.handle_key(key(':'));
+    for ch in format!("MYFETCH {}/hel", files_dir.path().display()).chars() {
+        ed.handle_key(key(ch));
+    }
+    ed.handle_key(key_tab());
+
+    assert_eq!(
+        ed.state
+            .minibuf()
+            .map(|mb| mb.input.clone())
+            .unwrap_or_default(),
+        format!("MYFETCH {}/hello.txt", files_dir.path().display()),
+        "`MYFETCH`'s Tab must activate `myfetch`'s plugin and use its completer"
+    );
+}
+
 /// `call!` resolves a name inside the VM, where only mappable commands are
 /// reachable, so a typed-only lazy stub must not be activatable through
 /// `call!`: activating a plugin for a lookup that will miss again right after

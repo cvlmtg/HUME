@@ -347,10 +347,11 @@ impl CommandHost for MockHost {
             .or_else(|| typed.map(|d| hume_scripting::CommandProc::Typed(d.body.proc.clone())))
     }
     fn unregister_commands_defined_by(&mut self, plugin: &hume_scripting::attribution::EntryId) {
+        use hume_scripting::CommandProc;
         self.registered_cmds
-            .retain(|d| !d.body.proc.defined_by(plugin));
+            .retain(|d| !CommandProc::Mappable(d.body.proc.clone()).defined_by(plugin));
         self.registered_typed_cmds
-            .retain(|d| !d.body.proc.defined_by(plugin));
+            .retain(|d| !CommandProc::Typed(d.body.proc.clone()).defined_by(plugin));
     }
     fn register_lazy_command(
         &mut self,

@@ -480,6 +480,92 @@ fn steel_backed_names_filters_by_variant() {
     );
 }
 
+/// A failed entry's rollback removes the Steel commands, mappable and typed,
+/// that this entry defined. It leaves alone the commands of another entry of
+/// the same plugin, of another plugin and of the user, and also the entry's
+/// own `Lazy` stub and native commands.
+#[test]
+fn unregister_defined_by_removes_only_the_entrys_steel_commands() {
+    use hume_scripting::attribution::{EntryFile, EntryId, PluginId};
+    use hume_scripting::{MappableProc, SteelCmdBody, SteelTypedCmdBody, TypedProc};
+
+    fn mappable(name: &str, proc: MappableProc) -> MappableCommand {
+        MappableCommand::SteelBacked(SteelCommand {
+            name: Cow::Owned(name.to_string()),
+            doc: Cow::Borrowed(""),
+            body: SteelCmdBody {
+                arity: 0,
+                is_variadic: false,
+                inline_output: false,
+                repeatable: false,
+                proc,
+            },
+        })
+    }
+    fn typed(name: &str, proc: TypedProc) -> TypedCommand {
+        TypedCommand {
+            name: Cow::Owned(name.to_string()),
+            doc: Cow::Borrowed(""),
+            aliases: &[],
+            body: TypedBody::Steel(SteelTypedCmdBody {
+                arity: 0,
+                is_variadic: false,
+                inline_output: false,
+                proc,
+            }),
+            completer: None,
+        }
+    }
+    let plugin = |repo: &str| PluginId::User {
+        user: "u".to_string(),
+        repo: repo.to_string(),
+    };
+    let failed = EntryId::main(plugin("tp"));
+    let sibling = EntryId::new(
+        plugin("tp"),
+        EntryFile::parse("extra.scm").expect("a valid entry file"),
+    );
+    let other = EntryId::main(plugin("other"));
+
+    let mut reg = CommandRegistry::with_defaults();
+    reg.register(mappable(
+        "failed-map",
+        MappableProc::for_test_defined_by(failed.clone()),
+    ));
+    reg.register_typed(typed(
+        "failed-typed",
+        TypedProc::for_test_defined_by(failed.clone()),
+    ));
+    reg.register(MappableCommand::Lazy {
+        name: Cow::Borrowed("failed-stub"),
+        plugin: failed.clone(),
+    });
+    reg.register(mappable(
+        "sibling-map",
+        MappableProc::for_test_defined_by(sibling),
+    ));
+    reg.register_typed(typed("other-typed", TypedProc::for_test_defined_by(other)));
+    reg.register(mappable("user-map", MappableProc::for_test()));
+    let before = reg.len();
+
+    reg.unregister_defined_by(&failed);
+
+    assert!(!reg.contains("failed-map"));
+    assert!(!reg.contains("failed-typed"));
+    assert_eq!(
+        reg.len(),
+        before - 2,
+        "only the two commands `failed` defined go"
+    );
+    for kept in ["failed-stub", "sibling-map", "other-typed", "user-map"] {
+        assert!(reg.contains(kept), "'{kept}' must survive the rollback");
+    }
+    assert!(
+        reg.get_mappable("move-left")
+            .is_some_and(MappableCommand::is_native)
+    );
+}
+
 #[test]
 fn clears_extend_flag_matches_expected_commands() {
     let reg = CommandRegistry::with_defaults();

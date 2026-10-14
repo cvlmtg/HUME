@@ -47,8 +47,8 @@ command records whoever is on top of the stack as its owner.
 A lazy plugin's manifest lists the commands it will provide. Each listed command names the
 plugin from the moment the plugin is declared, before its body runs, so
 `(command-plugin "cmd")` answers correctly even before the first activation. A listed
-command the body never defines stops existing once the plugin activates, and from then on
-it is no longer attributed to the plugin.
+command the body never defines stops existing once the plugin activates, and
+`(command-plugin "cmd")` then answers `"hume"`, as it does for any unknown name.
 
 ```scheme
 (command-plugin "move-right")   ; => "hume"     (built-in Rust command)

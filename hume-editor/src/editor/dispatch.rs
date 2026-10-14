@@ -186,10 +186,14 @@ impl Editor {
     /// activate the plugin to replace it. A no-op when there is no pending
     /// activation (a real command, an unresolvable name, or no `:` line).
     pub(in crate::editor) fn activate_minibuf_completion_target(&mut self) {
-        let Some(name) = self.state.minibuf_target_command() else {
+        let Some(target) = self.state.minibuf_target_command() else {
             return;
         };
-        let Some(plugin) = self.state.config.registry.lazy_owner(&name).cloned() else {
+        let registry = &self.state.config.registry;
+        let Some(name) = registry.typed_canonical_name(&target).map(str::to_owned) else {
+            return;
+        };
+        let Some(plugin) = registry.lazy_owner(&name).cloned() else {
             return;
         };
         self.activate_lazy_and_report(&plugin, &name);
@@ -253,8 +257,9 @@ impl Editor {
     /// [`super::registry::TypedBody`] rather than `MappableCommand`, and
     /// marshals `(arg force)` rather than `(count extend)`. The two never
     /// share a lookup because the registry keeps the kinds strictly separate
-    /// (see `registry/mod.rs`'s module doc). Returns `false` on the same
-    /// failure classes as `run_steel_command`.
+    /// (see `registry/mod.rs`'s module doc). `name` is resolved as `:`
+    /// resolves it, so any casing names the command. Returns `false` on the
+    /// same failure classes as `run_steel_command`.
     pub(super) fn run_typed_steel_command(
         &mut self,
         name: &str,
@@ -262,6 +267,16 @@ impl Editor {
         arg: Option<String>,
         force: bool,
     ) -> bool {
+        let Some(name) = self
+            .state
+            .config
+            .registry
+            .typed_canonical_name(name)
+            .map(str::to_owned)
+        else {
+            return self.report_command_lost(name);
+        };
+        let name = name.as_str();
         if let Some(plugin) = lazy_plugin
             && !self.activate_lazy_and_report(&plugin, name)
         {
@@ -403,14 +418,14 @@ impl Editor {
     /// an `#:inline-output` command
     /// (`hume_scripting::host::OutputHost::arm_inline_output`).
     ///
-    /// By the time this runs, `InlineOutput`'s frame stack is usually already
+    /// By the time this runs, `InlineOutput`'s frame stack is already
     /// drained: every Steel session's own tail
-    /// (`hume_scripting::activation::run_steel_session`) does that
-    /// unconditionally, including for the top-level dispatch's own frame,
-    /// which nothing else ever truncates. Truncated to zero again here
-    /// regardless: [`Self::call_steel_command_body`] pushes its frame before
-    /// handing off to `call_steel_cmd`, and this keeps that frame from
-    /// outliving the dispatch if a session never starts.
+    /// (`hume_scripting::activation::run_steel_session`) does that whenever
+    /// its host has an output capability, as the editor's host always does,
+    /// including for the top-level dispatch's own frame, which nothing else
+    /// ever truncates. Truncated to zero again here regardless: this
+    /// boundary owns the guarantee that no frame outlives the dispatch, and
+    /// the session drain is only what satisfies it today.
     /// `entered`/`ran` survive either drain (see `InlineOutput`'s own doc);
     /// reading them here, once, is this boundary's whole job.
     pub(super) fn close_inline_output_bracket(&mut self) {

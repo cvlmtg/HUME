@@ -75,8 +75,7 @@ impl EditorHost for ReadOnlyHost<'_> {
         self
     }
     // A plugin that renders a drawer is expected to have already activated
-    // every other plugin its renderer depends on. If that does not hold in
-    // practice, this refusal is to be reviewed.
+    // every other plugin its renderer depends on.
     fn permit_plugin_activation(&mut self, _plugin: &EntryId) -> Result<(), String> {
         Err(self.refuse("plugin activation"))
     }

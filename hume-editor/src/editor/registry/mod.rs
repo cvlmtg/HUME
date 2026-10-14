@@ -187,6 +187,13 @@ impl CommandRegistry {
         }
     }
 
+    /// The name of the typed command [`Self::get_typed`] resolves `name` to:
+    /// the canonical spelling a case-sensitive lookup needs, for an alias or
+    /// any casing of the name.
+    pub(in crate::editor) fn typed_canonical_name(&self, name: &str) -> Option<&str> {
+        self.get_typed(name).map(|tc| tc.name.as_ref())
+    }
+
     /// Iterate over all registered canonical command names (not aliases).
     pub(in crate::editor) fn names(&self) -> impl Iterator<Item = &str> {
         self.commands.keys().map(|k| k.as_ref())
@@ -227,9 +234,10 @@ impl CommandRegistry {
     ///
     /// Single source of truth for "is this name currently claimed as a lazy
     /// stub": since the two kinds share one namespace, `define-command!`'s
-    /// and `define-typed-command!`'s self-ownership guards, and lazy-plugin
-    /// activation's unresolved-stub check, all read this rather than
-    /// matching on `Command::Mappable`/`Command::Typed` themselves.
+    /// and `define-typed-command!`'s self-ownership guards, `command-plugin`,
+    /// and `:` Tab's activation of a lazy command's plugin all read this
+    /// rather than matching on `Command::Mappable`/`Command::Typed`
+    /// themselves.
     pub(in crate::editor) fn lazy_owner(
         &self,
         name: &str,
@@ -284,16 +292,7 @@ impl CommandRegistry {
     /// (case-sensitive), mappable or typed. `None` for a native command, a
     /// `Lazy` stub, or an unknown name.
     pub(in crate::editor) fn steel_proc(&self, name: &str) -> Option<hume_scripting::CommandProc> {
-        match self.commands.get(name)? {
-            Command::Mappable(MappableCommand::SteelBacked(cmd)) => {
-                Some(hume_scripting::CommandProc::Mappable(cmd.body.proc.clone()))
-            }
-            Command::Typed(TypedCommand {
-                body: TypedBody::Steel(body),
-                ..
-            }) => Some(hume_scripting::CommandProc::Typed(body.proc.clone())),
-            _ => None,
-        }
+        steel_proc_of(self.commands.get(name)?)
     }
 
     /// Remove every Steel command (mappable or typed) that `plugin`'s entry
@@ -302,16 +301,8 @@ impl CommandRegistry {
         &mut self,
         plugin: &hume_scripting::attribution::EntryId,
     ) {
-        self.commands.retain(|_, cmd| match cmd {
-            Command::Mappable(MappableCommand::SteelBacked(cmd)) => {
-                !cmd.body.proc.defined_by(plugin)
-            }
-            Command::Typed(TypedCommand {
-                body: TypedBody::Steel(body),
-                ..
-            }) => !body.proc.defined_by(plugin),
-            _ => true,
-        });
+        self.commands
+            .retain(|_, cmd| !steel_proc_of(cmd).is_some_and(|proc| proc.defined_by(plugin)));
     }
 
     /// Remove every remaining `Lazy` stub owned by `plugin`, mappable and
@@ -337,6 +328,21 @@ fn lazy_owner_of(cmd: &Command) -> Option<&hume_scripting::attribution::EntryId>
             body: TypedBody::Lazy(plugin),
             ..
         }) => Some(plugin),
+        _ => None,
+    }
+}
+
+/// The proc of `cmd` if it is a Steel command, mappable or typed. A free
+/// function for the same reason as [`lazy_owner_of`].
+fn steel_proc_of(cmd: &Command) -> Option<hume_scripting::CommandProc> {
+    match cmd {
+        Command::Mappable(MappableCommand::SteelBacked(cmd)) => {
+            Some(hume_scripting::CommandProc::Mappable(cmd.body.proc.clone()))
+        }
+        Command::Typed(TypedCommand {
+            body: TypedBody::Steel(body),
+            ..
+        }) => Some(hume_scripting::CommandProc::Typed(body.proc.clone())),
         _ => None,
     }
 }

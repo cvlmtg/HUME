@@ -624,14 +624,9 @@ fn plugin_config_scoped_correctly_after_nested_activation() {
 ///
 /// The in-Steel path matters: `SteelCtx::new_command` carries an empty
 /// `builtin_cmd_names` set, so the Steel-side shadow guard is inert and the
-/// conflict is only caught by `host.register_command`.  The failed define must
-/// not leave a proc that makes the plugin-failure rollback unregister the
-/// native command.
-///
-/// Two changes would each make `move-left` vanish from the registry: recording
-/// the proc before `host.register_command` in
-/// `define_command`, or having `CommandRegistry::unregister_defined_by` match
-/// a native command.
+/// conflict is only caught by `host.register_command`. The rejected define
+/// leaves no proc behind, and the rollback removes only Steel-defined
+/// commands, so `move-left` stays.
 #[test]
 fn native_command_survives_failed_shadowing_plugin() {
     use hume_scripting::attribution::PluginId;

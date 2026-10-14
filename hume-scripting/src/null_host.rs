@@ -451,10 +451,7 @@ impl CommandHost for CommandStoreHost {
         self.defined.get(name).cloned()
     }
     fn unregister_commands_defined_by(&mut self, plugin: &EntryId) {
-        self.defined.retain(|_, proc| match proc {
-            CommandProc::Mappable(proc) => !proc.defined_by(plugin),
-            CommandProc::Typed(proc) => !proc.defined_by(plugin),
-        });
+        self.defined.retain(|_, proc| !proc.defined_by(plugin));
     }
     fn register_lazy_command(&mut self, name: &str, plugin: &EntryId) -> Result<(), String> {
         self.register_lazy(name, plugin)
