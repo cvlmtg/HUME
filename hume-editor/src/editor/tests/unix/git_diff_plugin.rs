@@ -796,6 +796,18 @@ fn open_dirty_buffer(ed: &mut Editor) -> (BufferId, tempfile::TempDir) {
     (bid, repo)
 }
 
+/// [`open_dirty_buffer`] for the default config, where only signs are on: waits
+/// for the signs instead of the inline diff.
+fn open_dirty_buffer_signs_only(ed: &mut Editor) -> (BufferId, tempfile::TempDir) {
+    let repo = tempfile::tempdir().unwrap();
+    git_init(repo.path());
+    commit_file(repo.path(), "f.txt", "one\nfoo bar baz\nthree\n", "v1");
+    std::fs::write(repo.path().join("f.txt"), "one\nfoo QUX baz\nthree\n").unwrap();
+    let bid = open(ed, &repo.path().join("f.txt"));
+    drain_until(ed, |ed| !signs(ed, bid).is_empty());
+    (bid, repo)
+}
+
 fn own_inline_is_empty(ed: &Editor, bid: BufferId) -> bool {
     vlines(ed, bid).is_empty() && highlights(ed, bid).is_empty() && line_bgs(ed, bid).is_empty()
 }
@@ -861,6 +873,106 @@ fn render_diff_under_the_own_source_raises_and_draws_nothing() {
             .message_log
             .entries()
             .any(|e| e.severity == Severity::Error && e.text.contains("core:git-diff's own")),
+        "log: {:?}",
+        ed.state.message_log.entries().collect::<Vec<_>>()
+    );
+}
+
+/// `:probe-*` typed commands reach the mappable `git-diff/*` commands through
+/// `call!`, the way a key binding or an `init.scm` command does.
+const TOGGLE_PROBES: &str = r#"
+(define-typed-command! "probe-inline" ""
+  (lambda (bid) (call! "git-diff/toggle-inline-diff" bid)))
+(define-typed-command! "probe-signs" ""
+  (lambda (bid) (call! "git-diff/toggle-git-signs" bid)))
+(define-typed-command! "probe-show" ""
+  (lambda (bid) (call! "git-diff/show-inline-diff" bid "HEAD~1")))
+(define-typed-command! "probe-show-bad" ""
+  (lambda (bid) (call! "git-diff/show-inline-diff" bid 7)))
+(define-typed-command! "probe-state" ""
+  (lambda (bid)
+    (log! 'info (if (call! "git-diff/inline-diff?" bid) "inline=on" "inline=off"))))
+"#;
+
+/// Two commits, working tree equal to HEAD, buffer open and settled.
+fn open_clean_two_commit_buffer(ed: &mut Editor) -> (BufferId, tempfile::TempDir) {
+    let repo = tempfile::tempdir().unwrap();
+    git_init(repo.path());
+    commit_file(repo.path(), "f.txt", "one\ntwo\nthree\n", "v1");
+    commit_file(repo.path(), "f.txt", "one\nCHANGED\nthree\n", "v2");
+    let bid = open(ed, &repo.path().join("f.txt"));
+    wait_for_refresh(ed);
+    (bid, repo)
+}
+
+#[test]
+fn mappable_inline_toggle_flips_the_rendering_and_the_query_follows() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut ed, _guard) = setup_with_source(tmp.path(), None, TOGGLE_PROBES);
+    let (bid, _repo) = open_dirty_buffer_signs_only(&mut ed);
+
+    type_cmd(&mut ed, ":probe-state");
+    assert_eq!(ed.state.status_msg.as_deref(), Some("inline=off"));
+
+    type_cmd(&mut ed, ":probe-inline");
+    drain_until(&mut ed, |ed| !vlines(ed, bid).is_empty());
+    type_cmd(&mut ed, ":probe-state");
+    assert_eq!(ed.state.status_msg.as_deref(), Some("inline=on"));
+
+    type_cmd(&mut ed, ":probe-inline");
+    assert!(own_inline_is_empty(&ed, bid));
+    type_cmd(&mut ed, ":probe-state");
+    assert_eq!(ed.state.status_msg.as_deref(), Some("inline=off"));
+}
+
+#[test]
+fn mappable_signs_toggle_flips_the_gutter_signs() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut ed, _guard) = setup_with_source(tmp.path(), None, TOGGLE_PROBES);
+    let (bid, _repo) = open_dirty_buffer_signs_only(&mut ed);
+    assert!(!signs(&ed, bid).is_empty(), "sanity: signs default on");
+
+    type_cmd(&mut ed, ":probe-signs");
+    assert!(signs(&ed, bid).is_empty());
+
+    type_cmd(&mut ed, ":probe-signs");
+    drain_until(&mut ed, |ed| !signs(ed, bid).is_empty());
+}
+
+#[test]
+fn show_inline_diff_turns_inline_on_against_the_given_ref() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut ed, _guard) = setup_with_source(tmp.path(), None, TOGGLE_PROBES);
+    let (bid, _repo) = open_clean_two_commit_buffer(&mut ed);
+    assert!(vlines(&ed, bid).is_empty(), "sanity: tree equals HEAD");
+
+    type_cmd(&mut ed, ":probe-show");
+    drain_until(&mut ed, |ed| !vlines(ed, bid).is_empty());
+    assert_eq!(vlines(&ed, bid)[0].2, "two", "diffs against HEAD~1 (v1)");
+
+    type_cmd(&mut ed, ":probe-show");
+    wait_for_refresh(&mut ed);
+    assert!(
+        !vlines(&ed, bid).is_empty(),
+        "a second show keeps inline on instead of toggling it off"
+    );
+}
+
+#[test]
+fn show_inline_diff_with_a_non_string_ref_raises() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut ed, _guard) = setup_with_source(tmp.path(), None, TOGGLE_PROBES);
+    let (bid, _repo) = open_clean_two_commit_buffer(&mut ed);
+
+    type_cmd(&mut ed, ":probe-show-bad");
+
+    assert!(vlines(&ed, bid).is_empty());
+    assert!(
+        ed.state.message_log.entries().any(|e| {
+            e.severity == Severity::Error
+                && e.text.contains("git-diff/show-inline-diff")
+                && e.text.contains("ref must be a string")
+        }),
         "log: {:?}",
         ed.state.message_log.entries().collect::<Vec<_>>()
     );

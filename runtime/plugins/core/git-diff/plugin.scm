@@ -101,12 +101,39 @@
                     (string-append "git-diff: " label " on (" (git-diff/buffer-ref pane git-diff/ref) ")")
                     (string-append "git-diff: " label " off")))))
 
+(define git-diff/toggle-signs-doc
+  "Toggle gutter +/~ signs and deletion boundary marks for the current buffer's git diff.")
+
+(define git-diff/toggle-inline-doc
+  "Toggle inline git diff rendering (virtual deleted lines, word highlights, background tint).")
+
+(define-command! "git-diff/toggle-git-signs"
+  git-diff/toggle-signs-doc
+  (lambda (pane) (git-diff/run-toggle! pane "signs?" "signs" #f)))
+
+(define-command! "git-diff/toggle-inline-diff"
+  git-diff/toggle-inline-doc
+  (lambda (pane) (git-diff/run-toggle! pane "inline?" "inline diff" #f)))
+
+(define-command! "git-diff/show-inline-diff"
+  "Turn inline git diff on for a buffer, diffing against a git ref. Arguments: pane, the ref. Unlike the toggles, it never turns the rendering off; this is what `:toggle-inline-diff <ref>` does."
+  (lambda (pane ref)
+    (unless (string? ref)
+      (error "core:git-diff: git-diff/show-inline-diff: ref must be a string"))
+    (git-diff/run-toggle! pane "inline?" "inline diff" ref)))
+
+(define-command! "git-diff/inline-diff?"
+  "Whether inline git diff is on for a buffer. Argument: pane. Returns #t or #f."
+  (lambda (pane)
+    (let ([entry (git-diff/buffer-entry pane)])
+      (and entry (hash-ref entry "inline?")))))
+
 (define-typed-command! "toggle-git-signs"
-  "Toggle gutter +/~ signs and deletion boundary marks for the current buffer's git diff. Optional argument: a git ref to diff against, e.g. :toggle-git-signs HEAD~2 (default: the `ref` config value, shared with toggle-inline-diff)."
+  (string-append git-diff/toggle-signs-doc " Optional argument: a git ref to diff against, e.g. :toggle-git-signs HEAD~2 (default: the `ref` config value, shared with toggle-inline-diff).")
   (lambda (pane arg) (git-diff/run-toggle! pane "signs?" "signs" arg))
   #:complete "git-diff:refs")
 
 (define-typed-command! "toggle-inline-diff"
-  "Toggle inline git diff rendering (virtual deleted lines, word highlights, background tint). Optional argument: a git ref to diff against, e.g. :toggle-inline-diff HEAD~2 (default: the `ref` config value, shared with toggle-git-signs)."
+  (string-append git-diff/toggle-inline-doc " Optional argument: a git ref to diff against, e.g. :toggle-inline-diff HEAD~2 (default: the `ref` config value, shared with toggle-git-signs).")
   (lambda (pane arg) (git-diff/run-toggle! pane "inline?" "inline diff" arg))
   #:complete "git-diff:refs")

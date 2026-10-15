@@ -17,9 +17,9 @@ focused buffer; add that element to your own `configure-statusline!` call to sho
 - **Depends on:** `core:stdlib`: config validation calls `stdlib/config-boolean`/
   `stdlib/config-string` at load time.
 - **Activates on:** the first buffer opened, the first `:toggle-git-signs`/
-  `:toggle-inline-diff` typed, or the first `git-diff/render-diff` or
-  `git-diff/release-diff` call. Its `manifest.scm` has one entry for `plugin.scm` with
-  `#:events '(on-buffer-open)`, those two typed commands and those two commands. `"signs"` defaults on (cheap, no line-shifting side
+  `:toggle-inline-diff` typed, or the first call or key press of any `git-diff/*` command
+  listed below. Its `manifest.scm` has one entry for `plugin.scm` with
+  `#:events '(on-buffer-open)`, the two typed commands and those commands. `"signs"` defaults on (cheap, no line-shifting side
   effects); `"inline"` defaults off (it moves virtual lines into the buffer's visual
   flow).
 - **`"branch-style"`** is `'parens` (default, `(main)`) or `'icon` (`⎇ main`).
@@ -36,6 +36,10 @@ focused buffer; add that element to your own `configure-statusline!` call to sho
 |---|---|
 | `:toggle-git-signs [ref]` | Toggle gutter signs for the current buffer. Tab-completes branches/tags |
 | `:toggle-inline-diff [ref]` | Toggle inline rendering (virtual deleted lines, word highlights, background tint) for the current buffer. Tab-completes branches/tags |
+| `git-diff/toggle-git-signs` | Mappable twin of `:toggle-git-signs` with no ref: bind it with `bind-key!` |
+| `git-diff/toggle-inline-diff` | Mappable twin of `:toggle-inline-diff` with no ref |
+| `(call! "git-diff/show-inline-diff" pane ref)` | Turn inline rendering on against `ref` (never off). Same as `:toggle-inline-diff <ref>` |
+| `(call! "git-diff/inline-diff?" pane)` | `#t` when inline rendering is on for the buffer |
 | `(call! "git-diff/render-diff" pane source hunks)` | Draw `hunks` inline under the decoration source `source`. Another plugin's entry point to the renderer, e.g. `core:undotree`'s revision diff. Hides the buffer's own inline diff until the source is released. See [`docs/rendering.md`](docs/rendering.md#rendering-another-plugins-hunks) |
 | `(call! "git-diff/release-diff" pane source)` | Clear what `source` drew and show the buffer's own inline diff again |
 

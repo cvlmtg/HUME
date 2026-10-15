@@ -150,7 +150,17 @@ Also keeps a `"steel:git-branch"` statusline element fresh for the focused buffe
 [Statusline → Custom elements](configuration.md#custom-elements)). Updates when you switch to
 a buffer and when you save it; empty for a buffer outside any repo.
 
-Both commands are typed commands, run from the `:` prompt; they have no key bindings.
+Both commands are typed commands, run from the `:` prompt. No keys are bound by default, but
+each has a key-bindable twin without the ref argument:
+
+```scheme
+(bind-key! 'normal "space i" "git-diff/toggle-inline-diff")
+(bind-key! 'normal "space s" "git-diff/toggle-git-signs")
+```
+
+A command of your own can also ask `(call! "git-diff/inline-diff?" pane)` whether inline
+rendering is on, and turn it on against a ref with `(call! "git-diff/show-inline-diff" pane "HEAD~1")`.
+The latter never turns it off.
 
 A plugin that has its own hunks, such as a revision's diff from `buffer-revision-diff`, can
 draw them the same way with `(call! "git-diff/render-diff" pane source hunks)`. `hunks` is
