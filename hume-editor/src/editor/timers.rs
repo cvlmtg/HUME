@@ -13,7 +13,7 @@ use rustc_hash::FxHashSet;
 use super::async_source::AsyncSource;
 
 /// Opaque handle to a scheduled timer. The inner `u64` is `pub(in crate::editor)` (not
-/// exposed via a method) so `timer_bridge.rs` can convert to/from the plain
+/// exposed via a method) so the host can convert to/from the plain
 /// integer Steel's `(after! ms thunk)` returns. This module itself stays
 /// Steel-agnostic (see the module doc).
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]

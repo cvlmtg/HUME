@@ -9,6 +9,7 @@
 use std::time::{Duration, Instant};
 
 use super::*;
+use crate::editor::timer_bridge::TimerPayload;
 use hume_treesitter::parse_worker::{ParseBackend, ParseDone, ParseRequest};
 
 /// A `ParseBackend` double that never completes a request, without spinning
@@ -55,7 +56,7 @@ fn wake_timeout_bounded_by_nearer_timer_deadline() {
     // when a nearer deadline exists") until a second real AsyncSource
     // existed; the timer wheel is that source.
     let mut ed = editor_from("-[w]>ord\n");
-    ed.timer_wheel.schedule(Duration::from_millis(2));
+    schedule_any(&mut ed, Duration::from_millis(2));
 
     let timeout = ed.wake_timeout().expect("a timer is scheduled");
     assert!(
@@ -71,7 +72,7 @@ fn wake_timeout_distant_timer_bounds_without_busy_polling() {
     // left to do that collapsing (arrival is wake-driven now), but this
     // still pins that a distant timer isn't somehow shortened.
     let mut ed = editor_from("-[w]>ord\n");
-    ed.timer_wheel.schedule(Duration::from_secs(10));
+    schedule_any(&mut ed, Duration::from_secs(10));
 
     let timeout = ed.wake_timeout().expect("a timer is scheduled");
     assert!(
@@ -286,10 +287,24 @@ fn timer_wheel_end_to_end_tick_via_editor() {
     // Sleep-free: jump the query point 20ms past scheduling instead of
     // sleeping in the test.
     let mut ed = editor_from("-[w]>ord\n");
-    let id = ed.timer_wheel.schedule(Duration::from_millis(10));
+    let bid = ed.focused_buffer_id();
+    ed.timers.schedule(
+        Duration::from_millis(10),
+        TimerPayload::DiagnosticPullDebounce(bid),
+    );
 
     let due = ed
-        .timer_wheel
+        .timers
         .take_due(Instant::now() + Duration::from_millis(20));
-    assert_eq!(due, vec![id]);
+    assert!(
+        matches!(due[..], [TimerPayload::DiagnosticPullDebounce(due_bid)] if due_bid == bid),
+        "exactly the scheduled timer must be due"
+    );
+}
+
+/// Schedules a native timer whose firing nothing in these tests observes.
+fn schedule_any(ed: &mut Editor, after: Duration) {
+    let bid = ed.focused_buffer_id();
+    ed.timers
+        .schedule(after, TimerPayload::DiagnosticPullDebounce(bid));
 }

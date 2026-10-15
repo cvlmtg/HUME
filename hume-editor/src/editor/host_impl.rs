@@ -12,7 +12,7 @@
 
 use hume_engine::pipeline::{BufferId, EngineView};
 
-use crate::editor::timer_bridge::TimerHandle;
+use crate::editor::timer_bridge::Timers;
 use hume_scripting::host::{
     AsyncProcessHost, BufferHost, CommandHost, CompletionHost, CursorHost, DecorationHost,
     DiffHost, EditHost, EditorHost, EventHost, LanguageHost, LspHost, OutputHost, RegisterHost,
@@ -44,9 +44,8 @@ pub(in crate::editor) struct EditorHostImpl<'a> {
     view: &'a mut EngineView,
     /// `Some` only at the three call sites that can reach a timer builtin
     /// (command dispatch, hook fire, queued-call drain), for `(after …)` /
-    /// `(cancel-timer! …)`. `TimerHandle` bundles the two `&mut` pieces
-    /// those need.
-    timers: Option<TimerHandle<'a>>,
+    /// `(cancel-timer! …)`.
+    timers: Option<&'a mut Timers>,
     /// This host's inline-output authority: `None` for [`Self::new`]'s
     /// callers, which have no business touching the bracket at all, not
     /// `Some(Tui::Off)`, which means something different (a `full`/`init`
@@ -129,21 +128,14 @@ impl<'a> EditorHostImpl<'a> {
     pub(in crate::editor) fn full(
         state: &'a mut EditorState,
         view: &'a mut EngineView,
-        timer_wheel: &'a mut super::timers::TimerWheel,
-        timer_payloads: &'a mut rustc_hash::FxHashMap<
-            super::timers::TimerId,
-            super::timer_bridge::TimerPayload,
-        >,
+        timers: &'a mut Timers,
         tui: Tui,
         kitty_enabled: bool,
     ) -> Self {
         Self {
             state,
             view,
-            timers: Some(TimerHandle {
-                wheel: timer_wheel,
-                payloads: timer_payloads,
-            }),
+            timers: Some(timers),
             tui: Some(tui),
             kitty_enabled,
         }

@@ -299,7 +299,7 @@ impl Editor {
     ) -> Result<(), CommandError> {
         if let Err(WriteError::Failed(e)) = written {
             for timer in self.state.pending_writes.drop_batch(id) {
-                self.cancel_timeout(timer);
+                self.timers.cancel(timer);
             }
             return Err(e);
         }
@@ -337,11 +337,6 @@ impl Editor {
                 }
             }
         }
-    }
-
-    fn cancel_timeout(&mut self, timeout: TimerId) {
-        self.timer_wheel.cancel(timeout);
-        self.timer_payloads.remove(&timeout);
     }
 
     fn before_save_timeout(&self) -> Duration {
@@ -384,10 +379,9 @@ impl Editor {
             .map(|_| host_token::mint())
             .collect();
         let timeout = (!holds.is_empty()).then(|| {
-            let timeout = self.timer_wheel.schedule(self.before_save_timeout());
-            self.timer_payloads
-                .insert(timeout, TimerPayload::BeforeSaveTimeout(bid));
-            timeout
+            let after = self.before_save_timeout();
+            self.timers
+                .schedule(after, TimerPayload::BeforeSaveTimeout(bid))
         });
         self.state.pending_writes.open_holds(bid, &holds, timeout);
         let fired = {
@@ -428,7 +422,7 @@ impl Editor {
             return;
         };
         if let Some(timeout) = pending.timeout() {
-            self.cancel_timeout(timeout);
+            self.timers.cancel(timeout);
         }
         let kind = WriteKind::classify(self.state.buffers.get(bid), pending.arg.as_deref());
         if let Err(e) = write_and_continue(self, bid, kind, pending.force, pending.after) {

@@ -748,8 +748,7 @@ macro_rules! live_host {
         crate::editor::host_impl::EditorHostImpl::full(
             &mut $ed.state,
             &mut $ed.view,
-            &mut $ed.timer_wheel,
-            &mut $ed.timer_payloads,
+            &mut $ed.timers,
             $ed.tui.clone(),
             $ed.kitty_enabled,
         )
@@ -916,8 +915,7 @@ impl Editor {
             builtin_cmd_names: rustc_hash::FxHashSet::default(),
             parse_worker: Box::new(InlineParseBackend::new()),
             parse_worker_disconnect_logged: false,
-            timer_wheel: super::timers::TimerWheel::new(),
-            timer_payloads: rustc_hash::FxHashMap::default(),
+            timers: super::timer_bridge::Timers::new(),
             viewport_debounce: rustc_hash::FxHashMap::default(),
             diagnostic_pull_debounce: rustc_hash::FxHashMap::default(),
             last_visible_range: rustc_hash::FxHashMap::default(),

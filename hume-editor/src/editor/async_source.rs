@@ -35,7 +35,7 @@ impl Editor {
     /// One place to enumerate async sources. Adding a source = one line here
     /// plus its `AsyncSource` impl.
     fn async_sources(&self) -> [&dyn AsyncSource; 2] {
-        [&self.timer_wheel, &self.state.lsp]
+        [&self.timers, &self.state.lsp]
     }
 
     /// `Some(timeout)` => wait with it; `None` => block indefinitely.

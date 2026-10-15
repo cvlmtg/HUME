@@ -202,13 +202,11 @@ impl Editor {
             .retain(|pid, _| panes.contains_key(*pid));
         self.virtual_lines_synced
             .retain(|pid, _| panes.contains_key(*pid));
-        let wheel = &mut self.timer_wheel;
-        let payloads = &mut self.timer_payloads;
+        let timers = &mut self.timers;
         self.viewport_debounce.retain(|pid, id| {
             let live = panes.contains_key(*pid);
             if !live {
-                wheel.cancel(*id);
-                payloads.remove(id);
+                timers.cancel(*id);
             }
             live
         });

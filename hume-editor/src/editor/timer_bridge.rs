@@ -5,13 +5,14 @@
 //! instead, alongside the glue that converts a wheel id to the plain
 //! integer Steel sees.
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use hume_engine::pipeline::{BufferId, PaneId};
 use steel::rvals::SteelVal;
 
 use super::Editor;
-use super::timers::TimerId;
+use super::async_source::AsyncSource;
+use super::timers::{TimerId, TimerWheel};
 
 /// What firing a `TimerId` actually does: a Steel closure (the `after!`
 /// builtin) or a native Rust action (the viewport-change debounce, which has no Steel
@@ -26,32 +27,65 @@ pub(super) enum TimerPayload {
     BeforeSaveTimeout(BufferId),
 }
 
-/// Disjoint-borrow handle over `Editor`'s timer wheel + payload table,
-/// passed into `EditorHostImpl` the same way `&LspState` is passed. `Some`
-/// only at the eval call sites that can reach a Steel builtin. Fields are
-/// `pub(super)` (not a constructor) so callers build it from `&mut
-/// self.timer_wheel` / `&mut self.timer_payloads` directly; going through a
-/// `&mut self` method here would borrow all of `Editor`, defeating the
-/// disjoint-field borrow the call sites need alongside `&mut self.state` /
-/// `&mut self.scripting`.
-pub(in crate::editor) struct TimerHandle<'a> {
-    pub(super) wheel: &'a mut super::timers::TimerWheel,
-    pub(super) payloads: &'a mut rustc_hash::FxHashMap<TimerId, TimerPayload>,
+/// Every scheduled timer with what firing it does. The wheel and the payload
+/// table change together here and nowhere else, so no timer has a deadline
+/// without a payload or a payload without a deadline.
+pub(in crate::editor) struct Timers {
+    wheel: TimerWheel,
+    payloads: rustc_hash::FxHashMap<TimerId, TimerPayload>,
 }
 
-impl<'a> TimerHandle<'a> {
-    pub(in crate::editor) fn schedule(&mut self, after: Duration, thunk: SteelVal) -> u64 {
-        let id = self.wheel.schedule(after);
-        self.payloads.insert(id, TimerPayload::SteelThunk(thunk));
-        id.0
+impl Timers {
+    pub(in crate::editor) fn new() -> Self {
+        Self {
+            wheel: TimerWheel::new(),
+            payloads: rustc_hash::FxHashMap::default(),
+        }
     }
 
-    /// Idempotent: a already-fired or already-cancelled (or never-existed)
-    /// raw id is silently ignored, matching `TimerWheel::cancel`'s contract.
-    pub(in crate::editor) fn cancel(&mut self, raw_id: u64) {
-        let id = TimerId(raw_id);
+    pub(in crate::editor) fn schedule(
+        &mut self,
+        after: Duration,
+        payload: TimerPayload,
+    ) -> TimerId {
+        let id = self.wheel.schedule(after);
+        self.payloads.insert(id, payload);
+        id
+    }
+
+    /// Idempotent: an already-fired, already-cancelled or never-scheduled
+    /// id is ignored, matching `TimerWheel::cancel`'s contract.
+    pub(in crate::editor) fn cancel(&mut self, id: TimerId) {
         self.wheel.cancel(id);
         self.payloads.remove(&id);
+    }
+
+    /// Cancels every timer whose payload matches `pred`.
+    pub(in crate::editor) fn cancel_where(&mut self, pred: impl Fn(&TimerPayload) -> bool) {
+        let ids: Vec<TimerId> = self
+            .payloads
+            .iter()
+            .filter(|(_, payload)| pred(payload))
+            .map(|(&id, _)| id)
+            .collect();
+        for id in ids {
+            self.cancel(id);
+        }
+    }
+
+    /// The payloads of every timer due at `now`, in deadline order.
+    pub(in crate::editor) fn take_due(&mut self, now: Instant) -> Vec<TimerPayload> {
+        self.wheel
+            .take_due(now)
+            .into_iter()
+            .filter_map(|id| self.payloads.remove(&id))
+            .collect()
+    }
+}
+
+impl AsyncSource for Timers {
+    fn next_wake(&self, now: Instant) -> Option<Instant> {
+        self.wheel.next_wake(now)
     }
 }
 
@@ -60,25 +94,20 @@ impl Editor {
     /// inline; this runs from `drain_async_sources`, the per-frame
     /// chokepoint, same discipline as the LSP callbacks), a viewport
     /// debounce fires `OnViewportChange` directly with the pane's *current*
-    /// bounds. An id with no matching payload (already cancelled) is
-    /// silently skipped.
+    /// bounds.
     pub(super) fn drain_due_timers(&mut self) {
-        let due = self.timer_wheel.take_due(std::time::Instant::now());
-        for id in due {
-            match self.timer_payloads.remove(&id) {
-                Some(TimerPayload::SteelThunk(thunk)) => {
-                    self.state.queue_steel_call(thunk, Vec::new())
-                }
-                Some(TimerPayload::ViewportDebounce(pane_id)) => {
+        for payload in self.timers.take_due(Instant::now()) {
+            match payload {
+                TimerPayload::SteelThunk(thunk) => self.state.queue_steel_call(thunk, Vec::new()),
+                TimerPayload::ViewportDebounce(pane_id) => {
                     self.viewport_debounce.remove(&pane_id);
                     self.queue_viewport_change(pane_id);
                 }
-                Some(TimerPayload::DiagnosticPullDebounce(bid)) => {
+                TimerPayload::DiagnosticPullDebounce(bid) => {
                     self.diagnostic_pull_debounce.remove(&bid);
                     self.state.lsp_pull_diagnostics(bid);
                 }
-                Some(TimerPayload::BeforeSaveTimeout(bid)) => self.before_save_timed_out(bid),
-                None => {}
+                TimerPayload::BeforeSaveTimeout(bid) => self.before_save_timed_out(bid),
             }
         }
     }
@@ -96,8 +125,7 @@ impl Editor {
         let after = Duration::from_millis(self.state.settings.viewport_debounce_ms as u64);
         reschedule(
             &mut self.viewport_debounce,
-            &mut self.timer_wheel,
-            &mut self.timer_payloads,
+            &mut self.timers,
             pane_id,
             after,
             TimerPayload::ViewportDebounce(pane_id),
@@ -112,8 +140,7 @@ impl Editor {
             Duration::from_millis(self.state.settings.lsp_diagnostics_pull_debounce_ms as u64);
         reschedule(
             &mut self.diagnostic_pull_debounce,
-            &mut self.timer_wheel,
-            &mut self.timer_payloads,
+            &mut self.timers,
             bid,
             after,
             TimerPayload::DiagnosticPullDebounce(bid),
@@ -125,20 +152,13 @@ impl Editor {
 /// cancelling the one a previous call left there.
 fn reschedule<K: std::hash::Hash + Eq>(
     pending: &mut rustc_hash::FxHashMap<K, TimerId>,
-    wheel: &mut super::timers::TimerWheel,
-    payloads: &mut rustc_hash::FxHashMap<TimerId, TimerPayload>,
+    timers: &mut Timers,
     key: K,
     after: Duration,
     payload: TimerPayload,
 ) {
     if let Some(old_id) = pending.remove(&key) {
-        TimerHandle {
-            wheel: &mut *wheel,
-            payloads: &mut *payloads,
-        }
-        .cancel(old_id.0);
+        timers.cancel(old_id);
     }
-    let id = wheel.schedule(after);
-    payloads.insert(id, payload);
-    pending.insert(key, id);
+    pending.insert(key, timers.schedule(after, payload));
 }

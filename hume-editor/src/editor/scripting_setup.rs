@@ -196,8 +196,7 @@ impl Editor {
         let host = EditorHostImpl::full(
             &mut self.state,
             &mut self.view,
-            &mut self.timer_wheel,
-            &mut self.timer_payloads,
+            &mut self.timers,
             self.tui.clone(),
             self.kitty_enabled,
         );

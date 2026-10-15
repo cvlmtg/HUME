@@ -424,16 +424,16 @@ fn reset_cancels_pending_steel_timers() {
     ed.scripting = Some(host);
     type_cmd(&mut ed, ":start");
 
-    assert_eq!(
-        ed.timer_payloads.len(),
-        1,
+    assert!(
+        ed.wake_timeout().is_some(),
         "sanity: the timer must be scheduled"
     );
 
     ed.reset_config_state();
 
-    assert!(
-        ed.timer_payloads.is_empty(),
+    assert_eq!(
+        ed.wake_timeout(),
+        None,
         "a Steel `after!` thunk must not survive the reset"
     );
 }

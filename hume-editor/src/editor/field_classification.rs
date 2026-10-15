@@ -6,7 +6,7 @@
 // wholesale (a field added there is reset with it; see
 // `ConfigState`'s own doc), but every *other* field on `EditorState` (and
 // on `Editor` itself, which `reset_config_state` also reaches directly for
-// `lsp`/`timer_wheel`/`timer_payloads`) needs a human decision: does
+// `lsp`/`timers`) needs a human decision: does
 // `:reload-config` reset it too (like `settings`, via
 // `settings::ops::reset_globals`), or does it survive untouched (buffers,
 // panes, undo history, registers, …)?
@@ -141,15 +141,9 @@ fn editor_fields_are_classified() {
             builtin_cmd_names: _,
             parse_worker: _,                   // preserved
             parse_worker_disconnect_logged: _, // preserved
-            // config: reset_config_state cancels only the
-            // Steel-thunk-payload entries (paired with
-            // timer_payloads below); native ViewportDebounce timers
-            // survive
-            timer_wheel: _,
-            // config: reset_config_state removes only the
-            // Steel-thunk-payload entries, paired 1:1 with the
-            // timer_wheel cancellations above
-            timer_payloads: _,
+            // config: reset_config_state cancels only the Steel-thunk
+            // timers; native debounce and before-save timers survive
+            timers: _,
             // preserved: indexes the native ViewportDebounce timers
             // that themselves survive the reset
             viewport_debounce: _,

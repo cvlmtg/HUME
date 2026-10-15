@@ -803,13 +803,9 @@ pub(crate) struct Editor {
     parse_worker: Box<dyn ParseBackend>,
     /// Whether the one-shot "parse worker disconnected" message has been logged.
     parse_worker_disconnect_logged: bool,
-    /// Nearest-deadline timer registry; Steel-visible via the
+    /// Every scheduled timer and what firing it does; Steel-visible via the
     /// `after!`/`debounce` builtins.
-    timer_wheel: timers::TimerWheel,
-    /// `TimerId -> {Steel thunk, or native action}`, keeping `timers.rs`
-    /// itself payload-agnostic. Entry removed on fire or cancel, never
-    /// leaked.
-    timer_payloads: rustc_hash::FxHashMap<timers::TimerId, timer_bridge::TimerPayload>,
+    timers: timer_bridge::Timers,
     /// This pane's currently-pending `OnViewportChange` debounce timer, if
     /// any, looked up to cancel-and-replace on the next change.
     viewport_debounce: rustc_hash::FxHashMap<hume_engine::pipeline::PaneId, timers::TimerId>,

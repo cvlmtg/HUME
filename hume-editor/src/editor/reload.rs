@@ -140,21 +140,12 @@ impl Editor {
         // them is Steel-VM-specific. Exhaustive
         // match, not `matches!`, so a future `TimerPayload` variant forces a
         // decision here instead of silently surviving the engine drop.
-        let steel_timer_ids: Vec<super::timers::TimerId> = self
-            .timer_payloads
-            .iter()
-            .filter(|(_, payload)| match payload {
-                super::timer_bridge::TimerPayload::SteelThunk(_) => true,
-                super::timer_bridge::TimerPayload::ViewportDebounce(_)
-                | super::timer_bridge::TimerPayload::DiagnosticPullDebounce(_)
-                | super::timer_bridge::TimerPayload::BeforeSaveTimeout(_) => false,
-            })
-            .map(|(&id, _)| id)
-            .collect();
-        for id in steel_timer_ids {
-            self.timer_wheel.cancel(id);
-            self.timer_payloads.remove(&id);
-        }
+        self.timers.cancel_where(|payload| match payload {
+            super::timer_bridge::TimerPayload::SteelThunk(_) => true,
+            super::timer_bridge::TimerPayload::ViewportDebounce(_)
+            | super::timer_bridge::TimerPayload::DiagnosticPullDebounce(_)
+            | super::timer_bridge::TimerPayload::BeforeSaveTimeout(_) => false,
+        });
 
         // ── Config-owned editor state ──
         // Snapshot every buffer's own `:set buffer language=`/
