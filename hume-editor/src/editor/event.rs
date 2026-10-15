@@ -32,16 +32,6 @@ pub(in crate::editor) enum EditorEvent {
     OnBufferSave {
         buffer: BufferId,
     },
-    /// Fires before a write to the buffer's own file, with the write parked
-    /// until every handler is done (`before_save`). A handler taking
-    /// `(pane)` is done when it returns; one taking `(pane done)` is done
-    /// when it calls `(done)`. Not raised for a write that cannot reach
-    /// the buffer's own file. `target` carries the pane that asked for the
-    /// write when it shows the buffer, and no pane otherwise (`:wa` on a
-    /// buffer it is not showing).
-    OnBeforeBufferSave {
-        target: PaneHandle,
-    },
     /// Fires when the focused pane's buffer changes: a diff taken inside
     /// `Editor::settle()`'s fixpoint against `EditorState::last_entered_buffer`,
     /// not a hook on any individual switch primitive. `focused_buffer_id()` is
@@ -217,6 +207,31 @@ pub(in crate::editor) enum EditorEvent {
     },
 }
 
+/// An event whose raiser waits for its handlers. Kept out of `EditorEvent`
+/// so it cannot be queued: only `ScriptingHost::fire_held_hook` delivers it.
+#[derive(Debug)]
+pub(in crate::editor) enum HeldEvent {
+    /// Fires before a write to the buffer's own file, with the write parked
+    /// until every handler is done (`before_save`). A handler taking
+    /// `(pane)` is done when it returns; one taking `(pane done)` is done
+    /// when it calls `(done)`. Not raised for a write that cannot reach
+    /// the buffer's own file. `target` carries the pane that asked for the
+    /// write when it still shows the buffer as the event is raised, and no
+    /// pane otherwise (`:wa` on a buffer it is not showing).
+    OnBeforeBufferSave { target: PaneHandle },
+}
+
+impl HeldEvent {
+    /// The args each handler gets ahead of `done`.
+    pub(in crate::editor) fn into_steel_args(self) -> Vec<SteelVal> {
+        match self {
+            HeldEvent::OnBeforeBufferSave { target } => {
+                vec![SteelPane::new(target).into_steel_val()]
+            }
+        }
+    }
+}
+
 impl EditorEvent {
     /// The buffer (and, where the variant carries one, pane) this event
     /// concerns, if any: `None` for a buffer-less event (`OnFocusGained`,
@@ -243,7 +258,6 @@ impl EditorEvent {
                 Some(PaneHandle::buffer_only(*buffer))
             }
             EditorEvent::OnBufferEnter { target }
-            | EditorEvent::OnBeforeBufferSave { target }
             | EditorEvent::OnViewportChange { target, .. }
             | EditorEvent::OnTriggerChar { target, .. }
             | EditorEvent::OnCompletionAccept { target, .. } => Some(*target),
@@ -264,7 +278,6 @@ impl EditorEvent {
             EditorEvent::OnBufferOpen { .. }
             | EditorEvent::OnBufferClose { .. }
             | EditorEvent::OnBufferSave { .. }
-            | EditorEvent::OnBeforeBufferSave { .. }
             | EditorEvent::OnBufferEnter { .. }
             | EditorEvent::OnFocusGained
             | EditorEvent::OnModeChange { .. }
@@ -292,7 +305,6 @@ impl EditorEvent {
             EditorEvent::OnBufferOpen { .. }
             | EditorEvent::OnBufferClose { .. }
             | EditorEvent::OnBufferSave { .. }
-            | EditorEvent::OnBeforeBufferSave { .. }
             | EditorEvent::OnBufferEnter { .. }
             | EditorEvent::OnFocusGained
             | EditorEvent::OnModeChange { .. }
@@ -310,24 +322,29 @@ impl EditorEvent {
     }
 }
 
-/// Pairs each `EditorEvent` variant with its Steel-facing name, once, and
-/// generates `EditorEvent::name`'s match, `EVENT_NAMES` and `HELD_EVENTS`
-/// from that one list. The alternative (a hand-written match plus a hand-written const
-/// array) is the exact kind of two-places-say-the-same-thing drift a test can
-/// catch but not prevent. Still an explicit table of string literals, not a
-/// PascalCase→kebab-case computation: writing each name out means a variant
-/// rename can never silently rename the Steel-facing event too; this macro
-/// only removes writing each pair twice.
+/// Pairs each `EditorEvent` and `HeldEvent` variant with its Steel-facing
+/// name, once, and generates both `name` matches, `EVENT_NAMES` and
+/// `HELD_EVENTS` from those lists. The alternative (a hand-written match
+/// plus a hand-written const array) is the exact kind of
+/// two-places-say-the-same-thing drift a test can catch but not prevent.
+/// Still an explicit table of names (string literals, or a const for one
+/// the write path asks for without an event), not a PascalCase→kebab-case
+/// computation: writing each name out means a variant rename can never
+/// silently rename the Steel-facing event too; this macro only removes
+/// writing each pair twice. A held entry also gives the number of args its
+/// handlers get ahead of `done`.
 ///
-/// A variant not listed here would make `name`'s match non-exhaustive over
-/// `EditorEvent` and fail to compile, so with every variant Steel-visible,
-/// this is an exhaustive match written once. A future internal-only
-/// (Rust-only, no Steel-facing name)
-/// variant is out of scope for this macro as written; give `name` an
-/// `Option` return and extend it with a `$variant:ident` arm (no `=> $name`)
-/// mapping to `None` if one appears.
+/// A variant not listed here would make `name`'s match non-exhaustive and
+/// fail to compile, so with every variant Steel-visible, this is an
+/// exhaustive match written once. A future internal-only (Rust-only, no
+/// Steel-facing name) variant is out of scope for this macro as written;
+/// give `name` an `Option` return and extend it with a `$variant:ident` arm
+/// (no `=> $name`) mapping to `None` if one appears.
 macro_rules! editor_event_names {
-    ($($variant:ident => $name:literal $(held($held_args:literal))?),+ $(,)?) => {
+    (
+        queued { $($variant:ident => $name:tt),+ $(,)? }
+        held { $($held_variant:ident => $held_name:tt ($held_args:literal)),+ $(,)? }
+    ) => {
         impl EditorEvent {
             /// The Steel symbol name for this event. An exhaustive match
             /// (generated by `editor_event_names!`) rather than a table
@@ -340,37 +357,52 @@ macro_rules! editor_event_names {
             }
         }
 
+        impl HeldEvent {
+            /// The Steel symbol name for this event.
+            pub(in crate::editor) fn name(&self) -> &'static str {
+                match self {
+                    $(HeldEvent::$held_variant { .. } => $held_name,)+
+                }
+            }
+        }
+
         /// Every Steel-visible event name. Backs `EventHost::known_event_names`,
         /// consulted by `register-hook!` and `declare-plugin!`'s `#:events` to
         /// validate names without `hume-scripting` compiling in `EditorEvent`.
-        const EVENT_NAMES: &[&str] = &[$($name),+];
+        const EVENT_NAMES: &[&str] = &[$($name,)+ $($held_name,)+];
 
         /// The events whose raiser waits for its handlers, each with the
-        /// number of args it passes ahead of `done`: the variants listed
-        /// with `held(n)`.
-        const HELD_EVENTS: &[(&str, usize)] = &[$($(($name, $held_args),)?)+];
+        /// number of args it passes ahead of `done`.
+        const HELD_EVENTS: &[(&str, usize)] = &[$(($held_name, $held_args)),+];
     };
 }
 
+/// Named so the write path can ask for handlers without an event in hand.
+pub(in crate::editor) const BEFORE_BUFFER_SAVE: &str = "on-before-buffer-save";
+
 editor_event_names! {
-    OnBufferOpen => "on-buffer-open",
-    OnBufferClose => "on-buffer-close",
-    OnBufferSave => "on-buffer-save",
-    OnBeforeBufferSave => "on-before-buffer-save" held(1),
-    OnBufferEnter => "on-buffer-enter",
-    OnFocusGained => "on-focus-gained",
-    OnModeChange => "on-mode-change",
-    OnLanguageSet => "on-language-set",
-    OnLspAttach => "on-lsp-attach",
-    OnLspDetach => "on-lsp-detach",
-    OnDiagnosticsChanged => "on-diagnostics-changed",
-    OnViewportChange => "on-viewport-change",
-    OnTriggerChar => "on-trigger-char",
-    OnCompletionAccept => "on-completion-accept",
-    OnLspNotification => "on-lsp-notification",
-    OnOptionChange => "on-option-change",
-    OnTextChanged => "on-text-changed",
-    OnUndoHistoryChanged => "on-undo-history-changed",
+    queued {
+        OnBufferOpen => "on-buffer-open",
+        OnBufferClose => "on-buffer-close",
+        OnBufferSave => "on-buffer-save",
+        OnBufferEnter => "on-buffer-enter",
+        OnFocusGained => "on-focus-gained",
+        OnModeChange => "on-mode-change",
+        OnLanguageSet => "on-language-set",
+        OnLspAttach => "on-lsp-attach",
+        OnLspDetach => "on-lsp-detach",
+        OnDiagnosticsChanged => "on-diagnostics-changed",
+        OnViewportChange => "on-viewport-change",
+        OnTriggerChar => "on-trigger-char",
+        OnCompletionAccept => "on-completion-accept",
+        OnLspNotification => "on-lsp-notification",
+        OnOptionChange => "on-option-change",
+        OnTextChanged => "on-text-changed",
+        OnUndoHistoryChanged => "on-undo-history-changed",
+    }
+    held {
+        OnBeforeBufferSave => BEFORE_BUFFER_SAVE (1),
+    }
 }
 
 impl EditorEvent {
@@ -389,7 +421,7 @@ impl EditorEvent {
             | EditorEvent::OnUndoHistoryChanged { buffer } => {
                 vec![SteelPane::new(PaneHandle::buffer_only(buffer)).into_steel_val()]
             }
-            EditorEvent::OnBufferEnter { target } | EditorEvent::OnBeforeBufferSave { target } => {
+            EditorEvent::OnBufferEnter { target } => {
                 vec![SteelPane::new(target).into_steel_val()]
             }
             EditorEvent::OnFocusGained => vec![],
@@ -504,10 +536,6 @@ pub(in crate::editor) enum PendingWork {
     /// An editor event to fire by name at drain time. Args are built by
     /// `into_steel_args()` only if a handler is actually registered.
     Event(EditorEvent),
-    /// Raise `on-before-buffer-save` for the write parked on the handle's
-    /// buffer. Kept apart from `Event` because the raise is owned by
-    /// `Editor::fire_before_save`, which holds the write open on its handlers.
-    BeforeSave(hume_scripting::PaneHandle),
 }
 
 pub(in crate::editor) fn mode_name(m: Mode) -> &'static str {

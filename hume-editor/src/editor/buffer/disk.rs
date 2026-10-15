@@ -57,7 +57,7 @@ pub(in crate::editor) enum DiskState {
     Changed(hume_platform::io::FileSignature),
     /// Changed externally, and the user explicitly answered the reload
     /// confirm with "keep". Carries the signature that was declined. Still
-    /// stale (`stale_write_block`, not this state, is what `:w` actually
+    /// stale (`changed_on_disk`, not this state, is what `:w` actually
     /// re-checks, so it keeps refusing until reload or `!` regardless), and
     /// never re-prompts or re-warns for *this* signature on `Ambient`/
     /// `BufferEnter`, but a direct `:checktime` (`DiskCheckTrigger::

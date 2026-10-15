@@ -3,18 +3,43 @@ use hume_platform::io::FileMeta;
 
 use super::super::Editor;
 use super::super::Severity;
-use super::super::before_save::{AfterWrite, SAVE_IN_PROGRESS, WriteRequest};
+use super::super::before_save::{AfterWrite, SAVE_IN_PROGRESS};
 use super::FocusedPane;
 use crate::editor::buffer::Buffer;
 use crate::editor::error::CommandError;
 use crate::editor::settings::ops as settings_ops;
 use crate::editor::settings::{WRAP_MODE_KEY, parse_setting_text};
 
-/// Shared by every stale-write refusal, so `typed_write_all` can tell a
-/// stale refusal apart from any other write failure by comparing against it.
 const STALE_WRITE_MSG: &str = "file has changed on disk (add ! to override)";
 
-/// `Some(msg)` when a non-forced write to `meta`'s file must be refused.
+/// Why a write command's write did not land.
+pub(in crate::editor) enum WriteError {
+    /// The buffer's own file changed on disk since it was read or written;
+    /// `!` writes anyway.
+    Stale,
+    /// Not attempted: the buffer already has a write waiting on its
+    /// handlers.
+    InProgress,
+    Failed(CommandError),
+}
+
+impl From<CommandError> for WriteError {
+    fn from(e: CommandError) -> Self {
+        Self::Failed(e)
+    }
+}
+
+impl From<WriteError> for CommandError {
+    fn from(e: WriteError) -> Self {
+        match e {
+            WriteError::Stale => CommandError::transient(STALE_WRITE_MSG),
+            WriteError::InProgress => CommandError::transient(SAVE_IN_PROGRESS),
+            WriteError::Failed(e) => e,
+        }
+    }
+}
+
+/// Whether a non-forced write to `meta`'s file must be refused.
 /// Stats the file fresh right now rather than trusting the buffer's cached
 /// disk state, which only reflects whatever some earlier trigger (terminal
 /// focus, buffer-enter, `:checktime`) happened to notice. Nothing runs a
@@ -25,11 +50,11 @@ const STALE_WRITE_MSG: &str = "file has changed on disk (add ! to override)";
 /// it, which is recovering the user's own work, not clobbering someone
 /// else's: the same reasoning that lets `disk_change_for` treat any other
 /// stat error as nothing-to-act-on-now.
-fn stale_write_block(meta: &FileMeta) -> Option<&'static str> {
-    match hume_platform::io::read_signature(meta.resolved_path()) {
-        Ok(sig) if sig != meta.signature() => Some(STALE_WRITE_MSG),
-        _ => None,
-    }
+fn changed_on_disk(meta: &FileMeta) -> bool {
+    matches!(
+        hume_platform::io::read_signature(meta.resolved_path()),
+        Ok(sig) if sig != meta.signature()
+    )
 }
 
 // ── Typed file commands ───────────────────────────────────────────────────────
@@ -132,8 +157,7 @@ pub(in crate::editor) fn typed_write(
     arg: Option<&str>,
     force: bool,
 ) -> Result<(), CommandError> {
-    ed.request_write(fp.bid(&ed.view), fp, arg, force, AfterWrite::Nothing)?
-        .into_command_result()
+    ed.request_write(fp.bid(&ed.view), fp, arg, force, AfterWrite::Nothing)
 }
 
 pub(in crate::editor) fn typed_write_quit(
@@ -143,17 +167,11 @@ pub(in crate::editor) fn typed_write_quit(
     force: bool,
 ) -> Result<(), CommandError> {
     let quit = AfterWrite::Quit(fp.handle(&ed.view));
-    ed.request_write(fp.bid(&ed.view), fp, arg, force, quit)?
-        .into_command_result()
+    ed.request_write(fp.bid(&ed.view), fp, arg, force, quit)
 }
 
 /// Writes `bid`, then carries out `after`. The commit step behind
 /// `Editor::request_write`, run at once or when a parked write is released.
-///
-/// `force` applies to both the write (chmod-retry on readonly targets) and
-/// the quit (proceed with the quit even if the write fails). A quit whose
-/// pane is not the focused pane showing `bid` any more (the write was parked
-/// while focus moved) is cancelled: the write still happened.
 pub(in crate::editor) fn write_and_continue(
     ed: &mut Editor,
     bid: BufferId,
@@ -162,8 +180,27 @@ pub(in crate::editor) fn write_and_continue(
     after: AfterWrite,
 ) -> Result<(), CommandError> {
     let written = write_file(ed, bid, kind, force);
-    let AfterWrite::Quit(handle) = after else {
-        return written;
+    conclude_write(ed, bid, written, force, after)
+}
+
+/// Carries out `after` for a write attempt that ended in `written`.
+///
+/// `force` applies to the quit too (proceed with the quit even if the write
+/// fails). A quit whose pane is not the focused pane showing `bid` any more
+/// (the write was parked while focus moved) is cancelled: the write still
+/// happened. A `:wa` write is recorded in its batch, and a hard failure ends
+/// the batch.
+pub(in crate::editor) fn conclude_write(
+    ed: &mut Editor,
+    bid: BufferId,
+    written: Result<(), WriteError>,
+    force: bool,
+    after: AfterWrite,
+) -> Result<(), CommandError> {
+    let handle = match after {
+        AfterWrite::Nothing => return written.map_err(Into::into),
+        AfterWrite::Batch(batch) => return ed.record_batch_write(batch, bid, written),
+        AfterWrite::Quit(handle) => handle,
     };
     let Ok(pane) = FocusedPane::resolve(&ed.state, &ed.view, handle) else {
         if written.is_ok() {
@@ -172,16 +209,17 @@ pub(in crate::editor) fn write_and_continue(
                 "Written; quit cancelled (focus moved)".to_owned(),
             );
         }
-        return written;
+        return written.map_err(Into::into);
     };
     match written {
         Ok(()) => typed_quit(ed, pane, None, force),
+        Err(WriteError::InProgress) => Err(WriteError::InProgress.into()),
         Err(e) if force => {
             typed_quit(ed, pane, None, true)
                 .expect("force quit cannot fail: dirty check is skipped");
-            Err(e)
+            Err(e.into())
         }
-        Err(e) => Err(e),
+        Err(e) => Err(e.into()),
     }
 }
 
@@ -357,7 +395,7 @@ fn write_buffer_by_id(
     content: String,
     line_count: hume_rope::line::ContentLineCount,
     force: bool,
-) -> Result<(), CommandError> {
+) -> Result<(), WriteError> {
     let buf = ed.state.buffers.get_mut(bid);
     if buf.file_meta.is_none() {
         let path = buf
@@ -366,13 +404,13 @@ fn write_buffer_by_id(
             .expect("a Save has a path");
         // Stat fresh rather than assuming the path is still missing: a
         // new-file buffer carries no baseline to compare against
-        // (`stale_write_block` needs a `FileMeta`, which this buffer has
+        // (`changed_on_disk` needs a `FileMeta`, which this buffer has
         // none of), so a file that appeared since `:e` would otherwise be
         // silently clobbered by `write_file_new`. Same
-        // stat-at-write-time reasoning as `stale_write_block`, just
+        // stat-at-write-time reasoning as `changed_on_disk`, just
         // discovered via existence instead of a signature mismatch.
         let write_result = match hume_platform::io::read_file_meta(&path) {
-            Ok(_) if !force => return Err(CommandError::transient(STALE_WRITE_MSG)),
+            Ok(_) if !force => return Err(WriteError::Stale),
             // Forced: write through `write_file_atomic`, not
             // `write_file_new`: the file now exists, so its
             // permissions/ownership/symlink target should be preserved
@@ -395,22 +433,22 @@ fn write_buffer_by_id(
                 mark_written_and_synced(ed, bid, line_count, retried);
                 Ok(())
             }
-            Err(e) => Err(CommandError::new(e.to_string())),
+            Err(e) => Err(CommandError::new(e.to_string()).into()),
         };
     }
     let meta = buf
         .file_meta
         .as_mut()
         .expect("checked file_meta.is_none() above");
-    if !force && let Some(msg) = stale_write_block(meta) {
-        return Err(CommandError::transient(msg));
+    if !force && changed_on_disk(meta) {
+        return Err(WriteError::Stale);
     }
     match hume_platform::io::write_file_atomic(&content, meta, force) {
         Ok(retried) => {
             mark_written_and_synced(ed, bid, line_count, retried);
             Ok(())
         }
-        Err(e) => Err(CommandError::new(e.to_string())),
+        Err(e) => Err(CommandError::new(e.to_string()).into()),
     }
 }
 
@@ -465,9 +503,9 @@ fn write_file(
     bid: BufferId,
     kind: WriteKind<'_>,
     force: bool,
-) -> Result<(), CommandError> {
+) -> Result<(), WriteError> {
     if let WriteKind::Refused(msg) = kind {
-        return Err(CommandError::transient(msg));
+        return Err(CommandError::transient(msg).into());
     }
     let (content, line_count) = serialize_buffer(ed, bid);
 
@@ -513,7 +551,7 @@ fn write_file(
                     None => true,
                 };
                 if targets_own_file && !force && own_baseline_differs {
-                    return Err(CommandError::transient(STALE_WRITE_MSG));
+                    return Err(WriteError::Stale);
                 }
                 hume_platform::io::write_file_atomic(&content, &mut meta, force)
                     .map(|retried| (meta, retried))
@@ -533,7 +571,7 @@ fn write_file(
                 }
                 Ok(())
             }
-            Err(e) => Err(CommandError::new(e.to_string())),
+            Err(e) => Err(CommandError::new(e.to_string()).into()),
         }
     } else {
         write_buffer_by_id(ed, bid, content, line_count, force)
@@ -563,43 +601,19 @@ pub(in crate::editor) fn typed_write_all(
         return Ok(());
     }
 
-    // A buffer whose file changed on disk is skipped, not aborted: one
-    // stale buffer among several dirty ones shouldn't block saving the rest.
-    // `force` (`:wa!`) writes through every one of them instead, same as a
-    // per-buffer `:w!`. `write_buffer_by_id` is the single chokepoint for the
-    // stale check (no separate pre-check here, which would stat every buffer
-    // twice). A stale refusal is recognized by its message and downgraded to
-    // a skip; any other write error still aborts the batch. A buffer whose
-    // write is already waiting on its handlers is skipped the same way. A
-    // write that starts waiting here reports itself when it completes, so
-    // the count below is only the writes that finished at once.
-    let mut count = 0;
-    let mut stale: Vec<String> = Vec::new();
-    let mut waiting: Vec<String> = Vec::new();
+    // The writes form one batch, reported once every member has finished,
+    // which may be later than this command when handlers hold some. A buffer
+    // whose file changed on disk, or whose write is already waiting, is
+    // skipped: one stale buffer among several dirty ones shouldn't block
+    // saving the rest. `force` (`:wa!`) writes through the stale ones
+    // instead, same as a per-buffer `:w!`. Any other write failure ends the
+    // batch.
+    let batch = ed.state.pending_writes.open_batch();
     for bid in dirty_savable {
-        match ed.request_write(bid, fp, None, force, AfterWrite::Nothing) {
-            Ok(WriteRequest::Written) => count += 1,
-            Ok(WriteRequest::Held) => {}
-            Ok(WriteRequest::AlreadyPending) => {
-                waiting.push(ed.state.buffers.get(bid).display_name());
-            }
-            Err(e) if e.message() == STALE_WRITE_MSG => {
-                stale.push(ed.state.buffers.get(bid).display_name());
-            }
-            Err(e) => return Err(e),
-        }
+        ed.request_write(bid, fp, None, force, AfterWrite::Batch(batch))?;
     }
-    if count > 0 {
-        ed.report(Severity::Info, format!("Written {count} file(s)"));
-    }
-    for (reason, names) in [("changed on disk", stale), (SAVE_IN_PROGRESS, waiting)] {
-        if !names.is_empty() {
-            ed.report(
-                Severity::Warning,
-                format!("Skipped ({reason}): {}", names.join(", ")),
-            );
-        }
-    }
+    ed.state.pending_writes.seal(batch);
+    ed.report_finished_write_batches();
     Ok(())
 }
 

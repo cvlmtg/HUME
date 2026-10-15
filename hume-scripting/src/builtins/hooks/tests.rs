@@ -334,4 +334,12 @@ mod held {
         assert_eq!(holds.len(), 1);
         assert_eq!(hosts.finished, holds);
     }
+
+    #[test]
+    #[should_panic(expected = "fire_held_hook")]
+    fn a_handler_taking_done_is_never_fired_as_a_plain_hook() {
+        let mut host = register("(lambda (pane done) 0)").unwrap();
+        let result = host.fire_hook(HELD_EVENT, None, &[SteelVal::IntV(0)], &mut NullHost);
+        assert!(result.is_ok(), "{:?}", result.err().map(|e| e.message));
+    }
 }

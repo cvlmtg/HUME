@@ -578,8 +578,7 @@ pub(crate) fn register_lsp_notification_hook(
         LSP_NOTIFICATION_EVENT,
         proc,
         Some(methods.into_boxed_slice()),
-        false,
-    );
+    )?;
     Ok(SteelVal::Void)
 }
 

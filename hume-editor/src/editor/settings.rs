@@ -1084,7 +1084,7 @@ define_settings! {
         // opens a reload confirm. `false`: detection still runs and warns,
         // but reload stays manual via `:e!`/`:checktime`. Independent of
         // `:w`'s write guard, which stats the file itself at write time
-        // regardless of this setting. See `stale_write_block`.
+        // regardless of this setting. See `changed_on_disk`.
         "auto-read" => auto_read: bool = true,
             scope: [Scope::Global, Scope::Buffer],
             parser: bool;

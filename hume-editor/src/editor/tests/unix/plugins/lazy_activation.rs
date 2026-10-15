@@ -361,8 +361,7 @@ fn set_buffer_language_reentrant_activation_uses_final_value() {
         .iter()
         .filter_map(|w| match w {
             crate::editor::event::PendingWork::Event(e) => Some(e),
-            crate::editor::event::PendingWork::Call { .. }
-            | crate::editor::event::PendingWork::BeforeSave(_) => None,
+            crate::editor::event::PendingWork::Call { .. } => None,
         })
         .collect();
     assert_eq!(

@@ -356,8 +356,9 @@ impl Editor {
             // see `MAX_EVENT_DRAIN`'s doc for why.
             self.detect_text_changed();
             self.detect_history_changed();
+            total_processed += self.raise_parked_writes();
             self.commit_ready_writes();
-            if self.state.config.pending_work.is_empty() {
+            if self.state.config.pending_work.is_empty() && self.state.pending_writes.is_settled() {
                 return true;
             }
             let batch = std::mem::take(&mut self.state.config.pending_work);
@@ -388,14 +389,6 @@ impl Editor {
                 {
                     self.state.last_entered_buffer = None;
                 }
-                // A dropped `BeforeSave` never reaches its handlers, so its
-                // write goes ahead instead of waiting out the timeout.
-                for work in &batch {
-                    if let PendingWork::BeforeSave(target) = work {
-                        self.state.pending_writes.release(target.buffer());
-                    }
-                }
-                self.commit_ready_writes();
                 // Dropped unrun: a callback's hold on its tracked position
                 // releases it, as running the callback would.
                 drop(batch);
@@ -532,7 +525,6 @@ impl Editor {
                     self.react_to_event(&event);
                     self.fire_one_event(event);
                 }
-                PendingWork::BeforeSave(target) => self.fire_before_save(target),
                 PendingWork::Call {
                     proc,
                     args,
@@ -611,7 +603,6 @@ impl Editor {
             EditorEvent::OnBufferOpen { .. }
             | EditorEvent::OnBufferClose { .. }
             | EditorEvent::OnBufferSave { .. }
-            | EditorEvent::OnBeforeBufferSave { .. }
             | EditorEvent::OnModeChange { .. }
             | EditorEvent::OnLanguageSet { .. }
             | EditorEvent::OnLspAttach { .. }

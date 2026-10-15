@@ -63,8 +63,7 @@ fn queued_hook_names(ed: &Editor) -> Vec<&'static str> {
         .iter()
         .filter_map(|w| match w {
             crate::editor::event::PendingWork::Event(e) => Some(e.name()),
-            crate::editor::event::PendingWork::Call { .. }
-            | crate::editor::event::PendingWork::BeforeSave(_) => None,
+            crate::editor::event::PendingWork::Call { .. } => None,
         })
         .filter(|name| matches!(*name, "on-language-set" | "on-buffer-open"))
         .collect()

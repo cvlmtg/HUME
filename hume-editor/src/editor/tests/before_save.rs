@@ -6,16 +6,16 @@ use pretty_assertions::assert_eq;
 
 /// Editor on `ab` whose file on disk holds `zz`, so a write that has not
 /// happened yet is distinguishable from one that wrote the buffer as it was.
-fn dirty_editor() -> (Editor, tempfile::TempPath, tempfile::TempDir) {
+pub(in crate::editor::tests) fn dirty_editor() -> (Editor, tempfile::TempPath, tempfile::TempDir) {
     let (ed, file) = editor_with_file("-[a]>b\n", "zz\n");
     (ed, file, tempfile::tempdir().unwrap())
 }
 
-fn on_disk(file: &tempfile::TempPath) -> String {
+pub(in crate::editor::tests) fn on_disk(file: &tempfile::TempPath) -> String {
     std::fs::read_to_string(file).unwrap()
 }
 
-fn errors(ed: &Editor) -> usize {
+pub(in crate::editor::tests) fn errors(ed: &Editor) -> usize {
     ed.state
         .message_log
         .entries()
@@ -251,7 +251,7 @@ fn traces(ed: &Editor) -> Vec<String> {
         .collect()
 }
 
-fn warnings(ed: &Editor) -> usize {
+pub(in crate::editor::tests) fn warnings(ed: &Editor) -> usize {
     ed.state
         .message_log
         .entries()
@@ -299,9 +299,14 @@ fn reload_releases_a_parked_write() {
 }
 
 #[test]
-fn event_dropped_by_the_drain_cap_still_writes_without_a_warning() {
+fn a_write_parked_ahead_of_a_capped_drain_is_still_raised() {
     let (mut ed, file, dir) = dirty_editor();
-    run(&mut ed, dir.path(), ASYNC_HANDLER);
+    run(
+        &mut ed,
+        dir.path(),
+        r#"(register-hook! 'on-before-buffer-save
+             (lambda (pane) (log! 'trace "ran") (call! "delete" (focused-pane))))"#,
+    );
 
     type_cmd(&mut ed, ":w");
     for _ in 0..1001 {
@@ -310,8 +315,29 @@ fn event_dropped_by_the_drain_cap_still_writes_without_a_warning() {
     }
     ed.settle();
 
-    assert_eq!(on_disk(&file), "ab\n");
+    assert_eq!(traces(&ed), ["ran"]);
+    assert_eq!(on_disk(&file), "b\n");
     assert_eq!(warnings(&ed), 0);
+}
+
+#[test]
+fn a_parked_write_is_raised_before_the_events_its_drain_pass_detects() {
+    let (mut ed, _file, dir) = dirty_editor();
+    run(
+        &mut ed,
+        dir.path(),
+        r#"(register-hook! 'on-before-buffer-save (lambda (pane) (log! 'trace "before")))
+           (register-hook! 'on-text-changed (lambda (bid) (log! 'trace "changed")))"#,
+    );
+    ed.settle();
+
+    ed.feed_key(key('i'));
+    ed.feed_key(key('x'));
+    ed.feed_key(key_esc());
+    type_cmd(&mut ed, ":w");
+    ed.settle();
+
+    assert_eq!(traces(&ed), ["before", "changed"]);
 }
 
 #[test]
@@ -362,36 +388,116 @@ fn event_raised_for_a_pane_that_moved_on_still_reaches_the_handlers() {
     assert_eq!(on_disk(&file), "ab\n");
 }
 
-#[test]
-fn write_all_skips_a_buffer_whose_write_is_waiting_and_writes_the_rest() {
-    let (mut ed, _file_a, dir) = dirty_editor();
-    run(
-        &mut ed,
-        dir.path(),
-        r#"(register-hook! 'on-before-buffer-save
-             (lambda (pane done) (log! 'trace "raised")))"#,
-    );
+/// A handler that queues each `done` in raise order, tracing the path of the
+/// buffer it was raised for; `:release` calls the oldest `done`.
+const QUEUED_DONES: &str = r#"
+(define dones (list))
+(register-hook! 'on-before-buffer-save
+  (lambda (pane done)
+    (log! 'trace (buffer-path pane))
+    (set! dones (append dones (list done)))))
+(define-typed-command! "release" ""
+  (lambda ()
+    (let ((d (car dones)))
+      (set! dones (cdr dones))
+      (d))))
+"#;
+
+/// Two dirty file buffers, the second focused. Returns both files, whose
+/// contents on disk are `zz` and `yy`.
+pub(in crate::editor::tests) fn two_dirty_buffers() -> (
+    Editor,
+    tempfile::TempPath,
+    tempfile::TempPath,
+    tempfile::TempDir,
+) {
+    let (mut ed, file_a, dir) = dirty_editor();
+    type_edit(&mut ed);
+    let (path_b, file_b) = temp_file("yy\n");
+    type_cmd(&mut ed, &format!(":e {}", path_b.display()));
+    type_edit(&mut ed);
+    (ed, file_a, file_b, dir)
+}
+
+fn type_edit(ed: &mut Editor) {
     ed.handle_key(key('i'));
     ed.handle_key(key('x'));
     ed.handle_key(key_esc());
+}
+
+fn written(file: &tempfile::TempPath, before: &str) -> bool {
+    on_disk(file) != before
+}
+
+#[test]
+fn write_all_reports_its_summary_once_every_held_write_is_done() {
+    let (mut ed, file_a, file_b, dir) = two_dirty_buffers();
+    run(&mut ed, dir.path(), QUEUED_DONES);
+
+    type_cmd(&mut ed, ":wa");
+    ed.settle();
+    type_cmd(&mut ed, ":release");
+    ed.settle();
+    assert_eq!(
+        [written(&file_a, "zz\n"), written(&file_b, "yy\n")]
+            .iter()
+            .filter(|w| **w)
+            .count(),
+        1
+    );
+    insta::assert_snapshot!(ed.state.status_msg.as_deref().unwrap_or_default(), @"Written 1 lines");
+
+    type_cmd(&mut ed, ":release");
+    ed.settle();
+    assert!(written(&file_a, "zz\n") && written(&file_b, "yy\n"));
+    insta::assert_snapshot!(ed.state.status_msg.as_deref().unwrap_or_default(), @"Written 2 file(s)");
+}
+
+#[test]
+fn write_all_lists_a_held_member_whose_file_changed_on_disk_as_skipped() {
+    let (mut ed, file_a, file_b, dir) = two_dirty_buffers();
+    run(&mut ed, dir.path(), QUEUED_DONES);
+
+    type_cmd(&mut ed, ":wa");
+    ed.settle();
+    let first_raised = traces(&ed)[0].clone();
+    let (stale, stale_before, other, other_before) =
+        if first_raised.ends_with(file_a.file_name().unwrap().to_str().unwrap()) {
+            (&file_a, "zz\n", &file_b, "yy\n")
+        } else {
+            (&file_b, "yy\n", &file_a, "zz\n")
+        };
+    std::fs::write(stale, "changed by someone else\n").unwrap();
+    type_cmd(&mut ed, ":release");
+    type_cmd(&mut ed, ":release");
+    ed.settle();
+
+    assert_eq!(on_disk(stale), "changed by someone else\n");
+    assert!(written(other, other_before));
+    assert_ne!(stale_before, on_disk(stale));
+    assert_eq!(errors(&ed), 0);
+    assert_eq!(warnings(&ed), 1);
+}
+
+#[test]
+fn write_all_skips_a_buffer_whose_write_is_waiting_and_writes_the_rest() {
+    let (mut ed, _file_a, dir) = dirty_editor();
+    run(&mut ed, dir.path(), QUEUED_DONES);
+    type_edit(&mut ed);
     type_cmd(&mut ed, ":w");
     ed.settle();
     let (file_b, _guard_b) = temp_file("yy\n");
     type_cmd(&mut ed, &format!(":e {}", file_b.display()));
-    ed.handle_key(key('i'));
-    ed.handle_key(key('x'));
-    ed.handle_key(key_esc());
+    type_edit(&mut ed);
 
     type_cmd(&mut ed, ":wa");
     ed.settle();
+    assert_eq!(warnings(&ed), 0, "the summary waits for B's write");
 
-    assert_eq!(traces(&ed), ["raised", "raised"], "B must still be raised");
-    assert!(
-        ed.state
-            .message_log
-            .entries()
-            .any(|e| e.severity == Severity::Warning
-                && e.text.starts_with("Skipped (save in progress)")),
-        "the waiting buffer must be listed as skipped"
-    );
+    type_cmd(&mut ed, ":release");
+    type_cmd(&mut ed, ":release");
+    ed.settle();
+
+    assert_eq!(std::fs::read_to_string(&file_b).unwrap(), "xyy\n");
+    assert_eq!(warnings(&ed), 1, "the waiting buffer is listed as skipped");
 }

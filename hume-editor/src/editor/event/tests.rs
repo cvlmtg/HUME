@@ -14,7 +14,6 @@ fn all_variants() -> Vec<EditorEvent> {
         EditorEvent::OnBufferOpen { buffer },
         EditorEvent::OnBufferClose { buffer },
         EditorEvent::OnBufferSave { buffer },
-        EditorEvent::OnBeforeBufferSave { target },
         EditorEvent::OnBufferEnter { target },
         EditorEvent::OnFocusGained,
         EditorEvent::OnModeChange {
@@ -79,12 +78,18 @@ fn sample_pane_id() -> PaneId {
     sm.insert(())
 }
 
-/// Every variant has a name, that name is in `EVENT_NAMES`, and the two
-/// lists are the same length with no duplicates.
+/// Every variant, queued or held, has a name, that name is in
+/// `EVENT_NAMES`, and the two lists are the same length with no duplicates.
 #[test]
 fn every_variant_has_a_name_and_matches_the_known_names_table() {
-    let variants = all_variants();
-    let names: Vec<&str> = variants.iter().map(|e| e.name()).collect();
+    let held = HeldEvent::OnBeforeBufferSave {
+        target: PaneHandle::buffer_only(BufferId::default()),
+    };
+    let names: Vec<&str> = all_variants()
+        .iter()
+        .map(|e| e.name())
+        .chain([held.name()])
+        .collect();
 
     for name in &names {
         assert!(
@@ -95,7 +100,7 @@ fn every_variant_has_a_name_and_matches_the_known_names_table() {
 
     assert_eq!(
         EVENT_NAMES.len(),
-        variants.len(),
+        names.len(),
         "EVENT_NAMES and the variant list have drifted apart in length"
     );
 
@@ -114,7 +119,7 @@ fn every_variant_has_a_name_and_matches_the_known_names_table() {
 #[test]
 fn held_events_name_real_events_with_their_arg_count() {
     let buffer = BufferId::default();
-    let held = EditorEvent::OnBeforeBufferSave {
+    let held = HeldEvent::OnBeforeBufferSave {
         target: PaneHandle::buffer_only(buffer),
     };
     assert_eq!(
@@ -191,7 +196,7 @@ fn on_before_buffer_save_passes_its_target_through() {
         PaneHandle::with_pane(buffer, sample_pane_id()),
         PaneHandle::buffer_only(buffer),
     ] {
-        let args = EditorEvent::OnBeforeBufferSave { target }.into_steel_args();
+        let args = HeldEvent::OnBeforeBufferSave { target }.into_steel_args();
         assert_eq!(args.len(), 1);
         assert_steel_pane(&args, 0, target);
     }

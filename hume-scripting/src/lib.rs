@@ -646,6 +646,11 @@ impl ScriptingHost {
     ///
     /// Returns immediately (no Steel engine call, no watchdog) if no handler
     /// for `name` matches `key`.
+    ///
+    /// # Panics
+    ///
+    /// If a matching handler takes `done`: a held event is raised through
+    /// [`Self::fire_held_hook`].
     pub fn fire_hook<'a>(
         &'a mut self,
         name: &str,
@@ -661,7 +666,13 @@ impl ScriptingHost {
             .registries
             .hooks
             .matching(name, key)
-            .map(|e| (e.proc.clone(), args.to_vec()))
+            .map(|e| {
+                assert!(
+                    !e.takes_done,
+                    "'{name} has a handler taking `done`; raise it through fire_held_hook"
+                );
+                (e.proc.clone(), args.to_vec())
+            })
             .collect();
         self.run_steel_calls(calls, host)
     }

@@ -328,8 +328,7 @@ fn on_buffer_open_queued_after_on_language_set() {
         .iter()
         .filter_map(|w| match w {
             crate::editor::event::PendingWork::Event(e) => Some(e.name()),
-            crate::editor::event::PendingWork::Call { .. }
-            | crate::editor::event::PendingWork::BeforeSave(_) => None,
+            crate::editor::event::PendingWork::Call { .. } => None,
         })
         .collect();
     assert_eq!(
@@ -398,8 +397,7 @@ fn startup_buffer_announces_on_buffer_open_after_on_language_set() {
         .iter()
         .filter_map(|w| match w {
             crate::editor::event::PendingWork::Event(e) => Some(e.name()),
-            crate::editor::event::PendingWork::Call { .. }
-            | crate::editor::event::PendingWork::BeforeSave(_) => None,
+            crate::editor::event::PendingWork::Call { .. } => None,
         })
         .collect();
     assert_eq!(

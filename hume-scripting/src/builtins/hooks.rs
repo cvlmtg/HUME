@@ -65,11 +65,7 @@ pub(crate) fn require_known_event(
 pub(crate) fn register_hook(ctx: &mut SteelCtx, name: SteelVal, proc: SteelVal) -> SteelResult {
     let name_str = event_name_arg(ctx, &name, "register-hook!")?;
     let proc = callable_arg(proc, "register-hook! proc")?;
-    let takes_done = match ctx.host.events().held_event_arg_count(&name_str) {
-        Some(event_args) => held_handler_takes_done(&name_str, event_args, &proc)?,
-        None => false,
-    };
-    register_entry(ctx, &name_str, proc, None, takes_done);
+    register_entry(ctx, &name_str, proc, None)?;
     Ok(SteelVal::Void)
 }
 
@@ -104,18 +100,23 @@ pub(crate) fn held_done(ctx: &mut SteelCtx, hold: SteelVal) -> SteelResult {
 
 /// The one registration path behind `register-hook!` and
 /// `register-lsp-notification-hook!`: attributes the entry to the plugin
-/// whose body is running, so rollback removes it with that plugin.
+/// whose body is running, so rollback removes it with that plugin. A
+/// handler of a held event is checked for whether it takes `done`.
 pub(crate) fn register_entry(
     ctx: &mut SteelCtx,
     name: &str,
     proc: SteelVal,
     keys: Option<Box<[String]>>,
-    takes_done: bool,
-) {
+) -> Result<(), steel::rerrs::SteelErr> {
+    let takes_done = match ctx.host.events().held_event_arg_count(name) {
+        Some(event_args) => held_handler_takes_done(name, event_args, &proc)?,
+        None => false,
+    };
     let owner = ctx.plugin_stack.current().cloned();
     ctx.registries
         .hooks
         .register(name, owner, proc, keys, takes_done);
+    Ok(())
 }
 
 #[cfg(test)]

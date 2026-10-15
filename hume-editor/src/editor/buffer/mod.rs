@@ -650,7 +650,7 @@ impl Buffer {
     /// `true` if the last disk-state check found the backing file changed or
     /// vanished and the user has not yet acted on it (reloaded or written).
     /// Test-only: `:w`'s write guard stats the file fresh instead of trusting
-    /// this (see `stale_write_block`). This remains for tests that assert
+    /// this (see `changed_on_disk`). This remains for tests that assert
     /// on the reported/warned state itself, not on write behavior.
     #[cfg(test)]
     pub(in crate::editor) fn is_disk_stale(&self) -> bool {

@@ -649,6 +649,7 @@ fn setup_lazy_editor(init_body: &str, plugin_body: &str) -> (Editor, tempfile::T
 mod alternate;
 mod async_job;
 mod async_job_steel;
+mod before_save;
 mod buffer;
 mod buffer_store;
 mod buffer_words_plugin;
