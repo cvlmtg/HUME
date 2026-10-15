@@ -70,20 +70,6 @@
   (filter (lambda (name) (is-dir? (path-join dir name)))
           (sort (map file-name (read-dir dir)) string<?)))
 
-;; ── Path-segment validation ──────────────────────────────────────────────────
-
-;;; Safe to use as one filesystem path segment — see README.md.
-(define (stdlib/safe-path-segment? name)
-  (and (string? name)
-       (not (equal? name ""))
-       (not (equal? name "."))
-       (not (equal? name ".."))
-       (not (string-contains? name "/"))
-       (not (string-contains? name "\\"))
-       (not (string-contains? name ":"))
-       (not (string-contains? name "\""))
-       (not (string-contains? name "\0"))))
-
 ;; ── Subprocess helper ────────────────────────────────────────────────────────
 
 ;;; See `hume_platform::process::run_capture`'s own doc and this plugin's
@@ -259,10 +245,6 @@
 (define-command! "stdlib/list-subdirs"
   "Sorted basenames of the given directory's subdirectories."
   stdlib/list-subdirs)
-
-(define-command! "stdlib/safe-path-segment?"
-  "#t iff the given name is safe to use as one filesystem path segment."
-  stdlib/safe-path-segment?)
 
 (define-command! "stdlib/run!"
   "Spawn a command; blocks until exit. Returns (hash 'stdout s 'stderr s 'exit code), 'exit #f on spawn/wait failure."

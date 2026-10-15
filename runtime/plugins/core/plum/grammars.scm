@@ -25,8 +25,8 @@
 
 ;;; See README.md's "Query fetching".
 (define (plum/fetch-raw-query name filename)
-  ;; `name` may be untrusted (an `; inherits:` line) — see core:stdlib's README.
-  (unless (eq? #t (call! "stdlib/safe-path-segment?" name))
+  ;; `name` may be untrusted (an `; inherits:` line).
+  (unless (safe-path-segment? name)
     (log! 'warn (string-append "plum/fetch-raw-query: rejecting unsafe grammar/dependency name \"" name "\""))
     (error (string-append "plum/fetch-raw-query: unsafe grammar/dependency name \"" name "\"")))
   (let ((tmp (path-join (grammar-sources-dir) (string-append "_fetch_" name "_" filename))))

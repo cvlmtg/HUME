@@ -1131,7 +1131,7 @@ fn lsp_uninstall_rejects_path_traversal_name() {
     );
 }
 
-/// `stdlib/safe-path-segment?` (used by `lsp-uninstall`) must reject `:` and
+/// `safe-path-segment?` (used by `lsp-uninstall`) must reject `:` and
 /// `"`, not just `.`/`..`/path separators: the drive-relative-root escape
 /// `hume_platform::path::is_safe_segment` exists to block.
 #[test]

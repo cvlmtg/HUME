@@ -218,10 +218,10 @@ macro_rules! builtins {
 // caught into a marker and a fresh error naming the file is raised after the
 // handler returns, so nothing is re-raised (hazard above).
 //
-// data-file, data-file-names: a name resolves only when it is the stem of a
-// file in its directory's listing, which keeps a lookup inside the directory
-// and off a case-insensitive alias. Each directory's listing is kept for the
-// life of the Steel engine, which :reload-config rebuilds.
+// data-file: a name resolves only when `<name>.scm` is spelled exactly like an
+// entry in the directory's listing. That keeps a lookup inside the directory
+// and gives the same answer on a case-insensitive filesystem as on a
+// case-sensitive one.
 //
 // %read-language-data: the one reader of `<runtime>/scheme/languages/<name>.scm`
 // (record format: runtime/scheme/README.md), on data-file and read-data-file;
@@ -546,6 +546,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
     );
     steel.register_value("path-join", SteelVal::FuncV(fs::path_join));
     steel.register_value("path->display", SteelVal::FuncV(fs::path_to_display));
+    steel.register_value("safe-path-segment?", SteelVal::FuncV(fs::safe_path_segment));
     steel.register_value("json-ref", SteelVal::FuncV(json::json_ref));
     steel.register_value("json-contains?", SteelVal::FuncV(json::json_contains));
     steel.register_value("json-ref-or", SteelVal::FuncV(json::json_ref_or));

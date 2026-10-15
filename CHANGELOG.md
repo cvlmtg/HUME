@@ -51,6 +51,7 @@
 - New `bundled-language-grammar` and `bundled-grammar-languages` read the grammars HUME ships for each language.
 - New `show-read-only-buffer!` shows text in a read-only buffer, reused by name.
 - New `read-data-file`, `data-file` and `data-file-names` read a plugin's Scheme data files.
+- New `safe-path-segment?` checks that a name is safe to use as one path component.
 - New `stdlib/report-section` and `stdlib/show-report!` in `core:stdlib` show a list as titled sections in a read-only buffer.
 - `call!` can pass a pattern to `search-forward`, `search-backward` and `sift-within`, and a character to `find-forward`, `find-backward`, `till-forward`, `till-backward`, `replace` and `surround-add`.
 - A completion item's `documentation` and `detail` show in the completion documentation box.

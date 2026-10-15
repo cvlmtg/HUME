@@ -73,7 +73,7 @@
     (cond
       ((not (string? arg))
        (log! 'error "lsp-uninstall: requires a server name, e.g. :lsp-uninstall rust-analyzer"))
-      ((not (eq? #t (call! "stdlib/safe-path-segment?" arg)))
+      ((not (safe-path-segment? arg))
        (log! 'error (string-append "lsp-uninstall: invalid server name: " arg)))
       (else
         (let* ((name arg)

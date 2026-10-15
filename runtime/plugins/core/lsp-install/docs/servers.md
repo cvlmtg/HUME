@@ -186,8 +186,8 @@ lock and then runs the scan outside the lock, so a failure in the scan surfaces 
 error instead of being reported as a failed install.
 
 **`:lsp-uninstall`** takes a user-typed server name straight into a path join, so it first
-validates it with `core:stdlib`'s `stdlib/safe-path-segment?`. `:lsp-install` needs no such
-check, since it reads only a name that is a file in the seeded catalog's directory. An invalid name logs
+validates it with `safe-path-segment?`. `:lsp-install` needs no such
+check, since the catalog lookup (`data-file`) rejects a name that is not a safe segment. An invalid name logs
 `'error`, as any typed argument the command can't act on does, so a path-traversal attempt
 such as `"../plugins"` stays in `:messages` (see the index's
 [Log severity](../../README.md#log-severity)). The command unregisters the server, then

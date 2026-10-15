@@ -15,8 +15,8 @@ when it is asked (see [Plugin discovery](#plugin-discovery)).
 ```
 
 - **Depends on:** `core:stdlib`. PLUM calls `stdlib/find`, `stdlib/write-file!`,
-  `stdlib/delete-dir!`, `stdlib/delete-file!`, `stdlib/list-subdirs`,
-  `stdlib/safe-path-segment?` and `stdlib/resolve-lang-arg` through `call!`.
+  `stdlib/delete-dir!`, `stdlib/delete-file!`, `stdlib/list-subdirs` and
+  `stdlib/resolve-lang-arg` through `call!`.
 - **Activates on:** the first `:plum-*` command typed, or the first call to
   `plum/ensure-grammars`. Its `manifest.scm` has three entries, each loading on its own
   commands: `plugin.scm` (the four plugin commands), `grammars.scm` (`#:entry`;
@@ -74,15 +74,13 @@ source:
   and its update counterpart, shared by every install command), `plum/batch-run!`, and
   `plum/two-level-repos` (the `<root>/<user>/<repo>/`
   walk behind plugin and theme-repo discovery). Directory listing, filesystem cleanup, list
-  search and path-segment validation come from `core:stdlib` through `call!`.
+  search come from `core:stdlib` through `call!`.
 
 ### Path safety
 
-PLUM validates with `stdlib/safe-path-segment?` every name that reaches `path-join` or a
+PLUM validates with `safe-path-segment?` every name that reaches `path-join` or a
 subprocess argument without coming from a fixed catalog: either half of a user-typed
-GitHub `user/repo` slug, and a dependency name parsed out of downloaded content. The
-rejected set, the Windows reason for rejecting `:`, and the `(eq? #t …)` call-site rule are
-in [`core:stdlib`'s README](../stdlib/README.md#path-safety).
+GitHub `user/repo` slug, and a dependency name parsed out of downloaded content.
 
 ### Plugin discovery
 
@@ -181,7 +179,7 @@ reads the filesystem at load time and the completer re-scans on every `Tab`.
 
 A slug not shaped like `user/repo` is a usage mistake and logs `'info`, which reaches the
 status line but not `:messages`. A slug of the right shape with a segment
-`stdlib/safe-path-segment?` rejects would otherwise reach `path-join` and `git clone`, so
+`safe-path-segment?` rejects would otherwise reach `path-join` and `git clone`, so
 it raises and stays in `:messages`.
 
 #### Layout and discovery

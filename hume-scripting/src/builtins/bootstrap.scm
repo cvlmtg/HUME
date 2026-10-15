@@ -272,19 +272,14 @@
   (let ((runtime (runtime-dir)))
     (and runtime (path-join runtime "scheme" "languages"))))
 
-(define %data-file-names-cache (box (hash)))
-
 (define (data-file-names dir)
-  (let ((cache (unbox %data-file-names-cache)))
-    (if (hash-contains? cache dir)
-        (hash-ref cache dir)
-        (let ((names (stems-with-suffix dir ".scm")))
-          (set-box! %data-file-names-cache (hash-insert cache dir names))
-          names))))
+  (stems-with-suffix dir ".scm"))
 
 (define (data-file dir name)
-  (and (member name (data-file-names dir))
-       (path-join dir (string-append name ".scm"))))
+  (let ((file (string-append name ".scm")))
+    (and (path-exists? dir)
+         (member file (map file-name (read-dir dir)))
+         (path-join dir file))))
 
 (define (read-data-file path)
   (let* ((text (call-with-input-file path read-port-to-string))

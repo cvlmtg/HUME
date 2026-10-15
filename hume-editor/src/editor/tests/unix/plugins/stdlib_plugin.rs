@@ -115,45 +115,6 @@ fn core_stdlib_selection_commands() {
     );
 }
 
-/// `stdlib/safe-path-segment?` (the merged `core:plum`/`core:lsp`
-/// path-segment predicate) must reject every unsafe input (empty, `.`,
-/// `..`, a path separator, `:`, `"`, NUL) and accept ordinary names.
-/// Each literal input/expected pair is hand-picked, not
-/// derived from the implementation, mirroring `hume-platform/src/path/tests.rs`'s
-/// `is_safe_segment` coverage for the Rust copy.
-#[test]
-fn core_stdlib_safe_path_segment_command() {
-    let (mut ed, mut host, _guard, _init_dir) = setup_stdlib_editor();
-
-    let assertions = r#"
-(unless (equal? (call! "stdlib/safe-path-segment?" "") #f) (error "empty string rejected"))
-(unless (equal? (call! "stdlib/safe-path-segment?" ".") #f) (error "dot rejected"))
-(unless (equal? (call! "stdlib/safe-path-segment?" "..") #f) (error "dotdot rejected"))
-(unless (equal? (call! "stdlib/safe-path-segment?" "a/b") #f) (error "forward slash rejected"))
-(unless (equal? (call! "stdlib/safe-path-segment?" "a\\b") #f) (error "backslash rejected"))
-(unless (equal? (call! "stdlib/safe-path-segment?" "c:evil") #f) (error "colon rejected"))
-(unless (equal? (call! "stdlib/safe-path-segment?" "a\"b") #f) (error "quote rejected"))
-(unless (equal? (call! "stdlib/safe-path-segment?" "a\0b") #f) (error "nul rejected"))
-
-(unless (equal? (call! "stdlib/safe-path-segment?" "v1.2.3") #t) (error "version string accepted"))
-(unless (equal? (call! "stdlib/safe-path-segment?" "rust-analyzer") #t) (error "plain name accepted"))
-
-;; A non-string answers #f rather than raising from inside string-contains?.
-;; It's a public command, so a plugin author can reach it with anything.
-(unless (equal? (call! "stdlib/safe-path-segment?" 42) #f) (error "number rejected"))
-(unless (equal? (call! "stdlib/safe-path-segment?" #f) #f) (error "boolean rejected"))
-"#;
-
-    let result = {
-        let mut ih = init_host!(ed);
-        host.eval_source(assertions, &mut ih)
-    };
-    assert!(
-        result.is_ok(),
-        "stdlib/safe-path-segment? assertions must all pass: {result:?}"
-    );
-}
-
 /// The `core:stdlib` config-validation commands (`stdlib/config-boolean`,
 /// `stdlib/config-string`, `stdlib/config-enum`, `stdlib/config-integer`,
 /// `stdlib/config-list`) must resolve a present key, fall back to the given

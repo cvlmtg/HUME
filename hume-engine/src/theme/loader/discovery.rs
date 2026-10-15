@@ -19,9 +19,8 @@ use crate::theme::error::ThemeError;
 /// `ErrorKind::InvalidInput`, which the search loop doesn't skip on and would
 /// report as an I/O failure.
 ///
-/// Accepts exactly the same set as `hume_platform::path::is_safe_segment` and
-/// `core:stdlib`'s `stdlib/safe-path-segment?` (`runtime/plugins/core/stdlib/plugin.scm`).
-/// Kept as its own copy because `hume-engine` depends on no
+/// Accepts exactly the same set as `hume_platform::path::is_safe_segment`, which the
+/// `safe-path-segment?` builtin wraps. Kept as its own copy because `hume-engine` depends on no
 /// platform layer: taking one for a six-line predicate would pull `termina`
 /// and `nix` into the renderer and everything downstream of it.
 pub(super) fn is_safe_theme_name(name: &str) -> bool {

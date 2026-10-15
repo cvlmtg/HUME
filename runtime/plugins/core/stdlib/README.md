@@ -39,7 +39,6 @@ under [How it works](#how-it-works) cover what a contributor needs beyond that.
 |---|---|
 | [Selections](#selections) | `stdlib/selection-anchor`, `-head`, `-start`, `-end`, `-primary?`, `stdlib/primary-selection`, `stdlib/all-single-char?`, `stdlib/single-selection?`, `stdlib/cursor-char-index` |
 | [Filesystem and list search](#filesystem-and-list-search) | `stdlib/find`, `stdlib/write-file!`, `stdlib/delete-dir!`, `stdlib/delete-file!`, `stdlib/list-subdirs` |
-| [Path safety](#path-safety) | `stdlib/safe-path-segment?` |
 | [Subprocess](#subprocess) | `stdlib/run!` |
 | [Git](#git) | `stdlib/git-repo?`, `stdlib/git-toplevel` |
 | [Command arguments](#command-arguments) | `stdlib/resolve-lang-arg` |
@@ -70,20 +69,6 @@ Thin wrappers over Steel's `steel/filesystem` and `steel/ports`. `core:plum` and
 a missing target is not an error. `list-subdirs` returns the names of the directories
 under a path, sorted, and skips stray files that sit alongside a directory tree
 (`.install-lock`, `.DS_Store`).
-
-### Path safety
-
-`stdlib/safe-path-segment?` rejects the empty string, `.`, `..`, a path separator (`/` or
-`\`), `:`, `"` and NUL: the set that is unsafe as one filesystem path segment. Use it for
-any name that reaches `path-join` or a subprocess argument but did not come from a fixed
-catalog: a user-typed slug, or a name parsed out of downloaded content.
-
-The `:` rejection matters on Windows: a segment like `c:evil` after a single path
-component makes `PathBuf::push` treat it as a drive-relative root, replacing the base path
-instead of joining onto it. The rule mirrors `hume_platform::path::is_safe_segment`.
-
-Call sites check the result with `(eq? #t (call! "stdlib/safe-path-segment?" …))`; see
-[Design decisions](#design-decisions).
 
 ### Subprocess
 
@@ -178,9 +163,6 @@ value for `key`, or `default` if absent.
 
 ## Design decisions
 
-- **`eq? #t` at every `safe-path-segment?` call site.** A `call!` to an unknown command
-  answers `#f`, the same value as a rejection. Comparing against `#t` keeps a missing
-  command from reading as a valid segment.
 - **`stdlib/run-stdout` is internal.** It returns `stdlib/run!`'s stdout, trimmed, when the
   command exits 0, and `#f` otherwise. Trimming is safe for a single-value probe like the
   git commands; a `-z`-delimited multi-entry blob such as `git status` can start with

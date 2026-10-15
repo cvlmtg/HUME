@@ -48,6 +48,43 @@ fn path_join_type_error() {
     assert!(path_join(&args).is_err());
 }
 
+// ── safe-path-segment? ───────────────────────────────────────────────────
+
+fn is_safe(arg: SteelVal) -> bool {
+    match safe_path_segment(&[arg]).unwrap() {
+        SteelVal::BoolV(b) => b,
+        other => panic!("expected bool, got {other:?}"),
+    }
+}
+
+#[test]
+fn safe_path_segment_rejects_unsafe_names() {
+    for name in ["", ".", "..", "a/b", "a\\b", "c:evil", "a\"b", "a\0b"] {
+        assert!(!is_safe(SteelVal::StringV(name.into())), "{name:?}");
+    }
+}
+
+#[test]
+fn safe_path_segment_accepts_ordinary_names() {
+    for name in ["v1.2.3", "rust-analyzer", "markdown.inline"] {
+        assert!(is_safe(SteelVal::StringV(name.into())), "{name:?}");
+    }
+}
+
+#[test]
+fn safe_path_segment_answers_false_for_a_non_string() {
+    assert!(!is_safe(SteelVal::IntV(42)));
+    assert!(!is_safe(SteelVal::BoolV(false)));
+}
+
+#[test]
+fn safe_path_segment_wrong_arity_errors() {
+    assert!(safe_path_segment(&[]).is_err());
+    assert!(
+        safe_path_segment(&[SteelVal::StringV("a".into()), SteelVal::StringV("b".into())]).is_err()
+    );
+}
+
 // ── path->display ─────────────────────────────────────────────────────────
 
 fn call_path_to_display(path: &str) -> String {

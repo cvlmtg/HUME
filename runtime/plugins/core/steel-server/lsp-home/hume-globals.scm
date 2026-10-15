@@ -288,6 +288,7 @@
 (#%register-global "run-capture!")
 (#%register-global "run-inline-output!")
 (#%register-global "runtime-dir")
+(#%register-global "safe-path-segment?")
 (#%register-global "search-backward")
 (#%register-global "search-forward")
 (#%register-global "search-next")

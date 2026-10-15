@@ -16,8 +16,7 @@ download or build of that server registers the installed copy again.
 ```
 
 - **Depends on:** `core:stdlib` (`stdlib/find`, `stdlib/list-subdirs`, `stdlib/write-file!`,
-  `stdlib/delete-file!`, `stdlib/delete-dir!`, `stdlib/resolve-lang-arg`,
-  `stdlib/safe-path-segment?`).
+  `stdlib/delete-file!`, `stdlib/delete-dir!`, `stdlib/resolve-lang-arg`).
 - **Activates on:** two entries, each on its own trigger. `plugin.scm` loads on the first
   buffer with a detected language: it scans `<data>/servers/`,
   registers every installed server and gives the discovery hint. It reads `language-servers.scm`

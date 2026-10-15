@@ -30,9 +30,8 @@
        (log! 'info (string-append cmd ": expected a \"user/repo\" slug, e.g. "
                                   cmd " cvlmtg/everforest.hume"))
        #f)
-      ;; `eq? #t`, not a bare truthiness check — see core:stdlib's README.
-      ((not (and (eq? #t (call! "stdlib/safe-path-segment?" (car parts)))
-                 (eq? #t (call! "stdlib/safe-path-segment?" (cadr parts)))))
+      ((not (and (safe-path-segment? (car parts))
+                 (safe-path-segment? (cadr parts))))
        (error (string-append cmd ": \"" slug "\" is not a valid \"user/repo\" slug")))
       (else slug))))
 

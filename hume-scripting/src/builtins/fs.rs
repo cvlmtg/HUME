@@ -15,6 +15,7 @@
 //! | `set-cwd!`      | `string → void`                | `:cd`: moves the editor's working directory  |
 //! | `path-join`     | `string… → string`             | OS-native join; no sandbox, no filesystem access |
 //! | `path->display` | `string → string`               | UNC-strip + `~`-collapse; no filesystem access |
+//! | `safe-path-segment?` | `any → bool`              | `#t` for a string safe as one path segment   |
 //!
 //! `path-separator` is *not* registered here: steel-core's `steel/meta`
 //! module already provides it as a bare global (`Engine::new()` baseline),
@@ -112,6 +113,25 @@ pub(crate) fn path_join(args: &[SteelVal]) -> SteelResult {
         .as_ref()
         .into_steelval()
         .map_err(generic_err)
+}
+
+// ── safe-path-segment? ────────────────────────────────────────────────────────
+
+/// `(safe-path-segment? name)`: `#t` iff `name` is a string that is safe to use
+/// as one filesystem path segment, per `hume_platform::path::is_safe_segment`.
+/// Any other value answers `#f`, so a plugin can hand it an unchecked argument.
+///
+/// `:` is rejected because on Windows a segment like `c:evil` after a single
+/// path component makes `PathBuf::push` treat it as a drive-relative root,
+/// replacing the base path instead of joining onto it.
+pub(crate) fn safe_path_segment(args: &[SteelVal]) -> SteelResult {
+    let [name] = args else {
+        steel::stop!(ArityMismatch =>
+            "safe-path-segment? expects 1 arg, got {}", args.len());
+    };
+    Ok(SteelVal::BoolV(
+        matches!(name, SteelVal::StringV(s) if hume_platform::path::is_safe_segment(s.as_str())),
+    ))
 }
 
 // ── path->display ─────────────────────────────────────────────────────────────

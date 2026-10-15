@@ -35,9 +35,8 @@ See [Core Plugins](core-plugins.md#core-stdlib) for why this call should stay a 
 | `(call! "stdlib/delete-dir!" dir)` | Recursively delete `dir`; idempotent |
 | `(call! "stdlib/delete-file!" path)` | Delete `path`; idempotent |
 | `(call! "stdlib/list-subdirs" dir)` | Sorted basenames of `dir`'s subdirectories |
-| `(call! "stdlib/safe-path-segment?" name)` | `#t` iff `name` is safe to use as a single path component |
 
-`delete-dir!` and `delete-file!` are idempotent, unlike the Steel engine's own `delete-directory!`/`delete-file!`: a missing target is not an error. `list-subdirs` skips stray non-directory entries that sit alongside a directory tree, like `.DS_Store`. `safe-path-segment?` rejects an empty name, `.`/`..`, and anything containing a path separator, `:`, `"`, or a NUL. Use it before joining a user-typed or downloaded name onto a path.
+`delete-dir!` and `delete-file!` are idempotent, unlike the Steel engine's own `delete-directory!`/`delete-file!`: a missing target is not an error. `list-subdirs` skips stray non-directory entries that sit alongside a directory tree, like `.DS_Store`.
 
 ## Subprocesses
 
