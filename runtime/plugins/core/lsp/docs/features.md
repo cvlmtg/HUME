@@ -96,18 +96,13 @@ instead of applying to the wrong text.
 
 ## Formatting
 
-`lsp-fmt` and `:format-source` run the same function. Format-on-save is not wired by
-default. To opt in, add this to `init.scm`:
-
-```scheme
-(register-hook! 'on-buffer-save
-  (lambda (pane)
-    (let ((resolved (lsp/resolve-pane pane)))
-      (when resolved (call! "lsp-fmt" resolved)))))
-```
-
-The hook's value carries no pane, and `lsp-fmt` reads the live selection set, so the
-snippet resolves a pane first.
+`lsp-fmt` and `:format-source` run the same function, which picks ranges from the
+selections and hands them to `lsp-fmt-document`'s implementation. `lsp-fmt-document` takes
+a `done` and optional ranges: with no ranges it formats the whole document, and it calls
+`done` once the edits are applied or the attempt has failed (no path, no server, a server
+error, stale text). It works on a buffer
+no pane shows. Format-on-save is not wired by default; the user manual's "Format on save"
+section has the recipe.
 
 A buffer with no path logs a message and formats nothing. Formatting the whole buffer
 goes to the first running server with the `format` feature and a

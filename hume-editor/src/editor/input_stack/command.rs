@@ -193,7 +193,7 @@ fn execute_command(ed: &mut Editor, input: &str) {
     {
         let fp = commands::FocusedPane::current(&ed.view);
         if let Err(e) = commands::typed_goto_line(ed, fp, arg, false) {
-            ed.report(e.severity(), e.message().to_owned());
+            ed.report_error(&e);
         }
         return;
     }
@@ -209,7 +209,7 @@ fn execute_command(ed: &mut Editor, input: &str) {
             match expand_command_arg(ed, a) {
                 Ok(s) => Some(s),
                 Err(e) => {
-                    ed.report(e.severity(), e.message().to_owned());
+                    ed.report_error(&e);
                     return;
                 }
             }
@@ -226,7 +226,7 @@ fn execute_command(ed: &mut Editor, input: &str) {
                 let fun = *fun;
                 let fp = commands::FocusedPane::current(&ed.view);
                 if let Err(e) = fun(ed, fp, expanded.as_deref(), force) {
-                    ed.report(e.severity(), e.message().to_owned());
+                    ed.report_error(&e);
                 }
             }
             // Lazy-stub activation and Steel arg marshalling both happen

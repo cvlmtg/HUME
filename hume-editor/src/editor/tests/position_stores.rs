@@ -96,7 +96,7 @@ fn sift_cancel_after_an_out_of_band_edit_restores_the_carried_selection() {
     crate::editor::lsp::edits::apply_text_edits(
         &mut ed.state,
         &ed.view.panes,
-        pid,
+        Some(pid),
         bid,
         vec![delete_prefix],
         None,
@@ -209,7 +209,7 @@ fn a_tracked_position_follows_an_insertion_above_it() {
     crate::editor::lsp::edits::apply_text_edits(
         &mut ed.state,
         &ed.view.panes,
-        pid,
+        Some(pid),
         bid,
         vec![insert_line],
         None,

@@ -277,6 +277,7 @@ pub(in crate::editor::buffer) fn forget_saved_views(ev: &mut EngineView, id: Buf
 /// `excise_layer`, not a `truncate_layers`.
 fn forget_closed_buffer(state: &mut EditorState, ev: &mut EngineView, id: BufferId) {
     state.config.statusline_text.remove(&id);
+    state.pending_writes.forget_buffer(id);
     state.retire_stale_confirm(ev, |c| c.targets_buffer(id));
     forget_saved_views(ev, id);
     let (_, mut stores) = state.edit_parts();

@@ -1375,3 +1375,38 @@ fn lsp_capability_needs_exactly_one_of_feature_and_method() {
 
     assert_eq!(rig.warnings(), vec!["raised", "raised"]);
 }
+
+/// `lsp-document-params` reads only the buffer, so it answers for a value
+/// that names a buffer and no pane.
+#[test]
+fn lsp_document_params_names_the_document_for_a_value_with_no_pane() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut rig = LspRig::rust(
+        tmp.path(),
+        "-[a]>b\n",
+        serde_json::json!({"capabilities": {}}),
+    );
+
+    let fired = run_probe(
+        &mut rig.ed,
+        ScriptingHost::new(&Dirs::none()),
+        tmp.path(),
+        r#"(let ((b (car (filter (lambda (b) (pair? (buffer-panes b))) (buffers)))))
+             (hash-contains? (hash-ref (lsp-document-params b) "textDocument") "uri"))"#,
+    );
+    assert!(fired);
+}
+
+#[test]
+fn lsp_document_params_is_false_for_a_buffer_with_no_path() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>b\n");
+
+    let fired = run_probe(
+        &mut ed,
+        ScriptingHost::new(&Dirs::none()),
+        tmp.path(),
+        "(not (lsp-document-params bid))",
+    );
+    assert!(fired);
+}

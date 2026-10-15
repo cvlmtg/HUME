@@ -60,7 +60,7 @@ mod tests {
             let (new_sels, _cs) = self.buf.apply_edit(
                 BufferId::default(),
                 &mut DetachedStores::default().stores(),
-                PaneId::default(),
+                Some(PaneId::default()),
                 self.sels.clone(),
                 cmd,
             );

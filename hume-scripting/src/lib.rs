@@ -99,7 +99,7 @@ use steel::steel_vm::engine::Engine;
 
 use attribution::PluginStack;
 use hooks::HookRegistry;
-use host::EditorHost;
+use host::{EditorHost, HostToken};
 use lazy::{LazyRegistry, PluginState};
 use read_only_host::ReadOnlyHost;
 
@@ -131,6 +131,23 @@ pub(crate) struct HostBundle<'a> {
     /// Owned `Arc` clone: `new_init`/`new_command` consume it via move into
     /// `SteelCtx::interrupt_flag`, avoiding a second clone at eval time.
     interrupt_flag: Arc<AtomicBool>,
+}
+
+/// The handlers of a held event at the moment it is raised, so the raiser
+/// can open one hold per handler that takes `done` before any of them runs.
+pub struct HeldHandlers {
+    handlers: Vec<(SteelVal, bool)>,
+}
+
+impl HeldHandlers {
+    /// How many holds [`ScriptingHost::fire_held_hook`] needs: one per
+    /// handler that takes `done`.
+    pub fn holds_needed(&self) -> usize {
+        self.handlers
+            .iter()
+            .filter(|(_, takes_done)| *takes_done)
+            .count()
+    }
 }
 
 /// The embedded Steel scripting host.
@@ -649,6 +666,76 @@ impl ScriptingHost {
         self.run_steel_calls(calls, host)
     }
 
+    /// The handlers registered for the held event `name`
+    /// (`EventHost::held_event_arg_count`).
+    pub fn held_handlers(&self, name: &str) -> HeldHandlers {
+        HeldHandlers {
+            handlers: self
+                .registries
+                .hooks
+                .matching(name, None)
+                .map(|e| (e.proc.clone(), e.takes_done))
+                .collect(),
+        }
+    }
+
+    /// [`Self::fire_hook`] for a held event. A handler that takes `done`
+    /// gets one of `holds`, in order, as the thunk's hold; a handler that
+    /// raises, or never ran, releases its own through
+    /// `EventHost::finish_hold`. Every other handler holds nothing.
+    ///
+    /// Panics if `holds` is not [`HeldHandlers::holds_needed`] long.
+    pub fn fire_held_hook<'a>(
+        &'a mut self,
+        handlers: HeldHandlers,
+        args: &[SteelVal],
+        holds: Vec<HostToken>,
+        host: &'a mut dyn EditorHost,
+    ) -> Result<Vec<Effect>, EvalError> {
+        const HELD_HANDLER: &str = "%call-held-handler";
+        assert_eq!(
+            holds.len(),
+            handlers.holds_needed(),
+            "one hold per handler taking `done`"
+        );
+        let helper = match self.steel.extract_value(HELD_HANDLER) {
+            Ok(helper) => helper,
+            Err(e) => {
+                for hold in holds {
+                    host.events().finish_hold(hold);
+                }
+                return Err(EvalError {
+                    message: format!("{e}"),
+                    effects: Vec::new(),
+                });
+            }
+        };
+        let args_list = SteelVal::ListV(args.to_vec().into());
+        let mut holds = holds.into_iter();
+        let mut held_at: Vec<Option<HostToken>> = Vec::with_capacity(handlers.handlers.len());
+        let mut calls = Vec::with_capacity(handlers.handlers.len());
+        for (proc, takes_done) in handlers.handlers {
+            if takes_done {
+                let hold = holds.next().expect("counted above");
+                held_at.push(Some(hold));
+                calls.push((
+                    helper.clone(),
+                    vec![proc, hold.to_steel(), args_list.clone()],
+                ));
+            } else {
+                held_at.push(None);
+                calls.push((proc, args.to_vec()));
+            }
+        }
+        let (completed, result) = self.run_tracked_calls(calls, host);
+        for (hold, completed) in held_at.into_iter().zip(completed) {
+            if let (Some(hold), false) = (hold, completed) {
+                host.events().finish_hold(hold);
+            }
+        }
+        result
+    }
+
     /// Calls each `(proc, args)` pair directly, in order: the shared
     /// mechanism behind the `lsp-request!` callback, timer thunks, and the
     /// prompt callback, and (via [`fire_hook`](Self::fire_hook)) every
@@ -682,37 +769,52 @@ impl ScriptingHost {
         calls: Vec<(SteelVal, Vec<SteelVal>)>,
         host: &'a mut dyn EditorHost,
     ) -> Result<Vec<Effect>, EvalError> {
+        self.run_tracked_calls(calls, host).1
+    }
+
+    /// [`Self::run_steel_calls`] that also says, per call in order, whether
+    /// it ran to completion: `false` for one that raised, and for one an
+    /// interrupt kept from running at all.
+    fn run_tracked_calls<'a>(
+        &'a mut self,
+        calls: Vec<(SteelVal, Vec<SteelVal>)>,
+        host: &'a mut dyn EditorHost,
+    ) -> (Vec<bool>, Result<Vec<Effect>, EvalError>) {
+        let mut completed = vec![false; calls.len()];
         if calls.is_empty() {
-            return Ok(Vec::new());
+            return (completed, Ok(Vec::new()));
         }
 
         let budget_ms = host.settings().steel_command_budget_ms();
         let effects_start = self.effects.len();
         let mut first_error: Option<String> = None;
 
-        for (proc, args) in calls {
+        for (index, (proc, args)) in calls.into_iter().enumerate() {
             let (steel, watchdog, bundle) = self.steel_and_bundle();
             let mut steel_ctx = SteelCtx::new_command(host, bundle);
             let result = run_steel_session(steel, watchdog, &mut steel_ctx, budget_ms, |steel| {
                 steel.call_function_with_args(proc, args).map(|_| ())
             });
-            if let Err(activation::SessionError {
-                message,
-                interrupted,
-            }) = result
-            {
-                if first_error.is_none() {
-                    first_error = Some(message);
-                } else {
-                    steel_ctx.log(LogLevel::Error, format!("steel call error: {message}"));
-                }
-                if interrupted {
-                    break;
+            match result {
+                Ok(()) => completed[index] = true,
+                Err(activation::SessionError {
+                    message,
+                    interrupted,
+                }) => {
+                    if first_error.is_none() {
+                        first_error = Some(message);
+                    } else {
+                        steel_ctx.log(LogLevel::Error, format!("steel call error: {message}"));
+                    }
+                    if interrupted {
+                        break;
+                    }
                 }
             }
         }
 
-        self.take_eval_effects(effects_start, first_error.map_or(Ok(()), Err))
+        let effects = self.take_eval_effects(effects_start, first_error.map_or(Ok(()), Err));
+        (completed, effects)
     }
 
     /// Calls `proc` with `args` and returns its value: the one entry point

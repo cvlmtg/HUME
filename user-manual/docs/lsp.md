@@ -34,7 +34,7 @@ Pass `#:languages`/`#:commands`/`#:typed-commands`/`#:events` to `declare-plugin
   #:commands '("lsp-hover" "lsp-goto-definition" "lsp-goto-declaration"
                "lsp-goto-type-definition" "lsp-goto-implementation" "lsp-references"
                "goto-next-diagnostic" "goto-prev-diagnostic"
-               "lsp-rename" "lsp-fmt" "lsp-code-actions")
+               "lsp-rename" "lsp-fmt" "lsp-fmt-document" "lsp-code-actions")
   #:typed-commands '("diagnostics" "format-source"
                       "lsp-status" "lsp-stop" "lsp-restart"))
 (load-plugin! "core:lsp")
@@ -342,6 +342,7 @@ Changing either and running `:reload-config` updates what HUME has stored, but a
 | `g p` | `goto-prev-diagnostic`       | Jump to the previous error/warning before the cursor (wraps) |
 | —     | `:diagnostics`               | List every diagnostic in the buffer, each with the tool that reported it |
 | —     | `:format-source`             | Format the selected lines if every selection spans one or more whole lines, the whole buffer if none do, or (with a warning) nothing if it's a mix of the two |
+| —     | `lsp-fmt-document`           | Format the whole buffer, or the ranges it is given, then call the `done` it is given (or `#f` for none). For save hooks: see [Format on save](#format-on-save) |
 | —     | `:toggle-inlay-hints`        | Show or hide inlay hints in the current buffer |
 | `Ctrl-Space` (Insert) | `completion-trigger`        | Show completions at the cursor (an editor key, not this plugin's; the plugin supplies the server's candidates) |
 
@@ -398,12 +399,14 @@ global option:
 
 ### Format on save
 
-Not on by default. Add this to your `init.scm` to run `lsp-fmt` every time you save:
+Not on by default. Add this to your `init.scm` to format the whole buffer every time you save, before the file is written:
 
 ```scheme
-(register-hook! 'on-buffer-save
-  (lambda (pane) (call! "lsp-fmt" pane)))
+(register-hook! 'on-before-buffer-save
+  (lambda (pane done) (call! "lsp-fmt-document" pane done)))
 ```
+
+The save waits for the language server's answer, and `:wa` formats buffers that no pane is showing too. If there is no server, or it fails or doesn't answer within `before-save-timeout-ms` (see [Configuration](configuration.md)), the buffer is saved as it is, and an answer that arrives later still formats the buffer, leaving it modified.
 
 ## Managing servers
 

@@ -18,6 +18,7 @@ fn register_records_owner() {
         Some(pid("core:a")),
         SteelVal::IntV(1),
         None,
+        false,
     );
     assert_eq!(
         reg.handlers_for("on-buffer-save")[0].owner,
@@ -36,14 +37,16 @@ fn remove_owned_by_removes_only_matching_owner() {
         Some(pid("core:a")),
         SteelVal::IntV(1),
         None,
+        false,
     );
     reg.register(
         "on-buffer-save",
         Some(pid("core:b")),
         SteelVal::IntV(2),
         None,
+        false,
     );
-    reg.register("on-buffer-save", None, SteelVal::IntV(3), None);
+    reg.register("on-buffer-save", None, SteelVal::IntV(3), None, false);
 
     reg.remove_owned_by(&pid("core:a"));
 
@@ -61,7 +64,7 @@ fn remove_owned_by_removes_only_matching_owner() {
 #[test]
 fn handlers_are_isolated_per_name() {
     let mut reg = HookRegistry::default();
-    reg.register("on-buffer-save", None, SteelVal::IntV(1), None);
+    reg.register("on-buffer-save", None, SteelVal::IntV(1), None, false);
 
     assert_eq!(reg.handlers_for("on-buffer-save").len(), 1);
     assert!(reg.handlers_for("on-buffer-open").is_empty());
@@ -72,7 +75,7 @@ fn handlers_are_isolated_per_name() {
 #[test]
 fn keyed_entry_matches_only_its_keys() {
     let mut reg = HookRegistry::default();
-    reg.register("ev", None, SteelVal::IntV(1), keys(&["a", "b"]));
+    reg.register("ev", None, SteelVal::IntV(1), keys(&["a", "b"]), false);
 
     assert_eq!(reg.matching("ev", Some("a")).count(), 1);
     assert_eq!(reg.matching("ev", Some("b")).count(), 1);
@@ -87,8 +90,8 @@ fn keyed_entry_matches_only_its_keys() {
 #[test]
 fn unkeyed_entry_matches_any_key() {
     let mut reg = HookRegistry::default();
-    reg.register("ev", None, SteelVal::IntV(1), keys(&["a"]));
-    reg.register("ev", None, SteelVal::IntV(2), None);
+    reg.register("ev", None, SteelVal::IntV(1), keys(&["a"]), false);
+    reg.register("ev", None, SteelVal::IntV(2), None, false);
 
     let procs = |key| {
         reg.matching("ev", key)
@@ -105,7 +108,13 @@ fn unkeyed_entry_matches_any_key() {
 #[test]
 fn remove_owned_by_drops_keyed_entries() {
     let mut reg = HookRegistry::default();
-    reg.register("ev", Some(pid("core:a")), SteelVal::IntV(1), keys(&["a"]));
+    reg.register(
+        "ev",
+        Some(pid("core:a")),
+        SteelVal::IntV(1),
+        keys(&["a"]),
+        false,
+    );
 
     reg.remove_owned_by(&pid("core:a"));
 

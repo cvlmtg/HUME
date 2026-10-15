@@ -7,6 +7,7 @@ use steel::rvals::SteelVal;
 
 use super::buffer::DiskCheckTrigger;
 use super::commands::CommandPane;
+use super::error::CommandError;
 use super::event::{EditorEvent, PendingWork};
 use super::reload::ReloadSnapshot;
 use super::{Editor, Severity, host_impl::EditorHostImpl};
@@ -185,6 +186,29 @@ impl Editor {
         self.state.report(severity, text);
     }
 
+    /// The Steel host with an [`EditorHostImpl`] over the rest of the editor,
+    /// built together because the two borrow disjoint fields of `self`; `None`
+    /// when scripting is not initialized.
+    pub(in crate::editor) fn scripting_with_host(
+        &mut self,
+    ) -> Option<(&mut hume_scripting::ScriptingHost, EditorHostImpl<'_>)> {
+        let scripting = self.scripting.as_mut()?;
+        let host = EditorHostImpl::full(
+            &mut self.state,
+            &mut self.view,
+            &mut self.timer_wheel,
+            &mut self.timer_payloads,
+            self.tui.clone(),
+            self.kitty_enabled,
+        );
+        Some((scripting, host))
+    }
+
+    /// Report `e` at its own severity.
+    pub(in crate::editor) fn report_error(&mut self, e: &CommandError) {
+        self.state.report_error(e);
+    }
+
     /// Drain any pending `(log! …)` messages from the scripting host and
     /// report each one. No-op if scripting isn't initialized.
     pub(in crate::editor) fn flush_script_messages(&mut self) {
@@ -332,6 +356,7 @@ impl Editor {
             // see `MAX_EVENT_DRAIN`'s doc for why.
             self.detect_text_changed();
             self.detect_history_changed();
+            self.commit_ready_writes();
             if self.state.config.pending_work.is_empty() {
                 return true;
             }
@@ -363,6 +388,14 @@ impl Editor {
                 {
                     self.state.last_entered_buffer = None;
                 }
+                // A dropped `BeforeSave` never reaches its handlers, so its
+                // write goes ahead instead of waiting out the timeout.
+                for work in &batch {
+                    if let PendingWork::BeforeSave(target) = work {
+                        self.state.pending_writes.release(target.buffer());
+                    }
+                }
+                self.commit_ready_writes();
                 // Dropped unrun: a callback's hold on its tracked position
                 // releases it, as running the callback would.
                 drop(batch);
@@ -499,6 +532,7 @@ impl Editor {
                     self.react_to_event(&event);
                     self.fire_one_event(event);
                 }
+                PendingWork::BeforeSave(target) => self.fire_before_save(target),
                 PendingWork::Call {
                     proc,
                     args,
@@ -577,6 +611,7 @@ impl Editor {
             EditorEvent::OnBufferOpen { .. }
             | EditorEvent::OnBufferClose { .. }
             | EditorEvent::OnBufferSave { .. }
+            | EditorEvent::OnBeforeBufferSave { .. }
             | EditorEvent::OnModeChange { .. }
             | EditorEvent::OnLanguageSet { .. }
             | EditorEvent::OnLspAttach { .. }
@@ -615,15 +650,7 @@ impl Editor {
         let key = key.map(str::to_owned);
         let args = event.into_steel_args();
         let result = {
-            let host_scr = self.scripting.as_mut().expect("checked above");
-            let mut impl_host = EditorHostImpl::full(
-                &mut self.state,
-                &mut self.view,
-                &mut self.timer_wheel,
-                &mut self.timer_payloads,
-                self.tui.clone(),
-                self.kitty_enabled,
-            );
+            let (host_scr, mut impl_host) = self.scripting_with_host().expect("checked above");
             host_scr.fire_hook(name, key.as_deref(), &args, &mut impl_host)
         };
         self.flush_script_messages();
@@ -638,20 +665,10 @@ impl Editor {
     /// `run_steel_calls`' existing "one session, first error aborts the
     /// rest" semantics for calls that were queued back-to-back.
     fn run_call_batch(&mut self, calls: Vec<(SteelVal, Vec<SteelVal>)>) {
-        let Some(host_scr) = self.scripting.as_mut() else {
+        let Some((host_scr, mut impl_host)) = self.scripting_with_host() else {
             return;
         };
-        let result = {
-            let mut impl_host = EditorHostImpl::full(
-                &mut self.state,
-                &mut self.view,
-                &mut self.timer_wheel,
-                &mut self.timer_payloads,
-                self.tui.clone(),
-                self.kitty_enabled,
-            );
-            host_scr.run_steel_calls(calls, &mut impl_host)
-        };
+        let result = host_scr.run_steel_calls(calls, &mut impl_host);
         self.flush_script_messages();
         if result.is_err() {
             // A queued completion invocation this batch was supposed to

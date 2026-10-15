@@ -20,6 +20,7 @@ use hume_editing::changeset::ChangeSet;
 use hume_editing::edit::{Edited, TextChange};
 use hume_editing::selection::SelectionSet;
 use hume_editing::state::EditState;
+use hume_rope::offset::CharOffset;
 
 /// [`apply_doc_history_walk`]'s result: keeps a read-only refusal
 /// distinguishable from genuine root/leaf exhaustion, so each caller reports
@@ -37,14 +38,14 @@ pub(in crate::editor) enum HistoryWalk {
 }
 
 /// Shared post-mutation bookkeeping for every text-mutating path: write
-/// `new_sels` back to the acting pane and bump the edit seq. Stored
-/// positions (other panes, jump lists, prompt snapshots), the syntax edit
-/// chain and the language servers' change queue are not here: the `Buffer`
-/// mutator already carried them through the change.
+/// `new_sels` back to the acting pane, if there is one, and bump the edit
+/// seq. Stored positions (other panes, jump lists, prompt snapshots), the
+/// syntax edit chain and the language servers' change queue are not here: the
+/// `Buffer` mutator already carried them through the change.
 fn finish_edit(
     buffers: &mut BufferStore,
     pane_state: &mut PaneEntries,
-    pane_id: PaneId,
+    acting: Option<PaneId>,
     buf_id: BufferId,
     new_sels: SelectionSet,
     cs: &ChangeSet,
@@ -56,22 +57,42 @@ fn finish_edit(
     // edit. Selections are still written: a no-op edit can still move
     // cursors.
     if cs.is_identity() {
-        pane_state
-            .seeded_mut(pane_id, buf_id)
-            .set_selections(new_sels, buffers.get(buf_id).text());
+        if let Some(pane_id) = acting {
+            pane_state
+                .seeded_mut(pane_id, buf_id)
+                .set_selections(new_sels, buffers.get(buf_id).text());
+        }
         return;
     }
     // A real edit reveals the acting pane even when it didn't move the
     // primary head (`r` replacing the character under the cursor). `install`
     // left this pane's selections for the new ones to replace.
-    pane_state
-        .seeded_mut(pane_id, buf_id)
-        .set_selections_after_edit(new_sels);
+    if let Some(pane_id) = acting {
+        pane_state
+            .seeded_mut(pane_id, buf_id)
+            .set_selections_after_edit(new_sels);
+    }
     buffers.bump_edit_seq();
 }
 
+/// `Ok(false)` when `buf_id` is read-only and the edit must do nothing;
+/// `Err` when [`check_no_conflicting_session`] refuses it. The admission
+/// every buffer-mutating chokepoint below runs before touching the text.
+fn admit(
+    buffers: &BufferStore,
+    stores: &PositionStores<'_>,
+    acting: Option<PaneId>,
+    buf_id: BufferId,
+) -> Result<bool, CommandError> {
+    if buffers.get(buf_id).is_read_only() {
+        return Ok(false);
+    }
+    check_no_conflicting_session(stores.open_session(), acting, buf_id)?;
+    Ok(true)
+}
+
 /// `Err` when `open`, the open session, is on `buf_id` and was opened by
-/// some pane other than `exclude`: the
+/// some pane other than `exclude` (any pane, for `None`): the
 /// exclusivity check every buffer-mutating chokepoint below runs before
 /// touching `buf_id`'s text.
 ///
@@ -85,17 +106,17 @@ fn finish_edit(
 /// session is exactly what routes an edit into [`apply_doc_edit_grouped`]
 /// below, a distinct, unrelated case this check must not shadow.
 ///
-/// [`apply_doc_edit`] runs this right before committing;
+/// [`admit`] runs this right before an edit commits;
 /// [`super::lsp::edits::apply_workspace_edit`] runs it for every file in its
 /// plan, before any file's commit, so a conflict on file *k* of a multi-file
 /// edit is caught before files `0..k` are touched rather than partway
 /// through the commit loop.
 pub(in crate::editor) fn check_no_conflicting_session(
     open: Option<OpenSession<'_>>,
-    exclude: PaneId,
+    exclude: Option<PaneId>,
     buf_id: BufferId,
 ) -> Result<(), CommandError> {
-    if open.is_some_and(|s| s.pane() != exclude && s.buffer() == buf_id) {
+    if open.is_some_and(|s| Some(s.pane()) != exclude && s.buffer() == buf_id) {
         return Err(CommandError::new(
             "buffer has an open insert/paste session on another pane",
         ));
@@ -125,10 +146,9 @@ pub(in crate::editor) fn apply_doc_edit(
     buf_id: BufferId,
     cmd: impl FnOnce(EditState) -> Edited,
 ) -> Result<(), CommandError> {
-    if buffers.get(buf_id).is_read_only() {
+    if !admit(buffers, stores, Some(pane_id), buf_id)? {
         return Ok(());
     }
-    check_no_conflicting_session(stores.open_session(), pane_id, buf_id)?;
     if stores.insert_at_mut(pane_id, buf_id).is_some() {
         apply_doc_edit_grouped(buffers, stores, pane_id, buf_id, cmd);
         return Ok(());
@@ -147,10 +167,54 @@ pub(in crate::editor) fn apply_doc_edit(
         commit_paste_group(buffers, stores.panes, stores.session);
     }
     let sels = stores.panes.seeded(pane_id, buf_id).selections().clone();
-    let (new_sels, cs) = buffers
-        .get_mut(buf_id)
-        .apply_edit(buf_id, stores, pane_id, sels, cmd);
-    finish_edit(buffers, stores.panes, pane_id, buf_id, new_sels, &cs);
+    let (new_sels, cs) =
+        buffers
+            .get_mut(buf_id)
+            .apply_edit(buf_id, stores, Some(pane_id), sels, cmd);
+    finish_edit(buffers, stores.panes, Some(pane_id), buf_id, new_sels, &cs);
+    Ok(())
+}
+
+fn edit_from_changes(cs: ChangeSet) -> impl FnOnce(EditState) -> Edited {
+    move |s| {
+        Edited::from_changes(s, cs)
+            .expect("cs built for this buffer's text, keeping its final newline")
+    }
+}
+
+/// Applies `cs`, a changeset built against `buf_id`'s current text, as one
+/// edit.
+///
+/// With `acting`, it goes through [`apply_doc_edit`] and that pane's session
+/// rules. Without one, every pane's stored selections are carried through the
+/// change and none is revealed; the undo revision records a cursor at the
+/// first change, which an undo restores into whichever pane walks it. `Err`
+/// then when any session is open on the buffer: an edit no pane owns cannot
+/// join a session's group, and would leave a paste session's snapshot stale.
+pub(in crate::editor) fn apply_changes(
+    buffers: &mut BufferStore,
+    stores: &mut PositionStores<'_>,
+    acting: Option<PaneId>,
+    buf_id: BufferId,
+    cs: ChangeSet,
+) -> Result<(), CommandError> {
+    if let Some(pane_id) = acting {
+        return apply_doc_edit(buffers, stores, pane_id, buf_id, edit_from_changes(cs));
+    }
+    if !admit(buffers, stores, None, buf_id)? {
+        return Ok(());
+    }
+    let text = buffers.get(buf_id).text();
+    let first_change = cs
+        .edited_regions()
+        .first()
+        .map_or_else(CharOffset::default, |region| region.old.start);
+    let sels = EditState::with_cursor(text.clone(), text.snap(first_change)).into_selections();
+    let (new_sels, cs) =
+        buffers
+            .get_mut(buf_id)
+            .apply_edit(buf_id, stores, None, sels, edit_from_changes(cs));
+    finish_edit(buffers, stores.panes, None, buf_id, new_sels, &cs);
     Ok(())
 }
 
@@ -186,7 +250,7 @@ pub(in crate::editor) fn apply_doc_edit_grouped(
     let (new_sels, cs) = buffers
         .get_mut(buf_id)
         .apply_edit_grouped(buf_id, stores, pane_id, sels, cmd);
-    finish_edit(buffers, stores.panes, pane_id, buf_id, new_sels, &cs);
+    finish_edit(buffers, stores.panes, Some(pane_id), buf_id, new_sels, &cs);
     let session = stores
         .insert_at_mut(pane_id, buf_id)
         .expect("checked above, and an edit closes no session");
@@ -244,7 +308,7 @@ pub(in crate::editor) fn apply_doc_edit_regrouped(
     finish_edit(
         buffers,
         stores.panes,
-        pane_id,
+        Some(pane_id),
         buf_id,
         new_sels,
         &propagation_cs,
@@ -288,10 +352,9 @@ pub(in crate::editor) fn apply_doc_history_walk(
         PaneId,
     ) -> Result<HistoryWalkResult, CommandError>,
 ) -> Result<HistoryWalk, CommandError> {
-    if buffers.get(buf_id).is_read_only() {
+    if !admit(buffers, stores, Some(pane_id), buf_id)? {
         return Ok(HistoryWalk::RefusedReadOnly);
     }
-    check_no_conflicting_session(stores.open_session(), pane_id, buf_id)?;
     if stores.insert_at_mut(pane_id, buf_id).is_some() {
         return Err(session_refuses_walk());
     }
@@ -311,7 +374,7 @@ pub(in crate::editor) fn apply_doc_history_walk(
     else {
         return Ok(HistoryWalk::Took(0));
     };
-    finish_edit(buffers, stores.panes, pane_id, buf_id, new_sels, &cs);
+    finish_edit(buffers, stores.panes, Some(pane_id), buf_id, new_sels, &cs);
     // `finish_edit` skips `bump_edit_seq` for an identity `cs` (correctly:
     // a normal edit that cancels to identity records no revision at all, so
     // nothing happened). A history walk is different: `current` moved to a

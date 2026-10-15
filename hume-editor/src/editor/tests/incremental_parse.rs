@@ -388,7 +388,7 @@ fn an_edit_spanning_several_text_versions_keeps_the_pending_edit_chain_linked() 
     let (buffers, mut stores) = ed.state.edit_parts();
     buffers
         .get_mut(bid)
-        .apply_edit(bid, &mut stores, PaneId::default(), sels, |state| {
+        .apply_edit(bid, &mut stores, Some(PaneId::default()), sels, |state| {
             insert_str(state, " ").then(|state| insert_str(state, " "))
         });
 

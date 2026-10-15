@@ -22,6 +22,12 @@ fn doc_range(bid: BufferId, version: TextVersion, range: ClusterRange) -> DocRan
     }
 }
 
+/// The URI `bid`'s document is named by in LSP params. `None` when `bid` is
+/// closed or has no path.
+pub(in crate::editor) fn document_uri(state: &EditorState, bid: BufferId) -> Option<String> {
+    Some(state.lsp_doc_uri(bid)?.as_str().to_string())
+}
+
 /// The primary cursor head in `t`'s own pane. `None` only when `t`'s buffer
 /// has no path.
 pub(in crate::editor) fn position_params(
@@ -41,7 +47,7 @@ pub(in crate::editor) fn offset_params(
     offset: CharOffset,
 ) -> Option<PositionParams> {
     Some(PositionParams {
-        uri: state.lsp_doc_uri(bid)?.as_str().to_string(),
+        uri: document_uri(state, bid)?,
         pos: DocPos {
             buffer: bid,
             version: state.buffers.try_get(bid)?.text().version(),
@@ -61,7 +67,7 @@ pub(in crate::editor) fn primary_range_params(
     let bid = t.bid(view);
     let covered = pane_view(state, view, t).primary().covered();
     Some(RangeParams {
-        uri: state.lsp_doc_uri(bid)?.as_str().to_string(),
+        uri: document_uri(state, bid)?,
         range: doc_range(bid, state.buffers.get(bid).text().version(), covered),
     })
 }
@@ -81,7 +87,7 @@ pub(in crate::editor) fn linewise_ranges_params(
     t: CommandPane,
 ) -> Option<RangesParams> {
     let bid = t.bid(view);
-    let uri = state.lsp_doc_uri(bid)?.as_str().to_string();
+    let uri = document_uri(state, bid)?;
     let text = state.buffers.get(bid).text();
     let selections = t.state(&state.panes.entries, view).view(text);
     let linewise: Vec<ClusterRange> = selections

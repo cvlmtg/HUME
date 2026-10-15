@@ -96,6 +96,9 @@ fn editor_state_fields_are_classified() {
             // detect_buffer_enter's diff re-raises OnBufferEnter for
             // the focused buffer
             last_entered_buffer: _,
+            // config: reset_config_state releases every parked write, since
+            // the `done` thunks it waits on went with the outgoing engine
+            pending_writes: _,
             // config: reset_config_state re-baselines this to mode() after
             // its reset_input call, so detect_mode_change's diff
             // doesn't fire a phantom OnModeChange for a mode the fresh

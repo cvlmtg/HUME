@@ -713,11 +713,13 @@ impl Buffer {
     /// Takes `sels` (the acting pane's current selections) by value and returns
     /// the post-edit selections + the forward `ChangeSet` (for the syntax and
     /// LSP streams); `install` carries every stored position through it.
+    /// `acting` is `None` for an edit no pane owns: `sels` is then only what
+    /// the revision records, and every pane's stored selections are carried.
     pub(crate) fn apply_edit(
         &mut self,
         id: BufferId,
         stores: &mut PositionStores<'_>,
-        acting: PaneId,
+        acting: Option<PaneId>,
         sels: SelectionSet,
         cmd: impl FnOnce(EditState) -> Edited,
     ) -> (SelectionSet, ChangeSet) {
@@ -737,7 +739,7 @@ impl Buffer {
         let post_text = post.text().clone();
         let post_sels = post.into_selections();
         self.record_revision(cs.clone(), inverse_cs, pre_sels, post_sels.clone());
-        self.install(id, stores, post_text, Change::Edit(&cs), Some(acting));
+        self.install(id, stores, post_text, Change::Edit(&cs), acting);
         (post_sels, cs)
     }
 

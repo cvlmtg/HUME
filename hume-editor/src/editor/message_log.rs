@@ -9,6 +9,7 @@ use std::collections::VecDeque;
 use hume_engine::theme::diagnostic_scopes;
 
 use super::EditorState;
+use super::error::CommandError;
 
 /// Severity level for a message, controlling both logging and display.
 ///
@@ -269,6 +270,11 @@ impl MessageLog {
 
 impl EditorState {
     // ── Status messages ───────────────────────────────────────────────────────
+
+    /// Report `e` at its own severity.
+    pub(super) fn report_error(&mut self, e: &CommandError) {
+        self.report(e.severity(), e.message().to_owned());
+    }
 
     /// Record a status message / warning / error on this state.
     ///

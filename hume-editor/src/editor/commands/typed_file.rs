@@ -3,7 +3,9 @@ use hume_platform::io::FileMeta;
 
 use super::super::Editor;
 use super::super::Severity;
+use super::super::before_save::{AfterWrite, SAVE_IN_PROGRESS, WriteRequest};
 use super::FocusedPane;
+use crate::editor::buffer::Buffer;
 use crate::editor::error::CommandError;
 use crate::editor::settings::ops as settings_ops;
 use crate::editor::settings::{WRAP_MODE_KEY, parse_setting_text};
@@ -130,7 +132,8 @@ pub(in crate::editor) fn typed_write(
     arg: Option<&str>,
     force: bool,
 ) -> Result<(), CommandError> {
-    write_file(ed, fp.bid(&ed.view), arg, force)
+    ed.request_write(fp.bid(&ed.view), fp, arg, force, AfterWrite::Nothing)?
+        .into_command_result()
 }
 
 pub(in crate::editor) fn typed_write_quit(
@@ -139,14 +142,43 @@ pub(in crate::editor) fn typed_write_quit(
     arg: Option<&str>,
     force: bool,
 ) -> Result<(), CommandError> {
-    // force applies to both write (chmod-retry on readonly targets) and quit
-    // (proceed with the quit even if the write fails). After a successful
-    // write, delegate to typed_quit so :wq mirrors :q's pane/buffer-aware
-    // close instead of always tearing down the whole editor.
-    match write_file(ed, fp.bid(&ed.view), arg, force) {
-        Ok(()) => typed_quit(ed, fp, None, force),
+    let quit = AfterWrite::Quit(fp.handle(&ed.view));
+    ed.request_write(fp.bid(&ed.view), fp, arg, force, quit)?
+        .into_command_result()
+}
+
+/// Writes `bid`, then carries out `after`. The commit step behind
+/// `Editor::request_write`, run at once or when a parked write is released.
+///
+/// `force` applies to both the write (chmod-retry on readonly targets) and
+/// the quit (proceed with the quit even if the write fails). A quit whose
+/// pane is not the focused pane showing `bid` any more (the write was parked
+/// while focus moved) is cancelled: the write still happened.
+pub(in crate::editor) fn write_and_continue(
+    ed: &mut Editor,
+    bid: BufferId,
+    kind: WriteKind<'_>,
+    force: bool,
+    after: AfterWrite,
+) -> Result<(), CommandError> {
+    let written = write_file(ed, bid, kind, force);
+    let AfterWrite::Quit(handle) = after else {
+        return written;
+    };
+    let Ok(pane) = FocusedPane::resolve(&ed.state, &ed.view, handle) else {
+        if written.is_ok() {
+            ed.report(
+                Severity::Info,
+                "Written; quit cancelled (focus moved)".to_owned(),
+            );
+        }
+        return written;
+    };
+    match written {
+        Ok(()) => typed_quit(ed, pane, None, force),
         Err(e) if force => {
-            typed_quit(ed, fp, None, true).expect("force quit cannot fail: dirty check is skipped");
+            typed_quit(ed, pane, None, true)
+                .expect("force quit cannot fail: dirty check is skipped");
             Err(e)
         }
         Err(e) => Err(e),
@@ -311,15 +343,14 @@ impl Editor {
 }
 
 /// Write a specific buffer to its file path. No save-as: only writes to the
-/// buffer's own path.
+/// buffer's own path. The buffer is a [`WriteKind::Save`]: writable, with a
+/// path.
 ///
 /// `file_meta` (not `path`) is the SSOT for "has this buffer ever touched
 /// disk" (see `Buffer::is_new_file`): a buffer with a `path` but no
 /// `file_meta` is a `Buffer::new_file` (`:e` on a path that didn't exist yet)
 /// and takes the create branch below instead of `write_file_atomic`, which
-/// needs an existing baseline to atomically replace. `path` with no
-/// `file_meta` at all is `"no file name"` only for pathless scratch
-/// buffers.
+/// needs an existing baseline to atomically replace.
 fn write_buffer_by_id(
     ed: &mut Editor,
     bid: BufferId,
@@ -328,13 +359,11 @@ fn write_buffer_by_id(
     force: bool,
 ) -> Result<(), CommandError> {
     let buf = ed.state.buffers.get_mut(bid);
-    if buf.is_read_only() {
-        return Err(CommandError::transient("Buffer is read-only"));
-    }
     if buf.file_meta.is_none() {
-        let Some(path) = buf.path().map(std::path::Path::to_path_buf) else {
-            return Err(CommandError::transient("no file name"));
-        };
+        let path = buf
+            .path()
+            .map(std::path::Path::to_path_buf)
+            .expect("a Save has a path");
         // Stat fresh rather than assuming the path is still missing: a
         // new-file buffer carries no baseline to compare against
         // (`stale_write_block` needs a `FileMeta`, which this buffer has
@@ -385,19 +414,45 @@ fn write_buffer_by_id(
     }
 }
 
+/// What a write command does with a buffer.
+#[derive(Clone, Copy)]
+pub(in crate::editor) enum WriteKind<'a> {
+    /// `:w`: the buffer's own file. A new-file buffer (a path, no
+    /// `file_meta`) is created. A read-only buffer or one with no path is
+    /// `Refused` instead.
+    Save,
+    /// `:w <path>` on a writable buffer: it becomes the file at the path.
+    SaveAs(&'a str),
+    /// `:w <path>` on a read-only or synthetic buffer (e.g. `[messages]`): the
+    /// content is written to the path, but the buffer's path, `file_meta` and
+    /// dirty state are left alone, since it did not become that file.
+    Export(&'a str),
+    /// No write happens; the message says why.
+    Refused(&'static str),
+}
+
+impl<'a> WriteKind<'a> {
+    pub(in crate::editor) fn classify(buf: &Buffer, arg: Option<&'a str>) -> Self {
+        match arg {
+            Some(path) if buf.is_read_only() || buf.is_synthetic() => Self::Export(path),
+            Some(path) => Self::SaveAs(path),
+            None if buf.is_read_only() => Self::Refused("Buffer is read-only"),
+            None if buf.path().is_none() => Self::Refused("no file name"),
+            None => Self::Save,
+        }
+    }
+
+    /// Whether the write lands in the buffer's own file, once it is written.
+    pub(in crate::editor) fn reaches_own_file(self) -> bool {
+        matches!(self, Self::Save | Self::SaveAs(_))
+    }
+}
+
 /// Serialize the buffer and write it to disk.
 ///
-/// If `arg` is `Some(path)`, performs a save-as for a normal writable buffer:
-/// writes to the specified path and updates `ed.file_path` / `ed.file_meta`
-/// so that subsequent `:w` (no argument) targets the same path. For a
-/// read-only or synthetic buffer (e.g. `[messages]`), `arg` is instead an
-/// **export**: the content is written to the new path, but the source
-/// buffer's path/`file_meta`/dirty state are left untouched: it did not
-/// become the file at `path`.
-///
-/// If `arg` is `None`, writes to the current file. Errors with
-/// "Buffer is read-only" if the focused buffer has `read_only = true`, or
-/// "no file name" if the buffer is a scratch buffer with no path.
+/// What the write does is `kind`, from [`WriteKind::classify`]: a save-as updates
+/// the buffer's path and `file_meta` so that a later `:w` targets the same
+/// path, an export leaves the buffer untouched, and a refusal is the error.
 ///
 /// When `force` is `true`, a `PermissionDenied` rename error triggers a
 /// chmod-retry: the target is made writable, the rename is retried, and the
@@ -408,12 +463,15 @@ fn write_buffer_by_id(
 fn write_file(
     ed: &mut Editor,
     bid: BufferId,
-    arg: Option<&str>,
+    kind: WriteKind<'_>,
     force: bool,
 ) -> Result<(), CommandError> {
+    if let WriteKind::Refused(msg) = kind {
+        return Err(CommandError::transient(msg));
+    }
     let (content, line_count) = serialize_buffer(ed, bid);
 
-    if let Some(path_str) = arg {
+    if let WriteKind::SaveAs(path_str) | WriteKind::Export(path_str) = kind {
         let expanded = hume_platform::path::expand(path_str);
         let path: std::path::PathBuf = {
             let p = std::path::Path::new(expanded.as_ref());
@@ -464,13 +522,7 @@ fn write_file(
         };
         match result {
             Ok((meta, retried)) => {
-                // A read-only or synthetic (e.g. [messages]) buffer can't
-                // legitimately become the file at `path`. :w <path> on one
-                // of these is an export, not a save-as: dump the content,
-                // leave the source buffer's identity and dirty state alone.
-                let doc = ed.state.buffers.get(bid);
-                let is_save_as = !doc.is_synthetic() && !doc.is_read_only();
-                if is_save_as {
+                if matches!(kind, WriteKind::SaveAs(_)) {
                     // Store the canonicalized path so path and
                     // file_meta.resolved_path always agree, even when the
                     // user supplied a relative or symlink path.
@@ -490,7 +542,7 @@ fn write_file(
 
 pub(in crate::editor) fn typed_write_all(
     ed: &mut Editor,
-    _fp: FocusedPane,
+    fp: FocusedPane,
     _arg: Option<&str>,
     force: bool,
 ) -> Result<(), CommandError> {
@@ -498,18 +550,11 @@ pub(in crate::editor) fn typed_write_all(
         .state
         .buffers
         .iter()
-        // Skip read-only buffers; write_buffer_by_id would error and abort the
-        // whole batch after partial saves. A read-only dirty buffer is unusual
-        // (only set-text can do it), but handle it gracefully.
-        //
-        // `path().is_some()`, not `file_meta.is_some()`: a new-file buffer
-        // (`:e` on a missing path, not yet written) has a path but no
-        // `file_meta`. `write_buffer_by_id`'s create branch handles it, so
-        // excluding it here would make `:wa` silently skip a buffer it's
-        // fully capable of writing. Only pathless buffers (scratch,
-        // synthetic views) are excluded.
+        // A buffer `:w` would refuse is skipped: erroring would abort the
+        // batch after partial saves.
         .filter(|(id, buf)| {
-            ed.state.has_unsaved_changes(*id) && buf.path().is_some() && !buf.is_read_only()
+            ed.state.has_unsaved_changes(*id)
+                && matches!(WriteKind::classify(buf, None), WriteKind::Save)
         })
         .map(|(id, _)| id)
         .collect();
@@ -524,15 +569,22 @@ pub(in crate::editor) fn typed_write_all(
     // per-buffer `:w!`. `write_buffer_by_id` is the single chokepoint for the
     // stale check (no separate pre-check here, which would stat every buffer
     // twice). A stale refusal is recognized by its message and downgraded to
-    // a skip; any other write error still aborts the batch.
+    // a skip; any other write error still aborts the batch. A buffer whose
+    // write is already waiting on its handlers is skipped the same way. A
+    // write that starts waiting here reports itself when it completes, so
+    // the count below is only the writes that finished at once.
     let mut count = 0;
-    let mut skipped: Vec<String> = Vec::new();
+    let mut stale: Vec<String> = Vec::new();
+    let mut waiting: Vec<String> = Vec::new();
     for bid in dirty_savable {
-        let (content, line_count) = serialize_buffer(ed, bid);
-        match write_buffer_by_id(ed, bid, content, line_count, force) {
-            Ok(()) => count += 1,
+        match ed.request_write(bid, fp, None, force, AfterWrite::Nothing) {
+            Ok(WriteRequest::Written) => count += 1,
+            Ok(WriteRequest::Held) => {}
+            Ok(WriteRequest::AlreadyPending) => {
+                waiting.push(ed.state.buffers.get(bid).display_name());
+            }
             Err(e) if e.message() == STALE_WRITE_MSG => {
-                skipped.push(ed.state.buffers.get(bid).display_name());
+                stale.push(ed.state.buffers.get(bid).display_name());
             }
             Err(e) => return Err(e),
         }
@@ -540,11 +592,13 @@ pub(in crate::editor) fn typed_write_all(
     if count > 0 {
         ed.report(Severity::Info, format!("Written {count} file(s)"));
     }
-    if !skipped.is_empty() {
-        ed.report(
-            Severity::Warning,
-            format!("Skipped (changed on disk): {}", skipped.join(", ")),
-        );
+    for (reason, names) in [("changed on disk", stale), (SAVE_IN_PROGRESS, waiting)] {
+        if !names.is_empty() {
+            ed.report(
+                Severity::Warning,
+                format!("Skipped ({reason}): {}", names.join(", ")),
+            );
+        }
     }
     Ok(())
 }

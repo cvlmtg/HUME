@@ -300,7 +300,8 @@ fn pending_calls(ed: &Editor) -> Vec<(&steel::rvals::SteelVal, &Vec<steel::rvals
         .iter()
         .filter_map(|w| match w {
             crate::editor::event::PendingWork::Call { proc, args, .. } => Some((proc, args)),
-            crate::editor::event::PendingWork::Event(_) => None,
+            crate::editor::event::PendingWork::Event(_)
+            | crate::editor::event::PendingWork::BeforeSave(_) => None,
         })
         .collect()
 }
@@ -1426,6 +1427,7 @@ mod alternate;
 mod async_job_steel;
 mod async_source;
 mod auto_pairs;
+mod before_save;
 mod bracket_match_highlight;
 mod bracketed_paste;
 mod buffer;

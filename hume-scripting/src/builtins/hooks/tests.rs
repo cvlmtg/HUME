@@ -168,3 +168,170 @@ fn register_hook_validates_against_the_host_not_a_compiled_in_table() {
         "a real editor event name absent from the host's list must still be rejected"
     );
 }
+
+mod held {
+    use hume_platform::dirs::Dirs;
+    use steel::rvals::SteelVal;
+
+    use crate::host::{
+        BufferHost, CommandHost, CursorHost, EditorHost, EventHost, HostToken, LanguageHost,
+        SettingsHost,
+    };
+    use crate::null_host::{HELD_EVENT, NullHost};
+    use crate::{EvalError, ScriptingHost};
+
+    /// A [`NullHost`] whose event capability keeps the holds open and the
+    /// ones finished, as the editor's does for a parked write.
+    #[derive(Default)]
+    struct HoldHost {
+        inner: NullHost,
+        finished: Vec<HostToken>,
+    }
+
+    impl EditorHost for HoldHost {
+        fn cursor(&mut self) -> &mut dyn CursorHost {
+            &mut self.inner
+        }
+        fn commands(&mut self) -> &mut dyn CommandHost {
+            &mut self.inner
+        }
+        fn language(&mut self) -> &mut dyn LanguageHost {
+            &mut self.inner
+        }
+        fn settings(&mut self) -> &mut dyn SettingsHost {
+            &mut self.inner
+        }
+        fn buffers(&mut self) -> &mut dyn BufferHost {
+            &mut self.inner
+        }
+        fn events(&mut self) -> &mut dyn EventHost {
+            self
+        }
+        fn permit_plugin_activation(
+            &mut self,
+            plugin: &crate::attribution::EntryId,
+        ) -> Result<(), String> {
+            self.inner.permit_plugin_activation(plugin)
+        }
+    }
+
+    impl EventHost for HoldHost {
+        fn known_event_names(&self) -> &'static [&'static str] {
+            self.inner.known_event_names()
+        }
+        fn held_event_arg_count(&self, name: &str) -> Option<usize> {
+            self.inner.held_event_arg_count(name)
+        }
+        fn finish_hold(&mut self, hold: HostToken) {
+            self.finished.push(hold);
+        }
+    }
+
+    fn register_for(event: &str, handler: &str) -> Result<ScriptingHost, String> {
+        let mut host = ScriptingHost::new(&Dirs::none());
+        host.eval_source(
+            &format!("(register-hook! '{event} {handler})"),
+            &mut NullHost,
+        )?;
+        Ok(host)
+    }
+
+    fn register(handler: &str) -> Result<ScriptingHost, String> {
+        register_for(HELD_EVENT, handler)
+    }
+
+    /// Fires the held event the way the editor does: one hold per handler
+    /// that takes `done`, minted before any handler runs.
+    fn fire(
+        host: &mut ScriptingHost,
+        hosts: &mut HoldHost,
+    ) -> (Vec<HostToken>, Result<(), EvalError>) {
+        let handlers = host.held_handlers(HELD_EVENT);
+        let holds: Vec<HostToken> = (0..handlers.holds_needed())
+            .map(|i| HostToken::from_raw(100 + i as u64))
+            .collect();
+        let result = host
+            .fire_held_hook(handlers, &[SteelVal::IntV(0)], holds.clone(), hosts)
+            .map(|_| ());
+        (holds, result)
+    }
+
+    /// The event has one arg, so a handler takes one parameter, or two to
+    /// take `done`. Nothing else can be told apart at registration.
+    #[test]
+    fn held_event_handler_takes_the_event_args_with_or_without_done() {
+        assert!(register("(lambda (pane) 0)").is_ok());
+        assert!(register("(lambda (pane done) 0)").is_ok());
+        for refused in [
+            "(lambda () 0)",
+            "(lambda (pane done extra) 0)",
+            "(lambda args 0)",
+            "(lambda (pane . rest) 0)",
+            "+",
+        ] {
+            let Err(msg) = register(refused) else {
+                panic!("{refused} must be refused");
+            };
+            assert!(msg.contains("handler is a lambda of 1 parameters"), "{msg}");
+        }
+    }
+
+    #[test]
+    fn only_a_held_event_handler_taking_done_needs_a_hold() {
+        let host = register("(lambda (pane) 0)").unwrap();
+        assert_eq!(host.held_handlers(HELD_EVENT).holds_needed(), 0);
+        let host = register("(lambda (pane done) 0)").unwrap();
+        assert_eq!(host.held_handlers(HELD_EVENT).holds_needed(), 1);
+        let host = register_for("on-buffer-save", "(lambda (pane extra) 0)").unwrap();
+        assert_eq!(host.held_handlers("on-buffer-save").holds_needed(), 0);
+    }
+
+    #[test]
+    fn handler_without_done_takes_no_hold() {
+        let mut host = register("(lambda (pane) 0)").unwrap();
+        let mut hosts = HoldHost::default();
+        let (holds, result) = fire(&mut host, &mut hosts);
+        assert!(result.is_ok());
+        assert!(holds.is_empty());
+        assert!(hosts.finished.is_empty());
+    }
+
+    #[test]
+    fn handler_calling_done_finishes_its_hold_through_the_host() {
+        let mut host = register("(lambda (pane done) (done))").unwrap();
+        let mut hosts = HoldHost::default();
+        let (holds, result) = fire(&mut host, &mut hosts);
+        assert!(result.is_ok());
+        assert_eq!(holds.len(), 1);
+        assert_eq!(hosts.finished, holds);
+    }
+
+    #[test]
+    fn handler_keeping_done_leaves_its_hold_open() {
+        let mut host = register("(lambda (pane done) 0)").unwrap();
+        let mut hosts = HoldHost::default();
+        let (holds, result) = fire(&mut host, &mut hosts);
+        assert!(result.is_ok());
+        assert_eq!(holds.len(), 1);
+        assert!(hosts.finished.is_empty());
+    }
+
+    #[test]
+    fn done_with_an_argument_raises() {
+        let mut host = register("(lambda (pane done) (done 'bogus))").unwrap();
+        let mut hosts = HoldHost::default();
+        let (holds, result) = fire(&mut host, &mut hosts);
+        assert!(result.is_err(), "done takes no argument");
+        assert_eq!(hosts.finished, holds, "a raising handler releases its hold");
+    }
+
+    #[test]
+    fn raising_handler_finishes_its_own_hold_and_reports() {
+        let mut host = register(r#"(lambda (pane done) (error "boom"))"#).unwrap();
+        let mut hosts = HoldHost::default();
+        let (holds, result) = fire(&mut host, &mut hosts);
+        assert!(result.is_err());
+        assert_eq!(holds.len(), 1);
+        assert_eq!(hosts.finished, holds);
+    }
+}

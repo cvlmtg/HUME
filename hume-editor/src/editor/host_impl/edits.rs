@@ -19,7 +19,8 @@ impl<'a> EditHost for EditorHostImpl<'a> {
         edits: Vec<hume_scripting::host::WireTextEdit>,
         expect_gen: Option<u64>,
     ) -> Result<(), String> {
-        let t = self.command_pane(pane)?;
+        let t = crate::editor::commands::EditTarget::resolve(self.state, self.view, pane)
+            .map_err(|e| e.to_string())?;
         // Each entry decoded its own encoding from its own JsonHandle (it
         // may have come from a different response than its batch-mates,
         // e.g. two `additionalTextEdits` merged by a plugin), since a batch that
@@ -53,7 +54,7 @@ impl<'a> EditHost for EditorHostImpl<'a> {
             self.state,
             &self.view.panes,
             t.pid(),
-            t.bid(self.view),
+            pane.buffer(),
             typed_edits,
             expect_gen,
             encoding,

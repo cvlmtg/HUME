@@ -13,7 +13,8 @@ use crate::command_procs::{MappableProc, TypedProc};
 /// argument, `(buffers)`'s list, `open-buffer!`'s return). A builtin that
 /// needs pane state (selections, viewport, focus) fails fast on `None`
 /// rather than guessing one. A builtin that needs only the buffer
-/// ([`Self::buffer`]) works the same either way.
+/// ([`Self::buffer`]) works the same either way. A text edit acts through
+/// the pane when the value carries one and through no pane otherwise.
 ///
 /// Private fields: the only mints are [`Self::with_pane`]/[`Self::buffer_only`],
 /// so a value can't be assembled from a bid and an unrelated pid that never

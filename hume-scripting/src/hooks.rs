@@ -26,11 +26,16 @@ use crate::attribution::EntryId;
 /// editor decides what an event's key is: an LSP notification's method).
 /// `None` fires for every event of the name. The filter lives on the entry
 /// so rollback removes it together with the handler.
+///
+/// `takes_done` is set for a handler of a held event
+/// (`EventHost::held_event_arg_count`) that has one parameter more than the
+/// event has args: it takes `done` last.
 #[derive(Debug)]
 pub(crate) struct HookEntry {
     pub(crate) owner: Option<EntryId>,
     pub(crate) proc: SteelVal,
     pub(crate) keys: Option<Box<[String]>>,
+    pub(crate) takes_done: bool,
 }
 
 impl HookEntry {
@@ -57,11 +62,17 @@ impl HookRegistry {
         owner: Option<EntryId>,
         proc: SteelVal,
         keys: Option<Box<[String]>>,
+        takes_done: bool,
     ) {
         self.handlers
             .entry(name.to_string())
             .or_default()
-            .push(HookEntry { owner, proc, keys });
+            .push(HookEntry {
+                owner,
+                proc,
+                keys,
+                takes_done,
+            });
     }
 
     /// Every entry for `name`, keyed or not, in registration order.

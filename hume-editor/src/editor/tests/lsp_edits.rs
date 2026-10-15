@@ -1094,3 +1094,84 @@ fn server_initiated_apply_edit_answers_false_with_a_reason_on_bad_uri() {
     assert_eq!(result["applied"], serde_json::json!(false));
     assert!(result["failureReason"].is_string());
 }
+
+// ── apply-text-edits! on a value with no pane ───────────────────────────────
+
+/// Defines `:go`, which sends `test/textEdits` and applies the response
+/// through the buffer a pane shows, as `(buffers)` lists it: a value that
+/// names a buffer and no pane.
+fn define_go_without_a_pane(ed: &mut Editor, tmp: &std::path::Path) {
+    run(
+        ed,
+        tmp,
+        r#"(define (shown-buffer)
+             (car (filter (lambda (b) (pair? (buffer-panes b))) (buffers))))
+           (define-typed-command! "go" "" (lambda (bid)
+             (lsp-request! bid "test/textEdits" (hash) (lambda (err res)
+               (apply-text-edits! (shown-buffer) (json-list res))))))"#,
+    );
+}
+
+fn apply_wire_text_edits_without_a_pane(ed: &mut Editor, tmp: &std::path::Path) {
+    define_go_without_a_pane(ed, tmp);
+    type_cmd(ed, ":go");
+    ed.drain_lsp();
+    ed.settle();
+}
+
+#[test]
+fn apply_text_edits_without_a_pane_edits_the_buffer_and_carries_the_pane_cursor() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = text_edits_editor(
+        tmp.path(),
+        "ab-[c]>def\n",
+        vec![wire_edit((0, 0), (0, 0), "ZZ")],
+    );
+
+    apply_wire_text_edits_without_a_pane(&mut ed, tmp.path());
+
+    assert_eq!(ed.doc().text().to_string(), "ZZabcdef\n");
+    assert_eq!(ed.current_view().primary().head().offset(), co(4));
+}
+
+#[test]
+fn undo_after_an_edit_without_a_pane_restores_the_text_with_the_cursor_on_the_first_change() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = text_edits_editor(
+        tmp.path(),
+        "ab-[c]>def\n",
+        vec![wire_edit((0, 1), (0, 2), "Y")],
+    );
+    apply_wire_text_edits_without_a_pane(&mut ed, tmp.path());
+    assert_eq!(ed.doc().text().to_string(), "aYcdef\n");
+
+    ed.handle_key(key('u'));
+
+    assert_eq!(ed.doc().text().to_string(), "abcdef\n");
+    assert_eq!(ed.current_view().primary().head().offset(), co(1));
+}
+
+#[test]
+fn apply_text_edits_without_a_pane_is_refused_while_a_session_is_open() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = text_edits_editor(
+        tmp.path(),
+        "-[a]>bcdef\n",
+        vec![wire_edit((0, 0), (0, 0), "ZZ")],
+    );
+    define_go_without_a_pane(&mut ed, tmp.path());
+    type_cmd(&mut ed, ":go");
+    ed.handle_key(key('i'));
+
+    ed.drain_lsp();
+    ed.settle();
+
+    assert_eq!(ed.doc().text().to_string(), "abcdef\n");
+    assert!(
+        ed.state
+            .message_log
+            .entries()
+            .any(|e| e.severity == Severity::Error && e.text.contains("insert/paste session")),
+        "the refusal must be reported"
+    );
+}

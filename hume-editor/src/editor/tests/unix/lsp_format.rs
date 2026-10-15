@@ -8,7 +8,7 @@
 use std::path::Path;
 
 use super::*;
-use crate::editor::tests::lsp_rig::stop_server;
+use crate::editor::tests::lsp_rig::{LspRig, stop_server};
 use hume_lsp::backend::ServerId;
 use hume_lsp::test_util::RecordingLspBackend;
 
@@ -679,4 +679,213 @@ fn loading_the_plugin_registers_no_save_hook() {
         before,
         "loading core:lsp must not register an on-buffer-save formatter: v1 is manual :lsp-fmt only"
     );
+}
+
+// ── lsp-fmt-document, as format-on-save drives it ────────────────────────────
+
+const FORMAT_ON_SAVE: &str = r#"(register-hook! 'on-before-buffer-save
+  (lambda (pane done) (call! "lsp-fmt-document" pane done)))"#;
+
+const FORMATTED: &str = "formatted1\nformatted2\nformatted3\n";
+
+fn save_rig(
+    tmp: &Path,
+    configure: impl FnOnce(&mut RecordingLspBackend, ServerId),
+) -> (LspRig, RealRuntimeDirs) {
+    let (mut rig, guard) = core_lsp_rig_configured(
+        tmp,
+        &marked_at_start(THREE_LINES),
+        range_caps(),
+        None,
+        configure,
+    );
+    rig.eval(FORMAT_ON_SAVE);
+    (rig, guard)
+}
+
+fn on_disk(rig: &LspRig) -> String {
+    std::fs::read_to_string(rig.root.join("src/main.rs")).unwrap()
+}
+
+fn save(rig: &mut LspRig) {
+    type_cmd(&mut rig.ed, ":w");
+    rig.ed.settle();
+    rig.ed.drain_lsp();
+    rig.ed.settle();
+}
+
+#[test]
+fn format_on_save_writes_the_formatted_text() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut rig, _guard) = save_rig(tmp.path(), |backend, _sid| {
+        backend.respond_to(
+            "textDocument/formatting",
+            serde_json::json!([text_edit(0, 0, 3, 0, FORMATTED)]),
+        );
+    });
+    assert_eq!(on_disk(&rig), THREE_LINES);
+
+    save(&mut rig);
+
+    assert_eq!(on_disk(&rig), FORMATTED);
+    assert!(!rig.ed.state.has_unsaved_changes(rig.bid));
+}
+
+#[test]
+fn format_on_save_formats_the_whole_document_whatever_is_selected() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut rig, _guard) = save_rig(tmp.path(), |backend, _sid| {
+        backend.respond_to(
+            "textDocument/formatting",
+            serde_json::json!([text_edit(0, 0, 3, 0, FORMATTED)]),
+        );
+        backend.respond_to(
+            "textDocument/rangeFormatting",
+            serde_json::json!([text_edit(0, 0, 1, 0, "WRONG_RANGE_PATH\n")]),
+        );
+    });
+    select_full_line_1(&mut rig.ed);
+
+    save(&mut rig);
+
+    assert_eq!(on_disk(&rig), FORMATTED);
+}
+
+#[test]
+fn format_on_save_writes_unformatted_text_when_the_server_fails() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut rig, _guard) = save_rig(tmp.path(), |backend, _sid| {
+        backend.fail_with("textDocument/formatting", -32603, "boom");
+    });
+    rig.ed.handle_key(key('i'));
+    rig.ed.handle_key(key('x'));
+    rig.ed.handle_key(key_esc());
+
+    save(&mut rig);
+
+    assert_eq!(on_disk(&rig), format!("x{THREE_LINES}"));
+}
+
+#[test]
+fn format_on_save_writes_when_no_server_is_attached() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut rig, _guard) = save_rig(tmp.path(), |_backend, _sid| {});
+    stop_server(&mut rig.ed, "rust-analyzer");
+    rig.ed.handle_key(key('i'));
+    rig.ed.handle_key(key('x'));
+    rig.ed.handle_key(key_esc());
+
+    save(&mut rig);
+
+    assert_eq!(on_disk(&rig), format!("x{THREE_LINES}"));
+}
+
+#[test]
+fn lsp_fmt_document_formats_only_the_ranges_it_is_given() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut rig, _guard) = save_rig(tmp.path(), |backend, _sid| {
+        backend.respond_to(
+            "textDocument/rangeFormatting",
+            serde_json::json!([text_edit(0, 0, 1, 0, "RANGE_FORMATTED\n")]),
+        );
+        backend.respond_to(
+            "textDocument/formatting",
+            serde_json::json!([text_edit(0, 0, 3, 0, "WRONG_WHOLE_BUFFER_PATH\n")]),
+        );
+    });
+    rig.eval(
+        r#"(define-typed-command! "fmt-ranges" ""
+             (lambda (pane)
+               (call! "lsp-fmt-document" pane #f
+                      (hash-ref (lsp-linewise-ranges-params pane) "ranges"))))"#,
+    );
+    select_full_line_1(&mut rig.ed);
+
+    type_cmd(&mut rig.ed, ":fmt-ranges");
+    rig.ed.settle();
+    rig.ed.drain_lsp();
+    rig.ed.settle();
+
+    assert_eq!(
+        rig.ed.doc().text().to_string(),
+        "RANGE_FORMATTED\nline2\nline3\n"
+    );
+}
+
+#[test]
+fn format_on_save_formats_a_buffer_no_pane_shows() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut rig, _guard) = save_rig(tmp.path(), |backend, _sid| {
+        backend.respond_to(
+            "textDocument/formatting",
+            serde_json::json!([text_edit(0, 0, 3, 0, FORMATTED)]),
+        );
+    });
+    rig.ed.handle_key(key('i'));
+    rig.ed.handle_key(key('x'));
+    rig.ed.handle_key(key_esc());
+    type_cmd(
+        &mut rig.ed,
+        &format!(":e {}", rig.root.join("other.txt").display()),
+    );
+    assert_ne!(
+        rig.ed.focused_buffer_id(),
+        rig.bid,
+        "no pane may show the buffer"
+    );
+
+    type_cmd(&mut rig.ed, ":wa");
+    rig.ed.settle();
+    rig.ed.drain_lsp();
+    rig.ed.settle();
+
+    assert_eq!(on_disk(&rig), FORMATTED);
+}
+
+#[test]
+fn a_format_reply_after_the_timeout_formats_the_saved_buffer() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut rig, _guard) = save_rig(tmp.path(), |backend, _sid| {
+        backend.respond_to(
+            "textDocument/formatting",
+            serde_json::json!([text_edit(0, 0, 3, 0, FORMATTED)]),
+        );
+    });
+    type_cmd(&mut rig.ed, ":set global before-save-timeout-ms=1");
+    rig.ed.handle_key(key('i'));
+    rig.ed.handle_key(key('x'));
+    rig.ed.handle_key(key_esc());
+
+    type_cmd(&mut rig.ed, ":w");
+    rig.ed.settle();
+    std::thread::sleep(std::time::Duration::from_millis(30));
+    rig.ed.settle();
+    assert_eq!(on_disk(&rig), format!("x{THREE_LINES}"));
+
+    rig.ed.drain_lsp();
+    rig.ed.settle();
+
+    assert_eq!(rig.ed.doc().text().to_string(), FORMATTED);
+    assert!(rig.ed.state.has_unsaved_changes(rig.bid));
+}
+
+#[test]
+fn undo_after_format_on_save_puts_the_requesting_pane_cursor_back() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut rig, _guard) = save_rig(tmp.path(), |backend, _sid| {
+        backend.respond_to(
+            "textDocument/formatting",
+            serde_json::json!([text_edit(0, 0, 3, 0, FORMATTED)]),
+        );
+    });
+    rig.ed.handle_key(key('j'));
+    let head = rig.ed.current_view().primary().head().offset();
+    assert_ne!(head, hume_rope::offset::CharOffset::default());
+
+    save(&mut rig);
+    assert_eq!(on_disk(&rig), FORMATTED);
+    rig.ed.handle_key(key('u'));
+
+    assert_eq!(rig.ed.doc().text().to_string(), THREE_LINES);
+    assert_eq!(rig.ed.current_view().primary().head().offset(), head);
 }

@@ -4,7 +4,7 @@
   #:commands '("lsp-hover" "lsp-goto-definition" "lsp-goto-declaration"
                "lsp-goto-type-definition" "lsp-goto-implementation" "lsp-references"
                "goto-next-diagnostic" "goto-prev-diagnostic"
-               "lsp-rename" "lsp-fmt" "lsp-code-actions")
+               "lsp-rename" "lsp-fmt" "lsp-fmt-document" "lsp-code-actions")
   #:typed-commands '("diagnostics" "format-source"
                       "lsp-status" "lsp-stop" "lsp-restart"
                       "toggle-inlay-hints"))

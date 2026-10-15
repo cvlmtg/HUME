@@ -29,7 +29,7 @@ impl DocHelper {
         let (new_sels, _cs) = self.buf.apply_edit(
             BufferId::default(),
             &mut DetachedStores::default().stores(),
-            PaneId::default(),
+            Some(PaneId::default()),
             sels,
             cmd,
         );
@@ -1131,7 +1131,7 @@ fn an_edit_leaves_the_acting_panes_selections_to_its_caller() {
     let before = stores.selections(pane, id);
 
     d.buf
-        .apply_edit(id, &mut stores.stores(), pane, d.sels.clone(), |s| {
+        .apply_edit(id, &mut stores.stores(), Some(pane), d.sels.clone(), |s| {
             insert_char(s, 'x')
         });
 
@@ -1146,7 +1146,7 @@ fn an_edit_carries_the_selections_of_every_other_pane() {
     d.buf.apply_edit(
         id,
         &mut stores.stores(),
-        PaneId::default(),
+        Some(PaneId::default()),
         d.sels.clone(),
         |s| insert_char(s, 'x'),
     );

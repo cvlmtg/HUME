@@ -93,6 +93,10 @@ fn live_pane_builtins_raise_on_a_closed_buffer_through_real_registration() {
         ),
         ("viewport-range", "(viewport-range (focused-pane))"),
         (
+            "lsp-document-params",
+            "(lsp-document-params (focused-pane))",
+        ),
+        (
             "lsp-position-params",
             "(lsp-position-params (focused-pane))",
         ),

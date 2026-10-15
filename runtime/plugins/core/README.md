@@ -97,7 +97,9 @@ mutating a captured reference to the old map.
 Some hooks (`on-buffer-open`, `on-text-changed`, `on-buffer-close`, `on-diagnostics-changed`)
 hand their callback a pane-less value that identifies a buffer but names no pane showing
 it. A builtin that needs a pane (to read the cursor, the viewport, or the live selection
-set) raises on a pane-less value.
+set) raises on a pane-less value. `apply-text-edits!`, `lsp-document-params`,
+`buffer-generation`, `get-buffer-option` and `lsp-request!` need only the buffer and work
+on one.
 
 The standard resolution is `(buffer-panes pane)`: `car` of the result if some pane shows
 the buffer, otherwise a documented fallback (line 0, or skip the operation) if it isn't

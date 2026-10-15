@@ -54,6 +54,10 @@ impl<'a> LspHost for EditorHostImpl<'a> {
         Ok(params::position_params(self.state, self.view, t))
     }
 
+    fn lsp_document_uri(&self, id: BufferId) -> Option<String> {
+        params::document_uri(self.state, id)
+    }
+
     fn track_position(&mut self, pane: PaneHandle) -> Result<HostToken, String> {
         let t = self.command_pane(pane)?;
         let bid = t.bid(self.view);

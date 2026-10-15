@@ -332,7 +332,8 @@ Available hooks and their lambda signatures. Every `pane` argument below is the 
 |------|------------|-------------|
 | `on-buffer-open` | A buffer is opened | `(pane)` |
 | `on-buffer-close` | A buffer is about to close | `(pane)` |
-| `on-buffer-save` | A buffer is saved | `(pane)` |
+| `on-before-buffer-save` | A buffer is about to be written to its file | `(pane)` or `(pane done)` |
+| `on-buffer-save` | A buffer has been written to its file | `(pane)` |
 | `on-buffer-enter` | The focused buffer changes | `(pane)` |
 | `on-focus-gained` | The terminal regains focus | `()` |
 | `on-mode-change` | The editor mode changes | `(old new)`: mode symbols (`'normal`, `'insert`, `'extend`, `'command`, `'search`, `'sift`); compare with `equal?` |
@@ -347,6 +348,8 @@ Available hooks and their lambda signatures. Every `pane` argument below is the 
 | `on-option-change` | A global setting is changed (`:set global`, `set-option!`, `:theme`) | `(key value)`: `key` is a string, `value` the option's new value as `get-option` returns it |
 | `on-text-changed` | A buffer's text changes | `(pane)` |
 | `on-undo-history-changed` | A buffer's undo history changes: an edit is recorded, an undo, redo or jump moves to another revision, or a write changes which revision is saved | `(pane)`: pull the tree with `buffer-undo-tree` |
+
+`on-before-buffer-save` fires for `:w`, `:wq` and `:wa`, and the file is written once every handler has finished. A handler taking `(pane)` has finished when it returns. A handler taking `(pane done)` has finished when it calls `(done)`, so it can wait for a reply that arrives later, such as a language server's. Call `done` on every path, failures included. A handler that raises an error is reported and counts as finished. If a handler hasn't finished after `before-save-timeout-ms`, the file is written anyway and a warning says so. Closing the buffer while its save waits drops the save, and `:reload-config` lets it go ahead. `pane` is the pane the save was asked from, or a value with no pane when that pane doesn't show the buffer (`:wa` on a hidden buffer). A write that doesn't reach the buffer's own file (a read-only buffer, a buffer with no path) doesn't fire it. [Format on save](lsp.md#format-on-save) is an example.
 
 `on-buffer-open` and `on-buffer-close` always fire as a pair for a given buffer: a buffer opened and closed within the same command never announces either one.
 
@@ -363,10 +366,6 @@ For a per-buffer override, `(set-buffer-option! pane "option" value)` sets an op
 A few more examples:
 
 ```scheme
-; format on save
-(register-hook! 'on-buffer-save
-  (lambda (pane) (call! "lsp-fmt" pane)))
-
 ; react to diagnostics
 (register-hook! 'on-diagnostics-changed
   (lambda (pane)

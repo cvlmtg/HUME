@@ -20,6 +20,7 @@ use self::keymap::Keymap;
 
 mod async_job;
 mod async_source;
+mod before_save;
 mod decoration_providers;
 mod edit_session;
 mod error;
@@ -401,6 +402,9 @@ pub(crate) struct EditorState {
     /// `BufEnter`). The single observation baseline for the focus diff; see
     /// `Editor::detect_buffer_enter`.
     pub(super) last_entered_buffer: Option<BufferId>,
+    /// Writes parked until their buffer's `on-before-buffer-save` handlers
+    /// finish; see `before_save`.
+    pub(in crate::editor) pending_writes: before_save::PendingWrites,
     /// The mode observed as of the last `drain_pending_work` pass: the
     /// baseline `Editor::detect_mode_change` diffs `mode()` against to raise
     /// `OnModeChange`, the same observation-point shape `last_entered_buffer`
@@ -498,6 +502,7 @@ impl EditorState {
             macros: macros::MacroState::default(),
             message_logged_this_input: false,
             last_entered_buffer: None,
+            pending_writes: before_save::PendingWrites::default(),
             last_observed_mode: Mode::Normal,
             mouse_drag: None,
             cwd: PathBuf::new(),

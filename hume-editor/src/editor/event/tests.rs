@@ -14,6 +14,7 @@ fn all_variants() -> Vec<EditorEvent> {
         EditorEvent::OnBufferOpen { buffer },
         EditorEvent::OnBufferClose { buffer },
         EditorEvent::OnBufferSave { buffer },
+        EditorEvent::OnBeforeBufferSave { target },
         EditorEvent::OnBufferEnter { target },
         EditorEvent::OnFocusGained,
         EditorEvent::OnModeChange {
@@ -108,6 +109,24 @@ fn every_variant_has_a_name_and_matches_the_known_names_table() {
     );
 }
 
+/// A held event is a real event, and its arg count is the one its own
+/// `into_steel_args` produces.
+#[test]
+fn held_events_name_real_events_with_their_arg_count() {
+    let buffer = BufferId::default();
+    let held = EditorEvent::OnBeforeBufferSave {
+        target: PaneHandle::buffer_only(buffer),
+    };
+    assert_eq!(
+        held_event_arg_count(held.name()),
+        Some(held.into_steel_args().len())
+    );
+    for (name, _) in HELD_EVENTS {
+        assert!(EVENT_NAMES.contains(name), "{name} is not an event");
+    }
+    assert_eq!(held_event_arg_count("on-buffer-save"), None);
+}
+
 // ── into_steel_args shape table ──────────────────────────────────────────────────
 //
 // Expected values are written by hand from the documented Steel contract,
@@ -161,6 +180,21 @@ fn on_buffer_enter_carries_its_pane() {
     let args = event.into_steel_args();
     assert_eq!(args.len(), 1);
     assert_steel_pane(&args, 0, target);
+}
+
+/// `OnBeforeBufferSave` carries the pane that asked for the write, or no
+/// pane when the write was not asked for through a pane showing the buffer.
+#[test]
+fn on_before_buffer_save_passes_its_target_through() {
+    let buffer = BufferId::default();
+    for target in [
+        PaneHandle::with_pane(buffer, sample_pane_id()),
+        PaneHandle::buffer_only(buffer),
+    ] {
+        let args = EditorEvent::OnBeforeBufferSave { target }.into_steel_args();
+        assert_eq!(args.len(), 1);
+        assert_steel_pane(&args, 0, target);
+    }
 }
 
 #[test]

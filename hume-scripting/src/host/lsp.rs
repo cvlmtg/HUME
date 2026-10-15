@@ -85,6 +85,10 @@ pub trait LspHost {
     /// `pane`'s buffer.
     fn lsp_position_params(&self, pane: PaneHandle) -> Result<Option<PositionParams>, String>;
 
+    /// The document URI of buffer `id`. `None` for a closed buffer or one
+    /// with no path. Reads only the buffer, so any `PaneHandle` works.
+    fn lsp_document_uri(&self, id: BufferId) -> Option<String>;
+
     /// `(track-position! pane)`: remembers the primary cursor head in
     /// `pane`'s own pane, carried through every edit, and returns the token
     /// naming it. `Err` (kind-B fail-fast) when `pane` carries no pane, a

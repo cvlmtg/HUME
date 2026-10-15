@@ -56,6 +56,7 @@ plugin that calls `register-lsp-server!` works with `core:lsp` the same way.
 | `lsp-code-actions` | Show code actions for the cursor or selection | `z a` |
 | `goto-next-diagnostic`, `goto-prev-diagnostic` | Jump to the next or previous diagnostic and show its message | `g n`, `g p` |
 | `lsp-fmt` | Format the buffer or the linewise selections | none |
+| `lsp-fmt-document` | Format the whole buffer, or the ranges it is given, and call `done`; for `on-before-buffer-save` handlers | none |
 | `:format-source` | `lsp-fmt` from the command line | none |
 | `:diagnostics` | List this buffer's diagnostics in a drawer | none |
 | `:toggle-inlay-hints` | Show or hide inlay hints in the current buffer | none |

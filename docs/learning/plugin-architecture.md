@@ -151,7 +151,8 @@ The full set of lifecycle hooks, for reference:
 |------|-------|
 | `on-buffer-open` | A buffer is opened |
 | `on-buffer-close` | A buffer is closed |
-| `on-buffer-save` | A buffer is written to disk |
+| `on-before-buffer-save` | A buffer is about to be written to disk; the write waits for the handlers |
+| `on-buffer-save` | A buffer has been written to disk |
 | `on-buffer-enter` | The focused buffer changes |
 | `on-focus-gained` | The terminal regains focus |
 | `on-mode-change` | The editor mode changes (e.g. entering insert) |
@@ -237,13 +238,13 @@ The only cross-plugin surface is command dispatch. One plugin invokes another by
 a registered command by name:
 
 ```scheme
-; alice/formatter/plugin.scm — registers a command
-(define-command! "fmt-buffer" "Format current buffer" (lambda () ...))
+; alice/linter/plugin.scm — registers a command
+(define-command! "lint-buffer" "Lint current buffer" (lambda () ...))
 
-; bob/on-save-format/plugin.scm — calls it
+; bob/on-save-lint/plugin.scm — calls it
 (register-hook! 'on-buffer-save
   (lambda (pane)
-    (call! "fmt-buffer")))
+    (call! "lint-buffer")))
 ```
 
 `call!` dispatches by command name. If the command belongs to a lazy plugin that hasn't
@@ -270,9 +271,9 @@ dependent plugin is activated.
 
 ```scheme
 ; init.scm — load dependencies before dependents
-(load-plugin! "alice/formatter")
-(declare-plugin! "bob/on-save-format" #:events '(on-buffer-save))
-(load-plugin! "bob/on-save-format")
+(load-plugin! "alice/linter")
+(declare-plugin! "bob/on-save-lint" #:events '(on-buffer-save))
+(load-plugin! "bob/on-save-lint")
 ```
 
 `:plugin-status` (alias `:plugins`) lists every plugin named in `init.scm` with its current state

@@ -31,11 +31,14 @@ pub struct WireTextEdit {
 /// goto), not the focused one. A response landing after the user has since
 /// switched panes must still edit or navigate the pane the request was
 /// actually made from. `Err` (fail-fast) when `pane` carries no pane, a
-/// closed one, or one that no longer shows its buffer.
+/// closed one, or one that no longer shows its buffer. The exception is
+/// [`Self::apply_text_edits`], which also takes a value with no pane.
 pub trait EditHost {
     /// `(apply-text-edits! pane edits #:expect-generation gen)`: `edits` is
     /// a list of wire-coordinate ranges plus replacement text. Applied as
-    /// one undo step.
+    /// one undo step. A `pane` that names a pane edits through it; one that
+    /// names only a buffer edits that buffer for no pane, carrying every
+    /// pane's selections and refusing while any session is open on it.
     fn apply_text_edits(
         &mut self,
         pane: PaneHandle,

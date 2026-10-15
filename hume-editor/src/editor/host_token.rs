@@ -3,10 +3,12 @@
 //! minted it (`PopupLayer`, `MenuLayer`, `DrawerLayer`, `PickerSession`), by
 //! every position a script tracks (`TrackedPositions`), and by every
 //! completion `Invocation` (a handle scoping a source's answer to the one
-//! call that asked for it): a late async callback racing a widget the user
-//! already closed or replaced, a position already released, or a source
-//! answering a call a later keystroke superseded, reads as a no-op rather
-//! than reaching the wrong instance. A single global counter is a superset of several private
+//! call that asked for it), and by every hold a handler of
+//! `on-before-buffer-save` takes on a parked write: a late async callback
+//! racing a widget the user already closed or replaced, a position already
+//! released, a source answering a call a later keystroke superseded, or a
+//! `done` called after its write went ahead, reads as a no-op rather than
+//! reaching the wrong instance. A single global counter is a superset of several private
 //! ones: it still guarantees uniqueness (no two tokens minted anywhere, of
 //! any kind, are ever equal), so a value one widget mints can never alias
 //! another kind's live token either.

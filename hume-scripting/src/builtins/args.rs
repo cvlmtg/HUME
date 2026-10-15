@@ -214,6 +214,22 @@ pub(crate) fn token_arg(val: SteelVal, ctx_name: &str) -> Result<HostToken, Stee
         .map_or(HostToken::NONE, |n| HostToken::from_raw(n as u64)))
 }
 
+/// A closure's parameter count and whether it also takes a rest parameter;
+/// `None` for a callable whose shape can't be read (a builtin).
+pub(crate) fn closure_shape(proc: &SteelVal) -> Option<(usize, bool)> {
+    match proc {
+        SteelVal::Closure(gc) => Some((gc.arity(), gc.is_multi_arity())),
+        _ => None,
+    }
+}
+
+/// A command procedure's `(arity, is_variadic)`. A builtin's arity is not
+/// introspectable, so it counts as 0-arg non-variadic: keymap injection then
+/// passes no leading args rather than blindly injecting 2.
+pub(crate) fn command_shape(proc: &SteelVal) -> (u16, bool) {
+    closure_shape(proc).map_or((0, false), |(arity, rest)| (arity as u16, rest))
+}
+
 /// A server value, as hooks, `lsp-servers` and results hand it out.
 pub(crate) fn server_arg(val: &SteelVal, ctx_name: &str) -> Result<crate::ServerRef, SteelErr> {
     crate::ServerRef::from_steel_val(val)

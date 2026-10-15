@@ -23,6 +23,7 @@ pub(super) enum TimerPayload {
     SteelThunk(SteelVal),
     ViewportDebounce(PaneId),
     DiagnosticPullDebounce(BufferId),
+    BeforeSaveTimeout(BufferId),
 }
 
 /// Disjoint-borrow handle over `Editor`'s timer wheel + payload table,
@@ -76,6 +77,7 @@ impl Editor {
                     self.diagnostic_pull_debounce.remove(&bid);
                     self.state.lsp_pull_diagnostics(bid);
                 }
+                Some(TimerPayload::BeforeSaveTimeout(bid)) => self.before_save_timed_out(bid),
                 None => {}
             }
         }

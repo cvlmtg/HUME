@@ -152,48 +152,47 @@ fn build_changeset_from_char_edits(
 
 /// Applies a pre-built `ChangeSet` to `bid` as one undo step, through the
 /// same chokepoint every native edit command uses
-/// (`doc_ops::apply_doc_edit`: selection propagation, syntax reparse,
+/// (`doc_ops::apply_changes`: selection propagation, syntax reparse,
 /// queued LSP `didChange`, all for free). `bid` need not be the buffer
 /// shown in the focused pane; `pane_state::ensure` seeds a (possibly
 /// invisible) selection entry for it first, matching how any buffer opened
 /// in the background already gets one. Returns the applied `ChangeSet`
-/// (cloned before the move into `apply_doc_edit`'s closure) so a caller that
+/// (cloned before the move into `apply_changes`) so a caller that
 /// needs to map further positions through this exact edit (completion's
 /// resolve path, mapping a *pre*-accept response's positions forward) can
 /// do so without rebuilding it.
 fn commit_changeset(
     state: &mut EditorState,
     panes: &PanePool,
-    pid: PaneId,
+    acting: Option<PaneId>,
     bid: BufferId,
     cs: ChangeSet,
 ) -> Result<ChangeSet, String> {
-    pane_state::try_ensure(&mut state.panes.entries, &state.buffers, panes, pid, bid)?;
     let cs_for_return = cs.clone();
+    if let Some(pid) = acting {
+        pane_state::try_ensure(&mut state.panes.entries, &state.buffers, panes, pid, bid)?;
+    }
     let (buffers, mut stores) = state.edit_parts();
-    doc_ops::apply_doc_edit(buffers, &mut stores, pid, bid, move |s| {
-        hume_editing::edit::Edited::from_changes(s, cs)
-            .expect("cs built for this buffer's text, keeping its final newline")
-    })
-    .map_err(|e| e.to_string())?;
+    doc_ops::apply_changes(buffers, &mut stores, acting, bid, cs).map_err(|e| e.to_string())?;
     Ok(cs_for_return)
 }
 
 /// `(apply-text-edits! pane edits #:expect-generation gen)`. `encoding` is
 /// the host layer's own resolve: every entry in `edits` decoded from its
-/// own tagged `JsonHandle`, checked there to all agree. `pid` is the
-/// already-resolved invocation pane (see `commands::CommandPane::resolve`).
+/// own tagged `JsonHandle`, checked there to all agree. `acting` is the
+/// already-resolved invocation pane (see `commands::EditTarget`), `None`
+/// for an edit made through a buffer no pane was named for.
 pub(in crate::editor) fn apply_text_edits(
     state: &mut EditorState,
     panes: &PanePool,
-    pid: PaneId,
+    acting: Option<PaneId>,
     bid: BufferId,
     edits: Vec<lsp_types::TextEdit>,
     expect_gen: Option<u64>,
     encoding: PositionEncoding,
 ) -> Result<(), String> {
     let cs = build_edit_changeset(state, bid, &edits, expect_gen, encoding)?;
-    commit_changeset(state, panes, pid, bid, cs)?;
+    commit_changeset(state, panes, acting, bid, cs)?;
     Ok(())
 }
 
@@ -269,7 +268,7 @@ pub(in crate::editor) fn commit_char_edits(
     }
     let buf = checked_buffer(state, bid, None)?;
     let cs = build_changeset_from_char_edits(buf.text(), char_edits)?;
-    Ok(Some(commit_changeset(state, panes, pid, bid, cs)?))
+    Ok(Some(commit_changeset(state, panes, Some(pid), bid, cs)?))
 }
 
 pub(in crate::editor) struct WorkspaceEditSummary {
@@ -410,7 +409,7 @@ pub(in crate::editor) fn apply_workspace_edit(
         // earlier file in this same batch already applied. See this
         // function's own doc for why that's the one thing a multi-file edit
         // must not do.
-        crate::editor::doc_ops::check_no_conflicting_session(state.open_session(), pid, bid)
+        crate::editor::doc_ops::check_no_conflicting_session(state.open_session(), Some(pid), bid)
             .map_err(|e| format!("{}: {e}", display()))?;
         if planned.iter().any(|(planned_bid, _)| *planned_bid == bid) {
             return Err(format!(
@@ -425,7 +424,7 @@ pub(in crate::editor) fn apply_workspace_edit(
     }
     let buffers_modified = planned.len();
     for (bid, cs) in planned {
-        commit_changeset(state, &view.panes, pid, bid, cs)?;
+        commit_changeset(state, &view.panes, Some(pid), bid, cs)?;
     }
     Ok(WorkspaceEditSummary { buffers_modified })
 }

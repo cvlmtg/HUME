@@ -100,6 +100,41 @@ impl CommandPane {
     }
 }
 
+/// What a text edit made from a script acts through: the pane its handle
+/// names, or, for a handle that names no pane, the buffer alone. A handle
+/// that does name a pane is a claim about a view and resolves as
+/// [`CommandPane::resolve`] does, so a stale pane is an error rather than a
+/// quiet fall back to the buffer.
+#[derive(Clone, Copy, Debug)]
+pub(in crate::editor) enum EditTarget {
+    Pane(CommandPane),
+    Buffer,
+}
+
+impl EditTarget {
+    pub(in crate::editor) fn resolve(
+        state: &EditorState,
+        view: &EngineView,
+        handle: PaneHandle,
+    ) -> Result<Self, TargetError> {
+        if handle.pane().is_some() {
+            return CommandPane::resolve(state, view, handle).map(Self::Pane);
+        }
+        if state.buffers.try_get(handle.buffer()).is_none() {
+            return Err(TargetError::Closed);
+        }
+        Ok(Self::Buffer)
+    }
+
+    /// The pane the edit belongs to, if it has one.
+    pub(in crate::editor) fn pid(self) -> Option<PaneId> {
+        match self {
+            Self::Pane(pane) => Some(pane.pid()),
+            Self::Buffer => None,
+        }
+    }
+}
+
 /// A [`CommandPane`] proven to be the focused pane at the
 /// moment it was minted. The single admission point for focus-bound state
 /// (the open Insert/paste session, the sticky Extend flag, dot-repeat), so a
@@ -742,7 +777,7 @@ pub(in crate::editor) fn run_body(
     match outcome {
         Ok(()) => true,
         Err(e) => {
-            state.report(e.severity(), e.message().to_owned());
+            state.report_error(&e);
             false
         }
     }

@@ -107,7 +107,7 @@ fn apply_normal_mode_paste(ed: &mut Editor, text: &str) {
     if let Err(e) = super::super::doc_ops::apply_doc_edit(buffers, &mut stores, focused, buf, |s| {
         hume_ops::edit::insert_str(s, text)
     }) {
-        ed.state.report(e.severity(), e.message().to_owned());
+        ed.state.report_error(&e);
     }
 }
 

@@ -353,9 +353,9 @@ impl Editor {
         effective_args: Vec<steel::rvals::SteelVal>,
         inline_output: bool,
     ) -> bool {
-        let Some(scripting) = self.scripting.as_mut() else {
+        if self.scripting.is_none() {
             return false;
-        };
+        }
 
         // Alt-screen bracketing for inline-output commands is lazy: entering
         // the alt-screen and printing the running banner happens on the
@@ -379,14 +379,7 @@ impl Editor {
         }
 
         let result = {
-            let mut impl_host = crate::editor::host_impl::EditorHostImpl::full(
-                &mut self.state,
-                &mut self.view,
-                &mut self.timer_wheel,
-                &mut self.timer_payloads,
-                self.tui.clone(),
-                self.kitty_enabled,
-            );
+            let (scripting, mut impl_host) = self.scripting_with_host().expect("checked above");
             scripting.call_steel_cmd(proc, effective_args, &mut impl_host)
         };
 

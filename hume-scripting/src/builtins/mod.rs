@@ -173,6 +173,10 @@ macro_rules! builtins {
 // frame is never taken for this call's own. No with-handler (hazard above): a
 // raising body skips the restore; run_steel_session truncates to zero at end.
 //
+// %call-held-handler: starts a held event's handler that takes `done`, with
+// the event's args followed by a thunk that releases hold `hold`.
+// ScriptingHost::fire_held_hook calls every such handler through it.
+//
 // lsp-request!: callback is (lambda (err result)), one of them non-#f; err is
 // (hash 'kind 'message ['code]).
 // lsp-request-all!: callback is (lambda (err results)), results one hash per
@@ -417,6 +421,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         plain "lsp-server-name" lsp::lsp_server_name(server: SteelVal);
         cmd  "lsp-server-status" lsp::lsp_server_status();
         open "lsp-server-registered?" lsp::lsp_server_registered(name: SteelVal);
+        cmd "lsp-document-params" lsp::lsp_document_params(pane: args::LivePane);
         cmd "lsp-position-params" lsp::lsp_position_params(pane: args::LivePane);
         cmd "track-position!" lsp::track_position(pane: args::LivePane);
         cmd "tracked-position-params" lsp::tracked_position_params(token: SteelVal);
@@ -496,6 +501,8 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "picker-close!" ui::picker_close(token: SteelVal);
         // Backs live-picker!'s #:command validation only. See args::is_callable's doc.
         plain "%callable?" args::is_callable(val: SteelVal);
+
+        cmd "%held-done" hooks::held_done(hold: SteelVal);
 
         // Timers: not LSP-specific, any plugin can schedule one.
         cmd "after!" timers::after(ms: SteelVal, thunk: SteelVal);

@@ -578,6 +578,7 @@ pub(crate) fn register_lsp_notification_hook(
         LSP_NOTIFICATION_EVENT,
         proc,
         Some(methods.into_boxed_slice()),
+        false,
     );
     Ok(SteelVal::Void)
 }
@@ -733,6 +734,19 @@ fn params_result<T>(
         Some(Err(e)) => Err(generic_err(e)),
         Some(Ok(params)) => Ok(params.map_or(SteelVal::BoolV(false), to_steel)),
     }
+}
+
+/// `(lsp-document-params pane)` → `{"textDocument" {"uri"}}` for the buffer
+/// `pane` names, or `#f` for a buffer with no path. Reads only the buffer, so
+/// a value with no pane works.
+pub(crate) fn lsp_document_params(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
+    Ok(ctx
+        .host
+        .lsp()
+        .and_then(|lsp| lsp.lsp_document_uri(pane.buffer()))
+        .map_or(SteelVal::BoolV(false), |uri| {
+            string_hash([("textDocument", text_document(uri))])
+        }))
 }
 
 /// `(lsp-position-params pane)` → `{"textDocument" {"uri"} "position" p}`

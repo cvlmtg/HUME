@@ -20,8 +20,8 @@ use hume_engine::pipeline::BufferId;
 use crate::attribution::EntryId;
 use crate::command_procs::CommandProc;
 use crate::host::{
-    BufferHost, CommandHost, CursorHost, EditorHost, EventHost, LanguageHost, OptionValue,
-    OutputHost, SelectionInfo, SettingsHost,
+    BufferHost, CommandHost, CursorHost, EditorHost, EventHost, HostToken, LanguageHost,
+    OptionValue, OutputHost, SelectionInfo, SettingsHost,
 };
 use crate::types::{GrammarReg, PaneHandle, SteelCmdDef, SteelTypedCmdDef};
 
@@ -36,7 +36,13 @@ const NULL_HOST_EVENT_NAMES: &[&str] = &[
     "on-buffer-save",
     "on-lsp-notification",
     "on-stub-only",
+    HELD_EVENT,
 ];
+
+/// The one event `NullHost` reports as waiting for its handlers, so
+/// scripting-crate tests cover the `done` handler shape without naming an
+/// editor event.
+pub(crate) const HELD_EVENT: &str = "on-stub-held";
 
 #[derive(Default)]
 pub(crate) struct NullHost;
@@ -69,6 +75,10 @@ impl EventHost for NullHost {
     fn known_event_names(&self) -> &'static [&'static str] {
         NULL_HOST_EVENT_NAMES
     }
+    fn held_event_arg_count(&self, name: &str) -> Option<usize> {
+        (name == HELD_EVENT).then_some(1)
+    }
+    fn finish_hold(&mut self, _hold: HostToken) {}
 }
 
 impl BufferHost for NullHost {

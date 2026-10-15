@@ -132,6 +132,7 @@ impl Editor {
         // than the others: dropping it is the entire teardown. `PopupLayer`
         // likewise carries no Steel callback.
         self.state.forget_steel_payloads();
+        self.state.pending_writes.release_all();
         self.state.lsp.reset_config();
         self.state.buffer_positions.lsp.clear_all_triggers();
         // Only the Steel `after!` thunks. Native debounce timers keep their
@@ -145,7 +146,8 @@ impl Editor {
             .filter(|(_, payload)| match payload {
                 super::timer_bridge::TimerPayload::SteelThunk(_) => true,
                 super::timer_bridge::TimerPayload::ViewportDebounce(_)
-                | super::timer_bridge::TimerPayload::DiagnosticPullDebounce(_) => false,
+                | super::timer_bridge::TimerPayload::DiagnosticPullDebounce(_)
+                | super::timer_bridge::TimerPayload::BeforeSaveTimeout(_) => false,
             })
             .map(|(&id, _)| id)
             .collect();

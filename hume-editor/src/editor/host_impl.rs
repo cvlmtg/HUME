@@ -122,11 +122,10 @@ impl<'a> EditorHostImpl<'a> {
         }
     }
 
-    /// Constructor for the three call sites that thread every capability:
-    /// command dispatch, hook fire, and queued-call drain. Takes the fields
-    /// already split out (rather than `&mut Editor`) because each call site
-    /// holds a simultaneous disjoint borrow of `self.scripting`; passing
-    /// `self` as a whole would conflict with that borrow.
+    /// Constructor for a host that threads every capability. Takes the fields
+    /// already split out (rather than `&mut Editor`) so the caller can hold a
+    /// simultaneous disjoint borrow of `self.scripting`; production reaches it
+    /// through `Editor::scripting_with_host`.
     pub(in crate::editor) fn full(
         state: &'a mut EditorState,
         view: &'a mut EngineView,

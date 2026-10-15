@@ -938,6 +938,11 @@ define_settings! {
         "steel-command-budget-ms" => steel_command_budget_ms: usize = 1_000,
             scope: [Scope::Global],
             parser: usize_nonzero;
+        // How long a write waits for `on-before-buffer-save` handlers that
+        // took `done` before it goes ahead without them.
+        "before-save-timeout-ms" => before_save_timeout_ms: usize = 1_000,
+            scope: [Scope::Global],
+            parser: usize_nonzero;
         "command-completion" => command_completion: CommandCompletion = CommandCompletion::default(),
             scope: [Scope::Global],
             parser: enum_str;

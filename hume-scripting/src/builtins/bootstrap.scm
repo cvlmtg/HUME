@@ -46,6 +46,9 @@
     (when depth (%restore-inline-output! depth))
     r))
 
+(define (%call-held-handler handler hold args)
+  (apply handler (append args (list (lambda () (%held-done hold))))))
+
 (define (%dispatch-command! name args)
   (let ((proc (%lookup-plugin-proc name)))
     (if proc

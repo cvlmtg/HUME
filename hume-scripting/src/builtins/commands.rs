@@ -103,12 +103,7 @@ pub(crate) fn define_command(
     }
     check_definable(ctx, "define-command!", &name)?;
     let proc = super::args::callable_arg(proc, "define-command! third arg (proc)")?;
-    let (arity, is_variadic) = match &proc {
-        SteelVal::Closure(gc) => (gc.arity() as u16, gc.is_multi_arity()),
-        // FuncV/MutFunc arity is not introspectable; treat as 0-arg non-variadic so
-        // keymap injection passes no leading args rather than blindly injecting 2.
-        _ => (0, false),
-    };
+    let (arity, is_variadic) = super::args::command_shape(&proc);
     let proc = MappableProc::new(proc, ctx.plugin_stack.current_owner());
     ctx.host
         .commands()
@@ -155,10 +150,7 @@ pub(crate) fn define_typed_command(
     let proc = super::args::callable_arg(proc, "define-typed-command! third arg (proc)")?;
     let completer =
         super::args::optional_string_arg(completer, "define-typed-command! #:complete")?;
-    let (arity, is_variadic) = match &proc {
-        SteelVal::Closure(gc) => (gc.arity() as u16, gc.is_multi_arity()),
-        _ => (0, false),
-    };
+    let (arity, is_variadic) = super::args::command_shape(&proc);
     let proc = TypedProc::new(proc, ctx.plugin_stack.current_owner());
     ctx.host
         .commands()

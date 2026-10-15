@@ -206,6 +206,7 @@
 (#%register-global "log!")
 (#%register-global "lsp-capabilities")
 (#%register-global "lsp-capability")
+(#%register-global "lsp-document-params")
 (#%register-global "lsp-label-offsets->text")
 (#%register-global "lsp-language-servers")
 (#%register-global "lsp-linewise-ranges-params")
