@@ -23,6 +23,7 @@
 
 ### Panes & interface
 - `Ctrl-p r` and `Ctrl-p R` rotate the panes in the focused pane's row or column forward and back.
+- Hover, signature help and the completion documentation box grow up to 120 columns wide, up from 60.
 
 ### Theming
 - With no `theme` set, HUME loads `sand` from `themes/`, so edits to `sand.toml` apply.

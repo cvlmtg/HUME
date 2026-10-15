@@ -6,7 +6,7 @@
 //! - Preferred placement: below-right of the anchor cell. Flip above when the
 //!   space below is smaller than the content and the space above is larger.
 //! - Clamp horizontally to the pane's right edge.
-//! - Max width `min(60, pane_width - 4)`, max height a third of the pane.
+//! - Max width `min(120, pane_width - 4)`, max height a third of the pane.
 //!   Taller content is the caller's problem (hover overflows to the drawer).
 //! - 1-cell frame themed `ui.popup` (`ui.menu` for menus), box-drawn when
 //!   `popup-border` is on. Rendering lives in [`super::menu_box`].
@@ -38,7 +38,7 @@ use super::width::cell_width;
 /// Maximum popup width in terminal columns, before any pane-width clamp.
 /// Popup-only: a menu doesn't wrap, so it has no analogous cap here (it
 /// uses [`super::menu_box::MAX_MENU_ROWS`], a row cap, instead).
-const MAX_POPUP_WIDTH: u16 = 60;
+const MAX_POPUP_WIDTH: u16 = 120;
 
 /// Where a popup renders: same widget, same model, two placements.
 /// `show-popup!`'s `#:anchor` kwarg selects between them (`hume-editor`'s

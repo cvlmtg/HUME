@@ -497,7 +497,7 @@ fn popup_wraps_to_the_pane_width_and_anchors_below_the_cursor() {
     );
     assert!(
         lines.iter().all(|l| oracle_width(l.as_str()) <= 16),
-        "no line may exceed min(60, pane_width - 4): {lines:?}"
+        "no line may exceed min(120, pane_width - 4): {lines:?}"
     );
     assert!(
         y >= 1,

@@ -382,6 +382,13 @@ fn side_popup_wraps_to_the_room_beside_the_box() {
 }
 
 #[test]
+fn side_popup_width_caps_at_120_cells_in_a_wide_pane() {
+    let text = "x".repeat(300);
+    let state = side(&text, rect(0, 0, 20, 6), rect(0, 0, 300, 40)).expect("room on the right");
+    assert_eq!(state.rect.width, 120);
+}
+
+#[test]
 fn side_popup_height_stops_at_the_pane_bottom() {
     let text = "line\n".repeat(10);
     let state = side(&text, rect(0, 8, 20, 4), rect(0, 0, 80, 12)).expect("room on the right");
