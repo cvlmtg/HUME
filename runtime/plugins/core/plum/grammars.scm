@@ -155,14 +155,14 @@
           (plum/install-grammar name)))))
   #:inline-output #t #:complete "plum:grammars")
 
-(define-command! "plum-ensure-grammars"
+(define-command! "plum/ensure-grammars"
   "Install the grammars of the named languages (a list) that are not yet compiled."
   (lambda (grammars)
     (unless (and (list? grammars) (not (null? grammars)))
-      (error "plum-ensure-grammars: requires a non-empty list of language names, e.g. (call! \"plum-ensure-grammars\" '(\"rust\" \"json\"))"))
+      (error "plum/ensure-grammars: requires a non-empty list of language names, e.g. (call! \"plum/ensure-grammars\" '(\"rust\" \"json\"))"))
     (let ((unknown (filter plum/no-grammar? grammars)))
       (unless (null? unknown)
-        (error (string-append "plum-ensure-grammars: no grammar for "
+        (error (string-append "plum/ensure-grammars: no grammar for "
                               (string-join unknown ", ")))))
     (let ((missing (filter plum/not-installed? grammars)))
       (if (null? missing)

@@ -57,7 +57,7 @@ pub(in crate::editor) fn offset_params(
 }
 
 /// The range the primary selection covers in `t`'s own pane: the shape
-/// `:lsp-code-actions` needs, since its diagnostics context is
+/// `lsp/code-actions` needs, since its diagnostics context is
 /// primary-scoped too.
 pub(in crate::editor) fn primary_range_params(
     state: &EditorState,

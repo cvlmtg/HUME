@@ -64,7 +64,7 @@ HUME's undo history is a tree, not a stack — see
 - **Enter jumps, moving the highlight does not.** The drawer's callback fires
   on Enter and Esc only, and a jump per highlight move would push a jump-list
   entry and an LSP sync per row.
-- **Names.** `:undotree` and `toggle-undotree` run one function. Mappable and
+- **Names.** `:undotree` and `undotree/toggle` run one function. Mappable and
   typed commands share one namespace, so they cannot both be `undotree`.
 - **A lazy plugin ships no key.** Its commands are its only entry points, so the
   user binds one in `init.scm`.

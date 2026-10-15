@@ -1,4 +1,4 @@
-// Rename: `lsp-rename` composing `lsp-request!`, `lsp-capabilities`,
+// Rename: `lsp/rename` composing `lsp-request!`, `lsp-capabilities`,
 // `apply-workspace-edit!`, `prompt!`, `symbol-under-cursor`. Loads the real
 // shipped `core:lsp` plugin in place
 // (`RealRuntimeDirs`).
@@ -30,9 +30,9 @@ fn setup(
 }
 
 fn run_rename(ed: &mut Editor) {
-    // lsp-rename is key-bindable, not typed: dispatch through the keymap
+    // lsp/rename is key-bindable, not typed: dispatch through the keymap
     // pipeline, the way its bound key (`G R`) would.
-    ed.execute_keymap_command("lsp-rename".into(), Some(1), false);
+    ed.execute_keymap_command("lsp/rename".into(), Some(1), false);
     ed.settle();
 }
 

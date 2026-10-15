@@ -1521,7 +1521,7 @@ fn steel_repeatable_insert_preserves_prior_selection_recipe() {
 /// A non-repeatable Steel command whose body dispatches
 /// `copy-selection-on-next-line` via `call!` must leave the live
 /// `selection_recipe` composed onto whatever the caller already staged,
-/// mirroring vim-keybind's `vim-change-to-eol-or-copy-line` wrapper around
+/// mirroring vim-keybind's `vim-keybind/change-to-eol-or-copy-line` wrapper around
 /// the native `C` binding (`runtime/plugins/core/vim-keybind/plugin.scm`).
 ///
 /// If `Editor::dispatch`'s Steel branch took the recipe with `mem::take` before

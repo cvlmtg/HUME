@@ -42,11 +42,11 @@
 
 ;; ── Commands ─────────────────────────────────────────────────────────────────
 
-(define-command! "goto-next-diagnostic"
+(define-command! "lsp/goto-next-diagnostic"
   "Jump to the next diagnostic after the cursor (wraps to the first)."
   (lambda (pane) (lsp/diag-jump! pane 1)))
 
-(define-command! "goto-prev-diagnostic"
+(define-command! "lsp/goto-prev-diagnostic"
   "Jump to the previous diagnostic before the cursor (wraps to the last)."
   (lambda (pane) (lsp/diag-jump! pane -1)))
 

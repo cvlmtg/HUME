@@ -7,19 +7,19 @@ plugin.
 
 | File | Role |
 |---|---|
-| `manifest.scm` | Lazy activation on `:undotree` and `toggle-undotree`. |
+| `manifest.scm` | Lazy activation on `:undotree` and `undotree/toggle`. |
 | `plugin.scm` | The drawer session, the two commands, the revision diff, and the hooks that keep the drawer current. |
 | `render.scm` | Pure data to rows: `undotree/render`, `undotree/format-age`. Calls no editor builtin. |
 
 ## Usage
 
-`:undotree` and the bindable `toggle-undotree` run one function: open the
+`:undotree` and the bindable `undotree/toggle` run one function: open the
 drawer on the focused buffer's tree, or close it when it is already open. The
 two names differ because mappable and typed commands share one namespace. A
 lazy plugin ships no key, so bind one in `init.scm`:
 
 ```scheme
-(bind-key! 'normal "z u" "toggle-undotree")
+(bind-key! 'normal "z u" "undotree/toggle")
 ```
 
 The drawer opens with the highlight on the current revision. The drawer's own

@@ -161,7 +161,7 @@ impl DiagnosticsStore {
     /// Each server's own entries are sorted by `start` (`SourceStore::set`),
     /// but with 2+ servers publishing for the same buffer, concatenating
     /// them in server order would not be globally sorted. Callers that
-    /// assume start-ascending order (e.g. `goto-next-diagnostic`'s
+    /// assume start-ascending order (e.g. `lsp/goto-next-diagnostic`'s
     /// nearest-match logic) would jump to whichever server happened to be
     /// iterated first rather than the nearest diagnostic. Collected and
     /// sorted once here so every caller gets a globally ordered result

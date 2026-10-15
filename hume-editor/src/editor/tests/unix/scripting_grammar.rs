@@ -334,7 +334,7 @@ fn passive_load_registers_grammar_and_unknown_call_logs_warning() {
     names))
 
 (do-register! (list "json" "phantom"))
-(call! "plum-ensure-grammars")
+(call! "plum/ensure-grammars")
         "#,
         hl = hl_dest.display(),
         grammar_out = grammar_out.display(),
@@ -367,7 +367,7 @@ fn passive_load_registers_grammar_and_unknown_call_logs_warning() {
     let msgs = host.take_pending_messages();
     assert!(
         msgs.iter()
-            .any(|(_, msg)| msg.contains("plum-ensure-grammars")),
+            .any(|(_, msg)| msg.contains("plum/ensure-grammars")),
         "unknown command in init must log a warning; got: {:?}",
         msgs,
     );

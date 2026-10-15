@@ -11,7 +11,7 @@ with no native (Rust) picker definitions.
 ```
 
 - **Depends on:** `core:stdlib`: config validation calls `stdlib/config-boolean` at load
-  time; `picker-files`/`picker-git-modified` call `stdlib/git-repo?`/`stdlib/git-toplevel`
+  time; `pickers/files`/`pickers/git-modified` call `stdlib/git-repo?`/`stdlib/git-toplevel`
   at dispatch time; all three pickers call `stdlib/buffer-actions`.
 - **Activates on:** its own key bindings only. It has no `manifest.scm`, so it must be
   loaded eagerly (see the [core plugins index](../README.md#loading-model)).
@@ -29,9 +29,9 @@ with no native (Rust) picker definitions.
 
 | Key | Command | Effect |
 |---|---|---|
-| `z f` | `picker-files` | Fuzzy-pick a file in the current directory tree and open it |
-| `z b` | `picker-buffers` | Fuzzy-pick an open buffer and switch to it |
-| `z m` | `picker-git-modified` | Fuzzy-pick a file with staged or unstaged git changes and open it |
+| `z f` | `pickers/files` | Fuzzy-pick a file in the current directory tree and open it |
+| `z b` | `pickers/buffers` | Fuzzy-pick an open buffer and switch to it |
+| `z m` | `pickers/git-modified` | Fuzzy-pick a file with staged or unstaged git changes and open it |
 
 `pickers/files-picker-with` and `pickers/git-picker-with` are internal commands that the
 two public ones call; see Design decisions.
@@ -48,7 +48,7 @@ the current pane, a new tab, a vertical split or a horizontal split. They come f
 
 ### File source
 
-`picker-files` picks its source per invocation, not at load time, so `:cd` re-scopes it:
+`pickers/files` picks its source per invocation, not at load time, so `:cd` re-scopes it:
 
 1. Inside a git work tree: `git ls-files -z --cached --others --exclude-standard`. It reads
    the index with no filesystem walk and includes untracked-but-not-ignored files.
@@ -60,7 +60,7 @@ selecting one surfaces an error when the picker tries to open it.
 
 ### Buffers
 
-`picker-buffers` shows `buffer-display-path`, falling back to the buffer's name
+`pickers/buffers` shows `buffer-display-path`, falling back to the buffer's name
 (`*scratch*`, etc.) for a pathless one; see the manual's
 [Picking buffers](https://cvlmtg.github.io/HUME/pickers.html#picking-buffers). `(buffers)`
 hands each entry as a [pane-less pane value](../README.md#pane-values-vs-pane-less-values),
@@ -74,13 +74,13 @@ and the focused pane are the same.
 
 ### Git-modified files
 
-`picker-git-modified` resolves the repo root with `stdlib/git-toplevel` at dispatch and
+`pickers/git-modified` resolves the repo root with `stdlib/git-toplevel` at dispatch and
 raises an error before a picker opens when the cwd is outside any git repository.
 
 #### Source
 
 `git status --porcelain -z --no-renames --untracked-files=<mode>` runs in the background
-through `spawn-async!`, not the line-streaming source `picker-files` uses, since this
+through `spawn-async!`, not the line-streaming source `pickers/files` uses, since this
 picker needs the whole output parsed at once. The picker opens empty and marked pending,
 then populates in one batch when `git status` completes. Each row is the two-letter status
 code (`M `, `A `, ` M`, `??`, …) followed by the path, relative to the repo root.
@@ -119,7 +119,7 @@ outstanding `git status` job.
   proc twice, once as `on-select` and once wrapped for each placement, so each picker's
   handler is a named `define` (`pickers/open-file!`, `pickers/switch-to-buffer!`, and the
   git picker's own `handler`) and not an inline lambda.
-- **`picker-files` and `picker-git-modified` each split into a public command and an
+- **`pickers/files` and `pickers/git-modified` each split into a public command and an
   internal `pickers/*-with` command.** The internal one takes the git/fd probe result (or
   repo root) as an argument. A test drives each branch (repo or no repo, `fd` present or
   absent) through `call!` without changing `PATH` or building a git sandbox.

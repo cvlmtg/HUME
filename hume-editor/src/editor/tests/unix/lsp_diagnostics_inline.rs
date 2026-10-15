@@ -213,7 +213,7 @@ fn goto_next_diagnostic_opens_a_dismiss_on_key_popup_with_the_full_message() {
         ..
     } = setup_diagnostics(FIXTURE, &[diag]);
 
-    // The real `g n` keybinding, not `:goto-next-diagnostic`: invoking via
+    // The real `g n` keybinding, not `lsp/goto-next-diagnostic`: invoking via
     // the command line round-trips Command -> Normal mode, firing
     // hover.scm's unconditional `on-mode-change` -> `close-popup!` and
     // wiping the popup this same command just set. `g n` stays in Normal

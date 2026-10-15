@@ -31,10 +31,10 @@ Pass `#:languages`/`#:commands`/`#:typed-commands`/`#:events` to `declare-plugin
 ```scheme
 (declare-plugin! "core:lsp"
   #:languages '("rust")   ; only activate for languages you name here
-  #:commands '("lsp-hover" "lsp-goto-definition" "lsp-goto-declaration"
-               "lsp-goto-type-definition" "lsp-goto-implementation" "lsp-references"
-               "goto-next-diagnostic" "goto-prev-diagnostic"
-               "lsp-rename" "lsp-fmt" "lsp-fmt-document" "lsp-code-actions")
+  #:commands '("lsp/hover" "lsp/goto-definition" "lsp/goto-declaration"
+               "lsp/goto-type-definition" "lsp/goto-implementation" "lsp/references"
+               "lsp/goto-next-diagnostic" "lsp/goto-prev-diagnostic"
+               "lsp/rename" "lsp/format-source" "lsp/format-document" "lsp/code-actions")
   #:typed-commands '("diagnostics" "format-source"
                       "lsp-status" "lsp-stop" "lsp-restart"))
 (load-plugin! "core:lsp")
@@ -330,19 +330,19 @@ Changing either and running `:reload-config` updates what HUME has stored, but a
 
 | Key   | Command                    | Effect |
 |-------|------------------------------|--------|
-| `K`   | `lsp-hover`                  | Show docs for the symbol under the cursor (Vim's own keyword-lookup key) |
-| `g d` | `lsp-goto-definition`        | Jump to the symbol's definition |
-| `g D` | `lsp-goto-declaration`       | Jump to the symbol's declaration |
-| `g y` | `lsp-goto-type-definition`   | Jump to the symbol's type's definition |
-| `g i` | `lsp-goto-implementation`    | Jump to the symbol's implementation |
-| `z r` | `lsp-references`             | List every reference to the symbol |
-| `G R` | `lsp-rename`                 | Rename the symbol under the cursor everywhere it's used |
-| `z a` | `lsp-code-actions`           | Show fixes and refactors available at the cursor |
-| `g n` | `goto-next-diagnostic`       | Jump to the next error/warning after the cursor (wraps) |
-| `g p` | `goto-prev-diagnostic`       | Jump to the previous error/warning before the cursor (wraps) |
+| `K`   | `lsp/hover`                  | Show docs for the symbol under the cursor (Vim's own keyword-lookup key) |
+| `g d` | `lsp/goto-definition`        | Jump to the symbol's definition |
+| `g D` | `lsp/goto-declaration`       | Jump to the symbol's declaration |
+| `g y` | `lsp/goto-type-definition`   | Jump to the symbol's type's definition |
+| `g i` | `lsp/goto-implementation`    | Jump to the symbol's implementation |
+| `z r` | `lsp/references`             | List every reference to the symbol |
+| `G R` | `lsp/rename`                 | Rename the symbol under the cursor everywhere it's used |
+| `z a` | `lsp/code-actions`           | Show fixes and refactors available at the cursor |
+| `g n` | `lsp/goto-next-diagnostic`       | Jump to the next error/warning after the cursor (wraps) |
+| `g p` | `lsp/goto-prev-diagnostic`       | Jump to the previous error/warning before the cursor (wraps) |
 | —     | `:diagnostics`               | List every diagnostic in the buffer, each with the tool that reported it |
 | —     | `:format-source`             | Format the selected lines if every selection spans one or more whole lines, the whole buffer if none do, or (with a warning) nothing if it's a mix of the two |
-| —     | `lsp-fmt-document`           | Format the whole buffer, or the ranges it is given, then call the `done` it is given (or `#f` for none). For save hooks: see [Format on save](#format-on-save) |
+| —     | `lsp/format-document`           | Format the whole buffer, or the ranges it is given, then call the `done` it is given (or `#f` for none). For save hooks: see [Format on save](#format-on-save) |
 | —     | `:toggle-inlay-hints`        | Show or hide inlay hints in the current buffer |
 | `Ctrl-Space` (Insert) | `completion-trigger`        | Show completions at the cursor (an editor key, not this plugin's; the plugin supplies the server's candidates) |
 
@@ -395,7 +395,7 @@ global option:
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `inlay-hints` | bool | `#f` | Show inferred types and parameter names inline, next to the code they describe, in every buffer. `:toggle-inlay-hints` turns them on or off for the current buffer |
-| `format-max-ranges` | integer ≥ 1 | `16` | Above this many disjoint ranges, `:lsp-fmt` warns and formats nothing instead of sending one request per range (a server that batches ranges into a single request isn't capped) |
+| `format-max-ranges` | integer ≥ 1 | `16` | Above this many disjoint ranges, `:format-source` warns and formats nothing instead of sending one request per range (a server that batches ranges into a single request isn't capped) |
 
 ### Format on save
 
@@ -403,7 +403,7 @@ Not on by default. Add this to your `init.scm` to format the whole buffer every 
 
 ```scheme
 (register-hook! 'on-before-buffer-save
-  (lambda (pane done) (call! "lsp-fmt-document" pane done)))
+  (lambda (pane done) (call! "lsp/format-document" pane done)))
 ```
 
 The save waits for the language server's answer, and `:wa` formats buffers that no pane is showing too. If there is no server, or it fails or doesn't answer within `before-save-timeout-ms` (see [Configuration](configuration.md)), the buffer is saved as it is, and an answer that arrives later still formats the buffer, leaving it modified.

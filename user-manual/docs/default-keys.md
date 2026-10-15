@@ -195,7 +195,7 @@ Press `G` then a second key. `G` holds edits of the selected text, where `g` hol
 
 `G U`/`G C` differ from `g U`/`g C` (previous unit test / previous comment) only in the prefix's
 case. `core:lsp` adds `G R` here for
-`lsp-rename` (see [Language Servers](lsp.md)).
+`lsp/rename` (see [Language Servers](lsp.md)).
 
 ## View prefix (`z`)
 

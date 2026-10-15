@@ -21,8 +21,8 @@ Each command reads the characters it needs from the keys typed after it.
 | Keys | Command | Effect |
 |---|---|---|
 | `m s` + char | `surround-add` (built in) | Surround the selection with the pair for char |
-| `m d` + char | `helix-delete-surround` | Delete the surrounding pair for char |
-| `m r` + old + new | `helix-replace-surround` | Replace the surrounding pair for old with the pair for new |
+| `m d` + char | `helix-surround/delete` | Delete the surrounding pair for char |
+| `m r` + old + new | `helix-surround/replace` | Replace the surrounding pair for old with the pair for new |
 | `m w` | none | Unbound; HUME binds it to `surround-add` by default |
 
 By default HUME binds `m s` + char to select the surrounding delimiters and `m w` + char
@@ -37,12 +37,12 @@ delimiter character, opening or closing, to the name of the native `surround-*` 
 for its pair. It answers `#f` for any other character, and for the `#f` a cancelled read
 hands back, and both helix commands do nothing in that case.
 
-`helix-delete-surround` calls that command to select the pair as two cursor selections,
-then calls `delete`. `helix-replace-surround` calls it, then reads the next key with
+`helix-surround/delete` calls that command to select the pair as two cursor selections,
+then calls `delete`. `helix-surround/replace` calls it, then reads the next key with
 `on-next-char!` and passes it to `replace`.
 
 ## Design decisions
 
-`helix-replace-surround` delegates the substitution to `replace`, which maps the new
+`helix-surround/replace` delegates the substitution to `replace`, which maps the new
 character onto each end of the pair: typing `[` over a `(`-delimited selection yields `[`
 and `]`.

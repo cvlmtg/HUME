@@ -17,7 +17,7 @@
 
 ;; ── delete-surround ───────────────────────────────────────────────────────────
 
-(define-command! "helix-delete-surround"
+(define-command! "helix-surround/delete"
   "Delete the surrounding delimiter pair (md + char)."
   (lambda (pane)
     (on-next-char!
@@ -30,7 +30,7 @@
 ;; ── replace-surround ─────────────────────────────────────────────────────────
 ;; Selects the pair, then reads the new char for `replace`; see README.
 
-(define-command! "helix-replace-surround"
+(define-command! "helix-surround/replace"
   "Replace the surrounding delimiter pair (mr + old_char + new_char)."
   (lambda (pane)
     (on-next-char!
@@ -45,6 +45,6 @@
 ;; ── keybindings ──────────────────────────────────────────────────────────────
 
 (bind-key! 'normal "m s" "surround-add")
-(bind-key! 'normal "m d" "helix-delete-surround")
-(bind-key! 'normal "m r" "helix-replace-surround")
+(bind-key! 'normal "m d" "helix-surround/delete")
+(bind-key! 'normal "m r" "helix-surround/replace")
 (unbind-key! 'normal "m w")

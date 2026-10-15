@@ -8,7 +8,7 @@ are in `decorations.md`.
 ## Goto and references
 
 `goto.scm` serves the four goto commands (definition, declaration, type definition,
-implementation) and `lsp-references` through one response handler. Each asks every server
+implementation) and `lsp/references` through one response handler. Each asks every server
 offering the feature, and their locations merge into one list in which rows naming the
 same path, line and column appear once:
 
@@ -17,7 +17,7 @@ same path, line and column appear once:
 3. A single location jumps to it, so two servers agreeing on a definition still jump.
 4. Several locations open the [locations drawer](architecture.md#locations-drawer-locationsscm).
 
-`lsp-references` always opens the drawer, even for one result, because "where is this
+`lsp/references` always opens the drawer, even for one result, because "where is this
 used" expects a list. Its request adds `context.includeDeclaration`. Every jump lands on
 `(focused-pane)`, so it goes where the user is when the response arrives.
 
@@ -30,7 +30,7 @@ a code block so the popup's markdown injection can highlight it, and a
 `MarkupContent` with `kind: "plaintext"`.
 
 The popup floats near the cursor when its line count is at most a third of the viewport
-height and docks at the bottom otherwise. Each `lsp-hover` closes the previous hover popup
+height and docks at the bottom otherwise. Each `lsp/hover` closes the previous hover popup
 before sending its request. An empty response logs "No hover info".
 
 ## Signature help
@@ -73,7 +73,7 @@ Accepting an item applies its main edit, its `additionalTextEdits` and
 
 ## Code actions
 
-`lsp-code-actions` asks every server offering code actions, captures the pane and
+`lsp/code-actions` asks every server offering code actions, captures the pane and
 `(buffer-generation pane)`, and threads both through the menu selection and any
 `codeAction/resolve` round trip without re-reading focus, since each round trip is
 asynchronous. The menu lists every server's actions in server order; when more than one
@@ -96,8 +96,8 @@ instead of applying to the wrong text.
 
 ## Formatting
 
-`lsp-fmt` and `:format-source` run the same function, which picks ranges from the
-selections and hands them to `lsp-fmt-document`'s implementation. `lsp-fmt-document` takes
+`lsp/format-source` and `:format-source` run the same function, which picks ranges from the
+selections and hands them to `lsp/format-document`'s implementation. `lsp/format-document` takes
 a `done` and optional ranges: with no ranges it formats the whole document, and it calls
 `done` once the edits are applied or the attempt has failed (no path, no server, a server
 error, stale text). It works on a buffer
@@ -140,7 +140,7 @@ can land in any order.
 
 ## Rename
 
-`lsp-rename` prompts with the symbol under the cursor prefilled, captures the buffer's
+`lsp/rename` prompts with the symbol under the cursor prefilled, captures the buffer's
 generation when the name is accepted, and sends `textDocument/rename`. A null response
 logs "Nothing to rename". Otherwise the workspace edit is applied with
 `#:expect-generation`. A buffer with no server that supports renaming gets a "not supported"
@@ -151,9 +151,9 @@ it goes to whichever server supports it when the name is accepted.
 
 | Request | Routed by | `#:require-focus` | `#:allow-stale` | `#:supersede` |
 |---|---|---|---|---|
-| `lsp-hover` | `'hover` | yes | yes | |
+| `lsp/hover` | `'hover` | yes | yes | |
 | `lsp-goto-*` (four), every server | `'goto-definition` and siblings | | | |
-| `lsp-references`, every server | `'goto-reference` | yes | | |
+| `lsp/references`, every server | `'goto-reference` | yes | | |
 | Signature help | `'signature-help` | yes | | |
 | Code actions (menu request), every server | `'code-action` | yes | | |
 | `codeAction/resolve`, `workspace/executeCommand` | `#:to` the server that offered the action | | yes | |

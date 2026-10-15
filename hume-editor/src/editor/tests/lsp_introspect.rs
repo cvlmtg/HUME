@@ -426,7 +426,7 @@ fn lsp_linewise_ranges_params_is_empty_for_a_lone_collapsed_blank_line_selection
 }
 
 /// A non-linewise selection is skipped, not an error: only the linewise
-/// one among a mixed set shows up in `ranges`. `:lsp-fmt` itself treats a
+/// one among a mixed set shows up in `ranges`. `:format-source` itself treats a
 /// mixed set as ambiguous and warns instead of formatting (see
 /// `mixed_linewise_and_sub_line_selections_warn_and_format_nothing` in
 /// `tests/unix/lsp_format.rs`); this test pins the introspection builtin's

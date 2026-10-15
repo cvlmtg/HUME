@@ -1,4 +1,4 @@
-// References: `lsp-references`, reusing the goto-definition family's
+// References: `lsp/references`, reusing the goto-definition family's
 // worker shape but always presenting the drawer (never auto-jumping even
 // for a single result). Loads the real shipped `core:lsp` plugin in place
 // (`RealRuntimeDirs`).
@@ -29,9 +29,9 @@ fn setup(
 }
 
 fn run_references(ed: &mut Editor) {
-    // lsp-references is key-bindable, not typed, so dispatch through the
+    // lsp/references is key-bindable, not typed, so dispatch through the
     // keymap pipeline, the way its bound key (`z r`) would.
-    ed.execute_keymap_command("lsp-references".into(), Some(1), false);
+    ed.execute_keymap_command("lsp/references".into(), Some(1), false);
     ed.settle();
     ed.drain_lsp();
     ed.settle();
@@ -126,7 +126,7 @@ fn null_result_reports_no_references() {
 }
 
 /// The user is free to switch buffers while a `textDocument/references`
-/// request is in flight, the same async-round-trip race `lsp-hover`'s own
+/// request is in flight, the same async-round-trip race `lsp/hover`'s own
 /// `#:require-focus` guards against. Unlike single-location goto (a
 /// navigation the user asked for, completed regardless of focus),
 /// references always opens a drawer: cursor-anchored UI that must not
@@ -145,7 +145,7 @@ fn stale_response_after_a_buffer_switch_opens_no_drawer() {
     // Sends the request synchronously; no settle() before the
     // switch below, the same technique as `lsp_hover.rs`'s own
     // `stale_response_after_a_buffer_switch_shows_no_popup`.
-    ed.execute_keymap_command("lsp-references".into(), Some(1), false);
+    ed.execute_keymap_command("lsp/references".into(), Some(1), false);
 
     let other = rig_root(tmp.path()).join("other.rs");
     std::fs::write(&other, "\n").unwrap();

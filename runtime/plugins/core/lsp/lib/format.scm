@@ -20,14 +20,14 @@
   (if (null? edits)
       (unless quiet (log! 'info "Already formatted"))
       (with-handler
-        (lambda (e) (log! 'error (string-append "lsp lsp-fmt: " (to-string e))))
+        (lambda (e) (log! 'error (string-append "lsp lsp/format-source: " (to-string e))))
         (apply-text-edits! pane edits #:expect-generation gen)))
   (lsp/finish! done))
 
 (define (lsp/format-callback pane gen done quiet)
   (lambda (err res)
     (if err
-        (begin (lsp/report-error! "lsp-fmt" err) (lsp/finish! done))
+        (begin (lsp/report-error! "lsp/format-source" err) (lsp/finish! done))
         (lsp/format-apply! pane gen (lsp/format-edits res) done quiet))))
 
 (define (lsp/format-fan-out! pane server gen td ranges done quiet)
@@ -44,7 +44,7 @@
               (if err
                   (begin
                     (set-box! aborted #t)
-                    (lsp/report-error! "lsp-fmt" err)
+                    (lsp/report-error! "lsp/format-source" err)
                     (lsp/finish! done))
                   (begin
                     (set-box! edits (append (unbox edits) (lsp/format-edits res)))
@@ -105,15 +105,15 @@
        (lsp/format-document! pane (hash-ref rp "textDocument") #f #f #f))
       (else (log! 'info "mixed whole-line and partial selections — nothing formatted")))))
 
-(define-command! "lsp-fmt"
+(define-command! "lsp/format-source"
   "Format the buffer via LSP — bind this to a key. Formats the whole-line selections, or the whole buffer when none are whole-line."
   (lambda (pane) (lsp/format-source! pane)))
 
-(define-command! "lsp-fmt-document"
-  "Format the whole buffer via LSP, or the LSP ranges given after `done` (which may be #f), then call `done`. Works on a pane or on a buffer no pane shows. For hooks: `(call! \"lsp-fmt-document\" pane done)` in an `on-before-buffer-save` handler."
+(define-command! "lsp/format-document"
+  "Format the whole buffer via LSP, or the LSP ranges given after `done` (which may be #f), then call `done`. Works on a pane or on a buffer no pane shows. For hooks: `(call! \"lsp/format-document\" pane done)` in an `on-before-buffer-save` handler."
   (lambda (pane done . ranges)
     (when (> (length ranges) 1)
-      (error "lsp-fmt-document: takes pane, done and at most one ranges list"))
+      (error "lsp/format-document: takes pane, done and at most one ranges list"))
     (let ((params (lsp-document-params pane)))
       (if params
           (lsp/format-document! pane (hash-ref params "textDocument")

@@ -1,5 +1,5 @@
-// Diagnostics navigation: `goto-next-diagnostic`,
-// `goto-prev-diagnostic`, `:diagnostics` drawer. No LSP request: reads the
+// Diagnostics navigation: `lsp/goto-next-diagnostic`,
+// `lsp/goto-prev-diagnostic`, `:diagnostics` drawer. No LSP request: reads the
 // diagnostics store via `diagnostics-for-buffer`. Depends on `core:stdlib`
 // (`stdlib/cursor-char-index`), loaded alongside `core:lsp` via
 // `RealRuntimeDirs` (both resolve from the real on-disk runtime/ dir).
@@ -47,7 +47,7 @@ fn republish(
     ed.settle();
 }
 
-/// Dispatches `goto-next-diagnostic`/`goto-prev-diagnostic` (key-bindable,
+/// Dispatches `lsp/goto-next-diagnostic`/`lsp/goto-prev-diagnostic` (key-bindable,
 /// not typed) through the keymap pipeline, the way their bound keys
 /// (`g n`/`g p`) would.
 fn run(ed: &mut Editor, cmd: &str) {
@@ -68,7 +68,7 @@ fn next_from_before_a_jumps_to_a() {
     } = setup(&[DIAG_A, DIAG_B]);
     set_cursor(&mut ed, 0);
 
-    run(&mut ed, "goto-next-diagnostic");
+    run(&mut ed, "lsp/goto-next-diagnostic");
 
     assert_eq!(
         ed.current_view().primary().head().offset(),
@@ -87,7 +87,7 @@ fn next_from_as_start_of_a_jumps_to_b_not_a() {
     } = setup(&[DIAG_A, DIAG_B]);
     set_cursor(&mut ed, 3); // sitting exactly on A's start
 
-    run(&mut ed, "goto-next-diagnostic");
+    run(&mut ed, "lsp/goto-next-diagnostic");
 
     assert_eq!(
         ed.current_view().primary().head().offset(),
@@ -106,7 +106,7 @@ fn next_from_after_b_wraps_to_a() {
     } = setup(&[DIAG_A, DIAG_B]);
     set_cursor(&mut ed, 11); // past both diagnostics
 
-    run(&mut ed, "goto-next-diagnostic");
+    run(&mut ed, "lsp/goto-next-diagnostic");
 
     assert_eq!(
         ed.current_view().primary().head().offset(),
@@ -125,7 +125,7 @@ fn prev_from_after_b_jumps_to_b() {
     } = setup(&[DIAG_A, DIAG_B]);
     set_cursor(&mut ed, 11);
 
-    run(&mut ed, "goto-prev-diagnostic");
+    run(&mut ed, "lsp/goto-prev-diagnostic");
 
     assert_eq!(
         ed.current_view().primary().head().offset(),
@@ -144,7 +144,7 @@ fn prev_from_before_a_wraps_to_b() {
     } = setup(&[DIAG_A, DIAG_B]);
     set_cursor(&mut ed, 0);
 
-    run(&mut ed, "goto-prev-diagnostic");
+    run(&mut ed, "lsp/goto-prev-diagnostic");
 
     assert_eq!(
         ed.current_view().primary().head().offset(),
@@ -163,7 +163,7 @@ fn empty_buffer_reports_no_diagnostics() {
     } = setup(&[]);
     let before = state(&ed);
 
-    run(&mut ed, "goto-next-diagnostic");
+    run(&mut ed, "lsp/goto-next-diagnostic");
 
     assert_eq!(state(&ed), before, "no diagnostics means no movement");
     let msg = ed.state.status_msg.clone().unwrap_or_default();

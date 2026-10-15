@@ -107,8 +107,8 @@ Three ways to run a subprocess exist across the codebase; pick by shape:
 `stdlib/git-repo?` and `stdlib/git-toplevel` answer `#f` when `git` is not on `$PATH` or
 the command exits non-zero. `git-repo?` compares stdout with `true` rather than checking
 only the exit code: inside a bare repo, `rev-parse --is-inside-work-tree` exits 0 and
-prints `false`. `core:pickers` uses both: `git-repo?` to choose `picker-files`'s source
-and `git-toplevel` to resolve a `picker-git-modified` selection against the repo root.
+prints `false`. `core:pickers` uses both: `git-repo?` to choose `pickers/files`'s source
+and `git-toplevel` to resolve a `pickers/git-modified` selection against the repo root.
 
 ### Command arguments
 

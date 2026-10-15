@@ -1,4 +1,4 @@
-// Goto definition family: `lsp-goto-definition` /
+// Goto definition family: `lsp/goto-definition` /
 // `-declaration` / `-type-definition` / `-implementation`, composing
 // `lsp-request!`, `lsp-capabilities`, `goto-location!`,
 // `show-drawer-list!` (via locations.scm's lsp/show-locations!). Loads the real
@@ -38,12 +38,10 @@ fn setup(
     (rig.ed, guard, sid)
 }
 
-/// `cmd` carries a leading `:` for caller readability (`":lsp-goto-definition"`)
-/// even though every `lsp-goto-*` command is key-bindable, not typed:
-/// dispatched here through the keymap pipeline, the way its bound key would.
+/// Dispatches the key-bindable `lsp/goto-*` command through the keymap pipeline,
+/// the way its bound key would.
 fn run_goto(ed: &mut Editor, cmd: &str) {
-    let name = cmd.strip_prefix(':').unwrap_or(cmd);
-    ed.execute_keymap_command(name.to_owned().into(), Some(1), false);
+    ed.execute_keymap_command(cmd.to_owned().into(), Some(1), false);
     // Settle now (mirrors the real interactive loop, which drains after
     // every keystroke) before the async response arrives: same ordering
     // fix as lsp_hover.rs.
@@ -74,7 +72,7 @@ fn null_result_reports_no_definition_found() {
         backend.respond_to("textDocument/definition", serde_json::Value::Null);
     });
 
-    run_goto(&mut ed, ":lsp-goto-definition");
+    run_goto(&mut ed, "lsp/goto-definition");
 
     let msg = ed.state.status_msg.clone().unwrap_or_default();
     assert!(
@@ -91,7 +89,7 @@ fn single_location_hashmap_jumps_directly() {
         backend.respond_to("textDocument/definition", loc(&uri, 1, 4));
     });
 
-    run_goto(&mut ed, ":lsp-goto-definition");
+    run_goto(&mut ed, "lsp/goto-definition");
 
     assert_eq!(
         ed.doc()
@@ -116,7 +114,7 @@ fn wire_target_inside_a_combining_sequence_snaps_to_the_clusters_start() {
         backend.respond_to("textDocument/definition", loc(&uri, 0, 1));
     });
 
-    run_goto(&mut ed, ":lsp-goto-definition");
+    run_goto(&mut ed, "lsp/goto-definition");
 
     assert_eq!(
         ed.current_view().primary().head().offset(),
@@ -136,7 +134,7 @@ fn single_element_array_jumps_directly() {
         );
     });
 
-    run_goto(&mut ed, ":lsp-goto-definition");
+    run_goto(&mut ed, "lsp/goto-definition");
 
     assert_eq!(
         ed.doc()
@@ -159,7 +157,7 @@ fn multi_element_array_opens_the_drawer_and_row_select_jumps() {
         );
     });
 
-    run_goto(&mut ed, ":lsp-goto-definition");
+    run_goto(&mut ed, "lsp/goto-definition");
 
     let rows = drawer_rows(&ed);
     assert_eq!(rows.len(), 3);
@@ -200,7 +198,7 @@ fn windows_drive_letter_uri_displays_without_leading_slash() {
         );
     });
 
-    run_goto(&mut ed, ":lsp-goto-definition");
+    run_goto(&mut ed, "lsp/goto-definition");
 
     let rows = drawer_rows(&ed);
     assert_eq!(rows.len(), 2);
@@ -232,7 +230,7 @@ fn multi_element_location_link_array_opens_the_drawer_and_row_select_jumps() {
         );
     });
 
-    run_goto(&mut ed, ":lsp-goto-definition");
+    run_goto(&mut ed, "lsp/goto-definition");
 
     let rows = drawer_rows(&ed);
     assert_eq!(rows.len(), 3);
@@ -268,7 +266,7 @@ fn location_link_array_prefers_target_selection_range() {
         );
     });
 
-    run_goto(&mut ed, ":lsp-goto-definition");
+    run_goto(&mut ed, "lsp/goto-definition");
 
     assert_eq!(
         ed.doc()
@@ -288,7 +286,7 @@ fn jump_back_returns_to_the_origin_after_a_jump() {
     });
     let before = state(&ed);
 
-    run_goto(&mut ed, ":lsp-goto-definition");
+    run_goto(&mut ed, "lsp/goto-definition");
     assert_ne!(
         state(&ed),
         before,
@@ -308,7 +306,7 @@ fn jump_back_returns_to_the_origin_after_a_jump() {
 /// open_or_dedup_and_notify` when it isn't already open, which can't detect
 /// language inline (see that function's doc), so it queues the buffer onto
 /// `EditorState.pending_language_detection`, drained at the tail of
-/// `apply_script_effects` once this eval (`run_goto`'s `:lsp-goto-definition`
+/// `apply_script_effects` once this eval (`run_goto`'s `lsp/goto-definition`
 /// dispatch) returns.
 ///
 /// If `resolve_or_open` called the bare `lifecycle::open_or_dedup`, the
@@ -327,7 +325,7 @@ fn goto_to_an_unopened_file_detects_its_language() {
     let (mut ed, _guard, _sid) = setup(tmp.path(), FIXTURE, move |backend, _sid| {
         backend.respond_to("textDocument/definition", loc(&other_uri, 0, 3));
     });
-    run_goto(&mut ed, ":lsp-goto-definition");
+    run_goto(&mut ed, "lsp/goto-definition");
 
     let bid = ed
         .state
@@ -379,7 +377,7 @@ fn wire_response_decodes_with_the_requesting_buffers_encoding_not_live_focus() {
     // drain rather than answering inline, but `settle()` itself drains LSP
     // (`drain_async_sources` → `drain_lsp`): calling it now would close the
     // race window before this test ever opens it.
-    ed.execute_keymap_command("lsp-goto-definition".into(), Some(1), false);
+    ed.execute_keymap_command("lsp/goto-definition".into(), Some(1), false);
 
     // Switch focus to an unrelated, server-less buffer *before* the
     // response arrives. This is the race window. The rig registers
@@ -431,7 +429,7 @@ fn multi_element_response_after_a_buffer_switch_opens_the_drawer() {
         );
     });
 
-    ed.execute_keymap_command("lsp-goto-definition".into(), Some(1), false);
+    ed.execute_keymap_command("lsp/goto-definition".into(), Some(1), false);
     let other = rig_root(tmp.path()).join("other.rs");
     std::fs::write(&other, "\n").unwrap();
     ed.execute_typed("e", Some(other.to_str().unwrap()))
@@ -457,7 +455,7 @@ fn goto_target_is_directory_errors_without_moving_the_cursor() {
     });
     let before = state(&ed);
 
-    run_goto(&mut ed, ":lsp-goto-definition");
+    run_goto(&mut ed, "lsp/goto-definition");
 
     assert_eq!(state(&ed), before, "a failed goto must not move the cursor");
     let msg = ed.state.status_msg.clone().unwrap_or_default();
@@ -482,7 +480,7 @@ fn goto_missing_target_opens_new_file_buffer_and_jumps_to_it() {
     });
     let start_bid = ed.focused_buffer_id();
 
-    run_goto(&mut ed, ":lsp-goto-definition");
+    run_goto(&mut ed, "lsp/goto-definition");
 
     assert_ne!(
         ed.focused_buffer_id(),
@@ -513,7 +511,7 @@ fn location_missing_range_errors_instead_of_jumping() {
     });
     let before = state(&ed);
 
-    run_goto(&mut ed, ":lsp-goto-definition");
+    run_goto(&mut ed, "lsp/goto-definition");
 
     assert_eq!(
         state(&ed),
@@ -533,10 +531,10 @@ fn each_command_sends_its_own_method() {
     // method each command should send. If a command sent the wrong method,
     // no response would be queued for it and the jump would never happen.
     for (cmd, method) in [
-        ("lsp-goto-definition", "textDocument/definition"),
-        ("lsp-goto-declaration", "textDocument/declaration"),
-        ("lsp-goto-type-definition", "textDocument/typeDefinition"),
-        ("lsp-goto-implementation", "textDocument/implementation"),
+        ("lsp/goto-definition", "textDocument/definition"),
+        ("lsp/goto-declaration", "textDocument/declaration"),
+        ("lsp/goto-type-definition", "textDocument/typeDefinition"),
+        ("lsp/goto-implementation", "textDocument/implementation"),
     ] {
         let tmp = tempfile::tempdir().unwrap();
         let uri = rust_rig_uri(tmp.path());
@@ -544,7 +542,7 @@ fn each_command_sends_its_own_method() {
             backend.respond_to(method, loc(&uri, 1, 4));
         });
 
-        run_goto(&mut ed, &format!(":{cmd}"));
+        run_goto(&mut ed, cmd);
 
         assert_eq!(
             ed.doc()
@@ -593,7 +591,7 @@ fn goto_into_another_file_raises_exactly_one_on_buffer_enter() {
     );
     ed.scripting = Some(host);
 
-    run_goto(&mut ed, ":lsp-goto-definition");
+    run_goto(&mut ed, "lsp/goto-definition");
 
     let bid = ed
         .state
@@ -632,7 +630,7 @@ fn a_malformed_multi_location_reply_releases_the_tracked_position() {
         );
     });
 
-    run_goto(&mut ed, ":lsp-goto-definition");
+    run_goto(&mut ed, "lsp/goto-definition");
 
     assert_eq!(ed.state.panes.tracked.len(), 0);
 }
@@ -650,7 +648,7 @@ fn a_reply_dropped_as_stale_releases_the_tracked_position() {
         );
     });
 
-    ed.execute_keymap_command("lsp-goto-definition".into(), Some(1), false);
+    ed.execute_keymap_command("lsp/goto-definition".into(), Some(1), false);
     ed.feed_key(key('i'));
     ed.feed_key(key('X'));
     ed.feed_key(key_esc());
@@ -672,7 +670,7 @@ fn an_opened_drawer_keeps_the_tracked_position() {
         );
     });
 
-    run_goto(&mut ed, ":lsp-goto-definition");
+    run_goto(&mut ed, "lsp/goto-definition");
 
     assert_eq!(drawer_rows(&ed).len(), 2);
     assert_eq!(ed.state.panes.tracked.len(), 1);
@@ -693,8 +691,8 @@ fn a_second_list_keeps_its_session_when_the_replaced_drawer_closes() {
         }
     });
 
-    run_goto(&mut ed, ":lsp-goto-definition");
-    run_goto(&mut ed, ":lsp-goto-definition");
+    run_goto(&mut ed, "lsp/goto-definition");
+    run_goto(&mut ed, "lsp/goto-definition");
 
     assert_eq!(drawer_rows(&ed).len(), 2);
     assert_eq!(ed.state.panes.tracked.len(), 1);
@@ -714,7 +712,7 @@ fn buffer_with_no_path_reports_and_tracks_nothing() {
     });
     ed.doc_mut().set_path(None);
 
-    run_goto(&mut ed, ":lsp-goto-definition");
+    run_goto(&mut ed, "lsp/goto-definition");
 
     assert_eq!(ed.state.panes.tracked.len(), 0);
     let msg = ed.state.status_msg.clone().unwrap_or_default();

@@ -40,24 +40,24 @@ plugin that calls `register-lsp-server!` works with `core:lsp` the same way.
 | Key | Type | Default | Effect |
 |---|---|---|---|
 | `"inlay-hints"` | boolean | `#f` | Whether a buffer shows inlay hints until `:toggle-inlay-hints` flips it |
-| `"format-max-ranges"` | integer ≥ 1 | `16` | Most disjoint ranges `:lsp-fmt` sends one `rangeFormatting` request each for; see [`docs/features.md`](docs/features.md#range-requests) |
+| `"format-max-ranges"` | integer ≥ 1 | `16` | Most disjoint ranges `:format-source` sends one `rangeFormatting` request each for; see [`docs/features.md`](docs/features.md#range-requests) |
 
 ## Commands
 
 | Command | Effect | Default key |
 |---|---|---|
-| `lsp-hover` | Show hover documentation for the symbol under the cursor | `K` |
-| `lsp-goto-definition` | Go to the definition | `g d` |
-| `lsp-goto-declaration` | Go to the declaration | `g D` |
-| `lsp-goto-type-definition` | Go to the type definition | `g y` |
-| `lsp-goto-implementation` | Go to the implementation | `g i` |
-| `lsp-references` | List references in a drawer | `z r` |
-| `lsp-rename` | Rename the symbol under the cursor | `G R` |
-| `lsp-code-actions` | Show code actions for the cursor or selection | `z a` |
-| `goto-next-diagnostic`, `goto-prev-diagnostic` | Jump to the next or previous diagnostic and show its message | `g n`, `g p` |
-| `lsp-fmt` | Format the buffer or the linewise selections | none |
-| `lsp-fmt-document` | Format the whole buffer, or the ranges it is given, and call `done`; for `on-before-buffer-save` handlers | none |
-| `:format-source` | `lsp-fmt` from the command line | none |
+| `lsp/hover` | Show hover documentation for the symbol under the cursor | `K` |
+| `lsp/goto-definition` | Go to the definition | `g d` |
+| `lsp/goto-declaration` | Go to the declaration | `g D` |
+| `lsp/goto-type-definition` | Go to the type definition | `g y` |
+| `lsp/goto-implementation` | Go to the implementation | `g i` |
+| `lsp/references` | List references in a drawer | `z r` |
+| `lsp/rename` | Rename the symbol under the cursor | `G R` |
+| `lsp/code-actions` | Show code actions for the cursor or selection | `z a` |
+| `lsp/goto-next-diagnostic`, `lsp/goto-prev-diagnostic` | Jump to the next or previous diagnostic and show its message | `g n`, `g p` |
+| `lsp/format-source` | Format the buffer or the linewise selections | none |
+| `lsp/format-document` | Format the whole buffer, or the ranges it is given, and call `done`; for `on-before-buffer-save` handlers | none |
+| `:format-source` | `lsp/format-source` from the command line | none |
 | `:diagnostics` | List this buffer's diagnostics in a drawer | none |
 | `:toggle-inlay-hints` | Show or hide inlay hints in the current buffer | none |
 | `:lsp-status` | Show every running server and its state, plus each attached buffer's servers and diagnostic counts, and the servers a stop left stopped | none |

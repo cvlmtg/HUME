@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Breaking changes
+- Key-bindable commands of the core plugins share a plugin prefix. Rename them in your `init.scm` bindings and `call!`s: `lsp-fmt` is `lsp/format-source`, `lsp-fmt-document` is `lsp/format-document`, and the other `lsp-*` commands and `goto-next-diagnostic`/`goto-prev-diagnostic` take the `lsp/` prefix (`lsp-hover` is `lsp/hover`). `toggle-undotree` is `undotree/toggle`, `picker-files`, `picker-buffers` and `picker-git-modified` are `pickers/files`, `pickers/buffers` and `pickers/git-modified`, `plum-ensure-grammars` is `plum/ensure-grammars`, and the `classic-*`, `helix-*` and `vim-*` commands take the `classic-paste/`, `helix-surround/` and `vim-keybind/` prefixes. Typed `:` commands keep their names.
+
 ### Panes & interface
 - `core:git-diff` takes a `"branch-style"` config value: `'icon` shows the statusline branch as `⎇ main` instead of `(main)`.
 
@@ -10,7 +13,7 @@
 - `core:git-diff` has key-bindable `git-diff/toggle-inline-diff` and `git-diff/toggle-git-signs`, plus `git-diff/show-inline-diff` and `git-diff/inline-diff?` for your own commands.
 
 ### Language servers
-- `core:lsp` has `lsp-fmt-document`, which formats the whole buffer for such a hook. The format-on-save recipe in the manual used `on-buffer-save`, which runs after the write, so it never formatted the saved file: use the new recipe.
+- `core:lsp` has `lsp/format-document`, which formats the whole buffer for such a hook. The format-on-save recipe in the manual used `on-buffer-save`, which runs after the write, so it never formatted the saved file: use the new recipe.
 
 ### Fixes
 - `apply-text-edits!` and `apply-workspace-edit!` still apply when the pane has since switched buffers, editing the buffer for no pane. `apply-text-edits!` also accepts a value with no pane, and `lsp-document-params` returns a buffer's document params without one.

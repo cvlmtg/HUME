@@ -252,7 +252,7 @@ fn shift_c_with_count_3_copies_onto_three_lines() {
 }
 
 /// `:` resolves only typed commands. A plugin-defined editor command like
-/// `vim-change-to-eol-or-copy-line` (bound to a key, `define-command!`, not
+/// `vim-keybind/change-to-eol-or-copy-line` (bound to a key, `define-command!`, not
 /// `define-typed-command!`) is unreachable from the command line, same as a
 /// native one. See `registry/mod.rs`'s module doc.
 #[test]
@@ -260,7 +260,7 @@ fn vim_change_to_eol_or_copy_line_not_reachable_from_command_line() {
     // "hello\nworld\nfoo\nbar\n": col 0 of each line is offset 0, 6, 12, 16.
     let (mut ed, _guard, _dir) = setup_vim_keybind_editor("-[h]>ello\nworld\nfoo\nbar\n");
     ed.handle_key(key(':'));
-    for ch in "vim-change-to-eol-or-copy-line 3".chars() {
+    for ch in "vim-keybind/change-to-eol-or-copy-line 3".chars() {
         ed.handle_key(key(ch));
     }
     ed.handle_key(key_enter());
@@ -407,7 +407,7 @@ fn shift_c_with_change_to_eol_on_ignores_selection_width() {
 // ── Dot-repeat ────────────────────────────────────────────────────────────────
 
 /// `D` then `.` on a different line must repeat "delete to end of line" at
-/// the new cursor. `vim-delete-to-eol` carries no `#:repeatable` flag: native
+/// the new cursor. `vim-keybind/delete-to-eol` carries no `#:repeatable` flag: native
 /// `delete` is itself repeatable and self-captures the preceding
 /// `goto-line-end` (extend) step via the shared selection-recipe accumulator,
 /// so the composite replays correctly with no cooperation needed from the

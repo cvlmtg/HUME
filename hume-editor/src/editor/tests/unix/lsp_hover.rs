@@ -1,4 +1,4 @@
-// Hover: `lsp-hover` composing `lsp-request!`, `lsp-capabilities`,
+// Hover: `lsp/hover` composing `lsp-request!`, `lsp-capabilities`,
 // `show-popup!`, `show-drawer-list!`. Loads the
 // real shipped `core:lsp` plugin in place (`RealRuntimeDirs` points
 // the runtime dir at the actual on-disk runtime/ dir) so tests exercise the
@@ -52,9 +52,9 @@ fn popup_lines(ed: &Editor) -> Option<Vec<String>> {
 }
 
 fn run_hover(ed: &mut Editor) {
-    // `lsp-hover` is key-bindable, not typed, so dispatch it the way `K` would,
+    // `lsp/hover` is key-bindable, not typed, so dispatch it the way `K` would,
     // through the keymap pipeline, not `:`.
-    ed.execute_keymap_command("lsp-hover".into(), Some(1), false);
+    ed.execute_keymap_command("lsp/hover".into(), Some(1), false);
     // Settle *before* the async response arrives. Mirrors the real
     // interactive loop, which drains hooks after every keystroke, well
     // before any network response could land. Draining only at the end
@@ -446,7 +446,7 @@ fn capability_gate_skips_the_request_when_the_provider_field_is_null() {
 /// The user is free to switch buffers while a hover request is in flight:
 /// an LSP round-trip is async. If the response lands after that, showing
 /// hover text for a symbol the user is no longer looking at would be worse
-/// than showing nothing: `lsp-hover` sends its request with
+/// than showing nothing: `lsp/hover` sends its request with
 /// `#:require-focus #t`, which drops the callback (never even reaching
 /// `hover.scm`'s own body) once the focused buffer no longer matches the
 /// buffer that sent the request.
@@ -472,7 +472,7 @@ fn stale_response_after_a_buffer_switch_shows_no_popup() {
     // switch below: settle() unconditionally drains LSP, which would
     // deliver the response (and close the race window) before the switch
     // ever happens.
-    ed.execute_keymap_command("lsp-hover".into(), Some(1), false);
+    ed.execute_keymap_command("lsp/hover".into(), Some(1), false);
 
     let other = rig_root(tmp.path()).join("other.rs");
     std::fs::write(&other, "\n").unwrap();
@@ -507,13 +507,13 @@ fn allow_stale_is_honored_despite_an_intervening_edit() {
         },
     );
 
-    ed.execute_keymap_command("lsp-hover".into(), Some(1), false);
+    ed.execute_keymap_command("lsp/hover".into(), Some(1), false);
 
     // Bump the buffer's generation between send and drain. Without
     // #:allow-stale this response would be dropped. No settle() call until
     // after the edit: settle() unconditionally drains LSP too;
     // draining any earlier would deliver the
-    // response (and run lsp-hover's close-on-mode-change dismiss) before
+    // response (and run lsp/hover's close-on-mode-change dismiss) before
     // the edit ever happens, defeating the "intervening edit" this test
     // means to exercise. The `i`/`X`/Esc mode-change hooks below simply
     // accumulate in `pending_work`, unfired, until the one settle() call at

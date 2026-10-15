@@ -818,7 +818,7 @@ pub(crate) fn lsp_primary_range_params(ctx: &mut SteelCtx, pane: PaneHandle) -> 
 /// `(lsp-linewise-ranges-params pane)` → `{"textDocument" {"uri"} "ranges"
 /// [...]}`, one opaque range per linewise selection in `pane`'s own pane
 /// (touching selections coalesced into one range apiece). Carries no
-/// all/none/mixed verdict. `:lsp-fmt` gets that from `selections-linewise?`/
+/// all/none/mixed verdict. `:format-source` gets that from `selections-linewise?`/
 /// `selections-charwise?` instead, since every `lsp-*-params` builtin's
 /// return value is a wire-ready params hash forwarded to `lsp-request!`
 /// unchanged or with a protocol key inserted, and a non-protocol key here

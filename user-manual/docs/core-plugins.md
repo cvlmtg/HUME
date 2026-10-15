@@ -35,10 +35,10 @@ PLUM never installs anything on its own: the commands below do the work when you
 | `:plum-list-themes` | Show installed theme repos and the themes each provides |
 | `:plum-remove-theme <user/repo>` | Remove an installed theme repo; Tab-completes installed slugs |
 
-`plum-ensure-grammars` (install a list of grammars not yet compiled) is for `init.scm`, not the command mode prompt; it takes a list argument.
+`plum/ensure-grammars` (install a list of grammars not yet compiled) is for `init.scm`, not the command mode prompt; it takes a list argument.
 
 ```scheme
-(call! "plum-ensure-grammars" '("rust" "toml"))
+(call! "plum/ensure-grammars" '("rust" "toml"))
 ```
 
 Leaving PLUM out only removes these commands. Already-installed plugins, grammars, and themes keep working without it. PLUM is only needed to install new ones. See [Syntax Highlighting](syntax-highlighting.md) for the grammar workflow and [Themes](themes.md#installing-themes) for the theme workflow.
@@ -197,17 +197,17 @@ A graph of the buffer's undo history in the bottom drawer, with a jump to any re
 (load-plugin! "core:undotree")
 ```
 
-It wakes on the first `:undotree` or `toggle-undotree`. It needs no other plugin, but shows what each revision changed only when [`core:git-diff`](#coregit-diff) is loaded too (see below).
+It wakes on the first `:undotree` or `undotree/toggle`. It needs no other plugin, but shows what each revision changed only when [`core:git-diff`](#coregit-diff) is loaded too (see below).
 
 | Command | Effect |
 |---------|--------|
 | `:undotree` | Open the focused buffer's undo tree in the drawer, or close it if it is open |
-| `toggle-undotree` | The same, as a command you can bind to a key |
+| `undotree/toggle` | The same, as a command you can bind to a key |
 
 The plugin ships no key. Bind one in your `init.scm`:
 
 ```scheme
-(bind-key! 'normal "z u" "toggle-undotree")
+(bind-key! 'normal "z u" "undotree/toggle")
 ```
 
 Each row is one revision: the graph, a marker column, and how long ago it was made. `@` in the marker column is the revision the buffer is on, and `S` is the revision your file was last saved at. Newer revisions are on top, a branch is a column of its own, and `o-'` is a branch joining the revision it grew from:

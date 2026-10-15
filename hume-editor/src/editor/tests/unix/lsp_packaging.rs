@@ -17,10 +17,10 @@ use hume_scripting::attribution::PluginId;
 const DECLARE_LSP: &str = r#"(load-plugin! "core:stdlib")
 (declare-plugin! "core:lsp"
   #:events '(on-lsp-attach)
-  #:commands '("lsp-hover" "lsp-goto-definition" "lsp-goto-declaration"
-               "lsp-goto-type-definition" "lsp-goto-implementation" "lsp-references"
-               "goto-next-diagnostic" "goto-prev-diagnostic"
-               "lsp-rename" "lsp-fmt" "lsp-code-actions")
+  #:commands '("lsp/hover" "lsp/goto-definition" "lsp/goto-declaration"
+               "lsp/goto-type-definition" "lsp/goto-implementation" "lsp/references"
+               "lsp/goto-next-diagnostic" "lsp/goto-prev-diagnostic"
+               "lsp/rename" "lsp/format-source" "lsp/code-actions")
   #:typed-commands '("diagnostics"))"#;
 
 /// Same manifest as `DECLARE_LSP` but keyed on `on-buffer-save` instead of
@@ -30,10 +30,10 @@ const DECLARE_LSP: &str = r#"(load-plugin! "core:stdlib")
 const DECLARE_LSP_WRONG_EVENT: &str = r#"(load-plugin! "core:stdlib")
 (declare-plugin! "core:lsp"
   #:events '(on-buffer-save)
-  #:commands '("lsp-hover" "lsp-goto-definition" "lsp-goto-declaration"
-               "lsp-goto-type-definition" "lsp-goto-implementation" "lsp-references"
-               "goto-next-diagnostic" "goto-prev-diagnostic"
-               "lsp-rename" "lsp-fmt" "lsp-code-actions")
+  #:commands '("lsp/hover" "lsp/goto-definition" "lsp/goto-declaration"
+               "lsp/goto-type-definition" "lsp/goto-implementation" "lsp/references"
+               "lsp/goto-next-diagnostic" "lsp/goto-prev-diagnostic"
+               "lsp/rename" "lsp/format-source" "lsp/code-actions")
   #:typed-commands '("diagnostics"))"#;
 
 /// Declares `core:lsp` lazily (`declare_src`, normally `DECLARE_LSP`)
@@ -109,12 +109,12 @@ fn declared_but_undispatched_plugin_is_declared_not_loaded() {
     );
 }
 
-/// First `:lsp-hover` dispatch on a declared-but-inactive `core:lsp` loads
+/// First `lsp/hover` dispatch on a declared-but-inactive `core:lsp` loads
 /// the real plugin body from disk, replaces the lazy stub, and runs the real
 /// hover request through to a populated popup.
 ///
 /// Without `CommandHost::register_lazy_command` claiming the stub at
-/// declare time, `:lsp-hover` would be an unknown command and this would
+/// declare time, `lsp/hover` would be an unknown command and this would
 /// report an error, not show a popup; without the real activation wiring,
 /// `plugin_status` would stay `Declared`.
 #[test]
@@ -131,9 +131,9 @@ fn first_command_dispatch_activates_the_declared_plugin_and_runs_it() {
     // the lazy stub (`activate_lazy_plugin`, called from the same dispatch
     // path before re-querying and running the now-real command), and the same
     // drain sequence `lsp_hover.rs`'s `run_hover` uses for an eagerly-loaded
-    // plugin is enough here too. lsp-hover is key-bindable, not typed, so
+    // plugin is enough here too. lsp/hover is key-bindable, not typed, so
     // dispatch through the keymap pipeline, the way `K` would.
-    ed.execute_keymap_command("lsp-hover".into(), Some(1), false);
+    ed.execute_keymap_command("lsp/hover".into(), Some(1), false);
     ed.settle();
     ed.drain_lsp();
     ed.settle();
@@ -224,7 +224,7 @@ fn attach_event_does_not_activate_a_plugin_declared_for_a_different_event() {
 /// error, even fully unattached (no LSP server on the buffer at all); each
 /// command's own capability guard degrades to an `'info` log line in that
 /// case, never `'error`. Exercises the bindings themselves (does `G R`
-/// actually reach `lsp-rename`?); each feature's own test file exercises
+/// actually reach `lsp/rename`?); each feature's own test file exercises
 /// its LSP behavior once attached.
 ///
 /// `G R` and bare `K` are the two keys `core:lsp` shares a namespace with:

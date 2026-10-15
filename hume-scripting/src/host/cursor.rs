@@ -58,7 +58,7 @@ pub trait CursorHost {
     /// no vote either way. `false` when every selection is ambiguous,
     /// matching an ordinary collapsed cursor's default.
     ///
-    /// Paired with [`Self::selections_charwise`] to express `:lsp-fmt`'s
+    /// Paired with [`Self::selections_charwise`] to express `:format-source`'s
     /// three-way verdict (all linewise / none linewise / mixed) as two
     /// booleans rather than a symbol on `lsp-linewise-ranges-params`'s wire
     /// params. Every other `lsp-*-params` builtin returns a hash forwarded

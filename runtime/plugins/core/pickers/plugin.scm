@@ -42,9 +42,9 @@
       ;; --type f: a file picker lists files, not directories.
       [fd (pickers/open-files-picker! pane fd '("--type" "f" "-0"))]
       [else
-       (error "picker-files: not inside a git repository and 'fd' is not installed — install fd (https://github.com/sharkdp/fd) to pick files outside git repos")])))
+       (error "pickers/files: not inside a git repository and 'fd' is not installed — install fd (https://github.com/sharkdp/fd) to pick files outside git repos")])))
 
-(define-command! "picker-files"
+(define-command! "pickers/files"
   "Fuzzy-pick a file in the current directory tree and open it."
   (lambda (pane)
     (call! "pickers/files-picker-with" pane (call! "stdlib/git-repo?") (pickers/fd-binary))))
@@ -81,7 +81,7 @@
                           (picker-push! token (pickers/parse-git-status stdout))
                           (begin
                             (picker-close! token)
-                            (log! 'error (string-append "picker-git-modified: `git status` failed: " stderr)))))))))
+                            (log! 'error (string-append "pickers/git-modified: `git status` failed: " stderr)))))))))
 
 ;;; Test seam — see README's "Design decisions".
 (define-command! "pickers/git-picker-with"
@@ -89,9 +89,9 @@
   (lambda (pane root)
     (if root
         (pickers/open-git-picker! pane root)
-        (error "picker-git-modified: not inside a git repository (or 'git' is not installed)"))))
+        (error "pickers/git-modified: not inside a git repository (or 'git' is not installed)"))))
 
-(define-command! "picker-git-modified"
+(define-command! "pickers/git-modified"
   "Fuzzy-pick a file with staged or unstaged git changes and open it."
   (lambda (pane)
     (call! "pickers/git-picker-with" pane (call! "stdlib/git-toplevel"))))
@@ -108,7 +108,7 @@
 (define (pickers/switch-to-buffer! target)
   (when target (switch-to-buffer! (focused-pane) target)))
 
-(define-command! "picker-buffers"
+(define-command! "pickers/buffers"
   "Fuzzy-pick an open buffer and switch to it."
   (lambda (pane)
     (picker! pane (map pickers/buffer-item (buffers))
@@ -118,6 +118,6 @@
 
 ;; ── Keybindings ───────────────────────────────────────────────────────────────
 
-(bind-key! 'normal "z f" "picker-files")
-(bind-key! 'normal "z b" "picker-buffers")
-(bind-key! 'normal "z m" "picker-git-modified")
+(bind-key! 'normal "z f" "pickers/files")
+(bind-key! 'normal "z b" "pickers/buffers")
+(bind-key! 'normal "z m" "pickers/git-modified")

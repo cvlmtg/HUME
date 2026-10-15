@@ -29,25 +29,25 @@ natively, `o` to flip the selection in Extend mode, and `Ctrl-6` for the alterna
 | Normal | `^` | `goto-first-nonblank` | First non-blank character |
 | Normal | `$` | `goto-line-end` | End of line |
 | Normal | `C` | per `"change-to-eol"` | See below |
-| Normal | `D` | `vim-delete-to-eol` | Delete from the cursor to the end of the line |
+| Normal | `D` | `vim-keybind/delete-to-eol` | Delete from the cursor to the end of the line |
 | Normal | `Ctrl-6` | `goto-alternate-buffer` | Alternate buffer |
 | Extend | `o` | `flip-selections` | Swap the selection's ends |
 
-`vim-change-to-eol` changes from the cursor to the end of the line. `vim-delete-to-eol`
-and `vim-change-to-eol` both extend to the end of the line with `goto-line-end`, then call
+`vim-keybind/change-to-eol` changes from the cursor to the end of the line. `vim-keybind/delete-to-eol`
+and `vim-keybind/change-to-eol` both extend to the end of the line with `goto-line-end`, then call
 `delete` or `change`.
 
 ### `C`
 
 | `"change-to-eol"` | `C` binds to | Behavior |
 |---|---|---|
-| `'on` | `vim-change-to-eol` | Always changes to end of line, ignoring the selection |
-| `'smart` (default) | `vim-change-to-eol-or-copy-line` | Context-sensitive (see below) |
+| `'on` | `vim-keybind/change-to-eol` | Always changes to end of line, ignoring the selection |
+| `'smart` (default) | `vim-keybind/change-to-eol-or-copy-line` | Context-sensitive (see below) |
 | `'off` | none | HUME's own binding for `C` stays in place |
 
-`vim-change-to-eol-or-copy-line` takes the injected `count` (`0` means no count was
+`vim-keybind/change-to-eol-or-copy-line` takes the injected `count` (`0` means no count was
 typed) and, only when it is `0`, calls `stdlib/all-single-char?` to tell a bare cursor from
-a real selection. A bare cursor with no count delegates to `vim-change-to-eol`. A count
+a real selection. A bare cursor with no count delegates to `vim-keybind/change-to-eol`. A count
 prefix, or a real selection with no count, calls `copy-selection-on-next-line` with the
 count forwarded.
 

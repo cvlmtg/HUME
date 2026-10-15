@@ -11,7 +11,7 @@ use hume_scripting::ScriptingHost;
 // init.scm that eagerly loads it, exercising the actual shipped file.
 //
 // Coverage note: the git-repo detection branch is proven only via full
-// integration in a real git repo (`files_picker_...` below): `picker-files`
+// integration in a real git repo (`files_picker_...` below): `pickers/files`
 // itself dispatches straight to `pickers/files-picker-with` with
 // `stdlib/git-repo?`'s live result, so there's no seam here to force the `#t`
 // case hermetically. `stdlib/git-repo?`'s own `#f` case (not a repo) *is*

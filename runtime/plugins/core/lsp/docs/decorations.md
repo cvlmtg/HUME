@@ -7,7 +7,7 @@ requests inlay hints. Both are covered here.
 
 ## Diagnostics navigation
 
-`g n` and `g p` (`goto-next-diagnostic`, `goto-prev-diagnostic`) jump to the first
+`g n` and `g p` (`lsp/goto-next-diagnostic`, `lsp/goto-prev-diagnostic`) jump to the first
 diagnostic starting strictly after the cursor, or the last starting strictly before it,
 and wrap around when none qualifies. A cursor inside a diagnostic therefore moves past it.
 The jump also pops the target's full message in a dismiss-on-any-key overlay.

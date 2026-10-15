@@ -76,7 +76,7 @@
           (string-append (lsp/action-title (cdr entry)) " (" (lsp-server-name (car entry)) ")")
           (lsp/action-title (cdr entry))))))
 
-(define-command! "lsp-code-actions" "Show available code actions for the cursor or selection."
+(define-command! "lsp/code-actions" "Show available code actions for the cursor or selection."
   (lambda (pane)
     (lsp/with-servers (lsp-servers pane #:feature 'code-action) "code actions"
       (lambda (servers)

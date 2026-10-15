@@ -2,7 +2,7 @@
 
 (require "helpers.scm")
 
-(define-command! "lsp-rename" "Rename the symbol under the cursor."
+(define-command! "lsp/rename" "Rename the symbol under the cursor."
   (lambda (pane)
     (lsp/with-servers (lsp-servers pane #:feature 'rename-symbol) "rename"
       (lambda (servers)

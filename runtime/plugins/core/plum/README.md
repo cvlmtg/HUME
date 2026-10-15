@@ -18,9 +18,9 @@ when it is asked (see [Plugin discovery](#plugin-discovery)).
   `stdlib/delete-dir!`, `stdlib/delete-file!`, `stdlib/list-subdirs`,
   `stdlib/safe-path-segment?` and `stdlib/resolve-lang-arg` through `call!`.
 - **Activates on:** the first `:plum-*` command typed, or the first call to
-  `plum-ensure-grammars`. Its `manifest.scm` has three entries, each loading on its own
+  `plum/ensure-grammars`. Its `manifest.scm` has three entries, each loading on its own
   commands: `plugin.scm` (the four plugin commands), `grammars.scm` (`#:entry`;
-  `plum-ensure-grammars` in `#:commands`, the grammar commands in `#:typed-commands`) and
+  `plum/ensure-grammars` in `#:commands`, the grammar commands in `#:typed-commands`) and
   `themes.scm` (`#:entry`; the theme commands).
 - **Not required for what is already installed.** PLUM is a plugin like any other, so
   leaving it out removes only the management commands below. Installed plugins, grammars
@@ -51,9 +51,9 @@ when it is asked (see [Plugin discovery](#plugin-discovery)).
 | `:plum-list-themes` | Show installed theme repos, the theme names each provides, and any unmanaged `.toml` in `[plum-themes]` |
 | `:plum-remove-theme <user/repo>` | Remove a theme repo's `.toml` copies and its clone. Tab-completes installed slugs |
 
-`plum-ensure-grammars` installs the grammars of any of the given languages that are not yet compiled, and raises before installing anything if a name has no bundled grammar.
+`plum/ensure-grammars` installs the grammars of any of the given languages that are not yet compiled, and raises before installing anything if a name has no bundled grammar.
 It is a plain editor command, not a `:` command, and takes a list argument, so it belongs
-in `init.scm` (`(call! "plum-ensure-grammars" '("rust" "json"))`), not at the command
+in `init.scm` (`(call! "plum/ensure-grammars" '("rust" "json"))`), not at the command
 prompt.
 
 ## How it works
@@ -163,7 +163,7 @@ bundled grammar, so a setup with no grammars installed pays one `path-exists?`. 
 subprocess and uses no network. An orphan is skipped. A compiled grammar of a language with
 a bundled grammar but no `highlights.scm` on disk logs a `'warn` pointing at
 `:plum-install-grammar` and is skipped. A language whose grammar is not compiled stays
-without one until `:plum-install-grammar` runs or `init.scm` calls `plum-ensure-grammars`;
+without one until `:plum-install-grammar` runs or `init.scm` calls `plum/ensure-grammars`;
 nothing installs at startup, since a first run that compiled every bundled grammar would
 stall before the editor is usable.
 
@@ -213,7 +213,7 @@ stays on disk until the next install of that slug purges it.
 ### Output model
 
 Every command that reaches the network (`plum-install-plugins`, `plum-update-plugins`,
-`plum-install-grammar`, `plum-ensure-grammars`, `plum-install-theme`,
+`plum-install-grammar`, `plum/ensure-grammars`, `plum-install-theme`,
 `plum-update-themes`) is `#:inline-output`: it leaves the alt-screen on its first write,
 so `git`'s progress prints as it happens, and returns to the editor on a keypress once
 the run finishes.

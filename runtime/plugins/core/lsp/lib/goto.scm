@@ -4,7 +4,7 @@
 (require "locations.scm")
 
 ;; ── Response handling ────────────────────────────────────────────────────────
-;; Shared by all four goto-family methods and `lsp-references` below.
+;; Shared by all four goto-family methods and `lsp/references` below.
 
 ;; See docs/features.md, "Goto and references".
 (define (lsp/goto-response err results pane tracked method
@@ -31,16 +31,16 @@
 
 ;; ── Commands ─────────────────────────────────────────────────────────────────
 
-(define-command! "lsp-goto-definition" "Go to the definition of the symbol under the cursor."
+(define-command! "lsp/goto-definition" "Go to the definition of the symbol under the cursor."
   (lambda (pane) (lsp/goto-request pane "textDocument/definition")))
 
-(define-command! "lsp-goto-declaration" "Go to the declaration of the symbol under the cursor."
+(define-command! "lsp/goto-declaration" "Go to the declaration of the symbol under the cursor."
   (lambda (pane) (lsp/goto-request pane "textDocument/declaration")))
 
-(define-command! "lsp-goto-type-definition" "Go to the type definition of the symbol under the cursor."
+(define-command! "lsp/goto-type-definition" "Go to the type definition of the symbol under the cursor."
   (lambda (pane) (lsp/goto-request pane "textDocument/typeDefinition")))
 
-(define-command! "lsp-goto-implementation" "Go to the implementation of the symbol under the cursor."
+(define-command! "lsp/goto-implementation" "Go to the implementation of the symbol under the cursor."
   (lambda (pane) (lsp/goto-request pane "textDocument/implementation")))
 
 ;; ── References ───────────────────────────────────────────────────────────
@@ -48,7 +48,7 @@
 (define (lsp/references-params params)
   (hash-insert params "context" (hash "includeDeclaration" #t)))
 
-(define-command! "lsp-references" "List references to the symbol under the cursor."
+(define-command! "lsp/references" "List references to the symbol under the cursor."
   (lambda (pane)
     (lsp/with-position-params pane "references"
       (lambda (params)

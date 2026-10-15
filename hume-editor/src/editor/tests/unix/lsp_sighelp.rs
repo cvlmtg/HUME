@@ -376,7 +376,7 @@ fn offset_form_label_is_read_in_the_negotiated_encoding_not_always_utf16() {
 }
 
 /// The user is free to switch panes while a debounced signature-help
-/// request is in flight, the same async-round-trip race `lsp-hover`'s own
+/// request is in flight, the same async-round-trip race `lsp/hover`'s own
 /// `#:require-focus` guards against. A response for a buffer that's no
 /// longer focused must not open a popup over whatever pane the user
 /// switched to.

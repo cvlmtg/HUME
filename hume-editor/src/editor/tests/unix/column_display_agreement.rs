@@ -101,9 +101,9 @@ fn setup_refs(
 }
 
 fn run_references(ed: &mut Editor) {
-    // lsp-references is key-bindable, not typed, so dispatch through the
+    // lsp/references is key-bindable, not typed, so dispatch through the
     // keymap pipeline, the way its bound key (`z r`) would.
-    ed.execute_keymap_command("lsp-references".into(), Some(1), false);
+    ed.execute_keymap_command("lsp/references".into(), Some(1), false);
     ed.settle();
     ed.drain_lsp();
     ed.settle();
@@ -116,7 +116,7 @@ fn loc(uri: &str, line: u64, character: u64) -> serde_json::Value {
     })
 }
 
-/// Nine locations, one `lsp-references` response, exercising every path in
+/// Nine locations, one `lsp/references` response, exercising every path in
 /// `location_display_parts`: the focused buffer's own open rope, a second
 /// open buffer that isn't the focused one, an unopened non-ASCII file (twice,
 /// two different wire columns out of it, independent of each other), an
@@ -179,7 +179,7 @@ fn references_drawer_measures_open_buffers_and_echoes_wire_columns_for_unopened_
     // an all-ASCII line to measure. Refocuses `main.rs` afterward: `:e` on
     // an already-open path dedups onto the existing buffer rather than
     // reopening it, so the server `setup_refs` attached to `main.rs` is
-    // unaffected and `:lsp-references` still dispatches
+    // unaffected and `lsp/references` still dispatches
     // through it.
     ed.execute_typed("e", Some(ascii_open_file.to_str().unwrap()))
         .unwrap();

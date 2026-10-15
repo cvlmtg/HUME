@@ -312,7 +312,7 @@ fn setup(tmp: &Path) -> (Editor, RealRuntimeDirs) {
 }
 
 fn toggle(ed: &mut Editor) {
-    ed.execute_keymap_command("toggle-undotree".to_string().into(), None, false);
+    ed.execute_keymap_command("undotree/toggle".to_string().into(), None, false);
     render(ed);
 }
 

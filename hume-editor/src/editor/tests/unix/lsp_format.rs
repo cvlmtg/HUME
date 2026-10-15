@@ -1,4 +1,4 @@
-// Formatting: `:lsp-fmt`, composing `lsp-request!`,
+// Formatting: `:format-source`, composing `lsp-request!`,
 // `lsp-capabilities`, `selections-linewise?`/`selections-charwise?`, `apply-text-edits!`.
 // Loads the real shipped `core:lsp` plugin in place (`RealRuntimeDirs`).
 //
@@ -99,7 +99,7 @@ fn select_mid_line_and_a_blank_line_cursor(ed: &mut Editor) {
 }
 
 fn run_fmt(ed: &mut Editor) {
-    // :format-source and the key-bindable lsp-fmt share one body
+    // :format-source and the key-bindable lsp/format-source share one body
     // (lsp/format-source!); dispatch through the typed `:` entry point.
     type_cmd(ed, ":format-source");
     ed.settle();
@@ -146,7 +146,7 @@ fn whole_buffer_edit_is_one_undo_step() {
     );
 }
 
-/// `:format-source` (typed) and `lsp-fmt` (editor command, dispatched here
+/// `:format-source` (typed) and `lsp/format-source` (editor command, dispatched here
 /// via `call!` the way an `on-buffer-save` hook does) share one
 /// implementation (`lsp/format-source!`), so both must format identically.
 #[test]
@@ -165,10 +165,10 @@ fn format_source_and_lsp_fmt_call_produce_the_same_edit() {
         );
     });
 
-    // lsp-fmt is key-bindable, not typed: dispatch through the keymap
-    // pipeline, the way an `on-buffer-save` hook's `(call! "lsp-fmt" bid)`
+    // lsp/format-source is key-bindable, not typed: dispatch through the keymap
+    // pipeline, the way an `on-buffer-save` hook's `(call! "lsp/format-source" bid)`
     // would.
-    ed.execute_keymap_command("lsp-fmt".into(), Some(1), false);
+    ed.execute_keymap_command("lsp/format-source".into(), Some(1), false);
     ed.settle();
     ed.drain_lsp();
     ed.settle();
@@ -176,7 +176,7 @@ fn format_source_and_lsp_fmt_call_produce_the_same_edit() {
     assert_eq!(
         ed.doc().text().to_string(),
         "formatted1\nformatted2\nformatted3\n",
-        "lsp-fmt (editor command) must format the same way :format-source does"
+        "lsp/format-source (editor command) must format the same way :format-source does"
     );
 }
 
@@ -229,7 +229,7 @@ fn full_line_selection_sends_range_formatting() {
 
 /// Two disjoint linewise selections (line 1 and line 3, with line 2
 /// untouched by either) can't be expressed as one LSP range without also
-/// covering the untouched line in between, so `:lsp-fmt` sends one
+/// covering the untouched line in between, so `:format-source` sends one
 /// `rangeFormatting` per range instead (the server here doesn't advertise
 /// `rangesSupport`), and applies both edits as a single transaction.
 #[test]
@@ -457,7 +457,7 @@ fn buffer_with_no_path_reports_and_sends_nothing() {
 }
 
 /// A whole-line selection and a sub-line selection together are ambiguous:
-/// `:lsp-fmt` warns and formats nothing, rather than guessing which
+/// `:format-source` warns and formats nothing, rather than guessing which
 /// reading the user meant.
 #[test]
 fn mixed_linewise_and_sub_line_selections_warn_and_format_nothing() {
@@ -491,7 +491,7 @@ fn mixed_linewise_and_sub_line_selections_warn_and_format_nothing() {
 }
 
 /// A stray blank-line cursor is ambiguous (see `linewise_classification`),
-/// not a deliberate whole-line selection. End-to-end through `:lsp-fmt`,
+/// not a deliberate whole-line selection. End-to-end through `:format-source`,
 /// on top of the unit coverage in `buffer_text_steel.rs` and
 /// `lsp_introspect.rs`.
 #[test]
@@ -521,7 +521,7 @@ fn stray_blank_line_cursor_does_not_trigger_the_mixed_selection_refusal() {
     );
 }
 
-/// Past `format-max-ranges`, `:lsp-fmt` refuses and warns instead of
+/// Past `format-max-ranges`, `:format-source` refuses and warns instead of
 /// silently narrowing an N-region request into a 1-region one: the same
 /// contract the mixed-selection case above uses for "can't do this
 /// unambiguously".
@@ -691,7 +691,7 @@ fn format_reply_applies_after_the_pane_switches_buffers() {
 fn loading_the_plugin_registers_no_save_hook() {
     let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup(tmp.path(), |backend, _sid| {
-        // If a save hook incorrectly fired :lsp-fmt, this response landing
+        // If a save hook incorrectly fired :format-source, this response landing
         // would visibly rewrite the buffer.
         backend.respond_to(
             "textDocument/formatting",
@@ -709,14 +709,14 @@ fn loading_the_plugin_registers_no_save_hook() {
     assert_eq!(
         ed.doc().text().to_string(),
         before,
-        "loading core:lsp must not register an on-buffer-save formatter: v1 is manual :lsp-fmt only"
+        "loading core:lsp must not register an on-buffer-save formatter: v1 is manual :format-source only"
     );
 }
 
-// ── lsp-fmt-document, as format-on-save drives it ────────────────────────────
+// ── lsp/format-document, as format-on-save drives it ────────────────────────────
 
 const FORMAT_ON_SAVE: &str = r#"(register-hook! 'on-before-buffer-save
-  (lambda (pane done) (call! "lsp-fmt-document" pane done)))"#;
+  (lambda (pane done) (call! "lsp/format-document" pane done)))"#;
 
 const FORMATTED: &str = "formatted1\nformatted2\nformatted3\n";
 
@@ -824,7 +824,7 @@ fn format_on_save_with_no_ranges_finishes_without_waiting_for_the_timeout() {
     );
     rig.eval(
         r#"(register-hook! 'on-before-buffer-save
-             (lambda (pane done) (call! "lsp-fmt-document" pane done (list))))"#,
+             (lambda (pane done) (call! "lsp/format-document" pane done (list))))"#,
     );
     type_cmd(&mut rig.ed, ":set global before-save-timeout-ms=60000");
     rig.ed.handle_key(key('i'));
@@ -843,7 +843,7 @@ fn lsp_fmt_document_without_a_server_reports_nothing() {
     stop_server(&mut rig.ed, "rust-analyzer");
     rig.eval(
         r#"(define-typed-command! "fmt-doc" ""
-             (lambda (pane) (call! "lsp-fmt-document" pane #f)))"#,
+             (lambda (pane) (call! "lsp/format-document" pane #f)))"#,
     );
 
     type_cmd(&mut rig.ed, ":fmt-doc");
@@ -871,7 +871,7 @@ fn lsp_fmt_document_formats_only_the_ranges_it_is_given() {
     rig.eval(
         r#"(define-typed-command! "fmt-ranges" ""
              (lambda (pane)
-               (call! "lsp-fmt-document" pane #f
+               (call! "lsp/format-document" pane #f
                       (hash-ref (lsp-linewise-ranges-params pane) "ranges"))))"#,
     );
     select_full_line_1(&mut rig.ed);

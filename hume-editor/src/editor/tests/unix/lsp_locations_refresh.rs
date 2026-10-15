@@ -1,4 +1,4 @@
-// The locations drawer (`lsp-references`) follows edits: it remembers the
+// The locations drawer (`lsp/references`) follows edits: it remembers the
 // symbol it was opened for and, once the line count of a listed buffer
 // changes, asks the server again for that symbol and swaps the rows. Loads the
 // real shipped `core:lsp` plugin in place (`RealRuntimeDirs`).
@@ -51,7 +51,7 @@ fn setup_with(
 }
 
 fn run_references(ed: &mut Editor) {
-    ed.execute_keymap_command("lsp-references".into(), Some(1), false);
+    ed.execute_keymap_command("lsp/references".into(), Some(1), false);
     ed.settle();
     ed.drain_lsp();
     ed.settle();

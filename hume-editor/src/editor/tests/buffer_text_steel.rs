@@ -404,7 +404,7 @@ fn line_to_offset_on_a_stale_bid_raises_invalid_buffer_id() {
 /// assertion message on failure. `builtin` is `"selections-linewise?"` or
 /// `"selections-charwise?"`. The two predicates share every fixture below
 /// since together they classify the same three-way verdict (all/none/mixed)
-/// `:lsp-fmt`'s range-format gate needs.
+/// `:format-source`'s range-format gate needs.
 fn assert_selections_predicate(builtin: &str, initial: &str, expected: bool, why: &str) {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from(initial);
@@ -463,7 +463,7 @@ fn selections_charwise_true_for_a_partial_selection() {
 }
 
 /// A selection spanning two whole lines, start to trailing newline, must be
-/// linewise: the case `lsp-fmt`'s range-format gate (`core:lsp/format.scm`)
+/// linewise: the case `lsp/format-source`'s range-format gate (`core:lsp/format.scm`)
 /// depends on to offer "one or more complete lines", not just one.
 #[test]
 fn selections_linewise_true_for_a_multi_line_whole_line_selection() {

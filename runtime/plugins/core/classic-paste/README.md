@@ -23,10 +23,10 @@ All four are bound in Normal mode.
 
 | Key | Command | Effect |
 |---|---|---|
-| `p` | `classic-ring-after` | Paste the kill-ring head after the selection |
-| `P` | `classic-ring-before` | Paste the kill-ring head before the selection |
-| `Ctrl-v` | `classic-clipboard-after` | Paste the OS clipboard after the selection |
-| `Ctrl-Shift-v` | `classic-clipboard-before` | Paste the OS clipboard before the selection |
+| `p` | `classic-paste/ring-after` | Paste the kill-ring head after the selection |
+| `P` | `classic-paste/ring-before` | Paste the kill-ring head before the selection |
+| `Ctrl-v` | `classic-paste/clipboard-after` | Paste the OS clipboard after the selection |
+| `Ctrl-Shift-v` | `classic-paste/clipboard-before` | Paste the OS clipboard before the selection |
 
 ## How it works
 

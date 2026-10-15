@@ -56,7 +56,7 @@ This is the easiest way to install a grammar for a language you only use inside 
 To install several grammars at once (skipping any already compiled), call it from your `init.scm` so it runs at startup:
 
 ```scheme
-(call! "plum-ensure-grammars" '("rust" "toml" "python"))
+(call! "plum/ensure-grammars" '("rust" "toml" "python"))
 ```
 
 After the first install, launching HUME just loads the compiled grammars silently; there's nothing more to do.

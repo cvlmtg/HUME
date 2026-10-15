@@ -25,7 +25,7 @@ fn call_bang_unknown_command_logs_error() {
         let mut ctx = h.ctx_init();
         call_command_primitive(
             &mut ctx,
-            "plum-ensure-grammars".to_string(),
+            "plum/ensure-grammars".to_string(),
             make_list(vec![]),
         )
         .unwrap()
@@ -39,7 +39,7 @@ fn call_bang_unknown_command_logs_error() {
     assert!(
         h.pending_messages
             .iter()
-            .any(|(level, msg)| *level == LogLevel::Error && msg.contains("plum-ensure-grammars")),
+            .any(|(level, msg)| *level == LogLevel::Error && msg.contains("plum/ensure-grammars")),
         "unknown command must log an error; got: {:?}",
         h.pending_messages
     );

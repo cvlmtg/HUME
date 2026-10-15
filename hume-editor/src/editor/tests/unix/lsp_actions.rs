@@ -1,4 +1,4 @@
-// Code actions: `lsp-code-actions`, composing `lsp-request!`,
+// Code actions: `lsp/code-actions`, composing `lsp-request!`,
 // `lsp-capabilities`, `diagnostics-for-buffer`'s `raw`
 // field (echoed back as context.diagnostics; servers gate diagnostic-
 // derived quickfixes on this), `apply-workspace-edit!`, `show-menu!`.
@@ -57,9 +57,9 @@ fn setup_over(
 }
 
 fn run_actions(ed: &mut Editor) {
-    // lsp-code-actions is key-bindable, not typed: dispatch through the
+    // lsp/code-actions is key-bindable, not typed: dispatch through the
     // keymap pipeline, the way its bound key (`z a`) would.
-    ed.execute_keymap_command("lsp-code-actions".into(), Some(1), false);
+    ed.execute_keymap_command("lsp/code-actions".into(), Some(1), false);
     ed.settle();
     ed.drain_lsp();
     ed.settle();
@@ -551,7 +551,7 @@ fn selecting_an_unresolved_action_whose_resolve_errors_reports_it() {
 }
 
 /// The user is free to switch buffers while a `textDocument/codeAction`
-/// request is in flight: the same async-round-trip race `lsp-hover`'s own
+/// request is in flight: the same async-round-trip race `lsp/hover`'s own
 /// `#:require-focus` guards against. A response for a buffer that's no
 /// longer focused must not open a menu over whatever the user switched to.
 #[test]
@@ -570,7 +570,7 @@ fn stale_response_after_a_buffer_switch_opens_no_menu() {
     // deliver the response (and close the race window) before the switch
     // ever happens. Same technique as `lsp_hover.rs`'s own
     // `stale_response_after_a_buffer_switch_shows_no_popup`.
-    ed.execute_keymap_command("lsp-code-actions".into(), Some(1), false);
+    ed.execute_keymap_command("lsp/code-actions".into(), Some(1), false);
 
     let other = rig_root(tmp.path()).join("other.rs");
     std::fs::write(&other, "\n").unwrap();

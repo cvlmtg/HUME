@@ -135,7 +135,7 @@
 (define undotree/toggle-doc
   "Show or hide the focused buffer's undo tree in the bottom drawer. Enter on a row jumps to that revision.")
 
-(define-command! "toggle-undotree"
+(define-command! "undotree/toggle"
   undotree/toggle-doc
   (lambda (pane) (undotree/toggle! pane)))
 

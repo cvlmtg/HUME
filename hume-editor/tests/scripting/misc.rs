@@ -3,7 +3,7 @@
 
 use super::*;
 
-// ── arity-1 command list-arg validation (plum-ensure-grammars pattern) ───────
+// ── arity-1 command list-arg validation (plum/ensure-grammars pattern) ───────
 
 /// An arity-1 command that validates its arg is a non-empty list must error
 /// when called with no args (#f from minibuffer path).

@@ -14,13 +14,13 @@
 
 ;; ── Default keybindings ───────────────────────────────────────────────────────
 
-(bind-key! 'normal "g d" "lsp-goto-definition")
-(bind-key! 'normal "g D" "lsp-goto-declaration")
-(bind-key! 'normal "g y" "lsp-goto-type-definition")
-(bind-key! 'normal "g i" "lsp-goto-implementation")
-(bind-key! 'normal "z r" "lsp-references")
-(bind-key! 'normal "G R" "lsp-rename")
-(bind-key! 'normal "K" "lsp-hover")
-(bind-key! 'normal "z a" "lsp-code-actions")
-(bind-key! 'normal "g n" "goto-next-diagnostic")
-(bind-key! 'normal "g p" "goto-prev-diagnostic")
+(bind-key! 'normal "g d" "lsp/goto-definition")
+(bind-key! 'normal "g D" "lsp/goto-declaration")
+(bind-key! 'normal "g y" "lsp/goto-type-definition")
+(bind-key! 'normal "g i" "lsp/goto-implementation")
+(bind-key! 'normal "z r" "lsp/references")
+(bind-key! 'normal "G R" "lsp/rename")
+(bind-key! 'normal "K" "lsp/hover")
+(bind-key! 'normal "z a" "lsp/code-actions")
+(bind-key! 'normal "g n" "lsp/goto-next-diagnostic")
+(bind-key! 'normal "g p" "lsp/goto-prev-diagnostic")
