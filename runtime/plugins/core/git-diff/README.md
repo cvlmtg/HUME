@@ -11,7 +11,7 @@ focused buffer; add that element to your own `configure-statusline!` call to sho
 ```scheme
 (load-plugin! "core:stdlib")
 (load-plugin! "core:git-diff"
-  #:config (hash "signs" #t "inline" #f "ref" "HEAD"))
+  #:config (hash "signs" #t "inline" #f "ref" "HEAD" "branch-style" 'parens))
 ```
 
 - **Depends on:** `core:stdlib`: config validation calls `stdlib/config-boolean`/
@@ -22,7 +22,8 @@ focused buffer; add that element to your own `configure-statusline!` call to sho
   `#:events '(on-buffer-open)`, those two typed commands and those two commands. `"signs"` defaults on (cheap, no line-shifting side
   effects); `"inline"` defaults off (it moves virtual lines into the buffer's visual
   flow).
-- **Branch tracking has no config flag; placement is the switch.** It does not fetch until
+- **`"branch-style"`** is `'parens` (default, `(main)`) or `'icon` (`⎇ main`).
+- **Branch tracking has no on/off flag; placement is the switch.** It does not fetch until
   `"steel:git-branch"` appears in your `configure-statusline!` call, and it starts when it
   does.
 - **User docs:** [Core Plugins](https://cvlmtg.github.io/HUME/core-plugins.html#core-git-diff)

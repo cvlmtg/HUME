@@ -146,7 +146,7 @@ commands. A file git doesn't know about yet (untracked, brand-new, or outside a 
 diff.
 
 Also keeps a `"steel:git-branch"` statusline element fresh for the focused buffer, e.g.
-`(main)`. No config needed, just add it to your own `configure-statusline!` call (see
+`(main)`, or `⎇ main` with `"branch-style"` set to `'icon` (see below). Just add it to your own `configure-statusline!` call (see
 [Statusline → Custom elements](configuration.md#custom-elements)). Updates when you switch to
 a buffer and when you save it; empty for a buffer outside any repo.
 
@@ -166,7 +166,7 @@ Configure with `#:config`:
 ```scheme
 (load-plugin! "core:stdlib")
 (load-plugin! "core:git-diff"
-  #:config (hash "signs" #t "inline" #f "ref" "HEAD"))
+  #:config (hash "signs" #t "inline" #f "ref" "HEAD" "branch-style" 'parens))
 ```
 
 | Key | Type | Default | Effect |
@@ -174,6 +174,7 @@ Configure with `#:config`:
 | `"signs"` | bool | `#t` | Whether gutter signs start on for a newly opened buffer |
 | `"inline"` | bool | `#f` | Whether inline rendering starts on for a newly opened buffer |
 | `"ref"` | string | `"HEAD"` | The default git ref a buffer diffs against, until overridden per-buffer via the toggle commands |
+| `"branch-style"` | `'parens` or `'icon` | `'parens` | How the `"steel:git-branch"` statusline element writes the branch: `(main)` or `⎇ main` |
 
 Inline rendering's background tint and word highlights depend on your theme defining colors
 for them; HUME's bundled themes do.

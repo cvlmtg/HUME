@@ -14,6 +14,7 @@
 (define git-diff/signs-default (call! "stdlib/config-boolean" "core:git-diff" git-diff/cfg "signs" #t))
 (define git-diff/inline-default (call! "stdlib/config-boolean" "core:git-diff" git-diff/cfg "inline" #f))
 (define git-diff/ref (call! "stdlib/config-string" "core:git-diff" git-diff/cfg "ref" "HEAD"))
+(define git-diff/branch-style (call! "stdlib/config-enum" "core:git-diff" git-diff/cfg "branch-style" 'parens '(parens icon)))
 
 ;; ── Lifecycle ─────────────────────────────────────────────────────────────────
 
@@ -25,13 +26,13 @@
 (register-hook! 'on-buffer-enter
   (lambda (pane)
     (git-diff/invalidate-ref! pane git-diff/ref)
-    (git-diff/schedule-branch-refresh! pane)))
+    (git-diff/schedule-branch-refresh! pane git-diff/branch-style)))
 
 ;;; Drives the branch fetch — see docs/pipeline.md's "Branch tracking (`branch.scm`)".
 (register-hook! 'on-option-change
   (lambda (key value)
     (when (equal? key "statusline")
-      (git-diff/schedule-branch-refresh! (focused-pane)))))
+      (git-diff/schedule-branch-refresh! (focused-pane) git-diff/branch-style))))
 
 (register-hook! 'on-text-changed
   (lambda (pane) (git-diff/schedule-refresh! pane git-diff/ref)))
@@ -39,7 +40,7 @@
 (register-hook! 'on-buffer-save
   (lambda (pane)
     (git-diff/invalidate-ref! pane git-diff/ref)
-    (git-diff/schedule-branch-refresh! pane)))
+    (git-diff/schedule-branch-refresh! pane git-diff/branch-style)))
 
 (register-hook! 'on-buffer-close
   (lambda (pane) (git-diff/remove-buffer! pane)))

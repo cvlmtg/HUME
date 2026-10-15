@@ -84,7 +84,15 @@ fn setup_with_source(
 /// README's "Branch tracking"), so every branch-tracking test below needs
 /// this.
 fn setup_with_git_branch(tmp: &Path) -> (Editor, RealRuntimeDirs) {
-    let (mut ed, guard) = setup(tmp, None);
+    setup_with_git_branch_config(tmp, None)
+}
+
+/// [`setup_with_git_branch`] with a `#:config` expression for `core:git-diff`.
+fn setup_with_git_branch_config(
+    tmp: &Path,
+    config_expr: Option<&str>,
+) -> (Editor, RealRuntimeDirs) {
+    let (mut ed, guard) = setup(tmp, config_expr);
     let mut host = ed.scripting.take().expect("setup() installs a host");
     eval_with_real_host(
         &mut ed,
@@ -1242,6 +1250,53 @@ fn git_branch_element_shows_current_branch_for_the_focused_buffer() {
     open(&mut ed, &path);
 
     drain_until(&mut ed, |ed| custom_text(ed, "git-branch") == "(feature-x)");
+}
+
+#[test]
+fn git_branch_element_uses_the_icon_style_when_configured() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut ed, _guard) =
+        setup_with_git_branch_config(tmp.path(), Some("(hash \"branch-style\" 'icon)"));
+
+    let (_repo, path) = commit_and_checkout("f.txt", "one\ntwo\nthree\n", "feature-x");
+    open(&mut ed, &path);
+
+    drain_until(&mut ed, |ed| custom_text(ed, "git-branch") == "⎇ feature-x");
+}
+
+#[test]
+fn bad_branch_style_fails_plugin_load_with_prefixed_error() {
+    let tmp = tempfile::tempdir().unwrap();
+    let _guard = RealRuntimeDirs::new();
+    let init_path = tmp.path().join("init.scm");
+    std::fs::write(
+        &init_path,
+        format!(
+            "(load-plugin! \"core:stdlib\")\n{}",
+            hume_scripting::eager_load_scm("core:git-diff", Some("(hash \"branch-style\" 'bogus)"))
+        ),
+    )
+    .unwrap();
+
+    let mut ed = editor_from("-[a]>b\n");
+    ed.state.dirs = _guard.dirs();
+    let mut host = ScriptingHost::new(&ed.state.dirs);
+    {
+        let mut ih = init_host!(ed);
+        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+    }
+    .expect("a failed plugin load must be contained, not abort eval_init");
+
+    assert!(
+        host.peek_pending_messages().iter().any(|(level, msg)| {
+            matches!(level, hume_scripting::LogLevel::Error)
+                && msg.contains("core:git-diff")
+                && msg.contains("branch-style")
+                && msg.contains("must be one of 'parens, 'icon")
+        }),
+        "got {:?}",
+        host.peek_pending_messages()
+    );
 }
 
 #[test]

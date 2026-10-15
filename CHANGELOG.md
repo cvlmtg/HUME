@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `core:git-diff` takes a `"branch-style"` config value: `'icon` shows the statusline branch as `⎇ main` instead of `(main)`.
+
 ## [0.15.0] - 2026-10-15
 
 ### Breaking changes

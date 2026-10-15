@@ -140,6 +140,10 @@ so placing the element starts the first fetch at once. It reads `(focused-pane)`
 moment: the hook fires for a global setting write with no buffer of its own, and the branch
 shown is the one on screen.
 
+The text comes from the `"branch-style"` config value, which `plugin.scm` passes down
+through `schedule-branch-refresh!` the way the diff pipeline receives `ref`;
+`format-branch` is the one place that turns a name into the element's text.
+
 A branch name has no local-diff fallback that would make caching worthwhile, so
 `refresh-branch!` respawns on every debounced fire and `branch.scm` has no `force-refresh!`
 or `'unavailable` state. The refresh debounces at 150ms, keyed per buffer.
