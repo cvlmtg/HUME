@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [0.15.0] - 2026-10-15
+
 ### Breaking changes
 - `lsp.inlay-hints` is removed: `:toggle-inlay-hints` toggles them per buffer, and `core:lsp`'s `inlay-hints` config turns them on everywhere.
 - `lsp.format-max-ranges` moves to `core:lsp`'s `#:config`.
