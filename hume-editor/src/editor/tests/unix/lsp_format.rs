@@ -656,6 +656,38 @@ fn null_result_reports_already_formatted() {
 }
 
 #[test]
+fn format_reply_applies_after_the_pane_switches_buffers() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut ed, _guard) = setup(tmp.path(), |backend, _sid| {
+        backend.respond_to(
+            "textDocument/formatting",
+            serde_json::json!([text_edit(0, 0, 3, 0, FORMATTED)]),
+        );
+    });
+    let formatted_bid = ed.focused_buffer_id();
+
+    type_cmd(&mut ed, ":format-source");
+    let (other, _other_path) = file_buffer("world\n");
+    let other_bid = ed.open_buffer(other);
+    let pid = ed.view.focused_pane();
+    crate::editor::focus::switch_pane_to_buffer(&mut ed.state, &mut ed.view, pid, other_bid);
+    ed.drain_lsp();
+    ed.settle();
+
+    assert_eq!(
+        ed.state.buffers.get(formatted_bid).text().to_string(),
+        FORMATTED
+    );
+    assert!(
+        !ed.state
+            .message_log
+            .entries()
+            .any(|e| e.severity == Severity::Error),
+        "the reply must apply without an error"
+    );
+}
+
+#[test]
 fn loading_the_plugin_registers_no_save_hook() {
     let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup(tmp.path(), |backend, _sid| {
@@ -778,6 +810,49 @@ fn format_on_save_writes_when_no_server_is_attached() {
     save(&mut rig);
 
     assert_eq!(on_disk(&rig), format!("x{THREE_LINES}"));
+}
+
+#[test]
+fn format_on_save_with_no_ranges_finishes_without_waiting_for_the_timeout() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut rig, _guard) = core_lsp_rig_configured(
+        tmp.path(),
+        &marked_at_start(THREE_LINES),
+        range_caps(),
+        None,
+        |_backend, _sid| {},
+    );
+    rig.eval(
+        r#"(register-hook! 'on-before-buffer-save
+             (lambda (pane done) (call! "lsp-fmt-document" pane done (list))))"#,
+    );
+    type_cmd(&mut rig.ed, ":set global before-save-timeout-ms=60000");
+    rig.ed.handle_key(key('i'));
+    rig.ed.handle_key(key('x'));
+    rig.ed.handle_key(key_esc());
+
+    save(&mut rig);
+
+    assert_eq!(on_disk(&rig), format!("x{THREE_LINES}"));
+}
+
+#[test]
+fn lsp_fmt_document_without_a_server_reports_nothing() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut rig, _guard) = save_rig(tmp.path(), |_backend, _sid| {});
+    stop_server(&mut rig.ed, "rust-analyzer");
+    rig.eval(
+        r#"(define-typed-command! "fmt-doc" ""
+             (lambda (pane) (call! "lsp-fmt-document" pane #f)))"#,
+    );
+
+    type_cmd(&mut rig.ed, ":fmt-doc");
+    rig.ed.settle();
+    rig.ed.drain_lsp();
+    rig.ed.settle();
+
+    let status = rig.ed.state.status_msg.clone().unwrap_or_default();
+    assert!(!status.contains("lsp"), "unexpected report: {status:?}");
 }
 
 #[test]

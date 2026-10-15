@@ -205,6 +205,45 @@ fn rename_reports_a_stale_buffer_after_an_intervening_edit() {
     );
 }
 
+#[test]
+fn rename_reply_after_the_pane_switches_buffers_still_applies() {
+    let tmp = tempfile::tempdir().unwrap();
+    let uri = rust_rig_uri(tmp.path());
+    let (mut ed, _guard, _sid) = setup(tmp.path(), move |backend, _sid| {
+        backend.respond_to(
+            "textDocument/rename",
+            serde_json::json!({"changes": {
+                uri: [
+                    {"range": {"start": {"line": 1, "character": 4}, "end": {"line": 1, "character": 10}}, "newText": "renamed"}
+                ]
+            }}),
+        );
+    });
+    let renamed_bid = ed.focused_buffer_id();
+
+    run_rename(&mut ed);
+    ed.feed_key(key_enter());
+    ed.settle();
+    let (other, _other_path) = file_buffer("world\n");
+    let other_bid = ed.open_buffer(other);
+    let pid = ed.view.focused_pane();
+    crate::editor::focus::switch_pane_to_buffer(&mut ed.state, &mut ed.view, pid, other_bid);
+    ed.drain_lsp();
+    ed.settle();
+
+    assert_eq!(
+        ed.state.buffers.get(renamed_bid).text().to_string(),
+        "fn main() {\n    renamed();\n}\n"
+    );
+    assert!(
+        !ed.state
+            .message_log
+            .entries()
+            .any(|e| e.severity == Severity::Error),
+        "the reply must apply without an error"
+    );
+}
+
 /// `apply-workspace-edit!` (the Steel builtin `%apply-workspace-edit!` wraps)
 /// opens unopened files via `lsp::edits::resolve_or_open` →
 /// `buffer::lifecycle::open_or_dedup_and_notify`, which can't detect language

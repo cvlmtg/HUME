@@ -19,8 +19,6 @@ impl<'a> EditHost for EditorHostImpl<'a> {
         edits: Vec<hume_scripting::host::WireTextEdit>,
         expect_gen: Option<u64>,
     ) -> Result<(), String> {
-        let t = crate::editor::commands::EditTarget::resolve(self.state, self.view, pane)
-            .map_err(|e| e.to_string())?;
         // Each entry decoded its own encoding from its own JsonHandle (it
         // may have come from a different response than its batch-mates,
         // e.g. two `additionalTextEdits` merged by a plugin), since a batch that
@@ -53,7 +51,7 @@ impl<'a> EditHost for EditorHostImpl<'a> {
         crate::editor::lsp::edits::apply_text_edits(
             self.state,
             &self.view.panes,
-            t.pid(),
+            pane.pane(),
             pane.buffer(),
             typed_edits,
             expect_gen,
@@ -68,7 +66,6 @@ impl<'a> EditHost for EditorHostImpl<'a> {
         encoding: hume_rope::position_encoding::PositionEncoding,
         expect_gen: Option<u64>,
     ) -> Result<usize, String> {
-        let t = self.command_pane(pane)?;
         // Deserializes from the `&Value` reference (serde_json implements
         // `Deserializer` for `&Value` as well as `Value`) rather than
         // `serde_json::from_value`, which needs ownership; the caller's
@@ -78,10 +75,10 @@ impl<'a> EditHost for EditorHostImpl<'a> {
         let summary = crate::editor::lsp::edits::apply_workspace_edit(
             self.state,
             self.view,
-            t.pid(),
+            pane.pane(),
             we,
             encoding,
-            expect_gen,
+            expect_gen.map(|g| (pane.buffer(), g)),
         )?;
         Ok(summary.buffers_modified)
     }

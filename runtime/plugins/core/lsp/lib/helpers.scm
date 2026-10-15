@@ -4,7 +4,7 @@
 (provide lsp/report-error! lsp/answered lsp/answers lsp/none-answered? lsp/report-answer-errors! lsp/with-position-params
          lsp/visible-lines lsp/resolve-pane
          lsp/setup-trigger-chars! lsp/format-position lsp/cap-field lsp/cap-flag?
-         lsp/with-servers)
+         lsp/with-servers lsp/report-unsupported)
 
 (unless (member "core:stdlib" (declared-plugins))
   (error "core:lsp: requires core:stdlib — add (load-plugin! \"core:stdlib\") before (load-plugin! \"core:lsp\")"))
@@ -26,10 +26,14 @@
         (proceed params)
         (log! 'info (string-append "lsp " what ": this buffer has no file")))))
 
-;; Calls `(proceed servers)` with `servers`, or logs that `what` is unsupported when empty.
+;; Logs that `what` is unsupported by this buffer's language servers.
+(define (lsp/report-unsupported what)
+  (log! 'info (string-append what " is not supported by this buffer's language servers")))
+
+;; Calls `(proceed servers)` with `servers`, or reports `what` unsupported when empty.
 (define (lsp/with-servers servers what proceed)
   (if (null? servers)
-      (log! 'info (string-append what " is not supported by this buffer's language servers"))
+      (lsp/report-unsupported what)
       (proceed servers)))
 
 ;; ── Trigger-char lifecycle ──────────────────────────────────────────────────

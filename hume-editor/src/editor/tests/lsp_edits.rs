@@ -1175,3 +1175,111 @@ fn apply_text_edits_without_a_pane_is_refused_while_a_session_is_open() {
         "the refusal must be reported"
     );
 }
+
+// ── edits whose reply lands after the pane switched buffers ──────────────────
+
+/// Runs `:go`, then moves the focused pane to another buffer before the
+/// server's reply is drained. Returns the buffer the pane showed when `:go`
+/// ran.
+fn switch_pane_before_reply(ed: &mut Editor) -> BufferId {
+    type_cmd(ed, ":go");
+    let requested = ed.focused_buffer_id();
+    let (other, _other_path) = file_buffer("other\n");
+    let other_bid = ed.open_buffer(other);
+    let pid = ed.view.focused_pane();
+    crate::editor::focus::switch_pane_to_buffer(&mut ed.state, &mut ed.view, pid, other_bid);
+    ed.drain_lsp();
+    ed.settle();
+    requested
+}
+
+fn logged_errors(ed: &Editor) -> Vec<String> {
+    ed.state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Error)
+        .map(|e| e.text.to_string())
+        .collect()
+}
+
+fn workspace_edit_of(file: &std::path::Path, new_text: &str) -> serde_json::Value {
+    let canonical = std::fs::canonicalize(file).unwrap();
+    let uri = hume_lsp::uri::path_to_uri(&canonical).unwrap();
+    serde_json::json!({"changes": {uri.as_str(): [
+        {"range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 3}},
+         "newText": new_text},
+    ]}})
+}
+
+#[test]
+fn apply_workspace_edit_after_the_pane_switches_buffers_applies() {
+    let tmp = tempfile::tempdir().unwrap();
+    let file = tmp.path().join("a.txt");
+    std::fs::write(&file, "abcdef\n").unwrap();
+    let mut ed = workspace_edit_editor(tmp.path(), workspace_edit_of(&file, "XYZ"));
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "go" "" (lambda (bid)
+             (let ((gen (buffer-generation bid)))
+               (lsp-request! bid "test/workspaceEdit" (hash) (lambda (err res)
+                 (apply-workspace-edit! bid res #:expect-generation gen))))))"#,
+    );
+
+    switch_pane_before_reply(&mut ed);
+
+    let canonical = std::fs::canonicalize(&file).unwrap();
+    let bid = ed.state.buffers.find_by_path(&canonical).unwrap();
+    assert_eq!(ed.state.buffers.get(bid).text().to_string(), "XYZdef\n");
+    assert_eq!(logged_errors(&ed), Vec::<String>::new());
+}
+
+#[test]
+fn workspace_edit_to_a_file_the_pane_does_not_show_seeds_no_pane_state() {
+    let tmp = tempfile::tempdir().unwrap();
+    let file = tmp.path().join("a.txt");
+    std::fs::write(&file, "abcdef\n").unwrap();
+    let mut ed = workspace_edit_editor(tmp.path(), workspace_edit_of(&file, "XYZ"));
+    apply_wire_workspace_edit(&mut ed, tmp.path());
+
+    let canonical = std::fs::canonicalize(&file).unwrap();
+    let bid = ed.state.buffers.find_by_path(&canonical).unwrap();
+    let pid = ed.view.focused_pane();
+    assert_eq!(ed.state.buffers.get(bid).text().to_string(), "XYZdef\n");
+    assert!(
+        ed.state
+            .panes
+            .entries
+            .get(pid)
+            .unwrap()
+            .buffer(bid)
+            .is_none(),
+        "an edit to a buffer the pane does not show must not give the pane a selection entry for it"
+    );
+}
+
+#[test]
+fn apply_text_edits_through_a_pane_that_switched_buffers_edits_its_buffer() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = text_edits_editor(
+        tmp.path(),
+        "-[a]>bcdef\n",
+        vec![wire_edit((0, 0), (0, 0), "ZZ")],
+    );
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "go" "" (lambda (bid)
+             (let ((gen (buffer-generation bid)))
+               (lsp-request! bid "test/textEdits" (hash) (lambda (err res)
+                 (apply-text-edits! bid (json-list res) #:expect-generation gen))))))"#,
+    );
+
+    let requested = switch_pane_before_reply(&mut ed);
+
+    assert_eq!(
+        ed.state.buffers.get(requested).text().to_string(),
+        "ZZabcdef\n"
+    );
+    assert_eq!(logged_errors(&ed), Vec::<String>::new());
+}

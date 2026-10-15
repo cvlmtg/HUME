@@ -31,14 +31,16 @@ pub struct WireTextEdit {
 /// goto), not the focused one. A response landing after the user has since
 /// switched panes must still edit or navigate the pane the request was
 /// actually made from. `Err` (fail-fast) when `pane` carries no pane, a
-/// closed one, or one that no longer shows its buffer. The exception is
-/// [`Self::apply_text_edits`], which also takes a value with no pane.
+/// closed one, or one that shows another buffer. The exceptions are
+/// [`Self::apply_text_edits`] and [`Self::apply_workspace_edit`], which edit
+/// through the pane while it shows the buffer being edited and otherwise for
+/// no pane.
 pub trait EditHost {
     /// `(apply-text-edits! pane edits #:expect-generation gen)`: `edits` is
     /// a list of wire-coordinate ranges plus replacement text. Applied as
-    /// one undo step. A `pane` that names a pane edits through it; one that
-    /// names only a buffer edits that buffer for no pane, carrying every
-    /// pane's selections and refusing while any session is open on it.
+    /// one undo step. A `pane` that names a pane showing the buffer edits
+    /// through it; any other `pane` edits that buffer for no pane, carrying
+    /// every pane's selections and refusing while any session is open on it.
     fn apply_text_edits(
         &mut self,
         pane: PaneHandle,
@@ -53,11 +55,10 @@ pub trait EditHost {
     /// than cloning it. `encoding` is the builtin's own read of that
     /// handle's tagged producing-server encoding
     /// (`JsonHandle::position_encoding`); every position in `edit` is
-    /// counted in it. A `WorkspaceEdit` can touch many files at once, each
-    /// mapped through `pane`'s own pane regardless of which buffer it
-    /// edits, the same "seed a selection entry for a buffer this pane
-    /// doesn't show" fallback `apply_text_edits` uses, applied per file.
-    /// Returns the number of buffers modified.
+    /// counted in it. A `WorkspaceEdit` can touch many files at once; each is
+    /// edited through `pane`'s pane while that pane shows it and for no pane
+    /// otherwise, as `apply_text_edits` does. Returns the number of buffers
+    /// modified.
     ///
     /// `expect_gen`, like `apply_text_edits`'s own, is the *requesting*
     /// pane's buffer generation at the time the request that produced

@@ -79,13 +79,9 @@ impl PendingWrite {
     /// Stops the write waiting on anything. Its timer, if any, stays for
     /// the commit to cancel.
     fn release(&mut self) {
-        let timeout = match self.holds {
-            Holds::NotRaised => None,
-            Holds::Open { timeout, .. } => timeout,
-        };
         self.holds = Holds::Open {
             open: FxHashSet::default(),
-            timeout,
+            timeout: self.timeout(),
         };
     }
 
@@ -194,15 +190,7 @@ impl Editor {
         let event = EditorEvent::OnBeforeBufferSave { target };
         let kind = WriteKind::classify(self.state.buffers.get(bid), arg);
         let applies = kind.reaches_own_file();
-        if applies {
-            self.activate_lazy_event_plugins(event.name());
-        }
-        let handled = applies
-            && self
-                .scripting
-                .as_ref()
-                .is_some_and(|host| host.has_hook_handlers(event.name(), None));
-        if !handled {
+        if !(applies && self.has_event_handlers(event.name(), None)) {
             return write_and_continue(self, bid, kind, force, after)
                 .map(|()| WriteRequest::Written);
         }

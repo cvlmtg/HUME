@@ -627,19 +627,22 @@ impl Editor {
         }
     }
 
+    /// Whether a handler is registered for `name` and `key`. Lazy event
+    /// plugins activate first so their `register-hook!` calls land before
+    /// the check.
+    pub(super) fn has_event_handlers(&mut self, name: &str, key: Option<&str>) -> bool {
+        self.activate_lazy_event_plugins(name);
+        self.scripting
+            .as_ref()
+            .is_some_and(|h| h.has_hook_handlers(name, key))
+    }
+
     /// Fire every handler registered for one `EditorEvent`, if any are:
     /// the per-item body of `settle`'s `Event` arm.
     fn fire_one_event(&mut self, event: EditorEvent) {
         let name = event.name();
         let key = event.hook_key();
-        // Activate lazy event plugins first so their register-hook! calls
-        // land before the has_hook_handlers check below.
-        self.activate_lazy_event_plugins(name);
-        if self
-            .scripting
-            .as_ref()
-            .is_none_or(|h| !h.has_hook_handlers(name, key))
-        {
+        if !self.has_event_handlers(name, key) {
             if let Some(message) = event.unhandled_trace() {
                 self.report(Severity::Trace, message);
             }
