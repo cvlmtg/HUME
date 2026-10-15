@@ -77,17 +77,17 @@ A directory with neither `manifest.scm` nor `plugin.scm` is an error. A missing 
 - **`#:commands`**: editor-command names the plugin provides (defined with `define-command!`). HUME creates placeholder stubs so the names are key-bindable and reachable from `call!` immediately; the first dispatch triggers real definition. A key you bind to one of these names in your own `init.scm` works this way: pressing it activates the plugin, then runs the command, so a lazy plugin's commands are key-bindable from the start even though the plugin's *own* bindings aren't in place yet:
 
   ```scheme
-  (declare-plugin! "cvlmtg/grep.hume" #:commands '("picker-grep"))
+  (declare-plugin! "cvlmtg/grep.hume" #:commands '("grep/picker"))
   (load-plugin! "cvlmtg/grep.hume")
-  (bind-key! 'normal "space g" "picker-grep")
-  ; pressing <space>g the first time loads cvlmtg/grep.hume, then runs picker-grep
+  (bind-key! 'normal "space g" "grep/picker")
+  ; pressing <space>g the first time loads cvlmtg/grep.hume, then runs grep/picker
   ```
 - **`#:typed-commands`**: typed-command names the plugin provides (defined with `define-typed-command!`). Same stub-then-activate behavior as `#:commands`, but the stub appears in `:` Tab completion and is reachable only from `:`, never from a key or `call!`:
 
   ```scheme
-  (declare-plugin! "cvlmtg/grep.hume" #:typed-commands '("picker-grep"))
+  (declare-plugin! "cvlmtg/grep.hume" #:typed-commands '("grep"))
   (load-plugin! "cvlmtg/grep.hume")
-  ; typing :picker-grep the first time loads cvlmtg/grep.hume, then runs picker-grep
+  ; typing :grep the first time loads cvlmtg/grep.hume, then runs grep
   ```
 - **`#:events`**: lifecycle hooks that trigger loading, as a list of symbols (e.g., `'(on-buffer-open)`).
 - **`#:languages`**: buffer language names that trigger loading. Triggers on the name being *set* on a buffer (by detection, `:set buffer language=`, or another plugin's `define-language!`), not on the name being a known language yet — so a plugin can't use `#:languages '("foo")` to lazily define `"foo"` itself: HUME sets the buffer's language and reports it as unregistered before your plugin's activation runs, then activates you anyway. The message is informational; call `define-language!` in your activation body and everything downstream (highlighting, LSP) still works from there.
