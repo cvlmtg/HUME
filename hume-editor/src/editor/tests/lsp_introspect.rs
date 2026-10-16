@@ -1,7 +1,7 @@
 // Introspection builtins: lsp-capabilities, lsp-servers,
 // lsp-server-status, buffer-generation, lsp-position-params,
 // lsp-primary-range-params, lsp-linewise-ranges-params,
-// lsp-position->offset, lsp-range->offsets.
+// lsp-position->char-offset, lsp-range->char-range.
 
 use super::lsp_rig::{LspRig, RigSpec};
 use super::*;
@@ -24,7 +24,7 @@ fn sent_params(rig: &mut LspRig, expr: &str) -> serde_json::Value {
 }
 
 /// [`LspRig::rust`] plus one canned response for `"test/echo"`: the setup
-/// every `lsp-position->offset`/`lsp-range->offsets` test below needs to
+/// every `lsp-position->char-offset`/`lsp-range->char-range` test below needs to
 /// hand the builtin a position that carries a real producing-server tag,
 /// since an untagged (hand-built) hash is rejected outright.
 fn rig_with_echo(
@@ -521,7 +521,7 @@ fn viewport_range_matches_the_on_viewport_change_hooks_own_computation() {
         &mut host,
         r#"(define *captured* #f)
            (register-hook! 'on-viewport-change
-             (lambda (bid first end) (set! *captured* (hash 'start first 'end end))))"#,
+             (lambda (bid range) (set! *captured* range)))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -560,7 +560,7 @@ fn viewport_range_end_is_one_past_the_last_content_line_at_eof() {
         &mut ed,
         ScriptingHost::new(&Dirs::none()),
         tmp.path(),
-        r#"(equal? (hash-ref (viewport-range bid) 'end) 3)"#,
+        r#"(equal? (hash-ref (viewport-range bid) 'end-line) 3)"#,
     );
     assert!(
         fired,
@@ -714,7 +714,7 @@ fn viewport_range_builtin_succeeds_for_a_background_tab_pane() {
              (let* ((hidden (car (filter (lambda (b) (not (equal? (buffer-key b) (buffer-key bid)))) (buffers))))
                     (hidden-pane (car (buffer-panes hidden)))
                     (range (viewport-range hidden-pane)))
-               (log! 'info (string-append "range: " (number->string (hash-ref range 'start)) ".." (number->string (hash-ref range 'end)))))))"#,
+               (log! 'info (string-append "range: " (number->string (hash-ref range 'start-line)) ".." (number->string (hash-ref range 'end-line)))))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -883,7 +883,7 @@ fn lsp_position_params_is_false_for_an_unattached_buffer() {
 }
 
 #[test]
-fn lsp_position_to_offset_uses_the_responses_tagged_utf16_encoding() {
+fn lsp_position_to_char_offset_uses_the_responses_tagged_utf16_encoding() {
     let tmp = tempfile::tempdir().unwrap();
     // "🎉" is 1 char, 2 UTF-16 code units: wire character 2 (the emoji's
     // full UTF-16 width) must land on char index 1, the char right after it.
@@ -897,7 +897,7 @@ fn lsp_position_to_offset_uses_the_responses_tagged_utf16_encoding() {
     let fired = run_tagged_probe(
         &mut rig.ed,
         tmp.path(),
-        r#"(equal? (lsp-position->offset bid res) 1)"#,
+        r#"(equal? (lsp-position->char-offset bid res) 1)"#,
     );
     assert!(
         fired,
@@ -906,7 +906,7 @@ fn lsp_position_to_offset_uses_the_responses_tagged_utf16_encoding() {
 }
 
 #[test]
-fn lsp_position_to_offset_uses_the_responses_tagged_utf8_encoding() {
+fn lsp_position_to_char_offset_uses_the_responses_tagged_utf8_encoding() {
     let tmp = tempfile::tempdir().unwrap();
     // "🎉" is 4 UTF-8 bytes: wire character 4 must land on char index 1.
     let mut rig = rig_with_echo(
@@ -919,7 +919,7 @@ fn lsp_position_to_offset_uses_the_responses_tagged_utf8_encoding() {
     let fired = run_tagged_probe(
         &mut rig.ed,
         tmp.path(),
-        r#"(equal? (lsp-position->offset bid res) 1)"#,
+        r#"(equal? (lsp-position->char-offset bid res) 1)"#,
     );
     assert!(
         fired,
@@ -927,14 +927,14 @@ fn lsp_position_to_offset_uses_the_responses_tagged_utf8_encoding() {
     );
 }
 
-/// `lsp-position->offset` reads the position's own tagged producing-server
+/// `lsp-position->char-offset` reads the position's own tagged producing-server
 /// encoding: an untagged handle (a `json-parse` result) must error, not
 /// resolve via `bid`'s currently attached server.
 ///
 /// Without `JsonHandle::position_encoding`'s `Err`, this would silently
 /// decode against the running UTF-16 server.
 #[test]
-fn lsp_position_to_offset_untagged_handle_errors() {
+fn lsp_position_to_char_offset_untagged_handle_errors() {
     let tmp = tempfile::tempdir().unwrap();
     let mut rig = LspRig::rust(
         tmp.path(),
@@ -946,7 +946,7 @@ fn lsp_position_to_offset_untagged_handle_errors() {
         &mut rig.ed,
         tmp.path(),
         r#"(define-typed-command! "probe" "" (lambda (bid)
-             (lsp-position->offset bid (json-parse "{\"line\": 0, \"character\": 0}"))))"#,
+             (lsp-position->char-offset bid (json-parse "{\"line\": 0, \"character\": 0}"))))"#,
     );
     type_cmd(&mut rig.ed, ":probe");
 
@@ -963,12 +963,12 @@ fn lsp_position_to_offset_untagged_handle_errors() {
 /// attachment. The request is dispatched (and its response tagged) while
 /// the server is still attached; `bid`'s document is closed before the
 /// response is drained (a second open file keeps the instance alive), so
-/// only the tag remains by the time `lsp-position->offset` actually runs,
+/// only the tag remains by the time `lsp-position->char-offset` actually runs,
 /// mirroring
 /// `lsp_request_with_no_attached_server_reports_an_error_and_fires_callback_with_err`'s
 /// own detach-after-send shape.
 #[test]
-fn lsp_position_to_offset_decodes_via_the_tag_even_after_the_server_detaches() {
+fn lsp_position_to_char_offset_decodes_via_the_tag_even_after_the_server_detaches() {
     let tmp = tempfile::tempdir().unwrap();
     let mut rig = rig_with_echo(
         tmp.path(),
@@ -982,7 +982,7 @@ fn lsp_position_to_offset_decodes_via_the_tag_even_after_the_server_detaches() {
         tmp.path(),
         r#"(define-typed-command! "probe" "" (lambda (bid)
              (lsp-request! bid "test/echo" (hash) (lambda (err res)
-               (when (equal? (lsp-position->offset bid res) 1)
+               (when (equal? (lsp-position->char-offset bid res) 1)
                  (call! "move-right" bid))))))
            (define-typed-command! "detach" "" (lambda (bid)
              (set-buffer-option! bid "language" "")))"#,
@@ -1009,15 +1009,14 @@ fn lsp_position_to_offset_decodes_via_the_tag_even_after_the_server_detaches() {
 }
 
 #[test]
-fn lsp_position_to_offset_is_false_when_it_would_land_on_the_trailing_phantom_line() {
+fn lsp_position_to_char_offset_is_false_when_it_would_land_on_the_trailing_phantom_line() {
     let tmp = tempfile::tempdir().unwrap();
-    // "-[x]>abc\n" is "xabc\n": one content line; a wire `line` past it
-    // clamps (inside `wire_to_char`) onto the buffer's trailing phantom line
-    // rather than erroring, since servers send past-end positions routinely. Every
-    // point-anchored decoration setter (`set-inlay-hints!`) rejects that
-    // offset outright, so `lsp-position->offset` must refuse here too,
-    // rather than handing back a value only useful for failing one step
-    // later (and, inside a hint batch, failing every *other* hint with it).
+    // "-[x]>abc\n" is "xabc\n": one content line. A wire `line` past it would
+    // clamp onto the buffer's trailing phantom line, an offset every
+    // point-anchored decoration setter (`set-inlay-hints!`) rejects outright,
+    // so `lsp-position->char-offset` answers `#f` rather than a value only
+    // useful for failing one step later (and, inside a hint batch, failing
+    // every *other* hint with it).
     let mut rig = rig_with_echo(
         tmp.path(),
         "-[x]>abc\n",
@@ -1028,7 +1027,7 @@ fn lsp_position_to_offset_is_false_when_it_would_land_on_the_trailing_phantom_li
     let fired = run_tagged_probe(
         &mut rig.ed,
         tmp.path(),
-        r#"(equal? (lsp-position->offset bid res) #f)"#,
+        r#"(equal? (lsp-position->char-offset bid res) #f)"#,
     );
     assert!(
         fired,
@@ -1037,7 +1036,7 @@ fn lsp_position_to_offset_is_false_when_it_would_land_on_the_trailing_phantom_li
 }
 
 #[test]
-fn lsp_range_to_offsets_converts_both_endpoints_half_open() {
+fn lsp_range_to_char_range_converts_both_endpoints_half_open() {
     let tmp = tempfile::tempdir().unwrap();
     // "🎉" occupies char 0 (2 UTF-16 code units); 'b' is char 1, wire
     // character 2. A wire range [0, 2) must convert to char offsets (0 . 1),
@@ -1055,7 +1054,7 @@ fn lsp_range_to_offsets_converts_both_endpoints_half_open() {
     let fired = run_tagged_probe(
         &mut rig.ed,
         tmp.path(),
-        r#"(equal? (lsp-range->offsets bid res) (hash 'start 0 'end 1))"#,
+        r#"(equal? (lsp-range->char-range bid res) (hash 'start-char 0 'end-char 1))"#,
     );
     assert!(
         fired,
@@ -1064,15 +1063,40 @@ fn lsp_range_to_offsets_converts_both_endpoints_half_open() {
 }
 
 #[test]
-fn lsp_range_to_offsets_end_may_land_at_the_buffers_char_length() {
-    // The opposite of `lsp_position_to_offset_is_false_when_it_
+fn lsp_range_to_char_range_end_may_land_at_the_buffers_char_length() {
+    // The opposite of `lsp_position_to_char_offset_is_false_when_it_
     // would_land_on_the_trailing_phantom_line`: a range's `end` legitimately
     // sits at the buffer's char length (`set-extra-highlights!`'s
-    // `validate_range` accepts that boundary), so `lsp-range->offsets` must
-    // keep the clamping behavior `lsp-position->offset`
-    // refuses: a past-end wire `line` for `end` is not an error here.
+    // `validate_range` accepts that boundary), so `lsp-range->char-range` must
+    // accept the document end `(line count, 0)` that a point refuses.
     // "-[x]>abc\n" is "xabc\n" (the marked 'x' is real buffer content), 5
-    // chars.
+    // chars and one content line.
+    let tmp = tempfile::tempdir().unwrap();
+    let mut rig = rig_with_echo(
+        tmp.path(),
+        "-[x]>abc\n",
+        serde_json::json!({"capabilities": {}}),
+        serde_json::json!({
+            "start": {"line": 0, "character": 0},
+            "end": {"line": 1, "character": 0},
+        }),
+    );
+
+    let fired = run_tagged_probe(
+        &mut rig.ed,
+        tmp.path(),
+        r#"(equal? (lsp-range->char-range bid res) (hash 'start-char 0 'end-char 5))"#,
+    );
+    assert!(
+        fired,
+        "the document end (1, 0) must be the buffer's char length, not #f"
+    );
+}
+
+/// A line past the document end names no offset, so `lsp-range->char-range`
+/// answers `#f` and the caller decides what a stale range means.
+#[test]
+fn lsp_range_to_char_range_is_false_for_a_line_past_the_document_end() {
     let tmp = tempfile::tempdir().unwrap();
     let mut rig = rig_with_echo(
         tmp.path(),
@@ -1087,18 +1111,15 @@ fn lsp_range_to_offsets_end_may_land_at_the_buffers_char_length() {
     let fired = run_tagged_probe(
         &mut rig.ed,
         tmp.path(),
-        r#"(equal? (lsp-range->offsets bid res) (hash 'start 0 'end 5))"#,
+        r#"(equal? (lsp-range->char-range bid res) #f)"#,
     );
-    assert!(
-        fired,
-        "a past-end wire `line` for `end` must clamp to the buffer's char length, not #f"
-    );
+    assert!(fired, "a range ending past the document end must give #f");
 }
 
-/// `lsp-range->offsets`'s own untagged-handle counterpart to
-/// `lsp_position_to_offset_untagged_handle_errors`.
+/// `lsp-range->char-range`'s own untagged-handle counterpart to
+/// `lsp_position_to_char_offset_untagged_handle_errors`.
 #[test]
-fn lsp_range_to_offsets_untagged_handle_errors() {
+fn lsp_range_to_char_range_untagged_handle_errors() {
     let tmp = tempfile::tempdir().unwrap();
     let mut rig = LspRig::rust(
         tmp.path(),
@@ -1110,7 +1131,7 @@ fn lsp_range_to_offsets_untagged_handle_errors() {
         &mut rig.ed,
         tmp.path(),
         r#"(define-typed-command! "probe" "" (lambda (bid)
-             (lsp-range->offsets bid
+             (lsp-range->char-range bid
                (json-parse "{\"start\": {\"line\": 0, \"character\": 0}, \"end\": {\"line\": 0, \"character\": 1}}"))))"#,
     );
     type_cmd(&mut rig.ed, ":probe");

@@ -97,15 +97,65 @@ fn virtual_line_segments_to_bytes_rejects_overlap() {
 }
 
 #[test]
-fn virtual_line_segments_to_bytes_rejects_segment_splitting_a_grapheme_cluster() {
+fn virtual_line_segments_to_bytes_widens_a_segment_splitting_a_grapheme_cluster() {
     // "e" (1 byte) + combining acute accent U+0301 (2 bytes) is 2 chars but
-    // one grapheme cluster spanning bytes 0..3. Char offset 1 falls between
-    // the two chars but not on the cluster boundary. The engine
-    // (`format_virtual_lines`) resolves scope once per cluster at
-    // its start byte, so a segment edge here would silently mis-apply
-    // instead of erroring under a mere char-boundary check.
-    let err = virtual_line_segments_to_bytes("e\u{301}", vec![seg(0, 1, "x")]).unwrap_err();
-    assert!(err.contains("grapheme-cluster boundary"), "got: {err}");
+    // one grapheme cluster spanning bytes 0..3, then "x" at byte 3. The
+    // engine (`format_virtual_lines`) resolves scope once per cluster at its
+    // start byte, so a segment edge inside the cluster widens to the whole
+    // cluster: char 1 moves back to byte 0, char 1 as an end moves on to 3.
+    let text = "e\u{301}x";
+    assert_eq!(
+        virtual_line_segments_to_bytes(text, vec![seg(0, 1, "a")]).unwrap(),
+        vec![(0, 3, "a".to_string())]
+    );
+    assert_eq!(
+        virtual_line_segments_to_bytes(text, vec![seg(1, 3, "b")]).unwrap(),
+        vec![(0, 4, "b".to_string())]
+    );
+}
+
+#[test]
+fn virtual_line_segments_to_bytes_widens_across_a_zwj_sequence() {
+    // Man (4 bytes) + ZWJ (3 bytes) + woman (4 bytes): three chars, one
+    // cluster of 11 bytes.
+    let text = "\u{1F468}\u{200D}\u{1F469}";
+    assert_eq!(
+        virtual_line_segments_to_bytes(text, vec![seg(1, 2, "a")]).unwrap(),
+        vec![(0, 11, "a".to_string())]
+    );
+}
+
+#[test]
+fn virtual_line_segments_to_bytes_rejects_two_segments_splitting_one_cluster() {
+    // Each half of "e" + U+0301 widens to the whole cluster, so the two
+    // segments would claim the same character with two scopes.
+    let err = virtual_line_segments_to_bytes("e\u{301}", vec![seg(0, 1, "a"), seg(1, 2, "b")])
+        .unwrap_err();
+    assert!(err.contains("overlap"), "got: {err}");
+}
+
+#[test]
+fn validate_offset_snaps_inside_a_combining_sequence() {
+    // "e" + U+0301 is chars 0..2, one cluster; "x" is char 2.
+    let text = hume_editing::text::BufferText::from("e\u{301}x\n");
+    assert_eq!(
+        validate_offset(&text, 1, true, "test").unwrap(),
+        co(0),
+        "'before inside the character lands on its start"
+    );
+    assert_eq!(
+        validate_offset(&text, 0, false, "test").unwrap(),
+        co(1),
+        "'after inside the character lands on its last char, so the hint follows the accent"
+    );
+}
+
+#[test]
+fn validate_offset_snaps_inside_a_zwj_sequence() {
+    // Man + ZWJ + woman: chars 0..3, one cluster; "x" is char 3.
+    let text = hume_editing::text::BufferText::from("\u{1F468}\u{200D}\u{1F469}x\n");
+    assert_eq!(validate_offset(&text, 2, true, "test").unwrap(), co(0));
+    assert_eq!(validate_offset(&text, 0, false, "test").unwrap(), co(2));
 }
 
 // ── `line_start_offset` / `validate_offset` — the position-contract fix

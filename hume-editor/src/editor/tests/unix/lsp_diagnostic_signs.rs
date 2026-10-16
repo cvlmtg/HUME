@@ -140,41 +140,82 @@ fn multiline_diagnostic_marks_every_line_it_touches() {
     assert!(signs.contains_key(&hume_rope::line::ContentLine::new(1)));
 }
 
-/// `diagnostics-for-buffer`'s `"end-line"` field itself (D9), independent of
-/// its sign-placement consequence above: equal to `"line"` for a diagnostic
-/// that stays on one line, greater for one that crosses a line boundary:
-/// the span `lsp/diagnostic-signs` expands over.
+/// `diagnostics-for-buffer`'s `"end-line"` field is one past the last line
+/// the diagnostic touches, independent of its sign-placement consequence
+/// above: a diagnostic on one line ends at the next line, one crossing a
+/// line boundary ends after the last line it reaches, and an empty one
+/// still covers the line it sits on. The span `lsp/diagnostic-signs`
+/// expands over is `[start-line, end-line)`.
 #[test]
-fn end_line_equals_line_for_single_line_and_diverges_for_multiline() {
+fn end_line_is_one_past_the_last_line_the_diagnostic_touches() {
     let single: DiagFixture = ((0, 2), (0, 5), 1, "single-line");
     let multi: DiagFixture = ((0, 2), (1, 3), 1, "multi-line");
+    let through_break: DiagFixture = ((0, 1), (1, 0), 1, "through-break");
+    let empty: DiagFixture = ((1, 0), (1, 0), 1, "empty");
     let DiagSetup {
         ed, _guard, _root, ..
-    } = setup_diagnostics("abc\ndef\n", &[single, multi]);
+    } = setup_diagnostics("abc\ndef\n", &[single, multi, through_break, empty]);
     let bid = ed.focused_buffer_id();
 
     let entries =
         crate::editor::lsp::introspect::diagnostics_for_buffer(&ed.state, bid, None, None)
             .expect("diagnostics-for-buffer must not error");
-    let find = |msg: &str| {
-        entries
+    let lines = |msg: &str| {
+        let entry = entries
             .iter()
             .find(|e| e.message == msg)
-            .unwrap_or_else(|| panic!("missing diagnostic {msg:?}"))
+            .unwrap_or_else(|| panic!("missing diagnostic {msg:?}"));
+        (entry.start_line, entry.end_line)
     };
 
-    let single_entry = find("single-line");
+    assert_eq!(lines("single-line"), (0, 1));
+    assert_eq!(lines("multi-line"), (0, 2));
     assert_eq!(
-        single_entry.line, single_entry.end_line,
-        "a diagnostic that stays on one line has end-line == line"
+        lines("through-break"),
+        (0, 1),
+        "a range ending at the start of the next line stops at the newline"
     );
+    assert_eq!(lines("empty"), (1, 2));
+}
 
-    let multi_entry = find("multi-line");
-    assert_eq!(multi_entry.line, 0);
-    assert_eq!(
-        multi_entry.end_line, 1,
-        "a diagnostic crossing a line boundary has end-line > line"
-    );
+/// `(start_char, start_line, grapheme_col)` of the one diagnostic in `text`.
+fn start_of(text: &str, diag: DiagFixture) -> (usize, usize, usize) {
+    let DiagSetup {
+        ed, _guard, _root, ..
+    } = setup_diagnostics(text, &[diag]);
+    let bid = ed.focused_buffer_id();
+    let entries =
+        crate::editor::lsp::introspect::diagnostics_for_buffer(&ed.state, bid, None, None)
+            .expect("diagnostics-for-buffer must not error");
+    let entry = &entries[0];
+    (entry.start_char, entry.start_line, entry.grapheme_col)
+}
+
+/// A diagnostic on the empty line after the final line break is reported on
+/// the last line's final line break, and its `'start-char` names that same
+/// character, so a jump lands where the entry says.
+#[test]
+fn start_char_of_a_diagnostic_past_the_content_is_the_character_it_is_shown_on() {
+    let at_eof: DiagFixture = ((2, 0), (2, 0), 1, "at-eof");
+    // "abc\ndef\n": the final `\n` is char 7, line 1, grapheme column 3.
+    assert_eq!(start_of("abc\ndef\n", at_eof), (7, 1, 3));
+}
+
+/// A diagnostic already on the last line's final line break keeps its offset.
+#[test]
+fn start_char_of_a_diagnostic_on_the_final_line_break_is_unchanged() {
+    let at_line_end: DiagFixture = ((1, 3), (2, 0), 1, "unexpected newline");
+    assert_eq!(start_of("abc\ndef\n", at_line_end), (7, 1, 3));
+}
+
+/// The clamp lands on a cluster start even when the last line ends in a
+/// combining sequence.
+#[test]
+fn start_char_of_a_diagnostic_past_the_content_never_splits_a_cluster() {
+    let at_eof: DiagFixture = ((2, 0), (2, 0), 1, "at-eof");
+    // "ab\ne\u{301}\n": `e` is char 3, its combining mark char 4, the final
+    // `\n` char 5, which is grapheme column 1 of line 1.
+    assert_eq!(start_of("ab\ne\u{301}\n", at_eof), (5, 1, 1));
 }
 
 #[test]

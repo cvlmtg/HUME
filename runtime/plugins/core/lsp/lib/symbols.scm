@@ -24,8 +24,7 @@
 ;; whose `Location` is built only for the row that is accepted.
 (define (lsp/goto-symbol! payload)
   (when payload
-    (goto-location! (focused-pane)
-                    (if (pair? payload) (lsp-location (car payload) (cdr payload)) payload))))
+    (lsp/jump-to! (if (pair? payload) (lsp-location (car payload) (cdr payload)) payload))))
 
 ;; ── Document symbols ─────────────────────────────────────────────────────────
 

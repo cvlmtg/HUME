@@ -88,11 +88,11 @@ fn buffer_selections_blocked_in_init_mode() {
     assert!(super::super::errors::require_cmd(&h.ctx_init(), "buffer-selections").is_err());
 }
 
-/// `offset->line` is blocked in init mode.
+/// `char-offset->line` is blocked in init mode.
 #[test]
-fn offset_to_line_blocked_in_init_mode() {
+fn char_offset_to_line_blocked_in_init_mode() {
     let mut h = SteelCtxTestHarness::new();
-    assert!(super::super::errors::require_cmd(&h.ctx_init(), "offset->line").is_err());
+    assert!(super::super::errors::require_cmd(&h.ctx_init(), "char-offset->line").is_err());
 }
 
 /// `buffer-text` is blocked in init mode.
@@ -116,20 +116,19 @@ fn buffer_line_count_blocked_in_init_mode() {
     assert!(super::super::errors::require_cmd(&h.ctx_init(), "buffer-line-count").is_err());
 }
 
-/// `line->offset` is blocked in init mode.
+/// `line->char-offset` is blocked in init mode.
 #[test]
-fn line_to_offset_blocked_in_init_mode() {
+fn line_to_char_offset_blocked_in_init_mode() {
     let mut h = SteelCtxTestHarness::new();
-    assert!(super::super::errors::require_cmd(&h.ctx_init(), "line->offset").is_err());
+    assert!(super::super::errors::require_cmd(&h.ctx_init(), "line->char-offset").is_err());
 }
 
-// `offset->line`/`%buffer-lines`/`line->offset`'s wrong-type-argument
-// checks are covered centrally, by `args::tests`' own unit tests on the
-// `Usize`/`OptUsize` `FromSteelVal` newtypes their `builtins!` table
-// entries declare. That decode happens at Steel's own registration
-// boundary, before any of these functions' bodies (which take a plain
-// `usize`/`Option<usize>`) ever run, so it cannot be exercised by
-// calling the function directly with a malformed `SteelVal`.
+// `char-offset->line`/`line->char-offset`'s wrong-type-argument checks are covered
+// centrally, by `args::tests`' own unit tests on the `Usize` `FromSteelVal`
+// newtype their `builtins!` table entries declare. That decode happens at
+// Steel's own registration boundary, before either function's body (which
+// takes a plain `usize`) ever runs, so it cannot be exercised by calling the
+// function directly with a malformed `SteelVal`.
 //
 // Likewise, every explicit-`pane` builtin's "invalid buffer id" error on a
 // closed buffer is raised by `args::LivePane`'s `BuiltinArg::resolve`,

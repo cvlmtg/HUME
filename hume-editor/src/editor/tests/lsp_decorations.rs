@@ -10,7 +10,7 @@ use hume_scripting::ScriptingHost;
 
 /// `marked` in a file attached to a `Running` scripted server (UTF-16
 /// encoding, the negotiated default): several tests below compose
-/// `lsp-position->offset`, which needs a resolvable server to convert a
+/// `lsp-position->char-offset`, which needs a resolvable server to convert a
 /// wire position, and `inlay_hints_remap_through_an_edit` needs a real
 /// attachment for the remap chokepoint to have somewhere to (not) send a
 /// `didChange`.
@@ -19,13 +19,13 @@ fn attached_editor(tmp: &std::path::Path, marked: &str) -> Editor {
 }
 
 #[test]
-fn set_inlay_hints_composes_with_lsp_position_to_offset() {
+fn set_inlay_hints_composes_with_lsp_position_to_char_offset() {
     let tmp = tempfile::tempdir().unwrap();
     // "🎉" is 1 char, 2 UTF-16 code units, 4 UTF-8 bytes: a wire character
     // offset of 2 (the emoji's UTF-16 width) must land on char index 1, the
     // char right after it, not byte/char index 2 or 4. `set-inlay-hints!`
     // does not decode wire positions itself: a plugin composes
-    // `lsp-position->offset` before calling the setter.
+    // `lsp-position->char-offset` before calling the setter.
     //
     // The position must arrive as a real tagged handle (`lsp-position->
     // offset` rejects a hand-built (untagged) one outright), so this echoes
@@ -45,7 +45,7 @@ fn set_inlay_hints_composes_with_lsp_position_to_offset() {
         r#"(define-typed-command! "arm-hints-a" "" (lambda (bid)
              (lsp-request! bid "test/echo" (hash) (lambda (err res)
                (set-inlay-hints! "linter" bid
-                 (list (hash 'offset (lsp-position->offset bid res) 'text "hint" 'side 'after)))))))"#,
+                 (list (hash 'char-offset (lsp-position->char-offset bid res) 'text "hint" 'side 'after)))))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -80,10 +80,10 @@ fn set_inlay_hints_replaces_wholesale_not_appends() {
         &mut host,
         r#"(define-typed-command! "arm-hints-a" "" (lambda (bid)
              (set-inlay-hints! "linter" bid
-               (list (hash 'offset 0 'text "first" 'side 'before)))))
+               (list (hash 'char-offset 0 'text "first" 'side 'before)))))
            (define-typed-command! "arm-hints-b" "" (lambda (bid)
              (set-inlay-hints! "linter" bid
-               (list (hash 'offset 1 'text "second" 'side 'before)))))"#,
+               (list (hash 'char-offset 1 'text "second" 'side 'before)))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -119,7 +119,7 @@ fn set_inlay_hints_errors_loudly_on_a_malformed_offset() {
         &mut host,
         r#"(define-typed-command! "arm-bad" "" (lambda (bid)
              (set-inlay-hints! "linter" bid
-               (list (hash 'offset "not-a-number" 'text "oops" 'side 'before)))))"#,
+               (list (hash 'char-offset "not-a-number" 'text "oops" 'side 'before)))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -159,7 +159,7 @@ fn set_inlay_hints_errors_loudly_on_an_after_hint_at_the_trailing_newline() {
         &mut host,
         r#"(define-typed-command! "arm-bad" "" (lambda (bid)
              (set-inlay-hints! "linter" bid
-               (list (hash 'offset 7 'text "hint" 'side 'after)))))"#,
+               (list (hash 'char-offset 7 'text "hint" 'side 'after)))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -194,7 +194,7 @@ fn set_extra_highlights_errors_loudly_on_an_out_of_range_end() {
         &mut ed,
         &mut host,
         r#"(define-typed-command! "arm-bad" "" (lambda (bid)
-             (set-extra-highlights! "linter" bid (list (hash 'start 0 'end 100 'scope "unused")))))"#,
+             (set-extra-highlights! "linter" bid (list (hash 'start-char 0 'end-char 100 'scope "unused")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -304,7 +304,7 @@ fn inlay_hints_remap_through_an_edit() {
         &mut host,
         r#"(define-typed-command! "arm-hints-a" "" (lambda (bid)
              (set-inlay-hints! "linter" bid
-               (list (hash 'offset 3 'text "hint" 'side 'after)))))"#,
+               (list (hash 'char-offset 3 'text "hint" 'side 'after)))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -335,6 +335,68 @@ fn inlay_hints_remap_through_an_edit() {
     );
 }
 
+/// A highlight edge inside a character widens to the whole character: the
+/// renderer paints a character at a time, so a split one can't be drawn as
+/// asked. "ae\u{301}x\n": `e` + U+0301 is chars 1..3, one character.
+#[test]
+fn extra_highlights_inside_a_character_widen_to_whole_characters() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>e\u{301}x\n");
+    let bid = ed.focused_buffer_id();
+    let mut host = ScriptingHost::new(&Dirs::none());
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(define-typed-command! "arm" "" (lambda (bid)
+             (set-extra-highlights! "linter" bid
+               (list (hash 'start-char 2 'end-char 4 'scope "a")
+                     (hash 'start-char 0 'end-char 2 'scope "b")
+                     (hash 'start-char 1 'end-char 2 'scope "c")))))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+    type_cmd(&mut ed, ":arm");
+
+    let mut spans: Vec<_> = ed
+        .state
+        .config
+        .decorations
+        .extra_highlights_for_buffer(bid)
+        .map(|e| (e.start, e.end))
+        .collect();
+    spans.sort();
+    assert_eq!(spans, vec![(co(0), co(3)), (co(1), co(3)), (co(1), co(4))]);
+}
+
+/// The same widening across a ZWJ emoji sequence: man + ZWJ + woman is chars
+/// 1..4 of "a\u{1F468}\u{200D}\u{1F469}x\n", one character.
+#[test]
+fn extra_highlights_inside_a_zwj_sequence_widen_to_the_whole_sequence() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>\u{1F468}\u{200D}\u{1F469}x\n");
+    let bid = ed.focused_buffer_id();
+    let mut host = ScriptingHost::new(&Dirs::none());
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(define-typed-command! "arm" "" (lambda (bid)
+             (set-extra-highlights! "linter" bid
+               (list (hash 'start-char 2 'end-char 3 'scope "a")))))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+    type_cmd(&mut ed, ":arm");
+
+    let spans: Vec<_> = ed
+        .state
+        .config
+        .decorations
+        .extra_highlights_for_buffer(bid)
+        .map(|e| (e.start, e.end))
+        .collect();
+    assert_eq!(spans, vec![(co(1), co(4))]);
+}
+
 /// Regression: decorations are not LSP-owned. LSP is just their first
 /// client (any plugin can call `set-extra-highlights!`/`set-inlay-hints!`
 /// on any buffer). `record_lsp_edits` must queue a buffer's edits for the
@@ -352,7 +414,7 @@ fn extra_highlights_remap_through_an_edit_on_a_buffer_with_no_lsp_server() {
         &mut ed,
         &mut host,
         r#"(define-typed-command! "arm" "" (lambda (bid)
-             (set-extra-highlights! "linter" bid (list (hash 'start 3 'end 5 'scope "unused")))))"#,
+             (set-extra-highlights! "linter" bid (list (hash 'start-char 3 'end-char 5 'scope "unused")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -577,7 +639,7 @@ fn set_signs_virtual_lines_and_extra_highlights_round_trip_and_replace_per_sourc
              (set-signs! "linter" bid (list (hash 'line 0 'text "!" 'scope "error")))
              (set-signs! "vcs" bid (list (hash 'line 0 'text "+" 'scope "added")))
              (set-virtual-lines! "linter" bid (list (hash 'line 0 'text "note: …")))
-             (set-extra-highlights! "linter" bid (list (hash 'start 0 'end 3 'scope "unused")))))
+             (set-extra-highlights! "linter" bid (list (hash 'start-char 0 'end-char 3 'scope "unused")))))
            (define-typed-command! "clear-linter-signs" "" (lambda (bid)
              (set-signs! "linter" bid '())))"#,
         tmp.path(),
@@ -661,7 +723,7 @@ fn every_setter_interns_its_scope_at_the_set_call_not_at_first_render() {
                (list (hash 'line 0 'text "x" 'scope "scope-vline")))
              (set-eol-text! "src" bid (list (hash 'line 0 'text "x" 'scope "scope-eol")))
              (set-line-backgrounds! "src" bid (list (hash 'line 0 'scope "scope-linebg")))
-             (set-extra-highlights! "src" bid (list (hash 'start 0 'end 3 'scope "scope-extra")))))"#,
+             (set-extra-highlights! "src" bid (list (hash 'start-char 0 'end-char 3 'scope "scope-extra")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -697,7 +759,7 @@ fn set_virtual_lines_anchor_scope_and_segments_round_trip_into_the_store() {
         r#"(define-typed-command! "arm" "" (lambda (bid)
              (set-virtual-lines! "git-diff" bid
                (list (hash 'line 3 'anchor 'before 'text "- let x = 5" 'scope "diff.minus"
-                           'segments (list (hash 'start 2 'end 5 'scope "keyword")))))))"#,
+                           'segments (list (hash 'start-char 2 'end-char 5 'scope "keyword")))))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -961,10 +1023,10 @@ fn diagnostics_for_buffer_and_diagnostic_counts_reflect_the_published_batch() {
            (define-typed-command! "floored" "" (lambda (bid)
              (log! 'info (to-string (length (diagnostics-for-buffer bid #:severity 'warning))))))
            (define-typed-command! "ranged" "" (lambda (bid)
-             (log! 'info (to-string (length (diagnostics-for-buffer bid #:range (hash 'start 5 'end 10)))))))
+             (log! 'info (to-string (length (diagnostics-for-buffer bid #:range (hash 'start-char 5 'end-char 10)))))))
            (define-typed-command! "first" "" (lambda (bid)
              (let ((d (car (diagnostics-for-buffer bid))))
-               (log! 'info (to-string (hash-ref d 'message) "@" (hash-ref d 'start)
+               (log! 'info (to-string (hash-ref d 'message) "@" (hash-ref d 'start-char)
                                       (equal? (hash-ref d 'severity) 'error))))))"#,
         tmp.path(),
     );
@@ -1003,6 +1065,67 @@ fn diagnostics_for_buffer_and_diagnostic_counts_reflect_the_published_batch() {
         ed.state.status_msg.clone().unwrap(),
         "an error @ 0 #true",
         "an entry's fields are read by symbol key, its severity a symbol"
+    );
+}
+
+/// A `#:range` names a span of the buffer's text: it may end at the text's
+/// end, but not past it, and it may not end before it starts.
+#[test]
+fn diagnostics_for_buffer_rejects_a_range_outside_the_buffer() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bc\n");
+    let mut host = ScriptingHost::new(&Dirs::none());
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(define-typed-command! "to-end" "" (lambda (bid)
+             (diagnostics-for-buffer bid #:range (hash 'start-char 0 'end-char 4))))
+           (define-typed-command! "past-end" "" (lambda (bid)
+             (diagnostics-for-buffer bid #:range (hash 'start-char 0 'end-char 5))))
+           (define-typed-command! "reversed" "" (lambda (bid)
+             (diagnostics-for-buffer bid #:range (hash 'start-char 3 'end-char 1))))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+
+    type_cmd(&mut ed, ":to-end");
+    assert_eq!(
+        ed.state.message_log.format_for_display(),
+        "",
+        "a range ending at the text's end is valid"
+    );
+
+    for command in [":past-end", ":reversed"] {
+        type_cmd(&mut ed, command);
+        let log = ed.state.message_log.format_for_display();
+        assert!(
+            log.contains("diagnostics-for-buffer: #:range"),
+            "{command} must raise naming #:range: {log:?}"
+        );
+    }
+}
+
+/// A `#:range` whose start is past the buffer's end and whose end is not
+/// raises naming the start.
+#[test]
+fn diagnostics_for_buffer_range_error_names_the_end_that_is_past() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bc\n");
+    let mut host = ScriptingHost::new(&Dirs::none());
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(define-typed-command! "start-past" "" (lambda (bid)
+             (diagnostics-for-buffer bid #:range (hash 'start-char 5 'end-char 4))))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+
+    type_cmd(&mut ed, ":start-past");
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("#:range start: offset 5 is past the end of the buffer (4 chars)"),
+        "got: {log:?}"
     );
 }
 

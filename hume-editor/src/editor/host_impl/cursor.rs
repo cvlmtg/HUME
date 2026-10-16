@@ -1,6 +1,6 @@
 //! `EditorHostImpl`'s live cursor/selection reads.
 
-use hume_rope::offset::CharOffset;
+use hume_rope::line::ContentLine;
 
 use crate::editor::commands::CommandPane;
 use crate::editor::commands::effective_word_chars;
@@ -55,13 +55,10 @@ impl<'a> EditorHostImpl<'a> {
 }
 
 impl<'a> CursorHost for EditorHostImpl<'a> {
-    fn buffer_cursor_line(&self, pane: PaneHandle) -> Result<usize, String> {
+    fn buffer_cursor_line(&self, pane: PaneHandle) -> Result<ContentLine, String> {
         let t = self.command_pane(pane)?;
-        let (_, sels) = self.buffer_and_selections(t);
-        let bid = t.bid(self.view);
-        Ok(self
-            .offset_to_line(bid, sels.primary().head().offset().index())
-            .expect("resolved CommandPane's own head offset is always in range"))
+        let (buf, sels) = self.buffer_and_selections(t);
+        Ok(buf.text().char_to_line(sels.primary().head().offset()))
     }
 
     fn buffer_selections(&self, pane: PaneHandle) -> Result<Vec<SelectionInfo>, String> {
@@ -82,14 +79,18 @@ impl<'a> CursorHost for EditorHostImpl<'a> {
             .collect())
     }
 
-    fn offset_to_line(&self, bid: hume_engine::pipeline::BufferId, idx: usize) -> Option<usize> {
-        let text = self.buffer(bid)?.text();
-        // `CharOffset::checked` accepts `idx == len_chars()` (only `>` rejects):
-        // the one Steel line-index builtin that admits the buffer's own
-        // trailing phantom line, so this goes through the ropey domain rather
-        // than `char_to_line`'s content-only contract.
-        let offset = CharOffset::checked(text.rope(), idx)?;
-        Some(text.ropey_char_to_line(offset).index())
+    fn char_offset_to_line(
+        &self,
+        bid: hume_engine::pipeline::BufferId,
+        idx: usize,
+    ) -> Result<ContentLine, String> {
+        let text = self
+            .buffer(bid)
+            .ok_or_else(|| "no such buffer".to_string())?
+            .text();
+        // `char_to_line` puts the offset `len_chars()` on the last content
+        // line.
+        Ok(text.char_to_line(super::checked_char_offset(text, idx)?))
     }
 
     fn symbol_under_cursor(&self, pane: PaneHandle) -> Result<String, String> {

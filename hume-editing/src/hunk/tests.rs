@@ -44,13 +44,21 @@ fn hunk(old_start: usize, new_start: usize, old: &[&str], new: &[&str]) -> Chang
 
 fn span(line: usize, start: usize, end: usize) -> LineSpan {
     LineSpan {
-        line,
+        line: ContentLine::new(line),
         start: CharCol::new(start),
         end: CharCol::new(end),
     }
 }
 
-fn with_words(mut h: ChangeHunk, old: Vec<LineSpan>, new: Vec<LineSpan>) -> ChangeHunk {
+fn chars(start: usize, end: usize) -> ExclusiveRange<CharOffset> {
+    ExclusiveRange::new(CharOffset::new(start), CharOffset::new(end))
+}
+
+fn with_words(
+    mut h: ChangeHunk,
+    old: Vec<LineSpan>,
+    new: Vec<ExclusiveRange<CharOffset>>,
+) -> ChangeHunk {
     h.words = WordSpans { old, new };
     h
 }
@@ -89,8 +97,8 @@ fn word_change_inside_a_line() {
         &[(5, 6, "W")],
         &[with_words(
             hunk(1, 1, &["tWo"], &["two"]),
-            vec![span(0, 1, 2)],
-            vec![span(0, 1, 2)],
+            vec![span(1, 1, 2)],
+            vec![chars(5, 6)],
         )],
     );
 }
@@ -152,7 +160,7 @@ fn regions_on_adjacent_lines_form_one_hunk() {
         &[with_words(
             hunk(0, 0, &["One", "Two"], &["one", "two"]),
             vec![span(0, 0, 1), span(1, 0, 1)],
-            vec![span(0, 0, 1), span(1, 0, 1)],
+            vec![chars(0, 1), chars(4, 5)],
         )],
     );
 }
@@ -166,8 +174,8 @@ fn distant_regions_are_separate_hunks_and_the_second_old_start_follows_the_first
             hunk(0, 0, &[], &["one"]),
             with_words(
                 hunk(1, 2, &["threE"], &["three"]),
-                vec![span(0, 4, 5)],
-                vec![span(0, 4, 5)],
+                vec![span(1, 4, 5)],
+                vec![chars(12, 13)],
             ),
         ],
     );
@@ -197,7 +205,7 @@ fn spans_are_char_columns_across_a_zwj_cluster() {
                 &["x\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}y"],
             ),
             vec![span(0, 6, 7)],
-            vec![span(0, 6, 7)],
+            vec![chars(6, 7)],
         )],
     );
 }
@@ -291,7 +299,7 @@ fn text_hunks_treat_non_lf_unicode_breaks_as_content() {
         vec![with_words(
             hunk(0, 0, &["a\u{0C}b"], &["x\u{0C}b"]),
             vec![span(0, 0, 1)],
-            vec![span(0, 0, 1)],
+            vec![chars(0, 1)],
         )]
     );
 }
@@ -307,14 +315,23 @@ fn text_hunk_words_mark_the_edit_not_the_unpaired_line() {
 fn text_hunk_words_mark_both_sides_of_a_changed_word() {
     let words = words_of("let x = 1;\n", "let y = 1;\n");
     assert_eq!(words.old, vec![span(0, 4, 5)]);
-    assert_eq!(words.new, vec![span(0, 4, 5)]);
+    assert_eq!(words.new, vec![chars(4, 5)]);
+}
+
+/// Old-side spans name a line of the old text, and new-side spans are char
+/// offsets of the new text, whatever line the hunk starts on.
+#[test]
+fn text_hunk_words_are_absolute_below_the_first_line() {
+    let words = words_of("a\nb\nlet x = 1;\n", "a\nb\nlet y = 1;\n");
+    assert_eq!(words.old, vec![span(2, 4, 5)]);
+    assert_eq!(words.new, vec![chars(8, 9)]);
 }
 
 #[test]
 fn text_hunk_words_split_a_span_across_lines() {
     let words = words_of("a one\ntwo b\n", "a|b\n");
     assert_eq!(words.old, vec![span(0, 1, 5), span(1, 0, 4)]);
-    assert_eq!(words.new, vec![span(0, 1, 2)]);
+    assert_eq!(words.new, vec![chars(1, 2)]);
 }
 
 /// Once the shared budget is spent, a replaced hunk keeps its lines but

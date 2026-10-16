@@ -16,6 +16,7 @@
 use std::path::{Path, PathBuf};
 
 use hume_engine::pipeline::BufferId;
+use hume_rope::line::ContentLine;
 
 use crate::attribution::EntryId;
 use crate::command_procs::CommandProc;
@@ -165,7 +166,11 @@ impl BufferHost for NullHost {
     ) -> Option<Vec<String>> {
         None
     }
-    fn line_to_offset(&self, _id: BufferId, _line: hume_rope::line::ContentLine) -> Option<usize> {
+    fn line_to_char_offset(
+        &self,
+        _id: BufferId,
+        _line: hume_rope::line::ContentLine,
+    ) -> Option<usize> {
         None
     }
     fn viewport_range(
@@ -260,14 +265,14 @@ impl CommandHost for NullHost {
 }
 
 impl CursorHost for NullHost {
-    fn buffer_cursor_line(&self, _pane: PaneHandle) -> Result<usize, String> {
+    fn buffer_cursor_line(&self, _pane: PaneHandle) -> Result<ContentLine, String> {
         Err("NullHost: buffer_cursor_line not available".into())
     }
     fn buffer_selections(&self, _pane: PaneHandle) -> Result<Vec<SelectionInfo>, String> {
         Err("NullHost: buffer_selections not available".into())
     }
-    fn offset_to_line(&self, _bid: BufferId, _idx: usize) -> Option<usize> {
-        None
+    fn char_offset_to_line(&self, _bid: BufferId, _idx: usize) -> Result<ContentLine, String> {
+        Err("NullHost: char_offset_to_line not available".into())
     }
     fn symbol_under_cursor(&self, _pane: PaneHandle) -> Result<String, String> {
         Err("NullHost: symbol_under_cursor not available".into())

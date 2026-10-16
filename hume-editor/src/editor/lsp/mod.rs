@@ -61,20 +61,40 @@ pub(in crate::editor) fn wire_range_to_chars(
     )
 }
 
-/// The cluster a wire position names in `text`, where goto lands: the line
-/// clamped to the text, the column placed on the line's content, so a column
-/// past the line's end lands on its last content cluster. Decoded through
-/// `place_char_column`, not `wire_to_char`, so a position between a base
-/// character and a combining mark lands on the cluster's start, as every
-/// other goto target does.
+/// [`wire_range_to_chars`] for an edit: `None` when the range ends past the
+/// document end, which no clamp can honestly stand in for. See
+/// [`hume_rope::position_encoding::checked_wire_range_to_char_range`].
+pub(in crate::editor) fn checked_wire_range_to_chars(
+    rope: &ropey::Rope,
+    range: &lsp_types::Range,
+    encoding: hume_rope::position_encoding::PositionEncoding,
+) -> Option<hume_rope::offset::ExclusiveRange<hume_rope::offset::CharOffset>> {
+    hume_rope::position_encoding::checked_wire_range_to_char_range(
+        rope,
+        hume_lsp::position::from_lsp_range(range),
+        encoding,
+    )
+}
+
+/// The content line and cluster a wire position names in `text`, where goto
+/// lands: the column placed on the line's content, so a column past the
+/// line's end lands on its last content cluster. `None` when the line is not
+/// a content line of `text` (see
+/// [`hume_rope::position_encoding::checked_wire_to_line_char_col`]). The
+/// column is placed through `place_char_column`, so a position between a
+/// base character and a combining mark lands on the cluster's start, as
+/// every other goto target does.
 pub(in crate::editor) fn wire_to_cluster(
     text: &hume_editing::text::BufferText,
     pos: hume_rope::position_encoding::WirePos,
     encoding: hume_rope::position_encoding::PositionEncoding,
-) -> hume_rope::cluster::ClusterStart {
+) -> Option<(
+    hume_rope::line::ContentLine,
+    hume_rope::cluster::ClusterStart,
+)> {
     let (line, char_col) =
-        hume_rope::position_encoding::wire_to_line_char_col(text.rope(), pos, encoding);
-    text.columns().place_char(line, char_col)
+        hume_rope::position_encoding::checked_wire_to_line_char_col(text.rope(), pos, encoding)?;
+    Some((line, text.columns().place_char(line.into(), char_col)))
 }
 
 /// The value cached for `encoding` in `cache`, computed by `make` and

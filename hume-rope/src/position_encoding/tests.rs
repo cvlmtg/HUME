@@ -484,3 +484,116 @@ fn wire_to_char_does_not_snap_a_position_inside_a_cluster() {
         co(2)
     );
 }
+
+// ── checked_wire_range_to_char_range ─────────────────────────────────────
+
+fn checked(start: WirePos, end: WirePos) -> Option<ExclusiveRange<CharOffset>> {
+    checked_wire_range_to_char_range(
+        &fixture(),
+        ExclusiveRange::new(start, end),
+        PositionEncoding::Utf8,
+    )
+}
+
+#[test]
+fn checked_wire_range_may_end_at_the_document_end() {
+    // Line 3 is the empty line after the final break: `(3, 0)` is the
+    // document end, char 9, and so is any column on that line.
+    assert_eq!(
+        checked(wp(1, 0), wp(3, 0)),
+        Some(ExclusiveRange::new(co(3), co(9)))
+    );
+    assert_eq!(
+        checked(wp(0, 0), wp(3, 7)),
+        Some(ExclusiveRange::new(co(0), co(9)))
+    );
+}
+
+#[test]
+fn checked_wire_range_may_be_empty_at_the_document_end() {
+    assert_eq!(
+        checked(wp(3, 0), wp(3, 0)),
+        Some(ExclusiveRange::new(co(9), co(9)))
+    );
+}
+
+#[test]
+fn checked_wire_range_past_the_document_end_is_none() {
+    assert_eq!(checked(wp(0, 0), wp(4, 0)), None);
+    assert_eq!(checked(wp(4, 0), wp(4, 0)), None);
+    assert_eq!(checked(wp(4, 0), wp(1, 0)), None);
+}
+
+#[test]
+fn checked_wire_range_clamps_a_column_past_its_line() {
+    assert_eq!(
+        checked(wp(1, 0), wp(1, 9_999)),
+        Some(ExclusiveRange::new(co(3), co(5)))
+    );
+}
+
+// ── checked_wire_to_line_char_col / checked_wire_to_char ─────────────────
+
+#[test]
+fn checked_wire_point_on_the_last_content_line_is_some() {
+    // Line 2 is "😀d": UTF-16 character 2 is past the surrogate pair, on 'd'
+    // at column 1, char 7.
+    let text = fixture();
+    assert_eq!(
+        checked_wire_to_line_char_col(&text, wp(2, 2), PositionEncoding::Utf16),
+        Some((ContentLine::new(2), CharCol::new(1)))
+    );
+    assert_eq!(
+        checked_wire_to_char(&text, wp(2, 2), PositionEncoding::Utf16),
+        Some(co(7))
+    );
+}
+
+#[test]
+fn checked_wire_point_at_or_past_the_document_end_is_none() {
+    // Line 3 is the empty line after the final break: it holds no character.
+    let text = fixture();
+    for line in [3, 4] {
+        for enc in [
+            PositionEncoding::Utf8,
+            PositionEncoding::Utf16,
+            PositionEncoding::Utf32,
+        ] {
+            assert_eq!(checked_wire_to_line_char_col(&text, wp(line, 0), enc), None);
+            assert_eq!(checked_wire_to_char(&text, wp(line, 0), enc), None);
+        }
+    }
+}
+
+#[test]
+fn checked_wire_point_clamps_a_column_past_its_line() {
+    // Line 1 is "cé": a column past it clamps to its content end, the `\n`
+    // at char 5.
+    let text = fixture();
+    assert_eq!(
+        checked_wire_to_line_char_col(&text, wp(1, 9_999), PositionEncoding::Utf8),
+        Some((ContentLine::new(1), CharCol::new(2)))
+    );
+    assert_eq!(
+        checked_wire_to_char(&text, wp(1, 9_999), PositionEncoding::Utf8),
+        Some(co(5))
+    );
+}
+
+#[test]
+fn checked_wire_point_agrees_with_the_unchecked_conversion_on_content_lines() {
+    let text = fixture();
+    for &(line, character) in &[(0usize, 0usize), (0, 2), (1, 1), (2, 1), (2, 2)] {
+        for enc in [
+            PositionEncoding::Utf8,
+            PositionEncoding::Utf16,
+            PositionEncoding::Utf32,
+        ] {
+            let pos = wp(line, character);
+            assert_eq!(
+                checked_wire_to_char(&text, pos, enc),
+                Some(wire_to_char(&text, pos, enc))
+            );
+        }
+    }
+}

@@ -21,7 +21,7 @@
         (cond
           ((null? places) (lsp/report-not-found! locations not-found-msg))
           ((and (not always-drawer?) (null? (cdr places)))
-           (goto-location! (focused-pane) (hash-ref (car places) 'location)))
+           (lsp/jump-to! (hash-ref (car places) 'location)))
           (else (lsp/show-locations! pane tracked places method shape not-found-msg))))))
 
 (define (lsp/goto-request pane method)

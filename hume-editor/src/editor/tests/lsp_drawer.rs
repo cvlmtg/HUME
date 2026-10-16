@@ -1220,7 +1220,7 @@ fn enter_jump_lands_via_goto_location_and_drawer_stays_open() {
         tmp.path(),
         r#"(define-typed-command! "go" "" (lambda (bid)
              (show-drawer-list! bid (list "line 3")
-               (lambda (idx tok) (goto-location! bid (hash 'target bid 'line 2 'char-col 1))))))"#,
+               (lambda (idx tok) (goto-location! bid (hash 'target bid 'char-offset 9))))))"#,
     );
     type_cmd(&mut ed, ":go");
 

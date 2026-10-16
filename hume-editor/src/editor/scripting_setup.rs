@@ -251,11 +251,10 @@ impl Editor {
         };
         let bid = pane.buffer_id();
         let content_lines = self.state.buffers.get(bid).text().content_line_count();
-        let range = super::lsp::introspect::pane_visible_range(pane, content_lines);
+        let lines = super::lsp::introspect::pane_visible_range(pane, content_lines);
         self.state.queue_event(EditorEvent::OnViewportChange {
             target: PaneHandle::with_pane(bid, pane_id),
-            first_line: range.start,
-            end_line: range.end,
+            lines,
         });
     }
 

@@ -247,7 +247,7 @@ fn live_pane_accepts_a_real_pane() {
     );
 }
 
-// ── Usize / OptUsize ────────────────────────────────────────────
+// ── Usize ───────────────────────────────────────────────────────
 
 #[test]
 fn usize_newtype_rejects_negative_and_non_integer() {
@@ -258,19 +258,6 @@ fn usize_newtype_rejects_negative_and_non_integer() {
 #[test]
 fn usize_newtype_accepts_non_negative() {
     assert_eq!(Usize::from_steelval(&SteelVal::IntV(4)).unwrap().0, 4);
-}
-
-#[test]
-fn opt_usize_newtype_false_is_none_int_is_some() {
-    assert_eq!(
-        OptUsize::from_steelval(&SteelVal::BoolV(false)).unwrap().0,
-        None
-    );
-    assert_eq!(
-        OptUsize::from_steelval(&SteelVal::IntV(4)).unwrap().0,
-        Some(4)
-    );
-    assert!(OptUsize::from_steelval(&SteelVal::IntV(-1)).is_err());
 }
 
 // ── LspTargetArg ─────────────────────────────────────────────────────────

@@ -251,6 +251,32 @@ fn apply_text_edits_reversed_range_rejected() {
     );
 }
 
+/// A range may end at the document end, `(line count, 0)`, but a line past
+/// it names no text: the edit is refused whole instead of applied to a
+/// clamped range.
+#[test]
+fn apply_text_edits_range_past_the_document_end_rejected() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = text_edits_editor(
+        tmp.path(),
+        "-[a]>bc\ndef\n",
+        vec![wire_edit((0, 1), (3, 0), "X")],
+    );
+    apply_wire_text_edits(&mut ed, tmp.path(), "");
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "abc\ndef\n",
+        "a range past the document end must reject with no partial application"
+    );
+    assert!(
+        logged_errors(&ed)
+            .iter()
+            .any(|e| e.contains("past the end of the document")),
+        "the error must say why: {:?}",
+        logged_errors(&ed)
+    );
+}
+
 #[test]
 fn apply_text_edits_is_one_undo_step() {
     let tmp = tempfile::tempdir().unwrap();
@@ -666,7 +692,7 @@ fn apply_workspace_edit_duplicate_entry_for_the_same_file_is_rejected_not_a_pani
 // ── goto-location! ───────────────────────────────────────────────────────────
 
 #[test]
-fn goto_location_same_buffer_char_indexed_shape() {
+fn goto_location_pane_target_takes_a_char_offset() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     let bid = ed.focused_buffer_id();
@@ -674,7 +700,7 @@ fn goto_location_same_buffer_char_indexed_shape() {
         &mut ed,
         tmp.path(),
         r#"(define-typed-command! "go" "" (lambda (bid)
-             (goto-location! bid (hash 'target bid 'line 0 'char-col 3))))"#,
+             (goto-location! bid (hash 'target bid 'char-offset 3))))"#,
     );
     let before = state(&ed);
     type_cmd(&mut ed, ":go");
@@ -697,7 +723,7 @@ fn goto_location_noop_does_not_clobber_forward_history() {
         &mut ed,
         tmp.path(),
         r#"(define-typed-command! "go" "" (lambda (bid)
-             (goto-location! bid (hash 'target bid 'line 0 'char-col 0))))"#,
+             (goto-location! bid (hash 'target bid 'char-offset 0))))"#,
     );
 
     // `%`: jump-flagged, moves elsewhere, records a jump.
@@ -777,15 +803,17 @@ fn goto_location_unopened_path_opens_it() {
     assert_eq!(ed.current_view().primary().head().offset(), co(2));
 }
 
+/// The offset at the buffer's end follows the final line break: the jump
+/// lands on the last character, the structural newline.
 #[test]
-fn goto_location_char_indexed_target_past_eof_clamps_to_the_last_char() {
+fn goto_location_pane_offset_at_the_buffer_end_lands_on_the_last_char() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     run(
         &mut ed,
         tmp.path(),
         r#"(define-typed-command! "go" "" (lambda (bid)
-             (goto-location! bid (hash 'target bid 'line 999 'char-col 0))))"#,
+             (goto-location! bid (hash 'target bid 'char-offset 7))))"#,
     );
     type_cmd(&mut ed, ":go");
     let len_chars = ed.doc().text().end();
@@ -794,11 +822,119 @@ fn goto_location_char_indexed_target_past_eof_clamps_to_the_last_char() {
         head < len_chars,
         "head must satisfy head < len_chars(): got head={head:?}, len_chars={len_chars:?}"
     );
-    assert_eq!(
-        head,
-        len_chars.shift(-1),
-        "a target past EOF must clamp to the buffer's last char"
+    assert_eq!(head, len_chars.shift(-1));
+}
+
+/// A pane target's char offset inside a character lands on the character's
+/// start, for a combining sequence and for a ZWJ emoji sequence.
+#[test]
+fn goto_location_pane_offset_inside_a_character_lands_on_its_start() {
+    let tmp = tempfile::tempdir().unwrap();
+    // "ae\u{301}x\n": `e` + U+0301 is chars 1..3.
+    let mut ed = editor_from("-[a]>e\u{301}x\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "go" "" (lambda (bid)
+             (goto-location! bid (hash 'target bid 'char-offset 2))))"#,
     );
+    type_cmd(&mut ed, ":go");
+    assert_eq!(ed.current_view().primary().head().offset(), co(1));
+
+    let tmp = tempfile::tempdir().unwrap();
+    // "a" + man + ZWJ + woman + "x\n": the sequence is chars 1..4.
+    let mut ed = editor_from("-[a]>\u{1F468}\u{200D}\u{1F469}x\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "go" "" (lambda (bid)
+             (goto-location! bid (hash 'target bid 'char-offset 3))))"#,
+    );
+    type_cmd(&mut ed, ":go");
+    assert_eq!(ed.current_view().primary().head().offset(), co(1));
+}
+
+/// A char offset past the buffer's end was computed wrongly by the script:
+/// the call raises and nothing moves.
+#[test]
+fn goto_location_pane_offset_past_the_end_raises() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "go" "" (lambda (bid)
+             (goto-location! bid (hash 'target bid 'char-offset 8))))"#,
+    );
+    let before = state(&ed);
+    type_cmd(&mut ed, ":go");
+    assert_eq!(state(&ed), before);
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("goto-location!") && log.contains("past the end of the buffer"),
+        "got: {log:?}"
+    );
+}
+
+/// A path target whose line is past the file's last line names a place that
+/// does not exist: the call answers `#f`, nothing moves, and the file it had
+/// to open for the check is not left behind.
+#[test]
+fn goto_location_path_target_past_the_last_line_answers_false() {
+    let tmp = tempfile::tempdir().unwrap();
+    let file = tmp.path().join("short.txt");
+    std::fs::write(&file, "one\ntwo\n").unwrap();
+    let canonical = std::fs::canonicalize(&file).unwrap();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    let target = steel_path(&file);
+    let answer = log_probe(
+        &mut ed,
+        tmp.path(),
+        &format!(r#"(to-string (goto-location! bid (hash 'target {target} 'line 2 'char-col 0)))"#),
+    );
+    assert_eq!(answer, "#false");
+    assert!(
+        ed.state.buffers.find_by_path(&canonical).is_none(),
+        "the file opened for the check must be closed again"
+    );
+    assert_eq!(ed.doc().text().to_string(), "abcdef\n", "no jump happened");
+}
+
+/// An existing line answers `#t`, and a file already open stays open when
+/// the answer is `#f`.
+#[test]
+fn goto_location_answers_true_after_a_jump_and_keeps_an_open_buffer_on_false() {
+    let tmp = tempfile::tempdir().unwrap();
+    let file = tmp.path().join("other.txt");
+    std::fs::write(&file, "one\ntwo\n").unwrap();
+    let canonical = std::fs::canonicalize(&file).unwrap();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
+    let other = ed.state.buffers.find_by_path(&canonical).unwrap();
+    ed.handle_key(key_ctrl('o'));
+    let target = steel_path(&file);
+    run(
+        &mut ed,
+        tmp.path(),
+        &format!(
+            r#"(define-typed-command! "missing" "" (lambda (bid)
+                 (log! 'info (to-string (goto-location! bid (hash 'target {target} 'line 5 'char-col 0))))))
+               (define-typed-command! "hit" "" (lambda (bid)
+                 (log! 'info (to-string (goto-location! bid (hash 'target {target} 'line 1 'char-col 1))))))"#
+        ),
+    );
+
+    type_cmd(&mut ed, ":missing");
+    assert_eq!(ed.state.status_msg.as_deref(), Some("#false"));
+    assert_eq!(
+        ed.state.buffers.find_by_path(&canonical),
+        Some(other),
+        "a buffer that was already open is not closed"
+    );
+
+    type_cmd(&mut ed, ":hit");
+    assert_eq!(ed.state.status_msg.as_deref(), Some("#true"));
+    assert_eq!(ed.focused_buffer_id(), other);
 }
 
 /// `goto_location` must center the jump the same way `zz` does (by display
@@ -832,7 +968,7 @@ fn goto_location_centers_by_display_line_not_buffer_line_under_wrap() {
         &mut ed,
         tmp.path(),
         r#"(define-typed-command! "go" "" (lambda (bid)
-             (goto-location! bid (hash 'target bid 'line 20 'char-col 0))))"#,
+             (goto-location! bid (hash 'target bid 'char-offset 520))))"#,
     );
     type_cmd(&mut ed, ":go");
 
@@ -926,9 +1062,79 @@ fn goto_location_wire_shape_decodes_with_the_responses_encoding() {
     );
 }
 
+/// A location that cannot be decoded raises with the builtin's name once.
+#[test]
+fn goto_location_names_itself_once_in_a_decode_error() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = utf8_rig(tmp.path(), "-[a]>bcdef\n", |backend| {
+        backend.respond_to(
+            "test/gotoTarget",
+            serde_json::json!({
+                "range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 0}},
+            }),
+        );
+    })
+    .ed;
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "go" "" (lambda (bid)
+             (lsp-request! bid "test/gotoTarget" (hash) (lambda (err res)
+               (goto-location! bid res)))))"#,
+    );
+    type_cmd(&mut ed, ":go");
+    ed.drain_lsp();
+    ed.settle();
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(log.contains("goto-location!: missing uri"), "got: {log:?}");
+    assert_eq!(
+        log.matches("goto-location!").count(),
+        1,
+        "the builtin's name appears once: {log:?}"
+    );
+}
+
+/// A wire location whose line is past the file's last line names a place
+/// that does not exist: `goto-location!` answers `#f` and the file it opened
+/// to find out is closed again.
+#[test]
+fn goto_location_wire_shape_past_the_last_line_answers_false() {
+    let tmp = tempfile::tempdir().unwrap();
+    let file = tmp.path().join("target.txt");
+    std::fs::write(&file, "one\ntwo\n").unwrap();
+    let canonical = std::fs::canonicalize(&file).unwrap();
+    let uri = hume_lsp::uri::path_to_uri(&canonical).unwrap();
+
+    let mut ed = utf8_rig(tmp.path(), "-[a]>bcdef\n", |backend| {
+        backend.respond_to(
+            "test/gotoTarget",
+            serde_json::json!({
+                "uri": uri.as_str(),
+                "range": {"start": {"line": 2, "character": 0}, "end": {"line": 2, "character": 0}},
+            }),
+        );
+    })
+    .ed;
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "go" "" (lambda (bid)
+             (lsp-request! bid "test/gotoTarget" (hash) (lambda (err res)
+               (log! 'info (to-string (goto-location! bid res)))))))"#,
+    );
+    type_cmd(&mut ed, ":go");
+    ed.drain_lsp();
+    ed.settle();
+
+    assert_eq!(ed.state.status_msg.as_deref(), Some("#false"));
+    assert!(ed.state.buffers.find_by_path(&canonical).is_none());
+    assert_eq!(ed.doc().text().to_string(), "abcdef\n");
+}
+
 /// `(goto-location! bid (hash 'target path 'line line 'char-col char-col))` on a path that doesn't exist yet
 /// must open a new-file buffer and jump to it, the same tolerance `:e` has:
-/// `resolve_path_or_uri` shares `Editor::resolve_open_path`'s
+/// `resolve_goto_target` shares `Editor::resolve_open_path`'s
 /// `Buffer::from_file_or_new` chokepoint.
 #[test]
 fn goto_missing_path_opens_new_file_buffer() {

@@ -220,5 +220,19 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
     }
 }
 
+/// A char offset a script computed for `text`, which may be `text`'s length
+/// but not past it: past it is a caller bug, so `Err`.
+pub(in crate::editor) fn checked_char_offset(
+    text: &hume_editing::text::BufferText,
+    idx: usize,
+) -> Result<hume_rope::offset::CharOffset, String> {
+    hume_rope::offset::CharOffset::checked(text.rope(), idx).ok_or_else(|| {
+        format!(
+            "offset {idx} is past the end of the buffer ({} chars)",
+            text.len_chars()
+        )
+    })
+}
+
 #[cfg(test)]
 mod tests;

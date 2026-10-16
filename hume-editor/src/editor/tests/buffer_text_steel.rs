@@ -92,9 +92,9 @@ fn buffer_line_count_agrees_with_buffer_lines_length() {
     );
 }
 
-/// `buffer-lines`' `#:start`/`#:end` range is 0-based and end-exclusive.
+/// `buffer-lines`' `#:range` is 0-based and end-exclusive.
 #[test]
-fn buffer_lines_supports_a_start_end_range() {
+fn buffer_lines_supports_a_line_range() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>\nb\nc\n");
 
@@ -102,30 +102,38 @@ fn buffer_lines_supports_a_start_end_range() {
         &mut ed,
         ScriptingHost::new(&Dirs::none()),
         tmp.path(),
-        r#"(equal? (buffer-lines bid #:start 1 #:end 3) (list "b" "c"))"#,
+        r#"(equal? (buffer-lines bid #:range (hash 'start-line 1 'end-line 3)) (list "b" "c"))"#,
     );
     assert!(
         fired,
-        "buffer-lines must honor #:start/#:end as a 0-based, end-exclusive range"
+        "buffer-lines must honor #:range as a 0-based, end-exclusive range"
     );
 }
 
-/// `#:start` alone: `#:end` defaults to the buffer's content line count,
-/// not just to whatever `#:end` happened to be passed alongside it above.
+/// A line range has both ends: one missing raises naming it rather than
+/// being guessed.
 #[test]
-fn buffer_lines_start_only_defaults_end_to_the_line_count() {
+fn buffer_lines_range_missing_an_end_raises() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>\nb\nc\n");
 
-    let fired = run_probe(
+    let mut host = ScriptingHost::new(&Dirs::none());
+    eval_with_real_host(
         &mut ed,
-        ScriptingHost::new(&Dirs::none()),
+        &mut host,
+        r#"(define-typed-command! "probe" "" (lambda (bid)
+             (buffer-lines bid #:range (hash 'start-line 1))))"#,
         tmp.path(),
-        r#"(equal? (buffer-lines bid #:start 1) (list "b" "c"))"#,
     );
+    ed.scripting = Some(host);
+    type_cmd(&mut ed, ":probe");
+
+    let entries: Vec<_> = ed.state.message_log.entries().cloned().collect();
     assert!(
-        fired,
-        "buffer-lines with only #:start must default #:end to the line count"
+        entries.iter().any(|e| e.severity == Severity::Error
+            && e.text.contains("buffer-lines #:range")
+            && e.text.contains("missing 'end-line")),
+        "a range without 'end-line must raise naming it, got: {entries:?}"
     );
 }
 
@@ -151,8 +159,8 @@ fn buffer_text_normalizes_crlf_to_lf() {
     );
 }
 
-/// An `#:end` past the buffer's line count raises rather than silently
-/// clamping: fail-fast, matching the project's error-handling convention.
+/// An `'end-line` past the buffer's line count raises rather than clamping:
+/// fail-fast, matching the project's error-handling convention.
 #[test]
 fn buffer_lines_out_of_range_end_raises() {
     let tmp = tempfile::tempdir().unwrap();
@@ -163,7 +171,7 @@ fn buffer_lines_out_of_range_end_raises() {
         &mut ed,
         &mut host,
         r#"(define-typed-command! "probe" "" (lambda (bid)
-             (buffer-lines bid #:end 10)))"#,
+             (buffer-lines bid #:range (hash 'start-line 0 'end-line 10))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -174,12 +182,12 @@ fn buffer_lines_out_of_range_end_raises() {
         entries.iter().any(|e| e.severity == Severity::Error
             && e.text.contains("buffer-lines")
             && e.text.contains("out of bounds")),
-        "an out-of-range #:end must surface as a Steel error, got: {entries:?}"
+        "an out-of-range 'end-line must surface as a Steel error, got: {entries:?}"
     );
 }
 
-/// A `#:start` past `#:end` raises too: the other half of the `start > end
-/// || end > line_count` guard.
+/// A `'start-line` past `'end-line` raises too: the other half of the
+/// `start > end || end > line_count` guard.
 #[test]
 fn buffer_lines_start_past_end_raises() {
     let tmp = tempfile::tempdir().unwrap();
@@ -190,7 +198,7 @@ fn buffer_lines_start_past_end_raises() {
         &mut ed,
         &mut host,
         r#"(define-typed-command! "probe" "" (lambda (bid)
-             (buffer-lines bid #:start 3 #:end 1)))"#,
+             (buffer-lines bid #:range (hash 'start-line 3 'end-line 1))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -201,18 +209,18 @@ fn buffer_lines_start_past_end_raises() {
         entries.iter().any(|e| e.severity == Severity::Error
             && e.text.contains("buffer-lines")
             && e.text.contains("out of bounds")),
-        "a #:start past #:end must surface as a Steel error, got: {entries:?}"
+        "a 'start-line past 'end-line must surface as a Steel error, got: {entries:?}"
     );
 }
 
 /// The user manual's `(viewport-range bid)` + `buffer-lines` recipe
 /// (`user-manual/docs/plugins.md`) must not raise on the common case of a
 /// buffer shorter than the pane, where the viewport's `end` sits at one past
-/// the buffer's last content line. Both ranges are 0-based and
-/// end-exclusive, so `#:end` takes the range's `'end` directly, no `+ 1` needed.
+/// the buffer's last content line. `viewport-range` returns the very range
+/// value `buffer-lines` takes, so it passes straight through.
 ///
 /// If `viewport-range` ended one past the ropey phantom line (two past the
-/// last content line), that `#:end` would fail `buffer-lines`' bounds
+/// last content line), that range would fail `buffer-lines`' bounds
 /// check and raise.
 #[test]
 fn manual_viewport_range_recipe_reads_every_content_line_without_raising() {
@@ -224,14 +232,75 @@ fn manual_viewport_range_recipe_reads_every_content_line_without_raising() {
         ScriptingHost::new(&Dirs::none()),
         tmp.path(),
         r#"(let ((vr (viewport-range bid)))
-             (equal? (buffer-lines bid
-                       #:start (hash-ref vr 'start) #:end (hash-ref vr 'end))
-                     (list "a" "b" "c")))"#,
+             (equal? (buffer-lines bid #:range vr) (list "a" "b" "c")))"#,
     );
     assert!(
         fired,
         "the documented viewport-range recipe must read every content line without raising"
     );
+}
+
+/// `char-offset->line` names a content line: an offset at the buffer's length is
+/// on the last content line, not on the empty line a final newline opens.
+#[test]
+fn char_offset_to_line_at_the_buffer_end_is_the_last_content_line() {
+    let tmp = tempfile::tempdir().unwrap();
+    // "ab\ncd\n" is 6 chars: offset 6 follows the final newline.
+    let mut ed = editor_from("-[a]>b\ncd\n");
+
+    let fired = run_probe(
+        &mut ed,
+        ScriptingHost::new(&Dirs::none()),
+        tmp.path(),
+        r#"(and (equal? (char-offset->line bid 0) 0)
+                 (equal? (char-offset->line bid 3) 1)
+                 (equal? (char-offset->line bid 6) 1))"#,
+    );
+    assert!(
+        fired,
+        "char-offset->line must give content lines, 6 (the buffer end) included"
+    );
+}
+
+/// An offset past the buffer's end names no line, so `char-offset->line` raises
+/// instead of answering `#f`.
+#[test]
+fn char_offset_to_line_past_the_buffer_end_raises() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>b\ncd\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "probe" "" (lambda (bid) (char-offset->line bid 7)))"#,
+    );
+
+    type_cmd(&mut ed, ":probe");
+
+    let entries: Vec<_> = ed.state.message_log.entries().cloned().collect();
+    assert!(
+        entries.iter().any(|e| e.severity == Severity::Error
+            && e.text.contains("char-offset->line")
+            && e.text.contains("past the end")),
+        "offset 7 of a 6-char buffer must raise naming char-offset->line, got: {entries:?}"
+    );
+}
+
+/// `viewport-range`'s value is `buffer-lines`' `#:range`: with a pane two
+/// lines tall over a three-line buffer, the pair reads only what is on screen.
+#[test]
+fn viewport_range_passes_straight_to_buffer_lines() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>\nb\nc\n");
+    let pid = ed.view.focused_pane();
+    ed.view.panes[pid].viewport.height = 2;
+
+    let fired = run_probe(
+        &mut ed,
+        ScriptingHost::new(&Dirs::none()),
+        tmp.path(),
+        r#"(equal? (buffer-lines bid #:range (viewport-range bid)) (list "a" "b"))"#,
+    );
+    assert!(fired, "only the two visible lines must be read");
 }
 
 /// A stale bid raises "invalid buffer id" for both `buffer-text` and
@@ -287,12 +356,12 @@ fn buffer_line_count_on_a_stale_bid_raises_invalid_buffer_id() {
     assert_stale_bid_raises("buffer-line-count", "buffer-line-count");
 }
 
-/// `line->offset` returns the char offset where each content line starts.
+/// `line->char-offset` returns the char offset where each content line starts.
 ///
 /// Forgetting the previous lines' `\n` separators would return 1 for line 1
 /// instead of 2.
 #[test]
-fn line_to_offset_returns_each_lines_start_char_offset() {
+fn line_to_char_offset_returns_each_lines_start_char_offset() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>\nbb\nccc\n");
 
@@ -300,23 +369,23 @@ fn line_to_offset_returns_each_lines_start_char_offset() {
         &mut ed,
         ScriptingHost::new(&Dirs::none()),
         tmp.path(),
-        r#"(and (= (line->offset bid 0) 0)
-                 (= (line->offset bid 1) 2)
-                 (= (line->offset bid 2) 5))"#,
+        r#"(and (= (line->char-offset bid 0) 0)
+                 (= (line->char-offset bid 1) 2)
+                 (= (line->char-offset bid 2) 5))"#,
     );
     assert!(
         fired,
-        "line->offset must return each content line's start char offset"
+        "line->char-offset must return each content line's start char offset"
     );
 }
 
-/// `line->offset` counts in chars, not bytes: a line after a multi-byte
+/// `line->char-offset` counts in chars, not bytes: a line after a multi-byte
 /// character must not be offset by its UTF-8 byte width.
 ///
 /// Line 1 starts at char 2: "é" is 1 char (2 UTF-8 bytes) and the `\n`
 /// adds one more. Counting bytes would give 3.
 #[test]
-fn line_to_offset_counts_chars_not_bytes() {
+fn line_to_char_offset_counts_chars_not_bytes() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[é]>\nb\n");
 
@@ -324,19 +393,19 @@ fn line_to_offset_counts_chars_not_bytes() {
         &mut ed,
         ScriptingHost::new(&Dirs::none()),
         tmp.path(),
-        r#"(= (line->offset bid 1) 2)"#,
+        r#"(= (line->char-offset bid 1) 2)"#,
     );
     assert!(
         fired,
-        "line->offset must count chars, not UTF-8 bytes, ahead of the target line"
+        "line->char-offset must count chars, not UTF-8 bytes, ahead of the target line"
     );
 }
 
 /// A `line` at or past the buffer's content line count raises, including
 /// the phantom trailing line past the structural `\n`, same convention as
-/// `buffer-lines`' `#:end`.
+/// `buffer-lines`' `'end-line`.
 #[test]
-fn line_to_offset_out_of_range_line_raises() {
+fn line_to_char_offset_out_of_range_line_raises() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>\nb\n");
 
@@ -345,7 +414,7 @@ fn line_to_offset_out_of_range_line_raises() {
         &mut ed,
         &mut host,
         r#"(define-typed-command! "probe" "" (lambda (bid)
-             (line->offset bid 2)))"#,
+             (line->char-offset bid 2)))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -354,7 +423,7 @@ fn line_to_offset_out_of_range_line_raises() {
     let entries: Vec<_> = ed.state.message_log.entries().cloned().collect();
     assert!(
         entries.iter().any(|e| e.severity == Severity::Error
-            && e.text.contains("line->offset")
+            && e.text.contains("line->char-offset")
             && e.text.contains("out of range")),
         "an out-of-range line must surface as a Steel error, got: {entries:?}"
     );
@@ -363,10 +432,10 @@ fn line_to_offset_out_of_range_line_raises() {
 /// Same pattern as `buffer-lines`' stale-bid test, but not reusing
 /// `assert_stale_bid_raises`: that helper appends `b` as the call's *last*
 /// arg, which fits `buffer-text`/`buffer-lines` (bid is their only/first
-/// arg) but not `line->offset`, whose second arg (`line`) must come after
+/// arg) but not `line->char-offset`, whose second arg (`line`) must come after
 /// `b`, not before it.
 #[test]
-fn line_to_offset_on_a_stale_bid_raises_invalid_buffer_id() {
+fn line_to_char_offset_on_a_stale_bid_raises_invalid_buffer_id() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>\n");
 
@@ -382,7 +451,7 @@ fn line_to_offset_on_a_stale_bid_raises_invalid_buffer_id() {
             r#"(define-typed-command! "probe" "" (lambda ()
                  (define b (open-buffer! {scratch_str}))
                  (close-buffer! b)
-                 (line->offset b 0)))"#
+                 (line->char-offset b 0)))"#
         ),
         tmp.path(),
     );
@@ -392,7 +461,7 @@ fn line_to_offset_on_a_stale_bid_raises_invalid_buffer_id() {
     let entries: Vec<_> = ed.state.message_log.entries().cloned().collect();
     assert!(
         entries.iter().any(|e| e.severity == Severity::Error
-            && e.text.contains("line->offset")
+            && e.text.contains("line->char-offset")
             && e.text.contains("invalid buffer id")),
         "a stale bid must surface as a Steel error naming the builtin, got: {entries:?}"
     );

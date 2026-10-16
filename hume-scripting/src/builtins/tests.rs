@@ -117,8 +117,8 @@ fn live_pane_builtins_raise_on_a_closed_buffer_through_real_registration() {
             "show-read-only-buffer!",
             r#"(show-read-only-buffer! (focused-pane) "name" "text")"#,
         ),
-        ("offset->line", "(offset->line (focused-pane) 0)"),
-        ("line->offset", "(line->offset (focused-pane) 0)"),
+        ("char-offset->line", "(char-offset->line (focused-pane) 0)"),
+        ("line->char-offset", "(line->char-offset (focused-pane) 0)"),
         (
             "diff-buffer-lines",
             r#"(diff-buffer-lines (focused-pane) "")"#,
@@ -138,12 +138,12 @@ fn live_pane_builtins_raise_on_a_closed_buffer_through_real_registration() {
         ("lsp-notify!", r#"(lsp-notify! (focused-pane) "m" (hash))"#),
         ("lsp-servers", "(lsp-servers (focused-pane))"),
         (
-            "lsp-position->offset",
-            r#"(lsp-position->offset (focused-pane) (hash "line" 0 "character" 0))"#,
+            "lsp-position->char-offset",
+            r#"(lsp-position->char-offset (focused-pane) (hash "line" 0 "character" 0))"#,
         ),
         (
-            "lsp-range->offsets",
-            r#"(lsp-range->offsets (focused-pane)
+            "lsp-range->char-range",
+            r#"(lsp-range->char-range (focused-pane)
                  (hash "start" (hash "line" 0 "character" 0) "end" (hash "line" 0 "character" 0)))"#,
         ),
         (

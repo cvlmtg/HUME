@@ -1,9 +1,9 @@
 ;;; core:stdlib/manifest.scm — see README.md.
 (declare-plugin! "core:stdlib"
-  #:commands '("stdlib/selection-anchor" "stdlib/selection-head" "stdlib/selection-start"
-               "stdlib/selection-end" "stdlib/selection-primary?"
+  #:commands '("stdlib/selection-anchor" "stdlib/selection-head" "stdlib/selection-start-char"
+               "stdlib/selection-end-char" "stdlib/selection-primary?"
                "stdlib/primary-selection"
-               "stdlib/all-single-char?" "stdlib/single-selection?" "stdlib/cursor-char-index"
+               "stdlib/all-single-char?" "stdlib/single-selection?" "stdlib/cursor-char-offset"
                "stdlib/find" "stdlib/write-file!" "stdlib/delete-dir!" "stdlib/delete-file!"
                "stdlib/list-subdirs"
                "stdlib/run!" "stdlib/git-repo?" "stdlib/git-toplevel" "stdlib/resolve-lang-arg"

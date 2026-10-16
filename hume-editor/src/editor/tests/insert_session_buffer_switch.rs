@@ -71,7 +71,7 @@ fn goto_location_to_another_buffer_ends_insert_session_on_focused_pane() {
 
     let pane = focused_pane(&ed);
     live_host!(ed)
-        .goto_location_buffer(pane, new_bid, hume_rope::line::RopeyLine::new(0), 1)
+        .goto_location_buffer(pane, new_bid, 1)
         .expect("goto-location! must succeed");
 
     assert_eq!(
@@ -101,7 +101,7 @@ fn goto_location_within_the_focused_buffer_leaves_insert_session_open() {
 
     let pane = focused_pane(&ed);
     live_host!(ed)
-        .goto_location_buffer(pane, bid, hume_rope::line::RopeyLine::new(0), 3)
+        .goto_location_buffer(pane, bid, 3)
         .expect("goto-location! must succeed");
 
     assert_eq!(
@@ -136,7 +136,7 @@ fn goto_location_within_the_focused_buffer_invalidates_the_typed_run() {
 
     let pane = focused_pane(&ed);
     live_host!(ed)
-        .goto_location_buffer(pane, bid, hume_rope::line::RopeyLine::new(0), 3)
+        .goto_location_buffer(pane, bid, 3)
         .expect("goto-location! must succeed");
 
     assert!(!snapshot_bookkeeping(&ed).typed_run_open);
@@ -465,7 +465,7 @@ fn goto_location_from_an_auto_indented_blank_line_records_a_jump_back() {
 
     let pane = focused_pane(&ed);
     live_host!(ed)
-        .goto_location_buffer(pane, new_bid, hume_rope::line::RopeyLine::new(0), 1)
+        .goto_location_buffer(pane, new_bid, 1)
         .expect("goto-location! must succeed");
     assert_eq!(
         ed.state.buffers.get(old_bid).text().to_string(),

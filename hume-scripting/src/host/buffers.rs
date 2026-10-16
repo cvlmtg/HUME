@@ -159,13 +159,17 @@ pub trait BufferHost {
     /// editor implementation panics, via the underlying rope's line lookup).
     /// `None` if `id` is unknown.
     ///
-    /// Backs the Steel `(line->offset bid line)` builtin, the inverse
-    /// direction of `offset->line`.
-    fn line_to_offset(&self, id: BufferId, line: hume_rope::line::ContentLine) -> Option<usize>;
+    /// Backs the Steel `(line->char-offset bid line)` builtin, the inverse
+    /// direction of `char-offset->line`.
+    fn line_to_char_offset(
+        &self,
+        id: BufferId,
+        line: hume_rope::line::ContentLine,
+    ) -> Option<usize>;
 
     /// The content-domain line range currently visible in `pane`'s own pane.
     /// Backs the Steel `(viewport-range pane)` builtin, which unwraps the
-    /// range to a `(hash 'start first 'end end)` at the Steel boundary
+    /// range to a `(hash 'start-line first 'end-line end)` at the Steel boundary
     /// (0-based, end-exclusive). Pane geometry, not LSP state, so it doesn't need
     /// an attached server. Kind-B: raises if `pane` carries no pane, a
     /// closed one, one that no longer shows `pane`'s buffer, or one on a

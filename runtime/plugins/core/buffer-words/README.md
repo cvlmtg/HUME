@@ -49,7 +49,7 @@ The cache is rebuilt on `on-buffer-open` and, debounced 150ms, on `on-text-chang
 same shape `core:git-diff` uses for its own per-buffer state (see the
 [core plugins index](../README.md#per-buffer-state)). Each rebuild walks outward from the
 cursor's line in both directions, one batch of `"lines"` lines per direction per tick,
-fetched with `(buffer-lines pane #:start #:end)` and scanned to completion in the same
+fetched with `(buffer-lines pane #:range …)` and scanned to completion in the same
 tick. A word cannot span two lines, so nothing carries across a tick boundary.
 
 Nothing blocks however large the buffer is, and the words nearest the cursor are indexed

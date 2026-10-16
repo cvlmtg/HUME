@@ -101,16 +101,16 @@ pub(in crate::editor) enum EditorEvent {
     },
     /// Fires when a pane's visible range changes (scroll, resize, an edit
     /// that moves the EOF-clamped end, a buffer switch), debounced
-    /// (`viewport-debounce-ms`) so a burst fires once. `first_line` /
-    /// `end_line` are the range `viewport-range` returns, end-exclusive; it
-    /// covers every line that could be visible and is exact unless soft wrap
+    /// (`viewport-debounce-ms`) so a burst fires once. `lines` is the range
+    /// `viewport-range` returns, end-exclusive, and reaches the hook as the
+    /// same value; it covers every line that could be visible and is exact
+    /// unless soft wrap
     /// makes lines span several rows.
     /// `target`'s pane is the pane whose viewport actually scrolled, not
     /// necessarily the focused one.
     OnViewportChange {
         target: PaneHandle,
-        first_line: hume_rope::line::ContentLine,
-        end_line: hume_rope::line::ContentLine,
+        lines: hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>,
     },
     /// Fires in Insert mode after a registered trigger char (see
     /// `set-hook-triggers!`) has been inserted into the buffer, once
@@ -444,15 +444,10 @@ impl EditorEvent {
                     server.into_steel_val(),
                 ]
             }
-            EditorEvent::OnViewportChange {
-                target,
-                first_line,
-                end_line,
-            } => {
+            EditorEvent::OnViewportChange { target, lines } => {
                 vec![
                     SteelPane::new(target).into_steel_val(),
-                    SteelVal::IntV(first_line.index() as isize),
-                    SteelVal::IntV(end_line.index() as isize),
+                    hume_scripting::line_range_value(lines),
                 ]
             }
             EditorEvent::OnTriggerChar { target, ch, source } => {

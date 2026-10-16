@@ -16,13 +16,13 @@ use crate::{PendingLspServerReg, SteelCtx};
 
 use super::SteelResult;
 use super::args::{
-    ENV_PAIR_SHAPE, bool_arg, callable_arg, checked_params, hash_entry, list_items, list_of,
-    list_to_string_pairs, list_to_strings, optional_json_arg, optional_list_items,
-    optional_server_arg, optional_string_arg, optional_symbol_arg, optional_token_arg, pair_fields,
-    server_arg, string_arg, string_hash, string_list, symbol_enum_arg, symbol_hash,
-    tagged_json_arg, token_arg, wire_position, wire_range,
+    ENV_PAIR_SHAPE, bool_arg, callable_arg, char_range_value, checked_params, hash_entry,
+    list_items, list_of, list_to_string_pairs, list_to_strings, optional_json_arg,
+    optional_list_items, optional_server_arg, optional_string_arg, optional_symbol_arg,
+    optional_token_arg, pair_fields, server_arg, string_arg, string_hash, string_list,
+    symbol_enum_arg, symbol_hash, tagged_json_arg, token_arg, wire_position, wire_range,
 };
-use super::errors::generic_err;
+use super::errors::{generic_err, require_cap};
 use super::hooks::{register_entry, require_known_event};
 use super::ids::{DocRange, ServerRef, SteelPane};
 
@@ -860,67 +860,56 @@ fn json_usize(v: &serde_json::Value, ctx_name: &str) -> Result<usize, SteelErr> 
         })
 }
 
-/// `(lsp-position->offset pane position)` → `pane`'s buffer's char offset
+/// `(lsp-position->char-offset pane position)` → `pane`'s buffer's char offset
 /// for the wire `{"line" "character"}` hashmap `position`, decoded in
 /// `position`'s own tagged producing-server encoding (`Err` if `position`
 /// isn't a value from an LSP server response; see
 /// `JsonHandle::position_encoding`), or `#f` if `position` would land on
-/// the buffer's trailing phantom line (a stale response racing an edit, or a
-/// server's past-end convention). Every point-anchored decoration setter
-/// (`set-inlay-hints!`) rejects that offset outright, so refusing here lets
-/// a caller filter one bad entry instead of the whole setter call failing
-/// on it.
-pub(crate) fn lsp_position_to_offset(
+/// the buffer's trailing phantom line or past it (a stale response racing an
+/// edit, or a server's past-end convention). Every point-anchored decoration
+/// setter (`set-inlay-hints!`) rejects that offset outright, so refusing here
+/// lets a caller filter one bad entry instead of the whole setter call
+/// failing on it. Raises when the host has no LSP capability.
+pub(crate) fn lsp_position_to_char_offset(
     ctx: &mut SteelCtx,
     pane: PaneHandle,
     position: SteelVal,
 ) -> SteelResult {
+    const NAME: &str = "lsp-position->char-offset";
     let bid = pane.buffer();
-    let (handle, encoding) = tagged_json_arg(&position, "lsp-position->offset")?;
-    let pos = wire_position(handle.value(), "lsp-position->offset")?;
-    Ok(
-        match ctx
-            .host
-            .lsp()
-            .and_then(|lsp| lsp.lsp_wire_point_to_char(bid, pos, encoding))
-        {
-            Some(offset) => SteelVal::IntV(offset as isize),
-            None => SteelVal::BoolV(false),
-        },
-    )
+    let (handle, encoding) = tagged_json_arg(&position, NAME)?;
+    let pos = wire_position(handle.value(), NAME)?;
+    let offset = require_cap(ctx.host.lsp(), NAME)?.lsp_wire_point_to_char(bid, pos, encoding);
+    Ok(offset.map_or(SteelVal::BoolV(false), |offset| {
+        SteelVal::IntV(offset as isize)
+    }))
 }
 
-/// `(lsp-range->offsets pane range)` → `(hash 'start s 'end e)` half-open char
+/// `(lsp-range->char-range pane range)` → `(hash 'start-char s 'end-char e)` half-open char
 /// offsets for the wire `{"start" {"line" "character"} "end" {"line"
 /// "character"}}` hashmap `range`, same encoding rule as
-/// `lsp-position->offset`, decoded in `range`'s own tagged producing-server
-/// encoding.
-pub(crate) fn lsp_range_to_offsets(
+/// `lsp-position->char-offset`, decoded in `range`'s own tagged producing-server
+/// encoding. A `character` past its line's end clamps, and an end may sit at
+/// the document end `(line count, 0)`. `#f` when an end is on a line past it.
+/// Raises when the host has no LSP capability.
+pub(crate) fn lsp_range_to_char_range(
     ctx: &mut SteelCtx,
     pane: PaneHandle,
     range: SteelVal,
 ) -> SteelResult {
+    const NAME: &str = "lsp-range->char-range";
     let bid = pane.buffer();
-    let (handle, encoding) = tagged_json_arg(&range, "lsp-range->offsets")?;
-    let range = wire_range(handle.value(), "lsp-range->offsets")?;
-    let Some(lsp) = ctx.host.lsp() else {
-        return Ok(SteelVal::BoolV(false));
-    };
-    let (Some(start), Some(end)) = (
-        lsp.lsp_wire_to_char(bid, range.start, encoding),
-        lsp.lsp_wire_to_char(bid, range.end, encoding),
-    ) else {
-        return Ok(SteelVal::BoolV(false));
-    };
-    Ok(symbol_hash([
-        ("start", SteelVal::IntV(start as isize)),
-        ("end", SteelVal::IntV(end as isize)),
-    ]))
+    let (handle, encoding) = tagged_json_arg(&range, NAME)?;
+    let range = wire_range(handle.value(), NAME)?;
+    let range = require_cap(ctx.host.lsp(), NAME)?.lsp_wire_range_to_chars(bid, range, encoding);
+    Ok(range.map_or(SteelVal::BoolV(false), |(start, end)| {
+        char_range_value(start, end)
+    }))
 }
 
 /// `(lsp-label-offsets->text label offsets)` → the slice of `label` that a
-/// `ParameterInformation.label` `[start, end)` wire offset pair names, or
-/// `#f` if this host has no LSP capability at all.
+/// `ParameterInformation.label` `[start, end)` wire offset pair names.
+/// Raises when the host has no LSP capability.
 ///
 /// `offsets` is the raw two-element `[start, end)` array straight off the
 /// wire, handed over undecoded the way `goto-location!` takes a raw
@@ -948,13 +937,9 @@ pub(crate) fn lsp_label_offsets_to_text(
     };
     let start = json_usize(start, "lsp-label-offsets->text offsets")?;
     let end = json_usize(end, "lsp-label-offsets->text offsets")?;
-    Ok(match ctx.host.lsp() {
-        Some(lsp) => SteelVal::StringV(
-            lsp.lsp_label_offsets_to_text(&label, start, end, encoding)
-                .into(),
-        ),
-        None => SteelVal::BoolV(false),
-    })
+    let text = require_cap(ctx.host.lsp(), "lsp-label-offsets->text")?
+        .lsp_label_offsets_to_text(&label, start, end, encoding);
+    Ok(SteelVal::StringV(text.into()))
 }
 
 /// Decodes `locs` (a Steel list of raw `Location`/`LocationLink` handles)
@@ -970,11 +955,9 @@ fn decode_places(
         .iter()
         .map(|entry| tagged_json_arg(entry, &arg_name))
         .collect::<Result<Vec<_>, _>>()?;
-    ctx.host
-        .lsp()
-        .ok_or_else(|| generic_err(format!("{builtin}: no LSP state available")))?
-        .lsp_location_places(&handles, builtin)
-        .map_err(generic_err)
+    require_cap(ctx.host.lsp(), builtin)?
+        .lsp_location_places(&handles)
+        .map_err(|e| generic_err(format!("{builtin}: {e}")))
 }
 
 fn place_hash(place: Place) -> SteelVal {

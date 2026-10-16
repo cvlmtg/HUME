@@ -18,22 +18,21 @@
     (if (pair? parts) (car parts) text)))
 
 (define (lsp/first-after diags head)
-  (let ((after (filter (lambda (d) (> (hash-ref d 'start) head)) diags)))
+  (let ((after (filter (lambda (d) (> (hash-ref d 'start-char) head)) diags)))
     (if (null? after) (car diags) (car after))))
 
 (define (lsp/last-before diags head)
-  (let ((before (filter (lambda (d) (< (hash-ref d 'start) head)) diags)))
+  (let ((before (filter (lambda (d) (< (hash-ref d 'start-char) head)) diags)))
     (if (null? before) (car (reverse diags)) (car (reverse before)))))
 
 (define (lsp/diag-jump-to! pane d)
-  (goto-location! (focused-pane)
-                  (hash 'target pane 'line (hash-ref d 'line) 'char-col (hash-ref d 'char-col))))
+  (goto-location! (focused-pane) (hash 'target pane 'char-offset (hash-ref d 'start-char))))
 
 (define (lsp/diag-jump! pane direction)
   (let ((diags (diagnostics-for-buffer pane)))
     (if (null? diags)
         (log! 'info "No diagnostics")
-        (let* ((head (call! "stdlib/cursor-char-index" (buffer-selections pane)))
+        (let* ((head (call! "stdlib/cursor-char-offset" (buffer-selections pane)))
                (target (if (> direction 0)
                            (lsp/first-after diags head)
                            (lsp/last-before diags head))))
@@ -57,7 +56,7 @@
 
 (define (lsp/diag-row d)
   (string-append (lsp/severity-glyph (hash-ref d 'severity)) " "
-                 (lsp/format-position (hash-ref d 'line) (hash-ref d 'grapheme-col)) " "
+                 (lsp/format-position (hash-ref d 'start-line) (hash-ref d 'grapheme-col)) " "
                  (lsp/diag-origin d) ": "
                  (lsp/first-line (hash-ref d 'message))))
 
@@ -81,14 +80,14 @@
 (define (lsp/diag-best-match old new-diags)
   (let ((old-msg (hash-ref old 'message))
         (old-sev (hash-ref old 'severity))
-        (old-line (hash-ref old 'line)))
+        (old-line (hash-ref old 'start-line)))
     (let loop ((rest new-diags) (i 0) (best #f) (best-dist #f))
       (if (null? rest)
           best
           (let ((d (car rest)))
             (if (and (equal? (hash-ref d 'message) old-msg)
                      (equal? (hash-ref d 'severity) old-sev))
-                (let ((dist (abs (- (hash-ref d 'line) old-line))))
+                (let ((dist (abs (- (hash-ref d 'start-line) old-line))))
                   (if (or (not best-dist) (< dist best-dist))
                       (loop (cdr rest) (+ i 1) i dist)
                       (loop (cdr rest) (+ i 1) best best-dist)))
@@ -145,7 +144,7 @@
                  (cons (cons current-key (reverse current-group)) groups)))))))
 
 (define (lsp/group-by-line diags)
-  (map cdr (lsp/group-by (lambda (d) (hash-ref d 'line)) diags)))
+  (map cdr (lsp/group-by (lambda (d) (hash-ref d 'start-line)) diags)))
 
 (define (lsp/line-group->entry group)
   (let* ((leftmost (car group))
@@ -154,11 +153,11 @@
          (body (if (> n 1) (string-append "[" (number->string n) "] " msg) msg))
          (text (string-append " " body))
          (scope (lsp/severity-scope (hash-ref (lsp/most-severe group) 'severity))))
-    (hash 'line (hash-ref leftmost 'line) 'text text 'scope scope)))
+    (hash 'line (hash-ref leftmost 'start-line) 'text text 'scope scope)))
 
 (define (lsp/diag-line-pairs diag)
   (map (lambda (line) (cons line diag))
-       (range (hash-ref diag 'line) (+ (hash-ref diag 'end-line) 1))))
+       (range (hash-ref diag 'start-line) (hash-ref diag 'end-line))))
 
 (define (lsp/diagnostic-signs diags)
   (let* ((pairs (foldl (lambda (diag acc)

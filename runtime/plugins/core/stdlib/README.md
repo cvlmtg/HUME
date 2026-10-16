@@ -37,7 +37,7 @@ under [How it works](#how-it-works) cover what a contributor needs beyond that.
 
 | Group | Commands |
 |---|---|
-| [Selections](#selections) | `stdlib/selection-anchor`, `-head`, `-start`, `-end`, `-primary?`, `stdlib/primary-selection`, `stdlib/all-single-char?`, `stdlib/single-selection?`, `stdlib/cursor-char-index` |
+| [Selections](#selections) | `stdlib/selection-anchor`, `-head`, `-start-char`, `-end-char`, `-primary?`, `stdlib/primary-selection`, `stdlib/all-single-char?`, `stdlib/single-selection?`, `stdlib/cursor-char-offset` |
 | [Filesystem and list search](#filesystem-and-list-search) | `stdlib/find`, `stdlib/write-file!`, `stdlib/delete-dir!`, `stdlib/delete-file!`, `stdlib/list-subdirs` |
 | [Subprocess](#subprocess) | `stdlib/run!` |
 | [Git](#git) | `stdlib/git-repo?`, `stdlib/git-toplevel` |

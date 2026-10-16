@@ -9,22 +9,22 @@
 ;;; See docs/rendering.md for the gutter-slot ordering this priority buys.
 (define git-diff/*sign-priority* 0)
 
-(define (git-diff/line-signs new-start new-count text scope)
+(define (git-diff/line-signs new-start new-end text scope)
   (map (lambda (line) (hash 'line line 'text text 'scope scope))
-       (range new-start (+ new-start new-count))))
+       (range new-start new-end)))
 
 ;;; One `diff-buffer-lines` hunk -> a list of `(hash 'line 'text 'scope)` sign entries — see docs/rendering.md.
 (define (git-diff/hunk->signs hunk)
-  (let* ([old-count (hash-ref hunk 'old-count)]
-         [new-start (hash-ref hunk 'new-start)]
-         [new-count (hash-ref hunk 'new-count)])
+  (let* ([pure-addition? (= (hash-ref hunk 'old-start-line) (hash-ref hunk 'old-end-line))]
+         [new-start (hash-ref hunk 'new-start-line)]
+         [new-end (hash-ref hunk 'new-end-line)])
     (cond
-      [(and (= new-count 0) (= new-start 0))
+      [(and (= new-start new-end) (= new-start 0))
        (list (hash 'line 0 'text "▔" 'scope "diff.minus"))]
-      [(= new-count 0)
+      [(= new-start new-end)
        (list (hash 'line (- new-start 1) 'text "▁" 'scope "diff.minus"))]
-      [(= old-count 0) (git-diff/line-signs new-start new-count "+" "diff.plus")]
-      [else (git-diff/line-signs new-start new-count "~" "diff.delta")])))
+      [pure-addition? (git-diff/line-signs new-start new-end "+" "diff.plus")]
+      [else (git-diff/line-signs new-start new-end "~" "diff.delta")])))
 
 ;;; Registers first regardless of `hunks` — see docs/rendering.md's "Signs".
 (define (git-diff/render-signs! pane hunks)
@@ -44,14 +44,11 @@
     (if (null? segments) base (hash-insert base 'segments segments))))
 
 (define (git-diff/word-span start end scope)
-  (hash 'start start 'end end 'scope scope))
-
-(define (git-diff/line-span->segment span)
-  (git-diff/word-span (hash-ref span 'start) (hash-ref span 'end) "diff.minus.word"))
+  (hash 'start-char start 'end-char end 'scope scope))
 
 ;;; One virtual line per old line, each carrying the `spans` that name its line — see docs/rendering.md.
-(define (git-diff/old-lines->virtual-lines old-lines spans anchor)
-  (let loop ([olds old-lines] [spans spans] [line 0] [acc '()])
+(define (git-diff/old-lines->virtual-lines old-lines spans anchor first-line)
+  (let loop ([olds old-lines] [spans spans] [line first-line] [acc '()])
     (if (null? olds)
         (reverse acc)
         (let split ([rest spans] [mine '()])
@@ -59,44 +56,30 @@
               (split (cdr rest) (cons (car rest) mine))
               (loop (cdr olds) rest (+ line 1)
                     (cons (git-diff/virtual-line-hash
-                            (car olds) anchor (map git-diff/line-span->segment (reverse mine)))
+                            (car olds) anchor
+                            (map (lambda (span)
+                                   (git-diff/word-span (hash-ref span 'start-char-col)
+                                                       (hash-ref span 'end-char-col)
+                                                       "diff.minus.word"))
+                                 (reverse mine)))
                           acc)))))))
 
-;;; `spans` in buffer char offsets, one walk down `new-lines` — see docs/rendering.md.
-(define (git-diff/line-spans->new-side-spans pane new-start new-lines spans)
-  (if (null? spans)
-      '()
-      (let loop ([spans spans]
-                 [line 0]
-                 [lines new-lines]
-                 [offset (line->offset pane new-start)]
-                 [acc '()])
-        (cond
-          [(null? spans) (reverse acc)]
-          [(< line (hash-ref (car spans) 'line))
-           (loop spans (+ line 1) (cdr lines) (+ offset (string-length (car lines)) 1) acc)]
-          [else
-           (let ([span (car spans)])
-             (loop (cdr spans) line lines offset
-                   (cons (git-diff/word-span (+ offset (hash-ref span 'start))
-                                             (+ offset (hash-ref span 'end))
-                                             "diff.plus.word")
-                         acc)))]))))
-
 ;;; One hunk -> `(virtual-lines . spans)` for `render-inline!` — see docs/rendering.md.
-(define (git-diff/hunk-inline-data pane hunk)
-  (if (= (hash-ref hunk 'old-count) 0)
+(define (git-diff/hunk-inline-data hunk)
+  (if (= (hash-ref hunk 'old-start-line) (hash-ref hunk 'old-end-line))
       (cons '() '())
       (let* ([words (hash-ref hunk 'words)]
-             [new-start (hash-ref hunk 'new-start)]
-             [anchor (git-diff/hunk-anchor new-start)])
-        (cons (git-diff/old-lines->virtual-lines (hash-ref hunk 'old-lines) (hash-ref words 'old) anchor)
-              (git-diff/line-spans->new-side-spans
-                pane new-start (hash-ref hunk 'new-lines) (hash-ref words 'new))))))
+             [anchor (git-diff/hunk-anchor (hash-ref hunk 'new-start-line))])
+        (cons (git-diff/old-lines->virtual-lines
+                (hash-ref hunk 'old-lines) (hash-ref words 'old) anchor (hash-ref hunk 'old-start-line))
+              (map (lambda (span)
+                     (git-diff/word-span (hash-ref span 'start-char) (hash-ref span 'end-char)
+                                         "diff.plus.word"))
+                   (hash-ref words 'new))))))
 
 ;;; Two setter calls, not one — see docs/rendering.md.
 (define (git-diff/render-inline! pane source hunks)
-  (let* ([results (map (lambda (h) (git-diff/hunk-inline-data pane h)) hunks)]
+  (let* ([results (map git-diff/hunk-inline-data hunks)]
          [virtual-lines (apply append (map car results))]
          [spans (apply append (map cdr results))])
     (set-virtual-lines! source pane virtual-lines)
@@ -105,13 +88,13 @@
 ;; ── Line background tint ─────────────────────────────────────────────────────
 
 (define (git-diff/hunk->line-bgs hunk)
-  (let* ([old-count (hash-ref hunk 'old-count)]
-         [new-start (hash-ref hunk 'new-start)]
-         [new-count (hash-ref hunk 'new-count)])
-    (if (= new-count 0)
+  (let* ([pure-addition? (= (hash-ref hunk 'old-start-line) (hash-ref hunk 'old-end-line))]
+         [new-start (hash-ref hunk 'new-start-line)]
+         [new-end (hash-ref hunk 'new-end-line)])
+    (if (= new-start new-end)
         '()
-        (let ([scope (if (= old-count 0) "diff.plus.line" "diff.delta.line")])
-          (map (lambda (line) (hash 'line line 'scope scope)) (range new-start (+ new-start new-count)))))))
+        (let ([scope (if pure-addition? "diff.plus.line" "diff.delta.line")])
+          (map (lambda (line) (hash 'line line 'scope scope)) (range new-start new-end))))))
 
 (define (git-diff/render-line-bgs! pane source hunks)
   (set-line-backgrounds! source pane (apply append (map git-diff/hunk->line-bgs hunks))))

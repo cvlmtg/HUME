@@ -41,7 +41,7 @@ impl CharOffset {
     /// position). `CharOffset` has no `clamped`/`snapped` counterpart: a
     /// blind `idx.min(rope.len_chars())` is the wrong tool everywhere a
     /// position needs clamping. An LSP wire position clamps line-then-column
-    /// ([`crate::position_encoding::wire_to_char`]), and landing on a
+    /// ([`crate::position_encoding::wire_range_to_char_range`]), and landing on a
     /// cluster is [`crate::grapheme::snap_to_cluster`]'s job.
     pub fn checked(rope: &Rope, idx: usize) -> Option<Self> {
         (idx <= rope.len_chars()).then_some(Self(idx))

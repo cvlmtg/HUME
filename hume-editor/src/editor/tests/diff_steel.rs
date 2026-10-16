@@ -21,7 +21,7 @@ fn diff_lines_returns_zero_based_hunk_hashes() {
         ScriptingHost::new(&Dirs::none()),
         tmp.path(),
         r#"(equal? (diff-lines "a\nb\nc\n" "a\nB\nc\n")
-                   (list (hash 'old-start 1 'old-count 1 'new-start 1 'new-count 1
+                   (list (hash 'old-start-line 1 'old-end-line 2 'new-start-line 1 'new-end-line 2
                               'old-lines (list "b") 'new-lines (list "B")
                               'words (hash 'old (list) 'new (list)))))"#,
     );
@@ -46,7 +46,7 @@ fn diff_buffer_lines_diffs_the_live_buffer_against_the_ref() {
         ScriptingHost::new(&Dirs::none()),
         tmp.path(),
         r#"(equal? (diff-buffer-lines bid "a\nB\nc\n")
-                   (list (hash 'old-start 1 'old-count 1 'new-start 1 'new-count 1
+                   (list (hash 'old-start-line 1 'old-end-line 2 'new-start-line 1 'new-end-line 2
                               'old-lines (list "B") 'new-lines (list "b")
                               'words (hash 'old (list) 'new (list)))))"#,
     );
@@ -120,9 +120,9 @@ fn buffer_revision_diff_returns_hunks_with_word_spans() {
         ScriptingHost::new(&Dirs::none()),
         tmp.path(),
         r#"(equal? (buffer-revision-diff bid 0)
-                   (list (hash 'old-start 0 'old-count 1 'new-start 0 'new-count 1
+                   (list (hash 'old-start-line 0 'old-end-line 1 'new-start-line 0 'new-end-line 1
                               'old-lines (list "abc") 'new-lines (list "bc")
-                              'words (hash 'old (list (hash 'line 0 'start 0 'end 1))
+                              'words (hash 'old (list (hash 'line 0 'start-char-col 0 'end-char-col 1))
                                            'new (list)))))"#,
     );
     assert!(
@@ -144,7 +144,7 @@ fn buffer_revision_diff_keeps_words_when_a_span_covers_its_line() {
         &mut ed,
         tmp.path(),
         r#"(if (equal? (buffer-revision-diff bid 0)
-                       (list (hash 'old-start 0 'old-count 1 'new-start 0 'new-count 1
+                       (list (hash 'old-start-line 0 'old-end-line 1 'new-start-line 0 'new-end-line 1
                                   'old-lines (list "a") 'new-lines (list "")
                                   'words (hash 'old (list) 'new (list)))))
                "match"
@@ -196,7 +196,7 @@ fn diff_words_returns_a_hunks_and_deadline_hit_hash() {
         ScriptingHost::new(&Dirs::none()),
         tmp.path(),
         r#"(equal? (diff-words "foo bar" "foo baz")
-                   (hash 'hunks (list (hash 'old-start 4 'old-end 7 'new-start 4 'new-end 7
+                   (hash 'hunks (list (hash 'old-start-char 4 'old-end-char 7 'new-start-char 4 'new-end-char 7
                                         'old-text "bar" 'new-text "baz"))
                          'deadline-hit #f))"#,
     );
@@ -215,10 +215,33 @@ fn diff_lines_words_follow_the_edit_across_uneven_sides() {
         ScriptingHost::new(&Dirs::none()),
         tmp.path(),
         r##"(equal? (hash-ref (car (diff-lines "# h\n\nkeep one two\n" "keep two\n")) 'words)
-                   (hash 'old (list (hash 'line 2 'start 4 'end 8)) 'new (list)))"##,
+                   (hash 'old (list (hash 'line 2 'start-char-col 4 'end-char-col 8)) 'new (list)))"##,
     );
     assert!(
         fired,
         "diff-lines must return the edit's span on its own line"
+    );
+}
+
+/// Old-side spans name their line in the old text and their columns in it;
+/// new-side spans are char offsets into the new text, ready for
+/// `set-extra-highlights!`. Both hunks start on line 1, so a hunk-relative
+/// line or column would read differently.
+#[test]
+fn diff_buffer_lines_words_are_absolute_lines_and_new_text_offsets() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>\nfoo bar\n");
+
+    let fired = run_probe(
+        &mut ed,
+        ScriptingHost::new(&Dirs::none()),
+        tmp.path(),
+        r#"(equal? (hash-ref (car (diff-buffer-lines bid "a\nfoo baz\n")) 'words)
+                   (hash 'old (list (hash 'line 1 'start-char-col 4 'end-char-col 7))
+                         'new (list (hash 'start-char 6 'end-char 9))))"#,
+    );
+    assert!(
+        fired,
+        "old-side spans carry absolute old lines and new-side spans buffer char offsets"
     );
 }

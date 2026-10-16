@@ -337,7 +337,7 @@ fn additional_edit_on_the_same_line_as_a_text_edit_main_edit_shifts_with_it() {
 /// but with an astral-plane character (🎉, a UTF-16 surrogate pair: 2 wire
 /// units, 1 char) before both edits on the line. The atomic-batch path
 /// (`build_edit_changeset`) converts each edit's own wire position to a char
-/// offset independently via `wire_to_char` (no UTF-16-delta arithmetic
+/// offset independently via `checked_wire_range_to_char_range` (no UTF-16-delta arithmetic
 /// between edits at all), so this proves that conversion is correct with an
 /// astral prefix on the line, not just plain ASCII.
 #[test]
@@ -446,6 +446,51 @@ fn resolved_additional_edits_land_through_the_accept_edit_on_the_same_line() {
         "a resolved additionalTextEdit on the same line as the main edit must land at \
          the exact position, mapped through the accept ChangeSet, not approximated \
          by a UTF-16 delta"
+    );
+}
+
+/// A resolved `additionalTextEdits` range ending on a line past the
+/// document end names no text: the resolve reports it and applies none of
+/// its edits, and the main edit accept already made stays.
+#[test]
+fn resolved_additional_edits_past_the_document_end_are_reported_and_not_applied() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut ed, _guard, _requests) = setup_cursor_at_start(
+        tmp.path(),
+        "\nfoo\n",
+        full_completion_caps(),
+        |backend, _sid| {
+            backend.respond_to(
+                "textDocument/completion",
+                serde_json::json!([{"label": "bar", "insertText": "bar"}]),
+            );
+            backend.respond_to(
+                "completionItem/resolve",
+                serde_json::json!({
+                    "label": "bar",
+                    "additionalTextEdits": [
+                        {"range": {"start": {"line": 0, "character": 0}, "end": {"line": 9, "character": 0}},
+                         "newText": "use std::bar;\n"}
+                    ]
+                }),
+            );
+        },
+    );
+    set_cursor(&mut ed, 1);
+
+    without_completion_docs(&mut ed);
+    ed.feed_key(key('i'));
+    ed.settle();
+    ed.feed_key(key_ctrl(' '));
+    settle(&mut ed);
+    ed.feed_key(key_enter());
+    settle(&mut ed);
+
+    assert_eq!(ed.doc().text().to_string(), "\nbarfoo\n");
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("lsp completion resolve: text edit range ends past the end of the document"),
+        "got: {log:?}"
     );
 }
 

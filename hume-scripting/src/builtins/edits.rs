@@ -11,8 +11,8 @@ use crate::types::PaneHandle;
 
 use super::SteelResult;
 use super::args::{
-    hash_entry, list_items, optional_usize_arg, single_key_arg, string_arg, tagged_json_arg,
-    wire_text_edit_arg,
+    CHAR_OFFSET, hash_entry, list_items, optional_usize_arg, single_key_arg, string_arg,
+    tagged_json_arg, wire_text_edit_arg,
 };
 use super::errors::{generic_err, require_cap};
 
@@ -65,8 +65,9 @@ pub(crate) fn apply_workspace_edit(
     Ok(SteelVal::IntV(count as isize))
 }
 
-/// `(goto-location! pane loc)`: `loc` is one of two shapes, dispatched here
-/// (not in Scheme):
+/// `(goto-location! pane loc)` → `#t` after a jump, `#f` when the place `loc`
+/// names no longer exists. `loc` is one of three shapes, dispatched here (not
+/// in Scheme):
 ///
 /// - a JSON handle onto a raw `Location`/`LocationLink` from a server
 ///   response: wire position, decoded and converted using the handle's own
@@ -75,11 +76,16 @@ pub(crate) fn apply_workspace_edit(
 ///   location points into (an LSP round-trip is async; the user is free to
 ///   switch panes while a request is in flight, which is exactly why the
 ///   jump lands in `pane`, not necessarily the focused one). Errors on a
-///   hand-built value, same as `apply-workspace-edit!`.
-/// - `(hash 'target t 'line l 'char-col c)`, already char-indexed: `t` is a
-///   path string, a `file://` URI string, or a pane. This shape never
-///   touches server encoding. A hashmap is this shape and a handle is the
-///   wire one.
+///   hand-built value, same as `apply-workspace-edit!`; `#f` when the
+///   location's line is past its file's last line.
+/// - `(hash 'target path 'line l 'char-col c)`, already char-indexed: `path`
+///   is a path string, never a URI, and the file is opened if it is not
+///   already. `#f` when `l` is past the file's last line.
+/// - `(hash 'target pane 'char-offset o)`, a char offset in `pane`'s buffer.
+///   Raises when `o` is past the end of the buffer.
+///
+/// A hashmap is one of the char-indexed shapes and a handle is the wire one.
+/// Keys that belong to the other char-indexed shape raise.
 pub(crate) fn goto_location(ctx: &mut SteelCtx, pane: PaneHandle, loc: SteelVal) -> SteelResult {
     match &loc {
         SteelVal::HashMapV(map)
@@ -90,34 +96,67 @@ pub(crate) fn goto_location(ctx: &mut SteelCtx, pane: PaneHandle, loc: SteelVal)
             let fields = hash_entry(
                 loc.clone(),
                 "goto-location!",
-                &["target", "line", "char-col"],
+                &["target", "line", "char-col", CHAR_OFFSET],
             )?;
             let target = fields.required("target")?;
-            let line = hume_rope::line::RopeyLine::new(fields.usize("line")?);
-            let char_col = fields.usize("char-col")?;
             if let Some(handle) = super::ids::downcast_pane(&target) {
+                for key in ["line", "char-col"] {
+                    if fields.optional(key).is_some() {
+                        steel::stop!(Generic =>
+                            "goto-location!: a pane target takes 'char-offset, not '{}", key);
+                    }
+                }
+                let char_offset = fields.usize(CHAR_OFFSET)?;
                 require_cap(ctx.host.edits(), "goto-location!")?
-                    .goto_location_buffer(pane, handle.buffer(), line, char_col)
-                    .map(|()| SteelVal::Void)
-                    .map_err(generic_err)
+                    .goto_location_buffer(pane, handle.buffer(), char_offset)
+                    .map(|()| SteelVal::BoolV(true))
+                    .map_err(goto_err)
             } else {
-                let s = string_arg(target, "goto-location! target")?;
+                if fields.optional(CHAR_OFFSET).is_some() {
+                    steel::stop!(Generic =>
+                        "goto-location!: a path target takes 'line and 'char-col, not 'char-offset");
+                }
+                let path = string_arg(target, "goto-location! target")?;
+                if has_uri_scheme(&path) {
+                    steel::stop!(Generic =>
+                        "goto-location!: target must be a pane or a path, not the URI {}", path);
+                }
+                let line = fields.usize("line")?;
+                let char_col = fields.usize("char-col")?;
                 require_cap(ctx.host.edits(), "goto-location!")?
-                    .goto_location_path(pane, s, line, char_col)
-                    .map(|()| SteelVal::Void)
-                    .map_err(generic_err)
+                    .goto_location_path(pane, path, line, char_col)
+                    .map(SteelVal::BoolV)
+                    .map_err(goto_err)
             }
         }
         SteelVal::Custom(_) => {
             let (handle, encoding) = tagged_json_arg(&loc, "goto-location!")?;
             require_cap(ctx.host.edits(), "goto-location!")?
                 .goto_location_value(pane, handle.value(), encoding)
-                .map(|()| SteelVal::Void)
-                .map_err(generic_err)
+                .map(SteelVal::BoolV)
+                .map_err(goto_err)
         }
         _ => steel::stop!(TypeMismatch =>
-            "goto-location!: expected a Location handle from a server response or (hash 'target t 'line l 'char-col c)"),
+            "goto-location!: expected a Location handle from a server response or (hash 'target t 'line l 'char-col c) or (hash 'target pane 'char-offset o)"),
     }
+}
+
+/// Whether `s` starts with an RFC 3986 scheme and its `:`: an ASCII letter,
+/// then letters, digits, `+`, `-` or `.`. A one-letter scheme is a Windows
+/// drive (`C:\…`), so it does not count. A relative path whose first segment
+/// holds a colon (`foo:bar/x`) reads as a URI too; `./foo:bar/x` does not.
+fn has_uri_scheme(s: &str) -> bool {
+    let Some((scheme, _)) = s.split_once(':') else {
+        return false;
+    };
+    let mut chars = scheme.chars();
+    scheme.len() >= 2
+        && chars.next().is_some_and(|c| c.is_ascii_alphabetic())
+        && chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
+}
+
+fn goto_err(e: String) -> SteelErr {
+    generic_err(format!("goto-location!: {e}"))
 }
 
 /// `(insert-key! pane key)`: `key` is a `bind-key!`-syntax spec naming

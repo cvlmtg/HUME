@@ -167,6 +167,57 @@ fn accept_with_an_off_spec_text_edit_range_errors_and_leaves_the_buffer_untouche
     );
 }
 
+/// A range ending on a line past the document end names no text. The item
+/// is still listed, matched against the source's own token, and accepting
+/// it errors with the buffer untouched.
+#[test]
+fn accept_with_a_text_edit_range_past_the_document_end_errors_and_leaves_the_buffer_untouched() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("abc-[d]>ef\n");
+    insert_with_source_and(
+        &mut ed,
+        tmp.path(),
+        r#"(list (hash "label" "abcx" "insertText" "ignored-fallback"
+                       "textEdit" (hash "range" (hash "start" (hash "line" 0 "character" 0)
+                                                    "end" (hash "line" 5 "character" 0))
+                                   "newText" "XYZ")))"#,
+        ACCEPT_0,
+    );
+    accept_via_steel(&mut ed);
+    assert_eq!(ed.doc().text().to_string(), "abcdef\n");
+    assert!(
+        status(&ed).contains("past the end of the document"),
+        "got {:?}",
+        status(&ed)
+    );
+}
+
+/// An `additionalTextEdits` range ending on a line past the document end
+/// names no text, so accept errors before any edit lands.
+#[test]
+fn accept_with_an_additional_text_edit_past_the_document_end_errors_and_leaves_the_buffer_untouched()
+ {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("fo-[ ]>cdef\n");
+    insert_with_source_and(
+        &mut ed,
+        tmp.path(),
+        r#"(list (hash "label" "foobar" "insertText" "hello"
+                       "additionalTextEdits"
+                       (list (hash "range" (hash "start" (hash "line" 0 "character" 0)
+                                                 "end" (hash "line" 5 "character" 0))
+                                   "newText" "use x;\n"))))"#,
+        ACCEPT_0,
+    );
+    accept_via_steel(&mut ed);
+    assert_eq!(ed.doc().text().to_string(), "fo cdef\n");
+    assert!(
+        status(&ed).contains("past the end of the document"),
+        "got {:?}",
+        status(&ed)
+    );
+}
+
 /// `CompletionTextEdit::InsertAndReplace` applies its narrower `insert`
 /// range, not the wider `replace` range.
 #[test]

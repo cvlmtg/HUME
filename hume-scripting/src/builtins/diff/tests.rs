@@ -96,10 +96,10 @@ fn int(n: isize) -> SteelVal {
 
 fn word_hunk(old: (isize, isize, &str), new: (isize, isize, &str)) -> SteelVal {
     symbol_hash([
-        ("old-start", int(old.0)),
-        ("old-end", int(old.1)),
-        ("new-start", int(new.0)),
-        ("new-end", int(new.1)),
+        ("old-start-char", int(old.0)),
+        ("old-end-char", int(old.1)),
+        ("new-start-char", int(new.0)),
+        ("new-end-char", int(new.1)),
         ("old-text", SteelVal::StringV(old.2.into())),
         ("new-text", SteelVal::StringV(new.2.into())),
     ])
@@ -136,15 +136,56 @@ fn diff_lines_needs_no_host_capability() {
     )
     .expect("diff-lines needs no host capability");
     let expected = list_of([symbol_hash([
-        ("old-start", int(0)),
-        ("old-count", int(1)),
-        ("new-start", int(0)),
-        ("new-count", int(1)),
+        ("old-start-line", int(0)),
+        ("old-end-line", int(1)),
+        ("new-start-line", int(0)),
+        ("new-end-line", int(1)),
         ("old-lines", string_list(vec!["a".to_owned()])),
         ("new-lines", string_list(vec!["b".to_owned()])),
         (
             "words",
             symbol_hash([("old", list_of([])), ("new", list_of([]))]),
+        ),
+    ])]);
+    assert_eq!(result, expected);
+}
+
+/// `diff-lines` reads its texts with LF line endings, so a new-side span
+/// counts each CRLF of `new-text` as one char: `y` is char 6 of
+/// "a\nlet y = 1;\n".
+#[test]
+fn diff_lines_new_side_offsets_count_a_crlf_as_one_char() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let result = diff_lines(
+        &mut ctx,
+        SteelVal::StringV("a\r\nlet x = 1;\r\n".into()),
+        SteelVal::StringV("a\r\nlet y = 1;\r\n".into()),
+    )
+    .expect("diff-lines needs no host capability");
+    let expected = list_of([symbol_hash([
+        ("old-start-line", int(1)),
+        ("old-end-line", int(2)),
+        ("new-start-line", int(1)),
+        ("new-end-line", int(2)),
+        ("old-lines", string_list(vec!["let x = 1;".to_owned()])),
+        ("new-lines", string_list(vec!["let y = 1;".to_owned()])),
+        (
+            "words",
+            symbol_hash([
+                (
+                    "old",
+                    list_of([symbol_hash([
+                        ("line", int(1)),
+                        ("start-char-col", int(4)),
+                        ("end-char-col", int(5)),
+                    ])]),
+                ),
+                (
+                    "new",
+                    list_of([symbol_hash([("start-char", int(6)), ("end-char", int(7))])]),
+                ),
+            ]),
         ),
     ])]);
     assert_eq!(result, expected);

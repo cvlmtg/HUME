@@ -185,52 +185,51 @@ pub(in crate::editor) fn server_encoding(
     lsp.instances.get(sid).map(|i| i.client.encoding())
 }
 
-/// Wire `(line, character)` → char offset, decoded in `encoding`, for
-/// `lsp-range->offsets`. `None` if `id` is unknown. `encoding` is the
-/// caller's own resolve: the tagged producing-server encoding of the
-/// response the position was read out of (`JsonHandle::position_encoding`),
-/// never `id`'s *currently* attached server: the two can diverge (a restart
-/// renegotiates a different encoding, a detach leaves none), and the tag is
-/// always the encoding the position was actually written in. No `LspState`
-/// lookup needed at all, for the same reasoning as [`label_slice`]'s own `encoding`
-/// parameter, below.
+/// Wire `[start, end)` range → char range, decoded in `encoding`, for
+/// `lsp-range->char-range`. `None` if `id` is unknown or the range reaches a
+/// line past the document end (see
+/// [`hume_rope::position_encoding::checked_wire_range_to_char_range`]).
+/// `encoding` is the caller's own resolve: the tagged producing-server
+/// encoding of the response the range was read out of
+/// (`JsonHandle::position_encoding`), never `id`'s *currently* attached
+/// server: the two can diverge (a restart renegotiates a different encoding,
+/// a detach leaves none), and the tag is always the encoding the range was
+/// actually written in. No `LspState` lookup needed at all, for the same
+/// reasoning as [`label_slice`]'s own `encoding` parameter, below.
 ///
-/// Clamps rather than errors on an out-of-range `line`/`character`, same as
-/// `wire_to_char` itself: a range's `end` legitimately lands exactly at
-/// the buffer's `len_chars()` (`set-extra-highlights!`'s `validate_range`
-/// accepts that boundary), so this must not reject it. Point-anchored
-/// callers want the opposite; see [`wire_point_to_char_for_buffer`].
-pub(in crate::editor) fn wire_to_char_for_buffer(
+/// A range's `end` legitimately lands exactly at the buffer's `len_chars()`
+/// (`set-extra-highlights!`'s `validate_range` accepts that boundary), so
+/// the document end `(line count, 0)` is accepted. Point-anchored callers
+/// want the opposite; see [`wire_point_to_char_for_buffer`].
+pub(in crate::editor) fn wire_range_to_chars_for_buffer(
     state: &EditorState,
     id: BufferId,
-    pos: hume_rope::position_encoding::WirePos,
+    range: hume_rope::offset::ExclusiveRange<hume_rope::position_encoding::WirePos>,
     encoding: hume_rope::position_encoding::PositionEncoding,
-) -> Option<hume_rope::offset::CharOffset> {
+) -> Option<hume_rope::offset::ExclusiveRange<hume_rope::offset::CharOffset>> {
     let rope = state.buffers.try_get(id)?.text().rope();
-    Some(hume_rope::position_encoding::wire_to_char(
-        rope, pos, encoding,
-    ))
+    hume_rope::position_encoding::checked_wire_range_to_char_range(rope, range, encoding)
 }
 
-/// Wire `(line, character)` → char offset, for `lsp-position->offset`.
-/// Same conversion as [`wire_to_char_for_buffer`], but refuses (`None`)
-/// when the result lands at `len_chars()`: the position `wire_to_char`
-/// clamps a past-end `line` onto (the buffer's trailing phantom line, every
-/// buffer ending with a structural `\n`). A point-anchored decoration
-/// setter (`set-inlay-hints!`'s `validate_offset`) rejects that offset
-/// outright: handing it back here would let a single stale server response
-/// (a request that raced an edit) fail the caller's *entire* hint batch
-/// (`collect::<Result<Vec<_>, _>>` in `host_impl.rs`) instead of just being
-/// filtered out, one entry, by the caller's own `#f` check.
+/// Wire `(line, character)` → char offset, for `lsp-position->char-offset`.
+/// `None` if `id` is unknown, or when the position is not on a content line
+/// (the buffer's trailing phantom line, every buffer ending with a structural
+/// `\n`, or past it). The offset a clamp would give there is `len_chars()`,
+/// and a point-anchored decoration setter (`set-inlay-hints!`'s
+/// `validate_offset`) rejects it outright: handing it back here would let a single
+/// stale server response (a request that raced an edit) fail the caller's
+/// *entire* hint batch (`collect::<Result<Vec<_>, _>>` in `host_impl.rs`)
+/// instead of just being filtered out, one entry, by the caller's own `#f`
+/// check. `encoding` is the caller's own resolve, as for
+/// [`wire_range_to_chars_for_buffer`].
 pub(in crate::editor) fn wire_point_to_char_for_buffer(
     state: &EditorState,
     id: BufferId,
     pos: hume_rope::position_encoding::WirePos,
     encoding: hume_rope::position_encoding::PositionEncoding,
 ) -> Option<hume_rope::offset::CharOffset> {
-    let offset = wire_to_char_for_buffer(state, id, pos, encoding)?;
-    let text = state.buffers.try_get(id)?.text();
-    (offset < text.end()).then_some(offset)
+    let rope = state.buffers.try_get(id)?.text().rope();
+    hume_rope::position_encoding::checked_wire_to_char(rope, pos, encoding)
 }
 
 /// `label` sliced by a `ParameterInformation.label` `[start, end)` wire
@@ -251,22 +250,26 @@ pub(in crate::editor) fn label_slice(
     label[range].to_string()
 }
 
-/// `(diagnostics-for-buffer bid #:severity floor #:range (start . end))`:
-/// decoded, filtered, capped-at-1000 hashmaps. `start`/`end`
-/// are char offsets; `line`/`char-col` are the char-indexed start position,
-/// ready for `goto-location!` shape 2, an *addressing* unit, exact and
-/// lossless. `grapheme-col` is the same position as a grapheme column
-/// instead, for *display*: the one unit every HUME surface (statusline,
-/// diagnostics, LSP location lists) shows the user; never render `char-col`
-/// directly. `end-line` is the range's *end* clamped and converted the same
-/// way `line` is. The diagnostics plugin's gutter-sign pass expands
-/// `[line, end-line]` inclusive to mark every line a multi-line diagnostic
-/// touches. `severity-rank` is `DiagSeverity`'s own `Ord` discriminant (`0`
+/// `(diagnostics-for-buffer bid #:severity floor #:range (start-char . end-char))`:
+/// decoded, filtered, capped-at-1000 hashmaps. `start-char`/`end-char`
+/// are char offsets, *addressing* units that `goto-location!`'s `'char-offset`
+/// takes as they are. `start-char` is clamped onto the buffer's last
+/// character, so a diagnostic past the end starts on the final line break.
+/// `start-line` is
+/// the line of `start-char` and `grapheme-col`
+/// its column, for *display*: the one unit every HUME surface (statusline,
+/// diagnostics, LSP location lists) shows the user; never render a char
+/// offset directly. `end-line` is one past the last line the diagnostic touches,
+/// clamped the same way `start-line` is, so `[start-line, end-line)` is
+/// never empty. The diagnostics plugin's gutter-sign pass marks every line
+/// in it. `severity-rank` is `DiagSeverity`'s own `Ord` discriminant (`0`
 /// for error, counting up to `3` for hint) alongside the `severity` string,
 /// so a caller compares severities by this rather than re-deriving the same
 /// order from the string. Errors loudly on an unknown `#:severity` name
 /// (e.g. `'warn` typoed for `'warning`) rather than silently returning
-/// nothing that qualifies.
+/// nothing that qualifies. A `#:range` must lie within the buffer's text:
+/// it may end at the text's end, but not past it, and may not end before it
+/// starts.
 ///
 /// With no `#:severity`, defaults to `lsp.diagnostics-severity-floor`, the
 /// same floor `update_highlight_providers` applies to underlines, so a
@@ -277,8 +280,9 @@ pub(in crate::editor) fn diagnostics_for_buffer(
     state: &EditorState,
     bid: BufferId,
     severity_floor: Option<&str>,
-    range: Option<hume_rope::offset::ExclusiveRange<hume_rope::offset::CharOffset>>,
+    range: Option<(usize, usize)>,
 ) -> Result<Vec<hume_scripting::host::DiagnosticEntry>, String> {
+    use hume_rope::offset::{CharOffset, ExclusiveRange};
     const CAP: usize = 1000;
     let floor = match severity_floor.map(DiagSeverity::parse) {
         None => state.settings.lsp_diagnostics_severity_floor,
@@ -290,12 +294,27 @@ pub(in crate::editor) fn diagnostics_for_buffer(
     };
     // `text.end()`, not a `usize::MAX` sentinel: the buffer's own exclusive
     // end bound is the honest "whole buffer" default, and only becomes
-    // available once `text` is in hand. This is why the default is
-    // resolved here rather than at the Host seam that converts `range` into
-    // this type.
-    let range = range.unwrap_or_else(|| {
-        hume_rope::offset::ExclusiveRange::new(hume_rope::offset::CharOffset::new(0), text.end())
-    });
+    // available once `text` is in hand, as does the rope `#:range` is
+    // checked against.
+    let range = match range {
+        None => ExclusiveRange::new(CharOffset::new(0), text.end()),
+        Some((start, end)) => {
+            let checked = |idx, which| {
+                crate::editor::host_impl::checked_char_offset(text, idx)
+                    .map_err(|e| format!("#:range {which}: {e}"))
+            };
+            let start = checked(start, "start")?;
+            let end = checked(end, "end")?;
+            if end < start {
+                return Err(format!(
+                    "#:range {}..{} ends before it starts",
+                    start.index(),
+                    end.index()
+                ));
+            }
+            ExclusiveRange::new(start, end)
+        }
+    };
 
     let entries = state
         .buffer_positions
@@ -303,32 +322,32 @@ pub(in crate::editor) fn diagnostics_for_buffer(
         .for_range(bid, range, floor)
         .take(CAP)
         .map(|d| {
-            // Clamped to the last *content* char, not `len_chars()`: a
-            // server can report a diagnostic anchored at end-of-file, one
-            // past the buffer's last real char, and `len_chars()` itself
-            // resolves to the buffer's trailing phantom empty line (every
-            // buffer ends with a structural `\n`; see
+            // Clamped to the last char, not `len_chars()`: a server can
+            // report a diagnostic anchored at end-of-file, and `len_chars()`
+            // itself resolves to the buffer's trailing phantom empty line
+            // (every buffer ends with a structural `\n`; see
             // `hume-editor/src/editor/host_impl.rs`'s `line_start_offset`).
-            // Landing there instead of the buffer's last content line would
-            // hand plugins a `line` that later fails the fail-fast bound
-            // check every decoration setter now enforces.
-            let last_content_char = text.last_content_char();
-            let clamped_start = d.start.min(last_content_char);
+            // Landing there instead of the last content line would hand
+            // plugins a `line` that later fails the fail-fast bound check
+            // every decoration setter enforces. The final `\n` is a valid
+            // cluster start, so a diagnostic on it keeps its offset.
+            let last_char = text.last_char();
+            let clamped_start = d.start.min(last_char);
             let line = text.char_to_line(clamped_start);
-            let char_col = text.columns().char_col(line, clamped_start);
             let grapheme_col = text.columns().grapheme_col(line, clamped_start);
             // `end-line` mirrors `line`'s clamp so a range that reaches (or
             // overshoots) end-of-file still names the buffer's last content
-            // line rather than the phantom trailing one. The gutter-sign
-            // plugin expands `[line, end-line]` inclusive to mark every line
-            // a multi-line diagnostic touches.
-            let end_line = text.char_to_line(d.end.retreat_saturating(1).min(last_content_char));
+            // line rather than the phantom trailing one. An empty range, or
+            // one ending at a line's start, takes `line` as its last line.
+            let last_line = text
+                .char_to_line(d.end.retreat_saturating(1).min(last_char))
+                .max(line);
+            let end_line = last_line.advance(1);
             hume_scripting::host::DiagnosticEntry {
-                start: d.start.index(),
-                end: d.end.index(),
-                line: line.index(),
+                start_char: clamped_start.index(),
+                end_char: d.end.index(),
+                start_line: line.index(),
                 end_line: end_line.index(),
-                char_col: char_col.index(),
                 grapheme_col: grapheme_col.index(),
                 severity: d.severity.to_text(),
                 severity_rank: d.severity as u8,
@@ -368,20 +387,14 @@ fn wire_pos_to_grapheme_col(
     pos: hume_rope::position_encoding::WirePos,
     encoding: hume_rope::position_encoding::PositionEncoding,
 ) -> Option<hume_rope::column::GraphemeCol> {
-    if pos.line > text.last_content_line().index() {
-        return None;
-    }
-    let target = super::wire_to_cluster(text, pos, encoding);
-    // Trusted narrow: the bound check above already confirmed `line` names a
-    // real content line.
-    let line = hume_rope::line::ContentLine::new(pos.line);
+    let (line, target) = super::wire_to_cluster(text, pos, encoding)?;
     Some(text.columns().grapheme_col(line, target.offset()))
 }
 
 /// Filesystem path, wire line, and column for a batch of raw
 /// `Location`/`LocationLink` LSP locations, backing
 /// `lsp-locations->places` and `lsp-locations->merged-places` (goto/references
-/// drawer rows); `caller` is whichever of the two was called, for the errors.
+/// drawer rows). The errors do not name a builtin; the builtin adds its own.
 ///
 /// Each location is decoded once through [`hume_lsp::location::decode_location`],
 /// the same decoder `goto-location!` jumps with, so path, line, and column all
@@ -407,7 +420,6 @@ pub(in crate::editor) fn location_places(
         hume_scripting::json::JsonHandle,
         hume_rope::position_encoding::PositionEncoding,
     )],
-    caller: &str,
 ) -> Result<Vec<hume_scripting::host::LocationPlace>, String> {
     use hume_scripting::host::{LocationPlace, Place};
 
@@ -416,9 +428,9 @@ pub(in crate::editor) fn location_places(
     let mut rows = Vec::with_capacity(locs.len());
 
     for (handle, encoding) in locs {
-        let wl = hume_lsp::location::decode_location(handle.value(), caller)?;
+        let wl = hume_lsp::location::decode_location(handle.value())?;
         let cannot_open =
-            |e: hume_lsp::uri::UriError| format!("{caller}: cannot open {}: {e}", wl.uri.as_str());
+            |e: hume_lsp::uri::UriError| format!("cannot open {}: {e}", wl.uri.as_str());
         let path = match hume_lsp::uri::uri_to_path(&wl.uri) {
             Ok(path) => path,
             Err(hume_lsp::uri::UriError::NotFileScheme) => {

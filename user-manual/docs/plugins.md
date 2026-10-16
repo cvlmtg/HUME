@@ -236,7 +236,7 @@ When forwarding a `count` argument to another command, a count of `0` means "as 
 (define-command! "example" "" (lambda (pane)
   (call! "stdlib/single-selection?" (buffer-selections pane))
   (call! "stdlib/all-single-char?" (buffer-selections pane))
-  (call! "stdlib/cursor-char-index" (buffer-selections pane))))
+  (call! "stdlib/cursor-char-offset" (buffer-selections pane))))
 ```
 
 Those three read the whole list. To work with a single selection (the primary one, say), use these accessors, which also pass a `#f` selection through as `#f`:
@@ -245,12 +245,12 @@ Those three read the whole list. To work with a single selection (the primary on
 (call! "stdlib/primary-selection" (buffer-selections pane))
 (call! "stdlib/selection-anchor" primary)
 (call! "stdlib/selection-head" primary)
-(call! "stdlib/selection-start" primary)
-(call! "stdlib/selection-end" primary)
+(call! "stdlib/selection-start-char" primary)
+(call! "stdlib/selection-end-char" primary)
 (call! "stdlib/selection-primary?" primary)
 ```
 
-`(offset->line pane idx)` converts a char offset to a line number when you need one. It's a separate call rather than a field on every selection, since a selection on its own has no line information.
+`(char-offset->line pane idx)` converts a char offset to a line number when you need one. It's a separate call rather than a field on every selection, since a selection on its own has no line information.
 
 See [Standard Library](standard-library.md#selections) for the full list of selection helpers.
 
@@ -344,7 +344,7 @@ Available hooks and their lambda signatures. Every `pane` argument below is the 
 | `on-lsp-attach` | A language server is ready for a buffer, once per server on that buffer | `(pane server)`: `server` is the server value, the same one each time for one running server |
 | `on-lsp-detach` | A language server stops serving a buffer that stays open: it was stopped or restarted, or a server list or the buffer's language no longer includes it | `(pane server)` |
 | `on-lsp-notification` | A language server sends a notification HUME doesn't handle itself (it handles `window/logMessage`, `window/showMessage`, `$/progress`, and `publishDiagnostics`) | `(server method params)`: `server` is the sending server's value, `method` a string, `params` a JSON handle. A handler registered here receives every method; to handle only specific ones, use `register-lsp-notification-hook!` instead |
-| `on-viewport-change` | The visible region of a pane changes | `(pane first-line end-line)`: 0-based, end-exclusive; with wrapping on, `end-line` may run a few lines past the bottom edge |
+| `on-viewport-change` | The visible region of a pane changes | `(pane range)`: `range` is `(hash 'start-line s 'end-line e)`, the value `viewport-range` returns, 0-based and end-exclusive; with wrapping on, `'end-line` may run a few lines past the bottom edge |
 | `on-trigger-char` | A registered trigger character is typed | `(pane char source)` |
 | `on-completion-accept` | A completion entry is accepted | `(pane item)` |
 | `on-option-change` | A global setting is changed (`:set global`, `set-option!`, `:theme`) | `(key value)`: `key` is a string, `value` the option's new value as `get-option` returns it |
@@ -495,14 +495,13 @@ Returns a buffer's full live content as a string, including any unsaved edits, n
 
 ```scheme
 (buffer-lines pane)
-(buffer-lines pane #:start start #:end end)
+(buffer-lines pane #:range (hash 'start-line start 'end-line end))
 ```
 
-Returns the buffer's content as a list of lines, each with its line ending stripped. With no range, every line is returned; `#:start`/`#:end` select a 0-based, end-exclusive slice (`(buffer-lines pane #:start 10 #:end 40)` returns lines 10 through 39). An out-of-range `#:end`, or a `#:start` past `#:end`, raises an error rather than silently clamping. Compose with `(viewport-range pane)` to read only what's currently on screen: it returns the same 0-based, end-exclusive range shape, so its `'start` and `'end` pass straight through as `#:start`/`#:end`:
+Returns the buffer's content as a list of lines, each with its line ending stripped. With no range, every line is returned; `#:range` selects a 0-based, end-exclusive slice (`(buffer-lines pane #:range (hash 'start-line 10 'end-line 40))` returns lines 10 through 39). A range missing either end, ending past the last line, or starting after it ends raises an error rather than being clamped. `(viewport-range pane)` returns a range of the same shape, so reading only what's on screen is:
 
 ```scheme
-(let ((vr (viewport-range pane)))
-  (buffer-lines pane #:start (hash-ref vr 'start) #:end (hash-ref vr 'end)))
+(buffer-lines pane #:range (viewport-range pane))
 ```
 
 If you're about to diff a buffer's content against another text, reach for `(diff-buffer-lines pane ref-text)` instead of `(buffer-text pane)`, especially from a hook that fires on every keystroke.
@@ -514,7 +513,7 @@ If you're about to diff a buffer's content against another text, reach for `(dif
 Returns the buffer's content line count as an integer, same count `buffer-lines` returns lines for. If all you need is the count, reach for this instead of `(length (buffer-lines pane))`. That idiom builds and throws away a full list of line strings just to measure it.
 
 ```scheme
-(line->offset pane line)
+(line->char-offset pane line)
 ```
 
 Returns the 0-based char offset where content line `line` (0-based) starts: the conversion decoration builtins that take char offsets (like `set-extra-highlights!`) need when all you have is a line number, e.g. from a diff hunk. Raises if `line` is at or past the buffer's content line count.
@@ -530,10 +529,10 @@ Two functions compute a line-level diff, useful for anything that shows what cha
 Splits both `old-text` and `new-text` into lines the same way HUME treats file content (every line ending becomes LF, and a missing trailing newline doesn't count as a change), then returns the list of hunks where they differ. Unchanged lines are left out entirely. Each hunk is:
 
 ```scheme
-(hash 'old-start s 'old-count n 'new-start s 'new-count n 'old-lines lines 'new-lines lines 'words spans)
+(hash 'old-start-line s 'old-end-line e 'new-start-line s 'new-end-line e 'old-lines texts 'new-lines texts 'words spans)
 ```
 
-`'old-start`/`'new-start` are 0-based line numbers, `'old-count`/`'new-count` are how many lines the hunk covers on each side, and `'old-lines`/`'new-lines` are the line contents themselves (no trailing newline). Each hunk also has a `'words` entry, `(hash 'old spans 'new spans)`, naming the words that changed: a span is `(hash 'line 'start 'end)`, with `'line` counted from the hunk's first line on that side and `'start`/`'end` character columns in it, end exclusive. A span covering a whole line is left out. A pure insertion has `'old-count` `0`; a pure deletion has `'new-count` `0`. Either way, the zero-count side's line number is exactly where the change happens, so it feeds straight into `set-signs!` or `set-virtual-lines!` with no adjustment.
+`'old-start-line`/`'new-start-line` are 0-based line numbers and `'old-end-line`/`'new-end-line` the line after the hunk's last one on each side, so the lines of a side are `[start, end)`. `'old-lines`/`'new-lines` are the line contents themselves (no trailing newline). Each hunk also has a `'words` entry, `(hash 'old spans 'new spans)`, naming the words that changed. An old-side span is `(hash 'line 'start-char-col 'end-char-col)`: a line of the old text and character columns in it. A new-side span is `(hash 'start-char 'end-char)`: character offsets into the new text, counting each line ending as one character, ready for `set-extra-highlights!`. Both are end exclusive, and a span covering a whole line is left out. A pure insertion has an empty old range (`'old-start-line` equals `'old-end-line`); a pure deletion has an empty new range. Either way, the empty side's line number is exactly where the change happens, so it feeds straight into `set-signs!` or `set-virtual-lines!` with no adjustment.
 
 ```scheme
 (diff-buffer-lines pane ref-text)
@@ -547,7 +546,7 @@ For a finer-grained comparison inside a single changed line, highlighting exactl
 (diff-words old-text new-text)
 ```
 
-Returns `(hash 'hunks hunks 'deadline-hit too-long?)`. `'hunks` is a list of `(hash 'old-start 'old-end 'new-start 'new-end 'old-text 'new-text)`: 0-based character positions into `old-text`/`new-text`, with `'old-text`/`'new-text` on each hunk holding the actual changed words. A pure insertion has an empty `'old-text` and `'old-start` equal to `'old-end`; a pure deletion mirrors that on the new side. `'deadline-hit` is `#t` when the two texts were too large to compare word-by-word in time. Treat that as a signal to fall back to highlighting the whole line instead of individual words.
+Returns `(hash 'hunks hunks 'deadline-hit too-long?)`. `'hunks` is a list of `(hash 'old-start-char 'old-end-char 'new-start-char 'new-end-char 'old-text 'new-text)`: 0-based character positions into `old-text`/`new-text`, with `'old-text`/`'new-text` on each hunk holding the actual changed words. A pure insertion has an empty `'old-text` and `'old-start-char` equal to `'old-end-char`; a pure deletion mirrors that on the new side. `'deadline-hit` is `#t` when the two texts were too large to compare word-by-word in time. Treat that as a signal to fall back to highlighting the whole line instead of individual words.
 
 ### Completion sources
 

@@ -5,7 +5,7 @@
          lsp/with-params
          lsp/visible-lines lsp/resolve-pane
          lsp/setup-trigger-chars! lsp/format-position lsp/cap-field lsp/cap-flag?
-         lsp/with-servers lsp/report-unsupported)
+         lsp/with-servers lsp/report-unsupported lsp/jump-to!)
 
 (unless (member "core:stdlib" (declared-plugins))
   (error "core:lsp: requires core:stdlib — add (load-plugin! \"core:stdlib\") before (load-plugin! \"core:lsp\")"))
@@ -35,6 +35,12 @@
   (if (null? servers)
       (lsp/report-unsupported what)
       (proceed servers)))
+
+;; Jumps to `location`, a Location from a server answer, and logs when the
+;; place it names no longer exists.
+(define (lsp/jump-to! location)
+  (unless (goto-location! (focused-pane) location)
+    (log! 'warn "lsp: the location no longer exists")))
 
 ;; ── Trigger-char lifecycle ──────────────────────────────────────────────────
 
@@ -91,7 +97,7 @@
 
 (define (lsp/visible-lines pane)
   (let ((range (viewport-range pane)))
-    (- (hash-ref range 'end) (hash-ref range 'start))))
+    (- (hash-ref range 'end-line) (hash-ref range 'start-line))))
 
 ;; ── Position formatting ─────────────────────────────────────────────────────
 

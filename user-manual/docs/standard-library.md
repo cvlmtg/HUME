@@ -16,15 +16,15 @@ See [Core Plugins](core-plugins.md#core-stdlib) for why this call should stay a 
 |------|--------|
 | `(call! "stdlib/single-selection?" sels)` | `#t` if `sels` holds exactly one selection |
 | `(call! "stdlib/all-single-char?" sels)` | `#t` if every selection in `sels` spans exactly one grapheme |
-| `(call! "stdlib/cursor-char-index" sels)` | 0-indexed head char offset of the primary selection in `sels`, or `#f` |
+| `(call! "stdlib/cursor-char-offset" sels)` | 0-indexed head char offset of the primary selection in `sels`, or `#f` |
 | `(call! "stdlib/primary-selection" sels)` | The primary selection in `sels`, or `#f` |
 | `(call! "stdlib/selection-anchor" sel)` | Anchor char offset of the selection `sel`, or `#f` |
 | `(call! "stdlib/selection-head" sel)` | Head char offset of the selection `sel`, or `#f` |
-| `(call! "stdlib/selection-start" sel)` | First char offset the selection `sel` covers, or `#f` |
-| `(call! "stdlib/selection-end" sel)` | Char offset one past the last one the selection `sel` covers, or `#f` |
+| `(call! "stdlib/selection-start-char" sel)` | First char offset the selection `sel` covers, or `#f` |
+| `(call! "stdlib/selection-end-char" sel)` | Char offset one past the last one the selection `sel` covers, or `#f` |
 | `(call! "stdlib/selection-primary?" sel)` | `#t` if the selection `sel` is the primary selection, or `#f` |
 
-`sels` is whatever `(buffer-selections pane)` returns: a list of selections. A selection is opaque; read it only through these accessors. Offsets are char offsets rather than grapheme ordinals. Start and end bound what the selection covers, end exclusive, whatever the length of its characters. All nine pass a `#f` `sels`/`sel` straight through as `#f`, so a caller that got one from somewhere else with its own "nothing here" case doesn't need its own guard at every step. `(offset->line pane idx)` converts an offset to a line number when you need one.
+`sels` is whatever `(buffer-selections pane)` returns: a list of selections. A selection is opaque; read it only through these accessors. Offsets are char offsets rather than grapheme ordinals. Start and end bound what the selection covers, end exclusive, whatever the length of its characters. All nine pass a `#f` `sels`/`sel` straight through as `#f`, so a caller that got one from somewhere else with its own "nothing here" case doesn't need its own guard at every step. `(char-offset->line pane idx)` converts an offset to a line number when you need one.
 
 ## Filesystem
 

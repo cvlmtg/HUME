@@ -1,7 +1,7 @@
 // Diagnostics navigation: `lsp/goto-next-diagnostic`,
 // `lsp/goto-prev-diagnostic`, `:diagnostics` drawer. No LSP request: reads the
 // diagnostics store via `diagnostics-for-buffer`. Depends on `core:stdlib`
-// (`stdlib/cursor-char-index`), loaded alongside `core:lsp` via
+// (`stdlib/cursor-char-offset`), loaded alongside `core:lsp` via
 // `RealRuntimeDirs` (both resolve from the real on-disk runtime/ dir).
 //
 // Not on Windows: Scheme require strings embed OS paths; backslashes are not

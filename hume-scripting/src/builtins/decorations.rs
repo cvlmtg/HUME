@@ -13,14 +13,15 @@ use crate::types::{PaneHandle, VirtualLineSpec};
 
 use super::SteelResult;
 use super::args::{
-    ArgPane, HashEntry, bool_arg, hash_list, int_arg, optional_hash_entry, optional_symbol_arg,
-    string_arg, symbol_enum_arg, symbol_hash,
+    ArgPane, CHAR_OFFSET, CHAR_RANGE_KEYS, END_CHAR, END_LINE, HashEntry, START_CHAR, START_LINE,
+    bool_arg, hash_list, int_arg, optional_hash_entry, optional_symbol_arg, string_arg,
+    symbol_enum_arg, symbol_hash,
 };
 use super::errors::{generic_err, require_cap};
 
-/// `(set-inlay-hints! source pane hints)`: `hints`: list of `(hash 'offset
-/// 'text 'side)`, `offset` a char offset, `side` `'before` or `'after`. LSP wire `{"line"
-/// "character"}` positions convert via `lsp-position->offset` before
+/// `(set-inlay-hints! source pane hints)`: `hints`: list of `(hash 'char-offset
+/// 'text 'side)`, `'char-offset` a char offset, `side` `'before` or `'after`. LSP wire `{"line"
+/// "character"}` positions convert via `lsp-position->char-offset` before
 /// reaching this builtin. The Steel decoration surface speaks editor-native
 /// units only, so a caller never needs to know which server's encoding a
 /// wire position came in.
@@ -35,9 +36,9 @@ pub(crate) fn set_inlay_hints(
     let parsed = hash_list(
         hints,
         "set-inlay-hints!",
-        &["offset", "text", "side"],
+        &[CHAR_OFFSET, "text", "side"],
         |entry| {
-            let pos = entry.usize("offset")?;
+            let pos = entry.usize(CHAR_OFFSET)?;
             let text = entry.string("text")?;
             let before = side_arg(entry.required("side")?, &entry.label("side"))?;
             Ok((pos, text, before))
@@ -117,7 +118,7 @@ pub(crate) fn set_signs(
 /// `(set-virtual-lines! source pane lines)`: `lines`: list of hashmaps, each
 /// with required `'line`/`'text`, plus optional `'anchor` (`'before` or
 /// `'after`, default `'after`), `'scope` (whole-line base style, `ui.virtual`
-/// fallback when absent), and `'segments` (list of `(hash 'start 'end
+/// fallback when absent), and `'segments` (list of `(hash 'start-char 'end-char
 /// 'scope)` char ranges into `text`, styling only the covered chars; chars outside every
 /// segment keep `'scope`'s style). Segment bounds/ordering/overlap are
 /// validated at the host boundary, not here (see `VirtualLineSpec::segments`).
@@ -189,24 +190,25 @@ fn virtual_line_spec(entry: &HashEntry) -> Result<VirtualLineSpec, SteelErr> {
     })
 }
 
-/// Decodes `'segments`: each a `(hash 'start 'end 'scope)` char range into
-/// `text`. Shape only (keys, types): bounds, ordering, overlap, and
-/// grapheme-cluster alignment are validated at the host boundary
-/// (`host_impl.rs`'s `set_virtual_lines`), which also converts these char
-/// offsets to the byte offsets the engine needs.
+/// Decodes `'segments`: each a `(hash 'start-char 'end-char 'scope)` char range into
+/// `text`. Shape only (keys, types): bounds, ordering and overlap are
+/// validated, and edges inside a grapheme cluster widened, at the host
+/// boundary (`host_impl.rs`'s `set_virtual_lines`), which also converts these
+/// char offsets to the byte offsets the engine needs.
 fn virtual_line_segments(segments: SteelVal) -> Result<Vec<(usize, usize, String)>, SteelErr> {
     hash_list(
         segments,
         "set-virtual-lines! 'segments",
-        START_END_SCOPE,
-        |entry| {
-            Ok((
-                entry.usize("start")?,
-                entry.usize("end")?,
-                entry.string("scope")?,
-            ))
-        },
+        START_END_CHAR_SCOPE,
+        char_range_scope,
     )
+}
+
+/// One `(hash 'start-char 'end-char 'scope)` entry, decoded with
+/// [`START_END_CHAR_SCOPE`].
+fn char_range_scope(entry: &HashEntry) -> Result<(usize, usize, String), SteelErr> {
+    let (start, end) = entry.char_range()?;
+    Ok((start, end, entry.string("scope")?))
 }
 
 /// An inlay hint's `'side` or a virtual line's `'anchor`: `'before` → `true`,
@@ -219,7 +221,7 @@ fn side_arg(val: SteelVal, ctx_name: &str) -> Result<bool, SteelErr> {
 }
 
 const LINE_TEXT_SCOPE: &[&str] = &["line", "text", "scope"];
-const START_END_SCOPE: &[&str] = &["start", "end", "scope"];
+const START_END_CHAR_SCOPE: &[&str] = &[START_CHAR, END_CHAR, "scope"];
 
 /// `(set-eol-text! source pane lines #:hide-on-insert-line #f)`: `lines`: list
 /// of `(hash 'line 'text 'scope)`. `#:hide-on-insert-line #t` hides every
@@ -251,7 +253,7 @@ pub(crate) fn set_eol_text(
 }
 
 /// `(set-extra-highlights! source pane spans)`: `spans`: list of `(hash
-/// 'start 'end 'scope)`, char offsets.
+/// 'start-char 'end-char 'scope)`, char offsets.
 pub(crate) fn set_extra_highlights(
     ctx: &mut SteelCtx,
     source: SteelVal,
@@ -260,13 +262,12 @@ pub(crate) fn set_extra_highlights(
 ) -> SteelResult {
     let bid = pane.buffer();
     let source = string_arg(source, "set-extra-highlights! source")?;
-    let parsed = hash_list(spans, "set-extra-highlights!", START_END_SCOPE, |entry| {
-        Ok((
-            entry.usize("start")?,
-            entry.usize("end")?,
-            entry.string("scope")?,
-        ))
-    })?;
+    let parsed = hash_list(
+        spans,
+        "set-extra-highlights!",
+        START_END_CHAR_SCOPE,
+        char_range_scope,
+    )?;
     require_cap(ctx.host.decorations(), "set-extra-highlights!")?
         .set_extra_highlights(source, bid, parsed)
         .map_err(generic_err)?;
@@ -318,7 +319,7 @@ pub(crate) fn set_statusline_text(
 
 /// `(%diagnostics-for-buffer pane severity range)`: the `diagnostics-for-buffer`
 /// Scheme wrapper supplies `#:severity`/`#:range` defaults. `severity`: a
-/// symbol or `#f`. `range`: a `(hash 'start s 'end e)` or `#f`.
+/// symbol or `#f`. `range`: a `(hash 'start-char s 'end-char e)` or `#f`.
 pub(crate) fn diagnostics_for_buffer(
     ctx: &mut SteelCtx,
     pane: ArgPane,
@@ -327,8 +328,8 @@ pub(crate) fn diagnostics_for_buffer(
 ) -> SteelResult {
     let id = pane.0.buffer();
     let floor = optional_symbol_arg(severity, "diagnostics-for-buffer #:severity")?;
-    let range = optional_hash_entry(range, "diagnostics-for-buffer #:range", &["start", "end"])?
-        .map(|range| Ok::<_, SteelErr>((range.usize("start")?, range.usize("end")?)))
+    let range = optional_hash_entry(range, "diagnostics-for-buffer #:range", CHAR_RANGE_KEYS)?
+        .map(|range| range.char_range())
         .transpose()?;
     let entries = match ctx.host.decorations() {
         Some(decorations) => decorations
@@ -350,11 +351,10 @@ fn diagnostic_entry_to_steel(entry: DiagnosticEntry) -> SteelVal {
     let optional_string =
         |v: Option<String>| v.map_or(SteelVal::Void, |v| SteelVal::StringV(v.into()));
     symbol_hash([
-        ("start", SteelVal::IntV(entry.start as isize)),
-        ("end", SteelVal::IntV(entry.end as isize)),
-        ("line", SteelVal::IntV(entry.line as isize)),
-        ("end-line", SteelVal::IntV(entry.end_line as isize)),
-        ("char-col", SteelVal::IntV(entry.char_col as isize)),
+        (START_CHAR, SteelVal::IntV(entry.start_char as isize)),
+        (END_CHAR, SteelVal::IntV(entry.end_char as isize)),
+        (START_LINE, SteelVal::IntV(entry.start_line as isize)),
+        (END_LINE, SteelVal::IntV(entry.end_line as isize)),
         ("grapheme-col", SteelVal::IntV(entry.grapheme_col as isize)),
         ("severity", SteelVal::SymbolV(entry.severity.into())),
         (

@@ -1,6 +1,7 @@
 //! Live cursor/selection reads.
 
 use hume_engine::pipeline::BufferId;
+use hume_rope::line::ContentLine;
 
 use crate::types::PaneHandle;
 
@@ -22,30 +23,33 @@ pub struct SelectionInfo {
 
 /// Live cursor/selection reads, accessed through [`EditorHost::cursor`](super::EditorHost::cursor).
 ///
-/// Every method but [`Self::offset_to_line`] is kind-B (see `docs/LSP.md`'s
+/// Every method but [`Self::char_offset_to_line`] is kind-B (see `docs/LSP.md`'s
 /// pane-targeting convention): it acts through `pane`'s own pane, and raises
 /// (`Err`) rather than answering a default when `pane` carries no pane, a
 /// closed one, or one that no longer shows `pane`'s buffer: the same
 /// fail-fast contract every pane-needing builtin shares.
 pub trait CursorHost {
-    /// `(buffer-cursor-line pane)`: 0-indexed line of the primary
+    /// `(buffer-cursor-line pane)`: 0-indexed content line of the primary
     /// cursor in `pane`'s own pane.
-    fn buffer_cursor_line(&self, pane: PaneHandle) -> Result<usize, String>;
+    fn buffer_cursor_line(&self, pane: PaneHandle) -> Result<ContentLine, String>;
 
     /// `(buffer-selections pane)`: every selection in `pane`'s own pane, as
     /// [`SelectionInfo`]s sorted by selection start, with exactly one flagged
     /// primary.
     fn buffer_selections(&self, pane: PaneHandle) -> Result<Vec<SelectionInfo>, String>;
 
-    /// `(offset->line bid idx)`: 0-indexed line containing the
-    /// 0-indexed char offset `idx` in `bid`'s live text. Pure text math, not
-    /// selection/pane state. Kind-C, unlike every other method here: `bid`
-    /// need not be shown in any pane.
+    /// `(char-offset->line bid idx)`: 0-indexed content line containing the
+    /// 0-indexed char offset `idx` in `bid`'s live text; `len_chars()`, the
+    /// offset after the final line break, is on the last content line. Pure
+    /// text math, not selection/pane state. Kind-C, unlike every other method
+    /// here: `bid` need not be shown in any pane.
     ///
-    /// Returns `None` when `idx` is out of range (> `len_chars()`). `bid`'s
-    /// liveness is checked at argument-resolve time (`args::LivePane`), so a
-    /// stale `bid` never reaches here.
-    fn offset_to_line(&self, bid: BufferId, idx: usize) -> Option<usize>;
+    /// `Err` when `idx` is past `len_chars()`: Scheme computed it for a live
+    /// buffer, so a value out of range is a caller bug to raise, not a
+    /// question to answer `#f` to. `bid`'s liveness is checked at
+    /// argument-resolve time (`args::LivePane`), so a stale `bid` never
+    /// reaches here.
+    fn char_offset_to_line(&self, bid: BufferId, idx: usize) -> Result<ContentLine, String>;
 
     /// `(symbol-under-cursor pane)`: the word at the primary cursor head in
     /// `pane`'s own pane, `""` on whitespace/punctuation.

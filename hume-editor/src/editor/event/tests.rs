@@ -35,8 +35,10 @@ fn all_variants() -> Vec<EditorEvent> {
         EditorEvent::OnDiagnosticsChanged { buffer },
         EditorEvent::OnViewportChange {
             target,
-            first_line: hume_rope::line::ContentLine::new(3),
-            end_line: hume_rope::line::ContentLine::new(42),
+            lines: hume_rope::offset::ExclusiveRange::new(
+                hume_rope::line::ContentLine::new(3),
+                hume_rope::line::ContentLine::new(42),
+            ),
         },
         EditorEvent::OnTriggerChar {
             target,
@@ -274,20 +276,27 @@ fn on_lsp_attach_and_detach_carry_buffer_and_server() {
 }
 
 #[test]
-fn on_viewport_change_carries_pane_and_both_line_bounds() {
+fn on_viewport_change_carries_pane_and_line_range() {
     let buffer = BufferId::default();
     let pane = sample_pane_id();
     let target = PaneHandle::with_pane(buffer, pane);
     let event = EditorEvent::OnViewportChange {
         target,
-        first_line: hume_rope::line::ContentLine::new(3),
-        end_line: hume_rope::line::ContentLine::new(42),
+        lines: hume_rope::offset::ExclusiveRange::new(
+            hume_rope::line::ContentLine::new(3),
+            hume_rope::line::ContentLine::new(42),
+        ),
     };
     let args = event.into_steel_args();
-    assert_eq!(args.len(), 3);
+    assert_eq!(args.len(), 2);
     assert_steel_pane(&args, 0, target);
-    assert!(matches!(args[1], SteelVal::IntV(3)));
-    assert!(matches!(args[2], SteelVal::IntV(42)));
+    assert_eq!(
+        args[1],
+        hume_scripting::symbol_hash([
+            ("start-line", SteelVal::IntV(3)),
+            ("end-line", SteelVal::IntV(42)),
+        ])
+    );
 }
 
 /// `char` renders as a 1-char Steel *string*, not a Steel char. Pins the

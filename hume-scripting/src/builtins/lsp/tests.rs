@@ -980,17 +980,17 @@ fn position_params_hash_carries_a_doc_pos() {
 }
 
 /// A hand-built position/range is rejected outright, before this builtin
-/// ever reaches its "no LSP host" branch: a hashmap is not a handle at all,
+/// ever asks for the LSP host: a hashmap is not a handle at all,
 /// and a handle with `WireOrigin::Local` has no encoding to read. This is
-/// `lsp_position_to_offset_untagged_handle_errors`/
-/// `lsp_range_to_offsets_untagged_handle_errors`'s own unit-level
+/// `lsp_position_to_char_offset_untagged_handle_errors`/
+/// `lsp_range_to_char_range_untagged_handle_errors`'s own unit-level
 /// counterpart; the two `hume-editor` regression tests exercise the same
 /// rule through a real command dispatch.
 #[test]
-fn lsp_position_to_offset_untagged_handle_errors() {
+fn lsp_position_to_char_offset_untagged_handle_errors() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
-    let msg = lsp_position_to_offset(&mut ctx, default_pane(), wire_pos(0, 0))
+    let msg = lsp_position_to_char_offset(&mut ctx, default_pane(), wire_pos(0, 0))
         .unwrap_err()
         .to_string();
     assert!(
@@ -998,18 +998,16 @@ fn lsp_position_to_offset_untagged_handle_errors() {
         "got: {msg}"
     );
     let local = JsonHandle::new(serde_json::json!({"line": 0, "character": 0})).into_steel_val();
-    let msg = lsp_position_to_offset(&mut ctx, default_pane(), local)
+    let msg = lsp_position_to_char_offset(&mut ctx, default_pane(), local)
         .unwrap_err()
         .to_string();
     assert!(msg.contains("not a value from an LSP server"), "got: {msg}");
 }
 
-/// [`lsp_position_to_offset_untagged_handle_errors`]'s "no LSP host"
-/// sibling: given a *tagged* handle (so the encoding check passes), a
-/// harness with no LSP host still answers `#f`, not an error: the
-/// `ctx.host.lsp()` branch, unaffected by where the encoding came from.
+/// Given a *tagged* handle, so the encoding check passes, a harness with no
+/// LSP host raises: `#f` is the answer for a stale position only.
 #[test]
-fn lsp_position_to_offset_without_lsp_host_returns_false() {
+fn lsp_position_to_char_offset_without_lsp_host_errors() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
     let position = JsonHandle::server_for_test(
@@ -1017,24 +1015,29 @@ fn lsp_position_to_offset_without_lsp_host_returns_false() {
         PositionEncoding::Utf16,
     )
     .into_steel_val();
-    let result = lsp_position_to_offset(&mut ctx, default_pane(), position);
-    assert_eq!(result.unwrap(), SteelVal::BoolV(false));
+    let msg = lsp_position_to_char_offset(&mut ctx, default_pane(), position)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        msg.contains("lsp-position->char-offset: not supported by this host"),
+        "got: {msg}"
+    );
 }
 
 #[test]
-fn lsp_position_to_offset_errors_on_missing_character() {
+fn lsp_position_to_char_offset_errors_on_missing_character() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
     let position =
         JsonHandle::server_for_test(serde_json::json!({"line": 0}), PositionEncoding::Utf16)
             .into_steel_val();
-    let result = lsp_position_to_offset(&mut ctx, default_pane(), position);
+    let result = lsp_position_to_char_offset(&mut ctx, default_pane(), position);
     let msg = result.unwrap_err().to_string();
-    assert!(msg.contains("lsp-position->offset"), "got: {msg}");
+    assert!(msg.contains("lsp-position->char-offset"), "got: {msg}");
 }
 
 #[test]
-fn lsp_position_to_offset_errors_on_non_numeric_line() {
+fn lsp_position_to_char_offset_errors_on_non_numeric_line() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
     let position = JsonHandle::server_for_test(
@@ -1042,28 +1045,28 @@ fn lsp_position_to_offset_errors_on_non_numeric_line() {
         PositionEncoding::Utf16,
     )
     .into_steel_val();
-    let result = lsp_position_to_offset(&mut ctx, default_pane(), position);
+    let result = lsp_position_to_char_offset(&mut ctx, default_pane(), position);
     let msg = result.unwrap_err().to_string();
-    assert!(msg.contains("lsp-position->offset"), "got: {msg}");
+    assert!(msg.contains("lsp-position->char-offset"), "got: {msg}");
 }
 
 #[test]
-fn lsp_position_to_offset_errors_on_non_hashmap_arg() {
+fn lsp_position_to_char_offset_errors_on_non_hashmap_arg() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
-    let result = lsp_position_to_offset(&mut ctx, default_pane(), SteelVal::IntV(5));
+    let result = lsp_position_to_char_offset(&mut ctx, default_pane(), SteelVal::IntV(5));
     let msg = result.unwrap_err().to_string();
-    assert!(msg.contains("lsp-position->offset"), "got: {msg}");
+    assert!(msg.contains("lsp-position->char-offset"), "got: {msg}");
 }
 
-/// [`lsp_position_to_offset_untagged_handle_errors`]'s `lsp-range->offsets`
+/// [`lsp_position_to_char_offset_untagged_handle_errors`]'s `lsp-range->char-range`
 /// counterpart.
 #[test]
-fn lsp_range_to_offsets_untagged_handle_errors() {
+fn lsp_range_to_char_range_untagged_handle_errors() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
     let range = hashmap(vec![("start", wire_pos(0, 0)), ("end", wire_pos(0, 3))]);
-    let msg = lsp_range_to_offsets(&mut ctx, default_pane(), range)
+    let msg = lsp_range_to_char_range(&mut ctx, default_pane(), range)
         .unwrap_err()
         .to_string();
     assert!(
@@ -1075,14 +1078,14 @@ fn lsp_range_to_offsets_untagged_handle_errors() {
         "end": {"line": 0, "character": 3},
     }))
     .into_steel_val();
-    let msg = lsp_range_to_offsets(&mut ctx, default_pane(), local)
+    let msg = lsp_range_to_char_range(&mut ctx, default_pane(), local)
         .unwrap_err()
         .to_string();
     assert!(msg.contains("not a value from an LSP server"), "got: {msg}");
 }
 
 #[test]
-fn lsp_range_to_offsets_without_lsp_host_returns_false() {
+fn lsp_range_to_char_range_without_lsp_host_errors() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
     let range = JsonHandle::server_for_test(
@@ -1090,12 +1093,17 @@ fn lsp_range_to_offsets_without_lsp_host_returns_false() {
         PositionEncoding::Utf16,
     )
     .into_steel_val();
-    let result = lsp_range_to_offsets(&mut ctx, default_pane(), range);
-    assert_eq!(result.unwrap(), SteelVal::BoolV(false));
+    let msg = lsp_range_to_char_range(&mut ctx, default_pane(), range)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        msg.contains("lsp-range->char-range: not supported by this host"),
+        "got: {msg}"
+    );
 }
 
 #[test]
-fn lsp_range_to_offsets_errors_on_missing_end() {
+fn lsp_range_to_char_range_errors_on_missing_end() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
     let range = JsonHandle::server_for_test(
@@ -1103,13 +1111,13 @@ fn lsp_range_to_offsets_errors_on_missing_end() {
         PositionEncoding::Utf16,
     )
     .into_steel_val();
-    let result = lsp_range_to_offsets(&mut ctx, default_pane(), range);
+    let result = lsp_range_to_char_range(&mut ctx, default_pane(), range);
     let msg = result.unwrap_err().to_string();
-    assert!(msg.contains("lsp-range->offsets"), "got: {msg}");
+    assert!(msg.contains("lsp-range->char-range"), "got: {msg}");
 }
 
 #[test]
-fn lsp_range_to_offsets_errors_on_malformed_start() {
+fn lsp_range_to_char_range_errors_on_malformed_start() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
     let range = JsonHandle::server_for_test(
@@ -1117,9 +1125,9 @@ fn lsp_range_to_offsets_errors_on_malformed_start() {
         PositionEncoding::Utf16,
     )
     .into_steel_val();
-    let result = lsp_range_to_offsets(&mut ctx, default_pane(), range);
+    let result = lsp_range_to_char_range(&mut ctx, default_pane(), range);
     let msg = result.unwrap_err().to_string();
-    assert!(msg.contains("lsp-range->offsets"), "got: {msg}");
+    assert!(msg.contains("lsp-range->char-range"), "got: {msg}");
 }
 
 /// The raw `[start, end]` shape a `ParameterInformation.label` arrives in,
@@ -1139,15 +1147,20 @@ fn offset_pair(items: &[isize]) -> SteelVal {
 }
 
 #[test]
-fn lsp_label_offsets_to_text_without_lsp_host_returns_false() {
+fn lsp_label_offsets_to_text_without_lsp_host_errors() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
-    let result = lsp_label_offsets_to_text(
+    let msg = lsp_label_offsets_to_text(
         &mut ctx,
         SteelVal::StringV("fn foo(a: i32)".into()),
         offset_pair(&[7, 13]),
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(
+        msg.contains("lsp-label-offsets->text: not supported by this host"),
+        "got: {msg}"
     );
-    assert_eq!(result.unwrap(), SteelVal::BoolV(false));
 }
 
 #[test]
@@ -1243,12 +1256,17 @@ fn lsp_label_offsets_to_text_accepts_a_json_array_handle() {
     let mut ctx = h.ctx();
     let offsets = JsonHandle::server_for_test(serde_json::json!([7, 13]), PositionEncoding::Utf16)
         .into_steel_val();
-    let result = lsp_label_offsets_to_text(
+    let msg = lsp_label_offsets_to_text(
         &mut ctx,
         SteelVal::StringV("fn foo(a: i32)".into()),
         offsets,
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(
+        msg.contains("lsp-label-offsets->text: not supported by this host"),
+        "the decoded offsets must reach the host; got: {msg}"
     );
-    assert_eq!(result.unwrap(), SteelVal::BoolV(false));
 }
 
 #[test]
@@ -1285,7 +1303,10 @@ fn lsp_locations_to_places_accepts_a_list_of_json_handles() {
     let msg = lsp_locations_to_places(&mut ctx, locs)
         .unwrap_err()
         .to_string();
-    assert!(msg.contains("no LSP state available"), "got: {msg}");
+    assert!(
+        msg.contains("lsp-locations->places: not supported by this host"),
+        "got: {msg}"
+    );
 }
 
 // ── register-lsp-notification-hook! ──────────────────────────────────────────

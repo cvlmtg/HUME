@@ -14,7 +14,7 @@ use std::ops::Range;
 use ropey::{Rope, RopeSlice};
 
 use crate::column::CharCol;
-use crate::line::RopeyLine;
+use crate::line::{ContentLine, RopeyLine};
 use crate::lines::line_terminator_start;
 use crate::offset::{CharOffset, ExclusiveRange};
 
@@ -48,7 +48,8 @@ pub struct WirePos {
 ///
 /// Total: a `char_idx` past `text.len_chars()` clamps to the document end
 /// rather than panicking (ropey's own indexing functions panic past
-/// `len_chars()`). Mirrors [`wire_to_char`]'s clamp-don't-error convention.
+/// `len_chars()`). Mirrors [`wire_range_to_char_range`]'s clamp-don't-error
+/// convention.
 pub fn char_to_wire(text: &Rope, char_idx: CharOffset, enc: PositionEncoding) -> WirePos {
     let char_idx = char_idx.index().min(text.len_chars());
     let line = crate::lines::char_to_ropey_line(text, CharOffset::new(char_idx)).index();
@@ -83,7 +84,7 @@ pub fn char_range_to_wire_range(
 /// A flat wire code-unit offset into `text` → the char index it names within
 /// `text` itself.
 ///
-/// The shared step of every wire→char conversion here: [`wire_to_line_char_col`]
+/// The shared step of every wire→char conversion here: `line_char_col`
 /// applies it to one line's content (where the result *is* a line-relative
 /// char column; it wraps this in [`CharCol`] itself, the one place that's
 /// true), [`wire_offsets_to_byte_range`] to a whole server-authored `&str`
@@ -107,28 +108,38 @@ fn wire_offset_to_char_index(text: RopeSlice<'_>, offset: usize, enc: PositionEn
     }
 }
 
-/// `(line, character)` → `(clamped line, line-relative char column)`.
-///
-/// The wire-domain half of [`wire_to_char`], split out so a caller that
-/// still needs to *place* the result (snap it to a grapheme boundary, land
-/// it on the motion-domain line end rather than the wire-domain one) can
-/// feed the column to `ColumnView::place_char` instead of
-/// treating the raw code-unit offset as a final cursor position. `line`
-/// past EOF clamps to the last line here; `character` clamps to the line's
-/// wire-domain content end because that is the extent of the slice handed
-/// to `wire_offset_to_char_index`, which owns the rest of the clamp contract.
-pub fn wire_to_line_char_col(
+/// `(line, character)` → `(clamped line, line-relative char column)`: the
+/// wire-domain half of [`wire_to_char`]. `line` past EOF clamps to the last
+/// line here; `character` clamps to the line's wire-domain content end
+/// because that is the extent of the slice handed to
+/// `wire_offset_to_char_index`, which owns the rest of the clamp contract.
+fn wire_to_line_char_col(text: &Rope, pos: WirePos, enc: PositionEncoding) -> (RopeyLine, CharCol) {
+    let line = RopeyLine::clamped(text, pos.line);
+    (line, line_char_col(text, line, pos.character, enc))
+}
+
+/// `(line, character)` → `(content line, line-relative char column)` for a
+/// point that must name a character: `None` when `pos` is on the empty line
+/// after the final line break or beyond it, where
+/// [`checked_wire_range_to_char_range`] lets a range end sit on that empty
+/// line. A column past its line's end clamps to the line's content end.
+/// A caller that still has to *place* the result (snap it to a grapheme
+/// boundary, land it on the motion-domain line end) feeds the column to
+/// `ColumnView::place_char` rather than taking a raw offset.
+pub fn checked_wire_to_line_char_col(
     text: &Rope,
     pos: WirePos,
     enc: PositionEncoding,
-) -> (RopeyLine, CharCol) {
-    let line = RopeyLine::clamped(text, pos.line);
+) -> Option<(ContentLine, CharCol)> {
+    let line = ContentLine::checked(text, pos.line)?;
+    Some((line, line_char_col(text, line.into(), pos.character, enc)))
+}
+
+/// `character`, in `enc` code units, as a char column of `line`'s content.
+fn line_char_col(text: &Rope, line: RopeyLine, character: usize, enc: PositionEncoding) -> CharCol {
     let line_start = crate::lines::line_start_char(text, line).index();
     let content = text.slice(line_start..line_terminator_start(text, line).index());
-    (
-        line,
-        CharCol::new(wire_offset_to_char_index(content, pos.character, enc)),
-    )
+    CharCol::new(wire_offset_to_char_index(content, character, enc))
 }
 
 /// `(line, character)` → char offset.
@@ -136,20 +147,35 @@ pub fn wire_to_line_char_col(
 /// Out-of-range input clamps rather than errors: servers send past-end
 /// positions routinely. See [`wire_to_line_char_col`] for the clamp
 /// contract; this just folds its `(line, column)` pair into one absolute
-/// offset; a caller that must additionally land on a grapheme boundary
-/// wants that function directly, not this one.
-pub fn wire_to_char(text: &Rope, pos: WirePos, enc: PositionEncoding) -> CharOffset {
+/// offset.
+fn wire_to_char(text: &Rope, pos: WirePos, enc: PositionEncoding) -> CharOffset {
     let (line, char_col) = wire_to_line_char_col(text, pos, enc);
-    // `line_start` advanced by a validated in-line column, not a raw
-    // stepping hazard.
+    line_col_to_char(text, line, char_col)
+}
+
+/// [`checked_wire_to_line_char_col`]'s pair as one char offset: `None` where
+/// that function is.
+pub fn checked_wire_to_char(
+    text: &Rope,
+    pos: WirePos,
+    enc: PositionEncoding,
+) -> Option<CharOffset> {
+    let (line, char_col) = checked_wire_to_line_char_col(text, pos, enc)?;
+    Some(line_col_to_char(text, line.into(), char_col))
+}
+
+/// `line`'s start advanced by `char_col`, a column within the line's content,
+/// so the step stays inside the line.
+fn line_col_to_char(text: &Rope, line: RopeyLine, char_col: CharCol) -> CharOffset {
     crate::lines::line_start_char(text, line).shift(char_col.index() as isize)
 }
 
-/// A wire `[start, end)` range's two ends → `[start_char, end_char)`, via
-/// [`wire_to_char`] on each end independently. Each end clamps on its own
-/// (`wire_to_char`'s clamp-don't-error contract), so a reversed range (`end`
-/// before `start`) is passed through unreordered; callers that must reject
-/// one check `end < start` themselves. The inverse of
+/// A wire `[start, end)` range's two ends → `[start_char, end_char)`, each
+/// end converted on its own. Out-of-range input clamps rather than errors,
+/// since servers send past-end positions routinely: a line past EOF clamps
+/// to the last line and a column to its line's content end. A reversed range
+/// (`end` before `start`) is passed through unreordered; callers that must
+/// reject one check `end < start` themselves. The inverse of
 /// [`char_range_to_wire_range`].
 pub fn wire_range_to_char_range(
     text: &Rope,
@@ -160,6 +186,23 @@ pub fn wire_range_to_char_range(
         wire_to_char(text, range.start, enc),
         wire_to_char(text, range.end, enc),
     )
+}
+
+/// [`wire_range_to_char_range`] for a range that must name text: `None` when
+/// either end is on a line past the document end. The document end is the
+/// position `(line count, 0)` after the final line break, so each end may sit
+/// on the empty line there (its column clamps like any other); a line beyond
+/// it names nothing a clamp could honestly stand in for.
+pub fn checked_wire_range_to_char_range(
+    text: &Rope,
+    range: ExclusiveRange<WirePos>,
+    enc: PositionEncoding,
+) -> Option<ExclusiveRange<CharOffset>> {
+    let last_line = crate::lines::last_ropey_line(text).index();
+    if range.start.line > last_line || range.end.line > last_line {
+        return None;
+    }
+    Some(wire_range_to_char_range(text, range, enc))
 }
 
 /// The byte range of `text` named by a `[start, end)` pair of flat wire

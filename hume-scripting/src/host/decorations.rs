@@ -15,7 +15,7 @@ pub trait DecorationHost {
     /// `(set-inlay-hints! source pane hints)`: replaces `source`'s inlay
     /// hints for `bid` wholesale. Each entry is `(offset, text, before)`,
     /// `offset` already a char offset. The Steel builtin accepts char offsets
-    /// only (see `lsp-position->offset` to convert an LSP wire position).
+    /// only (see `lsp-position->char-offset` to convert an LSP wire position).
     fn set_inlay_hints(
         &mut self,
         source: String,
@@ -54,10 +54,10 @@ pub trait DecorationHost {
     /// lines for `bid` wholesale. Each `VirtualLineSpec`'s `segments` are
     /// **unvalidated** char ranges (the Steel boundary only decodes shape,
     /// see `VirtualLineSpec`'s doc), so this method is the sole enforcement
-    /// point: it must sort, validate (bounds, ordering, non-overlap,
-    /// grapheme-cluster alignment against `text`), and convert to byte
-    /// offsets, `Err`ing with a message naming `set-virtual-lines!` on any
-    /// violation rather than storing bad data.
+    /// point: it must sort, validate (bounds, ordering, non-overlap), widen
+    /// an edge inside a grapheme cluster of `text` to the whole cluster, and
+    /// convert to byte offsets, `Err`ing with a message naming
+    /// `set-virtual-lines!` on any violation rather than storing bad data.
     fn set_virtual_lines(
         &mut self,
         source: String,
@@ -115,13 +115,13 @@ pub trait DecorationHost {
         text: String,
     ) -> Result<(), String>;
 
-    /// `(diagnostics-for-buffer pane #:severity floor #:range (start end))`:
+    /// `(diagnostics-for-buffer pane #:severity floor #:range (start-char end-char))`:
     /// one [`DiagnosticEntry`] per diagnostic, filtered then capped at 1000.
-    /// `char_col` is an addressing unit (feeds `goto-location!`);
+    /// `start_char` is an addressing unit (feeds `goto-location!`);
     /// `grapheme_col` is the display unit (the one every HUME surface shows
-    /// the user). Never render `char_col` directly. `severity_floor`
-    /// is `None` for "no floor" (everything); `range` is `None` for the
-    /// whole buffer. `Err` on an unknown `#:severity` name.
+    /// the user). `severity_floor` is `None` for "no floor" (everything);
+    /// `range` is `None` for the whole buffer. `Err` on an unknown
+    /// `#:severity` name.
     fn diagnostics_for_buffer(
         &self,
         bid: BufferId,
@@ -142,11 +142,10 @@ pub trait DecorationHost {
 /// holds, instead of a value rebuilt (and reconverted) just to carry it.
 #[derive(Debug, Clone)]
 pub struct DiagnosticEntry {
-    pub start: usize,
-    pub end: usize,
-    pub line: usize,
+    pub start_char: usize,
+    pub end_char: usize,
+    pub start_line: usize,
     pub end_line: usize,
-    pub char_col: usize,
     pub grapheme_col: usize,
     pub severity: String,
     /// `DiagSeverity`'s own `Ord` discriminant (0 = error … 3 = hint, lower

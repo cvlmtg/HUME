@@ -13,15 +13,16 @@ use hume_editing::text::BufferText;
 use crate::types::PaneHandle;
 
 use super::SteelResult;
-use super::args::{list_of, not_live_err, string_arg, string_list, symbol_hash};
+use super::args::{char_range_value, list_of, not_live_err, string_arg, string_list, symbol_hash};
 use super::errors::{generic_err, require_cap};
 
 /// `(diff-lines old-text new-text)` → list of hunk hashes, oldest side
-/// first. Each hunk is `(hash 'old-start 'old-count 'new-start 'new-count
-/// 'old-lines 'new-lines 'words)`, 0-based; `Equal` runs are dropped. Both
-/// texts are read as buffer content (see [`text_hunks`]).
-/// `old-count`/`new-count` are `(length old-lines)`/`(length new-lines)`,
-/// derived here since [`ChangeHunk`] stores no count.
+/// first. Each hunk is `(hash 'old-start-line 'old-end-line 'new-start-line
+/// 'new-end-line 'old-lines 'new-lines 'words)`: 0-based lines, end-exclusive,
+/// so a side with no lines has an empty range at the point the other side was
+/// inserted at or deleted from. `Equal` runs are dropped. Both texts are read
+/// as buffer content (see [`text_hunks`]). The end lines are derived here
+/// from the line lists, since [`ChangeHunk`] stores no end.
 pub(crate) fn diff_lines(_ctx: &mut SteelCtx, old: SteelVal, new: SteelVal) -> SteelResult {
     let old = string_arg(old, "diff-lines old-text")?;
     let new = string_arg(new, "diff-lines new-text")?;
@@ -68,17 +69,26 @@ fn hunks_to_steel(hunks: Vec<ChangeHunk>) -> SteelVal {
     list_of(hunks.into_iter().map(hunk_to_steel))
 }
 
-/// `'words`: `(hash 'old (list span …) 'new (list span …))`, each span `(hash 'line 'start 'end)`, `'line`
-/// counted from the hunk's first line on that side and `'start`/`'end` char
-/// columns in it, end exclusive.
+/// `'words`: `(hash 'old (list span …) 'new (list span …))`. An old-side span is
+/// `(hash 'line 'start-char-col 'end-char-col)`: a line of the old text and
+/// char columns in it, end exclusive. A new-side span is `(hash 'start-char
+/// 'end-char)`: char offsets into the new text, end exclusive. For
+/// `diff-lines` that text is `new-text` with LF line endings, so each CRLF
+/// counts as one char.
 fn hunk_to_steel(hunk: ChangeHunk) -> SteelVal {
-    let old_count = hunk.old_lines.len();
-    let new_count = hunk.new_lines.len();
+    let old_end = hunk.old_start.advance(hunk.old_lines.len());
+    let new_end = hunk.new_start.advance(hunk.new_lines.len());
     symbol_hash([
-        ("old-start", SteelVal::IntV(hunk.old_start.index() as isize)),
-        ("old-count", SteelVal::IntV(old_count as isize)),
-        ("new-start", SteelVal::IntV(hunk.new_start.index() as isize)),
-        ("new-count", SteelVal::IntV(new_count as isize)),
+        (
+            "old-start-line",
+            SteelVal::IntV(hunk.old_start.index() as isize),
+        ),
+        ("old-end-line", SteelVal::IntV(old_end.index() as isize)),
+        (
+            "new-start-line",
+            SteelVal::IntV(hunk.new_start.index() as isize),
+        ),
+        ("new-end-line", SteelVal::IntV(new_end.index() as isize)),
         ("old-lines", string_list(hunk.old_lines)),
         ("new-lines", string_list(hunk.new_lines)),
         (
@@ -86,28 +96,36 @@ fn hunk_to_steel(hunk: ChangeHunk) -> SteelVal {
             symbol_hash([
                 (
                     "old",
-                    list_of(hunk.words.old.into_iter().map(span_to_steel)),
+                    list_of(hunk.words.old.into_iter().map(line_span_to_steel)),
                 ),
                 (
                     "new",
-                    list_of(hunk.words.new.into_iter().map(span_to_steel)),
+                    list_of(
+                        hunk.words
+                            .new
+                            .into_iter()
+                            .map(|range| char_range_value(range.start.index(), range.end.index())),
+                    ),
                 ),
             ]),
         ),
     ])
 }
 
-fn span_to_steel(span: LineSpan) -> SteelVal {
+fn line_span_to_steel(span: LineSpan) -> SteelVal {
     symbol_hash([
-        ("line", SteelVal::IntV(span.line as isize)),
-        ("start", SteelVal::IntV(span.start.index() as isize)),
-        ("end", SteelVal::IntV(span.end.index() as isize)),
+        ("line", SteelVal::IntV(span.line.index() as isize)),
+        (
+            "start-char-col",
+            SteelVal::IntV(span.start.index() as isize),
+        ),
+        ("end-char-col", SteelVal::IntV(span.end.index() as isize)),
     ])
 }
 
 /// `(diff-words old-text new-text)` → `(hash 'hunks … 'deadline-hit …)`.
-/// `'hunks` is a list of `(hash 'old-start 'old-end 'new-start 'new-end
-/// 'old-text 'new-text)`, char offsets, `Equal` runs dropped; a pure insert
+/// `'hunks` is a list of `(hash 'old-start-char 'old-end-char 'new-start-char
+/// 'new-end-char 'old-text 'new-text)`, char offsets, `Equal` runs dropped; a pure insert
 /// or delete has a zero-width side with empty text. `'deadline-hit` is `#t`
 /// when Myers timed out and returned a coarse result, which a caller should
 /// treat as a fallback rather than a precise diff.
@@ -131,10 +149,10 @@ fn word_hunk_to_steel(hunk: WordHunk) -> Option<SteelVal> {
         WordHunkKind::Replace { old, new } => (old, new),
     };
     Some(symbol_hash([
-        ("old-start", SteelVal::IntV(hunk.old.start as isize)),
-        ("old-end", SteelVal::IntV(hunk.old.end as isize)),
-        ("new-start", SteelVal::IntV(hunk.new.start as isize)),
-        ("new-end", SteelVal::IntV(hunk.new.end as isize)),
+        ("old-start-char", SteelVal::IntV(hunk.old.start as isize)),
+        ("old-end-char", SteelVal::IntV(hunk.old.end as isize)),
+        ("new-start-char", SteelVal::IntV(hunk.new.start as isize)),
+        ("new-end-char", SteelVal::IntV(hunk.new.end as isize)),
         ("old-text", SteelVal::StringV(old_text.into())),
         ("new-text", SteelVal::StringV(new_text.into())),
     ]))

@@ -32,9 +32,9 @@ pub struct WireLocation {
 /// degradation themselves, downstream of a successful decode; see
 /// `location_places` in `hume-editor`.
 ///
-/// `caller` names the builtin in the returned error, since more than one
-/// builtin shares this decoder.
-pub fn decode_location(loc: &serde_json::Value, caller: &str) -> Result<WireLocation, String> {
+/// The error names what is wrong, not the builtin: each caller adds its own
+/// name.
+pub fn decode_location(loc: &serde_json::Value) -> Result<WireLocation, String> {
     let (uri, range) = if let Some(uri) = loc.get("targetUri") {
         (
             uri,
@@ -43,26 +43,25 @@ pub fn decode_location(loc: &serde_json::Value, caller: &str) -> Result<WireLoca
         )
     } else {
         (
-            loc.get("uri")
-                .ok_or_else(|| format!("{caller}: missing uri"))?,
+            loc.get("uri").ok_or_else(|| "missing uri".to_string())?,
             loc.get("range"),
         )
     };
     let uri = uri
         .as_str()
-        .ok_or_else(|| format!("{caller}: uri must be a string"))?;
-    let range = range.ok_or_else(|| format!("{caller}: missing range"))?;
+        .ok_or_else(|| "uri must be a string".to_string())?;
+    let range = range.ok_or_else(|| "missing range".to_string())?;
     let line = range
         .pointer("/start/line")
         .and_then(serde_json::Value::as_u64)
         .and_then(|n| usize::try_from(n).ok())
-        .ok_or_else(|| format!("{caller}: missing range.start.line"))?;
+        .ok_or_else(|| "missing range.start.line".to_string())?;
     let character = range
         .pointer("/start/character")
         .and_then(serde_json::Value::as_u64)
         .and_then(|n| usize::try_from(n).ok())
-        .ok_or_else(|| format!("{caller}: missing range.start.character"))?;
-    let uri = lsp_types::Uri::from_str(uri).map_err(|_| format!("{caller}: bad uri {uri:?}"))?;
+        .ok_or_else(|| "missing range.start.character".to_string())?;
+    let uri = lsp_types::Uri::from_str(uri).map_err(|_| format!("bad uri {uri:?}"))?;
     Ok(WireLocation {
         uri,
         pos: WirePos { line, character },

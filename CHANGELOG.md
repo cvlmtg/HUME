@@ -7,6 +7,22 @@
 
 - `lsp-locations->display-parts` is `lsp-locations->places`. It returns one entry per location, in order, instead of merging locations that name the same place, and an entry is `#f` for a location whose URI is not a `file://` one. For a merged list, use the new `lsp-locations->merged-places`, which returns `(hash 'places l 'skipped n)`: the places without the `#f` entries and how many were left out.
 
+- Position hashes name their unit. `'start-char`/`'end-char` are char offsets and `'start-line`/`'end-line` are lines, in place of `'start`/`'end` in `viewport-range` (lines), `lsp-range->char-range`, `set-extra-highlights!`, `set-virtual-lines!` segments and the `#:range` and entries of `diagnostics-for-buffer`, whose `'line` is `'start-line`. `set-inlay-hints!` takes `'char-offset` in place of `'offset`, and `diff-words` hunks carry `'old-start-char`, `'old-end-char`, `'new-start-char` and `'new-end-char`.
+
+- A `diagnostics-for-buffer` entry's `'end-line` is one past the last line the diagnostic touches, so `[start-line, end-line)` always names a line: it was the last line, and it came out before `'start-line` for an empty diagnostic at the start of a line. `#:range` raises when it ends before it starts or past the end of the buffer.
+
+- Diff hunks from `diff-lines`, `diff-buffer-lines` and `buffer-revision-diff` carry `'old-start-line`, `'old-end-line`, `'new-start-line` and `'new-end-line` (end exclusive) in place of `'old-start`, `'old-count`, `'new-start` and `'new-count`. In `'words`, an old-side span is `(hash 'line 'start-char-col 'end-char-col)` with `'line` a line of the old text, not counted from the hunk's first line, and a new-side span is `(hash 'start-char 'end-char)`, char offsets into the new text, ready for `set-extra-highlights!`.
+
+- `char-offset->line` and `buffer-cursor-line` return content lines: the offset at the end of the buffer is on the last line, not on the empty line after it, and an offset past the end of the buffer raises instead of returning `#f`. `lsp-range->char-range` returns `#f` for a range reaching a line past the end of the document, and `apply-text-edits!` and `apply-workspace-edit!` refuse an edit whose range does, instead of applying it clamped.
+
+- `goto-location!` returns `#t` after a jump and `#f` when the line it names no longer exists, and a target that is a pane is positioned by `'char-offset` instead of `'line` and `'char-col`: `(hash 'target pane 'char-offset o)`. A path target keeps `'line` and `'char-col`, and a URI such as `file://…` is no longer a target; pass the path. `diagnostics-for-buffer` entries have no `'char-col`: jump with `'start-char`.
+
+- `core:stdlib`'s selection accessors name their unit: `stdlib/cursor-char-index` is `stdlib/cursor-char-offset`, and `stdlib/selection-start`/`stdlib/selection-end` are `stdlib/selection-start-char`/`stdlib/selection-end-char`. Rename them in your `call!`s.
+
+- A line range is one value, `(hash 'start-line s 'end-line e)`: `viewport-range` returns it, `buffer-lines` takes it as `#:range` in place of `#:start` and `#:end`, and `on-viewport-change` handlers receive `(pane range)` in place of `(pane first-line end-line)`. `(buffer-lines pane #:range (viewport-range pane))` reads what is on screen.
+
+- The char-offset conversions name their unit: `offset->line` is `char-offset->line`, `line->offset` is `line->char-offset`, `lsp-position->offset` is `lsp-position->char-offset` and `lsp-range->offsets` is `lsp-range->char-range`.
+
 - `live-picker!` takes `#:source`, a function of the picker token and the query, instead of `#:command`. To keep re-running a subprocess, pass `#:source (picker-command-source argv-for)`; `#:cwd`, `#:nul` and `#:ok-exit-codes` move to `picker-command-source`.
 
 ### Panes & interface
@@ -22,6 +38,7 @@
 - `core:lsp` has `lsp/format-document`, which formats the whole buffer for such a hook. The format-on-save recipe in the manual used `on-buffer-save`, which runs after the write, so it never formatted the saved file: use the new recipe.
 
 ### Fixes
+- A char offset inside a character (a letter with its combining marks, an emoji sequence) is moved to the whole character by `set-extra-highlights!`, `set-inlay-hints!` and `set-virtual-lines!` segments; segments raised on one.
 - `json-ref-or` returns its default for a field the server sent as `null`, so a code action whose `disabled` is `null` is offered.
 - `apply-text-edits!` and `apply-workspace-edit!` still apply when the pane has since switched buffers, editing the buffer for no pane. `apply-text-edits!` also accepts a value with no pane, and `lsp-document-params` returns a buffer's document params without one.
 

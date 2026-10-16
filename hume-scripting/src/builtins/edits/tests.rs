@@ -159,19 +159,119 @@ fn goto_location_wire_shape_requires_a_tagged_handle() {
     );
 }
 
-/// The `(hash 'target 'line 'char-col)` shape never touches server encoding
-/// at all, and reaches the host regardless.
+/// The `(hash 'target pane 'char-offset)` and `(hash 'target path 'line
+/// 'char-col)` shapes never touch server encoding at all, and reach the host
+/// regardless.
 #[test]
-fn goto_location_target_shape_never_touches_encoding() {
+fn goto_location_char_indexed_shapes_never_touch_encoding() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let pane_target = symbol_hash([
+        ("target", default_from()),
+        ("char-offset", SteelVal::IntV(0)),
+    ]);
+    let path_target = symbol_hash([
+        ("target", SteelVal::StringV("/tmp/a.txt".into())),
+        ("line", SteelVal::IntV(0)),
+        ("char-col", SteelVal::IntV(0)),
+    ]);
+    for target in [pane_target, path_target] {
+        let msg = goto_location(&mut ctx, default_pane(), target)
+            .unwrap_err()
+            .to_string();
+        assert!(msg.contains("not supported by this host"), "got: {msg}");
+    }
+}
+
+/// A pane target is positioned by `'char-offset` alone; the keys of a path
+/// target raise rather than being ignored or converted.
+#[test]
+fn goto_location_pane_target_rejects_line_and_char_col() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    for key in ["line", "char-col"] {
+        let target = symbol_hash([
+            ("target", default_from()),
+            ("char-offset", SteelVal::IntV(0)),
+            (key, SteelVal::IntV(0)),
+        ]);
+        let msg = goto_location(&mut ctx, default_pane(), target)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            msg.contains("a pane target takes 'char-offset") && msg.contains(key),
+            "got: {msg}"
+        );
+    }
+}
+
+/// A path target is positioned by `'line` and `'char-col`; a char offset
+/// into a file that may not be open names nothing.
+#[test]
+fn goto_location_path_target_rejects_char_offset() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
     let target = symbol_hash([
-        ("target", default_from()),
-        ("line", SteelVal::IntV(0)),
-        ("char-col", SteelVal::IntV(0)),
+        ("target", SteelVal::StringV("/tmp/a.txt".into())),
+        ("char-offset", SteelVal::IntV(0)),
     ]);
     let msg = goto_location(&mut ctx, default_pane(), target)
         .unwrap_err()
         .to_string();
-    assert!(msg.contains("not supported by this host"), "got: {msg}");
+    assert!(
+        msg.contains("a path target takes 'line and 'char-col"),
+        "got: {msg}"
+    );
+}
+
+fn goto_path_target_error(path: &str) -> String {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let target = symbol_hash([
+        ("target", SteelVal::StringV(path.into())),
+        ("line", SteelVal::IntV(0)),
+        ("char-col", SteelVal::IntV(0)),
+    ]);
+    goto_location(&mut ctx, default_pane(), target)
+        .unwrap_err()
+        .to_string()
+}
+
+/// A URI string is not a path: opened as a path it would be a new empty
+/// buffer named after the URI, so a target with any URI scheme raises before
+/// the host is asked.
+#[test]
+fn goto_location_rejects_a_uri_target() {
+    for uri in [
+        "file:///tmp/a.txt",
+        "FILE:///tmp/a.txt",
+        "jdt://contents/a.class",
+        "deno:/https/x.ts",
+        "Foo+bar.baz-1:x",
+    ] {
+        let msg = goto_path_target_error(uri);
+        assert!(msg.contains("not the URI"), "{uri}: got: {msg}");
+        assert!(
+            !msg.contains("not supported by this host"),
+            "{uri}: must raise before reaching the host; got: {msg}"
+        );
+    }
+}
+
+/// A Windows drive letter and a colon past the first path segment are not a
+/// URI scheme, so these targets reach the host.
+#[test]
+fn goto_location_accepts_paths_that_hold_a_colon() {
+    for path in [
+        r"C:\tmp\a.txt",
+        "c:/tmp/a.txt",
+        "./foo:bar/a.txt",
+        "/tmp/a:b.txt",
+    ] {
+        let msg = goto_path_target_error(path);
+        assert!(
+            msg.contains("not supported by this host"),
+            "{path}: must reach the host; got: {msg}"
+        );
+    }
 }

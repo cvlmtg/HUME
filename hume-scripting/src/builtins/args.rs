@@ -1,6 +1,6 @@
 //! One marshalling vocabulary for builtins: plain `SteelVal` decoders,
 //! `FromSteelVal` newtypes for pane params (`ArgPane`/`LivePane`, plus
-//! `Usize`/`OptUsize` for a `LivePane`-sibling argument that
+//! `Usize` for a `LivePane`-sibling argument that
 //! needs the same steel-core-driven, ahead-of-the-closure-body decode;
 //! see `BuiltinArg`, the seam that runs `LivePane`'s liveness check),
 //! free-fn decoders for wire position / text-edit params (`WirePos` is a
@@ -9,9 +9,8 @@
 //! `WireTextEdit` decoder too, for one calling convention across both),
 //! and the shared list/hash decoders every multi-field setter builds on.
 //!
-//! `#f`-means-absent is decoded only by this module's `optional_*` family
-//! (plus `OptUsize`'s own `FromSteelVal` impl, which lives in
-//! this same file). Enforced by `cargo test
+//! `#f`-means-absent is decoded only by this module's `optional_*` family.
+//! Enforced by `cargo test
 //! absent_marker_is_decoded_only_in_args_rs` (`arch-lints/tests/
 //! absent_decode.rs`).
 
@@ -532,6 +531,53 @@ impl HashEntry<'_> {
             .map(|v| string_arg(v, &self.label(key)))
             .transpose()
     }
+
+    /// The `'start-char`/`'end-char` pair of an entry decoded with both keys
+    /// in its key set, both required.
+    pub(crate) fn char_range(&self) -> Result<(usize, usize), SteelErr> {
+        Ok((self.usize(START_CHAR)?, self.usize(END_CHAR)?))
+    }
+
+    /// The `'start-line`/`'end-line` pair of an entry decoded with both keys
+    /// in its key set, both required.
+    pub(crate) fn line_range(&self) -> Result<(usize, usize), SteelErr> {
+        Ok((self.usize(START_LINE)?, self.usize(END_LINE)?))
+    }
+}
+
+// ── Position shapes ───────────────────────────────────────────────────────────
+
+/// The keys a position hash names its unit with. A char range is
+/// `(hash 'start-char s 'end-char e)`, a content-line range `(hash
+/// 'start-line s 'end-line e)`, both 0-based and end-exclusive, and one char
+/// position is `'char-offset`.
+pub(crate) const START_CHAR: &str = "start-char";
+pub(crate) const END_CHAR: &str = "end-char";
+pub(crate) const START_LINE: &str = "start-line";
+pub(crate) const END_LINE: &str = "end-line";
+pub(crate) const CHAR_OFFSET: &str = "char-offset";
+
+pub(crate) const CHAR_RANGE_KEYS: &[&str] = &[START_CHAR, END_CHAR];
+pub(crate) const LINE_RANGE_KEYS: &[&str] = &[START_LINE, END_LINE];
+
+/// A char range as Steel sees it: `(hash 'start-char s 'end-char e)`.
+pub(crate) fn char_range_value(start: usize, end: usize) -> SteelVal {
+    symbol_hash([
+        (START_CHAR, SteelVal::IntV(start as isize)),
+        (END_CHAR, SteelVal::IntV(end as isize)),
+    ])
+}
+
+/// A content-line range as Steel sees it: `(hash 'start-line s 'end-line e)`.
+/// The one shape `viewport-range` returns, `buffer-lines` takes as `#:range`
+/// and `on-viewport-change` passes.
+pub fn line_range_value(
+    range: hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>,
+) -> SteelVal {
+    symbol_hash([
+        (START_LINE, SteelVal::IntV(range.start.index() as isize)),
+        (END_LINE, SteelVal::IntV(range.end.index() as isize)),
+    ])
 }
 
 /// Decodes one symbol-keyed hashmap: the shared decode for a record a
@@ -795,31 +841,6 @@ impl BuiltinArg for Usize {
     }
 }
 
-/// [`Usize`], but `#f` decodes to `None`: [`optional_usize_arg`]'s
-/// `FromSteelVal` counterpart.
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct OptUsize(pub(crate) Option<usize>);
-
-impl FromSteelVal for OptUsize {
-    fn from_steelval(val: &SteelVal) -> Result<Self, SteelErr> {
-        match val {
-            SteelVal::BoolV(false) => Ok(OptUsize(None)),
-            other => Usize::from_steelval(other).map(|Usize(n)| OptUsize(Some(n))),
-        }
-    }
-}
-
-impl BuiltinArg for OptUsize {
-    type Out = Option<usize>;
-    fn resolve(
-        self,
-        _ctx: &mut crate::SteelCtx,
-        _name: &'static str,
-    ) -> Result<Option<usize>, SteelErr> {
-        Ok(self.0)
-    }
-}
-
 /// `(lsp-stop! target)` / `(lsp-restart! target)`'s `target` argument, ahead
 /// of [`BuiltinArg::resolve`]'s liveness check on the `Buffer` case. A pane
 /// decodes like [`LivePane`] (only its buffer is used: this is a kind-C,
@@ -866,8 +887,9 @@ impl BuiltinArg for LspTargetArg {
 }
 
 /// Decodes a wire `{"line" "character"}` hashmap. `what` names the calling
-/// builtin in the error message: `wire_to_char` (the eventual conversion)
-/// is total and clamps rather than errors, so this boundary check is the
+/// builtin in the error message: the eventual conversion
+/// (`hume_rope::position_encoding`) clamps a column or answers `None` for a
+/// line rather than erroring on a shape, so this boundary check is the
 /// only place a malformed shape gets caught instead of silently producing a
 /// plausible-looking offset.
 pub(crate) fn wire_position(

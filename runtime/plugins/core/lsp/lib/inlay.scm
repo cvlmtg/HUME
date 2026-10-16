@@ -27,8 +27,8 @@
          (pad-right (equal? (json-ref-or hint #f "paddingRight") #t))
          (text (if pad-left (string-append " " text) text))
          (text (if pad-right (string-append text " ") text))
-         (offset (lsp-position->offset pane (json-ref hint "position"))))
-    (and offset (hash 'offset offset 'text text 'side 'before))))
+         (offset (lsp-position->char-offset pane (json-ref hint "position"))))
+    (and offset (hash 'char-offset offset 'text text 'side 'before))))
 
 (define (lsp/inlay-hint-params pane first end)
   (let ((pp (lsp-position-params pane)))
@@ -44,7 +44,7 @@
     (lambda (pane)
       (let ((range (viewport-range pane)))
         (when (lsp/inlay-on? pane)
-          (let ((params (lsp/inlay-hint-params pane (hash-ref range 'start) (hash-ref range 'end))))
+          (let ((params (lsp/inlay-hint-params pane (hash-ref range 'start-line) (hash-ref range 'end-line))))
             (when params
               (lsp-request-all! pane "textDocument/inlayHint" params
                 (lambda (err results)
@@ -67,7 +67,7 @@
     (when resolved (lsp/refresh-hints resolved))))
 
 (register-hook! 'on-viewport-change
-  (lambda (pane first end) (lsp/refresh-hints pane)))
+  (lambda (pane range) (lsp/refresh-hints pane)))
 
 (register-hook! 'on-diagnostics-changed lsp/refresh-hints-for-buffer)
 

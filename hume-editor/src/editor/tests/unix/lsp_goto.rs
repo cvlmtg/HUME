@@ -225,6 +225,25 @@ fn locations_that_are_not_files_are_skipped_with_one_warning() {
     assert!(warnings[0].contains('2'), "{warnings:?}");
 }
 
+/// A location whose line no longer exists in its file (the answer raced an
+/// edit) is reported once and the cursor stays where it was.
+#[test]
+fn a_goto_to_a_line_that_no_longer_exists_warns_and_stays() {
+    let tmp = tempfile::tempdir().unwrap();
+    let uri = rust_rig_uri(tmp.path());
+    let (mut ed, _guard, _sid) = setup(tmp.path(), FIXTURE, |backend, _sid| {
+        backend.respond_to("textDocument/definition", loc(&uri, 99, 0));
+    });
+    let before = state(&ed);
+
+    run_goto(&mut ed, "lsp/goto-definition");
+
+    assert_eq!(state(&ed), before);
+    let warnings = warning_texts(&ed);
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert!(warnings[0].contains("no longer exists"), "{warnings:?}");
+}
+
 /// When every target is skipped the warning is the whole report, not
 /// followed by "No definition found".
 #[test]

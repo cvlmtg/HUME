@@ -9,10 +9,10 @@
 (define (stdlib/selection-head sel)
   (and sel (list-ref sel 1)))
 
-(define (stdlib/selection-start sel)
+(define (stdlib/selection-start-char sel)
   (and sel (list-ref sel 2)))
 
-(define (stdlib/selection-end sel)
+(define (stdlib/selection-end-char sel)
   (and sel (list-ref sel 3)))
 
 (define (stdlib/selection-primary? sel)
@@ -38,7 +38,7 @@
             (loop (cdr sels)))
            (else #f)))))
 
-(define (stdlib/cursor-char-index sels)
+(define (stdlib/cursor-char-offset sels)
   (stdlib/selection-head (stdlib/primary-selection sels)))
 
 ;; ── Filesystem + list-search helpers (internal) ─────────────────────────────
@@ -198,13 +198,13 @@
   "Head char offset of the given selection, or #f."
   stdlib/selection-head)
 
-(define-command! "stdlib/selection-start"
+(define-command! "stdlib/selection-start-char"
   "First char offset the given selection covers, or #f."
-  stdlib/selection-start)
+  stdlib/selection-start-char)
 
-(define-command! "stdlib/selection-end"
+(define-command! "stdlib/selection-end-char"
   "Char offset one past the last one the given selection covers, or #f."
-  stdlib/selection-end)
+  stdlib/selection-end-char)
 
 (define-command! "stdlib/selection-primary?"
   "#t if the given selection is the primary selection, or #f."
@@ -222,9 +222,9 @@
   "#t if the given selection list holds exactly one selection."
   stdlib/single-selection?)
 
-(define-command! "stdlib/cursor-char-index"
+(define-command! "stdlib/cursor-char-offset"
   "0-indexed head char offset of the primary selection in the given list, or #f."
-  stdlib/cursor-char-index)
+  stdlib/cursor-char-offset)
 
 (define-command! "stdlib/find"
   "First element of the given list satisfying the given predicate, or #f."

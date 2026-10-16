@@ -384,12 +384,12 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "buffer-dirty?" buffers::buffer_dirty(pane: args::LivePane);
         cmd "buffer-text" buffers::buffer_text(pane: args::LivePane);
         cmd "buffer-line-count" buffers::buffer_line_count(pane: args::LivePane);
-        cmd "%buffer-lines" buffers::buffer_lines(pane: args::LivePane, start: args::OptUsize, end: args::OptUsize);
+        cmd "%buffer-lines" buffers::buffer_lines(pane: args::LivePane, range: SteelVal);
         // Live cursor read: reflects synchronous edits in the same eval.
         cmd "buffer-cursor-line" buffers::buffer_cursor_line(pane: args::LivePane);
         cmd "buffer-selections" buffers::buffer_selections(pane: args::LivePane);
-        cmd "offset->line" buffers::offset_to_line(pane: args::LivePane, idx: args::Usize);
-        cmd "line->offset" buffers::line_to_offset(pane: args::LivePane, line: args::Usize);
+        cmd "char-offset->line" buffers::char_offset_to_line(pane: args::LivePane, idx: args::Usize);
+        cmd "line->char-offset" buffers::line_to_char_offset(pane: args::LivePane, line: args::Usize);
 
         // Multi-buffer mutating builtins
         cmd "open-buffer!" buffers::open_buffer(path: String);
@@ -435,8 +435,8 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "keep-tracked-position!" lsp::keep_tracked_position(token: SteelVal);
         cmd "lsp-primary-range-params" lsp::lsp_primary_range_params(pane: args::LivePane);
         cmd "lsp-linewise-ranges-params" lsp::lsp_linewise_ranges_params(pane: args::LivePane);
-        cmd "lsp-position->offset" lsp::lsp_position_to_offset(pane: args::LivePane, position: SteelVal);
-        cmd "lsp-range->offsets" lsp::lsp_range_to_offsets(pane: args::LivePane, range: SteelVal);
+        cmd "lsp-position->char-offset" lsp::lsp_position_to_char_offset(pane: args::LivePane, position: SteelVal);
+        cmd "lsp-range->char-range" lsp::lsp_range_to_char_range(pane: args::LivePane, range: SteelVal);
         cmd "lsp-label-offsets->text" lsp::lsp_label_offsets_to_text(label: SteelVal, offsets: SteelVal);
         plain "lsp-location" lsp::lsp_location(uri: SteelVal, range: SteelVal);
         cmd "lsp-locations->places" lsp::lsp_locations_to_places(locs: SteelVal);

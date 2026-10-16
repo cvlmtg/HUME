@@ -95,10 +95,10 @@
     (when (and entry (= (hash-ref entry "gen") gen))
       (let* ([total (buffer-line-count pane)]
              [fwd-hi (min total (+ fwd-line bw/lines-per-tick))]
-             [fwd-lines (if (< fwd-line fwd-hi) (buffer-lines pane #:start fwd-line #:end fwd-hi) '())]
+             [fwd-lines (if (< fwd-line fwd-hi) (buffer-lines pane #:range (hash 'start-line fwd-line 'end-line fwd-hi)) '())]
              [bwd-hi (min bwd-line total)]
              [bwd-lo (max 0 (- bwd-hi bw/lines-per-tick))]
-             [bwd-lines (if (< bwd-lo bwd-hi) (buffer-lines pane #:start bwd-lo #:end bwd-hi) '())]
+             [bwd-lines (if (< bwd-lo bwd-hi) (buffer-lines pane #:range (hash 'start-line bwd-lo 'end-line bwd-hi)) '())]
              [building (bw/add-lines (bw/add-lines (or (hash-ref entry "building") (hashset))
                                                    pane fwd-lines)
                                      pane bwd-lines)])

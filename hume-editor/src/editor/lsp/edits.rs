@@ -86,14 +86,25 @@ fn build_edit_changeset(
     // `.reverse()` would keep ties in *original* order through the sort but
     // then flip that tie order via the whole-`Vec` reverse, applying them
     // backwards).
-    let char_edits: Vec<(ExclusiveRange<CharOffset>, &str)> = edits
+    let char_edits = edits
         .iter()
         .map(|e| {
-            let range = super::wire_range_to_chars(rope, &e.range, encoding);
-            (range, e.new_text.as_str())
+            let range = super::checked_wire_range_to_chars(rope, &e.range, encoding)
+                .ok_or_else(|| past_document_end(&e.range, rope))?;
+            Ok((range, e.new_text.as_str()))
         })
-        .collect();
+        .collect::<Result<Vec<(ExclusiveRange<CharOffset>, &str)>, String>>()?;
     build_changeset_from_char_edits(buf.text(), char_edits)
+}
+
+/// Why a text edit whose range ends on a line past `rope`'s document end is
+/// refused.
+pub(in crate::editor) fn past_document_end(range: &lsp_types::Range, rope: &ropey::Rope) -> String {
+    format!(
+        "text edit range ends past the end of the document (line {}, which has {} lines)",
+        range.start.line.max(range.end.line),
+        hume_rope::lines::content_line_count(rope).get()
+    )
 }
 
 /// Shared tail for [`build_edit_changeset`] (wire positions, converted to
@@ -228,10 +239,13 @@ pub(in crate::editor) fn build_edits_from_earlier_document<'a>(
     if edits.is_empty() {
         return Ok(Vec::new());
     }
-    let mut ranges: Vec<ExclusiveRange<CharOffset>> = edits
+    let mut ranges = edits
         .iter()
-        .map(|e| super::wire_range_to_chars(rope_at, &e.range, encoding))
-        .collect();
+        .map(|e| {
+            super::checked_wire_range_to_chars(rope_at, &e.range, encoding)
+                .ok_or_else(|| past_document_end(&e.range, rope_at))
+        })
+        .collect::<Result<Vec<ExclusiveRange<CharOffset>>, String>>()?;
     if let Some(range) = ranges.iter().find(|r| r.end < r.start) {
         return Err(format!(
             "text edit has a reversed range (end {:?} before start {:?})",
@@ -327,11 +341,13 @@ fn collect_edit_entries(we: lsp_types::WorkspaceEdit) -> Result<Vec<EditEntry>, 
     }
 }
 
+/// Opens `path` in a buffer, or finds the one already showing it. The flag
+/// is whether this call opened it.
 fn resolve_or_open(
     state: &mut EditorState,
     view: &mut EngineView,
     path: &std::path::Path,
-) -> Result<BufferId, String> {
+) -> Result<(BufferId, bool), String> {
     // `resolve_buffer_path`, not a hard `canonicalize`: a server-driven
     // rename or workspace edit may target a file that doesn't exist yet,
     // openable here exactly like `:e` on a missing path (see
@@ -346,7 +362,7 @@ fn resolve_or_open(
         ));
         state.buffers.get_mut(bid).set_display_path(Some(display));
     }
-    Ok(bid)
+    Ok((bid, is_new))
 }
 
 /// `(apply-workspace-edit! edit)`: validates and builds every file's
@@ -392,7 +408,7 @@ pub(in crate::editor) fn apply_workspace_edit(
     let mut planned: Vec<(EditTarget, ChangeSet)> = Vec::with_capacity(entries.len());
     for (uri, edits, version) in entries {
         let path = hume_lsp::uri::uri_to_path(&uri).map_err(|e| format!("bad uri: {e:?}"))?;
-        let bid = resolve_or_open(state, view, &path)?;
+        let (bid, _) = resolve_or_open(state, view, &path)?;
         // Each file's changeset is built against `state`'s *current* text:
         // a second entry for the same file would build a changeset that's
         // valid against that same original text, but `commit_changeset`
@@ -440,13 +456,19 @@ pub(in crate::editor) fn apply_workspace_edit(
     Ok(WorkspaceEditSummary { buffers_modified })
 }
 
-/// `(goto-location! target)`, either shape:
-/// - a raw `Location`/`LocationLink` hashmap (wire positions, converted with
+/// `(goto-location! pane target)`, in any of its three shapes:
+/// - a raw `Location`/`LocationLink` (wire positions, converted with
 ///   `encoding`, the host trait layer's own read of the handle's tagged
 ///   producing-server encoding, resolved before this ever needing a `bid`
 ///   or live `LspState` lookup);
-/// - `(hash 'target 'line 'char-col)`, already char-indexed: `target` is a path
-///   string, a `file://` URI string, or a `bid`.
+/// - `(hash 'target path 'line 'char-col)`, already char-indexed;
+/// - `(hash 'target pane 'char-offset)`.
+///
+/// A position Scheme computed for a live buffer (`Buffer`) is an error when it
+/// lies past the buffer's end. One that comes from outside and may be stale
+/// (`Wire`, `Path`: a server's answer, a file changed on disk) names a place
+/// that no longer exists when its line is past the last content line, and
+/// the jump does not happen.
 pub(in crate::editor) enum GotoTarget {
     Wire {
         uri: lsp_types::Uri,
@@ -454,107 +476,107 @@ pub(in crate::editor) enum GotoTarget {
         encoding: PositionEncoding,
     },
     Path {
-        path_or_uri: String,
-        line: hume_rope::line::RopeyLine,
+        path: String,
+        line: usize,
         char_col: hume_rope::column::CharCol,
     },
     Buffer {
         bid: BufferId,
-        line: hume_rope::line::RopeyLine,
-        char_col: hume_rope::column::CharCol,
+        char_offset: usize,
     },
 }
 
-/// Clamps a char-indexed `(line, char_col)` pair to a valid char offset in
-/// `bid`. `line` clamps to the ropey-domain last line here (a scripted
-/// target can address the buffer's own trailing phantom line; `line` is
-/// minted trusted but unvalidated at the same two `host_impl.rs` sites that
-/// mint `char_col`, so it needs the same clamp `char_col` gets below); the
-/// char_col clamp and grapheme snap are `place_char_column`'s, which lands a
-/// past-the-end column on the line's last content character rather than on
-/// its `\n`.
+/// The cluster at `(line, char_col)` in `bid`: the column clamps and snaps
+/// to the line's content, but a `line` past the last content line names no
+/// place, so `None`.
 fn char_indexed_to_cluster(
     state: &EditorState,
     bid: BufferId,
-    line: hume_rope::line::RopeyLine,
+    line: usize,
     char_col: hume_rope::column::CharCol,
-) -> ClusterStart {
-    let buf = state.buffers.get(bid);
-    let text = buf.text();
-    let line = hume_rope::line::RopeyLine::clamped(text.rope(), line.index());
-    text.columns().place_char(line, char_col)
+) -> Option<ClusterStart> {
+    let text = state.buffers.get(bid).text();
+    let line = hume_rope::line::ContentLine::checked(text.rope(), line)?;
+    Some(
+        text.columns()
+            .place_char(hume_rope::line::RopeyLine::from(line), char_col),
+    )
 }
 
-/// A bare path string and a `file://` URI string both name shape 2's
-/// `target`; try URI first since a `file://` string doesn't round-trip
-/// through path expansion cleanly.
-fn resolve_path_or_uri(
+/// `landed` as a jump destination in `bid`. A buffer this call opened for a
+/// destination that does not exist is closed again, so a stale target leaves
+/// no trace.
+fn settle_opened(
     state: &mut EditorState,
     view: &mut EngineView,
-    path_or_uri: &str,
-) -> Result<BufferId, String> {
-    if let Ok(uri) = path_or_uri.parse::<lsp_types::Uri>()
-        && uri.scheme().is_some_and(|s| s.eq_lowercase("file"))
-    {
-        let path = hume_lsp::uri::uri_to_path(&uri)
-            .map_err(|e| format!("cannot open {path_or_uri}: {e}"))?;
-        return resolve_or_open(state, view, &path);
+    bid: BufferId,
+    opened: bool,
+    landed: Option<ClusterStart>,
+) -> Option<(BufferId, ClusterStart)> {
+    if landed.is_none() && opened {
+        crate::editor::buffer::lifecycle::close_buffer_and_notify(view, state, bid);
     }
-    let expanded = hume_platform::path::expand(path_or_uri);
-    resolve_or_open(state, view, std::path::Path::new(expanded.as_ref()))
+    landed.map(|cluster| (bid, cluster))
 }
 
-/// Resolves `target` to `(bid, cluster)`: the one fallible step. Callers
-/// must push the jump entry only *after* this succeeds (`goto_location`'s
-/// "no jump entry on failure" contract).
+/// Resolves `target` to `(bid, cluster)`, or `None` for a destination whose
+/// line no longer exists. The one fallible step: callers must push the jump
+/// entry only *after* this succeeds (`goto_location`'s "no jump entry on
+/// failure" contract).
 fn resolve_goto_target(
     state: &mut EditorState,
     view: &mut EngineView,
     target: GotoTarget,
-) -> Result<(BufferId, ClusterStart), String> {
+) -> Result<Option<(BufferId, ClusterStart)>, String> {
     match target {
         GotoTarget::Wire { uri, pos, encoding } => {
             let path = hume_lsp::uri::uri_to_path(&uri)
                 .map_err(|e| format!("cannot open {}: {e}", uri.as_str()))?;
-            let bid = resolve_or_open(state, view, &path)?;
-            let buf = state.buffers.get(bid);
-            Ok((bid, super::wire_to_cluster(buf.text(), pos, encoding)))
+            let (bid, opened) = resolve_or_open(state, view, &path)?;
+            let landed = super::wire_to_cluster(state.buffers.get(bid).text(), pos, encoding)
+                .map(|(_, cluster)| cluster);
+            Ok(settle_opened(state, view, bid, opened, landed))
         }
         GotoTarget::Path {
-            path_or_uri,
+            path,
             line,
             char_col,
         } => {
-            let bid = resolve_path_or_uri(state, view, &path_or_uri)?;
-            Ok((bid, char_indexed_to_cluster(state, bid, line, char_col)))
+            let expanded = hume_platform::path::expand(&path);
+            let (bid, opened) =
+                resolve_or_open(state, view, std::path::Path::new(expanded.as_ref()))?;
+            let landed = char_indexed_to_cluster(state, bid, line, char_col);
+            Ok(settle_opened(state, view, bid, opened, landed))
         }
-        GotoTarget::Buffer {
-            bid,
-            line,
-            char_col,
-        } => {
-            if state.buffers.try_get(bid).is_none() {
-                return Err("no such buffer".to_string());
-            }
-            Ok((bid, char_indexed_to_cluster(state, bid, line, char_col)))
+        GotoTarget::Buffer { bid, char_offset } => {
+            let text = state
+                .buffers
+                .try_get(bid)
+                .ok_or_else(|| "no such buffer".to_string())?
+                .text();
+            let offset = crate::editor::host_impl::checked_char_offset(text, char_offset)?;
+            Ok(Some((bid, text.snap(offset))))
         }
     }
 }
 
-/// Moves `t`'s own pane to `(bid, pos)`, recording a jump entry only
-/// if resolution succeeded and it actually lands somewhere else: same
+/// Moves `t`'s own pane to the destination `target` names, recording a jump
+/// entry only if it exists and the jump actually lands somewhere else: same
 /// "commit point" discipline as `:goto` (`typed_misc.rs`) and buffer
-/// switches (`switch_to_buffer_with_jump`).
+/// switches (`switch_to_buffer_with_jump`). `Ok(false)` when the
+/// destination's line no longer exists, with nothing moved.
 pub(in crate::editor) fn goto_location(
     state: &mut EditorState,
     view: &mut EngineView,
     t: crate::editor::commands::CommandPane,
     target: GotoTarget,
-) -> Result<(), String> {
-    let (bid, pos) = resolve_goto_target(state, view, target)?;
+) -> Result<bool, String> {
+    let Some((bid, pos)) = resolve_goto_target(state, view, target)? else {
+        return Ok(false);
+    };
     crate::editor::commands::jump_pane_to(state, view, t, bid, pos);
 
-    Ok(())
+    Ok(true)
 }
 
 /// Answers a server-initiated `workspace/applyEdit` request by actually

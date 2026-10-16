@@ -12,8 +12,9 @@ diagnostic starting strictly after the cursor, or the last starting strictly bef
 and wrap around when none qualifies. A cursor inside a diagnostic therefore moves past it.
 The jump also pops the target's full message in a dismiss-on-any-key overlay.
 
-`lsp/diag-jump-to!` passes the diagnostic's own pane to `goto-location!` as the target
-only. The invocation pane is always `(focused-pane)`. The drawer stays open across a
+`lsp/diag-jump-to!` passes the diagnostic's own pane to `goto-location!` as the target,
+with the diagnostic's `'start-char` as the `'char-offset`. The invocation pane is always
+`(focused-pane)`. The drawer stays open across a
 buffer switch (see below), so a row picked there must jump into the buffer it was listed
 for, not whichever buffer is focused, and the pane that opened the drawer may show a
 different buffer by then. The `g n`/`g p` popup opens on `(focused-pane)` for the same reason:
@@ -93,7 +94,7 @@ and drawer rows also use.
 Signs are set with `set-signs!` under the same source, glyph `●`. Every refresh
 registers the source for the buffer with `register-sign-source!` at priority `10`, as
 does the detach handler before it clears. A diagnostic spanning several lines gets a sign
-on each line from its start line through its end line, both inclusive, and the most severe
+on each line from its `'start-line` up to, not including, its `'end-line`, and the most severe
 diagnostic on a line wins. The sign's scope is the bare severity name (`error`, `warning`,
 `info`, `hint`) rather than the summary's `.diagnostic.inline` form, because the gutter
 glyph is a separate render surface and must not inherit the text squiggle's underline.

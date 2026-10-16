@@ -55,7 +55,7 @@
 (define (lsp/locations-on-select places)
   (lambda (idx drawer)
     (cond
-      (idx (goto-location! (focused-pane) (hash-ref (list-ref places idx) 'location)))
+      (idx (lsp/jump-to! (hash-ref (list-ref places idx) 'location)))
       ((and lsp/*locations* (equal? (hash-ref lsp/*locations* 'drawer) drawer))
        (lsp/end-locations-session!)))))
 

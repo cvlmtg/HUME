@@ -130,29 +130,31 @@ pub trait LspHost {
     /// no path. `Err` per [`lsp_position_params`](Self::lsp_position_params).
     fn lsp_linewise_ranges_params(&self, pane: PaneHandle) -> Result<Option<RangesParams>, String>;
 
-    /// A [`WirePos`](hume_rope::position_encoding::WirePos) → char offset,
-    /// decoded in `encoding`. Backs `lsp-range->offsets`. `encoding` comes
-    /// from the caller's own tagged `JsonHandle` (the response the position
-    /// was read out of), not from `id`'s *currently* attached server: the
-    /// two can diverge (a restart renegotiates, a detach leaves none), and
-    /// the tag is always the encoding the position was actually written in.
-    /// `None` if `id` is unknown. Clamps rather than refuses an out-of-range
-    /// `line`/`character` (a range's `end` can legitimately land at the
-    /// buffer's char length); point-anchored callers want
+    /// A wire `[start, end)` range → char offsets, decoded in `encoding`.
+    /// Backs `lsp-range->char-range`. `encoding` comes from the caller's own
+    /// tagged `JsonHandle` (the response the range was read out of), not
+    /// from `id`'s *currently* attached server: the two can diverge (a
+    /// restart renegotiates, a detach leaves none), and the tag is always
+    /// the encoding the range was actually written in. `None` when the range
+    /// cannot be converted for `id`: an end is on a line past the document
+    /// end, which names no offset, or `id` is unknown. A `character` past its
+    /// line's end clamps, and an end may sit at the document end
+    /// `(line count, 0)`; point-anchored callers want
     /// [`lsp_wire_point_to_char`](Self::lsp_wire_point_to_char).
-    fn lsp_wire_to_char(
+    fn lsp_wire_range_to_chars(
         &self,
         id: BufferId,
-        pos: hume_rope::position_encoding::WirePos,
+        range: hume_rope::offset::ExclusiveRange<hume_rope::position_encoding::WirePos>,
         encoding: PositionEncoding,
-    ) -> Option<usize>;
+    ) -> Option<(usize, usize)>;
 
-    /// Same conversion as [`lsp_wire_to_char`](Self::lsp_wire_to_char), but
-    /// backs `lsp-position->offset` specifically: refuses (`None`) rather
-    /// than clamping when the wire position would land on the buffer's
-    /// trailing phantom line, since every point-anchored decoration setter
-    /// (`set-inlay-hints!`) rejects that offset outright. See
-    /// `wire_point_to_char_for_buffer`'s doc for why the two must differ.
+    /// A wire position → char offset, decoded in `encoding`, for
+    /// `lsp-position->char-offset`. A point must lie on a content line:
+    /// `None` when the position would land on the buffer's trailing phantom
+    /// line or past it, since every point-anchored decoration setter
+    /// (`set-inlay-hints!`) rejects that offset outright, or when `id` is
+    /// unknown. See `wire_point_to_char_for_buffer`'s doc for why a point and
+    /// a range differ.
     fn lsp_wire_point_to_char(
         &self,
         id: BufferId,
@@ -215,12 +217,11 @@ pub trait LspHost {
     /// lines later inside `lsp/place-display`, which is why both routes
     /// decode through the one shared `decode_location` instead of
     /// tolerating a bad shape here. See `decode_location`'s doc for the
-    /// full rule. `caller` names the builtin in those errors, since
-    /// `lsp-locations->merged-places` decodes through this method too.
+    /// full rule. The error does not name a builtin: the builtin that called
+    /// this adds its own name.
     fn lsp_location_places(
         &self,
         locs: &[(crate::json::JsonHandle, PositionEncoding)],
-        caller: &str,
     ) -> Result<Vec<LocationPlace>, String>;
 }
 

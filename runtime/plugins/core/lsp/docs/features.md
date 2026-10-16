@@ -22,7 +22,9 @@ same path, line and column appear once (`lsp-locations->merged-places`):
 
 `lsp/references` always opens the drawer, even for one result, because "where is this
 used" expects a list. Its request adds `context.includeDeclaration`. Every jump lands on
-`(focused-pane)`, so it goes where the user is when the response arrives.
+`(focused-pane)`, so it goes where the user is when the response arrives. Goto, the
+drawer's rows and the symbol pickers all jump through `lsp/jump-to!`, which warns when
+`goto-location!` answers `#f` because the line has gone from its file.
 
 ## Symbols
 

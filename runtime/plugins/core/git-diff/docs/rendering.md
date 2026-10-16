@@ -50,13 +50,13 @@ when several higher-priority sources share the buffer.
 
 | Hunk shape | Text | Scope | Line |
 |---|---|---|---|
-| Pure deletion (`new-count` 0) with `new-start` above 0 | `▁` (bottom-aligned) | `diff.minus` | `(- new-start 1)`, the line above the gap |
-| Pure deletion at the very start (`new-count` 0, `new-start` 0) | `▔` (top-aligned) | `diff.minus` | `0` |
-| Pure addition (`old-count` 0) | `+` | `diff.plus` | Every new-side line |
+| Pure deletion (no new-side lines) with `'new-start-line` above 0 | `▁` (bottom-aligned) | `diff.minus` | `(- new-start-line 1)`, the line above the gap |
+| Pure deletion at the very start (no new-side lines, `'new-start-line` 0) | `▔` (top-aligned) | `diff.minus` | `0` |
+| Pure addition (no old-side lines) | `+` | `diff.plus` | Every new-side line |
 | Anything else | `~` | `diff.delta` | Every new-side line |
 
 A pure deletion has no new-side lines to anchor on, so its sign lands on the line above the
-gap (gitsigns' convention). `(- new-start 1)` also keeps a deletion at end of file from
+gap (gitsigns' convention). `(- new-start-line 1)` also keeps a deletion at end of file from
 addressing a line past the end. The bottom-aligned glyph reads as a mark on the boundary
 below that line. A deletion at line 0 has no line above, so it gets the top-aligned glyph.
 
@@ -114,25 +114,25 @@ its first buffer-open event.
 A hunk's `'words` produce two decoration kinds, old-side virtual lines and new-side
 highlight spans.
 
-A pure addition (`old-count` 0) contributes nothing to this pass: there is nothing removed
+A pure addition (no old-side lines) contributes nothing to this pass: there is nothing removed
 to show. The line-background pass alone tints its new-side lines.
 
 ### Anchors
 
 A hunk's removed old-side lines attach at a `(kind . line)` anchor pair: `'after
-(- new-start 1)` when `new-start` is above 0, and `'before 0` for a deletion at the very
-start. `'after (- new-start 1)` renders where `'before new-start` would, and stays valid
-when `new-start` is the buffer's content line count, a deletion at end of file, where
-`'before new-start` would address the phantom trailing line and raise.
+(- new-start-line 1)` when `'new-start-line` is above 0, and `'before 0` for a deletion at
+the very start. `'after (- new-start-line 1)` renders where `'before new-start-line` would,
+and stays valid when `'new-start-line` is the buffer's content line count, a deletion at end
+of file, where `'before new-start-line` would address the phantom trailing line and raise.
 
 ### Word spans
 
-Every hunk carries `'words`, `(hash 'old spans 'new spans)`, each span
-`(hash 'line 'start 'end)`, with `'line` counted from the hunk's first line on that side
-and `'start`/`'end` char columns in that line. Spans are in ascending line order. For a
-hunk from a text diff, the Rust side word-diffs the whole old side against the whole new
-side, so a span marks the edit itself whatever the line counts are. Hunks from
-`buffer-revision-diff` carry the columns the edit changed.
+Every hunk carries `'words`, `(hash 'old spans 'new spans)`. An old-side span is
+`(hash 'line 'start-char-col 'end-char-col)`: a line of the old text and char columns in that line.
+A new-side span is `(hash 'start-char 'end-char)`: char offsets into the new text, the
+buffer. Spans are in ascending order. For a hunk from a text diff, the Rust side word-diffs
+the whole old side against the whole new side, so a span marks the edit itself whatever the
+line counts are. Hunks from `buffer-revision-diff` carry the ranges the edit changed.
 
 Each old-side line becomes one virtual line, passing the old line through as `'text` with
 the `'old` spans that name its line as `'segments` (the key is omitted when empty, not set
@@ -140,8 +140,5 @@ to `'()`). `set-virtual-lines!` accepts a literal tab and expands it. The engine
 virtual line under the pane's wrap mode, as it does the buffer line it sits beside, so a
 long old-side line occupies as many rows as its new-side twin.
 
-The `'new` spans become `(hash 'start 'end 'scope)` highlights in buffer char offsets,
-since `set-extra-highlights!` addresses the whole buffer and not one line. Offsets come
-from one `line->offset` host call for the hunk's first new-side line and a walk down
-`'new-lines` from there: each later line starts at its predecessor's offset plus its
-length plus one `\n`.
+The `'new` spans become `(hash 'start-char 'end-char 'scope)` highlights as they are, since
+`set-extra-highlights!` addresses the whole buffer and their offsets already do.

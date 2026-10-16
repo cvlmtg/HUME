@@ -9,7 +9,10 @@
 use steel::rvals::{IntoSteelVal, SteelVal};
 
 use super::SteelResult;
-use super::args::{ArgPane, list_of, not_live_err, symbol_hash};
+use super::args::{
+    ArgPane, LINE_RANGE_KEYS, line_range_value, list_of, not_live_err, optional_hash_entry,
+    symbol_hash,
+};
 use super::errors::generic_err;
 use super::ids::{SteelBufferKey, SteelPane};
 use crate::SteelCtx;
@@ -220,23 +223,19 @@ pub(crate) fn buffer_line_count(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelRe
     Ok(SteelVal::IntV(count as isize))
 }
 
-/// `(%buffer-lines pane start end)`: Rust half of the bootstrap-wrapped
-/// `(buffer-lines pane #:start .. #:end ..)`. `start`/`end` are already-decoded
-/// `Option<usize>` from `bootstrap.scm`'s `#f`-defaulted keyword args:
-/// `start` defaults to `0`, `end` to the buffer's content line count.
-/// Content lines in `[start, end)`, 0-based, end-exclusive, each with its
-/// trailing line break stripped. The phantom line past the buffer's
-/// structural trailing `\n` is never included (matches the statusline's and
-/// `:w`'s line count). Raises rather than clamping on `start > end` or
-/// `end` past the line count.
-pub(crate) fn buffer_lines(
-    ctx: &mut SteelCtx,
-    pane: PaneHandle,
-    start: Option<usize>,
-    end: Option<usize>,
-) -> SteelResult {
+/// `(%buffer-lines pane range)`: Rust half of the bootstrap-wrapped
+/// `(buffer-lines pane #:range ..)`. `range` is a line range value (see
+/// [`line_range_value`]) or `#f` for every content line. Content lines in
+/// `[start-line, end-line)`, 0-based, end-exclusive, each with its trailing
+/// line break stripped. The phantom line past the buffer's structural
+/// trailing `\n` is never included (matches the statusline's and `:w`'s line
+/// count). Raises rather than clamping on a missing end, `start-line >
+/// end-line`, or `end-line` past the line count.
+pub(crate) fn buffer_lines(ctx: &mut SteelCtx, pane: PaneHandle, range: SteelVal) -> SteelResult {
     let bid = pane.buffer();
-    let start = start.unwrap_or(0);
+    let range = optional_hash_entry(range, "buffer-lines #:range", LINE_RANGE_KEYS)?
+        .map(|range| range.line_range())
+        .transpose()?;
     // One error message for both lookups below: the second is unreachable
     // in practice (nothing can close `bid` between two synchronous host
     // calls) but the trait returns `Option`, so it's handled, not assumed.
@@ -246,7 +245,7 @@ pub(crate) fn buffer_lines(
         .buffers()
         .buffer_line_count(bid)
         .ok_or_else(invalid_id)?;
-    let end = end.unwrap_or(line_count);
+    let (start, end) = range.unwrap_or((0, line_count));
     if start > end || end > line_count {
         return Err(generic_err(format!(
             "buffer-lines: range {start}..{end} out of bounds for a {line_count}-line buffer"
@@ -349,7 +348,7 @@ pub(crate) fn show_read_only_buffer(
 
 // ── Live cursor/selection reads ───────────────────────────────────────────────
 
-/// `(buffer-cursor-line pane)` → 0-indexed line of the primary
+/// `(buffer-cursor-line pane)` → 0-indexed content line of the primary
 /// cursor in `pane`'s own pane.
 ///
 /// Reads live state: reflects any synchronous edits or motions that ran
@@ -359,7 +358,8 @@ pub(crate) fn buffer_cursor_line(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelR
         ctx.host
             .cursor()
             .buffer_cursor_line(pane)
-            .map_err(generic_err)? as isize,
+            .map_err(generic_err)?
+            .index() as isize,
     ))
 }
 
@@ -392,33 +392,40 @@ pub(crate) fn buffer_selections(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelRe
     list.into_steelval().map_err(generic_err)
 }
 
-/// `(offset->line pane idx)` → 0-indexed line containing 0-indexed
-/// char offset `idx` in `pane`'s buffer's live text, or `#f` when `idx` is
-/// out of range (> buffer length in chars). Raises on a stale buffer, same
+/// `(char-offset->line pane idx)` → 0-indexed content line containing 0-indexed
+/// char offset `idx` in `pane`'s buffer's live text; `idx` equal to the
+/// buffer length in chars is on the last content line. Raises when `idx` is
+/// past the buffer length, and on a stale buffer, same
 /// liveness contract as every other explicit-pane builtin, checked at
 /// decode time (`LivePane`) before `idx` is ever looked at, so a malformed
 /// `idx` still raises its own error on a stale buffer rather than being
 /// masked behind the liveness one (steel-core decodes `idx`'s own `Usize`
 /// argument type first regardless, left to right, but the ordering holds
 /// either way).
-pub(crate) fn offset_to_line(ctx: &mut SteelCtx, pane: PaneHandle, idx: usize) -> SteelResult {
-    match ctx.host.cursor().offset_to_line(pane.buffer(), idx) {
-        Some(line) => Ok(SteelVal::IntV(line as isize)),
-        None => Ok(SteelVal::BoolV(false)),
-    }
+pub(crate) fn char_offset_to_line(ctx: &mut SteelCtx, pane: PaneHandle, idx: usize) -> SteelResult {
+    let line = ctx
+        .host
+        .cursor()
+        .char_offset_to_line(pane.buffer(), idx)
+        .map_err(|e| generic_err(format!("char-offset->line: {e}")))?;
+    Ok(SteelVal::IntV(line.index() as isize))
 }
 
-/// `(line->offset pane line)` → 0-based char offset where 0-based content
+/// `(line->char-offset pane line)` → 0-based char offset where 0-based content
 /// `line` starts in `pane`'s buffer's live text. Raises on a stale buffer or
 /// a `line` past the content line count, same bounds contract as
 /// `buffer-lines` (raises rather than clamping).
 ///
-/// Named for the conversion family (`offset->line`, `lsp-position->offset`,
-/// `lsp-range->offsets`, `path->display`), not the `buffer-text`/
+/// Named for the conversion family (`char-offset->line`, `lsp-position->char-offset`,
+/// `lsp-range->char-range`, `path->display`), not the `buffer-text`/
 /// `buffer-lines` accessor family.
-pub(crate) fn line_to_offset(ctx: &mut SteelCtx, pane: PaneHandle, line: usize) -> SteelResult {
+pub(crate) fn line_to_char_offset(
+    ctx: &mut SteelCtx,
+    pane: PaneHandle,
+    line: usize,
+) -> SteelResult {
     let bid = pane.buffer();
-    let invalid_id = || not_live_err("line->offset", bid);
+    let invalid_id = || not_live_err("line->char-offset", bid);
     let line_count = ctx
         .host
         .buffers()
@@ -426,7 +433,7 @@ pub(crate) fn line_to_offset(ctx: &mut SteelCtx, pane: PaneHandle, line: usize) 
         .ok_or_else(invalid_id)?;
     if line >= line_count {
         return Err(generic_err(format!(
-            "line->offset: line {line} is out of range (buffer has {line_count} content lines)"
+            "line->char-offset: line {line} is out of range (buffer has {line_count} content lines)"
         )));
     }
     // Trusted mint: the check above is what licenses ContentLine::new here.
@@ -434,12 +441,12 @@ pub(crate) fn line_to_offset(ctx: &mut SteelCtx, pane: PaneHandle, line: usize) 
     let offset = ctx
         .host
         .buffers()
-        .line_to_offset(bid, line)
+        .line_to_char_offset(bid, line)
         .ok_or_else(invalid_id)?;
     Ok(SteelVal::IntV(offset as isize))
 }
 
-/// `(viewport-range pane)` → `(hash 'start first-line 'end end-line)` visible in
+/// `(viewport-range pane)` → `(hash 'start-line first-line 'end-line end-line)` visible in
 /// `pane`'s own pane: 0-based, end-exclusive, matching `buffer-lines`'
 /// range convention. Raises when `pane` carries no pane, a closed one, or
 /// one that no longer shows `pane`'s buffer. Answers for a background-tab
@@ -453,10 +460,7 @@ pub(crate) fn viewport_range(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResul
         .buffers()
         .viewport_range(pane)
         .map_err(generic_err)?;
-    Ok(symbol_hash([
-        ("start", SteelVal::IntV(range.start.index() as isize)),
-        ("end", SteelVal::IntV(range.end.index() as isize)),
-    ]))
+    Ok(line_range_value(range))
 }
 
 /// `(selections-linewise? pane)`.

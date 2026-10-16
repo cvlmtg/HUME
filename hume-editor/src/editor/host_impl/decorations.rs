@@ -242,13 +242,6 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         severity_floor: Option<&str>,
         range: Option<(usize, usize)>,
     ) -> Result<Vec<hume_scripting::host::DiagnosticEntry>, String> {
-        // Converted immediately at the Steel/LSP host seam: `range` arrives
-        // as the raw `(usize, usize)` tuple the FFI boundary decodes Steel's
-        // `#:range` argument into (see `CharOffset`'s doc on this one carve-out)
-        // and must not travel any further as one.
-        let range = range.map(|(start, end)| {
-            hume_rope::offset::ExclusiveRange::new(CharOffset::new(start), CharOffset::new(end))
-        });
         crate::editor::lsp::introspect::diagnostics_for_buffer(
             self.state,
             bid,
@@ -264,46 +257,25 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
 
 /// Converts `segments`' char offsets into `text` to byte offsets, sorting by
 /// `start` and validating in the process: the sole enforcement point for
-/// `set-virtual-lines!`'s segment contract (bounds, ordering, non-overlap,
-/// grapheme-cluster alignment). The Steel boundary
-/// (`virtual_line_specs` in `hume-scripting`'s `builtins/decorations.rs`)
-/// only decodes shape. See `VirtualLineSpec::segments`'s doc.
+/// `set-virtual-lines!`'s segment contract (bounds, ordering, non-overlap).
+/// The Steel boundary (`virtual_line_specs` in `hume-scripting`'s
+/// `builtins/decorations.rs`) only decodes shape. See
+/// `VirtualLineSpec::segments`'s doc.
 ///
-/// Grapheme boundaries, not merely char boundaries: the engine
-/// (`hume-engine/src/format/virtual_lines.rs`'s `format_virtual_lines`) resolves each virtual
-/// grapheme's scope once per cluster, at the cluster's start byte. A segment
-/// edge that splits a multi-codepoint cluster (e.g. `e` + combining acute)
-/// would still pass a char-boundary check, but the engine's per-cluster
-/// lookup would either paint the whole cluster with a segment that only
-/// claimed part of it, or miss a segment that only claimed part of it, both
-/// silent.
+/// An edge inside a grapheme cluster widens the segment to the whole
+/// cluster: the engine (`hume-engine/src/format/virtual_lines.rs`'s
+/// `format_virtual_lines`) resolves each virtual grapheme's scope once per
+/// cluster, at the cluster's start byte, so part of a cluster can't be
+/// painted. Two segments that widen into the same cluster overlap and raise:
+/// one character can't take two scopes.
 pub(super) fn virtual_line_segments_to_bytes(
     text: &str,
     mut segments: Vec<(usize, usize, String)>,
 ) -> Result<Vec<(usize, usize, String)>, String> {
-    use unicode_segmentation::UnicodeSegmentation;
-
     segments.sort_by_key(|(start, _, _)| *start);
 
-    // Char index -> byte offset, plus a sentinel one past the last char so
-    // `end == char_count` resolves to `text.len()`.
-    let char_to_byte: Vec<usize> = text
-        .char_indices()
-        .map(|(i, _)| i)
-        .chain(std::iter::once(text.len()))
-        .collect();
-    let char_count = char_to_byte.len() - 1;
-
-    // Every grapheme-cluster start byte offset, plus end-of-text, sorted,
-    // since `grapheme_indices` yields ascending byte offsets. Built once per
-    // entry rather than re-walking `text` on every boundary check below.
-    let grapheme_boundaries: Vec<usize> = text
-        .grapheme_indices(true)
-        .map(|(i, _)| i)
-        .chain(std::iter::once(text.len()))
-        .collect();
-    let is_grapheme_boundary =
-        |byte_offset: usize| grapheme_boundaries.binary_search(&byte_offset).is_ok();
+    let slice = ropey::RopeSlice::from(text);
+    let char_count = slice.len_chars();
 
     let mut prev_end = 0usize;
     let mut out = Vec::with_capacity(segments.len());
@@ -318,21 +290,22 @@ pub(super) fn virtual_line_segments_to_bytes(
                 "set-virtual-lines! segments: segment end {end} is past text's char length {char_count}"
             ));
         }
-        let start_byte = char_to_byte[start];
-        let end_byte = char_to_byte[end];
-        if !is_grapheme_boundary(start_byte) || !is_grapheme_boundary(end_byte) {
+        // Trusted mint: `start < end <= char_count` is checked above.
+        let chars = hume_rope::cluster::ClusterRange::covering(
+            slice,
+            ExclusiveRange::new(CharOffset::new(start), CharOffset::new(end)),
+        )
+        .expect("a non-empty range within the text covers a cluster")
+        .chars();
+        let start_byte = slice.char_to_byte(chars.start.index());
+        let end_byte = slice.char_to_byte(chars.end.index());
+        if start_byte < prev_end {
             return Err(format!(
-                "set-virtual-lines! segments: segment ({start}, {end}) is not aligned to a \
-                 grapheme-cluster boundary in text"
+                "set-virtual-lines! segments: segments must not overlap (segment ({start}, \
+                 {end}) shares a character with the previous one)"
             ));
         }
-        if start < prev_end {
-            return Err(format!(
-                "set-virtual-lines! segments: segments must not overlap (segment starting at \
-                 {start} overlaps the previous one ending at {prev_end})"
-            ));
-        }
-        prev_end = end;
+        prev_end = end_byte;
         out.push((start_byte, end_byte, scope));
     }
 
@@ -384,11 +357,12 @@ pub(super) fn line_start_offset(
 }
 
 /// `pos` must address a real char in `text` (`<` its length), `Err` naming
-/// `builtin` otherwise. One past the last char looks tempting for an
-/// `'after` hint at end-of-buffer, but there's no char there to anchor to:
-/// `visible_char_range` is half-open, so `pos == len_chars()` can never pass
-/// its `contains` check and the hint would silently never render. Reject it
-/// here instead, same as every other position-taking decoration kind.
+/// `builtin` otherwise. A `pos` inside a grapheme cluster snaps to it: a
+/// `'before` hint (`before == true`) to the cluster's first char, an `'after`
+/// one to its last, so the hint sits before or after the whole character.
+/// `pos == len_chars()` is refused: `visible_char_range` is half-open, so
+/// that position never passes its `contains` check and the hint would not
+/// render.
 ///
 /// `before == false` ('after') gets a second check: the render bridge
 /// (`decoration_providers.rs`'s `update_inlay_hint_providers`) anchors an
@@ -409,26 +383,36 @@ pub(super) fn validate_offset(
             text.len_chars()
         ));
     }
+    // Trusted mint: `pos < len_chars()` is checked above.
+    let at = CharOffset::new(pos);
+    let cluster = text
+        .covering(ExclusiveRange::new(at, at.shift(1)))
+        .expect("a char below the text's length lies in a cluster");
+    let pos = if before {
+        cluster.start().offset()
+    } else {
+        cluster.end().offset().retreat(1)
+    };
     if !before {
-        // `pos < text.len_chars()` is checked above, so `pos` shifted by one
+        // `pos` is a char below `len_chars()`, so `pos` shifted by one
         // codepoint stays `<= len_chars()`: the one past-the-end position
         // `ropey_char_to_line` (ropey domain) accepts, needed to find which
         // line an 'after' hint at `pos + 1` actually lands on.
-        let landing_line = text.ropey_char_to_line(CharOffset::new(pos).shift(1));
+        let landing_line = text.ropey_char_to_line(pos.shift(1));
         if landing_line.to_content(text.rope()).is_none() {
             return Err(format!(
-                "{builtin}: offset {pos} anchored 'after would land on the buffer's trailing \
-                 empty line"
+                "{builtin}: offset {} anchored 'after would land on the buffer's trailing \
+                 empty line",
+                pos.index()
             ));
         }
     }
-    // Trusted mint: both checks above already proved `pos` a valid char
-    // position in `text`.
-    Ok(CharOffset::new(pos))
+    Ok(pos)
 }
 
 /// `(start, end)` must be a valid, non-empty char range into `text`, `Err`
-/// naming `builtin` otherwise.
+/// naming `builtin` otherwise. An edge inside a grapheme cluster widens the
+/// range to the whole cluster: the renderer paints a cluster at a time.
 fn validate_range(
     text: &hume_editing::text::BufferText,
     start: usize,
@@ -440,16 +424,12 @@ fn validate_range(
             "{builtin}: range ({start}, {end}) must have start < end"
         ));
     }
-    if end > text.len_chars() {
-        return Err(format!(
-            "{builtin}: range end {end} is past the buffer's char length {}",
-            text.len_chars()
-        ));
-    }
-    // Trusted mint: both checks above already proved `start`/`end` a valid,
-    // non-empty char range in `text`.
-    Ok(ExclusiveRange::new(
-        CharOffset::new(start),
-        CharOffset::new(end),
-    ))
+    let end =
+        super::checked_char_offset(text, end).map_err(|e| format!("{builtin}: range end: {e}"))?;
+    // Trusted mint: `start < end` is checked above and `end` is within `text`.
+    let range = ExclusiveRange::new(CharOffset::new(start), end);
+    Ok(text
+        .covering(range)
+        .expect("a non-empty range within the text covers a cluster")
+        .chars())
 }

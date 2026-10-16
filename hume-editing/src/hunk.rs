@@ -44,14 +44,14 @@ pub struct ChangeHunk {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct WordSpans {
     pub old: Vec<LineSpan>,
-    pub new: Vec<LineSpan>,
+    /// Char ranges of the new text.
+    pub new: Vec<ExclusiveRange<CharOffset>>,
 }
 
-/// A char-column range inside one line of a hunk side, `line` counted from the
-/// hunk's first line on that side.
+/// A char-column range inside one line of a text.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LineSpan {
-    pub line: usize,
+    pub line: ContentLine,
     pub start: CharCol,
     pub end: CharCol,
 }
@@ -60,8 +60,9 @@ pub struct LineSpan {
 /// (the new side) against the lines of the text `cs` produces (the old side).
 /// A hunk's old-side start is a line of the produced text.
 ///
-/// Word spans are the char columns `cs` itself deletes (new side) and inserts
-/// (old side), so no text diff runs.
+/// Word spans are what `cs` itself deletes (new side, char ranges of `text`)
+/// and inserts (old side, columns of the produced text's lines), so no text
+/// diff runs.
 pub fn change_hunks(cs: &ChangeSet, text: &BufferText) -> Vec<ChangeHunk> {
     let regions = cs.edited_regions();
     let lines: Vec<_> = regions.iter().map(|r| affected_lines(r, text)).collect();
@@ -169,14 +170,22 @@ fn group_hunk(
     let old_start = new_start
         .checked_add_signed(skew)
         .expect("an old-side start is never negative");
+    let (old_start, new_start) = (ContentLine::new(old_start), ContentLine::new(new_start));
     Some(ChangeHunk {
-        old_start: ContentLine::new(old_start),
-        new_start: ContentLine::new(new_start),
+        old_start,
+        new_start,
         old_lines: old_kept.iter().map(|l| (*l).to_owned()).collect(),
         new_lines: new_kept.iter().map(|l| (*l).to_owned()).collect(),
         words: WordSpans {
-            old: line_spans(&old_lines, &old_ranges, lead, old_kept.len()),
-            new: line_spans(&new_lines, &new_ranges, lead, new_kept.len()),
+            old: line_spans(
+                clipped(&old_lines, &old_ranges, lead..lead + old_kept.len()),
+                lead,
+                old_start,
+            ),
+            new: char_ranges(
+                clipped(&new_lines, &new_ranges, lead..lead + new_kept.len()),
+                start,
+            ),
         },
     })
 }
@@ -201,20 +210,33 @@ fn text_hunks_with_budget(old: &BufferText, new: &BufferText, budget: Duration) 
         .hunks
         .into_iter()
         .filter(|hunk| hunk.kind != LineHunkKind::Equal)
-        .map(|LineHunk { old, new, .. }| {
-            let old_lines = token_lines(&old_tokens, old.clone());
-            let new_lines = token_lines(&new_tokens, new.clone());
-            // The phantom trailing line is an empty token on both sides, so it
-            // only ever matches as `Equal`: a start is a content line or the
-            // one-past-last insertion point.
-            ChangeHunk {
-                old_start: ContentLine::new(old.start),
-                new_start: ContentLine::new(new.start),
-                words: text_hunk_words(&old_lines, &new_lines, deadline),
-                old_lines,
-                new_lines,
-            }
-        })
+        .map(
+            |LineHunk {
+                 old: old_range,
+                 new: new_range,
+                 ..
+             }| {
+                let old_lines = token_lines(&old_tokens, old_range.clone());
+                let new_lines = token_lines(&new_tokens, new_range.clone());
+                // The phantom trailing line is an empty token on both sides, so it
+                // only ever matches as `Equal`: a start is a content line or the
+                // one-past-last insertion point.
+                let old_start = ContentLine::new(old_range.start);
+                let new_start = ContentLine::new(new_range.start);
+                ChangeHunk {
+                    old_start,
+                    new_start,
+                    words: text_hunk_words(
+                        new,
+                        (old_start, &old_lines),
+                        (new_start, &new_lines),
+                        deadline,
+                    ),
+                    old_lines,
+                    new_lines,
+                }
+            },
+        )
         .collect()
 }
 
@@ -227,8 +249,15 @@ fn token_lines(tokens: &[RopeSlice<'_>], range: Range<usize>) -> Vec<String> {
         .collect()
 }
 
-/// Empty when a side has no lines or `deadline` passes first.
-fn text_hunk_words(old_lines: &[String], new_lines: &[String], deadline: Instant) -> WordSpans {
+/// Empty when a side has no lines or `deadline` passes first. Each side is
+/// its first line in its text and its lines; `new_text` is the text the new
+/// side's lines are from.
+fn text_hunk_words(
+    new_text: &BufferText,
+    (old_start, old_lines): (ContentLine, &[String]),
+    (new_start, new_lines): (ContentLine, &[String]),
+    deadline: Instant,
+) -> WordSpans {
     let left = deadline.saturating_duration_since(Instant::now());
     if old_lines.is_empty() || new_lines.is_empty() || left.is_zero() {
         return WordSpans::default();
@@ -239,8 +268,15 @@ fn text_hunk_words(old_lines: &[String], new_lines: &[String], deadline: Instant
         return WordSpans::default();
     };
     WordSpans {
-        old: line_spans(old_lines, &old_ranges, 0, old_lines.len()),
-        new: line_spans(new_lines, &new_ranges, 0, new_lines.len()),
+        old: line_spans(
+            clipped(old_lines, &old_ranges, 0..old_lines.len()),
+            0,
+            old_start,
+        ),
+        new: char_ranges(
+            clipped(new_lines, &new_ranges, 0..new_lines.len()),
+            new_text.line_to_char(RopeyLine::from(new_start)),
+        ),
     }
 }
 
@@ -250,43 +286,75 @@ fn split_lines(s: &str) -> Vec<&str> {
     s.split_inclusive('\n').map(strip_line_break).collect()
 }
 
+/// One part of a word range that lies inside one line's content. `index` is
+/// the line's index in its side's lines, and `line_start`, `start` and `end`
+/// are char offsets into those lines joined by one break each.
+struct Clipped {
+    index: usize,
+    line_start: usize,
+    start: usize,
+    end: usize,
+}
+
 /// The parts of `ranges` (char ranges of `lines` joined by one break each)
-/// that fall inside line contents, as spans of the lines `skip..skip + keep`
-/// numbered from `skip`. A span covering a whole line is dropped: the line
-/// already counts as changed.
-fn line_spans(
-    lines: &[impl AsRef<str>],
-    ranges: &[Range<usize>],
-    skip: usize,
-    keep: usize,
-) -> Vec<LineSpan> {
-    let mut spans = Vec::new();
+/// that fall inside the contents of the lines in `kept`. A part covering a
+/// whole line is dropped: the line already counts as changed.
+fn clipped(lines: &[impl AsRef<str>], ranges: &[Range<usize>], kept: Range<usize>) -> Vec<Clipped> {
+    let mut parts = Vec::new();
     let mut line_start = 0;
-    let mut first = 0;
-    for (index, line) in lines.iter().enumerate().take(skip + keep) {
+    let mut next_range = 0;
+    for (index, line) in lines.iter().enumerate().take(kept.end) {
         let len = line.as_ref().chars().count();
-        if index >= skip {
-            while first < ranges.len() && ranges[first].end <= line_start {
-                first += 1;
+        if index >= kept.start {
+            while next_range < ranges.len() && ranges[next_range].end <= line_start {
+                next_range += 1;
             }
-            for range in ranges[first..]
+            for range in ranges[next_range..]
                 .iter()
                 .take_while(|r| r.start < line_start + len)
             {
                 let (start, end) = (range.start.max(line_start), range.end.min(line_start + len));
                 let whole = start == line_start && end == line_start + len;
                 if start < end && !whole {
-                    spans.push(LineSpan {
-                        line: index - skip,
-                        start: CharCol::new(start - line_start),
-                        end: CharCol::new(end - line_start),
+                    parts.push(Clipped {
+                        index,
+                        line_start,
+                        start,
+                        end,
                     });
                 }
             }
         }
         line_start += len + 1;
     }
-    spans
+    parts
+}
+
+/// `parts` as char columns of their lines, where the line at index
+/// `kept_start` is `first` in its text.
+fn line_spans(parts: Vec<Clipped>, kept_start: usize, first: ContentLine) -> Vec<LineSpan> {
+    parts
+        .into_iter()
+        .map(|part| LineSpan {
+            line: first.advance(part.index - kept_start),
+            start: CharCol::new(part.start - part.line_start),
+            end: CharCol::new(part.end - part.line_start),
+        })
+        .collect()
+}
+
+/// `parts` as char ranges of a text whose char `base` is where their side's
+/// first line starts.
+fn char_ranges(parts: Vec<Clipped>, base: CharOffset) -> Vec<ExclusiveRange<CharOffset>> {
+    parts
+        .into_iter()
+        .map(|part| {
+            ExclusiveRange::new(
+                base.shift(part.start as isize),
+                base.shift(part.end as isize),
+            )
+        })
+        .collect()
 }
 
 #[cfg(test)]

@@ -357,8 +357,12 @@ impl crate::host::BufferHost for RecordingBufferOptionHost {
     ) -> Option<Vec<String>> {
         self.inner.buffer_lines(id, range)
     }
-    fn line_to_offset(&self, id: BufferId, line: hume_rope::line::ContentLine) -> Option<usize> {
-        self.inner.line_to_offset(id, line)
+    fn line_to_char_offset(
+        &self,
+        id: BufferId,
+        line: hume_rope::line::ContentLine,
+    ) -> Option<usize> {
+        self.inner.line_to_char_offset(id, line)
     }
     fn viewport_range(
         &self,

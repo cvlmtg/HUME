@@ -698,7 +698,7 @@ fn returning_to_a_background_tab_at_unchanged_geometry_still_refires_viewport_ch
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(register-hook! 'on-viewport-change (lambda (bid first end)
+        r#"(register-hook! 'on-viewport-change (lambda (bid range)
              (set-buffer-option! bid "tab-width" (+ 1 (get-buffer-option bid "tab-width")))))"#,
         tmp.path(),
     );
@@ -738,7 +738,7 @@ fn switching_buffer_in_place_at_unchanged_geometry_still_refires_viewport_change
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(register-hook! 'on-viewport-change (lambda (bid first end)
+        r#"(register-hook! 'on-viewport-change (lambda (bid range)
              (set-buffer-option! bid "tab-width" (+ 1 (get-buffer-option bid "tab-width")))))"#,
         tmp.path(),
     );
@@ -788,7 +788,7 @@ fn a_pending_debounced_viewport_change_does_not_fire_for_a_pane_that_went_backgr
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(register-hook! 'on-viewport-change (lambda (bid first end)
+        r#"(register-hook! 'on-viewport-change (lambda (bid range)
              (set-buffer-option! bid "tab-width" (+ 1 (get-buffer-option bid "tab-width")))))"#,
         tmp.path(),
     );

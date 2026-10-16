@@ -88,9 +88,9 @@ impl<'a> EditHost for EditorHostImpl<'a> {
         pane: PaneHandle,
         loc: &serde_json::Value,
         encoding: hume_rope::position_encoding::PositionEncoding,
-    ) -> Result<(), String> {
+    ) -> Result<bool, String> {
         let t = self.command_pane(pane)?;
-        let wl = hume_lsp::location::decode_location(loc, "goto-location!")?;
+        let wl = hume_lsp::location::decode_location(loc)?;
         let target = crate::editor::lsp::edits::GotoTarget::Wire {
             uri: wl.uri,
             pos: wl.pos,
@@ -102,13 +102,13 @@ impl<'a> EditHost for EditorHostImpl<'a> {
     fn goto_location_path(
         &mut self,
         pane: PaneHandle,
-        path_or_uri: String,
-        line: hume_rope::line::RopeyLine,
+        path: String,
+        line: usize,
         char_col: usize,
-    ) -> Result<(), String> {
+    ) -> Result<bool, String> {
         let t = self.command_pane(pane)?;
         let target = crate::editor::lsp::edits::GotoTarget::Path {
-            path_or_uri,
+            path,
             line,
             char_col: CharCol::new(char_col),
         };
@@ -119,16 +119,14 @@ impl<'a> EditHost for EditorHostImpl<'a> {
         &mut self,
         pane: PaneHandle,
         target: BufferId,
-        line: hume_rope::line::RopeyLine,
-        char_col: usize,
+        char_offset: usize,
     ) -> Result<(), String> {
         let t = self.command_pane(pane)?;
         let goto_target = crate::editor::lsp::edits::GotoTarget::Buffer {
             bid: target,
-            line,
-            char_col: CharCol::new(char_col),
+            char_offset,
         };
-        crate::editor::lsp::edits::goto_location(self.state, self.view, t, goto_target)
+        crate::editor::lsp::edits::goto_location(self.state, self.view, t, goto_target).map(|_| ())
     }
 
     fn goto_revision(&mut self, pane: PaneHandle, revision: usize) -> Result<(), String> {

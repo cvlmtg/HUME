@@ -174,8 +174,9 @@ pub struct GrammarReg {
 /// **caller-supplied and unvalidated** char ranges, not yet sorted,
 /// bounds-checked, or overlap-checked. `DecorationHost::set_virtual_lines`
 /// (the host boundary) is the sole enforcement point: it sorts, validates
-/// (bounds, ordering, non-overlap, grapheme-cluster alignment), and converts
-/// to byte offsets before anything downstream sees them.
+/// (bounds, ordering, non-overlap), widens edges inside a grapheme cluster to
+/// the whole cluster, and converts to byte offsets before anything
+/// downstream sees them.
 #[derive(Debug, Clone)]
 pub struct VirtualLineSpec {
     pub line: usize,

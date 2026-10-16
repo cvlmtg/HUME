@@ -116,12 +116,13 @@ text leaves no hunk. The old-side line number is the new-side one, corrected
 by the line breaks `C` deletes and inserts before it. No full text is rebuilt
 and no Myers pass runs, so the cost scales with the edit, not the buffer.
 
-The word spans are the `Delete` and `Insert` positions themselves, cut at line
-breaks into char-column ranges per line, so a hunk carries them and needs no
-`diff-words` call. A span covering a whole line is dropped, since the tint or
-the virtual line already marks that line, so a revision recorded as
-whole-line replacements (`:e!`'s reload, through `changesets_from_line_diff`)
-carries an empty `'words`.
+The word spans are the `Delete` and `Insert` positions themselves, so a hunk
+carries them and needs no `diff-words` call: the plus side as char ranges of
+the current text, the minus side cut at line breaks into char-column ranges
+per line. A span covering a whole line is dropped, since the tint or the
+virtual line already marks that line, so a revision recorded as whole-line
+replacements (`:e!`'s reload, through `changesets_from_line_diff`) carries an
+empty `'words`.
 
 ### Hunks cross the Steel boundary, changesets do not
 

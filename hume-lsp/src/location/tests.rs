@@ -20,7 +20,7 @@ fn location_link(uri: &str, line: u64, character: u64) -> serde_json::Value {
 
 #[test]
 fn decodes_a_plain_location() {
-    let wl = decode_location(&location("file:///tmp/a.rs", 3, 7), "test").expect("decode");
+    let wl = decode_location(&location("file:///tmp/a.rs", 3, 7)).expect("decode");
     assert_eq!(wl.uri.as_str(), "file:///tmp/a.rs");
     assert_eq!(wl.pos.line, 3);
     assert_eq!(wl.pos.character, 7);
@@ -33,7 +33,7 @@ fn decodes_a_plain_location() {
 fn decodes_a_location_link_preferring_target_selection_range() {
     let mut link = location_link("file:///tmp/b.rs", 5, 2);
     link["targetSelectionRange"] = serde_json::json!({"start": {"line": 9, "character": 1}, "end": {"line": 9, "character": 2}});
-    let wl = decode_location(&link, "test").expect("decode");
+    let wl = decode_location(&link).expect("decode");
     assert_eq!(wl.pos.line, 9);
     assert_eq!(wl.pos.character, 1);
 }
@@ -44,23 +44,23 @@ fn decodes_a_location_link_preferring_target_selection_range() {
 fn decodes_a_location_link_with_only_target_range() {
     let mut link = location_link("file:///tmp/c.rs", 4, 0);
     link.as_object_mut().unwrap().remove("targetSelectionRange");
-    let wl = decode_location(&link, "test").expect("decode");
+    let wl = decode_location(&link).expect("decode");
     assert_eq!(wl.pos.line, 4);
     assert_eq!(wl.pos.character, 0);
 }
 
 #[test]
-fn missing_uri_errors_naming_the_caller() {
+fn missing_uri_errors() {
     let loc = serde_json::json!({"range": {"start": {"line": 0, "character": 0}}});
-    let err = decode_location(&loc, "my-caller").unwrap_err();
-    assert_eq!(err, "my-caller: missing uri");
+    let err = decode_location(&loc).unwrap_err();
+    assert_eq!(err, "missing uri");
 }
 
 #[test]
 fn missing_range_errors() {
     let loc = serde_json::json!({"uri": "file:///tmp/a.rs"});
-    let err = decode_location(&loc, "test").unwrap_err();
-    assert_eq!(err, "test: missing range");
+    let err = decode_location(&loc).unwrap_err();
+    assert_eq!(err, "missing range");
 }
 
 #[test]
@@ -69,8 +69,8 @@ fn missing_range_start_line_errors() {
         "uri": "file:///tmp/a.rs",
         "range": {"start": {"character": 0}}
     });
-    let err = decode_location(&loc, "test").unwrap_err();
-    assert_eq!(err, "test: missing range.start.line");
+    let err = decode_location(&loc).unwrap_err();
+    assert_eq!(err, "missing range.start.line");
 }
 
 #[test]
@@ -79,8 +79,8 @@ fn missing_range_start_character_errors() {
         "uri": "file:///tmp/a.rs",
         "range": {"start": {"line": 0}}
     });
-    let err = decode_location(&loc, "test").unwrap_err();
-    assert_eq!(err, "test: missing range.start.character");
+    let err = decode_location(&loc).unwrap_err();
+    assert_eq!(err, "missing range.start.character");
 }
 
 #[test]
@@ -89,17 +89,17 @@ fn non_integer_line_errors_as_missing() {
         "uri": "file:///tmp/a.rs",
         "range": {"start": {"line": "not-a-number", "character": 0}}
     });
-    let err = decode_location(&loc, "test").unwrap_err();
-    assert_eq!(err, "test: missing range.start.line");
+    let err = decode_location(&loc).unwrap_err();
+    assert_eq!(err, "missing range.start.line");
 }
 
 #[test]
 fn unparseable_uri_errors() {
     // A `:` with no scheme name before it is not a valid URI at all.
     let loc = location(":::not a uri:::", 0, 0);
-    let err = decode_location(&loc, "test").unwrap_err();
+    let err = decode_location(&loc).unwrap_err();
     assert!(
-        err.starts_with("test: bad uri"),
+        err.starts_with("bad uri"),
         "expected a bad-uri error, got {err:?}"
     );
 }
@@ -111,6 +111,6 @@ fn location_link_missing_target_uri_errors_as_missing_uri() {
     let loc = serde_json::json!({
         "targetRange": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 1}}
     });
-    let err = decode_location(&loc, "test").unwrap_err();
-    assert_eq!(err, "test: missing uri");
+    let err = decode_location(&loc).unwrap_err();
+    assert_eq!(err, "missing uri");
 }

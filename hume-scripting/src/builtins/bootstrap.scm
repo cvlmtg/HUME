@@ -139,8 +139,8 @@
 (define (set-eol-text! source pane lines #:hide-on-insert-line [hide #f])
   (%set-eol-text! source pane lines hide))
 
-(define (buffer-lines pane #:start [start #f] #:end [end #f])
-  (%buffer-lines pane start end))
+(define (buffer-lines pane #:range [range #f])
+  (%buffer-lines pane range))
 
 (define (apply-text-edits! pane edits #:expect-generation [gen #f])
   (%apply-text-edits! pane edits gen))

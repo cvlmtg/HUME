@@ -19,11 +19,11 @@ fn list(items: Vec<SteelVal>) -> SteelVal {
     items.into_steelval().unwrap()
 }
 
-/// Builds a `(hash 'start 'end 'scope)` segment.
+/// Builds a `(hash 'start-char 'end-char 'scope)` segment.
 fn seg(start: isize, end: isize, scope: &str) -> SteelVal {
     hashmap(vec![
-        ("start", SteelVal::IntV(start)),
-        ("end", SteelVal::IntV(end)),
+        ("start-char", SteelVal::IntV(start)),
+        ("end-char", SteelVal::IntV(end)),
         ("scope", SteelVal::StringV(scope.into())),
     ])
 }
@@ -442,8 +442,8 @@ fn virtual_line_spec_rejects_segment_missing_a_key() {
         (
             "segments",
             list(vec![hashmap(vec![
-                ("start", SteelVal::IntV(0)),
-                ("end", SteelVal::IntV(1)),
+                ("start-char", SteelVal::IntV(0)),
+                ("end-char", SteelVal::IntV(1)),
             ])]),
         ),
     ]);

@@ -175,7 +175,11 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
         )
     }
 
-    fn line_to_offset(&self, id: BufferId, line: hume_rope::line::ContentLine) -> Option<usize> {
+    fn line_to_char_offset(
+        &self,
+        id: BufferId,
+        line: hume_rope::line::ContentLine,
+    ) -> Option<usize> {
         Some(self.buffer(id)?.text().line_to_char(line.into()).index())
     }
 

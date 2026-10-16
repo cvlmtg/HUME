@@ -1,5 +1,6 @@
 use super::*;
 use hume_platform::dirs::Dirs;
+use hume_rope::line::ContentLine;
 use hume_scripting::host::NativeCall;
 
 use crate::editor::host_impl::EditorHostImpl;
@@ -184,7 +185,7 @@ fn current_line_number_reads_live_position() {
     let before = live_host!(ed)
         .buffer_cursor_line(pane)
         .expect("line before");
-    assert_eq!(before, 0, "cursor starts on line 0");
+    assert_eq!(before.index(), 0, "cursor starts on line 0");
 
     // move-down crosses to line 1.
     {
@@ -202,7 +203,8 @@ fn current_line_number_reads_live_position() {
 
     let after = live_host!(ed).buffer_cursor_line(pane).expect("line after");
     assert_eq!(
-        after, 1,
+        after.index(),
+        1,
         "current_line_number must reflect the sync move to line 1"
     );
 }
@@ -668,8 +670,9 @@ fn steel_native_via_call_preserves_own_count() {
     let line = host.buffer_cursor_line(pane).expect("buffer_cursor_line");
     // Started on line 0, moved down 3 → should be on line 3.
     assert_eq!(
-        line, 3,
-        "native count=3 must be preserved in plugin→native chain; got line {line}"
+        line.index(),
+        3,
+        "native count=3 must be preserved in plugin→native chain; got line {line:?}"
     );
 }
 
@@ -1761,7 +1764,7 @@ fn keymap_dispatch_arity_over_3_reports_error() {
     );
 }
 
-// ── buffer_selections / offset_to_line ───────────────────────────────────
+// ── buffer_selections / char_offset_to_line ───────────────────────────────────
 
 fn sel_info(
     anchor: usize,
@@ -1854,50 +1857,50 @@ fn buffer_selections_primary_flag_follows_primary_index() {
     );
 }
 
-/// `offset_to_line` maps a 0-indexed char offset to its 0-indexed line.
+/// `char_offset_to_line` maps a 0-indexed char offset to its 0-indexed content
+/// line.
 ///
 /// Expected lines are hand-counted from the buffer text rather than derived
 /// via `char_to_line` or any shared helper.
 #[test]
-fn offset_to_line_maps_offsets() {
+fn char_offset_to_line_maps_offsets() {
     // "ab\ncd\n": a=0 b=1 \n=2 c=3 d=4 \n=5 (6 chars).
     let mut ed = editor_from("-[a]>b\ncd\n");
     let bid = ed.focused_buffer_id();
     let _pane = focused_pane(&ed);
     let host = live_host!(ed);
     assert_eq!(
-        host.offset_to_line(bid, 0),
-        Some(0),
+        host.char_offset_to_line(bid, 0),
+        Ok(ContentLine::new(0)),
         "offset 0 ('a') is on line 0"
     );
     assert_eq!(
-        host.offset_to_line(bid, 3),
-        Some(1),
+        host.char_offset_to_line(bid, 3),
+        Ok(ContentLine::new(1)),
         "offset 3 ('c') is on line 1"
     );
 }
 
-/// `offset_to_line` returns `None` for an offset past the buffer's length,
-/// but still succeeds at the exact boundary (`idx == len_chars()`).
+/// `char_offset_to_line` is an error for an offset past the buffer's length, but
+/// still succeeds at the exact boundary (`idx == len_chars()`), which is on
+/// the last content line.
 #[test]
-fn offset_to_line_out_of_range_returns_none() {
+fn char_offset_to_line_out_of_range_is_an_error() {
     // "ab\ncd\n": 6 chars, len_chars() == 6. Every buffer ends with a
-    // structural '\n' (HUME invariant), so ropey counts a trailing virtual
-    // empty line after it: line 0 "ab\n", line 1 "cd\n", line 2 "". Idx 6
-    // (== len_chars()) sits on that third, empty line.
+    // structural '\n' (HUME invariant), so idx 6 (== len_chars()) follows the
+    // last line break, on content line 1 ("cd").
     let mut ed = editor_from("-[a]>b\ncd\n");
     let bid = ed.focused_buffer_id();
     let _pane = focused_pane(&ed);
     let host = live_host!(ed);
+    let err = host
+        .char_offset_to_line(bid, 7)
+        .expect_err("offset past len_chars() must be an error");
+    assert!(err.contains("past the end"), "got: {err}");
     assert_eq!(
-        host.offset_to_line(bid, 7),
-        None,
-        "offset past len_chars() must be None"
-    );
-    assert_eq!(
-        host.offset_to_line(bid, 6),
-        Some(2),
-        "offset exactly at len_chars() is still a valid boundary (trailing virtual line)"
+        host.char_offset_to_line(bid, 6),
+        Ok(ContentLine::new(1)),
+        "offset exactly at len_chars() is on the last content line"
     );
 }
 

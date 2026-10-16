@@ -82,14 +82,17 @@ impl EditorHost for ReadOnlyHost<'_> {
 }
 
 impl CursorHost for ReadOnlyHost<'_> {
-    fn buffer_cursor_line(&self, pane: PaneHandle) -> Result<usize, String> {
+    fn buffer_cursor_line(&self, pane: PaneHandle) -> Result<ContentLine, String> {
         self.inner.borrow_mut().cursor().buffer_cursor_line(pane)
     }
     fn buffer_selections(&self, pane: PaneHandle) -> Result<Vec<SelectionInfo>, String> {
         self.inner.borrow_mut().cursor().buffer_selections(pane)
     }
-    fn offset_to_line(&self, bid: BufferId, idx: usize) -> Option<usize> {
-        self.inner.borrow_mut().cursor().offset_to_line(bid, idx)
+    fn char_offset_to_line(&self, bid: BufferId, idx: usize) -> Result<ContentLine, String> {
+        self.inner
+            .borrow_mut()
+            .cursor()
+            .char_offset_to_line(bid, idx)
     }
     fn symbol_under_cursor(&self, pane: PaneHandle) -> Result<String, String> {
         self.inner.borrow_mut().cursor().symbol_under_cursor(pane)
@@ -270,8 +273,11 @@ impl BufferHost for ReadOnlyHost<'_> {
     ) -> Option<Vec<String>> {
         self.inner.borrow_mut().buffers().buffer_lines(id, range)
     }
-    fn line_to_offset(&self, id: BufferId, line: ContentLine) -> Option<usize> {
-        self.inner.borrow_mut().buffers().line_to_offset(id, line)
+    fn line_to_char_offset(&self, id: BufferId, line: ContentLine) -> Option<usize> {
+        self.inner
+            .borrow_mut()
+            .buffers()
+            .line_to_char_offset(id, line)
     }
     fn viewport_range(&self, pane: PaneHandle) -> Result<ExclusiveRange<ContentLine>, String> {
         self.inner.borrow_mut().buffers().viewport_range(pane)

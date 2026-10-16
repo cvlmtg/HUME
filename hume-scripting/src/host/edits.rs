@@ -81,37 +81,41 @@ pub trait EditHost {
     /// `lsp-locations->places` uses for drawer rows. `encoding` is
     /// the builtin's own read of `loc`'s tagged producing-server encoding;
     /// see [`Self::apply_workspace_edit`]'s doc for the same reasoning.
+    /// `Ok(false)` when the location's line no longer exists in its file:
+    /// nothing moves, and a buffer this call opened for it is closed again.
     fn goto_location_value(
         &mut self,
         pane: PaneHandle,
         loc: &serde_json::Value,
         encoding: PositionEncoding,
-    ) -> Result<(), String>;
+    ) -> Result<bool, String>;
 
     /// `(goto-location! pane target)`, `(hash 'target 'line 'char-col)` shape
-    /// with a path or `file://` URI string target, already char-indexed.
-    /// `line` is minted trusted, unvalidated, by the one builtin
-    /// (`goto-location!`) that calls this: there is no rope to validate
-    /// against for a path target that names no open buffer; `char_col`
-    /// stays the sanctioned bare-`usize` addressing-unit exception, same as
-    /// everywhere else on this trait.
+    /// with a path string target, already char-indexed. `line` and `char_col`
+    /// are bare `usize`: the file may not be open, so no rope exists to check
+    /// `line` against before the host opens one, and the host mints it with
+    /// `ContentLine::checked` against that text. `Ok(false)` when `line` is
+    /// past the text's last content line, with the same cleanup as
+    /// [`Self::goto_location_value`]; `char_col` clamps to its line and is the
+    /// sanctioned addressing-unit exception, same as everywhere else on this
+    /// trait.
     fn goto_location_path(
         &mut self,
         pane: PaneHandle,
-        path_or_uri: String,
-        line: hume_rope::line::RopeyLine,
+        path: String,
+        line: usize,
         char_col: usize,
-    ) -> Result<(), String>;
+    ) -> Result<bool, String>;
 
-    /// `(goto-location! pane target)`, `(hash 'target 'line 'char-col)` shape
-    /// with a buffer target, already char-indexed. See
-    /// [`Self::goto_location_path`] for `line`'s trusted-mint rationale.
+    /// `(goto-location! pane target)`, `(hash 'target 'char-offset)` shape
+    /// with a buffer target. `char_offset` is a buffer position at the host
+    /// seam, so a bare `usize`. `Err` when it is past the buffer's end:
+    /// Scheme computed it for a live buffer.
     fn goto_location_buffer(
         &mut self,
         pane: PaneHandle,
         target: BufferId,
-        line: hume_rope::line::RopeyLine,
-        char_col: usize,
+        char_offset: usize,
     ) -> Result<(), String>;
 
     /// `(goto-revision! pane revision)`: moves `pane`'s buffer to revision

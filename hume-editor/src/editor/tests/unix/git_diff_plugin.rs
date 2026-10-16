@@ -408,7 +408,7 @@ fn signs_deletion_at_end_of_file_marks_last_content_line() {
         signs(&ed, bid),
         vec![(1, "▁".to_string(), "diff.minus".to_string())],
         "deleting the last line ('c') must mark line 1 ('b') without an \
-         out-of-range set-signs! call: new-start (2) equals the buffer's \
+         out-of-range set-signs! call: new-start-line (2) equals the buffer's \
          content line count"
     );
 
@@ -658,10 +658,10 @@ fn render_probe_source(hunks: &str) -> String {
 
 /// A one-line change of "foo bar baz" to "foo QUX baz" at line 1 whose word
 /// spans mark the first word, so the drawing can only have come from the spans.
-const HUNK_WITH_WORDS: &str = r#"(list (hash 'old-start 1 'old-count 1 'new-start 1 'new-count 1
+const HUNK_WITH_WORDS: &str = r#"(list (hash 'old-start-line 1 'old-end-line 2 'new-start-line 1 'new-end-line 2
     'old-lines (list "foo bar baz") 'new-lines (list "foo QUX baz")
-    'words (hash 'old (list (hash 'line 0 'start 0 'end 3))
-                 'new (list (hash 'line 0 'start 0 'end 3)))))"#;
+    'words (hash 'old (list (hash 'line 1 'start-char-col 0 'end-char-col 3))
+                 'new (list (hash 'start-char 4 'end-char 7)))))"#;
 
 /// Asserts what `render-probe` drew: the removed line with `old_span` underlined,
 /// and `new_span` (a char range of the live buffer, with the text it covers)
@@ -726,10 +726,10 @@ fn render_diff_draws_word_spans_from_the_hunk_under_the_callers_source() {
 /// own offset in the buffer.
 #[test]
 fn render_diff_places_each_span_on_the_line_it_names() {
-    let hunk = r#"(list (hash 'old-start 1 'old-count 2 'new-start 1 'new-count 2
+    let hunk = r#"(list (hash 'old-start-line 1 'old-end-line 3 'new-start-line 1 'new-end-line 3
         'old-lines (list "foo bar baz" "thr33") 'new-lines (list "foo QUX baz" "three")
-        'words (hash 'old (list (hash 'line 1 'start 3 'end 5))
-                     'new (list (hash 'line 1 'start 2 'end 4)))))"#;
+        'words (hash 'old (list (hash 'line 2 'start-char-col 3 'end-char-col 5))
+                     'new (list (hash 'start-char 18 'end-char 20)))))"#;
     let (ed, _guard, bid, _dir) = render_probe_buffer(hunk);
     assert_eq!(
         vlines_in(&ed, bid, OTHER_SOURCE),
