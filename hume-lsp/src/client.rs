@@ -11,14 +11,16 @@ use lsp_types::{
     ClientCapabilities, ClientInfo, CodeActionClientCapabilities, CodeActionKind,
     CodeActionKindLiteralSupport, CodeActionLiteralSupport, CompletionClientCapabilities,
     CompletionItemCapability, CompletionListCapability, DiagnosticWorkspaceClientCapabilities,
-    DidChangeConfigurationClientCapabilities, DidChangeConfigurationParams, FailureHandlingKind,
-    GeneralClientCapabilities, GotoCapability, HoverClientCapabilities, InitializeParams,
-    InitializeResult, InitializedParams, MarkupKind, ParameterInformationSettings,
-    PositionEncodingKind, PublishDiagnosticsClientCapabilities, RenameClientCapabilities,
-    ResourceOperationKind, SignatureHelpClientCapabilities, SignatureInformationSettings,
-    TextDocumentClientCapabilities, TextDocumentSyncCapability, TextDocumentSyncClientCapabilities,
-    TextDocumentSyncKind, TextDocumentSyncOptions, WindowClientCapabilities,
-    WorkspaceClientCapabilities, WorkspaceEditClientCapabilities, WorkspaceFolder,
+    DidChangeConfigurationClientCapabilities, DidChangeConfigurationParams,
+    DocumentSymbolClientCapabilities, FailureHandlingKind, GeneralClientCapabilities,
+    GotoCapability, HoverClientCapabilities, InitializeParams, InitializeResult, InitializedParams,
+    MarkupKind, ParameterInformationSettings, PositionEncodingKind,
+    PublishDiagnosticsClientCapabilities, RenameClientCapabilities, ResourceOperationKind,
+    SignatureHelpClientCapabilities, SignatureInformationSettings, SymbolKind,
+    SymbolKindCapability, TextDocumentClientCapabilities, TextDocumentSyncCapability,
+    TextDocumentSyncClientCapabilities, TextDocumentSyncKind, TextDocumentSyncOptions,
+    WindowClientCapabilities, WorkspaceClientCapabilities, WorkspaceEditClientCapabilities,
+    WorkspaceFolder, WorkspaceSymbolClientCapabilities,
 };
 
 use crate::backend::{LspBackend, ServerId};
@@ -872,6 +874,41 @@ fn build_initialize_params(
     }
 }
 
+/// Every `SymbolKind` of the protocol, so a server never maps one to a
+/// default kind for this client.
+fn all_symbol_kinds() -> SymbolKindCapability {
+    SymbolKindCapability {
+        value_set: Some(vec![
+            SymbolKind::FILE,
+            SymbolKind::MODULE,
+            SymbolKind::NAMESPACE,
+            SymbolKind::PACKAGE,
+            SymbolKind::CLASS,
+            SymbolKind::METHOD,
+            SymbolKind::PROPERTY,
+            SymbolKind::FIELD,
+            SymbolKind::CONSTRUCTOR,
+            SymbolKind::ENUM,
+            SymbolKind::INTERFACE,
+            SymbolKind::FUNCTION,
+            SymbolKind::VARIABLE,
+            SymbolKind::CONSTANT,
+            SymbolKind::STRING,
+            SymbolKind::NUMBER,
+            SymbolKind::BOOLEAN,
+            SymbolKind::ARRAY,
+            SymbolKind::OBJECT,
+            SymbolKind::KEY,
+            SymbolKind::NULL,
+            SymbolKind::ENUM_MEMBER,
+            SymbolKind::STRUCT,
+            SymbolKind::EVENT,
+            SymbolKind::OPERATOR,
+            SymbolKind::TYPE_PARAMETER,
+        ]),
+    }
+}
+
 fn build_client_capabilities() -> ClientCapabilities {
     ClientCapabilities {
         workspace: Some(WorkspaceClientCapabilities {
@@ -914,6 +951,12 @@ fn build_client_capabilities() -> ClientCapabilities {
                     ResourceOperationKind::Delete,
                 ]),
                 failure_handling: Some(FailureHandlingKind::Abort),
+                ..Default::default()
+            }),
+            // Resolve is not advertised: a server must send each symbol's
+            // full location.
+            symbol: Some(WorkspaceSymbolClientCapabilities {
+                symbol_kind: Some(all_symbol_kinds()),
                 ..Default::default()
             }),
             ..Default::default()
@@ -993,6 +1036,11 @@ fn build_client_capabilities() -> ClientCapabilities {
                 ..Default::default()
             }),
             inlay_hint: Some(Default::default()),
+            document_symbol: Some(DocumentSymbolClientCapabilities {
+                symbol_kind: Some(all_symbol_kinds()),
+                hierarchical_document_symbol_support: Some(true),
+                ..Default::default()
+            }),
             ..Default::default()
         }),
         general: Some(GeneralClientCapabilities {

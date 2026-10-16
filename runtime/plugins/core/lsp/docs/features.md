@@ -21,6 +21,27 @@ same path, line and column appear once:
 used" expects a list. Its request adds `context.includeDeclaration`. Every jump lands on
 `(focused-pane)`, so it goes where the user is when the response arrives.
 
+## Symbols
+
+`symbols.scm` serves `lsp/document-symbols` and `lsp/workspace-symbols`. Both list their
+rows as `name  kind  detail` and jump to the accepted row in `(focused-pane)`.
+
+`lsp/document-symbols` asks every server offering `documentSymbolProvider` and shows one
+`picker!` over their merged answers. A `DocumentSymbol[]` answer is walked pre-order, a
+symbol's detail being its parent's name and its jump target its `selectionRange`. A
+`SymbolInformation[]` answer keeps its own `location` and uses `containerName` as the
+detail. Since a `DocumentSymbol` carries no `uri`, `lsp-location` pairs the buffer's uri
+with the `selectionRange`, which keeps the server's position encoding. No symbol at all
+logs "No symbols found".
+
+`lsp/workspace-symbols` opens an empty `live-picker!`. Each query, once the debounce
+window passes, sends `workspace/symbol` to every server offering the feature with
+`#:supersede "lsp-workspace-symbols"`, so a newer query replaces one still in flight, and
+replaces the rows with the merged answers; an empty query clears them. The detail is the
+symbol's `path:line:col`. A symbol whose `location` has no `range` is left out, since
+the client does not advertise `workspaceSymbol/resolve` and such a symbol names no place
+to jump to.
+
 ## Hover
 
 The response's `contents` is decoded to text: a bare string as is, an array of

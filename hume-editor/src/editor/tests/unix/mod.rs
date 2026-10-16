@@ -680,6 +680,7 @@ mod lsp_packaging;
 mod lsp_references;
 mod lsp_rename;
 mod lsp_sighelp;
+mod lsp_symbols;
 mod multi_pane;
 mod picker_source;
 mod picker_source_steel;

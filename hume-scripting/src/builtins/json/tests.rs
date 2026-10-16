@@ -169,13 +169,6 @@ fn json_ref_or_returns_the_value_when_present() {
 }
 
 #[test]
-fn json_ref_or_returns_void_for_a_present_null() {
-    let h = handle(json!({"a": null}));
-    let args = call_args(h, vec![SteelVal::IntV(9), SteelVal::StringV("a".into())]);
-    assert!(matches!(json_ref_or(&args).unwrap(), SteelVal::Void));
-}
-
-#[test]
 fn json_ref_or_returns_the_default_on_a_missing_key() {
     let h = handle(json!({"a": 1}));
     let args = call_args(
@@ -196,6 +189,13 @@ fn json_ref_or_returns_the_default_through_wrong_container_kind() {
             SteelVal::StringV("b".into()),
         ],
     );
+    assert_eq!(json_ref_or(&args).unwrap(), SteelVal::IntV(9));
+}
+
+#[test]
+fn json_ref_or_returns_the_default_for_a_null_field() {
+    let h = handle(json!({"a": null}));
+    let args = call_args(h, vec![SteelVal::IntV(9), SteelVal::StringV("a".into())]);
     assert_eq!(json_ref_or(&args).unwrap(), SteelVal::IntV(9));
 }
 

@@ -95,7 +95,8 @@ pub(crate) fn json_contains(args: &[SteelVal]) -> SteelResult {
 
 /// `(json-ref-or j default seg ...)`: `json-ref`, but `default` (evaluated
 /// eagerly, like `hash-ref`'s own optional third argument) in place of
-/// raising when the path doesn't resolve. Still raises if `j` isn't a
+/// raising when the path doesn't resolve or the value there is JSON `null`
+/// (`json-ref` would give `void`, which is truthy). Still raises if `j` isn't a
 /// handle, a caller check we don't want silently swallowed by `default`.
 /// Collapses the `(if (json-contains? j seg ...) (json-ref j seg ...)
 /// default)` idiom several `core:lsp` files repeated, which walked the path

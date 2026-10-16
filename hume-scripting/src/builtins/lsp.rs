@@ -546,6 +546,24 @@ pub(crate) fn lsp_server_name(server: SteelVal) -> SteelResult {
     Ok(SteelVal::StringV(server.name.as_str().into()))
 }
 
+/// `(lsp-location uri range)` → a `Location` handle pairing the `uri` string
+/// with `range`, a range taken from a server response. The result carries the
+/// range's tag, so `goto-location!` and `lsp-locations->display-parts` decode
+/// it with the encoding of the server that sent the range. A hand-built range
+/// has no encoding to carry and raises.
+pub(crate) fn lsp_location(uri: SteelVal, range: SteelVal) -> SteelResult {
+    let uri = string_arg(uri, "lsp-location uri")?;
+    let range = json_arg(range, "lsp-location range")?;
+    range
+        .position_encoding("lsp-location range")
+        .map_err(generic_err)?;
+    let location = serde_json::json!({"uri": uri, "range": range.value()});
+    Ok(crate::json::to_steel_handle(
+        std::sync::Arc::new(location),
+        range.origin(),
+    ))
+}
+
 /// The event `register-lsp-notification-hook!` registers on. This crate
 /// compiles in no event list, so the name is checked against the host's on
 /// every call and a rename in the editor fails loudly here.

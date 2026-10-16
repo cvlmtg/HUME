@@ -862,6 +862,30 @@ fn diagnostics_refresh_is_declared_and_pull_is_not() {
 }
 
 #[test]
+fn symbol_requests_declare_every_kind_and_hierarchical_documents() {
+    let caps = build_client_capabilities();
+
+    let document = caps.text_document.unwrap().document_symbol.unwrap();
+    assert_eq!(document.hierarchical_document_symbol_support, Some(true));
+    let workspace = caps.workspace.unwrap().symbol.unwrap();
+    assert!(
+        workspace.resolve_support.is_none(),
+        "resolve is not advertised, so a server must send full locations"
+    );
+    for kinds in [document.symbol_kind, workspace.symbol_kind] {
+        let numbers: Vec<_> = kinds
+            .unwrap()
+            .value_set
+            .unwrap()
+            .iter()
+            .map(|kind| serde_json::to_value(kind).unwrap())
+            .collect();
+        let expected: Vec<_> = (1..=26).map(serde_json::Value::from).collect();
+        assert_eq!(numbers, expected);
+    }
+}
+
+#[test]
 fn change_sync_absent_capability_means_no_change_notifications() {
     // Spec default for an unadvertised `textDocumentSync` is `None`: the
     // server never declared it wants change notifications at all.

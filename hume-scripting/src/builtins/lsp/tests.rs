@@ -1362,3 +1362,48 @@ fn a_token_argument_that_is_not_an_integer_raises() {
         "got: {err}"
     );
 }
+
+fn tagged_range() -> serde_json::Value {
+    serde_json::json!({"start": {"line": 1, "character": 2}, "end": {"line": 1, "character": 5}})
+}
+
+#[test]
+fn lsp_location_pairs_the_uri_with_a_tagged_range_and_keeps_its_encoding() {
+    let range =
+        JsonHandle::server_for_test(tagged_range(), PositionEncoding::Utf8).into_steel_val();
+
+    let location = lsp_location(SteelVal::StringV("file:///a.rs".into()), range).unwrap();
+
+    let handle = crate::json::downcast_json_handle(&location).unwrap();
+    assert_eq!(
+        handle.value(),
+        &serde_json::json!({"uri": "file:///a.rs", "range": tagged_range()})
+    );
+    assert_eq!(
+        handle.position_encoding("test").unwrap(),
+        PositionEncoding::Utf8
+    );
+}
+
+#[test]
+fn lsp_location_rejects_a_hand_built_range() {
+    let range = JsonHandle::new(tagged_range()).into_steel_val();
+
+    let msg = lsp_location(SteelVal::StringV("file:///a.rs".into()), range)
+        .unwrap_err()
+        .to_string();
+
+    assert!(msg.contains("not a value from an LSP server"), "got: {msg}");
+}
+
+#[test]
+fn lsp_location_rejects_a_non_string_uri() {
+    let range =
+        JsonHandle::server_for_test(tagged_range(), PositionEncoding::Utf16).into_steel_val();
+
+    let msg = lsp_location(SteelVal::IntV(3), range)
+        .unwrap_err()
+        .to_string();
+
+    assert!(msg.contains("lsp-location uri"), "got: {msg}");
+}

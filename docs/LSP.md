@@ -37,9 +37,9 @@ Two structural guardrails keep the experience snappy through the shape of the AP
 
 Rust therefore ships a *platform* — transport, document sync, stores, render providers, a generic LSP bridge, scriptable UI widgets — and the features themselves are Steel code in a `core:lsp` plugin: send request → transform response → call a UI/store builtin. A community plugin author writes the exact same three-line shape.
 
-**v1 feature set**: diagnostics, completions, hover, go-to-definition (+ declaration / type-definition / implementation), rename, references, signature help, formatting, code actions, inlay hints.
+**v1 feature set**: diagnostics, completions, hover, go-to-definition (+ declaration / type-definition / implementation), rename, references, signature help, formatting, code actions, inlay hints, document and workspace symbol pickers.
 
-**Non-goals for v1**: semantic tokens, snippet placeholder navigation, `workspace/symbol`, document symbols, code lens, DAP.
+**Non-goals for v1**: semantic tokens, snippet placeholder navigation, code lens, DAP.
 
 **Implementation shape** (five macro-steps):
 1. **Step 0 — Prerequisites**: workspace groundwork (serde, position mapping, event-loop wake + timers, encodings, URIs, the boundary-cost spike).
@@ -258,13 +258,12 @@ Test-writing rules that bite here specifically:
 - **LSP core (Rust data plane)** — the `hume-lsp` crate plus editor glue: spawn, handshake, document sync, diagnostics in memory. Crate scaffold, JSON-RPC codec, process management, `LspBackend` trait + inline double, lifecycle, request bookkeeping, document sync, server registration, diagnostics store, observability/lifecycle commands.
 - **Steel platform** — the bridge and primitives that make Steel the feature layer: a plugin can reach any LSP method and any editor surface. JSON↔SteelVal codec, generic LSP bridge, introspection builtins, timers, decoration stores, edit/navigation primitives, hooks, completion orchestration, minibuffer prompt.
 - **UI surfaces** — generic, Steel-scriptable widgets plus store-fed render wiring; LSP is their first client, not their owner. Diagnostic underlines, gutter signs, statusline element, popup, menu, drawer, completion menu, inline diagnostics, inlay hints.
-- **Features (Steel, `core:lsp`)** — each feature is Steel code composing the platform and UI primitives above, tested against the inline double with scripted responses: hover, goto definition family, completions, diagnostics navigation, rename, references, signature help, formatting, code actions, inlay hints, `core:lsp` packaging + docs.
+- **Features (Steel, `core:lsp`)** — each feature is Steel code composing the platform and UI primitives above, tested against the inline double with scripted responses: hover, goto definition family, completions, diagnostics navigation, rename, references, signature help, formatting, code actions, inlay hints, document and workspace symbol pickers, `core:lsp` packaging + docs.
 
 ## Deferred / Future
 
 - **Semantic tokens** — delta decode (integer-array crunching) in Rust feeding a highlight store; orchestration Steel. Interacts with tree-sitter highlight priority.
 - **Snippet placeholder navigation** — parsing maybe Steel; insert-mode tabstop state machine with multi-cursor selections likely Rust (see open question).
-- **`workspace/symbol` + document symbols** — plugin-writable via B2 + drawer, or via the `core:pickers` fuzzy finder; no symbols picker built yet.
 - **Code lens** — plugin-writable via B2 + B5 stores + `workspace/executeCommand`.
 - **Bounded auto-restart** for crashed servers (policy knob Steel-side).
 - **`workspace/didChangeWatchedFiles`** via a real file watcher (existing ROADMAP Future item) — not implemented in v1; the capability is not advertised.

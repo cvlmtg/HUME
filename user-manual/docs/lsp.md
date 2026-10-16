@@ -1,7 +1,7 @@
 # Language Servers
 
 Everything an IDE gives you, in the terminal. `core:lsp` connects HUME to language servers
-for hover docs, go-to-definition, references, diagnostics, rename, formatting, code actions,
+for hover docs, go-to-definition, references, symbol search, diagnostics, rename, formatting, code actions,
 signature help, completions, and inlay hints. The companion plugin `core:lsp-install`
 installs the servers themselves, so getting a language working is usually one command.
 
@@ -34,7 +34,8 @@ Pass `#:languages`/`#:commands`/`#:typed-commands`/`#:events` to `declare-plugin
   #:commands '("lsp/hover" "lsp/goto-definition" "lsp/goto-declaration"
                "lsp/goto-type-definition" "lsp/goto-implementation" "lsp/references"
                "lsp/goto-next-diagnostic" "lsp/goto-prev-diagnostic"
-               "lsp/rename" "lsp/format-source" "lsp/format-document" "lsp/code-actions")
+               "lsp/rename" "lsp/format-source" "lsp/format-document" "lsp/code-actions"
+               "lsp/document-symbols" "lsp/workspace-symbols")
   #:typed-commands '("diagnostics" "format-source"
                       "lsp-status" "lsp-stop" "lsp-restart"))
 (load-plugin! "core:lsp")
@@ -338,6 +339,8 @@ Changing either and running `:reload-config` updates what HUME has stored, but a
 | `z r` | `lsp/references`             | List every reference to the symbol |
 | `G R` | `lsp/rename`                 | Rename the symbol under the cursor everywhere it's used |
 | `z a` | `lsp/code-actions`           | Show fixes and refactors available at the cursor |
+| `z s` | `lsp/document-symbols`       | Pick a symbol of this file (functions, types, and so on) and jump to it |
+| `z S` | `lsp/workspace-symbols`      | Search the symbols of the whole project as you type and jump to one |
 | `g n` | `lsp/goto-next-diagnostic`       | Jump to the next error/warning after the cursor (wraps) |
 | `g p` | `lsp/goto-prev-diagnostic`       | Jump to the previous error/warning before the cursor (wraps) |
 | —     | `:diagnostics`               | List every diagnostic in the buffer, each with the tool that reported it |

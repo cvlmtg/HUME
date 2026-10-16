@@ -15,6 +15,7 @@
 | `lib/diagnostics.scm` | Diagnostics navigation and drawer, EOL summary, gutter signs | `decorations.md` |
 | `lib/inlay.scm` | Inlay hints | `decorations.md` |
 | `lib/goto.scm` | Goto family, references | `features.md` |
+| `lib/symbols.scm` | Document and workspace symbol pickers | `features.md` |
 | `lib/hover.scm` | Hover | `features.md` |
 | `lib/sighelp.scm` | Signature help | `features.md` |
 | `lib/completion.scm` | Completion | `features.md` |

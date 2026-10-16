@@ -438,6 +438,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "lsp-position->offset" lsp::lsp_position_to_offset(pane: args::LivePane, position: SteelVal);
         cmd "lsp-range->offsets" lsp::lsp_range_to_offsets(pane: args::LivePane, range: SteelVal);
         cmd "lsp-label-offsets->text" lsp::lsp_label_offsets_to_text(label: SteelVal, offsets: SteelVal);
+        plain "lsp-location" lsp::lsp_location(uri: SteelVal, range: SteelVal);
         cmd "lsp-locations->display-parts" lsp::lsp_locations_to_display_parts(locs: SteelVal);
         cmd "viewport-range" buffers::viewport_range(pane: args::LivePane);
         cmd "buffer-generation" buffers::buffer_generation(pane: args::LivePane);

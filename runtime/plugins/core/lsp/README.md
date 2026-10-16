@@ -54,6 +54,8 @@ plugin that calls `register-lsp-server!` works with `core:lsp` the same way.
 | `lsp/references` | List references in a drawer | `z r` |
 | `lsp/rename` | Rename the symbol under the cursor | `G R` |
 | `lsp/code-actions` | Show code actions for the cursor or selection | `z a` |
+| `lsp/document-symbols` | Pick a symbol of the current file and jump to it | `z s` |
+| `lsp/workspace-symbols` | Search the symbols of the workspace as you type and jump to one | `z S` |
 | `lsp/goto-next-diagnostic`, `lsp/goto-prev-diagnostic` | Jump to the next or previous diagnostic and show its message | `g n`, `g p` |
 | `lsp/format-source` | Format the buffer or the linewise selections | none |
 | `lsp/format-document` | Format the whole buffer, or the ranges it is given, and call `done`; for `on-before-buffer-save` handlers | none |
@@ -77,6 +79,7 @@ live under `z`, the view prefix, the same shape `core:pickers`' finders use.
 | `g n`/`g p` | Next/previous diagnostic | Names a destination |
 | `z r` | References | Opens a panel |
 | `z a` | Code actions | Opens a panel |
+| `z s`/`z S` | Document/workspace symbols | Opens a picker |
 | `G R` | Rename | `G` is a prefix for edit commands that sit near `g` without being gotos |
 | `K` | Hover | The conventional keyword-lookup key, used often enough that a prefix would cost a keystroke |
 
@@ -90,5 +93,5 @@ subtree under it (see `core:vim-keybind`'s README).
 | Doc | Covers |
 |---|---|
 | [`docs/architecture.md`](docs/architecture.md) | File layout, request pattern, response conventions, `lib/helpers.scm` helpers, the locations drawer, status commands |
-| [`docs/features.md`](docs/features.md) | Request flags, goto and references, hover, signature help, completion, code actions, formatting, rename |
+| [`docs/features.md`](docs/features.md) | Request flags, goto and references, symbols, hover, signature help, completion, code actions, formatting, rename |
 | [`docs/decorations.md`](docs/decorations.md) | Diagnostics navigation and drawer, end-of-line summary, gutter signs, inlay hints |

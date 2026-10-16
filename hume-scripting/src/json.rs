@@ -398,11 +398,14 @@ impl JsonHandle {
     }
 
     /// Walks `path` from this handle's own position, `None` if any step
-    /// doesn't resolve. Wraps a container result in a handle (unlike
-    /// [`JsonHandle::contains`], which only needs a yes/no and so calls
-    /// [`walk`] directly rather than paying for a child handle nobody wants).
+    /// doesn't resolve or the value there is `null`. Wraps a container
+    /// result in a handle (unlike [`JsonHandle::contains`], which only needs
+    /// a yes/no and so calls [`walk`] directly rather than paying for a
+    /// child handle nobody wants).
     pub(crate) fn lookup(&self, path: &[Seg]) -> Option<SteelVal> {
-        let current = walk(self.value(), path).ok()?;
+        let current = walk(self.value(), path)
+            .ok()
+            .filter(|value| !value.is_null())?;
         Some(scalar_or_child(current, &self.root, self.origin, || {
             self.path.iter().chain(path).cloned().collect()
         }))

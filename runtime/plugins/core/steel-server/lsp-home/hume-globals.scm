@@ -210,6 +210,7 @@
 (#%register-global "lsp-label-offsets->text")
 (#%register-global "lsp-language-servers")
 (#%register-global "lsp-linewise-ranges-params")
+(#%register-global "lsp-location")
 (#%register-global "lsp-locations->display-parts")
 (#%register-global "lsp-notify!")
 (#%register-global "lsp-position->offset")

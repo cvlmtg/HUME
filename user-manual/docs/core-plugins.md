@@ -45,7 +45,7 @@ Leaving PLUM out only removes these commands. Already-installed plugins, grammar
 
 ## core:lsp
 
-Language server support: hover, go-to-definition, references, diagnostics, rename, formatting, code actions, signature help, completions, and inlay hints, and manages the running server processes (`:lsp-status`, `:lsp-stop`, `:lsp-restart`). Downloading the servers is `core:lsp-install`'s job.
+Language server support: hover, go-to-definition, references, symbol pickers, diagnostics, rename, formatting, code actions, signature help, completions, and inlay hints, and manages the running server processes (`:lsp-status`, `:lsp-stop`, `:lsp-restart`). Downloading the servers is `core:lsp-install`'s job.
 
 ```scheme
 (load-plugin! "core:stdlib")

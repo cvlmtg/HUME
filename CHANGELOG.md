@@ -16,9 +16,11 @@
 - `core:git-diff` has key-bindable `git-diff/toggle-inline-diff` and `git-diff/toggle-git-signs`, plus `git-diff/show-inline-diff` and `git-diff/inline-diff?` for your own commands.
 
 ### Language servers
+- `z s` picks a symbol of the current file and `z S` searches the symbols of the whole project as you type, both jumping to the one you accept.
 - `core:lsp` has `lsp/format-document`, which formats the whole buffer for such a hook. The format-on-save recipe in the manual used `on-buffer-save`, which runs after the write, so it never formatted the saved file: use the new recipe.
 
 ### Fixes
+- `json-ref-or` returns its default for a field the server sent as `null`, where it used to return void. A `null` `containerName`, `children` or `disabled` no longer breaks the symbol pickers or code actions.
 - `apply-text-edits!` and `apply-workspace-edit!` still apply when the pane has since switched buffers, editing the buffer for no pane. `apply-text-edits!` also accepts a value with no pane, and `lsp-document-params` returns a buffer's document params without one.
 
 ## [0.15.0] - 2026-10-15

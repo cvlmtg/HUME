@@ -2,7 +2,7 @@
 
 (require "helpers.scm")
 
-(provide lsp/show-locations! lsp/answer-locations)
+(provide lsp/show-locations! lsp/answer-locations lsp/location-display)
 
 ;; A goto or references result as a list of locations, '() for none.
 (define (lsp/response-locations res)
