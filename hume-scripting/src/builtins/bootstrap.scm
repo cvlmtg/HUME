@@ -193,38 +193,41 @@
                                               #:ok-exit-codes [ok-exit-codes %picker-source-default-ok-exit-codes])
   (%picker-source-spawn! token cmd args cwd nul ok-exit-codes))
 
-(define (live-picker! pane on-select #:command command
+(define (picker-command-source argv-for #:cwd [cwd #f] #:nul [nul #f]
+                                         #:ok-exit-codes [ok-exit-codes %picker-source-default-ok-exit-codes])
+  (unless (%callable? argv-for)
+    (error "picker-command-source: argv-for must be a procedure of one argument (the query)"))
+  (lambda (token q)
+    (let ([argv (argv-for q)])
+      (if argv
+          (begin
+            (unless (and (list? argv) (not (null? argv)) (string? (car argv)))
+              (error "picker-command-source: argv-for must return #f or a non-empty list of strings (argv)"))
+            (picker-source-spawn! token (car argv) (cdr argv)
+                                  #:cwd cwd #:nul nul #:ok-exit-codes ok-exit-codes))
+          (picker-replace! token '())))))
+
+(define (live-picker! pane on-select #:source source
                        #:prompt [prompt ""] #:query [query ""]
                        #:debounce-ms [debounce-ms 150]
-                       #:cwd [cwd #f] #:nul [nul #f]
-                       #:ok-exit-codes [ok-exit-codes %picker-source-default-ok-exit-codes]
                        #:truncate [truncate 'head]
                        #:actions [actions '()])
-  (unless (%callable? command)
-    (error "live-picker!: #:command must be a procedure of one argument (the query)"))
+  (unless (%callable? source)
+    (error "live-picker!: #:source must be a procedure of two arguments (the picker token and the query)"))
   (unless (and (integer? debounce-ms) (>= debounce-ms 0))
     (error "live-picker!: #:debounce-ms must be a non-negative integer"))
-  (let* ([spawn-for (lambda (token q)
-                       (let ([argv (command q)])
-                         (if argv
-                             (begin
-                               (unless (and (list? argv) (not (null? argv)) (string? (car argv)))
-                                 (error "live-picker!: #:command must return #f or a non-empty list of strings (argv)"))
-                               (picker-source-spawn! token (car argv) (cdr argv)
-                                                     #:cwd cwd #:nul nul #:ok-exit-codes ok-exit-codes))
-                             (picker-replace! token '()))))]
-         [respawn (debounce debounce-ms
+  (let* ([requery (debounce debounce-ms
                     (lambda (token q)
                       (with-handler
                         (lambda (e) (picker-replace! token '()) (raise-error e))
-                        (spawn-for token q))))]
+                        (source token q))))]
          [token (%live-picker! pane on-select prompt query
                   (lambda (token q)
                     (picker-source-stop! token)
-                    (respawn token q))
+                    (requery token q))
                   truncate actions)])
     (unless (equal? query "")
-      (spawn-for token query))
+      (source token query))
     token))
 
 

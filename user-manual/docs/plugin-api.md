@@ -244,8 +244,9 @@ Full walkthroughs (batch vs. streaming population, truncation direction, exit-co
 | Call | Effect |
 |------|--------|
 | `(picker! pane items on-select #:prompt #:pending #:query #:truncate #:actions)` | Open a fuzzy-finder panel over a fixed `items` list of `(display . payload)` pairs, only while `pane` is the focused pane (raises otherwise) |
-| `(live-picker! pane on-select #:command #:prompt #:query #:debounce-ms #:cwd #:nul #:ok-exit-codes #:truncate #:actions)` | Open a picker whose query re-spawns `#:command`'s subprocess on every keystroke, debounced, only while `pane` is the focused pane (raises otherwise) |
-| `(picker-push! token items)` | Append a batch of `(display . payload)` items to an open picker |
+| `(live-picker! pane on-select #:source #:prompt #:query #:debounce-ms #:truncate #:actions)` | Open a picker whose query runs `#:source` (a function of the picker token and the query) on every keystroke, debounced, only while `pane` is the focused pane (raises otherwise) |
+| `(picker-command-source argv-for #:cwd #:nul #:ok-exit-codes)` | A `#:source` for `live-picker!` that runs the subprocess `argv-for` names for the query |
+| `(picker-push! token items)` | Append a batch of `(display . payload)` items to an open picker. A `live-picker!` source passes the token it was called with: once the user has typed on, that token no longer feeds the picker and the call returns `#f` |
 | `(picker-replace! token items)` | Replace an open picker's items wholesale |
 | `(picker-source-spawn! token cmd args #:cwd #:nul #:ok-exit-codes)` | Stream a subprocess's stdout lines into an open picker as items |
 | `(picker-source-stop! token)` | Kill a picker's still-running spawned source |

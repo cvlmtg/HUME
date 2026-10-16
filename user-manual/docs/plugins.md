@@ -744,10 +744,11 @@ keystroke (a live grep, say) uses `live-picker!` instead of `picker!`:
 (define (grep/open! pane seed)
   (live-picker! pane (lambda (row) (when row (goto-location! pane (grep/parse row))))
                 #:prompt "grep: " #:query seed
-                #:command (lambda (query)
+                #:source (picker-command-source
+                          (lambda (query)
                             (and (not (equal? query ""))
                                  (list "rg" "--vimgrep" "--" query ".")))
-                #:ok-exit-codes '(0 1)
+                          #:ok-exit-codes '(0 1))
                 #:truncate 'tail))
 ```
 
@@ -763,13 +764,26 @@ included.
 
 `live-picker!` opens empty: there's no `items` argument, and no `#:pending` either: a
 live picker is always populated by its own requery, never by a caller pushing items
-directly. `#:command` is a function from the current query to either a full argv list
-(the same `cmd args...` shape `picker-source-spawn!` takes) or `#f`. HUME calls it on
-every keystroke and, when it returns a real argv, spawns it exactly the way
-`picker-source-spawn!` would (`#:cwd`/`#:nul`/`#:ok-exit-codes` all apply the same way).
-Returning `#f` for an empty query, as above, is how you tell the picker "show nothing"
-rather than search for an empty pattern. That clear itself waits out the debounce
-window too, same as a real search, since `#:command` only runs once the respawn fires.
+directly. `#:source` is a function of the picker token and the current query. HUME calls
+it on every keystroke, after the debounce window, and it fills the picker with
+`picker-replace!`, `picker-push!` or `picker-source-spawn!`. A source that never answers
+leaves the previous rows up.
+
+A source that answers later, from a language server say, keeps the token it was called
+with and feeds the picker through it. Each query gets its own token. Once the user has
+typed on, `picker-replace!`, `picker-push!` and `picker-source-spawn!` on an earlier
+query's token do nothing and return `#f`, so an old answer never overwrites newer rows.
+`picker-close!` and `picker-source-stop!` still work through the token `live-picker!`
+returned. The picker keeps showing "refreshing" until an answer for the current query
+arrives, so a source should reply even when it has nothing to show, with an empty list.
+
+`picker-command-source` builds the common source, one that runs a subprocess. Its first
+argument is a function from the current query to either a full argv list (the same
+`cmd args...` shape `picker-source-spawn!` takes) or `#f`; a real argv is spawned exactly
+the way `picker-source-spawn!` would (`#:cwd`/`#:nul`/`#:ok-exit-codes` all apply the same
+way). Returning `#f` for an empty query, as above, is how you tell the picker "show
+nothing" rather than search for an empty pattern. That clear itself waits out the debounce
+window too, same as a real search, since the source only runs once the window has passed.
 
 Every keystroke stops whatever search is still running, immediately, but its rows stay
 on screen, marked as refreshing, until the new search's own results arrive; there's no
@@ -784,8 +798,8 @@ of the working directory and finds nothing. `#:ok-exit-codes` works exactly as i
 needs `'(0 1)` since it exits `1` for "no matches".
 
 A non-empty `#:query` (the `seed` argument above, say, resuming a search from wherever
-the last one left off) spawns immediately when the picker opens, before `live-picker!`
-even returns, not on the next keystroke. An empty (or omitted) `#:query` spawns nothing
+the last one left off) runs the source immediately when the picker opens, before `live-picker!`
+even returns, not on the next keystroke. An empty (or omitted) `#:query` runs nothing
 until the user types.
 
 A live picker's rows always show in whatever order the source produced them; its own
@@ -794,7 +808,7 @@ local fuzzy filter is off, since the query already selects what the source retur
 `live-picker!` returns a token exactly like `picker!` does. Reach for
 `picker-push!`/`picker-replace!`/`picker-source-spawn!`/`picker-source-stop!`/`picker-close!`
 directly, against that token, only if you need to drive a live picker's population or
-timing yourself instead of `#:command`/`#:debounce-ms`.
+timing yourself instead of `#:source`/`#:debounce-ms`.
 
 ## Bundled core plugins
 

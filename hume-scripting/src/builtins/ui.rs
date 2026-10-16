@@ -310,7 +310,7 @@ pub(crate) fn picker(
 /// `(%live-picker! on-select prompt query on-query-change truncate actions)`: the
 /// `live-picker!` Scheme wrapper supplies the keyword defaults and composes
 /// `on-query-change` itself (stop-and-clear-then-debounce around the
-/// caller's `#:command`); this layer only decodes it as a required
+/// caller's `#:source`); this layer only decodes it as a required
 /// callable, checked here unlike `on-select`: a bad `on-select` only ever
 /// errors at accept/dismiss time, but a live session has no other use for
 /// this argument, so a bad value is a definition-time mistake, not a

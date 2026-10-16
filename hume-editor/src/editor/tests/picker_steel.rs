@@ -1,5 +1,5 @@
 // The Steel surface for the fuzzy picker:
-// (picker! items on-select #:prompt "…") / (live-picker! on-select #:command …) /
+// (picker! items on-select #:prompt "…") / (live-picker! on-select #:source …) /
 // (picker-push! token items) / (picker-replace! token items) / (picker-close!).
 // The Rust store/widget/key-handling underneath is covered by
 // `tests/picker.rs`, which builds sessions directly. This file exercises
@@ -126,7 +126,7 @@ fn live_picker_bang_truncate_tail_reaches_the_session() {
     let (mut ed, _tmp) = editor_with(
         r#"(define-typed-command! "go" "" (lambda (pane)
              (live-picker! pane (lambda (x) (void))
-               #:command (lambda (q) #f) #:truncate 'tail)))"#,
+               #:source (picker-command-source (lambda (q) #f)) #:truncate 'tail)))"#,
     );
     type_cmd(&mut ed, ":go");
 
@@ -737,7 +737,7 @@ fn live_picker_seed_spawn_is_synchronous_and_not_debounced() {
         r#"(define-typed-command! "go" "" (lambda (pane)
              (live-picker! pane (lambda (x) (void))
                #:query "seed" #:debounce-ms 100000
-               #:command (lambda (q) (log! 'info (string-append "q=" q)) #f))))"#,
+               #:source (picker-command-source (lambda (q) (log! 'info (string-append "q=" q)) #f)))))"#,
     );
     ed.state.status_msg = None;
     type_cmd(&mut ed, ":go");
@@ -747,7 +747,7 @@ fn live_picker_seed_spawn_is_synchronous_and_not_debounced() {
     assert_eq!(
         ed.state.status_msg.clone().unwrap(),
         "q=seed",
-        "the #:query seed must fire #:command synchronously, not wait out a \
+        "the #:query seed must run #:source synchronously, not wait out a \
          100000ms debounce window or a settle() drain"
     );
 }
@@ -757,12 +757,12 @@ fn live_picker_empty_seed_calls_no_builder() {
     let (mut ed, _tmp) = editor_with(
         r#"(define-typed-command! "go" "" (lambda (pane)
              (live-picker! pane (lambda (x) (void))
-               #:command (lambda (q) (log! 'info (string-append "q=" q)) #f))))"#,
+               #:source (picker-command-source (lambda (q) (log! 'info (string-append "q=" q)) #f)))))"#,
     );
     type_cmd(&mut ed, ":go");
     assert!(
         ed.state.status_msg.is_none(),
-        "an empty (default) #:query must not fire #:command on open"
+        "an empty (default) #:query must not run #:source on open"
     );
 }
 
@@ -776,7 +776,7 @@ fn live_picker_keystroke_keeps_previous_rows_until_the_new_search_delivers() {
         (define-typed-command! "go" "" (lambda (pane)
           (set! tok (live-picker! pane (lambda (x) (void))
             #:debounce-ms 100000
-            #:command (lambda (q) (log! 'info (string-append "q=" q)) #f)))))
+            #:source (picker-command-source (lambda (q) (log! 'info (string-append "q=" q)) #f))))))
         (define-command! "seed-row" "" (lambda ()
           (picker-push! tok (list (cons "one" "p1")))))
         "#,
@@ -801,13 +801,13 @@ fn live_picker_keystroke_keeps_previous_rows_until_the_new_search_delivers() {
     );
     assert!(
         ed.state.status_msg.is_none(),
-        "the debounced #:command builder itself must not have fired yet"
+        "the debounced #:source itself must not have run yet"
     );
 }
 
 #[test]
 fn live_picker_debounced_respawn_raise_clears_stale_rows_and_unsticks_pending() {
-    // `#:command` raising after the debounce (a bad user builder, or
+    // `#:source` raising after the debounce (a bad user source, or
     // `picker-source-spawn!` itself failing to spawn) must not stick the
     // session in the "requery in flight" state forever. The previous
     // pattern's now-orphaned rows must clear and `is_pending` must settle
@@ -819,7 +819,7 @@ fn live_picker_debounced_respawn_raise_clears_stale_rows_and_unsticks_pending() 
         (define-typed-command! "go" "" (lambda (pane)
           (set! tok (live-picker! pane (lambda (x) (void))
             #:debounce-ms 0
-            #:command (lambda (q) (error "boom"))))))
+            #:source (picker-command-source (lambda (q) (error "boom")))))))
         (define-command! "seed-row" "" (lambda ()
           (picker-push! tok (list (cons "stale" "p")))))
         "#,
@@ -831,7 +831,7 @@ fn live_picker_debounced_respawn_raise_clears_stale_rows_and_unsticks_pending() 
     ed.feed_key(key('a'));
     // Two settles, same as every other debounce-ms-0 test here: the first
     // drains the query-change callback (stop, arm the 0ms timer), the
-    // second lets that timer fire and run `#:command`, which raises.
+    // second lets that timer fire and run `#:source`, which raises.
     ed.settle();
     ed.settle();
 
@@ -849,12 +849,46 @@ fn live_picker_debounced_respawn_raise_clears_stale_rows_and_unsticks_pending() 
 }
 
 #[test]
+fn live_picker_debounced_respawn_native_raise_clears_rows_and_reaches_the_user() {
+    // The raise comes from a native builtin (`picker-source-spawn!` on a
+    // missing binary), the kind a Steel handler must not re-raise through an
+    // outer handler. The timer-dispatched requery has none.
+    let (mut ed, _tmp) = editor_with(
+        r#"
+        (define tok #f)
+        (define-typed-command! "go" "" (lambda (pane)
+          (set! tok (live-picker! pane (lambda (x) (void))
+            #:debounce-ms 0
+            #:source (picker-command-source
+                       (lambda (q) (list "definitely-not-a-real-binary-xyz")))))))
+        (define-command! "seed-row" "" (lambda ()
+          (picker-push! tok (list (cons "stale" "p")))))
+        "#,
+    );
+    type_cmd(&mut ed, ":go");
+    call(&mut ed, "seed-row");
+
+    ed.feed_key(key('a'));
+    ed.settle();
+    ed.settle();
+
+    let picker = ed.state.input.picker().unwrap();
+    assert_eq!(picker.total_len(), 0);
+    assert!(!picker.is_pending());
+    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    assert!(
+        msg.contains("picker-source-spawn!") && msg.contains("cannot run"),
+        "the spawn failure must reach the user, got {msg:?}"
+    );
+}
+
+#[test]
 fn live_picker_rapid_keystrokes_collapse_to_one_trailing_builder_call_with_the_latest_query() {
     let (mut ed, _tmp) = editor_with(
         r#"(define-typed-command! "go" "" (lambda (pane)
              (live-picker! pane (lambda (x) (void))
                #:debounce-ms 0
-               #:command (lambda (q) (log! 'warn (string-append "fired:" q)) #f))))"#,
+               #:source (picker-command-source (lambda (q) (log! 'warn (string-append "fired:" q)) #f)))))"#,
     );
     type_cmd(&mut ed, ":go");
 
@@ -887,9 +921,9 @@ fn live_picker_backspace_to_empty_cancels_a_pending_nonempty_spawn() {
         r#"(define-typed-command! "go" "" (lambda (pane)
              (live-picker! pane (lambda (x) (void))
                #:debounce-ms 0
-               #:command (lambda (q)
+               #:source (picker-command-source (lambda (q)
                  (unless (equal? q "") (log! 'warn (string-append "spawned:" q)))
-                 #f))))"#,
+                 #f)))))"#,
     );
     type_cmd(&mut ed, ":go");
 
@@ -926,7 +960,7 @@ fn live_picker_rows_keep_source_order_regardless_of_query() {
           (set! tok (live-picker! pane (lambda (x) (void))
             #:query "zzz-does-not-fuzzy-match-anything"
             #:debounce-ms 100000
-            #:command (lambda (q) #f)))))
+            #:source (picker-command-source (lambda (q) #f))))))
         (define-command! "seed-rows" "" (lambda ()
           (picker-push! tok (list (cons "b" "b") (cons "a" "a") (cons "c" "c")))))
         "#,
@@ -952,7 +986,7 @@ fn live_picker_token_scopes_picker_close() {
         (define tok #f)
         (define-typed-command! "go" "" (lambda (pane)
           (set! tok (live-picker! pane (lambda (x) (log! 'info (to-string x)))
-            #:command (lambda (q) #f)))))
+            #:source (picker-command-source (lambda (q) #f))))))
         (define-command! "close-stale" "" (lambda ()
           (picker-close! (+ tok 1))))
         (define-command! "close-real" "" (lambda ()
@@ -974,20 +1008,20 @@ fn live_picker_token_scopes_picker_close() {
 // ── live-picker! validation ───────────────────────────────────────────────
 
 #[test]
-fn live_picker_rejects_a_non_callable_command() {
+fn live_picker_rejects_a_non_callable_source() {
     let (mut ed, _tmp) = editor_with(
         r#"(define-typed-command! "go" "" (lambda (pane)
-             (live-picker! pane (lambda (x) (void)) #:command '())))"#,
+             (live-picker! pane (lambda (x) (void)) #:source '())))"#,
     );
     type_cmd(&mut ed, ":go");
 
     assert!(
         ed.state.input.picker().is_none(),
-        "a non-callable #:command must be rejected before opening a picker"
+        "a non-callable #:source must be rejected before opening a picker"
     );
     let msg = ed.state.status_msg.clone().unwrap_or_default();
     assert!(
-        msg.contains("command"),
+        msg.contains("#:source"),
         "error should name the offending argument, got {msg:?}"
     );
 }
@@ -997,7 +1031,7 @@ fn live_picker_rejects_a_negative_debounce_ms() {
     let (mut ed, _tmp) = editor_with(
         r#"(define-typed-command! "go" "" (lambda (pane)
              (live-picker! pane (lambda (x) (void))
-               #:debounce-ms -1 #:command (lambda (q) #f))))"#,
+               #:debounce-ms -1 #:source (picker-command-source (lambda (q) #f)))))"#,
     );
     type_cmd(&mut ed, ":go");
 
@@ -1008,7 +1042,46 @@ fn live_picker_rejects_a_negative_debounce_ms() {
 }
 
 #[test]
-fn live_picker_requires_command() {
+fn live_picker_source_fills_the_picker_from_the_query() {
+    let (mut ed, _tmp) = editor_with(
+        r#"(define-typed-command! "go" "" (lambda (pane)
+             (live-picker! pane (lambda (x) (void))
+               #:query "ab"
+               #:source (lambda (token q)
+                          (picker-replace! token
+                            (map (lambda (c) (cons c c)) (list q (string-append q q))))))))"#,
+    );
+    type_cmd(&mut ed, ":go");
+
+    assert_eq!(
+        ed.state.input.picker().unwrap().total_len(),
+        2,
+        "the seed query must run the source, which replaces the rows"
+    );
+}
+
+#[test]
+fn command_source_rejects_a_non_callable_argv_for() {
+    let (mut ed, _tmp) = editor_with(
+        r#"(define-typed-command! "go" "" (lambda (pane)
+             (live-picker! pane (lambda (x) (void))
+               #:source (picker-command-source '()))))"#,
+    );
+    type_cmd(&mut ed, ":go");
+
+    assert!(
+        ed.state.input.picker().is_none(),
+        "a non-callable argv-for must be rejected before opening a picker"
+    );
+    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    assert!(
+        msg.contains("argv-for"),
+        "error should name the offending argument, got {msg:?}"
+    );
+}
+
+#[test]
+fn live_picker_requires_source() {
     let (mut ed, _tmp) = editor_with(
         r#"(define-typed-command! "go" "" (lambda (pane)
              (live-picker! pane (lambda (x) (void)))))"#,
@@ -1017,24 +1090,24 @@ fn live_picker_requires_command() {
 
     assert!(
         ed.state.input.picker().is_none(),
-        "live-picker! without #:command must error before opening a picker"
+        "live-picker! without #:source must error before opening a picker"
     );
 }
 
 #[test]
-fn live_picker_rejects_a_builder_return_that_is_not_an_argv_list() {
+fn command_source_rejects_an_argv_for_return_that_is_not_an_argv_list() {
     let (mut ed, _tmp) = editor_with(
         r#"(define-typed-command! "go" "" (lambda (pane)
              (live-picker! pane (lambda (x) (void))
                #:query "seed"
-               #:command (lambda (q) 42))))"#,
+               #:source (picker-command-source (lambda (q) 42)))))"#,
     );
     type_cmd(&mut ed, ":go");
 
     let msg = ed.state.status_msg.clone().unwrap_or_default();
     assert!(
-        msg.contains("#:command"),
-        "a builder return that isn't #f or an argv list must raise naming #:command, got {msg:?}"
+        msg.contains("picker-command-source"),
+        "a builder return that isn't #f or an argv list must raise naming picker-command-source, got {msg:?}"
     );
     // The raise happens after `%live-picker!` has already installed the
     // session. `live-picker!` never returns a token to bind, but the
@@ -1043,6 +1116,82 @@ fn live_picker_rejects_a_builder_return_that_is_not_an_argv_list() {
         ed.state.input.picker().is_some(),
         "a seed-spawn raise must leave the already-opened picker in place"
     );
+}
+
+#[test]
+fn live_picker_feeds_through_a_superseded_query_token_are_refused() {
+    let (mut ed, _tmp) = editor_with(
+        r#"
+        (define tok #f)
+        (define-typed-command! "go" "" (lambda (pane)
+          (set! tok (live-picker! pane (lambda (x) (void))
+            #:debounce-ms 100000
+            #:source (lambda (token q) (void))))))
+        (define-command! "seed-row" "" (lambda ()
+          (picker-push! tok (list (cons "one" "p1")))))
+        (define-command! "push-old" "" (lambda ()
+          (log! 'info (to-string (picker-push! tok (list (cons "two" "p2")))))))
+        (define-command! "replace-old" "" (lambda ()
+          (log! 'info (to-string (picker-replace! tok '())))))
+        "#,
+    );
+    type_cmd(&mut ed, ":go");
+    call(&mut ed, "seed-row");
+    ed.feed_key(key('a'));
+    ed.settle();
+
+    for command in ["push-old", "replace-old"] {
+        call(&mut ed, command);
+        assert_eq!(ed.state.status_msg.clone().unwrap(), "#false", "{command}");
+        let picker = ed.state.input.picker().unwrap();
+        assert_eq!(
+            picker.total_len(),
+            1,
+            "{command}: a feed for a superseded query must not touch the rows"
+        );
+        assert!(
+            picker.is_pending(),
+            "{command}: a refused feed must not settle the session: the current query's answer has not arrived"
+        );
+    }
+}
+
+#[test]
+fn live_picker_source_feeds_the_query_it_was_called_for() {
+    let (mut ed, _tmp) = editor_with(
+        r#"(define-typed-command! "go" "" (lambda (pane)
+             (live-picker! pane (lambda (x) (void))
+               #:debounce-ms 0
+               #:source (lambda (token q) (picker-replace! token (list (cons q q)))))))"#,
+    );
+    type_cmd(&mut ed, ":go");
+    ed.feed_key(key('a'));
+    ed.settle();
+    ed.settle();
+
+    let picker = ed.state.input.picker().unwrap();
+    assert_eq!(picker.window(10).collect::<Vec<_>>(), vec!["a"]);
+    assert!(!picker.is_pending());
+}
+
+#[test]
+fn live_picker_close_through_the_opening_token_works_after_typing() {
+    let (mut ed, _tmp) = editor_with(
+        r#"
+        (define tok #f)
+        (define-typed-command! "go" "" (lambda (pane)
+          (set! tok (live-picker! pane (lambda (x) (void))
+            #:debounce-ms 100000
+            #:source (lambda (token q) (void))))))
+        (define-command! "close-it" "" (lambda () (picker-close! tok)))
+        "#,
+    );
+    type_cmd(&mut ed, ":go");
+    ed.feed_key(key('a'));
+    ed.settle();
+    call(&mut ed, "close-it");
+
+    assert!(ed.state.input.picker().is_none());
 }
 
 #[test]

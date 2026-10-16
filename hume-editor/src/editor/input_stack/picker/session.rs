@@ -69,22 +69,17 @@ enum PickerMode {
     /// the identity permutation over `items`.
     Live {
         on_query_change: SteelVal,
+        /// The token feeds for the current query must carry. `None` until
+        /// the first query change, when the session token stands in; each
+        /// change mints a new one, so a source still answering an earlier
+        /// query is refused like any stale token.
+        query_token: Option<HostToken>,
     },
 }
 
 impl PickerMode {
     fn is_live(&self) -> bool {
         matches!(self, PickerMode::Live { .. })
-    }
-
-    /// Cheap `Rc` clone of the query-change callback, or `None` for
-    /// `Filter`, the return shape `insert_char`/`pop_grapheme` hand
-    /// straight to their caller.
-    fn on_query_change(&self) -> Option<SteelVal> {
-        match self {
-            PickerMode::Filter => None,
-            PickerMode::Live { on_query_change } => Some(on_query_change.clone()),
-        }
     }
 }
 
@@ -137,9 +132,9 @@ pub(in crate::editor) struct PickerSession {
     /// Which end of an over-long row the panel clips (`#:truncate`); see
     /// [`TruncateEnd`].
     truncate: TruncateEnd,
-    /// Identifies this session to Steel and to [`super::session_for_token`],
-    /// the shared guard every token-scoped picker mutation checks before
-    /// reaching a `&mut PickerSession` at all.
+    /// Identifies this session to Steel. [`super::session_for_token`] and
+    /// [`super::session_for_feed`] are the guards every token-scoped picker
+    /// mutation checks before reaching a `&mut PickerSession` at all.
     token: HostToken,
     /// Whether results are still arriving, and how; see [`Population`].
     /// Owning a `Streaming` source here, rather than in some separate
@@ -222,6 +217,7 @@ impl PickerSession {
             Population::Complete,
             PickerMode::Live {
                 on_query_change: opts.on_query_change,
+                query_token: None,
             },
         )
     }
@@ -262,6 +258,25 @@ impl PickerSession {
         self.token
     }
 
+    /// The token a feed must carry to add rows (`picker-push!`,
+    /// `picker-replace!`, `picker-source-spawn!`): the session token, or for
+    /// a live session the one minted for its current query.
+    pub(in crate::editor) fn feed_token(&self) -> HostToken {
+        match &self.mode {
+            PickerMode::Live {
+                query_token: Some(query_token),
+                ..
+            } => *query_token,
+            _ => self.token,
+        }
+    }
+
+    /// Whether `token` may act on the session itself (`picker-close!`,
+    /// `picker-source-stop!`): the session token, or the current feed token.
+    pub(in crate::editor) fn accepts(&self, token: HostToken) -> bool {
+        token == self.token || token == self.feed_token()
+    }
+
     pub(in crate::editor) fn truncate(&self) -> TruncateEnd {
         self.truncate
     }
@@ -291,7 +306,7 @@ impl PickerSession {
 
     /// Appends `items` and reranks. No token guard here: every
     /// *token-scoped* caller (`picker-push!`, via `EditorHostImpl::picker_feed`)
-    /// has already gone through [`super::session_for_token`] before reaching
+    /// has already gone through [`super::session_for_feed`] before reaching
     /// this; the other two callers, [`new`](Self::new) and
     /// `Editor::drain_picker_source`, hold the session directly (at
     /// construction, and via the frame's own `&mut EditorState`, respectively)
@@ -326,7 +341,7 @@ impl PickerSession {
     }
 
     /// Replaces the item list wholesale and reranks, with the same
-    /// [`super::session_for_token`]-guarded and `pending`-clearing contract
+    /// [`super::session_for_feed`]-guarded and `pending`-clearing contract
     /// as `push`, but always lands on row `0` (`rerank`, not `push`'s
     /// keep-the-same-item `rerank_keeping_selection`): every index the
     /// pre-replace `filtered` held names a *different* item (or nothing)
@@ -520,9 +535,16 @@ impl PickerSession {
     /// reads "still arriving" for the whole stop/debounce/respawn gap a
     /// requery opens, not just while a source happens to be attached.
     fn notify_query_change(&mut self) -> Option<SteelVal> {
-        let cb = self.mode.on_query_change()?;
+        let PickerMode::Live {
+            on_query_change,
+            query_token,
+        } = &mut self.mode
+        else {
+            return None;
+        };
+        *query_token = Some(host_token::mint());
         self.requery_armed = true;
-        Some(cb)
+        Some(on_query_change.clone())
     }
 
     /// Replaces the query wholesale and reranks. Test-only: production code

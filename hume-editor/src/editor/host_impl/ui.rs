@@ -253,7 +253,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         items: Vec<(String, steel::rvals::SteelVal)>,
         mode: PickerFeedMode,
     ) -> bool {
-        let Some(session) = picker::session_for_token(self.state, token) else {
+        let Some(session) = picker::session_for_feed(self.state, token) else {
             return false;
         };
         let items = picker::picker_items(items);

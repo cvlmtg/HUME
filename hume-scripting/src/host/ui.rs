@@ -105,10 +105,11 @@ pub struct LivePickerOpts {
     /// per-keystroke requeries.
     pub query: String,
     /// Fired with `(token query)` on every query-changing keystroke instead
-    /// of driving a local fuzzy filter. See
+    /// of driving a local fuzzy filter; `token` is the one feeds for that
+    /// query must carry. See
     /// `PickerSession::rebuild_filtered`'s doc for why a live session skips
     /// it. Always `live-picker!`'s own stop-and-clear-then-debounce
-    /// wrapper around the caller's `#:command` builder, never the builder
+    /// wrapper around the caller's `#:source`, never the source
     /// itself.
     pub on_query_change: steel::rvals::SteelVal,
     /// `#:truncate`: see [`TruncateEnd`].
@@ -333,8 +334,8 @@ pub trait UiHost {
         opts: PickerOpts,
     ) -> Result<HostToken, String>;
 
-    /// `(live-picker! on-select #:command command #:prompt "…" #:query [""]
-    /// #:debounce-ms [150] #:cwd [#f] #:nul [#f] #:ok-exit-codes ['(0)])`
+    /// `(live-picker! on-select #:source source #:prompt "…" #:query [""]
+    /// #:debounce-ms [150])`
     /// opens the fuzzy-finder panel with the query driving an external
     /// source instead of the local fuzzy filter: `filtered` is always the
     /// identity permutation over whatever `items` currently holds (see
@@ -345,9 +346,9 @@ pub trait UiHost {
     /// session's async sources are). Same return, exactly-once `on-select`,
     /// and modal-ownership contract as `open_picker`. `opts`: see
     /// [`LivePickerOpts`]. This method itself never fires
-    /// `on_query_change`; the `live-picker!` Scheme wrapper spawns for a
+    /// `on_query_change`; the `live-picker!` Scheme wrapper runs the source for a
     /// non-empty seed `query` itself, undebounced, right after this
-    /// returns, so a bad `#:command` raise on that seed leaves the session
+    /// returns, so a bad `#:source` raise on that seed leaves the session
     /// this call already opened in place (Esc still closes it) rather than
     /// tearing it down. The wrapper doesn't catch-and-reraise
     /// around it, since a call sourced from a native builtin re-raised
@@ -367,11 +368,14 @@ pub trait UiHost {
     /// the merge policy ([`PickerFeedMode`]) differs. A stale token (the
     /// picker was closed or replaced since) is expected-normal for an
     /// async source racing the user, so it is a silent no-op, not an error:
-    /// returns whether the feed was applied. `Replace` is the requery half
-    /// of a live source: the previous pattern's rows stay on screen through
-    /// the requery's stop/debounce/respawn gap and are only dropped once the
-    /// new search has something to show in their place (or settles on
-    /// nothing). Items are otherwise append-only.
+    /// returns whether the feed was applied. A live picker accepts a feed
+    /// only through the token of its current query, so a late answer for an
+    /// old query cannot overwrite the current one's rows or settle its
+    /// pending state. `Replace` is the requery half of a live source: the
+    /// previous pattern's rows stay on screen through the requery's
+    /// stop/debounce/respawn gap and are only dropped once the new search
+    /// has something to show in their place (or settles on nothing). Items
+    /// are otherwise append-only.
     fn picker_feed(
         &mut self,
         token: HostToken,

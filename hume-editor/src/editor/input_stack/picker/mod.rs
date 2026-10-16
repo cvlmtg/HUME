@@ -151,14 +151,13 @@ impl super::stack::InputStack {
     }
 }
 
-/// The open picker's session, but only if its token is `token`: the shared
-/// guard for every token-scoped picker mutation (`picker-push!`,
-/// `picker-replace!`, `picker-source-spawn!`, `picker-source-stop!`, a
-/// scoped `picker-close!`). A mismatch, or no picker open at all, is
-/// expected-normal (a late callback racing a picker the user already
-/// closed or replaced), so callers treat `None` as a silent no-op, never an
-/// error; none of `PickerSession`'s own mutators re-check the token
-/// themselves once a caller has reached one through here.
+/// The open picker's session, but only if `token` may act on the session
+/// itself: the guard for `picker-source-stop!` and a scoped `picker-close!`.
+/// A mismatch, or no picker open at all, is expected-normal (a late callback
+/// racing a picker the user already closed or replaced), so callers treat
+/// `None` as a silent no-op, never an error; none of `PickerSession`'s own
+/// mutators re-check the token themselves once a caller has reached one
+/// through here or through [`session_for_feed`].
 pub(in crate::editor) fn session_for_token(
     state: &mut super::super::EditorState,
     token: HostToken,
@@ -166,7 +165,22 @@ pub(in crate::editor) fn session_for_token(
     state
         .input
         .picker_mut()
-        .filter(|session| session.token() == token)
+        .filter(|session| session.accepts(token))
+}
+
+/// The open picker's session, but only if `token` is the one feeds for its
+/// current query carry: the guard for `picker-push!`, `picker-replace!` and
+/// `picker-source-spawn!`. A live session mints a new feed token on every
+/// query change, so a source answering an earlier query is refused here with
+/// the same silent `None` as any stale token.
+pub(in crate::editor) fn session_for_feed(
+    state: &mut super::super::EditorState,
+    token: HostToken,
+) -> Option<&mut PickerSession> {
+    state
+        .input
+        .picker_mut()
+        .filter(|session| session.feed_token() == token)
 }
 
 /// Single open chokepoint for the picker, `picker!` and `live-picker!` alike
@@ -408,9 +422,9 @@ pub(in crate::editor) fn picker_input(ed: &mut Editor, r: LayerRef, ev: InputEve
 /// mutator (`insert_char`/`pop_grapheme`) just returned, if any, with
 /// `(token query)` as it stands right now, via `queue_steel_call`,
 /// never invoked inline, same discipline as every other picker callback
-/// (`close_picker`). The token lets `live-picker!`'s Scheme wrapper
-/// (`bootstrap.scm`) spawn/stop/replace against the right session
-/// without closing over a not-yet-bound `define`; see
+/// (`close_picker`). The token is the session's feed token for this query,
+/// so everything `live-picker!`'s Scheme wrapper (`bootstrap.scm`) feeds
+/// through it is dropped once the query changes again; see
 /// `builtins/mod.rs`'s `picker!`/`live-picker!` rationale block. A bare
 /// `None` is a silent no-op: the mutator itself already decided there
 /// was nothing to fire (a `picker!` session, or a backspace on an
@@ -426,7 +440,7 @@ fn queue_query_change(ed: &mut Editor, r: LayerRef, cb: Option<SteelVal>) {
         return;
     };
     let session = picker_mut(ed, r);
-    let token = session.token();
+    let token = session.feed_token();
     let query = session.query().to_string();
     ed.state
         .queue_steel_call(cb, vec![token.to_steel(), SteelVal::StringV(query.into())]);

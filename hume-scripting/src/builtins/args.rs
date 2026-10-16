@@ -269,7 +269,7 @@ pub(crate) fn bool_arg(val: SteelVal, ctx_name: &str) -> Result<bool, SteelErr> 
 /// A Steel callable: `Closure`, `FuncV`, or `MutFunc`, the same three
 /// variants `define-command!`'s own `proc` check accepts. Kept in one place
 /// so a second "is this callable" decode (e.g. `live-picker!`'s
-/// `#:command`) never drifts from that list.
+/// `#:source`) never drifts from that list.
 pub(crate) fn callable_arg(val: SteelVal, ctx_name: &str) -> Result<SteelVal, SteelErr> {
     match val {
         SteelVal::Closure(_) | SteelVal::FuncV(_) | SteelVal::MutFunc(_) => Ok(val),
@@ -285,7 +285,7 @@ pub(crate) fn optional_callable_arg(
     optional(val, ctx_name, callable_arg)
 }
 
-/// `(%callable? v)`: backs `live-picker!`'s `#:command` check (see
+/// `(%callable? v)`: backs `live-picker!`'s `#:source` and `picker-command-source`'s `argv-for` checks (see
 /// `bootstrap.scm`), which must validate it in Scheme before composing the
 /// debounced-respawn wrapper around it: once wrapped, `%live-picker!`'s own
 /// `callable_arg` check on `on_query_change` sees only the wrapper closure,

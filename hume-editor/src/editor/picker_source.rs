@@ -4,10 +4,11 @@
 //! streamed lines and the one place a spawned source's exit gets reported.
 //! Also owns spawning/stopping a source (`spawn_source`/`stop_source`,
 //! `EditorHostImpl`'s delegates for `picker-source-spawn!`/
-//! `picker-source-stop!`), guarded by `picker::session_for_token` like every
-//! other token-scoped picker mutation. The "report the outgoing source
-//! before attaching a new one" ordering rule lives here, beside the
-//! exit-reporting it feeds, not in the host-trait translation layer.
+//! `picker-source-stop!`), guarded by `picker::session_for_feed` and
+//! `picker::session_for_token` like every other token-scoped picker
+//! mutation. The "report the outgoing source before attaching a new one"
+//! ordering rule lives here, beside the exit-reporting it feeds, not in the
+//! host-trait translation layer.
 
 use std::sync::Arc;
 
@@ -16,7 +17,7 @@ use hume_scripting::host::{HostToken, PickerSourceOpts};
 use steel::rvals::SteelVal;
 
 use super::input_stack::PickerItem;
-use super::input_stack::picker::session_for_token;
+use super::input_stack::picker::{session_for_feed, session_for_token};
 use super::message_log::Severity;
 use super::{Editor, EditorState};
 
@@ -38,7 +39,7 @@ pub(super) fn spawn_source(
     args: Vec<String>,
     opts: PickerSourceOpts,
 ) -> Result<bool, String> {
-    if session_for_token(state, token).is_none() {
+    if session_for_feed(state, token).is_none() {
         return Ok(false);
     }
     let delimiter = if opts.nul { b'\0' } else { b'\n' };
@@ -51,7 +52,7 @@ pub(super) fn spawn_source(
     )
     .map_err(|e| format!("cannot run '{cmd}': {e}"))?;
     take_and_report_outgoing_source(state);
-    session_for_token(state, token)
+    session_for_feed(state, token)
         .expect("checked Some above")
         .attach_source(source, opts.ok_exit_codes);
     Ok(true)

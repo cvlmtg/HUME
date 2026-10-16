@@ -5,10 +5,13 @@
 ### Breaking changes
 - Key-bindable commands of the core plugins share a plugin prefix. Rename them in your `init.scm` bindings and `call!`s: `lsp-fmt` is `lsp/format-source`, `lsp-fmt-document` is `lsp/format-document`, and the other `lsp-*` commands and `goto-next-diagnostic`/`goto-prev-diagnostic` take the `lsp/` prefix (`lsp-hover` is `lsp/hover`). `toggle-undotree` is `undotree/toggle`, `picker-files`, `picker-buffers` and `picker-git-modified` are `pickers/files`, `pickers/buffers` and `pickers/git-modified`, `plum-ensure-grammars` is `plum/ensure-grammars`, and the `classic-*`, `helix-*` and `vim-*` commands take the `classic-paste/`, `helix-surround/` and `vim-keybind/` prefixes. Typed `:` commands keep their names.
 
+- `live-picker!` takes `#:source`, a function of the picker token and the query, instead of `#:command`. To keep re-running a subprocess, pass `#:source (picker-command-source argv-for)`; `#:cwd`, `#:nul` and `#:ok-exit-codes` move to `picker-command-source`.
+
 ### Panes & interface
 - `core:git-diff` takes a `"branch-style"` config value: `'icon` shows the statusline branch as `⎇ main` instead of `(main)`.
 
 ### Plugins & scripting
+- A `live-picker!` source gets a token per query: once the user has typed on, `picker-push!`, `picker-replace!` and `picker-source-spawn!` on an earlier query's token do nothing, so a slow source can't overwrite newer rows.
 - New `on-before-buffer-save` hook, run before a buffer is written. A handler taking `(pane done)` holds the write until it calls `done`, up to `before-save-timeout-ms`.
 - `core:git-diff` has key-bindable `git-diff/toggle-inline-diff` and `git-diff/toggle-git-signs`, plus `git-diff/show-inline-diff` and `git-diff/inline-diff?` for your own commands.
 

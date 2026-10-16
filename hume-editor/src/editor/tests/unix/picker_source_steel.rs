@@ -335,9 +335,10 @@ fn live_picker_seed_spawns_keystroke_respawns_and_backspace_to_empty_clears() {
           (set! tok (live-picker! pane (lambda (x) (log! 'info (to-string x)))
             #:query "a"
             #:debounce-ms 0
-            #:command (lambda (q)
-              (and (not (equal? q ""))
-                   (list "sh" "-c" (string-append "printf 'row-" q "\n'"))))))))
+            #:source (picker-command-source
+              (lambda (q)
+                (and (not (equal? q ""))
+                     (list "sh" "-c" (string-append "printf 'row-" q "\n'")))))))))
         "#,
     );
     type_cmd(&mut ed, ":go");
@@ -391,8 +392,8 @@ fn live_picker_seed_spawns_keystroke_respawns_and_backspace_to_empty_clears() {
     // drains the two queued wrapped-callback calls (stopping the source,
     // arming then re-arming the 0ms timer for the latest, now-empty,
     // query); the second lets that surviving timer fire, calling
-    // #:command with "" here, which returns #f, which is what actually
-    // clears the rows (see `spawn-for`'s #f branch in bootstrap.scm).
+    // #:source with "" here, which returns #f, which is what actually
+    // clears the rows (see `picker-command-source`'s #f branch in bootstrap.scm).
     ed.settle();
     ed.settle();
     assert!(
@@ -407,6 +408,28 @@ fn live_picker_seed_spawns_keystroke_respawns_and_backspace_to_empty_clears() {
 }
 
 #[test]
+fn live_picker_spawn_through_a_superseded_query_token_is_refused() {
+    let (mut ed, _tmp) = editor_with(
+        r#"
+        (define tok #f)
+        (define-typed-command! "go" "" (lambda (pane)
+          (set! tok (live-picker! pane (lambda (x) (void))
+            #:debounce-ms 100000
+            #:source (lambda (token q) (void))))))
+        (define-command! "spawn-old" "" (lambda ()
+          (log! 'info (to-string (picker-source-spawn! tok "sh" (list "-c" "printf 'a\n'"))))))
+        "#,
+    );
+    type_cmd(&mut ed, ":go");
+    ed.feed_key(key('a'));
+    ed.settle();
+    call(&mut ed, "spawn-old");
+
+    assert_eq!(ed.state.status_msg.clone().unwrap(), "#false");
+    assert!(!ed.state.input.picker().unwrap().has_source());
+}
+
+#[test]
 fn live_picker_requery_with_no_output_clears_the_previous_rows() {
     // Spawns "sh" by unqualified name; see `PathReader`'s doc.
     let _path = path_reader();
@@ -416,12 +439,13 @@ fn live_picker_requery_with_no_output_clears_the_previous_rows() {
           (live-picker! pane (lambda (x) (log! 'info (to-string x)))
             #:query "a"
             #:debounce-ms 0
-            #:ok-exit-codes '(0 1)
-            #:command (lambda (q)
-              (and (not (equal? q ""))
-                   (if (equal? q "a")
-                       (list "sh" "-c" "printf 'row-a\n'")
-                       (list "sh" "-c" "exit 1")))))))
+            #:source (picker-command-source
+              (lambda (q)
+                (and (not (equal? q ""))
+                     (if (equal? q "a")
+                         (list "sh" "-c" "printf 'row-a\n'")
+                         (list "sh" "-c" "exit 1"))))
+              #:ok-exit-codes '(0 1)))))
         "#,
     );
     type_cmd(&mut ed, ":go");

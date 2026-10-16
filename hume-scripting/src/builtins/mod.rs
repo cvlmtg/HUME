@@ -194,13 +194,19 @@ macro_rules! builtins {
 // is Steel's pattern-matching macro and `[match 'fuzzy]` would be expanded.
 //
 // picker! / live-picker!: two constructors over one PickerSession; live-picker!
-// respawns #:command per query and disables local filtering. Each keystroke
-// stops the running source and re-arms the debounced respawn. Old rows stay
+// runs #:source per query and disables local filtering. Each keystroke
+// stops the running source and re-arms the debounced requery. Old rows stay
 // until the new source's first batch replaces them (no blank frame per
-// keystroke); #:command returning #f clears them. Only the timer-dispatched
-// respawn gets the clear-and-re-raise handler, since it has no outer handler;
-// the seed spawn for a non-empty #:query runs on the caller's stack and must
-// stay unwrapped.
+// keystroke); `picker-command-source` clears them when its argv function
+// returns #f. Only the timer-dispatched requery gets the clear-and-re-raise
+// handler, since it has no outer handler; the seed call for a non-empty
+// #:query runs on the caller's stack and must stay unwrapped.
+//
+// A live session mints a new token for every query and passes it to
+// #:source. picker-push!, picker-replace! and picker-source-spawn! accept
+// only the current one, so an answer to an earlier query is dropped by the
+// editor. picker-close! and picker-source-stop! also accept the token
+// live-picker! returned.
 //
 // run-inline-output!: raises on a nonzero exit. %run-inline-output! spawns in
 // an isolated process group (see hume-platform::process::run_inline_output).
@@ -499,7 +505,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "%picker-source-spawn!" ui::picker_source_spawn(token: SteelVal, cmd: SteelVal, args: SteelVal, cwd: SteelVal, nul: SteelVal, ok_exit_codes: SteelVal);
         cmd "picker-source-stop!" ui::picker_source_stop(token: SteelVal);
         cmd "picker-close!" ui::picker_close(token: SteelVal);
-        // Backs live-picker!'s #:command validation only. See args::is_callable's doc.
+        // Backs live-picker!'s #:source and picker-command-source's validation only. See args::is_callable's doc.
         plain "%callable?" args::is_callable(val: SteelVal);
 
         cmd "%held-done" hooks::held_done(hold: SteelVal);

@@ -3821,7 +3821,7 @@ fn dot_repeats_a_commands_live_picker_selection() {
     let mut ed = record_pk(
         tmp.path(),
         &format!(
-            r#"(let ((tok (live-picker! pane {PK_SELECT} #:command (lambda (q) #f))))
+            r#"(let ((tok (live-picker! pane {PK_SELECT} #:source (picker-command-source (lambda (q) #f)))))
                  (picker-push! tok (list (cons "b" "B"))))"#
         ),
         &[key_enter()],
@@ -3898,7 +3898,7 @@ fn reload_keeps_a_label_pick() {
 fn reload_forgets_a_live_picks_payload() {
     let tmp = tempfile::tempdir().unwrap();
     let body = format!(
-        r#"(let ((tok (live-picker! pane {PK_SELECT} #:command (lambda (q) #f))))
+        r#"(let ((tok (live-picker! pane {PK_SELECT} #:source (picker-command-source (lambda (q) #f)))))
              (picker-push! tok (list (cons "b" "B"))))"#
     );
     let mut ed = record_pk(tmp.path(), &body, &[key_enter()]);
