@@ -979,19 +979,28 @@ fn position_params_hash_carries_a_doc_pos() {
     );
 }
 
-/// A hand-built (untagged) position/range (`wire_pos`/`hashmap`'s own
-/// shape) is rejected outright, before this builtin ever reaches its
-/// "no LSP host" branch: `JsonHandle::position_encoding` errors on
-/// `WireOrigin::Local` first. This is `lsp_position_to_offset_untagged_
-/// handle_errors`/`lsp_range_to_offsets_untagged_handle_errors`'s own
-/// unit-level counterpart; the two `hume-editor` regression tests exercise
-/// the same rule through a real command dispatch.
+/// A hand-built position/range is rejected outright, before this builtin
+/// ever reaches its "no LSP host" branch: a hashmap is not a handle at all,
+/// and a handle with `WireOrigin::Local` has no encoding to read. This is
+/// `lsp_position_to_offset_untagged_handle_errors`/
+/// `lsp_range_to_offsets_untagged_handle_errors`'s own unit-level
+/// counterpart; the two `hume-editor` regression tests exercise the same
+/// rule through a real command dispatch.
 #[test]
 fn lsp_position_to_offset_untagged_handle_errors() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
-    let result = lsp_position_to_offset(&mut ctx, default_pane(), wire_pos(0, 0));
-    let msg = result.unwrap_err().to_string();
+    let msg = lsp_position_to_offset(&mut ctx, default_pane(), wire_pos(0, 0))
+        .unwrap_err()
+        .to_string();
+    assert!(
+        msg.contains("expected a JSON handle from a server response"),
+        "got: {msg}"
+    );
+    let local = JsonHandle::new(serde_json::json!({"line": 0, "character": 0})).into_steel_val();
+    let msg = lsp_position_to_offset(&mut ctx, default_pane(), local)
+        .unwrap_err()
+        .to_string();
     assert!(msg.contains("not a value from an LSP server"), "got: {msg}");
 }
 
@@ -1054,8 +1063,21 @@ fn lsp_range_to_offsets_untagged_handle_errors() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
     let range = hashmap(vec![("start", wire_pos(0, 0)), ("end", wire_pos(0, 3))]);
-    let result = lsp_range_to_offsets(&mut ctx, default_pane(), range);
-    let msg = result.unwrap_err().to_string();
+    let msg = lsp_range_to_offsets(&mut ctx, default_pane(), range)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        msg.contains("expected a JSON handle from a server response"),
+        "got: {msg}"
+    );
+    let local = JsonHandle::new(serde_json::json!({
+        "start": {"line": 0, "character": 0},
+        "end": {"line": 0, "character": 3},
+    }))
+    .into_steel_val();
+    let msg = lsp_range_to_offsets(&mut ctx, default_pane(), local)
+        .unwrap_err()
+        .to_string();
     assert!(msg.contains("not a value from an LSP server"), "got: {msg}");
 }
 
@@ -1165,11 +1187,10 @@ fn lsp_label_offsets_to_text_errors_on_a_non_string_label() {
     assert!(msg.contains("lsp-label-offsets->text"), "got: {msg}");
 }
 
-/// A hand-built (untagged) offsets value has no producing server to have
-/// negotiated an encoding with, so it is rejected before the array-shape check
-/// even runs.
+/// A hand-built list is not a handle onto a server response, so it is
+/// rejected before the array-shape check even runs.
 #[test]
-fn lsp_label_offsets_to_text_rejects_an_untagged_offsets_value() {
+fn lsp_label_offsets_to_text_rejects_a_hand_built_list() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
     let untagged: SteelVal = vec![SteelVal::IntV(7), SteelVal::IntV(13)]
@@ -1181,7 +1202,37 @@ fn lsp_label_offsets_to_text_rejects_an_untagged_offsets_value() {
         untagged,
     );
     let msg = result.unwrap_err().to_string();
+    assert!(
+        msg.contains("expected a JSON handle from a server response"),
+        "got: {msg}"
+    );
+}
+
+/// Each location of `lsp-locations->places` must be a handle onto a
+/// server response: a hand-built one raises before the host sees it, and so
+/// does a bare hashmap.
+#[test]
+fn lsp_locations_to_places_rejects_untagged_locations() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let location = serde_json::json!({
+        "uri": "file:///a.rs",
+        "range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 1}},
+    });
+    let untagged = JsonHandle::new(location.clone()).into_steel_val();
+    let msg = lsp_locations_to_places(&mut ctx, vec![untagged].into_steelval().unwrap())
+        .unwrap_err()
+        .to_string();
     assert!(msg.contains("not a value from an LSP server"), "got: {msg}");
+
+    let hashmap = hashmap(vec![("uri", SteelVal::StringV("file:///a.rs".into()))]);
+    let msg = lsp_locations_to_places(&mut ctx, vec![hashmap].into_steelval().unwrap())
+        .unwrap_err()
+        .to_string();
+    assert!(
+        msg.contains("expected a JSON handle from a server response"),
+        "got: {msg}"
+    );
 }
 
 // ── JsonHandle arguments (json_arg funnel) ─────────────────────────────────────
@@ -1216,19 +1267,22 @@ fn lsp_label_offsets_to_text_errors_on_a_wrong_length_array_handle() {
 }
 
 #[test]
-fn lsp_locations_to_display_parts_accepts_a_list_of_json_handles() {
+fn lsp_locations_to_places_accepts_a_list_of_json_handles() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
     let locs: SteelVal = vec![
-        JsonHandle::new(serde_json::json!({
-            "uri": "file:///a.rs",
-            "range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 1}},
-        }))
+        JsonHandle::server_for_test(
+            serde_json::json!({
+                "uri": "file:///a.rs",
+                "range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 1}},
+            }),
+            PositionEncoding::Utf16,
+        )
         .into_steel_val(),
     ]
     .into_steelval()
     .unwrap();
-    let msg = lsp_locations_to_display_parts(&mut ctx, locs)
+    let msg = lsp_locations_to_places(&mut ctx, locs)
         .unwrap_err()
         .to_string();
     assert!(msg.contains("no LSP state available"), "got: {msg}");

@@ -138,8 +138,8 @@ pub(crate) fn safe_path_segment(args: &[SteelVal]) -> SteelResult {
 
 /// `(path->display path)`: run `path` through HUME's display-form pipeline
 /// (Windows `\\?\` stripping, `~`-collapse) so a path a plugin only has as a
-/// string (e.g. `lsp/location-display`'s `path->display` call on the
-/// already-decoded path `lsp-locations->display-parts` hands it) renders the
+/// string (e.g. `lsp/place-display`'s `path->display` call on the
+/// already-decoded path `lsp-locations->places` hands it) renders the
 /// same way as paths that came from `buffer-display-path`. No filesystem
 /// access; expects an absolute path (`~`-collapse is a no-op on relative
 /// input).

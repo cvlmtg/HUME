@@ -36,7 +36,7 @@ fn settle(ed: &mut Editor) {
 fn trigger_char_fires_the_completion_request() {
     let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, requests) =
-        setup_trigger_char_feature(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
+        setup_cursor_at_start(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
             backend.respond_to("textDocument/completion", serde_json::json!([]));
         });
 
@@ -57,7 +57,7 @@ fn trigger_char_fires_the_completion_request() {
 fn trigger_char_with_no_completions_is_silent() {
     let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _requests) =
-        setup_trigger_char_feature(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
+        setup_cursor_at_start(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
             backend.respond_to("textDocument/completion", serde_json::json!([]));
         });
 
@@ -79,7 +79,7 @@ fn trigger_char_with_no_completions_is_silent() {
 fn ctrl_space_with_no_completions_reports_it() {
     let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _requests) =
-        setup_trigger_char_feature(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
+        setup_cursor_at_start(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
             backend.respond_to("textDocument/completion", serde_json::json!([]));
         });
 
@@ -95,7 +95,7 @@ fn ctrl_space_with_no_completions_reports_it() {
 fn ctrl_space_fires_completion_trigger() {
     let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, requests) =
-        setup_trigger_char_feature(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
+        setup_cursor_at_start(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
             backend.respond_to("textDocument/completion", serde_json::json!([]));
         });
 
@@ -111,7 +111,7 @@ fn ctrl_space_fires_completion_trigger() {
 fn ctrl_space_in_a_buffer_with_no_file_sends_no_request() {
     let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, requests) =
-        setup_trigger_char_feature(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
+        setup_cursor_at_start(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
             backend.respond_to("textDocument/completion", serde_json::json!([]));
         });
     ed.doc_mut().set_path(None);
@@ -129,7 +129,7 @@ fn ctrl_space_in_a_buffer_with_no_file_sends_no_request() {
 fn capability_gated_no_completion_provider_sends_no_request() {
     let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, requests) =
-        setup_trigger_char_feature(tmp.path(), FOO, serde_json::json!({}), |_backend, _sid| {});
+        setup_cursor_at_start(tmp.path(), FOO, serde_json::json!({}), |_backend, _sid| {});
 
     ed.feed_key(key('i'));
     ed.settle();
@@ -148,7 +148,7 @@ fn capability_gated_no_completion_provider_sends_no_request() {
 fn null_response_opens_no_session() {
     let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _requests) =
-        setup_trigger_char_feature(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
+        setup_cursor_at_start(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
             backend.respond_to("textDocument/completion", serde_json::Value::Null);
         });
 
@@ -186,7 +186,7 @@ fn accept_applies_main_edit_and_additional_text_edits_as_one_undo_step() {
     // Blank line 0 (the auto-import destination) + "foo" on line 1 (the
     // completion site), non-overlapping, matching the real-world shape:
     // an import lands above the cursor's line, not at the exact same spot.
-    let (mut ed, _guard, _requests) = setup_trigger_char_feature(
+    let (mut ed, _guard, _requests) = setup_cursor_at_start(
         tmp.path(),
         "\nfoo\n",
         full_completion_caps(),
@@ -237,7 +237,7 @@ fn accept_applies_main_edit_and_additional_text_edits_as_one_undo_step() {
 #[test]
 fn typing_after_an_accept_with_additional_text_edits_composes_into_the_same_group() {
     let tmp = tempfile::tempdir().unwrap();
-    let (mut ed, _guard, _requests) = setup_trigger_char_feature(
+    let (mut ed, _guard, _requests) = setup_cursor_at_start(
         tmp.path(),
         "\nfoo\n",
         full_completion_caps(),
@@ -292,7 +292,7 @@ fn additional_edit_on_the_same_line_as_a_text_edit_main_edit_shifts_with_it() {
     // additionalTextEdits entry (chars 6..9, "XXX") is on the same line,
     // entirely after the main edit's end, so its position is stale unless
     // shifted by that same delta.
-    let (mut ed, _guard, _requests) = setup_trigger_char_feature(
+    let (mut ed, _guard, _requests) = setup_cursor_at_start(
         tmp.path(),
         "foo.b XXX\n",
         full_completion_caps(),
@@ -345,7 +345,7 @@ fn additional_edit_on_the_same_line_with_an_astral_prefix_lands_correctly() {
     let tmp = tempfile::tempdir().unwrap();
     // "🎉foo.b XXX\n": 🎉 is char 0 (wire columns 0..2); "foo.b XXX" follows
     // at char 1 (wire column 2).
-    let (mut ed, _guard, _requests) = setup_trigger_char_feature(
+    let (mut ed, _guard, _requests) = setup_cursor_at_start(
         tmp.path(),
         "🎉foo.b XXX\n",
         full_completion_caps(),
@@ -397,7 +397,7 @@ fn additional_edit_on_the_same_line_with_an_astral_prefix_lands_correctly() {
 #[test]
 fn resolved_additional_edits_land_through_the_accept_edit_on_the_same_line() {
     let tmp = tempfile::tempdir().unwrap();
-    let (mut ed, _guard, _requests) = setup_trigger_char_feature(
+    let (mut ed, _guard, _requests) = setup_cursor_at_start(
         tmp.path(),
         "foo.b XXX\n",
         full_completion_caps(),
@@ -456,7 +456,7 @@ fn resolved_additional_edits_land_through_the_accept_edit_on_the_same_line() {
 #[test]
 fn resolved_additional_edits_are_dropped_after_a_post_accept_edit() {
     let tmp = tempfile::tempdir().unwrap();
-    let (mut ed, _guard, _requests) = setup_trigger_char_feature(
+    let (mut ed, _guard, _requests) = setup_cursor_at_start(
         tmp.path(),
         "\nfoo\n",
         full_completion_caps(),
@@ -509,7 +509,7 @@ fn resolved_additional_edits_are_dropped_after_a_post_accept_edit() {
 #[test]
 fn resolve_does_not_apply_anything_after_lsp_stop() {
     let tmp = tempfile::tempdir().unwrap();
-    let (mut ed, _guard, requests) = setup_trigger_char_feature(
+    let (mut ed, _guard, requests) = setup_cursor_at_start(
         tmp.path(),
         "\nfoo\n",
         full_completion_caps(),
@@ -604,7 +604,7 @@ fn completion_resolve_goes_to_the_items_origin_server() {
 fn resolve_sent_only_when_item_lacks_additional_text_edits_and_resolve_provider_present() {
     let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, requests) =
-        setup_trigger_char_feature(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
+        setup_cursor_at_start(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
             backend.respond_to(
                 "textDocument/completion",
                 serde_json::json!([{"label": "bar", "insertText": "bar"}]),
@@ -659,7 +659,7 @@ fn auto_import_resolve() -> serde_json::Value {
 #[test]
 fn accept_reuses_the_docs_resolve_answered_for_the_same_text() {
     let tmp = tempfile::tempdir().unwrap();
-    let (mut ed, _guard, requests) = setup_trigger_char_feature(
+    let (mut ed, _guard, requests) = setup_cursor_at_start(
         tmp.path(),
         "\nfoo\n",
         full_completion_caps(),
@@ -692,7 +692,7 @@ fn accept_reuses_the_docs_resolve_answered_for_the_same_text() {
 #[test]
 fn accept_resolves_again_when_the_text_changed_since_the_docs_resolve() {
     let tmp = tempfile::tempdir().unwrap();
-    let (mut ed, _guard, requests) = setup_trigger_char_feature(
+    let (mut ed, _guard, requests) = setup_cursor_at_start(
         tmp.path(),
         "\nfoo\n",
         full_completion_caps(),
@@ -730,7 +730,7 @@ fn accept_resolves_again_when_the_text_changed_since_the_docs_resolve() {
 fn null_resolve_response_is_a_clean_no_op() {
     let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, requests) =
-        setup_trigger_char_feature(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
+        setup_cursor_at_start(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
             backend.respond_to(
                 "textDocument/completion",
                 serde_json::json!([{"label": "bar", "insertText": "bar"}]),
@@ -762,7 +762,7 @@ fn null_resolve_response_is_a_clean_no_op() {
 fn resolve_not_sent_when_the_item_already_has_additional_text_edits() {
     let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, requests) =
-        setup_trigger_char_feature(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
+        setup_cursor_at_start(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
             backend.respond_to(
                 "textDocument/completion",
                 serde_json::json!([{
@@ -802,7 +802,7 @@ fn resolve_not_sent_when_the_item_already_has_additional_text_edits() {
 #[test]
 fn an_incomplete_answer_is_re_requested_on_typing() {
     let tmp = tempfile::tempdir().unwrap();
-    let (mut ed, _guard, requests) = setup_trigger_char_feature(
+    let (mut ed, _guard, requests) = setup_cursor_at_start(
         tmp.path(),
         FOO,
         full_completion_caps(),
@@ -837,7 +837,7 @@ fn an_incomplete_answer_is_re_requested_on_typing() {
 fn a_complete_answer_is_not_re_requested_on_typing() {
     let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, requests) =
-        setup_trigger_char_feature(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
+        setup_cursor_at_start(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
             backend.respond_to(
                 "textDocument/completion",
                 serde_json::json!([{"label": "foo", "insertText": "foo"}]),
@@ -867,7 +867,7 @@ fn a_complete_answer_is_not_re_requested_on_typing() {
 fn detach_clears_completion_trigger_chars_so_a_stale_trigger_is_a_true_no_op() {
     let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, requests) =
-        setup_trigger_char_feature(tmp.path(), FOO, full_completion_caps(), |_backend, _sid| {});
+        setup_cursor_at_start(tmp.path(), FOO, full_completion_caps(), |_backend, _sid| {});
 
     stop_server(&mut ed, "rust-analyzer");
     ed.settle(); // on-lsp-detach clears the "lsp" trigger chars
@@ -894,7 +894,7 @@ fn detach_clears_completion_trigger_chars_so_a_stale_trigger_is_a_true_no_op() {
 fn detach_dismisses_an_open_completion_session_for_that_buffer() {
     let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _requests) =
-        setup_trigger_char_feature(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
+        setup_cursor_at_start(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
             backend.respond_to(
                 "textDocument/completion",
                 serde_json::json!([{"label": "bar", "insertText": "bar"}]),
@@ -922,7 +922,7 @@ fn detach_dismisses_an_open_completion_session_for_that_buffer() {
 fn snippet_item_lands_as_stripped_plain_text() {
     let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _requests) =
-        setup_trigger_char_feature(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
+        setup_cursor_at_start(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
             backend.respond_to(
                 "textDocument/completion",
                 serde_json::json!([{
@@ -974,7 +974,7 @@ fn resolve_params(requests: &RequestLog) -> Vec<serde_json::Value> {
 fn selecting_a_candidate_resolves_its_docs_once() {
     let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, requests) =
-        setup_trigger_char_feature(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
+        setup_cursor_at_start(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
             backend.respond_to(
                 "textDocument/completion",
                 serde_json::json!([
@@ -1023,7 +1023,7 @@ fn selecting_a_candidate_resolves_its_docs_once() {
 fn a_candidate_that_arrives_with_docs_is_not_resolved() {
     let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, requests) =
-        setup_trigger_char_feature(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
+        setup_cursor_at_start(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
             backend.respond_to(
                 "textDocument/completion",
                 serde_json::json!([
@@ -1043,7 +1043,7 @@ fn a_candidate_that_arrives_with_docs_is_not_resolved() {
 fn a_docs_reply_after_further_typing_still_fills_the_docs() {
     let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _requests) =
-        setup_trigger_char_feature(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
+        setup_cursor_at_start(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
             backend.respond_to(
                 "textDocument/completion",
                 serde_json::json!([{"label": "bar"}]),
@@ -1070,7 +1070,7 @@ fn a_docs_reply_after_further_typing_still_fills_the_docs() {
 fn a_docs_reply_for_a_dismissed_menu_is_not_applied_to_a_new_one() {
     let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _requests) =
-        setup_trigger_char_feature(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
+        setup_cursor_at_start(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
             for _ in 0..2 {
                 backend.respond_to(
                     "textDocument/completion",
@@ -1108,7 +1108,7 @@ fn a_docs_reply_for_a_dismissed_menu_is_not_applied_to_a_new_one() {
 fn completion_docs_off_sends_no_selection_time_resolve() {
     let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, requests) =
-        setup_trigger_char_feature(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
+        setup_cursor_at_start(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
             backend.respond_to(
                 "textDocument/completion",
                 serde_json::json!([{"label": "bar"}, {"label": "baz"}]),
@@ -1131,7 +1131,7 @@ fn completion_docs_off_sends_no_selection_time_resolve() {
 fn a_failed_docs_resolve_is_retried_when_the_candidate_is_selected_again() {
     let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, requests) =
-        setup_trigger_char_feature(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
+        setup_cursor_at_start(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
             backend.respond_to(
                 "textDocument/completion",
                 serde_json::json!([
@@ -1173,7 +1173,7 @@ fn closing_the_menu_cancels_the_docs_resolve_in_flight() {
     for close in [key_esc(), key_enter()] {
         let tmp = tempfile::tempdir().unwrap();
         let (mut ed, _guard, _requests) =
-            setup_trigger_char_feature(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
+            setup_cursor_at_start(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
                 backend.respond_to(
                     "textDocument/completion",
                     serde_json::json!([{"label": "bar", "additionalTextEdits": []}]),
@@ -1206,7 +1206,7 @@ fn a_re_requested_answer_keeps_the_docs_resolved_for_a_repeated_candidate() {
         "items": [{"label": "foo", "kind": 3, "insertText": "foo"}],
     });
     let (mut ed, _guard, requests) =
-        setup_trigger_char_feature(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
+        setup_cursor_at_start(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
             backend.respond_to("textDocument/completion", incomplete.clone());
             backend.respond_to("textDocument/completion", incomplete);
             backend.respond_to(
@@ -1235,7 +1235,7 @@ fn a_re_requested_answer_keeps_the_docs_resolved_for_a_repeated_candidate() {
 fn a_doc_box_without_room_asks_no_docs_for_the_next_candidate() {
     let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, requests) =
-        setup_trigger_char_feature(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
+        setup_cursor_at_start(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
             backend.respond_to(
                 "textDocument/completion",
                 serde_json::json!([
@@ -1270,7 +1270,7 @@ fn a_doc_box_without_room_asks_no_docs_for_the_next_candidate() {
 fn the_doc_box_shows_resolved_docs_once_the_reply_lands() {
     let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _requests) =
-        setup_trigger_char_feature(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
+        setup_cursor_at_start(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
             backend.respond_to(
                 "textDocument/completion",
                 serde_json::json!([{"label": "bar", "detail": "fn bar()"}]),

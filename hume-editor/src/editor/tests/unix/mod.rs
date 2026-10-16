@@ -291,6 +291,27 @@ fn core_lsp_rig_configured(
     (rig, guard)
 }
 
+/// Settles, delivers the scripted LSP answers, and settles again: the way
+/// the interactive loop drains after every keystroke.
+fn pump_lsp(ed: &mut Editor) {
+    ed.settle();
+    ed.drain_lsp();
+    ed.settle();
+}
+
+/// An LSP `Range` on `line`, from character `start` to `end`.
+fn range(line: u64, start: u64, end: u64) -> serde_json::Value {
+    serde_json::json!({
+        "start": {"line": line, "character": start},
+        "end": {"line": line, "character": end}
+    })
+}
+
+/// An LSP `Location` at the empty range `line:character` of `uri`.
+fn loc(uri: &str, line: u64, character: u64) -> serde_json::Value {
+    serde_json::json!({"uri": uri, "range": range(line, character, character)})
+}
+
 /// A trigger-char fixture's text: an `Insert` cursor at its newline sits
 /// right after "foo", ready to type a trigger char.
 const FOO: &str = "foo\n";
@@ -302,11 +323,12 @@ fn marked_at_start(content: &str) -> String {
     format!("-[{}]>{}", &content[..first], &content[first..])
 }
 
-/// A [`core_lsp_rig`] over `content` (cursor at its start), for a feature
-/// driven by server trigger characters (completion, signature help):
-/// `on-lsp-attach`'s handler registers them when the rig's drain brings the
-/// server to `Running`.
-fn setup_trigger_char_feature(
+/// A [`core_lsp_rig`] over `content` with the cursor at its start, answering
+/// `initialize` with `capabilities`. A feature driven by server trigger
+/// characters (completion, signature help) relies on `on-lsp-attach`'s
+/// handler registering them when the rig's drain brings the server to
+/// `Running`.
+fn setup_cursor_at_start(
     tmp: &Path,
     content: &str,
     capabilities: serde_json::Value,

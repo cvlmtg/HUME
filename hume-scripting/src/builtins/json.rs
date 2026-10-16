@@ -98,9 +98,7 @@ pub(crate) fn json_contains(args: &[SteelVal]) -> SteelResult {
 /// raising when the path doesn't resolve or the value there is JSON `null`
 /// (`json-ref` would give `void`, which is truthy). Still raises if `j` isn't a
 /// handle, a caller check we don't want silently swallowed by `default`.
-/// Collapses the `(if (json-contains? j seg ...) (json-ref j seg ...)
-/// default)` idiom several `core:lsp` files repeated, which walked the path
-/// twice; this walks it once via `JsonHandle::lookup`.
+/// Walks the path once, via `JsonHandle::lookup`.
 pub(crate) fn json_ref_or(args: &[SteelVal]) -> SteelResult {
     let [handle, default, segs @ ..] = args else {
         steel::stop!(ArityMismatch =>

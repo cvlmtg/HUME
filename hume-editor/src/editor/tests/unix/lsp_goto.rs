@@ -10,6 +10,7 @@
 use std::path::Path;
 
 use super::*;
+use crate::editor::tests::before_save::{warning_texts, warnings};
 use hume_lsp::backend::ServerId;
 use hume_lsp::test_util::RecordingLspBackend;
 
@@ -48,13 +49,6 @@ fn run_goto(ed: &mut Editor, cmd: &str) {
     ed.settle();
     ed.drain_lsp();
     ed.settle();
-}
-
-fn loc(uri: &str, line: u64, character: u64) -> serde_json::Value {
-    serde_json::json!({
-        "uri": uri,
-        "range": {"start": {"line": line, "character": character}, "end": {"line": line, "character": character}}
-    })
 }
 
 fn location_link(uri: &str, line: u64, character: u64) -> serde_json::Value {
@@ -177,12 +171,87 @@ fn multi_element_array_opens_the_drawer_and_row_select_jumps() {
     );
 }
 
+/// Servers often name the same place twice; rows naming one path, line and
+/// column are a single target, so the jump is direct.
+#[test]
+fn duplicate_locations_in_one_answer_jump_directly() {
+    let tmp = tempfile::tempdir().unwrap();
+    let uri = rust_rig_uri(tmp.path());
+    let (mut ed, _guard, _sid) = setup(tmp.path(), FIXTURE, |backend, _sid| {
+        backend.respond_to(
+            "textDocument/definition",
+            serde_json::json!([loc(&uri, 1, 4), loc(&uri, 1, 4)]),
+        );
+    });
+
+    run_goto(&mut ed, "lsp/goto-definition");
+
+    assert!(ed.state.input.drawer().is_none());
+    assert_eq!(
+        ed.doc()
+            .text()
+            .char_to_line(ed.current_view().primary().head().offset()),
+        hume_rope::line::ContentLine::new(1),
+    );
+}
+
+/// A location HUME cannot open is left out with one warning for the whole
+/// answer; the locations it can open still count.
+#[test]
+fn locations_that_are_not_files_are_skipped_with_one_warning() {
+    let tmp = tempfile::tempdir().unwrap();
+    let uri = rust_rig_uri(tmp.path());
+    let (mut ed, _guard, _sid) = setup(tmp.path(), FIXTURE, |backend, _sid| {
+        backend.respond_to(
+            "textDocument/definition",
+            serde_json::json!([
+                loc("jdt://contents/String.class", 0, 0),
+                loc(&uri, 1, 4),
+                loc("jdt://contents/Object.class", 0, 0)
+            ]),
+        );
+    });
+
+    run_goto(&mut ed, "lsp/goto-definition");
+
+    assert_eq!(
+        ed.doc()
+            .text()
+            .char_to_line(ed.current_view().primary().head().offset()),
+        hume_rope::line::ContentLine::new(1),
+    );
+    let warnings = warning_texts(&ed);
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert!(warnings[0].contains('2'), "{warnings:?}");
+}
+
+/// When every target is skipped the warning is the whole report, not
+/// followed by "No definition found".
+#[test]
+fn a_goto_whose_only_target_is_not_a_file_does_not_claim_no_definition() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut ed, _guard, _sid) = setup(tmp.path(), FIXTURE, |backend, _sid| {
+        backend.respond_to(
+            "textDocument/definition",
+            loc("jdt://contents/String.class", 0, 0),
+        );
+    });
+    let before = state(&ed);
+
+    run_goto(&mut ed, "lsp/goto-definition");
+
+    assert_eq!(state(&ed), before);
+    assert_eq!(warnings(&ed), 1);
+    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    assert_ne!(msg, "No definition found");
+}
+
 /// A Windows drive-letter `file://` URI (`file:///C:/...`) must display in
 /// the drawer without a leading `/` before the drive letter.
 /// `hume_lsp::uri::uri_to_path`'s plain slash strip alone leaves one in
 /// ("/C:/foo"), not a valid Windows path; `uri_to_display_string` is the
 /// sibling that additionally strips it before a drive letter, which is what
-/// `location_display_parts` renders the drawer row through. The second
+/// `location_places` renders the drawer row through. The second
 /// location's file need not exist: opening the drawer only formats row
 /// labels, it doesn't touch the filesystem (only selecting a row and jumping
 /// would).
@@ -210,7 +279,7 @@ fn windows_drive_letter_uri_displays_without_leading_slash() {
     );
 }
 
-/// The multi-entry-array case exercises `lsp-locations->display-parts`'s
+/// The multi-entry-array case exercises `lsp-locations->places`'s
 /// `LocationLink` decoding (`hume_lsp::location::decode_location`'s
 /// `targetUri`/`targetSelectionRange` branch), unlike the single-entry jump
 /// tests above, which reach the same decoder through `goto-location!`
@@ -499,7 +568,7 @@ fn goto_missing_target_opens_new_file_buffer_and_jumps_to_it() {
 }
 
 /// A `Location` missing `range` errors rather than jumping to line 0: the
-/// goto answer is decoded into rows (`lsp-locations->display-parts`) through
+/// goto answer is decoded into places (`lsp-locations->merged-places`) through
 /// the same `hume_lsp::location::decode_location` `goto-location!` uses, so
 /// the error comes from that decode.
 #[test]
@@ -520,7 +589,7 @@ fn location_missing_range_errors_instead_of_jumping() {
     );
     let msg = ed.state.status_msg.clone().unwrap_or_default();
     assert!(
-        msg.contains("lsp-locations->display-parts") && msg.contains("missing range"),
+        msg.contains("lsp-locations->merged-places") && msg.contains("missing range"),
         "expected an error naming the builtin and the missing field, got {msg:?}"
     );
 }

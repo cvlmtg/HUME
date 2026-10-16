@@ -10,17 +10,11 @@ use std::path::Path;
 use std::time::Duration;
 
 use super::*;
+use crate::editor::tests::before_save::warnings;
 use hume_lsp::test_util::{RecordingLspBackend, RequestLog};
 
 /// `foo` sits at line 1, column 4, offset 16.
 const FOO_OFFSET: usize = 16;
-
-fn loc(uri: &str, line: u64, character: u64) -> serde_json::Value {
-    serde_json::json!({
-        "uri": uri,
-        "range": {"start": {"line": line, "character": character}, "end": {"line": line, "character": character}}
-    })
-}
 
 fn setup(
     tmp: &Path,
@@ -208,6 +202,55 @@ fn a_refresh_that_finds_nothing_closes_the_drawer_with_a_message() {
     assert!(!drawer_is_open(&ed), "nothing left to list");
     assert_eq!(ed.state.panes.tracked.len(), 0);
     assert_eq!(ed.state.status_msg.as_deref(), Some("No references found"));
+}
+
+#[test]
+fn a_refresh_that_finds_only_unopenable_places_closes_the_drawer_without_claiming_none() {
+    let tmp = tempfile::tempdir().unwrap();
+    let uri = rust_rig_uri(tmp.path());
+    let (mut ed, _guard, _sid, _requests) = setup(
+        tmp.path(),
+        vec![
+            serde_json::json!([loc(&uri, 1, 4), loc(&uri, 2, 0)]),
+            serde_json::json!([loc("jdt://contents/String.class", 0, 0)]),
+        ],
+    );
+    set_cursor(&mut ed, FOO_OFFSET);
+    run_references(&mut ed);
+
+    insert_line_above_the_cursor_line(&mut ed);
+    settle_after_refresh(&mut ed);
+
+    assert!(!drawer_is_open(&ed), "nothing left to list");
+    assert_eq!(ed.state.panes.tracked.len(), 0);
+    assert_eq!(warnings(&ed), 0);
+    assert_ne!(ed.state.status_msg.as_deref(), Some("No references found"));
+}
+
+#[test]
+fn a_refresh_leaves_out_unopenable_places_without_warning_again() {
+    let tmp = tempfile::tempdir().unwrap();
+    let uri = rust_rig_uri(tmp.path());
+    let answer = serde_json::json!([
+        loc(&uri, 1, 4),
+        loc(&uri, 2, 0),
+        loc("jdt://contents/String.class", 0, 0)
+    ]);
+    let (mut ed, _guard, _sid, requests) = setup(tmp.path(), vec![answer.clone(), answer]);
+    set_cursor(&mut ed, FOO_OFFSET);
+    run_references(&mut ed);
+    assert_eq!(
+        warnings(&ed),
+        1,
+        "setup: opening the drawer reports the skip"
+    );
+
+    insert_line_above_the_cursor_line(&mut ed);
+    settle_after_refresh(&mut ed);
+
+    assert_eq!(reference_requests(&requests), 2);
+    assert_eq!(drawer_rows(&ed).len(), 2);
+    assert_eq!(warnings(&ed), 1);
 }
 
 #[test]

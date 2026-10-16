@@ -5,6 +5,8 @@
 ### Breaking changes
 - Key-bindable commands of the core plugins share a plugin prefix. Rename them in your `init.scm` bindings and `call!`s: `lsp-fmt` is `lsp/format-source`, `lsp-fmt-document` is `lsp/format-document`, and the other `lsp-*` commands and `goto-next-diagnostic`/`goto-prev-diagnostic` take the `lsp/` prefix (`lsp-hover` is `lsp/hover`). `toggle-undotree` is `undotree/toggle`, `picker-files`, `picker-buffers` and `picker-git-modified` are `pickers/files`, `pickers/buffers` and `pickers/git-modified`, `plum-ensure-grammars` is `plum/ensure-grammars`, and the `classic-*`, `helix-*` and `vim-*` commands take the `classic-paste/`, `helix-surround/` and `vim-keybind/` prefixes. Typed `:` commands keep their names.
 
+- `lsp-locations->display-parts` is `lsp-locations->places`. It returns one entry per location, in order, instead of merging locations that name the same place, and an entry is `#f` for a location whose URI is not a `file://` one. For a merged list, use the new `lsp-locations->merged-places`, which returns `(hash 'places l 'skipped n)`: the places without the `#f` entries and how many were left out.
+
 - `live-picker!` takes `#:source`, a function of the picker token and the query, instead of `#:command`. To keep re-running a subprocess, pass `#:source (picker-command-source argv-for)`; `#:cwd`, `#:nul` and `#:ok-exit-codes` move to `picker-command-source`.
 
 ### Panes & interface
@@ -20,7 +22,7 @@
 - `core:lsp` has `lsp/format-document`, which formats the whole buffer for such a hook. The format-on-save recipe in the manual used `on-buffer-save`, which runs after the write, so it never formatted the saved file: use the new recipe.
 
 ### Fixes
-- `json-ref-or` returns its default for a field the server sent as `null`, where it used to return void. A `null` `containerName`, `children` or `disabled` no longer breaks the symbol pickers or code actions.
+- `json-ref-or` returns its default for a field the server sent as `null`, so a code action whose `disabled` is `null` is offered.
 - `apply-text-edits!` and `apply-workspace-edit!` still apply when the pane has since switched buffers, editing the buffer for no pane. `apply-text-edits!` also accepts a value with no pane, and `lsp-document-params` returns a buffer's document params without one.
 
 ## [0.15.0] - 2026-10-15

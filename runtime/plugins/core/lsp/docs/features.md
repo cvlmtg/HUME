@@ -10,10 +10,13 @@ are in `decorations.md`.
 `goto.scm` serves the four goto commands (definition, declaration, type definition,
 implementation) and `lsp/references` through one response handler. Each asks every server
 offering the feature, and their locations merge into one list in which rows naming the
-same path, line and column appear once:
+same path, line and column appear once (`lsp-locations->merged-places`):
 
 1. A server's error is reported; the others' locations still count.
-2. No location at all logs "No definition found" (or "No references found").
+2. No location at all logs "No definition found" (or "No references found"). A location
+   whose URI is not a file, such as `jdt://`, is left out and one warning says how many;
+   when that leaves nothing, the warning is the whole report. The drawer's refresh leaves
+   such locations out without warning again.
 3. A single location jumps to it, so two servers agreeing on a definition still jump.
 4. Several locations open the [locations drawer](architecture.md#locations-drawer-locationsscm).
 
@@ -27,20 +30,23 @@ used" expects a list. Its request adds `context.includeDeclaration`. Every jump 
 rows as `name  kind  detail` and jump to the accepted row in `(focused-pane)`.
 
 `lsp/document-symbols` asks every server offering `documentSymbolProvider` and shows one
-`picker!` over their merged answers. A `DocumentSymbol[]` answer is walked pre-order, a
+`picker!` over every server's answers. A `DocumentSymbol[]` answer is walked pre-order, a
 symbol's detail being its parent's name and its jump target its `selectionRange`. A
 `SymbolInformation[]` answer keeps its own `location` and uses `containerName` as the
-detail. Since a `DocumentSymbol` carries no `uri`, `lsp-location` pairs the buffer's uri
-with the `selectionRange`, which keeps the server's position encoding. No symbol at all
-logs "No symbols found".
+detail. Since a `DocumentSymbol` carries no `uri`, its row holds the buffer's uri and the
+`selectionRange`, and `lsp-location` pairs them only for the row that is accepted, which
+keeps the server's position encoding. No symbol at all logs "No symbols found".
 
 `lsp/workspace-symbols` opens an empty `live-picker!`. Each query, once the debounce
 window passes, sends `workspace/symbol` to every server offering the feature with
-`#:supersede "lsp-workspace-symbols"`, so a newer query replaces one still in flight, and
-replaces the rows with the merged answers; an empty query clears them. The detail is the
-symbol's `path:line:col`. A symbol whose `location` has no `range` is left out, since
-the client does not advertise `workspaceSymbol/resolve` and such a symbol names no place
-to jump to.
+`#:supersede "lsp-workspace-symbols"`, so a newer query replaces one still in flight. Every
+answer replaces the rows with every server's symbols, and an error or an answer with nothing
+in it replaces them with none, so the picker stops refreshing whatever the outcome. An
+answer that arrives after the user typed on is dropped, since its token is for the earlier
+query. An empty query clears the rows. The detail is the symbol's
+`path:line:col`. A symbol whose `location` has no `range` is left out, since the client
+does not advertise `workspaceSymbol/resolve` and such a symbol names no place to jump to.
+A symbol in a file HUME cannot open, such as a `jdt://` one, is left out.
 
 ## Hover
 
@@ -176,6 +182,8 @@ it goes to whichever server supports it when the name is accepted.
 | `lsp-goto-*` (four), every server | `'goto-definition` and siblings | | | |
 | `lsp/references`, every server | `'goto-reference` | yes | | |
 | Signature help | `'signature-help` | yes | | |
+| `lsp/document-symbols`, every server | `'document-symbols` | yes | | |
+| `lsp/workspace-symbols`, every server | `'workspace-symbols` | | yes | `"lsp-workspace-symbols"` |
 | Code actions (menu request), every server | `'code-action` | yes | | |
 | `codeAction/resolve`, `workspace/executeCommand` | `#:to` the server that offered the action | | yes | |
 | Completion, every server | `'completion` | | | `"completion"` |

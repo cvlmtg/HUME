@@ -108,7 +108,7 @@ pub struct LivePickerOpts {
     /// of driving a local fuzzy filter; `token` is the one feeds for that
     /// query must carry. See
     /// `PickerSession::rebuild_filtered`'s doc for why a live session skips
-    /// it. Always `live-picker!`'s own stop-and-clear-then-debounce
+    /// it. Always `live-picker!`'s own stop-then-debounce
     /// wrapper around the caller's `#:source`, never the source
     /// itself.
     pub on_query_change: steel::rvals::SteelVal,

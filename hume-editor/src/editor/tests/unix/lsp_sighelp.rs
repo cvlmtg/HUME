@@ -19,7 +19,7 @@ fn setup(
     tmp: &Path,
     configure: impl FnOnce(&mut RecordingLspBackend, ServerId),
 ) -> (Editor, RealRuntimeDirs, RequestLog) {
-    setup_trigger_char_feature(
+    setup_cursor_at_start(
         tmp,
         FOO,
         serde_json::json!({"signatureHelpProvider": {"triggerCharacters": ["(", ","]}}),
@@ -337,7 +337,7 @@ fn offset_form_label_with_an_astral_char_marks_the_correct_slice() {
 #[test]
 fn offset_form_label_is_read_in_the_negotiated_encoding_not_always_utf16() {
     let tmp = tempfile::tempdir().unwrap();
-    let (mut ed, _guard, _requests) = setup_trigger_char_feature(
+    let (mut ed, _guard, _requests) = setup_cursor_at_start(
         tmp.path(),
         FOO,
         serde_json::json!({

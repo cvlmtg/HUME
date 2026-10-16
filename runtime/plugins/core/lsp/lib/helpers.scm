@@ -1,7 +1,8 @@
 ;;; core:lsp/lib/helpers.scm — shared helpers used by every feature file. See
 ;;; docs/architecture.md.
 
-(provide lsp/report-error! lsp/answered lsp/answers lsp/none-answered? lsp/report-answer-errors! lsp/with-position-params
+(provide lsp/report-error! lsp/answered lsp/answers lsp/answer-items lsp/none-answered? lsp/report-answer-errors!
+         lsp/with-params
          lsp/visible-lines lsp/resolve-pane
          lsp/setup-trigger-chars! lsp/format-position lsp/cap-field lsp/cap-flag?
          lsp/with-servers lsp/report-unsupported)
@@ -18,13 +19,12 @@
 (define (lsp/cap-flag? cap field)
   (equal? (lsp/cap-field cap field #f) #t))
 
-;; Calls `(proceed params)` with `pane`'s position params, or logs that the
-;; buffer has no file when it has none.
-(define (lsp/with-position-params pane what proceed)
-  (let ((params (lsp-position-params pane)))
-    (if params
-        (proceed params)
-        (log! 'info (string-append "lsp " what ": this buffer has no file")))))
+;; Calls `(proceed params)` with `params`, a pane's `lsp-position-params` or
+;; `lsp-document-params`, or logs that the buffer has no file when it has none.
+(define (lsp/with-params params what proceed)
+  (if params
+      (proceed params)
+      (log! 'info (string-append "lsp " what ": this buffer has no file"))))
 
 ;; Logs that `what` is unsupported by this buffer's language servers.
 (define (lsp/report-unsupported what)
@@ -67,6 +67,10 @@
 ;; Their results.
 (define (lsp/answers results)
   (map (lambda (r) (hash-ref r 'result)) (lsp/answered results)))
+
+;; The elements of every server's array answer, in server order.
+(define (lsp/answer-items results)
+  (apply append (map json-list (lsp/answers results))))
 
 ;; Whether no server in an `lsp-request-all!` answer gave a result, errors aside.
 (define (lsp/none-answered? results)

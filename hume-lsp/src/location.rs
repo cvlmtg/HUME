@@ -16,7 +16,7 @@ pub struct WireLocation {
 /// Decodes a raw `Location` (`{uri, range}`) or `LocationLink`
 /// (`{targetUri, targetRange, targetSelectionRange?}`) wire object into the
 /// one position it names. `goto-location!` (the jump) and
-/// `lsp-locations->display-parts` (the drawer row) both decode through this
+/// `lsp-locations->places` (the drawer row) both decode through this
 /// one function, so a location valid enough to display is exactly one valid
 /// enough to jump to. See the `why` below.
 ///
@@ -30,7 +30,7 @@ pub struct WireLocation {
 /// permission-denied, non-UTF-8): the jump still works there, and only the
 /// displayed column is unknowable. Callers of this function make that
 /// degradation themselves, downstream of a successful decode; see
-/// `location_display_parts` in `hume-editor`.
+/// `location_places` in `hume-editor`.
 ///
 /// `caller` names the builtin in the returned error, since more than one
 /// builtin shares this decoder.

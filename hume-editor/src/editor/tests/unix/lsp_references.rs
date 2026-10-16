@@ -37,13 +37,6 @@ fn run_references(ed: &mut Editor) {
     ed.settle();
 }
 
-fn loc(uri: &str, line: u64, character: u64) -> serde_json::Value {
-    serde_json::json!({
-        "uri": uri,
-        "range": {"start": {"line": line, "character": character}, "end": {"line": line, "character": character}}
-    })
-}
-
 #[test]
 fn three_locations_list_three_rows() {
     let tmp = tempfile::tempdir().unwrap();

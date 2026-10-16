@@ -439,7 +439,8 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "lsp-range->offsets" lsp::lsp_range_to_offsets(pane: args::LivePane, range: SteelVal);
         cmd "lsp-label-offsets->text" lsp::lsp_label_offsets_to_text(label: SteelVal, offsets: SteelVal);
         plain "lsp-location" lsp::lsp_location(uri: SteelVal, range: SteelVal);
-        cmd "lsp-locations->display-parts" lsp::lsp_locations_to_display_parts(locs: SteelVal);
+        cmd "lsp-locations->places" lsp::lsp_locations_to_places(locs: SteelVal);
+        cmd "lsp-locations->merged-places" lsp::lsp_locations_to_merged_places(locs: SteelVal);
         cmd "viewport-range" buffers::viewport_range(pane: args::LivePane);
         cmd "buffer-generation" buffers::buffer_generation(pane: args::LivePane);
         cmd "buffer-undo-tree" buffers::buffer_undo_tree(pane: args::LivePane);
@@ -506,7 +507,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "%picker-source-spawn!" ui::picker_source_spawn(token: SteelVal, cmd: SteelVal, args: SteelVal, cwd: SteelVal, nul: SteelVal, ok_exit_codes: SteelVal);
         cmd "picker-source-stop!" ui::picker_source_stop(token: SteelVal);
         cmd "picker-close!" ui::picker_close(token: SteelVal);
-        // Backs live-picker!'s #:source and picker-command-source's validation only. See args::is_callable's doc.
+        // Backs the #:source and argv-for checks only. See args::is_callable's doc.
         plain "%callable?" args::is_callable(val: SteelVal);
 
         cmd "%held-done" hooks::held_done(hold: SteelVal);

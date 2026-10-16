@@ -7,12 +7,12 @@
 // shared fixture line (grapheme col 2 / char col 3 / UTF-16 col 4 before
 // 'x').
 //
-// Also covers `location_display_parts`'s per-location resolution: an open
+// Also covers `location_places`'s per-location resolution: an open
 // buffer gets an exact grapheme column; a location whose open buffer's line
 // is out of range degrades to `#f` (a `path:line` row); a target with no
 // open buffer renders its location's own wire `character` verbatim instead
 // of reading the file to measure it, the one sanctioned exception to
-// "never render a wire unit directly" (see `location_display_parts`'s doc,
+// "never render a wire unit directly" (see `location_places`'s doc,
 // `hume-editor/src/editor/lsp/introspect.rs`). A location that can't be
 // decoded at all (missing `range`) aborts the whole batch instead; see
 // `a_malformed_location_aborts_the_batch_instead_of_a_degraded_row` below.
@@ -109,15 +109,8 @@ fn run_references(ed: &mut Editor) {
     ed.settle();
 }
 
-fn loc(uri: &str, line: u64, character: u64) -> serde_json::Value {
-    serde_json::json!({
-        "uri": uri,
-        "range": {"start": {"line": line, "character": character}, "end": {"line": line, "character": character}}
-    })
-}
-
 /// Nine locations, one `lsp/references` response, exercising every path in
-/// `location_display_parts`: the focused buffer's own open rope, a second
+/// `location_places`: the focused buffer's own open rope, a second
 /// open buffer that isn't the focused one, an unopened non-ASCII file (twice,
 /// two different wire columns out of it, independent of each other), an
 /// unopened file that doesn't exist on disk at all, a line past an open
@@ -280,7 +273,7 @@ fn a_column_past_the_line_end_shows_where_goto_lands() {
 }
 
 /// A location missing `range` entirely names no destination `goto-location!`
-/// could jump to either, so `lsp-locations->display-parts` must abort the
+/// could jump to either, so `lsp-locations->merged-places` must abort the
 /// whole batch rather than render an unselectable row for it. See
 /// `hume_lsp::location::decode_location`'s doc.
 ///
@@ -312,7 +305,7 @@ fn a_malformed_location_aborts_the_batch_instead_of_a_degraded_row() {
     );
     let msg = ed.state.status_msg.clone().unwrap_or_default();
     assert!(
-        msg.contains("lsp-locations->display-parts") && msg.contains("missing range"),
+        msg.contains("lsp-locations->merged-places") && msg.contains("missing range"),
         "expected an error naming the builtin and the missing field, got {msg:?}"
     );
 }

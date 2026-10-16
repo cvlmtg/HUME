@@ -2,7 +2,8 @@
 
 (require "helpers.scm")
 
-(provide lsp/show-locations! lsp/answer-locations lsp/location-display)
+(provide lsp/show-locations! lsp/answer-locations lsp/place-display
+         lsp/report-not-found! lsp/report-skipped!)
 
 ;; A goto or references result as a list of locations, '() for none.
 (define (lsp/response-locations res)
@@ -11,16 +12,28 @@
     ((json-array? res) (json-list res))
     (else (list res))))
 
+;; Logs `message` when the answer held no locations. Locations that name no
+;; file are reported by `lsp/report-skipped!`.
+(define (lsp/report-not-found! locations message)
+  (when (null? locations) (log! 'info message)))
+
+;; Warns once when `count` locations of an answer name no file HUME can open.
+(define (lsp/report-skipped! what count)
+  (when (> count 0)
+    (log! 'warn (string-append "lsp " what ": skipped " (number->string count)
+                               (if (= count 1) " location" " locations")
+                               " HUME cannot open"))))
+
 ;; Every location in an `lsp-request-all!` answer, in server order, each
 ;; server's error reported.
 (define (lsp/answer-locations what results)
   (lsp/report-answer-errors! what results)
   (apply append (map lsp/response-locations (lsp/answers results))))
 
-(define (lsp/location-display part)
-  (let* ((path (path->display (hash-ref part 'path)))
-         (line (hash-ref part 'line))
-         (grapheme-col-or-wire (hash-ref part 'grapheme-col-or-wire)))
+(define (lsp/place-display place)
+  (let* ((path (path->display (hash-ref place 'path)))
+         (line (hash-ref place 'line))
+         (grapheme-col-or-wire (hash-ref place 'grapheme-col-or-wire)))
     (string-append path ":"
       (if grapheme-col-or-wire
           (lsp/format-position line grapheme-col-or-wire)
@@ -34,38 +47,37 @@
     (untrack-position! (hash-ref lsp/*locations* 'tracked))
     (set! lsp/*locations* #f)))
 
-(define (lsp/close-locations! message)
+(define (lsp/close-locations!)
   (when lsp/*locations*
     (close-drawer! (hash-ref lsp/*locations* 'drawer))
-    (lsp/end-locations-session!)
-    (log! 'info message)))
+    (lsp/end-locations-session!)))
 
-(define (lsp/locations-on-select parts)
+(define (lsp/locations-on-select places)
   (lambda (idx drawer)
     (cond
-      (idx (goto-location! (focused-pane) (hash-ref (list-ref parts idx) 'location)))
+      (idx (goto-location! (focused-pane) (hash-ref (list-ref places idx) 'location)))
       ((and lsp/*locations* (equal? (hash-ref lsp/*locations* 'drawer) drawer))
        (lsp/end-locations-session!)))))
 
-(define (lsp/location-line-counts pane parts)
-  (let loop ((parts parts)
+(define (lsp/place-line-counts pane places)
+  (let loop ((places places)
              (counts (hash (buffer-key pane) (buffer-line-count pane))))
-    (if (null? parts)
+    (if (null? places)
         counts
-        (let ((buffer (hash-ref (car parts) 'buffer)))
-          (loop (cdr parts)
+        (let ((buffer (hash-ref (car places) 'buffer)))
+          (loop (cdr places)
                 (if buffer
                     (hash-insert counts (buffer-key buffer) (buffer-line-count buffer))
                     counts))))))
 
-;; `parts` are the rows to list; `tracked` is the request's position; `shape`
+;; `places` are the rows to list; `tracked` is the request's position; `shape`
 ;; maps position params to request params.
-(define (lsp/show-locations! pane tracked parts method shape not-found)
+(define (lsp/show-locations! pane tracked places method shape not-found)
   (lsp/end-locations-session!)
-  (let ((drawer (show-drawer-list! (focused-pane) (map lsp/location-display parts)
-                                   (lsp/locations-on-select parts))))
+  (let ((drawer (show-drawer-list! (focused-pane) (map lsp/place-display places)
+                                   (lsp/locations-on-select places))))
     (when drawer
-      (let ((counts (lsp/location-line-counts pane parts)))
+      (let ((counts (lsp/place-line-counts pane places)))
         (keep-tracked-position! tracked)
         (set! lsp/*locations*
               (hash 'drawer drawer 'tracked tracked 'pane pane
@@ -74,17 +86,17 @@
 
 ;; ── Refresh ──
 
-(define (lsp/swap-locations! session parts)
+(define (lsp/swap-locations! session places)
   (let* ((drawer (hash-ref session 'drawer))
          (selected (drawer-selected-index drawer)))
     (if (not selected)
         (lsp/end-locations-session!)
-        (let ((idx (min selected (- (length parts) 1))))
-          (if (update-drawer-list! drawer (map lsp/location-display parts)
-                                   (lsp/locations-on-select parts) idx)
+        (let ((idx (min selected (- (length places) 1))))
+          (if (update-drawer-list! drawer (map lsp/place-display places)
+                                   (lsp/locations-on-select places) idx)
               (set! lsp/*locations*
                     (hash-insert session 'counts
-                                 (lsp/location-line-counts (hash-ref session 'pane) parts)))
+                                 (lsp/place-line-counts (hash-ref session 'pane) places)))
               (lsp/end-locations-session!))))))
 
 (define (lsp/apply-locations! drawer seq err results)
@@ -96,10 +108,13 @@
         ((lsp/none-answered? results)
          (lsp/report-answer-errors! "locations" results))
         (else
-         (let ((parts (lsp-locations->display-parts (lsp/answer-locations "locations" results))))
-           (if (null? parts)
-               (lsp/close-locations! (hash-ref session 'not-found))
-               (lsp/swap-locations! session parts))))))))
+         (let* ((locations (lsp/answer-locations "locations" results))
+                (places (hash-ref (lsp-locations->merged-places locations) 'places)))
+           (if (null? places)
+               (begin
+                 (lsp/close-locations!)
+                 (lsp/report-not-found! locations (hash-ref session 'not-found)))
+               (lsp/swap-locations! session places))))))))
 
 (define (lsp/refresh-locations!)
   (when lsp/*locations*

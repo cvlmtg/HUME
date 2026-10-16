@@ -78,7 +78,7 @@ pub trait EditHost {
     /// `(goto-location! pane target)`, raw `Location`/`LocationLink`
     /// hashmap/handle shape, `loc` decoded through
     /// `hume_lsp::location::decode_location`, the same decoder
-    /// `lsp-locations->display-parts` uses for drawer rows. `encoding` is
+    /// `lsp-locations->places` uses for drawer rows. `encoding` is
     /// the builtin's own read of `loc`'s tagged producing-server encoding;
     /// see [`Self::apply_workspace_edit`]'s doc for the same reasoning.
     fn goto_location_value(

@@ -380,14 +380,15 @@ fn wire_pos_to_grapheme_col(
 
 /// Filesystem path, wire line, and column for a batch of raw
 /// `Location`/`LocationLink` LSP locations, backing
-/// `lsp-locations->display-parts` (goto/references drawer rows).
+/// `lsp-locations->places` and `lsp-locations->merged-places` (goto/references
+/// drawer rows); `caller` is whichever of the two was called, for the errors.
 ///
 /// Each location is decoded once through [`hume_lsp::location::decode_location`],
 /// the same decoder `goto-location!` jumps with, so path, line, and column all
 /// describe one position. A malformed location aborts the whole batch. The
 /// path shown is the URI's own, not [`Editor::resolve_buffer_path`]'s
-/// canonical form: the row echoes what the server sent. Each `JsonHandle`
-/// carries its producing server's encoding, so a batch mixing responses
+/// canonical form: the row echoes what the server sent. Each handle comes
+/// paired with its producing server's encoding, so a batch mixing responses
 /// decodes correctly.
 ///
 /// # Column: the one sanctioned wire-unit display
@@ -398,69 +399,59 @@ fn wire_pos_to_grapheme_col(
 /// equals the grapheme column unless non-ASCII text precedes it on the line.
 /// This is the only place HUME renders a wire unit.
 ///
-/// Rows naming the same path, line and column collapse into the first, so
-/// several servers' answers to one request merge. Two servers counting one
-/// unopened non-ASCII position in different encodings still show twice: the
-/// column of an unopened target is the wire one.
-///
 /// Buffer lookups are cached per distinct path, so many locations in few files
 /// cost one resolve and buffer-store scan per file.
-pub(in crate::editor) fn location_display_parts(
+pub(in crate::editor) fn location_places(
     state: &EditorState,
-    locs: &[hume_scripting::json::JsonHandle],
-) -> Result<Vec<hume_scripting::host::LocationDisplay>, String> {
+    locs: &[(
+        hume_scripting::json::JsonHandle,
+        hume_rope::position_encoding::PositionEncoding,
+    )],
+    caller: &str,
+) -> Result<Vec<hume_scripting::host::LocationPlace>, String> {
+    use hume_scripting::host::{LocationPlace, Place};
+
     let mut open_buffer_cache: rustc_hash::FxHashMap<std::path::PathBuf, Option<BufferId>> =
         rustc_hash::FxHashMap::default();
-    let mut seen = rustc_hash::FxHashSet::default();
+    let mut rows = Vec::with_capacity(locs.len());
 
-    let rows: Vec<hume_scripting::host::LocationDisplay> = locs
-        .iter()
-        .map(|handle| {
-            let encoding = handle.position_encoding("lsp-locations->display-parts")?;
-            let wl = hume_lsp::location::decode_location(
-                handle.value(),
-                "lsp-locations->display-parts",
-            )?;
-            let path = hume_lsp::uri::uri_to_path(&wl.uri).map_err(|e| {
-                format!(
-                    "lsp-locations->display-parts: cannot open {}: {e}",
-                    wl.uri.as_str()
-                )
-            })?;
-            let display_path = hume_lsp::uri::uri_to_display_string(&wl.uri).map_err(|e| {
-                format!(
-                    "lsp-locations->display-parts: cannot open {}: {e}",
-                    wl.uri.as_str()
-                )
-            })?;
-            let resolved = Editor::resolve_buffer_path(&path, &state.cwd);
-            let open_bid = *open_buffer_cache
-                .entry(resolved.clone())
-                .or_insert_with(|| state.buffers.find_by_path(&resolved));
+    for (handle, encoding) in locs {
+        let wl = hume_lsp::location::decode_location(handle.value(), caller)?;
+        let cannot_open =
+            |e: hume_lsp::uri::UriError| format!("{caller}: cannot open {}: {e}", wl.uri.as_str());
+        let path = match hume_lsp::uri::uri_to_path(&wl.uri) {
+            Ok(path) => path,
+            Err(hume_lsp::uri::UriError::NotFileScheme) => {
+                rows.push(LocationPlace::Skipped);
+                continue;
+            }
+            Err(e) => return Err(cannot_open(e)),
+        };
+        let display_path = hume_lsp::uri::uri_to_display_string(&wl.uri).map_err(cannot_open)?;
+        let open_bid = *open_buffer_cache.entry(path).or_insert_with_key(|path| {
+            let resolved = Editor::resolve_buffer_path(path, &state.cwd);
+            state.buffers.find_by_path(&resolved)
+        });
 
-            let grapheme_col_or_wire = match open_bid {
-                Some(target_bid) => {
-                    let text = state.buffers.get(target_bid).text();
-                    wire_pos_to_grapheme_col(text, wl.pos, encoding)
-                        .map(hume_rope::column::GraphemeCol::index)
-                }
-                // No open buffer to measure against. See this function's
-                // doc for why that means the wire unit itself, not a read.
-                None => Some(wl.pos.character),
-            };
-            Ok(hume_scripting::host::LocationDisplay {
-                path: display_path,
-                line: wl.pos.line,
-                grapheme_col_or_wire,
-                buffer: open_bid,
-                location: handle.clone(),
-            })
-        })
-        .collect::<Result<_, String>>()?;
-    Ok(rows
-        .into_iter()
-        .filter(|row| seen.insert((row.path.clone(), row.line, row.grapheme_col_or_wire)))
-        .collect())
+        let grapheme_col_or_wire = match open_bid {
+            Some(target_bid) => {
+                let text = state.buffers.get(target_bid).text();
+                wire_pos_to_grapheme_col(text, wl.pos, *encoding)
+                    .map(hume_rope::column::GraphemeCol::index)
+            }
+            // No open buffer to measure against. See this function's
+            // doc for why that means the wire unit itself, not a read.
+            None => Some(wl.pos.character),
+        };
+        rows.push(LocationPlace::Found(Place {
+            path: display_path,
+            line: wl.pos.line,
+            grapheme_col_or_wire,
+            buffer: open_bid,
+            location: handle.clone(),
+        }));
+    }
+    Ok(rows)
 }
 
 /// `pane`'s visible line range, end-exclusive, clamped to a buffer of

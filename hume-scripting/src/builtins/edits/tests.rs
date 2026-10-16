@@ -73,9 +73,9 @@ fn apply_workspace_edit_accepts_a_tagged_json_handle() {
     assert!(msg.contains("apply-workspace-edit!"), "got: {msg}");
 }
 
-/// A hand-built hashmap has no producing server to have negotiated an
-/// encoding with, so it is rejected before ever reaching the host, the same
-/// discipline `apply-text-edits!` applies to a hand-built tuple.
+/// A hand-built hashmap is not a handle onto a server response, so it is
+/// rejected before ever reaching the host, the same discipline
+/// `apply-text-edits!` applies to a hand-built tuple.
 #[test]
 fn apply_workspace_edit_rejects_a_hand_built_hashmap() {
     let mut h = SteelCtxTestHarness::new();
@@ -86,10 +86,13 @@ fn apply_workspace_edit_rejects_a_hand_built_hashmap() {
     let msg = apply_workspace_edit(&mut ctx, default_pane(), wsedit, SteelVal::BoolV(false))
         .unwrap_err()
         .to_string();
-    assert!(msg.contains("not a value from an LSP server"), "got: {msg}");
+    assert!(
+        msg.contains("expected a JSON handle from a server response"),
+        "got: {msg}"
+    );
     assert!(
         !msg.contains("not supported by this host"),
-        "must fail on the missing encoding before ever reaching the host; got: {msg}"
+        "must fail on the missing handle before ever reaching the host; got: {msg}"
     );
 }
 

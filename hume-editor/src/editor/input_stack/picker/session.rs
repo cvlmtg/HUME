@@ -69,11 +69,6 @@ enum PickerMode {
     /// the identity permutation over `items`.
     Live {
         on_query_change: SteelVal,
-        /// The token feeds for the current query must carry. `None` until
-        /// the first query change, when the session token stands in; each
-        /// change mints a new one, so a source still answering an earlier
-        /// query is refused like any stale token.
-        query_token: Option<HostToken>,
     },
 }
 
@@ -136,6 +131,10 @@ pub(in crate::editor) struct PickerSession {
     /// [`super::session_for_feed`] are the guards every token-scoped picker
     /// mutation checks before reaching a `&mut PickerSession` at all.
     token: HostToken,
+    /// The token feeds must carry. Equal to `token` until a live session's
+    /// query changes; each change mints a new one, so a source still
+    /// answering an earlier query is refused like any stale token.
+    feed_token: HostToken,
     /// Whether results are still arriving, and how; see [`Population`].
     /// Owning a `Streaming` source here, rather than in some separate
     /// registry, is what makes kill-on-close/replace automatic:
@@ -217,7 +216,6 @@ impl PickerSession {
             Population::Complete,
             PickerMode::Live {
                 on_query_change: opts.on_query_change,
-                query_token: None,
             },
         )
     }
@@ -231,6 +229,7 @@ impl PickerSession {
         population: Population,
         mode: PickerMode,
     ) -> Self {
+        let token = host_token::mint();
         Self {
             items: Vec::new(),
             query,
@@ -242,7 +241,8 @@ impl PickerSession {
             on_select,
             prompt,
             truncate,
-            token: host_token::mint(),
+            token,
+            feed_token: token,
             items_from_opener: !mode.is_live() && matches!(population, Population::Complete),
             population,
             mode,
@@ -259,16 +259,9 @@ impl PickerSession {
     }
 
     /// The token a feed must carry to add rows (`picker-push!`,
-    /// `picker-replace!`, `picker-source-spawn!`): the session token, or for
-    /// a live session the one minted for its current query.
+    /// `picker-replace!`, `picker-source-spawn!`).
     pub(in crate::editor) fn feed_token(&self) -> HostToken {
-        match &self.mode {
-            PickerMode::Live {
-                query_token: Some(query_token),
-                ..
-            } => *query_token,
-            _ => self.token,
-        }
+        self.feed_token
     }
 
     /// Whether `token` may act on the session itself (`picker-close!`,
@@ -535,16 +528,13 @@ impl PickerSession {
     /// reads "still arriving" for the whole stop/debounce/respawn gap a
     /// requery opens, not just while a source happens to be attached.
     fn notify_query_change(&mut self) -> Option<SteelVal> {
-        let PickerMode::Live {
-            on_query_change,
-            query_token,
-        } = &mut self.mode
-        else {
+        let PickerMode::Live { on_query_change } = &self.mode else {
             return None;
         };
-        *query_token = Some(host_token::mint());
+        let on_query_change = on_query_change.clone();
+        self.feed_token = host_token::mint();
         self.requery_armed = true;
-        Some(on_query_change.clone())
+        Some(on_query_change)
     }
 
     /// Replaces the query wholesale and reranks. Test-only: production code

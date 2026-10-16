@@ -251,12 +251,17 @@ fn traces(ed: &Editor) -> Vec<String> {
         .collect()
 }
 
-pub(in crate::editor::tests) fn warnings(ed: &Editor) -> usize {
+pub(in crate::editor::tests) fn warning_texts(ed: &Editor) -> Vec<String> {
     ed.state
         .message_log
         .entries()
         .filter(|e| e.severity == Severity::Warning)
-        .count()
+        .map(|e| e.text.to_string())
+        .collect()
+}
+
+pub(in crate::editor::tests) fn warnings(ed: &Editor) -> usize {
+    warning_texts(ed).len()
 }
 
 const RELEASE_HANDLER: &str = r#"

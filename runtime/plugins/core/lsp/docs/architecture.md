@@ -96,10 +96,10 @@ Goto and references open a drawer of locations when a response holds more than o
 (references always). `lsp/response-locations` normalizes a response to a list: void gives
 `'()`, an array gives its elements, and a single `Location` gives a one-element list.
 The wire shape (`{uri, range}` versus `{targetUri, targetRange}`) is decoded by the
-`lsp-locations->display-parts` builtin, shared with `goto-location!`, so this plugin never
+`lsp-locations->places` and `lsp-locations->merged-places` builtins, shared with `goto-location!`, so this plugin never
 reads a location's wire fields.
 
-- **Rows.** `lsp/location-display` renders `path:line:col` with the path run through
+- **Rows.** `lsp/place-display` renders `path:line:col` with the path run through
   `path->display`. A location in a buffer that is not open carries the server's raw wire
   character offset instead of a grapheme column, because counting graphemes would mean
   reading a file that may never be opened. With no column, the row is `path:line`.

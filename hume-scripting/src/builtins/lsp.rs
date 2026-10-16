@@ -6,7 +6,7 @@
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
-use crate::host::{PositionParams, RangeParams, RangesParams};
+use crate::host::{LocationPlace, Place, PositionParams, RangeParams, RangesParams};
 use crate::types::{
     CapabilityQuery, Effect, FeatureFilter, ListEntry, ListLayer, LspFeature, LspFeatureSet,
     LspServerTarget, PaneHandle, Params, PendingLspNotify, PendingLspRequest, PendingLspServerOp,
@@ -16,11 +16,11 @@ use crate::{PendingLspServerReg, SteelCtx};
 
 use super::SteelResult;
 use super::args::{
-    ENV_PAIR_SHAPE, bool_arg, callable_arg, checked_params, hash_entry, json_arg, list_items,
-    list_of, list_to_string_pairs, list_to_strings, optional_json_arg, optional_list_items,
+    ENV_PAIR_SHAPE, bool_arg, callable_arg, checked_params, hash_entry, list_items, list_of,
+    list_to_string_pairs, list_to_strings, optional_json_arg, optional_list_items,
     optional_server_arg, optional_string_arg, optional_symbol_arg, optional_token_arg, pair_fields,
-    server_arg, string_arg, string_hash, string_list, symbol_enum_arg, symbol_hash, token_arg,
-    wire_position, wire_range,
+    server_arg, string_arg, string_hash, string_list, symbol_enum_arg, symbol_hash,
+    tagged_json_arg, token_arg, wire_position, wire_range,
 };
 use super::errors::generic_err;
 use super::hooks::{register_entry, require_known_event};
@@ -548,15 +548,12 @@ pub(crate) fn lsp_server_name(server: SteelVal) -> SteelResult {
 
 /// `(lsp-location uri range)` → a `Location` handle pairing the `uri` string
 /// with `range`, a range taken from a server response. The result carries the
-/// range's tag, so `goto-location!` and `lsp-locations->display-parts` decode
+/// range's tag, so `goto-location!` and `lsp-locations->places` decode
 /// it with the encoding of the server that sent the range. A hand-built range
 /// has no encoding to carry and raises.
 pub(crate) fn lsp_location(uri: SteelVal, range: SteelVal) -> SteelResult {
     let uri = string_arg(uri, "lsp-location uri")?;
-    let range = json_arg(range, "lsp-location range")?;
-    range
-        .position_encoding("lsp-location range")
-        .map_err(generic_err)?;
+    let (range, _) = tagged_json_arg(&range, "lsp-location range")?;
     let location = serde_json::json!({"uri": uri, "range": range.value()});
     Ok(crate::json::to_steel_handle(
         std::sync::Arc::new(location),
@@ -879,10 +876,7 @@ pub(crate) fn lsp_position_to_offset(
     position: SteelVal,
 ) -> SteelResult {
     let bid = pane.buffer();
-    let handle = json_arg(position, "lsp-position->offset")?;
-    let encoding = handle
-        .position_encoding("lsp-position->offset")
-        .map_err(generic_err)?;
+    let (handle, encoding) = tagged_json_arg(&position, "lsp-position->offset")?;
     let pos = wire_position(handle.value(), "lsp-position->offset")?;
     Ok(
         match ctx
@@ -907,10 +901,7 @@ pub(crate) fn lsp_range_to_offsets(
     range: SteelVal,
 ) -> SteelResult {
     let bid = pane.buffer();
-    let handle = json_arg(range, "lsp-range->offsets")?;
-    let encoding = handle
-        .position_encoding("lsp-range->offsets")
-        .map_err(generic_err)?;
+    let (handle, encoding) = tagged_json_arg(&range, "lsp-range->offsets")?;
     let range = wire_range(handle.value(), "lsp-range->offsets")?;
     let Some(lsp) = ctx.host.lsp() else {
         return Ok(SteelVal::BoolV(false));
@@ -933,13 +924,10 @@ pub(crate) fn lsp_range_to_offsets(
 ///
 /// `offsets` is the raw two-element `[start, end)` array straight off the
 /// wire, handed over undecoded the way `goto-location!` takes a raw
-/// `Location`: either a Steel list (the ordinary hashmap-decode shape) or a
-/// JSON array handle, both routed through `json_arg` onto the one
-/// JSON-native decode below. Its encoding is read from its own tag: it is
-/// itself drawn from the same response `label` came from (`json-ref`), so it
-/// carries the producing server's negotiated encoding, and errors on an
-/// untagged (hand-built) value, since there is then no server to have
-/// negotiated one with. The offsets count code units in that encoding, so
+/// `Location`: a JSON array handle. Its encoding is read from its own tag: it
+/// is itself drawn from the same response `label` came from (`json-ref`), so
+/// it carries the producing server's negotiated encoding, and a hand-built
+/// value raises, since there is then no server to have negotiated one with. The offsets count code units in that encoding, so
 /// Scheme can neither convert them nor index by them. That is the whole
 /// reason this builtin exists rather than a Scheme helper.
 pub(crate) fn lsp_label_offsets_to_text(
@@ -948,10 +936,7 @@ pub(crate) fn lsp_label_offsets_to_text(
     offsets: SteelVal,
 ) -> SteelResult {
     let label = string_arg(label, "lsp-label-offsets->text label")?;
-    let handle = json_arg(offsets, "lsp-label-offsets->text offsets")?;
-    let encoding = handle
-        .position_encoding("lsp-label-offsets->text")
-        .map_err(generic_err)?;
+    let (handle, encoding) = tagged_json_arg(&offsets, "lsp-label-offsets->text")?;
     let arr = handle.value().as_array().ok_or_else(|| {
         generic_err("lsp-label-offsets->text: offsets must be a two-element (start end) array")
     })?;
@@ -972,59 +957,107 @@ pub(crate) fn lsp_label_offsets_to_text(
     })
 }
 
-/// `(lsp-locations->display-parts locs)` → one `(hash 'path p 'line l
-/// 'grapheme-col-or-wire c 'buffer b 'location loc)` per distinct entry in
-/// `locs` (rows naming the same place collapse into the first), a list of raw
-/// `Location`/`LocationLink` hashmaps/handles: the display-side
-/// counterpart to `goto-location!`'s wire conversion, decoded through the
-/// same shared decoder. Each entry reads its own tagged producing-server
-/// encoding (see `LspHost::lsp_locations_display_parts`'s doc). The column
-/// is an exact grapheme column when the target has an open buffer, `#f`
-/// when it's an open buffer whose line is out of range, and otherwise the
-/// location's own wire `character` verbatim; this function never reads a
-/// target file to refine that last case. `path`/`line` are always present,
-/// since they come from the location itself. `buffer` is a buffer-only
-/// pane handle for the open buffer the target is, `#f` when the file is not
-/// open. See
-/// `LspHost::lsp_locations_display_parts`'s doc for the full column-unit
-/// rule and why a location that can't be decoded (or isn't tagged) at all
-/// aborts the whole call rather than producing a degraded entry.
-pub(crate) fn lsp_locations_to_display_parts(ctx: &mut SteelCtx, locs: SteelVal) -> SteelResult {
-    let handles = list_items(locs, "lsp-locations->display-parts locs")?
-        .into_iter()
-        .map(|entry| json_arg(entry, "lsp-locations->display-parts locs"))
+/// Decodes `locs` (a Steel list of raw `Location`/`LocationLink` handles)
+/// through the host, one row per location. `builtin` names the caller in the
+/// errors raised here.
+fn decode_places(
+    ctx: &mut SteelCtx,
+    locs: SteelVal,
+    builtin: &str,
+) -> Result<Vec<LocationPlace>, SteelErr> {
+    let arg_name = format!("{builtin} locs");
+    let handles = list_items(locs, &arg_name)?
+        .iter()
+        .map(|entry| tagged_json_arg(entry, &arg_name))
         .collect::<Result<Vec<_>, _>>()?;
-    let parts = ctx
-        .host
+    ctx.host
         .lsp()
-        .ok_or_else(|| generic_err("lsp-locations->display-parts: no LSP state available"))?
-        .lsp_locations_display_parts(&handles)
-        .map_err(generic_err)?;
-    let entries: Vec<SteelVal> = parts
+        .ok_or_else(|| generic_err(format!("{builtin}: no LSP state available")))?
+        .lsp_location_places(&handles, builtin)
+        .map_err(generic_err)
+}
+
+fn place_hash(place: Place) -> SteelVal {
+    symbol_hash([
+        ("path", SteelVal::StringV(place.path.into())),
+        ("line", SteelVal::IntV(place.line as isize)),
+        (
+            "grapheme-col-or-wire",
+            match place.grapheme_col_or_wire {
+                Some(c) => SteelVal::IntV(c as isize),
+                None => SteelVal::BoolV(false),
+            },
+        ),
+        (
+            "buffer",
+            match place.buffer {
+                Some(bid) => SteelPane(PaneHandle::buffer_only(bid)).into_steel_val(),
+                None => SteelVal::BoolV(false),
+            },
+        ),
+        ("location", place.location.into_steel_val()),
+    ])
+}
+
+/// `(lsp-locations->places locs)` → one entry per element of `locs`
+/// (a list of handles onto raw `Location`/`LocationLink` values from a
+/// server response), in order:
+/// `(hash 'path p 'line l 'grapheme-col-or-wire c 'buffer b 'location loc)`,
+/// or `#f` for a location whose URI is not a `file://` one. Entries are not
+/// merged, so a caller can pair them back with the values the locations came
+/// from. This is the
+/// display-side counterpart to `goto-location!`'s wire conversion, decoded
+/// through the same shared decoder. Each entry reads its own tagged
+/// producing-server encoding (see `LspHost::lsp_location_places`'s
+/// doc). The column is an exact grapheme column when the target has an open
+/// buffer, `#f` when it's an open buffer whose line is out of range, and
+/// otherwise the location's own wire `character` verbatim; this function
+/// never reads a target file to refine that last case. `path`/`line` are
+/// always present, since they come from the location itself. `buffer` is a
+/// buffer-only pane handle for the open buffer the target is, `#f` when the
+/// file is not open. See `LspHost::lsp_location_places`'s doc for the
+/// full column-unit rule and why a location that can't be decoded (or isn't
+/// tagged) at all aborts the whole call rather than producing a degraded
+/// entry.
+pub(crate) fn lsp_locations_to_places(ctx: &mut SteelCtx, locs: SteelVal) -> SteelResult {
+    let rows = decode_places(ctx, locs, "lsp-locations->places")?;
+    let entries: Vec<SteelVal> = rows
         .into_iter()
-        .map(|part| {
-            symbol_hash([
-                ("path", SteelVal::StringV(part.path.into())),
-                ("line", SteelVal::IntV(part.line as isize)),
-                (
-                    "grapheme-col-or-wire",
-                    match part.grapheme_col_or_wire {
-                        Some(c) => SteelVal::IntV(c as isize),
-                        None => SteelVal::BoolV(false),
-                    },
-                ),
-                (
-                    "buffer",
-                    match part.buffer {
-                        Some(bid) => SteelPane(PaneHandle::buffer_only(bid)).into_steel_val(),
-                        None => SteelVal::BoolV(false),
-                    },
-                ),
-                ("location", part.location.into_steel_val()),
-            ])
+        .map(|row| match row {
+            LocationPlace::Found(place) => place_hash(place),
+            LocationPlace::Skipped => SteelVal::BoolV(false),
         })
         .collect();
     Ok(SteelVal::ListV(entries.into()))
+}
+
+/// `(lsp-locations->merged-places locs)` → `(hash 'places l 'skipped n)`:
+/// `l` is the entries of `lsp-locations->places` without the `#f` ones and
+/// with the first kept for each path, line and column, a list of places to
+/// show or jump to, since several servers answering one request often name
+/// the same place. `n` counts the locations left out as not `file://` ones,
+/// so a caller reports them without decoding the answer a second time. Two
+/// servers counting one unopened non-ASCII position in different encodings
+/// still show twice, since the column of an unopened target is the wire one.
+pub(crate) fn lsp_locations_to_merged_places(ctx: &mut SteelCtx, locs: SteelVal) -> SteelResult {
+    let rows = decode_places(ctx, locs, "lsp-locations->merged-places")?;
+    let mut seen = rustc_hash::FxHashSet::default();
+    let mut places = Vec::new();
+    let mut skipped = 0;
+    for row in rows {
+        match row {
+            LocationPlace::Found(place) => {
+                if seen.insert((place.path.clone(), place.line, place.grapheme_col_or_wire)) {
+                    places.push(place_hash(place));
+                }
+            }
+            LocationPlace::Skipped => skipped += 1,
+        }
+    }
+    Ok(symbol_hash([
+        ("places", SteelVal::ListV(places.into())),
+        ("skipped", SteelVal::IntV(skipped)),
+    ]))
 }
 
 #[cfg(test)]

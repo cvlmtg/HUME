@@ -805,10 +805,10 @@ until the user types.
 A live picker's rows always show in whatever order the source produced them; its own
 local fuzzy filter is off, since the query already selects what the source returns.
 
-`live-picker!` returns a token exactly like `picker!` does. Reach for
-`picker-push!`/`picker-replace!`/`picker-source-spawn!`/`picker-source-stop!`/`picker-close!`
-directly, against that token, only if you need to drive a live picker's population or
-timing yourself instead of `#:source`/`#:debounce-ms`.
+`live-picker!` returns a token, as `picker!` does. Against that token,
+`picker-close!` and `picker-source-stop!` close the picker or stop its running source. To
+fill the picker, use the token `#:source` is called with, which is a different one for
+every query.
 
 ## Bundled core plugins
 

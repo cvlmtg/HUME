@@ -5,7 +5,7 @@ use hume_engine::pipeline::BufferId;
 use super::EditorHostImpl;
 use hume_lsp::backend::ServerId;
 use hume_scripting::host::{
-    HostToken, LocationDisplay, LspHost, PositionParams, RangeParams, RangesParams, TrackedHold,
+    HostToken, LocationPlace, LspHost, PositionParams, RangeParams, RangesParams, TrackedHold,
 };
 use hume_scripting::{CapabilityQuery, LspFeature, PaneHandle, ServerRef};
 
@@ -131,10 +131,14 @@ impl<'a> LspHost for EditorHostImpl<'a> {
         crate::editor::lsp::introspect::label_slice(label, start, end, encoding)
     }
 
-    fn lsp_locations_display_parts(
+    fn lsp_location_places(
         &self,
-        locs: &[hume_scripting::json::JsonHandle],
-    ) -> Result<Vec<LocationDisplay>, String> {
-        crate::editor::lsp::introspect::location_display_parts(self.state, locs)
+        locs: &[(
+            hume_scripting::json::JsonHandle,
+            hume_rope::position_encoding::PositionEncoding,
+        )],
+        caller: &str,
+    ) -> Result<Vec<LocationPlace>, String> {
+        crate::editor::lsp::introspect::location_places(self.state, locs, caller)
     }
 }

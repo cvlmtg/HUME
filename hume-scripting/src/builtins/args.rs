@@ -285,9 +285,10 @@ pub(crate) fn optional_callable_arg(
     optional(val, ctx_name, callable_arg)
 }
 
-/// `(%callable? v)`: backs `live-picker!`'s `#:source` and `picker-command-source`'s `argv-for` checks (see
-/// `bootstrap.scm`), which must validate it in Scheme before composing the
-/// debounced-respawn wrapper around it: once wrapped, `%live-picker!`'s own
+/// `(%callable? v)`: backs the `#:source` check of `live-picker!` and the
+/// `argv-for` check of `picker-command-source` (see `bootstrap.scm`).
+/// `live-picker!` must validate its source in Scheme before composing the
+/// debounced-requery wrapper around it: once wrapped, `%live-picker!`'s own
 /// `callable_arg` check on `on_query_change` sees only the wrapper closure,
 /// not the caller's value. Uses `callable_arg`'s `is_ok()`, not
 /// Steel's own `function?`/`procedure?`, which accept
@@ -388,19 +389,39 @@ pub(crate) fn chars_arg(val: SteelVal, ctx_name: &str) -> Result<Vec<char>, Stee
 
 /// The single entry point for a JSON-shaped argument that might already be
 /// a [`JsonHandle`](crate::json::JsonHandle) (an `lsp-request!` response
-/// threaded straight back in, e.g. `codeAction/resolve`'s params, or a
-/// WorkspaceEdit/Location a plugin got from one and hands to
-/// `apply-workspace-edit!`/`goto-location!`) or ordinary Steel data a
-/// plugin built by hand (`(hash "line" 0 ...)`). An already-handle `val`
-/// returns it as-is, no clone; anything else is converted once via
-/// [`json_params`] and wrapped fresh. Delegating the non-handle path to
-/// `json_params` (rather than the reverse) means the handle path here
-/// never pays for a conversion it doesn't need.
+/// threaded straight back in) or ordinary Steel data a plugin built by hand
+/// (`(hash "line" 0 ...)`). An already-handle `val` returns it as-is, no
+/// clone; anything else is converted once via [`json_params`] and wrapped
+/// fresh. Delegating the non-handle path to `json_params` (rather than the
+/// reverse) means the handle path here never pays for a conversion it
+/// doesn't need. An argument whose positions are wire units goes through
+/// [`tagged_json_arg`] instead.
 pub(crate) fn json_arg(val: SteelVal, ctx_name: &str) -> Result<crate::json::JsonHandle, SteelErr> {
     if let Some(handle) = crate::json::downcast_json_handle(&val) {
         return Ok(handle);
     }
     Ok(crate::json::JsonHandle::new(json_params(val, ctx_name)?))
+}
+
+/// A wire-position argument: a [`JsonHandle`](crate::json::JsonHandle) onto
+/// a server response, paired with the encoding that server negotiated. A
+/// value a plugin built by hand has no producing server to have negotiated
+/// one with, so it raises rather than being decoded under a guessed encoding.
+pub(crate) fn tagged_json_arg(
+    val: &SteelVal,
+    ctx_name: &str,
+) -> Result<
+    (
+        crate::json::JsonHandle,
+        hume_rope::position_encoding::PositionEncoding,
+    ),
+    SteelErr,
+> {
+    let Some(handle) = crate::json::downcast_json_handle(val) else {
+        steel::stop!(TypeMismatch => "{}: expected a JSON handle from a server response", ctx_name);
+    };
+    let encoding = handle.position_encoding(ctx_name).map_err(generic_err)?;
+    Ok((handle, encoding))
 }
 
 /// Converts `val` to request params, so a malformed value raises at the
@@ -916,15 +937,7 @@ fn wire_text_edit_from_json(
 /// and guessing one is exactly what `JsonHandle::position_encoding` refuses
 /// to do.
 pub(crate) fn wire_text_edit_arg(val: SteelVal) -> Result<crate::host::WireTextEdit, SteelErr> {
-    let Some(handle) = crate::json::downcast_json_handle(&val) else {
-        return Err(SteelErr::new(
-            ErrorKind::TypeMismatch,
-            "apply-text-edits!: expected a JSON handle onto a wire TextEdit".to_string(),
-        ));
-    };
-    let encoding = handle
-        .position_encoding("apply-text-edits!")
-        .map_err(generic_err)?;
+    let (handle, encoding) = tagged_json_arg(&val, "apply-text-edits!")?;
     wire_text_edit_from_json(handle.value(), encoding, "apply-text-edits!")
 }
 

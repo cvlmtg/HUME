@@ -11,7 +11,7 @@ use crate::types::PaneHandle;
 
 use super::SteelResult;
 use super::args::{
-    hash_entry, json_arg, list_items, optional_usize_arg, single_key_arg, string_arg,
+    hash_entry, list_items, optional_usize_arg, single_key_arg, string_arg, tagged_json_arg,
     wire_text_edit_arg,
 };
 use super::errors::{generic_err, require_cap};
@@ -43,24 +43,20 @@ pub(crate) fn apply_text_edits(
         .map_err(generic_err)
 }
 
-/// `(%apply-workspace-edit! pane wsedit expect-gen)`. `wsedit` is a
-/// `WorkspaceEdit` hashmap or JSON handle. Its positions decode using the
-/// handle's own tagged encoding (the server that produced it; see
-/// `JsonHandle::position_encoding`), so unlike `goto-location!`'s
-/// char-indexed shape this errors on a hand-built (untagged) value: there
-/// is no server to have negotiated an encoding with. Returns the number of
-/// buffers modified; the `apply-workspace-edit!` Scheme wrapper reports
-/// that count.
+/// `(%apply-workspace-edit! pane wsedit expect-gen)`. `wsedit` is a JSON
+/// handle onto a `WorkspaceEdit` from a server response. Its positions
+/// decode using the handle's own tagged encoding (the server that produced
+/// it; see `JsonHandle::position_encoding`), so unlike `goto-location!`'s
+/// char-indexed shape a hand-built value raises: there is no server to have
+/// negotiated an encoding with. Returns the number of buffers modified; the
+/// `apply-workspace-edit!` Scheme wrapper reports that count.
 pub(crate) fn apply_workspace_edit(
     ctx: &mut SteelCtx,
     pane: PaneHandle,
     wsedit: SteelVal,
     expect_gen: SteelVal,
 ) -> SteelResult {
-    let handle = json_arg(wsedit, "apply-workspace-edit!")?;
-    let encoding = handle
-        .position_encoding("apply-workspace-edit!")
-        .map_err(generic_err)?;
+    let (handle, encoding) = tagged_json_arg(&wsedit, "apply-workspace-edit!")?;
     let expect_gen =
         optional_usize_arg(expect_gen, "apply-workspace-edit! expect-gen")?.map(|n| n as u64);
     let count = require_cap(ctx.host.edits(), "apply-workspace-edit!")?
@@ -72,18 +68,18 @@ pub(crate) fn apply_workspace_edit(
 /// `(goto-location! pane loc)`: `loc` is one of two shapes, dispatched here
 /// (not in Scheme):
 ///
-/// - a raw `Location`/`LocationLink` hashmap or JSON handle: wire position,
-///   decoded and converted using the handle's own tagged encoding. The
-///   server that produced the response negotiated it for the request that's
-///   being answered, regardless of which file the location points into (an
-///   LSP round-trip is async; the user is free to switch panes while a
-///   request is in flight, which is exactly why the jump lands in `pane`,
-///   not necessarily the focused one). Errors on an untagged (hand-built)
-///   value, same as `apply-workspace-edit!`.
+/// - a JSON handle onto a raw `Location`/`LocationLink` from a server
+///   response: wire position, decoded and converted using the handle's own
+///   tagged encoding. The server that produced the response negotiated it
+///   for the request that's being answered, regardless of which file the
+///   location points into (an LSP round-trip is async; the user is free to
+///   switch panes while a request is in flight, which is exactly why the
+///   jump lands in `pane`, not necessarily the focused one). Errors on a
+///   hand-built value, same as `apply-workspace-edit!`.
 /// - `(hash 'target t 'line l 'char-col c)`, already char-indexed: `t` is a
 ///   path string, a `file://` URI string, or a pane. This shape never
-///   touches server encoding. Wire hashmaps have string keys, so a symbol
-///   `'target` key is what tells the two apart.
+///   touches server encoding. A hashmap is this shape and a handle is the
+///   wire one.
 pub(crate) fn goto_location(ctx: &mut SteelCtx, pane: PaneHandle, loc: SteelVal) -> SteelResult {
     match &loc {
         SteelVal::HashMapV(map)
@@ -112,18 +108,15 @@ pub(crate) fn goto_location(ctx: &mut SteelCtx, pane: PaneHandle, loc: SteelVal)
                     .map_err(generic_err)
             }
         }
-        SteelVal::HashMapV(_) | SteelVal::Custom(_) => {
-            let handle = json_arg(loc, "goto-location!")?;
-            let encoding = handle
-                .position_encoding("goto-location!")
-                .map_err(generic_err)?;
+        SteelVal::Custom(_) => {
+            let (handle, encoding) = tagged_json_arg(&loc, "goto-location!")?;
             require_cap(ctx.host.edits(), "goto-location!")?
                 .goto_location_value(pane, handle.value(), encoding)
                 .map(|()| SteelVal::Void)
                 .map_err(generic_err)
         }
         _ => steel::stop!(TypeMismatch =>
-            "goto-location!: expected a Location hashmap/handle or (hash 'target t 'line l 'char-col c)"),
+            "goto-location!: expected a Location handle from a server response or (hash 'target t 'line l 'char-col c)"),
     }
 }
 

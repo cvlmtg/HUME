@@ -928,7 +928,7 @@ fn lsp_position_to_offset_uses_the_responses_tagged_utf8_encoding() {
 }
 
 /// `lsp-position->offset` reads the position's own tagged producing-server
-/// encoding: an untagged (hand-built) hash must error, not silently
+/// encoding: an untagged handle (a `json-parse` result) must error, not
 /// resolve via `bid`'s currently attached server.
 ///
 /// Without `JsonHandle::position_encoding`'s `Err`, this would silently
@@ -946,7 +946,7 @@ fn lsp_position_to_offset_untagged_handle_errors() {
         &mut rig.ed,
         tmp.path(),
         r#"(define-typed-command! "probe" "" (lambda (bid)
-             (lsp-position->offset bid (hash "line" 0 "character" 0))))"#,
+             (lsp-position->offset bid (json-parse "{\"line\": 0, \"character\": 0}"))))"#,
     );
     type_cmd(&mut rig.ed, ":probe");
 
@@ -1111,8 +1111,7 @@ fn lsp_range_to_offsets_untagged_handle_errors() {
         tmp.path(),
         r#"(define-typed-command! "probe" "" (lambda (bid)
              (lsp-range->offsets bid
-               (hash "start" (hash "line" 0 "character" 0)
-                     "end" (hash "line" 0 "character" 1)))))"#,
+               (json-parse "{\"start\": {\"line\": 0, \"character\": 0}, \"end\": {\"line\": 0, \"character\": 1}}"))))"#,
     );
     type_cmd(&mut rig.ed, ":probe");
 
@@ -1123,32 +1122,10 @@ fn lsp_range_to_offsets_untagged_handle_errors() {
     );
 }
 
-/// `lsp-locations->display-parts` reads each location's own tagged
-/// producing-server encoding: an untagged (hand-built) handle must error,
-/// not silently resolve to the UTF-16 default.
-///
-/// A guessed UTF-16 fallback in `JsonHandle::position_encoding` would return
-/// `Ok(vec![...])` for a well-formed but untagged location.
-#[test]
-fn lsp_locations_display_parts_untagged_handle_errors() {
-    let ed = editor_from("-[a]>bcdef\n");
-    let handle = hume_scripting::json::JsonHandle::new(serde_json::json!({
-        "uri": "file:///a.rs",
-        "range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 1}},
-    }));
-
-    let err = crate::editor::lsp::introspect::location_display_parts(&ed.state, &[handle])
-        .expect_err("an untagged handle must error, not silently guess an encoding");
-    assert!(
-        err.contains("not a value from an LSP server"),
-        "error must name the actual problem (no server tag); got: {err}"
-    );
-}
-
 /// Each display row names the open buffer its location is in, or `#f` when
 /// the file is not open, so a script never matches URIs to buffers itself.
 #[test]
-fn lsp_locations_display_parts_name_the_open_buffer_of_each_row() {
+fn lsp_locations_places_name_the_open_buffer_of_each_row() {
     let tmp = tempfile::tempdir().unwrap();
     let file = std::fs::canonicalize(tmp.path())
         .unwrap()
@@ -1173,11 +1150,21 @@ fn lsp_locations_display_parts_name_the_open_buffer_of_each_row() {
     let fired = run_tagged_probe(
         &mut rig.ed,
         tmp.path(),
-        r#"(let ((parts (lsp-locations->display-parts (json-list res))))
-             (and (> (buffer-line-count (hash-ref (car parts) 'buffer)) 0)
-                  (equal? (hash-ref (cadr parts) 'buffer) #f)))"#,
+        r#"(let ((places (lsp-locations->places (json-list res))))
+             (and (> (buffer-line-count (hash-ref (car places) 'buffer)) 0)
+                  (equal? (hash-ref (cadr places) 'buffer) #f)))"#,
     );
     assert!(fired);
+}
+
+fn jdt_location() -> serde_json::Value {
+    serde_json::json!({
+        "uri": "jdt://contents/rt.jar/java.lang/String.class",
+        "range": {
+            "start": {"line": 1, "character": 0},
+            "end": {"line": 1, "character": 0},
+        },
+    })
 }
 
 fn echo_location(line: u64, character: u64) -> serde_json::Value {
@@ -1190,10 +1177,9 @@ fn echo_location(line: u64, character: u64) -> serde_json::Value {
     })
 }
 
-/// Two servers often answer with the same location: rows naming the same
-/// path, line and column collapse into the first.
+/// Rows are not merged here: a caller decides what counts as the same place.
 #[test]
-fn display_parts_dedupes_identical_rows_keeping_the_first() {
+fn places_returns_one_entry_per_location_in_order() {
     let tmp = tempfile::tempdir().unwrap();
     let mut rig = rig_with_echo(
         tmp.path(),
@@ -1210,16 +1196,16 @@ fn display_parts_dedupes_identical_rows_keeping_the_first() {
         &mut rig.ed,
         tmp.path(),
         r#"(equal? (map (lambda (p) (hash-ref p 'line))
-                        (lsp-locations->display-parts (json-list res)))
-                   '(3 4))"#,
+                        (lsp-locations->places (json-list res)))
+                   '(3 4 3))"#,
     );
     assert!(fired);
 }
 
 /// Each row carries the location it was decoded from, so a caller jumps to
-/// the row it shows rather than indexing a list the dedupe reshaped.
+/// the row it shows rather than indexing a list of its own.
 #[test]
-fn display_parts_rows_carry_their_location() {
+fn places_carry_their_location() {
     let tmp = tempfile::tempdir().unwrap();
     let mut rig = rig_with_echo(
         tmp.path(),
@@ -1227,7 +1213,7 @@ fn display_parts_rows_carry_their_location() {
         serde_json::json!({"capabilities": {}}),
         serde_json::json!([
             echo_location(3, 1),
-            echo_location(3, 1),
+            echo_location(4, 0),
             echo_location(7, 2)
         ]),
     );
@@ -1235,11 +1221,89 @@ fn display_parts_rows_carry_their_location() {
     let fired = run_tagged_probe(
         &mut rig.ed,
         tmp.path(),
-        r#"(let ((parts (lsp-locations->display-parts (json-list res))))
-             (equal? (map (lambda (p) (json-ref (hash-ref p 'location) "range" "start" "line")) parts)
-                     '(3 7)))"#,
+        r#"(let ((places (lsp-locations->places (json-list res))))
+             (equal? (map (lambda (p) (json-ref (hash-ref p 'location) "range" "start" "line")) places)
+                     '(3 4 7)))"#,
     );
     assert!(fired);
+}
+
+/// A location whose URI is not a `file://` one has no path HUME can open, so
+/// its entry is `#f` and the rest of the batch still decodes.
+#[test]
+fn places_give_false_for_a_location_that_is_not_a_file() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut rig = rig_with_echo(
+        tmp.path(),
+        "-[a]>bc\n",
+        serde_json::json!({"capabilities": {}}),
+        serde_json::json!([jdt_location(), echo_location(4, 0)]),
+    );
+
+    let fired = run_tagged_probe(
+        &mut rig.ed,
+        tmp.path(),
+        r#"(equal? (map (lambda (p) (and p (hash-ref p 'line)))
+                        (lsp-locations->places (json-list res)))
+                   '(#f 4))"#,
+    );
+    assert!(fired);
+}
+
+/// The merged variant keeps the first entry naming each path, line and
+/// column, leaves out locations HUME cannot open, and counts those it left
+/// out.
+#[test]
+fn merged_places_keep_the_first_entry_per_place_and_count_skipped() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut rig = rig_with_echo(
+        tmp.path(),
+        "-[a]>bc\n",
+        serde_json::json!({"capabilities": {}}),
+        serde_json::json!([
+            echo_location(3, 1),
+            jdt_location(),
+            echo_location(4, 0),
+            echo_location(3, 1)
+        ]),
+    );
+
+    let fired = run_tagged_probe(
+        &mut rig.ed,
+        tmp.path(),
+        r#"(let ((merged (lsp-locations->merged-places (json-list res))))
+             (and (equal? (map (lambda (p) (hash-ref p 'line)) (hash-ref merged 'places))
+                          '(3 4))
+                  (equal? (hash-ref merged 'skipped) 1)))"#,
+    );
+    assert!(fired);
+}
+
+/// A malformed location aborts either builtin, and the error names the
+/// builtin that was called.
+#[test]
+fn a_malformed_location_error_names_the_builtin_called() {
+    for builtin in ["lsp-locations->places", "lsp-locations->merged-places"] {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut rig = rig_with_echo(
+            tmp.path(),
+            "-[a]>bc\n",
+            serde_json::json!({"capabilities": {}}),
+            serde_json::json!([{"uri": "file:///nowhere/a.rs"}]),
+        );
+
+        run_tagged_probe(
+            &mut rig.ed,
+            tmp.path(),
+            &format!("({builtin} (json-list res))"),
+        );
+
+        let log = rig.ed.state.message_log.format_for_display();
+        assert!(
+            log.contains(&format!("{builtin}: missing range")),
+            "{builtin} must name itself in the error; got {log:?}"
+        );
+    }
 }
 
 // ── track-position! / tracked-position-params / untrack-position! ────────────

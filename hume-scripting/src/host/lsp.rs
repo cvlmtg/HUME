@@ -178,52 +178,64 @@ pub trait LspHost {
         encoding: PositionEncoding,
     ) -> String;
 
-    /// `(lsp-locations->display-parts locs)`: the filesystem path, wire
+    /// `(lsp-locations->places locs)`: the filesystem path, wire
     /// line, and column of each raw `Location`/`LocationLink` handle in
     /// `locs`, decoded through the same `hume_lsp::location::decode_location`
-    /// `goto-location!` uses. Backs `lsp/location-display`'s drawer rows:
+    /// `goto-location!` uses. Backs `lsp/place-display`'s drawer rows:
     /// `goto-location!` already converts wire positions correctly for the
     /// *jump*; this is the display-side counterpart.
     ///
     /// The column is an exact grapheme column when the target has an open
     /// buffer, `None` when it's an open buffer whose line is out of range,
     /// and otherwise the location's own wire `character` verbatim. See
-    /// `LocationDisplay`'s `grapheme_col_or_wire` field doc for why that last case
+    /// `Place`'s `grapheme_col_or_wire` field doc for why that last case
     /// is the one sanctioned exception to "never render a wire unit
     /// directly".
     ///
-    /// Rows naming the same path, line and column are one row, the first:
-    /// several servers answering one request often name the same place.
+    /// One entry per input location, in order, and entries are not merged:
+    /// whether two locations are the same place is the caller's policy. A
+    /// location whose URI is not a `file://` one names nothing HUME can
+    /// open, so its entry is [`LocationPlace::Skipped`].
     ///
     /// The path and line ride along with the column because all three come
     /// from one decode: reading `range.start.line` a second time in Scheme
     /// to render the row prefix is how a row ends up naming a position that
-    /// doesn't match the one its column was read from. Each entry's own
-    /// `JsonHandle` carries its own producing-server encoding (same
-    /// rationale `GotoTarget::Wire` uses for the actual jump), so a batch
-    /// built from locations spanning more than one response decodes each
-    /// correctly rather than assuming they share one server.
+    /// doesn't match the one its column was read from. Each handle comes
+    /// paired with its own producing-server encoding (same rationale
+    /// `GotoTarget::Wire` uses for the actual jump), so a batch built from
+    /// locations spanning more than one response decodes each correctly
+    /// rather than assuming they share one server.
     ///
     /// `Err` (aborting the whole batch, not just one row) only for a
     /// location whose shape can't be decoded at all (missing `uri`/`range`,
-    /// unparseable URI, or untagged): such a location names no destination
-    /// `goto-location!` could reach either, so a drawer row for it would be
-    /// unselectable. Degrading only this builtin wouldn't
+    /// a malformed `file://` URI, or untagged): such a location names no
+    /// destination `goto-location!` could reach either, so a drawer row for it
+    /// would be unselectable. Degrading only this builtin wouldn't
     /// help either: the same malformed location would still abort three
-    /// lines later inside `lsp/location-display`, which is why both routes
+    /// lines later inside `lsp/place-display`, which is why both routes
     /// decode through the one shared `decode_location` instead of
     /// tolerating a bad shape here. See `decode_location`'s doc for the
-    /// full rule.
-    fn lsp_locations_display_parts(
+    /// full rule. `caller` names the builtin in those errors, since
+    /// `lsp-locations->merged-places` decodes through this method too.
+    fn lsp_location_places(
         &self,
-        locs: &[crate::json::JsonHandle],
-    ) -> Result<Vec<LocationDisplay>, String>;
+        locs: &[(crate::json::JsonHandle, PositionEncoding)],
+        caller: &str,
+    ) -> Result<Vec<LocationPlace>, String>;
 }
 
-/// One `lsp-locations->display-parts` result row. See
-/// [`LspHost::lsp_locations_display_parts`].
+/// One entry of [`LspHost::lsp_location_places`]'s result.
 #[derive(Debug, Clone)]
-pub struct LocationDisplay {
+pub enum LocationPlace {
+    Found(Place),
+    /// The location's URI is not a `file://` one.
+    Skipped,
+}
+
+/// One `lsp-locations->places` result entry. See
+/// [`LspHost::lsp_location_places`].
+#[derive(Debug, Clone)]
+pub struct Place {
     /// The URI's decoded display path (`hume_lsp::uri::uri_to_display_string`).
     pub path: String,
     /// 0-based wire line, straight from the location's `range.start.line`.
@@ -232,7 +244,7 @@ pub struct LocationDisplay {
     /// open buffer, `None` when it does and `line` is out of its range,
     /// otherwise the location's own wire `character` verbatim (the display
     /// companion never reads an unopened target's file to refine this
-    /// number; see `location_display_parts`'s doc, `hume-editor`, for the
+    /// number; see `location_places`'s doc, `hume-editor`, for the
     /// full reasoning and the resulting unit divergence). Named for both
     /// possible units, not just the common one. See CLAUDE.md's "Line/buffer
     /// columns" invariant's one sanctioned exception.

@@ -56,7 +56,7 @@
                     (set-inlay-hints! "lsp-inlay-hints" pane
                       (filter (lambda (e) e)
                               (map (lambda (h) (lsp/hint->store-entry pane h))
-                                   (apply append (map json-list (lsp/answers results))))))))
+                                   (lsp/answer-items results))))))
                 #:unavailable 'empty
                 #:supersede (string-append "lsp-inlay-hints-" (to-string (buffer-key pane)))))))))
     #:key (lambda (p . _) (buffer-key p))))

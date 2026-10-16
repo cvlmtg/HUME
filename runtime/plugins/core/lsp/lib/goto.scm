@@ -14,15 +14,18 @@
                            #:not-found-msg [not-found-msg "No definition found"])
   (if err
       (lsp/report-error! what err)
-      (let ((parts (lsp-locations->display-parts (lsp/answer-locations what results))))
+      (let* ((locations (lsp/answer-locations what results))
+             (merged (lsp-locations->merged-places locations))
+             (places (hash-ref merged 'places)))
+        (lsp/report-skipped! what (hash-ref merged 'skipped))
         (cond
-          ((null? parts) (log! 'info not-found-msg))
-          ((and (not always-drawer?) (null? (cdr parts)))
-           (goto-location! (focused-pane) (hash-ref (car parts) 'location)))
-          (else (lsp/show-locations! pane tracked parts method shape not-found-msg))))))
+          ((null? places) (lsp/report-not-found! locations not-found-msg))
+          ((and (not always-drawer?) (null? (cdr places)))
+           (goto-location! (focused-pane) (hash-ref (car places) 'location)))
+          (else (lsp/show-locations! pane tracked places method shape not-found-msg))))))
 
 (define (lsp/goto-request pane method)
-  (lsp/with-position-params pane "goto"
+  (lsp/with-params (lsp-position-params pane) "goto"
     (lambda (params)
       (let ((tracked (track-position! pane)))
         (lsp-request-all! pane method params
@@ -50,7 +53,7 @@
 
 (define-command! "lsp/references" "List references to the symbol under the cursor."
   (lambda (pane)
-    (lsp/with-position-params pane "references"
+    (lsp/with-params (lsp-position-params pane) "references"
       (lambda (params)
         (let ((tracked (track-position! pane)))
           (lsp-request-all! pane "textDocument/references"

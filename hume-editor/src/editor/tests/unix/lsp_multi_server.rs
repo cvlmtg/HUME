@@ -50,15 +50,9 @@ fn two_servers(
     (rig, guard)
 }
 
-fn settle(ed: &mut Editor) {
-    ed.settle();
-    ed.drain_lsp();
-    ed.settle();
-}
-
 fn run(ed: &mut Editor, command: &str) {
     ed.execute_keymap_command(command.to_string().into(), Some(1), false);
-    settle(ed);
+    pump_lsp(ed);
 }
 
 /// The labels the open completion menu ranks, sorted.
@@ -94,14 +88,7 @@ fn open_completion(ed: &mut Editor) {
     ed.feed_key(key('i'));
     ed.settle();
     ed.feed_key(key_ctrl(' '));
-    settle(ed);
-}
-
-fn loc(uri: &str, line: u64, character: u64) -> serde_json::Value {
-    serde_json::json!({
-        "uri": uri,
-        "range": {"start": {"line": line, "character": character}, "end": {"line": line, "character": character}}
-    })
+    pump_lsp(ed);
 }
 
 #[test]
@@ -159,7 +146,7 @@ fn completion_incomplete_if_any() {
     open_completion(&mut rig.ed);
 
     rig.ed.feed_key(key('a'));
-    settle(&mut rig.ed);
+    pump_lsp(&mut rig.ed);
 
     for sid in [RA, LINT] {
         assert_eq!(
@@ -214,9 +201,9 @@ fn trigger_chars_union_per_server_and_die_with_the_instance() {
     rig.ed.feed_key(key('i'));
     rig.ed.settle();
     rig.ed.feed_key(key('.'));
-    settle(&mut rig.ed);
+    pump_lsp(&mut rig.ed);
     rig.ed.feed_key(key(':'));
-    settle(&mut rig.ed);
+    pump_lsp(&mut rig.ed);
     let both = completions(&rig);
     rig.ed.feed_key(key_esc());
     rig.stop("ra-lint");
@@ -224,7 +211,7 @@ fn trigger_chars_union_per_server_and_die_with_the_instance() {
     rig.ed.feed_key(key('i'));
     rig.ed.settle();
     rig.ed.feed_key(key(':'));
-    settle(&mut rig.ed);
+    pump_lsp(&mut rig.ed);
 
     assert!(both >= 2, "each server's own trigger char fires: {both}");
     assert_eq!(
@@ -370,7 +357,7 @@ fn execute_command_goes_to_producing_server() {
     run(&mut rig.ed, "lsp/code-actions");
     rig.ed.feed_key(key('j'));
     rig.ed.feed_key(key_enter());
-    settle(&mut rig.ed);
+    pump_lsp(&mut rig.ed);
 
     assert!(rig.requests_to(RA, "workspace/executeCommand").is_empty());
     assert_eq!(rig.requests_to(LINT, "workspace/executeCommand").len(), 1);
@@ -482,7 +469,7 @@ fn locations_refresh_regroups_servers() {
     rig.ed.settle();
     std::thread::sleep(Duration::from_millis(400));
     rig.ed.settle();
-    settle(&mut rig.ed);
+    pump_lsp(&mut rig.ed);
 
     for sid in [RA, LINT] {
         assert_eq!(
@@ -649,7 +636,7 @@ fn diagnostics_drawer_rows_name_the_diagnostics_source_else_the_server() {
     rig.ed.settle();
 
     type_cmd(&mut rig.ed, ":diagnostics");
-    settle(&mut rig.ed);
+    pump_lsp(&mut rig.ed);
 
     insta::assert_debug_snapshot!(drawer_rows(&rig.ed), @r#"
     [
@@ -687,12 +674,12 @@ fn diagnostics_drawer_lists_a_pushing_and_a_pull_only_server() {
         "",
         |backend| backend.respond_to_server(LINT, "textDocument/diagnostic", report),
     );
-    settle(&mut rig.ed);
+    pump_lsp(&mut rig.ed);
     rig.publish(RA, serde_json::json!([wire(1, "pushed")]));
     rig.ed.settle();
 
     type_cmd(&mut rig.ed, ":diagnostics");
-    settle(&mut rig.ed);
+    pump_lsp(&mut rig.ed);
 
     insta::assert_debug_snapshot!(drawer_rows(&rig.ed), @r#"
     [
