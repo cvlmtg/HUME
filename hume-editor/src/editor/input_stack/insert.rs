@@ -10,7 +10,7 @@
 
 use termina::event::KeyEvent;
 
-use hume_engine::pipeline::EngineView;
+use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 use hume_engine::types::EditorMode;
 
 use super::super::edit_session::InsertSession;
@@ -43,6 +43,12 @@ impl InputStack {
     /// The open Insert session, if any.
     pub(in crate::editor) fn insert_session(&self) -> Option<&InsertSession> {
         self.find::<InsertLayer>().map(|l| &l.session)
+    }
+
+    /// `true` if the open Insert session belongs to `(pane, buffer)`.
+    pub(in crate::editor) fn inserting_into(&self, pane: PaneId, buffer: BufferId) -> bool {
+        self.insert_session()
+            .is_some_and(|s| s.owned_by(pane, buffer))
     }
 
     /// [`Self::insert_session`], mutably.

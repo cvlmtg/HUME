@@ -79,10 +79,10 @@ pub(in crate::editor) fn cmd_insert_at_line_end(
     _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    // A cursor on the head line's `\n`, where appended text goes. On an
-    // empty line that is the line itself, so `A` equals `i` there.
+    // On an empty line the line break is the line itself, so `A` equals `i`
+    // there.
     enter_insert(state, view, fp, ExitCursor::StepBack, |st| {
-        st.map(|sel| Selection::cursor(sel.text().lines().newline(sel.head_line())))
+        cmd_goto_line_end(st, 1, MotionMode::Move, LineEnd::LineBreak)
     })
 }
 

@@ -305,14 +305,13 @@ pub(in crate::editor) type EditFn = fn(EditState) -> Edited;
 /// as an `EditorCmd` (which also resolves settings, via a `DisplayLineMap`) because
 /// `NativeCommand::meta` only ever sets `CmdMeta::is_motion` true for the
 /// `Motion` variant, and Move mode's jump-list/dot-repeat handling depends on
-/// that flag. `goto-line-end` has a shape of its own, `LineEnd`: it lands on
-/// the line break in a pane that is inserting, and the pipeline resolves
-/// which through `line_end_for`. `Structural` covers the tree-sitter object
-/// commands.
+/// that flag.
 #[derive(Clone, Copy)]
 pub(in crate::editor) enum SelectionBody {
     Plain(fn(EditState, usize, MotionMode) -> EditState),
     Word(fn(EditState, usize, WordCtx<'_>) -> EditState),
+    /// `goto-line-end`, whose landing the pipeline resolves per pane through
+    /// `line_end_for`.
     LineEnd(fn(EditState, usize, MotionMode, LineEnd) -> EditState),
     Structural(StructuralBody),
 }

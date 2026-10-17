@@ -972,11 +972,7 @@ impl EditorState {
         r: &CursorReplacement,
     ) -> Result<(), String> {
         let (pid, bid) = (fp.pid(), fp.bid(view));
-        if !self
-            .input
-            .insert_session()
-            .is_some_and(|s| s.owned_by(pid, bid))
-        {
+        if !self.input.inserting_into(pid, bid) {
             return Err("no Insert session to apply the recorded result to".to_string());
         }
         if !self
@@ -1379,11 +1375,7 @@ impl Editor {
     ) {
         let fp = commands::FocusedPane::current(&self.view);
         let (pane, buffer) = (fp.pid(), fp.bid(&self.view));
-        let armed = self
-            .state
-            .input
-            .insert_session()
-            .is_some_and(|s| s.owned_by(pane, buffer));
+        let armed = self.state.input.inserting_into(pane, buffer);
         if armed {
             let head = commands::pane_view(&self.state, &self.view, fp.pane())
                 .primary()

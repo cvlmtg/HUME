@@ -59,7 +59,7 @@ use matching_pair::goto_matching_pair;
 mod char_move;
 use char_move::{goto_first_line, goto_last_line, move_left, move_right};
 mod line;
-use line::{goto_first_nonblank, goto_line_end, goto_line_newline, goto_line_start};
+use line::{goto_first_nonblank, goto_line_end, goto_line_start};
 mod word;
 pub(crate) use word::prev_word_start;
 pub use word::{
@@ -130,11 +130,9 @@ pub fn cmd_goto_line_end(
     mode: MotionMode,
     end: LineEnd,
 ) -> EditState {
-    let motion = match end {
-        LineEnd::LastCluster => goto_line_end,
-        LineEnd::LineBreak => goto_line_newline,
-    };
-    apply_motion(state, mode, count, |s| motion(s.text(), s.head()))
+    apply_motion(state, mode, count, |s| {
+        goto_line_end(s.text(), s.head(), end)
+    })
 }
 motion_cmd!(/// Move or extend cursors to the first non-blank character on their current line.
     cmd_goto_first_nonblank, goto_first_nonblank);

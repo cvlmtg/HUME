@@ -53,10 +53,7 @@ fn history_walk_refuses_own_insert_session() {
     ed.feed_key(key('x'));
     let (pane, buffer) = (ed.view.focused_pane(), ed.focused_buffer_id());
     assert!(
-        ed.state
-            .input
-            .insert_session()
-            .is_some_and(|s| s.owned_by(pane, buffer)),
+        ed.state.input.inserting_into(pane, buffer),
         "setup: `i` leaves an insert session open"
     );
 
@@ -68,10 +65,7 @@ fn history_walk_refuses_own_insert_session() {
     );
     assert_eq!(ed.doc().text().to_string(), "xhello\n");
     assert!(
-        ed.state
-            .input
-            .insert_session()
-            .is_some_and(|s| s.owned_by(pane, buffer)),
+        ed.state.input.inserting_into(pane, buffer),
         "the refused walk leaves the session open"
     );
 }

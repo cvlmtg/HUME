@@ -8,7 +8,7 @@ use hume_rope::column::{BufferLineCol, ByteCol, DisplayLineCol};
 use hume_rope::line::{ContentLine, RopeyLine};
 
 use crate::format::FormatBound;
-use crate::types::{CellContent, DisplayLine, Grapheme};
+use crate::types::{CellContent, DisplayLine};
 
 use super::DisplayLineMap;
 use super::pos::{DisplayColTarget, DisplayLinePos};
@@ -194,8 +194,9 @@ impl<'a> DisplayLineMap<'a> {
                 // `Empty` (EOL sentinel) has a buffer position but isn't
                 // content, so `NearestContent` takes it only when nothing
                 // else can answer (an empty line), gated on `admit_eol`;
-                // `NearestInsertionPoint` weighs it against the nearest
-                // content cell, ties going to content. `Virtual` (inline-insert)
+                // `NearestInsertionPoint` admits it as one more candidate,
+                // and since it follows every content cell on its display
+                // line, a tie goes to content. `Virtual` (inline-insert)
                 // carries the cluster of the real grapheme it precedes, so
                 // minimising distance against it elsewhere on the display
                 // line would land on a character that cell isn't at. It's excluded outright,
@@ -210,14 +211,16 @@ impl<'a> DisplayLineMap<'a> {
                 // An exhaustive match (not a chain of exclusion filters) so a
                 // future `CellContent` variant forces a decision here instead
                 // of silently defaulting to eligible.
-                let eligible = |g: &Grapheme, admit_eol: bool| {
-                    // Virtual display line cells (laid out separately by
-                    // `format_virtual_lines`) have no buffer position at
-                    // all; unreachable from `char_at`, which only ever
-                    // formats content display lines, but guarded
-                    // defensively.
-                    g.pos.is_some()
-                        && match g.content {
+                let nearest = |admit_eol: bool| {
+                    graphemes
+                        .iter()
+                        // Virtual display line cells (laid out separately
+                        // by `format_virtual_lines`) have no buffer position
+                        // at all; unreachable from `char_at`, which only
+                        // ever formats content display lines, but guarded
+                        // defensively.
+                        .filter(|g| g.pos.is_some())
+                        .filter(|g| match g.content {
                             CellContent::Grapheme => true,
                             CellContent::WidthContinuation => false,
                             CellContent::Empty => admit_eol,
@@ -229,32 +232,12 @@ impl<'a> DisplayLineMap<'a> {
                             CellContent::Whitespace { .. }
                             | CellContent::TabFill
                             | CellContent::Placeholder { .. } => !g.byte_range.is_empty(),
-                        }
+                        })
+                        .min_by_key(|g| target_display_col.abs_diff(g.display_col))
+                        .and_then(|g| g.pos)
                 };
-                let distance = |col: DisplayLineCol| target_display_col.abs_diff(col);
-                let nearest = |admit_eol: bool| {
-                    graphemes
-                        .iter()
-                        .filter(|g| eligible(g, admit_eol))
-                        .min_by_key(|g| distance(g.display_col))
-                };
-                if target == DisplayColTarget::NearestInsertionPoint
-                    && let Some(eol) = graphemes
-                        .iter()
-                        .rev()
-                        .find(|g| matches!(g.content, CellContent::Empty) && g.pos.is_some())
-                {
-                    let landing = match nearest(false) {
-                        Some(g) if distance(g.display_col) <= distance(eol.display_col) => g,
-                        _ => eol,
-                    };
-                    return landing
-                        .pos
-                        .expect("a content display line's cells carry a position");
-                }
-                nearest(false)
+                nearest(target == DisplayColTarget::NearestInsertionPoint)
                     .or_else(|| nearest(true))
-                    .and_then(|g| g.pos)
                     .unwrap_or(line_start)
             }
         }

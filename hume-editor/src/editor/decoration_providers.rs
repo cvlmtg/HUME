@@ -82,20 +82,15 @@ impl Editor {
                 let bottom_line =
                     hume_rope::line::RopeyLine::from(vp.top().line).advance(vp.height as usize);
                 let past_end = hume_rope::line::RopeyLine::new(text.ropey_line_count().get());
-                let insert_line = self
-                    .state
-                    .input
-                    .insert_session()
-                    .is_some_and(|s| s.owned_by(pid, bid))
-                    .then(|| {
-                        self.state
-                            .panes
-                            .entries
-                            .shown(&self.view.panes, pid)
-                            .view(text)
-                            .primary()
-                            .head_line()
-                    });
+                let insert_line = self.state.input.inserting_into(pid, bid).then(|| {
+                    self.state
+                        .panes
+                        .entries
+                        .shown(&self.view.panes, pid)
+                        .view(text)
+                        .primary()
+                        .head_line()
+                });
                 DecoratedPane {
                     pid,
                     bid,

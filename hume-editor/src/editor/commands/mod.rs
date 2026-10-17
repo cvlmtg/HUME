@@ -223,15 +223,16 @@ pub(super) fn word_chars_owned(doc: &Buffer, settings: &EditorSettings) -> Strin
 /// `buffer`: on the line break while that pane is inserting into that
 /// buffer, on the last character otherwise. Every such motion reads it here.
 pub(super) fn line_end_for(state: &EditorState, pid: PaneId, buffer: BufferId) -> LineEnd {
-    match state.input.insert_session() {
-        Some(session) if session.owned_by(pid, buffer) => LineEnd::LineBreak,
-        _ => LineEnd::LastCluster,
+    if state.input.inserting_into(pid, buffer) {
+        LineEnd::LineBreak
+    } else {
+        LineEnd::LastCluster
     }
 }
 
 /// How a sticky column resolves on the line a vertical move or a scroll
 /// carries a cursor to in `pid` viewing `buffer`: [`line_end_for`]'s landing
-/// as a display-column policy. Every sticky-column landing reads it here.
+/// as a display-column policy.
 pub(super) fn sticky_landing(
     state: &EditorState,
     pid: PaneId,

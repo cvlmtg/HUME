@@ -251,11 +251,9 @@ impl Default for VirtualFormat {
 /// truncates, no emitted cell differs, and `clipped` suppresses only the
 /// end-of-line tail. Every consumer is prefix-stable: `display_lines::DisplayLineMap::locate`
 /// resolves by binary search and never reads past its target,
-/// `char_at`/`Cell` takes the first cell containing the column,
-/// `char_at`/`NearestContent` takes the first column-nearest cell, and
-/// `char_at`/`NearestInsertionPoint` loses the end-of-line sentinel to a
-/// bound only when a content cell starts past the target, which is no
-/// farther from it than the sentinel and wins the tie. So
+/// `char_at`/`Cell` takes the first cell containing the column, and
+/// `char_at`/`NearestContent` and `NearestInsertionPoint` take the first
+/// column-nearest eligible cell. So
 /// scanning further than asked can never change an answer, which is what lets
 /// `Full` stand in for any bound.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]

@@ -1,6 +1,8 @@
 use hume_editing::text::BufferText;
 use hume_rope::cluster::ClusterStart;
 
+use crate::LineEnd;
+
 // ── Line motions (inner) ──────────────────────────────────────────────────────
 
 /// Jump to the first character on the current line.
@@ -8,21 +10,13 @@ pub(super) fn goto_line_start(text: &BufferText, head: ClusterStart) -> ClusterS
     text.lines().start(text.char_to_line(head.offset()))
 }
 
-/// Jump to the last non-newline grapheme cluster on the current line.
-///
-/// On an empty line (containing only `\n`), the cursor stays on the newline:
-/// there is no other character to land on.
-pub(super) fn goto_line_end(text: &BufferText, head: ClusterStart) -> ClusterStart {
-    text.lines().content_end(text.char_to_line(head.offset()))
-}
-
-/// Jump to the `\n` that terminates the current line.
-///
-/// Unlike `goto_line_end` (which stops at the last non-newline grapheme and
-/// therefore lands on the `\n` itself only on empty lines), this always
-/// returns the `\n` position.
-pub(super) fn goto_line_newline(text: &BufferText, head: ClusterStart) -> ClusterStart {
-    text.lines().newline(text.char_to_line(head.offset()))
+/// Jump to the end of the current line, where `end` says.
+pub(super) fn goto_line_end(text: &BufferText, head: ClusterStart, end: LineEnd) -> ClusterStart {
+    let line = text.char_to_line(head.offset());
+    match end {
+        LineEnd::LastCluster => text.lines().content_end(line),
+        LineEnd::LineBreak => text.lines().newline(line),
+    }
 }
 
 /// Jump to the first non-blank character on the current line.
