@@ -284,6 +284,8 @@ The status bar shows `EXT` in Extend mode.
 | `Backspace` | Delete character before cursor; on empty input, dismiss the command mode prompt |
 | `Ctrl-w` | Delete word before cursor |
 
+A key you bind in `'command` mode replaces these; see [Keys in the command line](configuration.md#keys-in-the-command-line).
+
 ## Search mode
 
 Entered with `/` (forward) or `?` (backward). Every keystroke live-previews the next match from the position where search was opened.

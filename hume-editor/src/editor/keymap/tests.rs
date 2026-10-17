@@ -126,6 +126,25 @@ fn bind_user_normal_mode() {
 }
 
 #[test]
+fn bind_user_command_mode() {
+    let mut km = Keymap::default();
+    km.bind_user_with_extend(
+        BindMode::Command,
+        &[key!('z')],
+        Cow::Borrowed("my-cmd"),
+        false,
+    );
+    assert!(matches!(
+        km.command.walk(&[key!('z')]),
+        WalkResult::Leaf(ref c) if c.name == "my-cmd"
+    ));
+    assert!(!matches!(
+        km.normal.walk(&[key!('z')]),
+        WalkResult::Leaf(ref c) if c.name == "my-cmd"
+    ));
+}
+
+#[test]
 fn unbind_user_normal_mode() {
     let mut km = Keymap::default();
     km.bind_user_with_extend(
@@ -166,7 +185,7 @@ fn collect_command_names_includes_nested_leaves() {
 }
 
 #[test]
-fn all_command_names_covers_all_three_modes() {
+fn all_command_names_covers_every_mode() {
     let mut km = Keymap::default();
     // Bind sentinel names in each mode to verify the sweep is complete.
     km.bind_user_with_extend(
@@ -181,6 +200,12 @@ fn all_command_names_covers_all_three_modes() {
         Cow::Borrowed("insert-sentinel"),
         false,
     );
+    km.bind_user_with_extend(
+        BindMode::Command,
+        &[key!('Q')],
+        Cow::Borrowed("command-sentinel"),
+        false,
+    );
     let names = km.all_command_names();
     assert!(
         names.contains(&"normal-sentinel".to_string()),
@@ -189,6 +214,10 @@ fn all_command_names_covers_all_three_modes() {
     assert!(
         names.contains(&"insert-sentinel".to_string()),
         "insert mode must be swept"
+    );
+    assert!(
+        names.contains(&"command-sentinel".to_string()),
+        "command mode must be swept"
     );
 }
 

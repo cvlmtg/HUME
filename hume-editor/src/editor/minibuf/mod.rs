@@ -4,6 +4,8 @@ use hume_ui::width::text_width;
 
 use self::history::{HistoryDir, HistoryKind};
 use super::input_stack::{InputEvent, LayerRef, PastedText};
+use super::keymap::WalkResult;
+use super::replay::dispatch_command_line_key;
 use super::{Editor, EditorState};
 
 /// The command-line mini-buffer, active while the user is typing a command
@@ -263,6 +265,26 @@ pub(in crate::editor) fn minibuf_input(
         }
         InputEvent::Key(key) => Some(ed.state.input.minibuf_mut()?.handle_key(key)),
     }
+}
+
+/// [`minibuf_input`] for the command mode prompt (`Command`/`Prompt`): a key
+/// bound in the `'command` keymap runs its command instead of the prompt's
+/// own handling. The key is consumed even when its command is unknown, as
+/// an Insert-mode binding's is.
+pub(in crate::editor) fn command_line_input(
+    ed: &mut Editor,
+    r: LayerRef,
+    ev: InputEvent,
+) -> Option<MiniBufferEvent> {
+    if let InputEvent::Key(key) = ev
+        && let WalkResult::Leaf(cmd) = ed.state.config.keymap.command.walk(&[key])
+    {
+        if let Some(cmd) = ed.resolve_mappable(cmd.name.as_ref()) {
+            dispatch_command_line_key(ed, cmd);
+        }
+        return None;
+    }
+    minibuf_input(ed, r, ev)
 }
 
 /// Insert `text`, flattened to one line, at the minibuffer's cursor: the

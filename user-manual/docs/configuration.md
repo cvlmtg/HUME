@@ -173,9 +173,9 @@ Accepted values:
 
 `bind-key!` takes an editor command's name (the same names in [Builtin Commands](builtin-commands.md)), never a typed command; there's no way to bind one of those to a key.
 
-`bind-key!`: binds a key in the given mode (`'normal`, `'insert`, `'extend`).
+`bind-key!`: binds a key in the given mode (`'normal`, `'insert`, `'extend`, `'command`). An `'insert` or `'command` binding is a single key.
 `unbind-key!`: removes a binding.
-`bind-key-extend!`: binds a key so it always extends the selection, as the one-shot `Ctrl-` motions do.
+`bind-key-extend!`: binds a `'normal` key so it always extends the selection, as the one-shot `Ctrl-` motions do.
 
 To set several bindings at once, use the plural forms:
 
@@ -198,6 +198,18 @@ To set several bindings at once, use the plural forms:
 Binding an Insert-mode key replaces its behaviour outright. `insert-key!` (see [Plugin API](plugin-api.md#editing-navigation), which also has a worked example) lets a command decide, per keypress, whether to override the key or fall back to what it would otherwise do.
 
 `.` re-runs an Insert-mode key's binding, so it decides again at the new cursor, and a side effect such as saving the file happens again too. If the binding's command is repeatable (a built-in like `replace`, or a plugin command marked `#:repeatable`) and asks you for something (a picker, a `prompt!`, a character), `.` reuses your answer; if it isn't, the change ends at that key. A completion is replayed as the text it left at the cursor, and a binding that reaches completion only on replay reports an error. See [Dot-repeat](plugins.md#dot-repeat).
+
+### Keys in the command line
+
+A `'command` binding applies in the command mode prompt and in prompts plugins open, not in search or sift. It replaces the prompt's own use of that key, except that an open candidate list keeps the keys it picks candidates with. Running a command this way doesn't change what `.` repeats. For example, `Ctrl-r` inserting the current file's path:
+
+```scheme
+(define-command! "insert-buffer-path" "Insert the current buffer's file path."
+  (lambda (pane)
+    (let ([path (buffer-path pane)])
+      (when path (insert-text! pane path)))))
+(bind-key! 'command "ctrl-r" "insert-buffer-path")
+```
 
 ### Binding a command that reads a character
 

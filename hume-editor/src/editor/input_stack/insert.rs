@@ -173,9 +173,8 @@ fn handle_insert(ed: &mut Editor, key: KeyEvent) {
             });
             return;
         }
-        WalkResult::NoMatch => {}
-        // Interior can't arise in the insert trie (no multi-key sequences).
-        WalkResult::Interior => {}
+        // Interior can't arise: `bind-key!` refuses a sequence in Insert mode.
+        WalkResult::NoMatch | WalkResult::Interior => {}
     }
 
     // Recorded only when the key has default behaviour: an unbound key with

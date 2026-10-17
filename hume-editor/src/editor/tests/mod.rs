@@ -1400,6 +1400,7 @@ mod buffer_store;
 mod buffer_text_steel;
 mod command_arg;
 mod command_exists;
+mod command_keymap;
 mod command_mode;
 mod commands;
 mod comment;

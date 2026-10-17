@@ -14,21 +14,29 @@ use super::errors::generic_err;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+/// The mode symbols the bind builtins take.
+const MODES: [(&str, BindMode); 4] = [
+    ("normal", BindMode::Normal),
+    ("extend", BindMode::Extend),
+    ("insert", BindMode::Insert),
+    ("command", BindMode::Command),
+];
+
 fn mode_from_symbol(mode: &SteelVal, fn_name: &str) -> Result<BindMode, SteelErr> {
     let mode_str = match mode {
         SteelVal::SymbolV(s) => s.to_string(),
         _ => steel::stop!(TypeMismatch =>
             "{fn_name}: expected a mode symbol like 'normal, got {:?}", mode),
     };
-    symbol_enum_arg(
-        &mode_str,
-        &format!("{fn_name} mode"),
-        &[
-            ("normal", BindMode::Normal),
-            ("extend", BindMode::Extend),
-            ("insert", BindMode::Insert),
-        ],
-    )
+    symbol_enum_arg(&mode_str, &format!("{fn_name} mode"), &MODES)
+}
+
+fn mode_symbol(mode: BindMode) -> &'static str {
+    MODES
+        .iter()
+        .find(|(_, m)| *m == mode)
+        .map(|(name, _)| *name)
+        .expect("every BindMode has a symbol in MODES")
 }
 
 fn bind_inner(
@@ -41,6 +49,16 @@ fn bind_inner(
 ) -> SteelResult {
     let mode = mode_from_symbol(&mode, fn_name)?;
     let keys = parse_key_sequence(&key_str).map_err(generic_err)?;
+    // The editor walks these two keymaps one key at a time, so a sequence
+    // bound there could never fire.
+    if keys.len() > 1 && matches!(mode, BindMode::Insert | BindMode::Command) {
+        steel::stop!(Generic =>
+            "{fn_name}: a '{} binding takes a single key, got {key_str:?}", mode_symbol(mode));
+    }
+    if force_extend && mode != BindMode::Normal {
+        steel::stop!(Generic =>
+            "{fn_name}: only a 'normal binding can extend, got '{}", mode_symbol(mode));
+    }
     // Queued, not applied: a failed plugin activation's binds are dropped by
     // `pop_effect_marks(false)` before the editor ever sees them. Validation
     // above still fails synchronously: a bad mode or key sequence is the
@@ -60,7 +78,8 @@ fn bind_inner(
 ///
 /// Binds a key sequence in the given mode to a named command.
 ///
-/// - `mode`: a symbol: `'normal`, `'extend`, or `'insert`.
+/// - `mode`: a symbol: `'normal`, `'extend`, `'insert`, or `'command`.
+///   `'insert` and `'command` take a single key.
 /// - `key-sequence`: a string parsed by [`parse_key_sequence`].
 /// - `command-name`: the canonical command name (must be registered in
 ///   the editor's `CommandRegistry` at dispatch time; not validated here).
@@ -80,6 +99,7 @@ pub(crate) fn bind_key(
 /// Like `(bind-key! …)` but marks the binding as always-extending
 /// (`force_extend = true`). The command will extend the selection whenever
 /// this key is pressed in Normal mode, without requiring sticky Extend mode.
+/// Raises for any other mode, where nothing reads the flag.
 ///
 /// Only valid during `init.scm` or plugin load.
 pub(crate) fn bind_key_extend(

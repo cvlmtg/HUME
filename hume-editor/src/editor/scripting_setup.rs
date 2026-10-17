@@ -1009,6 +1009,7 @@ fn to_editor_bind_mode(mode: hume_scripting::host::BindMode) -> crate::editor::k
         hume_scripting::host::BindMode::Normal => crate::editor::keymap::BindMode::Normal,
         hume_scripting::host::BindMode::Extend => crate::editor::keymap::BindMode::Extend,
         hume_scripting::host::BindMode::Insert => crate::editor::keymap::BindMode::Insert,
+        hume_scripting::host::BindMode::Command => crate::editor::keymap::BindMode::Command,
     }
 }
 

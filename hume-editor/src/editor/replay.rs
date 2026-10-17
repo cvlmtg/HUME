@@ -289,11 +289,17 @@ enum Running {
     /// An Insert key's binding, for its whole dispatch, with its own scope
     /// when the session records a change.
     InsertKey(Option<RecordingScope>),
+    /// A key's binding in the command mode prompt, for its whole dispatch.
+    /// It runs no recorded change's code, and a repeatable command it
+    /// dispatches starts no change: the prompt is not part of what `.`
+    /// repeats.
+    CommandLineKey,
 }
 
-/// The code running now, if any: a [`RecordingScope`], or an Insert key's
-/// binding. Only [`with_recording_scope`] and [`dispatch_insert_key`] set
-/// it, for the extent of one call, so nothing outlives the code it names.
+/// The code running now, if any: a [`RecordingScope`], an Insert key's
+/// binding, or a command-line key's binding. Only [`with_recording_scope`],
+/// [`dispatch_insert_key`] and [`dispatch_command_line_key`] set it, for the
+/// extent of one call, so nothing outlives the code it names.
 #[derive(Debug, Default)]
 pub(in crate::editor) struct ScopeSlot(Option<Running>);
 
@@ -302,7 +308,7 @@ impl ScopeSlot {
     pub(in crate::editor) fn running(&self) -> Option<&RecordingScope> {
         match &self.0 {
             Some(Running::Scope(scope) | Running::InsertKey(Some(scope))) => Some(scope),
-            Some(Running::InsertKey(None)) | None => None,
+            Some(Running::InsertKey(None) | Running::CommandLineKey) | None => None,
         }
     }
 
@@ -314,8 +320,8 @@ impl ScopeSlot {
         matches!(self.0, Some(Running::InsertKey(_)))
     }
 
-    /// Whether anything runs: a recorded change's code or an Insert key's
-    /// binding.
+    /// Whether anything runs: a recorded change's code, an Insert key's
+    /// binding, or a command-line key's binding.
     pub(in crate::editor) fn is_set(&self) -> bool {
         self.0.is_some()
     }
@@ -388,6 +394,19 @@ pub(in crate::editor) fn dispatch_insert_key(
     })
 }
 
+/// Dispatches `cmd` as a key's binding in the command mode prompt, with
+/// [`Running::CommandLineKey`] set for the whole dispatch. Always an
+/// explicit count of 1, never extending.
+pub(in crate::editor) fn dispatch_command_line_key(ed: &mut Editor, cmd: Dispatchable) {
+    let ctx = CmdCtx {
+        count: Some(1),
+        extend: false,
+    };
+    with_running(ed, Some(Running::CommandLineKey), |ed| {
+        ed.dispatch(cmd, ctx);
+    });
+}
+
 /// A fresh change a repeatable command starts, as [`record_change`] records
 /// it.
 pub(in crate::editor) struct NewChange {
@@ -434,7 +453,9 @@ pub(in crate::editor) fn record_change<H: AsMut<EditorState>, R>(
 ///   callback of one of its inputs, where a nested `call!` is part of that
 ///   change; or an Insert key's binding with no scope of its own, in a
 ///   session no change records, where a repeatable command the binding
-///   dispatches is that session's input, not a change of its own.
+///   dispatches is that session's input, not a change of its own; or a
+///   command-line key's binding, since the prompt is not part of what `.`
+///   repeats.
 /// - An Insert session that feeds a recorded change, for its whole extent:
 ///   a hook or timer dispatching mid-session must not replace the change
 ///   the session's keys record into.

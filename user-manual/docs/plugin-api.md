@@ -42,8 +42,8 @@ See [Reading options from Scheme](plugins.md#reading-options-from-scheme) for `g
 
 | Call | Effect |
 |------|--------|
-| `(bind-key! mode key-string cmd-name)` | Bind a key in `'normal`, `'insert`, or `'extend` mode |
-| `(bind-key-extend! mode key-string cmd-name)` | Same, but the binding always extends the selection |
+| `(bind-key! mode key-string cmd-name)` | Bind a key in `'normal`, `'insert`, `'extend`, or `'command` mode; an `'insert` or `'command` binding is a single key |
+| `(bind-key-extend! mode key-string cmd-name)` | Same, but the binding always extends the selection; `'normal` only |
 | `(unbind-key! mode key-string)` | Remove a binding |
 | `(bind-keys! mode (key cmd) ...)`, `(bind-keys-extend! mode (key cmd) ...)`, `(unbind-keys! mode key ...)` | Batched forms of the three above |
 | `(set-register-prefix! name)` | Target a specific register (`0`–`9`, `k`, `c`, `b`) for the rest of the current command body's `call!`s |
@@ -182,7 +182,7 @@ A value naming a closed buffer raises for almost every call: the reads that need
 
 `letter-before-cursor?` here is a helper you write yourself, not a builtin.
 
-`insert-text!` does whatever pasting `text` would do at that moment. In Insert mode it goes in at every cursor, with no auto-pairs or auto-indent; in Normal mode it replaces the selections; on the command line, in a prompt, a search or a picker, line breaks become spaces. A character an `on-next-char!` callback is waiting for ends without one, as on a paste. Called from an Insert-mode key's binding, `.` repeats it by running the binding again; called from a hook or a timer during Insert mode, `.` repeats the paste. For example, a key that inserts the current file's path:
+`insert-text!` does whatever pasting `text` would do at that moment. In Insert mode it goes in at every cursor, with no auto-pairs or auto-indent; in Normal mode it replaces the selections; on the command line, in a prompt, a search or a picker, line breaks become spaces. A character an `on-next-char!` callback is waiting for ends without one, as on a paste. Called from an Insert-mode key's binding, `.` repeats it by running the binding again; called from a hook or a timer during Insert mode, `.` repeats the paste. For example, a key that inserts the current file's path, in Insert mode and on the command line:
 
 ```scheme
 (define-command! "insert-buffer-path" "Insert the current buffer's file path."
@@ -190,6 +190,7 @@ A value naming a closed buffer raises for almost every call: the reads that need
     (let ([path (buffer-path pane)])
       (when path (insert-text! pane path)))))
 (bind-key! 'insert "ctrl-r" "insert-buffer-path")
+(bind-key! 'command "ctrl-r" "insert-buffer-path")
 ```
 
 ## Registers

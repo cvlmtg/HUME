@@ -29,6 +29,8 @@
 
 - Typed command names can contain digits, so `:p1` runs a command named `p1`. An argument needs a space before it: write `:e 1.txt`, `:goto 42` and `:b 12abc`, not `:e1.txt`, `:goto42` and `:b12abc`; `:b2` still works. `define-typed-command!` and `#:typed-commands` raise for a name the command line can't run.
 
+- `bind-key!` raises for a key sequence in `'insert` mode, and `bind-key-extend!` raises outside `'normal`. Neither binding ever ran, so delete it.
+
 - Command names ignore case everywhere, not just at `:`: `call!` and key bindings find a command in any case, and two names that differ only in case collide. Editor command names must be lowercase: `define-command!` and `#:commands` raise for an uppercase name, so rename any such command.
 
 ### Panes & interface
@@ -39,6 +41,7 @@
 - New `on-before-buffer-save` hook, run before a buffer is written. A handler taking `(pane done)` holds the write until it calls `done`, up to `before-save-timeout-ms`.
 - `core:git-diff` has key-bindable `git-diff/toggle-inline-diff` and `git-diff/toggle-git-signs`, plus `git-diff/show-inline-diff` and `git-diff/inline-diff?` for your own commands.
 - New `insert-text!` pastes text where you're typing, as a terminal paste would.
+- `bind-key!` takes `'command` to bind keys in the command mode prompt and in plugin prompts.
 
 ### Language servers
 - `z s` picks a symbol of the current file and `z S` searches the symbols of the whole project as you type, both jumping to the one you accept.

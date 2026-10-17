@@ -12,7 +12,7 @@ HUME (HUME's Unfinished Modal Editor) is a modal text editor for the terminal, w
 
 ## Quick orientation
 - **Named commands** (`hume-ops/src/edit/`, `hume-ops/src/motion/`) are pure functions of buffer + selections (plus command-specific params like `count: usize`, `MotionMode`). Edits also return a `ChangeSet`. They have no knowledge of keys — `hume-ops` doesn't depend on `hume-editor`, so this is compiler-enforced, not just discipline.
-- **Keymaps** (`hume-editor/src/editor/keymap/`) map `KeyEvent` sequences to command names via a trie. Per-mode keymaps (Normal, Extend, Insert).
+- **Keymaps** (`hume-editor/src/editor/keymap/`) map `KeyEvent` sequences to command names via a trie. Per-mode keymaps (Normal, Extend, Insert, Command).
 - **Buffer invariant**: every buffer always ends with a structural `\n`. Cursors always satisfy `head < len_chars()`.
 
 ## Rules

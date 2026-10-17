@@ -1,4 +1,4 @@
-//! Trie-based keymap for Normal and Insert modes.
+//! Trie-based keymap for Normal, Insert and Command modes.
 //!
 //! Each mode has a [`KeyTrie`] mapping [`KeyEvent`] sequences to
 //! [`KeymapCommand`]s: single keys and multi-key sequences (`m i <char>`,
@@ -10,7 +10,8 @@
 //! Only base command names are stored; Extend mode is a `MotionMode` parameter
 //! chosen at dispatch time. The sparse `extend` trie in [`Keymap`] holds
 //! overrides checked before the normal trie in Extend mode. It ships empty;
-//! plugins fill it.
+//! plugins fill it. So does the `command` trie, the keys bound in the command
+//! mode prompt.
 
 mod canonical;
 #[macro_use]
@@ -187,6 +188,8 @@ pub(in crate::editor) enum BindMode {
     /// a miss falls through to the normal trie with `extend = true`.
     Extend,
     Insert,
+    /// The command mode prompt: the `:` line and `prompt!` prompts.
+    Command,
 }
 
 /// Per-mode keymap container. One instance lives on the [`Editor`].
@@ -204,6 +207,9 @@ pub(in crate::editor) struct Keymap {
     /// A miss falls through to the normal trie with `extend = true`.
     pub(super) extend: KeyTrie,
     pub(super) insert: KeyTrie,
+    /// Keys bound in the command mode prompt, walked one key at a time
+    /// before the prompt's own keys. Empty by default.
+    pub(super) command: KeyTrie,
 }
 
 impl Default for Keymap {
@@ -212,6 +218,7 @@ impl Default for Keymap {
             normal: default_normal_keymap(),
             extend: default_extend_keymap(),
             insert: default_insert_keymap(),
+            command: KeyTrie::new(),
         }
     }
 }
@@ -260,6 +267,7 @@ impl Keymap {
             BindMode::Normal => &mut self.normal,
             BindMode::Extend => &mut self.extend,
             BindMode::Insert => &mut self.insert,
+            BindMode::Command => &mut self.command,
         }
     }
 
@@ -271,6 +279,7 @@ impl Keymap {
             BindMode::Normal => &self.normal,
             BindMode::Extend => &self.extend,
             BindMode::Insert => &self.insert,
+            BindMode::Command => &self.command,
         }
     }
 
@@ -294,6 +303,7 @@ impl Keymap {
         self.normal.collect_command_names(&mut out);
         self.extend.collect_command_names(&mut out);
         self.insert.collect_command_names(&mut out);
+        self.command.collect_command_names(&mut out);
         out
     }
 }

@@ -1,6 +1,6 @@
 # Builtin Commands
 
-These are editor commands, reached from a key binding or from a plugin with `(call! …)`, never from the command mode prompt. (Typed commands are listed on the [Command mode](command-mode.md) page instead, and plain Scheme functions such as `insert-key!` on the [Plugin API](plugin-api.md#commands-and-builtins) page.) Every command below is built into the editor, not a plugin. They are callable two ways from Scheme:
+These are editor commands, reached from a key binding or from a plugin with `(call! …)`, never by name at the command mode prompt. (Typed commands are listed on the [Command mode](command-mode.md) page instead, and plain Scheme functions such as `insert-key!` on the [Plugin API](plugin-api.md#commands-and-builtins) page.) Every command below is built into the editor, not a plugin. They are callable two ways from Scheme:
 
 ```scheme
 ;; directly, as a bare binding

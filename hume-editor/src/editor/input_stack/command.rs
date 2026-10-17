@@ -106,7 +106,7 @@ impl Editor {
 }
 
 pub(in crate::editor) fn command_input(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
-    if let Some(event) = minibuf::minibuf_input(ed, r, ev) {
+    if let Some(event) = minibuf::command_line_input(ed, r, ev) {
         handle_command_event(ed, r, event);
     }
 }

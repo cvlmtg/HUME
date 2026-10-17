@@ -55,6 +55,8 @@ pub enum BindMode {
     Normal,
     Extend,
     Insert,
+    /// The command mode prompt: the `:` line and `prompt!` prompts.
+    Command,
 }
 
 /// "X: not supported by this host": the single source for capability-absence

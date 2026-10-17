@@ -218,6 +218,75 @@ fn bind_key_extend_queues_force_extend_effect() {
     );
 }
 
+/// `'command` binds a key in the command mode prompt.
+#[test]
+fn bind_key_command_mode_queues_bind_effect() {
+    let mut h = SteelCtxTestHarness::new();
+    {
+        let mut ctx = h.ctx_init();
+        bind_key(
+            &mut ctx,
+            SteelVal::SymbolV("command".into()),
+            "ctrl-r".into(),
+            "my-cmd".into(),
+        )
+        .expect("bind-key! 'command must succeed");
+    }
+    assert!(
+        matches!(
+            effects(&h).as_slice(),
+            [Effect::BindKey { mode: BindMode::Command, keys, cmd, force_extend: false }]
+                if keys.len() == 1 && cmd == "my-cmd"
+        ),
+        "expected one Effect::BindKey in command mode; got: {:?}",
+        effects(&h)
+    );
+}
+
+/// Insert and command mode dispatch one key at a time, so a sequence
+/// bound there could never fire.
+#[test]
+fn bind_key_rejects_a_key_sequence_in_insert_and_command_modes() {
+    for mode in ["insert", "command"] {
+        let mut h = SteelCtxTestHarness::new();
+        let msg = {
+            let mut ctx = h.ctx_init();
+            bind_key(
+                &mut ctx,
+                SteelVal::SymbolV(mode.into()),
+                "ctrl-x a".into(),
+                "my-cmd".into(),
+            )
+            .unwrap_err()
+            .to_string()
+        };
+        assert!(msg.contains("single key"), "{mode}: got: {msg}");
+        assert!(msg.contains(mode), "{mode}: got: {msg}");
+        assert!(effects(&h).is_empty(), "{mode}: nothing queued");
+    }
+}
+
+/// Only a Normal-mode binding reads the always-extend flag.
+#[test]
+fn bind_key_extend_rejects_every_mode_but_normal() {
+    for mode in ["extend", "insert", "command"] {
+        let mut h = SteelCtxTestHarness::new();
+        let msg = {
+            let mut ctx = h.ctx_init();
+            bind_key_extend(
+                &mut ctx,
+                SteelVal::SymbolV(mode.into()),
+                "z".into(),
+                "my-cmd".into(),
+            )
+            .unwrap_err()
+            .to_string()
+        };
+        assert!(msg.contains("'normal"), "{mode}: got: {msg}");
+        assert!(effects(&h).is_empty(), "{mode}: nothing queued");
+    }
+}
+
 /// `unbind-key!` queues `Effect::UnbindKey`, deferred like the two
 /// binders so a same-eval bind-then-unbind on one key applies in Steel's
 /// emission order rather than the unbind racing ahead.
