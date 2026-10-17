@@ -173,11 +173,7 @@ fn colon_e_percent_errors_with_no_path() {
 fn colon_unknown_command_with_percent_reports_unknown_command() {
     let mut ed = editor_from("-[h]>ello\n");
     type_cmd(&mut ed, ":nosuch %");
-    let msg = ed
-        .state
-        .status_msg
-        .as_deref()
-        .expect("error should be reported");
+    let msg = status(&ed);
     assert!(
         msg.contains("Unknown command: nosuch"),
         "unexpected status: {msg:?}"
@@ -187,11 +183,9 @@ fn colon_unknown_command_with_percent_reports_unknown_command() {
 /// A Steel typed command receives `%` expanded to the current file's path.
 #[test]
 fn colon_steel_typed_command_receives_percent_expanded() {
-    let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _file) = editor_with_file("-[h]>ello\n", "hello\n");
-    run(
+    attach_steel(
         &mut ed,
-        tmp.path(),
         r#"(define-typed-command! "show" "" (lambda (pane arg) (log! 'info arg)))"#,
     );
     let path = ed
@@ -203,7 +197,7 @@ fn colon_steel_typed_command_receives_percent_expanded() {
 
     type_cmd(&mut ed, ":show %");
 
-    assert_eq!(ed.state.status_msg.as_deref(), Some(path.as_str()));
+    assert_eq!(status(&ed), path);
 }
 
 // ── goto-alternate-buffer in registry ──────────────────────────────────────────

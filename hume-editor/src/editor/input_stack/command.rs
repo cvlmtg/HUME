@@ -205,22 +205,15 @@ fn execute_command(ed: &mut Editor, input: &str) {
         return;
     };
 
-    // Gate on the fast-path check so the common case (no expansion) stays
-    // allocation-free.
-    let expanded: Option<String> = match arg {
-        Some(a)
-            if tc.arg_expansion == ArgExpansion::Paths && (a.contains('%') || a.contains('#')) =>
-        {
-            match expand_command_arg(ed, a) {
-                Ok(s) => Some(s),
-                Err(e) => {
-                    ed.report_error(&e);
-                    return;
-                }
+    let expanded = match arg {
+        Some(a) if tc.arg_expansion == ArgExpansion::Paths => match expand_command_arg(ed, a) {
+            Ok(s) => Some(s),
+            Err(e) => {
+                ed.report_error(&e);
+                return;
             }
-        }
-        Some(a) => Some(a.to_owned()),
-        None => None,
+        },
+        other => other.map(str::to_owned),
     };
 
     match &tc.body {
