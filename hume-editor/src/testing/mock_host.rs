@@ -19,6 +19,7 @@
 use hume_engine::pipeline::BufferId;
 use hume_rope::line::ContentLine;
 use hume_scripting::PaneHandle;
+use hume_scripting::command_name::fold;
 use hume_scripting::host::{
     BufferHost, CommandHost, CursorHost, EditorHost, EventHost, LanguageHost, NativeCall,
     OptionValue, SelectionInfo, SettingsHost,
@@ -39,14 +40,15 @@ pub struct MockHost {
     /// Names treated as native by `command_is_native`.  Empty by default
     /// (all commands return `Ok(false)`).  Tests populate this to exercise
     /// the `run_command_sync` path.
-    pub native_names: rustc_hash::FxHashSet<String>,
+    pub native_names: hume_scripting::command_name::CommandNameSet,
     /// Record of every `run_command_sync` call. `count` is `None`
     /// when the Steel side passed `0` ("no count typed"). Unlike
     /// `EditorHostImpl`, this mock has no pane model to resolve `pane`
     /// against, so every call is recorded regardless of `pane`. See
     /// `run_command_sync`'s own doc.
     pub dispatched_native: Vec<DispatchedNativeCall>,
-    /// Lazy activation stubs registered via `register_lazy_command`.
+    /// Lazy activation stubs registered via `register_lazy_command`, keyed
+    /// by the name folded.
     pub lazy_cmds: rustc_hash::FxHashMap<String, hume_scripting::attribution::EntryId>,
     /// Buffer ids `buffer_exists` answers `true` for. Empty by default, so
     /// every id (including `focused_pane()`'s own `BufferId::default()`)
@@ -64,7 +66,7 @@ impl MockHost {
             grammars: rustc_hash::FxHashSet::default(),
             registered_cmds: Vec::new(),
             registered_typed_cmds: Vec::new(),
-            native_names: rustc_hash::FxHashSet::default(),
+            native_names: hume_scripting::command_name::CommandNameSet::default(),
             dispatched_native: Vec::new(),
             lazy_cmds: rustc_hash::FxHashMap::default(),
             live_buffer_ids: rustc_hash::FxHashSet::default(),
@@ -75,9 +77,20 @@ impl MockHost {
     /// mappable or typed: the two vectors are one namespace in the real
     /// registry.
     fn is_registered(&self, name: &str) -> bool {
-        self.registered_cmds.iter().any(|d| d.name == name)
-            || self.registered_typed_cmds.iter().any(|d| d.name == name)
+        self.registered_cmds
+            .iter()
+            .any(|d| same_name(&d.name, name))
+            || self
+                .registered_typed_cmds
+                .iter()
+                .any(|d| same_name(&d.name, name))
     }
+}
+
+/// `true` when `a` and `b` name the same command, as the real registry's
+/// case-folded keys do.
+fn same_name(a: &str, b: &str) -> bool {
+    fold(a) == fold(b)
 }
 
 impl Default for MockHost {
@@ -327,7 +340,7 @@ impl CommandHost for MockHost {
                 def.name
             ));
         }
-        self.lazy_cmds.remove(&def.name);
+        self.lazy_cmds.remove(fold(&def.name).as_ref());
         self.registered_cmds.push(def);
         Ok(())
     }
@@ -344,13 +357,19 @@ impl CommandHost for MockHost {
                 def.name
             ));
         }
-        self.lazy_cmds.remove(&def.name);
+        self.lazy_cmds.remove(fold(&def.name).as_ref());
         self.registered_typed_cmds.push(def);
         Ok(())
     }
     fn defined_command(&self, name: &str) -> Option<hume_scripting::CommandProc> {
-        let mappable = self.registered_cmds.iter().find(|d| d.name == name);
-        let typed = self.registered_typed_cmds.iter().find(|d| d.name == name);
+        let mappable = self
+            .registered_cmds
+            .iter()
+            .find(|d| same_name(&d.name, name));
+        let typed = self
+            .registered_typed_cmds
+            .iter()
+            .find(|d| same_name(&d.name, name));
         mappable
             .map(|d| hume_scripting::CommandProc::Mappable(d.body.proc.clone()))
             .or_else(|| typed.map(|d| hume_scripting::CommandProc::Typed(d.body.proc.clone())))
@@ -373,7 +392,8 @@ impl CommandHost for MockHost {
         // real behavior it's meant to prove. Tests that need real collision
         // semantics use a real `Editor` + `EditorHostImpl` instead (see
         // `hume-editor/src/editor/tests/plugins.rs`).
-        self.lazy_cmds.insert(name.to_owned(), plugin.clone());
+        self.lazy_cmds
+            .insert(fold(name).into_owned(), plugin.clone());
         Ok(())
     }
     fn register_lazy_typed_command(
@@ -381,11 +401,12 @@ impl CommandHost for MockHost {
         name: &str,
         plugin: &hume_scripting::attribution::EntryId,
     ) -> Result<(), String> {
-        self.lazy_cmds.insert(name.to_owned(), plugin.clone());
+        self.lazy_cmds
+            .insert(fold(name).into_owned(), plugin.clone());
         Ok(())
     }
     fn lazy_command_owner(&self, name: &str) -> Option<hume_scripting::attribution::EntryId> {
-        self.lazy_cmds.get(name).cloned()
+        self.lazy_cmds.get(fold(name).as_ref()).cloned()
     }
     // `lazy_cmds` tracks no kind, so this mock can't tell a typed-only stub
     // from a mappable one, same answer as `lazy_command_owner`. A test
@@ -396,7 +417,7 @@ impl CommandHost for MockHost {
         &self,
         name: &str,
     ) -> Option<hume_scripting::attribution::EntryId> {
-        self.lazy_cmds.get(name).cloned()
+        self.lazy_cmds.get(fold(name).as_ref()).cloned()
     }
     fn unregister_lazy_stubs_of(&mut self, plugin: &hume_scripting::attribution::EntryId) {
         self.lazy_cmds.retain(|_, p| p != plugin);

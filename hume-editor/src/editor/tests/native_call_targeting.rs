@@ -364,7 +364,7 @@ fn mock_host_records_a_non_focused_pane_unchanged() {
     use crate::testing::MockHost;
 
     let mut mock = MockHost::new();
-    mock.native_names.insert("delete".to_string());
+    mock.native_names = ["delete"].into_iter().collect();
     let pane = PaneHandle::buffer_only(BufferId::default());
 
     let ran = mock

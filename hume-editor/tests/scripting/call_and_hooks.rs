@@ -37,6 +37,30 @@ fn call_bang_passes_args_to_command() {
     );
 }
 
+/// `call!` finds a native command in any case, and dispatches it under the
+/// name as written.
+#[test]
+fn call_bang_finds_a_native_command_in_another_case() {
+    let mut h = host();
+    let mut mock = MockHost::new();
+    h.eval_source(
+        r#"(define-command! "yank-loud" "" (lambda () (call! "YANK" (focused-pane))))"#,
+        &mut mock,
+    )
+    .unwrap();
+    mock.native_names = ["yank"].into_iter().collect();
+
+    h.call_steel_cmd_by_name("yank-loud", vec![], &mut mock)
+        .unwrap();
+
+    let names: Vec<&str> = mock
+        .dispatched_native
+        .iter()
+        .map(|(name, _, _)| name.as_str())
+        .collect();
+    assert_eq!(names, ["YANK"]);
+}
+
 #[test]
 fn call_bang_forwards_multiple_args_to_lambda() {
     // Tests multi-arg forwarding beyond the first positional arg.

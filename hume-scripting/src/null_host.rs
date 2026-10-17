@@ -20,6 +20,7 @@ use hume_engine::pipeline::BufferId;
 use hume_rope::line::ContentLine;
 
 use crate::attribution::EntryId;
+use crate::command_name::fold;
 use crate::command_procs::CommandProc;
 use crate::host::{
     BufferHost, CommandHost, CursorHost, EditorHost, EventHost, HostToken, LanguageHost,
@@ -367,7 +368,8 @@ impl OutputHost for RecordingInlineOutputHost {
 ///
 /// Mappable and typed names share one namespace, as in the real registry,
 /// so a name defined as one kind collides when re-defined as the other. A
-/// define replaces a same-name `Lazy` stub.
+/// define replaces a same-name `Lazy` stub. Names ignore case: both maps
+/// are keyed by [`fold`].
 #[derive(Default)]
 pub(crate) struct CommandStoreHost {
     inner: NullHost,
@@ -403,7 +405,7 @@ impl CommandStoreHost {
     /// Seeds a defined command directly, for a test that needs one owned by
     /// a plugin without evaluating that plugin.
     pub(crate) fn define(&mut self, name: &str, proc: CommandProc) {
-        self.register_defined(name.to_string(), proc)
+        self.register_defined(name, proc)
             .expect("CommandStoreHost::define: name already defined");
     }
 
@@ -411,34 +413,36 @@ impl CommandStoreHost {
     /// different host. Panics if `name` was never defined here.
     pub(crate) fn proc(&self, name: &str) -> CommandProc {
         self.defined
-            .get(name)
+            .get(fold(name).as_ref())
             .cloned()
             .unwrap_or_else(|| panic!("CommandStoreHost: no command named '{name}'"))
     }
 
     /// Shared body behind `register_command`/`register_typed_command`.
-    fn register_defined(&mut self, name: String, proc: CommandProc) -> Result<(), String> {
-        if self.defined.contains_key(&name) {
+    fn register_defined(&mut self, name: &str, proc: CommandProc) -> Result<(), String> {
+        let key = fold(name);
+        if self.defined.contains_key(key.as_ref()) {
             return Err(format!("'{name}' conflicts with existing command"));
         }
-        self.lazy.remove(&name);
-        self.defined.insert(name, proc);
+        self.lazy.remove(key.as_ref());
+        self.defined.insert(key.into_owned(), proc);
         Ok(())
     }
 
     /// Shared body behind `register_lazy_command`/`register_lazy_typed_command`.
     fn register_lazy(&mut self, name: &str, plugin: &EntryId) -> Result<(), String> {
-        if self.defined.contains_key(name) {
+        let key = fold(name);
+        if self.defined.contains_key(key.as_ref()) {
             return Err(format!("'{name}' conflicts with an existing command"));
         }
-        if let Some(owner) = self.lazy.get(name) {
+        if let Some(owner) = self.lazy.get(key.as_ref()) {
             return if owner == plugin {
                 Ok(())
             } else {
                 Err(format!("'{name}' already claimed by lazy plugin '{owner}'"))
             };
         }
-        self.lazy.insert(name.to_string(), plugin.clone());
+        self.lazy.insert(key.into_owned(), plugin.clone());
         Ok(())
     }
 }
@@ -459,13 +463,13 @@ impl CommandHost for CommandStoreHost {
         self.inner.run_command_sync(name, pane, call)
     }
     fn register_command(&mut self, def: SteelCmdDef) -> Result<(), String> {
-        self.register_defined(def.name, CommandProc::Mappable(def.body.proc))
+        self.register_defined(&def.name, CommandProc::Mappable(def.body.proc))
     }
     fn register_typed_command(&mut self, def: SteelTypedCmdDef) -> Result<(), String> {
-        self.register_defined(def.name, CommandProc::Typed(def.body.proc))
+        self.register_defined(&def.name, CommandProc::Typed(def.body.proc))
     }
     fn defined_command(&self, name: &str) -> Option<CommandProc> {
-        self.defined.get(name).cloned()
+        self.defined.get(fold(name).as_ref()).cloned()
     }
     fn unregister_commands_defined_by(&mut self, plugin: &EntryId) {
         self.defined.retain(|_, proc| !proc.defined_by(plugin));
@@ -477,7 +481,7 @@ impl CommandHost for CommandStoreHost {
         self.register_lazy(name, plugin)
     }
     fn lazy_command_owner(&self, name: &str) -> Option<EntryId> {
-        self.lazy.get(name).cloned()
+        self.lazy.get(fold(name).as_ref()).cloned()
     }
     // `lazy` tracks no kind (see the field doc). This test double can't
     // distinguish a typed-only stub from a mappable one, so it answers the
@@ -486,7 +490,7 @@ impl CommandHost for CommandStoreHost {
     // stub through this host (that scenario needs the real `EditorHostImpl`;
     // see `lazy_mappable_command_owner`'s own doc).
     fn lazy_mappable_command_owner(&self, name: &str) -> Option<EntryId> {
-        self.lazy.get(name).cloned()
+        self.lazy.get(fold(name).as_ref()).cloned()
     }
     fn unregister_lazy_stubs_of(&mut self, plugin: &EntryId) {
         self.lazy.retain(|_, p| p != plugin);

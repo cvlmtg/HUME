@@ -16,7 +16,7 @@ fn set_register_prefix_passed_to_dispatch() {
         &mut mock,
     )
     .unwrap();
-    mock.native_names.insert("paste-after".to_string());
+    mock.native_names = ["paste-after"].into_iter().collect();
     h.call_steel_cmd_by_name("paste-ring", vec![], &mut mock)
         .unwrap();
     assert_eq!(
@@ -52,7 +52,7 @@ fn call_native_zero_count_decodes_to_none() {
         &mut mock,
     )
     .unwrap();
-    mock.native_names.insert("paste-after".to_string());
+    mock.native_names = ["paste-after"].into_iter().collect();
     h.call_steel_cmd_by_name("paste-zero", vec![], &mut mock)
         .unwrap();
     assert_eq!(mock.dispatched_native.len(), 1);
@@ -79,8 +79,7 @@ fn set_register_prefix_sticky_across_multiple_calls() {
         &mut mock,
     )
     .unwrap();
-    mock.native_names.insert("yank".to_string());
-    mock.native_names.insert("delete".to_string());
+    mock.native_names = ["yank", "delete"].into_iter().collect();
     h.call_steel_cmd_by_name("multi", vec![], &mut mock)
         .unwrap();
     assert_eq!(
@@ -113,8 +112,7 @@ fn set_register_prefix_change_mid_body() {
         &mut mock,
     )
     .unwrap();
-    mock.native_names.insert("yank".to_string());
-    mock.native_names.insert("paste-after".to_string());
+    mock.native_names = ["yank", "paste-after"].into_iter().collect();
     h.call_steel_cmd_by_name("switch", vec![], &mut mock)
         .unwrap();
     assert_eq!(mock.dispatched_native.len(), 2);

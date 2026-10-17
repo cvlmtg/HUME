@@ -267,6 +267,30 @@ fn define_typed_command_name_with_backslash_errors() {
     );
 }
 
+/// A name already defined in another case is the same command.
+#[test]
+fn define_typed_command_name_defined_in_another_case_errors() {
+    fn dummy_proc(_args: &[SteelVal]) -> SteelResult {
+        Ok(SteelVal::Void)
+    }
+    let mut host = plum_defined(CommandProc::Mappable(MappableProc::for_test()));
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx_init_with_host(&mut host);
+    let err = define_typed_command(
+        &mut ctx,
+        "MY-CMD".to_string(),
+        "doc".to_string(),
+        SteelVal::FuncV(dummy_proc),
+        false,
+        SteelVal::BoolV(false),
+    )
+    .unwrap_err();
+    assert!(
+        err.to_string().contains("already defined"),
+        "expected a re-definition error, got: {err}"
+    );
+}
+
 /// A registry rejection surfaces as the define's own error.
 #[test]
 fn define_typed_command_propagates_host_rejection() {
