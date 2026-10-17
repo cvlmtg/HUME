@@ -1,5 +1,4 @@
 use hume_platform::dirs::Dirs;
-use rustc_hash::FxHashSet;
 use std::io::Write as _;
 
 use tempfile::TempDir;
@@ -23,8 +22,8 @@ fn plugin_id(name: &str) -> EntryId {
     EntryId::main(PluginId::parse(name).unwrap())
 }
 
-fn no_builtins() -> FxHashSet<String> {
-    FxHashSet::default()
+fn no_builtins() -> crate::command_name::CommandNameSet {
+    crate::command_name::CommandNameSet::default()
 }
 
 // ── Case 1: Declared → Loaded with a valid command body ──────────────────

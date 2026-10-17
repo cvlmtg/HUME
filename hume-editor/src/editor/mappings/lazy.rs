@@ -59,7 +59,7 @@ impl Editor {
     }
 
     /// Activate the plugin owning a lazy stub, register its commands, and
-    /// check whether `name` (case-sensitive) is now registered.
+    /// check whether `name` (in any case) is now registered.
     ///
     /// Returns `true` when the plugin body defined `name` and dispatch may
     /// proceed. Returns `false` when activation failed or the body never

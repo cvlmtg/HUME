@@ -714,13 +714,8 @@ impl Editor {
         // Capture built-in names before any plugin code runs; stable for the
         // editor's lifetime.  Stored on Editor so dispatch-time activation can
         // borrow it disjointly from &mut self.scripting / settings / keymap.
-        let builtin_names: rustc_hash::FxHashSet<String> = self
-            .state
-            .config
-            .registry
-            .names()
-            .map(String::from)
-            .collect();
+        let builtin_names: hume_scripting::command_name::CommandNameSet =
+            self.state.config.registry.names().collect();
         self.builtin_cmd_names = builtin_names.clone();
         // Load runtime/scheme/prelude.scm before init.scm so its macros
         // (bind-keys! etc.) are available to init.scm and plugin modules.
@@ -945,7 +940,7 @@ impl Editor {
         &mut self,
         host: &mut hume_scripting::ScriptingHost,
         rel_path: &str,
-        builtin_names: rustc_hash::FxHashSet<String>,
+        builtin_names: hume_scripting::command_name::CommandNameSet,
     ) {
         let Some(path) = host.runtime_dir().map(|rt| rt.join(rel_path)) else {
             return;

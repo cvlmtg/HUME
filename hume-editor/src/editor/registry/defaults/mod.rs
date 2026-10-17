@@ -1,4 +1,4 @@
-use crate::editor::registry::CommandRegistry;
+use crate::editor::registry::{CommandRegistry, MappableCommand};
 
 mod builder;
 mod editor_cmds;
@@ -21,7 +21,7 @@ macro_rules! motion {
     // Forward object-jump family (`}`, `goto-next-<kind>`); see
     // `CmdMeta::aligns_view`'s doc for why only this direction opts in.
     ($reg:expr, $name:literal, $doc:literal, $fun:expr, jump, aligns_view) => {
-        $reg.register(MappableCommand::Native(NativeCommand::Motion {
+        $reg.register_builtin(MappableCommand::Native(NativeCommand::Motion {
             name: Cow::Borrowed($name),
             doc: Cow::Borrowed($doc),
             fun: crate::editor::commands::NativeBody::new(SelectionBody::Plain($fun)),
@@ -30,7 +30,7 @@ macro_rules! motion {
         }))
     };
     ($reg:expr, $name:literal, $doc:literal, $fun:expr, jump) => {
-        $reg.register(MappableCommand::Native(NativeCommand::Motion {
+        $reg.register_builtin(MappableCommand::Native(NativeCommand::Motion {
             name: Cow::Borrowed($name),
             doc: Cow::Borrowed($doc),
             fun: crate::editor::commands::NativeBody::new(SelectionBody::Plain($fun)),
@@ -40,7 +40,7 @@ macro_rules! motion {
     };
     // Word-family motions (`w`/`W`/`b`/`B`); see [`SelectionBody::Word`].
     ($reg:expr, $name:literal, $doc:literal, $fun:expr, word) => {
-        $reg.register(MappableCommand::Native(NativeCommand::Motion {
+        $reg.register_builtin(MappableCommand::Native(NativeCommand::Motion {
             name: Cow::Borrowed($name),
             doc: Cow::Borrowed($doc),
             fun: crate::editor::commands::NativeBody::new(SelectionBody::Word($fun)),
@@ -49,7 +49,7 @@ macro_rules! motion {
         }))
     };
     ($reg:expr, $name:literal, $doc:literal, $fun:expr) => {
-        $reg.register(MappableCommand::Native(NativeCommand::Motion {
+        $reg.register_builtin(MappableCommand::Native(NativeCommand::Motion {
             name: Cow::Borrowed($name),
             doc: Cow::Borrowed($doc),
             fun: crate::editor::commands::NativeBody::new(SelectionBody::Plain($fun)),
@@ -60,7 +60,7 @@ macro_rules! motion {
 }
 macro_rules! selection {
     ($reg:expr, $name:literal, $doc:literal, $fun:expr) => {
-        $reg.register(MappableCommand::Native(NativeCommand::Selection {
+        $reg.register_builtin(MappableCommand::Native(NativeCommand::Selection {
             name: Cow::Borrowed($name),
             doc: Cow::Borrowed($doc),
             fun: crate::editor::commands::NativeBody::new(SelectionBody::Plain($fun)),
@@ -69,7 +69,7 @@ macro_rules! selection {
         }))
     };
     ($reg:expr, $name:literal, $doc:literal, $fun:expr, jump) => {
-        $reg.register(MappableCommand::Native(NativeCommand::Selection {
+        $reg.register_builtin(MappableCommand::Native(NativeCommand::Selection {
             name: Cow::Borrowed($name),
             doc: Cow::Borrowed($doc),
             fun: crate::editor::commands::NativeBody::new(SelectionBody::Plain($fun)),
@@ -80,7 +80,7 @@ macro_rules! selection {
     // Transforms whatever extent is already staged instead of establishing
     // one; see `SelectionTracking::Composes`.
     ($reg:expr, $name:literal, $doc:literal, $fun:expr, composes) => {
-        $reg.register(MappableCommand::Native(NativeCommand::Selection {
+        $reg.register_builtin(MappableCommand::Native(NativeCommand::Selection {
             name: Cow::Borrowed($name),
             doc: Cow::Borrowed($doc),
             fun: crate::editor::commands::NativeBody::new(SelectionBody::Plain($fun)),
@@ -91,7 +91,7 @@ macro_rules! selection {
     // Word-family selections/text objects (`mm`/`MM`, `miw`/`maw`); see
     // [`SelectionBody::Word`].
     ($reg:expr, $name:literal, $doc:literal, $fun:expr, word) => {
-        $reg.register(MappableCommand::Native(NativeCommand::Selection {
+        $reg.register_builtin(MappableCommand::Native(NativeCommand::Selection {
             name: Cow::Borrowed($name),
             doc: Cow::Borrowed($doc),
             fun: crate::editor::commands::NativeBody::new(SelectionBody::Word($fun)),
@@ -102,7 +102,7 @@ macro_rules! selection {
 }
 macro_rules! edit {
     ($reg:expr, $name:literal, $doc:literal, $fun:expr) => {
-        $reg.register(MappableCommand::Native(NativeCommand::Edit {
+        $reg.register_builtin(MappableCommand::Native(NativeCommand::Edit {
             name: Cow::Borrowed($name),
             doc: Cow::Borrowed($doc),
             fun: crate::editor::commands::NativeBody::new($fun),
@@ -110,7 +110,7 @@ macro_rules! edit {
         }))
     };
     ($reg:expr, $name:literal, $doc:literal, $fun:expr, repeatable) => {
-        $reg.register(MappableCommand::Native(NativeCommand::Edit {
+        $reg.register_builtin(MappableCommand::Native(NativeCommand::Edit {
             name: Cow::Borrowed($name),
             doc: Cow::Borrowed($doc),
             fun: crate::editor::commands::NativeBody::new($fun),
@@ -135,5 +135,10 @@ impl CommandRegistry {
         self.register_edits();
         self.register_editor_cmds();
         self.register_typed_commands();
+    }
+
+    fn register_builtin(&mut self, cmd: MappableCommand) {
+        self.register(cmd)
+            .expect("a built-in editor command's name is lowercase");
     }
 }

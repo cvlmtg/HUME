@@ -19,7 +19,6 @@
 //!   `(%activate-plugin-inline! id)` via `run_steel_call` (a direct function
 //!   call, not source), using the `ScriptingHost`'s one persistent watchdog.
 
-use rustc_hash::FxHashSet;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
@@ -206,7 +205,7 @@ impl ScriptingHost {
     pub(crate) fn eval_source_raw(
         &mut self,
         source: String,
-        builtin_names: FxHashSet<String>,
+        builtin_names: crate::command_name::CommandNameSet,
         budget_ms: u64,
         host: &mut dyn EditorHost,
     ) -> Result<Vec<Effect>, EvalError> {
@@ -243,7 +242,7 @@ impl ScriptingHost {
         id: &attribution::EntryId,
         budget_ms: u64,
         host: &mut dyn EditorHost,
-        builtin_names: &FxHashSet<String>,
+        builtin_names: &crate::command_name::CommandNameSet,
     ) -> Result<Vec<Effect>, EvalError> {
         let args = vec![
             SteelVal::StringV(id.plugin.to_string().into()),

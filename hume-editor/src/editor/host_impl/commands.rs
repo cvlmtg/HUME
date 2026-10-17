@@ -54,8 +54,8 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
                 name: def.name.into(),
                 doc: def.doc.into(),
                 body: def.body,
-            }));
-        Ok(())
+            }))
+            .map_err(|reason| format!("define-command!: {reason}"))
     }
 
     fn register_typed_command(
@@ -102,7 +102,7 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
             self.state.config.registry.register(MappableCommand::Lazy {
                 name: name.to_owned().into(),
                 plugin: plugin.clone(),
-            });
+            })?;
         }
         Ok(())
     }

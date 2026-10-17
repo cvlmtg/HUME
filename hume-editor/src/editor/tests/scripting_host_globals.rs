@@ -25,8 +25,11 @@ fn lsp_home_dir() -> std::path::PathBuf {
 /// `grammars.scm` calls `(runtime-dir)`, and the crate-dir cwd under
 /// `cargo test` defeats the cwd-relative fallback, so the host is given the
 /// real runtime directory explicitly.
-fn host_and_editor_after_runtime_layers() -> (ScriptingHost, Editor, rustc_hash::FxHashSet<String>)
-{
+fn host_and_editor_after_runtime_layers() -> (
+    ScriptingHost,
+    Editor,
+    hume_scripting::command_name::CommandNameSet,
+) {
     let runtime_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("workspace root")
@@ -39,8 +42,8 @@ fn host_and_editor_after_runtime_layers() -> (ScriptingHost, Editor, rustc_hash:
     let native_names: Vec<&str> = ed.state.config.registry.native_mappable_names().collect();
     host.register_command_names(&native_names);
 
-    let builtin_names: rustc_hash::FxHashSet<String> =
-        ed.state.config.registry.names().map(String::from).collect();
+    let builtin_names: hume_scripting::command_name::CommandNameSet =
+        ed.state.config.registry.names().collect();
 
     for rel in ["prelude.scm", "languages.scm", "grammars.scm"] {
         let path = runtime_root.join("scheme").join(rel);

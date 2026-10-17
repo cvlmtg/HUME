@@ -200,7 +200,7 @@ fn prelude_eval_init_sequence_makes_macros_available_to_init_scm() {
     let mut h = host();
     let mut mock = MockHost::new();
 
-    let builtin_names: rustc_hash::FxHashSet<String> = Default::default();
+    let builtin_names: hume_scripting::command_name::CommandNameSet = Default::default();
 
     // Stage a prelude file and an init.scm that uses its macros.
     let dir = tempfile::tempdir().unwrap();

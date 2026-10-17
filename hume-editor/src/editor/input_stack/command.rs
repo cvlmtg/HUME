@@ -200,10 +200,10 @@ fn execute_command(ed: &mut Editor, input: &str) {
 
     // Expand `%`/`#` tokens in the arg. Gate on the fast-path check so the
     // common case (no expansion) stays allocation-free. Skip expansion for
-    // `:b`/`:buffer`: their `#` is the alternate-buffer specifier itself,
-    // not a filename token; expanding it to a path loses pathless
-    // alternates (scratch, [messages], [plugin-status]).
-    let needs_expansion = !matches!(cmd, "b" | "buffer");
+    // `:buffer`, under any alias or case: its `#` is the alternate-buffer
+    // specifier itself, not a filename token; expanding it to a path loses
+    // pathless alternates (scratch, [messages], [plugin-status]).
+    let needs_expansion = ed.state.config.registry.typed_canonical_name(cmd) != Some("buffer");
     let expanded: Option<String> = match arg {
         Some(a) if needs_expansion && (a.contains('%') || a.contains('#')) => {
             match expand_command_arg(ed, a) {
@@ -249,7 +249,7 @@ fn execute_command(ed: &mut Editor, input: &str) {
 // ── Typed-command helpers ─────────────────────────────────────────────────────
 
 /// The command name at the start of `input` (the grammar typed commands
-/// are registered against, [`hume_scripting::typed_command_name`]), one
+/// are registered against, [`hume_scripting::command_name`]), one
 /// optional trailing `!` consumed as `force`, and the byte offset one past
 /// both. Shared by [`parse_typed_command`] (which also needs the trimmed
 /// argument past that point) and `orchestrate.rs`'s `target_command_name`
@@ -257,7 +257,7 @@ fn execute_command(ed: &mut Editor, input: &str) {
 /// the name), so completion never disagrees with what `execute_command`
 /// would actually run.
 pub(in crate::editor) fn scan_command_name(input: &str) -> (&str, bool, usize) {
-    let name = hume_scripting::typed_command_name::scan(input);
+    let name = hume_scripting::command_name::scan(input);
     let force = input[name.len()..].starts_with('!');
     (name, force, name.len() + usize::from(force))
 }

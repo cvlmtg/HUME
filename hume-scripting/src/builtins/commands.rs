@@ -86,7 +86,10 @@ fn check_definable(ctx: &mut SteelCtx, builtin_name: &str, name: &str) -> Result
 ///
 /// Raises a Steel error if:
 /// - `name` conflicts with a core built-in command.
-/// - The same name is already defined by another plugin or in init.scm.
+/// - The same name, in any case, is already defined by another plugin or in
+///   init.scm.
+/// - The host refuses `name`, as the editor does one that is not lowercase
+///   ([`crate::command_name::check_mappable`]).
 /// - Called from a command body (only valid during init.scm or plugin load).
 pub(crate) fn define_command(
     ctx: &mut SteelCtx,
@@ -137,9 +140,10 @@ pub(crate) fn define_command(
 /// - `(lambda (pane arg))`: pane and the typed argument (a string), or `#f` if none.
 /// - `(lambda (pane arg force))`: pane, the argument, and whether `!` was appended.
 ///
-/// Raises a Steel error under the same conditions as `define-command!`, and
-/// for a name the `:` line can't read back whole
-/// ([`crate::typed_command_name::check`]).
+/// Raises a Steel error under the same conditions as `define-command!`,
+/// except that the editor refuses a name the `:` line can't read back whole
+/// ([`crate::command_name::check_typed`]) rather than one that is not
+/// lowercase.
 pub(crate) fn define_typed_command(
     ctx: &mut SteelCtx,
     name: String,
@@ -149,8 +153,6 @@ pub(crate) fn define_typed_command(
     completer: SteelVal,
 ) -> SteelResult {
     check_definable(ctx, "define-typed-command!", &name)?;
-    crate::typed_command_name::check(&name)
-        .map_err(|reason| generic_err(format!("define-typed-command!: {reason}")))?;
     let proc = super::args::callable_arg(proc, "define-typed-command! third arg (proc)")?;
     let completer =
         super::args::optional_string_arg(completer, "define-typed-command! #:complete")?;

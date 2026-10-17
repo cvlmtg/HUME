@@ -25,6 +25,7 @@
 // ── Public submodules ─────────────────────────────────────────────────────────
 pub mod attribution;
 pub(crate) mod builtins;
+pub mod command_name;
 pub(crate) mod hooks;
 pub mod host;
 pub mod json;
@@ -32,7 +33,6 @@ pub(crate) mod keys;
 pub(crate) mod lazy;
 mod log;
 mod plugin_record;
-pub mod typed_command_name;
 // ── Private implementation details ────────────────────────────────────────────
 mod activation;
 mod command_procs;
@@ -532,7 +532,7 @@ impl ScriptingHost {
         path: &Path,
         budget_ms: u64,
         host: &mut dyn EditorHost,
-        builtin_names: rustc_hash::FxHashSet<String>,
+        builtin_names: crate::command_name::CommandNameSet,
     ) -> Result<Vec<Effect>, EvalError> {
         self.dirs.init_dir = path.parent().map(Path::to_path_buf);
         self.eval_runtime(path, budget_ms, host, builtin_names)
@@ -547,7 +547,7 @@ impl ScriptingHost {
         path: &Path,
         budget_ms: u64,
         host: &mut dyn EditorHost,
-        builtin_names: rustc_hash::FxHashSet<String>,
+        builtin_names: crate::command_name::CommandNameSet,
     ) -> Result<Vec<Effect>, EvalError> {
         let source = match std::fs::read_to_string(path) {
             Ok(s) => s,

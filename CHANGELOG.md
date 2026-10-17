@@ -27,7 +27,9 @@
 
 - `live-picker!` takes `#:source`, a function of the picker token and the query, instead of `#:command`. To keep re-running a subprocess, pass `#:source (picker-command-source argv-for)`; `#:cwd`, `#:nul` and `#:ok-exit-codes` move to `picker-command-source`.
 
-- Typed command names can contain digits, so `:p1` runs a command named `p1`. `:b` takes a buffer number without a space only when the rest is all digits (`:b2`); write `:b 12abc`, not `:b12abc`. `define-typed-command!` and `#:typed-commands` raise for a name the command line can't run.
+- Typed command names can contain digits, so `:p1` runs a command named `p1`. A name now runs up to the first character that is not a letter, digit, `-` or `_`, so an argument needs a space before it: write `:e 1.txt`, `:goto 42` and `:b 12abc`, not `:e1.txt`, `:goto42` and `:b12abc`. Only `:b` followed by digits alone still works without one (`:b2`). `define-typed-command!` and `#:typed-commands` raise for a name the command line can't run.
+
+- Command names ignore case everywhere, not just at `:`: `call!` and key bindings find a command in any case, and two names that differ only in case collide. Editor command names must be lowercase: `define-command!` and `#:commands` raise for an uppercase name, so rename any such command.
 
 ### Panes & interface
 - `core:git-diff` takes a `"branch-style"` config value: `'icon` shows the statusline branch as `⎇ main` instead of `(main)`.

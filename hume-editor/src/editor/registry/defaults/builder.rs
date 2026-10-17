@@ -93,7 +93,7 @@ impl EditorCmdBuilder {
         self
     }
     pub(super) fn reg(self, r: &mut CommandRegistry) {
-        r.register(MappableCommand::Native(NativeCommand::EditorCmd {
+        r.register_builtin(MappableCommand::Native(NativeCommand::EditorCmd {
             name: Cow::Borrowed(self.name),
             doc: Cow::Borrowed(self.doc),
             fun: NativeBody::new(self.fun),

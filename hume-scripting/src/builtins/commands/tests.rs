@@ -267,31 +267,6 @@ fn define_typed_command_name_with_backslash_errors() {
     );
 }
 
-/// A name the `:` line cannot read back whole is rejected at definition:
-/// `b` + digits reads as `:b` with a buffer number, a leading digit as a
-/// line number, and a space or `!` ends the name early.
-#[test]
-fn define_typed_command_name_unreachable_from_colon_errors() {
-    for name in ["b1", "B12", "9x", "two words", "p1!", ""] {
-        let mut h = SteelCtxTestHarness::new();
-        let mut ctx = h.ctx_init();
-        let err = define_typed_command(
-            &mut ctx,
-            name.to_string(),
-            "doc".to_string(),
-            SteelVal::BoolV(false),
-            false,
-            SteelVal::BoolV(false),
-        )
-        .expect_err(name);
-        let msg = err.to_string();
-        assert!(
-            msg.contains(&format!("'{name}'")) && msg.contains("typed command name"),
-            "expected a name-grammar rejection for {name:?}, got: {msg}"
-        );
-    }
-}
-
 /// A registry rejection surfaces as the define's own error.
 #[test]
 fn define_typed_command_propagates_host_rejection() {

@@ -381,8 +381,8 @@ fn manifest_collision_with_builtin_logs_error_continues() {
     let mut h = host_with_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
-    let builtin_names: rustc_hash::FxHashSet<String> =
-        ["move-right".to_string()].into_iter().collect();
+    let builtin_names: hume_scripting::command_name::CommandNameSet =
+        ["move-right"].into_iter().collect();
     h.eval_init(&init_path, 10_000, &mut mock, builtin_names)
         .expect("partial builtin collision must NOT abort init");
 
@@ -424,8 +424,8 @@ fn manifest_collision_with_builtin_logs_error_continues() {
     let mut h2 = host_with_data_dir(dir2.path().to_path_buf());
     let mut mock2 = MockHost::new();
 
-    let builtin_names2: rustc_hash::FxHashSet<String> =
-        ["move-right".to_string()].into_iter().collect();
+    let builtin_names2: hume_scripting::command_name::CommandNameSet =
+        ["move-right"].into_iter().collect();
     h2.eval_init(&init_path2, 10_000, &mut mock2, builtin_names2)
         .expect("non-colliding activation entry must not error");
     assert!(
@@ -937,8 +937,8 @@ fn declare_plugin_all_commands_collide_is_hard_error() {
     let mut h = host_with_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
-    let builtin_names: rustc_hash::FxHashSet<String> =
-        ["move-right".to_string()].into_iter().collect();
+    let builtin_names: hume_scripting::command_name::CommandNameSet =
+        ["move-right"].into_iter().collect();
     let result = h.eval_init(&init_path, 10_000, &mut mock, builtin_names);
     assert!(
         result.is_err(),

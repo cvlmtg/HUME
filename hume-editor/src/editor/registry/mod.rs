@@ -44,20 +44,17 @@ pub(in crate::editor) use command::{
 };
 pub(in crate::editor) use defaults::structural::STRUCTURAL_OBJECTS;
 
+use hume_scripting::command_name::fold;
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/// Case-insensitive FxHashMap lookup: exact hit first, then linear-scan fallback.
-///
-/// Used only for the typed-command path (`:` command line) so a user typing
-/// `:W` still resolves the canonical `:w`. Mappable commands are looked up by
-/// exact name only (see [`CommandRegistry::get_mappable`]) since they are
-/// resolved from key bindings, not user-typed names.
-fn ci_get<'a, V>(map: &'a FxHashMap<Cow<'static, str>, V>, name: &str) -> Option<&'a V> {
-    map.get(name).or_else(|| {
-        map.iter()
-            .find(|(k, _)| k.as_ref().eq_ignore_ascii_case(name))
-            .map(|(_, v)| v)
-    })
+/// `name` folded, reusing `name`'s allocation when it is already folded.
+fn key_of(name: Cow<'static, str>) -> Cow<'static, str> {
+    let folded = match fold(&name) {
+        Cow::Owned(folded) => Some(folded),
+        Cow::Borrowed(_) => None,
+    };
+    folded.map_or(name, Cow::Owned)
 }
 
 /// Registry of all commands: the single namespace for mappable and typed commands.
@@ -74,10 +71,15 @@ fn ci_get<'a, V>(map: &'a FxHashMap<Cow<'static, str>, V>, name: &str) -> Option
 /// The two are strictly separate: `:` resolves only typed commands ([`Self::get_typed`]),
 /// a key binding resolves only mappable commands ([`Self::get_mappable`]). The single
 /// `commands` map still prevents name collisions between them.
+///
+/// Names ignore case: every entry is keyed by its name folded
+/// ([`hume_scripting::command_name::fold`]), and every lookup folds the name
+/// it is given, through [`Self::entry`] or [`Self::get_typed`].
 pub(in crate::editor) struct CommandRegistry {
-    /// All commands keyed by canonical name.
+    /// All commands keyed by folded canonical name.
     commands: FxHashMap<Cow<'static, str>, Command>,
-    /// Maps typed-command alias → canonical name, for O(1) alias lookup.
+    /// Maps folded typed-command alias → folded canonical name, for O(1)
+    /// alias lookup.
     alias_map: FxHashMap<Cow<'static, str>, Cow<'static, str>>,
 }
 
@@ -105,16 +107,26 @@ impl CommandRegistry {
     ///
     /// The name is extracted from the command and used as the `FxHashMap` key.
     /// For static built-ins the clone is a pointer copy (zero allocation).
-    pub(in crate::editor) fn register(&mut self, cmd: MappableCommand) {
+    /// Refuses the command, registering nothing, when its name is not
+    /// lowercase ([`hume_scripting::command_name::check_mappable`]), so the
+    /// name is its own folded key.
+    pub(in crate::editor) fn register(&mut self, cmd: MappableCommand) -> Result<(), String> {
+        hume_scripting::command_name::check_mappable(cmd.name())?;
         let key = cmd.name().clone();
         self.commands.insert(key, Command::Mappable(cmd));
+        Ok(())
     }
 
     /// Remove the command registered under `name`, standing in for a plugin
     /// reload that drops a Steel command.
     #[cfg(test)]
     pub(in crate::editor) fn unregister(&mut self, name: &str) {
-        self.commands.remove(name);
+        self.commands.remove(fold(name).as_ref());
+    }
+
+    /// The entry registered under `name`, in any case.
+    fn entry(&self, name: &str) -> Option<&Command> {
+        self.commands.get(fold(name).as_ref())
     }
 
     /// Returns `true` if `name` is registered as either a mappable or typed command.
@@ -122,7 +134,7 @@ impl CommandRegistry {
     /// Unlike [`Self::get_mappable`], this also matches typed commands. Use it
     /// when checking whether a name is already claimed by anything in the registry.
     pub(in crate::editor) fn contains(&self, name: &str) -> bool {
-        self.commands.contains_key(name)
+        self.entry(name).is_some()
     }
 
     /// If `name` is registered as the *other* kind, a user-facing clause
@@ -134,12 +146,14 @@ impl CommandRegistry {
     /// wording, so the sites can't drift into subtly different advice for
     /// the same mistake.
     pub(in crate::editor) fn other_kind_hint(&self, name: &str) -> Option<String> {
-        match self.commands.get(name)? {
-            Command::Mappable(_) => Some(format!(
-                "'{name}' is an editor command; bind it to a key, or run it with call!, not `:`"
+        match self.entry(name)? {
+            Command::Mappable(cmd) => Some(format!(
+                "'{}' is an editor command; bind it to a key, or run it with call!, not `:`",
+                cmd.name()
             )),
-            Command::Typed(_) => Some(format!(
-                "'{name}' is a typed command: run it as `:{name}`; it can't be bound to a key"
+            Command::Typed(cmd) => Some(format!(
+                "'{0}' is a typed command: run it as `:{0}`; it can't be bound to a key",
+                cmd.name
             )),
         }
     }
@@ -147,70 +161,69 @@ impl CommandRegistry {
     /// Register a typed command.
     ///
     /// Inserts the canonical name into `commands` and each alias into
-    /// `alias_map`. Refuses the command, registering nothing, when its name
-    /// or an alias is one the `:` line can't read back whole
-    /// ([`hume_scripting::typed_command_name::check`]).
+    /// `alias_map`, both folded; the command keeps its own spelling. Refuses
+    /// the command, registering nothing, when its name or an alias is one the
+    /// `:` line can't read back whole
+    /// ([`hume_scripting::command_name::check_typed`]).
     pub(in crate::editor) fn register_typed(&mut self, cmd: TypedCommand) -> Result<(), String> {
         std::iter::once(cmd.name.as_ref())
             .chain(cmd.aliases.iter().copied())
-            .try_for_each(hume_scripting::typed_command_name::check)?;
-        let canonical = cmd.name.clone();
+            .try_for_each(hume_scripting::command_name::check_typed)?;
+        let canonical = key_of(cmd.name.clone());
         for &alias in cmd.aliases {
             self.alias_map
-                .insert(Cow::Borrowed(alias), canonical.clone());
+                .insert(key_of(Cow::Borrowed(alias)), canonical.clone());
         }
         self.commands.insert(canonical, Command::Typed(cmd));
         Ok(())
     }
 
-    /// Look up a mappable command by exact name.
+    /// Look up a mappable command by name, in any case.
     ///
     /// Returns `None` if the name is unknown or resolves to a typed command.
-    ///
-    /// Exact-only: mappable commands are resolved from key bindings, not
-    /// user-typed names, so there is no user typo to tolerate and case-folding
-    /// has no purpose here. Case-insensitivity is confined to the typed (`:`)
-    /// path in [`Self::get_typed`].
     pub(in crate::editor) fn get_mappable(&self, name: &str) -> Option<&MappableCommand> {
-        match self.commands.get(name)? {
+        match self.entry(name)? {
             Command::Mappable(cmd) => Some(cmd),
             Command::Typed(_) => None,
         }
     }
 
-    /// Look up a typed command by canonical name or alias (case-insensitive).
+    /// Look up a typed command by canonical name or alias, in any case.
     ///
     /// Returns `None` if the name is unknown or resolves to a mappable
     /// command: `:` never falls back to a mappable command; see
     /// `execute_command` in `input_stack/command.rs`.
     pub(in crate::editor) fn get_typed(&self, name: &str) -> Option<&TypedCommand> {
-        let canonical = ci_get(&self.alias_map, name)
-            .map(|c| c.as_ref())
-            .unwrap_or(name);
-        match ci_get(&self.commands, canonical)? {
+        let key = fold(name);
+        let canonical = self
+            .alias_map
+            .get(key.as_ref())
+            .map_or(key.as_ref(), |c| c.as_ref());
+        match self.commands.get(canonical)? {
             Command::Typed(cmd) => Some(cmd),
             Command::Mappable(_) => None,
         }
     }
 
-    /// The name of the typed command [`Self::get_typed`] resolves `name` to:
-    /// the canonical spelling a case-sensitive lookup needs, for an alias or
-    /// any casing of the name.
+    /// The name of the typed command [`Self::get_typed`] resolves `name` to,
+    /// spelled as it was registered, for an alias or any casing of the name.
     pub(in crate::editor) fn typed_canonical_name(&self, name: &str) -> Option<&str> {
         self.get_typed(name).map(|tc| tc.name.as_ref())
     }
 
-    /// Iterate over all registered canonical command names (not aliases).
+    /// Iterate over all registered canonical command names (not aliases),
+    /// folded.
     pub(in crate::editor) fn names(&self) -> impl Iterator<Item = &str> {
         self.commands.keys().map(|k| k.as_ref())
     }
 
     /// Iterate over the canonical names of every registered typed command
-    /// (not aliases). Feeds `:` Tab completion (`complete_command`), the
-    /// typed-only counterpart of [`Self::native_mappable_names`].
+    /// (not aliases), each spelled as it was registered. Feeds `:` Tab
+    /// completion (`complete_command`), the typed-only counterpart of
+    /// [`Self::native_mappable_names`].
     pub(in crate::editor) fn typed_names(&self) -> impl Iterator<Item = &str> {
-        self.commands.iter().filter_map(|(k, v)| match v {
-            Command::Typed(_) => Some(k.as_ref()),
+        self.commands.values().filter_map(|v| match v {
+            Command::Typed(cmd) => Some(cmd.name.as_ref()),
             _ => None,
         })
     }
@@ -248,7 +261,7 @@ impl CommandRegistry {
         &self,
         name: &str,
     ) -> Option<&hume_scripting::attribution::EntryId> {
-        lazy_owner_of(self.commands.get(name)?)
+        lazy_owner_of(self.entry(name)?)
     }
 
     /// The plugin owning `name`'s *mappable* `Lazy` stub, or `None` if `name`
@@ -263,7 +276,7 @@ impl CommandRegistry {
         &self,
         name: &str,
     ) -> Option<&hume_scripting::attribution::EntryId> {
-        match self.commands.get(name)? {
+        match self.entry(name)? {
             Command::Mappable(MappableCommand::Lazy { plugin, .. }) => Some(plugin),
             _ => None,
         }
@@ -281,24 +294,19 @@ impl CommandRegistry {
         &self,
     ) -> Vec<(String, hume_scripting::attribution::EntryId, bool)> {
         self.commands
-            .iter()
-            .filter_map(|(name, cmd)| {
-                lazy_owner_of(cmd).map(|plugin| {
-                    (
-                        name.as_ref().to_string(),
-                        plugin.clone(),
-                        is_typed_lazy(cmd),
-                    )
-                })
+            .values()
+            .filter_map(|cmd| {
+                lazy_owner_of(cmd)
+                    .map(|plugin| (name_of(cmd).to_string(), plugin.clone(), is_typed_lazy(cmd)))
             })
             .collect()
     }
 
     /// The proc of the Steel command registered under `name`
-    /// (case-sensitive), mappable or typed. `None` for a native command, a
+    /// (in any case), mappable or typed. `None` for a native command, a
     /// `Lazy` stub, or an unknown name.
     pub(in crate::editor) fn steel_proc(&self, name: &str) -> Option<hume_scripting::CommandProc> {
-        steel_proc_of(self.commands.get(name)?)
+        steel_proc_of(self.entry(name)?)
     }
 
     /// Remove every Steel command (mappable or typed) that `plugin`'s entry
@@ -350,6 +358,14 @@ fn steel_proc_of(cmd: &Command) -> Option<hume_scripting::CommandProc> {
             ..
         }) => Some(hume_scripting::CommandProc::Typed(body.proc.clone())),
         _ => None,
+    }
+}
+
+/// `cmd`'s name as it was registered, where its key is folded.
+fn name_of(cmd: &Command) -> &str {
+    match cmd {
+        Command::Mappable(cmd) => cmd.name(),
+        Command::Typed(cmd) => &cmd.name,
     }
 }
 

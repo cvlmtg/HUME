@@ -359,7 +359,7 @@ fn runtime_register_and_lookup() {
         manages_own_session: false,
         key_only: false,
     });
-    reg.register(cmd);
+    reg.register(cmd).expect("a lowercase editor command name");
 
     assert_eq!(reg.len(), before + 1);
     assert!(reg.get_mappable("steel-test-cmd").is_some());
@@ -443,6 +443,72 @@ fn register_typed_rejects_a_name_or_alias_the_colon_line_cannot_reach() {
     }
 }
 
+/// An editor command's name is lowercase; any other is refused and leaves
+/// the registry unchanged.
+#[test]
+fn register_refuses_an_editor_command_name_that_is_not_lowercase() {
+    let mut reg = CommandRegistry::with_defaults();
+    let before = reg.len();
+    let err = reg
+        .register(MappableCommand::Lazy {
+            name: Cow::Borrowed("Probe"),
+            plugin: hume_scripting::attribution::EntryId::main(
+                hume_scripting::attribution::PluginId::parse("core:test").expect("a plugin id"),
+            ),
+        })
+        .expect_err("an uppercase editor command name must be refused");
+    assert!(
+        err.contains("'Probe'") && err.contains("lowercase"),
+        "unexpected message: {err}"
+    );
+    assert_eq!(reg.len(), before);
+}
+
+/// Every lookup ignores case, and a typed command keeps the spelling it was
+/// registered with.
+#[test]
+fn lookups_ignore_case() {
+    let plugin = hume_scripting::attribution::EntryId::main(
+        hume_scripting::attribution::PluginId::parse("core:test").expect("a plugin id"),
+    );
+    let mut reg = CommandRegistry::with_defaults();
+    reg.register_typed(TypedCommand {
+        name: Cow::Borrowed("probe"),
+        doc: Cow::Borrowed(""),
+        aliases: &[],
+        body: TypedBody::Lazy(plugin.clone()),
+        completer: None,
+    })
+    .expect("a valid typed command name");
+
+    assert_eq!(
+        reg.get_typed("WRITE").map(|tc| tc.name.as_ref()),
+        Some("write")
+    );
+    assert_eq!(reg.get_typed("W").map(|tc| tc.name.as_ref()), Some("write"));
+    assert!(reg.get_mappable("MOVE-RIGHT").is_some());
+    assert!(reg.contains("MOVE-RIGHT"));
+    assert!(reg.other_kind_hint("MOVE-RIGHT").is_some());
+    assert_eq!(reg.lazy_owner("PROBE"), Some(&plugin));
+
+    let before = reg.len();
+    reg.register_typed(TypedCommand {
+        name: Cow::Borrowed("Probe"),
+        doc: Cow::Borrowed(""),
+        aliases: &[],
+        body: TypedBody::Native(dummy_typed),
+        completer: None,
+    })
+    .expect("a valid typed command name");
+
+    assert_eq!(reg.len(), before, "`Probe` replaces the `probe` stub");
+    assert_eq!(
+        reg.get_typed("probe").map(|tc| tc.name.as_ref()),
+        Some("Probe")
+    );
+    assert_eq!(reg.lazy_owner("probe"), None);
+}
+
 #[test]
 fn steel_backed_names_filters_by_variant() {
     let mut reg = CommandRegistry::with_defaults();
@@ -461,7 +527,8 @@ fn steel_backed_names_filters_by_variant() {
             repeatable: false,
             proc: hume_scripting::MappableProc::for_test(),
         },
-    }));
+    }))
+    .expect("a lowercase editor command name");
     reg.register(MappableCommand::SteelBacked(SteelCommand {
         name: Cow::Owned("another-steel-cmd".to_string()),
         doc: Cow::Borrowed("doc"),
@@ -472,7 +539,8 @@ fn steel_backed_names_filters_by_variant() {
             repeatable: false,
             proc: hume_scripting::MappableProc::for_test(),
         },
-    }));
+    }))
+    .expect("a lowercase editor command name");
     // An EditorCmd with a name that could be mistaken for a Steel proc:
     // the helper must still filter it out by variant, not by name shape.
     fn noop(
@@ -497,7 +565,8 @@ fn steel_backed_names_filters_by_variant() {
         selection_tracking: SelectionTracking::Untracked,
         manages_own_session: false,
         key_only: false,
-    }));
+    }))
+    .expect("a lowercase editor command name");
 
     let mut names = reg.steel_backed_names();
     names.sort();
@@ -558,7 +627,8 @@ fn unregister_defined_by_removes_only_the_entrys_steel_commands() {
     reg.register(mappable(
         "failed-map",
         MappableProc::for_test_defined_by(failed.clone()),
-    ));
+    ))
+    .expect("a lowercase editor command name");
     reg.register_typed(typed(
         "failed-typed",
         TypedProc::for_test_defined_by(failed.clone()),
@@ -567,14 +637,17 @@ fn unregister_defined_by_removes_only_the_entrys_steel_commands() {
     reg.register(MappableCommand::Lazy {
         name: Cow::Borrowed("failed-stub"),
         plugin: failed.clone(),
-    });
+    })
+    .expect("a lowercase editor command name");
     reg.register(mappable(
         "sibling-map",
         MappableProc::for_test_defined_by(sibling),
-    ));
+    ))
+    .expect("a lowercase editor command name");
     reg.register_typed(typed("other-typed", TypedProc::for_test_defined_by(other)))
         .expect("a valid typed command name");
-    reg.register(mappable("user-map", MappableProc::for_test()));
+    reg.register(mappable("user-map", MappableProc::for_test()))
+        .expect("a lowercase editor command name");
     let before = reg.len();
 
     reg.unregister_defined_by(&failed);

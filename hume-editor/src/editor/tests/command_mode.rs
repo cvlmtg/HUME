@@ -105,6 +105,49 @@ fn colon_b_digits_switches_to_that_buffer() {
     assert_eq!(ed.focused_buffer_id(), second);
 }
 
+/// Evaluates `source` against a fresh `ScriptingHost` and returns the error
+/// it raised.
+fn eval_err(ed: &mut Editor, source: &str) -> String {
+    let mut host = hume_scripting::ScriptingHost::new(&ed.state.dirs);
+    let result = {
+        let mut ih = init_host!(ed);
+        host.eval_source(source, &mut ih)
+    };
+    result.expect_err("the source must raise")
+}
+
+/// A name the `:` line cannot read back whole is refused when a typed
+/// command is defined: `b` + digits reads as `:b` with a buffer number, a
+/// leading digit as a line number, and a space or `!` ends the name early.
+#[test]
+fn define_typed_command_name_unreachable_from_colon_errors() {
+    for name in ["b1", "B12", "9x", "two words", "p1!", ""] {
+        let mut ed = editor_from("-[a]>bc\n");
+        let err = eval_err(
+            &mut ed,
+            &format!(r#"(define-typed-command! "{name}" "doc" (lambda () #t))"#),
+        );
+        assert!(
+            err.contains(&format!("'{name}'")) && err.contains("typed command name"),
+            "expected a name-grammar rejection for {name:?}, got: {err}"
+        );
+    }
+}
+
+/// An editor command's name is lowercase.
+#[test]
+fn define_command_with_an_uppercase_name_errors() {
+    let mut ed = editor_from("-[a]>bc\n");
+    let err = eval_err(
+        &mut ed,
+        r#"(define-command! "Probe" "" (lambda (pane) #t))"#,
+    );
+    assert!(
+        err.contains("'Probe'") && err.contains("lowercase"),
+        "expected a lowercase-name rejection, got: {err}"
+    );
+}
+
 #[test]
 fn esc_cancels_command_mode() {
     let mut ed = editor_from("-[h]>ello\n");
@@ -1222,7 +1265,7 @@ fn colon_enter_empty_silently_dismisses() {
     );
 }
 
-// ── Case-insensitive typed commands ──────────────────────────────────────────
+// ── Case-insensitive command names ────────────────────────────────────────────
 
 #[test]
 fn colon_capital_q_quits() {
@@ -1285,6 +1328,62 @@ fn colon_capital_qa_quits_single_clean_buffer() {
     }
     ed.handle_key(key_enter());
     assert!(ed.state.should_quit);
+}
+
+/// Command names ignore case, so a typed command and an editor command
+/// whose names differ only in case collide, whichever is defined first.
+#[test]
+fn typed_and_editor_command_names_differing_in_case_collide() {
+    let cases = [
+        r#"(define-command! "probe" "" (lambda (pane) #t))
+           (define-typed-command! "PROBE" "" (lambda () #t))"#,
+        r#"(define-typed-command! "Probe" "" (lambda () #t))
+           (define-command! "probe" "" (lambda (pane) #t))"#,
+    ];
+    for source in cases {
+        let mut ed = editor_from("-[a]>bc\n");
+        let err = eval_err(&mut ed, source);
+        assert!(
+            err.contains("is already defined"),
+            "expected a collision for {source}, got: {err}"
+        );
+    }
+}
+
+/// `call!` resolves an editor command's name in any case.
+#[test]
+fn call_runs_an_editor_command_named_in_another_case() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bc\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "go" "" (lambda () (call! "INSERT-BEFORE" (focused-pane))))"#,
+    );
+
+    type_cmd(&mut ed, ":go");
+
+    assert_eq!(
+        ed.state.mode(),
+        Mode::Insert,
+        "`INSERT-BEFORE` must run `insert-before`"
+    );
+}
+
+/// An editor command named in another case does not dispatch from `:`
+/// either, and the kind hint names it in its own spelling.
+#[test]
+fn colon_editor_command_name_in_another_case_does_not_dispatch() {
+    let mut ed = editor_from("-[h]>ello\n");
+    let before = state(&ed);
+    type_cmd(&mut ed, ":SELECT-NEXT-WORD");
+    assert_eq!(
+        ed.state.status_msg.as_deref(),
+        Some(
+            "'select-next-word' is an editor command; bind it to a key, or run it with call!, not `:`"
+        )
+    );
+    assert_eq!(state(&ed), before, "selection must be untouched");
 }
 
 // ── :goto / bare :N line-jump ─────────────────────────────────────────────────

@@ -47,6 +47,22 @@ fn tab_on_command_prefix_single_match_completes_silently() {
     );
 }
 
+/// A prefix typed in another case completes to the command's own spelling.
+#[test]
+fn tab_on_command_prefix_in_another_case_completes_canonical_spelling() {
+    let mut ed = editor_from("-[h]>ello\n");
+    attach_steel(
+        &mut ed,
+        r#"(define-typed-command! "FooBar" "" (lambda () #t))"#,
+    );
+    for (typed, expected) in [("RELO", "reload-config"), ("foob", "FooBar")] {
+        command_line(&mut ed, typed);
+        ed.handle_key(key_tab());
+        assert_eq!(minibuf_input(&ed), expected, "{typed}");
+        ed.handle_key(key_esc());
+    }
+}
+
 #[test]
 fn tab_no_match_is_noop() {
     let mut ed = editor_from("-[h]>ello\n");

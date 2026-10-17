@@ -912,7 +912,7 @@ impl Editor {
             kitty_enabled: false,
             scripting: None,
             config_source: crate::cli::ConfigSource::Default,
-            builtin_cmd_names: rustc_hash::FxHashSet::default(),
+            builtin_cmd_names: hume_scripting::command_name::CommandNameSet::default(),
             parse_worker: Box::new(InlineParseBackend::new()),
             parse_worker_disconnect_logged: false,
             timers: super::timer_bridge::Timers::new(),

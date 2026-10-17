@@ -58,7 +58,6 @@ fn status_row(host: &ScriptingHost, plugin: &str) -> String {
 fn declare_plugin_all_on_command_collided_message_mentions_conflict() {
     use crate::ScriptingHost;
     use crate::null_host::NullHost;
-    use rustc_hash::FxHashSet;
     use tempfile::TempDir;
 
     let dir = TempDir::new().unwrap();
@@ -75,8 +74,7 @@ fn declare_plugin_all_on_command_collided_message_mentions_conflict() {
         ..Dirs::none()
     });
     // Mark "insert-mode" as a built-in so collision filtering drops it.
-    let mut builtin_names = FxHashSet::default();
-    builtin_names.insert("insert-mode".to_string());
+    let builtin_names: crate::command_name::CommandNameSet = ["insert-mode"].into_iter().collect();
 
     let result = host
         .eval_source_raw(
@@ -103,11 +101,9 @@ fn declare_plugin_all_on_command_collided_message_mentions_conflict() {
 #[test]
 fn declare_plugin_all_on_command_collided_records_nothing() {
     use crate::null_host::NullHost;
-    use rustc_hash::FxHashSet;
 
     let (_dir, mut host) = host_with_plugin("collided", &[("plugin.scm", "")]);
-    let mut builtin_names = FxHashSet::default();
-    builtin_names.insert("insert-mode".to_string());
+    let builtin_names: crate::command_name::CommandNameSet = ["insert-mode"].into_iter().collect();
 
     host.eval_source_raw(
         r#"(declare-plugin! "user/collided" #:commands '("insert-mode"))"#.to_owned(),

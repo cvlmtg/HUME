@@ -127,7 +127,7 @@ pub trait CommandHost {
     fn register_typed_command(&mut self, def: SteelTypedCmdDef) -> Result<(), String>;
 
     /// The proc of the Steel command (mappable or typed) registered under
-    /// `name` (case-sensitive), or `None` for a native command, a `Lazy`
+    /// `name` (in any case), or `None` for a native command, a `Lazy`
     /// stub, or an unknown name.
     fn defined_command(&self, name: &str) -> Option<CommandProc>;
 

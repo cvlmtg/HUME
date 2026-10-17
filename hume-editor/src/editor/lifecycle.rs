@@ -146,7 +146,7 @@ impl Editor {
             kitty_enabled: false,
             scripting: None,
             config_source: ConfigSource::Default,
-            builtin_cmd_names: rustc_hash::FxHashSet::default(),
+            builtin_cmd_names: hume_scripting::command_name::CommandNameSet::default(),
             parse_worker: Box::new(
                 hume_treesitter::parse_worker::ThreadedParseBackend::with_waker(
                     std::sync::Arc::clone(&wake),

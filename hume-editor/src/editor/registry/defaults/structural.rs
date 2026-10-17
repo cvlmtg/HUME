@@ -161,21 +161,21 @@ impl CommandRegistry {
                 )
             };
 
-            self.register(MappableCommand::Native(NativeCommand::Selection {
+            self.register_builtin(MappableCommand::Native(NativeCommand::Selection {
                 name: Cow::Borrowed(obj.inner),
                 doc: Cow::Borrowed(obj.inner_doc),
                 fun: NativeBody::new(SelectionBody::Structural(inner_body)),
                 jump: false,
                 selection_tracking: SelectionTracking::Establishes,
             }));
-            self.register(MappableCommand::Native(NativeCommand::Selection {
+            self.register_builtin(MappableCommand::Native(NativeCommand::Selection {
                 name: Cow::Borrowed(obj.around),
                 doc: Cow::Borrowed(obj.around_doc),
                 fun: NativeBody::new(SelectionBody::Structural(around_body)),
                 jump: false,
                 selection_tracking: SelectionTracking::Establishes,
             }));
-            self.register(MappableCommand::Native(NativeCommand::Motion {
+            self.register_builtin(MappableCommand::Native(NativeCommand::Motion {
                 name: Cow::Borrowed(obj.next),
                 doc: Cow::Owned(format!("Select the next {}.", obj.noun)),
                 fun: NativeBody::new(SelectionBody::Structural(StructuralBody::Goto {
@@ -187,7 +187,7 @@ impl CommandRegistry {
                 // `CmdMeta::aligns_view`'s doc.
                 aligns_view: true,
             }));
-            self.register(MappableCommand::Native(NativeCommand::Motion {
+            self.register_builtin(MappableCommand::Native(NativeCommand::Motion {
                 name: Cow::Borrowed(obj.prev),
                 doc: Cow::Owned(format!("Select the previous {}.", obj.noun)),
                 fun: NativeBody::new(SelectionBody::Structural(StructuralBody::Goto {
