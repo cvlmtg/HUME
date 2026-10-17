@@ -145,4 +145,10 @@ pub trait EditHost {
     /// There is otherwise no way to hand a key back to "as if unbound"
     /// once a binding has claimed it.
     fn insert_key(&mut self, pane: PaneHandle, key: KeyEvent) -> Result<(), String>;
+
+    /// `(insert-text! pane text)`: pastes `text` into whatever has focus,
+    /// through the same path a terminal paste takes, so it does whatever a
+    /// paste of `text` would do there. `Err` only when `pane` isn't the
+    /// focused pane.
+    fn insert_text(&mut self, pane: PaneHandle, text: String) -> Result<(), String>;
 }

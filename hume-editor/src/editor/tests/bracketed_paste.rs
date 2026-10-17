@@ -204,7 +204,7 @@ fn open_filter_test_picker(ed: &mut Editor, items: &[&str]) {
         .expect("no `.` is in progress");
 }
 
-fn open_live_test_picker(ed: &mut Editor) {
+pub(super) fn open_live_test_picker(ed: &mut Editor) {
     let session = PickerSession::new_live(
         marker("on-select"),
         LivePickerOpts {

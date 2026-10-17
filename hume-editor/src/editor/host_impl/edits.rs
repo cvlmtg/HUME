@@ -8,6 +8,7 @@ use termina::event::KeyEvent;
 use super::EditorHostImpl;
 use crate::editor::commands::{self, FocusedPane};
 use crate::editor::doc_ops::HistoryWalk;
+use crate::editor::input_stack::PastedText;
 use hume_scripting::PaneHandle;
 use hume_scripting::host::EditHost;
 
@@ -162,6 +163,14 @@ impl<'a> EditHost for EditorHostImpl<'a> {
                 "insert-key!: {:?} has no default Insert-mode behaviour",
                 key.code
             ));
+        }
+        Ok(())
+    }
+
+    fn insert_text(&mut self, pane: PaneHandle, text: String) -> Result<(), String> {
+        FocusedPane::resolve(self.state, self.view, pane).map_err(|e| e.to_string())?;
+        if let Some(text) = PastedText::new(text) {
+            self.state.paste(self.view, text);
         }
         Ok(())
     }

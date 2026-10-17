@@ -128,7 +128,7 @@ pub(in crate::editor) fn insert_input(ed: &mut Editor, r: LayerRef, ev: InputEve
 
 fn insert_paste(state: &mut EditorState, view: &EngineView, _r: LayerRef, text: PastedText) {
     state.apply_insert_mode_paste(view, text.as_str());
-    state.record_input(Input::Paste(text.into_string()));
+    state.record_paste(text.into_string());
 }
 
 /// Walks the Insert keymap for `key`: a bound key re-dispatches its

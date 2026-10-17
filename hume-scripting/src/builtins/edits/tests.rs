@@ -21,6 +21,19 @@ fn insert_key_without_edit_host_names_the_builtin() {
     assert!(msg.contains("insert-key!"), "got: {msg}");
 }
 
+/// `insert_text` on a host with no `EditHost` capability surfaces
+/// `require_cap`'s canonical message, naming the builtin.
+#[test]
+fn insert_text_without_edit_host_names_the_builtin() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let msg = insert_text(&mut ctx, default_pane(), "x".to_string())
+        .unwrap_err()
+        .to_string();
+    assert!(msg.contains("not supported by this host"), "got: {msg}");
+    assert!(msg.contains("insert-text!"), "got: {msg}");
+}
+
 /// A key spec naming a sequence rather than one chord is rejected before
 /// ever reaching the host: `insert-key!` has nowhere to send a second key.
 #[test]

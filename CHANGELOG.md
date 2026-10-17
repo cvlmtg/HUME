@@ -38,6 +38,7 @@
 - A `live-picker!` source gets a token per query: once the user has typed on, `picker-push!`, `picker-replace!` and `picker-source-spawn!` on an earlier query's token do nothing, so a slow source can't overwrite newer rows.
 - New `on-before-buffer-save` hook, run before a buffer is written. A handler taking `(pane done)` holds the write until it calls `done`, up to `before-save-timeout-ms`.
 - `core:git-diff` has key-bindable `git-diff/toggle-inline-diff` and `git-diff/toggle-git-signs`, plus `git-diff/show-inline-diff` and `git-diff/inline-diff?` for your own commands.
+- New `insert-text!` pastes text where you're typing, as a terminal paste would.
 
 ### Language servers
 - `z s` picks a symbol of the current file and `z S` searches the symbols of the whole project as you type, both jumping to the one you accept.

@@ -171,6 +171,14 @@ pub(crate) fn insert_key(ctx: &mut SteelCtx, pane: PaneHandle, key: SteelVal) ->
         .map_err(generic_err)
 }
 
+/// `(insert-text! pane text)`: paste `text` into whatever has focus.
+pub(crate) fn insert_text(ctx: &mut SteelCtx, pane: PaneHandle, text: String) -> SteelResult {
+    require_cap(ctx.host.edits(), "insert-text!")?
+        .insert_text(pane, text)
+        .map(|()| SteelVal::Void)
+        .map_err(generic_err)
+}
+
 /// `(goto-revision! pane id)`: move `pane`'s buffer to revision `id` of its
 /// undo history (a number from `(buffer-undo-tree pane)`), across branches.
 /// Raises when the buffer has no such revision or is read-only.

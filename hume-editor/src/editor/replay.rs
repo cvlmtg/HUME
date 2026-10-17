@@ -154,9 +154,9 @@ pub(crate) enum Input {
     /// A key with no Insert keymap binding: one run of its *default*
     /// behaviour (`commands::insert_default_key`), never a keymap walk.
     Key(KeyEvent),
-    /// A terminal paste, replayed as one bulk insert rather than synthetic
-    /// per-char keys: a synthesized `Enter` would auto-indent, which a real
-    /// paste never does.
+    /// A paste ([`EditorState::record_paste`]), replayed as one bulk insert
+    /// rather than synthetic per-char keys: a synthesized `Enter` would
+    /// auto-indent, which a real paste never does.
     Paste(String),
     /// A key bound in the Insert keymap, re-run on replay through
     /// [`Editor::dispatch`] as the live key was, so it decides again at the
@@ -763,12 +763,33 @@ impl EditorState {
     }
 
     /// Append `input` to the open Insert session's recording, if any. Called
-    /// at the seam each input arrives (a typed Insert key, a paste, a
-    /// completion accept).
+    /// at the seam each input arrives (a typed Insert key, a completion
+    /// accept; a paste goes through [`Self::record_paste`]).
     pub(in crate::editor) fn record_input(&mut self, input: Input) {
         if let Some(rec) = self.session_recording() {
             rec.action.transcript.push(input);
         }
+    }
+
+    /// Append a paste of `text` to the open Insert session's recording, if
+    /// any, unless the code running now belongs to that same change: `.`
+    /// re-runs that code (a binding, a command, an answered callback), which
+    /// pastes again, so recording the paste too would replay it twice.
+    pub(in crate::editor) fn record_paste(&mut self, text: String) {
+        let Some(session) = self.input.insert_session() else {
+            return;
+        };
+        let Some(rec) = session_feed(&mut self.recording, session) else {
+            return;
+        };
+        if self
+            .recording_scope
+            .running()
+            .is_some_and(|scope| rec.opened(&scope.source))
+        {
+            return;
+        }
+        rec.action.transcript.push(Input::Paste(text));
     }
 
     /// Record the Insert-key binding `name` about to dispatch, before its

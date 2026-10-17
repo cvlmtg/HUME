@@ -1428,6 +1428,7 @@ mod inline_output;
 mod insert_key;
 mod insert_line_end;
 mod insert_session_buffer_switch;
+mod insert_text;
 mod jump_list;
 mod kitty;
 mod language;
