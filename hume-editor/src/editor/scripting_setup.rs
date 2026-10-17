@@ -733,8 +733,14 @@ impl Editor {
         // Trace the resolved directories so they're visible in `:messages`.
         // A missing runtime dir is a warning because `core:*` plugins need it.
         match host.runtime_dir() {
-            Some(rt) => self.report(Severity::Trace, format!("scripting: runtime dir = {}", rt.display())),
-            None => self.report(Severity::Warning, "scripting: no runtime directory found (core:* plugins unavailable); set HUME_RUNTIME to fix".into()),
+            Some(rt) => self.report(
+                Severity::Trace,
+                format!("scripting: runtime dir = {}", rt.display()),
+            ),
+            None => self.report(
+                Severity::Warning,
+                "scripting: no runtime directory found; set HUME_RUNTIME to fix".into(),
+            ),
         }
         match host.data_dir() {
             Some(d) => self.report(
