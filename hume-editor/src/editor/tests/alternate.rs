@@ -167,6 +167,45 @@ fn colon_e_percent_errors_with_no_path() {
     assert!(msg.contains("No file name"), "unexpected status: {msg:?}");
 }
 
+/// An unknown command is reported as unknown, before its argument is
+/// expanded.
+#[test]
+fn colon_unknown_command_with_percent_reports_unknown_command() {
+    let mut ed = editor_from("-[h]>ello\n");
+    type_cmd(&mut ed, ":nosuch %");
+    let msg = ed
+        .state
+        .status_msg
+        .as_deref()
+        .expect("error should be reported");
+    assert!(
+        msg.contains("Unknown command: nosuch"),
+        "unexpected status: {msg:?}"
+    );
+}
+
+/// A Steel typed command receives `%` expanded to the current file's path.
+#[test]
+fn colon_steel_typed_command_receives_percent_expanded() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut ed, _file) = editor_with_file("-[h]>ello\n", "hello\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "show" "" (lambda (pane arg) (log! 'info arg)))"#,
+    );
+    let path = ed
+        .doc()
+        .path()
+        .expect("a file-backed buffer")
+        .display()
+        .to_string();
+
+    type_cmd(&mut ed, ":show %");
+
+    assert_eq!(ed.state.status_msg.as_deref(), Some(path.as_str()));
+}
+
 // ── goto-alternate-buffer in registry ──────────────────────────────────────────
 
 #[test]

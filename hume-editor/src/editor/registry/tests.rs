@@ -398,6 +398,7 @@ fn typed_cmd(name: &str, aliases: &'static [&'static str], body: TypedBody) -> T
         aliases,
         body,
         completer: None,
+        arg_expansion: ArgExpansion::Paths,
     }
 }
 
@@ -418,6 +419,7 @@ fn runtime_register_typed_and_lookup() {
         aliases: &["stc"],
         body: TypedBody::Native(dummy_typed),
         completer: None,
+        arg_expansion: ArgExpansion::Paths,
     })
     .expect("a valid typed command name");
 

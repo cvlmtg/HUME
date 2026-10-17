@@ -6,7 +6,7 @@ use hume_engine::types::EditorMode;
 use super::super::error::CommandError;
 use super::super::minibuf::history::{HistoryDir, HistoryKind};
 use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent};
-use super::super::registry::TypedBody;
+use super::super::registry::{ArgExpansion, TypedBody};
 use super::super::replay::WaitingInput;
 use super::super::{Editor, EditorState, commands};
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal};
@@ -198,14 +198,19 @@ fn execute_command(ed: &mut Editor, input: &str) {
         return;
     }
 
-    // Expand `%`/`#` tokens in the arg. Gate on the fast-path check so the
-    // common case (no expansion) stays allocation-free. Skip expansion for
-    // `:buffer`, under any alias or case: its `#` is the alternate-buffer
-    // specifier itself, not a filename token; expanding it to a path loses
-    // pathless alternates (scratch, [messages], [plugin-status]).
-    let needs_expansion = ed.state.config.registry.typed_canonical_name(cmd) != Some("buffer");
+    // `:` resolves only typed commands: an editor (key-bindable) command's
+    // name is unreachable here; see `registry/mod.rs`'s module doc.
+    let Some(tc) = ed.state.config.registry.get_typed(cmd) else {
+        ed.report_unknown_command(cmd, format!("Unknown command: {cmd}"));
+        return;
+    };
+
+    // Gate on the fast-path check so the common case (no expansion) stays
+    // allocation-free.
     let expanded: Option<String> = match arg {
-        Some(a) if needs_expansion && (a.contains('%') || a.contains('#')) => {
+        Some(a)
+            if tc.arg_expansion == ArgExpansion::Paths && (a.contains('%') || a.contains('#')) =>
+        {
             match expand_command_arg(ed, a) {
                 Ok(s) => Some(s),
                 Err(e) => {
@@ -218,30 +223,23 @@ fn execute_command(ed: &mut Editor, input: &str) {
         None => None,
     };
 
-    // `:` resolves only typed commands: an editor (key-bindable) command's
-    // name is unreachable here; see `registry/mod.rs`'s module doc.
-    match ed.state.config.registry.get_typed(cmd) {
-        Some(tc) => match &tc.body {
-            TypedBody::Native(fun) => {
-                let fun = *fun;
-                let fp = commands::FocusedPane::current(&ed.view);
-                if let Err(e) = fun(ed, fp, expanded.as_deref(), force) {
-                    ed.report_error(&e);
-                }
+    match &tc.body {
+        TypedBody::Native(fun) => {
+            let fun = *fun;
+            let fp = commands::FocusedPane::current(&ed.view);
+            if let Err(e) = fun(ed, fp, expanded.as_deref(), force) {
+                ed.report_error(&e);
             }
-            // Lazy-stub activation and Steel arg marshalling both happen
-            // inside `Editor::run_typed_steel_command`, so `:bar arg`
-            // cannot silently drop `arg` on the plugin's first call.
-            TypedBody::Steel(_) => {
-                ed.run_typed_steel_command(cmd, None, expanded, force);
-            }
-            TypedBody::Lazy(plugin) => {
-                let plugin = plugin.clone();
-                ed.run_typed_steel_command(cmd, Some(plugin), expanded, force);
-            }
-        },
-        None => {
-            ed.report_unknown_command(cmd, format!("Unknown command: {cmd}"));
+        }
+        // Lazy-stub activation and Steel arg marshalling both happen
+        // inside `Editor::run_typed_steel_command`, so `:bar arg`
+        // cannot silently drop `arg` on the plugin's first call.
+        TypedBody::Steel(_) => {
+            ed.run_typed_steel_command(cmd, None, expanded, force);
+        }
+        TypedBody::Lazy(plugin) => {
+            let plugin = plugin.clone();
+            ed.run_typed_steel_command(cmd, Some(plugin), expanded, force);
         }
     }
 }

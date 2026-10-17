@@ -253,7 +253,7 @@ fn mil_on_empty_line_is_noop() {
 /// `is_variadic` override re-registers with explicit values (useful when the
 /// test arity differs from what Steel infers).
 fn setup_typed_arity_test(src: &str, name: &str, arity: u16, is_variadic: bool) -> Editor {
-    use crate::editor::registry::{TypedBody, TypedCommand};
+    use crate::editor::registry::{ArgExpansion, TypedBody, TypedCommand};
     use hume_scripting::ScriptingHost;
 
     let mut ed = editor_from("-[a]>b\n");
@@ -281,6 +281,7 @@ fn setup_typed_arity_test(src: &str, name: &str, arity: u16, is_variadic: bool) 
                 proc,
             }),
             completer: None,
+            arg_expansion: ArgExpansion::Paths,
         })
         .expect("a valid typed command name");
     ed.scripting = Some(host);
@@ -468,7 +469,7 @@ fn typed_arity_rule_forwards_arg_and_force_to_arity_3() {
 /// needs no real lambda; the early return fires before call_steel_cmd.
 #[test]
 fn typed_arity_rule_errors_on_arity_4() {
-    use crate::editor::registry::{TypedBody, TypedCommand};
+    use crate::editor::registry::{ArgExpansion, TypedBody, TypedCommand};
 
     let mut ed = editor_from("-[a]>b\n");
     ed.state
@@ -485,6 +486,7 @@ fn typed_arity_rule_errors_on_arity_4() {
                 proc: hume_scripting::TypedProc::for_test(),
             }),
             completer: None,
+            arg_expansion: ArgExpansion::Paths,
         })
         .expect("a valid typed command name");
 

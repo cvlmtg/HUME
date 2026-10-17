@@ -1,7 +1,9 @@
 //! `EditorHostImpl`'s command registry queries, synchronous native
 //! dispatch, and Steel command registration.
 
-use crate::editor::registry::{MappableCommand, SteelCommand, TypedBody, TypedCommand};
+use crate::editor::registry::{
+    ArgExpansion, MappableCommand, SteelCommand, TypedBody, TypedCommand,
+};
 
 use super::EditorHostImpl;
 use hume_scripting::host::CommandHost;
@@ -81,6 +83,7 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
                 aliases: &[],
                 body: TypedBody::Steel(def.body),
                 completer: def.completer.map(std::borrow::Cow::Owned),
+                arg_expansion: ArgExpansion::Paths,
             })
             .map_err(|reason| format!("define-typed-command!: {reason}"))
     }
@@ -122,6 +125,7 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
                 aliases: &[],
                 body: TypedBody::Lazy(plugin.clone()),
                 completer: None,
+                arg_expansion: ArgExpansion::Paths,
             })?;
         }
         Ok(())

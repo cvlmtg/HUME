@@ -2,7 +2,7 @@ use std::borrow::Cow;
 
 use crate::editor::commands::*;
 use crate::editor::completion;
-use crate::editor::registry::{CommandRegistry, TypedBody, TypedCommand};
+use crate::editor::registry::{ArgExpansion, CommandRegistry, TypedBody, TypedCommand};
 
 impl CommandRegistry {
     pub(super) fn register_typed_commands(&mut self) {
@@ -12,12 +12,30 @@ impl CommandRegistry {
                 typed_cmd!($name, $doc, $aliases, $fun, completer: None)
             };
             ($name:literal, $doc:literal, $aliases:expr, $fun:expr, completer: $completer:expr) => {
+                typed_cmd!(
+                    $name,
+                    $doc,
+                    $aliases,
+                    $fun,
+                    completer: $completer,
+                    expansion: ArgExpansion::Paths
+                )
+            };
+            (
+                $name:literal,
+                $doc:literal,
+                $aliases:expr,
+                $fun:expr,
+                completer: $completer:expr,
+                expansion: $expansion:expr
+            ) => {
                 self.register_typed(TypedCommand {
                     name: Cow::Borrowed($name),
                     doc: Cow::Borrowed($doc),
                     aliases: $aliases,
                     body: TypedBody::Native($fun),
                     completer: $completer.map(Cow::Borrowed),
+                    arg_expansion: $expansion,
                 })
                 .expect("a built-in typed command's name and aliases are valid")
             };
@@ -181,12 +199,16 @@ impl CommandRegistry {
             &["plugins"],
             typed_plugin_status
         );
+        // `#` is the alternate-buffer specifier itself, not a filename token:
+        // expanding it to a path would lose pathless alternates (scratch,
+        // [messages], [plugin-status]).
         typed_cmd!(
             "buffer",
             "Switch to an open buffer.",
             &["b"],
             typed_buffer,
-            completer: Some(completion::BUFFER_NAME_SOURCE)
+            completer: Some(completion::BUFFER_NAME_SOURCE),
+            expansion: ArgExpansion::Verbatim
         );
         typed_cmd!(
             "version",

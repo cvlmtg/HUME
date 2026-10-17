@@ -759,6 +759,18 @@ pub(in crate::editor) struct TypedCommand {
     /// `&'static str` constants declared beside each source's registration
     /// (`completion::COMMAND_SOURCE` and siblings).
     pub completer: Option<Cow<'static, str>>,
+    /// What `%` and `#` in this command's `:` argument mean.
+    pub arg_expansion: ArgExpansion,
+}
+
+/// What `%` and `#` mean in a typed command's `:` argument.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::editor) enum ArgExpansion {
+    /// A whole-token `%` becomes the current file's path and `#` the
+    /// alternate file's.
+    Paths,
+    /// The argument reaches the command as typed.
+    Verbatim,
 }
 
 /// How a [`TypedCommand`] executes when dispatched from `:`.
