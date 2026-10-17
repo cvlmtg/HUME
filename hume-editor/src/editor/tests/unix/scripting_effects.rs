@@ -1,5 +1,6 @@
 //! Tests for the consolidated `hume_scripting::Effect` log: emission-order
-//! application across effect kinds, and atomic (all-or-nothing) evals.
+//! application across effect kinds, atomic (all-or-nothing) evals, and an
+//! eval's log lines reported ahead of its error.
 
 use super::*;
 use hume_platform::dirs::Dirs;
@@ -266,6 +267,30 @@ fn failed_init_eval_salvages_eager_plugin_effects() {
         )),
         Some(PluginStatus::Loaded),
         "user/efx must be Loaded: load-plugin!'s activation succeeded before the top-level error"
+    );
+}
+
+/// An `init.scm` that logs and then raises: its log line is reported before
+/// its error.
+#[test]
+fn a_failing_init_scms_log_lands_before_its_error() {
+    let fixture = ReloadFixture::new(r#"(log! 'warn "step 1") (error "boom")"#);
+    let mut ed = editor_from("-[a]>b\n");
+    ed.state.dirs = fixture.dirs();
+
+    ed.init_scripting(&mut Default::default());
+
+    let texts: Vec<&str> = ed
+        .state
+        .message_log
+        .entries()
+        .map(|e| e.text.as_str())
+        .collect();
+    let step = texts.iter().position(|t| t.contains("step 1"));
+    let boom = texts.iter().position(|t| t.contains("boom"));
+    assert!(
+        matches!((step, boom), (Some(s), Some(b)) if s < b),
+        "the log line must be reported before the error; log: {texts:?}"
     );
 }
 

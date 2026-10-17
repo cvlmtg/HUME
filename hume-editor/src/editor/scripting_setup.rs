@@ -158,8 +158,9 @@ impl Editor {
     /// activation. The close comes first so a Steel error raised after screen
     /// entry still gets the TUI restored. The flush comes before any error
     /// report, so a body's log lines land ahead of its own error. `init.scm`
-    /// and `runtime/` files run before `self.scripting` is installed, so the
-    /// flush finds nothing for them and init drains their messages itself.
+    /// and `runtime/` files run before `self.scripting` is installed, so they
+    /// come through [`Self::apply_init_result`], which reports their messages
+    /// first.
     pub(in crate::editor) fn finish_script_session(
         &mut self,
         result: Result<Vec<Effect>, hume_scripting::EvalError>,
@@ -234,9 +235,28 @@ impl Editor {
             .as_mut()
             .map(hume_scripting::ScriptingHost::take_pending_messages)
             .unwrap_or_default();
+        self.report_script_messages(msgs);
+    }
+
+    /// Report each drained `(log! …)` message at its own severity.
+    fn report_script_messages(&mut self, msgs: Vec<(hume_scripting::LogLevel, String)>) {
         for (level, text) in msgs {
             self.report(log_level_to_severity(level), text);
         }
+    }
+
+    /// [`Self::apply_script_result`] for an init-mode eval of `host`, which
+    /// is not yet installed in `self.scripting`, so the funnel's own flush
+    /// cannot reach it. Its queued messages are reported first, so an eval's
+    /// log lines land ahead of its own error.
+    fn apply_init_result(
+        &mut self,
+        host: &mut hume_scripting::ScriptingHost,
+        result: Result<Vec<Effect>, hume_scripting::EvalError>,
+        err_prefix: &str,
+    ) {
+        self.report_script_messages(host.take_pending_messages());
+        self.apply_script_result(result, err_prefix);
     }
 
     // ── Event queueing ───────────────────────────────────────────────────────
@@ -800,7 +820,7 @@ impl Editor {
                     Some(name) => format!("{}: ", name.to_string_lossy()),
                     None => format!("{}: ", path.display()),
                 };
-                self.apply_script_result(result, &err_prefix);
+                self.apply_init_result(&mut host, result, &err_prefix);
             }
         }
         crate::editor::settings::ops::apply_pending_theme(&mut self.state, &mut self.view);
@@ -809,10 +829,6 @@ impl Editor {
         // already applied above, each right after its own eval, so
         // `self.state.config.languages` is fully populated by this point.
         let lang_activations = host.activation_languages();
-        // Flush any `(log! …)` messages produced during init.scm evaluation.
-        for (level, text) in host.take_pending_messages() {
-            self.report(log_level_to_severity(level), text);
-        }
         self.scripting = Some(host);
         // Every language is registered by now, so the startup buffer queued
         // by `Editor::open` announces `on-language-set` before
@@ -970,7 +986,7 @@ impl Editor {
             );
             host.eval_runtime(&path, init_budget, &mut ih, builtin_names)
         };
-        self.apply_script_result(result, &format!("runtime/{rel_path}: "));
+        self.apply_init_result(host, result, &format!("runtime/{rel_path}: "));
     }
 }
 
