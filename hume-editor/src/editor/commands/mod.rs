@@ -18,8 +18,8 @@ pub(in crate::editor::commands) const FALLBACK_THEME_LABEL: &str = "fallback (bu
 
 use hume_editing::selection::SelectionSet;
 use hume_editing::tab_style::TabStyle;
-use hume_engine::display_lines::DisplayLineMap;
 use hume_engine::display_lines::line_store::FormatKey;
+use hume_engine::display_lines::{DisplayColTarget, DisplayLineMap};
 use hume_engine::pane::{Pane, Viewport};
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 
@@ -226,6 +226,20 @@ pub(super) fn line_end_for(state: &EditorState, pid: PaneId, buffer: BufferId) -
     match state.input.insert_session() {
         Some(session) if session.owned_by(pid, buffer) => LineEnd::LineBreak,
         _ => LineEnd::LastCluster,
+    }
+}
+
+/// How a sticky column resolves on the line a vertical move or a scroll
+/// carries a cursor to in `pid` viewing `buffer`: [`line_end_for`]'s landing
+/// as a display-column policy. Every sticky-column landing reads it here.
+pub(super) fn sticky_landing(
+    state: &EditorState,
+    pid: PaneId,
+    buffer: BufferId,
+) -> DisplayColTarget {
+    match line_end_for(state, pid, buffer) {
+        LineEnd::LastCluster => DisplayColTarget::NearestContent,
+        LineEnd::LineBreak => DisplayColTarget::NearestInsertionPoint,
     }
 }
 

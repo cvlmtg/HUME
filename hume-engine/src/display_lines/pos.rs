@@ -69,8 +69,8 @@ impl BlockBreakdown {
 /// [`DisplayLineMap::char_at`](super::DisplayLineMap::char_at).
 ///
 /// The variants are different questions, not different implementations:
-/// a click and a sticky-column vertical move optimise different things, and
-/// collapsing them regresses one or the other.
+/// a click, a sticky-column move, and one in Insert mode optimise different
+/// things, and collapsing any two regresses one of them.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum DisplayColTarget {
     /// The cell that *contains* this column: what a mouse click asks. A

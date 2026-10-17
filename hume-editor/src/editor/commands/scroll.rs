@@ -1,11 +1,11 @@
 use crate::editor::registry::Count;
-use hume_engine::display_lines::{DisplayColTarget, carry};
+use hume_engine::display_lines::carry;
 use hume_engine::pipeline::{EngineView, PaneId};
 use hume_ops::MotionMode;
 
 use super::super::EditorState;
 use super::super::doc_ops;
-use super::{CommandPane, pane_display_lines, viewport};
+use super::{CommandPane, pane_display_lines, sticky_landing, viewport};
 use crate::editor::error::CommandError;
 use hume_editing::selection::Selection;
 
@@ -39,6 +39,7 @@ pub(in crate::editor) fn scroll_view(
     mode: MotionMode,
 ) {
     let buf_id = view.panes[pid].buffer_id();
+    let landing = sticky_landing(state, pid, buf_id);
     let key = state.format_key(&view.panes[pid]);
     let scroll_margin = state.settings.scroll_margin;
     let (mut dlm, viewport) =
@@ -72,7 +73,7 @@ pub(in crate::editor) fn scroll_view(
                     // Parked behind a virtual block or at a document edge.
                     return sel.selection();
                 };
-                let new_head = dlm.char_at(landed, target_col, DisplayColTarget::NearestContent);
+                let new_head = dlm.char_at(landed, target_col, landing);
                 let anchor = if mode == MotionMode::Extend {
                     sel.anchor()
                 } else {

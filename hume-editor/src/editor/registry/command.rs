@@ -292,21 +292,23 @@ pub(in crate::editor) type EditFn = fn(EditState) -> Edited;
 
 /// Body shape for `Motion`/`Selection`'s `fun` field.
 ///
-/// Every native motion/selection command takes `(EditState, usize,
-/// MotionMode)`, except the word family (`w`/`W`/`b`/`B`, `mm`/`MM`,
-/// `miw`/`maw`), which additionally needs this buffer's configured
+/// Most native motion/selection commands take `(EditState, usize,
+/// MotionMode)`. The word family (`w`/`W`/`b`/`B`, `mm`/`MM`,
+/// `miw`/`maw`) additionally needs this buffer's configured
 /// `word-chars` and effective `word-selects-whitespace`, resolved from
 /// settings the same way `tab_width`/`TabStyle` are for `align_selections`/
 /// `insert_tab`. Rather than widening every command's signature for the large
-/// majority of registrations that would ignore the extra data, only the word
+/// majority of registrations that would ignore the extra data, the word
 /// family (the four `w`/`W`/`b`/`B` motions and six word-tagged selections)
-/// gets a second body shape here in the registry. The four motions
+/// gets a body shape of its own, `Word`. The four motions
 /// specifically stay `Motion` rather than joining `select-word-nearest-on-line`
 /// as an `EditorCmd` (which also resolves settings, via a `DisplayLineMap`) because
 /// `NativeCommand::meta` only ever sets `CmdMeta::is_motion` true for the
 /// `Motion` variant, and Move mode's jump-list/dot-repeat handling depends on
-/// that flag. `goto-line-end` has a third shape: it lands on the line break
-/// in a pane that is inserting, and the pipeline resolves which.
+/// that flag. `goto-line-end` has a shape of its own, `LineEnd`: it lands on
+/// the line break in a pane that is inserting, and the pipeline resolves
+/// which through `line_end_for`. `Structural` covers the tree-sitter object
+/// commands.
 #[derive(Clone, Copy)]
 pub(in crate::editor) enum SelectionBody {
     Plain(fn(EditState, usize, MotionMode) -> EditState),

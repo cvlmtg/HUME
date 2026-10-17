@@ -145,7 +145,7 @@ impl<'a> DisplayLineMap<'a> {
             .saturating_sub(b.before)
             .min(b.content.saturating_sub(1));
         // Only up to the target column: no cell further right can be the one
-        // this column resolves to, under either policy.
+        // this column resolves to, under any policy.
         let idx = self.ensure_formatted(pos.line, FormatBound::ToDisplayCol(target_display_col));
         self.resolve_in_display_line(idx, sub, target_display_col, target)
     }
@@ -194,7 +194,8 @@ impl<'a> DisplayLineMap<'a> {
                 // `Empty` (EOL sentinel) has a buffer position but isn't
                 // content, so `NearestContent` takes it only when nothing
                 // else can answer (an empty line), gated on `admit_eol`;
-                // `NearestInsertionPoint` weighs it below. `Virtual` (inline-insert)
+                // `NearestInsertionPoint` weighs it against the nearest
+                // content cell, ties going to content. `Virtual` (inline-insert)
                 // carries the cluster of the real grapheme it precedes, so
                 // minimising distance against it elsewhere on the display
                 // line would land on a character that cell isn't at. It's excluded outright,
@@ -240,23 +241,16 @@ impl<'a> DisplayLineMap<'a> {
                 if target == DisplayColTarget::NearestInsertionPoint
                     && let Some(eol) = graphemes
                         .iter()
+                        .rev()
                         .find(|g| matches!(g.content, CellContent::Empty) && g.pos.is_some())
                 {
-                    // The line break stands where the text ends: an inline
-                    // insert drawn before the sentinel (a trailing inlay
-                    // hint) moves the sentinel's cell, not that point.
-                    let text_end = graphemes
-                        .iter()
-                        .filter(|g| eligible(g, false))
-                        .last()
-                        .map_or(eol.display_col, |g| {
-                            g.display_col.advance_saturating(g.width as u32)
-                        });
                     let landing = match nearest(false) {
-                        Some(g) if distance(g.display_col) <= distance(text_end) => g,
+                        Some(g) if distance(g.display_col) <= distance(eol.display_col) => g,
                         _ => eol,
                     };
-                    return landing.pos.unwrap_or(line_start);
+                    return landing
+                        .pos
+                        .expect("a content display line's cells carry a position");
                 }
                 nearest(false)
                     .or_else(|| nearest(true))

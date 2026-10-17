@@ -231,9 +231,10 @@ fn char_at_nearest_insertion_point_keeps_a_column_inside_the_text() {
 }
 
 #[test]
-fn char_at_nearest_insertion_point_measures_the_line_end_before_a_trailing_inline_insert() {
-    // "hi\n" plus a trailing insert "ZZZ" pushes the sentinel to column 5.
-    // Column 2 is where the text ends, so it is the '\n', not 'i'.
+fn char_at_nearest_insertion_point_lands_on_the_line_break_under_a_trailing_inline_insert() {
+    // "hi\n" plus a trailing insert "ZZZ": the sentinel sits at column 2,
+    // where the text ends, and the insert is drawn after it at 3..6. A
+    // column on the insert resolves to the '\n', not 'i'.
     let rope = Rope::from_str("hi\n");
     let (providers, _calls) = with_counting_insert(ContentLine::new(0), 2, "ZZZ");
     let mut s = PaneLineStore::new();
@@ -242,7 +243,7 @@ fn char_at_nearest_insertion_point_measures_the_line_end_before_a_trailing_inlin
     assert_eq!(
         dlm.char_at(
             DisplayLinePos::new(ContentLine::new(0), 0),
-            dc(2),
+            dc(4),
             DisplayColTarget::NearestInsertionPoint
         ),
         at(&rope, 2)

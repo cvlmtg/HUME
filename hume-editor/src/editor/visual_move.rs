@@ -17,12 +17,12 @@ use hume_engine::pipeline::{EngineView, PaneId};
 use hume_ops::text_object::{
     apply_nearest_word_result, cmd_select_word_nearest_on_line, nearest_word_on_line,
 };
-use hume_ops::{LineEnd, MotionMode, WordCtx};
+use hume_ops::{MotionMode, WordCtx};
 use hume_rope::cluster::ClusterStart;
 use hume_rope::column::{BufferLineCol, DisplayLineCol};
 
 use super::commands::{
-    CommandPane, apply_pane_motion, effective_wrap_mode, line_end_for, pane_display_lines,
+    CommandPane, apply_pane_motion, effective_wrap_mode, pane_display_lines, sticky_landing,
     word_chars_owned,
 };
 use super::{EditorState, doc_ops};
@@ -151,10 +151,7 @@ pub(super) fn apply_visual_vertical(
         effective_wrap_mode(state.buffers.get(buf_id), &state.settings, &view.panes[pid])
             .is_wrapping();
     let treat_as_line = is_buffer_line || !wrapping;
-    let landing = match line_end_for(state, pid, buf_id) {
-        LineEnd::LastCluster => DisplayColTarget::NearestContent,
-        LineEnd::LineBreak => DisplayColTarget::NearestInsertionPoint,
-    };
+    let landing = sticky_landing(state, pid, buf_id);
     let key = state.format_key(&view.panes[pid]);
     let target_display_cols = &mut state.visual_move_target_display_cols;
     target_display_cols.clear();

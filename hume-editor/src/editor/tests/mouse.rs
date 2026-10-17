@@ -248,6 +248,19 @@ fn scroll_down_moves_the_cursor_even_when_the_document_already_fits_on_screen() 
     );
 }
 
+/// A wheel notch in Insert mode keeps the cursor where appended text goes,
+/// as `↑`/`↓` do: on a shorter line's line break, not before its last char.
+#[test]
+fn scroll_in_insert_mode_carries_a_line_end_cursor_to_the_line_break() {
+    let mut ed = editor_from("-[a]>bcdef\nab\nc\n");
+    ed.state.settings.mouse_scroll_lines = 1;
+    ed.handle_key(key('A'));
+
+    ed.handle_input(mouse_wheel(true));
+
+    assert_eq!(state(&ed), "abcdef\nab-[\n]>c\n");
+}
+
 /// A wheel notch that provably cannot move anything must still not touch
 /// selections it has no reason to touch: `apply_visual_vertical` must not
 /// rebuild the selection set with `MotionMode::Move` when `head` itself
