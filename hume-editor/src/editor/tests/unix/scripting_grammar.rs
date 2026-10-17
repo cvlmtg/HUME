@@ -808,7 +808,7 @@ fn grammar_registration_survives_plum_absence() {
         .map(|e| e.text.clone())
         .collect();
     assert!(
-        warns.contains(&"Unknown command: plum-install-grammar".to_string()),
+        warns.contains(&"unknown command: plum-install-grammar".to_string()),
         "core:plum commands must be unavailable when it isn't declared; got {warns:?}"
     );
 }

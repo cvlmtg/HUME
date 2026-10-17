@@ -112,7 +112,7 @@ fn plum_alone_does_not_register_installed_servers() {
     type_cmd(&mut ed, ":lsp-install rust");
     let log = ed.state.message_log.format_for_display();
     assert!(
-        log.contains("Unknown command: lsp-install"),
+        log.contains("unknown command: lsp-install"),
         "core:plum alone must not expose :lsp-install: {log}"
     );
 }
@@ -1279,7 +1279,7 @@ fn lsp_client_alone_exposes_no_install_commands_and_registers_nothing() {
         type_cmd(&mut ed, cmd);
         let log = ed.state.message_log.format_for_display();
         assert!(
-            log.contains(&format!("Unknown command: {}", &cmd[1..])),
+            log.contains(&format!("unknown command: {}", &cmd[1..])),
             "core:lsp alone must not expose {cmd}: {log}"
         );
     }
@@ -1303,7 +1303,7 @@ fn plum_alone_does_not_expose_lsp_status_stop_restart() {
         type_cmd(&mut ed, cmd);
         let log = ed.state.message_log.format_for_display();
         assert!(
-            log.contains(&format!("Unknown command: {}", &cmd[1..])),
+            log.contains(&format!("unknown command: {}", &cmd[1..])),
             "core:plum alone must not expose {cmd}: {log}"
         );
     }

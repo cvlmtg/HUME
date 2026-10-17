@@ -175,7 +175,7 @@ fn colon_unknown_command_with_percent_reports_unknown_command() {
     type_cmd(&mut ed, ":nosuch %");
     let msg = status(&ed);
     assert!(
-        msg.contains("Unknown command: nosuch"),
+        msg.contains("unknown command: nosuch"),
         "unexpected status: {msg:?}"
     );
 }

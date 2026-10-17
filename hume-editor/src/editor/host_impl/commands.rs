@@ -1,6 +1,7 @@
 //! `EditorHostImpl`'s command registry queries, synchronous native
 //! dispatch, and Steel command registration.
 
+use crate::editor::dispatch::unknown_command_text;
 use crate::editor::registry::{
     ArgExpansion, MappableCommand, SteelCommand, TypedBody, TypedCommand,
 };
@@ -164,7 +165,7 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
             .registry
             .get_mappable(name)
             .map(MappableCommand::is_native)
-            .ok_or_else(|| format!("unknown command: {name}"))
+            .ok_or_else(|| unknown_command_text(name))
     }
 
     fn run_command_sync(
@@ -179,7 +180,7 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
         }: hume_scripting::host::NativeCall,
     ) -> Result<bool, String> {
         let Some(cmd) = self.state.config.registry.get_mappable(name).cloned() else {
-            return Err(format!("unknown command: {name}"));
+            return Err(unknown_command_text(name));
         };
         let MappableCommand::Native(cmd) = cmd else {
             return Err(format!(

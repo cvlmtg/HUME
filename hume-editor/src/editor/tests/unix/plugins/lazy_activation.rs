@@ -292,6 +292,32 @@ fn a_declared_command_the_body_never_defined_warns() {
     assert_eq!(e.severity(), crate::editor::Severity::Warning);
 }
 
+/// A lazy plugin body that logs and then raises: its log line is reported
+/// before its activation error, during the same dispatch.
+#[test]
+fn a_failing_activations_log_lands_before_its_error() {
+    let (mut ed, _dir) = setup_lazy_editor(
+        r#"(declare-plugin! "user/tp" #:typed-commands '("bar"))"#,
+        r#"(log! 'warn "step 1") (error "boom")"#,
+    );
+
+    ed.execute_typed("bar", None)
+        .expect_err("activation raises before defining `:bar`");
+
+    let texts: Vec<&str> = ed
+        .state
+        .message_log
+        .entries()
+        .map(|e| e.text.as_str())
+        .collect();
+    let step = texts.iter().position(|t| t.contains("step 1"));
+    let boom = texts.iter().position(|t| t.contains("boom"));
+    assert!(
+        matches!((step, boom), (Some(s), Some(b)) if s < b),
+        "the log line must be reported before the error; log: {texts:?}"
+    );
+}
+
 /// A lazy command dispatched with no scripting host fails the way an
 /// activated Steel command does.
 #[test]

@@ -3,6 +3,7 @@
 use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
 
+use super::super::dispatch::unknown_command_text;
 use super::super::error::CommandError;
 use super::super::minibuf::history::{HistoryDir, HistoryKind};
 use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent};
@@ -220,7 +221,7 @@ fn run_command_line(ed: &mut Editor, input: &str) -> Result<(), CommandError> {
     // `:` resolves only typed commands: an editor (key-bindable) command's
     // name is unreachable here; see `registry/mod.rs`'s module doc.
     let Some(tc) = ed.state.config.registry.get_typed(cmd) else {
-        return Err(ed.unknown_command(cmd, format!("Unknown command: {cmd}")));
+        return Err(ed.unknown_command(cmd, unknown_command_text(cmd)));
     };
 
     let expanded = match arg {

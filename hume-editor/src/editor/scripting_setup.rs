@@ -147,30 +147,48 @@ impl Editor {
         self.detect_pending_languages();
     }
 
-    /// Shared `Ok`/`Err` handling for every scripting eval that returns
-    /// `Result<Vec<Effect>, EvalError>`: apply the effects either way (an
-    /// `EvalError` still carries whatever committed before the error), and
-    /// on `Err`, report `{err_prefix}{message}`. `err_prefix` distinguishes
-    /// which eval failed (a hook, a queued call, `init.scm`, a `runtime/`
-    /// file) in the reported message; pass `""` for a caller with nothing to
-    /// prefix.
+    /// End a Steel session that returned `Result<Vec<Effect>, EvalError>`:
+    /// close the `#:inline-output` bracket if a builtin opened it, report the
+    /// session's queued `log!` messages, and apply its effects either way (an
+    /// `EvalError` still carries whatever committed before the error).
+    /// Returns the error's message unreported.
+    ///
+    /// Every such Steel entry point ends here: a command body, a hook, a
+    /// queued-call batch, `init.scm`, a `runtime/` file, and a plugin
+    /// activation. The close comes first so a Steel error raised after screen
+    /// entry still gets the TUI restored. The flush comes before any error
+    /// report, so a body's log lines land ahead of its own error. `init.scm`
+    /// and `runtime/` files run before `self.scripting` is installed, so the
+    /// flush finds nothing for them and init drains their messages itself.
+    pub(in crate::editor) fn finish_script_session(
+        &mut self,
+        result: Result<Vec<Effect>, hume_scripting::EvalError>,
+    ) -> Result<(), String> {
+        self.close_inline_output_bracket();
+        self.flush_script_messages();
+        match result {
+            Ok(effects) => {
+                self.apply_script_effects(effects);
+                Ok(())
+            }
+            Err(e) => {
+                self.apply_script_effects(e.effects);
+                Err(e.message)
+            }
+        }
+    }
+
+    /// [`Self::finish_script_session`], reporting an error as
+    /// `{err_prefix}{message}`. `err_prefix` distinguishes which eval failed
+    /// (a hook, a queued call, `init.scm`, a `runtime/` file) in the reported
+    /// message; pass `""` for a caller with nothing to prefix.
     pub(in crate::editor) fn apply_script_result(
         &mut self,
         result: Result<Vec<Effect>, hume_scripting::EvalError>,
         err_prefix: &str,
     ) {
-        // Every Steel entry point but `call_steel_command_body` (which
-        // closes its own bracket and hands its error back) returns through
-        // here, the one funnel that closes the `#:inline-output` bracket,
-        // for a hook, a queued-call batch, `init.scm`, and a runtime plugin
-        // activation alike, so no caller has to remember to.
-        self.close_inline_output_bracket();
-        match result {
-            Ok(effects) => self.apply_script_effects(effects),
-            Err(e) => {
-                self.apply_script_effects(e.effects);
-                self.report(Severity::Error, format!("{err_prefix}{}", e.message));
-            }
+        if let Err(message) = self.finish_script_session(result) {
+            self.report(Severity::Error, format!("{err_prefix}{message}"));
         }
     }
 
@@ -645,10 +663,8 @@ impl Editor {
             let (host_scr, mut impl_host) = self.scripting_with_host().expect("checked above");
             host_scr.fire_hook(name, key.as_deref(), &args, &mut impl_host)
         };
-        self.flush_script_messages();
         // A hook body's own `call!` to an `#:inline-output` command is
-        // closed here too; see `apply_script_result`'s own doc for the
-        // full list of callers this funnel covers.
+        // closed here too.
         self.apply_script_result(result, "hook error: ");
     }
 
@@ -661,7 +677,6 @@ impl Editor {
             return;
         };
         let result = host_scr.run_steel_calls(calls, &mut impl_host);
-        self.flush_script_messages();
         if result.is_err() {
             // A queued completion invocation this batch was supposed to
             // answer for (via `completion-emit!`) never will now; see

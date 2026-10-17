@@ -388,7 +388,6 @@ impl Editor {
             let (host_scr, mut impl_host) = self.scripting_with_host().expect("checked above");
             host_scr.fire_held_hook(handlers, &args, holds, &mut impl_host)
         };
-        self.flush_script_messages();
         self.apply_script_result(fired, "hook error: ");
         self.commit_ready_writes();
     }

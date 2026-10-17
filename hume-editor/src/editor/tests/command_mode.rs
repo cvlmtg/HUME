@@ -81,7 +81,7 @@ fn a_failing_typed_commands_log_lands_before_its_error() {
     let step = texts.iter().position(|t| t.contains("step 1"));
     let boom = texts.iter().position(|t| t.contains("boom"));
     assert!(
-        step.is_some() && step < boom,
+        matches!((step, boom), (Some(s), Some(b)) if s < b),
         "the log line must be reported before the error; log: {texts:?}"
     );
 }
@@ -315,7 +315,7 @@ fn colon_unknown_sets_error() {
     ed.handle_key(key_enter());
     assert_eq!(
         ed.state.status_msg.as_deref(),
-        Some("Unknown command: nonsense")
+        Some("unknown command: nonsense")
     );
     assert!(!ed.state.should_quit);
 }
@@ -328,7 +328,7 @@ fn execute_typed_unknown_command_is_the_colon_warning() {
     let err = ed
         .execute_typed("nosuch", None)
         .expect_err("an unknown command fails");
-    assert_eq!(err.message(), "Unknown command: nosuch");
+    assert_eq!(err.message(), "unknown command: nosuch");
     assert_eq!(err.severity(), Severity::Warning);
 }
 
@@ -1207,7 +1207,7 @@ fn consecutive_duplicate_not_recorded() {
 fn failing_command_is_still_recorded() {
     // Unknown commands are recorded so the user can Up, fix the typo, and re-submit.
     let mut ed = editor_from("-[h]>ello\n");
-    submit(&mut ed, "qit"); // typo: reports "Unknown command: qit"
+    submit(&mut ed, "qit"); // typo: reports "unknown command: qit"
     assert_eq!(open_and_up(&mut ed), "qit");
 }
 
@@ -1316,7 +1316,7 @@ fn colon_enter_empty_silently_dismisses() {
     assert!(ed.state.minibuf().is_none(), "minibuf must be closed");
     assert!(
         ed.state.status_msg.is_none(),
-        "must not show 'Unknown command', got: {:?}",
+        "must not show 'unknown command', got: {:?}",
         ed.state.status_msg
     );
 }

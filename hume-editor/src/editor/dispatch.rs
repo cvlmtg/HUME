@@ -147,10 +147,11 @@ impl Editor {
         if self.scripting.is_none() {
             return Err(scripting_unavailable(name));
         }
-        if self.activate_lazy_plugin(plugin, name) {
+        self.activate_lazy_plugin(plugin, name);
+        if self.state.config.registry.contains(name) {
             Ok(())
         } else {
-            Err(self.unknown_command(name, format!("unknown command: {name}")))
+            Err(self.unknown_command(name, unknown_command_text(name)))
         }
     }
 
@@ -324,9 +325,8 @@ impl Editor {
     /// Invoke the Steel command `name`'s `proc` with pre-marshalled positional
     /// args, bracketing the call for `#:inline-output` commands.
     ///
-    /// The Steel invocation, alt-screen bracket, and effect application are
-    /// one funnel. A Steel error comes back unreported, after its effects
-    /// are applied.
+    /// The session ends through [`Self::finish_script_session`], so a Steel
+    /// error comes back unreported, after its log lines and effects.
     fn call_steel_command_body(
         &mut self,
         name: &str,
@@ -363,23 +363,8 @@ impl Editor {
             let (scripting, mut impl_host) = self.scripting_with_host().expect("checked above");
             scripting.call_steel_cmd(proc, effective_args, &mut impl_host)
         };
-
-        // Close the bracket only if a builtin actually opened it. This runs
-        // before `match result` below so a Steel error raised after screen
-        // entry still gets the TUI restored first.
-        self.close_inline_output_bracket();
-        self.flush_script_messages();
-
-        let effects = match result {
-            Ok(effects) => effects,
-            Err(e) => {
-                self.apply_script_effects(e.effects);
-                return Err(CommandError::new(e.message));
-            }
-        };
-
-        self.apply_script_effects(effects);
-        Ok(())
+        self.finish_script_session(result)
+            .map_err(CommandError::new)
     }
 
     /// Close the `#:inline-output` bracket if a builtin actually opened it,
@@ -482,7 +467,7 @@ impl Editor {
                 }
             },
             None => {
-                self.report_unknown_command(name, format!("unknown command: {name}"));
+                self.report_unknown_command(name, unknown_command_text(name));
                 None
             }
         }
@@ -502,6 +487,12 @@ fn command_lost(name: &str) -> CommandError {
 /// scripting host to run it.
 fn scripting_unavailable(name: &str) -> CommandError {
     CommandError::new(format!("{name}: scripting is not available"))
+}
+
+/// The message for a name that resolves to no command, from `:`, a key
+/// binding, or `call!` alike.
+pub(in crate::editor) fn unknown_command_text(name: &str) -> String {
+    format!("unknown command: {name}")
 }
 
 /// Shared arity guard + argument marshalling behind

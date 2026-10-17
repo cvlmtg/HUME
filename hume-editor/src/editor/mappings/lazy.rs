@@ -4,8 +4,8 @@ use hume_scripting::PluginStatus;
 impl Editor {
     // ── Command execution ─────────────────────────────────────────────────────
 
-    /// Shared core: activate `plugin` inline, apply its queued side effects (or
-    /// report the error), leaving messages unflushed.
+    /// Shared core: activate `plugin` inline, report its messages, and apply
+    /// its queued side effects (or report the error).
     ///
     /// Applying effects here, rather than leaving them for some later drain,
     /// is what lets a lazily-activated plugin's own `register-lsp-server!` (or
@@ -31,9 +31,9 @@ impl Editor {
         self.apply_script_result(result, "");
     }
 
-    /// Activate `plugin`, emit a `Severity::Trace` message if it transitioned
-    /// `Declared → Loaded`, and leave messages unflushed.  `activation` is the
-    /// human-readable activation description for the log line.
+    /// Activate `plugin`, then emit a `Severity::Trace` message if it
+    /// transitioned `Declared → Loaded`. `activation` is the human-readable
+    /// activation description for the log line.
     pub(in crate::editor::mappings::lazy) fn activate_and_trace(
         &mut self,
         plugin: &hume_scripting::attribution::EntryId,
@@ -58,25 +58,16 @@ impl Editor {
         }
     }
 
-    /// Activate the plugin owning a lazy stub, register its commands, and
-    /// check whether `name` (in any case) is now registered.
-    ///
-    /// Returns `true` when the plugin body defined `name` and dispatch may
-    /// proceed. Returns `false` when activation failed or the body never
-    /// defined `name`: either way, the end of activation dropped the
-    /// plugin's remaining stubs, so `name` is absent from the registry and
-    /// the caller reports "unknown command".
+    /// Activate the plugin owning the lazy stub for command `name` and
+    /// register its commands. The end of activation drops the plugin's
+    /// remaining stubs, so `name` stays registered only when the body
+    /// defined it.
     pub(in crate::editor) fn activate_lazy_plugin(
         &mut self,
         plugin: &hume_scripting::attribution::EntryId,
         name: &str,
-    ) -> bool {
-        if self.scripting.is_none() {
-            return false;
-        }
+    ) {
         self.activate_and_trace(plugin, &format!("by command '{name}'"));
-        self.flush_script_messages();
-        self.state.config.registry.contains(name)
     }
 
     /// Activate every still-`Declared` lazy plugin registered for the event
@@ -125,6 +116,5 @@ impl Editor {
         for plugin in &pending {
             self.activate_and_trace(plugin, activation);
         }
-        self.flush_script_messages();
     }
 }
