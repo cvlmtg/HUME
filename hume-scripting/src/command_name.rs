@@ -54,9 +54,23 @@ pub fn check_typed(name: &str) -> Result<(), String> {
 /// `Ok` when an editor command may be registered under `name`; otherwise
 /// the reason it can't, naming `name`.
 pub fn check_mappable(name: &str) -> Result<(), String> {
-    if name.bytes().any(|b| b.is_ascii_uppercase()) {
+    check_quotable(name)?;
+    if is_folded(name) {
+        Ok(())
+    } else {
         Err(format!(
             "'{name}' is not a valid editor command name: it must be lowercase"
+        ))
+    }
+}
+
+/// `Ok` when `name` contains neither `"` nor `\`, so it survives being
+/// quoted into Steel source; otherwise the reason it doesn't, naming `name`.
+/// [`check_typed`]'s grammar already excludes both.
+pub(crate) fn check_quotable(name: &str) -> Result<(), String> {
+    if name.contains(['"', '\\']) {
+        Err(format!(
+            "command name '{name}' must not contain '\"' or '\\'"
         ))
     } else {
         Ok(())
@@ -66,11 +80,15 @@ pub fn check_mappable(name: &str) -> Result<(), String> {
 /// The form `name` is stored and looked up under. Borrows `name` when it is
 /// already folded, as every editor command name is.
 pub fn fold(name: &str) -> Cow<'_, str> {
-    if name.bytes().any(|b| b.is_ascii_uppercase()) {
-        Cow::Owned(name.to_ascii_lowercase())
-    } else {
+    if is_folded(name) {
         Cow::Borrowed(name)
+    } else {
+        Cow::Owned(name.to_ascii_lowercase())
     }
+}
+
+fn is_folded(name: &str) -> bool {
+    !name.bytes().any(|b| b.is_ascii_uppercase())
 }
 
 /// A set of command names that answers membership in any case.

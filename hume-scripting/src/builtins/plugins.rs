@@ -295,18 +295,16 @@ pub(crate) fn declare_plugin(
     // name the `:` line can't read back whole could never run. This check is
     // independent of the plugin's on-disk path, so it runs regardless of
     // whether the plugin turns out to be absent.
-    for cmd in &cmd_list {
-        if cmd.contains('"') || cmd.contains('\\') {
-            steel::stop!(Generic =>
-                "declare-plugin!: command name '{}' must not contain '\"' or '\\'", cmd);
-        }
-        crate::command_name::check_mappable(cmd)
-            .map_err(|reason| generic_err(format!("declare-plugin!: {reason}")))?;
-    }
-    for cmd in &typed_cmd_list {
-        crate::command_name::check_typed(cmd)
-            .map_err(|reason| generic_err(format!("declare-plugin!: {reason}")))?;
-    }
+    cmd_list
+        .iter()
+        .map(|cmd| crate::command_name::check_mappable(cmd))
+        .chain(
+            typed_cmd_list
+                .iter()
+                .map(|cmd| crate::command_name::check_typed(cmd)),
+        )
+        .collect::<Result<(), _>>()
+        .map_err(|reason| generic_err(format!("declare-plugin!: {reason}")))?;
 
     // Hard error: nothing declared at all. Checked against the raw (unfiltered)
     // lists, before path resolution: collision filtering only happens once the

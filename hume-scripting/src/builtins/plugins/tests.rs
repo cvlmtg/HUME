@@ -305,81 +305,41 @@ fn declare_plugin_rejected_events_records_nothing() {
 
 // ── Command-name character validation ─────────────────────────────────────
 
-/// `declare-plugin!` hard-errors on a `#:commands` entry containing `"` or
-/// `\`, the same rule `define-command!` enforces.
+/// `declare-plugin!` hard-errors on a malformed name, under the rules
+/// `define-command!`/`define-typed-command!` enforce, before looking for the
+/// plugin on disk (`user/tp` is absent here).
 #[test]
-fn declare_plugin_command_name_with_quote_errors() {
+fn declare_plugin_malformed_command_name_errors() {
     use crate::ScriptingHost;
     use crate::host::EditorHost;
     use crate::null_host::CommandStoreHost;
-    let mut host = ScriptingHost::new(&Dirs::none());
-    let mut editor_host = CommandStoreHost::default();
-    let result = host.eval_source(
-        r#"(declare-plugin! "user/tp" #:commands '("bad\"name"))"#,
-        &mut editor_host,
-    );
-    let err = result.expect_err("quoted command name must be rejected");
-    assert!(
-        err.contains("must not contain"),
-        "error must name the invalid character rule; got: {err}"
-    );
-    assert!(
-        editor_host
-            .commands()
-            .lazy_command_owner("bad\"name")
-            .is_none(),
-        "no activation entry may be recorded for a malformed name"
-    );
-}
-
-/// `declare-plugin!` hard-errors on a `#:typed-commands` entry the `:` line
-/// cannot run, before looking for the plugin on disk (`user/tp` is absent
-/// here).
-#[test]
-fn declare_plugin_typed_command_name_unreachable_from_colon_errors() {
-    use crate::ScriptingHost;
-    use crate::host::EditorHost;
-    use crate::null_host::CommandStoreHost;
-    let mut host = ScriptingHost::new(&Dirs::none());
-    let mut editor_host = CommandStoreHost::default();
-    let result = host.eval_source(
-        r#"(declare-plugin! "user/tp" #:typed-commands '("b1"))"#,
-        &mut editor_host,
-    );
-    let err = result.expect_err("a reserved typed command name must be rejected");
-    assert!(
-        err.contains("'b1'") && err.contains("typed command name"),
-        "error must name the typed command name rule; got: {err}"
-    );
-    assert!(
-        editor_host.commands().lazy_command_owner("b1").is_none(),
-        "no activation entry may be recorded for a malformed name"
-    );
-}
-
-/// `declare-plugin!` hard-errors on a `#:commands` entry that is not
-/// lowercase, before looking for the plugin on disk (`user/tp` is absent
-/// here).
-#[test]
-fn declare_plugin_command_name_with_uppercase_errors() {
-    use crate::ScriptingHost;
-    use crate::host::EditorHost;
-    use crate::null_host::CommandStoreHost;
-    let mut host = ScriptingHost::new(&Dirs::none());
-    let mut editor_host = CommandStoreHost::default();
-    let result = host.eval_source(
-        r#"(declare-plugin! "user/tp" #:commands '("Probe"))"#,
-        &mut editor_host,
-    );
-    let err = result.expect_err("an uppercase command name must be rejected");
-    assert!(
-        err.contains("'Probe'") && err.contains("lowercase"),
-        "error must name the lowercase rule; got: {err}"
-    );
-    assert!(
-        editor_host.commands().lazy_command_owner("Probe").is_none(),
-        "no activation entry may be recorded for a malformed name"
-    );
+    for (keyword, literal, name, rule) in [
+        (
+            "#:commands",
+            r#""bad\"name""#,
+            "bad\"name",
+            "must not contain",
+        ),
+        ("#:typed-commands", r#""b1""#, "b1", "typed command name"),
+        ("#:commands", r#""Probe""#, "Probe", "lowercase"),
+    ] {
+        let mut host = ScriptingHost::new(&Dirs::none());
+        let mut editor_host = CommandStoreHost::default();
+        let err = host
+            .eval_source(
+                &format!(r#"(declare-plugin! "user/tp" {keyword} '({literal}))"#),
+                &mut editor_host,
+            )
+            .expect_err("a malformed command name must be rejected");
+        assert!(
+            err.contains(rule),
+            "{name}: error must name the '{rule}' rule; got: {err}"
+        );
+        assert!(
+            editor_host.commands().lazy_command_owner(name).is_none(),
+            "{name}: no activation entry may be recorded for a malformed name"
+        );
+    }
 }
 
 // ── Absent-path plugins attribute nothing ──────────────────────────────────

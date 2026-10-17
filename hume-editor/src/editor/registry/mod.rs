@@ -46,17 +46,6 @@ pub(in crate::editor) use defaults::structural::STRUCTURAL_OBJECTS;
 
 use hume_scripting::command_name::fold;
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-/// `name` folded, reusing `name`'s allocation when it is already folded.
-fn key_of(name: Cow<'static, str>) -> Cow<'static, str> {
-    let folded = match fold(&name) {
-        Cow::Owned(folded) => Some(folded),
-        Cow::Borrowed(_) => None,
-    };
-    folded.map_or(name, Cow::Owned)
-}
-
 /// Registry of all commands: the single namespace for mappable and typed commands.
 ///
 /// Built once via [`CommandRegistry::with_defaults`] and stored on the editor.
@@ -146,16 +135,18 @@ impl CommandRegistry {
     /// wording, so the sites can't drift into subtly different advice for
     /// the same mistake.
     pub(in crate::editor) fn other_kind_hint(&self, name: &str) -> Option<String> {
-        match self.entry(name)? {
-            Command::Mappable(cmd) => Some(format!(
-                "'{}' is an editor command; bind it to a key, or run it with call!, not `:`",
-                cmd.name()
-            )),
-            Command::Typed(cmd) => Some(format!(
-                "'{0}' is a typed command: run it as `:{0}`; it can't be bound to a key",
-                cmd.name
-            )),
-        }
+        let entry = self.entry(name)?;
+        let name = name_of(entry);
+        Some(match entry {
+            Command::Mappable(_) => format!(
+                "'{name}' is an editor command; bind it to a key, or run it with call!, not `:`"
+            ),
+            Command::Typed(_) => {
+                format!(
+                    "'{name}' is a typed command: run it as `:{name}`; it can't be bound to a key"
+                )
+            }
+        })
     }
 
     /// Register a typed command.
@@ -169,10 +160,12 @@ impl CommandRegistry {
         std::iter::once(cmd.name.as_ref())
             .chain(cmd.aliases.iter().copied())
             .try_for_each(hume_scripting::command_name::check_typed)?;
-        let canonical = key_of(cmd.name.clone());
+        let canonical = match fold(&cmd.name) {
+            Cow::Owned(folded) => Cow::Owned(folded),
+            Cow::Borrowed(_) => cmd.name.clone(),
+        };
         for &alias in cmd.aliases {
-            self.alias_map
-                .insert(key_of(Cow::Borrowed(alias)), canonical.clone());
+            self.alias_map.insert(fold(alias), canonical.clone());
         }
         self.commands.insert(canonical, Command::Typed(cmd));
         Ok(())

@@ -391,6 +391,22 @@ fn dummy_typed(
     Ok(())
 }
 
+fn typed_cmd(name: &str, aliases: &'static [&'static str], body: TypedBody) -> TypedCommand {
+    TypedCommand {
+        name: Cow::Owned(name.to_string()),
+        doc: Cow::Borrowed(""),
+        aliases,
+        body,
+        completer: None,
+    }
+}
+
+fn test_plugin() -> hume_scripting::attribution::EntryId {
+    hume_scripting::attribution::EntryId::main(
+        hume_scripting::attribution::PluginId::parse("core:test").expect("a plugin id"),
+    )
+}
+
 #[test]
 fn runtime_register_typed_and_lookup() {
     let mut reg = CommandRegistry::with_defaults();
@@ -426,13 +442,7 @@ fn register_typed_rejects_a_name_or_alias_the_colon_line_cannot_reach() {
         let mut reg = CommandRegistry::with_defaults();
         let before = reg.len();
         let err = reg
-            .register_typed(TypedCommand {
-                name: Cow::Owned(name.to_string()),
-                doc: Cow::Borrowed(""),
-                aliases,
-                body: TypedBody::Native(dummy_typed),
-                completer: None,
-            })
+            .register_typed(typed_cmd(name, aliases, TypedBody::Native(dummy_typed)))
             .expect_err(name);
         assert!(err.contains("'b7'"), "unexpected message: {err}");
         assert_eq!(reg.len(), before, "{name}: nothing may be registered");
@@ -452,9 +462,7 @@ fn register_refuses_an_editor_command_name_that_is_not_lowercase() {
     let err = reg
         .register(MappableCommand::Lazy {
             name: Cow::Borrowed("Probe"),
-            plugin: hume_scripting::attribution::EntryId::main(
-                hume_scripting::attribution::PluginId::parse("core:test").expect("a plugin id"),
-            ),
+            plugin: test_plugin(),
         })
         .expect_err("an uppercase editor command name must be refused");
     assert!(
@@ -468,18 +476,10 @@ fn register_refuses_an_editor_command_name_that_is_not_lowercase() {
 /// registered with.
 #[test]
 fn lookups_ignore_case() {
-    let plugin = hume_scripting::attribution::EntryId::main(
-        hume_scripting::attribution::PluginId::parse("core:test").expect("a plugin id"),
-    );
+    let plugin = test_plugin();
     let mut reg = CommandRegistry::with_defaults();
-    reg.register_typed(TypedCommand {
-        name: Cow::Borrowed("probe"),
-        doc: Cow::Borrowed(""),
-        aliases: &[],
-        body: TypedBody::Lazy(plugin.clone()),
-        completer: None,
-    })
-    .expect("a valid typed command name");
+    reg.register_typed(typed_cmd("probe", &[], TypedBody::Lazy(plugin.clone())))
+        .expect("a valid typed command name");
 
     assert_eq!(
         reg.get_typed("WRITE").map(|tc| tc.name.as_ref()),
@@ -492,14 +492,8 @@ fn lookups_ignore_case() {
     assert_eq!(reg.lazy_owner("PROBE"), Some(&plugin));
 
     let before = reg.len();
-    reg.register_typed(TypedCommand {
-        name: Cow::Borrowed("Probe"),
-        doc: Cow::Borrowed(""),
-        aliases: &[],
-        body: TypedBody::Native(dummy_typed),
-        completer: None,
-    })
-    .expect("a valid typed command name");
+    reg.register_typed(typed_cmd("Probe", &[], TypedBody::Native(dummy_typed)))
+        .expect("a valid typed command name");
 
     assert_eq!(reg.len(), before, "`Probe` replaces the `probe` stub");
     assert_eq!(
@@ -599,18 +593,16 @@ fn unregister_defined_by_removes_only_the_entrys_steel_commands() {
         })
     }
     fn typed(name: &str, proc: TypedProc) -> TypedCommand {
-        TypedCommand {
-            name: Cow::Owned(name.to_string()),
-            doc: Cow::Borrowed(""),
-            aliases: &[],
-            body: TypedBody::Steel(SteelTypedCmdBody {
+        typed_cmd(
+            name,
+            &[],
+            TypedBody::Steel(SteelTypedCmdBody {
                 arity: 0,
                 is_variadic: false,
                 inline_output: false,
                 proc,
             }),
-            completer: None,
-        }
+        )
     }
     let plugin = |repo: &str| PluginId::User {
         user: "u".to_string(),

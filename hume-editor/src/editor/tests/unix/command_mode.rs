@@ -6,7 +6,7 @@ use super::*;
 /// `[messages]` view opened by `:messages` is the canonical pathless case, so the
 /// arg must not be expanded to the alternate's path before `:b` sees it
 /// (that would error with "Alternate buffer has no file name"). Also covers
-/// the `:buffer#` full-alias form.
+/// the `:buffer#` full-alias form and `:B #`.
 #[test]
 fn colon_b_hash_switches_to_alternate() {
     let f1 = tempfile::NamedTempFile::new().unwrap();
@@ -61,25 +61,10 @@ fn colon_b_hash_switches_to_alternate() {
         Some(c1.as_path()),
         ":buffer# must switch to the alternate buffer too",
     );
-}
 
-/// `:B #` is `:buffer #` in another case, so its `#` names the alternate
-/// buffer even when that buffer has no file name.
-#[test]
-fn colon_b_hash_in_another_case_switches_to_pathless_alternate() {
-    let f1 = tempfile::NamedTempFile::new().unwrap();
-    std::fs::write(f1.path(), "file1\n").unwrap();
-    let c1 = std::fs::canonicalize(f1.path()).unwrap();
-
-    let mut ed = editor_from("-[h]>ello\n");
-    ed.execute_typed("e", Some(c1.to_str().unwrap())).unwrap();
-    ed.report(Severity::Warning, "test message".to_string());
-    submit(&mut ed, "messages");
-    submit(&mut ed, "b #");
-    assert_eq!(ed.doc().path(), Some(c1.as_path()));
-
+    // `:B #` is the same command in another case, so its `#` names the
+    // pathless alternate too.
     submit(&mut ed, "B #");
-
     assert_eq!(
         ed.doc().display_name(),
         "[messages]",

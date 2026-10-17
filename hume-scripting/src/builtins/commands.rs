@@ -33,10 +33,8 @@ use crate::types::{SteelCmdBody, SteelCmdDef, SteelTypedCmdBody, SteelTypedCmdDe
 /// typed command share one Steel-side proc namespace just as they share one
 /// namespace in the editor's `CommandRegistry`.
 fn check_definable(ctx: &mut SteelCtx, builtin_name: &str, name: &str) -> Result<(), SteelErr> {
-    if name.contains('"') || name.contains('\\') {
-        steel::stop!(Generic =>
-            "{}: command name '{}' must not contain '\"' or '\\'", builtin_name, name);
-    }
+    crate::command_name::check_quotable(name)
+        .map_err(|reason| generic_err(format!("{builtin_name}: {reason}")))?;
     if ctx.builtin_cmd_names.contains(name) {
         steel::stop!(Generic =>
             "{}: '{}' conflicts with a built-in command and cannot be redefined",
