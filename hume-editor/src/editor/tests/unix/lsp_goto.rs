@@ -225,10 +225,11 @@ fn locations_that_are_not_files_are_skipped_with_one_warning() {
     assert!(warnings[0].contains('2'), "{warnings:?}");
 }
 
-/// A location whose line no longer exists in its file (the answer raced an
-/// edit) is reported once and the cursor stays where it was.
+/// A location past the end of its file's open buffer (the answer raced an
+/// edit) names no place to jump to: it is skipped with the one skip warning
+/// and the cursor stays where it was.
 #[test]
-fn a_goto_to_a_line_that_no_longer_exists_warns_and_stays() {
+fn a_goto_to_a_line_past_the_open_buffers_end_is_skipped_and_stays() {
     let tmp = tempfile::tempdir().unwrap();
     let uri = rust_rig_uri(tmp.path());
     let (mut ed, _guard, _sid) = setup(tmp.path(), FIXTURE, |backend, _sid| {
@@ -241,7 +242,34 @@ fn a_goto_to_a_line_that_no_longer_exists_warns_and_stays() {
     assert_eq!(state(&ed), before);
     let warnings = warning_texts(&ed);
     assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert!(warnings[0].contains("cannot jump to"), "{warnings:?}");
+}
+
+/// A file that is not open is not read to check the line, so a goto to a
+/// line past its end tries the jump: `goto-location!` answers `#f`, the
+/// jump warns once, the cursor stays and the file is not left open.
+#[test]
+fn a_goto_to_a_line_past_an_unopened_files_end_warns_and_stays() {
+    let tmp = tempfile::tempdir().unwrap();
+    let other_file = rig_root(tmp.path()).join("other.rs");
+    std::fs::write(&other_file, "fn other() {}\n").unwrap();
+    let other_canonical = std::fs::canonicalize(&other_file).unwrap();
+    let other_uri = hume_lsp::uri::path_to_uri(&other_canonical)
+        .unwrap()
+        .as_str()
+        .to_string();
+    let (mut ed, _guard, _sid) = setup(tmp.path(), FIXTURE, move |backend, _sid| {
+        backend.respond_to("textDocument/definition", loc(&other_uri, 99, 0));
+    });
+    let before = state(&ed);
+
+    run_goto(&mut ed, "lsp/goto-definition");
+
+    assert_eq!(state(&ed), before);
+    let warnings = warning_texts(&ed);
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
     assert!(warnings[0].contains("no longer exists"), "{warnings:?}");
+    assert!(ed.state.buffers.find_by_path(&other_canonical).is_none());
 }
 
 /// When every target is skipped the warning is the whole report, not

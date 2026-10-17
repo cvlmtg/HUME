@@ -10,7 +10,7 @@ use std::path::Path;
 use std::time::Duration;
 
 use super::*;
-use crate::editor::tests::before_save::warnings;
+use crate::editor::tests::before_save::{warning_texts, warnings};
 use hume_lsp::test_util::{RecordingLspBackend, RequestLog};
 
 /// `foo` sits at line 1, column 4, offset 16.
@@ -223,7 +223,32 @@ fn a_refresh_that_finds_only_unopenable_places_closes_the_drawer_without_claimin
 
     assert!(!drawer_is_open(&ed), "nothing left to list");
     assert_eq!(ed.state.panes.tracked.len(), 0);
-    assert_eq!(warnings(&ed), 0);
+    assert_eq!(warnings(&ed), 1, "the close reports the skip");
+    assert_ne!(ed.state.status_msg.as_deref(), Some("No references found"));
+}
+
+#[test]
+fn a_refresh_whose_places_are_all_past_their_buffers_end_closes_with_the_skip_warning() {
+    let tmp = tempfile::tempdir().unwrap();
+    let uri = rust_rig_uri(tmp.path());
+    let (mut ed, _guard, _sid, _requests) = setup(
+        tmp.path(),
+        vec![
+            serde_json::json!([loc(&uri, 1, 4), loc(&uri, 2, 0)]),
+            serde_json::json!([loc(&uri, 99, 0)]),
+        ],
+    );
+    set_cursor(&mut ed, FOO_OFFSET);
+    run_references(&mut ed);
+
+    insert_line_above_the_cursor_line(&mut ed);
+    settle_after_refresh(&mut ed);
+
+    assert!(!drawer_is_open(&ed), "nothing left to list");
+    assert_eq!(ed.state.panes.tracked.len(), 0);
+    let warned = warning_texts(&ed);
+    assert_eq!(warned.len(), 1, "{warned:?}");
+    assert!(warned[0].contains("cannot jump to"), "{warned:?}");
     assert_ne!(ed.state.status_msg.as_deref(), Some("No references found"));
 }
 

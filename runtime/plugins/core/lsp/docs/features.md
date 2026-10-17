@@ -14,9 +14,10 @@ same path, line and column appear once (`lsp-locations->merged-places`):
 
 1. A server's error is reported; the others' locations still count.
 2. No location at all logs "No definition found" (or "No references found"). A location
-   whose URI is not a file, such as `jdt://`, is left out and one warning says how many;
-   when that leaves nothing, the warning is the whole report. The drawer's refresh leaves
-   such locations out without warning again.
+   HUME cannot jump to is left out and one warning says how many: its URI is not a file,
+   such as `jdt://`, or its line is past the end of the file's open buffer. When that
+   leaves nothing, the warning is the whole report. The drawer's refresh leaves such
+   locations out without warning again.
 3. A single location jumps to it, so two servers agreeing on a definition still jump.
 4. Several locations open the [locations drawer](architecture.md#locations-drawer-locationsscm).
 
@@ -48,7 +49,8 @@ answer that arrives after the user typed on is dropped, since its token is for t
 query. An empty query clears the rows. The detail is the symbol's
 `path:line:col`. A symbol whose `location` has no `range` is left out, since the client
 does not advertise `workspaceSymbol/resolve` and such a symbol names no place to jump to.
-A symbol in a file HUME cannot open, such as a `jdt://` one, is left out.
+A symbol HUME cannot jump to, such as one in a `jdt://` file or on a line past the
+end of an open file, is left out.
 
 ## Hover
 

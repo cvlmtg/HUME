@@ -373,24 +373,6 @@ pub(crate) fn spinner_frame(state: &EditorState) -> usize {
     state.lsp.spinner.frame
 }
 
-/// `line`/`character` clamped into `text`'s addressable range and converted
-/// to a grapheme column. `None` when `line` names no real content, rather
-/// than silently reporting a column under a `line` that doesn't match it.
-///
-/// The bound is the last *content* line, so a server's past-end response and
-/// the buffer's own phantom trailing line (the one the structural `\n`
-/// creates) both return `None`. Clamping to the ropey domain instead would
-/// admit the phantom line and report column 1 of a line that has no
-/// characters: a drawer row pointing one line past the file's end.
-fn wire_pos_to_grapheme_col(
-    text: &hume_editing::text::BufferText,
-    pos: hume_rope::position_encoding::WirePos,
-    encoding: hume_rope::position_encoding::PositionEncoding,
-) -> Option<hume_rope::column::GraphemeCol> {
-    let (line, target) = super::wire_to_cluster(text, pos, encoding)?;
-    Some(text.columns().grapheme_col(line, target.offset()))
-}
-
 /// Filesystem path, wire line, and column for a batch of raw
 /// `Location`/`LocationLink` LSP locations, backing
 /// `lsp-locations->places` and `lsp-locations->merged-places` (goto/references
@@ -403,6 +385,13 @@ fn wire_pos_to_grapheme_col(
 /// canonical form: the row echoes what the server sent. Each handle comes
 /// paired with its producing server's encoding, so a batch mixing responses
 /// decodes correctly.
+///
+/// A location with no place `goto-location!` can jump to is
+/// [`LocationPlace::Skipped`](hume_scripting::host::LocationPlace::Skipped):
+/// a URI that is not a `file://` one, or a line past the content of the
+/// file's open buffer, found by the same `wire_to_cluster` the jump uses. A
+/// file that is not open is not read, so its stale line still shows, and
+/// the jump answers `#f`.
 ///
 /// # Column: the one sanctioned wire-unit display
 /// For an open buffer the column is an exact grapheme column measured on its
@@ -448,12 +437,15 @@ pub(in crate::editor) fn location_places(
         let grapheme_col_or_wire = match open_bid {
             Some(target_bid) => {
                 let text = state.buffers.get(target_bid).text();
-                wire_pos_to_grapheme_col(text, wl.pos, *encoding)
-                    .map(hume_rope::column::GraphemeCol::index)
+                let Some((line, target)) = super::wire_to_cluster(text, wl.pos, *encoding) else {
+                    rows.push(LocationPlace::Skipped);
+                    continue;
+                };
+                text.columns().grapheme_col(line, target.offset()).index()
             }
             // No open buffer to measure against. See this function's
             // doc for why that means the wire unit itself, not a read.
-            None => Some(wl.pos.character),
+            None => wl.pos.character,
         };
         rows.push(LocationPlace::Found(Place {
             path: display_path,

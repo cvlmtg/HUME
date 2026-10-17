@@ -102,7 +102,7 @@ reads a location's wire fields.
 - **Rows.** `lsp/place-display` renders `path:line:col` with the path run through
   `path->display`. A location in a buffer that is not open carries the server's raw wire
   character offset instead of a grapheme column, because counting graphemes would mean
-  reading a file that may never be opened. With no column, the row is `path:line`.
+  reading a file that may never be opened.
 - **Where it opens.** The drawer opens on `(focused-pane)`, not the request's invocation
   pane. The goto requests carry no `#:require-focus`, so a slow response still completes
   after the user looked elsewhere, and the drawer appears where the user is.

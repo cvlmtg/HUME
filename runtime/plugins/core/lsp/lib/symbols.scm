@@ -80,7 +80,7 @@
 
 ;; ── Workspace symbols ────────────────────────────────────────────────────────
 
-;; One row per symbol with a range and a location HUME can open.
+;; One row per symbol with a range and a location HUME can jump to.
 (define (lsp/workspace-rows syms)
   (let* ((placed (filter (lambda (sym) (json-contains? (json-ref sym "location") "range")) syms))
          (places (lsp-locations->places

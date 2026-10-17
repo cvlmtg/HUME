@@ -12,17 +12,17 @@
     ((json-array? res) (json-list res))
     (else (list res))))
 
-;; Logs `message` when the answer held no locations. Locations that name no
-;; file are reported by `lsp/report-skipped!`.
+;; Logs `message` when the answer held no locations. Locations with no place
+;; to jump to are reported by `lsp/report-skipped!`.
 (define (lsp/report-not-found! locations message)
   (when (null? locations) (log! 'info message)))
 
-;; Warns once when `count` locations of an answer name no file HUME can open.
+;; Warns once when `count` locations of an answer name no place to jump to.
 (define (lsp/report-skipped! what count)
   (when (> count 0)
     (log! 'warn (string-append "lsp " what ": skipped " (number->string count)
                                (if (= count 1) " location" " locations")
-                               " HUME cannot open"))))
+                               " HUME cannot jump to"))))
 
 ;; Every location in an `lsp-request-all!` answer, in server order, each
 ;; server's error reported.
@@ -31,13 +31,9 @@
   (apply append (map lsp/response-locations (lsp/answers results))))
 
 (define (lsp/place-display place)
-  (let* ((path (path->display (hash-ref place 'path)))
-         (line (hash-ref place 'line))
-         (grapheme-col-or-wire (hash-ref place 'grapheme-col-or-wire)))
-    (string-append path ":"
-      (if grapheme-col-or-wire
-          (lsp/format-position line grapheme-col-or-wire)
-          (number->string (+ 1 line))))))
+  (string-append (path->display (hash-ref place 'path)) ":"
+                 (lsp/format-position (hash-ref place 'line)
+                                      (hash-ref place 'grapheme-col-or-wire))))
 
 ;; The open list's session, or #f: one at a time, since the drawer is one slot.
 (define lsp/*locations* #f)
@@ -109,10 +105,12 @@
          (lsp/report-answer-errors! "locations" results))
         (else
          (let* ((locations (lsp/answer-locations "locations" results))
-                (places (hash-ref (lsp-locations->merged-places locations) 'places)))
+                (merged (lsp-locations->merged-places locations))
+                (places (hash-ref merged 'places)))
            (if (null? places)
                (begin
                  (lsp/close-locations!)
+                 (lsp/report-skipped! "locations" (hash-ref merged 'skipped))
                  (lsp/report-not-found! locations (hash-ref session 'not-found)))
                (lsp/swap-locations! session places))))))))
 

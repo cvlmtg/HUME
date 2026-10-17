@@ -188,16 +188,16 @@ pub trait LspHost {
     /// *jump*; this is the display-side counterpart.
     ///
     /// The column is an exact grapheme column when the target has an open
-    /// buffer, `None` when it's an open buffer whose line is out of range,
-    /// and otherwise the location's own wire `character` verbatim. See
+    /// buffer, and otherwise the location's own wire `character` verbatim. See
     /// `Place`'s `grapheme_col_or_wire` field doc for why that last case
     /// is the one sanctioned exception to "never render a wire unit
     /// directly".
     ///
     /// One entry per input location, in order, and entries are not merged:
     /// whether two locations are the same place is the caller's policy. A
-    /// location whose URI is not a `file://` one names nothing HUME can
-    /// open, so its entry is [`LocationPlace::Skipped`].
+    /// location with no place `goto-location!` can jump to (a URI that is
+    /// not a `file://` one, or a line past the content of the file's open
+    /// buffer) is [`LocationPlace::Skipped`].
     ///
     /// The path and line ride along with the column because all three come
     /// from one decode: reading `range.start.line` a second time in Scheme
@@ -229,7 +229,9 @@ pub trait LspHost {
 #[derive(Debug, Clone)]
 pub enum LocationPlace {
     Found(Place),
-    /// The location's URI is not a `file://` one.
+    /// The location names no place `goto-location!` can jump to: its URI is
+    /// not a `file://` one, or its line is past the content of the file's
+    /// open buffer.
     Skipped,
 }
 
@@ -242,14 +244,13 @@ pub struct Place {
     /// 0-based wire line, straight from the location's `range.start.line`.
     pub line: usize,
     /// 0-based column: a grapheme column when the location's target has an
-    /// open buffer, `None` when it does and `line` is out of its range,
-    /// otherwise the location's own wire `character` verbatim (the display
+    /// open buffer, otherwise the location's own wire `character` verbatim (the display
     /// companion never reads an unopened target's file to refine this
     /// number; see `location_places`'s doc, `hume-editor`, for the
     /// full reasoning and the resulting unit divergence). Named for both
     /// possible units, not just the common one. See CLAUDE.md's "Line/buffer
     /// columns" invariant's one sanctioned exception.
-    pub grapheme_col_or_wire: Option<usize>,
+    pub grapheme_col_or_wire: usize,
     /// The open buffer the location's target is, or `None` when the file is
     /// not open.
     pub buffer: Option<BufferId>,

@@ -1271,6 +1271,50 @@ fn places_give_false_for_a_location_that_is_not_a_file() {
     assert!(fired);
 }
 
+/// A location whose line is past the end of its file's open buffer names no
+/// place `goto-location!` can reach, so it is `#f` like a non-file location,
+/// and the merged variant leaves it out and counts it.
+#[test]
+fn places_give_false_for_a_line_past_the_open_buffers_end() {
+    let tmp = tempfile::tempdir().unwrap();
+    let file = std::fs::canonicalize(tmp.path())
+        .unwrap()
+        .join("src/main.rs");
+    let uri = hume_lsp::uri::path_to_uri(&file)
+        .unwrap()
+        .as_str()
+        .to_string();
+    let loc = |line: u64| {
+        serde_json::json!({
+            "uri": uri,
+            "range": {"start": {"line": line, "character": 0}, "end": {"line": line, "character": 0}},
+        })
+    };
+    // "abc\ndef\n" has content lines 0 and 1; line 2 is the empty line after
+    // the final line break.
+    let mut rig = rig_with_echo(
+        tmp.path(),
+        "-[a]>bc\ndef\n",
+        serde_json::json!({"capabilities": {}}),
+        serde_json::json!([loc(1), loc(2), loc(9)]),
+    );
+
+    let fired = run_tagged_probe(
+        &mut rig.ed,
+        tmp.path(),
+        r#"(let ((places (lsp-locations->places (json-list res)))
+                 (merged (lsp-locations->merged-places (json-list res))))
+             (and (equal? (map (lambda (p) (and p (hash-ref p 'line))) places) '(1 #f #f))
+                  (equal? (map (lambda (p) (hash-ref p 'line)) (hash-ref merged 'places)) '(1))
+                  (equal? (hash-ref merged 'skipped) 2)))"#,
+    );
+    assert!(
+        fired,
+        "log: {:?}",
+        rig.ed.state.message_log.format_for_display()
+    );
+}
+
 /// The merged variant keeps the first entry naming each path, line and
 /// column, leaves out locations HUME cannot open, and counts those it left
 /// out.

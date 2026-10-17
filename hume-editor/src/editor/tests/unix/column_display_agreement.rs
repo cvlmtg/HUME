@@ -114,22 +114,22 @@ fn run_references(ed: &mut Editor) {
 /// open buffer that isn't the focused one, an unopened non-ASCII file (twice,
 /// two different wire columns out of it, independent of each other), an
 /// unopened file that doesn't exist on disk at all, a line past an open
-/// buffer's end, that buffer's own phantom trailing line, an unopened target
-/// whose URI needs percent-decoding, and an unopened all-ASCII file.
+/// buffer's end and that buffer's own phantom trailing line (both left out:
+/// no place to jump to), an unopened target whose URI needs percent-decoding,
+/// and an unopened all-ASCII file.
 ///
 /// The central pin is rows 0 vs 1: the *same* wire location (`character: 4`
 /// on the fixture's non-ASCII line) renders `1:3` from the open buffer
 /// (measured grapheme column) and `1:5` from the unopened one (the raw wire
 /// `character`, 1-based): the divergence the wire-column exception accepts.
-/// Rows 7 vs 8 are the mirror case: the same wire location on an all-ASCII
+/// Rows 5 vs 6 are the mirror case: the same wire location on an all-ASCII
 /// line renders the same number, `1:5`, whether the buffer is open or not,
 /// because a byte offset, a UTF-16 code-unit count, and a grapheme count
 /// coincide once nothing non-ASCII precedes the target, the reason the
 /// exception is tolerable in practice.
 ///
-/// If the unopened branch read the file and called
-/// `wire_pos_to_grapheme_col` on it, row 1 would read `1:3`, identical to
-/// row 0.
+/// If the unopened branch read the file and measured a grapheme column on
+/// it, row 1 would read `1:3`, identical to row 0.
 #[test]
 fn references_drawer_measures_open_buffers_and_echoes_wire_columns_for_unopened_targets() {
     let tmp = tempfile::tempdir().unwrap();
@@ -159,8 +159,8 @@ fn references_drawer_measures_open_buffers_and_echoes_wire_columns_for_unopened_
                 loc(&other_uri, 0, 4),        // unopened, same position: displayed col 5
                 loc(&other_uri, 0, 0),        // same unopened file again: displayed col 1
                 loc(&missing_uri, 0, 0),      // unopened target that doesn't exist: displayed col 1
-                loc(&uri, 5, 0),              // open buffer, past its one content line: no column
-                loc(&uri, 1, 0),              // open buffer, its own phantom line: no column
+                loc(&uri, 5, 0),              // open buffer, past its one content line: left out
+                loc(&uri, 1, 0),              // open buffer, its own phantom line: left out
                 loc(&spaced_uri, 0, 4),       // percent-encoded uri: decoded path, displayed col 5
                 loc(&ascii_open_uri, 0, 4),   // a second open buffer: displayed col 5
                 loc(&ascii_closed_uri, 0, 4), // same text, unopened: displayed col 5 -- agrees
@@ -181,7 +181,7 @@ fn references_drawer_measures_open_buffers_and_echoes_wire_columns_for_unopened_
     run_references(&mut ed);
 
     let rows = drawer_rows(&ed);
-    assert_eq!(rows.len(), 9);
+    assert_eq!(rows.len(), 7, "{rows:?}");
     assert!(
         rows[0].ends_with("main.rs:1:3"),
         "open-buffer location must show grapheme col 2 (1-based 3), got {:?}",
@@ -207,23 +207,15 @@ fn references_drawer_measures_open_buffers_and_echoes_wire_columns_for_unopened_
          find out, got {:?}",
         rows[3]
     );
+    // Line 5 is past the fixture's one content line, and line 1 is the
+    // buffer's phantom trailing line: a valid ropey line holding no content.
+    // Clamping to the ropey domain would list it as `main.rs:2:1`, a row one
+    // line past the end of the file. Neither names a place to jump to.
     assert!(
-        rows[4].ends_with("main.rs:6"),
-        "an open buffer's line past its content must degrade to path:line, \
-         no column, got {:?}",
-        rows[4]
-    );
-    // The boundary the "past the end" case above is too far away to pin: the
-    // fixture's one content line plus its structural `\n` make line 1 the
-    // buffer's own phantom trailing line, which is a *valid ropey line* but
-    // holds no content. Clamping to the ropey domain would resolve it to
-    // grapheme column 0 and render `main.rs:2:1`, a row pointing one line
-    // past the end of the file, with a column.
-    assert!(
-        rows[5].ends_with("main.rs:2"),
-        "the phantom trailing line has no content, so it must degrade to \
-         path:line with no column, got {:?}",
-        rows[5]
+        !rows
+            .iter()
+            .any(|row| row.contains("main.rs:6") || row.contains("main.rs:2")),
+        "an open buffer's lines past its content must be left out, got {rows:?}"
     );
     // The row's path and its wire column must come from the same URI parse.
     // When Scheme rendered the path by stripping "file://" itself, it had no
@@ -231,23 +223,23 @@ fn references_drawer_measures_open_buffers_and_echoes_wire_columns_for_unopened_
     // it had been read out of "a name.rs": one row naming a file it did
     // not measure.
     assert!(
-        rows[6].ends_with("a name.rs:1:5"),
+        rows[4].ends_with("a name.rs:1:5"),
         "a percent-encoded uri must render its decoded path alongside the \
          wire column read from that same location, got {:?}",
-        rows[6]
+        rows[4]
     );
     assert!(
-        rows[7].ends_with("ascii-open.rs:1:5"),
+        rows[5].ends_with("ascii-open.rs:1:5"),
         "a second open buffer (not the focused one) must still get an \
          exact grapheme column, got {:?}",
-        rows[7]
+        rows[5]
     );
     assert!(
-        rows[8].ends_with("ascii-closed.rs:1:5"),
+        rows[6].ends_with("ascii-closed.rs:1:5"),
         "the identical position in the same text, unopened, must show the \
-         same number as row 7 -- on an all-ASCII line the wire column and \
+         same number as row 5 -- on an all-ASCII line the wire column and \
          the grapheme column coincide, got {:?}",
-        rows[8]
+        rows[6]
     );
 }
 

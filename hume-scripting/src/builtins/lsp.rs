@@ -933,10 +933,7 @@ fn place_hash(place: Place) -> SteelVal {
         ("line", SteelVal::IntV(place.line as isize)),
         (
             "grapheme-col-or-wire",
-            match place.grapheme_col_or_wire {
-                Some(c) => SteelVal::IntV(c as isize),
-                None => SteelVal::BoolV(false),
-            },
+            SteelVal::IntV(place.grapheme_col_or_wire as isize),
         ),
         (
             "buffer",
@@ -953,15 +950,16 @@ fn place_hash(place: Place) -> SteelVal {
 /// (a list of handles onto raw `Location`/`LocationLink` values from a
 /// server response), in order:
 /// `(hash 'path p 'line l 'grapheme-col-or-wire c 'buffer b 'location loc)`,
-/// or `#f` for a location whose URI is not a `file://` one. Entries are not
+/// or `#f` for a location with no place `goto-location!` can jump to: a URI
+/// that is not a `file://` one, or a line past the content of the file's open
+/// buffer. Entries are not
 /// merged, so a caller can pair them back with the values the locations came
 /// from. This is the
 /// display-side counterpart to `goto-location!`'s wire conversion, decoded
 /// through the same shared decoder. Each entry reads its own tagged
 /// producing-server encoding (see `LspHost::lsp_location_places`'s
 /// doc). The column is an exact grapheme column when the target has an open
-/// buffer, `#f` when it's an open buffer whose line is out of range, and
-/// otherwise the location's own wire `character` verbatim; this function
+/// buffer, and otherwise the location's own wire `character` verbatim; this function
 /// never reads a target file to refine that last case. `path`/`line` are
 /// always present, since they come from the location itself. `buffer` is a
 /// buffer-only pane handle for the open buffer the target is, `#f` when the
@@ -985,8 +983,8 @@ pub(crate) fn lsp_locations_to_places(ctx: &mut SteelCtx, locs: SteelVal) -> Ste
 /// `l` is the entries of `lsp-locations->places` without the `#f` ones and
 /// with the first kept for each path, line and column, a list of places to
 /// show or jump to, since several servers answering one request often name
-/// the same place. `n` counts the locations left out as not `file://` ones,
-/// so a caller reports them without decoding the answer a second time. Two
+/// the same place. `n` counts the `#f` entries left out, so a caller reports
+/// them without decoding the answer a second time. Two
 /// servers counting one unopened non-ASCII position in different encodings
 /// still show twice, since the column of an unopened target is the wire one.
 pub(crate) fn lsp_locations_to_merged_places(ctx: &mut SteelCtx, locs: SteelVal) -> SteelResult {
