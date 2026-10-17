@@ -39,7 +39,7 @@ mod tests {
     use hume_ops::text_object::{
         cmd_around_uppercase_word, cmd_around_word, cmd_inner_line, cmd_inner_word,
     };
-    use hume_ops::{MotionMode, WhitespaceSide, WordCtx};
+    use hume_ops::{LineEnd, MotionMode, WhitespaceSide, WordCtx};
 
     // ── DocHelper — thin wrapper keeping sels alongside Buffer ────────────────
 
@@ -357,7 +357,7 @@ mod tests {
             PureOp::MoveRight => cmd_move_right(st, 1, mode),
             PureOp::MoveLeft => cmd_move_left(st, 1, mode),
             PureOp::GotoLineStart => cmd_goto_line_start(st, 1, mode),
-            PureOp::GotoLineEnd => cmd_goto_line_end(st, 1, mode),
+            PureOp::GotoLineEnd => cmd_goto_line_end(st, 1, mode, LineEnd::LastCluster),
             &PureOp::Word(op, whitespace) => {
                 let ctx = WordCtx {
                     mode,

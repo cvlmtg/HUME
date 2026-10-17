@@ -4,12 +4,12 @@ use hume_editing::state::EditState;
 use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
 
-use hume_ops::MotionMode;
 use hume_ops::edit::LineBreak;
 use hume_ops::motion::{
-    cmd_goto_first_nonblank, cmd_goto_line_newline, cmd_goto_line_start, cmd_move_right,
+    cmd_goto_first_nonblank, cmd_goto_line_end, cmd_goto_line_start, cmd_move_right,
 };
 use hume_ops::selection_cmd::{cmd_collapse_selection_to_anchor, cmd_collapse_selection_to_head};
+use hume_ops::{LineEnd, MotionMode};
 
 use super::super::EditorState;
 use super::super::input_stack::{BaseLayer, CommandLayer};
@@ -140,7 +140,7 @@ pub(in crate::editor) fn cmd_open_line_below(
 ) -> Result<(), CommandError> {
     let entry = begin_insert_session(state, view, fp, std::convert::identity)?;
     apply_pane_motion(state, view, fp.pane(), |st| {
-        cmd_goto_line_newline(st, 1, MotionMode::Move)
+        cmd_goto_line_end(st, 1, MotionMode::Move, LineEnd::LineBreak)
     });
     break_line(state, view, fp, LineBreak::AtCursor, &[]);
     // Pin after the structural newline, not before: the anchor must mark

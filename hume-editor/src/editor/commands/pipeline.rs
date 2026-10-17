@@ -26,7 +26,9 @@ use hume_ops::{MotionMode, WordCtx};
 use crate::editor::syntax::{SyntaxUse, ensure_syntax_current};
 
 use super::structural::object_spans;
-use super::{apply_pane_edit, apply_pane_motion, effective_word_chars, pane_selections};
+use super::{
+    apply_pane_edit, apply_pane_motion, effective_word_chars, line_end_for, pane_selections,
+};
 
 // ── Command targets ─────────────────────────────────────────────────────────
 
@@ -675,6 +677,10 @@ pub(in crate::editor) fn run_body(
             match fun {
                 SelectionBody::Plain(fun) => {
                     apply_pane_motion(state, view, t, |st| fun(st, count.get(), motion_mode));
+                }
+                SelectionBody::LineEnd(fun) => {
+                    let end = line_end_for(state, t.pid(), buf);
+                    apply_pane_motion(state, view, t, |st| fun(st, count.get(), motion_mode, end));
                 }
                 SelectionBody::Word(fun) => {
                     let doc = state.buffers.get(buf);

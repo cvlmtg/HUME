@@ -22,7 +22,7 @@ Move the cursor/selection. Callable as `(name pane)` or `(call! "name" pane)`.
 | `goto-first-line` | `g g` | Move cursors to the first character of the buffer. |
 | `goto-first-nonblank` | `g s` | Move cursors to the first non-blank character on the line. |
 | `goto-last-line` | `g e` | Move cursors to the first character of the last line. |
-| `goto-line-end` | `End` / `g l` | Move cursors to the last character on the line. |
+| `goto-line-end` | `End` / `g l` | Move cursors to the last character on the line, or past it in Insert mode. |
 | `goto-line-start` | `Home` / `g h` | Move cursors to the start of the line. |
 | `goto-matching-pair` | `#` | Move cursors to the matching bracket or tag. |
 | `goto-next-argument` | `g a` | Select the next argument. |

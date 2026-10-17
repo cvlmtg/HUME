@@ -2059,13 +2059,8 @@ fn insert_key_binding_exiting_insert_mid_body_stays_off_the_repeat_slot() {
 /// fallback must have that motion replayed too. Otherwise the fallback's
 /// effect lands at the pre-motion cursor instead of where the motion left it.
 ///
-/// `goto-line-end` lands the cursor ON the line's last grapheme (Normal-mode
-/// `$` semantics: a 1-char selection covering that char, not past it), and
-/// `insert-key!` types before the char under the cursor, so the semicolon
-/// lands one position before each line's final char, not after it. That
-/// placement is `goto-line-end` working as designed, not what this test is
-/// about. What matters is that the *same* placement, relative to the
-/// motion's own destination, reproduces at the second line on replay.
+/// In Insert mode `goto-line-end` lands on the line break, so the semicolon
+/// is appended to each line.
 ///
 /// Without the motion being replayed, the fallback
 /// would insert right where `insert-at-selection-start` left the cursor,
@@ -2086,16 +2081,16 @@ fn insert_key_binding_motion_via_call_is_replayed_before_the_fallback() {
     ed.feed_key(key_ctrl('e')); // append-semi: jump to end of "abc", insert ";"
     ed.feed_key(key_esc());
 
-    assert_eq!(ed.doc().text().to_string(), "ab;c\ndef\n");
+    assert_eq!(ed.doc().text().to_string(), "abc;\ndef\n");
 
-    select_marked(&mut ed, "ab;c\nd-[e]>f\n");
+    select_marked(&mut ed, "abc;\nd-[e]>f\n");
     ed.feed_key(key('.'));
 
     assert_eq!(
         ed.doc().text().to_string(),
-        "ab;c\nde;f\n",
+        "abc;\ndef;\n",
         "replay must redo the goto-line-end motion before the ';' fallback, \
-         landing the semicolon one before the second line's own last char"
+         appending the semicolon to the second line"
     );
 }
 

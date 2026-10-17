@@ -17,12 +17,13 @@ use hume_engine::pipeline::{EngineView, PaneId};
 use hume_ops::text_object::{
     apply_nearest_word_result, cmd_select_word_nearest_on_line, nearest_word_on_line,
 };
-use hume_ops::{MotionMode, WordCtx};
+use hume_ops::{LineEnd, MotionMode, WordCtx};
 use hume_rope::cluster::ClusterStart;
 use hume_rope::column::{BufferLineCol, DisplayLineCol};
 
 use super::commands::{
-    CommandPane, apply_pane_motion, effective_wrap_mode, pane_display_lines, word_chars_owned,
+    CommandPane, apply_pane_motion, effective_wrap_mode, line_end_for, pane_display_lines,
+    word_chars_owned,
 };
 use super::{EditorState, doc_ops};
 use crate::editor::error::CommandError;
@@ -49,6 +50,7 @@ fn move_vertical(
     down: bool,
     count: usize,
     target_display_col: DisplayLineCol,
+    target: DisplayColTarget,
 ) -> ClusterStart {
     let start = dlm.locate_display_line(head);
     let mut pos = start;
@@ -73,11 +75,7 @@ fn move_vertical(
         // `target_display_col`.
         return head;
     }
-    dlm.char_at(
-        last_content,
-        target_display_col,
-        DisplayColTarget::NearestContent,
-    )
+    dlm.char_at(last_content, target_display_col, target)
 }
 
 /// Move `head` by `count` buffer lines, landing on the target line's own
@@ -93,6 +91,7 @@ fn move_buffer_line(
     down: bool,
     count: usize,
     target_line_display_col: BufferLineCol,
+    target: DisplayColTarget,
 ) -> ClusterStart {
     let line = text.char_to_line(head.offset());
     let target_line = if down {
@@ -105,11 +104,7 @@ fn move_buffer_line(
     if target_line == line {
         return head; // already at the document's first/last content line
     }
-    dlm.char_at_buffer_line_col(
-        target_line,
-        target_line_display_col,
-        DisplayColTarget::NearestContent,
-    )
+    dlm.char_at_buffer_line_col(target_line, target_line_display_col, target)
 }
 
 /// How `apply_visual_vertical`'s `count` should be interpreted.
@@ -156,6 +151,10 @@ pub(super) fn apply_visual_vertical(
         effective_wrap_mode(state.buffers.get(buf_id), &state.settings, &view.panes[pid])
             .is_wrapping();
     let treat_as_line = is_buffer_line || !wrapping;
+    let landing = match line_end_for(state, pid, buf_id) {
+        LineEnd::LastCluster => DisplayColTarget::NearestContent,
+        LineEnd::LineBreak => DisplayColTarget::NearestInsertionPoint,
+    };
     let key = state.format_key(&view.panes[pid]);
     let target_display_cols = &mut state.visual_move_target_display_cols;
     target_display_cols.clear();
@@ -210,7 +209,15 @@ pub(super) fn apply_visual_vertical(
                 let &target = targets.next().expect("one column per selection");
                 let head = match target {
                     StickyDisplayCol::BufferLine { display_col } if is_buffer_line => {
-                        move_buffer_line(&mut dlm, text, sel.head(), down, count, display_col)
+                        move_buffer_line(
+                            &mut dlm,
+                            text,
+                            sel.head(),
+                            down,
+                            count,
+                            display_col,
+                            landing,
+                        )
                     }
                     // No-wrap (`treat_as_line` without `is_buffer_line`):
                     // display-line-relative and buffer-line-relative columns
@@ -224,9 +231,10 @@ pub(super) fn apply_visual_vertical(
                         down,
                         count,
                         display_col.as_display_line_unwrapped(),
+                        landing,
                     ),
                     StickyDisplayCol::DisplayLine { display_col, .. } => {
-                        move_vertical(&mut dlm, sel.head(), down, count, display_col)
+                        move_vertical(&mut dlm, sel.head(), down, count, display_col, landing)
                     }
                 };
                 let anchor = if mode == MotionMode::Extend {

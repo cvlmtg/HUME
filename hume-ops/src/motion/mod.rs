@@ -2,7 +2,7 @@ use hume_editing::selection::{Selection, SelectionView};
 use hume_editing::state::EditState;
 use hume_rope::cluster::ClusterStart;
 
-use super::MotionMode;
+use super::{LineEnd, MotionMode};
 
 /// Whether an f/t motion places the cursor on the found character or adjacent to it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -122,10 +122,20 @@ motion_cmd!(/// Move or extend cursors to the first character of the last line.
 
 motion_cmd!(/// Move or extend cursors to the start of their current line.
     cmd_goto_line_start, goto_line_start);
-motion_cmd!(/// Move or extend cursors to the last non-newline character on their current line.
-    cmd_goto_line_end, goto_line_end);
-motion_cmd!(/// Move or extend cursors to the `\n` terminating the current line.
-    cmd_goto_line_newline, goto_line_newline);
+/// Move or extend cursors to the end of their current line, landing where
+/// `end` says.
+pub fn cmd_goto_line_end(
+    state: EditState,
+    count: usize,
+    mode: MotionMode,
+    end: LineEnd,
+) -> EditState {
+    let motion = match end {
+        LineEnd::LastCluster => goto_line_end,
+        LineEnd::LineBreak => goto_line_newline,
+    };
+    apply_motion(state, mode, count, |s| motion(s.text(), s.head()))
+}
 motion_cmd!(/// Move or extend cursors to the first non-blank character on their current line.
     cmd_goto_first_nonblank, goto_first_nonblank);
 

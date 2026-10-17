@@ -48,6 +48,16 @@ macro_rules! motion {
             aligns_view: false,
         }))
     };
+    // `goto-line-end`; see [`SelectionBody::LineEnd`].
+    ($reg:expr, $name:literal, $doc:literal, $fun:expr, line_end) => {
+        $reg.register_builtin(MappableCommand::Native(NativeCommand::Motion {
+            name: Cow::Borrowed($name),
+            doc: Cow::Borrowed($doc),
+            fun: crate::editor::commands::NativeBody::new(SelectionBody::LineEnd($fun)),
+            jump: false,
+            aligns_view: false,
+        }))
+    };
     ($reg:expr, $name:literal, $doc:literal, $fun:expr) => {
         $reg.register_builtin(MappableCommand::Native(NativeCommand::Motion {
             name: Cow::Borrowed($name),

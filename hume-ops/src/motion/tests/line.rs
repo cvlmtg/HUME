@@ -64,7 +64,8 @@ fn goto_line_end_from_start() {
         |(text, sels)| cmd_goto_line_end(
             test_fixtures::testing::state(text, sels),
             1,
-            MotionMode::Move
+            MotionMode::Move,
+            LineEnd::LastCluster
         ),
         "hell-[o]>\n"
     );
@@ -77,7 +78,8 @@ fn goto_line_end_already_at_end() {
         |(text, sels)| cmd_goto_line_end(
             test_fixtures::testing::state(text, sels),
             1,
-            MotionMode::Move
+            MotionMode::Move,
+            LineEnd::LastCluster
         ),
         "hell-[o]>\n"
     );
@@ -91,7 +93,8 @@ fn goto_line_end_stops_before_newline() {
         |(text, sels)| cmd_goto_line_end(
             test_fixtures::testing::state(text, sels),
             1,
-            MotionMode::Move
+            MotionMode::Move,
+            LineEnd::LastCluster
         ),
         "hell-[o]>\nworld\n"
     );
@@ -105,7 +108,8 @@ fn goto_line_end_empty_line() {
         |(text, sels)| cmd_goto_line_end(
             test_fixtures::testing::state(text, sels),
             1,
-            MotionMode::Move
+            MotionMode::Move,
+            LineEnd::LastCluster
         ),
         "-[\n]>"
     );
@@ -118,7 +122,8 @@ fn goto_line_end_last_line_no_newline() {
         |(text, sels)| cmd_goto_line_end(
             test_fixtures::testing::state(text, sels),
             1,
-            MotionMode::Move
+            MotionMode::Move,
+            LineEnd::LastCluster
         ),
         "hell-[o]>\n"
     );
@@ -131,7 +136,8 @@ fn goto_line_end_empty_buffer() {
         |(text, sels)| cmd_goto_line_end(
             test_fixtures::testing::state(text, sels),
             1,
-            MotionMode::Move
+            MotionMode::Move,
+            LineEnd::LastCluster
         ),
         "-[\n]>"
     );
@@ -249,7 +255,8 @@ fn goto_line_end_multi_cursor() {
         |(text, sels)| cmd_goto_line_end(
             test_fixtures::testing::state(text, sels),
             1,
-            MotionMode::Move
+            MotionMode::Move,
+            LineEnd::LastCluster
         ),
         "hell-{o}>\nworl-[d]>\n"
     );
@@ -320,7 +327,8 @@ fn extend_line_end_from_start() {
         |(text, sels)| cmd_goto_line_end(
             test_fixtures::testing::state(text, sels),
             1,
-            MotionMode::Extend
+            MotionMode::Extend,
+            LineEnd::LastCluster
         ),
         "-[hello]>\n"
     );
@@ -334,7 +342,8 @@ fn extend_line_end_already_at_end() {
         |(text, sels)| cmd_goto_line_end(
             test_fixtures::testing::state(text, sels),
             1,
-            MotionMode::Extend
+            MotionMode::Extend,
+            LineEnd::LastCluster
         ),
         "hell-[o]>\n"
     );
@@ -384,15 +393,44 @@ fn goto_first_nonblank_skips_non_breaking_and_ideographic_spaces() {
 }
 
 #[test]
-fn goto_line_newline_lands_on_the_newline_after_a_cluster() {
+fn goto_line_end_at_the_line_break_lands_on_the_newline_after_a_cluster() {
     assert_state!(
         "-[a]>e\u{301}\n",
-        |(text, sels)| cmd_goto_line_newline(
+        |(text, sels)| cmd_goto_line_end(
             test_fixtures::testing::state(text, sels),
             1,
-            MotionMode::Move
+            MotionMode::Move,
+            LineEnd::LineBreak
         ),
         "ae\u{301}-[\n]>"
+    );
+}
+
+#[test]
+fn goto_line_end_at_the_line_break_stays_on_its_own_line() {
+    assert_state!(
+        "-[h]>ello\nworld\n",
+        |(text, sels)| cmd_goto_line_end(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move,
+            LineEnd::LineBreak
+        ),
+        "hello-[\n]>world\n"
+    );
+}
+
+#[test]
+fn goto_line_end_at_the_line_break_extends_onto_the_newline() {
+    assert_state!(
+        "-[h]>ello\n",
+        |(text, sels)| cmd_goto_line_end(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Extend,
+            LineEnd::LineBreak
+        ),
+        "-[hello\n]>"
     );
 }
 
@@ -403,7 +441,8 @@ fn goto_line_end_lands_on_the_start_of_a_multi_codepoint_last_cluster() {
         |(text, sels)| cmd_goto_line_end(
             test_fixtures::testing::state(text, sels),
             1,
-            MotionMode::Move
+            MotionMode::Move,
+            LineEnd::LastCluster
         ),
         "a-[\u{1f468}\u{200d}\u{1f469}]>\n"
     );

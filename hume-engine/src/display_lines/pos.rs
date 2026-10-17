@@ -68,7 +68,7 @@ impl BlockBreakdown {
 /// Which grapheme a display column resolves to in
 /// [`DisplayLineMap::char_at`](super::DisplayLineMap::char_at).
 ///
-/// The two variants are different questions, not different implementations:
+/// The variants are different questions, not different implementations:
 /// a click and a sticky-column vertical move optimise different things, and
 /// collapsing them regresses one or the other.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -84,4 +84,9 @@ pub enum DisplayColTarget {
     /// The end-of-line sentinel is skipped unless it is the display line's
     /// only grapheme (an empty line), so vertical movement stays on content.
     NearestContent,
+    /// [`Self::NearestContent`], with the line break as one more landing
+    /// spot at the column where the line's text ends: what a sticky-column
+    /// move in Insert mode asks, since appended text goes there. Only the
+    /// line's last display line has one.
+    NearestInsertionPoint,
 }

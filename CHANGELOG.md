@@ -44,6 +44,7 @@
 - `core:lsp` has `lsp/format-document`, which formats the whole buffer for such a hook. The format-on-save recipe in the manual used `on-buffer-save`, which runs after the write, so it never formatted the saved file: use the new recipe.
 
 ### Fixes
+- In Insert mode, `End` and `↑`/`↓` reach the end of a line, after its last character, so text typed there is appended instead of landing before that character.
 - Headless `--keys` runs print their warnings and errors on stderr and exit with status 1 when an error is logged, so a broken `init.scm` or plugin fails the run.
 - A char offset inside a character (a letter with its combining marks, an emoji sequence) is moved to the whole character by `set-extra-highlights!`, `set-inlay-hints!` and `set-virtual-lines!` segments; segments raised on one.
 - `json-ref-or` returns its default for a field the server sent as `null`, so a code action whose `disabled` is `null` is offered.

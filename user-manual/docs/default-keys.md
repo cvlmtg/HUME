@@ -236,7 +236,7 @@ Press `Ctrl-p` then a second key:
 |-----|---------|:-----:|--------|
 | `Esc` / `Ctrl-c` | `exit-insert` |  | Return to Normal mode |
 | `←` / `→` / `↑` / `↓` | `move-left` / `move-right` / `move-up` / `move-down` |  | Move cursor |
-| `Home` / `End` | `goto-line-start` / `goto-line-end` |  | Go to line start / end |
+| `Home` / `End` | `goto-line-start` / `goto-line-end` |  | Go to line start / past the last character |
 | `Tab` | — |  | Insert tab (literal `\t`, or spaces to the next tab stop when `tab-style = soft`) |
 | `Backspace` | — |  | Delete character before cursor; snaps to previous tab stop when in leading whitespace (auto-pairs aware) |
 | `Delete` | — |  | Delete character under cursor |

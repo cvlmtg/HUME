@@ -486,6 +486,10 @@ fn key_left() -> KeyEvent {
     KeyEvent::new(KeyCode::Left, Modifiers::NONE)
 }
 
+fn key_end() -> KeyEvent {
+    KeyEvent::new(KeyCode::End, Modifiers::NONE)
+}
+
 /// A left-button-down mouse event at the given screen coordinates.
 fn mouse_left_down(x: u16, y: u16) -> TerminalEvent {
     TerminalEvent::Mouse(MouseEvent {
@@ -1422,6 +1426,7 @@ mod incremental_parse;
 mod injections_editor;
 mod inline_output;
 mod insert_key;
+mod insert_line_end;
 mod insert_session_buffer_switch;
 mod jump_list;
 mod kitty;

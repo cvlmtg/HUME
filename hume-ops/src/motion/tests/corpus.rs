@@ -73,7 +73,8 @@ fn goto_line_end_lands_on_the_start_of_the_last_cluster() {
             |(text, sels)| cmd_goto_line_end(
                 test_fixtures::testing::state(text, sels),
                 1,
-                MotionMode::Move
+                MotionMode::Move,
+                LineEnd::LastCluster
             ),
             &format!("x\nb-[{s}]>\n")
         );

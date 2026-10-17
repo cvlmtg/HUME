@@ -195,6 +195,80 @@ fn char_at_nearest_content_skips_a_trailing_inline_insert() {
 }
 
 #[test]
+fn char_at_nearest_insertion_point_lands_on_the_eol_sentinel() {
+    // A sticky column past the end of the text resolves to the '\n', where
+    // appended text goes.
+    let rope = Rope::from_str("hi\n");
+    let providers = ProviderSet::new();
+    let mut s = PaneLineStore::new();
+    let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
+
+    assert_eq!(
+        dlm.char_at(
+            DisplayLinePos::new(ContentLine::new(0), 0),
+            dc(99),
+            DisplayColTarget::NearestInsertionPoint
+        ),
+        at(&rope, 2)
+    );
+}
+
+#[test]
+fn char_at_nearest_insertion_point_keeps_a_column_inside_the_text() {
+    let rope = Rope::from_str("hello\n");
+    let providers = ProviderSet::new();
+    let mut s = PaneLineStore::new();
+    let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
+
+    assert_eq!(
+        dlm.char_at(
+            DisplayLinePos::new(ContentLine::new(0), 0),
+            dc(2),
+            DisplayColTarget::NearestInsertionPoint
+        ),
+        at(&rope, 2)
+    );
+}
+
+#[test]
+fn char_at_nearest_insertion_point_measures_the_line_end_before_a_trailing_inline_insert() {
+    // "hi\n" plus a trailing insert "ZZZ" pushes the sentinel to column 5.
+    // Column 2 is where the text ends, so it is the '\n', not 'i'.
+    let rope = Rope::from_str("hi\n");
+    let (providers, _calls) = with_counting_insert(ContentLine::new(0), 2, "ZZZ");
+    let mut s = PaneLineStore::new();
+    let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
+
+    assert_eq!(
+        dlm.char_at(
+            DisplayLinePos::new(ContentLine::new(0), 0),
+            dc(2),
+            DisplayColTarget::NearestInsertionPoint
+        ),
+        at(&rope, 2)
+    );
+}
+
+#[test]
+fn char_at_nearest_insertion_point_has_no_line_end_on_a_wrapped_display_line() {
+    // "abcdefgh\n" at width 4: display line 0 ends inside the text, so a
+    // column past its last cell lands on that cell, not on the '\n'.
+    let rope = Rope::from_str("abcdefgh\n");
+    let providers = ProviderSet::new();
+    let mut s = PaneLineStore::new();
+    let mut dlm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);
+
+    assert_eq!(
+        dlm.char_at(
+            DisplayLinePos::new(ContentLine::new(0), 0),
+            dc(99),
+            DisplayColTarget::NearestInsertionPoint
+        ),
+        at(&rope, 3)
+    );
+}
+
+#[test]
 fn char_at_nearest_content_falls_back_to_the_sentinel_on_an_empty_line() {
     // An empty line's only cell *is* the sentinel, so it has to answer.
     let rope = Rope::from_str("\nx\n");

@@ -21,7 +21,7 @@ use hume_editing::tab_style::TabStyle;
 use hume_engine::display_lines::DisplayLineMap;
 use hume_engine::display_lines::line_store::FormatKey;
 use hume_engine::pane::{Pane, Viewport};
-use hume_engine::pipeline::{EngineView, PaneId};
+use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 
 use super::buffer::Buffer;
 use super::doc_ops;
@@ -30,6 +30,7 @@ use super::register_ops;
 use super::{EditorState, Severity};
 use crate::editor::error::CommandError;
 use crate::editor::settings::EditorSettings;
+use hume_ops::LineEnd;
 use hume_ops::register::Piece;
 
 // ── EditorState helpers ───────────────────────────────────────────────────────
@@ -216,6 +217,16 @@ pub(super) fn effective_word_chars<'a>(
 /// that call.
 pub(super) fn word_chars_owned(doc: &Buffer, settings: &EditorSettings) -> String {
     doc.overrides.word_chars(settings).to_owned()
+}
+
+/// Where a motion that stops at the end of a line lands in `pid` viewing
+/// `buffer`: on the line break while that pane is inserting into that
+/// buffer, on the last character otherwise. Every such motion reads it here.
+pub(super) fn line_end_for(state: &EditorState, pid: PaneId, buffer: BufferId) -> LineEnd {
+    match state.input.insert_session() {
+        Some(session) if session.owned_by(pid, buffer) => LineEnd::LineBreak,
+        _ => LineEnd::LastCluster,
+    }
 }
 
 /// `pane`'s effective wrap mode for the buffer it currently views: pane

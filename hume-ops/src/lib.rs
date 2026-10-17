@@ -34,6 +34,18 @@ pub enum MotionMode {
     Extend,
 }
 
+/// Where a motion that stops at the end of a line lands. The caller decides
+/// from the mode: a Normal or Extend cursor sits on a character, while an
+/// Insert cursor marks where typed text goes, which at the end of a line is
+/// its line break.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LineEnd {
+    /// The line's last cluster, or its `\n` on an empty line.
+    LastCluster,
+    /// The line's `\n`.
+    LineBreak,
+}
+
 /// Context for the word-family motions and text objects (`w`/`W`/`b`/`B`,
 /// `mm`/`MM`, `miw`/`maw`), resolved once by the caller from buffer settings.
 ///

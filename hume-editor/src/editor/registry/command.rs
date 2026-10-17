@@ -6,7 +6,7 @@ use hume_editing::edit::Edited;
 use hume_editing::state::EditState;
 use hume_engine::pipeline::EngineView;
 use hume_ops::search::SearchDirection;
-use hume_ops::{MotionMode, WordCtx};
+use hume_ops::{LineEnd, MotionMode, WordCtx};
 use hume_treesitter::textobjects::{Direction, ObjectKind, ObjectSpan};
 
 // ── Native command count ─────────────────────────────────────────────────────
@@ -305,11 +305,13 @@ pub(in crate::editor) type EditFn = fn(EditState) -> Edited;
 /// as an `EditorCmd` (which also resolves settings, via a `DisplayLineMap`) because
 /// `NativeCommand::meta` only ever sets `CmdMeta::is_motion` true for the
 /// `Motion` variant, and Move mode's jump-list/dot-repeat handling depends on
-/// that flag.
+/// that flag. `goto-line-end` has a third shape: it lands on the line break
+/// in a pane that is inserting, and the pipeline resolves which.
 #[derive(Clone, Copy)]
 pub(in crate::editor) enum SelectionBody {
     Plain(fn(EditState, usize, MotionMode) -> EditState),
     Word(fn(EditState, usize, WordCtx<'_>) -> EditState),
+    LineEnd(fn(EditState, usize, MotionMode, LineEnd) -> EditState),
     Structural(StructuralBody),
 }
 

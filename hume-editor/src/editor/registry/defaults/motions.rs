@@ -72,8 +72,9 @@ impl CommandRegistry {
         super::motion!(
             self,
             "goto-line-end",
-            "Move cursors to the last character on the line.",
-            cmd_goto_line_end
+            "Move cursors to the last character on the line, or past it in Insert mode.",
+            cmd_goto_line_end,
+            line_end
         );
         super::motion!(
             self,
