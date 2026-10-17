@@ -116,6 +116,10 @@ numbers directly.
   per-language examples or engine detail in the manual.
 - **L42** — An on/off option turns its whole behaviour off. "Off" never falls
   back to a lesser variant of the same feature unless the user says so.
+- **L43** — "Behaves the same as X" is a second implementation. When a new
+  entry point does what an existing action does, it only translates its
+  input and calls that action; any guard or branch it adds first is a second
+  path, and a plan that says "like X" names the shared function.
 
 ---
 
@@ -1521,3 +1525,20 @@ behaviour, state it as a decision for the user to confirm.
 
 **Files:** `hume-ops/src/edit/insert.rs` (`NewLineIndent`),
 `hume-editor/src/editor/commands/smart_indent.rs`.
+
+## L43 — `insert-text!` was planned as a second path beside paste (2026-10-18)
+
+**Root cause:** the plan had `insert-text!` share paste's landing function but
+added its own checks in front: it refused in Normal mode, under a menu and
+during a pending character read, where a paste acts. The user asked for the
+two to be the same, not to behave alike, and the plan was rewritten so the
+builtin only checks its pane argument and calls `EditorState::paste`.
+
+**Prevention rule:** Before planning a new entry point for an existing action,
+list everything the entry does besides translating its input. Each item is a
+behaviour the two paths can disagree on; drop it, or move it into the shared
+action if every entry needs it, and make the tests compare the two entry
+points' results directly.
+
+**Files:** `hume-editor/src/editor/input_stack/paste.rs`,
+`hume-editor/src/editor/host_impl/edits.rs`.
