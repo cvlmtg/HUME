@@ -18,7 +18,7 @@ I have written this editor for my own use, and release it without expectation. I
 ---
 
 <p align="center">
-  <img src="user-manual/docs/public/HUME.png" alt="HUME" width="800" />
+  <img src="tools/demo/demo.gif" alt="HUME" width="800" />
 </p>
 
 **The pragmatic modal editor.**
