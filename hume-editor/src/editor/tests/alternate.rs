@@ -200,6 +200,26 @@ fn colon_steel_typed_command_receives_percent_expanded() {
     assert_eq!(status(&ed), path);
 }
 
+/// `execute_typed` expands `%` the way `:` does.
+#[test]
+fn execute_typed_expands_percent_for_a_steel_typed_command() {
+    let (mut ed, _file) = editor_with_file("-[h]>ello\n", "hello\n");
+    attach_steel(
+        &mut ed,
+        r#"(define-typed-command! "show" "" (lambda (pane arg) (log! 'info arg)))"#,
+    );
+    let path = ed
+        .doc()
+        .path()
+        .expect("a file-backed buffer")
+        .display()
+        .to_string();
+
+    ed.execute_typed("show", Some("%")).expect("`:show %` runs");
+
+    assert_eq!(status(&ed), path);
+}
+
 // ── goto-alternate-buffer in registry ──────────────────────────────────────────
 
 #[test]

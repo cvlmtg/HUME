@@ -573,7 +573,7 @@ fn invoke_minibuf_source(
 /// The `:` line's own command name and the byte offset one past it (and
 /// its optional trailing `!`). `None` if the cursor hasn't moved past the
 /// name yet, still typing it. Uses the same name-shape rule
-/// `execute_command` itself uses
+/// `run_command_line` itself uses
 /// (`input_stack::command::scan_command_name`), so completion never picks
 /// a different command than Enter would actually run.
 fn target_command_name(input: &str, cursor: usize) -> Option<(&str, usize)> {

@@ -6,9 +6,10 @@
 //! path, which additionally needs `self.scripting` and the
 //! timer bridge: fields only reachable through `&mut Editor`.
 
+use super::error::CommandError;
 use super::event::EditorEvent;
 use super::registry::{Dispatchable, MappableCommand, SteelCommand};
-use super::{Editor, Severity, commands, replay};
+use super::{Editor, commands, replay};
 
 // ── Command dispatch context ──────────────────────────────────────────────────
 
@@ -99,7 +100,13 @@ impl Editor {
 
         // BODY.
         let ran = replay::record_change(self, change, |ed| {
-            let ran = ed.run_steel_command(&cmd, &ctx);
+            let ran = match ed.run_steel_command(&cmd, &ctx) {
+                Ok(()) => true,
+                Err(e) => {
+                    ed.report_error(&e);
+                    false
+                }
+            };
             (ran, ran)
         });
 
@@ -129,51 +136,32 @@ impl Editor {
         true
     }
 
-    /// Activate `plugin` (a `Lazy` stub's owner), reporting the standard
-    /// warning on failure.
-    fn activate_lazy_and_report(
+    /// Activate `plugin` (a `Lazy` stub's owner). Fails when there is no
+    /// scripting host or activation leaves no command named `name`.
+    fn activate_lazy(
         &mut self,
         plugin: &hume_scripting::attribution::EntryId,
         name: &str,
-    ) -> bool {
+    ) -> Result<(), CommandError> {
         if self.activate_lazy_plugin(plugin, name) {
-            true
+            Ok(())
         } else {
-            self.report(Severity::Info, format!("unknown command: {name}"));
-            false
+            Err(CommandError::transient(format!("unknown command: {name}")))
         }
     }
 
     /// Activate a `Lazy` stub's `plugin` and return the Steel command that
-    /// replaced it. `None`, reported, when activation fails or leaves no
-    /// such entry.
+    /// replaced it. Fails when activation fails or leaves no such entry.
     fn resolve_lazy(
         &mut self,
         plugin: &hume_scripting::attribution::EntryId,
         name: &str,
-    ) -> Option<SteelCommand> {
-        if !self.activate_lazy_and_report(plugin, name) {
-            return None;
-        }
+    ) -> Result<SteelCommand, CommandError> {
+        self.activate_lazy(plugin, name)?;
         match self.state.config.registry.get_mappable(name) {
-            Some(MappableCommand::SteelBacked(cmd)) => Some(cmd.clone()),
-            _ => {
-                self.report_command_lost(name);
-                None
-            }
+            Some(MappableCommand::SteelBacked(cmd)) => Ok(cmd.clone()),
+            _ => Err(command_lost(name)),
         }
-    }
-
-    /// The registry lost `name`'s entry between resolving it and using it:
-    /// activation replaced a `Lazy` stub but left nothing usable behind, or
-    /// `name` wasn't the expected kind at all. Always `false`, so a caller
-    /// returns it directly.
-    fn report_command_lost(&mut self, name: &str) -> bool {
-        self.report(
-            Severity::Error,
-            format!("{name}: internal error: command lost after activation"),
-        );
-        false
     }
 
     /// Activates the `:` line's current target command's owning plugin, if
@@ -196,7 +184,9 @@ impl Editor {
         let Some(plugin) = registry.lazy_owner(&name).cloned() else {
             return;
         };
-        self.activate_lazy_and_report(&plugin, &name);
+        if let Err(e) = self.activate_lazy(&plugin, &name) {
+            self.report_error(&e);
+        }
     }
 
     /// The `:` line's Tab, end to end: [`Self::activate_minibuf_completion_
@@ -212,9 +202,9 @@ impl Editor {
 
     /// Run the body of the Steel command `cmd`.
     ///
-    /// Returns `false` if the command aborted (scripting error, or
+    /// Fails, unreported, if the command aborted (scripting error, or
     /// `scripting` is `None`). On error, the caller skips AFTER stages.
-    fn run_steel_command(&mut self, cmd: &SteelCommand, ctx: &CmdCtx) -> bool {
+    fn run_steel_command(&mut self, cmd: &SteelCommand, ctx: &CmdCtx) -> Result<(), CommandError> {
         // Injected into the lambda's `count` param verbatim: `0` is the Scheme
         // spelling of `None` ("no count was typed"), so a wrapper that forwards
         // this value straight into `(call! "move-down" pane count extend)` round-trips
@@ -227,20 +217,15 @@ impl Editor {
 
         // Inject pane, count, and extend as leading lambda args based on
         // declared arity.
-        let effective_args = match marshal_leading_args(
+        let effective_args = marshal_leading_args(
             cmd.body.arity,
             cmd.body.is_variadic,
             crate::editor::commands::FocusedPane::current(&self.view).handle(&self.view),
             steel::rvals::SteelVal::IntV(count as isize),
             steel::rvals::SteelVal::BoolV(extend),
             "keymap injection supplies at most 3 (pane, count, extend)",
-        ) {
-            Ok(args) => args,
-            Err(msg) => {
-                self.report(Severity::Error, format!("{name}: {msg}"));
-                return false;
-            }
-        };
+        )
+        .map_err(|msg| CommandError::new(format!("{name}: {msg}")))?;
 
         self.call_steel_command_body(
             name,
@@ -258,29 +243,26 @@ impl Editor {
     /// marshals `(arg force)` rather than `(count extend)`. The two never
     /// share a lookup because the registry keeps the kinds strictly separate
     /// (see `registry/mod.rs`'s module doc). `name` is resolved as `:`
-    /// resolves it, so any casing names the command. Returns `false` on the
-    /// same failure classes as `run_steel_command`.
+    /// resolves it, so any casing names the command. Fails, unreported, on
+    /// the same failure classes as `run_steel_command`, and when the lambda
+    /// has no parameter for a given argument or `!`.
     pub(super) fn run_typed_steel_command(
         &mut self,
         name: &str,
         lazy_plugin: Option<hume_scripting::attribution::EntryId>,
         arg: Option<String>,
         force: bool,
-    ) -> bool {
-        let Some(name) = self
+    ) -> Result<(), CommandError> {
+        let name = self
             .state
             .config
             .registry
             .typed_canonical_name(name)
             .map(str::to_owned)
-        else {
-            return self.report_command_lost(name);
-        };
+            .ok_or_else(|| command_lost(name))?;
         let name = name.as_str();
-        if let Some(plugin) = lazy_plugin
-            && !self.activate_lazy_and_report(&plugin, name)
-        {
-            return false;
+        if let Some(plugin) = lazy_plugin {
+            self.activate_lazy(&plugin, name)?;
         }
 
         let body = match self
@@ -291,7 +273,7 @@ impl Editor {
             .map(|tc| &tc.body)
         {
             Some(super::registry::TypedBody::Steel(body)) => body.clone(),
-            _ => return self.report_command_lost(name),
+            _ => return Err(command_lost(name)),
         };
 
         // A fixed parameter list is the lambda's whole input, so an argument
@@ -306,8 +288,7 @@ impl Editor {
                 None
             };
             if let Some(reason) = refused {
-                self.report(Severity::Error, format!("`:{name}` {reason}"));
-                return false;
+                return Err(CommandError::new(format!("`:{name}` {reason}")));
             }
         }
 
@@ -318,20 +299,15 @@ impl Editor {
             Some(s) => steel::rvals::SteelVal::StringV(s.clone().into()),
             None => steel::rvals::SteelVal::BoolV(false),
         };
-        let effective_args = match marshal_leading_args(
+        let effective_args = marshal_leading_args(
             body.arity,
             body.is_variadic,
             crate::editor::commands::FocusedPane::current(&self.view).handle(&self.view),
             arg_val,
             steel::rvals::SteelVal::BoolV(force),
             "typed-command injection supplies at most 3 (pane, arg, force)",
-        ) {
-            Ok(args) => args,
-            Err(msg) => {
-                self.report(Severity::Error, format!("{name}: {msg}"));
-                return false;
-            }
-        };
+        )
+        .map_err(|msg| CommandError::new(format!("{name}: {msg}")))?;
 
         self.call_steel_command_body(
             name,
@@ -345,16 +321,19 @@ impl Editor {
     /// args, bracketing the call for `#:inline-output` commands.
     ///
     /// The Steel invocation, alt-screen bracket, and effect application are
-    /// one funnel.
+    /// one funnel. A Steel error comes back unreported, after its effects
+    /// are applied.
     fn call_steel_command_body(
         &mut self,
         name: &str,
         proc: hume_scripting::CommandProc,
         effective_args: Vec<steel::rvals::SteelVal>,
         inline_output: bool,
-    ) -> bool {
+    ) -> Result<(), CommandError> {
         if self.scripting.is_none() {
-            return false;
+            return Err(CommandError::new(format!(
+                "{name}: scripting is not available"
+            )));
         }
 
         // Alt-screen bracketing for inline-output commands is lazy: entering
@@ -392,14 +371,13 @@ impl Editor {
             Ok(effects) => effects,
             Err(e) => {
                 self.apply_script_effects(e.effects);
-                self.report(Severity::Error, e.message);
-                return false;
+                return Err(CommandError::new(e.message));
             }
         };
 
         self.flush_script_messages();
         self.apply_script_effects(effects);
-        true
+        Ok(())
     }
 
     /// Close the `#:inline-output` bracket if a builtin actually opened it,
@@ -456,7 +434,7 @@ impl Editor {
         }
     }
 
-    /// Reports `Severity::Warning` for a command name that failed to
+    /// The `Severity::Warning` error for a command name that failed to
     /// resolve the way the caller needed. If the registry recognizes `name`
     /// under the *other* kind, names it and explains how it's actually
     /// reachable instead of `fallback`: a split that resolves only one
@@ -468,34 +446,54 @@ impl Editor {
     /// the moment it fires and needs to find later in `:messages`. The
     /// shared function can't carry two severities, so it keeps the one its
     /// least-ephemeral caller needs.
-    pub(in crate::editor) fn report_unknown_command(&mut self, name: &str, fallback: String) {
-        let msg = self
-            .state
-            .config
-            .registry
-            .other_kind_hint(name)
-            .unwrap_or(fallback);
-        self.report(Severity::Warning, msg);
+    pub(in crate::editor) fn unknown_command(&self, name: &str, fallback: String) -> CommandError {
+        CommandError::warning(
+            self.state
+                .config
+                .registry
+                .other_kind_hint(name)
+                .unwrap_or(fallback),
+        )
     }
 
-    /// Looks up `name` in the command registry, reporting (via
-    /// [`Self::report_unknown_command`]) and returning `None` if it isn't
-    /// there. A `Lazy` stub is activated and its real entry returned, so
-    /// every caller reads the command's own metadata: whether an Insert-key
+    /// Reports [`Self::unknown_command`]'s error.
+    pub(in crate::editor) fn report_unknown_command(&mut self, name: &str, fallback: String) {
+        let e = self.unknown_command(name, fallback);
+        self.report_error(&e);
+    }
+
+    /// Looks up `name` in the command registry, reporting and returning
+    /// `None` if it isn't there or its `Lazy` stub fails to activate. A
+    /// `Lazy` stub is activated and its real entry returned, so every
+    /// caller reads the command's own metadata: whether an Insert-key
     /// binding is repeatable is read before it dispatches.
     pub(in crate::editor) fn resolve_mappable(&mut self, name: &str) -> Option<Dispatchable> {
         match self.state.config.registry.get_mappable(name).cloned() {
             Some(MappableCommand::Native(cmd)) => Some(Dispatchable::Native(cmd)),
             Some(MappableCommand::SteelBacked(cmd)) => Some(Dispatchable::Steel(cmd)),
-            Some(MappableCommand::Lazy { name, plugin }) => {
-                self.resolve_lazy(&plugin, &name).map(Dispatchable::Steel)
-            }
+            Some(MappableCommand::Lazy { name, plugin }) => match self.resolve_lazy(&plugin, &name)
+            {
+                Ok(cmd) => Some(Dispatchable::Steel(cmd)),
+                Err(e) => {
+                    self.report_error(&e);
+                    None
+                }
+            },
             None => {
                 self.report_unknown_command(name, format!("unknown command: {name}"));
                 None
             }
         }
     }
+}
+
+/// The registry lost `name`'s entry between resolving it and using it:
+/// activation replaced a `Lazy` stub but left nothing usable behind, or
+/// `name` wasn't the expected kind at all.
+fn command_lost(name: &str) -> CommandError {
+    CommandError::new(format!(
+        "{name}: internal error: command lost after activation"
+    ))
 }
 
 /// Shared arity guard + argument marshalling behind

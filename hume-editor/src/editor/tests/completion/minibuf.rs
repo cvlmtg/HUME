@@ -569,7 +569,7 @@ fn tab_on_buffer_arg_completes_buffer_names() {
 /// `:b1<Tab>` (the alias `b`, an argument starting with a digit, no space)
 /// must complete `1` as `:buffer`'s own argument, not as a command name
 /// still being typed. `scan_command_name` (shared with
-/// `parse_typed_command`, what `execute_command` itself uses) ends a `b`
+/// `parse_typed_command`, what `run_command_line` itself uses) ends a `b`
 /// followed only by digits at `b`, matching what Enter would actually run.
 #[test]
 fn tab_mid_alias_with_no_space_completes_the_declared_arg_not_the_command_name() {

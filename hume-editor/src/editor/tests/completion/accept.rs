@@ -311,11 +311,9 @@ fn a_buffer_edit_outside_the_token_does_not_invalidate_the_session() {
              (completion-accept! 0)))"#,
     );
     // `insert_with_source_and` already entered Insert mode with the
-    // completion session open (`run_typed_steel_command`, not
-    // `type_cmd`'s keystroke typing), so `:stash` dispatches as a command
-    // (it's Steel-backed, unlike what `execute_typed` supports) instead of
-    // literal text.
-    assert!(ed.run_typed_steel_command("stash", None, None, false));
+    // completion session open, so `:stash` runs through `execute_typed`:
+    // `type_cmd`'s keystrokes would insert it as literal text.
+    ed.execute_typed("stash", None).expect("`:stash` runs");
     ed.drain_lsp();
     ed.settle();
     accept_via_steel(&mut ed);

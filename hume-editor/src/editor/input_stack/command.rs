@@ -123,7 +123,7 @@ fn handle_command_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
         MiniBufferEvent::Confirm(_) => {
             // Record into history and extract the input before
             // truncating: the `Command` layer (and the minibuf it
-            // owns) is gone by the time `execute_command` runs, so the
+            // owns) is gone by the time `run_command_line` runs, so the
             // string has to be taken out first, per truncate-before-
             // execute: the body below runs with the mode layer already
             // back at `Base`, so a `:cmd` that enters Insert stays in
@@ -142,7 +142,9 @@ fn handle_command_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
                 .push(raw.clone());
             let input = raw.trim().to_owned();
             ed.state.truncate_layers(&ed.view, r);
-            execute_command(ed, &input);
+            if let Err(e) = run_command_line(ed, &input) {
+                ed.report_error(&e);
+            }
         }
         // An edit, cursor move, or Backspace that clears to empty demotes
         // any active history recall back to scratch. EmptiedByBackspace
@@ -177,11 +179,14 @@ fn handle_command_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
     }
 }
 
-/// Execute a typed command line. `input` is the already-trimmed text
-/// the `Command` layer's minibuf held at Confirm. The layer (and its
-/// minibuf) is already gone by the time this runs, per truncate-
-/// before-execute.
-fn execute_command(ed: &mut Editor, input: &str) {
+/// Run a typed command line, returning its error unreported. `input` is
+/// trimmed and has no leading `:`. At Confirm the `Command` layer (and its
+/// minibuf) is already gone by the time this runs, per
+/// truncate-before-execute.
+pub(in crate::editor) fn run_command_line(
+    ed: &mut Editor,
+    input: &str,
+) -> Result<(), CommandError> {
     let (cmd, force, arg) = parse_typed_command(input);
 
     // Bare line number `:42`: shorthand for `:goto 42`.
@@ -192,27 +197,17 @@ fn execute_command(ed: &mut Editor, input: &str) {
         && arg.is_some_and(|a| !a.is_empty() && a.bytes().all(|b| b.is_ascii_digit()))
     {
         let fp = commands::FocusedPane::current(&ed.view);
-        if let Err(e) = commands::typed_goto_line(ed, fp, arg, false) {
-            ed.report_error(&e);
-        }
-        return;
+        return commands::typed_goto_line(ed, fp, arg, false);
     }
 
     // `:` resolves only typed commands: an editor (key-bindable) command's
     // name is unreachable here; see `registry/mod.rs`'s module doc.
     let Some(tc) = ed.state.config.registry.get_typed(cmd) else {
-        ed.report_unknown_command(cmd, format!("Unknown command: {cmd}"));
-        return;
+        return Err(ed.unknown_command(cmd, format!("Unknown command: {cmd}")));
     };
 
     let expanded = match arg {
-        Some(a) if tc.arg_expansion == ArgExpansion::Paths => match expand_command_arg(ed, a) {
-            Ok(s) => Some(s),
-            Err(e) => {
-                ed.report_error(&e);
-                return;
-            }
-        },
+        Some(a) if tc.arg_expansion == ArgExpansion::Paths => Some(expand_command_arg(ed, a)?),
         other => other.map(str::to_owned),
     };
 
@@ -220,19 +215,15 @@ fn execute_command(ed: &mut Editor, input: &str) {
         TypedBody::Native(fun) => {
             let fun = *fun;
             let fp = commands::FocusedPane::current(&ed.view);
-            if let Err(e) = fun(ed, fp, expanded.as_deref(), force) {
-                ed.report_error(&e);
-            }
+            fun(ed, fp, expanded.as_deref(), force)
         }
         // Lazy-stub activation and Steel arg marshalling both happen
         // inside `Editor::run_typed_steel_command`, so `:bar arg`
         // cannot silently drop `arg` on the plugin's first call.
-        TypedBody::Steel(_) => {
-            ed.run_typed_steel_command(cmd, None, expanded, force);
-        }
+        TypedBody::Steel(_) => ed.run_typed_steel_command(cmd, None, expanded, force),
         TypedBody::Lazy(plugin) => {
             let plugin = plugin.clone();
-            ed.run_typed_steel_command(cmd, Some(plugin), expanded, force);
+            ed.run_typed_steel_command(cmd, Some(plugin), expanded, force)
         }
     }
 }
@@ -245,7 +236,7 @@ fn execute_command(ed: &mut Editor, input: &str) {
 /// both. Shared by [`parse_typed_command`] (which also needs the trimmed
 /// argument past that point) and `orchestrate.rs`'s `target_command_name`
 /// (which only needs the offset, to test whether the cursor has moved past
-/// the name), so completion never disagrees with what `execute_command`
+/// the name), so completion never disagrees with what `run_command_line`
 /// would actually run.
 pub(in crate::editor) fn scan_command_name(input: &str) -> (&str, bool, usize) {
     let name = hume_scripting::command_name::scan(input);

@@ -969,40 +969,23 @@ impl Editor {
             .map(|s| s.selections())
     }
 
-    /// Execute a typed command string (e.g. `"bd"`, `"e! path"`) programmatically.
-    ///
-    /// Parses the trailing `!` as `force=true` and splits `cmd_with_arg` on the
-    /// first space to extract the optional argument. Returns the command result.
+    /// Run the `:` line `cmd_with_arg` (e.g. `"bd"`, `"e! path"`), with
+    /// `extra_arg` appended after a space when given, as Confirm on the `:`
+    /// line runs it. Reports an error as `:` does, and also returns it.
     pub(in crate::editor) fn execute_typed(
         &mut self,
         cmd_with_arg: &str,
         extra_arg: Option<&str>,
     ) -> Result<(), crate::editor::error::CommandError> {
-        let (cmd, force, inline_arg) =
-            super::input_stack::command::parse_typed_command(cmd_with_arg);
-        let arg = inline_arg.or(extra_arg);
-        match self.state.config.registry.get_typed(cmd) {
-            Some(tc) => match tc.body {
-                super::registry::TypedBody::Native(fun) => {
-                    let fp = FocusedPane::current(&self.view);
-                    let result = fun(self, fp, arg, force);
-                    if let Err(ref e) = result {
-                        self.report(e.severity(), e.message().to_owned());
-                    }
-                    result
-                }
-                // No Steel-typed-command test needs this helper yet. Extend
-                // it (mirroring Editor::run_typed_steel_command) when one does.
-                super::registry::TypedBody::Steel(_) | super::registry::TypedBody::Lazy(_) => {
-                    panic!(
-                        "execute_typed: '{cmd}' is a Steel-backed typed command, not supported by this test helper"
-                    )
-                }
-            },
-            None => Err(crate::editor::error::CommandError::new(format!(
-                "unknown command: {cmd}"
-            ))),
+        let line = match extra_arg {
+            Some(arg) => format!("{cmd_with_arg} {arg}"),
+            None => cmd_with_arg.to_owned(),
+        };
+        let result = super::input_stack::command::run_command_line(self, &line);
+        if let Err(ref e) = result {
+            self.report_error(e);
         }
+        result
     }
 }
 

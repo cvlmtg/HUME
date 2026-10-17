@@ -21,7 +21,7 @@ fn colon_enters_command_mode() {
 }
 
 /// Truncate-before-execute: a `:cmd` body runs with the `Command` layer
-/// already gone (truncated back to `Base` before `execute_command` is
+/// already gone (truncated back to `Base` before `run_command_line` is
 /// called), so a body that itself pushes `Insert` lands on a clean stack
 /// and stays there. Closing the `Command` layer after execution would stomp
 /// it back to Normal.
@@ -290,6 +290,34 @@ fn colon_unknown_sets_error() {
         Some("Unknown command: nonsense")
     );
     assert!(!ed.state.should_quit);
+}
+
+/// `execute_typed` runs a line the way `:` does, so an unknown command
+/// comes back as the warning `:` reports.
+#[test]
+fn execute_typed_unknown_command_is_the_colon_warning() {
+    let mut ed = editor_from("-[h]>ello\n");
+    let err = ed
+        .execute_typed("nosuch", None)
+        .expect_err("an unknown command fails");
+    assert_eq!(err.message(), "Unknown command: nosuch");
+    assert_eq!(err.severity(), Severity::Warning);
+}
+
+/// A Steel typed command's refusal comes back from `execute_typed` as the
+/// error `:` reports.
+#[test]
+fn execute_typed_returns_a_steel_typed_command_refusal() {
+    let mut ed = editor_from("-[h]>ello\n");
+    attach_steel(
+        &mut ed,
+        r#"(define-typed-command! "noarg" "" (lambda () #t))"#,
+    );
+    let err = ed
+        .execute_typed("noarg", Some("x"))
+        .expect_err("a lambda with no argument parameter refuses one");
+    assert_eq!(err.message(), "`:noarg` takes no argument");
+    assert_eq!(err.severity(), Severity::Error);
 }
 
 /// `:` resolves only typed commands: a real editor command's name (not a

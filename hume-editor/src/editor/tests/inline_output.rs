@@ -648,8 +648,8 @@ fn a_later_host_with_no_authority_still_completes_a_frame_armed_by_an_earlier_on
 /// early return: a later dispatch's `%stdout-gate!` must not inherit a
 /// gate this command never actually opened.
 ///
-/// The `let Some(scripting) = self.scripting.as_mut() else { return false }`
-/// guard in `call_steel_command_body` must run before any frame is pushed.
+/// The no-host guard in `call_steel_command_body` must run before any frame
+/// is pushed.
 #[test]
 fn no_scripting_host_does_not_leak_a_pushed_frame() {
     let tmp = tempfile::tempdir().unwrap();
@@ -671,4 +671,22 @@ fn no_scripting_host_does_not_leak_a_pushed_frame() {
         !ed.state.inline_output.is_open(),
         "a dispatch that never reaches a Steel session must not leave a pushed frame behind"
     );
+}
+
+/// A Steel command dispatched with no scripting host left to run it
+/// reports an error naming the command.
+#[test]
+fn no_scripting_host_reports_an_error() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "orphan" "" (lambda () (+ 1 0)))"#,
+    );
+    bind_backslash(&mut ed, "orphan");
+    ed.scripting = None;
+    ed.feed_event(key('\\'));
+
+    assert!(has_error(&ed, "orphan: scripting is not available"));
 }
