@@ -142,8 +142,20 @@ impl MessageLog {
     /// Lifetime `(errors, warnings)` pushed so far. See the field docs for
     /// why this, not `unseen_counts`, is the eviction-proof way to detect
     /// "were any new warnings/errors logged between two points in time".
-    pub(in crate::editor) fn totals(&self) -> (u64, u64) {
+    pub(crate) fn totals(&self) -> (u64, u64) {
         (self.total_errors, self.total_warnings)
+    }
+
+    /// Writes every warning and error still in the log to `w`, oldest first,
+    /// one `hume: <severity>: <text>` line each. This is how headless mode,
+    /// which has no statusline or `:messages`, reports them.
+    pub(crate) fn write_problems(&self, w: &mut impl std::io::Write) -> std::io::Result<()> {
+        for entry in &self.entries {
+            if matches!(entry.severity, Severity::Warning | Severity::Error) {
+                writeln!(w, "hume: {}: {}", entry.severity.label(), entry.text)?;
+            }
+        }
+        Ok(())
     }
 
     /// All entries in chronological order. Used only in tests.

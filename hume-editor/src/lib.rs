@@ -42,8 +42,14 @@ pub mod testing;
 /// `--no-config`), exactly as it would for [`run`]. `cwd` is the startup
 /// working directory.
 ///
-/// Exits cleanly when the key sequence contains `:wq` / `:q` / `<c-c>` (the
-/// editor sets `should_quit`); the buffer is written to `output` regardless.
+/// Stops replaying at `:wq` / `:q` / `<c-c>` (the editor sets
+/// `should_quit`); the buffer is written to `output` regardless.
+///
+/// With no screen, the message log is the run's only feedback: its warnings
+/// and errors go to stderr, and any error fails the run. An error logged
+/// while the config loads stops it before the first key, leaving `output`
+/// unwritten, since keys replayed on a half-loaded config prove nothing. One
+/// logged during the replay fails it after `output` is written.
 pub fn run_keys(
     input: std::path::PathBuf,
     keys: &str,
@@ -73,34 +79,51 @@ pub fn run_keys(
     editor.set_headless();
     editor.set_config_source(config);
     editor.init_scripting(&mut Default::default());
-
-    for key in parsed {
-        editor.step(key);
-        // `step` only dispatches the key; `settle()` is what drains the
-        // queued work (hooks, LSP/timer callbacks) that dispatch enqueues.
-        // This mirrors `Editor::run`'s interactive loop, where the loop settles
-        // and the input handler doesn't (see `Editor::settle`'s doc).
-        editor.settle();
-        if editor.state.should_quit {
-            break;
-        }
-    }
-    // One more pass after the loop: `drain_async_sources` runs once per
-    // `settle()` call, outside its fixpoint (see that doc), so a timer a
-    // handler armed *during* the last key's own settle only converts to
-    // due work on the next call. With no further key to trigger one, it
-    // would otherwise never fire.
+    // The startup work `Editor::run` settles before its first frame
+    // (`on-buffer-open` hooks, the plugins they activate) runs before the
+    // first key, so its errors count as the config's.
     editor.settle();
+    let config_failed = editor.state.message_log.totals().0 > 0;
 
-    let content = editor.doc().text().to_string();
-    let written = std::fs::write(&output, content);
-    // Config can now spawn LSP servers (see the `config` param above), so
-    // give them the same graceful shutdown window `run` gives them, rather
-    // than leaving `ServerHandle::drop` to `SIGKILL` them on the way out.
-    // Runs before the write result is propagated: an early `?` on `written`
-    // would skip it.
+    let written = if config_failed {
+        Ok(())
+    } else {
+        for key in parsed {
+            editor.step(key);
+            // `step` only dispatches the key; `settle()` is what drains the
+            // queued work (hooks, LSP/timer callbacks) that dispatch enqueues.
+            // This mirrors `Editor::run`'s interactive loop, where the loop settles
+            // and the input handler doesn't (see `Editor::settle`'s doc).
+            editor.settle();
+            if editor.state.should_quit {
+                break;
+            }
+        }
+        // One more pass after the loop: `drain_async_sources` runs once per
+        // `settle()` call, outside its fixpoint (see that doc), so a timer a
+        // handler armed *during* the last key's own settle only converts to
+        // due work on the next call. With no further key to trigger one, it
+        // would otherwise never fire.
+        editor.settle();
+        std::fs::write(&output, editor.doc().text().to_string())
+    };
+    // Config can spawn LSP servers, so give them the same graceful shutdown
+    // window `run` gives them, rather than leaving `ServerHandle::drop` to
+    // `SIGKILL` them on the way out. Runs before any result is propagated:
+    // an early `?` would skip it.
     editor.lsp_shutdown_all(editor::Editor::SHUTDOWN_GRACE);
-    Ok(written?)
+    let reported = editor
+        .state
+        .message_log
+        .write_problems(&mut std::io::stderr().lock());
+    written?;
+    reported?;
+    match editor.state.message_log.totals().0 {
+        0 => Ok(()),
+        _ if config_failed => Err("the config failed to load, so no keys were replayed".into()),
+        1 => Err("1 error was logged".into()),
+        n => Err(format!("{n} errors were logged").into()),
+    }
 }
 
 /// Start the editor.
