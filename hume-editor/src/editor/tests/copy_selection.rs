@@ -398,3 +398,15 @@ fn copying_a_linewise_selection_down_copies_a_whole_line() {
 fn copying_a_linewise_selection_onto_a_shorter_line_keeps_it_linewise() {
     assert_copy_state("-[abc\n]>d\nef\n", true, 1, "-[abc\n]>-{d\n}>ef\n");
 }
+
+// ── Insert mode ────────────────────────────────────────────────────────────
+
+#[test]
+fn copy_in_insert_mode_onto_a_shorter_line_lands_on_its_line_break() {
+    // "abcdef\nab\n": typing at 'e' goes at column 4, past the end of "ab",
+    // so the copy lands where text appended to "ab" goes: its '\n' (offset 9).
+    let mut ed = copy_test_editor("abcd-[e]>f\nab\n");
+    ed.handle_key(key('i'));
+    run_copy(&mut ed, true, 1);
+    assert_eq!(ed.current_view().primary().head().offset(), co(9));
+}

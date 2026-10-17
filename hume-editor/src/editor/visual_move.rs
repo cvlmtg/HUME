@@ -251,27 +251,29 @@ pub(super) fn apply_visual_vertical(
 
 /// Where the copy of a selection end `end` lands on line `line`: the line's
 /// `\n` when `end` is on its own line's `\n`, so a copied whole line stays a
-/// whole line, otherwise the original's display column.
+/// whole line, otherwise the original's display column, resolved under
+/// `landing`.
 fn copied_end(
     dlm: &mut DisplayLineMap<'_>,
     text: &BufferText,
     end: ClusterStart,
     display_col: BufferLineCol,
     line: usize,
+    landing: DisplayColTarget,
 ) -> ClusterStart {
     let line = hume_rope::line::ContentLine::new(line);
     if end == text.lines().newline(text.char_to_line(end.offset())) {
         return text.lines().newline(line);
     }
-    dlm.char_at_buffer_line_col(line, display_col, DisplayColTarget::NearestContent)
+    dlm.char_at_buffer_line_col(line, display_col, landing)
 }
 
 /// Duplicate each selection onto each of the `count` lines below it (`down:
 /// true`) or above it, landing each copy on the original's display column.
 /// Needs a `DisplayLineMap`, so it lives here rather than in `hume-ops`.
 ///
-/// `DisplayColTarget::NearestContent` clamps to the last real character of a
-/// short line and lands on `\n` only when the line is empty.
+/// `landing` is the pane's [`sticky_landing`], so on a short line a copy
+/// lands where `↑`/`↓` would.
 ///
 /// Copies step by the selection's own line span, since a one-line step would
 /// make a multi-line copy overlap its source and merge with it. `count` is
@@ -284,6 +286,7 @@ fn copy_selection_vertically(
     state: EditState,
     down: bool,
     count: usize,
+    landing: DisplayColTarget,
 ) -> EditState {
     let direction: isize = if down { 1 } else { -1 };
     let view = state.view();
@@ -340,6 +343,7 @@ fn copy_selection_vertically(
                 sel.anchor(),
                 anchor_display_col,
                 (anchor_line + delta) as usize,
+                landing,
             );
             let new_head = copied_end(
                 dlm,
@@ -347,6 +351,7 @@ fn copy_selection_vertically(
                 sel.head(),
                 head_display_col,
                 (head_line + delta) as usize,
+                landing,
             );
 
             if sel.is_primary() {
@@ -376,6 +381,7 @@ fn copy_selection_on_line(
     down: bool,
 ) {
     let buf_id = t.bid(view);
+    let landing = sticky_landing(state, t.pid(), buf_id);
     let key = state.format_key(&view.panes[t.pid()]);
     let (mut dlm, _) = pane_display_lines(state.buffers.get(buf_id), &mut view.panes[t.pid()], key);
 
@@ -384,7 +390,7 @@ fn copy_selection_on_line(
         &mut state.panes.entries,
         t.pid(),
         buf_id,
-        |st| copy_selection_vertically(&mut dlm, st, down, count),
+        |st| copy_selection_vertically(&mut dlm, st, down, count, landing),
     );
 }
 
