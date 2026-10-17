@@ -160,7 +160,7 @@ impl Editor {
         err_prefix: &str,
     ) {
         // Every Steel entry point but `call_steel_command_body` (which
-        // hand-rolls its own close for its `bool` return) returns through
+        // closes its own bracket and hands its error back) returns through
         // here, the one funnel that closes the `#:inline-output` bracket,
         // for a hook, a queued-call batch, `init.scm`, and a runtime plugin
         // activation alike, so no caller has to remember to.

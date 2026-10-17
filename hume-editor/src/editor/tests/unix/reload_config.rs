@@ -988,7 +988,7 @@ fn reload_config_preserves_undo_jumplist_history_registers_mode_and_focus() {
 
     // Minibuf command history: the pre-reload command is still there:
     // `:reload-config` itself is pushed onto the same ring right before it
-    // dispatches (`handle_command` records raw input before `run_command_line`
+    // dispatches (`handle_command` records raw input before `execute_command_line`
     // runs), so it's expected as the newest entry alongside it.
     assert_eq!(
         ed.state

@@ -647,9 +647,6 @@ fn a_later_host_with_no_authority_still_completes_a_frame_armed_by_an_earlier_on
 /// `close_inline_output_bracket` either. No frame may be pushed on that
 /// early return: a later dispatch's `%stdout-gate!` must not inherit a
 /// gate this command never actually opened.
-///
-/// The no-host guard in `call_steel_command_body` must run before any frame
-/// is pushed.
 #[test]
 fn no_scripting_host_does_not_leak_a_pushed_frame() {
     let tmp = tempfile::tempdir().unwrap();

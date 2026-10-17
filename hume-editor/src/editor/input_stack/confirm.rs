@@ -139,8 +139,8 @@ impl Editor {
     ///
     /// - `bid` is the focused buffer.
     /// - Mode layer is `Base`, so an unsubmitted `:`/`/` line is never hidden.
-    ///   `:e`/`:b`/`:checktime` can still open one, since `run_command_line`
-    ///   truncates the `Command` layer before running the command body.
+    ///   `:e`/`:b`/`:checktime` can still open one, since the `:` line's
+    ///   Confirm truncates the `Command` layer before running the command body.
     /// - No `confirm`/`picker`/`menu`/`drawer` anywhere on the stack: one modal
     ///   owner at a time, and a second confirm would replace an unanswered one.
     ///   `Editor::enter_buffer_disk_check` already retires a confirm for a

@@ -968,25 +968,6 @@ impl Editor {
             .buffer_state(pane, buf)
             .map(|s| s.selections())
     }
-
-    /// Run the `:` line `cmd_with_arg` (e.g. `"bd"`, `"e! path"`), with
-    /// `extra_arg` appended after a space when given, as Confirm on the `:`
-    /// line runs it. Reports an error as `:` does, and also returns it.
-    pub(in crate::editor) fn execute_typed(
-        &mut self,
-        cmd_with_arg: &str,
-        extra_arg: Option<&str>,
-    ) -> Result<(), crate::editor::error::CommandError> {
-        let line = match extra_arg {
-            Some(arg) => format!("{cmd_with_arg} {arg}"),
-            None => cmd_with_arg.to_owned(),
-        };
-        let result = super::input_stack::command::run_command_line(self, &line);
-        if let Err(ref e) = result {
-            self.report_error(e);
-        }
-        result
-    }
 }
 
 // ── process-global test lock ─────────────────────────────────────────────────

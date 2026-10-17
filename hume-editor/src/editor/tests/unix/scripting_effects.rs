@@ -128,7 +128,7 @@ fn effect_log_preserves_emission_order_across_kinds() {
     );
 }
 
-/// Full dispatch pipeline (`Editor::run_steel_command`'s `Err` arm), not just
+/// Full dispatch pipeline (`Editor::call_steel_command_body`'s `Err` arm), not just
 /// `ScriptingHost` directly: `:outer-fail` `call!`s a lazy command owned by
 /// plugin `user/efx`. The plugin activates inline mid-body, committing
 /// `Loaded` and queuing `register-lsp-server!` for "widget", then the outer
@@ -138,7 +138,7 @@ fn effect_log_preserves_emission_order_across_kinds() {
 /// (queued before and after the nested activation) must not apply.
 ///
 /// Without the `self.apply_script_effects(e.effects)` call in
-/// `run_steel_command`'s `Err` arm, `registered_command_for_test("widget")` would
+/// `call_steel_command_body`'s `Err` arm, `registered_command_for_test("widget")` would
 /// return `None` even though the plugin is `Loaded`.
 #[test]
 fn failed_command_delivers_committed_activation_effects() {

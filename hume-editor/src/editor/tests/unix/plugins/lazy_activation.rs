@@ -276,6 +276,45 @@ fn activation_drops_a_stub_the_body_never_defined() {
     );
 }
 
+/// `:` on a declared command the plugin body never defines warns, as `:` on
+/// any other unknown name does.
+#[test]
+fn a_declared_command_the_body_never_defined_warns() {
+    let (mut ed, _dir) = setup_lazy_editor(
+        r#"(declare-plugin! "user/tp" #:typed-commands '("bar"))"#,
+        r#"(define-command! "other-cmd" "doc" (lambda () (+ 1 0)))"#,
+    );
+
+    let e = ed
+        .execute_typed("bar", None)
+        .expect_err("`:bar` is unknown");
+
+    assert_eq!(e.severity(), crate::editor::Severity::Warning);
+}
+
+/// A lazy command dispatched with no scripting host fails the way an
+/// activated Steel command does.
+#[test]
+fn a_lazy_command_with_no_scripting_host_reports_scripting_unavailable() {
+    let (mut ed, _dir) = setup_lazy_editor(
+        r#"(declare-plugin! "user/tp" #:typed-commands '("bar"))"#,
+        r#"(define-typed-command! "bar" "doc" (lambda () (+ 1 0)))"#,
+    );
+    ed.scripting = None;
+
+    let e = ed
+        .execute_typed("bar", None)
+        .expect_err("no host runs `:bar`");
+
+    assert_eq!(
+        (e.message(), e.severity()),
+        (
+            "bar: scripting is not available",
+            crate::editor::Severity::Error
+        )
+    );
+}
+
 /// A lazy plugin body that queues a `register-lsp-server!` and then errors
 /// before defining its activation command: the queued registration must not
 /// survive the failed activation: it must not be picked up by

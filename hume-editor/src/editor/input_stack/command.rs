@@ -123,7 +123,7 @@ fn handle_command_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
         MiniBufferEvent::Confirm(_) => {
             // Record into history and extract the input before
             // truncating: the `Command` layer (and the minibuf it
-            // owns) is gone by the time `run_command_line` runs, so the
+            // owns) is gone by the time `execute_command_line` runs, so the
             // string has to be taken out first, per truncate-before-
             // execute: the body below runs with the mode layer already
             // back at `Base`, so a `:cmd` that enters Insert stays in
@@ -140,11 +140,8 @@ fn handle_command_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
                 .history
                 .get_mut(HistoryKind::Command)
                 .push(raw.clone());
-            let input = raw.trim().to_owned();
             ed.state.truncate_layers(&ed.view, r);
-            if let Err(e) = run_command_line(ed, &input) {
-                ed.report_error(&e);
-            }
+            let _ = execute_command_line(ed, &raw);
         }
         // An edit, cursor move, or Backspace that clears to empty demotes
         // any active history recall back to scratch. EmptiedByBackspace
@@ -179,14 +176,34 @@ fn handle_command_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
     }
 }
 
-/// Run a typed command line, returning its error unreported. `input` is
-/// trimmed and has no leading `:`. At Confirm the `Command` layer (and its
+/// Run the `:` line `raw` (its text without the leading `:`) and report its
+/// error, which is also returned. At Confirm the `Command` layer (and its
 /// minibuf) is already gone by the time this runs, per
 /// truncate-before-execute.
-pub(in crate::editor) fn run_command_line(
-    ed: &mut Editor,
-    input: &str,
-) -> Result<(), CommandError> {
+fn execute_command_line(ed: &mut Editor, raw: &str) -> Result<(), CommandError> {
+    run_command_line(ed, raw.trim()).inspect_err(|e| ed.report_error(e))
+}
+
+#[cfg(test)]
+impl Editor {
+    /// Run the `:` line `cmd_with_arg` (e.g. `"bd"`, `"e! path"`), with
+    /// `extra_arg` appended after a space when given, as Confirm on the `:`
+    /// line runs it. Reports an error as `:` does, and also returns it.
+    pub(in crate::editor) fn execute_typed(
+        &mut self,
+        cmd_with_arg: &str,
+        extra_arg: Option<&str>,
+    ) -> Result<(), CommandError> {
+        let line = match extra_arg {
+            Some(arg) => format!("{cmd_with_arg} {arg}"),
+            None => cmd_with_arg.to_owned(),
+        };
+        execute_command_line(self, &line)
+    }
+}
+
+/// Run a trimmed `:` line, returning its error unreported.
+fn run_command_line(ed: &mut Editor, input: &str) -> Result<(), CommandError> {
     let (cmd, force, arg) = parse_typed_command(input);
 
     // Bare line number `:42`: shorthand for `:goto 42`.

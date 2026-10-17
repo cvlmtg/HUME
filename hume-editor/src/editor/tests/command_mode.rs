@@ -21,7 +21,7 @@ fn colon_enters_command_mode() {
 }
 
 /// Truncate-before-execute: a `:cmd` body runs with the `Command` layer
-/// already gone (truncated back to `Base` before `run_command_line` is
+/// already gone (truncated back to `Base` before `execute_command_line` is
 /// called), so a body that itself pushes `Insert` lands on a clean stack
 /// and stays there. Closing the `Command` layer after execution would stomp
 /// it back to Normal.
@@ -56,6 +56,34 @@ fn typed_command_body_entering_insert_stays_in_insert() {
         "Esc must still end Insert cleanly"
     );
     assert_eq!(ed.doc().text().to_string(), "Xabc\n");
+}
+
+/// A Steel typed command that logs and then raises: its log line is
+/// reported before its error, during the same dispatch.
+#[test]
+fn a_failing_typed_commands_log_lands_before_its_error() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bc\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "fail" "" (lambda () (log! 'warn "step 1") (error "boom")))"#,
+    );
+
+    ed.execute_typed("fail", None).expect_err("`:fail` raises");
+
+    let texts: Vec<&str> = ed
+        .state
+        .message_log
+        .entries()
+        .map(|e| e.text.as_str())
+        .collect();
+    let step = texts.iter().position(|t| t.contains("step 1"));
+    let boom = texts.iter().position(|t| t.contains("boom"));
+    assert!(
+        step.is_some() && step < boom,
+        "the log line must be reported before the error; log: {texts:?}"
+    );
 }
 
 /// `:` resolves a Steel typed command case-insensitively, and the body it

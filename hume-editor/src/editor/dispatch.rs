@@ -136,17 +136,21 @@ impl Editor {
         true
     }
 
-    /// Activate `plugin` (a `Lazy` stub's owner). Fails when there is no
-    /// scripting host or activation leaves no command named `name`.
+    /// Activate `plugin` (a `Lazy` stub's owner). Fails as a Steel command
+    /// does when there is no scripting host, and as an unknown name does
+    /// when activation leaves no command named `name`.
     fn activate_lazy(
         &mut self,
         plugin: &hume_scripting::attribution::EntryId,
         name: &str,
     ) -> Result<(), CommandError> {
+        if self.scripting.is_none() {
+            return Err(scripting_unavailable(name));
+        }
         if self.activate_lazy_plugin(plugin, name) {
             Ok(())
         } else {
-            Err(CommandError::transient(format!("unknown command: {name}")))
+            Err(self.unknown_command(name, format!("unknown command: {name}")))
         }
     }
 
@@ -331,9 +335,7 @@ impl Editor {
         inline_output: bool,
     ) -> Result<(), CommandError> {
         if self.scripting.is_none() {
-            return Err(CommandError::new(format!(
-                "{name}: scripting is not available"
-            )));
+            return Err(scripting_unavailable(name));
         }
 
         // Alt-screen bracketing for inline-output commands is lazy: entering
@@ -366,6 +368,7 @@ impl Editor {
         // before `match result` below so a Steel error raised after screen
         // entry still gets the TUI restored first.
         self.close_inline_output_bracket();
+        self.flush_script_messages();
 
         let effects = match result {
             Ok(effects) => effects,
@@ -375,7 +378,6 @@ impl Editor {
             }
         };
 
-        self.flush_script_messages();
         self.apply_script_effects(effects);
         Ok(())
     }
@@ -494,6 +496,12 @@ fn command_lost(name: &str) -> CommandError {
     CommandError::new(format!(
         "{name}: internal error: command lost after activation"
     ))
+}
+
+/// The registry still holds the Steel command `name`, but there is no
+/// scripting host to run it.
+fn scripting_unavailable(name: &str) -> CommandError {
+    CommandError::new(format!("{name}: scripting is not available"))
 }
 
 /// Shared arity guard + argument marshalling behind
