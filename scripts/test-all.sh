@@ -40,3 +40,10 @@ cargo test --all-targets
 # --all-targets excludes doctests — run them separately so a broken example
 # doesn't rot unnoticed.
 cargo test --doc
+
+# Every golf solution must still produce its expected output. Unix only, as
+# in CI: a solution is not guaranteed to replay the same way on Windows.
+case "$(uname -s)" in
+    MINGW* | MSYS* | CYGWIN*) ;;
+    *) bash tools/golf/golf.sh ;;
+esac

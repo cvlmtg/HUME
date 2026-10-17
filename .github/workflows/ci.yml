@@ -179,3 +179,11 @@ jobs:
         if: runner.os != 'Windows'
         shell: bash
         run: python3 -m unittest discover -s scripts/tests
+
+      # Every golf solution must still produce its expected output; golf.sh
+      # exits non-zero when one fails. Unix only: a solution is not
+      # guaranteed to replay the same way on Windows.
+      - name: Golf
+        if: runner.os != 'Windows'
+        shell: bash
+        run: bash tools/golf/golf.sh

@@ -32,7 +32,9 @@ CHALLENGE                      HUME  KAKOUNE  RESULT
 ```
 
 `RESULT` is `OK` if the output matches `out` byte-for-byte, `FAIL` otherwise.
-Challenges without a `cmd` file are listed as `SKIP`.
+Challenges without a `cmd` file are listed as `SKIP`. The script exits non-zero
+when any challenge fails, and `scripts/test-all.sh` and CI run it on Linux and
+macOS, so a change that breaks a committed solution fails the suite.
 
 ## Downloading real vimgolf challenges
 
