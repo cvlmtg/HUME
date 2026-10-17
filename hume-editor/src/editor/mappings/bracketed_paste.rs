@@ -4,46 +4,25 @@
 //! distinct from the register/kill-ring `p`/`P` "paste" commands in
 //! `editor::commands::paste`, which are an unrelated feature.
 
-use std::borrow::Cow;
-
 use super::super::Editor;
-use super::super::input_stack::InputEvent;
-use hume_editing::text::normalize_line_endings;
+use super::super::input_stack::PastedText;
 
 impl Editor {
     // ── Terminal paste ───────────────────────────────────────────────────────
 
-    /// Handle a whole pasted string arriving as one terminal event.
-    ///
-    /// Normalizes and empty-checks at the terminal boundary, then hands off
-    /// to the same stack walk keys use: each layer states its own paste
-    /// policy. See `Editor::apply_insert_mode_paste` for the Insert-mode path.
+    /// Handle a whole pasted string arriving as one terminal event: the
+    /// terminal's entry to [`EditorState::paste`](super::super::EditorState::paste).
     pub(in crate::editor) fn handle_terminal_paste(&mut self, text: String) {
-        // Normalized here, at the terminal boundary, rather than left to the
-        // changeset builder: this text also reaches the minibuffer (via
-        // `minibuf::flatten_single_line`, whose contract is already-normalized
-        // input) and the insert-session replay log, neither of which is
-        // behind that builder. Terminals commonly transmit CR or CRLF for a
-        // newline in a bracketed paste regardless of the source's own
-        // convention.
-        //
-        // `text` is already owned, and the common case (no bare CR) returns
-        // `Cow::Borrowed`, so reuse `text` itself rather than re-copying it via
-        // `into_owned()`, which would memcpy the whole paste a second time.
-        let text = match normalize_line_endings(&text) {
-            Cow::Borrowed(_) => text,
-            Cow::Owned(s) => s,
-        };
-        if text.is_empty() {
+        let Some(text) = PastedText::new(text) else {
             return;
-        }
+        };
         // Mirrors `handle_key`'s status-message dismissal, minus the
         // summary-TTL bookkeeping: a paste is a real input event but not a
-        // keystroke the TTL countdown should tick against. Unconditional now
-        // that dispatch itself decides whether the paste does anything (a
-        // swallow, e.g. under Confirm, still dismissed the previous message
+        // keystroke the TTL countdown should tick against. Unconditional,
+        // since the paste itself decides whether it does anything (a
+        // swallow, e.g. under Confirm, still dismisses the previous message
         // as a real input event).
         self.state.status_msg.take();
-        self.dispatch_input(InputEvent::Paste(text));
+        self.state.paste(&self.view, text);
     }
 }

@@ -197,6 +197,15 @@ fn on_next_char_hands_false_to_the_callback_on_a_mouse_click() {
 }
 
 #[test]
+fn on_next_char_hands_false_to_the_callback_on_a_paste() {
+    let mut ed = editor_from("-[h]>ello\n");
+    probe(&mut ed, REPLACE_Z_ON_CANCEL);
+    ed.feed_paste("x");
+    ed.settle();
+    assert_eq!(text(&ed), "zello\n");
+}
+
+#[test]
 fn on_next_char_chains_for_several_chars() {
     let mut ed = editor_from("-[h]>ello\n");
     probe(

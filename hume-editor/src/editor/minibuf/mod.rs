@@ -3,8 +3,8 @@ pub(in crate::editor) mod history;
 use hume_ui::width::text_width;
 
 use self::history::{HistoryDir, HistoryKind};
-use super::Editor;
-use super::input_stack::{InputEvent, LayerRef};
+use super::input_stack::{InputEvent, LayerRef, PastedText};
+use super::{Editor, EditorState};
 
 /// The command-line mini-buffer, active while the user is typing a command
 /// or search pattern.
@@ -174,18 +174,16 @@ impl MiniBuffer {
         }
     }
 
-    /// Insert a whole string at the edit cursor: the terminal-paste
-    /// counterpart of the single-char branch in [`handle_key`](Self::handle_key),
-    /// returning the same `Edited` event so a paste runs each mode's real
-    /// `Edited` follow-up instead of a hand-mirrored copy of it. `Ignored`
-    /// on an empty string, matching `handle_key`'s own unbound-key result.
-    pub(super) fn insert_str(&mut self, s: &str) -> MiniBufferEvent {
+    /// Insert a whole string at the edit cursor: the paste counterpart of
+    /// the single-char branch in [`handle_key`](Self::handle_key). Whether
+    /// the input changed, `false` for an empty string.
+    fn insert_str(&mut self, s: &str) -> bool {
         if s.is_empty() {
-            return MiniBufferEvent::Ignored;
+            return false;
         }
         self.input.insert_str(self.cursor, s);
         self.cursor += s.len();
-        MiniBufferEvent::Edited
+        true
     }
 
     /// Replaces `input[span]` with `text` and parks the cursor at the end
@@ -246,10 +244,8 @@ fn word_boundary_back(s: &str, cursor: usize) -> usize {
 
 /// Converts one `InputEvent` into a `MiniBufferEvent` for whichever
 /// minibuf-mode layer (`Command`/`Search`/`Sift`/`Prompt`) is dispatching:
-/// the single place a key or a paste becomes an edit to the
-/// minibuffer, shared by all four so a paste runs the same `Edited`
-/// follow-up a typed character would (see each mode's own event match).
-/// A mouse event has no minibuffer edit to become: it falls through
+/// the single place a key becomes an edit to the minibuffer, shared by all
+/// four. A mouse event has no minibuffer edit to become: it falls through
 /// (the cursor still moves under an open `:`/`/`/`s` prompt) and
 /// returns `None` either way. `None` also covers
 /// the case where no minibuffer is live (dispatch reached this layer
@@ -266,13 +262,19 @@ pub(in crate::editor) fn minibuf_input(
             None
         }
         InputEvent::Key(key) => Some(ed.state.input.minibuf_mut()?.handle_key(key)),
-        InputEvent::Paste(text) => Some(
-            ed.state
-                .input
-                .minibuf_mut()?
-                .insert_str(&flatten_single_line(&text)),
-        ),
     }
+}
+
+/// Insert `text`, flattened to one line, at the minibuffer's cursor: the
+/// paste half every minibuf-mode layer's paste handler shares, each then
+/// running the follow-up its own `Edited` arm runs. Whether the input
+/// changed: `false` when no minibuffer is live or `text` flattens to
+/// nothing.
+pub(in crate::editor) fn paste_into_minibuf(state: &mut EditorState, text: &PastedText) -> bool {
+    state
+        .input
+        .minibuf_mut()
+        .is_some_and(|mb| mb.insert_str(&flatten_single_line(text.as_str())))
 }
 
 /// Recall the previous (`Prev`) or next (`Next`) entry from `kind`'s history

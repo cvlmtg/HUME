@@ -11,9 +11,11 @@
 //! the [`Layer`] trait) and names no concrete layer. Each concrete layer (state,
 //! `Layer` impl, handlers, render sync, lookup helpers) lives in its own file
 //! with a `mod` line below. `placement.rs` (overlay placement shared by `popup`,
-//! `menu`, `completion`) and `snapshot.rs` (pre-entry selection capture shared
-//! by `search`/`sift`) are helpers, not layers.
+//! `menu`, `completion`), `snapshot.rs` (pre-entry selection capture shared
+//! by `search`/`sift`) and `paste.rs` (the paste action every layer's paste
+//! handler serves) are helpers, not layers.
 
+mod paste;
 mod placement;
 mod snapshot;
 mod stack;
@@ -32,6 +34,7 @@ pub(in crate::editor) mod prompt;
 pub(in crate::editor) mod search;
 pub(in crate::editor) mod sift;
 
+pub(in crate::editor) use paste::PastedText;
 pub(in crate::editor) use stack::{InputEvent, InputStack, Layer, LayerRef, OtherLayers};
 
 pub(in crate::editor) use base::{BaseLayer, PendingSequence};

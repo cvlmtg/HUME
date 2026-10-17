@@ -1,5 +1,5 @@
 // Terminal bracketed-paste (`TerminalEvent::Paste`) handling: `handle_terminal_paste`
-// in `mappings/bracketed_paste.rs`. Distinct from the register/kill-ring
+// in `mappings/bracketed_paste.rs` and each layer's paste handler. Distinct from the register/kill-ring
 // `p`/`P` paste commands covered in `commands/paste.rs`.
 
 use super::*;
@@ -29,8 +29,7 @@ fn empty_paste_is_a_noop_in_normal_mode() {
 fn newline_only_paste_flattens_to_empty_and_is_a_noop_in_command_mode() {
     // Distinct from the top-level empty-text guard: "\n\n" survives
     // `normalize_line_endings` (it's non-empty), but `flatten_single_line`
-    // trims all of it away, so `MiniBuffer::insert_str` then returns `Ignored`
-    // rather than `Edited`, the same result an unbound key would produce.
+    // trims all of it away, so the minibuffer reports no change.
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key(':'));
     assert_eq!(ed.state.mode(), Mode::Command);
@@ -125,8 +124,8 @@ fn normal_mode_paste_replaces_selection_in_one_undo_step() {
 
 #[test]
 fn extend_mode_paste_replaces_selection() {
-    // `base_input`'s `Paste` arm doesn't distinguish Normal from Extend
-    // (both run through the same `Base` layer), so set Extend directly.
+    // The `Base` layer's paste handler doesn't distinguish Normal from
+    // Extend (both run through the same layer), so set Extend directly.
     let mut ed = editor_from("-[hell]>o\n");
     ed.state.input.set_extend(true);
     ed.feed_paste("xyz");
@@ -298,6 +297,40 @@ fn drawer_paste_is_swallowed_but_clears_the_status_message() {
     assert_eq!(ed.doc().text().to_string(), "hello\n");
     assert!(ed.state.input.drawer().is_some(), "the drawer stays open");
     assert!(ed.state.status_msg.is_none());
+}
+
+#[test]
+fn popup_paste_closes_the_popup_and_pastes_below() {
+    use crate::editor::host_impl::EditorHostImpl;
+    use hume_scripting::host::{PopupKind, UiHost};
+
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.feed_key(key('i'));
+    let pane = focused_pane(&ed);
+    EditorHostImpl::new(&mut ed.state, &mut ed.view)
+        .show_popup(pane, "doc".to_string(), PopupKind::Scrollable, false, None)
+        .expect("show-popup! succeeds");
+    assert!(ed.state.input.popup().is_some());
+
+    ed.feed_paste("xyz");
+
+    assert!(ed.state.input.popup().is_none());
+    assert_eq!(ed.doc().text().to_string(), "xyzhello\n");
+}
+
+#[test]
+fn minibuf_completion_paste_closes_the_candidate_list_and_pastes() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key(':'));
+    ed.handle_key(key('w'));
+    ed.handle_key(key_tab());
+    assert!(ed.state.input.minibuf_completion().is_some());
+    let before = ed.state.minibuf().unwrap().input.clone();
+
+    ed.feed_paste("xyz");
+
+    assert!(ed.state.input.minibuf_completion().is_none());
+    assert_eq!(ed.state.minibuf().unwrap().input, format!("{before}xyz"));
 }
 
 // ── Dot-repeat ────────────────────────────────────────────────────────────

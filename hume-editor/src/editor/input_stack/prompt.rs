@@ -9,7 +9,8 @@ use hume_engine::types::EditorMode;
 use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent};
 use super::super::replay::{Answer, InputOpener, PendingAnswer, WaitingInput};
 use super::super::{Editor, EditorState};
-use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal};
+use super::paste::PastedText;
+use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, PasteHandler, Removal};
 
 /// Built only by [`open_prompt`].
 pub(in crate::editor) struct PromptLayer {
@@ -101,6 +102,9 @@ impl Layer for PromptLayer {
     fn handler(&self) -> LayerHandler {
         prompt_input
     }
+    fn paste_handler(&self) -> PasteHandler {
+        prompt_paste
+    }
     fn mode(&self) -> Option<EditorMode> {
         // The engine has no `Prompt` variant, and today's `(prompt! …)`
         // session already runs as `Command` for every consumer outside this
@@ -139,6 +143,12 @@ pub(in crate::editor) fn prompt_input(ed: &mut Editor, r: LayerRef, ev: InputEve
     if let Some(event) = minibuf::minibuf_input(ed, r, ev) {
         handle_steel_prompt_event(ed, r, event);
     }
+}
+
+/// An edit has no follow-up here, as `handle_steel_prompt_event`'s `Edited`
+/// arm shows.
+fn prompt_paste(state: &mut EditorState, _view: &EngineView, _r: LayerRef, text: PastedText) {
+    minibuf::paste_into_minibuf(state, &text);
 }
 
 /// Routes a `Prompt` layer's key for a Steel `(prompt! …)` session

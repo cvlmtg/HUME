@@ -1,7 +1,7 @@
-//! The `Insert` layer and its key handler. [`Editor::apply_insert_mode_paste`]
-//! is kept as an `impl Editor` method rather than a free function like this
-//! crate's other layer handlers because it has a second caller outside
-//! dispatch: `replay.rs`'s dot-repeat replay of a recorded paste.
+//! The `Insert` layer and its key and paste handlers.
+//! [`EditorState::apply_insert_mode_paste`] is a method rather than part of
+//! the paste handler because it has a second caller: `replay.rs`'s
+//! dot-repeat replay of a recorded paste.
 //!
 //! `handle_insert` itself only walks the Insert keymap and dispatches a
 //! match; a key with no match runs its *default* behaviour via
@@ -17,8 +17,9 @@ use super::super::edit_session::InsertSession;
 use super::super::keymap::WalkResult;
 use super::super::replay::{Input, dispatch_insert_key};
 use super::super::{Editor, EditorState, commands, doc_ops};
+use super::paste::PastedText;
 use super::popup::PopupLayer;
-use super::stack::{InputEvent, InputStack, Layer, LayerHandler, LayerRef, Removal};
+use super::stack::{InputEvent, InputStack, Layer, LayerHandler, LayerRef, PasteHandler, Removal};
 
 pub(in crate::editor) struct InsertLayer {
     pub(in crate::editor) sticky_popup: Option<PopupLayer>,
@@ -98,6 +99,9 @@ impl Layer for InsertLayer {
     fn handler(&self) -> LayerHandler {
         insert_input
     }
+    fn paste_handler(&self) -> PasteHandler {
+        insert_paste
+    }
     fn mode(&self) -> Option<EditorMode> {
         Some(EditorMode::Insert)
     }
@@ -115,15 +119,16 @@ impl Layer for InsertLayer {
 pub(in crate::editor) fn insert_input(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
     match ev {
         InputEvent::Key(key) => handle_insert(ed, key),
-        InputEvent::Paste(text) => {
-            ed.apply_insert_mode_paste(&text);
-            ed.state.record_input(Input::Paste(text));
-        }
         // A click or a wheel notch is Base's own action to run. Most
         // visibly, a click's `focus_pane` ends this very Insert session
         // before resolving the click (see `focus::focus_pane`'s doc).
         InputEvent::Mouse(mouse) => ed.fall_through(r, InputEvent::Mouse(mouse)),
     }
+}
+
+fn insert_paste(state: &mut EditorState, view: &EngineView, _r: LayerRef, text: PastedText) {
+    state.apply_insert_mode_paste(view, text.as_str());
+    state.record_input(Input::Paste(text.into_string()));
 }
 
 /// Walks the Insert keymap for `key`: a bound key re-dispatches its
@@ -187,7 +192,7 @@ fn handle_insert(ed: &mut Editor, key: KeyEvent) {
     }
 }
 
-impl Editor {
+impl EditorState {
     // ── Insert mode ───────────────────────────────────────────────────────────
 
     /// Bulk-insert `text` into the focused buffer as one grouped edit: the
@@ -198,13 +203,13 @@ impl Editor {
     /// Bypasses auto-pairs, trigger-char hooks, and per-char LSP
     /// refiltering: auto-pairing pasted brackets would corrupt already-balanced
     /// text, and refiltering a completion against a pasted blob is meaningless.
-    pub(in crate::editor) fn apply_insert_mode_paste(&mut self, text: &str) {
-        let focused = self.view.focused_pane();
-        let buf = self.focused_buffer_id();
-        let (buffers, mut stores) = self.state.edit_parts();
+    pub(in crate::editor) fn apply_insert_mode_paste(&mut self, view: &EngineView, text: &str) {
+        let focused = view.focused_pane();
+        let buf = view.panes[focused].buffer_id();
+        let (buffers, mut stores) = self.edit_parts();
         doc_ops::apply_doc_edit_grouped(buffers, &mut stores, focused, buf, |s| {
             hume_ops::edit::insert_str(s, text)
         });
-        self.state.dismiss_completion(&self.view);
+        self.dismiss_completion(view);
     }
 }

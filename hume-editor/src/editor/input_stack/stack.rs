@@ -28,6 +28,7 @@ use super::super::minibuf::MiniBuffer;
 use super::super::{Editor, EditorState, Severity};
 use super::base::BaseLayer;
 use super::completion::{BufferCompletionLayer, MinibufCompletionLayer};
+use super::paste::PastedText;
 use super::popup::PopupLayer;
 
 /// Addresses one layer by position: minted only by [`InputStack`]'s own
@@ -41,14 +42,12 @@ pub(in crate::editor) struct LayerRef {
     id: u64,
 }
 
-/// One input event working its way down the stack. Adding a variant forces
-/// every layer's handler to state its policy for it at compile time:
-/// `Paste` broke all eleven handlers' irrefutable `let InputEvent::Key(key)
-/// = ev;` when it arrived, and `Mouse` broke every resulting `Key`/`Paste`
-/// match the same way.
+/// One key or mouse event working its way down the stack. Adding a variant
+/// forces every layer's handler to state its policy for it at compile time.
+/// A paste is not one: it takes [`Layer::paste_handler`]'s route, which needs
+/// only the editor state, so code holding no `Editor` can paste too.
 pub(in crate::editor) enum InputEvent {
     Key(KeyEvent),
-    Paste(String),
     Mouse(MouseEvent),
 }
 
@@ -59,6 +58,10 @@ pub(in crate::editor) enum InputEvent {
 /// pointer out of the layer's vtable and hands it back by value, ending
 /// that borrow before the caller invokes it.
 pub(in crate::editor) type LayerHandler = fn(&mut Editor, LayerRef, InputEvent);
+
+/// The function that lands a paste at a layer: [`LayerHandler`]'s
+/// counterpart for a paste, a fn pointer for the same reason.
+pub(in crate::editor) type PasteHandler = fn(&mut EditorState, &EngineView, LayerRef, PastedText);
 
 /// Which popup home(s) landing here evicts. Read by
 /// [`EditorState::push_layer`] right after [`Layer::setup`] runs, so no
@@ -106,6 +109,11 @@ pub(in crate::editor) trait Layer: Any {
     /// The function that handles one event while this layer is the dispatch
     /// target. See [`LayerHandler`].
     fn handler(&self) -> LayerHandler;
+
+    /// What a paste does while this layer is the dispatch target: required
+    /// like [`Self::handler`], so no layer leaves its paste policy unstated.
+    /// See [`PasteHandler`].
+    fn paste_handler(&self) -> PasteHandler;
 
     /// `Some` naming the [`EditorMode`] this layer presents when it is a
     /// *mode* layer (`Base`, and the five editing modes); `None` for a
@@ -427,6 +435,15 @@ impl InputStack {
             .get(r.depth)
             .filter(|(id, _)| *id == r.id)
             .map(|(_, layer)| layer.handler())
+    }
+
+    /// `r`'s paste handler, or `None` if `r` is stale: [`Self::handler`]'s
+    /// counterpart, read by `EditorState::paste_at`.
+    pub(in crate::editor) fn paste_handler(&self, r: LayerRef) -> Option<PasteHandler> {
+        self.layers
+            .get(r.depth)
+            .filter(|(id, _)| *id == r.id)
+            .map(|(_, layer)| layer.paste_handler())
     }
 
     /// The topmost layer of concrete type `L`, if one is open: the ref a

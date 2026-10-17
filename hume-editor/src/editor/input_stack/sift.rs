@@ -12,8 +12,9 @@ use hume_scripting::host::CommandArg;
 use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent};
 use super::super::replay::WaitingInput;
 use super::super::{Editor, EditorState, commands};
+use super::paste::PastedText;
 use super::snapshot::PaneSnapshot;
-use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal};
+use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, PasteHandler, Removal};
 
 pub(in crate::editor) struct SiftLayer {
     pub(in crate::editor) minibuf: MiniBuffer,
@@ -90,6 +91,9 @@ impl Layer for SiftLayer {
     fn handler(&self) -> LayerHandler {
         sift_input
     }
+    fn paste_handler(&self) -> PasteHandler {
+        sift_paste
+    }
     fn mode(&self) -> Option<EditorMode> {
         Some(EditorMode::Sift)
     }
@@ -144,6 +148,12 @@ pub(in crate::editor) fn sift_input(ed: &mut Editor, r: LayerRef, ev: InputEvent
     }
 }
 
+fn sift_paste(state: &mut EditorState, _view: &EngineView, r: LayerRef, text: PastedText) {
+    if minibuf::paste_into_minibuf(state, &text) {
+        update_live_sift(state, r);
+    }
+}
+
 fn handle_sift_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
     match event {
         MiniBufferEvent::Cancel | MiniBufferEvent::ConfirmEmpty => {
@@ -159,9 +169,9 @@ fn handle_sift_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
         }
         MiniBufferEvent::EmptiedByBackspace | MiniBufferEvent::BackspaceOnEmpty => {
             // Restore original selections when pattern is fully erased.
-            restore_sift_snapshot(ed, r);
+            restore_sift_snapshot(&mut ed.state, r);
         }
-        MiniBufferEvent::Edited => update_live_sift(ed, r),
+        MiniBufferEvent::Edited => update_live_sift(&mut ed.state, r),
         // Up/Down are reserved for minibuffer history: no-op in sift-within.
         MiniBufferEvent::CursorMoved
         | MiniBufferEvent::Ignored
@@ -173,13 +183,13 @@ fn handle_sift_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
 
 /// Replace selections with the matches within the original selections
 /// ([`sift_within`]). Called on every keystroke in Sift mode.
-fn update_live_sift(ed: &mut Editor, r: LayerRef) {
-    let pattern = match ed.state.input.minibuf() {
+fn update_live_sift(state: &mut EditorState, r: LayerRef) {
+    let pattern = match state.input.minibuf() {
         Some(mb) if !mb.input.is_empty() => mb.input.clone(),
         _ => return,
     };
 
-    let Some(sift) = ed.state.input.at::<SiftLayer>(r) else {
+    let Some(sift) = state.input.at::<SiftLayer>(r) else {
         return;
     };
     let pane = sift.snap.pane();
@@ -189,18 +199,18 @@ fn update_live_sift(ed: &mut Editor, r: LayerRef) {
 
     #[cfg(test)]
     {
-        ed.state.sift_scans += 1;
+        state.sift_scans += 1;
     }
-    match sift_within(ed.state.buffers.get(bid).text(), from.clone(), &pattern) {
+    match sift_within(state.buffers.get(bid).text(), from.clone(), &pattern) {
         Ok(new_state) => {
             let text = new_state.text().clone();
             let sifted = new_state.into_selections();
-            ed.state
+            state
                 .panes
                 .entries
                 .seeded_mut(pane, bid)
                 .set_selections(sifted.clone(), &text);
-            if let Some(sift) = ed.state.input.at_mut::<SiftLayer>(r) {
+            if let Some(sift) = state.input.at_mut::<SiftLayer>(r) {
                 sift.preview = Some(SiftPreview {
                     pattern,
                     from,
@@ -209,7 +219,7 @@ fn update_live_sift(ed: &mut Editor, r: LayerRef) {
             }
         }
         // Invalid regex in progress, or nothing matched: restore originals.
-        Err(SiftFailure::Invalid | SiftFailure::NoMatch) => restore_sift_snapshot(ed, r),
+        Err(SiftFailure::Invalid | SiftFailure::NoMatch) => restore_sift_snapshot(state, r),
     }
 }
 
@@ -239,11 +249,10 @@ pub(in crate::editor) fn sift_within(
 /// Restore selections from the sift-mode snapshot without consuming it.
 /// Always targets the session's own originating pane, not whatever's
 /// currently focused (see [`PaneSnapshot`]'s own doc).
-fn restore_sift_snapshot(ed: &mut Editor, r: LayerRef) {
-    let Some(sift) = ed.state.input.at_mut::<SiftLayer>(r) else {
+fn restore_sift_snapshot(state: &mut EditorState, r: LayerRef) {
+    let Some(sift) = state.input.at_mut::<SiftLayer>(r) else {
         return;
     };
     sift.preview = None;
-    sift.snap
-        .restore(&mut ed.state.panes.entries, &ed.state.buffers);
+    sift.snap.restore(&mut state.panes.entries, &state.buffers);
 }

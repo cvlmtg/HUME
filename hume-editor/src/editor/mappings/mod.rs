@@ -59,12 +59,12 @@ impl Editor {
     }
 
     /// Bare stack walk, no cross-cutting bookkeeping: the single entry
-    /// point every input event reaches the stack through, whatever its
-    /// source. `handle_key` wraps it with the status/summary bookkeeping,
-    /// macro recording, and dot-repeat replay above and below, for a key
-    /// from the terminal; `handle_input`'s mouse arm and
-    /// `handle_terminal_paste` call it directly for those two event kinds,
-    /// which carry none of that key-only bookkeeping.
+    /// point every key and mouse event reaches the stack through, whatever
+    /// its source. `handle_key` wraps it with the status/summary
+    /// bookkeeping, macro recording, and dot-repeat replay above and below,
+    /// for a key from the terminal; `handle_input`'s mouse arm calls it
+    /// directly, carrying none of that key-only bookkeeping. A paste takes
+    /// `EditorState::paste` instead.
     pub(in crate::editor) fn dispatch_input(&mut self, ev: InputEvent) {
         let top = self.state.input.top();
         self.dispatch_at(top, ev);

@@ -10,7 +10,8 @@ use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent};
 use super::super::registry::{ArgExpansion, TypedBody};
 use super::super::replay::WaitingInput;
 use super::super::{Editor, EditorState, commands};
-use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal};
+use super::paste::PastedText;
+use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, PasteHandler, Removal};
 
 pub(in crate::editor) struct CommandLayer {
     pub(in crate::editor) minibuf: MiniBuffer,
@@ -34,6 +35,9 @@ impl Layer for CommandLayer {
 
     fn handler(&self) -> LayerHandler {
         command_input
+    }
+    fn paste_handler(&self) -> PasteHandler {
+        command_paste
     }
     fn mode(&self) -> Option<EditorMode> {
         Some(EditorMode::Command)
@@ -107,6 +111,21 @@ pub(in crate::editor) fn command_input(ed: &mut Editor, r: LayerRef, ev: InputEv
     }
 }
 
+fn command_paste(state: &mut EditorState, _view: &EngineView, _r: LayerRef, text: PastedText) {
+    if minibuf::paste_into_minibuf(state, &text) {
+        command_line_edited(state);
+    }
+}
+
+/// Demotes any active history recall back to scratch: what an edit or a
+/// cursor move on the `:` line does beyond changing it.
+fn command_line_edited(state: &mut EditorState) {
+    state
+        .history
+        .get_mut(HistoryKind::Command)
+        .demote_to_scratch();
+}
+
 fn handle_command_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
     // No completion-dismiss calls in this function, on any arm: a
     // `MinibufCompletionLayer` sits *above* `Command` whenever a popup is open, and
@@ -151,12 +170,7 @@ fn handle_command_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
         // the user deletes a one-char typo.
         MiniBufferEvent::EmptiedByBackspace
         | MiniBufferEvent::Edited
-        | MiniBufferEvent::CursorMoved => {
-            ed.state
-                .history
-                .get_mut(HistoryKind::Command)
-                .demote_to_scratch();
-        }
+        | MiniBufferEvent::CursorMoved => command_line_edited(&mut ed.state),
         // Shift-Tab with no open popup is a no-op; once one opens (a
         // `MinibufCompletionLayer` pushed above this one), every subsequent
         // Tab/Shift-Tab (and the directory-descend-on-Enter check) is

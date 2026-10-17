@@ -11,7 +11,8 @@ use hume_engine::types::EditorMode;
 use super::super::mouse::is_fresh_gesture;
 use super::super::{Editor, EditorState};
 use super::BaseLayer;
-use super::stack::{InputEvent, Layer, LayerHandler, LayerRef};
+use super::paste::ignore_paste;
+use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, PasteHandler};
 use crate::editor::buffer::DiskCheckTrigger;
 
 /// What answering a confirm does, for the buffer the confirm is about.
@@ -230,6 +231,13 @@ impl Layer for ConfirmLayer {
     fn handler(&self) -> LayerHandler {
         confirm_input
     }
+    /// A paste is not one of the choice keys and is never a stray keystroke
+    /// meant for whatever lies underneath. Swallowed outright, the confirm
+    /// left open, matching this layer's full-modal choice-key policy for
+    /// anything else unmatched.
+    fn paste_handler(&self) -> PasteHandler {
+        ignore_paste
+    }
     fn mode(&self) -> Option<EditorMode> {
         None
     }
@@ -317,11 +325,6 @@ impl EditorState {
 pub(in crate::editor) fn confirm_input(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
     let key = match ev {
         InputEvent::Key(key) => key,
-        // A paste is not one of the choice keys and is never a stray
-        // keystroke meant for whatever lies underneath. Swallowed
-        // outright, the confirm left open, matching this layer's
-        // full-modal choice-key policy for anything else unmatched.
-        InputEvent::Paste(_) => return,
         InputEvent::Mouse(mouse) => {
             if is_fresh_gesture(mouse.kind) {
                 ed.state.truncate_layers(&ed.view, r);

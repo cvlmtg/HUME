@@ -14,8 +14,9 @@ use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent};
 use super::super::replay::WaitingInput;
 use super::super::search::SearchPattern;
 use super::super::{Editor, EditorState, commands, search};
+use super::paste::PastedText;
 use super::snapshot::PaneSnapshot;
-use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal};
+use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, PasteHandler, Removal};
 
 pub(in crate::editor) struct SearchLayer {
     pub(in crate::editor) minibuf: MiniBuffer,
@@ -58,6 +59,9 @@ impl SearchLayer {
 impl Layer for SearchLayer {
     fn handler(&self) -> LayerHandler {
         search_input
+    }
+    fn paste_handler(&self) -> PasteHandler {
+        search_paste
     }
     fn mode(&self) -> Option<EditorMode> {
         Some(EditorMode::Search)
@@ -112,6 +116,25 @@ pub(in crate::editor) fn search_input(ed: &mut Editor, r: LayerRef, ev: InputEve
     }
 }
 
+fn search_paste(state: &mut EditorState, _view: &EngineView, r: LayerRef, text: PastedText) {
+    if minibuf::paste_into_minibuf(state, &text) {
+        search_edited(state, r);
+    }
+}
+
+/// What an edit to the pattern does beyond changing it: demotes any active
+/// history recall back to scratch and refreshes the live preview.
+fn search_edited(state: &mut EditorState, r: LayerRef) {
+    if let Some(k) = state
+        .input
+        .minibuf()
+        .and_then(|m| HistoryStore::kind_for_prompt(&m.prompt))
+    {
+        state.history.get_mut(k).demote_to_scratch();
+    }
+    update_live_search(state, r);
+}
+
 fn handle_search_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
     match event {
         MiniBufferEvent::Cancel | MiniBufferEvent::ConfirmEmpty => {
@@ -128,7 +151,7 @@ fn handle_search_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
         MiniBufferEvent::EmptiedByBackspace => {
             // First Backspace cleared the last character: restore position but
             // stay in Search mode. A second Backspace (BackspaceOnEmpty) dismisses.
-            restore_search_snapshot(ed, r);
+            restore_search_snapshot(&mut ed.state, r);
             let Some(search) = ed.state.input.at::<SearchLayer>(r) else {
                 return;
             };
@@ -147,17 +170,7 @@ fn handle_search_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
             // begins a fresh history session.
             ed.state.truncate_layers(&ed.view, r);
         }
-        MiniBufferEvent::Edited => {
-            if let Some(k) = ed
-                .state
-                .input
-                .minibuf()
-                .and_then(|m| HistoryStore::kind_for_prompt(&m.prompt))
-            {
-                ed.state.history.get_mut(k).demote_to_scratch();
-            }
-            update_live_search(ed, r);
-        }
+        MiniBufferEvent::Edited => search_edited(&mut ed.state, r),
         MiniBufferEvent::HistoryPrev => recall_search_history(ed, r, HistoryDir::Prev),
         MiniBufferEvent::HistoryNext => recall_search_history(ed, r, HistoryDir::Next),
         MiniBufferEvent::CursorMoved
@@ -177,7 +190,7 @@ fn recall_search_history(ed: &mut Editor, r: LayerRef, dir: HistoryDir) {
         return;
     };
     minibuf::recall_history(ed, kind, dir);
-    update_live_search(ed, r);
+    update_live_search(&mut ed.state, r);
 }
 
 /// Recompile the regex from the current mini-buffer input and preview it
@@ -186,12 +199,12 @@ fn recall_search_history(ed: &mut Editor, r: LayerRef, dir: HistoryDir) {
 /// buffer its snapshot was read from, the only text the snapshot's
 /// selections belong to, as cancel-restore/clear below do (see
 /// [`PaneSnapshot`]'s own doc).
-fn update_live_search(ed: &mut Editor, r: LayerRef) {
-    let pattern = match ed.state.input.minibuf() {
+fn update_live_search(state: &mut EditorState, r: LayerRef) {
+    let pattern = match state.input.minibuf() {
         Some(mb) if !mb.input.is_empty() => mb.input.clone(),
         _ => return,
     };
-    let Some(search) = ed.state.input.at::<SearchLayer>(r) else {
+    let Some(search) = state.input.at::<SearchLayer>(r) else {
         return;
     };
     let direction = search.direction;
@@ -209,17 +222,13 @@ fn update_live_search(ed: &mut Editor, r: LayerRef) {
     };
 
     let bid = origin.bid;
-    match preview_search(&mut ed.state, origin, direction, mode, &pattern) {
+    match preview_search(state, origin, direction, mode, &pattern) {
         Ok(true) => {}
         // No match: restore position to pre-search.
-        Ok(false) => restore_search_snapshot(ed, r),
+        Ok(false) => restore_search_snapshot(state, r),
         // Invalid regex in progress: clear pattern so highlights disappear.
         Err(InvalidPattern) => {
-            search::ops::clear_buffer_search(
-                &mut ed.state.buffers,
-                &mut ed.state.panes.entries,
-                bid,
-            );
+            search::ops::clear_buffer_search(&mut state.buffers, &mut state.panes.entries, bid);
         }
     }
 }
@@ -327,11 +336,11 @@ pub(in crate::editor) fn commit_search(
 /// Restore selections from the search-mode snapshot without consuming it,
 /// always targets the session's own originating pane, not whatever's
 /// currently focused (see [`PaneSnapshot`]'s own doc).
-fn restore_search_snapshot(ed: &mut Editor, r: LayerRef) {
-    let Some(search) = ed.state.input.at::<SearchLayer>(r) else {
+fn restore_search_snapshot(state: &mut EditorState, r: LayerRef) {
+    let Some(search) = state.input.at::<SearchLayer>(r) else {
         return;
     };
     search
         .snap
-        .restore(&mut ed.state.panes.entries, &ed.state.buffers);
+        .restore(&mut state.panes.entries, &state.buffers);
 }

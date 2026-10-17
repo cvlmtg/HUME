@@ -23,10 +23,11 @@ use super::super::completion::{
 use super::super::keymap::WalkResult;
 use super::super::popup_syntax::{build_markup_syntax, popup_content};
 use super::super::{Editor, EditorState, Severity};
+use super::paste::PastedText;
 use super::placement::popup_placement;
 use super::popup::{boxed_popup_rows, scroll_box_on_key};
 use super::stack::{
-    InputEvent, Layer, LayerHandler, LayerRef, PopupEviction, Removal, RemovalScope,
+    InputEvent, Layer, LayerHandler, LayerRef, PasteHandler, PopupEviction, Removal, RemovalScope,
 };
 
 /// An open Insert-mode completion session, pushed above whichever base
@@ -119,6 +120,9 @@ impl Layer for BufferCompletionLayer {
     fn handler(&self) -> LayerHandler {
         completion_input_buffer
     }
+    fn paste_handler(&self) -> PasteHandler {
+        dismiss_and_pass_paste
+    }
     fn mode(&self) -> Option<EditorMode> {
         None
     }
@@ -157,6 +161,9 @@ impl Layer for MinibufCompletionLayer {
 
     fn handler(&self) -> LayerHandler {
         completion_input_minibuf
+    }
+    fn paste_handler(&self) -> PasteHandler {
+        dismiss_and_pass_paste
     }
     fn mode(&self) -> Option<EditorMode> {
         None
@@ -334,6 +341,21 @@ impl super::stack::InputStack {
     }
 }
 
+/// Both completion layers' paste handler. A paste bypasses per-char
+/// refiltering the same way an Insert-mode paste bypasses trigger-char hooks
+/// (see `EditorState::apply_insert_mode_paste`'s doc), and has no "cycle"
+/// or "accept" reading, so the session is dismissed and the layer below
+/// takes the text.
+fn dismiss_and_pass_paste(
+    state: &mut EditorState,
+    view: &EngineView,
+    r: LayerRef,
+    text: PastedText,
+) {
+    state.dismiss_completion(view);
+    state.fall_through_paste(view, r, text);
+}
+
 /// Handles one key while an Insert-mode completion session is open.
 /// Tab/Down/BackTab/Up/Enter/Esc are claimed only while the session has
 /// at least one visible match, and Ctrl-d/Ctrl-u only while the
@@ -348,15 +370,6 @@ impl super::stack::InputStack {
 fn completion_input_buffer(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
     let key = match ev {
         InputEvent::Key(key) => key,
-        // A paste bypasses per-char refiltering the same way an
-        // Insert-mode paste bypasses trigger-char hooks (see
-        // `Editor::apply_insert_mode_paste`'s doc), so dismiss the stale
-        // session, then let `Insert` insert the text.
-        InputEvent::Paste(text) => {
-            ed.state.dismiss_completion(&ed.view);
-            ed.fall_through(r, InputEvent::Paste(text));
-            return;
-        }
         // A click ends Insert outright via `focus_pane` and takes this layer
         // with it; any other mouse event leaves the cursor and text alone.
         InputEvent::Mouse(mouse) => {
@@ -429,15 +442,9 @@ fn completion_input_buffer(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
 fn completion_input_minibuf(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
     let key = match ev {
         InputEvent::Key(key) => key,
-        // Neither a paste nor a mouse click has a meaningful "cycle" or
-        // "accept" reading here, so dismiss and let the minibuffer's own
-        // handler see it, same discipline as the Buffer-target's own
-        // paste/mouse arms above.
-        InputEvent::Paste(text) => {
-            ed.state.dismiss_completion(&ed.view);
-            ed.fall_through(r, InputEvent::Paste(text));
-            return;
-        }
+        // A mouse click has no meaningful "cycle" or "accept" reading here,
+        // so dismiss and let the minibuffer's own handler see it, same
+        // discipline as a paste (`dismiss_and_pass_paste`).
         InputEvent::Mouse(mouse) => {
             ed.state.dismiss_completion(&ed.view);
             ed.fall_through(r, InputEvent::Mouse(mouse));

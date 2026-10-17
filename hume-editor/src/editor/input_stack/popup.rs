@@ -5,16 +5,17 @@
 
 use termina::event::{KeyCode, KeyEvent, Modifiers};
 
-use hume_engine::pipeline::RenderContext;
+use hume_engine::pipeline::{EngineView, RenderContext};
 use hume_engine::theme::Theme;
 use hume_engine::types::EditorMode;
 use hume_scripting::host::HostToken;
 
-use super::super::Editor;
 use super::super::commands::half_page;
 use super::super::host_token;
+use super::super::{Editor, EditorState};
+use super::paste::PastedText;
 use super::placement::{focused_cursor, popup_placement};
-use super::stack::{InputEvent, Layer, LayerHandler, LayerRef};
+use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, PasteHandler};
 
 /// `(show-popup! text)`'s raw, unwrapped content, held on `EditorState`
 /// until the next frame's `Editor::sync_popup_view`/`sync_popup_band_view`
@@ -108,6 +109,9 @@ impl Layer for PopupLayer {
 
     fn handler(&self) -> LayerHandler {
         popup_input
+    }
+    fn paste_handler(&self) -> PasteHandler {
+        popup_paste
     }
     fn mode(&self) -> Option<EditorMode> {
         None
@@ -218,17 +222,24 @@ impl Editor {
 /// Handles one event while a `Scrollable` popup is open (a `PopupLayer`; a
 /// `Sticky` popup lives in a mode layer's slot instead and is never
 /// dispatch's target). Ctrl-u/Ctrl-d consume the key only when
-/// [`scroll_box_on_key`] finds content past one screenful; every other key, a
-/// paste, and any mouse gesture retire the layer and fall through this same
-/// call, so a short popup never blocks the buffer's own half-page scroll
+/// [`scroll_box_on_key`] finds content past one screenful; every other key
+/// and any mouse gesture retire the layer and fall through this same call
+/// (a paste too, through [`popup_paste`]), so a short popup never blocks the buffer's own half-page scroll
 /// and a click still moves the cursor underneath it. Unlike
 /// `Confirm`/`Menu`'s mouse arm, this doesn't gate on `is_fresh_gesture`:
 /// nothing opens a popup mid-gesture, so there is no release to protect the
 /// way a click-opened confirm needs its own `Up` protected.
+/// Retires the popup and lets the layer below take the paste, as
+/// [`popup_input`] does for a key it doesn't scroll with.
+fn popup_paste(state: &mut EditorState, view: &EngineView, r: LayerRef, text: PastedText) {
+    state.truncate_layers(view, r);
+    state.fall_through_paste(view, r, text);
+}
+
 pub(in crate::editor) fn popup_input(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
     let key = match ev {
         InputEvent::Key(key) => key,
-        InputEvent::Paste(_) | InputEvent::Mouse(_) => {
+        InputEvent::Mouse(_) => {
             ed.state.truncate_layers(&ed.view, r);
             ed.fall_through(r, ev);
             return;

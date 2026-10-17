@@ -25,7 +25,10 @@ use super::super::commands::{self, PendingDispatch};
 use super::super::event::PendingWork;
 use super::super::replay::{Answer, AnswerTicket, InputOpener, PendingAnswer};
 use super::super::{Editor, EditorState};
-use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, PopupEviction, Removal};
+use super::paste::PastedText;
+use super::stack::{
+    InputEvent, Layer, LayerHandler, LayerRef, PasteHandler, PopupEviction, Removal,
+};
 
 /// What the character read is for.
 enum CharThen {
@@ -226,6 +229,9 @@ impl Layer for CharLayer {
     fn handler(&self) -> LayerHandler {
         char_input
     }
+    fn paste_handler(&self) -> PasteHandler {
+        end_reads_on_paste
+    }
     fn mode(&self) -> Option<EditorMode> {
         None
     }
@@ -285,7 +291,7 @@ fn char_input(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
             ed.fall_through(r, InputEvent::Mouse(mouse));
             return;
         }
-        InputEvent::Paste(_) | InputEvent::Mouse(_) => None,
+        InputEvent::Mouse(_) => None,
     };
     let layer = ed
         .state
@@ -309,6 +315,12 @@ fn char_input(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
     if let AfterRead::Call(call) = run_resolved(ed, resolved) {
         ed.state.config.pending_work.push_back(call);
     }
+}
+
+/// A paste supplies no character: it ends every pending read, as any other
+/// non-character input does, and pastes nothing.
+fn end_reads_on_paste(state: &mut EditorState, view: &EngineView, r: LayerRef, _text: PastedText) {
+    state.truncate_layers(view, r);
 }
 
 /// Whether `ch` completes a read for `then`: any character for a command or a

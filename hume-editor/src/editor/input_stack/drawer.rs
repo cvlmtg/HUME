@@ -19,7 +19,10 @@ use super::super::Editor;
 use super::super::EditorState;
 use super::super::commands::{FocusedPane, half_page};
 use super::super::host_token;
-use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal, RemovalScope};
+use super::paste::ignore_paste;
+use super::stack::{
+    InputEvent, Layer, LayerHandler, LayerRef, PasteHandler, Removal, RemovalScope,
+};
 
 /// What `Enter` on a drawer row does.
 pub(in crate::editor) enum DrawerSelect {
@@ -183,6 +186,11 @@ impl Layer for DrawerLayer {
 
     fn handler(&self) -> LayerHandler {
         drawer_input
+    }
+    /// Swallowed like every other key the drawer doesn't bind to
+    /// single-line selection/Enter/Esc; the drawer stays open.
+    fn paste_handler(&self) -> PasteHandler {
+        ignore_paste
     }
     fn mode(&self) -> Option<EditorMode> {
         None
@@ -386,11 +394,6 @@ impl super::stack::InputStack {
 pub(in crate::editor) fn drawer_input(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
     let key = match ev {
         InputEvent::Key(key) => key,
-        // Swallowed like every other key the drawer doesn't bind to
-        // single-line selection/Enter/Esc. Stays open, same as today's
-        // `Paste` handling under a drawer (`mappings/bracketed_paste.rs`'s
-        // old menu/drawer guard).
-        InputEvent::Paste(_) => return,
         InputEvent::Mouse(mouse) => {
             ed.fall_through(r, InputEvent::Mouse(mouse));
             return;

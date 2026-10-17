@@ -2,8 +2,8 @@
 //! `input_stack/stack.rs`'s own doc). `session.rs` is the Rust-side data
 //! store (query, ranked items, streaming state); this file is the layer
 //! wrapping it: [`PickerLayer`], its `Layer` impl, [`picker_input`]'s
-//! key/paste/mouse handling, and the open/close chokepoints every opener
-//! and Steel builtin goes through.
+//! key/mouse handling, its paste handler, and the open/close chokepoints
+//! every opener and Steel builtin goes through.
 
 mod session;
 
@@ -19,7 +19,8 @@ use super::super::keymap::CanonicalKey;
 use super::super::minibuf::flatten_single_line;
 use super::super::replay::{Answer, InputOpener, PendingAnswer, Pick, Picked, WaitingInput};
 use super::super::{Editor, EditorState};
-use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal};
+use super::paste::PastedText;
+use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, PasteHandler, Removal};
 
 #[cfg(test)]
 pub(in crate::editor) use session::item;
@@ -39,6 +40,9 @@ impl Layer for PickerLayer {
 
     fn handler(&self) -> LayerHandler {
         picker_input
+    }
+    fn paste_handler(&self) -> PasteHandler {
+        picker_paste
     }
     fn mode(&self) -> Option<EditorMode> {
         None
@@ -347,15 +351,6 @@ pub(in crate::editor) fn close_picker(state: &mut super::super::EditorState, vie
 pub(in crate::editor) fn picker_input(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
     let key = match ev {
         InputEvent::Key(key) => key,
-        // Flattened to one line, same as a minibuffer paste, then
-        // appended to the query in one bulk mutation: one rerank, at
-        // most one `on_query_change` callback, instead of one per
-        // pasted char.
-        InputEvent::Paste(text) => {
-            let cb = picker_mut(ed, r).insert_str(&flatten_single_line(&text));
-            queue_query_change(ed, r, cb);
-            return;
-        }
         InputEvent::Mouse(_) => return,
     };
     let visible_rows = hume_ui::picker_panel::panel_geometry(ed.view.last_pane_area)
@@ -378,7 +373,7 @@ pub(in crate::editor) fn picker_input(ed: &mut Editor, r: LayerRef, ev: InputEve
         _ => None,
     };
     if let Some(delta) = step {
-        picker_mut(ed, r).move_selection(delta, visible_rows);
+        picker_mut(&mut ed.state, r).move_selection(delta, visible_rows);
         return;
     }
 
@@ -386,8 +381,8 @@ pub(in crate::editor) fn picker_input(ed: &mut Editor, r: LayerRef, ev: InputEve
         KeyCode::Backspace => {
             // `None` (and so no fire) both on an already-empty query and
             // on a non-live session; see `pop_grapheme`'s doc.
-            let cb = picker_mut(ed, r).pop_grapheme();
-            queue_query_change(ed, r, cb);
+            let cb = picker_mut(&mut ed.state, r).pop_grapheme();
+            queue_query_change(&mut ed.state, r, cb);
         }
         KeyCode::Enter => {
             // No match (or nothing pushed yet) behaves like Esc: Enter
@@ -402,8 +397,8 @@ pub(in crate::editor) fn picker_input(ed: &mut Editor, r: LayerRef, ev: InputEve
                 .modifiers
                 .intersects(Modifiers::CONTROL | Modifiers::ALT) =>
         {
-            let cb = picker_mut(ed, r).insert_char(ch);
-            queue_query_change(ed, r, cb);
+            let cb = picker_mut(&mut ed.state, r).insert_char(ch);
+            queue_query_change(&mut ed.state, r, cb);
         }
         _ => {
             // `#:actions`: tried only here, after every built-in key
@@ -411,11 +406,19 @@ pub(in crate::editor) fn picker_input(ed: &mut Editor, r: LayerRef, ev: InputEve
             // can never override movement/Backspace/Enter/Escape/query
             // input (see `PickerSession::action_for`'s doc).
             let key = CanonicalKey::from(key);
-            if let Some(proc) = picker_mut(ed, r).action_for(key).cloned() {
+            if let Some(proc) = picker_mut(&mut ed.state, r).action_for(key).cloned() {
                 close_picker_with_selection(ed, r, PickerCallback::Action { key, proc });
             }
         }
     }
+}
+
+/// Flattened to one line, same as a minibuffer paste, then appended to the
+/// query in one bulk mutation: one rerank, at most one `on_query_change`
+/// callback, instead of one per pasted char.
+fn picker_paste(state: &mut EditorState, _view: &EngineView, r: LayerRef, text: PastedText) {
+    let cb = picker_mut(state, r).insert_str(&flatten_single_line(text.as_str()));
+    queue_query_change(state, r, cb);
 }
 
 /// Queues `cb`, the `on_query_change` callback a `PickerSession` query
@@ -435,25 +438,23 @@ pub(in crate::editor) fn picker_input(ed: &mut Editor, r: LayerRef, ev: InputEve
 /// `debounce_viewport_change`'s fire site (`timer_bridge.rs`), which is
 /// every scroll step of every frame and so earns its own Rust-side
 /// coalescer.
-fn queue_query_change(ed: &mut Editor, r: LayerRef, cb: Option<SteelVal>) {
+fn queue_query_change(state: &mut EditorState, r: LayerRef, cb: Option<SteelVal>) {
     let Some(cb) = cb else {
         return;
     };
-    let session = picker_mut(ed, r);
+    let session = picker_mut(state, r);
     let token = session.feed_token();
     let query = session.query().to_string();
-    ed.state
-        .queue_steel_call(cb, vec![token.to_steel(), SteelVal::StringV(query.into())]);
+    state.queue_steel_call(cb, vec![token.to_steel(), SteelVal::StringV(query.into())]);
 }
 
-/// The open picker session at `r`: only ever called from `picker_input`,
-/// which `dispatch_at` only reaches while a `Picker` layer is on top, so
-/// `r` always names it. Address-based, not the `InputStack::picker_mut`
-/// sugar (`find_mut`-based, and still used as-is by render-sync): every
-/// caller here already has `r` from its own dispatch.
-fn picker_mut(ed: &mut Editor, r: LayerRef) -> &mut PickerSession {
-    &mut ed
-        .state
+/// The open picker session at `r`: only ever called from `picker_input`
+/// and `picker_paste`, which dispatch only reaches while a `Picker` layer
+/// is on top, so `r` always names it. Address-based, not the
+/// `InputStack::picker_mut` sugar (`find_mut`-based, and still used as-is by
+/// render-sync): every caller here already has `r` from its own dispatch.
+fn picker_mut(state: &mut EditorState, r: LayerRef) -> &mut PickerSession {
+    &mut state
         .input
         .at_mut::<PickerLayer>(r)
         .expect("picker_input is only called while a Picker layer is on top of the stack")
@@ -464,6 +465,6 @@ fn picker_mut(ed: &mut Editor, r: LayerRef) -> &mut PickerSession {
 /// nothing matches), so accepting is always a terminal action rather than a
 /// silent no-op.
 fn close_picker_with_selection(ed: &mut Editor, r: LayerRef, callback: PickerCallback) {
-    let choice = picker_mut(ed, r).selected_index();
+    let choice = picker_mut(&mut ed.state, r).selected_index();
     close_picker_with(&mut ed.state, &ed.view, callback, choice);
 }

@@ -4,16 +4,18 @@
 
 use termina::event::{KeyCode, KeyEvent, Modifiers};
 
+use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
 use hume_ops::MotionMode;
 use hume_scripting::host::MAX_COUNT;
 
-use super::super::Editor;
 use super::super::commands::cmd_clear_search;
 use super::super::keymap::WalkResult;
+use super::super::{Editor, EditorState};
 use super::char::{CharRead, MacroRead, read_char};
+use super::paste::PastedText;
 use super::popup::PopupLayer;
-use super::stack::{InputEvent, Layer, LayerHandler, LayerRef};
+use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, PasteHandler};
 
 /// The always-present layer at index 0. Never removed. Carries `extend`
 /// (Extend is a flag on `Base`, never its own layer) and `sticky_popup`, the
@@ -66,6 +68,9 @@ impl Layer for BaseLayer {
     fn handler(&self) -> LayerHandler {
         base_input
     }
+    fn paste_handler(&self) -> PasteHandler {
+        paste_over_selections
+    }
     fn mode(&self) -> Option<EditorMode> {
         Some(if self.extend {
             EditorMode::Extend
@@ -90,24 +95,28 @@ impl Layer for BaseLayer {
 pub(in crate::editor) fn base_input(ed: &mut Editor, _r: LayerRef, ev: InputEvent) {
     match ev {
         InputEvent::Key(key) => handle_normal(ed, key),
-        InputEvent::Paste(text) => apply_normal_mode_paste(ed, &text),
         InputEvent::Mouse(mouse) => ed.base_mouse(mouse),
     }
 }
 
 /// Bulk-insert `text` at every selection in the focused buffer as one
 /// edit: the `Base` layer's paste policy (Normal and Extend alike).
-fn apply_normal_mode_paste(ed: &mut Editor, text: &str) {
-    let focused = ed.view.focused_pane();
-    let buf = ed.focused_buffer_id();
-    // Bracketed-paste terminal events bypass the dispatch pipeline entirely
-    // (no `commands::run` to report a refusal), so a refusal here
-    // has nowhere to report to but the statusline directly.
-    let (buffers, mut stores) = ed.state.edit_parts();
+fn paste_over_selections(
+    state: &mut EditorState,
+    view: &EngineView,
+    _r: LayerRef,
+    text: PastedText,
+) {
+    let focused = view.focused_pane();
+    let buf = view.panes[focused].buffer_id();
+    // A paste bypasses the dispatch pipeline entirely (no `commands::run`
+    // to report a refusal), so a refusal here has nowhere to report to but
+    // the statusline directly.
+    let (buffers, mut stores) = state.edit_parts();
     if let Err(e) = super::super::doc_ops::apply_doc_edit(buffers, &mut stores, focused, buf, |s| {
-        hume_ops::edit::insert_str(s, text)
+        hume_ops::edit::insert_str(s, text.as_str())
     }) {
-        ed.state.report_error(&e);
+        state.report_error(&e);
     }
 }
 

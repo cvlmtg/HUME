@@ -10,8 +10,11 @@ use super::super::mouse::is_fresh_gesture;
 use super::super::replay::{Answer, Choice, InputOpener, PendingAnswer, WaitingInput};
 use super::super::{Editor, EditorState, host_token};
 use super::base::BaseLayer;
+use super::paste::ignore_paste;
 use super::placement::{focused_cursor, popup_placement};
-use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal, RemovalScope};
+use super::stack::{
+    InputEvent, Layer, LayerHandler, LayerRef, PasteHandler, Removal, RemovalScope,
+};
 
 /// `(show-menu! items on-select)`'s raw content, held on `EditorState`
 /// until the next frame's `Editor::sync_menu_view` resolves it into a
@@ -158,6 +161,13 @@ impl Layer for MenuLayer {
     fn handler(&self) -> LayerHandler {
         menu_input
     }
+    /// A paste is swallowed without closing the menu: the same "consumes
+    /// stray input" treatment the menu gives any other key it doesn't
+    /// recognize as a choice, minus the `#f` callback that arm fires: a
+    /// paste was never a choice attempt.
+    fn paste_handler(&self) -> PasteHandler {
+        ignore_paste
+    }
     fn mode(&self) -> Option<EditorMode> {
         None
     }
@@ -282,11 +292,6 @@ impl super::stack::InputStack {
 pub(in crate::editor) fn menu_input(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
     let key = match ev {
         InputEvent::Key(key) => key,
-        // A paste is swallowed without closing the menu: the same
-        // "consumes stray input" treatment the menu gives any other key
-        // it doesn't recognize as a choice, minus the `#f` callback
-        // that arm fires: a paste was never a choice attempt.
-        InputEvent::Paste(_) => return,
         InputEvent::Mouse(mouse) => {
             if !is_fresh_gesture(mouse.kind) {
                 ed.fall_through(r, InputEvent::Mouse(mouse));
