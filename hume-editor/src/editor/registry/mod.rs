@@ -147,14 +147,20 @@ impl CommandRegistry {
     /// Register a typed command.
     ///
     /// Inserts the canonical name into `commands` and each alias into
-    /// `alias_map`.
-    pub(in crate::editor) fn register_typed(&mut self, cmd: TypedCommand) {
+    /// `alias_map`. Refuses the command, registering nothing, when its name
+    /// or an alias is one the `:` line can't read back whole
+    /// ([`hume_scripting::typed_command_name::check`]).
+    pub(in crate::editor) fn register_typed(&mut self, cmd: TypedCommand) -> Result<(), String> {
+        std::iter::once(cmd.name.as_ref())
+            .chain(cmd.aliases.iter().copied())
+            .try_for_each(hume_scripting::typed_command_name::check)?;
         let canonical = cmd.name.clone();
         for &alias in cmd.aliases {
             self.alias_map
                 .insert(Cow::Borrowed(alias), canonical.clone());
         }
         self.commands.insert(canonical, Command::Typed(cmd));
+        Ok(())
     }
 
     /// Look up a mappable command by exact name.

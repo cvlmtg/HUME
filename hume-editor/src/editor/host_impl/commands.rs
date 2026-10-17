@@ -72,14 +72,17 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
                 def.name
             ));
         }
-        self.state.config.registry.register_typed(TypedCommand {
-            name: def.name.into(),
-            doc: def.doc.into(),
-            aliases: &[],
-            body: TypedBody::Steel(def.body),
-            completer: def.completer.map(std::borrow::Cow::Owned),
-        });
-        Ok(())
+        self.state
+            .config
+            .registry
+            .register_typed(TypedCommand {
+                name: def.name.into(),
+                doc: def.doc.into(),
+                aliases: &[],
+                body: TypedBody::Steel(def.body),
+                completer: def.completer.map(std::borrow::Cow::Owned),
+            })
+            .map_err(|reason| format!("define-typed-command!: {reason}"))
     }
 
     fn defined_command(&self, name: &str) -> Option<hume_scripting::CommandProc> {
@@ -119,7 +122,7 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
                 aliases: &[],
                 body: TypedBody::Lazy(plugin.clone()),
                 completer: None,
-            });
+            })?;
         }
         Ok(())
     }

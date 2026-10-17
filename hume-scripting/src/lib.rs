@@ -32,6 +32,7 @@ pub(crate) mod keys;
 pub(crate) mod lazy;
 mod log;
 mod plugin_record;
+pub mod typed_command_name;
 // ── Private implementation details ────────────────────────────────────────────
 mod activation;
 mod command_procs;

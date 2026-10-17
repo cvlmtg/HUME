@@ -19,6 +19,7 @@ impl CommandRegistry {
                     body: TypedBody::Native($fun),
                     completer: $completer.map(Cow::Borrowed),
                 })
+                .expect("a built-in typed command's name and aliases are valid")
             };
         }
 

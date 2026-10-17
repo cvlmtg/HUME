@@ -267,18 +267,22 @@ fn setup_typed_arity_test(src: &str, name: &str, arity: u16, is_variadic: bool) 
         panic!("`src` must define the typed command '{name}'");
     };
     // Override arity/is_variadic so typed dispatch uses the test-supplied values.
-    ed.state.config.registry.register_typed(TypedCommand {
-        name: name.to_owned().into(),
-        doc: std::borrow::Cow::Borrowed(""),
-        aliases: &[],
-        body: TypedBody::Steel(hume_scripting::SteelTypedCmdBody {
-            arity,
-            is_variadic,
-            inline_output: false,
-            proc,
-        }),
-        completer: None,
-    });
+    ed.state
+        .config
+        .registry
+        .register_typed(TypedCommand {
+            name: name.to_owned().into(),
+            doc: std::borrow::Cow::Borrowed(""),
+            aliases: &[],
+            body: TypedBody::Steel(hume_scripting::SteelTypedCmdBody {
+                arity,
+                is_variadic,
+                inline_output: false,
+                proc,
+            }),
+            completer: None,
+        })
+        .expect("a valid typed command name");
     ed.scripting = Some(host);
     ed
 }
@@ -467,18 +471,22 @@ fn typed_arity_rule_errors_on_arity_4() {
     use crate::editor::registry::{TypedBody, TypedCommand};
 
     let mut ed = editor_from("-[a]>b\n");
-    ed.state.config.registry.register_typed(TypedCommand {
-        name: "needs-four".to_owned().into(),
-        doc: std::borrow::Cow::Borrowed(""),
-        aliases: &[],
-        body: TypedBody::Steel(hume_scripting::SteelTypedCmdBody {
-            arity: 4,
-            is_variadic: false,
-            inline_output: false,
-            proc: hume_scripting::TypedProc::for_test(),
-        }),
-        completer: None,
-    });
+    ed.state
+        .config
+        .registry
+        .register_typed(TypedCommand {
+            name: "needs-four".to_owned().into(),
+            doc: std::borrow::Cow::Borrowed(""),
+            aliases: &[],
+            body: TypedBody::Steel(hume_scripting::SteelTypedCmdBody {
+                arity: 4,
+                is_variadic: false,
+                inline_output: false,
+                proc: hume_scripting::TypedProc::for_test(),
+            }),
+            completer: None,
+        })
+        .expect("a valid typed command name");
 
     let before = state(&ed);
     // `:needs-four<Enter>`: arity-4 command, typed dispatch supplies at most 3.

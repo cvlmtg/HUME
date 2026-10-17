@@ -137,7 +137,9 @@ pub(crate) fn define_command(
 /// - `(lambda (pane arg))`: pane and the typed argument (a string), or `#f` if none.
 /// - `(lambda (pane arg force))`: pane, the argument, and whether `!` was appended.
 ///
-/// Raises a Steel error under the same conditions as `define-command!`.
+/// Raises a Steel error under the same conditions as `define-command!`, and
+/// for a name the `:` line can't read back whole
+/// ([`crate::typed_command_name::check`]).
 pub(crate) fn define_typed_command(
     ctx: &mut SteelCtx,
     name: String,
@@ -147,6 +149,8 @@ pub(crate) fn define_typed_command(
     completer: SteelVal,
 ) -> SteelResult {
     check_definable(ctx, "define-typed-command!", &name)?;
+    crate::typed_command_name::check(&name)
+        .map_err(|reason| generic_err(format!("define-typed-command!: {reason}")))?;
     let proc = super::args::callable_arg(proc, "define-typed-command! third arg (proc)")?;
     let completer =
         super::args::optional_string_arg(completer, "define-typed-command! #:complete")?;

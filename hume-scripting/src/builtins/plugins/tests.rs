@@ -332,6 +332,31 @@ fn declare_plugin_command_name_with_quote_errors() {
     );
 }
 
+/// `declare-plugin!` hard-errors on a `#:typed-commands` entry the `:` line
+/// cannot run, before looking for the plugin on disk (`user/tp` is absent
+/// here).
+#[test]
+fn declare_plugin_typed_command_name_unreachable_from_colon_errors() {
+    use crate::ScriptingHost;
+    use crate::host::EditorHost;
+    use crate::null_host::CommandStoreHost;
+    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut editor_host = CommandStoreHost::default();
+    let result = host.eval_source(
+        r#"(declare-plugin! "user/tp" #:typed-commands '("b1"))"#,
+        &mut editor_host,
+    );
+    let err = result.expect_err("a reserved typed command name must be rejected");
+    assert!(
+        err.contains("'b1'") && err.contains("typed command name"),
+        "error must name the typed command name rule; got: {err}"
+    );
+    assert!(
+        editor_host.commands().lazy_command_owner("b1").is_none(),
+        "no activation entry may be recorded for a malformed name"
+    );
+}
+
 // ── Absent-path plugins attribute nothing ──────────────────────────────────
 
 /// A plugin absent on disk claims no lazy stub, so `(command-plugin …)` does

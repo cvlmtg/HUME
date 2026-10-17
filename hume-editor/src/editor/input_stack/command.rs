@@ -185,8 +185,8 @@ fn execute_command(ed: &mut Editor, input: &str) {
     let (cmd, force, arg) = parse_typed_command(input);
 
     // Bare line number `:42`: shorthand for `:goto 42`.
-    // The parser leaves `cmd = ""` for digit-only input (digits are excluded
-    // from the command-name alphabet so `:42` → cmd="" arg=Some("42")).
+    // The parser leaves `cmd = ""` for digit-only input (a name can't start
+    // with a digit, so `:42` → cmd="" arg=Some("42")).
     if cmd.is_empty()
         && !force
         && arg.is_some_and(|a| !a.is_empty() && a.bytes().all(|b| b.is_ascii_digit()))
@@ -248,23 +248,18 @@ fn execute_command(ed: &mut Editor, input: &str) {
 
 // ── Typed-command helpers ─────────────────────────────────────────────────────
 
-/// The command name's own `[A-Za-z_-]` prefix, one optional trailing `!`
-/// consumed as `force`, and the byte offset one past both. Shared by
-/// [`parse_typed_command`] (which also needs the trimmed argument past
-/// that point) and `orchestrate.rs`'s `target_command_name` (which only
-/// needs the offset, to test whether the cursor has moved past the name:
-/// the same name-shape rule this function applies, so completion never
-/// disagrees with what `execute_command` would actually run). Digits are
-/// excluded from the name (Vim convention) so `:b1` ends the
-/// name at `"b"`, `"1"` becoming the argument (see `:help :command-name`).
+/// The command name at the start of `input` (the grammar typed commands
+/// are registered against, [`hume_scripting::typed_command_name`]), one
+/// optional trailing `!` consumed as `force`, and the byte offset one past
+/// both. Shared by [`parse_typed_command`] (which also needs the trimmed
+/// argument past that point) and `orchestrate.rs`'s `target_command_name`
+/// (which only needs the offset, to test whether the cursor has moved past
+/// the name), so completion never disagrees with what `execute_command`
+/// would actually run.
 pub(in crate::editor) fn scan_command_name(input: &str) -> (&str, bool, usize) {
-    let name_end = input
-        .char_indices()
-        .find(|(_, c)| !(c.is_ascii_alphabetic() || *c == '-' || *c == '_'))
-        .map(|(i, _)| i)
-        .unwrap_or(input.len());
-    let force = input[name_end..].starts_with('!');
-    (&input[..name_end], force, name_end + usize::from(force))
+    let name = hume_scripting::typed_command_name::scan(input);
+    let force = input[name.len()..].starts_with('!');
+    (name, force, name.len() + usize::from(force))
 }
 
 /// Parse a typed-command string into `(cmd, force, arg)`: everything past

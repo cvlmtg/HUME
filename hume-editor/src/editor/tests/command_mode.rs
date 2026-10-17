@@ -76,6 +76,36 @@ fn typed_steel_command_runs_under_a_differently_cased_name() {
 }
 
 #[test]
+fn typed_steel_command_name_with_digits_runs() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bc\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "p1" "" (lambda () (call! "insert-before" (focused-pane))))"#,
+    );
+
+    type_cmd(&mut ed, ":p1");
+
+    assert_eq!(ed.state.mode(), Mode::Insert, "`:p1` must run `p1`'s body");
+}
+
+/// `:b` followed by digits is `:b` with a buffer number, never a command
+/// named `b2`.
+#[test]
+fn colon_b_digits_switches_to_that_buffer() {
+    let mut ed = editor_from("-[a]>bc\n");
+    let first = ed.focused_buffer_id();
+    let second = open_second_file_buffer(&mut ed);
+    type_cmd(&mut ed, ":b1");
+    assert_eq!(ed.focused_buffer_id(), first);
+
+    type_cmd(&mut ed, ":b2");
+
+    assert_eq!(ed.focused_buffer_id(), second);
+}
+
+#[test]
 fn esc_cancels_command_mode() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key(':'));

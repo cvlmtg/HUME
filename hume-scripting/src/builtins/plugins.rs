@@ -289,15 +289,20 @@ pub(crate) fn declare_plugin(
         .collect::<Result<_, _>>()?;
     let lang_list = list_to_strings(languages, &declare_arg_label(ctx, "#:languages"))?;
 
-    // Malformed name (not a collision) → hard error, same rule as
-    // define-command!.  A name that can't survive quoting is a typo. This
-    // check is independent of the plugin's on-disk path, so it runs
-    // regardless of whether the plugin turns out to be absent.
+    // Malformed name (not a collision) → hard error, same rules as
+    // define-command!/define-typed-command!.  A name that can't survive
+    // quoting is a typo, and a typed name the `:` line can't read back whole
+    // could never run. This check is independent of the plugin's on-disk
+    // path, so it runs regardless of whether the plugin turns out to be absent.
     for cmd in cmd_list.iter().chain(typed_cmd_list.iter()) {
         if cmd.contains('"') || cmd.contains('\\') {
             steel::stop!(Generic =>
                 "declare-plugin!: command name '{}' must not contain '\"' or '\\'", cmd);
         }
+    }
+    for cmd in &typed_cmd_list {
+        crate::typed_command_name::check(cmd)
+            .map_err(|reason| generic_err(format!("declare-plugin!: {reason}")))?;
     }
 
     // Hard error: nothing declared at all. Checked against the raw (unfiltered)

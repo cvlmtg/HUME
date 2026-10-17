@@ -455,8 +455,6 @@ fn install_real_json_grammar_e2e() {
     let init_path = tmp.path().join("init.scm");
     // `register-grammar!` is defined in prelude.scm: prepend the real prelude
     // source so it's in scope (see `register_grammar_command_mode_attaches_and_sweeps`).
-    // Command name must not contain digits: parse_typed_command stops the name
-    // scan at the first non-[A-Za-z_-] char (Vim convention: digits are args).
     let prelude_src = std::fs::read_to_string(runtime_scheme_dir().join("prelude.scm")).unwrap();
     let body = format!(
         r#"(define-typed-command! "attach-json" "attach json grammar" (lambda () (register-grammar! "json" "{}" "tree_sitter_json" "{}")))"#,

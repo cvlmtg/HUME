@@ -27,6 +27,8 @@
 
 - `live-picker!` takes `#:source`, a function of the picker token and the query, instead of `#:command`. To keep re-running a subprocess, pass `#:source (picker-command-source argv-for)`; `#:cwd`, `#:nul` and `#:ok-exit-codes` move to `picker-command-source`.
 
+- Typed command names can contain digits, so `:p1` runs a command named `p1`. `:b` takes a buffer number without a space only when the rest is all digits (`:b2`); write `:b 12abc`, not `:b12abc`. `define-typed-command!` and `#:typed-commands` raise for a name the command line can't run.
+
 ### Panes & interface
 - `core:git-diff` takes a `"branch-style"` config value: `'icon` shows the statusline branch as `⎇ main` instead of `(main)`.
 

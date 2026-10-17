@@ -382,27 +382,28 @@ fn mappable_commands_not_shadowed_by_typed() {
     assert!(reg.get_typed("select-all-matches").is_none());
 }
 
+fn dummy_typed(
+    _ed: &mut crate::editor::Editor,
+    _fp: crate::editor::commands::FocusedPane,
+    _arg: Option<&str>,
+    _force: bool,
+) -> Result<(), crate::editor::error::CommandError> {
+    Ok(())
+}
+
 #[test]
 fn runtime_register_typed_and_lookup() {
-    use crate::editor::Editor;
     let mut reg = CommandRegistry::with_defaults();
     let before = reg.len();
 
-    fn dummy_typed(
-        _ed: &mut Editor,
-        _fp: crate::editor::commands::FocusedPane,
-        _arg: Option<&str>,
-        _force: bool,
-    ) -> Result<(), crate::editor::error::CommandError> {
-        Ok(())
-    }
     reg.register_typed(TypedCommand {
         name: Cow::Owned("steel-typed-cmd".to_string()),
         doc: Cow::Borrowed("A dummy Steel typed command for testing."),
         aliases: &["stc"],
         body: TypedBody::Native(dummy_typed),
         completer: None,
-    });
+    })
+    .expect("a valid typed command name");
 
     assert_eq!(reg.len(), before + 1);
     // Reachable by canonical name.
@@ -414,6 +415,32 @@ fn runtime_register_typed_and_lookup() {
     assert_eq!(reg.get_typed("stc").unwrap().name, "steel-typed-cmd");
     // Not reachable as a mappable command.
     assert!(reg.get_mappable("steel-typed-cmd").is_none());
+}
+
+/// A typed command whose name or alias the `:` line can't read back whole
+/// is refused and leaves the registry unchanged.
+#[test]
+fn register_typed_rejects_a_name_or_alias_the_colon_line_cannot_reach() {
+    let cases: [(&str, &'static [&'static str]); 2] = [("b7", &[]), ("unreachable-alias", &["b7"])];
+    for (name, aliases) in cases {
+        let mut reg = CommandRegistry::with_defaults();
+        let before = reg.len();
+        let err = reg
+            .register_typed(TypedCommand {
+                name: Cow::Owned(name.to_string()),
+                doc: Cow::Borrowed(""),
+                aliases,
+                body: TypedBody::Native(dummy_typed),
+                completer: None,
+            })
+            .expect_err(name);
+        assert!(err.contains("'b7'"), "unexpected message: {err}");
+        assert_eq!(reg.len(), before, "{name}: nothing may be registered");
+        assert!(
+            reg.get_typed("b7").is_none(),
+            "{name}: 'b7' must not resolve"
+        );
+    }
 }
 
 #[test]
@@ -535,7 +562,8 @@ fn unregister_defined_by_removes_only_the_entrys_steel_commands() {
     reg.register_typed(typed(
         "failed-typed",
         TypedProc::for_test_defined_by(failed.clone()),
-    ));
+    ))
+    .expect("a valid typed command name");
     reg.register(MappableCommand::Lazy {
         name: Cow::Borrowed("failed-stub"),
         plugin: failed.clone(),
@@ -544,7 +572,8 @@ fn unregister_defined_by_removes_only_the_entrys_steel_commands() {
         "sibling-map",
         MappableProc::for_test_defined_by(sibling),
     ));
-    reg.register_typed(typed("other-typed", TypedProc::for_test_defined_by(other)));
+    reg.register_typed(typed("other-typed", TypedProc::for_test_defined_by(other)))
+        .expect("a valid typed command name");
     reg.register(mappable("user-map", MappableProc::for_test()));
     let before = reg.len();
 
