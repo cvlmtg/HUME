@@ -45,3 +45,18 @@ fn run_inline_output_calls_ensure_before_spawn() {
 
 #[cfg(unix)]
 mod unix;
+
+/// `cancel-async!` raises on a host with no async-process capability, which
+/// has no job to cancel, like `spawn-async!` does.
+#[test]
+fn cancel_async_without_async_process_host_errors() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let msg = cancel_async(&mut ctx, SteelVal::IntV(1))
+        .unwrap_err()
+        .to_string();
+    assert!(
+        msg.contains("cancel-async!: not supported by this host"),
+        "got: {msg}"
+    );
+}

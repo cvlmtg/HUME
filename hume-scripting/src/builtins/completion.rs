@@ -214,11 +214,7 @@ pub(crate) fn completion_emit(
 /// `(completion-top n)`.
 pub(crate) fn completion_top(ctx: &mut SteelCtx, n: SteelVal) -> SteelResult {
     let n = usize_arg(n, "completion-top")?;
-    let items = ctx
-        .host
-        .completions()
-        .map(|c| c.completion_top(n))
-        .unwrap_or_default();
+    let items = require_cap(ctx.host.completions(), "completion-top")?.completion_top(n);
     let list: Vec<SteelVal> = items.iter().map(json_to_steel).collect();
     Ok(SteelVal::ListV(list.into()))
 }

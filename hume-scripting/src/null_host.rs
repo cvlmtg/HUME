@@ -9,9 +9,10 @@
 //! mutations (set-option!, attach-grammar!, …) must use `MockHost` in the editor
 //! crate.
 //!
-//! [`InlineOutputHost`], [`RecordingInlineOutputHost`] and [`CommandStoreHost`]
-//! each embed a real `NullHost` and delegate every capability accessor to it,
-//! overriding only the one or two accessors/methods that make them distinct.
+//! [`InlineOutputHost`], [`RecordingInlineOutputHost`], [`CommandStoreHost`]
+//! and [`EmptyLspHost`] each embed a real `NullHost` and delegate every
+//! capability accessor to it, overriding only the one or two
+//! accessors/methods that make them distinct.
 
 use std::path::{Path, PathBuf};
 
@@ -22,7 +23,8 @@ use crate::attribution::EntryId;
 use crate::command_procs::CommandProc;
 use crate::host::{
     BufferHost, CommandHost, CursorHost, EditorHost, EventHost, HostToken, LanguageHost,
-    OptionValue, OutputHost, SelectionInfo, SettingsHost,
+    LocationPlace, LspHost, OptionValue, OutputHost, PositionParams, RangeParams, RangesParams,
+    SelectionInfo, SettingsHost, TrackedHold,
 };
 use crate::types::{GrammarReg, PaneHandle, SteelCmdDef, SteelTypedCmdDef};
 
@@ -488,5 +490,138 @@ impl CommandHost for CommandStoreHost {
     }
     fn unregister_lazy_stubs_of(&mut self, plugin: &EntryId) {
         self.lazy.retain(|_, p| p != plugin);
+    }
+}
+
+/// Like [`NullHost`], plus an LSP capability that knows no server, buffer or
+/// position: every read answers "nothing", and the two methods that must hand
+/// something back (`track_position`, `lsp_location_places`) return `Err`. For
+/// tests of a builtin's own decoding and fallbacks once the capability is
+/// present.
+#[derive(Default)]
+pub(crate) struct EmptyLspHost {
+    inner: NullHost,
+}
+
+impl EditorHost for EmptyLspHost {
+    fn cursor(&mut self) -> &mut dyn CursorHost {
+        &mut self.inner
+    }
+    fn commands(&mut self) -> &mut dyn CommandHost {
+        &mut self.inner
+    }
+    fn language(&mut self) -> &mut dyn LanguageHost {
+        &mut self.inner
+    }
+    fn settings(&mut self) -> &mut dyn SettingsHost {
+        &mut self.inner
+    }
+    fn buffers(&mut self) -> &mut dyn BufferHost {
+        &mut self.inner
+    }
+    fn events(&mut self) -> &mut dyn EventHost {
+        &mut self.inner
+    }
+    fn lsp(&mut self) -> Option<&mut dyn LspHost> {
+        Some(self)
+    }
+    fn permit_plugin_activation(&mut self, plugin: &EntryId) -> Result<(), String> {
+        self.inner.permit_plugin_activation(plugin)
+    }
+}
+
+impl LspHost for EmptyLspHost {
+    fn lsp_capabilities(
+        &self,
+        _server: hume_lsp::backend::ServerId,
+    ) -> Option<std::sync::Arc<serde_json::Value>> {
+        None
+    }
+    fn lsp_capability(
+        &self,
+        _server: hume_lsp::backend::ServerId,
+        _query: crate::types::CapabilityQuery<'_>,
+    ) -> Option<std::sync::Arc<serde_json::Value>> {
+        None
+    }
+    fn lsp_method_feature(&self, _method: &str) -> Option<crate::types::LspFeature> {
+        None
+    }
+    fn lsp_servers(
+        &self,
+        _bid: BufferId,
+        _feature: Option<crate::types::LspFeature>,
+        _method: Option<&str>,
+    ) -> Result<Vec<crate::ServerRef>, String> {
+        Ok(Vec::new())
+    }
+    fn lsp_server_status(&self) -> Vec<crate::types::LspServerStatusEntry> {
+        Vec::new()
+    }
+    fn lsp_server_registered(&self, _name: &crate::types::ServerName) -> bool {
+        false
+    }
+    fn lsp_language_servers(&self, _language: &str) -> Vec<crate::types::ListEntry> {
+        Vec::new()
+    }
+    fn lsp_position_params(&self, _pane: PaneHandle) -> Result<Option<PositionParams>, String> {
+        Ok(None)
+    }
+    fn lsp_document_uri(&self, _id: BufferId) -> Option<String> {
+        None
+    }
+    fn track_position(&mut self, _pane: PaneHandle) -> Result<HostToken, String> {
+        Err("EmptyLspHost: track_position not available".into())
+    }
+    fn tracked_position_params(&self, _token: HostToken) -> Option<PositionParams> {
+        None
+    }
+    fn untrack_position(&mut self, _token: HostToken) {}
+    fn keep_tracked_position(&mut self, _token: HostToken) {}
+    fn hold_tracked_position(&self, _token: HostToken) -> Option<TrackedHold> {
+        None
+    }
+    fn lsp_primary_range_params(&self, _pane: PaneHandle) -> Result<Option<RangeParams>, String> {
+        Ok(None)
+    }
+    fn lsp_linewise_ranges_params(
+        &self,
+        _pane: PaneHandle,
+    ) -> Result<Option<RangesParams>, String> {
+        Ok(None)
+    }
+    fn lsp_wire_range_to_chars(
+        &self,
+        _id: BufferId,
+        _range: hume_rope::offset::ExclusiveRange<hume_rope::position_encoding::WirePos>,
+        _encoding: hume_rope::position_encoding::PositionEncoding,
+    ) -> Option<(usize, usize)> {
+        None
+    }
+    fn lsp_wire_point_to_char(
+        &self,
+        _id: BufferId,
+        _pos: hume_rope::position_encoding::WirePos,
+        _encoding: hume_rope::position_encoding::PositionEncoding,
+    ) -> Option<usize> {
+        None
+    }
+    fn lsp_label_offsets_to_text(
+        &self,
+        _label: &str,
+        _start: usize,
+        _end: usize,
+        _encoding: hume_rope::position_encoding::PositionEncoding,
+    ) -> String {
+        String::new()
+    }
+    fn lsp_location_places(
+        &self,
+        _locs: &[(
+            crate::json::JsonHandle,
+            hume_rope::position_encoding::PositionEncoding,
+        )],
+    ) -> Result<Vec<LocationPlace>, String> {
+        Err("EmptyLspHost: lsp_location_places not available".into())
     }
 }

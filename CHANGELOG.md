@@ -23,6 +23,8 @@
 
 - The char-offset conversions name their unit: `offset->line` is `char-offset->line`, `line->offset` is `line->char-offset`, `lsp-position->offset` is `lsp-position->char-offset` and `lsp-range->offsets` is `lsp-range->char-range`.
 
+- Calls that need language servers, diagnostics, completion, timers or background processes raise where those are not available, such as inside a drawer's `#:render`, instead of answering `#f`, an empty list, zero counts or nothing.
+
 - `live-picker!` takes `#:source`, a function of the picker token and the query, instead of `#:command`. To keep re-running a subprocess, pass `#:source (picker-command-source argv-for)`; `#:cwd`, `#:nul` and `#:ok-exit-codes` move to `picker-command-source`.
 
 ### Panes & interface

@@ -331,12 +331,9 @@ pub(crate) fn diagnostics_for_buffer(
     let range = optional_hash_entry(range, "diagnostics-for-buffer #:range", CHAR_RANGE_KEYS)?
         .map(|range| range.char_range())
         .transpose()?;
-    let entries = match ctx.host.decorations() {
-        Some(decorations) => decorations
-            .diagnostics_for_buffer(id, floor.as_deref(), range)
-            .map_err(|e| generic_err(format!("diagnostics-for-buffer: {e}")))?,
-        None => Vec::new(),
-    };
+    let entries = require_cap(ctx.host.decorations(), "diagnostics-for-buffer")?
+        .diagnostics_for_buffer(id, floor.as_deref(), range)
+        .map_err(|e| generic_err(format!("diagnostics-for-buffer: {e}")))?;
     let list: Vec<SteelVal> = entries.into_iter().map(diagnostic_entry_to_steel).collect();
     Ok(SteelVal::ListV(list.into()))
 }
@@ -382,11 +379,8 @@ fn diagnostic_entry_to_steel(entry: DiagnosticEntry) -> SteelVal {
 /// `(diagnostic-counts pane)` → `(hash 'errors n 'warnings n)`.
 pub(crate) fn diagnostic_counts(ctx: &mut SteelCtx, pane: ArgPane) -> SteelResult {
     let id = pane.0.buffer();
-    let (errors, warnings) = ctx
-        .host
-        .decorations()
-        .map(|d| d.diagnostic_counts(id))
-        .unwrap_or((0, 0));
+    let (errors, warnings) =
+        require_cap(ctx.host.decorations(), "diagnostic-counts")?.diagnostic_counts(id);
     Ok(symbol_hash([
         ("errors", SteelVal::IntV(errors as isize)),
         ("warnings", SteelVal::IntV(warnings as isize)),

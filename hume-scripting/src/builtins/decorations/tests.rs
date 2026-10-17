@@ -50,6 +50,28 @@ fn assert_names_builtin(result: SteelResult, builtin: &str) {
     assert!(msg.contains(builtin), "got: {msg}");
 }
 
+/// The diagnostic reads raise on a host with no decorations capability (a
+/// drawer row renderer's), where an empty answer would read as "no
+/// diagnostics".
+#[test]
+fn diagnostic_reads_without_decoration_host_error() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    assert_names_builtin(
+        diagnostics_for_buffer(
+            &mut ctx,
+            ArgPane(default_pane()),
+            SteelVal::BoolV(false),
+            SteelVal::BoolV(false),
+        ),
+        "diagnostics-for-buffer",
+    );
+    assert_names_builtin(
+        diagnostic_counts(&mut ctx, ArgPane(default_pane())),
+        "diagnostic-counts",
+    );
+}
+
 #[test]
 fn set_inlay_hints_without_decoration_host_errors() {
     let mut h = SteelCtxTestHarness::new();

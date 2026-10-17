@@ -1,5 +1,6 @@
 use super::*;
 use crate::json::JsonHandle;
+use crate::null_host::EmptyLspHost;
 use crate::test_support::{SteelCtxTestHarness, default_bid, default_pane, default_pane_with_pane};
 use crate::types::{RequestMode, RequestParams, RouteSpec, WhenUnavailable};
 use hume_platform::dirs::Dirs;
@@ -401,13 +402,14 @@ fn lsp_show_status_rejects_init_context() {
 #[test]
 fn lsp_server_registered_is_callable_during_init() {
     let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx();
+    let mut host = EmptyLspHost::default();
+    let mut ctx = h.ctx_with_host(&mut host);
     ctx.session = crate::context::EvalSession::Init;
     let result = lsp_server_registered(&mut ctx, "rust-analyzer".into_steelval().unwrap());
     assert_eq!(
         result.unwrap(),
         SteelVal::BoolV(false),
-        "NullHost reports nothing registered"
+        "EmptyLspHost reports nothing registered"
     );
 }
 
@@ -439,7 +441,8 @@ fn registered(ctx: &mut SteelCtx, name: &str) -> SteelVal {
 #[test]
 fn lsp_server_registered_reads_through_queued_ops() {
     let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx();
+    let mut host = EmptyLspHost::default();
+    let mut ctx = h.ctx_with_host(&mut host);
     ctx.push_effect(pending_register("rust-analyzer"));
     assert_eq!(registered(&mut ctx, "rust-analyzer"), SteelVal::BoolV(true));
     ctx.push_effect(pending_unregister("rust-analyzer"));
@@ -451,16 +454,33 @@ fn lsp_server_registered_reads_through_queued_ops() {
     assert_eq!(registered(&mut ctx, "rust-analyzer"), SteelVal::BoolV(true));
 }
 
+/// A host with no LSP capability raises whether or not an op for the name is
+/// queued.
+#[test]
+fn lsp_server_registered_raises_without_an_lsp_capability_even_with_a_queued_op() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    ctx.push_effect(pending_register("rust-analyzer"));
+    let err =
+        lsp_server_registered(&mut ctx, "rust-analyzer".into_steelval().unwrap()).unwrap_err();
+    assert!(
+        err.to_string()
+            .contains("lsp-server-registered?: not supported by this host"),
+        "{err}"
+    );
+}
+
 /// A queued op for a *different* name must not affect the answer.
 #[test]
 fn a_queued_op_for_a_different_name_does_not_flip_the_answer() {
     let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx();
+    let mut host = EmptyLspHost::default();
+    let mut ctx = h.ctx_with_host(&mut host);
     ctx.push_effect(pending_register("pyright"));
     assert_eq!(
         registered(&mut ctx, "rust-analyzer"),
         SteelVal::BoolV(false),
-        "NullHost reports rust-analyzer unregistered, and pyright's queued op is irrelevant"
+        "EmptyLspHost reports rust-analyzer unregistered, and pyright's queued op is irrelevant"
     );
 }
 
@@ -469,7 +489,8 @@ fn a_queued_op_for_a_different_name_does_not_flip_the_answer() {
 #[test]
 fn a_stop_op_alone_does_not_flip_the_answer() {
     let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx();
+    let mut host = EmptyLspHost::default();
+    let mut ctx = h.ctx_with_host(&mut host);
     ctx.push_effect(Effect::LspServerOp(PendingLspServerOp::Stop {
         target: LspServerTarget::Name(server_name("rust-analyzer")),
     }));
@@ -725,12 +746,13 @@ fn lsp_request_queues_the_supersede_key() {
 }
 
 /// `#:tracked` takes a token or `#f`. The hold on the position comes from
-/// the editor's `LspHost`, which this harness has none of.
+/// the editor's `LspHost`, and `EmptyLspHost` holds none.
 #[test]
 fn lsp_request_accepts_a_tracked_token_or_false() {
     for tracked in [SteelVal::IntV(7), SteelVal::BoolV(false)] {
         let mut h = SteelCtxTestHarness::new();
-        let mut ctx = h.ctx();
+        let mut host = EmptyLspHost::default();
+        let mut ctx = h.ctx_with_host(&mut host);
         request(
             &mut ctx,
             RequestArgs {
@@ -776,7 +798,8 @@ fn lsp_request_decodes_require_focus() {
 #[test]
 fn lsp_request_decodes_feature_method_and_to() {
     let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx();
+    let mut host = EmptyLspHost::default();
+    let mut ctx = h.ctx_with_host(&mut host);
     request(
         &mut ctx,
         RequestArgs {
@@ -1002,6 +1025,103 @@ fn lsp_position_to_char_offset_untagged_handle_errors() {
         .unwrap_err()
         .to_string();
     assert!(msg.contains("not a value from an LSP server"), "got: {msg}");
+}
+
+/// Every builtin that reads the LSP host raises on a host with none (a
+/// drawer row renderer's), where `#f`, `'()` or a no-op would pass for a
+/// real answer.
+#[test]
+fn lsp_reads_without_lsp_host_error() {
+    type Call = fn(&mut SteelCtx) -> SteelResult;
+    let calls: [(&str, Call); 15] = [
+        ("lsp-language-servers", |ctx| {
+            lsp_language_servers(ctx, "rust".into_steelval().unwrap())
+        }),
+        ("lsp-servers", |ctx| {
+            lsp_servers(
+                ctx,
+                default_pane(),
+                SteelVal::BoolV(false),
+                SteelVal::BoolV(false),
+            )
+        }),
+        ("lsp-capabilities", |ctx| {
+            lsp_capabilities(ctx, server(1, "rust-analyzer"))
+        }),
+        ("lsp-capability", |ctx| {
+            lsp_capability(
+                ctx,
+                server(1, "rust-analyzer"),
+                SteelVal::BoolV(false),
+                "textDocument/hover".into_steelval().unwrap(),
+            )
+        }),
+        ("lsp-server-status", lsp_server_status),
+        ("lsp-server-registered?", |ctx| {
+            lsp_server_registered(ctx, "rust-analyzer".into_steelval().unwrap())
+        }),
+        ("lsp-document-params", |ctx| {
+            lsp_document_params(ctx, default_pane())
+        }),
+        ("lsp-position-params", |ctx| {
+            lsp_position_params(ctx, default_pane())
+        }),
+        ("lsp-primary-range-params", |ctx| {
+            lsp_primary_range_params(ctx, default_pane())
+        }),
+        ("lsp-linewise-ranges-params", |ctx| {
+            lsp_linewise_ranges_params(ctx, default_pane())
+        }),
+        ("track-position!", |ctx| track_position(ctx, default_pane())),
+        ("tracked-position-params", |ctx| {
+            tracked_position_params(ctx, SteelVal::IntV(1))
+        }),
+        ("keep-tracked-position!", |ctx| {
+            keep_tracked_position(ctx, SteelVal::IntV(1))
+        }),
+        ("untrack-position!", |ctx| {
+            untrack_position(ctx, SteelVal::IntV(1))
+        }),
+        ("lsp-request!", |ctx| {
+            request(
+                ctx,
+                RequestArgs {
+                    tracked: SteelVal::IntV(1),
+                    ..RequestArgs::default()
+                },
+            )
+        }),
+    ];
+    for (name, call) in calls {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
+        let msg = call(&mut ctx).unwrap_err().to_string();
+        assert!(
+            msg.contains(&format!("{name}: not supported by this host")),
+            "{name}: got: {msg}"
+        );
+    }
+}
+
+/// A `#:feature` is checked against the LSP host's standard methods, so a
+/// request naming one on a host with no LSP raises.
+#[test]
+fn lsp_request_with_a_feature_without_lsp_host_errors() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let msg = request(
+        &mut ctx,
+        RequestArgs {
+            feature: SteelVal::SymbolV("hover".into()),
+            ..RequestArgs::default()
+        },
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(
+        msg.contains("lsp-request!: not supported by this host"),
+        "got: {msg}"
+    );
 }
 
 /// Given a *tagged* handle, so the encoding check passes, a harness with no

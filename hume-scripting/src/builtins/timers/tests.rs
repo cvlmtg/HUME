@@ -2,19 +2,23 @@ use super::*;
 use crate::test_support::SteelCtxTestHarness;
 use steel::rvals::IntoSteelVal;
 
-/// `NullHost`'s default `schedule_timer` returns `None` (no timer wheel
-/// to schedule onto), so `after!` must surface that as an error, not
-/// silently return a meaningless id.
+/// `NullHost` has no timer capability, so `after!` raises the shared
+/// "not supported by this host" error rather than return a meaningless id.
 #[test]
 fn after_errors_when_the_host_has_no_timer_support() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
-    let result = after(
+    let msg = after(
         &mut ctx,
         100i64.into_steelval().unwrap(),
         SteelVal::BoolV(true),
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(
+        msg.contains("after!: not supported by this host"),
+        "got: {msg}"
     );
-    assert!(result.is_err());
 }
 
 #[test]
@@ -29,12 +33,19 @@ fn after_rejects_a_negative_ms_argument() {
     assert!(result.is_err());
 }
 
+/// A host with no timer capability has no timer to cancel either, so
+/// `cancel-timer!` raises like `after!`.
 #[test]
-fn cancel_timer_is_a_harmless_no_op_against_nullhost() {
+fn cancel_timer_errors_when_the_host_has_no_timer_support() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
-    let result = cancel_timer(&mut ctx, 0i64.into_steelval().unwrap());
-    assert!(result.is_ok());
+    let msg = cancel_timer(&mut ctx, 0i64.into_steelval().unwrap())
+        .unwrap_err()
+        .to_string();
+    assert!(
+        msg.contains("cancel-timer!: not supported by this host"),
+        "got: {msg}"
+    );
 }
 
 #[test]

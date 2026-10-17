@@ -225,11 +225,8 @@ pub(crate) fn set_default_language_servers(
 /// its list entry filters it.
 pub(crate) fn lsp_language_servers(ctx: &mut SteelCtx, language: SteelVal) -> SteelResult {
     let language = string_arg(language, "lsp-language-servers language")?;
-    let entries = ctx
-        .host
-        .lsp()
-        .map(|lsp| lsp.lsp_language_servers(&language))
-        .unwrap_or_default();
+    let entries =
+        require_cap(ctx.host.lsp(), "lsp-language-servers")?.lsp_language_servers(&language);
     let features =
         |set: LspFeatureSet| list_of(set.iter().map(|f| SteelVal::SymbolV(f.name().into())));
     Ok(list_of(entries.into_iter().map(|entry| {
@@ -304,11 +301,7 @@ fn reject_feature_on_standard_method(
     if route.feature.is_none() {
         return Ok(());
     }
-    match ctx
-        .host
-        .lsp()
-        .and_then(|lsp| lsp.lsp_method_feature(method))
-    {
+    match require_cap(ctx.host.lsp(), verb)?.lsp_method_feature(method) {
         Some(feature) => Err(generic_err(format!(
             "{verb}: {method} is a standard method of the '{} feature; #:feature is for other methods",
             feature.name()
@@ -355,8 +348,10 @@ fn queue_request(
             })
         })
         .transpose()?;
-    let tracked = optional_token_arg(tracked, &format!("{verb} #:tracked"))?
-        .and_then(|token| ctx.host.lsp()?.hold_tracked_position(token));
+    let tracked = match optional_token_arg(tracked, &format!("{verb} #:tracked"))? {
+        Some(token) => require_cap(ctx.host.lsp(), verb)?.hold_tracked_position(token),
+        None => None,
+    };
     ctx.push_effect(Effect::LspRequest(PendingLspRequest {
         bid: pane.buffer(),
         method,
@@ -531,12 +526,9 @@ pub(crate) fn lsp_servers(
 ) -> SteelResult {
     let feature = feature_arg(feature, "lsp-servers #:feature")?;
     let method = optional_string_arg(method, "lsp-servers #:method")?;
-    let servers = match ctx.host.lsp() {
-        Some(lsp) => lsp
-            .lsp_servers(pane.buffer(), feature, method.as_deref())
-            .map_err(generic_err)?,
-        None => Vec::new(),
-    };
+    let servers = require_cap(ctx.host.lsp(), "lsp-servers")?
+        .lsp_servers(pane.buffer(), feature, method.as_deref())
+        .map_err(generic_err)?;
     Ok(list_of(servers.into_iter().map(ServerRef::into_steel_val)))
 }
 
@@ -602,10 +594,8 @@ pub(crate) fn register_lsp_notification_hook(
 /// `json-ref`/`json-contains?`.
 pub(crate) fn lsp_capabilities(ctx: &mut SteelCtx, server: SteelVal) -> SteelResult {
     let server = server_arg(&server, "lsp-capabilities")?;
-    Ok(ctx
-        .host
-        .lsp()
-        .and_then(|lsp| lsp.lsp_capabilities(server.id))
+    Ok(require_cap(ctx.host.lsp(), "lsp-capabilities")?
+        .lsp_capabilities(server.id)
         .map_or(SteelVal::BoolV(false), |v| {
             crate::json::to_steel_handle(v, crate::json::WireOrigin::Local)
         }))
@@ -634,10 +624,8 @@ pub(crate) fn lsp_capability(
             ));
         }
     };
-    Ok(ctx
-        .host
-        .lsp()
-        .and_then(|lsp| lsp.lsp_capability(server.id, query))
+    Ok(require_cap(ctx.host.lsp(), "lsp-capability")?
+        .lsp_capability(server.id, query)
         .map_or(SteelVal::BoolV(false), |v| {
             crate::json::to_steel_handle(v, crate::json::WireOrigin::Local)
         }))
@@ -645,11 +633,8 @@ pub(crate) fn lsp_capability(
 
 /// `(lsp-server-status)` → list of `(hash 'name 'languages 'root 'state 'pending)`.
 pub(crate) fn lsp_server_status(ctx: &mut SteelCtx) -> SteelResult {
-    let entries: Vec<SteelVal> = ctx
-        .host
-        .lsp()
-        .map(|lsp| lsp.lsp_server_status())
-        .unwrap_or_default()
+    let entries: Vec<SteelVal> = require_cap(ctx.host.lsp(), "lsp-server-status")?
+        .lsp_server_status()
         .into_iter()
         .map(|e| {
             symbol_hash([
@@ -676,13 +661,15 @@ pub(crate) fn lsp_server_status(ctx: &mut SteelCtx) -> SteelResult {
 /// `Effect::LspServerOp` entries queued this eval, in emission order, before
 /// falling back to the live registry: the last queued `Register`/
 /// `Unregister` of `name` wins, matching `Editor::apply_lsp_server_ops`'s own
-/// last-wins semantics, so a same-eval registration is visible at once.
+/// last-wins semantics, so a same-eval registration is visible at once. A host
+/// with no LSP capability raises whether or not an op is queued.
 ///
 /// A pure registry read, so its table entry is `open` kind: callable during
 /// init/plugin load too, which lets `core:lsp-install`'s load-time scan skip
 /// names already registered.
 pub(crate) fn lsp_server_registered(ctx: &mut SteelCtx, name: SteelVal) -> SteelResult {
     let name = server_name_arg(name, "lsp-server-registered? name")?;
+    let lsp = require_cap(ctx.host.lsp(), "lsp-server-registered?")?;
     let queued = ctx
         .effects
         .iter()
@@ -698,10 +685,7 @@ pub(crate) fn lsp_server_registered(ctx: &mut SteelCtx, name: SteelVal) -> Steel
         });
     let registered = match queued {
         Some(v) => v,
-        None => ctx
-            .host
-            .lsp()
-            .is_some_and(|lsp| lsp.lsp_server_registered(&name)),
+        None => lsp.lsp_server_registered(&name),
     };
     Ok(SteelVal::BoolV(registered))
 }
@@ -738,26 +722,18 @@ fn ranges_params_value(params: RangesParams) -> SteelVal {
 }
 
 /// A kind-B params read as a Steel value: `Err` (a stale `pane`) raises,
-/// `Ok(None)` (a buffer with no path) and no LSP host are `#f`.
-fn params_result<T>(
-    result: Option<Result<Option<T>, String>>,
-    to_steel: fn(T) -> SteelVal,
-) -> SteelResult {
-    match result {
-        None => Ok(SteelVal::BoolV(false)),
-        Some(Err(e)) => Err(generic_err(e)),
-        Some(Ok(params)) => Ok(params.map_or(SteelVal::BoolV(false), to_steel)),
-    }
+/// `Ok(None)` (a buffer with no path) is `#f`.
+fn params_result<T>(result: Result<Option<T>, String>, to_steel: fn(T) -> SteelVal) -> SteelResult {
+    let params = result.map_err(generic_err)?;
+    Ok(params.map_or(SteelVal::BoolV(false), to_steel))
 }
 
 /// `(lsp-document-params pane)` → `{"textDocument" {"uri"}}` for the buffer
 /// `pane` names, or `#f` for a buffer with no path. Reads only the buffer, so
 /// a value with no pane works.
 pub(crate) fn lsp_document_params(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
-    Ok(ctx
-        .host
-        .lsp()
-        .and_then(|lsp| lsp.lsp_document_uri(pane.buffer()))
+    Ok(require_cap(ctx.host.lsp(), "lsp-document-params")?
+        .lsp_document_uri(pane.buffer())
         .map_or(SteelVal::BoolV(false), |uri| {
             string_hash([("textDocument", text_document(uri))])
         }))
@@ -770,21 +746,20 @@ pub(crate) fn lsp_document_params(ctx: &mut SteelCtx, pane: PaneHandle) -> Steel
 /// one, or one that no longer shows its buffer.
 pub(crate) fn lsp_position_params(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
     params_result(
-        ctx.host.lsp().map(|lsp| lsp.lsp_position_params(pane)),
+        require_cap(ctx.host.lsp(), "lsp-position-params")?.lsp_position_params(pane),
         position_params_value,
     )
 }
 
 /// `(track-position! pane)` → a token naming the primary cursor head in
-/// `pane`'s own pane, carried through every edit, or `#f` when the host
-/// tracks nothing. Raises (kind-B fail-fast) when `pane` carries no pane, a
-/// closed one, or one that no longer shows its buffer.
+/// `pane`'s own pane, carried through every edit. Raises (kind-B fail-fast)
+/// when `pane` carries no pane, a closed one, or one that no longer shows its
+/// buffer.
 pub(crate) fn track_position(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
-    match ctx.host.lsp().map(|lsp| lsp.track_position(pane)) {
-        None => Ok(SteelVal::BoolV(false)),
-        Some(Err(e)) => Err(generic_err(e)),
-        Some(Ok(token)) => Ok(token.to_steel()),
-    }
+    let token = require_cap(ctx.host.lsp(), "track-position!")?
+        .track_position(pane)
+        .map_err(generic_err)?;
+    Ok(token.to_steel())
 }
 
 /// `(tracked-position-params token)` → the `lsp-position-params` shape for
@@ -793,10 +768,8 @@ pub(crate) fn track_position(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResul
 /// token is that same stale case; only a non-integer raises.
 pub(crate) fn tracked_position_params(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
     let token = token_arg(token, "tracked-position-params token")?;
-    Ok(ctx
-        .host
-        .lsp()
-        .and_then(|lsp| lsp.tracked_position_params(token))
+    Ok(require_cap(ctx.host.lsp(), "tracked-position-params")?
+        .tracked_position_params(token)
         .map_or(SteelVal::BoolV(false), position_params_value))
 }
 
@@ -805,9 +778,7 @@ pub(crate) fn tracked_position_params(ctx: &mut SteelCtx, token: SteelVal) -> St
 /// `untrack-position!`. A `#f`, released or unknown token is a no-op.
 pub(crate) fn keep_tracked_position(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
     let token = token_arg(token, "keep-tracked-position! token")?;
-    if let Some(lsp) = ctx.host.lsp() {
-        lsp.keep_tracked_position(token);
-    }
+    require_cap(ctx.host.lsp(), "keep-tracked-position!")?.keep_tracked_position(token);
     Ok(SteelVal::Void)
 }
 
@@ -815,9 +786,7 @@ pub(crate) fn keep_tracked_position(ctx: &mut SteelCtx, token: SteelVal) -> Stee
 /// unknown token is a no-op.
 pub(crate) fn untrack_position(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
     let token = token_arg(token, "untrack-position! token")?;
-    if let Some(lsp) = ctx.host.lsp() {
-        lsp.untrack_position(token);
-    }
+    require_cap(ctx.host.lsp(), "untrack-position!")?.untrack_position(token);
     Ok(SteelVal::Void)
 }
 
@@ -825,7 +794,7 @@ pub(crate) fn untrack_position(ctx: &mut SteelCtx, token: SteelVal) -> SteelResu
 /// primary selection alone, an opaque range value.
 pub(crate) fn lsp_primary_range_params(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
     params_result(
-        ctx.host.lsp().map(|lsp| lsp.lsp_primary_range_params(pane)),
+        require_cap(ctx.host.lsp(), "lsp-primary-range-params")?.lsp_primary_range_params(pane),
         range_params_value,
     )
 }
@@ -840,9 +809,7 @@ pub(crate) fn lsp_primary_range_params(ctx: &mut SteelCtx, pane: PaneHandle) -> 
 /// would break that (see `CursorHost::selections_linewise`'s doc comment).
 pub(crate) fn lsp_linewise_ranges_params(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
     params_result(
-        ctx.host
-            .lsp()
-            .map(|lsp| lsp.lsp_linewise_ranges_params(pane)),
+        require_cap(ctx.host.lsp(), "lsp-linewise-ranges-params")?.lsp_linewise_ranges_params(pane),
         ranges_params_value,
     )
 }

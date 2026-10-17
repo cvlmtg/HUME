@@ -369,3 +369,18 @@ fn set_hook_triggers_queues_a_hook_kind_effect() {
     );
     assert_eq!(chars, &['(']);
 }
+
+/// `completion-top` raises on a host with no completion capability (a
+/// drawer row renderer's), where `'()` would read as "no candidates".
+#[test]
+fn completion_top_without_completion_host_errors() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let msg = completion_top(&mut ctx, SteelVal::IntV(5))
+        .unwrap_err()
+        .to_string();
+    assert!(
+        msg.contains("completion-top: not supported by this host"),
+        "got: {msg}"
+    );
+}

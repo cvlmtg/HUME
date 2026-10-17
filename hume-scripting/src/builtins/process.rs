@@ -59,9 +59,7 @@ pub(crate) fn spawn_async(
 /// contract.
 pub(crate) fn cancel_async(ctx: &mut SteelCtx, id: SteelVal) -> SteelResult {
     let id = usize_arg(id, "cancel-async!")? as u64;
-    if let Some(host) = ctx.host.async_process() {
-        host.cancel_async(id);
-    }
+    require_cap(ctx.host.async_process(), "cancel-async!")?.cancel_async(id);
     Ok(SteelVal::Void)
 }
 
