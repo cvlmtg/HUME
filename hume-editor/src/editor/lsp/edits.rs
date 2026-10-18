@@ -357,10 +357,8 @@ fn resolve_or_open(
         crate::editor::buffer::lifecycle::open_or_dedup_and_notify(view, state, &resolved)
             .map_err(|e| format!("{}: {e}", resolved.display()))?;
     if is_new {
-        let display = hume_platform::path::display_form(&hume_platform::path::absolute_unresolved(
-            path, &state.cwd,
-        ));
-        state.buffers.get_mut(bid).set_display_path(Some(display));
+        let typed = hume_platform::path::absolute_unresolved(path, &state.cwd);
+        state.buffers.get_mut(bid).set_typed_path(Some(typed));
     }
     Ok((bid, is_new))
 }

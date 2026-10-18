@@ -100,3 +100,18 @@ fn display_form_with_verbatim_unc_passthrough() {
     });
     assert_eq!(got, r"\\?\UNC\server\share");
 }
+
+// ── relative_to ───────────────────────────────────────────────────────────
+
+#[test]
+fn relative_to_ignores_a_verbatim_prefix_on_either_side() {
+    let expected = Some(PathBuf::from(r"sub\f.rs"));
+    assert_eq!(
+        relative_to(Path::new(r"\\?\C:\a\sub\f.rs"), Path::new(r"C:\a")),
+        expected
+    );
+    assert_eq!(
+        relative_to(Path::new(r"C:\a\sub\f.rs"), Path::new(r"\\?\C:\a")),
+        expected
+    );
+}

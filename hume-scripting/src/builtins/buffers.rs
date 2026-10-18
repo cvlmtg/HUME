@@ -10,12 +10,13 @@ use steel::rvals::{IntoSteelVal, SteelVal};
 
 use super::SteelResult;
 use super::args::{
-    ArgPane, LINE_RANGE_KEYS, line_range_value, list_of, not_live_err, optional_hash_entry,
-    symbol_hash,
+    ArgPane, LINE_RANGE_KEYS, bool_arg, line_range_value, list_of, not_live_err,
+    optional_hash_entry, symbol_hash,
 };
 use super::errors::generic_err;
 use super::ids::{SteelBufferKey, SteelPane};
 use crate::SteelCtx;
+use crate::host::DisplayPathForm;
 use crate::types::PaneHandle;
 
 // ── Focus builtins ─────────────────────────────────────────────────────────────
@@ -101,12 +102,22 @@ pub(crate) fn buffer_path(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
     }
 }
 
-/// `(buffer-display-path pane)` → fully display-ready path string
+/// `(buffer-display-path pane #:relative)` → fully display-ready path string
 /// (absolutized, lexically normalized, UNC-stripped, `~`-collapsed) to print
-/// verbatim, or `#f` for unsaved buffers. Unlike `buffer-path`, never
-/// suitable for filesystem ops.
-pub(crate) fn buffer_display_path(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
-    match ctx.host.buffers().buffer_display_path(pane.buffer()) {
+/// verbatim, or `#f` for unsaved buffers. With `relative`, the path relative
+/// to the editor's working directory when the file is inside it. Unlike
+/// `buffer-path`, never suitable for filesystem ops.
+pub(crate) fn buffer_display_path(
+    ctx: &mut SteelCtx,
+    pane: PaneHandle,
+    relative: SteelVal,
+) -> SteelResult {
+    let form = if bool_arg(relative, "buffer-display-path #:relative")? {
+        DisplayPathForm::CwdRelative
+    } else {
+        DisplayPathForm::Absolute
+    };
+    match ctx.host.buffers().buffer_display_path(pane.buffer(), form) {
         Some(p) => p.into_steelval().map_err(generic_err),
         None => Ok(SteelVal::BoolV(false)),
     }

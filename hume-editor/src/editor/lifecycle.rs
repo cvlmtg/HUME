@@ -79,8 +79,9 @@ impl Editor {
         // Record the user-typed path (symlinks unresolved) for user-facing display,
         // overwriting `Buffer::from_file`'s canonical-derived default.
         if let Some(ref path) = file_path {
-            doc.set_display_path(Some(hume_platform::path::display_form(
-                &hume_platform::path::absolute_unresolved(path, &startup_cwd),
+            doc.set_typed_path(Some(hume_platform::path::absolute_unresolved(
+                path,
+                &startup_cwd,
             )));
         }
 

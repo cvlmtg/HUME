@@ -248,6 +248,16 @@ fn display_form_with(
     shorten_home_with(strip_unc_prefix_cow(path).as_ref(), home_fn)
 }
 
+/// `path` relative to `base`, or `None` when `path` isn't inside `base`.
+/// A Windows `\\?\` prefix on either side is ignored: a canonicalized path
+/// carries one and a working directory from `current_dir` doesn't.
+pub fn relative_to(path: &Path, base: &Path) -> Option<PathBuf> {
+    strip_unc_prefix_cow(path)
+        .strip_prefix(strip_unc_prefix_cow(base))
+        .ok()
+        .map(Path::to_path_buf)
+}
+
 // ── Separator utilities ───────────────────────────────────────────────────────
 
 /// Returns `true` if `c` is a path-component separator on the current platform.

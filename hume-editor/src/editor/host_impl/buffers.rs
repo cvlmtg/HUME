@@ -12,7 +12,7 @@ use super::EditorHostImpl;
 use crate::editor::buffer::ViewLabel;
 use crate::editor::commands::FocusedPane;
 use hume_scripting::PaneHandle;
-use hume_scripting::host::BufferHost;
+use hume_scripting::host::{BufferHost, DisplayPathForm};
 
 impl<'a> BufferHost for EditorHostImpl<'a> {
     // ── Enumeration ──────────────────────────────────────────────────────────
@@ -56,8 +56,19 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
     fn buffer_path(&self, id: BufferId) -> Option<PathBuf> {
         self.buffer(id)?.path().map(Path::to_path_buf)
     }
-    fn buffer_display_path(&self, id: BufferId) -> Option<String> {
-        self.buffer(id)?.display_path().map(str::to_owned)
+    fn buffer_display_path(&self, id: BufferId, form: DisplayPathForm) -> Option<String> {
+        let buf = self.buffer(id)?;
+        let absolute = buf.display_path()?;
+        let relative = match form {
+            DisplayPathForm::Absolute => None,
+            // The canonical path catches a file typed through a symlink to
+            // the working directory, which is canonical.
+            DisplayPathForm::CwdRelative => [buf.typed_path(), buf.path()]
+                .into_iter()
+                .flatten()
+                .find_map(|path| hume_platform::path::relative_to(path, &self.state.cwd)),
+        };
+        Some(relative.map_or_else(|| absolute.to_owned(), |p| p.display().to_string()))
     }
     fn buffer_display_name(&self, id: BufferId) -> Option<String> {
         self.buffer(id).map(|buf| buf.display_name())

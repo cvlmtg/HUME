@@ -161,14 +161,16 @@ pub(crate) struct Buffer {
     saved_line_ending: LineEnding,
     /// Canonical file path (after symlink resolution). `None` for scratch buffers.
     pub(super) path: Option<PathBuf>,
-    /// Fully display-ready path string (absolutized, lexically normalized,
-    /// UNC-stripped, `~`-collapsed), the single form shown to the user
-    /// everywhere a buffer path appears. Consumers print it verbatim; the
-    /// only allowed runtime-time exception is statusline width-shortening.
-    /// Always `Some` when `path` is `Some`: `set_path` derives it
-    /// structurally (see `Buffer::set_path`); callers that resolved a
-    /// user-typed path overwrite it afterwards with `set_display_path` for
-    /// the typed-derived form. `None` for scratch/synthetic buffers.
+    /// The path as the user named it: absolute and lexically normalized,
+    /// symlinks unresolved. Always `Some` when `path` is `Some`: `set_path`
+    /// defaults it to `path`, and callers that resolved a user-typed path
+    /// overwrite it afterwards with `set_typed_path`. `None` for
+    /// scratch/synthetic buffers.
+    pub(super) typed_path: Option<PathBuf>,
+    /// `typed_path`'s display form (UNC-stripped, `~`-collapsed), derived
+    /// whenever `typed_path` is set. Consumers print it verbatim; the
+    /// statusline may shorten it to fit, and `buffer-display-path
+    /// #:relative` derives a cwd-relative form from `typed_path` instead.
     pub(super) display_path: Option<String>,
     /// File metadata captured at open/save time (permissions, uid/gid).
     /// `None` for scratch buffers; populated after a successful save.
@@ -276,6 +278,7 @@ impl Buffer {
             saved_revision,
             saved_line_ending,
             path: None,
+            typed_path: None,
             display_path: None,
             file_meta: None,
             search_pattern: None,
@@ -299,10 +302,10 @@ impl Buffer {
     /// Load a file from disk, returning a ready-to-use `Buffer`.
     ///
     /// Sets `path` and `file_meta` from the resolved filesystem metadata;
-    /// `set_path` derives a canonical-path-based `display_path` alongside it.
-    /// Callers that resolved a user-typed path (`resolve_open_path`, save-as,
-    /// ...) overwrite it with the typed-derived form afterwards, via
-    /// `set_display_path`; this default only surfaces for opens with no typed
+    /// `set_path` defaults `typed_path` to the canonical path. Callers that
+    /// resolved a user-typed path (`resolve_open_path`, save-as, ...)
+    /// overwrite it afterwards, via `set_typed_path`; this default only
+    /// surfaces for opens with no typed
     /// path (Steel `open-buffer!`, `:tutor`, LSP goto). `search_pattern` and
     /// `search_matches` are left at their defaults (no active search).
     pub(in crate::editor::buffer) fn from_file(path: &Path) -> io::Result<Self> {
@@ -455,16 +458,17 @@ impl Buffer {
     }
 
     /// Set the buffer's file path, enforcing the "path has a basename"
-    /// invariant, and derive `display_path` alongside it so the two can never
-    /// drift out of pairing. Pass `None` to clear both (scratch buffer).
+    /// invariant, and default `typed_path` and `display_path` from it so they
+    /// can never drift out of pairing. Pass `None` to clear all three
+    /// (scratch buffer).
     ///
     /// Why: `display_name()` falls back to `*scratch*` when `path.file_name()`
     /// is `None`, so pathological paths like `/` or `..` would collide with a
     /// real scratch buffer in `:ls` and make `:b *scratch*` ambiguous. Rejecting
     /// at the boundary keeps the collision truly unreachable.
     ///
-    /// The derived `display_path` is only a default: callers with a
-    /// user-typed path overwrite it afterwards via `set_display_path` (see
+    /// The derived `typed_path` is only a default: callers with a
+    /// user-typed path overwrite it afterwards via `set_typed_path` (see
     /// `Buffer::from_file`).
     pub(in crate::editor) fn set_path(&mut self, path: Option<PathBuf>) {
         if let Some(ref p) = path {
@@ -474,7 +478,7 @@ impl Buffer {
                 p.display()
             );
         }
-        self.display_path = path.as_deref().map(hume_platform::path::display_form);
+        self.set_typed_path(path.clone());
         self.path = path;
     }
 
@@ -483,9 +487,16 @@ impl Buffer {
         self.path.as_deref()
     }
 
-    /// Set the display-ready path string (see field doc). Pass `None` to clear.
-    pub(in crate::editor) fn set_display_path(&mut self, display: Option<String>) {
-        self.display_path = display;
+    /// Set the user-typed path (see field doc) and derive `display_path`
+    /// from it. Pass `None` to clear both.
+    pub(in crate::editor) fn set_typed_path(&mut self, typed: Option<PathBuf>) {
+        self.display_path = typed.as_deref().map(hume_platform::path::display_form);
+        self.typed_path = typed;
+    }
+
+    /// The user-typed path, or `None` for scratch/synthetic buffers.
+    pub(in crate::editor) fn typed_path(&self) -> Option<&Path> {
+        self.typed_path.as_deref()
     }
 
     /// The fully display-ready path string, or `None` for scratch/synthetic

@@ -131,3 +131,57 @@ fn cwd_builtin_reports_the_editor_cwd() {
 
     assert_eq!(out, canonical(tmp.path()).to_str().unwrap());
 }
+
+fn relative_display_path(ed: &mut Editor, tmp: &Path) -> String {
+    log_probe(ed, tmp, "(buffer-display-path bid #:relative #t)")
+}
+
+#[test]
+fn relative_display_path_keeps_a_symlinked_directory_as_typed() {
+    use std::os::unix::fs::symlink;
+    let tmp = tempfile::tempdir().unwrap();
+    let proj = tmp.path().join("proj");
+    let lib = tmp.path().join("lib");
+    std::fs::create_dir_all(&proj).unwrap();
+    std::fs::create_dir_all(&lib).unwrap();
+    std::fs::write(lib.join("x.rs"), "x\n").unwrap();
+    symlink(&lib, proj.join("vendor")).unwrap();
+    let mut ed = editor_in(&proj);
+    type_cmd(&mut ed, ":e vendor/x.rs");
+
+    assert_eq!(relative_display_path(&mut ed, tmp.path()), "vendor/x.rs");
+}
+
+#[test]
+fn relative_display_path_names_a_symlinked_file_as_typed() {
+    use std::os::unix::fs::symlink;
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir(tmp.path().join("real")).unwrap();
+    std::fs::write(tmp.path().join("real").join("b.rs"), "x\n").unwrap();
+    symlink(
+        tmp.path().join("real").join("b.rs"),
+        tmp.path().join("a.rs"),
+    )
+    .unwrap();
+    let mut ed = editor_in(tmp.path());
+    type_cmd(&mut ed, ":e a.rs");
+
+    assert_eq!(relative_display_path(&mut ed, tmp.path()), "a.rs");
+}
+
+#[test]
+fn relative_display_path_of_a_path_typed_through_a_link_to_the_cwd() {
+    use std::os::unix::fs::symlink;
+    let tmp = tempfile::tempdir().unwrap();
+    let real = tmp.path().join("real");
+    std::fs::create_dir(&real).unwrap();
+    std::fs::write(real.join("f.rs"), "x\n").unwrap();
+    symlink(&real, tmp.path().join("link")).unwrap();
+    let mut ed = editor_in(&real);
+    type_cmd(
+        &mut ed,
+        &format!(":e {}", tmp.path().join("link").join("f.rs").display()),
+    );
+
+    assert_eq!(relative_display_path(&mut ed, tmp.path()), "f.rs");
+}

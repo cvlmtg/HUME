@@ -133,7 +133,7 @@ A value naming a closed buffer raises for almost every call: the reads that need
 | `(buffer-panes pane)` | Every pane currently showing `pane`'s buffer: the focused pane first if it shows that buffer, then the rest of the active tab, then other tabs. `(car (buffer-panes pane))` picks the same one a plugin would want by default when it just needs *some* pane on the buffer |
 | `(buffer-key pane)` | An opaque, comparable value naming just `pane`'s buffer: two pane values for the same buffer (even with different panes, or no pane at all) produce equal keys. Use this, not the pane value itself, as the key in a hash table a plugin keeps for its own per-buffer state |
 | `(buffer-path pane)` | Absolute path string, or `#f` for an unsaved buffer |
-| `(buffer-display-path pane)` | Display-ready path (absolutized, `~`-collapsed). Print it, never use it for filesystem I/O; `#f` for an unsaved buffer |
+| `(buffer-display-path pane #:relative)` | Display-ready path (absolutized, `~`-collapsed). With `#:relative #t`, relative to the working directory when the file is inside it. Print it, never use it for filesystem I/O; `#f` for an unsaved buffer |
 | `(buffer-name pane)` | Display name: a view buffer's label (e.g. `[messages]`), else the filename, else `"*scratch*"` |
 | `(buffer-dirty? pane)` | `#t` if the buffer has unsaved edits |
 | `(buffer-text pane)` | Full live content as a string |

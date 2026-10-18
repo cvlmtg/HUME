@@ -25,6 +25,18 @@ pub struct UndoNode {
     pub saved: bool,
 }
 
+/// Which form of a buffer's display path [`BufferHost::buffer_display_path`]
+/// returns.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DisplayPathForm {
+    /// Absolute, `~`-collapsed.
+    Absolute,
+    /// Relative to the editor's working directory when the file is inside
+    /// it, [`Absolute`](Self::Absolute) otherwise. The path as the user typed
+    /// it is tried first, then its symlink-resolved form.
+    CwdRelative,
+}
+
 /// Buffer/pane enumeration, reads, lifecycle, and viewport geometry,
 /// accessed through [`EditorHost::buffers`](super::EditorHost::buffers).
 pub trait BufferHost {
@@ -73,10 +85,10 @@ pub trait BufferHost {
     // ── Buffer reads (None ⇒ unknown/stale id) ──────────────────────────────
     fn buffer_exists(&self, id: BufferId) -> bool;
     fn buffer_path(&self, id: BufferId) -> Option<PathBuf>;
-    /// Fully display-ready path string (absolutized, lexically normalized,
-    /// UNC-stripped, `~`-collapsed): print verbatim. `None` for scratch/synthetic
-    /// buffers, same as `buffer_path`.
-    fn buffer_display_path(&self, id: BufferId) -> Option<String>;
+    /// Fully display-ready path string in `form` (UNC-stripped; absolute,
+    /// lexically normalized and `~`-collapsed unless relative): print
+    /// verbatim. `None` for scratch/synthetic buffers, same as `buffer_path`.
+    fn buffer_display_path(&self, id: BufferId, form: DisplayPathForm) -> Option<String>;
     fn buffer_display_name(&self, id: BufferId) -> Option<String>;
     fn buffer_is_dirty(&self, id: BufferId) -> Option<bool>;
     /// Language stored on the buffer (not accounting for pending `set-buffer-option!`'s `"language"`).

@@ -42,6 +42,7 @@
 - `core:git-diff` has key-bindable `git-diff/toggle-inline-diff` and `git-diff/toggle-git-signs`, plus `git-diff/show-inline-diff` and `git-diff/inline-diff?` for your own commands.
 - New `insert-text!` pastes text where you're typing, as a terminal paste would.
 - `bind-key!` takes `'command` to bind keys in the command mode prompt and in plugin prompts.
+- `buffer-display-path` takes `#:relative #t` for the path relative to the working directory.
 
 ### Language servers
 - `z s` picks a symbol of the current file and `z S` searches the symbols of the whole project as you type, both jumping to the one you accept.

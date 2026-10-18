@@ -155,10 +155,9 @@ impl Editor {
     /// already open: reading it if it exists, or opening an empty
     /// [`Buffer::new_file`] bound to the path if it doesn't (see
     /// `resolve_buffer_path`). Shared sequence: `expand` →
-    /// `absolute_unresolved` + `display_form` (display path) →
-    /// `resolve_buffer_path` → `open_or_dedup` → `set_display_path` if new
-    /// (overwriting `Buffer::from_file`'s canonical-derived default with the
-    /// typed-derived form).
+    /// `absolute_unresolved` (typed path) → `resolve_buffer_path` →
+    /// `open_or_dedup` → `set_typed_path` if new (overwriting
+    /// `Buffer::from_file`'s canonical default with the typed form).
     /// Errors propagate as raw `io::Error`; callers format with whichever path
     /// string suits their reporting.
     pub(in crate::editor) fn resolve_open_path(
@@ -167,17 +166,11 @@ impl Editor {
     ) -> io::Result<(BufferId, bool)> {
         let expanded = hume_platform::path::expand(path_str);
         let path = std::path::Path::new(expanded.as_ref());
-        let display = hume_platform::path::display_form(&hume_platform::path::absolute_unresolved(
-            path,
-            &self.state.cwd,
-        ));
+        let typed = hume_platform::path::absolute_unresolved(path, &self.state.cwd);
         let resolved = Self::resolve_buffer_path(path, &self.state.cwd);
         let (bid, is_new) = self.open_or_dedup(&resolved)?;
         if is_new {
-            self.state
-                .buffers
-                .get_mut(bid)
-                .set_display_path(Some(display));
+            self.state.buffers.get_mut(bid).set_typed_path(Some(typed));
         }
         Ok((bid, is_new))
     }

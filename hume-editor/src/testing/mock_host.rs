@@ -21,8 +21,8 @@ use hume_rope::line::ContentLine;
 use hume_scripting::PaneHandle;
 use hume_scripting::command_name::fold;
 use hume_scripting::host::{
-    BufferHost, CommandHost, CursorHost, EditorHost, EventHost, LanguageHost, NativeCall,
-    OptionValue, SelectionInfo, SettingsHost,
+    BufferHost, CommandHost, CursorHost, DisplayPathForm, EditorHost, EventHost, LanguageHost,
+    NativeCall, OptionValue, SelectionInfo, SettingsHost,
 };
 
 /// One recorded `run_command_sync` call: `(name, pane, call)`; see
@@ -164,7 +164,7 @@ impl BufferHost for MockHost {
     fn buffer_path(&self, _id: BufferId) -> Option<std::path::PathBuf> {
         None
     }
-    fn buffer_display_path(&self, _id: BufferId) -> Option<String> {
+    fn buffer_display_path(&self, _id: BufferId, _form: DisplayPathForm) -> Option<String> {
         None
     }
     fn buffer_display_name(&self, _id: BufferId) -> Option<String> {

@@ -379,7 +379,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "buffer-panes" buffers::buffer_panes(pane: args::LivePane);
         cmd "buffer-key" buffers::buffer_key(pane: args::ArgPane);
         cmd "buffer-path" buffers::buffer_path(pane: args::LivePane);
-        cmd "buffer-display-path" buffers::buffer_display_path(pane: args::LivePane);
+        cmd "%buffer-display-path" buffers::buffer_display_path(pane: args::LivePane, relative: SteelVal);
         cmd "buffer-name" buffers::buffer_name(pane: args::LivePane);
         cmd "buffer-dirty?" buffers::buffer_dirty(pane: args::LivePane);
         cmd "buffer-text" buffers::buffer_text(pane: args::LivePane);

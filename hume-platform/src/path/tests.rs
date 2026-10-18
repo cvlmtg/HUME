@@ -226,6 +226,38 @@ fn absolute_unresolved_does_not_canonicalize_symlinks() {
     assert_eq!(result, PathBuf::from("/real/symlink-dir/file.txt"));
 }
 
+// ── relative_to ───────────────────────────────────────────────────────────
+
+#[test]
+fn relative_to_strips_the_base() {
+    let path = Path::new("/a/b").join("sub").join("f.rs");
+    assert_eq!(
+        relative_to(&path, Path::new("/a/b")),
+        Some(Path::new("sub").join("f.rs"))
+    );
+}
+
+#[test]
+fn relative_to_is_none_outside_the_base() {
+    assert_eq!(relative_to(Path::new("/x/f.rs"), Path::new("/a/b")), None);
+}
+
+#[test]
+fn relative_to_matches_whole_components_only() {
+    assert_eq!(
+        relative_to(Path::new("/a/bc/f.rs"), Path::new("/a/b")),
+        None
+    );
+}
+
+#[test]
+fn relative_to_the_base_itself_is_empty() {
+    assert_eq!(
+        relative_to(Path::new("/a/b"), Path::new("/a/b")),
+        Some(PathBuf::new())
+    );
+}
+
 #[cfg(unix)]
 mod unix;
 #[cfg(windows)]

@@ -23,9 +23,9 @@ use crate::attribution::EntryId;
 use crate::command_name::fold;
 use crate::command_procs::CommandProc;
 use crate::host::{
-    BufferHost, CommandHost, CursorHost, EditorHost, EventHost, HostToken, LanguageHost,
-    LocationPlace, LspHost, OptionValue, OutputHost, PositionParams, RangeParams, RangesParams,
-    SelectionInfo, SettingsHost, TrackedHold,
+    BufferHost, CommandHost, CursorHost, DisplayPathForm, EditorHost, EventHost, HostToken,
+    LanguageHost, LocationPlace, LspHost, OptionValue, OutputHost, PositionParams, RangeParams,
+    RangesParams, SelectionInfo, SettingsHost, TrackedHold,
 };
 use crate::types::{GrammarReg, PaneHandle, SteelCmdDef, SteelTypedCmdDef};
 
@@ -115,7 +115,7 @@ impl BufferHost for NullHost {
     fn buffer_path(&self, _id: BufferId) -> Option<PathBuf> {
         None
     }
-    fn buffer_display_path(&self, _id: BufferId) -> Option<String> {
+    fn buffer_display_path(&self, _id: BufferId, _form: DisplayPathForm) -> Option<String> {
         None
     }
     fn buffer_display_name(&self, _id: BufferId) -> Option<String> {

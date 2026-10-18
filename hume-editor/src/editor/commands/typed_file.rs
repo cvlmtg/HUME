@@ -367,12 +367,12 @@ impl Editor {
         &mut self,
         bid: BufferId,
         meta: hume_platform::io::FileMeta,
-        display_path: Option<String>,
+        typed_path: Option<std::path::PathBuf>,
     ) {
         let changed = self.state.buffers.get(bid).path() != Some(meta.resolved_path());
         let buf = self.state.buffers.get_mut(bid);
         buf.set_path(Some(meta.resolved_path().to_path_buf()));
-        buf.set_display_path(display_path);
+        buf.set_typed_path(typed_path);
         buf.file_meta = Some(meta);
         if changed {
             self.state.lsp_reconcile_buffer(&self.view, bid);
@@ -426,10 +426,15 @@ fn write_buffer_by_id(
                 // parent didn't exist yet). `meta.resolved_path()` is the
                 // fully resolved post-write truth, which can differ, and
                 // must become the buffer's identity so `find_by_path` dedup
-                // keeps working. `display_path` is preserved across the
+                // keeps working. The typed path is preserved across the
                 // `set_path` re-derivation, matching the save-as branch below.
-                let display_path = ed.state.buffers.get(bid).display_path().map(str::to_owned);
-                ed.rekey_buffer_path(bid, meta, display_path);
+                let typed_path = ed
+                    .state
+                    .buffers
+                    .get(bid)
+                    .typed_path()
+                    .map(std::path::Path::to_path_buf);
+                ed.rekey_buffer_path(bid, meta, typed_path);
                 mark_written_and_synced(ed, bid, line_count, retried);
                 Ok(())
             }
@@ -521,12 +526,11 @@ fn write_file(
                 p.to_owned()
             }
         };
-        // Display-ready form of the user-typed path (not the canonicalized one),
-        // recorded for user-facing display. `normalize_lexical` is used here
-        // (rather than `absolute_unresolved`) because `path` was already made
-        // absolute above (via cwd.join or identity).
-        let display_path =
-            hume_platform::path::display_form(&hume_platform::path::normalize_lexical(&path));
+        // The user-typed path (not the canonicalized one), recorded for
+        // user-facing display. `normalize_lexical` is used here (rather than
+        // `absolute_unresolved`) because `path` was already made absolute
+        // above (via cwd.join or identity).
+        let typed_path = hume_platform::path::normalize_lexical(&path);
         // Try to preserve existing file's permissions; if the file doesn't
         // exist yet, write_file_new creates it with default permissions.
         let result = match hume_platform::io::read_file_meta(&path) {
@@ -564,7 +568,7 @@ fn write_file(
                     // Store the canonicalized path so path and
                     // file_meta.resolved_path always agree, even when the
                     // user supplied a relative or symlink path.
-                    ed.rekey_buffer_path(bid, meta, Some(display_path));
+                    ed.rekey_buffer_path(bid, meta, Some(typed_path));
                     mark_written_and_synced(ed, bid, line_count, retried);
                 } else {
                     ed.report(write_severity(retried), write_msg(line_count, retried));
