@@ -49,7 +49,7 @@ fn mru_excluding_none_with_single_buffer() {
 }
 
 #[test]
-fn next_and_prev_wrap() {
+fn step_wraps_around() {
     let (mut store, mut ev) = store_with_engine();
     let a = make_id(&mut ev);
     let b = make_id(&mut ev);
@@ -61,6 +61,15 @@ fn next_and_prev_wrap() {
     assert_eq!(store.step(a, Cycle::Prev), c, "prev wraps to end");
     assert_eq!(store.step(a, Cycle::Next), b);
     assert_eq!(store.step(c, Cycle::Prev), b);
+}
+
+#[test]
+fn step_is_a_noop_with_one_buffer() {
+    let (mut store, mut ev) = store_with_engine();
+    let a = make_id(&mut ev);
+    store.open(a, make_buf());
+    assert_eq!(store.step(a, Cycle::Next), a);
+    assert_eq!(store.step(a, Cycle::Prev), a);
 }
 
 #[test]

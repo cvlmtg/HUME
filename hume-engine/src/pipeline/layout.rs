@@ -27,8 +27,7 @@ pub enum Rotation {
     Backward,
 }
 
-/// Which way a step through an ordered list goes: panes in leaf order, tabs
-/// in display order, buffers in open order.
+/// Which way a step through an ordered list goes, wrapping at either end.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Cycle {
     Next,
@@ -37,8 +36,9 @@ pub enum Cycle {
 
 impl Cycle {
     /// The index one step from `idx` in a list of `len` items, wrapping at
-    /// either end.
+    /// either end. `idx` must be a position in the list, so `len > 0`.
     pub fn step(self, idx: usize, len: usize) -> usize {
+        debug_assert!(idx < len, "step from {idx} in a list of {len}");
         match self {
             Cycle::Next => (idx + 1) % len,
             Cycle::Prev => (idx + len - 1) % len,

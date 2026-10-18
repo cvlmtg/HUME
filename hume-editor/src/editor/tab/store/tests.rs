@@ -96,7 +96,7 @@ fn close_current_removes_from_order_and_promotes_survivor() {
 }
 
 #[test]
-fn next_and_prev_wrap_around() {
+fn step_wraps_around() {
     let (mut ev, _) = EngineView::new(Theme::default());
     let l1 = make_layout(&mut ev);
     let l2 = make_layout(&mut ev);
@@ -115,7 +115,7 @@ fn next_and_prev_wrap_around() {
 }
 
 #[test]
-fn next_and_prev_are_noops_with_one_tab() {
+fn step_is_a_noop_with_one_tab() {
     let store = TabStore::new();
     let t1 = store.current();
 

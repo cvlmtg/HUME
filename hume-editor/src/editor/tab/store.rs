@@ -96,11 +96,9 @@ impl TabStore {
     }
 
     /// `current`'s index in `order`. Every method below that needs it reads
-    /// this instead of taking a caller-supplied id (unlike, say,
-    /// `BufferStore::next`, which takes one and so has a real "unknown id"
-    /// case to handle with an `unwrap_or` fallback): `TabStore` reads its
+    /// this instead of taking a caller-supplied id: `TabStore` reads its
     /// own `current` field, so a missing position would mean `order` and
-    /// `current` had already gone out of sync: exactly the corruption
+    /// `current` had already gone out of sync, the corruption
     /// `open_after_current`'s own insert below would otherwise mask instead
     /// of failing loudly.
     ///
