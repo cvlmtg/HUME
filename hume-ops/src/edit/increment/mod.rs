@@ -10,16 +10,17 @@
 //! A literal is rewritten as parts: a number is one, a date or time one per
 //! field. Each selection asks for the part it touches and lands on it.
 
-use std::ops::Range;
+use std::ops::{ControlFlow, Range};
 
 use hume_editing::edit::{Edited, Landing, Landings, edit};
 use hume_editing::selection::{EditView, SelectionView};
 use hume_editing::state::EditState;
 use hume_editing::text::{BufferText, TextVersion};
 use hume_editing::word::{CharClass, WordChars};
-use hume_rope::cluster::ClusterRange;
+use hume_rope::cluster::{ClusterRange, ClusterStart};
 use hume_rope::grapheme::Cluster;
 use hume_rope::line::ContentLine;
+use hume_rope::offset::CharOffset;
 
 mod date;
 mod number;
@@ -64,7 +65,6 @@ pub fn plan_increment(
     stepping: Stepping,
     chars: WordChars<'_>,
 ) -> Result<IncrementPlan, IncrementRefusal> {
-    let mut scan = LineScan::new(chars);
     let mut targets: Vec<Target> = Vec::new();
     // The index of the first piece of the last target in `targets`.
     let mut first_piece = 0;
@@ -72,7 +72,7 @@ pub fn plan_increment(
     // Selections come in order and each targets the first literal ending at
     // or after its start, so the selections sharing a target follow it.
     for sel in view.iter() {
-        let Some((target, touched)) = target(sel, &mut scan) else {
+        let Some((target, touched)) = target(sel, chars) else {
             landings.push(None);
             continue;
         };
@@ -169,7 +169,6 @@ fn is_digit(syms: &[Sym], i: usize) -> bool {
     ascii_at(syms, i).is_some_and(|c| c.is_ascii_digit())
 }
 
-#[derive(Clone)]
 enum Literal {
     Number(Number),
     Moment(Moment),
@@ -239,6 +238,12 @@ fn literals(syms: &[Sym]) -> impl Iterator<Item = Found> + '_ {
     std::iter::from_fn(move || {
         while i < syms.len() {
             if let Some(found) = literal_at(syms, i) {
+                debug_assert!(
+                    syms[found.start..found.end]
+                        .iter()
+                        .all(|sym| sym.ascii.is_some_and(may_hold)),
+                    "a literal holds a char outside `may_hold`"
+                );
                 i = found.end;
                 return Some(found);
             }
@@ -248,43 +253,17 @@ fn literals(syms: &[Sym]) -> impl Iterator<Item = Found> + '_ {
     })
 }
 
-/// The clusters and literals of the line [`target`] read last. Selections
-/// come sorted by start, so the ones sharing a line read it once.
-struct LineScan<'w> {
-    chars: WordChars<'w>,
-    line: Option<ContentLine>,
-    clusters: Vec<Cluster>,
-    found: Vec<Found>,
+/// Whether a literal can hold `c`.
+fn may_hold(c: char) -> bool {
+    c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '/' | ':' | ' ')
 }
 
-impl<'w> LineScan<'w> {
-    fn new(chars: WordChars<'w>) -> Self {
-        Self {
-            chars,
-            line: None,
-            clusters: Vec::new(),
-            found: Vec::new(),
-        }
-    }
-
-    fn read(&mut self, text: &BufferText, line: ContentLine) {
-        if self.line == Some(line) {
-            return;
-        }
-        let newline = text.lines().newline(line);
-        self.clusters = text
-            .clusters()
-            .graphemes_at(text.lines().start(line).into())
-            .take_while(|c| c.start() < newline)
-            .collect();
-        let syms: Vec<Sym> = self
-            .clusters
-            .iter()
-            .map(|cluster| Sym::of(cluster, self.chars))
-            .collect();
-        self.found = literals(&syms).collect();
-        self.line = Some(line);
-    }
+/// Whether `cluster` is a break: one no literal can hold. No literal spans
+/// a break, and the scanners read at most one cluster on either side of a
+/// literal, so a scan starting at a break finds what a scan from the line
+/// start finds after it.
+fn is_break(cluster: &Cluster) -> bool {
+    !cluster.as_char().is_some_and(may_hold)
 }
 
 struct Target {
@@ -297,7 +276,7 @@ struct Target {
 
 /// The selection's target, and the index within the literal of the
 /// selection's first cluster when the literal holds it.
-fn target(sel: SelectionView<'_>, scan: &mut LineScan<'_>) -> Option<(Target, Option<usize>)> {
+fn target(sel: SelectionView<'_>, chars: WordChars<'_>) -> Option<(Target, Option<usize>)> {
     let text = sel.text();
     let start = sel.start().offset();
     let lines = sel.lines();
@@ -306,16 +285,62 @@ fn target(sel: SelectionView<'_>, scan: &mut LineScan<'_>) -> Option<(Target, Op
     } else {
         sel.covered().end().offset()
     };
+    let line_start = text.lines().start(lines.start);
+    let first_from = text
+        .clusters()
+        .before(sel.start().into())
+        .take_while(|cluster| cluster.start() >= line_start)
+        .find(is_break)
+        .map_or(line_start, |cluster| cluster.start());
     for line in lines.iter() {
-        scan.read(text, line);
-        let clusters = &scan.clusters;
-        let reaching = scan
-            .found
-            .partition_point(|found| clusters[found.end - 1].start().offset() < start);
-        if let Some(found) = scan.found.get(reaching) {
-            let first_start = clusters[found.start].start().offset();
+        let from = if line == lines.start {
+            first_from
+        } else {
+            text.lines().start(line)
+        };
+        if let ControlFlow::Break(found) = scan_line(text, from, line, start, limit, chars) {
+            return found;
+        }
+    }
+    None
+}
+
+/// The first literal reaching `start`, read from `from` to the end of
+/// `line` one run between two breaks at a time: `Break` with the target,
+/// `Break(None)` once any literal left would start at or past `limit`, and
+/// `Continue` when the line ends first.
+fn scan_line(
+    text: &BufferText,
+    from: ClusterStart,
+    line: ContentLine,
+    start: CharOffset,
+    limit: CharOffset,
+    chars: WordChars<'_>,
+) -> ControlFlow<Option<(Target, Option<usize>)>> {
+    let newline = text.lines().newline(line);
+    let mut walk = text
+        .clusters()
+        .graphemes_at(from.into())
+        .take_while(|cluster| cluster.start() < newline);
+    // The run, with the break before it and the break after it when the
+    // line has them.
+    let mut run: Vec<Cluster> = Vec::new();
+    loop {
+        let mut line_ended = true;
+        for cluster in walk.by_ref() {
+            run.push(cluster);
+            if run.len() > 1 && is_break(&cluster) {
+                line_ended = false;
+                break;
+            }
+        }
+        let syms: Vec<Sym> = run.iter().map(|cluster| Sym::of(cluster, chars)).collect();
+        if let Some(found) =
+            literals(&syms).find(|found| run[found.end - 1].start().offset() >= start)
+        {
+            let first_start = run[found.start].start().offset();
             if first_start >= limit {
-                return None;
+                return ControlFlow::Break(None);
             }
             let touched = (first_start <= start).then(|| start.chars_since(first_start));
             let parts = found
@@ -323,18 +348,29 @@ fn target(sel: SelectionView<'_>, scan: &mut LineScan<'_>) -> Option<(Target, Op
                 .parts(found.end - found.start)
                 .into_iter()
                 .map(|part| {
-                    let first = &clusters[found.start + part.start];
-                    let last = &clusters[found.start + part.end - 1];
+                    let first = &run[found.start + part.start];
+                    let last = &run[found.start + part.end - 1];
                     first.range().hull(last.range())
                 })
                 .collect();
             let target = Target {
                 parts,
-                literal: found.literal.clone(),
+                literal: found.literal,
                 asked: Vec::new(),
             };
-            return Some((target, touched));
+            return ControlFlow::Break(Some((target, touched)));
         }
+        if line_ended {
+            return ControlFlow::Continue(());
+        }
+        let last = *run.last().expect("a run ending at a break holds it");
+        if last.start().offset() >= limit {
+            return ControlFlow::Break(None);
+        }
+        run.clear();
+        run.push(last);
     }
-    None
 }
+
+#[cfg(test)]
+mod tests;

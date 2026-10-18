@@ -60,7 +60,6 @@ impl Field {
     }
 }
 
-#[derive(Clone)]
 pub(super) struct Moment {
     shape: Shape,
     /// A standalone time's date is never read.

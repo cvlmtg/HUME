@@ -31,7 +31,6 @@ enum Sign {
     Unsigned,
 }
 
-#[derive(Clone)]
 pub(super) struct Number {
     radix: Radix,
     /// The literal's own `0x`/`0X`/`0o`/... spelling; empty for decimal.
