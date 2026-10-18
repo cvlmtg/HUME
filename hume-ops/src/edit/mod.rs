@@ -7,6 +7,7 @@ mod case;
 mod comment;
 mod delete;
 mod electric;
+mod increment;
 mod indent;
 mod insert;
 mod join;
@@ -26,6 +27,9 @@ pub use delete::{
 pub use electric::{
     ArmedIndent, ElectricCandidates, ElectricPlan, apply_electric_plan, electric_candidates,
     plan_electric_dedent,
+};
+pub use increment::{
+    IncrementPlan, IncrementRefusal, Stepping, apply_increment_plan, plan_increment,
 };
 pub use indent::{indent_lines, unindent_lines};
 pub use insert::{

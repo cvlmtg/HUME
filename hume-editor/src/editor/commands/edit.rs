@@ -7,8 +7,9 @@ use hume_editing::word::WordChars;
 use hume_ops::MotionMode;
 use hume_ops::edit::yank_selections;
 use hume_ops::edit::{
-    align_selections, delete_selection, delete_selection_content, delete_word_backward,
-    indent_lines, join_lines_select_spaces, replace_selections, unindent_lines,
+    IncrementRefusal, Stepping, align_selections, apply_increment_plan, delete_selection,
+    delete_selection_content, delete_word_backward, indent_lines, join_lines_select_spaces,
+    plan_increment, replace_selections, unindent_lines,
 };
 use hume_ops::register::{CLIPBOARD_REGISTER, KILL_RING_REGISTER, Piece};
 use hume_ops::surround::wrap_each_selection;
@@ -360,6 +361,81 @@ pub(in crate::editor) fn cmd_unindent(
         unindent_lines(sels, style, tab_width, count.get())
     })?;
     Ok(())
+}
+
+// ── Increment / decrement ─────────────────────────────────────────────────────
+
+/// Add `count` to the number, date or time at each selection (`Ctrl-a`).
+pub(in crate::editor) fn cmd_increment(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    t: CommandPane,
+    count: Count,
+    _mode: MotionMode,
+) -> Result<(), CommandError> {
+    step_targets(state, view, t, step_of(count)?, Stepping::Uniform)
+}
+
+/// Subtract `count` from the number, date or time at each selection
+/// (`Ctrl-s`).
+pub(in crate::editor) fn cmd_decrement(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    t: CommandPane,
+    count: Count,
+    _mode: MotionMode,
+) -> Result<(), CommandError> {
+    step_targets(state, view, t, -step_of(count)?, Stepping::Uniform)
+}
+
+/// Add n times `count` to the n-th selection's number, date or time
+/// (`G A`).
+pub(in crate::editor) fn cmd_increment_sequence(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    t: CommandPane,
+    count: Count,
+    _mode: MotionMode,
+) -> Result<(), CommandError> {
+    step_targets(state, view, t, step_of(count)?, Stepping::Sequence)
+}
+
+/// Subtract n times `count` from the n-th selection's number, date or time
+/// (`G S`).
+pub(in crate::editor) fn cmd_decrement_sequence(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    t: CommandPane,
+    count: Count,
+    _mode: MotionMode,
+) -> Result<(), CommandError> {
+    step_targets(state, view, t, -step_of(count)?, Stepping::Sequence)
+}
+
+fn step_of(count: Count) -> Result<i128, CommandError> {
+    i128::try_from(count.get()).map_err(|_| increment_refusal(IncrementRefusal::OutOfRange))
+}
+
+fn increment_refusal(refusal: IncrementRefusal) -> CommandError {
+    match refusal {
+        IncrementRefusal::NoTarget => CommandError::transient("No number, date or time to change"),
+        IncrementRefusal::OutOfRange => CommandError::transient("Result out of range"),
+    }
+}
+
+/// Step each selection's target by `step`. Planning before touching the
+/// buffer lets a refusal leave it untouched, with no undo revision.
+fn step_targets(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    t: CommandPane,
+    step: i128,
+    stepping: Stepping,
+) -> Result<(), CommandError> {
+    super::ensure_writable(state, view, t)?;
+    let plan = plan_increment(super::pane_view(state, view, t), step, stepping)
+        .map_err(increment_refusal)?;
+    apply_pane_edit(state, view, t, move |edit| apply_increment_plan(edit, plan))
 }
 
 /// Delete the word before each cursor (Ctrl-w in insert mode).

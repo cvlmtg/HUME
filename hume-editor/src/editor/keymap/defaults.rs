@@ -227,6 +227,8 @@ fn build_transform_trie() -> KeyTrie {
     t.bind_leaf(key!('U'), cmd!("make-text-uppercase"));
     t.bind_leaf(key!('C'), cmd!("make-text-capitalized"));
     t.bind_leaf(key!('G'), cmd!("toggle-comment"));
+    t.bind_leaf(key!('A'), cmd!("increment-sequence"));
+    t.bind_leaf(key!('S'), cmd!("decrement-sequence"));
     t
 }
 
@@ -391,6 +393,10 @@ pub(super) fn default_normal_keymap() -> KeyTrie {
     t.bind_leaf(key!('U'), cmd!("redo"));
     t.bind_leaf(key!('r'), cmd!("replace"));
     t.bind_leaf(key!(Ctrl + 'r'), cmd!("redo"));
+    // Both send a control byte (0x01, 0x13), so they work on legacy terminals
+    // too. Helix's decrement key, Ctrl-x, is the line extend above.
+    t.bind_leaf(key!(Ctrl + 'a'), cmd!("increment"));
+    t.bind_leaf(key!(Ctrl + 's'), cmd!("decrement"));
 
     // ── Find / till character ─────────────────────────────────────────────────
     t.bind_leaf(key!('f'), cmd!("find-forward"));

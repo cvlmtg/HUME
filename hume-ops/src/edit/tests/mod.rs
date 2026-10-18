@@ -4,6 +4,7 @@ mod comment;
 mod corpus;
 mod delete;
 mod electric;
+mod increment;
 mod indent;
 mod insert;
 mod join;

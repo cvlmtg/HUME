@@ -27,7 +27,6 @@ Items tagged **[breaking]** change existing user-facing behavior or plugin API w
 - [ ] Steel-side picker row display formatter — `#:truncate 'head|'tail` only picks which end of an over-long row is clipped; see `docs/FUZZY-FINDERS.md`'s "Remaining work" for the general per-row formatter this doesn't cover.
 - [ ] **[breaking]** Fully rebindable picker keys — every key a picker handles, `Enter` and `Esc` included, is an ordinary user-overridable binding to a named picker command, beyond the extra keys `#:actions` adds today. HUME ships a default set (candidate home: `core:stdlib`) that users customize, e.g. `2` picks the second candidate, `Tab` marks a candidate in a multi-select picker, `Ctrl-x` clears the query. Moving the defaults into `core:stdlib` leaves a picker without `Enter`/`Esc` for a config that doesn't load it, and changes `#:actions` precedence.
 - [ ] Shell filter/insert commands — pipe each selection through a shell command and replace it with the command's stdout (`!` in vim), and run a shell command and insert its stdout into the buffer (`:r !cmd` in vim). Decide whether one command with two modes (a selection present vs. absent) covers both, or two separate named commands.
-- [ ] Increment/decrement number under cursor (`Ctrl-a`/`Ctrl-x` in vim) — detect and step the numeric literal at/after the cursor, handling decimal, hex (`0x…`), binary (`0b…`), and octal (`0o…`) forms, preserving the literal's width/padding and prefix.
 
 ### Editor — fixes & optimizations
 

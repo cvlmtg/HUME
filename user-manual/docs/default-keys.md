@@ -108,6 +108,8 @@ Text objects (use the `m` prefix):
 | `&` | `align-selections` |  | Align selections into a column |
 | `>` | `indent` |  | Indent lines touched by a selection |
 | `<` | `unindent` |  | Unindent lines touched by a selection |
+| `Ctrl-a` | `increment` |  | Add the count to the number or date at each selection. See [Numbers and dates](editing.md#numbers-and-dates) |
+| `Ctrl-s` | `decrement` |  | Subtract the count from the number or date at each selection |
 | `u` | `undo` |  | Undo |
 | `U` / `Ctrl-r` | `redo` |  | Redo |
 | `.` | `repeat-last-action` |  | Repeat last editing action |
@@ -194,9 +196,11 @@ Press `G` then a second key. `G` holds edits of the selected text, where `g` hol
 | `G U` | `make-text-uppercase` |  | Uppercase the selection |
 | `G C` | `make-text-capitalized` |  | Capitalize each word in the selection |
 | `G G` | `toggle-comment` |  | Comment or uncomment the lines of each selection |
+| `G A` | `increment-sequence` |  | Add the count to the first selection's number or date, twice the count to the second's, and so on |
+| `G S` | `decrement-sequence` |  | Subtract in the same way as `G A` |
 
-`G U`/`G C` differ from `g U`/`g C` (previous unit test / previous comment) only in the prefix's
-case. `core:lsp` adds `G R` here for
+`G U`/`G C`/`G A` differ from `g U`/`g C`/`g A` (previous unit test / previous comment / previous
+argument) only in the prefix's case. `core:lsp` adds `G R` here for
 `lsp/rename` (see [Language Servers](lsp.md)).
 
 ## View prefix (`z`)

@@ -11,6 +11,7 @@ edition = "2024"
 test-util = []
 
 [dependencies]
+chrono = { version = "0.4.45", default-features = false }
 hume-editing = { path = "../hume-editing" }
 hume-rope = { path = "../hume-rope" }
 ropey.workspace = true

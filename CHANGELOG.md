@@ -22,6 +22,7 @@
 ### Editing
 - `Ctrl-r` in Insert mode and on the command line inserts a register or the current file's path.
 - `m i x` and `m a x` select inside or around a tag pair, and `g x` and `g X` jump to the next or previous one, with or without a markup grammar.
+- `Ctrl-a` and `Ctrl-s` add to or subtract from the number, date or time at each selection, and `G A` and `G S` count up or down across selections.
 
 ### Panes & interface
 - `Shift-Tab` (kitty) and `Ctrl-p P` focus the previous pane.

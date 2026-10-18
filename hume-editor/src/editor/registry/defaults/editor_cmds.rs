@@ -212,6 +212,38 @@ impl CommandRegistry {
         .repeatable()
         .clears_extend()
         .reg(self);
+        ecmd_pane(
+            "increment",
+            "Add the count to the number, date or time at each selection.",
+            cmd_increment,
+        )
+        .repeatable()
+        .clears_extend()
+        .reg(self);
+        ecmd_pane(
+            "decrement",
+            "Subtract the count from the number, date or time at each selection.",
+            cmd_decrement,
+        )
+        .repeatable()
+        .clears_extend()
+        .reg(self);
+        ecmd_pane(
+            "increment-sequence",
+            "Add n times the count to the number, date or time at the n-th selection.",
+            cmd_increment_sequence,
+        )
+        .repeatable()
+        .clears_extend()
+        .reg(self);
+        ecmd_pane(
+            "decrement-sequence",
+            "Subtract n times the count from the number, date or time at the n-th selection.",
+            cmd_decrement_sequence,
+        )
+        .repeatable()
+        .clears_extend()
+        .reg(self);
         ecmd_pane("undo", "Undo the last change.", cmd_undo).reg(self);
         ecmd_pane("redo", "Redo the last undone change.", cmd_redo).reg(self);
 

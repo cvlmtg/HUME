@@ -149,11 +149,15 @@ Modify buffer text.
 |---------|-------------|--------|
 | `align-selections` | `&` | Align each selection's anchor to the primary selection's anchor column. |
 | `change` | `c` | Delete selections onto the kill ring, then enter insert mode (one undo group). |
+| `decrement` | `Ctrl-s` | Subtract the count from the number, date or time at each selection. |
+| `decrement-sequence` | `G S` | Subtract n times the count from the number, date or time at the n-th selection. |
 | `delete` | `d` | Delete selections, pushing their text onto the kill ring. |
 | `delete-char-backward` | — | Delete the character before each cursor. |
 | `delete-char-forward` | — | Delete the character (or selection) under the cursor. |
 | `delete-selection` | — | Delete all selections. |
 | `delete-word-backward` | `Ctrl-w` *(insert mode)* | Delete the word before each cursor. |
+| `increment` | `Ctrl-a` | Add the count to the number, date or time at each selection. |
+| `increment-sequence` | `G A` | Add n times the count to the number, date or time at the n-th selection. |
 | `indent` | `>` | Indent every line touched by a selection by one level. |
 | `join-lines-select-spaces` | `J` | Join lines inside each selection and select the inserted spaces. |
 | `make-text-capitalized` | `G C` | Capitalize each word in every selection (Title Case). |

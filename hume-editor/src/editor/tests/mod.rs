@@ -1423,6 +1423,7 @@ mod find;
 mod geometry_replaces_caret;
 mod goto_revision;
 mod horizontal_scroll_follow;
+mod increment;
 mod incremental_parse;
 mod injections_editor;
 mod inline_output;

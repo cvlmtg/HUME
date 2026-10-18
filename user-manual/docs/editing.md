@@ -52,6 +52,36 @@ Line endings inside the selection are left alone, so replacing across several li
 | `G U` | Uppercase the selection |
 | `G C` | Capitalize the selection |
 
+## Numbers and dates
+
+| Key | Effect |
+|-----|--------|
+| `Ctrl-a` | Add the count (1 without one) to the number or date at each selection |
+| `Ctrl-s` | Subtract the count from the number or date at each selection |
+| `G A` | Add the count to the first selection's number or date, twice the count to the second's, and so on |
+| `G S` | Subtract in the same way as `G A` |
+
+A cursor changes the number or date it is on, or else the first one after it on the same line. A wider selection changes the one at its start, or else the first one inside it. The new value ends up selected, so pressing the key again keeps changing it. Selections with nothing to change are left alone.
+
+`G A` numbers a list: select the lines, split them into one selection each with `S`, and three lines of `0` become `1`, `2` and `3`. Selections with nothing to change don't count towards the sequence.
+
+Numbers:
+
+- A `-` before a digit is a minus sign, unless it follows a letter, digit or `_`: in `x-1` and `1-1` it separates, and only the last `1` changes.
+- Hexadecimal (`0x1f`), octal (`0o17`) and binary (`0b101`) numbers change in their own base and never go below zero. Hex letters keep their case.
+- Leading zeros keep the width (`007` becomes `008`), and `_` separators are kept (`999_999` becomes `1_000_000`).
+- Digits inside a word count: `item1` becomes `item2`.
+- A `.` separates two numbers: in `1.2.3`, each part changes on its own.
+
+Dates and times:
+
+- Dates are written `2026-10-18` or `2026/10/18`, optionally followed by a space or `T` and a time such as `14:30` or `14:30:15`. A time can also stand on its own.
+- The part the selection starts on changes: with the cursor on the month, the month. A selection that starts before the date changes the day, or the minutes of a time on its own.
+- Days, hours, minutes and seconds carry over: `2026-12-31` plus one day is `2027-01-01`. A month or year change keeps the day valid: `2024-01-31` plus one month is `2024-02-29`. A time on its own wraps around midnight.
+- Something that is not a real date, such as `2026-13-45`, changes as separate numbers.
+
+When no selection has anything to change, or a result doesn't fit (past the largest supported number, or a year past 9999), nothing changes and a message says so.
+
 ## Lines and alignment
 
 | Key | Effect |
