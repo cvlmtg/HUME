@@ -6,10 +6,7 @@
 //! position, merges overlapping deletions into their union, and drives
 //! [`ChangeSetBuilder`] front to back. A position strictly inside a deletion
 //! resolves to the deletion point, the same rule
-//! [`crate::changeset::PosMapCursor`] applies to any position. A replacement
-//! by the text already there is kept as it is unless another operation
-//! changes text inside it, or at its start after it was recorded. Then it is
-//! a deletion and an insertion like any other replacement.
+//! [`crate::changeset::PosMapCursor`] applies to any position.
 //!
 //! The text keeps ending with a `\n`, by
 //! [`apply_keeping_final_break`](super::apply_keeping_final_break)'s rule.
@@ -185,7 +182,12 @@ impl<'a, 'id> EditBuilder<'a, 'id> {
         } else {
             self.text.last_char()
         };
-        let index = self.push(key, ItemKind::Insert(text));
+        let kind = if text.as_str().is_empty() {
+            ItemKind::Anchor
+        } else {
+            ItemKind::Insert(text)
+        };
+        let index = self.push(key, kind);
         Mark {
             start: self.pos(index, false),
             end: self.pos(index, true),
@@ -286,8 +288,7 @@ impl<'a, 'id> EditBuilder<'a, 'id> {
             && self.items.iter().any(|item| {
                 matches!(
                     item.kind,
-                    ItemKind::Delete { end } | ItemKind::Replace { end, unchanged: false, .. }
-                        if end == text_end
+                    ItemKind::Delete { end } | ItemKind::Replace { end, .. } if end == text_end
                 )
             });
         let take = |text: &mut LfText| {
@@ -313,29 +314,25 @@ impl<'a, 'id> EditBuilder<'a, 'id> {
             // An identical replacement that no deletion reaches into and no
             // later item changes text inside is left for the items after it to
             // retain, so an anchor inside it keeps its place.
-            let kept = match self.items[index].kind {
-                ItemKind::Replace {
-                    end,
-                    unchanged: true,
-                    ..
-                } if changes.old_pos() == key
-                    && order[k + 1..]
-                        .iter()
-                        .map(|&later| &self.items[later])
-                        .take_while(|later| later.key < end)
-                        .all(|later| match &later.kind {
-                            ItemKind::Anchor => true,
-                            ItemKind::Insert(text) => text.as_str().is_empty(),
-                            ItemKind::Delete { .. } | ItemKind::Replace { .. } => false,
-                        }) =>
-                {
-                    Some(end)
-                }
-                _ => None,
-            };
+            if let ItemKind::Replace {
+                end,
+                unchanged: true,
+                ..
+            } = self.items[index].kind
+                && changes.old_pos() == key
+                && order[k + 1..]
+                    .iter()
+                    .map(|&later| &self.items[later])
+                    .take_while(|later| later.key < end)
+                    .all(|later| matches!(later.kind, ItemKind::Anchor))
+            {
+                let len = isize::try_from(end.chars_since(key))
+                    .expect("a range of the text fits an isize");
+                placed[index] = (before, before.shift(len));
+                continue;
+            }
             let item = &mut self.items[index];
             let (remove_to, insert) = match &mut item.kind {
-                ItemKind::Replace { .. } if kept.is_some() => (None, None),
                 ItemKind::Replace { end, text, .. } => (Some(*end), Some(take(text))),
                 ItemKind::Delete { end } => (Some(*end), None),
                 ItemKind::Insert(text) => (None, Some(take(text))),
@@ -351,13 +348,8 @@ impl<'a, 'id> EditBuilder<'a, 'id> {
             if let Some(text) = insert {
                 changes.insert_normalized(text);
             }
-            placed[index] = match (&item.kind, deletion, kept) {
-                (_, _, Some(end)) => {
-                    let len = isize::try_from(end.chars_since(item.key))
-                        .expect("a range of the text fits an isize");
-                    (before, before.shift(len))
-                }
-                (ItemKind::Anchor, Some((start, at)), _)
+            placed[index] = match (&item.kind, deletion) {
+                (ItemKind::Anchor, Some((start, at)))
                     if item.key > start && item.key < changes.old_pos() =>
                 {
                     (at, at)

@@ -433,8 +433,14 @@ fn step_targets(
     stepping: Stepping,
 ) -> Result<(), CommandError> {
     super::ensure_writable(state, view, t)?;
-    let plan = plan_increment(super::pane_view(state, view, t), step, stepping)
-        .map_err(increment_refusal)?;
+    let word_chars = word_chars_owned(state.buffers.get(t.bid(view)), &state.settings);
+    let plan = plan_increment(
+        super::pane_view(state, view, t),
+        step,
+        stepping,
+        WordChars::new(&word_chars),
+    )
+    .map_err(increment_refusal)?;
     apply_pane_edit(state, view, t, move |edit| apply_increment_plan(edit, plan))
 }
 

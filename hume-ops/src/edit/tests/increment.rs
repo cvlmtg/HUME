@@ -1,31 +1,37 @@
 use super::super::*;
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::BufferText;
+use hume_editing::word::WordChars;
 use test_fixtures::assert_state;
 use test_fixtures::testing::{parse_state, state};
 use test_fixtures::unicode::{CJK, COMBINING};
 
-fn stepped(step: i128, stepping: Stepping) -> impl Fn((BufferText, SelectionSet)) -> Edited {
+fn stepped(
+    step: i128,
+    stepping: Stepping,
+    word_chars: &'static str,
+) -> impl Fn((BufferText, SelectionSet)) -> Edited {
     move |(text, sels)| {
         let state = state(text, sels);
-        let plan =
-            plan_increment(state.view(), step, stepping).expect("the selections hold a target");
+        let plan = plan_increment(state.view(), step, stepping, WordChars::new(word_chars))
+            .expect("the selections hold a target");
         apply_increment_plan(state, plan)
     }
 }
 
 fn by(step: i128) -> impl Fn((BufferText, SelectionSet)) -> Edited {
-    stepped(step, Stepping::Uniform)
+    stepped(step, Stepping::Uniform, "")
 }
 
 fn sequence(step: i128) -> impl Fn((BufferText, SelectionSet)) -> Edited {
-    stepped(step, Stepping::Sequence)
+    stepped(step, Stepping::Sequence, "")
 }
 
 fn refusal(input: &str, step: i128) -> IncrementRefusal {
     let (text, sels) = parse_state(input);
     let state = state(text, sels);
-    plan_increment(state.view(), step, Stepping::Uniform).expect_err("no plan")
+    plan_increment(state.view(), step, Stepping::Uniform, WordChars::default())
+        .expect_err("no plan")
 }
 
 /// Whether stepping `input` by `step` leaves its text as it was, with an
@@ -111,6 +117,15 @@ fn a_minus_after_a_non_word_char_is_a_sign() {
 fn a_minus_after_a_word_char_is_a_separator() {
     assert_state!("x-[-]>1\n", by(1), "x--[2]>\n");
     assert_state!("1-[-]>1\n", by(1), "1--[2]>\n");
+}
+
+#[test]
+fn a_minus_after_a_configured_word_char_is_a_separator() {
+    assert_state!(
+        "a =-[-]>1\n",
+        stepped(1, Stepping::Uniform, "="),
+        "a =--[2]>\n"
+    );
 }
 
 #[test]

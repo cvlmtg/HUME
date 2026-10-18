@@ -157,6 +157,15 @@ fn an_anchor_inside_a_replaced_range_resolves_to_the_deletion_point() {
 }
 
 #[test]
+fn an_empty_insert_inside_a_replaced_range_lands_where_an_anchor_does() {
+    let out = marked("-[a]>bcd\n", |b| {
+        b.replace(clusters(b.text(), 1, 3), "XY");
+        b.insert(bound_at(b.text(), 2), "")
+    });
+    assert_eq!(out, "a-[X]>Yd\n");
+}
+
+#[test]
 fn a_kept_cursor_inside_a_replaced_range_lands_where_an_anchor_does() {
     let state = parse("ab-[c]>d\n");
     let sel = state.view().primary().selection();

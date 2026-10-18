@@ -39,13 +39,7 @@ fn every_default_key_names_a_registered_command() {
     let reg = CommandRegistry::with_defaults();
     let mut keymap = Keymap::default();
     keymap.apply_kitty_defaults();
-    let mut unknown: Vec<String> = keymap
-        .all_command_names()
-        .into_iter()
-        .filter(|name| reg.get_mappable(name).is_none())
-        .collect();
-    unknown.sort_unstable();
-    unknown.dedup();
+    let unknown = keymap.unknown_command_names(&reg);
     assert!(
         unknown.is_empty(),
         "default keys bound to unregistered commands: {unknown:?}"

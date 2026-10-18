@@ -16,11 +16,10 @@ use hume_editing::edit::{Edited, Landing, Landings, edit};
 use hume_editing::selection::{EditView, SelectionView};
 use hume_editing::state::EditState;
 use hume_editing::text::{BufferText, TextVersion};
+use hume_editing::word::{CharClass, WordChars};
 use hume_rope::cluster::ClusterRange;
 use hume_rope::grapheme::Cluster;
 use hume_rope::line::ContentLine;
-use hume_rope::offset::CharOffset;
-use rustc_hash::FxHashMap;
 
 mod date;
 mod number;
@@ -56,36 +55,44 @@ pub struct IncrementPlan {
     landings: Vec<Option<usize>>,
 }
 
-/// Plan stepping each selection's target by `step`. Selections sharing a
-/// target step it once, with every part they asked for.
+/// Plan stepping each selection's target by `step`, `chars` deciding which
+/// clusters are word chars. Selections sharing a target step it once, with
+/// every part they asked for.
 pub fn plan_increment(
     view: EditView<'_>,
     step: i128,
     stepping: Stepping,
+    chars: WordChars<'_>,
 ) -> Result<IncrementPlan, IncrementRefusal> {
-    let mut scan = LineScan::default();
+    let mut scan = LineScan::new(chars);
     let mut targets: Vec<Target> = Vec::new();
-    let mut by_start = FxHashMap::<CharOffset, usize>::default();
-    // Per selection, its target's index and the part it asked for.
-    let mut requests = Vec::with_capacity(view.len());
+    // The index of the first piece of the last target in `targets`.
+    let mut first_piece = 0;
+    let mut landings = Vec::with_capacity(view.len());
+    // Selections come in order and each targets the first literal ending at
+    // or after its start, so the selections sharing a target follow it.
     for sel in view.iter() {
         let Some((target, touched)) = target(sel, &mut scan) else {
-            requests.push(None);
+            landings.push(None);
             continue;
         };
         let part = target.literal.part_at(touched);
-        let index = *by_start.entry(target.start).or_insert(targets.len());
-        if index == targets.len() {
-            targets.push(target);
+        match targets.last_mut() {
+            Some(last) if last.parts[0] == target.parts[0] => last.asked.push(part),
+            _ => {
+                first_piece += targets.last().map_or(0, |last| last.parts.len());
+                targets.push(Target {
+                    asked: vec![part],
+                    ..target
+                });
+            }
         }
-        targets[index].asked.push(part);
-        requests.push(Some((index, part)));
+        landings.push(Some(first_piece + part));
     }
     if targets.is_empty() {
         return Err(IncrementRefusal::NoTarget);
     }
     let mut pieces = Vec::new();
-    let mut first_piece = Vec::with_capacity(targets.len());
     for (n, target) in targets.into_iter().enumerate() {
         let amount = match stepping {
             Stepping::Uniform => Some(step),
@@ -96,13 +103,8 @@ pub fn plan_increment(
         let texts = amount
             .and_then(|amount| target.literal.stepped(&target.asked, amount))
             .ok_or(IncrementRefusal::OutOfRange)?;
-        first_piece.push(pieces.len());
         pieces.extend(target.parts.into_iter().zip(texts));
     }
-    let landings = requests
-        .into_iter()
-        .map(|request| request.map(|(index, part)| first_piece[index] + part))
-        .collect();
     Ok(IncrementPlan {
         version: view.text().version(),
         pieces,
@@ -150,12 +152,12 @@ struct Sym {
 }
 
 impl Sym {
-    fn of(cluster: &Cluster) -> Self {
+    fn of(cluster: &Cluster, chars: WordChars<'_>) -> Self {
         let first = cluster.first();
         let single = cluster.end().offset().chars_since(cluster.start().offset()) == 1;
         Self {
             ascii: (single && first.is_ascii()).then_some(first),
-            word: first.is_alphanumeric() || first == '_',
+            word: chars.classify(first) == CharClass::Word,
         }
     }
 }
@@ -163,6 +165,10 @@ impl Sym {
 /// The ASCII char of `syms[i]`, if any.
 fn ascii_at(syms: &[Sym], i: usize) -> Option<char> {
     syms.get(i).and_then(|s| s.ascii)
+}
+
+fn is_digit(syms: &[Sym], i: usize) -> bool {
+    ascii_at(syms, i).is_some_and(|c| c.is_ascii_digit())
 }
 
 #[derive(Clone)]
@@ -175,7 +181,7 @@ impl Literal {
     /// Where each part lies, as indices into a literal `len` clusters long.
     fn parts(&self, len: usize) -> Vec<Range<usize>> {
         match self {
-            Self::Number(_) => std::iter::once(0..len).collect(),
+            Self::Number(_) => vec![0..len],
             Self::Moment(moment) => moment.parts().collect(),
         }
     }
@@ -210,20 +216,23 @@ struct Found {
 /// they are made of, and a minus before a date or a prefixed number is not
 /// its sign.
 fn literal_at(syms: &[Sym], i: usize) -> Option<Found> {
-    let found = |(literal, end)| Found {
+    let (literal, end) = match date::scan(syms, i) {
+        Some((moment, end)) => (Literal::Moment(moment), end),
+        None if number::is_sign(syms, i)
+            && (date::scan(syms, i + 1).is_some() || number::prefixed(syms, i + 1).is_some()) =>
+        {
+            return None;
+        }
+        None => {
+            let (number, end) = number::scan(syms, i)?;
+            (Literal::Number(number), end)
+        }
+    };
+    Some(Found {
         start: i,
         end,
         literal,
-    };
-    if let Some((moment, end)) = date::scan(syms, i) {
-        return Some(found((Literal::Moment(moment), end)));
-    }
-    if number::is_sign(syms, i)
-        && (date::scan(syms, i + 1).is_some() || number::prefixed(syms, i + 1).is_some())
-    {
-        return None;
-    }
-    number::scan(syms, i).map(|(number, end)| found((Literal::Number(number), end)))
+    })
 }
 
 /// The literals of `syms`, left to right.
@@ -243,14 +252,23 @@ fn literals(syms: &[Sym]) -> impl Iterator<Item = Found> + '_ {
 
 /// The clusters and literals of the line [`target`] read last. Selections
 /// come sorted by start, so the ones sharing a line read it once.
-#[derive(Default)]
-struct LineScan {
+struct LineScan<'w> {
+    chars: WordChars<'w>,
     line: Option<ContentLine>,
     clusters: Vec<Cluster>,
     found: Vec<Found>,
 }
 
-impl LineScan {
+impl<'w> LineScan<'w> {
+    fn new(chars: WordChars<'w>) -> Self {
+        Self {
+            chars,
+            line: None,
+            clusters: Vec::new(),
+            found: Vec::new(),
+        }
+    }
+
     fn read(&mut self, text: &BufferText, line: ContentLine) {
         if self.line == Some(line) {
             return;
@@ -261,14 +279,17 @@ impl LineScan {
             .graphemes_at(text.lines().start(line).into())
             .take_while(|c| c.start() < newline)
             .collect();
-        let syms: Vec<Sym> = self.clusters.iter().map(Sym::of).collect();
+        let syms: Vec<Sym> = self
+            .clusters
+            .iter()
+            .map(|cluster| Sym::of(cluster, self.chars))
+            .collect();
         self.found = literals(&syms).collect();
         self.line = Some(line);
     }
 }
 
 struct Target {
-    start: CharOffset,
     /// The ranges of the literal's parts.
     parts: Vec<ClusterRange>,
     literal: Literal,
@@ -278,7 +299,7 @@ struct Target {
 
 /// The selection's target, and the index within the literal of the
 /// selection's first cluster when the literal holds it.
-fn target(sel: SelectionView<'_>, scan: &mut LineScan) -> Option<(Target, Option<usize>)> {
+fn target(sel: SelectionView<'_>, scan: &mut LineScan<'_>) -> Option<(Target, Option<usize>)> {
     let text = sel.text();
     let start = sel.start().offset();
     let lines = sel.lines();
@@ -290,10 +311,10 @@ fn target(sel: SelectionView<'_>, scan: &mut LineScan) -> Option<(Target, Option
     for line in lines.iter() {
         scan.read(text, line);
         let clusters = &scan.clusters;
-        for found in &scan.found {
-            if clusters[found.end - 1].start().offset() < start {
-                continue;
-            }
+        let reaching = scan
+            .found
+            .partition_point(|found| clusters[found.end - 1].start().offset() < start);
+        if let Some(found) = scan.found.get(reaching) {
             let first_start = clusters[found.start].start().offset();
             if first_start >= limit {
                 return None;
@@ -310,7 +331,6 @@ fn target(sel: SelectionView<'_>, scan: &mut LineScan) -> Option<(Target, Option
                 })
                 .collect();
             let target = Target {
-                start: first_start,
                 parts,
                 literal: found.literal.clone(),
                 asked: Vec::new(),

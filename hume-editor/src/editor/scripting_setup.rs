@@ -849,18 +849,14 @@ impl Editor {
         // commands, or a typed-only command's name (`:`-only, never
         // key-bindable; see `registry/mod.rs`'s module doc).
         {
-            let mut names = self.state.config.keymap.all_command_names();
-            names.sort_unstable();
-            names.dedup();
-            for name in &names {
-                if self.state.config.registry.get_mappable(name).is_none() {
-                    self.report_unknown_command(
-                        name,
-                        format!(
-                            "key bound to unknown command '{name}': typo, or missing from #:commands?"
-                        ),
-                    );
-                }
+            let config = &self.state.config;
+            for name in config.keymap.unknown_command_names(&config.registry) {
+                self.report_unknown_command(
+                    &name,
+                    format!(
+                        "key bound to unknown command '{name}': typo, or missing from #:commands?"
+                    ),
+                );
             }
         }
         // Post-init lint: warn on #:languages activation entries whose language name

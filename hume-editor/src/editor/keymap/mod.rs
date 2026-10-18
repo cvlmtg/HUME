@@ -25,6 +25,8 @@ use std::borrow::Cow;
 
 use termina::event::KeyEvent;
 
+use crate::editor::registry::CommandRegistry;
+
 /// What a key binding resolves to after trie lookup.
 ///
 /// Every binding, including composite editor operations, is expressed as
@@ -305,6 +307,16 @@ impl Keymap {
         self.insert.collect_command_names(&mut out);
         self.command.collect_command_names(&mut out);
         out
+    }
+
+    /// The bound command names `registry` has no key-bindable command for,
+    /// sorted and without repeats.
+    pub(super) fn unknown_command_names(&self, registry: &CommandRegistry) -> Vec<String> {
+        let mut names = self.all_command_names();
+        names.retain(|name| registry.get_mappable(name).is_none());
+        names.sort_unstable();
+        names.dedup();
+        names
     }
 }
 

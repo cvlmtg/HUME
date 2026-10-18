@@ -6,9 +6,8 @@ use std::ops::Range;
 
 use chrono::{Datelike, Months, NaiveDate, NaiveDateTime, NaiveTime, TimeDelta, Timelike};
 
-use super::{Sym, ascii_at};
-use ClockField::{Hour, Minute, Second};
-use DateField::{Day, Month, Year};
+use super::{Sym, ascii_at, is_digit};
+use Field::{Day, Hour, Minute, Month, Second, Year};
 
 #[derive(Clone, Copy)]
 enum Shape {
@@ -19,50 +18,31 @@ enum Shape {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Field {
-    Date(DateField),
-    Clock(ClockField),
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum DateField {
     Year,
     Month,
     Day,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum ClockField {
     Hour,
     Minute,
     Second,
 }
 
 /// Each field of a shape and the index within the literal it starts at,
-/// largest field first.
-const DATE: [(Field, usize); 3] = [
-    (Field::Date(Year), 0),
-    (Field::Date(Month), 5),
-    (Field::Date(Day), 8),
-];
+/// largest field first. A date is the first three.
 const DATE_TIME: [(Field, usize); 6] = [
-    (Field::Date(Year), 0),
-    (Field::Date(Month), 5),
-    (Field::Date(Day), 8),
-    (Field::Clock(Hour), 11),
-    (Field::Clock(Minute), 14),
-    (Field::Clock(Second), 17),
+    (Year, 0),
+    (Month, 5),
+    (Day, 8),
+    (Hour, 11),
+    (Minute, 14),
+    (Second, 17),
 ];
-const TIME: [(Field, usize); 3] = [
-    (Field::Clock(Hour), 0),
-    (Field::Clock(Minute), 3),
-    (Field::Clock(Second), 6),
-];
+const TIME: [(Field, usize); 3] = [(Hour, 0), (Minute, 3), (Second, 6)];
 
 impl Field {
     /// How many clusters the field spans.
     fn width(self) -> usize {
         match self {
-            Self::Date(Year) => 4,
+            Year => 4,
             _ => 2,
         }
     }
@@ -70,12 +50,12 @@ impl Field {
     /// The field of `at`, zero padded to its width.
     fn text(self, at: NaiveDateTime) -> String {
         match self {
-            Self::Date(Year) => format!("{:04}", at.year()),
-            Self::Date(Month) => format!("{:02}", at.month()),
-            Self::Date(Day) => format!("{:02}", at.day()),
-            Self::Clock(Hour) => format!("{:02}", at.hour()),
-            Self::Clock(Minute) => format!("{:02}", at.minute()),
-            Self::Clock(Second) => format!("{:02}", at.second()),
+            Year => format!("{:04}", at.year()),
+            Month => format!("{:02}", at.month()),
+            Day => format!("{:02}", at.day()),
+            Hour => format!("{:02}", at.hour()),
+            Minute => format!("{:02}", at.minute()),
+            Second => format!("{:02}", at.second()),
         }
     }
 }
@@ -92,8 +72,10 @@ pub(super) fn scan(syms: &[Sym], i: usize) -> Option<(Moment, usize)> {
     date_at(syms, i).or_else(|| time_at(syms, i))
 }
 
-fn is_digit(syms: &[Sym], k: usize) -> bool {
-    ascii_at(syms, k).is_some_and(|c| c.is_ascii_digit())
+/// Whether `syms[k]` is a digit or a `:`, which would make a time beside it
+/// part of a longer run (`1:23:45`).
+fn extends_run(syms: &[Sym], k: usize) -> bool {
+    is_digit(syms, k) || ascii_at(syms, k) == Some(':')
 }
 
 /// The `n` digits from `syms[i]` on, as a number.
@@ -137,10 +119,9 @@ fn date_at(syms: &[Sym], i: usize) -> Option<(Moment, usize)> {
     Some((moment, end))
 }
 
-/// A standalone time. One after a digit or a `:` is part of a longer run
-/// (`1:23:45`), not a time.
+/// A standalone time.
 fn time_at(syms: &[Sym], i: usize) -> Option<(Moment, usize)> {
-    if i > 0 && (is_digit(syms, i - 1) || ascii_at(syms, i - 1) == Some(':')) {
+    if i > 0 && extends_run(syms, i - 1) {
         return None;
     }
     let (time, seconds, end) = clock(syms, i)?;
@@ -163,7 +144,7 @@ fn clock(syms: &[Sym], i: usize) -> Option<(NaiveTime, bool, usize)> {
         (Some(':'), Some(second)) => (Some(second), i + 8),
         _ => (None, i + 5),
     };
-    if is_digit(syms, end) || ascii_at(syms, end) == Some(':') {
+    if extends_run(syms, end) {
         return None;
     }
     let time = NaiveTime::from_hms_opt(hour, minute, second.unwrap_or(0))?;
@@ -174,7 +155,7 @@ impl Moment {
     /// The literal's fields and the index each starts at, largest first.
     fn layout(&self) -> &'static [(Field, usize)] {
         match self.shape {
-            Shape::Date => &DATE,
+            Shape::Date => &DATE_TIME[..3],
             Shape::DateTime { seconds: true } => &DATE_TIME,
             Shape::DateTime { seconds: false } => &DATE_TIME[..5],
             Shape::Time { seconds: true } => &TIME,
@@ -195,8 +176,8 @@ impl Moment {
     pub(super) fn part_at(&self, touched: Option<usize>) -> usize {
         let layout = self.layout();
         let default = match self.shape {
-            Shape::Time { .. } => Field::Clock(Minute),
-            Shape::Date | Shape::DateTime { .. } => Field::Date(Day),
+            Shape::Time { .. } => Minute,
+            Shape::Date | Shape::DateTime { .. } => Day,
         };
         touched
             .and_then(|at| layout.iter().rposition(|&(_, start)| start <= at))
@@ -224,27 +205,21 @@ impl Moment {
     /// the larger fields, a month or year step clamps the day to its month,
     /// and a standalone time wraps around midnight.
     fn step(&self, at: NaiveDateTime, field: Field, amount: i128) -> Option<NaiveDateTime> {
-        match field {
-            Field::Date(Year) => add_months(at, amount.checked_mul(12)?),
-            Field::Date(Month) => add_months(at, amount),
-            Field::Date(Day) => {
-                at.checked_add_signed(TimeDelta::try_days(i64::try_from(amount).ok()?)?)
+        let n = i64::try_from(amount).ok();
+        let delta = match field {
+            Year => return add_months(at, amount.checked_mul(12)?),
+            Month => return add_months(at, amount),
+            Day => TimeDelta::try_days(n?),
+            Hour => TimeDelta::try_hours(n?),
+            Minute => TimeDelta::try_minutes(n?),
+            Second => TimeDelta::try_seconds(n?),
+        }?;
+        match self.shape {
+            Shape::Time { .. } => {
+                let (time, _) = at.time().overflowing_add_signed(delta);
+                Some(at.date().and_time(time))
             }
-            Field::Clock(clock) => {
-                let n = i64::try_from(amount).ok()?;
-                let delta = match clock {
-                    Hour => TimeDelta::try_hours(n),
-                    Minute => TimeDelta::try_minutes(n),
-                    Second => TimeDelta::try_seconds(n),
-                }?;
-                match self.shape {
-                    Shape::Time { .. } => {
-                        let (time, _) = at.time().overflowing_add_signed(delta);
-                        Some(at.date().and_time(time))
-                    }
-                    Shape::Date | Shape::DateTime { .. } => at.checked_add_signed(delta),
-                }
-            }
+            Shape::Date | Shape::DateTime { .. } => at.checked_add_signed(delta),
         }
     }
 }
