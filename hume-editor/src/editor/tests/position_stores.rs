@@ -120,7 +120,7 @@ fn sift_cancel_after_an_out_of_band_edit_restores_the_carried_selection() {
 #[test]
 fn undoing_a_repeated_smart_paste_restores_the_selection_it_was_made_from() {
     let mut ed = editor_from("-[ae\u{301}]>\n");
-    ed.state.kill_ring.push(vec!["ae\u{301}".to_string()]);
+    seed_ring(&mut ed, &["ae\u{301}"]);
     ed.feed_key(key('p'));
     assert_eq!(
         ed.doc().text().to_string(),

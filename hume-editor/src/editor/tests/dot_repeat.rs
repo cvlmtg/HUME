@@ -401,7 +401,7 @@ fn dot_repeats_smart_paste_after() {
 fn dot_repeats_plain_paste_after() {
     let mut ed = editor_from("-[ab]>cd\n");
 
-    ed.state.kill_ring.push(vec!["ab".to_string()]);
+    seed_ring(&mut ed, &["ab"]);
     ed.execute_keymap_command("paste-after".into(), Some(1), false);
     // Plain paste never collapses on repeat. Move off the pasted text so
     // the replayed paste lands next to it instead of replacing it.
@@ -727,14 +727,10 @@ fn dot_after_find_is_noop() {
 /// replayed delete differently from a typed one.
 #[test]
 fn dot_repeat_of_delete_leaves_ring_fresh_for_paste() {
-    use hume_ops::register::CLIPBOARD_REGISTER;
-
     let mut ed = editor_from("-[foo]> bar\n");
     // Seed the clipboard with a sentinel value distinct from anything the
     // ring could hold, so a wrong clipboard read is unambiguous.
-    ed.state
-        .registers
-        .write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
+    seed_clipboard(&mut ed, "CLIP");
 
     ed.feed_key(key('d')); // delete "foo" → ring head = ["foo"]
     ed.feed_key(key('w')); // move to "bar"

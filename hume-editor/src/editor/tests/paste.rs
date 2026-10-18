@@ -8,8 +8,6 @@ use pretty_assertions::assert_eq;
 /// Digit registers are symmetric: yank writes RegisterSet['3'], paste reads it.
 #[test]
 fn paste_from_named_register() {
-    use hume_ops::register::CLIPBOARD_REGISTER;
-
     let mut ed = editor_from("-[hello]>world\n");
 
     // "3y: yank "hello" into in-memory register '3'.
@@ -23,9 +21,7 @@ fn paste_from_named_register() {
     ed.handle_key(key('w')); // move word → selection on 'w' of "world"
 
     // Seed clipboard with "wrong" to verify "3p doesn't read it.
-    ed.state
-        .registers
-        .write_text(CLIPBOARD_REGISTER, vec!["wrong".to_string()]);
+    seed_clipboard(&mut ed, "wrong");
 
     ed.handle_key(key('"'));
     ed.handle_key(key('3'));
@@ -73,15 +69,11 @@ fn digit_register_decoupled_from_kill_ring() {
 /// `"kp` must paste the kill-ring head, not the clipboard.
 #[test]
 fn kill_ring_register_pastes_ring_head() {
-    use hume_ops::register::CLIPBOARD_REGISTER;
-
     let mut ed = editor_from("-[hello]>world\n");
     ed.feed_key(key('d')); // delete "hello" → ring head = ["hello"]
 
     // Seed clipboard with "wrong" to confirm "kp doesn't read it.
-    ed.state
-        .registers
-        .write_text(CLIPBOARD_REGISTER, vec!["wrong".to_string()]);
+    seed_clipboard(&mut ed, "wrong");
 
     ed.handle_key(key('"'));
     ed.handle_key(key('k'));
@@ -105,7 +97,7 @@ fn kill_ring_register_paste_seeds_cycle() {
     ed.feed_key(key('d')); // ring head = ["second"]
 
     // Manually push an older entry.
-    ed.state.kill_ring.push(vec!["first".to_string()]);
+    seed_ring(&mut ed, &["first"]);
     // ring: head = ["first"] (newest push), slot 1 = ["second"]
 
     // "kp: paste ring head ("first"). This should open a paste session
@@ -133,7 +125,7 @@ fn kill_ring_register_paste_seeds_cycle() {
 fn paste_cycle_step_repeating_the_previous_deletion_keeps_selections_valid() {
     let mut ed = editor_from("-[hello]>world\n");
     ed.state.registers.write_text('5', vec![String::new()]);
-    ed.state.kill_ring.push(vec![String::new()]);
+    seed_ring(&mut ed, &[""]);
 
     ed.handle_key(key('"'));
     ed.handle_key(key('5'));
@@ -155,7 +147,7 @@ fn paste_cycle_step_repeating_the_previous_deletion_keeps_selections_valid() {
 fn register_prefix_ignores_paste_stamp() {
     let mut ed = editor_from("-[x]>\n");
     ed.state.registers.write_text('5', vec!["REG5".to_string()]);
-    ed.state.kill_ring.push(vec!["RING".to_string()]);
+    seed_ring(&mut ed, &["RING"]);
 
     // Delete 'x' so the ring has "x" at head; RING is at slot 1.
     ed.feed_key(key('d'));
@@ -182,7 +174,7 @@ fn register_prefix_ignores_paste_stamp() {
 fn register_prefix_consumed_by_paste() {
     let mut ed = editor_from("-[x]>\n");
     ed.state.registers.write_text('5', vec!["REG5".to_string()]);
-    ed.state.kill_ring.push(vec!["RING".to_string()]);
+    seed_ring(&mut ed, &["RING"]);
 
     // Prime the ring with a paste.
     ed.feed_key(key('d')); // delete x; ring head = "x"
@@ -244,12 +236,8 @@ fn smart_p_dp_reads_ring() {
 /// and paste the clipboard ("CLIP") instead of 'a'.
 #[test]
 fn smart_p_after_change_reads_ring() {
-    use hume_ops::register::CLIPBOARD_REGISTER;
-
     let mut ed = editor_from("-[a]>b\n");
-    ed.state
-        .registers
-        .write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
+    seed_clipboard(&mut ed, "CLIP");
     ed.feed_key(key('c')); // change 'a' → ring=["a"], stamp fresh
     ed.feed_key(key('x')); // type replacement, bumps edit_seq
     ed.feed_key(key_esc()); // exit-insert → refreshes the stamp's seq
@@ -278,12 +266,8 @@ fn smart_p_after_change_reads_ring() {
 /// stamp, and `p` would paste "aaa" instead of "CLIP".
 #[test]
 fn explicit_register_change_does_not_resurrect_stale_stamp() {
-    use hume_ops::register::CLIPBOARD_REGISTER;
-
     let mut ed = editor_from("-[aaa]> bbb\n");
-    ed.state
-        .registers
-        .write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
+    seed_clipboard(&mut ed, "CLIP");
     ed.feed_key(key('d')); // delete "aaa" → ring = ["aaa"], stamp fresh
     ed.feed_key(key('w')); // motion onto "bbb", does not touch edit_seq
 
@@ -316,12 +300,8 @@ fn explicit_register_change_does_not_resurrect_stale_stamp() {
 /// session kill-opened, so that stamp goes stale as normal.
 #[test]
 fn smart_p_after_change_with_insert_motion_still_reads_ring() {
-    use hume_ops::register::CLIPBOARD_REGISTER;
-
     let mut ed = editor_from("-[a]>b\n");
-    ed.state
-        .registers
-        .write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
+    seed_clipboard(&mut ed, "CLIP");
     ed.feed_key(key('c')); // change 'a' → ring=["a"], kill-opened session
     ed.feed_key(key('x')); // type replacement
     ed.feed_key(key_left()); // arrow-key motion mid-session: bumps edit_seq, does not clear kill_opened_session
@@ -343,12 +323,8 @@ fn smart_p_after_change_with_insert_motion_still_reads_ring() {
 /// buffer state alone, never by which commands ran in between.
 #[test]
 fn smart_p_after_motion_still_reads_ring() {
-    use hume_ops::register::CLIPBOARD_REGISTER;
-
     let mut ed = editor_from("-[ab]> cd\n");
-    ed.state
-        .registers
-        .write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
+    seed_clipboard(&mut ed, "CLIP");
     ed.feed_key(key('d')); // delete "ab" → ring = ["ab"], stamp fresh
     ed.feed_key(key('w')); // motion, does not touch edit_seq
     ed.feed_key(key('p')); // bare smart-p → stamp still fresh → ring
@@ -367,12 +343,8 @@ fn smart_p_after_motion_still_reads_ring() {
 /// edit that isn't itself a capture invalidates the stamp.
 #[test]
 fn smart_p_after_edit_falls_back_to_clipboard() {
-    use hume_ops::register::CLIPBOARD_REGISTER;
-
     let mut ed = editor_from("-[a]>b\n");
-    ed.state
-        .registers
-        .write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
+    seed_clipboard(&mut ed, "CLIP");
     ed.feed_key(key('d')); // delete 'a' → ring = ["a"], stamp fresh
     ed.feed_key(key('i')); // enter insert (not kill-opened)
     ed.feed_key(key('x')); // type 'x': an edit, bumps edit_seq
@@ -390,12 +362,8 @@ fn smart_p_after_edit_falls_back_to_clipboard() {
 /// for which command did the pushing.
 #[test]
 fn ky_yank_stamps_the_ring_for_next_paste() {
-    use hume_ops::register::CLIPBOARD_REGISTER;
-
     let mut ed = editor_from("-[hello]> world\n");
-    ed.state
-        .registers
-        .write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
+    seed_clipboard(&mut ed, "CLIP");
 
     ed.handle_key(key('"'));
     ed.handle_key(key('k'));
@@ -437,13 +405,8 @@ fn smart_p_after_bare_yank_pastes_yanked_text() {
 /// `x d p` pastes the kill-ring head, not the clipboard.
 #[test]
 fn xdp_pastes_ring_head_not_clipboard() {
-    use hume_ops::register::CLIPBOARD_REGISTER;
-
     let mut ed = editor_from("-[A]>\nB\n");
-    ed.state.clipboard.force_unavailable();
-    ed.state
-        .registers
-        .write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
+    seed_clipboard(&mut ed, "CLIP");
 
     ed.feed_key(key('x')); // select "A\n"
     ed.feed_key(key('d')); // delete → ring = ["A\n"], stamp fresh
@@ -463,13 +426,8 @@ fn xdp_pastes_ring_head_not_clipboard() {
 /// checks this incidentally; this test pins it explicitly.)
 #[test]
 fn smart_p_survives_idle_replay_drain() {
-    use hume_ops::register::CLIPBOARD_REGISTER;
-
     let mut ed = editor_from("-[A]>\nB\n");
-    ed.state.clipboard.force_unavailable();
-    ed.state
-        .registers
-        .write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
+    seed_clipboard(&mut ed, "CLIP");
 
     ed.feed_keys([key('x'), key('d'), key('p')]);
 
@@ -503,7 +461,6 @@ fn dppp_appends_three_copies_from_ring() {
 #[test]
 fn yank_then_two_pastes_appends_two_copies() {
     let mut ed = editor_from("-[ab]>cd\n");
-    ed.state.clipboard.force_unavailable(); // bare y still writes the in-memory mirror
     ed.feed_key(key('y')); // yank "ab" → clipboard(mirror) = ring = ["ab"]
     ed.feed_key(key('p'));
     ed.feed_key(key('p'));
@@ -519,12 +476,8 @@ fn yank_then_two_pastes_appends_two_copies() {
 /// after undoing the capturing delete falls back to the clipboard.
 #[test]
 fn undo_after_delete_invalidates_ring_stamp() {
-    use hume_ops::register::CLIPBOARD_REGISTER;
-
     let mut ed = editor_from("-[ab]>cd\n");
-    ed.state
-        .registers
-        .write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
+    seed_clipboard(&mut ed, "CLIP");
     ed.feed_key(key('d')); // delete "ab" → ring = ["ab"], stamp fresh
     ed.feed_key(key('u')); // undo the delete → edit_seq bumps → stamp stale
     ed.feed_key(key('p')); // bare smart-p → clipboard
@@ -540,12 +493,8 @@ fn undo_after_delete_invalidates_ring_stamp() {
 /// nothing re-stamps after a redo, so the stamp stays stale.
 #[test]
 fn redo_after_undo_keeps_ring_stamp_stale() {
-    use hume_ops::register::CLIPBOARD_REGISTER;
-
     let mut ed = editor_from("-[ab]>cd\n");
-    ed.state
-        .registers
-        .write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
+    seed_clipboard(&mut ed, "CLIP");
     ed.feed_key(key('d')); // delete "ab" → ring = ["ab"], stamp fresh
     ed.feed_key(key('u')); // undo → edit_seq bumps → stamp stale
     ed.feed_key(key('U')); // redo → edit_seq bumps again → stamp still stale
@@ -566,12 +515,8 @@ fn redo_after_undo_keeps_ring_stamp_stale() {
 /// back to the clipboard.
 #[test]
 fn net_identity_undo_still_bumps_edit_seq_and_ends_paste_session() {
-    use hume_ops::register::CLIPBOARD_REGISTER;
-
     let mut ed = editor_from("-[h]>ello\n");
-    ed.state
-        .registers
-        .write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
+    seed_clipboard(&mut ed, "CLIP");
     ed.feed_key(key('i'));
     ed.feed_key(key('x'));
     ed.feed_key(key_esc()); // rev1: insert 'x', lands a 1-char selection on it
@@ -603,12 +548,9 @@ fn net_identity_undo_still_bumps_edit_seq_and_ends_paste_session() {
 #[test]
 fn edit_in_other_buffer_invalidates_ring_stamp() {
     use hume_editing::text::BufferText;
-    use hume_ops::register::CLIPBOARD_REGISTER;
 
     let mut ed = editor_from("-[ab]>cd\n");
-    ed.state
-        .registers
-        .write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
+    seed_clipboard(&mut ed, "CLIP");
     ed.feed_key(key('d')); // delete "ab" in buffer A → ring = ["ab"], stamp fresh
 
     let bid_a = ed.focused_buffer_id();
@@ -684,7 +626,7 @@ fn explicit_register_capture_does_not_write_paste_stamp() {
 #[test]
 fn explicit_k_prefix_paste_does_not_write_stamp() {
     let mut ed = editor_from("-[x]>\n");
-    ed.state.kill_ring.push(vec!["RING".to_string()]);
+    seed_ring(&mut ed, &["RING"]);
 
     ed.handle_key(key('"'));
     ed.handle_key(key('k'));
@@ -710,7 +652,7 @@ fn explicit_k_prefix_paste_does_not_write_stamp() {
 #[test]
 fn paste_over_different_selection_replaces() {
     let mut ed = editor_from("-[old]>\n");
-    ed.state.kill_ring.push(vec!["new".to_string()]);
+    seed_ring(&mut ed, &["new"]);
     ed.feed_key(key('p'));
     assert_eq!(
         state(&ed),
@@ -724,7 +666,7 @@ fn paste_over_different_selection_replaces() {
 #[test]
 fn paste_repeat_over_identical_selection_appends() {
     let mut ed = editor_from("-[ab]>\n");
-    ed.state.kill_ring.push(vec!["ab".to_string()]);
+    seed_ring(&mut ed, &["ab"]);
     ed.feed_key(key('p'));
     let buf = ed.doc().text().to_string();
     assert_eq!(
@@ -740,7 +682,7 @@ fn paste_repeat_over_identical_selection_appends() {
 #[test]
 fn paste_after_repeat_over_backward_selection_collapses_to_end() {
     let mut ed = editor_from("-[ab]>cd\n");
-    ed.state.kill_ring.push(vec!["ab".to_string()]);
+    seed_ring(&mut ed, &["ab"]);
     dispatch_command(&mut ed, "flip-selections"); // anchor/head swap; start()/end() unchanged
     ed.feed_key(key('p'));
     assert_eq!(
@@ -754,7 +696,7 @@ fn paste_after_repeat_over_backward_selection_collapses_to_end() {
 #[test]
 fn paste_before_repeat_over_backward_selection_collapses_to_start() {
     let mut ed = editor_from("-[ab]>cd\n");
-    ed.state.kill_ring.push(vec!["ab".to_string()]);
+    seed_ring(&mut ed, &["ab"]);
     dispatch_command(&mut ed, "flip-selections");
     ed.feed_key(key('P'));
     assert_eq!(
@@ -769,9 +711,7 @@ fn paste_before_repeat_over_backward_selection_collapses_to_start() {
 #[test]
 fn paste_multi_cursor_all_match_appends_each() {
     let mut ed = editor_from("-{ab}>x-[cd]>\n");
-    ed.state
-        .kill_ring
-        .push(vec!["ab".to_string(), "cd".to_string()]);
+    ed.state.kill_ring.push(vec!["ab", "cd"]);
     ed.feed_key(key('p'));
     let buf = ed.doc().text().to_string();
     assert_eq!(
@@ -791,9 +731,7 @@ fn paste_multi_cursor_all_match_appends_each() {
 #[test]
 fn paste_multi_cursor_partial_match_replaces_all() {
     let mut ed = editor_from("-{ab}>x-[cd]>\n");
-    ed.state
-        .kill_ring
-        .push(vec!["ab".to_string(), "ZZ".to_string()]); // 2nd doesn't match "cd"
+    ed.state.kill_ring.push(vec!["ab", "ZZ"]); // 2nd doesn't match "cd"
     ed.feed_key(key('p'));
     let buf = ed.doc().text().to_string();
     assert_eq!(
@@ -816,7 +754,7 @@ fn paste_multi_cursor_partial_match_replaces_all() {
 #[test]
 fn paste_value_count_mismatch_replaces() {
     let mut ed = editor_from("-{ab}>x-[cd]>\n");
-    ed.state.kill_ring.push(vec!["Z".to_string()]); // 1 value, 2 selections
+    seed_ring(&mut ed, &["Z"]); // 1 value, 2 selections
     ed.feed_key(key('p'));
     let buf = ed.doc().text().to_string();
     assert!(
@@ -836,7 +774,7 @@ fn paste_value_count_mismatch_replaces() {
 fn paste_repeat_linewise_entry_over_linewise_selection_appends() {
     let mut ed = editor_from("-[AB]>\nCD\n");
     ed.feed_key(key('x')); // select-line → "AB\n" (linewise)
-    ed.state.kill_ring.push(vec!["AB\n".to_string()]);
+    seed_ring(&mut ed, &["AB\n"]);
     ed.feed_key(key('p'));
     let buf = ed.doc().text().to_string();
     assert_eq!(
@@ -850,13 +788,8 @@ fn paste_repeat_linewise_entry_over_linewise_selection_appends() {
 /// than a same-text no-op. The rule is "append", not "skip".
 #[test]
 fn paste_matching_clipboard_over_identical_selection_duplicates() {
-    use hume_ops::register::CLIPBOARD_REGISTER;
-
     let mut ed = editor_from("-[ab]>cd\n");
-    ed.state.clipboard.force_unavailable();
-    ed.state
-        .registers
-        .write_text(CLIPBOARD_REGISTER, vec!["ab".to_string()]);
+    seed_clipboard(&mut ed, "ab");
     ed.feed_key(key('p')); // no stamp yet → clipboard "ab" == selected "ab" → append
     let buf = ed.doc().text().to_string();
     assert_eq!(
@@ -871,13 +804,8 @@ fn paste_matching_clipboard_over_identical_selection_duplicates() {
 /// rather than appending, since the resolved value no longer matches.
 #[test]
 fn repeat_clipboard_paste_replaces_when_clipboard_changed_externally() {
-    use hume_ops::register::CLIPBOARD_REGISTER;
-
     let mut ed = editor_from("-[xy]>\n");
-    ed.state.clipboard.force_unavailable();
-    ed.state
-        .registers
-        .write_text(CLIPBOARD_REGISTER, vec!["xy".to_string()]);
+    seed_clipboard(&mut ed, "xy");
 
     ed.feed_key(key('p')); // no stamp yet → clipboard "xy" == selected "xy" → append
     let buf1 = ed.doc().text().to_string();
@@ -888,9 +816,7 @@ fn repeat_clipboard_paste_replaces_when_clipboard_changed_externally() {
     );
 
     // External clipboard change before the second press.
-    ed.state
-        .registers
-        .write_text(CLIPBOARD_REGISTER, vec!["ZZ".to_string()]);
+    seed_clipboard(&mut ed, "ZZ");
 
     ed.feed_key(key('p')); // stamp fresh(Clipboard) → re-reads clipboard fresh → "ZZ"
     let buf2 = ed.doc().text().to_string();
@@ -935,7 +861,7 @@ fn repeat_clipboard_paste_with_dead_clipboard_is_noop() {
 
     let mut ed = editor_from("-[xy]>\n");
     ed.state.clipboard.force_unavailable();
-    ed.state.kill_ring.push(vec!["ZZ".to_string()]);
+    seed_ring(&mut ed, &["ZZ"]);
     // A fresh Clipboard stamp with nothing readable behind it: as if the
     // previous press pasted external clipboard text that has since become
     // unreadable (transient failure, never mirrored in-memory).
@@ -1030,12 +956,8 @@ fn paste_ring_older_after_explicit_clipboard_paste_skips_the_same_text() {
     use hume_ops::register::CLIPBOARD_REGISTER;
 
     let mut ed = editor_from("-[x]>\n");
-    ed.state.clipboard.force_unavailable();
-    ed.state
-        .registers
-        .write_text(CLIPBOARD_REGISTER, vec!["bar".to_string()]);
-    ed.state.kill_ring.push(vec!["foo".to_string()]);
-    ed.state.kill_ring.push(vec!["bar".to_string()]);
+    seed_clipboard(&mut ed, "bar");
+    seed_ring(&mut ed, &["foo", "bar"]);
 
     ed.feed_keys([key('"'), key(CLIPBOARD_REGISTER), key('p')]);
     assert_eq!(state(&ed), "x-[bar]>\n", "\"cp pastes the clipboard");
@@ -1069,14 +991,9 @@ fn paste_ring_older_after_yank_edit_paste_skips_the_yanked_line() {
 /// clipboard text, and the clipboard paste stays.
 #[test]
 fn paste_ring_older_after_clipboard_paste_refuses_when_only_the_same_text() {
-    use hume_ops::register::CLIPBOARD_REGISTER;
-
     let mut ed = editor_from("-[x]>\n");
-    ed.state.clipboard.force_unavailable();
-    ed.state
-        .registers
-        .write_text(CLIPBOARD_REGISTER, vec!["bar".to_string()]);
-    ed.state.kill_ring.push(vec!["bar".to_string()]);
+    seed_clipboard(&mut ed, "bar");
+    seed_ring(&mut ed, &["bar"]);
 
     ed.feed_key(key('p'));
     ed.feed_key(key('['));
@@ -1179,8 +1096,7 @@ fn paste_ring_warm_cycle_replaces_single_char_paste() {
 #[test]
 fn paste_before_cycle_stays_before_charwise() {
     let mut ed = editor_from("-[c]>d\n"); // cursor on 'c' at index 0
-    ed.state.kill_ring.push(vec!["X".to_string()]); // slot 1 after next push
-    ed.state.kill_ring.push(vec!["Y".to_string()]); // ring=[Y, X]; head=Y, slot 1=X
+    seed_ring(&mut ed, &["X", "Y"]); // head=Y, slot 1=X
 
     // "kP: paste-before ring head ("Y") before cursor 'c'.
     ed.feed_key(key('"'));
@@ -1201,8 +1117,7 @@ fn paste_before_cycle_stays_before_charwise() {
 #[test]
 fn paste_after_cycle_stays_after_charwise() {
     let mut ed = editor_from("-[c]>d\n");
-    ed.state.kill_ring.push(vec!["X".to_string()]);
-    ed.state.kill_ring.push(vec!["Y".to_string()]); // ring=[Y, X]
+    seed_ring(&mut ed, &["X", "Y"]); // head=Y
 
     ed.feed_key(key('"'));
     ed.feed_key(key('k'));
@@ -1218,8 +1133,7 @@ fn paste_after_cycle_stays_after_charwise() {
 #[test]
 fn paste_before_cycle_stays_above_linewise() {
     let mut ed = editor_from("-[B]>\nC\n"); // cursor on 'B', line 0
-    ed.state.kill_ring.push(vec!["X\n".to_string()]); // slot 1
-    ed.state.kill_ring.push(vec!["Y\n".to_string()]); // ring=[Y\n, X\n]; head=Y\n
+    seed_ring(&mut ed, &["X\n", "Y\n"]); // head=Y\n
 
     // "kP: linewise paste-before ring head ("Y\n"), inserts above line 0.
     ed.feed_key(key('"'));
@@ -1245,14 +1159,9 @@ fn paste_before_cycle_stays_above_linewise() {
 /// and, matching what's now selected, appends rather than replacing.
 #[test]
 fn paste_after_cycle_appends_cycled_entry() {
-    use hume_ops::register::CLIPBOARD_REGISTER;
-
     let mut ed = editor_from("-[x]>\n");
-    ed.state.clipboard.force_unavailable();
-    ed.state
-        .registers
-        .write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
-    ed.state.kill_ring.push(vec!["RING".to_string()]); // ring head = "RING"
+    seed_clipboard(&mut ed, "CLIP");
+    seed_ring(&mut ed, &["RING"]); // ring head = "RING"
 
     // p: no stamp yet → clipboard "CLIP".
     ed.feed_key(key('p'));
@@ -1281,15 +1190,10 @@ fn paste_after_cycle_appends_cycled_entry() {
 /// Consecutive `p` presses append copies rather than replacing the selected paste.
 #[test]
 fn consecutive_paste_appends_copies() {
-    use hume_ops::register::CLIPBOARD_REGISTER;
-
     let mut ed = editor_from("-[ab]>\n");
-    ed.state.clipboard.force_unavailable();
     // Seed clipboard with "CLIP" (distinct from ring) to falsify the assertion:
     // if the second p reads clipboard instead of the ring, "CLIP" would appear.
-    ed.state
-        .registers
-        .write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
+    seed_clipboard(&mut ed, "CLIP");
     ed.feed_key(key('d')); // delete "ab" → ring = ["ab"], stamp fresh
     ed.feed_key(key('p')); // smart-p reads ring head "ab"
     ed.feed_key(key('p')); // stamp still fresh → "ab" again → matches → append
@@ -1309,13 +1213,8 @@ fn consecutive_paste_appends_copies() {
 /// and the kill ring is empty: the second `p` must not be a no-op.
 #[test]
 fn consecutive_clipboard_paste_appends() {
-    use hume_ops::register::CLIPBOARD_REGISTER;
-
     let mut ed = editor_from("-[z]>\n");
-    ed.state.clipboard.force_unavailable(); // headless: reads fall back to in-memory mirror
-    ed.state
-        .registers
-        .write_text(CLIPBOARD_REGISTER, vec!["xy".to_string()]);
+    seed_clipboard(&mut ed, "xy");
     // ring is empty: this is the regression case
 
     ed.feed_key(key('p')); // no stamp → clipboard → inserts "xy" after 'z'; stamp → Clipboard
@@ -1332,14 +1231,9 @@ fn consecutive_clipboard_paste_appends() {
 /// whatever happens to be at the ring head.
 #[test]
 fn consecutive_paste_repeats_last_not_ring_head() {
-    use hume_ops::register::CLIPBOARD_REGISTER;
-
     let mut ed = editor_from("-[z]>\n");
-    ed.state.clipboard.force_unavailable();
-    ed.state
-        .registers
-        .write_text(CLIPBOARD_REGISTER, vec!["xy".to_string()]);
-    ed.state.kill_ring.push(vec!["ZZ".to_string()]); // ring has different content
+    seed_clipboard(&mut ed, "xy");
+    seed_ring(&mut ed, &["ZZ"]); // ring has different content
 
     ed.feed_key(key('p')); // clipboard → "xy"; stamp → Clipboard
     ed.feed_key(key('p')); // stamp fresh(Clipboard) → repeats "xy", not ring head "ZZ"
@@ -1370,13 +1264,9 @@ fn dispatch_command(ed: &mut Editor, name: &str) {
 /// prefix, and it never consults the paste stamp to decide.
 #[test]
 fn plain_paste_reads_ring_not_clipboard() {
-    use hume_ops::register::CLIPBOARD_REGISTER;
-
     let mut ed = editor_from("-[x]>\n");
-    ed.state
-        .registers
-        .write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
-    ed.state.kill_ring.push(vec!["RING".to_string()]);
+    seed_clipboard(&mut ed, "CLIP");
+    seed_ring(&mut ed, &["RING"]);
 
     dispatch_command(&mut ed, "paste-after");
 
@@ -1396,7 +1286,7 @@ fn plain_paste_reads_ring_not_clipboard() {
 #[test]
 fn plain_paste_before_reads_ring_head() {
     let mut ed = editor_from("x-[y]>z\n");
-    ed.state.kill_ring.push(vec!["RING".to_string()]);
+    seed_ring(&mut ed, &["RING"]);
 
     dispatch_command(&mut ed, "paste-before");
 
@@ -1415,7 +1305,7 @@ fn plain_paste_before_reads_ring_head() {
 #[test]
 fn plain_paste_does_not_stack() {
     let mut ed = editor_from("-[x]>\n");
-    ed.state.kill_ring.push(vec!["RING".to_string()]);
+    seed_ring(&mut ed, &["RING"]);
 
     dispatch_command(&mut ed, "paste-after");
     dispatch_command(&mut ed, "paste-after");
@@ -1433,8 +1323,7 @@ fn plain_paste_does_not_stack() {
 #[test]
 fn plain_paste_opens_ring_cycle_session() {
     let mut ed = editor_from("-[x]>\n");
-    ed.state.kill_ring.push(vec!["OLDER".to_string()]);
-    ed.state.kill_ring.push(vec!["RING".to_string()]);
+    seed_ring(&mut ed, &["OLDER", "RING"]);
 
     dispatch_command(&mut ed, "paste-after");
     ed.feed_key(key('[')); // cycle to the older ring entry
@@ -1453,7 +1342,7 @@ fn plain_paste_opens_ring_cycle_session() {
 fn plain_paste_honors_register_prefix() {
     let mut ed = editor_from("-[x]>\n");
     ed.state.registers.write_text('3', vec!["REG3".to_string()]);
-    ed.state.kill_ring.push(vec!["RING".to_string()]);
+    seed_ring(&mut ed, &["RING"]);
 
     ed.handle_key(key('"'));
     ed.handle_key(key('3'));
@@ -1471,7 +1360,7 @@ fn plain_paste_honors_register_prefix() {
 #[test]
 fn plain_paste_black_hole_is_noop() {
     let mut ed = editor_from("-[x]>\n");
-    ed.state.kill_ring.push(vec!["RING".to_string()]);
+    seed_ring(&mut ed, &["RING"]);
 
     ed.handle_key(key('"'));
     ed.handle_key(key('b'));
@@ -1517,7 +1406,7 @@ fn plain_paste_with_an_empty_kill_ring_is_refused() {
 #[test]
 fn smart_paste_black_hole_is_noop() {
     let mut ed = editor_from("-[x]>\n");
-    ed.state.kill_ring.push(vec!["RING".to_string()]);
+    seed_ring(&mut ed, &["RING"]);
 
     ed.handle_key(key('"'));
     ed.handle_key(key('b'));
@@ -1537,14 +1426,9 @@ fn smart_paste_black_hole_is_noop() {
 /// what's now selected, appends.
 #[test]
 fn smart_paste_appends_after_plain_paste() {
-    use hume_ops::register::CLIPBOARD_REGISTER;
-
     let mut ed = editor_from("-[x]>\n");
-    ed.state.clipboard.force_unavailable();
-    ed.state
-        .registers
-        .write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
-    ed.state.kill_ring.push(vec!["RING".to_string()]);
+    seed_clipboard(&mut ed, "CLIP");
+    seed_ring(&mut ed, &["RING"]);
 
     dispatch_command(&mut ed, "paste-after"); // plain: reads ring head "RING"
     ed.feed_key(key('p')); // smart: stamp fresh(Ring(0)) → "RING" again → append
@@ -1561,7 +1445,7 @@ fn smart_paste_appends_after_plain_paste() {
 #[test]
 fn plain_paste_refuses_read_only_buffer() {
     let mut ed = editor_from("-[x]>\n");
-    ed.state.kill_ring.push(vec!["RING".to_string()]);
+    seed_ring(&mut ed, &["RING"]);
     ed.doc_mut().read_only = true;
 
     dispatch_command(&mut ed, "paste-after");
@@ -1667,8 +1551,7 @@ fn paste_during_an_empty_open_insert_session_is_refused_and_leaves_the_session_i
 #[test]
 fn direct_edit_during_open_paste_session_commits_it_first() {
     let mut ed = editor_from("-[c]>d\n"); // cursor on 'c' at index 0
-    ed.state.kill_ring.push(vec!["X".to_string()]); // slot 1
-    ed.state.kill_ring.push(vec!["Y".to_string()]); // ring=[Y, X]; head=Y
+    seed_ring(&mut ed, &["X", "Y"]); // head=Y
 
     // "kp: paste-after ring head ("Y") after 'c' → "cYd\n", with a Paste
     // session left open (native paste always leaves one open, for a

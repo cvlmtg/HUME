@@ -583,7 +583,7 @@ fn steel_call_paste_then_motion_commits_paste_session() {
     // Seed the kill ring with "hello". Plain paste-after's bare (no "<reg>
     // prefix) source is always the kill-ring head, with no stamp consultation.
     let mut ed = editor_from("-[w]>orld\n");
-    ed.state.kill_ring.push(vec!["hello".to_owned()]);
+    seed_ring(&mut ed, &["hello"]);
 
     attach_steel(
         &mut ed,
@@ -1146,9 +1146,9 @@ fn parity_steel_branch_cluster_vs_native() {
     // commands (`[`/`]`) are exempt; a plain Steel command is not.
     let mut ed2 = editor_from("-[a]>bc\n");
     // Seed the kill ring so `p` has something to paste. No stamp is set, but
-    // the test harness's clipboard is unavailable, so smart-paste's bare
+    // the test harness's clipboard is empty, so smart-paste's bare
     // resolution falls back to the ring head regardless.
-    ed2.state.kill_ring.push(vec!["X".to_string()]);
+    seed_ring(&mut ed2, &["X"]);
     ed2.feed_key(key('p')); // smart-paste-after → resolves ring head, opens paste session
     assert!(
         ed2.state.active_session.as_ref().is_some_and(|s| matches!(

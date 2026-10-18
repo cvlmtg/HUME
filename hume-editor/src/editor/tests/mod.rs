@@ -719,6 +719,22 @@ fn reg(ed: &Editor, name: char) -> Vec<String> {
         .collect()
 }
 
+/// Put `text` in the in-memory `c` register, which a test editor's OSC 52
+/// clipboard reads back as the clipboard's text.
+fn seed_clipboard(ed: &mut Editor, text: &str) {
+    ed.state
+        .registers
+        .write_text(hume_ops::register::CLIPBOARD_REGISTER, vec![text]);
+}
+
+/// Push each of `entries` onto the kill ring as a one-piece entry, in order,
+/// so the last one is the head.
+fn seed_ring(ed: &mut Editor, entries: &[&str]) {
+    for &entry in entries {
+        ed.state.kill_ring.push(vec![entry]);
+    }
+}
+
 /// Build a 20-line buffer with the cursor on a given line for jump list tests.
 fn jump_editor(cursor_line: usize) -> Editor {
     let content: String = (0..20).map(|i| format!("line {i}\n")).collect();
