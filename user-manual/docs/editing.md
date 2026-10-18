@@ -69,6 +69,7 @@ Numbers:
 
 - A `-` before a digit is a minus sign, unless it follows a letter, digit, `_` or closing bracket: in `x-1`, `1-1` and `f(x)-1` it separates, and only the last `1` changes.
 - A number right after a letter, `_` or closing bracket never goes below zero: `item1` minus 3 is `item0`.
+- Characters listed in the buffer's `word-chars` option count as letters for both rules (see [Configuration](configuration.md)).
 - Hexadecimal (`0x1f`), octal (`0o17`) and binary (`0b101`) numbers change in their own base and never go below zero. Hex letters keep their case.
 - Leading zeros keep the width (`007` becomes `008`), and `_` separators are kept (`999_999` becomes `1_000_000`).
 - Digits inside a word count: `item1` becomes `item2`.
