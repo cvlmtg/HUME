@@ -46,6 +46,7 @@
 - `set-extra-highlights!`, `set-inlay-hints!` and `set-virtual-lines!` segments accept a char offset inside a character such as an emoji sequence.
 - `json-ref-or` returns its default for a field the server sent as `null`, so a code action whose `disabled` is `null` is offered.
 - `apply-text-edits!` and `apply-workspace-edit!` still apply after the pane switches buffers, and `apply-text-edits!` and `lsp-document-params` work without a pane.
+- `#` on a closing tag finds its opening tag past a commented-out tag.
 
 ## [0.15.0] - 2026-10-15
 

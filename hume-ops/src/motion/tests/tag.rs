@@ -142,6 +142,32 @@ fn prev_tag_count_two() {
 }
 
 #[test]
+fn prev_tag_skips_a_comment() {
+    prev("<b>y</b><!-- <p> -->-[a]>\n", "<[<b>y</b>]-<!-- <p> -->a\n");
+}
+
+#[test]
+fn prev_tag_skips_a_comment_closed_by_dashes_bang() {
+    prev(
+        "<b>y</b><!-- <p> --!>-[a]>\n",
+        "<[<b>y</b>]-<!-- <p> --!>a\n",
+    );
+}
+
+#[test]
+fn prev_tag_past_a_stray_comment_end_skips_nothing() {
+    prev(
+        "<!-- c --><p>x</p> a --> -[b]>\n",
+        "<!-- c --><[<p>x</p>]- a --> b\n",
+    );
+}
+
+#[test]
+fn prev_tag_past_an_arrow_skips_nothing() {
+    prev("<p>x</p> a->b -[c]>\n", "<[<p>x</p>]- a->b c\n");
+}
+
+#[test]
 fn prev_tag_before_the_first_element_is_a_noop() {
     prev("-[a]> <p>x</p>\n", "-[a]> <p>x</p>\n");
 }

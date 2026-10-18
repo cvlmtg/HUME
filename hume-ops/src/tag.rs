@@ -47,34 +47,77 @@ fn same_name(
     a.end.chars_since(a.start) == b.end.chars_since(b.start) && text.slice(a) == text.slice(b)
 }
 
+const COMMENT_OPEN: &str = "<!--";
+
 /// True if `<!--` starts at `lt_pos`.
 fn is_comment_start(text: &BufferText, lt_pos: CharOffset) -> bool {
     let mut cursor = text.chars_at(lt_pos);
-    "<!--"
+    COMMENT_OPEN
         .chars()
         .all(|expected| cursor.next().is_some_and(|(_, ch)| ch == expected))
 }
 
 /// Consume `cursor` through the terminator of an HTML comment whose `<!--`
 /// prefix `cursor` has already consumed, or to the end of the buffer if it's
-/// never closed. An unterminated comment swallows everything after it, so
-/// no tag inside it is reachable.
+/// never closed, and return the terminator's `>`. An unterminated comment
+/// swallows everything after it, so no tag inside it is reachable.
 ///
 /// Also recognizes HTML5's abruptly-closed forms `<!-->` and `<!--->` (a
 /// comment with zero or one dash before the first `>`), and `--!>` in place
 /// of `-->`. All three are HTML5 parse errors but real markup hits them.
-fn skip_comment_body(cursor: &mut CharCursor<'_>) {
+fn skip_comment_body(cursor: &mut CharCursor<'_>) -> Option<CharOffset> {
     let mut dashes = 0u32;
     // offset: chars consumed since the confirmed "<!--"
-    for (offset, (_, ch)) in cursor.by_ref().enumerate() {
+    for (offset, (i, ch)) in cursor.by_ref().enumerate() {
         match ch {
             '-' => dashes += 1,
             // `--!>` closes like `-->`, so keep `dashes` alive across the `!`.
             '!' if dashes >= 2 => {}
-            '>' if dashes >= 2 || offset == 0 || (offset == 1 && dashes == 1) => return,
+            '>' if dashes >= 2 || offset == 0 || (offset == 1 && dashes == 1) => return Some(i),
             _ => dashes = 0,
         }
     }
+    None
+}
+
+/// The `>` ending the comment whose `<!--` starts at `lt_pos`.
+fn comment_end(text: &BufferText, lt_pos: CharOffset) -> Option<CharOffset> {
+    let mut cursor = text.chars_at(lt_pos.shift(COMMENT_OPEN.len() as isize));
+    skip_comment_body(&mut cursor)
+}
+
+/// True if the `>` at `gt_pos` directly follows `--` or `--!`, the shape of
+/// a comment terminator.
+fn ends_like_a_comment(text: &BufferText, gt_pos: CharOffset) -> bool {
+    let mut cursor = text.chars_at(gt_pos);
+    let mut before = || cursor.prev().map(|(_, ch)| ch);
+    let last = match before() {
+        Some('!') => before(),
+        last => last,
+    };
+    last == Some('-') && before() == Some('-')
+}
+
+/// The `<!--` of the comment the `>` at `gt_pos` terminates, or `None` when
+/// that `>` ends no comment. The opener is the nearest `<!--` before it with
+/// no other terminator-shaped `>` between, and [`skip_comment_body`] reading
+/// forward from it has to stop at `gt_pos`, so a stray `-->` after a closed
+/// comment hides nothing.
+fn comment_start_before(text: &BufferText, gt_pos: CharOffset) -> Option<CharOffset> {
+    if !ends_like_a_comment(text, gt_pos) {
+        return None;
+    }
+    let mut cursor = text.chars_at(gt_pos);
+    while let Some((i, ch)) = cursor.prev() {
+        match ch {
+            '<' if is_comment_start(text, i) => {
+                return (comment_end(text, i) == Some(gt_pos)).then_some(i);
+            }
+            '>' if ends_like_a_comment(text, i) => return None,
+            _ => {}
+        }
+    }
+    None
 }
 
 /// Parse the tag construct starting at `lt_pos` (must be `<`, and not the
@@ -265,31 +308,40 @@ fn close_after(text: &BufferText, open: &Tag) -> Option<Tag> {
 }
 
 /// Backward counterpart to [`next_tag`]: the nearest tag construct strictly
-/// before `before`, skipping comments and any `<` that doesn't parse as a
-/// well-formed tag, the same two exemptions [`tag_at`] uses. Reuses the
-/// forward [`parse_tag_at`] rather than a mirrored reverse lexer: finding
-/// `<` backward is unambiguous, but a lexer that also had to un-consume a
-/// quoted attribute or braced JSX expression in reverse would duplicate
-/// [`parse_tag`]'s whole state machine for zero correctness gain over just
-/// parsing forward from each candidate.
+/// before `before`, skipping any `<` that doesn't parse as a well-formed tag.
+/// Reuses the forward [`parse_tag_at`] rather than a mirrored reverse lexer:
+/// finding `<` backward is unambiguous, but a lexer that also had to
+/// un-consume a quoted attribute or braced JSX expression in reverse would
+/// duplicate [`parse_tag`]'s whole state machine for zero correctness gain
+/// over just parsing forward from each candidate.
 ///
-/// That reuse has a real gap: a `<` inside an *enclosing* tag's own quoted
-/// attribute or JSX brace (`title="</div>"`, `<!-- <div> -->`) is
-/// invisible to the forward lexer (consumed whole as part of the enclosing
-/// tag's own parse) but can itself parse as a well-formed tag when found
-/// this way, corrupting [`open_before`]'s depth count. An unbalanced
-/// fragment there (one tag-shaped construct, not a real pair) triggers it; a
-/// balanced one cancels itself out and is harmless. Accepted as a known
-/// limitation of the lexical scanner.
+/// A comment is skipped whole: a `>` that [`comment_start_before`] pairs
+/// with a `<!--` moves the walk to before that `<!--`, so a tag-shaped
+/// fragment in the comment's body is never returned.
+///
+/// The reuse has a gap: a `<` inside an *enclosing* tag's own quoted
+/// attribute or JSX brace (`title="</div>"`) is invisible to the forward
+/// lexer (consumed whole as part of the enclosing tag's own parse) but can
+/// itself parse as a well-formed tag when found this way, corrupting
+/// [`open_before`]'s depth count. An unbalanced fragment there (one
+/// tag-shaped construct, not a real pair) triggers it; a balanced one
+/// cancels itself out and is harmless. A comment that is never closed, or
+/// whose `<!--` is not the nearest one before its end (a doubled `<!--`, or
+/// one inside a quoted attribute), has the same gap. Accepted as known
+/// limitations of the lexical scanner.
 fn prev_tag(text: &BufferText, before: CharOffset) -> Option<Tag> {
     let mut cursor = text.chars_at(before);
     while let Some((i, ch)) = cursor.prev() {
-        let lt_pos = i;
         if ch == '<'
-            && !is_comment_start(text, lt_pos)
-            && let Some(tag) = parse_tag_at(text, lt_pos)
+            && !is_comment_start(text, i)
+            && let Some(tag) = parse_tag_at(text, i)
         {
             return Some(tag);
+        }
+        if ch == '>'
+            && let Some(start) = comment_start_before(text, i)
+        {
+            cursor = text.chars_at(start);
         }
     }
     None

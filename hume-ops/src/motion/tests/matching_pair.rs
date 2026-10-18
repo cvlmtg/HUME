@@ -554,6 +554,19 @@ fn goto_matching_pair_tag_close_to_open_doubled_lt_does_not_stop_walk() {
 }
 
 #[test]
+fn goto_matching_pair_tag_close_to_open_skips_a_commented_close_tag() {
+    assert_state!(
+        "<div><!-- </div> -->x-[<]>/div>\n",
+        |(text, sels)| cmd_goto_matching_pair(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
+        "-[<]>div><!-- </div> -->x</div>\n"
+    );
+}
+
+#[test]
 fn goto_matching_pair_tag_quoted_close_tag_before_partner_is_known_limitation() {
     // Known limitation of the backward scan: a `<` inside an enclosing
     // tag's own quoted attribute can itself parse as a well-formed tag when

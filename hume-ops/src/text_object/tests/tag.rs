@@ -181,15 +181,15 @@ fn inner_tag_keeps_a_combining_sequence_whole() {
     );
 }
 
-// Known limits of the lexical scan, pinned so a change in them is visible.
-
 #[test]
-fn inner_tag_counts_a_close_tag_inside_a_comment_before_the_cursor() {
+fn inner_tag_skips_a_close_tag_inside_a_comment() {
     inner(
         "<div><!-- </div> -->te-[x]>t</div>\n",
-        "<div><!-- </div> -->te-[x]>t</div>\n",
+        "<div>-[<!-- </div> -->text]></div>\n",
     );
 }
+
+// Known limits of the lexical scan, pinned so a change in them is visible.
 
 #[test]
 fn inner_tag_does_not_imply_html_end_tags() {
