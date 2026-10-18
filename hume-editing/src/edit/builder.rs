@@ -230,8 +230,13 @@ impl<'a, 'id> EditBuilder<'a, 'id> {
         self.pos(index, false)
     }
 
-    /// Replace `range` with `text`; returns what the replacement became.
+    /// Replace `range` with `text`; returns what the replacement became. A
+    /// replacement by the text already there is a [`keep`](Self::keep), so it
+    /// changes nothing.
     pub fn replace(&mut self, range: ClusterRange, text: &str) -> Mark<'id> {
+        if self.text.slice(range.chars()) == text {
+            return self.keep(range);
+        }
         let start = self.delete(range);
         let inserted = self.push(range.start().offset(), ItemKind::Insert(LfText::new(text)));
         Mark {

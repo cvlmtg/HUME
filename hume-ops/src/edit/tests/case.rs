@@ -204,3 +204,12 @@ fn capitalize_keeps_a_combining_mark_on_the_capitalized_letter() {
         "-[E\u{301}cole]>\n"
     );
 }
+
+#[test]
+fn uppercasing_uppercase_text_changes_nothing() {
+    let (text, sels) = test_fixtures::testing::parse_state("-[ABC]> d\n");
+    let (_, _, cs) = test_fixtures::testing::parts(make_text_uppercase(
+        test_fixtures::testing::state(text, sels),
+    ));
+    assert!(cs.is_identity());
+}

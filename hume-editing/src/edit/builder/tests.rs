@@ -167,6 +167,26 @@ fn a_kept_cursor_inside_a_replaced_range_lands_where_an_anchor_does() {
     assert_eq!(render(edited.state().view()), "a-[X]>Yd\n");
 }
 
+#[test]
+fn replacing_with_the_text_already_there_changes_nothing() {
+    let state = parse("a-[b]>cd\n");
+    let edited = edit(&state, |b| {
+        let mark = b.replace(clusters(b.text(), 1, 3), "bc");
+        Landings::new(vec![Landing::covering(mark, Facing::Forward)], 0)
+    });
+    assert!(edited.changes().is_identity());
+    assert_eq!(render(edited.state().view()), "a-[bc]>d\n");
+}
+
+#[test]
+fn an_anchor_inside_a_range_replaced_by_its_own_text_stays_put() {
+    let out = cursor_at("-[a]>bcd\n", |b| {
+        b.replace(clusters(b.text(), 1, 3), "bc");
+        b.at(bound_at(b.text(), 2))
+    });
+    assert_eq!(out, "ab-[c]>d\n");
+}
+
 /// The text `input` becomes when the clusters covering chars `a..b` of it
 /// are deleted, for each `(a, b)`.
 fn text_after_deleting(input: &str, ranges: &[(usize, usize)]) -> String {
