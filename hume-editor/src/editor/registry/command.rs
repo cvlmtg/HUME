@@ -318,9 +318,8 @@ pub(in crate::editor) enum SelectionBody {
 
 /// Data, not a fn pointer: kind × span (`Select`) and kind × direction
 /// (`Goto`) are enumerable, so one interpreter in the dispatch funnel
-/// (`commands/structural.rs::StructuralBody::apply`) replaces what would
-/// otherwise be 22 near-identical thin functions, one per structural
-/// command name.
+/// (`commands/structural.rs::StructuralBody::apply`) replaces a
+/// near-identical thin function per structural command name.
 #[derive(Clone, Copy)]
 pub(in crate::editor) enum StructuralBody {
     /// `m i <k>` / `m a <k>`: the smallest captured `<kind>.<span>` object at
@@ -328,9 +327,12 @@ pub(in crate::editor) enum StructuralBody {
     /// `apply_text_object_extend`'s past-end retry, so an object that shares
     /// its end with its parent (a nested `def` closing where its class
     /// closes) cannot grow to that parent, the same limit the bracket
-    /// objects have, accepted rather than special-cased.
+    /// objects have, accepted rather than special-cased. A kind with a
+    /// lexical form (`commands/structural.rs::lexical_object`) falls back to
+    /// it where no captured object encloses the cursor.
     Select { kind: ObjectKind, span: ObjectSpan },
-    /// `goto-next-<k>` / `goto-prev-<k>`.
+    /// `goto-next-<k>` / `goto-prev-<k>`. A kind with a lexical form uses it
+    /// in a buffer whose grammar does not define the kind.
     Goto { kind: ObjectKind, dir: Direction },
     /// `m i a` / `m a a`: `parameter.inside` with the lexical scan as
     /// fallback: one structure-aware argument family rather than a

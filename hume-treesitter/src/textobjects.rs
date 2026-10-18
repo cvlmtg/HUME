@@ -65,6 +65,7 @@ object_enum! {
         Comment = "comment",
         Test = "test",
         Entry = "entry",
+        XmlElement = "xml-element",
     }
 }
 
@@ -182,6 +183,10 @@ pub struct ObjectSpans {
     /// it, but keeps the same sorted-and-deduplicated data rather than a
     /// second representation.
     spans: Vec<ClusterRange>,
+    /// Whether any layer's query defines the capture these spans were
+    /// collected for, matches or not. `hume-editor` reads it to pick a
+    /// lexical fallback per buffer rather than per probe.
+    grammar_defines: bool,
 }
 
 impl ObjectSpans {
@@ -293,20 +298,32 @@ impl ObjectSpans {
         pick: impl Fn(&TextObjectsQuery) -> Option<u32>,
     ) -> Self {
         let mut spans = Vec::new();
+        let mut grammar_defines = false;
         for layer in &layers.layers {
             if let Some(query) = layer.bundle.textobjects.as_ref()
                 && let Some(idx) = pick(query)
             {
+                grammar_defines = true;
                 collect_hulls(query, idx, layer, text, &mut spans);
             }
         }
-        Self::finish(spans)
+        Self::finish(spans, grammar_defines)
     }
 
-    fn finish(mut spans: Vec<ClusterRange>) -> Self {
+    fn finish(mut spans: Vec<ClusterRange>, grammar_defines: bool) -> Self {
         spans.sort_by(|a, b| a.start().cmp(&b.start()).then(b.end().cmp(&a.end())));
         spans.dedup();
-        Self { spans }
+        Self {
+            spans,
+            grammar_defines,
+        }
+    }
+
+    /// Whether some syntax layer's query defines the object these spans
+    /// were collected for, even where it matched nothing. `false` for the
+    /// empty default.
+    pub fn grammar_defines(&self) -> bool {
+        self.grammar_defines
     }
 
     /// The smallest span containing `pos`.

@@ -198,7 +198,7 @@ fn default_keymap_omits_kitty_only_binds() {
 
 // ── `g`/`z` trie contents ───────────────────────────────────────────────────
 
-/// `g` holds only goto motions: the line gotos plus the six structural kinds,
+/// `g` holds only goto motions: the line gotos plus every structural kind,
 /// reachable as `g <key>`/`g <KEY>` (next/prev). It holds no picker or rename
 /// keys; those live under `z`/`G` (`core:pickers`/`core:lsp`, not native).
 #[test]
@@ -222,6 +222,8 @@ fn goto_trie_holds_real_gotos_and_structural_navigation() {
         (key!('U'), "goto-prev-test"),
         (key!('v'), "goto-next-value"),
         (key!('V'), "goto-prev-value"),
+        (key!('x'), "goto-next-tag"),
+        (key!('X'), "goto-prev-tag"),
     ];
     for (k, name) in must_resolve {
         match trie.walk(&[key!('g'), *k]) {

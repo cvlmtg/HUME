@@ -13,7 +13,7 @@ use hume_treesitter::textobjects::{Direction, ObjectKind, ObjectSpan};
 /// from `noun`: "including its delimiters" is wrong for an argument (a
 /// separator comma, never brackets) and a function (its signature, not
 /// delimiters). `next`/`prev`'s docs carry no such per-kind irregularity
-/// ("Select the next/previous `<noun>`." is exact for all six), so
+/// ("Select the next/previous `<noun>`." is exact for every kind), so
 /// `register_structural` derives them from `noun` instead of a fifth and
 /// sixth static string. One table drives both registration
 /// (`register_structural`, below) and the keymap
@@ -128,12 +128,26 @@ pub(in crate::editor) const STRUCTURAL_OBJECTS: &[StructuralObject] = &[
         prev: "goto-prev-value",
         noun: "array/tuple/struct value",
     },
+    StructuralObject {
+        // The capture name is Helix's `xml-element`; the commands say "tag".
+        kind: ObjectKind::XmlElement,
+        key: 'x',
+        inner: "inner-tag",
+        inner_doc: "Select the content between a pair of tags. Uses the language's element \
+                     object when the grammar defines one, a lexical scan otherwise.",
+        around: "around-tag",
+        around_doc: "Select a pair of tags and their content. Uses the language's element \
+                      object when the grammar defines one, a lexical scan otherwise.",
+        next: "goto-next-tag",
+        prev: "goto-prev-tag",
+        noun: "tag pair (element)",
+    },
 ];
 
 impl CommandRegistry {
-    /// Register the six structural kinds' four commands each (24 names; the
-    /// two `Parameter` names are `inner-argument`/`around-argument`,
-    /// `Argument`-bodied with the lexical scan as fallback).
+    /// Register every structural kind's four commands (the two `Parameter`
+    /// names are `inner-argument`/`around-argument`, `Argument`-bodied with
+    /// the lexical scan as fallback).
     ///
     /// `Select`/`Argument` register as `Selection` (`Establishes`: each
     /// replayable on its own from a fresh cursor, same as `select-line`/

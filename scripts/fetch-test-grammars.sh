@@ -149,10 +149,12 @@ fetch_grammar "markdown"
 fetch_grammar "markdown.inline"
 fetch_grammar "python"
 fetch_grammar "c"
+fetch_grammar "html"
 fetch_helix_query "markdown" "injections.scm"
 # rust/textobjects.scm has no `; inherits:` header, so a plain fetch is
 # complete — a language whose file inherits would need PLUM's resolver.
 fetch_helix_query "rust" "textobjects.scm"
+fetch_helix_query "html" "textobjects.scm"
 fetch_helix_query "rust" "injections.scm"
 # None of these four indents.scm files has an `; inherits:` header.
 fetch_helix_query "rust" "indents.scm"

@@ -54,7 +54,9 @@ fn every_kind_span_capture_name_resolves_to_its_own_index() {
          (function_item) @test.inside
          (function_item) @test.around
          (field_expression) @entry.inside
-         (field_expression) @entry.around",
+         (field_expression) @entry.around
+         (struct_item) @xml-element.inside
+         (struct_item) @xml-element.around",
     );
     for &kind in ObjectKind::ALL {
         for span in [ObjectSpan::Inside, ObjectSpan::Around] {
@@ -122,7 +124,7 @@ fn real_helix_rust_textobjects_defines_expected_pairs() {
 /// and `adjacent` both assume its sort-and-dedup, so a test double must not
 /// re-implement that comparator independently.
 fn spans_from(list: &[(usize, usize)]) -> ObjectSpans {
-    ObjectSpans::finish(list.iter().map(|&(s, e)| ir(s, e)).collect())
+    ObjectSpans::finish(list.iter().map(|&(s, e)| ir(s, e)).collect(), true)
 }
 
 #[test]
@@ -696,4 +698,100 @@ fn for_selector_cache_does_not_survive_a_bake() {
         fresh.enclosing(pos),
         "post-bake spans must match a fresh collect over the baked tree"
     );
+}
+
+// ── xml-element — real html fixture ─────────────────────────────────────────
+
+/// The real `html` bundle carrying the fetched Helix `textobjects.scm`.
+fn html_bundle_with_real_textobjects() -> Arc<GrammarBundle> {
+    require_grammars(&["html"]);
+    let path = require_helix_query("html", OptionalQuery::TextObjects.file_name());
+    let source = std::fs::read_to_string(path).expect("read helix-textobjects.scm");
+    make_bundle(
+        "html",
+        "tree_sitter_html",
+        "",
+        &[(OptionalQuery::TextObjects, &source)],
+    )
+}
+
+fn html_syntax(source: &str) -> (Syntax, BufferText) {
+    let text = BufferText::from(source);
+    let syn = Syntax::attach_sync(html_bundle_with_real_textobjects(), &text, &empty_langs());
+    (syn, text)
+}
+
+/// Every collected span's text, in collection order.
+fn span_texts(text: &BufferText, spans: &ObjectSpans) -> Vec<String> {
+    spans.spans.iter().map(|&s| span_text(text, s)).collect()
+}
+
+#[test]
+fn real_helix_html_textobjects_defines_xml_element_inside_and_around() {
+    require_grammars(&["html"]);
+    let path = require_helix_query("html", OptionalQuery::TextObjects.file_name());
+    let source = std::fs::read_to_string(path).expect("read helix-textobjects.scm");
+    let grammar = crate::test_support::open_grammar("html", "tree_sitter_html");
+    let query = tree_sitter::Query::new(grammar.language(), &source).expect("compile query");
+    let q = TextObjectsQuery::new(query);
+    assert!(q.defines(ObjectKind::XmlElement, ObjectSpan::Inside));
+    assert!(q.defines(ObjectKind::XmlElement, ObjectSpan::Around));
+}
+
+/// The inside pattern repeats `(_)*` with no anchors, so this pins that a
+/// multi-child element yields one inside span over all of its children and
+/// no span over only some of them.
+#[test]
+fn xml_element_inside_of_a_multi_child_element_is_one_span_over_all_children() {
+    let (syn, text) = html_syntax("<div>\n  <a>1</a>\n  text\n  <b>2</b>\n</div>\n");
+    let layers = syn.layers().expect("layers installed");
+    let inside = ObjectSpans::collect(layers, &text, ObjectKind::XmlElement, ObjectSpan::Inside);
+    assert_eq!(
+        span_texts(&text, &inside),
+        ["<a>1</a>\n  text\n  <b>2</b>", "1", "2"]
+    );
+    let around = ObjectSpans::collect(layers, &text, ObjectKind::XmlElement, ObjectSpan::Around);
+    assert_eq!(
+        span_texts(&text, &around),
+        [
+            "<div>\n  <a>1</a>\n  text\n  <b>2</b>\n</div>",
+            "<a>1</a>",
+            "<b>2</b>"
+        ]
+    );
+}
+
+#[test]
+fn xml_element_inside_is_absent_for_empty_blank_void_and_self_closing_elements() {
+    let (syn, text) = html_syntax("<p></p><p> </p><br><img/>\n");
+    let layers = syn.layers().expect("layers installed");
+    let inside = ObjectSpans::collect(layers, &text, ObjectKind::XmlElement, ObjectSpan::Inside);
+    assert_eq!(span_texts(&text, &inside), Vec::<String>::new());
+    let around = ObjectSpans::collect(layers, &text, ObjectKind::XmlElement, ObjectSpan::Around);
+    assert_eq!(
+        span_texts(&text, &around),
+        ["<p></p>", "<p> </p>", "<br>", "<img/>"]
+    );
+}
+
+#[test]
+fn grammar_defines_is_false_for_a_query_without_the_kind() {
+    let (syn, text) = rust_syntax("fn f() {}\n");
+    let layers = syn.layers().expect("layers installed");
+    let spans = ObjectSpans::collect_for_navigation(layers, &text, ObjectKind::XmlElement);
+    assert!(!spans.grammar_defines());
+}
+
+#[test]
+fn grammar_defines_is_true_for_a_query_with_the_kind_even_without_matches() {
+    let (syn, text) = html_syntax("plain text\n");
+    let layers = syn.layers().expect("layers installed");
+    let spans = ObjectSpans::collect_for_navigation(layers, &text, ObjectKind::XmlElement);
+    assert!(spans.grammar_defines());
+    assert_eq!(span_texts(&text, &spans), Vec::<String>::new());
+}
+
+#[test]
+fn grammar_defines_is_false_for_the_empty_default() {
+    assert!(!ObjectSpans::default().grammar_defines());
 }

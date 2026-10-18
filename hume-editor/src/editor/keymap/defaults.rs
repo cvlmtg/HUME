@@ -112,8 +112,8 @@ fn build_text_object_trie() -> KeyTrie {
             around_trie.bind_leaf(k, cmd!(around_name));
         }
     }
-    // Structural kinds (function/class/argument/comment/unit-test/value): one
-    // table shared with `register_structural` (`registry/defaults/
+    // Structural kinds (function/class/argument/comment/unit-test/value/tag):
+    // one table shared with `register_structural` (`registry/defaults/
     // structural.rs`), so a kind added there needs no change here. `a`
     // (argument) uses the `inner-argument`/`around-argument` names. See
     // `StructuralObject`'s doc.

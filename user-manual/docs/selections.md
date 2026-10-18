@@ -61,18 +61,22 @@ Text objects select structured regions in one step. They use the `m` prefix: `m 
 | `m i c` / `m a c` | Inside a comment / the whole comment block |
 | `m i u` / `m a u` | Inside a unit test function's body / the whole unit test, including its attribute or decorator |
 | `m i v` / `m a v` | Inside an array/tuple/struct value / the value plus its separator comma |
+| `m i x` / `m a x` | Between a pair of tags / the tags and everything between them |
 
 Closing brackets work as well as opening ones: `m i )` is the same as `m i (`, and likewise for `]`, `}`, and `>`.
 
-`m i a` / `m a a` and the last five rows above (`f`, `t`, `c`, `u`, `v`) are structure-aware: for a
+`m i a` / `m a a` and the last six rows above (`f`, `t`, `c`, `u`, `v`, `x`) are structure-aware: for a
 language whose grammar ships a `textobjects.scm` (PLUM installs one alongside highlights where the
-upstream grammar has one), they select the actual function, class, comment, unit test, or value node,
-falling back to a lexical scan for `m i a` / `m a a` wherever the grammar doesn't cover the cursor
-(a syntax error, a buffer with no grammar at all). Without a grammar, `f`/`t`/`c`/`u`/`v` are a
+upstream grammar has one), they select the actual function, class, comment, unit test, value, or
+tag pair, falling back to a lexical scan for `a` and `x` wherever the grammar doesn't cover the
+cursor (a syntax error, a buffer with no grammar at all). Without a grammar, `f`/`t`/`c`/`u`/`v` are a
 silent no-op. Because the argument object is structure-aware, a nested list, tuple, or struct
 literal passed as a call argument is itself the argument. Use `m i v` / `m a v` for its members.
 
-Each of `f`/`t`/`a`/`c`/`u`/`v` also jumps to the next/previous instance of its kind under the
+`m i x` selects the content without its surrounding whitespace. With the cursor on a tag itself, it
+selects the content of the enclosing pair.
+
+Each of `f`/`t`/`a`/`c`/`u`/`v`/`x` also jumps to the next/previous instance of its kind under the
 `g` prefix (lowercase forward, uppercase backward, e.g. `g f`/`g F`). See
 [Moving Around](moving-around.md#structural-navigation).
 

@@ -3,7 +3,7 @@
 
 use super::super::*;
 use test_fixtures::assert_state;
-use test_fixtures::unicode::{ALL, standalone};
+use test_fixtures::unicode::{ALL, IDEO_SPACE, NBSP, non_blank, standalone};
 
 #[test]
 fn inner_paren_selects_the_sample() {
@@ -137,6 +137,51 @@ fn select_next_word_lands_on_the_whole_sample() {
                 crate::WordCtx::bare(MotionMode::Move)
             ),
             &format!("x\na -[{s}]> b\n")
+        );
+    }
+}
+
+#[test]
+fn inner_tag_selects_the_sample() {
+    for s in non_blank() {
+        assert_state!(
+            &format!("x\n<p>-[{s}]></p>\n"),
+            |(text, sels)| apply_text_object_by_mode(
+                test_fixtures::testing::state(text, sels),
+                MotionMode::Move,
+                inner_tag
+            ),
+            &format!("x\n<p>-[{s}]></p>\n")
+        );
+    }
+}
+
+#[test]
+fn inner_tag_of_a_blank_sample_is_a_noop() {
+    for s in [NBSP, IDEO_SPACE] {
+        assert_state!(
+            &format!("x\n<p>-[{s}]></p>\n"),
+            |(text, sels)| apply_text_object_by_mode(
+                test_fixtures::testing::state(text, sels),
+                MotionMode::Move,
+                inner_tag
+            ),
+            &format!("x\n<p>-[{s}]></p>\n")
+        );
+    }
+}
+
+#[test]
+fn around_tag_selects_the_tags_and_the_sample() {
+    for s in standalone() {
+        assert_state!(
+            &format!("x\n<p>-[{s}]></p>\n"),
+            |(text, sels)| apply_text_object_by_mode(
+                test_fixtures::testing::state(text, sels),
+                MotionMode::Move,
+                around_tag
+            ),
+            &format!("x\n-[<p>{s}</p>]>\n")
         );
     }
 }

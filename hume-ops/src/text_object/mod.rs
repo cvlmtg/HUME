@@ -14,6 +14,7 @@ mod paragraph;
 mod quote;
 mod word;
 
+pub use crate::tag::{around_tag, inner_tag};
 pub use crate::word_unit::{expand_word_unit, inner_word_impl, word_unit_at};
 pub use argument::{around_argument, around_from_inner, inner_argument};
 pub use bracket::{

@@ -86,12 +86,14 @@ and select it as a whole, cursor (head) on its first character:
 | `g c` / `g C` | `goto-next-comment` / `goto-prev-comment` | The next/previous comment |
 | `g u` / `g U` | `goto-next-test` / `goto-prev-test` | The next/previous unit test |
 | `g v` / `g V` | `goto-next-value` / `goto-prev-value` | The next/previous array/tuple/struct value |
+| `g x` / `g X` | `goto-next-tag` / `goto-prev-tag` | The next/previous tag pair |
 
 Lowercase jumps forward, uppercase jumps backward, with the same letter each kind uses as its
 [text object](selections.md) key. Each also runs from the command mode prompt, e.g.
 `:goto-next-function`. They stop at either end of the buffer instead of wrapping, and each
 records a jump-list entry, so `Ctrl-o` returns to where you jumped from. Without a matching
-grammar, every one of these commands is a silent no-op.
+grammar, `g x`/`g X` find tags with a lexical scan, and every other one of these commands is a
+silent no-op.
 
 ## Jump to a line by number
 

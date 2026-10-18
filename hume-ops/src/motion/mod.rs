@@ -76,6 +76,7 @@ pub use find::{
     find_char_backward, find_char_forward, repeat_find_char_backward, repeat_find_char_forward,
 };
 mod object;
+pub use crate::tag::adjacent_tag;
 pub use object::apply_object_motion;
 
 #[cfg(test)]

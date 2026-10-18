@@ -1,6 +1,7 @@
 //! Tree-sitter structural text objects (`m i f`, `m a c`, …) and navigation
 //! (`goto-next-<kind>`, `goto-prev-<kind>`): the `SelectionBody::Structural`
-//! interpreter and the `ObjectSpans` collection a `StructuralBody` probes.
+//! interpreter, the `ObjectSpans` collection a `StructuralBody` probes, and
+//! the lexical scans a kind falls back to without one.
 //!
 //! Tree *freshness* before a query is `syntax::ensure_syntax_current`, next to
 //! the per-frame reparse path it mirrors rather than here.
@@ -10,11 +11,12 @@ use std::sync::Arc;
 use hume_editing::state::EditState;
 use hume_editing::text::BufferText;
 use hume_ops::MotionMode;
-use hume_ops::motion::apply_object_motion;
+use hume_ops::motion::{adjacent_tag, apply_object_motion};
 use hume_ops::text_object::{
-    apply_text_object_by_mode, around_argument, around_from_inner, inner_argument,
+    apply_text_object_by_mode, around_argument, around_from_inner, around_tag, inner_argument,
+    inner_tag,
 };
-use hume_rope::cluster::ClusterStart;
+use hume_rope::cluster::{ClusterRange, ClusterStart};
 use hume_treesitter::textobjects::{Direction, ObjectKind, ObjectSpan, ObjectSpans, SpanSelector};
 
 use super::super::buffer::Buffer;
@@ -32,6 +34,39 @@ fn selector_for(body: StructuralBody) -> SpanSelector {
         StructuralBody::Argument { .. } => {
             SpanSelector::Exact(ObjectKind::Parameter, ObjectSpan::Inside)
         }
+    }
+}
+
+type FindObject = fn(&BufferText, ClusterStart) -> Option<ClusterRange>;
+
+/// A kind's lexical form, defined once for both of its uses: `Select` falls
+/// back to `inner`/`around` where no captured object encloses the cursor,
+/// and `Goto` walks `adjacent` in a buffer whose grammar does not define the
+/// kind at all. Navigation never mixes the two per step, or a forward and a
+/// backward walk would visit different objects.
+#[derive(Clone, Copy)]
+struct LexicalObject {
+    inner: FindObject,
+    around: FindObject,
+    adjacent: fn(&BufferText, ClusterStart, bool) -> Option<ClusterRange>,
+}
+
+/// `None` for a kind found only through a grammar. `Parameter` is one of
+/// those here: its lexical scan belongs to `Argument`'s own rule, whose
+/// "around" is derived from the inside span.
+fn lexical_object(kind: ObjectKind) -> Option<LexicalObject> {
+    match kind {
+        ObjectKind::XmlElement => Some(LexicalObject {
+            inner: inner_tag,
+            around: around_tag,
+            adjacent: adjacent_tag,
+        }),
+        ObjectKind::Function
+        | ObjectKind::Class
+        | ObjectKind::Parameter
+        | ObjectKind::Comment
+        | ObjectKind::Test
+        | ObjectKind::Entry => None,
     }
 }
 
@@ -53,9 +88,8 @@ pub(super) fn object_spans(buf: &Buffer, body: StructuralBody) -> Arc<ObjectSpan
 
 impl StructuralBody {
     /// Interpret this body against `spans`: the one place `Select`, `Goto`,
-    /// and `Argument` become an actual selection transform, replacing
-    /// the 22 near-identical thin command functions a per-command
-    /// implementation would otherwise need.
+    /// and `Argument` become an actual selection transform, in place of a
+    /// near-identical thin command function per structural command name.
     ///
     /// The `Argument` fallback to the lexical scan is per-probe, not per
     /// buffer: a comma list the query doesn't cover (a top-level array
@@ -74,10 +108,23 @@ impl StructuralBody {
     ) -> EditState {
         let enclosing = |_: &BufferText, p: ClusterStart| spans.enclosing(p);
         match self {
-            StructuralBody::Select { .. } => apply_text_object_by_mode(state, mode, enclosing),
-            StructuralBody::Goto { dir, .. } => {
-                apply_object_motion(state, mode, count, dir == Direction::Backward, |p| {
-                    spans.adjacent(p, dir)
+            StructuralBody::Select { kind, span } => {
+                let lexical = lexical_object(kind).and_then(|l| match span {
+                    ObjectSpan::Inside => Some(l.inner),
+                    ObjectSpan::Around => Some(l.around),
+                    ObjectSpan::Movement => None,
+                });
+                apply_text_object_by_mode(state, mode, |t, p| {
+                    enclosing(t, p).or_else(|| lexical.and_then(|find| find(t, p)))
+                })
+            }
+            StructuralBody::Goto { kind, dir } => {
+                let backward = dir == Direction::Backward;
+                let lexical = lexical_object(kind).filter(|_| !spans.grammar_defines());
+                let text = state.text().clone();
+                apply_object_motion(state, mode, count, backward, |p| match lexical {
+                    Some(l) => (l.adjacent)(&text, p, backward),
+                    None => spans.adjacent(p, dir),
                 })
             }
             StructuralBody::Argument { around: false } => {

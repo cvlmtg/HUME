@@ -85,6 +85,7 @@ Text objects (use the `m` prefix):
 | `m i c` / `m a c` | `inner-comment` / `around-comment` |  | Inner / around comment |
 | `m i u` / `m a u` | `inner-test` / `around-test` |  | Inner / around unit test |
 | `m i v` / `m a v` | `inner-value` / `around-value` |  | Inner / around array/tuple/struct value |
+| `m i x` / `m a x` | `inner-tag` / `around-tag` |  | Inner / around tag pair (structure-aware) |
 | `m i i` | `select-last-insertion` |  | Select the text typed during the last insert |
 | `m m` | `select-word` |  | Select the word under the cursor (plus one adjacent whitespace run by default, same rule as `w`/`b`; see `word-selects-whitespace`) |
 | `M M` | `select-uppercase-word` |  | WORD variant of `m m` |
@@ -175,8 +176,9 @@ the structural pairs) the next/previous instance of a kind, selected as a whole:
 | `g c` / `g C` | `goto-next-comment` / `goto-prev-comment` |  | Next/previous comment |
 | `g u` / `g U` | `goto-next-test` / `goto-prev-test` |  | Next/previous unit test |
 | `g v` / `g V` | `goto-next-value` / `goto-prev-value` |  | Next/previous array/tuple/struct value |
+| `g x` / `g X` | `goto-next-tag` / `goto-prev-tag` |  | Next/previous tag pair |
 
-The structural pairs need a grammar with a `textobjects.scm`. See [Moving Around](moving-around.md#structural-navigation).
+The structural pairs need a grammar with a `textobjects.scm`, except `g x`/`g X`, which fall back to a lexical scan. See [Moving Around](moving-around.md#structural-navigation).
 
 `core:lsp` adds `g d`, `g D`, `g y`, and `g i` (definition, declaration, type definition,
 implementation), `g n`/`g p` (next/previous diagnostic), and `K` (hover) outside the prefix.

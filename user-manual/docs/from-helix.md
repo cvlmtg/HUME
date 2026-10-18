@@ -76,7 +76,7 @@ Indentation (Helix's per-language `indent.tab-width`/`indent.unit` in `languages
 - `d`, `c`, `y`, `p` for delete/change/yank/paste
 - `u` / `U` undo / redo
 - `>` / `<` indent / unindent the lines a selection touches, with count support (`3>`). HUME additionally re-renders each touched line's whole indent to the buffer's `tab-width`/`tab-style` rather than only prepending or trimming a fixed amount, so a mixed-tabs-and-spaces indent gets normalized as a side effect
-- `m i f`/`m a f`, `m i t`/`m a t`, `m i a`/`m a a`, `m i c`/`m a c`, `m i u`/`m a u`: the same letters as Helix's own match-mode textobjects except unit test (`T`→`u`; see below), selecting the enclosing function, class/type, argument, comment, or unit test for any language with a tree-sitter grammar that ships a textobjects query
+- `m i f`/`m a f`, `m i t`/`m a t`, `m i a`/`m a a`, `m i c`/`m a c`, `m i u`/`m a u`, `m i x`/`m a x`: the same letters as Helix's own match-mode textobjects except unit test (`T`→`u`; see below), selecting the enclosing function, class/type, argument, comment, unit test, or tag pair for any language with a tree-sitter grammar that ships a textobjects query
 - Enter, `o` and `O` indent new lines with Helix's indentation queries (see [Indentation](editing.md#indentation)), written in the buffer's `tab-style`. There is no `indent-heuristic` setting: HUME always uses Helix's default, `hybrid`; `smart-indent` turns automatic indentation off. HUME also moves a closing bracket or keyword back as you type it
 
 ### Themes
@@ -207,7 +207,7 @@ Enable the Helix-style bindings by loading the built-in plugin:
 
 Helix's match mode binds `m m` to jump to the matching bracket. HUME binds the same idea directly to `#`, with no mode step, and also matches HTML/XML/JSX tag pairs, without disturbing `%` (select whole buffer) in either editor.
 
-Helix's bracket mode also binds `]f`/`[f`, `]t`/`[t`, `]a`/`[a`, `]c`/`[c`, and `]T`/`[T` by default, jumping straight to the next/previous function, class, argument, comment, or unit test. HUME puts the same five kinds (plus `value`, for array/tuple/struct entries, which Helix's bracket mode doesn't have) on the `g` prefix instead of a separate bracket mode: lowercase jumps forward, uppercase jumps backward, on the same letter as the `m i`/`m a` text object: `g f`/`g F`, `g t`/`g T`, `g a`/`g A`, `g c`/`g C`, `g u`/`g U` (unit test), `g v`/`g V` (value).
+Helix's bracket mode also binds `]f`/`[f`, `]t`/`[t`, `]a`/`[a`, `]c`/`[c`, `]T`/`[T`, and `]x`/`[x` by default, jumping straight to the next/previous function, class, argument, comment, unit test, or tag pair. HUME puts the same six kinds (plus `value`, for array/tuple/struct entries, which Helix's bracket mode doesn't have) on the `g` prefix instead of a separate bracket mode: lowercase jumps forward, uppercase jumps backward, on the same letter as the `m i`/`m a` text object: `g f`/`g F`, `g t`/`g T`, `g a`/`g A`, `g c`/`g C`, `g u`/`g U` (unit test), `g v`/`g V` (value), `g x`/`g X` (tag pair).
 
 ## What we took from Helix
 
@@ -237,6 +237,7 @@ Several features were intentionally adopted from Helix rather than reinvented:
 - [One-shot extends](#growing-selections) that extend a single motion without switching to a select/extend mode
 - Backward line-selection shrinking (`Ctrl-Shift-x`, or `X` in Extend mode; see [Line selection](#line-selection-x-vs-extend-mode-e))
 - A structural text object and navigation kind for array/tuple/struct values ([`m i v`/`m a v`](selections.md#text-objects), [`g v`/`g V`](moving-around.md#structural-navigation))
+- Tag pair objects and navigation ([`m i x`/`m a x`](selections.md#text-objects), [`g x`/`g X`](moving-around.md#structural-navigation)) that also work in a buffer with no markup grammar
 - [Custom statusline elements](configuration.md#custom-elements) written in Scheme
 - Per-cursor shape and theme coloring for every multi-cursor, not just the primary one (see [Global options](configuration.md#global-options))
 - A real programming language for configuration ([`init.scm`](configuration.md)): conditionals, loops, and custom commands, not static TOML

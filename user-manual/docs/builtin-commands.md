@@ -30,6 +30,7 @@ Move the cursor/selection. Callable as `(name pane)` or `(call! "name" pane)`.
 | `goto-next-comment` | `g c` | Select the next comment. |
 | `goto-next-function` | `g f` | Select the next function. |
 | `goto-next-paragraph` | `}` | Select the next paragraph. |
+| `goto-next-tag` | `g x` | Select the next tag pair (element). |
 | `goto-next-test` | `g u` | Select the next unit test. |
 | `goto-next-value` | `g v` | Select the next array/tuple/struct value. |
 | `goto-prev-argument` | `g A` | Select the previous argument. |
@@ -37,6 +38,7 @@ Move the cursor/selection. Callable as `(name pane)` or `(call! "name" pane)`.
 | `goto-prev-comment` | `g C` | Select the previous comment. |
 | `goto-prev-function` | `g F` | Select the previous function. |
 | `goto-prev-paragraph` | `{` | Select the previous paragraph. |
+| `goto-prev-tag` | `g X` | Select the previous tag pair (element). |
 | `goto-prev-test` | `g U` | Select the previous unit test. |
 | `goto-prev-value` | `g V` | Select the previous array/tuple/struct value. |
 | `jump-backward` | `Ctrl-o` | Navigate to the previous position in the jump list. |
@@ -97,6 +99,7 @@ Select a delimited region around the cursor.
 | `around-paragraph` | `m a p` | Select the paragraph plus its trailing blank gap. |
 | `around-paren` | `m a (` / `m a )` | Select content including the nearest `()`. |
 | `around-single-quote` | `m a '` | Select content including the nearest `'`. |
+| `around-tag` | `m a x` | Select a pair of tags and their content. Uses the language's element object when the grammar defines one, a lexical scan otherwise. |
 | `around-test` | `m a u` | Select the whole unit test, including its attribute or decorator. Requires a grammar with a `textobjects.scm`. |
 | `around-uppercase-word` | `m a W` | Select uppercase word plus one adjacent whitespace run. |
 | `around-value` | `m a v` | Select an array/tuple/struct value plus its separator comma. Requires a grammar with a `textobjects.scm`. |
@@ -114,6 +117,7 @@ Select a delimited region around the cursor.
 | `inner-paragraph` | `m i p` | Select the paragraph's text, excluding any trailing blank gap. |
 | `inner-paren` | `m i (` / `m i )` | Select content inside the nearest `()`. |
 | `inner-single-quote` | `m i '` | Select content inside the nearest `'`. |
+| `inner-tag` | `m i x` | Select the content between a pair of tags. Uses the language's element object when the grammar defines one, a lexical scan otherwise. |
 | `inner-test` | `m i u` | Select inside a unit test function's body. Requires a grammar with a `textobjects.scm`. |
 | `inner-uppercase-word` | `m i W` | Select inner uppercase word (whitespace-delimited). |
 | `inner-value` | `m i v` | Select inside an array/tuple/struct value. Requires a grammar with a `textobjects.scm`. |

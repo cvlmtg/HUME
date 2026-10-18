@@ -1,12 +1,12 @@
-//! Lexical `<tag>` / `</tag>` matching for `%`-style navigation ([`matching_tag`]).
+//! Lexical `<tag>` / `</tag>` scanning: `%`-style matching ([`matching_tag`])
+//! and the tag-pair objects and navigation ([`inner_tag`], [`around_tag`],
+//! [`adjacent_tag`]) that `hume-editor` falls back to where no tree-sitter
+//! element object applies.
 //!
-//! Not tree-sitter-backed: `hume-ops` cannot depend on
-//! `hume-treesitter` (a lower-level crate can't reach up to a higher one),
-//! so a grammar-based version would have to live as an `EditorCmd` in
-//! `hume-editor`, working only in a buffer with a parsed tree for a markup
-//! grammar. This scan works in any buffer, including a scratch buffer with
-//! no language at all. It's the same trade [`crate::pair`]'s lexical bracket and
-//! quote scans already make.
+//! Not tree-sitter-backed: `hume-ops` cannot depend on `hume-treesitter`.
+//! This scan works in any buffer, including a scratch buffer with no
+//! language at all. It's the same trade [`crate::pair`]'s lexical bracket
+//! and quote scans make.
 //!
 //! Scans one char at a time via `chars_at` (never grapheme boundaries): the
 //! same sanctioned exception `pair.rs` uses, since no grapheme cluster can be
@@ -18,12 +18,15 @@
 //! convention from.
 
 use hume_editing::text::BufferText;
-use hume_rope::cluster::ClusterStart;
+use hume_rope::cluster::{ClusterRange, ClusterStart};
 use hume_rope::cursor::CharCursor;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 use unicode_normalization::char::is_combining_mark;
 
+use crate::text_object::trim_blank;
+
 /// One parsed `<name…>`, `<name…/>`, or `</name>` construct.
+#[derive(Clone, Copy)]
 struct Tag {
     closing: bool,
     self_closing: bool,
@@ -242,7 +245,7 @@ fn parse_tag_at(text: &BufferText, lt_pos: CharOffset) -> Option<Tag> {
 /// `</name>`), tracking nesting depth for same-name tags only: the same
 /// technique [`crate::pair::scan_right_for_close`] uses for brackets.
 /// `open` must be a non-closing, non-self-closing tag.
-fn close_after(text: &BufferText, open: &Tag) -> Option<CharOffset> {
+fn close_after(text: &BufferText, open: &Tag) -> Option<Tag> {
     let mut depth = 0usize;
     let mut cursor = text.chars_at(open.gt_pos.shift(1));
     while let Some(tag) = next_tag(text, &mut cursor) {
@@ -251,7 +254,7 @@ fn close_after(text: &BufferText, open: &Tag) -> Option<CharOffset> {
         }
         if tag.closing {
             if depth == 0 {
-                return Some(tag.lt_pos);
+                return Some(tag);
             }
             depth -= 1;
         } else {
@@ -277,8 +280,8 @@ fn close_after(text: &BufferText, open: &Tag) -> Option<CharOffset> {
 /// this way, corrupting [`open_before`]'s depth count. An unbalanced
 /// fragment there (one tag-shaped construct, not a real pair) triggers it; a
 /// balanced one cancels itself out and is harmless. Accepted as a known
-/// limitation of the lexical scanner rather than fixed, since a
-/// tree-sitter-backed matcher is expected to supersede this path.
+/// limitation of the lexical scanner. A buffer with a markup grammar gets
+/// its element objects and navigation from the tree instead.
 fn prev_tag(text: &BufferText, before: CharOffset) -> Option<Tag> {
     let mut cursor = text.chars_at(before);
     while let Some((i, ch)) = cursor.prev() {
@@ -302,7 +305,7 @@ fn prev_tag(text: &BufferText, before: CharOffset) -> Option<Tag> {
 /// reverse, while typically touching only the handful of tags between
 /// `close` and its partner instead of the whole preceding buffer. See
 /// [`prev_tag`]'s doc for the one case this reuse doesn't handle.
-fn open_before(text: &BufferText, close: &Tag) -> Option<CharOffset> {
+fn open_before(text: &BufferText, close: &Tag) -> Option<Tag> {
     let mut depth = 0usize;
     let mut before = close.lt_pos;
     while let Some(tag) = prev_tag(text, before) {
@@ -313,7 +316,7 @@ fn open_before(text: &BufferText, close: &Tag) -> Option<CharOffset> {
         if tag.closing {
             depth += 1;
         } else if depth == 0 {
-            return Some(tag.lt_pos);
+            return Some(tag);
         } else {
             depth -= 1;
         }
@@ -341,5 +344,181 @@ pub(crate) fn matching_tag(text: &BufferText, pos: ClusterStart) -> Option<Clust
     } else {
         close_after(text, &tag)
     }?;
-    Some(text.snap(partner))
+    Some(text.snap(partner.lt_pos))
+}
+
+/// An opening tag and the tag that closes it. `close` is `None` for a
+/// self-closing tag and for one never closed (an HTML void `<br>`), whose
+/// element is the tag alone.
+struct Element {
+    open: Tag,
+    close: Option<Tag>,
+}
+
+impl Element {
+    /// `open` must be a non-closing tag.
+    fn from_open(text: &BufferText, open: Tag) -> Self {
+        let close = if open.self_closing {
+            None
+        } else {
+            close_after(text, &open)
+        };
+        Self { open, close }
+    }
+
+    /// From the opening `<` through the closing `>`.
+    fn around(&self, text: &BufferText) -> Option<ClusterRange> {
+        let last = self.close.unwrap_or(self.open);
+        text.covering(ExclusiveRange::new(self.open.lt_pos, last.gt_pos.shift(1)))
+    }
+
+    /// The content between the two tags, trimmed of blanks on both sides,
+    /// which is the span a tree-sitter `xml-element.inside` capture hulls.
+    /// `None` without a closing tag or when the content is blank.
+    fn inner(&self, text: &BufferText) -> Option<ClusterRange> {
+        let close = self.close?;
+        let content = text.within(ExclusiveRange::new(self.open.gt_pos.shift(1), close.lt_pos))?;
+        trim_blank(text, content)
+    }
+}
+
+/// The elements enclosing a position, innermost first, found by walking
+/// tags backward from `before`. A closing tag counts against the next
+/// same-name opening tag; an opening tag left over is an enclosing element
+/// when [`close_after`] finds its partner, and a void tag otherwise.
+///
+/// A name whose opening tag had no partner goes in `unclosed`: an earlier
+/// opening tag of that name, with no closing tag pending, has none either,
+/// so one void name costs one scan to the end of the buffer, not one per
+/// occurrence.
+struct Ancestors<'a> {
+    text: &'a BufferText,
+    before: CharOffset,
+    closes: Vec<(ExclusiveRange<CharOffset>, usize)>,
+    unclosed: Vec<ExclusiveRange<CharOffset>>,
+}
+
+impl<'a> Ancestors<'a> {
+    fn new(text: &'a BufferText, before: CharOffset) -> Self {
+        Self {
+            text,
+            before,
+            closes: Vec::new(),
+            unclosed: Vec::new(),
+        }
+    }
+}
+
+impl Iterator for Ancestors<'_> {
+    type Item = Element;
+
+    fn next(&mut self) -> Option<Element> {
+        let text = self.text;
+        while let Some(tag) = prev_tag(text, self.before) {
+            self.before = tag.lt_pos;
+            if tag.self_closing {
+                continue;
+            }
+            let pending = self
+                .closes
+                .iter_mut()
+                .find(|(name, _)| same_name(text, *name, tag.name));
+            if tag.closing {
+                match pending {
+                    Some((_, n)) => *n += 1,
+                    None => self.closes.push((tag.name, 1)),
+                }
+                continue;
+            }
+            if let Some((_, n)) = pending.filter(|(_, n)| *n > 0) {
+                *n -= 1;
+                continue;
+            }
+            if self
+                .unclosed
+                .iter()
+                .any(|&name| same_name(text, name, tag.name))
+            {
+                continue;
+            }
+            match close_after(text, &tag) {
+                Some(close) => {
+                    return Some(Element {
+                        open: tag,
+                        close: Some(close),
+                    });
+                }
+                None => self.unclosed.push(tag.name),
+            }
+        }
+        None
+    }
+}
+
+/// The elements enclosing `pos`, innermost first. With `pos` on a tag's own
+/// markup the first is that tag's element (an opening tag, its closing
+/// partner, or a lone void or self-closing tag); a closing tag with no
+/// opening partner contributes nothing.
+fn enclosing_elements(text: &BufferText, pos: CharOffset) -> impl Iterator<Item = Element> + '_ {
+    let under = tag_at(text, pos);
+    let own = under.and_then(|tag| {
+        if tag.closing {
+            open_before(text, &tag).map(|open| Element {
+                open,
+                close: Some(tag),
+            })
+        } else {
+            Some(Element::from_open(text, tag))
+        }
+    });
+    let before = own
+        .as_ref()
+        .map(|e| e.open.lt_pos)
+        .or(under.map(|t| t.lt_pos))
+        .unwrap_or(pos);
+    own.into_iter().chain(Ancestors::new(text, before))
+}
+
+/// The innermost element whose markup or content holds `pos`, from its
+/// opening `<` through its closing `>`.
+pub fn around_tag(text: &BufferText, pos: ClusterStart) -> Option<ClusterRange> {
+    enclosing_elements(text, pos.offset()).next()?.around(text)
+}
+
+/// The content of the innermost element whose trimmed content holds `pos`.
+/// On a tag's own markup that is the parent's content, as with a
+/// tree-sitter `xml-element.inside` capture, which never covers its own
+/// tags.
+pub fn inner_tag(text: &BufferText, pos: ClusterStart) -> Option<ClusterRange> {
+    enclosing_elements(text, pos.offset())
+        .find_map(|e| e.inner(text).filter(|range| range.contains(pos)))
+}
+
+/// The whole element whose opening tag starts nearest after `pos`
+/// (`backward`: before it), skipping closing tags. The element under the
+/// cursor counts backward but not forward, so a backward step from inside
+/// an element lands on its own start first. The returned start always lies
+/// strictly past (before) `pos`'s cluster, the progress
+/// [`crate::motion::apply_object_motion`] requires.
+pub fn adjacent_tag(text: &BufferText, pos: ClusterStart, backward: bool) -> Option<ClusterRange> {
+    let open = if backward {
+        let mut before = pos.offset();
+        loop {
+            let tag = prev_tag(text, before)?;
+            if !tag.closing {
+                break tag;
+            }
+            before = tag.lt_pos;
+        }
+    } else {
+        let from = tag_at(text, pos.offset()).map_or(pos.offset(), |t| t.gt_pos.shift(1));
+        let mut cursor = text.chars_at(from);
+        loop {
+            let tag = next_tag(text, &mut cursor)?;
+            if !tag.closing && text.snap(tag.lt_pos) > pos {
+                break tag;
+            }
+        }
+    };
+    Element::from_open(text, open).around(text)
 }

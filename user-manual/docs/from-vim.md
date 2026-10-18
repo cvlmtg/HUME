@@ -139,11 +139,11 @@ Vim's `iw` / `aw` family lives behind the `m` prefix, and, as everywhere else, y
 | `ci"` | `m i "` then `c` |
 | `da(` | `m a (` then `d` |
 | `dap` | `m a p` then `d` |
-| `dat` | *(none)*: no tag or sentence objects |
+| `dat` | `m a x` then `d` |
 
 The available objects are word (`w`), WORD (`W`), the bracket pairs (`(`, `[`, `{`, `<`), the quote pairs (`"`, `'`, `` ` ``), argument (`a`), line (`l`), and paragraph (`p`), each with an `i` (inner) and `a` (around) form. One extra has no Vim equivalent: `m i i` selects the text you typed during your last insert.
 
-For a language with a tree-sitter grammar that ships a textobjects query, HUME also adds `m i f`/`m a f` (function), `m i t`/`m a t` (class/type), `m i c`/`m a c` (comment), `m i u`/`m a u` (unit test), and `m i v`/`m a v` (array/tuple/struct value). Vanilla Vim has nothing like these without a plugin. Each pairs with a `goto-next-<kind>`/`goto-prev-<kind>` command that jumps to the next/previous one as a selection, on the same letter under `g` (lowercase forward, uppercase backward, e.g. `g f`/`g F`).
+For a language with a tree-sitter grammar that ships a textobjects query, HUME also adds `m i f`/`m a f` (function), `m i t`/`m a t` (class/type), `m i c`/`m a c` (comment), `m i u`/`m a u` (unit test), and `m i v`/`m a v` (array/tuple/struct value). Tag pairs (`m i x`/`m a x`, Vim's `it`/`at`) use the grammar when there is one and a lexical scan otherwise. HUME has no sentence object. Vanilla Vim has nothing like these without a plugin. Each pairs with a `goto-next-<kind>`/`goto-prev-<kind>` command that jumps to the next/previous one as a selection, on the same letter under `g` (lowercase forward, uppercase backward, e.g. `g f`/`g F`).
 
 Vim's `iskeyword` is `word-chars`, a buffer option listing extra characters that count as part of a word (see [Configuration](configuration.md)). HUME doesn't parse Vim's range syntax (`48-57`, `@`, `192-255`); list the characters directly, e.g. `-` for CSS.
 

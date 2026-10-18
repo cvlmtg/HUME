@@ -3,39 +3,43 @@
 // the `SelectionBody::Structural` wiring in `commands/structural.rs`,
 // `registry/defaults/structural.rs`, and `keymap/defaults.rs`.
 //
-// Requires the `rust` grammar fixture plus its Helix-maintained
-// `textobjects.scm`: run scripts/fetch-test-grammars.sh.
+// Requires the `rust` and `html` grammar fixtures plus their
+// Helix-maintained `textobjects.scm`: run scripts/fetch-test-grammars.sh.
 
 use super::*;
 use hume_treesitter::registry::{OptionalQuery, QueryFiles};
 use test_fixtures::{grammar_query_path, require_grammars, require_helix_query};
 
-/// Require this file's grammar fixture; see
+/// Require the `rust` grammar fixture; see
 /// `test_fixtures::require_grammars`/`require_helix_query`.
 fn require_fixtures() {
     require_grammars(&["rust"]);
     require_helix_query("rust", OptionalQuery::TextObjects.file_name());
 }
 
-/// Build an editor from the marker DSL with the `rust` grammar (plus its
-/// real Helix-maintained `textobjects.scm`, what `:plum-install-grammar`
-/// actually fetches) attached, but the initial parse *not yet* drained:
-/// the window `ensure_syntax_current`'s no-committed-tree gate covers.
-fn rust_editor_undrained(source: &str) -> Editor {
-    require_fixtures();
-    let to_path = require_helix_query("rust", OptionalQuery::TextObjects.file_name());
+/// Build an editor from the marker DSL with grammar `name` (plus its real
+/// Helix-maintained `textobjects.scm`, what `:plum-install-grammar` actually
+/// fetches) attached, but the initial parse *not yet* drained: the window
+/// `ensure_syntax_current`'s no-committed-tree gate covers.
+fn grammar_editor_undrained(name: &str, symbol: &str, source: &str) -> Editor {
+    require_grammars(&[name]);
+    let to_path = require_helix_query(name, OptionalQuery::TextObjects.file_name());
     let mut ed = editor_from(source);
     let bid = ed.focused_buffer_id();
     attach_fixture_grammar_with(
         &mut ed,
-        "rust",
-        "tree_sitter_rust",
-        &QueryFiles::new(grammar_query_path("rust")).with(OptionalQuery::TextObjects, to_path),
+        name,
+        symbol,
+        &QueryFiles::new(grammar_query_path(name)).with(OptionalQuery::TextObjects, to_path),
     );
     super::language::attach_host(&mut ed, "");
-    let lang = ed.state.config.languages.intern("rust");
+    let lang = ed.state.config.languages.intern(name);
     ed.set_buffer_language(bid, Some(lang));
     ed
+}
+
+fn rust_editor_undrained(source: &str) -> Editor {
+    grammar_editor_undrained("rust", "tree_sitter_rust", source)
 }
 
 /// Build an editor from the marker DSL with the `rust` grammar (plus its
@@ -44,6 +48,13 @@ fn rust_editor_undrained(source: &str) -> Editor {
 pub(super) fn rust_editor(source: &str) -> Editor {
     let mut ed = rust_editor_undrained(source);
     ed.reparse_stale_buffers(); // drains the initial full parse
+    ed
+}
+
+/// [`rust_editor`] for the `html` grammar.
+fn html_editor(source: &str) -> Editor {
+    let mut ed = grammar_editor_undrained("html", "tree_sitter_html", source);
+    ed.reparse_stale_buffers();
     ed
 }
 
@@ -736,4 +747,171 @@ fn around_test_from_the_gap_between_two_tests_is_a_no_op() {
         ed.handle_key(key(ch));
     }
     assert_eq!(selected_text(&ed), before);
+}
+
+// ── Tags: `m i x` / `m a x` / `g x` / `g X` ─────────────────────────────────
+
+fn press(ed: &mut Editor, keys: &str) {
+    for ch in keys.chars() {
+        ed.handle_key(key(ch));
+    }
+}
+
+const TAG_CHILDREN: &str = "<div>\n  <a>1</a>\n  te-[x]>t\n  <b>2</b>\n</div>\n";
+
+#[test]
+fn inner_tag_selects_every_child_of_the_element() {
+    let mut ed = html_editor(TAG_CHILDREN);
+    press(&mut ed, "mix");
+    assert_eq!(selected_text(&ed), "<a>1</a>\n  text\n  <b>2</b>");
+}
+
+/// The cursor on a child's own markup is outside that child's content, so
+/// the parent's content is selected.
+#[test]
+fn inner_tag_on_a_child_markup_selects_the_parent_content() {
+    let mut ed = html_editor("<div>\n  <a>1</a>\n  text\n  <b>2</-[b]>>\n</div>\n");
+    press(&mut ed, "mix");
+    assert_eq!(selected_text(&ed), "<a>1</a>\n  text\n  <b>2</b>");
+}
+
+#[test]
+fn inner_tag_trims_the_surrounding_whitespace() {
+    let mut ed = html_editor("<p>\n  hel-[l]>o\n</p>\n");
+    press(&mut ed, "mix");
+    assert_eq!(selected_text(&ed), "hello");
+}
+
+#[test]
+fn around_tag_selects_the_element_from_its_content_and_both_tags() {
+    for source in [
+        "<div><p>-[x]></p></div>\n",
+        "<div><p-[>]>x</p></div>\n",
+        "<div><p>x</-[p]>></div>\n",
+    ] {
+        let mut ed = html_editor(source);
+        press(&mut ed, "max");
+        assert_eq!(selected_text(&ed), "<p>x</p>", "from {source:?}");
+    }
+}
+
+#[test]
+fn around_tag_on_a_void_or_self_closing_tag_selects_the_tag() {
+    let mut ed = html_editor("<p>a<b-[r]>><i>b</i></p>\n");
+    press(&mut ed, "max");
+    assert_eq!(selected_text(&ed), "<br>");
+    let mut ed = html_editor("<p>a<im-[g]>/>b</p>\n");
+    press(&mut ed, "max");
+    assert_eq!(selected_text(&ed), "<img/>");
+}
+
+/// The html grammar ends a void element only at the next `<` or the end of
+/// the file, so text and whitespace right after `<br>` belong to its tree
+/// element.
+#[test]
+fn around_tag_on_a_void_tag_runs_to_the_next_tag_as_the_grammar_parses_it() {
+    let mut ed = html_editor("<p>a<b-[r]>>b</p>\n");
+    press(&mut ed, "max");
+    assert_eq!(selected_text(&ed), "<br>b");
+    let mut ed = html_editor("<p>a<b-[r]>>\n</p>\n");
+    press(&mut ed, "max");
+    assert_eq!(selected_text(&ed), "<br>\n");
+}
+
+#[test]
+fn inner_tag_on_a_void_tag_selects_the_parent_content() {
+    let mut ed = html_editor("<p>a<b-[r]>>b</p>\n");
+    press(&mut ed, "mix");
+    assert_eq!(selected_text(&ed), "a<br>b");
+}
+
+#[test]
+fn inner_tag_extend_grows_to_the_parent_content() {
+    let mut ed = html_editor("<div><p>-[x]>y</p></div>\n");
+    ed.handle_key(key('e')); // toggle sticky extend
+    press(&mut ed, "mix");
+    assert_eq!(selected_text(&ed), "xy");
+    press(&mut ed, "mix");
+    assert_eq!(selected_text(&ed), "<p>xy</p>");
+}
+
+const TAG_NAV: &str = "-[a]>\n<p>1</p>\n<ul><li>2</li></ul>\n<b>3</b>\n";
+
+#[test]
+fn goto_next_tag_walks_elements_and_skips_children_of_the_selected_one() {
+    let mut ed = html_editor(TAG_NAV);
+    press(&mut ed, "gx");
+    assert_eq!(selected_text(&ed), "<p>1</p>");
+    let sel = ed.current_view().primary();
+    assert_eq!(sel.head(), sel.start());
+    press(&mut ed, "gx");
+    assert_eq!(selected_text(&ed), "<ul><li>2</li></ul>");
+    press(&mut ed, "gx");
+    assert_eq!(selected_text(&ed), "<b>3</b>");
+}
+
+#[test]
+fn goto_prev_tag_walks_back_into_the_last_child() {
+    let mut ed = html_editor("<p>1</p>\n<ul><li>2</li></ul>\n-[a]>\n");
+    press(&mut ed, "gX");
+    assert_eq!(selected_text(&ed), "<li>2</li>");
+}
+
+#[test]
+fn goto_next_tag_with_count_two() {
+    let mut ed = html_editor(TAG_NAV);
+    ed.execute_keymap_command("goto-next-tag".into(), Some(2), false);
+    assert_eq!(selected_text(&ed), "<ul><li>2</li></ul>");
+}
+
+#[test]
+fn goto_next_tag_extend_unions_with_the_selection() {
+    let mut ed = html_editor(TAG_NAV);
+    ed.execute_keymap_command("goto-next-tag".into(), None, true);
+    assert_eq!(selected_text(&ed), "a\n<p>1</p>");
+}
+
+/// The grammar defines the element object, so navigation follows the tree
+/// throughout the buffer and never reaches into a script's raw text, where
+/// the lexical scan would find `<b>`.
+#[test]
+fn goto_next_tag_in_a_markup_buffer_skips_tags_inside_script_text() {
+    let mut ed = html_editor("<script>var s = \"-[a]> <b>x</b>\";</script>\n<p>y</p>\n");
+    press(&mut ed, "gx");
+    assert_eq!(selected_text(&ed), "<p>y</p>");
+}
+
+// ── Tags without a markup grammar: the lexical scan ──────────────────────────
+
+#[test]
+fn tag_objects_without_a_grammar_use_the_lexical_scan() {
+    let mut ed = editor_from("<div><p>-[x]></p></div>\n");
+    press(&mut ed, "mix");
+    assert_eq!(selected_text(&ed), "x");
+    press(&mut ed, "max");
+    assert_eq!(selected_text(&ed), "<p>x</p>");
+}
+
+#[test]
+fn tag_navigation_without_a_grammar_uses_the_lexical_scan() {
+    let mut ed = editor_from(TAG_NAV);
+    press(&mut ed, "gx");
+    assert_eq!(selected_text(&ed), "<p>1</p>");
+    press(&mut ed, "gx");
+    assert_eq!(selected_text(&ed), "<ul><li>2</li></ul>");
+    press(&mut ed, "gX");
+    assert_eq!(selected_text(&ed), "<p>1</p>");
+}
+
+/// The rust grammar defines no element object, so tags inside a string are
+/// found by the lexical scan for both selection and navigation.
+#[test]
+fn tags_in_a_rust_string_use_the_lexical_scan() {
+    let mut ed = rust_editor("fn f() {\n    let s = \"<p>-[x]></p>\";\n}\n");
+    press(&mut ed, "max");
+    assert_eq!(selected_text(&ed), "<p>x</p>");
+
+    let mut ed = rust_editor("-[f]>n f() {\n    let s = \"<p>x</p>\";\n}\n");
+    press(&mut ed, "gx");
+    assert_eq!(selected_text(&ed), "<p>x</p>");
 }

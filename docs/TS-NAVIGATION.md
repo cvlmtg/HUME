@@ -14,11 +14,11 @@ architecture and the *why* behind it, not a build log.
 
 ## Scope and principles
 
-- Object kinds: `function`, `class`, `parameter`, `comment`, `test`, `entry` — every kind Helix's
-  query files define except `xml-element` (see *Future work*). Adding a kind is one enum variant,
-  one table row, one manual row. `entry`'s user-facing text-object/navigation commands are named
-  `value`, not `entry` — see `registry/defaults/structural.rs`'s entry row for why that split
-  exists (the tree-sitter capture name isn't HUME's to rename; the command name is).
+- Object kinds: `function`, `class`, `parameter`, `comment`, `test`, `entry`, `xml-element`, every
+  kind Helix's query files define. Adding a kind is one enum variant, one table row, one manual
+  row. `entry`'s user-facing text-object/navigation commands are named `value` and
+  `xml-element`'s are named `tag`: the tree-sitter capture name isn't HUME's to rename; the command
+  name is.
 - Crate boundaries are compiler-enforced: `hume-editor` production code names no `tree_sitter::*`
   type (`tree-sitter` is a dev-dependency there); `hume-ops` depends on neither `tree-sitter` nor
   `hume-treesitter`. Consequently:
@@ -46,6 +46,7 @@ architecture and the *why* behind it, not a build log.
 | Extend after a Move result | Union with the running selection, not a plain anchor-keep | A Move result's anchor sits at the object's *end* (reversed, for the head-at-start rule above); a plain "keep the anchor, move the head" replacement — the convention elsewhere in `hume-ops` — would drop everything between the object's near edge and a newly found span, or shrink the selection when the found span is nested inside what's already selected. Taking the min/max of the current selection and the found span with every step fixes both, self-correcting the same way `apply_word_select_extend`'s own union-based growth does. |
 | Navigation's default keys | `g <key>`/`g <KEY>` (lowercase next, uppercase previous), reusing each kind's `m i`/`m a` key | Slots into the `g` goto prefix — a structural jump is a goto like any other. Two kinds' letters diverge from Helix's own (`test` `T`→`u`, `entry` `e`→`v`) because deriving "previous" by uppercasing requires every key lowercase and no two uppercased forms to collide; `T` had no lowercase form, and `e` collides with `goto-last-line`. See `keymap/defaults::build_goto_trie` and `STRUCTURAL_OBJECTS`'s doc comment. |
 | `m i a` / `m a a` | One command family, structure-aware | `inner-argument`/`around-argument` use the grammar's `parameter` object when the buffer has one, the lexical scan otherwise, and HUME's own separator rule for "around" in both cases. There is no separate `parameter` object family. |
+| Tags without a markup grammar | Lexical fallback: per probe for `m i x`/`m a x`, per buffer for `g x`/`g X` | A selection is one probe, so the tree wins where a captured element encloses the cursor and the lexical scan answers elsewhere (a syntax error, tags in a code string, no grammar), the same rule as `m i a`. Navigation is a sequence: switching source per step would make a forward walk and a backward walk visit different tags, so the lexical scan runs only in a buffer where no layer's query defines `xml-element` (`ObjectSpans::grammar_defines`, an explicit flag rather than "no spans", which an html file with no elements also has). |
 | `register-grammar!` call syntax | `#:injections`/`#:textobjects` keyword arguments | Needs steel-core 0.8.3 or later: 0.8.2 miscompiles a keyword-arg call nested inside another (e.g. inside `define-command!`). |
 
 ## Query layer (`hume-treesitter`)
@@ -152,6 +153,23 @@ span by locating its separator comma — HUME's own rule, independent of whether
 came from the lexical scan or a tree-sitter `parameter.inside` capture, so `m i a`/`m a a` stay one
 structure-aware family rather than two separate objects.
 
+`tag.rs`'s `inner_tag`, `around_tag` and `adjacent_tag` are the lexical tag scans, built on the
+same parser as `#`'s `matching_tag`. They follow the tree's own rules so a key behaves the same with
+and without a grammar: `around` runs from the opening `<` through the closing `>`; `inner` is the
+content trimmed of blanks, absent when blank, and is the *smallest element whose trimmed content
+holds the cursor*, so on a tag's own markup it is the parent's content, as `enclosing` gives for
+`xml-element.inside`. A self-closing tag has no inside (html/xml/vue/svelte; JSX's query alone makes
+the whole tag its inside). The enclosing walk goes backward from the cursor, counting closing tags
+against same-name openers; an opener left over is checked forward for its partner, and a name with
+no partner (an HTML void tag) is remembered so it costs one scan to the end of the buffer, not one
+per occurrence.
+
+Accepted divergences from a markup grammar, pinned by `hume-ops` tests: HTML implied end tags are
+not inferred (`<li>a<li>b` is two unclosed tags), names compare case-sensitively, and a tag inside a
+comment or quoted attribute before the cursor is visible to the backward walk. The html grammar
+itself ends a void element only at the next `<`, so its tree element for `<br>` runs over any text
+or whitespace up to the next tag; HUME uses that span as the query captures it.
+
 ## Commands and dispatch (`hume-editor`)
 
 `registry/command.rs::SelectionBody::Structural(StructuralBody)` is the registry's hook for a body
@@ -160,10 +178,12 @@ needing more context than a plain function pointer carries. `StructuralBody` has
 `goto-prev-<k>`), and `Argument { around: bool }` (`m i a` / `m a a`, the tree-sitter `parameter`
 object with the lexical scan as fallback). One arm in the dispatch funnel
 (`commands/pipeline.rs::run_body`) interprets all three: `ensure_syntax_current`, collect
-`ObjectSpans` for the body's kind, apply the body against them.
+`ObjectSpans` for the body's kind, apply the body against them. `commands/structural.rs::
+lexical_object` is an exhaustive per-kind match naming a kind's lexical scans, if it has any; both
+`Select`'s and `Goto`'s fallbacks read it, so a kind's two fallbacks cannot drift apart.
 
 `registry/defaults/structural.rs::STRUCTURAL_OBJECTS` is the single table driving both
-registration (24 commands: four per kind × six kinds) and the keymap
+registration (four commands per kind) and the keymap
 (`keymap/defaults::build_text_object_trie` reads the same table for `m i`/`m a`'s third-level
 keys) — a kind added to the table needs no change anywhere else. Each row carries its own static
 doc strings per command rather than a shared noun template, since "including its delimiters" is
@@ -225,5 +245,4 @@ Recorded here so they are not re-proposed:
 
 ## Future work
 
-- `xml-element` object kind (Helix defines it; HUME's lexical tag matcher is the current answer).
 - `locals.scm` (scope-aware rename) — stays a separate roadmap item.

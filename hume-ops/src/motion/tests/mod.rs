@@ -6,4 +6,5 @@ mod line_select;
 mod matching_pair;
 mod object;
 mod paragraph;
+mod tag;
 mod word;
