@@ -127,6 +127,8 @@ Macros record and replay sequences of keys and are stored in registers. Register
 
 Recording is ignored in read-only buffers, and while a macro is already recording or replaying, so a macro can't record itself or nest.
 
+While a macro is recording, the default statusline shows `[recording @q]`, with the register being recorded into, on its right. It is the `"MacroRecording"` element; see [Statusline](configuration.md#statusline) to place it in a custom layout.
+
 ## Numeric count
 
 Prefix a command with digits to repeat it. The first digit must be `1`–`9`; `0` counts only once a count is already under way. So `12w` moves forward 12 words and `10j` moves down 10 lines. Counts above 10,000 are capped at 10,000.
