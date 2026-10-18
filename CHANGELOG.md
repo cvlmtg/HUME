@@ -3,62 +3,48 @@
 ## Unreleased
 
 ### Breaking changes
-- Key-bindable commands of the core plugins share a plugin prefix. Rename them in your `init.scm` bindings and `call!`s: `lsp-fmt` is `lsp/format-source`, `lsp-fmt-document` is `lsp/format-document`, and the other `lsp-*` commands and `goto-next-diagnostic`/`goto-prev-diagnostic` take the `lsp/` prefix (`lsp-hover` is `lsp/hover`). `toggle-undotree` is `undotree/toggle`, `picker-files`, `picker-buffers` and `picker-git-modified` are `pickers/files`, `pickers/buffers` and `pickers/git-modified`, `plum-ensure-grammars` is `plum/ensure-grammars`, and the `classic-*`, `helix-*` and `vim-*` commands take the `classic-paste/`, `helix-surround/` and `vim-keybind/` prefixes. Typed `:` commands keep their names.
-
-- `lsp-locations->display-parts` is `lsp-locations->places`. It returns one entry per location, in order, instead of merging locations that name the same place, and an entry is `#f` for a location HUME cannot jump to: a URI that is not a `file://` one, or a line past the end of the file's open buffer. For a merged list, use the new `lsp-locations->merged-places`, which returns `(hash 'places l 'skipped n)`: the places without the `#f` entries and how many were left out. `'grapheme-col-or-wire` is always a number.
-
-- Position hashes name their unit. `'start-char`/`'end-char` are char offsets and `'start-line`/`'end-line` are lines, in place of `'start`/`'end` in `viewport-range` (lines), `lsp-range->char-range`, `set-extra-highlights!`, `set-virtual-lines!` segments and the `#:range` and entries of `diagnostics-for-buffer`, whose `'line` is `'start-line`. `set-inlay-hints!` takes `'char-offset` in place of `'offset`, and `diff-words` hunks carry `'old-start-char`, `'old-end-char`, `'new-start-char` and `'new-end-char`.
-
-- A `diagnostics-for-buffer` entry's `'end-line` is one past the last line the diagnostic touches, so `[start-line, end-line)` always names a line: it was the last line, and it came out before `'start-line` for an empty diagnostic at the start of a line. `#:range` raises when it ends before it starts or past the end of the buffer.
-
-- Diff hunks from `diff-lines`, `diff-buffer-lines` and `buffer-revision-diff` carry `'old-start-line`, `'old-end-line`, `'new-start-line` and `'new-end-line` (end exclusive) in place of `'old-start`, `'old-count`, `'new-start` and `'new-count`. In `'words`, an old-side span is `(hash 'line 'start-char-col 'end-char-col)` with `'line` a line of the old text, not counted from the hunk's first line, and a new-side span is `(hash 'start-char 'end-char)`, char offsets into the new text, ready for `set-extra-highlights!`.
-
-- `char-offset->line` and `buffer-cursor-line` return content lines: the offset at the end of the buffer is on the last line, not on the empty line after it, and an offset past the end of the buffer raises instead of returning `#f`. `lsp-range->char-range` returns `#f` for a range reaching a line past the end of the document, and `apply-text-edits!` and `apply-workspace-edit!` refuse an edit whose range does, instead of applying it clamped.
-
-- `goto-location!` returns `#t` after a jump and `#f` when the line it names no longer exists, and a target that is a pane is positioned by `'char-offset` instead of `'line` and `'char-col`: `(hash 'target pane 'char-offset o)`. A path target keeps `'line` and `'char-col`, and a URI such as `file://…` is no longer a target; pass the path. `diagnostics-for-buffer` entries have no `'char-col`: jump with `'start-char`.
-
-- `core:stdlib`'s selection accessors name their unit: `stdlib/cursor-char-index` is `stdlib/cursor-char-offset`, and `stdlib/selection-start`/`stdlib/selection-end` are `stdlib/selection-start-char`/`stdlib/selection-end-char`. Rename them in your `call!`s.
-
-- A line range is one value, `(hash 'start-line s 'end-line e)`: `viewport-range` returns it, `buffer-lines` takes it as `#:range` in place of `#:start` and `#:end`, and `on-viewport-change` handlers receive `(pane range)` in place of `(pane first-line end-line)`. `(buffer-lines pane #:range (viewport-range pane))` reads what is on screen.
-
-- The char-offset conversions name their unit: `offset->line` is `char-offset->line`, `line->offset` is `line->char-offset`, `lsp-position->offset` is `lsp-position->char-offset` and `lsp-range->offsets` is `lsp-range->char-range`.
-
-- Calls that need language servers, diagnostics, completion, timers or background processes raise where those are not available, such as inside a drawer's `#:render`, instead of answering `#f`, an empty list, zero counts or nothing.
-
-- `live-picker!` takes `#:source`, a function of the picker token and the query, instead of `#:command`. To keep re-running a subprocess, pass `#:source (picker-command-source argv-for)`; `#:cwd`, `#:nul` and `#:ok-exit-codes` move to `picker-command-source`.
-
-- Typed command names can contain digits, so `:p1` runs a command named `p1`. An argument needs a space before it: write `:e 1.txt`, `:goto 42` and `:b 12abc`, not `:e1.txt`, `:goto42` and `:b12abc`; `:b2` still works. `define-typed-command!` and `#:typed-commands` raise for a name the command line can't run.
-
-- `bind-key!` raises for a key sequence in `'insert` mode, and `bind-key-extend!` raises outside `'normal`. Neither binding ever ran, so delete it.
-
-- Command names ignore case everywhere, not just at `:`: `call!` and key bindings find a command in any case, and two names that differ only in case collide. Editor command names must be lowercase: `define-command!` and `#:commands` raise for an uppercase name, so rename any such command.
+- Key-bindable commands of the core plugins take their plugin's prefix. Rename them in your bindings and `call!`s: `lsp-fmt` is `lsp/format-source`, the other `lsp-*` commands and `goto-next-diagnostic`/`goto-prev-diagnostic` take `lsp/` (`lsp/hover`, `lsp/goto-next-diagnostic`), `toggle-undotree` is `undotree/toggle`, `picker-*` are `pickers/*`, `plum-ensure-grammars` is `plum/ensure-grammars`, `classic-*` and `vim-*` are `classic-paste/*` and `vim-keybind/*`, and `helix-delete-surround`/`helix-replace-surround` are `helix-surround/delete`/`helix-surround/replace`. Typed `:` commands keep their names.
+- `lsp-locations->display-parts` is `lsp-locations->places`, which no longer merges locations; `lsp-locations->merged-places` does.
+- Position hashes name their unit: `'start`/`'end` are `'start-char`/`'end-char` or `'start-line`/`'end-line` in `viewport-range`, `lsp-range->char-range`, `set-extra-highlights!`, `set-virtual-lines!` segments and `diagnostics-for-buffer`, whose `'line` is `'start-line`. `set-inlay-hints!` takes `'char-offset` for `'offset`, and `diff-words` hunks carry `'old-start-char`, `'old-end-char`, `'new-start-char` and `'new-end-char`.
+- A `diagnostics-for-buffer` entry's `'end-line` is one past the diagnostic's last line instead of that line.
+- Hunks from `diff-lines`, `diff-buffer-lines` and `buffer-revision-diff` carry `'old-start-line`, `'old-end-line`, `'new-start-line` and `'new-end-line` (end exclusive) in place of `'old-start`, `'old-count`, `'new-start` and `'new-count`, and their `'words` spans change shape.
+- `char-offset->line` and `buffer-cursor-line` put the end of the buffer on its last line and raise for an offset past it. `lsp-range->char-range` returns `#f`, and `apply-text-edits!` and `apply-workspace-edit!` raise, for a range past the end of the document instead of clamping it.
+- `goto-location!` returns `#t` or `#f`, and a pane target takes `'char-offset` in place of `'line` and `'char-col`. A URI is no longer a target: pass the path. `diagnostics-for-buffer` entries have no `'char-col`: jump with `'start-char`.
+- `core:stdlib`'s `stdlib/cursor-char-index` is `stdlib/cursor-char-offset`, and `stdlib/selection-start`/`stdlib/selection-end` are `stdlib/selection-start-char`/`stdlib/selection-end-char`.
+- A line range is one value, `(hash 'start-line s 'end-line e)`: `viewport-range` returns it, `buffer-lines` takes it as `#:range` in place of `#:start` and `#:end`, and `on-viewport-change` handlers receive `(pane range)`.
+- `offset->line` is `char-offset->line`, `line->offset` is `line->char-offset`, `lsp-position->offset` is `lsp-position->char-offset` and `lsp-range->offsets` is `lsp-range->char-range`.
+- Calls that need language servers, diagnostics, completion, timers or background processes raise where those are unavailable, such as in a drawer's `#:render`, instead of returning an empty answer.
+- `live-picker!` takes `#:source` in place of `#:command`: pass `#:source (picker-command-source argv-for)`, which takes `#:cwd`, `#:nul` and `#:ok-exit-codes`.
+- Typed command names can contain digits, so an argument needs a space before it: `:e 1.txt` and `:goto 42`, not `:e1.txt` and `:goto42`. `:b2` still works.
+- `bind-key!` raises for a key sequence in `'insert` mode, and `bind-key-extend!` outside `'normal`. Neither binding ever ran, so delete it.
+- Command names ignore case everywhere, and `define-command!` and `#:commands` raise for an uppercase name: rename such commands to lowercase.
 
 ### Editing
-- `Ctrl-r` in Insert mode and on the command line inserts a register, or with `f` and `p` the current file's path and directory relative to the working directory.
+- `Ctrl-r` in Insert mode and on the command line inserts a register or the current file's path.
 
 ### Panes & interface
 - `Shift-Tab` (kitty) and `Ctrl-p P` focus the previous pane.
-- `core:git-diff` takes a `"branch-style"` config value: `'icon` shows the statusline branch as `⎇ main` instead of `(main)`.
+- `core:git-diff`'s new `"branch-style"` config can show the statusline branch as `⎇ main`.
 
 ### Plugins & scripting
-- A `live-picker!` source gets a token per query: once the user has typed on, `picker-push!`, `picker-replace!` and `picker-source-spawn!` on an earlier query's token do nothing, so a slow source can't overwrite newer rows.
-- New `on-before-buffer-save` hook, run before a buffer is written. A handler taking `(pane done)` holds the write until it calls `done`, up to `before-save-timeout-ms`.
-- `core:git-diff` has key-bindable `git-diff/toggle-inline-diff` and `git-diff/toggle-git-signs`, plus `git-diff/show-inline-diff` and `git-diff/inline-diff?` for your own commands.
-- New `insert-text!` pastes text where you're typing, as a terminal paste would, or a list of strings the way `p` pastes a register.
+- A `live-picker!` source gets a token per query, so a slow source can't overwrite newer rows.
+- New `on-before-buffer-save` hook, which can hold a write until its handler is done.
+- `core:git-diff` has key-bindable `git-diff/toggle-inline-diff` and `git-diff/toggle-git-signs`.
+- New `insert-text!` inserts text as a paste would.
 - `bind-key!` takes `'command` to bind keys in the command mode prompt and in plugin prompts.
 - `buffer-display-path` takes `#:relative #t` for the path relative to the working directory.
 - New `register-name?` tells whether a string names a register.
 
 ### Language servers
-- `z s` picks a symbol of the current file and `z S` searches the symbols of the whole project as you type, both jumping to the one you accept.
-- `core:lsp` has `lsp/format-document`, which formats the whole buffer for such a hook. The format-on-save recipe in the manual used `on-buffer-save`, which runs after the write, so it never formatted the saved file: use the new recipe.
+- `z s` and `z S` pick a symbol of the current file or of the whole project and jump to it.
+- New `lsp/format-document` formats the buffer from a save hook. The manual's earlier format-on-save recipe never formatted the saved file: replace it with the new one.
 
 ### Fixes
-- In Insert mode, `End` and `↑`/`↓` reach the end of a line, after its last character, so text typed there is appended instead of landing before that character.
-- Headless `--keys` runs print their warnings and errors on stderr and exit with status 1 when an error is logged, so a broken `init.scm` or plugin fails the run.
-- A char offset inside a character (a letter with its combining marks, an emoji sequence) is moved to the whole character by `set-extra-highlights!`, `set-inlay-hints!` and `set-virtual-lines!` segments; segments raised on one.
+- In Insert mode, `End`, `↑` and `↓` reach the end of a line, after its last character.
+- Headless `--keys` runs print warnings and errors on stderr and exit with status 1 when an error is logged.
+- `set-extra-highlights!`, `set-inlay-hints!` and `set-virtual-lines!` segments accept a char offset inside a character such as an emoji sequence.
 - `json-ref-or` returns its default for a field the server sent as `null`, so a code action whose `disabled` is `null` is offered.
-- `apply-text-edits!` and `apply-workspace-edit!` still apply when the pane has since switched buffers, editing the buffer for no pane. `apply-text-edits!` also accepts a value with no pane, and `lsp-document-params` returns a buffer's document params without one.
+- `apply-text-edits!` and `apply-workspace-edit!` still apply after the pane switches buffers, and `apply-text-edits!` and `lsp-document-params` work without a pane.
 
 ## [0.15.0] - 2026-10-15
 
