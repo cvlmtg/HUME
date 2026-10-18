@@ -215,6 +215,32 @@ fn a_deletion_ending_where_an_identical_replacement_starts_keeps_its_anchors() {
     assert_eq!(out, "b-[c]>d\n");
 }
 
+#[test]
+fn an_empty_insert_inside_an_identical_replacement_changes_nothing() {
+    let state = parse("-[a]>bcd\n");
+    let edited = edit(&state, |b| {
+        b.replace(clusters(b.text(), 1, 3), "bc");
+        b.insert(bound_at(b.text(), 2), "");
+        Landings::new(vec![Landing::cursor(b.at(bound_at(b.text(), 2)))], 0)
+    });
+    assert!(edited.changes().is_identity());
+    assert_eq!(render(edited.state().view()), "ab-[c]>d\n");
+}
+
+#[test]
+fn an_insert_at_an_identical_replacements_start_takes_its_recording_order() {
+    let insert_first = marked("-[a]>bcd\n", |b| {
+        b.insert(bound_at(b.text(), 1), "X");
+        b.replace(clusters(b.text(), 1, 3), "bc")
+    });
+    let replace_first = marked("-[a]>bcd\n", |b| {
+        b.replace(clusters(b.text(), 1, 3), "bc");
+        b.insert(bound_at(b.text(), 1), "X")
+    });
+    assert_eq!(insert_first, "aX-[bc]>d\n");
+    assert_eq!(replace_first, "abc-[X]>d\n");
+}
+
 /// The text `input` becomes when the clusters covering chars `a..b` of it
 /// are deleted, for each `(a, b)`.
 fn text_after_deleting(input: &str, ranges: &[(usize, usize)]) -> String {

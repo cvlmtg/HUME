@@ -7,9 +7,9 @@
 //! [`ChangeSetBuilder`] front to back. A position strictly inside a deletion
 //! resolves to the deletion point, the same rule
 //! [`crate::changeset::PosMapCursor`] applies to any position. A replacement
-//! by the text already there is kept as it is when no other deletion or
-//! insertion falls inside it; otherwise it is a deletion and an insertion
-//! like any other replacement.
+//! by the text already there is kept as it is unless another operation
+//! changes text inside it, or at its start after it was recorded. Then it is
+//! a deletion and an insertion like any other replacement.
 //!
 //! The text keeps ending with a `\n`, by
 //! [`apply_keeping_final_break`](super::apply_keeping_final_break)'s rule.
@@ -242,7 +242,8 @@ impl<'a, 'id> EditBuilder<'a, 'id> {
 
     /// Replace `range` with `text`; returns what the replacement became. A
     /// replacement by the text already there changes nothing, unless another
-    /// operation deletes or inserts inside it.
+    /// operation changes text inside it, or at its start after it was
+    /// recorded.
     pub fn replace(&mut self, range: ClusterRange, text: &str) -> Mark<'id> {
         let text = LfText::new(text);
         let unchanged = self.text.slice(range.chars()) == text.as_str();
@@ -283,8 +284,11 @@ impl<'a, 'id> EditBuilder<'a, 'id> {
         let text_end = self.text.end();
         let rerun_possible = ceiling.is_none()
             && self.items.iter().any(|item| {
-                matches!(item.kind, ItemKind::Delete { end } | ItemKind::Replace { end, .. }
-                        if end == text_end)
+                matches!(
+                    item.kind,
+                    ItemKind::Delete { end } | ItemKind::Replace { end, unchanged: false, .. }
+                        if end == text_end
+                )
             });
         let take = |text: &mut LfText| {
             if rerun_possible {
@@ -295,40 +299,41 @@ impl<'a, 'id> EditBuilder<'a, 'id> {
         };
         let mut order: Vec<usize> = (0..self.items.len()).collect();
         order.sort_by_key(|&index| (self.items[index].key, index));
-        // Per item in `order`, where the next item that is not an anchor starts.
-        let mut next_change = vec![None; order.len()];
-        let mut next = None;
-        for (k, &index) in order.iter().enumerate().rev() {
-            next_change[k] = next;
-            if !matches!(self.items[index].kind, ItemKind::Anchor) {
-                next = Some(self.items[index].key);
-            }
-        }
         let mut changes = ChangeSetBuilder::new(self.text.end());
         let mut placed = vec![(CharOffset::default(), CharOffset::default()); self.items.len()];
         // The old start and new position of the deletion ending at `old_pos`.
         let mut deletion: Option<(CharOffset, CharOffset)> = None;
-        for (k, index) in order.into_iter().enumerate() {
-            let item = &mut self.items[index];
-            if item.key > changes.old_pos() {
-                changes.retain_to(item.key);
+        for (k, &index) in order.iter().enumerate() {
+            let key = self.items[index].key;
+            if key > changes.old_pos() {
+                changes.retain_to(key);
                 deletion = None;
             }
             let before = changes.new_pos();
-            // A replacement nothing reaches into is left for the items after it
-            // to retain, so an anchor inside it keeps its place.
-            let kept = match item.kind {
+            // An identical replacement that no deletion reaches into and no
+            // later item changes text inside is left for the items after it to
+            // retain, so an anchor inside it keeps its place.
+            let kept = match self.items[index].kind {
                 ItemKind::Replace {
                     end,
                     unchanged: true,
                     ..
-                } if changes.old_pos() == item.key
-                    && next_change[k].is_none_or(|next: CharOffset| next >= end) =>
+                } if changes.old_pos() == key
+                    && order[k + 1..]
+                        .iter()
+                        .map(|&later| &self.items[later])
+                        .take_while(|later| later.key < end)
+                        .all(|later| match &later.kind {
+                            ItemKind::Anchor => true,
+                            ItemKind::Insert(text) => text.as_str().is_empty(),
+                            ItemKind::Delete { .. } | ItemKind::Replace { .. } => false,
+                        }) =>
                 {
                     Some(end)
                 }
                 _ => None,
             };
+            let item = &mut self.items[index];
             let (remove_to, insert) = match &mut item.kind {
                 ItemKind::Replace { .. } if kept.is_some() => (None, None),
                 ItemKind::Replace { end, text, .. } => (Some(*end), Some(take(text))),
