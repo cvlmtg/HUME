@@ -27,6 +27,14 @@ pub enum Rotation {
     Backward,
 }
 
+/// Which way [`EngineView::pane_cycled_from_focused`](super::EngineView::pane_cycled_from_focused)
+/// steps through the panes in leaf order.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Cycle {
+    Next,
+    Prev,
+}
+
 /// Refusal of [`EngineView::close_focused`](super::EngineView::close_focused)
 /// and [`EngineView::rotate_focused`](super::EngineView::rotate_focused): the
 /// focused pane is the layout's only pane.
@@ -520,15 +528,20 @@ impl FocusedLayout {
             .expect("the focused pane is a leaf of the tree")
     }
 
-    /// The pane after the focused one in leaf order, wrapping to the first;
-    /// `None` when the focused pane is the only one.
-    pub(crate) fn pane_after_focused(&self) -> Option<PaneId> {
+    /// The pane one step from the focused one in leaf order, wrapping at
+    /// either end; `None` when the focused pane is the only one.
+    pub(crate) fn pane_cycled_from_focused(&self, cycle: Cycle) -> Option<PaneId> {
         let leaves = self.tree.leaves();
+        let len = leaves.len();
         let idx = leaves
             .iter()
             .position(|&p| p == self.focus)
             .expect("the focused pane is a leaf of the tree");
-        (leaves.len() > 1).then(|| leaves[(idx + 1) % leaves.len()])
+        let target = match cycle {
+            Cycle::Next => (idx + 1) % len,
+            Cycle::Prev => (idx + len - 1) % len,
+        };
+        (len > 1).then(|| leaves[target])
     }
 
     /// The nearest pane on `side` of the focused one within `area`, or

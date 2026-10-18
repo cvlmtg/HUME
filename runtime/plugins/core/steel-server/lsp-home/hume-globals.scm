@@ -246,6 +246,7 @@
 (#%register-global "pane-focus-down")
 (#%register-global "pane-focus-left")
 (#%register-global "pane-focus-next")
+(#%register-global "pane-focus-prev")
 (#%register-global "pane-focus-right")
 (#%register-global "pane-focus-up")
 (#%register-global "pane-live?")

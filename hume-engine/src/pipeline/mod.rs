@@ -25,7 +25,7 @@ use layout::{
     junction_glyph,
 };
 pub use layout::{
-    DetachedPane, Direction, FocusedLayout, LayoutTree, Rotation, Seam, Side, SinglePane,
+    Cycle, DetachedPane, Direction, FocusedLayout, LayoutTree, Rotation, Seam, Side, SinglePane,
 };
 pub use pane_pool::{PanePool, UnattachedPane};
 use pane_render::render_pane;
@@ -306,10 +306,10 @@ impl EngineView {
             .focused_neighbor(self.last_pane_area, self.reserve_seam, side)
     }
 
-    /// The pane after the focused one in layout order, wrapping to the
-    /// first; `None` when the focused pane is the only one.
-    pub fn pane_after_focused(&self) -> Option<PaneId> {
-        self.layout.pane_after_focused()
+    /// The pane one step from the focused one in layout order, wrapping at
+    /// either end; `None` when the focused pane is the only one.
+    pub fn pane_cycled_from_focused(&self, cycle: Cycle) -> Option<PaneId> {
+        self.layout.pane_cycled_from_focused(cycle)
     }
 
     /// Store the frame's terminal geometry and size every active pane to

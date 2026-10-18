@@ -37,6 +37,7 @@
 - `Ctrl-r` in Insert mode and on the command line inserts a register, or with `f` and `p` the current file's path and directory relative to the working directory.
 
 ### Panes & interface
+- `Shift-Tab` (kitty) and `Ctrl-p P` focus the previous pane.
 - `core:git-diff` takes a `"branch-style"` config value: `'icon` shows the statusline branch as `⎇ main` instead of `(main)`.
 
 ### Plugins & scripting

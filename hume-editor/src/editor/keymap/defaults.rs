@@ -235,6 +235,7 @@ fn build_transform_trie() -> KeyTrie {
 fn build_pane_trie() -> KeyTrie {
     let mut t = KeyTrie::new();
     t.bind_leaf(key!('p'), cmd!("pane-focus-next"));
+    t.bind_leaf(key!('P'), cmd!("pane-focus-prev"));
     t.bind_leaf(key!('h'), cmd!("pane-focus-left"));
     t.bind_leaf(key!('j'), cmd!("pane-focus-down"));
     t.bind_leaf(key!('k'), cmd!("pane-focus-up"));
@@ -517,11 +518,16 @@ impl Keymap {
         // Ctrl-, removes primary.
         self.normal
             .bind_leaf(key!(Ctrl + ','), cmd!("remove-primary-selection"));
-        // Tab cycles panes. Disambiguating Ctrl-i from Tab (both 0x09 on
-        // legacy terminals) is precisely what the kitty protocol exists to
-        // do, so once the probe above has confirmed it, jump-forward stays
-        // reachable via Ctrl-i (see the base keymap's jump-list binds).
+        // Tab and Shift-Tab cycle panes. Disambiguating Ctrl-i from Tab (both
+        // 0x09 on legacy terminals) is precisely what the kitty protocol
+        // exists to do, so once the probe above has confirmed it, jump-forward
+        // stays reachable via Ctrl-i (see the base keymap's jump-list binds).
+        // Shift-Tab arrives as BackTab with SHIFT set.
         self.normal.bind_leaf(key!(Tab), cmd!("pane-focus-next"));
+        self.normal.bind_leaf(
+            KeyEvent::new(KeyCode::BackTab, Modifiers::SHIFT),
+            cmd!("pane-focus-prev"),
+        );
     }
 }
 

@@ -501,6 +501,12 @@ impl CommandRegistry {
         )
         .reg(self);
         ecmd_focused(
+            "pane-focus-prev",
+            "Focus the previous pane.",
+            cmd_pane_focus_prev,
+        )
+        .reg(self);
+        ecmd_focused(
             "pane-focus-left",
             "Focus the pane to the left.",
             cmd_pane_focus_left,

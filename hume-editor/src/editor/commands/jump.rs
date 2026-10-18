@@ -1,5 +1,5 @@
 use crate::editor::registry::Count;
-use hume_engine::pipeline::{Direction, EngineView, Rotation, Side};
+use hume_engine::pipeline::{Cycle, Direction, EngineView, Rotation, Side};
 use hume_ops::MotionMode;
 
 use super::super::EditorState;
@@ -167,10 +167,27 @@ pub(in crate::editor) fn cmd_pane_focus_next(
     _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    if let Some(pid) = view.pane_after_focused() {
+    focus_cycled(state, view, Cycle::Next);
+    Ok(())
+}
+
+pub(in crate::editor) fn cmd_pane_focus_prev(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    _fp: FocusedPane,
+    _count: Count,
+    _mode: MotionMode,
+) -> Result<(), CommandError> {
+    focus_cycled(state, view, Cycle::Prev);
+    Ok(())
+}
+
+/// Focus the pane one step from the focused one in layout order, if there is
+/// another pane.
+fn focus_cycled(state: &mut EditorState, view: &mut EngineView, cycle: Cycle) {
+    if let Some(pid) = view.pane_cycled_from_focused(cycle) {
         focus_pane(state, view, pid);
     }
-    Ok(())
 }
 
 pub(in crate::editor) fn cmd_pane_focus_left(

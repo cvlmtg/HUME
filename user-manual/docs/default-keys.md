@@ -217,6 +217,7 @@ Press `Ctrl-p` then a second key:
 | Key | Command | Kitty | Action |
 |-----|---------|:-----:|--------|
 | `Ctrl-p p` | `pane-focus-next` |  | Focus next pane |
+| `Ctrl-p P` | `pane-focus-prev` |  | Focus previous pane |
 | `Ctrl-p h` | `pane-focus-left` |  | Focus pane to the left |
 | `Ctrl-p j` | `pane-focus-down` |  | Focus pane below |
 | `Ctrl-p k` | `pane-focus-up` |  | Focus pane above |
@@ -229,6 +230,7 @@ Press `Ctrl-p` then a second key:
 | `Ctrl-p t` | `goto-next-tab` |  | Switch to the next tab in display order |
 | `Ctrl-p T` | `goto-prev-tab` |  | Switch to the previous tab in display order |
 | `Tab` | `pane-focus-next` | ✓ | Focus next pane |
+| `Shift-Tab` | `pane-focus-prev` | ✓ | Focus previous pane |
 
 ## Insert mode
 

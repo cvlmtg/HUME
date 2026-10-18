@@ -1010,21 +1010,33 @@ fn focus_refuses_a_pane_outside_the_tree() {
 }
 
 #[test]
-fn pane_after_focused_follows_leaf_order_and_wraps() {
+fn next_cycled_pane_follows_leaf_order_and_wraps() {
     let [a, b, c] = pane_ids();
     let mut layout = FocusedLayout::from_parts(row_of_three(a, b, c), a);
-    assert_eq!(layout.pane_after_focused(), Some(b));
+    assert_eq!(layout.pane_cycled_from_focused(Cycle::Next), Some(b));
 
     layout.focus(c);
 
-    assert_eq!(layout.pane_after_focused(), Some(a));
+    assert_eq!(layout.pane_cycled_from_focused(Cycle::Next), Some(a));
 }
 
 #[test]
-fn pane_after_focused_is_none_for_a_sole_pane() {
+fn prev_cycled_pane_follows_reverse_leaf_order_and_wraps() {
+    let [a, b, c] = pane_ids();
+    let mut layout = FocusedLayout::from_parts(row_of_three(a, b, c), c);
+    assert_eq!(layout.pane_cycled_from_focused(Cycle::Prev), Some(b));
+
+    layout.focus(a);
+
+    assert_eq!(layout.pane_cycled_from_focused(Cycle::Prev), Some(c));
+}
+
+#[test]
+fn cycled_pane_is_none_for_a_sole_pane() {
     let [a] = pane_ids();
     let layout = FocusedLayout::new(UnattachedPane::for_test(a));
-    assert_eq!(layout.pane_after_focused(), None);
+    assert_eq!(layout.pane_cycled_from_focused(Cycle::Next), None);
+    assert_eq!(layout.pane_cycled_from_focused(Cycle::Prev), None);
 }
 
 /// `a` fills the left half; the right half stacks a short `b` (center row 7)

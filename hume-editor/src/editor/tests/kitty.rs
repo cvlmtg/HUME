@@ -82,6 +82,32 @@ fn ctrl_p_p_is_noop_with_single_pane() {
     );
 }
 
+/// Shift-Tab and Ctrl-p P focus the previous pane in layout order, wrapping
+/// from the first pane to the last.
+#[test]
+fn shift_tab_and_ctrl_p_shift_p_focus_previous_pane() {
+    let mut ed = editor_from_kitty("-[h]>ello world\n");
+    let pid_a = ed.view.focused_pane();
+    ed.handle_key(key_ctrl('p'));
+    ed.handle_key(key('s'));
+    let pid_b = ed.view.focused_pane();
+    ed.handle_key(key_ctrl('p'));
+    ed.handle_key(key('s'));
+    let pid_c = ed.view.focused_pane();
+    assert_ne!(pid_a, pid_b);
+    assert_ne!(pid_b, pid_c);
+
+    ed.handle_key(key_shift_tab());
+    assert_eq!(ed.view.focused_pane(), pid_b);
+
+    ed.handle_key(key_ctrl('p'));
+    ed.handle_key(key('P'));
+    assert_eq!(ed.view.focused_pane(), pid_a);
+
+    ed.handle_key(key_shift_tab());
+    assert_eq!(ed.view.focused_pane(), pid_c, "wraps from first to last");
+}
+
 /// Ctrl-p, s → pane-split. Creates a second pane, stacking it below the
 /// focused one, and moves focus onto the new pane.
 #[test]

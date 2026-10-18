@@ -246,6 +246,7 @@ Split, focus, and close panes; switch buffers; switch tabs.
 | `pane-focus-down` | `Ctrl-p j` | Focus the pane below. |
 | `pane-focus-left` | `Ctrl-p h` | Focus the pane to the left. |
 | `pane-focus-next` | `Tab` / `Ctrl-p p` | Focus the next pane. |
+| `pane-focus-prev` | `Shift-Tab` / `Ctrl-p P` | Focus the previous pane. |
 | `pane-focus-right` | `Ctrl-p l` | Focus the pane to the right. |
 | `pane-focus-up` | `Ctrl-p k` | Focus the pane above. |
 | `pane-rotate-backward` | `Ctrl-p R` | Rotate the panes in the focused pane's row or column backward (that many places with a count). |
