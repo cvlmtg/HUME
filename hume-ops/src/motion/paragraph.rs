@@ -123,15 +123,13 @@ pub(crate) fn paragraph_at(
 /// Not a `motion_cmd!`: the finder yields a span, not a head. It goes through the same
 /// `apply_object_motion` the structural `goto-next-<kind>` family uses.
 pub fn cmd_goto_next_paragraph(state: EditState, count: usize, mode: MotionMode) -> EditState {
-    let text = state.text().clone();
-    apply_object_motion(state, mode, count, false, |pos| next_paragraph(&text, pos))
+    apply_object_motion(state, mode, count, false, next_paragraph)
 }
 
 /// Select the previous paragraph, plus its trailing blank gap (`{`). No-op
 /// if there is no paragraph above.
 pub fn cmd_goto_prev_paragraph(state: EditState, count: usize, mode: MotionMode) -> EditState {
-    let text = state.text().clone();
-    apply_object_motion(state, mode, count, true, |pos| prev_paragraph(&text, pos))
+    apply_object_motion(state, mode, count, true, prev_paragraph)
 }
 
 /// The paragraph strictly after `pos`'s own paragraph, plus its trailing gap,

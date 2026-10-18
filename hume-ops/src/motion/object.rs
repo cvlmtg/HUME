@@ -11,10 +11,11 @@
 use super::MotionMode;
 use hume_editing::selection::{Facing, Selection};
 use hume_editing::state::EditState;
+use hume_editing::text::BufferText;
 use hume_rope::cluster::{ClusterRange, ClusterStart};
 
 /// Apply structural navigation to every selection, repeated `count` times.
-/// `finder` maps an origin to a whole object; `backward` picks the search
+/// `finder` maps the text and an origin to a whole object; `backward` picks the search
 /// direction and which edge becomes the head.
 ///
 /// **Move**: origin is the selection's last cluster forward, its first
@@ -36,7 +37,7 @@ pub fn apply_object_motion(
     mode: MotionMode,
     count: usize,
     backward: bool,
-    finder: impl Fn(ClusterStart) -> Option<ClusterRange>,
+    finder: impl Fn(&BufferText, ClusterStart) -> Option<ClusterRange>,
 ) -> EditState {
     state.map(|sel| {
         let mut current = sel.selection();
@@ -47,7 +48,7 @@ pub fn apply_object_motion(
                 MotionMode::Move => covered.last(),
                 MotionMode::Extend => current.head(),
             };
-            let Some(object) = finder(origin) else {
+            let Some(object) = finder(sel.text(), origin) else {
                 break;
             };
             (current, covered) = match mode {

@@ -52,8 +52,7 @@ fn cmd_goto(state: EditState, count: usize, mode: MotionMode, backward: bool) ->
     } else {
         find_forward
     };
-    let text = state.text().clone();
-    apply_object_motion(state, mode, count, backward, |pos| finder(&text, pos))
+    apply_object_motion(state, mode, count, backward, finder)
 }
 
 #[test]
@@ -206,9 +205,8 @@ fn extend_searches_from_the_head_not_the_far_edge() {
         "ab<[cd]-efghijklmnopqrstuvwxyz\n",
         |(text, sels)| {
             let state = test_fixtures::testing::state(text, sels);
-            let text = state.text().clone();
-            apply_object_motion(state, MotionMode::Extend, 1, false, |pos| {
-                (pos.offset().index() < 3).then(|| span(&text, (3, 4)))
+            apply_object_motion(state, MotionMode::Extend, 1, false, |text, pos| {
+                (pos.offset().index() < 3).then(|| span(text, (3, 4)))
             })
         },
         "ab-[cde]>fghijklmnopqrstuvwxyz\n"

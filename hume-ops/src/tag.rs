@@ -280,8 +280,7 @@ fn close_after(text: &BufferText, open: &Tag) -> Option<Tag> {
 /// this way, corrupting [`open_before`]'s depth count. An unbalanced
 /// fragment there (one tag-shaped construct, not a real pair) triggers it; a
 /// balanced one cancels itself out and is harmless. Accepted as a known
-/// limitation of the lexical scanner. A buffer with a markup grammar gets
-/// its element objects and navigation from the tree instead.
+/// limitation of the lexical scanner.
 fn prev_tag(text: &BufferText, before: CharOffset) -> Option<Tag> {
     let mut cursor = text.chars_at(before);
     while let Some((i, ch)) = cursor.prev() {
@@ -296,6 +295,15 @@ fn prev_tag(text: &BufferText, before: CharOffset) -> Option<Tag> {
     None
 }
 
+/// Every tag construct before `before`, nearest first: [`prev_tag`] repeated.
+fn tags_before(text: &BufferText, mut before: CharOffset) -> impl Iterator<Item = Tag> + '_ {
+    std::iter::from_fn(move || {
+        let tag = prev_tag(text, before)?;
+        before = tag.lt_pos;
+        Some(tag)
+    })
+}
+
 /// Depth-tracked backward walk from `close` for the innermost still-open
 /// same-name tag: the same technique [`crate::pair::scan_left_for_open`]
 /// uses for brackets, applied via [`prev_tag`] instead of a raw char scan.
@@ -307,9 +315,7 @@ fn prev_tag(text: &BufferText, before: CharOffset) -> Option<Tag> {
 /// [`prev_tag`]'s doc for the one case this reuse doesn't handle.
 fn open_before(text: &BufferText, close: &Tag) -> Option<Tag> {
     let mut depth = 0usize;
-    let mut before = close.lt_pos;
-    while let Some(tag) = prev_tag(text, before) {
-        before = tag.lt_pos;
+    for tag in tags_before(text, close.lt_pos) {
         if tag.self_closing || !same_name(text, tag.name, close.name) {
             continue;
         }
@@ -336,14 +342,12 @@ fn open_before(text: &BufferText, close: &Tag) -> Option<Tag> {
 /// stray `</span>` can't drain an unrelated `<div>` off some shared stack.
 pub(crate) fn matching_tag(text: &BufferText, pos: ClusterStart) -> Option<ClusterStart> {
     let tag = tag_at(text, pos.offset())?;
-    if tag.self_closing {
-        return None;
-    }
+    let element = Element::of(text, tag)?;
     let partner = if tag.closing {
-        open_before(text, &tag)
+        element.open
     } else {
-        close_after(text, &tag)
-    }?;
+        element.close?
+    };
     Some(text.snap(partner.lt_pos))
 }
 
@@ -356,6 +360,19 @@ struct Element {
 }
 
 impl Element {
+    /// The element `tag` opens or closes. `None` for a closing tag with no
+    /// opening partner.
+    fn of(text: &BufferText, tag: Tag) -> Option<Self> {
+        if tag.closing {
+            open_before(text, &tag).map(|open| Self {
+                open,
+                close: Some(tag),
+            })
+        } else {
+            Some(Self::from_open(text, tag))
+        }
+    }
+
     /// `open` must be a non-closing tag.
     fn from_open(text: &BufferText, open: Tag) -> Self {
         let close = if open.self_closing {
@@ -382,101 +399,64 @@ impl Element {
     }
 }
 
-/// The elements enclosing a position, innermost first, found by walking
-/// tags backward from `before`. A closing tag counts against the next
-/// same-name opening tag; an opening tag left over is an enclosing element
-/// when [`close_after`] finds its partner, and a void tag otherwise.
-///
-/// A name whose opening tag had no partner goes in `unclosed`: an earlier
-/// opening tag of that name, with no closing tag pending, has none either,
-/// so one void name costs one scan to the end of the buffer, not one per
-/// occurrence.
-struct Ancestors<'a> {
-    text: &'a BufferText,
-    before: CharOffset,
-    closes: Vec<(ExclusiveRange<CharOffset>, usize)>,
-    unclosed: Vec<ExclusiveRange<CharOffset>>,
-}
-
-impl<'a> Ancestors<'a> {
-    fn new(text: &'a BufferText, before: CharOffset) -> Self {
-        Self {
-            text,
-            before,
-            closes: Vec::new(),
-            unclosed: Vec::new(),
-        }
-    }
-}
-
-impl Iterator for Ancestors<'_> {
-    type Item = Element;
-
-    fn next(&mut self) -> Option<Element> {
-        let text = self.text;
-        while let Some(tag) = prev_tag(text, self.before) {
-            self.before = tag.lt_pos;
-            if tag.self_closing {
-                continue;
-            }
-            let pending = self
-                .closes
-                .iter_mut()
-                .find(|(name, _)| same_name(text, *name, tag.name));
-            if tag.closing {
-                match pending {
-                    Some((_, n)) => *n += 1,
-                    None => self.closes.push((tag.name, 1)),
-                }
-                continue;
-            }
-            if let Some((_, n)) = pending.filter(|(_, n)| *n > 0) {
-                *n -= 1;
-                continue;
-            }
-            if self
-                .unclosed
-                .iter()
-                .any(|&name| same_name(text, name, tag.name))
-            {
-                continue;
-            }
-            match close_after(text, &tag) {
-                Some(close) => {
-                    return Some(Element {
-                        open: tag,
-                        close: Some(close),
-                    });
-                }
-                None => self.unclosed.push(tag.name),
-            }
-        }
-        None
-    }
-}
-
 /// The elements enclosing `pos`, innermost first. With `pos` on a tag's own
 /// markup the first is that tag's element (an opening tag, its closing
 /// partner, or a lone void or self-closing tag); a closing tag with no
 /// opening partner contributes nothing.
+///
+/// The rest come from walking tags backward. A closing tag counts against
+/// the next same-name opening tag; an opening tag left over is an enclosing
+/// element when [`close_after`] finds its partner, and a void tag otherwise.
+/// A name whose opening tag had no partner goes in `unclosed`: an earlier
+/// opening tag of that name, with no closing tag pending, has none either,
+/// so one void name costs one scan to the end of the buffer, not one per
+/// occurrence. A void tag under `pos` starts the list.
 fn enclosing_elements(text: &BufferText, pos: CharOffset) -> impl Iterator<Item = Element> + '_ {
-    let under = tag_at(text, pos);
-    let own = under.and_then(|tag| {
+    let (own, before) = match tag_at(text, pos) {
+        Some(tag) => {
+            let own = Element::of(text, tag);
+            let before = own.as_ref().map_or(tag.lt_pos, |e| e.open.lt_pos);
+            (own, before)
+        }
+        None => (None, pos),
+    };
+    let mut closes = Vec::new();
+    let mut unclosed: Vec<_> = own
+        .as_ref()
+        .filter(|e| e.close.is_none() && !e.open.self_closing)
+        .map(|e| e.open.name)
+        .into_iter()
+        .collect();
+    let ancestors = tags_before(text, before).filter_map(move |tag| {
+        if tag.self_closing {
+            return None;
+        }
         if tag.closing {
-            open_before(text, &tag).map(|open| Element {
-                open,
-                close: Some(tag),
-            })
-        } else {
-            Some(Element::from_open(text, tag))
+            closes.push(tag.name);
+            return None;
+        }
+        if let Some(i) = closes
+            .iter()
+            .position(|&name| same_name(text, name, tag.name))
+        {
+            closes.swap_remove(i);
+            return None;
+        }
+        if unclosed.iter().any(|&name| same_name(text, name, tag.name)) {
+            return None;
+        }
+        match close_after(text, &tag) {
+            Some(close) => Some(Element {
+                open: tag,
+                close: Some(close),
+            }),
+            None => {
+                unclosed.push(tag.name);
+                None
+            }
         }
     });
-    let before = own
-        .as_ref()
-        .map(|e| e.open.lt_pos)
-        .or(under.map(|t| t.lt_pos))
-        .unwrap_or(pos);
-    own.into_iter().chain(Ancestors::new(text, before))
+    own.into_iter().chain(ancestors)
 }
 
 /// The innermost element whose markup or content holds `pos`, from its
@@ -502,23 +482,12 @@ pub fn inner_tag(text: &BufferText, pos: ClusterStart) -> Option<ClusterRange> {
 /// [`crate::motion::apply_object_motion`] requires.
 pub fn adjacent_tag(text: &BufferText, pos: ClusterStart, backward: bool) -> Option<ClusterRange> {
     let open = if backward {
-        let mut before = pos.offset();
-        loop {
-            let tag = prev_tag(text, before)?;
-            if !tag.closing {
-                break tag;
-            }
-            before = tag.lt_pos;
-        }
+        tags_before(text, pos.offset()).find(|tag| !tag.closing)?
     } else {
         let from = tag_at(text, pos.offset()).map_or(pos.offset(), |t| t.gt_pos.shift(1));
         let mut cursor = text.chars_at(from);
-        loop {
-            let tag = next_tag(text, &mut cursor)?;
-            if !tag.closing && text.snap(tag.lt_pos) > pos {
-                break tag;
-            }
-        }
+        std::iter::from_fn(|| next_tag(text, &mut cursor))
+            .find(|tag| !tag.closing && text.snap(tag.lt_pos) > pos)?
     };
     Element::from_open(text, open).around(text)
 }

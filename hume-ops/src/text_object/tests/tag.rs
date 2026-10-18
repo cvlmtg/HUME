@@ -1,41 +1,30 @@
 use super::super::*;
-use hume_editing::state::EditState;
 use test_fixtures::assert_state;
 use test_fixtures::unicode::{COMBINING, IDEO_SPACE, LONE_MARK, NBSP};
 
-// `inner_tag`/`around_tag` are reached from hume-editor's structural
-// dispatch as the lexical fallback, not through a `cmd_*` wrapper. These
-// drive them through the same `apply_text_object_by_mode` call.
-fn cmd_inner_tag(state: EditState, _count: usize, mode: MotionMode) -> EditState {
-    apply_text_object_by_mode(state, mode, inner_tag)
-}
+type FindObject = fn(&BufferText, ClusterStart) -> Option<ClusterRange>;
 
-fn cmd_around_tag(state: EditState, _count: usize, mode: MotionMode) -> EditState {
-    apply_text_object_by_mode(state, mode, around_tag)
+// `inner_tag`/`around_tag` are reached from hume-editor's structural
+// dispatch as the lexical fallback, not through a `cmd_*` wrapper. This
+// drives them through the same `apply_text_object_by_mode` call.
+fn check(find: FindObject, mode: MotionMode, input: &str, expected: &str) {
+    assert_state!(
+        input,
+        |(text, sels)| apply_text_object_by_mode(
+            test_fixtures::testing::state(text, sels),
+            mode,
+            find
+        ),
+        expected
+    );
 }
 
 fn inner(input: &str, expected: &str) {
-    assert_state!(
-        input,
-        |(text, sels)| cmd_inner_tag(
-            test_fixtures::testing::state(text, sels),
-            0,
-            MotionMode::Move
-        ),
-        expected
-    );
+    check(inner_tag, MotionMode::Move, input, expected);
 }
 
 fn around(input: &str, expected: &str) {
-    assert_state!(
-        input,
-        |(text, sels)| cmd_around_tag(
-            test_fixtures::testing::state(text, sels),
-            0,
-            MotionMode::Move
-        ),
-        expected
-    );
+    check(around_tag, MotionMode::Move, input, expected);
 }
 
 // ── inner_tag ─────────────────────────────────────────────────────────────
@@ -144,14 +133,11 @@ fn inner_tag_skips_a_jsx_arrow_in_an_attribute() {
 
 #[test]
 fn inner_tag_extend_grows_to_the_parent_content() {
-    assert_state!(
+    check(
+        inner_tag,
+        MotionMode::Extend,
         "<div><p>-[x]></p></div>\n",
-        |(text, sels)| cmd_inner_tag(
-            test_fixtures::testing::state(text, sels),
-            0,
-            MotionMode::Extend
-        ),
-        "<div>-[<p>x</p>]></div>\n"
+        "<div>-[<p>x</p>]></div>\n",
     );
 }
 
@@ -279,13 +265,10 @@ fn around_tag_widens_over_a_prepend_cluster_before_the_lt() {
 
 #[test]
 fn around_tag_extend_grows_to_the_parent() {
-    assert_state!(
+    check(
+        around_tag,
+        MotionMode::Extend,
         "<div>-[<p>x</p>]></div>\n",
-        |(text, sels)| cmd_around_tag(
-            test_fixtures::testing::state(text, sels),
-            0,
-            MotionMode::Extend
-        ),
-        "-[<div><p>x</p></div>]>\n"
+        "-[<div><p>x</p></div>]>\n",
     );
 }

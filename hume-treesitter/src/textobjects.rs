@@ -307,15 +307,18 @@ impl ObjectSpans {
                 collect_hulls(query, idx, layer, text, &mut spans);
             }
         }
-        Self::finish(spans, grammar_defines)
+        Self {
+            grammar_defines,
+            ..Self::finish(spans)
+        }
     }
 
-    fn finish(mut spans: Vec<ClusterRange>, grammar_defines: bool) -> Self {
+    fn finish(mut spans: Vec<ClusterRange>) -> Self {
         spans.sort_by(|a, b| a.start().cmp(&b.start()).then(b.end().cmp(&a.end())));
         spans.dedup();
         Self {
             spans,
-            grammar_defines,
+            grammar_defines: false,
         }
     }
 

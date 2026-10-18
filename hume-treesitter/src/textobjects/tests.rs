@@ -124,7 +124,7 @@ fn real_helix_rust_textobjects_defines_expected_pairs() {
 /// and `adjacent` both assume its sort-and-dedup, so a test double must not
 /// re-implement that comparator independently.
 fn spans_from(list: &[(usize, usize)]) -> ObjectSpans {
-    ObjectSpans::finish(list.iter().map(|&(s, e)| ir(s, e)).collect(), true)
+    ObjectSpans::finish(list.iter().map(|&(s, e)| ir(s, e)).collect())
 }
 
 #[test]
@@ -195,18 +195,17 @@ fn adjacent_returns_none_at_buffer_edges() {
 
 // ── ObjectSpans::collect / collect_for_navigation — real rust fixture ──────
 
-/// The real `rust` bundle carrying the fetched Helix `textobjects.scm`, no
+/// The real `name` bundle carrying the fetched Helix `textobjects.scm`, no
 /// injections; these tests probe single-layer trees.
-fn rust_bundle_with_real_textobjects() -> Arc<GrammarBundle> {
-    require_grammars(&["rust"]);
-    let path = require_helix_query("rust", OptionalQuery::TextObjects.file_name());
+fn bundle_with_real_textobjects(name: &str, symbol: &str) -> Arc<GrammarBundle> {
+    require_grammars(&[name]);
+    let path = require_helix_query(name, OptionalQuery::TextObjects.file_name());
     let source = std::fs::read_to_string(path).expect("read helix-textobjects.scm");
-    make_bundle(
-        "rust",
-        "tree_sitter_rust",
-        "",
-        &[(OptionalQuery::TextObjects, &source)],
-    )
+    make_bundle(name, symbol, "", &[(OptionalQuery::TextObjects, &source)])
+}
+
+fn rust_bundle_with_real_textobjects() -> Arc<GrammarBundle> {
+    bundle_with_real_textobjects("rust", "tree_sitter_rust")
 }
 
 /// The real `markdown` bundle carrying the fetched Helix `injections.scm`:
@@ -235,8 +234,12 @@ fn span_text(text: &BufferText, span: ClusterRange) -> String {
 /// so the caller has to hold it; every test below takes the borrow on its
 /// own next line.
 fn rust_syntax(source: &str) -> (Syntax, BufferText) {
+    syntax_with(rust_bundle_with_real_textobjects(), source)
+}
+
+fn syntax_with(bundle: Arc<GrammarBundle>, source: &str) -> (Syntax, BufferText) {
     let text = BufferText::from(source);
-    let syn = Syntax::attach_sync(rust_bundle_with_real_textobjects(), &text, &empty_langs());
+    let syn = Syntax::attach_sync(bundle, &text, &empty_langs());
     (syn, text)
 }
 
@@ -702,23 +705,12 @@ fn for_selector_cache_does_not_survive_a_bake() {
 
 // ── xml-element — real html fixture ─────────────────────────────────────────
 
-/// The real `html` bundle carrying the fetched Helix `textobjects.scm`.
 fn html_bundle_with_real_textobjects() -> Arc<GrammarBundle> {
-    require_grammars(&["html"]);
-    let path = require_helix_query("html", OptionalQuery::TextObjects.file_name());
-    let source = std::fs::read_to_string(path).expect("read helix-textobjects.scm");
-    make_bundle(
-        "html",
-        "tree_sitter_html",
-        "",
-        &[(OptionalQuery::TextObjects, &source)],
-    )
+    bundle_with_real_textobjects("html", "tree_sitter_html")
 }
 
 fn html_syntax(source: &str) -> (Syntax, BufferText) {
-    let text = BufferText::from(source);
-    let syn = Syntax::attach_sync(html_bundle_with_real_textobjects(), &text, &empty_langs());
-    (syn, text)
+    syntax_with(html_bundle_with_real_textobjects(), source)
 }
 
 /// Every collected span's text, in collection order.
@@ -728,12 +720,8 @@ fn span_texts(text: &BufferText, spans: &ObjectSpans) -> Vec<String> {
 
 #[test]
 fn real_helix_html_textobjects_defines_xml_element_inside_and_around() {
-    require_grammars(&["html"]);
-    let path = require_helix_query("html", OptionalQuery::TextObjects.file_name());
-    let source = std::fs::read_to_string(path).expect("read helix-textobjects.scm");
-    let grammar = crate::test_support::open_grammar("html", "tree_sitter_html");
-    let query = tree_sitter::Query::new(grammar.language(), &source).expect("compile query");
-    let q = TextObjectsQuery::new(query);
+    let bundle = html_bundle_with_real_textobjects();
+    let q = bundle.textobjects.as_ref().expect("textobjects compiled");
     assert!(q.defines(ObjectKind::XmlElement, ObjectSpan::Inside));
     assert!(q.defines(ObjectKind::XmlElement, ObjectSpan::Around));
 }

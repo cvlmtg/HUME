@@ -77,8 +77,9 @@ fn lexical_object(kind: ObjectKind) -> Option<LexicalObject> {
 /// An empty set (via `Arc<ObjectSpans>::default`) when the buffer has no
 /// syntax, no layers yet, or layers of an older text (a buffer over the size
 /// cap is never reparsed on demand): `enclosing`/`adjacent` then answer
-/// "nothing here" through the same code path every other probe uses, making
-/// `Select`/`Goto` no-ops with no early return.
+/// "nothing here" through the same code path every other probe uses, with
+/// no early return. A body with a lexical scan falls back to it; any other
+/// is a no-op.
 pub(super) fn object_spans(buf: &Buffer, body: StructuralBody) -> Arc<ObjectSpans> {
     let Some(layers) = buf.current_layers() else {
         return Arc::default();
@@ -121,9 +122,8 @@ impl StructuralBody {
             StructuralBody::Goto { kind, dir } => {
                 let backward = dir == Direction::Backward;
                 let lexical = lexical_object(kind).filter(|_| !spans.grammar_defines());
-                let text = state.text().clone();
-                apply_object_motion(state, mode, count, backward, |p| match lexical {
-                    Some(l) => (l.adjacent)(&text, p, backward),
+                apply_object_motion(state, mode, count, backward, |t, p| match lexical {
+                    Some(l) => (l.adjacent)(t, p, backward),
                     None => spans.adjacent(p, dir),
                 })
             }
