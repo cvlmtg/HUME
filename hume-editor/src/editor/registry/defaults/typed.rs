@@ -29,7 +29,7 @@ impl CommandRegistry {
                 completer: $completer:expr,
                 expansion: $expansion:expr
             ) => {
-                self.register_typed(TypedCommand {
+                self.register_builtin_typed(TypedCommand {
                     name: Cow::Borrowed($name),
                     doc: Cow::Borrowed($doc),
                     aliases: $aliases,
@@ -37,7 +37,6 @@ impl CommandRegistry {
                     completer: $completer.map(Cow::Borrowed),
                     arg_expansion: $expansion,
                 })
-                .expect("a built-in typed command's name and aliases are valid")
             };
         }
 

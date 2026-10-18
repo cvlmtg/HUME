@@ -1,10 +1,7 @@
 use super::*;
 
+use crate::editor::keymap::Keymap;
 use hume_treesitter::textobjects::ObjectKind;
-
-/// Exhaustiveness guard: if a command is added without a registry entry,
-/// this test catches it.
-const EXPECTED_COMMAND_COUNT: usize = 208;
 
 /// `STRUCTURAL_OBJECTS` is the only link between `ObjectKind` and the four
 /// commands (plus the `m i`/`m a` key) each kind ships. Nothing in the type
@@ -38,12 +35,20 @@ fn structural_objects_cover_every_object_kind() {
 }
 
 #[test]
-fn registry_has_expected_count() {
+fn every_default_key_names_a_registered_command() {
     let reg = CommandRegistry::with_defaults();
-    assert_eq!(
-        reg.len(),
-        EXPECTED_COMMAND_COUNT,
-        "registered command count mismatch: did you add a command without registering it?"
+    let mut keymap = Keymap::default();
+    keymap.apply_kitty_defaults();
+    let mut unknown: Vec<String> = keymap
+        .all_command_names()
+        .into_iter()
+        .filter(|name| reg.get_mappable(name).is_none())
+        .collect();
+    unknown.sort_unstable();
+    unknown.dedup();
+    assert!(
+        unknown.is_empty(),
+        "default keys bound to unregistered commands: {unknown:?}"
     );
 }
 
@@ -320,15 +325,6 @@ fn is_extendable_lazy_stub_true() {
         }),
     };
     assert!(cmd.is_extendable());
-}
-
-#[test]
-fn all_names_are_unique() {
-    // HashMap insertion silently overwrites duplicates, so verify the final
-    // count matches the number of distinct registered names.
-    let reg = CommandRegistry::with_defaults();
-    let unique: std::collections::HashSet<&str> = reg.names().collect();
-    assert_eq!(unique.len(), reg.len(), "duplicate command names detected");
 }
 
 #[test]

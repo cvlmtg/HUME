@@ -1,4 +1,4 @@
-use crate::editor::registry::{CommandRegistry, MappableCommand};
+use crate::editor::registry::{CommandRegistry, MappableCommand, TypedCommand};
 
 mod builder;
 mod editor_cmds;
@@ -125,7 +125,32 @@ impl CommandRegistry {
     }
 
     fn register_builtin(&mut self, cmd: MappableCommand) {
+        self.assert_unclaimed(cmd.name());
         self.register(cmd)
             .expect("a built-in editor command's name is lowercase");
     }
+
+    fn register_builtin_typed(&mut self, cmd: TypedCommand) {
+        self.assert_unclaimed(&cmd.name);
+        for alias in cmd.aliases {
+            self.assert_unclaimed(alias);
+        }
+        self.register_typed(cmd)
+            .expect("a built-in typed command's name and aliases are valid");
+    }
+
+    /// Registration replaces whatever a name already holds, so two built-ins
+    /// sharing a name would leave only the last one registered.
+    ///
+    /// # Panics
+    /// Panics if `name` is already a command's name or a typed alias.
+    fn assert_unclaimed(&self, name: &str) {
+        assert!(
+            !self.contains(name) && self.get_typed(name).is_none(),
+            "built-in command name {name:?} is already registered"
+        );
+    }
 }
+
+#[cfg(test)]
+mod tests;
