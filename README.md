@@ -32,7 +32,7 @@ HUME is my daily editor, driven by curiosity and the pure joy of hacking. Feel f
 - **Less typing for what you do most**. Selections come first, so acting on text is short and direct.
 - **Usable immediately, yours to shape**. Sensible defaults on day one; customize everything in a single language when you're ready.
 - **Bundled, one line away**. Fuzzy pickers, language servers, live git diff, and 300+ language definitions ship with the editor — each is one line of config from being on.
-- **Paste that does the obvious thing**. `p` reaches for what you most likely meant.
+- **Paste that does the obvious thing**. `p` reaches for what you most likely meant, and a kill ring keeps your recent deletes and yanks within reach.
 - **Comfortable with real text**. Emoji, accents, and other multi-byte characters are treated as single characters, the way you'd expect.
 
 ## Quick start
