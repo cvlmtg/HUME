@@ -241,6 +241,58 @@ second-oldest entry and then press `p`, the new paste appends a second copy
 of that entry (not the head), and the cycle position is preserved so a
 following `[` continues from there rather than resetting.
 
+## Several entries, a different number of cursors
+
+A yank from several selections captures one entry per selection, in document
+order. Pasting it back with as many cursors as entries gives each cursor its
+own entry, the first entry to the first cursor. With any other number of
+cursors, every cursor gets all the entries, joined in order and pasted in the
+shape of the last one. A capture with a single entry is the simplest case of
+the same rule: every cursor gets it.
+
+Joining adds nothing between entries. Whole lines each end in their own line
+break, so they still paste as lines. Characters run together, so `foo` and
+`bar` pasted at one cursor give `foobar`.
+
+Kakoune and Helix agree with HUME when the counts match, and differ when they
+don't:
+
+| Entries → cursors | Kakoune | Helix | HUME |
+|---|---|---|---|
+| 1 → any | every cursor gets it | every cursor gets it | every cursor gets it |
+| N → N | one each | one each | one each |
+| N → 1 | the first entry only | the first entry only | all of them |
+| N → more than N | entries start again from the first | the last entry repeats | all of them at every cursor |
+| N → fewer than N | the first ones, the rest unused | the first ones, the rest unused | all of them at every cursor |
+
+Joining on a mismatch follows what users of both editors report:
+
+- **Several entries into one cursor should paste them all.** Getting only the
+  first entry is the complaint that recurs in both trackers ([kakoune#829],
+  [helix#14039]). Both projects answer with a separate command that pastes
+  every entry: Kakoune has `<a-p>`, and the same request for Helix is still
+  open ([helix#1333], [helix PR #13583]). HUME's ordinary paste covers that
+  case without a second key.
+- **A wrong count should show.** Repeating or wrapping hands every cursor a
+  plausible entry, so a miscount goes unnoticed. A joined paste is visibly
+  wrong and one undo away. A Helix user makes the same point in
+  [helix discussion #10200]: "with the current Helix behavior it's harder to
+  notice the mistake."
+- **No one asks for repeating or wrapping.** The author of [helix#7792]
+  writes "I can't really think of a situation where I'd want Helix to repeat
+  the last selection multiple times", and proposes the rule HUME uses, which
+  they attribute to VS Code and Sublime. Helix's maintainers keep the repeat as
+  intended behaviour ([helix#14039]). None of these threads asks for Kakoune's
+  wrapping. What it enables, such as alternating two entries down a column,
+  turns up in keystroke-golf solutions rather than in requests.
+
+[kakoune#829]: https://github.com/mawww/kakoune/issues/829
+[helix#1333]: https://github.com/helix-editor/helix/issues/1333
+[helix#7792]: https://github.com/helix-editor/helix/issues/7792
+[helix#14039]: https://github.com/helix-editor/helix/issues/14039
+[helix PR #13583]: https://github.com/helix-editor/helix/pull/13583
+[helix discussion #10200]: https://github.com/helix-editor/helix/discussions/10200
+
 ## Explicit register prefix is untouched
 
 Everything above describes the *bare* yank, delete, change, and paste keys.
