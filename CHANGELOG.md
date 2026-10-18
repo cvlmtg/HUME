@@ -43,6 +43,7 @@
 - New `insert-text!` pastes text where you're typing, as a terminal paste would.
 - `bind-key!` takes `'command` to bind keys in the command mode prompt and in plugin prompts.
 - `buffer-display-path` takes `#:relative #t` for the path relative to the working directory.
+- New `register-name?` tells whether a string names a register.
 
 ### Language servers
 - `z s` picks a symbol of the current file and `z S` searches the symbols of the whole project as you type, both jumping to the one you accept.

@@ -72,6 +72,23 @@ fn register_arg_rejects_macro_and_search_even_with_real_validation() {
     }
 }
 
+#[test]
+fn register_name_answers_true_only_for_names_read_register_takes() {
+    let mut host = RegisterCapableHost::default();
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx_with_host(&mut host);
+    for name in ["0", "9", "k", "c", "b"] {
+        let answer = register_name(&mut ctx, name.to_string()).unwrap();
+        assert!(matches!(answer, SteelVal::BoolV(true)), "{name:?}");
+        assert!(register_arg(&mut ctx, name, "read-register").is_ok());
+    }
+    for name in ["q", "s", "f", "p", "ab", ""] {
+        let answer = register_name(&mut ctx, name.to_string()).unwrap();
+        assert!(matches!(answer, SteelVal::BoolV(false)), "{name:?}");
+        assert!(register_arg(&mut ctx, name, "read-register").is_err());
+    }
+}
+
 /// `NullHost` has no `RegisterHost` capability: both builtins must surface
 /// the standard "not supported by this host" error, same as any other
 /// optional-capability builtin (`goto-location!`, `show-popup!`, …). Uses

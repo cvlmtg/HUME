@@ -199,6 +199,7 @@ A value naming a closed buffer raises for almost every call: the reads that need
 |------|--------|
 | `(write-register! name values)` | Store `values` (a list of strings, one per selection) in register `name` |
 | `(read-register name)` | Contents of register `name` as a list of strings, or `#f` if it's empty |
+| `(register-name? name)` | `#t` when `name` is a register these two accept, `#f` for any other string |
 
 Both ends speak the same list shape. A string a script writes pastes as whole lines when it ends in a newline and inline otherwise, so `(write-register! "3" (read-register "3"))` keeps the text but loses the shape of an entry that was yanked inline and happens to end in a newline. Valid names are `0`–`9`, `k` (kill-ring head), `c` (system clipboard), and `b` (black hole), the same set the [`"` register prefix](copy-and-paste.md#register-prefix) accepts. Writing `k` behaves like a yank to the kill ring; writing `b` discards silently; reading an unwritten register, `b`, or a register holding a recorded macro all answer `#f`.
 

@@ -282,6 +282,7 @@
 (#%register-global "register-installed-grammars!")
 (#%register-global "register-lsp-notification-hook!")
 (#%register-global "register-lsp-server!")
+(#%register-global "register-name?")
 (#%register-global "register-sign-source!")
 (#%register-global "remove-primary-selection")
 (#%register-global "repeat-find-backward")

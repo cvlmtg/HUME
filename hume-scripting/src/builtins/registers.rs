@@ -1,4 +1,5 @@
-//! `(read-register name)` / `(write-register! name values)` builtins.
+//! `(read-register name)` / `(write-register! name values)` /
+//! `(register-name? name)` builtins.
 //!
 //! A register holds one string per selection captured at yank time, the
 //! same `Vec<String>` shape [`crate::host::RegisterHost`] exposes. Reading
@@ -30,17 +31,31 @@ pub(crate) fn register_arg(
     name: &str,
     builtin: &str,
 ) -> Result<char, SteelErr> {
-    let mut chars = name.chars();
-    let reg = match (chars.next(), chars.next()) {
-        (Some(c), None) => c,
-        _ => steel::stop!(Generic =>
-            "{}: expected a single-character register name, got {:?}", builtin, name),
+    let Some(reg) = single_char(name) else {
+        steel::stop!(Generic =>
+            "{}: expected a single-character register name, got {:?}", builtin, name);
     };
     if !ctx.host.commands().is_valid_register_name(reg) {
         steel::stop!(Generic =>
             "{}: invalid register '{}'; valid: 0-9, k, c, b", builtin, reg);
     }
     Ok(reg)
+}
+
+/// The one character `name` holds, `None` for any other length.
+fn single_char(name: &str) -> Option<char> {
+    let mut chars = name.chars();
+    match (chars.next(), chars.next()) {
+        (Some(c), None) => Some(c),
+        _ => None,
+    }
+}
+
+/// `(register-name? name)` → `#t` when `name` is a register that
+/// `read-register` and `write-register!` accept.
+pub(crate) fn register_name(ctx: &mut SteelCtx, name: String) -> SteelResult {
+    let valid = single_char(&name).is_some_and(|c| ctx.host.commands().is_valid_register_name(c));
+    Ok(SteelVal::BoolV(valid))
 }
 
 /// `(read-register name)` → contents of `name` as a list of strings, or `#f`

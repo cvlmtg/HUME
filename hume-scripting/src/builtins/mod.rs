@@ -294,6 +294,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         // per-command targeting.
         open "read-register" registers::read_register(name: String);
         open "write-register!" registers::write_register(name: String, values: SteelVal);
+        open "register-name?" registers::register_name(name: String);
 
         // Plugin lifecycle
         open "%declare-plugin!" plugins::declare_plugin(name: String, entry: SteelVal, commands: SteelVal, typed_commands: SteelVal, events: SteelVal, languages: SteelVal);
