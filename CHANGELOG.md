@@ -48,6 +48,7 @@
 - `json-ref-or` returns its default for a field the server sent as `null`, so a code action whose `disabled` is `null` is offered.
 - `apply-text-edits!` and `apply-workspace-edit!` still apply after the pane switches buffers, and `apply-text-edits!` and `lsp-document-params` work without a pane.
 - `#` on a closing tag finds its opening tag past a commented-out tag.
+- `[` after pasting from the clipboard skips the kill-ring entry holding the same text instead of pasting it again.
 
 ## [0.15.0] - 2026-10-15
 

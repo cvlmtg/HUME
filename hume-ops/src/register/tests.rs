@@ -491,33 +491,52 @@ fn seed_cycle_sets_position() {
     let mut ring = KillRing::new();
     ring.push(vs("a"));
     ring.push(vs("b"));
-    ring.seed_cycle(Some(0));
-    assert_eq!(ring.cycle, Some(0));
-    ring.seed_cycle(None);
-    assert_eq!(ring.cycle, None);
+    ring.seed_cycle(CyclePos::Slot(0));
+    assert_eq!(ring.cycle, CyclePos::Slot(0));
+    ring.seed_cycle(CyclePos::Outside(vs("x")));
+    assert_eq!(ring.cycle, CyclePos::Outside(vs("x")));
 }
 
 // -- cycle_older ([) ----------------------------------------------------------
 
 #[test]
-fn cycle_older_from_none_reads_slot0() {
-    // Clipboard origin (None) → first [ goes to slot 0 (ring head).
+fn cycle_older_from_outside_reads_slot0() {
+    // Clipboard origin → first [ goes to slot 0 (ring head).
     let mut ring = KillRing::new();
     ring.push(vs("a")); // slot 0 = head
-    ring.seed_cycle(None);
+    ring.seed_cycle(CyclePos::Outside(vs("x")));
     assert_eq!(ring.cycle_older(), Some(vs("a").as_slice()));
-    assert_eq!(ring.cycle, Some(0));
+    assert_eq!(ring.cycle, CyclePos::Slot(0));
+}
+
+#[test]
+fn cycle_older_from_outside_skips_head_equal_to_pasted() {
+    let mut ring = KillRing::new();
+    ring.push(vs("a")); // slot 1
+    ring.push(vs("b")); // slot 0 = head
+    ring.seed_cycle(CyclePos::Outside(vs("b")));
+    assert_eq!(ring.cycle_older(), Some(vs("a").as_slice()));
+    assert_eq!(ring.cycle, CyclePos::Slot(1));
+}
+
+#[test]
+fn cycle_older_from_outside_refuses_when_only_entry_is_pasted() {
+    let mut ring = KillRing::new();
+    ring.push(vs("a"));
+    ring.seed_cycle(CyclePos::Outside(vs("a")));
+    assert!(ring.cycle_older().is_none());
+    assert_eq!(ring.cycle, CyclePos::Outside(vs("a"))); // unchanged
 }
 
 #[test]
 fn cycle_older_from_head_reads_slot1() {
-    // Ring-head origin (Some(0)) → first [ goes to slot 1 (one older).
+    // Ring-head origin (Slot(0)) → first [ goes to slot 1 (one older).
     let mut ring = KillRing::new();
     ring.push(vs("a")); // slot 1
     ring.push(vs("b")); // slot 0 = head
-    ring.seed_cycle(Some(0));
+    ring.seed_cycle(CyclePos::Slot(0));
     assert_eq!(ring.cycle_older(), Some(vs("a").as_slice()));
-    assert_eq!(ring.cycle, Some(1));
+    assert_eq!(ring.cycle, CyclePos::Slot(1));
 }
 
 #[test]
@@ -526,28 +545,28 @@ fn cycle_older_noop_at_last_entry() {
     let mut ring = KillRing::new();
     ring.push(vs("a")); // slot 1
     ring.push(vs("b")); // slot 0 = head
-    ring.seed_cycle(Some(1)); // at last
+    ring.seed_cycle(CyclePos::Slot(1)); // at last
     assert!(ring.cycle_older().is_none());
-    assert_eq!(ring.cycle, Some(1)); // unchanged
+    assert_eq!(ring.cycle, CyclePos::Slot(1)); // unchanged
 }
 
 #[test]
 fn cycle_older_noop_on_empty_ring() {
     let mut ring = KillRing::new();
     assert!(ring.cycle_older().is_none());
-    assert_eq!(ring.cycle, None); // unchanged
+    assert_eq!(ring.cycle, CyclePos::default()); // unchanged
 }
 
 // -- cycle_newer (]) ----------------------------------------------------------
 
 #[test]
-fn cycle_newer_noop_from_none() {
+fn cycle_newer_noop_from_outside() {
     // Rule 28: ] is a noop when there is no active cycle.
     let mut ring = KillRing::new();
     ring.push(vs("a"));
-    ring.seed_cycle(None);
+    ring.seed_cycle(CyclePos::Outside(vs("x")));
     assert!(ring.cycle_newer().is_none());
-    assert_eq!(ring.cycle, None); // unchanged
+    assert_eq!(ring.cycle, CyclePos::Outside(vs("x"))); // unchanged
 }
 
 #[test]
@@ -556,9 +575,9 @@ fn cycle_newer_noop_at_head() {
     let mut ring = KillRing::new();
     ring.push(vs("a"));
     ring.push(vs("b"));
-    ring.seed_cycle(Some(0));
+    ring.seed_cycle(CyclePos::Slot(0));
     assert!(ring.cycle_newer().is_none());
-    assert_eq!(ring.cycle, Some(0)); // unchanged
+    assert_eq!(ring.cycle, CyclePos::Slot(0)); // unchanged
 }
 
 #[test]
@@ -567,9 +586,9 @@ fn cycle_newer_retreats_toward_head() {
     ring.push(vs("a")); // slot 2
     ring.push(vs("b")); // slot 1
     ring.push(vs("c")); // slot 0 = head
-    ring.seed_cycle(Some(2));
+    ring.seed_cycle(CyclePos::Slot(2));
     assert_eq!(ring.cycle_newer(), Some(vs("b").as_slice()));
-    assert_eq!(ring.cycle, Some(1));
+    assert_eq!(ring.cycle, CyclePos::Slot(1));
 }
 
 // -- round-trips --------------------------------------------------------------
@@ -580,12 +599,12 @@ fn cycle_round_trip_clipboard_origin() {
     let mut ring = KillRing::new();
     ring.push(vs("charwise")); // slot 1
     ring.push(vs("linewise\n")); // slot 0 = head
-    ring.seed_cycle(None); // clipboard origin
+    ring.seed_cycle(CyclePos::Outside(vs("clip"))); // clipboard origin
 
     assert_eq!(ring.cycle_older(), Some(vs("linewise\n").as_slice())); // slot 0
     assert_eq!(ring.cycle_older(), Some(vs("charwise").as_slice())); // slot 1
     assert!(ring.cycle_older().is_none()); // noop (at oldest)
-    assert_eq!(ring.cycle, Some(1)); // unchanged after noop
+    assert_eq!(ring.cycle, CyclePos::Slot(1)); // unchanged after noop
 }
 
 #[test]
@@ -594,12 +613,12 @@ fn cycle_round_trip_older_then_newer() {
     ring.push(vs("a")); // slot 2
     ring.push(vs("b")); // slot 1
     ring.push(vs("c")); // slot 0 = head
-    ring.seed_cycle(None);
+    ring.seed_cycle(CyclePos::Outside(vs("x")));
 
-    ring.cycle_older(); // None→0: "c"
+    ring.cycle_older(); // outside→0: "c"
     ring.cycle_older(); // 0→1:   "b"
     assert_eq!(ring.cycle_newer(), Some(vs("c").as_slice())); // 1→0: "c"
-    assert_eq!(ring.cycle, Some(0));
+    assert_eq!(ring.cycle, CyclePos::Slot(0));
     assert!(ring.cycle_newer().is_none()); // noop at head
 }
 

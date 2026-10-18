@@ -34,7 +34,7 @@ Text from outside HUME, such as the system clipboard after another program wrote
 
 Since `y` writes to both the clipboard and the kill ring, `y` then `p` pastes what you just yanked. Yanking to an explicit register instead (`"0y`) leaves both the clipboard and this "what should a bare `p` read" tracking untouched. A following bare `p` behaves exactly as it would have if the `"0y` hadn't happened. Use `"0p` to read the register back.
 
-`[` and `]` only work inside a **paste session**, one opened by a preceding `p` or `P`. Each cycle replaces the previous paste, and the whole session records as a single undo step. Consecutive `p` presses append copies (each its own separate undo step) for the same reason pasting over a matching selection does: pasting the same text again lands next to it, not over it.
+`[` and `]` only work inside a **paste session**, one opened by a preceding `p` or `P`. Each cycle replaces the previous paste with different text, and the whole session records as a single undo step. After a paste from the clipboard, `[` skips the kill-ring entry that holds the same text, such as the one a `y` just put in both. Consecutive `p` presses append copies (each its own separate undo step) for the same reason pasting over a matching selection does: pasting the same text again lands next to it, not over it.
 
 Two plain commands, `paste-after`/`paste-before`, exist alongside `p`/`P` with no key bound by default: they always read the kill-ring head, with no clipboard fallback, and always replace a real selection outright, with no same-text check. To stack a copy with plain paste, collapse the selection (`;`) before pasting. See [GUI-style paste](#gui-style-paste-bundled-plugin) below for a plugin built on them.
 

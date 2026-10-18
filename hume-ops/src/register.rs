@@ -333,17 +333,32 @@ impl RegisterSet {
 /// The ring holds no two equal entries: [`KillRing::push`] moves a
 /// re-captured entry to the head instead of duplicating it.
 ///
-/// `cycle` is seeded by the paste command based on origin and persists until
-/// the next paste re-seeds it; a lingering value between sessions is harmless
-/// because every fresh paste re-seeds before reading the cursor.
+/// `cycle` is seeded by the paste command with what it pasted and persists
+/// until the next paste re-seeds it; a lingering value between sessions is
+/// harmless because every fresh paste re-seeds before reading the cursor.
 #[derive(Debug, Clone, Default)]
 pub struct KillRing {
     /// Entries newest-first; max `KILL_RING_DEPTH` entries.
     entries: VecDeque<Vec<Piece>>,
     /// Active `[`/`]` cycle position.
-    /// `None` = clipboard / named-register origin (conceptually "before slot 0").
-    /// `Some(n)` = currently showing slot `n`.
-    cycle: Option<usize>,
+    cycle: CyclePos,
+}
+
+/// What the open paste session shows, as a `[`/`]` cycle position.
+#[derive(Debug, Clone, PartialEq)]
+pub enum CyclePos {
+    /// Ring slot `n` (0 = head).
+    Slot(usize),
+    /// Text pasted from outside the ring (the clipboard or a digit register),
+    /// conceptually before slot 0.
+    Outside(Vec<Piece>),
+}
+
+/// An empty paste, which equals no ring entry.
+impl Default for CyclePos {
+    fn default() -> Self {
+        Self::Outside(Vec::new())
+    }
 }
 
 /// Maximum number of entries the kill ring retains.
@@ -389,12 +404,12 @@ impl KillRing {
         }
     }
 
-    /// Seed the cycle cursor based on paste origin.
+    /// Seed the cycle cursor with what a paste put there.
     ///
     /// Call once per completed paste:
-    /// - ring-sourced paste (`"kp`, or smart-p reading slot `n`) → `Some(n)`
-    /// - clipboard / named-register (`"0`–`"9`) paste → `None`
-    pub fn seed_cycle(&mut self, pos: Option<usize>) {
+    /// - ring-sourced paste (`"kp`, or smart-p reading slot `n`) → `Slot(n)`
+    /// - clipboard / named-register (`"0`–`"9`) paste → `Outside(pasted)`
+    pub fn seed_cycle(&mut self, pos: CyclePos) {
         self.cycle = pos;
     }
 
@@ -410,37 +425,44 @@ impl KillRing {
 
     /// Current `[`/`]` cycle position, if a session is active.
     pub fn cycle_position(&self) -> Option<usize> {
-        self.cycle
+        match self.cycle {
+            CyclePos::Slot(n) => Some(n),
+            CyclePos::Outside(_) => None,
+        }
     }
 
     /// Advance the cycle cursor one step older and return that entry.
     ///
-    /// `None → 0`, `Some(n) → n+1`. Noop (returns `None`, leaves `cycle` unchanged)
-    /// when the next slot would be out of bounds or the ring is empty (rule 27:
-    /// every subsequent `[` past the oldest entry is a noop).
+    /// `Outside → 0`, or `1` when the head is the text already pasted, so the
+    /// step never re-pastes what it replaces. `Slot(n) → n+1`. Noop (returns
+    /// `None`, leaves `cycle` unchanged) when the next slot would be out of
+    /// bounds or the ring is empty (rule 27: every subsequent `[` past the
+    /// oldest entry is a noop).
     pub fn cycle_older(&mut self) -> Option<&[Piece]> {
-        let next = match self.cycle {
-            None => 0,
-            Some(n) => n + 1,
+        let next = match &self.cycle {
+            CyclePos::Slot(n) => n + 1,
+            // Entries are unique, so only the head can equal the pasted text.
+            CyclePos::Outside(pasted) => usize::from(self.entries.front() == Some(pasted)),
         };
         if next >= self.entries.len() {
             return None;
         }
-        self.cycle = Some(next);
+        self.cycle = CyclePos::Slot(next);
         self.entries.get(next).map(Vec::as_slice)
     }
 
     /// Retreat the cycle cursor one step newer and return that entry.
     ///
-    /// Noop (returns `None`, leaves `cycle` unchanged) when `cycle` is `None` or
-    /// `Some(0)`: there is nowhere newer to go (rule 28: every subsequent `]`
-    /// at the head entry is a noop). Otherwise `Some(n) → Some(n-1)`.
+    /// Noop (returns `None`, leaves `cycle` unchanged) when `cycle` is
+    /// `Outside` or `Slot(0)`: there is nowhere newer to go (rule 28: every
+    /// subsequent `]` at the head entry is a noop). Otherwise
+    /// `Slot(n) → Slot(n-1)`.
     pub fn cycle_newer(&mut self) -> Option<&[Piece]> {
         let prev = match self.cycle {
-            None | Some(0) => return None,
-            Some(n) => n - 1,
+            CyclePos::Outside(_) | CyclePos::Slot(0) => return None,
+            CyclePos::Slot(n) => n - 1,
         };
-        self.cycle = Some(prev);
+        self.cycle = CyclePos::Slot(prev);
         self.entries.get(prev).map(Vec::as_slice)
     }
 

@@ -1023,6 +1023,46 @@ fn paste_ring_cycle_older_then_newer() {
     assert!(after_newer.contains('B'), "] after two [ pastes slot 1 (B)");
 }
 
+/// `[` after a clipboard paste skips the ring head when it holds the
+/// clipboard text, as it does after a bare `y`: pasting it again would leave
+/// the buffer as it was.
+#[test]
+fn paste_ring_older_after_clipboard_paste_skips_the_same_text() {
+    use hume_ops::register::CLIPBOARD_REGISTER;
+
+    let mut ed = editor_from("-[x]>\n");
+    ed.state.clipboard.force_unavailable();
+    ed.state
+        .registers
+        .write_text(CLIPBOARD_REGISTER, vec!["bar".to_string()]);
+    ed.state.kill_ring.push(vec!["foo".to_string()]);
+    ed.state.kill_ring.push(vec!["bar".to_string()]);
+
+    ed.feed_key(key('p'));
+    assert_eq!(state(&ed), "x-[bar]>\n", "p pastes the clipboard");
+    ed.feed_key(key('['));
+    assert_eq!(state(&ed), "x-[foo]>\n", "[ steps past the head to foo");
+}
+
+/// `[` after a clipboard paste is refused when the ring's only entry is the
+/// clipboard text, and the clipboard paste stays.
+#[test]
+fn paste_ring_older_after_clipboard_paste_refuses_when_only_the_same_text() {
+    use hume_ops::register::CLIPBOARD_REGISTER;
+
+    let mut ed = editor_from("-[x]>\n");
+    ed.state.clipboard.force_unavailable();
+    ed.state
+        .registers
+        .write_text(CLIPBOARD_REGISTER, vec!["bar".to_string()]);
+    ed.state.kill_ring.push(vec!["bar".to_string()]);
+
+    ed.feed_key(key('p'));
+    ed.feed_key(key('['));
+    assert_eq!(state(&ed), "x-[bar]>\n");
+    assert_eq!(status(&ed), "no older entry");
+}
+
 /// Select a line with `x`, delete with `d`, move with `j`, then paste via
 /// explicit ring head (`"kp`): the deleted line must appear as its own line *below*
 /// the cursor, not embedded inside the current line.
