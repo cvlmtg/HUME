@@ -127,8 +127,8 @@ pub(in crate::editor) fn insert_input(ed: &mut Editor, r: LayerRef, ev: InputEve
 }
 
 fn insert_paste(state: &mut EditorState, view: &EngineView, _r: LayerRef, text: PastedText) {
-    state.apply_insert_mode_paste(view, text.as_str());
-    state.record_paste(text.into_string());
+    state.apply_insert_mode_paste(view, text.values());
+    state.record_paste(text.into_values());
 }
 
 /// Walks the Insert keymap for `key`: a bound key re-dispatches its
@@ -194,7 +194,8 @@ fn handle_insert(ed: &mut Editor, key: KeyEvent) {
 impl EditorState {
     // ── Insert mode ───────────────────────────────────────────────────────────
 
-    /// Bulk-insert `text` into the focused buffer as one grouped edit: the
+    /// Bulk-insert `values` into the focused buffer as one grouped edit,
+    /// placed at the selections as `p` places them: the
     /// Insert-mode paste path. Also used by dot-repeat replay so a replayed
     /// paste re-runs as one edit rather than as synthesized per-char keys
     /// (which would wrongly re-trigger auto-indent on an embedded newline).
@@ -202,12 +203,16 @@ impl EditorState {
     /// Bypasses auto-pairs, trigger-char hooks, and per-char LSP
     /// refiltering: auto-pairing pasted brackets would corrupt already-balanced
     /// text, and refiltering a completion against a pasted blob is meaningless.
-    pub(in crate::editor) fn apply_insert_mode_paste(&mut self, view: &EngineView, text: &str) {
+    pub(in crate::editor) fn apply_insert_mode_paste(
+        &mut self,
+        view: &EngineView,
+        values: &[String],
+    ) {
         let focused = view.focused_pane();
         let buf = view.panes[focused].buffer_id();
         let (buffers, mut stores) = self.edit_parts();
         doc_ops::apply_doc_edit_grouped(buffers, &mut stores, focused, buf, |s| {
-            hume_ops::edit::insert_str(s, text)
+            hume_ops::edit::insert_values(s, values)
         });
         self.dismiss_completion(view);
     }

@@ -11,8 +11,8 @@ use crate::types::PaneHandle;
 
 use super::SteelResult;
 use super::args::{
-    CHAR_OFFSET, hash_entry, list_items, optional_usize_arg, single_key_arg, string_arg,
-    tagged_json_arg, wire_text_edit_arg,
+    CHAR_OFFSET, hash_entry, list_items, list_to_strings, optional_usize_arg, single_key_arg,
+    string_arg, tagged_json_arg, wire_text_edit_arg,
 };
 use super::errors::{generic_err, require_cap};
 
@@ -171,10 +171,16 @@ pub(crate) fn insert_key(ctx: &mut SteelCtx, pane: PaneHandle, key: SteelVal) ->
         .map_err(generic_err)
 }
 
-/// `(insert-text! pane text)`: paste `text` into whatever has focus.
-pub(crate) fn insert_text(ctx: &mut SteelCtx, pane: PaneHandle, text: String) -> SteelResult {
+/// `(insert-text! pane text)`: paste `text`, a string or a list of strings,
+/// into whatever has focus.
+pub(crate) fn insert_text(ctx: &mut SteelCtx, pane: PaneHandle, text: SteelVal) -> SteelResult {
+    let values = match text {
+        SteelVal::ListV(_) => list_to_strings(text, "insert-text!")?,
+        SteelVal::StringV(_) | SteelVal::SymbolV(_) => vec![string_arg(text, "insert-text!")?],
+        _ => steel::stop!(TypeMismatch => "insert-text!: expected a string or a list of strings"),
+    };
     require_cap(ctx.host.edits(), "insert-text!")?
-        .insert_text(pane, text)
+        .insert_text(pane, values)
         .map(|()| SteelVal::Void)
         .map_err(generic_err)
 }

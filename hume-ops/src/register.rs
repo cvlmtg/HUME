@@ -120,6 +120,33 @@ impl Piece {
     }
 }
 
+/// Which value each selection gets when several are pasted at once: one each
+/// when there are as many values as selections, otherwise every value joined
+/// at every selection.
+pub enum Placement<'a, T> {
+    Each(&'a [T]),
+    Joined(T),
+}
+
+impl<'a, T> Placement<'a, T> {
+    /// `join` builds the value every selection gets when the counts differ.
+    pub fn new(values: &'a [T], selections: usize, join: impl FnOnce(&[T]) -> T) -> Self {
+        if values.len() == selections {
+            Self::Each(values)
+        } else {
+            Self::Joined(join(values))
+        }
+    }
+
+    /// The value selection `i` gets; `i` is below the selection count.
+    pub fn get(&self, i: usize) -> &T {
+        match self {
+            Self::Each(values) => &values[i],
+            Self::Joined(value) => value,
+        }
+    }
+}
+
 /// A piece compares to text by its text alone, for tests that check what a
 /// register holds without naming a shape.
 #[cfg(any(test, feature = "test-util"))]

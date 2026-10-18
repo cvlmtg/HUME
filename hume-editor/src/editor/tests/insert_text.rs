@@ -236,7 +236,7 @@ fn insert_text_refuses_for_an_unfocused_pane() {
     ed.state.focus.set_for_test(&mut ed.view, pid_a);
 
     let err = EditorHostImpl::new(&mut ed.state, &mut ed.view)
-        .insert_text(PaneHandle::with_pane(bid, pid_b), "x".to_string())
+        .insert_text(PaneHandle::with_pane(bid, pid_b), vec!["x".to_string()])
         .unwrap_err();
     assert!(err.contains("focused pane"), "got: {err}");
     assert_eq!(ed.doc().text().to_string(), "hello\n");
@@ -335,4 +335,41 @@ fn insert_text_outside_any_binding_is_recorded_as_a_paste() {
     select_marked(&mut ed, "abhel-[l]>o\n");
     ed.feed_key(key('.'));
     assert_eq!(ed.doc().text().to_string(), "abhelablo\n");
+}
+
+#[test]
+fn insert_text_of_a_list_gives_each_insert_cursor_its_own_value() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-{a}>b -[c]>d\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        &format!(
+            r#"(define-command! "{PROBE}" "" (lambda (pane) (insert-text! pane '("x" "y"))))"#
+        ),
+    );
+    ed.feed_key(key('i'));
+    ed.execute_keymap_command(PROBE.into(), Some(1), false);
+    assert_eq!(ed.doc().text().to_string(), "xab ycd\n");
+}
+
+#[test]
+fn insert_text_of_a_list_outside_any_binding_replays_placed_again() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-{a}>b -[c]>d\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        &format!(
+            r#"(define-command! "{PROBE}" "" (lambda (pane) (insert-text! pane '("x" "y"))))"#
+        ),
+    );
+    ed.feed_key(key('i'));
+    ed.execute_keymap_command(PROBE.into(), Some(1), false);
+    ed.feed_key(key_esc());
+    assert_eq!(ed.doc().text().to_string(), "xab ycd\n");
+
+    select_marked(&mut ed, "xa-{b}> yc-[d]>\n");
+    ed.feed_key(key('.'));
+    assert_eq!(ed.doc().text().to_string(), "xaxb ycyd\n");
 }

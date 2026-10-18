@@ -30,7 +30,7 @@ pub use electric::{
 pub use indent::{indent_lines, unindent_lines};
 pub use insert::{
     LineBreak, LineBreakPlan, NewLineIndent, apply_line_break_plan, clear_blank_line_indent,
-    insert_char, insert_str, insert_tab, owned_blank_indent, plan_line_breaks,
+    insert_char, insert_str, insert_tab, insert_values, owned_blank_indent, plan_line_breaks,
 };
 pub use join::join_lines_select_spaces;
 pub use paste::{paste_after, paste_before};

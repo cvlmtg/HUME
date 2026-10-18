@@ -93,6 +93,10 @@ Two further registers exist but cannot be named through the `"` prefix:
 | `q` | Default macro register: written by `Q` recording, read by `q` replay |
 | `s` | Search register: holds the last search pattern; written by `/`, `?`, `*`, and reused when you repeat the search |
 
+## Inserting a register while typing
+
+In Insert mode and on the command line, `Ctrl-r` followed by a register name inserts that register's text. A register yanked from several selections gives each cursor its own selection's text when there are as many cursors as selections, as `p` does, and all of it joined otherwise; the command line gets all of it joined. Two other keys insert paths relative to the working directory: `f` the current file's, and `p` its directory's, ending in a separator so you can type a file name after it (`./` for a file directly in the working directory). A file outside the working directory gets its full path. Any other key inserts nothing and reports that it names no register; `Esc` cancels.
+
 ## GUI-style paste (bundled plugin)
 
 If you'd rather keep the clipboard and the kill ring on separate keys instead of letting `p` choose, load `core:classic-paste`. It rebinds `p` / `P` to always paste from the kill ring, and binds `Ctrl-v` / `Ctrl-Shift-v` to always paste from the system clipboard (the latter needs the kitty protocol).

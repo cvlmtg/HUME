@@ -8,7 +8,7 @@ regeneration run order, not repeated here). The LSP server catalogs live with th
 
 | File | What | Loaded |
 |---|---|---|
-| `prelude.scm` | hand-written: `syntax-rules` sugar over the raw builtins | startup, see below |
+| `prelude.scm` | hand-written: `syntax-rules` sugar over the raw builtins, and the `insert-register` command with its default keys | startup, see below |
 | `languages.scm` | generated: language detection data | startup, see below |
 | `languages/<name>.scm` | generated: one language's data file | when the language is first used or its grammar is attached |
 | `grammars.scm` | hand-written: registers already-compiled grammars | startup, see below |

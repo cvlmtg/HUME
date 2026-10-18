@@ -14,6 +14,7 @@ use hume_rope::width::{indent_stop, str_width, tab_advance};
 
 use super::apply_edit;
 use crate::auto_pairs::{Pair, pair_around};
+use crate::register::Placement;
 
 /// Insert `ch` at every selection.
 ///
@@ -32,7 +33,25 @@ pub fn insert_char(state: EditState, ch: char) -> Edited {
 /// [`insert_char`], used for pasted text so a paste is one edit rather than
 /// one `insert_char` call per character.
 pub fn insert_str(state: EditState, inserted: &str) -> Edited {
+    insert_with(state, |_| inserted)
+}
+
+/// Insert several pasted values, placed as `p` places them ([`Placement`]):
+/// one per selection when the counts match, otherwise all of them joined at
+/// every selection. An empty list changes nothing.
+pub fn insert_values(state: EditState, values: &[String]) -> Edited {
+    if values.is_empty() {
+        return Edited::unchanged(state);
+    }
+    let placement = Placement::new(values, state.view().len(), |values| values.concat());
+    insert_with(state, |i| placement.get(i))
+}
+
+/// Insert `text_of(i)` at selection `i`, replacing what a non-cursor
+/// selection covers.
+fn insert_with<'t>(state: EditState, text_of: impl Fn(usize) -> &'t str) -> Edited {
     apply_edit(state, |b, sel| {
+        let inserted = text_of(sel.index());
         let mark = if sel.is_cursor() {
             b.insert(sel.start(), inserted)
         } else {

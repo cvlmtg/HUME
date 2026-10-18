@@ -218,13 +218,13 @@ fn prelude_eval_init_sequence_makes_macros_available_to_init_scm() {
     // Load prelude first, then init.scm, mirroring init_scripting's sequence.
     h.eval_init(&prelude_path, 10_000, &mut mock, builtin_names.clone())
         .expect("prelude eval_init must succeed");
-    assert!(
-        mock.registered_cmds.is_empty(),
-        "prelude must define no commands; got {:?}",
+    assert_eq!(
         mock.registered_cmds
             .iter()
-            .map(|d| &d.name)
-            .collect::<Vec<_>>()
+            .map(|d| d.name.as_str())
+            .collect::<Vec<_>>(),
+        ["insert-register"],
+        "the prelude defines insert-register and no other command"
     );
 
     let effects = h

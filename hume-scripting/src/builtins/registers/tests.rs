@@ -64,12 +64,28 @@ fn register_arg_rejects_macro_and_search_even_with_real_validation() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx_with_host(&mut host);
     for name in ["q", "s"] {
-        let err = register_arg(&mut ctx, name, "read-register").unwrap_err();
+        let err = register_arg(&mut ctx, name, "read-register")
+            .unwrap_err()
+            .to_string();
         assert!(
-            err.to_string().contains("invalid register"),
-            "name {name:?} got: {err}"
+            err.contains(&format!("read-register: invalid register '{name}'")),
+            "got: {err}"
         );
     }
+}
+
+#[test]
+fn register_arg_message_lists_the_valid_registers() {
+    let mut host = RegisterCapableHost::default();
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx_with_host(&mut host);
+    let err = register_arg(&mut ctx, "x", "read-register")
+        .unwrap_err()
+        .to_string();
+    assert!(
+        err.contains("read-register: invalid register 'x'; valid: 0-9, k, c, b"),
+        "got: {err}"
+    );
 }
 
 #[test]

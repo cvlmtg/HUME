@@ -43,3 +43,26 @@
                (string-join (map (lambda (names) (string-join names ","))
                                  (list left center right))
                             "|")))
+
+(define-command! "insert-register"
+  "Insert the register named by the next key, or, for f, the buffer's file path and, for p, its directory, relative to the working directory."
+  (lambda (pane)
+    (on-next-char!
+      (lambda (ch)
+        (let ([text
+               (cond
+                 [(not ch) #f]
+                 [(eqv? ch #\f) (buffer-display-path pane #:relative #t)]
+                 [(eqv? ch #\p)
+                  (let ([file (buffer-display-path pane #:relative #t)])
+                    (and file
+                         (let ([dir (parent-name file)])
+                           (path-join (if (equal? dir "") "." dir) ""))))]
+                 [(register-name? (string ch)) (read-register (string ch))]
+                 [else
+                  (error (string-append "insert-register: invalid register '" (string ch) "'"))])])
+          (when text (insert-text! pane text))))))
+  #:repeatable #t)
+
+(bind-key! 'insert "ctrl-r" "insert-register")
+(bind-key! 'command "ctrl-r" "insert-register")

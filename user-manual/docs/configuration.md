@@ -201,14 +201,12 @@ Binding an Insert-mode key replaces its behaviour outright. `insert-key!` (see [
 
 ### Keys in the command line
 
-A `'command` binding applies in the command mode prompt and in prompts plugins open, not in search or sift. It replaces the prompt's own use of that key, except that an open candidate list keeps the keys it picks candidates with. Running a command this way doesn't change what `.` repeats. For example, `Ctrl-r` inserting the current file's path:
+A `'command` binding applies in the command mode prompt and in prompts plugins open, not in search or sift. It replaces the prompt's own use of that key, except that an open candidate list keeps the keys it picks candidates with. Running a command this way doesn't change what `.` repeats. `Ctrl-r`, which inserts a register or the current file's path, is bound this way by default (see [Inserting a register while typing](copy-and-paste.md#inserting-a-register-while-typing)). For example, `Ctrl-g` inserting the working directory:
 
 ```scheme
-(define-command! "insert-buffer-path" "Insert the current buffer's file path."
-  (lambda (pane)
-    (let ([path (buffer-path pane)])
-      (when path (insert-text! pane path)))))
-(bind-key! 'command "ctrl-r" "insert-buffer-path")
+(define-command! "insert-cwd" "Insert the working directory."
+  (lambda (pane) (insert-text! pane (cwd))))
+(bind-key! 'command "ctrl-g" "insert-cwd")
 ```
 
 ### Binding a command that reads a character

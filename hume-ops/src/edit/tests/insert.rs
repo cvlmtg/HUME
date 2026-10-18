@@ -171,6 +171,63 @@ fn insert_char_unicode() {
     );
 }
 
+// ── insert_values ─────────────────────────────────────────────────────────
+
+fn iv(text: BufferText, sels: SelectionSet, values: &[&str]) -> Edited {
+    let values: Vec<String> = values.iter().map(|v| v.to_string()).collect();
+    insert_values(test_fixtures::testing::state(text, sels), &values)
+}
+
+#[test]
+fn insert_values_gives_each_cursor_its_own_value_when_counts_match() {
+    assert_state!(
+        "-{h}>ell-[o]>\n",
+        |(text, sels)| iv(text, sels, &["AB", "CD"]),
+        "AB-{h}>ellCD-[o]>\n"
+    );
+}
+
+#[test]
+fn insert_values_joins_them_at_every_cursor_when_counts_differ() {
+    assert_state!(
+        "-{h}>ell-[o]>\n",
+        |(text, sels)| iv(text, sels, &["A", "B", "C"]),
+        "ABC-{h}>ellABC-[o]>\n"
+    );
+}
+
+#[test]
+fn insert_values_joins_them_at_a_single_cursor() {
+    assert_state!(
+        "-[h]>i\n",
+        |(text, sels)| iv(text, sels, &["A", "B"]),
+        "AB-[h]>i\n"
+    );
+}
+
+#[test]
+fn insert_values_of_an_empty_list_changes_nothing() {
+    assert_state!("-[h]>i\n", |(text, sels)| iv(text, sels, &[]), "-[h]>i\n");
+}
+
+#[test]
+fn insert_values_leaves_a_cursor_whose_value_is_empty_in_place() {
+    assert_state!(
+        "-{h}>ell-[o]>\n",
+        |(text, sels)| iv(text, sels, &["", "CD"]),
+        "-{h}>ellCD-[o]>\n"
+    );
+}
+
+#[test]
+fn insert_values_replaces_each_selection_with_its_own_value() {
+    assert_state!(
+        "-{he}>l-[lo]>\n",
+        |(text, sels)| iv(text, sels, &["AB", "CD"]),
+        "AB-{l}>CD-[\n]>"
+    );
+}
+
 // ── insert_str ────────────────────────────────────────────────────────────
 //
 // Bulk-string counterpart of insert_char, used for terminal paste. Mirrors

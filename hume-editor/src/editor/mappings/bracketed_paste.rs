@@ -13,7 +13,7 @@ impl Editor {
     /// Handle a whole pasted string arriving as one terminal event: the
     /// terminal's entry to [`EditorState::paste`](super::super::EditorState::paste).
     pub(in crate::editor) fn handle_terminal_paste(&mut self, text: String) {
-        let Some(text) = PastedText::new(text) else {
+        let Some(text) = PastedText::new(vec![text]) else {
             return;
         };
         // Mirrors `handle_key`'s status-message dismissal, minus the

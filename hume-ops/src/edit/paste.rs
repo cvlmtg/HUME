@@ -7,7 +7,7 @@ use hume_editing::state::EditState;
 use hume_rope::cluster::ClusterRange;
 
 use super::apply_edit;
-use crate::register::{Piece, Shape};
+use crate::register::{Piece, Placement, Shape};
 
 /// `before` governs insert position for cursors (collapsed selections):
 ///
@@ -34,17 +34,11 @@ fn paste_impl(state: EditState, values: &[Piece], before: bool) -> Edited {
         return Edited::unchanged(state);
     }
 
-    let n_sels = state.view().len();
-    let n_vals = values.len();
-
-    // When counts mismatch, every selection gets the full joined content,
-    // pasting in the shape of the last piece. Computed once so the closure can
-    // borrow it.
-    let joined = (n_sels != n_vals).then(|| {
+    // Joined content pastes in the shape of the last piece.
+    let placement = Placement::new(values, state.view().len(), |values| {
         let shape = values.last().map_or(Shape::Charwise, Piece::shape);
         Piece::new(values.iter().map(Piece::text).collect::<String>(), shape)
     });
-    let piece_of = |i: usize| -> &Piece { joined.as_ref().unwrap_or_else(|| &values[i]) };
     // Whether the text right before selection `i` is a linewise paste over
     // the selection touching it: that paste already ended its line, so `i`
     // needs no leading '\n' of its own.
@@ -56,7 +50,7 @@ fn paste_impl(state: EditState, values: &[Piece], before: bool) -> Edited {
             .map(|(i, sel)| {
                 let follows = prev.is_some_and(|p| {
                     !p.is_cursor()
-                        && piece_of(i - 1).is_linewise()
+                        && placement.get(i - 1).is_linewise()
                         && p.covered().end().offset() == sel.start().offset()
                 });
                 prev = Some(sel);
@@ -66,7 +60,7 @@ fn paste_impl(state: EditState, values: &[Piece], before: bool) -> Edited {
     };
 
     apply_edit(state, |b, sel| {
-        let piece = piece_of(sel.index());
+        let piece = placement.get(sel.index());
         let content = piece.text();
         let text = b.text();
 

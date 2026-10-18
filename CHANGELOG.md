@@ -33,6 +33,9 @@
 
 - Command names ignore case everywhere, not just at `:`: `call!` and key bindings find a command in any case, and two names that differ only in case collide. Editor command names must be lowercase: `define-command!` and `#:commands` raise for an uppercase name, so rename any such command.
 
+### Editing
+- `Ctrl-r` in Insert mode and on the command line inserts a register, or with `f` and `p` the current file's path and directory relative to the working directory.
+
 ### Panes & interface
 - `core:git-diff` takes a `"branch-style"` config value: `'icon` shows the statusline branch as `⎇ main` instead of `(main)`.
 
@@ -40,7 +43,7 @@
 - A `live-picker!` source gets a token per query: once the user has typed on, `picker-push!`, `picker-replace!` and `picker-source-spawn!` on an earlier query's token do nothing, so a slow source can't overwrite newer rows.
 - New `on-before-buffer-save` hook, run before a buffer is written. A handler taking `(pane done)` holds the write until it calls `done`, up to `before-save-timeout-ms`.
 - `core:git-diff` has key-bindable `git-diff/toggle-inline-diff` and `git-diff/toggle-git-signs`, plus `git-diff/show-inline-diff` and `git-diff/inline-diff?` for your own commands.
-- New `insert-text!` pastes text where you're typing, as a terminal paste would.
+- New `insert-text!` pastes text where you're typing, as a terminal paste would, or a list of strings the way `p` pastes a register.
 - `bind-key!` takes `'command` to bind keys in the command mode prompt and in plugin prompts.
 - `buffer-display-path` takes `#:relative #t` for the path relative to the working directory.
 - New `register-name?` tells whether a string names a register.

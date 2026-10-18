@@ -99,8 +99,8 @@ pub(in crate::editor) fn base_input(ed: &mut Editor, _r: LayerRef, ev: InputEven
     }
 }
 
-/// Bulk-insert `text` at every selection in the focused buffer as one
-/// edit: the `Base` layer's paste policy (Normal and Extend alike).
+/// Bulk-insert `text`'s values at the selections in the focused buffer as
+/// one edit: the `Base` layer's paste policy (Normal and Extend alike).
 fn paste_over_selections(
     state: &mut EditorState,
     view: &EngineView,
@@ -114,7 +114,7 @@ fn paste_over_selections(
     // the statusline directly.
     let (buffers, mut stores) = state.edit_parts();
     if let Err(e) = super::super::doc_ops::apply_doc_edit(buffers, &mut stores, focused, buf, |s| {
-        hume_ops::edit::insert_str(s, text.as_str())
+        hume_ops::edit::insert_values(s, text.values())
     }) {
         state.report_error(&e);
     }

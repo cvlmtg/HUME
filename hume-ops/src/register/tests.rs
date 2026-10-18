@@ -3,6 +3,33 @@ use crate::edit::yank_selections;
 use hume_editing::state::EditState;
 use test_fixtures::testing::parse_state;
 
+// ── Placement ─────────────────────────────────────────────────────────────
+
+fn concat(values: &[String]) -> String {
+    values.concat()
+}
+
+#[test]
+fn placement_gives_each_selection_its_own_value_when_counts_match() {
+    let values = ["a".to_string(), "b".to_string()];
+    let placement = Placement::new(&values, 2, concat);
+    assert_eq!(
+        (placement.get(0).as_str(), placement.get(1).as_str()),
+        ("a", "b")
+    );
+}
+
+#[test]
+fn placement_joins_every_value_when_counts_differ() {
+    let values = ["a".to_string(), "b".to_string()];
+    for selections in [1, 3] {
+        let placement = Placement::new(&values, selections, concat);
+        for i in 0..selections {
+            assert_eq!(placement.get(i), "ab", "{selections} selections, index {i}");
+        }
+    }
+}
+
 // ── RegisterSet ───────────────────────────────────────────────────────────
 
 #[test]

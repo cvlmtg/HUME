@@ -157,7 +157,7 @@ pub(crate) enum Input {
     /// A paste ([`EditorState::record_paste`]), replayed as one bulk insert
     /// rather than synthetic per-char keys: a synthesized `Enter` would
     /// auto-indent, which a real paste never does.
-    Paste(String),
+    Paste(Vec<String>),
     /// A key bound in the Insert keymap, re-run on replay through
     /// [`Editor::dispatch`] as the live key was, so it decides again at the
     /// new cursor, its own `call!`s, register prefix, and `#:extend`
@@ -792,11 +792,11 @@ impl EditorState {
         }
     }
 
-    /// Append a paste of `text` to the open Insert session's recording, if
+    /// Append a paste of `values` to the open Insert session's recording, if
     /// any, unless the code running now belongs to that same change: `.`
     /// re-runs that code (a binding, a command, an answered callback), which
     /// pastes again, so recording the paste too would replay it twice.
-    pub(in crate::editor) fn record_paste(&mut self, text: String) {
+    pub(in crate::editor) fn record_paste(&mut self, values: Vec<String>) {
         let Some(session) = self.input.insert_session() else {
             return;
         };
@@ -810,7 +810,7 @@ impl EditorState {
         {
             return;
         }
-        rec.action.transcript.push(Input::Paste(text));
+        rec.action.transcript.push(Input::Paste(values));
     }
 
     /// Record the Insert-key binding `name` about to dispatch, before its
@@ -1323,7 +1323,7 @@ impl Editor {
                         .expect("a replayed Insert key runs in the replayed Insert session");
                     commands::insert_default_key(&mut self.state, &self.view, &entry, fp, *key);
                 }
-                Input::Paste(text) => self.state.apply_insert_mode_paste(&self.view, text),
+                Input::Paste(values) => self.state.apply_insert_mode_paste(&self.view, values),
                 Input::Result(r) => {
                     if let Err(msg) = self.state.apply_cursor_replacement(&self.view, fp, r) {
                         self.report(super::Severity::Error, msg);
