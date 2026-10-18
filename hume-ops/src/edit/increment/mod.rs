@@ -6,13 +6,19 @@
 //! cluster, else the first one starting inside it. Literals are read cluster
 //! by cluster, and only a cluster that is one ASCII char can belong to one,
 //! so a digit carrying a combining mark is not a digit.
+//!
+//! A literal is rewritten as parts: a number is one, a date or time one per
+//! field. Each selection asks for the part it touches and lands on it.
+
+use std::ops::Range;
 
 use hume_editing::edit::{Edited, Landing, Landings, edit};
 use hume_editing::selection::{EditView, SelectionView};
 use hume_editing::state::EditState;
-use hume_editing::text::TextVersion;
+use hume_editing::text::{BufferText, TextVersion};
 use hume_rope::cluster::ClusterRange;
 use hume_rope::grapheme::Cluster;
+use hume_rope::line::ContentLine;
 use hume_rope::offset::CharOffset;
 use rustc_hash::FxHashMap;
 
@@ -45,57 +51,67 @@ pub enum IncrementRefusal {
 #[derive(Debug)]
 pub struct IncrementPlan {
     version: TextVersion,
-    changes: Vec<(ClusterRange, String)>,
-    /// Per selection, in order, the index of the change it lands on.
+    pieces: Vec<(ClusterRange, String)>,
+    /// Per selection, in order, the index of the piece it lands on.
     landings: Vec<Option<usize>>,
 }
 
 /// Plan stepping each selection's target by `step`. Selections sharing a
-/// target step it once.
+/// target step it once, with every part they asked for.
 pub fn plan_increment(
     view: EditView<'_>,
     step: i128,
     stepping: Stepping,
 ) -> Result<IncrementPlan, IncrementRefusal> {
-    let mut changes: Vec<(ClusterRange, String)> = Vec::new();
+    let mut scan = LineScan::default();
+    let mut targets: Vec<Target> = Vec::new();
     let mut by_start = FxHashMap::<CharOffset, usize>::default();
-    let mut landings = Vec::with_capacity(view.len());
+    // Per selection, its target's index and the part it asked for.
+    let mut requests = Vec::with_capacity(view.len());
     for sel in view.iter() {
-        let Some(target) = target(sel) else {
-            landings.push(None);
+        let Some((target, touched)) = target(sel, &mut scan) else {
+            requests.push(None);
             continue;
         };
-        let start = target.range.start().offset();
-        if let Some(&index) = by_start.get(&start) {
-            landings.push(Some(index));
-            continue;
+        let part = target.literal.part_at(touched);
+        let index = *by_start.entry(target.start).or_insert(targets.len());
+        if index == targets.len() {
+            targets.push(target);
         }
-        let index = changes.len();
-        let amount = match stepping {
-            Stepping::Uniform => Some(step),
-            Stepping::Sequence => i128::try_from(index + 1)
-                .ok()
-                .and_then(|n| step.checked_mul(n)),
-        };
-        let replacement = amount
-            .and_then(|amount| target.literal.stepped(target.touched, amount))
-            .ok_or(IncrementRefusal::OutOfRange)?;
-        by_start.insert(start, index);
-        landings.push(Some(index));
-        changes.push((target.range, replacement));
+        targets[index].asked.push(part);
+        requests.push(Some((index, part)));
     }
-    if changes.is_empty() {
+    if targets.is_empty() {
         return Err(IncrementRefusal::NoTarget);
     }
+    let mut pieces = Vec::new();
+    let mut first_piece = Vec::with_capacity(targets.len());
+    for (n, target) in targets.into_iter().enumerate() {
+        let amount = match stepping {
+            Stepping::Uniform => Some(step),
+            Stepping::Sequence => {
+                step.checked_mul(i128::try_from(n + 1).expect("a selection count fits an i128"))
+            }
+        };
+        let texts = amount
+            .and_then(|amount| target.literal.stepped(&target.asked, amount))
+            .ok_or(IncrementRefusal::OutOfRange)?;
+        first_piece.push(pieces.len());
+        pieces.extend(target.parts.into_iter().zip(texts));
+    }
+    let landings = requests
+        .into_iter()
+        .map(|request| request.map(|(index, part)| first_piece[index] + part))
+        .collect();
     Ok(IncrementPlan {
         version: view.text().version(),
-        changes,
+        pieces,
         landings,
     })
 }
 
-/// Apply `plan` to `state`. A stepped selection covers its new literal,
-/// keeping its facing; any other is kept.
+/// Apply `plan` to `state`. A stepped selection covers the new text of the
+/// part it asked for, keeping its facing; any other is kept.
 ///
 /// # Panics
 /// Panics if `plan` was computed for another text.
@@ -108,14 +124,14 @@ pub fn apply_increment_plan(state: EditState, plan: IncrementPlan) -> Edited {
     let primary = view.primary().index();
     edit(&state, |b| {
         let marks: Vec<_> = plan
-            .changes
+            .pieces
             .iter()
             .map(|(range, replacement)| b.replace(*range, replacement))
             .collect();
         let landings = view
             .iter()
             .zip(&plan.landings)
-            .map(|(sel, change)| match change {
+            .map(|(sel, piece)| match piece {
                 Some(index) => Landing::covering(marks[*index], sel.facing()),
                 None => Landing::kept(sel.selection()),
             })
@@ -149,18 +165,36 @@ fn ascii_at(syms: &[Sym], i: usize) -> Option<char> {
     syms.get(i).and_then(|s| s.ascii)
 }
 
+#[derive(Clone)]
 enum Literal {
     Number(Number),
     Moment(Moment),
 }
 
 impl Literal {
-    /// The literal moved by `amount`. `touched` is the index within the
-    /// literal of the selection's first cluster, when the literal holds it.
-    fn stepped(&self, touched: Option<usize>, amount: i128) -> Option<String> {
+    /// Where each part lies, as indices into a literal `len` clusters long.
+    fn parts(&self, len: usize) -> Vec<Range<usize>> {
         match self {
-            Self::Number(number) => number.stepped(amount),
-            Self::Moment(moment) => moment.stepped(moment.field_at(touched), amount),
+            Self::Number(_) => std::iter::once(0..len).collect(),
+            Self::Moment(moment) => moment.parts().collect(),
+        }
+    }
+
+    /// The part holding index `touched` of the literal, when the literal
+    /// holds the selection's first cluster.
+    fn part_at(&self, touched: Option<usize>) -> usize {
+        match self {
+            Self::Number(_) => 0,
+            Self::Moment(moment) => moment.part_at(touched),
+        }
+    }
+
+    /// The text of each part once the literal is moved by `amount` at the
+    /// parts `asked` for.
+    fn stepped(&self, asked: &[usize], amount: i128) -> Option<Vec<String>> {
+        match self {
+            Self::Number(number) => number.stepped(amount).map(|text| vec![text]),
+            Self::Moment(moment) => moment.stepped(asked, amount),
         }
     }
 }
@@ -207,13 +241,44 @@ fn literals(syms: &[Sym]) -> impl Iterator<Item = Found> + '_ {
     })
 }
 
-struct Target {
-    range: ClusterRange,
-    literal: Literal,
-    touched: Option<usize>,
+/// The clusters and literals of the line [`target`] read last. Selections
+/// come sorted by start, so the ones sharing a line read it once.
+#[derive(Default)]
+struct LineScan {
+    line: Option<ContentLine>,
+    clusters: Vec<Cluster>,
+    found: Vec<Found>,
 }
 
-fn target(sel: SelectionView<'_>) -> Option<Target> {
+impl LineScan {
+    fn read(&mut self, text: &BufferText, line: ContentLine) {
+        if self.line == Some(line) {
+            return;
+        }
+        let newline = text.lines().newline(line);
+        self.clusters = text
+            .clusters()
+            .graphemes_at(text.lines().start(line).into())
+            .take_while(|c| c.start() < newline)
+            .collect();
+        let syms: Vec<Sym> = self.clusters.iter().map(Sym::of).collect();
+        self.found = literals(&syms).collect();
+        self.line = Some(line);
+    }
+}
+
+struct Target {
+    start: CharOffset,
+    /// The ranges of the literal's parts.
+    parts: Vec<ClusterRange>,
+    literal: Literal,
+    /// The parts the selections on this literal asked for.
+    asked: Vec<usize>,
+}
+
+/// The selection's target, and the index within the literal of the
+/// selection's first cluster when the literal holds it.
+fn target(sel: SelectionView<'_>, scan: &mut LineScan) -> Option<(Target, Option<usize>)> {
     let text = sel.text();
     let start = sel.start().offset();
     let lines = sel.lines();
@@ -223,29 +288,34 @@ fn target(sel: SelectionView<'_>) -> Option<Target> {
         sel.covered().end().offset()
     };
     for line in lines.iter() {
-        let newline = text.lines().newline(line);
-        let clusters: Vec<Cluster> = text
-            .clusters()
-            .graphemes_at(text.lines().start(line).into())
-            .take_while(|c| c.start() < newline)
-            .collect();
-        let syms: Vec<Sym> = clusters.iter().map(Sym::of).collect();
-        for found in literals(&syms) {
-            let first = &clusters[found.start];
-            let last = &clusters[found.end - 1];
-            if last.start().offset() < start {
+        scan.read(text, line);
+        let clusters = &scan.clusters;
+        for found in &scan.found {
+            if clusters[found.end - 1].start().offset() < start {
                 continue;
             }
-            let first_start = first.start().offset();
+            let first_start = clusters[found.start].start().offset();
             if first_start >= limit {
                 return None;
             }
             let touched = (first_start <= start).then(|| start.chars_since(first_start));
-            return Some(Target {
-                range: first.range().hull(last.range()),
-                literal: found.literal,
-                touched,
-            });
+            let parts = found
+                .literal
+                .parts(found.end - found.start)
+                .into_iter()
+                .map(|part| {
+                    let first = &clusters[found.start + part.start];
+                    let last = &clusters[found.start + part.end - 1];
+                    first.range().hull(last.range())
+                })
+                .collect();
+            let target = Target {
+                start: first_start,
+                parts,
+                literal: found.literal.clone(),
+                asked: Vec::new(),
+            };
+            return Some((target, touched));
         }
     }
     None

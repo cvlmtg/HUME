@@ -28,6 +28,13 @@ fn refusal(input: &str, step: i128) -> IncrementRefusal {
     plan_increment(state.view(), step, Stepping::Uniform).expect_err("no plan")
 }
 
+/// Whether stepping `input` by `step` leaves its text as it was, with an
+/// identity changeset.
+fn changes_nothing(input: &str, step: i128) -> bool {
+    let (_, _, cs) = test_fixtures::testing::parts(by(step)(parse_state(input)));
+    cs.is_identity()
+}
+
 // ── Finding the target ────────────────────────────────────────────────────
 
 #[test]
@@ -107,6 +114,20 @@ fn a_minus_after_a_word_char_is_a_separator() {
 }
 
 #[test]
+fn a_minus_after_a_closing_bracket_is_a_separator() {
+    assert_state!("f(x)-[-]>1\n", by(1), "f(x)--[2]>\n");
+    assert_state!("a[i]-[-]>1\n", by(1), "a[i]--[2]>\n");
+    assert_state!("{a}-[-]>1\n", by(1), "{a}--[2]>\n");
+}
+
+#[test]
+fn a_number_after_a_word_char_or_closing_bracket_stops_at_zero() {
+    assert_state!("ite-[m]>3\n", by(-5), "item-[0]>\n");
+    assert_state!("f(x)-[1]>\n", by(-2), "f(x)-[0]>\n");
+    assert!(changes_nothing("-[v]>0\n", -1));
+}
+
+#[test]
 fn digits_inside_an_identifier_step() {
     assert_state!("ite-[m]>1\n", by(1), "item-[2]>\n");
 }
@@ -170,6 +191,11 @@ fn a_prefixed_number_stops_at_zero() {
 }
 
 #[test]
+fn a_prefixed_number_at_zero_changes_nothing_going_down() {
+    assert!(changes_nothing("-[0]>x0\n", -1));
+}
+
+#[test]
 fn a_minus_before_a_prefixed_number_is_not_its_sign() {
     assert_state!("a -[-]>0x10\n", by(1), "a --[0x11]>\n");
 }
@@ -184,32 +210,32 @@ fn a_prefix_inside_a_word_is_not_a_prefix() {
 
 #[test]
 fn a_cursor_steps_the_date_field_it_is_on() {
-    assert_state!("-[2]>026-10-18\n", by(1), "-[2027-10-18]>\n");
-    assert_state!("2026-1-[0]>-18\n", by(1), "-[2026-11-18]>\n");
-    assert_state!("2026-10-1-[8]>\n", by(1), "-[2026-10-19]>\n");
+    assert_state!("-[2]>026-10-18\n", by(1), "-[2027]>-10-18\n");
+    assert_state!("2026-1-[0]>-18\n", by(1), "2026--[11]>-18\n");
+    assert_state!("2026-10-1-[8]>\n", by(1), "2026-10--[19]>\n");
 }
 
 #[test]
 fn a_separator_belongs_to_the_field_before_it() {
-    assert_state!("2026-[-]>10-18\n", by(1), "-[2027-10-18]>\n");
+    assert_state!("2026-[-]>10-18\n", by(1), "-[2027]>-10-18\n");
 }
 
 #[test]
 fn a_day_step_carries_into_the_month_and_year() {
-    assert_state!("2026-10-3-[1]>\n", by(1), "-[2026-11-01]>\n");
-    assert_state!("2026/12/3-[1]>\n", by(1), "-[2027/01/01]>\n");
-    assert_state!("2026-03-0-[1]>\n", by(-1), "-[2026-02-28]>\n");
+    assert_state!("2026-10-3-[1]>\n", by(1), "2026-11--[01]>\n");
+    assert_state!("2026/12/3-[1]>\n", by(1), "2027/01/-[01]>\n");
+    assert_state!("2026-03-0-[1]>\n", by(-1), "2026-02--[28]>\n");
 }
 
 #[test]
 fn a_month_or_year_step_clamps_the_day() {
-    assert_state!("2024-0-[1]>-31\n", by(1), "-[2024-02-29]>\n");
-    assert_state!("-[2]>024-02-29\n", by(1), "-[2025-02-28]>\n");
+    assert_state!("2024-0-[1]>-31\n", by(1), "2024--[02]>-29\n");
+    assert_state!("-[2]>024-02-29\n", by(1), "-[2025]>-02-28\n");
 }
 
 #[test]
 fn a_date_reached_after_the_cursor_steps_its_day() {
-    assert_state!("-[d]>ue 2026-10-18\n", by(1), "due -[2026-10-19]>\n");
+    assert_state!("-[d]>ue 2026-10-18\n", by(1), "due 2026-10--[19]>\n");
 }
 
 #[test]
@@ -224,33 +250,50 @@ fn an_invalid_date_is_a_run_of_numbers() {
 
 #[test]
 fn a_datetime_time_field_carries_into_the_date() {
-    assert_state!("2026-10-18 23:5-[9]>\n", by(1), "-[2026-10-19 00:00]>\n");
+    assert_state!("2026-10-18 23:5-[9]>\n", by(1), "2026-10-19 00:-[00]>\n");
     assert_state!(
         "2026-12-31T23:59:5-[9]>\n",
         by(1),
-        "-[2027-01-01T00:00:00]>\n"
+        "2027-01-01T00:00:-[00]>\n"
     );
 }
 
 #[test]
 fn a_datetime_date_field_keeps_the_time() {
-    assert_state!("2026-01-3-[1]> 10:30\n", by(1), "-[2026-02-01 10:30]>\n");
+    assert_state!("2026-01-3-[1]> 10:30\n", by(1), "2026-02--[01]> 10:30\n");
 }
 
 #[test]
 fn a_datetime_with_an_invalid_time_is_a_date() {
-    assert_state!("2026-10-1-[8]> 25:00\n", by(1), "-[2026-10-19]> 25:00\n");
+    assert_state!("2026-10-1-[8]> 25:00\n", by(1), "2026-10--[19]> 25:00\n");
 }
 
 #[test]
 fn a_time_wraps_around_midnight() {
-    assert_state!("23:5-[9]>\n", by(1), "-[00:00]>\n");
-    assert_state!("-[0]>0:00:00\n", by(-1), "-[23:00:00]>\n");
+    assert_state!("23:5-[9]>\n", by(1), "00:-[00]>\n");
+    assert_state!("-[0]>0:00:00\n", by(-1), "-[23]>:00:00\n");
+}
+
+#[test]
+fn a_time_stepped_by_a_whole_day_changes_nothing() {
+    assert!(changes_nothing("10:3-[0]>\n", 24 * 60));
+}
+
+#[test]
+fn a_stepped_field_steps_again() {
+    assert_state!("2026-10--[19]>\n", by(1), "2026-10--[20]>\n");
+    assert_state!("10:-[30]>\n", by(1), "10:-[31]>\n");
+}
+
+#[test]
+fn selections_on_one_date_each_step_their_own_field() {
+    assert_state!("-{2}>026-10-1-[8]>\n", by(1), "-{2027}>-10--[19]>\n");
+    assert_state!("-[2]>024-0-{1}>-31\n", by(1), "-[2025]>--{02}>-28\n");
 }
 
 #[test]
 fn a_time_reached_after_the_cursor_steps_its_minutes() {
-    assert_state!("-[a]>t 10:30\n", by(15), "at -[10:45]>\n");
+    assert_state!("-[a]>t 10:30\n", by(15), "at 10:-[45]>\n");
 }
 
 #[test]
@@ -260,7 +303,7 @@ fn a_time_after_a_colon_is_a_run_of_numbers() {
 
 #[test]
 fn a_minus_before_a_date_is_not_its_sign() {
-    assert_state!("-[x]> -2026-10-18\n", by(1), "x --[2026-10-19]>\n");
+    assert_state!("-[x]> -2026-10-18\n", by(1), "x -2026-10--[19]>\n");
 }
 
 // ── Sequences ─────────────────────────────────────────────────────────────

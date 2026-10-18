@@ -22,11 +22,15 @@ impl Radix {
     }
 }
 
+#[derive(Clone)]
 pub(super) struct Number {
     radix: Radix,
     /// The literal's own `0x`/`0X`/`0o`/... spelling; empty for decimal.
     prefix: String,
     negative: bool,
+    /// Whether the number stops at zero: a prefixed one, or one whose minus
+    /// sign would read back as a separator.
+    unsigned: bool,
     /// The digits, without `_`.
     digits: String,
     /// The width of the last `_` group, when the literal has groups.
@@ -35,12 +39,20 @@ pub(super) struct Number {
     upper: bool,
 }
 
-/// Whether `syms[i]` is a minus sign: a `-` before a digit, after a cluster
-/// that is not a word char. After one (`x-1`, `1-1`) it separates.
+/// Whether `syms[i]` is a minus sign: a `-` before a digit, not after the
+/// end of an operand. After one (`x-1`, `1-1`, `f(x)-1`) it separates.
 pub(super) fn is_sign(syms: &[Sym], i: usize) -> bool {
     ascii_at(syms, i) == Some('-')
         && ascii_at(syms, i + 1).is_some_and(|c| c.is_ascii_digit())
-        && (i == 0 || !syms[i - 1].word)
+        && !ends_operand(syms, i)
+}
+
+/// Whether the cluster before `syms[i]` ends an operand: a word char or a
+/// closing bracket.
+fn ends_operand(syms: &[Sym], i: usize) -> bool {
+    i.checked_sub(1)
+        .and_then(|k| syms.get(k))
+        .is_some_and(|s| s.word || matches!(s.ascii, Some(')' | ']' | '}')))
 }
 
 /// The number starting at `syms[i]`, and the index just past it.
@@ -70,6 +82,7 @@ pub(super) fn prefixed(syms: &[Sym], i: usize) -> Option<(Number, usize)> {
         radix,
         prefix: format!("0{letter}"),
         negative: false,
+        unsigned: true,
         digits,
         group,
         upper,
@@ -85,6 +98,7 @@ fn decimal(syms: &[Sym], i: usize) -> Option<(Number, usize)> {
         radix: Radix::Decimal,
         prefix: String::new(),
         negative,
+        unsigned: !negative && ends_operand(syms, i),
         digits,
         group,
         upper: false,
@@ -120,15 +134,10 @@ fn digit_run(syms: &[Sym], from: usize, radix: Radix) -> Option<(String, Option<
 
 impl Number {
     /// The literal moved by `amount`, keeping its prefix, its width when it
-    /// has leading zeros, its digit case and its group width. A prefixed
+    /// has leading zeros, its digit case and its group width. An unsigned
     /// number stops at zero.
     pub(super) fn stepped(&self, amount: i128) -> Option<String> {
-        let (negative, magnitude) = if self.radix == Radix::Decimal {
-            let value = self.digits.parse::<i128>().ok()?;
-            let value = if self.negative { -value } else { value };
-            let stepped = value.checked_add(amount)?;
-            (stepped < 0, stepped.unsigned_abs())
-        } else {
+        let (negative, magnitude) = if self.unsigned {
             let value = u128::from_str_radix(&self.digits, self.radix.base()).ok()?;
             let stepped = if amount >= 0 {
                 value.checked_add(amount.unsigned_abs())?
@@ -136,6 +145,11 @@ impl Number {
                 value.saturating_sub(amount.unsigned_abs())
             };
             (false, stepped)
+        } else {
+            let value = self.digits.parse::<i128>().ok()?;
+            let value = if self.negative { -value } else { value };
+            let stepped = value.checked_add(amount)?;
+            (stepped < 0, stepped.unsigned_abs())
         };
         let width = if self.digits.len() > 1 && self.digits.starts_with('0') {
             self.digits.len()

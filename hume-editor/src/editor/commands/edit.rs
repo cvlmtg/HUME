@@ -373,7 +373,7 @@ pub(in crate::editor) fn cmd_increment(
     count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    step_targets(state, view, t, step_of(count)?, Stepping::Uniform)
+    step_targets(state, view, t, step_of(count), Stepping::Uniform)
 }
 
 /// Subtract `count` from the number, date or time at each selection
@@ -385,7 +385,7 @@ pub(in crate::editor) fn cmd_decrement(
     count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    step_targets(state, view, t, -step_of(count)?, Stepping::Uniform)
+    step_targets(state, view, t, -step_of(count), Stepping::Uniform)
 }
 
 /// Add n times `count` to the n-th selection's number, date or time
@@ -397,7 +397,7 @@ pub(in crate::editor) fn cmd_increment_sequence(
     count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    step_targets(state, view, t, step_of(count)?, Stepping::Sequence)
+    step_targets(state, view, t, step_of(count), Stepping::Sequence)
 }
 
 /// Subtract n times `count` from the n-th selection's number, date or time
@@ -409,11 +409,11 @@ pub(in crate::editor) fn cmd_decrement_sequence(
     count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    step_targets(state, view, t, -step_of(count)?, Stepping::Sequence)
+    step_targets(state, view, t, -step_of(count), Stepping::Sequence)
 }
 
-fn step_of(count: Count) -> Result<i128, CommandError> {
-    i128::try_from(count.get()).map_err(|_| increment_refusal(IncrementRefusal::OutOfRange))
+fn step_of(count: Count) -> i128 {
+    i128::try_from(count.get()).expect("a count fits an i128")
 }
 
 fn increment_refusal(refusal: IncrementRefusal) -> CommandError {

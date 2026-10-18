@@ -91,6 +91,26 @@ fn a_result_out_of_range_refuses_and_records_no_revision() {
 }
 
 #[test]
+fn a_step_that_leaves_the_text_as_it_was_records_no_revision() {
+    let mut ed = editor_from("-[0]>x0\n");
+    let bid = ed.focused_buffer_id();
+
+    ed.feed_key(key_ctrl('s'));
+
+    assert_eq!(state(&ed), "-[0x0]>\n");
+    assert!(!ed.state.buffers.get(bid).can_undo());
+}
+
+#[test]
+fn pressing_ctrl_a_again_keeps_stepping_the_same_date_field() {
+    let mut ed = editor_from("2026-1-[0]>-18\n");
+
+    ed.feed_keys([key_ctrl('a'), key_ctrl('a')]);
+
+    assert_eq!(state(&ed), "2026--[12]>-18\n");
+}
+
+#[test]
 fn a_read_only_buffer_refuses_the_increment() {
     let mut ed = editor_from("-[a]>\n");
     ed.report(Severity::Warning, "1 test message".to_string());
