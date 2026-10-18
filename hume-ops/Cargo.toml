@@ -31,3 +31,7 @@ criterion = { version = "0.8.2", default-features = false, features = ["cargo_be
 [[bench]]
 name = "typing"
 harness = false
+
+[[bench]]
+name = "increment"
+harness = false
