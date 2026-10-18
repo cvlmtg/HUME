@@ -60,7 +60,7 @@ Type "zS"
 Sleep 400ms
 Type "Rect"
 Wait+Screen@20s /geometry\.rs/
-Sleep 800ms
+Sleep 600ms
 Down
 Down
 Down
@@ -70,21 +70,24 @@ Down
 Down
 Sleep 300ms
 Enter
-Type ":toggle-inlay-hints"
-Enter
-Sleep 1200ms
+Sleep 800ms
 Type "zs"
 Sleep 400ms
 Type "cent"
 Sleep 1200ms
 Enter
-Sleep 1000ms
 Sleep 1500ms
 Type "/min"
 Enter
 Sleep 300ms
 Type "K"
-Sleep 2200ms
+Sleep 300ms
+Ctrl+D
+Sleep 300ms
+Ctrl+D
+Sleep 300ms
+Ctrl+D
+Sleep 300ms
 Escape
 Sleep 400ms
 
@@ -106,7 +109,9 @@ Enter
 Type@60ms "height: self.height.satur"
 Sleep 600ms
 Type "ating_su"
-Sleep 1800ms
+Sleep 600ms
+Ctrl+D
+Sleep 1200ms
 Enter
 Type "(rows),"
 Enter
@@ -163,7 +168,7 @@ Sleep 800ms
 Type "c"
 Type "cell"
 Escape
-Sleep 600ms
+Sleep 800ms
 Type "u"
 Sleep 400ms
 Ctrl+O
@@ -235,12 +240,7 @@ Down
 Down
 Enter
 Sleep 1500ms
-Up
-Up
-Up
-Up
-Up
-Up
+Ctrl+U
 Enter
 Sleep 800ms
 Escape
@@ -254,9 +254,9 @@ Sleep 800ms
 Type "zf"
 Sleep 400ms
 Type "demo.scm"
-Sleep 800ms
+Sleep 600ms
 Enter
-Sleep 3200ms
+Sleep 1200ms
 Type "zf"
 Sleep 400ms
 Type "getting-started"

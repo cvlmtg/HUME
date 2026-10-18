@@ -2,10 +2,9 @@
 
 (load-plugin! "core:stdlib")
 (load-plugin! "core:pickers")
-(load-plugin! "core:lsp")
+(load-plugin! "core:lsp" #:config (hash "inlay-hints" #t))
 (load-plugin! "core:undotree")
-(load-plugin! "core:git-diff"
-              #:config (hash "branch-style" 'icon))
+(load-plugin! "core:git-diff" #:config (hash "branch-style" 'icon))
 
 (register-lsp-server! "rust-analyzer" #:command "rust-analyzer")
 (set-language-servers! "rust" '("rust-analyzer"))
