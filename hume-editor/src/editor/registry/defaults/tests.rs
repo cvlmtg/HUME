@@ -42,3 +42,15 @@ fn a_typed_built_in_alias_already_taken_panics() {
 fn a_typed_built_in_named_like_a_key_command_panics() {
     CommandRegistry::with_defaults().register_builtin_typed(typed("move-right", &[]));
 }
+
+#[test]
+#[should_panic(expected = "\"quit-again\" is listed twice")]
+fn a_typed_built_in_alias_repeating_its_name_panics() {
+    CommandRegistry::with_defaults().register_builtin_typed(typed("quit-again", &["quit-again"]));
+}
+
+#[test]
+#[should_panic(expected = "\"QA2\" is listed twice")]
+fn a_typed_built_in_alias_listed_twice_panics() {
+    CommandRegistry::with_defaults().register_builtin_typed(typed("quit-again", &["qa2", "QA2"]));
+}

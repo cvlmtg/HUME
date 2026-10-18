@@ -1,3 +1,6 @@
+use hume_scripting::command_name::fold;
+use rustc_hash::FxHashSet;
+
 use crate::editor::registry::{CommandRegistry, MappableCommand, TypedCommand};
 
 mod builder;
@@ -130,10 +133,17 @@ impl CommandRegistry {
             .expect("a built-in editor command's name is lowercase");
     }
 
+    /// # Panics
+    /// Panics if the name or an alias is already registered, or if one of
+    /// them repeats another.
     fn register_builtin_typed(&mut self, cmd: TypedCommand) {
-        self.assert_unclaimed(&cmd.name);
-        for alias in cmd.aliases {
-            self.assert_unclaimed(alias);
+        let mut own = FxHashSet::default();
+        for name in std::iter::once(cmd.name.as_ref()).chain(cmd.aliases.iter().copied()) {
+            self.assert_unclaimed(name);
+            assert!(
+                own.insert(fold(name)),
+                "built-in command name {name:?} is listed twice in one command"
+            );
         }
         self.register_typed(cmd)
             .expect("a built-in typed command's name and aliases are valid");
