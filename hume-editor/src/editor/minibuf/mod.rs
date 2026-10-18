@@ -287,16 +287,16 @@ pub(in crate::editor) fn command_line_input(
     minibuf_input(ed, r, ev)
 }
 
-/// Insert `text`'s values joined and flattened to one line at the
+/// Insert `text` as one line ([`PastedText::single_line`]) at the
 /// minibuffer's cursor: the paste half every minibuf-mode layer's paste
-/// handler shares, each then running the follow-up its own `Edited` arm runs. Whether the input
-/// changed: `false` when no minibuffer is live or `text` flattens to
-/// nothing.
+/// handler shares, each then running the follow-up its own `Edited` arm
+/// runs. Whether the input changed: `false` when no minibuffer is live or
+/// `text` flattens to nothing.
 pub(in crate::editor) fn paste_into_minibuf(state: &mut EditorState, text: &PastedText) -> bool {
     state
         .input
         .minibuf_mut()
-        .is_some_and(|mb| mb.insert_str(&flatten_single_line(&text.joined())))
+        .is_some_and(|mb| mb.insert_str(&text.single_line()))
 }
 
 /// Recall the previous (`Prev`) or next (`Next`) entry from `kind`'s history

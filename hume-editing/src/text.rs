@@ -33,6 +33,15 @@ pub fn normalize_line_endings(text: &str) -> Cow<'_, str> {
     normalize_line_endings_detecting(text).0
 }
 
+/// [`normalize_line_endings`] for owned text, returning `text` itself when it
+/// holds no `\r`.
+pub fn normalize_line_endings_owned(text: String) -> String {
+    match normalize_line_endings(&text) {
+        Cow::Borrowed(_) => text,
+        Cow::Owned(normalized) => normalized,
+    }
+}
+
 /// Text with every line ending already collapsed to `\n`, owned so an edit
 /// can move it into its changeset. Minted only by normalizing, so an edit
 /// operation cannot carry a `\r` into a rope.

@@ -17,7 +17,7 @@ use steel::rerrs::SteelErr;
 use steel::rvals::{IntoSteelVal, SteelVal};
 
 use super::SteelResult;
-use super::args::list_to_strings;
+use super::args::{list_to_strings, single_char};
 use super::errors::{generic_err, require_cap};
 use crate::SteelCtx;
 
@@ -40,15 +40,6 @@ pub(crate) fn register_arg(
             "{}: invalid register '{}'; valid: 0-9, k, c, b", builtin, reg);
     }
     Ok(reg)
-}
-
-/// The one character `name` holds, `None` for any other length.
-fn single_char(name: &str) -> Option<char> {
-    let mut chars = name.chars();
-    match (chars.next(), chars.next()) {
-        (Some(c), None) => Some(c),
-        _ => None,
-    }
 }
 
 /// `(register-name? name)` → `#t` when `name` is a register that

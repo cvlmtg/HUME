@@ -385,26 +385,24 @@ pub(in crate::editor) fn dispatch_insert_key(
     scope: Option<RecordingScope>,
     cmd: Dispatchable,
 ) -> bool {
-    let ctx = CmdCtx {
-        count: Some(1),
-        extend: false,
-    };
-    with_running(ed, Some(Running::InsertKey(scope)), |ed| {
-        ed.dispatch(cmd, ctx)
-    })
+    dispatch_key_binding(ed, Running::InsertKey(scope), cmd)
 }
 
 /// Dispatches `cmd` as a key's binding in the command mode prompt, with
 /// [`Running::CommandLineKey`] set for the whole dispatch. Always an
 /// explicit count of 1, never extending.
 pub(in crate::editor) fn dispatch_command_line_key(ed: &mut Editor, cmd: Dispatchable) {
+    dispatch_key_binding(ed, Running::CommandLineKey, cmd);
+}
+
+/// Dispatches `cmd` at an explicit count of 1, never extending, with
+/// `running` set for the whole dispatch.
+fn dispatch_key_binding(ed: &mut Editor, running: Running, cmd: Dispatchable) -> bool {
     let ctx = CmdCtx {
         count: Some(1),
         extend: false,
     };
-    with_running(ed, Some(Running::CommandLineKey), |ed| {
-        ed.dispatch(cmd, ctx);
-    });
+    with_running(ed, Some(running), |ed| ed.dispatch(cmd, ctx))
 }
 
 /// A fresh change a repeatable command starts, as [`record_change`] records

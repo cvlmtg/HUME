@@ -21,6 +21,10 @@ pub(in crate::editor::tests) fn editor_in(dir: &Path) -> Editor {
     ed
 }
 
+pub(in crate::editor::tests) fn relative_display_path(ed: &mut Editor, tmp: &Path) -> String {
+    log_probe(ed, tmp, "(buffer-display-path bid #:relative #t)")
+}
+
 #[test]
 fn typed_cd_resolves_a_relative_argument_against_the_editor_cwd() {
     let tmp = tempfile::tempdir().unwrap();
@@ -56,11 +60,7 @@ fn relative_display_path_is_relative_to_the_editor_cwd() {
     let mut ed = editor_in(tmp.path());
     type_cmd(&mut ed, ":e sub/f.rs");
 
-    let shown = log_probe(
-        &mut ed,
-        tmp.path(),
-        "(buffer-display-path bid #:relative #t)",
-    );
+    let shown = relative_display_path(&mut ed, tmp.path());
 
     assert_eq!(shown, Path::new("sub").join("f.rs").display().to_string());
 }
@@ -75,11 +75,7 @@ fn relative_display_path_outside_the_cwd_is_the_display_path() {
     type_cmd(&mut ed, &format!(":e {}", file.display()));
     let display = ed.doc().display_path().expect("a file buffer").to_string();
 
-    let shown = log_probe(
-        &mut ed,
-        cwd.path(),
-        "(buffer-display-path bid #:relative #t)",
-    );
+    let shown = relative_display_path(&mut ed, cwd.path());
 
     assert_eq!(shown, display);
 }

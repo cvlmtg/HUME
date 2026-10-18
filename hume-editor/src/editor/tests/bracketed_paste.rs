@@ -1,6 +1,7 @@
-// Terminal bracketed-paste (`TerminalEvent::Paste`) handling: `handle_terminal_paste`
-// in `mappings/bracketed_paste.rs` and each layer's paste handler. Distinct from the register/kill-ring
-// `p`/`P` paste commands covered in `commands/paste.rs`.
+// Terminal bracketed-paste (`TerminalEvent::Paste`) handling:
+// `handle_terminal_paste` in `mappings/bracketed_paste.rs` and each layer's
+// paste handler. Distinct from the register/kill-ring `p`/`P` paste commands
+// covered in `commands/paste.rs`.
 
 use super::*;
 use crate::editor::buffer::{DiskCheckTrigger, DiskState};
@@ -299,17 +300,22 @@ fn drawer_paste_is_swallowed_but_clears_the_status_message() {
     assert!(ed.state.status_msg.is_none());
 }
 
-#[test]
-fn popup_paste_closes_the_popup_and_pastes_below() {
+/// Enters Insert mode and opens a scrollable popup over it.
+pub(super) fn open_scrollable_test_popup(ed: &mut Editor) {
     use crate::editor::host_impl::EditorHostImpl;
     use hume_scripting::host::{PopupKind, UiHost};
 
-    let mut ed = editor_from("-[h]>ello\n");
     ed.feed_key(key('i'));
-    let pane = focused_pane(&ed);
+    let pane = focused_pane(ed);
     EditorHostImpl::new(&mut ed.state, &mut ed.view)
         .show_popup(pane, "doc".to_string(), PopupKind::Scrollable, false, None)
         .expect("show-popup! succeeds");
+}
+
+#[test]
+fn popup_paste_closes_the_popup_and_pastes_below() {
+    let mut ed = editor_from("-[h]>ello\n");
+    open_scrollable_test_popup(&mut ed);
     assert!(ed.state.input.popup().is_some());
 
     ed.feed_paste("xyz");

@@ -28,6 +28,11 @@ pub(super) fn runtime_scheme_dir() -> PathBuf {
         .join("runtime/scheme")
 }
 
+/// The shipped `prelude.scm`'s source.
+pub(super) fn prelude_source() -> String {
+    std::fs::read_to_string(runtime_scheme_dir().join("prelude.scm")).unwrap()
+}
+
 /// `(url rev symbol subpath)` of the grammar language `name` uses, from its
 /// shipped data file, read by `bundled-language-grammar` the way the editor
 /// and `core:plum` read it. Avoids duplicating pins into the test (they drift

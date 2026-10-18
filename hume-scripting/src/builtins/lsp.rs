@@ -19,7 +19,7 @@ use super::args::{
     ENV_PAIR_SHAPE, bool_arg, callable_arg, char_range_value, checked_params, hash_entry,
     list_items, list_of, list_to_string_pairs, list_to_strings, optional_json_arg,
     optional_list_items, optional_server_arg, optional_string_arg, optional_symbol_arg,
-    optional_token_arg, pair_fields, server_arg, string_arg, string_hash, string_list,
+    optional_token_arg, pair_fields, server_arg, string_arg, string_hash, string_list, strings_arg,
     symbol_enum_arg, symbol_hash, tagged_json_arg, token_arg, wire_position, wire_range,
 };
 use super::errors::{generic_err, require_cap};
@@ -571,10 +571,7 @@ pub(crate) fn register_lsp_notification_hook(
     proc: SteelVal,
 ) -> SteelResult {
     const VERB: &str = "register-lsp-notification-hook!";
-    let methods = match methods {
-        SteelVal::StringV(s) => vec![s.to_string()],
-        other => list_to_strings(other, &format!("{VERB} methods"))?,
-    };
+    let methods = strings_arg(methods, &format!("{VERB} methods"))?;
     if methods.is_empty() {
         steel::stop!(Generic => "{VERB}: methods must not be empty");
     }

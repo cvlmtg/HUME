@@ -4,14 +4,13 @@
 use std::path::{MAIN_SEPARATOR, Path};
 
 use super::editor_cwd::editor_in;
-use super::scripting_grammar::runtime_scheme_dir;
+use super::scripting_grammar::prelude_source;
 use super::*;
 use pretty_assertions::assert_eq;
 
 /// Evaluates the repo's prelude, then `extra`, and installs the host.
 fn with_prelude(ed: &mut Editor, tmp: &Path, extra: &str) {
-    let prelude = std::fs::read_to_string(runtime_scheme_dir().join("prelude.scm")).unwrap();
-    run(ed, tmp, &format!("{prelude}\n{extra}"));
+    run(ed, tmp, &format!("{}\n{extra}", prelude_source()));
 }
 
 /// An editor on `rel` (holding `x\n`) inside a fresh working directory, with
@@ -71,10 +70,7 @@ fn p_on_the_command_line_inserts_the_directory() {
     ed.feed_key(key(':'));
     type_chars(&mut ed, "e ");
     ctrl_r(&mut ed, key('p'));
-    assert_eq!(
-        ed.state.minibuf().map(|mb| mb.input.clone()),
-        Some(format!("e sub{MAIN_SEPARATOR}"))
-    );
+    assert_eq!(minibuf_input(&ed), format!("e sub{MAIN_SEPARATOR}"));
 }
 
 #[test]
@@ -125,10 +121,7 @@ fn a_register_name_on_the_command_line_inserts_its_values_joined() {
     let (mut ed, _tmp) = editor_with_two_value_register();
     ed.feed_key(key(':'));
     ctrl_r(&mut ed, key('0'));
-    assert_eq!(
-        ed.state.minibuf().map(|mb| mb.input.clone()),
-        Some("abcd".to_string())
-    );
+    assert_eq!(minibuf_input(&ed), "abcd");
 }
 
 #[test]

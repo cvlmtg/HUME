@@ -16,7 +16,6 @@ use steel::rvals::SteelVal;
 
 use super::super::commands::half_page;
 use super::super::keymap::CanonicalKey;
-use super::super::minibuf::flatten_single_line;
 use super::super::replay::{Answer, InputOpener, PendingAnswer, Pick, Picked, WaitingInput};
 use super::super::{Editor, EditorState};
 use super::paste::PastedText;
@@ -417,7 +416,7 @@ pub(in crate::editor) fn picker_input(ed: &mut Editor, r: LayerRef, ev: InputEve
 /// appended to the query in one bulk mutation: one rerank, at most one
 /// `on_query_change` callback, instead of one per pasted char.
 fn picker_paste(state: &mut EditorState, _view: &EngineView, r: LayerRef, text: PastedText) {
-    let cb = picker_mut(state, r).insert_str(&flatten_single_line(&text.joined()));
+    let cb = picker_mut(state, r).insert_str(&text.single_line());
     queue_query_change(state, r, cb);
 }
 
@@ -448,16 +447,13 @@ fn queue_query_change(state: &mut EditorState, r: LayerRef, cb: Option<SteelVal>
     state.queue_steel_call(cb, vec![token.to_steel(), SteelVal::StringV(query.into())]);
 }
 
-/// The open picker session at `r`: only ever called from `picker_input`
-/// and `picker_paste`, which dispatch only reaches while a `Picker` layer
-/// is on top, so `r` always names it. Address-based, not the
-/// `InputStack::picker_mut` sugar (`find_mut`-based, and still used as-is by
-/// render-sync): every caller here already has `r` from its own dispatch.
+/// The open picker session at `r`, the `Picker` layer that `picker_input`
+/// or `picker_paste` was dispatched to.
 fn picker_mut(state: &mut EditorState, r: LayerRef) -> &mut PickerSession {
     &mut state
         .input
         .at_mut::<PickerLayer>(r)
-        .expect("picker_input is only called while a Picker layer is on top of the stack")
+        .expect("r names the Picker layer dispatch reached")
         .session
 }
 

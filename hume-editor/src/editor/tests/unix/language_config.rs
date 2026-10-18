@@ -4,7 +4,7 @@
 
 use super::*;
 
-use super::super::scripting_grammar::{runtime_scheme_dir, shipped_grammar};
+use super::super::scripting_grammar::{prelude_source, shipped_grammar};
 use hume_editing::comment::{BlockCommentTokens, CommentTokens, LineCommentTokens};
 use hume_treesitter::registry::LanguageId;
 
@@ -35,7 +35,7 @@ fn stage(languages_scm: &str, bundled: &[(&str, &str)], init: &str, plugin: &str
     let scheme_dir = fixture.runtime_dir.join("scheme");
     let languages_dir = scheme_dir.join("languages");
     std::fs::create_dir_all(&languages_dir).unwrap();
-    let prelude = std::fs::read_to_string(runtime_scheme_dir().join("prelude.scm")).unwrap();
+    let prelude = prelude_source();
     std::fs::write(scheme_dir.join("prelude.scm"), prelude).unwrap();
     std::fs::write(scheme_dir.join("languages.scm"), languages_scm).unwrap();
     for (name, body) in bundled {

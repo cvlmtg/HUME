@@ -391,16 +391,21 @@ impl InputStack {
     /// once that index has been truncated and (possibly) refilled by a
     /// later `push`. The only aliasing hole `depth` alone leaves open.
     pub(in crate::editor) fn is_live(&self, r: LayerRef) -> bool {
-        self.layers.get(r.depth).is_some_and(|(id, _)| *id == r.id)
+        self.live(r).is_some()
+    }
+
+    /// The layer `r` names, or `None` if `r` is stale.
+    fn live(&self, r: LayerRef) -> Option<&(dyn Layer + 'static)> {
+        self.layers
+            .get(r.depth)
+            .filter(|(id, _)| *id == r.id)
+            .map(|(_, layer)| layer.as_ref())
     }
 
     /// Whether `r` is live *and* names a layer of concrete type `L`. The
     /// generic replacement for comparing a closed `enum`'s discriminant.
     pub(in crate::editor) fn is<L: Layer>(&self, r: LayerRef) -> bool {
-        self.layers
-            .get(r.depth)
-            .filter(|(id, _)| *id == r.id)
-            .is_some_and(|(_, layer)| layer.is::<L>())
+        self.live(r).is_some_and(|layer| layer.is::<L>())
     }
 
     /// The layer at `r`, downcast to `L`: `None` if `r` is stale (see
@@ -414,10 +419,7 @@ impl InputStack {
     /// has, not the structure-mutating handle this type's own doc explains
     /// why there's no `get`/`get_mut` for.
     pub(in crate::editor) fn at<L: Layer>(&self, r: LayerRef) -> Option<&L> {
-        self.layers
-            .get(r.depth)
-            .filter(|(id, _)| *id == r.id)
-            .and_then(|(_, layer)| layer.downcast_ref())
+        self.live(r).and_then(|layer| layer.downcast_ref())
     }
 
     pub(in crate::editor) fn at_mut<L: Layer>(&mut self, r: LayerRef) -> Option<&mut L> {
@@ -431,19 +433,13 @@ impl InputStack {
     /// what `dispatch_at` calls through to reach whichever layer `r` names,
     /// without needing to know its concrete type.
     pub(in crate::editor) fn handler(&self, r: LayerRef) -> Option<LayerHandler> {
-        self.layers
-            .get(r.depth)
-            .filter(|(id, _)| *id == r.id)
-            .map(|(_, layer)| layer.handler())
+        self.live(r).map(|layer| layer.handler())
     }
 
     /// `r`'s paste handler, or `None` if `r` is stale: [`Self::handler`]'s
     /// counterpart, read by `EditorState::paste_at`.
     pub(in crate::editor) fn paste_handler(&self, r: LayerRef) -> Option<PasteHandler> {
-        self.layers
-            .get(r.depth)
-            .filter(|(id, _)| *id == r.id)
-            .map(|(_, layer)| layer.paste_handler())
+        self.live(r).map(|layer| layer.paste_handler())
     }
 
     /// The topmost layer of concrete type `L`, if one is open: the ref a
@@ -945,10 +941,8 @@ impl EditorState {
     fn retire_at(&mut self, view: &EngineView, r: LayerRef) {
         let scope = self
             .input
-            .layers
-            .get(r.depth)
-            .filter(|(id, _)| *id == r.id)
-            .map(|(_, layer)| layer.removal_scope())
+            .live(r)
+            .map(|layer| layer.removal_scope())
             .expect("retire_at names a live layer");
         match scope {
             RemovalScope::Stack => self.truncate_layers(view, r),

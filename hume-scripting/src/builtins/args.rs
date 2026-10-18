@@ -323,6 +323,24 @@ pub(crate) fn list_to_strings(val: SteelVal, ctx_name: &str) -> Result<Vec<Strin
         .collect()
 }
 
+/// A string, as one value, or a Steel list of strings.
+pub(crate) fn strings_arg(val: SteelVal, ctx_name: &str) -> Result<Vec<String>, SteelErr> {
+    match val {
+        SteelVal::ListV(_) => list_to_strings(val, ctx_name),
+        SteelVal::StringV(_) | SteelVal::SymbolV(_) => Ok(vec![string_arg(val, ctx_name)?]),
+        _ => steel::stop!(TypeMismatch => "{}: expected a string or a list of strings", ctx_name),
+    }
+}
+
+/// The one character `s` holds, `None` for any other length.
+pub(crate) fn single_char(s: &str) -> Option<char> {
+    let mut chars = s.chars();
+    match (chars.next(), chars.next()) {
+        (Some(c), None) => Some(c),
+        _ => None,
+    }
+}
+
 /// A Steel list of integers, unpacked to `Vec<i32>`: `picker-source-spawn!`'s
 /// `#:ok-exit-codes`, an exit-code allowlist. Rejects (rather than silently
 /// truncating) a value outside `i32`'s range. Every other decoder in this
@@ -375,13 +393,10 @@ pub(crate) fn optional_list_to_string_pairs(
 pub(crate) fn chars_arg(val: SteelVal, ctx_name: &str) -> Result<Vec<char>, SteelErr> {
     list_to_strings(val, ctx_name)?
         .into_iter()
-        .map(|s| {
-            let mut it = s.chars();
-            match (it.next(), it.next()) {
-                (Some(c), None) => Ok(c),
-                _ => steel::stop!(Generic =>
-                    "{}: each entry must be exactly one character, got {:?}", ctx_name, s),
-            }
+        .map(|s| match single_char(&s) {
+            Some(c) => Ok(c),
+            None => steel::stop!(Generic =>
+                "{}: each entry must be exactly one character, got {:?}", ctx_name, s),
         })
         .collect()
 }

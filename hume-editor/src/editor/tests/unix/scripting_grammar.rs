@@ -17,7 +17,7 @@ use std::sync::Arc;
 
 use super::super::render_snapshot::render_to_styled_string;
 use super::super::scripting_grammar::{
-    grammar_fixture, grammar_source, helix_pin, runtime_scheme_dir,
+    grammar_fixture, grammar_source, helix_pin, prelude_source, runtime_scheme_dir,
 };
 use hume_scripting::ScriptingHost;
 use hume_treesitter::registry::GrammarBundle;
@@ -84,7 +84,7 @@ fn register_grammar_command_mode_attaches_and_sweeps() {
     // `register-grammar!` is defined in prelude.scm: prepend the real prelude
     // source so it's in scope, since this test evals `init_path` directly
     // rather than through the full `init_scripting` path.
-    let prelude_src = std::fs::read_to_string(runtime_scheme_dir().join("prelude.scm")).unwrap();
+    let prelude_src = prelude_source();
     let body = format!(
         r#"(define-typed-command! "attach-json" "Attach JSON grammar" (lambda () (register-grammar! "json" "{}" "tree_sitter_json" "{}")))"#,
         parser.display(),
@@ -133,7 +133,7 @@ fn register_grammar_command_mode_attaches_and_sweeps() {
 fn attach_json_via_init(register_grammar_call: &str) -> Arc<GrammarBundle> {
     let tmp = tempfile::tempdir().unwrap();
     let init_path = tmp.path().join("init.scm");
-    let prelude_src = std::fs::read_to_string(runtime_scheme_dir().join("prelude.scm")).unwrap();
+    let prelude_src = prelude_source();
     std::fs::write(&init_path, prelude_src + "\n" + register_grammar_call).unwrap();
 
     let mut ed = editor_from("-[{]>\"x\": 1}\n");
@@ -317,7 +317,7 @@ fn passive_load_registers_grammar_and_unknown_call_logs_warning() {
     let init_path = tmp.path().join("init.scm");
     // `register-grammar!` is defined in prelude.scm: prepend the real prelude
     // source so it's in scope (see `register_grammar_command_mode_attaches_and_sweeps`).
-    let prelude_src = std::fs::read_to_string(runtime_scheme_dir().join("prelude.scm")).unwrap();
+    let prelude_src = prelude_source();
     let body = format!(
         r#"
 (define hl-path "{hl}")
@@ -455,7 +455,7 @@ fn install_real_json_grammar_e2e() {
     let init_path = tmp.path().join("init.scm");
     // `register-grammar!` is defined in prelude.scm: prepend the real prelude
     // source so it's in scope (see `register_grammar_command_mode_attaches_and_sweeps`).
-    let prelude_src = std::fs::read_to_string(runtime_scheme_dir().join("prelude.scm")).unwrap();
+    let prelude_src = prelude_source();
     let body = format!(
         r#"(define-typed-command! "attach-json" "attach json grammar" (lambda () (register-grammar! "json" "{}" "tree_sitter_json" "{}")))"#,
         out_path.display(),
@@ -534,7 +534,7 @@ fn setup_editor_with_languages_scm(
 
     let scheme_dir = runtime_tmp.path().join("scheme");
     std::fs::create_dir_all(&scheme_dir).unwrap();
-    let prelude_src = std::fs::read_to_string(runtime_scheme_dir().join("prelude.scm")).unwrap();
+    let prelude_src = prelude_source();
     std::fs::write(scheme_dir.join("prelude.scm"), prelude_src).unwrap();
     std::fs::write(scheme_dir.join("languages.scm"), languages_scm).unwrap();
 

@@ -3,7 +3,7 @@
 // `state.cwd` directly and the two directories differ.
 
 use super::*;
-use crate::editor::tests::editor_cwd::{call, canonical, editor_in};
+use crate::editor::tests::editor_cwd::{call, canonical, editor_in, relative_display_path};
 
 #[test]
 fn spawn_async_defaults_to_the_editor_cwd() {
@@ -130,10 +130,6 @@ fn cwd_builtin_reports_the_editor_cwd() {
     let out = log_probe(&mut ed, tmp.path(), "(cwd)");
 
     assert_eq!(out, canonical(tmp.path()).to_str().unwrap());
-}
-
-fn relative_display_path(ed: &mut Editor, tmp: &Path) -> String {
-    log_probe(ed, tmp, "(buffer-display-path bid #:relative #t)")
 }
 
 #[test]

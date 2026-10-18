@@ -305,9 +305,9 @@ impl Buffer {
     /// `set_path` defaults `typed_path` to the canonical path. Callers that
     /// resolved a user-typed path (`resolve_open_path`, save-as, ...)
     /// overwrite it afterwards, via `set_typed_path`; this default only
-    /// surfaces for opens with no typed
-    /// path (Steel `open-buffer!`, `:tutor`, LSP goto). `search_pattern` and
-    /// `search_matches` are left at their defaults (no active search).
+    /// surfaces for opens with no typed path (Steel `open-buffer!`, `:tutor`,
+    /// LSP goto). `search_pattern` and `search_matches` are left at their
+    /// defaults (no active search).
     pub(in crate::editor::buffer) fn from_file(path: &Path) -> io::Result<Self> {
         let (content, meta) = hume_platform::io::read_file(path)?;
         let text = BufferText::from(content.as_str());

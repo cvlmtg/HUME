@@ -4,7 +4,7 @@ use std::collections::VecDeque;
 use rustc_hash::FxHashMap;
 use termina::event::KeyEvent;
 
-use hume_editing::text::normalize_line_endings;
+use hume_editing::text::normalize_line_endings_owned;
 
 // ── Register name constants ────────────────────────────────────────────────────
 //
@@ -84,9 +84,11 @@ pub enum Shape {
 /// come from a selection (the OS clipboard, a script, a test) has none
 /// recorded, so it converts with [`From`]: linewise when it ends with a `\n`,
 /// the only signal such text carries, read after line endings are
-/// normalized. The text is always `\r`-free (the same guarantee [`normalize_line_endings`] gives `BufferText`), so a
-/// register filled from the OS clipboard or a plugin can't smuggle a foreign
-/// line ending into a paste or a byte-exact repeat-paste comparison.
+/// normalized. The text is always `\r`-free (the same guarantee
+/// [`normalize_line_endings`](hume_editing::text::normalize_line_endings)
+/// gives `BufferText`), so a register filled from the OS clipboard or a
+/// plugin can't smuggle a foreign line ending into a paste or a byte-exact
+/// repeat-paste comparison.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Piece {
     text: String,
@@ -95,12 +97,10 @@ pub struct Piece {
 
 impl Piece {
     pub fn new(text: impl Into<String>, shape: Shape) -> Self {
-        let text = text.into();
-        let text = match normalize_line_endings(&text) {
-            Cow::Owned(normalized) => normalized,
-            Cow::Borrowed(_) => text,
-        };
-        Self { text, shape }
+        Self {
+            text: normalize_line_endings_owned(text.into()),
+            shape,
+        }
     }
 
     pub fn text(&self) -> &str {
@@ -123,18 +123,20 @@ impl Piece {
 /// Which value each selection gets when several are pasted at once: one each
 /// when there are as many values as selections, otherwise every value joined
 /// at every selection.
-pub enum Placement<'a, T> {
+pub enum Placement<'a, T: Clone> {
     Each(&'a [T]),
-    Joined(T),
+    Joined(Cow<'a, T>),
 }
 
-impl<'a, T> Placement<'a, T> {
-    /// `join` builds the value every selection gets when the counts differ.
+impl<'a, T: Clone> Placement<'a, T> {
+    /// `join` builds the value every selection gets when the counts differ,
+    /// and must return a lone value unchanged: `new` borrows a lone value
+    /// without calling it.
     pub fn new(values: &'a [T], selections: usize, join: impl FnOnce(&[T]) -> T) -> Self {
-        if values.len() == selections {
-            Self::Each(values)
-        } else {
-            Self::Joined(join(values))
+        match values {
+            _ if values.len() == selections => Self::Each(values),
+            [one] => Self::Joined(Cow::Borrowed(one)),
+            _ => Self::Joined(Cow::Owned(join(values))),
         }
     }
 

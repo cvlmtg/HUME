@@ -4,7 +4,7 @@
 use super::*;
 use crate::editor::host_impl::EditorHostImpl;
 use hume_scripting::PaneHandle;
-use hume_scripting::host::{CommandHost, EditHost, NativeCall, PopupKind, UiHost};
+use hume_scripting::host::{CommandHost, EditHost, NativeCall};
 use pretty_assertions::assert_eq;
 
 const PROBE: &str = "insert-text-probe";
@@ -155,13 +155,7 @@ fn insert_text_closes_a_popup_and_pastes_below_like_a_paste() {
     let (pasted, inserted) = paste_then_insert_text(
         "-[h]>ello\n",
         "",
-        |ed| {
-            ed.feed_key(key('i'));
-            let pane = focused_pane(ed);
-            EditorHostImpl::new(&mut ed.state, &mut ed.view)
-                .show_popup(pane, "doc".to_string(), PopupKind::Scrollable, false, None)
-                .expect("show-popup! succeeds");
-        },
+        super::bracketed_paste::open_scrollable_test_popup,
         "xyz",
     );
     assert!(!inserted.popup);
@@ -335,22 +329,6 @@ fn insert_text_outside_any_binding_is_recorded_as_a_paste() {
     select_marked(&mut ed, "abhel-[l]>o\n");
     ed.feed_key(key('.'));
     assert_eq!(ed.doc().text().to_string(), "abhelablo\n");
-}
-
-#[test]
-fn insert_text_of_a_list_gives_each_insert_cursor_its_own_value() {
-    let tmp = tempfile::tempdir().unwrap();
-    let mut ed = editor_from("-{a}>b -[c]>d\n");
-    run(
-        &mut ed,
-        tmp.path(),
-        &format!(
-            r#"(define-command! "{PROBE}" "" (lambda (pane) (insert-text! pane '("x" "y"))))"#
-        ),
-    );
-    ed.feed_key(key('i'));
-    ed.execute_keymap_command(PROBE.into(), Some(1), false);
-    assert_eq!(ed.doc().text().to_string(), "xab ycd\n");
 }
 
 #[test]

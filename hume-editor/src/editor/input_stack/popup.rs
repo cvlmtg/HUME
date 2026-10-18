@@ -224,18 +224,12 @@ impl Editor {
 /// dispatch's target). Ctrl-u/Ctrl-d consume the key only when
 /// [`scroll_box_on_key`] finds content past one screenful; every other key
 /// and any mouse gesture retire the layer and fall through this same call
-/// (a paste too, through [`popup_paste`]), so a short popup never blocks the buffer's own half-page scroll
-/// and a click still moves the cursor underneath it. Unlike
-/// `Confirm`/`Menu`'s mouse arm, this doesn't gate on `is_fresh_gesture`:
-/// nothing opens a popup mid-gesture, so there is no release to protect the
-/// way a click-opened confirm needs its own `Up` protected.
-/// Retires the popup and lets the layer below take the paste, as
-/// [`popup_input`] does for a key it doesn't scroll with.
-fn popup_paste(state: &mut EditorState, view: &EngineView, r: LayerRef, text: PastedText) {
-    state.truncate_layers(view, r);
-    state.fall_through_paste(view, r, text);
-}
-
+/// (a paste too, through [`popup_paste`]), so a short popup never blocks
+/// the buffer's own half-page scroll and a click still moves the cursor
+/// underneath it. Unlike `Confirm`/`Menu`'s mouse arm, this doesn't gate on
+/// `is_fresh_gesture`: nothing opens a popup mid-gesture, so there is no
+/// release to protect the way a click-opened confirm needs its own `Up`
+/// protected.
 pub(in crate::editor) fn popup_input(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
     let key = match ev {
         InputEvent::Key(key) => key,
@@ -258,6 +252,13 @@ pub(in crate::editor) fn popup_input(ed: &mut Editor, r: LayerRef, ev: InputEven
     }
     ed.state.truncate_layers(&ed.view, r);
     ed.fall_through(r, InputEvent::Key(key));
+}
+
+/// Retires the popup and lets the layer below take the paste, as
+/// [`popup_input`] does for a key it doesn't scroll with.
+fn popup_paste(state: &mut EditorState, view: &EngineView, r: LayerRef, text: PastedText) {
+    state.truncate_layers(view, r);
+    state.fall_through_paste(view, r, text);
 }
 
 /// The open popup's visible content height and total row count, read from
