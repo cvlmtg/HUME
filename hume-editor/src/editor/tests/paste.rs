@@ -1023,11 +1023,10 @@ fn paste_ring_cycle_older_then_newer() {
     assert!(after_newer.contains('B'), "] after two [ pastes slot 1 (B)");
 }
 
-/// `[` after a clipboard paste skips the ring head when it holds the
-/// clipboard text, as it does after a bare `y`: pasting it again would leave
-/// the buffer as it was.
+/// `[` after an explicit `"cp` skips the ring head when it holds the
+/// clipboard text: pasting it again would leave the buffer as it was.
 #[test]
-fn paste_ring_older_after_clipboard_paste_skips_the_same_text() {
+fn paste_ring_older_after_explicit_clipboard_paste_skips_the_same_text() {
     use hume_ops::register::CLIPBOARD_REGISTER;
 
     let mut ed = editor_from("-[x]>\n");
@@ -1038,8 +1037,8 @@ fn paste_ring_older_after_clipboard_paste_skips_the_same_text() {
     ed.state.kill_ring.push(vec!["foo".to_string()]);
     ed.state.kill_ring.push(vec!["bar".to_string()]);
 
-    ed.feed_key(key('p'));
-    assert_eq!(state(&ed), "x-[bar]>\n", "p pastes the clipboard");
+    ed.feed_keys([key('"'), key(CLIPBOARD_REGISTER), key('p')]);
+    assert_eq!(state(&ed), "x-[bar]>\n", "\"cp pastes the clipboard");
     ed.feed_key(key('['));
     assert_eq!(state(&ed), "x-[foo]>\n", "[ steps past the head to foo");
 }

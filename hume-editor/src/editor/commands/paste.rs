@@ -126,9 +126,10 @@ fn collapse_if_repeat(state: EditState, values: &[Piece], before: bool) -> EditS
 struct ResolvedPaste {
     values: Vec<Piece>,
     /// Where the values came from. Drives the two things that depend on it
-    /// after the fact: seeding `[`/`]`'s cycle position (`Ring` seeds it) and,
-    /// for a bare paste only, stamping [`PasteStamp`] (see `do_paste`).
-    /// `None` = an explicit named/digit register, which does neither.
+    /// after the fact: seeding `[`/`]`'s cycle position (at the slot for
+    /// `Ring`, from the pasted values otherwise) and, for a bare paste only,
+    /// stamping [`PasteStamp`] (see `do_paste`).
+    /// `None` = an explicit digit or clipboard register, which never stamps.
     from: Option<PasteSource>,
     /// No `"<reg>` prefix was given; only a bare paste stamps [`PasteStamp`].
     bare: bool,
@@ -136,10 +137,10 @@ struct ResolvedPaste {
 
 /// Core paste implementation: applies `resolved` at `sels`, which undo
 /// returns to `undo_sels` (the selections the command saw), opens the
-/// paste/ring-cycle session, and stamps [`PasteStamp`]/seeds the ring cycle
-/// for bare pastes. Carries no knowledge
-/// of where `resolved` came from or of the repeat-vs-swap rule. Callers
-/// resolve the source and (for smart paste) collapse `sels` before calling in.
+/// paste/ring-cycle session, stamps [`PasteStamp`] for bare pastes, and seeds
+/// the ring cycle for every paste. Does not resolve the source or apply the
+/// repeat-vs-swap rule. Callers resolve the source and (for smart paste)
+/// collapse `sels` before calling in.
 ///
 /// `before`: true for `P` (paste before), false for `p` (paste after).
 ///
@@ -193,15 +194,10 @@ fn do_paste(
     // Every completed paste opens a fresh session (any prior one was already
     // committed in BEFORE by `step_paste_commit`), so every one reseeds the
     // cycle.
-    let ring_seed = match from {
-        Some(PasteSource::Ring(slot)) => Some(slot),
-        // Pieces equal to the head are the head's own, so `[` steps past it
-        // instead of pasting the same text again.
-        Some(PasteSource::Clipboard) | None => {
-            (state.kill_ring.head() == Some(values.as_slice())).then_some(0)
-        }
-    };
-    state.kill_ring.seed_cycle(ring_seed);
+    match from {
+        Some(PasteSource::Ring(slot)) => state.kill_ring.seed_cycle_at(slot),
+        Some(PasteSource::Clipboard) | None => state.kill_ring.seed_cycle_outside(&values),
+    }
     Ok(())
 }
 

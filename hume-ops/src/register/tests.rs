@@ -487,13 +487,47 @@ fn push_dedupe_compares_whole_entry() {
 // -- seed_cycle ---------------------------------------------------------------
 
 #[test]
-fn seed_cycle_sets_position() {
+fn seed_cycle_at_sets_the_slot() {
     let mut ring = KillRing::new();
     ring.push(vs("a"));
     ring.push(vs("b"));
-    ring.seed_cycle(Some(0));
+    ring.seed_cycle_at(1);
+    assert_eq!(ring.cycle, Some(1));
+}
+
+#[test]
+fn seed_cycle_outside_with_other_text_starts_before_the_head() {
+    let mut ring = KillRing::new();
+    ring.push(vs("a"));
+    ring.seed_cycle_at(0);
+    ring.seed_cycle_outside(&vs("z"));
+    assert_eq!(ring.cycle, None);
+}
+
+#[test]
+fn seed_cycle_outside_with_the_heads_text_starts_at_the_head() {
+    let mut ring = KillRing::new();
+    ring.push(vs("a")); // slot 1
+    ring.push(vs("b")); // slot 0 = head
+    ring.seed_cycle_outside(&vs("b"));
     assert_eq!(ring.cycle, Some(0));
-    ring.seed_cycle(None);
+    assert_eq!(ring.cycle_older(), Some(vs("a").as_slice()));
+}
+
+#[test]
+fn seed_cycle_outside_with_the_only_entrys_text_leaves_nothing_older() {
+    let mut ring = KillRing::new();
+    ring.push(vs("a"));
+    ring.seed_cycle_outside(&vs("a"));
+    assert!(ring.cycle_older().is_none());
+    assert_eq!(ring.cycle, Some(0));
+}
+
+#[test]
+fn seed_cycle_outside_compares_shape_too() {
+    let mut ring = KillRing::new();
+    ring.push(vec![Piece::new("a\n", Shape::Linewise)]);
+    ring.seed_cycle_outside(&[Piece::new("a\n", Shape::Charwise)]);
     assert_eq!(ring.cycle, None);
 }
 
@@ -501,10 +535,10 @@ fn seed_cycle_sets_position() {
 
 #[test]
 fn cycle_older_from_none_reads_slot0() {
-    // Clipboard origin (None) → first [ goes to slot 0 (ring head).
+    // A paste from outside the ring → first [ goes to slot 0 (ring head).
     let mut ring = KillRing::new();
     ring.push(vs("a")); // slot 0 = head
-    ring.seed_cycle(None);
+    ring.seed_cycle_outside(&vs("z"));
     assert_eq!(ring.cycle_older(), Some(vs("a").as_slice()));
     assert_eq!(ring.cycle, Some(0));
 }
@@ -515,7 +549,7 @@ fn cycle_older_from_head_reads_slot1() {
     let mut ring = KillRing::new();
     ring.push(vs("a")); // slot 1
     ring.push(vs("b")); // slot 0 = head
-    ring.seed_cycle(Some(0));
+    ring.seed_cycle_at(0);
     assert_eq!(ring.cycle_older(), Some(vs("a").as_slice()));
     assert_eq!(ring.cycle, Some(1));
 }
@@ -525,7 +559,7 @@ fn cycle_older_noop_at_last_entry() {
     let mut ring = KillRing::new();
     ring.push(vs("a")); // slot 1
     ring.push(vs("b")); // slot 0 = head
-    ring.seed_cycle(Some(1)); // at last
+    ring.seed_cycle_at(1); // at last
     assert!(ring.cycle_older().is_none());
     assert_eq!(ring.cycle, Some(1)); // unchanged
 }
@@ -544,7 +578,7 @@ fn cycle_newer_noop_from_none() {
     // A paste from outside the ring has nothing newer than it.
     let mut ring = KillRing::new();
     ring.push(vs("a"));
-    ring.seed_cycle(None);
+    ring.seed_cycle_outside(&vs("z"));
     assert!(ring.cycle_newer().is_none());
     assert_eq!(ring.cycle, None); // unchanged
 }
@@ -554,7 +588,7 @@ fn cycle_newer_noop_at_head() {
     let mut ring = KillRing::new();
     ring.push(vs("a"));
     ring.push(vs("b"));
-    ring.seed_cycle(Some(0));
+    ring.seed_cycle_at(0);
     assert!(ring.cycle_newer().is_none());
     assert_eq!(ring.cycle, Some(0)); // unchanged
 }
@@ -565,7 +599,7 @@ fn cycle_newer_retreats_toward_head() {
     ring.push(vs("a")); // slot 2
     ring.push(vs("b")); // slot 1
     ring.push(vs("c")); // slot 0 = head
-    ring.seed_cycle(Some(2));
+    ring.seed_cycle_at(2);
     assert_eq!(ring.cycle_newer(), Some(vs("b").as_slice()));
     assert_eq!(ring.cycle, Some(1));
 }
@@ -578,7 +612,7 @@ fn cycle_round_trip_clipboard_origin() {
     let mut ring = KillRing::new();
     ring.push(vs("charwise")); // slot 1
     ring.push(vs("linewise\n")); // slot 0 = head
-    ring.seed_cycle(None); // clipboard origin
+    ring.seed_cycle_outside(&vs("z")); // a paste from outside the ring
 
     assert_eq!(ring.cycle_older(), Some(vs("linewise\n").as_slice())); // slot 0
     assert_eq!(ring.cycle_older(), Some(vs("charwise").as_slice())); // slot 1
@@ -592,7 +626,7 @@ fn cycle_round_trip_older_then_newer() {
     ring.push(vs("a")); // slot 2
     ring.push(vs("b")); // slot 1
     ring.push(vs("c")); // slot 0 = head
-    ring.seed_cycle(None);
+    ring.seed_cycle_outside(&vs("z"));
 
     ring.cycle_older(); // None→0: "c"
     ring.cycle_older(); // 0→1:   "b"

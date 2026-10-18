@@ -333,19 +333,17 @@ impl RegisterSet {
 /// The ring holds no two equal entries: [`KillRing::push`] moves a
 /// re-captured entry to the head instead of duplicating it.
 ///
-/// `cycle` is seeded by the paste command with the slot it pasted and
-/// persists until the next paste re-seeds it; a lingering value between
-/// sessions is harmless because every fresh paste re-seeds before reading the
-/// cursor.
+/// `cycle` persists until the next paste re-seeds it; a lingering value
+/// between sessions is harmless because every fresh paste re-seeds before
+/// reading the cursor.
 #[derive(Debug, Clone, Default)]
 pub struct KillRing {
     /// Entries newest-first; max `KILL_RING_DEPTH` entries.
     entries: VecDeque<Vec<Piece>>,
     /// Active `[`/`]` cycle position.
-    /// `Some(n)` = the paste shows slot `n`. A clipboard or register paste of
-    /// the head's pieces is `Some(0)`.
-    /// `None` = the paste shows text from outside the ring (conceptually
-    /// before slot 0).
+    /// `Some(n)` = the paste shows slot `n`.
+    /// `None` = the paste shows text from outside the ring that is not the
+    /// head's (conceptually before slot 0).
     cycle: Option<usize>,
 }
 
@@ -392,14 +390,18 @@ impl KillRing {
         }
     }
 
-    /// Seed the cycle cursor with the slot a paste put there.
+    /// Seed the cycle cursor for a paste read from ring slot `slot`.
+    pub fn seed_cycle_at(&mut self, slot: usize) {
+        self.cycle = Some(slot);
+    }
+
+    /// Seed the cycle cursor for a paste of `pasted` from outside the ring.
     ///
-    /// Call once per completed paste:
-    /// - ring-sourced paste (`"kp`, or smart-p reading slot `n`) → `Some(n)`
-    /// - clipboard / named-register (`"0`–`"9`) paste → `Some(0)` when it
-    ///   pasted the head's pieces, `None` otherwise
-    pub fn seed_cycle(&mut self, pos: Option<usize>) {
-        self.cycle = pos;
+    /// Pieces equal to the head's start the cycle at the head, so the first
+    /// `[` steps past the text the paste already shows instead of pasting it
+    /// again.
+    pub fn seed_cycle_outside(&mut self, pasted: &[Piece]) {
+        self.cycle = (self.head() == Some(pasted)).then_some(0);
     }
 
     /// Borrow the head entry (most recently pushed), if any.
@@ -413,7 +415,7 @@ impl KillRing {
     }
 
     /// The ring slot the open paste shows, or `None` when it shows text from
-    /// outside the ring.
+    /// outside the ring that is not the head's.
     pub fn cycle_position(&self) -> Option<usize> {
         self.cycle
     }
@@ -422,7 +424,7 @@ impl KillRing {
     ///
     /// `None → 0`, `Some(n) → n+1`. Noop (returns `None`, leaves `cycle`
     /// unchanged) when the next slot would be out of bounds or the ring is
-    /// empty, so every `[` past the oldest entry is a noop.
+    /// empty.
     pub fn cycle_older(&mut self) -> Option<&[Piece]> {
         let next = match self.cycle {
             None => 0,
@@ -438,8 +440,8 @@ impl KillRing {
     /// Retreat the cycle cursor one step newer and return that entry.
     ///
     /// Noop (returns `None`, leaves `cycle` unchanged) when `cycle` is `None`
-    /// or `Some(0)`: there is nowhere newer to go, so every `]` at the head
-    /// entry is a noop. Otherwise `Some(n) → Some(n-1)`.
+    /// or `Some(0)`: there is nowhere newer to go. Otherwise
+    /// `Some(n) → Some(n-1)`.
     pub fn cycle_newer(&mut self) -> Option<&[Piece]> {
         let prev = match self.cycle {
             None | Some(0) => return None,
