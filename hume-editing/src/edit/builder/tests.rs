@@ -187,6 +187,34 @@ fn an_anchor_inside_a_range_replaced_by_its_own_text_stays_put() {
     assert_eq!(out, "ab-[c]>d\n");
 }
 
+#[test]
+fn an_identical_replacement_overlapping_a_deletion_is_reinserted() {
+    let out = marked("-[a]>bcd\n", |b| {
+        b.delete(clusters(b.text(), 0, 2));
+        b.replace(clusters(b.text(), 1, 3), "bc")
+    });
+    assert_eq!(out, "-[bc]>d\n");
+}
+
+#[test]
+fn an_insert_inside_an_identical_replacement_lands_after_it() {
+    let out = marked("-[a]>bcd\n", |b| {
+        b.replace(clusters(b.text(), 1, 3), "bc");
+        b.insert(bound_at(b.text(), 2), "X")
+    });
+    assert_eq!(out, "abc-[X]>d\n");
+}
+
+#[test]
+fn a_deletion_ending_where_an_identical_replacement_starts_keeps_its_anchors() {
+    let out = cursor_at("-[a]>bcd\n", |b| {
+        b.delete(clusters(b.text(), 0, 1));
+        b.replace(clusters(b.text(), 1, 3), "bc");
+        b.at(bound_at(b.text(), 2))
+    });
+    assert_eq!(out, "b-[c]>d\n");
+}
+
 /// The text `input` becomes when the clusters covering chars `a..b` of it
 /// are deleted, for each `(a, b)`.
 fn text_after_deleting(input: &str, ranges: &[(usize, usize)]) -> String {

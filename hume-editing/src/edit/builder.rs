@@ -6,7 +6,10 @@
 //! position, merges overlapping deletions into their union, and drives
 //! [`ChangeSetBuilder`] front to back. A position strictly inside a deletion
 //! resolves to the deletion point, the same rule
-//! [`crate::changeset::PosMapCursor`] applies to any position.
+//! [`crate::changeset::PosMapCursor`] applies to any position. A replacement
+//! by the text already there is kept as it is when no other deletion or
+//! insertion falls inside it; otherwise it is a deletion and an insertion
+//! like any other replacement.
 //!
 //! The text keeps ending with a `\n`, by
 //! [`apply_keeping_final_break`](super::apply_keeping_final_break)'s rule.
@@ -76,6 +79,13 @@ enum ItemKind {
         end: CharOffset,
     },
     Insert(LfText),
+    /// Removes `key..end`, then inserts `text` at `key`. `unchanged` when
+    /// `text` is what `key..end` already holds.
+    Replace {
+        end: CharOffset,
+        text: LfText,
+        unchanged: bool,
+    },
     /// Marks a place in the new text without changing it.
     Anchor,
 }
@@ -129,7 +139,7 @@ impl<'a, 'id> EditBuilder<'a, 'id> {
     fn push(&mut self, key: CharOffset, kind: ItemKind) -> usize {
         let text_end = self.text.end();
         let end = match kind {
-            ItemKind::Delete { end } => end,
+            ItemKind::Delete { end } | ItemKind::Replace { end, .. } => end,
             ItemKind::Insert(_) | ItemKind::Anchor => key,
         };
         assert!(
@@ -231,17 +241,23 @@ impl<'a, 'id> EditBuilder<'a, 'id> {
     }
 
     /// Replace `range` with `text`; returns what the replacement became. A
-    /// replacement by the text already there is a [`keep`](Self::keep), so it
-    /// changes nothing.
+    /// replacement by the text already there changes nothing, unless another
+    /// operation deletes or inserts inside it.
     pub fn replace(&mut self, range: ClusterRange, text: &str) -> Mark<'id> {
-        if self.text.slice(range.chars()) == text {
-            return self.keep(range);
-        }
-        let start = self.delete(range);
-        let inserted = self.push(range.start().offset(), ItemKind::Insert(LfText::new(text)));
+        let text = LfText::new(text);
+        let unchanged = self.text.slice(range.chars()) == text.as_str();
+        let end = range.end().offset();
+        let index = self.push(
+            range.start().offset(),
+            ItemKind::Replace {
+                end,
+                text,
+                unchanged,
+            },
+        );
         Mark {
-            start,
-            end: self.pos(inserted, true),
+            start: self.pos(index, false),
+            end: self.pos(index, true),
         }
     }
 
@@ -266,43 +282,77 @@ impl<'a, 'id> EditBuilder<'a, 'id> {
     fn drive(&mut self, ceiling: Option<CharOffset>) -> (ChangeSet, Vec<(CharOffset, CharOffset)>) {
         let text_end = self.text.end();
         let rerun_possible = ceiling.is_none()
-            && self
-                .items
-                .iter()
-                .any(|item| matches!(item.kind, ItemKind::Delete { end } if end == text_end));
+            && self.items.iter().any(|item| {
+                matches!(item.kind, ItemKind::Delete { end } | ItemKind::Replace { end, .. }
+                        if end == text_end)
+            });
+        let take = |text: &mut LfText| {
+            if rerun_possible {
+                text.clone()
+            } else {
+                std::mem::take(text)
+            }
+        };
         let mut order: Vec<usize> = (0..self.items.len()).collect();
         order.sort_by_key(|&index| (self.items[index].key, index));
+        // Per item in `order`, where the next item that is not an anchor starts.
+        let mut next_change = vec![None; order.len()];
+        let mut next = None;
+        for (k, &index) in order.iter().enumerate().rev() {
+            next_change[k] = next;
+            if !matches!(self.items[index].kind, ItemKind::Anchor) {
+                next = Some(self.items[index].key);
+            }
+        }
         let mut changes = ChangeSetBuilder::new(self.text.end());
         let mut placed = vec![(CharOffset::default(), CharOffset::default()); self.items.len()];
         // The old start and new position of the deletion ending at `old_pos`.
         let mut deletion: Option<(CharOffset, CharOffset)> = None;
-        for index in order {
+        for (k, index) in order.into_iter().enumerate() {
             let item = &mut self.items[index];
             if item.key > changes.old_pos() {
                 changes.retain_to(item.key);
                 deletion = None;
             }
             let before = changes.new_pos();
-            match &mut item.kind {
-                ItemKind::Delete { end } => {
-                    let end = ceiling.map_or(*end, |ceiling| (*end).min(ceiling));
-                    if end > changes.old_pos() {
-                        deletion.get_or_insert((item.key, changes.new_pos()));
-                        changes.delete_to(end);
-                    }
+            // A replacement nothing reaches into is left for the items after it
+            // to retain, so an anchor inside it keeps its place.
+            let kept = match item.kind {
+                ItemKind::Replace {
+                    end,
+                    unchanged: true,
+                    ..
+                } if changes.old_pos() == item.key
+                    && next_change[k].is_none_or(|next: CharOffset| next >= end) =>
+                {
+                    Some(end)
                 }
-                ItemKind::Insert(text) => {
-                    let text = if rerun_possible {
-                        text.clone()
-                    } else {
-                        std::mem::take(text)
-                    };
-                    changes.insert_normalized(text);
+                _ => None,
+            };
+            let (remove_to, insert) = match &mut item.kind {
+                ItemKind::Replace { .. } if kept.is_some() => (None, None),
+                ItemKind::Replace { end, text, .. } => (Some(*end), Some(take(text))),
+                ItemKind::Delete { end } => (Some(*end), None),
+                ItemKind::Insert(text) => (None, Some(take(text))),
+                ItemKind::Anchor => (None, None),
+            };
+            if let Some(end) = remove_to {
+                let end = ceiling.map_or(end, |ceiling| end.min(ceiling));
+                if end > changes.old_pos() {
+                    deletion.get_or_insert((item.key, changes.new_pos()));
+                    changes.delete_to(end);
                 }
-                ItemKind::Anchor => {}
             }
-            placed[index] = match (&item.kind, deletion) {
-                (ItemKind::Anchor, Some((start, at)))
+            if let Some(text) = insert {
+                changes.insert_normalized(text);
+            }
+            placed[index] = match (&item.kind, deletion, kept) {
+                (_, _, Some(end)) => {
+                    let len = isize::try_from(end.chars_since(item.key))
+                        .expect("a range of the text fits an isize");
+                    (before, before.shift(len))
+                }
+                (ItemKind::Anchor, Some((start, at)), _)
                     if item.key > start && item.key < changes.old_pos() =>
                 {
                     (at, at)
