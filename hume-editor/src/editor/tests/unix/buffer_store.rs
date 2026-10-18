@@ -1,4 +1,5 @@
 use super::*;
+use hume_engine::pipeline::Cycle;
 
 /// `:e path` opens a new buffer when the file is not already open.
 #[test]
@@ -36,7 +37,7 @@ fn p6_edit_deduplicates_open_file() {
     let bid_first_open = ed.focused_buffer_id();
     let count_after_first = ed.state.buffers.len();
     // Switch back to scratch.
-    let scratch_bid = ed.state.buffers.prev(bid_first_open);
+    let scratch_bid = ed.state.buffers.step(bid_first_open, Cycle::Prev);
     ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.view), scratch_bid);
     // Open the same file again: should switch to existing buffer, not create new.
     let r2 = ed.execute_typed("e", Some(path.to_str().unwrap()));

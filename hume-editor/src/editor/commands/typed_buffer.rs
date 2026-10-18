@@ -1,8 +1,8 @@
-use hume_engine::pipeline::BufferId;
+use hume_engine::pipeline::{BufferId, Cycle};
 
 use super::super::Editor;
 use super::super::Severity;
-use super::jump::{BufferStep, goto_buffer_in_order};
+use super::jump::goto_buffer_in_order;
 use super::{FocusedPane, jump_pane_to};
 use crate::editor::buffer::DiskCheckTrigger;
 use crate::editor::error::CommandError;
@@ -363,11 +363,7 @@ fn resolve_buffer_arg(ed: &Editor, arg: &str) -> Result<BufferId, CommandError> 
 /// Take one open-order buffer step for `:bnext`/`:bprev`, recording by hand
 /// the jump the mappable `goto-next-buffer`/`goto-prev-buffer` siblings get
 /// from their `.jump()` meta: the `:` dispatcher reads no `CmdMeta`.
-fn typed_buffer_step(
-    ed: &mut Editor,
-    fp: FocusedPane,
-    step: BufferStep,
-) -> Result<(), CommandError> {
+fn typed_buffer_step(ed: &mut Editor, fp: FocusedPane, cycle: Cycle) -> Result<(), CommandError> {
     let t = fp.pane();
     with_jump(
         &mut ed.state,
@@ -375,7 +371,7 @@ fn typed_buffer_step(
         t,
         JumpRule::IfMoved,
         |state, view| {
-            goto_buffer_in_order(state, view, t, step);
+            goto_buffer_in_order(state, view, t, cycle);
         },
     );
     Ok(())
@@ -388,7 +384,7 @@ pub(in crate::editor) fn typed_bnext(
     _arg: Option<&str>,
     _force: bool,
 ) -> Result<(), CommandError> {
-    typed_buffer_step(ed, fp, BufferStep::Next)
+    typed_buffer_step(ed, fp, Cycle::Next)
 }
 
 /// `:bprev` / `:bp`: switch to the previous buffer in open-order.
@@ -398,5 +394,5 @@ pub(in crate::editor) fn typed_bprev(
     _arg: Option<&str>,
     _force: bool,
 ) -> Result<(), CommandError> {
-    typed_buffer_step(ed, fp, BufferStep::Prev)
+    typed_buffer_step(ed, fp, Cycle::Prev)
 }

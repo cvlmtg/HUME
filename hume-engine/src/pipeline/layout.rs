@@ -27,12 +27,23 @@ pub enum Rotation {
     Backward,
 }
 
-/// Which way [`EngineView::pane_cycled_from_focused`](super::EngineView::pane_cycled_from_focused)
-/// steps through the panes in leaf order.
+/// Which way a step through an ordered list goes: panes in leaf order, tabs
+/// in display order, buffers in open order.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Cycle {
     Next,
     Prev,
+}
+
+impl Cycle {
+    /// The index one step from `idx` in a list of `len` items, wrapping at
+    /// either end.
+    pub fn step(self, idx: usize, len: usize) -> usize {
+        match self {
+            Cycle::Next => (idx + 1) % len,
+            Cycle::Prev => (idx + len - 1) % len,
+        }
+    }
 }
 
 /// Refusal of [`EngineView::close_focused`](super::EngineView::close_focused)
@@ -537,11 +548,7 @@ impl FocusedLayout {
             .iter()
             .position(|&p| p == self.focus)
             .expect("the focused pane is a leaf of the tree");
-        let target = match cycle {
-            Cycle::Next => (idx + 1) % len,
-            Cycle::Prev => (idx + len - 1) % len,
-        };
-        (len > 1).then(|| leaves[target])
+        (len > 1).then(|| leaves[cycle.step(idx, len)])
     }
 
     /// The nearest pane on `side` of the focused one within `area`, or

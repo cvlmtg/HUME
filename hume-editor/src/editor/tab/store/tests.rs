@@ -106,8 +106,12 @@ fn next_and_prev_wrap_around() {
     store.open_after_current(l2);
     // current() == t3 here.
 
-    assert_eq!(store.next(), t1, "wraps from the last tab to the first");
-    assert_eq!(store.prev(), t2);
+    assert_eq!(
+        store.step(Cycle::Next),
+        t1,
+        "wraps from the last tab to the first"
+    );
+    assert_eq!(store.step(Cycle::Prev), t2);
 }
 
 #[test]
@@ -115,8 +119,8 @@ fn next_and_prev_are_noops_with_one_tab() {
     let store = TabStore::new();
     let t1 = store.current();
 
-    assert_eq!(store.next(), t1);
-    assert_eq!(store.prev(), t1);
+    assert_eq!(store.step(Cycle::Next), t1);
+    assert_eq!(store.step(Cycle::Prev), t1);
 }
 
 #[test]

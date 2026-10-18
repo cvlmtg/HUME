@@ -94,12 +94,6 @@ pub(in crate::editor) fn cmd_goto_alternate_buffer(
 
 // ── Open-order buffer cycling ────────────────────────────────────────────────
 
-/// Which way [`goto_buffer_in_order`] steps through the open-order buffer list.
-pub(super) enum BufferStep {
-    Next,
-    Prev,
-}
-
 /// The one place an open-order buffer step is taken, shared by the mappable
 /// `goto-next-buffer`/`goto-prev-buffer` and their typed `:bnext`/`:bprev`
 /// spellings.
@@ -108,20 +102,16 @@ pub(super) enum BufferStep {
 /// `cmd_goto_alternate_buffer` above: the mappable half carries `.jump()`, so
 /// `with_jump` already snapshots the outgoing position; the typed half
 /// has no `CmdMeta` to read and pushes its own entry instead. Needs no
-/// same-buffer guard: with one buffer open `next`/`prev` return it
-/// unchanged and the switch is inert, and both jump-recording paths gate on
-/// the cursor having actually moved.
+/// same-buffer guard: with one buffer open `step` returns it unchanged and
+/// the switch is inert, and both jump-recording paths gate on the cursor
+/// having actually moved.
 pub(super) fn goto_buffer_in_order(
     state: &mut EditorState,
     view: &mut EngineView,
     t: CommandPane,
-    step: BufferStep,
+    cycle: Cycle,
 ) {
-    let current = t.bid(view);
-    let target = match step {
-        BufferStep::Next => state.buffers.next(current),
-        BufferStep::Prev => state.buffers.prev(current),
-    };
+    let target = state.buffers.step(t.bid(view), cycle);
     switch_pane_to_buffer(state, view, t.pid(), target);
 }
 
@@ -133,7 +123,7 @@ pub(in crate::editor) fn cmd_goto_next_buffer(
     _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    goto_buffer_in_order(state, view, t, BufferStep::Next);
+    goto_buffer_in_order(state, view, t, Cycle::Next);
     Ok(())
 }
 
@@ -145,7 +135,7 @@ pub(in crate::editor) fn cmd_goto_prev_buffer(
     _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    goto_buffer_in_order(state, view, t, BufferStep::Prev);
+    goto_buffer_in_order(state, view, t, Cycle::Prev);
     Ok(())
 }
 

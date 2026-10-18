@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use hume_engine::pipeline::{BufferId, Direction, EngineView};
+use hume_engine::pipeline::{BufferId, Cycle, Direction, EngineView};
 use hume_grid::Rgb;
 use hume_scripting::host::DecorationHost;
 
@@ -205,7 +205,7 @@ pub(in crate::editor) fn typed_tabnext(
     _arg: Option<&str>,
     _force: bool,
 ) -> Result<(), CommandError> {
-    super::goto_tab_in_order(&mut ed.state, &mut ed.view, super::TabStep::Next);
+    super::goto_tab_in_order(&mut ed.state, &mut ed.view, Cycle::Next);
     Ok(())
 }
 
@@ -216,7 +216,7 @@ pub(in crate::editor) fn typed_tabprev(
     _arg: Option<&str>,
     _force: bool,
 ) -> Result<(), CommandError> {
-    super::goto_tab_in_order(&mut ed.state, &mut ed.view, super::TabStep::Prev);
+    super::goto_tab_in_order(&mut ed.state, &mut ed.view, Cycle::Prev);
     Ok(())
 }
 

@@ -522,12 +522,10 @@ impl Keymap {
         // 0x09 on legacy terminals) is precisely what the kitty protocol
         // exists to do, so once the probe above has confirmed it, jump-forward
         // stays reachable via Ctrl-i (see the base keymap's jump-list binds).
-        // Shift-Tab arrives as BackTab with SHIFT set.
+        // Shift-Tab arrives as BackTab.
         self.normal.bind_leaf(key!(Tab), cmd!("pane-focus-next"));
-        self.normal.bind_leaf(
-            KeyEvent::new(KeyCode::BackTab, Modifiers::SHIFT),
-            cmd!("pane-focus-prev"),
-        );
+        self.normal
+            .bind_leaf(key!(BackTab), cmd!("pane-focus-prev"));
     }
 }
 

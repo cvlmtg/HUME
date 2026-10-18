@@ -12,12 +12,12 @@
 //! unlike `goto-next-buffer`/`goto-prev-buffer`: a tab switch changes
 //! the focused pane itself (a different pane, possibly in a different tab),
 //! and the jump list is written to `state.panes.entries[view.focused_pane()].jumps`
-//! read *after* the switch, the same reason `pane-focus-next`/`-left`/
+//! read *after* the switch, the same reason `pane-focus-next`/`-prev`/`-left`/
 //! `-right`/`-up`/`-down` (which also change the focused pane) carry no `.jump()`
 //! either, while buffer-switch commands (which keep the same pane) do.
 
 use crate::editor::registry::Count;
-use hume_engine::pipeline::EngineView;
+use hume_engine::pipeline::{Cycle, EngineView};
 use hume_ops::MotionMode;
 
 use crate::editor::EditorState;
@@ -50,18 +50,10 @@ pub(in crate::editor) fn close_tab(
     Ok(())
 }
 
-pub(super) enum TabStep {
-    Next,
-    Prev,
-}
-
 /// The one place a display-order tab step is taken. Mirrors
 /// `jump::goto_buffer_in_order`'s shape.
-pub(super) fn goto_tab_in_order(state: &mut EditorState, view: &mut EngineView, step: TabStep) {
-    let target = match step {
-        TabStep::Next => state.tabs.next(),
-        TabStep::Prev => state.tabs.prev(),
-    };
+pub(super) fn goto_tab_in_order(state: &mut EditorState, view: &mut EngineView, cycle: Cycle) {
+    let target = state.tabs.step(cycle);
     switch_to_tab(state, view, target);
 }
 
@@ -89,7 +81,7 @@ pub(crate) fn cmd_goto_next_tab(
     _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    goto_tab_in_order(state, view, TabStep::Next);
+    goto_tab_in_order(state, view, Cycle::Next);
     Ok(())
 }
 
@@ -101,6 +93,6 @@ pub(crate) fn cmd_goto_prev_tab(
     _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    goto_tab_in_order(state, view, TabStep::Prev);
+    goto_tab_in_order(state, view, Cycle::Prev);
     Ok(())
 }

@@ -280,10 +280,7 @@ fn apply_kitty_defaults_binds_kitty_only_keys() {
         panic!("Tab should bind to pane-focus-next under kitty defaults");
     };
     assert_eq!(c.name, "pane-focus-next");
-    let WalkResult::Leaf(c) = km
-        .normal
-        .walk(&[KeyEvent::new(KeyCode::BackTab, Modifiers::SHIFT)])
-    else {
+    let WalkResult::Leaf(c) = km.normal.walk(&[key!(BackTab)]) else {
         panic!("Shift-Tab should bind to pane-focus-prev under kitty defaults");
     };
     assert_eq!(c.name, "pane-focus-prev");
@@ -296,8 +293,5 @@ fn pane_focus_prev_is_ctrl_p_shift_p_and_shift_tab_needs_kitty() {
         panic!("Ctrl-p P should bind to pane-focus-prev");
     };
     assert_eq!(c.name, "pane-focus-prev");
-    assert!(matches!(
-        trie.walk(&[KeyEvent::new(KeyCode::BackTab, Modifiers::SHIFT)]),
-        WalkResult::NoMatch
-    ));
+    assert!(matches!(trie.walk(&[key!(BackTab)]), WalkResult::NoMatch));
 }

@@ -9,7 +9,7 @@ use std::path::Path;
 
 use slotmap::SecondaryMap;
 
-use hume_engine::pipeline::BufferId;
+use hume_engine::pipeline::{BufferId, Cycle};
 use hume_platform::path::strip_unc_prefix_cow;
 
 use crate::editor::buffer::{Buffer, ViewLabel};
@@ -274,22 +274,15 @@ impl BufferStore {
         self.mru.iter().rev().nth(1).copied()
     }
 
-    /// Next buffer in open-order (wraps around). Returns `id` if only one buffer.
-    pub(in crate::editor) fn next(&self, current: BufferId) -> BufferId {
-        let pos = self.order.iter().position(|&x| x == current).unwrap_or(0);
-        let next = (pos + 1) % self.order.len().max(1);
-        self.order.get(next).copied().unwrap_or(current)
-    }
-
-    /// Previous buffer in open-order (wraps around). Returns `id` if only one buffer.
-    pub(in crate::editor) fn prev(&self, current: BufferId) -> BufferId {
-        let pos = self.order.iter().position(|&x| x == current).unwrap_or(0);
-        let prev = if pos == 0 {
-            self.order.len().saturating_sub(1)
-        } else {
-            pos - 1
-        };
-        self.order.get(prev).copied().unwrap_or(current)
+    /// The buffer one step from `current` in open-order, wrapping at either
+    /// end. Returns `current` if only one buffer is open.
+    pub(in crate::editor) fn step(&self, current: BufferId, cycle: Cycle) -> BufferId {
+        let pos = self
+            .order
+            .iter()
+            .position(|&x| x == current)
+            .expect("current buffer is open");
+        self.order[cycle.step(pos, self.order.len())]
     }
 
     #[cfg(test)]

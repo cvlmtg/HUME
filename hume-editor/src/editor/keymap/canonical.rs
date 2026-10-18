@@ -10,7 +10,9 @@ use termina::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, Modifiers};
 
 /// `KeyEvent`'s `PartialEq`/`Hash` impls perform no case normalization, so
 /// binding lookups normalize uppercase char ⇔ `SHIFT` explicitly at this
-/// boundary. Also scrubs fields that never participate in binding identity:
+/// boundary, and give `BackTab` the `SHIFT` terminals always report with it,
+/// so `key!(BackTab)` names Shift-Tab. Also scrubs fields that never
+/// participate in binding identity:
 /// `kind` (a kitty autorepeat is a `Repeat` event, not `Press`; held keys
 /// must keep matching the same binding under `REPORT_EVENT_TYPES`), protocol
 /// `state`, and the Caps/Num Lock modifier bits.
@@ -18,6 +20,9 @@ fn canonical(mut key: KeyEvent) -> KeyEvent {
     key.kind = KeyEventKind::Press;
     key.state = KeyEventState::NONE;
     key.modifiers -= Modifiers::CAPS_LOCK | Modifiers::NUM_LOCK;
+    if key.code == KeyCode::BackTab {
+        key.modifiers |= Modifiers::SHIFT;
+    }
     if let KeyCode::Char(c) = key.code {
         if c.is_ascii_uppercase() {
             key.modifiers |= Modifiers::SHIFT;

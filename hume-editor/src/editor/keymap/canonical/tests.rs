@@ -26,6 +26,12 @@ fn canonical_shift_punctuation_is_unchanged() {
 }
 
 #[test]
+fn canonical_back_tab_gains_shift() {
+    let k = canonical(KeyEvent::new(KeyCode::BackTab, Modifiers::NONE));
+    assert_eq!(k, KeyEvent::new(KeyCode::BackTab, Modifiers::SHIFT));
+}
+
+#[test]
 fn canonical_scrubs_lock_bits() {
     let k = canonical(KeyEvent::new(
         KeyCode::Char('h'),

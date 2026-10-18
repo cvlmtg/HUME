@@ -57,10 +57,10 @@ fn next_and_prev_wrap() {
     store.open(a, make_buf());
     store.open(b, make_buf());
     store.open(c, make_buf());
-    assert_eq!(store.next(c), a, "next wraps to start");
-    assert_eq!(store.prev(a), c, "prev wraps to end");
-    assert_eq!(store.next(a), b);
-    assert_eq!(store.prev(c), b);
+    assert_eq!(store.step(c, Cycle::Next), a, "next wraps to start");
+    assert_eq!(store.step(a, Cycle::Prev), c, "prev wraps to end");
+    assert_eq!(store.step(a, Cycle::Next), b);
+    assert_eq!(store.step(c, Cycle::Prev), b);
 }
 
 #[test]

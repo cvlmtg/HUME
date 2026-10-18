@@ -12,7 +12,7 @@
 
 use slotmap::{SecondaryMap, SlotMap, new_key_type};
 
-use hume_engine::pipeline::{FocusedLayout, LayoutTree, PaneId};
+use hume_engine::pipeline::{Cycle, FocusedLayout, LayoutTree, PaneId};
 
 new_key_type! {
     /// Opaque handle to a tab. Minted only in `hume-editor`: the engine has
@@ -175,23 +175,10 @@ impl TabStore {
         self.current = survivor;
     }
 
-    /// Next tab in display order (wraps around). Returns `current()` if
-    /// only one tab is open.
-    pub(in crate::editor) fn next(&self) -> TabId {
-        let pos = self.current_pos();
-        self.order[(pos + 1) % self.order.len()]
-    }
-
-    /// Previous tab in display order (wraps around). Returns `current()` if
-    /// only one tab is open.
-    pub(in crate::editor) fn prev(&self) -> TabId {
-        let pos = self.current_pos();
-        let prev = if pos == 0 {
-            self.order.len() - 1
-        } else {
-            pos - 1
-        };
-        self.order[prev]
+    /// The tab one step from the current one in display order, wrapping at
+    /// either end. Returns `current()` if only one tab is open.
+    pub(in crate::editor) fn step(&self, cycle: Cycle) -> TabId {
+        self.order[cycle.step(self.current_pos(), self.order.len())]
     }
 }
 
