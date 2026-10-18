@@ -16,9 +16,7 @@ use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::state::EditState;
 use hume_ops::MotionMode;
 use hume_ops::edit::{paste_after, paste_before};
-use hume_ops::register::{
-    BLACK_HOLE_REGISTER, CLIPBOARD_REGISTER, CyclePos, KILL_RING_REGISTER, Piece,
-};
+use hume_ops::register::{BLACK_HOLE_REGISTER, CLIPBOARD_REGISTER, KILL_RING_REGISTER, Piece};
 
 use super::super::{EditorState, Severity, doc_ops, register_ops};
 use super::FocusedPane;
@@ -196,8 +194,12 @@ fn do_paste(
     // committed in BEFORE by `step_paste_commit`), so every one reseeds the
     // cycle.
     let ring_seed = match from {
-        Some(PasteSource::Ring(slot)) => CyclePos::Slot(slot),
-        Some(PasteSource::Clipboard) | None => CyclePos::Outside(values),
+        Some(PasteSource::Ring(slot)) => Some(slot),
+        // Pieces equal to the head are the head's own, so `[` steps past it
+        // instead of pasting the same text again.
+        Some(PasteSource::Clipboard) | None => {
+            (state.kill_ring.head() == Some(values.as_slice())).then_some(0)
+        }
     };
     state.kill_ring.seed_cycle(ring_seed);
     Ok(())

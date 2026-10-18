@@ -1044,6 +1044,28 @@ fn paste_ring_older_after_clipboard_paste_skips_the_same_text() {
     assert_eq!(state(&ed), "x-[foo]>\n", "[ steps past the head to foo");
 }
 
+/// `y` writes the same line to the ring head and the clipboard. After an edit,
+/// `p` pastes it from the clipboard, and `[` steps past the head to the line
+/// yanked before it.
+#[test]
+fn paste_ring_older_after_yank_edit_paste_skips_the_yanked_line() {
+    let mut ed = editor_from("-[a]>\nb\nc\n");
+    ed.feed_key(key('x'));
+    ed.feed_key(key('y')); // ring = [a\n]
+    ed.feed_key(key('j'));
+    ed.feed_key(key('x'));
+    ed.feed_key(key('y')); // ring = [b\n, a\n], clipboard = b\n
+    ed.feed_key(key('j'));
+    ed.feed_key(key('i'));
+    ed.feed_key(key('z'));
+    ed.feed_key(key_esc());
+
+    ed.feed_key(key('p'));
+    assert_eq!(state(&ed), "a\nb\nzc\n-[b\n]>", "p pastes the clipboard");
+    ed.feed_key(key('['));
+    assert_eq!(state(&ed), "a\nb\nzc\n-[a\n]>", "[ steps past the head");
+}
+
 /// `[` after a clipboard paste is refused when the ring's only entry is the
 /// clipboard text, and the clipboard paste stays.
 #[test]
