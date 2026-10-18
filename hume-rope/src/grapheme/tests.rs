@@ -917,3 +917,12 @@ fn display_col_in_line_matches_str_width_across_chunk_boundaries() {
     }
     assert!(checked > 0);
 }
+
+#[test]
+fn as_char_is_the_char_of_a_one_char_cluster_only() {
+    let r = rope("a\u{301}b\u{1F44B}\u{1F3FD}\n");
+    let chars: Vec<Option<char>> = graphemes_at(r.slice(..), ClusterBound::TEXT_START)
+        .map(|c| c.as_char())
+        .collect();
+    assert_eq!(chars, [None, Some('b'), None, Some('\n')]);
+}

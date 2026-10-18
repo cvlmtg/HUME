@@ -360,8 +360,8 @@ fn single_space_after(
     limit: ClusterBound,
 ) -> Option<ClusterBound> {
     let cluster = text.clusters().graphemes_at(at).next()?;
-    let one_space = cluster.first() == ' ' && cluster.end().offset().chars_since(at.offset()) == 1;
-    (one_space && cluster.end().offset() <= limit.offset()).then(|| cluster.end())
+    (cluster.as_char() == Some(' ') && cluster.end().offset() <= limit.offset())
+        .then(|| cluster.end())
 }
 
 /// The start of the cluster before `at` when it is one U+0020 starting at or
@@ -372,9 +372,8 @@ fn single_space_before(
     limit: ClusterBound,
 ) -> Option<ClusterStart> {
     let cluster = text.clusters().before(at.into()).next()?;
-    let one_space =
-        cluster.first() == ' ' && at.offset().chars_since(cluster.start().offset()) == 1;
-    (one_space && cluster.start().offset() >= limit.offset()).then(|| cluster.start())
+    (cluster.as_char() == Some(' ') && cluster.start().offset() >= limit.offset())
+        .then(|| cluster.start())
 }
 
 /// Whether `token` starts at a cluster in `[from, to)` and ends by `to`.

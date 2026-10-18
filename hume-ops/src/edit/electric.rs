@@ -171,10 +171,9 @@ fn rewrite(
         .graphemes_at(start.into())
         .take_while(|cluster| cluster.start() < ws_end)
         .find(|cluster| {
-            let single = cluster.end().offset().chars_since(cluster.start().offset()) == 1;
             new_indent
                 .next()
-                .is_none_or(|ch| !(single && cluster.first() == ch))
+                .is_none_or(|ch| cluster.as_char() != Some(ch))
         })
         .map(|cluster| cluster.start())
         .expect("a narrower indent shares less than the whole old indent");

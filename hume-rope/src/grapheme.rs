@@ -42,6 +42,11 @@ impl Cluster {
     pub fn first(&self) -> char {
         self.first
     }
+
+    /// The cluster's char when it is one char.
+    pub fn as_char(&self) -> Option<char> {
+        (self.end.chars_since(self.start) == 1).then_some(self.first)
+    }
 }
 
 /// The grapheme clusters of `slice` from `pos` to its end, in order. The one

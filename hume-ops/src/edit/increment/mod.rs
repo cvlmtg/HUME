@@ -153,11 +153,9 @@ struct Sym {
 
 impl Sym {
     fn of(cluster: &Cluster, chars: WordChars<'_>) -> Self {
-        let first = cluster.first();
-        let single = cluster.end().offset().chars_since(cluster.start().offset()) == 1;
         Self {
-            ascii: (single && first.is_ascii()).then_some(first),
-            word: chars.classify(first) == CharClass::Word,
+            ascii: cluster.as_char().filter(char::is_ascii),
+            word: chars.classify(cluster.first()) == CharClass::Word,
         }
     }
 }

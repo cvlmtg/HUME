@@ -12,12 +12,12 @@ use unicode_normalization::UnicodeNormalization;
 /// U+0301, and a typed `e` skips the accented one. A single ASCII char on
 /// both sides answers without allocating.
 fn cluster_is(text: &BufferText, cluster: Cluster, ch: char) -> bool {
-    let chars = cluster.range().chars();
-    let single_char = chars.end.chars_since(chars.start) == 1;
-    if single_char && cluster.first().is_ascii() && ch.is_ascii() {
-        return cluster.first() == ch;
+    if let Some(only) = cluster.as_char().filter(char::is_ascii)
+        && ch.is_ascii()
+    {
+        return only == ch;
     }
-    text.slice(chars)
+    text.slice(cluster.range().chars())
         .chars()
         .nfc()
         .eq(std::iter::once(ch).nfc())
