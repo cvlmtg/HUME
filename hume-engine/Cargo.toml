@@ -3,6 +3,10 @@ name = "hume-engine"
 version.workspace = true
 edition = "2024"
 
+[features]
+# Test-only constructors for other crates' tests, such as `PaneSize::for_test`.
+test-util = []
+
 [dependencies]
 hume-grid = { path = "../hume-grid" }
 hume-rope = { path = "../hume-rope" }

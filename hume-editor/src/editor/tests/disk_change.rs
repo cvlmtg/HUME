@@ -1301,9 +1301,10 @@ fn clicking_into_another_pane_prompts_that_panes_buffer() {
     // it regardless of gutter width, since click-to-focus happens before
     // char-offset resolution (`mouse_left_down`, `mouse.rs`).
     let mut ctx = hume_engine::pipeline::RenderContext::new();
-    ed.sync_viewport_dims(100, 25);
+    ed.resize_terminal(100, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
+    draw(&mut ed);
     ed.handle_input(mouse_left_down(0, 0));
     ed.settle();
 
@@ -1910,9 +1911,10 @@ fn mouse_click_into_another_pane_retires_a_stale_confirm() {
     // 100×25, 0.5 split: pane A (left) spans x ∈ [0, 49); col 0 lands inside
     // it regardless of gutter width (see `clicking_into_another_pane_prompts_that_panes_buffer`).
     let mut ctx = hume_engine::pipeline::RenderContext::new();
-    ed.sync_viewport_dims(100, 25);
+    ed.resize_terminal(100, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
+    draw(&mut ed);
     ed.handle_input(mouse_left_down(0, 0));
     ed.settle();
 

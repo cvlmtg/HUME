@@ -9,7 +9,7 @@ mod session;
 
 use termina::event::{KeyCode, Modifiers};
 
-use hume_engine::pipeline::EngineView;
+use hume_engine::pipeline::{EngineView, ScreenLayout};
 use hume_engine::types::EditorMode;
 use hume_scripting::host::HostToken;
 use steel::rvals::SteelVal;
@@ -99,15 +99,6 @@ impl Layer for PickerLayer {
 }
 
 impl Editor {
-    /// The picker panel's geometry in the pane area, laid out against the
-    /// current bands first: the next frame's, even between frames after a
-    /// band opened or closed. `None` before the first terminal size, or on a
-    /// pane area too small for the panel.
-    fn picker_geometry(&mut self) -> Option<hume_ui::picker_panel::PanelGeometry> {
-        self.state.relayout(&mut self.view);
-        hume_ui::picker_panel::panel_geometry(self.view.last_pane_area)
-    }
-
     /// Write the open picker session into the shared `PickerViewState` Arc
     /// so `PickerOverlay` can paint it this frame. Synced with the other
     /// overlays in `prepare_frame`, but, unlike the cursor-anchored ones, it
@@ -118,12 +109,12 @@ impl Editor {
     /// a pure scroll-clamp against the *current* geometry, so a terminal
     /// resize between the last keystroke and this frame self-heals here
     /// rather than leaving a stale scroll offset from a taller frame.
-    pub(in crate::editor) fn sync_picker_view(&mut self) {
+    pub(in crate::editor) fn sync_picker_view(&mut self, screen: &ScreenLayout) {
         if self.state.input.picker().is_none() && self.state.views.picker.read().is_none() {
             return;
         }
 
-        let geo = self.picker_geometry();
+        let geo = hume_ui::picker_panel::panel_geometry(screen.pane_area());
         let resolved = match (self.state.input.picker_mut(), geo) {
             (Some(session), Some(geo)) => {
                 session.move_selection(0, geo.list_rows);
@@ -347,11 +338,11 @@ pub(in crate::editor) fn close_picker(state: &mut super::super::EditorState, vie
 ///
 /// `on_select` fires exactly once via `.take()`-equivalent truncate +
 /// `queue_steel_call` (never invoked inline), same one-shot discipline
-/// as the menu. `visible_rows` comes from `Editor::picker_geometry`, the
-/// layout the next frame's `sync_picker_view` paints at the same terminal
-/// size, so a key pages by the rows that frame shows (before the first
-/// frame, geometry is `None` and paging is a documented no-op on the
-/// store). A mouse event (click, drag, or
+/// as the menu. `visible_rows` comes from the panel geometry of
+/// `EditorState::screen_layout`, the layout the next frame's
+/// `sync_picker_view` paints at the same terminal size, so a key pages by the
+/// rows that frame shows (on a pane area too small for the panel, geometry
+/// is `None` and paging is a no-op on the store). A mouse event (click, drag, or
 /// wheel) is swallowed the same way: full-modal means the picker owns
 /// the pointer too, not just the keyboard, so a click can't move the
 /// cursor in the buffer underneath it.
@@ -360,7 +351,9 @@ pub(in crate::editor) fn picker_input(ed: &mut Editor, r: LayerRef, ev: InputEve
         InputEvent::Key(key) => key,
         InputEvent::Mouse(_) => return,
     };
-    let visible_rows = ed.picker_geometry().map_or(0, |geo| geo.list_rows);
+    let screen = ed.state.screen_layout(&mut ed.view);
+    let visible_rows =
+        hume_ui::picker_panel::panel_geometry(screen.pane_area()).map_or(0, |geo| geo.list_rows);
 
     // Every movement key differs only in the delta passed to
     // `move_selection`, collapsed to one borrow instead of one per key.

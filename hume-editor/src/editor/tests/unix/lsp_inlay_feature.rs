@@ -145,7 +145,7 @@ fn setup_two_servers(
 
 fn fire_viewport_change(ed: &mut Editor) {
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     let pid = ed.view.focused_pane();
@@ -679,7 +679,7 @@ fn diagnostics_changed_for_two_buffers_in_the_same_window_both_refresh() {
     );
 
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 

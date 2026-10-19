@@ -290,7 +290,10 @@ impl DetachedStores {
         buf: &super::buffer::Buffer,
         selections: hume_editing::selection::SelectionSet,
     ) -> (Self, PaneId, BufferId) {
-        let (mut view, _) = hume_engine::pipeline::EngineView::new(super::theme::fallback_theme());
+        let (mut view, _) = hume_engine::pipeline::EngineView::new(
+            super::theme::fallback_theme(),
+            hume_grid::Rect::default(),
+        );
         let buffer = view.buffers.insert(());
         let mut stores = Self::default();
         let pane = stores

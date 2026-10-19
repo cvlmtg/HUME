@@ -39,7 +39,7 @@ fn happy_path_streams_lines_and_accept_returns_the_raw_line() {
     drain_until_picker_total(&mut ed, 3);
 
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(40, 12);
+    ed.resize_terminal(40, 12);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     ed.feed_key(key_enter()); // top-ranked row (insertion order, empty query) is "a"

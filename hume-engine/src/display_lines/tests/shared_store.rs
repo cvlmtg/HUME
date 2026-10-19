@@ -157,7 +157,7 @@ fn a_changed_key_drops_the_scope() {
     DisplayLineMap::new(
         &r,
         &providers,
-        std::num::NonZeroU16::new(80).expect("non-zero"),
+        crate::pipeline::ContentWidth::for_test(std::num::NonZeroU16::new(80).expect("non-zero")),
         FormatKey {
             buffer_tag: [1; 3],
             wrap_mode: wrap,
@@ -173,7 +173,7 @@ fn a_changed_key_drops_the_scope() {
     DisplayLineMap::new(
         &r,
         &providers,
-        std::num::NonZeroU16::new(80).expect("non-zero"),
+        crate::pipeline::ContentWidth::for_test(std::num::NonZeroU16::new(80).expect("non-zero")),
         FormatKey {
             buffer_tag: [2; 3],
             wrap_mode: wrap,
@@ -231,7 +231,7 @@ fn a_shape_only_entry_allocates_no_format_buffers() {
     let breakdown = DisplayLineMap::new(
         &r,
         &providers,
-        std::num::NonZeroU16::new(80).expect("non-zero"),
+        crate::pipeline::ContentWidth::for_test(std::num::NonZeroU16::new(80).expect("non-zero")),
         FormatKey {
             buffer_tag: [1; 3],
             wrap_mode: WrapMode::None,
@@ -308,7 +308,7 @@ fn grapheme_capacity_across_rewind(width: usize) -> (usize, usize) {
     DisplayLineMap::new(
         &r,
         &providers,
-        std::num::NonZeroU16::new(80).expect("non-zero"),
+        crate::pipeline::ContentWidth::for_test(std::num::NonZeroU16::new(80).expect("non-zero")),
         FormatKey {
             buffer_tag: [1; 3],
             wrap_mode: WrapMode::None,

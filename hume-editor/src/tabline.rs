@@ -125,7 +125,8 @@ fn fit_label(label: &str, extent_w: u16) -> String {
 /// must pass the same `(x_origin, width)` for a given frame or the geometry
 /// each computes will disagree: [`TablineWidget::render`] (draws each
 /// extent) and `Editor::tabline_click` (`mouse.rs`, maps a click column back
-/// to a tab index) both read them from `EngineView::tabbar_area`, and
+/// to a tab index) both read them from the tab bar's rect in the frame's
+/// `ScreenLayout`, and
 /// `EditorState::sync_tabline_view` (`frame.rs`, resolves `scroll` itself before
 /// either of the other two runs) reads from the same place, so painting,
 /// hit-testing, and scroll resolution can never disagree about where a tab

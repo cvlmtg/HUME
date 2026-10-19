@@ -5,16 +5,18 @@ use hume_engine::display_lines::DisplayLineMap;
 use hume_engine::display_lines::DisplayLinePos;
 use hume_engine::display_lines::line_store::{FormatKey, PaneLineStore};
 use hume_engine::pane::{Viewport, WhitespaceConfig, WrapMode};
+use hume_engine::pipeline::{ContentWidth, PaneSize};
 use hume_engine::providers::{ProviderSet, VirtualLineAnchor};
 use ropey::Rope;
 
-fn vp(top_line: usize, width: u16, height: u16) -> Viewport {
-    let mut v = Viewport::new(width, height);
+/// A viewport scrolled to `top_line`, and the size of the pane it belongs to.
+fn vp(top_line: usize, width: u16, height: u16) -> (Viewport, PaneSize) {
+    let mut v = Viewport::default();
     v.seed_top_for_test(DisplayLinePos::new(
         hume_rope::line::ContentLine::new(top_line),
         0,
     ));
-    v
+    (v, PaneSize::for_test(width, height))
 }
 
 fn ws() -> WhitespaceConfig {
@@ -31,7 +33,9 @@ fn map<'a>(
     DisplayLineMap::new(
         rope,
         providers,
-        std::num::NonZeroU16::new(content_width).expect("test content width is non-zero"),
+        ContentWidth::for_test(
+            std::num::NonZeroU16::new(content_width).expect("test content width is non-zero"),
+        ),
         FormatKey {
             buffer_tag: [0; 3],
             wrap_mode: wrap,
@@ -49,7 +53,7 @@ fn map<'a>(
 fn nowrap_click_first_char() {
     // "abc\ndef\n": chars 0-2 = 'a','b','c', char 3 = '\n', chars 4-6 = 'd','e','f'
     let rope = Rope::from_str("abc\ndef\n");
-    let mut v = vp(0, 80, 10);
+    let (mut v, _) = vp(0, 80, 10);
     let providers = no_providers();
     let mut s = PaneLineStore::new();
     let got = screen_to_cluster(
@@ -67,7 +71,7 @@ fn nowrap_click_first_char() {
 #[test]
 fn nowrap_click_mid_first_line() {
     let rope = Rope::from_str("abc\ndef\n");
-    let mut v = vp(0, 80, 10);
+    let (mut v, _) = vp(0, 80, 10);
     let providers = no_providers();
     let mut s = PaneLineStore::new();
     let got = screen_to_cluster(
@@ -85,7 +89,7 @@ fn nowrap_click_mid_first_line() {
 #[test]
 fn nowrap_click_second_line() {
     let rope = Rope::from_str("abc\ndef\n");
-    let mut v = vp(0, 80, 10);
+    let (mut v, _) = vp(0, 80, 10);
     let providers = no_providers();
     let mut s = PaneLineStore::new();
     let got = screen_to_cluster(
@@ -103,7 +107,7 @@ fn nowrap_click_second_line() {
 #[test]
 fn nowrap_gutter_click_returns_none() {
     let rope = Rope::from_str("abc\n");
-    let mut v = vp(0, 80, 10);
+    let (mut v, _) = vp(0, 80, 10);
     let providers = no_providers();
     let mut s = PaneLineStore::new();
     // gutter_w = 4; click at column 2 is inside the gutter.
@@ -125,7 +129,7 @@ fn nowrap_gutter_click_returns_none() {
 #[test]
 fn nowrap_click_past_line_end() {
     let rope = Rope::from_str("hi\n");
-    let mut v = vp(0, 80, 10);
+    let (mut v, _) = vp(0, 80, 10);
     let providers = no_providers();
     let mut s = PaneLineStore::new();
     // Click at column 99, way past "hi": lands at '\n' (char 2), the eol marker.
@@ -145,7 +149,7 @@ fn nowrap_click_past_line_end() {
 fn nowrap_viewport_scrolled() {
     // Lines: 0=a, 1=b, 2=c, 3=d. top_line=2 → screen row 0 is line 2 = 'c'.
     let rope = Rope::from_str("a\nb\nc\nd\n");
-    let mut v = vp(2, 80, 10); // top_line = 2
+    let (mut v, _) = vp(2, 80, 10); // top_line = 2
     let providers = no_providers();
     let mut s = PaneLineStore::new();
     // Line 2 starts at char 4 ('c'). Screen row 0, col 0 → char 4.
@@ -165,7 +169,7 @@ fn nowrap_viewport_scrolled() {
 fn nowrap_horizontal_scroll() {
     // "abcde\n" with h_offset=2: screen_x 0 maps to content_x 2 = 'c' (char 2).
     let rope = Rope::from_str("abcde\n");
-    let mut v = vp(0, 80, 10);
+    let (mut v, _) = vp(0, 80, 10);
     v.seed_horizontal_offset_for_test(hume_rope::column::DisplayLineCol::new(2));
     let providers = no_providers();
     let mut s = PaneLineStore::new();
@@ -189,7 +193,7 @@ fn nowrap_horizontal_scroll() {
 #[test]
 fn wrap_click_first_and_second_visual_display_line() {
     let rope = Rope::from_str("abcdefgh\n");
-    let mut v = vp(0, 10, 10);
+    let (mut v, _) = vp(0, 10, 10);
     let wrap = WrapMode::Soft { width: 4 };
     let providers = no_providers();
     let mut s = PaneLineStore::new();
@@ -219,7 +223,7 @@ fn wrap_click_first_and_second_visual_display_line() {
 #[test]
 fn wrap_click_mid_second_display_line() {
     let rope = Rope::from_str("abcdefgh\n");
-    let mut v = vp(0, 10, 10);
+    let (mut v, _) = vp(0, 10, 10);
     let wrap = WrapMode::Soft { width: 4 };
     let providers = no_providers();
     let mut s = PaneLineStore::new();
@@ -239,7 +243,7 @@ fn wrap_click_mid_second_display_line() {
 #[test]
 fn wrap_click_below_last_line_clamped() {
     let rope = Rope::from_str("hi\n");
-    let mut v = vp(0, 80, 10);
+    let (mut v, _) = vp(0, 80, 10);
     let wrap = WrapMode::Soft { width: 40 };
     let providers = no_providers();
     let mut s = PaneLineStore::new();
@@ -265,7 +269,7 @@ fn wrap_click_below_last_line_clamped() {
 #[test]
 fn content_pos_accounts_for_a_virtual_before_line_on_the_cursors_line() {
     let rope = Rope::from_str("a\nb\nc\n");
-    let mut v = vp(0, 80, 10);
+    let (mut v, size) = vp(0, 80, 10);
     let wrap = WrapMode::Soft { width: 80 };
     // Cursor at char 2 = start of line 1 ('b').
     let cursor_char =
@@ -274,6 +278,7 @@ fn content_pos_accounts_for_a_virtual_before_line_on_the_cursors_line() {
     let bare = no_providers();
     let mut s = PaneLineStore::new();
     let with_none = content_pos(
+        size,
         &mut v,
         &mut map(&rope, wrap, &bare, 80, &mut s),
         cluster_at(&rope, cursor_char.index()),
@@ -287,6 +292,7 @@ fn content_pos_accounts_for_a_virtual_before_line_on_the_cursors_line() {
     let providers = providers_with_before_line(1);
     let mut s = PaneLineStore::new();
     let with_virtual = content_pos(
+        size,
         &mut v,
         &mut map(&rope, wrap, &providers, 80, &mut s),
         cluster_at(&rope, cursor_char.index()),
@@ -311,7 +317,7 @@ fn content_pos_accounts_for_a_virtual_before_line_on_the_cursors_line() {
 #[test]
 fn screen_to_cluster_accounts_for_a_stolen_virtual_display_line() {
     let rope = Rope::from_str("a\nb\nc\n");
-    let mut v = vp(0, 80, 10);
+    let (mut v, _) = vp(0, 80, 10);
     let wrap = WrapMode::Soft { width: 80 };
     let providers = providers_with_before_line(1);
     let mut s = PaneLineStore::new();
@@ -379,7 +385,7 @@ fn screen_to_cluster_accounts_for_a_stolen_virtual_display_line() {
 #[test]
 fn content_pos_accounts_for_a_virtual_before_line_on_the_cursors_line_no_wrap() {
     let rope = Rope::from_str("a\nb\nc\n");
-    let mut v = vp(0, 80, 10);
+    let (mut v, size) = vp(0, 80, 10);
     let wrap = WrapMode::None;
     let cursor_char =
         co(hume_rope::lines::line_start_char(&rope, hume_rope::line::RopeyLine::new(1)).index());
@@ -387,6 +393,7 @@ fn content_pos_accounts_for_a_virtual_before_line_on_the_cursors_line_no_wrap() 
     let bare = no_providers();
     let mut s = PaneLineStore::new();
     let with_none = content_pos(
+        size,
         &mut v,
         &mut map(&rope, wrap, &bare, 80, &mut s),
         cluster_at(&rope, cursor_char.index()),
@@ -400,6 +407,7 @@ fn content_pos_accounts_for_a_virtual_before_line_on_the_cursors_line_no_wrap() 
     let providers = providers_with_before_line(1);
     let mut s = PaneLineStore::new();
     let with_virtual = content_pos(
+        size,
         &mut v,
         &mut map(&rope, wrap, &providers, 80, &mut s),
         cluster_at(&rope, cursor_char.index()),
@@ -415,7 +423,7 @@ fn content_pos_accounts_for_a_virtual_before_line_on_the_cursors_line_no_wrap() 
 #[test]
 fn screen_to_cluster_accounts_for_a_stolen_virtual_display_line_no_wrap() {
     let rope = Rope::from_str("a\nb\nc\n");
-    let mut v = vp(0, 80, 10);
+    let (mut v, _) = vp(0, 80, 10);
     let wrap = WrapMode::None;
     let providers = providers_with_before_line(1);
     let mut s = PaneLineStore::new();
@@ -483,7 +491,7 @@ fn screen_to_cluster_accounts_for_a_stolen_virtual_display_line_no_wrap() {
 #[test]
 fn content_pos_accounts_for_before_line_0() {
     let rope = Rope::from_str("a\nb\n");
-    let mut v = vp(0, 80, 10);
+    let (mut v, size) = vp(0, 80, 10);
     let cursor_char = co(0); // start of line 0
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
@@ -495,6 +503,7 @@ fn content_pos_accounts_for_before_line_0() {
     for wrap in [WrapMode::None, WrapMode::Soft { width: 80 }] {
         let mut s = PaneLineStore::new();
         let pos = content_pos(
+            size,
             &mut v,
             &mut map(&rope, wrap, &providers, 80, &mut s),
             cluster_at(&rope, cursor_char.index()),
@@ -523,9 +532,10 @@ fn content_pos_unaffected_by_after_on_cursors_own_last_line() {
     )));
 
     for wrap in [WrapMode::None, WrapMode::Soft { width: 80 }] {
-        let mut v = vp(0, 80, 10);
+        let (mut v, size) = vp(0, 80, 10);
         let mut s = PaneLineStore::new();
         let pos = content_pos(
+            size,
             &mut v,
             &mut map(&rope, wrap, &providers, 80, &mut s),
             cluster_at(&rope, cursor_char.index()),
@@ -557,13 +567,14 @@ fn content_pos_unaffected_by_after_on_cursors_own_last_line() {
 #[test]
 fn content_pos_clamps_a_top_slot_past_the_lines_current_block() {
     let rope = Rope::from_str("a\nb\n");
-    let mut v = vp(0, 80, 10);
+    let (mut v, size) = vp(0, 80, 10);
     v.seed_top_for_test(DisplayLinePos::new(hume_rope::line::ContentLine::new(0), 2)); // past line 0's 2-row block (before=1, content=1)
     let cursor_char = co(0); // 'a': line 0's own content row, address (0, 1)
     let providers = providers_with_before_line(0);
     let mut s = PaneLineStore::new();
 
     let pos = content_pos(
+        size,
         &mut v,
         &mut map(&rope, WrapMode::None, &providers, 80, &mut s),
         cluster_at(&rope, cursor_char.index()),
@@ -585,11 +596,12 @@ fn content_pos_clamps_a_top_slot_past_the_lines_current_block() {
 #[test]
 fn content_pos_zero_height_returns_none() {
     let rope = Rope::from_str("a\nb\nc\n");
-    let mut v = vp(0, 80, 0);
+    let (mut v, size) = vp(0, 80, 0);
     let providers = no_providers();
     let mut s = PaneLineStore::new();
 
     let pos = content_pos(
+        size,
         &mut v,
         &mut map(&rope, WrapMode::None, &providers, 80, &mut s),
         cluster_at(&rope, co(0).index()),
@@ -603,13 +615,14 @@ fn content_pos_zero_height_returns_none() {
 #[test]
 fn content_pos_cursor_below_viewport_returns_none() {
     let rope = Rope::from_str("a\nb\nc\nd\ne\nf\n");
-    let mut v = vp(0, 80, 2); // only rows for lines 0-1 are visible
+    let (mut v, size) = vp(0, 80, 2); // only rows for lines 0-1 are visible
     let providers = no_providers();
     let mut s = PaneLineStore::new();
     let cursor_char =
         co(hume_rope::lines::line_start_char(&rope, hume_rope::line::RopeyLine::new(5)).index()); // 'f': 5 rows below the top
 
     let pos = content_pos(
+        size,
         &mut v,
         &mut map(&rope, WrapMode::None, &providers, 80, &mut s),
         cluster_at(&rope, cursor_char.index()),
@@ -627,13 +640,14 @@ fn content_pos_cursor_below_viewport_returns_none() {
 #[test]
 fn content_pos_anchor_left_of_horizontal_offset_returns_none() {
     let rope = Rope::from_str("abcde\n");
-    let mut v = vp(0, 80, 10);
+    let (mut v, size) = vp(0, 80, 10);
     v.seed_horizontal_offset_for_test(hume_rope::column::DisplayLineCol::new(5));
     let providers = no_providers();
     let mut s = PaneLineStore::new();
     let anchor_char = co(2); // display col 2, left of horizontal_offset 5
 
     let pos = content_pos(
+        size,
         &mut v,
         &mut map(&rope, WrapMode::None, &providers, 80, &mut s),
         cluster_at(&rope, anchor_char.index()),
@@ -648,7 +662,7 @@ fn content_pos_anchor_left_of_horizontal_offset_returns_none() {
 /// not debug-panic.
 #[test]
 fn place_saturates_when_column_is_left_of_horizontal_offset() {
-    let mut v = vp(0, 80, 10);
+    let (mut v, _) = vp(0, 80, 10);
     v.seed_horizontal_offset_for_test(hume_rope::column::DisplayLineCol::new(5));
     let inverted_col = hume_rope::column::DisplayLineCol::new(2);
 

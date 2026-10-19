@@ -31,7 +31,7 @@ fn after_hint_renders_dimmed_immediately_after_its_char() {
     );
 
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(40, 8);
+    ed.resize_terminal(40, 8);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     let snap = render_snapshot::render_to_styled_string(&mut ed, Rect::new(0, 0, 40, 8));
@@ -55,7 +55,7 @@ fn before_hint_renders_immediately_before_its_char() {
     );
 
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(40, 8);
+    ed.resize_terminal(40, 8);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     let snap = render_snapshot::render_to_styled_string(&mut ed, Rect::new(0, 0, 40, 8));
@@ -98,22 +98,24 @@ fn hint_arriving_this_frame_is_visible_to_the_scroll_step_that_places_the_cursor
     );
 
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(10, 4);
+    ed.resize_terminal(10, 4);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
     let mut vp = ed.view.panes[pid].viewport.clone();
     let cursor_char = ed.current_view().primary().head();
     let bid = ed.view.panes[pid].buffer_id();
+    let size = ed.pane_size(pid);
     let Editor { state, view, .. } = &mut ed;
     let key = state.format_key(&view.panes[pid]);
     let (mut dlm, _) = crate::editor::commands::pane_display_lines(
         state.buffers.get(bid),
         &mut view.panes[pid],
         key,
+        size,
     );
     assert_eq!(
-        crate::editor::cursor::content_pos(&mut vp, &mut dlm, cursor_char),
+        crate::editor::cursor::content_pos(size, &mut vp, &mut dlm, cursor_char),
         Some((0, 2)),
         "scroll must have already accounted for the hint's extra display \
          line, placing the cursor at the last visible row rather than \
@@ -142,7 +144,7 @@ fn hint_after_an_emoji_lands_on_the_correct_byte_offset() {
     );
 
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(40, 8);
+    ed.resize_terminal(40, 8);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     let snap = render_snapshot::render_to_styled_string(&mut ed, Rect::new(0, 0, 40, 8));
@@ -171,7 +173,7 @@ fn hint_on_a_wrapped_line_pins_current_render_behavior() {
     type_cmd(&mut ed, ":set global wrap-mode=soft");
 
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(20, 8);
+    ed.resize_terminal(20, 8);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     let snap = render_snapshot::render_to_styled_string(&mut ed, Rect::new(0, 0, 20, 8));
@@ -194,7 +196,7 @@ fn clearing_the_store_removes_the_hint_next_frame() {
     );
 
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(40, 8);
+    ed.resize_terminal(40, 8);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     let pid = ed.view.focused_pane();
@@ -209,7 +211,7 @@ fn clearing_the_store_removes_the_hint_next_frame() {
         .config
         .decorations
         .set_inlay_hints("test".to_string(), bid, vec![]);
-    ed.sync_viewport_dims(40, 8);
+    ed.resize_terminal(40, 8);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     let has_hint_after = ed.state.panes.entries[pid]

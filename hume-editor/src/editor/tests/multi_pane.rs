@@ -327,13 +327,14 @@ fn d6_search_cancel_targets_the_originating_pane_not_the_focused_one() {
     );
 
     let mut ctx = hume_engine::pipeline::RenderContext::new();
-    ed.sync_viewport_dims(100, 25);
+    ed.resize_terminal(100, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
     // Click into pane B's half of the split (right half of a 100-wide
     // horizontal, i.e. left/right, split). Falls through under the
     // still-open Search layer.
+    draw(&mut ed);
     ed.handle_input(mouse_left_down(70, 0));
     assert_eq!(
         ed.view.focused_pane(),
@@ -785,12 +786,12 @@ fn vsplit_sizes_both_panes_from_layout() {
     assert_ne!(pid_a, pid_b);
 
     let mut ctx = hume_engine::pipeline::RenderContext::new();
-    ed.sync_viewport_dims(100, 25);
+    ed.resize_terminal(100, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx); // 25 rows → 24 usable after statusline
 
-    let wa = ed.view.panes[pid_a].viewport.width;
-    let wb = ed.view.panes[pid_b].viewport.width;
+    let wa = ed.pane_size(pid_a).width();
+    let wb = ed.pane_size(pid_b).width();
     assert_eq!(
         wa + wb,
         99,
@@ -800,8 +801,8 @@ fn vsplit_sizes_both_panes_from_layout() {
         wa < 100 && wb < 100,
         "neither pane keeps the full terminal width"
     );
-    assert_eq!(ed.view.panes[pid_a].viewport.height, 24);
-    assert_eq!(ed.view.panes[pid_b].viewport.height, 24);
+    assert_eq!(ed.pane_size(pid_a).height(), 24);
+    assert_eq!(ed.pane_size(pid_b).height(), 24);
 }
 
 /// `:split` stacks panes: height is partitioned, width stays full for both.
@@ -813,19 +814,19 @@ fn split_sizes_both_panes_stacked() {
     let pid_b = ed.view.focused_pane();
 
     let mut ctx = hume_engine::pipeline::RenderContext::new();
-    ed.sync_viewport_dims(80, 41);
+    ed.resize_terminal(80, 41);
     ed.settle();
     ed.prepare_frame(&mut ctx); // 41 rows → 40 usable after statusline
 
-    let ha = ed.view.panes[pid_a].viewport.height;
-    let hb = ed.view.panes[pid_b].viewport.height;
+    let ha = ed.pane_size(pid_a).height();
+    let hb = ed.pane_size(pid_b).height();
     assert_eq!(
         ha + hb,
         39,
         "split halves plus the 1-row seam must tile the full usable height"
     );
-    assert_eq!(ed.view.panes[pid_a].viewport.width, 80);
-    assert_eq!(ed.view.panes[pid_b].viewport.width, 80);
+    assert_eq!(ed.pane_size(pid_a).width(), 80);
+    assert_eq!(ed.pane_size(pid_b).width(), 80);
 }
 
 /// A third `:vsplit` must resize all three panes to equal widths, not just
@@ -837,16 +838,17 @@ fn vsplit_twice_sizes_three_panes_equally() {
     ed.execute_typed("vsplit", None).unwrap();
 
     let mut ctx = hume_engine::pipeline::RenderContext::new();
-    ed.sync_viewport_dims(100, 25);
+    ed.resize_terminal(100, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
-    let widths: Vec<u16> = ed
+    let pids: Vec<_> = ed
         .view
         .panes
         .every_pane_across_all_tabs()
-        .map(|(_, p)| p.viewport.width)
+        .map(|(pid, _)| pid)
         .collect();
+    let widths: Vec<u16> = pids.iter().map(|&pid| ed.pane_size(pid).width()).collect();
     assert_eq!(widths.len(), 3);
     let min = *widths.iter().min().unwrap();
     let max = *widths.iter().max().unwrap();
@@ -870,16 +872,17 @@ fn split_twice_sizes_three_panes_equally() {
     ed.execute_typed("split", None).unwrap();
 
     let mut ctx = hume_engine::pipeline::RenderContext::new();
-    ed.sync_viewport_dims(80, 41);
+    ed.resize_terminal(80, 41);
     ed.settle();
     ed.prepare_frame(&mut ctx); // 41 rows → 40 usable after statusline
 
-    let heights: Vec<u16> = ed
+    let pids: Vec<_> = ed
         .view
         .panes
         .every_pane_across_all_tabs()
-        .map(|(_, p)| p.viewport.height)
+        .map(|(pid, _)| pid)
         .collect();
+    let heights: Vec<u16> = pids.iter().map(|&pid| ed.pane_size(pid).height()).collect();
     assert_eq!(heights.len(), 3);
     let min = *heights.iter().min().unwrap();
     let max = *heights.iter().max().unwrap();
@@ -894,64 +897,65 @@ fn split_twice_sizes_three_panes_equally() {
     );
 }
 
-/// Every active pane's viewport is the size of its rect in the layout's own
-/// partition.
-fn assert_viewports_follow_layout(ed: &Editor) {
-    for (pid, rect) in ed.view.pane_rects() {
-        let vp = &ed.view.panes[pid].viewport;
-        assert_eq!(
-            (vp.width, vp.height),
-            (rect.width, rect.height),
-            "pane {pid:?}'s viewport must match its layout rect"
-        );
-    }
-}
-
 /// An editor whose panes were sized by one frame at 80×25.
 fn sized_editor(text: &str) -> Editor {
     let mut ed = editor_from(text);
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed
 }
 
-#[test]
-fn split_resizes_panes_before_the_next_frame() {
-    let mut ed = sized_editor("-[h]>ello\n");
-    ed.execute_typed("split", None).unwrap();
-    assert_viewports_follow_layout(&ed);
+/// A hundred numbered lines with the cursor on the first.
+fn hundred_lines() -> String {
+    let text: String = (0..100).map(|i| format!("line{i}\n")).collect();
+    format!("-[l]>{}", &text[1..])
 }
 
 #[test]
-fn close_resizes_panes_before_the_next_frame() {
-    let mut ed = sized_editor("-[h]>ello\n");
+fn half_page_after_close_scrolls_by_the_whole_pane() {
+    let mut ed = sized_editor(&hundred_lines());
     ed.execute_typed("split", None).unwrap();
-    ed.sync_viewport_dims(80, 25);
     ed.execute_keymap_command("pane-close".into(), None, false);
     assert_eq!(ed.view.panes.len(), 1);
-    assert_viewports_follow_layout(&ed);
+    let pid = ed.view.focused_pane();
+
+    ed.execute_keymap_command("half-page-down".into(), None, false);
+
+    // The lone pane has the 80x25 terminal's 24 rows again.
+    assert_eq!(ed.view.panes[pid].viewport.top().line.index(), 12);
 }
 
 #[test]
-fn rotate_resizes_panes_before_the_next_frame() {
-    // A row of an odd-width pane pair: its two shares differ by a column,
+fn half_page_after_rotate_scrolls_by_the_pane_s_new_share() {
+    // A column of two panes splits 24 rows into 11 and 12 around the seam,
     // so rotating moves each pane onto the other share.
-    let mut ed = sized_editor("-[h]>ello\n");
-    let pid_a = ed.view.focused_pane();
-    ed.execute_typed("vsplit", None).unwrap();
+    let mut ed = sized_editor(&hundred_lines());
     ed.execute_typed("split", None).unwrap();
-    ed.sync_viewport_dims(80, 25);
-    ed.state.focus.set_for_test(&mut ed.view, pid_a);
+    let pid = ed.view.focused_pane();
+    let before = ed.pane_size(pid).height();
     ed.execute_keymap_command("pane-rotate-forward".into(), None, false);
-    assert_viewports_follow_layout(&ed);
+    let after = ed.pane_size(pid).height();
+    assert_ne!(
+        before, after,
+        "setup: the rotation changes the pane's height"
+    );
+
+    ed.execute_keymap_command("half-page-down".into(), None, false);
+
+    assert_eq!(
+        ed.view.panes[pid].viewport.top().line.index(),
+        usize::from(after / 2)
+    );
 }
 
 #[test]
 fn half_page_after_split_scrolls_by_the_new_pane_height() {
-    let text: String = (0..100).map(|i| format!("line{i}\n")).collect();
-    let mut ed = sized_editor(&format!("-[l]>{}", &text[1..]));
+    let mut ed = sized_editor(&hundred_lines());
     ed.execute_typed("split", None).unwrap();
     let pid = ed.view.focused_pane();
-    let height = ed.view.focused_rect().height;
+    let height = ed
+        .screen_layout()
+        .focused_rect(ed.view.focused_layout())
+        .height;
 
     ed.execute_keymap_command("half-page-down".into(), None, false);
 
@@ -977,12 +981,12 @@ fn close_pane_redistributes_space_equally() {
     assert_eq!(ed.view.panes.len(), 2);
 
     let mut ctx = hume_engine::pipeline::RenderContext::new();
-    ed.sync_viewport_dims(100, 25);
+    ed.resize_terminal(100, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
-    let wa = ed.view.panes[pid_a].viewport.width;
-    let wc = ed.view.panes[pid_c].viewport.width;
+    let wa = ed.pane_size(pid_a).width();
+    let wc = ed.pane_size(pid_c).width();
     assert!(
         wa.abs_diff(wc) <= 1,
         "widths {wa} vs {wc} not within 1 of each other after close"
@@ -1061,7 +1065,7 @@ fn vsplit_too_narrow_is_noop_with_warning() {
     let pid_a = ed.view.focused_pane();
 
     let mut ctx = hume_engine::pipeline::RenderContext::new();
-    ed.sync_viewport_dims(20, 25);
+    ed.resize_terminal(20, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx); // width 20 < 2*MIN_PANE_WIDTH(10)+1 = 21
 
@@ -1095,7 +1099,7 @@ fn split_too_short_is_noop_with_warning() {
     let pid_a = ed.view.focused_pane();
 
     let mut ctx = hume_engine::pipeline::RenderContext::new();
-    ed.sync_viewport_dims(80, 7);
+    ed.resize_terminal(80, 7);
     ed.settle();
     ed.prepare_frame(&mut ctx); // 7 rows -> 6 usable after statusline < 2*MIN_PANE_HEIGHT(3)+1 = 7
 
@@ -1128,7 +1132,7 @@ fn vsplit_at_minimum_width_still_splits() {
     let pid_a = ed.view.focused_pane();
 
     let mut ctx = hume_engine::pipeline::RenderContext::new();
-    ed.sync_viewport_dims(21, 25);
+    ed.resize_terminal(21, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx); // exactly 2*MIN_PANE_WIDTH(10)+1
 
@@ -1148,7 +1152,7 @@ fn split_at_minimum_height_still_splits() {
     let pid_a = ed.view.focused_pane();
 
     let mut ctx = hume_engine::pipeline::RenderContext::new();
-    ed.sync_viewport_dims(80, 8);
+    ed.resize_terminal(80, 8);
     ed.settle();
     ed.prepare_frame(&mut ctx); // 8 rows -> 7 usable = exactly 2*MIN_PANE_HEIGHT(3)+1
 
@@ -1177,7 +1181,7 @@ fn fifth_pane_split_succeeds_when_post_equalize_size_still_fits() {
     let mut ed = editor_from("-[h]>ello\n");
 
     let mut ctx = hume_engine::pipeline::RenderContext::new();
-    ed.sync_viewport_dims(80, 24);
+    ed.resize_terminal(80, 24);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
@@ -1489,13 +1493,13 @@ fn wq_with_multiple_panes_closes_focused_pane_not_editor() {
 fn closing_a_pane_reclaims_its_entries_from_the_frame_caches() {
     let mut ed = editor_from("-[h]>ello\n");
     let mut ctx = hume_engine::pipeline::RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
     ed.execute_typed("split", None).unwrap();
     let pid_b = ed.view.focused_pane();
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
@@ -1514,7 +1518,7 @@ fn closing_a_pane_reclaims_its_entries_from_the_frame_caches() {
 
     // Closes the focused pane (B) and promotes A back to focus.
     ed.execute_typed("quit", None).unwrap();
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
@@ -1563,7 +1567,7 @@ fn switching_a_panes_buffer_rebuilds_its_virtual_lines() {
         }],
     );
 
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.settle();
     ed.prepare_frame(&mut hume_engine::pipeline::RenderContext::new());
 
@@ -1578,7 +1582,7 @@ fn switching_a_panes_buffer_rebuilds_its_virtual_lines() {
     // Switch the same pane to a fresh buffer with no virtual lines set.
     let bid_b = ed.open_buffer(Buffer::scratch());
     ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid_b);
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.settle();
     ed.prepare_frame(&mut hume_engine::pipeline::RenderContext::new());
 
@@ -1777,7 +1781,7 @@ fn close_then_focus_next_without_reframe_lands_on_live_pane() {
     assert_ne!(pid_a, pid_b);
 
     let mut ctx = hume_engine::pipeline::RenderContext::new();
-    ed.sync_viewport_dims(100, 51);
+    ed.resize_terminal(100, 51);
     ed.settle();
     ed.prepare_frame(&mut ctx); // establish terminal geometry once
 
@@ -1815,7 +1819,7 @@ fn split_then_focus_left_without_reframe_reaches_new_pane() {
     let pid_a = ed.view.focused_pane();
 
     let mut ctx = hume_engine::pipeline::RenderContext::new();
-    ed.sync_viewport_dims(100, 51);
+    ed.resize_terminal(100, 51);
     ed.settle();
     ed.prepare_frame(&mut ctx); // geometry established with one pane
 
@@ -1916,22 +1920,24 @@ fn same_buffer_split_inherits_saved_scrolls() {
     );
 }
 
-/// Before the first `prepare_frame`, there is no real terminal geometry to
-/// check a split against, so `fits_split` must allow it; the next
-/// `prepare_frame` sizes the result correctly regardless.
+/// Before any frame, a split measures the headless terminal.
 #[test]
-fn fits_split_allows_before_first_frame() {
-    use hume_engine::pipeline::Direction;
-
-    let ed = editor_from("-[h]>ello\n");
-    assert!(crate::editor::commands::fits_split(
-        &ed.view,
-        Direction::Vertical
-    ));
-    assert!(crate::editor::commands::fits_split(
-        &ed.view,
-        Direction::Horizontal
-    ));
+fn split_before_first_frame_is_refused_once_the_headless_pane_is_too_short() {
+    let mut ed = editor_from("-[h]>ello\n");
+    let mut splits = 0;
+    let err = loop {
+        match ed.execute_typed("split", None) {
+            Ok(()) => splits += 1,
+            Err(err) => break err,
+        }
+        assert!(splits < 24, "a 24-row pane area cannot hold 24 panes");
+    };
+    // Panes on one axis share its rows equally: the headless 80x25
+    // terminal's 24-row pane area holds six panes and their five seams at 3
+    // or 4 rows each, and a seventh pane would leave some with 2, under the
+    // 3-row minimum.
+    assert_eq!(splits, 5);
+    assert_eq!(err.message(), "pane too small to split");
 }
 
 /// `pane-dividers=false` reclaims the seam column: sibling panes tile
@@ -1942,15 +1948,22 @@ fn dividers_off_pane_rects_tile_with_no_gap() {
     ed.state.settings.pane_dividers = false;
     ed.execute_typed("vsplit", None).unwrap();
 
-    let mut ctx = hume_engine::pipeline::RenderContext::new();
-    ed.sync_viewport_dims(100, 51);
-    ed.settle();
-    ed.prepare_frame(&mut ctx);
+    ed.render_to_buf(Rect::new(0, 0, 100, 51));
 
-    let mut rects = ed.view.pane_rects();
+    let drawn = ed.view.drawn();
+    let mut rects: Vec<Rect> = ed
+        .view
+        .active_pane_ids()
+        .into_iter()
+        .map(|pid| {
+            drawn
+                .pane_rect(ed.view.focused_layout(), pid)
+                .expect("an active pane is drawn")
+        })
+        .collect();
     assert_eq!(rects.len(), 2);
-    rects.sort_by_key(|(_, r)| r.x);
-    let (left, right) = (rects[0].1, rects[1].1);
+    rects.sort_by_key(|r| r.x);
+    let (left, right) = (rects[0], rects[1]);
     assert_eq!(
         left.width + right.width,
         100,
@@ -2063,7 +2076,7 @@ fn multiline_search_match_splits_into_per_line_highlight_spans() {
     ed = ed.with_search_regex("c\ndef");
 
     let mut ctx = hume_engine::pipeline::RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 

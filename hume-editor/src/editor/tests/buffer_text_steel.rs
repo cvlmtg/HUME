@@ -291,8 +291,7 @@ fn char_offset_to_line_past_the_buffer_end_raises() {
 fn viewport_range_passes_straight_to_buffer_lines() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>\nb\nc\n");
-    let pid = ed.view.focused_pane();
-    ed.view.panes[pid].viewport.height = 2;
+    ed.resize_terminal(80, 3);
 
     let fired = run_probe(
         &mut ed,

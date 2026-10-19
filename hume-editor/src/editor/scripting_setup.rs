@@ -335,8 +335,7 @@ impl Editor {
         // at the old tree's offsets.
         self.reparse_stale_buffers();
         // After the drain, so the `OnBufferOpen`/`OnLanguageSet` hooks have
-        // run: a band one of them opened is counted when centring
-        // re-partitions the layout.
+        // run: centring counts a band one of them opened.
         self.apply_startup_positions();
     }
 

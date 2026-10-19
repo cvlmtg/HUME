@@ -2,7 +2,7 @@
 
 use termina::event::KeyCode;
 
-use hume_engine::pipeline::EngineView;
+use hume_engine::pipeline::{EngineView, ScreenLayout};
 use hume_engine::types::EditorMode;
 use hume_scripting::host::HostToken;
 
@@ -222,9 +222,13 @@ impl Editor {
     /// `PopupOverlay` can render it during this frame, with the same geometry rules
     /// as [`Self::sync_popup_view`], but items are shown one-per-line as-is
     /// (no word-wrap: menu entries are short labels, not prose) and
-    /// `selected` marks the highlighted row. `cursor_cell` is
+    /// `selected` marks the highlighted row. `screen` and `cursor_cell` are
     /// [`popup_placement`]'s.
-    pub(in crate::editor) fn sync_menu_view(&mut self, cursor_cell: Option<(u16, u16)>) {
+    pub(in crate::editor) fn sync_menu_view(
+        &mut self,
+        screen: &ScreenLayout,
+        cursor_cell: Option<(u16, u16)>,
+    ) {
         if self.state.input.menu().is_none() {
             // Skip the write-lock when both sides are already None: the common
             // case while no menu is open.
@@ -239,7 +243,7 @@ impl Editor {
         // `&mut self` (it may walk the pane's display-line map), which cannot overlap
         // the `&self.state.input` that closure's receiver holds.
         let anchor = focused_cursor(self);
-        let placement = popup_placement(self, cursor_cell, anchor);
+        let placement = popup_placement(self, screen, cursor_cell, anchor);
         let border = self.state.settings.popup_border;
 
         let resolved = placement.and_then(|placement| {

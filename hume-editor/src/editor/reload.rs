@@ -300,7 +300,7 @@ impl Editor {
         // time the pane's viewport moves (which a reload alone
         // never causes), so a clean buffer would show no inlay hints until
         // the user scrolls. Active-tab panes only: a background-tab pane's
-        // *size* stays current (`sync_viewport_dims` resizes every tab, not
+        // *size* stays current (`resize_terminal` resizes every tab, not
         // just the active one), but its *scroll position* doesn't (the
         // frame's scroll step only runs over `active_pane_ids()`), so firing
         // here for one would hand a handler a stale scroll range. A hidden

@@ -1338,7 +1338,7 @@ fn the_doc_box_shows_resolved_docs_once_the_reply_lands() {
     // The completion answer lands and the docs request goes out. The frame
     // is prepared without `frame`'s own settle, which would drain the reply.
     ed.settle();
-    ed.sync_viewport_dims(60, 16);
+    ed.resize_terminal(60, 16);
     ed.prepare_frame(&mut hume_engine::pipeline::RenderContext::new());
     assert_eq!(doc_lines(&ed), ["fn bar()"]);
 

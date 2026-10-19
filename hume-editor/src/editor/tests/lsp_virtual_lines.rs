@@ -43,7 +43,7 @@ fn virtual_line_renders_after_its_anchor_line() {
     let _ = bid;
 
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(40, 8);
+    ed.resize_terminal(40, 8);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     let snap = render_snapshot::render_to_styled_string(&mut ed, Rect::new(0, 0, 40, 8));
@@ -85,7 +85,7 @@ fn scroll_over_a_virtual_line_pushes_the_next_line_down_correctly() {
     );
 
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(40, 8);
+    ed.resize_terminal(40, 8);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     let snap = render_snapshot::render_to_styled_string(&mut ed, Rect::new(0, 0, 40, 8));
@@ -108,7 +108,7 @@ fn before_anchored_virtual_line_renders_above_its_line() {
     type_cmd(&mut ed, ":go");
 
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(40, 8);
+    ed.resize_terminal(40, 8);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     let snap = render_snapshot::render_to_styled_string(&mut ed, Rect::new(0, 0, 40, 8));
@@ -132,7 +132,7 @@ fn per_segment_scopes_style_the_virtual_lines_text() {
     type_cmd(&mut ed, ":go");
 
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(40, 8);
+    ed.resize_terminal(40, 8);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     let snap = render_snapshot::render_to_styled_string(&mut ed, Rect::new(0, 0, 40, 8));
@@ -155,7 +155,7 @@ fn scope_becomes_the_line_s_base_scope_segments_stay_sparse() {
     type_cmd(&mut ed, ":go");
 
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(40, 8);
+    ed.resize_terminal(40, 8);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
@@ -190,7 +190,7 @@ fn no_segments_yields_an_empty_segment_list() {
     type_cmd(&mut ed, ":go");
 
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(40, 8);
+    ed.resize_terminal(40, 8);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
@@ -220,7 +220,7 @@ fn no_scope_falls_back_to_ui_virtual_as_the_base_scope() {
     type_cmd(&mut ed, ":go");
 
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(40, 8);
+    ed.resize_terminal(40, 8);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
@@ -389,7 +389,7 @@ fn segments_touching_both_ends_yield_no_zero_length_filler() {
     type_cmd(&mut ed, ":go");
 
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(40, 8);
+    ed.resize_terminal(40, 8);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
@@ -423,7 +423,7 @@ fn clearing_the_store_removes_the_virtual_line_next_frame() {
     );
 
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(40, 8);
+    ed.resize_terminal(40, 8);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     let pid = ed.view.focused_pane();
@@ -441,7 +441,7 @@ fn clearing_the_store_removes_the_virtual_line_next_frame() {
         .config
         .decorations
         .set_virtual_lines("linter".to_string(), bid, vec![]);
-    ed.sync_viewport_dims(40, 8);
+    ed.resize_terminal(40, 8);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     let has_line_after = ed.state.panes.entries[pid]
@@ -486,7 +486,7 @@ fn same_line_virtual_lines_from_two_sources_order_alphabetically_by_source() {
         .set_virtual_lines("aaa".to_string(), bid, vec![entry("from aaa")]);
 
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(40, 8);
+    ed.resize_terminal(40, 8);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 

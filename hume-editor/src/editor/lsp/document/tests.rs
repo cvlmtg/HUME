@@ -6,7 +6,7 @@ use hume_engine::theme::Theme;
 use hume_rope::offset::CharOffset;
 
 fn two_bids() -> (BufferId, BufferId) {
-    let (mut ev, _) = EngineView::new(Theme::default());
+    let (mut ev, _) = EngineView::new(Theme::default(), hume_grid::Rect::default());
     (ev.buffers.insert(()), ev.buffers.insert(()))
 }
 

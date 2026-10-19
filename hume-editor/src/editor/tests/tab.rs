@@ -188,7 +188,7 @@ fn a_hidden_tab_s_pane_keeps_its_decoration_state_until_its_tab_is_focused() {
 }
 
 /// A resize while a tab is hidden must still resync its panes' viewports:
-/// `Editor::sync_viewport_dims` re-partitions every tab's own tree against
+/// `Editor::resize_terminal` re-partitions every tab's own tree against
 /// the new terminal area on every resize, not just the active one
 /// (`TabStore::inactive_layouts`), so a background pane's geometry never
 /// goes stale waiting for its tab to be focused again.
@@ -198,7 +198,7 @@ fn resizing_while_a_tab_is_hidden_still_resyncs_its_viewport() {
     ed.execute_typed("tabnew", None).unwrap();
     let pid_b = ed.view.focused_pane();
     frame(&mut ed, 80, 25);
-    let width_before = ed.view.panes[pid_b].viewport.width;
+    let width_before = ed.pane_size(pid_b).width();
     assert!(
         width_before > 40,
         "setup: B sized to the wide terminal while active"
@@ -209,9 +209,28 @@ fn resizing_while_a_tab_is_hidden_still_resyncs_its_viewport() {
     // Resize while B is hidden: no switch back, no extra frame.
     frame(&mut ed, 40, 10);
     assert_ne!(
-        ed.view.panes[pid_b].viewport.width, width_before,
+        ed.pane_size(pid_b).width(),
+        width_before,
         "B's viewport must resync to the new terminal size even while its tab is hidden"
     );
+}
+
+#[test]
+fn hiding_the_tab_bar_resizes_a_hidden_tab_s_pane_before_the_next_frame() {
+    let (path, _f) = tall_file();
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.execute_typed("tabnew", Some(path.to_str().unwrap()))
+        .unwrap();
+    let pid_b = ed.view.focused_pane();
+    ed.execute_typed("tabprev", None).unwrap();
+    frame(&mut ed, 80, 25);
+
+    ed.state.settings.tabline = crate::editor::settings::TablineVisibility::Never;
+    let range = crate::editor::lsp::introspect::viewport_range(&mut ed.state, &mut ed.view, pid_b);
+
+    // Two tabs show the bar under the `dynamic` default. Without it the pane
+    // keeps 25 - 1 (statusline) = 24 rows.
+    assert_eq!(range.end, hume_rope::line::ContentLine::new(24));
 }
 
 /// `:q` on a tab's own last pane closes the tab (Vim's placement), not the
@@ -479,7 +498,7 @@ fn tabline_dynamic_default_hides_with_one_tab_and_shows_with_two() {
     let mut ed = editor_from("-[h]>ello\n");
     frame(&mut ed, 40, 10);
     assert_eq!(
-        ed.view.tabbar_area().height,
+        ed.screen_layout().tabbar_area().height,
         0,
         "one tab: tabline stays hidden under the 'dynamic' default"
     );
@@ -488,7 +507,7 @@ fn tabline_dynamic_default_hides_with_one_tab_and_shows_with_two() {
     ed.settle();
     ed.prepare_frame(&mut hume_engine::pipeline::RenderContext::new());
     assert_eq!(
-        ed.view.tabbar_area().height,
+        ed.screen_layout().tabbar_area().height,
         1,
         "two tabs: tabline must show under the 'dynamic' default"
     );
@@ -504,7 +523,7 @@ fn tabline_never_stays_hidden_even_with_multiple_tabs() {
     ed.execute_typed("tabnew", None).unwrap();
     frame(&mut ed, 40, 10);
 
-    assert_eq!(ed.view.tabbar_area().height, 0);
+    assert_eq!(ed.screen_layout().tabbar_area().height, 0);
 }
 
 /// A hidden tabline must skip building any `TabEntry` at all. The bar's
@@ -515,7 +534,7 @@ fn hidden_tabline_populates_no_entries() {
     let mut ed = editor_from("-[h]>ello\n");
     frame(&mut ed, 40, 10);
 
-    assert_eq!(ed.view.tabbar_area().height, 0);
+    assert_eq!(ed.screen_layout().tabbar_area().height, 0);
     assert!(ed.state.tabline_view.read().tabs.is_empty());
 }
 
@@ -609,7 +628,7 @@ fn tabline_always_shows_even_with_one_tab() {
     ed.state.settings.tabline = crate::editor::settings::TablineVisibility::Always;
     frame(&mut ed, 40, 10);
 
-    assert_eq!(ed.view.tabbar_area().height, 1);
+    assert_eq!(ed.screen_layout().tabbar_area().height, 1);
 }
 
 /// `close_tab`'s Insert-session teardown reads and writes exclusively through pool-based lookups

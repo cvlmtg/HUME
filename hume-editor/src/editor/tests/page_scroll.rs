@@ -226,7 +226,7 @@ fn page_scroll_stops_at_max_scroll_top() {
 fn page_down_in_a_zero_height_pane_moves_neither_cursor_nor_view() {
     let mut ed = page_test_editor();
     let pid = ed.view.focused_pane();
-    ed.view.panes[pid].viewport.height = 0;
+    ed.resize_terminal(80, 1);
     let head_before = ed.current_view().primary().head().offset();
 
     ed.handle_key(key_page_down());
@@ -345,7 +345,7 @@ fn half_page_down_overshoots_a_virtual_line_block_taller_than_the_budget() {
     let content: String = numbered_lines(6);
     let mut ed = unwrapped_editor(&content, 2);
     let pid = ed.view.focused_pane();
-    ed.view.panes[pid].viewport.height = 6; // half-page budget = 3
+    ed.resize_terminal(80, 7); // a 6-row pane: half-page budget = 3
     ed.view.panes[pid]
         .providers
         .add_decoration_source(Box::new(VirtualLineBlock::uniform(

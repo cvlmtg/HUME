@@ -571,15 +571,15 @@ fn viewport_range_end_is_one_past_the_last_content_line_at_eof() {
 /// A buffer taller than the pane: `end` is one past the last visible *row*
 /// (`top_line + height`), not `top_line + height + 1`. `viewport_range` is
 /// called directly (not through the `on-viewport-change` hook or a Steel
-/// probe) so the pane's height is exactly what this test set, not whatever a
-/// dispatched command might have touched.
+/// probe) so the pane's height is what the terminal leaves it, not
+/// whatever a dispatched command might have touched.
 ///
 /// `first_line + height + 1` would report 4 for a 3-row pane at the top of a
 /// 6-line buffer, naming a row past what's on screen.
 #[test]
 fn viewport_range_end_is_one_past_the_last_visible_row() {
     let mut ed = editor_from("-[a]>\nb\nc\nd\ne\nf\n");
-    ed.viewport_mut().height = 3;
+    ed.resize_terminal(80, 4);
     let t = crate::editor::commands::FocusedPane::current(&ed.view).pane();
 
     let got = crate::editor::lsp::introspect::viewport_range(&mut ed.state, &mut ed.view, t.pid());

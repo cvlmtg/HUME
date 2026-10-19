@@ -349,8 +349,9 @@ fn kitty_ctrl_g_g_extends_to_first_line() {
 #[test]
 fn kitty_ctrl_g_then_click_drops_one_shot_extend() {
     let mut ed = editor_from_kitty("-[h]>ello\n");
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.handle_key(key_ctrl('g'));
+    draw(&mut ed);
     ed.handle_input(mouse_left_down(1, 0));
     ed.handle_key(key('l'));
     assert_eq!(state(&ed), "he-[l]>lo\n");

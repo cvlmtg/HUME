@@ -917,10 +917,6 @@ pub(in crate::editor) fn run(
     let pane = bound.pane();
     let focused = bound.target_focused();
     // BEFORE
-    // A band opened or closed since the last frame (a popup the key just
-    // retired, a drawer the calling Steel body opened) resizes the pane the
-    // body and `step_align_view` measure.
-    state.relayout(view);
     if focused.is_some() {
         step_paste_commit(state, meta.defers_paste_commit);
     }

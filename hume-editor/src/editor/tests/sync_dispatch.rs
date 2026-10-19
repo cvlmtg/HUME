@@ -109,7 +109,7 @@ fn run_command_sync_returns_false_when_the_split_is_refused() {
     let panes_before = ed.view.panes.len();
 
     let mut ctx = hume_engine::pipeline::RenderContext::new();
-    ed.sync_viewport_dims(20, 25);
+    ed.resize_terminal(20, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx); // width 20 < 2*MIN_PANE_WIDTH(10)+1 = 21
     let _bid = ed.focused_buffer_id();
@@ -145,7 +145,7 @@ fn run_command_sync_returns_true_on_a_successful_split() {
     let panes_before = ed.view.panes.len();
 
     let mut ctx = hume_engine::pipeline::RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     let _bid = ed.focused_buffer_id();
@@ -724,9 +724,6 @@ fn mouse_click_leaves_hook_queued_until_the_next_settle() {
     let mut ed = Editor::for_testing(crate::editor::buffer::Buffer::at_start(
         hume_editing::text::BufferText::from("hello\n"),
     ));
-
-    // Give the pane a viewport big enough that a click at row=0,col=0 lands in content.
-    *ed.viewport_mut() = hume_engine::pane::Viewport::new(80, 24);
 
     // Seed a pending hook (OnBufferSave, no handler registered, so
     // settle() skips the Steel call but still removes it from the queue).

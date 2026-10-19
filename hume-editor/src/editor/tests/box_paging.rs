@@ -124,7 +124,7 @@ fn page_down_in_a_picker_that_evicted_a_docked_popup_pages_by_the_full_pane() {
     ed.feed_key(key_pagedown());
 
     frame(&mut ed, 80, 24);
-    let geo = hume_ui::picker_panel::panel_geometry(ed.view.last_pane_area)
+    let geo = hume_ui::picker_panel::panel_geometry(ed.screen_layout().pane_area())
         .expect("viable geometry at 80x24");
     assert_eq!(ed.state.input.picker().unwrap().selected(), geo.list_rows);
 }

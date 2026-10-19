@@ -498,7 +498,7 @@ fn hints(entries: &[(u32, u32, &str)]) -> serde_json::Value {
 
 fn refresh_hints(ed: &mut Editor) {
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     let pid = ed.view.focused_pane();

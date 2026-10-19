@@ -84,7 +84,7 @@ fn popup_shows_the_fixture_content() {
 
     run_hover(&mut ed);
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
@@ -122,7 +122,7 @@ fn popup_joins_a_marked_string_array_with_language_fences() {
 
     run_hover(&mut ed);
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
@@ -152,7 +152,7 @@ fn null_result_logs_and_shows_no_popup() {
 
     run_hover(&mut ed);
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
@@ -180,7 +180,7 @@ fn error_reports_via_the_message_log() {
 
     run_hover(&mut ed);
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
@@ -218,7 +218,7 @@ fn popup_is_scrollable_and_closes_on_any_key_except_ctrl_u_d() {
 
     run_hover(&mut ed);
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     // 50 lines overflows to the docked layout (`popup_lines` only reads the
@@ -282,7 +282,7 @@ fn short_popup_falls_through_ctrl_d_instead_of_swallowing_it() {
 
     run_hover(&mut ed);
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     assert!(popup_lines(&ed).is_some(), "sanity: popup shown");
@@ -327,11 +327,11 @@ fn visible_lines_threshold_has_no_off_by_one_from_the_old_inclusive_range() {
             );
         },
     );
-    ed.viewport_mut().height = 23;
+    ed.resize_terminal(80, 24);
 
     run_hover(&mut ed);
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 24);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
@@ -368,7 +368,7 @@ fn tall_content_docks_instead_of_using_the_drawer() {
 
     run_hover(&mut ed);
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
@@ -482,7 +482,7 @@ fn stale_response_after_a_buffer_switch_shows_no_popup() {
     ed.drain_lsp();
     ed.settle();
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
@@ -524,7 +524,7 @@ fn allow_stale_is_honored_despite_an_intervening_edit() {
     ed.feed_key(key_esc());
 
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 

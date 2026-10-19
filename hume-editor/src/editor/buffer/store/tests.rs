@@ -12,7 +12,7 @@ fn make_buf() -> Buffer {
 }
 
 fn store_with_engine() -> (BufferStore, EngineView) {
-    let (ev, _) = EngineView::new(Theme::default());
+    let (ev, _) = EngineView::new(Theme::default(), hume_grid::Rect::default());
     (BufferStore::new(), ev)
 }
 

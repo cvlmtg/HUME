@@ -917,9 +917,10 @@ fn search_confirm_records_the_jump_in_the_pane_the_search_started_in() {
     ed.handle_key(key('/'));
     // Click into the left pane: the search layer stays open above it.
     let mut ctx = hume_engine::pipeline::RenderContext::new();
-    ed.sync_viewport_dims(100, 25);
+    ed.resize_terminal(100, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
+    draw(&mut ed);
     ed.handle_input(mouse_left_down(0, 0));
     ed.settle();
     assert_eq!(

@@ -255,7 +255,7 @@ fn end_to_end_accept_fires_payload_then_normal_editing_resumes() {
     type_cmd(&mut ed, ":go");
 
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(40, 12);
+    ed.resize_terminal(40, 12);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
@@ -604,9 +604,9 @@ fn picker_accept_switching_buffers_mid_frame_scrolls_new_buffer_into_view() {
     let rope = ed.state.buffers.get(bid).text().rope();
     let cursor_line = hume_rope::lines::char_to_ropey_line(rope, cursor_char).index();
 
-    let pane = &ed.view.panes[pid];
-    let top = pane.viewport.top().line.index();
-    let bottom = top + pane.viewport.height as usize;
+    let height = usize::from(ed.pane_size(pid).height());
+    let top = ed.view.panes[pid].viewport.top().line.index();
+    let bottom = top + height;
     assert!(
         top > 0,
         "pane must have scrolled down for a last-line cursor in a 100-line buffer, got top_line=0"

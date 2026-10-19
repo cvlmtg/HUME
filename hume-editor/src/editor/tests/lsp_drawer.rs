@@ -68,7 +68,7 @@ fn show_drawer_list_clamps_selected_past_the_end() {
 fn drawer_scrolls_a_far_selected_row_into_view() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
-    ed.sync_viewport_dims(40, 12);
+    ed.resize_terminal(40, 12);
     open_with_selected(&mut ed, tmp.path(), 30, 29);
     let height = ed.view.terminal_area().height;
 
@@ -291,7 +291,7 @@ fn clamp_drawer_scroll_to_terminal_caps_scroll_when_the_list_shrinks() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_three_items(&mut ed, tmp.path());
-    ed.sync_viewport_dims(40, 12);
+    ed.resize_terminal(40, 12);
 
     {
         let drawer = ed
@@ -1018,7 +1018,7 @@ fn long_list_auto_scrolls_to_keep_selection_visible() {
     // Record the terminal area before any key handling needs it: the
     // scroll clamp reads it to agree with what the engine will next paint.
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(40, 15);
+    ed.resize_terminal(40, 15);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     type_cmd(&mut ed, ":go");
@@ -1067,7 +1067,7 @@ fn arm_twenty_items_in_a_short_terminal(ed: &mut Editor, tmp: &Path) {
     // Record the terminal area before any key handling needs it: the
     // scroll clamp reads it to agree with what the engine will next paint.
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(40, 15);
+    ed.resize_terminal(40, 15);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     type_cmd(ed, ":go");
@@ -1264,7 +1264,7 @@ fn render_two_row_drawer(popup_border: bool) -> String {
     type_cmd(&mut ed, ":go");
 
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(40, 10);
+    ed.resize_terminal(40, 10);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     render_snapshot::render_to_styled_string(&mut ed, Rect::new(0, 0, 40, 10))

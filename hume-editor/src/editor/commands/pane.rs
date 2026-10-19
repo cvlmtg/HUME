@@ -95,22 +95,19 @@ const MIN_PANE_WIDTH: u16 = 10;
 /// size, including the 1-cell seam divider drawn between siblings (see
 /// `hume_engine::pipeline::split_rect`).
 ///
-/// Simulates the split via `EngineView::focused_split_rect` rather than
+/// Simulates the split via `ScreenLayout::focused_split_rect` rather than
 /// halving the focused pane's current rect: since `equalize` resizes every
 /// pane on the split's axis, not just the pair being split, a pane deep in a
 /// row of several can be pushed under the minimum by a split that never
 /// touches it directly.
-///
-/// Recomputes geometry from `view.last_pane_area` on every call rather than
-/// trusting a cross-frame cache, so a split issued right after a close/split
-/// earlier in the same replay batch always sees current geometry. Before the
-/// first `prepare_frame` there is no real terminal area yet: allow the
-/// split; `prepare_frame` sizes it correctly on the next frame regardless.
-pub(in crate::editor) fn fits_split(view: &EngineView, direction: Direction) -> bool {
-    if view.last_pane_area.area() == 0 {
-        return true;
-    }
-    let rect = view.focused_split_rect(direction);
+pub(in crate::editor) fn fits_split(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    direction: Direction,
+) -> bool {
+    let rect = state
+        .screen_layout(view)
+        .focused_split_rect(view.focused_layout(), direction);
     match direction {
         Direction::Vertical => rect.height >= MIN_PANE_HEIGHT,
         Direction::Horizontal => rect.width >= MIN_PANE_WIDTH,
@@ -135,7 +132,7 @@ pub(in crate::editor) fn split_pane_onto(
     bid: BufferId,
     direction: Direction,
 ) -> Result<(), CommandError> {
-    if !fits_split(view, direction) {
+    if !fits_split(state, view, direction) {
         return Err(CommandError::transient(SPLIT_TOO_SMALL_MSG));
     }
     let old_focused = fp.pid();

@@ -245,7 +245,7 @@ impl<'a> DisplayLineMap<'a> {
     /// The furthest down the viewport top may scroll: `geo.target` display
     /// lines of look-ahead past the document's last display line (a
     /// trailing `After` virtual block included, exactly like any real buffer
-    /// line), then no further. `geo` is [`Viewport::geometry`], the same
+    /// line), then no further. `geo` is [`PaneSize::geometry`](crate::pipeline::PaneSize::geometry), the same
     /// geometry [`Viewport::reveal`] resolves, so the two agree on
     /// `margin`/`target`.
     ///
@@ -263,7 +263,7 @@ impl<'a> DisplayLineMap<'a> {
     /// fits on screen (plus its margin) cannot be scrolled at all.
     ///
     /// Takes a [`ViewGeometry`] rather than a raw height precisely so a
-    /// zero-height viewport never reaches here at all. `Viewport::geometry`
+    /// zero-height viewport never reaches here at all. `PaneSize::geometry`
     /// returns `None` for one, so every caller already branched away before
     /// constructing the `geo` this needs. `advance_saturating(last, -0)`
     /// would otherwise return the document's *last* display line (the

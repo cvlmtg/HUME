@@ -451,7 +451,7 @@ fn drawer_scroll_is_reclamped_when_the_severity_floor_shrinks_the_list() {
     // one below-floor diagnostic) is filtered out, the shape that requires
     // the `len` cap rather than the ordinary in-window formula.
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(40, 10);
+    ed.resize_terminal(40, 10);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 

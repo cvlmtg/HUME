@@ -183,7 +183,7 @@ fn object_jump_align_off_setting_restores_old_behavior() {
     // The per-frame `scroll-margin` scroll still runs and parks the cursor at `height - scroll-margin - 1` rows from the top.
     frame(&mut ed, 80, 24);
     let scroll_margin = ed.state.settings.scroll_margin;
-    let height = ed.viewport().height as usize;
+    let height = ed.pane_size(ed.view.focused_pane()).height() as usize;
     assert_eq!(
         ed.viewport().top().line,
         hume_rope::line::ContentLine::new(30 - (height - scroll_margin - 1))

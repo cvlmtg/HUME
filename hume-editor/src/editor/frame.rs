@@ -1,6 +1,6 @@
 //! Per-frame preparation: pane-mirror sync, scroll, and render plumbing.
 //!
-//! `sync_viewport_dims` (geometry) → `Editor::settle` (advance state) →
+//! `resize_terminal` (geometry) → `Editor::settle` (advance state) →
 //! `prepare_frame` (render prep) is the sequence every frame producer
 //! (`Editor::run`'s loop, `render_to_buf`) calls in that order; everything
 //! else here is a step `prepare_frame` drives or a helper those steps share.
@@ -8,7 +8,9 @@
 use hume_grid::{Grid, Rect};
 
 use hume_engine::pane::Pane;
-use hume_engine::pipeline::{EngineView, PaneId, PaneRenderSettings, RenderContext};
+use hume_engine::pipeline::{
+    ChromeRows, EngineView, PaneId, PaneRenderSettings, PaneSize, RenderContext, ScreenLayout,
+};
 use hume_engine::types::EditorMode;
 
 use super::buffer::Buffer;
@@ -94,10 +96,16 @@ impl Editor {
         super::cursor::gutter_width(pane.providers.gutter_columns(), last_line_idx)
     }
 
-    /// Render one frame into `grid`, sized to the terminal area the last
-    /// `sync_viewport_dims` recorded. Single home for the rope and syntax
-    /// lookups shared by the event loop and `render_to_buf`.
-    pub(super) fn render_into(&mut self, grid: &mut Grid, ctx: &mut RenderContext) {
+    /// Render one frame into `grid` as laid out by `layout`, the one
+    /// `prepare_frame` returned, whose terminal area is `grid`'s size. Single
+    /// home for the rope and syntax lookups shared by the event loop and
+    /// `render_to_buf`.
+    pub(super) fn render_into(
+        &mut self,
+        grid: &mut Grid,
+        ctx: &mut RenderContext,
+        layout: ScreenLayout,
+    ) {
         // Resolved for every active pane up front: `resolve_pane_settings`
         // reads the pane it is asked about, and `render`'s pane loop borrows
         // `self.view.panes` mutably, so it cannot run from inside that loop.
@@ -142,6 +150,7 @@ impl Editor {
                         .map(|s| s as &dyn hume_engine::providers::SyntaxSpans)
                 },
                 statusline: &statusline,
+                layout,
             },
             ctx,
         );
@@ -170,17 +179,17 @@ impl Editor {
 
     /// Render the current frame into a [`Grid`] without a live terminal.
     ///
-    /// Calls `sync_viewport_dims` + `settle` + `prepare_frame` (the same
+    /// Calls `resize_terminal` + `settle` + `prepare_frame` (the same
     /// three-step sequence `Editor::run`'s loop uses), so pane mirrors are
     /// synced and parse trees are up to date before rendering.
     #[cfg(test)]
     pub(in crate::editor) fn render_to_buf(&mut self, rect: Rect) -> Grid {
         let mut buf = Grid::new(rect.width, rect.height);
         let mut ctx = RenderContext::new();
-        self.sync_viewport_dims(rect.width, rect.height);
+        self.resize_terminal(rect.width, rect.height);
         self.settle();
-        self.prepare_frame(&mut ctx);
-        self.render_into(&mut buf, &mut ctx);
+        let layout = self.prepare_frame(&mut ctx);
+        self.render_into(&mut buf, &mut ctx, layout);
         buf
     }
 
@@ -258,18 +267,16 @@ impl Editor {
         }
     }
 
-    /// Record a new terminal size and lay the panes out against it
-    /// ([`EditorState::relayout`]): the one step that needs the raw
+    /// Record a new terminal size: the one step that needs the raw
     /// `(width, height)`, so it's split out from `prepare_frame` and called
     /// separately, *before* `Editor::settle()`.
     ///
     /// Must run before `settle()`: `drain_due_timers` fires `OnViewportChange`
-    /// off each pane's *current* bounds (`timer_bridge.rs`), so a resize has
-    /// to land before that drain runs, not after.
-    pub(super) fn sync_viewport_dims(&mut self, terminal_width: u16, terminal_height: u16) {
+    /// with each pane's size (`timer_bridge.rs`), which is laid out against
+    /// this terminal, so a resize has to land before that drain runs.
+    pub(super) fn resize_terminal(&mut self, terminal_width: u16, terminal_height: u16) {
         self.view
             .resize(Rect::new(0, 0, terminal_width, terminal_height));
-        self.state.relayout(&mut self.view);
     }
 
     /// Sync all editor-owned state into the engine view, once per frame,
@@ -286,7 +293,10 @@ impl Editor {
     /// pass, so the cursor is positioned against the layout render will
     /// draw. Cursor-anchored overlays sync after it, because they need the
     /// cursor's final screen cell.
-    pub(super) fn prepare_frame(&mut self, ctx: &mut RenderContext) {
+    ///
+    /// Returns the layout this frame's scroll pass and overlays were resolved
+    /// against, for `render_into` to draw.
+    pub(super) fn prepare_frame(&mut self, ctx: &mut RenderContext) -> ScreenLayout {
         // `ctx` is reused across frames; the scroll pass refills this.
         ctx.cursor_content_pos = None;
         // Required for correctness, see `EngineView::begin_frame`.
@@ -311,8 +321,8 @@ impl Editor {
         self.state
             .clamp_drawer_scroll_to_terminal(self.view.terminal_area().height);
         self.fill_drawer_window();
-        self.state.relayout(&mut self.view);
-        self.state.sync_band_views(&mut self.view);
+        let screen = self.state.screen_layout(&mut self.view);
+        self.state.sync_band_views(&mut self.view, &screen);
 
         // Nothing below changes which panes the active tab shows.
         let active = self.view.active_pane_ids();
@@ -339,7 +349,7 @@ impl Editor {
         // snapshot predates the scroll, so a line exposed by this frame's
         // scroll gets its hints one frame late. Syncing after the scroll
         // would instead let scroll and render disagree on layout.
-        let panes = self.decorated_panes(&active);
+        let panes = self.decorated_panes(&screen, &active);
         self.update_sign_providers(&panes);
         self.update_inlay_hint_providers(&panes);
         self.update_virtual_line_providers(&panes);
@@ -355,7 +365,10 @@ impl Editor {
         let scroll_margin = self.state.settings.scroll_margin;
         for &pid in &active {
             let buf_id = self.view.panes[pid].buffer_id();
-            let layout_key = self.state.layout_key(&self.view.panes[pid]);
+            let size = screen
+                .pane_size(self.view.focused_layout(), pid)
+                .expect("an active pane is a leaf of the focused layout");
+            let layout_key = self.state.layout_key(&self.view.panes[pid], size);
             let format_key = layout_key.format_key();
             // Per (pane, buffer) state: a pane that just switched buffers
             // reads a fresh entry whose `last_layout_key` is `None`.
@@ -374,6 +387,7 @@ impl Editor {
             let outcome = scroll_into_view(
                 self.state.buffers.get(buf_id),
                 &mut self.view.panes[pid],
+                size,
                 cursor,
                 format_key,
                 scroll_margin,
@@ -391,8 +405,11 @@ impl Editor {
             // A visible-range change arms the `OnViewportChange` debounce
             // timer; the hook fires later from the timer drain.
             let content_lines = self.state.buffers.get(buf_id).text().content_line_count();
-            let range =
-                super::lsp::introspect::pane_visible_range(&self.view.panes[pid], content_lines);
+            let range = super::lsp::introspect::pane_visible_range(
+                &self.view.panes[pid],
+                size,
+                content_lines,
+            );
             if self.last_visible_range.insert(pid, (buf_id, range)) != Some((buf_id, range)) {
                 self.debounce_viewport_change(pid);
             }
@@ -400,21 +417,22 @@ impl Editor {
 
         // Highlights and line tints only affect painting, so they sync after
         // the scroll from a fresh snapshot of the final viewport.
-        let panes = self.decorated_panes(&active);
+        let panes = self.decorated_panes(&screen, &active);
         self.update_highlight_providers(&panes);
         self.update_line_bg_providers(&panes);
 
         // Overlays resolve their geometry now, so render only paints. The
         // cursor-anchored ones need the scroll result above.
-        self.sync_minibuf_completion_view();
-        self.sync_popup_view(ctx.cursor_content_pos);
-        self.sync_menu_view(ctx.cursor_content_pos);
-        self.sync_completion_menu_view(ctx.cursor_content_pos);
-        self.sync_picker_view();
+        self.sync_minibuf_completion_view(&screen);
+        self.sync_popup_view(&screen, ctx.cursor_content_pos);
+        self.sync_menu_view(&screen, ctx.cursor_content_pos);
+        self.sync_completion_menu_view(&screen, ctx.cursor_content_pos);
+        self.sync_picker_view(&screen);
 
         // Bake scopes interned during this frame (extra highlights, inline
         // diagnostics, a new grammar's captures) before render resolves them.
         self.view.theme.bake_if_stale(&self.view.registry);
+        screen
     }
 
     /// Sync every active-tab pane's selection mirror from the authoritative
@@ -456,6 +474,18 @@ impl Editor {
         self.state.inline_output.enter_count()
     }
 
+    /// The screen's layout as the current models have it.
+    #[cfg(test)]
+    pub(in crate::editor) fn screen_layout(&mut self) -> ScreenLayout {
+        self.state.screen_layout(&mut self.view)
+    }
+
+    /// Pane `pid`'s size as the current models lay it out.
+    #[cfg(test)]
+    pub(in crate::editor) fn pane_size(&mut self, pid: PaneId) -> PaneSize {
+        self.state.pane_size(&mut self.view, pid)
+    }
+
     #[cfg(test)]
     pub(in crate::editor) fn viewport_mut(&mut self) -> &mut hume_engine::pane::Viewport {
         let focused_pid = self.view.focused_pane();
@@ -464,12 +494,13 @@ impl Editor {
 }
 
 impl EditorState {
-    /// Lay the chrome and the panes out against the models: the tab bar's
-    /// visibility, the open drawer's items and a docked popup's wrapped
-    /// text. A band can open or close between frames, so every reader of a
-    /// pane's height outside a frame runs this first. Never runs Steel, so
-    /// it is safe inside a Steel call.
-    pub(in crate::editor) fn relayout(&mut self, view: &mut EngineView) {
+    /// The screen's layout as the models have it now: the tab bar's
+    /// visibility, the open drawer's items, a docked popup's wrapped text and
+    /// the seam setting. Every size and rect read outside the frame's own
+    /// pass comes from here, so it reflects a band opened or closed since the
+    /// last frame. Never runs Steel, so it is safe inside a Steel call.
+    #[allow(clippy::disallowed_methods)]
+    pub(in crate::editor) fn screen_layout(&mut self, view: &mut EngineView) -> ScreenLayout {
         let area = view.terminal_area();
         let drawer = self.input.drawer().map_or(0, |d| {
             hume_ui::drawer::band_height(d.item_count(&self.buffers), area.height)
@@ -482,32 +513,29 @@ impl EditorState {
                 let lines = p.docked_total_rows(&mut view.theme, &view.registry, area.width);
                 hume_ui::popup::band_height(lines, area.height)
             });
-        let bands = hume_ui::Bands { drawer, popup };
+        let rows = ChromeRows {
+            tabbar: u16::from(self.tabline_visible()),
+            bands: hume_ui::Bands { drawer, popup }.in_stack_order(),
+        };
+        view.screen_layout(rows, self.settings.pane_dividers)
+    }
 
-        // The frame's scroll step reveals the cursor from each pane's new
-        // height and content width, both part of `layout_key`.
-        let moved = view.set_pane_geometry(
-            u16::from(self.tabline_visible()),
-            bands.in_stack_order(),
-            self.settings.pane_dividers,
-        );
-        // Background tabs' panes follow the terminal too, so `viewport-range`
-        // on a pane in another tab reports its real size. An inactive tab's
-        // tree never changes on its own, so its panes need re-partitioning
-        // only when the partition itself moved.
-        if moved {
-            for layout in self.tabs.inactive_layouts() {
-                view.resync_viewport_dims_for(layout);
-            }
-        }
+    /// The size of pane `pid`, in the active tab or a background one, as
+    /// [`Self::screen_layout`] lays it out.
+    pub(in crate::editor) fn pane_size(&mut self, view: &mut EngineView, pid: PaneId) -> PaneSize {
+        let screen = self.screen_layout(view);
+        std::iter::once(view.focused_layout())
+            .chain(self.tabs.inactive())
+            .find_map(|layout| screen.pane_size(layout, pid))
+            .expect("every pooled pane is a leaf of one tab's layout")
     }
 
     /// Bring the band views (drawer, docked popup, tab bar) up to their
-    /// models for this frame to paint.
-    fn sync_band_views(&mut self, view: &mut EngineView) {
+    /// models for this frame to paint, the tab bar at its place in `screen`.
+    fn sync_band_views(&mut self, view: &mut EngineView, screen: &ScreenLayout) {
         self.sync_drawer_view();
         self.sync_popup_band_view(view);
-        self.sync_tabline_view(view);
+        self.sync_tabline_view(view, screen);
     }
 
     fn tabline_visible(&self) -> bool {
@@ -530,14 +558,14 @@ impl EditorState {
     /// separately by `has_unsaved_changes`). Excludes anything that
     /// doesn't change what a rebuild would produce: buffer *content*, for
     /// instance, since neither the label nor `scroll` reads it.
-    fn tabline_signature(&self, view: &EngineView, visible: bool) -> u64 {
+    fn tabline_signature(&self, view: &EngineView, screen: &ScreenLayout, visible: bool) -> u64 {
         use std::hash::{Hash, Hasher};
         let mut hasher = rustc_hash::FxHasher::default();
         visible.hash(&mut hasher);
         if visible {
             let current = self.tabs.current();
             current.hash(&mut hasher);
-            let bar = view.tabbar_area();
+            let bar = screen.tabbar_area();
             bar.x.hash(&mut hasher);
             bar.width.hash(&mut hasher);
             for (id, pid) in self.tabs.focused_panes(view.focused_pane()) {
@@ -562,10 +590,10 @@ impl EditorState {
     /// rebuild below (one allocating `display_name()` call per tab, plus
     /// the scroll probe) is skipped on every steady-state frame, which is
     /// almost all of them.
-    fn sync_tabline_view(&mut self, view: &EngineView) {
+    fn sync_tabline_view(&mut self, view: &EngineView, screen: &ScreenLayout) {
         let visible = self.tabline_visible();
 
-        let signature = self.tabline_signature(view, visible);
+        let signature = self.tabline_signature(view, screen, visible);
         if self.last_tabline_signature == Some(signature) {
             return;
         }
@@ -616,7 +644,7 @@ impl EditorState {
         // via `tab_extents_into` rather than `tab_extents`: one reused
         // `ranges` buffer across every candidate this loop tries, instead of
         // a fresh allocation per candidate.
-        let bar = view.tabbar_area();
+        let bar = screen.tabbar_area();
         let mut probe_ranges = Vec::new();
         let mut scroll = 0;
         while scroll < active_index {
@@ -674,6 +702,7 @@ struct ScrollOutcome {
 fn scroll_into_view(
     doc: &Buffer,
     pane: &mut Pane,
+    size: PaneSize,
     cursor: hume_rope::cluster::ClusterStart,
     format_key: hume_engine::display_lines::line_store::FormatKey,
     scroll_margin: usize,
@@ -681,12 +710,12 @@ fn scroll_into_view(
 ) -> ScrollOutcome {
     // Whatever this pass formats deciding where to scroll, the render pass
     // finds already done: both work through this pane's one store.
-    let (mut dlm, viewport) = super::commands::pane_display_lines(doc, pane, format_key);
+    let (mut dlm, viewport) = super::commands::pane_display_lines(doc, pane, format_key, size);
     // A collapsed split has nothing to scroll and nowhere to put a cursor.
     // Checked before `locate`, which would otherwise format the cursor's
     // line for an answer no one can use, and before `geometry`, which
     // returns `None` for exactly this case.
-    let Some(geo) = viewport.geometry(scroll_margin) else {
+    let Some(geo) = size.geometry(scroll_margin) else {
         return ScrollOutcome {
             cursor_screen: None,
             parked: false,
@@ -728,7 +757,7 @@ fn scroll_into_view(
         // them. Only its forward walk is left to redo.
         let top = viewport.top_at(&mut dlm);
         let cursor_screen = dlm
-            .distance(top, cursor_pos, geo.height - 1)
+            .distance(top, cursor_pos, geo.height() - 1)
             .map(|screen_row| super::cursor::place(viewport, cursor_display_col, screen_row));
         ScrollOutcome {
             cursor_screen,

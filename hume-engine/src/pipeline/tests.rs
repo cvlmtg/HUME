@@ -124,7 +124,6 @@ fn virtual_display_line_resolves_grapheme_scope_and_falls_back_to_virtual_text()
     let mut bids: SlotMap<BufferId, ()> = SlotMap::with_key();
     let bid = bids.insert(());
     let mut pane = Pane::new(bid);
-    pane.viewport = crate::pane::Viewport::new(20, 5);
     pane.providers
         .add_decoration_source(Box::new(ScopedVirtualLine { scope: hint_scope }));
 
@@ -209,7 +208,6 @@ fn virtual_display_line_resolves_scopes_from_unsorted_segments() {
     let mut bids: SlotMap<BufferId, ()> = SlotMap::with_key();
     let bid = bids.insert(());
     let mut pane = Pane::new(bid);
-    pane.viewport = crate::pane::Viewport::new(20, 5);
     pane.providers
         .add_decoration_source(Box::new(UnsortedScopedVirtualLine { scopes }));
 
@@ -283,7 +281,6 @@ fn render_wrapped_pane_with_virtual_text(
     let bid = bids.insert(());
 
     let mut pane = Pane::new(bid);
-    pane.viewport = crate::pane::Viewport::new(10, 6);
     pane.viewport
         .seed_top_for_test(DisplayLinePos::new(ContentLine::new(0), top_slot as usize));
     pane.providers
@@ -453,7 +450,6 @@ fn render_pane_with_n_before_lines(top_slot: u16, n: usize, height: u16) -> Grid
     let bid = bids.insert(());
 
     let mut pane = Pane::new(bid);
-    pane.viewport = crate::pane::Viewport::new(10, height);
     pane.viewport
         .seed_top_for_test(DisplayLinePos::new(ContentLine::new(0), top_slot as usize));
     pane.providers
@@ -553,7 +549,6 @@ fn virtual_line_provider_id_is_stamped_by_pipeline_not_self_reported() {
     let mut bids: SlotMap<BufferId, ()> = SlotMap::with_key();
     let bid = bids.insert(());
     let mut pane = Pane::new(bid);
-    pane.viewport = crate::pane::Viewport::new(10, 3);
     pane.providers
         .add_gutter_column(Box::new(ProviderIdReportingGutter));
     let real_id = pane
@@ -604,7 +599,6 @@ fn cjk_heavy_viewport_fills_every_row_no_premature_filler() {
     let bid = bids.insert(());
 
     let mut pane = Pane::new(bid);
-    pane.viewport = crate::pane::Viewport::new(20, 4);
 
     let theme = Theme::default();
     let pane_rect = rect(0, 0, 20, 4);
@@ -638,7 +632,6 @@ fn scrolled_pane_renders_from_top_line_onward() {
     let bid = bids.insert(());
 
     let mut pane = Pane::new(bid);
-    pane.viewport = crate::pane::Viewport::new(20, 5);
     pane.viewport
         .seed_top_for_test(DisplayLinePos::new(ContentLine::new(1), 0));
 
@@ -696,7 +689,6 @@ fn filler_display_line_gutter_shows_gutter_content_not_stale_blank() {
     let bid = bids.insert(());
 
     let mut pane = Pane::new(bid);
-    pane.viewport = crate::pane::Viewport::new(20, 3); // 1 real display line + 2 filler display lines
     pane.providers.add_gutter_column(Box::new(MarkerGutter));
 
     let mut registry = crate::theme::ScopeRegistry::new();
@@ -1068,8 +1060,8 @@ fn focused_neighbor_tie_breaks_on_center_distance() {
 #[test]
 #[should_panic(expected = "FocusKey from another EngineView")]
 fn a_focus_key_from_another_view_is_refused() {
-    let (mut view, _) = EngineView::new(Theme::default());
-    let (_, other_key) = EngineView::new(Theme::default());
+    let (mut view, _) = EngineView::new(Theme::default(), hume_grid::Rect::default());
+    let (_, other_key) = EngineView::new(Theme::default(), hume_grid::Rect::default());
     let pid = view.focused_pane();
 
     view.focus(&other_key, pid);
@@ -1767,10 +1759,9 @@ impl crate::providers::ChromeProvider for NoopChrome {
     fn render(&self, _area: Rect, _theme: &Theme, _canvas: &mut crate::render::Canvas) {}
 }
 
-/// A one-pane view with a tab bar and bottom bands, laid out on a 40-column
-/// terminal `height` rows tall.
-fn laid_out(height: u16, tabbar_rows: u16, band_rows: [u16; BOTTOM_BANDS]) -> EngineView {
-    let (mut view, key) = EngineView::new(Theme::default());
+/// A one-pane view whose chrome can take rows.
+fn chromed_view() -> EngineView {
+    let (mut view, key) = EngineView::new(Theme::default(), hume_grid::Rect::default());
     let bid = view.buffers.insert(());
     let pane = view.insert_pane(crate::pane::Pane::new(bid));
     let _placeholder = view.replace_layout(&key, FocusedLayout::new(pane));
@@ -1780,77 +1771,106 @@ fn laid_out(height: u16, tabbar_rows: u16, band_rows: [u16; BOTTOM_BANDS]) -> En
             Box::new(NoopChrome) as Box<dyn crate::providers::ChromeProvider>
         }),
     });
-    view.resize(rect(0, 0, 40, height));
-    view.set_pane_geometry(tabbar_rows, band_rows, true);
     view
+}
+
+/// The screen layout of a 40-column terminal `height` rows tall, with
+/// `tabbar` rows at the top and `bands` above the statusline.
+#[allow(clippy::disallowed_methods)]
+fn screen(height: u16, tabbar: u16, bands: [u16; BOTTOM_BANDS]) -> ScreenLayout {
+    let mut view = chromed_view();
+    view.resize(rect(0, 0, 40, height));
+    view.screen_layout(ChromeRows { tabbar, bands }, true)
 }
 
 #[test]
 fn pane_area_reserves_drawer_height_above_statusline() {
-    let view = laid_out(20, 0, [3, 0]);
+    let screen = screen(20, 0, [3, 0]);
 
     // 20 rows total - 1 (statusline) - 3 (drawer) = 16 rows for panes,
     // starting at the top (no tab bar row).
-    assert_eq!(view.last_pane_area.y, 0);
-    assert_eq!(view.last_pane_area.height, 16);
+    assert_eq!(screen.pane_area().y, 0);
+    assert_eq!(screen.pane_area().height, 16);
 }
 
 #[test]
 fn pane_area_folds_tabbar_and_drawer_together() {
-    let view = laid_out(20, 1, [3, 0]);
+    let screen = screen(20, 1, [3, 0]);
 
     // 20 - 1 (tab bar) - 1 (statusline) - 3 (drawer) = 15, offset by the
     // tab bar's 1 row.
-    assert_eq!(view.last_pane_area.y, 1);
-    assert_eq!(view.last_pane_area.height, 15);
-    assert_eq!(view.tabbar_area().height, 1);
+    assert_eq!(screen.pane_area().y, 1);
+    assert_eq!(screen.pane_area().height, 15);
+    assert_eq!(screen.tabbar_area().height, 1);
 }
 
 #[test]
 fn pane_area_degenerate_when_terminal_too_small_for_chrome_plus_drawer() {
     // The tab bar, the statusline and the drawer take one row each, all 3
     // rows of the terminal, so no row is left for the panes.
-    let view = laid_out(3, 1, [1, 0]);
+    let screen = screen(3, 1, [1, 0]);
 
-    assert_eq!(view.last_pane_area.height, 0);
+    assert_eq!(screen.pane_area().height, 0);
 }
 
 #[test]
 fn pane_area_sums_multiple_bottom_bands() {
     // Two bands stacked (a drawer and a docked popup) reserve the sum of
     // their heights.
-    let view = laid_out(20, 0, [3, 2]);
+    let screen = screen(20, 0, [3, 2]);
 
     // 20 - 1 (statusline) - 3 - 2 = 14.
-    assert_eq!(view.last_pane_area.height, 14);
+    assert_eq!(screen.pane_area().height, 14);
 }
 
 #[test]
 fn area_above_statusline_spans_panes_and_bands_below_the_tab_bar() {
-    let view = laid_out(20, 1, [3, 2]);
+    let screen = screen(20, 1, [3, 2]);
 
     // Rows 1..19: everything but the tab bar (row 0) and the statusline
     // (row 19).
-    assert_eq!(view.area_above_statusline(), rect(0, 1, 40, 18));
+    assert_eq!(screen.area_above_statusline(), rect(0, 1, 40, 18));
 }
 
 #[test]
 fn statusline_area_is_the_last_row_and_empty_on_a_rowless_terminal() {
-    let view = laid_out(20, 1, [3, 2]);
-    assert_eq!(view.statusline_area(), rect(0, 19, 40, 1));
-
-    let view = laid_out(0, 0, [0, 0]);
-    assert_eq!(view.statusline_area().height, 0);
+    assert_eq!(screen(20, 1, [3, 2]).statusline_area(), rect(0, 19, 40, 1));
+    assert_eq!(screen(0, 0, [0, 0]).statusline_area().height, 0);
 }
 
 #[test]
-fn band_rows_change_inside_a_degenerate_pane_area_is_stored() {
-    let mut view = laid_out(3, 1, [1, 0]);
+#[allow(clippy::disallowed_methods)]
+fn a_lone_pane_is_sized_to_the_pane_area() {
+    let mut view = chromed_view();
+    view.resize(rect(0, 0, 40, 20));
+    let screen = view.screen_layout(
+        ChromeRows {
+            tabbar: 1,
+            bands: [3, 0],
+        },
+        true,
+    );
 
-    let moved = view.set_pane_geometry(1, [2, 0], true);
+    let size = screen
+        .pane_size(view.focused_layout(), view.focused_pane())
+        .expect("the focused pane is in the layout");
 
-    assert!(!moved, "the pane area stays empty");
-    assert_eq!(view.bottom_band_rows, [2, 0]);
+    // 20 - 1 (tab bar) - 1 (statusline) - 3 (drawer) = 15 rows.
+    assert_eq!((size.width(), size.height()), (40, 15));
+}
+
+#[test]
+#[should_panic(expected = "chrome rows without chrome painters")]
+#[allow(clippy::disallowed_methods)]
+fn chrome_rows_without_painters_panic() {
+    let (view, _key) = EngineView::new(Theme::default(), hume_grid::Rect::default());
+    view.screen_layout(
+        ChromeRows {
+            tabbar: 1,
+            bands: [0, 0],
+        },
+        true,
+    );
 }
 
 // ── FrameScratch ─────────────────────────────────────────────────────

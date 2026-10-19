@@ -276,7 +276,7 @@ fn cross_buffer_search_highlight_does_not_bleed_into_other_pane() {
     );
 
     let mut ctx = hume_engine::pipeline::RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 

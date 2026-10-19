@@ -406,6 +406,7 @@ fn reload_config_reapplies_on_language_set_buffer_overrides() {
 
     let mut ed = Editor::open(
         Some(file),
+        crate::editor::lifecycle::HEADLESS_TERMINAL,
         std::sync::Arc::new(|| {}),
         fixture.dirs(),
         test_cwd(),
@@ -498,6 +499,7 @@ fn reload_config_does_not_double_fire_buffer_open_for_a_plugin_opened_buffer() {
 
     let mut ed = Editor::open(
         Some(file),
+        crate::editor::lifecycle::HEADLESS_TERMINAL,
         std::sync::Arc::new(|| {}),
         fixture.dirs(),
         test_cwd(),
@@ -586,6 +588,7 @@ fn reload_config_restores_an_explicit_buffer_language_detection_cannot_recover()
 
     let mut ed = Editor::open(
         Some(file),
+        crate::editor::lifecycle::HEADLESS_TERMINAL,
         std::sync::Arc::new(|| {}),
         fixture.dirs(),
         test_cwd(),
@@ -665,6 +668,7 @@ fn reload_config_keeps_a_startup_grammar_registered() {
 
     let mut ed = Editor::open(
         Some(file),
+        crate::editor::lifecycle::HEADLESS_TERMINAL,
         std::sync::Arc::new(|| {}),
         fixture.dirs(),
         test_cwd(),
@@ -844,6 +848,7 @@ fn reload_config_explicit_language_restore_skips_a_bid_that_closed_after_the_sna
 
     let mut ed = Editor::open(
         Some(file),
+        crate::editor::lifecycle::HEADLESS_TERMINAL,
         std::sync::Arc::new(|| {}),
         fixture.dirs(),
         test_cwd(),

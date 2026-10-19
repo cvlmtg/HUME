@@ -141,7 +141,7 @@ fn split_focused_pane(
     arg: Option<&str>,
     direction: Direction,
 ) -> Result<(), CommandError> {
-    if !super::fits_split(&ed.view, direction) {
+    if !super::fits_split(&mut ed.state, &mut ed.view, direction) {
         return Err(CommandError::transient(super::SPLIT_TOO_SMALL_MSG));
     }
     let bid = match arg {

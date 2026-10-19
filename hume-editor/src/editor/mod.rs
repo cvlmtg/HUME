@@ -545,7 +545,7 @@ impl EditorState {
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub(in crate::editor) struct LayoutKey {
     format: hume_engine::display_lines::line_store::FormatKey,
-    content_width: std::num::NonZeroU16,
+    content_width: hume_engine::pipeline::ContentWidth,
     height: u16,
     scroll_margin: usize,
 }
@@ -613,16 +613,23 @@ impl EditorState {
         }
     }
 
-    /// The composition every `LayoutKey` and `FormatKey` in this crate is
-    /// built from. `format_key` and `layout_key` each resolve this on
-    /// `pane`'s current state, and their sharing that pane's line store
-    /// (`format_key`) or its reveal signal (`layout_key`) depends entirely
-    /// on every caller resolving a bit-identical value. One function
-    /// rather than several independently-maintained call sites is what
-    /// makes that true.
-    pub(in crate::editor) fn layout_key(&self, pane: &hume_engine::pane::Pane) -> LayoutKey {
+    /// The composition every `FormatKey` in this crate is built from: every
+    /// input `pane`'s line formats depend on besides its content width, which
+    /// reaches formatting only through the wrap mode's resolved width (see
+    /// `hume_engine::display_lines::line_store::ResolvedFormatKey`'s doc).
+    ///
+    /// The frame's scroll pass (`commands::pane_display_lines`) and its render
+    /// pass (`frame.rs`'s `resolve_pane_settings`) each call this on `pane`'s
+    /// current state, and their sharing that pane's line store depends
+    /// entirely on the two resolving a bit-identical key. One function
+    /// rather than two independently-maintained call sites is what makes
+    /// that true.
+    pub(in crate::editor) fn format_key(
+        &self,
+        pane: &hume_engine::pane::Pane,
+    ) -> hume_engine::display_lines::line_store::FormatKey {
         let doc = self.buffers.get(pane.buffer_id());
-        let format = hume_engine::display_lines::line_store::FormatKey {
+        hume_engine::display_lines::line_store::FormatKey {
             buffer_tag: [
                 // Not `{:?}`-formatted: this is a value to compare, not one
                 // to show, and `as_ffi` folds the key's index and version
@@ -635,37 +642,24 @@ impl EditorState {
             wrap_mode: commands::effective_wrap_mode(doc, &self.settings, pane),
             tab_width: doc.overrides.indent_width(&self.settings),
             whitespace: doc.overrides.whitespace(&self.settings),
-        };
-        LayoutKey {
-            format,
-            content_width: pane.content_width(doc.text().last_ropey_line()),
-            height: pane.viewport.height,
-            scroll_margin: self.settings.scroll_margin,
         }
     }
 
-    /// Every input `pane`'s line formats depend on: the
-    /// `hume_engine::display_lines::line_store::FormatKey` inside
-    /// [`Self::layout_key`], the part of [`LayoutKey`] the line store's scope
-    /// needs. `content_width` reaches formatting only through the wrap mode's
-    /// resolved width (see `hume_engine::display_lines::line_store::ResolvedFormatKey`'s
-    /// own doc), and `height`/`scroll-margin` don't reach formatting at all:
-    /// neither names a line's shape, only where the viewport settles
-    /// against one already formatted, so none of the three earns a place
-    /// in this narrower key.
-    ///
-    /// The single composition every `DisplayLineMap` in this crate is built from.
-    /// The frame's scroll pass (`commands::pane_display_lines`) and its render
-    /// pass (`frame.rs`'s `resolve_pane_settings`) each call this on `pane`'s
-    /// current state, and their sharing that pane's line store depends
-    /// entirely on the two resolving a bit-identical key. One function
-    /// rather than two independently-maintained call sites is what makes
-    /// that true.
-    pub(in crate::editor) fn format_key(
+    /// [`Self::format_key`] plus the geometry a pane of `size` scrolls by:
+    /// its content width, its height and the scroll margin. The frame's
+    /// scroll pass reveals the cursor when this changes.
+    pub(in crate::editor) fn layout_key(
         &self,
         pane: &hume_engine::pane::Pane,
-    ) -> hume_engine::display_lines::line_store::FormatKey {
-        self.layout_key(pane).format_key()
+        size: hume_engine::pipeline::PaneSize,
+    ) -> LayoutKey {
+        let doc = self.buffers.get(pane.buffer_id());
+        LayoutKey {
+            format: self.format_key(pane),
+            content_width: pane.content_width(size, doc.text().last_ropey_line()),
+            height: size.height(),
+            scroll_margin: self.settings.scroll_margin,
+        }
     }
 
     // ── Quit ──────────────────────────────────────────────────────────────────

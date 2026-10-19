@@ -10,7 +10,7 @@ fn prepare_frame_records_the_reported_cwd_without_a_terminal() {
 
     ed.state.cwd = tmp.path().to_path_buf();
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(40, 8);
+    ed.resize_terminal(40, 8);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 

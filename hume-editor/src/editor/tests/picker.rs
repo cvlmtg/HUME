@@ -106,21 +106,46 @@ fn page_keys_move_by_panel_list_rows() {
     open_test_picker(&mut ed, &refs);
     frame(&mut ed, 60, 16);
 
-    let geo = panel_geometry(ed.view.last_pane_area).expect("viable geometry at 60x16");
+    let geo = panel_geometry(ed.screen_layout().pane_area()).expect("viable geometry at 60x16");
     ed.feed_key(key_pagedown());
     assert_eq!(ed.state.input.picker().unwrap().selected(), geo.list_rows);
     ed.feed_key(key_pageup());
     assert_eq!(ed.state.input.picker().unwrap().selected(), 0);
 }
 
+/// The panel's list rows on the headless 80x25 terminal: its 80x24 pane
+/// area, below the statusline.
+fn headless_list_rows() -> usize {
+    panel_geometry(Rect::new(0, 0, 80, 24))
+        .expect("viable geometry at 80x24")
+        .list_rows
+}
+
 #[test]
-fn page_keys_before_first_frame_are_safe_noops() {
+fn page_keys_before_first_frame_page_against_the_headless_terminal() {
+    let mut ed = editor_from("-[a]>bc\n");
+    let items: Vec<String> = (0..50).map(|i| format!("item{i}")).collect();
+    let refs: Vec<&str> = items.iter().map(String::as_str).collect();
+    open_test_picker(&mut ed, &refs);
+
+    ed.feed_key(key_pagedown());
+    assert_eq!(
+        ed.state.input.picker().unwrap().selected(),
+        headless_list_rows()
+    );
+    ed.feed_key(key_pageup());
+    assert_eq!(ed.state.input.picker().unwrap().selected(), 0);
+}
+
+#[test]
+fn page_keys_on_a_terminal_too_small_for_the_panel_are_safe_noops() {
     let mut ed = editor_from("-[a]>bc\n");
     open_test_picker(&mut ed, &["a", "b", "c"]);
-    // No `frame()` call: `last_pane_area` is still `Rect::default()`.
+    frame(&mut ed, 10, 4);
+
     ed.feed_key(key_pagedown());
     assert_eq!(ed.state.input.picker().unwrap().selected(), 0);
-    ed.feed_key(key_pageup());
+    ed.feed_key(key_ctrl('d'));
     assert_eq!(ed.state.input.picker().unwrap().selected(), 0);
 }
 
@@ -132,7 +157,7 @@ fn half_page_keys_move_by_half_the_list_rows() {
     open_test_picker(&mut ed, &refs);
     frame(&mut ed, 60, 16);
 
-    let geo = panel_geometry(ed.view.last_pane_area).expect("viable geometry at 60x16");
+    let geo = panel_geometry(ed.screen_layout().pane_area()).expect("viable geometry at 60x16");
     ed.feed_key(key_ctrl('d'));
     assert_eq!(
         ed.state.input.picker().unwrap().selected(),
@@ -143,12 +168,17 @@ fn half_page_keys_move_by_half_the_list_rows() {
 }
 
 #[test]
-fn half_page_keys_before_first_frame_are_safe_noops() {
+fn half_page_keys_before_first_frame_page_against_the_headless_terminal() {
     let mut ed = editor_from("-[a]>bc\n");
-    open_test_picker(&mut ed, &["a", "b", "c"]);
-    // No `frame()` call: `last_pane_area` is still `Rect::default()`.
+    let items: Vec<String> = (0..50).map(|i| format!("item{i}")).collect();
+    let refs: Vec<&str> = items.iter().map(String::as_str).collect();
+    open_test_picker(&mut ed, &refs);
+
     ed.feed_key(key_ctrl('d'));
-    assert_eq!(ed.state.input.picker().unwrap().selected(), 0);
+    assert_eq!(
+        ed.state.input.picker().unwrap().selected(),
+        headless_list_rows() / 2
+    );
     ed.feed_key(key_ctrl('u'));
     assert_eq!(ed.state.input.picker().unwrap().selected(), 0);
 }
@@ -698,7 +728,7 @@ fn snapshot_picker_over_populated_buffer_empty_query() {
     open_test_picker(&mut ed, &["alpha", "beta", "gamma"]);
 
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(40, 12);
+    ed.resize_terminal(40, 12);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     let rect = Rect::new(0, 0, 40, 12);
@@ -715,7 +745,7 @@ fn snapshot_picker_after_filtering_query() {
     ed.feed_key(key('p'));
 
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(40, 12);
+    ed.resize_terminal(40, 12);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     let rect = Rect::new(0, 0, 40, 12);
@@ -732,14 +762,14 @@ fn snapshot_picker_scrolled_with_selection_highlight() {
     open_test_picker(&mut ed, &refs);
 
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(40, 12);
+    ed.resize_terminal(40, 12);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     for _ in 0..15 {
         ed.feed_key(key_down());
     }
 
-    ed.sync_viewport_dims(40, 12);
+    ed.resize_terminal(40, 12);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     let rect = Rect::new(0, 0, 40, 12);
@@ -757,7 +787,7 @@ fn snapshot_picker_no_match_state() {
     }
 
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(40, 12);
+    ed.resize_terminal(40, 12);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     let rect = Rect::new(0, 0, 40, 12);
@@ -773,7 +803,7 @@ fn snapshot_picker_with_prompt() {
     ed.feed_key(key('a'));
 
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(40, 12);
+    ed.resize_terminal(40, 12);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     let rect = Rect::new(0, 0, 40, 12);

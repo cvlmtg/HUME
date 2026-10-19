@@ -141,7 +141,7 @@ fn first_command_dispatch_activates_the_declared_plugin_and_runs_it() {
     // `show-popup!` only populates the popup view once a frame resolves its
     // anchor (`lsp_popup.rs`'s `show_popup_populates_the_view_after_a_frame`).
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
@@ -247,7 +247,14 @@ fn every_default_lsp_binding_dispatches_without_error() {
     std::fs::write(&file, "fn main() {}\n").unwrap();
 
     let guard = RealRuntimeDirs::new();
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {}), guard.dirs(), test_cwd()).unwrap();
+    let mut ed = Editor::open(
+        None,
+        crate::editor::lifecycle::HEADLESS_TERMINAL,
+        std::sync::Arc::new(|| {}),
+        guard.dirs(),
+        test_cwd(),
+    )
+    .unwrap();
     ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
 
     let mut host = ScriptingHost::new(&ed.state.dirs);

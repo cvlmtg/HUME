@@ -31,7 +31,14 @@ const BUFFER_WORDS_PLUGIN: &str = include_str!(concat!(
 fn setup(guard: &RuntimeDirs, tmp: &Path, config_expr: Option<&str>) -> Editor {
     write_core_plugin(guard, "buffer-words", BUFFER_WORDS_PLUGIN);
     write_core_plugin(guard, "stdlib", STDLIB_PLUGIN);
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {}), guard.dirs(), test_cwd()).unwrap();
+    let mut ed = Editor::open(
+        None,
+        crate::editor::lifecycle::HEADLESS_TERMINAL,
+        std::sync::Arc::new(|| {}),
+        guard.dirs(),
+        test_cwd(),
+    )
+    .unwrap();
     let mut host = ScriptingHost::new(&ed.state.dirs);
     let load_bw = match config_expr {
         Some(cfg) => format!("(load-plugin! \"core:buffer-words\" #:config {cfg})"),
@@ -538,7 +545,14 @@ fn an_invalid_match_config_fails_the_load() {
     )
     .unwrap();
 
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {}), guard.dirs(), test_cwd()).unwrap();
+    let mut ed = Editor::open(
+        None,
+        crate::editor::lifecycle::HEADLESS_TERMINAL,
+        std::sync::Arc::new(|| {}),
+        guard.dirs(),
+        test_cwd(),
+    )
+    .unwrap();
     let mut host = ScriptingHost::new(&ed.state.dirs);
     let effects = {
         let mut ih = init_host!(ed);

@@ -24,7 +24,7 @@ fn build_2x2() -> (Editor, [PaneId; 4]) {
     let pid_d = open_pane_in_layout(&mut ed.state, &mut ed.view, bid, Direction::Horizontal); // b | d (bottom row)
     ed.state.focus.set_for_test(&mut ed.view, pid_a);
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(100, 51);
+    ed.resize_terminal(100, 51);
     ed.settle();
     ed.prepare_frame(&mut ctx); // cache: DFS order a, c, b, d
     (ed, [pid_a, pid_c, pid_b, pid_d])

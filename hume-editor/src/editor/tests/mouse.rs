@@ -69,8 +69,8 @@ fn click_after_blank_line_trim_lands_on_correct_char() {
     // "  x\ncd\n": enter Insert with the cursor on line 0's own trailing '\n'.
     let mut ed = editor_from("  x-[\n]>cd\n");
     // The click below is hit-tested against pane rects: an 80x25 terminal
-    // leaves the pane `Pane::new`'s default 80×24.
-    ed.sync_viewport_dims(80, 25);
+    // leaves the pane 80x24.
+    ed.resize_terminal(80, 25);
     ed.feed_key(key('i'));
     ed.feed_key(key_enter());
     // Enter copies "  " onto a new line and lands the cursor on *that* line's
@@ -81,6 +81,7 @@ fn click_after_blank_line_trim_lands_on_correct_char() {
 
     // Click on 'd' (line 2, column 1, no gutter in test harness) to exit
     // Insert mode via the mouse.
+    draw(&mut ed);
     ed.handle_input(mouse_left_down(1, 2));
 
     assert_eq!(ed.state.mode(), Mode::Normal);
@@ -99,9 +100,11 @@ fn click_after_blank_line_trim_lands_on_correct_char() {
 #[test]
 fn drag_extends_selection_from_click_anchor() {
     let mut ed = editor_from("-[0]>123456789\n");
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
 
+    draw(&mut ed);
     ed.handle_input(mouse_left_down(0, 0)); // anchor at char 0
+    draw(&mut ed);
     ed.handle_input(mouse_drag(4, 0)); // head at char 4 ('4')
 
     let sel = ed.current_view().primary();
@@ -126,7 +129,7 @@ fn drag_crossing_into_a_different_pane_is_ignored_not_underflowed() {
     let pid_b = ed.view.focused_pane(); // vsplit focuses the new (right) pane
 
     let mut ctx = hume_engine::pipeline::RenderContext::new();
-    ed.sync_viewport_dims(100, 25);
+    ed.resize_terminal(100, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
@@ -279,10 +282,10 @@ fn a_wheel_notch_that_can_move_nothing_keeps_the_selection() {
     assert_eq!(ed.current_view().primary().head().offset(), co(2));
 }
 
-/// A collapsed split (0 rows) has no bottom row to bound a scroll against:
-/// `Viewport::geometry`'s own zero-height guard, not `Viewport::scroll_by`'s
-/// downward clamp, is what has to stop this. `mouse_wheel`'s `(0, 0)` never
-/// hits a real pane rect here (`last_pane_area` is never populated), so
+/// A collapsed pane (0 rows) has no bottom row to bound a scroll against:
+/// `PaneSize::geometry`'s own zero-height guard, not `Viewport::scroll_by`'s
+/// downward clamp, is what has to stop this. A 1-row terminal leaves the
+/// pane no rows, so `mouse_wheel`'s `(0, 0)` lands on the statusline and
 /// `mouse_scroll` takes its focused-pane fallback. The collapsed pane is
 /// reachable that way with several stacked splits in a short terminal, same
 /// as it would be by scrolling directly over it.
@@ -291,7 +294,7 @@ fn a_wheel_notch_in_a_zero_height_pane_leaves_the_viewport_alone() {
     let content: String = numbered_lines(30);
     let mut ed = unwrapped_editor(&content, 0);
     let pid = ed.view.focused_pane();
-    ed.view.panes[pid].viewport.height = 0;
+    ed.resize_terminal(80, 1);
 
     for _ in 0..20 {
         ed.handle_input(mouse_wheel(true));
@@ -335,7 +338,7 @@ fn vsplit_click_focuses_and_resolves_against_the_clicked_pane() {
     let bid = ed.view.panes[pid_a].buffer_id(); // vsplit shares the source buffer
 
     let mut ctx = hume_engine::pipeline::RenderContext::new();
-    ed.sync_viewport_dims(100, 25);
+    ed.resize_terminal(100, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
@@ -362,6 +365,7 @@ fn vsplit_click_focuses_and_resolves_against_the_clicked_pane() {
 
     // Click pane A (unfocused, left half): screen col 7 = rect.x(0) +
     // gutter(0) + content col 7 → the '7' in "0123456789...".
+    draw(&mut ed);
     ed.handle_input(mouse_left_down(7, 0));
     assert_eq!(
         ed.view.focused_pane(),
@@ -377,6 +381,7 @@ fn vsplit_click_focuses_and_resolves_against_the_clicked_pane() {
 
     // Click pane B (now unfocused, right half): screen col 57 = rect.x(50)
     // + gutter(4) + content col 3 → the '3'.
+    draw(&mut ed);
     ed.handle_input(mouse_left_down(57, 0));
     assert_eq!(
         ed.view.focused_pane(),
@@ -392,6 +397,7 @@ fn vsplit_click_focuses_and_resolves_against_the_clicked_pane() {
 
     // Click the statusline (row 24: usable pane height is 24 after the
     // statusline reservation, so row 24 is outside every pane's rect).
+    draw(&mut ed);
     ed.handle_input(mouse_left_down(10, 24));
     assert_eq!(
         ed.view.focused_pane(),
@@ -428,7 +434,7 @@ fn vsplit_wheel_scrolls_the_pane_under_the_pointer_without_moving_focus() {
     let bid = ed.view.panes[pid_a].buffer_id(); // vsplit shares the source buffer
 
     let mut ctx = hume_engine::pipeline::RenderContext::new();
-    ed.sync_viewport_dims(100, 25);
+    ed.resize_terminal(100, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
@@ -470,6 +476,7 @@ fn vsplit_wheel_scrolls_the_pane_under_the_pointer_without_moving_focus() {
 
     // Wheel at screen col 7 (inside pane A's rect, gutter width 0; see
     // `vsplit_click_...`'s doc for why pane A has no gutter).
+    draw(&mut ed);
     ed.handle_input(mouse_wheel_at(7, 0, false));
 
     assert_eq!(
@@ -528,7 +535,7 @@ fn a_wheel_notch_outside_every_pane_scrolls_the_focused_pane() {
     let bid = ed.view.panes[pid_b].buffer_id();
 
     let mut ctx = hume_engine::pipeline::RenderContext::new();
-    ed.sync_viewport_dims(100, 25);
+    ed.resize_terminal(100, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
@@ -566,9 +573,9 @@ fn a_wheel_notch_outside_every_pane_scrolls_the_focused_pane() {
 }
 
 /// The stacked-split analogue: a click's *row* must also be translated by
-/// the clicked pane's rect origin, not just its column. Checked against an
-/// absolute row, the lower pane's `viewport.height` guard would reject every
-/// click inside it, since its rect starts well past row 0.
+/// the clicked pane's rect origin, not just its column. Read as an absolute
+/// row, a click inside the lower pane would land past its own rows, since
+/// its rect starts well past row 0.
 ///
 /// Terminal height 25 (24 usable after the statusline): `:split` (1-row
 /// seam, ratio 0.5) gives pane A (top) `y ∈ [0, 11)`, pane B (bottom)
@@ -585,13 +592,14 @@ fn stacked_split_click_translates_row_by_the_panes_rect_origin() {
     let bid = ed.view.panes[pid_b].buffer_id();
 
     let mut ctx = hume_engine::pipeline::RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
     // Absolute row 15 = pane B's rect.y(12) + relative row 3 → buffer line 3
     // ("DDDD"). Column 6 = gutter(4) + content col 2 → 'D' (any content col
     // 0..3 lands on 'D': the whole line is the same character).
+    draw(&mut ed);
     ed.handle_input(mouse_left_down(6, 15));
 
     let sel = ed
@@ -606,7 +614,7 @@ fn stacked_split_click_translates_row_by_the_panes_rect_origin() {
         hume_rope::line::ContentLine::new(3),
         "row 15 in pane B (rect.y=12) must resolve to buffer line 3, not \
          raw row 15 in the buffer (which would be past EOF) or be rejected \
-         outright (row 15 >= pane B's own viewport.height of 12)"
+         outright (row 15 >= pane B's own height of 12)"
     );
 }
 
@@ -626,12 +634,14 @@ fn click_on_a_tab_switches_to_it() {
 
     frame(&mut ed, 40, 10);
     assert_eq!(
-        ed.view.last_pane_area.y, 1,
+        ed.screen_layout().pane_area().y,
+        1,
         "setup: the tabline must have reserved row 0"
     );
 
     // Row 0, column 0, inside the padded label of the first tab (tab A,
     // scroll starts at 0 with no overflow indicator at this width).
+    draw(&mut ed);
     ed.handle_input(mouse_left_down(0, 0));
 
     assert_eq!(ed.state.tabs.current(), tab_a, "click must switch to tab A");
@@ -677,11 +687,12 @@ fn a_one_row_terminal_leaves_the_tabbar_no_room_and_a_click_there_does_not_switc
     // 1-row terminal, so degenerate.
     frame(&mut ed, 40, 1);
     assert_eq!(
-        ed.view.last_pane_area.height, 0,
+        ed.screen_layout().pane_area().height,
+        0,
         "setup: pane area is degenerate"
     );
     assert_eq!(
-        ed.view.tabbar_area().height,
+        ed.screen_layout().tabbar_area().height,
         0,
         "the tab bar must yield its row to the statusline, not paint over it"
     );
@@ -736,7 +747,8 @@ fn clicking_another_tab_while_in_insert_exits_insert_and_commits_the_outgoing_pa
     );
     assert_eq!(ed.state.mode(), Mode::Insert, "setup: still typing in A");
 
-    // Click tab B's own label.
+    // Click tab B's own label, where the frame drew it.
+    draw(&mut ed);
     let start_b = tab_start_x(&ed, tab_b);
     ed.handle_input(mouse_left_down(start_b, 0));
 
@@ -790,6 +802,7 @@ fn clicking_another_tab_commits_the_outgoing_pane_s_open_paste_session() {
         "setup: paste session open on A"
     );
 
+    draw(&mut ed);
     let start_b = tab_start_x(&ed, tab_b);
     ed.handle_input(mouse_left_down(start_b, 0));
 
@@ -828,10 +841,12 @@ fn drag_right_after_a_tab_click_does_not_extend_from_the_stale_anchor() {
     // Column 0: A is `editor_from`'s original pane, which registers no
     // gutter columns (see `vsplit_click_focuses_and_resolves_against_the_clicked_pane`'s
     // own doc), so column 0 is content, not gutter.
+    draw(&mut ed);
     ed.handle_input(mouse_left_down(0, 1));
     assert!(ed.state.mouse_drag.is_some(), "setup: anchor seeded");
 
     let start_b = tab_start_x(&ed, tab_b);
+    draw(&mut ed);
     ed.handle_input(mouse_left_down(start_b, 0));
     assert_eq!(ed.state.tabs.current(), tab_b);
     assert!(
@@ -839,6 +854,7 @@ fn drag_right_after_a_tab_click_does_not_extend_from_the_stale_anchor() {
         "a tab click must clear the previous click's drag anchor"
     );
 
+    draw(&mut ed);
     ed.handle_input(mouse_drag(1, 1));
     // With no anchor, the drag is a no-op: the selection must stay
     // whatever the tab switch left it at, not extend from A's old anchor.
@@ -857,7 +873,7 @@ fn drag_right_after_a_tab_click_does_not_extend_from_the_stale_anchor() {
 #[test]
 fn click_with_picker_open_leaves_cursor_and_focus_untouched() {
     let mut ed = editor_from("-[h]>ello\n");
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     let before = state(&ed);
     open_test_picker(&mut ed, &["a", "b"]);
 
@@ -920,11 +936,12 @@ fn tabline_click_with_picker_open_does_not_switch_tabs() {
 fn click_with_confirm_open_dismisses_it_without_answering() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
     std::fs::write(&tmp, "hello, world!\n").unwrap();
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     let bid = ed.focused_buffer_id();
     ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);
     assert!(ed.state.input.confirm().is_some(), "setup: confirm open");
 
+    draw(&mut ed);
     ed.handle_input(mouse_left_down(3, 0));
 
     assert!(
@@ -953,7 +970,7 @@ fn click_with_confirm_open_dismisses_it_without_answering() {
 fn mouse_release_with_confirm_open_leaves_it_open() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
     std::fs::write(&tmp, "hello, world!\n").unwrap();
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     let bid = ed.focused_buffer_id();
     ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);
     assert!(ed.state.input.confirm().is_some(), "setup: confirm open");
@@ -971,12 +988,13 @@ fn mouse_release_with_confirm_open_leaves_it_open() {
 #[test]
 fn click_with_menu_open_cancels_it_and_falls_through() {
     let mut ed = editor_from("-[h]>ello\n");
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.state.push_layer(
         &ed.view,
         MenuLayer::for_test(vec!["m0".into()], marker("menu-cb")),
     );
 
+    draw(&mut ed);
     ed.handle_input(mouse_left_down(3, 0));
 
     assert!(
@@ -1001,7 +1019,7 @@ fn click_with_menu_open_cancels_it_and_falls_through() {
 #[test]
 fn click_under_drawer_falls_through_leaving_it_open() {
     let mut ed = editor_from("-[h]>ello\n");
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.state.push_layer(
         &ed.view,
         DrawerLayer::new(
@@ -1011,6 +1029,7 @@ fn click_under_drawer_falls_through_leaving_it_open() {
         ),
     );
 
+    draw(&mut ed);
     ed.handle_input(mouse_left_down(3, 0));
 
     assert_eq!(ed.current_view().primary().head().offset(), co(3));
@@ -1057,7 +1076,7 @@ fn wheel_under_drawer_scrolls_the_pane_leaving_it_open() {
 #[test]
 fn click_in_insert_under_completion_ends_insert_and_drops_the_session() {
     let mut ed = editor_from("-[h]>ello\n");
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.feed_key(key('i'));
     open_completion_session(&mut ed, &["hello", "help"]);
     assert!(
@@ -1065,6 +1084,7 @@ fn click_in_insert_under_completion_ends_insert_and_drops_the_session() {
         "setup: session open"
     );
 
+    draw(&mut ed);
     ed.handle_input(mouse_left_down(3, 0));
 
     assert_eq!(ed.state.mode(), Mode::Normal, "the click must end Insert");
@@ -1073,4 +1093,36 @@ fn click_in_insert_under_completion_ends_insert_and_drops_the_session() {
         "the completion session must not survive Insert ending"
     );
     assert_eq!(ed.current_view().primary().head().offset(), co(3));
+}
+
+#[test]
+fn a_click_on_a_docked_popup_s_band_dismisses_it_without_moving_the_cursor() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (path, _f) = tall_file();
+    let mut ed = open_headless(Some(path));
+    let text = popup_lines(3);
+    run(
+        &mut ed,
+        tmp.path(),
+        &format!(
+            r#"(define-typed-command! "go" "" (lambda (pane) (show-popup! pane "{text}" #:kind 'scrollable #:anchor 'bottom)))"#
+        ),
+    );
+    type_cmd(&mut ed, ":go");
+    frame(&mut ed, 80, 24);
+    let head = ed.current_view().primary().head();
+
+    // The band is three lines plus two frame rows directly above the
+    // statusline: rows 18 to 22, below the 18-row pane.
+    ed.handle_input(mouse_left_down(5, 20));
+
+    assert!(
+        ed.state.input.popup().is_none(),
+        "the click dismisses the popup"
+    );
+    assert_eq!(
+        ed.current_view().primary().head(),
+        head,
+        "the click lands on the band the frame drew, not on the pane"
+    );
 }

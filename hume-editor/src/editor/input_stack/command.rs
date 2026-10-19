@@ -1,6 +1,6 @@
 //! The `Command` layer: the `:`-prompt minibuffer mode.
 
-use hume_engine::pipeline::EngineView;
+use hume_engine::pipeline::{EngineView, ScreenLayout};
 use hume_engine::types::EditorMode;
 
 use super::super::dispatch::unknown_command_text;
@@ -62,18 +62,17 @@ impl Editor {
     /// only; a `Buffer`-target session renders through
     /// [`Self::sync_completion_menu_view`] instead, into its own slot.
     ///
-    /// Called from `prepare_frame`'s overlay-sync step. Needs only the chrome
-    /// layout (laid out by `relayout` earlier in `prepare_frame`), unlike its
-    /// cursor-anchored siblings, which need the current frame's scroll
-    /// result too.
-    pub(in crate::editor) fn sync_minibuf_completion_view(&self) {
+    /// Called from `prepare_frame`'s overlay-sync step with the frame's
+    /// layout. Needs only that layout, unlike its cursor-anchored siblings,
+    /// which need the current frame's scroll result too.
+    pub(in crate::editor) fn sync_minibuf_completion_view(&self, screen: &ScreenLayout) {
         let is_open = self.state.input.minibuf_completion().is_some();
         // Skip the write-lock when both sides are already None: common case
         // while no popup is open.
         if !is_open && self.state.views.minibuf_completion.read().is_none() {
             return;
         }
-        let area = self.view.area_above_statusline();
+        let area = screen.area_above_statusline();
         let view = (|| -> Option<hume_ui::popup::PopupState> {
             let session = self.state.input.minibuf_completion()?;
             let anchor_byte = session.menu_anchor_byte()?;
@@ -221,10 +220,6 @@ impl Editor {
 
 /// Run a trimmed `:` line, returning its error unreported.
 fn run_command_line(ed: &mut Editor, input: &str) -> Result<(), CommandError> {
-    // A native typed command (`:split`'s `fits_split`) measures the pane
-    // without passing through `commands::run`, which lays out a band
-    // changed since the last frame for every other command.
-    ed.state.relayout(&mut ed.view);
     let (cmd, force, arg) = parse_typed_command(input);
 
     // Bare line number `:42`: shorthand for `:goto 42`.

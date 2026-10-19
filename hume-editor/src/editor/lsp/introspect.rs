@@ -470,6 +470,7 @@ pub(in crate::editor) fn location_places(
 /// instead of a degenerate empty range.
 pub(in crate::editor) fn pane_visible_range(
     pane: &Pane,
+    size: hume_engine::pipeline::PaneSize,
     content_lines: hume_rope::line::ContentLineCount,
 ) -> hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine> {
     let first_line = pane.viewport.top().line;
@@ -478,7 +479,7 @@ pub(in crate::editor) fn pane_visible_range(
     // rows than buffer lines), so this over-estimates how many buffer lines
     // are visible. Safe here: the range only needs to cover every buffer
     // line that *could* be visible, not name the true last one exactly.
-    let height_rows = pane.viewport.height.max(1) as usize;
+    let height_rows = usize::from(size.height().max(1));
     let end_line = first_line
         .advance(height_rows)
         .min(content_lines.end_exclusive());
@@ -486,22 +487,20 @@ pub(in crate::editor) fn pane_visible_range(
 }
 
 /// Pane `pid`'s visible line range (end-exclusive) between frames, for
-/// `(viewport-range pane)` and the `OnViewportChange` payload. Lays out
-/// against the current bands first, since a band can open or close
-/// between frames.
+/// `(viewport-range pane)` and the `OnViewportChange` payload.
 pub(in crate::editor) fn viewport_range(
     state: &mut EditorState,
     view: &mut EngineView,
     pid: PaneId,
 ) -> hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine> {
-    state.relayout(view);
+    let size = state.pane_size(view, pid);
     let pane = &view.panes[pid];
     let content_lines = state
         .buffers
         .get(pane.buffer_id())
         .text()
         .content_line_count();
-    pane_visible_range(pane, content_lines)
+    pane_visible_range(pane, size, content_lines)
 }
 
 impl crate::editor::Editor {

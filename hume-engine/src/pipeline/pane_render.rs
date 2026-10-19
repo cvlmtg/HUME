@@ -5,7 +5,7 @@ use crate::display_lines::DisplayLineMap;
 use crate::render::{self, ComposeCtx};
 use crate::types::{DisplayLineKind, ResolvedStyle};
 
-use super::{FrameScratch, PaneRenderCtx};
+use super::{FrameScratch, PaneRenderCtx, PaneSize};
 
 /// Extra columns appended past `content_width` when clipping `WrapMode::None`
 /// formatting to the horizontal window (see [`render_pane`]). Covers a cell
@@ -45,7 +45,7 @@ pub(crate) fn render_pane(
     // ── Stage 1: Geometry ─────────────────────────────────────────────────
     let visible = layout::compute_viewport(
         pane_ctx.rope,
-        pane_ctx.viewport,
+        PaneSize::of(pane_ctx.rect),
         pane_ctx.providers.gutter_columns(),
     );
 
@@ -73,7 +73,7 @@ pub(crate) fn render_pane(
     let h_window = (!pane_ctx.settings.format.wrap_mode.is_wrapping()).then(|| {
         let h_offset = pane_ctx.viewport.horizontal_offset;
         let end = h_offset
-            .advance_saturating(u32::from(visible.content_width.get()))
+            .advance_saturating(u32::from(visible.content_width.get().get()))
             .advance_saturating(H_WINDOW_SLACK as u32);
         h_offset..end
     });
@@ -113,7 +113,7 @@ pub(crate) fn render_pane(
     let mut canvas = render::Canvas::new(grid, pane_ctx.theme.ui.invisible, pane_ctx.dim);
 
     // ── Display-line walk ────────────────────────────────────────────────
-    let height = visible.content_height.min(pane_ctx.rect.height);
+    let height = visible.content_height;
     // Which line's highlight intervals and cursorline state `line` currently
     // holds, so crossing into a new line is the only thing that rebuilds them.
     let mut line: Option<LineStyle> = None;

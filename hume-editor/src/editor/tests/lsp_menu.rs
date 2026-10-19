@@ -389,7 +389,7 @@ fn selected_row_renders_with_the_menu_selected_scope() {
     type_cmd(&mut ed, ":go");
 
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(40, 10);
+    ed.resize_terminal(40, 10);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     let rect = Rect::new(0, 0, 40, 10);

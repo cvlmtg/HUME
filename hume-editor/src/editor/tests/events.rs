@@ -87,7 +87,7 @@ fn mouse_click_in_insert_fires_on_mode_change() {
     let mut ed = editor_from("-[a]>b\n");
     // The click below is hit-tested against pane rects: an 80x25 terminal
     // leaves the pane 80x24.
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
 
     let mut host = ScriptingHost::new(&Dirs::none());
     let mut mock = MockHost::new();
@@ -111,6 +111,7 @@ fn mouse_click_in_insert_fires_on_mode_change() {
         row: 0,
         modifiers: termina::event::Modifiers::NONE,
     };
+    draw(&mut ed);
     ed.handle_input(TerminalEvent::Mouse(click));
     ed.settle();
 
@@ -671,7 +672,7 @@ fn handler_queued_event_drains_within_the_same_settle_call() {
 }
 
 /// **`prepare_frame` does not drain.** Queuing an event and calling only
-/// `sync_viewport_dims` + `prepare_frame` (skipping `settle()`) must leave it
+/// `resize_terminal` + `prepare_frame` (skipping `settle()`) must leave it
 /// queued; a following `settle()` call is what fires it. Pins the
 /// separation of concerns: draining stays out of the per-frame render-prep
 /// path.
@@ -696,7 +697,7 @@ fn prepare_frame_alone_does_not_drain_pending_work() {
     ed.queue_buffer_save(bid);
 
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.prepare_frame(&mut ctx);
 
     assert_eq!(
@@ -2220,7 +2221,7 @@ fn pane_focus_cycling_and_mouse_click_each_raise_exactly_one_on_buffer_enter() {
     // which pane is focused, so one `prepare_frame` call covers both
     // actions below.
     let mut ctx = hume_engine::pipeline::RenderContext::new();
-    ed.sync_viewport_dims(100, 25);
+    ed.resize_terminal(100, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
@@ -2248,6 +2249,7 @@ fn pane_focus_cycling_and_mouse_click_each_raise_exactly_one_on_buffer_enter() {
     // `focus_pane` chokepoint, via `handle_input`'s mouse arm instead of the
     // keymap.
     let before = count(&ed);
+    draw(&mut ed);
     ed.handle_input(mouse_left_down(60, 0));
     ed.settle();
     assert_eq!(

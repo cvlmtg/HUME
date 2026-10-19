@@ -29,6 +29,7 @@ use std::ops::Range;
 use ropey::Rope;
 
 use crate::format::{FormatBound, LineFormat, format_buffer_line, format_virtual_lines};
+use crate::pipeline::ContentWidth;
 use crate::providers::{
     Decoration, DecorationKinds, InlineInsert, ProviderSet, VirtualLine, VirtualLineAnchor,
 };
@@ -103,10 +104,11 @@ impl<'a> DisplayLineMap<'a> {
     pub fn new(
         rope: &'a Rope,
         providers: &'a ProviderSet,
-        content_width: NonZeroU16,
+        content_width: ContentWidth,
         key: FormatKey,
         store: &'a mut PaneLineStore,
     ) -> Self {
+        let content_width = content_width.get();
         debug_assert!(
             hume_rope::lines::ends_with_newline(rope),
             "DisplayLineMap requires a trailing '\\n' (the buffer invariant): \

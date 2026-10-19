@@ -718,7 +718,7 @@ fn settle_places_a_queued_startup_position() {
     let mut ed = open_headless(Some(canonical));
     let bid = ed.focused_buffer_id();
 
-    ed.sync_viewport_dims(80, 24);
+    ed.resize_terminal(80, 24);
     ed.queue_startup_position(bid, startup_pos(2, 6));
     ed.settle();
 
@@ -736,20 +736,20 @@ fn settle_centers_the_focused_buffer_on_its_startup_position() {
     let mut ed = open_headless(Some(canonical));
     let bid = ed.focused_buffer_id();
 
-    ed.sync_viewport_dims(80, 24); // 24 rows -> 23 usable after the statusline
+    ed.resize_terminal(80, 24); // 24 rows -> 23 usable after the statusline
     ed.queue_startup_position(bid, startup_pos(150, 1));
     ed.settle();
 
     // The centre row is height/2 = 23/2 = 11 and the cursor sits on 0-based
     // buffer line 149 with a 1:1 line-to-row mapping, so the top line is
-    // 149 - 11 = 138. Centring against `Pane::new`'s 80x24 would give 137.
+    // 149 - 11 = 138.
     assert_eq!(
         ed.view.panes[ed.view.focused_pane()].viewport.top().line,
         hume_rope::line::ContentLine::new(138)
     );
 }
 
-/// A drawer opened after the last `sync_viewport_dims` (an `on-buffer-open`
+/// A drawer opened after the last `resize_terminal` (an `on-buffer-open`
 /// hook's, say) takes its rows from the pane, and centring must count them.
 #[test]
 fn settle_centers_a_startup_position_against_a_drawer_opened_since_the_last_resize() {
@@ -759,7 +759,7 @@ fn settle_centers_a_startup_position_against_a_drawer_opened_since_the_last_resi
     let mut ed = open_headless(Some(canonical));
     let bid = ed.focused_buffer_id();
 
-    ed.sync_viewport_dims(80, 24);
+    ed.resize_terminal(80, 24);
     ed.execute_typed("ls", None).unwrap();
     ed.queue_startup_position(bid, startup_pos(150, 1));
     ed.settle();
@@ -789,7 +789,7 @@ fn settle_parks_a_startup_position_on_a_non_focused_buffer_without_switching_foc
     let focused_bid = ed.focused_buffer_id();
     let extra_bid = ed.open_extra_file(&canonical2).unwrap();
 
-    ed.sync_viewport_dims(80, 24);
+    ed.resize_terminal(80, 24);
     ed.queue_startup_position(extra_bid, startup_pos(3, 2));
     ed.settle();
 
@@ -831,7 +831,7 @@ fn settle_clamps_a_startup_line_past_the_end() {
     let mut ed = open_headless(Some(canonical));
     let bid = ed.focused_buffer_id();
 
-    ed.sync_viewport_dims(80, 24);
+    ed.resize_terminal(80, 24);
     ed.queue_startup_position(bid, startup_pos(999, 1));
     ed.settle();
 

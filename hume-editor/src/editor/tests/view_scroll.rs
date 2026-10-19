@@ -122,8 +122,8 @@ fn zz_in_wrap_mode_walks_display_lines() {
     let mut ed = Editor::for_testing_with(test_fixtures::testing::state(text, sels));
     pin_wrap(&mut ed, hume_engine::pane::WrapMode::Soft { width: 4 });
 
-    // Override viewport height to 4 so target_row = 2 (height / 2).
-    ed.viewport_mut().height = 4;
+    // A 4-row pane, so target_row = 2 (height / 2).
+    ed.resize_terminal(80, 5);
 
     ed.handle_key(key('z'));
     ed.handle_key(key('z'));
@@ -153,7 +153,7 @@ fn zk_in_wrap_mode_anchors_cursor_display_line_at_top() {
     let sels = sels_at(&text, &[(head.index(), head.index())], 0);
     let mut ed = Editor::for_testing_with(test_fixtures::testing::state(text, sels));
     pin_wrap(&mut ed, hume_engine::pane::WrapMode::Soft { width: 4 });
-    ed.viewport_mut().height = 4;
+    ed.resize_terminal(80, 5);
 
     ed.handle_key(key('z'));
     ed.handle_key(key('k'));

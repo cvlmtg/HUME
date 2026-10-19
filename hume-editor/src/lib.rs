@@ -60,8 +60,7 @@ pub fn run_keys(
     let parsed =
         hume_scripting::parse_key_stream(keys).map_err(|e| format!("invalid key stream: {e}"))?;
 
-    // The pane viewport defaults to 80×24 (from Pane::new) and is never
-    // updated without a terminal, so scores are reproducible.
+    // A fixed 80×25 screen (`HEADLESS_TERMINAL`), so scores are reproducible.
     let mut editor = editor::Editor::start(
         std::slice::from_ref(&input),
         editor::Driver::Headless,
@@ -177,11 +176,13 @@ pub fn run(
 
     let panic_wake = wake.clone();
     let kitty_enabled = hume_platform::terminal::probe_kitty(&shared)?;
+    let (width, height) = hume_platform::screen::dimensions(&shared)?;
     let mut editor = editor::Editor::start(
         &files,
         editor::Driver::Terminal {
             kitty_enabled,
             wake,
+            size: hume_grid::Rect::new(0, 0, width, height),
         },
         hume_platform::dirs::Dirs::from_env(&cwd),
         config,

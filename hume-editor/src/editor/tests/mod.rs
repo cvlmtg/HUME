@@ -76,7 +76,14 @@ pub(crate) fn test_cwd() -> PathBuf {
 
 /// `Editor::open(path, ..)` with no-op wakeup and no resolved directories.
 fn open_headless(path: Option<PathBuf>) -> Editor {
-    Editor::open(path, std::sync::Arc::new(|| {}), Dirs::none(), test_cwd()).expect("open")
+    Editor::open(
+        path,
+        crate::editor::lifecycle::HEADLESS_TERMINAL,
+        std::sync::Arc::new(|| {}),
+        Dirs::none(),
+        test_cwd(),
+    )
+    .expect("open")
 }
 
 /// Build a kitty-protocol-enabled editor for testing Ctrl-motion bindings.
@@ -517,9 +524,9 @@ fn mouse_wheel_at(x: u16, y: u16, down: bool) -> TerminalEvent {
     })
 }
 
-/// [`mouse_wheel_at`] at `(0, 0)`: every single-pane test's harness never
-/// populates `last_pane_area`, so `(0, 0)` misses every pane rect and takes
-/// `mouse_scroll`'s focused-pane fallback, same as before hit-testing existed.
+/// [`mouse_wheel_at`] at `(0, 0)`. With no frame drawn it misses every pane
+/// and takes `mouse_scroll`'s focused-pane fallback; after one it lands on
+/// the top-left pane.
 fn mouse_wheel(down: bool) -> TerminalEvent {
     mouse_wheel_at(0, 0, down)
 }
@@ -606,7 +613,7 @@ fn sign_column_width(ed: &Editor, pid: PaneId) -> u8 {
 }
 
 /// Runs the write-side pipeline (`prepare_frame`) at a given terminal size,
-/// needed before any test that depends on `panel_geometry`/`last_pane_area`
+/// needed before any test that depends on the synced view of a frame
 /// (paging, scroll clamping, the synced view), or on a decoration store
 /// write reaching its pane-side `Arc` (signs, highlights, virtual lines):
 /// `settle` runs any queued hook (e.g. `on-diagnostics-changed`) that writes
@@ -614,9 +621,17 @@ fn sign_column_width(ed: &Editor, pid: PaneId) -> u8 {
 /// Returns the `RenderContext` `prepare_frame` filled. Most callers drop it,
 /// but a test that needs `cursor_content_pos` back reads it off the result
 /// instead of re-driving the same three calls by hand.
+/// Draw a frame at the terminal size `ed` last recorded, as the run loop
+/// does before it reads each event: a mouse event hit-tests against the
+/// layout a frame drew.
+fn draw(ed: &mut Editor) {
+    let area = ed.view.terminal_area();
+    ed.render_to_buf(area);
+}
+
 fn frame(ed: &mut Editor, width: u16, height: u16) -> hume_engine::pipeline::RenderContext {
     let mut ctx = hume_engine::pipeline::RenderContext::new();
-    ed.sync_viewport_dims(width, height);
+    ed.resize_terminal(width, height);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     ctx
@@ -887,9 +902,9 @@ impl Editor {
     /// sensible defaults (Normal mode, default colors, no file path, etc.).
     /// Use the builder methods below to override specific fields.
     pub(crate) fn for_testing(doc: Buffer) -> Self {
-        // Minimal engine view for test contexts. Uses 80×24 with tab_width=4.
         let theme = crate::editor::theme::fallback_theme();
-        let (mut engine_view, focus_key) = EngineView::new(theme);
+        let (mut engine_view, focus_key) =
+            EngineView::new(theme, super::lifecycle::HEADLESS_TERMINAL);
         let (views, tabline_view) = super::lifecycle::register_chrome(&mut engine_view);
         let buffer_id = engine_view.buffers.insert(());
         let settings = EditorSettings::default();

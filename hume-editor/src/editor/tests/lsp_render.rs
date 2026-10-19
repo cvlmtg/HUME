@@ -62,7 +62,7 @@ fn setup_with_diagnostics(content: &str, diags: &[DiagFixture]) -> DiagCtx {
 
     let mut ed = rig.ed;
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
@@ -123,7 +123,7 @@ fn severity_floor_hides_less_severe_diagnostics() {
     )
     .unwrap();
     let mut ctx = RenderContext::new();
-    c.ed.sync_viewport_dims(80, 25);
+    c.ed.resize_terminal(80, 25);
     c.ed.settle();
     c.ed.prepare_frame(&mut ctx);
 
@@ -261,7 +261,7 @@ fn extra_highlight_gets_its_runtime_interned_scope() {
 
     let pid = ed.view.focused_pane();
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
@@ -299,7 +299,7 @@ fn extra_highlight_scope_is_cached_not_reinterned() {
 
     let pid = ed.view.focused_pane();
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
@@ -339,7 +339,7 @@ fn overlapping_extra_highlights_from_two_sources_resolve_alphabetically() {
 
     let pid = ed.view.focused_pane();
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 

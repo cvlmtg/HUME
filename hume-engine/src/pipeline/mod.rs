@@ -11,12 +11,14 @@ use crate::style::StyleScratch;
 use crate::theme::{ScopeRegistry, Theme};
 use crate::types::{EditorMode, ResolvedStyle, ScopeId};
 
+mod geometry;
 mod layout;
 mod pane_pool;
 mod pane_render;
 #[cfg(test)]
 mod tests;
 
+pub use geometry::{ChromeRows, ContentWidth, DrawnLayout, PaneSize, ScreenLayout};
 use layout::{
     ARM_E, ARM_N, ARM_S, ARM_W, collect_seam_arms, focused_pane_corners, focused_seam_segment,
     junction_glyph,
@@ -85,6 +87,9 @@ pub struct FrameInputs<'a, R, S> {
     /// Same per-frame-borrow contract as `get_rope`.
     pub get_syntax: S,
     pub statusline: &'a dyn ChromeProvider,
+    /// Where the chrome and the panes go this frame. Its terminal area is
+    /// the grid's size.
+    pub layout: ScreenLayout,
 }
 
 // ---------------------------------------------------------------------------
@@ -218,36 +223,16 @@ pub struct EngineView {
     /// `None` until [`Self::set_chrome`], when no chrome but the statusline
     /// can take rows.
     chrome: Option<Chrome>,
-    /// Rows the tab bar takes, as of the last [`Self::set_pane_geometry`].
-    tabbar_rows: u16,
-    /// Rows each bottom band takes, as of the last
-    /// [`Self::set_pane_geometry`]. The panes shrink by their sum.
-    bottom_band_rows: [u16; BOTTOM_BANDS],
     /// Floating overlays (popups, menus, the picker) painted once over the
     /// whole pane area after every pane and seam. List order is z-order: the
     /// last one paints on top.
     pub overlays: Vec<Box<dyn OverlayProvider>>,
-    /// Terminal area left to panes by the chrome, as of the last
-    /// [`Self::set_pane_geometry`]. Pane-focus/split commands run between
-    /// frames with no terminal handle of their own, so they recompute
-    /// geometry from this plus `layout`
-    /// (see `pane_rects`/`focused_rect`) rather than trusting a stored rect
-    /// list. A handful of panes makes the DFS cheap enough that there is no
-    /// cache to go stale when a command mutates `layout` mid-frame. Zero
-    /// area until the first terminal size arrives.
-    pub last_pane_area: Rect,
-    /// Raw terminal area (before chrome subtraction) that `render` draws
-    /// into, written only by [`Self::resize`].
-    /// Distinct from `last_pane_area`: chrome that reserves rows off a
-    /// fraction of this raw height (a bottom band's ceiling) needs the
-    /// *un-subtracted* figure, since `last_pane_area` already has the
-    /// bands' reserved rows folded out of it.
+    /// The layout the last [`Self::render`] drew, written only there.
+    drawn: DrawnLayout,
+    /// The terminal's whole area, written only by [`Self::resize`]. Every
+    /// layout is derived from it when read ([`Self::screen_layout`]), so
+    /// nothing else about the screen is stored.
     last_terminal_area: Rect,
-    /// Whether pane splits reserve a 1-cell seam column/row, which `render`
-    /// paints a divider into. Mirrors the `pane-dividers` setting. Set
-    /// alongside `last_pane_area`; consulted by the same recompute helpers.
-    /// Non-focused panes dim either way: dimming is the focus cue.
-    pub reserve_seam: bool,
 }
 
 /// Blend fraction used to dim non-focused panes toward `ui.background`: 0.0
@@ -255,8 +240,9 @@ pub struct EngineView {
 const PANE_DIM_FACTOR: f32 = 0.5;
 
 impl EngineView {
-    /// A view with no panes yet, and the one [`FocusKey`] for it.
-    pub fn new(theme: Theme) -> (Self, FocusKey) {
+    /// A view of a `terminal`-sized screen with no panes yet, and the one
+    /// [`FocusKey`] for it.
+    pub fn new(theme: Theme, terminal: Rect) -> (Self, FocusKey) {
         let panes = PanePool::with_key();
         let buffers = SlotMap::with_key();
         let mut registry = ScopeRegistry::new();
@@ -272,50 +258,15 @@ impl EngineView {
             registry,
             default_gutter_scope,
             chrome: None,
-            tabbar_rows: 0,
-            bottom_band_rows: [0; BOTTOM_BANDS],
             overlays: Vec::new(),
-            last_pane_area: Rect::default(),
-            last_terminal_area: Rect::default(),
-            reserve_seam: true,
+            drawn: DrawnLayout::default(),
+            last_terminal_area: terminal,
         };
         (view, FocusKey(focus_key))
     }
 
     fn check_key(&self, key: &FocusKey) {
         assert_eq!(key.0, self.focus_key, "FocusKey from another EngineView");
-    }
-
-    /// Recompute the current pane partition from `layout` and
-    /// `last_pane_area`. Cheap even with several splits open: recomputing
-    /// beats keeping a cross-frame cache in sync with every layout mutation.
-    pub fn pane_rects(&self) -> Vec<(PaneId, Rect)> {
-        let mut out = Vec::new();
-        self.layout
-            .tree()
-            .collect_rects_into(self.last_pane_area, self.reserve_seam, &mut out);
-        out
-    }
-
-    /// The focused pane's current on-screen rect: zero-sized before the
-    /// first `prepare_frame`.
-    pub fn focused_rect(&self) -> Rect {
-        self.layout
-            .focused_rect(self.last_pane_area, self.reserve_seam)
-    }
-
-    /// The focused pane's rect after [`Self::split_focused`] on `direction`,
-    /// without splitting (see `FocusedLayout::predicted_split_rect`).
-    pub fn focused_split_rect(&self, direction: Direction) -> Rect {
-        self.layout
-            .predicted_split_rect(self.last_pane_area, self.reserve_seam, direction)
-    }
-
-    /// The nearest pane on `side` of the focused one on screen, or `None`
-    /// when no pane lies that way (see `FocusedLayout::focused_neighbor`).
-    pub fn focused_neighbor(&self, side: Side) -> Option<PaneId> {
-        self.layout
-            .focused_neighbor(self.last_pane_area, self.reserve_seam, side)
     }
 
     /// The pane one step from the focused one in layout order, wrapping at
@@ -335,114 +286,37 @@ impl EngineView {
         self.last_terminal_area
     }
 
-    /// Record the terminal's area. The layout stays the one computed for the
-    /// previous area until the caller's next [`Self::set_pane_geometry`].
+    /// Record the terminal's area.
     pub fn resize(&mut self, terminal: Rect) {
         self.last_terminal_area = terminal;
     }
 
-    /// Lay the chrome out against [`Self::terminal_area`]: `tabbar_rows` at the
-    /// top ([`Self::tabbar_area`]), `band_rows[i]` for the `i`th bottom band
-    /// directly above the statusline, and the statusline row at the bottom
-    /// (always). The panes take what is left, and every active pane is sized
-    /// to it when that moved. Returns whether the pane partition moved (a new
-    /// pane area or seam setting), the case in which an inactive tab's panes
-    /// need [`Self::resync_viewport_dims_for`] too.
-    ///
-    /// The rows are stored even when the partition stays put: on a terminal
-    /// too small for content the pane area is empty whatever the chrome
-    /// takes, and `render` still places the chrome from them.
-    pub fn set_pane_geometry(
-        &mut self,
-        tabbar_rows: u16,
-        band_rows: [u16; BOTTOM_BANDS],
-        reserve_seam: bool,
-    ) -> bool {
+    /// The layout of [`Self::terminal_area`] with the chrome taking `rows`,
+    /// which the caller computes from the models the chrome shows. Its one
+    /// caller is the editor's `EditorState::screen_layout`; `clippy.toml`
+    /// bans every other.
+    pub fn screen_layout(&self, rows: ChromeRows, reserve_seam: bool) -> ScreenLayout {
         assert!(
-            self.chrome.is_some() || (tabbar_rows == 0 && band_rows == [0; BOTTOM_BANDS]),
+            self.chrome.is_some() || rows == ChromeRows::default(),
             "chrome rows without chrome painters"
         );
-        self.tabbar_rows = tabbar_rows;
-        self.bottom_band_rows = band_rows;
-        let area = self.last_terminal_area;
-        let above_statusline = self.area_above_statusline();
-        let bands_height: u16 = band_rows.iter().sum();
-        let pane_area = if bands_height < above_statusline.height {
-            Rect {
-                height: above_statusline.height - bands_height,
-                ..above_statusline
-            }
-        } else {
-            // Degenerate: terminal too small to fit chrome + content. Note
-            // `y` is left at `area.y`, not offset by the tab bar. The
-            // tab bar still paints here whenever `tabbar_area`'s own clamp
-            // leaves it a nonzero height (`render`'s gate is just
-            // `tabbar_area.height > 0`; on a terminal too short even for
-            // that clamp, e.g. a single row, the tab bar yields to the
-            // statusline and paints nothing). Callers that need to know
-            // whether a row belongs to the tab bar must use `tabbar_area`
-            // directly rather than comparing against this rect's `y`.
-            Rect { height: 0, ..area }
-        };
-        let moved = self.last_pane_area != pane_area || self.reserve_seam != reserve_seam;
-        if moved {
-            self.last_pane_area = pane_area;
-            self.reserve_seam = reserve_seam;
-            self.resync_viewport_dims();
-        }
-        moved
-    }
-
-    /// Re-partition `last_pane_area` against the *current* `layout` and
-    /// write each active pane's `viewport.width`/`height`:
-    /// [`pane_rects`](Self::pane_rects)'s own partition, applied rather than
-    /// merely read back.
-    ///
-    /// Every method that changes the active layout ends here, so a reader
-    /// between frames (a scroll command chained onto a split, a tab switch)
-    /// sees the sizes the next frame will draw. A no-op before the first
-    /// frame (`last_pane_area` still its zero default): nothing to
-    /// re-partition onto yet, and the first real frame sizes every pane
-    /// from scratch regardless.
-    fn resync_viewport_dims(&mut self) {
-        if self.last_pane_area.width == 0 && self.last_pane_area.height == 0 {
-            return;
-        }
-        let rects = self.pane_rects();
-        self.write_viewport_dims(&rects);
-    }
-
-    /// The active-layout resize, generalized to any `LayoutTree`. Call
-    /// this once per *inactive* tab, on every resize, so a background-tab
-    /// pane's viewport stays current continuously instead of only catching
-    /// up the moment its tab becomes active. An inactive tab's
-    /// `LayoutTree` is otherwise immutable while inactive (splits/closes
-    /// only ever touch the active `EngineView::layout`), so a resize is the
-    /// only event that can make its panes' geometry stale.
-    pub fn resync_viewport_dims_for(&mut self, layout: &LayoutTree) {
-        if self.last_pane_area.width == 0 && self.last_pane_area.height == 0 {
-            return;
-        }
-        let mut rects = Vec::new();
-        layout.collect_rects_into(self.last_pane_area, self.reserve_seam, &mut rects);
-        self.write_viewport_dims(&rects);
-    }
-
-    /// Write each `(PaneId, Rect)` pair's dims into `self.panes`: the
-    /// shared tail [`Self::resync_viewport_dims`] and
-    /// [`Self::resync_viewport_dims_for`] reduce to, once each has its own
-    /// partition in hand.
-    fn write_viewport_dims(&mut self, rects: &[(PaneId, Rect)]) {
-        for &(pid, rect) in rects {
-            let vp = &mut self.panes[pid].viewport;
-            vp.width = rect.width;
-            vp.height = rect.height;
-        }
+        ScreenLayout::new(self.last_terminal_area, rows, reserve_seam)
     }
 
     /// The active tab's tree.
     pub fn layout(&self) -> &LayoutTree {
         self.layout.tree()
+    }
+
+    /// The active tab's layout, for sizing its panes through a
+    /// [`ScreenLayout`].
+    pub fn focused_layout(&self) -> &FocusedLayout {
+        &self.layout
+    }
+
+    /// The layout the last [`Self::render`] drew, for hit tests.
+    pub fn drawn(&self) -> &DrawnLayout {
+        &self.drawn
     }
 
     /// The active tab's focused pane, always a leaf of [`Self::layout`].
@@ -455,14 +329,12 @@ impl EngineView {
     /// would leak once no tree names them. A caller discarding one with no
     /// real pane in it says so explicitly with `let _ = `.
     ///
-    /// The incoming panes are sized to the current pane area and their line
-    /// stores rewound: they may date from an older frame (see
-    /// [`Self::begin_frame`]).
+    /// The incoming panes' line stores are rewound: they may date from an
+    /// older frame (see [`Self::begin_frame`]).
     #[must_use]
     pub fn replace_layout(&mut self, key: &FocusKey, layout: FocusedLayout) -> FocusedLayout {
         self.check_key(key);
         let outgoing = std::mem::replace(&mut self.layout, layout);
-        self.resync_viewport_dims();
         self.begin_frame();
         outgoing
     }
@@ -489,26 +361,20 @@ impl EngineView {
     /// Splice a freshly inserted, not-yet-attached pane into the active
     /// tab's tree beside the focused pane, which keeps focus.
     pub fn split_focused(&mut self, pane: UnattachedPane, direction: Direction) -> PaneId {
-        let pid = self.layout.split_focused(pane, direction);
-        self.resync_viewport_dims();
-        pid
+        self.layout.split_focused(pane, direction)
     }
 
     /// Prune the focused pane from the active tab's tree. Focus moves to the
     /// leftmost leaf of the sibling that takes its place.
     pub fn close_focused(&mut self, key: &FocusKey) -> Result<DetachedPane, SinglePane> {
         self.check_key(key);
-        let detached = self.layout.close_focused()?;
-        self.resync_viewport_dims();
-        Ok(detached)
+        self.layout.close_focused()
     }
 
     /// Rotate the row or column the focused pane sits in by `steps` places.
     /// Focus stays on the same pane.
     pub fn rotate_focused(&mut self, rotation: Rotation, steps: usize) -> Result<(), SinglePane> {
-        self.layout.rotate_focused(rotation, steps)?;
-        self.resync_viewport_dims();
-        Ok(())
+        self.layout.rotate_focused(rotation, steps)
     }
 
     /// Insert a pane into the pool, returning the [`UnattachedPane`] token
@@ -550,59 +416,9 @@ impl EngineView {
         }
     }
 
-    /// The tab bar's rect: the laid-out tab bar rows at the top of
-    /// [`Self::terminal_area`], `height: 0` when hidden. Single source of truth
-    /// for that one chrome row: `render`'s paint and the editor's
-    /// `tabline_click` hit test both read it (the pane area's degenerate
-    /// branch in [`Self::set_pane_geometry`] does *not* offset `y`, so a
-    /// caller asking whether a row belongs to the tab bar must use this).
-    ///
-    /// Clamped to end at [`Self::statusline_area`]: the statusline
-    /// unconditionally claims the bottom row, so on a terminal too short to
-    /// fit both, the tab bar must yield that row rather than have `render`
-    /// paint the statusline over it while this rect (and `tabline_click`'s
-    /// hit test) still claim it.
-    pub fn tabbar_area(&self) -> Rect {
-        let area = self.last_terminal_area;
-        Rect {
-            y: area.y,
-            height: self.tabbar_rows.min(self.statusline_area().y - area.y),
-            ..area
-        }
-    }
-
-    /// The statusline's rect: the bottom row of [`Self::terminal_area`],
-    /// `height: 0` on a terminal with no rows. Single source of truth for
-    /// that row: the tab bar, the bottom bands and the pane area all end
-    /// above it.
-    pub fn statusline_area(&self) -> Rect {
-        let area = self.last_terminal_area;
-        let height = area.height.min(1);
-        Rect {
-            y: area.bottom() - height,
-            height,
-            ..area
-        }
-    }
-
-    /// The rows between the tab bar and the statusline: the panes and every
-    /// bottom band. A box anchored to the statusline row, such as the command
-    /// line's completion menu, stays inside it and covers the bands.
-    pub fn area_above_statusline(&self) -> Rect {
-        let top = self.tabbar_area().bottom();
-        Rect {
-            y: top,
-            height: self.statusline_area().y - top,
-            ..self.last_terminal_area
-        }
-    }
-
-    /// Render all panes and chrome into `grid`, as laid out by the last
-    /// [`Self::set_pane_geometry`] against [`Self::terminal_area`], which
-    /// `grid` must match in size.
-    ///
-    /// Layout: the tab bar (if present) occupies the top row, the statusline
-    /// always occupies the bottom row. Panes fill the remaining area.
+    /// Render all panes and chrome into `grid`, as laid out by
+    /// [`FrameInputs::layout`], whose terminal area `grid` must match in
+    /// size, and record that layout as [`Self::drawn`].
     ///
     /// `ctx`'s [`pane_settings`](RenderContext::set_pane_settings) must carry
     /// an entry for every pane this call will draw.
@@ -619,15 +435,17 @@ impl EngineView {
             get_rope,
             get_syntax,
             statusline,
+            layout,
         } = input;
-        let area = self.last_terminal_area;
+        let area = layout.terminal_area();
         assert_eq!(
             grid.size(),
             (area.width, area.height),
             "grid sized for another terminal area"
         );
-        let pane_area = self.last_pane_area;
-        let draw_dividers = self.reserve_seam;
+        self.drawn = DrawnLayout::new(layout);
+        let pane_area = layout.pane_area();
+        let draw_dividers = layout.reserves_seam();
         let focused_pane_id = self.layout.focused();
         let scratch = &mut ctx.frame;
         let pane_settings = &ctx.pane_settings;
@@ -648,7 +466,7 @@ impl EngineView {
 
             if let Some(chrome) = &self.chrome {
                 // ── Render tab bar ────────────────────────────────────────────
-                let tabbar_area = self.tabbar_area();
+                let tabbar_area = layout.tabbar_area();
                 if tabbar_area.height > 0 {
                     chrome.tabbar.render(tabbar_area, &self.theme, &mut canvas);
                 }
@@ -660,8 +478,9 @@ impl EngineView {
                 // band even when the terminal is too small to also fit pane
                 // content (the pane area's degenerate branch already
                 // collapses `height` to 0 there).
-                let mut bottom_edge = self.statusline_area().y;
-                for (painter, &rows) in chrome.bottom_bands.iter().zip(&self.bottom_band_rows) {
+                let mut bottom_edge = layout.statusline_area().y;
+                for (painter, &rows) in chrome.bottom_bands.iter().zip(&layout.chrome_rows().bands)
+                {
                     if rows == 0 {
                         continue;
                     }
@@ -678,7 +497,7 @@ impl EngineView {
             }
 
             // ── Render statusline ───────────────────────────────────────────────
-            statusline.render(self.statusline_area(), &self.theme, &mut canvas);
+            statusline.render(layout.statusline_area(), &self.theme, &mut canvas);
         }
 
         // ── Compute pane rects once; reuse for panes and overlays ─────────────

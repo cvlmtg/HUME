@@ -66,15 +66,17 @@ fn content_pos_agrees_with_the_actual_render_for_a_top_line_before_block() {
     let mut vp = ed.view.panes[pid].viewport.clone();
     let cursor_char = ed.current_view().primary().head();
     let bid = ed.view.panes[pid].buffer_id();
+    let size = ed.pane_size(pid);
     let Editor { state, view, .. } = &mut ed;
     let key = state.format_key(&view.panes[pid]);
     let (mut dlm, _) = crate::editor::commands::pane_display_lines(
         state.buffers.get(bid),
         &mut view.panes[pid],
         key,
+        size,
     );
 
-    let pos = crate::editor::cursor::content_pos(&mut vp, &mut dlm, cursor_char);
+    let pos = crate::editor::cursor::content_pos(size, &mut vp, &mut dlm, cursor_char);
     assert_eq!(
         pos.map(|(_, row)| row),
         Some(1),
@@ -93,7 +95,7 @@ fn mouse_wheel_moves_one_display_line_at_a_time_through_a_before_block() {
     // notch alone already reaches.
     let mut ed = editor_with_before_line();
     ed.state.settings.mouse_scroll_lines = 1;
-    ed.viewport_mut().height = 2;
+    ed.resize_terminal(80, 3);
 
     let scroll_down = || mouse_wheel(true);
 
@@ -455,7 +457,16 @@ fn view_scroll_cursor_follow_counts_virtual_lines_toward_its_budget() {
                 3,
             )));
 
-        scroll_view(&mut ed.state, &mut ed.view, pid, 5, true, MotionMode::Move);
+        let size = ed.pane_size(pid);
+        scroll_view(
+            &mut ed.state,
+            &mut ed.view,
+            pid,
+            size,
+            5,
+            true,
+            MotionMode::Move,
+        );
         let cursor_line = ed
             .doc()
             .text()
@@ -511,15 +522,18 @@ fn content_pos_counts_an_inline_hints_extra_wrap_display_line() {
     let mut vp = ed.view.panes[pid].viewport.clone();
     let cursor_char = ed.current_view().primary().head();
     let bid = ed.view.panes[pid].buffer_id();
+    let size = ed.pane_size(pid);
     let Editor { state, view, .. } = &mut ed;
     let key = state.format_key(&view.panes[pid]);
     let (mut dlm, _) = crate::editor::commands::pane_display_lines(
         state.buffers.get(bid),
         &mut view.panes[pid],
         key,
+        size,
     );
     assert_eq!(
-        crate::editor::cursor::content_pos(&mut vp, &mut dlm, cursor_char).map(|(_, row)| row),
+        crate::editor::cursor::content_pos(size, &mut vp, &mut dlm, cursor_char)
+            .map(|(_, row)| row),
         Some(2),
         "content_pos must count the hint's extra display line, as the renderer does"
     );

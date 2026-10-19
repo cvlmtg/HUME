@@ -38,7 +38,7 @@ fn full_message_reaches_the_render_provider_untruncated() {
     );
 
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(60, 8);
+    ed.resize_terminal(60, 8);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     let pid = ed.view.focused_pane();
@@ -89,7 +89,7 @@ fn two_entries_from_one_source_on_the_same_line_collapse_to_the_last_one() {
     );
 
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(60, 8);
+    ed.resize_terminal(60, 8);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     let pid = ed.view.focused_pane();
@@ -144,7 +144,7 @@ fn two_sources_on_the_same_line_break_ties_alphabetically_first() {
     );
 
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(60, 8);
+    ed.resize_terminal(60, 8);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     let pid = ed.view.focused_pane();

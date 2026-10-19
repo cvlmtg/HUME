@@ -11,7 +11,7 @@
 
 use termina::event::KeyCode;
 
-use hume_engine::pipeline::{BufferId, EngineView, PaneId};
+use hume_engine::pipeline::{BufferId, EngineView, PaneId, ScreenLayout};
 use hume_engine::theme::{ScopeRegistry, Theme};
 use hume_engine::types::EditorMode;
 use hume_treesitter::registry::LanguageRegistry;
@@ -191,14 +191,20 @@ impl Editor {
     /// [`Editor::sync_minibuf_completion_view`] instead, into its own slot.
     ///
     /// Called every frame from `prepare_frame`'s overlay sync after its
-    /// scroll step, with the cursor cell that step resolved as
-    /// `cursor_cell`, same as [`Self::sync_popup_view`]/[`Self::sync_menu_view`].
-    pub(in crate::editor) fn sync_completion_menu_view(&mut self, cursor_cell: Option<(u16, u16)>) {
+    /// scroll step, with the frame's layout and the cursor cell that step
+    /// resolved, same as [`Self::sync_popup_view`]/[`Self::sync_menu_view`].
+    pub(in crate::editor) fn sync_completion_menu_view(
+        &mut self,
+        screen: &ScreenLayout,
+        cursor_cell: Option<(u16, u16)>,
+    ) {
         let buffer_session_open = self.state.input.buffer_completion().is_some();
         if !buffer_session_open && self.state.views.completion_menu.read().is_none() {
             return;
         }
-        let (menu, doc) = self.resolve_completion_overlays(cursor_cell).unzip();
+        let (menu, doc) = self
+            .resolve_completion_overlays(screen, cursor_cell)
+            .unzip();
         self.state.views.completion_doc.set(doc.flatten());
         self.state.views.completion_menu.set(menu);
     }
@@ -209,9 +215,11 @@ impl Editor {
     /// also brings the box's model up to the selection (see
     /// [`Self::resolve_completion_doc`]), so paging after a selection move
     /// pages the new candidate's documentation. `None` with no session open
-    /// or its anchor out of view. `cursor_cell` is [`popup_placement`]'s.
+    /// or its anchor out of view. `screen` and `cursor_cell` are
+    /// [`popup_placement`]'s.
     fn resolve_completion_overlays(
         &mut self,
+        screen: &ScreenLayout,
         cursor_cell: Option<(u16, u16)>,
     ) -> Option<(
         hume_ui::popup::PopupState,
@@ -233,7 +241,7 @@ impl Editor {
         let (_, bid) = self.state.input.completion_owner()?;
         let session = self.state.input.buffer_completion()?;
         let anchor = session.menu_anchor(self.state.buffers.get(bid).text())?;
-        let placement = popup_placement(self, cursor_cell, anchor)?;
+        let placement = popup_placement(self, screen, cursor_cell, anchor)?;
 
         let session = self.state.input.buffer_completion()?;
         let menu = |with_detail| {
@@ -396,8 +404,9 @@ fn completion_input_buffer(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
         .is_some_and(|l| !l.session.is_empty());
     if has_matches {
         if let Some(down) = half_page_key(&key) {
+            let screen = ed.state.screen_layout(&mut ed.view);
             let rows = ed
-                .resolve_completion_overlays(None)
+                .resolve_completion_overlays(&screen, None)
                 .and_then(|(_, doc)| doc)
                 .as_ref()
                 .map(boxed_popup_rows);

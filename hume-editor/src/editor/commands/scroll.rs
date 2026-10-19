@@ -1,17 +1,17 @@
 use crate::editor::registry::Count;
 use hume_engine::display_lines::carry;
-use hume_engine::pipeline::{EngineView, PaneId};
+use hume_engine::pipeline::{EngineView, PaneId, PaneSize};
 use hume_ops::MotionMode;
 
 use super::super::EditorState;
 use super::super::doc_ops;
-use super::{CommandPane, pane_display_lines, pane_height, sticky_landing};
+use super::{CommandPane, pane_display_lines, sticky_landing};
 use crate::editor::error::CommandError;
 use hume_editing::selection::Selection;
 
 // ── Page / half-page scroll ───────────────────────────────────────────────────
 //
-// Uses `view.height` (or half of it) as the move count rather than the user's
+// Uses the pane's height (or half of it) as the move count rather than the user's
 // numeric prefix.
 
 /// Scroll pane `pid` `count` display lines and carry every cursor the
@@ -34,6 +34,7 @@ pub(in crate::editor) fn scroll_view(
     state: &mut EditorState,
     view: &mut EngineView,
     pid: PaneId,
+    size: PaneSize,
     count: usize,
     down: bool,
     mode: MotionMode,
@@ -43,8 +44,8 @@ pub(in crate::editor) fn scroll_view(
     let key = state.format_key(&view.panes[pid]);
     let scroll_margin = state.settings.scroll_margin;
     let (mut dlm, viewport) =
-        pane_display_lines(state.buffers.get(buf_id), &mut view.panes[pid], key);
-    let Some(geo) = viewport.geometry(scroll_margin) else {
+        pane_display_lines(state.buffers.get(buf_id), &mut view.panes[pid], key, size);
+    let Some(geo) = size.geometry(scroll_margin) else {
         return; // a collapsed pane has nothing to scroll and nowhere to carry a cursor
     };
     let delta = if down {
@@ -111,9 +112,10 @@ fn scroll_page(
     half: bool,
     down: bool,
 ) -> Result<(), CommandError> {
-    let height = pane_height(state, view, pid);
+    let size = state.pane_size(view, pid);
+    let height = usize::from(size.height());
     let count = if half { half_page(height) } else { height };
-    scroll_view(state, view, pid, count, down, mode);
+    scroll_view(state, view, pid, size, count, down, mode);
     Ok(())
 }
 
@@ -160,6 +162,7 @@ fn cmd_view_scroll_to_display_line(
     state: &mut EditorState,
     view: &mut EngineView,
     pid: PaneId,
+    size: PaneSize,
     target_display_line: usize,
 ) {
     let buf_id = view.panes[pid].buffer_id();
@@ -173,9 +176,9 @@ fn cmd_view_scroll_to_display_line(
     let key = state.format_key(&view.panes[pid]);
     let scroll_margin = state.settings.scroll_margin;
     let (mut dlm, viewport) =
-        pane_display_lines(state.buffers.get(buf_id), &mut view.panes[pid], key);
+        pane_display_lines(state.buffers.get(buf_id), &mut view.panes[pid], key, size);
     // A collapsed pane has no geometry, and nowhere to align a cursor to.
-    let Some(geo) = viewport.geometry(scroll_margin) else {
+    let Some(geo) = size.geometry(scroll_margin) else {
         return;
     };
     let cursor_pos = dlm.locate_display_line(cursor_char);
@@ -187,8 +190,9 @@ fn cmd_view_scroll_to_display_line(
 /// that wants the same effect without going through a native `EditorCmd`'s
 /// `Result`.
 pub(in crate::editor) fn view_center(state: &mut EditorState, view: &mut EngineView, pid: PaneId) {
-    let target = pane_height(state, view, pid) / 2;
-    cmd_view_scroll_to_display_line(state, view, pid, target);
+    let size = state.pane_size(view, pid);
+    let target = usize::from(size.height()) / 2;
+    cmd_view_scroll_to_display_line(state, view, pid, size, target);
 }
 
 /// Pin the head at the viewport's top display line, like `z k`. Infallible core
@@ -198,7 +202,8 @@ pub(in crate::editor::commands) fn view_top(
     view: &mut EngineView,
     pid: PaneId,
 ) {
-    cmd_view_scroll_to_display_line(state, view, pid, 0);
+    let size = state.pane_size(view, pid);
+    cmd_view_scroll_to_display_line(state, view, pid, size, 0);
 }
 
 pub(in crate::editor) fn cmd_view_center(
@@ -230,7 +235,8 @@ pub(in crate::editor) fn cmd_view_bottom(
     _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let target = pane_height(state, view, t.pid()).saturating_sub(1);
-    cmd_view_scroll_to_display_line(state, view, t.pid(), target);
+    let size = state.pane_size(view, t.pid());
+    let target = usize::from(size.height()).saturating_sub(1);
+    cmd_view_scroll_to_display_line(state, view, t.pid(), size, target);
     Ok(())
 }

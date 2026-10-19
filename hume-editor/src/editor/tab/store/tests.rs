@@ -18,12 +18,12 @@ fn new_seeds_a_single_tab_with_nothing_stashed() {
 
     assert_eq!(store.order(), &[store.current()]);
     assert_eq!(store.len(), 1);
-    assert_eq!(store.inactive_layouts().count(), 0);
+    assert_eq!(store.inactive().count(), 0);
 }
 
 #[test]
 fn open_after_current_inserts_right_after_current_and_switches() {
-    let (mut ev, _) = EngineView::new(Theme::default());
+    let (mut ev, _) = EngineView::new(Theme::default(), hume_grid::Rect::default());
     let l1 = make_layout(&mut ev);
     let l2 = make_layout(&mut ev);
     let mut store = TabStore::new();
@@ -41,7 +41,7 @@ fn open_after_current_inserts_right_after_current_and_switches() {
 
 #[test]
 fn switch_round_trips_each_tab_s_layout_across_three_tabs() {
-    let (mut ev, _) = EngineView::new(Theme::default());
+    let (mut ev, _) = EngineView::new(Theme::default(), hume_grid::Rect::default());
     let l1 = make_layout(&mut ev);
     let l2 = make_layout(&mut ev);
     let l3 = make_layout(&mut ev);
@@ -79,7 +79,7 @@ fn take_panics_on_the_active_tab() {
 
 #[test]
 fn close_current_removes_from_order_and_promotes_survivor() {
-    let (mut ev, _) = EngineView::new(Theme::default());
+    let (mut ev, _) = EngineView::new(Theme::default(), hume_grid::Rect::default());
     let l1 = make_layout(&mut ev);
     let p1 = l1.focused();
     let mut store = TabStore::new();
@@ -92,12 +92,12 @@ fn close_current_removes_from_order_and_promotes_survivor() {
     assert_eq!(incoming.focused(), p1);
     assert_eq!(store.order(), &[t1]);
     assert_eq!(store.current(), t1);
-    assert_eq!(store.inactive_layouts().count(), 0);
+    assert_eq!(store.inactive().count(), 0);
 }
 
 #[test]
 fn step_wraps_around() {
-    let (mut ev, _) = EngineView::new(Theme::default());
+    let (mut ev, _) = EngineView::new(Theme::default(), hume_grid::Rect::default());
     let l1 = make_layout(&mut ev);
     let l2 = make_layout(&mut ev);
     let mut store = TabStore::new();
@@ -125,7 +125,7 @@ fn step_is_a_noop_with_one_tab() {
 
 #[test]
 fn adjacent_of_the_rightmost_tab_is_its_left_neighbour() {
-    let (mut ev, _) = EngineView::new(Theme::default());
+    let (mut ev, _) = EngineView::new(Theme::default(), hume_grid::Rect::default());
     let l1 = make_layout(&mut ev);
     let l2 = make_layout(&mut ev);
     let mut store = TabStore::new();
@@ -138,7 +138,7 @@ fn adjacent_of_the_rightmost_tab_is_its_left_neighbour() {
 
 #[test]
 fn adjacent_of_the_leftmost_tab_is_its_right_neighbour() {
-    let (mut ev, _) = EngineView::new(Theme::default());
+    let (mut ev, _) = EngineView::new(Theme::default(), hume_grid::Rect::default());
     let l1 = make_layout(&mut ev);
     let l2 = make_layout(&mut ev);
     let mut store = TabStore::new();
@@ -159,7 +159,7 @@ fn adjacent_refuses_the_last_tab() {
 
 #[test]
 fn focused_panes_reads_the_active_tab_s_focus_from_the_live_layout() {
-    let (mut ev, _) = EngineView::new(Theme::default());
+    let (mut ev, _) = EngineView::new(Theme::default(), hume_grid::Rect::default());
     let l1 = make_layout(&mut ev);
     let l2 = make_layout(&mut ev);
     let [p1, p2] = [&l1, &l2].map(FocusedLayout::focused);

@@ -1,8 +1,6 @@
-use std::num::NonZeroU16;
-
 use ropey::Rope;
 
-use crate::pane::Viewport;
+use crate::pipeline::{ContentWidth, PaneSize};
 use crate::providers::GutterColumn;
 
 // ---------------------------------------------------------------------------
@@ -20,7 +18,7 @@ pub struct PaneGeometry {
     /// Available terminal rows for content, in the content area.
     pub content_height: u16,
     /// Available columns in the content area (viewport width − gutter width).
-    pub content_width: NonZeroU16,
+    pub content_width: ContentWidth,
     /// Total gutter width in columns.
     pub gutter_width: u16,
     /// 0-based index of the last ropey line (`hume_rope::lines::last_ropey_line`),
@@ -63,12 +61,12 @@ pub fn gutter_width_for_line<'a>(
     lane_widths(gutter_columns, max_line).sum()
 }
 
-/// Compute the `PaneGeometry` for a pane given its current state.
+/// Compute the `PaneGeometry` for a pane of `size` showing `rope`.
 ///
 /// This is purely arithmetic, with no heap allocations.
 pub fn compute_viewport<'a>(
     rope: &Rope,
-    viewport: &Viewport,
+    size: PaneSize,
     gutter_columns: impl Iterator<Item = &'a dyn GutterColumn> + 'a,
 ) -> PaneGeometry {
     // 0-based index of the last line: the single source of truth for
@@ -80,8 +78,8 @@ pub fn compute_viewport<'a>(
     let gutter_width = gutter_width_for_line(gutter_columns, last_line_idx);
 
     PaneGeometry {
-        content_height: viewport.height,
-        content_width: viewport.content_width(gutter_width),
+        content_height: size.height(),
+        content_width: ContentWidth::of(size, gutter_width),
         gutter_width,
         last_line_idx,
     }

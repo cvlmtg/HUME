@@ -1,4 +1,4 @@
-use hume_grid::Position;
+use hume_grid::{Position, Rect};
 use std::io;
 use std::sync::Arc;
 use std::time::Duration;
@@ -25,6 +25,8 @@ pub(crate) enum Driver {
     Terminal {
         kitty_enabled: bool,
         wake: Arc<dyn Fn() + Send + Sync>,
+        /// The terminal's size when the editor starts.
+        size: Rect,
     },
     /// A scripted key stream (`--keys`), with no one to answer a prompt. With
     /// no terminal to negotiate the kitty protocol, it assumes full
@@ -32,6 +34,10 @@ pub(crate) enum Driver {
     /// since `handle_normal` strips the Ctrl modifier only under kitty.
     Headless,
 }
+
+/// The screen a headless run (`--keys`, a test) lays its panes out on: a
+/// statusline under an 80x24 pane.
+pub(crate) const HEADLESS_TERMINAL: Rect = Rect::new(0, 0, 80, 25);
 
 /// Register the chrome on `view` and return the views the editor writes it
 /// through: the bottom bands, the floating overlays and the tab bar. None of
@@ -89,6 +95,7 @@ impl Editor {
     /// the process.
     pub(in crate::editor) fn open(
         file_path: Option<std::path::PathBuf>,
+        terminal: Rect,
         wake: Arc<dyn Fn() + Send + Sync>,
         dirs: hume_platform::dirs::Dirs,
         startup_cwd: std::path::PathBuf,
@@ -119,7 +126,7 @@ impl Editor {
 
         // ── Engine view setup ─────────────────────────────────────────────────
         let theme = crate::editor::theme::fallback_theme();
-        let (mut engine_view, focus_key) = EngineView::new(theme);
+        let (mut engine_view, focus_key) = EngineView::new(theme, terminal);
         let (views, tabline_view) = register_chrome(&mut engine_view);
 
         // Insert a buffer: just metadata; the rope is passed at render time.
@@ -206,16 +213,24 @@ impl Editor {
         let (first, rest) = files
             .split_first()
             .map_or((None, &[][..]), |(f, r)| (Some(f), r));
-        let (wake, kitty_enabled, headless): (Arc<dyn Fn() + Send + Sync>, _, _) = match driver {
-            Driver::Terminal {
-                kitty_enabled,
-                wake,
-            } => (wake, kitty_enabled, false),
-            // No event loop to wake: background threads (parse worker, LSP
-            // transport) call this into the void.
-            Driver::Headless => (Arc::new(|| {}), true, true),
-        };
-        let mut editor = Self::open(first.map(|f| f.path.clone()), wake, dirs, startup_cwd)?;
+        let (wake, kitty_enabled, headless, terminal): (Arc<dyn Fn() + Send + Sync>, _, _, _) =
+            match driver {
+                Driver::Terminal {
+                    kitty_enabled,
+                    wake,
+                    size,
+                } => (wake, kitty_enabled, false, size),
+                // No event loop to wake: background threads (parse worker, LSP
+                // transport) call this into the void.
+                Driver::Headless => (Arc::new(|| {}), true, true, HEADLESS_TERMINAL),
+            };
+        let mut editor = Self::open(
+            first.map(|f| f.path.clone()),
+            terminal,
+            wake,
+            dirs,
+            startup_cwd,
+        )?;
         editor.set_kitty_support(kitty_enabled);
         editor.state.headless = headless;
         editor.set_config_source(config);
@@ -288,8 +303,7 @@ impl Editor {
     ///
     /// Runs at the end of every `settle()`. Only [`Self::start`] queues, so
     /// the first `settle()` drains the queue and every later one finds it
-    /// empty. A headless run has no terminal area and centres against
-    /// `Pane::new`'s 80x24.
+    /// empty. A headless run centres against its fixed 80x25 screen.
     pub(in crate::editor) fn apply_startup_positions(&mut self) {
         let placements = std::mem::take(&mut self.startup_positions);
         if placements.is_empty() {
@@ -465,20 +479,19 @@ impl Editor {
             self.report_worker_panics();
 
             // ── 1. Sync geometry, then settle (single sync point) ────────────
-            // `sync_viewport_dims` must run before `settle`: `drain_due_timers`
-            // fires `OnViewportChange` off each pane's *current* bounds, and
-            // this is what makes them current before that drain runs.
-            // `prepare_frame` re-partitions from this same terminal size
-            // again, after `settle`, so a bottom-band height change made
-            // during the drain lands in this frame's render too.
+            // `resize_terminal` must run before `settle`: `drain_due_timers`
+            // fires `OnViewportChange` with each pane's size, which is laid
+            // out against this terminal. `prepare_frame` lays the frame out
+            // after `settle`, so a bottom-band height change made during the
+            // drain lands in this frame's render too.
             //
             // `frame.rs`'s `render_to_buf` mirrors this same
-            // `sync_viewport_dims` → `settle` → `prepare_frame` sequence for
+            // `resize_terminal` → `settle` → `prepare_frame` sequence for
             // snapshot tests. A step added to this loop needs the same step
             // added there, or every snapshot renders a frame this loop no
             // longer produces.
             let (term_width, term_height) = screen.size()?;
-            self.sync_viewport_dims(term_width, term_height);
+            self.resize_terminal(term_width, term_height);
             self.settle();
             // Observed here, downstream of `settle()`, not right after
             // dispatch. `should_quit` is also checked after dispatch below
@@ -491,7 +504,7 @@ impl Editor {
             if self.state.should_quit {
                 break;
             }
-            self.prepare_frame(&mut ctx);
+            let frame_layout = self.prepare_frame(&mut ctx);
 
             // ── 2. Render ─────────────────────────────────────────────────────
             // Compute terminal cursor position before the draw closure to avoid
@@ -502,7 +515,7 @@ impl Editor {
                 // cursor in the statusline at the minibuf edit position. Always a
                 // bar: HUME's prompt modes have no cursor-shape option of their
                 // own, unlike the document's own Insert-mode cursor below.
-                let statusline_row = self.view.statusline_area().y;
+                let statusline_row = frame_layout.statusline_area().y;
                 Some(Position::new(mb.statusline_cursor_x(), statusline_row))
             } else {
                 // Reads `cursor_shape()` directly rather than through
@@ -523,11 +536,10 @@ impl Editor {
                     // scroll* had to answer this question anyway, so re-deriving
                     // it here would walk the same display lines a second time.
                     //
-                    // `prepare_frame` ran earlier this iteration and stored the
-                    // terminal area; recompute the focused pane's origin from it
-                    // so the cursor lands inside the pane, not at the origin.
+                    // The focused pane's origin in the frame's layout, so the
+                    // cursor lands inside the pane, not at the origin.
                     let gutter_w = self.pane_gutter_width(self.view.focused_pane());
-                    let pane_rect = self.view.focused_rect();
+                    let pane_rect = frame_layout.focused_rect(self.view.focused_layout());
                     ctx.cursor_content_pos.map(|(content_x, row)| {
                         let (x, y) = super::mouse::content_pos_to_screen(
                             content_x, row, gutter_w, pane_rect,
@@ -543,7 +555,7 @@ impl Editor {
             // sequence, hence `let _ =` rather than `?`.
             let _ = hume_platform::terminal::begin_synchronized_update(term);
             let grid = screen.frame(term_width, term_height);
-            self.render_into(grid, &mut ctx);
+            self.render_into(grid, &mut ctx, frame_layout);
             screen.present(cursor_screen)?;
 
             // ── 2b. Cursor shape ──────────────────────────────────────────────

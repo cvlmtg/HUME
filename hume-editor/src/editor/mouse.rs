@@ -6,7 +6,9 @@
 //!
 //! Click coordinates are terminal-absolute, so [`Editor::pane_at_screen_pos`]
 //! first finds the pane under the pointer and translates into its frame
-//! before `screen_to_cluster` resolves the buffer cluster it hits.
+//! before `screen_to_cluster` resolves the buffer cluster it hits. Every hit
+//! test reads the layout the last frame drew (`EngineView::drawn`), so a
+//! click lands on what was on screen even after a band opened or closed.
 //!
 //! The wheel runs `commands::scroll_view` with `count = mouse-scroll-lines`,
 //! like `Ctrl-d`/`Ctrl-u`. It scrolls the pane under the pointer (the focused
@@ -139,7 +141,10 @@ impl Editor {
         if self.state.mouse_drag != Some(pid) {
             return;
         }
-        let Some((pane_x, pane_y)) = rect_relative(self.view.focused_rect(), x, y) else {
+        let Some(rect) = self.view.drawn().pane_rect(self.view.focused_layout(), pid) else {
+            return;
+        };
+        let Some((pane_x, pane_y)) = rect_relative(rect, x, y) else {
             return;
         };
 
@@ -165,10 +170,14 @@ impl Editor {
             .pane_at_screen_pos(x, y)
             .map_or(self.view.focused_pane(), |(pid, _, _)| pid);
         let scroll_lines = self.state.settings.mouse_scroll_lines;
+        // The notch scrolls the pane the next frame draws, which a popup the
+        // notch retired may have grown.
+        let size = self.state.pane_size(&mut self.view, pid);
         commands::scroll_view(
             &mut self.state,
             &mut self.view,
             pid,
+            size,
             scroll_lines,
             down,
             MotionMode::Move,
@@ -186,14 +195,12 @@ impl Editor {
     /// paints from, so a click always lands on the tab it visually appears
     /// to.
     ///
-    /// Hit-tests against `EngineView::tabbar_area` rather than
-    /// `last_pane_area.y`: the pane area's degenerate branch (terminal too
-    /// small to fit chrome + content) leaves `last_pane_area.y` at the
-    /// terminal's own `y`, which would make every row look like the tab bar..
-    /// `tabbar_area` is the one rect that always reports where the bar
-    /// itself is, whether or not there's room left for panes.
+    /// Hit-tests against the drawn tab bar's own rect rather than the pane
+    /// area's `y`: the pane area's degenerate branch (terminal too small to
+    /// fit chrome and content) leaves its `y` at the terminal's top, which
+    /// would make every row look like the tab bar.
     fn tabline_click(&mut self, x: u16, y: u16) -> bool {
-        let bar = self.view.tabbar_area();
+        let bar = self.view.drawn().tabbar_area();
         if !bar.contains(Position::new(x, y)) {
             return false;
         }
@@ -223,11 +230,10 @@ impl Editor {
     /// what `click_to_cluster` and `screen_to_cluster` expect. `None` for a
     /// click outside every pane's rect (statusline, tabline, a divider seam).
     fn pane_at_screen_pos(&self, x: u16, y: u16) -> Option<(PaneId, u16, u16)> {
-        let (pid, rect) = self.view.layout().find_containing(
-            Position::new(x, y),
-            self.view.last_pane_area,
-            self.view.reserve_seam,
-        )?;
+        let (pid, rect) = self
+            .view
+            .drawn()
+            .pane_at(self.view.focused_layout(), Position::new(x, y))?;
         let (pane_x, pane_y) = rect_relative(rect, x, y)?;
         Some((pid, pane_x, pane_y))
     }
@@ -249,10 +255,15 @@ impl Editor {
             )
         };
         let key = self.state.format_key(&self.view.panes[pid]);
+        let size = self
+            .view
+            .drawn()
+            .pane_size(self.view.focused_layout(), pid)?;
         let (mut dlm, viewport) = pane_display_lines(
             self.state.buffers.get(buf_id),
             &mut self.view.panes[pid],
             key,
+            size,
         );
         cursor::screen_to_cluster(x, y, gutter_w, viewport, &mut dlm)
     }

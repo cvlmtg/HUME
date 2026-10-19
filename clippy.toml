@@ -50,4 +50,10 @@ disallowed-methods = [
     "ropey::Rope::char_to_line",
     "ropey::RopeSlice::line_to_char",
     "ropey::RopeSlice::char_to_line",
+    # A layout's chrome rows come from the editor's models (the tab bar's
+    # visibility, the drawer, a docked popup), which the engine cannot see.
+    # `EditorState::screen_layout` (`hume-editor/src/editor/frame.rs`) is the
+    # one caller that computes them; the engine's own layout tests are the
+    # other exception.
+    "hume_engine::pipeline::EngineView::screen_layout",
 ]

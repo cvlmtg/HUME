@@ -199,10 +199,9 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
         pane: PaneHandle,
     ) -> Result<ExclusiveRange<hume_rope::line::ContentLine>, String> {
         let t = self.command_pane(pane)?;
-        // No active-tab restriction: `EditorState::relayout` keeps
-        // every tab's panes (not just the active one) sized to the
-        // current terminal whenever the partition moves (`TabStore::inactive_layouts`),
-        // so a background-tab pane's *size* is as trustworthy as an active
+        // No active-tab restriction: `EditorState::pane_size` lays out a
+        // background tab's panes against the current terminal too, so a
+        // background-tab pane's *size* is as trustworthy as an active
         // one's. Its *scroll position* can lag, though: the frame's scroll
         // step only runs over `active_pane_ids()`, so a background pane's
         // scroll stays wherever it last was while still active, until its

@@ -117,7 +117,7 @@ fn line_store_does_not_leak_between_panes() {
     // default. A real frame is what sizes it against the layout tree, and
     // an unsized pane B walks a different display-line list from pane A's, which
     // would mask the isolation this test exists to check.
-    ed.sync_viewport_dims(80, 24);
+    ed.resize_terminal(80, 24);
     let pid_b = ed.view.focused_pane();
     assert_ne!(pid_b, pid_a, "split must move focus to the new pane");
 
@@ -192,7 +192,7 @@ fn a_between_frame_walk_does_not_survive_a_frame() {
     // find dropped, hiding the rewind it is checking for.
     seek_to_line(&mut ed, 0);
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(80, 24);
+    ed.resize_terminal(80, 24);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
@@ -240,10 +240,10 @@ fn a_rendered_frames_entries_do_not_survive_it() {
     let mut grid = Grid::new(rect.width, rect.height);
     let mut ctx = RenderContext::new();
 
-    ed.sync_viewport_dims(rect.width, rect.height);
+    ed.resize_terminal(rect.width, rect.height);
     ed.settle();
-    ed.prepare_frame(&mut ctx);
-    ed.render_into(&mut grid, &mut ctx);
+    let layout = ed.prepare_frame(&mut ctx);
+    ed.render_into(&mut grid, &mut ctx, layout);
     assert_eq!(
         cell(&grid, 0, 2),
         "y",
@@ -251,10 +251,10 @@ fn a_rendered_frames_entries_do_not_survive_it() {
     );
 
     hint_on.set(false);
-    ed.sync_viewport_dims(rect.width, rect.height);
+    ed.resize_terminal(rect.width, rect.height);
     ed.settle();
-    ed.prepare_frame(&mut ctx);
-    ed.render_into(&mut grid, &mut ctx);
+    let layout = ed.prepare_frame(&mut ctx);
+    ed.render_into(&mut grid, &mut ctx, layout);
     assert_eq!(
         cell(&grid, 0, 1),
         "y",
@@ -306,11 +306,11 @@ fn the_two_frame_passes_format_each_visible_line_once() {
     let rect = Rect::new(0, 0, 20, 14);
     let mut grid = Grid::new(rect.width, rect.height);
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(rect.width, rect.height);
+    ed.resize_terminal(rect.width, rect.height);
     ed.settle();
-    ed.prepare_frame(&mut ctx);
+    let layout = ed.prepare_frame(&mut ctx);
     let after_scroll = formats.get();
-    ed.render_into(&mut grid, &mut ctx);
+    ed.render_into(&mut grid, &mut ctx, layout);
 
     assert_eq!(
         after_scroll, 1,

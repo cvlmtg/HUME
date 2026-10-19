@@ -50,7 +50,7 @@ fn show_popup_populates_the_view_after_a_frame() {
     type_cmd(&mut ed, ":go");
 
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
@@ -71,13 +71,13 @@ fn close_popup_clears_the_view() {
     );
     type_cmd(&mut ed, ":go");
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     assert!(popup_view(&ed).is_some(), "sanity: showing");
 
     ed.execute_keymap_command("gone".into(), None, false);
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     assert!(
@@ -102,7 +102,7 @@ fn close_popup_with_a_replaced_popups_token_leaves_the_newer_one() {
     type_cmd(&mut ed, ":second");
     ed.execute_keymap_command("gone".into(), None, false);
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
@@ -123,7 +123,7 @@ fn show_popup_replaces_not_stacks() {
     type_cmd(&mut ed, ":arm-first");
     type_cmd(&mut ed, ":arm-second");
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
@@ -212,7 +212,7 @@ fn docked_popup_resolves_into_the_band_view_not_the_cursor_overlay() {
     type_cmd(&mut ed, ":go");
 
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
@@ -236,13 +236,13 @@ fn close_popup_clears_the_band_view_too() {
     );
     type_cmd(&mut ed, ":go");
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     assert!(popup_band_lines(&ed).is_some(), "sanity: showing");
 
     ed.execute_keymap_command("gone".into(), None, false);
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     assert!(
@@ -268,7 +268,7 @@ fn ctrl_d_and_ctrl_u_scroll_a_docked_popup_without_touching_the_buffer() {
     // after the 2-cell frame), well under the 30 lines, so scrolling has
     // somewhere to go.
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(80, 10);
+    ed.resize_terminal(80, 10);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
@@ -276,7 +276,7 @@ fn ctrl_d_and_ctrl_u_scroll_a_docked_popup_without_touching_the_buffer() {
     assert_eq!(ed.state.input.popup().expect("shown").scroll, 0);
 
     ed.feed_key(key_ctrl('d'));
-    ed.sync_viewport_dims(80, 10);
+    ed.resize_terminal(80, 10);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     let scroll_after_down = ed
@@ -296,7 +296,7 @@ fn ctrl_d_and_ctrl_u_scroll_a_docked_popup_without_touching_the_buffer() {
     );
 
     ed.feed_key(key_ctrl('u'));
-    ed.sync_viewport_dims(80, 10);
+    ed.resize_terminal(80, 10);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     let scroll_after_up = ed
@@ -322,7 +322,7 @@ fn any_other_key_closes_a_docked_popup_and_still_dispatches() {
     );
     type_cmd(&mut ed, ":go");
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     assert!(popup_band_lines(&ed).is_some(), "sanity: showing");
@@ -357,7 +357,7 @@ fn dismiss_key_repaints_the_rows_a_docked_popup_vacated_on_the_very_next_frame()
     let rect = Rect::new(0, 0, 80, 25);
     let _ = ed.render_to_buf(rect); // frame 1: band visible
     assert!(popup_band_lines(&ed).is_some(), "sanity: band showing");
-    let band_top = ed.view.last_pane_area.height;
+    let band_top = ed.screen_layout().pane_area().height;
     assert!(
         band_top < rect.height - 1,
         "sanity: band must shrink the pane"
@@ -372,7 +372,8 @@ fn dismiss_key_repaints_the_rows_a_docked_popup_vacated_on_the_very_next_frame()
     let pid = ed.view.focused_pane();
     let buf = ed.render_to_buf(rect); // frame 2: the close frame
     assert_eq!(
-        ed.view.panes[pid].viewport.height, ed.view.last_pane_area.height,
+        ed.pane_size(pid).height(),
+        ed.screen_layout().pane_area().height,
         "viewport height must match the pane rect this frame's render painted into"
     );
     for y in band_top..rect.height - 1 {
@@ -401,7 +402,7 @@ fn popup_closed_out_of_band_repaints_the_rows_a_docked_popup_vacated_on_the_very
     let rect = Rect::new(0, 0, 80, 25);
     let _ = ed.render_to_buf(rect); // frame 1: band visible
     assert!(popup_band_lines(&ed).is_some(), "sanity: band showing");
-    let band_top = ed.view.last_pane_area.height;
+    let band_top = ed.screen_layout().pane_area().height;
     assert!(
         band_top < rect.height - 1,
         "sanity: band must shrink the pane"
@@ -423,7 +424,8 @@ fn popup_closed_out_of_band_repaints_the_rows_a_docked_popup_vacated_on_the_very
     let pid = ed.view.focused_pane();
     let buf = ed.render_to_buf(rect); // frame 2: must notice the popup is gone and repaint its rows
     assert_eq!(
-        ed.view.panes[pid].viewport.height, ed.view.last_pane_area.height,
+        ed.pane_size(pid).height(),
+        ed.screen_layout().pane_area().height,
         "viewport height must match the pane rect this frame's render painted into"
     );
     for y in band_top..rect.height - 1 {
@@ -469,7 +471,7 @@ fn popup_wraps_to_the_pane_width_and_anchors_below_the_cursor() {
     type_cmd(&mut ed, ":go");
 
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(20, 25);
+    ed.resize_terminal(20, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
@@ -502,12 +504,12 @@ fn wrap_is_cached_per_width_and_invalidated_only_when_width_changes() {
     type_cmd(&mut ed, ":go");
 
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(20, 25);
+    ed.resize_terminal(20, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     let first = popup_view_lines_arc(&ed).expect("popup must be showing after a frame");
 
-    ed.sync_viewport_dims(20, 25);
+    ed.resize_terminal(20, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     let second = popup_view_lines_arc(&ed).expect("popup must still be showing");
@@ -516,7 +518,7 @@ fn wrap_is_cached_per_width_and_invalidated_only_when_width_changes() {
         "wrap must not be recomputed across frames at an unchanged max_width"
     );
 
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     let third = popup_view_lines_arc(&ed).expect("popup must still be showing");
@@ -550,7 +552,7 @@ fn popup_content_is_rebuilt_after_a_theme_reload() {
     type_cmd(&mut ed, ":go");
 
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     let first = popup_view_lines_arc(&ed).expect("popup must be showing after a frame");
@@ -584,7 +586,7 @@ fn ctrl_d_and_ctrl_u_scroll_a_scrollable_popup_without_touching_the_buffer() {
     );
     type_cmd(&mut ed, ":go");
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
@@ -596,7 +598,7 @@ fn ctrl_d_and_ctrl_u_scroll_a_scrollable_popup_without_touching_the_buffer() {
     );
 
     ed.feed_key(key_ctrl('d'));
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     let scroll_after_down = ed
@@ -616,7 +618,7 @@ fn ctrl_d_and_ctrl_u_scroll_a_scrollable_popup_without_touching_the_buffer() {
     );
 
     ed.feed_key(key_ctrl('u'));
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     let scroll_after_up = ed
@@ -651,13 +653,13 @@ fn wrap_cache_stays_shared_across_frames_even_once_the_popup_scrolls() {
     );
     type_cmd(&mut ed, ":go");
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     let before_scroll = popup_view_lines_arc(&ed).expect("popup must be showing");
 
     ed.feed_key(key_ctrl('d'));
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     assert!(
@@ -670,7 +672,7 @@ fn wrap_cache_stays_shared_across_frames_even_once_the_popup_scrolls() {
         "the wrap cache must stay Arc-shared across a scroll, not be deep-cloned"
     );
 
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     let same_frame_again = popup_view_lines_arc(&ed).expect("popup must still be showing");
@@ -701,7 +703,7 @@ fn ctrl_u_clamps_a_stale_scroll_after_the_window_grows_between_frames() {
     );
     type_cmd(&mut ed, ":go");
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
@@ -711,7 +713,7 @@ fn ctrl_u_clamps_a_stale_scroll_after_the_window_grows_between_frames() {
 
     // Grow the frame: more visible rows, so `max_scroll` shrinks well below
     // the stale value set above.
-    ed.sync_viewport_dims(80, 80);
+    ed.resize_terminal(80, 80);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     let max_scroll_before_key = {
@@ -725,7 +727,7 @@ fn ctrl_u_clamps_a_stale_scroll_after_the_window_grows_between_frames() {
     );
 
     ed.feed_key(key_ctrl('u'));
-    ed.sync_viewport_dims(80, 80);
+    ed.resize_terminal(80, 80);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     let scroll_after_up = ed
@@ -753,7 +755,7 @@ fn any_other_key_closes_a_scrollable_popup_and_still_dispatches() {
     );
     type_cmd(&mut ed, ":go");
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     assert!(popup_view(&ed).is_some(), "sanity: showing");
@@ -789,7 +791,7 @@ fn ctrl_d_on_a_non_scroll_popup_still_scrolls_the_buffer() {
     );
     type_cmd(&mut ed, ":go");
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
@@ -832,7 +834,7 @@ fn a_mouse_wheel_closes_a_scrollable_popup_and_still_scrolls() {
     );
     type_cmd(&mut ed, ":go");
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     assert!(popup_view(&ed).is_some(), "sanity: showing");
@@ -864,11 +866,12 @@ fn a_mouse_click_closes_a_scrollable_popup() {
     );
     type_cmd(&mut ed, ":go");
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     assert!(popup_view(&ed).is_some(), "sanity: showing");
 
+    draw(&mut ed);
     ed.handle_input(mouse_left_down(3, 0));
 
     assert!(
@@ -895,7 +898,7 @@ fn a_sticky_popup_survives_mouse_input() {
     );
     type_cmd(&mut ed, ":go");
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     let in_sticky_slot = |ed: &Editor| {

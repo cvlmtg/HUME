@@ -961,7 +961,7 @@ fn goto_location_centers_by_display_line_not_buffer_line_under_wrap() {
     let pid = ed.view.focused_pane();
     ed.execute_typed("set", Some("pane wrap-mode=soft:10"))
         .unwrap();
-    ed.view.panes[pid].viewport.height = 10;
+    ed.resize_terminal(80, 11);
 
     let tmp = tempfile::tempdir().unwrap();
     run(
@@ -974,11 +974,13 @@ fn goto_location_centers_by_display_line_not_buffer_line_under_wrap() {
 
     let cursor_char = ed.current_view().primary().head();
     let bid = ed.focused_buffer_id();
+    let size = ed.pane_size(pid);
     let key = ed.state.format_key(&ed.view.panes[pid]);
     let (mut dlm, viewport) = crate::editor::commands::pane_display_lines(
         ed.state.buffers.get(bid),
         &mut ed.view.panes[pid],
         key,
+        size,
     );
     let top = viewport.top();
     let cursor_pos = dlm.locate_display_line(cursor_char);

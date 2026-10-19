@@ -21,7 +21,7 @@ use hume_editing::tab_style::TabStyle;
 use hume_engine::display_lines::line_store::FormatKey;
 use hume_engine::display_lines::{DisplayColTarget, DisplayLineMap};
 use hume_engine::pane::{Pane, Viewport};
-use hume_engine::pipeline::{BufferId, EngineView, PaneId};
+use hume_engine::pipeline::{BufferId, EngineView, PaneId, PaneSize};
 
 use super::buffer::Buffer;
 use super::doc_ops;
@@ -181,14 +181,6 @@ pub(in crate::editor) fn pane_view<'a>(
     t.state(&state.panes.entries, view).view(text)
 }
 
-/// Pane `pid`'s height in rows, laid out against the current bands first:
-/// `view_center` is reached outside `commands::run` too (`goto-location!`,
-/// startup positions), after a hook may have opened a band.
-pub(super) fn pane_height(state: &mut EditorState, view: &mut EngineView, pid: PaneId) -> usize {
-    state.relayout(view);
-    view.panes[pid].viewport.height as usize
-}
-
 /// `doc`'s effective `indent-style`/`indent-width` pair: buffer override → global
 /// default for each. The one place a caller needing *both* settings together
 /// (Tab dispatch, `>`/`<` indent/unindent) reads them, rather than repeating
@@ -283,13 +275,16 @@ pub(super) fn effective_wrap_mode(
 /// `pane` itself, but a `&Pane` used to build it cannot coexist with the
 /// `&mut Pane` this function requires. A caller with no viewport to write
 /// (the movement consumers, which read the display-line list and rewrite
-/// selections instead) destructures `(mut dlm, _)`.
+/// selections instead) destructures `(mut dlm, _)`. `size` is the pane's,
+/// from [`EditorState::pane_size`](super::EditorState::pane_size) or the
+/// frame's layout.
 pub(super) fn pane_display_lines<'a>(
     doc: &'a Buffer,
     pane: &'a mut Pane,
     key: FormatKey,
+    size: PaneSize,
 ) -> (DisplayLineMap<'a>, &'a mut Viewport) {
-    let content_width = pane.content_width(doc.text().last_ropey_line());
+    let content_width = pane.content_width(size, doc.text().last_ropey_line());
     let Pane {
         providers,
         line_store,

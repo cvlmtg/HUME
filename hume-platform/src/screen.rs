@@ -124,7 +124,8 @@ impl Screen {
     }
 }
 
-fn dimensions(term: &SharedTerm) -> io::Result<(u16, u16)> {
+/// The terminal's size in cells, `(width, height)`.
+pub fn dimensions(term: &SharedTerm) -> io::Result<(u16, u16)> {
     let size = term.get_dimensions()?;
     // termina's own field name for a terminal width.
     Ok((size.cols, size.rows))

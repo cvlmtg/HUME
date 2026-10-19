@@ -963,7 +963,7 @@ define_settings! {
         "statusline-mode-colors" => statusline_mode_colors: bool = true,
             scope: [Scope::Global],
             parser: bool;
-        // Resolved into the tab bar's rows by `EditorState::relayout`, and
+        // Resolved into the tab bar's rows by `EditorState::screen_layout`, and
         // into the `TablineViewState` snapshot the provider paints by
         // `sync_tabline_view` every frame.
         "tabline" => tabline: TablineVisibility = TablineVisibility::default(),

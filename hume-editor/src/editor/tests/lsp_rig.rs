@@ -130,6 +130,7 @@ impl LspRig {
         let responses = backend.response_log();
         let mut ed = Editor::open(
             None,
+            crate::editor::lifecycle::HEADLESS_TERMINAL,
             std::sync::Arc::new(|| {}),
             spec.dirs.clone(),
             test_cwd(),

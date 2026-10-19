@@ -157,7 +157,7 @@ fn set_global_mouse_resyncs_applied_mode_next_frame() {
     );
 
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(40, 8);
+    ed.resize_terminal(40, 8);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 

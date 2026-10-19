@@ -141,11 +141,13 @@ pub(in crate::editor) fn cmd_goto_prev_buffer(
 
 // ── Pane focus ───────────────────────────────────────────────────────────────
 
-/// Move focus to the nearest pane on `side`, a silent no-op when none lies
-/// that way. Geometry comes from the terminal area cached by `prepare_frame`
-/// (see `EngineView::focused_neighbor`).
+/// Move focus to the nearest pane on `side` on screen, a silent no-op when
+/// none lies that way.
 fn focus_toward(state: &mut EditorState, view: &mut EngineView, side: Side) {
-    if let Some(pid) = view.focused_neighbor(side) {
+    let neighbor = state
+        .screen_layout(view)
+        .focused_neighbor(view.focused_layout(), side);
+    if let Some(pid) = neighbor {
         focus_pane(state, view, pid);
     }
 }

@@ -4,7 +4,7 @@ use slotmap::SecondaryMap;
 
 use crate::display_lines::DisplayLinePos;
 use crate::layout::gutter_width_for_line;
-use crate::pipeline::BufferId;
+use crate::pipeline::{BufferId, ContentWidth, PaneSize};
 use crate::providers::ProviderSet;
 use crate::types::PaintedSelections;
 use hume_rope::column::DisplayLineCol;
@@ -12,10 +12,12 @@ use hume_rope::line::{ContentLine, RopeyLine};
 use ropey::Rope;
 
 // ---------------------------------------------------------------------------
-// Viewport  (per-pane scroll / size)
+// Viewport  (per-pane scroll)
 // ---------------------------------------------------------------------------
 
-/// The scrolling and sizing state of one pane's viewport.
+/// The scroll state of one pane's viewport. Its size is not stored here: a
+/// pane's size is derived from the screen's layout when read (see
+/// [`PaneSize`]).
 ///
 /// `top` is `pub(crate)`, not `pub`: every write to it from outside this
 /// crate goes through one of the scroll verbs in
@@ -24,7 +26,7 @@ use ropey::Rope;
 /// `DisplayLinePos` address independently of it. `DisplayLinePos::slot` is a
 /// raw `usize`, unnarrowed: nothing needs a slot past a display-line count
 /// no real terminal or document reaches.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct Viewport {
     pub(crate) top: DisplayLinePos,
     /// Horizontal scroll in columns (0 when soft-wrap is on). A document
@@ -37,27 +39,9 @@ pub struct Viewport {
     /// [`Viewport::reset_horizontal`] covers; every other write is
     /// [`Viewport::reveal_horizontal`](crate::display_lines::scroll)'s own.
     pub(crate) horizontal_offset: DisplayLineCol,
-    /// Total width of the pane in terminal cells (gutter + content).
-    pub width: u16,
-    /// Total height of the pane in terminal cells.
-    pub height: u16,
 }
 
 impl Viewport {
-    /// Columns left for text once `gutter_width` is taken, at least one.
-    pub fn content_width(&self, gutter_width: u16) -> NonZeroU16 {
-        NonZeroU16::new(self.width.saturating_sub(gutter_width)).unwrap_or(NonZeroU16::MIN)
-    }
-
-    pub fn new(width: u16, height: u16) -> Self {
-        Self {
-            top: DisplayLinePos::default(),
-            horizontal_offset: DisplayLineCol::new(0),
-            width,
-            height,
-        }
-    }
-
     /// The viewport's top display-line address: the last one
     /// [`Viewport::top_at`](crate::display_lines::scroll) resolved it to.
     ///
@@ -82,31 +66,6 @@ impl Viewport {
     /// notice the pane is now wrapping.
     pub fn reset_horizontal(&mut self) {
         self.horizontal_offset = DisplayLineCol::new(0);
-    }
-
-    /// This viewport's scroll-margin geometry, or `None` at zero height. Every
-    /// scroll verb takes a [`ViewGeometry`] rather than a raw height, so a
-    /// collapsed pane is one early return here instead of a `height == 0`
-    /// check repeated inside each verb. The sole constructor, so
-    /// `margin`/`target` can never disagree between callers the way two
-    /// independent computations of them could.
-    pub fn geometry(&self, scroll_margin: usize) -> Option<ViewGeometry> {
-        if self.height == 0 {
-            return None;
-        }
-        let height = self.height as usize;
-        // `(height - 1) / 2`, not `height / 2`: at an even height, a margin
-        // of exactly `height / 2` leaves the stable middle window empty (its
-        // bounds `margin..height-margin` collapse to a single point), so the
-        // two correction arms that use this margin would fight over that one
-        // display line and rescroll every frame.
-        let margin = scroll_margin.min(height.saturating_sub(1) / 2);
-        let target = height.saturating_sub(margin).saturating_sub(1);
-        Some(ViewGeometry {
-            height,
-            margin,
-            target,
-        })
     }
 
     /// Seed an arbitrary top, for test fixtures that need a pane to start
@@ -134,7 +93,7 @@ impl Viewport {
 
 /// A nonzero-height viewport's scroll-margin geometry, resolved once per scroll
 /// operation and threaded through every verb in
-/// [`crate::display_lines::scroll`]. [`Viewport::geometry`] is the sole
+/// [`crate::display_lines::scroll`]. [`PaneSize::geometry`](crate::pipeline::PaneSize::geometry) is the sole
 /// constructor, so a verb can never observe `height == 0` or a `target` with
 /// nothing to reach, and [`Viewport::reveal`](crate::display_lines::scroll)
 /// (vertical cursor-follow) and `DisplayLineMap::max_scroll_top` (the
@@ -144,20 +103,27 @@ impl Viewport {
 /// very next ordinary cursor motion share one viewport top.
 #[derive(Copy, Clone, Debug)]
 pub struct ViewGeometry {
-    /// A terminal-cell count at its root (`Viewport::height`), but read in
+    /// A terminal-cell count at its root (`PaneSize::height`), but read in
     /// three different units depending on the caller: a display-line cap
     /// (`place_in_band`'s `distance` call), a buffer-line cap (`scroll_by`'s
     /// `lines_to_end` short-circuit), and a genuine terminal-row cap
-    /// (`Viewport::geometry`'s own `margin`/`target` derivation, below). Each
+    /// (`PaneSize::geometry`'s own `margin`/`target` derivation). Each
     /// site reasons about which unit it needs inline; this field commits to
     /// none of them.
-    pub height: usize,
+    pub(crate) height: usize,
     /// Display lines of look-ahead kept above/below the cursor, clamped so
     /// the two margins can never meet in the middle of an odd-or-even height.
-    pub margin: usize,
+    pub(crate) margin: usize,
     /// Display line (0-indexed from the top) the far edge settles at once
     /// `margin` is reserved on both sides; always `>= margin`.
-    pub target: usize,
+    pub(crate) target: usize,
+}
+
+impl ViewGeometry {
+    /// The pane's height in terminal rows.
+    pub fn height(&self) -> usize {
+        self.height
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -403,7 +369,7 @@ impl Pane {
     pub fn new(buffer_id: BufferId) -> Self {
         Self {
             buffer_id,
-            viewport: Viewport::new(80, 24),
+            viewport: Viewport::default(),
             saved_scrolls: SecondaryMap::new(),
             selections: None,
             providers: ProviderSet::new(),
@@ -428,16 +394,7 @@ impl Pane {
             line_store: _, // per-frame scratch; a new pane starts empty and
                            // `EngineView::begin_frame` rewinds it every frame anyway
         } = src;
-        // Width and height belong to the layout, which sized the new pane
-        // when it was split in.
-        let Viewport {
-            top,
-            horizontal_offset,
-            width: _,
-            height: _,
-        } = viewport;
-        self.viewport.top = *top;
-        self.viewport.horizontal_offset = *horizontal_offset;
+        self.viewport = viewport.clone();
         self.saved_scrolls = saved_scrolls.clone();
         self.wraps = wraps.clone();
     }
@@ -454,16 +411,14 @@ impl Pane {
         self.wraps.insert(self.buffer_id, wrap);
     }
 
-    /// Width available for text after subtracting the gutter, clamped to at least 1.
-    ///
-    /// `last_line_idx` is the buffer's last ropey line index (used to size
-    /// the line-number column, `hume_rope::lines::last_ropey_line`). Call this
-    /// before `WrapMode::resolve` to get the concrete wrap column.
-    pub fn content_width(&self, last_line_idx: RopeyLine) -> NonZeroU16 {
-        self.viewport.content_width(gutter_width_for_line(
-            self.providers.gutter_columns(),
-            last_line_idx,
-        ))
+    /// The columns a pane of `size` leaves for text after this pane's
+    /// gutter. `last_line_idx` is the buffer's last ropey line index, which
+    /// sizes the line-number column (`hume_rope::lines::last_ropey_line`).
+    pub fn content_width(&self, size: PaneSize, last_line_idx: RopeyLine) -> ContentWidth {
+        ContentWidth::of(
+            size,
+            gutter_width_for_line(self.providers.gutter_columns(), last_line_idx),
+        )
     }
 
     /// The buffer this pane shows.

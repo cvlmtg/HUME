@@ -107,7 +107,7 @@ fn messages_spans_reach_the_pane_extra_highlight_arc() {
     ed.execute_typed("messages", None).unwrap();
     let pid = ed.view.focused_pane();
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 

@@ -36,11 +36,12 @@ use hume_rope::column::DisplayLineCol;
 /// wrapping, since wrap mode has no horizontal scroll; see
 /// `Viewport::reveal_horizontal`).
 pub(in crate::editor) fn content_pos(
+    size: hume_engine::pipeline::PaneSize,
     viewport: &mut Viewport,
     dlm: &mut DisplayLineMap<'_>,
     cursor: hume_rope::cluster::ClusterStart,
 ) -> Option<(u16, u16)> {
-    let height = viewport.height;
+    let height = size.height();
     if height == 0 {
         return None;
     }

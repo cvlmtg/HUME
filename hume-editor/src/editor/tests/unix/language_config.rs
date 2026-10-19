@@ -50,8 +50,14 @@ fn boot_with_file(file: &str, dirs: Dirs, fixture: &ReloadFixture) -> Editor {
     let path = fixture.data_dir.join(file);
     std::fs::create_dir_all(&fixture.data_dir).unwrap();
     std::fs::write(&path, "x\n").unwrap();
-    let mut ed =
-        Editor::open(Some(path), std::sync::Arc::new(|| {}), dirs, test_cwd()).expect("open");
+    let mut ed = Editor::open(
+        Some(path),
+        crate::editor::lifecycle::HEADLESS_TERMINAL,
+        std::sync::Arc::new(|| {}),
+        dirs,
+        test_cwd(),
+    )
+    .expect("open");
     ed.init_scripting(&mut Default::default());
     ed
 }

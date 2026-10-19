@@ -37,7 +37,7 @@ fn line_background_tints_gutter_content_and_trailing_cells() {
     type_cmd(&mut ed, ":go");
 
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(40, 8);
+    ed.resize_terminal(40, 8);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     let buf = ed.render_to_buf(Rect::new(0, 0, 40, 8));
@@ -96,7 +96,7 @@ fn line_background_tint_survives_every_wrap_display_line_of_a_wrapped_line() {
     type_cmd(&mut ed, ":go");
 
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(8, 8); // narrow content width forces the wrap
+    ed.resize_terminal(8, 8); // narrow content width forces the wrap
     ed.settle();
     ed.prepare_frame(&mut ctx);
     let buf = ed.render_to_buf(Rect::new(0, 0, 8, 8));
@@ -146,7 +146,7 @@ fn cursorline_wins_over_the_line_background_tint() {
     );
 
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(40, 8);
+    ed.resize_terminal(40, 8);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     let buf = ed.render_to_buf(Rect::new(0, 0, 40, 8));
@@ -212,7 +212,7 @@ fn line_background_shows_through_when_cursorline_has_no_bg() {
     );
 
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(40, 8);
+    ed.resize_terminal(40, 8);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     let buf = ed.render_to_buf(Rect::new(0, 0, 40, 8));

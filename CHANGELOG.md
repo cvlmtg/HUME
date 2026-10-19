@@ -48,6 +48,7 @@
 - In Insert mode, `End`, `↑` and `↓` reach the end of a line, after its last character.
 - The command line's completion menu opens right above the command line, over an open drawer or docked popup, instead of above them.
 - Headless `--keys` runs print warnings and errors on stderr and exit with status 1 when an error is logged.
+- Headless `--keys` runs lay the file out on an 80×25 screen, so a drawer, docked popup, tab bar, picker or split opened by the keys takes its rows as in a terminal.
 - Headless `--keys` runs honour a `FILE:LINE[:COL]` input, placing the cursor there before the first key.
 - Centring, scrolling, `:split`, `viewport-range`, and popup and picker paging count a drawer, docked popup or tab bar that opened or closed since the last screen update.
 - In a macro, `Ctrl-d` and `Ctrl-u` scroll a popup opened by the previous key, and the completion documentation box after a selection move, instead of closing the popup or paging the wrong text.

@@ -53,7 +53,7 @@ impl Cycle {
 pub struct SinglePane;
 
 /// A side of the focused pane, for
-/// [`EngineView::focused_neighbor`](super::EngineView::focused_neighbor).
+/// [`ScreenLayout::focused_neighbor`](super::ScreenLayout::focused_neighbor).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Side {
     Left,
@@ -137,7 +137,7 @@ impl LayoutTree {
     /// `reserve_seam` mirrors the `pane-dividers` setting: `true` carves a
     /// 1-cell seam out of each split axis (see `split_rect`); `false` tiles
     /// children edge-to-edge with no reserved gap.
-    pub fn collect_rects_into(
+    pub(crate) fn collect_rects_into(
         &self,
         area: Rect,
         reserve_seam: bool,
@@ -166,7 +166,7 @@ impl LayoutTree {
     /// target sibling of [`Self::collect_rects_into`], for callers that
     /// don't need the whole partition and would otherwise allocate one just
     /// to search it.
-    pub fn find_rect(&self, pid: PaneId, area: Rect, reserve_seam: bool) -> Option<Rect> {
+    pub(crate) fn find_rect(&self, pid: PaneId, area: Rect, reserve_seam: bool) -> Option<Rect> {
         match self {
             LayoutTree::Leaf(id) => (*id == pid).then_some(area),
             LayoutTree::Split {
@@ -195,7 +195,7 @@ impl LayoutTree {
     /// (`O(depth)`, not `O(panes)`), falling through to the other child only
     /// when neither matches at a given split (a click in the seam gap),
     /// where the eventual `None` is still correct, just found less directly.
-    pub fn find_containing(
+    pub(crate) fn find_containing(
         &self,
         pos: Position,
         area: Rect,
@@ -232,7 +232,7 @@ impl LayoutTree {
     /// Always reserves the seam: callers only invoke this when dividers are
     /// being drawn, which is also when `collect_rects_into` is called with
     /// `reserve_seam: true`, so the two stay aligned.
-    pub fn collect_seams_into(&self, area: Rect, out: &mut Vec<Seam>) {
+    pub(crate) fn collect_seams_into(&self, area: Rect, out: &mut Vec<Seam>) {
         if let LayoutTree::Split {
             direction,
             ratio,

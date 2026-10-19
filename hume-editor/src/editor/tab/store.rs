@@ -12,7 +12,7 @@
 
 use slotmap::{SecondaryMap, SlotMap, new_key_type};
 
-use hume_engine::pipeline::{Cycle, FocusedLayout, LayoutTree, PaneId};
+use hume_engine::pipeline::{Cycle, FocusedLayout, PaneId};
 
 new_key_type! {
     /// Opaque handle to a tab. Minted only in `hume-editor`: the engine has
@@ -90,9 +90,9 @@ impl TabStore {
         })
     }
 
-    /// Every inactive tab's `LayoutTree`.
-    pub(in crate::editor) fn inactive_layouts(&self) -> impl Iterator<Item = &LayoutTree> {
-        self.stash.values().map(FocusedLayout::tree)
+    /// Every inactive tab's layout.
+    pub(in crate::editor) fn inactive(&self) -> impl Iterator<Item = &FocusedLayout> {
+        self.stash.values()
     }
 
     /// `current`'s index in `order`. Every method below that needs it reads

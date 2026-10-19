@@ -3,11 +3,9 @@ use crate::test_support::{cursor_mirror, mirror, painted};
 
 #[test]
 fn viewport_defaults() {
-    let vp = Viewport::new(80, 24);
+    let vp = Viewport::default();
     assert_eq!(vp.top(), DisplayLinePos::default());
     assert_eq!(vp.horizontal_offset, DisplayLineCol::new(0));
-    assert_eq!(vp.width, 80);
-    assert_eq!(vp.height, 24);
 }
 
 fn nz(width: u16) -> NonZeroU16 {

@@ -10,7 +10,7 @@ fn co(n: usize) -> CharOffset {
 /// Two guaranteed-distinct `BufferId`s. See the identical helper in
 /// `lsp/diagnostics.rs` for why a single `EngineView` is required.
 fn make_two_bids() -> (BufferId, BufferId) {
-    let (mut ev, _) = EngineView::new(Theme::default());
+    let (mut ev, _) = EngineView::new(Theme::default(), Default::default());
     let a = ev.buffers.insert(());
     let b = ev.buffers.insert(());
     (a, b)

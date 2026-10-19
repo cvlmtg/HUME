@@ -204,7 +204,7 @@ mod testing {
     }
 
     pub(in crate::editor::completion) fn ev() -> EngineView {
-        EngineView::new(Theme::default()).0
+        EngineView::new(Theme::default(), hume_grid::Rect::default()).0
     }
 
     pub(in crate::editor::completion) fn make_id(ev: &mut EngineView) -> BufferId {

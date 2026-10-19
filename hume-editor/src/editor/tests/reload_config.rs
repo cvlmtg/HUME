@@ -473,7 +473,7 @@ fn reset_reload_drawer_view_self_heals_on_the_next_frame() {
     );
 
     let mut ctx = hume_engine::pipeline::RenderContext::new();
-    ed.sync_viewport_dims(40, 10);
+    ed.resize_terminal(40, 10);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 

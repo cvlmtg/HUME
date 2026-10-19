@@ -570,10 +570,8 @@ fn resize_invalidates_a_display_line_latch_measured_at_the_old_wrap_width() {
     let text = BufferText::from("0123456789ABCDE\nFGHIJ\n");
     let sels = sels_at(&text, &[(2, 2)], 0); // '2', display line 0 col 2
     let mut ed = Editor::for_testing_with(test_fixtures::testing::state(text, sels));
-    let pid = ed.view.focused_pane();
     pin_wrap(&mut ed, hume_engine::pane::WrapMode::Soft { width: 0 });
-    ed.view.panes[pid].viewport.width = 10; // content_width 10 (no gutter in this harness)
-    ed.view.panes[pid].viewport.height = 24;
+    ed.resize_terminal(10, 25); // content_width 10 (no gutter in this harness)
 
     // At width 10: display line 0 = "0123456789" (chars 0-9), display line 1
     // = "ABCDE" (chars 10-14). `j` from col 2 of display line 0 lands on
@@ -590,7 +588,7 @@ fn resize_invalidates_a_display_line_latch_measured_at_the_old_wrap_width() {
     // display line 1 = "89ABCDE" (chars 8-14). 'C' (char 12) is now display line 1's col 4,
     // not col 2. A `j` from here must re-derive from head's *current* column
     // (4) rather than reuse the stale latch (2) measured for width 10.
-    ed.view.panes[pid].viewport.width = 8;
+    ed.resize_terminal(8, 25);
 
     ed.handle_key(key('j'));
     assert_eq!(
@@ -764,10 +762,12 @@ fn no_wrap_bare_j_and_view_scroll_agree_on_display_column() {
 
     let mut view_scroll = no_wrap_editor_at_f();
     let view_scroll_pid = view_scroll.view.focused_pane();
+    let view_scroll_size = view_scroll.pane_size(view_scroll_pid);
     scroll_view(
         &mut view_scroll.state,
         &mut view_scroll.view,
         view_scroll_pid,
+        view_scroll_size,
         1,
         true,
         MotionMode::Move,
@@ -1498,5 +1498,34 @@ fn generated_bare_name_wrapper_accepts_zero_count() {
         co(76),
         "(move-down 0) via the generated variadic wrapper must move one \
          visual display line (char 76), not one buffer line (char 81)"
+    );
+}
+
+#[test]
+fn j_right_after_a_vsplit_wraps_at_the_new_pane_width() {
+    use hume_editing::text::BufferText;
+
+    // 60 chars fit one display line at 80 columns and wrap once at half that.
+    let content = format!("{}\nshort\n", "a".repeat(60));
+    let text = BufferText::from(content.as_str());
+    let sels = sels_at(&text, &[(2, 2)], 0);
+    let mut ed = Editor::for_testing_with(test_fixtures::testing::state(text, sels));
+    ed.resize_terminal(80, 25);
+
+    ed.execute_typed("vsplit", None).unwrap();
+    pin_wrap(&mut ed, hume_engine::pane::WrapMode::Soft { width: 0 });
+    let pid = ed.view.focused_pane();
+    let content_width = usize::from(
+        ed.screen_layout()
+            .focused_rect(ed.view.focused_layout())
+            .width
+            - ed.pane_gutter_width(pid),
+    );
+    ed.handle_key(key('j'));
+
+    // `j` lands on the same column of the second display line.
+    assert_eq!(
+        ed.current_view().primary().head().offset(),
+        co(2 + content_width)
     );
 }

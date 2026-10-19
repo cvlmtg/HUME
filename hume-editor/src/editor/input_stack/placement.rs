@@ -1,6 +1,7 @@
 //! Screen-placement math shared by the three cursor/token-anchored overlays.
 //! Nothing here is specific to any one of them.
 
+use hume_engine::pipeline::ScreenLayout;
 use hume_rope::cluster::ClusterStart;
 
 use super::super::Editor;
@@ -27,21 +28,32 @@ pub(in crate::editor) fn focused_cursor(ed: &Editor) -> ClusterStart {
 /// list (a full per-line format in wrap mode). A key handler measuring a box
 /// between frames passes `None` and walks the viewport as it stands.
 ///
-/// Lays the panes out against the current bands first: a key handler can
-/// measure after a band opened or closed since the last frame, as in a
-/// macro, which runs no frame between its keys.
+/// `screen` is the frame's layout, or [`EditorState::screen_layout`] for a
+/// key handler, so a band opened or closed since the last frame counts.
+///
+/// [`EditorState::screen_layout`]: crate::editor::EditorState::screen_layout
 pub(in crate::editor) fn popup_placement(
     ed: &mut Editor,
+    screen: &ScreenLayout,
     cursor_cell: Option<(u16, u16)>,
     anchor: ClusterStart,
 ) -> Option<hume_ui::popup::PopupPlacement> {
-    ed.state.relayout(&mut ed.view);
     let focused = ed.view.focused_pane();
-    let pane_rect = ed.view.focused_rect();
+    let layout = ed.view.focused_layout();
+    let pane_rect = screen.focused_rect(layout);
+    let size = screen
+        .pane_size(layout, focused)
+        .expect("the focused pane is a leaf of the focused layout");
     let gutter_w = ed.pane_gutter_width(focused);
+    let last_line = ed
+        .state
+        .buffers
+        .get(ed.view.panes[focused].buffer_id())
+        .text()
+        .last_ropey_line();
     let content_width = ed.view.panes[focused]
-        .viewport
-        .content_width(gutter_w)
+        .content_width(size, last_line)
+        .get()
         .get();
     let (content_x, row) = match cursor_cell {
         Some(cell) if anchor == focused_cursor(ed) => cell,
@@ -56,8 +68,9 @@ pub(in crate::editor) fn popup_placement(
                 state.buffers.get(bid),
                 &mut view.panes[focused],
                 key,
+                size,
             );
-            super::super::cursor::content_pos(vp, &mut dlm, anchor)?
+            super::super::cursor::content_pos(size, vp, &mut dlm, anchor)?
         }
     };
     let screen = super::super::mouse::content_pos_to_screen(content_x, row, gutter_w, pane_rect);

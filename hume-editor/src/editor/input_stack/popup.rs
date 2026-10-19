@@ -5,7 +5,7 @@
 
 use termina::event::{KeyCode, KeyEvent, Modifiers};
 
-use hume_engine::pipeline::EngineView;
+use hume_engine::pipeline::{EngineView, ScreenLayout};
 use hume_engine::theme::{ScopeRegistry, Theme};
 use hume_engine::types::EditorMode;
 use hume_scripting::host::HostToken;
@@ -155,8 +155,12 @@ impl Editor {
     ///
     /// Called from `prepare_frame` after its scroll step, with the cursor
     /// cell that step resolved as `cursor_cell`.
-    pub(in crate::editor) fn sync_popup_view(&mut self, cursor_cell: Option<(u16, u16)>) {
-        let resolved = self.resolve_cursor_popup(cursor_cell);
+    pub(in crate::editor) fn sync_popup_view(
+        &mut self,
+        screen: &ScreenLayout,
+        cursor_cell: Option<(u16, u16)>,
+    ) {
+        let resolved = self.resolve_cursor_popup(screen, cursor_cell);
         if resolved.is_some() || self.state.views.popup.read().is_some() {
             self.state.views.popup.set(resolved);
         }
@@ -167,9 +171,10 @@ impl Editor {
     /// page against. `None` with no cursor popup open, or when the cursor is
     /// not in view. Geometry (wrap width, flip/clamp position) is never
     /// computed at `show-popup!` call time, so a resize or scroll never
-    /// leaves it stale. `cursor_cell` is [`popup_placement`]'s.
+    /// leaves it stale. `screen` and `cursor_cell` are [`popup_placement`]'s.
     fn resolve_cursor_popup(
         &mut self,
+        screen: &ScreenLayout,
         cursor_cell: Option<(u16, u16)>,
     ) -> Option<hume_ui::popup::PopupState> {
         let is_cursor = matches!(
@@ -180,7 +185,7 @@ impl Editor {
             return None;
         }
         let anchor = focused_cursor(self);
-        let placement = popup_placement(self, cursor_cell, anchor)?;
+        let placement = popup_placement(self, screen, cursor_cell, anchor)?;
         let border = self.state.settings.popup_border;
         let model = self
             .state
@@ -204,8 +209,8 @@ impl EditorState {
     /// [`Editor::sync_popup_view`]. Unlike the cursor layout, geometry isn't
     /// resolved here: only content (wrapped lines + scroll clamp), mirroring
     /// the drawer's chrome contract: the band's rows come from
-    /// `EditorState::relayout` and its position from the engine at render
-    /// time.
+    /// `EditorState::screen_layout` and its position from the engine at
+    /// render time.
     ///
     /// Wraps and caps against `EngineView::terminal_area`: the band spans
     /// the full terminal.
@@ -282,7 +287,10 @@ fn popup_paste(state: &mut EditorState, view: &EngineView, r: LayerRef, text: Pa
 fn popup_rows(ed: &mut Editor) -> Option<(usize, usize)> {
     match ed.state.input.popup()?.layout {
         hume_ui::popup::PopupLayout::Cursor => {
-            ed.resolve_cursor_popup(None).as_ref().map(boxed_popup_rows)
+            let screen = ed.state.screen_layout(&mut ed.view);
+            ed.resolve_cursor_popup(&screen, None)
+                .as_ref()
+                .map(boxed_popup_rows)
         }
         hume_ui::popup::PopupLayout::Docked => {
             let view = &mut ed.view;

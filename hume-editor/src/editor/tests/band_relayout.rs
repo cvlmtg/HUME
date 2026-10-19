@@ -117,22 +117,38 @@ fn half_page_on_a_docked_popup_before_its_first_frame_scrolls_it() {
 }
 
 #[test]
-fn half_page_on_a_docked_popup_with_no_terminal_size_scrolls_the_buffer() {
+fn half_page_on_a_docked_popup_in_a_headless_run_scrolls_it() {
     let tmp = tempfile::tempdir().unwrap();
     let (path, _f) = tall_file();
     let mut ed = open_headless(Some(path));
     run(&mut ed, tmp.path(), &tall_docked_popup_command());
 
-    // No frame, as in a headless run: the band has no rows to page.
+    // No frame, as in a headless run.
     type_cmd(&mut ed, ":go");
-    let pane_rows = usize::from(ed.viewport().height);
     ed.feed_key(key_ctrl('d'));
 
-    assert!(
-        ed.state.input.popup().is_none(),
-        "Ctrl-d retires a popup that shows no rows"
-    );
-    assert_eq!(ed.viewport().top().line, ContentLine::new(pane_rows / 2));
+    // The band's ceiling on the headless 80x25 terminal is 8 rows, two of
+    // them frame rows, so 30 lines show 6 at a time and half a page is 3.
+    let popup = ed
+        .state
+        .input
+        .popup()
+        .expect("Ctrl-d scrolls a popup taller than its band");
+    assert_eq!(popup.scroll, 3);
+}
+
+#[test]
+fn paging_in_a_headless_run_with_two_tabs_counts_the_tab_bar() {
+    let (path, _f) = tall_file();
+    let mut ed = open_headless(Some(path));
+    ed.execute_typed("tabnew", None).unwrap();
+
+    ed.feed_key(key_pagedown());
+
+    // Two tabs show the bar under the `dynamic` default, leaving the
+    // headless 80x25 terminal's pane 25 - 1 - 1 = 23 rows, so a page lands
+    // the top line on 23.
+    assert_eq!(ed.viewport().top().line, ContentLine::new(23));
 }
 
 #[test]
@@ -168,8 +184,8 @@ fn a_viewport_change_queued_after_a_drawer_opens_counts_the_drawer() {
     );
     seed_frame(&mut ed, 80, 24);
 
-    // `:ls` opens the drawer after the command line's relayout, so the
-    // queueing is the first reader to see it.
+    // No frame between `:ls` opening the drawer and the queueing, so the
+    // payload's size comes from the layout the queueing derives.
     ed.execute_typed("ls", None).unwrap();
     ed.queue_viewport_change(ed.view.focused_pane());
     ed.settle();
@@ -320,7 +336,7 @@ fn a_drawer_and_a_docked_popup_both_take_their_rows_from_the_pane() {
     );
     // The drawer is two rows plus its top frame row and the popup three
     // lines plus two frame rows, leaving 16 - 1 - 3 - 5 = 7 rows.
-    assert_eq!(ed.viewport().height, 7);
+    assert_eq!(ed.pane_size(ed.view.focused_pane()).height(), 7);
 }
 
 #[test]
@@ -334,4 +350,32 @@ fn a_docked_popup_stacks_above_the_drawer() {
         &mut ed,
         Rect::new(0, 0, 40, 16)
     ));
+}
+
+#[test]
+fn a_wheel_notch_that_retires_a_docked_popup_stops_at_the_full_pane_s_end_bound() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (path, _f) = tall_file();
+    let mut ed = open_headless(Some(path));
+    run(&mut ed, tmp.path(), &tall_docked_popup_command());
+    ed.execute_typed("goto", Some("191")).unwrap();
+    type_cmd(&mut ed, ":go");
+    frame(&mut ed, 80, 24);
+    assert_eq!(
+        ed.viewport().top().line,
+        ContentLine::new(179),
+        "setup: the cursor on line 190 sits at the bottom margin of the \
+         15-row pane above the 8-row band"
+    );
+
+    ed.handle_input(mouse_wheel_at(5, 5, true));
+
+    // The notch retires the popup, so it scrolls the 23-row pane the next
+    // frame draws: with a 3-row margin its top stops at 199 - (23 - 3 - 1) =
+    // 180, not at the 182 three lines further would reach.
+    assert!(
+        ed.state.input.popup().is_none(),
+        "the notch retires the popup"
+    );
+    assert_eq!(ed.viewport().top().line, ContentLine::new(180));
 }

@@ -25,7 +25,7 @@ fn completion_menu_clamps_to_a_short_pane_instead_of_vanishing() {
 
     frame(&mut ed, 40, 6);
 
-    let pane_rect = ed.view.focused_rect();
+    let pane_rect = ed.screen_layout().focused_rect(ed.view.focused_layout());
     let view = ed.state.views.completion_menu.read();
     let state = view
         .as_ref()
@@ -44,7 +44,7 @@ fn completion_menu_clamps_to_a_narrow_pane_instead_of_vanishing() {
 
     frame(&mut ed, 20, 8);
 
-    let pane_rect = ed.view.focused_rect();
+    let pane_rect = ed.screen_layout().focused_rect(ed.view.focused_layout());
     let view = ed.state.views.completion_menu.read();
     let state = view
         .as_ref()
@@ -551,17 +551,18 @@ fn completion_popup_anchor_matches_an_independent_content_pos_walk_when_wrapped(
         .unwrap()
         .menu_anchor(ed.doc().text())
         .unwrap();
-    let pane_rect = ed.view.focused_rect();
+    let pane_rect = ed.screen_layout().focused_rect(ed.view.focused_layout());
     let buf = ed.state.buffers.get(bid);
     let gutter_w = cursor::gutter_width(
         ed.view.panes[pid].providers.gutter_columns(),
         buf.text().last_ropey_line(),
     );
+    let size = ed.pane_size(pid);
     let Editor { state, view, .. } = &mut ed;
     let key = state.format_key(&view.panes[pid]);
     let (mut dlm, vp) =
-        commands::pane_display_lines(state.buffers.get(bid), &mut view.panes[pid], key);
-    let (content_x, row) = cursor::content_pos(vp, &mut dlm, anchor).expect("visible");
+        commands::pane_display_lines(state.buffers.get(bid), &mut view.panes[pid], key, size);
+    let (content_x, row) = cursor::content_pos(size, vp, &mut dlm, anchor).expect("visible");
     let expected_x = content_x + gutter_w + pane_rect.x;
     let expected_y = row + pane_rect.y + 1;
 

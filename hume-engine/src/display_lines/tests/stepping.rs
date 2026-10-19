@@ -8,7 +8,7 @@ use crate::pane::ViewGeometry;
 /// `ViewGeometry` to construct one from), so every fixture here is implicitly
 /// nonzero-height.
 fn geo(height: u16, margin: usize) -> ViewGeometry {
-    crate::pane::Viewport::new(0, height)
+    crate::pipeline::PaneSize::new(0, height)
         .geometry(margin)
         .expect("test fixtures use a nonzero height")
 }
@@ -285,7 +285,7 @@ fn zero_height_viewport_has_no_geometry_to_scroll_with() {
     // `Viewport::geometry` returning `None`, so `max_scroll_top` (and every
     // other scroll verb) can never be called at `height == 0` in the first
     // place; there is no `ViewGeometry` to construct one from.
-    assert!(crate::pane::Viewport::new(0, 0).geometry(0).is_none());
+    assert!(crate::pipeline::PaneSize::new(0, 0).geometry(0).is_none());
 }
 
 #[test]
@@ -321,7 +321,7 @@ fn wrap_width_one_emits_one_grapheme_per_display_line_without_hanging() {
     let mut dlm = DisplayLineMap::new(
         &rope,
         &providers,
-        std::num::NonZeroU16::new(80).expect("non-zero"),
+        crate::pipeline::ContentWidth::for_test(std::num::NonZeroU16::new(80).expect("non-zero")),
         FormatKey {
             buffer_tag: [0; 3],
             wrap_mode: WrapMode::Soft { width: 1 },

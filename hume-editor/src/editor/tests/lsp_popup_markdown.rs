@@ -51,7 +51,7 @@ fn markdown_popup_highlights_when_the_grammar_is_registered() {
     );
 
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
@@ -129,7 +129,7 @@ fn docked_popup_highlights_when_the_grammar_is_registered() {
     );
 
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
@@ -171,7 +171,7 @@ fn docked_popup_survives_a_multiline_capture_node() {
     type_cmd(&mut ed, ":go");
 
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(40, 10);
+    ed.resize_terminal(40, 10);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     let rect = Rect::new(0, 0, 40, 10);
@@ -199,7 +199,7 @@ fn popup_without_markdown_flag_stays_plain_even_with_the_grammar_registered() {
     );
 
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     assert!(
@@ -227,7 +227,7 @@ fn markdown_flag_without_a_registered_grammar_falls_back_to_plain() {
     );
 
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
+    ed.resize_terminal(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     assert!(

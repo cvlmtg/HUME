@@ -3,7 +3,7 @@
 //! shared `Arc` buffers the engine's providers read during rendering. Driven
 //! by `prepare_frame`'s decoration syncs.
 
-use hume_engine::pipeline::{BufferId, PaneId};
+use hume_engine::pipeline::{BufferId, PaneId, ScreenLayout};
 use hume_engine::theme::{CURSOR_MATCH, CURSOR_MATCH_SEARCH, diagnostic_scopes, ui_scopes};
 use hume_engine::types::EditorMode;
 
@@ -69,18 +69,26 @@ impl Editor {
     /// `EngineView::active_pane_ids`) rather than the whole pool: a
     /// background tab's pane isn't decorated, mirrored, or scrolled while
     /// hidden, so it has no "current frame" viewport for this to snapshot.
-    pub(super) fn decorated_panes(&self, active: &[PaneId]) -> Vec<DecoratedPane> {
+    pub(super) fn decorated_panes(
+        &self,
+        screen: &ScreenLayout,
+        active: &[PaneId],
+    ) -> Vec<DecoratedPane> {
         active
             .iter()
             .map(|&pid| {
                 let pane = &self.view.panes[pid];
                 let bid = pane.buffer_id();
                 let vp = &pane.viewport;
+                let height = screen
+                    .pane_size(self.view.focused_layout(), pid)
+                    .expect("an active pane is a leaf of the focused layout")
+                    .height();
                 let text = self.state.buffers.get(bid).text();
                 let top_line =
                     hume_rope::line::RopeyLine::from(vp.top().line).min(text.last_ropey_line());
                 let bottom_line =
-                    hume_rope::line::RopeyLine::from(vp.top().line).advance(vp.height as usize);
+                    hume_rope::line::RopeyLine::from(vp.top().line).advance(usize::from(height));
                 let past_end = hume_rope::line::RopeyLine::new(text.ropey_line_count().get());
                 let insert_line = self.state.input.inserting_into(pid, bid).then(|| {
                     self.state
