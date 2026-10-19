@@ -44,7 +44,7 @@ A **buffer** is an open file (or scratch text). HUME can have multiple buffers o
 
 `:b` accepts a name prefix, a full path, a 1-based index as shown by `:ls`, or `#` to switch to the alternate buffer. When two open files share a name, Tab completion shows their parent directories to tell them apart.
 
-`:ls` opens a list across the bottom of the screen with one row per buffer: its number, `%` for the buffer you are in, `#` for the alternate, `+` for unsaved changes, its name and its path. `Shift-Down`/`Shift-Up` move the highlight, `Ctrl-d`/`Ctrl-u` page it, `Enter` switches the focused pane to the highlighted buffer and leaves the list open, and `Esc` closes it. It works like the [language server lists](lsp.md).
+`:ls` opens a list across the bottom of the screen with one row per buffer: its number, `%` for the buffer you are in, `#` for the alternate, `+` for unsaved changes, its name and its path. `Down`/`Up` move the highlight, `Ctrl-d`/`Ctrl-u` page it, `Enter` switches the focused pane to the highlighted buffer and leaves the list open, and `Esc` closes it. It works like the [language server lists](lsp.md).
 
 `:bnext`/`:bprev` also have bindable editor-command spellings, `goto-next-buffer` and `goto-prev-buffer`, for mapping to a key.
 
