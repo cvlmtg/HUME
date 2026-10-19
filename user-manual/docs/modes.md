@@ -8,15 +8,15 @@ The active mode is shown on the right of the status bar. `Esc` always takes you 
 
 Normal mode is the default. You land here at startup and return here with `Esc`. In Normal mode, keys are commands: they move the cursor, modify text, or switch to another mode. Nothing you type appears in the buffer.
 
-**Enter from:** any mode via `Esc`
+**Enter:** at startup, or `Esc` from any mode
+
+**Exit:** enter another mode (`i`, `e`, `:`, `/`, `s`, …)
 
 ## Insert mode
 
 Insert mode lets you type text directly into the buffer. The cursor changes to a bar to indicate you are inserting.
 
-**Enter from Normal:**
-
-Enter Insert mode with `i`, `a`, `I`, `A`, `o`, `O`, or `c`. See [Editing](editing.md) for what each key does.
+**Enter:** `i`, `a`, `I`, `A`, `o`, `O`, or `c`. See [Editing](editing.md) for what each key does.
 
 **Exit:** `Esc` or `Ctrl-c`
 
@@ -30,19 +30,29 @@ Extend mode works like Normal mode, but every motion *extends* the current selec
 
 ## Command mode
 
-Invoked with `:`, command mode opens the command mode prompt at the bottom of the screen. Type a command name and press `Enter` to execute. Press `Esc` to dismiss. Keys you bind in `'command` mode work here too; see [Keys in the command line](configuration.md#keys-in-the-command-line).
+Command mode opens a prompt at the bottom of the screen where you type a command name. Keys you bind in `'command` mode work here too; see [Keys in the command line](configuration.md#keys-in-the-command-line).
 
 See [Command mode](command-mode.md) for a full list of commands.
 
+**Enter:** `:`
+
+**Exit:** `Enter` runs the command, `Esc` or `Ctrl-c` cancels
+
 ## Search mode
 
-Invoked with `/` (forward) or `?` (backward). Type a pattern and press `Enter` to jump to the first match. `n` / `N` cycle through matches afterward.
+Search mode opens a prompt for a search pattern. `n` / `N` cycle through matches afterward.
+
+**Enter:** `/` (forward) or `?` (backward)
+
+**Exit:** `Enter` jumps to the first match, `Esc` or `Ctrl-c` cancels
 
 ## Sift mode
 
-Invoked with `s` in Normal mode. Sift mode opens a regex prompt (`⫽`). Enter a pattern and press `Enter` to narrow each existing selection down to its matching sub-ranges. Use it to break a selection into individual tokens.
+Sift mode opens a regex prompt (`⫽`) that narrows each existing selection down to its matching sub-ranges. Use it to break a selection into individual tokens.
 
-**Enter from Normal:** `s`
+**Enter:** `s`
+
+**Exit:** `Enter` narrows the selections, `Esc` or `Ctrl-c` cancels
 
 ## Multi-key sequences
 
