@@ -106,7 +106,7 @@ fn compose_gutter(
     canvas: &mut Canvas,
 ) {
     let mut gutter_x = compose_ctx.pane_rect.x;
-    // A column's configured width (in particular `signcolumn`'s up-to-127
+    // A column's configured width (in particular `gutter-signs`'s up-to-127
     // slots) is never checked against the pane's actual width: `layout.rs`
     // only clamps *content* width down to make room for the gutter, not the
     // other way around. Without this bound, a gutter wider than the pane

@@ -73,7 +73,7 @@ fn timeout_counts_from_when_the_handlers_are_raised() {
         dir.path(),
         r#"(register-hook! 'on-before-buffer-save (lambda (pane) (call! "delete" (focused-pane))))"#,
     );
-    type_cmd(&mut ed, ":set global before-save-timeout-ms=1");
+    type_cmd(&mut ed, ":set global hook-before-save-timeout-ms=1");
 
     type_cmd(&mut ed, ":w");
     std::thread::sleep(std::time::Duration::from_millis(30));
@@ -91,7 +91,7 @@ fn write_proceeds_when_a_handler_never_calls_done() {
         dir.path(),
         r#"(register-hook! 'on-before-buffer-save (lambda (pane done) (begin)))"#,
     );
-    type_cmd(&mut ed, ":set global before-save-timeout-ms=1");
+    type_cmd(&mut ed, ":set global hook-before-save-timeout-ms=1");
 
     type_cmd(&mut ed, ":w");
     ed.settle();
@@ -274,7 +274,7 @@ const RELEASE_HANDLER: &str = r#"
 fn closing_the_buffer_drops_its_parked_write_without_a_warning() {
     let (mut ed, file, dir) = dirty_editor();
     run(&mut ed, dir.path(), ASYNC_HANDLER);
-    type_cmd(&mut ed, ":set global before-save-timeout-ms=1");
+    type_cmd(&mut ed, ":set global hook-before-save-timeout-ms=1");
 
     type_cmd(&mut ed, ":w");
     ed.settle();

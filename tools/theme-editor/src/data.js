@@ -97,7 +97,7 @@ export const DEFAULT_SC = {
   // resolves (hume-engine/src/theme/mod.rs) — see the "Cursor" group in
   // SCOPES above. `ui.cursor.insert`/`ui.cursor.primary.insert` are
   // deliberately absent: undefined is what makes HUME's default
-  // `cursor-shape-insert = bar` show the real terminal cursor through
+  // `insert-cursor-shape = bar` show the real terminal cursor through
   // instead of a themed block (`cursorColors` in lib/theme.js).
   "ui.cursor.normal": { fg: "black", bg: "blue" },
   "ui.cursor.select": { fg: "black", bg: "yellow" },

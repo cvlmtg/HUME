@@ -826,7 +826,7 @@ fn format_on_save_with_no_ranges_finishes_without_waiting_for_the_timeout() {
         r#"(register-hook! 'on-before-buffer-save
              (lambda (pane done) (call! "lsp/format-document" pane done (list))))"#,
     );
-    type_cmd(&mut rig.ed, ":set global before-save-timeout-ms=60000");
+    type_cmd(&mut rig.ed, ":set global hook-before-save-timeout-ms=60000");
     rig.ed.handle_key(key('i'));
     rig.ed.handle_key(key('x'));
     rig.ed.handle_key(key_esc());
@@ -926,7 +926,7 @@ fn a_format_reply_after_the_timeout_formats_the_saved_buffer() {
             serde_json::json!([text_edit(0, 0, 3, 0, FORMATTED)]),
         );
     });
-    type_cmd(&mut rig.ed, ":set global before-save-timeout-ms=1");
+    type_cmd(&mut rig.ed, ":set global hook-before-save-timeout-ms=1");
     rig.ed.handle_key(key('i'));
     rig.ed.handle_key(key('x'));
     rig.ed.handle_key(key_esc());

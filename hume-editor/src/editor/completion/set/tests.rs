@@ -51,7 +51,7 @@ fn set_completer_keys_for_global_scope() {
         "global-only key should appear"
     );
     assert!(
-        names.contains(&"tab-width"),
+        names.contains(&"indent-width"),
         "global+buffer key should appear"
     );
     assert!(
@@ -68,7 +68,7 @@ fn set_completer_keys_for_buffer_scope_includes_language() {
     assert_eq!(result.0.start, 11);
     let names = names_of(&result);
     assert!(names.contains(&"language"), "language is buffer-only");
-    assert!(names.contains(&"tab-width"), "buffer-overridable key");
+    assert!(names.contains(&"indent-width"), "buffer-overridable key");
     assert!(
         names.contains(&"wrap-mode"),
         "wrap-mode is buffer-overridable too, not just global+pane"
@@ -88,19 +88,19 @@ fn set_completer_keys_for_pane_scope_only_wrap_mode() {
 
 #[test]
 fn set_completer_key_prefix_filters() {
-    let result = set_result("set global tab");
+    let result = set_result("set global indent");
     assert_eq!(result.0.start, 11);
     let names = names_of(&result);
-    assert!(names.contains(&"tab-width"));
-    assert!(names.contains(&"tab-style"));
-    assert!(names.iter().all(|n| n.starts_with("tab")));
+    assert!(names.contains(&"indent-width"));
+    assert!(names.contains(&"indent-style"));
+    assert!(names.iter().all(|n| n.starts_with("indent")));
 }
 
 #[test]
 fn set_completer_key_includes_an_exact_match() {
     // See `set_completer_scope_includes_an_exact_match`'s doc.
-    let result = set_result("set global tab-width");
-    assert!(names_of(&result).contains(&"tab-width"));
+    let result = set_result("set global indent-width");
+    assert!(names_of(&result).contains(&"indent-width"));
 }
 
 // ── complete_set: value phase (static enums / bools) ──────────────────────
@@ -114,7 +114,7 @@ fn set_completer_value_bool_offers_true_false() {
 
 #[test]
 fn set_completer_value_tab_style() {
-    let result = set_result("set buffer tab-style=");
+    let result = set_result("set buffer indent-style=");
     assert_eq!(names_of(&result), vec!["hard", "soft"]);
 }
 
@@ -144,8 +144,8 @@ fn set_completer_value_whitespace_render() {
 }
 
 #[test]
-fn set_completer_value_signcolumn() {
-    let result = set_result("set buffer signcolumn=");
+fn set_completer_value_gutter_signs() {
+    let result = set_result("set buffer gutter-signs=");
     assert_eq!(
         names_of(&result),
         vec!["always", "always:1", "always:2", "auto", "auto:1", "auto:2"]
@@ -161,15 +161,15 @@ fn set_completer_value_whitespace_newline() {
 
 #[test]
 fn set_completer_value_prefix_filters() {
-    let result = set_result("set buffer tab-style=s");
-    assert_eq!(result.0.start, "set buffer tab-style=".len());
+    let result = set_result("set buffer indent-style=s");
+    assert_eq!(result.0.start, "set buffer indent-style=".len());
     assert_eq!(names_of(&result), vec!["soft"]);
 }
 
 #[test]
 fn set_completer_value_includes_an_exact_match() {
     // See `set_completer_scope_includes_an_exact_match`'s doc.
-    let result = set_result("set buffer tab-style=hard");
+    let result = set_result("set buffer indent-style=hard");
     assert_eq!(names_of(&result), vec!["hard"]);
 }
 
@@ -181,10 +181,10 @@ fn set_completer_value_numeric_no_candidates() {
 
 #[test]
 fn set_completer_value_static_enum_rejects_ineligible_scope() {
-    // tab-style is global/buffer-scoped, not pane-scoped, so completion
+    // indent-style is global/buffer-scoped, not pane-scoped, so completion
     // must not offer values for a scope the key doesn't accept, matching
     // the error `typed_set` would give on Enter.
-    let result = set_result("set pane tab-style=");
+    let result = set_result("set pane indent-style=");
     assert!(result.1.is_empty());
 }
 
@@ -220,7 +220,7 @@ fn set_completer_double_space_after_set_still_lists_buffer_keys() {
         names.contains(&"language"),
         "buffer scope should resolve despite double space"
     );
-    assert!(names.contains(&"tab-width"));
+    assert!(names.contains(&"indent-width"));
 }
 
 #[test]

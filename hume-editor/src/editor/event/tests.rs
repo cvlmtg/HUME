@@ -50,7 +50,7 @@ fn all_variants() -> Vec<EditorEvent> {
             item: hume_scripting::json::JsonHandle::new(serde_json::json!({"label": "foo"})),
         },
         EditorEvent::OnOptionChange {
-            key: "lsp.diagnostics-on-insert-line".to_string(),
+            key: "lsp-diagnostics-on-insert-line".to_string(),
             value: OptionValue::Bool(true),
         },
         EditorEvent::OnLspNotification {
@@ -359,19 +359,19 @@ fn on_lsp_notification_carries_server_method_and_params_handle() {
 #[test]
 fn on_option_change_carries_key_and_value_no_buffer_id() {
     let event = EditorEvent::OnOptionChange {
-        key: "lsp.diagnostics-on-insert-line".to_string(),
+        key: "lsp-diagnostics-on-insert-line".to_string(),
         value: OptionValue::Bool(true),
     };
     let args = event.into_steel_args();
     assert_eq!(args.len(), 2, "payload is (key value), no buffer id");
-    assert_eq!(steel_string(&args, 0), "lsp.diagnostics-on-insert-line");
+    assert_eq!(steel_string(&args, 0), "lsp-diagnostics-on-insert-line");
     assert_eq!(args[1], SteelVal::BoolV(true));
 }
 
 #[test]
 fn on_option_change_passes_an_enum_value_as_a_symbol() {
     let event = EditorEvent::OnOptionChange {
-        key: "tab-style".to_string(),
+        key: "indent-style".to_string(),
         value: OptionValue::Symbol("soft".to_string()),
     };
     assert_eq!(event.into_steel_args()[1], SteelVal::SymbolV("soft".into()));

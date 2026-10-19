@@ -126,7 +126,7 @@ fn eol_summary_is_flagged_by_default_and_unflagged_when_the_option_is_set() {
         "hidden on the insert line by default"
     );
 
-    run(&mut ed, ":set global lsp.diagnostics-on-insert-line=true");
+    run(&mut ed, ":set global lsp-diagnostics-on-insert-line=true");
     assert_eq!(
         eol_hide_flags(&ed, bid),
         vec![false],
@@ -135,7 +135,7 @@ fn eol_summary_is_flagged_by_default_and_unflagged_when_the_option_is_set() {
 }
 
 /// `diagnostics-for-buffer` (no `#:severity`) must default to
-/// `lsp.diagnostics-severity-floor`, same as the underline/gutter-sign
+/// `lsp-diagnostics-min-severity`, same as the underline/gutter-sign
 /// bridges: a below-floor diagnostic must not appear in the EOL summary
 /// either. And raising the floor at runtime must refresh already-rendered
 /// summaries via the `on-option-change` hook, not just future ones.
@@ -156,7 +156,7 @@ fn eol_summary_respects_the_severity_floor_and_updates_when_it_changes() {
         "sanity: floor defaults to hint, so the warning shows"
     );
 
-    run(&mut ed, ":set global lsp.diagnostics-severity-floor=error");
+    run(&mut ed, ":set global lsp-diagnostics-min-severity=error");
     assert_eq!(
         ed.state.config.decorations.eol_text_for_buffer(bid).count(),
         0,

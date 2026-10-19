@@ -27,7 +27,7 @@ What each step shows:
 
 - **`t` only moves; `Ctrl` makes it select.** `f`, `F`, `t` and `T` move the cursor and select nothing, where Helix selects up to the target. Holding `Ctrl` turns a motion into a one-shot extend, so `Ctrl-t (` selects `;; ` and `d` deletes it. For longer selections, `e` toggles Extend mode (Helix's `v`). The `Ctrl` forms need the [kitty keyboard protocol](installation.md#terminal-compatibility).
 - **A second `x` moves on.** Each `x` selects the next line on its own, dropping the previous one. `Ctrl-x` extends instead. See [Line selection](#line-selection-x-vs-extend-mode-e).
-- **`Esc` keeps what you typed selected.** After the change, `declare` is still selected instead of a plain cursor, ready to act on again: delete it, surround it, search for it. One consequence: `i` re-enters *before* that selection, so `a`, not `i`, is the key to keep typing after it. Disable this with the `select-inserted-text` option (see [Buffer options](settings.md#buffer-options)).
+- **`Esc` keeps what you typed selected.** After the change, `declare` is still selected instead of a plain cursor, ready to act on again: delete it, surround it, search for it. One consequence: `i` re-enters *before* that selection, so `a`, not `i`, is the key to keep typing after it. Disable this with the `insert-select-on-exit` option (see [Buffer options](settings.md#buffer-options)).
 - **`y` reaches the system clipboard.** It copies to the clipboard as well as HUME's own kill ring. `p` pastes your last yank or delete while you haven't edited since, and the system clipboard once you have. See [Copy & Paste](copy-and-paste.md).
 
 ### Saving and quitting
@@ -45,13 +45,13 @@ HUME has no TOML config file. Every setting and keybinding is a call to a Scheme
 | Setting | Helix `config.toml` | HUME `init.scm` |
 |---|---|---|
 | Theme | `theme = "onedark"` | `(set-option! "theme" "onedark")` |
-| Line numbers | `[editor]`<br>`line-number = "relative"` | `(set-option! "line-number-style" 'relative)` |
+| Line numbers | `[editor]`<br>`line-number = "relative"` | `(set-option! "gutter-line-numbers" 'relative)` |
 | Scroll padding | `scrolloff = 5` | `(set-option! "scroll-margin" 5)` |
 | Mouse | `mouse = false` | `(set-option! "mouse" #f)` |
 | Soft wrap | `[editor.soft-wrap]`<br>`enable = true` | `(set-option! "wrap-mode" "soft")` |
 | Whitespace indicators | `[editor.whitespace]`<br>`render = "all"` | `(set-option! "whitespace-space" 'all)`<br>`(set-option! "whitespace-tab" 'all)`<br>`(set-option! "whitespace-newline" 'all)` |
-| Insert-mode cursor | `[editor.cursor-shape]`<br>`insert = "bar"` | `(set-option! "cursor-shape-insert" 'bar)` |
-| Auto-pairs | `auto-pairs = false` | `(set-option! "auto-pairs" #f)` |
+| Insert-mode cursor | `[editor.cursor-shape]`<br>`insert = "bar"` | `(set-option! "insert-cursor-shape" 'bar)` |
+| Auto-pairs | `auto-pairs = false` | `(set-option! "insert-auto-pairs" #f)` |
 | Inlay hints | `[editor.lsp]`<br>`display-inlay-hints = true` | `(load-plugin! "core:lsp" #:config (hash "inlay-hints" #t))` |
 | Statusline | `[editor.statusline]`<br>`left = [...]` | `(configure-statusline! '(...) '(...) '(...))`, see [Statusline](#statusline) |
 | Keybinding | `[keys.normal]`<br>`"C-j" = "move_line_down"` | `(bind-key! 'normal "ctrl-j" "move-down")` |
@@ -62,8 +62,8 @@ Indentation (Helix's per-language `indent.tab-width`/`indent.unit` in `languages
 (register-hook! 'on-language-set
   (lambda (pane lang)
     (when (equal? lang "python")
-      (set-buffer-option! pane "tab-width" 4)
-      (set-buffer-option! pane "tab-style" 'soft))))
+      (set-buffer-option! pane "indent-width" 4)
+      (set-buffer-option! pane "indent-style" 'soft))))
 ```
 
 `bind-key!` takes a command *name* (the same names listed in [Builtin Commands](builtin-commands.md)), not a key sequence — there's no key-to-key remapping.
@@ -75,9 +75,9 @@ Indentation (Helix's per-language `indent.tab-width`/`indent.unit` in `languages
 - `:` command mode prompt, `/` search
 - `d`, `c`, `y`, `p` for delete/change/yank/paste
 - `u` / `U` undo / redo
-- `>` / `<` indent / unindent the lines a selection touches, with count support (`3>`). HUME rewrites each line's whole indent in the buffer's `tab-style`; see [Lines and alignment](editing.md#lines-and-alignment)
+- `>` / `<` indent / unindent the lines a selection touches, with count support (`3>`). HUME rewrites each line's whole indent in the buffer's `indent-style`; see [Lines and alignment](editing.md#lines-and-alignment)
 - `m i f`/`m a f`, `m i t`/`m a t`, `m i a`/`m a a`, `m i c`/`m a c`, `m i u`/`m a u`, `m i x`/`m a x`: the same letters as Helix's own match-mode textobjects except unit test (`T`→`u`; see below), selecting the enclosing function, class/type, argument, comment, unit test, or tag pair for any language with a tree-sitter grammar that ships a textobjects query
-- Enter, `o` and `O` indent new lines with Helix's indentation queries (see [Indentation](editing.md#indentation)), written in the buffer's `tab-style`. There is no `indent-heuristic` setting: HUME always uses Helix's default, `hybrid`; `smart-indent` turns automatic indentation off. HUME also moves a closing bracket or keyword back as you type it
+- Enter, `o` and `O` indent new lines with Helix's indentation queries (see [Indentation](editing.md#indentation)), written in the buffer's `indent-style`. There is no `indent-heuristic` setting: HUME always uses Helix's default, `hybrid`; `indent-smart` turns automatic indentation off. HUME also moves a closing bracket or keyword back as you type it
 
 ### Themes
 
@@ -201,7 +201,7 @@ Several features were intentionally adopted from Helix rather than reinvented:
 - **Language server registrations**: the same script and pinned Helix commit also sync which servers each language uses and in what order, how each server is started, its project root markers, its default settings, and any per-language feature limits (`only-features`/`except-features`, with Helix's own feature names). [`:lsp-install`](lsp.md#installing-servers) reads this list; `set-language-servers!` overrides it per language (see [Choosing which server a language uses](lsp.md#choosing-which-server-a-language-uses)).
 - **Helix-style surround**: the `core:helix-surround` plugin remaps surround operations to `ms` (wrap), `md` (delete), and `mr` (replace), matching Helix's keybindings. This is opt-in; HUME's default surround follows its own select-then-act model.
 - **Kitty keyboard protocol support**: HUME detects and uses the protocol the same way on Unix and Windows terminals, falling back to legacy key encoding where the protocol isn't available.
-- **Cursor shape**: Insert mode defaults to a thin bar, as Helix does with `insert = "bar"`; Normal and Extend mode are always a block. See `cursor-shape-insert` in [Global options](settings.md#global-options) for the other shapes.
+- **Cursor shape**: Insert mode defaults to a thin bar, as Helix does with `insert = "bar"`; Normal and Extend mode are always a block. See `insert-cursor-shape` in [Global options](settings.md#global-options) for the other shapes.
 
 ## What Helix has that HUME doesn't
 

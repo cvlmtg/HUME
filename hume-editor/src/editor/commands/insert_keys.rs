@@ -111,8 +111,8 @@ pub(in crate::editor) fn insert_default_key(
         }
 
         // ── Tab ────────────────────────────────────────────────────────────
-        // Governed by the `tab-style` setting: Hard inserts a literal `\t`,
-        // Soft inserts spaces to the next tab stop (width from `tab-width`).
+        // Governed by the `indent-style` setting: Hard inserts a literal `\t`,
+        // Soft inserts spaces to the next tab stop (width from `indent-width`).
         KeyCode::Tab => {
             let (style, tw) = tab_format(doc(state, view, fp.pane()), &state.settings);
             apply_focused_edit_grouped(state, view, fp, move |s| insert_tab(s, style, tw));
@@ -124,7 +124,7 @@ pub(in crate::editor) fn insert_default_key(
         // its closing token. The new line gets the indent `break_line`
         // computes: the syntax tree's width, or a copy of the current
         // line's leading whitespace when there is none, or no indent with
-        // `smart-indent` off.
+        // `indent-smart` off.
         //
         // `allowed` (vim autoindent parity): only vacate a blank line's
         // whitespace if it's owned by an earlier auto-indent this session
@@ -153,7 +153,7 @@ pub(in crate::editor) fn insert_default_key(
         KeyCode::Backspace => {
             let overrides = &doc(state, view, fp.pane()).overrides;
             let (ap_enabled, ap_pairs) = overrides.auto_pairs_ref(&state.settings);
-            let tw = overrides.tab_width(&state.settings);
+            let tw = overrides.indent_width(&state.settings);
             if should_dedent_backspace(state, view, fp) {
                 // Dedent: snap every cursor in leading whitespace back to
                 // the previous tab stop. All-or-nothing: if any cursor

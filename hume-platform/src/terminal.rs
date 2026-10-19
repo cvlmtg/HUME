@@ -36,7 +36,7 @@ use termina::style::RgbColor;
 use termina::{Event, EventReader, PlatformHandle, PlatformTerminal, WindowSize};
 
 /// Re-exported so callers choosing a shape (`hume-editor`'s
-/// `cursor-shape-insert` setting) don't need their own `termina` import just
+/// `insert-cursor-shape` setting) don't need their own `termina` import just
 /// to name the value they're passing to [`set_cursor_shape`].
 pub use termina::style::CursorStyle;
 

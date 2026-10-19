@@ -92,7 +92,7 @@ test('every scope a preview sample references is in the catalog', () => {
 });
 
 // Scopes deliberately left blank in DEFAULT_SC: undefined here is what makes
-// HUME's default `cursor-shape-insert = bar` show the real terminal cursor
+// HUME's default `insert-cursor-shape = bar` show the real terminal cursor
 // through instead of a themed block (see `cursorColors` in lib/theme.js and
 // its comment in data.js).
 const DEFAULT_SC_INTENTIONAL_GAPS = ['ui.cursor.insert', 'ui.cursor.primary.insert'];

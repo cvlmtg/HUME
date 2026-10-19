@@ -52,7 +52,7 @@ pub(in crate::editor) fn apply_global(
     // raise site for every `:set global`/`set-option!`/`:theme` write, since
     // this is the single write path all three funnel through (see the
     // module doc). A plugin owning one setting's policy (e.g. `core:lsp`
-    // re-cutting diagnostics on `lsp.diagnostics-severity-floor`) needs
+    // re-cutting diagnostics on `lsp-diagnostics-min-severity`) needs
     // one hook, not one per write path.
     let value = super::setting_value(key, &state.settings, None)
         .expect("write_global only accepts keys setting_value reports");
@@ -172,8 +172,10 @@ pub(in crate::editor) fn set_line_ending(
 /// `resync: true` declaration with no arm here fails to compile.
 fn resync_derived_state(state: &mut EditorState, view: &mut EngineView, rk: ResyncKey) -> bool {
     match rk {
-        ResyncKey::history_capacity => {
-            state.history.set_capacity(state.settings.history_capacity);
+        ResyncKey::prompt_history_levels => {
+            state
+                .history
+                .set_capacity(state.settings.prompt_history_levels);
             true
         }
         ResyncKey::undo_levels => {

@@ -389,7 +389,7 @@ fn drawer_closes_when_all_diagnostics_are_fixed() {
     );
 }
 
-/// Raising `lsp.diagnostics-severity-floor` must refresh the open drawer,
+/// Raising `lsp-diagnostics-min-severity` must refresh the open drawer,
 /// not just future opens and the decorations: the drawer snapshots
 /// `diagnostics-for-buffer` (which defaults to the floor) at open time.
 #[test]
@@ -405,7 +405,7 @@ fn drawer_refreshes_rows_when_the_severity_floor_changes() {
     ed.settle();
     assert_eq!(drawer_rows(&ed).len(), 2, "sanity: both rows listed");
 
-    type_cmd(&mut ed, ":set global lsp.diagnostics-severity-floor=error");
+    type_cmd(&mut ed, ":set global lsp-diagnostics-min-severity=error");
     ed.settle();
 
     let rows = drawer_rows(&ed);
@@ -477,7 +477,7 @@ fn drawer_scroll_is_reclamped_when_the_severity_floor_shrinks_the_list() {
         drawer.scroll = 12;
     }
 
-    type_cmd(&mut ed, ":set global lsp.diagnostics-severity-floor=error");
+    type_cmd(&mut ed, ":set global lsp-diagnostics-min-severity=error");
     ed.settle();
     // `scroll` is clamped at frame time (`clamp_drawer_scroll_to_terminal`),
     // not by the refresh itself: a frame must run before reading it back.
@@ -512,7 +512,7 @@ fn drawer_closes_when_the_severity_floor_hides_everything() {
     ed.settle();
     assert!(ed.state.input.drawer().is_some(), "sanity: drawer open");
 
-    type_cmd(&mut ed, ":set global lsp.diagnostics-severity-floor=error");
+    type_cmd(&mut ed, ":set global lsp-diagnostics-min-severity=error");
     ed.settle();
 
     assert!(

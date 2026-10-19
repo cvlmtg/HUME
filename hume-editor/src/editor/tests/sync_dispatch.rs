@@ -1337,7 +1337,7 @@ fn procs_recorded_after_define_command() {
 ///
 /// Three assertions lock in the full behavior:
 /// 1. `eval_source` returns `Ok` (no hard error, no abort).
-/// 2. `history-capacity` set after the native call is applied (eval continued past it).
+/// 2. `prompt-history-levels` set after the native call is applied (eval continued past it).
 /// 3. The cursor did not move (command was skipped, not run).
 ///
 /// A `steel::stop!` in `call_command_primitive`'s `EvalSession::Init` branch
@@ -1361,9 +1361,9 @@ fn native_call_bang_at_init_top_level_warns_and_skips() {
     let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     // Eval as init context: native call in the middle, set-option! after it.
     let result = host.eval_source(
-        r#"(set-option! "history-capacity" 42)
+        r#"(set-option! "prompt-history-levels" 42)
            (call! "move-right")
-           (set-option! "history-capacity" 77)"#,
+           (set-option! "prompt-history-levels" 77)"#,
         &mut init_host,
     );
 
@@ -1374,7 +1374,7 @@ fn native_call_bang_at_init_top_level_warns_and_skips() {
 
     // The line after the native call must have been applied.
     assert_eq!(
-        ed.state.settings.history_capacity, 77,
+        ed.state.settings.prompt_history_levels, 77,
         "set-option! after native call must be applied (eval continued past it)"
     );
 

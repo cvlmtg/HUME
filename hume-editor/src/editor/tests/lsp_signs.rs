@@ -14,20 +14,20 @@ use super::*;
 use crate::editor::settings::{SettingText, SignColumnConfig};
 
 /// Builds an untitled editor containing `"abcdefgh\n"`, arms `arm_body` as a
-/// Steel `"arm"` command, runs it, pins `signcolumn` if given, and renders
+/// Steel `"arm"` command, runs it, pins `gutter-signs` if given, and renders
 /// one frame: the harness every plugin-sign test below needs, differing
 /// only in what `arm_body` does (typically a `register-sign-source!` call
 /// per source, then a `set-signs!` per source) and whether the column is
 /// pinned. `arm_body` may reference `bid`, the buffer the "arm" command was
 /// dispatched against.
-fn plugin_sign_editor(signcolumn: Option<&str>, arm_body: &str) -> (Editor, PaneId) {
+fn plugin_sign_editor(gutter_signs: Option<&str>, arm_body: &str) -> (Editor, PaneId) {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = open_headless(None);
     type_text(&mut ed, "abcdefgh");
-    if let Some(signcolumn) = signcolumn {
+    if let Some(gutter_signs) = gutter_signs {
         let bid = ed.focused_buffer_id();
-        ed.state.buffers.get_mut(bid).overrides.signcolumn =
-            Some(SignColumnConfig::parse(signcolumn).unwrap());
+        ed.state.buffers.get_mut(bid).overrides.gutter_signs =
+            Some(SignColumnConfig::parse(gutter_signs).unwrap());
     }
     let source = format!(r#"(define-typed-command! "arm" "" (lambda (bid) {arm_body}))"#);
     run(&mut ed, tmp.path(), &source);
@@ -193,14 +193,14 @@ fn plugin_sign_via_set_signs_appears_in_the_plugin_map() {
     );
 }
 
-/// With no `signcolumn` override, `always` auto-sizes to however many sign
+/// With no `gutter-signs` override, `always` auto-sizes to however many sign
 /// sources are registered: two sources at distinct priorities on the same
 /// line both claim their own slot, ordered highest-priority first, without
 /// the user having to pin `always:2` for it. A channel's column position is
 /// a property of its registration, stable buffer-wide, not a function of
 /// what else happens to share the line.
 #[test]
-fn default_signcolumn_auto_sizes_to_show_every_channel_present() {
+fn default_gutter_signs_auto_sizes_to_show_every_channel_present() {
     let (ed, pid) = plugin_sign_editor(
         None,
         r#"(register-sign-source! "linter" bid 3)
@@ -343,12 +343,12 @@ fn equal_priority_sign_sources_get_distinct_slots_ordered_by_name() {
     assert_eq!(&*line_signs[1].text, "+");
 }
 
-/// With `signcolumn=always:2` pinned, both distinct-priority sources fit
+/// With `gutter-signs=always:2` pinned, both distinct-priority sources fit
 /// their own slot regardless of how many sources are registered, the same
 /// outcome as auto-size here (2 registered sources), but via the pinned
 /// path instead of `SignColumnConfig::slots_for`'s source-count fallback.
 #[test]
-fn wider_signcolumn_keeps_multiple_signs_per_line() {
+fn wider_gutter_signs_keeps_multiple_signs_per_line() {
     let (ed, pid) = plugin_sign_editor(
         Some("always:2"),
         r#"(register-sign-source! "linter" bid 3)
@@ -362,7 +362,7 @@ fn wider_signcolumn_keeps_multiple_signs_per_line() {
     assert_eq!(
         line_signs.len(),
         2,
-        "signcolumn=always:2 keeps both signs on the line"
+        "gutter-signs=always:2 keeps both signs on the line"
     );
     assert_eq!(&*line_signs[0].text, "+", "priority 9 first");
     assert_eq!(&*line_signs[1].text, "!", "priority 3 second");

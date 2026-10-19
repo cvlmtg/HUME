@@ -52,7 +52,7 @@ impl History {
     /// `capacity == 0` is a silent black hole (every `push` immediately
     /// evicts what it just pushed) rather than a documented "unlimited",
     /// unlike `undo-levels`, where `0` means exactly that. The settings
-    /// parser (`usize_nonzero`) already rejects `0` for `history-capacity`
+    /// parser (`usize_nonzero`) already rejects `0` for `prompt-history-levels`
     /// before it can reach here; this just makes the trap loud if that
     /// guard is ever bypassed (a test constructing a `History` directly).
     pub(in crate::editor) fn new(capacity: usize) -> Self {
@@ -85,7 +85,7 @@ impl History {
     /// immediately, matching Vim's `undolevels` semantics (see
     /// `hume_editing::history::UndoTree::set_undo_levels`): lowering the cap
     /// does not retroactively trim existing entries. Called when
-    /// `history-capacity` is changed at runtime. No `cursor`/`scratch`
+    /// `prompt-history-levels` is changed at runtime. No `cursor`/`scratch`
     /// adjustment needed here, since no entries are removed by this call:
     /// a mid-navigation `cursor` stays valid until `push`'s own `while` trim
     /// runs on the next confirm.
@@ -214,7 +214,7 @@ impl HistoryStore {
     }
 
     /// Update the capacity of every ring; see `History::set_capacity` for
-    /// why this doesn't trim. Called when the `history-capacity` setting
+    /// why this doesn't trim. Called when the `prompt-history-levels` setting
     /// changes at runtime.
     pub(in crate::editor) fn set_capacity(&mut self, new_cap: usize) {
         self.command.set_capacity(new_cap);

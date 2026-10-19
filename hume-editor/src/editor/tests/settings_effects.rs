@@ -46,10 +46,10 @@ fn set_option_applies_history_capacity() {
         3
     );
 
-    let result = eval_set_option(&mut ed, r#"(set-option! "history-capacity" 2)"#);
+    let result = eval_set_option(&mut ed, r#"(set-option! "prompt-history-levels" 2)"#);
     assert!(result.is_ok(), "eval must succeed: {result:?}");
 
-    assert_eq!(ed.state.settings.history_capacity, 2);
+    assert_eq!(ed.state.settings.prompt_history_levels, 2);
     assert_eq!(
         ed.state.history.get(HistoryKind::Command).entries().len(),
         3,
@@ -168,7 +168,7 @@ fn set_global_mouse_resyncs_applied_mode_next_frame() {
     );
 }
 
-// ── statusline.mode-colors gates whole-row tinting ─────────────────────────
+// ── statusline-mode-colors gates whole-row tinting ─────────────────────────
 
 #[test]
 fn set_option_statusline_mode_colors_gates_whole_row_tint() {
@@ -235,11 +235,11 @@ fn set_option_statusline_mode_colors_gates_whole_row_tint() {
     ed.feed_key(key('i'));
     assert_eq!(ed.state.mode(), Mode::Insert);
 
-    // Default: statusline.mode-colors is on: the row tints for Insert.
+    // Default: statusline-mode-colors is on: the row tints for Insert.
     let buf = ed.render_to_buf(rect);
     assert_eq!(buf[(0, row)].style().bg, insert_bg);
 
-    eval_set_option(&mut ed, r#"(set-option! "statusline.mode-colors" #f)"#)
+    eval_set_option(&mut ed, r#"(set-option! "statusline-mode-colors" #f)"#)
         .expect("eval must succeed");
 
     // Off: the row reads the theme's base style, not the Normal-mode scope,
@@ -383,17 +383,17 @@ fn set_buffer_option_from_hook_writes_target_override() {
     let mut ed = editor_from("-[a]>b\n");
     crate::editor::tests::language::attach_host(
         &mut ed,
-        r#"(register-hook! 'on-language-set (lambda (bid lang) (set-buffer-option! bid "tab-width" 8)))"#,
+        r#"(register-hook! 'on-language-set (lambda (bid lang) (set-buffer-option! bid "indent-width" 8)))"#,
     );
     let bid = ed.focused_buffer_id();
     let lang = ed.state.config.languages.intern("rust");
     ed.set_buffer_language(bid, Some(lang));
     ed.settle();
 
-    assert_eq!(ed.state.buffers.get(bid).overrides.tab_width, Some(8));
+    assert_eq!(ed.state.buffers.get(bid).overrides.indent_width, Some(8));
     assert_eq!(
-        ed.state.settings.tab_width, 4,
-        "global tab-width must be untouched by a buffer-scoped write"
+        ed.state.settings.indent_width, 4,
+        "global indent-width must be untouched by a buffer-scoped write"
     );
 }
 
@@ -482,7 +482,7 @@ fn set_buffer_option_targets_hook_bid_not_focused_buffer() {
     let mut ed = editor_from("-[a]>b\n");
     crate::editor::tests::language::attach_host(
         &mut ed,
-        r#"(register-hook! 'on-language-set (lambda (bid lang) (set-buffer-option! bid "tab-width" 8)))"#,
+        r#"(register-hook! 'on-language-set (lambda (bid lang) (set-buffer-option! bid "indent-width" 8)))"#,
     );
     let focused_bid = ed.focused_buffer_id();
     let bid2 = ed.open_buffer(Buffer::at_start(BufferText::from("x\n")));
@@ -492,9 +492,9 @@ fn set_buffer_option_targets_hook_bid_not_focused_buffer() {
     ed.set_buffer_language(bid2, Some(lang));
     ed.settle();
 
-    assert_eq!(ed.state.buffers.get(bid2).overrides.tab_width, Some(8));
+    assert_eq!(ed.state.buffers.get(bid2).overrides.indent_width, Some(8));
     assert_eq!(
-        ed.state.buffers.get(focused_bid).overrides.tab_width,
+        ed.state.buffers.get(focused_bid).overrides.indent_width,
         None,
         "the focused (non-target) buffer must be untouched"
     );
@@ -512,7 +512,7 @@ fn get_buffer_option_explicit_bid_reads_hook_target_not_focused_buffer() {
     let mut ed = editor_from("-[a]>b\n");
     crate::editor::tests::language::attach_host(
         &mut ed,
-        r#"(register-hook! 'on-language-set (lambda (bid lang) (set-buffer-option! bid "tab-width" 8)))"#,
+        r#"(register-hook! 'on-language-set (lambda (bid lang) (set-buffer-option! bid "indent-width" 8)))"#,
     );
     let focused_bid = ed.focused_buffer_id();
     let bid2 = ed.open_buffer(Buffer::at_start(BufferText::from("x\n")));
@@ -525,14 +525,14 @@ fn get_buffer_option_explicit_bid_reads_hook_target_not_focused_buffer() {
     let mut host = crate::editor::host_impl::EditorHostImpl::new(&mut ed.state, &mut ed.view);
     assert_eq!(
         host.settings()
-            .get_buffer_option("tab-width", bid2)
+            .get_buffer_option("indent-width", bid2)
             .unwrap(),
         OptionValue::Int(8),
         "explicit bid must read the hook's target buffer's override"
     );
     assert_eq!(
         host.settings()
-            .get_buffer_option("tab-width", focused_bid)
+            .get_buffer_option("indent-width", focused_bid)
             .unwrap(),
         OptionValue::Int(4),
         "the focused (non-target) buffer must still resolve to the global default"
@@ -554,7 +554,7 @@ fn get_buffer_option_closed_bid_errors() {
     let mut host = crate::editor::host_impl::EditorHostImpl::new(&mut ed.state, &mut ed.view);
     let err = host
         .settings()
-        .get_buffer_option("tab-width", bid2)
+        .get_buffer_option("indent-width", bid2)
         .expect_err("a closed bid must error, not silently read the global default");
     assert!(
         err.contains("invalid buffer id"),
@@ -605,7 +605,7 @@ fn host_set_buffer_option_invalid_bid_errors() {
     let mut host = crate::editor::host_impl::EditorHostImpl::new(&mut ed.state, &mut ed.view);
     let result = host
         .settings()
-        .set_buffer_option("tab-width", "8", BufferId::default());
+        .set_buffer_option("indent-width", "8", BufferId::default());
     assert!(result.is_err(), "a stale bid must be rejected, not panic");
     let msg = result.unwrap_err();
     assert!(
@@ -614,9 +614,9 @@ fn host_set_buffer_option_invalid_bid_errors() {
     );
 }
 
-// ── cursor-shape-insert reaches the render settings ───────────────────────
+// ── insert-cursor-shape reaches the render settings ───────────────────────
 
-/// `cursor-shape-insert` only ever changes the *Insert* cursor: every other
+/// `insert-cursor-shape` only ever changes the *Insert* cursor: every other
 /// mode is hardwired to a block, because a terminal has one hardware cursor
 /// and HUME's prompt modes park it in the minibuf instead. Reads
 /// `EditorState::cursor_shape`, the single source both the terminal-cursor
@@ -624,7 +624,7 @@ fn host_set_buffer_option_invalid_bid_errors() {
 #[test]
 fn cursor_shape_insert_only_applies_to_insert_mode() {
     let mut ed = editor_from("-[a]>bc\n");
-    eval_set_option(&mut ed, r#"(set-option! "cursor-shape-insert" "bar")"#).unwrap();
+    eval_set_option(&mut ed, r#"(set-option! "insert-cursor-shape" "bar")"#).unwrap();
 
     assert_eq!(ed.state.mode(), Mode::Normal, "sanity: starts in Normal");
     assert_eq!(
@@ -666,22 +666,22 @@ fn cursor_shape_insert_gates_head_painting_in_the_focused_pane_only() {
     for (shape, expected_focused) in [("bar", false), ("underline", false), ("block", true)] {
         eval_set_option(
             &mut ed,
-            &format!(r#"(set-option! "cursor-shape-insert" "{shape}")"#),
+            &format!(r#"(set-option! "insert-cursor-shape" "{shape}")"#),
         )
         .unwrap();
         assert_eq!(
             ed.resolve_pane_settings(focused).cursor_is_block,
             expected_focused,
-            "focused pane with cursor-shape-insert={shape}"
+            "focused pane with insert-cursor-shape={shape}"
         );
         assert!(
             ed.resolve_pane_settings(other).cursor_is_block,
-            "an unfocused pane paints its heads for every shape (cursor-shape-insert={shape})"
+            "an unfocused pane paints its heads for every shape (insert-cursor-shape={shape})"
         );
     }
 }
 
-/// With `cursor-shape-insert=block` the painted head *is* the cursor, so the
+/// With `insert-cursor-shape=block` the painted head *is* the cursor, so the
 /// real terminal cursor must be hidden, the same rule the default `bar`
 /// inverts (`insert_mode_hides_cursor_only_in_focused_pane` covers that side).
 /// Asserts on the resolved shape rather than the escape byte: `Editor::run`
@@ -689,7 +689,7 @@ fn cursor_shape_insert_gates_head_painting_in_the_focused_pane_only() {
 #[test]
 fn insert_block_shape_suppresses_the_terminal_cursor() {
     let mut ed = editor_from("-[a]>bc\n");
-    eval_set_option(&mut ed, r#"(set-option! "cursor-shape-insert" "block")"#).unwrap();
+    eval_set_option(&mut ed, r#"(set-option! "insert-cursor-shape" "block")"#).unwrap();
     ed.feed_key(key('i'));
 
     assert_eq!(

@@ -13,7 +13,7 @@ use hume_scripting::host::NativeCall;
 ///
 /// The test installs an `on-mode-change` handler that logs a message, so a
 /// new log entry shows the hook fired. Not a cursor motion
-/// (as the sibling mouse-click test below uses): with `select-inserted-text`
+/// (as the sibling mouse-click test below uses): with `insert-select-on-exit`
 /// on, the entry hook's own `move-right` would land inside the pinned typed
 /// run and get folded into the Esc-time auto-select, then cancelled out by
 /// the exit hook's own `move-right`, so `state()` would spuriously come back
@@ -1250,14 +1250,14 @@ fn on_option_change_fires_key_and_value_after_a_set_global() {
     ed.scripting = Some(host);
     ed.settle();
 
-    type_cmd(&mut ed, ":set global lsp.diagnostics-on-insert-line=true");
+    type_cmd(&mut ed, ":set global lsp-diagnostics-on-insert-line=true");
     ed.settle();
 
     assert!(
         ed.state
             .message_log
             .entries()
-            .any(|e| e.severity == Severity::Trace && e.text == "lsp.diagnostics-on-insert-line=on"),
+            .any(|e| e.severity == Severity::Trace && e.text == "lsp-diagnostics-on-insert-line=on"),
         "on-option-change must fire with the changed key and its new value \
          after a successful :set global"
     );
@@ -1282,7 +1282,7 @@ fn on_option_change_passes_an_enum_value_as_a_symbol() {
     ed.scripting = Some(host);
     ed.settle();
 
-    type_cmd(&mut ed, ":set global tab-style=soft");
+    type_cmd(&mut ed, ":set global indent-style=soft");
     ed.settle();
 
     assert!(

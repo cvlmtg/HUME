@@ -254,7 +254,7 @@ fn on_diagnostics_changed_fires_once_per_drain_batch_not_per_publish() {
 fn on_viewport_change_debounces_a_scroll_burst_into_one_fire() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
-    ed.state.settings.viewport_debounce_ms = 0;
+    ed.state.settings.hook_viewport_debounce_ms = 0;
     let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(
         &mut ed,
@@ -281,7 +281,7 @@ fn on_viewport_change_debounces_a_scroll_burst_into_one_fire() {
     );
 }
 
-/// Registers an `on-viewport-change` hook that bumps `tab-width` once per
+/// Registers an `on-viewport-change` hook that bumps `indent-width` once per
 /// fire, so a test reads the fire count off the buffer's override.
 fn count_viewport_fires(ed: &mut Editor, dir: &Path) {
     let mut host = ScriptingHost::new(&Dirs::none());
@@ -289,7 +289,7 @@ fn count_viewport_fires(ed: &mut Editor, dir: &Path) {
         ed,
         &mut host,
         r#"(register-hook! 'on-viewport-change (lambda (bid range)
-             (set-buffer-option! bid "tab-width" (+ 1 (get-buffer-option bid "tab-width")))))"#,
+             (set-buffer-option! bid "indent-width" (+ 1 (get-buffer-option bid "indent-width")))))"#,
         dir,
     );
     ed.scripting = Some(host);
@@ -309,8 +309,8 @@ fn on_viewport_change_fires_when_an_edit_moves_the_clamped_end() {
 
     let bid = ed.focused_buffer_id();
     assert_eq!(
-        ed.state.buffers.get(bid).overrides.tab_width,
-        Some(EditorSettings::default().tab_width + 1),
+        ed.state.buffers.get(bid).overrides.indent_width,
+        Some(EditorSettings::default().indent_width + 1),
         "a buffer shorter than the pane that gains a line changes the visible range's end, so the hook must fire once"
     );
 }
@@ -328,7 +328,7 @@ fn on_viewport_change_does_not_fire_when_a_resize_leaves_the_range_unchanged() {
 
     let bid = ed.focused_buffer_id();
     assert_eq!(
-        ed.state.buffers.get(bid).overrides.tab_width,
+        ed.state.buffers.get(bid).overrides.indent_width,
         None,
         "a taller pane over a buffer that already fits leaves the visible range at 0..2, so the hook must not fire"
     );

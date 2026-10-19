@@ -19,6 +19,7 @@
 - `bind-key!` raises for a key sequence in `'insert` mode, and `bind-key-extend!` outside `'normal`. Neither binding ever ran, so delete it.
 - Command names ignore case everywhere, and `define-command!` and `#:commands` raise for an uppercase name: rename such commands to lowercase.
 - `s` matches each selection's text on its own, without a line break it ends on: `^`, `$` and `\b` see the selection's edges as the edges of the text. Add `(?m)` for `^` and `$` to match at each line inside it.
+- Options start with the area they belong to, so related ones sit together in `:set` completion. Rename them in your `init.scm` and `:set` calls: `tab-width` → `indent-width`, `tab-style` → `indent-style`, `smart-indent` → `indent-smart`, `auto-pairs` → `insert-auto-pairs`, `cursor-shape-insert` → `insert-cursor-shape`, `select-inserted-text` → `insert-select-on-exit`, `line-number-style` → `gutter-line-numbers`, `signcolumn` → `gutter-signs`, `object-jump-align` → `scroll-jump-align`, `jump-line-threshold` → `jump-list-min-lines`, `history-capacity` → `prompt-history-levels`, `prefer-line-comments` → `comment-prefer-line`, `auto-read` → `file-reload-prompt`, `before-save-timeout-ms` → `hook-before-save-timeout-ms`, `viewport-debounce-ms` → `hook-viewport-debounce-ms`, `statusline.mode-colors` → `statusline-mode-colors`, `lsp.diagnostics-severity-floor` → `lsp-diagnostics-min-severity`, and the other `lsp.` options take `lsp-` (`lsp-request-timeout-ms`).
 
 ### Editing
 - `Ctrl-r` in Insert mode and on the command line inserts a register or the current file's path.

@@ -1,6 +1,6 @@
 //! A resize, a wrap-mode change, a virtual-line block appearing above the
 //! cursor, an inlay hint or EOL text wrapping an earlier line, a buffer
-//! switch, a tab-width or scroll-margin change, or a gutter that widens for a
+//! switch, a indent-width or scroll-margin change, or a gutter that widens for a
 //! longer line count must still replace the caret even though the cursor
 //! itself is unmoved between the two frames each test drives. None of these
 //! fixtures move the primary head, so `PaneBufferState::reveal_pending`
@@ -277,7 +277,7 @@ fn eol_text_that_wraps_an_earlier_line_replaces_the_caret_even_when_the_cursor_h
     );
 }
 
-/// A `:set buffer tab-width=` change with the cursor unmoved must still
+/// A `:set buffer indent-width=` change with the cursor unmoved must still
 /// replace the caret: a tab-indented line between the settled top and the
 /// cursor that fits one display row at the default width can exceed a fixed
 /// wrap boundary once tabs render wider, pushing the cursor's own row down,
@@ -289,11 +289,11 @@ fn a_tab_width_change_replaces_the_caret_even_when_the_cursor_has_not_moved() {
     let mut content = String::new();
     for i in 0..40 {
         if i == 19 {
-            // Tab + 5 chars: 9 display columns at the default tab-width 4
+            // Tab + 5 chars: 9 display columns at the default indent-width 4
             // (tab 0->4, then 5 more): one column of headroom left on the
             // width-10 row for the line's own EOL sentinel cell, so it fits
             // one display row, same margin `wrap_earlier_line_fixture`
-            // leaves with its plain 9-column line. 13 columns at tab-width
+            // leaves with its plain 9-column line. 13 columns at indent-width
             // 8 (tab 0->8), overflowing the row on content alone.
             content.push_str("\tabcde\n");
         } else {
@@ -309,14 +309,14 @@ fn a_tab_width_change_replaces_the_caret_even_when_the_cursor_has_not_moved() {
 
     assert!(
         frame(&mut ed, 40, 10).cursor_content_pos.is_some(),
-        "sanity: the cursor is visible before the tab-width change"
+        "sanity: the cursor is visible before the indent-width change"
     );
 
-    run_set(&mut ed, "buffer tab-width=8").expect(":set buffer tab-width=8 failed");
+    run_set(&mut ed, "buffer indent-width=8").expect(":set buffer indent-width=8 failed");
 
     assert!(
         frame(&mut ed, 40, 10).cursor_content_pos.is_some(),
-        "the caret must still be placed after a tab-width change, even \
+        "the caret must still be placed after a indent-width change, even \
          though the cursor's own CharOffset never moved"
     );
 }

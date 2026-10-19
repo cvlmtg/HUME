@@ -35,7 +35,7 @@ pub(super) struct DecoratedPane {
     pub(super) chars: ExclusiveRange<CharOffset>,
     /// The primary cursor's line while this pane owns the Insert session,
     /// `None` otherwise. Diagnostic decorations on it are hidden unless
-    /// `lsp.diagnostics-on-insert-line` is set.
+    /// `lsp-diagnostics-on-insert-line` is set.
     pub(super) insert_line: Option<hume_rope::line::ContentLine>,
 }
 
@@ -192,9 +192,9 @@ impl Editor {
         // ── Diagnostic + extra highlights — every pane ───────────────────────
         // Unlike search/bracket-match highlights, these stay visible in
         // Insert mode, except on the primary cursor's line unless
-        // `lsp.diagnostics-on-insert-line` is set.
+        // `lsp-diagnostics-on-insert-line` is set.
         {
-            let floor = self.state.settings.lsp_diagnostics_severity_floor;
+            let floor = self.state.settings.lsp_diagnostics_min_severity;
             let on_insert_line = self.state.settings.lsp_diagnostics_on_insert_line;
             // Editing-area scope per diagnostic severity, in `DiagSeverity`
             // discriminant order (`[error, warning, info, hint]`), indexed
@@ -299,18 +299,19 @@ impl Editor {
             let visible = p.chars;
             let visible_lines = p.lines;
 
-            let signcolumn = self
+            let gutter_signs = self
                 .state
                 .buffers
                 .get(bid)
                 .overrides
-                .signcolumn(&self.state.settings);
+                .gutter_signs(&self.state.settings);
 
             // A registered source's slot is its rank in this buffer's
             // registry (`DecorationStores::sign_sources`): fixed the moment
             // it registers for `bid`, independent of what's actually placed
             // this frame. `slots_for` never walks a single sign.
-            let slots = signcolumn.slots_for(self.state.config.decorations.sign_source_count(bid));
+            let slots =
+                gutter_signs.slots_for(self.state.config.decorations.sign_source_count(bid));
 
             // Plugin signs store their line's line-start char offset
             // (`SignEntry::pos`, remapped through edits like every other
@@ -358,14 +359,14 @@ impl Editor {
                 }
             }
 
-            // Compute sign column width from the buffer's `signcolumn` setting:
+            // Compute sign column width from the buffer's `gutter-signs` setting:
             // `always` keeps it visible at the resolved width (`slots + 1`);
             // `auto` collapses to zero when no signs are visible in the current
             // viewport (`by_line` above only holds visible-line entries; a
             // sign elsewhere in the buffer, scrolled out of view, does not
             // keep the column open).
             let has_signs = !by_line.is_empty();
-            let width = match signcolumn.mode {
+            let width = match gutter_signs.mode {
                 crate::editor::settings::SignColumnMode::Auto if !has_signs => 0,
                 _ => SignColumn::width_for_slots(slots),
             };

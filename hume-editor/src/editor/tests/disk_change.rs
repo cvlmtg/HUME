@@ -1,5 +1,5 @@
 //! External file-change detection (`Editor::check_buffer_disk_state` /
-//! `check_all_disk_state`, the `auto-read` setting, the `:w` stale guard, and
+//! `check_all_disk_state`, the `file-reload-prompt` setting, the `:w` stale guard, and
 //! the confirm overlay's reload/keep choices).
 
 use super::*;
@@ -20,7 +20,7 @@ fn rewrite_externally(path: &std::path::Path, content: &str) {
 // ── Detection ─────────────────────────────────────────────────────────────────
 
 /// An external rewrite with different content/length is detected as
-/// `Changed`, and (since `auto-read` defaults to `true` and this is the
+/// `Changed`, and (since `file-reload-prompt` defaults to `true` and this is the
 /// focused buffer) opens a reload confirm.
 #[test]
 fn external_rewrite_is_detected_and_opens_confirm() {
@@ -36,12 +36,12 @@ fn external_rewrite_is_detected_and_opens_confirm() {
     assert!(ed.state.input.confirm().is_some());
 }
 
-/// `auto-read=false` only warns: no confirm, but the stale flag is still set
+/// `file-reload-prompt=false` only warns: no confirm, but the stale flag is still set
 /// so `:w` still refuses until the buffer is reloaded or the write is forced.
 #[test]
 fn auto_read_false_warns_without_opening_confirm() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
-    ed.state.settings.auto_read = false;
+    ed.state.settings.file_reload_prompt = false;
     rewrite_externally(&tmp, "hello, world!\n");
 
     let (_, warnings_before) = ed.state.message_log.totals();
@@ -124,7 +124,7 @@ fn pathless_buffers_are_never_flagged() {
 #[test]
 fn unactioned_change_does_not_refire_until_a_further_change_happens() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
-    ed.state.settings.auto_read = false; // isolate the warning count from the confirm
+    ed.state.settings.file_reload_prompt = false; // isolate the warning count from the confirm
     rewrite_externally(&tmp, "hello, world!\n");
     let bid = ed.focused_buffer_id();
 
@@ -235,7 +235,7 @@ fn deferred_change_on_non_focused_buffer_prompts_on_buffer_enter() {
 /// A pending change detected while the editor is in Insert never opens a
 /// confirm, since it would steal the very next keystroke from whatever the user
 /// is mid-typing. It warns instead, same as a non-focused buffer or
-/// `auto-read` off, and, like that non-focused case, only a `BufferEnter`
+/// `file-reload-prompt` off, and, like that non-focused case, only a `BufferEnter`
 /// check reopens the deferred prompt; a further `Ambient` recheck stays
 /// silent for the same already-reported state.
 #[test]
@@ -585,7 +585,7 @@ fn checktime_is_silent_when_nothing_changed() {
 }
 
 /// `:checktime` runs the same check as any ambient trigger: it opens a
-/// reload confirm for the focused, `auto-read`-on, externally-changed buffer
+/// reload confirm for the focused, `file-reload-prompt`-on, externally-changed buffer
 /// right now, instead of waiting for the next terminal-focus or
 /// buffer-enter trigger.
 #[test]
@@ -730,7 +730,7 @@ fn indeterminate_check_never_touches_disk_state() {
 #[test]
 fn vanished_file_recreated_with_different_content_rereports() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
-    ed.state.settings.auto_read = false; // isolate the warning count
+    ed.state.settings.file_reload_prompt = false; // isolate the warning count
     let path = tmp.to_path_buf();
     std::fs::remove_file(&tmp).unwrap();
     let bid = ed.focused_buffer_id();

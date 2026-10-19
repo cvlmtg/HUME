@@ -43,7 +43,7 @@ fn indent_editor(name: &str, queries: &QueryFiles, source: &str) -> Editor {
 }
 
 /// Runs `check` once per tab style with that style's one-level indent
-/// string, set as the global `tab-style`.
+/// string, set as the global `indent-style`.
 fn each_style(check: impl Fn(TabStyle, &str)) {
     check(TabStyle::Soft, "    ");
     check(TabStyle::Hard, "\t");
@@ -57,7 +57,7 @@ fn indented(template: &str, unit: &str) -> String {
 /// Starts Insert at the cursor, presses Enter, and returns the editor.
 fn enter_at(source: &str, style: TabStyle, unit: &str) -> Editor {
     let mut ed = rust_indent_editor(&indented(source, unit));
-    ed.state.settings.tab_style = style;
+    ed.state.settings.indent_style = style;
     ed.feed_key(key('i'));
     ed.feed_key(key_enter());
     ed
@@ -99,7 +99,7 @@ fn enter_in_a_nested_space_indented_file_renders_tabs_under_hard() {
 fn o_on_an_empty_body_line_indents_one_level() {
     each_style(|style, unit| {
         let mut ed = rust_indent_editor("fn f() {\n-[\n]>}\n");
-        ed.state.settings.tab_style = style;
+        ed.state.settings.indent_style = style;
         ed.feed_key(key('o'));
         assert_eq!(state(&ed), indented("fn f() {\n\n<T>-[\n]>}\n", unit));
     });
@@ -109,7 +109,7 @@ fn o_on_an_empty_body_line_indents_one_level() {
 fn big_o_below_the_first_line_indents_from_the_previous_line() {
     each_style(|style, unit| {
         let mut ed = rust_indent_editor("fn f() {\n-[}]>\n");
-        ed.state.settings.tab_style = style;
+        ed.state.settings.indent_style = style;
         ed.feed_key(key('O'));
         assert_eq!(state(&ed), indented("fn f() {\n<T>-[\n]>}\n", unit));
     });
@@ -119,7 +119,7 @@ fn big_o_below_the_first_line_indents_from_the_previous_line() {
 fn big_o_on_the_first_line_copies_its_indent() {
     each_style(|style, unit| {
         let mut ed = rust_indent_editor(&indented("<T>-[f]>oo();\n", unit));
-        ed.state.settings.tab_style = style;
+        ed.state.settings.indent_style = style;
         ed.feed_key(key('O'));
         assert_eq!(state(&ed), indented("<T>-[\n]><T>foo();\n", unit));
     });
@@ -185,7 +185,7 @@ fn dot_repeat_computes_the_indent_at_the_new_position() {
             "-[f]>n f() {\n}\nfn g() {\n<T>if x {\n<T>}\n}\n",
             unit,
         ));
-        ed.state.settings.tab_style = style;
+        ed.state.settings.indent_style = style;
         ed.feed_keys([key('o'), key('x'), key_esc()]);
         ed.feed_keys([key('j'), key('j'), key('j')]);
         ed.feed_key(key('.'));
@@ -225,7 +225,7 @@ const NESTED_UNINDENTED_BREAK: &str = "fn f() {\n    if x {\n-[}]>\n}\n";
 #[test]
 fn set_global_turns_smart_indent_off() {
     let mut ed = rust_indent_editor(NESTED_OPEN_BLOCK);
-    type_cmd(&mut ed, ":set global smart-indent=false");
+    type_cmd(&mut ed, ":set global indent-smart=false");
     ed.feed_key(key('i'));
     ed.feed_key(key_enter());
     assert_eq!(state(&ed), NESTED_UNINDENTED_BREAK);
@@ -234,7 +234,7 @@ fn set_global_turns_smart_indent_off() {
 #[test]
 fn set_buffer_turns_smart_indent_off() {
     let mut ed = rust_indent_editor(NESTED_OPEN_BLOCK);
-    type_cmd(&mut ed, ":set buffer smart-indent=false");
+    type_cmd(&mut ed, ":set buffer indent-smart=false");
     ed.feed_key(key('i'));
     ed.feed_key(key_enter());
     assert_eq!(state(&ed), NESTED_UNINDENTED_BREAK);
@@ -243,7 +243,7 @@ fn set_buffer_turns_smart_indent_off() {
 #[test]
 fn a_buffer_override_turns_smart_indent_off() {
     let mut ed = rust_indent_editor(NESTED_OPEN_BLOCK);
-    ed.doc_mut().overrides.smart_indent = Some(false);
+    ed.doc_mut().overrides.indent_smart = Some(false);
     ed.feed_key(key('i'));
     ed.feed_key(key_enter());
     assert_eq!(state(&ed), NESTED_UNINDENTED_BREAK);
@@ -252,7 +252,7 @@ fn a_buffer_override_turns_smart_indent_off() {
 #[test]
 fn smart_indent_off_in_a_buffer_without_a_language_does_not_copy() {
     let mut ed = editor_from("  foo {-[}]>\n");
-    type_cmd(&mut ed, ":set global smart-indent=false");
+    type_cmd(&mut ed, ":set global indent-smart=false");
     ed.feed_key(key('i'));
     ed.feed_key(key_enter());
     assert_eq!(state(&ed), "  foo {\n-[}]>\n");
@@ -261,7 +261,7 @@ fn smart_indent_off_in_a_buffer_without_a_language_does_not_copy() {
 #[test]
 fn o_with_smart_indent_off_opens_a_line_at_the_left_margin() {
     let mut ed = rust_indent_editor("fn f() {\n    -[a]>();\n}\n");
-    type_cmd(&mut ed, ":set buffer smart-indent=false");
+    type_cmd(&mut ed, ":set buffer indent-smart=false");
     ed.feed_key(key('o'));
     assert_eq!(state(&ed), "fn f() {\n    a();\n-[\n]>}\n");
 }
@@ -269,7 +269,7 @@ fn o_with_smart_indent_off_opens_a_line_at_the_left_margin() {
 #[test]
 fn big_o_with_smart_indent_off_opens_a_line_at_the_left_margin() {
     let mut ed = rust_indent_editor("fn f() {\n    a();\n    -[b]>();\n}\n");
-    type_cmd(&mut ed, ":set buffer smart-indent=false");
+    type_cmd(&mut ed, ":set buffer indent-smart=false");
     ed.feed_key(key('O'));
     assert_eq!(state(&ed), "fn f() {\n    a();\n-[\n]>    b();\n}\n");
 }
@@ -277,7 +277,7 @@ fn big_o_with_smart_indent_off_opens_a_line_at_the_left_margin() {
 #[test]
 fn escape_after_an_unindented_enter_leaves_the_empty_line() {
     let mut ed = rust_indent_editor("fn f() {\n    a();-[\n]>}\n");
-    type_cmd(&mut ed, ":set buffer smart-indent=false");
+    type_cmd(&mut ed, ":set buffer indent-smart=false");
     ed.feed_keys([key('i'), key_enter()]);
     assert_eq!(state(&ed), "fn f() {\n    a();\n-[\n]>}\n");
     ed.feed_key(key_esc());
@@ -289,7 +289,7 @@ fn escape_after_an_unindented_enter_leaves_the_empty_line() {
 #[test]
 fn whitespace_typed_after_an_unindented_enter_is_kept() {
     let mut ed = rust_indent_editor("fn f() {\n    a();-[\n]>}\n");
-    type_cmd(&mut ed, ":set buffer smart-indent=false");
+    type_cmd(&mut ed, ":set buffer indent-smart=false");
     ed.feed_keys([key('i'), key_enter(), key(' '), key(' ')]);
     ed.feed_key(key_enter());
     assert_eq!(state(&ed), "fn f() {\n    a();\n  \n-[\n]>}\n");
@@ -303,8 +303,8 @@ fn whitespace_typed_after_an_unindented_enter_is_kept() {
 #[test]
 fn a_buffer_override_turns_smart_indent_on_over_a_global_off() {
     let mut ed = rust_indent_editor(OPEN_BLOCK);
-    ed.state.settings.smart_indent = false;
-    ed.doc_mut().overrides.smart_indent = Some(true);
+    ed.state.settings.indent_smart = false;
+    ed.doc_mut().overrides.indent_smart = Some(true);
     ed.feed_key(key('i'));
     ed.feed_key(key_enter());
     assert_eq!(state(&ed), "fn f() {\n\t-[\n]>}\n");
@@ -423,7 +423,7 @@ fn enter_in_a_fenced_block_starts_from_the_fences_indent() {
 
     // Cursor on the `}` of the fenced `fn f() {}`.
     ed.feed_keys("jjjllllllllll".chars().map(key));
-    ed.state.settings.tab_style = TabStyle::Soft;
+    ed.state.settings.indent_style = TabStyle::Soft;
     // The edit leaves the text as it was and the tree one generation behind;
     // only the injected rust layer has an indents query, so a gate reading
     // the root grammar alone would skip the reparse and copy the fence's
@@ -445,7 +445,7 @@ const BODY: &str = "fn f() {\n    -[a]>();\n";
 fn a_closing_brace_typed_on_a_line_o_opened_dedents_it() {
     each_style(|style, _| {
         let mut ed = rust_indent_editor(BODY);
-        ed.state.settings.tab_style = style;
+        ed.state.settings.indent_style = style;
         ed.feed_keys([key('o'), key('}')]);
         assert_eq!(state(&ed), "fn f() {\n    a();\n}-[\n]>");
         ed.feed_key(key_esc());
@@ -457,7 +457,7 @@ fn a_closing_brace_typed_on_a_line_o_opened_dedents_it() {
 fn a_closing_brace_typed_on_a_line_big_o_opened_dedents_it() {
     each_style(|style, unit| {
         let mut ed = rust_indent_editor("fn f() {\n    a();\n-[b]>();\n");
-        ed.state.settings.tab_style = style;
+        ed.state.settings.indent_style = style;
         ed.feed_key(key('O'));
         assert_eq!(
             state(&ed),
@@ -492,7 +492,7 @@ fn a_python_elif_clause_dedents_once_its_colon_is_typed() {
     let queries =
         QueryFiles::new(grammar_query_path("python")).with(OptionalQuery::Indents, indents);
     let mut ed = indent_editor("python", &queries, "if a:\n    -[x]>\n");
-    ed.state.settings.tab_style = TabStyle::Soft;
+    ed.state.settings.indent_style = TabStyle::Soft;
     ed.feed_key(key('o'));
     type_chars(&mut ed, "elif c");
     assert_eq!(state(&ed), "if a:\n    x\n    elif c-[\n]>");
@@ -504,7 +504,7 @@ fn a_python_elif_clause_dedents_once_its_colon_is_typed() {
 fn closing_braces_typed_at_several_cursors_dedent_each_line() {
     each_style(|style, _| {
         let mut ed = rust_indent_editor("fn f() {\n    -{a}>();\nfn g() {\n    -[b]>();\n");
-        ed.state.settings.tab_style = style;
+        ed.state.settings.indent_style = style;
         ed.feed_keys([key('o'), key('}')]);
         assert_eq!(
             state(&ed),
@@ -519,7 +519,7 @@ fn closing_braces_typed_at_several_cursors_dedent_each_line() {
 fn a_line_reindented_by_hand_is_not_dedented() {
     each_style(|style, _| {
         let mut ed = rust_indent_editor(BODY);
-        ed.state.settings.tab_style = style;
+        ed.state.settings.indent_style = style;
         ed.feed_keys([key('o'), key_backspace(), key(' '), key(' '), key('}')]);
         assert_eq!(state(&ed), "fn f() {\n    a();\n  }-[\n]>");
     });
@@ -528,7 +528,7 @@ fn a_line_reindented_by_hand_is_not_dedented() {
 #[test]
 fn a_pasted_closing_brace_is_not_dedented() {
     let mut ed = rust_indent_editor(BODY);
-    ed.state.settings.tab_style = TabStyle::Soft;
+    ed.state.settings.indent_style = TabStyle::Soft;
     ed.feed_key(key('o'));
     ed.feed_paste("}");
     assert_eq!(state(&ed), "fn f() {\n    a();\n    }-[\n]>");
@@ -539,20 +539,20 @@ fn a_pasted_closing_brace_is_not_dedented() {
 #[test]
 fn stepping_over_a_closing_brace_does_not_dedent() {
     let mut ed = rust_indent_editor(BODY);
-    ed.state.settings.tab_style = TabStyle::Soft;
+    ed.state.settings.indent_style = TabStyle::Soft;
     ed.feed_key(key('o'));
     ed.feed_paste("}");
     ed.feed_keys([key_left(), key('}')]);
     assert_eq!(state(&ed), "fn f() {\n    a();\n    }-[\n]>");
 }
 
-/// `o` opens the line with `smart-indent` on; the `}` is typed with it off.
+/// `o` opens the line with `indent-smart` on; the `}` is typed with it off.
 #[test]
 fn smart_indent_off_neither_dedents_nor_reparses() {
     let mut ed = rust_indent_editor(BODY);
-    ed.state.settings.tab_style = TabStyle::Soft;
+    ed.state.settings.indent_style = TabStyle::Soft;
     ed.feed_key(key('o'));
-    ed.doc_mut().overrides.smart_indent = Some(false);
+    ed.doc_mut().overrides.indent_smart = Some(false);
     ed.feed_key(key('}'));
     assert_eq!(state(&ed), "fn f() {\n    a();\n    }-[\n]>");
     let generation = ed.doc().text().generation();
@@ -609,7 +609,7 @@ fn a_completion_trigger_sees_the_dedented_line() {
 #[test]
 fn a_dedented_line_stays_the_sessions_own_to_vacate() {
     let mut ed = rust_indent_editor("fn f() {\n      -[a]>();\n");
-    ed.state.settings.tab_style = TabStyle::Hard;
+    ed.state.settings.indent_style = TabStyle::Hard;
     ed.feed_key(key('o'));
     assert_eq!(state(&ed), "fn f() {\n      a();\n\t  -[\n]>");
     ed.feed_key(key('}'));
@@ -636,7 +636,7 @@ fn dot_repeat_replays_the_dedent() {
 #[test]
 fn only_a_line_whose_indent_narrows_is_rewritten_among_several_cursors() {
     let mut ed = rust_indent_editor("fn f() {\n    -{a}>();\n-[x]>;\n");
-    ed.state.settings.tab_style = TabStyle::Soft;
+    ed.state.settings.indent_style = TabStyle::Soft;
     ed.feed_keys([key('o'), key('}')]);
     assert_eq!(state(&ed), "fn f() {\n    a();\n}-{\n}>x;\n}-[\n]>");
 }
@@ -652,7 +652,7 @@ fn python_else_editor(source: &str) -> Editor {
     let queries =
         QueryFiles::new(grammar_query_path("python")).with(OptionalQuery::Indents, indents);
     let mut ed = indent_editor("python", &queries, source);
-    ed.state.settings.tab_style = TabStyle::Soft;
+    ed.state.settings.indent_style = TabStyle::Soft;
     ed
 }
 

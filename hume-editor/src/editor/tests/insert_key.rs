@@ -6,7 +6,7 @@ use super::*;
 use hume_editing::tab_style::TabStyle;
 use pretty_assertions::assert_eq;
 
-/// `insert-key!` on Tab runs the same tab-style-aware insertion an unbound
+/// `insert-key!` on Tab runs the same indent-style-aware insertion an unbound
 /// Tab would (see `tabs.rs`'s `insert_tab_hard_default`). Hard style
 /// inserts a literal `\t`.
 #[test]
@@ -19,13 +19,13 @@ fn insert_key_tab_hard_default() {
     assert_eq!(state(&ed), "\t-[h]>ello\n");
 }
 
-/// Same, Soft `tab-style`: spaces to the next tab stop, not a literal tab,
+/// Same, Soft `indent-style`: spaces to the next tab stop, not a literal tab,
 /// proving `insert-key!` reads the live setting rather than hardcoding Hard.
 #[test]
 fn insert_key_tab_soft_setting() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[h]>ello\n");
-    ed.state.settings.tab_style = TabStyle::Soft;
+    ed.state.settings.indent_style = TabStyle::Soft;
     bind_insert_key(&mut ed, tmp.path(), "tab", r#"(insert-key! pane "tab")"#);
     ed.feed_key(key('i'));
     ed.feed_key(key_tab());

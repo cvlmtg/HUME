@@ -127,7 +127,7 @@ impl Editor {
 
         let settings = EditorSettings::default();
 
-        let history_capacity = settings.history_capacity;
+        let history_capacity = settings.prompt_history_levels;
         let initial_mouse_mode = (settings.mouse, settings.mouse_select);
 
         let mut buffers = BufferStore::new();
@@ -517,7 +517,7 @@ impl Editor {
                     None
                 } else {
                     // Non-block shape (only Insert can be, via
-                    // `cursor-shape-insert`): place the terminal cursor at the
+                    // `insert-cursor-shape`): place the terminal cursor at the
                     // document head, where `prepare_frame`'s scroll step already
                     // resolved it. The display-line map that decided *where to
                     // scroll* had to answer this question anyway, so re-deriving

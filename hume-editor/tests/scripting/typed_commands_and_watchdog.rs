@@ -246,7 +246,7 @@ fn call_steel_cmd_interrupt_leaves_settings_unchanged() {
     .unwrap();
     let cmd_name = "looper".to_string();
 
-    assert_eq!(mock.settings.tab_width, 4, "precondition");
+    assert_eq!(mock.settings.indent_width, 4, "precondition");
     mock.settings.steel_command_budget_ms = 50;
 
     let err = h
@@ -258,8 +258,8 @@ fn call_steel_cmd_interrupt_leaves_settings_unchanged() {
         "expected 'interrupted', got: {err}"
     );
     assert_eq!(
-        mock.settings.tab_width, 4,
-        "tab-width must be unchanged after interrupt"
+        mock.settings.indent_width, 4,
+        "indent-width must be unchanged after interrupt"
     );
 }
 
@@ -273,7 +273,7 @@ fn call_steel_cmd_set_option_from_body_applies_the_setting() {
     let mut mock = MockHost::new();
 
     h.eval_source(
-        r#"(define-command! "try-set" "" (lambda () (set-option! "tab-width" 8)))"#,
+        r#"(define-command! "try-set" "" (lambda () (set-option! "indent-width" 8)))"#,
         &mut mock,
     )
     .unwrap();
@@ -281,5 +281,8 @@ fn call_steel_cmd_set_option_from_body_applies_the_setting() {
     h.call_steel_cmd_by_name("try-set", vec![], &mut mock)
         .unwrap();
 
-    assert_eq!(mock.settings.tab_width, 8, "tab-width must be applied");
+    assert_eq!(
+        mock.settings.indent_width, 8,
+        "indent-width must be applied"
+    );
 }

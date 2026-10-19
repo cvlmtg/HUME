@@ -10,41 +10,41 @@ fn editor_settings_default_matches_old_constants() {
     assert!(s.mouse);
     assert!(!s.mouse_select);
     assert_eq!(s.jump_list_capacity, 100);
-    assert_eq!(s.jump_line_threshold, 5);
-    assert_eq!(s.history_capacity, 100);
+    assert_eq!(s.jump_list_min_lines, 5);
+    assert_eq!(s.prompt_history_levels, 100);
     assert_eq!(s.undo_levels, 0);
-    assert_eq!(s.tab_width, 4);
+    assert_eq!(s.indent_width, 4);
     assert!(s.indent_guides);
-    assert_eq!(s.tab_style, TabStyle::Hard);
+    assert_eq!(s.indent_style, TabStyle::Hard);
     assert_eq!(s.wrap_mode, WrapMode::Indent { width: 0 });
-    assert_eq!(s.line_number_style, LineNumberStyle::Hybrid);
-    assert!(s.auto_pairs);
-    assert!(s.select_inserted_text);
-    assert!(!s.prefer_line_comments);
+    assert_eq!(s.gutter_line_numbers, LineNumberStyle::Hybrid);
+    assert!(s.insert_auto_pairs);
+    assert!(s.insert_select_on_exit);
+    assert!(!s.comment_prefer_line);
     assert_eq!(s.word_selects_whitespace, WordSelectsWhitespace::Before);
     assert_eq!(s.word_chars, "");
     assert!(s.pane_dividers);
     assert!(s.statusline_mode_colors);
     assert_eq!(s.tabline, TablineVisibility::Dynamic);
-    assert_eq!(s.signcolumn, SignColumnConfig::default());
+    assert_eq!(s.gutter_signs, SignColumnConfig::default());
 }
 
 #[test]
 fn buffer_overrides_default_is_all_none() {
     let ov = BufferOverrides::default();
-    assert!(ov.tab_width.is_none());
+    assert!(ov.indent_width.is_none());
     assert!(ov.indent_guides.is_none());
-    assert!(ov.tab_style.is_none());
-    assert!(ov.line_number_style.is_none());
-    assert!(ov.auto_pairs.is_none());
-    assert!(ov.select_inserted_text.is_none());
-    assert!(ov.prefer_line_comments.is_none());
+    assert!(ov.indent_style.is_none());
+    assert!(ov.gutter_line_numbers.is_none());
+    assert!(ov.insert_auto_pairs.is_none());
+    assert!(ov.insert_select_on_exit.is_none());
+    assert!(ov.comment_prefer_line.is_none());
     assert!(ov.word_selects_whitespace.is_none());
     assert!(ov.word_chars.is_none());
     assert!(ov.whitespace_space.is_none());
     assert!(ov.whitespace_tab.is_none());
     assert!(ov.whitespace_newline.is_none());
-    assert!(ov.signcolumn.is_none());
+    assert!(ov.gutter_signs.is_none());
 }
 
 // ── Resolution: override present → returns override value ─────────────────
@@ -53,20 +53,20 @@ fn buffer_overrides_default_is_all_none() {
 fn resolution_override_wins_over_global() {
     let global = EditorSettings::default();
     let ov = BufferOverrides {
-        tab_width: Some(8),
+        indent_width: Some(8),
         ..Default::default()
     };
-    assert_eq!(ov.tab_width(&global), 8);
+    assert_eq!(ov.indent_width(&global), 8);
 }
 
 #[test]
 fn resolution_line_number_style_override_wins() {
     let global = EditorSettings::default();
     let ov = BufferOverrides {
-        line_number_style: Some(LineNumberStyle::Relative),
+        gutter_line_numbers: Some(LineNumberStyle::Relative),
         ..Default::default()
     };
-    assert_eq!(ov.line_number_style(&global), LineNumberStyle::Relative);
+    assert_eq!(ov.gutter_line_numbers(&global), LineNumberStyle::Relative);
 }
 
 // ── Resolution: override absent → returns global value ────────────────────
@@ -75,24 +75,24 @@ fn resolution_line_number_style_override_wins() {
 fn resolution_falls_back_to_global_tab_width() {
     let global = EditorSettings::default();
     let ov = BufferOverrides::default();
-    assert_eq!(ov.tab_width(&global), global.tab_width);
+    assert_eq!(ov.indent_width(&global), global.indent_width);
 }
 
 #[test]
 fn resolution_tab_style_override_wins() {
     let global = EditorSettings::default();
     let ov = BufferOverrides {
-        tab_style: Some(TabStyle::Soft),
+        indent_style: Some(TabStyle::Soft),
         ..Default::default()
     };
-    assert_eq!(ov.tab_style(&global), TabStyle::Soft);
+    assert_eq!(ov.indent_style(&global), TabStyle::Soft);
 }
 
 #[test]
 fn resolution_falls_back_to_global_tab_style() {
     let global = EditorSettings::default();
     let ov = BufferOverrides::default();
-    assert_eq!(ov.tab_style(&global), global.tab_style);
+    assert_eq!(ov.indent_style(&global), global.indent_style);
 }
 
 // ── setting_value (get-option) ─────────────────────────────────────────
@@ -112,7 +112,7 @@ fn setting_value_bool_key_returns_bool() {
 fn setting_value_usize_key_returns_int() {
     let global = EditorSettings::default();
     assert_eq!(
-        setting_value("tab-width", &global, None),
+        setting_value("indent-width", &global, None),
         Some(OptionValue::Int(4))
     );
 }
@@ -121,12 +121,12 @@ fn setting_value_usize_key_returns_int() {
 fn setting_value_enum_key_returns_symbol() {
     let global = EditorSettings::default();
     assert_eq!(
-        setting_value("tab-style", &global, None),
+        setting_value("indent-style", &global, None),
         Some(OptionValue::Symbol("hard".to_string()))
     );
 }
 
-/// `wrap-mode` and `signcolumn` take `name:N` forms, so they are not closed
+/// `wrap-mode` and `gutter-signs` take `name:N` forms, so they are not closed
 /// sets and stay strings.
 #[test]
 fn setting_value_parameterized_keys_return_str() {
@@ -136,7 +136,7 @@ fn setting_value_parameterized_keys_return_str() {
         Some(OptionValue::Str(_))
     ));
     assert!(matches!(
-        setting_value("signcolumn", &global, None),
+        setting_value("gutter-signs", &global, None),
         Some(OptionValue::Str(_))
     ));
 }
@@ -162,11 +162,11 @@ fn setting_value_unknown_key_returns_none() {
 fn setting_value_buffer_override_wins_over_global() {
     let global = EditorSettings::default();
     let ov = BufferOverrides {
-        tab_width: Some(8),
+        indent_width: Some(8),
         ..Default::default()
     };
     assert_eq!(
-        setting_value("tab-width", &global, Some(&ov)),
+        setting_value("indent-width", &global, Some(&ov)),
         Some(OptionValue::Int(8))
     );
 }
@@ -176,7 +176,7 @@ fn setting_value_falls_back_to_global_when_no_override() {
     let global = EditorSettings::default();
     let ov = BufferOverrides::default();
     assert_eq!(
-        setting_value("tab-width", &global, Some(&ov)),
+        setting_value("indent-width", &global, Some(&ov)),
         Some(OptionValue::Int(4))
     );
 }
@@ -312,7 +312,7 @@ fn cursor_shape_values_round_trip_through_from_str() {
 fn auto_pairs_ref_enabled_resolves_override_over_global() {
     let global = EditorSettings::default();
     let ov = BufferOverrides {
-        auto_pairs: Some(false),
+        insert_auto_pairs: Some(false),
         ..Default::default()
     };
     let (enabled, pairs) = ov.auto_pairs_ref(&global);
@@ -325,7 +325,7 @@ fn auto_pairs_ref_enabled_falls_back_to_global_when_no_override() {
     let global = EditorSettings::default();
     let ov = BufferOverrides::default();
     let (enabled, pairs) = ov.auto_pairs_ref(&global);
-    assert_eq!(enabled, global.auto_pairs);
+    assert_eq!(enabled, global.insert_auto_pairs);
     assert_eq!(pairs, hume_ops::auto_pairs::DEFAULT_PAIRS);
 }
 
@@ -356,7 +356,7 @@ fn set_global_pane_dividers() {
 #[test]
 fn set_global_statusline_mode_colors() {
     assert!(
-        !global("statusline.mode-colors", "false")
+        !global("statusline-mode-colors", "false")
             .unwrap()
             .statusline_mode_colors
     );
@@ -421,9 +421,9 @@ fn set_global_jump_list_capacity_zero_errors() {
 #[test]
 fn set_global_jump_line_threshold() {
     assert_eq!(
-        global("jump-line-threshold", "10")
+        global("jump-list-min-lines", "10")
             .unwrap()
-            .jump_line_threshold,
+            .jump_list_min_lines,
         10
     );
 }
@@ -431,14 +431,16 @@ fn set_global_jump_line_threshold() {
 #[test]
 fn set_global_history_capacity() {
     assert_eq!(
-        global("history-capacity", "50").unwrap().history_capacity,
+        global("prompt-history-levels", "50")
+            .unwrap()
+            .prompt_history_levels,
         50
     );
 }
 
 #[test]
 fn set_global_history_capacity_zero_errors() {
-    assert!(global("history-capacity", "0").is_err());
+    assert!(global("prompt-history-levels", "0").is_err());
 }
 
 #[test]
@@ -448,27 +450,27 @@ fn set_global_undo_levels() {
 
 #[test]
 fn set_global_undo_levels_zero_ok() {
-    // Unlike history-capacity, 0 is the meaningful "unlimited" default here,
+    // Unlike prompt-history-levels, 0 is the meaningful "unlimited" default here,
     // not a rejected value.
     assert_eq!(global("undo-levels", "0").unwrap().undo_levels, 0);
 }
 
 #[test]
 fn set_global_tab_width() {
-    assert_eq!(global("tab-width", "8").unwrap().tab_width, 8);
+    assert_eq!(global("indent-width", "8").unwrap().indent_width, 8);
 }
 
 #[test]
 fn set_global_tab_width_zero_errors() {
-    assert!(global("tab-width", "0").is_err());
+    assert!(global("indent-width", "0").is_err());
 }
 
 #[test]
 fn set_global_viewport_debounce_ms() {
     assert_eq!(
-        global("viewport-debounce-ms", "50")
+        global("hook-viewport-debounce-ms", "50")
             .unwrap()
-            .viewport_debounce_ms,
+            .hook_viewport_debounce_ms,
         50
     );
 }
@@ -477,13 +479,13 @@ fn set_global_viewport_debounce_ms() {
 fn set_global_viewport_debounce_ms_zero_errors() {
     // 0 would fire on every frame during a scroll burst instead of
     // collapsing it into one OnViewportChange, which defeats the setting.
-    assert!(global("viewport-debounce-ms", "0").is_err());
+    assert!(global("hook-viewport-debounce-ms", "0").is_err());
 }
 
 #[test]
 fn set_global_lsp_diagnostics_pull_debounce_ms() {
     assert_eq!(
-        global("lsp.diagnostics-pull-debounce-ms", "50")
+        global("lsp-diagnostics-pull-debounce-ms", "50")
             .unwrap()
             .lsp_diagnostics_pull_debounce_ms,
         50
@@ -492,43 +494,43 @@ fn set_global_lsp_diagnostics_pull_debounce_ms() {
 
 #[test]
 fn set_global_lsp_diagnostics_pull_debounce_ms_zero_errors() {
-    assert!(global("lsp.diagnostics-pull-debounce-ms", "0").is_err());
+    assert!(global("lsp-diagnostics-pull-debounce-ms", "0").is_err());
 }
 
 #[test]
 fn set_global_tab_style() {
     assert_eq!(
-        global("tab-style", "soft").unwrap().tab_style,
+        global("indent-style", "soft").unwrap().indent_style,
         TabStyle::Soft
     );
 }
 
 #[test]
 fn set_global_tab_style_invalid_errors() {
-    assert!(global("tab-style", "bogus").is_err());
+    assert!(global("indent-style", "bogus").is_err());
 }
 
 #[test]
 fn set_global_cursor_shape_insert() {
     assert_eq!(
-        global("cursor-shape-insert", "block")
+        global("insert-cursor-shape", "block")
             .unwrap()
-            .cursor_shape_insert,
+            .insert_cursor_shape,
         CursorShape::Block
     );
 }
 
 #[test]
 fn set_global_cursor_shape_insert_invalid_errors() {
-    assert!(global("cursor-shape-insert", "bogus").is_err());
+    assert!(global("insert-cursor-shape", "bogus").is_err());
 }
 
 #[test]
 fn set_global_line_number_style() {
     assert_eq!(
-        global("line-number-style", "relative")
+        global("gutter-line-numbers", "relative")
             .unwrap()
-            .line_number_style,
+            .gutter_line_numbers,
         LineNumberStyle::Relative,
     );
 }
@@ -567,7 +569,11 @@ fn set_global_wrap_mode_soft_no_colon() {
 
 #[test]
 fn set_global_auto_pairs() {
-    assert!(!global("auto-pairs", "false").unwrap().auto_pairs);
+    assert!(
+        !global("insert-auto-pairs", "false")
+            .unwrap()
+            .insert_auto_pairs
+    );
 }
 
 #[test]
@@ -578,18 +584,18 @@ fn set_global_indent_guides() {
 #[test]
 fn set_global_select_inserted_text() {
     assert!(
-        !global("select-inserted-text", "false")
+        !global("insert-select-on-exit", "false")
             .unwrap()
-            .select_inserted_text
+            .insert_select_on_exit
     );
 }
 
 #[test]
 fn set_global_prefer_line_comments() {
     assert!(
-        global("prefer-line-comments", "true")
+        global("comment-prefer-line", "true")
             .unwrap()
-            .prefer_line_comments
+            .comment_prefer_line
     );
 }
 
@@ -700,7 +706,7 @@ fn set_global_invalid_value_errors() {
 #[test]
 fn set_global_empty_value_errors() {
     assert!(global("scroll-margin", "").is_err());
-    assert!(global("tab-width", "").is_err());
+    assert!(global("indent-width", "").is_err());
     assert!(global("mouse", "").is_err());
 }
 
@@ -709,15 +715,15 @@ fn set_global_empty_value_errors() {
 #[test]
 fn set_buffer_tab_width() {
     let global = EditorSettings::default();
-    let ov = buffer("tab-width", "8").unwrap();
-    assert_eq!(ov.tab_width(&global), 8);
+    let ov = buffer("indent-width", "8").unwrap();
+    assert_eq!(ov.indent_width(&global), 8);
 }
 
 #[test]
 fn set_buffer_tab_style() {
     let global = EditorSettings::default();
-    let ov = buffer("tab-style", "soft").unwrap();
-    assert_eq!(ov.tab_style(&global), TabStyle::Soft);
+    let ov = buffer("indent-style", "soft").unwrap();
+    assert_eq!(ov.indent_style(&global), TabStyle::Soft);
 }
 
 #[test]
@@ -730,9 +736,9 @@ fn set_buffer_wrap_mode() {
 #[test]
 fn set_buffer_line_number_style() {
     let global = EditorSettings::default();
-    let ov = buffer("line-number-style", "absolute").unwrap();
+    let ov = buffer("gutter-line-numbers", "absolute").unwrap();
     assert_eq!(
-        ov.line_number_style(&global),
+        ov.gutter_line_numbers(&global),
         hume_engine::builtins::line_number::LineNumberStyle::Absolute,
     );
 }
@@ -740,7 +746,7 @@ fn set_buffer_line_number_style() {
 #[test]
 fn set_buffer_auto_pairs() {
     let global = EditorSettings::default();
-    let ov = buffer("auto-pairs", "false").unwrap();
+    let ov = buffer("insert-auto-pairs", "false").unwrap();
     let (enabled, _) = ov.auto_pairs_ref(&global);
     assert!(!enabled);
 }
@@ -748,15 +754,15 @@ fn set_buffer_auto_pairs() {
 #[test]
 fn set_buffer_select_inserted_text() {
     let global = EditorSettings::default();
-    let ov = buffer("select-inserted-text", "false").unwrap();
-    assert!(!ov.select_inserted_text(&global));
+    let ov = buffer("insert-select-on-exit", "false").unwrap();
+    assert!(!ov.insert_select_on_exit(&global));
 }
 
 #[test]
 fn set_buffer_prefer_line_comments() {
     let global = EditorSettings::default();
-    let ov = buffer("prefer-line-comments", "true").unwrap();
-    assert!(ov.prefer_line_comments(&global));
+    let ov = buffer("comment-prefer-line", "true").unwrap();
+    assert!(ov.comment_prefer_line(&global));
 }
 
 #[test]
@@ -868,17 +874,17 @@ fn set_buffer_whitespace_invalid_value_errors() {
 fn set_global_tab_width_propagates_to_unoverridden_buffer() {
     let mut global = EditorSettings::default();
     let ov = BufferOverrides::default();
-    write_global("tab-width", "2", &mut global).unwrap();
+    write_global("indent-width", "2", &mut global).unwrap();
     // Text has no override, so it inherits the new global value.
-    assert_eq!(ov.tab_width(&global), 2);
+    assert_eq!(ov.indent_width(&global), 2);
 }
 
 #[test]
 fn set_global_tab_style_propagates_to_unoverridden_buffer() {
     let mut global = EditorSettings::default();
     let ov = BufferOverrides::default();
-    write_global("tab-style", "soft", &mut global).unwrap();
-    assert_eq!(ov.tab_style(&global), TabStyle::Soft);
+    write_global("indent-style", "soft", &mut global).unwrap();
+    assert_eq!(ov.indent_style(&global), TabStyle::Soft);
 }
 
 #[test]
@@ -920,15 +926,15 @@ fn is_bool_setting_matches_every_bool_field() {
         "mouse-select",
         "popup-border",
         "pane-dividers",
-        "auto-pairs",
-        "select-inserted-text",
-        "prefer-line-comments",
+        "insert-auto-pairs",
+        "insert-select-on-exit",
+        "comment-prefer-line",
         "indent-guides",
     ] {
         assert!(is_bool_setting(key), "'{key}' should be a bool setting");
     }
     for key in [
-        "tab-style",
+        "indent-style",
         "wrap-mode",
         "scroll-margin",
         "whitespace-newline",
@@ -1042,7 +1048,7 @@ fn every_pane_scoped_key_is_also_buffer_and_global_scoped() {
 // ── SignColumnConfig parsing ──────────────────────────────────────────────
 
 #[test]
-fn signcolumn_default_is_always_auto_sized() {
+fn gutter_signs_default_is_always_auto_sized() {
     let cfg = SignColumnConfig::default();
     assert_eq!(cfg.mode, SignColumnMode::Always);
     assert_eq!(cfg.pinned_slots, None);
@@ -1050,7 +1056,7 @@ fn signcolumn_default_is_always_auto_sized() {
 }
 
 #[test]
-fn signcolumn_auto_size_follows_registered_source_count() {
+fn gutter_signs_auto_size_follows_registered_source_count() {
     let cfg = SignColumnConfig::default();
     assert_eq!(
         cfg.slots_for(10),
@@ -1060,7 +1066,7 @@ fn signcolumn_auto_size_follows_registered_source_count() {
 }
 
 #[test]
-fn signcolumn_auto_size_caps_at_max_slots() {
+fn gutter_signs_auto_size_caps_at_max_slots() {
     let cfg = SignColumnConfig::default();
     assert_eq!(
         cfg.slots_for(1000),
@@ -1070,21 +1076,21 @@ fn signcolumn_auto_size_caps_at_max_slots() {
 }
 
 #[test]
-fn signcolumn_parses_always() {
+fn gutter_signs_parses_always() {
     let cfg = SignColumnConfig::parse("always").unwrap();
     assert_eq!(cfg.mode, SignColumnMode::Always);
     assert_eq!(cfg.pinned_slots, None, "bare always auto-sizes");
 }
 
 #[test]
-fn signcolumn_parses_auto() {
+fn gutter_signs_parses_auto() {
     let cfg = SignColumnConfig::parse("auto").unwrap();
     assert_eq!(cfg.mode, SignColumnMode::Auto);
     assert_eq!(cfg.pinned_slots, None, "bare auto auto-sizes");
 }
 
 #[test]
-fn signcolumn_bare_and_explicit_one_are_distinct() {
+fn gutter_signs_bare_and_explicit_one_are_distinct() {
     let bare = SignColumnConfig::parse("always").unwrap();
     let explicit = SignColumnConfig::parse("always:1").unwrap();
     assert_ne!(
@@ -1094,7 +1100,7 @@ fn signcolumn_bare_and_explicit_one_are_distinct() {
 }
 
 #[test]
-fn signcolumn_parses_always_with_columns() {
+fn gutter_signs_parses_always_with_columns() {
     let cfg = SignColumnConfig::parse("always:3").unwrap();
     assert_eq!(cfg.mode, SignColumnMode::Always);
     assert_eq!(cfg.pinned_slots, Some(3));
@@ -1102,7 +1108,7 @@ fn signcolumn_parses_always_with_columns() {
 }
 
 #[test]
-fn signcolumn_parses_auto_with_columns() {
+fn gutter_signs_parses_auto_with_columns() {
     let cfg = SignColumnConfig::parse("auto:2").unwrap();
     assert_eq!(cfg.mode, SignColumnMode::Auto);
     assert_eq!(cfg.pinned_slots, Some(2));
@@ -1110,19 +1116,19 @@ fn signcolumn_parses_auto_with_columns() {
 }
 
 #[test]
-fn signcolumn_rejects_zero_columns() {
+fn gutter_signs_rejects_zero_columns() {
     assert!(SignColumnConfig::parse("always:0").is_err());
     assert!(SignColumnConfig::parse("auto:0").is_err());
 }
 
 #[test]
-fn signcolumn_rejects_columns_above_127() {
+fn gutter_signs_rejects_columns_above_127() {
     assert!(SignColumnConfig::parse("always:128").is_err());
     assert!(SignColumnConfig::parse("auto:255").is_err());
 }
 
 #[test]
-fn signcolumn_values_round_trip_through_from_str() {
+fn gutter_signs_values_round_trip_through_from_str() {
     // Every completion-offered value must
     // actually parse, so `VALUES` can't silently drift from `FromStr`
     // (mirrors `tab_style_values_round_trip_through_parse`).
@@ -1135,18 +1141,18 @@ fn signcolumn_values_round_trip_through_from_str() {
 }
 
 #[test]
-fn signcolumn_rejects_invalid_mode() {
+fn gutter_signs_rejects_invalid_mode() {
     assert!(SignColumnConfig::parse("bogus").is_err());
     assert!(SignColumnConfig::parse("bogus:1").is_err());
 }
 
 #[test]
-fn signcolumn_rejects_non_numeric_columns() {
+fn gutter_signs_rejects_non_numeric_columns() {
     assert!(SignColumnConfig::parse("always:abc").is_err());
 }
 
 #[test]
-fn signcolumn_display_round_trips() {
+fn gutter_signs_display_round_trips() {
     for input in ["always", "auto", "always:1", "auto:1", "always:3", "auto:2"] {
         let cfg = SignColumnConfig::parse(input).unwrap();
         assert_eq!(cfg.to_text(), input);
@@ -1154,17 +1160,17 @@ fn signcolumn_display_round_trips() {
 }
 
 #[test]
-fn set_global_signcolumn() {
-    let s = global("signcolumn", "auto:2").unwrap();
-    assert_eq!(s.signcolumn.mode, SignColumnMode::Auto);
-    assert_eq!(s.signcolumn.pinned_slots, Some(2));
+fn set_global_gutter_signs() {
+    let s = global("gutter-signs", "auto:2").unwrap();
+    assert_eq!(s.gutter_signs.mode, SignColumnMode::Auto);
+    assert_eq!(s.gutter_signs.pinned_slots, Some(2));
 }
 
 #[test]
-fn set_buffer_signcolumn() {
+fn set_buffer_gutter_signs() {
     let global = EditorSettings::default();
-    let ov = buffer("signcolumn", "always:3").unwrap();
-    let cfg = ov.signcolumn(&global);
+    let ov = buffer("gutter-signs", "always:3").unwrap();
+    let cfg = ov.gutter_signs(&global);
     assert_eq!(cfg.mode, SignColumnMode::Always);
     assert_eq!(cfg.pinned_slots, Some(3));
 }
@@ -1223,14 +1229,14 @@ fn every_parser_kind_names_the_key_once() {
             "invalid value for 'jump-list-capacity': must be at least 1",
         ),
         (
-            "tab-width",
+            "indent-width",
             "0",
-            "invalid value for 'tab-width': must be at least 1",
+            "invalid value for 'indent-width': must be at least 1",
         ),
         (
-            "tab-width",
+            "indent-width",
             "x",
-            "invalid value for 'tab-width': expected 1–255, got 'x'",
+            "invalid value for 'indent-width': expected 1–255, got 'x'",
         ),
         (
             "whitespace-newline",

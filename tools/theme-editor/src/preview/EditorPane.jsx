@@ -280,13 +280,13 @@ export default function EditorPane({ pal, sc }) {
     if (!tag) return null;
     if (tag === "cursor" || tag === "cursor2") {
       const primary = tag === "cursor";
-      // `barPrimary` (Insert only, HUME's default `cursor-shape-insert`) means
+      // `barPrimary` (Insert only, HUME's default `insert-cursor-shape`) means
       // the primary head has no configured Block shape: the real terminal bar
       // is the sole indicator, so nothing from the theme is layered over it.
       // With HUME's default `bar` shape a secondary head goes unpainted too
       // (see `cursor_is_block` in hume-engine/src/style/mod.rs) — but this
       // preview always paints "cursor2" regardless, deliberately showing the
-      // `cursor-shape-insert = block` case so `ui.cursor.insert` stays
+      // `insert-cursor-shape = block` case so `ui.cursor.insert` stays
       // editable and visible here.
       if (primary && mode.barPrimary) {
         return { fg: FG, bg: null, bar: true };

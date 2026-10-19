@@ -173,11 +173,11 @@ fn live_pane_builtins_raise_on_a_closed_buffer_through_real_registration() {
         ),
         (
             "set-buffer-option!",
-            r#"(set-buffer-option! (focused-pane) "tab-width" 4)"#,
+            r#"(set-buffer-option! (focused-pane) "indent-width" 4)"#,
         ),
         (
             "get-buffer-option",
-            r#"(get-buffer-option (focused-pane) "tab-width")"#,
+            r#"(get-buffer-option (focused-pane) "indent-width")"#,
         ),
         ("lsp-stop!", "(lsp-stop! (focused-pane))"),
         ("lsp-restart!", "(lsp-restart! (focused-pane))"),

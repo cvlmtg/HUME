@@ -11,7 +11,7 @@ contract. The code in `hume-treesitter/src/indent.rs` and `indent/` implements i
 | Rendering a width as whitespace | `hume-editing/src/tab_style.rs` (`TabStyle::render_indent`) |
 | Planning Enter, `o` and `O` | `hume-ops/src/edit/insert.rs` (`plan_line_breaks`) |
 | Planning the electric dedent | `hume-ops/src/edit/electric.rs` |
-| The editor's one consumer | `hume-editor/src/editor/commands/smart_indent.rs`, the `smart-indent` option in `settings.rs` |
+| The editor's one consumer | `hume-editor/src/editor/commands/smart_indent.rs`, the `indent-smart` option in `settings.rs` |
 | `register-grammar!` `#:indents` | `runtime/scheme/prelude.scm` |
 
 ## Principles
@@ -25,10 +25,10 @@ contract. The code in `hume-treesitter/src/indent.rs` and `indent/` implements i
   - `hume-ops` decides when a line break consults the model, copies the line's indent when the
     model has no answer, and decides which typed lines may be dedented.
   - `TabStyle::render_indent` turns a width into tabs and spaces, the same rule `>`/`<` use, so a
-    computed indent is written in the user's `tab-style`.
+    computed indent is written in the user's `indent-style`.
   - `hume-editor` brings the buffer's tree up to date and passes the model to `hume-ops` as a
     closure, in one module (`smart_indent.rs`) that Enter, `o`, `O` and a typed character all go
-    through. The `smart-indent` option, global or per buffer, turns automatic indentation off for
+    through. The `indent-smart` option, global or per buffer, turns automatic indentation off for
     all of them: no model, no copied indent, no dedent.
 - **Typed coordinates.** The engine converts between bytes, chars and lines only through
   `BufferText::byte_to_char`, `char_to_byte`, `ropey_char_to_line`, `covering_bytes` for the
@@ -200,25 +200,25 @@ The result is `net` levels and the alignment column `A`, if any.
 ### Callers
 
 **Enter, `o`, `O`** (`plan_line_breaks`). Every break is planned against the pre-edit text, then
-applied as one edit. The editor reads `smart-indent` once per Enter, `o` or `O` and passes the
+applied as one edit. The editor reads `indent-smart` once per Enter, `o` or `O` and passes the
 planner a `NewLineIndent`: `LeftMargin` when it is off, `Smart` with the model when it is on.
 - With `LeftMargin` every new line starts at the left margin: Enter and `o` insert a bare `\n`, `O` opens
   an empty line, no block is opened, and a selection is replaced by a bare `\n`. A blank line whose
   whitespace the insert session owns is still vacated.
 - With `Smart` the model is asked for the new line's width at the cursor (Enter, `o`) or at the
-  previous line's `\n` (`O`), and the width is rendered in the buffer's `tab-style`.
+  previous line's `\n` (`O`), and the width is rendered in the buffer's `indent-style`.
 - The new line copies the current line's indent instead when the selection is not a cursor, when the
   cursor is at or before the first non-blank character of a line with content, when `O` is on the
   first line, or when the model answers `None`.
 - **Open block:** when `after_token` is set and the cursor sits between the halves of an asymmetric
   auto-pair, the break inserts two lines: the inner one at the model's width plus one level, then
   the closer's at the model's width. A symmetric pair, or a cursor after a character that is not a
-  token of the tree (inside a string), gives a plain break. With `auto-pairs` off there are no
+  token of the tree (inside a string), gives a plain break. With `insert-auto-pairs` off there are no
   pairs, so the break is plain.
 
 **Electric dedent** (`electric_candidates`, `plan_electric_dedent`), run after each typed character
 that lands and before Enter breaks a line at the cursor. `o` and `O` do not run it: they open a
-line without finishing the text of the current one. With `smart-indent` off it does nothing.
+line without finishing the text of the current one. With `indent-smart` off it does nothing.
 - The trigger lands at a selection's head for a typed character, and at its start for Enter, which
   replaces what the selection covers with the break.
 - A line is a candidate when the insert session recorded its indent as an auto-indent, the line

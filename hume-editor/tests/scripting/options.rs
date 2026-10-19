@@ -9,10 +9,10 @@ fn set_option_tab_width_integer() {
     let mut h = host();
     let mut mock = MockHost::new();
 
-    assert_eq!(mock.settings.tab_width, 4);
-    h.eval_source("(set-option! \"tab-width\" 2)", &mut mock)
+    assert_eq!(mock.settings.indent_width, 4);
+    h.eval_source("(set-option! \"indent-width\" 2)", &mut mock)
         .unwrap();
-    assert_eq!(mock.settings.tab_width, 2);
+    assert_eq!(mock.settings.indent_width, 2);
 }
 
 #[test]
@@ -20,9 +20,9 @@ fn set_option_tab_width_string() {
     let mut h = host();
     let mut mock = MockHost::new();
 
-    h.eval_source("(set-option! \"tab-width\" \"8\")", &mut mock)
+    h.eval_source("(set-option! \"indent-width\" \"8\")", &mut mock)
         .unwrap();
-    assert_eq!(mock.settings.tab_width, 8);
+    assert_eq!(mock.settings.indent_width, 8);
 }
 
 #[test]
@@ -59,7 +59,7 @@ fn get_option_works_during_init_eval() {
     let mut mock = MockHost::new();
 
     h.eval_source(
-        r#"(unless (equal? (get-option "tab-width") 4) (error "unexpected tab-width"))"#,
+        r#"(unless (equal? (get-option "indent-width") 4) (error "unexpected indent-width"))"#,
         &mut mock,
     )
     .unwrap();
@@ -72,13 +72,13 @@ fn get_option_reads_back_tab_width_as_int() {
 
     h.eval_source(
         r#"(define-command! "check" "" (lambda ()
-             (unless (equal? (get-option "tab-width") 4)
-               (error "unexpected tab-width"))))"#,
+             (unless (equal? (get-option "indent-width") 4)
+               (error "unexpected indent-width"))))"#,
         &mut mock,
     )
     .unwrap();
     h.call_steel_cmd_by_name("check", vec![], &mut mock)
-        .expect("get-option must read back the default tab-width as an int");
+        .expect("get-option must read back the default indent-width as an int");
 }
 
 #[test]
@@ -88,13 +88,13 @@ fn get_option_reads_back_tab_style_as_symbol() {
 
     h.eval_source(
         r#"(define-command! "check" "" (lambda ()
-             (unless (equal? (get-option "tab-style") 'hard)
-               (error "unexpected tab-style"))))"#,
+             (unless (equal? (get-option "indent-style") 'hard)
+               (error "unexpected indent-style"))))"#,
         &mut mock,
     )
     .unwrap();
     h.call_steel_cmd_by_name("check", vec![], &mut mock)
-        .expect("get-option must read back the default tab-style as a symbol");
+        .expect("get-option must read back the default indent-style as a symbol");
 }
 
 #[test]
@@ -126,13 +126,13 @@ fn get_option_reads_back_lsp_diagnostics_on_insert_line_as_bool() {
 
     h.eval_source(
         r#"(define-command! "check" "" (lambda ()
-             (unless (equal? (get-option "lsp.diagnostics-on-insert-line") #f)
-               (error "unexpected lsp.diagnostics-on-insert-line"))))"#,
+             (unless (equal? (get-option "lsp-diagnostics-on-insert-line") #f)
+               (error "unexpected lsp-diagnostics-on-insert-line"))))"#,
         &mut mock,
     )
     .unwrap();
     h.call_steel_cmd_by_name("check", vec![], &mut mock).expect(
-        "get-option must read back the default lsp.diagnostics-on-insert-line (false) as a bool",
+        "get-option must read back the default lsp-diagnostics-on-insert-line (false) as a bool",
     );
 }
 
@@ -143,13 +143,13 @@ fn get_option_reads_back_statusline_mode_colors_as_bool() {
 
     h.eval_source(
         r#"(define-command! "check" "" (lambda ()
-             (unless (equal? (get-option "statusline.mode-colors") #t)
-               (error "unexpected statusline.mode-colors"))))"#,
+             (unless (equal? (get-option "statusline-mode-colors") #t)
+               (error "unexpected statusline-mode-colors"))))"#,
         &mut mock,
     )
     .unwrap();
     h.call_steel_cmd_by_name("check", vec![], &mut mock)
-        .expect("get-option must read back the default statusline.mode-colors (true) as a bool");
+        .expect("get-option must read back the default statusline-mode-colors (true) as a bool");
 }
 
 #[test]
@@ -187,11 +187,11 @@ fn get_buffer_option_reads_back_a_value() {
 
     h.eval_source(
         r#"(define-command! "check" "" (lambda (bid)
-             (unless (equal? (get-buffer-option bid "tab-width") 4)
-               (error "unexpected tab-width"))))"#,
+             (unless (equal? (get-buffer-option bid "indent-width") 4)
+               (error "unexpected indent-width"))))"#,
         &mut mock,
     )
     .unwrap();
     h.call_steel_cmd_by_name("check", vec![bid], &mut mock)
-        .expect("get-buffer-option must accept (bid key) and read back tab-width");
+        .expect("get-buffer-option must accept (bid key) and read back indent-width");
 }

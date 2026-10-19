@@ -1201,9 +1201,9 @@ fn second_column_leftover_is_painted_and_next_column_starts_on_boundary() {
     );
 }
 
-/// Width-20 single-cell column. `signcolumn` accepts up to 127 slots with
+/// Width-20 single-cell column. `gutter-signs` accepts up to 127 slots with
 /// no clamp against pane width anywhere in `layout.rs`; this simulates a
-/// configured gutter wider than the pane itself (e.g. `signcolumn
+/// configured gutter wider than the pane itself (e.g. `gutter-signs
 /// always:40` in a narrow vsplit).
 struct HugeGutter;
 impl GutterColumn for HugeGutter {
@@ -1229,7 +1229,7 @@ impl GutterColumn for HugeGutter {
 fn gutter_wider_than_pane_does_not_bleed_past_the_pane_right_edge() {
     // A gutter column's configured width must be clamped to the pane's
     // actual width. A gutter wider than the pane (reachable via
-    // `signcolumn always:N` in a narrow vsplit) would otherwise write through
+    // `gutter-signs always:N` in a narrow vsplit) would otherwise write through
     // the pane's right edge into whatever the shared terminal buffer holds
     // next to it, typically a neighbouring pane.
     let graphemes = vec![simple_grapheme(0, 0, 1)];

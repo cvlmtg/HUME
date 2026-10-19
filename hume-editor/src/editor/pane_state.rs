@@ -462,7 +462,7 @@ impl PaneView {
 /// between panes, so per-pane decoration data cannot bleed across panes.
 /// Wrap mode is not seeded: it resolves lazily via
 /// `commands::effective_wrap_mode`. The gutter's seeded style never reaches a
-/// frame, since `prepare_frame` syncs `line-number-style` before each render.
+/// frame, since `prepare_frame` syncs `gutter-line-numbers` before each render.
 fn build_pane(
     registry: &mut hume_engine::theme::ScopeRegistry,
     buffer_id: BufferId,

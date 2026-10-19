@@ -17,5 +17,5 @@
   '("MacroRecording" "SearchMatches" "Diagnostics" "KittyProtocol" "Separator" "Mode"))
 
 ;; Both files the demo edits indent with spaces.
-(set-option! "tab-style" "soft")
-(set-option! "signcolumn" "always:2")
+(set-option! "indent-style" "soft")
+(set-option! "gutter-signs" "always:2")

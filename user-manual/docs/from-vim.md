@@ -43,7 +43,7 @@ What each step shows:
 
 - **`t` only moves; `Ctrl` makes it select.** `f`, `F`, `t` and `T` move the cursor and select nothing. Holding `Ctrl` turns a motion into a one-shot extend, so `Ctrl-t (` selects `;; ` and `d` deletes it. For longer selections, `e` toggles Extend mode, where every motion extends until you act or press `Esc`. The `Ctrl` forms need the [kitty keyboard protocol](installation.md#terminal-compatibility).
 - **`x` selects a line.** It replaces Vim's `dd`/`yy`/`cc` doubling: `x d` deletes a line, `x c` rewrites its content and keeps the line. `Ctrl-x` adds the line below to the selection.
-- **`Esc` keeps what you typed selected.** After the last edit `declare` is still highlighted, rather than the cursor parking on its last character. Pressing `i` now inserts *before* it; use `a` to carry on after it. Turn this off with the `select-inserted-text` option (see [Buffer options](settings.md#buffer-options)).
+- **`Esc` keeps what you typed selected.** After the last edit `declare` is still highlighted, rather than the cursor parking on its last character. Pressing `i` now inserts *before* it; use `a` to carry on after it. Turn this off with the `insert-select-on-exit` option (see [Buffer options](settings.md#buffer-options)).
 
 A few more keys you'll want early: `d` on its own deletes the character under the cursor (Vim's `x`), since the cursor is already a one-character selection. `g h` and `g l` go to the start and end of the line, `g g` and `g e` to the first and last line. `/`, `n` and `N` search as in Vim.
 
@@ -64,14 +64,14 @@ HUME has no `vimrc`. Every setting and keybinding is a call to a Scheme function
 | Setting | `vimrc` | HUME `init.scm` |
 |---|---|---|
 | Theme | `colorscheme onedark` | `(set-option! "theme" "onedark")` |
-| Line numbers | `set number relativenumber` | `(set-option! "line-number-style" 'relative)` |
-| Tab width | `set tabstop=4 shiftwidth=4` | `(set-option! "tab-width" 4)` |
-| Spaces vs tabs | `set expandtab` | `(set-option! "tab-style" 'soft)` |
+| Line numbers | `set number relativenumber` | `(set-option! "gutter-line-numbers" 'relative)` |
+| Tab width | `set tabstop=4 shiftwidth=4` | `(set-option! "indent-width" 4)` |
+| Spaces vs tabs | `set expandtab` | `(set-option! "indent-style" 'soft)` |
 | Scroll padding | `set scrolloff=5` | `(set-option! "scroll-margin" 5)` |
 | Mouse | `set mouse=a` | `(set-option! "mouse" #t)` |
 | Line wrapping | `set wrap linebreak breakindent` | `(set-option! "wrap-mode" "indent")` |
 | Whitespace indicators | `set list listchars=tab:>-,trail:-` | `(set-option! "whitespace-tab" 'all)`<br>`(set-option! "whitespace-space" 'trailing)` |
-| Reload on external change | `set autoread` | `(set-option! "auto-read" #t)` |
+| Reload on external change | `set autoread` | `(set-option! "file-reload-prompt" #t)` |
 | Word characters | `set iskeyword+=-` | `(set-option! "word-chars" "-")` |
 | Keybinding | `nnoremap <C-j> ...` | `(bind-key! 'normal "ctrl-j" "move-down")` |
 
@@ -81,8 +81,8 @@ HUME has no `vimrc`. Every setting and keybinding is a call to a Scheme function
 (register-hook! 'on-language-set
   (lambda (pane lang)
     (when (equal? lang "python")
-      (set-buffer-option! pane "tab-width" 4)
-      (set-buffer-option! pane "tab-style" 'soft))))
+      (set-buffer-option! pane "indent-width" 4)
+      (set-buffer-option! pane "indent-style" 'soft))))
 ```
 
 `bind-key!` takes a command *name* (the same names listed in [Builtin Commands](builtin-commands.md)), not a key sequence — there's no key-to-key remapping.

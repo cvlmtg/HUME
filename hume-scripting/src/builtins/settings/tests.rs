@@ -17,7 +17,7 @@ use steel::rvals::IntoSteelVal as _;
 fn set_option_reaches_host_from_command_mode() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx(); // EvalMode::Command
-    let result = set_option(&mut ctx, "tab-width".into(), SteelVal::IntV(4));
+    let result = set_option(&mut ctx, "indent-width".into(), SteelVal::IntV(4));
     assert!(result.is_err());
     let msg = result.unwrap_err().to_string();
     assert!(
@@ -36,7 +36,7 @@ fn set_option_invalid_value_type_errors() {
     let mut ctx = h.ctx_init();
     // Pass a list, not a valid value type.
     let list: SteelVal = Vec::<SteelVal>::new().into_steelval().unwrap();
-    let result = set_option(&mut ctx, "tab-width".into(), list);
+    let result = set_option(&mut ctx, "indent-width".into(), list);
     assert!(
         result.is_err(),
         "set-option! must reject non-string/bool/int value"
@@ -49,7 +49,7 @@ fn set_option_invalid_value_type_errors() {
 fn set_option_init_mode_calls_host() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx_init();
-    let result = set_option(&mut ctx, "tab-width".into(), SteelVal::IntV(4));
+    let result = set_option(&mut ctx, "indent-width".into(), SteelVal::IntV(4));
     // NullHost.set_global_option returns Err; the error must NOT be the guard error.
     assert!(result.is_err());
     let msg = result.unwrap_err().to_string();
@@ -74,7 +74,7 @@ fn set_option_accepts_string_bool_int_values() {
         SteelVal::IntV(4),
     ] {
         let mut ctx = h.ctx_init();
-        let result = set_option(&mut ctx, "tab-width".into(), val);
+        let result = set_option(&mut ctx, "indent-width".into(), val);
         // NullHost returns Err, but it must NOT be a TypeMismatch error.
         if let Err(e) = result {
             assert!(
@@ -94,7 +94,7 @@ fn set_option_accepts_string_bool_int_values() {
 fn get_option_reaches_host_during_init_eval() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx_init();
-    let result = get_option(&mut ctx, "tab-width".into());
+    let result = get_option(&mut ctx, "indent-width".into());
     assert!(result.is_err());
     let msg = result.unwrap_err().to_string();
     assert!(
@@ -119,7 +119,7 @@ fn get_buffer_option_blocked_in_init_mode() {
 fn get_buffer_option_command_mode_calls_host_with_explicit_bid() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
-    let result = get_buffer_option(&mut ctx, default_pane(), "tab-width".into());
+    let result = get_buffer_option(&mut ctx, default_pane(), "indent-width".into());
     assert!(result.is_err());
     let msg = result.unwrap_err().to_string();
     assert!(
@@ -157,7 +157,7 @@ fn set_buffer_option_invalid_value_type_errors() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
     let list: SteelVal = Vec::<SteelVal>::new().into_steelval().unwrap();
-    let result = set_buffer_option(&mut ctx, default_pane(), "tab-width".into(), list);
+    let result = set_buffer_option(&mut ctx, default_pane(), "indent-width".into(), list);
     assert!(
         result.is_err(),
         "set-buffer-option! must reject non-string/bool/int value"
@@ -227,7 +227,7 @@ fn set_buffer_option_accepts_string_bool_int_values() {
         SteelVal::IntV(2),
     ] {
         let mut ctx = h.ctx();
-        let result = set_buffer_option(&mut ctx, default_pane(), "tab-width".into(), val);
+        let result = set_buffer_option(&mut ctx, default_pane(), "indent-width".into(), val);
         if let Err(e) = result {
             assert!(
                 !e.to_string().contains("must be a string, bool, or integer"),
@@ -409,13 +409,13 @@ fn set_buffer_option_reaches_host() {
     let result = set_buffer_option(
         &mut ctx,
         crate::types::PaneHandle::buffer_only(target),
-        "tab-width".into(),
+        "indent-width".into(),
         SteelVal::IntV(8),
     );
     assert!(result.is_ok(), "expected Ok, got {result:?}");
     assert_eq!(
         host.calls,
-        vec![("tab-width".to_string(), "8".to_string(), target)]
+        vec![("indent-width".to_string(), "8".to_string(), target)]
     );
 }
 
@@ -430,13 +430,13 @@ fn set_buffer_option_forwards_a_symbol_as_its_name() {
     set_buffer_option(
         &mut ctx,
         crate::types::PaneHandle::buffer_only(target),
-        "tab-style".into(),
+        "indent-style".into(),
         SteelVal::SymbolV("soft".into()),
     )
     .expect("a symbol value must be accepted");
     assert_eq!(
         host.calls,
-        vec![("tab-style".to_string(), "soft".to_string(), target)]
+        vec![("indent-style".to_string(), "soft".to_string(), target)]
     );
 }
 

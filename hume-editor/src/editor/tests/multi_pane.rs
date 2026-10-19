@@ -477,7 +477,7 @@ fn indent_sibling_pane_cursor_at_line_start_clamps_past_new_indent() {
     ed.switch_focused_pane(pid_b);
     select(&mut ed, &[(0, 0)], 0);
 
-    // Pane A indents the line. Default settings: tab-style=hard, tab-width=4;
+    // Pane A indents the line. Default settings: indent-style=hard, indent-width=4;
     // the existing 2-space indent (width 2) shifts to width 6, rendered as
     // one tab plus 2 spaces ("\t  ", 3 chars).
     ed.switch_focused_pane(pid_a);
@@ -1229,7 +1229,7 @@ fn vsplit_renders_content_in_both_halves() {
     insta::assert_snapshot!(render_to_styled_string(&mut ed, rect));
 }
 
-/// The other half of the test above: with `cursor-shape-insert=block` the
+/// The other half of the test above: with `insert-cursor-shape=block` the
 /// focused pane's primary head is *painted* from `ui.cursor.primary.insert`
 /// rather than left bare for the real terminal cursor to occupy. Both panes
 /// show a themed head here, where the default `bar` leaves only the unfocused
@@ -1240,7 +1240,7 @@ fn insert_block_shape_paints_the_head_in_both_panes() {
 
     let mut ed = editor_from("-[a]>bc\n");
     ed.view.theme = crate::testing::build_snapshot_theme();
-    ed.state.settings.cursor_shape_insert = crate::editor::settings::CursorShape::Block;
+    ed.state.settings.insert_cursor_shape = crate::editor::settings::CursorShape::Block;
     ed.execute_typed("vsplit", None).unwrap();
 
     ed.feed_key(key('i'));

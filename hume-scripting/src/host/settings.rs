@@ -54,7 +54,7 @@ pub fn language_option_value(value: &str) -> Option<&str> {
 /// `hume-editor`'s settings types, so the editor impl converts its own
 /// per-key parser kind (`bool`/`usize`/`enum_str`/…) down to one of these
 /// four shapes at the trait boundary. `Symbol` is a closed set of names
-/// (`tab-style`'s `hard`/`soft`), `Str` free text or a `name:N` form.
+/// (`indent-style`'s `hard`/`soft`), `Str` free text or a `name:N` form.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OptionValue {
     Bool(bool),

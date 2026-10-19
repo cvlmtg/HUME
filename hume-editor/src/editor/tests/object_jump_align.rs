@@ -1,4 +1,4 @@
-// `object-jump-align`: re-aligning the viewport after a forward object jump
+// `scroll-jump-align`: re-aligning the viewport after a forward object jump
 // (`}`, `goto-next-<kind>`). See `ObjectJumpAlign`'s own doc
 // (`hume-editor/src/settings.rs`) for why only the forward motions read it.
 
@@ -143,8 +143,8 @@ fn goto_next_paragraph_at_end_of_buffer_does_not_move_the_viewport() {
 #[test]
 fn object_jump_align_top_setting() {
     let mut ed = paragraph_editor(20);
-    run_set(&mut ed, "global object-jump-align=top")
-        .expect("object-jump-align=top must be accepted");
+    run_set(&mut ed, "global scroll-jump-align=top")
+        .expect("scroll-jump-align=top must be accepted");
 
     key_count(&mut ed, 15, '}');
 
@@ -168,8 +168,8 @@ fn object_jump_align_top_setting() {
 #[test]
 fn object_jump_align_off_setting_restores_old_behavior() {
     let mut ed = paragraph_editor(20);
-    run_set(&mut ed, "global object-jump-align=off")
-        .expect("object-jump-align=off must be accepted");
+    run_set(&mut ed, "global scroll-jump-align=off")
+        .expect("scroll-jump-align=off must be accepted");
 
     key_count(&mut ed, 15, '}');
 
@@ -225,7 +225,7 @@ fn goto_next_function_centers_view_by_default() {
 #[test]
 fn object_jump_align_rejects_invalid_value() {
     let mut ed = paragraph_editor(1);
-    let result = run_set(&mut ed, "global object-jump-align=middle");
+    let result = run_set(&mut ed, "global scroll-jump-align=middle");
     assert!(
         result.is_err(),
         "an unrecognized alignment must be rejected"

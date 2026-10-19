@@ -183,7 +183,7 @@ pub struct UiScopes {
     pub cursor: ResolvedStyle,
     /// Secondary selection-head highlight in Insert mode. Named `cursor_insert`
     /// for Helix theme compat. Falls back through `ui.cursor.insert` →
-    /// `ui.cursor` → `ui.selection`. Painted only when `cursor-shape-insert` is
+    /// `ui.cursor` → `ui.selection`. Painted only when `insert-cursor-shape` is
     /// `block`; see the Tier 1/0 comment in `style::style_display_line`.
     pub cursor_insert: ResolvedStyle,
     /// Selection highlight.
@@ -212,7 +212,7 @@ pub struct UiScopes {
     pub cursor_primary: ResolvedStyle,
     /// Primary selection-head highlight in Insert mode. Same ladder as
     /// [`Self::cursor_primary`], rooted at `ui.cursor.primary.insert`. Painted
-    /// only when `cursor-shape-insert` is `block`; for `bar`/`underline` the
+    /// only when `insert-cursor-shape` is `block`; for `bar`/`underline` the
     /// real terminal cursor is the sole indicator for this head, and this
     /// style is unused.
     pub cursor_insert_primary: ResolvedStyle,

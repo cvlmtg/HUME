@@ -72,8 +72,8 @@ Changes apply to the current session and are not persisted. For persistent confi
 Sets the global default. The value is a string, symbol, boolean, or integer. An option that takes one of a fixed set of names also accepts, and `get-option` returns, the name as a symbol: `'soft`. Callable from `init.scm`, a plugin body, or a command/hook body: anywhere Scheme code runs.
 
 ```scheme
-(set-option! "line-number-style" 'absolute)
-(set-option! "tab-width" 2)
+(set-option! "gutter-line-numbers" 'absolute)
+(set-option! "indent-width" 2)
 ```
 
 `init.scm` is a real Scheme program, not a flat list of settings, so you can react to what's being opened rather than only set fixed defaults. The most common case is configuring an option per file type: register an `on-language-set` handler and call `(set-buffer-option! pane "option" value)` to override just that buffer (see [Hooks](writing-plugins.md#hooks) for the full hook API):
@@ -83,7 +83,7 @@ Sets the global default. The value is a string, symbol, boolean, or integer. An 
 (register-hook! 'on-language-set
   (lambda (pane lang)
     (when (equal? lang "markdown")
-      (set-buffer-option! pane "tab-width" 2))))
+      (set-buffer-option! pane "indent-width" 2))))
 
 ; word-wrap Markdown buffers, leave source code unwrapped
 (register-hook! 'on-language-set

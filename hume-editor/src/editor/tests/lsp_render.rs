@@ -118,7 +118,7 @@ fn severity_floor_hides_less_severe_diagnostics() {
     crate::editor::commands::typed_set(
         &mut c.ed,
         fp,
-        Some("global lsp.diagnostics-severity-floor=warning"),
+        Some("global lsp-diagnostics-min-severity=warning"),
         false,
     )
     .unwrap();
@@ -214,7 +214,7 @@ fn diagnostic_underline_stays_in_insert_with_the_option_on() {
     crate::editor::commands::typed_set(
         &mut c.ed,
         fp,
-        Some("global lsp.diagnostics-on-insert-line=true"),
+        Some("global lsp-diagnostics-on-insert-line=true"),
         false,
     )
     .unwrap();

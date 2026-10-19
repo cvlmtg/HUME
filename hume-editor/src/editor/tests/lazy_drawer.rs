@@ -11,7 +11,7 @@ const HEIGHT: u16 = 12;
 
 /// Every render call is appended to `requests` as `start:count;`. Rows read
 /// `row <key>`. `on-select` appends its argument to `selections`, marked `?` when its token is not the drawer's. `:requests`,
-/// `:selections` and `:tab-width` show a value in the status line.
+/// `:selections` and `:indent-width` show a value in the status line.
 const PRELUDE: &str = r##"
 (define requests "")
 (define selections "")
@@ -25,8 +25,8 @@ const PRELUDE: &str = r##"
                                   (if (equal? token drawer) "" "?") ";")))
 (define-typed-command! "requests" "" (lambda (pane) (log! 'info requests)))
 (define-typed-command! "selections" "" (lambda (pane) (log! 'info selections)))
-(define-typed-command! "tab-width" "" (lambda (pane)
-  (log! 'info (to-string (get-buffer-option pane "tab-width")))))
+(define-typed-command! "indent-width" "" (lambda (pane)
+  (log! 'info (to-string (get-buffer-option pane "indent-width")))))
 "##;
 
 /// Defines `:go`, which opens a drawer over `keys` with `render-proc`, and
@@ -271,7 +271,7 @@ fn a_render_proc_that_changes_the_editor_closes_the_drawer() {
         "(range 0 30)",
         r#"(lambda (start keys)
              (with-handler (lambda (e) (begin))
-                           (set-buffer-option! (focused-pane) "tab-width" "8"))
+                           (set-buffer-option! (focused-pane) "indent-width" "8"))
              (map (lambda (k) "row") keys))"#,
     );
     frame(&mut ed, WIDTH, HEIGHT);
@@ -279,7 +279,7 @@ fn a_render_proc_that_changes_the_editor_closes_the_drawer() {
 
     assert_render_failure_closes(&mut ed);
     assert_eq!(
-        shown(&mut ed, "tab-width"),
+        shown(&mut ed, "indent-width"),
         "4",
         "the default tab width is untouched"
     );

@@ -15,7 +15,7 @@ Say what you mean, then say what to do with it. Because the selection always com
 
 Press `Esc` or `Ctrl-c` to return to Normal mode. `Ctrl-w` deletes the word before the cursor while you type.
 
-Leaving Insert mode selects the text you just typed, instead of leaving a plain cursor, so you can immediately act on it again: delete it, surround it, search for it. Pressing `Esc` without typing anything leaves the cursor where you started. Disable this with the `select-inserted-text` option (see [Buffer options](settings.md#buffer-options)).
+Leaving Insert mode selects the text you just typed, instead of leaving a plain cursor, so you can immediately act on it again: delete it, surround it, search for it. Pressing `Esc` without typing anything leaves the cursor where you started. Disable this with the `insert-select-on-exit` option (see [Buffer options](settings.md#buffer-options)).
 
 Because of this, `i` re-enters Insert mode *before* the current selection, so typing something, pressing `Esc`, then pressing `i` again continues before what you just typed, not after it. Use `a` to continue typing after it instead.
 
@@ -99,21 +99,21 @@ When no selection has anything to change, or a result doesn't fit (past the larg
 
 You can align to the left or the right depending on which end of the selection is the anchor; `Ctrl-e` swaps anchor and head. See [Selections](selections.md#flipping-and-collapsing-the-selection).
 
-`>`/`<` shift every line touched by a selection by one indent level, using the buffer's `tab-width` and `tab-style` (see [Buffer options](settings.md#buffer-options)). A prefix count shifts by that many levels at once (`3>`).
+`>`/`<` shift every line touched by a selection by one indent level, using the buffer's `indent-width` and `indent-style` (see [Buffer options](settings.md#buffer-options)). A prefix count shifts by that many levels at once (`3>`).
 
 ::: details Blank lines, mixed indentation and narrow indents
-A blank or whitespace-only line inside the selection is left alone, so it never picks up trailing whitespace. Each touched line's whole indent is re-rendered to the new width in the current `tab-style`, not just prepended to or trimmed from, so `<` immediately after `>` restores the previous indent width exactly (the characters themselves are re-rendered in `tab-style`, so a mixed tabs-and-spaces indent normalizes rather than coming back byte-identical). `<` on an indent narrower than one level flattens it to the left margin instead of going negative, so `>` afterward lands on a full level rather than back where the first `<` started.
+A blank or whitespace-only line inside the selection is left alone, so it never picks up trailing whitespace. Each touched line's whole indent is re-rendered to the new width in the current `indent-style`, not just prepended to or trimmed from, so `<` immediately after `>` restores the previous indent width exactly (the characters themselves are re-rendered in `indent-style`, so a mixed tabs-and-spaces indent normalizes rather than coming back byte-identical). `<` on an indent narrower than one level flattens it to the left margin instead of going negative, so `>` afterward lands on a full level rather than back where the first `<` started.
 :::
 
 ## Indentation
 
-Enter, `o` and `O` start the new line at the indent the surrounding code calls for: one level deeper inside a block you just opened, level with the code around it otherwise. With `auto-pairs` on, Enter between a pair of brackets opens a block: the cursor lands on an indented line and the closing bracket moves to the line below.
+Enter, `o` and `O` start the new line at the indent the surrounding code calls for: one level deeper inside a block you just opened, level with the code around it otherwise. With `insert-auto-pairs` on, Enter between a pair of brackets opens a block: the cursor lands on an indented line and the closing bracket moves to the line below.
 
 When the first thing you type on a new line closes a block, such as a closing bracket or keyword, the line moves back to the block's indent. A closing word moves back once it is finished, when you type a space or punctuation after it or press Enter. A line whose indent you changed by hand is left alone.
 
-This uses the language's grammar and its indentation rules, which `:plum-install-grammar <language>` installs. Without them, a new line just copies the indent of the current line, and nothing moves back as you type. Set `smart-indent` to `#f` to turn automatic indentation off: new lines then start at the left margin.
+This uses the language's grammar and its indentation rules, which `:plum-install-grammar <language>` installs. Without them, a new line just copies the indent of the current line, and nothing moves back as you type. Set `indent-smart` to `#f` to turn automatic indentation off: new lines then start at the left margin.
 
-New indentation follows the buffer's `tab-width` and `tab-style`, as `>` and `<` do. To indent with spaces in a language, set its `tab-style` to `soft` (see [Buffer options](settings.md#buffer-options)).
+New indentation follows the buffer's `indent-width` and `indent-style`, as `>` and `<` do. To indent with spaces in a language, set its `indent-style` to `soft` (see [Buffer options](settings.md#buffer-options)).
 
 ## Comments
 
@@ -123,7 +123,7 @@ New indentation follows the buffer's `tab-width` and `tab-style`, as `>` and `<`
 
 On a cursor, or a selection within one line, `G G` puts a line comment (`//` in Rust) in front of the line's text. In a language with only block comments (`<!-- -->` in HTML), it wraps the line's text instead.
 
-A selection over several lines is wrapped in one block comment, from its first non-blank character to its last. When that text already holds the end of a block comment (`*/` in Rust), wrapping it would end the comment early, so its lines get line comments instead; in a language with only block comments, `G G` leaves the text alone and says why. In a language with only line comments, each line gets one, all at the same column, and blank lines are left alone. `:set prefer-line-comments=true` gives several lines line comments even where the language has block comments.
+A selection over several lines is wrapped in one block comment, from its first non-blank character to its last. When that text already holds the end of a block comment (`*/` in Rust), wrapping it would end the comment early, so its lines get line comments instead; in a language with only block comments, `G G` leaves the text alone and says why. In a language with only line comments, each line gets one, all at the same column, and blank lines are left alone. `:set comment-prefer-line=true` gives several lines line comments even where the language has block comments.
 
 `G G` on a commented line removes the comment, whichever kind it is: a line comment with the space after it, or a block comment's start and end with the space inside each.
 

@@ -951,14 +951,14 @@ fn macro_replay_resolves_non_conformant_shift_delivery_like_clean_press() {
 /// same keys by hand.
 ///
 /// `i` queues `OnModeChange` (deferred: fired by the next `settle()`, not
-/// synchronously); the hook it drives writes a buffer-scoped `tab-style`
+/// synchronously); the hook it drives writes a buffer-scoped `indent-style`
 /// override that the very next key, `<tab>`, reads. `recorded` replays the
 /// macro in one shot; `direct` uses `feed_event` to mirror `Editor::run`'s
 /// loop (dispatch, then settle, per key), as the reference for what "typed
 /// by hand" produces.
 ///
 /// If `drain_replay_queue` settled only once at the end of the loop,
-/// `recorded`'s `<tab>` would run while `tab-style` is still the compiled-in
+/// `recorded`'s `<tab>` would run while `indent-style` is still the compiled-in
 /// `Hard` and insert a literal `\t` where `direct` inserts spaces.
 #[test]
 fn macro_replay_runs_a_replayed_keys_own_hook_before_the_next_replayed_key() {
@@ -966,7 +966,7 @@ fn macro_replay_runs_a_replayed_keys_own_hook_before_the_next_replayed_key() {
 
     const HOOK: &str = r#"(register-hook! 'on-mode-change (lambda (from to)
         (when (equal? to 'insert)
-          (set-buffer-option! (focused-pane) "tab-style" "soft"))))"#;
+          (set-buffer-option! (focused-pane) "indent-style" "soft"))))"#;
 
     let mut recorded = editor_from("-[a]>b\n");
     attach_host(&mut recorded, HOOK);
@@ -991,7 +991,7 @@ fn macro_replay_runs_a_replayed_keys_own_hook_before_the_next_replayed_key() {
     );
     assert!(
         !recorded.doc().text().to_string().contains('\t'),
-        "the on-mode-change hook must have applied soft tab-style before \
+        "the on-mode-change hook must have applied soft indent-style before \
          <tab> dispatched during replay, got: {:?}",
         recorded.doc().text().to_string()
     );

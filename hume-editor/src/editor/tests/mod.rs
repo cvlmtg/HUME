@@ -655,7 +655,7 @@ fn render(ed: &mut Editor) {
 /// The zeroed debounce is a permanent pin, not a save/restore: every caller
 /// wants immediate-fire semantics for the rest of its body too.
 fn seed_frame(ed: &mut Editor, width: u16, height: u16) {
-    ed.state.settings.viewport_debounce_ms = 0;
+    ed.state.settings.hook_viewport_debounce_ms = 0;
     frame(ed, width, height);
     ed.settle();
 }
@@ -893,7 +893,7 @@ impl Editor {
         let (views, tabline_view) = super::lifecycle::register_chrome(&mut engine_view);
         let buffer_id = engine_view.buffers.insert(());
         let settings = EditorSettings::default();
-        let history_capacity = settings.history_capacity;
+        let history_capacity = settings.prompt_history_levels;
         let initial_mouse_mode = (settings.mouse, settings.mouse_select);
 
         let mut buffers = BufferStore::new();

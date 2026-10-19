@@ -379,7 +379,7 @@ fn goto_next_paragraph_records_jump_even_for_a_short_hop() {
     assert_ne!(state(&ed), before);
 
     // jump-backward should restore the pre-jump position, even though the
-    // hop crossed only one line, well under the jump-line-threshold a
+    // hop crossed only one line, well under the jump-list-min-lines a
     // plain motion is gated by.
     ed.handle_key(key_ctrl('o'));
     assert_eq!(state(&ed), before);
@@ -401,7 +401,7 @@ fn goto_prev_paragraph_records_jump_even_for_a_short_hop() {
     assert_ne!(state(&ed), before);
 
     // jump-backward should restore the pre-jump position, even though the
-    // hop crossed only one line, well under the jump-line-threshold a
+    // hop crossed only one line, well under the jump-list-min-lines a
     // plain motion is gated by.
     ed.handle_key(key_ctrl('o'));
     assert_eq!(state(&ed), before);

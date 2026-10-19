@@ -99,7 +99,7 @@ fn p6_bid_captured_before_last_buffer_close_reads_dead_afterward() {
         tmp.path(),
         r#"(define-typed-command! "close-and-probe" "" (lambda (bid)
              (close-buffer! bid)
-             (get-buffer-option bid "tab-width")))"#,
+             (get-buffer-option bid "indent-width")))"#,
     );
     type_cmd(&mut ed, ":close-and-probe");
 
@@ -107,7 +107,7 @@ fn p6_bid_captured_before_last_buffer_close_reads_dead_afterward() {
     assert!(
         log.contains("invalid buffer id"),
         "a get-buffer-option on the just-closed bid must raise, not read the scratch \
-         replacement's tab-width: {log:?}"
+         replacement's indent-width: {log:?}"
     );
 }
 

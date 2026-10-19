@@ -271,7 +271,7 @@ pub(in crate::editor) fn label_slice(
 /// it may end at the text's end, but not past it, and may not end before it
 /// starts.
 ///
-/// With no `#:severity`, defaults to `lsp.diagnostics-severity-floor`, the
+/// With no `#:severity`, defaults to `lsp-diagnostics-min-severity`, the
 /// same floor `update_highlight_providers` applies to underlines, so a
 /// caller (e.g. the diagnostics plugin's EOL summary and gutter signs)
 /// agrees with what's on screen unless it explicitly asks for a different
@@ -285,7 +285,7 @@ pub(in crate::editor) fn diagnostics_for_buffer(
     use hume_rope::offset::{CharOffset, ExclusiveRange};
     const CAP: usize = 1000;
     let floor = match severity_floor.map(DiagSeverity::parse) {
-        None => state.settings.lsp_diagnostics_severity_floor,
+        None => state.settings.lsp_diagnostics_min_severity,
         Some(Ok(f)) => f,
         Some(Err(e)) => return Err(format!("invalid severity floor: {e}")),
     };

@@ -426,7 +426,7 @@ pub(in crate::editor) fn with_jump<R>(
             if moved
                 && (is_jump
                     || entry.primary_line.abs_diff(post.head_line())
-                        > state.settings.jump_line_threshold)
+                        > state.settings.jump_list_min_lines)
             {
                 state.panes.entries[pid].jumps.push(entry);
             }

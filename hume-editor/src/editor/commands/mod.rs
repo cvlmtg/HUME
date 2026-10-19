@@ -189,7 +189,7 @@ pub(super) fn pane_height(state: &mut EditorState, view: &mut EngineView, pid: P
     view.panes[pid].viewport.height as usize
 }
 
-/// `doc`'s effective `tab-style`/`tab-width` pair: buffer override → global
+/// `doc`'s effective `indent-style`/`indent-width` pair: buffer override → global
 /// default for each. The one place a caller needing *both* settings together
 /// (Tab dispatch, `>`/`<` indent/unindent) reads them, rather than repeating
 /// the two `overrides.tab_style(...)`/`overrides.tab_width(...)` calls at
@@ -198,8 +198,8 @@ pub(super) fn pane_height(state: &mut EditorState, view: &mut EngineView, pid: P
 /// `overrides.tab_width` directly instead.
 pub(super) fn tab_format(doc: &Buffer, settings: &EditorSettings) -> (TabStyle, u8) {
     (
-        doc.overrides.tab_style(settings),
-        doc.overrides.tab_width(settings),
+        doc.overrides.indent_style(settings),
+        doc.overrides.indent_width(settings),
     )
 }
 

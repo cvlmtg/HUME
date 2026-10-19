@@ -29,12 +29,12 @@ pub(in crate::editor) fn cmd_toggle_comment(
     let bid = t.bid(view);
     ensure_syntax_current(state, bid, SyntaxUse::InjectedLanguages);
     let buf = state.buffers.get(bid);
-    let multi_line = if buf.overrides.prefer_line_comments(&state.settings) {
+    let multi_line = if buf.overrides.comment_prefer_line(&state.settings) {
         MultiLineComments::Line
     } else {
         MultiLineComments::Block
     };
-    let tab_width = buf.overrides.tab_width(&state.settings);
+    let tab_width = buf.overrides.indent_width(&state.settings);
     let plan = plan_comment_toggle(pane_view(state, view, t), multi_line, tab_width, |span| {
         comment_tokens_at(buf, &state.config.languages, span)
     })

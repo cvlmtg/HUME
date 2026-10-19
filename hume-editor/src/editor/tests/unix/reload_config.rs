@@ -397,7 +397,7 @@ fn reload_config_under_no_config_errors() {
 fn reload_config_reapplies_on_language_set_buffer_overrides() {
     let init_scm = r#"(%define-language! "rust" '("rs") '() '())
         (register-hook! 'on-language-set (lambda (bid lang)
-          (when (equal? lang "rust") (set-buffer-option! bid "tab-width" 7))))"#;
+          (when (equal? lang "rust") (set-buffer-option! bid "indent-width" 7))))"#;
     let fixture = ReloadFixture::new(init_scm);
 
     let file_tmp = tempfile::tempdir().unwrap();
@@ -416,7 +416,7 @@ fn reload_config_reapplies_on_language_set_buffer_overrides() {
 
     let bid = ed.focused_buffer_id();
     assert_eq!(
-        ed.state.buffers.get(bid).overrides.tab_width,
+        ed.state.buffers.get(bid).overrides.indent_width,
         Some(7),
         "sanity: the initial init.scm's on-language-set hook must apply"
     );
@@ -426,7 +426,7 @@ fn reload_config_reapplies_on_language_set_buffer_overrides() {
     ed.settle();
 
     assert_eq!(
-        ed.state.buffers.get(bid).overrides.tab_width,
+        ed.state.buffers.get(bid).overrides.indent_width,
         Some(7),
         "on-language-set's set-buffer-option! must reapply after reload: the \
          language didn't 'change' in the sense the buffer notices, but the \
@@ -462,7 +462,7 @@ fn reload_config_reapplies_on_language_set_buffer_overrides() {
 /// prior one) so the plugin's `open-buffer!` opens a new buffer
 /// here rather than deduping against one from an earlier init.
 ///
-/// Counts via a `tab-width` override incremented once per fire: a plain
+/// Counts via a `indent-width` override incremented once per fire: a plain
 /// "did it fire at all" check can't distinguish once from twice.
 #[test]
 fn reload_config_does_not_double_fire_buffer_open_for_a_plugin_opened_buffer() {
@@ -487,7 +487,7 @@ fn reload_config_does_not_double_fire_buffer_open_for_a_plugin_opened_buffer() {
         plugin_dir.join("plugin.scm"),
         format!(
             r#"(register-hook! 'on-buffer-open (lambda (bid)
-                 (set-buffer-option! bid "tab-width" (+ 1 (get-buffer-option bid "tab-width")))))
+                 (set-buffer-option! bid "indent-width" (+ 1 (get-buffer-option bid "indent-width")))))
                (open-buffer! {companion_str})"#
         ),
     )
@@ -512,8 +512,8 @@ fn reload_config_does_not_double_fire_buffer_open_for_a_plugin_opened_buffer() {
         .find_by_path(&companion.canonicalize().unwrap())
         .expect("the plugin-opened buffer must be open");
     assert_eq!(
-        ed.state.buffers.get(companion_bid).overrides.tab_width,
-        Some(EditorSettings::default().tab_width + 1),
+        ed.state.buffers.get(companion_bid).overrides.indent_width,
+        Some(EditorSettings::default().indent_width + 1),
         "on-buffer-open must fire exactly once for the buffer this reload's own plugin \
          opened, not twice"
     );

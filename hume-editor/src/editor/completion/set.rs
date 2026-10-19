@@ -44,18 +44,18 @@ fn static_value_candidates(key: &str) -> Option<&'static [&'static str]> {
         return Some(&["true", "false"]);
     }
     Some(match key {
-        "tab-style" => TabStyle::VALUES,
-        "line-number-style" => LineNumberStyle::VALUES,
-        "object-jump-align" => crate::editor::settings::ObjectJumpAlign::VALUES,
-        "cursor-shape-insert" => crate::editor::settings::CursorShape::VALUES,
+        "indent-style" => TabStyle::VALUES,
+        "gutter-line-numbers" => LineNumberStyle::VALUES,
+        "scroll-jump-align" => crate::editor::settings::ObjectJumpAlign::VALUES,
+        "insert-cursor-shape" => crate::editor::settings::CursorShape::VALUES,
         WRAP_MODE_KEY => WrapMode::VALUES,
         "whitespace-space" | "whitespace-tab" => WhitespaceRender::VALUES,
         "whitespace-newline" => SHOW_NEWLINE_VALUES,
-        "signcolumn" => SignColumnConfig::VALUES,
+        "gutter-signs" => SignColumnConfig::VALUES,
         "tabline" => crate::editor::settings::TablineVisibility::VALUES,
         "command-completion" => crate::editor::settings::CommandCompletion::VALUES,
         "word-selects-whitespace" => crate::editor::settings::WordSelectsWhitespace::VALUES,
-        "lsp.diagnostics-severity-floor" => crate::editor::lsp::diagnostics::DiagSeverity::VALUES,
+        "lsp-diagnostics-min-severity" => crate::editor::lsp::diagnostics::DiagSeverity::VALUES,
         _ => return None,
     })
 }
@@ -90,8 +90,8 @@ fn complete_set_key(scope: &str, rest: &str) -> Vec<CompletionItem> {
 /// [`static_value_candidates`]; `language` and `theme` are dynamic.
 ///
 /// Every key checks its scope before offering values (the same gate
-/// `typed_set` enforces at execution time), so e.g. `:set pane tab-style=`
-/// (tab-style isn't pane-scoped) never dangles a completion that would error
+/// `typed_set` enforces at execution time), so e.g. `:set pane indent-style=`
+/// (indent-style isn't pane-scoped) never dangles a completion that would error
 /// on Enter.
 fn complete_set_value(
     scope: &str,

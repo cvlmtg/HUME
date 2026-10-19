@@ -95,7 +95,7 @@ fn a_selection_over_several_lines_takes_a_block_comment() {
 #[test]
 fn prefer_line_comments_gives_each_line_a_line_comment() {
     let mut ed = rust_editor("-[a\nb]>\n");
-    type_cmd(&mut ed, ":set buffer prefer-line-comments=true");
+    type_cmd(&mut ed, ":set buffer comment-prefer-line=true");
 
     toggle(&mut ed);
 

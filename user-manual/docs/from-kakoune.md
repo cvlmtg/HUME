@@ -28,7 +28,7 @@ What each step shows:
 - **`t` only moves; `Ctrl` makes it select.** `f`, `F`, `t` and `T` move the cursor and select nothing, where Kakoune selects up to the target. Holding `Ctrl` turns a motion into a one-shot extend, so `Ctrl-t (` selects `;; ` and `d` deletes it: `Ctrl` does the job Shift does in Kakoune. For longer selections, `e` toggles Extend mode. The `Ctrl` forms need the [kitty keyboard protocol](installation.md#terminal-compatibility).
 - **A second `x` moves on.** Each `x` selects the next line on its own, dropping the previous one. `Ctrl-x` extends instead. See [Line selection](#line-selection).
 - **Text objects live behind `m`.** `m i w` is `<a-i>w`. To jump to a line, type its number at the `:` prompt: `:16` instead of `16g`.
-- **`Esc` keeps what you typed selected.** After the change, `declare` is still selected instead of reduced to a cursor, ready to act on again. One consequence: `i` re-enters *before* that selection, so use `a` to keep typing after it. Disable this with the `select-inserted-text` option (see [Buffer options](settings.md#buffer-options)).
+- **`Esc` keeps what you typed selected.** After the change, `declare` is still selected instead of reduced to a cursor, ready to act on again. One consequence: `i` re-enters *before* that selection, so use `a` to keep typing after it. Disable this with the `insert-select-on-exit` option (see [Buffer options](settings.md#buffer-options)).
 - **The system clipboard needs no wiring.** `y` copies to it as well as to HUME's own kill ring. `p` pastes your last yank or delete while you haven't edited since, and the clipboard once you have.
 
 Shift does not extend a selection: `W`, `H`, `J`, `K`, `L` do something else here, so read [Extending selections](#extending-selections) before reaching for them.
@@ -46,13 +46,13 @@ For a hands-on tour of everything else, type `:tutor` and press `Enter`: it open
 | Setting | Kakoune `kakrc` | HUME `init.scm` |
 |---|---|---|
 | Theme | `colorscheme onedark` | `(set-option! "theme" "onedark")` |
-| Line numbers | `add-highlighter global/numbers number-lines -relative` | `(set-option! "line-number-style" 'relative)` |
-| Tab width | `set-option global tabstop 4` | `(set-option! "tab-width" 4)` |
-| Indent width | `set-option global indentwidth 4` | same as tab width: HUME has one `tab-width` option, not two |
-| Spaces vs tabs | `set-option global indentwidth 0` (tabs) | `(set-option! "tab-style" 'soft)` (spaces) or `'hard` (tabs) |
+| Line numbers | `add-highlighter global/numbers number-lines -relative` | `(set-option! "gutter-line-numbers" 'relative)` |
+| Tab width | `set-option global tabstop 4` | `(set-option! "indent-width" 4)` |
+| Indent width | `set-option global indentwidth 4` | same as tab width: HUME has one `indent-width` option, not two |
+| Spaces vs tabs | `set-option global indentwidth 0` (tabs) | `(set-option! "indent-style" 'soft)` (spaces) or `'hard` (tabs) |
 | Scroll padding | `set-option global scrolloff 5,0` | `(set-option! "scroll-margin" 5)` (lines only; HUME has no horizontal scroll margin) |
 | Extra word characters | `set-option global extra_word_chars '_'` | `(set-option! "word-chars" "_")` |
-| Reload on external change | `set-option global autoreload yes` | `(set-option! "auto-read" #t)` |
+| Reload on external change | `set-option global autoreload yes` | `(set-option! "file-reload-prompt" #t)` |
 | Whitespace indicators | `add-highlighter global/whitespace show-whitespaces` | `(set-option! "whitespace-space" 'all)`<br>`(set-option! "whitespace-tab" 'all)`<br>`(set-option! "whitespace-newline" 'all)` |
 | Keybinding | `map global normal <c-j> ...` | `(bind-key! 'normal "ctrl-j" "move-down")` |
 
@@ -76,7 +76,7 @@ These work the way you expect, same keys:
 - `%` select the whole buffer, `s` narrow each selection to its regex matches
 - `&` align selections, `_` trim surrounding whitespace
 - `C` duplicate the selection onto the line below
-- `>` / `<` indent / unindent the lines a selection touches, same keys and idea. HUME rewrites each line's whole indent in the buffer's `tab-style`; see [Lines and alignment](editing.md#lines-and-alignment)
+- `>` / `<` indent / unindent the lines a selection touches, same keys and idea. HUME rewrites each line's whole indent in the buffer's `indent-style`; see [Lines and alignment](editing.md#lines-and-alignment)
 - `i` / `a` / `I` / `A` / `o` / `O` to enter Insert, `c` / `d` / `y` / `p` to change / delete / yank / paste
 - `Q` to record a macro and `q` to play it
 - `u` undo, `U` redo

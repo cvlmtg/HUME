@@ -700,7 +700,7 @@ fn returning_to_a_background_tab_at_unchanged_geometry_still_refires_viewport_ch
         &mut ed,
         &mut host,
         r#"(register-hook! 'on-viewport-change (lambda (bid range)
-             (set-buffer-option! bid "tab-width" (+ 1 (get-buffer-option bid "tab-width")))))"#,
+             (set-buffer-option! bid "indent-width" (+ 1 (get-buffer-option bid "indent-width")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -713,8 +713,8 @@ fn returning_to_a_background_tab_at_unchanged_geometry_still_refires_viewport_ch
     ed.settle();
 
     assert_eq!(
-        ed.state.buffers.get(bid_b).overrides.tab_width,
-        Some(EditorSettings::default().tab_width + 1),
+        ed.state.buffers.get(bid_b).overrides.indent_width,
+        Some(EditorSettings::default().indent_width + 1),
         "returning to B's tab at unchanged geometry must still re-fire on-viewport-change"
     );
 }
@@ -740,7 +740,7 @@ fn switching_buffer_in_place_at_unchanged_geometry_still_refires_viewport_change
         &mut ed,
         &mut host,
         r#"(register-hook! 'on-viewport-change (lambda (bid range)
-             (set-buffer-option! bid "tab-width" (+ 1 (get-buffer-option bid "tab-width")))))"#,
+             (set-buffer-option! bid "indent-width" (+ 1 (get-buffer-option bid "indent-width")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -754,8 +754,8 @@ fn switching_buffer_in_place_at_unchanged_geometry_still_refires_viewport_change
     ed.settle();
 
     assert_eq!(
-        ed.state.buffers.get(bid_b).overrides.tab_width,
-        Some(EditorSettings::default().tab_width + 1),
+        ed.state.buffers.get(bid_b).overrides.indent_width,
+        Some(EditorSettings::default().indent_width + 1),
         "switching buffer in place at an unchanged visible range must still \
          re-fire on-viewport-change"
     );
@@ -781,7 +781,7 @@ fn a_pending_debounced_viewport_change_does_not_fire_for_a_pane_that_went_backgr
     std::fs::write(&other, "hi\n").unwrap();
 
     let mut ed = editor_from("-[a]>bc\ndef\nghi\njkl\nmno\n");
-    ed.state.settings.viewport_debounce_ms = 0;
+    ed.state.settings.hook_viewport_debounce_ms = 0;
     let bid_a = ed.focused_buffer_id();
     seed_frame(&mut ed, 40, 3); // baseline last_visible_range[pid_a] at top_line 0
 
@@ -790,7 +790,7 @@ fn a_pending_debounced_viewport_change_does_not_fire_for_a_pane_that_went_backgr
         &mut ed,
         &mut host,
         r#"(register-hook! 'on-viewport-change (lambda (bid range)
-             (set-buffer-option! bid "tab-width" (+ 1 (get-buffer-option bid "tab-width")))))"#,
+             (set-buffer-option! bid "indent-width" (+ 1 (get-buffer-option bid "indent-width")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -815,7 +815,7 @@ fn a_pending_debounced_viewport_change_does_not_fire_for_a_pane_that_went_backgr
     ed.settle();
 
     assert_eq!(
-        ed.state.buffers.get(bid_a).overrides.tab_width,
+        ed.state.buffers.get(bid_a).overrides.indent_width,
         None,
         "a pane's tab going to the background before its debounce timer fires \
          must suppress that fire, not deliver it with frozen bounds"
@@ -829,8 +829,8 @@ fn a_pending_debounced_viewport_change_does_not_fire_for_a_pane_that_went_backgr
     ed.settle();
 
     assert_eq!(
-        ed.state.buffers.get(bid_a).overrides.tab_width,
-        Some(EditorSettings::default().tab_width + 1),
+        ed.state.buffers.get(bid_a).overrides.indent_width,
+        Some(EditorSettings::default().indent_width + 1),
         "returning to A's tab must still re-fire on-viewport-change exactly once"
     );
 }

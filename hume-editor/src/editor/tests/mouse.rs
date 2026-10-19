@@ -322,7 +322,7 @@ fn a_wheel_notch_in_a_zero_height_pane_leaves_the_viewport_alone() {
 /// (gutter width 0); pane B is `:vsplit`'s freshly-opened pane, built through
 /// `open_pane` → `build_pane`, which *does* register the real line-number +
 /// sign columns (gutter width 4 here: `LineNumberColumn` digit_count(1) + 1
-/// padding = 2, `SignColumn`'s default width 2, `signcolumn` mode `Always`
+/// padding = 2, `SignColumn`'s default width 2, `gutter-signs` mode `Always`
 /// so it never collapses).
 #[test]
 fn vsplit_click_focuses_and_resolves_against_the_clicked_pane() {

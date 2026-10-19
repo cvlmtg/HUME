@@ -114,7 +114,7 @@ impl Editor {
 
     /// (Re)schedules `pane_id`'s viewport-change debounce, cancelling
     /// whichever timer from a previous call is still pending, so a scroll
-    /// burst collapses to one fire, `viewport-debounce-ms` after the
+    /// burst collapses to one fire, `hook-viewport-debounce-ms` after the
     /// burst settles.
     ///
     /// This coalescer is Rust, not the Scheme `debounce` builtin: that one
@@ -122,7 +122,7 @@ impl Editor {
     /// (every scroll step, every frame): a scroll burst must not queue
     /// hundreds of hook evals waiting for Steel to debounce them itself.
     pub(super) fn debounce_viewport_change(&mut self, pane_id: PaneId) {
-        let after = Duration::from_millis(self.state.settings.viewport_debounce_ms as u64);
+        let after = Duration::from_millis(self.state.settings.hook_viewport_debounce_ms as u64);
         reschedule(
             &mut self.viewport_debounce,
             &mut self.timers,
@@ -134,7 +134,7 @@ impl Editor {
 
     /// (Re)schedules `bid`'s diagnostics pull, cancelling whichever timer
     /// from a previous call is still pending, so a typing burst collapses to
-    /// one pull, `lsp.diagnostics-pull-debounce-ms` after it settles.
+    /// one pull, `lsp-diagnostics-pull-debounce-ms` after it settles.
     pub(super) fn debounce_diagnostic_pull(&mut self, bid: BufferId) {
         let after =
             Duration::from_millis(self.state.settings.lsp_diagnostics_pull_debounce_ms as u64);

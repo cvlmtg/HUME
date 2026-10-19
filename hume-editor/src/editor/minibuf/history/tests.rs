@@ -225,7 +225,7 @@ fn set_capacity_defers_trim_to_next_push() {
 
 /// A shrink immediately followed by a raise, with no push in between, must
 /// not lose entries in the transient window: `:reload-config` resets
-/// `history-capacity` to its compiled-in default before `init.scm`
+/// `prompt-history-levels` to its compiled-in default before `init.scm`
 /// re-raises it, and an eager trim would have discarded everything past the
 /// default before the raise had a chance to take effect.
 #[test]

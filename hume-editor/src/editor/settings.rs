@@ -157,7 +157,7 @@ impl Default for SignColumnConfig {
 
 impl SignColumnConfig {
     /// Upper bound on a pinned `:N` slot count, and on how many slots bare
-    /// `signcolumn=always`/`auto` auto-sizes to. The `:N` bound is the type
+    /// `gutter-signs=always`/`auto` auto-sizes to. The `:N` bound is the type
     /// domain `FromStr` parses into (`u8`, and `127` keeps a pinned column
     /// from outrunning what a terminal row can usefully show); auto-size
     /// reuses the same constant rather than defining its own smaller cap,
@@ -498,7 +498,7 @@ pub(in crate::editor) const WRAP_MODE_KEY: &str = "wrap-mode";
 #[allow(non_camel_case_types)]
 pub(in crate::editor) enum ResyncKey {
     jump_list_capacity,
-    history_capacity,
+    prompt_history_levels,
     undo_levels,
     theme,
 }
@@ -549,7 +549,7 @@ macro_rules! parse_setting {
 /// `bool` fields round-trip as `Bool`, integer-ish fields (`usize`,
 /// `usize_nonzero`, `tab_width`) as `Int`, and closed sets of names
 /// (`enum_str`) as `Symbol`. The remaining `from_str` and `string` fields go
-/// via [`SettingText::to_text`] as `Str`: `wrap-mode` and `signcolumn` take
+/// via [`SettingText::to_text`] as `Str`: `wrap-mode` and `gutter-signs` take
 /// `name:N` forms, so they are not closed sets. `from_str` and `enum_str`
 /// types implement [`SettingText`], whose `to_text` round-trips through its
 /// own `parse`.
@@ -885,15 +885,17 @@ macro_rules! define_settings {
     };
 }
 
+// A key names its area first (`indent-…`, `insert-…`, `lsp-…`), so `:set`'s
+// prefix completion lists an area's settings together.
 define_settings! {
     global {
         "scroll-margin" => scroll_margin: usize = 3,
             scope: [Scope::Global],
             parser: usize;
-        "object-jump-align" => object_jump_align: ObjectJumpAlign = ObjectJumpAlign::default(),
+        "scroll-jump-align" => scroll_jump_align: ObjectJumpAlign = ObjectJumpAlign::default(),
             scope: [Scope::Global],
             parser: enum_str;
-        "cursor-shape-insert" => cursor_shape_insert: CursorShape = CursorShape::default(),
+        "insert-cursor-shape" => insert_cursor_shape: CursorShape = CursorShape::default(),
             scope: [Scope::Global],
             parser: enum_str;
         "mouse-scroll-lines" => mouse_scroll_lines: usize = 3,
@@ -912,19 +914,19 @@ define_settings! {
             scope: [Scope::Global],
             parser: usize_nonzero,
             resync: true;
-        "jump-line-threshold" => jump_line_threshold: usize = 5,
+        "jump-list-min-lines" => jump_list_min_lines: usize = 5,
             scope: [Scope::Global],
             parser: usize;
         // Resizes the command/search prompt-history ring cap. Like
         // undo-levels below, takes effect on the next push, not
         // retroactively. See `editor::settings::ops::resync_derived_state`
         // and `History::set_capacity`.
-        "history-capacity" => history_capacity: usize = 100,
+        "prompt-history-levels" => prompt_history_levels: usize = 100,
             scope: [Scope::Global],
             parser: usize_nonzero,
             resync: true;
         // 0 is a valid, meaningful value here (unlimited), unlike
-        // history-capacity above, hence plain `usize`, not `usize_nonzero`.
+        // prompt-history-levels above, hence plain `usize`, not `usize_nonzero`.
         // Resizes the undo-tree cap on every open buffer. Takes effect on
         // the next edit, not retroactively (Vim's `undolevels` semantics).
         // See `editor::settings::ops::resync_derived_state`.
@@ -940,7 +942,7 @@ define_settings! {
             parser: usize_nonzero;
         // How long a write waits for `on-before-buffer-save` handlers that
         // took `done` before it goes ahead without them.
-        "before-save-timeout-ms" => before_save_timeout_ms: usize = 1_000,
+        "hook-before-save-timeout-ms" => hook_before_save_timeout_ms: usize = 1_000,
             scope: [Scope::Global],
             parser: usize_nonzero;
         "command-completion" => command_completion: CommandCompletion = CommandCompletion::default(),
@@ -958,7 +960,7 @@ define_settings! {
             scope: [Scope::Global],
             parser: bool;
         // Read fresh by the statusline provider each frame; no resync needed.
-        "statusline.mode-colors" => statusline_mode_colors: bool = true,
+        "statusline-mode-colors" => statusline_mode_colors: bool = true,
             scope: [Scope::Global],
             parser: bool;
         // Resolved into the tab bar's rows by `EditorState::relayout`, and
@@ -979,28 +981,28 @@ define_settings! {
             parser: usize_nonzero;
         // Scroll bursts (page-down held, mouse wheel) must collapse to one
         // OnViewportChange fire, not one per frame.
-        "viewport-debounce-ms" => viewport_debounce_ms: usize = 150,
+        "hook-viewport-debounce-ms" => hook_viewport_debounce_ms: usize = 150,
             scope: [Scope::Global],
             parser: usize_nonzero;
         // rust-analyzer's first requests during indexing are slow; 10s
         // gives real-world servers room before the request is dropped as
         // TimedOut.
-        "lsp.request-timeout-ms" => lsp_request_timeout_ms: usize = 10_000,
+        "lsp-request-timeout-ms" => lsp_request_timeout_ms: usize = 10_000,
             scope: [Scope::Global],
             parser: usize_nonzero;
         // A typing burst collapses to one diagnostics pull per buffer.
-        "lsp.diagnostics-pull-debounce-ms" => lsp_diagnostics_pull_debounce_ms: usize = 250,
+        "lsp-diagnostics-pull-debounce-ms" => lsp_diagnostics_pull_debounce_ms: usize = 250,
             scope: [Scope::Global],
             parser: usize_nonzero;
         // Hint = most lenient: every severity renders. Gates the diagnostic
         // underline/extra-highlight and gutter-sign render write sides.
-        "lsp.diagnostics-severity-floor" => lsp_diagnostics_severity_floor: crate::editor::lsp::diagnostics::DiagSeverity = crate::editor::lsp::diagnostics::DiagSeverity::Hint,
+        "lsp-diagnostics-min-severity" => lsp_diagnostics_min_severity: crate::editor::lsp::diagnostics::DiagSeverity = crate::editor::lsp::diagnostics::DiagSeverity::Hint,
             scope: [Scope::Global],
             parser: enum_str;
         // Off hides the diagnostic underline and end-of-line summary on the
         // primary cursor's line while typing in Insert mode. The summary is
         // hidden by `core:lsp` passing the negation to `set-eol-text!`.
-        "lsp.diagnostics-on-insert-line" => lsp_diagnostics_on_insert_line: bool = false,
+        "lsp-diagnostics-on-insert-line" => lsp_diagnostics_on_insert_line: bool = false,
             scope: [Scope::Global],
             parser: bool;
     }
@@ -1017,25 +1019,25 @@ define_settings! {
         "wrap-mode" => wrap_mode: WrapMode = hume_engine::pane::DEFAULT_WRAP_STYLE,
             scope: [Scope::Global, Scope::Buffer, Scope::Pane],
             parser: from_str;
-        "tab-width" => tab_width: u8 = 4,
+        "indent-width" => indent_width: u8 = 4,
             scope: [Scope::Global, Scope::Buffer],
             parser: tab_width;
         "indent-guides" => indent_guides: bool = true,
             scope: [Scope::Global, Scope::Buffer],
             parser: bool;
-        "tab-style" => tab_style: TabStyle = TabStyle::default(),
+        "indent-style" => indent_style: TabStyle = TabStyle::default(),
             scope: [Scope::Global, Scope::Buffer],
             parser: enum_str;
-        "line-number-style" => line_number_style: LineNumberStyle = LineNumberStyle::default(),
+        "gutter-line-numbers" => gutter_line_numbers: LineNumberStyle = LineNumberStyle::default(),
             scope: [Scope::Global, Scope::Buffer],
             parser: enum_str;
-        "auto-pairs" => auto_pairs: bool = true,
+        "insert-auto-pairs" => insert_auto_pairs: bool = true,
             scope: [Scope::Global, Scope::Buffer],
             parser: bool;
         // Enter, `o` and `O` indent a new line (see `break_line`), and a
         // typed closing token dedents its line (`electric_dedent`). Off, a
         // new line starts at the left margin and no line is dedented.
-        "smart-indent" => smart_indent: bool = true,
+        "indent-smart" => indent_smart: bool = true,
             scope: [Scope::Global, Scope::Buffer],
             parser: bool;
         // Leaving Insert mode selects whatever text the session just typed
@@ -1043,12 +1045,12 @@ define_settings! {
         // See `begin_typed_run` and `tear_down_insert`'s pinned-anchor
         // finalization. Applies to every way of entering Insert mode:
         // `i`/`a`/`I`/`A`/`o`/`O`/`c`.
-        "select-inserted-text" => select_inserted_text: bool = true,
+        "insert-select-on-exit" => insert_select_on_exit: bool = true,
             scope: [Scope::Global, Scope::Buffer],
             parser: bool;
         // `toggle-comment` on a selection spanning several lines takes a
         // line token per line instead of the language's block pair.
-        "prefer-line-comments" => prefer_line_comments: bool = false,
+        "comment-prefer-line" => comment_prefer_line: bool = false,
             scope: [Scope::Global, Scope::Buffer],
             parser: bool;
         // Word motions (`w`/`W`/`b`/`B`), `mm`/`MM` and `maw`/`maW` cover
@@ -1076,7 +1078,7 @@ define_settings! {
         "word-chars" => word_chars: String = String::new(),
             scope: [Scope::Global, Scope::Buffer],
             parser: word_chars;
-        "signcolumn" => signcolumn: SignColumnConfig = SignColumnConfig::default(),
+        "gutter-signs" => gutter_signs: SignColumnConfig = SignColumnConfig::default(),
             scope: [Scope::Global, Scope::Buffer],
             parser: from_str;
         // Read fresh by `check_buffer_disk_state` at each trigger; no
@@ -1085,7 +1087,7 @@ define_settings! {
         // but reload stays manual via `:e!`/`:checktime`. Independent of
         // `:w`'s write guard, which stats the file itself at write time
         // regardless of this setting. See `changed_on_disk`.
-        "auto-read" => auto_read: bool = true,
+        "file-reload-prompt" => file_reload_prompt: bool = true,
             scope: [Scope::Global, Scope::Buffer],
             parser: bool;
     }
@@ -1220,12 +1222,15 @@ impl BufferOverrides {
     /// Effective auto-pairs config for this buffer: `(enabled, &pairs)`.
     ///
     /// The pair list itself is a fixed constant (`hume_ops::auto_pairs::DEFAULT_PAIRS`)
-    /// and only `auto-pairs` is an actual per-buffer setting.
+    /// and only `insert-auto-pairs` is an actual per-buffer setting.
     pub(in crate::editor) fn auto_pairs_ref(
         &self,
         global: &EditorSettings,
     ) -> (bool, &'static [Pair]) {
-        (self.auto_pairs(global), hume_ops::auto_pairs::DEFAULT_PAIRS)
+        (
+            self.insert_auto_pairs(global),
+            hume_ops::auto_pairs::DEFAULT_PAIRS,
+        )
     }
 }
 

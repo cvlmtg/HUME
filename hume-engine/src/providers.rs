@@ -86,7 +86,7 @@ pub trait GutterColumn {
 
     /// Produce content for one display line as a sequence of cells.
     /// Single-cell columns (like `LineNumberColumn`) return a `Vec` with one element.
-    /// Multi-cell columns (like `SignColumn` sized past one slot, `signcolumn=
+    /// Multi-cell columns (like `SignColumn` sized past one slot, `gutter-signs=
     /// always`/`auto` included) return multiple cells, one per sign slot.
     fn render_cells(&self, kind: DisplayLineKind, ctx: &GutterCtx) -> Vec<GutterCell>;
 
@@ -389,7 +389,7 @@ impl ProviderSet {
 
     /// Push the resolved line-number style into the `LineNumberColumn`, if present.
     ///
-    /// Per-frame push, so `:set line-number-style` takes effect without
+    /// Per-frame push, so `:set gutter-line-numbers` takes effect without
     /// rebuilding the provider set.
     pub fn sync_line_number_style(&mut self, style: LineNumberStyle) {
         for (_, lane) in &mut self.gutter_columns {

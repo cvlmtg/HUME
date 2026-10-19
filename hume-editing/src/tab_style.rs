@@ -5,8 +5,8 @@ use hume_rope::column::BufferLineCol;
 use hume_rope::width::indent_stop;
 
 /// `Hard` inserts a literal `\t` character; `Soft` inserts enough spaces to
-/// reach the next tab stop (governed by `tab-width`). This is the single knob;
-/// there is no separate "shiftwidth" or "softtabstop": `tab-width` is the
+/// reach the next tab stop (governed by `indent-width`). This is the single knob;
+/// there is no separate "shiftwidth" or "softtabstop": `indent-width` is the
 /// only width, used for both rendering and Tab-key spacing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum TabStyle {

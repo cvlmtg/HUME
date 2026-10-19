@@ -325,7 +325,7 @@ impl Editor {
                 .buffers
                 .get(buf_id)
                 .overrides
-                .line_number_style(&self.state.settings);
+                .gutter_line_numbers(&self.state.settings);
             self.view.panes[pid]
                 .providers
                 .sync_line_number_style(ln_style);

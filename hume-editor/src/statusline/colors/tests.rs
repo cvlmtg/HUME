@@ -182,7 +182,7 @@ fn separator_falls_back_to_the_active_row_style_not_the_base_scope_when_undefine
     );
 }
 
-/// `statusline.mode-colors=false` passes `None` for the mode. It must read
+/// `statusline-mode-colors=false` passes `None` for the mode. It must read
 /// the base `ui.statusline` scope, not silently substitute `EditorMode::Normal`
 /// (whose own scope can be a distinct accent in an imported theme, e.g.
 /// Helix's old pill idiom). `ui.statusline.normal` is given a different bg

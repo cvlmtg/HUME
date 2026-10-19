@@ -43,7 +43,7 @@ itself. A buffer whose signs never render, because it is untracked or `"signs?"`
 turned on, never reserves the slot. The source's priority is `0`, ranked against every
 other source registered for the buffer. `core:lsp`'s `"lsp-diagnostics"` is `10`; see the
 `register-sign-source!` entry in [`docs/LSP.md`](../../../../../docs/LSP.md). Priority `0`
-puts git-diff last, so its column is the first to fall off the signcolumn auto-size cap
+puts git-diff last, so its column is the first to fall off the gutter-signs auto-size cap
 when several higher-priority sources share the buffer.
 
 ### Sign kinds

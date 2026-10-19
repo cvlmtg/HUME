@@ -186,7 +186,7 @@ pub(super) enum ExitCursor {
 /// session's "typed run".
 ///
 /// `mii` (`select-last-insertion`) recovers the span regardless of the
-/// `select-inserted-text` setting; `tear_down_insert` reads that setting
+/// `insert-select-on-exit` setting; `tear_down_insert` reads that setting
 /// itself to decide whether to auto-select on exit.
 ///
 /// Pins into the session `entry` proves open. Call after the cursor has been
@@ -401,7 +401,7 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState, mut session: 
     });
 
     // Stash whatever was actually typed for `mii`, regardless of entry
-    // command, independent of `select-inserted-text` below, which only
+    // command, independent of `insert-select-on-exit` below, which only
     // decides whether Esc *also* selects it immediately.
     if let Some(spans) = &spans {
         let stashed: Vec<ClusterRange> = spans.iter().flatten().copied().collect();
@@ -415,7 +415,7 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState, mut session: 
         .buffers
         .get(bid)
         .overrides
-        .select_inserted_text(&state.settings);
+        .insert_select_on_exit(&state.settings);
     let spans = spans.filter(|_| select_on_exit);
     if spans.is_some() || step_back {
         doc_ops::apply_doc_motion(

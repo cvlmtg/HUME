@@ -267,7 +267,7 @@ fn gutter_width_auto_2_expands_when_signs_exist() {
         ..
     } = setup_diagnostics("abcdefgh\n", &[diag]);
     let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).overrides.signcolumn =
+    ed.state.buffers.get_mut(bid).overrides.gutter_signs =
         Some(SignColumnConfig::parse("auto:2").unwrap());
     let pid = ed.view.focused_pane();
     render(&mut ed);
@@ -306,7 +306,7 @@ fn diagnostic_and_plugin_sign_share_a_line_and_both_survive_the_merge() {
     } = setup_diagnostics("abcdefgh\n", &[diag]);
 
     let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).overrides.signcolumn =
+    ed.state.buffers.get_mut(bid).overrides.gutter_signs =
         Some(SignColumnConfig::parse("always:2").unwrap());
 
     run(

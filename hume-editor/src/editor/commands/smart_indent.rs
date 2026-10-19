@@ -19,14 +19,14 @@ use crate::editor::EditorState;
 use crate::editor::input_stack::InsertEntry;
 use crate::editor::syntax::{SyntaxUse, ensure_syntax_current};
 
-/// Whether `smart-indent` is on for `bid`; when it is, brings the tree up
+/// Whether `indent-smart` is on for `bid`; when it is, brings the tree up
 /// to date with the text first.
 fn indent_tree(state: &mut EditorState, bid: BufferId) -> bool {
     let on = state
         .buffers
         .get(bid)
         .overrides
-        .smart_indent(&state.settings);
+        .indent_smart(&state.settings);
     if on {
         ensure_syntax_current(state, bid, SyntaxUse::Indent);
     }
@@ -37,7 +37,7 @@ fn indent_tree(state: &mut EditorState, bid: BufferId) -> bool {
 /// the single path Enter, `o` and `O` share. `allowed` is the session's
 /// autoindent ownership record (see `autoindent_owned`).
 ///
-/// With `smart-indent` off every new line starts at the left margin.
+/// With `indent-smart` off every new line starts at the left margin.
 /// Otherwise the tree is brought current and a new line gets the width it
 /// computes, or a copy of the current line's indent where it computes none
 /// (no grammar, no indents query). Every break is planned against the

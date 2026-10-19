@@ -247,7 +247,7 @@ fn a_on_wide_selection_collapses_after_end() {
 /// not one position past it. A second `a` should re-enter Insert at the same
 /// spot rather than advancing further.
 ///
-/// `select-inserted-text` off: with the default on, a single typed char's
+/// `insert-select-on-exit` off: with the default on, a single typed char's
 /// auto-selected span (`-[X]>`) renders identically to a stepped-back
 /// collapsed cursor on that same char, so the assertion would hold even if
 /// `step_back_on_exit` were broken. This test is specifically about the
@@ -255,7 +255,7 @@ fn a_on_wide_selection_collapses_after_end() {
 #[test]
 fn a_esc_steps_cursor_back_to_last_typed_char() {
     let mut ed = editor_from("-[h]>ello\n");
-    ed.state.settings.select_inserted_text = false;
+    ed.state.settings.insert_select_on_exit = false;
 
     ed.handle_key(key('a')); // cursor → 'e', Insert
     ed.handle_key(key('X'));
@@ -270,13 +270,13 @@ fn a_esc_steps_cursor_back_to_last_typed_char() {
 /// After Esc the cursor must sit on the last appended character (on the same
 /// line), so that a second `a` re-enters Insert at the end of that line.
 ///
-/// `select-inserted-text` off; see `a_esc_steps_cursor_back_to_last_typed_char`'s
+/// `insert-select-on-exit` off; see `a_esc_steps_cursor_back_to_last_typed_char`'s
 /// doc for why isolating the step-back path (not just typing one char)
 /// matters here.
 #[test]
 fn a_esc_at_end_of_line_does_not_advance_to_next_line() {
     let mut ed = editor_from("-[h]>ello\nworld\n");
-    ed.state.settings.select_inserted_text = false;
+    ed.state.settings.insert_select_on_exit = false;
 
     ed.handle_key(key('A')); // jump to end of line → '\n', Insert
     ed.handle_key(key('X'));
@@ -291,7 +291,7 @@ fn a_esc_at_end_of_line_does_not_advance_to_next_line() {
     assert_eq!(state(&ed), "helloX-[\n]>world\n");
 }
 
-/// `i` never sets `step_back_on_exit`: with `select-inserted-text` on, its
+/// `i` never sets `step_back_on_exit`: with `insert-select-on-exit` on, its
 /// typed run is simply selected on Esc.
 #[test]
 fn i_esc_selects_the_typed_run() {
@@ -305,13 +305,13 @@ fn i_esc_selects_the_typed_run() {
     assert_eq!(state(&ed), "-[X]>hello\n");
 }
 
-/// With `select-inserted-text` off, `i` never steps the cursor back on Esc
+/// With `insert-select-on-exit` off, `i` never steps the cursor back on Esc
 /// either (only `a`/`A`/`o`/`O`'s empty-run fallback does). It leaves the
 /// cursor exactly where typing left it.
 #[test]
 fn i_esc_does_not_step_cursor_back_setting_off() {
     let mut ed = editor_from("-[h]>ello\n");
-    ed.state.settings.select_inserted_text = false;
+    ed.state.settings.insert_select_on_exit = false;
 
     ed.handle_key(key('i')); // cursor stays on 'h', Insert
     ed.handle_key(key('X'));
@@ -408,12 +408,12 @@ fn o_esc_selects_the_typed_run() {
     assert_eq!(state(&ed), "hello\n-[abc]>\nworld\n");
 }
 
-/// With `select-inserted-text` off, `o` + typing + Esc still steps the
+/// With `insert-select-on-exit` off, `o` + typing + Esc still steps the
 /// cursor back to the last typed character (same as `a`), not the typed run.
 #[test]
 fn o_esc_steps_cursor_back_to_last_typed_char_setting_off() {
     let mut ed = editor_from("-[h]>ello\nworld\n");
-    ed.state.settings.select_inserted_text = false;
+    ed.state.settings.insert_select_on_exit = false;
 
     ed.handle_key(key('o'));
     ed.handle_key(key('a'));
@@ -441,12 +441,12 @@ fn capital_o_esc_selects_the_typed_run() {
     assert_eq!(state(&ed), "hello\n-[abc]>\nworld\n");
 }
 
-/// With `select-inserted-text` off, `O` + typing + Esc still steps the
+/// With `insert-select-on-exit` off, `O` + typing + Esc still steps the
 /// cursor back to the last typed character.
 #[test]
 fn capital_o_esc_steps_cursor_back_to_last_typed_char_setting_off() {
     let mut ed = editor_from("hello\n-[w]>orld\n");
-    ed.state.settings.select_inserted_text = false;
+    ed.state.settings.insert_select_on_exit = false;
 
     ed.handle_key(key('O'));
     ed.handle_key(key('a'));

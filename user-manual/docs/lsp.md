@@ -347,7 +347,7 @@ function the server knows about, and inlay hints (see below) appear inline once 
 your next keypress or mouse action. Each line with a problem also gets a short summary at
 its end. While you type in Insert mode, the underline and summary are hidden on the line
 the cursor is on and return when you leave Insert mode or move to another line. Set
-`lsp.diagnostics-on-insert-line` to `#t` to keep them showing.
+`lsp-diagnostics-on-insert-line` to `#t` to keep them showing.
 
 ## Settings
 
@@ -357,7 +357,7 @@ plugin that talks to a language server. They are global options, described in fu
 global option:
 
 ```scheme
-(set-option! "lsp.diagnostics-severity-floor" 'warning)
+(set-option! "lsp-diagnostics-min-severity" 'warning)
 ```
 
 `core:lsp`'s own options are passed with `#:config` when you load it:
@@ -380,7 +380,7 @@ Not on by default. Add this to your `init.scm` to format the whole buffer every 
   (lambda (pane done) (call! "lsp/format-document" pane done)))
 ```
 
-The save waits for the language server's answer, and `:wa` formats buffers that no pane is showing too. If there is no server, or it fails or doesn't answer within `before-save-timeout-ms` (see [Global options](settings.md#global-options)), the buffer is saved as it is, and an answer that arrives later still formats the buffer, leaving it modified.
+The save waits for the language server's answer, and `:wa` formats buffers that no pane is showing too. If there is no server, or it fails or doesn't answer within `hook-before-save-timeout-ms` (see [Global options](settings.md#global-options)), the buffer is saved as it is, and an answer that arrives later still formats the buffer, leaving it modified.
 
 ## Managing servers
 

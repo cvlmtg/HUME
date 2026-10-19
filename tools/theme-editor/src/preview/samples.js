@@ -152,7 +152,7 @@ export const CHROME_SCOPES = SCOPES
 // document mode while a prompt is open, and HUME's prompts have no
 // cursor-shape option of their own) -> "normal".
 //
-// `barPrimary` marks Insert alone: HUME's `cursor-shape-insert` default is
+// `barPrimary` marks Insert alone: HUME's `insert-cursor-shape` default is
 // `bar`, so the buffer's primary head shows no theme color at all there — the
 // real terminal bar is the sole indicator (`cursorColors` in lib/theme.js).
 // Every other mode is hardwired `Block` (Normal and Extend by design; the

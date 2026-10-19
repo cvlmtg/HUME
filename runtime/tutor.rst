@@ -513,7 +513,7 @@ replacement is selected instead of leaving a plain cursor after it,
 so you can act on it again right away (delete it, search for it,
 and so on). If you press ``Esc`` without typing anything, the
 cursor is left where you started. This is controlled by the
-``select-inserted-text`` option (on by default) and applies to
+``insert-select-on-exit`` option (on by default) and applies to
 every way of entering Insert mode, not just ``c``.
 
 Exercise

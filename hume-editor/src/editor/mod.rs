@@ -465,7 +465,7 @@ impl EditorState {
     /// treatment; the compiler will not ask for it.
     pub(in crate::editor) fn base(focus: focus::Focus) -> Self {
         let settings = EditorSettings::default();
-        let history_capacity = settings.history_capacity;
+        let history_capacity = settings.prompt_history_levels;
         Self {
             dirs: hume_platform::dirs::Dirs::none(),
             buffers: BufferStore::new(),
@@ -593,7 +593,7 @@ impl EditorState {
     /// selection heads are painted, and (outside a prompt) the real terminal
     /// cursor's shape.
     ///
-    /// Only Insert is configurable (`cursor-shape-insert`): a terminal has one
+    /// Only Insert is configurable (`insert-cursor-shape`): a terminal has one
     /// hardware cursor, so HUME offers no shape choice for Normal/Extend
     /// (always `Block`, matching Helix's own default), and Command/Search/
     /// Sift also resolve to `Block` here (their document heads render like
@@ -607,7 +607,7 @@ impl EditorState {
     /// which shape is in effect outside a prompt.
     pub(in crate::editor) fn cursor_shape(&self) -> crate::editor::settings::CursorShape {
         if self.mode() == Mode::Insert {
-            self.settings.cursor_shape_insert
+            self.settings.insert_cursor_shape
         } else {
             crate::editor::settings::CursorShape::Block
         }
@@ -633,7 +633,7 @@ impl EditorState {
                 self.config.decorations.generation(pane.buffer_id()),
             ],
             wrap_mode: commands::effective_wrap_mode(doc, &self.settings, pane),
-            tab_width: doc.overrides.tab_width(&self.settings),
+            tab_width: doc.overrides.indent_width(&self.settings),
             whitespace: doc.overrides.whitespace(&self.settings),
         };
         LayoutKey {

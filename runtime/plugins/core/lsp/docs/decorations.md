@@ -53,7 +53,7 @@ the result for both the decorations and the drawer:
 | Hook | Effect |
 |---|---|
 | `on-diagnostics-changed` | Refreshes the EOL summary, signs and drawer for that buffer |
-| `on-option-change` for `lsp.diagnostics-severity-floor` or `lsp.diagnostics-on-insert-line` | Refreshes every buffer. The store applies a new floor only when it is read, so without this each buffer would keep the previous cut until its next diagnostics change |
+| `on-option-change` for `lsp-diagnostics-min-severity` or `lsp-diagnostics-on-insert-line` | Refreshes every buffer. The store applies a new floor only when it is read, so without this each buffer would keep the previous cut until its next diagnostics change |
 | `on-lsp-detach` | Refreshes the summary, signs and drawer from what the buffer's other servers published; the detached server's diagnostics are already gone |
 
 ## Grouping and severity
@@ -84,7 +84,7 @@ and drawer rows also use.
   which virtual text past the end of the line must not inherit. Putting the severity name
   first lets a theme color all four from one `error`/`warning`/`info`/`hint` entry through
   the usual dot-notation fallback.
-- **Insert line.** The plugin passes the negation of `lsp.diagnostics-on-insert-line` as
+- **Insert line.** The plugin passes the negation of `lsp-diagnostics-on-insert-line` as
   `#:hide-on-insert-line`, and the render side drops flagged entries on the primary
   cursor's line while its pane is in Insert mode. The underline is owned by Rust and
   reads the option directly.

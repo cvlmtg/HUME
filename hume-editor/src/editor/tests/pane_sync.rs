@@ -65,7 +65,7 @@ fn pane_selections_synced_after_exit_insert() {
     let mut ed = editor_from("ab-[c]>\n");
     ed.handle_key(key('i')); // enter Insert at 'c' (byte 2)
     ed.handle_key(key('x')); // type 'x' before 'c' → "abxc\n", cursor at byte 3
-    ed.handle_key(key_esc()); // exit Insert; select-inserted-text selects 'x'
+    ed.handle_key(key_esc()); // exit Insert; insert-select-on-exit selects 'x'
 
     ed.sync_all_pane_mirrors(&ed.view.active_pane_ids());
 

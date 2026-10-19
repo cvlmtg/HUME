@@ -4,7 +4,7 @@
 //! through. With no handler registered it writes at once. Otherwise it parks
 //! a [`PendingWrite`] in `EditorState::pending_writes`; the next drain pass
 //! raises the event, and the write happens when every handler that took
-//! `done` has called it, or `before-save-timeout-ms` runs out. A hold is open
+//! `done` has called it, or `hook-before-save-timeout-ms` runs out. A hold is open
 //! while its write is parked with the hold in its set, so ending the write
 //! ends its holds.
 
@@ -60,7 +60,7 @@ enum Holds {
     /// The event has not been raised yet.
     NotRaised,
     /// One hold per handler taking `done`; the write is ready once none is
-    /// left. `timeout` fires `before-save-timeout-ms` after the event was
+    /// left. `timeout` fires `hook-before-save-timeout-ms` after the event was
     /// raised, and exists only while a handler can still hold the write.
     Open {
         open: FxHashSet<HostToken>,
@@ -340,7 +340,7 @@ impl Editor {
     }
 
     fn before_save_timeout(&self) -> Duration {
-        Duration::from_millis(self.state.settings.before_save_timeout_ms as u64)
+        Duration::from_millis(self.state.settings.hook_before_save_timeout_ms as u64)
     }
 
     /// Raises `on-before-buffer-save` for every parked write still waiting
@@ -401,7 +401,7 @@ impl Editor {
         self.report_finished_write_batches();
     }
 
-    /// The `before-save-timeout-ms` timer for `bid`'s pending write fired.
+    /// The `hook-before-save-timeout-ms` timer for `bid`'s pending write fired.
     pub(super) fn before_save_timed_out(&mut self, bid: BufferId) {
         if !self.state.pending_writes.contains(bid) {
             return;

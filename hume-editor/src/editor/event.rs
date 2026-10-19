@@ -101,7 +101,7 @@ pub(in crate::editor) enum EditorEvent {
     },
     /// Fires when a pane's visible range changes (scroll, resize, an edit
     /// that moves the EOF-clamped end, a buffer switch), debounced
-    /// (`viewport-debounce-ms`) so a burst fires once. `lines` is the range
+    /// (`hook-viewport-debounce-ms`) so a burst fires once. `lines` is the range
     /// `viewport-range` returns, end-exclusive, and reaches the hook as the
     /// same value; it covers every line that could be visible and is exact
     /// unless soft wrap

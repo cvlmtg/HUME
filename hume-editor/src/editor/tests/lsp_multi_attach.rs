@@ -401,7 +401,7 @@ fn attach_hook_fires_once_per_buffer_and_server() {
     let init = format!(
         r#"{TWO_RUST_SERVERS}
 (register-hook! 'on-lsp-attach (lambda (pane server)
-  (set-buffer-option! pane "tab-width" (+ 1 (get-buffer-option pane "tab-width")))))"#
+  (set-buffer-option! pane "indent-width" (+ 1 (get-buffer-option pane "indent-width")))))"#
     );
     let mut rig = LspRig::drained(
         tmp.path(),
@@ -411,7 +411,7 @@ fn attach_hook_fires_once_per_buffer_and_server() {
     rig.ed.settle();
 
     assert_eq!(
-        rig.ed.state.buffers.get(rig.bid).overrides.tab_width,
-        Some(EditorSettings::default().tab_width + 2)
+        rig.ed.state.buffers.get(rig.bid).overrides.indent_width,
+        Some(EditorSettings::default().indent_width + 2)
     );
 }

@@ -17,7 +17,7 @@ use hume_rope::line::ContentLine;
 /// Shared per-frame sign data: at most one `Sign` per resolved slot per
 /// line (a line's `Vec` holds whichever slots this map's signs actually
 /// claimed, never padded, and never more entries than the buffer's
-/// resolved `signcolumn` slot count). Every registered source (diagnostics
+/// resolved `gutter-signs` slot count). Every registered source (diagnostics
 /// included, since `core:lsp` places them through `set-signs!` like any other
 /// plugin) is pre-merged into this one map at write time.
 pub(crate) type SignMap = SharedSlot<FxHashMap<ContentLine, Vec<Sign>>>;

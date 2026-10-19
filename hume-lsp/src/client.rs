@@ -275,7 +275,7 @@ pub enum Outcome {
 
 /// How long `initialize` may go unanswered before the client gives up and
 /// transitions to `Crashed`, independent of
-/// `lsp.request-timeout-ms` (a per-request setting): a cold server's
+/// `lsp-request-timeout-ms` (a per-request setting): a cold server's
 /// handshake legitimately outlasts the timeout an ordinary request would
 /// get.
 const INITIALIZE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);

@@ -281,7 +281,7 @@ fn reset_clears_buffer_overrides() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-typed-command! "widen-tabs" "" (lambda (bid) (set-buffer-option! bid "tab-width" 8)))"#,
+        r#"(define-typed-command! "widen-tabs" "" (lambda (bid) (set-buffer-option! bid "indent-width" 8)))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -289,7 +289,7 @@ fn reset_clears_buffer_overrides() {
 
     let bid = ed.focused_buffer_id();
     assert_eq!(
-        ed.state.buffers.get(bid).overrides.tab_width,
+        ed.state.buffers.get(bid).overrides.indent_width,
         Some(8),
         "sanity: the override must land"
     );
@@ -297,7 +297,7 @@ fn reset_clears_buffer_overrides() {
     ed.reset_config_state();
 
     assert_eq!(
-        ed.state.buffers.get(bid).overrides.tab_width,
+        ed.state.buffers.get(bid).overrides.indent_width,
         None,
         "buffer-local override must be cleared, not survive the reset"
     );
@@ -928,12 +928,12 @@ fn resync_refires_buffer_open_for_every_open_buffer() {
         &mut ed,
         &mut host,
         r#"(register-hook! 'on-buffer-open (lambda (bid)
-             (set-buffer-option! bid "tab-width" (+ 1 (get-buffer-option bid "tab-width")))))"#,
+             (set-buffer-option! bid "indent-width" (+ 1 (get-buffer-option bid "indent-width")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
 
-    // Counts fires via a per-buffer `tab-width` override, incremented once
+    // Counts fires via a per-buffer `indent-width` override, incremented once
     // per `on-buffer-open` call for that buffer: a plain "did state change"
     // check can't distinguish "every open buffer fired once" from "only one
     // of them fired" (the bug a `.take(1)` mutation to the resync loop would
@@ -943,13 +943,13 @@ fn resync_refires_buffer_open_for_every_open_buffer() {
     ed.settle();
 
     assert_eq!(
-        ed.state.buffers.get(first_bid).overrides.tab_width,
-        Some(EditorSettings::default().tab_width + 1),
+        ed.state.buffers.get(first_bid).overrides.indent_width,
+        Some(EditorSettings::default().indent_width + 1),
         "on-buffer-open must re-fire exactly once for the first pre-reload buffer"
     );
     assert_eq!(
-        ed.state.buffers.get(second_bid).overrides.tab_width,
-        Some(EditorSettings::default().tab_width + 1),
+        ed.state.buffers.get(second_bid).overrides.indent_width,
+        Some(EditorSettings::default().indent_width + 1),
         "on-buffer-open must re-fire exactly once for the second pre-reload buffer too"
     );
 }
@@ -968,7 +968,7 @@ fn resync_refires_buffer_open_for_every_open_buffer() {
 /// reload (excluded here by never appearing in `snapshot`, taken before the
 /// new buffer opens) should be re-fired.
 ///
-/// Counts fires via a per-buffer `tab-width` override, incremented once per
+/// Counts fires via a per-buffer `indent-width` override, incremented once per
 /// `on-buffer-open` call for that buffer: a plain "did state change" check
 /// (as `resync_refires_buffer_open_for_every_open_buffer` above uses) can't
 /// distinguish "fired once" from "fired twice", which is exactly the
@@ -988,7 +988,7 @@ fn resync_does_not_refire_buffer_open_for_a_buffer_opened_by_this_reload() {
         &mut ed,
         &mut host,
         r#"(register-hook! 'on-buffer-open (lambda (bid)
-             (set-buffer-option! bid "tab-width" (+ 1 (get-buffer-option bid "tab-width")))))"#,
+             (set-buffer-option! bid "indent-width" (+ 1 (get-buffer-option bid "indent-width")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -1010,12 +1010,12 @@ fn resync_does_not_refire_buffer_open_for_a_buffer_opened_by_this_reload() {
     ed.settle();
 
     assert_eq!(
-        ed.state.buffers.get(new_bid).overrides.tab_width,
-        Some(EditorSettings::default().tab_width + 1),
+        ed.state.buffers.get(new_bid).overrides.indent_width,
+        Some(EditorSettings::default().indent_width + 1),
         "sanity: the ordinary open path must have fired on-buffer-open once for the new buffer"
     );
     assert_eq!(
-        ed.state.buffers.get(old_bid).overrides.tab_width,
+        ed.state.buffers.get(old_bid).overrides.indent_width,
         None,
         "sanity: the pre-existing buffer must not have fired yet"
     );
@@ -1024,13 +1024,13 @@ fn resync_does_not_refire_buffer_open_for_a_buffer_opened_by_this_reload() {
     ed.settle();
 
     assert_eq!(
-        ed.state.buffers.get(old_bid).overrides.tab_width,
-        Some(EditorSettings::default().tab_width + 1),
+        ed.state.buffers.get(old_bid).overrides.indent_width,
+        Some(EditorSettings::default().indent_width + 1),
         "on-buffer-open must fire exactly once for a buffer that predates the reload"
     );
     assert_eq!(
-        ed.state.buffers.get(new_bid).overrides.tab_width,
-        Some(EditorSettings::default().tab_width + 1),
+        ed.state.buffers.get(new_bid).overrides.indent_width,
+        Some(EditorSettings::default().indent_width + 1),
         "on-buffer-open must NOT fire again for a buffer this reload's init.scm itself opened"
     );
 }
@@ -1177,7 +1177,7 @@ fn resync_refires_diagnostics_changed_for_a_crashed_servers_surviving_cache() {
 /// Every pane showing a surviving buffer gets `OnViewportChange` re-fired on
 /// resync: the replay that brings back inlay hints and anything else
 /// `on-viewport-change`-gated without the user having to scroll. Two panes on
-/// two different buffers, both counted via a per-buffer `tab-width` bump
+/// two different buffers, both counted via a per-buffer `indent-width` bump
 /// (same technique as `resync_refires_buffer_open_for_every_open_buffer`:
 /// a plain "did state change" check can't distinguish "each pane fired once"
 /// from "only one pane fired, or one fired twice for the wrong buffer").
@@ -1215,7 +1215,7 @@ fn resync_refires_viewport_change_once_per_pane_on_a_surviving_buffer() {
         &mut ed,
         &mut host,
         r#"(register-hook! 'on-viewport-change (lambda (bid range)
-             (set-buffer-option! bid "tab-width" (+ 1 (get-buffer-option bid "tab-width")))))"#,
+             (set-buffer-option! bid "indent-width" (+ 1 (get-buffer-option bid "indent-width")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -1225,13 +1225,13 @@ fn resync_refires_viewport_change_once_per_pane_on_a_surviving_buffer() {
     ed.settle();
 
     assert_eq!(
-        ed.state.buffers.get(first_bid).overrides.tab_width,
-        Some(EditorSettings::default().tab_width + 1),
+        ed.state.buffers.get(first_bid).overrides.indent_width,
+        Some(EditorSettings::default().indent_width + 1),
         "on-viewport-change must re-fire exactly once for the first pane's buffer"
     );
     assert_eq!(
-        ed.state.buffers.get(second_bid).overrides.tab_width,
-        Some(EditorSettings::default().tab_width + 1),
+        ed.state.buffers.get(second_bid).overrides.indent_width,
+        Some(EditorSettings::default().indent_width + 1),
         "on-viewport-change must re-fire exactly once for the second pane's buffer too"
     );
 }
@@ -1270,7 +1270,7 @@ fn resync_does_not_refire_viewport_change_for_a_pane_on_a_buffer_absent_from_the
         &mut ed,
         &mut host,
         r#"(register-hook! 'on-viewport-change (lambda (bid range)
-             (set-buffer-option! bid "tab-width" (+ 1 (get-buffer-option bid "tab-width")))))"#,
+             (set-buffer-option! bid "indent-width" (+ 1 (get-buffer-option bid "indent-width")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -1282,12 +1282,12 @@ fn resync_does_not_refire_viewport_change_for_a_pane_on_a_buffer_absent_from_the
     ed.settle();
 
     assert_eq!(
-        ed.state.buffers.get(first_bid).overrides.tab_width,
-        Some(EditorSettings::default().tab_width + 1),
+        ed.state.buffers.get(first_bid).overrides.indent_width,
+        Some(EditorSettings::default().indent_width + 1),
         "sanity: the surviving pane's buffer must still fire"
     );
     assert_eq!(
-        ed.state.buffers.get(second_bid).overrides.tab_width,
+        ed.state.buffers.get(second_bid).overrides.indent_width,
         None,
         "a pane on a buffer absent from the snapshot must not get \
          on-viewport-change re-fired"
@@ -1307,7 +1307,7 @@ fn resync_does_not_refire_viewport_change_for_a_pane_on_a_buffer_absent_from_the
 /// test pass trivially (baseline still `None`, diff still fires) even
 /// without `resync_config_state` clearing it itself.
 ///
-/// Counts fires via a per-buffer `tab-width` override, same technique as
+/// Counts fires via a per-buffer `indent-width` override, same technique as
 /// `resync_refires_buffer_open_for_every_open_buffer`, which proves the hook
 /// actually re-fired, not just that some other diff coincidentally matched.
 #[test]
@@ -1322,7 +1322,7 @@ fn resync_refires_buffer_enter_for_the_focused_buffer() {
         &mut ed,
         &mut host,
         r#"(register-hook! 'on-buffer-enter (lambda (bid)
-             (set-buffer-option! bid "tab-width" (+ 1 (get-buffer-option bid "tab-width")))))"#,
+             (set-buffer-option! bid "indent-width" (+ 1 (get-buffer-option bid "indent-width")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -1332,8 +1332,8 @@ fn resync_refires_buffer_enter_for_the_focused_buffer() {
     ed.settle();
 
     assert_eq!(
-        ed.state.buffers.get(bid).overrides.tab_width,
-        Some(EditorSettings::default().tab_width + 1),
+        ed.state.buffers.get(bid).overrides.indent_width,
+        Some(EditorSettings::default().indent_width + 1),
         "on-buffer-enter must re-fire exactly once for the focused buffer on resync"
     );
 }

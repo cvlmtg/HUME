@@ -74,7 +74,7 @@ pub(in crate::editor) fn cmd_change(
         yanked = removal.yanked;
         removal.edited
     });
-    // Pins the anchor `mii` and (if `select-inserted-text` is on) Esc itself
+    // Pins the anchor `mii` and (if `insert-select-on-exit` is on) Esc itself
     // reconstruct the typed replacement from: the same helper every insert-entry
     // command uses, so `c`'s auto-select behaves identically to theirs. `c`
     // never steps the cursor back on an empty run, same as `i`/`I`.
@@ -324,7 +324,7 @@ pub(in crate::editor) fn cmd_align_selections(
         .buffers
         .get(buf_id)
         .overrides
-        .tab_width(&state.settings);
+        .indent_width(&state.settings);
     apply_pane_edit(state, view, t, move |sels| {
         align_selections(sels, tab_width)
     })?;

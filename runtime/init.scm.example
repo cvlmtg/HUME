@@ -31,7 +31,7 @@
 ;; https://cvlmtg.github.io/HUME/configuration.html (key bindings)
 ;; https://cvlmtg.github.io/HUME/plugins.html (custom commands, hooks).
 ;;
-;;   (set-option! "tab-width" 2) ; sets a global option:
+;;   (set-option! "indent-width" 2) ; sets a global option:
 ;;   (bind-key! 'normal "space d" "lsp/hover") ; adds a key binding.
 ;;
 ;; "space" is free by default, so it's a natural prefix for your own bindings.

@@ -154,7 +154,7 @@ fn dot_repeat_c_selects_replayed_replacement() {
     assert_eq!(state(&ed), "hi-[hi]>\n");
 }
 
-/// Pinning for `mii` is unconditional (not gated on `select-inserted-text`),
+/// Pinning for `mii` is unconditional (not gated on `insert-select-on-exit`),
 /// so a replayed `i` (not just `c`) must re-pin correctly too: `mii` after
 /// `.` must select the *replayed* insertion, not the original one.
 #[test]
@@ -168,7 +168,7 @@ fn mii_after_dot_repeat_selects_replayed_insertion() {
     assert_eq!(ed.doc().text().to_string(), "abx\n");
 
     // Reposition onto 'x' directly rather than via `w`. Esc now selects the
-    // typed "ab" itself (`select-inserted-text`), and "ab"/"x" are one word
+    // typed "ab" itself (`insert-select-on-exit`), and "ab"/"x" are one word
     // ("abx", no separator), so a word motion from inside "ab" has nowhere
     // to advance to.
     set_cursor(&mut ed, 2);
@@ -1049,7 +1049,7 @@ fn dot_repeat_after_select_last_insertion_still_repeats_the_insert() {
     type_text(&mut ed, "ab"); // insert-before, cursor collapses to start; buffer is "abx"
     assert_eq!(ed.doc().text().to_string(), "abx\n");
 
-    // Move off "ab" first: `select-inserted-text` (default on) already left
+    // Move off "ab" first: `insert-select-on-exit` (default on) already left
     // it selected, so pressing `mii` right away would be a no-op and the
     // assertion below would hold whether or not `mii` actually did anything.
     set_cursor(&mut ed, 2); // onto 'x'

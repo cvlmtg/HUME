@@ -2,46 +2,45 @@
 
 Every option HUME has, how text wrap works, the statusline elements, and how a file's language is detected. See [Setting options](configuration.md#setting-options) for how to change them.
 
+An option's name starts with the area it belongs to: `indent-`, `insert-`, `gutter-`, `lsp-`, and so on. Type the area after `:set global ` and press `Tab` to list every option in it.
+
 ## Global options
 
 Set with `:set global <option>=<value>` or `(set-option! "option" value)`. All of these are global-only.
 
 For a `bool` option, `:set` accepts `true`/`false`, `on`/`off`, `yes`/`no`, or `1`/`0`; from Scheme, pass `#t`/`#f`.
 
+The `lsp-` options configure HUME's built-in language-server support, which `core:lsp` and any other plugin that talks to a language server build on. `core:lsp`'s own options are passed when you load it. See [Language Servers](lsp.md#settings) for those, and for setup and commands.
+
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `theme` | string | `sand` | Active color [theme](themes.md) name. Empty selects the built-in fallback theme |
-| `cursor-shape-insert` | `block`/`bar`/`underline` | `bar` | Cursor shape while in Insert mode, applied to every cursor when multiple are active |
-| `scroll-margin` | integer | `3` | Minimum lines kept above/below cursor |
-| `object-jump-align` | `top`/`center`/`off` | `center` | Where the view lands after jumping forward to a paragraph or structural object (`}`, `g f`, …); `top` is still subject to `scroll-margin` |
+| `command-completion` | `common-prefix` \| `first-candidate` | `common-prefix` | What the first `Tab` on the `:` line does when several candidates match: `common-prefix` completes the longest text they share and picks nothing, so the next `Tab` picks the first candidate; `first-candidate` fills in the first candidate at once |
+| `completion-docs` | bool | `#t` | Show the highlighted completion's details and documentation in a box beside the completion menu. When off, or when there is no room for the box beside the menu, the details show in the menu instead. When a language server's completion arrives without them, HUME asks the server for them as you highlight it |
+| `hook-before-save-timeout-ms` | integer ≥ 1 | `1000` | How long a save waits for `on-before-buffer-save` handlers before writing the file anyway |
+| `hook-viewport-debounce-ms` | integer ≥ 1 | `150` | Delay after scrolling stops before plugins are told which lines are visible, e.g. to request inlay hints for them |
+| `insert-cursor-shape` | `block`/`bar`/`underline` | `bar` | Cursor shape while in Insert mode, applied to every cursor when multiple are active |
+| `jump-list-capacity` | integer ≥ 1 | `100` | Max jump list entries |
+| `jump-list-min-lines` | integer | `5` | Line distance to record a jump |
+| `lsp-diagnostics-min-severity` | `error` \| `warning` \| `info` \| `hint` | `hint` | Lowest diagnostic severity to display |
+| `lsp-diagnostics-on-insert-line` | bool | `#f` | Keep the diagnostic underline and end-of-line summary on the line you are typing on in Insert mode. Off hides them there |
+| `lsp-diagnostics-pull-debounce-ms` | integer ≥ 1 | `250` | Delay after you stop typing before asking a server that only reports on request for its diagnostics |
+| `lsp-request-timeout-ms` | integer ≥ 1 | `10000` | How long to wait for a language-server reply |
 | `mouse` | bool | `#t` | Enable mouse support |
 | `mouse-scroll-lines` | integer | `3` | Lines per mouse scroll tick |
 | `mouse-select` | bool | `#f` | Mouse drag creates selections |
-| `jump-list-capacity` | integer ≥ 1 | `100` | Max jump list entries |
-| `jump-line-threshold` | integer | `5` | Line distance to record a jump |
-| `history-capacity` | integer ≥ 1 | `100` | Max entries per `:`/`/`/`?` prompt history |
-| `undo-levels` | integer | `0` | Max undo states kept per buffer; `0` means unlimited. Once the limit is reached, the oldest states (including whole abandoned branches) are dropped as new edits are made |
-| `steel-init-budget-ms` | integer ≥ 1 | `10000` | Max evaluation time (ms) for `init.scm` and each plugin activation. Setting it *from* `init.scm` has no effect on that same run: the budget is read before each file/plugin evaluation starts, so a change only takes effect for evaluations after it, i.e. the next plugin activation or the next session |
-| `steel-command-budget-ms` | integer ≥ 1 | `1000` | Max Steel command evaluation time (ms) |
-| `command-completion` | `common-prefix` \| `first-candidate` | `common-prefix` | What the first `Tab` on the `:` line does when several candidates match: `common-prefix` completes the longest text they share and picks nothing, so the next `Tab` picks the first candidate; `first-candidate` fills in the first candidate at once |
-| `popup-border` | bool | `#t` | Show borders on popups, menus, pickers and the bottom drawer |
-| `completion-docs` | bool | `#t` | Show the highlighted completion's details and documentation in a box beside the completion menu. When off, or when there is no room for the box beside the menu, the details show in the menu instead. When a language server's completion arrives without them, HUME asks the server for them as you highlight it |
-| `syntax-highlight-max-bytes` | integer ≥ 1 | `1048576` | Max bytes for syntax highlighting |
 | `pane-dividers` | bool | `#t` | Draw a 1-cell divider between sibling panes |
+| `popup-border` | bool | `#t` | Show borders on popups, menus, pickers and the bottom drawer |
+| `prompt-history-levels` | integer ≥ 1 | `100` | Max entries per `:`/`/`/`?` prompt history |
+| `scroll-jump-align` | `top`/`center`/`off` | `center` | Where the view lands after jumping forward to a paragraph or structural object (`}`, `g f`, …); `top` is still subject to `scroll-margin` |
+| `scroll-margin` | integer | `3` | Minimum lines kept above/below cursor |
 | `statusline` | `left` \| `center` \| `right` | see [Statusline](#statusline) | Three `\|`-separated sections of comma-separated element names. Set it with `configure-statusline!` |
-| `statusline.mode-colors` | bool | `#t` | Tint the whole statusline with the current mode's color; off shows the [theme](themes.md)'s base `ui.statusline` color in every mode |
+| `statusline-mode-colors` | bool | `#t` | Tint the whole statusline with the current mode's color; off shows the [theme](themes.md)'s base `ui.statusline` color in every mode |
+| `steel-command-budget-ms` | integer ≥ 1 | `1000` | Max Steel command evaluation time (ms) |
+| `steel-init-budget-ms` | integer ≥ 1 | `10000` | Max evaluation time (ms) for `init.scm` and each plugin activation. Setting it *from* `init.scm` has no effect on that same run: the budget is read before each file/plugin evaluation starts, so a change only takes effect for evaluations after it, i.e. the next plugin activation or the next session |
+| `syntax-highlight-max-bytes` | integer ≥ 1 | `1048576` | Max bytes for syntax highlighting |
 | `tabline` | `always`/`never`/`dynamic` | `dynamic` | When to show the tab bar: always, never, or only once more than one tab is open |
-| `viewport-debounce-ms` | integer ≥ 1 | `150` | Delay after scrolling stops before plugins are told which lines are visible, e.g. to request inlay hints for them |
-| `before-save-timeout-ms` | integer ≥ 1 | `1000` | How long a save waits for `on-before-buffer-save` handlers before writing the file anyway |
-
-The `lsp.*` options below configure HUME's built-in language-server support, which `core:lsp` and any other plugin that talks to a language server build on. `core:lsp`'s own options are passed when you load it. See [Language Servers](lsp.md#settings) for those, and for setup and commands.
-
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `lsp.diagnostics-severity-floor` | `error` \| `warning` \| `info` \| `hint` | `hint` | Lowest diagnostic severity to display |
-| `lsp.diagnostics-on-insert-line` | bool | `#f` | Keep the diagnostic underline and end-of-line summary on the line you are typing on in Insert mode. Off hides them there |
-| `lsp.request-timeout-ms` | integer ≥ 1 | `10000` | How long to wait for a language-server reply |
-| `lsp.diagnostics-pull-debounce-ms` | integer ≥ 1 | `250` | Delay after you stop typing before asking a server that only reports on request for its diagnostics |
+| `theme` | string | `sand` | Active color [theme](themes.md) name. Empty selects the built-in fallback theme |
+| `undo-levels` | integer | `0` | Max undo states kept per buffer; `0` means unlimited. Once the limit is reached, the oldest states (including whole abandoned branches) are dropped as new edits are made |
 
 ## Buffer options
 
@@ -51,24 +50,24 @@ These options have a global default that every buffer without its own override r
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `wrap-mode` | `none` \| `soft[:N]` \| `word[:N]` \| `indent[:N]` | `indent` | Line wrapping. `N` is the wrap column (`0` or omitted = pane content width). Also accepts `:set pane wrap-mode=<value>` to pin one pane above the buffer/global setting; see [Text wrap](#text-wrap) |
-| `tab-width` | integer, 1–255 | `4` | Spaces per indent level |
+| `comment-prefer-line` | bool | `#f` | `G G` comments a selection spanning several lines with a line comment on each line, even when the language also has block comments |
+| `file-reload-prompt` | bool | `#t` | Prompt to reload when the current buffer's file changes on disk. `#f` only warns; reload manually with `:e!` |
+| `gutter-line-numbers` | `absolute` \| `relative` \| `hybrid` | `hybrid` | Line number display in the gutter |
+| `gutter-signs` | `always[:N]` \| `auto[:N]` | `always` | Gutter column for plugin-supplied signs (diagnostics, git changes, etc). Bare `always`/`auto` sizes the column to one column per registered sign source: a source claims its column the moment the plugin registers it, so the width doesn't change as individual signs come and go; `:N` pins it to exactly N columns (1–127) instead, hiding whichever lower-priority sources don't fit. `auto` additionally collapses to zero width when no signs are visible |
 | `indent-guides` | bool | `#t` | Draw vertical guides at each indentation level |
-| `tab-style` | `hard` \| `soft` | `hard` | What `Tab` inserts: `hard` = literal `\t`; `soft` = spaces to next tab stop |
-| `line-number-style` | `absolute` \| `relative` \| `hybrid` | `hybrid` | Line number display in the gutter |
-| `auto-pairs` | bool | `#t` | Enable auto-pair insertion |
-| `smart-indent` | bool | `#t` | Enter, `o` and `O` indent a new line from the language's syntax, or copy the current line's indent when the language has no grammar, and a closing token such as `}` typed on that new line moves it back to its block's indent. `#f`: new lines start at the left margin, and nothing is moved back as you type |
-| `select-inserted-text` | bool | `#t` | Leaving Insert mode keeps the text you typed selected, instead of leaving a plain cursor |
-| `prefer-line-comments` | bool | `#f` | `G G` comments a selection spanning several lines with a line comment on each line, even when the language also has block comments |
-| `word-selects-whitespace` | `off` \| `before` \| `after` | `before` | Which whitespace `w`/`W`/`b`/`B`, `mm`/`MM` and `maw`/`maW` add to the word they select. `before`: the whitespace before the word, or the whitespace after it when none precedes it (the first word of a line, or a word directly after punctuation). `after`: the whitespace after the word, up to the end of the line, or the whitespace before it when none follows (the last word of a line, or a word directly before punctuation). Either way a line's indentation is never selected. `off`: the bare word, and `maw`/`maW` select the same as `miw`/`miW` |
-| `word-chars` | string | `""` | Extra characters counted as part of a word, e.g. `-` makes `foo-bar` one word instead of three. Set it per language from an `on-language-set` hook (see [From `init.scm`](configuration.md#from-init-scm)). Everything it affects is listed under this table |
-| `signcolumn` | `always[:N]` \| `auto[:N]` | `always` | Gutter column for plugin-supplied signs (diagnostics, git changes, etc). Bare `always`/`auto` sizes the column to one column per registered sign source: a source claims its column the moment the plugin registers it, so the width doesn't change as individual signs come and go; `:N` pins it to exactly N columns (1–127) instead, hiding whichever lower-priority sources don't fit. `auto` additionally collapses to zero width when no signs are visible |
-| `auto-read` | bool | `#t` | Prompt to reload when the current buffer's file changes on disk. `#f` only warns; reload manually with `:e!` |
-| `whitespace-space` | `none` \| `all` \| `trailing` | `none` | When to render space indicators. Also reveals invisible Unicode spaces (non-breaking and ideographic) with a distinct `⍽` marker |
-| `whitespace-tab` | `none` \| `all` \| `trailing` | `none` | When to render tab indicators |
-| `whitespace-newline` | `none` \| `all` | `none` | When to render newline indicators |
+| `indent-smart` | bool | `#t` | Enter, `o` and `O` indent a new line from the language's syntax, or copy the current line's indent when the language has no grammar, and a closing token such as `}` typed on that new line moves it back to its block's indent. `#f`: new lines start at the left margin, and nothing is moved back as you type |
+| `indent-style` | `hard` \| `soft` | `hard` | What `Tab` inserts: `hard` = literal `\t`; `soft` = spaces to next tab stop |
+| `indent-width` | integer, 1–255 | `4` | Spaces per indent level, and how wide a tab character is drawn |
+| `insert-auto-pairs` | bool | `#t` | Enable auto-pair insertion |
+| `insert-select-on-exit` | bool | `#t` | Leaving Insert mode keeps the text you typed selected, instead of leaving a plain cursor |
 | `language` | string | *(auto-detected)* | The buffer's language: picks its syntax highlighting, language server, and language-specific plugins |
 | `line-ending` | `lf` \| `crlf` | *(from the file)* | The line ending a save writes. Changing it marks the buffer modified but is not an undo step, so `u` does not revert it; set it back to the file's own ending and the buffer reads unmodified again |
+| `whitespace-newline` | `none` \| `all` | `none` | When to render newline indicators |
+| `whitespace-space` | `none` \| `all` \| `trailing` | `none` | When to render space indicators. Also reveals invisible Unicode spaces (non-breaking and ideographic) with a distinct `⍽` marker |
+| `whitespace-tab` | `none` \| `all` \| `trailing` | `none` | When to render tab indicators |
+| `word-chars` | string | `""` | Extra characters counted as part of a word, e.g. `-` makes `foo-bar` one word instead of three. Set it per language from an `on-language-set` hook (see [From `init.scm`](configuration.md#from-init-scm)). Everything it affects is listed under this table |
+| `word-selects-whitespace` | `off` \| `before` \| `after` | `before` | Which whitespace `w`/`W`/`b`/`B`, `mm`/`MM` and `maw`/`maW` add to the word they select. `before`: the whitespace before the word, or the whitespace after it when none precedes it (the first word of a line, or a word directly after punctuation). `after`: the whitespace after the word, up to the end of the line, or the whitespace before it when none follows (the last word of a line, or a word directly before punctuation). Either way a line's indentation is never selected. `off`: the bare word, and `maw`/`maW` select the same as `miw`/`miW` |
+| `wrap-mode` | `none` \| `soft[:N]` \| `word[:N]` \| `indent[:N]` | `indent` | Line wrapping. `N` is the wrap column (`0` or omitted = pane content width). Also accepts `:set pane wrap-mode=<value>` to pin one pane above the buffer/global setting; see [Text wrap](#text-wrap) |
 
 ::: details What `word-chars` affects
 The characters count as part of a word for `w`/`b`, `mm`, `miw`/`maw`, `select-word-nearest-on-line`, `Ctrl-w`, and `*`. They also affect quote auto-pairing (`'`, `"`, `` ` ``, not bracket pairs), the identifier under the cursor used by plugin commands (e.g. rename), where a completion without a server-supplied replace range starts, whether a closing word typed on a freshly indented line is finished, and whether `Ctrl-a`/`Ctrl-s` read a `-` as a minus sign. They don't affect `W`/`B`/`MM`, which already treat punctuation as part of a WORD. Whitespace and newline characters are rejected.

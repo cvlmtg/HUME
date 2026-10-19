@@ -611,7 +611,7 @@ fn g_shift_l_dot_repeats() {
 
 #[test]
 fn angle_bracket_indents_and_unindents() {
-    // Default settings: tab-style=hard, tab-width=4.
+    // Default settings: indent-style=hard, indent-width=4.
     let mut ed = editor_from("-[f]>oo\n");
     ed.handle_key(key('>'));
     assert_eq!(state(&ed), "\t-[f]>oo\n");

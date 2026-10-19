@@ -127,7 +127,7 @@ pub trait EditHost {
     fn goto_revision(&mut self, pane: PaneHandle, revision: usize) -> Result<(), String>;
 
     /// `(insert-key! pane key)`: runs `key`'s Insert-mode default
-    /// behaviour (tab-style-aware Tab, auto-pairs, auto-indented Enter, …)
+    /// behaviour (indent-style-aware Tab, auto-pairs, auto-indented Enter, …)
     /// against `pane`, without walking the Insert keymap. Kind-A: `pane`
     /// must be the focused pane, since this acts on live Insert-session
     /// bookkeeping (the open undo group, autoindent ownership, a live

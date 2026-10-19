@@ -53,7 +53,7 @@ count forwarded.
 
 > [!NOTE]
 > `stdlib/all-single-char?` reads a bare cursor as `anchor == head`. The editor's
-> `select-inserted-text` setting (on by default) makes that false right after typing in
+> `insert-select-on-exit` setting (on by default) makes that false right after typing in
 > Insert mode: leaving Insert selects the run just typed instead of leaving a plain
 > cursor. So `i foo <Esc> C` in `'smart` mode copies the selection onto the line below
 > instead of changing to end of line. `'on` does not look at the selection.

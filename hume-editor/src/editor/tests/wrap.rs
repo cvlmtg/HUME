@@ -39,11 +39,11 @@ fn typed_set_unknown_setting_errors() {
 #[test]
 fn typed_set_garbage_scope_on_real_key_errors() {
     let mut ed = editor_from("-[a]>b\n");
-    let result = run_set(&mut ed, "bogus tab-width=2");
+    let result = run_set(&mut ed, "bogus indent-width=2");
     assert!(result.is_err(), "garbage scope token must error");
     let msg = result.unwrap_err().message().to_owned();
     assert!(
-        msg.contains("tab-width") && msg.contains("global") && msg.contains("buffer"),
+        msg.contains("indent-width") && msg.contains("global") && msg.contains("buffer"),
         "error should name the key and its real valid scopes: {msg}"
     );
 }
@@ -54,13 +54,13 @@ fn typed_set_garbage_scope_on_real_key_errors() {
 #[test]
 fn typed_set_tolerates_double_space_before_key() {
     let mut ed = editor_from("-[a]>b\n");
-    let result = run_set(&mut ed, "global  tab-width=2");
+    let result = run_set(&mut ed, "global  indent-width=2");
     assert!(
         result.is_ok(),
         "double space before key must not error: {:?}",
         result.err().map(|e| e.message().to_owned())
     );
-    assert_eq!(ed.state.settings.tab_width, 2);
+    assert_eq!(ed.state.settings.indent_width, 2);
 }
 
 // ── `:set pane wrap-mode=…` ─────────────────────────────────────────────────
@@ -98,17 +98,17 @@ fn typed_set_pane_unknown_setting_errors() {
     );
 }
 
-/// A real setting that just isn't pane-eligible (`tab-width`'s `scope:` list
+/// A real setting that just isn't pane-eligible (`indent-width`'s `scope:` list
 /// is `["global", "buffer"]`) must be rejected with its own valid scopes, not
 /// silently accepted or confused with an unknown-setting error.
 #[test]
 fn typed_set_pane_ineligible_key_errors() {
     let mut ed = editor_from("-[a]>b\n");
-    let result = run_set(&mut ed, "pane tab-width=2");
+    let result = run_set(&mut ed, "pane indent-width=2");
     assert!(result.is_err(), "pane-ineligible key must error");
     let msg = result.unwrap_err().message().to_owned();
     assert!(
-        msg.contains("tab-width") && msg.contains("global") && msg.contains("buffer"),
+        msg.contains("indent-width") && msg.contains("global") && msg.contains("buffer"),
         "error should name the key and its actual valid scopes: {msg}"
     );
 }

@@ -1,4 +1,4 @@
-//! change.rs: `c` (with select-inserted-text) and `mii`/select-last-insertion tests.
+//! change.rs: `c` (with insert-select-on-exit) and `mii`/select-last-insertion tests.
 
 use super::super::*;
 use pretty_assertions::assert_eq;
@@ -37,7 +37,7 @@ fn c_groups_delete_and_insert_into_one_undo_step() {
     assert!(!ed.doc().can_undo());
 }
 
-// ── `c` leaves the typed replacement selected (select-inserted-text) ─────────
+// ── `c` leaves the typed replacement selected (insert-select-on-exit) ─────────
 
 #[test]
 fn c_type_esc_selects_replacement() {
@@ -59,7 +59,7 @@ fn c_esc_without_typing_stays_collapsed() {
 
 /// Ctrl-w (delete-word-backward) inside a `c` session must not clear the
 /// insertion pin: it's a text edit within the session, not a cursor motion
-/// away from it. `select-inserted-text` must still select what survived.
+/// away from it. `insert-select-on-exit` must still select what survived.
 #[test]
 fn c_type_ctrl_w_esc_selects_surviving_typed_run() {
     let mut ed = editor_from("-[hell]>o\n");
@@ -135,7 +135,7 @@ fn c_arrow_mid_session_cancels_selection() {
 #[test]
 fn c_setting_false_keeps_current_behavior() {
     let mut ed = editor_from("-[hell]>o\n");
-    ed.state.settings.select_inserted_text = false;
+    ed.state.settings.insert_select_on_exit = false;
     ed.handle_key(key('c'));
     ed.handle_key(key('h'));
     ed.handle_key(key('i'));
@@ -151,7 +151,7 @@ fn mii(ed: &mut Editor) {
     ed.handle_key(key('i'));
 }
 
-/// With `select-inserted-text` on (the default), `i` already selects what it
+/// With `insert-select-on-exit` on (the default), `i` already selects what it
 /// typed on `Esc`. This test's real point is that `mii` recomputes the
 /// identical span independently, so the selection is perturbed (`;`,
 /// collapse-to-head) between `Esc` and `mii` to prove `mii` actively
@@ -184,7 +184,7 @@ fn mii_after_insert_after_selects_typed_text() {
 
 /// `A` steps the cursor back one grapheme when nothing is typed, but here the
 /// typed run's own selected span already lands on the same head position, so
-/// `select-inserted-text` selects the whole run, not just the last char.
+/// `insert-select-on-exit` selects the whole run, not just the last char.
 #[test]
 fn mii_after_capital_a_selects_full_typed_run_despite_step_back() {
     let mut ed = editor_from("-[h]>ello\n");
@@ -199,13 +199,13 @@ fn mii_after_capital_a_selects_full_typed_run_despite_step_back() {
     assert_eq!(state(&ed), "hello-[ world]>\n");
 }
 
-/// With `select-inserted-text` off, `A`'s own step-back-on-exit still leaves
+/// With `insert-select-on-exit` off, `A`'s own step-back-on-exit still leaves
 /// a collapsed cursor; `mii` must still recover the full typed
 /// run despite that, not just reflect whatever Esc left selected.
 #[test]
 fn mii_after_capital_a_selects_full_typed_run_despite_step_back_setting_off() {
     let mut ed = editor_from("-[h]>ello\n");
-    ed.state.settings.select_inserted_text = false;
+    ed.state.settings.insert_select_on_exit = false;
     ed.handle_key(key('A'));
     for ch in " world".chars() {
         ed.handle_key(key(ch));
@@ -246,7 +246,7 @@ fn mii_after_capital_o_excludes_structural_newline() {
     assert_eq!(state(&ed), "foo\n-[xyz]>\nbar\n");
 }
 
-/// `mii` recomputes the span independently of `select-inserted-text`: after
+/// `mii` recomputes the span independently of `insert-select-on-exit`: after
 /// `c` already selected the replacement, `mii` must select the identical
 /// range (a regression check that generalizing the pin capture didn't change
 /// `c`'s own behavior). The selection is perturbed between `c`'s exit and
@@ -266,13 +266,13 @@ fn mii_after_c_matches_select_inserted_text_result() {
     assert_eq!(state(&ed), "-[hi]>o\n");
 }
 
-/// With `select-inserted-text` off, `c` leaves a collapsed cursor, but `mii`
+/// With `insert-select-on-exit` off, `c` leaves a collapsed cursor, but `mii`
 /// still recovers the typed span, since pinning doesn't depend on the
 /// setting (only auto-select-on-exit does).
 #[test]
 fn mii_works_after_c_with_setting_off() {
     let mut ed = editor_from("-[hell]>o\n");
-    ed.state.settings.select_inserted_text = false;
+    ed.state.settings.insert_select_on_exit = false;
     ed.handle_key(key('c'));
     ed.handle_key(key('h'));
     ed.handle_key(key('i'));
@@ -319,14 +319,14 @@ fn mii_multi_cursor_selects_each_span_primary_is_last() {
 /// `i`) selection are adjacent but don't share an index, so (consistent with
 /// `SelectionSet`'s merge rule elsewhere in the codebase, which merges only on
 /// genuine overlap, not mere touching) both survive as separate selections
-/// rather than being discarded or force-merged. `select-inserted-text` off:
+/// rather than being discarded or force-merged. `insert-select-on-exit` off:
 /// this test is about `mii`'s Extend-mode merge logic, which needs a plain
 /// collapsed cursor left over from `i` to set up an adjacent (not
 /// identical) current selection.
 #[test]
 fn mii_extend_mode_keeps_adjacent_current_selection_as_separate() {
     let mut ed = editor_from("-[h]>ello\n");
-    ed.state.settings.select_inserted_text = false;
+    ed.state.settings.insert_select_on_exit = false;
     ed.handle_key(key('i'));
     ed.handle_key(key('h'));
     ed.handle_key(key('i'));
@@ -337,7 +337,7 @@ fn mii_extend_mode_keeps_adjacent_current_selection_as_separate() {
     assert_eq!(state(&ed), "-[hi]>-{h}>ello\n");
 }
 
-/// With `select-inserted-text` on (the default), Esc already leaves the
+/// With `insert-select-on-exit` on (the default), Esc already leaves the
 /// current selection identical to the insertion span. The sibling test
 /// above disables the setting specifically to avoid this case, so it's
 /// covered here instead: `mii` in Extend mode must merge them into one
@@ -433,7 +433,7 @@ fn mii_follows_a_later_unrelated_edit() {
     ed.handle_key(key_esc());
     assert_eq!(state(&ed), "-[x]>hello\n");
     // Reposition off the just-typed "x" first: Esc left it selected
-    // (`select-inserted-text`), so deleting in place would remove it.
+    // (`insert-select-on-exit`), so deleting in place would remove it.
     set_cursor(&mut ed, 2); // "e" of "ello"
     ed.handle_key(key('d'));
     mii(&mut ed);

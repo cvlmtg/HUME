@@ -687,7 +687,7 @@ fn snapshot_picker_over_populated_buffer_empty_query() {
     let mut ed = open_real_editor();
     ed.view.theme = crate::testing::build_snapshot_theme();
     // One session, not one `i`/char/`Esc` per character: with
-    // `select-inserted-text` on, each `Esc` selects the char just typed, so a
+    // `insert-select-on-exit` on, each `Esc` selects the char just typed, so a
     // following `i` would collapse back to its start (not past it) and type
     // the string in reverse.
     ed.feed_key(key('i'));

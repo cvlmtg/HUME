@@ -11,7 +11,7 @@ pub(crate) struct EditorColors {
     /// Style for the entire statusline row, resolved from the current mode's
     /// scope (`ui.statusline.<mode>`); see [`mode_scope`]. Every element
     /// except the separator paints with this style, so the whole row tints
-    /// with the mode. `None` for the mode (`statusline.mode-colors` off) holds
+    /// with the mode. `None` for the mode (`statusline-mode-colors` off) holds
     /// the theme's base `ui.statusline` style instead.
     ///
     /// Replaces Helix's mode-pill idiom (a colored 3-character corner): the
@@ -28,7 +28,7 @@ pub(crate) struct EditorColors {
 }
 
 /// The theme scope carrying the row style for `mode`. `None` means
-/// `statusline.mode-colors` is off, which must resolve the base
+/// `statusline-mode-colors` is off, which must resolve the base
 /// `ui.statusline` scope rather than any particular mode's: a theme whose
 /// `ui.statusline.normal` is a distinct accent (Helix's old pill idiom) would
 /// otherwise leave the opt-out just as loud as the tint it's meant to escape.

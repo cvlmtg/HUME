@@ -13,11 +13,11 @@ fn insert_tab_hard_default() {
     assert_eq!(state(&ed), "\t-[h]>ello\n");
 }
 
-/// `tab-style = soft` makes Tab insert spaces to the next tab stop.
+/// `indent-style = soft` makes Tab insert spaces to the next tab stop.
 #[test]
 fn insert_tab_soft_setting() {
     let mut ed = editor_from("-[h]>ello\n");
-    ed.state.settings.tab_style = TabStyle::Soft;
+    ed.state.settings.indent_style = TabStyle::Soft;
     ed.handle_key(key('i'));
     ed.handle_key(key_tab());
     assert_eq!(state(&ed), "    -[h]>ello\n");
@@ -27,29 +27,29 @@ fn insert_tab_soft_setting() {
 #[test]
 fn insert_tab_soft_mid_line() {
     let mut ed = editor_from("he-[l]>lo\n");
-    ed.state.settings.tab_style = TabStyle::Soft;
+    ed.state.settings.indent_style = TabStyle::Soft;
     ed.handle_key(key('i'));
     ed.handle_key(key_tab());
     assert_eq!(state(&ed), "he  -[l]>lo\n");
 }
 
-/// `tab-width` controls soft-tab spacing; tw=8 at col 0 → 8 spaces.
+/// `indent-width` controls soft-tab spacing; tw=8 at col 0 → 8 spaces.
 #[test]
 fn insert_tab_soft_width_8() {
     let mut ed = editor_from("-[h]>i\n");
-    ed.state.settings.tab_style = TabStyle::Soft;
-    ed.state.settings.tab_width = 8;
+    ed.state.settings.indent_style = TabStyle::Soft;
+    ed.state.settings.indent_width = 8;
     ed.handle_key(key('i'));
     ed.handle_key(key_tab());
     assert_eq!(state(&ed), "        -[h]>i\n");
 }
 
-/// Per-buffer `tab-style` override wins over the global default.
+/// Per-buffer `indent-style` override wins over the global default.
 #[test]
 fn insert_tab_soft_buffer_override() {
     let mut ed = editor_from("-[h]>ello\n");
     // Global stays Hard; buffer overrides to Soft.
-    ed.doc_mut().overrides.tab_style = Some(TabStyle::Soft);
+    ed.doc_mut().overrides.indent_style = Some(TabStyle::Soft);
     ed.handle_key(key('i'));
     ed.handle_key(key_tab());
     assert_eq!(state(&ed), "    -[h]>ello\n");
@@ -140,7 +140,7 @@ fn i_esc_on_pre_existing_blank_line_does_not_trim() {
 
 /// Typing whitespace by hand onto an empty line, then `Esc`: vim keeps
 /// hand-typed whitespace; only auto-inserted indent is vacated. Esc also
-/// selects the two typed spaces (`select-inserted-text`).
+/// selects the two typed spaces (`insert-select-on-exit`).
 #[test]
 fn i_type_spaces_esc_does_not_trim_hand_typed_whitespace() {
     let mut ed = editor_from("x\n-[\n]>");
@@ -243,7 +243,7 @@ fn backspace_dedents_hard_tab() {
 fn backspace_dedents_soft_tab_indent() {
     // Soft-tab workflow: type 4 spaces, then Backspace should clear all 4.
     let mut ed = editor_from("-[ ]>x\n"); // cursor on a space at col 0
-    ed.state.settings.tab_style = TabStyle::Soft;
+    ed.state.settings.indent_style = TabStyle::Soft;
     ed.handle_key(key('i'));
     ed.handle_key(key_tab()); // insert 4 spaces before the space → "    | x"
     // Cursor now on the original space at col 4. Backspace dedents to col 0.

@@ -803,7 +803,7 @@ pub(in crate::editor::commands::pipeline) fn step_align_view(
     if !(aligns_view && moved) {
         return;
     }
-    match state.settings.object_jump_align {
+    match state.settings.scroll_jump_align {
         ObjectJumpAlign::Off => {}
         ObjectJumpAlign::Top => super::view_top(state, view, t.pid()),
         ObjectJumpAlign::Center => super::view_center(state, view, t.pid()),
