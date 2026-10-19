@@ -141,7 +141,7 @@ pub(in crate::editor) fn cmd_goto_prev_buffer(
 
 // ── Pane focus ───────────────────────────────────────────────────────────────
 
-/// Move focus to the nearest pane on `side` on screen, a silent no-op when
+/// Move focus to the nearest pane on `side` on screen, a no-op when
 /// none lies that way.
 fn focus_toward(state: &mut EditorState, view: &mut EngineView, side: Side) {
     let neighbor = state

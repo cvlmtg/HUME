@@ -106,14 +106,13 @@ fn hint_arriving_this_frame_is_visible_to_the_scroll_step_that_places_the_cursor
     let cursor_char = ed.current_view().primary().head();
     let bid = ed.view.panes[pid].buffer_id();
     let size = ed.pane_size(pid);
-    let content_width = ed.state.content_width(&ed.view, pid, size);
+    let layout_key = ed.state.layout_key(&ed.view, pid, size);
     let Editor { state, view, .. } = &mut ed;
-    let key = state.format_key(&view.panes[pid]);
     let (mut dlm, _) = crate::editor::commands::pane_display_lines(
         state.buffers.get(bid),
         &mut view.panes[pid],
-        key,
-        content_width,
+        layout_key.format_key(),
+        layout_key.content_width(),
     );
     assert_eq!(
         crate::editor::cursor::content_pos(size, &mut vp, &mut dlm, cursor_char),

@@ -50,7 +50,7 @@ pub fn lane_widths<'a>(
     inputs: GutterInputs,
 ) -> impl Iterator<Item = u16> + 'a {
     // GutterColumn::width is a cell count, not display width.
-    gutter_columns.map(move |c| c.width(max_line, &inputs) as u16)
+    gutter_columns.map(move |c| c.width(max_line, inputs) as u16)
 }
 
 /// Sum of all gutter column widths for the given `max_line`; see

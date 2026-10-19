@@ -8,7 +8,7 @@ use crate::types::{DisplayLineKind, ScopeId};
 struct FixedWidthGutter;
 
 impl GutterColumn for FixedWidthGutter {
-    fn width(&self, _: hume_rope::line::RopeyLine, _: &crate::providers::GutterInputs) -> u8 {
+    fn width(&self, _: hume_rope::line::RopeyLine, _: crate::providers::GutterInputs) -> u8 {
         3
     }
     fn render_cells(&self, _: DisplayLineKind, _: &GutterCtx) -> Vec<GutterCell> {

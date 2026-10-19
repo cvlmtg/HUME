@@ -18,7 +18,8 @@ mod pane_render;
 #[cfg(test)]
 mod tests;
 
-pub use geometry::{ChromeRows, ContentWidth, DrawnLayout, PaneHit, PaneSize, ScreenLayout};
+use geometry::DrawnLayout;
+pub use geometry::{ChromeRows, ContentWidth, PaneHit, PaneSize, ScreenLayout};
 use layout::{
     ARM_E, ARM_N, ARM_S, ARM_W, collect_seam_arms, focused_pane_corners, focused_seam_segment,
     junction_glyph,
@@ -229,9 +230,9 @@ pub struct EngineView {
     pub overlays: Vec<Box<dyn OverlayProvider>>,
     /// The layout the last [`Self::render`] drew, written only there.
     drawn: DrawnLayout,
-    /// The terminal's whole area, written only by [`Self::resize`]. Every
-    /// layout is derived from it when read ([`Self::screen_layout`]), so
-    /// nothing else about the screen is stored.
+    /// The terminal's whole area, written only by [`Self::resize`]: the one
+    /// stored input every layout is derived from when read
+    /// ([`Self::screen_layout`]).
     last_terminal_area: Rect,
 }
 
@@ -314,9 +315,10 @@ impl EngineView {
         &self.layout
     }
 
-    /// What the last [`Self::render`] drew, for the tab bar's hit test.
-    pub fn drawn(&self) -> &DrawnLayout {
-        &self.drawn
+    /// The tab bar's rect as the last [`Self::render`] drew it, for its hit
+    /// test.
+    pub fn drawn_tabbar_area(&self) -> Rect {
+        self.drawn.tabbar_area()
     }
 
     /// The pane the last [`Self::render`] drew at `pos`, `None` on a miss or
@@ -426,7 +428,8 @@ impl EngineView {
 
     /// Render all panes and chrome into `grid`, as laid out by
     /// [`FrameInputs::layout`], whose terminal area `grid` must match in
-    /// size, and record that layout as [`Self::drawn`].
+    /// size, and record that layout for [`Self::pane_hit`] and
+    /// [`Self::drawn_tabbar_area`].
     ///
     /// `ctx`'s [`pane_settings`](RenderContext::set_pane_settings) must carry
     /// an entry for every pane this call will draw.

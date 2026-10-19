@@ -1515,12 +1515,9 @@ fn j_right_after_a_vsplit_wraps_at_the_new_pane_width() {
     ed.execute_typed("vsplit", None).unwrap();
     pin_wrap(&mut ed, hume_engine::pane::WrapMode::Soft { width: 0 });
     let pid = ed.view.focused_pane();
-    let content_width = usize::from(
-        ed.screen_layout()
-            .focused_rect(ed.view.focused_layout())
-            .width
-            - ed.pane_gutter_width(pid),
-    );
+    let size = ed.pane_size(pid);
+    let content_width =
+        usize::from(size.width() - ed.state.pane_geometry(&ed.view, pid, size).gutter_width);
     ed.handle_key(key('j'));
 
     // `j` lands on the same column of the second display line.

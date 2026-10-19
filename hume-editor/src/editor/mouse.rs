@@ -202,7 +202,7 @@ impl Editor {
     /// fit chrome and content) leaves its `y` at the terminal's top, which
     /// would make every row look like the tab bar.
     fn tabline_click(&mut self, x: u16, y: u16) -> bool {
-        let bar = self.view.drawn().tabbar_area();
+        let bar = self.view.drawn_tabbar_area();
         if !bar.contains(Position::new(x, y)) {
             return false;
         }

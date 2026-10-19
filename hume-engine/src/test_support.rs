@@ -85,9 +85,7 @@ pub(crate) fn map<'a>(
     DisplayLineMap::new(
         rope,
         providers,
-        crate::pipeline::ContentWidth::for_test(
-            std::num::NonZeroU16::new(content_width).expect("test content width is non-zero"),
-        ),
+        crate::pipeline::ContentWidth::for_test(content_width),
         FormatKey {
             buffer_tag: [0; 3],
             wrap_mode: wrap,

@@ -152,16 +152,15 @@ pub(super) fn apply_visual_vertical(
             .is_wrapping();
     let treat_as_line = is_buffer_line || !wrapping;
     let landing = sticky_landing(state, pid, buf_id);
-    let key = state.format_key(&view.panes[pid]);
     let size = state.pane_size(view, pid);
-    let content_width = state.content_width(view, pid, size);
+    let key = state.layout_key(view, pid, size);
     let target_display_cols = &mut state.visual_move_target_display_cols;
     target_display_cols.clear();
     let (mut dlm, _) = pane_display_lines(
         state.buffers.get(buf_id),
         &mut view.panes[pid],
-        key,
-        content_width,
+        key.format_key(),
+        key.content_width(),
     );
 
     // Not `apply_focused_motion`: the closure also captures the display-line
@@ -389,14 +388,13 @@ fn copy_selection_on_line(
 ) {
     let buf_id = t.bid(view);
     let landing = sticky_landing(state, t.pid(), buf_id);
-    let key = state.format_key(&view.panes[t.pid()]);
     let size = state.pane_size(view, t.pid());
-    let content_width = state.content_width(view, t.pid(), size);
+    let key = state.layout_key(view, t.pid(), size);
     let (mut dlm, _) = pane_display_lines(
         state.buffers.get(buf_id),
         &mut view.panes[t.pid()],
-        key,
-        content_width,
+        key.format_key(),
+        key.content_width(),
     );
 
     doc_ops::apply_doc_motion(
@@ -522,14 +520,13 @@ pub(super) fn cmd_visual_select_word_nearest_on_line(
         return Ok(());
     }
 
-    let key = state.format_key(&view.panes[t.pid()]);
     let size = state.pane_size(view, t.pid());
-    let content_width = state.content_width(view, t.pid(), size);
+    let key = state.layout_key(view, t.pid(), size);
     let (mut dlm, _) = pane_display_lines(
         state.buffers.get(buf_id),
         &mut view.panes[t.pid()],
-        key,
-        content_width,
+        key.format_key(),
+        key.content_width(),
     );
 
     // Not `apply_pane_motion`: the closure also captures the display-line map.

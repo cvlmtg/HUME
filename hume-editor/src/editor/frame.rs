@@ -8,10 +8,10 @@
 use hume_grid::{Grid, Rect};
 
 use hume_engine::builtins::sign_column::SignColumn;
+use hume_engine::layout::PaneGeometry;
 use hume_engine::pane::Pane;
 use hume_engine::pipeline::{
-    ChromeRows, ContentWidth, EngineView, PaneId, PaneRenderSettings, PaneSize, RenderContext,
-    ScreenLayout,
+    ChromeRows, EngineView, PaneId, PaneRenderSettings, PaneSize, RenderContext, ScreenLayout,
 };
 use hume_engine::providers::GutterInputs;
 use hume_engine::types::EditorMode;
@@ -61,9 +61,6 @@ impl Editor {
     /// an unfocused pane (no real cursor sits there to stand in for one), and
     /// for the focused pane only when its mode's resolved shape is `Block`.
     ///
-    /// Split from gutter width ([`Self::pane_gutter_width`]) because every
-    /// caller wants one or the other, never reliably both.
-    ///
     /// `pid` must name a live, active-tab pane. Every caller reads it from
     /// `active_pane_ids()`, which can never contain a stale id (see
     /// `EngineView::layout`'s privacy: no whole-tree write can install a leaf
@@ -87,21 +84,6 @@ impl Editor {
             cursor_is_block,
             gutter: self.state.gutter_inputs(&self.view, pid),
         }
-    }
-
-    /// The gutter width a pane's own providers occupy, used to offset the
-    /// terminal cursor column past line numbers and other gutter providers.
-    /// See [`Self::resolve_pane_settings`] for why this is split out rather
-    /// than returned alongside it.
-    pub(super) fn pane_gutter_width(&self, pid: PaneId) -> u16 {
-        let pane = &self.view.panes[pid];
-        let doc = self.state.buffers.get(pane.buffer_id());
-        let last_line_idx = doc.text().last_ropey_line();
-        super::cursor::gutter_width(
-            pane.providers.gutter_columns(),
-            last_line_idx,
-            self.state.gutter_inputs(&self.view, pid),
-        )
     }
 
     /// Render one frame into `grid` as laid out by `layout`, the one
@@ -334,6 +316,15 @@ impl Editor {
 
         // Nothing below changes which panes the active tab shows.
         let active = self.view.active_pane_ids();
+        let sizes: Vec<(PaneId, PaneSize)> = active
+            .iter()
+            .map(|&pid| {
+                let size = screen
+                    .pane_size(self.view.focused_layout(), pid)
+                    .expect("an active pane is a leaf of the focused layout");
+                (pid, size)
+            })
+            .collect();
 
         self.sync_all_pane_mirrors(&active);
 
@@ -343,7 +334,7 @@ impl Editor {
         // snapshot predates the scroll, so a line exposed by this frame's
         // scroll gets its hints one frame late. Syncing after the scroll
         // would instead let scroll and render disagree on layout.
-        let panes = self.decorated_panes(&screen, &active);
+        let panes = self.decorated_panes(&sizes);
         self.update_sign_providers(&panes);
         self.update_inlay_hint_providers(&panes);
         self.update_virtual_line_providers(&panes);
@@ -356,15 +347,9 @@ impl Editor {
         self.last_visible_range
             .retain(|pid, _| active.contains(pid));
 
-        for &pid in &active {
+        for &(pid, size) in &sizes {
             let buf_id = self.view.panes[pid].buffer_id();
-            let size = screen
-                .pane_size(self.view.focused_layout(), pid)
-                .expect("an active pane is a leaf of the focused layout");
-            let content_width = self.state.content_width(&self.view, pid, size);
-            let layout_key = self
-                .state
-                .layout_key(&self.view.panes[pid], size, content_width);
+            let layout_key = self.state.layout_key(&self.view, pid, size);
             // Per (pane, buffer) state: a pane that just switched buffers
             // reads a fresh entry whose `last_layout_key` is `None`.
             let pbs = self.state.panes.entries.shown_mut(&self.view.panes, pid);
@@ -410,7 +395,7 @@ impl Editor {
 
         // Highlights and line tints only affect painting, so they sync after
         // the scroll from a fresh snapshot of the final viewport.
-        let panes = self.decorated_panes(&screen, &active);
+        let panes = self.decorated_panes(&sizes);
         self.update_highlight_providers(&panes);
         self.update_line_bg_providers(&panes);
 
@@ -556,16 +541,21 @@ impl EditorState {
             .slots_for(self.config.decorations.sign_source_count(bid))
     }
 
-    /// The columns pane `pid` of `size` leaves for text after its gutter.
-    pub(in crate::editor) fn content_width(
+    /// Pane `pid`'s gutter and content widths at `size`, by the same
+    /// computation the render pass draws it with.
+    pub(in crate::editor) fn pane_geometry(
         &self,
         view: &EngineView,
         pid: PaneId,
         size: PaneSize,
-    ) -> ContentWidth {
+    ) -> PaneGeometry {
         let pane = &view.panes[pid];
-        let last_line = self.buffers.get(pane.buffer_id()).text().last_ropey_line();
-        pane.content_width(size, last_line, self.gutter_inputs(view, pid))
+        hume_engine::layout::compute_viewport(
+            self.buffers.get(pane.buffer_id()).text().rope(),
+            size,
+            pane.providers.gutter_columns(),
+            self.gutter_inputs(view, pid),
+        )
     }
 
     /// Bring the band views (drawer, docked popup, tab bar) up to their

@@ -655,18 +655,18 @@ impl EditorState {
         }
     }
 
-    /// [`Self::format_key`] plus the geometry a pane of `size` and
-    /// `content_width` scrolls by, and the scroll margin. The frame's scroll
-    /// pass reveals the cursor when this changes.
+    /// Pane `pid`'s [`Self::format_key`] plus the content width and geometry
+    /// it formats and scrolls by at `size`, and the scroll margin. The frame's
+    /// scroll pass reveals the cursor when this changes.
     pub(in crate::editor) fn layout_key(
         &self,
-        pane: &hume_engine::pane::Pane,
+        view: &hume_engine::pipeline::EngineView,
+        pid: hume_engine::pipeline::PaneId,
         size: hume_engine::pipeline::PaneSize,
-        content_width: hume_engine::pipeline::ContentWidth,
     ) -> LayoutKey {
         LayoutKey {
-            format: self.format_key(pane),
-            content_width,
+            format: self.format_key(&view.panes[pid]),
+            content_width: self.pane_geometry(view, pid, size).content_width,
             size,
             scroll_margin: self.settings.scroll_margin,
         }

@@ -65,7 +65,7 @@ pub(crate) struct PaneBufferState {
     pub reveal_pending: bool,
     /// This pane's [`LayoutKey`] as of the last frame that read one:
     /// `frame.rs`'s scroll step's own memo, compared against a fresh
-    /// `EditorState::layout_key(pane)` every frame to derive reveals for
+    /// `EditorState::layout_key` every frame to derive reveals for
     /// every non-selection source at once: a resize, a wrap-mode pin or
     /// toggle, a buffer switch (the very first read for a `(pane, buffer)`
     /// pair is `None`, so it always differs), a decoration-generation

@@ -3,7 +3,7 @@
 //! The one sign source wraps a `SharedSlot<FxHashMap<line_idx, Vec<Sign>>>`
 //! that the editor writes once per frame, from `prepare_frame`'s step 3,
 //! *before* scrolling (`Editor::update_sign_providers`'s doc: the resolved
-//! width feeds `Pane::content_width`, which the scroll step's `DisplayLineMap`
+//! width feeds `layout::compute_viewport`, which the scroll step's `DisplayLineMap`
 //! wraps against). `signs_for_line` is then a cheap map lookup, matching
 //! `SignSource`'s per-row-per-frame contract.
 

@@ -88,7 +88,7 @@ impl SignColumn {
 }
 
 impl GutterColumn for SignColumn {
-    fn width(&self, _last_line_idx: hume_rope::line::RopeyLine, inputs: &GutterInputs) -> u8 {
+    fn width(&self, _last_line_idx: hume_rope::line::RopeyLine, inputs: GutterInputs) -> u8 {
         inputs.sign_width
     }
 

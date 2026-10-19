@@ -270,13 +270,13 @@ pub(super) fn effective_wrap_mode(
 /// `state.panes` selections), which is why the pane arrives separately rather
 /// than through `&mut Editor`.
 ///
-/// `key` is resolved by the caller ([`EditorState::format_key`](super::EditorState::format_key))
-/// *before* this call takes `pane` mutably: everything `key` needs lives on
-/// `pane` itself, but a `&Pane` used to build it cannot coexist with the
-/// `&mut Pane` this function requires. A caller with no viewport to write
-/// (the movement consumers, which read the display-line list and rewrite
-/// selections instead) destructures `(mut dlm, _)`. `content_width` is the
-/// pane's, from [`EditorState::content_width`](super::EditorState::content_width).
+/// `key` and `content_width` are resolved by the caller *before* this call
+/// takes `pane` mutably, from [`EditorState::layout_key`](super::EditorState::layout_key),
+/// or for a click from the widths its pane was drawn with: everything they
+/// need lives on `pane` itself, but a `&Pane` used to build them cannot
+/// coexist with the `&mut Pane` this function requires. A caller with no
+/// viewport to write (the movement consumers, which read the display-line
+/// list and rewrite selections instead) destructures `(mut dlm, _)`.
 pub(super) fn pane_display_lines<'a>(
     doc: &'a Buffer,
     pane: &'a mut Pane,

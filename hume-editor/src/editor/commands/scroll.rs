@@ -41,16 +41,14 @@ pub(in crate::editor) fn scroll_view(
 ) {
     let buf_id = view.panes[pid].buffer_id();
     let landing = sticky_landing(state, pid, buf_id);
-    let key = state.format_key(&view.panes[pid]);
-    let scroll_margin = state.settings.scroll_margin;
-    let content_width = state.content_width(view, pid, size);
+    let key = state.layout_key(view, pid, size);
     let (mut dlm, viewport) = pane_display_lines(
         state.buffers.get(buf_id),
         &mut view.panes[pid],
-        key,
-        content_width,
+        key.format_key(),
+        key.content_width(),
     );
-    let Some(geo) = size.geometry(scroll_margin) else {
+    let Some(geo) = key.geometry() else {
         return; // a collapsed pane has nothing to scroll and nowhere to carry a cursor
     };
     let delta = if down {
@@ -178,17 +176,15 @@ fn cmd_view_scroll_to_display_line(
         .view(state.buffers.get(buf_id).text())
         .primary()
         .head();
-    let key = state.format_key(&view.panes[pid]);
-    let scroll_margin = state.settings.scroll_margin;
-    let content_width = state.content_width(view, pid, size);
+    let key = state.layout_key(view, pid, size);
     let (mut dlm, viewport) = pane_display_lines(
         state.buffers.get(buf_id),
         &mut view.panes[pid],
-        key,
-        content_width,
+        key.format_key(),
+        key.content_width(),
     );
     // A collapsed pane has no geometry, and nowhere to align a cursor to.
-    let Some(geo) = size.geometry(scroll_margin) else {
+    let Some(geo) = key.geometry() else {
         return;
     };
     let cursor_pos = dlm.locate_display_line(cursor_char);

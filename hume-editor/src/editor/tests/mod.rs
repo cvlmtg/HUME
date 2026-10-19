@@ -607,15 +607,6 @@ fn sign_column_width(ed: &Editor, pid: PaneId) -> u8 {
     ed.state.gutter_inputs(&ed.view, pid).sign_width
 }
 
-/// Runs the write-side pipeline (`prepare_frame`) at a given terminal size,
-/// needed before any test that depends on the synced view of a frame
-/// (paging, scroll clamping, the synced view), or on a decoration store
-/// write reaching its pane-side `Arc` (signs, highlights, virtual lines):
-/// `settle` runs any queued hook (e.g. `on-diagnostics-changed`) that writes
-/// the store, `prepare_frame` is what syncs it into the pane's own view.
-/// Returns the `RenderContext` `prepare_frame` filled. Most callers drop it,
-/// but a test that needs `cursor_content_pos` back reads it off the result
-/// instead of re-driving the same three calls by hand.
 /// Draw a frame at the terminal size `ed` last recorded, as the run loop
 /// does before it reads each event: a mouse event hit-tests against the
 /// layout a frame drew.
@@ -624,6 +615,15 @@ fn draw(ed: &mut Editor) {
     ed.render_to_buf(area);
 }
 
+/// Runs the write-side pipeline (`prepare_frame`) at a given terminal size,
+/// needed before any test that depends on the synced view of a frame
+/// (paging, scroll clamping), or on a decoration store
+/// write reaching its pane-side `Arc` (signs, highlights, virtual lines):
+/// `settle` runs any queued hook (e.g. `on-diagnostics-changed`) that writes
+/// the store, `prepare_frame` is what syncs it into the pane's own view.
+/// Returns the `RenderContext` `prepare_frame` filled. Most callers drop it,
+/// but a test that needs `cursor_content_pos` back reads it off the result
+/// instead of re-driving the same three calls by hand.
 fn frame(ed: &mut Editor, width: u16, height: u16) -> hume_engine::pipeline::RenderContext {
     let mut ctx = hume_engine::pipeline::RenderContext::new();
     ed.resize_terminal(width, height);

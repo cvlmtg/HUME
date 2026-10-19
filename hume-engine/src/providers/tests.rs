@@ -33,7 +33,7 @@ impl DecorationSource for DummyVirtualLine {
 struct DummyGutter;
 
 impl GutterColumn for DummyGutter {
-    fn width(&self, _: hume_rope::line::RopeyLine, _: &crate::providers::GutterInputs) -> u8 {
+    fn width(&self, _: hume_rope::line::RopeyLine, _: crate::providers::GutterInputs) -> u8 {
         0
     }
     fn render_cells(&self, _: crate::types::DisplayLineKind, _: &GutterCtx) -> Vec<GutterCell> {

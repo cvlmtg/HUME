@@ -552,16 +552,15 @@ fn completion_popup_anchor_matches_an_independent_content_pos_walk_when_wrapped(
         .menu_anchor(ed.doc().text())
         .unwrap();
     let pane_rect = ed.screen_layout().focused_rect(ed.view.focused_layout());
-    let gutter_w = ed.pane_gutter_width(pid);
     let size = ed.pane_size(pid);
-    let content_width = ed.state.content_width(&ed.view, pid, size);
+    let gutter_w = ed.state.pane_geometry(&ed.view, pid, size).gutter_width;
+    let layout_key = ed.state.layout_key(&ed.view, pid, size);
     let Editor { state, view, .. } = &mut ed;
-    let key = state.format_key(&view.panes[pid]);
     let (mut dlm, vp) = commands::pane_display_lines(
         state.buffers.get(bid),
         &mut view.panes[pid],
-        key,
-        content_width,
+        layout_key.format_key(),
+        layout_key.content_width(),
     );
     let (content_x, row) = cursor::content_pos(size, vp, &mut dlm, anchor).expect("visible");
     let expected_x = content_x + gutter_w + pane_rect.x;

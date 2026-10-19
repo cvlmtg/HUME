@@ -76,8 +76,8 @@ pub struct GutterCtx<'a> {
 }
 
 /// The settings the built-in gutter columns size and draw by, resolved for
-/// one pane by the host each time it reads them. A column holds no copy of
-/// them, so a width read between frames reflects the settings as they are.
+/// one pane by the host on every width or draw call, so a width read between
+/// frames reflects the settings as they are.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub struct GutterInputs {
     /// How [`LineNumberColumn`](crate::builtins::line_number::LineNumberColumn)
@@ -95,7 +95,7 @@ pub trait GutterColumn {
     /// size line-number columns to fit the largest line number. Ropey domain,
     /// phantom trailing line included: deliberate, so the gutter stays one
     /// digit wider than content strictly requires (see `layout::compute_viewport`).
-    fn width(&self, last_line_idx: hume_rope::line::RopeyLine, inputs: &GutterInputs) -> u8;
+    fn width(&self, last_line_idx: hume_rope::line::RopeyLine, inputs: GutterInputs) -> u8;
 
     /// Produce content for one display line as a sequence of cells.
     /// Single-cell columns (like `LineNumberColumn`) return a `Vec` with one element.

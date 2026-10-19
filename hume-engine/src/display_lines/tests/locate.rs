@@ -149,7 +149,7 @@ fn char_at_nearest_content_stays_off_the_newline_indicator() {
     let mut dlm = DisplayLineMap::new(
         &rope,
         &providers,
-        crate::pipeline::ContentWidth::for_test(std::num::NonZeroU16::new(80).expect("non-zero")),
+        crate::pipeline::ContentWidth::for_test(80),
         FormatKey {
             buffer_tag: [0; 3],
             wrap_mode: WrapMode::None,

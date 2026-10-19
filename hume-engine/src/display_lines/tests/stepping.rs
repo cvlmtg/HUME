@@ -282,7 +282,7 @@ fn max_scroll_top_margin_is_capped_the_same_way_reveal_caps_it() {
 #[test]
 fn zero_height_viewport_has_no_geometry_to_scroll_with() {
     // A zero-height viewport has no room to scroll into at all, encoded as
-    // `Viewport::geometry` returning `None`, so `max_scroll_top` (and every
+    // `PaneSize::geometry` returning `None`, so `max_scroll_top` (and every
     // other scroll verb) can never be called at `height == 0` in the first
     // place; there is no `ViewGeometry` to construct one from.
     assert!(crate::pipeline::PaneSize::new(0, 0).geometry(0).is_none());
@@ -321,7 +321,7 @@ fn wrap_width_one_emits_one_grapheme_per_display_line_without_hanging() {
     let mut dlm = DisplayLineMap::new(
         &rope,
         &providers,
-        crate::pipeline::ContentWidth::for_test(std::num::NonZeroU16::new(80).expect("non-zero")),
+        crate::pipeline::ContentWidth::for_test(80),
         FormatKey {
             buffer_tag: [0; 3],
             wrap_mode: WrapMode::Soft { width: 1 },

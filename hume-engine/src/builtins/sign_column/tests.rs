@@ -137,10 +137,10 @@ fn width_is_the_inputs_sign_width_whatever_the_file_size() {
     let mut registry = ScopeRegistry::new();
     let blank_scope = registry.intern("ui.linenr");
     let lane = SignColumn::new(Box::new(()), blank_scope);
-    assert_eq!(lane.width(RopeyLine::new(0), &inputs(3)), 3);
-    assert_eq!(lane.width(RopeyLine::new(999_999), &inputs(3)), 3);
+    assert_eq!(lane.width(RopeyLine::new(0), inputs(3)), 3);
+    assert_eq!(lane.width(RopeyLine::new(999_999), inputs(3)), 3);
     assert_eq!(
-        lane.width(RopeyLine::new(0), &inputs(0)),
+        lane.width(RopeyLine::new(0), inputs(0)),
         0,
         "collapsed when the inputs collapse it"
     );
@@ -184,9 +184,7 @@ fn sign_text_truncates_to_column_width_end_to_end() {
     let gutter_columns: Vec<(ProviderId, Box<dyn GutterColumn>)> = vec![(0, Box::new(lane))];
     let visible = crate::layout::PaneGeometry {
         content_height: 1,
-        content_width: crate::pipeline::ContentWidth::for_test(
-            std::num::NonZeroU16::new(6).expect("non-zero"),
-        ),
+        content_width: crate::pipeline::ContentWidth::for_test(6),
         gutter_width: 2,
         last_line_idx: RopeyLine::new(0),
     };
@@ -269,9 +267,7 @@ fn zero_width_sign_column_leaves_the_next_column_untouched() {
         vec![(0, Box::new(empty_lane)), (1, Box::new(content_lane))];
     let visible = crate::layout::PaneGeometry {
         content_height: 1,
-        content_width: crate::pipeline::ContentWidth::for_test(
-            std::num::NonZeroU16::new(6).expect("non-zero"),
-        ),
+        content_width: crate::pipeline::ContentWidth::for_test(6),
         gutter_width: 2, // 0 (empty_lane) + 2 (the line numbers)
         last_line_idx: RopeyLine::new(0),
     };
@@ -498,9 +494,7 @@ fn multi_slot_column_renders_through_compose_gutter() {
     let gutter_columns: Vec<(ProviderId, Box<dyn GutterColumn>)> = vec![(0, Box::new(lane))];
     let visible = crate::layout::PaneGeometry {
         content_height: 1,
-        content_width: crate::pipeline::ContentWidth::for_test(
-            std::num::NonZeroU16::new(5).expect("non-zero"),
-        ),
+        content_width: crate::pipeline::ContentWidth::for_test(5),
         gutter_width: 3,
         last_line_idx: RopeyLine::new(0),
     };

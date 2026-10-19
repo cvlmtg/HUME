@@ -520,7 +520,7 @@ impl DecorationSource for SpoofingVirtualLineSource {
 struct ProviderIdReportingGutter;
 
 impl crate::providers::GutterColumn for ProviderIdReportingGutter {
-    fn width(&self, _: RopeyLine, _: &crate::providers::GutterInputs) -> u8 {
+    fn width(&self, _: RopeyLine, _: crate::providers::GutterInputs) -> u8 {
         5
     }
     fn render_cells(
@@ -657,7 +657,7 @@ fn filler_display_line_gutter_shows_gutter_content_not_stale_blank() {
     // renders for DisplayLineKind::Filler.
     struct MarkerGutter;
     impl crate::providers::GutterColumn for MarkerGutter {
-        fn width(&self, _: RopeyLine, _: &crate::providers::GutterInputs) -> u8 {
+        fn width(&self, _: RopeyLine, _: crate::providers::GutterInputs) -> u8 {
             3
         }
         fn render_cells(

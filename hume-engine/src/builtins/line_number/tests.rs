@@ -25,13 +25,13 @@ fn width_grows_with_line_count() {
     // width(max_line) must fit the 1-based line number max_line+1.
     // digit_count(n+1) + 1 pad.
     let lane = LineNumberColumn::new(DEFAULT_SCOPE, SELECTED_SCOPE);
-    assert_eq!(lane.width(RopeyLine::new(0), &GutterInputs::default()), 2); // max line "1" → 1 digit + 1 pad
-    assert_eq!(lane.width(RopeyLine::new(8), &GutterInputs::default()), 2); // max line "9" → 1 digit + 1 pad
-    assert_eq!(lane.width(RopeyLine::new(9), &GutterInputs::default()), 3); // max line "10" → 2 digits + 1 pad
-    assert_eq!(lane.width(RopeyLine::new(10), &GutterInputs::default()), 3); // max line "11" → 2 digits + 1 pad
-    assert_eq!(lane.width(RopeyLine::new(98), &GutterInputs::default()), 3); // max line "99" → 2 digits + 1 pad
-    assert_eq!(lane.width(RopeyLine::new(99), &GutterInputs::default()), 4); // max line "100" → 3 digits + 1 pad
-    assert_eq!(lane.width(RopeyLine::new(100), &GutterInputs::default()), 4); // max line "101" → 3 digits + 1 pad
+    assert_eq!(lane.width(RopeyLine::new(0), GutterInputs::default()), 2); // max line "1" → 1 digit + 1 pad
+    assert_eq!(lane.width(RopeyLine::new(8), GutterInputs::default()), 2); // max line "9" → 1 digit + 1 pad
+    assert_eq!(lane.width(RopeyLine::new(9), GutterInputs::default()), 3); // max line "10" → 2 digits + 1 pad
+    assert_eq!(lane.width(RopeyLine::new(10), GutterInputs::default()), 3); // max line "11" → 2 digits + 1 pad
+    assert_eq!(lane.width(RopeyLine::new(98), GutterInputs::default()), 3); // max line "99" → 2 digits + 1 pad
+    assert_eq!(lane.width(RopeyLine::new(99), GutterInputs::default()), 4); // max line "100" → 3 digits + 1 pad
+    assert_eq!(lane.width(RopeyLine::new(100), GutterInputs::default()), 4); // max line "101" → 3 digits + 1 pad
 }
 
 #[test]

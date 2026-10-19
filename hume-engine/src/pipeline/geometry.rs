@@ -127,6 +127,11 @@ impl ScreenLayout {
         layout.focused_rect(self.pane_area(), self.reserve_seam)
     }
 
+    /// The focused pane's size.
+    pub fn focused_size(&self, layout: &FocusedLayout) -> PaneSize {
+        PaneSize::of(self.focused_rect(layout))
+    }
+
     /// The focused pane's rect after a split on `direction`, without
     /// splitting.
     pub fn focused_split_rect(&self, layout: &FocusedLayout, direction: Direction) -> Rect {
@@ -145,7 +150,7 @@ impl ScreenLayout {
 /// even when a band, a pane or a gutter has changed since. Before the first
 /// render every hit misses.
 #[derive(Clone, Debug, Default)]
-pub struct DrawnLayout {
+pub(crate) struct DrawnLayout {
     tabbar: Rect,
     panes: Vec<DrawnPane>,
 }
@@ -177,7 +182,7 @@ impl DrawnLayout {
     }
 
     /// The tab bar's rect as drawn.
-    pub fn tabbar_area(&self) -> Rect {
+    pub(crate) fn tabbar_area(&self) -> Rect {
         self.tabbar
     }
 
@@ -272,7 +277,7 @@ impl PaneSize {
         }
         let height = self.height as usize;
         // `(height - 1) / 2`, not `height / 2`: at an even height, a margin
-        // of exactly `height / 2` leaves the stable middle window empty (its
+        // of `height / 2` leaves the stable middle window empty (its
         // bounds `margin..height-margin` collapse to a single point), so the
         // two correction arms that use this margin would fight over that one
         // display line and rescroll every frame.
@@ -287,7 +292,8 @@ impl PaneSize {
 }
 
 /// The columns a pane leaves for text once its gutter takes its own, at
-/// least one. Built only from a [`PaneSize`], by `Pane::content_width`.
+/// least one. Built only from a [`PaneSize`], by
+/// [`compute_viewport`](crate::layout::compute_viewport).
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ContentWidth(NonZeroU16);
 
@@ -298,8 +304,8 @@ impl ContentWidth {
 
     /// A width no pane produced, for a test that formats against it directly.
     #[cfg(any(test, feature = "test-util"))]
-    pub fn for_test(width: NonZeroU16) -> Self {
-        Self(width)
+    pub fn for_test(width: u16) -> Self {
+        Self(NonZeroU16::new(width).expect("a content width is at least one column"))
     }
 
     pub fn get(self) -> NonZeroU16 {

@@ -3,21 +3,19 @@ use std::num::NonZeroU16;
 use slotmap::SecondaryMap;
 
 use crate::display_lines::DisplayLinePos;
-use crate::layout::gutter_width_for_line;
-use crate::pipeline::{BufferId, ContentWidth, PaneSize};
-use crate::providers::{GutterInputs, ProviderSet};
+use crate::pipeline::BufferId;
+use crate::providers::ProviderSet;
 use crate::types::PaintedSelections;
 use hume_rope::column::DisplayLineCol;
-use hume_rope::line::{ContentLine, RopeyLine};
+use hume_rope::line::ContentLine;
 use ropey::Rope;
 
 // ---------------------------------------------------------------------------
 // Viewport  (per-pane scroll)
 // ---------------------------------------------------------------------------
 
-/// The scroll state of one pane's viewport. Its size is not stored here: a
-/// pane's size is derived from the screen's layout when read (see
-/// [`PaneSize`]).
+/// The scroll state of one pane's viewport. Its size is a
+/// [`PaneSize`](crate::pipeline::PaneSize) read from the screen's layout.
 ///
 /// `top` is `pub(crate)`, not `pub`: every write to it from outside this
 /// crate goes through one of the scroll verbs in
@@ -409,22 +407,6 @@ impl Pane {
     /// Write this pane's wrap-mode override for the buffer it currently views.
     pub fn set_wrap(&mut self, wrap: WrapOverride) {
         self.wraps.insert(self.buffer_id, wrap);
-    }
-
-    /// The columns a pane of `size` leaves for text after this pane's
-    /// gutter, drawn by `gutter`. `last_line_idx` is the buffer's last ropey
-    /// line index, which sizes the line-number column
-    /// (`hume_rope::lines::last_ropey_line`).
-    pub fn content_width(
-        &self,
-        size: PaneSize,
-        last_line_idx: RopeyLine,
-        gutter: GutterInputs,
-    ) -> ContentWidth {
-        ContentWidth::of(
-            size,
-            gutter_width_for_line(self.providers.gutter_columns(), last_line_idx, gutter),
-        )
     }
 
     /// The buffer this pane shows.

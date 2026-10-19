@@ -3,7 +3,7 @@
 //! shared `Arc` buffers the engine's providers read during rendering. Driven
 //! by `prepare_frame`'s decoration syncs.
 
-use hume_engine::pipeline::{BufferId, PaneId, ScreenLayout};
+use hume_engine::pipeline::{BufferId, PaneId, PaneSize};
 use hume_engine::theme::{CURSOR_MATCH, CURSOR_MATCH_SEARCH, diagnostic_scopes, ui_scopes};
 use hume_engine::types::EditorMode;
 
@@ -65,25 +65,19 @@ impl Editor {
     /// an implementation, since one clamps to `content_lines` and the other
     /// to the ropey-domain line count.
     ///
-    /// Scoped to `active` (the active tab's panes; see
-    /// `EngineView::active_pane_ids`) rather than the whole pool: a
-    /// background tab's pane isn't decorated, mirrored, or scrolled while
-    /// hidden, so it has no "current frame" viewport for this to snapshot.
-    pub(super) fn decorated_panes(
-        &self,
-        screen: &ScreenLayout,
-        active: &[PaneId],
-    ) -> Vec<DecoratedPane> {
+    /// Scoped to `active` (the active tab's panes, each with its size in the
+    /// frame's layout; see `EngineView::active_pane_ids`) rather than the
+    /// whole pool: a background tab's pane isn't decorated, mirrored, or
+    /// scrolled while hidden, so it has no "current frame" viewport for this
+    /// to snapshot.
+    pub(super) fn decorated_panes(&self, active: &[(PaneId, PaneSize)]) -> Vec<DecoratedPane> {
         active
             .iter()
-            .map(|&pid| {
+            .map(|&(pid, size)| {
                 let pane = &self.view.panes[pid];
                 let bid = pane.buffer_id();
                 let vp = &pane.viewport;
-                let height = screen
-                    .pane_size(self.view.focused_layout(), pid)
-                    .expect("an active pane is a leaf of the focused layout")
-                    .height();
+                let height = size.height();
                 let text = self.state.buffers.get(bid).text();
                 let top_line =
                     hume_rope::line::RopeyLine::from(vp.top().line).min(text.last_ropey_line());
@@ -298,7 +292,7 @@ impl Editor {
     /// `prepare_frame` before scrolling, against the pre-scroll snapshot (see
     /// [`Self::decorated_panes`]), because whether it placed any sign sizes
     /// an `auto` sign column (`EditorState::gutter_inputs`), whose width
-    /// feeds `Pane::content_width`, which decides the wrap column the scroll step's
+    /// feeds `EditorState::pane_geometry`, which decides the wrap column the scroll step's
     /// `DisplayLineMap` resolves against.
     pub(super) fn update_sign_providers(&mut self, panes: &[DecoratedPane]) {
         use hume_engine::builtins::sign_column::Sign;

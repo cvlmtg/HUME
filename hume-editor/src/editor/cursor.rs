@@ -9,9 +9,7 @@
 //! about which display line a position is on.
 
 use hume_engine::display_lines::{DisplayColTarget, DisplayLineMap};
-use hume_engine::layout::gutter_width_for_line;
 use hume_engine::pane::Viewport;
-use hume_engine::providers::GutterColumn;
 use hume_rope::column::DisplayLineCol;
 
 // ---------------------------------------------------------------------------
@@ -103,21 +101,6 @@ pub(in crate::editor) fn place(
     (content_x as u16, screen_row as u16)
 }
 
-/// Gutter width in terminal columns, drawn by `inputs`.
-///
-/// Used to offset the terminal cursor column past line numbers and other
-/// gutter providers. `last_line_idx` is the buffer's last ropey line index
-/// (`hume_rope::lines::last_ropey_line`): the phantom trailing line,
-/// not the last content line, so the gutter is sized one digit wider than
-/// content strictly requires.
-pub(in crate::editor) fn gutter_width<'a>(
-    gutter_columns: impl Iterator<Item = &'a dyn GutterColumn> + 'a,
-    last_line_idx: hume_rope::line::RopeyLine,
-    inputs: hume_engine::providers::GutterInputs,
-) -> u16 {
-    gutter_width_for_line(gutter_columns, last_line_idx, inputs)
-}
-
 // ---------------------------------------------------------------------------
 // Screen-to-buffer reverse mapping
 // ---------------------------------------------------------------------------
@@ -125,8 +108,8 @@ pub(in crate::editor) fn gutter_width<'a>(
 /// Convert a pane-content-relative `(content_x, content_y)` click position to
 /// the buffer cluster it hits.
 ///
-/// `gutter_w` is the width of the gutter in terminal columns (from
-/// [`gutter_width`]). Clicks in the gutter return `None`; every other click
+/// `gutter_w` is the width of the gutter in terminal columns, as the pane was
+/// drawn with it. Clicks in the gutter return `None`; every other click
 /// resolves, clamped to the document's last display line if it lands past the end.
 ///
 /// The coordinate space is pane-relative, not terminal-absolute: `(0, 0)` is

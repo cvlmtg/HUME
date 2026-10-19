@@ -187,13 +187,11 @@ fn a_hidden_tab_s_pane_keeps_its_decoration_state_until_its_tab_is_focused() {
     );
 }
 
-/// A resize while a tab is hidden must still resync its panes' viewports:
-/// `Editor::resize_terminal` re-partitions every tab's own tree against
-/// the new terminal area on every resize, not just the active one
-/// (`TabStore::inactive_layouts`), so a background pane's geometry never
-/// goes stale waiting for its tab to be focused again.
+/// A hidden tab's pane is sized against the current terminal when read
+/// (`EditorState::pane_size`), so a resize while its tab is hidden reaches
+/// it without the tab being focused again.
 #[test]
-fn resizing_while_a_tab_is_hidden_still_resyncs_its_viewport() {
+fn a_hidden_tab_s_pane_takes_the_terminal_size_after_a_resize() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.execute_typed("tabnew", None).unwrap();
     let pid_b = ed.view.focused_pane();
@@ -211,7 +209,7 @@ fn resizing_while_a_tab_is_hidden_still_resyncs_its_viewport() {
     assert_ne!(
         ed.pane_size(pid_b).width(),
         width_before,
-        "B's viewport must resync to the new terminal size even while its tab is hidden"
+        "B's pane takes the new terminal size while its tab is hidden"
     );
 }
 
