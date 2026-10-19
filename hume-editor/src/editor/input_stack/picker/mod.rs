@@ -19,6 +19,7 @@ use super::super::keymap::CanonicalKey;
 use super::super::replay::{Answer, InputOpener, PendingAnswer, Pick, Picked, WaitingInput};
 use super::super::{Editor, EditorState};
 use super::paste::PastedText;
+use super::popup::half_page_key;
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, PasteHandler, Removal};
 
 #[cfg(test)]
@@ -98,12 +99,19 @@ impl Layer for PickerLayer {
 }
 
 impl Editor {
+    /// The picker panel's geometry in the pane area, laid out against the
+    /// current bands first: the next frame's, even between frames after a
+    /// band opened or closed. `None` before the first terminal size, or on a
+    /// pane area too small for the panel.
+    fn picker_geometry(&mut self) -> Option<hume_ui::picker_panel::PanelGeometry> {
+        self.state.relayout(&mut self.view);
+        hume_ui::picker_panel::panel_geometry(self.view.last_pane_area)
+    }
+
     /// Write the open picker session into the shared `PickerViewState` Arc
-    /// so `PickerOverlay` can paint it this frame. Same step-10 timing as
-    /// `sync_popup_view`/`sync_menu_view`/`sync_completion_menu_view` (needs
-    /// `last_pane_area`, set in step 9) but, unlike them, centers in the
-    /// panes region rather than anchoring at the cursor; no `RenderContext`
-    /// needed.
+    /// so `PickerOverlay` can paint it this frame. Synced with the other
+    /// overlays in `prepare_frame`, but, unlike the cursor-anchored ones, it
+    /// centers in the panes region, so it needs no cursor cell.
     ///
     /// Takes `&mut self`: before snapshotting the visible window, it calls
     /// `PickerSession::move_selection(0, geo.list_rows)`. A delta-0 move is
@@ -115,7 +123,7 @@ impl Editor {
             return;
         }
 
-        let geo = hume_ui::picker_panel::panel_geometry(self.view.last_pane_area);
+        let geo = self.picker_geometry();
         let resolved = match (self.state.input.picker_mut(), geo) {
             (Some(session), Some(geo)) => {
                 session.move_selection(0, geo.list_rows);
@@ -339,11 +347,11 @@ pub(in crate::editor) fn close_picker(state: &mut super::super::EditorState, vie
 ///
 /// `on_select` fires exactly once via `.take()`-equivalent truncate +
 /// `queue_steel_call` (never invoked inline), same one-shot discipline
-/// as the menu. `visible_rows` comes from `panel_geometry` against the
-/// same `last_pane_area` the next frame's `sync_picker_view` will use,
-/// so a keystroke and the following paint always agree on how many rows
-/// are visible (before the first frame, geometry is `None` and paging is
-/// a documented no-op on the store). A mouse event (click, drag, or
+/// as the menu. `visible_rows` comes from `Editor::picker_geometry`, the
+/// layout the next frame's `sync_picker_view` paints at the same terminal
+/// size, so a key pages by the rows that frame shows (before the first
+/// frame, geometry is `None` and paging is a documented no-op on the
+/// store). A mouse event (click, drag, or
 /// wheel) is swallowed the same way: full-modal means the picker owns
 /// the pointer too, not just the keyboard, so a click can't move the
 /// cursor in the buffer underneath it.
@@ -352,25 +360,28 @@ pub(in crate::editor) fn picker_input(ed: &mut Editor, r: LayerRef, ev: InputEve
         InputEvent::Key(key) => key,
         InputEvent::Mouse(_) => return,
     };
-    let visible_rows = hume_ui::picker_panel::panel_geometry(ed.view.last_pane_area)
-        .map_or(0, |geo| geo.list_rows);
+    let visible_rows = ed.picker_geometry().map_or(0, |geo| geo.list_rows);
 
     // Every movement key differs only in the delta passed to
     // `move_selection`, collapsed to one borrow instead of one per key.
-    // `half_page_step` reads `visible_rows` once up front rather than
-    // recomputing it in each of the two Ctrl-d/Ctrl-u arms.
     let half_page_step = half_page(visible_rows) as isize;
-    let step: Option<isize> = match key.code {
-        KeyCode::Down => Some(1),
-        KeyCode::Up => Some(-1),
-        KeyCode::Char('n') if key.modifiers.contains(Modifiers::CONTROL) => Some(1),
-        KeyCode::Char('p') if key.modifiers.contains(Modifiers::CONTROL) => Some(-1),
-        KeyCode::PageDown => Some(visible_rows as isize),
-        KeyCode::PageUp => Some(-(visible_rows as isize)),
-        KeyCode::Char('d') if key.modifiers.contains(Modifiers::CONTROL) => Some(half_page_step),
-        KeyCode::Char('u') if key.modifiers.contains(Modifiers::CONTROL) => Some(-half_page_step),
-        _ => None,
-    };
+    let step: Option<isize> = half_page_key(&key)
+        .map(|down| {
+            if down {
+                half_page_step
+            } else {
+                -half_page_step
+            }
+        })
+        .or_else(|| match key.code {
+            KeyCode::Down => Some(1),
+            KeyCode::Up => Some(-1),
+            KeyCode::Char('n') if key.modifiers.contains(Modifiers::CONTROL) => Some(1),
+            KeyCode::Char('p') if key.modifiers.contains(Modifiers::CONTROL) => Some(-1),
+            KeyCode::PageDown => Some(visible_rows as isize),
+            KeyCode::PageUp => Some(-(visible_rows as isize)),
+            _ => None,
+        });
     if let Some(delta) = step {
         picker_mut(&mut ed.state, r).move_selection(delta, visible_rows);
         return;

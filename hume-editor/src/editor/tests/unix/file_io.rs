@@ -710,16 +710,6 @@ fn startup_pos(line: usize, col: usize) -> PathPosition {
     }
 }
 
-/// Fixture: 200 short lines, well past a 24-row terminal and each far under
-/// 80 columns, so nothing soft-wraps whatever the buffer's wrap-mode default
-/// and buffer lines map 1:1 to display lines.
-fn tall_file() -> (tempfile::NamedTempFile, std::path::PathBuf) {
-    let f = tempfile::NamedTempFile::new().unwrap();
-    std::fs::write(f.path(), numbered_lines(200)).unwrap();
-    let canonical = std::fs::canonicalize(f.path()).unwrap();
-    (f, canonical)
-}
-
 #[test]
 fn settle_places_a_queued_startup_position() {
     // Column 6 (1-based, i.e. grapheme index 5) lands on the 't' of "two".
@@ -740,7 +730,8 @@ fn settle_places_a_queued_startup_position() {
 /// taller than the viewport for the viewport to move.
 #[test]
 fn settle_centers_the_focused_buffer_on_its_startup_position() {
-    let (_f, canonical) = tall_file();
+    let (path, _f) = tall_file();
+    let canonical = std::fs::canonicalize(path).unwrap();
 
     let mut ed = open_headless(Some(canonical));
     let bid = ed.focused_buffer_id();
@@ -762,7 +753,8 @@ fn settle_centers_the_focused_buffer_on_its_startup_position() {
 /// hook's, say) takes its rows from the pane, and centring must count them.
 #[test]
 fn settle_centers_a_startup_position_against_a_drawer_opened_since_the_last_resize() {
-    let (_f, canonical) = tall_file();
+    let (path, _f) = tall_file();
+    let canonical = std::fs::canonicalize(path).unwrap();
 
     let mut ed = open_headless(Some(canonical));
     let bid = ed.focused_buffer_id();
@@ -772,10 +764,10 @@ fn settle_centers_a_startup_position_against_a_drawer_opened_since_the_last_resi
     ed.queue_startup_position(bid, startup_pos(150, 1));
     ed.settle();
 
-    // `:ls` with one buffer is one row plus the drawer's one padding row, well
-    // under its 35% cap (8 of 24 rows). The pane keeps 24 - 1 (statusline)
-    // - 2 (drawer) = 21 rows, so the centre row is 21/2 = 10 and the top
-    // line is 149 - 10 = 139.
+    // `:ls` with one buffer is one row plus the drawer's one top frame row,
+    // well under its 35% cap (8 of 24 rows). The pane keeps 24 - 1
+    // (statusline) - 2 (drawer) = 21 rows, so the centre row is 21/2 = 10 and
+    // the top line is 149 - 10 = 139.
     assert_eq!(
         ed.view.panes[ed.view.focused_pane()].viewport.top().line,
         hume_rope::line::ContentLine::new(139)

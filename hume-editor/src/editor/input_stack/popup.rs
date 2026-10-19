@@ -5,8 +5,8 @@
 
 use termina::event::{KeyCode, KeyEvent, Modifiers};
 
-use hume_engine::pipeline::{EngineView, RenderContext};
-use hume_engine::theme::Theme;
+use hume_engine::pipeline::EngineView;
+use hume_engine::theme::{ScopeRegistry, Theme};
 use hume_engine::types::EditorMode;
 use hume_scripting::host::HostToken;
 
@@ -18,7 +18,7 @@ use super::placement::{focused_cursor, popup_placement};
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, PasteHandler};
 
 /// `(show-popup! text)`'s raw, unwrapped content, held on `EditorState`
-/// until the next frame's `Editor::sync_popup_view`/`sync_popup_band_view`
+/// until `Editor::sync_popup_view` or `EditorState::sync_popup_band_view`
 /// (per `layout`) resolves it into a positioned
 /// `hume_ui::popup::PopupState` or a `PopupBandState`. Never buried: every
 /// layer's own `Layer::setup` retires it before landing (`PopupLayer`'s own,
@@ -30,12 +30,12 @@ use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, PasteHandler};
 pub(in crate::editor) struct PopupLayer {
     pub(in crate::editor) text: String,
     /// First visible wrapped row, for a `Scrollable` popup. Clamped against
-    /// `max_scroll` in [`scroll_box_on_key`] before each delta is applied, since
+    /// `max_scroll` in [`scroll_box`] before each delta is applied, since
     /// content height (and so `max_scroll`) can shrink between key presses
     /// (e.g. the terminal grows) without this field being touched.
-    /// `Editor::sync_popup_view`/`sync_popup_band_view` additionally clamp a
-    /// *copy* of this value for rendering each frame; that clamp is
-    /// view-only and never writes back to the model.
+    /// `Editor::sync_popup_view` and `EditorState::sync_popup_band_view`
+    /// additionally clamp a *copy* of this value for rendering; that clamp
+    /// is view-only and never writes back to the model.
     pub(in crate::editor) scroll: usize,
     /// `#:lang`, rebuilt fresh on every `show-popup!`, dropped with the
     /// popup on close. No separate invalidation path: the popup's lifetime
@@ -43,10 +43,7 @@ pub(in crate::editor) struct PopupLayer {
     pub(in crate::editor) syntax: Option<super::super::popup_syntax::MarkupSyntax>,
     pub(in crate::editor) layout: hume_ui::popup::PopupLayout,
     /// Lazily built from `text`/`syntax` on first [`Self::content_mut`]
-    /// call, not eagerly at `show-popup!` time, because a `#:lang` popup's
-    /// styled runs need a *baked* theme (`Theme::resolve` debug-asserts on
-    /// an unbaked `ScopeId`, and the theme isn't baked yet when `show_popup`
-    /// runs; see `frame.rs`'s `prepare_frame` step ordering). Its own
+    /// call, against the view's theme. Its own
     /// internal wrap cache is then keyed by width, so an unchanged width
     /// across frames is O(1), not a re-wrap. Reset to `None` by
     /// [`Layer::theme_changed`] (reached from `theme::set_theme`, the one
@@ -90,11 +87,28 @@ impl PopupLayer {
     /// doc names the two sites that reset this back to `None` when it does.
     pub(in crate::editor) fn content_mut(
         &mut self,
-        theme: &Theme,
+        theme: &mut Theme,
+        registry: &ScopeRegistry,
     ) -> &mut hume_ui::popup::PopupContent {
         self.content.get_or_insert_with(|| {
-            super::super::popup_syntax::popup_content(&self.text, self.syntax.as_ref(), theme)
+            super::super::popup_syntax::popup_content(
+                &self.text,
+                self.syntax.as_ref(),
+                theme,
+                registry,
+            )
         })
+    }
+
+    /// Wrapped lines this popup has when docked on a terminal `area_width`
+    /// columns wide: what its band's height and its paging are measured from.
+    pub(in crate::editor) fn docked_total_rows(
+        &mut self,
+        theme: &mut Theme,
+        registry: &ScopeRegistry,
+        area_width: u16,
+    ) -> usize {
+        hume_ui::popup::band_total_rows(self.content_mut(theme, registry), area_width)
     }
 }
 
@@ -132,37 +146,42 @@ impl Layer for PopupLayer {
 }
 
 impl Editor {
-    /// Write the current *cursor-anchored* popup content into the shared
-    /// `PopupState` Arc so `PopupOverlay` can render it during this frame.
-    /// Geometry (wrap width, flip/clamp position) is resolved fresh every
-    /// frame against the focused pane's *current* rect, never pre-computed
-    /// at `show-popup!` call time, so a resize or scroll never leaves it
-    /// stale. A docked popup (`PopupLayout::Docked`) is handled by
-    /// [`Self::sync_popup_band_view`] instead; this clears the popup view
-    /// slot for that case, same as when no popup is open at all.
+    /// Write the current *cursor-anchored* popup into the shared
+    /// `PopupState` slot so `PopupOverlay` can render it during this frame,
+    /// through [`Self::resolve_cursor_popup`]. The slot is cleared when no
+    /// cursor popup is open, including for a docked popup
+    /// (`PopupLayout::Docked`), which [`EditorState::sync_popup_band_view`]
+    /// handles instead.
     ///
-    /// Called from `prepare_frame` after `last_pane_area` is set (step 10):
-    /// `EngineView::pane_rect` reads that field, so calling this any earlier
-    /// would position against the previous frame's geometry.
-    pub(in crate::editor) fn sync_popup_view(&mut self, ctx: &mut RenderContext) {
+    /// Called from `prepare_frame` after its scroll step, with the cursor
+    /// cell that step resolved as `cursor_cell`.
+    pub(in crate::editor) fn sync_popup_view(&mut self, cursor_cell: Option<(u16, u16)>) {
+        let resolved = self.resolve_cursor_popup(cursor_cell);
+        if resolved.is_some() || self.state.views.popup.read().is_some() {
+            self.state.views.popup.set(resolved);
+        }
+    }
+
+    /// The open cursor-anchored popup resolved against the focused pane's
+    /// current rect and viewport: what a frame paints and what Ctrl-d/Ctrl-u
+    /// page against. `None` with no cursor popup open, or when the cursor is
+    /// not in view. Geometry (wrap width, flip/clamp position) is never
+    /// computed at `show-popup!` call time, so a resize or scroll never
+    /// leaves it stale. `cursor_cell` is [`popup_placement`]'s.
+    fn resolve_cursor_popup(
+        &mut self,
+        cursor_cell: Option<(u16, u16)>,
+    ) -> Option<hume_ui::popup::PopupState> {
         let is_cursor = matches!(
             self.state.input.popup().map(|m| &m.layout),
             Some(hume_ui::popup::PopupLayout::Cursor)
         );
         if !is_cursor {
-            if self.state.views.popup.read().is_some() {
-                self.state.views.popup.set(None);
-            }
-            return;
+            return None;
         }
-
         let anchor = focused_cursor(self);
-        let Some(placement) = popup_placement(self, ctx, anchor) else {
-            self.state.views.popup.set(None);
-            return;
-        };
+        let placement = popup_placement(self, cursor_cell, anchor)?;
         let border = self.state.settings.popup_border;
-        let theme = &self.view.theme;
         let model = self
             .state
             .input
@@ -171,58 +190,55 @@ impl Editor {
         // Read before the `&mut` below: a second `self.state.input.popup()`
         // borrow once `content` is live would conflict with it.
         let scroll = model.scroll;
-        let content = model.content_mut(theme);
-        let resolved = hume_ui::popup::resolve_popup(content, placement, scroll, border);
-
-        self.state.views.popup.set(Some(resolved));
+        let content = model.content_mut(&mut self.view.theme, &self.view.registry);
+        Some(hume_ui::popup::resolve_popup(
+            content, placement, scroll, border,
+        ))
     }
+}
 
+impl EditorState {
     /// Write the current *docked* popup content into the shared
     /// `PopupBandState` Arc so `PopupBandWidget` can render it during this
     /// frame, the `PopupLayout::Docked` counterpart of
-    /// [`Self::sync_popup_view`]. Unlike the cursor layout, geometry isn't
+    /// [`Editor::sync_popup_view`]. Unlike the cursor layout, geometry isn't
     /// resolved here: only content (wrapped lines + scroll clamp), mirroring
-    /// the drawer's chrome contract: the engine resolves the band's actual
-    /// position/height from `height(max)` at render time.
+    /// the drawer's chrome contract: the band's rows come from
+    /// `EditorState::relayout` and its position from the engine at render
+    /// time.
     ///
-    /// Wraps against `last_terminal_area` (the raw, un-subtracted terminal
-    /// area), not `last_pane_area`: the band spans the full width the
-    /// engine will actually render into (`EngineView::render`'s bottom-band
-    /// block), same convention `drawer_visible_rows` already relies on for
-    /// its height ceiling.
-    pub(in crate::editor) fn sync_popup_band_view(&mut self) {
+    /// Wraps and caps against `EngineView::terminal_area`: the band spans
+    /// the full terminal.
+    pub(in crate::editor) fn sync_popup_band_view(&mut self, view: &mut EngineView) {
         let is_docked = matches!(
-            self.state.input.popup().map(|m| &m.layout),
+            self.input.popup().map(|m| &m.layout),
             Some(hume_ui::popup::PopupLayout::Docked)
         );
         if !is_docked {
-            if self.state.views.popup_band.read().is_some() {
-                self.state.views.popup_band.set(None);
+            if self.views.popup_band.read().is_some() {
+                self.views.popup_band.set(None);
             }
             return;
         }
 
-        let area = self.view.last_terminal_area;
-        let max_rows = hume_engine::pipeline::EngineView::bottom_band_max(area.height);
-        let border = self.state.settings.popup_border;
-        let theme = &self.view.theme;
+        let area = view.terminal_area();
+        let border = self.settings.popup_border;
         let model = self
-            .state
             .input
             .popup_mut()
             .expect("popup present: is_docked checked above");
         let scroll = model.scroll;
-        let content = model.content_mut(theme);
-        let resolved = hume_ui::popup::resolve_band(content, area.width, max_rows, scroll, border);
+        let content = model.content_mut(&mut view.theme, &view.registry);
+        let resolved = hume_ui::popup::resolve_band(content, area, scroll, border);
 
-        self.state.views.popup_band.set(Some(resolved));
+        self.views.popup_band.set(Some(resolved));
     }
 }
 
 /// Handles one event while a `Scrollable` popup is open (a `PopupLayer`; a
 /// `Sticky` popup lives in a mode layer's slot instead and is never
 /// dispatch's target). Ctrl-u/Ctrl-d consume the key only when
-/// [`scroll_box_on_key`] finds content past one screenful; every other key
+/// [`scroll_box`] finds content past one screenful; every other key
 /// and any mouse gesture retire the layer and fall through this same call
 /// (a paste too, through [`popup_paste`]), so a short popup never blocks
 /// the buffer's own half-page scroll and a click still moves the cursor
@@ -239,14 +255,11 @@ pub(in crate::editor) fn popup_input(ed: &mut Editor, r: LayerRef, ev: InputEven
             return;
         }
     };
-    let band_max =
-        hume_engine::pipeline::EngineView::bottom_band_max(ed.view.last_terminal_area.height);
-    let views = &ed.state.views;
-    if let Some(popup) = ed.state.input.popup_mut() {
-        let layout = &popup.layout;
-        if scroll_box_on_key(&key, &mut popup.scroll, || {
-            popup_rows(layout, views, band_max)
-        }) {
+    if let Some(down) = half_page_key(&key) {
+        let rows = popup_rows(ed);
+        if let Some(popup) = ed.state.input.popup_mut()
+            && scroll_box(&mut popup.scroll, down, rows)
+        {
             return;
         }
     }
@@ -261,59 +274,63 @@ fn popup_paste(state: &mut EditorState, view: &EngineView, r: LayerRef, text: Pa
     state.fall_through_paste(view, r, text);
 }
 
-/// The open popup's visible content height and total row count, read from
-/// the *already-resolved* view for its `layout` (this same frame's paint)
-/// rather than recomputing geometry, so the scroll step always matches
-/// what's on screen. `band_max` is the docked band's row ceiling. `None`
-/// before the first frame resolves a view.
-fn popup_rows(
-    layout: &hume_ui::popup::PopupLayout,
-    views: &hume_ui::OverlayViews,
-    band_max: u16,
-) -> Option<(usize, usize)> {
-    match layout {
-        hume_ui::popup::PopupLayout::Cursor => views.popup.read().as_ref().map(boxed_popup_rows),
+/// The open popup's visible content height and total row count, measured
+/// from the model the way the next frame lays it out, so paging works on a
+/// popup no frame has painted yet (one a macro's previous key opened). A
+/// cursor popup's come from [`Editor::resolve_cursor_popup`], a docked
+/// popup's from the rows its band is laid out with.
+fn popup_rows(ed: &mut Editor) -> Option<(usize, usize)> {
+    match ed.state.input.popup()?.layout {
+        hume_ui::popup::PopupLayout::Cursor => {
+            ed.resolve_cursor_popup(None).as_ref().map(boxed_popup_rows)
+        }
         hume_ui::popup::PopupLayout::Docked => {
-            let total = views.popup_band.read().as_ref()?.total_rows;
-            Some((hume_ui::popup::band_visible_rows(total, band_max), total))
+            let view = &mut ed.view;
+            let area = view.terminal_area();
+            let popup = ed.state.input.popup_mut()?;
+            let total = popup.docked_total_rows(&mut view.theme, &view.registry, area.width);
+            let visible = hume_ui::popup::band_visible_rows(total, area.height);
+            Some((visible, total))
         }
     }
 }
 
 /// A boxed popup's visible content height and total row count, read from
-/// its resolved view.
+/// its resolved state.
 pub(super) fn boxed_popup_rows(state: &hume_ui::popup::PopupState) -> (usize, usize) {
     (state.inner_height(), state.total_rows)
 }
 
-/// Ctrl-d/Ctrl-u on a scrollable text box (a hover popup, the completion
-/// documentation box): moves `scroll` half the box's visible height, within
-/// what `rows` (visible height, total row count, read from the box's
-/// resolved view) leaves scrollable. `false` for any other key, before the
-/// box's first frame, or when its content fits, so the key falls through.
+/// Whether `key` pages by half a window: `Some(true)` for Ctrl-d,
+/// `Some(false)` for Ctrl-u, `None` for any other key. Every layer that
+/// pages (a scrollable box, the drawer, the picker) decodes them here.
+pub(super) fn half_page_key(key: &KeyEvent) -> Option<bool> {
+    if !key.modifiers.contains(Modifiers::CONTROL) {
+        return None;
+    }
+    match key.code {
+        KeyCode::Char('d') => Some(true),
+        KeyCode::Char('u') => Some(false),
+        _ => None,
+    }
+}
+
+/// Pages a scrollable text box (a hover popup, the completion documentation
+/// box) half its visible height, down or up, within what `rows` (visible
+/// height, total row count) leaves scrollable. `false` when `rows` has none
+/// to give, when the box shows no rows (a terminal with no size, or too
+/// short for the box), or when the content fits, so the key falls through.
 ///
 /// `scroll` is the model value, clamped for rendering only in the
 /// per-frame view sync, so it can be stale-large after the content
 /// shrinks (the terminal grows between key presses). It is clamped before
 /// the step, not after.
-pub(super) fn scroll_box_on_key(
-    key: &KeyEvent,
-    scroll: &mut usize,
-    rows: impl FnOnce() -> Option<(usize, usize)>,
-) -> bool {
-    if !key.modifiers.contains(Modifiers::CONTROL) {
-        return false;
-    }
-    let down = match key.code {
-        KeyCode::Char('d') => true,
-        KeyCode::Char('u') => false,
-        _ => return false,
-    };
-    let Some((inner_h, total)) = rows() else {
+pub(super) fn scroll_box(scroll: &mut usize, down: bool, rows: Option<(usize, usize)>) -> bool {
+    let Some((inner_h, total)) = rows else {
         return false;
     };
     let max_scroll = total.saturating_sub(inner_h);
-    if max_scroll == 0 {
+    if inner_h == 0 || max_scroll == 0 {
         return false;
     }
     let half = half_page(inner_h);

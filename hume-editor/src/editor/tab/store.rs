@@ -20,7 +20,7 @@ new_key_type! {
     /// `pub(crate)`, wider than the rest of this module: `crate::tabline`
     /// (a sibling of `editor`, matching where `crate::statusline` lives;
     /// see that module's own doc) holds and displays `TabId`s built by
-    /// `crate::editor::frame::sync_tabline_view`, so the type must be
+    /// `EditorState::sync_tabline_view` (`frame.rs`), so the type must be
     /// visible on both sides of that boundary.
     pub(crate) struct TabId;
 }
@@ -102,7 +102,7 @@ impl TabStore {
     /// `open_after_current`'s own insert below would otherwise mask instead
     /// of failing loudly.
     ///
-    /// `pub(in crate::editor)` rather than private: `Editor::sync_tabline_view`
+    /// `pub(in crate::editor)` rather than private: `EditorState::sync_tabline_view`
     /// needs the same index. It reads it from here rather than re-deriving it
     /// from `order()`/`current()` separately, which would let the tabline's
     /// own copy silently drift from this one's panic message the moment

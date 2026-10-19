@@ -53,8 +53,8 @@ These have no Helix equivalent:
   scrollbar for `ui.menu`)
 - `ui.window.focused`: seam divider segments adjacent to the focused pane, falling back
   to `ui.window`
-- `ui.drawer`: background of the bottom drawer (`show-drawer-list!`), a generic pick-list
-  panel Helix doesn't have
+- `ui.drawer`: background and border of the bottom drawer (`show-drawer-list!`), a
+  generic pick-list panel Helix doesn't have
 - `ui.tabline` / `ui.tabline.active`: the tab bar's row and its active tab. `.active` left
   unset falls back to the base `ui.tabline` style, unlike the statusline separator below
 - `ui.statusline.search` / `.command` / `.sift`: one more mode-tinted statusline scope

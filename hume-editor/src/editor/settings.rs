@@ -961,9 +961,9 @@ define_settings! {
         "statusline.mode-colors" => statusline_mode_colors: bool = true,
             scope: [Scope::Global],
             parser: bool;
-        // Resolved into `TablineViewState.visible` by `sync_tabline_view`
-        // every frame. The provider itself reads that snapshot, not this
-        // setting directly.
+        // Resolved into the tab bar's rows by `EditorState::relayout`, and
+        // into the `TablineViewState` snapshot the provider paints by
+        // `sync_tabline_view` every frame.
         "tabline" => tabline: TablineVisibility = TablineVisibility::default(),
             scope: [Scope::Global],
             parser: enum_str;

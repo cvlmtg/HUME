@@ -1,4 +1,4 @@
-use hume_grid::{Position, Rect};
+use hume_grid::Position;
 use std::io;
 use std::sync::Arc;
 use std::time::Duration;
@@ -31,6 +31,29 @@ pub(crate) enum Driver {
     /// capability: without it a Ctrl-letter key such as `<c-w>` does nothing,
     /// since `handle_normal` strips the Ctrl modifier only under kitty.
     Headless,
+}
+
+/// Register the chrome on `view` and return the views the editor writes it
+/// through: the bottom bands, the floating overlays and the tab bar. None of
+/// them is per-pane, so each is registered once. The drawer and the docked
+/// popup are chrome like the tab bar and statusline; the overlays paint over
+/// every pane.
+pub(in crate::editor) fn register_chrome(
+    view: &mut EngineView,
+) -> (
+    hume_ui::OverlayViews,
+    hume_engine::lock::SharedSlot<crate::tabline::TablineViewState>,
+) {
+    let views = hume_ui::OverlayViews::default();
+    let tabline_view = hume_engine::lock::SharedSlot::default();
+    view.set_chrome(hume_engine::pipeline::Chrome {
+        tabbar: Box::new(crate::tabline::TablineWidget {
+            data: tabline_view.clone(),
+        }),
+        bottom_bands: views.bottom_bands().in_stack_order(),
+    });
+    view.overlays = views.overlays();
+    (views, tabline_view)
 }
 
 impl Editor {
@@ -97,24 +120,7 @@ impl Editor {
         // ── Engine view setup ─────────────────────────────────────────────────
         let theme = crate::editor::theme::fallback_theme();
         let (mut engine_view, focus_key) = EngineView::new(theme);
-
-        // Every overlay view shared between the per-frame write side and the
-        // engine's render side; see `hume_ui::OverlayViews`'s own doc. The
-        // drawer and the docked popup are chrome (like the tab bar/
-        // statusline), and the floating overlays paint over every pane:
-        // none of them is per-pane, so each is registered once on
-        // `engine_view`. Only one band is ever non-empty at a time in
-        // practice.
-        let views = hume_ui::OverlayViews::default();
-        engine_view.bottom_bands = views.bottom_bands();
-        engine_view.overlays = views.overlays();
-
-        // The tab bar: chrome, not per-pane, same as the bands above. One
-        // instance, registered directly on `engine_view.tabbar`.
-        let tabline_view = hume_engine::lock::SharedSlot::default();
-        engine_view.tabbar = Some(Box::new(crate::tabline::TablineWidget {
-            data: tabline_view.clone(),
-        }));
+        let (views, tabline_view) = register_chrome(&mut engine_view);
 
         // Insert a buffer: just metadata; the rope is passed at render time.
         let buffer_id = engine_view.buffers.insert(());
@@ -167,7 +173,6 @@ impl Editor {
             viewport_debounce: rustc_hash::FxHashMap::default(),
             diagnostic_pull_debounce: rustc_hash::FxHashMap::default(),
             last_visible_range: rustc_hash::FxHashMap::default(),
-            last_tabline_signature: None,
             virtual_lines_synced: rustc_hash::FxHashMap::default(),
             tui: Tui::Off,
             applied_mouse_mode: initial_mouse_mode,
@@ -283,10 +288,8 @@ impl Editor {
     ///
     /// Runs at the end of every `settle()`. Only [`Self::start`] queues, so
     /// the first `settle()` drains the queue and every later one finds it
-    /// empty. Centring reads the focused pane's height, so it re-partitions
-    /// the layout first ([`Self::sync_layout`]): a hook in the drain may have
-    /// opened a drawer or docked popup. A headless run has no terminal area
-    /// and keeps `Pane::new`'s 80x24.
+    /// empty. A headless run has no terminal area and centres against
+    /// `Pane::new`'s 80x24.
     pub(in crate::editor) fn apply_startup_positions(&mut self) {
         let placements = std::mem::take(&mut self.startup_positions);
         if placements.is_empty() {
@@ -309,7 +312,6 @@ impl Editor {
             center_focused |= bid == focused_bid;
         }
         if center_focused {
-            self.sync_layout();
             super::commands::view_center(&mut self.state, &mut self.view, pid);
         }
     }
@@ -500,7 +502,7 @@ impl Editor {
                 // cursor in the statusline at the minibuf edit position. Always a
                 // bar: HUME's prompt modes have no cursor-shape option of their
                 // own, unlike the document's own Insert-mode cursor below.
-                let statusline_row = term_height.saturating_sub(1);
+                let statusline_row = self.view.statusline_area().y;
                 Some(Position::new(mb.statusline_cursor_x(), statusline_row))
             } else {
                 // Reads `cursor_shape()` directly rather than through
@@ -541,7 +543,7 @@ impl Editor {
             // sequence, hence `let _ =` rather than `?`.
             let _ = hume_platform::terminal::begin_synchronized_update(term);
             let grid = screen.frame(term_width, term_height);
-            self.render_into(Rect::new(0, 0, term_width, term_height), grid, &mut ctx);
+            self.render_into(grid, &mut ctx);
             screen.present(cursor_screen)?;
 
             // ── 2b. Cursor shape ──────────────────────────────────────────────

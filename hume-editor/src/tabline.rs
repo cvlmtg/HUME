@@ -4,7 +4,7 @@
 //!
 //! Same three-type split as `hume_ui::drawer`: [`TablineViewState`] is the
 //! read-side snapshot [`TablineWidget`] paints from, written every frame by
-//! `Editor::sync_tabline_view` (self-healing, same rationale as the
+//! `EditorState::sync_tabline_view` (self-healing, same rationale as the
 //! drawer's own unconditional per-frame sync; see its module doc). Lives
 //! here, not in `hume-ui`, for the same reason the statusline does (see
 //! that module's own doc): `TabEntry`/`TablineViewState` hold a `TabId`,
@@ -17,7 +17,7 @@ use crate::statusline::colors::TablineColors;
 use hume_engine::types::TruncateEnd;
 
 use hume_engine::lock::SharedSlot;
-use hume_engine::providers::TabBarProvider;
+use hume_engine::providers::ChromeProvider;
 use hume_engine::render::Canvas;
 use hume_engine::theme::Theme;
 
@@ -55,13 +55,8 @@ pub(crate) struct TablineViewState {
     /// Index into `tabs` of the active one.
     pub(crate) active_index: usize,
     /// First visible tab index, clamped to keep `active_index` in view by
-    /// `Editor::sync_tabline_view`, mirroring the drawer's own scroll.
+    /// `EditorState::sync_tabline_view`, mirroring the drawer's own scroll.
     pub(crate) scroll: usize,
-    /// Resolved from the `tabline` setting + tab count each sync, so
-    /// `pane_area`'s chrome arithmetic (which reads `height()`) and this
-    /// row's own painted content can never disagree about whether the tab
-    /// bar is showing this frame.
-    pub(crate) visible: bool,
 }
 
 /// Engine-facing tab-bar provider: one instance, owned by `EngineView`
@@ -70,20 +65,9 @@ pub(crate) struct TablineWidget {
     pub(crate) data: SharedSlot<TablineViewState>,
 }
 
-impl TabBarProvider for TablineWidget {
-    fn height(&self) -> u16 {
-        if self.data.read().visible { 1 } else { 0 }
-    }
-
+impl ChromeProvider for TablineWidget {
     fn render(&self, area: Rect, theme: &Theme, canvas: &mut Canvas) {
-        if area.height == 0 {
-            return;
-        }
         let guard = self.data.read();
-        if !guard.visible {
-            return;
-        }
-
         let colors = TablineColors::from_theme(theme);
         canvas.fill_rect_bg(area, colors.inactive);
 
@@ -142,7 +126,7 @@ fn fit_label(label: &str, extent_w: u16) -> String {
 /// each computes will disagree: [`TablineWidget::render`] (draws each
 /// extent) and `Editor::tabline_click` (`mouse.rs`, maps a click column back
 /// to a tab index) both read them from `EngineView::tabbar_area`, and
-/// `Editor::sync_tabline_view` (`frame.rs`, resolves `scroll` itself before
+/// `EditorState::sync_tabline_view` (`frame.rs`, resolves `scroll` itself before
 /// either of the other two runs) reads from the same place, so painting,
 /// hit-testing, and scroll resolution can never disagree about where a tab
 /// starts and ends.
@@ -179,7 +163,7 @@ pub(crate) fn tab_extents(
 /// `(indicator_left, clipped_tail)`, the two flags `tab_extents` bundles
 /// alongside its own owned `Vec`. `tab_extents` is a thin wrapper around
 /// this for its two single-shot callers (`render`, `tabline_click`);
-/// `Editor::sync_tabline_view`'s scroll probe calls this directly instead,
+/// `EditorState::sync_tabline_view`'s scroll probe calls this directly instead,
 /// reusing one `Vec` across every `scroll` candidate it tries rather than
 /// allocating fresh per candidate.
 pub(crate) fn tab_extents_into(

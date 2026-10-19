@@ -315,47 +315,12 @@ pub trait OverlayProvider {
 }
 
 // ---------------------------------------------------------------------------
-// Statusline / tab bar
+// Chrome
 // ---------------------------------------------------------------------------
 
-/// Renders the statusline (bottom row of the terminal area).
-/// The engine reserves one row at the bottom for the statusline when present.
-pub trait StatuslineProvider {
-    fn render(&self, area: Rect, theme: &crate::theme::Theme, canvas: &mut Canvas);
-}
-
-/// Renders the tab bar (top row of the terminal area).
-///
-/// The engine reserves `height()` rows at the top for the tab bar when
-/// present. Mirrors [`BottomBandProvider::height`]: a provider that wants
-/// to hide itself this frame (e.g. `tabline = dynamic` with only one tab
-/// open) returns `0` rather than the caller special-casing `Option::None`.
-pub trait TabBarProvider {
-    /// Rows to reserve this frame. `0` hides the tab bar entirely, folding
-    /// its row back to panes.
-    fn height(&self) -> u16;
-
-    fn render(&self, area: Rect, theme: &crate::theme::Theme, canvas: &mut Canvas);
-}
-
-/// Renders a bottom chrome band, directly above the statusline row (or
-/// stacked above a sibling band that already claimed that row; see
-/// `EngineView::render`). The engine reserves `height(max)` rows per band
-/// when present. Panes shrink exactly like a terminal resize, with no
-/// separate mechanism (`EngineView::pane_area` folds every band into the
-/// same chrome-height arithmetic as the tab bar and statusline).
-///
-/// Two independent callers implement this: the pick-list drawer
-/// (`show-drawer-list!`) and the docked hover popup (`show-popup! #:anchor
-/// 'bottom`). Only one is ever non-empty at a time in practice, so
-/// `EngineView` carries both as a flat list rather than special-casing
-/// mutual exclusion.
-pub trait BottomBandProvider {
-    /// Rows to reserve this frame, given `max` (the caller's ceiling, 35%
-    /// of the terminal height). Content-driven (e.g. `min(rows + 1, max)`),
-    /// not a fixed constant, so a short list doesn't reserve a large band.
-    fn height(&self, max: u16) -> u16;
-
+/// Paints one chrome element (the statusline, the tab bar, a bottom band)
+/// into the rect `EngineView::render` placed it at.
+pub trait ChromeProvider {
     fn render(&self, area: Rect, theme: &crate::theme::Theme, canvas: &mut Canvas);
 }
 

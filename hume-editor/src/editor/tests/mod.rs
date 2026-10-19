@@ -890,16 +890,7 @@ impl Editor {
         // Minimal engine view for test contexts. Uses 80×24 with tab_width=4.
         let theme = crate::editor::theme::fallback_theme();
         let (mut engine_view, focus_key) = EngineView::new(theme);
-        // Unlike `bottom_bands` (which needs real Steel-callback wiring
-        // `for_testing` skips, see `tests/lsp_popup.rs`), the
-        // tab bar's view state is a plain struct with no such dependency,
-        // so it's cheap to register here too: a test rendering multiple
-        // tabs (`editor_from` + `execute_typed("tabnew", ...)`) needs
-        // `view.tabbar` to be `Some` for the tabline to paint at all.
-        let tabline_view = hume_engine::lock::SharedSlot::default();
-        engine_view.tabbar = Some(Box::new(crate::tabline::TablineWidget {
-            data: tabline_view.clone(),
-        }));
+        let (views, tabline_view) = super::lifecycle::register_chrome(&mut engine_view);
         let buffer_id = engine_view.buffers.insert(());
         let settings = EditorSettings::default();
         let history_capacity = settings.history_capacity;
@@ -924,6 +915,7 @@ impl Editor {
                 settings,
                 panes,
                 history: super::minibuf::history::HistoryStore::new(history_capacity),
+                views,
                 tabline_view,
                 cwd: std::env::temp_dir(),
                 ..EditorState::base(focus)
@@ -939,7 +931,6 @@ impl Editor {
             viewport_debounce: rustc_hash::FxHashMap::default(),
             diagnostic_pull_debounce: rustc_hash::FxHashMap::default(),
             last_visible_range: rustc_hash::FxHashMap::default(),
-            last_tabline_signature: None,
             virtual_lines_synced: rustc_hash::FxHashMap::default(),
             tui: super::tui::Tui::Off,
             applied_mouse_mode: initial_mouse_mode,
@@ -1207,6 +1198,22 @@ fn temp_file(content: &str) -> (std::path::PathBuf, tempfile::TempPath) {
     (path, f.into_temp_path())
 }
 
+/// Fixture: 200 short lines, well past a 24-row terminal and each far under
+/// 80 columns, so nothing soft-wraps whatever the buffer's wrap-mode default
+/// and buffer lines map 1:1 to display lines.
+fn tall_file() -> (std::path::PathBuf, tempfile::TempPath) {
+    temp_file(&numbered_lines(200))
+}
+
+/// `n` popup lines, `line0` to `line{n-1}`, joined by a `\n` escape for a
+/// Steel string literal.
+fn popup_lines(n: usize) -> String {
+    (0..n)
+        .map(|i| format!("line{i}"))
+        .collect::<Vec<_>>()
+        .join("\\n")
+}
+
 /// Build a fresh file-backed `Buffer` from `content`, written to a temp file.
 /// `set_path` derives `display_path` from the raw tempfile path (see
 /// `Buffer::set_path`): the same default `Buffer::from_file` produces.
@@ -1408,7 +1415,9 @@ mod alternate;
 mod async_job_steel;
 mod async_source;
 mod auto_pairs;
+mod band_relayout;
 mod before_save;
+mod box_paging;
 mod bracket_match_highlight;
 mod bracketed_paste;
 mod buffer;

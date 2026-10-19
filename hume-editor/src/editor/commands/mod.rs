@@ -181,9 +181,12 @@ pub(in crate::editor) fn pane_view<'a>(
     t.state(&state.panes.entries, view).view(text)
 }
 
-/// Viewport state of pane `pid`.
-pub(super) fn viewport(view: &EngineView, pid: PaneId) -> &hume_engine::pane::Viewport {
-    &view.panes[pid].viewport
+/// Pane `pid`'s height in rows, laid out against the current bands first:
+/// `view_center` is reached outside `commands::run` too (`goto-location!`,
+/// startup positions), after a hook may have opened a band.
+pub(super) fn pane_height(state: &mut EditorState, view: &mut EngineView, pid: PaneId) -> usize {
+    state.relayout(view);
+    view.panes[pid].viewport.height as usize
 }
 
 /// `doc`'s effective `tab-style`/`tab-width` pair: buffer override → global

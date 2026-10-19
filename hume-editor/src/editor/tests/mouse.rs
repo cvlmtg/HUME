@@ -68,11 +68,9 @@ fn tab_start_x(ed: &Editor, tab: crate::editor::tab::TabId) -> u16 {
 fn click_after_blank_line_trim_lands_on_correct_char() {
     // "  x\ncd\n": enter Insert with the cursor on line 0's own trailing '\n'.
     let mut ed = editor_from("  x-[\n]>cd\n");
-    // The click below is hit-tested against pane rects, which only
-    // `prepare_frame` normally populates, so set it directly, matching
-    // `Pane::new`'s default 80×24 viewport, since this test exercises the
-    // click/mode-transition path, not a full frame.
-    ed.view.last_pane_area = Rect::new(0, 0, 80, 24);
+    // The click below is hit-tested against pane rects: an 80x25 terminal
+    // leaves the pane `Pane::new`'s default 80×24.
+    ed.sync_viewport_dims(80, 25);
     ed.feed_key(key('i'));
     ed.feed_key(key_enter());
     // Enter copies "  " onto a new line and lands the cursor on *that* line's
@@ -101,7 +99,7 @@ fn click_after_blank_line_trim_lands_on_correct_char() {
 #[test]
 fn drag_extends_selection_from_click_anchor() {
     let mut ed = editor_from("-[0]>123456789\n");
-    ed.view.last_pane_area = Rect::new(0, 0, 80, 24);
+    ed.sync_viewport_dims(80, 25);
 
     ed.handle_input(mouse_left_down(0, 0)); // anchor at char 0
     ed.handle_input(mouse_drag(4, 0)); // head at char 4 ('4')
@@ -661,9 +659,9 @@ fn click_on_the_tabline_s_blank_tail_is_a_noop() {
 }
 
 /// A terminal too short to fit the tab bar plus the statusline (a single
-/// row) pushes both `pane_area` and `tabbar_area` into their degenerate
-/// branches: the statusline unconditionally owns that one row (`render`'s
-/// own `sl_y = area.bottom() - 1`), so the tab bar must yield it rather than
+/// row) pushes both the pane area and `tabbar_area` into their degenerate
+/// branches: the statusline unconditionally owns that one row
+/// (`EngineView::statusline_area`), so the tab bar must yield it rather than
 /// have both chrome rows paint on top of each other, and a click there must
 /// hit the statusline, not switch tabs.
 #[test]
@@ -683,7 +681,7 @@ fn a_one_row_terminal_leaves_the_tabbar_no_room_and_a_click_there_does_not_switc
         "setup: pane area is degenerate"
     );
     assert_eq!(
-        ed.view.tabbar_area(ed.view.last_terminal_area).height,
+        ed.view.tabbar_area().height,
         0,
         "the tab bar must yield its row to the statusline, not paint over it"
     );
@@ -859,7 +857,7 @@ fn drag_right_after_a_tab_click_does_not_extend_from_the_stale_anchor() {
 #[test]
 fn click_with_picker_open_leaves_cursor_and_focus_untouched() {
     let mut ed = editor_from("-[h]>ello\n");
-    ed.view.last_pane_area = Rect::new(0, 0, 80, 24);
+    ed.sync_viewport_dims(80, 25);
     let before = state(&ed);
     open_test_picker(&mut ed, &["a", "b"]);
 
@@ -922,7 +920,7 @@ fn tabline_click_with_picker_open_does_not_switch_tabs() {
 fn click_with_confirm_open_dismisses_it_without_answering() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
     std::fs::write(&tmp, "hello, world!\n").unwrap();
-    ed.view.last_pane_area = Rect::new(0, 0, 80, 24);
+    ed.sync_viewport_dims(80, 25);
     let bid = ed.focused_buffer_id();
     ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);
     assert!(ed.state.input.confirm().is_some(), "setup: confirm open");
@@ -955,7 +953,7 @@ fn click_with_confirm_open_dismisses_it_without_answering() {
 fn mouse_release_with_confirm_open_leaves_it_open() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
     std::fs::write(&tmp, "hello, world!\n").unwrap();
-    ed.view.last_pane_area = Rect::new(0, 0, 80, 24);
+    ed.sync_viewport_dims(80, 25);
     let bid = ed.focused_buffer_id();
     ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);
     assert!(ed.state.input.confirm().is_some(), "setup: confirm open");
@@ -973,7 +971,7 @@ fn mouse_release_with_confirm_open_leaves_it_open() {
 #[test]
 fn click_with_menu_open_cancels_it_and_falls_through() {
     let mut ed = editor_from("-[h]>ello\n");
-    ed.view.last_pane_area = Rect::new(0, 0, 80, 24);
+    ed.sync_viewport_dims(80, 25);
     ed.state.push_layer(
         &ed.view,
         MenuLayer::for_test(vec!["m0".into()], marker("menu-cb")),
@@ -1003,7 +1001,7 @@ fn click_with_menu_open_cancels_it_and_falls_through() {
 #[test]
 fn click_under_drawer_falls_through_leaving_it_open() {
     let mut ed = editor_from("-[h]>ello\n");
-    ed.view.last_pane_area = Rect::new(0, 0, 80, 24);
+    ed.sync_viewport_dims(80, 25);
     ed.state.push_layer(
         &ed.view,
         DrawerLayer::new(
@@ -1059,7 +1057,7 @@ fn wheel_under_drawer_scrolls_the_pane_leaving_it_open() {
 #[test]
 fn click_in_insert_under_completion_ends_insert_and_drops_the_session() {
     let mut ed = editor_from("-[h]>ello\n");
-    ed.view.last_pane_area = Rect::new(0, 0, 80, 24);
+    ed.sync_viewport_dims(80, 25);
     ed.feed_key(key('i'));
     open_completion_session(&mut ed, &["hello", "help"]);
     assert!(

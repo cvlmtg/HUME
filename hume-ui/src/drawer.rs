@@ -28,7 +28,7 @@ use std::sync::Arc;
 
 use hume_engine::lock::SharedSlot;
 
-use hume_engine::providers::BottomBandProvider;
+use hume_engine::providers::ChromeProvider;
 use hume_engine::render::Canvas;
 use hume_engine::theme::Theme;
 use hume_engine::theme::ui_scopes;
@@ -42,6 +42,9 @@ pub struct DrawerViewState {
     pub rows: Arc<Vec<Option<String>>>,
     pub selected: usize,
     pub scroll: usize,
+    /// Whether to draw box-drawing glyphs on the frame's top row and side
+    /// columns. Fed from the `popup-border` setting.
+    pub border: bool,
 }
 
 /// Engine-facing drawer provider: one instance, owned by `EngineView`
@@ -50,28 +53,24 @@ pub(crate) struct DrawerWidget {
     pub(crate) data: SharedSlot<Option<DrawerViewState>>,
 }
 
-/// Row 0 is a blank padding row (visual gap from the pane above), always
-/// present regardless of item count.
-const DRAWER_PAD_ROWS: u16 = 1;
+/// Row 0 is the frame's top row, always present regardless of item count.
+/// The frame has no bottom row, so the band reads as sliding up from the
+/// bottom of the screen.
+const DRAWER_FRAME_ROWS: u16 = super::menu_box::FRAME_EDGE;
 
-/// Rows a drawer shows at once, given `items` rows and the band's row
-/// ceiling `max` (35% of the last-rendered *terminal* height, mirroring
-/// `DrawerWidget::height`'s own `max`): the number `Editor::
-/// drawer_visible_rows` pages against, agreeing with what the engine will
-/// next paint since both derive from
-/// `super::menu_box::band_capacity`.
-pub fn visible_rows(items: usize, max: u16) -> usize {
-    super::menu_box::band_visible_rows(items, DRAWER_PAD_ROWS, max)
+/// Rows a drawer of `items` rows takes on a terminal `terminal_height` rows
+/// tall.
+pub fn band_height(items: usize, terminal_height: u16) -> u16 {
+    super::menu_box::band_capacity(items, DRAWER_FRAME_ROWS, terminal_height)
 }
 
-impl BottomBandProvider for DrawerWidget {
-    fn height(&self, max: u16) -> u16 {
-        let guard = self.data.read();
-        guard.as_ref().map_or(0, |s| {
-            super::menu_box::band_capacity(s.rows.len(), DRAWER_PAD_ROWS, max)
-        })
-    }
+/// Rows of items a drawer shows at once inside [`band_height`]: the number
+/// the drawer pages against.
+pub fn band_visible_rows(items: usize, terminal_height: u16) -> usize {
+    super::menu_box::band_visible_rows(items, DRAWER_FRAME_ROWS, terminal_height)
+}
 
+impl ChromeProvider for DrawerWidget {
     fn render(&self, area: Rect, theme: &Theme, canvas: &mut Canvas) {
         if area.height == 0 {
             return;
@@ -82,25 +81,32 @@ impl BottomBandProvider for DrawerWidget {
         let style = theme.resolve_by_name(Scope(ui_scopes::DRAWER));
         let selected_style = theme.resolve_by_name(Scope(ui_scopes::MENU_SELECTED));
         canvas.fill_rect_bg(area, style);
+        // The frame takes the same cells with `popup-border` off, left as
+        // plain background, matching the popup's margin.
+        if state.border {
+            super::menu_box::draw_open_box_border(canvas, area, style);
+        }
 
-        // Row 0 is a blank padding row (visual gap from the pane above);
-        // rows 1.. show the scroll-adjusted, visible slice of items.
-        let visible_rows = area.height.saturating_sub(1) as usize;
+        let inner = Rect {
+            y: area.y + DRAWER_FRAME_ROWS,
+            height: area.height - DRAWER_FRAME_ROWS,
+            ..area.inset(super::menu_box::FRAME_EDGE, 0)
+        };
         for (i, item) in state
             .rows
             .iter()
             .skip(state.scroll)
-            .take(visible_rows)
+            .take(inner.height as usize)
             .enumerate()
         {
             let row_idx = state.scroll + i;
-            let y = area.y + 1 + i as u16;
+            let y = inner.y + i as u16;
             super::menu_box::draw_list_row(
                 canvas,
-                area.x,
+                inner.x,
                 y,
-                area.width,
-                area.right(),
+                inner.width,
+                inner.right(),
                 item.as_deref().unwrap_or(""),
                 row_idx == state.selected,
                 selected_style,
@@ -112,16 +118,23 @@ impl BottomBandProvider for DrawerWidget {
 
 #[cfg(test)]
 mod tests {
-    use super::visible_rows;
+    use super::{band_height, band_visible_rows};
+
+    #[test]
+    fn band_height_is_capped_by_the_ceiling() {
+        // 50 items and the top frame row want 51 rows; a 20-row terminal's 35%
+        // ceiling is 7.
+        assert_eq!(band_height(50, 20), 7);
+    }
 
     /// The overflow-safety guard on the shared arithmetic itself lives in
     /// `menu_box::tests` (`band_capacity_clamps_instead_of_overflowing_u16`).
-    /// This pins the drawer's own 1-row pad against it instead of
+    /// This pins the drawer's own 1-row top frame against it instead of
     /// re-testing the arithmetic.
     #[test]
-    fn visible_rows_reserves_the_pad_row_below_the_cap() {
+    fn band_visible_rows_reserves_the_top_frame_row_below_the_cap() {
         assert_eq!(
-            visible_rows(3, 20),
+            band_visible_rows(3, 20),
             3,
             "well under the cap: all 3 items fit"
         );

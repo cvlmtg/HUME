@@ -28,6 +28,7 @@
 ### Panes & interface
 - `Shift-Tab` (kitty) and `Ctrl-p P` focus the previous pane.
 - `core:git-diff`'s new `"branch-style"` config can show the statusline branch as `⎇ main`.
+- The bottom drawer has a border, open at the bottom, which `popup-border` turns off.
 
 ### Plugins & scripting
 - A `live-picker!` source gets a token per query, so a slow source can't overwrite newer rows.
@@ -44,8 +45,11 @@
 
 ### Fixes
 - In Insert mode, `End`, `↑` and `↓` reach the end of a line, after its last character.
+- The command line's completion menu opens right above the command line, over an open drawer or docked popup, instead of above them.
 - Headless `--keys` runs print warnings and errors on stderr and exit with status 1 when an error is logged.
 - Headless `--keys` runs honour a `FILE:LINE[:COL]` input, placing the cursor there before the first key.
+- Centring, scrolling, `:split`, `viewport-range`, and popup and picker paging count a drawer, docked popup or tab bar that opened or closed since the last screen update.
+- In a macro, `Ctrl-d` and `Ctrl-u` scroll a popup opened by the previous key, and the completion documentation box after a selection move, instead of closing the popup or paging the wrong text.
 - `set-extra-highlights!`, `set-inlay-hints!` and `set-virtual-lines!` segments accept a char offset inside a character such as an emoji sequence.
 - `json-ref-or` returns its default for a field the server sent as `null`, so a code action whose `disabled` is `null` is offered.
 - `apply-text-edits!` and `apply-workspace-edit!` still apply after the pane switches buffers, and `apply-text-edits!` and `lsp-document-params` work without a pane.

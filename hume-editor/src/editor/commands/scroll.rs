@@ -5,7 +5,7 @@ use hume_ops::MotionMode;
 
 use super::super::EditorState;
 use super::super::doc_ops;
-use super::{CommandPane, pane_display_lines, sticky_landing, viewport};
+use super::{CommandPane, pane_display_lines, pane_height, sticky_landing};
 use crate::editor::error::CommandError;
 use hume_editing::selection::Selection;
 
@@ -111,7 +111,7 @@ fn scroll_page(
     half: bool,
     down: bool,
 ) -> Result<(), CommandError> {
-    let height = viewport(view, pid).height as usize;
+    let height = pane_height(state, view, pid);
     let count = if half { half_page(height) } else { height };
     scroll_view(state, view, pid, count, down, mode);
     Ok(())
@@ -187,7 +187,7 @@ fn cmd_view_scroll_to_display_line(
 /// that wants the same effect without going through a native `EditorCmd`'s
 /// `Result`.
 pub(in crate::editor) fn view_center(state: &mut EditorState, view: &mut EngineView, pid: PaneId) {
-    let target = (viewport(view, pid).height as usize) / 2;
+    let target = pane_height(state, view, pid) / 2;
     cmd_view_scroll_to_display_line(state, view, pid, target);
 }
 
@@ -230,7 +230,7 @@ pub(in crate::editor) fn cmd_view_bottom(
     _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let target = (viewport(view, t.pid()).height as usize).saturating_sub(1);
+    let target = pane_height(state, view, t.pid()).saturating_sub(1);
     cmd_view_scroll_to_display_line(state, view, t.pid(), target);
     Ok(())
 }

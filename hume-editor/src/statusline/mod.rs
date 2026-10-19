@@ -364,7 +364,7 @@ impl HumeStatusline<'_> {
     }
 }
 
-impl hume_engine::providers::StatuslineProvider for HumeStatusline<'_> {
+impl hume_engine::providers::ChromeProvider for HumeStatusline<'_> {
     fn render(&self, area: Rect, theme: &hume_engine::theme::Theme, canvas: &mut Canvas) {
         let editor = self;
         let mode = editor

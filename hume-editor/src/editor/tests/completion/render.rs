@@ -52,6 +52,23 @@ fn completion_menu_clamps_to_a_narrow_pane_instead_of_vanishing() {
     assert!(state.rect.width <= pane_rect.width);
 }
 
+#[test]
+fn minibuf_completion_sits_on_the_command_line_over_the_drawer() {
+    let mut ed = open_headless(None);
+    type_cmd(&mut ed, ":ls");
+    ed.feed_key(key(':'));
+    ed.feed_key(key('w'));
+    ed.feed_key(key_tab());
+
+    frame(&mut ed, 40, 20);
+
+    assert!(ed.state.input.drawer().is_some(), "the drawer stays open");
+    let view = ed.state.views.minibuf_completion.read();
+    let state = view.as_ref().expect("the `:` menu is open");
+    // The command line is the terminal's last row.
+    assert_eq!(state.rect.bottom(), 19);
+}
+
 // ── Snapshots ─────────────────────────────────────────────────────────────────
 
 /// The Insert-mode menu with `completion-docs` off: two columns (`label`,
@@ -316,13 +333,12 @@ fn doc_box_closes_with_the_menu() {
     assert_eq!(doc_box(&ed), None);
 }
 
-/// Two candidates, the first with 20 one-word documentation lines
-/// (`line0`..`line19`), more than the box shows in a 60x30 frame.
+/// Two candidates, the first with 20 documentation lines: more than the box
+/// shows in a 60x30 frame.
 fn long_doc_items() -> String {
-    let doc: Vec<String> = (0..20).map(|i| format!("line{i}")).collect();
     format!(
         r#"(list (hash "label" "foo" "documentation" "{}") (hash "label" "foobar"))"#,
-        doc.join("\\n")
+        popup_lines(20)
     )
 }
 
@@ -398,6 +414,28 @@ fn doc_box_scroll_resets_when_the_selection_moves() {
     frame(&mut ed, 60, 30);
     let (_, lines) = doc_box(&ed).expect("doc box showing");
     assert_eq!(lines[0], "line0");
+}
+
+#[test]
+fn ctrl_d_after_tab_before_a_frame_scrolls_the_newly_selected_doc() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = open_headless(None);
+    let items = format!(
+        r#"(list (hash "label" "foo" "documentation" "Does foo.")
+                 (hash "label" "foobar" "documentation" "{}"))"#,
+        popup_lines(20)
+    );
+    insert_with_source(&mut ed, tmp.path(), &items);
+    frame(&mut ed, 60, 30);
+
+    ed.feed_key(key_tab());
+    ed.feed_key(key_ctrl('d'));
+
+    frame(&mut ed, 60, 30);
+    let inner = doc_box_inner_height(&ed);
+    assert!(inner < 20, "setup: the box cuts the documentation off");
+    let (_, lines) = doc_box(&ed).expect("doc box showing");
+    assert_eq!(lines[0], format!("line{}", inner / 2));
 }
 
 #[test]

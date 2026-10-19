@@ -226,7 +226,7 @@ impl BufferHost for MockHost {
         None
     }
     fn viewport_range(
-        &self,
+        &mut self,
         _pane: PaneHandle,
     ) -> Result<hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>, String> {
         Err("MockHost: viewport_range not available".into())

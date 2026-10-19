@@ -18,7 +18,8 @@ pub mod popup;
 pub mod width;
 
 use hume_engine::lock::SharedSlot;
-use hume_engine::providers::{BottomBandProvider, OverlayProvider};
+use hume_engine::pipeline::BOTTOM_BANDS;
+use hume_engine::providers::{ChromeProvider, OverlayProvider};
 use hume_engine::theme::ui_scopes;
 
 use picker_panel::PickerOverlay;
@@ -51,19 +52,34 @@ pub struct OverlayViews {
     pub picker: SharedSlot<Option<picker_panel::PickerViewState>>,
 }
 
+/// One value per bottom band. [`Self::in_stack_order`] is the one place that
+/// orders the bands, for both their painters and their rows.
+pub struct Bands<T> {
+    pub drawer: T,
+    pub popup: T,
+}
+
+impl<T> Bands<T> {
+    /// The bands bottom-up: the drawer directly above the statusline, a
+    /// docked popup above it.
+    pub fn in_stack_order(self) -> [T; BOTTOM_BANDS] {
+        let Self { drawer, popup } = self;
+        [drawer, popup]
+    }
+}
+
 impl OverlayViews {
-    /// The two chrome bands (drawer, docked popup) reading this set's
-    /// band-shaped slots, for `EngineView::bottom_bands`. **Call once**: a
-    /// second call registers a duplicate band painting the same data twice.
-    pub fn bottom_bands(&self) -> Vec<Box<dyn BottomBandProvider>> {
-        vec![
-            Box::new(drawer::DrawerWidget {
+    /// Painters for the two chrome bands (drawer, docked popup), each reading
+    /// this set's band-shaped slot, for `EngineView::set_chrome`.
+    pub fn bottom_bands(&self) -> Bands<Box<dyn ChromeProvider>> {
+        Bands {
+            drawer: Box::new(drawer::DrawerWidget {
                 data: self.drawer.clone(),
             }),
-            Box::new(popup::PopupBandWidget {
+            popup: Box::new(popup::PopupBandWidget {
                 data: self.popup_band.clone(),
             }),
-        ]
+        }
     }
 
     /// Every floating overlay reading this set's slots, for

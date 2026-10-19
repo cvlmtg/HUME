@@ -57,14 +57,15 @@ impl Editor {
     /// Write the open minibuffer completion session into the shared
     /// `PopupState` Arc: same widget as [`Self::sync_menu_view`]/
     /// [`Self::sync_completion_menu_view`] (unwrapped rows, selected-row
-    /// styling), but anchored at the pane's bottom edge above the
-    /// statusline rather than a buffer cursor. `Minibuf`-target only; a
-    /// `Buffer`-target session renders through
+    /// styling), but anchored at the command line in the statusline row
+    /// rather than a buffer cursor, over any bottom band. `Minibuf`-target
+    /// only; a `Buffer`-target session renders through
     /// [`Self::sync_completion_menu_view`] instead, into its own slot.
     ///
-    /// Called from `prepare_frame`'s overlay-sync step. Needs only
-    /// `last_pane_area` (settled in step 0), unlike its cursor-anchored
-    /// siblings, which need the current frame's scroll result too.
+    /// Called from `prepare_frame`'s overlay-sync step. Needs only the chrome
+    /// layout (laid out by `relayout` earlier in `prepare_frame`), unlike its
+    /// cursor-anchored siblings, which need the current frame's scroll
+    /// result too.
     pub(in crate::editor) fn sync_minibuf_completion_view(&self) {
         let is_open = self.state.input.minibuf_completion().is_some();
         // Skip the write-lock when both sides are already None: common case
@@ -72,7 +73,7 @@ impl Editor {
         if !is_open && self.state.views.minibuf_completion.read().is_none() {
             return;
         }
-        let pane_rect = self.view.last_pane_area;
+        let area = self.view.area_above_statusline();
         let view = (|| -> Option<hume_ui::popup::PopupState> {
             let session = self.state.input.minibuf_completion()?;
             let anchor_byte = session.menu_anchor_byte()?;
@@ -83,20 +84,21 @@ impl Editor {
                 .minibuf()
                 .map(|mb| mb.cursor_x_at(anchor_byte))
                 .unwrap_or(0);
-            let window = hume_ui::popup::menu_window(session.len(), selected, pane_rect);
+            let window = hume_ui::popup::menu_window(session.len(), selected, area);
             let rows = session.rows_in(window.range.clone());
-            // Anchoring at the pane's bottom edge is what drives
-            // `resolve_popup_geometry` into its flip-above branch
-            // (`space_below` saturates to 0 there), landing the box on the
-            // rows just above the statusline. The -1 pulls the frame left so
-            // the first label column sits under the token in the input.
+            // Anchoring at the statusline row, one past `area`'s bottom, is
+            // what drives `resolve_popup_geometry` into its flip-above
+            // branch (`space_below` saturates to 0 there), landing the box on
+            // the rows just above the command line. The -1 pulls the frame
+            // left so the first label column sits under the token in the
+            // input.
             Some(hume_ui::popup::resolve_menu(
                 &rows,
                 window,
                 hume_ui::popup::PopupPlacement {
-                    anchor: (anchor_x.saturating_sub(1), pane_rect.bottom()),
-                    pane_rect,
-                    content_width: pane_rect.width,
+                    anchor: (anchor_x.saturating_sub(1), area.bottom()),
+                    pane_rect: area,
+                    content_width: area.width,
                 },
                 self.state.settings.popup_border,
             ))
@@ -219,6 +221,10 @@ impl Editor {
 
 /// Run a trimmed `:` line, returning its error unreported.
 fn run_command_line(ed: &mut Editor, input: &str) -> Result<(), CommandError> {
+    // A native typed command (`:split`'s `fits_split`) measures the pane
+    // without passing through `commands::run`, which lays out a band
+    // changed since the last frame for every other command.
+    ed.state.relayout(&mut ed.view);
     let (cmd, force, arg) = parse_typed_command(input);
 
     // Bare line number `:42`: shorthand for `:goto 42`.

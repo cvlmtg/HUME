@@ -70,14 +70,11 @@ fn drawer_scrolls_a_far_selected_row_into_view() {
     let mut ed = editor_from("-[x]>abcdefgh\n");
     ed.sync_viewport_dims(40, 12);
     open_with_selected(&mut ed, tmp.path(), 30, 29);
-    let height = ed.view.last_terminal_area.height;
+    let height = ed.view.terminal_area().height;
 
     ed.state.clamp_drawer_scroll_to_terminal(height);
 
-    let visible = hume_ui::drawer::visible_rows(
-        30,
-        hume_engine::pipeline::EngineView::bottom_band_max(height),
-    );
+    let visible = hume_ui::drawer::band_visible_rows(30, height);
     assert!(visible < 30, "setup: the band cannot show every row");
     assert_eq!(ed.state.input.drawer().unwrap().scroll, 30 - visible);
 }
@@ -307,7 +304,7 @@ fn clamp_drawer_scroll_to_terminal_caps_scroll_when_the_list_shrinks() {
     }
 
     ed.state
-        .clamp_drawer_scroll_to_terminal(ed.view.last_terminal_area.height);
+        .clamp_drawer_scroll_to_terminal(ed.view.terminal_area().height);
 
     assert_eq!(
         ed.state.input.drawer().unwrap().scroll,
@@ -1018,7 +1015,7 @@ fn long_list_auto_scrolls_to_keep_selection_visible() {
         ),
     );
 
-    // Populate `last_terminal_area` before any key handling needs it: the
+    // Record the terminal area before any key handling needs it: the
     // scroll clamp reads it to agree with what the engine will next paint.
     let mut ctx = RenderContext::new();
     ed.sync_viewport_dims(40, 15);
@@ -1067,7 +1064,7 @@ fn arm_twenty_items_in_a_short_terminal(ed: &mut Editor, tmp: &Path) {
                    (lambda (idx tok) (log! 'info (to-string idx))))))"#
         ),
     );
-    // Populate `last_terminal_area` before any key handling needs it: the
+    // Record the terminal area before any key handling needs it: the
     // scroll clamp reads it to agree with what the engine will next paint.
     let mut ctx = RenderContext::new();
     ed.sync_viewport_dims(40, 15);
@@ -1245,11 +1242,13 @@ fn enter_jump_lands_via_goto_location_and_drawer_stays_open() {
 
 // ── Render snapshot: drawer band under the shrunk pane grid ──────────────────
 
-#[test]
-fn drawer_renders_under_the_pane_with_selected_row_highlighted() {
+/// Renders a two-row drawer, its first row selected, under a one-line buffer
+/// on a 40x10 terminal.
+fn render_two_row_drawer(popup_border: bool) -> String {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = open_headless(None);
     ed.view.theme = crate::testing::build_snapshot_theme();
+    ed.state.settings.popup_border = popup_border;
     ed.feed_key(key('i'));
     for ch in "hello".chars() {
         ed.feed_key(key(ch));
@@ -1268,7 +1267,15 @@ fn drawer_renders_under_the_pane_with_selected_row_highlighted() {
     ed.sync_viewport_dims(40, 10);
     ed.settle();
     ed.prepare_frame(&mut ctx);
-    let rect = Rect::new(0, 0, 40, 10);
-    let snap = render_snapshot::render_to_styled_string(&mut ed, rect);
-    insta::assert_snapshot!(snap);
+    render_snapshot::render_to_styled_string(&mut ed, Rect::new(0, 0, 40, 10))
+}
+
+#[test]
+fn drawer_renders_under_the_pane_with_selected_row_highlighted() {
+    insta::assert_snapshot!(render_two_row_drawer(true));
+}
+
+#[test]
+fn drawer_without_popup_border_keeps_a_blank_frame() {
+    insta::assert_snapshot!(render_two_row_drawer(false));
 }

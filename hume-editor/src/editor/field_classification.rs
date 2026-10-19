@@ -104,11 +104,12 @@ fn editor_state_fields_are_classified() {
             // doesn't fire a phantom OnModeChange for a mode the fresh
             // hooks never observed
             last_observed_mode: _,
-            mouse_drag: _,   // preserved
-            cwd: _,          // preserved
-            views: _,        // preserved: Arc views, self-healing per-frame regardless of config
+            mouse_drag: _,             // preserved
+            cwd: _,                    // preserved
+            views: _, // preserved: Arc views, self-healing per-frame regardless of config
             tabline_view: _, // preserved: self-healing per-frame regardless of config
-            wake: _,         // preserved: cross-thread waker infra, not config
+            last_tabline_signature: _, // preserved
+            wake: _,  // preserved: cross-thread waker infra, not config
         } = e;
     }
 }
@@ -150,8 +151,7 @@ fn editor_fields_are_classified() {
             // preserved: indexes the native DiagnosticPullDebounce timers
             // that themselves survive the reset
             diagnostic_pull_debounce: _,
-            last_visible_range: _,     // preserved
-            last_tabline_signature: _, // preserved
+            last_visible_range: _, // preserved
             // preserved: staleness after a reload is forced by
             // DecorationStores::reset bumping the generation
             // counter, not by resetting this map directly

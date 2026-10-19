@@ -349,7 +349,7 @@ fn kitty_ctrl_g_g_extends_to_first_line() {
 #[test]
 fn kitty_ctrl_g_then_click_drops_one_shot_extend() {
     let mut ed = editor_from_kitty("-[h]>ello\n");
-    ed.view.last_pane_area = hume_grid::Rect::new(0, 0, 80, 24);
+    ed.sync_viewport_dims(80, 25);
     ed.handle_key(key_ctrl('g'));
     ed.handle_input(mouse_left_down(1, 0));
     ed.handle_key(key('l'));

@@ -8,11 +8,11 @@
 use hume_grid::{Grid, Rect};
 
 use hume_engine::pane::Pane;
-use hume_engine::pipeline::{PaneId, PaneRenderSettings, RenderContext};
+use hume_engine::pipeline::{EngineView, PaneId, PaneRenderSettings, RenderContext};
 use hume_engine::types::EditorMode;
 
-use super::Editor;
 use super::buffer::Buffer;
+use super::{Editor, EditorState};
 
 /// Project a pane's selections into its engine mirror, in the model's start
 /// order. That is also the cursor order the mirror requires: selections never
@@ -94,9 +94,10 @@ impl Editor {
         super::cursor::gutter_width(pane.providers.gutter_columns(), last_line_idx)
     }
 
-    /// Render one frame into `grid`. Single home for the rope and syntax
+    /// Render one frame into `grid`, sized to the terminal area the last
+    /// `sync_viewport_dims` recorded. Single home for the rope and syntax
     /// lookups shared by the event loop and `render_to_buf`.
-    pub(super) fn render_into(&mut self, area: Rect, grid: &mut Grid, ctx: &mut RenderContext) {
+    pub(super) fn render_into(&mut self, grid: &mut Grid, ctx: &mut RenderContext) {
         // Resolved for every active pane up front: `resolve_pane_settings`
         // reads the pane it is asked about, and `render`'s pane loop borrows
         // `self.view.panes` mutably, so it cannot run from inside that loop.
@@ -110,7 +111,6 @@ impl Editor {
                 .map(|&pid| (pid, self.resolve_pane_settings(pid))),
         );
         let focused_pid = self.view.focused_pane();
-        let draw_dividers = self.state.settings.pane_dividers;
         let focused_bid = self.focused_buffer_id();
 
         // Split explicitly rather than leaning on closure-capture precision:
@@ -132,7 +132,6 @@ impl Editor {
         };
         let buffers = &state.buffers;
         view.render(
-            area,
             grid,
             hume_engine::pipeline::FrameInputs {
                 get_rope: |bid| buffers.try_get(bid).map(|b| b.text().rope()),
@@ -143,7 +142,6 @@ impl Editor {
                         .map(|s| s as &dyn hume_engine::providers::SyntaxSpans)
                 },
                 statusline: &statusline,
-                draw_dividers,
             },
             ctx,
         );
@@ -182,7 +180,7 @@ impl Editor {
         self.sync_viewport_dims(rect.width, rect.height);
         self.settle();
         self.prepare_frame(&mut ctx);
-        self.render_into(rect, &mut buf, &mut ctx);
+        self.render_into(&mut buf, &mut ctx);
         buf
     }
 
@@ -260,211 +258,18 @@ impl Editor {
         }
     }
 
-    /// Sync every pane's viewport dimensions and the frame's geometry
-    /// snapshot from the terminal size: the one step that needs the raw
+    /// Record a new terminal size and lay the panes out against it
+    /// ([`EditorState::relayout`]): the one step that needs the raw
     /// `(width, height)`, so it's split out from `prepare_frame` and called
     /// separately, *before* `Editor::settle()`.
     ///
     /// Must run before `settle()`: `drain_due_timers` fires `OnViewportChange`
-    /// off each pane's *current* bounds (`timer_bridge.rs`), so the bounds
-    /// have to be current before that drain runs, not after.
-    ///
-    /// [`Self::sync_layout`] calls this again, from the stored
-    /// `last_terminal_area`, after re-syncing the bottom-band views, so a
-    /// band-height change `settle()` made (a hook-driven `close-popup!`, a
-    /// settle-drained `close-drawer!`) is re-partitioned into `viewport`
-    /// before this same frame renders, instead of lagging a frame behind.
+    /// off each pane's *current* bounds (`timer_bridge.rs`), so a resize has
+    /// to land before that drain runs, not after.
     pub(super) fn sync_viewport_dims(&mut self, terminal_width: u16, terminal_height: u16) {
-        // Partitioned through the same `EngineView::pane_area` that `render`
-        // uses, so viewport dims and drawn rects never disagree even when a
-        // tab bar is present.
-        let terminal_area = Rect {
-            x: 0,
-            y: 0,
-            width: terminal_width,
-            height: terminal_height,
-        };
-        let pane_area = self.view.pane_area(terminal_area);
-
-        // A resize can move the cursor's own display line relative to the
-        // viewport (a shorter pane can push it out of view, a narrower one
-        // can rewrap it) without the selection itself moving at all. Both
-        // `height` and (through the wrap column) `content_width` are
-        // geometry facts `EditorState::layout_key` carries, so `frame.rs`'s
-        // scroll step derives the reveal from the pane's new dimensions
-        // directly rather than this function raising it.
-        let geometry_changed = self.view.set_pane_geometry(
-            terminal_area,
-            pane_area,
-            self.state.settings.pane_dividers,
-        );
-        // Keeps every background tab's own panes sized to the current
-        // terminal too; see `TabStore::inactive_layouts`'s own doc. An
-        // inactive tab's tree never changes on its own, so its panes need
-        // re-partitioning only when the partition itself moved.
-        if geometry_changed {
-            for layout in self.state.tabs.inactive_layouts() {
-                self.view.resync_viewport_dims_for(layout);
-            }
-        }
-    }
-
-    /// Hash of everything [`Self::sync_tabline_view`]'s rebuild depends on:
-    /// whether the tab bar is shown at all, and (while it is) the tab
-    /// count/order, each tab's `(id, pane, buffer, dirty, path)`, and the
-    /// bar's own geometry (a resize must still trigger a rebuild even when
-    /// the tab list itself is unchanged, since `scroll` depends on width
-    /// too). `buf.path()` is hashed rather than `buf.display_name()`:
-    /// `display_name()` allocates a `String`, defeating the point of a
-    /// cheap signature, and the two agree on every rename/attach that
-    /// actually changes what's drawn (a buffer's dirty marker is covered
-    /// separately by `is_dirty()`). Excludes anything that
-    /// doesn't change what a rebuild would produce: buffer *content*, for
-    /// instance, since neither the label nor `scroll` reads it.
-    fn tabline_signature(&self, visible: bool) -> u64 {
-        use std::hash::{Hash, Hasher};
-        let mut hasher = rustc_hash::FxHasher::default();
-        visible.hash(&mut hasher);
-        if visible {
-            let current = self.state.tabs.current();
-            current.hash(&mut hasher);
-            let bar = self.view.tabbar_area(self.view.last_terminal_area);
-            bar.x.hash(&mut hasher);
-            bar.width.hash(&mut hasher);
-            for (id, pid) in self.state.tabs.focused_panes(self.view.focused_pane()) {
-                id.hash(&mut hasher);
-                pid.hash(&mut hasher);
-                let bid = self.view.panes[pid].buffer_id();
-                bid.hash(&mut hasher);
-                let buf = self.state.buffers.get(bid);
-                self.state.has_unsaved_changes(bid).hash(&mut hasher);
-                buf.path().hash(&mut hasher);
-            }
-        }
-        hasher.finish()
-    }
-
-    /// Re-sync the tab-bar view from `state.tabs` + each tab's focused
-    /// pane's buffer, self-healing every frame, same rationale as
-    /// `EditorState::sync_drawer_view`'s own doc: a direct mutation that
-    /// bypasses the normal `:tabnew`/`:tabclose` builtins would otherwise
-    /// leave a stale row painting for however long it takes the next frame.
-    /// Gated on [`Self::tabline_signature`]: an unchanged signature means
-    /// the previous frame's `TablineViewState` is already correct, so the
-    /// rebuild below (one allocating `display_name()` call per tab, plus
-    /// the scroll probe) is skipped on every steady-state frame, which is
-    /// almost all of them.
-    ///
-    /// Needs both `state` (tab order, settings, buffers) and `view` (which
-    /// buffer a stashed tab's pane was viewing), unlike `sync_drawer_view`.
-    /// That's why this lives on `Editor` rather than on `EditorState`.
-    fn sync_tabline_view(&mut self) {
-        let visible = match self.state.settings.tabline {
-            crate::editor::settings::TablineVisibility::Always => true,
-            crate::editor::settings::TablineVisibility::Never => false,
-            crate::editor::settings::TablineVisibility::Dynamic => self.state.tabs.len() > 1,
-        };
-
-        let signature = self.tabline_signature(visible);
-        if self.last_tabline_signature == Some(signature) {
-            return;
-        }
-        self.last_tabline_signature = Some(signature);
-
-        if !visible {
-            // The common case (the `dynamic` default with one tab open, i.e.
-            // a normal session): skip every per-tab step below entirely.
-            // `TabEntry::label` is an owned `String`, so building the full
-            // `Vec` just to immediately hide it would cost one allocation
-            // and a `display_name()` call per tab, every frame, for a row
-            // that's never drawn.
-            self.state
-                .tabline_view
-                .set(crate::tabline::TablineViewState::default());
-            return;
-        }
-
-        let active_index = self.state.tabs.current_pos();
-
-        let tabs: Vec<crate::tabline::TabEntry> = self
-            .state
-            .tabs
-            .focused_panes(self.view.focused_pane())
-            .map(|(id, pid)| {
-                let bid = self.view.panes[pid].buffer_id();
-                let buf = self.state.buffers.get(bid);
-                let mut label = buf.display_name();
-                if self.state.has_unsaved_changes(bid) {
-                    label.push('+');
-                }
-                crate::tabline::TabEntry::new(id, label)
-            })
-            .collect();
-
-        // The smallest `scroll` that still keeps `active_index` inside the
-        // packed window, computed fresh every frame rather than clamped
-        // from last frame's value, which this loop's own result never
-        // actually depends on: packing from an earlier `scroll` can only
-        // reach the same window end or earlier (an earlier start must first
-        // fit the tab(s) before it), so "does `active_index` fit starting at
-        // `scroll`" is monotone in `scroll` and the smallest passing value
-        // is a pure function of `tabs`/`active_index`/`width`. Bounded by
-        // `scroll < active_index` even in the degenerate `width == 0` case
-        // (startup, before the first real terminal size arrives), where no
-        // tab ever fits and the window never grows.
-        // Reads geometry from `tabbar_area`, same as `render`/`tabline_click`:
-        // `tab_extents`' own doc explains why all three must agree. Probes
-        // via `tab_extents_into` rather than `tab_extents`: one reused
-        // `ranges` buffer across every candidate this loop tries, instead of
-        // a fresh allocation per candidate.
-        let bar = self.view.tabbar_area(self.view.last_terminal_area);
-        let mut probe_ranges = Vec::new();
-        let mut scroll = 0;
-        while scroll < active_index {
-            crate::tabline::tab_extents_into(&tabs, scroll, bar.x, bar.width, &mut probe_ranges);
-            if active_index < scroll + probe_ranges.len() {
-                break;
-            }
-            scroll += 1;
-        }
-
-        self.state
-            .tabline_view
-            .set(crate::tabline::TablineViewState {
-                tabs,
-                active_index,
-                scroll,
-                visible,
-            });
-    }
-
-    /// Re-partition the terminal from the settled chrome views (bottom bands,
-    /// tab bar) into each pane's viewport. A settled drain can resize a band
-    /// after the pre-settle `sync_viewport_dims`, so anything that reads a
-    /// pane's height after a drain runs this first.
-    pub(super) fn sync_layout(&mut self) {
-        // Bake scopes interned since the last frame. It must run before the
-        // bottom-band sync: `show-popup!` interns its grammar's scopes at
-        // dispatch time, and the band resolves them to styles right away.
-        // Scopes interned later in `prepare_frame` are baked by its second
-        // call at the end.
-        self.view.theme.bake_if_stale(&self.view.registry);
-
-        // Re-partition from the settled views so the pane doesn't paint
-        // short with blank rows left where a band was. Skipped without
-        // terminal geometry (headless callers).
-        self.sync_popup_band_view();
-        self.state
-            .refresh_buffer_list_drawer(self.focused_buffer_id());
-        self.state
-            .clamp_drawer_scroll_to_terminal(self.view.last_terminal_area.height);
-        self.fill_drawer_window();
-        self.state.sync_drawer_view();
-        self.sync_tabline_view();
-        let area = self.view.last_terminal_area;
-        if area.width > 0 && area.height > 0 {
-            self.sync_viewport_dims(area.width, area.height);
-        }
+        self.view
+            .resize(Rect::new(0, 0, terminal_width, terminal_height));
+        self.state.relayout(&mut self.view);
     }
 
     /// Sync all editor-owned state into the engine view, once per frame,
@@ -497,7 +302,17 @@ impl Editor {
         self.resync_cwd();
         self.flush_osc52();
 
-        self.sync_layout();
+        // The drawer's model (the `:ls` rows, the scroll clamp, the text of
+        // its newly visible rows), then the layout, for a band a settled drain
+        // or the drawer's render proc opened or closed, then the band views
+        // this frame draws.
+        let focused_bid = self.focused_buffer_id();
+        self.state.refresh_buffer_list_drawer(focused_bid);
+        self.state
+            .clamp_drawer_scroll_to_terminal(self.view.terminal_area().height);
+        self.fill_drawer_window();
+        self.state.relayout(&mut self.view);
+        self.state.sync_band_views(&mut self.view);
 
         // Nothing below changes which panes the active tab shows.
         let active = self.view.active_pane_ids();
@@ -592,9 +407,9 @@ impl Editor {
         // Overlays resolve their geometry now, so render only paints. The
         // cursor-anchored ones need the scroll result above.
         self.sync_minibuf_completion_view();
-        self.sync_popup_view(ctx);
-        self.sync_menu_view(ctx);
-        self.sync_completion_menu_view(ctx);
+        self.sync_popup_view(ctx.cursor_content_pos);
+        self.sync_menu_view(ctx.cursor_content_pos);
+        self.sync_completion_menu_view(ctx.cursor_content_pos);
         self.sync_picker_view();
 
         // Bake scopes interned during this frame (extra highlights, inline
@@ -645,6 +460,178 @@ impl Editor {
     pub(in crate::editor) fn viewport_mut(&mut self) -> &mut hume_engine::pane::Viewport {
         let focused_pid = self.view.focused_pane();
         &mut self.view.panes[focused_pid].viewport
+    }
+}
+
+impl EditorState {
+    /// Lay the chrome and the panes out against the models: the tab bar's
+    /// visibility, the open drawer's items and a docked popup's wrapped
+    /// text. A band can open or close between frames, so every reader of a
+    /// pane's height outside a frame runs this first. Never runs Steel, so
+    /// it is safe inside a Steel call.
+    pub(in crate::editor) fn relayout(&mut self, view: &mut EngineView) {
+        let area = view.terminal_area();
+        let drawer = self.input.drawer().map_or(0, |d| {
+            hume_ui::drawer::band_height(d.item_count(&self.buffers), area.height)
+        });
+        let popup = self
+            .input
+            .popup_mut()
+            .filter(|p| matches!(p.layout, hume_ui::popup::PopupLayout::Docked))
+            .map_or(0, |p| {
+                let lines = p.docked_total_rows(&mut view.theme, &view.registry, area.width);
+                hume_ui::popup::band_height(lines, area.height)
+            });
+        let bands = hume_ui::Bands { drawer, popup };
+
+        // The frame's scroll step reveals the cursor from each pane's new
+        // height and content width, both part of `layout_key`.
+        let moved = view.set_pane_geometry(
+            u16::from(self.tabline_visible()),
+            bands.in_stack_order(),
+            self.settings.pane_dividers,
+        );
+        // Background tabs' panes follow the terminal too, so `viewport-range`
+        // on a pane in another tab reports its real size. An inactive tab's
+        // tree never changes on its own, so its panes need re-partitioning
+        // only when the partition itself moved.
+        if moved {
+            for layout in self.tabs.inactive_layouts() {
+                view.resync_viewport_dims_for(layout);
+            }
+        }
+    }
+
+    /// Bring the band views (drawer, docked popup, tab bar) up to their
+    /// models for this frame to paint.
+    fn sync_band_views(&mut self, view: &mut EngineView) {
+        self.sync_drawer_view();
+        self.sync_popup_band_view(view);
+        self.sync_tabline_view(view);
+    }
+
+    fn tabline_visible(&self) -> bool {
+        match self.settings.tabline {
+            crate::editor::settings::TablineVisibility::Always => true,
+            crate::editor::settings::TablineVisibility::Never => false,
+            crate::editor::settings::TablineVisibility::Dynamic => self.tabs.len() > 1,
+        }
+    }
+
+    /// Hash of everything [`Self::sync_tabline_view`]'s rebuild depends on:
+    /// whether the tab bar is shown at all, and (while it is) the tab
+    /// count/order, each tab's `(id, pane, buffer, dirty, path)`, and the
+    /// bar's own geometry (a resize must still trigger a rebuild even when
+    /// the tab list itself is unchanged, since `scroll` depends on width
+    /// too). `buf.path()` is hashed rather than `buf.display_name()`:
+    /// `display_name()` allocates a `String`, defeating the point of a
+    /// cheap signature, and the two agree on every rename/attach that
+    /// actually changes what's drawn (a buffer's dirty marker is covered
+    /// separately by `has_unsaved_changes`). Excludes anything that
+    /// doesn't change what a rebuild would produce: buffer *content*, for
+    /// instance, since neither the label nor `scroll` reads it.
+    fn tabline_signature(&self, view: &EngineView, visible: bool) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut hasher = rustc_hash::FxHasher::default();
+        visible.hash(&mut hasher);
+        if visible {
+            let current = self.tabs.current();
+            current.hash(&mut hasher);
+            let bar = view.tabbar_area();
+            bar.x.hash(&mut hasher);
+            bar.width.hash(&mut hasher);
+            for (id, pid) in self.tabs.focused_panes(view.focused_pane()) {
+                id.hash(&mut hasher);
+                pid.hash(&mut hasher);
+                let bid = view.panes[pid].buffer_id();
+                bid.hash(&mut hasher);
+                let buf = self.buffers.get(bid);
+                self.has_unsaved_changes(bid).hash(&mut hasher);
+                buf.path().hash(&mut hasher);
+            }
+        }
+        hasher.finish()
+    }
+
+    /// Re-sync the tab-bar view from `self.tabs` + each tab's focused
+    /// pane's buffer, self-healing every frame: a direct mutation that
+    /// bypasses the normal `:tabnew`/`:tabclose` builtins would otherwise
+    /// leave a stale row painting.
+    /// Gated on [`Self::tabline_signature`]: an unchanged signature means
+    /// the previous frame's `TablineViewState` is already correct, so the
+    /// rebuild below (one allocating `display_name()` call per tab, plus
+    /// the scroll probe) is skipped on every steady-state frame, which is
+    /// almost all of them.
+    fn sync_tabline_view(&mut self, view: &EngineView) {
+        let visible = self.tabline_visible();
+
+        let signature = self.tabline_signature(view, visible);
+        if self.last_tabline_signature == Some(signature) {
+            return;
+        }
+        self.last_tabline_signature = Some(signature);
+
+        if !visible {
+            // The common case (the `dynamic` default with one tab open, i.e.
+            // a normal session): skip every per-tab step below entirely.
+            // `TabEntry::label` is an owned `String`, so building the full
+            // `Vec` just to immediately hide it would cost one allocation
+            // and a `display_name()` call per tab, every frame, for a row
+            // that's never drawn.
+            self.tabline_view
+                .set(crate::tabline::TablineViewState::default());
+            return;
+        }
+
+        let active_index = self.tabs.current_pos();
+
+        let tabs: Vec<crate::tabline::TabEntry> = self
+            .tabs
+            .focused_panes(view.focused_pane())
+            .map(|(id, pid)| {
+                let bid = view.panes[pid].buffer_id();
+                let buf = self.buffers.get(bid);
+                let mut label = buf.display_name();
+                if self.has_unsaved_changes(bid) {
+                    label.push('+');
+                }
+                crate::tabline::TabEntry::new(id, label)
+            })
+            .collect();
+
+        // The smallest `scroll` that still keeps `active_index` inside the
+        // packed window, computed fresh every frame rather than clamped
+        // from last frame's value, which this loop's own result never
+        // actually depends on: packing from an earlier `scroll` can only
+        // reach the same window end or earlier (an earlier start must first
+        // fit the tab(s) before it), so "does `active_index` fit starting at
+        // `scroll`" is monotone in `scroll` and the smallest passing value
+        // is a pure function of `tabs`/`active_index`/`width`. Bounded by
+        // `scroll < active_index` even in the degenerate `width == 0` case
+        // (startup, before the first real terminal size arrives), where no
+        // tab ever fits and the window never grows.
+        // Reads geometry from `tabbar_area`, same as `render`/`tabline_click`,
+        // so painting, hit-testing and this scroll agree on where each tab
+        // starts and ends. Probes
+        // via `tab_extents_into` rather than `tab_extents`: one reused
+        // `ranges` buffer across every candidate this loop tries, instead of
+        // a fresh allocation per candidate.
+        let bar = view.tabbar_area();
+        let mut probe_ranges = Vec::new();
+        let mut scroll = 0;
+        while scroll < active_index {
+            crate::tabline::tab_extents_into(&tabs, scroll, bar.x, bar.width, &mut probe_ranges);
+            if active_index < scroll + probe_ranges.len() {
+                break;
+            }
+            scroll += 1;
+        }
+
+        self.tabline_view.set(crate::tabline::TablineViewState {
+            tabs,
+            active_index,
+            scroll,
+        });
     }
 }
 

@@ -6,10 +6,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use slotmap::{SecondaryMap, SlotMap, new_key_type};
 
 use crate::pane::Pane;
-use crate::providers::{
-    BottomBandProvider, DEFAULT_GUTTER_SCOPE, OverlayProvider, StatuslineProvider, SyntaxSpans,
-    TabBarProvider,
-};
+use crate::providers::{ChromeProvider, DEFAULT_GUTTER_SCOPE, OverlayProvider, SyntaxSpans};
 use crate::style::StyleScratch;
 use crate::theme::{ScopeRegistry, Theme};
 use crate::types::{EditorMode, ResolvedStyle, ScopeId};
@@ -87,12 +84,7 @@ pub struct FrameInputs<'a, R, S> {
     /// Resolves a `BufferId` to its syntax highlight span source, if any.
     /// Same per-frame-borrow contract as `get_rope`.
     pub get_syntax: S,
-    pub statusline: &'a dyn StatuslineProvider,
-    /// The `pane-dividers` setting: `true` reserves and paints a 1-cell seam
-    /// between sibling panes; `false` tiles panes edge-to-edge with no
-    /// reserved gap. Non-focused panes are dimmed either way: dimming is the
-    /// focus cue, the seam glyph is a separate cosmetic choice.
-    pub draw_dividers: bool,
+    pub statusline: &'a dyn ChromeProvider,
 }
 
 // ---------------------------------------------------------------------------
@@ -184,6 +176,22 @@ pub struct FocusKey(u64);
 
 static NEXT_FOCUS_KEY: AtomicU64 = AtomicU64::new(0);
 
+/// How many bottom chrome bands the view stacks above the statusline. Every
+/// per-band list is an array of this length, so a painter or row count
+/// without its band does not compile.
+pub const BOTTOM_BANDS: usize = 2;
+
+/// The painters of the chrome around the panes, other than the statusline
+/// (which borrows the editor per frame, see [`FrameInputs::statusline`]).
+pub struct Chrome {
+    /// Painted into the rows at the top of the terminal area.
+    pub tabbar: Box<dyn ChromeProvider>,
+    /// The bottom bands (the pick-list drawer, a docked popup), stacked
+    /// upward from the statusline in array order. Several can be open at
+    /// once.
+    pub bottom_bands: [Box<dyn ChromeProvider>; BOTTOM_BANDS],
+}
+
 /// The root of the editor's rendering state.
 pub struct EngineView {
     /// The active tab's layout and focused pane, private so every
@@ -207,35 +215,38 @@ pub struct EngineView {
     /// `PaneRenderCtx`/`ComposeCtx` so gutter composition never falls back to
     /// a by-name lookup on the per-cell hot path.
     default_gutter_scope: ScopeId,
-    /// Optional tab bar rendered at the top of the terminal area.
-    pub tabbar: Option<Box<dyn TabBarProvider>>,
-    /// Bottom chrome bands, stacked directly above the statusline:
-    /// currently the pick-list drawer and the docked hover popup. Only one
-    /// is ever non-empty in practice, but the list carries both rather than
-    /// special-casing which one "owns" the band.
-    pub bottom_bands: Vec<Box<dyn BottomBandProvider>>,
+    /// `None` until [`Self::set_chrome`], when no chrome but the statusline
+    /// can take rows.
+    chrome: Option<Chrome>,
+    /// Rows the tab bar takes, as of the last [`Self::set_pane_geometry`].
+    tabbar_rows: u16,
+    /// Rows each bottom band takes, as of the last
+    /// [`Self::set_pane_geometry`]. The panes shrink by their sum.
+    bottom_band_rows: [u16; BOTTOM_BANDS],
     /// Floating overlays (popups, menus, the picker) painted once over the
     /// whole pane area after every pane and seam. List order is z-order: the
     /// last one paints on top.
     pub overlays: Vec<Box<dyn OverlayProvider>>,
-    /// Terminal area available to panes as of the last `prepare_frame`.
-    /// Pane-focus/split commands run between frames with no terminal handle
-    /// of their own, so they recompute geometry from this plus `layout`
+    /// Terminal area left to panes by the chrome, as of the last
+    /// [`Self::set_pane_geometry`]. Pane-focus/split commands run between
+    /// frames with no terminal handle of their own, so they recompute
+    /// geometry from this plus `layout`
     /// (see `pane_rects`/`focused_rect`) rather than trusting a stored rect
     /// list. A handful of panes makes the DFS cheap enough that there is no
     /// cache to go stale when a command mutates `layout` mid-frame. Zero
-    /// area until the first `prepare_frame`.
+    /// area until the first terminal size arrives.
     pub last_pane_area: Rect,
-    /// Raw terminal area (before chrome subtraction) as of the last
-    /// `prepare_frame`, the same `area` passed to `pane_area`/`render`.
+    /// Raw terminal area (before chrome subtraction) that `render` draws
+    /// into, written only by [`Self::resize`].
     /// Distinct from `last_pane_area`: chrome that reserves rows off a
-    /// fraction of this raw height (the drawer's `max` ceiling) needs the
+    /// fraction of this raw height (a bottom band's ceiling) needs the
     /// *un-subtracted* figure, since `last_pane_area` already has the
-    /// drawer's own reserved rows folded out of it.
-    pub last_terminal_area: Rect,
-    /// Whether pane splits reserve a 1-cell seam column/row. Mirrors the
-    /// `pane-dividers` setting. Set alongside `last_pane_area`; consulted by
-    /// the same recompute helpers.
+    /// bands' reserved rows folded out of it.
+    last_terminal_area: Rect,
+    /// Whether pane splits reserve a 1-cell seam column/row, which `render`
+    /// paints a divider into. Mirrors the `pane-dividers` setting. Set
+    /// alongside `last_pane_area`; consulted by the same recompute helpers.
+    /// Non-focused panes dim either way: dimming is the focus cue.
     pub reserve_seam: bool,
 }
 
@@ -260,8 +271,9 @@ impl EngineView {
             theme,
             registry,
             default_gutter_scope,
-            tabbar: None,
-            bottom_bands: Vec::new(),
+            chrome: None,
+            tabbar_rows: 0,
+            bottom_band_rows: [0; BOTTOM_BANDS],
             overlays: Vec::new(),
             last_pane_area: Rect::default(),
             last_terminal_area: Rect::default(),
@@ -312,21 +324,72 @@ impl EngineView {
         self.layout.pane_cycled_from_focused(cycle)
     }
 
-    /// Store the frame's terminal geometry and size every active pane to
-    /// it. Returns whether the pane partition moved (a new pane area or seam
-    /// setting), the case in which an inactive tab's panes need
-    /// [`Self::resync_viewport_dims_for`] too.
+    /// Install the chrome's painters.
+    pub fn set_chrome(&mut self, chrome: Chrome) {
+        self.chrome = Some(chrome);
+    }
+
+    /// The raw terminal area `render` draws into, zero until the first
+    /// [`Self::resize`].
+    pub fn terminal_area(&self) -> Rect {
+        self.last_terminal_area
+    }
+
+    /// Record the terminal's area. The layout stays the one computed for the
+    /// previous area until the caller's next [`Self::set_pane_geometry`].
+    pub fn resize(&mut self, terminal: Rect) {
+        self.last_terminal_area = terminal;
+    }
+
+    /// Lay the chrome out against [`Self::terminal_area`]: `tabbar_rows` at the
+    /// top ([`Self::tabbar_area`]), `band_rows[i]` for the `i`th bottom band
+    /// directly above the statusline, and the statusline row at the bottom
+    /// (always). The panes take what is left, and every active pane is sized
+    /// to it when that moved. Returns whether the pane partition moved (a new
+    /// pane area or seam setting), the case in which an inactive tab's panes
+    /// need [`Self::resync_viewport_dims_for`] too.
+    ///
+    /// The rows are stored even when the partition stays put: on a terminal
+    /// too small for content the pane area is empty whatever the chrome
+    /// takes, and `render` still places the chrome from them.
     pub fn set_pane_geometry(
         &mut self,
-        terminal_area: Rect,
-        pane_area: Rect,
+        tabbar_rows: u16,
+        band_rows: [u16; BOTTOM_BANDS],
         reserve_seam: bool,
     ) -> bool {
+        assert!(
+            self.chrome.is_some() || (tabbar_rows == 0 && band_rows == [0; BOTTOM_BANDS]),
+            "chrome rows without chrome painters"
+        );
+        self.tabbar_rows = tabbar_rows;
+        self.bottom_band_rows = band_rows;
+        let area = self.last_terminal_area;
+        let above_statusline = self.area_above_statusline();
+        let bands_height: u16 = band_rows.iter().sum();
+        let pane_area = if bands_height < above_statusline.height {
+            Rect {
+                height: above_statusline.height - bands_height,
+                ..above_statusline
+            }
+        } else {
+            // Degenerate: terminal too small to fit chrome + content. Note
+            // `y` is left at `area.y`, not offset by the tab bar. The
+            // tab bar still paints here whenever `tabbar_area`'s own clamp
+            // leaves it a nonzero height (`render`'s gate is just
+            // `tabbar_area.height > 0`; on a terminal too short even for
+            // that clamp, e.g. a single row, the tab bar yields to the
+            // statusline and paints nothing). Callers that need to know
+            // whether a row belongs to the tab bar must use `tabbar_area`
+            // directly rather than comparing against this rect's `y`.
+            Rect { height: 0, ..area }
+        };
         let moved = self.last_pane_area != pane_area || self.reserve_seam != reserve_seam;
-        self.last_terminal_area = terminal_area;
-        self.last_pane_area = pane_area;
-        self.reserve_seam = reserve_seam;
-        self.resync_viewport_dims();
+        if moved {
+            self.last_pane_area = pane_area;
+            self.reserve_seam = reserve_seam;
+            self.resync_viewport_dims();
+        }
         moved
     }
 
@@ -487,75 +550,56 @@ impl EngineView {
         }
     }
 
-    /// The row ceiling every [`BottomBandProvider`] is called against: 35%
-    /// of the terminal's current height. Single source of truth for this
-    /// policy: painters and write-side band-height predictors must all use
-    /// this so paging can't drift from painting. Widened to `u32` for the
-    /// multiply so a `u16::MAX`-tall area can't overflow before the divide
-    /// narrows it back.
-    pub fn bottom_band_max(area_height: u16) -> u16 {
-        (u32::from(area_height) * 35 / 100) as u16
-    }
-
-    /// Partition `area` into the tab bar's own rect: `self.tabbar`'s
-    /// `height()` rows at the top, `height: 0` when absent or hidden this
-    /// frame. Single source of truth for that one chrome row: `render`'s
-    /// paint and the editor's `tabline_click` hit test both partition
-    /// through this method (the latter via `pane_area`'s own degenerate
-    /// branch below, which does *not* offset `y`; reading `tabbar_height`
-    /// from here rather than re-deriving it keeps the two in agreement).
+    /// The tab bar's rect: the laid-out tab bar rows at the top of
+    /// [`Self::terminal_area`], `height: 0` when hidden. Single source of truth
+    /// for that one chrome row: `render`'s paint and the editor's
+    /// `tabline_click` hit test both read it (the pane area's degenerate
+    /// branch in [`Self::set_pane_geometry`] does *not* offset `y`, so a
+    /// caller asking whether a row belongs to the tab bar must use this).
     ///
-    /// Clamped to `area.height.saturating_sub(1)`: the statusline
-    /// unconditionally claims the bottom row (`render`'s own `sl_y =
-    /// area.bottom() - 1`), so on a terminal too short to fit both, the tab
-    /// bar must yield that row rather than have `render` paint the
-    /// statusline over it while this rect (and `tabline_click`'s hit test,
-    /// which partitions through this same method) still claim it.
-    pub fn tabbar_area(&self, area: Rect) -> Rect {
-        let tabbar_height: u16 = self.tabbar.as_ref().map_or(0, |t| t.height());
+    /// Clamped to end at [`Self::statusline_area`]: the statusline
+    /// unconditionally claims the bottom row, so on a terminal too short to
+    /// fit both, the tab bar must yield that row rather than have `render`
+    /// paint the statusline over it while this rect (and `tabline_click`'s
+    /// hit test) still claim it.
+    pub fn tabbar_area(&self) -> Rect {
+        let area = self.last_terminal_area;
         Rect {
             y: area.y,
-            height: tabbar_height.min(area.height.saturating_sub(1)),
+            height: self.tabbar_rows.min(self.statusline_area().y - area.y),
             ..area
         }
     }
 
-    /// Partition `area` into the pane-content rect, reserving the tab bar
-    /// (`tabbar_area`) at the top, the bottom chrome bands directly above
-    /// the statusline (`self.bottom_bands`), and a statusline row at the
-    /// bottom (always). Single source of truth for chrome layout: `render`
-    /// and the editor's `prepare_frame` both partition through this method
-    /// so pane geometry is computed identically wherever it's needed.
-    pub fn pane_area(&self, area: Rect) -> Rect {
-        let tabbar_height = self.tabbar_area(area).height;
-        let bands_height: u16 = self
-            .bottom_bands
-            .iter()
-            .map(|b| b.height(Self::bottom_band_max(area.height)))
-            .sum();
-        let chrome_height = tabbar_height + 1 + bands_height;
-
-        if chrome_height < area.height {
-            Rect {
-                y: area.y + tabbar_height,
-                height: area.height - chrome_height,
-                ..area
-            }
-        } else {
-            // Degenerate: terminal too small to fit chrome + content. Note
-            // `y` is left at `area.y`, not offset by `tabbar_height`. The
-            // tab bar still paints here whenever `tabbar_area`'s own clamp
-            // leaves it a nonzero height (`render`'s gate is just
-            // `tabbar_area.height > 0`; on a terminal too short even for
-            // that clamp, e.g. a single row, the tab bar yields to the
-            // statusline and paints nothing). Callers that need to know
-            // whether a row belongs to the tab bar must use `tabbar_area`
-            // directly rather than comparing against this rect's `y`.
-            Rect { height: 0, ..area }
+    /// The statusline's rect: the bottom row of [`Self::terminal_area`],
+    /// `height: 0` on a terminal with no rows. Single source of truth for
+    /// that row: the tab bar, the bottom bands and the pane area all end
+    /// above it.
+    pub fn statusline_area(&self) -> Rect {
+        let area = self.last_terminal_area;
+        let height = area.height.min(1);
+        Rect {
+            y: area.bottom() - height,
+            height,
+            ..area
         }
     }
 
-    /// Render all panes into `buf` for the given terminal area.
+    /// The rows between the tab bar and the statusline: the panes and every
+    /// bottom band. A box anchored to the statusline row, such as the command
+    /// line's completion menu, stays inside it and covers the bands.
+    pub fn area_above_statusline(&self) -> Rect {
+        let top = self.tabbar_area().bottom();
+        Rect {
+            y: top,
+            height: self.statusline_area().y - top,
+            ..self.last_terminal_area
+        }
+    }
+
+    /// Render all panes and chrome into `grid`, as laid out by the last
+    /// [`Self::set_pane_geometry`] against [`Self::terminal_area`], which
+    /// `grid` must match in size.
     ///
     /// Layout: the tab bar (if present) occupies the top row, the statusline
     /// always occupies the bottom row. Panes fill the remaining area.
@@ -564,7 +608,6 @@ impl EngineView {
     /// an entry for every pane this call will draw.
     pub fn render<'rope, R, S>(
         &mut self,
-        area: Rect,
         grid: &mut Grid,
         input: FrameInputs<'_, R, S>,
         ctx: &mut RenderContext,
@@ -576,13 +619,19 @@ impl EngineView {
             get_rope,
             get_syntax,
             statusline,
-            draw_dividers,
         } = input;
+        let area = self.last_terminal_area;
+        assert_eq!(
+            grid.size(),
+            (area.width, area.height),
+            "grid sized for another terminal area"
+        );
+        let pane_area = self.last_pane_area;
+        let draw_dividers = self.reserve_seam;
         let focused_pane_id = self.layout.focused();
         let scratch = &mut ctx.frame;
         let pane_settings = &ctx.pane_settings;
         let pane_rects = &mut ctx.pane_rects;
-        let pane_area = self.pane_area(area);
 
         // A degenerate area (e.g. a terminal reporting height 0 during early
         // startup, or a tiny window) has no row to draw a chrome
@@ -597,46 +646,39 @@ impl EngineView {
             // would only re-derive that.
             let mut canvas = crate::render::Canvas::new(grid, self.theme.ui.invisible, None);
 
-            // ── Render tab bar ────────────────────────────────────────────────
-            let tabbar_area = self.tabbar_area(area);
-            if let Some(ref tabbar) = self.tabbar
-                && tabbar_area.height > 0
-            {
-                tabbar.render(tabbar_area, &self.theme, &mut canvas);
-            }
-
-            // ── Render bottom bands ──────────────────────────────────────────────
-            // Stacked directly above the statusline row, in registration
-            // order, derived from `area` directly (not `pane_area`),
-            // matching the tab bar/statusline's own convention: chrome
-            // claims its band even when the terminal is too small to also
-            // fit pane content (`pane_area`'s degenerate branch already
-            // collapses `height` to 0 there).
-            let mut bottom_edge = area.bottom().saturating_sub(1);
-            for band in &self.bottom_bands {
-                let band_height = band.height(Self::bottom_band_max(area.height));
-                if band_height == 0 {
-                    continue;
+            if let Some(chrome) = &self.chrome {
+                // ── Render tab bar ────────────────────────────────────────────
+                let tabbar_area = self.tabbar_area();
+                if tabbar_area.height > 0 {
+                    chrome.tabbar.render(tabbar_area, &self.theme, &mut canvas);
                 }
-                let band_y = bottom_edge.saturating_sub(band_height);
-                let available = bottom_edge.saturating_sub(area.y);
-                let band_area = Rect {
-                    y: band_y.max(area.y),
-                    height: band_height.min(available),
-                    ..area
-                };
-                band.render(band_area, &self.theme, &mut canvas);
-                bottom_edge = band_y.max(area.y);
+
+                // ── Render bottom bands ───────────────────────────────────────
+                // Stacked directly above the statusline row, in array order,
+                // derived from `area` directly (not `pane_area`), matching
+                // the tab bar/statusline's own convention: chrome claims its
+                // band even when the terminal is too small to also fit pane
+                // content (the pane area's degenerate branch already
+                // collapses `height` to 0 there).
+                let mut bottom_edge = self.statusline_area().y;
+                for (painter, &rows) in chrome.bottom_bands.iter().zip(&self.bottom_band_rows) {
+                    if rows == 0 {
+                        continue;
+                    }
+                    let band_y = bottom_edge.saturating_sub(rows);
+                    let available = bottom_edge.saturating_sub(area.y);
+                    let band_area = Rect {
+                        y: band_y.max(area.y),
+                        height: rows.min(available),
+                        ..area
+                    };
+                    painter.render(band_area, &self.theme, &mut canvas);
+                    bottom_edge = band_y.max(area.y);
+                }
             }
 
             // ── Render statusline ───────────────────────────────────────────────
-            let sl_y = area.bottom().saturating_sub(1);
-            let sl_area = Rect {
-                y: sl_y,
-                height: 1,
-                ..area
-            };
-            statusline.render(sl_area, &self.theme, &mut canvas);
+            statusline.render(self.statusline_area(), &self.theme, &mut canvas);
         }
 
         // ── Compute pane rects once; reuse for panes and overlays ─────────────

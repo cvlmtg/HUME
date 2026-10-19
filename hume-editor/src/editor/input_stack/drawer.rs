@@ -17,9 +17,11 @@ use crate::editor::host_impl::EditorHostImpl;
 
 use super::super::Editor;
 use super::super::EditorState;
+use super::super::buffer::store::BufferStore;
 use super::super::commands::{FocusedPane, half_page};
 use super::super::host_token;
 use super::paste::ignore_paste;
+use super::popup::half_page_key;
 use super::stack::{
     InputEvent, Layer, LayerHandler, LayerRef, PasteHandler, Removal, RemovalScope,
 };
@@ -89,6 +91,30 @@ impl DrawerLayer {
             DrawerSelect::Buffers(list.buffers),
             selected,
         )
+    }
+
+    /// Rows the drawer shows from the next frame on: what its band's height
+    /// and its paging are measured from. A buffer list shows one row per
+    /// buffer `store.iter()` yields, the walk `buffer_list` builds its rows
+    /// from. Its listed rows catch up with `store` once per frame
+    /// (`EditorState::refresh_buffer_list_drawer`), so a buffer opened or
+    /// closed since then already counts here. Selection indexes the rows
+    /// listed now, so it bounds itself by `rows.len()` instead.
+    pub(in crate::editor) fn item_count(&self, store: &BufferStore) -> usize {
+        match self.select {
+            DrawerSelect::Buffers(_) => store.iter().count(),
+            DrawerSelect::Steel(_) => self.rows.len(),
+        }
+    }
+
+    /// Rows of items the drawer shows at once on a terminal
+    /// `terminal_height` rows tall: the window it pages and fills against.
+    pub(in crate::editor) fn visible_rows(
+        &self,
+        store: &BufferStore,
+        terminal_height: u16,
+    ) -> usize {
+        hume_ui::drawer::band_visible_rows(self.item_count(store), terminal_height)
     }
 
     /// Replaces a buffer-list drawer's rows and buffers together, keeping the
@@ -261,8 +287,8 @@ impl EditorState {
     /// Mirror the open drawer layer into `self.views`' drawer slot for
     /// `DrawerWidget` to read. Called directly at every drawer mutation site
     /// (open, selection move, scroll, close) for immediacy, *and*
-    /// unconditionally every frame from `Editor::prepare_frame` (like the
-    /// popup/menu/picker `sync_*_view`s) so the view can never drift from
+    /// from [`Self::sync_band_views`] every frame, so the view can never
+    /// drift from
     /// the model, in particular, so `reset_config_state`'s
     /// `reset_input` call (which bypasses `close-drawer!`'s
     /// callback queueing) can't leave a stale view painting a closed
@@ -275,6 +301,7 @@ impl EditorState {
                 rows: Arc::clone(d.rows.text()),
                 selected: d.selected,
                 scroll: d.scroll,
+                border: self.settings.popup_border,
             });
         self.views.drawer.set(resolved);
     }
@@ -316,8 +343,8 @@ impl EditorState {
 
     /// Clamps the open drawer's `scroll` to `len.saturating_sub(visible)`,
     /// the last window that still has content in it, against the current
-    /// terminal geometry. Called unconditionally every frame
-    /// (`Editor::prepare_frame`, right before `sync_drawer_view`), the same
+    /// terminal geometry. Called from `Editor::prepare_frame` every frame,
+    /// before the drawer's rows are filled and its view synced, the same
     /// "re-derive from the live model every frame, regardless of what
     /// changed" shape `sync_drawer_view` itself already has, rather than at
     /// each mutation site: a list shrinking (`set_drawer_items`) and a
@@ -332,8 +359,8 @@ impl EditorState {
         let Some(drawer) = self.input.find_mut::<DrawerLayer>() else {
             return;
         };
-        let len = drawer.rows.len();
-        let visible = drawer_visible_for(terminal_height, len);
+        let len = drawer.item_count(&self.buffers);
+        let visible = drawer.visible_rows(&self.buffers, terminal_height);
         drawer.scroll =
             hume_ui::menu_box::clamp_scroll_to_window(drawer.selected, drawer.scroll, visible)
                 .min(len.saturating_sub(visible));
@@ -403,13 +430,19 @@ pub(in crate::editor) fn drawer_input(ed: &mut Editor, r: LayerRef, ev: InputEve
     // `move_drawer_selection`, collapsed to one borrow instead of one per
     // key, mirroring `picker_input`'s own step table.
     let half_page_step = half_page(drawer_visible_rows(ed, r)) as isize;
-    let step: Option<isize> = match key.code {
-        KeyCode::Char('d') if key.modifiers.contains(Modifiers::CONTROL) => Some(half_page_step),
-        KeyCode::Char('u') if key.modifiers.contains(Modifiers::CONTROL) => Some(-half_page_step),
-        KeyCode::Down if key.modifiers == Modifiers::NONE => Some(1),
-        KeyCode::Up if key.modifiers == Modifiers::NONE => Some(-1),
-        _ => None,
-    };
+    let step: Option<isize> = half_page_key(&key)
+        .map(|down| {
+            if down {
+                half_page_step
+            } else {
+                -half_page_step
+            }
+        })
+        .or_else(|| match key.code {
+            KeyCode::Down if key.modifiers == Modifiers::NONE => Some(1),
+            KeyCode::Up if key.modifiers == Modifiers::NONE => Some(-1),
+            _ => None,
+        });
     if let Some(delta) = step {
         move_drawer_selection(ed, r, delta);
         return;
@@ -462,7 +495,7 @@ struct BufferList {
 impl EditorState {
     /// Rebuilds the open drawer's rows when it lists buffers and the store,
     /// the markers or the focused buffer have moved since it last did. Runs
-    /// every frame from `Editor::prepare_frame`, so a row's number is always
+    /// from `Editor::prepare_frame` every frame, so a row's number is always
     /// the one `:b <n>` resolves.
     pub(in crate::editor) fn refresh_buffer_list_drawer(&mut self, current: BufferId) {
         let Some(drawer) = self.input.drawer() else {
@@ -517,23 +550,13 @@ impl EditorState {
     }
 }
 
-/// Rows visible at once for a drawer holding `len` items on a terminal
-/// `terminal_height` tall: `hume_ui::drawer::visible_rows`, the same
-/// arithmetic `DrawerWidget::height` uses to size what it paints next
-/// frame. The height is the last-rendered *terminal* height (not the
-/// already-chrome-reduced pane height), the same call the engine itself
-/// makes, so this can never drift from what it will next paint.
-fn drawer_visible_for(terminal_height: u16, len: usize) -> usize {
-    hume_ui::drawer::visible_rows(len, EngineView::bottom_band_max(terminal_height))
-}
-
 /// Number of drawer rows visible at once. Read by [`clamp_drawer_scroll`]
 /// so the scroll window always agrees with what's on screen.
 fn drawer_visible_rows(ed: &Editor, r: LayerRef) -> usize {
     let Some(drawer) = ed.state.input.at::<DrawerLayer>(r) else {
         return 0;
     };
-    drawer_visible_for(ed.view.last_terminal_area.height, drawer.rows.len())
+    drawer.visible_rows(&ed.state.buffers, ed.view.terminal_area().height)
 }
 
 /// Moves the drawer's selection by `delta` (clamped to `[0, len - 1]`), then
@@ -575,7 +598,7 @@ impl Editor {
         let Some(drawer) = self.state.input.drawer() else {
             return;
         };
-        let visible = drawer_visible_for(self.view.last_terminal_area.height, drawer.rows.len());
+        let visible = drawer.visible_rows(&self.state.buffers, self.view.terminal_area().height);
         let Some((start, keys, render)) =
             drawer.rows.pending(drawer.scroll..drawer.scroll + visible)
         else {

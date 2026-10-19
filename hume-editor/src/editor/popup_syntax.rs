@@ -8,8 +8,8 @@
 //! content never changes after this.
 
 use hume_engine::providers::SyntaxSpans;
-use hume_engine::theme::Theme;
 use hume_engine::theme::ui_scopes;
+use hume_engine::theme::{ScopeRegistry, Theme};
 use hume_engine::types::{ResolvedStyle, Scope};
 
 use hume_treesitter::registry::LanguageRegistry;
@@ -33,13 +33,19 @@ pub(in crate::editor) fn build_markup_syntax(
 /// A `ui.popup` box's content for `text`: highlighted through `syntax` when
 /// there is one, plain otherwise. Its styled runs bake `theme`'s colors in,
 /// so a holder rebuilds it when the theme changes (`theme::set_theme`).
+///
+/// Bakes `theme` first: the grammar interned its scopes when `syntax` was
+/// built, possibly since the last bake, and resolving an unbaked scope is a
+/// bug (`Theme::resolve`).
 pub(in crate::editor) fn popup_content(
     text: &str,
     syntax: Option<&MarkupSyntax>,
-    theme: &Theme,
+    theme: &mut Theme,
+    registry: &ScopeRegistry,
 ) -> hume_ui::popup::PopupContent {
     match syntax {
         Some(syntax) => {
+            theme.bake_if_stale(registry);
             let base_style = theme.resolve_by_name(Scope(ui_scopes::POPUP));
             hume_ui::popup::PopupContent::styled(syntax.styled_runs(text, theme, base_style))
         }

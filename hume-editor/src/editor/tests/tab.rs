@@ -478,16 +478,18 @@ fn goto_next_tab_via_call_while_in_insert_exits_insert_and_commits_the_outgoing_
 fn tabline_dynamic_default_hides_with_one_tab_and_shows_with_two() {
     let mut ed = editor_from("-[h]>ello\n");
     frame(&mut ed, 40, 10);
-    assert!(
-        !ed.state.tabline_view.read().visible,
+    assert_eq!(
+        ed.view.tabbar_area().height,
+        0,
         "one tab: tabline stays hidden under the 'dynamic' default"
     );
 
     ed.execute_typed("tabnew", None).unwrap();
     ed.settle();
     ed.prepare_frame(&mut hume_engine::pipeline::RenderContext::new());
-    assert!(
-        ed.state.tabline_view.read().visible,
+    assert_eq!(
+        ed.view.tabbar_area().height,
+        1,
         "two tabs: tabline must show under the 'dynamic' default"
     );
 }
@@ -502,20 +504,19 @@ fn tabline_never_stays_hidden_even_with_multiple_tabs() {
     ed.execute_typed("tabnew", None).unwrap();
     frame(&mut ed, 40, 10);
 
-    assert!(!ed.state.tabline_view.read().visible);
+    assert_eq!(ed.view.tabbar_area().height, 0);
 }
 
-/// A hidden tabline must skip building any `TabEntry` at all. `visible`
-/// controls whether the row paints, but `sync_tabline_view`'s fast path for
+/// A hidden tabline must skip building any `TabEntry` at all. The bar's
+/// rows control whether it paints, but `sync_tabline_view`'s fast path for
 /// the hidden case returns before the per-tab loop runs.
 #[test]
 fn hidden_tabline_populates_no_entries() {
     let mut ed = editor_from("-[h]>ello\n");
     frame(&mut ed, 40, 10);
 
-    let guard = ed.state.tabline_view.read();
-    assert!(!guard.visible);
-    assert!(guard.tabs.is_empty());
+    assert_eq!(ed.view.tabbar_area().height, 0);
+    assert!(ed.state.tabline_view.read().tabs.is_empty());
 }
 
 /// Once a narrow terminal has scrolled the tab bar forward to keep the
@@ -608,7 +609,7 @@ fn tabline_always_shows_even_with_one_tab() {
     ed.state.settings.tabline = crate::editor::settings::TablineVisibility::Always;
     frame(&mut ed, 40, 10);
 
-    assert!(ed.state.tabline_view.read().visible);
+    assert_eq!(ed.view.tabbar_area().height, 1);
 }
 
 /// `close_tab`'s Insert-session teardown reads and writes exclusively through pool-based lookups

@@ -5,7 +5,7 @@
 //! directly since a Steel caller needs the value back inline.
 
 use hume_engine::pane::Pane;
-use hume_engine::pipeline::{BufferId, EngineView};
+use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 use hume_lsp::backend::ServerId;
 
 use super::LspState;
@@ -485,19 +485,22 @@ pub(in crate::editor) fn pane_visible_range(
     hume_rope::offset::ExclusiveRange::new(first_line, end_line)
 }
 
-/// `(viewport-range pane)`: the visible line range (end-exclusive)
-/// currently visible in `t`'s own pane. `t` is already resolved (see
-/// `commands::CommandPane::resolve`) by the time this runs, so unlike every other
-/// `id: BufferId`-taking function in this file, there is no "not shown"
-/// case left to report here. The caller's own resolve raised on that
-/// already.
+/// Pane `pid`'s visible line range (end-exclusive) between frames, for
+/// `(viewport-range pane)` and the `OnViewportChange` payload. Lays out
+/// against the current bands first, since a band can open or close
+/// between frames.
 pub(in crate::editor) fn viewport_range(
-    state: &EditorState,
-    view: &EngineView,
-    t: crate::editor::commands::CommandPane,
+    state: &mut EditorState,
+    view: &mut EngineView,
+    pid: PaneId,
 ) -> hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine> {
-    let pane = &view.panes[t.pid()];
-    let content_lines = state.buffers.get(t.bid(view)).text().content_line_count();
+    state.relayout(view);
+    let pane = &view.panes[pid];
+    let content_lines = state
+        .buffers
+        .get(pane.buffer_id())
+        .text()
+        .content_line_count();
     pane_visible_range(pane, content_lines)
 }
 

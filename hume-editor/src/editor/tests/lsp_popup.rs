@@ -255,10 +255,7 @@ fn close_popup_clears_the_band_view_too() {
 fn ctrl_d_and_ctrl_u_scroll_a_docked_popup_without_touching_the_buffer() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
-    let tall = (0..30)
-        .map(|i| format!("line{i}"))
-        .collect::<Vec<_>>()
-        .join("\\n");
+    let tall = popup_lines(30);
     run(
         &mut ed,
         tmp.path(),
@@ -346,15 +343,8 @@ fn any_other_key_closes_a_docked_popup_and_still_dispatches() {
 #[test]
 fn dismiss_key_repaints_the_rows_a_docked_popup_vacated_on_the_very_next_frame() {
     let tmp = tempfile::tempdir().unwrap();
-    // `editor_from` (`Editor::for_testing`) never registers `bottom_bands`
-    // (only `Editor::open`'s real startup path does), so a docked popup there
-    // never actually shrinks `pane_area`. This test asserts on that
-    // geometry, so it needs the real registration.
     let mut ed = open_headless(None);
-    let tall = (0..30)
-        .map(|i| format!("line{i}"))
-        .collect::<Vec<_>>()
-        .join("\\n");
+    let tall = popup_lines(30);
     run(
         &mut ed,
         tmp.path(),
@@ -367,7 +357,7 @@ fn dismiss_key_repaints_the_rows_a_docked_popup_vacated_on_the_very_next_frame()
     let rect = Rect::new(0, 0, 80, 25);
     let _ = ed.render_to_buf(rect); // frame 1: band visible
     assert!(popup_band_lines(&ed).is_some(), "sanity: band showing");
-    let band_top = ed.view.pane_area(rect).height;
+    let band_top = ed.view.last_pane_area.height;
     assert!(
         band_top < rect.height - 1,
         "sanity: band must shrink the pane"
@@ -382,8 +372,7 @@ fn dismiss_key_repaints_the_rows_a_docked_popup_vacated_on_the_very_next_frame()
     let pid = ed.view.focused_pane();
     let buf = ed.render_to_buf(rect); // frame 2: the close frame
     assert_eq!(
-        ed.view.panes[pid].viewport.height,
-        ed.view.pane_area(rect).height,
+        ed.view.panes[pid].viewport.height, ed.view.last_pane_area.height,
         "viewport height must match the pane rect this frame's render painted into"
     );
     for y in band_top..rect.height - 1 {
@@ -398,13 +387,8 @@ fn dismiss_key_repaints_the_rows_a_docked_popup_vacated_on_the_very_next_frame()
 #[test]
 fn popup_closed_out_of_band_repaints_the_rows_a_docked_popup_vacated_on_the_very_next_frame() {
     let tmp = tempfile::tempdir().unwrap();
-    // See the sibling test above: needs `Editor::open`'s real `bottom_bands`
-    // registration for the pane-shrinking geometry this test asserts on.
     let mut ed = open_headless(None);
-    let tall = (0..30)
-        .map(|i| format!("line{i}"))
-        .collect::<Vec<_>>()
-        .join("\\n");
+    let tall = popup_lines(30);
     run(
         &mut ed,
         tmp.path(),
@@ -417,7 +401,7 @@ fn popup_closed_out_of_band_repaints_the_rows_a_docked_popup_vacated_on_the_very
     let rect = Rect::new(0, 0, 80, 25);
     let _ = ed.render_to_buf(rect); // frame 1: band visible
     assert!(popup_band_lines(&ed).is_some(), "sanity: band showing");
-    let band_top = ed.view.pane_area(rect).height;
+    let band_top = ed.view.last_pane_area.height;
     assert!(
         band_top < rect.height - 1,
         "sanity: band must shrink the pane"
@@ -439,8 +423,7 @@ fn popup_closed_out_of_band_repaints_the_rows_a_docked_popup_vacated_on_the_very
     let pid = ed.view.focused_pane();
     let buf = ed.render_to_buf(rect); // frame 2: must notice the popup is gone and repaint its rows
     assert_eq!(
-        ed.view.panes[pid].viewport.height,
-        ed.view.pane_area(rect).height,
+        ed.view.panes[pid].viewport.height, ed.view.last_pane_area.height,
         "viewport height must match the pane rect this frame's render painted into"
     );
     for y in band_top..rect.height - 1 {
@@ -591,10 +574,7 @@ fn popup_content_is_rebuilt_after_a_theme_reload() {
 fn ctrl_d_and_ctrl_u_scroll_a_scrollable_popup_without_touching_the_buffer() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
-    let tall = (0..30)
-        .map(|i| format!("line{i}"))
-        .collect::<Vec<_>>()
-        .join("\\n");
+    let tall = popup_lines(30);
     run(
         &mut ed,
         tmp.path(),
@@ -661,10 +641,7 @@ fn ctrl_d_and_ctrl_u_scroll_a_scrollable_popup_without_touching_the_buffer() {
 fn wrap_cache_stays_shared_across_frames_even_once_the_popup_scrolls() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
-    let tall = (0..30)
-        .map(|i| format!("line{i}"))
-        .collect::<Vec<_>>()
-        .join("\\n");
+    let tall = popup_lines(30);
     run(
         &mut ed,
         tmp.path(),
@@ -714,10 +691,7 @@ fn ctrl_u_clamps_a_stale_scroll_after_the_window_grows_between_frames() {
     // or the first press could still land above it and look like a no-op.
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
-    let tall = (0..40)
-        .map(|i| format!("line{i}"))
-        .collect::<Vec<_>>()
-        .join("\\n");
+    let tall = popup_lines(40);
     run(
         &mut ed,
         tmp.path(),
@@ -950,10 +924,7 @@ fn scrollable_popup_paints_its_scrolled_window() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = open_headless(None);
     ed.view.theme = crate::testing::build_snapshot_theme();
-    let tall = (0..20)
-        .map(|i| format!("line{i}"))
-        .collect::<Vec<_>>()
-        .join("\\n");
+    let tall = popup_lines(20);
     run(
         &mut ed,
         tmp.path(),
@@ -963,9 +934,8 @@ fn scrollable_popup_paints_its_scrolled_window() {
     );
     type_cmd(&mut ed, ":go");
     let rect = Rect::new(0, 0, 30, 15);
-    // Render once to resolve `popup_view` geometry before scrolling:
-    // `scroll_box_on_key` reads the previous frame's resolved height, same as
-    // real interactive use (a keystroke always follows at least one paint).
+    // Render once before scrolling, as interactive use paints before every
+    // keystroke, so Ctrl-d pages against this terminal's geometry.
     let _ = render_snapshot::render_to_styled_string(&mut ed, rect);
     ed.feed_key(key_ctrl('d'));
     let snap = render_snapshot::render_to_styled_string(&mut ed, rect);

@@ -444,7 +444,7 @@ fn drawer_scroll_is_reclamped_when_the_severity_floor_shrinks_the_list() {
         ..
     } = setup(&[DIAG_A, DIAG_C, DIAG_B]);
 
-    // Populate `last_terminal_area` before opening the drawer: the scroll
+    // Record the terminal area before opening the drawer: the scroll
     // clamp reads it to agree with what the engine will next paint (same
     // setup `lsp_drawer.rs`'s own scroll tests use). 40x10 gives a 5-row
     // band, so both survivors (2 rows) fit inside `visible_rows` once B (the

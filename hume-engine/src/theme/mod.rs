@@ -325,12 +325,11 @@ impl Theme {
     ///
     /// `ScopeRegistry` is append-only and `bake` sizes `baked` to exactly
     /// `registry.len()`, so `baked.len() != registry.len()` is precisely "new
-    /// scopes are unbaked". Called twice per frame from `prepare_frame`:
-    /// once up front (catching up on interning since the last frame) and
-    /// once at the very end (catching this frame's own steps, several of
-    /// which intern scopes lazily as they run), so no other call site needs
-    /// to remember to bake after interning, and nothing this frame resolves
-    /// can outrun `baked`. Cheap when nothing changed: one `usize` compare.
+    /// scopes are unbaked". Called by the editor wherever it resolves styles
+    /// outside `render` (a highlighted popup's content), and once at the end
+    /// of `prepare_frame` (catching the frame's own steps, several of which
+    /// intern scopes lazily as they run), so nothing resolved can outrun
+    /// `baked`. Cheap when nothing changed: one `usize` compare.
     pub fn bake_if_stale(&mut self, registry: &ScopeRegistry) {
         if self.baked.len() != registry.len() {
             self.bake(registry);

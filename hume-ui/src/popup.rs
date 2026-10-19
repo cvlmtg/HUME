@@ -27,12 +27,12 @@ use std::sync::Arc;
 
 use hume_engine::lock::SharedSlot;
 
-use hume_engine::providers::{BottomBandProvider, OverlayProvider};
+use hume_engine::providers::{ChromeProvider, OverlayProvider};
 use hume_engine::render::Canvas;
 use hume_engine::theme::Theme;
 use hume_engine::theme::ui_scopes;
 
-use super::menu_box::{MenuBoxStyles, draw_menu_box};
+use super::menu_box::{FRAME_CELLS, MenuBoxStyles, draw_menu_box};
 use super::width::cell_width;
 
 /// Maximum popup width in terminal columns, before any pane-width clamp.
@@ -225,7 +225,7 @@ impl PopupState {
 
 /// Rows of content a box `outer_h` rows tall shows inside its frame.
 fn inner_rows(outer_h: u16) -> usize {
-    outer_h.saturating_sub(POPUP_FRAME_ROWS) as usize
+    outer_h.saturating_sub(FRAME_CELLS) as usize
 }
 
 /// Generic overlay that paints a `PopupState` snapshot. Used directly for
@@ -269,13 +269,12 @@ impl OverlayProvider for PopupOverlay {
 
 /// Fully-resolved content for a **docked** popup (`PopupLayout::Docked`):
 /// the `PopupBandWidget` counterpart of [`PopupState`]. No position/size
-/// is stored here: unlike the floating popup, a bottom band's geometry is
-/// resolved by the engine at render time from `height(max)` and the chrome
-/// area (the same contract the drawer already follows), not pre-computed by
-/// the write side.
+/// is stored here: unlike the floating popup, a bottom band's rows come
+/// from the layout ([`band_height`]) and its position from the engine at
+/// render time (the same contract the drawer already follows).
 pub struct PopupBandState {
-    /// Word-wrapped to the band's width (the write side, `Editor::
-    /// sync_popup_band_view`, wraps against `last_terminal_area`, the same
+    /// Word-wrapped to the band's width (the write side, `EditorState::
+    /// sync_popup_band_view`, wraps against `EngineView::terminal_area`, the same
     /// raw area the engine will render the band into): the *full* wrapped
     /// list, `Arc`-shared with the source `PopupContent`'s cache; `visible`
     /// carries the window into it. See [`PopupState::lines`]'s doc, same
@@ -299,29 +298,31 @@ pub(crate) struct PopupBandWidget {
     pub(crate) data: SharedSlot<Option<PopupBandState>>,
 }
 
-/// The frame's top/bottom cells, always reserved, even with `popup-border`
-/// off (a plain background margin still takes the row, see `draw_menu_box`'s
-/// doc on `border`).
-const POPUP_FRAME_ROWS: u16 = 2;
-
-/// Rows a docked popup shows at once, given `lines` wrapped lines and the
-/// band's row ceiling `max` (35% of the last-rendered *terminal* height,
-/// mirroring `PopupBandWidget::height`'s own `max`): the number
-/// Ctrl-d/Ctrl-u page a docked popup against, agreeing with what the engine
-/// will next paint since both derive from
-/// `super::menu_box::band_capacity`.
-pub fn band_visible_rows(lines: usize, max: u16) -> usize {
-    super::menu_box::band_visible_rows(lines, POPUP_FRAME_ROWS, max)
+/// A docked popup's `content` wrapped for a terminal `area_width` columns
+/// wide: the band spans the full width, less its frame columns.
+fn band_wrapped(content: &mut PopupContent, area_width: u16) -> &Wrapped {
+    content.wrapped(area_width.saturating_sub(FRAME_CELLS))
 }
 
-impl BottomBandProvider for PopupBandWidget {
-    fn height(&self, max: u16) -> u16 {
-        let guard = self.data.read();
-        guard.as_ref().map_or(0, |s| {
-            super::menu_box::band_capacity(s.total_rows, POPUP_FRAME_ROWS, max)
-        })
-    }
+/// Wrapped lines a docked popup's `content` has on a terminal `area_width`
+/// columns wide.
+pub fn band_total_rows(content: &mut PopupContent, area_width: u16) -> usize {
+    band_wrapped(content, area_width).lines.len()
+}
 
+/// Rows a docked popup of `lines` wrapped lines takes on a terminal
+/// `terminal_height` rows tall.
+pub fn band_height(lines: usize, terminal_height: u16) -> u16 {
+    super::menu_box::band_capacity(lines, FRAME_CELLS, terminal_height)
+}
+
+/// Lines a docked popup shows at once inside [`band_height`]: the number
+/// Ctrl-d/Ctrl-u page it against.
+pub fn band_visible_rows(lines: usize, terminal_height: u16) -> usize {
+    super::menu_box::band_visible_rows(lines, FRAME_CELLS, terminal_height)
+}
+
+impl ChromeProvider for PopupBandWidget {
     fn render(&self, area: Rect, theme: &Theme, canvas: &mut Canvas) {
         if area.height == 0 {
             return;
@@ -367,14 +368,14 @@ pub fn resolve_popup(
     scroll: usize,
     border: bool,
 ) -> PopupState {
-    // Reserve 2 cells on each axis for the popup's 1-cell frame, so
-    // content and border together fit inside the envelope.
+    // Reserve the frame's cells on each axis, so content and border
+    // together fit inside the envelope.
     let max_width = MAX_POPUP_WIDTH
         .min(placement.content_width.saturating_sub(4))
-        .saturating_sub(2);
+        .saturating_sub(FRAME_CELLS);
     let max_height = (placement.pane_rect.height / 3)
         .max(1)
-        .saturating_sub(2)
+        .saturating_sub(FRAME_CELLS)
         .max(1);
 
     let wrapped = content.wrapped(max_width);
@@ -452,12 +453,12 @@ pub fn resolve_side_popup(
         above,
         max_outer_h,
     } = *slot;
-    let wrapped = content.wrapped(room.min(MAX_POPUP_WIDTH) - 2);
+    let wrapped = content.wrapped(room.min(MAX_POPUP_WIDTH) - FRAME_CELLS);
     let total_rows = wrapped.lines.len();
     let (outer_w, outer_h) = super::menu_box::outer_dims_from_width(
         wrapped.inner_width,
         total_rows,
-        max_outer_h - POPUP_FRAME_ROWS,
+        max_outer_h - FRAME_CELLS,
     );
     let x = if right {
         beside.right()
@@ -473,24 +474,21 @@ pub fn resolve_side_popup(
 }
 
 /// Resolve a docked popup's content for this frame: the [`PopupLayout::
-/// Docked`] counterpart of [`resolve_popup`]. No anchor or pane rect: unlike
-/// the floating popup, a bottom band's position/height is resolved by the
-/// engine at render time from `height(max)` and the chrome area (mirroring
-/// the drawer's own contract), so this only resolves content. `area_width`
-/// is the raw, un-subtracted terminal width (the band spans the full
-/// terminal, not just the panes region); `max_rows` bounds how many rows the
-/// band may claim (mirrors `PopupBandWidget::height`'s own `max`).
+/// Docked`] counterpart of [`resolve_popup`]. No anchor or pane rect: a
+/// bottom band's rows come from the layout ([`band_height`]) and its
+/// position from the engine at render time (mirroring the drawer's own
+/// contract), so this only resolves content. `terminal` is the raw,
+/// un-subtracted terminal area: the band spans the full terminal width, not
+/// just the panes region, and its ceiling is a share of the full height.
 pub fn resolve_band(
     content: &mut PopupContent,
-    area_width: u16,
-    max_rows: u16,
+    terminal: Rect,
     scroll: usize,
     border: bool,
 ) -> PopupBandState {
-    let max_width = area_width.saturating_sub(2);
-    let wrapped = content.wrapped(max_width);
+    let wrapped = band_wrapped(content, terminal.width);
     let total_rows = wrapped.lines.len();
-    let inner_h = band_visible_rows(total_rows, max_rows);
+    let inner_h = band_visible_rows(total_rows, terminal.height);
     let scroll = scroll.min(total_rows.saturating_sub(inner_h));
     let visible = super::menu_box::window_range(total_rows, scroll, inner_h);
     PopupBandState {
@@ -611,7 +609,7 @@ pub fn resolve_menu(
         "resolve_menu: `rows` must be exactly the window's own slice"
     );
 
-    let max_inner = placement.pane_rect.width.saturating_sub(2);
+    let max_inner = placement.pane_rect.width.saturating_sub(FRAME_CELLS);
     let main_w = super::menu_box::widest(rows.iter().map(|r| r.main.as_ref()));
     let trail_w = super::menu_box::widest(rows.iter().filter_map(|r| r.trailing.as_deref()));
     let main_col = main_w.min(max_inner);
@@ -637,7 +635,7 @@ pub fn resolve_menu(
         .collect();
 
     let (x, y, outer_w, outer_h) = resolve_popup_geometry(
-        inner_w + 2,
+        inner_w + FRAME_CELLS,
         window.outer_h,
         placement.anchor,
         placement.pane_rect,

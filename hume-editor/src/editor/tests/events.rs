@@ -1,6 +1,5 @@
 use super::*;
 use crate::editor::commands::open_pane_in_layout;
-use hume_grid::Rect;
 use hume_platform::dirs::Dirs;
 use hume_scripting::host::NativeCall;
 
@@ -86,12 +85,9 @@ fn mouse_click_in_insert_fires_on_mode_change() {
     use termina::event::Event as TerminalEvent;
 
     let mut ed = editor_from("-[a]>b\n");
-    *ed.viewport_mut() = hume_engine::pane::Viewport::new(80, 24);
-    // The click below is hit-tested against pane rects, which only
-    // `prepare_frame` normally populates. Set it directly, matching the
-    // viewport size above, since this test exercises hook dispatch, not a
-    // full frame.
-    ed.view.last_pane_area = Rect::new(0, 0, 80, 24);
+    // The click below is hit-tested against pane rects: an 80x25 terminal
+    // leaves the pane 80x24.
+    ed.sync_viewport_dims(80, 25);
 
     let mut host = ScriptingHost::new(&Dirs::none());
     let mut mock = MockHost::new();

@@ -284,12 +284,9 @@ impl Editor {
         if !self.view.layout().contains_leaf(pane_id) {
             return;
         }
-        let Some(pane) = self.view.panes.get(pane_id) else {
-            return;
-        };
-        let bid = pane.buffer_id();
-        let content_lines = self.state.buffers.get(bid).text().content_line_count();
-        let lines = super::lsp::introspect::pane_visible_range(pane, content_lines);
+        let lines =
+            super::lsp::introspect::viewport_range(&mut self.state, &mut self.view, pane_id);
+        let bid = self.view.panes[pane_id].buffer_id();
         self.state.queue_event(EditorEvent::OnViewportChange {
             target: PaneHandle::with_pane(bid, pane_id),
             lines,

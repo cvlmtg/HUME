@@ -66,6 +66,14 @@ impl MenuBoxStyles {
 /// 1-cell frame). Both overlays scroll past this using [`window_range`].
 pub(crate) const MAX_MENU_ROWS: u16 = 10;
 
+/// Cells a box's frame takes at each of its edges. Reserved even with
+/// `popup-border` off: a plain background margin takes the same cells (see
+/// [`draw_menu_box`]'s `border`).
+pub(crate) const FRAME_EDGE: u16 = 1;
+
+/// Cells the frame takes across a box, both edges together, on either axis.
+pub(crate) const FRAME_CELLS: u16 = 2 * FRAME_EDGE;
+
 /// Widest of an arbitrary run of texts' display widths, or `0` for an empty
 /// run.
 pub(crate) fn widest<'a>(texts: impl Iterator<Item = &'a str>) -> u16 {
@@ -84,7 +92,7 @@ pub(crate) fn outer_rows(row_count: usize, row_cap: u16) -> u16 {
     // an empty prefix) to a value *smaller* than `row_cap`, which then wins
     // the min and produces a near-zero menu height. Same fix as
     // `outer_dims_from_width`'s own sibling below.
-    (row_count.min(row_cap as usize) + 2) as u16
+    (row_count.min(row_cap as usize) + usize::from(FRAME_CELLS)) as u16
 }
 
 /// Outer footprint (including the 1-cell frame) for a box showing `row_count`
@@ -97,33 +105,45 @@ pub(crate) fn outer_dims_from_width(
     row_count: usize,
     row_cap: u16,
 ) -> (u16, u16) {
-    (inner_width + 2, outer_rows(row_count, row_cap))
+    (inner_width + FRAME_CELLS, outer_rows(row_count, row_cap))
+}
+
+/// The row ceiling of every bottom band: 35% of the terminal's height.
+/// Widened to `u32` for the multiply so a `u16::MAX`-tall terminal can't
+/// overflow before the divide narrows it back.
+fn band_ceiling(terminal_height: u16) -> u16 {
+    (u32::from(terminal_height) * 35 / 100) as u16
 }
 
 /// Outer row count for a bottom band showing `content_rows` rows plus
-/// `chrome_rows` of fixed frame (a drawer's 1-row padding gap, a docked
-/// popup's 2-row top/bottom border), capped at `max`. The single source of
-/// truth for this arithmetic, shared by `DrawerWidget`/`PopupBandWidget`'s
-/// own `height` (what the engine paints against) and `band_visible_rows`
-/// (what the write side pages against). Kept in one place so the painted
-/// band and the scroll clamp can never silently disagree.
+/// `chrome_rows` of fixed frame (a drawer's 1-row top frame, a docked
+/// popup's 2-row top/bottom border) on a terminal `terminal_height` rows
+/// tall, capped at the band ceiling. The single source of
+/// truth for this arithmetic, shared by the drawer's and docked popup's
+/// `band_height` (the rows the layout reserves) and `band_visible_rows`
+/// (what the write side pages against). Kept in one place so the laid-out
+/// band and the scroll clamp can never disagree.
 ///
 /// Adds in `usize` and clamps once, rather than `content_rows as u16 +
 /// chrome_rows`: a `+ chrome_rows` on a `u16`-truncated row count can wrap
 /// (debug-panic, or silently paint an empty band in release) for a
 /// references drawer at or above 65535 rows.
-pub(crate) fn band_capacity(content_rows: usize, chrome_rows: u16, max: u16) -> u16 {
+pub(crate) fn band_capacity(content_rows: usize, chrome_rows: u16, terminal_height: u16) -> u16 {
     content_rows
         .saturating_add(chrome_rows as usize)
-        .min(max as usize) as u16
+        .min(band_ceiling(terminal_height) as usize) as u16
 }
 
-/// Rows a bottom band shows at once, given `content_rows` rows, `chrome_rows`
-/// of fixed frame, and the band's row ceiling `max`: the number the write
-/// side pages against, agreeing with what the engine will next paint by
-/// construction (both derive from [`band_capacity`]).
-pub(crate) fn band_visible_rows(content_rows: usize, chrome_rows: u16, max: u16) -> usize {
-    band_capacity(content_rows, chrome_rows, max).saturating_sub(chrome_rows) as usize
+/// Rows a bottom band shows at once, given `content_rows` rows and
+/// `chrome_rows` of fixed frame on a terminal `terminal_height` rows tall:
+/// the number the write side pages against, agreeing with the rows the
+/// layout reserves (both derive from [`band_capacity`]).
+pub(crate) fn band_visible_rows(
+    content_rows: usize,
+    chrome_rows: u16,
+    terminal_height: u16,
+) -> usize {
+    band_capacity(content_rows, chrome_rows, terminal_height).saturating_sub(chrome_rows) as usize
 }
 
 /// The `[start, end)` window of `max_height` entries out of `total`,
@@ -170,30 +190,37 @@ pub fn clamp_scroll_to_window(selected: usize, scroll: usize, visible_rows: usiz
 
 /// Overdraws `outer`'s 1-cell frame with box-drawing glyphs (`┌─┐└┘│`).
 pub(crate) fn draw_box_border(canvas: &mut Canvas, outer: Rect, style: ResolvedStyle) {
-    let inner = outer.inset(1, 1);
-    // The right/bottom border's own column/row: `outer.right()`/`.bottom()`
-    // is the exclusive bound one past it; `inner.right()`/`.bottom()` is
-    // this same column/row, already computed by `inset` above.
+    draw_open_box_border(canvas, outer, style);
+    let inner = outer.inset(FRAME_EDGE, 0);
+    let bottom = outer.bottom() - 1;
+    let edge = outer.right();
+    canvas.write_text_run(outer.x, bottom, BOTTOM_LEFT, style, edge);
+    canvas.fill_glyph_run(inner.x, bottom, HORIZONTAL, inner.width, style, edge);
+    canvas.write_text_run(inner.right(), bottom, BOTTOM_RIGHT, style, edge);
+}
+
+/// Overdraws `outer`'s top row and its left and right columns with
+/// box-drawing glyphs (`┌─┐│`), leaving the bottom open.
+pub(crate) fn draw_open_box_border(canvas: &mut Canvas, outer: Rect, style: ResolvedStyle) {
+    // `inner.right()` is the right border's own column: `outer.right()` is
+    // the exclusive bound one past it.
+    let inner = outer.inset(FRAME_EDGE, 0);
     let right = inner.right();
-    let bottom = inner.bottom();
 
     // Border glyphs are constants a cell wide, so they need none of
     // `write_text_run`'s substitution, but the corners go through it
     // anyway rather than carry an exemption from the one-writer rule for no
     // benefit, and the bound keeps a mis-sized box from drawing past its
-    // own footprint. The two edges are a run of the same glyph repeated,
-    // so they go through `fill_glyph_run` instead: same writer, no `String`
+    // own footprint. The top edge is a run of the same glyph repeated, so
+    // it goes through `fill_glyph_run` instead: same writer, no `String`
     // built just to hand a grapheme walker a cluster it already knows is
     // one repeated character.
     let edge = outer.right();
     canvas.write_text_run(outer.x, outer.y, TOP_LEFT, style, edge);
     canvas.fill_glyph_run(inner.x, outer.y, HORIZONTAL, inner.width, style, edge);
     canvas.write_text_run(right, outer.y, TOP_RIGHT, style, edge);
-    canvas.write_text_run(outer.x, bottom, BOTTOM_LEFT, style, edge);
-    canvas.fill_glyph_run(inner.x, bottom, HORIZONTAL, inner.width, style, edge);
-    canvas.write_text_run(right, bottom, BOTTOM_RIGHT, style, edge);
 
-    for row in 1..outer.height - 1 {
+    for row in 1..outer.height {
         canvas.write_text_run(outer.x, outer.y + row, VERTICAL, style, edge);
         canvas.write_text_run(right, outer.y + row, VERTICAL, style, edge);
     }
@@ -266,7 +293,7 @@ pub(crate) fn draw_menu_box(
         return;
     }
 
-    let inner = outer.inset(1, 1);
+    let inner = outer.inset(FRAME_EDGE, FRAME_EDGE);
 
     // Opaque backdrop so no buffer content shows through. Without a border
     // it also forms the 1-cell margin.

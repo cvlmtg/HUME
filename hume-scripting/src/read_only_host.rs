@@ -23,7 +23,7 @@ use crate::types::{GrammarReg, PaneHandle, SteelCmdDef, SteelTypedCmdDef};
 ///
 /// A refused write returns `Err` where its signature allows. Either way it is
 /// recorded, and [`Self::refused`] reports the first one, so a proc that
-/// catches the error still fails. The reads take `&self` while the wrapped
+/// catches the error still fails. Most reads take `&self` while the wrapped
 /// host's accessors take `&mut self`, hence the `RefCell`; reads never nest.
 pub(crate) struct ReadOnlyHost<'h> {
     inner: RefCell<&'h mut dyn EditorHost>,
@@ -282,8 +282,8 @@ impl BufferHost for ReadOnlyHost<'_> {
             .buffers()
             .line_to_char_offset(id, line)
     }
-    fn viewport_range(&self, pane: PaneHandle) -> Result<ExclusiveRange<ContentLine>, String> {
-        self.inner.borrow_mut().buffers().viewport_range(pane)
+    fn viewport_range(&mut self, pane: PaneHandle) -> Result<ExclusiveRange<ContentLine>, String> {
+        self.inner.get_mut().buffers().viewport_range(pane)
     }
 }
 

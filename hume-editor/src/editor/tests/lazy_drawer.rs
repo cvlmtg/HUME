@@ -48,10 +48,7 @@ fn open(ed: &mut Editor, tmp: &Path, keys: &str, render_proc: &str) {
 }
 
 fn visible(len: usize) -> usize {
-    hume_ui::drawer::visible_rows(
-        len,
-        hume_engine::pipeline::EngineView::bottom_band_max(HEIGHT),
-    )
+    hume_ui::drawer::band_visible_rows(len, HEIGHT)
 }
 
 /// The drawer view's rows: `None` for a row not rendered yet.
@@ -174,10 +171,7 @@ fn a_taller_terminal_shows_rendered_rows_in_the_same_frame() {
 
     frame(&mut ed, WIDTH, HEIGHT * 3);
 
-    let taller = hume_ui::drawer::visible_rows(
-        30,
-        hume_engine::pipeline::EngineView::bottom_band_max(HEIGHT * 3),
-    );
+    let taller = hume_ui::drawer::band_visible_rows(30, HEIGHT * 3);
     assert!(taller > visible(30), "setup: the band grew");
     assert_eq!(
         view_rows(&ed)[..taller],

@@ -195,13 +195,13 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
     }
 
     fn viewport_range(
-        &self,
+        &mut self,
         pane: PaneHandle,
     ) -> Result<ExclusiveRange<hume_rope::line::ContentLine>, String> {
         let t = self.command_pane(pane)?;
-        // No active-tab restriction: `Editor::sync_viewport_dims` keeps
+        // No active-tab restriction: `EditorState::relayout` keeps
         // every tab's panes (not just the active one) sized to the
-        // current terminal on every resize (`TabStore::inactive_layouts`),
+        // current terminal whenever the partition moves (`TabStore::inactive_layouts`),
         // so a background-tab pane's *size* is as trustworthy as an active
         // one's. Its *scroll position* can lag, though: the frame's scroll
         // step only runs over `active_pane_ids()`, so a background pane's
@@ -211,7 +211,9 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
         // just not guaranteed to reflect a scroll that happened elsewhere
         // while this pane was hidden.
         Ok(crate::editor::lsp::introspect::viewport_range(
-            self.state, self.view, t,
+            self.state,
+            self.view,
+            t.pid(),
         ))
     }
 }

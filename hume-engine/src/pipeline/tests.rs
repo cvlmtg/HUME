@@ -1761,98 +1761,96 @@ fn leaves_of_a_sole_leaf_is_just_itself() {
 
 // ── Bottom band partition ──────────────────────────────────────────────
 
-/// A band that always reports a fixed height, regardless of `max`. Lets
-/// tests probe `pane_area`'s chrome arithmetic without a real `DrawerLayer`/
-/// `PopupLayer`.
-struct FixedHeightDrawer(u16);
+struct NoopChrome;
 
-impl crate::providers::BottomBandProvider for FixedHeightDrawer {
-    fn height(&self, max: u16) -> u16 {
-        self.0.min(max)
-    }
-
+impl crate::providers::ChromeProvider for NoopChrome {
     fn render(&self, _area: Rect, _theme: &Theme, _canvas: &mut crate::render::Canvas) {}
 }
 
-/// A no-op tab bar: a fixed one-row `height()` is all `pane_area` reads
-/// from it.
-struct NoopTabBar;
-
-impl crate::providers::TabBarProvider for NoopTabBar {
-    fn height(&self) -> u16 {
-        1
-    }
-
-    fn render(&self, _area: Rect, _theme: &Theme, _canvas: &mut crate::render::Canvas) {}
+/// A one-pane view with a tab bar and bottom bands, laid out on a 40-column
+/// terminal `height` rows tall.
+fn laid_out(height: u16, tabbar_rows: u16, band_rows: [u16; BOTTOM_BANDS]) -> EngineView {
+    let (mut view, key) = EngineView::new(Theme::default());
+    let bid = view.buffers.insert(());
+    let pane = view.insert_pane(crate::pane::Pane::new(bid));
+    let _placeholder = view.replace_layout(&key, FocusedLayout::new(pane));
+    view.set_chrome(Chrome {
+        tabbar: Box::new(NoopChrome),
+        bottom_bands: std::array::from_fn(|_| {
+            Box::new(NoopChrome) as Box<dyn crate::providers::ChromeProvider>
+        }),
+    });
+    view.resize(rect(0, 0, 40, height));
+    view.set_pane_geometry(tabbar_rows, band_rows, true);
+    view
 }
 
 #[test]
 fn pane_area_reserves_drawer_height_above_statusline() {
-    let (mut view, _) = EngineView::new(Theme::default());
-    view.bottom_bands = vec![Box::new(FixedHeightDrawer(3))];
-
-    let area = view.pane_area(rect(0, 0, 40, 20));
+    let view = laid_out(20, 0, [3, 0]);
 
     // 20 rows total - 1 (statusline) - 3 (drawer) = 16 rows for panes,
-    // starting at the top (no tab bar registered).
-    assert_eq!(area.y, 0);
-    assert_eq!(area.height, 16);
+    // starting at the top (no tab bar row).
+    assert_eq!(view.last_pane_area.y, 0);
+    assert_eq!(view.last_pane_area.height, 16);
 }
 
 #[test]
 fn pane_area_folds_tabbar_and_drawer_together() {
-    let (mut view, _) = EngineView::new(Theme::default());
-    view.tabbar = Some(Box::new(NoopTabBar));
-    view.bottom_bands = vec![Box::new(FixedHeightDrawer(3))];
-
-    let area = view.pane_area(rect(0, 0, 40, 20));
+    let view = laid_out(20, 1, [3, 0]);
 
     // 20 - 1 (tab bar) - 1 (statusline) - 3 (drawer) = 15, offset by the
     // tab bar's 1 row.
-    assert_eq!(area.y, 1);
-    assert_eq!(area.height, 15);
-}
-
-#[test]
-fn pane_area_drawer_height_is_capped_by_35_percent_of_the_terminal_height() {
-    let (mut view, _) = EngineView::new(Theme::default());
-    // Wants 50 rows, way more than 35% of a 20-row terminal (max = 7).
-    view.bottom_bands = vec![Box::new(FixedHeightDrawer(50))];
-
-    let area = view.pane_area(rect(0, 0, 40, 20));
-
-    // 20 - 1 (statusline) - 7 (capped drawer) = 12.
-    assert_eq!(area.height, 12);
+    assert_eq!(view.last_pane_area.y, 1);
+    assert_eq!(view.last_pane_area.height, 15);
+    assert_eq!(view.tabbar_area().height, 1);
 }
 
 #[test]
 fn pane_area_degenerate_when_terminal_too_small_for_chrome_plus_drawer() {
-    let (mut view, _) = EngineView::new(Theme::default());
-    view.tabbar = Some(Box::new(NoopTabBar));
-    view.bottom_bands = vec![Box::new(FixedHeightDrawer(50))];
+    // The tab bar, the statusline and the drawer take one row each, all 3
+    // rows of the terminal, so no row is left for the panes.
+    let view = laid_out(3, 1, [1, 0]);
 
-    // chrome_height = 1 (tab bar) + 1 (statusline) + 1 (drawer, capped at
-    // 35% of 3 = 1) = 3, which is NOT less than a 3-row terminal:
-    // degenerate.
-    let area = view.pane_area(rect(0, 0, 40, 3));
-
-    assert_eq!(area.height, 0);
+    assert_eq!(view.last_pane_area.height, 0);
 }
 
 #[test]
 fn pane_area_sums_multiple_bottom_bands() {
-    // Two bands stacked (e.g. drawer + docked popup, though in practice only
-    // one is ever non-empty) reserve the sum of their heights.
-    let (mut view, _) = EngineView::new(Theme::default());
-    view.bottom_bands = vec![
-        Box::new(FixedHeightDrawer(3)),
-        Box::new(FixedHeightDrawer(2)),
-    ];
-
-    let area = view.pane_area(rect(0, 0, 40, 20));
+    // Two bands stacked (a drawer and a docked popup) reserve the sum of
+    // their heights.
+    let view = laid_out(20, 0, [3, 2]);
 
     // 20 - 1 (statusline) - 3 - 2 = 14.
-    assert_eq!(area.height, 14);
+    assert_eq!(view.last_pane_area.height, 14);
+}
+
+#[test]
+fn area_above_statusline_spans_panes_and_bands_below_the_tab_bar() {
+    let view = laid_out(20, 1, [3, 2]);
+
+    // Rows 1..19: everything but the tab bar (row 0) and the statusline
+    // (row 19).
+    assert_eq!(view.area_above_statusline(), rect(0, 1, 40, 18));
+}
+
+#[test]
+fn statusline_area_is_the_last_row_and_empty_on_a_rowless_terminal() {
+    let view = laid_out(20, 1, [3, 2]);
+    assert_eq!(view.statusline_area(), rect(0, 19, 40, 1));
+
+    let view = laid_out(0, 0, [0, 0]);
+    assert_eq!(view.statusline_area().height, 0);
+}
+
+#[test]
+fn band_rows_change_inside_a_degenerate_pane_area_is_stored() {
+    let mut view = laid_out(3, 1, [1, 0]);
+
+    let moved = view.set_pane_geometry(1, [2, 0], true);
+
+    assert!(!moved, "the pane area stays empty");
+    assert_eq!(view.bottom_band_rows, [2, 0]);
 }
 
 // ── FrameScratch ─────────────────────────────────────────────────────

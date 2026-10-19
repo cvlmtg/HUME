@@ -11,8 +11,8 @@
 
 use termina::event::KeyCode;
 
-use hume_engine::pipeline::{BufferId, EngineView, PaneId, RenderContext};
-use hume_engine::theme::Theme;
+use hume_engine::pipeline::{BufferId, EngineView, PaneId};
+use hume_engine::theme::{ScopeRegistry, Theme};
 use hume_engine::types::EditorMode;
 use hume_treesitter::registry::LanguageRegistry;
 use hume_ui::popup::SideSlot;
@@ -25,7 +25,7 @@ use super::super::popup_syntax::{build_markup_syntax, popup_content};
 use super::super::{Editor, EditorState, Severity};
 use super::paste::PastedText;
 use super::placement::popup_placement;
-use super::popup::{boxed_popup_rows, scroll_box_on_key};
+use super::popup::{boxed_popup_rows, half_page_key, scroll_box};
 use super::stack::{
     InputEvent, Layer, LayerHandler, LayerRef, PasteHandler, PopupEviction, Removal, RemovalScope,
 };
@@ -36,8 +36,9 @@ use super::stack::{
 /// beneath).
 pub(in crate::editor) struct BufferCompletionLayer {
     pub(in crate::editor) session: BufferSession,
-    /// The documentation box's content, built on the first frame that shows
-    /// it, since its styled runs need the baked theme.
+    /// The documentation box's content, built the first time the box is
+    /// resolved (by a frame, or by Ctrl-d/Ctrl-u paging it), since its
+    /// styled runs need the baked theme.
     doc: DocView,
 }
 
@@ -49,8 +50,8 @@ impl BufferCompletionLayer {
         }
     }
 
-    /// Whether the documentation box has room beside the menu, as the last
-    /// frame found; true before the first frame, when it is not known yet.
+    /// Whether the documentation box has room beside the menu, as last
+    /// resolved; true before it is first resolved, when it is not known yet.
     pub(in crate::editor) fn doc_box_fits(&self) -> bool {
         self.doc.fits != Some(false)
     }
@@ -66,8 +67,8 @@ impl BufferCompletionLayer {
 #[derive(Default)]
 struct DocView {
     /// The item the box last showed, and whether its docs were known then:
-    /// while both hold, a frame reuses `current` without asking the item
-    /// again.
+    /// while both hold, resolving the box reuses `current` without asking
+    /// the item again.
     shown: Option<(ItemKey, bool)>,
     /// The index in `built` of what the box shows for `shown`, `None` for
     /// an item with nothing to show.
@@ -78,11 +79,11 @@ struct DocView {
     /// on a selection change is enough.
     built: Vec<(Documentation, hume_ui::popup::PopupContent)>,
     /// First visible wrapped row of `current`, back to 0 whenever `shown`
-    /// changes. Rendering clamps a copy; [`scroll_box_on_key`] clamps
+    /// changes. Rendering clamps a copy; [`scroll_box`] clamps
     /// it before each step.
     scroll: usize,
-    /// Whether the last frame found room beside the menu, `None` before the
-    /// first frame.
+    /// Whether the box last found room beside the menu, `None` before it is
+    /// first resolved.
     fits: Option<bool>,
 }
 
@@ -92,7 +93,8 @@ impl DocView {
         &mut self,
         text: Documentation,
         languages: &LanguageRegistry,
-        theme: &Theme,
+        theme: &mut Theme,
+        registry: &ScopeRegistry,
     ) -> usize {
         if let Some(i) = self.built.iter().position(|(built, _)| *built == text) {
             return i;
@@ -101,7 +103,7 @@ impl DocView {
             .markdown
             .then(|| build_markup_syntax(languages, "markdown", &text.text))
             .flatten();
-        let content = popup_content(&text.text, syntax.as_ref(), theme);
+        let content = popup_content(&text.text, syntax.as_ref(), theme, registry);
         self.built.push((text, content));
         self.built.len() - 1
     }
@@ -188,67 +190,77 @@ impl Editor {
     /// `Minibuf`-target session renders through
     /// [`Editor::sync_minibuf_completion_view`] instead, into its own slot.
     ///
-    /// Called every frame from `prepare_frame`'s overlay sync, same as
-    /// [`Self::sync_popup_view`]/[`Self::sync_menu_view`] and for the same
-    /// reason: it needs `EngineView::pane_rect`, which reads
-    /// `last_pane_area`, only current after step 9 runs.
-    pub(in crate::editor) fn sync_completion_menu_view(&mut self, ctx: &mut RenderContext) {
+    /// Called every frame from `prepare_frame`'s overlay sync after its
+    /// scroll step, with the cursor cell that step resolved as
+    /// `cursor_cell`, same as [`Self::sync_popup_view`]/[`Self::sync_menu_view`].
+    pub(in crate::editor) fn sync_completion_menu_view(&mut self, cursor_cell: Option<(u16, u16)>) {
         let buffer_session_open = self.state.input.buffer_completion().is_some();
         if !buffer_session_open && self.state.views.completion_menu.read().is_none() {
             return;
         }
+        let (menu, doc) = self.resolve_completion_overlays(cursor_cell).unzip();
+        self.state.views.completion_doc.set(doc.flatten());
+        self.state.views.completion_menu.set(menu);
+    }
 
+    /// The Insert-mode completion menu and its documentation box resolved
+    /// against the focused pane's current rect and viewport: what a frame
+    /// paints and what Ctrl-d/Ctrl-u page the box against. Resolving the box
+    /// also brings the box's model up to the selection (see
+    /// [`Self::resolve_completion_doc`]), so paging after a selection move
+    /// pages the new candidate's documentation. `None` with no session open
+    /// or its anchor out of view. `cursor_cell` is [`popup_placement`]'s.
+    fn resolve_completion_overlays(
+        &mut self,
+        cursor_cell: Option<(u16, u16)>,
+    ) -> Option<(
+        hume_ui::popup::PopupState,
+        Option<hume_ui::popup::PopupState>,
+    )> {
         // The menu anchor is ranked against one text and reads as absent
         // once the text moves, until the next settle-time
         // `reconcile_completion` pass re-ranks (`scripting_setup.rs`). A pane
         // switch can leave the session on a buffer that isn't the one on
         // screen in that same window; the buffer check below covers it.
         //
-        // Sequential borrows rather than one closure over
-        // `self.state.input`: the session's shared borrow has to end
-        // before `popup_placement` takes `&mut self`.
+        // Sequential borrows of `self.state.input`: the session's shared
+        // borrow has to end before `popup_placement` takes `&mut self`.
         //
         // With `completion-docs` on, the rows leave `detail` to the box, and
         // keep it when the box finds no room beside the narrower menu.
         let border = self.state.settings.popup_border;
         let completion_docs = self.state.settings.completion_docs;
-        let resolved = (|| -> Option<(hume_ui::popup::PopupState, Option<SideSlot>)> {
-            let (_, bid) = self.state.input.completion_owner()?;
-            let session = self.state.input.buffer_completion()?;
-            let anchor = session.menu_anchor(self.state.buffers.get(bid).text())?;
-            let placement = popup_placement(self, ctx, anchor)?;
+        let (_, bid) = self.state.input.completion_owner()?;
+        let session = self.state.input.buffer_completion()?;
+        let anchor = session.menu_anchor(self.state.buffers.get(bid).text())?;
+        let placement = popup_placement(self, cursor_cell, anchor)?;
 
-            let session = self.state.input.buffer_completion()?;
-            let menu = |with_detail| {
-                let window = hume_ui::popup::menu_window(
-                    session.len(),
-                    Some(session.selected()),
-                    placement.pane_rect,
-                );
-                let rows = session.rows_in(window.range.clone(), with_detail);
-                hume_ui::popup::resolve_menu(&rows, window, placement, border)
-            };
-            if !completion_docs {
-                return Some((menu(true), None));
-            }
+        let session = self.state.input.buffer_completion()?;
+        let menu = |with_detail| {
+            let window = hume_ui::popup::menu_window(
+                session.len(),
+                Some(session.selected()),
+                placement.pane_rect,
+            );
+            let rows = session.rows_in(window.range.clone(), with_detail);
+            hume_ui::popup::resolve_menu(&rows, window, placement, border)
+        };
+        let (menu, slot) = if completion_docs {
             let lean = menu(false);
             match hume_ui::popup::side_slot(lean.rect, placement.anchor.1, placement.pane_rect) {
-                Some(slot) => Some((lean, Some(slot))),
-                None => Some((menu(true), None)),
+                Some(slot) => (lean, Some(slot)),
+                None => (menu(true), None),
             }
-        })();
-
-        let doc = match &resolved {
-            Some((menu, slot)) if completion_docs && !menu.lines.is_empty() => {
-                self.resolve_completion_doc(*slot)
-            }
-            _ => None,
+        } else {
+            (menu(true), None)
         };
-        self.state.views.completion_doc.set(doc);
-        self.state
-            .views
-            .completion_menu
-            .set(resolved.map(|(menu, _)| menu));
+
+        let doc = if completion_docs && !menu.lines.is_empty() {
+            self.resolve_completion_doc(slot)
+        } else {
+            None
+        };
+        Some((menu, doc))
     }
 
     /// The documentation box in `slot` for the selected item, recording
@@ -273,9 +285,9 @@ impl Editor {
                 .get(bid)
                 .language
                 .map_or("", |id| languages.name_of(id));
-            doc.current = item
-                .doc_box_text(fence_lang)
-                .map(|text| doc.content_for(text, languages, &self.view.theme));
+            doc.current = item.doc_box_text(fence_lang).map(|text| {
+                doc.content_for(text, languages, &mut self.view.theme, &self.view.registry)
+            });
             doc.shown = shown;
             doc.scroll = 0;
         }
@@ -377,17 +389,23 @@ fn completion_input_buffer(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
             return;
         }
     };
-    let views = &ed.state.views;
-    let layer = ed
+    let has_matches = ed
         .state
         .input
-        .at_mut::<BufferCompletionLayer>(r)
-        .filter(|l| !l.session.is_empty());
-    if let Some(layer) = layer {
-        if scroll_box_on_key(&key, &mut layer.doc.scroll, || {
-            views.completion_doc.read().as_ref().map(boxed_popup_rows)
-        }) {
-            return;
+        .at::<BufferCompletionLayer>(r)
+        .is_some_and(|l| !l.session.is_empty());
+    if has_matches {
+        if let Some(down) = half_page_key(&key) {
+            let rows = ed
+                .resolve_completion_overlays(None)
+                .and_then(|(_, doc)| doc)
+                .as_ref()
+                .map(boxed_popup_rows);
+            if let Some(layer) = ed.state.input.at_mut::<BufferCompletionLayer>(r)
+                && scroll_box(&mut layer.doc.scroll, down, rows)
+            {
+                return;
+            }
         }
         match key.code {
             KeyCode::Tab | KeyCode::Down => {

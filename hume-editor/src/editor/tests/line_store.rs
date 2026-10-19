@@ -243,7 +243,7 @@ fn a_rendered_frames_entries_do_not_survive_it() {
     ed.sync_viewport_dims(rect.width, rect.height);
     ed.settle();
     ed.prepare_frame(&mut ctx);
-    ed.render_into(rect, &mut grid, &mut ctx);
+    ed.render_into(&mut grid, &mut ctx);
     assert_eq!(
         cell(&grid, 0, 2),
         "y",
@@ -254,7 +254,7 @@ fn a_rendered_frames_entries_do_not_survive_it() {
     ed.sync_viewport_dims(rect.width, rect.height);
     ed.settle();
     ed.prepare_frame(&mut ctx);
-    ed.render_into(rect, &mut grid, &mut ctx);
+    ed.render_into(&mut grid, &mut ctx);
     assert_eq!(
         cell(&grid, 0, 1),
         "y",
@@ -310,7 +310,7 @@ fn the_two_frame_passes_format_each_visible_line_once() {
     ed.settle();
     ed.prepare_frame(&mut ctx);
     let after_scroll = formats.get();
-    ed.render_into(rect, &mut grid, &mut ctx);
+    ed.render_into(&mut grid, &mut ctx);
 
     assert_eq!(
         after_scroll, 1,

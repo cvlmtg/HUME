@@ -369,7 +369,7 @@ impl crate::host::BufferHost for RecordingBufferOptionHost {
         self.inner.line_to_char_offset(id, line)
     }
     fn viewport_range(
-        &self,
+        &mut self,
         pane: crate::types::PaneHandle,
     ) -> Result<hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>, String> {
         self.inner.viewport_range(pane)

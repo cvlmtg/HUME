@@ -427,13 +427,21 @@ pub(crate) struct EditorState {
     /// wired through `build_pane`'s parameter list and `Editor::open`'s
     /// bootstrap by hand; see that type's own doc for why.
     pub(in crate::editor) views: hume_ui::OverlayViews,
-    /// Shared tab-bar view: written every frame by `Editor::prepare_frame`
+    /// Shared tab-bar view: written by `EditorState::sync_band_views`
     /// (`sync_tabline_view`), read by `TablineWidget`. Not part of
     /// `hume_ui::OverlayViews` above: `TablineViewState` holds a `TabId`,
     /// an `editor`-crate type `hume-ui` cannot depend on (see
     /// `crate::tabline`'s own module doc).
     pub(in crate::editor) tabline_view:
         hume_engine::lock::SharedSlot<crate::tabline::TablineViewState>,
+    /// Hash of everything `sync_tabline_view`'s rebuild depends on, as of
+    /// the last time it ran the rebuild. `None` before the first one. An
+    /// unchanged hash means `tabline_view` is still correct, so the per-tab
+    /// label rebuild (one allocating `display_name()` call per tab) and the
+    /// scroll probe are skipped whenever nothing about the tab bar changed,
+    /// which is almost every time. See `EditorState::tabline_signature`'s
+    /// doc for what it covers.
+    last_tabline_signature: Option<u64>,
     /// Cross-thread waker clone (see `Editor::open`'s `wake` param), reachable
     /// here so `EditorHostImpl` (which only ever holds a disjoint `&mut
     /// EditorState` borrow, never a whole `&mut Editor`) can hand it to a
@@ -510,6 +518,7 @@ impl EditorState {
             cwd: PathBuf::new(),
             views: hume_ui::OverlayViews::default(),
             tabline_view: hume_engine::lock::SharedSlot::default(),
+            last_tabline_signature: None,
             wake: Arc::new(|| {}),
         }
     }
@@ -836,16 +845,6 @@ pub(crate) struct Editor {
             hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>,
         ),
     >,
-    /// Hash of everything `sync_tabline_view`'s rebuild depends on, as of
-    /// the last frame it actually ran the rebuild. `None` before the first
-    /// frame. An unchanged hash means the previous frame's
-    /// `TablineViewState` is still correct, so the per-tab label rebuild
-    /// (one allocating `display_name()` call per tab) and the scroll probe
-    /// can both be skipped entirely on every steady-state frame, the vast
-    /// majority, since nothing about the tab bar changes on a typical
-    /// keystroke. See `Editor::tabline_signature`'s own doc for what it
-    /// covers.
-    last_tabline_signature: Option<u64>,
     /// `(buffer_id, decorations.generation(buffer_id))` as of each
     /// pane's last mirror into its `PaneVirtualLines` Arc. `prepare_frame`
     /// compares against this to skip the rebuild on frames where neither

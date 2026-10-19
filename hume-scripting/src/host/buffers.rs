@@ -184,10 +184,13 @@ pub trait BufferHost {
     /// range to a `(hash 'start-line first 'end-line end)` at the Steel boundary
     /// (0-based, end-exclusive). Pane geometry, not LSP state, so it doesn't need
     /// an attached server. Kind-B: raises if `pane` carries no pane, a
-    /// closed one, one that no longer shows `pane`'s buffer, or one on a
-    /// background tab (its geometry isn't kept in sync with the terminal).
+    /// closed one, or one that no longer shows `pane`'s buffer. A pane on a
+    /// background tab answers too: its size follows the terminal, but its
+    /// scroll position stays where it was until that tab is focused again.
+    /// Takes `&mut self` so the host can first lay its panes out against a
+    /// band opened or closed since its last frame.
     fn viewport_range(
-        &self,
+        &mut self,
         pane: PaneHandle,
     ) -> Result<hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>, String>;
 }

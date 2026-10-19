@@ -187,21 +187,17 @@ impl Editor {
     /// to.
     ///
     /// Hit-tests against `EngineView::tabbar_area` rather than
-    /// `last_pane_area.y`: `pane_area`'s degenerate branch (terminal too
+    /// `last_pane_area.y`: the pane area's degenerate branch (terminal too
     /// small to fit chrome + content) leaves `last_pane_area.y` at the
     /// terminal's own `y`, which would make every row look like the tab bar..
     /// `tabbar_area` is the one rect that always reports where the bar
     /// itself is, whether or not there's room left for panes.
     fn tabline_click(&mut self, x: u16, y: u16) -> bool {
-        let bar = self.view.tabbar_area(self.view.last_terminal_area);
+        let bar = self.view.tabbar_area();
         if !bar.contains(Position::new(x, y)) {
             return false;
         }
-        // No separate `guard.visible` check needed: `bar.height` (above) came
-        // from `TabBarProvider::height()`, which reads that same flag off
-        // this same shared slot: a nonzero height already means it was
-        // `true` moments ago, and nothing mutates the view between then and
-        // this read.
+        // The tabs the last frame painted into `bar`.
         let guard = self.state.tabline_view.read();
         let extents = crate::tabline::tab_extents(&guard.tabs, guard.scroll, bar.x, bar.width);
         let target = extents
