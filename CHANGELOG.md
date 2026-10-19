@@ -44,6 +44,7 @@
 ### Fixes
 - In Insert mode, `End`, `↑` and `↓` reach the end of a line, after its last character.
 - Headless `--keys` runs print warnings and errors on stderr and exit with status 1 when an error is logged.
+- Headless `--keys` runs honour a `FILE:LINE[:COL]` input, placing the cursor there before the first key.
 - `set-extra-highlights!`, `set-inlay-hints!` and `set-virtual-lines!` segments accept a char offset inside a character such as an emoji sequence.
 - `json-ref-or` returns its default for a field the server sent as `null`, so a code action whose `disabled` is `null` is offered.
 - `apply-text-edits!` and `apply-workspace-edit!` still apply after the pane switches buffers, and `apply-text-edits!` and `lsp-document-params` work without a pane.

@@ -34,9 +34,10 @@ pub mod testing;
 
 /// Run a key sequence against a file without entering the interactive terminal.
 ///
-/// Opens `input`, feeds every key in `keys` (golf-stream notation; see
-/// [`hume_scripting::parse_key_stream`]) through the editor's normal dispatch
-/// path, then writes the final buffer content to `output`. No terminal is
+/// Opens `input` at its position, if it has one, feeds every key in `keys`
+/// (golf-stream notation; see [`hume_scripting::parse_key_stream`]) through
+/// the editor's normal dispatch path, then writes the final buffer content to
+/// `output`. No terminal is
 /// initialised. `config` picks what `init_scripting` evaluates (the default
 /// `init.scm`, a `--config` override, or `ConfigSource::Skip` for
 /// `--no-config`), exactly as it would for [`run`]. `cwd` is the startup
@@ -51,7 +52,7 @@ pub mod testing;
 /// unwritten, since keys replayed on a half-loaded config prove nothing. One
 /// logged during the replay fails it after `output` is written.
 pub fn run_keys(
-    input: std::path::PathBuf,
+    input: cli::FileArg,
     keys: &str,
     output: std::path::PathBuf,
     config: cli::ConfigSource,
@@ -64,24 +65,18 @@ pub fn run_keys(
     // worker, LSP transport) call this harmlessly into the void. The pane
     // viewport defaults to 80×24 (from Pane::new) and is never updated
     // without a terminal, so scores are reproducible.
-    let mut editor = editor::Editor::open(
-        Some(input),
+    let mut editor = editor::Editor::start(
+        std::slice::from_ref(&input),
+        editor::Driver::Headless,
         std::sync::Arc::new(|| {}),
         hume_platform::dirs::Dirs::from_env(&cwd),
+        config,
         cwd,
     )?;
-    // Headless mode: no terminal to negotiate kitty protocol, so assume
-    // full capability. Ctrl-letter keys (e.g. `<c-w>`) are no-ops without
-    // this since the dispatcher strips the Ctrl modifier only when
-    // kitty_enabled is true (see handle_normal). The kitty-only default
-    // binds are also installed to match interactive kitty.
-    editor.set_kitty_support(true);
-    editor.set_headless();
-    editor.set_config_source(config);
-    editor.init_scripting(&mut Default::default());
     // The startup work `Editor::run` settles before its first frame
-    // (`on-buffer-open` hooks, the plugins they activate) runs before the
-    // first key, so its errors count as the config's.
+    // (`on-buffer-open` hooks, the plugins they activate, the input's
+    // position) runs before the first key, so its errors count as the
+    // config's.
     editor.settle();
     let config_failed = editor.state.message_log.totals().0 > 0;
 
@@ -184,37 +179,17 @@ pub fn run(
         eprintln!("hume: failed to start terminator: {e}");
     }
 
-    let (first, rest) = files
-        .split_first()
-        .map_or((None, &[][..]), |(f, r)| (Some(f), r));
-
     let panic_wake = wake.clone();
-    let mut editor = editor::Editor::open(
-        first.map(|f| f.path.clone()),
+    let kitty_enabled = hume_platform::terminal::probe_kitty(&shared)?;
+    let mut editor = editor::Editor::start(
+        &files,
+        editor::Driver::Terminal { kitty_enabled },
         wake,
         hume_platform::dirs::Dirs::from_env(&cwd),
+        config,
         cwd,
     )?;
     editor.attach_terminate_flag(terminate.clone());
-    let kitty_enabled = hume_platform::terminal::probe_kitty(&shared)?;
-    editor.set_kitty_support(kitty_enabled);
-    // Must run before `init_scripting`, same as `set_kitty_support` above:
-    // the source is read once resolution starts.
-    editor.set_config_source(config);
-    editor.init_scripting(&mut Default::default());
-    // `first`'s buffer is already open via `Editor::open` above, so its id is
-    // read straight off the focused buffer. Open remaining paths after
-    // scripting init so OnBufferOpen hooks fire. Queued rather than applied
-    // immediately: `Editor::run`'s event loop applies them once it has a
-    // real terminal size to center against (`apply_startup_positions`'s doc).
-    if let Some(pos) = first.and_then(|f| f.pos) {
-        editor.queue_startup_position(editor.focused_buffer_id(), pos);
-    }
-    for arg in rest {
-        if let (Some(bid), Some(pos)) = (editor.open_extra_file(&arg.path), arg.pos) {
-            editor.queue_startup_position(bid, pos);
-        }
-    }
     // No explicit startup drain: work queued during init (OnBufferOpen,
     // OnLanguageSet, etc.) sits in `pending_work` until `Editor::run`'s loop
     // reaches its first `settle()`, which now runs before the first

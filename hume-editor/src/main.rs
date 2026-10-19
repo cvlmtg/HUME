@@ -36,7 +36,7 @@ struct Cli {
 
 enum Mode {
     Headless {
-        input: PathBuf,
+        input: hume_editor::cli::FileArg,
         keys: String,
         output: PathBuf,
     },
@@ -88,30 +88,28 @@ fn resolve(cli: Cli, cwd: &Path) -> Result<Invocation, String> {
         hume_editor::cli::ConfigSource::Default
     };
 
+    let files = cli
+        .files
+        .iter()
+        .map(|p| hume_editor::cli::parse_file_arg(p, cwd))
+        .collect::<Result<Vec<_>, _>>()?;
     let mode = match cli.keys {
         Some(keys) => {
             // Safe: clap's `requires` ensures output is set when keys is set.
             let output = cli
                 .output
                 .expect("clap ensures --output when --keys is set");
-            match cli.files.as_slice() {
-                [input] => Mode::Headless {
-                    input: input.clone(),
+            match <[_; 1]>::try_from(files) {
+                Ok([input]) => Mode::Headless {
+                    input,
                     keys,
                     // Written after the replay, so a `:cd` in `keys` must not move it.
                     output: hume_platform::path::absolute_unresolved(&output, cwd),
                 },
-                _ => return Err("--keys mode requires exactly one input file".into()),
+                Err(_) => return Err("--keys mode requires exactly one input file".into()),
             }
         }
-        None => {
-            let files = cli
-                .files
-                .iter()
-                .map(|p| hume_editor::cli::parse_file_arg(p, cwd))
-                .collect::<Result<Vec<_>, _>>()?;
-            Mode::Normal { files }
-        }
+        None => Mode::Normal { files },
     };
     Ok(Invocation { mode, config })
 }
@@ -292,7 +290,13 @@ mod tests {
         let Mode::Headless { input, keys, .. } = inv.mode else {
             panic!("expected Mode::Headless");
         };
-        assert_eq!(input, PathBuf::from("in.txt"));
+        assert_eq!(
+            input,
+            FileArg {
+                path: PathBuf::from("in.txt"),
+                pos: None
+            }
+        );
         assert_eq!(keys, "dw");
         assert_eq!(
             inv.config,
@@ -360,17 +364,25 @@ mod tests {
         );
     }
 
-    // A `--keys`-mode input path is the golf harness's literal single
-    // argument, never a `path:line:col` diagnostic pasted onto the command
-    // line. `resolve` must leave it untouched by `cli::parse_file_arg`.
+    // Headless mode parses its input through the same `cli::parse_file_arg`
+    // as normal mode, so a position suffix splits off the same way.
     #[test]
-    fn resolve_headless_input_path_is_never_split() {
-        let cli = make_headless(vec![PathBuf::from("weird:12")]);
+    fn resolve_headless_splits_a_line_column_suffix() {
+        let cli = make_headless(vec![PathBuf::from("does-not-exist.rs:12:24")]);
         let inv = resolve_here(cli).expect("one input file should succeed");
         let Mode::Headless { input, .. } = inv.mode else {
             panic!("expected Mode::Headless");
         };
-        assert_eq!(input, PathBuf::from("weird:12"));
+        assert_eq!(
+            input,
+            FileArg {
+                path: PathBuf::from("does-not-exist.rs"),
+                pos: Some(hume_editor::cli::PathPosition {
+                    line: hume_rope::line::ContentLine::from_number(12).unwrap(),
+                    grapheme_col: GraphemeCol::from_number(24).unwrap()
+                })
+            }
+        );
     }
 
     #[test]

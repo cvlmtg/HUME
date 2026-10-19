@@ -15,7 +15,18 @@ use super::event::EditorEvent;
 use super::input_stack::InputEvent;
 use super::tui::Tui;
 use super::{Editor, Severity};
-use crate::cli::ConfigSource;
+use crate::cli::{ConfigSource, FileArg};
+
+/// What drives an editor once [`Editor::start`] has set it up.
+pub(crate) enum Driver {
+    /// A terminal, with the kitty keyboard protocol when the probe found it.
+    Terminal { kitty_enabled: bool },
+    /// A scripted key stream (`--keys`), with no one to answer a prompt. With
+    /// no terminal to negotiate the kitty protocol, it assumes full
+    /// capability: without it a Ctrl-letter key such as `<c-w>` does nothing,
+    /// since `handle_normal` strips the Ctrl modifier only under kitty.
+    Headless,
+}
 
 impl Editor {
     // ── Kitty keybinds ──────────────────────────────────────────────────────────
@@ -24,21 +35,20 @@ impl Editor {
     /// runtime flag and re-derive the keymap via the same
     /// [`super::default_keymap_for`] `ConfigState::new` uses, so the kitty-only
     /// default keybinds (when enabled) are installed identically at startup
-    /// and on every `:reload-config`. Called once at startup after the probe
-    /// (and from headless `run_keys`, which assumes full capability) so the
-    /// binds can never diverge from the flag.
+    /// and on every `:reload-config`. Called once, from [`Self::start`], so
+    /// the binds can never diverge from the flag.
     ///
     /// Must run before `init_scripting`: it replaces the keymap wholesale,
     /// so calling it after `init.scm` has evaluated would discard any user
     /// `bind-key!` on top of it.
-    pub(crate) fn set_kitty_support(&mut self, kitty_enabled: bool) {
+    pub(in crate::editor) fn set_kitty_support(&mut self, kitty_enabled: bool) {
         self.kitty_enabled = kitty_enabled;
         self.state.config.keymap = super::default_keymap_for(kitty_enabled);
     }
 
     /// Mark this editor as driven by scripted keys with no one to answer a
     /// prompt, so `confirm_permit` never lets a confirm open.
-    pub(crate) fn set_headless(&mut self) {
+    pub(in crate::editor) fn set_headless(&mut self) {
         self.state.headless = true;
     }
 
@@ -177,6 +187,43 @@ impl Editor {
         Ok(editor)
     }
 
+    /// Set up an editor on the command line's files, the same way for every
+    /// [`Driver`]: open the first file (or a scratch buffer), configure the
+    /// driver and the config source, run `init_scripting`, then open the
+    /// remaining files so their `OnBufferOpen` hooks fire. Each file's
+    /// position is queued, and the first `settle()` places it.
+    pub(crate) fn start(
+        files: &[FileArg],
+        driver: Driver,
+        wake: Arc<dyn Fn() + Send + Sync>,
+        dirs: hume_platform::dirs::Dirs,
+        config: ConfigSource,
+        startup_cwd: std::path::PathBuf,
+    ) -> io::Result<Self> {
+        let (first, rest) = files
+            .split_first()
+            .map_or((None, &[][..]), |(f, r)| (Some(f), r));
+        let mut editor = Self::open(first.map(|f| f.path.clone()), wake, dirs, startup_cwd)?;
+        match driver {
+            Driver::Terminal { kitty_enabled } => editor.set_kitty_support(kitty_enabled),
+            Driver::Headless => {
+                editor.set_kitty_support(true);
+                editor.set_headless();
+            }
+        }
+        editor.set_config_source(config);
+        editor.init_scripting(&mut Default::default());
+        if let Some(pos) = first.and_then(|f| f.pos) {
+            editor.queue_startup_position(editor.focused_buffer_id(), pos);
+        }
+        for arg in rest {
+            if let (Some(bid), Some(pos)) = (editor.open_extra_file(&arg.path), arg.pos) {
+                editor.queue_startup_position(bid, pos);
+            }
+        }
+        Ok(editor)
+    }
+
     /// Share the atomic the platform terminator thread stores the exit code
     /// into when a signal asks the editor to quit. Replaces the per-`Editor`
     /// default so `run`'s loop and `hume_editor::run` (after `run` returns)
@@ -210,14 +257,18 @@ impl Editor {
     ///
     /// Must run before `init_scripting`, same as `set_kitty_support`: the
     /// source is read once resolution starts.
-    pub(crate) fn set_config_source(&mut self, source: ConfigSource) {
+    pub(in crate::editor) fn set_config_source(&mut self, source: ConfigSource) {
         self.config_source = source;
     }
 
     /// Queue a 1-based CLI position (`hume foo.rs:12:24`) for `bid`, applied
-    /// by [`Self::apply_startup_positions`] once `run`'s event loop reaches
-    /// its first `settle()`.
-    pub(crate) fn queue_startup_position(&mut self, bid: BufferId, pos: crate::cli::PathPosition) {
+    /// by [`Self::apply_startup_positions`] at the end of the first
+    /// `settle()`.
+    pub(in crate::editor) fn queue_startup_position(
+        &mut self,
+        bid: BufferId,
+        pos: crate::cli::PathPosition,
+    ) {
         self.startup_positions.push((bid, pos));
     }
 
@@ -228,9 +279,10 @@ impl Editor {
     /// jump away from one, so `Ctrl-o` has nothing to return to here (unlike
     /// `:goto` and `goto-location!`, which both do).
     ///
-    /// Must run after `run`'s own first `sync_viewport_dims` call: centring
-    /// reads the focused pane's height, which is still `Pane::new`'s 80x24
-    /// placeholder until that first sync runs.
+    /// Runs at the end of every `settle()` and does nothing once the queue is
+    /// drained. Centring reads the focused pane's height: `run`'s loop syncs
+    /// it to the terminal before its first `settle()`, and a headless run
+    /// keeps `Pane::new`'s 80x24.
     pub(in crate::editor) fn apply_startup_positions(&mut self) {
         let placements = std::mem::take(&mut self.startup_positions);
         if placements.is_empty() {
@@ -421,13 +473,6 @@ impl Editor {
             let (term_width, term_height) = screen.size()?;
             self.sync_viewport_dims(term_width, term_height);
             self.settle();
-            // Startup cursor positions queued from CLI file arguments, applied
-            // once (drained on the first call, a no-op thereafter): after this
-            // frame's `settle()` so `OnBufferOpen`/`OnLanguageSet` hooks that
-            // can resize chrome already ran, and after `sync_viewport_dims`
-            // above so centring reads the real terminal size, not `Pane::new`'s
-            // 80x24 placeholder.
-            self.apply_startup_positions();
             // Observed here, downstream of `settle()`, not right after
             // dispatch. `should_quit` is also checked after dispatch below
             // (`:508`, `continue` rather than `break`), which keeps the loop

@@ -133,7 +133,10 @@ impl Editor {
     /// reports Info `[new file]`, matching `:e`. Otherwise a mistyped
     /// trailing CLI argument would silently open an empty buffer with no
     /// feedback at all.
-    pub(crate) fn open_extra_file(&mut self, path: &std::path::Path) -> Option<BufferId> {
+    pub(in crate::editor) fn open_extra_file(
+        &mut self,
+        path: &std::path::Path,
+    ) -> Option<BufferId> {
         match self.try_open_extra(path) {
             Ok((bid, is_new)) => {
                 if is_new && let Some(msg) = Self::new_file_open_msg(self.state.buffers.get(bid)) {

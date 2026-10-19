@@ -30,6 +30,7 @@ mod host_impl;
 mod inline_output;
 mod input_stack;
 mod lifecycle;
+pub(crate) use lifecycle::Driver;
 mod reload;
 mod scripting_setup;
 mod tui;
@@ -874,12 +875,11 @@ pub(crate) struct Editor {
     /// frame, so that frame reports.
     applied_cwd: Option<PathBuf>,
     /// Startup cursor placements queued by `queue_startup_position` (one per
-    /// CLI `path:line[:col]` argument) before `run`'s event loop starts.
-    /// Applied and drained by `apply_startup_positions`, once, right after
-    /// the loop's own first `settle()`: early enough that `OnBufferOpen`/
-    /// `OnLanguageSet` hooks still get to run first, late enough that the
-    /// loop's first `sync_viewport_dims` has already replaced `Pane::new`'s
-    /// 80x24 placeholder with the real terminal size centring needs.
+    /// CLI `path:line[:col]` argument) by `Editor::start`. Applied and
+    /// drained by `apply_startup_positions` at the end of the first
+    /// `settle()`, after the `OnBufferOpen`/`OnLanguageSet` hooks that drain
+    /// ran. In `run`, that settle follows the loop's first
+    /// `sync_viewport_dims`, so centring reads the real terminal size.
     startup_positions: Vec<(BufferId, crate::cli::PathPosition)>,
 }
 

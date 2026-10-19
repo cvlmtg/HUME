@@ -5,7 +5,7 @@
 
 extern crate hume_editor as hume;
 
-use hume::cli::ConfigSource;
+use hume::cli::{ConfigSource, FileArg};
 
 #[test]
 fn config_binding_takes_effect_in_headless_replay() {
@@ -23,7 +23,10 @@ fn config_binding_takes_effect_in_headless_replay() {
     std::fs::write(&config, r#"(bind-key! 'normal "Z" "delete-char-forward")"#).unwrap();
 
     hume::run_keys(
-        input,
+        FileArg {
+            path: input,
+            pos: None,
+        },
         "Z",
         output.clone(),
         ConfigSource::File(config),
@@ -48,7 +51,10 @@ fn write_failure_still_returns_err() {
     let output = dir.path().join("missing-dir").join("out.txt");
 
     let result = hume::run_keys(
-        input,
+        FileArg {
+            path: input,
+            pos: None,
+        },
         "Z",
         output,
         ConfigSource::Skip,
@@ -74,7 +80,10 @@ fn a_crash_dump_next_to_the_file_is_neither_offered_nor_touched() {
             std::fs::write(&dump, "crashed\n").unwrap();
         }
         hume::run_keys(
-            input,
+            FileArg {
+                path: input,
+                pos: None,
+            },
             "xd",
             output.clone(),
             ConfigSource::Skip,
@@ -100,10 +109,11 @@ struct HeadlessRun {
 }
 
 /// Runs the `hume` binary in `--keys` mode on `"hello\nworld\n"` with
-/// `config` as its `--config`. The config, data, runtime and Steel home
-/// directories are pinned so nothing on the developer's machine is loaded or
-/// logged.
-fn run_headless(config: &str, keys: &str) -> HeadlessRun {
+/// `config` as its `--config`. `position` is appended to the input path as
+/// typed on the command line (`""`, or a suffix such as `":2"`). The config,
+/// data, runtime and Steel home directories are pinned so nothing on the
+/// developer's machine is loaded or logged.
+fn run_headless(config: &str, keys: &str, position: &str) -> HeadlessRun {
     let dir = tempfile::tempdir().expect("create temp dir");
     let input = dir.path().join("in.txt");
     let output = dir.path().join("out.txt");
@@ -120,7 +130,7 @@ fn run_headless(config: &str, keys: &str) -> HeadlessRun {
         .arg(&output)
         .arg("--config")
         .arg(&config_path)
-        .arg(&input)
+        .arg(format!("{}{position}", input.display()))
         .env("HOME", &home)
         .env("XDG_CONFIG_HOME", home.join("config"))
         .env("XDG_DATA_HOME", home.join("data"))
@@ -140,7 +150,7 @@ fn run_headless(config: &str, keys: &str) -> HeadlessRun {
 
 #[test]
 fn a_config_error_fails_the_run_before_any_key_is_replayed() {
-    let run = run_headless("(offset->line 1 2)\n", "xd");
+    let run = run_headless("(offset->line 1 2)\n", "xd", "");
 
     assert_eq!(run.exit_code, Some(1));
     // A Steel error report spans several lines after its first.
@@ -159,7 +169,7 @@ fn an_error_during_the_replay_fails_the_run_and_still_writes_the_output() {
 (define-command! "raise-in-test" "Raise an error." (lambda (pane) (error "raised by the test")))
 (bind-key! 'normal "Z" "raise-in-test")
 "#;
-    let run = run_headless(config, "xdZ");
+    let run = run_headless(config, "xdZ", "");
 
     assert_eq!(run.exit_code, Some(1));
     let report = run
@@ -173,7 +183,7 @@ fn an_error_during_the_replay_fails_the_run_and_still_writes_the_output() {
 
 #[test]
 fn a_warning_is_reported_on_stderr_without_failing_the_run() {
-    let run = run_headless(r#"(bind-key! 'normal "Z" "no-such-command")"#, "xd");
+    let run = run_headless(r#"(bind-key! 'normal "Z" "no-such-command")"#, "xd", "");
 
     assert_eq!(run.exit_code, Some(0), "stderr:\n{}", run.stderr);
     let problems: Vec<&str> = run.stderr.lines().collect();
@@ -183,4 +193,12 @@ fn a_warning_is_reported_on_stderr_without_failing_the_run() {
         "{problems:?}"
     );
     assert_eq!(run.output.as_deref(), Some("world\n"));
+}
+
+#[test]
+fn a_line_suffix_on_the_input_places_the_cursor_before_the_first_key() {
+    let run = run_headless("", "xd", ":2");
+
+    assert_eq!(run.exit_code, Some(0), "{}", run.stderr);
+    assert_eq!(run.output.as_deref(), Some("hello\n"));
 }
