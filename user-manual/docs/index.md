@@ -12,8 +12,7 @@ This manual covers everything you need to use HUME effectively, from first launc
 
 *NOTE*: **HUME** is still in its early phases, so some features are still missing and there might be some rough edges.
 
-<!-- Screenshot placeholder: add public/screenshot.png, then replace this comment with
-<img src="/screenshot.png" alt="HUME editing a source file with syntax highlighting, diagnostics and the file picker open" /> -->
+<img src="/HUME.png" alt="HUME editing a source file" />
 
 ## Why try it
 - **Less typing for what you do most**. Selections come first, so acting on text is short and direct.
@@ -21,7 +20,6 @@ This manual covers everything you need to use HUME effectively, from first launc
 - **Bundled, one line away**. Fuzzy pickers, language servers, live git diff, and 300+ language definitions ship with the editor, and each is one line of config from being on.
 - **Paste that does the obvious thing**. `p` reaches for what you most likely meant, and a kill ring keeps your recent deletes and yanks within reach.
 - **Comfortable with real text**. Emoji, accents, and other multi-byte characters are treated as single characters, the way you'd expect.
-
 
 ## Quickstart
 
