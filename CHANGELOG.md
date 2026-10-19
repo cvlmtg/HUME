@@ -18,6 +18,7 @@
 - Typed command names can contain digits, so an argument needs a space before it: `:e 1.txt` and `:goto 42`, not `:e1.txt` and `:goto42`. `:b2` still works.
 - `bind-key!` raises for a key sequence in `'insert` mode, and `bind-key-extend!` outside `'normal`. Neither binding ever ran, so delete it.
 - Command names ignore case everywhere, and `define-command!` and `#:commands` raise for an uppercase name: rename such commands to lowercase.
+- `s` matches each selection's text on its own, without a line break it ends on: `^`, `$` and `\b` see the selection's edges as the edges of the text. Add `(?m)` for `^` and `$` to match at each line inside it.
 
 ### Editing
 - `Ctrl-r` in Insert mode and on the command line inserts a register or the current file's path.

@@ -823,7 +823,6 @@ fn range_matches_at_boundaries() {
 #[test]
 fn range_matches_excludes_partial() {
     // Range 0..1 doesn't fully contain "ab" at (1,2), only the 'a' at 1.
-    // The regex engine with set_range won't match across the boundary.
     let b = buf("aababab\n");
     let matches = find_matches_in_range(&b, &re("ab"), clusters(&b, 0, 1));
     assert_eq!(matches, vec![]);
@@ -851,6 +850,40 @@ fn range_matches_with_combining_graphemes() {
     let b = buf("caf\u{0065}\u{0301}\n");
     let matches = find_matches_in_range(&b, &re("\u{0065}\u{0301}"), clusters(&b, 0, 6));
     assert_eq!(incls(&matches), vec![(3, 4)]);
+}
+
+#[test]
+fn range_caret_anchors_at_range_start_only() {
+    // Range "cd\nef" (3..8) in "ab\ncd\nef\n".
+    let b = buf("ab\ncd\nef\n");
+    let matches = find_matches_in_range(&b, &re(r"^\w"), clusters(&b, 3, 8));
+    assert_eq!(incls(&matches), vec![(3, 3)]);
+}
+
+#[test]
+fn range_multiline_caret_anchors_at_range_start_and_each_line() {
+    // Range "b\ncd" (1..5) starts mid-line in "ab\ncd\n".
+    let b = buf("ab\ncd\n");
+    let matches = find_matches_in_range(&b, &re(r"(?m)^\w"), clusters(&b, 1, 5));
+    assert_eq!(incls(&matches), vec![(1, 1), (3, 3)]);
+}
+
+#[test]
+fn range_dollar_anchors_at_range_end() {
+    // Range "foo" (0..3) in "foo bar\n".
+    let b = buf("foo bar\n");
+    let matches = find_matches_in_range(&b, &re(r"\w+$"), clusters(&b, 0, 3));
+    assert_eq!(incls(&matches), vec![(0, 2)]);
+}
+
+#[test]
+fn range_word_boundary_sees_range_edges_as_text_edges() {
+    // Range "oob" (1..4) sits inside the word "foobar".
+    let b = buf("foobar\n");
+    let leading = find_matches_in_range(&b, &re(r"\bo"), clusters(&b, 1, 4));
+    assert_eq!(incls(&leading), vec![(1, 1)]);
+    let trailing = find_matches_in_range(&b, &re(r"b\b"), clusters(&b, 1, 4));
+    assert_eq!(incls(&trailing), vec![(3, 3)]);
 }
 
 // ── escape_regex ─────────────────────────────────────────────────────────

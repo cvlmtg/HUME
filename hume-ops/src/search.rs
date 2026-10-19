@@ -19,6 +19,7 @@ use hume_editing::text::BufferText;
 use hume_editing::word::{CharClass, WordChars};
 use hume_rope::cluster::{ClusterBound, ClusterRange, ClusterStart};
 use hume_rope::grapheme::prev_str_boundary;
+use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 use crate::MotionMode;
 
@@ -215,39 +216,39 @@ pub fn find_next_match(
 /// Return all non-overlapping regex matches in `text`, in document order.
 /// Zero-width matches are skipped.
 pub fn find_all_matches(text: &BufferText, regex: &Regex) -> Vec<ClusterRange> {
-    matches_in_bytes(text, regex, 0..text.len_bytes())
+    matches_in(
+        text,
+        regex,
+        ExclusiveRange::new(CharOffset::default(), text.end()),
+    )
 }
 
-/// Return all non-overlapping regex matches that fall entirely within
-/// `range`, in document order. Zero-width matches are skipped.
+/// Return all non-overlapping regex matches in `range`, in document order,
+/// with `range` as the whole text searched: `^`, `$` and `\b` see its
+/// edges as the edges of the text. Zero-width matches are skipped.
 pub fn find_matches_in_range(
     text: &BufferText,
     regex: &Regex,
     range: ClusterRange,
 ) -> Vec<ClusterRange> {
-    let chars = range.chars();
-    matches_in_bytes(
-        text,
-        regex,
-        text.char_to_byte(chars.start)..text.char_to_byte(chars.end),
-    )
+    matches_in(text, regex, range.chars())
 }
 
-/// The matches in `byte_range` as cluster ranges. Two matches that widen to
-/// the same cluster (a base char and its combining mark matched apart) keep
-/// only the first, so the list stays sorted and non-overlapping.
-fn matches_in_bytes(
+/// The matches in `chars`, searched as a text of its own, as cluster ranges
+/// of `text`. Two matches that widen to the same cluster (a base char and its
+/// combining mark matched apart) keep only the first, so the list stays
+/// sorted and non-overlapping.
+fn matches_in(
     text: &BufferText,
     regex: &Regex,
-    byte_range: std::ops::Range<usize>,
+    chars: ExclusiveRange<CharOffset>,
 ) -> Vec<ClusterRange> {
-    let cursor = RopeyCursor::new(text.full_slice());
-    let mut input = Input::new(cursor);
-    input.set_range(byte_range);
+    let start_byte = text.char_to_byte(chars.start);
+    let input = Input::new(RopeyCursor::new(text.slice(chars)));
 
     let mut matches: Vec<ClusterRange> = Vec::new();
     for m in regex.find_iter(input) {
-        let Some(range) = text.covering_bytes(m.start()..m.end()) else {
+        let Some(range) = text.covering_bytes(start_byte + m.start()..start_byte + m.end()) else {
             continue;
         };
         if matches

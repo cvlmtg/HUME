@@ -1,4 +1,5 @@
 use super::*;
+use hume_editing::selection::SelectionSet;
 use hume_editing::text::BufferText;
 use hume_rope::offset::CharOffset;
 use pretty_assertions::assert_eq;
@@ -388,6 +389,41 @@ fn select_matches_combining_grapheme() {
         (co(3), co(3))
     );
     assert_eq!(result.view().primary().covered().end().offset(), co(5));
+}
+
+/// Sifts with `pattern`, expecting at least one match.
+fn sift(pattern: &str) -> impl FnOnce((BufferText, SelectionSet)) -> EditState {
+    let regex = regex_cursor::engines::meta::Regex::new(pattern).unwrap();
+    move |(text, sels)| {
+        sift_matches_within(&test_fixtures::testing::state(text, sels), &regex)
+            .expect("the pattern matches")
+    }
+}
+
+#[test]
+fn sift_caret_anchors_at_the_start_of_a_line_selection() {
+    assert_state!(
+        "intro\n-[## Title\n]>",
+        sift("^#+"),
+        "intro\n-[##]> Title\n"
+    );
+}
+
+#[test]
+fn sift_dollar_anchors_before_the_line_break_a_selection_ends_on() {
+    assert_state!("-[## Title\n]>", sift("Title$"), "## -[Title]>\n");
+}
+
+#[test]
+fn sift_leaves_out_the_line_break_a_selection_ends_on() {
+    assert_state!("-[a\nb\nc\n]>", sift("\n"), "a-{\n}>b-[\n]>c\n");
+}
+
+#[test]
+fn sift_finds_nothing_in_a_selection_of_only_a_line_break() {
+    let (text, sels) = parse_state("a\n-[\n]>b\n");
+    let regex = regex_cursor::engines::meta::Regex::new("\n").unwrap();
+    assert!(sift_matches_within(&test_fixtures::testing::state(text, sels), &regex).is_none());
 }
 
 #[test]

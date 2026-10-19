@@ -161,6 +161,7 @@ Press `z` followed by a second key to reposition the view (the cursor itself sta
 `/`, `?`, `s` (sift-within), and `*` all use [Rust regex](https://docs.rs/regex) syntax. Notable points:
 
 - **Smart case.** A pattern with no uppercase letter matches case-insensitively; a single uppercase letter anywhere makes it case-sensitive. Note that this looks at the raw pattern text, so an escape like `\W` or `\S` counts as uppercase and will quietly make the search case-sensitive. Override with `(?i)` or `(?-i)`.
+- **Anchors.** At `/` and `?`, `^` and `$` match at the start and end of the buffer. At `s` they match at the start and end of each selection; see [Sift within](selections.md#sift-within-s).
 - **Other inline flags**: `(?m)` multiline `^`/`$`, `(?s)` dot-matches-newline, `(?x)` extended (whitespace ignored), `(?U)` swap greedy/non-greedy.
 - **`.` does not match newlines** by default; use `(?s)` if you need it to.
 - **No backreferences, no lookaround, no possessive quantifiers.** No Vim-style `\c` / `\C` case toggles either; they'd match the literal letters `c` / `C`.

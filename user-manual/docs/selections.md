@@ -152,4 +152,6 @@ Press `s` to enter Sift mode. Type a regex pattern and press `Enter`. Each exist
 2. Press `s` and type `\w+` to select each word individually
 3. Press `d` to delete all words at once
 
+The pattern sees each selection's text on its own, without a line break the selection ends on: the same text `c` would change. So `^` and `$` match at the start and end of the selection, not of the line or the buffer, and `\b` sees the selection's edges as the edges of the text. Add `(?m)` to make `^` and `$` also match at the start and end of each line inside the selection. On `## Title` selected with `x`, `^#+` selects `##` and `Title$` selects `Title`. A line break the selection ends on is never matched, so a selection covering only an empty line has nothing to sift.
+
 `s` requires at least one selection wider than a single character. On a bare single-character cursor it does nothing. Pressing `Enter` on an invalid pattern, or one with no match, reports it and leaves the selections as they were. See [Regex syntax](moving-around.md#regex-syntax) for the pattern flavor and case-sensitivity rules.

@@ -62,7 +62,9 @@ pub fn cmd_split_selection_on_newlines(
 /// Replace each selection with the regex matches found within it.
 ///
 /// For every selection in `state`, finds all non-overlapping matches of `regex`
-/// bounded to that selection's range. Each match becomes a new forward
+/// in that selection's [content](hume_editing::selection::SelectionView::content),
+/// searched as a text of its own. A selection covering only a line break has
+/// no content and no matches. Each match becomes a new forward
 /// `Selection`. The new primary is the first match within the original primary
 /// selection's range.
 ///
@@ -73,8 +75,9 @@ pub fn sift_matches_within(state: &EditState, regex: &Regex) -> Option<EditState
         .view()
         .iter()
         .map(|sel| {
-            find_matches_in_range(sel.text(), regex, sel.covered())
+            sel.content()
                 .into_iter()
+                .flat_map(|content| find_matches_in_range(sel.text(), regex, content))
                 .map(|span| Selection::covering(span, Facing::Forward))
                 .collect()
         })
