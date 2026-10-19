@@ -187,26 +187,6 @@ fn plum_cleanup_removes_orphan_plugin_directory() {
     );
 }
 
-/// A failed install leaves its staging clone in `<data>/plum-staging/`.
-#[test]
-fn plum_cleanup_removes_what_a_failed_install_left_in_staging() {
-    let _path = path_reader();
-
-    let data_tmp = tempfile::tempdir().unwrap();
-    let staging = data_tmp.path().join("hume/plum-staging");
-    std::fs::create_dir_all(staging.join("testuser/testrepo/.git")).unwrap();
-
-    let mut ed = editor_from("-[x]>\n");
-    load_plum(&mut ed, data_tmp.path());
-
-    type_cmd(&mut ed, ":plum-cleanup-plugins");
-
-    assert!(
-        !staging.exists(),
-        ":plum-cleanup-plugins must remove the staging directory"
-    );
-}
-
 /// `:plum-install-grammar` with no argument and no buffer language must
 /// report core:stdlib's shared "no language given" message
 /// (`stdlib/resolve-lang-arg`) in the statusline. A `(equal? name "")` guard

@@ -40,7 +40,7 @@ when it is asked (see [Plugin discovery](#plugin-discovery)).
 | Command | Effect |
 |---|---|
 | `:plum-install-plugins` | Install all plugins declared in `init.scm` that are not yet on disk |
-| `:plum-cleanup-plugins` | Remove on-disk plugins that are no longer declared, and what a failed install left behind |
+| `:plum-cleanup-plugins` | Remove on-disk plugins that are no longer declared |
 | `:plum-update-plugins` | Check every installed third-party plugin out at its `#:ref`, or its default branch's latest commit |
 | `:plum-list-plugins` | Show the declared, installed, orphan and missing plugin lists in `[plum-plugins]` |
 | `:plum-install-grammar [lang]` | Install or repair a grammar: fresh clone, recompile, then replace its source. Defaults to the current buffer's language. Tab-completes the languages with a bundled grammar |
@@ -96,16 +96,17 @@ Declared plugins live in `init.scm`. Installed plugins are found by walking
 `(load-plugin! "user/repo" #:ref "v1.2.0")` pins a plugin to a tag, a branch or a
 commit id, full or abbreviated; `(declared-plugin-ref name)` reads the pin back.
 
-`plum/git-sync!` puts a clone on a ref. `git fetch` cannot resolve an abbreviated commit
-id on the remote, so for a pin it fetches every branch and tag (`git fetch --force
---prune --tags origin`) and resolves the ref locally, taking the first of
-`refs/tags/<ref>`, `refs/remotes/origin/<ref>` and, for 4 to 40 hex digits, the commit id
-itself that `git rev-parse --verify` accepts. A ref that resolves to nothing (missing
-upstream, an ambiguous short id, or a short id of a commit no branch or tag reaches,
-which the fetch never brings in) raises an error naming it. A full id of such a commit
-resolves in a clone `plum/install-repo!` made, since `git rev-parse` fetches a missing
-object from a promisor remote on demand. Without a pin, it fetches `HEAD`, the
-remote's default branch. Either way it ends with `git checkout --detach`, which moves a
+`plum/git-sync!` puts a clone on a ref. Without a pin it fetches `HEAD`, the remote's
+default branch, and for a full 40-digit commit id, which every grammar pin is, it fetches
+that commit alone, whether or not a branch or tag reaches it. Any other pin is a tag, a
+branch or an abbreviated commit id, and `git fetch` cannot resolve an abbreviated id on
+the remote, so it fetches every branch and tag (`git fetch --force --prune --tags
+origin`) and resolves the ref locally, taking the first of `refs/tags/<ref>`,
+`refs/remotes/origin/<ref>` and, for 4 or more hex digits, the commit id itself that
+`git rev-parse --verify` accepts. A ref that resolves to nothing (missing upstream, an
+ambiguous short id, or a short id of a commit no branch or tag reaches, which the fetch
+never brings in) raises an error naming it. A tag or branch named with 40 hex digits is
+read as a commit id. Either way it ends with `git checkout --detach`, which moves a
 clone between any two states: onto a tag, from one tag to another, from a tag to a
 branch, and off a tag once the pin is removed, where `git pull` would refuse a detached
 HEAD. So every clone is on a detached HEAD, and a local edit that conflicts with the
@@ -117,9 +118,11 @@ repo: `git init` in `<data>/plum-staging/<parent>/<name>`, `git remote add origi
 origin made a promisor remote with `partialclonefilter blob:none` (a blobless clone,
 which downloads only the files of the commits it checks out), `plum/git-sync!`, then
 the caller's `#:build` on the staging clone, if any. Only then does it delete the old
-clone, if any, and rename the new one into place. A failed install leaves the old clone untouched and
-nothing new where discovery looks. Its staging directory stays until the next install of
-that repo or `:plum-cleanup-plugins`, which deletes `<data>/plum-staging/` whole.
+clone, if any, and rename the new one into place. A failed install deletes its staging
+clone and leaves the old clone untouched. It catches the failure in a handler that
+returns the message, then raises a fresh error with it: re-raising the caught error from
+inside the handler corrupts Steel's VM stack when a caller has a handler of its own, as
+`plum/batch-run!` and `:plum-install-grammar` do.
 `:plum-install-plugins` installs only missing plugins, so a changed pin reaches an
 installed plugin through `:plum-update-plugins`.
 `load-plugin!` raises for a ref `git check-ref-format` would refuse, for one starting
@@ -143,7 +146,7 @@ read once when PLUM loads), so HUME uses Helix's query files without vendoring t
 ### Query fetching
 
 `plum/fetch-raw-query` downloads one query file with `curl` into a temp file under
-`<data>/plum-staging/`, which exists while an install builds, reads it, and deletes the temp file. A failed read still deletes
+`<data>/plum-staging/`, reads it, and deletes the temp file. A failed read still deletes
 the temp file and then raises a fresh error; the native read error is not re-raised.
 
 A query file can declare `; inherits: dep,dep,...` instead of writing out its own

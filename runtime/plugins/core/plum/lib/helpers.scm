@@ -39,13 +39,22 @@
   (let ((stage (path-join (plum/staging-dir) (file-name (parent-name dest)) (file-name dest))))
     (call! "stdlib/delete-dir!" stage)
     (create-directory! stage)
-    (run-inline-output! "git" (list "init" "-q") #:cwd stage)
-    (run-inline-output! "git" (list "remote" "add" "--" "origin" url) #:cwd stage)
-    (run-inline-output! "git" (list "config" "remote.origin.promisor" "true") #:cwd stage)
-    (run-inline-output! "git" (list "config" "remote.origin.partialclonefilter" "blob:none")
-                        #:cwd stage)
-    (plum/git-sync! stage ref)
-    (when build (build stage))
+    ;; Why the raise follows the handler: README.md's "Pinned plugins".
+    (let ((failure
+            (with-handler
+              (lambda (err) (to-string err))
+              (begin
+                (run-inline-output! "git" (list "init" "-q") #:cwd stage)
+                (run-inline-output! "git" (list "remote" "add" "--" "origin" url) #:cwd stage)
+                (run-inline-output! "git" (list "config" "remote.origin.promisor" "true") #:cwd stage)
+                (run-inline-output! "git" (list "config" "remote.origin.partialclonefilter" "blob:none")
+                                    #:cwd stage)
+                (plum/git-sync! stage ref)
+                (when build (build stage))
+                #f))))
+      (when failure
+        (call! "stdlib/delete-dir!" stage)
+        (error failure)))
     (call! "stdlib/delete-dir!" dest)
     (create-directory! (parent-name dest))
     (rename-file-or-directory! stage dest)))
@@ -53,7 +62,7 @@
 ;;; Checks the clone in `dir` out at origin's `ref`, or its default branch for #f.
 ;;; See README.md's "Pinned plugins".
 (define (plum/git-sync! dir ref)
-  (if ref
+  (if (and ref (not (plum/commit-id? ref 40)))
       (begin
         (run-inline-output! "git" (list "fetch" "--force" "--prune" "--tags" "origin") #:cwd dir)
         (let ((id (plum/resolve-ref dir ref)))
@@ -62,14 +71,14 @@
                                   "commit id must be unambiguous and on a branch or tag")))
           (run-inline-output! "git" (list "checkout" "--detach" id) #:cwd dir)))
       (begin
-        (run-inline-output! "git" (list "fetch" "origin" "HEAD") #:cwd dir)
+        (run-inline-output! "git" (list "fetch" "origin" (or ref "HEAD")) #:cwd dir)
         (run-inline-output! "git" (list "checkout" "--detach" "FETCH_HEAD") #:cwd dir))))
 
 ;;; The commit `ref` names in the fetched clone in `dir`, or #f.
 (define (plum/resolve-ref dir ref)
   (let loop ((candidates (cons (string-append "refs/tags/" ref)
                                (cons (string-append "refs/remotes/origin/" ref)
-                                     (if (plum/commit-id? ref) (list ref) '())))))
+                                     (if (plum/commit-id? ref 4) (list ref) '())))))
     (if (null? candidates)
         #f
         (let ((result (run-capture! "git"
@@ -80,11 +89,11 @@
               (trim (hash-ref result 'stdout))
               (loop (cdr candidates)))))))
 
-;;; 4 to 40 hex digits: a full or abbreviated commit id.
-(define (plum/commit-id? ref)
+;;; `min` to 40 hex digits: a commit id, abbreviated to no fewer than `min` digits.
+(define (plum/commit-id? ref min)
   (let ((hex (string->list "0123456789abcdefABCDEF"))
         (n (string-length ref)))
-    (and (>= n 4) (<= n 40)
+    (and (>= n min) (<= n 40)
          (null? (filter (lambda (c) (not (member c hex))) (string->list ref))))))
 
 ;; ── Filesystem helpers ────────────────────────────────────────────────────────

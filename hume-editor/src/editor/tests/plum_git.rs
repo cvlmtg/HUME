@@ -63,6 +63,11 @@ fn install_plugin_clone(
     clone_dir
 }
 
+/// Where `plum/install-repo!` stages `testuser/testrepo` under `data_dir`.
+fn plugin_stage(data_dir: &std::path::Path) -> std::path::PathBuf {
+    data_dir.join("hume/plum-staging/testuser/testrepo")
+}
+
 fn error_log(ed: &Editor) -> Vec<String> {
     ed.state
         .message_log
@@ -279,7 +284,6 @@ fn plum_install_brings_an_unpinned_plugin_to_origins_latest_commit() {
     assert_eq!(content, "; v2\n");
 }
 
-/// The failed install leaves its staging clone behind; the retry replaces it.
 #[test]
 fn plum_install_of_a_missing_ref_installs_nothing_and_can_be_retried() {
     let _path = path_reader();
@@ -298,6 +302,10 @@ fn plum_install_of_a_missing_ref_installs_nothing_and_can_be_retried() {
     assert!(
         !dest.exists(),
         "a failed install must leave no plugin directory"
+    );
+    assert!(
+        !plugin_stage(data_tmp.path()).exists(),
+        "a failed install must delete its staging clone"
     );
 
     let (errors, dest) = run_plum_install_repo(origin.path(), data_tmp.path(), r#""main""#);
@@ -435,4 +443,8 @@ fn plum_install_whose_build_fails_keeps_the_old_clone() {
     );
     let content = std::fs::read_to_string(dest.join("plugin.scm")).unwrap();
     assert_eq!(content, "; v1\n", "a failed build must keep the old clone");
+    assert!(
+        !plugin_stage(data_tmp.path()).exists(),
+        "a failed build must delete its staging clone"
+    );
 }

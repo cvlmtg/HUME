@@ -43,9 +43,8 @@
   #:inline-output #t)
 
 (define-typed-command! "plum-cleanup-plugins"
-  "Remove on-disk plugins that are no longer declared in init.scm, and what a failed install left behind."
+  "Remove on-disk plugins that are no longer declared in init.scm."
   (lambda ()
-    (call! "stdlib/delete-dir!" (plum/staging-dir))
     (let ((orphans (plum/orphan-plugins (declared-plugins) (plum/installed-plugins))))
       (if (null? orphans)
           (log! 'info "PLUM: nothing to remove")
