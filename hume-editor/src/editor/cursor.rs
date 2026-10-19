@@ -131,9 +131,9 @@ pub(in crate::editor) fn gutter_width<'a>(
 ///
 /// The coordinate space is pane-relative, not terminal-absolute: `(0, 0)` is
 /// the top-left cell of the pane. `MouseEvent.column`/`.row` are
-/// terminal-absolute. Callers translate through `Editor::pane_at_screen_pos`
-/// (`hume-editor/src/editor/mouse.rs`) first, which also decides which pane a
-/// click landed in when more than one is on screen (a `:split`/`:vsplit`).
+/// terminal-absolute. Callers translate through `EngineView::pane_hit`
+/// first, which also decides which pane a click landed in when more than one
+/// is on screen (a `:split`/`:vsplit`).
 pub(in crate::editor) fn screen_to_cluster(
     content_x: u16,
     content_y: u16,

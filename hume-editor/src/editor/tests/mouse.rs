@@ -93,6 +93,44 @@ fn click_after_blank_line_trim_lands_on_correct_char() {
     assert_eq!(state(&ed), "  x\n\nc-[d]>\n");
 }
 
+/// A click lands on the cluster the last frame drew under it, even when the
+/// gutter has widened since without a redraw.
+#[test]
+fn a_click_after_an_undrawn_gutter_change_lands_on_the_drawn_cell() {
+    let (path, _f) = temp_file("abcdef\n");
+    let mut ed = open_headless(Some(path));
+    let grid = ed.render_to_buf(Rect::new(0, 0, 80, 25));
+    let x = grid
+        .row(0)
+        .iter()
+        .position(|cell| cell.text() == "d")
+        .expect("the frame draws the line");
+
+    ed.execute_typed("set", Some("global gutter-signs=always:3"))
+        .unwrap();
+    ed.handle_input(mouse_left_down(u16::try_from(x).unwrap(), 0));
+
+    assert_eq!(ed.current_view().primary().head().offset(), co(3));
+}
+
+/// A click on a pane closed since the last frame hits nothing, so it neither
+/// moves focus nor lands in the pane that grew into its place.
+#[test]
+fn a_click_on_a_pane_closed_since_the_frame_is_a_miss() {
+    const TEXT: &str = "-[0]>123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz\n";
+    let mut ed = editor_from(TEXT);
+    ed.execute_typed("vsplit", None).unwrap();
+    ed.render_to_buf(Rect::new(0, 0, 100, 25));
+    ed.execute_typed("quit", None).unwrap();
+    let focused = ed.view.focused_pane();
+
+    // The closed right pane was drawn at x 50..100.
+    ed.handle_input(mouse_left_down(60, 0));
+
+    assert_eq!(ed.view.focused_pane(), focused);
+    assert_eq!(state(&ed), TEXT);
+}
+
 // ── Drag ──────────────────────────────────────────────────────────────────
 
 /// A left-drag after a click extends the selection from the click's anchor
@@ -117,10 +155,9 @@ fn drag_extends_selection_from_click_anchor() {
 }
 
 /// A drag whose coordinates fall inside a *different* pane's rect (a fast
-/// mouse move during a `:vsplit` drag easily crosses the seam) must be
-/// ignored, not translated as if it were still in the originating pane:
-/// `rect_relative`'s `x - rect.x`/`y - rect.y` would otherwise underflow when
-/// the drag lands left of/above the originating pane's own rect origin.
+/// mouse move during a `:vsplit` drag easily crosses the seam) is ignored,
+/// not translated as if it were still in the originating pane, where a
+/// position left of its rect origin would underflow.
 #[test]
 fn drag_crossing_into_a_different_pane_is_ignored_not_underflowed() {
     let mut ed =
@@ -128,20 +165,17 @@ fn drag_crossing_into_a_different_pane_is_ignored_not_underflowed() {
     ed.execute_typed("vsplit", None).unwrap();
     let pid_b = ed.view.focused_pane(); // vsplit focuses the new (right) pane
 
-    let mut ctx = hume_engine::pipeline::RenderContext::new();
-    ed.resize_terminal(100, 25);
-    ed.settle();
-    ed.prepare_frame(&mut ctx);
+    ed.render_to_buf(Rect::new(0, 0, 100, 25));
 
     // Click pane B (right half, gutter 4): screen col 57 = rect.x(50) +
     // gutter(4) + content col 3 (see vsplit_click_... below for the geometry).
     ed.handle_input(mouse_left_down(57, 0));
     assert_eq!(ed.view.focused_pane(), pid_b);
     let head_after_click = ed.current_view().primary().head().offset();
+    assert_eq!(head_after_click, co(3), "the click lands in pane B");
 
     // Drag to col 0, inside pane A's rect (x ∈ [0, 49)), left of pane B's
-    // own rect.x (50). Without `rect_relative`'s `contains` guard, `x - rect.x`
-    // underflows a u16 subtraction.
+    // own rect.x (50).
     ed.handle_input(mouse_drag(0, 0));
 
     assert_eq!(
@@ -622,7 +656,7 @@ fn stacked_split_click_translates_row_by_the_panes_rect_origin() {
 
 /// A click on the tab bar switches to the tab it lands on, and, unlike a
 /// click that misses every pane's rect (the statusline case above), never
-/// falls through to `pane_at_screen_pos`.
+/// falls through to the pane hit test.
 #[test]
 fn click_on_a_tab_switches_to_it() {
     let mut ed = editor_from("-[a]>bc\n");

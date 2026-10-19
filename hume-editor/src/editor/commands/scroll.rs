@@ -20,7 +20,7 @@ use hume_editing::selection::Selection;
 /// The single implementation behind the wheel, `Ctrl-d`/`Ctrl-u` and
 /// `PageDown`/`PageUp`: they differ only in `count` and which pane they pass
 /// (always `view.focused_pane()`, except the wheel, which hit-tests the pointer
-/// against `pane_at_screen_pos`; see `editor/mouse.rs`). `Viewport::scroll_by`
+/// against the panes the last frame drew; see `editor/mouse.rs`). `Viewport::scroll_by`
 /// is what makes a scroll move the view even while the cursor is still
 /// inside it (a `Ctrl-d` from the top of a file); `carry`, called per
 /// selection below with the same requested `delta` and the viewport's own

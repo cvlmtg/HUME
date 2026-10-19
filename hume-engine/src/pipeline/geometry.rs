@@ -7,6 +7,7 @@ use hume_grid::{Position, Rect};
 
 use super::layout::{Direction, FocusedLayout, Side};
 use super::{BOTTOM_BANDS, PaneId};
+use crate::layout::PaneGeometry;
 use crate::pane::ViewGeometry;
 
 /// Rows each piece of chrome takes, as the editor computes them from its
@@ -139,42 +140,93 @@ impl ScreenLayout {
     }
 }
 
-/// The layout the last render drew. Hit tests read it, so a click lands on
-/// what was on screen even when a band has opened or closed since. Before
-/// the first render every hit misses.
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
-pub struct DrawnLayout(Option<ScreenLayout>);
+/// What the last render drew: the tab bar's rect and each pane's rect and
+/// gutter. Hit tests read only this, so a click lands on what was on screen
+/// even when a band, a pane or a gutter has changed since. Before the first
+/// render every hit misses.
+#[derive(Clone, Debug, Default)]
+pub struct DrawnLayout {
+    tabbar: Rect,
+    panes: Vec<DrawnPane>,
+}
+
+#[derive(Copy, Clone, Debug)]
+struct DrawnPane {
+    id: PaneId,
+    rect: Rect,
+    gutter_width: u16,
+    content_width: ContentWidth,
+}
 
 impl DrawnLayout {
-    pub(crate) fn new(screen: ScreenLayout) -> Self {
-        Self(Some(screen))
+    /// Start recording a frame drawn with `screen`, keeping the pane list's
+    /// allocation.
+    pub(crate) fn begin(&mut self, screen: &ScreenLayout) {
+        self.tabbar = screen.tabbar_area();
+        self.panes.clear();
+    }
+
+    /// Record pane `id`, drawn into `rect` with `geometry`.
+    pub(crate) fn record_pane(&mut self, id: PaneId, rect: Rect, geometry: &PaneGeometry) {
+        self.panes.push(DrawnPane {
+            id,
+            rect,
+            gutter_width: geometry.gutter_width,
+            content_width: geometry.content_width,
+        });
     }
 
     /// The tab bar's rect as drawn.
     pub fn tabbar_area(&self) -> Rect {
-        self.0
-            .map_or_else(Rect::default, |screen| screen.tabbar_area())
+        self.tabbar
     }
 
-    /// The pane of `layout` drawn at `pos`, and its rect.
-    pub fn pane_at(&self, layout: &FocusedLayout, pos: Position) -> Option<(PaneId, Rect)> {
-        let screen = self.0?;
-        layout
-            .tree()
-            .find_containing(pos, screen.pane_area(), screen.reserve_seam)
+    /// The pane drawn at `pos`, whether or not it still exists.
+    pub(crate) fn pane_at(&self, pos: Position) -> Option<PaneHit> {
+        let pane = self.panes.iter().find(|pane| pane.rect.contains(pos))?;
+        Some(PaneHit {
+            pane: pane.id,
+            x: pos.x - pane.rect.x,
+            y: pos.y - pane.rect.y,
+            gutter_width: pane.gutter_width,
+            content_width: pane.content_width,
+        })
+    }
+}
+
+/// A position on a drawn pane, in that pane's own cells, with the gutter
+/// and content widths the pane was drawn with. Built only by
+/// [`super::EngineView::pane_hit`].
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct PaneHit {
+    pane: PaneId,
+    x: u16,
+    y: u16,
+    gutter_width: u16,
+    content_width: ContentWidth,
+}
+
+impl PaneHit {
+    pub fn pane(self) -> PaneId {
+        self.pane
     }
 
-    /// Pane `pid`'s rect as drawn, `None` when `layout` has no such pane.
-    pub fn pane_rect(&self, layout: &FocusedLayout, pid: PaneId) -> Option<Rect> {
-        let screen = self.0?;
-        layout
-            .tree()
-            .find_rect(pid, screen.pane_area(), screen.reserve_seam)
+    /// The column within the pane's rect, gutter included.
+    pub fn x(self) -> u16 {
+        self.x
     }
 
-    /// Pane `pid`'s size as drawn.
-    pub fn pane_size(&self, layout: &FocusedLayout, pid: PaneId) -> Option<PaneSize> {
-        self.pane_rect(layout, pid).map(PaneSize::of)
+    /// The row within the pane's rect.
+    pub fn y(self) -> u16 {
+        self.y
+    }
+
+    pub fn gutter_width(self) -> u16 {
+        self.gutter_width
+    }
+
+    pub fn content_width(self) -> ContentWidth {
+        self.content_width
     }
 }
 

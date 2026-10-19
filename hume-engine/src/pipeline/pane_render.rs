@@ -2,6 +2,7 @@ use hume_grid::Grid;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 use crate::display_lines::DisplayLineMap;
+use crate::layout::PaneGeometry;
 use crate::render::{self, ComposeCtx};
 use crate::types::{DisplayLineKind, ResolvedStyle};
 
@@ -34,12 +35,14 @@ const H_WINDOW_SLACK: u16 = 4;
 /// per line visited this frame, O(total visible graphemes).
 /// [`crate::format::LineFormat::reset_and_shrink`] releases a pathologically
 /// wide line's buffers at the frame boundary.
+///
+/// Returns the geometry the pane was drawn with.
 pub(crate) fn render_pane(
     pane_ctx: &mut PaneRenderCtx,
     scratch: &mut FrameScratch,
     store: &mut crate::display_lines::line_store::PaneLineStore,
     grid: &mut Grid,
-) {
+) -> PaneGeometry {
     use crate::layout;
 
     // ── Stage 1: Geometry ─────────────────────────────────────────────────
@@ -224,6 +227,7 @@ pub(crate) fn render_pane(
     }
 
     render::render_tilde_fillers(screen_row, lane_widths, &compose_ctx, &mut canvas);
+    visible
 }
 
 // ---------------------------------------------------------------------------

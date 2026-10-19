@@ -4,11 +4,12 @@
 //! tracking (mode 1002, which delivers `MouseEventKind::Drag`) is enabled only
 //! when `editor.mouse_select` is true.
 //!
-//! Click coordinates are terminal-absolute, so [`Editor::pane_at_screen_pos`]
-//! first finds the pane under the pointer and translates into its frame
-//! before `screen_to_cluster` resolves the buffer cluster it hits. Every hit
-//! test reads the layout the last frame drew (`EngineView::drawn`), so a
-//! click lands on what was on screen even after a band opened or closed.
+//! Click coordinates are terminal-absolute, so `EngineView::pane_hit` first
+//! finds the pane under the pointer, in its own cells, before
+//! `screen_to_cluster` resolves the buffer cluster it hits. Every hit test
+//! reads what the last frame drew, the pane rects and their gutter widths,
+//! so a click lands on what was on screen even after a band, a pane or a
+//! gutter changed.
 //!
 //! The wheel runs `commands::scroll_view` with `count = mouse-scroll-lines`,
 //! like `Ctrl-d`/`Ctrl-u`. It scrolls the pane under the pointer (the focused
@@ -18,7 +19,7 @@
 //! `Popup` dismisses on any of them. [`Editor::base_mouse`] is the `Base`
 //! layer's policy, reached only after the stack has let the event through.
 
-use hume_engine::pipeline::PaneId;
+use hume_engine::pipeline::PaneHit;
 use hume_grid::{Position, Rect};
 use termina::event::{MouseButton, MouseEvent, MouseEventKind};
 
@@ -73,8 +74,8 @@ impl Editor {
     fn mouse_left_down(&mut self, x: u16, y: u16) {
         // A tabline click is handled separately (and unconditionally, even
         // when it doesn't land on an actual tab): it's outside every
-        // pane's rect, so `pane_at_screen_pos` below would just treat it as
-        // a miss anyway, but routing it first avoids relying on that.
+        // pane's rect, so the pane hit test below would just treat it as a
+        // miss anyway, but routing it first avoids relying on that.
         if self.tabline_click(x, y) {
             return;
         }
@@ -82,7 +83,7 @@ impl Editor {
         // Hit-test before anything else: a miss (statusline, a divider seam
         // or anything else outside a pane's own rect) is a no-op, and a hit's
         // pane-relative coordinates are what every step below needs.
-        let Some((pid, pane_x, pane_y)) = self.pane_at_screen_pos(x, y) else {
+        let Some(hit) = self.view.pane_hit(Position::new(x, y)) else {
             return;
         };
 
@@ -94,14 +95,14 @@ impl Editor {
         // still current: `end_insert_session` can shrink that pane's
         // buffer (the blank-line indent trim), so computing `click_to_cluster`
         // first would resolve against a buffer the exit is about to change.
-        super::focus::focus_pane(&mut self.state, &mut self.view, pid);
+        super::focus::focus_pane(&mut self.state, &mut self.view, hit.pane());
 
-        if let Some(pos) = self.click_to_cluster(pid, pane_x, pane_y) {
+        if let Some(pos) = self.click_to_cluster(hit) {
             // Collapse the selections to one cursor on the clicked cluster.
             self.select_only(Selection::cursor(pos));
             self.clear_pending_input();
             // The cursor is the anchor of a drag that follows.
-            self.state.mouse_drag = Some(pid);
+            self.state.mouse_drag = Some(hit.pane());
         }
     }
 
@@ -134,21 +135,21 @@ impl Editor {
         // Drag events are only received when `mouse_select = true` (mode 1002).
         // A drag never moves focus mid-gesture. It extends the selection in
         // the pane the click that started it focused, and only while that
-        // pane still has focus. Hit-test only that pane's own rect, so a drag
-        // that leaves it (as a fast mouse move easily can) is ignored rather
-        // than resolving against the wrong pane.
+        // pane still has focus. A drag that leaves it (as a fast mouse move
+        // easily can) is ignored rather than resolving against the wrong pane.
         let pid = self.view.focused_pane();
         if self.state.mouse_drag != Some(pid) {
             return;
         }
-        let Some(rect) = self.view.drawn().pane_rect(self.view.focused_layout(), pid) else {
-            return;
-        };
-        let Some((pane_x, pane_y)) = rect_relative(rect, x, y) else {
+        let Some(hit) = self
+            .view
+            .pane_hit(Position::new(x, y))
+            .filter(|hit| hit.pane() == pid)
+        else {
             return;
         };
 
-        if let Some(head) = self.click_to_cluster(pid, pane_x, pane_y) {
+        if let Some(head) = self.click_to_cluster(hit) {
             // The anchor is read from the selection, not remembered from the
             // click, so a key that changes the selection mid-drag moves it.
             let anchor = EditView::bind(self.doc().text(), self.current_selections())
@@ -167,8 +168,9 @@ impl Editor {
         // no pane to prefer over the focused one, so it falls back there
         // instead of being a no-op like a click's own miss.
         let pid = self
-            .pane_at_screen_pos(x, y)
-            .map_or(self.view.focused_pane(), |(pid, _, _)| pid);
+            .view
+            .pane_hit(Position::new(x, y))
+            .map_or(self.view.focused_pane(), PaneHit::pane);
         let scroll_lines = self.state.settings.mouse_scroll_lines;
         // The notch scrolls the pane the next frame draws, which a popup the
         // notch retired may have grown.
@@ -189,7 +191,7 @@ impl Editor {
     /// Handle a click at terminal-absolute `(x, y)` landing in the tab
     /// bar's row, if it does. Returns `true` when it was, whether or not
     /// it landed on an actual tab, so a click on the row's blank tail is a
-    /// no-op but still doesn't fall through to `pane_at_screen_pos` (which
+    /// no-op but still doesn't fall through to the pane hit test (which
     /// would just miss anyway, since the tabline sits outside every pane's
     /// rect). Uses the same `tab_extents` layout `TablineWidget::render`
     /// paints from, so a click always lands on the tab it visually appears
@@ -225,49 +227,19 @@ impl Editor {
         true
     }
 
-    /// Which pane `(x, y)` (terminal-absolute) falls in, and its
-    /// position translated into that pane's own rect-relative coordinates,
-    /// what `click_to_cluster` and `screen_to_cluster` expect. `None` for a
-    /// click outside every pane's rect (statusline, tabline, a divider seam).
-    fn pane_at_screen_pos(&self, x: u16, y: u16) -> Option<(PaneId, u16, u16)> {
-        let (pid, rect) = self
-            .view
-            .drawn()
-            .pane_at(self.view.focused_layout(), Position::new(x, y))?;
-        let (pane_x, pane_y) = rect_relative(rect, x, y)?;
-        Some((pid, pane_x, pane_y))
-    }
-
-    /// Resolve a pane-relative `(x, y)` click in pane `pid` to the buffer
-    /// cluster it hits.
-    fn click_to_cluster(
-        &mut self,
-        pid: PaneId,
-        x: u16,
-        y: u16,
-    ) -> Option<hume_rope::cluster::ClusterStart> {
+    /// Resolve `hit` to the buffer cluster drawn under it, at the gutter and
+    /// content widths its pane was drawn with.
+    fn click_to_cluster(&mut self, hit: PaneHit) -> Option<hume_rope::cluster::ClusterStart> {
+        let pid = hit.pane();
         let buf_id = self.view.panes[pid].buffer_id();
-        let gutter_w = {
-            let pane = &self.view.panes[pid];
-            cursor::gutter_width(
-                pane.providers.gutter_columns(),
-                self.state.buffers.get(buf_id).text().last_ropey_line(),
-                self.state.gutter_inputs(&self.view, pid),
-            )
-        };
         let key = self.state.format_key(&self.view.panes[pid]);
-        let size = self
-            .view
-            .drawn()
-            .pane_size(self.view.focused_layout(), pid)?;
-        let content_width = self.state.content_width(&self.view, pid, size);
         let (mut dlm, viewport) = pane_display_lines(
             self.state.buffers.get(buf_id),
             &mut self.view.panes[pid],
             key,
-            content_width,
+            hit.content_width(),
         );
-        cursor::screen_to_cluster(x, y, gutter_w, viewport, &mut dlm)
+        cursor::screen_to_cluster(hit.x(), hit.y(), hit.gutter_width(), viewport, &mut dlm)
     }
 }
 
@@ -275,21 +247,10 @@ impl Editor {
 // Coordinate helpers
 // ---------------------------------------------------------------------------
 
-/// Translate terminal-absolute `(x, y)` into `rect`'s own frame (the space
-/// `click_to_cluster` and `screen_to_cluster` expect), or `None` when the
-/// position falls outside `rect`. The `contains` guard is what keeps the
-/// `u16` subtraction from underflowing on a position left of/above the rect
-/// origin.
-fn rect_relative(rect: Rect, x: u16, y: u16) -> Option<(u16, u16)> {
-    rect.contains(Position::new(x, y))
-        .then(|| (x - rect.x, y - rect.y))
-}
-
 /// Translate a pane-content-relative `(content_x, row)` cell (relative to
 /// the pane's content area, past the `gutter_w`-wide gutter) into an
-/// absolute terminal cell. The inverse of [`rect_relative`]: a
-/// content-relative position `pane_display_lines`'s cursor
-/// walk already resolved, placed onto the screen.
+/// absolute terminal cell: a content-relative position `pane_display_lines`'s
+/// cursor walk already resolved, placed onto the screen.
 pub(super) fn content_pos_to_screen(
     content_x: u16,
     row: u16,

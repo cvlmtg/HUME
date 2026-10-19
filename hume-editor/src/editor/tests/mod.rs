@@ -508,8 +508,8 @@ fn mouse_left_down(x: u16, y: u16) -> TerminalEvent {
 }
 
 /// A wheel-scroll event at terminal-absolute `(x, y)`. `Editor::mouse_scroll`
-/// hit-tests these against `pane_at_screen_pos` (`editor/mouse.rs`) to pick
-/// which pane to scroll. `down` picks the direction, matching
+/// hit-tests these against the panes the last frame drew (`editor/mouse.rs`)
+/// to pick which pane to scroll. `down` picks the direction, matching
 /// `Editor::mouse_scroll`'s own `down: bool`.
 fn mouse_wheel_at(x: u16, y: u16, down: bool) -> TerminalEvent {
     TerminalEvent::Mouse(MouseEvent {

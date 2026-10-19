@@ -18,7 +18,7 @@ mod pane_render;
 #[cfg(test)]
 mod tests;
 
-pub use geometry::{ChromeRows, ContentWidth, DrawnLayout, PaneSize, ScreenLayout};
+pub use geometry::{ChromeRows, ContentWidth, DrawnLayout, PaneHit, PaneSize, ScreenLayout};
 use layout::{
     ARM_E, ARM_N, ARM_S, ARM_W, collect_seam_arms, focused_pane_corners, focused_seam_segment,
     junction_glyph,
@@ -314,9 +314,17 @@ impl EngineView {
         &self.layout
     }
 
-    /// The layout the last [`Self::render`] drew, for hit tests.
+    /// What the last [`Self::render`] drew, for the tab bar's hit test.
     pub fn drawn(&self) -> &DrawnLayout {
         &self.drawn
+    }
+
+    /// The pane the last [`Self::render`] drew at `pos`, `None` on a miss or
+    /// when that pane has left the active tab since.
+    pub fn pane_hit(&self, pos: Position) -> Option<PaneHit> {
+        self.drawn
+            .pane_at(pos)
+            .filter(|hit| self.layout.tree().contains_leaf(hit.pane()))
     }
 
     /// The active tab's focused pane, always a leaf of [`Self::layout`].
@@ -443,7 +451,7 @@ impl EngineView {
             (area.width, area.height),
             "grid sized for another terminal area"
         );
-        self.drawn = DrawnLayout::new(layout);
+        self.drawn.begin(&layout);
         let pane_area = layout.pane_area();
         let draw_dividers = layout.reserves_seam();
         let focused_pane_id = self.layout.focused();
@@ -564,7 +572,8 @@ impl EngineView {
                     .map(|bg| (bg, PANE_DIM_FACTOR)),
                 default_gutter_scope: self.default_gutter_scope,
             };
-            render_pane(&mut pane_ctx, scratch, line_store, grid);
+            let geometry = render_pane(&mut pane_ctx, scratch, line_store, grid);
+            self.drawn.record_pane(pane_id, rect, &geometry);
         }
 
         // ── Render seam dividers between panes ────────────────────────────────

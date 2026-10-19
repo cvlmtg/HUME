@@ -1950,26 +1950,24 @@ fn dividers_off_pane_rects_tile_with_no_gap() {
 
     ed.render_to_buf(Rect::new(0, 0, 100, 51));
 
-    let drawn = ed.view.drawn();
-    let mut rects: Vec<Rect> = ed
-        .view
-        .active_pane_ids()
-        .into_iter()
-        .map(|pid| {
-            drawn
-                .pane_rect(ed.view.focused_layout(), pid)
-                .expect("an active pane is drawn")
+    let hits: Vec<_> = (0..100)
+        .map(|x| {
+            ed.view
+                .pane_hit(hume_grid::Position::new(x, 0))
+                .expect("no column is reserved for a seam when pane-dividers is off")
+                .pane()
         })
         .collect();
-    assert_eq!(rects.len(), 2);
-    rects.sort_by_key(|r| r.x);
-    let (left, right) = (rects[0], rects[1]);
-    assert_eq!(
-        left.width + right.width,
-        100,
-        "no column is reserved for a seam when pane-dividers is off"
+    let right_start = hits
+        .iter()
+        .position(|&pid| pid != hits[0])
+        .expect("both panes are drawn on the row");
+    assert!(
+        hits[right_start..]
+            .iter()
+            .all(|&pid| pid == hits[right_start]),
+        "the right pane starts where the left one ends"
     );
-    assert_eq!(right.x, left.x + left.width, "panes are adjacent, no gap");
 }
 
 /// Visual lock-in companion to `dividers_off_pane_rects_tile_with_no_gap`:

@@ -1,8 +1,8 @@
+use hume_grid::Rect;
 use hume_grid::box_glyphs::{
     BOTTOM_LEFT, BOTTOM_RIGHT, CROSS, HORIZONTAL, HORIZONTAL_DOWN, HORIZONTAL_UP, TOP_LEFT,
     TOP_RIGHT, VERTICAL, VERTICAL_LEFT, VERTICAL_RIGHT,
 };
-use hume_grid::{Position, Rect};
 use rustc_hash::FxHashMap;
 
 use super::{PaneId, UnattachedPane};
@@ -184,41 +184,6 @@ impl LayoutTree {
                     .0
                     .find_rect(pid, r1, reserve_seam)
                     .or_else(|| children.1.find_rect(pid, r2, reserve_seam))
-            }
-        }
-    }
-
-    /// The leaf pane whose rect contains `pos`, and that rect: the
-    /// position-search sibling of [`Self::find_rect`], for a mouse hit test
-    /// that would otherwise collect every leaf's rect just to scan it for
-    /// containment. Descends only the child whose rect contains `pos`
-    /// (`O(depth)`, not `O(panes)`), falling through to the other child only
-    /// when neither matches at a given split (a click in the seam gap),
-    /// where the eventual `None` is still correct, just found less directly.
-    pub(crate) fn find_containing(
-        &self,
-        pos: Position,
-        area: Rect,
-        reserve_seam: bool,
-    ) -> Option<(PaneId, Rect)> {
-        match self {
-            LayoutTree::Leaf(id) => area.contains(pos).then_some((*id, area)),
-            LayoutTree::Split {
-                direction,
-                ratio,
-                children,
-            } => {
-                let (r1, _seam, r2) = split_rect(
-                    area,
-                    *direction == Direction::Vertical,
-                    *ratio,
-                    reserve_seam,
-                );
-                if r1.contains(pos) {
-                    children.0.find_containing(pos, r1, reserve_seam)
-                } else {
-                    children.1.find_containing(pos, r2, reserve_seam)
-                }
             }
         }
     }
