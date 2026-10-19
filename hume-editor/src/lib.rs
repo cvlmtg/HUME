@@ -37,11 +37,10 @@ pub mod testing;
 /// Opens `input` at its position, if it has one, feeds every key in `keys`
 /// (golf-stream notation; see [`hume_scripting::parse_key_stream`]) through
 /// the editor's normal dispatch path, then writes the final buffer content to
-/// `output`. No terminal is
-/// initialised. `config` picks what `init_scripting` evaluates (the default
-/// `init.scm`, a `--config` override, or `ConfigSource::Skip` for
-/// `--no-config`), exactly as it would for [`run`]. `cwd` is the startup
-/// working directory.
+/// `output`. No terminal is initialised. `config` picks what `init_scripting`
+/// evaluates (the default `init.scm`, a `--config` override, or
+/// `ConfigSource::Skip` for `--no-config`), exactly as it would for [`run`].
+/// `cwd` is the startup working directory.
 ///
 /// Stops replaying at `:wq` / `:q` / `<c-c>` (the editor sets
 /// `should_quit`); the buffer is written to `output` regardless.
@@ -61,14 +60,11 @@ pub fn run_keys(
     let parsed =
         hume_scripting::parse_key_stream(keys).map_err(|e| format!("invalid key stream: {e}"))?;
 
-    // Headless: no terminal, so nothing to wake: background threads (parse
-    // worker, LSP transport) call this harmlessly into the void. The pane
-    // viewport defaults to 80×24 (from Pane::new) and is never updated
-    // without a terminal, so scores are reproducible.
+    // The pane viewport defaults to 80×24 (from Pane::new) and is never
+    // updated without a terminal, so scores are reproducible.
     let mut editor = editor::Editor::start(
         std::slice::from_ref(&input),
         editor::Driver::Headless,
-        std::sync::Arc::new(|| {}),
         hume_platform::dirs::Dirs::from_env(&cwd),
         config,
         cwd,
@@ -183,8 +179,10 @@ pub fn run(
     let kitty_enabled = hume_platform::terminal::probe_kitty(&shared)?;
     let mut editor = editor::Editor::start(
         &files,
-        editor::Driver::Terminal { kitty_enabled },
-        wake,
+        editor::Driver::Terminal {
+            kitty_enabled,
+            wake,
+        },
         hume_platform::dirs::Dirs::from_env(&cwd),
         config,
         cwd,

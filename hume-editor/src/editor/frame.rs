@@ -269,7 +269,7 @@ impl Editor {
     /// off each pane's *current* bounds (`timer_bridge.rs`), so the bounds
     /// have to be current before that drain runs, not after.
     ///
-    /// `prepare_frame`'s bottom-band re-partition calls this a second time, from the stored
+    /// [`Self::sync_layout`] calls this a second time, from the stored
     /// `last_terminal_area`, after re-syncing the bottom-band views, so a
     /// band-height change `settle()` made (a hook-driven `close-popup!`, a
     /// settle-drained `close-drawer!`) is re-partitioned into `viewport`
@@ -438,6 +438,36 @@ impl Editor {
             });
     }
 
+    /// Re-partition the terminal from the settled chrome views (bottom bands,
+    /// tab bar) into each pane's viewport. A settled drain can resize a band
+    /// after the pre-settle `sync_viewport_dims`, so anything that reads a
+    /// pane's height after a drain runs this first: `prepare_frame`, and
+    /// `apply_startup_positions` before it centres.
+    pub(super) fn sync_layout(&mut self) {
+        // Bake scopes interned since the last frame. It must run before the
+        // bottom-band sync: `show-popup!` interns its grammar's scopes at
+        // dispatch time, and the band resolves them to styles right away.
+        // Scopes interned later in `prepare_frame` are baked by its second
+        // call at the end.
+        self.view.theme.bake_if_stale(&self.view.registry);
+
+        // Re-partition from the settled views so the pane doesn't paint
+        // short with blank rows left where a band was. Skipped without
+        // terminal geometry (headless callers).
+        self.sync_popup_band_view();
+        self.state
+            .refresh_buffer_list_drawer(self.focused_buffer_id());
+        self.state
+            .clamp_drawer_scroll_to_terminal(self.view.last_terminal_area.height);
+        self.fill_drawer_window();
+        self.state.sync_drawer_view();
+        self.sync_tabline_view();
+        let area = self.view.last_terminal_area;
+        if area.width > 0 && area.height > 0 {
+            self.sync_viewport_dims(area.width, area.height);
+        }
+    }
+
     /// Sync all editor-owned state into the engine view, once per frame,
     /// right before `render()`.
     ///
@@ -468,30 +498,7 @@ impl Editor {
         self.resync_cwd();
         self.flush_osc52();
 
-        // Bake scopes interned since the last frame. It must run before the
-        // bottom-band sync: `show-popup!` interns its grammar's scopes at
-        // dispatch time, and the band resolves them to styles right away.
-        // Scopes interned later in this function are baked by the second
-        // call at the end.
-        self.view.theme.bake_if_stale(&self.view.registry);
-
-        // A settled drain can resize a bottom band (docked popup, drawer)
-        // after the pre-settle `sync_viewport_dims`. Re-partition from the
-        // settled views so the pane doesn't paint short with blank rows
-        // left where the band was. Skipped without terminal geometry
-        // (headless callers).
-        self.sync_popup_band_view();
-        self.state
-            .refresh_buffer_list_drawer(self.focused_buffer_id());
-        self.state
-            .clamp_drawer_scroll_to_terminal(self.view.last_terminal_area.height);
-        self.fill_drawer_window();
-        self.state.sync_drawer_view();
-        self.sync_tabline_view();
-        let area = self.view.last_terminal_area;
-        if area.width > 0 && area.height > 0 {
-            self.sync_viewport_dims(area.width, area.height);
-        }
+        self.sync_layout();
 
         // Nothing below changes which panes the active tab shows.
         let active = self.view.active_pane_ids();

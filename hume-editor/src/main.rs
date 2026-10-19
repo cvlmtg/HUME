@@ -88,28 +88,29 @@ fn resolve(cli: Cli, cwd: &Path) -> Result<Invocation, String> {
         hume_editor::cli::ConfigSource::Default
     };
 
-    let files = cli
-        .files
-        .iter()
-        .map(|p| hume_editor::cli::parse_file_arg(p, cwd))
-        .collect::<Result<Vec<_>, _>>()?;
     let mode = match cli.keys {
         Some(keys) => {
             // Safe: clap's `requires` ensures output is set when keys is set.
             let output = cli
                 .output
                 .expect("clap ensures --output when --keys is set");
-            match <[_; 1]>::try_from(files) {
-                Ok([input]) => Mode::Headless {
-                    input,
-                    keys,
-                    // Written after the replay, so a `:cd` in `keys` must not move it.
-                    output: hume_platform::path::absolute_unresolved(&output, cwd),
-                },
-                Err(_) => return Err("--keys mode requires exactly one input file".into()),
+            let Ok([input]) = <[_; 1]>::try_from(cli.files) else {
+                return Err("--keys mode requires exactly one input file".into());
+            };
+            Mode::Headless {
+                input: hume_editor::cli::parse_file_arg(&input, cwd)?,
+                keys,
+                // Written after the replay, so a `:cd` in `keys` must not move it.
+                output: hume_platform::path::absolute_unresolved(&output, cwd),
             }
         }
-        None => Mode::Normal { files },
+        None => Mode::Normal {
+            files: cli
+                .files
+                .iter()
+                .map(|p| hume_editor::cli::parse_file_arg(p, cwd))
+                .collect::<Result<_, _>>()?,
+        },
     };
     Ok(Invocation { mode, config })
 }
@@ -318,6 +319,19 @@ mod tests {
             PathBuf::from("b.txt"),
         ]));
         assert!(err.is_err(), "two inputs must be rejected");
+    }
+
+    #[test]
+    fn resolve_headless_reports_the_file_count_before_a_bad_position() {
+        let err = resolve_here(make_headless(vec![
+            PathBuf::from("a.txt"),
+            PathBuf::from("b.txt:0"),
+        ]))
+        .err();
+        assert_eq!(
+            err.as_deref(),
+            Some("--keys mode requires exactly one input file")
+        );
     }
 
     #[test]

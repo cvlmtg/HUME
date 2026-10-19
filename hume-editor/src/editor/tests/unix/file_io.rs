@@ -703,7 +703,7 @@ use crate::cli::PathPosition;
 use hume_rope::column::GraphemeCol;
 
 #[test]
-fn apply_startup_positions_places_focused_cursor() {
+fn settle_places_a_queued_startup_position() {
     // Column 6 (1-based, i.e. grapheme index 5) lands on the 't' of "two".
     let (_f, canonical) = three_line_file();
 
@@ -718,18 +718,16 @@ fn apply_startup_positions_places_focused_cursor() {
             grapheme_col: GraphemeCol::from_number(6).unwrap(),
         },
     );
-    ed.apply_startup_positions();
+    ed.settle();
 
     assert_eq!(ed.current_view().primary().head().offset(), co(14));
 }
 
-/// The `cmd_view_center` call inside `apply_startup_positions` (and its
-/// ordering after `sync_viewport_dims`) has no coverage from the other
-/// startup-position tests, which all use files short enough that the whole
-/// buffer fits on screen and centering is a no-op. A file taller than the
-/// viewport is required to prove the viewport actually moved.
+/// The other startup-position tests use files that fit on screen, where
+/// centring leaves the viewport at the first line. This one needs a file
+/// taller than the viewport for the viewport to move.
 #[test]
-fn apply_startup_positions_centers_the_focused_buffers_viewport() {
+fn settle_centers_the_focused_buffer_on_its_startup_position() {
     let f = tempfile::NamedTempFile::new().unwrap();
     // 200 short lines: well past a 24-row terminal, and each far under 80
     // columns so nothing soft-wraps regardless of the buffer's wrap-mode
@@ -749,22 +747,52 @@ fn apply_startup_positions_centers_the_focused_buffers_viewport() {
             grapheme_col: GraphemeCol::from_number(1).unwrap(),
         },
     );
-    ed.apply_startup_positions();
+    ed.settle();
 
-    // cmd_view_center's target row is height/2 = 23/2 = 11; cursor sits on
-    // (0-based) buffer line 149 with a 1:1 line-to-row mapping, so
-    // top_line = 149 - 11 = 138, hand derived, not read back from the
-    // viewport under test. Fails if `apply_startup_positions` dropped the
-    // `cmd_view_center` call, or ran it before `sync_viewport_dims` (which
-    // would center against `Pane::new`'s 80x24 placeholder instead).
+    // The centre row is height/2 = 23/2 = 11 and the cursor sits on 0-based
+    // buffer line 149 with a 1:1 line-to-row mapping, so the top line is
+    // 149 - 11 = 138. Centring against `Pane::new`'s 80x24 would give 137.
     assert_eq!(
         ed.view.panes[ed.view.focused_pane()].viewport.top().line,
         hume_rope::line::ContentLine::new(138)
     );
 }
 
+/// A drawer opened after the last `sync_viewport_dims` (an `on-buffer-open`
+/// hook's, say) takes its rows from the pane, and centring must count them.
 #[test]
-fn apply_startup_positions_parks_a_non_focused_buffer_without_switching_focus() {
+fn settle_centers_a_startup_position_against_a_drawer_opened_since_the_last_resize() {
+    let f = tempfile::NamedTempFile::new().unwrap();
+    let content: String = (1..=200).map(|n| format!("line {n}\n")).collect();
+    std::fs::write(f.path(), &content).unwrap();
+    let canonical = std::fs::canonicalize(f.path()).unwrap();
+
+    let mut ed = open_headless(Some(canonical));
+    let bid = ed.focused_buffer_id();
+
+    ed.sync_viewport_dims(80, 24);
+    ed.execute_typed("ls", None).unwrap();
+    ed.queue_startup_position(
+        bid,
+        PathPosition {
+            line: hume_rope::line::ContentLine::from_number(150).unwrap(),
+            grapheme_col: GraphemeCol::from_number(1).unwrap(),
+        },
+    );
+    ed.settle();
+
+    // `:ls` with one buffer is one row plus the drawer's one padding row, well
+    // under its 35% cap (8 of 24 rows). The pane keeps 24 - 1 (statusline)
+    // - 2 (drawer) = 21 rows, so the centre row is 21/2 = 10 and the top
+    // line is 149 - 10 = 139.
+    assert_eq!(
+        ed.view.panes[ed.view.focused_pane()].viewport.top().line,
+        hume_rope::line::ContentLine::new(139)
+    );
+}
+
+#[test]
+fn settle_parks_a_startup_position_on_a_non_focused_buffer_without_switching_focus() {
     let f1 = tempfile::NamedTempFile::new().unwrap();
     let f2 = tempfile::NamedTempFile::new().unwrap();
     std::fs::write(f1.path(), "hello\n").unwrap();
@@ -786,7 +814,7 @@ fn apply_startup_positions_parks_a_non_focused_buffer_without_switching_focus() 
             grapheme_col: GraphemeCol::from_number(2).unwrap(),
         },
     );
-    ed.apply_startup_positions();
+    ed.settle();
 
     let pid = ed.view.focused_pane();
     let text = ed.state.buffers.get(extra_bid).text();
@@ -814,7 +842,7 @@ fn apply_startup_positions_parks_a_non_focused_buffer_without_switching_focus() 
 }
 
 #[test]
-fn apply_startup_positions_clamps_a_line_past_the_end() {
+fn settle_clamps_a_startup_line_past_the_end() {
     let f = tempfile::NamedTempFile::new().unwrap();
     // "line one\n" and "line two\n" are 9 chars each, so the last content
     // line ("last line") starts at char 18, hand counted, distinct from
@@ -834,7 +862,7 @@ fn apply_startup_positions_clamps_a_line_past_the_end() {
             grapheme_col: GraphemeCol::from_number(1).unwrap(),
         },
     );
-    ed.apply_startup_positions();
+    ed.settle();
 
     assert_eq!(
         ed.current_view().primary().head().offset(),

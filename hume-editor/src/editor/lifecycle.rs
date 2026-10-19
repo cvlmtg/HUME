@@ -20,7 +20,12 @@ use crate::cli::{ConfigSource, FileArg};
 /// What drives an editor once [`Editor::start`] has set it up.
 pub(crate) enum Driver {
     /// A terminal, with the kitty keyboard protocol when the probe found it.
-    Terminal { kitty_enabled: bool },
+    /// `wake` is what background threads call to wake `run`'s event loop
+    /// (see `Editor::open`).
+    Terminal {
+        kitty_enabled: bool,
+        wake: Arc<dyn Fn() + Send + Sync>,
+    },
     /// A scripted key stream (`--keys`), with no one to answer a prompt. With
     /// no terminal to negotiate the kitty protocol, it assumes full
     /// capability: without it a Ctrl-letter key such as `<c-w>` does nothing,
@@ -65,7 +70,7 @@ impl Editor {
     /// `dirs` is the session's config, data, runtime and temp directories and
     /// `cwd` its startup working directory; the editor never reads either from
     /// the process.
-    pub(crate) fn open(
+    pub(in crate::editor) fn open(
         file_path: Option<std::path::PathBuf>,
         wake: Arc<dyn Fn() + Send + Sync>,
         dirs: hume_platform::dirs::Dirs,
@@ -195,7 +200,6 @@ impl Editor {
     pub(crate) fn start(
         files: &[FileArg],
         driver: Driver,
-        wake: Arc<dyn Fn() + Send + Sync>,
         dirs: hume_platform::dirs::Dirs,
         config: ConfigSource,
         startup_cwd: std::path::PathBuf,
@@ -203,9 +207,15 @@ impl Editor {
         let (first, rest) = files
             .split_first()
             .map_or((None, &[][..]), |(f, r)| (Some(f), r));
+        let wake: Arc<dyn Fn() + Send + Sync> = match &driver {
+            Driver::Terminal { wake, .. } => Arc::clone(wake),
+            // No event loop to wake: background threads (parse worker, LSP
+            // transport) call this into the void.
+            Driver::Headless => Arc::new(|| {}),
+        };
         let mut editor = Self::open(first.map(|f| f.path.clone()), wake, dirs, startup_cwd)?;
         match driver {
-            Driver::Terminal { kitty_enabled } => editor.set_kitty_support(kitty_enabled),
+            Driver::Terminal { kitty_enabled, .. } => editor.set_kitty_support(kitty_enabled),
             Driver::Headless => {
                 editor.set_kitty_support(true);
                 editor.set_headless();
@@ -262,7 +272,7 @@ impl Editor {
     }
 
     /// Queue a 1-based CLI position (`hume foo.rs:12:24`) for `bid`, applied
-    /// by [`Self::apply_startup_positions`] at the end of the first
+    /// by [`Self::apply_startup_positions`] at the end of the next
     /// `settle()`.
     pub(in crate::editor) fn queue_startup_position(
         &mut self,
@@ -279,10 +289,12 @@ impl Editor {
     /// jump away from one, so `Ctrl-o` has nothing to return to here (unlike
     /// `:goto` and `goto-location!`, which both do).
     ///
-    /// Runs at the end of every `settle()` and does nothing once the queue is
-    /// drained. Centring reads the focused pane's height: `run`'s loop syncs
-    /// it to the terminal before its first `settle()`, and a headless run
-    /// keeps `Pane::new`'s 80x24.
+    /// Runs at the end of every `settle()`. Only [`Self::start`] queues, so
+    /// the first `settle()` drains the queue and every later one finds it
+    /// empty. Centring reads the focused pane's height, so it re-partitions
+    /// the layout first ([`Self::sync_layout`]): a hook in the drain may have
+    /// opened a drawer or docked popup. A headless run has no terminal area
+    /// and keeps `Pane::new`'s 80x24.
     pub(in crate::editor) fn apply_startup_positions(&mut self) {
         let placements = std::mem::take(&mut self.startup_positions);
         if placements.is_empty() {
@@ -305,6 +317,7 @@ impl Editor {
             center_focused |= bid == focused_bid;
         }
         if center_focused {
+            self.sync_layout();
             super::commands::view_center(&mut self.state, &mut self.view, pid);
         }
     }

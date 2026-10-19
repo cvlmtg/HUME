@@ -300,8 +300,9 @@ impl Editor {
     /// responses, timer fires: `drain_async_sources`), drain
     /// `state.config.pending_work` to a fixpoint, then install finished
     /// parses and bring every visible buffer's syntax tree up to its text
-    /// (`reparse_stale_buffers`). The first call also places the cursors the
-    /// command line's files asked for (`apply_startup_positions`).
+    /// (`reparse_stale_buffers`). Each call ends by placing any cursors the
+    /// command line's files asked for (`apply_startup_positions`). Only
+    /// `Editor::start` queues them, so only the first call finds any.
     ///
     /// This is the single consumer of the merged work queue: a
     /// `Call` (an `lsp-request!` callback, a timer thunk, a prompt/menu/
@@ -337,8 +338,9 @@ impl Editor {
         // callback), and the frame drawn next must not highlight that text
         // at the old tree's offsets.
         self.reparse_stale_buffers();
-        // After the drain, so `OnBufferOpen`/`OnLanguageSet` hooks that resize
-        // chrome have run before centring reads the pane's height.
+        // After the drain, so the `OnBufferOpen`/`OnLanguageSet` hooks have
+        // run: a band one of them opened is counted when centring
+        // re-partitions the layout.
         self.apply_startup_positions();
     }
 
@@ -723,7 +725,7 @@ impl Editor {
     /// every `:reload-config` (with the `ReloadSnapshot` `reset_config_state`
     /// just produced). Any error from `init.scm` is reported as
     /// `Severity::Error` and shown in the statusline.
-    pub(crate) fn init_scripting(&mut self, snapshot: &mut ReloadSnapshot) {
+    pub(in crate::editor) fn init_scripting(&mut self, snapshot: &mut ReloadSnapshot) {
         let mut host = hume_scripting::ScriptingHost::new(&self.state.dirs);
         // Pre-register every native command name as a callable Steel binding before
         // any user code sees the engine.  This lets `init.scm` call `(move-left)`
