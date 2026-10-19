@@ -70,7 +70,7 @@ fn commit_all(dir: &Path, message: &str) {
 }
 
 /// `git init` at `dir`, write `files`, and commit them: a local origin a
-/// test can `git clone`/`git pull` from with no network access.
+/// test can clone and fetch from with no network access.
 fn init_theme_origin(dir: &Path, files: &[(&str, &str)]) {
     std::fs::create_dir_all(dir).unwrap();
     git_init(dir);
@@ -107,7 +107,7 @@ fn fabricate_installed_theme_repo(data_dir_root: &Path, slug: &str, origin: &Pat
 /// A local origin holding `files`, cloned into the data dir as the installed
 /// repo `acme/theme.hume`, the on-disk state every post-clone test starts
 /// from. Both tempdirs must outlive the test (the clone in `data_tmp` points
-/// back at `origin_tmp` for `git pull`).
+/// back at `origin_tmp` for `git fetch`).
 fn installed_fixture(files: &[(&str, &str)]) -> (tempfile::TempDir, tempfile::TempDir, PathBuf) {
     let data_tmp = tempfile::tempdir().unwrap();
     let origin_tmp = tempfile::tempdir().unwrap();
@@ -172,10 +172,10 @@ fn install_theme_rejects_unsafe_slugs() {
 
 // ── Update ──────────────────────────────────────────────────────────────────────
 
-/// `:plum-update-themes` pulls each installed repo and re-syncs its copies:
+/// `:plum-update-themes` updates each installed repo and re-syncs its copies:
 /// a theme upstream drops is pruned, one it gains is copied in.
 #[test]
-fn update_themes_pulls_and_syncs_copies() {
+fn update_themes_fetches_and_syncs_copies() {
     let _path = path_reader();
     let (data_tmp, _origin_tmp, origin) = installed_fixture(&[("themes/old.toml", THEME_TOML)]);
 
@@ -209,7 +209,7 @@ fn update_themes_pulls_and_syncs_copies() {
     );
 }
 
-/// A repo whose `themes/` directory disappears upstream fails `git pull`'s
+/// A repo whose `themes/` directory disappears upstream fails the update's
 /// sync step cleanly, and leaves the existing copies untouched rather than
 /// half-pruning them.
 #[test]

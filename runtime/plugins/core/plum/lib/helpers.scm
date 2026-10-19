@@ -1,7 +1,7 @@
 ;;; core:plum/lib/helpers.scm
 
 (provide plum/require-stdlib! plum/batch-run! plum/read-file plum/two-level-repos
-         plum/clone-github! plum/git-pull!)
+         plum/clone-github! plum/git-sync!)
 
 (define (plum/require-stdlib!)
   (unless (member "core:stdlib" (declared-plugins))
@@ -30,10 +30,11 @@
 (define (plum/clone-github! slug dest)
   (run-inline-output! "git" (list "clone" "--" (string-append "https://github.com/" slug ".git") dest)))
 
-;;; git pull in `dir` — the update-side shape every install command's
-;;; refresh path shares (`plum-update-plugins`, `plum-update-themes`).
-(define (plum/git-pull! dir)
-  (run-inline-output! "git" (list "pull") #:cwd dir))
+;;; Checks the clone in `dir` out at origin's `ref`, or its default branch for #f.
+;;; See README.md's "Pinned plugins".
+(define (plum/git-sync! dir ref)
+  (run-inline-output! "git" (list "fetch" "origin" (or ref "HEAD")) #:cwd dir)
+  (run-inline-output! "git" (list "checkout" "--detach" "FETCH_HEAD") #:cwd dir))
 
 ;; ── Filesystem helpers ────────────────────────────────────────────────────────
 ;; Thin wrappers over Steel's `steel/filesystem`/`steel/ports`.

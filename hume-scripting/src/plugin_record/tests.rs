@@ -4,8 +4,11 @@ fn id(name: &str) -> PluginId {
     PluginId::parse(name).unwrap()
 }
 
-fn loaded(n: isize) -> Option<SteelVal> {
-    Some(SteelVal::IntV(n))
+fn loaded(n: isize) -> Option<LoadCall> {
+    Some(LoadCall {
+        config: SteelVal::IntV(n),
+        git_ref: None,
+    })
 }
 
 #[test]

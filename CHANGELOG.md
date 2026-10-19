@@ -39,6 +39,7 @@
 - `bind-key!` takes `'command` to bind keys in the command mode prompt and in plugin prompts.
 - `buffer-display-path` takes `#:relative #t` for the path relative to the working directory.
 - New `register-name?` tells whether a string names a register.
+- `load-plugin!` takes `#:ref` to pin a plugin to a tag or branch, which PLUM installs and updates to. `declared-plugin-ref` reads it back.
 
 ### Language servers
 - `z s` and `z S` pick a symbol of the current file or of the whole project and jump to it.

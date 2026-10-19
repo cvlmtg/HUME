@@ -41,13 +41,13 @@ when it is asked (see [Plugin discovery](#plugin-discovery)).
 |---|---|
 | `:plum-install-plugins` | Install all plugins declared in `init.scm` that are not yet on disk |
 | `:plum-cleanup-plugins` | Remove on-disk plugins that are no longer declared |
-| `:plum-update-plugins` | Run `git pull` in every installed third-party plugin |
+| `:plum-update-plugins` | Check every installed third-party plugin out at its `#:ref`, or its default branch's latest commit |
 | `:plum-list-plugins` | Show the declared, installed, orphan and missing plugin lists in `[plum-plugins]` |
 | `:plum-install-grammar [lang]` | Install or repair a grammar: purge its source, re-clone, recompile. Defaults to the current buffer's language. Tab-completes the languages with a bundled grammar |
 | `:plum-list-grammars` | Show the installed and orphan grammars in `[plum-grammars]` |
 | `:plum-cleanup-grammars` | Delete the orphan grammars: compiled files whose name is not a language with a bundled grammar |
 | `:plum-install-theme <user/repo>` | Install or reinstall a theme repo's `themes/*.toml` from a GitHub slug |
-| `:plum-update-themes` | Run `git pull` in every installed theme repo and re-sync its `.toml` copies |
+| `:plum-update-themes` | Check every installed theme repo out at its default branch's latest commit and re-sync its `.toml` copies |
 | `:plum-list-themes` | Show installed theme repos, the theme names each provides, and any unmanaged `.toml` in `[plum-themes]` |
 | `:plum-remove-theme <user/repo>` | Remove a theme repo's `.toml` copies and its clone. Tab-completes installed slugs |
 
@@ -70,8 +70,8 @@ source:
 - **`themes.scm`** (`#:entry`): third-party theme install, update, list and remove (see
   [Theme install](#theme-install)).
 - **`lib/helpers.scm`**: `plum/require-stdlib!` (the `core:stdlib` check each entry runs),
-  `plum/clone-github!` and `plum/git-pull!` (the one GitHub clone URL shape
-  and its update counterpart, shared by every install command), `plum/batch-run!`, and
+  `plum/clone-github!` and `plum/git-sync!` (the one GitHub clone URL shape
+  and the checkout every update and pinned install shares), `plum/batch-run!`, and
   `plum/two-level-repos` (the `<root>/<user>/<repo>/`
   walk behind plugin and theme-repo discovery). Directory listing, filesystem cleanup, list
   search come from `core:stdlib` through `call!`.
@@ -89,6 +89,22 @@ Declared plugins live in `init.scm`. Installed plugins are found by walking
 "Missing" and "orphan" are set differences between the declared list and that walk, with
 `core:*` plugins excluded since they are bundled. Nothing is cached, so
 `:plum-list-plugins` reflects the current disk state.
+
+### Pinned plugins
+
+`(load-plugin! "user/repo" #:ref "v1.2.0")` pins a plugin to a tag or a branch;
+`(declared-plugin-ref name)` reads the pin back. `plum/git-sync!` puts a clone on a ref
+with `git fetch origin <ref>` and `git checkout --detach FETCH_HEAD`, fetching `HEAD`
+(the remote's default branch) for an unpinned plugin or a theme repo. The same two
+commands move a clone between any two states: onto a tag, from one tag to another, from a
+tag to a branch, and off a tag once the pin is removed, where `git pull` would refuse a
+detached HEAD. So every updated clone is on a detached HEAD, and a local edit that
+conflicts with the new checkout fails the update for that plugin.
+
+`:plum-install-plugins` clones and then runs `plum/git-sync!` for a pinned plugin. It
+installs only missing plugins, so a changed pin reaches an installed plugin through
+`:plum-update-plugins`. `load-plugin!` raises for a ref starting with `-`, which `git`
+would read as an option, and for a ref on a `core:` plugin.
 
 ### Grammar sources and the Helix pin
 

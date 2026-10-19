@@ -30,10 +30,17 @@ impl Resolution {
     }
 }
 
+/// What one `load-plugin!` call passed.
+pub(crate) struct LoadCall {
+    pub(crate) config: SteelVal,
+    /// The `#:ref` PLUM checks the plugin's clone out at: a tag or a branch.
+    pub(crate) git_ref: Option<String>,
+}
+
 pub(crate) struct PluginRecord {
     id: PluginId,
-    /// Set once `load-plugin!` has run; the latest config it passed.
-    config: Option<SteelVal>,
+    /// Set once `load-plugin!` has run; the latest call's arguments.
+    load: Option<LoadCall>,
     resolution: Option<Resolution>,
 }
 
@@ -51,30 +58,39 @@ impl PluginRecords {
     }
 
     /// Records that `init.scm` named `id`. The first spelling is kept. A
-    /// `Some` config (from `load-plugin!`) replaces any earlier one; `None`
+    /// `Some` call (from `load-plugin!`) replaces any earlier one; `None`
     /// (from `declare-plugin!`) never removes one.
-    pub(crate) fn note(&mut self, id: PluginId, config: Option<SteelVal>) {
+    pub(crate) fn note(&mut self, id: PluginId, load: Option<LoadCall>) {
         match self.find_mut(&id) {
             Some(record) => {
-                if config.is_some() {
-                    record.config = config;
+                if load.is_some() {
+                    record.load = load;
                 }
             }
             None => self.0.push(PluginRecord {
                 id,
-                config,
+                load,
                 resolution: None,
             }),
         }
     }
 
+    fn load(&self, id: &PluginId) -> Option<&LoadCall> {
+        self.find(id)?.load.as_ref()
+    }
+
     /// The config `load-plugin!` last passed for `id`.
     pub(crate) fn config(&self, id: &PluginId) -> Option<&SteelVal> {
-        self.find(id)?.config.as_ref()
+        Some(&self.load(id)?.config)
+    }
+
+    /// The `#:ref` `load-plugin!` last passed for `id`.
+    pub(crate) fn git_ref(&self, id: &PluginId) -> Option<&str> {
+        self.load(id)?.git_ref.as_deref()
     }
 
     pub(crate) fn was_loaded(&self, id: &PluginId) -> bool {
-        self.config(id).is_some()
+        self.load(id).is_some()
     }
 
     pub(crate) fn resolution(&self, id: &PluginId) -> Option<Resolution> {

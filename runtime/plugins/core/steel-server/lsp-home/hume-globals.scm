@@ -95,6 +95,7 @@
 (#%register-global "debounce")
 (#%register-global "debounce-by")
 (#%register-global "declare-plugin!")
+(#%register-global "declared-plugin-ref")
 (#%register-global "declared-plugins")
 (#%register-global "decrement")
 (#%register-global "decrement-sequence")

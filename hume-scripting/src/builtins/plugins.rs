@@ -1,5 +1,6 @@
 //! Plugin lifecycle builtins: `%declare-plugin!`, `%load-plugin!`,
-//! `resolve-plugin-path`, `declared-plugins`, `loaded-plugins`.
+//! `resolve-plugin-path`, `declared-plugins`, `declared-plugin-ref`,
+//! `loaded-plugins`.
 //!
 //! `%declare-plugin!` backs the Scheme `declare-plugin!` wrapper: it declares
 //! one lazy entry. `%load-plugin!` backs `load-plugin!`: a plugin with a
@@ -13,7 +14,7 @@ use crate::{
     SteelCtx,
     attribution::{EntryFile, EntryId, PluginId},
     lazy::PluginState,
-    plugin_record::Resolution,
+    plugin_record::{LoadCall, Resolution},
 };
 
 use super::SteelResult;
@@ -490,13 +491,13 @@ pub(crate) fn resolve_plugin_path(ctx: &mut SteelCtx, name: String) -> SteelResu
     }
 }
 
-/// `(%load-plugin! name config)`: Rust primitive backing the Scheme
+/// `(%load-plugin! name config ref)`: Rust primitive backing the Scheme
 /// `load-plugin!` wrapper.
 ///
 /// Top-level only (`ensure_top_level`): a plugin can never load another
 /// plugin, and a manifest being evaluated cannot call it.
 ///
-/// Stores `config` unconditionally, replacing any earlier one, and records the
+/// Stores `config` and `ref` unconditionally, replacing any earlier ones, and records the
 /// plugin for PLUM. A plugin that already has a declared entry (declared by
 /// the user, loaded before, or evaluated through its manifest) is left as it
 /// is. Otherwise the plugin's directory decides: a `manifest.scm` makes it
@@ -505,7 +506,12 @@ pub(crate) fn resolve_plugin_path(ctx: &mut SteelCtx, name: String) -> SteelResu
 /// only a `plugin.scm` the main entry is declared and `#t` asks the wrapper to
 /// activate it now. `#f` means nothing is left to do. A directory with neither
 /// file is an error.
-pub(crate) fn load_plugin(ctx: &mut SteelCtx, name: String, config: SteelVal) -> SteelResult {
+pub(crate) fn load_plugin(
+    ctx: &mut SteelCtx,
+    name: String,
+    config: SteelVal,
+    git_ref: SteelVal,
+) -> SteelResult {
     ensure_top_level(ctx, "load-plugin!")?;
     if ctx.manifest_resolving.is_some() {
         steel::stop!(Generic =>
@@ -513,10 +519,11 @@ pub(crate) fn load_plugin(ctx: &mut SteelCtx, name: String, config: SteelVal) ->
              plugin with declare-plugin!");
     }
     let plugin_id = PluginId::parse_installed(&name).map_err(generic_err)?;
+    let git_ref = git_ref_arg(&plugin_id, git_ref)?;
 
     ctx.registries
         .plugin_records
-        .note(plugin_id.clone(), Some(config));
+        .note(plugin_id.clone(), Some(LoadCall { config, git_ref }));
 
     if ctx
         .registries
@@ -554,6 +561,22 @@ pub(crate) fn load_plugin(ctx: &mut SteelCtx, name: String, config: SteelVal) ->
         "load-plugin!: '{name}' has neither manifest.scm nor plugin.scm in {}",
         dir.display()
     )))
+}
+
+/// `load-plugin!`'s `#:ref`: `#f`, or the tag or branch PLUM checks out.
+/// PLUM passes it to `git` as an argument, so a leading `-` is refused.
+fn git_ref_arg(plugin_id: &PluginId, git_ref: SteelVal) -> Result<Option<String>, SteelErr> {
+    let Some(git_ref) = optional_string_arg(git_ref, "load-plugin!: #:ref")? else {
+        return Ok(None);
+    };
+    if git_ref.is_empty() || git_ref.starts_with('-') {
+        steel::stop!(Generic => "load-plugin!: #:ref \"{}\" is not a tag or branch name", git_ref);
+    }
+    if matches!(plugin_id, PluginId::Core(_)) {
+        steel::stop!(Generic =>
+            "load-plugin!: #:ref is for an installed plugin; '{}' is bundled with HUME", plugin_id);
+    }
+    Ok(Some(git_ref))
 }
 
 /// Maximum nesting depth for concurrent inline plugin activations.
@@ -830,6 +853,16 @@ pub(crate) fn declared_plugins(ctx: &mut SteelCtx) -> SteelResult {
         .map(|s| SteelVal::StringV(s.into()))
         .collect();
     vals.into_steelval().map_err(generic_err)
+}
+
+/// `(declared-plugin-ref name)`: the `#:ref` the last `load-plugin!` of
+/// `name` passed, or `#f`. Raises for a malformed name.
+pub(crate) fn declared_plugin_ref(ctx: &mut SteelCtx, name: String) -> SteelResult {
+    let plugin_id = PluginId::parse_installed(&name).map_err(generic_err)?;
+    Ok(match ctx.registries.plugin_records.git_ref(&plugin_id) {
+        Some(git_ref) => SteelVal::StringV(git_ref.into()),
+        None => SteelVal::BoolV(false),
+    })
 }
 
 /// Empty Steel hash: the `(plugin-config)` default when no config was passed.

@@ -303,9 +303,10 @@ pub(crate) fn register_all(steel: &mut Engine) {
         // Plugin introspection and explicit activation
         open "loaded-plugins" plugins::loaded_plugins();
         open "declared-plugins" plugins::declared_plugins();
+        open "declared-plugin-ref" plugins::declared_plugin_ref(name: String);
         open "plugin-config" plugins::plugin_config();
         open "plugin-dir" plugins::plugin_dir();
-        open "%load-plugin!" plugins::load_plugin(name: String, config: SteelVal);
+        open "%load-plugin!" plugins::load_plugin(name: String, config: SteelVal, git_ref: SteelVal);
 
         // Inline activation primitives, called from the %activate-plugin-inline!
         // Scheme helper to drive mid-eval plugin loading without &mut Engine.

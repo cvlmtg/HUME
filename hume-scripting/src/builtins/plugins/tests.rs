@@ -8,7 +8,7 @@ fn declare_err(src: &str) -> String {
     let mut host = ScriptingHost::new(&Dirs::none());
     let mut editor_host = CommandStoreHost::default();
     host.eval_source(src, &mut editor_host)
-        .expect_err("expected declare-plugin! to error")
+        .expect_err("expected the source to error")
 }
 
 #[test]
@@ -706,6 +706,66 @@ fn load_plugin_absent_dir_soft_logs_and_records_declared_plugins() {
         !host.registries.lazy_registry.plugins.contains_key(&id),
         "no plugin state should be recorded when the directory is absent"
     );
+}
+
+/// `(declared-plugin-ref name)` after evaluating `src`, with an empty data dir.
+fn declared_ref_after(src: &str, name: &str) -> SteelVal {
+    use crate::{ScriptingHost, null_host::NullHost};
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    let mut host = ScriptingHost::new(&Dirs {
+        data: Some(dir.path().to_path_buf()),
+        ..Dirs::none()
+    });
+    host.eval_source(src, &mut NullHost)
+        .unwrap_or_else(|e| panic!("{src} failed: {e}"));
+    host.eval_source_for_value(&format!("(declared-plugin-ref \"{name}\")"), &mut NullHost)
+        .unwrap_or_else(|e| panic!("declared-plugin-ref failed: {e}"))
+}
+
+#[test]
+fn declared_plugin_ref_is_the_last_load_plugin_calls_ref() {
+    let is_str = |v: SteelVal, want: &str| matches!(v, SteelVal::StringV(s) if s.as_str() == want);
+
+    assert!(is_str(
+        declared_ref_after(r#"(load-plugin! "user/p" #:ref "v1.0")"#, "user/p"),
+        "v1.0"
+    ));
+    assert!(is_str(
+        declared_ref_after(
+            r#"(load-plugin! "user/p" #:ref "v1.0") (load-plugin! "user/p" #:ref "stable")"#,
+            "user/p"
+        ),
+        "stable"
+    ));
+    assert!(matches!(
+        declared_ref_after(
+            r#"(load-plugin! "user/p" #:ref "v1.0") (load-plugin! "user/p")"#,
+            "user/p"
+        ),
+        SteelVal::BoolV(false)
+    ));
+    assert!(matches!(
+        declared_ref_after(r#"(load-plugin! "user/p" #:ref "v1.0")"#, "user/other"),
+        SteelVal::BoolV(false)
+    ));
+}
+
+#[test]
+fn load_plugin_rejects_a_ref_git_cannot_take_or_a_core_plugin_cannot_use() {
+    for src in [
+        r#"(load-plugin! "user/p" #:ref 1)"#,
+        r#"(load-plugin! "user/p" #:ref "")"#,
+        r#"(load-plugin! "user/p" #:ref "-c")"#,
+        r#"(load-plugin! "core:stdlib" #:ref "v1.0")"#,
+    ] {
+        let err = declare_err(src);
+        assert!(
+            err.contains("load-plugin!: #:ref"),
+            "{src} must be rejected for its #:ref; got: {err}"
+        );
+    }
 }
 
 #[cfg(unix)]

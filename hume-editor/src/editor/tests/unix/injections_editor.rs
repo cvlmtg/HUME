@@ -164,48 +164,50 @@ fn git_ok(dir: &std::path::Path, args: &[&str]) {
     assert!(status.success(), "git {args:?} in {dir:?} failed");
 }
 
-/// `:plum-update-plugins` exercises `plum/clone-github!`'s sibling,
-/// `run-inline-output!`'s `git pull`, against a REAL local git repo, no
-/// network. A local "origin" gets a second commit after the "installed"
-/// clone is made, then `:plum-update-plugins` must actually run `git pull`
-/// and fast-forward the clone to match, having actually entered the
-/// inline-output terminal bracket to do it (the command is `#:inline-output`,
-/// so `Tui::OnHeadless` is required for `inline_output_enter_count` to move
-/// at all; see that method's own doc).
-#[test]
-fn plum_update_runs_real_git_pull_against_local_origin() {
-    let _path = path_reader();
+/// Commit `content` as `plugin.scm` on `repo`'s current branch.
+fn commit_plugin(repo: &std::path::Path, content: &str) {
+    std::fs::write(repo.join("plugin.scm"), content).unwrap();
+    git_ok(repo, &["add", "plugin.scm"]);
+    git_ok(repo, &["commit", "-q", "-m", content.trim()]);
+}
 
-    let origin_tmp = tempfile::tempdir().unwrap();
-    let origin_dir = origin_tmp.path();
-    git_ok(origin_dir, &["init", "-q"]);
-    git_ok(origin_dir, &["config", "user.email", "test@example.com"]);
-    git_ok(origin_dir, &["config", "user.name", "Test"]);
-    std::fs::write(origin_dir.join("plugin.scm"), "; v1\n").unwrap();
-    git_ok(origin_dir, &["add", "plugin.scm"]);
-    git_ok(origin_dir, &["commit", "-q", "-m", "v1"]);
+/// A local stand-in for a plugin's GitHub repo: `main` holds one commit,
+/// `; v1`.
+fn plugin_origin() -> tempfile::TempDir {
+    let origin = tempfile::tempdir().unwrap();
+    git_ok(origin.path(), &["init", "-q", "-b", "main"]);
+    git_ok(origin.path(), &["config", "user.email", "test@example.com"]);
+    git_ok(origin.path(), &["config", "user.name", "Test"]);
+    commit_plugin(origin.path(), "; v1\n");
+    origin
+}
 
-    let data_tmp = tempfile::tempdir().unwrap();
-    let clone_dir = data_tmp.path().join("hume/plugins/testuser/testrepo");
+/// Clone `origin` where PLUM keeps `testuser/testrepo` under `data_dir`,
+/// returning the clone's directory.
+fn install_plugin_clone(
+    origin: &std::path::Path,
+    data_dir: &std::path::Path,
+) -> std::path::PathBuf {
+    let clone_dir = data_dir.join("hume/plugins/testuser/testrepo");
     std::fs::create_dir_all(clone_dir.parent().unwrap()).unwrap();
     git_ok(
-        data_tmp.path(),
+        data_dir,
         &[
             "clone",
             "-q",
-            origin_dir.to_str().unwrap(),
+            origin.to_str().unwrap(),
             clone_dir.to_str().unwrap(),
         ],
     );
+    clone_dir
+}
 
-    // Advance the origin past what the clone has.
-    std::fs::write(origin_dir.join("plugin.scm"), "; v2\n").unwrap();
-    git_ok(origin_dir, &["add", "plugin.scm"]);
-    git_ok(origin_dir, &["commit", "-q", "-m", "v2"]);
-
+/// Load PLUM after `init_src` and run `:plum-update-plugins`, asserting it
+/// logged no error.
+fn run_plum_update_plugins(data_dir: &std::path::Path, init_src: &str) -> Editor {
     let mut ed = editor_from("-[x]>\n");
     ed.tui = crate::editor::tui::Tui::OnHeadless;
-    load_plum(&mut ed, data_tmp.path());
+    load_plum_after(&mut ed, data_dir, init_src);
 
     type_cmd(&mut ed, ":plum-update-plugins");
 
@@ -220,17 +222,90 @@ fn plum_update_runs_real_git_pull_against_local_origin() {
         errors.is_empty(),
         ":plum-update-plugins against a local origin must not error: {errors:?}"
     );
+    ed
+}
+
+/// `:plum-update-plugins` runs real `git` against a local origin, no network.
+/// The origin gets a second commit after the clone is made, and the update
+/// must bring the clone to it, inside the inline-output terminal bracket
+/// (the command is `#:inline-output`, so `Tui::OnHeadless` is required for
+/// `inline_output_enter_count` to move at all; see that method's own doc).
+#[test]
+fn plum_update_brings_an_unpinned_plugin_to_origins_latest_commit() {
+    let _path = path_reader();
+
+    let origin = plugin_origin();
+    let data_tmp = tempfile::tempdir().unwrap();
+    let clone_dir = install_plugin_clone(origin.path(), data_tmp.path());
+    commit_plugin(origin.path(), "; v2\n");
+
+    let ed = run_plum_update_plugins(data_tmp.path(), "");
+
     let content = std::fs::read_to_string(clone_dir.join("plugin.scm")).unwrap();
-    assert_eq!(
-        content, "; v2\n",
-        "run-inline-output!-backed git pull must fast-forward the clone to origin's latest commit"
-    );
+    assert_eq!(content, "; v2\n");
     assert!(
         ed.inline_output_enter_count() > 0,
         ":plum-update-plugins is #:inline-output, so a real update must have entered \
-         the terminal bracket for git's progress to be visible, not just returned \
-         successfully with nothing shown"
+         the terminal bracket for git's progress to be visible"
     );
+}
+
+#[test]
+fn plum_update_moves_a_plugin_pinned_to_a_tag_onto_that_tag() {
+    let _path = path_reader();
+
+    let origin = plugin_origin();
+    git_ok(origin.path(), &["tag", "-a", "v1.0", "-m", "v1.0"]);
+    commit_plugin(origin.path(), "; v2\n");
+    let data_tmp = tempfile::tempdir().unwrap();
+    let clone_dir = install_plugin_clone(origin.path(), data_tmp.path());
+
+    run_plum_update_plugins(
+        data_tmp.path(),
+        r#"(load-plugin! "testuser/testrepo" #:ref "v1.0")"#,
+    );
+
+    let content = std::fs::read_to_string(clone_dir.join("plugin.scm")).unwrap();
+    assert_eq!(content, "; v1\n");
+}
+
+#[test]
+fn plum_update_follows_a_pinned_branch_rather_than_the_default_one() {
+    let _path = path_reader();
+
+    let origin = plugin_origin();
+    let data_tmp = tempfile::tempdir().unwrap();
+    let clone_dir = install_plugin_clone(origin.path(), data_tmp.path());
+    git_ok(origin.path(), &["checkout", "-q", "-b", "stable"]);
+    commit_plugin(origin.path(), "; stable\n");
+    git_ok(origin.path(), &["checkout", "-q", "main"]);
+    commit_plugin(origin.path(), "; main\n");
+
+    run_plum_update_plugins(
+        data_tmp.path(),
+        r#"(load-plugin! "testuser/testrepo" #:ref "stable")"#,
+    );
+
+    let content = std::fs::read_to_string(clone_dir.join("plugin.scm")).unwrap();
+    assert_eq!(content, "; stable\n");
+}
+
+/// A clone left on a tag by an earlier pin has a detached HEAD.
+#[test]
+fn plum_update_brings_an_unpinned_plugin_off_a_tag_to_the_default_branch() {
+    let _path = path_reader();
+
+    let origin = plugin_origin();
+    git_ok(origin.path(), &["tag", "-a", "v1.0", "-m", "v1.0"]);
+    commit_plugin(origin.path(), "; v2\n");
+    let data_tmp = tempfile::tempdir().unwrap();
+    let clone_dir = install_plugin_clone(origin.path(), data_tmp.path());
+    git_ok(&clone_dir, &["checkout", "-q", "--detach", "v1.0"]);
+
+    run_plum_update_plugins(data_tmp.path(), r#"(load-plugin! "testuser/testrepo")"#);
+
+    let content = std::fs::read_to_string(clone_dir.join("plugin.scm")).unwrap();
+    assert_eq!(content, "; v2\n");
 }
 
 /// `:plum-cleanup-plugins` exercises `plum/delete-dir` against a real

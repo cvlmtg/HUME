@@ -33,6 +33,16 @@ If a plugin supports configuration, pass it with `#:config`:
 
 See [Configuring a plugin](writing-plugins.md#configuring-a-plugin) for what a plugin does with this value, and the plugin's own docs for which keys it understands.
 
+### Pinning a version
+
+PLUM installs a plugin's latest commit. To stay on a release, or to follow a branch other than the default one, give its tag or branch name with `#:ref`:
+
+```scheme
+(load-plugin! "cvlmtg/grep.hume" #:ref "v1.0.0")
+```
+
+`:plum-install-plugins` checks a new plugin out at that tag or branch, and `:plum-update-plugins` moves an installed one onto it. Run `:plum-update-plugins` after changing or removing a `#:ref`. A plugin pinned to a tag stays on it; a plugin pinned to a branch gets that branch's latest commit.
+
 ## Plugin status
 
 ```
@@ -53,7 +63,7 @@ Reloads `init.scm` from scratch. Useful after editing your config without restar
 
 A plugin that fails to load doesn't stop the rest of `init.scm`: every plugin after it still loads, and every plugin named before it is unaffected. A lazy plugin loads when its first trigger fires, so its failure shows up then instead of at startup. Check `:messages` for the error; it names the plugin and points at the file and line the problem is in. `:plugin-status` shows it as failed alongside everything else, including a plugin whose `manifest.scm` failed before it declared anything.
 
-If the failing plugin came from a git repository (rather than one you're editing yourself), it may already have a fix upstream: run `:plum-update-plugins` to pull the latest version of every installed plugin, then `:reload-config` to try again. This works even for a plugin that failed on the very first line of your config, since loading it never depends on anything named after it.
+If the failing plugin came from a git repository (rather than one you're editing yourself), it may already have a fix upstream: run `:plum-update-plugins` to fetch the latest version of every installed plugin (or of its pinned branch), then `:reload-config` to try again. This works even for a plugin that failed on the very first line of your config, since loading it never depends on anything named after it.
 
 ## How plugins are loaded
 

@@ -560,11 +560,17 @@ fn load_with_init_in_runtime(ed: &mut Editor, runtime_dir: &Path, data_dir: &Pat
 /// `stdlib/delete-dir!`/`stdlib/delete-file!` via `call!`): plugin/grammar/
 /// theme management, no LSP awareness at all.
 fn load_plum(ed: &mut Editor, data_dir: &Path) {
+    load_plum_after(ed, data_dir, "");
+}
+
+/// [`load_plum`] with `init_src` evaluated first, e.g. the `load-plugin!`
+/// lines of the plugins PLUM is to manage.
+fn load_plum_after(ed: &mut Editor, data_dir: &Path, init_src: &str) {
     load_with_init(
         ed,
         data_dir,
         &format!(
-            "(load-plugin! \"core:stdlib\")\n{}\n\
+            "{init_src}\n(load-plugin! \"core:stdlib\")\n{}\n\
              (%activate-plugin-inline! \"core:plum\" \"grammars.scm\")\n\
              (%activate-plugin-inline! \"core:plum\" \"themes.scm\")",
             hume_scripting::eager_load_scm("core:plum", None)

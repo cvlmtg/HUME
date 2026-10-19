@@ -10,10 +10,10 @@
     (error "declare-plugin!: takes no #:config; pass it with (load-plugin! name #:config ...)"))
   (%declare-plugin! name entry commands typed-commands events languages))
 
-(define (load-plugin! name #:entry [entry #f] #:config [config (hash)])
+(define (load-plugin! name #:entry [entry #f] #:config [config (hash)] #:ref [ref #f])
   (when entry
     (error "load-plugin!: takes no #:entry; a plugin's manifest.scm declares its entries"))
-  (let ((next (%load-plugin! name config)))
+  (let ((next (%load-plugin! name config ref)))
     (cond
       ((string? next)
        (with-handler

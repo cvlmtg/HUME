@@ -91,7 +91,7 @@
   #:inline-output #t)
 
 (define-typed-command! "plum-update-themes"
-  "Run git pull in every installed theme repo and re-sync its themes/*.toml."
+  "Bring every installed theme repo to its latest commit and re-sync its themes/*.toml."
   (lambda ()
     (let ((installed (plum/installed-theme-repos)))
       (if (null? installed)
@@ -99,7 +99,7 @@
           (plum/batch-run! "updated theme repo" installed
             (lambda (slug)
               (let ((old-names (plum/repo-theme-names slug)))
-                (plum/git-pull! (plum/theme-src-dir slug))
+                (plum/git-sync! (plum/theme-src-dir slug) #f)
                 (plum/sync-theme-files! slug old-names)))))))
   #:inline-output #t)
 

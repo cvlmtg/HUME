@@ -65,7 +65,6 @@ Structural work found during a cheap-wins sweep. Each is real but wants a design
 
 ### Plugins
 
-- [ ] PLUM: pin plugins to commit / tag / branch.
 - [ ] `core:lsp-install` `cargo-git` install flavor — installs from a pinned git tag instead of crates.io semver; unblocks `nil`.
 - [ ] **[breaking]** Per-buffer plugin exclusion — enable a plugin everywhere except for chosen languages or file patterns, e.g. `core:buffer-words` on for every buffer but `*.min.js`. `declare-plugin!`'s `#:languages` only picks what triggers loading; once active, a plugin acts on every buffer. Exclusion therefore has to be checked per buffer each time the plugin would act, not once at activation. Changes when every plugin's hooks, commands, and completion sources fire.
 - [ ] Session-scoped hooks — `register-hook!` works only during init or plugin load, so a plugin with a transient UI session keeps its hook for the rest of the editor's life and filters inside the handler: `core:undotree`'s `on-undo-history-changed` and `core:lsp`'s locations `on-text-changed` both fire on every change and return early when no drawer is open. A pair that can be called from a command body would let a session listen only while it is open: a register call that returns a handle, and an unregister call that takes it, with the handle tied to the session's owner so plugin rollback still removes it. Cheap today (one Steel call per change that returns immediately); worth building when a third client appears or a profile shows the calls.
