@@ -13,10 +13,8 @@ use crate::providers::{GutterColumn, GutterInputs};
 /// Which *display lines* are visible is not decided here: `display_lines::DisplayLineMap` walks them
 /// from the viewport's top address, so the walk is the layout and no estimate
 /// of "how many lines fill the screen" is needed.
-#[derive(Debug, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct PaneGeometry {
-    /// Available terminal rows for content, in the content area.
-    pub content_height: u16,
     /// Available columns in the content area (viewport width − gutter width).
     pub content_width: ContentWidth,
     /// Total gutter width in columns.
@@ -81,7 +79,6 @@ pub fn compute_viewport<'a>(
     let gutter_width = gutter_width_for_line(gutter_columns, last_line_idx, inputs);
 
     PaneGeometry {
-        content_height: size.height(),
         content_width: ContentWidth::of(size, gutter_width),
         gutter_width,
         last_line_idx,

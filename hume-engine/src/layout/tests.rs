@@ -28,7 +28,6 @@ fn geometry_without_a_gutter_is_the_whole_viewport() {
     );
     assert_eq!(visible.gutter_width, 0);
     assert_eq!(visible.content_width.get().get(), 80);
-    assert_eq!(visible.content_height, 3);
 }
 
 #[test]

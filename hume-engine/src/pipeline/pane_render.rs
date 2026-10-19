@@ -119,7 +119,7 @@ pub(crate) fn render_pane(
     let mut canvas = render::Canvas::new(grid, pane_ctx.theme.ui.invisible, pane_ctx.dim);
 
     // ── Display-line walk ────────────────────────────────────────────────
-    let height = visible.content_height;
+    let height = pane_ctx.rect.height;
     // Which line's highlight intervals and cursorline state `line` currently
     // holds, so crossing into a new line is the only thing that rebuilds them.
     let mut line: Option<LineStyle> = None;

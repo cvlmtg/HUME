@@ -472,7 +472,7 @@ fn resolve_arena_text(arena: &str, start: u32, len: u16) -> &str {
 }
 
 /// Draw tilde filler rows from `start_screen_row` up to (but not including)
-/// `visible.content_height`, clamped to `pane_rect.height`.
+/// the pane's height.
 pub(crate) fn render_tilde_fillers(
     start_screen_row: u16,
     lane_widths: &[u16],
@@ -480,12 +480,7 @@ pub(crate) fn render_tilde_fillers(
     canvas: &mut Canvas,
 ) {
     let mut screen_row = start_screen_row;
-    while screen_row
-        < compose_ctx
-            .visible
-            .content_height
-            .min(compose_ctx.pane_rect.height)
-    {
+    while screen_row < compose_ctx.pane_rect.height {
         let y = compose_ctx.pane_rect.y + screen_row;
         let right_edge = compose_ctx.pane_rect.right();
         // Gutter first: it already paints a real background (row_bg, or
