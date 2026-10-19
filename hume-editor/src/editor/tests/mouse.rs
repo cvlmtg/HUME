@@ -93,19 +93,23 @@ fn click_after_blank_line_trim_lands_on_correct_char() {
     assert_eq!(state(&ed), "  x\n\nc-[d]>\n");
 }
 
-/// A click lands on the cluster the last frame drew under it, even when the
-/// gutter has widened since without a redraw.
+/// A click finds its pane by the rect the last frame drew, and resolves the
+/// column against the pane's current gutter.
 #[test]
-fn a_click_after_an_undrawn_gutter_change_lands_on_the_drawn_cell() {
+fn a_click_resolves_against_the_current_gutter() {
     let (path, _f) = temp_file("abcdef\n");
     let mut ed = open_headless(Some(path));
+    ed.execute_typed("set", Some("global gutter-signs=always:1"))
+        .unwrap();
     let grid = ed.render_to_buf(Rect::new(0, 0, 80, 25));
     let x = grid
         .row(0)
         .iter()
-        .position(|cell| cell.text() == "d")
+        .position(|cell| cell.text() == "f")
         .expect("the frame draws the line");
 
+    // One sign slot is two cells (the slot and its padding), three are four,
+    // so the text sits two cells further right than the frame drew it.
     ed.execute_typed("set", Some("global gutter-signs=always:3"))
         .unwrap();
     ed.handle_input(mouse_left_down(u16::try_from(x).unwrap(), 0));

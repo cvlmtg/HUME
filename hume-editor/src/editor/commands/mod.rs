@@ -272,7 +272,8 @@ pub(super) fn effective_wrap_mode(
 ///
 /// `key` and `content_width` are resolved by the caller *before* this call
 /// takes `pane` mutably, from [`EditorState::layout_key`](super::EditorState::layout_key),
-/// or for a click from the widths its pane was drawn with: everything they
+/// or from `format_key` and `pane_geometry` for a caller that also needs the
+/// gutter width: everything they
 /// need lives on `pane` itself, but a `&Pane` used to build them cannot
 /// coexist with the `&mut Pane` this function requires. A caller with no
 /// viewport to write (the movement consumers, which read the display-line

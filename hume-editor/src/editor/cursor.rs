@@ -108,8 +108,8 @@ pub(in crate::editor) fn place(
 /// Convert a pane-content-relative `(content_x, content_y)` click position to
 /// the buffer cluster it hits.
 ///
-/// `gutter_w` is the width of the gutter in terminal columns, as the pane was
-/// drawn with it. Clicks in the gutter return `None`; every other click
+/// `gutter_w` is the width of the gutter in terminal columns, from
+/// `EditorState::pane_geometry`. Clicks in the gutter return `None`; every other click
 /// resolves, clamped to the document's last display line if it lands past the end.
 ///
 /// The coordinate space is pane-relative, not terminal-absolute: `(0, 0)` is

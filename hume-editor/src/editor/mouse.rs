@@ -7,9 +7,9 @@
 //! Click coordinates are terminal-absolute, so `EngineView::pane_hit` first
 //! finds the pane under the pointer, in its own cells, before
 //! `screen_to_cluster` resolves the buffer cluster it hits. Every hit test
-//! reads what the last frame drew, the pane rects and their gutter widths,
-//! so a click lands on what was on screen even after a band, a pane or a
-//! gutter changed.
+//! reads the pane rects the last frame drew, so a click lands in the pane
+//! that was on screen under it even after a band or a pane changed. The
+//! gutter and content widths are the pane's current ones at its drawn size.
 //!
 //! The wheel runs `commands::scroll_view` with `count = mouse-scroll-lines`,
 //! like `Ctrl-d`/`Ctrl-u`. It scrolls the pane under the pointer (the focused
@@ -227,19 +227,20 @@ impl Editor {
         true
     }
 
-    /// Resolve `hit` to the buffer cluster drawn under it, at the gutter and
-    /// content widths its pane was drawn with.
+    /// Resolve `hit` to the buffer cluster under it, at its pane's drawn size
+    /// with the pane's current gutter.
     fn click_to_cluster(&mut self, hit: PaneHit) -> Option<hume_rope::cluster::ClusterStart> {
         let pid = hit.pane();
         let buf_id = self.view.panes[pid].buffer_id();
+        let geometry = self.state.pane_geometry(&self.view, pid, hit.size());
         let key = self.state.format_key(&self.view.panes[pid]);
         let (mut dlm, viewport) = pane_display_lines(
             self.state.buffers.get(buf_id),
             &mut self.view.panes[pid],
             key,
-            hit.content_width(),
+            geometry.content_width,
         );
-        cursor::screen_to_cluster(hit.x(), hit.y(), hit.gutter_width(), viewport, &mut dlm)
+        cursor::screen_to_cluster(hit.x(), hit.y(), geometry.gutter_width, viewport, &mut dlm)
     }
 }
 

@@ -575,8 +575,8 @@ impl EngineView {
                     .map(|bg| (bg, PANE_DIM_FACTOR)),
                 default_gutter_scope: self.default_gutter_scope,
             };
-            let geometry = render_pane(&mut pane_ctx, scratch, line_store, grid);
-            self.drawn.record_pane(pane_id, rect, &geometry);
+            render_pane(&mut pane_ctx, scratch, line_store, grid);
+            self.drawn.record_pane(pane_id, rect);
         }
 
         // ── Render seam dividers between panes ────────────────────────────────
