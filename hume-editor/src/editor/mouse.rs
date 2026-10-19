@@ -174,7 +174,7 @@ impl Editor {
         let scroll_lines = self.state.settings.mouse_scroll_lines;
         // The notch scrolls the pane the next frame draws, which a popup the
         // notch retired may have grown.
-        let size = self.state.pane_size(&mut self.view, pid);
+        let size = self.state.pane_size(&self.view, pid);
         commands::scroll_view(
             &mut self.state,
             &mut self.view,

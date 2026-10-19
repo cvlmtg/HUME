@@ -71,7 +71,13 @@ impl<'a> UiHost for EditorHostImpl<'a> {
                 &text,
             )
         });
-        let model = PopupLayer::new(text, syntax, layout);
+        let model = PopupLayer::new(
+            text,
+            syntax,
+            layout,
+            &mut self.view.theme,
+            &self.view.registry,
+        );
         let token = model.token();
         match kind {
             PopupKind::Sticky => {

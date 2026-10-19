@@ -151,7 +151,11 @@ impl Layer for BufferCompletionLayer {
     fn tear_down(self: Box<Self>, state: &mut EditorState, _view: &EngineView, _why: Removal) {
         state.close_buffer_completion_views();
     }
-    fn theme_changed(&mut self) {
+    fn theme_changed(
+        &mut self,
+        _theme: &mut hume_engine::theme::Theme,
+        _registry: &hume_engine::theme::ScopeRegistry,
+    ) {
         self.doc = DocView::default();
     }
 }
@@ -404,7 +408,7 @@ fn completion_input_buffer(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
         .is_some_and(|l| !l.session.is_empty());
     if has_matches {
         if let Some(down) = half_page_key(&key) {
-            let screen = ed.state.screen_layout(&mut ed.view);
+            let screen = ed.state.screen_layout(&ed.view);
             let rows = ed
                 .resolve_completion_overlays(&screen, None)
                 .and_then(|(_, doc)| doc)

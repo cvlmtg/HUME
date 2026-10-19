@@ -322,7 +322,7 @@ fn band_visible_rows_reserves_the_frame_row_pair_below_the_cap() {
 fn side(text: &str, beside: Rect, pane: Rect) -> Option<PopupState> {
     let slot = side_slot(beside, beside.y.saturating_sub(1), pane)?;
     Some(resolve_side_popup(
-        &mut PopupContent::plain(text),
+        &PopupContent::plain(text),
         &slot,
         0,
         true,
@@ -338,7 +338,7 @@ fn side_popup_beside_a_box_above_its_anchor_grows_upward_from_its_bottom_edge() 
     let beside = rect(10, 10, 20, 6);
     let anchor_row = beside.bottom();
     let slot = side_slot(beside, anchor_row, rect(0, 0, 80, 24)).expect("room on the right");
-    let state = resolve_side_popup(&mut PopupContent::plain(&text), &slot, 0, true);
+    let state = resolve_side_popup(&PopupContent::plain(&text), &slot, 0, true);
     assert_eq!(state.rect.bottom(), beside.bottom());
     assert_eq!(
         state.rect.height, 8,

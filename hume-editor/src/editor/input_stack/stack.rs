@@ -20,6 +20,7 @@ use std::any::Any;
 use termina::event::{KeyEvent, MouseEvent};
 
 use hume_engine::pipeline::{EngineView, PaneId};
+use hume_engine::theme::{ScopeRegistry, Theme};
 use hume_engine::types::EditorMode;
 
 use super::super::edit_session::InsertSession;
@@ -207,12 +208,12 @@ pub(in crate::editor) trait Layer: Any {
         None
     }
 
-    /// Drops whatever this layer built against the outgoing theme's
-    /// colors, rebuilt on the next frame. By default that is the popup in
-    /// its sticky slot, if any.
-    fn theme_changed(&mut self) {
+    /// Rebuilds or drops whatever this layer built against the outgoing
+    /// theme's colors, against `theme`. By default that is the popup in its
+    /// sticky slot, if any.
+    fn theme_changed(&mut self, theme: &mut Theme, registry: &ScopeRegistry) {
         if let Some(Some(popup)) = self.sticky_popup_slot_mut() {
-            popup.theme_changed();
+            popup.theme_changed(theme, registry);
         }
     }
 }
@@ -773,10 +774,10 @@ impl InputStack {
         }
     }
 
-    /// Runs [`Layer::theme_changed`] on every layer, for a theme change.
-    pub(in crate::editor) fn theme_changed(&mut self) {
+    /// Runs [`Layer::theme_changed`] on every layer, for a change to `theme`.
+    pub(in crate::editor) fn theme_changed(&mut self, theme: &mut Theme, registry: &ScopeRegistry) {
         for (_, layer) in &mut self.layers {
-            layer.theme_changed();
+            layer.theme_changed(theme, registry);
         }
     }
 
@@ -1030,7 +1031,13 @@ mod tests {
     }
 
     fn popup_model(text: &str) -> PopupLayer {
-        PopupLayer::new(text.to_string(), None, hume_ui::popup::PopupLayout::Cursor)
+        PopupLayer::new(
+            text.to_string(),
+            None,
+            hume_ui::popup::PopupLayout::Cursor,
+            &mut hume_engine::theme::Theme::default(),
+            &hume_engine::theme::ScopeRegistry::new(),
+        )
     }
 
     #[test]

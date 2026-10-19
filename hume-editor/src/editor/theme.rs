@@ -8,12 +8,12 @@ use crate::editor::input_stack::InputStack;
 use crate::editor::message_log::{MessageLog, Severity};
 
 /// Replace `view.theme`, record the name it came from in `shown_theme` (empty
-/// for the fallback), and invalidate everything that caches against its baked
-/// colors: each input-stack layer drops its own
+/// for the fallback), and rebuild or drop everything built against its baked
+/// colors: each input-stack layer handles its own
 /// ([`InputStack::theme_changed`]). The single chokepoint for replacing a
-/// *live* `view.theme`, so no replacement site can skip the invalidation.
+/// *live* `view.theme`, so no replacement site can skip that step.
 /// `Editor::open`'s initial construction bypasses this: there is no layer
-/// cache yet to invalidate.
+/// yet to rebuild.
 pub(in crate::editor) fn set_theme(
     view: &mut EngineView,
     shown_theme: &mut String,
@@ -23,7 +23,7 @@ pub(in crate::editor) fn set_theme(
 ) {
     view.theme = theme;
     name.clone_into(shown_theme);
-    input.theme_changed();
+    input.theme_changed(&mut view.theme, &view.registry);
 }
 
 /// Load a theme by name and apply it to the engine view.

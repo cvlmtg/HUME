@@ -101,8 +101,8 @@ const MIN_PANE_WIDTH: u16 = 10;
 /// row of several can be pushed under the minimum by a split that never
 /// touches it directly.
 pub(in crate::editor) fn fits_split(
-    state: &mut EditorState,
-    view: &mut EngineView,
+    state: &EditorState,
+    view: &EngineView,
     direction: Direction,
 ) -> bool {
     let rect = state

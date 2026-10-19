@@ -311,7 +311,7 @@ impl Editor {
         self.state
             .clamp_drawer_scroll_to_terminal(self.view.terminal_area().height);
         self.fill_drawer_window();
-        let screen = self.state.screen_layout(&mut self.view);
+        let screen = self.state.screen_layout(&self.view);
         self.state.sync_band_views(&mut self.view, &screen);
 
         // Nothing below changes which panes the active tab shows.
@@ -454,14 +454,14 @@ impl Editor {
 
     /// The screen's layout as the current models have it.
     #[cfg(test)]
-    pub(in crate::editor) fn screen_layout(&mut self) -> ScreenLayout {
-        self.state.screen_layout(&mut self.view)
+    pub(in crate::editor) fn screen_layout(&self) -> ScreenLayout {
+        self.state.screen_layout(&self.view)
     }
 
     /// Pane `pid`'s size as the current models lay it out.
     #[cfg(test)]
-    pub(in crate::editor) fn pane_size(&mut self, pid: PaneId) -> PaneSize {
-        self.state.pane_size(&mut self.view, pid)
+    pub(in crate::editor) fn pane_size(&self, pid: PaneId) -> PaneSize {
+        self.state.pane_size(&self.view, pid)
     }
 
     #[cfg(test)]
@@ -478,17 +478,17 @@ impl EditorState {
     /// pass comes from here, so it reflects a band opened or closed since the
     /// last frame. Never runs Steel, so it is safe inside a Steel call.
     #[allow(clippy::disallowed_methods)]
-    pub(in crate::editor) fn screen_layout(&mut self, view: &mut EngineView) -> ScreenLayout {
+    pub(in crate::editor) fn screen_layout(&self, view: &EngineView) -> ScreenLayout {
         let area = view.terminal_area();
         let drawer = self.input.drawer().map_or(0, |d| {
             hume_ui::drawer::band_height(d.item_count(&self.buffers), area.height)
         });
         let popup = self
             .input
-            .popup_mut()
+            .popup()
             .filter(|p| matches!(p.layout, hume_ui::popup::PopupLayout::Docked))
             .map_or(0, |p| {
-                let lines = p.docked_total_rows(&mut view.theme, &view.registry, area.width);
+                let lines = p.docked_total_rows(area.width);
                 hume_ui::popup::band_height(lines, area.height)
             });
         let rows = ChromeRows {
@@ -500,7 +500,7 @@ impl EditorState {
 
     /// The size of pane `pid`, in the active tab or a background one, as
     /// [`Self::screen_layout`] lays it out.
-    pub(in crate::editor) fn pane_size(&mut self, view: &mut EngineView, pid: PaneId) -> PaneSize {
+    pub(in crate::editor) fn pane_size(&self, view: &EngineView, pid: PaneId) -> PaneSize {
         let screen = self.screen_layout(view);
         std::iter::once(view.focused_layout())
             .chain(self.tabs.inactive())

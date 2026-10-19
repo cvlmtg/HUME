@@ -489,8 +489,8 @@ pub(in crate::editor) fn pane_visible_range(
 /// Pane `pid`'s visible line range (end-exclusive) between frames, for
 /// `(viewport-range pane)` and the `OnViewportChange` payload.
 pub(in crate::editor) fn viewport_range(
-    state: &mut EditorState,
-    view: &mut EngineView,
+    state: &EditorState,
+    view: &EngineView,
     pid: PaneId,
 ) -> hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine> {
     let size = state.pane_size(view, pid);

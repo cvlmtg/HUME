@@ -351,7 +351,7 @@ pub(in crate::editor) fn picker_input(ed: &mut Editor, r: LayerRef, ev: InputEve
         InputEvent::Key(key) => key,
         InputEvent::Mouse(_) => return,
     };
-    let screen = ed.state.screen_layout(&mut ed.view);
+    let screen = ed.state.screen_layout(&ed.view);
     let visible_rows =
         hume_ui::picker_panel::panel_geometry(screen.pane_area()).map_or(0, |geo| geo.list_rows);
 

@@ -42,15 +42,14 @@ pub(in crate::editor) struct PopupLayer {
     /// IS the syntax's (SSOT).
     pub(in crate::editor) syntax: Option<super::super::popup_syntax::MarkupSyntax>,
     pub(in crate::editor) layout: hume_ui::popup::PopupLayout,
-    /// Lazily built from `text`/`syntax` on first [`Self::content_mut`]
-    /// call, against the view's theme. Its own
-    /// internal wrap cache is then keyed by width, so an unchanged width
-    /// across frames is O(1), not a re-wrap. Reset to `None` by
+    /// Built from `text`/`syntax` against the view's theme when the popup is
+    /// created. Its own internal wrap cache is keyed by width, so an
+    /// unchanged width across frames is O(1), not a re-wrap. Rebuilt by
     /// [`Layer::theme_changed`] (reached from `theme::set_theme`, the one
     /// chokepoint every `view.theme` write goes through), since the baked
     /// styles are the one input here that can change out from under an open
     /// popup, unlike `text`/`syntax`.
-    content: Option<hume_ui::popup::PopupContent>,
+    content: hume_ui::popup::PopupContent,
     /// Identifies which `show-popup!` call opened this popup; see
     /// [`Self::token`]'s doc.
     token: HostToken,
@@ -63,13 +62,17 @@ impl PopupLayer {
         text: String,
         syntax: Option<super::super::popup_syntax::MarkupSyntax>,
         layout: hume_ui::popup::PopupLayout,
+        theme: &mut Theme,
+        registry: &ScopeRegistry,
     ) -> Self {
+        let content =
+            super::super::popup_syntax::popup_content(&text, syntax.as_ref(), theme, registry);
         Self {
             text,
             scroll: 0,
             syntax,
             layout,
-            content: None,
+            content,
             token: host_token::mint(),
         }
     }
@@ -80,35 +83,15 @@ impl PopupLayer {
         self.token
     }
 
-    /// [`Self::content`], building it on first call. `text`/`syntax` never
-    /// change during a `PopupLayer`'s lifetime (a new `show-popup!` builds a
-    /// fresh one), so building it once and caching it here is sound. The
-    /// theme can still change under it, which is why [`Self::content`]'s own
-    /// doc names the two sites that reset this back to `None` when it does.
-    pub(in crate::editor) fn content_mut(
-        &mut self,
-        theme: &mut Theme,
-        registry: &ScopeRegistry,
-    ) -> &mut hume_ui::popup::PopupContent {
-        self.content.get_or_insert_with(|| {
-            super::super::popup_syntax::popup_content(
-                &self.text,
-                self.syntax.as_ref(),
-                theme,
-                registry,
-            )
-        })
+    /// The popup's styled text, built against the current theme.
+    pub(in crate::editor) fn content(&self) -> &hume_ui::popup::PopupContent {
+        &self.content
     }
 
     /// Wrapped lines this popup has when docked on a terminal `area_width`
     /// columns wide: what its band's height and its paging are measured from.
-    pub(in crate::editor) fn docked_total_rows(
-        &mut self,
-        theme: &mut Theme,
-        registry: &ScopeRegistry,
-        area_width: u16,
-    ) -> usize {
-        hume_ui::popup::band_total_rows(self.content_mut(theme, registry), area_width)
+    pub(in crate::editor) fn docked_total_rows(&self, area_width: u16) -> usize {
+        hume_ui::popup::band_total_rows(&self.content, area_width)
     }
 }
 
@@ -117,8 +100,13 @@ impl Layer for PopupLayer {
         None
     }
 
-    fn theme_changed(&mut self) {
-        self.content = None;
+    fn theme_changed(&mut self, theme: &mut Theme, registry: &ScopeRegistry) {
+        self.content = super::super::popup_syntax::popup_content(
+            &self.text,
+            self.syntax.as_ref(),
+            theme,
+            registry,
+        );
     }
 
     fn handler(&self) -> LayerHandler {
@@ -190,14 +178,13 @@ impl Editor {
         let model = self
             .state
             .input
-            .popup_mut()
+            .popup()
             .expect("popup present: is_cursor checked above");
-        // Read before the `&mut` below: a second `self.state.input.popup()`
-        // borrow once `content` is live would conflict with it.
-        let scroll = model.scroll;
-        let content = model.content_mut(&mut self.view.theme, &self.view.registry);
         Some(hume_ui::popup::resolve_popup(
-            content, placement, scroll, border,
+            model.content(),
+            placement,
+            model.scroll,
+            border,
         ))
     }
 }
@@ -214,7 +201,7 @@ impl EditorState {
     ///
     /// Wraps and caps against `EngineView::terminal_area`: the band spans
     /// the full terminal.
-    pub(in crate::editor) fn sync_popup_band_view(&mut self, view: &mut EngineView) {
+    pub(in crate::editor) fn sync_popup_band_view(&mut self, view: &EngineView) {
         let is_docked = matches!(
             self.input.popup().map(|m| &m.layout),
             Some(hume_ui::popup::PopupLayout::Docked)
@@ -230,11 +217,9 @@ impl EditorState {
         let border = self.settings.popup_border;
         let model = self
             .input
-            .popup_mut()
+            .popup()
             .expect("popup present: is_docked checked above");
-        let scroll = model.scroll;
-        let content = model.content_mut(&mut view.theme, &view.registry);
-        let resolved = hume_ui::popup::resolve_band(content, area, scroll, border);
+        let resolved = hume_ui::popup::resolve_band(model.content(), area, model.scroll, border);
 
         self.views.popup_band.set(Some(resolved));
     }
@@ -287,16 +272,14 @@ fn popup_paste(state: &mut EditorState, view: &EngineView, r: LayerRef, text: Pa
 fn popup_rows(ed: &mut Editor) -> Option<(usize, usize)> {
     match ed.state.input.popup()?.layout {
         hume_ui::popup::PopupLayout::Cursor => {
-            let screen = ed.state.screen_layout(&mut ed.view);
+            let screen = ed.state.screen_layout(&ed.view);
             ed.resolve_cursor_popup(&screen, None)
                 .as_ref()
                 .map(boxed_popup_rows)
         }
         hume_ui::popup::PopupLayout::Docked => {
-            let view = &mut ed.view;
-            let area = view.terminal_area();
-            let popup = ed.state.input.popup_mut()?;
-            let total = popup.docked_total_rows(&mut view.theme, &view.registry, area.width);
+            let area = ed.view.terminal_area();
+            let total = ed.state.input.popup()?.docked_total_rows(area.width);
             let visible = hume_ui::popup::band_visible_rows(total, area.height);
             Some((visible, total))
         }

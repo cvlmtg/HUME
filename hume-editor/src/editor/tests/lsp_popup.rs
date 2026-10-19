@@ -528,17 +528,12 @@ fn wrap_is_cached_per_width_and_invalidated_only_when_width_changes() {
     );
 }
 
-/// A theme reload must invalidate `PopupLayer::content` (the per-`show-popup!`
-/// baked-style cache `content_mut` builds once and reuses), not just the
-/// per-width wrap cache inside it: `content_mut`'s bake reads the theme, but
-/// nothing re-ran it on a theme swap, so a `#:lang` popup would keep
-/// painting the outgoing theme's colors until an unrelated width change
-/// forced a re-wrap. Checked here via `PopupContent` object identity (a
-/// fresh `content_mut` build always allocates a fresh `Arc`, styled or
-/// plain alike), not by comparing colors, so it doesn't need a `#:lang`
-/// grammar fixture. Regression test: the `resolve_popup_text` →
-/// `content_mut` migration dropped the per-width re-resolve that doubled as
-/// the theme's only invalidation trigger.
+/// A theme reload rebuilds `PopupLayer::content`, whose styles are baked
+/// from the theme, not just the per-width wrap cache inside it, so a
+/// `#:lang` popup paints the new theme's colors at an unchanged width.
+/// Checked via the wrapped lines' object identity (a rebuilt content wraps
+/// into a fresh `Arc`, styled or plain alike), not by comparing colors, so
+/// it doesn't need a `#:lang` grammar fixture.
 #[test]
 fn popup_content_is_rebuilt_after_a_theme_reload() {
     let tmp = tempfile::tempdir().unwrap();

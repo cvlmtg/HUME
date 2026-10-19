@@ -582,7 +582,7 @@ fn viewport_range_end_is_one_past_the_last_visible_row() {
     ed.resize_terminal(80, 4);
     let t = crate::editor::commands::FocusedPane::current(&ed.view).pane();
 
-    let got = crate::editor::lsp::introspect::viewport_range(&mut ed.state, &mut ed.view, t.pid());
+    let got = crate::editor::lsp::introspect::viewport_range(&ed.state, &ed.view, t.pid());
     assert_eq!(
         got,
         hume_rope::offset::ExclusiveRange::new(
@@ -674,7 +674,7 @@ fn viewport_range_succeeds_for_a_buffer_shown_only_in_a_background_tab() {
         hume_scripting::PaneHandle::with_pane(hidden_bid, hidden_pid),
     )
     .expect("a background-tab pane must still resolve");
-    let got = crate::editor::lsp::introspect::viewport_range(&mut ed.state, &mut ed.view, t.pid());
+    let got = crate::editor::lsp::introspect::viewport_range(&ed.state, &ed.view, t.pid());
     assert_eq!(
         got.start,
         hume_rope::line::ContentLine::new(0),

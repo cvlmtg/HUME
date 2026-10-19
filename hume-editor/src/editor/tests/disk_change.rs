@@ -880,14 +880,14 @@ fn confirm_still_opens_over_an_open_scrollable_popup() {
     let bid = ed.focused_buffer_id();
     rewrite_externally(&tmp, "hello, externally changed!\n");
 
-    ed.state.push_layer(
-        &ed.view,
-        crate::editor::input_stack::PopupLayer::new(
-            "hello".to_string(),
-            None,
-            hume_ui::popup::PopupLayout::Cursor,
-        ),
+    let popup = crate::editor::input_stack::PopupLayer::new(
+        "hello".to_string(),
+        None,
+        hume_ui::popup::PopupLayout::Cursor,
+        &mut ed.view.theme,
+        &ed.view.registry,
     );
+    ed.state.push_layer(&ed.view, popup);
 
     ed.check_buffer_disk_state(bid, DiskCheckTrigger::BufferEnter);
 

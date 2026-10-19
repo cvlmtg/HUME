@@ -284,8 +284,7 @@ impl Editor {
         if !self.view.layout().contains_leaf(pane_id) {
             return;
         }
-        let lines =
-            super::lsp::introspect::viewport_range(&mut self.state, &mut self.view, pane_id);
+        let lines = super::lsp::introspect::viewport_range(&self.state, &self.view, pane_id);
         let bid = self.view.panes[pane_id].buffer_id();
         self.state.queue_event(EditorEvent::OnViewportChange {
             target: PaneHandle::with_pane(bid, pane_id),

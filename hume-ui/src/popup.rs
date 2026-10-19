@@ -23,6 +23,7 @@
 
 use hume_engine::types::ResolvedStyle;
 use hume_grid::Rect;
+use std::cell::{Ref, RefCell};
 use std::sync::Arc;
 
 use hume_engine::lock::SharedSlot;
@@ -80,7 +81,7 @@ pub struct PopupContent {
     /// `PopupState::styled_rows`/`PopupBandState::styled_rows` `None`, so the
     /// box paints every row in one style instead of walking per-run.
     styled: bool,
-    cache: Option<Wrapped>,
+    cache: RefCell<Option<Wrapped>>,
 }
 
 struct Wrapped {
@@ -118,7 +119,7 @@ impl PopupContent {
         Self {
             source: vec![(text.to_string(), ResolvedStyle::default())],
             styled: false,
-            cache: None,
+            cache: RefCell::new(None),
         }
     }
 
@@ -129,7 +130,7 @@ impl PopupContent {
         Self {
             source: runs,
             styled: true,
-            cache: None,
+            cache: RefCell::new(None),
         }
     }
 
@@ -142,8 +143,12 @@ impl PopupContent {
     /// (an `Arc` clone, never a copy, regardless of scroll position) along
     /// with a `visible` range into it. The window is a view, not a slice
     /// taken up front.
-    fn wrapped(&mut self, width: u16) -> &Wrapped {
-        let stale = self.cache.as_ref().is_none_or(|c| c.width != width);
+    fn wrapped(&self, width: u16) -> Ref<'_, Wrapped> {
+        let stale = self
+            .cache
+            .borrow()
+            .as_ref()
+            .is_none_or(|c| c.width != width);
         if stale {
             let rows = wrap_styled(&self.source, width);
             let lines: Vec<String> = rows
@@ -152,14 +157,16 @@ impl PopupContent {
                 .collect();
             let styled_rows = self.styled.then(|| Arc::new(rows));
             let inner_width = super::menu_box::widest(lines.iter().map(String::as_str));
-            self.cache = Some(Wrapped {
+            *self.cache.borrow_mut() = Some(Wrapped {
                 width,
                 lines: Arc::new(lines),
                 inner_width,
                 styled_rows,
             });
         }
-        self.cache.as_ref().expect("populated above")
+        Ref::map(self.cache.borrow(), |cache| {
+            cache.as_ref().expect("populated above")
+        })
     }
 }
 
@@ -300,13 +307,13 @@ pub(crate) struct PopupBandWidget {
 
 /// A docked popup's `content` wrapped for a terminal `area_width` columns
 /// wide: the band spans the full width, less its frame columns.
-fn band_wrapped(content: &mut PopupContent, area_width: u16) -> &Wrapped {
+fn band_wrapped(content: &PopupContent, area_width: u16) -> Ref<'_, Wrapped> {
     content.wrapped(area_width.saturating_sub(FRAME_CELLS))
 }
 
 /// Wrapped lines a docked popup's `content` has on a terminal `area_width`
 /// columns wide.
-pub fn band_total_rows(content: &mut PopupContent, area_width: u16) -> usize {
+pub fn band_total_rows(content: &PopupContent, area_width: u16) -> usize {
     band_wrapped(content, area_width).lines.len()
 }
 
@@ -363,7 +370,7 @@ pub struct PopupPlacement {
 /// `scroll` is the model's raw scroll value; the result clamps it to the
 /// resolved content height and windows `lines`/`styled_rows` down to it.
 pub fn resolve_popup(
-    content: &mut PopupContent,
+    content: &PopupContent,
     placement: PopupPlacement,
     scroll: usize,
     border: bool,
@@ -441,7 +448,7 @@ pub fn side_slot(beside: Rect, anchor_row: u16, pane_rect: Rect) -> Option<SideS
 /// Resolve a popup in `slot`, wrapped to the room there. `scroll` is
 /// clamped the same way [`resolve_popup`] clamps it.
 pub fn resolve_side_popup(
-    content: &mut PopupContent,
+    content: &PopupContent,
     slot: &SideSlot,
     scroll: usize,
     border: bool,
@@ -481,7 +488,7 @@ pub fn resolve_side_popup(
 /// un-subtracted terminal area: the band spans the full terminal width, not
 /// just the panes region, and its ceiling is a share of the full height.
 pub fn resolve_band(
-    content: &mut PopupContent,
+    content: &PopupContent,
     terminal: Rect,
     scroll: usize,
     border: bool,
