@@ -37,8 +37,18 @@
 
 ;; ── Theme-file discovery and sync ─────────────────────────────────────────────
 
+(define (plum/theme-names-in dir)
+  (stems-with-suffix (path-join dir "themes") ".toml"))
+
 (define (plum/repo-theme-names slug)
-  (stems-with-suffix (path-join (plum/theme-src-dir slug) "themes") ".toml"))
+  (plum/theme-names-in (plum/theme-src-dir slug)))
+
+;;; The theme names `slug`'s clone in `dir` provides. Raises if it has no `themes/*.toml`.
+(define (plum/require-theme-names slug dir)
+  (let ((names (plum/theme-names-in dir)))
+    (when (null? names)
+      (error (string-append "plum: " slug " has no themes/*.toml — nothing to install")))
+    names))
 
 ;;; Other installed repos (besides `slug`) that also provide `name` — see README.md's "Theme install".
 (define (plum/theme-owned-elsewhere name slug)
@@ -48,9 +58,7 @@
 
 ;;; The sync step shared by install and update. Raises if the repo has no `themes/*.toml` at all.
 (define (plum/sync-theme-files! slug old-names)
-  (let ((names (plum/repo-theme-names slug)))
-    (when (null? names)
-      (error (string-append "plum: " slug " has no themes/*.toml — nothing to install")))
+  (let ((names (plum/require-theme-names slug (plum/theme-src-dir slug))))
     (for-each
       (lambda (old)
         (unless (member old names)
@@ -82,9 +90,8 @@
         (let* ((src-dir (plum/theme-src-dir slug))
                (old-names (plum/repo-theme-names slug)))
           (log! 'info (string-append "PLUM: installing theme repo " slug))
-          ;; Clear any stale clone first — see README.md's "Theme install".
-          (call! "stdlib/delete-dir!" src-dir)
-          (plum/clone-github! slug src-dir)
+          (plum/install-repo! (plum/github-url slug) src-dir #f
+            #:build (lambda (dir) (plum/require-theme-names slug dir)))
           (let ((names (plum/sync-theme-files! slug old-names)))
             (log! 'info (string-append "PLUM: installed " slug ": " (string-join names ", ")))
             (log! 'info (string-append "PLUM: run :theme " (car names) " to try it")))))))

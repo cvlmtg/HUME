@@ -35,13 +35,13 @@ See [Configuring a plugin](writing-plugins.md#configuring-a-plugin) for what a p
 
 ### Pinning a version
 
-PLUM installs a plugin's latest commit. To stay on a release, or to follow a branch other than the default one, give its tag or branch name with `#:ref`:
+PLUM installs a plugin's latest commit. To stay on a release, to follow a branch other than the default one, or to stay on one exact commit, give its tag, branch name or commit id with `#:ref`:
 
 ```scheme
 (load-plugin! "cvlmtg/grep.hume" #:ref "v1.0.0")
 ```
 
-`:plum-install-plugins` checks a new plugin out at that tag or branch, and `:plum-update-plugins` moves an installed one onto it. Run `:plum-update-plugins` after changing or removing a `#:ref`. A plugin pinned to a tag stays on it; a plugin pinned to a branch gets that branch's latest commit.
+`:plum-install-plugins` checks a new plugin out at that ref, and `:plum-update-plugins` moves an installed one onto it. After changing or removing a `#:ref`, run `:reload-config`, then `:plum-update-plugins`. A plugin pinned to a tag or a commit stays on it; a plugin pinned to a branch gets that branch's latest commit. A commit id can be the short form `git log --oneline` shows, as long as the commit is on one of the plugin's branches or tags. A full commit id also works for a commit on none of them, as long as the plugin's host still has it. If PLUM can't find the ref, the install or update of that plugin fails with a message naming it, and an installed plugin stays as it was.
 
 ## Plugin status
 

@@ -1,13 +1,15 @@
 // Editor-level tests for core:plum's theme install pipeline (themes.scm):
 // slug validation, install/update sync, list, and remove.
 //
-// `:plum-install-theme`'s own `git clone` step hardcodes a
-// `https://github.com/...` URL, so it is not reachable offline; only its
-// validation-failure path is covered here (`install_theme_rejects_unsafe_slugs`).
-// Everything after a clone (`plum/sync-theme-files!`, the update/list/remove
-// commands) is covered against a real *local* git origin: `git clone`/`git
-// pull` work identically against a local filesystem path, so these tests
-// exercise the real subprocess pipeline with no network involved.
+// `:plum-install-theme` installs from a `https://github.com/...` URL, so it is
+// not reachable offline; only its validation-failure path is covered here
+// (`install_theme_rejects_unsafe_slugs`). Its install funnel,
+// `plum/install-repo!`, is covered against a local origin in
+// `tests/plum_git.rs`. Everything after an install (`plum/sync-theme-files!`,
+// the update/list/remove commands) is covered against a real *local* git
+// origin: `git clone`/`git fetch` work identically against a local filesystem
+// path, so these tests exercise the real subprocess pipeline with no network
+// involved.
 //
 // plum reports through `log!`: `'info` reaches `status_msg` only, and each
 // call overwrites the last, so a test asserts on whichever line is

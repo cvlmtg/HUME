@@ -88,7 +88,7 @@ To use something newer that has not shipped in a release, check for it directly 
 | Call | Effect |
 |------|--------|
 | `(declare-plugin! name #:entry #:commands #:typed-commands #:events #:languages)` | Declares the triggers that load a plugin lazily. Used in a `manifest.scm`, or in `init.scm` for a local `./file.scm` or to give an installed plugin custom triggers; `#:entry` names another file of the plugin to load on its own triggers |
-| `(load-plugin! name #:config #:ref)` | Brings in a plugin. It loads lazily when the plugin ships a `manifest.scm` and at startup otherwise; `#:config` is the only way to pass configuration; `#:ref` pins an installed plugin to a tag or branch (see [Pinning a version](plugins.md#pinning-a-version)) |
+| `(load-plugin! name #:config #:ref)` | Brings in a plugin. It loads lazily when the plugin ships a `manifest.scm` and at startup otherwise; `#:config` is the only way to pass configuration; `#:ref` pins an installed plugin to a tag, branch or commit (see [Pinning a version](plugins.md#pinning-a-version)) |
 | `(resolve-plugin-path name)` | The path of an installed plugin's `plugin.scm` if it exists on disk, else `#f`; raises for a malformed name and for a local `./file.scm` name |
 | `(loaded-plugins)` | List of plugin names whose `plugin.scm` has finished loading, local files included; a plugin with only another `#:entry` file loaded is not listed |
 | `(declared-plugins)` | List of plugin names named by `load-plugin!` or `declare-plugin!`, `core:*` included, whether or not they are installed; local `./file.scm` entries are not listed |

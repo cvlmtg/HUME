@@ -29,7 +29,7 @@
   (unless (safe-path-segment? name)
     (log! 'warn (string-append "plum/fetch-raw-query: rejecting unsafe grammar/dependency name \"" name "\""))
     (error (string-append "plum/fetch-raw-query: unsafe grammar/dependency name \"" name "\"")))
-  (let ((tmp (path-join (grammar-sources-dir) (string-append "_fetch_" name "_" filename))))
+  (let ((tmp (path-join (plum/staging-dir) (string-append "_fetch_" name "_" filename))))
     (run-inline-output! "curl" (list "-fsSL" "-o" tmp "--" (plum/helix-query-url name filename)))
     (let ((content (with-handler (lambda (err) #f) (plum/read-file tmp))))
       (call! "stdlib/delete-file!" tmp)
@@ -79,11 +79,11 @@
     (plum/grammar-deps name)))
 
 ;;; Tolerates a missing file — see README.md.
-(define (plum/try-fetch-query! name filename)
+(define (plum/try-fetch-query! name filename dir)
   (with-handler
     (lambda (err)
       (log! 'trace (string-append "PLUM: no " filename " for " name " (" (to-string err) ")")))
-    (plum/fetch-query! name filename (grammar-query-path name filename))))
+    (plum/fetch-query! name filename (path-join dir filename))))
 
 ;; ── Grammar discovery ─────────────────────────────────────────────────────────
 
@@ -107,33 +107,23 @@
 
 ;; ── Install pipeline ──────────────────────────────────────────────────────────
 
-;;; Always from a clean slate — see README.md's "Grammar install pipeline".
+;;; See README.md's "Grammar install pipeline".
 (define (plum/install-grammar name)
   (let* ((source  (or (bundled-language-grammar name)
                       (error (string-append "plum: no grammar for language \"" name "\""))))
-         (url     (grammar-url source))
-         (rev     (grammar-rev source))
-         (symbol  (grammar-symbol source))
          (subpath (grammar-subpath source))
-         (src-dir (grammar-source-dir name))
-         (build-dir (if (equal? subpath "")
-                        src-dir
-                        (path-join src-dir subpath)))
-         (out-path (grammar-output-path name))
-         (hl-path  (grammar-highlights-path name)))
+         (out-path (grammar-output-path name)))
     (plum/install-grammar-deps! name)
-    ;; git clone refuses a non-empty dest — clear any stale source tree first.
-    (call! "stdlib/delete-dir!" src-dir)
-    ;; Blobless clone at the pinned rev — see README.md's "Grammar install pipeline".
-    (run-inline-output! "git" (list "clone" "--filter=blob:none" "--" url src-dir))
-    (run-inline-output! "git" (list "checkout" "--force" "--end-of-options" rev "--") #:cwd src-dir)
-    (plum/fetch-query! name "highlights.scm" hl-path)
-    (displayln (string-append "Compiling grammar for " name "..."))
-    (compile-grammar! build-dir out-path)
-    (for-each
-      (lambda (kind) (plum/try-fetch-query! name (cdr kind)))
-      (grammar-optional-queries))
-    (register-grammar-from-sources! name out-path symbol)))
+    (plum/install-repo! (grammar-url source) (grammar-source-dir name) (grammar-rev source)
+      #:build
+      (lambda (dir)
+        (plum/fetch-query! name "highlights.scm" (path-join dir "highlights.scm"))
+        (displayln (string-append "Compiling grammar for " name "..."))
+        (compile-grammar! (if (equal? subpath "") dir (path-join dir subpath)) out-path)
+        (for-each
+          (lambda (kind) (plum/try-fetch-query! name (cdr kind) dir))
+          (grammar-optional-queries))))
+    (register-grammar-from-sources! name out-path (grammar-symbol source))))
 
 ;; ── Commands ──────────────────────────────────────────────────────────────────
 

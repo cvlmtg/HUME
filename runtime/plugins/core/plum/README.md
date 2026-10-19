@@ -40,10 +40,10 @@ when it is asked (see [Plugin discovery](#plugin-discovery)).
 | Command | Effect |
 |---|---|
 | `:plum-install-plugins` | Install all plugins declared in `init.scm` that are not yet on disk |
-| `:plum-cleanup-plugins` | Remove on-disk plugins that are no longer declared |
+| `:plum-cleanup-plugins` | Remove on-disk plugins that are no longer declared, and what a failed install left behind |
 | `:plum-update-plugins` | Check every installed third-party plugin out at its `#:ref`, or its default branch's latest commit |
 | `:plum-list-plugins` | Show the declared, installed, orphan and missing plugin lists in `[plum-plugins]` |
-| `:plum-install-grammar [lang]` | Install or repair a grammar: purge its source, re-clone, recompile. Defaults to the current buffer's language. Tab-completes the languages with a bundled grammar |
+| `:plum-install-grammar [lang]` | Install or repair a grammar: fresh clone, recompile, then replace its source. Defaults to the current buffer's language. Tab-completes the languages with a bundled grammar |
 | `:plum-list-grammars` | Show the installed and orphan grammars in `[plum-grammars]` |
 | `:plum-cleanup-grammars` | Delete the orphan grammars: compiled files whose name is not a language with a bundled grammar |
 | `:plum-install-theme <user/repo>` | Install or reinstall a theme repo's `themes/*.toml` from a GitHub slug |
@@ -70,8 +70,9 @@ source:
 - **`themes.scm`** (`#:entry`): third-party theme install, update, list and remove (see
   [Theme install](#theme-install)).
 - **`lib/helpers.scm`**: `plum/require-stdlib!` (the `core:stdlib` check each entry runs),
-  `plum/clone-github!` and `plum/git-sync!` (the one GitHub clone URL shape
-  and the checkout every update and pinned install shares), `plum/batch-run!`, and
+  `plum/github-url`, `plum/install-repo!` and `plum/git-sync!` (the one GitHub URL shape,
+  the install every install command shares, and the checkout behind both install and
+  update; see [Pinned plugins](#pinned-plugins)), `plum/batch-run!`, and
   `plum/two-level-repos` (the `<root>/<user>/<repo>/`
   walk behind plugin and theme-repo discovery). Directory listing, filesystem cleanup, list
   search come from `core:stdlib` through `call!`.
@@ -92,19 +93,37 @@ Declared plugins live in `init.scm`. Installed plugins are found by walking
 
 ### Pinned plugins
 
-`(load-plugin! "user/repo" #:ref "v1.2.0")` pins a plugin to a tag or a branch;
-`(declared-plugin-ref name)` reads the pin back. `plum/git-sync!` puts a clone on a ref
-with `git fetch origin <ref>` and `git checkout --detach FETCH_HEAD`, fetching `HEAD`
-(the remote's default branch) for an unpinned plugin or a theme repo. The same two
-commands move a clone between any two states: onto a tag, from one tag to another, from a
-tag to a branch, and off a tag once the pin is removed, where `git pull` would refuse a
-detached HEAD. So every updated clone is on a detached HEAD, and a local edit that
-conflicts with the new checkout fails the update for that plugin.
+`(load-plugin! "user/repo" #:ref "v1.2.0")` pins a plugin to a tag, a branch or a
+commit id, full or abbreviated; `(declared-plugin-ref name)` reads the pin back.
 
-`:plum-install-plugins` clones and then runs `plum/git-sync!` for a pinned plugin. It
-installs only missing plugins, so a changed pin reaches an installed plugin through
-`:plum-update-plugins`. `load-plugin!` raises for a ref starting with `-`, which `git`
-would read as an option, and for a ref on a `core:` plugin.
+`plum/git-sync!` puts a clone on a ref. `git fetch` cannot resolve an abbreviated commit
+id on the remote, so for a pin it fetches every branch and tag (`git fetch --force
+--prune --tags origin`) and resolves the ref locally, taking the first of
+`refs/tags/<ref>`, `refs/remotes/origin/<ref>` and, for 4 to 40 hex digits, the commit id
+itself that `git rev-parse --verify` accepts. A ref that resolves to nothing (missing
+upstream, an ambiguous short id, or a short id of a commit no branch or tag reaches,
+which the fetch never brings in) raises an error naming it. A full id of such a commit
+resolves in a clone `plum/install-repo!` made, since `git rev-parse` fetches a missing
+object from a promisor remote on demand. Without a pin, it fetches `HEAD`, the
+remote's default branch. Either way it ends with `git checkout --detach`, which moves a
+clone between any two states: onto a tag, from one tag to another, from a tag to a
+branch, and off a tag once the pin is removed, where `git pull` would refuse a detached
+HEAD. So every clone is on a detached HEAD, and a local edit that conflicts with the
+new checkout fails the update for that plugin. An update also leaves behind commits
+made in the clone and any branch checked out there by hand.
+
+`plum/install-repo!`, behind every PLUM install command, runs `plum/git-sync!` on a fresh
+repo: `git init` in `<data>/plum-staging/<parent>/<name>`, `git remote add origin <url>`,
+origin made a promisor remote with `partialclonefilter blob:none` (a blobless clone,
+which downloads only the files of the commits it checks out), `plum/git-sync!`, then
+the caller's `#:build` on the staging clone, if any. Only then does it delete the old
+clone, if any, and rename the new one into place. A failed install leaves the old clone untouched and
+nothing new where discovery looks. Its staging directory stays until the next install of
+that repo or `:plum-cleanup-plugins`, which deletes `<data>/plum-staging/` whole.
+`:plum-install-plugins` installs only missing plugins, so a changed pin reaches an
+installed plugin through `:plum-update-plugins`.
+`load-plugin!` raises for a ref `git check-ref-format` would refuse, for one starting
+with `-`, which `git` would read as an option, and for a ref on a `core:` plugin.
 
 ### Grammar sources and the Helix pin
 
@@ -123,8 +142,8 @@ read once when PLUM loads), so HUME uses Helix's query files without vendoring t
 
 ### Query fetching
 
-`plum/fetch-raw-query` downloads one query file with `curl` into a temp file under the
-grammar sources directory, reads it, and deletes the temp file. A failed read still deletes
+`plum/fetch-raw-query` downloads one query file with `curl` into a temp file under
+`<data>/plum-staging/`, which exists while an install builds, reads it, and deletes the temp file. A failed read still deletes
 the temp file and then raises a fresh error; the native read error is not re-raised.
 
 A query file can declare `; inherits: dep,dep,...` instead of writing out its own
@@ -152,19 +171,21 @@ installs the dependencies declared in `*plum-grammar-deps*` before the grammar i
 
 ### Grammar install pipeline
 
-`:plum-install-grammar` always installs from a clean slate, which also repairs a grammar
-left in a failed state (a source tree cloned but never compiled):
+`:plum-install-grammar` always installs from a fresh clone. The source tree, which also
+holds the grammar's queries, is replaced only once the new one is complete, so a failed
+reinstall leaves an installed grammar working:
 
 1. Install any not-yet-compiled dependency grammars (see
    [Grammar dependencies](#grammar-dependencies)).
-2. Purge any existing source tree.
-3. Blobless clone (no file-history blobs) at the pinned revision, then force-checkout that
-   revision.
-4. Download the highlights query, resolving any `; inherits:` chain.
-5. Compile with tree-sitter build into a shared library, after a status line, since the C
-   compiler prints nothing and a slow grammar would look hung.
-6. Download each optional Helix query the editor can compile (the kinds
+2. `plum/install-repo!` checks the pinned revision out in a staging clone (see
+   [Pinned plugins](#pinned-plugins)). Its `#:build` then runs steps 3 to 5 in the
+   staging clone.
+3. Download the highlights query, resolving any `; inherits:` chain.
+4. Compile with tree-sitter build into the shared library, after a status line, since
+   the C compiler prints nothing and a slow grammar would look hung.
+5. Download each optional Helix query the editor can compile (the kinds
    `grammar-optional-queries` lists), if any.
+6. Replace the source tree with the staging clone.
 7. Register the grammar for its language in this session with
    `register-grammar-from-sources!`.
 
@@ -195,7 +216,7 @@ reads the filesystem at load time and the completer re-scans on every `Tab`.
 
 A slug not shaped like `user/repo` is a usage mistake and logs `'info`, which reaches the
 status line but not `:messages`. A slug of the right shape with a segment
-`safe-path-segment?` rejects would otherwise reach `path-join` and `git clone`, so
+`safe-path-segment?` rejects would otherwise reach `path-join` and `git`, so
 it raises and stays in `:messages`.
 
 #### Layout and discovery
@@ -219,10 +240,10 @@ it is about to write a name another installed repo also provides.
 
 #### Reinstall
 
-`:plum-install-theme` purges any existing clone for the slug before cloning, the same
-clean-slate rule as `:plum-install-grammar`, which also repairs a broken install. If the
-clone succeeds but the repo has no `themes/*.toml`, the sync step raises and the clone
-stays on disk until the next install of that slug purges it.
+`:plum-install-theme` always installs from a fresh clone through `plum/install-repo!`,
+like `:plum-install-grammar`, which also repairs a broken install. Its `#:build` raises
+when the new clone has no `themes/*.toml`, so a repo without themes fails before it
+replaces an installed clone, and the installed copies stay as they were.
 
 ### Output model
 
@@ -254,8 +275,9 @@ offers.
   [Layout and discovery](#layout-and-discovery).
 - **Optional query fetches are best-effort.** See
   [Query fetching](#query-fetching).
-- **Install commands start from a clean slate.** Purging the existing tree first makes a
-  reinstall the repair path for grammars and themes.
+- **Install commands start from a fresh clone and swap it in last.** A reinstall is the
+  repair path for grammars and themes, and a failed one leaves the installed copy as it
+  was.
 
 ## Known limitations
 

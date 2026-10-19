@@ -1,7 +1,7 @@
 ;;; core:plum/lib/helpers.scm
 
 (provide plum/require-stdlib! plum/batch-run! plum/read-file plum/two-level-repos
-         plum/clone-github! plum/git-sync!)
+         plum/staging-dir plum/github-url plum/install-repo! plum/git-sync!)
 
 (define (plum/require-stdlib!)
   (unless (member "core:stdlib" (declared-plugins))
@@ -26,15 +26,66 @@
 ;; ── Process spawning ──────────────────────────────────────────────────────────
 ;; See README.md's "Output model" and `hume_platform::process::run_inline_output`'s own doc.
 
-;;; `--` guards against a slug-derived URL `git` might otherwise read as a flag.
-(define (plum/clone-github! slug dest)
-  (run-inline-output! "git" (list "clone" "--" (string-append "https://github.com/" slug ".git") dest)))
+(define (plum/github-url slug)
+  (string-append "https://github.com/" slug ".git"))
+
+(define (plum/staging-dir)
+  (path-join (data-dir) "plum-staging"))
+
+;;; Installs `url` into `dest` at `ref`, replacing `dest` only once the new clone is
+;;; checked out and `build`, given the clone's directory, has returned.
+;;; See README.md's "Pinned plugins".
+(define (plum/install-repo! url dest ref #:build [build #f])
+  (let ((stage (path-join (plum/staging-dir) (file-name (parent-name dest)) (file-name dest))))
+    (call! "stdlib/delete-dir!" stage)
+    (create-directory! stage)
+    (run-inline-output! "git" (list "init" "-q") #:cwd stage)
+    (run-inline-output! "git" (list "remote" "add" "--" "origin" url) #:cwd stage)
+    (run-inline-output! "git" (list "config" "remote.origin.promisor" "true") #:cwd stage)
+    (run-inline-output! "git" (list "config" "remote.origin.partialclonefilter" "blob:none")
+                        #:cwd stage)
+    (plum/git-sync! stage ref)
+    (when build (build stage))
+    (call! "stdlib/delete-dir!" dest)
+    (create-directory! (parent-name dest))
+    (rename-file-or-directory! stage dest)))
 
 ;;; Checks the clone in `dir` out at origin's `ref`, or its default branch for #f.
 ;;; See README.md's "Pinned plugins".
 (define (plum/git-sync! dir ref)
-  (run-inline-output! "git" (list "fetch" "origin" (or ref "HEAD")) #:cwd dir)
-  (run-inline-output! "git" (list "checkout" "--detach" "FETCH_HEAD") #:cwd dir))
+  (if ref
+      (begin
+        (run-inline-output! "git" (list "fetch" "--force" "--prune" "--tags" "origin") #:cwd dir)
+        (let ((id (plum/resolve-ref dir ref)))
+          (unless id
+            (error (string-append "no tag, branch or commit '" ref "' upstream; a short "
+                                  "commit id must be unambiguous and on a branch or tag")))
+          (run-inline-output! "git" (list "checkout" "--detach" id) #:cwd dir)))
+      (begin
+        (run-inline-output! "git" (list "fetch" "origin" "HEAD") #:cwd dir)
+        (run-inline-output! "git" (list "checkout" "--detach" "FETCH_HEAD") #:cwd dir))))
+
+;;; The commit `ref` names in the fetched clone in `dir`, or #f.
+(define (plum/resolve-ref dir ref)
+  (let loop ((candidates (cons (string-append "refs/tags/" ref)
+                               (cons (string-append "refs/remotes/origin/" ref)
+                                     (if (plum/commit-id? ref) (list ref) '())))))
+    (if (null? candidates)
+        #f
+        (let ((result (run-capture! "git"
+                        (list "rev-parse" "--verify" "--quiet"
+                              (string-append (car candidates) "^{commit}"))
+                        #:cwd dir)))
+          (if (equal? (hash-ref result 'exit) 0)
+              (trim (hash-ref result 'stdout))
+              (loop (cdr candidates)))))))
+
+;;; 4 to 40 hex digits: a full or abbreviated commit id.
+(define (plum/commit-id? ref)
+  (let ((hex (string->list "0123456789abcdefABCDEF"))
+        (n (string-length ref)))
+    (and (>= n 4) (<= n 40)
+         (null? (filter (lambda (c) (not (member c hex))) (string->list ref))))))
 
 ;; ── Filesystem helpers ────────────────────────────────────────────────────────
 ;; Thin wrappers over Steel's `steel/filesystem`/`steel/ports`.

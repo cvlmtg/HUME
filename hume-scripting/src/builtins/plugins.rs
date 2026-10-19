@@ -563,20 +563,34 @@ pub(crate) fn load_plugin(
     )))
 }
 
-/// `load-plugin!`'s `#:ref`: `#f`, or the tag or branch PLUM checks out.
+/// `load-plugin!`'s `#:ref`: `#f`, or the tag, branch or commit PLUM checks out.
 /// PLUM passes it to `git` as an argument, so a leading `-` is refused.
 fn git_ref_arg(plugin_id: &PluginId, git_ref: SteelVal) -> Result<Option<String>, SteelErr> {
     let Some(git_ref) = optional_string_arg(git_ref, "load-plugin!: #:ref")? else {
         return Ok(None);
     };
-    if git_ref.is_empty() || git_ref.starts_with('-') {
-        steel::stop!(Generic => "load-plugin!: #:ref \"{}\" is not a tag or branch name", git_ref);
+    if git_ref.starts_with('-') || !is_git_ref_name(&git_ref) {
+        steel::stop!(Generic => "load-plugin!: #:ref \"{}\" is not a tag, branch or commit", git_ref);
     }
     if matches!(plugin_id, PluginId::Core(_)) {
         steel::stop!(Generic =>
             "load-plugin!: #:ref is for an installed plugin; '{}' is bundled with HUME", plugin_id);
     }
     Ok(Some(git_ref))
+}
+
+/// Whether `git check-ref-format --allow-onelevel` accepts `name`, so a ref
+/// git would refuse fails when `init.scm` loads rather than at install time.
+fn is_git_ref_name(name: &str) -> bool {
+    let forbidden = |c: char| c.is_ascii_control() || " ~^:?*[\\".contains(c);
+    name != "@"
+        && !name.contains(forbidden)
+        && !name.contains("..")
+        && !name.contains("@{")
+        && !name.ends_with('.')
+        && name
+            .split('/')
+            .all(|part| !part.is_empty() && !part.starts_with('.') && !part.ends_with(".lock"))
 }
 
 /// Maximum nesting depth for concurrent inline plugin activations.

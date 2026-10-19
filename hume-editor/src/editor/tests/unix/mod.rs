@@ -525,59 +525,6 @@ fn canonical_data_dir(root: &Path) -> PathBuf {
     root.canonicalize().unwrap().join("hume")
 }
 
-/// Load `init_src` into `ed`, pointing its runtime directory at the repo's
-/// real `runtime/` dir (so the real shipped plugin sources and catalogs are
-/// used) and its data directory at `<data_dir>/hume`.
-fn load_with_init(ed: &mut Editor, data_dir: &Path, init_src: &str) {
-    load_with_init_in_runtime(ed, &repo_runtime_dir(), data_dir, init_src);
-}
-
-/// [`load_with_init`] against an explicit runtime directory, for a test
-/// that fabricates part of the runtime (e.g. the `core:lsp-install` source catalog).
-fn load_with_init_in_runtime(ed: &mut Editor, runtime_dir: &Path, data_dir: &Path, init_src: &str) {
-    let config_tmp = tempfile::tempdir().unwrap();
-    let hume_config = config_tmp.path().join("hume");
-    std::fs::create_dir_all(&hume_config).unwrap();
-    std::fs::write(hume_config.join("init.scm"), init_src).unwrap();
-    // `(data-dir)` is canonicalized only when the directory exists, and the
-    // tests compare against `canonical_data_dir`.
-    std::fs::create_dir_all(data_dir.join("hume")).unwrap();
-
-    ed.state.dirs = Dirs {
-        config: Some(hume_config),
-        data: Some(data_dir.join("hume")),
-        runtime: Some(runtime_dir.to_path_buf()),
-        tmp: None,
-    };
-    ed.init_scripting(&mut Default::default());
-    // `config_tmp` is deleted on return, so a later `:reload-config` has to
-    // find no config directory rather than a dangling one.
-    ed.state.dirs.config = None;
-}
-
-/// Load the real `core:plum` plugin (plus its `core:stdlib` dependency:
-/// `plum/fetch-query!` etc. call `stdlib/find`/`stdlib/write-file!`/
-/// `stdlib/delete-dir!`/`stdlib/delete-file!` via `call!`): plugin/grammar/
-/// theme management, no LSP awareness at all.
-fn load_plum(ed: &mut Editor, data_dir: &Path) {
-    load_plum_after(ed, data_dir, "");
-}
-
-/// [`load_plum`] with `init_src` evaluated first, e.g. the `load-plugin!`
-/// lines of the plugins PLUM is to manage.
-fn load_plum_after(ed: &mut Editor, data_dir: &Path, init_src: &str) {
-    load_with_init(
-        ed,
-        data_dir,
-        &format!(
-            "{init_src}\n(load-plugin! \"core:stdlib\")\n{}\n\
-             (%activate-plugin-inline! \"core:plum\" \"grammars.scm\")\n\
-             (%activate-plugin-inline! \"core:plum\" \"themes.scm\")",
-            hume_scripting::eager_load_scm("core:plum", None)
-        ),
-    );
-}
-
 /// Load the real `core:lsp-install` plugin only (plus its documented
 /// `core:stdlib` dependency): the entire LSP server lifecycle (install,
 /// uninstall, listing, registration of installed servers), each entry

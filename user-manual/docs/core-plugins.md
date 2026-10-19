@@ -24,8 +24,8 @@ PLUM never installs anything on its own: the commands below do the work when you
 | Command | Effect |
 |---------|--------|
 | `:plum-install-plugins` | Install every plugin named in `init.scm` that is not yet on disk |
-| `:plum-cleanup-plugins` | Remove on-disk plugins that `init.scm` does not name |
-| `:plum-update-plugins` | Bring every installed third-party plugin to its pinned tag or branch, or its latest version (see [Pinning a version](plugins.md#pinning-a-version)) |
+| `:plum-cleanup-plugins` | Remove on-disk plugins that `init.scm` does not name, and what a failed install left behind |
+| `:plum-update-plugins` | Bring every installed third-party plugin to its pinned tag, branch or commit, or its latest version (see [Pinning a version](plugins.md#pinning-a-version)) |
 | `:plum-list-plugins` | Show named / installed / orphan / missing plugins |
 | `:plum-install-grammar <lang>` | Install and compile one language's grammar; Tab-completes the languages HUME ships a grammar for |
 | `:plum-list-grammars` | Show the installed grammars, and the orphans left under names HUME ships no grammar for |

@@ -33,7 +33,8 @@ impl Resolution {
 /// What one `load-plugin!` call passed.
 pub(crate) struct LoadCall {
     pub(crate) config: SteelVal,
-    /// The `#:ref` PLUM checks the plugin's clone out at: a tag or a branch.
+    /// The `#:ref` PLUM checks the plugin's clone out at: a tag, a branch or a
+    /// full commit id.
     pub(crate) git_ref: Option<String>,
 }
 

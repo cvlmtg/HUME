@@ -153,161 +153,6 @@ fn plum_installed_plugins_skips_a_stray_file_in_the_plugins_dir() {
     );
 }
 
-/// Run `git` with `args` in `dir`, asserting success. Test-setup helper
-/// only (builds local origin/clone fixtures), not itself under test.
-fn git_ok(dir: &std::path::Path, args: &[&str]) {
-    let status = std::process::Command::new("git")
-        .args(args)
-        .current_dir(dir)
-        .status()
-        .expect("spawn git");
-    assert!(status.success(), "git {args:?} in {dir:?} failed");
-}
-
-/// Commit `content` as `plugin.scm` on `repo`'s current branch.
-fn commit_plugin(repo: &std::path::Path, content: &str) {
-    std::fs::write(repo.join("plugin.scm"), content).unwrap();
-    git_ok(repo, &["add", "plugin.scm"]);
-    git_ok(repo, &["commit", "-q", "-m", content.trim()]);
-}
-
-/// A local stand-in for a plugin's GitHub repo: `main` holds one commit,
-/// `; v1`.
-fn plugin_origin() -> tempfile::TempDir {
-    let origin = tempfile::tempdir().unwrap();
-    git_ok(origin.path(), &["init", "-q", "-b", "main"]);
-    git_ok(origin.path(), &["config", "user.email", "test@example.com"]);
-    git_ok(origin.path(), &["config", "user.name", "Test"]);
-    commit_plugin(origin.path(), "; v1\n");
-    origin
-}
-
-/// Clone `origin` where PLUM keeps `testuser/testrepo` under `data_dir`,
-/// returning the clone's directory.
-fn install_plugin_clone(
-    origin: &std::path::Path,
-    data_dir: &std::path::Path,
-) -> std::path::PathBuf {
-    let clone_dir = data_dir.join("hume/plugins/testuser/testrepo");
-    std::fs::create_dir_all(clone_dir.parent().unwrap()).unwrap();
-    git_ok(
-        data_dir,
-        &[
-            "clone",
-            "-q",
-            origin.to_str().unwrap(),
-            clone_dir.to_str().unwrap(),
-        ],
-    );
-    clone_dir
-}
-
-/// Load PLUM after `init_src` and run `:plum-update-plugins`, asserting it
-/// logged no error.
-fn run_plum_update_plugins(data_dir: &std::path::Path, init_src: &str) -> Editor {
-    let mut ed = editor_from("-[x]>\n");
-    ed.tui = crate::editor::tui::Tui::OnHeadless;
-    load_plum_after(&mut ed, data_dir, init_src);
-
-    type_cmd(&mut ed, ":plum-update-plugins");
-
-    let errors: Vec<&str> = ed
-        .state
-        .message_log
-        .entries()
-        .filter(|e| e.severity == Severity::Error)
-        .map(|e| e.text.as_str())
-        .collect();
-    assert!(
-        errors.is_empty(),
-        ":plum-update-plugins against a local origin must not error: {errors:?}"
-    );
-    ed
-}
-
-/// `:plum-update-plugins` runs real `git` against a local origin, no network.
-/// The origin gets a second commit after the clone is made, and the update
-/// must bring the clone to it, inside the inline-output terminal bracket
-/// (the command is `#:inline-output`, so `Tui::OnHeadless` is required for
-/// `inline_output_enter_count` to move at all; see that method's own doc).
-#[test]
-fn plum_update_brings_an_unpinned_plugin_to_origins_latest_commit() {
-    let _path = path_reader();
-
-    let origin = plugin_origin();
-    let data_tmp = tempfile::tempdir().unwrap();
-    let clone_dir = install_plugin_clone(origin.path(), data_tmp.path());
-    commit_plugin(origin.path(), "; v2\n");
-
-    let ed = run_plum_update_plugins(data_tmp.path(), "");
-
-    let content = std::fs::read_to_string(clone_dir.join("plugin.scm")).unwrap();
-    assert_eq!(content, "; v2\n");
-    assert!(
-        ed.inline_output_enter_count() > 0,
-        ":plum-update-plugins is #:inline-output, so a real update must have entered \
-         the terminal bracket for git's progress to be visible"
-    );
-}
-
-#[test]
-fn plum_update_moves_a_plugin_pinned_to_a_tag_onto_that_tag() {
-    let _path = path_reader();
-
-    let origin = plugin_origin();
-    git_ok(origin.path(), &["tag", "-a", "v1.0", "-m", "v1.0"]);
-    commit_plugin(origin.path(), "; v2\n");
-    let data_tmp = tempfile::tempdir().unwrap();
-    let clone_dir = install_plugin_clone(origin.path(), data_tmp.path());
-
-    run_plum_update_plugins(
-        data_tmp.path(),
-        r#"(load-plugin! "testuser/testrepo" #:ref "v1.0")"#,
-    );
-
-    let content = std::fs::read_to_string(clone_dir.join("plugin.scm")).unwrap();
-    assert_eq!(content, "; v1\n");
-}
-
-#[test]
-fn plum_update_follows_a_pinned_branch_rather_than_the_default_one() {
-    let _path = path_reader();
-
-    let origin = plugin_origin();
-    let data_tmp = tempfile::tempdir().unwrap();
-    let clone_dir = install_plugin_clone(origin.path(), data_tmp.path());
-    git_ok(origin.path(), &["checkout", "-q", "-b", "stable"]);
-    commit_plugin(origin.path(), "; stable\n");
-    git_ok(origin.path(), &["checkout", "-q", "main"]);
-    commit_plugin(origin.path(), "; main\n");
-
-    run_plum_update_plugins(
-        data_tmp.path(),
-        r#"(load-plugin! "testuser/testrepo" #:ref "stable")"#,
-    );
-
-    let content = std::fs::read_to_string(clone_dir.join("plugin.scm")).unwrap();
-    assert_eq!(content, "; stable\n");
-}
-
-/// A clone left on a tag by an earlier pin has a detached HEAD.
-#[test]
-fn plum_update_brings_an_unpinned_plugin_off_a_tag_to_the_default_branch() {
-    let _path = path_reader();
-
-    let origin = plugin_origin();
-    git_ok(origin.path(), &["tag", "-a", "v1.0", "-m", "v1.0"]);
-    commit_plugin(origin.path(), "; v2\n");
-    let data_tmp = tempfile::tempdir().unwrap();
-    let clone_dir = install_plugin_clone(origin.path(), data_tmp.path());
-    git_ok(&clone_dir, &["checkout", "-q", "--detach", "v1.0"]);
-
-    run_plum_update_plugins(data_tmp.path(), r#"(load-plugin! "testuser/testrepo")"#);
-
-    let content = std::fs::read_to_string(clone_dir.join("plugin.scm")).unwrap();
-    assert_eq!(content, "; v2\n");
-}
-
 /// `:plum-cleanup-plugins` exercises `plum/delete-dir` against a real
 /// on-disk orphan plugin, no network. Nothing in `init.scm` declares it, so
 /// it's an orphan by definition; `:plum-cleanup-plugins` must remove its directory.
@@ -339,6 +184,26 @@ fn plum_cleanup_removes_orphan_plugin_directory() {
     assert!(
         !orphan_dir.exists(),
         "plum/delete-dir-backed plum-cleanup-plugins must remove the orphan plugin directory"
+    );
+}
+
+/// A failed install leaves its staging clone in `<data>/plum-staging/`.
+#[test]
+fn plum_cleanup_removes_what_a_failed_install_left_in_staging() {
+    let _path = path_reader();
+
+    let data_tmp = tempfile::tempdir().unwrap();
+    let staging = data_tmp.path().join("hume/plum-staging");
+    std::fs::create_dir_all(staging.join("testuser/testrepo/.git")).unwrap();
+
+    let mut ed = editor_from("-[x]>\n");
+    load_plum(&mut ed, data_tmp.path());
+
+    type_cmd(&mut ed, ":plum-cleanup-plugins");
+
+    assert!(
+        !staging.exists(),
+        ":plum-cleanup-plugins must remove the staging directory"
     );
 }
 
@@ -552,19 +417,12 @@ fn inline_output_command_with_real_output_still_skips_bracket_off_event_loop() {
     );
 }
 
-/// Regression test: a grammar's source dir left non-empty by a prior failed
-/// install (clone succeeded, compile didn't) must not break
-/// `:plum-install-grammar` on the very next attempt: `plum/install-grammar`
-/// purges any existing source dir before re-cloning, so retrying "just works"
-/// on the first try instead of requiring a second attempt to clear the
-/// leftover directory as a side effect of the first attempt's own failure.
+/// A non-empty grammar source dir with no compiled grammar beside it must not
+/// break `:plum-install-grammar`: the install builds in a staging clone and
+/// then replaces the whole source dir with it.
 ///
-/// Hits the network (real git clone + curl fetch + tree-sitter build of the
+/// Hits the network (real git fetch + curl fetch + tree-sitter build of the
 /// `json` grammar); requires `git`, `curl`, and `tree-sitter` on `PATH`.
-///
-/// Without `(delete-dir src-dir)` in `plum/install-grammar`, `git-clone-rev`
-/// would refuse to clone into this pre-seeded non-empty dir and the command
-/// would log an error, so `out_path` would never appear.
 #[test]
 fn plum_install_grammar_recovers_from_stale_source_dir_on_first_try() {
     let _path = path_reader();
@@ -572,9 +430,7 @@ fn plum_install_grammar_recovers_from_stale_source_dir_on_first_try() {
     let data_tmp = tempfile::tempdir().unwrap();
     // `load_plum` makes `<data_tmp>/hume` the editor's data dir.
     let data_dir = data_tmp.path().join("hume");
-    // Seed a stale, non-empty source dir exactly like a prior clone-succeeded/
-    // compile-failed install would leave behind. git-clone-rev refuses to
-    // clone into this without the pre-clean fix.
+    // A stale, non-empty source dir with no compiled grammar.
     let src_dir = data_dir.join("grammars/sources/json");
     std::fs::create_dir_all(&src_dir).unwrap();
     std::fs::write(src_dir.join("stale.txt"), b"leftover from a failed install").unwrap();
@@ -599,7 +455,11 @@ fn plum_install_grammar_recovers_from_stale_source_dir_on_first_try() {
     );
     assert!(
         !src_dir.join("stale.txt").exists(),
-        "stale leftover file must be purged by the pre-clone delete-dir"
+        "the install must replace the stale source dir"
+    );
+    assert!(
+        src_dir.join("highlights.scm").exists(),
+        "the highlights query must land in the new source dir"
     );
 }
 

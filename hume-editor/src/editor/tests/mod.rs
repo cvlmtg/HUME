@@ -1104,6 +1104,64 @@ pub(crate) fn steel_path(path: &std::path::Path) -> String {
         .unwrap_or_else(|| panic!("path cannot be embedded in a Steel string literal: {path:?}"))
 }
 
+/// Load `init_src` into `ed`, pointing its runtime directory at the repo's
+/// real `runtime/` dir (so the real shipped plugin sources and catalogs are
+/// used) and its data directory at `<data_dir>/hume`.
+fn load_with_init(ed: &mut Editor, data_dir: &std::path::Path, init_src: &str) {
+    load_with_init_in_runtime(ed, &repo_runtime_dir(), data_dir, init_src);
+}
+
+/// [`load_with_init`] against an explicit runtime directory, for a test
+/// that fabricates part of the runtime (e.g. the `core:lsp-install` source catalog).
+fn load_with_init_in_runtime(
+    ed: &mut Editor,
+    runtime_dir: &std::path::Path,
+    data_dir: &std::path::Path,
+    init_src: &str,
+) {
+    let config_tmp = tempfile::tempdir().unwrap();
+    let hume_config = config_tmp.path().join("hume");
+    std::fs::create_dir_all(&hume_config).unwrap();
+    std::fs::write(hume_config.join("init.scm"), init_src).unwrap();
+    // `(data-dir)` is canonicalized only when the directory exists, and the
+    // tests compare against `canonical_data_dir`.
+    std::fs::create_dir_all(data_dir.join("hume")).unwrap();
+
+    ed.state.dirs = Dirs {
+        config: Some(hume_config),
+        data: Some(data_dir.join("hume")),
+        runtime: Some(runtime_dir.to_path_buf()),
+        tmp: None,
+    };
+    ed.init_scripting(&mut Default::default());
+    // `config_tmp` is deleted on return, so a later `:reload-config` has to
+    // find no config directory rather than a dangling one.
+    ed.state.dirs.config = None;
+}
+
+/// Load the real `core:plum` plugin (plus its `core:stdlib` dependency:
+/// `plum/fetch-query!` etc. call `stdlib/find`/`stdlib/write-file!`/
+/// `stdlib/delete-dir!`/`stdlib/delete-file!` via `call!`): plugin/grammar/
+/// theme management, no LSP awareness at all.
+fn load_plum(ed: &mut Editor, data_dir: &std::path::Path) {
+    load_plum_after(ed, data_dir, "");
+}
+
+/// [`load_plum`] with `init_src` evaluated first, e.g. the `load-plugin!`
+/// lines of the plugins PLUM is to manage.
+fn load_plum_after(ed: &mut Editor, data_dir: &std::path::Path, init_src: &str) {
+    load_with_init(
+        ed,
+        data_dir,
+        &format!(
+            "{init_src}\n(load-plugin! \"core:stdlib\")\n{}\n\
+             (%activate-plugin-inline! \"core:plum\" \"grammars.scm\")\n\
+             (%activate-plugin-inline! \"core:plum\" \"themes.scm\")",
+            hume_scripting::eager_load_scm("core:plum", None)
+        ),
+    );
+}
+
 /// Write `source` as `<tmp>/init.scm`, evaluate it against the real
 /// `EditorHostImpl`, and apply the effects it queued: the harness mirror of
 /// `Editor::init_scripting`'s eval/apply pair.
@@ -1515,6 +1573,7 @@ mod picker;
 mod picker_source_steel;
 mod picker_steel;
 mod plugins;
+mod plum_git;
 mod position_stores;
 mod read_only_view;
 mod registers;

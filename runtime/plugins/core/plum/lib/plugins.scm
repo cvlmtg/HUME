@@ -36,16 +36,16 @@
           (log! 'info "PLUM: nothing to install")
           (let ((n (plum/batch-run! "installed" missing
                      (lambda (name)
-                       (let ((ref (declared-plugin-ref name)))
-                         (plum/clone-github! name (plum/plugin-dir name))
-                         (when ref (plum/git-sync! (plum/plugin-dir name) ref)))))))
+                       (plum/install-repo! (plum/github-url name) (plum/plugin-dir name)
+                                           (declared-plugin-ref name))))))
             (when (> n 0)
               (log! 'info "PLUM: run :reload-config to activate the newly installed plugins"))))))
   #:inline-output #t)
 
 (define-typed-command! "plum-cleanup-plugins"
-  "Remove on-disk plugins that are no longer declared in init.scm."
+  "Remove on-disk plugins that are no longer declared in init.scm, and what a failed install left behind."
   (lambda ()
+    (call! "stdlib/delete-dir!" (plum/staging-dir))
     (let ((orphans (plum/orphan-plugins (declared-plugins) (plum/installed-plugins))))
       (if (null? orphans)
           (log! 'info "PLUM: nothing to remove")

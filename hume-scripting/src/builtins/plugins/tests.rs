@@ -739,6 +739,10 @@ fn declared_plugin_ref_is_the_last_load_plugin_calls_ref() {
         ),
         "stable"
     ));
+    assert!(is_str(
+        declared_ref_after(r#"(load-plugin! "user/p" #:ref "release/1.x")"#, "user/p"),
+        "release/1.x"
+    ));
     assert!(matches!(
         declared_ref_after(
             r#"(load-plugin! "user/p" #:ref "v1.0") (load-plugin! "user/p")"#,
@@ -758,6 +762,18 @@ fn load_plugin_rejects_a_ref_git_cannot_take_or_a_core_plugin_cannot_use() {
         r#"(load-plugin! "user/p" #:ref 1)"#,
         r#"(load-plugin! "user/p" #:ref "")"#,
         r#"(load-plugin! "user/p" #:ref "-c")"#,
+        r#"(load-plugin! "user/p" #:ref "v1 ")"#,
+        r#"(load-plugin! "user/p" #:ref "a..b")"#,
+        r#"(load-plugin! "user/p" #:ref "x:y")"#,
+        r#"(load-plugin! "user/p" #:ref "v1^")"#,
+        r#"(load-plugin! "user/p" #:ref "a\\b")"#,
+        r#"(load-plugin! "user/p" #:ref "a@{1}")"#,
+        r#"(load-plugin! "user/p" #:ref "@")"#,
+        r#"(load-plugin! "user/p" #:ref "a.lock")"#,
+        r#"(load-plugin! "user/p" #:ref "a/.b")"#,
+        r#"(load-plugin! "user/p" #:ref "a//b")"#,
+        r#"(load-plugin! "user/p" #:ref "a/")"#,
+        r#"(load-plugin! "user/p" #:ref "a.")"#,
         r#"(load-plugin! "core:stdlib" #:ref "v1.0")"#,
     ] {
         let err = declare_err(src);

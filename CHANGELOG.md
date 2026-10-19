@@ -39,13 +39,15 @@
 - `bind-key!` takes `'command` to bind keys in the command mode prompt and in plugin prompts.
 - `buffer-display-path` takes `#:relative #t` for the path relative to the working directory.
 - New `register-name?` tells whether a string names a register.
-- `load-plugin!` takes `#:ref` to pin a plugin to a tag or branch, which PLUM installs and updates to. `declared-plugin-ref` reads it back.
+- `load-plugin!` takes `#:ref` to pin a plugin to a tag, branch or commit, which PLUM installs and updates to. `declared-plugin-ref` reads it back.
 
 ### Language servers
 - `z s` and `z S` pick a symbol of the current file or of the whole project and jump to it.
 - New `lsp/format-document` formats the buffer from a save hook. The manual's earlier format-on-save recipe never formatted the saved file: replace it with the new one.
 
 ### Fixes
+- A failed `:plum-install-theme` of an installed theme repo keeps the installed copy instead of deleting it.
+- A failed `:plum-install-grammar` of an installed grammar keeps it working instead of deleting its highlighting queries.
 - In Insert mode, `End`, `↑` and `↓` reach the end of a line, after its last character.
 - The command line's completion menu opens right above the command line, over an open drawer or docked popup, instead of above them.
 - Headless `--keys` runs print warnings and errors on stderr and exit with status 1 when an error is logged.
