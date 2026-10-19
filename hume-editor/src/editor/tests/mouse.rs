@@ -93,48 +93,6 @@ fn click_after_blank_line_trim_lands_on_correct_char() {
     assert_eq!(state(&ed), "  x\n\nc-[d]>\n");
 }
 
-/// A click finds its pane by the rect the last frame drew, and resolves the
-/// column against the pane's current gutter.
-#[test]
-fn a_click_resolves_against_the_current_gutter() {
-    let (path, _f) = temp_file("abcdef\n");
-    let mut ed = open_headless(Some(path));
-    ed.execute_typed("set", Some("global gutter-signs=always:1"))
-        .unwrap();
-    let grid = ed.render_to_buf(Rect::new(0, 0, 80, 25));
-    let x = grid
-        .row(0)
-        .iter()
-        .position(|cell| cell.text() == "f")
-        .expect("the frame draws the line");
-
-    // One sign slot is two cells (the slot and its padding), three are four,
-    // so the text sits two cells further right than the frame drew it.
-    ed.execute_typed("set", Some("global gutter-signs=always:3"))
-        .unwrap();
-    ed.handle_input(mouse_left_down(u16::try_from(x).unwrap(), 0));
-
-    assert_eq!(ed.current_view().primary().head().offset(), co(3));
-}
-
-/// A click on a pane closed since the last frame hits nothing, so it neither
-/// moves focus nor lands in the pane that grew into its place.
-#[test]
-fn a_click_on_a_pane_closed_since_the_frame_is_a_miss() {
-    const TEXT: &str = "-[0]>123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz\n";
-    let mut ed = editor_from(TEXT);
-    ed.execute_typed("vsplit", None).unwrap();
-    ed.render_to_buf(Rect::new(0, 0, 100, 25));
-    ed.execute_typed("quit", None).unwrap();
-    let focused = ed.view.focused_pane();
-
-    // The closed right pane was drawn at x 50..100.
-    ed.handle_input(mouse_left_down(60, 0));
-
-    assert_eq!(ed.view.focused_pane(), focused);
-    assert_eq!(state(&ed), TEXT);
-}
-
 // ── Drag ──────────────────────────────────────────────────────────────────
 
 /// A left-drag after a click extends the selection from the click's anchor
@@ -1147,11 +1105,13 @@ fn a_click_on_a_docked_popup_s_band_dismisses_it_without_moving_the_cursor() {
         ),
     );
     type_cmd(&mut ed, ":go");
-    frame(&mut ed, 80, 24);
+    ed.render_to_buf(Rect::new(0, 0, 80, 24));
     let head = ed.current_view().primary().head();
 
     // The band is three lines plus two frame rows directly above the
-    // statusline: rows 18 to 22, below the 18-row pane.
+    // statusline: rows 18 to 22, below the 18-row pane. The click retires
+    // the popup before its hit test, so the current layout already gives
+    // these rows to the pane; only the drawn frame still has the band there.
     ed.handle_input(mouse_left_down(5, 20));
 
     assert!(

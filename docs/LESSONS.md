@@ -120,6 +120,10 @@ numbers directly.
   entry point does what an existing action does, it only translates its
   input and calls that action; any guard or branch it adds first is a second
   path, and a plan that says "like X" names the shared function.
+- **L44** — A test drives a sequence the editor can produce. Before writing
+  one, name the production path that reaches its state; if none does, a
+  behaviour-preserving change gets no red run, not an invented scenario.
+  A mouse test draws a frame (`draw`), not just `frame`.
 
 ---
 
@@ -1542,3 +1546,25 @@ points' results directly.
 
 **Files:** `hume-editor/src/editor/input_stack/paste.rs`,
 `hume-editor/src/editor/host_impl/edits.rs`.
+
+## L44 — Mouse tests pinned states the run loop cannot reach (2026-10-19)
+
+**Root cause:** the hit-test refactors were tested with a gutter change and
+a pane close between the frame and the click. The run loop draws after
+`settle` and before every event, so neither can happen. The tests pinned
+which of two always-equal sources a click read, and one was written to get
+a red run for a change that preserved behaviour. Meanwhile the one real
+case where the drawn layout differs from the current one, a click that
+retires a docked popup and so moves the panes before its own hit test, was
+covered by a test that ran `frame` without drawing, so every hit missed
+and the test could not fail.
+
+**Prevention rule:** Before writing a test, name the production sequence
+that reaches its starting state. If there is none, the change it covers is
+behaviour-preserving: say so and skip the red run. A test that reads what
+a frame drew must draw one; check that its assertion distinguishes the
+behaviours in question, not only that it passes.
+
+**Files:** `hume-editor/src/editor/tests/mouse.rs`,
+`hume-editor/src/editor/lifecycle.rs` (`run`),
+`hume-editor/src/editor/input_stack/popup.rs` (`popup_input`).
