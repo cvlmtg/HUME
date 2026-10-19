@@ -14,11 +14,11 @@ A fuzzy finder ships as a plugin. Load `core:pickers` (the [starter config](conf
 
 ### Editing
 
-Copy the bundled starter config to `~/.config/hume/init.scm` ([where to find it](configuration.md#example-init-scm)) and open it on line 21 with `hume ~/.config/hume/init.scm:21`. Then make the same edits you would in Kakoune:
+Copy the bundled starter config to `~/.config/hume/init.scm` ([where to find it](configuration.md#example-init-scm)) and open it on line 22 with `hume ~/.config/hume/init.scm:22`. Then make the same edits you would in Kakoune:
 
 | Edit | Kakoune | HUME |
 |------|---------|------|
-| Uncomment line 21 (`core:buffer-words`) | `t(` `d` | `Ctrl-t` `(` `d` |
+| Uncomment line 22 (`core:buffer-words`) | `t(` `d` | `Ctrl-t` `(` `d` |
 | Delete lines 18 and 19 (`core:plum`, `core:git-diff`) | `18g` `x` `x` `d` | `:18` `Ctrl-x` `Ctrl-x` `d` |
 | Change `load` to `declare` on line 16, then undo it with `u` | `16g` `l` `<a-i>w` `c` `declare` `Esc` | `:16` `l` `m m` `c` `declare` `Esc` |
 | Copy line 16 to another application | `x` `<a-\|>` + your clipboard tool | `x` `y` |
@@ -28,7 +28,7 @@ What each step shows:
 - **`t` only moves; `Ctrl` makes it select.** `f`, `F`, `t` and `T` move the cursor and select nothing, where Kakoune selects up to the target. Holding `Ctrl` turns a motion into a one-shot extend, so `Ctrl-t (` selects `;; ` and `d` deletes it: `Ctrl` does the job Shift does in Kakoune. For longer selections, `e` toggles Extend mode. The `Ctrl` forms need the [kitty keyboard protocol](installation.md#terminal-compatibility).
 - **A second `x` moves on.** Each `x` selects the next line on its own, dropping the previous one. `Ctrl-x` extends instead. See [Line selection](#line-selection).
 - **Text objects live behind `m`.** `m i w` is `<a-i>w`. To jump to a line, type its number at the `:` prompt: `:16` instead of `16g`.
-- **`Esc` keeps what you typed selected.** After the change, `declare` is still selected instead of reduced to a cursor, ready to act on again. One consequence: `i` re-enters *before* that selection, so use `a` to keep typing after it. Disable this with the `select-inserted-text` option (see [Configuration](configuration.md)).
+- **`Esc` keeps what you typed selected.** After the change, `declare` is still selected instead of reduced to a cursor, ready to act on again. One consequence: `i` re-enters *before* that selection, so use `a` to keep typing after it. Disable this with the `select-inserted-text` option (see [Buffer options](settings.md#buffer-options)).
 - **The system clipboard needs no wiring.** `y` copies to it as well as to HUME's own kill ring. `p` pastes your last yank or delete while you haven't edited since, and the clipboard once you have.
 
 Shift does not extend a selection: `W`, `H`, `J`, `K`, `L` do something else here, so read [Extending selections](#extending-selections) before reaching for them.
@@ -76,7 +76,7 @@ These work the way you expect, same keys:
 - `%` select the whole buffer, `s` narrow each selection to its regex matches
 - `&` align selections, `_` trim surrounding whitespace
 - `C` duplicate the selection onto the line below
-- `>` / `<` indent / unindent the lines a selection touches, same keys and idea. HUME additionally re-renders each touched line's whole indent to the buffer's `tab-width`/`tab-style` rather than only prepending or trimming a fixed amount (blank and whitespace-only lines are left alone), and flattens an indent narrower than one level to the left margin instead of going negative
+- `>` / `<` indent / unindent the lines a selection touches, same keys and idea. HUME rewrites each line's whole indent in the buffer's `tab-style`; see [Lines and alignment](editing.md#lines-and-alignment)
 - `i` / `a` / `I` / `A` / `o` / `O` to enter Insert, `c` / `d` / `y` / `p` to change / delete / yank / paste
 - `Q` to record a macro and `q` to play it
 - `u` undo, `U` redo
@@ -111,7 +111,7 @@ Bare `K` (no modifier) is not an extend at all in HUME: it shows LSP hover docs 
 
 ### Word characters
 
-Kakoune's `extra_word_chars` is HUME's `word-chars` buffer option (see [Configuration](configuration.md)).
+Kakoune's `extra_word_chars` is HUME's `word-chars` buffer option (see [Buffer options](settings.md#buffer-options)).
 
 ### Line selection
 
@@ -217,12 +217,7 @@ Kakoune's user mode (the `Space` leader) and `declare-user-mode` have no direct 
 
 Kakoune has neither a package manager nor LSP support in the core; both come from outside, via plug.kak and kakoune-lsp.
 
-Both ship with HUME. [PLUM](core-plugins.md#core-plum) is the built-in plugin manager: declare a plugin in `init.scm`, run `:plum-install-plugins`, and it is fetched from GitHub. Here's [grep.hume](https://github.com/cvlmtg/grep.hume), a live-grep picker and HUME's first official third-party plugin:
-
-```scheme
-(load-plugin! "core:stdlib")
-(load-plugin! "cvlmtg/grep.hume")
-```
+Both ship with HUME. [PLUM](core-plugins.md#core-plum) is the built-in plugin manager: declare a plugin in `init.scm`, run `:plum-install-plugins`, and it is fetched from GitHub. [Installing a plugin](plugins.md#installing-a-plugin) walks through it with [grep.hume](https://github.com/cvlmtg/grep.hume), a live-grep picker and HUME's first official third-party plugin.
 
 Language server support is a bundled plugin rather than a separate process you configure by hand. See [Language Servers](lsp.md). Syntax highlighting is tree-sitter based and built in.
 
@@ -244,9 +239,9 @@ Language server support is a bundled plugin rather than a separate process you c
 - A built-in system clipboard, a [kill ring, and a paste](copy-and-paste.md) that picks the right source
 - [Extend mode](#extending-selections), plus one-shot extends that need no mode switch
 - Built-in [panes and splits](files-and-buffers.md#splits-and-panes), and [tab pages](files-and-buffers.md#tabs)
-- A built-in [plugin manager](core-plugins.md#core-plum), [Scheme scripting](configuration.md), and a [hook system](plugins.md#hooks)
+- A built-in [plugin manager](core-plugins.md#core-plum), [Scheme scripting](configuration.md), and a [hook system](writing-plugins.md#hooks)
 - Bundled [language-server](lsp.md) and [tree-sitter](syntax-highlighting.md) support
 - [Dot-repeat](editing.md#repeat) covering arbitrary edits, not just insert-mode changes
-- An [undo tree](editing.md#undo-and-redo)
+- A browsable graph of the undo history ([`core:undotree`](core-plugins.md#core-undotree)), and undo by time with [`:earlier 5m`](command-mode.md#editing)
 - [Selecting every search match at once](moving-around.md#search-navigation) (`m /`)
 - Tree-sitter-backed [structural text objects](#text-objects) and [navigation](moving-around.md#structural-navigation) (functions, classes, arguments, comments, tests)

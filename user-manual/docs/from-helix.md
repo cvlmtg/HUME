@@ -14,11 +14,11 @@ The fuzzy finder is a plugin, not built in. Helix's `Space f` and `Space b` beco
 
 ### Editing
 
-Copy the bundled starter config to `~/.config/hume/init.scm` ([where to find it](configuration.md#example-init-scm)) and open it on line 21 with `hume ~/.config/hume/init.scm:21`. Then make the same edits you would in Helix:
+Copy the bundled starter config to `~/.config/hume/init.scm` ([where to find it](configuration.md#example-init-scm)) and open it on line 22 with `hume ~/.config/hume/init.scm:22`. Then make the same edits you would in Helix:
 
 | Edit | Helix | HUME |
 |------|-------|------|
-| Uncomment line 21 (`core:buffer-words`) | `t(` `d` | `Ctrl-t` `(` `d` |
+| Uncomment line 22 (`core:buffer-words`) | `t(` `d` | `Ctrl-t` `(` `d` |
 | Delete lines 18 and 19 (`core:plum`, `core:git-diff`) | `:18` `x` `x` `d` | `:18` `Ctrl-x` `Ctrl-x` `d` |
 | Change `load` to `declare` on line 16, then undo it with `u` | `:16` `l` `m i w` `c` `declare` `Esc` | `:16` `l` `m m` `c` `declare` `Esc` |
 | Copy line 16 to another application | `x` `Space y` | `x` `y` |
@@ -27,7 +27,7 @@ What each step shows:
 
 - **`t` only moves; `Ctrl` makes it select.** `f`, `F`, `t` and `T` move the cursor and select nothing, where Helix selects up to the target. Holding `Ctrl` turns a motion into a one-shot extend, so `Ctrl-t (` selects `;; ` and `d` deletes it. For longer selections, `e` toggles Extend mode (Helix's `v`). The `Ctrl` forms need the [kitty keyboard protocol](installation.md#terminal-compatibility).
 - **A second `x` moves on.** Each `x` selects the next line on its own, dropping the previous one. `Ctrl-x` extends instead. See [Line selection](#line-selection-x-vs-extend-mode-e).
-- **`Esc` keeps what you typed selected.** After the change, `declare` is still selected instead of a plain cursor, ready to act on again: delete it, surround it, search for it. One consequence: `i` re-enters *before* that selection, so `a`, not `i`, is the key to keep typing after it. Disable this with the `select-inserted-text` option (see [Configuration](configuration.md)).
+- **`Esc` keeps what you typed selected.** After the change, `declare` is still selected instead of a plain cursor, ready to act on again: delete it, surround it, search for it. One consequence: `i` re-enters *before* that selection, so `a`, not `i`, is the key to keep typing after it. Disable this with the `select-inserted-text` option (see [Buffer options](settings.md#buffer-options)).
 - **`y` reaches the system clipboard.** It copies to the clipboard as well as HUME's own kill ring. `p` pastes your last yank or delete while you haven't edited since, and the system clipboard once you have. See [Copy & Paste](copy-and-paste.md).
 
 ### Saving and quitting
@@ -75,21 +75,13 @@ Indentation (Helix's per-language `indent.tab-width`/`indent.unit` in `languages
 - `:` command mode prompt, `/` search
 - `d`, `c`, `y`, `p` for delete/change/yank/paste
 - `u` / `U` undo / redo
-- `>` / `<` indent / unindent the lines a selection touches, with count support (`3>`). HUME additionally re-renders each touched line's whole indent to the buffer's `tab-width`/`tab-style` rather than only prepending or trimming a fixed amount, so a mixed-tabs-and-spaces indent gets normalized as a side effect
+- `>` / `<` indent / unindent the lines a selection touches, with count support (`3>`). HUME rewrites each line's whole indent in the buffer's `tab-style`; see [Lines and alignment](editing.md#lines-and-alignment)
 - `m i f`/`m a f`, `m i t`/`m a t`, `m i a`/`m a a`, `m i c`/`m a c`, `m i u`/`m a u`, `m i x`/`m a x`: the same letters as Helix's own match-mode textobjects except unit test (`T`→`u`; see below), selecting the enclosing function, class/type, argument, comment, unit test, or tag pair for any language with a tree-sitter grammar that ships a textobjects query
 - Enter, `o` and `O` indent new lines with Helix's indentation queries (see [Indentation](editing.md#indentation)), written in the buffer's `tab-style`. There is no `indent-heuristic` setting: HUME always uses Helix's default, `hybrid`; `smart-indent` turns automatic indentation off. HUME also moves a closing bracket or keyword back as you type it
 
 ### Themes
 
-Helix uses TOML with `[palette]` indirection and dot-separated UI scope names. HUME's theme loader reads the same file format, the same color forms (hex, a palette name, or one of the sixteen bare terminal color names like `red`), the same modifier names, and the same underline styles, so most Helix themes work in HUME unchanged.
-
-::: details Where HUME's theme format differs
-A terminal color name resolves to a fixed value from the standard terminal palette rather than to your own terminal's configured color, so a theme reads the same everywhere.
-
-One thing a theme can contain isn't supported, though it doesn't stop the rest of the theme from loading: the top-level `rainbow` array, which HUME has no rainbow-bracket feature to read. A theme fails to load outright only when the problem is with the document rather than one entry in it: invalid TOML, an `inherits` parent that doesn't exist or forms a cycle or nests more than eight deep, or an `inherits`/`palette` key of the wrong type. Any other malformed entry is left unstyled and named in `:messages` instead. See [Theme scopes](themes.md#theme-scopes) for the scopes HUME doesn't read.
-
-HUME also extends the format in one direction: a scope can be written as a TOML section header (`[ui.cursor]`) where Helix only reads flat dotted keys. A theme hand-authored in HUME using section headers needs them flattened to plain dotted keys before Helix will take it. The theme editor's own exports are already flat, so this only matters for a theme you write by hand.
-:::
+Helix uses TOML with `[palette]` indirection and dot-separated UI scope names. HUME's theme loader reads the same file format, the same color forms (hex, a palette name, or one of the sixteen bare terminal color names like `red`), the same modifier names, and the same underline styles, so most Helix themes work in HUME unchanged. [Themes](themes.md) covers the few places the formats differ and links a visual theme editor.
 
 Themes install the same way plugins do: run `:plum-install-theme <user/repo>` and [PLUM](core-plugins.md#core-plum) fetches the theme repo from GitHub.
 
@@ -99,19 +91,11 @@ Then type `:theme ` and press Tab to try it for the session, or set it as your d
 (set-option! "theme" "everforest_dark")
 ```
 
-
-A theme editor is also available online: a single-file HTML tool you download and open in a browser to edit themes visually and export them as TOML: https://raw.githubusercontent.com/cvlmtg/HUME/main/tools/theme-editor/index.html
-
 ## Key differences
 
 ### Plugin system
 
-Helix's Steel plugin system is still an unmerged branch; HUME's ships in every release. HUME's plugins are Steel too, the same Scheme dialect, but plugins written for Helix's Steel branch won't run in HUME: the two editors expose different functions to scripts. [PLUM](core-plugins.md#core-plum) is HUME's plugin manager, installing plugins from GitHub. Declare the plugin in your [`init.scm`](configuration.md#example-init-scm), then run `:plum-install-plugins` to fetch it. Here's [grep.hume](https://github.com/cvlmtg/grep.hume), a live-grep picker and HUME's first official third-party plugin:
-
-```scheme
-(load-plugin! "core:stdlib")
-(load-plugin! "cvlmtg/grep.hume")
-```
+Helix's Steel plugin system is still an unmerged branch; HUME's ships in every release. HUME's plugins are Steel too, the same Scheme dialect, but plugins written for Helix's Steel branch won't run in HUME: the two editors expose different functions to scripts. [PLUM](core-plugins.md#core-plum) is HUME's plugin manager, installing plugins from GitHub. [Installing a plugin](plugins.md#installing-a-plugin) walks through it with [grep.hume](https://github.com/cvlmtg/grep.hume), a live-grep picker and HUME's first official third-party plugin.
 
 ### Growing selections
 
@@ -175,7 +159,7 @@ Helix's statusline is configurable via TOML (`[editor.statusline]`); HUME's is c
 (configure-statusline! '("Mode" "FileName") '("SearchMatches") '("Position"))
 ```
 
-You can also add your own custom elements from Scheme; see [Statusline](configuration.md#custom-elements).
+You can also add your own custom elements from Scheme; see [Statusline](settings.md#custom-elements).
 
 ### Bufferline vs tab bar
 
@@ -217,7 +201,7 @@ Several features were intentionally adopted from Helix rather than reinvented:
 - **Language server registrations**: the same script and pinned Helix commit also sync which servers each language uses and in what order, how each server is started, its project root markers, its default settings, and any per-language feature limits (`only-features`/`except-features`, with Helix's own feature names). [`:lsp-install`](lsp.md#installing-servers) reads this list; `set-language-servers!` overrides it per language (see [Choosing which server a language uses](lsp.md#choosing-which-server-a-language-uses)).
 - **Helix-style surround**: the `core:helix-surround` plugin remaps surround operations to `ms` (wrap), `md` (delete), and `mr` (replace), matching Helix's keybindings. This is opt-in; HUME's default surround follows its own select-then-act model.
 - **Kitty keyboard protocol support**: HUME detects and uses the protocol the same way on Unix and Windows terminals, falling back to legacy key encoding where the protocol isn't available.
-- **Cursor shape**: Insert mode defaults to a thin bar, as Helix does with `insert = "bar"`; Normal and Extend mode are always a block. See `cursor-shape-insert` in [Global options](configuration.md#global-options) for the other shapes.
+- **Cursor shape**: Insert mode defaults to a thin bar, as Helix does with `insert = "bar"`; Normal and Extend mode are always a block. See `cursor-shape-insert` in [Global options](settings.md#global-options) for the other shapes.
 
 ## What Helix has that HUME doesn't
 
@@ -233,11 +217,11 @@ Several features were intentionally adopted from Helix rather than reinvented:
 - A built-in plugin manager ([PLUM](core-plugins.md#core-plum)) shipping in every release, installing plugins from GitHub; Helix's Steel plugin system is still an unmerged branch
 - [Tab pages](files-and-buffers.md#tabs): a saved whole pane layout, distinct from a strip of buffers
 - [Smart paste](copy-and-paste.md#smart-p-paste) with kill ring
-- [Hook system](plugins.md#hooks) (on-buffer-open, on-buffer-save, etc.)
+- [Hook system](writing-plugins.md#hooks) (on-buffer-open, on-buffer-save, etc.)
 - [One-shot extends](#growing-selections) that extend a single motion without switching to a select/extend mode
 - Backward line-selection shrinking (`Ctrl-Shift-x`, or `X` in Extend mode; see [Line selection](#line-selection-x-vs-extend-mode-e))
 - A structural text object and navigation kind for array/tuple/struct values ([`m i v`/`m a v`](selections.md#text-objects), [`g v`/`g V`](moving-around.md#structural-navigation))
 - Tag pair objects and navigation ([`m i x`/`m a x`](selections.md#text-objects), [`g x`/`g X`](moving-around.md#structural-navigation)) that also work in a buffer with no markup grammar
-- [Custom statusline elements](configuration.md#custom-elements) written in Scheme
-- Per-cursor shape and theme coloring for every multi-cursor, not just the primary one (see [Global options](configuration.md#global-options))
+- [Custom statusline elements](settings.md#custom-elements) written in Scheme
+- Per-cursor shape and theme coloring for every multi-cursor, not just the primary one (see [Global options](settings.md#global-options))
 - A real programming language for configuration ([`init.scm`](configuration.md)): conditionals, loops, and custom commands, not static TOML

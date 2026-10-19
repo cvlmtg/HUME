@@ -8,7 +8,7 @@
 (load-plugin! "core:stdlib")
 ```
 
-See [Core Plugins](core-plugins.md#core-stdlib) for why this call should stay a plain `load-plugin!`, and [Depending on another plugin](plugins.md#depending-on-another-plugin) for checking it's available before your own plugin relies on it.
+See [Core Plugins](core-plugins.md#core-stdlib) for why this call should stay a plain `load-plugin!`, and [Depending on another plugin](writing-plugins.md#depending-on-another-plugin) for checking it's available before your own plugin relies on it.
 
 ## Selections
 
@@ -44,7 +44,7 @@ See [Core Plugins](core-plugins.md#core-stdlib) for why this call should stay a 
 |------|--------|
 | `(call! "stdlib/run!" cmd args #:cwd dir)` | Spawn `cmd`/`args` (in `dir`, or HUME's working directory if omitted); blocks until exit |
 
-Returns `(hash 'stdout s 'stderr s 'exit code)`. `'exit` is `#f`, with the failure reason in `'stderr`, if the command couldn't even be spawned or its exit couldn't be waited on. `stdlib/run!` blocks the whole editor until the command finishes, so it fits something quick (a `git rev-parse`) rather than anything that might take a moment while the user keeps typing. See [Filesystem and processes](plugins.md#filesystem-and-processes) for `run-inline-output!` and `spawn-async!`, the other two ways to run a subprocess.
+Returns `(hash 'stdout s 'stderr s 'exit code)`. `'exit` is `#f`, with the failure reason in `'stderr`, if the command couldn't even be spawned or its exit couldn't be waited on. `stdlib/run!` blocks the whole editor until the command finishes, so it fits something quick (a `git rev-parse`) rather than anything that might take a moment while the user keeps typing. See [Filesystem and processes](writing-plugins.md#filesystem-and-processes) for `run-inline-output!` and `spawn-async!`, the other two ways to run a subprocess.
 
 ## Git
 
@@ -90,7 +90,7 @@ Same classification `w`/`b` motions and text objects use, so a word here is exac
 | `(call! "stdlib/config-integer" plugin cfg key default minimum)` | Same, erroring if the resolved value isn't an integer, or is below `minimum` (`#f` for no minimum) |
 | `(call! "stdlib/config-list" plugin cfg key default)` | Same, erroring if the resolved value isn't a list of strings |
 
-`cfg` is whatever `(plugin-config)` returns. Every error names the calling plugin (`plugin`) and the offending key, so a bad `#:config` value fails at load time pointing at exactly what to fix. See [Configuring a plugin](plugins.md#configuring-a-plugin) for the full picture of reading `#:config`.
+`cfg` is whatever `(plugin-config)` returns. Every error names the calling plugin (`plugin`) and the offending key, so a bad `#:config` value fails at load time pointing at exactly what to fix. See [Configuring a plugin](writing-plugins.md#configuring-a-plugin) for the full picture of reading `#:config`.
 
 ## Picker buffer-placement
 
@@ -101,4 +101,4 @@ Same classification `w`/`b` motions and text objects use, so a word here is exac
 | `(call! "stdlib/with-vsplit" handler)` | Wraps `handler`: splits the focused pane side by side, then calls `handler` with the picker's payload |
 | `(call! "stdlib/with-split" handler)` | Wraps `handler`: splits the focused pane stacked, then calls `handler` with the picker's payload |
 
-`handler` is the same one-argument procedure a picker already passes as `on-select` (see [Custom pickers](plugins.md#custom-pickers)'s `#:actions`). `buffer-actions` is the one plugin authors reach for; `with-tab`/`with-vsplit`/`with-split` are its building blocks, for composing a custom `#:actions` list with different keys or a subset of the four.
+`handler` is the same one-argument procedure a picker already passes as `on-select` (see [Custom pickers](writing-plugins.md#custom-pickers)'s `#:actions`). `buffer-actions` is the one plugin authors reach for; `with-tab`/`with-vsplit`/`with-split` are its building blocks, for composing a custom `#:actions` list with different keys or a subset of the four.

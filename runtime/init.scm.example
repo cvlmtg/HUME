@@ -27,7 +27,8 @@
 
 ;; ── Your settings & key bindings ─────────────────────────────────────────────
 ;; Full reference, in the user manual:
-;; https://cvlmtg.github.io/HUME/configuration.html (options + key bindings)
+;; https://cvlmtg.github.io/HUME/settings.html (every option)
+;; https://cvlmtg.github.io/HUME/configuration.html (key bindings)
 ;; https://cvlmtg.github.io/HUME/plugins.html (custom commands, hooks).
 ;;
 ;;   (set-option! "tab-width" 2) ; sets a global option:

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # tools/theme-editor/index.html is generated output — a vite build of
 # tools/theme-editor/src/ — committed because the user manual links to it
-# directly as a standalone download (user-manual/docs/configuration.md,
-# from-helix.md). Nothing else checks it against src/: `npm test` runs only
+# directly as a standalone download (user-manual/docs/themes.md). Nothing
+# else checks it against src/: `npm test` runs only
 # against src/'s pure logic modules, never the bundle. This closes that gap
 # with the same regenerate-or-assert shape as
 # hume-engine/src/theme/loader/vocabulary.rs's `theme_vocabulary_js_matches_loader`

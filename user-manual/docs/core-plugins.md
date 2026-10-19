@@ -8,7 +8,7 @@ Bring a plugin in with `load-plugin!`:
 (load-plugin! "core:plum")
 ```
 
-A plugin that ships a manifest (stdlib, lsp, lsp-install, plum, git-diff, undotree and steel-server) loads lazily: its code runs the first time a command, event or language it lists comes up. The rest (buffer-words, classic-paste, helix-surround, pickers and vim-keybind) have no manifest and load at startup, because their key bindings only exist once their code has run. See [Plugins](plugins.md#how-plugins-are-loaded) for the difference in detail.
+Loading a plugin doesn't slow down startup: most start the first time you use them, such as when you run one of their commands or open a file in a language they handle. See [Plugins](plugins.md#how-plugins-are-loaded) for details.
 
 ## core:plum
 
@@ -19,7 +19,7 @@ A plugin that ships a manifest (stdlib, lsp, lsp-install, plum, git-diff, undotr
 (load-plugin! "core:plum")
 ```
 
-PLUM never installs anything on its own: the commands below do the work when you run them. It loads lazily in three parts, the plugin, grammar and theme commands, each on the first command you run from that group.
+PLUM never installs anything on its own: the commands below do the work when you run them.
 
 | Command | Effect |
 |---------|--------|
@@ -52,20 +52,20 @@ Language server support: hover, go-to-definition, references, symbol pickers, di
 (load-plugin! "core:lsp")
 ```
 
-Requires `core:stdlib` loaded first. `core:lsp` loads lazily: it wakes up on the first buffer with a detected language, or the first of its commands you type (`:lsp-status`, `:toggle-inlay-hints`, …), and its key bindings go live at that same moment, before there's a buffer they'd need to act on.
+Requires `core:stdlib` loaded first.
 
 See [Language Servers](lsp.md) for setup, the full command and key tables, and settings.
 
 ## core:lsp-install
 
-Downloads, verifies and registers language servers: `:lsp-install`, `:lsp-uninstall` and `:lsp-catalog`. It registers what it installed through `register-lsp-server!` and gives every language it knows Helix's server list, so `core:lsp` works the same with or without it, and a different installer can take its place by declaring that one instead.
+Downloads and verifies language servers and sets them up for `core:lsp`: `:lsp-install`, `:lsp-uninstall` and `:lsp-catalog`. Each language uses the same servers Helix picks for it. Without this plugin, `core:lsp` works with servers you [register yourself](lsp.md#registering-a-language-server).
 
 ```scheme
 (load-plugin! "core:stdlib")
 (load-plugin! "core:lsp-install")
 ```
 
-Requires `core:stdlib` loaded first. Loads lazily in two parts: the registration of installed servers wakes on the first buffer with a detected language, and `:lsp-install`, `:lsp-uninstall` and `:lsp-catalog` load on first use. See [Language Servers](lsp.md#installing-servers) for the prerequisites and the commands.
+Requires `core:stdlib` loaded first. See [Language Servers](lsp.md#installing-servers) for the prerequisites and the commands.
 
 ## core:steel-server
 
@@ -80,10 +80,9 @@ registered server useful.
 (load-plugin! "core:steel-server")
 ```
 
-It activates on the first Scheme buffer or the first time you run
-`:steel-server-install`. It's registered so HUME's own commands and configuration functions
-are recognized while you edit `init.scm` or a plugin file, so you won't see unknown-identifier
-warnings for anything HUME itself provides.
+The server knows HUME's own commands and configuration functions, so you won't see
+unknown-identifier warnings for anything HUME itself provides while you edit `init.scm` or a
+plugin file.
 
 **This is a temporary plugin.** The underlying server isn't in HUME's regular server catalog
 yet, so it can't be installed through `:lsp-install` like other servers. Once it lands
@@ -107,16 +106,10 @@ over files with staged or unstaged git changes.
 (load-plugin! "core:pickers")
 ```
 
-It has no manifest, so it loads at startup (`core:stdlib` only needs to be loaded before it): its keys are the only way to reach its commands, and nothing else could wake it. By
-default the modified-files picker includes untracked files; turn them off with `#:config`:
+Requires `core:stdlib` loaded first.
 
-```scheme
-(load-plugin! "core:stdlib")
-(load-plugin! "core:pickers" #:config (hash "untracked" #f))
-```
-
-See [Fuzzy Finder](pickers.md) for the file-source chain, keys, buffer display, and
-modified-files details.
+See [Fuzzy Finder](pickers.md) for the file-source chain, keys, buffer display,
+modified-files details, and options.
 
 ## core:git-diff
 
@@ -130,9 +123,7 @@ word-level highlights inside changed lines.
 (load-plugin! "core:git-diff")
 ```
 
-Requires `core:stdlib` loaded before it. It wakes on the
-first buffer opened (signs default on) or the first `:toggle-git-signs`/`:toggle-inline-diff`
-you type.
+Requires `core:stdlib` loaded first.
 
 | Command | Effect |
 |---------|--------|
@@ -147,7 +138,7 @@ diff.
 
 Also keeps a `"steel:git-branch"` statusline element fresh for the focused buffer, e.g.
 `(main)`, or `⎇ main` with `"branch-style"` set to `'icon` (see below). Just add it to your own `configure-statusline!` call (see
-[Statusline → Custom elements](configuration.md#custom-elements)). Updates when you switch to
+[Statusline → Custom elements](settings.md#custom-elements)). Updates when you switch to
 a buffer and when you save it; empty for a buffer outside any repo.
 
 Both commands are typed commands, run from the `:` prompt. No keys are bound by default, but
@@ -158,18 +149,7 @@ each has a key-bindable twin without the ref argument:
 (bind-key! 'normal "space s" "git-diff/toggle-git-signs")
 ```
 
-A command of your own can also ask `(call! "git-diff/inline-diff?" pane)` whether inline
-rendering is on, and turn it on against a ref with `(call! "git-diff/show-inline-diff" pane "HEAD~1")`.
-The latter never turns it off.
-
-A plugin that has its own hunks, such as a revision's diff from `buffer-revision-diff`, can
-draw them the same way with `(call! "git-diff/render-diff" pane source hunks)`. `hunks` is
-the list `diff-buffer-lines` or `buffer-revision-diff` returns and `source` is a name of the
-plugin's own, so its drawing never mixes with this plugin's. Each call replaces what `source`
-drew for that buffer, and an empty list draws nothing. While a plugin draws, the buffer's own
-inline diff is hidden so changed lines don't show twice; the gutter signs stay.
-`(call! "git-diff/release-diff" pane source)` clears the plugin's drawing and brings the inline
-diff back.
+A plugin or a command of your own can check and turn on the inline diff, or draw diffs of its own the same way; see [Drawing a diff](writing-plugins.md#drawing-a-diff).
 
 Configure with `#:config`:
 
@@ -197,7 +177,7 @@ A graph of the buffer's undo history in the bottom drawer, with a jump to any re
 (load-plugin! "core:undotree")
 ```
 
-It wakes on the first `:undotree` or `undotree/toggle`. It needs no other plugin, but shows what each revision changed only when [`core:git-diff`](#coregit-diff) is loaded too (see below).
+It needs no other plugin, but shows what each revision changed only when [`core:git-diff`](#core-git-diff) is loaded too (see below).
 
 | Command | Effect |
 |---------|--------|
@@ -237,9 +217,7 @@ buffer, including a scratch buffer or a `.txt` file where `core:lsp` has no serv
 (load-plugin! "core:buffer-words")
 ```
 
-It has no manifest, so it loads at startup: `Ctrl-Space` (or a completion source's own trigger char, if one
-applies) is the only thing that can ever invoke the completion source it registers, and nothing else could wake it. Requires `core:stdlib` loaded
-first.
+Requires `core:stdlib` loaded first.
 
 Keeps a per-buffer index of identifiers, refreshed as you type; `Ctrl-Space` reads it, it
 never scans the buffer itself. Ranks alongside `core:lsp`'s own completions in the same menu
@@ -271,7 +249,7 @@ Vim muscle memory: `$`, `^`, `0`, `C` and `D` (change/delete to end of line), `C
 (load-plugin! "core:vim-keybind")
 ```
 
-It has no manifest, so it loads at startup (`core:stdlib` only needs to be loaded before it): it replaces keys HUME already binds, and most of what it rebinds (`goto-line-start`, `goto-line-end`, and the rest) are built-in commands, not plugin commands, so there's no first dispatch to trigger loading.
+Requires `core:stdlib` loaded first.
 
 By default (`'smart`), `C` is context-sensitive: on a bare cursor with no count it changes to end of line as in vim, but with a real selection, or any count prefix (e.g. `3C`), it runs HUME's own `copy-selection-on-next-line`, so that command stays fully reachable. Change this with `#:config`:
 
@@ -290,7 +268,7 @@ Helix-style surround keys: `m s` wraps the selection, `m d` deletes a surroundin
 (load-plugin! "core:helix-surround")
 ```
 
-It has no manifest, so it loads at startup: it takes over `m s` (which by default *selects* a surrounding pair) and removes `m w` outright, so wrapping lives on `m s` alone once it's loaded.
+It takes over `m s`, which by default *selects* a surrounding pair, and removes `m w`, so wrapping lives on `m s` alone.
 
 ## core:classic-paste
 
@@ -300,18 +278,16 @@ GUI-style paste, if you'd rather not have `p` choose a source for you: `p` / `P`
 (load-plugin! "core:classic-paste")
 ```
 
-It has no manifest, so it loads at startup: it replaces `p`/`P`/`Ctrl-v`/`Ctrl-Shift-v`'s default behavior.
-
 ## core:stdlib
 
-A toolkit of small helpers that other plugins build on, rather than something you use directly. `core:git-diff`, `core:pickers`, `core:vim-keybind`, `core:lsp`, and `core:lsp-install` all depend on it, so load it before them:
+A toolkit of small helpers that other plugins build on, rather than something you use directly. `core:buffer-words`, `core:git-diff`, `core:lsp`, `core:lsp-install`, `core:pickers`, `core:plum` and `core:vim-keybind` all depend on it, so load it before them:
 
 ```scheme
 (load-plugin! "core:stdlib")
 ```
 
 ::: warning Keep its own triggers
-Don't declare custom `#:commands`/`#:events`/`#:languages` for `core:stdlib`; load it as shown above. Every plugin that depends on `core:stdlib` relies on the triggers its manifest lists; a custom list can leave out a helper a dependent plugin needs, and that dependent plugin will then misbehave instead of failing with a clear error.
+Load `core:stdlib` as shown above, without a `declare-plugin!` line of your own. The plugins that depend on it need every one of its helpers, and with a narrower trigger list they misbehave instead of reporting a clear error.
 :::
 
 If you're writing a plugin yourself, see [Standard Library](standard-library.md) for every command it offers.

@@ -1,6 +1,6 @@
 # Themes
 
-HUME colors its interface and your code from a theme: a TOML file in the Helix theme format. Set the active one with the `theme` option (see [Configuration](configuration.md#global-options)) or `:theme <name>`.
+HUME colors its interface and your code from a theme: a TOML file in the Helix theme format. Set the active one with the `theme` option (see [Configuration](settings.md#global-options)) or `:theme <name>`.
 
 ```scheme
 (set-option! "theme" "sand")
@@ -12,7 +12,7 @@ HUME reads `sand` from the `themes/` directories like any other theme, so editin
 
 Custom themes are TOML files placed in the `themes/` subdirectory of your HUME config directory, hand-authored, alongside `init.scm`. A theme installed by a tool instead goes in the `themes/` subdirectory of your HUME data directory (see [File locations](configuration.md#file-locations)); a config-dir theme of the same name wins.
 
-HUME reads the Helix theme format and aims to support Helix themes as they are written. It is not there in every detail yet, but it is close: most Helix themes load and render unchanged. A scope can be written as a flat key (`"ui.cursor" = { fg = "..." }`) or as a TOML section header (`[ui.cursor]` / `fg = "..."`). HUME treats the two as equivalent, though Helix itself reads only the flat form, so a section-header theme won't travel back.
+HUME reads the Helix theme format and aims to support Helix themes as they are written. It is not there in every detail yet, but it is close: most Helix themes load and render unchanged. A scope can be written as a flat key (`"ui.cursor" = { fg = "..." }`) or as a TOML section header (`[ui.cursor]` / `fg = "..."`). HUME treats the two as equivalent, though Helix itself reads only the flat form, so a section-header theme won't travel back. The theme editor below exports the flat form.
 
 A color can be a hex literal, a palette name you define, or one of the sixteen terminal color names Helix themes use (`red`, `light-gray`, and so on). These resolve to fixed colors from the standard terminal palette rather than to whatever your own terminal happens to have those colors set to, so a theme looks the same everywhere and unfocused-pane dimming has an actual color to blend toward. A color value outside these three forms leaves that one entry unstyled rather than failing the whole load, and `:messages` names it.
 
@@ -62,7 +62,7 @@ These have no Helix equivalent:
   `ui.statusline.normal`/`.insert`/`.select` (`.select` colors **Extend**, HUME's name for
   what Helix calls Select mode; `.sift` colors HUME's own Sift mode, the `s` regex prompt)
 - `ui.virtual.invisible`: the `<200b>`-style stand-in for a character the terminal must
-  not be shown as itself (see [Buffer options](configuration.md#buffer-options))
+  not be shown as itself (see [Buffer options](settings.md#buffer-options))
 - `diff.plus.line` / `diff.minus.line` / `diff.delta.line`: the whole-line background tint
   `core:git-diff` paints for an added, deleted, or changed line (`diff.minus.line` also
   colors the ghost text of a deleted line, since nothing is left in the buffer to color).

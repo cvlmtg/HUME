@@ -44,5 +44,5 @@ later binding of `ctrl-r` in `init.scm` replaces them.
 Seven forms: `bind-keys!`, `bind-keys-extend!`, `unbind-keys!`, `define-language!`,
 `configure-language!`, `register-grammar!`, `configure-statusline!`. For signatures and usage examples, see the user manual:
 - [Configuration — Key bindings](https://cvlmtg.github.io/HUME/configuration.html#key-bindings)
-- [Configuration — Statusline](https://cvlmtg.github.io/HUME/configuration.html#statusline)
+- [Settings — Statusline](https://cvlmtg.github.io/HUME/settings.html#statusline)
 - [Syntax Highlighting — Teach HUME a new language](https://cvlmtg.github.io/HUME/syntax-highlighting.html#teach-hume-a-new-language)

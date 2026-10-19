@@ -1,6 +1,6 @@
 //! # User-manual option-table drift
 //!
-//! `user-manual/docs/configuration.md`'s "Global options"/"Buffer options"
+//! `user-manual/docs/settings.md`'s "Global options"/"Buffer options"
 //! tables are a hand-maintained mirror of `settings::all_setting_keys()`
 //! (plus the buffer-intrinsic options, documented but excluded from that list
 //! by design; see `settings.rs`'s module doc). Nothing else keeps the two in sync;
@@ -27,7 +27,7 @@
 fn section_after<'a>(text: &'a str, heading: &str) -> &'a str {
     let start = text
         .find(heading)
-        .unwrap_or_else(|| panic!("heading '{heading}' not found in configuration.md"));
+        .unwrap_or_else(|| panic!("heading '{heading}' not found in settings.md"));
     let after = &text[start + heading.len()..];
     let end = after.find("\n## ").unwrap_or(after.len());
     &after[..end]
@@ -48,14 +48,14 @@ fn first_cell_keys(section: &str) -> std::collections::BTreeSet<String> {
 }
 
 /// Every key in `define_settings!` (any section) must appear in
-/// `user-manual/docs/configuration.md`'s option tables, and every table key
+/// `user-manual/docs/settings.md`'s option tables, and every table key
 /// must be a real setting. A failure names the key and the side it is
 /// missing from.
 #[test]
 fn user_manual_option_tables_match_all_setting_keys() {
     let manifest = std::env::var("CARGO_MANIFEST_DIR")
         .expect("CARGO_MANIFEST_DIR not set: run via `cargo test`");
-    let manual_path = std::path::Path::new(&manifest).join("../user-manual/docs/configuration.md");
+    let manual_path = std::path::Path::new(&manifest).join("../user-manual/docs/settings.md");
     let text = std::fs::read_to_string(&manual_path)
         .unwrap_or_else(|e| panic!("cannot read {}: {e}", manual_path.display()));
 
@@ -103,7 +103,7 @@ fn user_manual_option_tables_match_all_setting_keys() {
 
     assert!(
         missing_from_docs.is_empty() && stale_in_docs.is_empty() && misplaced.is_empty(),
-        "\nuser-manual/docs/configuration.md option tables drifted from \
+        "\nuser-manual/docs/settings.md option tables drifted from \
          settings::all_setting_keys().\n\
          In code but missing from the docs tables: {missing_from_docs:?}\n\
          In the docs tables but not a real setting key: {stale_in_docs:?}\n\

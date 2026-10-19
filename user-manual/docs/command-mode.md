@@ -71,7 +71,7 @@ See [Files & Buffers](files-and-buffers.md#external-changes) for what happens wh
 | `:sp`, `:split` | Split the focused pane, stacking the new pane below |
 | `:vsp`, `:vsplit` | Split the focused pane side by side |
 
-Splitting is refused with a message when the pane is already too small. Focus and closing use the `Ctrl-p` prefix (`Ctrl-p` then `h`/`j`/`k`/`l`/`p`/`s`/`v`/`c`/`t`/`T`). See the [Default Keys](default-keys.md).
+Splitting is refused with a message when the pane is already too small. Focusing, closing and rotating panes use the `Ctrl-p` prefix. See the [Default Keys](default-keys.md).
 
 ## Tabs
 
@@ -84,7 +84,7 @@ A tab is a saved window layout (its own set of panes and splits), not a per-buff
 | `:tabnext`, `:tabn` | Switch to the next tab in display order |
 | `:tabprev`, `:tabp` | Switch to the previous tab in display order |
 
-Cycling is also bound to `Ctrl-p t`/`Ctrl-p T`. See the [Default Keys](default-keys.md). By default the tab bar only appears once more than one tab is open (`:set global tabline=always`/`never`/`dynamic` changes this; see [Configuration](configuration.md)).
+Cycling is also bound to `Ctrl-p t`/`Ctrl-p T`. See the [Default Keys](default-keys.md). By default the tab bar only appears once more than one tab is open (`:set global tabline=always`/`never`/`dynamic` changes this; see [Global options](settings.md#global-options)).
 
 ## Editing
 
@@ -135,7 +135,7 @@ kai&nbsp;&nbsp;&nbsp;52
 | `:set buffer <option>=<value>` | Set an option for this buffer only |
 | `:set pane <option>=<value>` | Set an option for this pane only (`wrap-mode` only) |
 
-See [Configuration](configuration.md) for every option.
+See [Settings](settings.md) for every option.
 
 ## Display
 
@@ -143,7 +143,7 @@ See [Configuration](configuration.md) for every option.
 |---------|--------|
 | `:theme <name>` | Load a theme; with no argument, show the current one |
 | `:theme-debug` | Show the resolved styles for the main UI scopes |
-| `:wrap`, `:toggle-soft-wrap` | Toggle line wrapping in this pane. See [wrap styles](configuration.md#text-wrap) |
+| `:wrap`, `:toggle-soft-wrap` | Toggle line wrapping in this pane. See [wrap styles](settings.md#text-wrap) |
 | `:mes`, `:messages` | Show the message log in a read-only buffer |
 
 ## Navigation
@@ -167,4 +167,4 @@ Plugins add commands of their own once you load them. The `:plum-*` commands (in
 
 ## Finding a command
 
-There is no listing command. Open the command mode prompt with `:` and press `Tab`: completion shows every registered typed name and alias, including stubs for plugins that haven't loaded yet. It never shows editor commands, since you can't run one by name there; see [Builtin Commands](builtin-commands.md) for the full list.
+There is no listing command. Open the command mode prompt with `:` and press `Tab`: completion shows every registered typed name and alias, including those of plugins that haven't started yet. It never shows editor commands, since you can't run one by name there; see [Builtin Commands](builtin-commands.md) for the full list.

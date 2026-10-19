@@ -1,12 +1,12 @@
 # Plugin API
 
-Reference for every function a plugin or `init.scm` can call directly, as opposed to a command reached through a key binding or [`call!`](plugins.md#calling-other-commands). Three layers make up this surface:
+Reference for every function a plugin or `init.scm` can call directly, as opposed to a command reached through a key binding or [`call!`](writing-plugins.md#calling-other-commands). Three layers make up this surface:
 
 - **Builtins**: native to the editor, always available, called as plain Scheme: `(buffer-text pane)`, `(bind-key! ...)`. Some are thin Scheme wrappers that add keyword arguments and defaults; the signature documented here is the wrapper's.
 - **[Language Server API](lsp-api.md)**: the builtins for registering, configuring, and requesting from language servers.
 - **[Standard Library](standard-library.md)**: `core:stdlib`, an optional bundled *plugin*. Its commands are reached through `call!`, like any other plugin's: `(call! "stdlib/find" pred? lst)`.
 
-This page is a lookup reference: tables of signatures and one-line effects. For narrative walkthroughs and worked examples, see [Plugins](plugins.md), [Language Servers](lsp.md), [Configuration](configuration.md), and the other pages linked throughout.
+This page is a lookup reference: tables of signatures and one-line effects. For narrative walkthroughs and worked examples, see [Writing Plugins](writing-plugins.md), [Language Servers](lsp.md), [Configuration](configuration.md), and the other pages linked throughout.
 
 ## Commands and builtins
 
@@ -36,7 +36,7 @@ Editor commands and builtins are different things. A command, such as `completio
 | `(configure-statusline! left center right)` | Configure the three statusline sections, each a list of element name strings |
 | `(set-statusline-text! source pane text)` | Push `text` for a `"steel:<source>"` statusline element, scoped to `pane`'s buffer; empty string clears it |
 
-See [Reading options from Scheme](plugins.md#reading-options-from-scheme) for `get-option`/`get-buffer-option`'s fallback rules, [Statusline](configuration.md#statusline) for the built-in element names, and [Custom elements](configuration.md#custom-elements) for `configure-statusline!`/`set-statusline-text!` together.
+See [Reading options from Scheme](writing-plugins.md#reading-options-from-scheme) for `get-option`/`get-buffer-option`'s fallback rules, [Statusline](settings.md#statusline) for the built-in element names, and [Custom elements](settings.md#custom-elements) for `configure-statusline!`/`set-statusline-text!` together.
 
 ## Key bindings
 
@@ -48,7 +48,7 @@ See [Reading options from Scheme](plugins.md#reading-options-from-scheme) for `g
 | `(bind-keys! mode (key cmd) ...)`, `(bind-keys-extend! mode (key cmd) ...)`, `(unbind-keys! mode key ...)` | Batched forms of the three above |
 | `(set-register-prefix! name)` | Target a specific register (`0`–`9`, `k`, `c`, `b`) for the rest of the current command body's `call!`s |
 
-See [Key bindings](configuration.md#key-bindings) for the key-string grammar and full examples, and [Register prefix](plugins.md#register-prefix) for `set-register-prefix!`.
+See [Key bindings](configuration.md#key-bindings) for the key-string grammar and full examples, and [Register prefix](writing-plugins.md#register-prefix) for `set-register-prefix!`.
 
 ## Commands
 
@@ -56,13 +56,13 @@ See [Key bindings](configuration.md#key-bindings) for the key-string grammar and
 |------|--------|
 | `(define-command! name doc proc #:repeatable #:inline-output)` | Register `name` as an editor command |
 | `(define-typed-command! name doc proc #:inline-output #:complete)` | Register `name` as a typed command, reachable as `:name` |
-| `(call! name args ...)` | Dispatch any editor command (built-in or Scheme-defined), activating its plugin on demand. A built-in takes `pane`, an optional count and extend flag, then the character or pattern the few that need one act with; see [Calling other commands](plugins.md#calling-other-commands) |
+| `(call! name args ...)` | Dispatch any editor command (built-in or Scheme-defined), activating its plugin on demand. A built-in takes `pane`, an optional count and extend flag, then the character or pattern the few that need one act with; see [Calling other commands](writing-plugins.md#calling-other-commands) |
 | `(on-next-char! callback)` | Call `callback` with the next key typed as a character, or with `#f` when that key isn't one |
 | `(command-plugin name)` | The id string of the plugin that registered command `name`: `"user"` for a top-level `init.scm` definition, `"hume"` for a built-in or a name that isn't a command |
 | `(command-exists? name)` | `#t` if `name` is something your plugin can use: a command reachable with `call!` (built-in, Scheme-defined, or a not-yet-loaded plugin's), or any procedure bound at the top level (a builtin, a Steel library function, or your own `define`). `#f` otherwise, including for macros such as `call!` |
 | `(hume/yield!)` | Check the interrupt/step-budget flag inside a long loop, aborting the script if it's set |
 
-`define-command!`, `define-typed-command!`, `call!`, and `on-next-char!` are covered with examples in [Defining commands](plugins.md#defining-commands), [Calling other commands](plugins.md#calling-other-commands), and [Reading characters](plugins.md#reading-characters). `hume/yield!` only matters for a script doing real work in a loop. Without it, a script that runs past `steel-init-budget-ms`/`steel-command-budget-ms` (see [Global options](configuration.md#global-options)) still runs to completion; interruption is cooperative, not preemptive.
+`define-command!`, `define-typed-command!`, `call!`, and `on-next-char!` are covered with examples in [Defining commands](writing-plugins.md#defining-commands), [Calling other commands](writing-plugins.md#calling-other-commands), and [Reading characters](writing-plugins.md#reading-characters). `hume/yield!` only matters for a script doing real work in a loop. Without it, a script that runs past `steel-init-budget-ms`/`steel-command-budget-ms` (see [Global options](settings.md#global-options)) still runs to completion; interruption is cooperative, not preemptive.
 
 ## Supporting several HUME versions
 
@@ -95,7 +95,7 @@ To use something newer that has not shipped in a release, check for it directly 
 | `(plugin-config)` | The `#:config` value the user passed to `load-plugin!`, or an empty hash |
 | `(plugin-dir)` | The directory holding the calling plugin's own files, or `#f` outside a plugin body |
 
-Full picture (load timing, `#:config` semantics, dependency checks) in [Plugins](plugins.md), particularly [How plugins are loaded](plugins.md#how-plugins-are-loaded) and [Depending on another plugin](plugins.md#depending-on-another-plugin).
+Full picture (load timing, `#:config` semantics, dependency checks) in [Plugins](plugins.md), particularly [How plugins are loaded](plugins.md#how-plugins-are-loaded) and [Depending on another plugin](writing-plugins.md#depending-on-another-plugin).
 
 ## Hooks
 
@@ -103,7 +103,7 @@ Full picture (load timing, `#:config` semantics, dependency checks) in [Plugins]
 |------|--------|
 | `(register-hook! name proc)` | Register `proc` for lifecycle event `name`. Top-level/plugin-body only, not inside a command |
 
-See [Hooks](plugins.md#hooks) for the full table of hook names and their lambda signatures.
+See [Hooks](writing-plugins.md#hooks) for the full table of hook names and their lambda signatures.
 
 ## Logging
 
@@ -125,7 +125,7 @@ A value naming a closed buffer raises for almost every call: the reads that need
 
 | Call | Effect |
 |------|--------|
-| `(focused-pane)` | The pane focused right now, paired with its buffer: a live read. Reach for this from a response callback, a timer, or anything else with no pane of its own to act on, e.g. checking `(equal? pane (focused-pane))` before acting on a response, when `pane` was captured before an async request went out. A command body doesn't need this: it receives the pane it was invoked through as its own leading parameter (see [Defining commands](plugins.md#defining-commands)) |
+| `(focused-pane)` | The pane focused right now, paired with its buffer: a live read. Reach for this from a response callback, a timer, or anything else with no pane of its own to act on, e.g. checking `(equal? pane (focused-pane))` before acting on a response, when `pane` was captured before an async request went out. A command body doesn't need this: it receives the pane it was invoked through as its own leading parameter (see [Defining commands](writing-plugins.md#defining-commands)) |
 | `(buffers)` | List of every open buffer, as pane-less pane values, in open-order |
 | `(buffer-live? pane)` | `#t` if `pane`'s buffer is still open, `#f` otherwise; never raises. The idiom for a timer, debounce, or async callback whose captured value may have closed by the time it fires: check this before calling anything that would otherwise raise on a closed buffer |
 | `(pane-live? pane)` | `#t` if `pane` names a pane that still exists and still shows its own buffer, `#f` otherwise, including for a value that carries no pane; never raises. The same idiom as `buffer-live?` for a callback that calls a pane-aware builtin such as `lsp-request!` |
@@ -155,7 +155,7 @@ A value naming a closed buffer raises for almost every call: the reads that need
 | `(symbol-under-cursor pane)` | The identifier under the primary cursor in `pane`'s own pane, as a string; `""` when the cursor is not on a word character |
 | `(pane? v)` | `#t` if `v` is an opaque pane value |
 
-`buffer-text`, `buffer-lines`, `buffer-line-count`, `buffer-selections`, `char-offset->line`, `line->char-offset`, and `viewport-range` are covered with examples in [Reading selections](plugins.md#reading-selections) and [Reading buffer text](plugins.md#reading-buffer-text). Every `pane` argument here is an opaque value from one of these functions, or the one a command receives as its own leading parameter (see [Defining commands](plugins.md#defining-commands)); there's no "current buffer" shortcut baked into any builtin itself. Compare two pane values with plain `equal?`; there's no dedicated equality builtin.
+`buffer-text`, `buffer-lines`, `buffer-line-count`, `buffer-selections`, `char-offset->line`, `line->char-offset`, and `viewport-range` are covered with examples in [Reading selections](writing-plugins.md#reading-selections) and [Reading buffer text](writing-plugins.md#reading-buffer-text). Every `pane` argument here is an opaque value from one of these functions, or the one a command receives as its own leading parameter (see [Defining commands](writing-plugins.md#defining-commands)); there's no "current buffer" shortcut baked into any builtin itself. Compare two pane values with plain `equal?`; there's no dedicated equality builtin.
 
 ## Editing & navigation
 
@@ -231,17 +231,17 @@ Not LSP-specific (any plugin can populate these), but LSP diagnostics and inlay 
 | `(set-extra-highlights! source pane spans)` | Replace `source`'s extra syntax highlights for the buffer. `spans`: list of `(hash 'start-char s 'end-char e 'scope sc)` char ranges; an edge inside a character widens the span to the whole character |
 | `(set-line-backgrounds! source pane entries)` | Replace `source`'s full-line background tints for the buffer. `entries`: list of `(hash 'line l 'scope s)` |
 
-`diagnostics-for-buffer` and the hook that feeds it are shown in [Hooks](plugins.md#hooks). A sign source's gutter slot is reserved the first time it registers for a buffer, even before placing any sign, which is what keeps the gutter's width stable as signs come and go; there's no `unregister-sign-source!`, and re-registering the same `name` for the same buffer just replaces its priority. Line backgrounds have no priority: same-line entries from different sources break ties by source name instead.
+`diagnostics-for-buffer` and the hook that feeds it are shown in [Hooks](writing-plugins.md#hooks). A sign source's gutter slot is reserved the first time it registers for a buffer, even before placing any sign, which is what keeps the gutter's width stable as signs come and go; there's no `unregister-sign-source!`, and re-registering the same `name` for the same buffer just replaces its priority. Line backgrounds have no priority: same-line entries from different sources break ties by source name instead.
 
 ## Completion
 
 A plugin registers a completion *source*; the editor drives it. `Ctrl-Space` in Insert mode (the built-in `completion-trigger` command) asks every source registered for the buffer, a registered trigger character asks the source registered under its name, and the first `Tab` on a `:` command line asks the source that command declared. Each answer is ranked with every other source's, in one menu, against that source's own token; no source renders its own UI.
 
-Full walkthrough (a static source, richer items, trigger characters, an asynchronous `:` command argument source) and every option `register-completion-source!` takes are in [Completion sources](plugins.md#completion-sources). `#:complete` on `define-typed-command!` also accepts a built-in source such as `"path"`. The per-server variants of the two trigger calls are on the [Language Server API](lsp-api.md#language-servers) page. See [Hooks](plugins.md#hooks) for the `on-trigger-char` and `on-completion-accept` lambda signatures.
+Full walkthrough (a static source, richer items, trigger characters, an asynchronous `:` command argument source) and every option `register-completion-source!` takes are in [Completion sources](writing-plugins.md#completion-sources). `#:complete` on `define-typed-command!` also accepts a built-in source such as `"path"`. The per-server variants of the two trigger calls are on the [Language Server API](lsp-api.md#language-servers) page. See [Hooks](writing-plugins.md#hooks) for the `on-trigger-char` and `on-completion-accept` lambda signatures.
 
 | Call | Effect |
 |------|--------|
-| `(register-completion-source! name proc #:target #:match #:priority #:resolve #:token-chars)` | Register `proc` as completion source `name` (see [Source options](plugins.md#source-options)) |
+| `(register-completion-source! name proc #:target #:match #:priority #:resolve #:token-chars)` | Register `proc` as completion source `name` (see [Source options](writing-plugins.md#source-options)) |
 | `(completion-emit! id items #:incomplete)` | Answer request `id` with `items`; `#f` if the answer was dropped as out of date |
 | `(set-completion-triggers! source language chars)` | Characters that invoke `'buffer` source `source` when typed in a `language` buffer; replaces the previous set, and `'()` removes it. An unknown `source` is reported in the message log |
 | `(set-hook-triggers! source language chars)` | Characters that fire the `on-trigger-char` hook, tagged `source`, when typed in a `language` buffer; replaces the previous set, and `'()` removes it. For features other than completion, such as signature help |
@@ -253,7 +253,7 @@ Full walkthrough (a static source, richer items, trigger characters, an asynchro
 
 These are editor-builtin commands any plugin can drive: a plugin opens a picker and pushes items through them rather than building its own fuzzy-finder.
 
-Full walkthroughs (batch vs. streaming population, truncation direction, exit-code handling, live requery) are in [Custom pickers](plugins.md#custom-pickers) and [Live requery (live grep)](plugins.md#live-requery-live-grep).
+Full walkthroughs (batch vs. streaming population, truncation direction, exit-code handling, live requery) are in [Custom pickers](writing-plugins.md#custom-pickers) and [Live requery (live grep)](writing-plugins.md#live-requery-live-grep).
 
 | Call | Effect |
 |------|--------|
@@ -270,12 +270,12 @@ Full walkthroughs (batch vs. streaming population, truncation direction, exit-co
 
 | Call | Effect |
 |------|--------|
-| `(prompt! pane label on-confirm #:prefill)` | Open a minibuffer text prompt, only while `pane` is the focused pane (raises otherwise); `on-confirm` fires once, later, with the confirmed text or `#f` on cancel. Raises when another `prompt!` prompt is already open. When a `#:repeatable` command opened it, `.` repeats the answer without opening it; see [Dot-repeat](plugins.md#dot-repeat) |
+| `(prompt! pane label on-confirm #:prefill)` | Open a minibuffer text prompt, only while `pane` is the focused pane (raises otherwise); `on-confirm` fires once, later, with the confirmed text or `#f` on cancel. Raises when another `prompt!` prompt is already open. When a `#:repeatable` command opened it, `.` repeats the answer without opening it; see [Dot-repeat](writing-plugins.md#dot-repeat) |
 | `(show-popup! pane text #:anchor #:kind #:lang)` | Show a text popup, only while `pane` is the focused pane (raises otherwise). `#:anchor` `'cursor` (default, floats near the cursor) or `'bottom` (docks above the statusline); `#:lang` for syntax highlighting. `#:kind` also sets how long it lives: `'sticky` (default) closes on its own as soon as you leave whatever mode you opened it in; `'scrollable` stays open (Ctrl-u/Ctrl-d scroll it) until any other key, paste, or mouse input closes it. Replaces any popup already showing. Returns a token for `close-popup!`, or `#f` if the popup didn't open |
 | `(close-popup! token)` | Close the popup `token` names; a no-op if it has already closed or been replaced |
-| `(show-menu! pane items on-select)` | Show a selection menu over `items`, a list of strings, only while `pane` is the focused pane (raises otherwise). Returns a token for `close-menu!`, or `#f` if the menu didn't open: the editor is not in Normal or Extend mode, or moved on before the call landed. When a `#:repeatable` command opened it, `.` repeats the choice without opening it; see [Dot-repeat](plugins.md#dot-repeat) |
+| `(show-menu! pane items on-select)` | Show a selection menu over `items`, a list of strings, only while `pane` is the focused pane (raises otherwise). Returns a token for `close-menu!`, or `#f` if the menu didn't open: the editor is not in Normal or Extend mode, or moved on before the call landed. When a `#:repeatable` command opened it, `.` repeats the choice without opening it; see [Dot-repeat](writing-plugins.md#dot-repeat) |
 | `(close-menu! token)` | Close the menu `token` names without calling its `on-select`; a no-op if it has already closed or been replaced |
-| `(show-drawer-list! pane items on-select #:selected [0] #:render [#f])` | Show a list in the bottom drawer, over `items`, a non-empty list of strings, only while `pane` is the focused pane (raises otherwise). With `#:render`, `items` can be any values, one per row, and the drawer calls `(render start keys)` just before it shows rows it hasn't drawn yet: `keys` are the items of those rows, starting at row `start`, and `render` returns one string for each. Rows are drawn once per list, so `render` only runs again for rows scrolled into view or after `update-drawer-list!`. `render` can read the editor but not change it: an attempt to change it, an error, or a result that isn't one string per key closes the drawer, calls `on-select` with `#f`, and shows the error. Inside `render`, buffers, selections and settings can be read, while calls that need language servers, diagnostics, completion, timers or background processes raise. `#:selected` is the row to open on (clamped into `items`), scrolled into view. `on-select` is called with `(index token)` — `token` is the token of the drawer that called it. Replaces any drawer already open, and the outgoing drawer's `on-select` fires with `#f` and its own token, so its owner knows the drawer is gone and can tell that from its new drawer closing. Errors on empty `items`; close (or never open) instead. Returns a token scoping `close-drawer!`/`update-drawer-list!`/`drawer-selected-index` to this drawer (hold onto it), or `#f` if the drawer didn't open (the editor moved on before the call landed). `.` never records a drawer pick; see [Dot-repeat](plugins.md#dot-repeat) |
+| `(show-drawer-list! pane items on-select #:selected [0] #:render [#f])` | Show a list in the bottom drawer, over `items`, a non-empty list of strings, only while `pane` is the focused pane (raises otherwise). With `#:render`, `items` can be any values, one per row, and the drawer calls `(render start keys)` just before it shows rows it hasn't drawn yet: `keys` are the items of those rows, starting at row `start`, and `render` returns one string for each. Rows are drawn once per list, so `render` only runs again for rows scrolled into view or after `update-drawer-list!`. `render` can read the editor but not change it: an attempt to change it, an error, or a result that isn't one string per key closes the drawer, calls `on-select` with `#f`, and shows the error. Inside `render`, buffers, selections and settings can be read, while calls that need language servers, diagnostics, completion, timers or background processes raise. `#:selected` is the row to open on (clamped into `items`), scrolled into view. `on-select` is called with `(index token)` — `token` is the token of the drawer that called it. Replaces any drawer already open, and the outgoing drawer's `on-select` fires with `#f` and its own token, so its owner knows the drawer is gone and can tell that from its new drawer closing. Errors on empty `items`; close (or never open) instead. Returns a token scoping `close-drawer!`/`update-drawer-list!`/`drawer-selected-index` to this drawer (hold onto it), or `#f` if the drawer didn't open (the editor moved on before the call landed). `.` never records a drawer pick; see [Dot-repeat](writing-plugins.md#dot-repeat) |
 | `(close-drawer! token)` | Close the drawer `token` names; a no-op if it has already closed or been replaced |
 | `(update-drawer-list! token items on-select selected #:render [#f])` | Replace the open drawer's rows in place (`#:render` as for `show-drawer-list!`), selecting row `selected` (clamped into `items`; pass `(drawer-selected-index token)` to keep the current row); returns `#t` when applied, `#f` when no drawer is open, `token` doesn't match its own, or `items` is empty. Close instead of clearing through an update |
 | `(drawer-selected-index token)` | The open drawer's selected row, or `#f` when no drawer is open or `token` doesn't match its own |
@@ -298,7 +298,7 @@ Full walkthroughs (batch vs. streaming population, truncation direction, exit-co
 | `(run-inline-output! cmd args #:cwd #:env)` | Run `cmd`, streaming output to the terminal inside an `#:inline-output` command; `#:env` is a list of `("KEY" . "VALUE")` pairs added to the environment; raises on nonzero exit |
 | `(run-capture! cmd args #:cwd dir)` | Run `cmd` in `dir` (default: HUME's working directory; a relative `dir` is joined onto it), blocking until it exits; returns `(hash 'stdout s 'stderr s 'exit code)`, with `'exit` `#f` when the spawn failed (stderr says why) or a signal killed the process. `core:stdlib`'s `stdlib/run!` (see [Standard Library](standard-library.md)) is this call under its usual name |
 
-Covered with examples in [Filesystem and processes](plugins.md#filesystem-and-processes).
+Covered with examples in [Filesystem and processes](writing-plugins.md#filesystem-and-processes).
 
 ## Diffing
 
@@ -309,7 +309,7 @@ Covered with examples in [Filesystem and processes](plugins.md#filesystem-and-pr
 | `(buffer-revision-diff pane id)` | Hunks between revision `id` of the buffer's undo history, a number from `buffer-undo-tree`, and the buffer's current content, in the shape `diff-buffer-lines` returns with the revision as the old side. Raises when the buffer has no such revision |
 | `(diff-words old-text new-text)` | `(hash 'hunks … 'deadline-hit …)`: word-level hunks within a single changed line |
 
-Covered with examples, including hunk shapes, in [Comparing text](plugins.md#comparing-text).
+Covered with examples, including hunk shapes, in [Comparing text](writing-plugins.md#comparing-text).
 
 ## Text & strings
 
@@ -334,7 +334,7 @@ Everyday string work (trimming, splitting on a separator, case conversion, prefi
 | `(data-file dir name)` | The path of `name.scm` in `dir` when `dir` holds that file, else `#f`. Only a name spelled exactly like one of `dir`'s files matches, so `Rust` does not match `rust.scm` on any platform and `../x` never reaches outside `dir` |
 | `(data-file-names dir)` | The names of `dir`'s `.scm` files without the suffix, sorted; `'()` when `dir` doesn't exist |
 
-The pattern for reading a plugin's own files is covered in [Filesystem and processes](plugins.md#filesystem-and-processes).
+The pattern for reading a plugin's own files is covered in [Filesystem and processes](writing-plugins.md#filesystem-and-processes).
 
 Use `(cwd)` and `(set-cwd! path)` to read and change the working directory, not Steel's `current-directory` and `change-current-directory!`: HUME's own commands and spawned programs follow its working directory, and a plugin that moves the process directory with Steel's call leaves HUME behind. To pass a relative path to a program or to Steel's file functions, join it onto `(cwd)` first: `(path-join (cwd) "src")`. HUME's own calls (`spawn-async!`, `run-capture!`, `run-inline-output!`, `picker-source-spawn!`, `compile-grammar!`, `register-grammar!`, `open-buffer!`) join a relative path onto the working directory for you.
 

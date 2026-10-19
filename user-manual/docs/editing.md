@@ -15,7 +15,7 @@ Say what you mean, then say what to do with it. Because the selection always com
 
 Press `Esc` or `Ctrl-c` to return to Normal mode. `Ctrl-w` deletes the word before the cursor while you type.
 
-Leaving Insert mode selects the text you just typed, instead of leaving a plain cursor, so you can immediately act on it again: delete it, surround it, search for it. Pressing `Esc` without typing anything leaves the cursor where you started. Disable this with the `select-inserted-text` option (see [Configuration](configuration.md)).
+Leaving Insert mode selects the text you just typed, instead of leaving a plain cursor, so you can immediately act on it again: delete it, surround it, search for it. Pressing `Esc` without typing anything leaves the cursor where you started. Disable this with the `select-inserted-text` option (see [Buffer options](settings.md#buffer-options)).
 
 Because of this, `i` re-enters Insert mode *before* the current selection, so typing something, pressing `Esc`, then pressing `i` again continues before what you just typed, not after it. Use `a` to continue typing after it instead.
 
@@ -69,7 +69,7 @@ Numbers:
 
 - A `-` before a digit is a minus sign, unless it follows a letter, digit, `_` or closing bracket: in `x-1`, `1-1` and `f(x)-1` it separates, and only the last `1` changes.
 - A number right after a letter, `_` or closing bracket never goes below zero: `item1` minus 3 is `item0`.
-- Characters listed in the buffer's `word-chars` option count as letters for both rules (see [Configuration](configuration.md)).
+- Characters listed in the buffer's `word-chars` option count as letters for both rules (see [Buffer options](settings.md#buffer-options)).
 - Hexadecimal (`0x1f`), octal (`0o17`) and binary (`0b101`) numbers change in their own base and never go below zero. Hex letters keep their case.
 - Leading zeros keep the width (`007` becomes `008`), and `_` separators are kept (`999_999` becomes `1_000_000`).
 - Digits inside a word count: `item1` becomes `item2`.
@@ -99,7 +99,11 @@ When no selection has anything to change, or a result doesn't fit (past the larg
 
 You can align to the left or the right depending on which end of the selection is the anchor; `Ctrl-e` swaps anchor and head. See [Selections](selections.md#flipping-and-collapsing-the-selection).
 
-`>`/`<` shift every line touched by a selection by one indent level, using the buffer's `tab-width` and `tab-style` (see [Configuration](configuration.md)). A prefix count shifts by that many levels at once (`3>`). A blank or whitespace-only line inside the selection is left alone, so it never picks up trailing whitespace. Each touched line's whole indent is re-rendered to the new width in the current `tab-style`, not just prepended to or trimmed from, so `<` immediately after `>` restores the previous indent width exactly (the characters themselves are re-rendered in `tab-style`, so a mixed tabs-and-spaces indent normalizes rather than coming back byte-identical). `<` on an indent narrower than one level flattens it to the left margin instead of going negative, so `>` afterward lands on a full level rather than back where the first `<` started.
+`>`/`<` shift every line touched by a selection by one indent level, using the buffer's `tab-width` and `tab-style` (see [Buffer options](settings.md#buffer-options)). A prefix count shifts by that many levels at once (`3>`).
+
+::: details Blank lines, mixed indentation and narrow indents
+A blank or whitespace-only line inside the selection is left alone, so it never picks up trailing whitespace. Each touched line's whole indent is re-rendered to the new width in the current `tab-style`, not just prepended to or trimmed from, so `<` immediately after `>` restores the previous indent width exactly (the characters themselves are re-rendered in `tab-style`, so a mixed tabs-and-spaces indent normalizes rather than coming back byte-identical). `<` on an indent narrower than one level flattens it to the left margin instead of going negative, so `>` afterward lands on a full level rather than back where the first `<` started.
+:::
 
 ## Indentation
 
@@ -109,7 +113,7 @@ When the first thing you type on a new line closes a block, such as a closing br
 
 This uses the language's grammar and its indentation rules, which `:plum-install-grammar <language>` installs. Without them, a new line just copies the indent of the current line, and nothing moves back as you type. Set `smart-indent` to `#f` to turn automatic indentation off: new lines then start at the left margin.
 
-New indentation follows the buffer's `tab-width` and `tab-style`, as `>` and `<` do. To indent with spaces in a language, set its `tab-style` to `soft` (see [Configuration](configuration.md)).
+New indentation follows the buffer's `tab-width` and `tab-style`, as `>` and `<` do. To indent with spaces in a language, set its `tab-style` to `soft` (see [Buffer options](settings.md#buffer-options)).
 
 ## Comments
 
@@ -142,7 +146,7 @@ Undo history is a tree rather than a straight line. Redo follows the branch you 
 |-----|--------|
 | `.` | Repeat the last editing command |
 
-`.` repeats the last editing command or insert session: delete, change, paste and so on, but not `y`. Typed keys re-run at the new cursor. A choice you made (the character after `r`, a picker or menu item, a prompt answer) is reused, not asked again. An accepted completion writes the same text at the cursor, without its edits elsewhere, such as an added import. A pick in a drawer (references, the undo tree) is never repeated. For custom Insert-mode bindings, see [Falling back to a key's normal Insert-mode behaviour](configuration.md#falling-back-to-a-keys-normal-insert-mode-behaviour).
+`.` repeats the last editing command or insert session: delete, change, paste and so on, but not `y`. Typed keys re-run at the new cursor. A choice you made (the character after `r`, a picker or menu item, a prompt answer) is reused, not asked again. An accepted completion writes the same text at the cursor, without its edits elsewhere, such as an added import. A pick in a drawer (references, the undo tree) is never repeated. For custom Insert-mode bindings, see [Falling back to a key's normal Insert-mode behaviour](configuration.md#falling-back-to-a-key-s-normal-insert-mode-behaviour).
 
 ## Macros
 
@@ -159,18 +163,11 @@ Macros record and replay sequences of keys and are stored in registers. Register
 
 Recording is ignored in read-only buffers, and while a macro is already recording or replaying, so a macro can't record itself or nest.
 
-While a macro is recording, the default statusline shows `[recording @q]`, with the register being recorded into, on its right. It is the `"MacroRecording"` element; see [Statusline](configuration.md#statusline) to place it in a custom layout.
+While a macro is recording, the default statusline shows `[recording @q]`, with the register being recorded into, on its right. It is the `"MacroRecording"` element; see [Statusline](settings.md#statusline) to place it in a custom layout.
 
 ## Numeric count
 
-Prefix a command with digits to repeat it. The first digit must be `1`–`9`; `0` counts only once a count is already under way. So `12w` moves forward 12 words and `10j` moves down 10 lines. Counts above 10,000 are capped at 10,000.
-
-| Example | Effect |
-|---------|--------|
-| `3w` | Move forward 3 words |
-| `5j` | Move down 5 lines |
-| `12w` | Move forward 12 words |
-| `10j` | Move down 10 lines |
+Prefix a command with digits to repeat it. The first digit must be `1`–`9`; `0` counts only once a count is already under way. So `3w` moves forward 3 words and `10j` moves down 10 lines. Counts above 10,000 are capped at 10,000.
 
 `0` on its own does nothing by default: `g h` goes to the start of the line. If you want vim's `0`, the `core:vim-keybind` plugin binds it (see [Core Plugins](core-plugins.md#core-vim-keybind)).
 
@@ -196,18 +193,6 @@ callone, two<br>
 call[one, two]
 </div>
 
-## Helix-style surround (bundled plugin)
+## Helix-style surround
 
-If you prefer Helix's dedicated surround keys, a bundled plugin provides them:
-
-| Key | Effect |
-|-----|--------|
-| `m s` + char | Wrap (add surround) |
-| `m d` + char | Delete the surrounding pair |
-| `m r` + char + new | Replace the surrounding pair with a new delimiter |
-
-This moves wrapping onto `m s`: it takes over the default `m s` (select the pair) and removes `m w`.
-
-```scheme
-(load-plugin! "core:helix-surround")
-```
+If you prefer Helix's dedicated surround keys, where `m s` wraps, `m d` deletes a pair and `m r` replaces one, load [`core:helix-surround`](core-plugins.md#core-helix-surround).

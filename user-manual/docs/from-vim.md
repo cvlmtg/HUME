@@ -31,11 +31,11 @@ You see the selection `w` built (word plus its leading whitespace) before `d` ev
 
 #### Try it on your config
 
-Copy the bundled starter config to `~/.config/hume/init.scm` ([where to find it](configuration.md#example-init-scm)) and open it on line 21 with `hume ~/.config/hume/init.scm:21`. Then make the same three edits you would in Vim:
+Copy the bundled starter config to `~/.config/hume/init.scm` ([where to find it](configuration.md#example-init-scm)) and open it on line 22 with `hume ~/.config/hume/init.scm:22`. Then make the same three edits you would in Vim:
 
 | Edit | Vim | HUME |
 |------|-----|------|
-| Uncomment line 21 (`core:buffer-words`) | `dt(` | `Ctrl-t` `(` `d` |
+| Uncomment line 22 (`core:buffer-words`) | `dt(` | `Ctrl-t` `(` `d` |
 | Delete lines 18 and 19 (`core:plum`, `core:git-diff`) | `:18` `2dd` | `:18` `2` `Ctrl-x` `d` |
 | Change `load` to `declare` on line 16, then undo it with `u` | `:16` `l` `ciw` `declare` `Esc` | `:16` `w` `c` `declare` `Esc` |
 
@@ -43,7 +43,7 @@ What each step shows:
 
 - **`t` only moves; `Ctrl` makes it select.** `f`, `F`, `t` and `T` move the cursor and select nothing. Holding `Ctrl` turns a motion into a one-shot extend, so `Ctrl-t (` selects `;; ` and `d` deletes it. For longer selections, `e` toggles Extend mode, where every motion extends until you act or press `Esc`. The `Ctrl` forms need the [kitty keyboard protocol](installation.md#terminal-compatibility).
 - **`x` selects a line.** It replaces Vim's `dd`/`yy`/`cc` doubling: `x d` deletes a line, `x c` rewrites its content and keeps the line. `Ctrl-x` adds the line below to the selection.
-- **`Esc` keeps what you typed selected.** After the last edit `declare` is still highlighted, rather than the cursor parking on its last character. Pressing `i` now inserts *before* it; use `a` to carry on after it. Turn this off with the `select-inserted-text` option (see [Configuration](configuration.md)).
+- **`Esc` keeps what you typed selected.** After the last edit `declare` is still highlighted, rather than the cursor parking on its last character. Pressing `i` now inserts *before* it; use `a` to carry on after it. Turn this off with the `select-inserted-text` option (see [Buffer options](settings.md#buffer-options)).
 
 A few more keys you'll want early: `d` on its own deletes the character under the cursor (Vim's `x`), since the cursor is already a one-character selection. `g h` and `g l` go to the start and end of the line, `g g` and `g e` to the first and last line. `/`, `n` and `N` search as in Vim.
 
@@ -126,7 +126,7 @@ These keys exist in both editors and do different things. They are the ones most
 
 `f`, `F`, `t`, `T` behave as they do in Vim, and `{` / `}` are still paragraph motions. Only the *repeat* keys moved: use `=` and `-`, because `;` and `,` are taken.
 
-`>` and `<` indent/unindent directly, select-then-act style: no operator-pending step and no doubled key, so `>` alone does what Vim's `>>` does. A count still works (`3>`), and unlike a bare `>>`/`<<`, HUME re-renders each touched line's whole indent to the buffer's `tab-width`/`tab-style` rather than only prepending or trimming a fixed amount.
+`>` and `<` indent/unindent directly, select-then-act style: no operator-pending step and no doubled key, so `>` alone does what Vim's `>>` does. A count still works (`3>`). See [Lines and alignment](editing.md#lines-and-alignment) for how the new indent is written.
 
 ### Text objects
 
@@ -145,7 +145,7 @@ The available objects are word (`w`), WORD (`W`), the bracket pairs (`(`, `[`, `
 
 For a language with a tree-sitter grammar that ships a textobjects query, HUME also adds `m i f`/`m a f` (function), `m i t`/`m a t` (class/type), `m i c`/`m a c` (comment), `m i u`/`m a u` (unit test), and `m i v`/`m a v` (array/tuple/struct value). Tag pairs (`m i x`/`m a x`, Vim's `it`/`at`) use the grammar when there is one and a lexical scan otherwise. HUME has no sentence object. Vanilla Vim has nothing like these without a plugin. Each pairs with a `goto-next-<kind>`/`goto-prev-<kind>` command that jumps to the next/previous one as a selection, on the same letter under `g` (lowercase forward, uppercase backward, e.g. `g f`/`g F`).
 
-Vim's `iskeyword` is `word-chars`, a buffer option listing extra characters that count as part of a word (see [Configuration](configuration.md)). HUME doesn't parse Vim's range syntax (`48-57`, `@`, `192-255`); list the characters directly, e.g. `-` for CSS.
+Vim's `iskeyword` is `word-chars`, a buffer option listing extra characters that count as part of a word (see [Buffer options](settings.md#buffer-options)). HUME doesn't parse Vim's range syntax (`48-57`, `@`, `192-255`); list the characters directly, e.g. `-` for CSS.
 
 ### Search and replace
 

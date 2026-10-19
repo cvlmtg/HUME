@@ -2,7 +2,7 @@
 
 Reference for the builtins a plugin can call to register, configure, and talk to language servers. An LSP plugin registers and drives a server through these rather than wiring its own protocol client. Conventions (0-based positions, `!` suffix, pane values, symbols, [JSON handles](#json-handles)) are those of the [Plugin API](plugin-api.md#conventions).
 
-This page is a lookup reference: tables of signatures and one-line effects. For walkthroughs and worked examples, see [Language Servers](lsp.md).
+Most of this page is lookup tables of signatures and one-line effects; [Sending a custom request](#sending-a-custom-request) walks through using them together. For setting up and using language servers, see [Language Servers](lsp.md).
 
 ## Language servers
 
@@ -42,7 +42,7 @@ This page is a lookup reference: tables of signatures and one-line effects. For 
 | `(set-attachment-hook-triggers! source pane server feature chars)` | Like [`set-hook-triggers!`](plugin-api.md#completion), for `pane`'s buffer attached to `server`, a server value as `on-lsp-attach` passes it, and a feature symbol such as `'signature-help`. Nothing is set unless the language's server list lets `server` handle `feature` for the buffer and `server` supports it, so `on-lsp-attach` can call this for every server. The set goes when the buffer detaches from the server, and when a change to the language's server list alters what `server` handles for the buffer (`on-lsp-attach` then fires again, so register there). Does nothing when the buffer is not attached to `server` |
 | `(set-attachment-completion-triggers! source pane server feature chars)` | As `set-attachment-hook-triggers!`, for a `'buffer` completion source's own trigger characters; see [`set-completion-triggers!`](plugin-api.md#completion) |
 
-`register-lsp-server!`, `lsp-request!`, `lsp-request-all!` and `lsp-notify!` are covered with examples in [Registering a language server](lsp.md#registering-a-language-server) and [Advanced: custom requests](lsp.md#advanced-custom-requests). `lsp-position->char-offset`/`lsp-range->char-range`/`lsp-label-offsets->text` convert LSP wire units (UTF-16 or byte offsets, depending on the server's negotiated encoding) to editor-native char offsets. Always go through these rather than assuming a 1:1 mapping. `lsp-locations->places`'s column is an exact grapheme column when the target has an open buffer; otherwise it's the location's own wire `character` verbatim, since refining it would mean reading a file the user may never open.
+`register-lsp-server!`, `lsp-request!`, `lsp-request-all!` and `lsp-notify!` are covered with examples in [Registering a language server](lsp.md#registering-a-language-server) and [Sending a custom request](#sending-a-custom-request). `lsp-position->char-offset`/`lsp-range->char-range`/`lsp-label-offsets->text` convert LSP wire units (UTF-16 or byte offsets, depending on the server's negotiated encoding) to editor-native char offsets. Always go through these rather than assuming a 1:1 mapping. `lsp-locations->places`'s column is an exact grapheme column when the target has an open buffer; otherwise it's the location's own wire `character` verbatim, since refining it would mean reading a file the user may never open.
 
 ## JSON handles
 
@@ -54,7 +54,7 @@ decoded hashmaps. Read one with these instead of `hash-ref`/`hash?`/`list?`:
 Other values stay ordinary hashmaps: `lsp-request!`'s `err`, `lsp-server-status`,
 and a `diagnostics-for-buffer` entry itself (outside its `'raw` field) are
 built by HUME, not decoded from server JSON, and read with `hash-ref` as
-usual; see [Advanced: custom requests](lsp.md#advanced-custom-requests) for
+usual; see [Sending a custom request](#sending-a-custom-request) for
 the `err`/`res` distinction in practice.
 
 | Call | Effect |
@@ -65,3 +65,66 @@ the `err`/`res` distinction in practice.
 | `(json-contains? j seg ...)` | `#t` iff the path resolves; a `null` value at the end still counts as present |
 | `(json-list j)` | `j`, a JSON array handle, as a Steel list of its elements (each one funneled through the same handle/native-value rule as `json-ref`). Errors if `j` isn't an array |
 | `(json-array? v)`, `(json-object? v)` | `#t` if `v` is a JSON handle onto an array/object, `#f` for anything else (including a non-handle value) |
+
+## Sending a custom request
+
+`lsp-request!` isn't limited to `core:lsp`'s own commands: any plugin can call it to reach
+a server extension the built-in feature set doesn't cover. This is how you'd add a command
+for rust-analyzer's `rust-analyzer/expandMacro`, which expands the macro under the cursor and
+returns its generated code:
+
+```scheme
+(define-command! "rust-expand-macro" "Show the expansion of the macro under the cursor."
+  (lambda (pane)
+    (lsp-request! pane "rust-analyzer/expandMacro" (lsp-position-params pane)
+      (lambda (err res)
+        (cond
+          (err (log! 'error (string-append "expand macro: " (hash-ref err 'message))))
+          ((void? res) (log! 'info "Not inside a macro"))
+          (else (show-popup! pane (json-ref res "expansion"))))))))
+```
+
+The shape is always the same three steps: send a request built from `lsp-position-params` or
+`lsp-primary-range-params`, transform the server's response, and hand the result to a UI or store
+builtin (`show-popup!`, `show-menu!`, `show-drawer-list!`, `apply-text-edits!`,
+`apply-workspace-edit!`, …). `err` and `res` are never both set. Check `err` first and stop
+on it, the way every built-in feature does. `res` is a JSON handle: read a field with
+`json-ref`/`json-contains?`/`json-list`, not `hash-ref`; a `null` response arrives as void, not `#f`.
+`err`, when set, is a hashmap with a `'kind` and a `'message`; read it with `hash-ref`, not
+`json-ref`. `'kind` says what went wrong: `'server` when the server answered with an error (its
+`'code` is then set too), `'timeout` when no answer came in time, `'unavailable` when no server
+could take the request (none supports it, or they are all still starting), `'stopped` when the
+server stopped or crashed before it answered, and `'unsent` when the params could not be sent to
+the server. The built-in features report `'unavailable` and `'stopped` as a plain message and
+every other kind as an error.
+
+When a buffer has several servers, the request goes to the first one in the language's server
+order that is running and can answer it. A request for a standard method such as
+`textDocument/hover` or `textDocument/formatting` is tied to that method's feature, using the same
+feature names as `set-language-servers!` (`'hover`, `'goto-definition`, `'format`, …): a server
+whose entry leaves that feature out, or that does not advertise it, is passed over. For any other
+method, name the feature with `#:feature`; giving it for a standard method is an error. `(lsp-servers pane #:method "textDocument/hover")` lists
+the servers such a request would reach. To reach one server in particular, such as the one an earlier
+answer came from, get its value from `(lsp-servers pane)` and pass `#:to server`.
+`(lsp-server-name server)` gives its name, `(lsp-capabilities server)` its capabilities, and
+`(lsp-capability server #:feature 'completion)` what it advertises for one feature.
+
+`lsp-request-all!` asks every server that can answer and calls back once, when all of them have,
+with `(err results)`: one `(hash 'server s 'err e 'result r)` per server, in order. It takes the same
+keywords except `#:to`; its params can also be a list of `(server . params)` pairs, giving each
+named server its own. That list must not be empty or name a server twice, and the method and
+`#:feature` still decide whether each of those servers is sent the request. When none of them
+can take it, the request counts as one no server can take.
+
+A request the user did not ask for (completion, inlay hints) should pass `#:unavailable 'empty`:
+a request no server can take then calls back with no error and an empty result, instead of an
+`'unavailable` error.
+
+The position in `lsp-position-params` (and the ranges in its siblings) is not a line and column
+pair you can read: servers count columns in different units, so each server receives the position
+in its own units when the request is sent. Add your own keys to the params hash, but take the
+position from these builtins rather than building one.
+
+`lsp-request!` also takes four keyword args for requests that fire more than once, or whose answer might arrive after the moment it was asked for has passed. `#:supersede "<key>"` cancels the caller's own previous still-pending request filed under the same key (every server it went to gets `$/cancelRequest` and the old callback never fires), which is how completion's re-request of an incomplete list avoids piling up stale requests as you type. `#:allow-stale #t` lets the callback run even if the buffer has changed since the request was sent, for requests where a slightly-out-of-date answer is still useful. `#:require-focus #t` drops the callback entirely unless the exact pane you called it from is still the one you're looking at, still showing the same buffer, by the time the answer arrives. Hover, signature help, and code actions use it, so a slow answer never pops up over whatever you've moved on to, even if that's just a different split on the same file. `#:tracked token` takes a `track-position!` token for the position the request was asked about: the token follows edits made while the request is pending, and is forgotten once the callback has run, unless the callback calls `keep-tracked-position!`.
+
+A server's response sometimes carries its own position or range rather than the one you sent, such as a related location returned inside `res`, say. Convert it back into a plain buffer offset with `lsp-position->char-offset`/`lsp-range->char-range` before using it with any editing command; `lsp-position->char-offset` returns `#f` for a position at or past the end of the text, and `lsp-range->char-range` for a range reaching a line past the end of the document.

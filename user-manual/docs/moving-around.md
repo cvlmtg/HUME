@@ -14,10 +14,11 @@ All movement happens in Normal mode. Motions move the cursor and change the curr
 | `k` | One line up |
 | `w`/`W` | Select next word/WORD |
 | `b`/`B` | Select previous word/WORD |
+| `x`/`X` | Select the current line, then the next/previous one on each press (see [Whole lines](selections.md#whole-lines)) |
 
-A `word` breaks at punctuation, so `don't` is three `words`. A `WORD` only breaks at spaces, so `don't` is one `WORD`. Set `word-chars` (see [Configuration](configuration.md)) to widen what counts as a word, e.g. `-` makes `foo-bar` one `word` instead of three.
+A `word` breaks at punctuation, so `don't` is three `words`. A `WORD` only breaks at spaces, so `don't` is one `WORD`. Set `word-chars` (see [Buffer options](settings.md#buffer-options)) to widen what counts as a word, e.g. `-` makes `foo-bar` one `word` instead of three.
 
-By default, `w`/`W`/`b`/`B` also cover the whitespace *before* the destination word. When no whitespace precedes the word (the first word of a line, where a leading run would be indentation, or a word that directly follows punctuation), they cover its *trailing* whitespace instead. This means deleting a word never leaves a double space behind. Use `:set global word-selects-whitespace=after` (or per buffer) to prefer the whitespace *after* the word instead, or `=off` to select just the bare word. See [Configuration](configuration.md).
+By default, `w`/`W`/`b`/`B` also cover the whitespace *before* the destination word. When no whitespace precedes the word (the first word of a line, where a leading run would be indentation, or a word that directly follows punctuation), they cover its *trailing* whitespace instead. This means deleting a word never leaves a double space behind. Use `:set global word-selects-whitespace=after` (or per buffer) to prefer the whitespace *after* the word instead, or `=off` to select just the bare word. See [Buffer options](settings.md#buffer-options).
 
 <div class="key-demo">
 <strong>Cursor on the first character, press <code>w</code></strong><br>
@@ -70,7 +71,11 @@ The idiomatic line movements live under the `g` prefix:
 |-----|----------|
 | `#` | Jump to the matching bracket or tag |
 
-For a bracket on a single line, `#` looks at the whole selection, not just where the cursor sits, so it still finds `(` `)` `[` `]` `{` `}` after a selecting motion leaves the cursor just past one. A selection spanning multiple lines only looks at the character the cursor sits on, same as a tag. For an HTML/XML/JSX tag, the cursor itself must be inside the tag's own markup (its `<`, its `>`, the name, or an attribute), not just anywhere in the selection. Anywhere else, `#` does nothing. From an opening bracket or tag it jumps to the closing one, and back again from the closing side. A count has no effect: `#` always jumps to the immediate partner.
+From an opening bracket or tag, `#` jumps to the closing one, and back again from the closing side.
+
+::: details Where the cursor needs to be
+For a bracket on a single line, `#` looks at the whole selection, not just where the cursor sits, so it still finds `(` `)` `[` `]` `{` `}` after a selecting motion leaves the cursor just past one. A selection spanning multiple lines only looks at the character the cursor sits on, same as a tag. For an HTML/XML/JSX tag, the cursor itself must be inside the tag's own markup (its `<`, its `>`, the name, or an attribute), not just anywhere in the selection. Anywhere else, `#` does nothing. A count has no effect: `#` always jumps to the immediate partner.
+:::
 
 ## Structural navigation
 
@@ -89,8 +94,7 @@ and select it as a whole, cursor (head) on its first character:
 | `g x` / `g X` | `goto-next-tag` / `goto-prev-tag` | The next/previous tag pair |
 
 Lowercase jumps forward, uppercase jumps backward, with the same letter each kind uses as its
-[text object](selections.md) key. Each also runs from the command mode prompt, e.g.
-`:goto-next-function`. They stop at either end of the buffer instead of wrapping, and each
+[text object](selections.md) key. They stop at either end of the buffer instead of wrapping, and each
 records a jump-list entry, so `Ctrl-o` returns to where you jumped from. Without a matching
 grammar, `g x`/`g X` find tags with a lexical scan, and every other one of these commands is a
 silent no-op.

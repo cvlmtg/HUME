@@ -8,7 +8,7 @@ to restate it.
 For end-user setup and configuration, see the manual's
 [Core Plugins](https://cvlmtg.github.io/HUME/core-plugins.html) page. For the general
 plugin-authoring API (not core-specific), see
-[Writing a plugin](https://cvlmtg.github.io/HUME/plugins.html#writing-a-plugin).
+[Writing a plugin](https://cvlmtg.github.io/HUME/writing-plugins.html).
 
 ## Catalog
 
@@ -65,7 +65,7 @@ satisfy a dependency, even for a call made at the dependent plugin's own load ti
 retries. Every core plugin that depends on `stdlib` checks `(declared-plugins)` for it at
 load time and errors immediately if it's missing (the message says to add `(load-plugin! "core:stdlib")` first), rather than letting a missing dependency
 surface later as a `call!` failure buried in a command few users exercise. See the
-manual's [Depending on another plugin](https://cvlmtg.github.io/HUME/plugins.html#depending-on-another-plugin)
+manual's [Depending on another plugin](https://cvlmtg.github.io/HUME/writing-plugins.html#depending-on-another-plugin)
 for the full mechanism, including the stronger `(loaded-plugins)` check.
 
 **Pitfall:** if `core:stdlib` (or any dependency) is declared with an explicit

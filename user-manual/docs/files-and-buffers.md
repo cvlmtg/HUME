@@ -73,7 +73,7 @@ Splitting is refused with a message when the pane is already too small to divide
 
 `:q` is pane-aware: with multiple panes open it closes the focused pane and leaves the buffer in the buffer list. With a single pane it closes the current buffer and moves you to another one, quitting HUME only when there's nothing left to go back to. Unsaved changes block it; use `:q!` to discard them.
 
-A divider is drawn between panes (controlled by the `pane-dividers` option, on by default), and the pane without focus is dimmed. Wrap normally follows the buffer/global setting, but it can be pinned per pane: `:wrap` toggles it on/off for the focused pane, and `:set pane wrap-mode=<value>` pins its style directly, so two panes on the same buffer can wrap independently once pinned. See [Text wrap](configuration.md#text-wrap).
+A divider is drawn between panes (controlled by the `pane-dividers` option, on by default), and the pane without focus is dimmed. Wrap normally follows the buffer/global setting, but it can be pinned per pane: `:wrap` toggles it on/off for the focused pane, and `:set pane wrap-mode=<value>` pins its style directly, so two panes on the same buffer can wrap independently once pinned. See [Text wrap](settings.md#text-wrap).
 
 ## Tabs
 

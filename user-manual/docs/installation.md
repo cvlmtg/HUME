@@ -1,6 +1,6 @@
 # Installation
 
-HUME is a single binary with no runtime dependencies. Download it, run it, and you have an editor. Syntax highlighting and language servers are added later, on demand, only for the languages you actually use.
+HUME ships as one archive: the editor plus the themes, plugins and language definitions it reads at runtime. Download it, extract it, run it, and you have an editor. Syntax highlighting and language servers are added later, on demand, only for the languages you actually use.
 
 ## Download
 
@@ -105,7 +105,7 @@ export HUME_RUNTIME=/path/to/HUME/runtime
 
 ## Syntax highlighting
 
-HUME highlights code with tree-sitter, and installs grammars on demand rather than shipping them. That first install needs `git`, `curl`, the `tree-sitter` CLI, and a C compiler on your `PATH`. See [Syntax Highlighting](syntax-highlighting.md) for the walkthrough.
+HUME highlights code with tree-sitter, and installs grammars on demand rather than shipping them. That first install needs `git`, `curl`, the tree-sitter CLI (`tree-sitter-cli`), and a C compiler on your `PATH`. See [Syntax Highlighting](syntax-highlighting.md) for the walkthrough.
 
 ## Terminal compatibility
 

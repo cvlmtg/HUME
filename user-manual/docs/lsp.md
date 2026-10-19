@@ -12,7 +12,7 @@ Bring in `core:lsp` and `core:lsp-install` from your [`init.scm`](configuration.
 plugins) and make sure a server is registered, and named in the language's list, for the
 languages you use. The easiest way to get a server, which does both, is [`:lsp-install`](#installing-servers): run it once per language and it downloads,
 verifies, and registers the server in one step, no separate download tool needed. If
-you'd rather manage a server yourself (a local build, a version the seeded catalog
+you'd rather manage a server yourself (a local build, a version HUME's catalog
 doesn't carry, or a `$PATH` copy you want to take precedence), register it by hand
 instead. See [Registering a language server](#registering-a-language-server).
 
@@ -22,37 +22,9 @@ instead. See [Registering a language server](#registering-a-language-server).
 (load-plugin! "core:lsp-install")  ; :lsp-install and friends; leave it out to manage servers yourself
 ```
 
-Both plugins load lazily, which keeps startup fast: `core:lsp` activates the first time any file with a recognized language opens, or you run one of its commands directly. `core:lsp-install` registers servers you already installed when a file with a recognized language opens, and loads the rest of itself the first time you run `:lsp-install`, `:lsp-uninstall` or `:lsp-catalog`.
+Neither plugin slows down startup: each starts the first time you open a file in a language it knows, or run one of its commands.
 
-Want activation to only trigger for specific languages, or a smaller set of commands?
-Pass `#:languages`/`#:commands`/`#:typed-commands`/`#:events` to `declare-plugin!` before the
-`load-plugin!` line, and it uses what you list instead of the defaults:
-
-```scheme
-(declare-plugin! "core:lsp"
-  #:languages '("rust")   ; only activate for languages you name here
-  #:commands '("lsp/hover" "lsp/goto-definition" "lsp/goto-declaration"
-               "lsp/goto-type-definition" "lsp/goto-implementation" "lsp/references"
-               "lsp/goto-next-diagnostic" "lsp/goto-prev-diagnostic"
-               "lsp/rename" "lsp/format-source" "lsp/format-document" "lsp/code-actions"
-               "lsp/document-symbols" "lsp/workspace-symbols")
-  #:typed-commands '("diagnostics" "format-source"
-                      "lsp-status" "lsp-stop" "lsp-restart"))
-(load-plugin! "core:lsp")
-```
-
-::: warning
-`#:events '(on-lsp-attach)` by itself never activates on its own. Nothing
-is registered yet, so nothing attaches, so the event that would trigger activation never
-fires. List the languages you want servers for in `#:languages`, or list the `lsp-*`
-commands in `#:commands`/`#:typed-commands` (as above). Either one gets you a working `core:lsp`.
-
-Completions are a separate case: `Ctrl-Space` and a server's trigger characters both run
-through the editor's own `completion-trigger` key, never through one of `core:lsp`'s own
-commands, so `#:commands`/`#:typed-commands` alone does not get completions working:
-`core:lsp` has to already be active. List the languages you use in `#:languages` to get
-completions along with everything else.
-:::
+To start `core:lsp` only for some languages, or only from some commands, see [Choosing your own triggers](plugins.md#choosing-your-own-triggers).
 
 Opening a file attaches every server its language's list names, starting each one once per
 project root. A language's [list](#choosing-which-server-a-language-uses) is filled in by
@@ -103,7 +75,7 @@ Open a file in the language you want a server for, then run:
 :lsp-install
 ```
 
-Or name the language directly. Tab completes every language HUME has a seeded server for, and every installable server:
+Or name the language directly. Tab completes every language HUME's catalog has a server for, and every installable server:
 
 ```
 :lsp-install rust
@@ -111,7 +83,7 @@ Or name the language directly. Tab completes every language HUME has a seeded se
 
 HUME downloads the pinned release, verifies its checksum, unpacks it, and registers it;
 already-open buffers of that language attach immediately, no restart needed. Running
-`:lsp-install` again for a server that's already at the latest seeded version never
+`:lsp-install` again for a server that's already at the version HUME pins never
 re-downloads. A download or build replaces a server you've registered by hand under the
 same name; to keep your own, register it under a name of its own.
 
@@ -153,7 +125,7 @@ with `register-lsp-server!` below.
 Shuts down any running client for that server, unregisters it, and removes it from disk. Use
 the server's name from `:lsp-catalog`, not the language name, e.g.
 `:lsp-uninstall rust-analyzer`, not `:lsp-uninstall rust`. Tab completes every server with an
-install directory on disk, including an orphan one no longer in the seeded catalog.
+install directory on disk, including an orphan one no longer in HUME's catalog.
 
 Reinstalling a server that's already running (e.g. to pick up an update) shuts the old client
 down first. If the install fails anyway (a locked file on Windows is the usual reason), the
@@ -189,13 +161,13 @@ precedence: register it under the same name `:lsp-catalog` shows for the managed
 ## Registering a language server
 
 Registering by hand is only needed if you're not using
-[`:lsp-install`](#installing-servers): a locally built server, a version the seeded
+[`:lsp-install`](#installing-servers): a locally built server, a version HUME's
 catalog doesn't carry, or a `$PATH` copy you want to take precedence over a managed install.
 `register-lsp-server!` itself has no dependency on `core:lsp`, but the
 [managing-servers commands](#managing-servers) below (`:lsp-status`, `:lsp-stop`,
 `:lsp-restart`) are `core:lsp` commands, so a manually registered server still needs
 `core:lsp` loaded to inspect, stop, or restart it. A manual `register-lsp-server!`
-call under the same name as a seeded, installed server replaces it, whether it comes
+call under the same name as a server installed with `:lsp-install` replaces it, whether it comes
 before or after `(load-plugin! "core:lsp")` in your init.scm; order doesn't matter.
 
 A registration says how to start a server. A server serves a language only once that
@@ -345,7 +317,6 @@ Changing either and running `:reload-config` updates what HUME has stored, but a
 | `g p` | `lsp/goto-prev-diagnostic`       | Jump to the previous error/warning before the cursor (wraps) |
 | —     | `:diagnostics`               | List every diagnostic in the buffer, each with the tool that reported it |
 | —     | `:format-source`             | Format the selected lines if every selection spans one or more whole lines, the whole buffer if none do, or (with a warning) nothing if it's a mix of the two |
-| —     | `lsp/format-document`           | Format the whole buffer, or the ranges it is given, then call the `done` it is given (or `#f` for none). For save hooks: see [Format on save](#format-on-save) |
 | —     | `:toggle-inlay-hints`        | Show or hide inlay hints in the current buffer |
 | `Ctrl-Space` (Insert) | `completion-trigger`        | Show completions at the cursor (an editor key, not this plugin's; the plugin supplies the server's candidates) |
 
@@ -382,7 +353,7 @@ the cursor is on and return when you leave Insert mode or move to another line. 
 
 The `lsp.*` options configure HUME's built-in language-server support, shared by every
 plugin that talks to a language server. They are global options, described in full in
-[Global options](configuration.md#global-options). Set them the same way as any other
+[Global options](settings.md#global-options). Set them the same way as any other
 global option:
 
 ```scheme
@@ -409,7 +380,7 @@ Not on by default. Add this to your `init.scm` to format the whole buffer every 
   (lambda (pane done) (call! "lsp/format-document" pane done)))
 ```
 
-The save waits for the language server's answer, and `:wa` formats buffers that no pane is showing too. If there is no server, or it fails or doesn't answer within `before-save-timeout-ms` (see [Configuration](configuration.md)), the buffer is saved as it is, and an answer that arrives later still formats the buffer, leaving it modified.
+The save waits for the language server's answer, and `:wa` formats buffers that no pane is showing too. If there is no server, or it fails or doesn't answer within `before-save-timeout-ms` (see [Global options](settings.md#global-options)), the buffer is saved as it is, and an answer that arrives later still formats the buffer, leaving it modified.
 
 ## Managing servers
 
@@ -428,65 +399,4 @@ again. A server that crashed stays down for its buffers until you run `:lsp-rest
 
 Server output and protocol errors are visible in `:messages`.
 
-## Advanced: custom requests
-
-Every signature is on the [Language Server API](lsp-api.md) page. `lsp-request!` isn't limited to the built-in commands above: any plugin can call it to reach
-a server extension the built-in feature set doesn't cover. This is how you'd add a command
-for rust-analyzer's `rust-analyzer/expandMacro`, which expands the macro under the cursor and
-returns its generated code:
-
-```scheme
-(define-command! "rust-expand-macro" "Show the expansion of the macro under the cursor."
-  (lambda (pane)
-    (lsp-request! pane "rust-analyzer/expandMacro" (lsp-position-params pane)
-      (lambda (err res)
-        (cond
-          (err (log! 'error (string-append "expand macro: " (hash-ref err 'message))))
-          ((void? res) (log! 'info "Not inside a macro"))
-          (else (show-popup! pane (json-ref res "expansion"))))))))
-```
-
-The shape is always the same three steps: send a request built from `lsp-position-params` or
-`lsp-primary-range-params`, transform the server's response, and hand the result to a UI or store
-builtin (`show-popup!`, `show-menu!`, `show-drawer-list!`, `apply-text-edits!`,
-`apply-workspace-edit!`, …). `err` and `res` are never both set. Check `err` first and stop
-on it, the way every built-in feature does. `res` is a JSON handle: read a field with
-`json-ref`/`json-contains?`/`json-list`, not `hash-ref`; a `null` response arrives as void, not `#f`.
-`err`, when set, is a hashmap with a `'kind` and a `'message`; read it with `hash-ref`, not
-`json-ref`. `'kind` says what went wrong: `'server` when the server answered with an error (its
-`'code` is then set too), `'timeout` when no answer came in time, `'unavailable` when no server
-could take the request (none supports it, or they are all still starting), `'stopped` when the
-server stopped or crashed before it answered, and `'unsent` when the params could not be sent to
-the server. The built-in features report `'unavailable` and `'stopped` as a plain message and
-every other kind as an error.
-
-When a buffer has several servers, the request goes to the first one in the language's server
-order that is running and can answer it. A request for a standard method such as
-`textDocument/hover` or `textDocument/formatting` is tied to that method's feature, using the same
-feature names as `set-language-servers!` (`'hover`, `'goto-definition`, `'format`, …): a server
-whose entry leaves that feature out, or that does not advertise it, is passed over. For any other
-method, name the feature with `#:feature`; giving it for a standard method is an error. `(lsp-servers pane #:method "textDocument/hover")` lists
-the servers such a request would reach. To reach one server in particular, such as the one an earlier
-answer came from, get its value from `(lsp-servers pane)` and pass `#:to server`.
-`(lsp-server-name server)` gives its name, `(lsp-capabilities server)` its capabilities, and
-`(lsp-capability server #:feature 'completion)` what it advertises for one feature.
-
-`lsp-request-all!` asks every server that can answer and calls back once, when all of them have,
-with `(err results)`: one `(hash 'server s 'err e 'result r)` per server, in order. It takes the same
-keywords except `#:to`; its params can also be a list of `(server . params)` pairs, giving each
-named server its own. That list must not be empty or name a server twice, and the method and
-`#:feature` still decide whether each of those servers is sent the request. When none of them
-can take it, the request counts as one no server can take.
-
-A request the user did not ask for (completion, inlay hints) should pass `#:unavailable 'empty`:
-a request no server can take then calls back with no error and an empty result, instead of an
-`'unavailable` error.
-
-The position in `lsp-position-params` (and the ranges in its siblings) is not a line and column
-pair you can read: servers count columns in different units, so each server receives the position
-in its own units when the request is sent. Add your own keys to the params hash, but take the
-position from these builtins rather than building one.
-
-`lsp-request!` also takes four keyword args for requests that fire more than once, or whose answer might arrive after the moment it was asked for has passed. `#:supersede "<key>"` cancels the caller's own previous still-pending request filed under the same key (every server it went to gets `$/cancelRequest` and the old callback never fires), which is how completion's re-request of an incomplete list avoids piling up stale requests as you type. `#:allow-stale #t` lets the callback run even if the buffer has changed since the request was sent, for requests where a slightly-out-of-date answer is still useful. `#:require-focus #t` drops the callback entirely unless the exact pane you called it from is still the one you're looking at, still showing the same buffer, by the time the answer arrives. Hover, signature help, and code actions use it, so a slow answer never pops up over whatever you've moved on to, even if that's just a different split on the same file. `#:tracked token` takes a `track-position!` token for the position the request was asked about: the token follows edits made while the request is pending, and is forgotten once the callback has run, unless the callback calls `keep-tracked-position!`.
-
-A server's response sometimes carries its own position or range rather than the one you sent, such as a related location returned inside `res`, say. Convert it back into a plain buffer offset with `lsp-position->char-offset`/`lsp-range->char-range` before using it with any editing command; `lsp-position->char-offset` returns `#f` for a position at or past the end of the text, and `lsp-range->char-range` for a range reaching a line past the end of the document.
+A plugin can also send a server requests of its own, such as a server extension `core:lsp` doesn't use. See [Sending a custom request](lsp-api.md#sending-a-custom-request).

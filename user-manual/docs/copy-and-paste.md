@@ -10,7 +10,11 @@ HUME has two paste sources: the system clipboard and a kill ring that remembers 
 | `[` | Cycle one step older in the kill ring and re-paste |
 | `]` | Cycle one step newer in the kill ring and re-paste |
 
-With a real selection (more than a single character), `p` and `P` **replace** it, unless what you're pasting is already exactly the selected text, in which case they paste right alongside it instead, so pressing `p` again after a paste adds another copy rather than overwriting the first one. "After" and "before" apply on a bare cursor, or once a matching selection has collapsed this way. The replaced text (when something is replaced) is thrown away rather than pushed onto the kill ring.
+On a bare cursor, `p` pastes after it and `P` before it. With a real selection (more than a single character), they **replace** it, and the replaced text is thrown away rather than pushed onto the kill ring.
+
+::: details Pasting the text that is already selected
+When what you're pasting is the same as the selected text, `p` and `P` paste after or before the selection instead of replacing it, so pressing `p` again after a paste adds another copy rather than overwriting the first one.
+:::
 
 ## Lines and inline text
 

@@ -201,7 +201,7 @@ Buffers above a size threshold skip highlighting to stay responsive. The default
 (set-option! "syntax-highlight-max-bytes" 5242880)   ; raise to 5 MiB
 ```
 
-See [Configuration](configuration.md) for the full settings reference.
+See [Settings](settings.md) for the full settings reference.
 
 ## Troubleshooting
 
@@ -211,6 +211,6 @@ See [Configuration](configuration.md) for the full settings reference.
 
 **Detection picks the wrong language.** Override with `:set buffer language=<name>`, or add the file pattern to your `init.scm` with `define-language!`.
 
-**Colors look wrong after a HUME update.** The mirrored catalog may have moved. Run `:plum-cleanup-grammars`, then `:plum-install-grammar` again.
+**Colors look wrong after a HUME update.** The update may pin a different version of the grammar or its highlighting rules than the one you installed. Run `:plum-cleanup-grammars`, then `:plum-install-grammar` again.
 
 **A fenced code block doesn't highlight, but Markdown emphasis does.** The fenced language's own grammar isn't installed. Markdown's bold/italic/inline-code always come with the Markdown grammar itself, but a fence's language (` ```rust `, ` ```python `, …) is a separate grammar. Install it by name, e.g. `:plum-install-grammar rust` for a ` ```rust ` fence; no need to open a file in that language first.

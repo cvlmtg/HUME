@@ -8,6 +8,17 @@ A selection has two ends: the **anchor** and the **head**. The head is the movin
 
 ## Building a selection
 
+### Whole lines
+
+| Key | Effect |
+|-----|--------|
+| `x` | Select the current line. On a line that is already selected, select the next line instead |
+| `X` | Select the current line. On a line that is already selected, select the line above instead |
+| `Ctrl-x` | Grow the selection by one line downward |
+| `Ctrl-Shift-x` | Grow the selection by one line upward, or shrink one grown downward (kitty only) |
+
+`x` then `d` deletes a line, `x` then `y` copies it. Each `x` replaces the selection rather than adding to it, so pressing `x` three times leaves only the third line selected. To select three lines, press `x` then `Ctrl-x` twice, or use [Extend mode](#extend-mode).
+
 ### Extend mode
 
 Press `e` to enter Extend mode. In Extend mode, every motion grows the selection instead of moving it, and moving back toward where you started shrinks it again, since only the moving end travels while the anchor stays put. Press `e` again or `Esc` to return to Normal. The status bar shows `EXT` while Extend mode is active.
@@ -84,7 +95,7 @@ Two shortcuts select the word under the cursor directly:
 
 | Key | Effect |
 |-----|--------|
-| `m m` | Word under the cursor, same as `m a w` (plus one adjacent whitespace run by default, same rule as `w`/`b`; set `word-selects-whitespace` to `off` for `m i w` instead; see [Configuration](configuration.md)) |
+| `m m` | Word under the cursor, same as `m a w` (plus one adjacent whitespace run by default, same rule as `w`/`b`; set `word-selects-whitespace` to `off` for `m i w` instead; see [Buffer options](settings.md#buffer-options)) |
 | `M M` | WORD under the cursor, same as `m a W` |
 
 `m i` selects just the structure's content; `m a` includes what surrounds it: one adjacent whitespace run for words, the delimiters themselves for brackets:

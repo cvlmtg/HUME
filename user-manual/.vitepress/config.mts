@@ -88,21 +88,29 @@ export default defineConfig({
         ],
       },
       {
+        text: 'Coming From',
+        items: [
+          { text: 'Vim / Neovim', link: '/from-vim' },
+          { text: 'Helix', link: '/from-helix' },
+          { text: 'Kakoune', link: '/from-kakoune' },
+        ],
+      },
+      {
         text: 'Editing',
         items: [
           { text: 'Moving Around', link: '/moving-around' },
           { text: 'Editing', link: '/editing' },
           { text: 'Copy & Paste', link: '/copy-and-paste' },
           { text: 'Selections', link: '/selections' },
-          { text: 'Language Servers', link: '/lsp' },
         ],
       },
       {
-        text: 'Files & Syntax',
+        text: 'Files & Languages',
         items: [
           { text: 'Files & Buffers', link: '/files-and-buffers' },
           { text: 'Fuzzy Finder', link: '/pickers' },
           { text: 'Syntax Highlighting', link: '/syntax-highlighting' },
+          { text: 'Language Servers', link: '/lsp' },
         ],
       },
       {
@@ -119,19 +127,18 @@ export default defineConfig({
         items: [
           { text: 'Command-line Flags', link: '/cli' },
           { text: 'Command mode', link: '/command-mode' },
+          { text: 'Settings', link: '/settings' },
           { text: 'Default Keys', link: '/default-keys' },
-          { text: 'Plugin API', link: '/plugin-api' },
-          { text: 'Language Server API', link: '/lsp-api' },
           { text: 'Builtin Commands', link: '/builtin-commands' },
-          { text: 'Standard Library', link: '/standard-library' },
         ],
       },
       {
-        text: 'Coming From',
+        text: 'Extending HUME',
         items: [
-          { text: 'Vim / Neovim', link: '/from-vim' },
-          { text: 'Helix', link: '/from-helix' },
-          { text: 'Kakoune', link: '/from-kakoune' },
+          { text: 'Writing Plugins', link: '/writing-plugins' },
+          { text: 'Plugin API', link: '/plugin-api' },
+          { text: 'Language Server API', link: '/lsp-api' },
+          { text: 'Standard Library', link: '/standard-library' },
         ],
       },
     ]),

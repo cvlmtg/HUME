@@ -43,18 +43,19 @@ jobs:
           fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
+      # The manual includes runtime files by a path relative to its own
+      # source dir, so the tag's copies are extracted in the repo's layout.
       - name: Check out release channel docs
-        working-directory: user-manual
         run: |
-          rm -rf docs-release
-          mkdir docs-release
-          git archive "${{ steps.release.outputs.tag }}" docs | tar -x -C docs-release --strip-components=1
+          rm -rf user-manual/docs-release
+          mkdir user-manual/docs-release
+          git archive "${{ steps.release.outputs.tag }}" user-manual/docs runtime/init.scm.example | tar -x -C user-manual/docs-release
 
       - name: Build release channel
         working-directory: user-manual
         env:
           DOCS_CHANNEL: release
-          DOCS_SRC: docs-release
+          DOCS_SRC: docs-release/user-manual/docs
           DOCS_BASE: /HUME/
           DOCS_OUT: .vitepress/dist-release
           DOCS_RELEASE_TAG: ${{ steps.release.outputs.tag }}
