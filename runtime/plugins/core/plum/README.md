@@ -126,7 +126,7 @@ inside the handler corrupts Steel's VM stack when a caller has a handler of its 
 `:plum-install-plugins` installs only missing plugins, so a changed pin reaches an
 installed plugin through `:plum-update-plugins`.
 `load-plugin!` raises for a ref `git check-ref-format` would refuse, for one starting
-with `-`, which `git` would read as an option, and for a ref on a `core:` plugin.
+with `-`, which no tag or branch name can, and for a ref on a `core:` plugin.
 
 ### Grammar sources and the Helix pin
 

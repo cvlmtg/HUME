@@ -33,9 +33,35 @@ impl Resolution {
 /// What one `load-plugin!` call passed.
 pub(crate) struct LoadCall {
     pub(crate) config: SteelVal,
-    /// The `#:ref` PLUM checks the plugin's clone out at: a tag, a branch or a
-    /// full commit id.
-    pub(crate) git_ref: Option<String>,
+    /// The `#:ref` PLUM checks the plugin's clone out at.
+    pub(crate) git_ref: Option<GitRef>,
+}
+
+/// A tag, a branch or a commit id, full or abbreviated: a name
+/// `git check-ref-format --allow-onelevel` accepts, so a ref git would refuse
+/// fails when `init.scm` loads rather than at install time.
+pub(crate) struct GitRef(String);
+
+impl GitRef {
+    /// `None` for a name git refuses. That includes a leading `-`, which git
+    /// refuses for a tag or branch name, so such a ref could never resolve.
+    pub(crate) fn parse(name: String) -> Option<Self> {
+        let forbidden = |c: char| c.is_ascii_control() || " ~^:?*[\\".contains(c);
+        let valid = name != "@"
+            && !name.starts_with('-')
+            && !name.contains(forbidden)
+            && !name.contains("..")
+            && !name.contains("@{")
+            && !name.ends_with('.')
+            && name
+                .split('/')
+                .all(|part| !part.is_empty() && !part.starts_with('.') && !part.ends_with(".lock"));
+        valid.then_some(Self(name))
+    }
+
+    pub(crate) fn as_str(&self) -> &str {
+        &self.0
+    }
 }
 
 pub(crate) struct PluginRecord {
@@ -87,7 +113,7 @@ impl PluginRecords {
 
     /// The `#:ref` `load-plugin!` last passed for `id`.
     pub(crate) fn git_ref(&self, id: &PluginId) -> Option<&str> {
-        self.load(id)?.git_ref.as_deref()
+        self.load(id)?.git_ref.as_ref().map(GitRef::as_str)
     }
 
     pub(crate) fn was_loaded(&self, id: &PluginId) -> bool {

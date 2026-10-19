@@ -269,11 +269,11 @@ fn apply_text_edits_range_past_the_document_end_rejected() {
         "a range past the document end must reject with no partial application"
     );
     assert!(
-        logged_errors(&ed)
+        error_log(&ed)
             .iter()
             .any(|e| e.contains("past the end of the document")),
         "the error must say why: {:?}",
-        logged_errors(&ed)
+        error_log(&ed)
     );
 }
 
@@ -1401,15 +1401,6 @@ fn switch_pane_before_reply(ed: &mut Editor) -> BufferId {
     requested
 }
 
-fn logged_errors(ed: &Editor) -> Vec<String> {
-    ed.state
-        .message_log
-        .entries()
-        .filter(|e| e.severity == Severity::Error)
-        .map(|e| e.text.to_string())
-        .collect()
-}
-
 fn workspace_edit_of(file: &std::path::Path, new_text: &str) -> serde_json::Value {
     let canonical = std::fs::canonicalize(file).unwrap();
     let uri = hume_lsp::uri::path_to_uri(&canonical).unwrap();
@@ -1439,7 +1430,7 @@ fn apply_workspace_edit_after_the_pane_switches_buffers_applies() {
     let canonical = std::fs::canonicalize(&file).unwrap();
     let bid = ed.state.buffers.find_by_path(&canonical).unwrap();
     assert_eq!(ed.state.buffers.get(bid).text().to_string(), "XYZdef\n");
-    assert_eq!(logged_errors(&ed), Vec::<String>::new());
+    assert_eq!(error_log(&ed), Vec::<String>::new());
 }
 
 #[test]
@@ -1489,5 +1480,5 @@ fn apply_text_edits_through_a_pane_that_switched_buffers_edits_its_buffer() {
         ed.state.buffers.get(requested).text().to_string(),
         "ZZabcdef\n"
     );
-    assert_eq!(logged_errors(&ed), Vec::<String>::new());
+    assert_eq!(error_log(&ed), Vec::<String>::new());
 }

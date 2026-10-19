@@ -87,10 +87,9 @@
   (lambda (pane arg)
     (let ((slug (plum/parse-slug "plum-install-theme" arg)))
       (when slug
-        (let* ((src-dir (plum/theme-src-dir slug))
-               (old-names (plum/repo-theme-names slug)))
+        (let ((old-names (plum/repo-theme-names slug)))
           (log! 'info (string-append "PLUM: installing theme repo " slug))
-          (plum/install-repo! (plum/github-url slug) src-dir #f
+          (plum/install-repo! (plum/github-url slug) (plum/theme-src-dir slug) #f
             #:build (lambda (dir) (plum/require-theme-names slug dir)))
           (let ((names (plum/sync-theme-files! slug old-names)))
             (log! 'info (string-append "PLUM: installed " slug ": " (string-join names ", ")))

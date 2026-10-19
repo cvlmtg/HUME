@@ -15,14 +15,6 @@ pub(in crate::editor::tests) fn on_disk(file: &tempfile::TempPath) -> String {
     std::fs::read_to_string(file).unwrap()
 }
 
-pub(in crate::editor::tests) fn errors(ed: &Editor) -> usize {
-    ed.state
-        .message_log
-        .entries()
-        .filter(|e| e.severity == Severity::Error)
-        .count()
-}
-
 const ASYNC_HANDLER: &str = r#"
 (define held-done #f)
 (register-hook! 'on-before-buffer-save (lambda (pane done) (set! held-done done)))
@@ -62,7 +54,11 @@ fn async_handler_holds_the_write_until_done() {
     type_cmd(&mut ed, ":finish");
     ed.settle();
     assert_eq!(on_disk(&file), "b\n");
-    assert_eq!(errors(&ed), 0, "a second done call must do nothing");
+    assert_eq!(
+        error_log(&ed).len(),
+        0,
+        "a second done call must do nothing"
+    );
 }
 
 #[test]
@@ -123,7 +119,11 @@ fn a_failing_handler_does_not_block_the_write() {
     ed.settle();
 
     assert_eq!(on_disk(&file), "ab\n");
-    assert_eq!(errors(&ed), 1, "the handler's error must be reported");
+    assert_eq!(
+        error_log(&ed).len(),
+        1,
+        "the handler's error must be reported"
+    );
 }
 
 #[test]
@@ -180,7 +180,7 @@ fn done_after_the_write_committed_does_nothing() {
 
     type_cmd(&mut ed, ":late");
     ed.settle();
-    assert_eq!(errors(&ed), 0);
+    assert_eq!(error_log(&ed).len(), 0);
 }
 
 #[test]
@@ -480,7 +480,7 @@ fn write_all_lists_a_held_member_whose_file_changed_on_disk_as_skipped() {
     assert_eq!(on_disk(stale), "changed by someone else\n");
     assert!(written(other, other_before));
     assert_ne!(stale_before, on_disk(stale));
-    assert_eq!(errors(&ed), 0);
+    assert_eq!(error_log(&ed).len(), 0);
     assert_eq!(warnings(&ed), 1);
 }
 

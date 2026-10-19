@@ -15,13 +15,7 @@ fn plum_plugin_loads_with_real_language_data() {
     let mut ed = editor_from("-[x]>\n");
     load_plum(&mut ed, data_tmp.path());
 
-    let errors: Vec<&str> = ed
-        .state
-        .message_log
-        .entries()
-        .filter(|e| e.severity == Severity::Error)
-        .map(|e| e.text.as_str())
-        .collect();
+    let errors = error_log(&ed);
     assert!(
         errors.is_empty(),
         "loading core:plum against the real language data must not error: {errors:?}"
@@ -43,13 +37,7 @@ fn plum_list_runs_with_no_errors_against_empty_data_dir() {
 
     type_cmd(&mut ed, ":plum-list-plugins");
 
-    let errors: Vec<&str> = ed
-        .state
-        .message_log
-        .entries()
-        .filter(|e| e.severity == Severity::Error)
-        .map(|e| e.text.as_str())
-        .collect();
+    let errors = error_log(&ed);
     assert!(
         errors.is_empty(),
         ":plum-list-plugins against an empty data dir must not error: {errors:?}"
@@ -140,13 +128,7 @@ fn plum_installed_plugins_skips_a_stray_file_in_the_plugins_dir() {
 
     type_cmd(&mut ed, ":plum-list-plugins");
 
-    let errors: Vec<&str> = ed
-        .state
-        .message_log
-        .entries()
-        .filter(|e| e.severity == Severity::Error)
-        .map(|e| e.text.as_str())
-        .collect();
+    let errors = error_log(&ed);
     assert!(
         errors.is_empty(),
         ":plum-list-plugins must skip a stray file in <data>/plugins/, not raise: {errors:?}"
@@ -170,13 +152,7 @@ fn plum_cleanup_removes_orphan_plugin_directory() {
 
     type_cmd(&mut ed, ":plum-cleanup-plugins");
 
-    let errors: Vec<&str> = ed
-        .state
-        .message_log
-        .entries()
-        .filter(|e| e.severity == Severity::Error)
-        .map(|e| e.text.as_str())
-        .collect();
+    let errors = error_log(&ed);
     assert!(
         errors.is_empty(),
         ":plum-cleanup-plugins must not error: {errors:?}"

@@ -2,7 +2,7 @@
 // A directory in place of a file makes the write fail on unix.
 
 use super::*;
-use crate::editor::tests::before_save::{errors, two_dirty_buffers};
+use crate::editor::tests::before_save::two_dirty_buffers;
 
 fn replace_with_directory(file: &tempfile::TempPath) {
     std::fs::remove_file(file).unwrap();
@@ -36,7 +36,7 @@ fn write_all_hard_error_drops_the_members_not_yet_written() {
     type_cmd(&mut ed, ":release");
     ed.settle();
 
-    assert_eq!(errors(&ed), 1);
+    assert_eq!(error_log(&ed).len(), 1);
     std::fs::remove_dir(&file_a).unwrap();
     std::fs::remove_dir(&file_b).unwrap();
 }
@@ -50,7 +50,7 @@ fn write_all_hard_error_stops_before_later_buffers() {
     type_cmd(&mut ed, ":wa!");
     ed.settle();
 
-    assert_eq!(errors(&ed), 1);
+    assert_eq!(error_log(&ed).len(), 1);
     std::fs::remove_dir(&file_a).unwrap();
     std::fs::remove_dir(&file_b).unwrap();
 }

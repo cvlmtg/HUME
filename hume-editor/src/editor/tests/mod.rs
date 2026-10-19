@@ -357,6 +357,34 @@ fn has_error(ed: &Editor, needle: &str) -> bool {
         .any(|e| e.severity == Severity::Error && e.text.contains(needle))
 }
 
+/// The text of every error in the message log, oldest first.
+fn error_log(ed: &Editor) -> Vec<String> {
+    ed.state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Error)
+        .map(|e| e.text.to_string())
+        .collect()
+}
+
+/// Runs `git <args>` in `dir`, asserting success.
+fn git(dir: &std::path::Path, args: &[&str]) {
+    let status = std::process::Command::new("git")
+        .args(args)
+        .current_dir(dir)
+        .status()
+        .expect("spawn git");
+    assert!(status.success(), "git {args:?} in {dir:?} failed");
+}
+
+/// `git init -q` plus a local commit identity: a fresh sandbox has neither,
+/// and `git commit` fails without one.
+fn git_init(dir: &std::path::Path) {
+    git(dir, &["init", "-q"]);
+    git(dir, &["config", "user.email", "test@example.com"]);
+    git(dir, &["config", "user.name", "Test"]);
+}
+
 /// Extracts and parses the `params` payload back out of a scripted
 /// `publishDiagnostics` notification `Message`, for tests that call
 /// `ingest_publish_diagnostics`/`dispatch_lsp_action` directly rather than
@@ -1139,16 +1167,9 @@ fn load_with_init_in_runtime(
     ed.state.dirs.config = None;
 }
 
-/// Load the real `core:plum` plugin (plus its `core:stdlib` dependency:
-/// `plum/fetch-query!` etc. call `stdlib/find`/`stdlib/write-file!`/
-/// `stdlib/delete-dir!`/`stdlib/delete-file!` via `call!`): plugin/grammar/
-/// theme management, no LSP awareness at all.
-fn load_plum(ed: &mut Editor, data_dir: &std::path::Path) {
-    load_plum_after(ed, data_dir, "");
-}
-
-/// [`load_plum`] with `init_src` evaluated first, e.g. the `load-plugin!`
-/// lines of the plugins PLUM is to manage.
+/// Load the real `core:plum` plugin and its `core:stdlib` dependency, with
+/// `init_src` evaluated first, e.g. the `load-plugin!` lines of the plugins
+/// PLUM is to manage.
 fn load_plum_after(ed: &mut Editor, data_dir: &std::path::Path, init_src: &str) {
     load_with_init(
         ed,

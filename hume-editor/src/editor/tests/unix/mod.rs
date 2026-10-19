@@ -492,24 +492,6 @@ impl StagedGrammarFixture {
     }
 }
 
-/// Runs `git <args>` in `dir`, asserting success.
-fn git(dir: &Path, args: &[&str]) {
-    let status = std::process::Command::new("git")
-        .args(args)
-        .current_dir(dir)
-        .status()
-        .expect("spawn git");
-    assert!(status.success(), "git {args:?} failed");
-}
-
-/// `git init -q` plus a local commit identity: a fresh sandbox has neither,
-/// and `git commit` fails without one.
-fn git_init(dir: &Path) {
-    git(dir, &["init", "-q"]);
-    git(dir, &["config", "user.email", "test@example.com"]);
-    git(dir, &["config", "user.name", "Test"]);
-}
-
 // ── Shared plugin-loading helpers ─────────────────────────────────────────────
 //
 // Shared by every test file that loads a real core plugin from disk into an
@@ -523,6 +505,14 @@ fn git_init(dir: &Path) {
 /// mismatch what a registered command's absolute path actually contains.
 fn canonical_data_dir(root: &Path) -> PathBuf {
     root.canonicalize().unwrap().join("hume")
+}
+
+/// Load the real `core:plum` plugin (plus its `core:stdlib` dependency:
+/// `plum/fetch-query!` etc. call `stdlib/find`/`stdlib/write-file!`/
+/// `stdlib/delete-dir!`/`stdlib/delete-file!` via `call!`): plugin/grammar/
+/// theme management, no LSP awareness at all.
+fn load_plum(ed: &mut Editor, data_dir: &Path) {
+    load_plum_after(ed, data_dir, "");
 }
 
 /// Load the real `core:lsp-install` plugin only (plus its documented

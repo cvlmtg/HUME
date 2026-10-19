@@ -44,11 +44,10 @@
             (with-handler
               (lambda (err) (to-string err))
               (begin
-                (run-inline-output! "git" (list "init" "-q") #:cwd stage)
-                (run-inline-output! "git" (list "remote" "add" "--" "origin" url) #:cwd stage)
-                (run-inline-output! "git" (list "config" "remote.origin.promisor" "true") #:cwd stage)
-                (run-inline-output! "git" (list "config" "remote.origin.partialclonefilter" "blob:none")
-                                    #:cwd stage)
+                (plum/git! stage (list "init" "-q"))
+                (plum/git! stage (list "remote" "add" "--" "origin" url))
+                (plum/git! stage (list "config" "remote.origin.promisor" "true"))
+                (plum/git! stage (list "config" "remote.origin.partialclonefilter" "blob:none"))
                 (plum/git-sync! stage ref)
                 (when build (build stage))
                 #f))))
@@ -62,23 +61,26 @@
 ;;; Checks the clone in `dir` out at origin's `ref`, or its default branch for #f.
 ;;; See README.md's "Pinned plugins".
 (define (plum/git-sync! dir ref)
-  (if (and ref (not (plum/commit-id? ref 40)))
-      (begin
-        (run-inline-output! "git" (list "fetch" "--force" "--prune" "--tags" "origin") #:cwd dir)
-        (let ((id (plum/resolve-ref dir ref)))
-          (unless id
-            (error (string-append "no tag, branch or commit '" ref "' upstream; a short "
-                                  "commit id must be unambiguous and on a branch or tag")))
-          (run-inline-output! "git" (list "checkout" "--detach" id) #:cwd dir)))
-      (begin
-        (run-inline-output! "git" (list "fetch" "origin" (or ref "HEAD")) #:cwd dir)
-        (run-inline-output! "git" (list "checkout" "--detach" "FETCH_HEAD") #:cwd dir))))
+  (let ((by-name (and ref (not (plum/commit-id? ref 40)))))
+    (plum/git! dir (if by-name
+                       (list "fetch" "--force" "--prune" "--tags" "origin")
+                       (list "fetch" "origin" (or ref "HEAD"))))
+    (plum/git! dir (list "checkout" "--detach"
+                         (if by-name
+                             (or (plum/resolve-ref dir ref)
+                                 (error (string-append "no tag, branch or commit '" ref
+                                                       "' upstream; a short commit id must be "
+                                                       "unambiguous and on a branch or tag")))
+                             "FETCH_HEAD")))))
+
+(define (plum/git! dir args)
+  (run-inline-output! "git" args #:cwd dir))
 
 ;;; The commit `ref` names in the fetched clone in `dir`, or #f.
 (define (plum/resolve-ref dir ref)
-  (let loop ((candidates (cons (string-append "refs/tags/" ref)
-                               (cons (string-append "refs/remotes/origin/" ref)
-                                     (if (plum/commit-id? ref 4) (list ref) '())))))
+  (let loop ((candidates (append (list (string-append "refs/tags/" ref)
+                                       (string-append "refs/remotes/origin/" ref))
+                                 (if (plum/commit-id? ref 4) (list ref) '()))))
     (if (null? candidates)
         #f
         (let ((result (run-capture! "git"

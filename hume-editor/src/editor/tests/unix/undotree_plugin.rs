@@ -826,12 +826,7 @@ fn undotree_without_git_diff_opens_with_a_notice_and_no_diff() {
         ed.state.status_msg
     );
     assert!(diff_vlines(&ed, bid).is_empty());
-    let errors: Vec<_> = ed
-        .state
-        .message_log
-        .entries()
-        .filter(|e| e.severity == crate::editor::message_log::Severity::Error)
-        .collect();
+    let errors = error_log(&ed);
     assert!(errors.is_empty(), "no errors expected, got {errors:?}");
 
     toggle(&mut ed);

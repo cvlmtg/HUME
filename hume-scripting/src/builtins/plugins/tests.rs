@@ -2,7 +2,7 @@ use super::*;
 use hume_platform::dirs::Dirs;
 
 /// Eval `src` against a fresh host and return the error it must produce.
-fn declare_err(src: &str) -> String {
+fn eval_err(src: &str) -> String {
     use crate::ScriptingHost;
     use crate::null_host::CommandStoreHost;
     let mut host = ScriptingHost::new(&Dirs::none());
@@ -232,7 +232,7 @@ fn begin_lazy_activation_depth_cap_cleans_up_activation_entries_and_stub() {
 /// (`#:commands`/`#:events`/`#:languages`) shared by all three.
 #[test]
 fn declare_plugin_bad_commands_names_the_builtin() {
-    let err = declare_err(r#"(declare-plugin! "user/tp" #:commands '(1))"#);
+    let err = eval_err(r#"(declare-plugin! "user/tp" #:commands '(1))"#);
     assert!(
         err.contains("declare-plugin! #:commands"),
         "error must name the builtin; got: {err}"
@@ -244,7 +244,7 @@ fn declare_plugin_bad_commands_names_the_builtin() {
 /// `#:commands` only.
 #[test]
 fn declare_plugin_bad_typed_commands_names_the_builtin() {
-    let err = declare_err(r#"(declare-plugin! "user/tp" #:typed-commands '(1))"#);
+    let err = eval_err(r#"(declare-plugin! "user/tp" #:typed-commands '(1))"#);
     assert!(
         err.contains("declare-plugin! #:typed-commands"),
         "error must name the builtin; got: {err}"
@@ -255,7 +255,7 @@ fn declare_plugin_bad_typed_commands_names_the_builtin() {
 #[test]
 fn declare_plugin_unknown_hook_names_the_builtin() {
     let err =
-        declare_err(r#"(declare-plugin! "user/tp" #:commands '("c") #:events '(not-a-real-hook))"#);
+        eval_err(r#"(declare-plugin! "user/tp" #:commands '("c") #:events '(not-a-real-hook))"#);
     assert!(
         err.contains("declare-plugin! #:events"),
         "error must name the builtin; got: {err}"
@@ -266,7 +266,7 @@ fn declare_plugin_unknown_hook_names_the_builtin() {
 /// enforces. A string entry hard-errors instead of being silently accepted.
 #[test]
 fn declare_plugin_rejects_string_event_names() {
-    let err = declare_err(r#"(declare-plugin! "user/tp" #:events '("on-buffer-save"))"#);
+    let err = eval_err(r#"(declare-plugin! "user/tp" #:events '("on-buffer-save"))"#);
     assert!(
         err.contains("expected an event-name symbol"),
         "error must name the expected form; got: {err}"
@@ -726,34 +726,32 @@ fn declared_ref_after(src: &str, name: &str) -> SteelVal {
 
 #[test]
 fn declared_plugin_ref_is_the_last_load_plugin_calls_ref() {
-    let is_str = |v: SteelVal, want: &str| matches!(v, SteelVal::StringV(s) if s.as_str() == want);
-
-    assert!(is_str(
+    assert_eq!(
         declared_ref_after(r#"(load-plugin! "user/p" #:ref "v1.0")"#, "user/p"),
-        "v1.0"
-    ));
-    assert!(is_str(
+        SteelVal::StringV("v1.0".into())
+    );
+    assert_eq!(
         declared_ref_after(
             r#"(load-plugin! "user/p" #:ref "v1.0") (load-plugin! "user/p" #:ref "stable")"#,
             "user/p"
         ),
-        "stable"
-    ));
-    assert!(is_str(
+        SteelVal::StringV("stable".into())
+    );
+    assert_eq!(
         declared_ref_after(r#"(load-plugin! "user/p" #:ref "release/1.x")"#, "user/p"),
-        "release/1.x"
-    ));
-    assert!(matches!(
+        SteelVal::StringV("release/1.x".into())
+    );
+    assert_eq!(
         declared_ref_after(
             r#"(load-plugin! "user/p" #:ref "v1.0") (load-plugin! "user/p")"#,
             "user/p"
         ),
         SteelVal::BoolV(false)
-    ));
-    assert!(matches!(
+    );
+    assert_eq!(
         declared_ref_after(r#"(load-plugin! "user/p" #:ref "v1.0")"#, "user/other"),
         SteelVal::BoolV(false)
-    ));
+    );
 }
 
 #[test]
@@ -776,7 +774,7 @@ fn load_plugin_rejects_a_ref_git_cannot_take_or_a_core_plugin_cannot_use() {
         r#"(load-plugin! "user/p" #:ref "a.")"#,
         r#"(load-plugin! "core:stdlib" #:ref "v1.0")"#,
     ] {
-        let err = declare_err(src);
+        let err = eval_err(src);
         assert!(
             err.contains("load-plugin!: #:ref"),
             "{src} must be rejected for its #:ref; got: {err}"

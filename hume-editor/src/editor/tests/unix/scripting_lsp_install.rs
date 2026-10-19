@@ -44,13 +44,7 @@ fn plum_plugin_loads_cleanly() {
     let mut ed = editor_from("-[x]>\n");
     load_plum(&mut ed, data_tmp.path());
 
-    let errors: Vec<&str> = ed
-        .state
-        .message_log
-        .entries()
-        .filter(|e| e.severity == Severity::Error)
-        .map(|e| e.text.as_str())
-        .collect();
+    let errors = error_log(&ed);
     assert!(
         errors.is_empty(),
         "loading core:plum (plugins + grammars only) must not error: {errors:?}"
@@ -67,13 +61,7 @@ fn lsp_plugin_loads_with_real_lsp_catalogs() {
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
 
-    let errors: Vec<&str> = ed
-        .state
-        .message_log
-        .entries()
-        .filter(|e| e.severity == Severity::Error)
-        .map(|e| e.text.as_str())
-        .collect();
+    let errors = error_log(&ed);
     assert!(
         errors.is_empty(),
         "loading core:lsp-install against its real data files must not error: {errors:?}"
@@ -1082,13 +1070,7 @@ fn lsp_uninstall_of_never_installed_server_is_silent() {
     ed.drain_async_sources();
     ed.settle();
 
-    let errors: Vec<&str> = ed
-        .state
-        .message_log
-        .entries()
-        .filter(|e| e.severity == Severity::Error)
-        .map(|e| e.text.as_str())
-        .collect();
+    let errors = error_log(&ed);
     assert!(
         errors.is_empty(),
         "uninstalling an already-absent/never-installed server must succeed silently: {errors:?}"

@@ -419,13 +419,7 @@ fn signs_deletion_at_end_of_file_marks_last_content_line() {
          content line count"
     );
 
-    let errors: Vec<String> = ed
-        .state
-        .message_log
-        .entries()
-        .filter(|e| e.severity == Severity::Error)
-        .map(|e| e.text.clone())
-        .collect();
+    let errors = error_log(&ed);
     assert!(errors.is_empty(), "no out-of-range error; got {errors:?}");
 }
 
@@ -1344,13 +1338,7 @@ fn buffer_close_after_open_leaves_no_stray_error() {
     ed.execute_typed("bd", None).unwrap();
     wait_for_refresh(&mut ed);
 
-    let errors: Vec<String> = ed
-        .state
-        .message_log
-        .entries()
-        .filter(|e| e.severity == Severity::Error)
-        .map(|e| e.text.clone())
-        .collect();
+    let errors = error_log(&ed);
     assert!(
         errors.is_empty(),
         "a stray post-close callback must not error; got {errors:?}"
@@ -1498,13 +1486,7 @@ fn closing_the_buffer_during_a_branch_fetch_leaves_no_stray_error() {
     ed.execute_typed("bd", None).unwrap();
     wait_for_refresh(&mut ed);
 
-    let errors: Vec<String> = ed
-        .state
-        .message_log
-        .entries()
-        .filter(|e| e.severity == Severity::Error)
-        .map(|e| e.text.clone())
-        .collect();
+    let errors = error_log(&ed);
     assert!(
         errors.is_empty(),
         "a stray post-close branch callback must not error; got {errors:?}"

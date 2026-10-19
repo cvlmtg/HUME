@@ -229,13 +229,7 @@ fn a_command_execution_error_is_still_reported_after_an_intervening_edit() {
     ed.drain_lsp();
     ed.settle();
 
-    let errors: Vec<String> = ed
-        .state
-        .message_log
-        .entries()
-        .filter(|e| e.severity == Severity::Error)
-        .map(|e| e.text.clone())
-        .collect();
+    let errors = error_log(&ed);
     assert!(
         errors
             .iter()
@@ -422,13 +416,7 @@ fn selecting_an_unresolved_action_reports_a_stale_buffer_after_an_intervening_ed
         before_apply,
         "a stale-generation apply must be refused, leaving only the intervening edit"
     );
-    let errors: Vec<String> = ed
-        .state
-        .message_log
-        .entries()
-        .filter(|e| e.severity == Severity::Error)
-        .map(|e| e.text.clone())
-        .collect();
+    let errors = error_log(&ed);
     assert!(
         errors
             .iter()
@@ -535,13 +523,7 @@ fn selecting_an_unresolved_action_whose_resolve_errors_reports_it() {
     ed.drain_lsp();
     ed.settle();
 
-    let errors: Vec<String> = ed
-        .state
-        .message_log
-        .entries()
-        .filter(|e| e.severity == Severity::Error)
-        .map(|e| e.text.clone())
-        .collect();
+    let errors = error_log(&ed);
     assert!(
         errors
             .iter()

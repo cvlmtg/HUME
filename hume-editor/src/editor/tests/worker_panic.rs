@@ -4,15 +4,6 @@ use super::*;
 use hume_platform::worker_panic::WorkerPanics;
 use pretty_assertions::assert_eq;
 
-fn error_texts(ed: &Editor) -> Vec<String> {
-    ed.state
-        .message_log
-        .entries()
-        .filter(|e| e.severity == Severity::Error)
-        .map(|e| e.text.clone())
-        .collect()
-}
-
 #[test]
 fn a_worker_panic_is_reported_as_one_error() {
     let mut ed = editor_from("-[a]>bc\n");
@@ -22,7 +13,7 @@ fn a_worker_panic_is_reported_as_one_error() {
 
     ed.report_worker_panics();
 
-    let errors = error_texts(&ed);
+    let errors = error_log(&ed);
     assert_eq!(errors.len(), 1);
     insta::assert_snapshot!(
         errors[0],
@@ -41,7 +32,7 @@ fn a_worker_panic_is_reported_once() {
     ed.report_worker_panics();
     ed.report_worker_panics();
 
-    assert_eq!(error_texts(&ed).len(), 1);
+    assert_eq!(error_log(&ed).len(), 1);
 }
 
 #[test]
@@ -50,5 +41,5 @@ fn an_editor_with_no_worker_panics_reports_none() {
 
     ed.report_worker_panics();
 
-    assert!(error_texts(&ed).is_empty());
+    assert!(error_log(&ed).is_empty());
 }

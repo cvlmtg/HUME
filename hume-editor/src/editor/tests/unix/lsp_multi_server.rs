@@ -707,13 +707,6 @@ fn unsupported_feature_reports_at_info() {
 
     let status = rig.ed.state.status_msg.clone().unwrap_or_default();
     assert!(status.contains("hover is not supported"), "{status:?}");
-    let errors: Vec<String> = rig
-        .ed
-        .state
-        .message_log
-        .entries()
-        .filter(|e| e.severity == crate::editor::Severity::Error)
-        .map(|e| e.text.clone())
-        .collect();
+    let errors = error_log(&rig.ed);
     assert!(errors.is_empty(), "{errors:?}");
 }

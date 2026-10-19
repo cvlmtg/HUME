@@ -190,13 +190,7 @@ fn rename_reports_a_stale_buffer_after_an_intervening_edit() {
         before_apply,
         "a stale-generation apply must be refused, leaving only the intervening edit"
     );
-    let errors: Vec<String> = ed
-        .state
-        .message_log
-        .entries()
-        .filter(|e| e.severity == Severity::Error)
-        .map(|e| e.text.clone())
-        .collect();
+    let errors = error_log(&ed);
     assert!(
         errors
             .iter()

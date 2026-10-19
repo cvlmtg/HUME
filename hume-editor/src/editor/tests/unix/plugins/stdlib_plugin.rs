@@ -353,8 +353,6 @@ fn core_stdlib_run_covers_success_failure_and_spawn_error() {
 /// asserted literally, not derived from `stdlib/resolve-lang-arg` itself.
 #[test]
 fn core_stdlib_resolve_lang_arg_falls_back_then_warns() {
-    use crate::editor::Severity;
-
     let (mut ed, mut host, _guard, _init_dir) = setup_stdlib_editor();
 
     ed.state
@@ -382,13 +380,7 @@ fn core_stdlib_resolve_lang_arg_falls_back_then_warns() {
 
     type_cmd(&mut ed, ":probe-resolve-lang-arg");
 
-    let errors: Vec<String> = ed
-        .state
-        .message_log
-        .entries()
-        .filter(|e| e.severity == Severity::Error)
-        .map(|e| e.text.clone())
-        .collect();
+    let errors = error_log(&ed);
     assert!(
         errors.is_empty(),
         "resolve-lang-arg assertions must all pass: {errors:?}"
@@ -440,13 +432,7 @@ fn core_stdlib_split_words_uses_the_buffers_own_word_chars() {
 
     type_cmd(&mut ed, ":probe-split-words");
 
-    let errors: Vec<String> = ed
-        .state
-        .message_log
-        .entries()
-        .filter(|e| e.severity == crate::editor::Severity::Error)
-        .map(|e| e.text.clone())
-        .collect();
+    let errors = error_log(&ed);
     assert!(
         errors.is_empty(),
         "stdlib/split-words assertions must all pass: {errors:?}"

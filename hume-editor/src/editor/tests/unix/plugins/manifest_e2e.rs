@@ -15,7 +15,6 @@ use hume_scripting::PluginStatus;
 /// every synthetic-fixture test elsewhere in this file still passes.
 #[test]
 fn core_lsp_real_manifest_scm_resolves_via_load_plugin() {
-    use crate::editor::Severity;
     use hume_scripting::attribution::PluginId;
 
     let runtime_dir = repo_runtime_dir();
@@ -36,13 +35,7 @@ fn core_lsp_real_manifest_scm_resolves_via_load_plugin() {
         Some(&runtime_dir),
     );
 
-    let errors: Vec<String> = ed
-        .state
-        .message_log
-        .entries()
-        .filter(|e| e.severity == Severity::Error)
-        .map(|e| e.text.clone())
-        .collect();
+    let errors = error_log(&ed);
     assert!(
         errors.is_empty(),
         "init.scm with core:lsp's real manifest.scm must not log errors; got: {errors:?}"
@@ -88,7 +81,6 @@ fn core_lsp_real_manifest_scm_resolves_via_load_plugin() {
 /// `runtime/` tree.
 #[test]
 fn core_lsp_install_real_manifest_scm_resolves_via_load_plugin() {
-    use crate::editor::Severity;
     use hume_scripting::attribution::PluginId;
 
     let runtime_dir = repo_runtime_dir();
@@ -108,13 +100,7 @@ fn core_lsp_install_real_manifest_scm_resolves_via_load_plugin() {
         Some(&runtime_dir),
     );
 
-    let errors: Vec<String> = ed
-        .state
-        .message_log
-        .entries()
-        .filter(|e| e.severity == Severity::Error)
-        .map(|e| e.text.clone())
-        .collect();
+    let errors = error_log(&ed);
     assert!(
         errors.is_empty(),
         "init.scm with core:lsp-install's real manifest.scm must not log errors; got: {errors:?}"
@@ -163,7 +149,6 @@ fn core_lsp_install_real_manifest_scm_resolves_via_load_plugin() {
 /// name, a stale command list); this one can.
 #[test]
 fn core_stdlib_real_manifest_scm_resolves_via_load_plugin() {
-    use crate::editor::Severity;
     use hume_scripting::attribution::PluginId;
 
     let runtime_dir = repo_runtime_dir();
@@ -180,13 +165,7 @@ fn core_stdlib_real_manifest_scm_resolves_via_load_plugin() {
     let (ed, _dirs) =
         setup_editor_with_init_scripting(r#"(load-plugin! "core:stdlib")"#, Some(&runtime_dir));
 
-    let errors: Vec<String> = ed
-        .state
-        .message_log
-        .entries()
-        .filter(|e| e.severity == Severity::Error)
-        .map(|e| e.text.clone())
-        .collect();
+    let errors = error_log(&ed);
     assert!(
         errors.is_empty(),
         "init.scm with core:stdlib's real manifest.scm must not log errors; got: {errors:?}"
@@ -232,7 +211,6 @@ fn core_stdlib_real_manifest_scm_resolves_via_load_plugin() {
 /// `(declared-plugins)` for that reason.
 #[test]
 fn declared_core_stdlib_serves_dependent_body_time_call() {
-    use crate::editor::Severity;
     use hume_scripting::attribution::PluginId;
 
     let runtime_dir = repo_runtime_dir();
@@ -242,13 +220,7 @@ fn declared_core_stdlib_serves_dependent_body_time_call() {
         Some(&runtime_dir),
     );
 
-    let errors: Vec<String> = ed
-        .state
-        .message_log
-        .entries()
-        .filter(|e| e.severity == Severity::Error)
-        .map(|e| e.text.clone())
-        .collect();
+    let errors = error_log(&ed);
     assert!(
         errors.is_empty(),
         "declared (not loaded) core:stdlib must serve core:pickers's body-time \
@@ -288,7 +260,6 @@ fn declared_core_stdlib_serves_dependent_body_time_call() {
 /// the other tests here use synthetic fixtures.
 #[test]
 fn core_plum_real_manifest_scm_resolves_via_load_plugin() {
-    use crate::editor::Severity;
     use hume_scripting::attribution::PluginId;
 
     let runtime_dir = repo_runtime_dir();
@@ -305,13 +276,7 @@ fn core_plum_real_manifest_scm_resolves_via_load_plugin() {
     let (ed, _dirs) =
         setup_editor_with_init_scripting(r#"(load-plugin! "core:plum")"#, Some(&runtime_dir));
 
-    let errors: Vec<String> = ed
-        .state
-        .message_log
-        .entries()
-        .filter(|e| e.severity == Severity::Error)
-        .map(|e| e.text.clone())
-        .collect();
+    let errors = error_log(&ed);
     assert!(
         errors.is_empty(),
         "init.scm with core:plum's real manifest.scm must not log errors; got: {errors:?}"
@@ -362,8 +327,6 @@ fn core_plum_real_manifest_scm_resolves_via_load_plugin() {
 /// which is what keeps `plum-update-plugins` registered here.
 #[test]
 fn failed_third_party_load_does_not_block_plum_declared_afterward() {
-    use crate::editor::Severity;
-
     let _path = path_reader();
     let config_tmp = tempfile::tempdir().unwrap();
     let data_tmp = tempfile::tempdir().unwrap();
@@ -441,7 +404,6 @@ fn failed_third_party_load_does_not_block_plum_declared_afterward() {
 /// which the synthetic-fixture tests in this file would catch.
 #[test]
 fn core_git_diff_real_manifest_scm_resolves_via_load_plugin() {
-    use crate::editor::Severity;
     use hume_scripting::attribution::PluginId;
 
     let runtime_dir = repo_runtime_dir();
@@ -458,13 +420,7 @@ fn core_git_diff_real_manifest_scm_resolves_via_load_plugin() {
     let (ed, _dirs) =
         setup_editor_with_init_scripting(r#"(load-plugin! "core:git-diff")"#, Some(&runtime_dir));
 
-    let errors: Vec<String> = ed
-        .state
-        .message_log
-        .entries()
-        .filter(|e| e.severity == Severity::Error)
-        .map(|e| e.text.clone())
-        .collect();
+    let errors = error_log(&ed);
     assert!(
         errors.is_empty(),
         "init.scm with core:git-diff's real manifest.scm must not log errors; got: {errors:?}"
@@ -520,7 +476,6 @@ fn core_git_diff_real_manifest_scm_resolves_via_load_plugin() {
 /// Keymap lint is silent when every bound key targets a registered command.
 #[test]
 fn keymap_lint_silent_for_known_command() {
-    use crate::editor::Severity;
     use crate::editor::keymap::BindMode;
 
     let (ed, _dirs) =

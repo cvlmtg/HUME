@@ -23,12 +23,7 @@ use hume_scripting::ScriptingHost;
 use hume_treesitter::registry::GrammarBundle;
 use test_fixtures::require_grammars;
 
-/// Blobless-clone `url` at `rev` into `dest`, test-fixture-only. Mirrors the
-/// two-step shape `plum/install-grammar` now runs via `run-inline-output!`
-/// (the removed `hume_platform::process::git_clone_rev`'s Rust
-/// implementation collapsed clone+checkout into one call; full-trust plugin
-/// model, see `user-manual/docs/plugins.md`'s "Filesystem and processes",
-/// moved that shape to Scheme).
+/// Blobless-clone `url` into `dest` and force-check `rev` out, test-fixture-only.
 fn git_clone_rev_for_test(
     url: &str,
     dest: &std::path::Path,
@@ -569,13 +564,7 @@ fn configure_language_language_id_keyword_round_trips_through_real_prelude() {
 
     let (ed, _dirs) = setup_editor_with_languages_scm(languages_scm, "test.tsx");
 
-    let errors: Vec<String> = ed
-        .state
-        .message_log
-        .entries()
-        .filter(|e| e.severity == Severity::Error)
-        .map(|e| e.text.clone())
-        .collect();
+    let errors = error_log(&ed);
     assert!(
         errors.is_empty(),
         "configure-language! #:language-id must parse and eval cleanly: {errors:?}"
@@ -775,13 +764,7 @@ fn grammar_registration_survives_plum_absence() {
     ed.init_scripting(&mut Default::default());
     drop(fixture);
 
-    let errors: Vec<String> = ed
-        .state
-        .message_log
-        .entries()
-        .filter(|e| e.severity == Severity::Error)
-        .map(|e| e.text.clone())
-        .collect();
+    let errors = error_log(&ed);
     assert!(
         errors.is_empty(),
         "init_scripting without core:plum must not error: {errors:?}"
@@ -849,13 +832,7 @@ fn define_language_override_in_init_keeps_startup_grammar() {
     ed.init_scripting(&mut Default::default());
     drop(fixture);
 
-    let errors: Vec<String> = ed
-        .state
-        .message_log
-        .entries()
-        .filter(|e| e.severity == Severity::Error)
-        .map(|e| e.text.clone())
-        .collect();
+    let errors = error_log(&ed);
     assert!(
         errors.is_empty(),
         "init.scm's define-language! override must not error: {errors:?}"
@@ -933,13 +910,7 @@ fn init_errors_with_json_data(
     };
     ed.init_scripting(&mut Default::default());
 
-    let errors = ed
-        .state
-        .message_log
-        .entries()
-        .filter(|e| e.severity == Severity::Error)
-        .map(|e| e.text.clone())
-        .collect();
+    let errors = error_log(&ed);
     (errors, ed, vec![config_tmp, runtime_tmp, data_tmp])
 }
 

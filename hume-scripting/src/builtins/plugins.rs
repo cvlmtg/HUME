@@ -14,7 +14,7 @@ use crate::{
     SteelCtx,
     attribution::{EntryFile, EntryId, PluginId},
     lazy::PluginState,
-    plugin_record::{LoadCall, Resolution},
+    plugin_record::{GitRef, LoadCall, Resolution},
 };
 
 use super::SteelResult;
@@ -564,33 +564,18 @@ pub(crate) fn load_plugin(
 }
 
 /// `load-plugin!`'s `#:ref`: `#f`, or the tag, branch or commit PLUM checks out.
-/// PLUM passes it to `git` as an argument, so a leading `-` is refused.
-fn git_ref_arg(plugin_id: &PluginId, git_ref: SteelVal) -> Result<Option<String>, SteelErr> {
-    let Some(git_ref) = optional_string_arg(git_ref, "load-plugin!: #:ref")? else {
+fn git_ref_arg(plugin_id: &PluginId, git_ref: SteelVal) -> Result<Option<GitRef>, SteelErr> {
+    let Some(name) = optional_string_arg(git_ref, "load-plugin!: #:ref")? else {
         return Ok(None);
     };
-    if git_ref.starts_with('-') || !is_git_ref_name(&git_ref) {
-        steel::stop!(Generic => "load-plugin!: #:ref \"{}\" is not a tag, branch or commit", git_ref);
-    }
+    let Some(git_ref) = GitRef::parse(name.clone()) else {
+        steel::stop!(Generic => "load-plugin!: #:ref \"{}\" is not a tag, branch or commit", name);
+    };
     if matches!(plugin_id, PluginId::Core(_)) {
         steel::stop!(Generic =>
             "load-plugin!: #:ref is for an installed plugin; '{}' is bundled with HUME", plugin_id);
     }
     Ok(Some(git_ref))
-}
-
-/// Whether `git check-ref-format --allow-onelevel` accepts `name`, so a ref
-/// git would refuse fails when `init.scm` loads rather than at install time.
-fn is_git_ref_name(name: &str) -> bool {
-    let forbidden = |c: char| c.is_ascii_control() || " ~^:?*[\\".contains(c);
-    name != "@"
-        && !name.contains(forbidden)
-        && !name.contains("..")
-        && !name.contains("@{")
-        && !name.ends_with('.')
-        && name
-            .split('/')
-            .all(|part| !part.is_empty() && !part.starts_with('.') && !part.ends_with(".lock"))
 }
 
 /// Maximum nesting depth for concurrent inline plugin activations.

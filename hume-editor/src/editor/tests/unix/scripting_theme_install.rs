@@ -25,17 +25,6 @@ use crate::editor::Severity;
 /// absence, or filename matters.
 const THEME_TOML: &str = "\"ui.cursor.primary\" = { fg = \"#111111\" }";
 
-/// Error-severity entries in `ed`'s log. plum's own confirmations are all
-/// `log! 'info` (status_msg only), so anything here is a real failure.
-fn error_log(ed: &Editor) -> Vec<&str> {
-    ed.state
-        .message_log
-        .entries()
-        .filter(|e| e.severity == Severity::Error)
-        .map(|e| e.text.as_str())
-        .collect()
-}
-
 /// Warning-severity entries in `ed`'s log.
 fn warning_log(ed: &Editor) -> Vec<&str> {
     ed.state

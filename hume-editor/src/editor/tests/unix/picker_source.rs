@@ -140,12 +140,7 @@ fn nonzero_exit_reports_a_status_message_with_stderr() {
 
     let msg = ed.state.status_msg.as_ref().expect("status set");
     assert!(msg.contains("boom"), "got: {msg}");
-    let error_entries = ed
-        .state
-        .message_log
-        .entries()
-        .filter(|e| e.severity == Severity::Error)
-        .count();
+    let error_entries = error_log(&ed).len();
     assert_eq!(error_entries, 1);
 }
 
@@ -165,12 +160,7 @@ fn exit_code_in_the_allowlist_reports_nothing() {
         ed.state.status_msg.is_none(),
         "exit 1 is in the allowlist, must not report anything"
     );
-    let error_entries = ed
-        .state
-        .message_log
-        .entries()
-        .filter(|e| e.severity == Severity::Error)
-        .count();
+    let error_entries = error_log(&ed).len();
     assert_eq!(error_entries, 0);
 }
 
