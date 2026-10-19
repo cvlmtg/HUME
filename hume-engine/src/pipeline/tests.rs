@@ -53,6 +53,7 @@ fn render_test_pane(
         },
         indent_guides: true,
         cursor_is_block: true,
+        gutter: crate::providers::GutterInputs::default(),
     };
     // The host writes a mirror before every frame; these tests stand in for
     // it with a primary cursor at the text start unless a test wrote its own.
@@ -519,7 +520,7 @@ impl DecorationSource for SpoofingVirtualLineSource {
 struct ProviderIdReportingGutter;
 
 impl crate::providers::GutterColumn for ProviderIdReportingGutter {
-    fn width(&self, _: RopeyLine) -> u8 {
+    fn width(&self, _: RopeyLine, _: &crate::providers::GutterInputs) -> u8 {
         5
     }
     fn render_cells(
@@ -537,9 +538,6 @@ impl crate::providers::GutterColumn for ProviderIdReportingGutter {
             _ => crate::providers::GutterCell::blank(crate::types::ScopeId(0)),
         };
         vec![cell]
-    }
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
     }
 }
 
@@ -659,7 +657,7 @@ fn filler_display_line_gutter_shows_gutter_content_not_stale_blank() {
     // renders for DisplayLineKind::Filler.
     struct MarkerGutter;
     impl crate::providers::GutterColumn for MarkerGutter {
-        fn width(&self, _: RopeyLine) -> u8 {
+        fn width(&self, _: RopeyLine, _: &crate::providers::GutterInputs) -> u8 {
             3
         }
         fn render_cells(
@@ -678,9 +676,6 @@ fn filler_display_line_gutter_shows_gutter_content_not_stale_blank() {
                 )),
                 scope: crate::types::ScopeId(0),
             }]
-        }
-        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-            self
         }
     }
 

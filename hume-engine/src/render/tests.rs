@@ -94,6 +94,7 @@ fn renders_simple_text() {
         theme: &theme,
         rope: &rope,
         default_gutter_scope: ScopeId(0),
+        gutter: crate::providers::GutterInputs::default(),
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     compose_display_line(
@@ -161,6 +162,7 @@ fn grapheme_byte_range_past_line_str_asserts() {
         theme: &theme,
         rope: &rope,
         default_gutter_scope: ScopeId(0),
+        gutter: crate::providers::GutterInputs::default(),
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     compose_display_line(
@@ -210,6 +212,7 @@ fn filler_rows_have_tilde() {
         theme: &theme,
         rope: &rope,
         default_gutter_scope: ScopeId(0),
+        gutter: crate::providers::GutterInputs::default(),
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     render_tilde_fillers(1, &[], &ctx, &mut canvas);
@@ -264,6 +267,7 @@ fn do_compose_display_line(
         theme: &theme,
         rope: &rope,
         default_gutter_scope: ScopeId(0),
+        gutter: crate::providers::GutterInputs::default(),
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     compose_display_line(
@@ -649,6 +653,7 @@ fn indent_guide_hidden_when_indent_guides_is_false() {
         theme: &theme,
         rope: &rope,
         default_gutter_scope: ScopeId(0),
+        gutter: crate::providers::GutterInputs::default(),
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     compose_display_line(
@@ -796,6 +801,7 @@ fn indent_guide_leaves_a_reversed_cursor_cell_visibly_distinct() {
         theme: &theme,
         rope: &rope,
         default_gutter_scope: ScopeId(0),
+        gutter: crate::providers::GutterInputs::default(),
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     compose_display_line(
@@ -935,7 +941,7 @@ fn virtual_cell_wider_than_one_column_renders_from_the_arena() {
 
 struct OverlongGutter;
 impl GutterColumn for OverlongGutter {
-    fn width(&self, _: RopeyLine) -> u8 {
+    fn width(&self, _: RopeyLine, _: &crate::providers::GutterInputs) -> u8 {
         4
     }
     fn render_cells(
@@ -949,9 +955,6 @@ impl GutterColumn for OverlongGutter {
             )),
             scope: crate::types::ScopeId(0),
         }]
-    }
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
     }
 }
 
@@ -1001,6 +1004,7 @@ fn gutter_text_wider_than_column_is_truncated_not_bled_into_content() {
         theme: &theme,
         rope: &rope,
         default_gutter_scope,
+        gutter: crate::providers::GutterInputs::default(),
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     compose_display_line(
@@ -1077,6 +1081,7 @@ fn gutter_overflow_does_not_bleed_into_neighbouring_pane() {
         theme: &theme,
         rope: &rope,
         default_gutter_scope,
+        gutter: crate::providers::GutterInputs::default(),
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     compose_display_line(
@@ -1106,7 +1111,7 @@ fn gutter_overflow_does_not_bleed_into_neighbouring_pane() {
 /// Exists purely to reproduce a leftover in a *non-first* gutter column.
 struct LeftoverGutter;
 impl GutterColumn for LeftoverGutter {
-    fn width(&self, _: RopeyLine) -> u8 {
+    fn width(&self, _: RopeyLine, _: &crate::providers::GutterInputs) -> u8 {
         6
     }
     fn render_cells(
@@ -1122,9 +1127,6 @@ impl GutterColumn for LeftoverGutter {
             })
             .collect()
     }
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
 }
 
 /// Single-cell width-2 column. Exact-fills like the shipped
@@ -1132,7 +1134,7 @@ impl GutterColumn for LeftoverGutter {
 /// *second* column, which is what exposes the bug (see next test's doc).
 struct ExactFillGutter;
 impl GutterColumn for ExactFillGutter {
-    fn width(&self, _: RopeyLine) -> u8 {
+    fn width(&self, _: RopeyLine, _: &crate::providers::GutterInputs) -> u8 {
         2
     }
     fn render_cells(
@@ -1144,9 +1146,6 @@ impl GutterColumn for ExactFillGutter {
             content: crate::providers::GutterCellContent::Text(std::borrow::Cow::Borrowed("N")),
             scope: crate::types::ScopeId(0),
         }]
-    }
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
     }
 }
 
@@ -1209,6 +1208,7 @@ fn second_column_leftover_is_painted_and_next_column_starts_on_boundary() {
         theme: &theme,
         rope: &rope,
         default_gutter_scope,
+        gutter: crate::providers::GutterInputs::default(),
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     compose_display_line(
@@ -1248,7 +1248,7 @@ fn second_column_leftover_is_painted_and_next_column_starts_on_boundary() {
 /// always:40` in a narrow vsplit).
 struct HugeGutter;
 impl GutterColumn for HugeGutter {
-    fn width(&self, _: RopeyLine) -> u8 {
+    fn width(&self, _: RopeyLine, _: &crate::providers::GutterInputs) -> u8 {
         20
     }
     fn render_cells(
@@ -1260,9 +1260,6 @@ impl GutterColumn for HugeGutter {
             content: crate::providers::GutterCellContent::Text(std::borrow::Cow::Borrowed("N")),
             scope: crate::types::ScopeId(0),
         }]
-    }
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
     }
 }
 
@@ -1316,6 +1313,7 @@ fn gutter_wider_than_pane_does_not_bleed_past_the_pane_right_edge() {
         theme: &theme,
         rope: &rope,
         default_gutter_scope,
+        gutter: crate::providers::GutterInputs::default(),
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     compose_display_line(
@@ -1342,7 +1340,7 @@ fn gutter_wider_than_pane_does_not_bleed_past_the_pane_right_edge() {
 /// shape a Steel-configured gutter icon would take.
 struct OwnedIconGutter;
 impl GutterColumn for OwnedIconGutter {
-    fn width(&self, _: RopeyLine) -> u8 {
+    fn width(&self, _: RopeyLine, _: &crate::providers::GutterInputs) -> u8 {
         3
     }
     fn render_cells(
@@ -1359,9 +1357,6 @@ impl GutterColumn for OwnedIconGutter {
             scope: crate::types::ScopeId(0),
         }]
     }
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
 }
 
 /// Same gutter column, but the `'static` literal is borrowed directly
@@ -1369,7 +1364,7 @@ impl GutterColumn for OwnedIconGutter {
 /// path; `Cow::Owned` must produce the same output.
 struct StaticIconGutter;
 impl GutterColumn for StaticIconGutter {
-    fn width(&self, _: RopeyLine) -> u8 {
+    fn width(&self, _: RopeyLine, _: &crate::providers::GutterInputs) -> u8 {
         3
     }
     fn render_cells(
@@ -1381,9 +1376,6 @@ impl GutterColumn for StaticIconGutter {
             content: crate::providers::GutterCellContent::Text(std::borrow::Cow::Borrowed("AB")),
             scope: crate::types::ScopeId(0),
         }]
-    }
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
     }
 }
 
@@ -1430,6 +1422,7 @@ fn owned_gutter_icon_renders_identically_to_static_one() {
             theme: &theme,
             rope: &rope,
             default_gutter_scope,
+            gutter: crate::providers::GutterInputs::default(),
         };
         let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
         compose_display_line(
@@ -1462,7 +1455,7 @@ fn owned_gutter_icon_renders_identically_to_static_one() {
 /// plumbing end to end through `compose_gutter`.
 struct FirstCharGutter;
 impl GutterColumn for FirstCharGutter {
-    fn width(&self, _: RopeyLine) -> u8 {
+    fn width(&self, _: RopeyLine, _: &crate::providers::GutterInputs) -> u8 {
         2
     }
     fn render_cells(
@@ -1488,9 +1481,6 @@ impl GutterColumn for FirstCharGutter {
             _ => crate::providers::GutterCell::blank(crate::types::ScopeId(0)),
         };
         vec![cell]
-    }
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
     }
 }
 
@@ -1545,6 +1535,7 @@ fn gutter_column_reads_rope_via_ctx() {
         theme: &theme,
         rope: &rope,
         default_gutter_scope,
+        gutter: crate::providers::GutterInputs::default(),
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     compose_display_line(
@@ -1660,6 +1651,7 @@ fn compose_display_line_dims_cells_inline() {
         theme: &theme,
         rope: &rope,
         default_gutter_scope: ScopeId(0),
+        gutter: crate::providers::GutterInputs::default(),
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, Some((Rgb(0, 0, 0), 0.5)));
     compose_display_line(
@@ -1718,6 +1710,7 @@ fn compose_display_line_dim_leaves_an_uncoloured_cell_alone() {
         theme: &theme,
         rope: &rope,
         default_gutter_scope: ScopeId(0),
+        gutter: crate::providers::GutterInputs::default(),
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, Some((Rgb(0, 0, 0), 0.5)));
     compose_display_line(

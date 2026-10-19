@@ -10,7 +10,7 @@ pub use hume_grid::{Canvas, clamp_rect_to_grid};
 
 use crate::display_lines::RenderDisplayLine;
 use crate::layout::PaneGeometry;
-use crate::providers::{GutterColumn, GutterCtx, ProviderId};
+use crate::providers::{GutterColumn, GutterCtx, GutterInputs, ProviderId};
 use crate::theme::Theme;
 use crate::types::{CellContent, DisplayLineKind, EditorMode, ResolvedStyle, ScopeId};
 
@@ -57,6 +57,8 @@ pub(crate) struct ComposeCtx<'a> {
     /// in rather than re-interned here: the per-cell hot path only ever
     /// does an O(1) `ScopeId` index.
     pub default_gutter_scope: ScopeId,
+    /// The gutter's settings for this pane.
+    pub gutter: GutterInputs,
 }
 
 /// Resolve a gutter cell's scope to a style, layered over the row's
@@ -118,6 +120,7 @@ fn compose_gutter(
         mode: compose_ctx.mode,
         primary_head_line: compose_ctx.primary_head_line,
         rope: compose_ctx.rope,
+        inputs: compose_ctx.gutter,
     };
     // Constant for the whole row; resolved once so the per-cell loop and the
     // leftover-width fill below can't drift apart on it.

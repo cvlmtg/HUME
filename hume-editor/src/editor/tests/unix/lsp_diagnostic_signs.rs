@@ -326,6 +326,7 @@ fn diagnostic_and_plugin_sign_share_a_line_and_both_survive_the_merge() {
         mode: hume_engine::types::EditorMode::Normal,
         primary_head_line: hume_rope::line::ContentLine::new(0),
         rope: &rope,
+        inputs: ed.state.gutter_inputs(&ed.view, pid),
     };
     let col = ed.view.panes[pid]
         .providers

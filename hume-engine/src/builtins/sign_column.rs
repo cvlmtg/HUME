@@ -1,7 +1,6 @@
-use std::any::Any;
 use std::sync::Arc;
 
-use crate::providers::{GutterCell, GutterCellContent, GutterColumn, GutterCtx};
+use crate::providers::{GutterCell, GutterCellContent, GutterColumn, GutterCtx, GutterInputs};
 use crate::types::{DisplayLineKind, ScopeId};
 use hume_rope::line::ContentLine;
 
@@ -59,18 +58,11 @@ impl SignSource for () {
 }
 
 /// Built-in gutter column that places its `SignSource`'s signs into their own
-/// resolved `slot`s (where slot count = configured sign slots = `width - 1`).
-/// A sign whose slot doesn't fit the configured width is hidden.
-///
-/// Registered like any other `GutterColumn` via
-/// `ProviderSet::add_gutter_column`, which returns the column's own
-/// `ProviderId`. Width is adjusted separately, after registration, by
-/// finding the column and downcasting to `SignColumn`, the same pattern
-/// `ProviderSet::sync_line_number_style` already uses to reach a
-/// `LineNumberColumn` post-registration (`as_any_mut().downcast_mut::<SignColumn>()`).
+/// resolved `slot`s. Its width is
+/// [`GutterInputs::sign_width`](crate::providers::GutterInputs), one cell per
+/// slot plus a padding cell, so a sign whose slot doesn't fit is hidden.
 pub struct SignColumn {
     source: Box<dyn SignSource>,
-    width: u8,
     /// Interned `"ui.linenr"`: unfilled sign slots render blank under this
     /// scope, same fallback `LineNumberColumn` uses for its own non-content
     /// display lines. Interned by the caller at pane construction.
@@ -82,8 +74,7 @@ impl SignColumn {
     /// column of right-padding, matching every other gutter column's
     /// separator convention (see `render::compose_gutter`). The single place
     /// this arithmetic direction is written; `render_cells`'s
-    /// `width.saturating_sub(1)` is its inverse, computing slots from a
-    /// stored width instead.
+    /// `sign_width.saturating_sub(1)` is its inverse.
     pub const fn width_for_slots(slots: u8) -> u8 {
         slots.saturating_add(1)
     }
@@ -91,47 +82,18 @@ impl SignColumn {
     pub fn new(source: Box<dyn SignSource>, blank_scope: ScopeId) -> Self {
         Self {
             source,
-            width: Self::width_for_slots(1),
             blank_scope,
         }
-    }
-
-    /// No production caller: production always starts at one slot via `new`
-    /// and resizes through `set_width`; kept as a test helper for
-    /// constructing a lane already at a specific width.
-    #[cfg(test)]
-    pub fn with_width(width: u8, source: Box<dyn SignSource>, blank_scope: ScopeId) -> Self {
-        Self {
-            width,
-            ..Self::new(source, blank_scope)
-        }
-    }
-
-    /// Set the configured column width. Unlike the source itself, width
-    /// is not derived from it automatically. A caller wanting the column
-    /// to collapse to `0` when the source would fire nothing for the current
-    /// buffer (or grow back to the default when it would) sets it
-    /// explicitly, per frame, via the same post-registration downcast
-    /// `sync_line_number_style` uses. Two calls with the same width are a
-    /// cheap no-op either way.
-    pub fn set_width(&mut self, width: u8) {
-        self.width = width;
     }
 }
 
 impl GutterColumn for SignColumn {
-    fn width(&self, _last_line_idx: hume_rope::line::RopeyLine) -> u8 {
-        // Returns the stored field verbatim, never recomputed inline here,
-        // unlike `LineNumberColumn::width()`'s whole-file-max rule, which
-        // derives its answer from `last_line_idx` on every call. `auto` mode
-        // still changes what's stored, just from outside this method: the
-        // caller recomputes and calls `set_width` once per frame (see that
-        // method's doc comment), so `width()` itself stays a plain getter.
-        self.width
+    fn width(&self, _last_line_idx: hume_rope::line::RopeyLine, inputs: &GutterInputs) -> u8 {
+        inputs.sign_width
     }
 
     fn render_cells(&self, kind: DisplayLineKind, ctx: &GutterCtx) -> Vec<GutterCell> {
-        let max_signs = self.width.saturating_sub(1) as usize;
+        let max_signs = ctx.inputs.sign_width.saturating_sub(1) as usize;
         let DisplayLineKind::LineStart { line_idx } = kind else {
             // Wrap/Virtual/Filler display lines never carry a sign: one blank cell
             // per configured slot so `compose_gutter`'s cell count matches
@@ -164,10 +126,6 @@ impl GutterColumn for SignColumn {
             }
         }
         cells
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
     }
 }
 

@@ -252,6 +252,7 @@ impl Editor {
             cursor::gutter_width(
                 pane.providers.gutter_columns(),
                 self.state.buffers.get(buf_id).text().last_ropey_line(),
+                self.state.gutter_inputs(&self.view, pid),
             )
         };
         let key = self.state.format_key(&self.view.panes[pid]);
@@ -259,11 +260,12 @@ impl Editor {
             .view
             .drawn()
             .pane_size(self.view.focused_layout(), pid)?;
+        let content_width = self.state.content_width(&self.view, pid, size);
         let (mut dlm, viewport) = pane_display_lines(
             self.state.buffers.get(buf_id),
             &mut self.view.panes[pid],
             key,
-            size,
+            content_width,
         );
         cursor::screen_to_cluster(x, y, gutter_w, viewport, &mut dlm)
     }

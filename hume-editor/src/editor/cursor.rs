@@ -103,7 +103,7 @@ pub(in crate::editor) fn place(
     (content_x as u16, screen_row as u16)
 }
 
-/// Gutter width in terminal columns for the current frame.
+/// Gutter width in terminal columns, drawn by `inputs`.
 ///
 /// Used to offset the terminal cursor column past line numbers and other
 /// gutter providers. `last_line_idx` is the buffer's last ropey line index
@@ -113,8 +113,9 @@ pub(in crate::editor) fn place(
 pub(in crate::editor) fn gutter_width<'a>(
     gutter_columns: impl Iterator<Item = &'a dyn GutterColumn> + 'a,
     last_line_idx: hume_rope::line::RopeyLine,
+    inputs: hume_engine::providers::GutterInputs,
 ) -> u16 {
-    gutter_width_for_line(gutter_columns, last_line_idx)
+    gutter_width_for_line(gutter_columns, last_line_idx, inputs)
 }
 
 // ---------------------------------------------------------------------------

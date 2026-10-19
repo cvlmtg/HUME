@@ -1,7 +1,7 @@
 use ropey::Rope;
 
 use crate::pipeline::{ContentWidth, PaneSize};
-use crate::providers::GutterColumn;
+use crate::providers::{GutterColumn, GutterInputs};
 
 // ---------------------------------------------------------------------------
 // Pane geometry: output of Stage 1
@@ -47,9 +47,10 @@ pub struct PaneGeometry {
 pub fn lane_widths<'a>(
     gutter_columns: impl Iterator<Item = &'a dyn GutterColumn> + 'a,
     max_line: hume_rope::line::RopeyLine,
+    inputs: GutterInputs,
 ) -> impl Iterator<Item = u16> + 'a {
     // GutterColumn::width is a cell count, not display width.
-    gutter_columns.map(move |c| c.width(max_line) as u16)
+    gutter_columns.map(move |c| c.width(max_line, &inputs) as u16)
 }
 
 /// Sum of all gutter column widths for the given `max_line`; see
@@ -57,8 +58,9 @@ pub fn lane_widths<'a>(
 pub fn gutter_width_for_line<'a>(
     gutter_columns: impl Iterator<Item = &'a dyn GutterColumn> + 'a,
     max_line: hume_rope::line::RopeyLine,
+    inputs: GutterInputs,
 ) -> u16 {
-    lane_widths(gutter_columns, max_line).sum()
+    lane_widths(gutter_columns, max_line, inputs).sum()
 }
 
 /// Compute the `PaneGeometry` for a pane of `size` showing `rope`.
@@ -68,6 +70,7 @@ pub fn compute_viewport<'a>(
     rope: &Rope,
     size: PaneSize,
     gutter_columns: impl Iterator<Item = &'a dyn GutterColumn> + 'a,
+    inputs: GutterInputs,
 ) -> PaneGeometry {
     // 0-based index of the last line: the single source of truth for
     // GutterColumn::width(). Using the whole-file last line (not just what is
@@ -75,7 +78,7 @@ pub fn compute_viewport<'a>(
     // the phantom trailing line, not the last content line: the gutter is
     // sized one digit wider than content requires.
     let last_line_idx = hume_rope::lines::last_ropey_line(rope);
-    let gutter_width = gutter_width_for_line(gutter_columns, last_line_idx);
+    let gutter_width = gutter_width_for_line(gutter_columns, last_line_idx, inputs);
 
     PaneGeometry {
         content_height: size.height(),

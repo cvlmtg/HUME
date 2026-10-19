@@ -1,5 +1,5 @@
 use super::*;
-use crate::providers::ProviderId;
+use crate::providers::{GutterInputs, ProviderId};
 use crate::test_support::{fg, render_display_line, theme_with};
 use crate::theme::{ScopeRegistry, Theme};
 use crate::types::EditorMode;
@@ -8,11 +8,20 @@ use hume_grid::{Grid, Rect, Rgb};
 use hume_rope::column::DisplayLineCol;
 use hume_rope::line::{ContentLine, RopeyLine};
 
-fn ctx(rope: &ropey::Rope) -> GutterCtx<'_> {
+/// Gutter inputs giving the sign column `sign_width` cells.
+fn inputs(sign_width: u8) -> GutterInputs {
+    GutterInputs {
+        sign_width,
+        ..GutterInputs::default()
+    }
+}
+
+fn ctx(rope: &ropey::Rope, sign_width: u8) -> GutterCtx<'_> {
     GutterCtx {
         mode: EditorMode::Normal,
         primary_head_line: ContentLine::new(0),
         rope,
+        inputs: inputs(sign_width),
     }
 }
 
@@ -50,14 +59,14 @@ fn sign_renders_in_its_own_resolved_slot() {
             slot: 1,
         }],
     };
-    let lane = SignColumn::with_width(3, Box::new(source), blank_scope); // 2 sign slots
+    let lane = SignColumn::new(Box::new(source), blank_scope); // 2 sign slots
 
     let rope = ropey::Rope::new();
     let cells = lane.render_cells(
         DisplayLineKind::LineStart {
             line_idx: RopeyLine::new(3),
         },
-        &ctx(&rope),
+        &ctx(&rope, 3),
     );
     assert_eq!(cells[0].as_str(), " ", "slot 0 unclaimed, stays blank");
     assert_eq!(
@@ -79,7 +88,7 @@ fn no_sign_fires_renders_blank() {
             DisplayLineKind::LineStart {
                 line_idx: RopeyLine::new(0),
             },
-            &ctx(&rope),
+            &ctx(&rope, 2),
         )
         .into_iter()
         .next()
@@ -115,7 +124,7 @@ fn sign_absent_on_wrap_virtual_and_filler_display_lines() {
         DisplayLineKind::Filler,
     ] {
         let cell = lane
-            .render_cells(kind, &ctx(&rope))
+            .render_cells(kind, &ctx(&rope, 2))
             .into_iter()
             .next()
             .unwrap();
@@ -124,34 +133,16 @@ fn sign_absent_on_wrap_virtual_and_filler_display_lines() {
 }
 
 #[test]
-fn width_is_configured_not_recomputed_per_frame() {
+fn width_is_the_inputs_sign_width_whatever_the_file_size() {
     let mut registry = ScopeRegistry::new();
     let blank_scope = registry.intern("ui.linenr");
-    let lane = SignColumn::with_width(3, Box::new(()), blank_scope);
-    assert_eq!(lane.width(RopeyLine::new(0)), 3);
+    let lane = SignColumn::new(Box::new(()), blank_scope);
+    assert_eq!(lane.width(RopeyLine::new(0), &inputs(3)), 3);
+    assert_eq!(lane.width(RopeyLine::new(999_999), &inputs(3)), 3);
     assert_eq!(
-        lane.width(RopeyLine::new(999_999)),
-        3,
-        "stable regardless of file size"
-    );
-}
-
-#[test]
-fn set_width_overrides_the_configured_width() {
-    let mut registry = ScopeRegistry::new();
-    let blank_scope = registry.intern("ui.linenr");
-    let mut lane = SignColumn::with_width(2, Box::new(()), blank_scope);
-    lane.set_width(0);
-    assert_eq!(
-        lane.width(RopeyLine::new(0)),
+        lane.width(RopeyLine::new(0), &inputs(0)),
         0,
-        "collapsed to zero when no signs exist"
-    );
-    lane.set_width(2);
-    assert_eq!(
-        lane.width(RopeyLine::new(0)),
-        2,
-        "restored once a sign exists again"
+        "collapsed when the inputs collapse it"
     );
 }
 
@@ -172,7 +163,7 @@ fn sign_text_truncates_to_column_width_end_to_end() {
             slot: 0,
         }],
     };
-    let lane = SignColumn::with_width(2, Box::new(source), blank_scope); // usable = 1 cell
+    let lane = SignColumn::new(Box::new(source), blank_scope); // usable = 1 cell
 
     let graphemes = vec![crate::types::Grapheme {
         byte_range: crate::test_support::byte_range(0, 1),
@@ -224,6 +215,7 @@ fn sign_text_truncates_to_column_width_end_to_end() {
         theme: &theme,
         rope: &rope,
         default_gutter_scope: blank_scope,
+        gutter: inputs(2),
     };
     let mut canvas = crate::render::Canvas::new(&mut buf, theme.ui.invisible, None);
     crate::render::compose_display_line(
@@ -244,25 +236,18 @@ fn sign_text_truncates_to_column_width_end_to_end() {
     assert_eq!(sym(2), "x");
 }
 
-/// A width-0 `SignColumn` (the auto-collapse state `set_width(0)`
-/// produces when no sign exists for the pane's buffer) must render as if
-/// it weren't registered at all: the gutter composer still iterates it,
-/// but must not shift or corrupt whatever renders in the next column.
+/// A width-0 `SignColumn` (the `auto` collapse when no sign is in view)
+/// must render as if it weren't registered at all: the gutter composer
+/// still iterates it, but must not shift or corrupt whatever renders in the
+/// next column.
 #[test]
 fn zero_width_sign_column_leaves_the_next_column_untouched() {
     let mut registry = ScopeRegistry::new();
     let blank_scope = registry.intern("ui.linenr");
-    let scope = registry.intern("diagnostic");
-    let empty_lane = SignColumn::with_width(0, Box::new(()), blank_scope); // no signs, width collapsed
-    let content_source = FixedSign {
-        line: ContentLine::new(0),
-        signs: vec![Sign {
-            text: "!".into(),
-            scope,
-            slot: 0,
-        }],
-    };
-    let content_lane = SignColumn::with_width(2, Box::new(content_source), blank_scope);
+    let selected_scope = registry.intern("ui.linenr.selected");
+    let empty_lane = SignColumn::new(Box::new(()), blank_scope);
+    let content_lane =
+        crate::builtins::line_number::LineNumberColumn::new(blank_scope, selected_scope);
 
     let graphemes = vec![crate::types::Grapheme {
         byte_range: crate::test_support::byte_range(0, 1),
@@ -287,7 +272,7 @@ fn zero_width_sign_column_leaves_the_next_column_untouched() {
         content_width: crate::pipeline::ContentWidth::for_test(
             std::num::NonZeroU16::new(6).expect("non-zero"),
         ),
-        gutter_width: 2, // 0 (empty_lane) + 2 (content_lane)
+        gutter_width: 2, // 0 (empty_lane) + 2 (the line numbers)
         last_line_idx: RopeyLine::new(0),
     };
     let pane_rect = Rect {
@@ -315,6 +300,7 @@ fn zero_width_sign_column_leaves_the_next_column_untouched() {
         theme: &theme,
         rope: &rope,
         default_gutter_scope: blank_scope,
+        gutter: inputs(0),
     };
     let mut canvas = crate::render::Canvas::new(&mut buf, theme.ui.invisible, None);
     crate::render::compose_display_line(
@@ -330,8 +316,8 @@ fn zero_width_sign_column_leaves_the_next_column_untouched() {
     let sym = |x: u16| buf.cell(x, 0).unwrap().text().to_string();
     assert_eq!(
         sym(0),
-        "!",
-        "the width-2 column's sign starts right at x=0, unaffected by the width-0 column ahead of it"
+        "1",
+        "the line number starts right at x=0, unaffected by the width-0 column ahead of it"
     );
     assert_eq!(sym(1), " ", "separator cell");
     assert_eq!(sym(2), "x", "content starts exactly at gutter_width=2");
@@ -360,7 +346,7 @@ fn sign_scope_resolves_via_baked_theme() {
             DisplayLineKind::LineStart {
                 line_idx: RopeyLine::new(0),
             },
-            &ctx(&rope),
+            &ctx(&rope, 2),
         )
         .into_iter()
         .next()
@@ -397,14 +383,14 @@ fn multi_slot_column_places_each_sign_in_its_own_slot() {
             },
         ],
     };
-    let lane = SignColumn::with_width(3, Box::new(source), blank_scope); // 2 sign slots
+    let lane = SignColumn::new(Box::new(source), blank_scope); // 2 sign slots
 
     let rope = ropey::Rope::new();
     let cells = lane.render_cells(
         DisplayLineKind::LineStart {
             line_idx: RopeyLine::new(0),
         },
-        &ctx(&rope),
+        &ctx(&rope, 3),
     );
     assert_eq!(cells.len(), 2, "width-3 column = 2 sign slots");
     assert_eq!(cells[0].as_str(), "!", "slot 0");
@@ -425,14 +411,14 @@ fn multi_slot_column_pads_with_blank_when_fewer_signs_than_slots() {
             slot: 0,
         }],
     };
-    let lane = SignColumn::with_width(3, Box::new(source), blank_scope); // 2 sign slots
+    let lane = SignColumn::new(Box::new(source), blank_scope); // 2 sign slots
 
     let rope = ropey::Rope::new();
     let cells = lane.render_cells(
         DisplayLineKind::LineStart {
             line_idx: RopeyLine::new(0),
         },
-        &ctx(&rope),
+        &ctx(&rope, 3),
     );
     assert_eq!(cells.len(), 2, "still 2 cells, padded to slot count");
     assert_eq!(cells[0].as_str(), "!");
@@ -453,14 +439,14 @@ fn width_one_column_keeps_no_signs() {
             slot: 0,
         }],
     };
-    let lane = SignColumn::with_width(1, Box::new(source), blank_scope); // 0 sign slots
+    let lane = SignColumn::new(Box::new(source), blank_scope); // 0 sign slots
 
     let rope = ropey::Rope::new();
     let cells = lane.render_cells(
         DisplayLineKind::LineStart {
             line_idx: RopeyLine::new(0),
         },
-        &ctx(&rope),
+        &ctx(&rope, 1),
     );
     assert!(cells.is_empty(), "width-1 column has 0 sign slots");
 }
@@ -491,7 +477,7 @@ fn multi_slot_column_renders_through_compose_gutter() {
             },
         ],
     };
-    let lane = SignColumn::with_width(3, Box::new(source), blank_scope); // 2 sign slots
+    let lane = SignColumn::new(Box::new(source), blank_scope); // 2 sign slots
 
     let graphemes = vec![crate::types::Grapheme {
         byte_range: crate::test_support::byte_range(0, 1),
@@ -543,6 +529,7 @@ fn multi_slot_column_renders_through_compose_gutter() {
         theme: &theme,
         rope: &rope,
         default_gutter_scope: blank_scope,
+        gutter: inputs(3),
     };
     let mut canvas = crate::render::Canvas::new(&mut buf, theme.ui.invisible, None);
     crate::render::compose_display_line(

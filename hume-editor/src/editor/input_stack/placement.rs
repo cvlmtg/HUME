@@ -45,16 +45,7 @@ pub(in crate::editor) fn popup_placement(
         .pane_size(layout, focused)
         .expect("the focused pane is a leaf of the focused layout");
     let gutter_w = ed.pane_gutter_width(focused);
-    let last_line = ed
-        .state
-        .buffers
-        .get(ed.view.panes[focused].buffer_id())
-        .text()
-        .last_ropey_line();
-    let content_width = ed.view.panes[focused]
-        .content_width(size, last_line)
-        .get()
-        .get();
+    let content_width = ed.state.content_width(&ed.view, focused, size);
     let (content_x, row) = match cursor_cell {
         Some(cell) if anchor == focused_cursor(ed) => cell,
         _ => {
@@ -68,7 +59,7 @@ pub(in crate::editor) fn popup_placement(
                 state.buffers.get(bid),
                 &mut view.panes[focused],
                 key,
-                size,
+                content_width,
             );
             super::super::cursor::content_pos(size, vp, &mut dlm, anchor)?
         }
@@ -77,6 +68,6 @@ pub(in crate::editor) fn popup_placement(
     Some(hume_ui::popup::PopupPlacement {
         anchor: screen,
         pane_rect,
-        content_width,
+        content_width: content_width.get().get(),
     })
 }

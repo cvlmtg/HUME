@@ -47,6 +47,7 @@ pub(crate) fn render_pane(
         pane_ctx.rope,
         PaneSize::of(pane_ctx.rect),
         pane_ctx.providers.gutter_columns(),
+        pane_ctx.settings.gutter,
     );
 
     // ── Pre-render: per-frame constant setup ──────────────────────────────
@@ -64,6 +65,7 @@ pub(crate) fn render_pane(
     lane_widths.extend(layout::lane_widths(
         pane_ctx.providers.gutter_columns(),
         visible.last_line_idx,
+        pane_ctx.settings.gutter,
     ));
 
     // Clip `WrapMode::None` formatting to the visible horizontal window: a
@@ -109,6 +111,7 @@ pub(crate) fn render_pane(
         theme: pane_ctx.theme,
         rope: pane_ctx.rope,
         default_gutter_scope: pane_ctx.default_gutter_scope,
+        gutter: pane_ctx.settings.gutter,
     };
     let mut canvas = render::Canvas::new(grid, pane_ctx.theme.ui.invisible, pane_ctx.dim);
 

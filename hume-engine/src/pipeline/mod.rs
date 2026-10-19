@@ -685,6 +685,7 @@ pub struct PaneRenderSettings {
     pub format: crate::display_lines::line_store::FormatKey,
     pub indent_guides: bool,
     pub cursor_is_block: bool,
+    pub gutter: crate::providers::GutterInputs,
 }
 
 /// Transient bundle of borrows needed to render one pane. Avoids passing a

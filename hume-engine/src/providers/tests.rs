@@ -33,14 +33,11 @@ impl DecorationSource for DummyVirtualLine {
 struct DummyGutter;
 
 impl GutterColumn for DummyGutter {
-    fn width(&self, _: hume_rope::line::RopeyLine) -> u8 {
+    fn width(&self, _: hume_rope::line::RopeyLine, _: &crate::providers::GutterInputs) -> u8 {
         0
     }
     fn render_cells(&self, _: crate::types::DisplayLineKind, _: &GutterCtx) -> Vec<GutterCell> {
         vec![GutterCell::blank(ScopeId(0))]
-    }
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
     }
 }
 
@@ -82,63 +79,6 @@ fn gutter_cell_text_and_blank() {
     assert_eq!(s.as_str(), "abc");
     let b = GutterCell::blank(ScopeId(0));
     assert_eq!(b.as_str(), " ");
-}
-
-// ── sync_line_number_style ───────────────────────────────────────────
-
-#[test]
-fn sync_line_number_style_updates_line_number_column() {
-    use crate::builtins::line_number::{LineNumberColumn, LineNumberStyle};
-    let mut set = ProviderSet::new();
-    set.add_gutter_column(Box::new(LineNumberColumn::with_style(
-        LineNumberStyle::Hybrid,
-        ScopeId(0),
-        ScopeId(1),
-    )));
-    set.sync_line_number_style(LineNumberStyle::Relative);
-    let lane = set.gutter_columns[0]
-        .1
-        .as_any_mut()
-        .downcast_mut::<LineNumberColumn>()
-        .unwrap();
-    assert_eq!(lane.style, LineNumberStyle::Relative);
-}
-
-#[test]
-fn sync_line_number_style_skips_non_line_number_columns() {
-    use crate::builtins::line_number::LineNumberStyle;
-    let mut set = ProviderSet::new();
-    set.add_gutter_column(Box::new(DummyGutter));
-    // Should not panic: DummyGutter doesn't downcast to LineNumberColumn.
-    set.sync_line_number_style(LineNumberStyle::Absolute);
-}
-
-#[test]
-fn sync_line_number_style_no_op_when_empty() {
-    use crate::builtins::line_number::LineNumberStyle;
-    let mut set = ProviderSet::new();
-    set.sync_line_number_style(LineNumberStyle::Hybrid);
-}
-
-#[test]
-fn sync_sign_column_width_updates_registered_sign_columns() {
-    let mut set = ProviderSet::new();
-    set.add_gutter_column(Box::new(SignColumn::new(Box::new(()), ScopeId(0))));
-    set.sync_sign_column_width(0);
-    let lane = set.gutter_columns[0]
-        .1
-        .as_any_mut()
-        .downcast_mut::<SignColumn>()
-        .unwrap();
-    assert_eq!(lane.width(hume_rope::line::RopeyLine::new(0)), 0);
-}
-
-#[test]
-fn sync_sign_column_width_skips_non_sign_columns() {
-    let mut set = ProviderSet::new();
-    set.add_gutter_column(Box::new(DummyGutter));
-    // Should not panic: DummyGutter doesn't downcast to SignColumn.
-    set.sync_sign_column_width(0);
 }
 
 // ── ProviderSet ──────────────────────────────────────────────────────

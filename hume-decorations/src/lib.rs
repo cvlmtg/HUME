@@ -76,6 +76,11 @@ impl PaneDecorationHandles {
         self.signs.set(by_line);
     }
 
+    /// Whether the last [`Self::set_signs`] placed any sign.
+    pub fn has_signs(&self) -> bool {
+        !self.signs.read().is_empty()
+    }
+
     pub fn set_inlay_hints(&self, by_line: FxHashMap<ContentLine, Vec<InlineInsert>>) {
         self.inlay_hints.set(by_line);
     }

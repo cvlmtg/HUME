@@ -546,7 +546,7 @@ impl EditorState {
 pub(in crate::editor) struct LayoutKey {
     format: hume_engine::display_lines::line_store::FormatKey,
     content_width: hume_engine::pipeline::ContentWidth,
-    height: u16,
+    size: hume_engine::pipeline::PaneSize,
     scroll_margin: usize,
 }
 
@@ -556,6 +556,16 @@ impl LayoutKey {
         &self,
     ) -> hume_engine::display_lines::line_store::FormatKey {
         self.format
+    }
+
+    /// The width a `DisplayLineMap` of this pane wraps against.
+    pub(in crate::editor) fn content_width(&self) -> hume_engine::pipeline::ContentWidth {
+        self.content_width
+    }
+
+    /// The pane's scroll-margin geometry, `None` for a pane with no rows.
+    pub(in crate::editor) fn geometry(&self) -> Option<hume_engine::pane::ViewGeometry> {
+        self.size.geometry(self.scroll_margin)
     }
 }
 
@@ -645,19 +655,19 @@ impl EditorState {
         }
     }
 
-    /// [`Self::format_key`] plus the geometry a pane of `size` scrolls by:
-    /// its content width, its height and the scroll margin. The frame's
-    /// scroll pass reveals the cursor when this changes.
+    /// [`Self::format_key`] plus the geometry a pane of `size` and
+    /// `content_width` scrolls by, and the scroll margin. The frame's scroll
+    /// pass reveals the cursor when this changes.
     pub(in crate::editor) fn layout_key(
         &self,
         pane: &hume_engine::pane::Pane,
         size: hume_engine::pipeline::PaneSize,
+        content_width: hume_engine::pipeline::ContentWidth,
     ) -> LayoutKey {
-        let doc = self.buffers.get(pane.buffer_id());
         LayoutKey {
             format: self.format_key(pane),
-            content_width: pane.content_width(size, doc.text().last_ropey_line()),
-            height: size.height(),
+            content_width,
+            size,
             scroll_margin: self.settings.scroll_margin,
         }
     }

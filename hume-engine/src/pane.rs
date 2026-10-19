@@ -5,7 +5,7 @@ use slotmap::SecondaryMap;
 use crate::display_lines::DisplayLinePos;
 use crate::layout::gutter_width_for_line;
 use crate::pipeline::{BufferId, ContentWidth, PaneSize};
-use crate::providers::ProviderSet;
+use crate::providers::{GutterInputs, ProviderSet};
 use crate::types::PaintedSelections;
 use hume_rope::column::DisplayLineCol;
 use hume_rope::line::{ContentLine, RopeyLine};
@@ -412,12 +412,18 @@ impl Pane {
     }
 
     /// The columns a pane of `size` leaves for text after this pane's
-    /// gutter. `last_line_idx` is the buffer's last ropey line index, which
-    /// sizes the line-number column (`hume_rope::lines::last_ropey_line`).
-    pub fn content_width(&self, size: PaneSize, last_line_idx: RopeyLine) -> ContentWidth {
+    /// gutter, drawn by `gutter`. `last_line_idx` is the buffer's last ropey
+    /// line index, which sizes the line-number column
+    /// (`hume_rope::lines::last_ropey_line`).
+    pub fn content_width(
+        &self,
+        size: PaneSize,
+        last_line_idx: RopeyLine,
+        gutter: GutterInputs,
+    ) -> ContentWidth {
         ContentWidth::of(
             size,
-            gutter_width_for_line(self.providers.gutter_columns(), last_line_idx),
+            gutter_width_for_line(self.providers.gutter_columns(), last_line_idx, gutter),
         )
     }
 

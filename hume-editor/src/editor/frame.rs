@@ -7,14 +7,17 @@
 
 use hume_grid::{Grid, Rect};
 
+use hume_engine::builtins::sign_column::SignColumn;
 use hume_engine::pane::Pane;
 use hume_engine::pipeline::{
-    ChromeRows, EngineView, PaneId, PaneRenderSettings, PaneSize, RenderContext, ScreenLayout,
+    ChromeRows, ContentWidth, EngineView, PaneId, PaneRenderSettings, PaneSize, RenderContext,
+    ScreenLayout,
 };
+use hume_engine::providers::GutterInputs;
 use hume_engine::types::EditorMode;
 
 use super::buffer::Buffer;
-use super::{Editor, EditorState};
+use super::{BufferId, Editor, EditorState};
 
 /// Project a pane's selections into its engine mirror, in the model's start
 /// order. That is also the cursor order the mirror requires: selections never
@@ -82,18 +85,23 @@ impl Editor {
             format: self.state.format_key(pane),
             indent_guides,
             cursor_is_block,
+            gutter: self.state.gutter_inputs(&self.view, pid),
         }
     }
 
-    /// The gutter width a pane's own providers currently occupy, used to
-    /// offset the terminal cursor column past line numbers and other gutter
-    /// providers. See [`Self::resolve_pane_settings`] for why this is split
-    /// out rather than returned alongside it.
+    /// The gutter width a pane's own providers occupy, used to offset the
+    /// terminal cursor column past line numbers and other gutter providers.
+    /// See [`Self::resolve_pane_settings`] for why this is split out rather
+    /// than returned alongside it.
     pub(super) fn pane_gutter_width(&self, pid: PaneId) -> u16 {
         let pane = &self.view.panes[pid];
         let doc = self.state.buffers.get(pane.buffer_id());
         let last_line_idx = doc.text().last_ropey_line();
-        super::cursor::gutter_width(pane.providers.gutter_columns(), last_line_idx)
+        super::cursor::gutter_width(
+            pane.providers.gutter_columns(),
+            last_line_idx,
+            self.state.gutter_inputs(&self.view, pid),
+        )
     }
 
     /// Render one frame into `grid` as laid out by `layout`, the one
@@ -327,20 +335,6 @@ impl Editor {
         // Nothing below changes which panes the active tab shows.
         let active = self.view.active_pane_ids();
 
-        // Line-number style depends on each pane's current buffer overrides.
-        for &pid in &active {
-            let buf_id = self.view.panes[pid].buffer_id();
-            let ln_style = self
-                .state
-                .buffers
-                .get(buf_id)
-                .overrides
-                .gutter_line_numbers(&self.state.settings);
-            self.view.panes[pid]
-                .providers
-                .sync_line_number_style(ln_style);
-        }
-
         self.sync_all_pane_mirrors(&active);
 
         // Everything that changes display-line counts or columns, synced
@@ -362,14 +356,15 @@ impl Editor {
         self.last_visible_range
             .retain(|pid, _| active.contains(pid));
 
-        let scroll_margin = self.state.settings.scroll_margin;
         for &pid in &active {
             let buf_id = self.view.panes[pid].buffer_id();
             let size = screen
                 .pane_size(self.view.focused_layout(), pid)
                 .expect("an active pane is a leaf of the focused layout");
-            let layout_key = self.state.layout_key(&self.view.panes[pid], size);
-            let format_key = layout_key.format_key();
+            let content_width = self.state.content_width(&self.view, pid, size);
+            let layout_key = self
+                .state
+                .layout_key(&self.view.panes[pid], size, content_width);
             // Per (pane, buffer) state: a pane that just switched buffers
             // reads a fresh entry whose `last_layout_key` is `None`.
             let pbs = self.state.panes.entries.shown_mut(&self.view.panes, pid);
@@ -387,10 +382,8 @@ impl Editor {
             let outcome = scroll_into_view(
                 self.state.buffers.get(buf_id),
                 &mut self.view.panes[pid],
-                size,
                 cursor,
-                format_key,
-                scroll_margin,
+                layout_key,
                 reveal,
             );
             self.state
@@ -528,6 +521,51 @@ impl EditorState {
             .chain(self.tabs.inactive())
             .find_map(|layout| screen.pane_size(layout, pid))
             .expect("every pooled pane is a leaf of one tab's layout")
+    }
+
+    /// The gutter settings pane `pid` draws by: its buffer's line-number
+    /// style, and its sign column's width from the buffer's `gutter-signs`
+    /// setting, its registered sign sources and, for `auto`, whether the
+    /// last frame placed a sign in the pane. Every gutter width, the frame's
+    /// and a between-frame reader's alike, comes from here.
+    pub(in crate::editor) fn gutter_inputs(&self, view: &EngineView, pid: PaneId) -> GutterInputs {
+        let bid = view.panes[pid].buffer_id();
+        let overrides = &self.buffers.get(bid).overrides;
+        let collapsed = overrides.gutter_signs(&self.settings).mode
+            == crate::editor::settings::SignColumnMode::Auto
+            && !self.panes.entries[pid].render.has_signs();
+        GutterInputs {
+            line_numbers: overrides.gutter_line_numbers(&self.settings),
+            sign_width: if collapsed {
+                0
+            } else {
+                SignColumn::width_for_slots(self.sign_slots(bid))
+            },
+        }
+    }
+
+    /// The sign slots buffer `bid` shows: its `gutter-signs` setting resolved
+    /// against its registered sign sources. A source's slot is its rank in
+    /// the buffer's registry (`DecorationStores::sign_sources`), fixed the
+    /// moment it registers, independent of what any frame places.
+    pub(in crate::editor) fn sign_slots(&self, bid: BufferId) -> u8 {
+        self.buffers
+            .get(bid)
+            .overrides
+            .gutter_signs(&self.settings)
+            .slots_for(self.config.decorations.sign_source_count(bid))
+    }
+
+    /// The columns pane `pid` of `size` leaves for text after its gutter.
+    pub(in crate::editor) fn content_width(
+        &self,
+        view: &EngineView,
+        pid: PaneId,
+        size: PaneSize,
+    ) -> ContentWidth {
+        let pane = &view.panes[pid];
+        let last_line = self.buffers.get(pane.buffer_id()).text().last_ropey_line();
+        pane.content_width(size, last_line, self.gutter_inputs(view, pid))
     }
 
     /// Bring the band views (drawer, docked popup, tab bar) up to their
@@ -702,20 +740,23 @@ struct ScrollOutcome {
 fn scroll_into_view(
     doc: &Buffer,
     pane: &mut Pane,
-    size: PaneSize,
     cursor: hume_rope::cluster::ClusterStart,
-    format_key: hume_engine::display_lines::line_store::FormatKey,
-    scroll_margin: usize,
+    layout_key: super::LayoutKey,
     reveal: bool,
 ) -> ScrollOutcome {
     // Whatever this pass formats deciding where to scroll, the render pass
     // finds already done: both work through this pane's one store.
-    let (mut dlm, viewport) = super::commands::pane_display_lines(doc, pane, format_key, size);
+    let (mut dlm, viewport) = super::commands::pane_display_lines(
+        doc,
+        pane,
+        layout_key.format_key(),
+        layout_key.content_width(),
+    );
     // A collapsed split has nothing to scroll and nowhere to put a cursor.
     // Checked before `locate`, which would otherwise format the cursor's
     // line for an answer no one can use, and before `geometry`, which
     // returns `None` for exactly this case.
-    let Some(geo) = size.geometry(scroll_margin) else {
+    let Some(geo) = layout_key.geometry() else {
         return ScrollOutcome {
             cursor_screen: None,
             parked: false,

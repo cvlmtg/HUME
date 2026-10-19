@@ -1529,3 +1529,22 @@ fn j_right_after_a_vsplit_wraps_at_the_new_pane_width() {
         co(2 + content_width)
     );
 }
+
+#[test]
+fn j_right_after_widening_the_sign_column_wraps_at_the_narrower_width() {
+    let (path, _f) = temp_file(&format!("{}\nshort\n", "a".repeat(100)));
+    let mut ed = open_headless(Some(path));
+    pin_wrap(&mut ed, hume_engine::pane::WrapMode::Soft { width: 0 });
+    frame(&mut ed, 80, 25);
+    ed.feed_key(key('l'));
+    ed.feed_key(key('l'));
+
+    ed.execute_typed("set", Some("global gutter-signs=always:3"))
+        .unwrap();
+    ed.handle_key(key('j'));
+
+    // The gutter is the line numbers' 1 digit plus padding (2 cells) and the
+    // three sign slots plus padding (4 cells), leaving 80 - 6 = 74 columns,
+    // so `j` from column 2 lands on the second display line's column 2.
+    assert_eq!(ed.current_view().primary().head().offset(), co(2 + 74));
+}

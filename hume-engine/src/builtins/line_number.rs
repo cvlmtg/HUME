@@ -1,6 +1,4 @@
-use std::any::Any;
-
-use crate::providers::{GutterCell, GutterCellContent, GutterColumn};
+use crate::providers::{GutterCell, GutterCellContent, GutterColumn, GutterInputs};
 use crate::types::{DisplayLineKind, ScopeId};
 
 // ---------------------------------------------------------------------------
@@ -23,12 +21,12 @@ pub enum LineNumberStyle {
 // LineNumberColumn
 // ---------------------------------------------------------------------------
 
-/// Built-in gutter column that renders line numbers.
+/// Built-in gutter column that renders line numbers, in the style
+/// [`GutterInputs::line_numbers`](crate::providers::GutterInputs) names.
 ///
 /// Width is computed dynamically: `floor(log10(total_lines)) + 1` digits plus
 /// one space of padding on the right.
 pub struct LineNumberColumn {
-    pub style: LineNumberStyle,
     /// Interned `"ui.linenr"`: every display line but the primary head line.
     default_scope: ScopeId,
     /// Interned `"ui.linenr.selected"`: the primary selection's head line.
@@ -41,23 +39,6 @@ impl LineNumberColumn {
     /// other provider (`DecorationSource`, `SignSource`).
     pub fn new(default_scope: ScopeId, selected_scope: ScopeId) -> Self {
         Self {
-            style: LineNumberStyle::Hybrid,
-            default_scope,
-            selected_scope,
-        }
-    }
-
-    /// No production caller: production always starts `Hybrid` via `new`
-    /// and changes style through settings; kept as a test helper for
-    /// constructing a column already in a specific style.
-    #[cfg(test)]
-    pub fn with_style(
-        style: LineNumberStyle,
-        default_scope: ScopeId,
-        selected_scope: ScopeId,
-    ) -> Self {
-        Self {
-            style,
             default_scope,
             selected_scope,
         }
@@ -75,7 +56,7 @@ pub fn digit_count(n: usize) -> u8 {
 }
 
 impl GutterColumn for LineNumberColumn {
-    fn width(&self, last_line_idx: hume_rope::line::RopeyLine) -> u8 {
+    fn width(&self, last_line_idx: hume_rope::line::RopeyLine, _inputs: &GutterInputs) -> u8 {
         // Digits needed to display the 1-based line number, plus 1 space of
         // right-padding. `last_line_idx` is the phantom-inclusive
         // `hume_rope::lines::last_ropey_line` (see `layout.rs`/`Pane::content_width`
@@ -113,7 +94,7 @@ impl GutterColumn for LineNumberColumn {
                 // display number to begin with (the phantom line has no
                 // number a user would ever see), and this plain escape-hatch
                 // arithmetic mirrors `width()`'s own `last_line_idx.index() + 1`.
-                let display_num = match self.style {
+                let display_num = match ctx.inputs.line_numbers {
                     LineNumberStyle::Absolute => line_idx.index() + 1,
                     LineNumberStyle::Relative => (line_idx.index() as isize
                         - primary_head_line.index() as isize)
@@ -135,10 +116,6 @@ impl GutterColumn for LineNumberColumn {
             }
         };
         vec![cell]
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
     }
 }
 

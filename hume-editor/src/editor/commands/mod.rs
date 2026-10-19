@@ -21,7 +21,7 @@ use hume_editing::tab_style::TabStyle;
 use hume_engine::display_lines::line_store::FormatKey;
 use hume_engine::display_lines::{DisplayColTarget, DisplayLineMap};
 use hume_engine::pane::{Pane, Viewport};
-use hume_engine::pipeline::{BufferId, EngineView, PaneId, PaneSize};
+use hume_engine::pipeline::{BufferId, ContentWidth, EngineView, PaneId};
 
 use super::buffer::Buffer;
 use super::doc_ops;
@@ -275,16 +275,14 @@ pub(super) fn effective_wrap_mode(
 /// `pane` itself, but a `&Pane` used to build it cannot coexist with the
 /// `&mut Pane` this function requires. A caller with no viewport to write
 /// (the movement consumers, which read the display-line list and rewrite
-/// selections instead) destructures `(mut dlm, _)`. `size` is the pane's,
-/// from [`EditorState::pane_size`](super::EditorState::pane_size) or the
-/// frame's layout.
+/// selections instead) destructures `(mut dlm, _)`. `content_width` is the
+/// pane's, from [`EditorState::content_width`](super::EditorState::content_width).
 pub(super) fn pane_display_lines<'a>(
     doc: &'a Buffer,
     pane: &'a mut Pane,
     key: FormatKey,
-    size: PaneSize,
+    content_width: ContentWidth,
 ) -> (DisplayLineMap<'a>, &'a mut Viewport) {
-    let content_width = pane.content_width(size, doc.text().last_ropey_line());
     let Pane {
         providers,
         line_store,

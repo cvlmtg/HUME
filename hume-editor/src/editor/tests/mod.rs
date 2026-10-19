@@ -602,14 +602,9 @@ fn pane_highlights(
     ed.state.panes.entries[pid].render.highlights(tier)
 }
 
-/// The sign column's currently synced gutter width for pane `pid`.
+/// The sign column's gutter width for pane `pid`.
 fn sign_column_width(ed: &Editor, pid: PaneId) -> u8 {
-    ed.view.panes[pid]
-        .providers
-        .gutter_columns()
-        .next()
-        .expect("sign column registered first")
-        .width(hume_rope::line::RopeyLine::new(0))
+    ed.state.gutter_inputs(&ed.view, pid).sign_width
 }
 
 /// Runs the write-side pipeline (`prepare_frame`) at a given terminal size,

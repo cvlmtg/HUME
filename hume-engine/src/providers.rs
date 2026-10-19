@@ -1,4 +1,3 @@
-use std::any::Any;
 use std::borrow::Cow;
 use std::sync::Arc;
 
@@ -8,8 +7,7 @@ use hume_rope::column::ByteCol;
 
 use crate::render::Canvas;
 
-use crate::builtins::line_number::{LineNumberColumn, LineNumberStyle};
-use crate::builtins::sign_column::SignColumn;
+use crate::builtins::line_number::LineNumberStyle;
 use crate::types::{DisplayLineKind, EditorMode, Scope, ScopeId};
 
 // ---------------------------------------------------------------------------
@@ -73,6 +71,21 @@ pub struct GutterCtx<'a> {
     pub mode: EditorMode,
     pub primary_head_line: hume_rope::line::ContentLine,
     pub rope: &'a ropey::Rope,
+    /// The gutter's settings for the pane being drawn.
+    pub inputs: GutterInputs,
+}
+
+/// The settings the built-in gutter columns size and draw by, resolved for
+/// one pane by the host each time it reads them. A column holds no copy of
+/// them, so a width read between frames reflects the settings as they are.
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+pub struct GutterInputs {
+    /// How [`LineNumberColumn`](crate::builtins::line_number::LineNumberColumn)
+    /// numbers its lines.
+    pub line_numbers: LineNumberStyle,
+    /// [`SignColumn`](crate::builtins::sign_column::SignColumn)'s width in
+    /// cells, its slots plus one padding cell, `0` when collapsed.
+    pub sign_width: u8,
 }
 
 /// A single column in the gutter (line numbers, git signs, diagnostics, etc.).
@@ -82,18 +95,13 @@ pub trait GutterColumn {
     /// size line-number columns to fit the largest line number. Ropey domain,
     /// phantom trailing line included: deliberate, so the gutter stays one
     /// digit wider than content strictly requires (see `layout::compute_viewport`).
-    fn width(&self, last_line_idx: hume_rope::line::RopeyLine) -> u8;
+    fn width(&self, last_line_idx: hume_rope::line::RopeyLine, inputs: &GutterInputs) -> u8;
 
     /// Produce content for one display line as a sequence of cells.
     /// Single-cell columns (like `LineNumberColumn`) return a `Vec` with one element.
     /// Multi-cell columns (like `SignColumn` sized past one slot, `gutter-signs=
     /// always`/`auto` included) return multiple cells, one per sign slot.
     fn render_cells(&self, kind: DisplayLineKind, ctx: &GutterCtx) -> Vec<GutterCell>;
-
-    /// Downcast support for per-frame config sync (e.g. updating `LineNumberStyle`).
-    ///
-    /// Implement as `fn as_any_mut(&mut self) -> &mut dyn Any { self }`.
-    fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 
 #[derive(Clone, Debug)]
@@ -385,30 +393,6 @@ impl ProviderSet {
             .iter()
             .filter(move |(_, kinds, _)| kinds.intersects(want))
             .map(|(id, _, p)| (*id, p.as_ref()))
-    }
-
-    /// Push the resolved line-number style into the `LineNumberColumn`, if present.
-    ///
-    /// Per-frame push, so `:set gutter-line-numbers` takes effect without
-    /// rebuilding the provider set.
-    pub fn sync_line_number_style(&mut self, style: LineNumberStyle) {
-        for (_, lane) in &mut self.gutter_columns {
-            if let Some(ln) = lane.as_any_mut().downcast_mut::<LineNumberColumn>() {
-                ln.style = style;
-            }
-        }
-    }
-
-    /// Push a new configured width into every registered `SignColumn`, if
-    /// any. Per-frame push, so the gutter can collapse to `0` when no sign
-    /// exists for the pane's current buffer and grow back when one appears.
-    /// Same downcast pattern as `sync_line_number_style`.
-    pub fn sync_sign_column_width(&mut self, width: u8) {
-        for (_, lane) in &mut self.gutter_columns {
-            if let Some(sc) = lane.as_any_mut().downcast_mut::<SignColumn>() {
-                sc.set_width(width);
-            }
-        }
     }
 }
 

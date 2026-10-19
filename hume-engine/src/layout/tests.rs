@@ -8,14 +8,11 @@ use crate::types::{DisplayLineKind, ScopeId};
 struct FixedWidthGutter;
 
 impl GutterColumn for FixedWidthGutter {
-    fn width(&self, _: hume_rope::line::RopeyLine) -> u8 {
+    fn width(&self, _: hume_rope::line::RopeyLine, _: &crate::providers::GutterInputs) -> u8 {
         3
     }
     fn render_cells(&self, _: DisplayLineKind, _: &GutterCtx) -> Vec<GutterCell> {
         vec![GutterCell::blank(ScopeId(0))]
-    }
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
     }
 }
 
@@ -23,7 +20,12 @@ impl GutterColumn for FixedWidthGutter {
 fn geometry_without_a_gutter_is_the_whole_viewport() {
     let rope = Rope::from_str("line1\nline2\nline3\n");
     let size = crate::pipeline::PaneSize::new(80, 3);
-    let visible = compute_viewport(&rope, size, std::iter::empty());
+    let visible = compute_viewport(
+        &rope,
+        size,
+        std::iter::empty(),
+        crate::providers::GutterInputs::default(),
+    );
     assert_eq!(visible.gutter_width, 0);
     assert_eq!(visible.content_width.get().get(), 80);
     assert_eq!(visible.content_height, 3);
@@ -34,7 +36,12 @@ fn a_gutter_takes_its_width_out_of_the_content_area() {
     let rope = Rope::from_str("line1\n");
     let size = crate::pipeline::PaneSize::new(80, 3);
     let lane: Box<dyn GutterColumn> = Box::new(FixedWidthGutter);
-    let visible = compute_viewport(&rope, size, std::iter::once(lane.as_ref()));
+    let visible = compute_viewport(
+        &rope,
+        size,
+        std::iter::once(lane.as_ref()),
+        crate::providers::GutterInputs::default(),
+    );
     assert_eq!(visible.gutter_width, 3);
     assert_eq!(visible.content_width.get().get(), 77);
 }
@@ -46,7 +53,12 @@ fn content_width_never_reaches_zero() {
     let rope = Rope::from_str("line1\n");
     let size = crate::pipeline::PaneSize::new(2, 3);
     let lane: Box<dyn GutterColumn> = Box::new(FixedWidthGutter);
-    let visible = compute_viewport(&rope, size, std::iter::once(lane.as_ref()));
+    let visible = compute_viewport(
+        &rope,
+        size,
+        std::iter::once(lane.as_ref()),
+        crate::providers::GutterInputs::default(),
+    );
     assert_eq!(visible.content_width.get().get(), 1);
 }
 
@@ -56,6 +68,11 @@ fn last_line_idx_includes_the_phantom_trailing_line() {
     // reports one line past the content for the buffer's structural '\n'.
     let rope = Rope::from_str("a\nb\nc\n");
     let size = crate::pipeline::PaneSize::new(80, 3);
-    let visible = compute_viewport(&rope, size, std::iter::empty());
+    let visible = compute_viewport(
+        &rope,
+        size,
+        std::iter::empty(),
+        crate::providers::GutterInputs::default(),
+    );
     assert_eq!(visible.last_line_idx.index(), 3);
 }

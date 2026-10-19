@@ -170,11 +170,10 @@ impl SignColumnConfig {
     /// regardless of `source_count`; auto-size clamps to `[1, MAX_SLOTS]`,
     /// never below 1, so the column stays visible under `always` even with
     /// zero registered sources. Returns a bare slot count, not a gutter
-    /// width: `Editor::update_sign_providers` (its only caller) needs the
-    /// bare count to bound the per-line `Vec<Sign>` it builds, and leaves the
-    /// `+1` padding-column conversion to `SignColumn::width_for_slots`,
-    /// applied later at the point the resolved width is actually synced to
-    /// the gutter.
+    /// width: `EditorState::sign_slots` (its only caller) hands it to
+    /// `Editor::update_sign_providers`, which bounds the per-line `Vec<Sign>`
+    /// it builds by it, and to `EditorState::gutter_inputs`, which converts
+    /// it to a width with `SignColumn::width_for_slots`.
     pub fn slots_for(self, source_count: usize) -> u8 {
         self.pinned_slots
             .unwrap_or_else(|| source_count.clamp(1, Self::MAX_SLOTS as usize) as u8)

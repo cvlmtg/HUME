@@ -67,13 +67,14 @@ fn content_pos_agrees_with_the_actual_render_for_a_top_line_before_block() {
     let cursor_char = ed.current_view().primary().head();
     let bid = ed.view.panes[pid].buffer_id();
     let size = ed.pane_size(pid);
+    let content_width = ed.state.content_width(&ed.view, pid, size);
     let Editor { state, view, .. } = &mut ed;
     let key = state.format_key(&view.panes[pid]);
     let (mut dlm, _) = crate::editor::commands::pane_display_lines(
         state.buffers.get(bid),
         &mut view.panes[pid],
         key,
-        size,
+        content_width,
     );
 
     let pos = crate::editor::cursor::content_pos(size, &mut vp, &mut dlm, cursor_char);
@@ -458,6 +459,7 @@ fn view_scroll_cursor_follow_counts_virtual_lines_toward_its_budget() {
             )));
 
         let size = ed.pane_size(pid);
+
         scroll_view(
             &mut ed.state,
             &mut ed.view,
@@ -523,13 +525,14 @@ fn content_pos_counts_an_inline_hints_extra_wrap_display_line() {
     let cursor_char = ed.current_view().primary().head();
     let bid = ed.view.panes[pid].buffer_id();
     let size = ed.pane_size(pid);
+    let content_width = ed.state.content_width(&ed.view, pid, size);
     let Editor { state, view, .. } = &mut ed;
     let key = state.format_key(&view.panes[pid]);
     let (mut dlm, _) = crate::editor::commands::pane_display_lines(
         state.buffers.get(bid),
         &mut view.panes[pid],
         key,
-        size,
+        content_width,
     );
     assert_eq!(
         crate::editor::cursor::content_pos(size, &mut vp, &mut dlm, cursor_char)
