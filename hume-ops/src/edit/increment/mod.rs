@@ -178,7 +178,7 @@ impl Literal {
     /// Where each part lies, as indices into a literal `len` clusters long.
     fn parts(&self, len: usize) -> Vec<Range<usize>> {
         match self {
-            Self::Number(_) => vec![0..len],
+            Self::Number(_) => std::iter::once(0..len).collect(),
             Self::Moment(moment) => moment.parts().collect(),
         }
     }
