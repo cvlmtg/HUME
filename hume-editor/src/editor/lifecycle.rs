@@ -51,12 +51,6 @@ impl Editor {
         self.state.config.keymap = super::default_keymap_for(kitty_enabled);
     }
 
-    /// Mark this editor as driven by scripted keys with no one to answer a
-    /// prompt, so `confirm_permit` never lets a confirm open.
-    pub(in crate::editor) fn set_headless(&mut self) {
-        self.state.headless = true;
-    }
-
     /// Open a file from disk, or create a new empty scratch buffer.
     ///
     /// The cursor starts at position 0 in Normal mode. Terminal dimensions are
@@ -207,20 +201,18 @@ impl Editor {
         let (first, rest) = files
             .split_first()
             .map_or((None, &[][..]), |(f, r)| (Some(f), r));
-        let wake: Arc<dyn Fn() + Send + Sync> = match &driver {
-            Driver::Terminal { wake, .. } => Arc::clone(wake),
+        let (wake, kitty_enabled, headless): (Arc<dyn Fn() + Send + Sync>, _, _) = match driver {
+            Driver::Terminal {
+                kitty_enabled,
+                wake,
+            } => (wake, kitty_enabled, false),
             // No event loop to wake: background threads (parse worker, LSP
             // transport) call this into the void.
-            Driver::Headless => Arc::new(|| {}),
+            Driver::Headless => (Arc::new(|| {}), true, true),
         };
         let mut editor = Self::open(first.map(|f| f.path.clone()), wake, dirs, startup_cwd)?;
-        match driver {
-            Driver::Terminal { kitty_enabled, .. } => editor.set_kitty_support(kitty_enabled),
-            Driver::Headless => {
-                editor.set_kitty_support(true);
-                editor.set_headless();
-            }
-        }
+        editor.set_kitty_support(kitty_enabled);
+        editor.state.headless = headless;
         editor.set_config_source(config);
         editor.init_scripting(&mut Default::default());
         if let Some(pos) = first.and_then(|f| f.pos) {

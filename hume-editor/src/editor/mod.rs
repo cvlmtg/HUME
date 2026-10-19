@@ -277,8 +277,9 @@ pub(crate) struct EditorState {
     /// the single-threaded, in-editor quit path (dirty-buffer prompts, `:q`
     /// semantics); a signal bypasses all of that.
     pub(super) terminate_exit_code: Arc<AtomicI32>,
-    /// Set by headless `run_keys`, where no one can answer a prompt: a
-    /// confirm never opens, so scripted keys are not taken as answers.
+    /// Set by `Editor::start` for a `Driver::Headless` run, where no one can
+    /// answer a prompt: a confirm never opens, so scripted keys are not taken
+    /// as answers.
     pub(super) headless: bool,
     /// Panics on background threads, queued by the panic hook
     /// `hume_editor::run` installs. The run loop reports each new one as an
@@ -874,10 +875,8 @@ pub(crate) struct Editor {
     /// and `(set-cwd! …)` need no hook of their own. `None` until the first
     /// frame, so that frame reports.
     applied_cwd: Option<PathBuf>,
-    /// Startup cursor placements queued by `queue_startup_position` (one per
-    /// CLI `path:line[:col]` argument) by `Editor::start`. Every `settle()`
-    /// ends with `apply_startup_positions`, so the first one drains this,
-    /// after the `OnBufferOpen`/`OnLanguageSet` hooks it ran.
+    /// Startup cursor placements, one per CLI `path:line[:col]` argument,
+    /// queued by `Editor::start` and drained by `apply_startup_positions`.
     startup_positions: Vec<(BufferId, crate::cli::PathPosition)>,
 }
 

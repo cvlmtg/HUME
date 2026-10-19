@@ -269,7 +269,7 @@ impl Editor {
     /// off each pane's *current* bounds (`timer_bridge.rs`), so the bounds
     /// have to be current before that drain runs, not after.
     ///
-    /// [`Self::sync_layout`] calls this a second time, from the stored
+    /// [`Self::sync_layout`] calls this again, from the stored
     /// `last_terminal_area`, after re-syncing the bottom-band views, so a
     /// band-height change `settle()` made (a hook-driven `close-popup!`, a
     /// settle-drained `close-drawer!`) is re-partitioned into `viewport`
@@ -441,8 +441,7 @@ impl Editor {
     /// Re-partition the terminal from the settled chrome views (bottom bands,
     /// tab bar) into each pane's viewport. A settled drain can resize a band
     /// after the pre-settle `sync_viewport_dims`, so anything that reads a
-    /// pane's height after a drain runs this first: `prepare_frame`, and
-    /// `apply_startup_positions` before it centres.
+    /// pane's height after a drain runs this first.
     pub(super) fn sync_layout(&mut self) {
         // Bake scopes interned since the last frame. It must run before the
         // bottom-band sync: `show-popup!` interns its grammar's scopes at

@@ -188,11 +188,6 @@ pub fn run(
         cwd,
     )?;
     editor.attach_terminate_flag(terminate.clone());
-    // No explicit startup drain: work queued during init (OnBufferOpen,
-    // OnLanguageSet, etc.) sits in `pending_work` until `Editor::run`'s loop
-    // reaches its first `settle()`, which now runs before the first
-    // `should_quit` check and the first frame, so nothing is lost by leaving
-    // it queued here.
 
     let mut term = hume_platform::terminal::init(
         &shared,

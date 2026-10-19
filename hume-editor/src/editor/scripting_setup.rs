@@ -300,9 +300,8 @@ impl Editor {
     /// responses, timer fires: `drain_async_sources`), drain
     /// `state.config.pending_work` to a fixpoint, then install finished
     /// parses and bring every visible buffer's syntax tree up to its text
-    /// (`reparse_stale_buffers`). Each call ends by placing any cursors the
-    /// command line's files asked for (`apply_startup_positions`). Only
-    /// `Editor::start` queues them, so only the first call finds any.
+    /// (`reparse_stale_buffers`). Each call ends with
+    /// `apply_startup_positions`.
     ///
     /// This is the single consumer of the merged work queue: a
     /// `Call` (an `lsp-request!` callback, a timer thunk, a prompt/menu/

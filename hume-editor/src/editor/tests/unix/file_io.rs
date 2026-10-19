@@ -702,6 +702,24 @@ fn open_extra_file_opens_the_path() {
 use crate::cli::PathPosition;
 use hume_rope::column::GraphemeCol;
 
+/// A 1-based `line:col` CLI position.
+fn startup_pos(line: usize, col: usize) -> PathPosition {
+    PathPosition {
+        line: hume_rope::line::ContentLine::from_number(line).unwrap(),
+        grapheme_col: GraphemeCol::from_number(col).unwrap(),
+    }
+}
+
+/// Fixture: 200 short lines, well past a 24-row terminal and each far under
+/// 80 columns, so nothing soft-wraps whatever the buffer's wrap-mode default
+/// and buffer lines map 1:1 to display lines.
+fn tall_file() -> (tempfile::NamedTempFile, std::path::PathBuf) {
+    let f = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(f.path(), numbered_lines(200)).unwrap();
+    let canonical = std::fs::canonicalize(f.path()).unwrap();
+    (f, canonical)
+}
+
 #[test]
 fn settle_places_a_queued_startup_position() {
     // Column 6 (1-based, i.e. grapheme index 5) lands on the 't' of "two".
@@ -711,13 +729,7 @@ fn settle_places_a_queued_startup_position() {
     let bid = ed.focused_buffer_id();
 
     ed.sync_viewport_dims(80, 24);
-    ed.queue_startup_position(
-        bid,
-        PathPosition {
-            line: hume_rope::line::ContentLine::from_number(2).unwrap(),
-            grapheme_col: GraphemeCol::from_number(6).unwrap(),
-        },
-    );
+    ed.queue_startup_position(bid, startup_pos(2, 6));
     ed.settle();
 
     assert_eq!(ed.current_view().primary().head().offset(), co(14));
@@ -728,25 +740,13 @@ fn settle_places_a_queued_startup_position() {
 /// taller than the viewport for the viewport to move.
 #[test]
 fn settle_centers_the_focused_buffer_on_its_startup_position() {
-    let f = tempfile::NamedTempFile::new().unwrap();
-    // 200 short lines: well past a 24-row terminal, and each far under 80
-    // columns so nothing soft-wraps regardless of the buffer's wrap-mode
-    // default, keeping the buffer-line-to-display-line mapping 1:1.
-    let content: String = (1..=200).map(|n| format!("line {n}\n")).collect();
-    std::fs::write(f.path(), &content).unwrap();
-    let canonical = std::fs::canonicalize(f.path()).unwrap();
+    let (_f, canonical) = tall_file();
 
     let mut ed = open_headless(Some(canonical));
     let bid = ed.focused_buffer_id();
 
     ed.sync_viewport_dims(80, 24); // 24 rows -> 23 usable after the statusline
-    ed.queue_startup_position(
-        bid,
-        PathPosition {
-            line: hume_rope::line::ContentLine::from_number(150).unwrap(),
-            grapheme_col: GraphemeCol::from_number(1).unwrap(),
-        },
-    );
+    ed.queue_startup_position(bid, startup_pos(150, 1));
     ed.settle();
 
     // The centre row is height/2 = 23/2 = 11 and the cursor sits on 0-based
@@ -762,23 +762,14 @@ fn settle_centers_the_focused_buffer_on_its_startup_position() {
 /// hook's, say) takes its rows from the pane, and centring must count them.
 #[test]
 fn settle_centers_a_startup_position_against_a_drawer_opened_since_the_last_resize() {
-    let f = tempfile::NamedTempFile::new().unwrap();
-    let content: String = (1..=200).map(|n| format!("line {n}\n")).collect();
-    std::fs::write(f.path(), &content).unwrap();
-    let canonical = std::fs::canonicalize(f.path()).unwrap();
+    let (_f, canonical) = tall_file();
 
     let mut ed = open_headless(Some(canonical));
     let bid = ed.focused_buffer_id();
 
     ed.sync_viewport_dims(80, 24);
     ed.execute_typed("ls", None).unwrap();
-    ed.queue_startup_position(
-        bid,
-        PathPosition {
-            line: hume_rope::line::ContentLine::from_number(150).unwrap(),
-            grapheme_col: GraphemeCol::from_number(1).unwrap(),
-        },
-    );
+    ed.queue_startup_position(bid, startup_pos(150, 1));
     ed.settle();
 
     // `:ls` with one buffer is one row plus the drawer's one padding row, well
@@ -807,13 +798,7 @@ fn settle_parks_a_startup_position_on_a_non_focused_buffer_without_switching_foc
     let extra_bid = ed.open_extra_file(&canonical2).unwrap();
 
     ed.sync_viewport_dims(80, 24);
-    ed.queue_startup_position(
-        extra_bid,
-        PathPosition {
-            line: hume_rope::line::ContentLine::from_number(3).unwrap(),
-            grapheme_col: GraphemeCol::from_number(2).unwrap(),
-        },
-    );
+    ed.queue_startup_position(extra_bid, startup_pos(3, 2));
     ed.settle();
 
     let pid = ed.view.focused_pane();
@@ -855,13 +840,7 @@ fn settle_clamps_a_startup_line_past_the_end() {
     let bid = ed.focused_buffer_id();
 
     ed.sync_viewport_dims(80, 24);
-    ed.queue_startup_position(
-        bid,
-        PathPosition {
-            line: hume_rope::line::ContentLine::from_number(999).unwrap(),
-            grapheme_col: GraphemeCol::from_number(1).unwrap(),
-        },
-    );
+    ed.queue_startup_position(bid, startup_pos(999, 1));
     ed.settle();
 
     assert_eq!(
