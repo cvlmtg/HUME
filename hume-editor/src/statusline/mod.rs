@@ -16,7 +16,8 @@ mod elements;
 use elements::{
     CwdElement, DiagnosticsElement, DirtyIndicatorElement, FileNameElement, KittyProtocolElement,
     LanguageElement, LineEndingElement, MacroRecordingElement, MiniBufElement, ModeElement,
-    PositionElement, ReadOnlyElement, SearchMatchesElement, SeparatorElement, StatuslineElement,
+    PipeElement, PositionElement, ReadOnlyElement, SearchMatchesElement, SeparatorElement,
+    StatuslineElement,
 };
 
 /// Hardcoded left section for Command/Search modes.
@@ -89,6 +90,10 @@ pub enum StatusElement {
     /// Macro recording indicator: `"[recording @q]"` while a macro is being
     /// recorded, empty otherwise.
     MacroRecording,
+    /// Shell command indicator: ``"running `sort`"`` while `pipe` waits for
+    /// its command, with a `"3/10"` count of finished processes when it runs
+    /// over more than one selection; empty otherwise.
+    Pipe,
     /// The focused buffer's language identifier, rendered as `"[rust]"`, or
     /// empty when no language is detected (scratch buffers, unknown filetypes).
     Language,
@@ -134,6 +139,7 @@ const ELEMENT_NAMES: &[(&str, StatusElement)] = &[
     ("SearchMatches", StatusElement::SearchMatches),
     ("MiniBuf", StatusElement::MiniBuf),
     ("MacroRecording", StatusElement::MacroRecording),
+    ("Pipe", StatusElement::Pipe),
     ("Language", StatusElement::Language),
     ("ReadOnly", StatusElement::ReadOnly),
     ("Diagnostics", StatusElement::Diagnostics),
@@ -238,6 +244,7 @@ impl Default for StatusLineConfig {
             ],
             center: vec![],
             right: vec![
+                StatusElement::Pipe,
                 StatusElement::MacroRecording,
                 StatusElement::SearchMatches,
                 StatusElement::Diagnostics,
@@ -559,6 +566,7 @@ pub(crate) fn render_element(
         StatusElement::SearchMatches => SearchMatchesElement::render(editor, colors),
         StatusElement::MiniBuf => MiniBufElement::render(editor, colors),
         StatusElement::MacroRecording => MacroRecordingElement::render(editor, colors),
+        StatusElement::Pipe => PipeElement::render(editor, colors),
         StatusElement::Language => LanguageElement::render(editor, colors),
         StatusElement::ReadOnly => ReadOnlyElement::render(editor, colors),
         StatusElement::Diagnostics => DiagnosticsElement::render(editor, colors),

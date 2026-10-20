@@ -2,6 +2,10 @@
 
 use hume_engine::pipeline::BufferId;
 
+mod word_list;
+
+pub use word_list::{format_word_list, parse_word_list};
+
 /// A buffer option stored on the buffer itself rather than in the settings
 /// tables. Each has no global default and is valid only for `:set buffer`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -53,14 +57,16 @@ pub fn language_option_value(value: &str) -> Option<&str> {
 /// build the right `SteelVal`. `hume-scripting` has no dependency on
 /// `hume-editor`'s settings types, so the editor impl converts its own
 /// per-key parser kind (`bool`/`usize`/`enum_str`/…) down to one of these
-/// four shapes at the trait boundary. `Symbol` is a closed set of names
-/// (`indent-style`'s `hard`/`soft`), `Str` free text or a `name:N` form.
+/// five shapes at the trait boundary. `Symbol` is a closed set of names
+/// (`indent-style`'s `hard`/`soft`), `Str` free text or a `name:N` form,
+/// `List` a word list (`shell`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OptionValue {
     Bool(bool),
     Int(i64),
     Str(String),
     Symbol(String),
+    List(Vec<String>),
 }
 
 impl From<OptionValue> for steel::rvals::SteelVal {
@@ -70,8 +76,18 @@ impl From<OptionValue> for steel::rvals::SteelVal {
             OptionValue::Int(n) => Self::IntV(n as isize),
             OptionValue::Str(s) => Self::StringV(s.into()),
             OptionValue::Symbol(s) => Self::SymbolV(s.into()),
+            OptionValue::List(words) => crate::builtins::args::string_list(words),
         }
     }
+}
+
+/// A value a script sets an option to. A list stays a list, so only a
+/// word-list option (`shell`) accepts one; every other value is the text
+/// `:set` would carry.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OptionInput {
+    Text(String),
+    Words(Vec<String>),
 }
 
 /// Global settings and the Steel eval budget,
@@ -81,7 +97,7 @@ pub trait SettingsHost {
     /// eval-mode gate (`open` kind): callable from `init.scm`, plugin load,
     /// plugin activation, or a plain command/hook body. The write already
     /// goes through the editor's validating chokepoint regardless of caller.
-    fn set_global_option(&mut self, key: &str, value: &str) -> Result<(), String>;
+    fn set_global_option(&mut self, key: &str, value: OptionInput) -> Result<(), String>;
 
     /// `(set-buffer-option! pane key value)`: writes `key`'s per-buffer
     /// override on `pane`'s buffer. Command/hook context (`cmd` kind),
@@ -89,7 +105,12 @@ pub trait SettingsHost {
     /// key, or a bad value. Kind-C: only the buffer matters, `pane`'s own
     /// pane (if any) is ignored: the builtin layer narrows the decoded
     /// `PaneHandle` to a plain `bid` before this is called.
-    fn set_buffer_option(&mut self, key: &str, value: &str, bid: BufferId) -> Result<(), String>;
+    fn set_buffer_option(
+        &mut self,
+        key: &str,
+        value: OptionInput,
+        bid: BufferId,
+    ) -> Result<(), String>;
 
     /// `(get-option key)`: `key`'s global value, ignoring any buffer
     /// override even if one exists. `Err` for an unknown key. No eval-mode

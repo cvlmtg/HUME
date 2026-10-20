@@ -56,6 +56,8 @@ mod minibuf;
 mod mouse;
 mod pane_state;
 mod picker_source;
+mod pipe_run;
+pub(crate) use pipe_run::PipeProgress;
 mod popup_syntax;
 pub(crate) mod position_stores;
 mod register_ops;
@@ -63,6 +65,7 @@ mod registry;
 mod replay;
 pub(crate) mod search;
 pub(crate) mod settings;
+mod shell_batch;
 mod syntax;
 pub(crate) mod tab;
 mod theme;
@@ -376,6 +379,12 @@ pub(crate) struct EditorState {
     /// Deferred dot-repeat job enqueued by `cmd_repeat`; consumed by
     /// `replay_dot` at the tail of `handle_key`.
     pub(super) pending_repeat: Option<PendingRepeat>,
+    /// A `pipe` its command accepted, run by the main loop or, during a
+    /// replay, before the next replayed key (`pipe_run`).
+    pub(in crate::editor) queued_pipe: Option<pipe_run::QueuedPipe>,
+    /// The pipe being run, `Some` for the whole wait: what the statusline's
+    /// `Pipe` element shows.
+    pub(crate) running_pipe: Option<PipeProgress>,
     /// The live sift preview's result for the `sift-within` its Enter runs,
     /// taken by the next `sift-within` whatever it sifts.
     pub(in crate::editor) sift_reuse: Option<input_stack::SiftReuse>,
@@ -385,8 +394,9 @@ pub(crate) struct EditorState {
     pub(in crate::editor) sift_scans: usize,
     /// `Some` for `replay_dot`'s whole extent. Read by
     /// [`EditorState::interactive_input`], which every interactive input
-    /// passes before it opens, to refuse one reached during `.`, and by a
-    /// character read, which takes its answer from it.
+    /// passes before it opens, to refuse one reached during `.`, and by each
+    /// read, picker, prompt, menu and text prompt, which takes its answer
+    /// from it.
     pub(in crate::editor) dot_replay: Option<replay::DotReplay>,
     /// The editor's open Paste session or dot-repeat placeholder, if any.
     /// An open Insert session lives on the input stack instead; see
@@ -508,6 +518,8 @@ impl EditorState {
             selection_recipe: Vec::new(),
             selection_recipe_touched: false,
             pending_repeat: None,
+            queued_pipe: None,
+            running_pipe: None,
             sift_reuse: None,
             #[cfg(test)]
             sift_scans: 0,
@@ -694,8 +706,10 @@ impl EditorState {
     ///
     /// Tears down the current mode layer unless it is `Base`
     /// (teardown is cancel), clears Extend, and calls [`Self::push_layer`].
-    /// Overlays below the outgoing mode layer stay. `push_layer` evicts any
-    /// popup in `Base`'s slot, so a popup is never buried.
+    /// Overlays below the outgoing mode layer stay, except the shell prompt:
+    /// its minibuffer would sit under the new layer's, so it is retired
+    /// wherever it is. `push_layer` evicts any popup in `Base`'s slot, so a
+    /// popup is never buried.
     ///
     /// Never gated: a key only reaches `Base` after every overlay above it
     /// fell through, and a Steel-initiated push (a timer's `prompt!`) lands on
@@ -705,6 +719,7 @@ impl EditorState {
         view: &EngineView,
         layer: L,
     ) {
+        self.retire::<input_stack::shell_prompt::ShellPromptLayer>(view);
         let mode_layer = self.input.mode_layer();
         if !self.input.is::<input_stack::BaseLayer>(mode_layer) {
             self.truncate_layers(view, mode_layer);
@@ -885,6 +900,10 @@ pub(crate) struct Editor {
     /// Startup cursor placements, one per CLI `path:line[:col]` argument,
     /// queued by `Editor::start` and drained by `apply_startup_positions`.
     startup_positions: Vec<(BufferId, crate::cli::PathPosition)>,
+    /// The console the next pipe run during a replay waits on, in place of
+    /// the terminal.
+    #[cfg(test)]
+    pub(in crate::editor) inline_pipe_console: Option<Box<dyn pipe_run::PipeConsole>>,
 }
 
 impl Editor {

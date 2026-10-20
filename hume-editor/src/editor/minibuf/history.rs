@@ -1,7 +1,8 @@
-//! Minibuffer history: bounded, in-memory recall for `:`, `/`, and `?` prompts.
+//! Minibuffer history: bounded, in-memory recall for the `:`, `/`, `?` and
+//! `|` prompts.
 //!
 //! Each prompt gets its own [`History`] ring (oldest-first [`VecDeque`]) with
-//! per-session navigation state (cursor + scratch). The three rings are grouped
+//! per-session navigation state (cursor + scratch). The four rings are grouped
 //! in [`HistoryStore`], which lives on `Editor` and is keyed by [`HistoryKind`].
 //!
 use std::collections::VecDeque;
@@ -20,6 +21,8 @@ pub(in crate::editor) enum HistoryKind {
     SearchForward,
     /// `?` backward-search prompt.
     SearchBackward,
+    /// `|` shell-command prompt.
+    Pipe,
 }
 
 /// Direction for [`crate::editor::minibuf::recall_history`].
@@ -166,6 +169,7 @@ pub(crate) struct HistoryStore {
     command: History,
     search_f: History,
     search_b: History,
+    pipe: History,
 }
 
 impl HistoryStore {
@@ -174,6 +178,7 @@ impl HistoryStore {
             command: History::new(capacity),
             search_f: History::new(capacity),
             search_b: History::new(capacity),
+            pipe: History::new(capacity),
         }
     }
 
@@ -183,6 +188,7 @@ impl HistoryStore {
             HistoryKind::Command => &self.command,
             HistoryKind::SearchForward => &self.search_f,
             HistoryKind::SearchBackward => &self.search_b,
+            HistoryKind::Pipe => &self.pipe,
         }
     }
 
@@ -191,6 +197,7 @@ impl HistoryStore {
             HistoryKind::Command => &mut self.command,
             HistoryKind::SearchForward => &mut self.search_f,
             HistoryKind::SearchBackward => &mut self.search_b,
+            HistoryKind::Pipe => &mut self.pipe,
         }
     }
 
@@ -211,6 +218,7 @@ impl HistoryStore {
         self.command.begin_session();
         self.search_f.begin_session();
         self.search_b.begin_session();
+        self.pipe.begin_session();
     }
 
     /// Update the capacity of every ring; see `History::set_capacity` for
@@ -220,6 +228,7 @@ impl HistoryStore {
         self.command.set_capacity(new_cap);
         self.search_f.set_capacity(new_cap);
         self.search_b.set_capacity(new_cap);
+        self.pipe.set_capacity(new_cap);
     }
 }
 

@@ -37,7 +37,10 @@ pub use language::LanguageHost;
 pub use lsp::{LocationPlace, LspHost, Place, PositionParams, RangeParams, RangesParams};
 pub use output::OutputHost;
 pub use registers::RegisterHost;
-pub use settings::{BufferIntrinsicOption, OptionValue, SettingsHost, language_option_value};
+pub use settings::{
+    BufferIntrinsicOption, OptionInput, OptionValue, SettingsHost, format_word_list,
+    language_option_value, parse_word_list,
+};
 pub use timers::TimerHost;
 pub use token::{HostToken, TrackedFate, TrackedHold};
 pub use ui::{

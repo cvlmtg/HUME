@@ -238,16 +238,17 @@ fn word_boundary_back(s: &str, cursor: usize) -> usize {
     i
 }
 
-// ── Shared by every minibuf-backed mode layer ───────────────────────────────
+// ── Shared by every minibuf-backed layer ────────────────────────────────────
 //
-// `Command`/`Search`/`Sift`/`Prompt` (`input_stack/{command,search,sift,
-// prompt}.rs`) all call these. They are homed here rather than in any one of those
-// files so none of the four has to own a helper the other three also need.
+// `Command`/`Search`/`Sift`/`Prompt`/`ShellPrompt` (`input_stack/{command,
+// search,sift,prompt,shell_prompt}.rs`) all call these. They are homed here
+// rather than in any one of those files so none of the five has to own a
+// helper the others also need.
 
 /// Converts one `InputEvent` into a `MiniBufferEvent` for whichever
-/// minibuf-mode layer (`Command`/`Search`/`Sift`/`Prompt`) is dispatching:
-/// the single place a key becomes an edit to the minibuffer, shared by all
-/// four. A mouse event has no minibuffer edit to become: it falls through
+/// minibuf-backed layer (`Command`/`Search`/`Sift`/`Prompt`/`ShellPrompt`)
+/// is dispatching: the single place a key becomes an edit to the
+/// minibuffer, shared by all five. A mouse event has no minibuffer edit to become: it falls through
 /// (the cursor still moves under an open `:`/`/`/`s` prompt) and
 /// returns `None` either way. `None` also covers
 /// the case where no minibuffer is live (dispatch reached this layer
@@ -267,7 +268,8 @@ pub(in crate::editor) fn minibuf_input(
     }
 }
 
-/// [`minibuf_input`] for the command mode prompt (`Command`/`Prompt`): a key
+/// [`minibuf_input`] for the command-line prompts (`Command`/`Prompt`/
+/// `ShellPrompt`): a key
 /// bound in the `'command` keymap runs its command instead of the prompt's
 /// own handling. The key is consumed even when its command is unknown, as
 /// an Insert-mode binding's is.

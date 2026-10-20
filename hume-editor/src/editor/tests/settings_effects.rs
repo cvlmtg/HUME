@@ -603,9 +603,11 @@ fn host_set_buffer_option_invalid_bid_errors() {
 
     let mut ed = editor_from("-[h]>ello\n");
     let mut host = crate::editor::host_impl::EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    let result = host
-        .settings()
-        .set_buffer_option("indent-width", "8", BufferId::default());
+    let result = host.settings().set_buffer_option(
+        "indent-width",
+        hume_scripting::host::OptionInput::Text("8".to_string()),
+        BufferId::default(),
+    );
     assert!(result.is_err(), "a stale bid must be rejected, not panic");
     let msg = result.unwrap_err();
     assert!(

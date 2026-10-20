@@ -20,7 +20,7 @@
 //! `settings::tests`, rather than from every file under `crate::editor`.
 
 use hume_engine::pipeline::{BufferId, EngineView};
-use hume_scripting::host::BufferIntrinsicOption;
+use hume_scripting::host::{BufferIntrinsicOption, OptionInput};
 
 use super::{ResyncKey, THEME_KEY, parse_setting_text, resync_key};
 use crate::editor::EditorState;
@@ -32,7 +32,7 @@ pub(in crate::editor) fn apply_global(
     state: &mut EditorState,
     view: &mut EngineView,
     key: &str,
-    value: &str,
+    value: &OptionInput,
 ) -> Result<(), String> {
     super::write_global(key, value, &mut state.settings)?;
 
@@ -79,7 +79,7 @@ pub(in crate::editor) fn apply_global(
 #[cfg(any(test, feature = "test-util"))]
 pub(crate) fn write_global_for_test(
     key: &str,
-    value: &str,
+    value: &OptionInput,
     settings: &mut crate::editor::settings::EditorSettings,
 ) -> Result<(), String> {
     super::write_global(key, value, settings)
@@ -146,10 +146,10 @@ pub(in crate::editor) fn apply_buffer(
     state: &mut EditorState,
     bid: BufferId,
     key: &str,
-    value: &str,
+    value: &OptionInput,
 ) -> Result<(), String> {
     if key == BufferIntrinsicOption::LineEnding.key() {
-        return set_line_ending(state, bid, value);
+        return set_line_ending(state, bid, super::for_key(key, super::single_value(value))?);
     }
     super::write_buffer(key, value, &mut state.buffers.get_mut(bid).overrides)
 }

@@ -113,6 +113,7 @@ Text objects (use the `m` prefix):
 | `u` | `undo` |  | Undo |
 | `U` / `Ctrl-r` | `redo` |  | Redo |
 | `.` | `repeat-last-action` |  | Repeat last editing action |
+| `\|` | `pipe` |  | Run a shell command on each selection and replace it with the output. See [Shell commands](editing.md#shell-commands) |
 
 ### Entering other modes
 
@@ -252,6 +253,7 @@ Press `Ctrl-p` then a second key:
 | `Ctrl-w` | `delete-word-backward` |  | Delete word before cursor |
 | `Ctrl-Space` | `completion-trigger` |  | Show completions at the cursor, from every registered completion source (a language server's, say; see [Language servers](lsp.md)) |
 | `Ctrl-r` | `insert-register` |  | Insert the register named by the next key, or the file's path (`f`) or directory (`p`); see [Inserting a register while typing](copy-and-paste.md#inserting-a-register-while-typing) |
+| `Ctrl-\|` | `pipe` | ✓ | Run a shell command and insert its output at each cursor; see [Shell commands](editing.md#shell-commands) |
 | Any other character | — |  | Insert character (auto-pairs aware) |
 
 Insert mode handles auto-pair insertion: typing `(`, `[`, `{`, `"`, `'`, or `` ` `` inserts the matching close character. Backspace inside an empty pair deletes both characters. A quote typed right after the same quote is inserted on its own, so ```` ``` ```` and `"""` come out as typed.

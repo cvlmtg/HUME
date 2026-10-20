@@ -7,42 +7,44 @@ use steel::rvals::SteelVal;
 use hume_engine::pipeline::BufferId;
 
 use crate::SteelCtx;
-use crate::host::{BufferIntrinsicOption, language_option_value};
+use crate::host::{BufferIntrinsicOption, OptionInput, language_option_value};
 use crate::types::{Effect, PaneHandle, QueuedEffect};
 
 use super::SteelResult;
+use super::args::list_to_strings;
 use super::errors::generic_err;
 
-/// Coerce a Steel string/symbol/bool/int settings value to the settings
-/// layer's string wire form. `ctx_name` names the calling builtin in the
-/// error.
-fn coerce_option_value(value: &SteelVal, ctx_name: &str) -> Result<String, SteelErr> {
+/// Coerce a Steel string/symbol/bool/int/list-of-strings settings value to
+/// what the settings layer takes: the text `:set` would carry, or a list's
+/// words. `ctx_name` names the calling builtin in the error.
+fn coerce_option_value(value: &SteelVal, ctx_name: &str) -> Result<OptionInput, SteelErr> {
     match value {
-        SteelVal::StringV(s) => Ok(s.to_string()),
-        SteelVal::SymbolV(s) => Ok(s.to_string()),
-        SteelVal::BoolV(b) => Ok(b.to_string()),
-        SteelVal::IntV(n) => Ok(n.to_string()),
+        SteelVal::StringV(s) => Ok(OptionInput::Text(s.to_string())),
+        SteelVal::SymbolV(s) => Ok(OptionInput::Text(s.to_string())),
+        SteelVal::BoolV(b) => Ok(OptionInput::Text(b.to_string())),
+        SteelVal::IntV(n) => Ok(OptionInput::Text(n.to_string())),
+        SteelVal::ListV(_) => list_to_strings(value.clone(), ctx_name).map(OptionInput::Words),
         _ => steel::stop!(TypeMismatch =>
-            "{ctx_name}: value must be a string, symbol, bool, or integer, got {:?}", value),
+            "{ctx_name}: value must be a string, symbol, bool, integer, or list of strings, got {:?}", value),
     }
 }
 
 /// `(set-option! key value)`
 ///
 /// Sets the global setting `key` to `value`. The value may be a Steel string,
-/// symbol, boolean, or integer. It is converted to a string and forwarded to the
-/// editor's settings layer, which is the single validating chokepoint
+/// symbol, boolean, integer, or list of strings; only a word-list setting
+/// (`shell`) takes a list. It is forwarded to the editor's settings layer, which is the single validating chokepoint
 /// (`editor::settings::ops::apply_global`) regardless of caller, so this is
 /// callable from any context: `init.scm`, plugin load, plugin activation, or
 /// a plain command/hook body. Use `:set buffer …` from the command line, or
 /// `(set-buffer-option! pane key value)` from a script, to override a setting
 /// for a specific buffer instead.
 pub(crate) fn set_option(ctx: &mut SteelCtx, key: String, value: SteelVal) -> SteelResult {
-    let value_str = coerce_option_value(&value, "set-option!")?;
+    let value = coerce_option_value(&value, "set-option!")?;
 
     ctx.host
         .settings()
-        .set_global_option(&key, &value_str)
+        .set_global_option(&key, value)
         .map_err(generic_err)?;
 
     Ok(SteelVal::Void)
@@ -51,7 +53,7 @@ pub(crate) fn set_option(ctx: &mut SteelCtx, key: String, value: SteelVal) -> St
 /// `(set-buffer-option! pane key value)`
 ///
 /// Sets `key`'s per-buffer override on `pane`'s buffer to `value` (same
-/// string/symbol/bool/int coercion as `set-option!`). The override persists on the buffer until
+/// coercion as `set-option!`). The override persists on the buffer until
 /// overwritten, same as `:set buffer key=value`.
 ///
 /// `"line-ending"` takes the symbol `lf` or `crlf` (or a string of that name)
@@ -86,11 +88,11 @@ pub(crate) fn set_buffer_option(
         }
         return Ok(SteelVal::Void);
     }
-    let value_str = coerce_option_value(&value, "set-buffer-option!")?;
+    let value = coerce_option_value(&value, "set-buffer-option!")?;
 
     ctx.host
         .settings()
-        .set_buffer_option(&key, &value_str, bid)
+        .set_buffer_option(&key, value, bid)
         .map_err(generic_err)?;
 
     Ok(SteelVal::Void)

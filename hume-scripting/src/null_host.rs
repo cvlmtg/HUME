@@ -24,8 +24,8 @@ use crate::command_name::fold;
 use crate::command_procs::CommandProc;
 use crate::host::{
     BufferHost, CommandHost, CursorHost, DisplayPathForm, EditorHost, EventHost, HostToken,
-    LanguageHost, LocationPlace, LspHost, OptionValue, OutputHost, PositionParams, RangeParams,
-    RangesParams, SelectionInfo, SettingsHost, TrackedHold,
+    LanguageHost, LocationPlace, LspHost, OptionInput, OptionValue, OutputHost, PositionParams,
+    RangeParams, RangesParams, SelectionInfo, SettingsHost, TrackedHold,
 };
 use crate::types::{GrammarReg, PaneHandle, SteelCmdDef, SteelTypedCmdDef};
 
@@ -185,13 +185,13 @@ impl BufferHost for NullHost {
 }
 
 impl SettingsHost for NullHost {
-    fn set_global_option(&mut self, _key: &str, _value: &str) -> Result<(), String> {
+    fn set_global_option(&mut self, _key: &str, _value: OptionInput) -> Result<(), String> {
         Err("NullHost: set_global_option not available".into())
     }
     fn set_buffer_option(
         &mut self,
         _key: &str,
-        _value: &str,
+        _value: OptionInput,
         _bid: BufferId,
     ) -> Result<(), String> {
         Err("NullHost: set_buffer_option not available".into())

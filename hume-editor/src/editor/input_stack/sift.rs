@@ -7,7 +7,6 @@ use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 use hume_engine::types::EditorMode;
 use hume_ops::search::compile_search_input;
 use hume_ops::selection_cmd::sift_matches_within;
-use hume_scripting::host::CommandArg;
 
 use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent};
 use super::super::replay::WaitingInput;
@@ -30,7 +29,7 @@ pub(in crate::editor) struct SiftLayer {
     /// The live preview's last sift, `None` while the input sifts nothing.
     pub(in crate::editor) preview: Option<SiftPreview>,
     /// The check this prompt passed as it opened.
-    _input: WaitingInput,
+    input: WaitingInput,
 }
 
 impl SiftLayer {
@@ -45,7 +44,7 @@ impl SiftLayer {
             snap,
             then,
             preview: None,
-            _input: input,
+            input,
         }
     }
 }
@@ -132,12 +131,9 @@ impl SiftLayer {
                 preview,
             });
         }
-        // Sift has no history ring of its own (`begin_session_all`
-        // only touches the command/search rings, so this is a no-op
-        // for Sift), but every other minibuf-backed mode's teardown
-        // calls it unconditionally, and Sift stays uniform with
-        // them rather than being special-cased as the one mode that
-        // skips it.
+        // Sift has no history ring of its own, but every other
+        // minibuf-backed mode's teardown resets every ring
+        // (`begin_session_all`) as it closes, and Sift does the same.
         state.history.begin_session_all();
     }
 }
@@ -164,8 +160,7 @@ fn handle_sift_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
             // `call!` would.
             let mut sift = ed.state.take_layer::<SiftLayer>(&ed.view, r);
             sift.end(&mut ed.state, Some(&pattern));
-            let then = sift.then;
-            commands::run_collected(&mut ed.state, &mut ed.view, then, CommandArg::Text(pattern));
+            commands::finish_text_operand(ed, sift.then, sift.input.take_answer(), Some(pattern));
         }
         MiniBufferEvent::EmptiedByBackspace | MiniBufferEvent::BackspaceOnEmpty => {
             // Restore original selections when pattern is fully erased.

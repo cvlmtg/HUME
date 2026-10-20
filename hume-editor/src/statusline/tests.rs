@@ -129,6 +129,43 @@ fn macro_recording_element_named_register() {
     insta::assert_snapshot!(text, @"[recording @3]");
 }
 
+// ── Pipe element ──────────────────────────────────────────────────────────
+
+#[test]
+fn pipe_element_idle_renders_empty() {
+    let ed = test_editor();
+    let colors = crate::statusline::colors::EditorColors::default();
+    let (text, _) = render_element(&StatusElement::Pipe, &ed.statusline(), &colors, "");
+    assert!(text.is_empty(), "got {text:?}");
+}
+
+#[test]
+fn pipe_element_shows_the_command_and_progress() {
+    use crate::editor::PipeProgress;
+    let colors = crate::statusline::colors::EditorColors::default();
+    let progress = |command: &str, done, total| {
+        Some(PipeProgress {
+            command: command.to_string(),
+            done,
+            total,
+        })
+    };
+    let (one, _) = PipeElement::format(progress("sort", 0, 1), &colors);
+    insta::assert_snapshot!(one, @"running `sort`");
+    let (many, _) = PipeElement::format(progress("uuidgen", 3, 10), &colors);
+    insta::assert_snapshot!(many, @"running `uuidgen` 3/10");
+}
+
+#[test]
+fn pipe_element_is_named_and_in_the_default_right_section() {
+    assert_eq!("Pipe".parse::<StatusElement>(), Ok(StatusElement::Pipe));
+    assert!(
+        StatusLineConfig::default()
+            .right
+            .contains(&StatusElement::Pipe)
+    );
+}
+
 // ── Whole-row mode coloring ───────────────────────────────────────────────
 //
 // `EditorColors::default()` uses a reversed style for every mode, which can't

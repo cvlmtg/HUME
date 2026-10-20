@@ -25,7 +25,7 @@ use crate::path::strip_unc_prefix;
 
 /// Shared spawn/pipe/wake machinery underneath [`line_source`] (line-batch
 /// streaming, for the picker's external-command source) and [`job`]
-/// (whole-output capture, for `spawn-async!`), kept internal since neither
+/// (whole-output capture, for `spawn-async!` and `pipe`), kept internal since neither
 /// consumption shape is meant to be built a third way.
 pub(crate) mod child;
 
@@ -40,9 +40,9 @@ pub use child::WakeCallback;
 /// external-command source (`picker-source-spawn!`).
 pub mod line_source;
 
-/// One-shot subprocess capture: spawns a command, waits for it to exit,
-/// and delivers the complete stdout/stderr/exit-status once. Backs the
-/// `spawn-async!` Steel builtin.
+/// One-shot subprocess capture: spawns a command, feeds it its input,
+/// waits for it to exit, and delivers the complete stdout/stderr/exit-status
+/// once. Backs the `spawn-async!` Steel builtin and the editor's `pipe`.
 pub mod job;
 
 /// Process-wide tracking so a force-exit can still reap long-lived children.
@@ -59,7 +59,7 @@ pub mod tracked;
 /// [`run_inline_output`] backgrounds it into its own process group while
 /// inheriting the terminal, so a prompt it wrote would be followed by a
 /// read that takes `SIGTTIN` and stops the child cold; [`run_capture`] and
-/// [`child::spawn_piped`] close the child's stdin outright, so a prompt
+/// [`child::spawn_piped`] close the child's stdin (after any input), so a prompt
 /// would instead open `/dev/tty` directly and hang there. Left unset,
 /// either shape turns a private repo or an expired token into a hang
 /// instead of a fast, readable git error.

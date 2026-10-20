@@ -28,6 +28,7 @@ use hume_editing::tab_style::TabStyle;
 use hume_editing::text::LineEnding;
 use hume_engine::builtins::line_number::LineNumberStyle;
 use hume_engine::pane::{WhitespaceConfig, WhitespaceRender, WrapMode};
+use hume_scripting::host::OptionInput;
 
 use crate::editor::lsp::diagnostics::DiagSeverity;
 use crate::statusline::{StatusElement, StatusLineConfig};
@@ -68,6 +69,15 @@ pub(in crate::editor) trait SettingText: Sized {
 /// through here, so the parsers themselves stay key-free.
 pub(in crate::editor) fn for_key<T>(key: &str, parsed: Result<T, String>) -> Result<T, String> {
     parsed.map_err(|e| format!("invalid value for '{key}': {e}"))
+}
+
+/// The text of `value` for a setting that takes one value; a list is
+/// refused.
+pub(in crate::editor) fn single_value(value: &OptionInput) -> Result<&str, String> {
+    match value {
+        OptionInput::Text(text) => Ok(text),
+        OptionInput::Words(_) => Err("takes one value, not a list".to_string()),
+    }
 }
 
 /// Parse `value` as the setting `key`'s type.
@@ -416,6 +426,67 @@ settings_enum!(WordSelectsWhitespace, [
     After => "after",
 ]);
 
+/// The program and leading arguments a shell command line runs under; the
+/// command line itself is appended as one more argument (`sh -c <line>`).
+/// The program is never empty: [`Self::from_words`], which every value goes
+/// through, refuses one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ShellCommand {
+    program: String,
+    args: Vec<String>,
+}
+
+impl Default for ShellCommand {
+    fn default() -> Self {
+        Self {
+            program: "sh".to_string(),
+            args: vec!["-c".to_string()],
+        }
+    }
+}
+
+impl ShellCommand {
+    /// The program to run and its arguments, `command_line` last.
+    pub(in crate::editor) fn argv(&self, command_line: &str) -> (String, Vec<String>) {
+        let mut args = self.args.clone();
+        args.push(command_line.to_string());
+        (self.program.clone(), args)
+    }
+
+    /// The command whose program is `words`' first and whose arguments are
+    /// the rest. `Err` when there is no first word or it is empty.
+    pub(in crate::editor) fn from_words(words: Vec<String>) -> Result<Self, String> {
+        let mut words = words.into_iter();
+        let program = words
+            .next()
+            .filter(|program| !program.is_empty())
+            .ok_or_else(|| "needs a program to run".to_string())?;
+        Ok(Self {
+            program,
+            args: words.collect(),
+        })
+    }
+
+    fn words(&self) -> Vec<String> {
+        std::iter::once(&self.program)
+            .chain(&self.args)
+            .cloned()
+            .collect()
+    }
+}
+
+impl SettingText for ShellCommand {
+    const VALUES: &'static [&'static str] = &[];
+
+    fn parse(s: &str) -> Result<Self, String> {
+        Self::from_words(hume_scripting::host::parse_word_list(s)?)
+    }
+
+    fn to_text(&self) -> String {
+        hume_scripting::host::format_word_list(&self.words())
+    }
+}
+
 /// A `:set` scope token: `global`, `buffer`, or `pane`.
 ///
 /// `Global` applies to editor-wide defaults (written to [`EditorSettings`] via
@@ -537,8 +608,20 @@ macro_rules! parse_setting {
     (@raw $value:expr, word_chars) => {
         parse_word_chars($value)
     };
+    ($value:expr, $key:expr, word_list) => {
+        for_key(
+            $key,
+            match $value {
+                OptionInput::Text(text) => ShellCommand::parse(text),
+                OptionInput::Words(words) => ShellCommand::from_words(words.clone()),
+            },
+        )
+    };
     ($value:expr, $key:expr, $kind:ident) => {
-        for_key($key, parse_setting!(@raw $value, $kind))
+        for_key(
+            $key,
+            single_value($value).and_then(|text| parse_setting!(@raw text, $kind)),
+        )
     };
 }
 
@@ -554,7 +637,8 @@ macro_rules! parse_setting {
 /// own `parse`.
 /// `show_newline` stores a plain `bool` but its wire format is `none`/`all`,
 /// so it round-trips as `Symbol` via [`format_show_newline`], the inverse of
-/// [`parse_show_newline`].
+/// [`parse_show_newline`]. `word_list` reads back as `List`, one string per
+/// word.
 macro_rules! option_value {
     ($value:expr, bool) => {
         hume_scripting::host::OptionValue::Bool($value)
@@ -582,6 +666,9 @@ macro_rules! option_value {
     };
     ($value:expr, word_chars) => {
         hume_scripting::host::OptionValue::Str($value.to_string())
+    };
+    ($value:expr, word_list) => {
+        hume_scripting::host::OptionValue::List($value.words())
     };
 }
 
@@ -644,6 +731,9 @@ macro_rules! buffer_accessor {
 /// | `string` | `value.to_owned()` |
 /// | `show_newline` | `parse_show_newline(value)` (`none`/`all` wire format, reads back as a symbol) |
 /// | `word_chars` | `parse_word_chars(value)` (validated, unlike `string`) |
+/// | `word_list` | `ShellCommand`'s `SettingText::parse` for text, [`ShellCommand::from_words`] for a script's list; reads back as a list of strings |
+///
+/// Every kind but `word_list` takes one value and refuses a list.
 macro_rules! define_settings {
     (
         global {
@@ -744,7 +834,7 @@ macro_rules! define_settings {
         /// build, not a widening of this function's own visibility.
         pub(in crate::editor::settings) fn write_global(
             key: &str,
-            value: &str,
+            value: &OptionInput,
             settings: &mut EditorSettings,
         ) -> Result<(), String> {
             match key {
@@ -753,7 +843,7 @@ macro_rules! define_settings {
                 $( $skey => { settings.$sglobal.$ssub = parse_setting!(value, key, $sparser)?; } )*
                 // Statusline config, global-only; three sections separated by `|`,
                 // each a comma-separated list of StatusElement names (may be empty).
-                "statusline" => { settings.statusline = for_key(key, parse_statusline(value))?; }
+                "statusline" => { settings.statusline = for_key(key, single_value(value).and_then(parse_statusline))?; }
                 _ => return Err(format!("unknown setting '{key}'")),
             }
             Ok(())
@@ -770,7 +860,7 @@ macro_rules! define_settings {
         /// only caller. `testing::MockHost` models no buffers, so it has no
         /// per-buffer override to write and needs no forwarding shim here
         /// (contrast [`write_global`]'s `write_global_for_test`).
-        pub(in crate::editor::settings) fn write_buffer(key: &str, value: &str, overrides: &mut BufferOverrides) -> Result<(), String> {
+        pub(in crate::editor::settings) fn write_buffer(key: &str, value: &OptionInput, overrides: &mut BufferOverrides) -> Result<(), String> {
             match key {
                 $( $bkey => { overrides.$bname = Some(parse_setting!(value, key, $bparser)?); } )*
                 $( $skey => { overrides.$sfield = Some(parse_setting!(value, key, $sparser)?); } )*
@@ -975,6 +1065,10 @@ define_settings! {
             scope: [Scope::Global],
             parser: string,
             resync: true;
+        // The program `pipe` runs each command line with.
+        "shell" => shell: ShellCommand = ShellCommand::default(),
+            scope: [Scope::Global],
+            parser: word_list;
         "syntax-highlight-max-bytes" => syntax_highlight_max_bytes: usize = 1_048_576,
             scope: [Scope::Global],
             parser: usize_nonzero;

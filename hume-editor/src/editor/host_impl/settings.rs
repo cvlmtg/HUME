@@ -5,21 +5,26 @@ use hume_engine::pipeline::BufferId;
 
 use super::EditorHostImpl;
 use crate::editor::settings::SettingText;
-use hume_scripting::host::{BufferIntrinsicOption, OptionValue, SettingsHost};
+use hume_scripting::host::{BufferIntrinsicOption, OptionInput, OptionValue, SettingsHost};
 
 impl<'a> SettingsHost for EditorHostImpl<'a> {
-    fn set_global_option(&mut self, key: &str, value: &str) -> Result<(), String> {
-        crate::editor::settings::ops::apply_global(self.state, self.view, key, value)
+    fn set_global_option(&mut self, key: &str, value: OptionInput) -> Result<(), String> {
+        crate::editor::settings::ops::apply_global(self.state, self.view, key, &value)
     }
 
-    fn set_buffer_option(&mut self, key: &str, value: &str, bid: BufferId) -> Result<(), String> {
+    fn set_buffer_option(
+        &mut self,
+        key: &str,
+        value: OptionInput,
+        bid: BufferId,
+    ) -> Result<(), String> {
         // `settings::ops::apply_buffer`'s `get_mut` panics on a stale id;
         // validate first so a bad `bid` from Steel becomes an `Err`, not a
         // panic.
         if self.state.buffers.try_get(bid).is_none() {
             return Err(format!("set-buffer-option!: invalid buffer id {bid:?}"));
         }
-        crate::editor::settings::ops::apply_buffer(self.state, bid, key, value)
+        crate::editor::settings::ops::apply_buffer(self.state, bid, key, &value)
     }
 
     fn get_global_option(&self, key: &str) -> Result<OptionValue, String> {

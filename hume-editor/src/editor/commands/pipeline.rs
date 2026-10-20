@@ -16,9 +16,9 @@ use crate::editor::dispatch::CmdCtx;
 use crate::editor::jump_list::{JumpRule, with_jump};
 use crate::editor::registry::{
     CmdMeta, Count, EditFn, EditorCmdBody, FocusedCmdFn, NativeCommand, PaneCharCmdFn, PaneCmdFn,
-    PaneTextCmdFn, PatternPrompt, SelectionBody, SelectionTracking,
+    PaneTextCmdFn, SelectionBody, SelectionTracking, TextPrompt,
 };
-use crate::editor::replay::{InputOpener, NewChange, SelectionStep, record_change};
+use crate::editor::replay::{Answer, InputOpener, NewChange, SelectionStep, record_change};
 use crate::editor::settings::ObjectJumpAlign;
 use crate::editor::{EditorState, Severity};
 use hume_ops::{MotionMode, WordCtx};
@@ -81,6 +81,11 @@ impl CommandPane {
 
     pub(in crate::editor) fn bid(self, view: &EngineView) -> BufferId {
         view.panes[self.0].buffer_id()
+    }
+
+    /// This pane and the buffer it shows, as Steel names a pane.
+    pub(in crate::editor) fn handle(self, view: &EngineView) -> PaneHandle {
+        PaneHandle::with_pane(self.bid(view), self.pid())
     }
 
     /// `t`'s state for the buffer it shows.
@@ -165,7 +170,7 @@ impl FocusedPane {
     /// the focused pid, never bare focus state a callee would have to
     /// re-derive.
     pub(in crate::editor) fn handle(self, view: &EngineView) -> PaneHandle {
-        PaneHandle::with_pane(self.bid(view), self.pid())
+        self.0.handle(view)
     }
 }
 
@@ -348,16 +353,12 @@ impl Bound {
         }
     }
 
-    /// The character operand this body was bound with, as dot-repeat
-    /// records it. No repeatable command takes a text operand.
-    fn char_arg(&self) -> Option<char> {
+    /// The operand this body was bound with, as dot-repeat records it.
+    fn operand_answer(&self) -> Option<Answer> {
         match self {
-            Self::PaneChar(_, _, ch) => Some(*ch),
-            Self::PaneText(..)
-            | Self::Selection(..)
-            | Self::Edit(..)
-            | Self::Pane(..)
-            | Self::FocusedCmd(..) => None,
+            Self::PaneChar(_, _, ch) => Some(Answer::Char(Some(*ch))),
+            Self::PaneText(_, _, text) => Some(Answer::Prompt(Some(text.clone()))),
+            Self::Selection(..) | Self::Edit(..) | Self::Pane(..) | Self::FocusedCmd(..) => None,
         }
     }
 }
@@ -420,18 +421,15 @@ pub(in crate::editor) struct Missing {
 pub(super) enum MissingOperand {
     /// The next key's character.
     Char,
-    /// A pattern typed at `prompt`, opened in the focused pane `fp`.
-    Pattern {
-        prompt: PatternPrompt,
-        fp: FocusedPane,
-    },
+    /// Text typed at `prompt`, opened in the focused pane `fp`.
+    Text { prompt: TextPrompt, fp: FocusedPane },
 }
 
 impl std::fmt::Display for Missing {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.operand {
             MissingOperand::Char => write!(f, "needs a character"),
-            MissingOperand::Pattern { .. } => write!(f, "needs a pattern"),
+            MissingOperand::Text { prompt, .. } => write!(f, "needs {}", prompt.operand_noun()),
         }
     }
 }
@@ -539,7 +537,7 @@ fn bind_body<E: From<ArgError>>(
                 // The prompt opens in the focused pane.
                 None => match focused() {
                     Ok(fp) => {
-                        return Err(missing(&cmd, true, MissingOperand::Pattern { prompt, fp }));
+                        return Err(missing(&cmd, true, MissingOperand::Text { prompt, fp }));
                     }
                     Err(e) => Err(e),
                 },
@@ -639,10 +637,10 @@ impl BoundCommand {
         self.body.focused()
     }
 
-    /// The character operand this command was bound with. See
-    /// [`Bound::char_arg`].
-    fn char_arg(&self) -> Option<char> {
-        self.body.char_arg()
+    /// The operand this command was bound with. See
+    /// [`Bound::operand_answer`].
+    fn operand_answer(&self) -> Option<Answer> {
+        self.body.operand_answer()
     }
 }
 
@@ -929,7 +927,7 @@ pub(in crate::editor) fn run(
     let change = pre_recipe.map(|recipe| NewChange {
         command: name.clone(),
         count: ctx.count.unwrap_or(1),
-        seed: bound.char_arg(),
+        seed: bound.operand_answer(),
         recipe,
     });
     // Only snapshot the selection when step_update_recipe could push a step:

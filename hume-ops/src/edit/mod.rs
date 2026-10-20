@@ -12,6 +12,7 @@ mod indent;
 mod insert;
 mod join;
 mod paste;
+mod pipe;
 mod replace;
 mod sort;
 
@@ -38,6 +39,7 @@ pub use insert::{
 };
 pub use join::join_lines_select_spaces;
 pub use paste::{paste_after, paste_before};
+pub use pipe::{fit_pipe_output, replace_each_selection};
 pub use replace::{
     replace_around_cursors, replace_selections, replace_span_around_cursors, word_start_before,
 };

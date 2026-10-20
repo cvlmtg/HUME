@@ -135,7 +135,8 @@ pub fn spawn_line_source(
     delimiter: u8,
     wake: WakeCallback,
 ) -> io::Result<SpawnedLineSource> {
-    let (child, stdout, stderr) = spawn_piped(cmd, args, cwd)?;
+    let (child, stdin, stdout, stderr) = spawn_piped(cmd, args, cwd)?;
+    drop(stdin);
 
     let (tx, rx) = mpsc::sync_channel::<Vec<String>>(BATCH_CHANNEL_BOUND);
     let (tx_err, rx_err) = mpsc::sync_channel::<String>(1);

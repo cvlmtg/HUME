@@ -1,5 +1,6 @@
 use hume_engine::pipeline::BufferId;
 use hume_platform::io::FileMeta;
+use hume_scripting::host::OptionInput;
 
 use super::super::Editor;
 use super::super::Severity;
@@ -306,11 +307,12 @@ pub(in crate::editor) fn typed_set(
     }
     let scope = parsed_scope.expect("checked by is_some_and above");
 
+    let input = OptionInput::Text(value.to_string());
     match scope {
-        Scope::Global => settings_ops::apply_global(&mut ed.state, &mut ed.view, key, value)
+        Scope::Global => settings_ops::apply_global(&mut ed.state, &mut ed.view, key, &input)
             .map_err(CommandError::new),
         Scope::Buffer => {
-            settings_ops::apply_buffer(&mut ed.state, bid, key, value).map_err(CommandError::new)
+            settings_ops::apply_buffer(&mut ed.state, bid, key, &input).map_err(CommandError::new)
         }
         Scope::Pane => {
             // Only pane-scoped setting today: `scopes.contains(&scope)` above

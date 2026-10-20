@@ -6,7 +6,6 @@ use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 use hume_engine::types::EditorMode;
 use hume_ops::MotionMode;
 use hume_ops::search::{MatchScan, MatchSeed, SearchDirection};
-use hume_scripting::host::CommandArg;
 
 use super::super::jump_list::JumpEntry;
 use super::super::minibuf::history::{HistoryDir, HistoryKind, HistoryStore};
@@ -35,7 +34,7 @@ pub(in crate::editor) struct SearchLayer {
     /// from the pre-search anchor although `mode` is `Search` meanwhile.
     pub(in crate::editor) then: commands::PendingDispatch,
     /// The check this prompt passed as it opened.
-    _input: WaitingInput,
+    input: WaitingInput,
 }
 
 impl SearchLayer {
@@ -51,7 +50,7 @@ impl SearchLayer {
             snap,
             direction,
             then,
-            _input: input,
+            input,
         }
     }
 }
@@ -145,8 +144,12 @@ fn handle_search_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
             // `call!` would.
             let mut search = ed.state.take_layer::<SearchLayer>(&ed.view, r);
             search.end(&mut ed.state, Some(&pattern));
-            let then = search.then;
-            commands::run_collected(&mut ed.state, &mut ed.view, then, CommandArg::Text(pattern));
+            commands::finish_text_operand(
+                ed,
+                search.then,
+                search.input.take_answer(),
+                Some(pattern),
+            );
         }
         MiniBufferEvent::EmptiedByBackspace => {
             // First Backspace cleared the last character: restore position but

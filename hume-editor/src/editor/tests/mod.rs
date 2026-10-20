@@ -981,6 +981,7 @@ impl Editor {
             applied_mouse_mode: initial_mouse_mode,
             applied_cwd: None,
             startup_positions: Vec::new(),
+            inline_pipe_console: None,
         }
     }
 
@@ -1602,6 +1603,7 @@ mod per_pane_jumps;
 mod picker;
 mod picker_source_steel;
 mod picker_steel;
+mod pipe;
 mod plugins;
 mod plum_git;
 mod position_stores;

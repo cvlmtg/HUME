@@ -291,12 +291,14 @@ fn history_store_set_capacity_updates_all_rings() {
     s.get_mut(HistoryKind::Command).push("w".into());
     s.get_mut(HistoryKind::SearchForward).push("foo".into());
     s.get_mut(HistoryKind::SearchBackward).push("bar".into());
+    s.get_mut(HistoryKind::Pipe).push("sort".into());
 
     s.set_capacity(5);
 
     assert_eq!(s.get(HistoryKind::Command).capacity, 5);
     assert_eq!(s.get(HistoryKind::SearchForward).capacity, 5);
     assert_eq!(s.get(HistoryKind::SearchBackward).capacity, 5);
+    assert_eq!(s.get(HistoryKind::Pipe).capacity, 5);
     // Existing entries fit in 5 so none were evicted.
     assert_eq!(s.get(HistoryKind::Command).entries().len(), 1);
 }
@@ -306,13 +308,17 @@ fn begin_session_all_resets_all_rings() {
     let mut s = store(10);
     s.get_mut(HistoryKind::Command).push("w".into());
     s.get_mut(HistoryKind::SearchForward).push("foo".into());
+    s.get_mut(HistoryKind::Pipe).push("sort".into());
     s.get_mut(HistoryKind::Command).prev("");
     s.get_mut(HistoryKind::SearchForward).prev("");
+    s.get_mut(HistoryKind::Pipe).prev("");
     assert!(s.get(HistoryKind::Command).cursor.is_some());
     assert!(s.get(HistoryKind::SearchForward).cursor.is_some());
+    assert!(s.get(HistoryKind::Pipe).cursor.is_some());
 
     s.begin_session_all();
 
     assert!(s.get(HistoryKind::Command).cursor.is_none());
     assert!(s.get(HistoryKind::SearchForward).cursor.is_none());
+    assert!(s.get(HistoryKind::Pipe).cursor.is_none());
 }

@@ -208,7 +208,7 @@ Several features were intentionally adopted from Helix rather than reinvented:
 - Duplicating a selection onto the line *above* (`Alt-C`); HUME only binds the downward form (`C`)
 - `*` searching the selection with automatic word-boundary anchors: HUME's `Ctrl-/` matches a selection literally (Helix's `Alt-*`), and HUME's own `*` searches the word under the cursor instead of the selection. See [Search](#multiple-selections)
 - Rainbow bracket highlighting: HUME reads the rest of a theme that defines a top-level `rainbow` array but has no feature to act on it
-- Shell pipe integration: piping selections through a command (`|`), inserting a command's output (`!`), or filtering selections by a shell command's exit status (`$`). Anything you'd reach for these for is written in Scheme instead, running inside the editor with direct access to buffers, selections and commands
+- Inserting or appending a command's output (`!`, `Alt-!`), piping selections to a command and ignoring its output (`Alt-|`), and filtering selections by a command's exit status (`$`). HUME's `|` pipes each selection through a command, as Helix's does, and in Insert mode `Ctrl-|` inserts a command's output at each cursor. See [Shell commands](editing.md#shell-commands)
 - Merging every selection into one span across gaps (`Alt--`); HUME only merges, automatically, selections that share a character; touching selections stay separate
 - `:x` and `:o`/`:open` as command aliases; use `:wq`/`:write-quit` and `:e` instead
 

@@ -54,7 +54,7 @@ impl Editor {
             self.state.queue_steel_call(
                 pending.callback,
                 vec![
-                    SteelVal::StringV(result.stdout.into()),
+                    SteelVal::StringV(String::from_utf8_lossy(&result.stdout).into_owned().into()),
                     SteelVal::StringV(result.stderr.into()),
                     SteelVal::IntV(code as isize),
                 ],

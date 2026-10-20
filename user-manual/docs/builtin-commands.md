@@ -165,6 +165,7 @@ Modify buffer text.
 | `make-text-uppercase` | `G U` | Uppercase the text in each selection. |
 | `open-line-above` | `O` | Open a new line above the cursor and enter insert mode. |
 | `open-line-below` | `o` | Open a new line below the cursor and enter insert mode. |
+| `pipe` | `\|`, `Ctrl-\|` *(insert mode)* | Run a shell command once per selection, with the selection as its input, and replace the selection with its output. In insert mode, insert its output at each cursor. Only from a key: calling it from Scheme raises an error. |
 | `replace` | `r` + char | Replace every character in each selection with the next typed character. From `call!`, pass the character as an argument. |
 | `toggle-comment` | `G G` | Comment or uncomment the lines of each selection. |
 | `unindent` | `<` | Unindent every line touched by a selection by one level. |

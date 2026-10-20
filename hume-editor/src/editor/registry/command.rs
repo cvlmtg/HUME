@@ -73,8 +73,8 @@ pub(in crate::editor) type PaneCharCmdFn = fn(
 ) -> Result<(), CommandError>;
 
 /// Function pointer for an [`EditorCmdBody::PaneText`] handler: a
-/// [`PaneCmdFn`] that also takes the pattern its operand names (typed at the
-/// command's prompt, or a `call!` argument). The pattern is required: a key
+/// [`PaneCmdFn`] that also takes the text its operand names (typed at the
+/// command's prompt, or a `call!` argument). The text is required: a key
 /// dispatched without one opens the prompt first, and a `call!` without one
 /// raises.
 pub(in crate::editor) type PaneTextCmdFn = fn(
@@ -86,12 +86,24 @@ pub(in crate::editor) type PaneTextCmdFn = fn(
     &str,
 ) -> Result<(), CommandError>;
 
-/// The prompt a [`EditorCmdBody::PaneText`] command opens to read its
-/// pattern when dispatched without one.
+/// The prompt a [`EditorCmdBody::PaneText`] command opens to read its text
+/// operand when dispatched without one.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(in crate::editor) enum PatternPrompt {
+pub(in crate::editor) enum TextPrompt {
     Search(SearchDirection),
     Sift,
+    /// The `|` line `pipe` reads its shell command from.
+    Shell,
+}
+
+impl TextPrompt {
+    /// What the operand this prompt reads is, for a message about it.
+    pub(in crate::editor) fn operand_noun(self) -> &'static str {
+        match self {
+            Self::Search(_) | Self::Sift => "a pattern",
+            Self::Shell => "a shell command",
+        }
+    }
 }
 
 /// Body shape for [`NativeCommand::EditorCmd`]'s `fun` field: decides at
@@ -114,7 +126,7 @@ pub(in crate::editor) enum EditorCmdBody {
     Pane(PaneCmdFn),
     FocusedPane(FocusedCmdFn),
     PaneChar(PaneCharCmdFn),
-    PaneText(PaneTextCmdFn, PatternPrompt),
+    PaneText(PaneTextCmdFn, TextPrompt),
 }
 
 // ── Command metadata for dispatch bookkeeping ────────────────────────────────

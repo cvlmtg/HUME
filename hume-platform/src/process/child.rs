@@ -6,7 +6,7 @@
 
 use std::io::{self, Read};
 use std::path::Path;
-use std::process::{ChildStderr, ChildStdout, Stdio};
+use std::process::{ChildStderr, ChildStdin, ChildStdout, Stdio};
 use std::sync::Arc;
 
 use crate::process::{ReapOnDrop, base_command, spawn_in_own_group};
@@ -46,12 +46,13 @@ pub(crate) const STDERR_CAPTURE_CAP: usize = 8 * 1024;
 pub(crate) const JOB_STDOUT_CAP: usize = 64 * 1024 * 1024;
 
 /// Spawns `cmd` with `args` (direct argv, no shell) in its own process
-/// group, all three stdio streams piped, and stdin closed immediately, so the
-/// child sees EOF on read rather than racing the editor's own key reads on
-/// the terminal (same contract as `hume_platform::process::run_capture`).
+/// group, all three stdio streams piped. The child never inherits the
+/// terminal as stdin: the caller feeds the returned stdin and closes it, or
+/// closes it at once, so a read sees EOF rather than racing the editor's own
+/// key reads (same contract as `hume_platform::process::run_capture`).
 /// See `super::base_command`'s own doc for why `GIT_TERMINAL_PROMPT=0` is
 /// set. Returns the
-/// kill-on-early-return guard plus the piped stdout/stderr handles; the
+/// kill-on-early-return guard plus the piped stdio handles; the
 /// caller starts its bridging threads before converting the guard into a
 /// [`crate::process::tracked::TrackedChild`], so a thread failing to spawn
 /// leaves nothing for the process to leak.
@@ -59,21 +60,17 @@ pub(crate) fn spawn_piped(
     cmd: &str,
     args: &[String],
     cwd: &Path,
-) -> io::Result<(ReapOnDrop, ChildStdout, ChildStderr)> {
+) -> io::Result<(ReapOnDrop, ChildStdin, ChildStdout, ChildStderr)> {
     let mut command = base_command(cmd, args, cwd);
     command
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     let mut child = ReapOnDrop::new(spawn_in_own_group(&mut command)?);
-
-    // Closes the write end this process holds on the child's stdin pipe:
-    // the "stdin closed immediately" this fn's doc promises.
-    drop(child.get_mut().stdin.take());
-
+    let stdin = child.get_mut().stdin.take().expect("piped stdin");
     let stdout = child.get_mut().stdout.take().expect("piped stdout");
     let stderr = child.get_mut().stderr.take().expect("piped stderr");
-    Ok((child, stdout, stderr))
+    Ok((child, stdin, stdout, stderr))
 }
 
 /// Reads `r` to EOF, retaining at most `cap` bytes but always draining the

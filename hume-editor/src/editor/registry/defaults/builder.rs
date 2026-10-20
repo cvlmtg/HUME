@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use crate::editor::commands::NativeBody;
 use crate::editor::registry::{
     CommandRegistry, EditorCmdBody, FocusedCmdFn, MappableCommand, NativeCommand, PaneCharCmdFn,
-    PaneCmdFn, PaneTextCmdFn, PatternPrompt, SelectionTracking,
+    PaneCmdFn, PaneTextCmdFn, SelectionTracking, TextPrompt,
 };
 
 // Builder for EditorCmd registration. Each method sets one field (a bool,
@@ -167,7 +167,7 @@ pub(super) fn ecmd_pane_text(
     name: &'static str,
     doc: &'static str,
     fun: PaneTextCmdFn,
-    prompt: PatternPrompt,
+    prompt: TextPrompt,
 ) -> EditorCmdBuilder {
     ecmd_builder(name, doc, EditorCmdBody::PaneText(fun, prompt))
 }

@@ -2,7 +2,7 @@ use crate::editor::commands::*;
 use crate::editor::registry::CommandRegistry;
 
 use super::builder::{ecmd_focused, ecmd_pane, ecmd_pane_char, ecmd_pane_text};
-use crate::editor::registry::PatternPrompt;
+use crate::editor::registry::TextPrompt;
 use hume_ops::search::SearchDirection;
 
 impl CommandRegistry {
@@ -398,7 +398,7 @@ impl CommandRegistry {
             "search-forward",
             "Enter search mode (forward). From `call!`, the pattern is required.",
             cmd_search_forward,
-            PatternPrompt::Search(SearchDirection::Forward),
+            TextPrompt::Search(SearchDirection::Forward),
         )
         .extendable()
         .reg(self);
@@ -406,7 +406,7 @@ impl CommandRegistry {
             "search-backward",
             "Enter search mode (backward). From `call!`, the pattern is required.",
             cmd_search_backward,
-            PatternPrompt::Search(SearchDirection::Backward),
+            TextPrompt::Search(SearchDirection::Backward),
         )
         .extendable()
         .reg(self);
@@ -438,8 +438,22 @@ impl CommandRegistry {
             "sift-within",
             "Narrow each selection down to its regex matches. From `call!`, the pattern is required.",
             cmd_sift_within,
-            PatternPrompt::Sift,
+            TextPrompt::Sift,
         )
+        .reg(self);
+
+        // ── Editor commands — shell ───────────────────────────────────────────
+        // The run waits past this dispatch, in the main loop or a replay, so
+        // a script's `call!` would return before it ran (`.key_only()`).
+        ecmd_pane_text(
+            "pipe",
+            "Run a shell command once per selection, with the selection as its input, and replace the selection with its output. In Insert mode, insert its output at each cursor.",
+            cmd_pipe,
+            TextPrompt::Shell,
+        )
+        .repeatable()
+        .clears_extend()
+        .key_only()
         .reg(self);
         // `EditorCmd`, not `selection!`: the body needs `EditorState` to read
         // the buffer's search pattern, a channel `Selection`'s pure

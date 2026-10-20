@@ -20,6 +20,7 @@ impl<'a> AsyncProcessHost for EditorHostImpl<'a> {
             cmd,
             &args,
             &cwd,
+            Vec::new(),
             std::sync::Arc::clone(&self.state.wake),
         ) {
             Ok(job) => {

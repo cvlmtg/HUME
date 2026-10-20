@@ -9,6 +9,7 @@ mod indent;
 mod insert;
 mod join;
 mod paste;
+mod pipe;
 mod replace;
 mod sort;
 

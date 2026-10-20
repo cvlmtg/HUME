@@ -24,7 +24,7 @@
 use hume_engine::pipeline::EngineView;
 use std::borrow::Cow;
 use std::collections::VecDeque;
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 use steel::rvals::SteelVal;
 use termina::event::{Event as TerminalEvent, KeyEvent};
 
@@ -33,6 +33,7 @@ use super::dot_chain::{ChainBroken, DotChain};
 use super::edit_session::{self, DotCapture, EditSessionKind, InsertSession};
 use super::input_stack::char::{AfterRead, CharRead};
 use super::keymap::CanonicalKey;
+use super::pipe_run::PipeEnd;
 use super::registry::{Dispatchable, MappableCommand};
 use super::{Editor, EditorState, Mode, commands, doc_ops};
 
@@ -410,9 +411,9 @@ fn dispatch_key_binding(ed: &mut Editor, running: Running, cmd: Dispatchable) ->
 pub(in crate::editor) struct NewChange {
     pub(in crate::editor) command: Cow<'static, str>,
     pub(in crate::editor) count: usize,
-    /// The character operand the command was dispatched with, recorded as
-    /// its first answer.
-    pub(in crate::editor) seed: Option<char>,
+    /// The operand the command was dispatched with, recorded as its first
+    /// answer.
+    pub(in crate::editor) seed: Option<Answer>,
     /// The selection recipe the change takes if it is kept.
     pub(in crate::editor) recipe: Vec<SelectionStep>,
 }
@@ -507,6 +508,44 @@ pub(in crate::editor) struct Recording {
     stopped: bool,
     /// The id the next recorded binding entry gets.
     next_binding: u64,
+    /// What decides whether this change is kept.
+    settling: Settling,
+}
+
+/// What decides whether a fresh change is kept, from
+/// [`EditorState::begin_change`] on.
+#[derive(Debug)]
+enum Settling {
+    /// Its command body, still running.
+    Body,
+    /// Work its body queued, which runs after the body returns
+    /// ([`EditorState::defer_change`]).
+    Deferred,
+    /// That work, not ended yet. Holds the change this one replaced, put
+    /// back if the work is withdrawn ([`EditorState::settle_deferred`]).
+    Awaiting(Option<Box<Recording>>),
+    /// Nothing left to decide.
+    Settled,
+}
+
+/// A fresh change whose body handed the decision to keep it to work that
+/// runs after the body returns. The work ends it with
+/// [`EditorState::settle_deferred`].
+#[must_use]
+#[derive(Debug)]
+pub(in crate::editor) struct DeferredChange {
+    /// The change's [`Recording::sources`], held weakly so that it names the
+    /// change without counting as one of its open sources.
+    sources: Weak<()>,
+}
+
+/// How the work a [`DeferredChange`] waits on ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::editor) enum DeferredOutcome {
+    /// It did what the change records: keep the change.
+    Landed,
+    /// It changed nothing: put back the change this one replaced.
+    Withdrawn,
 }
 
 impl Recording {
@@ -516,6 +555,34 @@ impl Recording {
             sources: Rc::new(()),
             stopped: false,
             next_binding: 0,
+            settling: Settling::Body,
+        }
+    }
+
+    /// Forget every pick's payload, here and in the change this one holds
+    /// to put back.
+    fn forget_steel_payloads(&mut self) {
+        let binding_answers = self
+            .action
+            .transcript
+            .iter_mut()
+            .filter_map(|input| match input {
+                Input::Binding { answers, .. } => Some(answers),
+                _ => None,
+            });
+        for answers in std::iter::once(&mut self.action.answers).chain(binding_answers) {
+            for answer in answers {
+                if let Answer::Pick(Pick {
+                    picked: Some(picked @ Picked::Payload(_)),
+                    ..
+                }) = answer
+                {
+                    *picked = Picked::PayloadForgotten;
+                }
+            }
+        }
+        if let Settling::Awaiting(Some(prev)) = &mut self.settling {
+            prev.forget_steel_payloads();
         }
     }
 
@@ -599,6 +666,9 @@ pub(in crate::editor) enum Replayed<T> {
 /// A replayed answer waiting to run after the re-run body, as live.
 pub(in crate::editor) enum PendingAnswer {
     Read(CharRead, Option<char>),
+    /// A command's text prompt: the command and the text it was confirmed
+    /// with, `None` when it was cancelled.
+    Text(commands::PendingDispatch, Option<String>),
     /// A picker, prompt or menu callback and the argument its answer gives.
     Call {
         proc: SteelVal,
@@ -703,27 +773,8 @@ impl EditorState {
     /// reload is replacing. A pick replayed by its choice is unaffected; one
     /// replayed by its payload becomes [`Picked::PayloadForgotten`].
     pub(in crate::editor) fn forget_steel_payloads(&mut self) {
-        let Some(rec) = self.recording.as_mut() else {
-            return;
-        };
-        let binding_answers = rec
-            .action
-            .transcript
-            .iter_mut()
-            .filter_map(|input| match input {
-                Input::Binding { answers, .. } => Some(answers),
-                _ => None,
-            });
-        for answers in std::iter::once(&mut rec.action.answers).chain(binding_answers) {
-            for answer in answers {
-                if let Answer::Pick(Pick {
-                    picked: Some(picked @ Picked::Payload(_)),
-                    ..
-                }) = answer
-                {
-                    *picked = Picked::PayloadForgotten;
-                }
-            }
+        if let Some(rec) = self.recording.as_mut() {
+            rec.forget_steel_payloads();
         }
     }
 
@@ -743,11 +794,7 @@ impl EditorState {
             command: change.command,
             count: change.count,
             selection_recipe: change.recipe,
-            answers: change
-                .seed
-                .map(|ch| Answer::Char(Some(ch)))
-                .into_iter()
-                .collect(),
+            answers: change.seed.into_iter().collect(),
             transcript: Vec::new(),
         };
         let rec = Recording::new(action);
@@ -763,14 +810,65 @@ impl EditorState {
     /// when anything it opened (an Insert session, a pending interactive
     /// input) still holds it: then it is a real change regardless of how the
     /// body ended. A discarded one restores `prev`, so a refused body leaves
-    /// nothing behind.
+    /// nothing behind. A kept change whose body deferred the decision holds
+    /// `prev` until its work settles it.
     fn end_change(&mut self, prev: Option<Recording>, succeeded: bool) {
-        if !self
+        let Some(rec) = self
             .recording
-            .as_ref()
-            .is_some_and(|rec| succeeded || rec.accepting())
-        {
+            .as_mut()
+            .filter(|rec| succeeded || rec.accepting())
+        else {
             self.recording = prev;
+            return;
+        };
+        rec.settling = match std::mem::replace(&mut rec.settling, Settling::Settled) {
+            Settling::Deferred => Settling::Awaiting(prev.map(Box::new)),
+            _ => Settling::Settled,
+        };
+    }
+
+    /// Hand the decision to keep the change whose command body runs now to
+    /// work the body queues, which runs after the body returns: until that
+    /// work calls [`Self::settle_deferred`], the change is kept and holds the
+    /// one it replaced. `None` when no fresh change's body runs now (during
+    /// `.`, or for a command an Insert session's change owns): the work then
+    /// has nothing to settle.
+    pub(in crate::editor) fn defer_change(&mut self) -> Option<DeferredChange> {
+        let scope = self.recording_scope.running()?;
+        if !matches!(scope.slot, AnswerSlot::Command) {
+            return None;
+        }
+        let rec = self
+            .recording
+            .as_mut()
+            .filter(|rec| rec.opened(&scope.source) && matches!(rec.settling, Settling::Body))?;
+        rec.settling = Settling::Deferred;
+        Some(DeferredChange {
+            sources: Rc::downgrade(&rec.sources),
+        })
+    }
+
+    /// End `change` as its work's `outcome` says: kept when it landed, and
+    /// replaced by the change it superseded when it was withdrawn. Does
+    /// nothing once a newer change has replaced it.
+    pub(in crate::editor) fn settle_deferred(
+        &mut self,
+        change: DeferredChange,
+        outcome: DeferredOutcome,
+    ) {
+        let Some(rec) = self
+            .recording
+            .as_mut()
+            .filter(|rec| std::ptr::eq(Rc::as_ptr(&rec.sources), change.sources.as_ptr()))
+        else {
+            return;
+        };
+        let Settling::Awaiting(prev) = std::mem::replace(&mut rec.settling, Settling::Settled)
+        else {
+            unreachable!("a deferred change awaits its work from the end of its body until settled")
+        };
+        if outcome == DeferredOutcome::Withdrawn {
+            self.recording = prev.map(|prev| *prev);
         }
     }
 
@@ -931,11 +1029,11 @@ impl EditorState {
     }
 
     /// The check an interactive input that resolves on a later key (a read,
-    /// a picker, a prompt, a menu, the search, sift and `:` lines) passes
-    /// before it opens, minting the [`WaitingInput`] its layer holds. During
-    /// `.` a read, picker, prompt or menu takes its recorded answer instead,
-    /// and the search, sift and `:` lines are never answered, so reaching
-    /// this during replay refuses.
+    /// a picker, a prompt, a menu, a command's text prompt, the `:` line)
+    /// passes before it opens, minting the [`WaitingInput`] its layer holds.
+    /// During `.` a read, picker, prompt, menu or text prompt takes its
+    /// recorded answer instead, and the `:` line is never answered, so
+    /// reaching this during replay refuses.
     ///
     /// Opens the [`AnswerTicket`] its answer records under, in the running
     /// [`RecordingScope`]'s slot, when that scope is a repeatable command's
@@ -1357,7 +1455,8 @@ impl Editor {
     /// interactive input it reached with the answer it took, in order, running
     /// each callback at once (an input a callback reaches is resolved by this
     /// same loop). Either way, drop the answers it did not reach (it took a
-    /// shorter branch this time) so the next body starts from its own.
+    /// shorter branch this time) so the next body starts from its own, and
+    /// run a pipe it queued so the rest of the replay sees its output.
     ///
     /// Returns whether the body ran: `ran`, and the native command a read
     /// collected the operand for, if any, ran too. A failed one drops the
@@ -1381,6 +1480,10 @@ impl Editor {
                         AfterRead::Call(call) => Some(call),
                     }
                 }
+                PendingAnswer::Text(then, text) => {
+                    ran = commands::finish_text_operand(self, then, None, text);
+                    None
+                }
                 PendingAnswer::Call { proc, arg } => Some(super::event::PendingWork::Call {
                     proc,
                     args: vec![arg],
@@ -1397,6 +1500,7 @@ impl Editor {
             replay.answers.clear();
             replay.pending.clear();
         }
+        self.run_queued_pipe_inline();
         ran
     }
 
@@ -1448,8 +1552,9 @@ impl Editor {
         }
     }
 
-    /// Drain the macro replay queue, executing each key in order and settling
-    /// after each one.
+    /// Drain the macro replay queue, executing each key in order, running a
+    /// pipe it queued, and settling after each one. A pipe the user cancels
+    /// drops the keys still queued: `Ctrl-c` stops the macro too.
     ///
     /// Marks a replay in progress for the duration so that `Q`/`q` intercepts
     /// inside replayed keys cannot start nested recording or replay sessions,
@@ -1475,6 +1580,9 @@ impl Editor {
         let message_already_logged = self.state.message_logged_this_input;
         while let Some(key) = self.state.macros.next_replay_key() {
             self.handle_input(TerminalEvent::Key(key));
+            if self.run_queued_pipe_inline() == Some(PipeEnd::Cancelled) {
+                self.state.macros.abort_replay();
+            }
             self.state.message_logged_this_input |= message_already_logged;
             self.settle();
             if self.state.should_quit {

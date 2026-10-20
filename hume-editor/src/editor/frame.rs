@@ -272,11 +272,13 @@ impl Editor {
     /// Sync all editor-owned state into the engine view, once per frame,
     /// right before `render()`.
     ///
-    /// Every caller runs `Editor::settle()` immediately before this. A
-    /// settled drain can switch a pane's buffer (picker accept, LSP
-    /// goto-definition) or move its selections, so everything here must
-    /// read post-settle state. Syncing earlier would pair a stale selection
-    /// head with the pane's new rope.
+    /// Every caller runs `Editor::settle()` immediately before this, or has
+    /// run nothing since its last settle: a pipe run's repaints, where only
+    /// the terminal size and the run's progress change. A settled drain can
+    /// switch a pane's buffer (picker accept, LSP goto-definition) or move
+    /// its selections, so everything here must read post-settle state.
+    /// Syncing earlier would pair a stale selection head with the pane's new
+    /// rope.
     ///
     /// Order matters twice. Providers that change display-line counts
     /// (signs, inlay hints, virtual lines, EOL text) sync before the scroll

@@ -420,6 +420,7 @@ pub(super) fn default_normal_keymap() -> KeyTrie {
     t.bind_leaf(key!('n'), cmd!("search-next"));
     t.bind_leaf(key!('N'), cmd!("search-prev"));
     t.bind_leaf(key!('s'), cmd!("sift-within"));
+    t.bind_leaf(key!('|'), cmd!("pipe"));
     t.bind_leaf(key!('*'), cmd!("search-word-under-cursor"));
     // Select text, then Ctrl-/ turns it into the search pattern verbatim (Helix's
     // `search_selection`), so `n`/`N` cycle its other occurrences. Kitty-only:
@@ -533,6 +534,8 @@ impl Keymap {
         self.normal.bind_leaf(key!(Tab), cmd!("pane-focus-next"));
         self.normal
             .bind_leaf(key!(BackTab), cmd!("pane-focus-prev"));
+        // Ctrl-| runs a shell command and inserts its output.
+        self.insert.bind_leaf(key!(Ctrl + '|'), cmd!("pipe"));
     }
 }
 

@@ -142,6 +142,80 @@ fn setting_value_parameterized_keys_return_str() {
 }
 
 #[test]
+fn setting_value_shell_defaults_to_sh_c() {
+    let global = EditorSettings::default();
+    assert_eq!(
+        setting_value("shell", &global, None),
+        Some(OptionValue::List(vec!["sh".to_string(), "-c".to_string()]))
+    );
+}
+
+#[test]
+fn shell_reads_back_the_words_it_was_set_to() {
+    let mut s = EditorSettings::default();
+    write_global("shell", &text(r#""/opt/my sh" -lc"#), &mut s).unwrap();
+    assert_eq!(
+        setting_value("shell", &s, None),
+        Some(OptionValue::List(vec![
+            "/opt/my sh".to_string(),
+            "-lc".to_string()
+        ]))
+    );
+}
+
+fn text(value: &str) -> OptionInput {
+    OptionInput::Text(value.to_string())
+}
+
+fn words(items: &[&str]) -> OptionInput {
+    OptionInput::Words(items.iter().map(|w| w.to_string()).collect())
+}
+
+#[test]
+fn shell_takes_a_list_of_words() {
+    let mut s = EditorSettings::default();
+    write_global("shell", &words(&["/opt/my sh", "-lc"]), &mut s).unwrap();
+    assert_eq!(
+        setting_value("shell", &s, None),
+        Some(OptionValue::List(vec![
+            "/opt/my sh".to_string(),
+            "-lc".to_string()
+        ]))
+    );
+}
+
+#[test]
+fn shell_refuses_an_empty_program() {
+    for value in [text(r#""" -c"#), words(&["", "-c"]), words(&[])] {
+        let mut s = EditorSettings::default();
+        let err = write_global("shell", &value, &mut s)
+            .expect_err(&format!("{value:?} names no program"));
+        assert!(err.starts_with("invalid value for 'shell'"), "{err}");
+        assert_eq!(s.shell, ShellCommand::default());
+    }
+}
+
+#[test]
+fn only_a_word_list_setting_takes_a_list() {
+    let mut s = EditorSettings::default();
+    let err = write_global("word-chars", &words(&["_", "-"]), &mut s)
+        .expect_err("word-chars is not a word list");
+    assert!(err.starts_with("invalid value for 'word-chars'"), "{err}");
+    let mut ov = BufferOverrides::default();
+    assert!(write_buffer("indent-width", &words(&["4"]), &mut ov).is_err());
+}
+
+#[test]
+fn shell_refuses_an_empty_value() {
+    let mut s = EditorSettings::default();
+    let err = write_global("shell", &text("  "), &mut s).expect_err("no program to run");
+    assert!(
+        err.starts_with("invalid value for 'shell'"),
+        "a value error, not an unknown key: {err}"
+    );
+}
+
+#[test]
 fn every_setting_key_has_a_value() {
     let global = EditorSettings::default();
     for key in all_setting_keys() {
@@ -219,7 +293,7 @@ fn setting_value_whitespace_newline_round_trips_through_write_global() {
     // parse_show_newline's inverse.
     for wire in SHOW_NEWLINE_VALUES {
         let mut s = EditorSettings::default();
-        write_global("whitespace-newline", wire, &mut s).unwrap();
+        write_global("whitespace-newline", &text(wire), &mut s).unwrap();
         assert_eq!(
             setting_value("whitespace-newline", &s, None),
             Some(OptionValue::Symbol(wire.to_string()))
@@ -247,7 +321,7 @@ fn setting_value_statusline_round_trips_through_write_global() {
     // parse_statusline's inverse. (get-option "statusline") must return the
     // written value after a successful :set global statusline=... write.
     let mut s = EditorSettings::default();
-    write_global("statusline", "Mode,FileName||Position", &mut s).unwrap();
+    write_global("statusline", &text("Mode,FileName||Position"), &mut s).unwrap();
     assert_eq!(
         setting_value("statusline", &s, None),
         Some(OptionValue::Str("Mode,FileName||Position".to_string()))
@@ -333,13 +407,13 @@ fn auto_pairs_ref_enabled_falls_back_to_global_when_no_override() {
 
 fn global(key: &str, value: &str) -> Result<EditorSettings, String> {
     let mut s = EditorSettings::default();
-    write_global(key, value, &mut s)?;
+    write_global(key, &text(value), &mut s)?;
     Ok(s)
 }
 
 fn buffer(key: &str, value: &str) -> Result<BufferOverrides, String> {
     let mut ov = BufferOverrides::default();
-    write_buffer(key, value, &mut ov)?;
+    write_buffer(key, &text(value), &mut ov)?;
     Ok(ov)
 }
 
@@ -826,7 +900,7 @@ fn set_buffer_whitespace_fields_are_independent() {
 #[test]
 fn set_buffer_global_only_setting_errors() {
     let mut ov = BufferOverrides::default();
-    let err = write_buffer("scroll-margin", "3", &mut ov).unwrap_err();
+    let err = write_buffer("scroll-margin", &text("3"), &mut ov).unwrap_err();
     assert!(
         err.contains("global-only"),
         "expected 'global-only' in error: {err}"
@@ -843,7 +917,7 @@ fn set_buffer_global_only_all_keys_error() {
         if !matches!(setting_scopes(key), [Scope::Global]) {
             continue;
         }
-        let err = write_buffer(key, "1", &mut ov).unwrap_err();
+        let err = write_buffer(key, &text("1"), &mut ov).unwrap_err();
         assert!(
             err.contains("global-only"),
             "key '{key}': expected 'global-only' in error: {err}",
@@ -874,7 +948,7 @@ fn set_buffer_whitespace_invalid_value_errors() {
 fn set_global_tab_width_propagates_to_unoverridden_buffer() {
     let mut global = EditorSettings::default();
     let ov = BufferOverrides::default();
-    write_global("indent-width", "2", &mut global).unwrap();
+    write_global("indent-width", &text("2"), &mut global).unwrap();
     // Text has no override, so it inherits the new global value.
     assert_eq!(ov.indent_width(&global), 2);
 }
@@ -883,7 +957,7 @@ fn set_global_tab_width_propagates_to_unoverridden_buffer() {
 fn set_global_tab_style_propagates_to_unoverridden_buffer() {
     let mut global = EditorSettings::default();
     let ov = BufferOverrides::default();
-    write_global("indent-style", "soft", &mut global).unwrap();
+    write_global("indent-style", &text("soft"), &mut global).unwrap();
     assert_eq!(ov.indent_style(&global), TabStyle::Soft);
 }
 
@@ -891,24 +965,24 @@ fn set_global_tab_style_propagates_to_unoverridden_buffer() {
 fn apply_statusline_wrong_section_count_errors() {
     let mut s = EditorSettings::default();
     // Two pipes required; one pipe produces only two parts.
-    assert!(write_global("statusline", "Mode|Position", &mut s).is_err());
+    assert!(write_global("statusline", &text("Mode|Position"), &mut s).is_err());
     // Three pipes / four sections produce four parts, also rejected.
-    assert!(write_global("statusline", "Mode|Position|Cwd|Extra", &mut s).is_err());
+    assert!(write_global("statusline", &text("Mode|Position|Cwd|Extra"), &mut s).is_err());
 }
 
 #[test]
 fn apply_statusline_unknown_element_name_errors() {
     let mut s = EditorSettings::default();
-    assert!(write_global("statusline", "NotAnElement||", &mut s).is_err());
+    assert!(write_global("statusline", &text("NotAnElement||"), &mut s).is_err());
 }
 
 #[test]
 fn apply_statusline_empty_element_name_errors() {
     let mut s = EditorSettings::default();
-    let err = write_global("statusline", "Mode,,FileName||", &mut s).unwrap_err();
+    let err = write_global("statusline", &text("Mode,,FileName||"), &mut s).unwrap_err();
     assert!(err.contains("empty element name"), "got: {err}");
     assert!(
-        write_global("statusline", "Mode,||", &mut s).is_err(),
+        write_global("statusline", &text("Mode,||"), &mut s).is_err(),
         "a trailing comma leaves an empty name too"
     );
 }
@@ -916,7 +990,7 @@ fn apply_statusline_empty_element_name_errors() {
 #[test]
 fn apply_statusline_text_scope_rejected() {
     let mut ov = BufferOverrides::default();
-    assert!(write_buffer("statusline", "||", &mut ov).is_err());
+    assert!(write_buffer("statusline", &text("||"), &mut ov).is_err());
 }
 
 #[test]
@@ -977,7 +1051,7 @@ fn all_setting_keys_are_recognized_by_apply_setting() {
         assert!(!scopes.is_empty(), "key '{key}' has no declared scope");
         if scopes.contains(&Scope::Global) {
             let mut s = EditorSettings::default();
-            if let Err(err) = write_global(key, "\u{0}garbage\u{0}", &mut s) {
+            if let Err(err) = write_global(key, &text("\u{0}garbage\u{0}"), &mut s) {
                 assert!(
                     !err.contains("unknown setting"),
                     "key '{key}' (global) from all_setting_keys() is not recognized: {err}"
@@ -986,7 +1060,7 @@ fn all_setting_keys_are_recognized_by_apply_setting() {
         }
         if scopes.contains(&Scope::Buffer) {
             let mut ov = BufferOverrides::default();
-            if let Err(err) = write_buffer(key, "\u{0}garbage\u{0}", &mut ov) {
+            if let Err(err) = write_buffer(key, &text("\u{0}garbage\u{0}"), &mut ov) {
                 assert!(
                     !err.contains("unknown setting"),
                     "key '{key}' (buffer) from all_setting_keys() is not recognized: {err}"
@@ -1197,15 +1271,15 @@ fn settings_enum_parse_error_lists_every_accepted_value() {
 fn set_names_the_failing_key_in_enum_errors() {
     let mut settings = EditorSettings::default();
     assert_eq!(
-        write_global("whitespace-tab", "bogus", &mut settings).unwrap_err(),
+        write_global("whitespace-tab", &text("bogus"), &mut settings).unwrap_err(),
         "invalid value for 'whitespace-tab': expected none, all, or trailing, got 'bogus'"
     );
     assert_eq!(
-        write_global("whitespace-space", "bogus", &mut settings).unwrap_err(),
+        write_global("whitespace-space", &text("bogus"), &mut settings).unwrap_err(),
         "invalid value for 'whitespace-space': expected none, all, or trailing, got 'bogus'"
     );
     assert_eq!(
-        write_global("wrap-mode", "sideways:3", &mut settings).unwrap_err(),
+        write_global("wrap-mode", &text("sideways:3"), &mut settings).unwrap_err(),
         "invalid value for 'wrap-mode': expected none, soft[:N], word[:N], or indent[:N], got 'sideways:3'"
     );
 }
@@ -1262,7 +1336,7 @@ fn every_parser_kind_names_the_key_once() {
     for (key, value, expected) in cases {
         let mut settings = EditorSettings::default();
         assert_eq!(
-            write_global(key, value, &mut settings).unwrap_err(),
+            write_global(key, &text(value), &mut settings).unwrap_err(),
             expected,
             "{key}={value}"
         );

@@ -83,6 +83,8 @@ fn editor_state_fields_are_classified() {
             selection_recipe: _,         // preserved
             selection_recipe_touched: _, // preserved
             pending_repeat: _,           // preserved
+            queued_pipe: _,              // preserved: run before the next key
+            running_pipe: _,             // preserved: set only inside a run
             sift_reuse: _,               // preserved: the next sift-within takes it
             sift_scans: _,               // preserved: a test-only count
             // preserved: owned by `replay_dot`, which restores it on exit
@@ -170,6 +172,7 @@ fn editor_fields_are_classified() {
             // preserved: drained by apply_startup_positions at the
             // first settle, long before any :reload-config could run
             startup_positions: _,
+            inline_pipe_console: _, // preserved
         } = e;
     }
 }

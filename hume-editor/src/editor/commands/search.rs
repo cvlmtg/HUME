@@ -17,8 +17,7 @@ use super::super::input_stack::{
     InvalidPattern, PaneSnapshot, SearchLayer, SearchOrigin, SiftFailure, SiftLayer, commit_search,
     preview_search, sift_within,
 };
-use super::super::registry::PatternPrompt;
-use super::super::replay::{InputOpener, WaitingInput};
+use super::super::replay::WaitingInput;
 use super::super::{EditorState, MiniBuffer};
 use super::{
     CommandPane, FocusedPane, PendingDispatch, doc, effective_word_chars, pane_selections,
@@ -33,7 +32,7 @@ use crate::editor::error::CommandError;
 /// `SearchLayer::setup` snapshots the current selections for cancel-restore
 /// once the layer lands (see its own doc for why that capture happens there
 /// rather than here).
-fn begin_search(
+pub(super) fn open_search_prompt(
     state: &mut EditorState,
     view: &mut EngineView,
     fp: FocusedPane,
@@ -114,44 +113,6 @@ pub(in crate::editor) fn cmd_search_backward(
     pattern: &str,
 ) -> Result<(), CommandError> {
     search_with_pattern(state, view, t, SearchDirection::Backward, mode, pattern)
-}
-
-/// Open `prompt` in `fp` to read the pattern `then` was dispatched without.
-/// Selections that are all bare cursors have nothing to sift, so the sift
-/// prompt doesn't open over them.
-///
-/// The prompt is an interactive input `.` never answers: the
-/// `EditorState::waiting_input` it passes as it opens ends the change in
-/// flight and, during `.`, refuses with the returned message.
-pub(in crate::editor) fn open_pattern_prompt(
-    state: &mut EditorState,
-    view: &mut EngineView,
-    fp: FocusedPane,
-    prompt: PatternPrompt,
-    then: PendingDispatch,
-) -> Result<(), String> {
-    if matches!(prompt, PatternPrompt::Sift) && all_cursors(state, view, fp.pane()) {
-        return Ok(());
-    }
-    let input = state.waiting_input(then.cmd.name(), InputOpener::Code)?;
-    match prompt {
-        PatternPrompt::Search(direction) => begin_search(state, view, fp, direction, then, input),
-        PatternPrompt::Sift => {
-            // `SiftLayer::setup` snapshots the current selections once the
-            // layer lands; see `SearchLayer::setup`'s doc for why the capture
-            // happens there rather than here.
-            state.push_mode_layer(
-                view,
-                SiftLayer::new(
-                    input,
-                    MiniBuffer::new("⫽"),
-                    PaneSnapshot::new(fp.pid()),
-                    then,
-                ),
-            );
-        }
-    }
-    Ok(())
 }
 
 /// `t`'s buffer's active search pattern, compiled from the `'s'` register
@@ -333,8 +294,30 @@ pub(in crate::editor) fn cmd_sift_within(
     Ok(())
 }
 
+/// Open the sift prompt in `fp` for `then`, a `sift-within` dispatched
+/// without its pattern. `SiftLayer::setup` snapshots the current selections
+/// once the layer lands; see `SearchLayer::setup`'s doc for why the capture
+/// happens there rather than here.
+pub(super) fn open_sift_prompt(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    fp: FocusedPane,
+    then: PendingDispatch,
+    input: WaitingInput,
+) {
+    state.push_mode_layer(
+        view,
+        SiftLayer::new(
+            input,
+            MiniBuffer::new("⫽"),
+            PaneSnapshot::new(fp.pid()),
+            then,
+        ),
+    );
+}
+
 /// Whether every selection in `t` is a bare cursor.
-fn all_cursors(state: &EditorState, view: &EngineView, t: CommandPane) -> bool {
+pub(super) fn all_cursors(state: &EditorState, view: &EngineView, t: CommandPane) -> bool {
     pane_view(state, view, t).iter().all(|sel| sel.is_cursor())
 }
 

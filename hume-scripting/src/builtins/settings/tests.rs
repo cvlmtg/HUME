@@ -1,5 +1,5 @@
 use super::*;
-use crate::host::OptionValue;
+use crate::host::{OptionInput, OptionValue};
 use crate::test_support::{SteelCtxTestHarness, default_pane};
 use hume_engine::pipeline::BufferId;
 use steel::rvals::IntoSteelVal as _;
@@ -26,21 +26,92 @@ fn set_option_reaches_host_from_command_mode() {
     );
 }
 
-/// `set-option!` rejects value types that are not string, bool, or integer.
+/// `set-option!` rejects value types that are not string, symbol, bool,
+/// integer, or list of strings.
 ///
-/// Without the type check, a list or void would be stringified via `{:?}`
-/// and applied as a setting value.
+/// Without the type check, a void would be stringified via `{:?}` and
+/// applied as a setting value.
 #[test]
 fn set_option_invalid_value_type_errors() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx_init();
-    // Pass a list, not a valid value type.
-    let list: SteelVal = Vec::<SteelVal>::new().into_steelval().unwrap();
-    let result = set_option(&mut ctx, "indent-width".into(), list);
-    assert!(
-        result.is_err(),
-        "set-option! must reject non-string/bool/int value"
+    let result = set_option(&mut ctx, "indent-width".into(), SteelVal::Void);
+    let msg = result.expect_err("void is not a setting value").to_string();
+    assert!(msg.contains("must be"), "type error expected, got: {msg}");
+}
+
+/// A list of strings is forwarded as its words, so the editor can refuse it
+/// for a setting that is not a word list.
+#[test]
+fn a_list_value_is_forwarded_as_words() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut host = RecordingBufferOptionHost::default();
+    let target = BufferId::default();
+    let mut ctx = h.ctx_with_host(&mut host);
+    let list = vec![
+        SteelVal::StringV("/opt/my sh".into()),
+        SteelVal::StringV("-c".into()),
+    ]
+    .into_steelval()
+    .unwrap();
+    set_buffer_option(
+        &mut ctx,
+        crate::types::PaneHandle::buffer_only(target),
+        "shell".into(),
+        list,
+    )
+    .expect("a list of strings must be accepted");
+    assert_eq!(
+        host.calls,
+        vec![(
+            "shell".to_string(),
+            OptionInput::Words(vec!["/opt/my sh".to_string(), "-c".to_string()]),
+            target
+        )]
     );
+}
+
+/// A symbol in a list is a word, as a symbol on its own is the text.
+#[test]
+fn a_list_of_symbols_is_forwarded_as_words() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut host = RecordingBufferOptionHost::default();
+    let target = BufferId::default();
+    let mut ctx = h.ctx_with_host(&mut host);
+    let list = vec![
+        SteelVal::SymbolV("bash".into()),
+        SteelVal::SymbolV("-c".into()),
+    ]
+    .into_steelval()
+    .unwrap();
+    set_buffer_option(
+        &mut ctx,
+        crate::types::PaneHandle::buffer_only(target),
+        "shell".into(),
+        list,
+    )
+    .expect("a list of symbols must be accepted");
+    assert_eq!(
+        host.calls,
+        vec![(
+            "shell".to_string(),
+            OptionInput::Words(vec!["bash".to_string(), "-c".to_string()]),
+            target
+        )]
+    );
+}
+
+#[test]
+fn a_list_with_a_non_string_item_errors() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx_init();
+    let list = vec![SteelVal::StringV("sh".into()), SteelVal::IntV(1)]
+        .into_steelval()
+        .unwrap();
+    let msg = set_option(&mut ctx, "shell".into(), list)
+        .expect_err("a non-string item must be refused")
+        .to_string();
+    assert!(msg.contains("expected a string"), "got: {msg}");
 }
 
 /// In init mode with valid args, `set-option!` reaches the host (NullHost → Err,
@@ -156,12 +227,14 @@ fn set_buffer_option_blocked_in_init_mode() {
 fn set_buffer_option_invalid_value_type_errors() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
-    let list: SteelVal = Vec::<SteelVal>::new().into_steelval().unwrap();
-    let result = set_buffer_option(&mut ctx, default_pane(), "indent-width".into(), list);
-    assert!(
-        result.is_err(),
-        "set-buffer-option! must reject non-string/bool/int value"
+    let result = set_buffer_option(
+        &mut ctx,
+        default_pane(),
+        "indent-width".into(),
+        SteelVal::Void,
     );
+    let msg = result.expect_err("void is not a setting value").to_string();
+    assert!(msg.contains("must be"), "type error expected, got: {msg}");
 }
 
 /// `set-buffer-option!`'s `"language"` queues its value as an effect instead
@@ -244,7 +317,7 @@ fn set_buffer_option_accepts_string_bool_int_values() {
 #[derive(Default)]
 struct RecordingBufferOptionHost {
     inner: crate::null_host::NullHost,
-    pub(crate) calls: Vec<(String, String, BufferId)>,
+    pub(crate) calls: Vec<(String, OptionInput, BufferId)>,
 }
 
 impl crate::host::EditorHost for RecordingBufferOptionHost {
@@ -377,11 +450,16 @@ impl crate::host::BufferHost for RecordingBufferOptionHost {
 }
 
 impl crate::host::SettingsHost for RecordingBufferOptionHost {
-    fn set_global_option(&mut self, key: &str, value: &str) -> Result<(), String> {
+    fn set_global_option(&mut self, key: &str, value: OptionInput) -> Result<(), String> {
         crate::host::SettingsHost::set_global_option(&mut self.inner, key, value)
     }
-    fn set_buffer_option(&mut self, key: &str, value: &str, bid: BufferId) -> Result<(), String> {
-        self.calls.push((key.to_string(), value.to_string(), bid));
+    fn set_buffer_option(
+        &mut self,
+        key: &str,
+        value: OptionInput,
+        bid: BufferId,
+    ) -> Result<(), String> {
+        self.calls.push((key.to_string(), value, bid));
         Ok(())
     }
     fn get_global_option(&self, key: &str) -> Result<OptionValue, String> {
@@ -415,7 +493,11 @@ fn set_buffer_option_reaches_host() {
     assert!(result.is_ok(), "expected Ok, got {result:?}");
     assert_eq!(
         host.calls,
-        vec![("indent-width".to_string(), "8".to_string(), target)]
+        vec![(
+            "indent-width".to_string(),
+            OptionInput::Text("8".to_string()),
+            target
+        )]
     );
 }
 
@@ -436,7 +518,24 @@ fn set_buffer_option_forwards_a_symbol_as_its_name() {
     .expect("a symbol value must be accepted");
     assert_eq!(
         host.calls,
-        vec![("indent-style".to_string(), "soft".to_string(), target)]
+        vec![(
+            "indent-style".to_string(),
+            OptionInput::Text("soft".to_string()),
+            target
+        )]
+    );
+}
+
+#[test]
+fn a_list_option_value_reads_back_as_a_list_of_strings() {
+    assert_eq!(
+        SteelVal::from(OptionValue::List(vec!["sh".to_string(), "-c".to_string()])),
+        vec![
+            SteelVal::StringV("sh".into()),
+            SteelVal::StringV("-c".into())
+        ]
+        .into_steelval()
+        .unwrap()
     );
 }
 

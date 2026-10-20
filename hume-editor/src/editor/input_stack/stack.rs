@@ -160,9 +160,10 @@ pub(in crate::editor) trait Layer: Any {
     fn snapshot_mut(&mut self) -> Option<&mut super::PaneSnapshot>;
 
     /// The minibuffer this layer owns, if it's one of the four
-    /// minibuf-backed mode layers (`Command`/`Search`/`Sift`/`Prompt`).
-    /// [`InputStack::minibuf`] walks topmost-first over this. At most one
-    /// layer ever returns `Some`, so "topmost" and "only" coincide.
+    /// minibuf-backed mode layers (`Command`/`Search`/`Sift`/`Prompt`) or
+    /// the `ShellPrompt` overlay. [`InputStack::minibuf`] walks
+    /// topmost-first over this. At most one layer ever returns `Some`, so
+    /// "topmost" and "only" coincide.
     fn minibuf(&self) -> Option<&MiniBuffer> {
         None
     }
@@ -666,8 +667,10 @@ impl InputStack {
     }
 
     /// The active minibuffer, topmost-wins across the four minibuf-backed
-    /// mode layers (`Command`/`Search`/`Sift`/`Prompt`). At most one of
-    /// them is ever on the stack, so "topmost" and "only" coincide.
+    /// mode layers (`Command`/`Search`/`Sift`/`Prompt`) and the
+    /// `ShellPrompt` overlay. At most one of them is ever on the stack: the
+    /// overlay refuses to open over another, and a mode layer's push removes
+    /// it. So "topmost" and "only" coincide.
     pub(in crate::editor) fn minibuf(&self) -> Option<&MiniBuffer> {
         self.layers
             .iter()
@@ -683,7 +686,7 @@ impl InputStack {
     }
 
     /// The minibuf owned by `top()` specifically: `None` if `top()` isn't
-    /// one of the four minibuf-backed mode layers, even if one is open
+    /// one of the five minibuf-backed layers, even if one is open
     /// buried beneath a picker or menu (a mouse click always falls through
     /// under a minibuf-mode layer, so focus and the picker/menu it opens can
     /// land above one without ever closing it). A `MinibufCompletionLayer`

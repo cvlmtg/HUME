@@ -1,6 +1,7 @@
 //! One-shot subprocess capture: run a command to completion and deliver its
-//! whole stdout, whole stderr, and exit status exactly once: the shape
-//! `spawn-async!` needs, as opposed to `line_source`'s per-line streaming.
+//! whole stdout, whole stderr, and exit status once: the shape
+//! `spawn-async!` and `pipe` need, as opposed to `line_source`'s per-line
+//! streaming.
 //!
 //! Completion here is the child *exiting*, which is not implied by its
 //! pipes reaching EOF. A child can close (or exec away from) its stdio
@@ -20,12 +21,14 @@
 //! would deadlock on a child that fills its stderr pipe while this thread
 //! is still blocked reading stdout, the same hazard the Scheme sync path
 //! documents at `runtime/plugins/core/stdlib/plugin.scm`'s `stdlib/run!`.
+//! Input is written by a third thread for the same reason: a child that
+//! fills its stdout pipe stops reading stdin until someone drains it.
 
-use std::io;
+use std::io::{self, Write};
 use std::path::Path;
-use std::process::ExitStatus;
+use std::process::{ChildStdin, ExitStatus};
 use std::sync::mpsc;
-use std::thread;
+use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 use crate::process::WakeCallback;
@@ -34,13 +37,14 @@ use crate::process::child::{
 };
 use crate::process::tracked::TrackedChild;
 
-/// The complete output of a finished [`SpawnedJob`]: whole stdout (never
-/// *silently* truncated: capped at `JOB_STDOUT_CAP`, but exceeding it
-/// fails the job rather than handing back a short prefix), whole stderr
-/// (capped at `STDERR_CAPTURE_CAP`; diagnostic only, so truncation there is
-/// fine), and exit status (`None` on a stdout read failure/overflow, or if
-/// the capture thread's own exit-status poll errored, or the thread
-/// panicked before sending, the last three vanishingly rare).
+/// The complete output of a finished [`SpawnedJob`]: whole stdout as raw
+/// bytes, left to the caller to decode (never *silently* truncated: capped
+/// at `JOB_STDOUT_CAP`, but exceeding it fails the job rather than handing
+/// back a short prefix), whole stderr (capped at `STDERR_CAPTURE_CAP`;
+/// diagnostic only, so truncation there is fine), and exit status (`None`
+/// on a stdout read failure/overflow or a failed stdin write, or if the
+/// capture thread's own exit-status poll errored, or the thread panicked
+/// before sending, the last three vanishingly rare).
 ///
 /// Also what the capture thread sends the main thread over the channel:
 /// `status` is `None` there only if the exit-status poll itself errored; a
@@ -48,7 +52,7 @@ use crate::process::tracked::TrackedChild;
 /// [`SpawnedJob::try_take_result`] synthesizing an empty `JobResult` on
 /// channel disconnect.
 pub struct JobResult {
-    pub stdout: String,
+    pub stdout: Vec<u8>,
     pub stderr: String,
     pub status: Option<ExitStatus>,
 }
@@ -67,18 +71,20 @@ pub struct SpawnedJob {
     rx: Option<mpsc::Receiver<JobResult>>,
 }
 
-/// Spawns `cmd` with `args` (direct argv, no shell), piped stdio, stdin
-/// closed immediately. One thread reads stderr to EOF (capped, lenient); a
-/// second reads stdout to EOF (capped at `JOB_STDOUT_CAP`, strict: a
-/// read error or overflow fails the job), joins the first, then sends the
-/// combined capture once and fires `wake`.
+/// Spawns `cmd` with `args` (direct argv, no shell) and piped stdio, with
+/// `input` written to its stdin, which then closes (at once when `input`
+/// is empty). One thread reads stderr to EOF (capped, lenient); a second
+/// reads stdout to EOF (capped at `JOB_STDOUT_CAP`, strict: a read error or
+/// overflow fails the job), joins the first and the stdin writer, then
+/// sends the combined capture once and fires `wake`.
 pub fn spawn_job(
     cmd: &str,
     args: &[String],
     cwd: &Path,
+    input: Vec<u8>,
     wake: WakeCallback,
 ) -> io::Result<SpawnedJob> {
-    let (child, stdout, stderr) = spawn_piped(cmd, args, cwd)?;
+    let (child, stdin, stdout, stderr) = spawn_piped(cmd, args, cwd)?;
     // Converted to a `TrackedChild` up front, not deferred to the end like
     // `line_source` does. The job thread below needs its own handle to
     // poll the child's exit status, so it and this function's returned
@@ -88,6 +94,10 @@ pub fn spawn_job(
     let child = TrackedChild::new(child.into_inner());
 
     let (tx, rx) = mpsc::sync_channel::<JobResult>(1);
+
+    let writer = feed_stdin(stdin, input).inspect_err(|_| {
+        child.reap();
+    })?;
 
     let stderr_thread = thread::Builder::new()
         .name("hume-job-stderr".into())
@@ -116,17 +126,25 @@ pub fn spawn_job(
             // failure, and stdout is what most callers actually want.
             let stderr_bytes = stderr_thread.join().unwrap_or_default();
             let status = wait_for_exit(&job_child);
-            let result = match stdout_result {
+            // Joined after the exit: a writer still blocked on a full pipe
+            // is released by the child's death, never the other way round.
+            let stdin_result = writer.map_or(Ok(()), |writer| {
+                writer
+                    .join()
+                    .unwrap_or_else(|_| Err(io::Error::other("stdin writer panicked")))
+            });
+            let result = match stdout_result.and_then(|out| stdin_result.map(|()| out)) {
                 Ok(stdout_bytes) => JobResult {
-                    stdout: String::from_utf8_lossy(&stdout_bytes).into_owned(),
+                    stdout: stdout_bytes,
                     stderr: String::from_utf8_lossy(&stderr_bytes).into_owned(),
                     status,
                 },
-                // A truncated stdout is worse than none: hand back the
-                // documented spawn-failure shape (empty stdout, a message
-                // in stderr, no exit code) rather than silently short data.
+                // A truncated stdout, or output computed from truncated
+                // input, is worse than none: hand back the documented
+                // spawn-failure shape (empty stdout, a message in stderr,
+                // no exit code) rather than silently short data.
                 Err(e) => JobResult {
-                    stdout: String::new(),
+                    stdout: Vec::new(),
                     stderr: format!("{job_cmd}: {e}"),
                     status: None,
                 },
@@ -141,6 +159,26 @@ pub fn spawn_job(
         child,
         rx: Some(rx),
     })
+}
+
+/// Writes `input` to `stdin` on its own thread and closes it; empty input
+/// closes it at once, with no thread.
+fn feed_stdin(stdin: ChildStdin, input: Vec<u8>) -> io::Result<Option<JoinHandle<io::Result<()>>>> {
+    if input.is_empty() {
+        return Ok(None);
+    }
+    let writer = thread::Builder::new()
+        .name("hume-job-stdin".into())
+        .spawn(move || {
+            let mut stdin = stdin;
+            match stdin.write_all(&input) {
+                // A child may exit without reading all of its input
+                // (`head -1`); its exit status decides whether it failed.
+                Err(e) if e.kind() == io::ErrorKind::BrokenPipe => Ok(()),
+                other => other.map_err(|e| io::Error::new(e.kind(), format!("writing stdin: {e}"))),
+            }
+        })?;
+    Ok(Some(writer))
 }
 
 /// Polls `child`'s exit status rather than blocking on a plain `wait()`:
@@ -187,7 +225,7 @@ impl SpawnedJob {
             Ok(result) => result,
             Err(mpsc::TryRecvError::Empty) => return None,
             Err(mpsc::TryRecvError::Disconnected) => JobResult {
-                stdout: String::new(),
+                stdout: Vec::new(),
                 stderr: String::new(),
                 status: None,
             },
@@ -220,6 +258,7 @@ mod tests {
                 "definitely-not-a-real-binary-xyz",
                 &[],
                 Path::new("."),
+                Vec::new(),
                 wake
             )
             .is_err()
@@ -231,7 +270,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let bogus = dir.path().join("does-not-exist");
         let wake: WakeCallback = std::sync::Arc::new(|| {});
-        assert!(spawn_job("sh", &[], &bogus, wake).is_err());
+        assert!(spawn_job("sh", &[], &bogus, Vec::new(), wake).is_err());
     }
 
     #[cfg(unix)]
@@ -272,9 +311,10 @@ mod tests {
         #[test]
         fn happy_path_captures_stdout_and_success() {
             let args = vec!["-c".to_string(), "printf 'hi'".to_string()];
-            let mut job = spawn_job("sh", &args, Path::new("."), no_op_wake()).expect("spawn sh");
+            let mut job =
+                spawn_job("sh", &args, Path::new("."), Vec::new(), no_op_wake()).expect("spawn sh");
             let result = poll_until_result(&mut job);
-            assert_eq!(result.stdout, "hi");
+            assert_eq!(result.stdout, b"hi");
             assert_eq!(result.stderr, "");
             assert_eq!(result.status.map(|s| s.success()), Some(true));
         }
@@ -282,7 +322,8 @@ mod tests {
         #[test]
         fn nonzero_exit_and_stderr_are_captured() {
             let args = vec!["-c".to_string(), "echo oops >&2; exit 3".to_string()];
-            let mut job = spawn_job("sh", &args, Path::new("."), no_op_wake()).expect("spawn sh");
+            let mut job =
+                spawn_job("sh", &args, Path::new("."), Vec::new(), no_op_wake()).expect("spawn sh");
             let result = poll_until_result(&mut job);
             assert_eq!(result.status.and_then(|s| s.code()), Some(3));
             assert!(result.stderr.contains("oops"), "got: {:?}", result.stderr);
@@ -298,9 +339,10 @@ mod tests {
                 "-c".to_string(),
                 "printf hi; exec 1>&- 2>&-; sleep 0.3; exit 0".to_string(),
             ];
-            let mut job = spawn_job("sh", &args, Path::new("."), no_op_wake()).expect("spawn sh");
+            let mut job =
+                spawn_job("sh", &args, Path::new("."), Vec::new(), no_op_wake()).expect("spawn sh");
             let result = poll_until_result(&mut job);
-            assert_eq!(result.stdout, "hi");
+            assert_eq!(result.stdout, b"hi");
             assert_eq!(
                 result.status.and_then(|s| s.code()),
                 Some(0),
@@ -314,7 +356,8 @@ mod tests {
                 "-c".to_string(),
                 "yes x | head -c 200000 1>&2; exit 0".to_string(),
             ];
-            let mut job = spawn_job("sh", &args, Path::new("."), no_op_wake()).expect("spawn sh");
+            let mut job =
+                spawn_job("sh", &args, Path::new("."), Vec::new(), no_op_wake()).expect("spawn sh");
             let result = poll_until_result(&mut job);
             assert!(result.stderr.len() <= STDERR_CAPTURE_CAP);
         }
@@ -325,7 +368,8 @@ mod tests {
                 "-c".to_string(),
                 "yes x | head -c 200000; exit 0".to_string(),
             ];
-            let mut job = spawn_job("sh", &args, Path::new("."), no_op_wake()).expect("spawn sh");
+            let mut job =
+                spawn_job("sh", &args, Path::new("."), Vec::new(), no_op_wake()).expect("spawn sh");
             let result = poll_until_result(&mut job);
             assert_eq!(
                 result.stdout.len(),
@@ -343,7 +387,8 @@ mod tests {
                 "-c".to_string(),
                 "(yes x | head -c 200000) & (yes y | head -c 200000 1>&2) & wait".to_string(),
             ];
-            let mut job = spawn_job("sh", &args, Path::new("."), no_op_wake()).expect("spawn sh");
+            let mut job =
+                spawn_job("sh", &args, Path::new("."), Vec::new(), no_op_wake()).expect("spawn sh");
             let result = poll_until_result(&mut job);
             assert_eq!(result.stdout.len(), 200_000);
             assert!(result.stderr.len() <= STDERR_CAPTURE_CAP);
@@ -353,7 +398,8 @@ mod tests {
         fn wake_fires_exactly_once() {
             let (wake, count) = counting_wake();
             let args = vec!["-c".to_string(), "printf hi".to_string()];
-            let mut job = spawn_job("sh", &args, Path::new("."), wake).expect("spawn sh");
+            let mut job =
+                spawn_job("sh", &args, Path::new("."), Vec::new(), wake).expect("spawn sh");
             poll_until_result(&mut job);
             assert_eq!(count.load(Ordering::SeqCst), 1);
         }
@@ -361,7 +407,8 @@ mod tests {
         #[test]
         fn self_signal_kill_reports_no_exit_code() {
             let args = vec!["-c".to_string(), "kill -9 $$".to_string()];
-            let mut job = spawn_job("sh", &args, Path::new("."), no_op_wake()).expect("spawn sh");
+            let mut job =
+                spawn_job("sh", &args, Path::new("."), Vec::new(), no_op_wake()).expect("spawn sh");
             let result = poll_until_result(&mut job);
             assert_eq!(
                 result.status.and_then(|s| s.code()),
@@ -371,9 +418,56 @@ mod tests {
         }
 
         #[test]
+        fn stdin_input_reaches_the_child() {
+            let mut job = spawn_job(
+                "cat",
+                &[],
+                Path::new("."),
+                b"one\ntwo".to_vec(),
+                no_op_wake(),
+            )
+            .expect("spawn cat");
+            let result = poll_until_result(&mut job);
+            assert_eq!(result.stdout, b"one\ntwo");
+            assert_eq!(result.status.map(|s| s.success()), Some(true));
+        }
+
+        #[test]
+        fn large_stdin_and_stdout_do_not_deadlock() {
+            // Both directions exceed a pipe buffer many times over: writing
+            // all of stdin before reading stdout would block forever.
+            let input = vec![b'x'; 1024 * 1024];
+            let mut job = spawn_job("cat", &[], Path::new("."), input.clone(), no_op_wake())
+                .expect("spawn cat");
+            let result = poll_until_result(&mut job);
+            assert_eq!(result.stdout, input);
+        }
+
+        #[test]
+        fn a_child_that_stops_reading_stdin_still_succeeds() {
+            let args = vec!["-c".to_string(), "head -c 1".to_string()];
+            let input = vec![b'y'; 1024 * 1024];
+            let mut job =
+                spawn_job("sh", &args, Path::new("."), input, no_op_wake()).expect("spawn sh");
+            let result = poll_until_result(&mut job);
+            assert_eq!(result.stdout, b"y");
+            assert_eq!(result.status.map(|s| s.success()), Some(true));
+        }
+
+        #[test]
+        fn stdout_bytes_are_delivered_undecoded() {
+            let args = vec!["-c".to_string(), r"printf '\377'".to_string()];
+            let mut job =
+                spawn_job("sh", &args, Path::new("."), Vec::new(), no_op_wake()).expect("spawn sh");
+            let result = poll_until_result(&mut job);
+            assert_eq!(result.stdout, [0xff]);
+        }
+
+        #[test]
         fn drop_kills_the_child_promptly() {
             let args = vec!["30".to_string()];
-            let job = spawn_job("sleep", &args, Path::new("."), no_op_wake()).expect("spawn sleep");
+            let job = spawn_job("sleep", &args, Path::new("."), Vec::new(), no_op_wake())
+                .expect("spawn sleep");
             let pid = nix::unistd::Pid::from_raw(i32::try_from(job.pid()).expect("pid fits i32"));
             let started = Instant::now();
             drop(job);

@@ -84,11 +84,11 @@ These work the way you expect, same keys:
 
 ## Key differences
 
-### No shell integration
+### Less shell integration
 
-Kakoune is built to hand text to other programs: `|` pipes selections through a command, `!` inserts a command's output, and `%sh{ … }` expansions let the config shell out for anything the editor doesn't do itself. None of that exists in HUME.
+Kakoune is built to hand text to other programs: `|` pipes selections through a command, `!` inserts a command's output, and `%sh{ … }` expansions let the config shell out for anything the editor doesn't do itself.
 
-The philosophies genuinely differ here. Kakoune composes with UNIX; HUME embeds a language. Anything you would reach for `%sh{}` to do is written in Scheme instead, running inside the editor with direct access to buffers, selections and commands. That buys tighter integration and costs you the entire shell ecosystem.
+HUME keeps `|`, with the same newline rule as Kakoune's, and inserts a command's output with `Ctrl-|` in Insert mode instead of `!` (see [Shell commands](editing.md#shell-commands)). The rest differs by design. Kakoune composes with UNIX; HUME embeds a language. Anything you would reach for `%sh{}` to do is written in Scheme instead, running inside the editor with direct access to buffers, selections and commands. That buys tighter integration and costs you the shell ecosystem.
 
 ### Extending selections
 
@@ -223,7 +223,7 @@ Language server support is a bundled plugin rather than a separate process you c
 
 ## What Kakoune has that HUME doesn't
 
-- Shell pipes and `%sh{}` expansions: `|`, `!`, and shelling out from config
+- `!` and `%sh{}` expansions: Normal-mode command output, and shelling out from config
 - The client/server model, and multiple clients on one session
 - Marks (Kakoune's `^` register)
 - Selection undo and redo (`<a-u>` / `<a-U>`)

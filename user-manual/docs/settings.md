@@ -30,9 +30,10 @@ The `lsp-` options configure HUME's built-in language-server support, which `cor
 | `mouse-select` | bool | `#f` | Mouse drag creates selections |
 | `pane-dividers` | bool | `#t` | Draw a 1-cell divider between sibling panes |
 | `popup-border` | bool | `#t` | Show borders on popups, menus, pickers and the bottom drawer |
-| `prompt-history-levels` | integer ≥ 1 | `100` | Max entries per `:`/`/`/`?` prompt history |
+| `prompt-history-levels` | integer ≥ 1 | `100` | Max entries per `:`/`/`/`?`/`\|` prompt history |
 | `scroll-jump-align` | `top`/`center`/`off` | `center` | Where the view lands after jumping forward to a paragraph or structural object (`}`, `g f`, …); `top` is still subject to `scroll-margin` |
 | `scroll-margin` | integer | `3` | Minimum lines kept above/below cursor |
+| `shell` | word list | `sh -c` | The program, and its first arguments, that runs a shell command typed after `\|`; the command is passed as the last argument. Separate words with spaces and put a word that contains spaces in double quotes. From Scheme, a list of strings works too: `(set-option! "shell" '("fish" "-c"))` |
 | `statusline` | `left` \| `center` \| `right` | see [Statusline](#statusline) | Three `\|`-separated sections of comma-separated element names. Set it with `configure-statusline!` |
 | `statusline-mode-colors` | bool | `#t` | Tint the whole statusline with the current mode's color; off shows the [theme](themes.md)'s base `ui.statusline` color in every mode |
 | `steel-command-budget-ms` | integer ≥ 1 | `1000` | Max Steel command evaluation time (ms) |
@@ -125,6 +126,7 @@ Available elements:
 | `"SearchMatches"` | Current search match count |
 | `"MiniBuf"` | Pending key sequence hint |
 | `"MacroRecording"` | Macro recording indicator |
+| `"Pipe"` | The shell command running after `\|`, and how many of its processes have finished |
 | `"Language"` | Buffer language |
 | `"ReadOnly"` | `[RO]` indicator |
 | `"Diagnostics"` | Error and warning counts from the language server |
@@ -135,7 +137,7 @@ The default is equivalent to:
 (configure-statusline!
   '("Position" "FilePath" "Language" "ReadOnly" "DirtyIndicator")
   '()
-  '("MacroRecording" "SearchMatches" "Diagnostics" "KittyProtocol" "Separator" "Mode"))
+  '("Pipe" "MacroRecording" "SearchMatches" "Diagnostics" "KittyProtocol" "Separator" "Mode"))
 ```
 
 ### Custom elements

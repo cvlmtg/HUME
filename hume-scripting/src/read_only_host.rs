@@ -13,7 +13,7 @@ use crate::attribution::EntryId;
 use crate::command_procs::CommandProc;
 use crate::host::{
     BufferHost, CommandHost, CursorHost, DisplayPathForm, EditorHost, EventHost, HostToken,
-    LanguageHost, OptionValue, SelectionInfo, SettingsHost, UndoNode,
+    LanguageHost, OptionInput, OptionValue, SelectionInfo, SettingsHost, UndoNode,
 };
 use crate::types::{GrammarReg, PaneHandle, SteelCmdDef, SteelTypedCmdDef};
 
@@ -169,13 +169,13 @@ impl LanguageHost for ReadOnlyHost<'_> {
 }
 
 impl SettingsHost for ReadOnlyHost<'_> {
-    fn set_global_option(&mut self, _key: &str, _value: &str) -> Result<(), String> {
+    fn set_global_option(&mut self, _key: &str, _value: OptionInput) -> Result<(), String> {
         Err(self.refuse("set_global_option"))
     }
     fn set_buffer_option(
         &mut self,
         _key: &str,
-        _value: &str,
+        _value: OptionInput,
         _bid: BufferId,
     ) -> Result<(), String> {
         Err(self.refuse("set_buffer_option"))

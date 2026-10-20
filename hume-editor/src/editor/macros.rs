@@ -79,4 +79,9 @@ impl MacroState {
     pub(in crate::editor) fn end_replay(&mut self) {
         self.replaying = false;
     }
+
+    /// Drop the keys still queued for replay.
+    pub(in crate::editor) fn abort_replay(&mut self) {
+        self.queue.clear();
+    }
 }

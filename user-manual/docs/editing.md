@@ -131,6 +131,31 @@ With several selections, the primary selection decides, or the first selection w
 
 The comment follows the language at the cursor: in a Markdown file, a fenced Rust block gets `//` and the text around it gets `<!-- -->`. To change a language's comments, see `configure-language!` in [Teach HUME a new language](syntax-highlighting.md#teach-hume-a-new-language).
 
+## Shell commands
+
+| Key | Effect |
+|-----|--------|
+| `\|` | Run a shell command on each selection and replace the selection with its output |
+| `Ctrl-\|` (Insert mode, kitty) | Run a shell command and insert its output at each cursor |
+
+`|` asks for a command and runs it once for each selection, each in its own process, with the selection's text as its input. The output replaces the selection, and the selection then covers the output. `| sort` sorts the lines of each selection; `| jq .` formats a selected JSON value.
+
+In Insert mode, `Ctrl-|` runs the command once for each cursor, with no input, and inserts its output where you are typing. You stay in Insert mode. Since every cursor gets its own process, `uuidgen` gives each cursor a different value.
+
+When the selection doesn't end with a line break, one line break at the end of the output is dropped, so `| tr a-z A-Z` on a word keeps it on its line.
+
+If any process fails (it can't start, exits with an error, or prints something that isn't UTF-8 text), nothing changes, and the error goes to `:messages` with what the command printed on its error output. A command that succeeds but prints on its error output has that text added to `:messages` without an error.
+
+While the commands run, the editor waits for them. If they take more than a moment, the statusline shows the command and how many of its processes have finished: ``running `sort` 3/10``. `Ctrl-c` stops them all and changes nothing. Other keys you press meanwhile take effect once the commands finish. When `.` runs a command again, the statusline doesn't show it, but `Ctrl-c` still stops it. In a macro, `Ctrl-c` also stops the rest of the macro; a command that fails doesn't.
+
+A run that fails or is stopped leaves `.` repeating whatever it repeated before.
+
+A run is one undo step. In Insert mode its output belongs to the insert session's undo step, like the text you type.
+
+The prompt edits like the [command line](default-keys.md#command-line) and keeps its own history: `Up` and `Down` recall earlier commands.
+
+Commands run with `sh -c`, in HUME's working directory. Set the `shell` option to use another shell (see [Global options](settings.md#global-options)). A command that asks the terminal for input, such as `fzf` or a `sudo` password prompt, can't get it and waits until you press `Ctrl-c`.
+
 ## Undo and redo
 
 | Key | Effect |
@@ -146,7 +171,7 @@ Undo history is a tree rather than a straight line. Redo follows the branch you 
 |-----|--------|
 | `.` | Repeat the last editing command |
 
-`.` repeats the last editing command or insert session: delete, change, paste and so on, but not `y`. Typed keys re-run at the new cursor. A choice you made (the character after `r`, a picker or menu item, a prompt answer) is reused, not asked again. An accepted completion writes the same text at the cursor, without its edits elsewhere, such as an added import. A pick in a drawer (references, the undo tree) is never repeated. For custom Insert-mode bindings, see [Falling back to a key's normal Insert-mode behaviour](configuration.md#falling-back-to-a-key-s-normal-insert-mode-behaviour).
+`.` repeats the last editing command or insert session: delete, change, paste and so on, but not `y`. Typed keys re-run at the new cursor. A choice you made (the character after `r`, a picker or menu item, a prompt answer) is reused, not asked again. After `|` or `Ctrl-|`, `.` runs the same command again, so its output can differ. An accepted completion writes the same text at the cursor, without its edits elsewhere, such as an added import. A pick in a drawer (references, the undo tree) is never repeated. For custom Insert-mode bindings, see [Falling back to a key's normal Insert-mode behaviour](configuration.md#falling-back-to-a-key-s-normal-insert-mode-behaviour).
 
 ## Macros
 

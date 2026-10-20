@@ -22,7 +22,7 @@ use hume_scripting::PaneHandle;
 use hume_scripting::command_name::fold;
 use hume_scripting::host::{
     BufferHost, CommandHost, CursorHost, DisplayPathForm, EditorHost, EventHost, LanguageHost,
-    NativeCall, OptionValue, SelectionInfo, SettingsHost,
+    NativeCall, OptionInput, OptionValue, SelectionInfo, SettingsHost,
 };
 
 /// One recorded `run_command_sync` call: `(name, pane, call)`; see
@@ -234,16 +234,16 @@ impl BufferHost for MockHost {
 }
 
 impl SettingsHost for MockHost {
-    fn set_global_option(&mut self, key: &str, value: &str) -> Result<(), String> {
+    fn set_global_option(&mut self, key: &str, value: OptionInput) -> Result<(), String> {
         // MockHost models no editor state to resync derived state against
         // (no history rings, no buffers, no view). write_global is the
         // effect-free raw writer, and it's the only one that fits here.
-        hume::editor::settings::ops::write_global_for_test(key, value, &mut self.settings)
+        hume::editor::settings::ops::write_global_for_test(key, &value, &mut self.settings)
     }
     fn set_buffer_option(
         &mut self,
         _key: &str,
-        _value: &str,
+        _value: OptionInput,
         _bid: BufferId,
     ) -> Result<(), String> {
         // MockHost models no buffers, so no per-buffer override to write to.

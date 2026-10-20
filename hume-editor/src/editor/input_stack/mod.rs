@@ -32,6 +32,7 @@ pub(in crate::editor) mod picker;
 pub(in crate::editor) mod popup;
 pub(in crate::editor) mod prompt;
 pub(in crate::editor) mod search;
+pub(in crate::editor) mod shell_prompt;
 pub(in crate::editor) mod sift;
 
 pub(in crate::editor) use paste::PastedText;
@@ -58,5 +59,6 @@ pub(in crate::editor) use prompt::PromptLayer;
 pub(in crate::editor) use search::{
     InvalidPattern, SearchLayer, SearchOrigin, commit_search, preview_search,
 };
+pub(in crate::editor) use shell_prompt::open_shell_prompt;
 pub(in crate::editor) use sift::{SiftFailure, SiftLayer, SiftReuse, sift_within};
 pub(in crate::editor) use snapshot::PaneSnapshot;

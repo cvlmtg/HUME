@@ -15,6 +15,10 @@ impl Editor {
             !self.state.recording_scope.is_set(),
             "nothing in the scope slot outlives the call that set it"
         );
+        debug_assert!(
+            self.state.queued_pipe.is_none(),
+            "a queued pipe runs before the next key"
+        );
         // How many keystrokes the message-log summary stays visible after
         // `status_msg` clears. Chosen for UX, not technical constraint.
         const SUMMARY_TTL: u8 = 3;

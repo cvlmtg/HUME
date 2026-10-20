@@ -363,6 +363,7 @@ mod jump;
 mod mode;
 mod pane;
 mod paste;
+mod pipe;
 mod pipeline;
 mod scroll;
 mod search;
@@ -392,17 +393,18 @@ pub(super) use typed_misc::*;
 // insert_session.rs's other items are re-exported privately above (visible
 // only within `commands` and its descendants: every other `mod` in this
 // file, and the registry glob) since nothing outside `commands` calls them.
-// collect.rs, pane.rs and pipeline.rs export nothing else siblings need, so
-// all three are re-exported explicitly instead of via glob. The items below
+// collect.rs, pane.rs, pipe.rs and pipeline.rs export nothing else siblings
+// need, so all four are re-exported explicitly instead of via glob. The items below
 // ARE called directly by `dispatch.rs`, `replay.rs`, `input_stack/`,
 // `host_impl/`, `editor/mod.rs`, and the `editor::tests` tree; they need
 // `pub(in editor)` breadth.
-pub(in crate::editor) use collect::{collect_operand, run_collected};
+pub(in crate::editor) use collect::{collect_operand, finish_text_operand, run_collected};
 pub(in crate::editor) use insert_session::{
     arm_autoindent, autoindent_owned, end_insert_session, tear_down_insert,
 };
 use pane::{SPLIT_TOO_SMALL_MSG, close_focused_pane};
 pub(in crate::editor) use pane::{fits_split, split_pane_onto};
+pub(in crate::editor) use pipe::{apply_pipe_output, cmd_pipe};
 // `open_pane_in_layout` has no non-test caller outside `pane.rs` itself
 // (which reaches it directly too). Only `editor::tests` calls it through
 // this path, so the re-export is test-only to avoid an "unused import"

@@ -650,6 +650,7 @@ mod multi_pane;
 mod picker_source;
 mod picker_source_steel;
 mod pickers_plugin;
+mod pipe;
 mod plugins;
 mod reload_config;
 mod scripting_effects;
