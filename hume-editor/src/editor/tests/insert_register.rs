@@ -188,7 +188,7 @@ fn an_init_binding_of_ctrl_r_wins_over_the_prelude() {
     with_prelude(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "mine" "" (lambda (pane) (insert-text! pane "M")))
+        r#"(define-command! "mine" "" (lambda (pane) (paste-text! pane "M")))
            (bind-key! 'insert "ctrl-r" "mine")"#,
     );
     ed.feed_key(key('i'));

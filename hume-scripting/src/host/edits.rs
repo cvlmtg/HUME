@@ -146,10 +146,10 @@ pub trait EditHost {
     /// once a binding has claimed it.
     fn insert_key(&mut self, pane: PaneHandle, key: KeyEvent) -> Result<(), String>;
 
-    /// `(insert-text! pane text)`: pastes `values` into whatever has focus,
+    /// `(paste-text! pane text)`: pastes `values` into whatever has focus,
     /// through the same path a terminal paste takes, so it does whatever a
     /// paste would do there. Several values are placed at the selections as
     /// `p` places a register's. `Err` only when `pane` isn't the focused
     /// pane.
-    fn insert_text(&mut self, pane: PaneHandle, values: Vec<String>) -> Result<(), String>;
+    fn paste_text(&mut self, pane: PaneHandle, values: Vec<String>) -> Result<(), String>;
 }

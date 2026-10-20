@@ -559,7 +559,7 @@ const MARKDOWN_HEADING: &str = r#"
     (let ((level (min 6 (max 1 count))))
       (call! "collapse-to-anchor-and-exit-extend" pane)
       (call! "around-line" pane)
-      (insert-text! pane
+      (paste-text! pane
         (map (lambda (sel)
                (let ((line (char-offset->line pane (call! "stdlib/selection-start-char" sel))))
                  (heading-line

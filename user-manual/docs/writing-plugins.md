@@ -443,7 +443,7 @@ Reading lines and pasting a list of strings together give a command that turns l
     (let ((level (min 6 (max 1 count))))
       (call! "collapse-to-anchor-and-exit-extend" pane)
       (call! "around-line" pane)
-      (insert-text! pane
+      (paste-text! pane
         (map (lambda (sel)
                (let ((line (char-offset->line pane (call! "stdlib/selection-start-char" sel))))
                  (heading-line
@@ -462,7 +462,7 @@ Reading lines and pasting a list of strings together give a command that turns l
 
 The keys go into a keymap of their own, which the hook turns on in Markdown buffers only (see [Keys for one buffer](configuration.md#keys-for-one-buffer)).
 
-Each selection shrinks to its anchor, then grows to that whole line, line break included. Two selections on the same line become one. `heading-line` builds the new text of each line: it drops any `#`s and spaces the line starts with, then puts the new ones in front. `insert-text!` gets one string per selection, so every line is replaced in a single edit that one `u` undoes, and no register changes.
+Each selection shrinks to its anchor, then grows to that whole line, line break included. Two selections on the same line become one. `heading-line` builds the new text of each line: it drops any `#`s and spaces the line starts with, then puts the new ones in front. `paste-text!` gets one string per selection, so every line is replaced in a single edit that one `u` undoes, and no register changes.
 
 Building the strings is what lets one command handle lines that are headings already and lines that aren't. Sifting each line with `^#+` would drop the lines without a `#`, and they would never get one.
 

@@ -171,12 +171,12 @@ pub(crate) fn insert_key(ctx: &mut SteelCtx, pane: PaneHandle, key: SteelVal) ->
         .map_err(generic_err)
 }
 
-/// `(insert-text! pane text)`: paste `text`, a string or a list of strings,
+/// `(paste-text! pane text)`: paste `text`, a string or a list of strings,
 /// into whatever has focus.
-pub(crate) fn insert_text(ctx: &mut SteelCtx, pane: PaneHandle, text: SteelVal) -> SteelResult {
-    let values = strings_arg(text, "insert-text!")?;
-    require_cap(ctx.host.edits(), "insert-text!")?
-        .insert_text(pane, values)
+pub(crate) fn paste_text(ctx: &mut SteelCtx, pane: PaneHandle, text: SteelVal) -> SteelResult {
+    let values = strings_arg(text, "paste-text!")?;
+    require_cap(ctx.host.edits(), "paste-text!")?
+        .paste_text(pane, values)
         .map(|()| SteelVal::Void)
         .map_err(generic_err)
 }

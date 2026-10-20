@@ -167,7 +167,7 @@ impl<'a> EditHost for EditorHostImpl<'a> {
         Ok(())
     }
 
-    fn insert_text(&mut self, pane: PaneHandle, values: Vec<String>) -> Result<(), String> {
+    fn paste_text(&mut self, pane: PaneHandle, values: Vec<String>) -> Result<(), String> {
         FocusedPane::resolve(self.state, self.view, pane).map_err(|e| e.to_string())?;
         if let Some(text) = PastedText::new(values) {
             self.state.paste(self.view, text);

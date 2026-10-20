@@ -11,7 +11,7 @@ fn with_put_w(ed: &mut Editor, tmp: &std::path::Path, extra: &str) {
         ed,
         tmp,
         &format!(
-            r#"(define-command! "put-w" "" (lambda (pane) (insert-text! pane "W")))
+            r#"(define-command! "put-w" "" (lambda (pane) (paste-text! pane "W")))
                {extra}"#
         ),
     );
@@ -127,7 +127,7 @@ fn command_binding_leaves_dot_repeat_alone() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "put-w" "" (lambda (pane) (insert-text! pane "W")) #:repeatable #t)
+        r#"(define-command! "put-w" "" (lambda (pane) (paste-text! pane "W")) #:repeatable #t)
            (bind-key! 'command "ctrl-w" "put-w")"#,
     );
     ed.feed_key(key('d'));
@@ -141,7 +141,7 @@ fn command_binding_leaves_dot_repeat_alone() {
 }
 
 const INSERT_READ_CHAR: &str = r#"(define-command! "insert-read-char" ""
-    (lambda (pane) (on-next-char! (lambda (ch) (insert-text! pane (string ch))))))"#;
+    (lambda (pane) (on-next-char! (lambda (ch) (paste-text! pane (string ch))))))"#;
 
 #[test]
 fn command_binding_reads_a_char_and_inserts_it() {

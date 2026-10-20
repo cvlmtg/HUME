@@ -168,7 +168,7 @@ A value naming a closed buffer raises for almost every call: the reads that need
 | `(goto-location! pane loc)` | Move `pane`'s own pane to `loc`: an LSP `Location`/`LocationLink` JSON handle from a server response, `(hash 'target path 'line l 'char-col c)` with `path` a file path (never a URI such as `file://…`; write a relative path whose first part holds a colon as `./part:x`) and `l`/`c` 0-based and char-indexed, or `(hash 'target buffer 'char-offset o)` with `buffer` a pane value. Returns `#t` after the jump, and `#f` when the line `loc` names no longer exists in its file, in which case nothing moves. A `'char-offset` past the end of the buffer raises |
 | `(goto-revision! pane id)` | Move `pane`'s buffer to revision `id` of its undo history, a number from `buffer-undo-tree`, across branches. Raises when the buffer has no such revision (it was never made, or the `undo-levels` limit dropped it) and when the buffer is read-only. Redo then follows the branch it entered |
 | `(insert-key! pane key)` | Run `key`'s normal Insert-mode behaviour (indent-style-aware Tab, auto-pairs, auto-indented Enter, …) on `pane`, as if it had no Insert-mode binding; `key` is one chord in `bind-key!`'s own syntax. Raises for a sequence of more than one key, and for a key with no default Insert-mode behaviour |
-| `(insert-text! pane text)` | Paste `text`, a string or a list of strings, where you're typing, as a terminal paste would. Raises when `pane` isn't the focused pane |
+| `(paste-text! pane text)` | Paste `text`, a string or a list of strings, where you're typing, as a terminal paste would. Raises when `pane` isn't the focused pane |
 
 `#:expect-generation` guards against applying a stale edit: pass a `buffer-generation` snapshot and the call fails if the buffer has mutated since. `apply-text-edits!`/`goto-location!`'s wire shape, like [`apply-workspace-edit!`](lsp-api.md#language-servers)'s, each decode their positions with the encoding of the server that sent them. A plain hashmap you build by hand (not pulled from a response via `json-ref`/`json-list`) has no such encoding to decode with, and is rejected.
 
@@ -185,11 +185,11 @@ A value naming a closed buffer raises for almost every call: the reads that need
 
 `letter-before-cursor?` here is a helper you write yourself, not a builtin.
 
-`insert-text!` does whatever pasting `text` would do at that moment. In Insert mode it goes in at every cursor, with no auto-pairs or auto-indent; in Normal mode it replaces the selections; on the command line, in a prompt, a search or a picker, line breaks become spaces. A list of strings, such as `read-register`'s, is placed the way `p` places a register: one string per selection when there are as many of each, and all of them joined otherwise, which is what a prompt always gets. A character an `on-next-char!` callback is waiting for ends without one, as on a paste. Called from an Insert-mode key's binding, `.` repeats it by running the binding again; called from a hook or a timer during Insert mode, `.` repeats the paste. For example, a key that inserts the working directory, in Insert mode and on the command line:
+`paste-text!` does whatever pasting `text` would do at that moment. In Insert mode it goes in at every cursor, with no auto-pairs or auto-indent; in Normal mode it replaces the selections; on the command line, in a prompt, a search or a picker, line breaks become spaces. A list of strings, such as `read-register`'s, is placed the way `p` places a register: one string per selection when there are as many of each, and all of them joined otherwise, which is what a prompt always gets. A character an `on-next-char!` callback is waiting for ends without one, as on a paste. Called from an Insert-mode key's binding, `.` repeats it by running the binding again; called from a hook or a timer during Insert mode, `.` repeats the paste. For example, a key that inserts the working directory, in Insert mode and on the command line:
 
 ```scheme
 (define-command! "insert-cwd" "Insert the working directory."
-  (lambda (pane) (insert-text! pane (cwd))))
+  (lambda (pane) (paste-text! pane (cwd))))
 (bind-key! 'insert "ctrl-g" "insert-cwd")
 (bind-key! 'command "ctrl-g" "insert-cwd")
 ```

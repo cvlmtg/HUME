@@ -67,7 +67,7 @@
                  [(register-name? (string ch)) (read-register (string ch))]
                  [else
                   (error (string-append "insert-register: invalid register '" (string ch) "'"))])])
-          (when text (insert-text! pane text))))))
+          (when text (paste-text! pane text))))))
   #:repeatable #t)
 
 (bind-key! 'insert "ctrl-r" "insert-register")

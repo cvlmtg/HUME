@@ -175,7 +175,7 @@ A `'command` binding applies in the command mode prompt and in prompts plugins o
 
 ```scheme
 (define-command! "insert-cwd" "Insert the working directory."
-  (lambda (pane) (insert-text! pane (cwd))))
+  (lambda (pane) (paste-text! pane (cwd))))
 (bind-key! 'command "ctrl-g" "insert-cwd")
 ```
 

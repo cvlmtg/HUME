@@ -1,4 +1,4 @@
-//! `(insert-text! pane text)`: the Steel builtin that pastes `text` into
+//! `(paste-text! pane text)`: the Steel builtin that pastes `text` into
 //! whatever has focus, through the same path a terminal paste takes.
 
 use super::*;
@@ -7,9 +7,9 @@ use hume_scripting::PaneHandle;
 use hume_scripting::host::{CommandHost, EditHost, NativeCall};
 use pretty_assertions::assert_eq;
 
-const PROBE: &str = "insert-text-probe";
+const PROBE: &str = "paste-text-probe";
 
-/// What a paste leaves behind that `insert-text!` must leave identically.
+/// What a paste leaves behind that `paste-text!` must leave identically.
 #[derive(Debug, PartialEq)]
 struct Outcome {
     state: String,
@@ -33,27 +33,27 @@ fn outcome(ed: &Editor) -> Outcome {
     }
 }
 
-/// The outcomes of a terminal paste of `text` and of `insert-text!` with
+/// The outcomes of a terminal paste of `text` and of `paste-text!` with
 /// the same `text`, each on its own editor over `initial` after `setup`.
-/// `source` defines any command `setup` runs. `insert-text!` runs in a
+/// `source` defines any command `setup` runs. `paste-text!` runs in a
 /// command dispatched outside any key binding, as a hook's would.
-fn paste_then_insert_text(
+fn terminal_paste_then_paste_text(
     initial: &str,
     source: &str,
     setup: impl Fn(&mut Editor),
     text: &str,
 ) -> (Outcome, Outcome) {
-    let run = |insert_text: bool| {
+    let run = |scripted: bool| {
         let mut ed = editor_from(initial);
         attach_steel(
             &mut ed,
             &format!(
                 r#"{source}
-                   (define-command! "{PROBE}" "" (lambda (pane) (insert-text! pane {text:?})))"#
+                   (define-command! "{PROBE}" "" (lambda (pane) (paste-text! pane {text:?})))"#
             ),
         );
         setup(&mut ed);
-        if insert_text {
+        if scripted {
             ed.execute_keymap_command(PROBE.into(), Some(1), false);
         } else {
             ed.feed_paste(text);
@@ -74,121 +74,128 @@ fn doc_text(o: &Outcome) -> String {
 // ── The same as a paste ─────────────────────────────────────────────────────
 
 #[test]
-fn insert_text_pastes_at_every_insert_cursor() {
-    let (pasted, inserted) = paste_then_insert_text("-{a}>b -[c]>d\n", "", insert_mode, "xy");
-    assert_eq!(doc_text(&inserted), "xyab xycd\n");
-    assert_eq!(inserted, pasted);
+fn paste_text_pastes_at_every_insert_cursor() {
+    let (pasted, scripted) =
+        terminal_paste_then_paste_text("-{a}>b -[c]>d\n", "", insert_mode, "xy");
+    assert_eq!(doc_text(&scripted), "xyab xycd\n");
+    assert_eq!(scripted, pasted);
 }
 
 #[test]
-fn insert_text_skips_auto_pairs_and_autoindent_like_a_paste() {
-    let (pasted, inserted) = paste_then_insert_text("  -[h]>ello\n", "", insert_mode, "(\n");
-    assert_eq!(doc_text(&inserted), "  (\nhello\n");
-    assert_eq!(inserted, pasted);
+fn paste_text_skips_auto_pairs_and_autoindent_like_a_paste() {
+    let (pasted, scripted) =
+        terminal_paste_then_paste_text("  -[h]>ello\n", "", insert_mode, "(\n");
+    assert_eq!(doc_text(&scripted), "  (\nhello\n");
+    assert_eq!(scripted, pasted);
 }
 
 #[test]
-fn insert_text_normalizes_line_endings_like_a_paste() {
-    let (pasted, inserted) = paste_then_insert_text("-[h]>ello\n", "", insert_mode, "a\r\nb");
-    assert_eq!(doc_text(&inserted), "a\nbhello\n");
-    assert_eq!(inserted, pasted);
+fn paste_text_normalizes_line_endings_like_a_paste() {
+    let (pasted, scripted) =
+        terminal_paste_then_paste_text("-[h]>ello\n", "", insert_mode, "a\r\nb");
+    assert_eq!(doc_text(&scripted), "a\nbhello\n");
+    assert_eq!(scripted, pasted);
 }
 
 #[test]
-fn insert_text_replaces_normal_mode_selections_like_a_paste() {
-    let (pasted, inserted) = paste_then_insert_text("-[hell]>o\n", "", |_| {}, "xyz");
-    assert_eq!(doc_text(&inserted), "xyzo\n");
-    assert_eq!(inserted, pasted);
+fn paste_text_replaces_normal_mode_selections_like_a_paste() {
+    let (pasted, scripted) = terminal_paste_then_paste_text("-[hell]>o\n", "", |_| {}, "xyz");
+    assert_eq!(doc_text(&scripted), "xyzo\n");
+    assert_eq!(scripted, pasted);
 }
 
 #[test]
-fn insert_text_flattens_into_the_command_line_like_a_paste() {
-    let (pasted, inserted) =
-        paste_then_insert_text("-[h]>ello\n", "", |ed| ed.feed_key(key(':')), "a\nb\n");
-    assert_eq!(inserted.minibuf.as_deref(), Some("a b"));
-    assert_eq!(inserted, pasted);
+fn paste_text_flattens_into_the_command_line_like_a_paste() {
+    let (pasted, scripted) =
+        terminal_paste_then_paste_text("-[h]>ello\n", "", |ed| ed.feed_key(key(':')), "a\nb\n");
+    assert_eq!(scripted.minibuf.as_deref(), Some("a b"));
+    assert_eq!(scripted, pasted);
 }
 
 #[test]
-fn insert_text_runs_the_live_search_like_a_paste() {
-    let (pasted, inserted) =
-        paste_then_insert_text("-[h]>ello world\n", "", |ed| ed.feed_key(key('/')), "world");
-    assert_eq!(inserted.state, "hello -[world]>\n");
-    assert_eq!(inserted, pasted);
+fn paste_text_runs_the_live_search_like_a_paste() {
+    let (pasted, scripted) = terminal_paste_then_paste_text(
+        "-[h]>ello world\n",
+        "",
+        |ed| ed.feed_key(key('/')),
+        "world",
+    );
+    assert_eq!(scripted.state, "hello -[world]>\n");
+    assert_eq!(scripted, pasted);
 }
 
 #[test]
-fn insert_text_runs_the_live_sift_like_a_paste() {
-    let (pasted, inserted) =
-        paste_then_insert_text("-[ab cd ab]>\n", "", |ed| ed.feed_key(key('s')), "ab");
-    assert_eq!(inserted.state, "-{ab}> cd -[ab]>\n");
-    assert_eq!(inserted, pasted);
+fn paste_text_runs_the_live_sift_like_a_paste() {
+    let (pasted, scripted) =
+        terminal_paste_then_paste_text("-[ab cd ab]>\n", "", |ed| ed.feed_key(key('s')), "ab");
+    assert_eq!(scripted.state, "-{ab}> cd -[ab]>\n");
+    assert_eq!(scripted, pasted);
 }
 
 #[test]
-fn insert_text_lands_in_a_prompt_like_a_paste() {
-    let (pasted, inserted) = paste_then_insert_text(
+fn paste_text_lands_in_a_prompt_like_a_paste() {
+    let (pasted, scripted) = terminal_paste_then_paste_text(
         "-[h]>ello\n",
         r#"(define-command! "ask" "" (lambda (pane) (prompt! pane "q: " (lambda (t) (+ 1 0)))))"#,
         |ed| ed.execute_keymap_command("ask".into(), Some(1), false),
         "abc",
     );
-    assert_eq!(inserted.minibuf.as_deref(), Some("abc"));
-    assert_eq!(inserted, pasted);
+    assert_eq!(scripted.minibuf.as_deref(), Some("abc"));
+    assert_eq!(scripted, pasted);
 }
 
 #[test]
-fn insert_text_lands_in_the_picker_query_like_a_paste() {
-    let (pasted, inserted) = paste_then_insert_text(
+fn paste_text_lands_in_the_picker_query_like_a_paste() {
+    let (pasted, scripted) = terminal_paste_then_paste_text(
         "-[h]>ello\n",
         "",
         super::bracketed_paste::open_live_test_picker,
         "foo\nbar\n",
     );
-    assert_eq!(inserted.picker_query.as_deref(), Some("foo bar"));
-    assert_eq!(inserted.queued_calls, 1, "one query-change call");
-    assert_eq!(inserted, pasted);
+    assert_eq!(scripted.picker_query.as_deref(), Some("foo bar"));
+    assert_eq!(scripted.queued_calls, 1, "one query-change call");
+    assert_eq!(scripted, pasted);
 }
 
 #[test]
-fn insert_text_closes_a_popup_and_pastes_below_like_a_paste() {
-    let (pasted, inserted) = paste_then_insert_text(
+fn paste_text_closes_a_popup_and_pastes_below_like_a_paste() {
+    let (pasted, scripted) = terminal_paste_then_paste_text(
         "-[h]>ello\n",
         "",
         super::bracketed_paste::open_scrollable_test_popup,
         "xyz",
     );
-    assert!(!inserted.popup);
-    assert_eq!(doc_text(&inserted), "xyzhello\n");
-    assert_eq!(inserted, pasted);
+    assert!(!scripted.popup);
+    assert_eq!(doc_text(&scripted), "xyzhello\n");
+    assert_eq!(scripted, pasted);
 }
 
 #[test]
-fn insert_text_ends_a_pending_character_read_like_a_paste() {
-    let (pasted, inserted) = paste_then_insert_text(
+fn paste_text_ends_a_pending_character_read_like_a_paste() {
+    let (pasted, scripted) = terminal_paste_then_paste_text(
         "-[h]>ello\n",
         r#"(define-command! "read" "" (lambda () (on-next-char! (lambda (ch) (+ 1 0)))))"#,
         |ed| ed.execute_keymap_command("read".into(), Some(1), false),
         "xyz",
     );
-    assert!(!inserted.reading_char);
-    assert_eq!(inserted.queued_calls, 1, "the read's callback, with #f");
-    assert_eq!(doc_text(&inserted), "hello\n");
-    assert_eq!(inserted, pasted);
+    assert!(!scripted.reading_char);
+    assert_eq!(scripted.queued_calls, 1, "the read's callback, with #f");
+    assert_eq!(doc_text(&scripted), "hello\n");
+    assert_eq!(scripted, pasted);
 }
 
 // ── As a builtin ────────────────────────────────────────────────────────────
 
 #[test]
-fn insert_text_is_visible_to_the_rest_of_the_body() {
+fn paste_text_is_visible_to_the_rest_of_the_body() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[h]>ello\n");
     bind_insert_key(
         &mut ed,
         tmp.path(),
         "ctrl-x",
-        r#"(insert-text! pane "ab")
-           (when (equal? (buffer-text pane) "abhello\n") (insert-text! pane "!"))"#,
+        r#"(paste-text! pane "ab")
+           (when (equal? (buffer-text pane) "abhello\n") (paste-text! pane "!"))"#,
     );
     ed.feed_key(key('i'));
     ed.feed_key(key_ctrl('x'));
@@ -196,10 +203,10 @@ fn insert_text_is_visible_to_the_rest_of_the_body() {
 }
 
 #[test]
-fn insert_text_composes_into_the_insert_undo_group() {
+fn paste_text_composes_into_the_insert_undo_group() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[h]>ello\n");
-    bind_insert_key(&mut ed, tmp.path(), "ctrl-x", r#"(insert-text! pane "yz")"#);
+    bind_insert_key(&mut ed, tmp.path(), "ctrl-x", r#"(paste-text! pane "yz")"#);
     ed.feed_key(key('i'));
     ed.feed_key(key('x'));
     ed.feed_key(key_ctrl('x'));
@@ -211,7 +218,7 @@ fn insert_text_composes_into_the_insert_undo_group() {
 }
 
 #[test]
-fn insert_text_refuses_for_an_unfocused_pane() {
+fn paste_text_refuses_for_an_unfocused_pane() {
     let mut ed = editor_from("-[h]>ello\n");
     let pid_a = ed.view.focused_pane();
     let bid = ed.focused_buffer_id();
@@ -230,7 +237,7 @@ fn insert_text_refuses_for_an_unfocused_pane() {
     ed.state.focus.set_for_test(&mut ed.view, pid_a);
 
     let err = EditorHostImpl::new(&mut ed.state, &mut ed.view)
-        .insert_text(PaneHandle::with_pane(bid, pid_b), vec!["x".to_string()])
+        .paste_text(PaneHandle::with_pane(bid, pid_b), vec!["x".to_string()])
         .unwrap_err();
     assert!(err.contains("focused pane"), "got: {err}");
     assert_eq!(ed.doc().text().to_string(), "hello\n");
@@ -239,10 +246,10 @@ fn insert_text_refuses_for_an_unfocused_pane() {
 // ── Dot-repeat ──────────────────────────────────────────────────────────────
 
 #[test]
-fn insert_text_in_an_insert_binding_replays_once() {
+fn paste_text_in_an_insert_binding_replays_once() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[h]>ello\n");
-    bind_insert_key(&mut ed, tmp.path(), "ctrl-x", r#"(insert-text! pane "ab")"#);
+    bind_insert_key(&mut ed, tmp.path(), "ctrl-x", r#"(paste-text! pane "ab")"#);
     ed.feed_key(key('i'));
     ed.feed_key(key_ctrl('x'));
     ed.feed_key(key_esc());
@@ -256,14 +263,14 @@ fn insert_text_in_an_insert_binding_replays_once() {
 /// The callback runs in its binding's scope, so `.` re-runs the binding
 /// with the recorded character and the text lands once.
 #[test]
-fn insert_text_from_a_repeatable_bindings_char_callback_replays_the_read_char() {
+fn paste_text_from_a_repeatable_bindings_char_callback_replays_the_read_char() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[h]>ello\n");
     run(
         &mut ed,
         tmp.path(),
         r#"(define-command! "twice" ""
-             (lambda (pane) (on-next-char! (lambda (ch) (insert-text! pane (string ch ch)))))
+             (lambda (pane) (on-next-char! (lambda (ch) (paste-text! pane (string ch ch)))))
              #:repeatable #t)
            (bind-key! 'insert "ctrl-r" "twice")"#,
     );
@@ -287,14 +294,14 @@ fn insert_text_from_a_repeatable_bindings_char_callback_replays_the_read_char() 
 /// A non-repeatable binding's read ends the change at that key, so `.`
 /// repeats only what was typed before it.
 #[test]
-fn insert_text_from_a_non_repeatable_bindings_callback_is_not_replayed() {
+fn paste_text_from_a_non_repeatable_bindings_callback_is_not_replayed() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[h]>ello\n");
     run(
         &mut ed,
         tmp.path(),
         r#"(define-command! "twice" ""
-             (lambda (pane) (on-next-char! (lambda (ch) (insert-text! pane (string ch ch))))))
+             (lambda (pane) (on-next-char! (lambda (ch) (paste-text! pane (string ch ch))))))
            (bind-key! 'insert "ctrl-r" "twice")"#,
     );
     ed.feed_key(key('i'));
@@ -313,13 +320,13 @@ fn insert_text_from_a_non_repeatable_bindings_callback_is_not_replayed() {
 /// Outside every binding the call is input arriving at the Insert session,
 /// recorded as the paste it is.
 #[test]
-fn insert_text_outside_any_binding_is_recorded_as_a_paste() {
+fn paste_text_outside_any_binding_is_recorded_as_a_paste() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[h]>ello\n");
     run(
         &mut ed,
         tmp.path(),
-        &format!(r#"(define-command! "{PROBE}" "" (lambda (pane) (insert-text! pane "ab")))"#),
+        &format!(r#"(define-command! "{PROBE}" "" (lambda (pane) (paste-text! pane "ab")))"#),
     );
     ed.feed_key(key('i'));
     ed.execute_keymap_command(PROBE.into(), Some(1), false);
@@ -332,15 +339,13 @@ fn insert_text_outside_any_binding_is_recorded_as_a_paste() {
 }
 
 #[test]
-fn insert_text_of_a_list_outside_any_binding_replays_placed_again() {
+fn paste_text_of_a_list_outside_any_binding_replays_placed_again() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-{a}>b -[c]>d\n");
     run(
         &mut ed,
         tmp.path(),
-        &format!(
-            r#"(define-command! "{PROBE}" "" (lambda (pane) (insert-text! pane '("x" "y"))))"#
-        ),
+        &format!(r#"(define-command! "{PROBE}" "" (lambda (pane) (paste-text! pane '("x" "y"))))"#),
     );
     ed.feed_key(key('i'));
     ed.execute_keymap_command(PROBE.into(), Some(1), false);

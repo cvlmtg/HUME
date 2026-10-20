@@ -100,7 +100,7 @@ fn a_local_command_prompt_key_runs_on_the_command_line() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "put-w" "" (lambda (pane) (insert-text! pane "W")))"#,
+        r#"(define-command! "put-w" "" (lambda (pane) (paste-text! pane "W")))"#,
     );
     bind_here(&mut ed, BindMode::Command, &[key_ctrl('y')], "put-w");
     ed.feed_key(key(':'));
