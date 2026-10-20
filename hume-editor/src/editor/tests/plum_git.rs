@@ -22,11 +22,15 @@ fn commit_plugin(repo: &std::path::Path, content: &str) {
 }
 
 /// A local stand-in for a plugin's GitHub repo: `main` holds one commit,
-/// `; v1`.
+/// `; v1`, plus a `.gitattributes`.
 fn plugin_origin() -> tempfile::TempDir {
     let origin = tempfile::tempdir().unwrap();
     git_init(origin.path());
     git(origin.path(), &["checkout", "-q", "-b", "main"]);
+    // `-text` checks every file out byte for byte, whatever the host's
+    // `core.autocrlf` (Git for Windows sets it to `true`).
+    std::fs::write(origin.path().join(".gitattributes"), "* -text\n").unwrap();
+    git(origin.path(), &["add", ".gitattributes"]);
     commit_plugin(origin.path(), "; v1\n");
     origin
 }
