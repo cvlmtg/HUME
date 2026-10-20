@@ -7,7 +7,7 @@ use hume_rope::column::CharCol;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 use termina::event::KeyEvent;
 
-use super::{EditorHostImpl, checked_char_offset};
+use super::{EditorHostImpl, checked_char_range};
 use crate::editor::commands::{self, FocusedPane};
 use crate::editor::doc_ops::HistoryWalk;
 use crate::editor::input_stack::PastedText;
@@ -182,15 +182,11 @@ impl<'a> EditHost for EditorHostImpl<'a> {
         let target = self.command_pane(pane).map_err(fail)?;
         let (pid, bid) = (target.pid(), target.bid(self.view));
         let text = self.state.buffers.get(bid).text();
-        let ranges = edits
+        let char_edits = edits
             .iter()
-            .map(|e| char_range(text, e.start, e.end))
+            .map(|e| Ok((char_range(text, e.start, e.end)?, e.text.as_str())))
             .collect::<Result<Vec<_>, String>>()
             .map_err(fail)?;
-        let char_edits = ranges
-            .into_iter()
-            .zip(edits.iter().map(|e| e.text.as_str()))
-            .collect();
         crate::editor::lsp::edits::commit_char_edits(
             self.state,
             &self.view.panes,
@@ -211,23 +207,17 @@ fn char_range(
     start: usize,
     end: usize,
 ) -> Result<ExclusiveRange<CharOffset>, String> {
-    let start_at = checked_char_offset(text, start)?;
-    let end_at = checked_char_offset(text, end)?;
-    if end < start {
-        return Err(format!(
-            "range ({start}, {end}) has its end before its start"
-        ));
-    }
-    if start == end {
-        let at = if start_at == text.end() {
-            start_at
+    let range = checked_char_range(text, start, end).map_err(|e| format!("range {e}"))?;
+    if range.is_empty() {
+        let at = if range.start == text.end() {
+            range.start
         } else {
-            text.snap(start_at).offset()
+            text.snap(range.start).offset()
         };
         return Ok(ExclusiveRange::new(at, at));
     }
     Ok(text
-        .covering(ExclusiveRange::new(start_at, end_at))
+        .covering(range)
         .expect("a non-empty range within the text covers a cluster")
         .chars())
 }

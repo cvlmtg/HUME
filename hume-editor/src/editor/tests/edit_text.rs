@@ -217,7 +217,7 @@ fn an_offset_past_the_end_raises() {
 fn a_reversed_range_raises() {
     let msg = error_for("-[a]>bc\n", &edits(&[edit(2, 1, "")]));
     assert!(
-        msg.contains("edit-text!") && msg.contains("before its start"),
+        msg.contains("edit-text!") && msg.contains("ends before it starts"),
         "got: {msg}"
     );
 }

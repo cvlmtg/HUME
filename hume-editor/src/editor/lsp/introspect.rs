@@ -298,22 +298,8 @@ pub(in crate::editor) fn diagnostics_for_buffer(
     // checked against.
     let range = match range {
         None => ExclusiveRange::new(CharOffset::new(0), text.end()),
-        Some((start, end)) => {
-            let checked = |idx, which| {
-                crate::editor::host_impl::checked_char_offset(text, idx)
-                    .map_err(|e| format!("#:range {which}: {e}"))
-            };
-            let start = checked(start, "start")?;
-            let end = checked(end, "end")?;
-            if end < start {
-                return Err(format!(
-                    "#:range {}..{} ends before it starts",
-                    start.index(),
-                    end.index()
-                ));
-            }
-            ExclusiveRange::new(start, end)
-        }
+        Some((start, end)) => crate::editor::host_impl::checked_char_range(text, start, end)
+            .map_err(|e| format!("#:range {e}"))?,
     };
 
     let entries = state

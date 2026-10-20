@@ -234,5 +234,22 @@ pub(in crate::editor) fn checked_char_offset(
     })
 }
 
+/// The char range `start..end` a script computed for `text`: each end checked
+/// as by [`checked_char_offset`], and `end` not before `start`. The error
+/// names the offending end or the reversed range, for the caller to prefix
+/// with what the range is.
+pub(in crate::editor) fn checked_char_range(
+    text: &hume_editing::text::BufferText,
+    start: usize,
+    end: usize,
+) -> Result<hume_rope::offset::ExclusiveRange<hume_rope::offset::CharOffset>, String> {
+    let start_at = checked_char_offset(text, start).map_err(|e| format!("start: {e}"))?;
+    let end_at = checked_char_offset(text, end).map_err(|e| format!("end: {e}"))?;
+    if end_at < start_at {
+        return Err(format!("{start}..{end} ends before it starts"));
+    }
+    Ok(hume_rope::offset::ExclusiveRange::new(start_at, end_at))
+}
+
 #[cfg(test)]
 mod tests;
