@@ -2,20 +2,16 @@ use super::*;
 
 // ── Bundled theme loading (end-to-end wiring) ─────────────────────────────────
 
-/// Load every bundled theme through the same loader path production code
-/// uses. No `bake()`: every check below reads scopes via `resolve_by_name`,
-/// which walks the raw dot-notation map directly (same as
-/// `EditorColors::from_theme` at render time). Baking only feeds the
-/// ID-based `resolve()` fast path, which none of these tests exercise.
-fn load_bundled_themes() -> Vec<(String, hume_engine::theme::Theme)> {
-    use std::path::PathBuf;
-    let themes_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../runtime/themes");
-    let paths = vec![themes_dir.clone()];
+fn bundled_themes_dir() -> std::path::PathBuf {
+    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../runtime/themes")
+}
 
+/// Every bundled theme's name, sorted.
+fn bundled_theme_names() -> Vec<String> {
     // Read the directory rather than listing the names: it is already the
     // source of truth for `:theme <Tab>`, and a hand-written list here means a
     // newly bundled theme silently skips every check in this file.
-    let mut names: Vec<String> = std::fs::read_dir(&themes_dir)
+    let mut names: Vec<String> = std::fs::read_dir(bundled_themes_dir())
         .expect("runtime/themes must be readable")
         .map(|e| e.expect("runtime/themes entry must be readable").path())
         .filter(|p| p.extension().is_some_and(|e| e == "toml"))
@@ -31,8 +27,18 @@ fn load_bundled_themes() -> Vec<(String, hume_engine::theme::Theme)> {
         !names.is_empty(),
         "runtime/themes must bundle at least one theme"
     );
-
     names
+}
+
+/// Load every bundled theme through the same loader path production code
+/// uses. No `bake()`: every check below reads scopes via `resolve_by_name`,
+/// which walks the raw dot-notation map directly (same as
+/// `EditorColors::from_theme` at render time). Baking only feeds the
+/// ID-based `resolve()` fast path, which none of these tests exercise.
+fn load_bundled_themes() -> Vec<(String, hume_engine::theme::Theme)> {
+    let paths = vec![bundled_themes_dir()];
+
+    bundled_theme_names()
         .into_iter()
         .map(|name| {
             let loaded = hume_engine::theme::loader::load_theme(&name, &paths)
@@ -67,6 +73,59 @@ fn bundled_themes_load_and_resolve() {
                     .contains(hume_engine::types::Modifiers::REVERSED),
             "bundled theme '{name}': ui.cursor.primary has neither fg, bg, nor reversed"
         );
+    }
+}
+
+/// Themes written for HUME, covered by the repository's own `LICENSE`.
+const HUME_ORIGINAL_THEMES: [&str; 1] = ["sand"];
+
+/// Exhibit A of the MPL-2.0, which every file copied from Helix must carry.
+const MPL_NOTICE: &str = "This Source Code Form is subject to the terms of the Mozilla Public \
+    License, v. 2.0. If a copy of the MPL was not distributed with this file, You can obtain \
+    one at https://mozilla.org/MPL/2.0/.";
+
+/// A ported theme is redistributed third-party work: its header names the
+/// upstream license shipped in `runtime/themes/licenses/`, and a file taken
+/// from Helix also carries the MPL notice its license requires in the file.
+#[test]
+fn bundled_themes_carry_their_license_notices() {
+    let themes_dir = bundled_themes_dir();
+    for name in bundled_theme_names() {
+        if HUME_ORIGINAL_THEMES.contains(&name.as_str()) {
+            continue;
+        }
+        let text = std::fs::read_to_string(themes_dir.join(format!("{name}.toml")))
+            .unwrap_or_else(|e| panic!("bundled theme '{name}' must be readable: {e}"));
+        let header: Vec<&str> = text
+            .lines()
+            .take_while(|l| l.is_empty() || l.starts_with('#'))
+            .filter_map(|l| l.strip_prefix('#'))
+            .map(str::trim)
+            .collect();
+
+        let license = header
+            .iter()
+            .find_map(|l| l.strip_prefix("License:"))
+            .map(str::trim)
+            .unwrap_or_else(|| panic!("bundled theme '{name}': header has no 'License:' line"));
+        assert!(
+            license.starts_with("licenses/") && themes_dir.join(license).is_file(),
+            "bundled theme '{name}': 'License: {license}' must name a file in runtime/themes/licenses/"
+        );
+
+        let from_helix = header
+            .iter()
+            .filter_map(|l| l.strip_prefix("Source:"))
+            .any(|url| {
+                url.trim()
+                    .starts_with("https://github.com/helix-editor/helix/")
+            });
+        if from_helix {
+            assert!(
+                header.join(" ").contains(MPL_NOTICE),
+                "bundled theme '{name}': ported from Helix but its header lacks the MPL-2.0 notice"
+            );
+        }
     }
 }
 
