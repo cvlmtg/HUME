@@ -63,6 +63,7 @@
 - `apply-text-edits!` and `apply-workspace-edit!` still apply after the pane switches buffers, and `apply-text-edits!` and `lsp-document-params` work without a pane.
 - `#` on a closing tag finds its opening tag past a commented-out tag.
 - `[` after pasting from the clipboard or a register skips the kill-ring entry holding the same text instead of pasting it again.
+- A key bound with `bind-key-extend!` extends the selection, not only when the binding starts with `Ctrl`.
 
 ## [0.15.0] - 2026-10-15
 

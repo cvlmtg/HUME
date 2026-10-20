@@ -324,18 +324,14 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
                     (resolved, true)
                 }
                 WalkResult::NoMatch => return, // Legacy: no-op.
-                // Explicit Ctrl-letter binding. Extend only if the binding
-                // itself declares force_extend (e.g. Ctrl-x → select-line).
-                // Registry's is_extendable() is not consulted here: that
-                // flag means "compatible with sticky Extend mode", not
-                // "pressing Ctrl means the user asked to extend".
+                // Explicit Ctrl-letter binding. Pressing Ctrl is not a
+                // request to extend here: only the binding's own
+                // force_extend (e.g. Ctrl-x → select-line) extends it, and
+                // Stage 2 applies that to every binding alike.
                 // Interior: the Ctrl-key starts a multi-key sequence (e.g.
                 // Ctrl-p → pane prefix); save it as pending so the
                 // follow-up keypress can complete the trie walk.
-                WalkResult::Leaf(ref c) => {
-                    let ctrl_extend = c.force_extend;
-                    (explicit, ctrl_extend)
-                }
+                WalkResult::Leaf(_) => (explicit, false),
                 WalkResult::Interior => {
                     ed.state.pending.push(key, buffer);
                     (explicit, false)
@@ -359,19 +355,17 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
 
     // ── Stage 2: Final extend merge ───────────────────────────────────────
     //
-    // Both inputs are now available: sticky extend from editor mode, and
-    // one-shot extend from the Ctrl path (ctrl_extend). Merge them here.
-    // `extend` is passed as a parameter; no mode transition occurs. An
+    // Three inputs: sticky extend from editor mode, one-shot extend from the
+    // Ctrl path (ctrl_extend), and the binding's own force_extend. Merge them
+    // here. `extend` is passed as a parameter; no mode transition occurs. An
     // Extend-mode override is a command of its own, not an extend variant of
     // a normal one, so it never extends.
-    let extend =
-        !resolved.extend_override && ((ed.state.mode() == EditorMode::Extend) || ctrl_extend);
-
     match resolved.walk {
         WalkResult::Leaf(cmd) => {
             ed.state.pending.clear();
-            // Only apply one-shot extend if the command supports it.
-            let extend = extend
+            // Only extend if the command supports it.
+            let extend = !resolved.extend_override
+                && (ed.state.mode() == EditorMode::Extend || ctrl_extend || cmd.force_extend)
                 && ed
                     .state
                     .config
