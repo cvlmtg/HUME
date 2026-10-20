@@ -114,6 +114,7 @@ Text objects (use the `m` prefix):
 | `U` / `Ctrl-r` | `redo` |  | Redo |
 | `.` | `repeat-last-action` |  | Repeat last editing action |
 | `\|` | `pipe` |  | Run a shell command on each selection and replace it with the output. See [Shell commands](editing.md#shell-commands) |
+| `Ctrl-c` | `cancel-pipe` |  | Stop the shell command running in this buffer and change nothing |
 
 ### Entering other modes
 

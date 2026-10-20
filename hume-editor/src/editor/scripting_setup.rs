@@ -7,6 +7,7 @@ use hume_scripting::{Effect, PaneHandle};
 use steel::rvals::SteelVal;
 
 use super::buffer::DiskCheckTrigger;
+use super::buffer::store::EditOrigin;
 use super::commands::CommandPane;
 use super::error::CommandError;
 use super::event::{EditorEvent, PendingWork};
@@ -619,7 +620,7 @@ impl Editor {
                         continue;
                     }
                     self.react_to_event(&event);
-                    self.fire_one_event(event);
+                    self.with_edit_origin(EditOrigin::Background, |ed| ed.fire_one_event(event));
                 }
                 PendingWork::Call {
                     proc,
@@ -627,6 +628,7 @@ impl Editor {
                     anchor,
                     tracked,
                     answer,
+                    origin,
                 } => {
                     if anchor.is_some() || tracked.is_some() {
                         // Never grouped into a multi-item batch with a
@@ -643,7 +645,9 @@ impl Editor {
                         // check, one run; see `PendingWork::Call`'s own doc.
                         if anchor.is_none_or(|anchor| self.state.anchor_admits(&self.view, &anchor))
                         {
-                            self.run_call_batch(vec![(proc, args)]);
+                            self.with_edit_origin(origin, |ed| {
+                                ed.run_call_batch(vec![(proc, args)]);
+                            });
                         }
                         drop(tracked);
                         continue;
@@ -652,8 +656,10 @@ impl Editor {
                         // Runs alone (never batched with a sibling call), in
                         // the scope of the input it answers; see
                         // `PendingWork::Call`'s `answer` doc.
-                        self.run_answered(Some(ticket), |ed| {
-                            ed.run_call_batch(vec![(proc, args)]);
+                        self.with_edit_origin(origin, |ed| {
+                            ed.run_answered(Some(ticket), |ed| {
+                                ed.run_call_batch(vec![(proc, args)]);
+                            });
                         });
                         continue;
                     }
@@ -664,8 +670,9 @@ impl Editor {
                             anchor: None,
                             tracked: None,
                             answer: None,
+                            origin: next,
                             ..
-                        })
+                        }) if *next == origin
                     ) {
                         let Some(PendingWork::Call { proc, args, .. }) = items.pop_front() else {
                             unreachable!(
@@ -674,7 +681,7 @@ impl Editor {
                         };
                         calls.push((proc, args));
                     }
-                    self.run_call_batch(calls);
+                    self.with_edit_origin(origin, |ed| ed.run_call_batch(calls));
                 }
             }
         }

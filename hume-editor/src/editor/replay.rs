@@ -28,12 +28,13 @@ use std::rc::{Rc, Weak};
 use steel::rvals::SteelVal;
 use termina::event::{Event as TerminalEvent, KeyEvent};
 
+use super::buffer::store::EditOrigin;
 use super::dispatch::CmdCtx;
 use super::dot_chain::{ChainBroken, DotChain};
 use super::edit_session::{self, DotCapture, EditSessionKind, InsertSession};
 use super::input_stack::char::{AfterRead, CharRead};
 use super::keymap::CanonicalKey;
-use super::pipe_run::PipeEnd;
+use super::pipe_run::{PipeEnd, RunId};
 use super::registry::{Dispatchable, MappableCommand};
 use super::{Editor, EditorState, Mode, commands, doc_ops};
 
@@ -559,6 +560,32 @@ impl Recording {
         }
     }
 
+    /// Settle `change` if it is this change or one the chain of changes this
+    /// one holds to put back reaches. `Some(replacement)` when this change
+    /// itself was withdrawn: what its holder puts in its place.
+    fn settle(
+        &mut self,
+        change: &DeferredChange,
+        outcome: DeferredOutcome,
+    ) -> Option<Option<Box<Recording>>> {
+        if std::ptr::eq(Rc::as_ptr(&self.sources), change.sources.as_ptr()) {
+            let Settling::Awaiting(prev) = std::mem::replace(&mut self.settling, Settling::Settled)
+            else {
+                unreachable!(
+                    "a deferred change awaits its work from the end of its body until settled"
+                )
+            };
+            return (outcome == DeferredOutcome::Withdrawn).then_some(prev);
+        }
+        let Settling::Awaiting(Some(prev)) = &mut self.settling else {
+            return None;
+        };
+        if let Some(replacement) = prev.settle(change, outcome) {
+            self.settling = Settling::Awaiting(replacement);
+        }
+        None
+    }
+
     /// Forget every pick's payload, here and in the change this one holds
     /// to put back.
     fn forget_steel_payloads(&mut self) {
@@ -653,6 +680,8 @@ impl Recording {
 pub(in crate::editor) struct DotReplay {
     answers: VecDeque<Answer>,
     pending: VecDeque<PendingAnswer>,
+    /// Every pipe run the replay starts has an id at least this.
+    runs_from: RunId,
 }
 
 /// What a re-run interactive input finds as its answer.
@@ -849,26 +878,18 @@ impl EditorState {
     }
 
     /// End `change` as its work's `outcome` says: kept when it landed, and
-    /// replaced by the change it superseded when it was withdrawn. Does
-    /// nothing once a newer change has replaced it.
+    /// replaced by the change it superseded when it was withdrawn, whether
+    /// it is the latest change or one a newer deferred change holds to put
+    /// back. Does nothing once a settled change has replaced it.
     pub(in crate::editor) fn settle_deferred(
         &mut self,
         change: DeferredChange,
         outcome: DeferredOutcome,
     ) {
-        let Some(rec) = self
-            .recording
-            .as_mut()
-            .filter(|rec| std::ptr::eq(Rc::as_ptr(&rec.sources), change.sources.as_ptr()))
-        else {
-            return;
-        };
-        let Settling::Awaiting(prev) = std::mem::replace(&mut rec.settling, Settling::Settled)
-        else {
-            unreachable!("a deferred change awaits its work from the end of its body until settled")
-        };
-        if outcome == DeferredOutcome::Withdrawn {
-            self.recording = prev.map(|prev| *prev);
+        if let Some(rec) = self.recording.as_mut()
+            && let Some(replacement) = rec.settle(&change, outcome)
+        {
+            self.recording = replacement.map(|prev| *prev);
         }
     }
 
@@ -987,6 +1008,7 @@ impl EditorState {
             anchor: None,
             tracked: None,
             answer: ticket,
+            origin: EditOrigin::User,
         }
     }
 
@@ -1276,6 +1298,7 @@ impl Editor {
         let replay = DotReplay {
             answers: recording.action.answers.iter().cloned().collect(),
             pending: VecDeque::new(),
+            runs_from: self.state.pipe_runs.mark(),
         };
         let prev = self.state.dot_replay.replace(replay);
         self.replay_action(&recording.action, count);
@@ -1456,7 +1479,8 @@ impl Editor {
     /// each callback at once (an input a callback reaches is resolved by this
     /// same loop). Either way, drop the answers it did not reach (it took a
     /// shorter branch this time) so the next body starts from its own, and
-    /// run a pipe it queued so the rest of the replay sees its output.
+    /// wait for a pipe run it started so the rest of the replay sees its
+    /// output.
     ///
     /// Returns whether the body ran: `ran`, and the native command a read
     /// collected the operand for, if any, ran too. A failed one drops the
@@ -1490,17 +1514,22 @@ impl Editor {
                     anchor: None,
                     tracked: None,
                     answer: None,
+                    origin: EditOrigin::User,
                 }),
             };
             if let Some(call) = call {
                 self.run_pending_batch(VecDeque::from([call]));
             }
         }
-        if let Some(replay) = self.state.dot_replay.as_mut() {
-            replay.answers.clear();
-            replay.pending.clear();
-        }
-        self.run_queued_pipe_inline();
+        let replay = self
+            .state
+            .dot_replay
+            .as_mut()
+            .expect("a re-run body runs inside replay_dot");
+        replay.answers.clear();
+        replay.pending.clear();
+        let runs_from = replay.runs_from;
+        self.wait_pipe_runs_from(runs_from);
         ran
     }
 
@@ -1552,9 +1581,9 @@ impl Editor {
         }
     }
 
-    /// Drain the macro replay queue, executing each key in order, running a
-    /// pipe it queued, and settling after each one. A pipe the user cancels
-    /// drops the keys still queued: `Ctrl-c` stops the macro too.
+    /// Drain the macro replay queue, executing each key in order, waiting for
+    /// a pipe run it started, and settling after each one. A run the user
+    /// cancels drops the keys still queued: `Ctrl-c` stops the macro too.
     ///
     /// Marks a replay in progress for the duration so that `Q`/`q` intercepts
     /// inside replayed keys cannot start nested recording or replay sessions,
@@ -1579,8 +1608,9 @@ impl Editor {
     pub(in crate::editor) fn drain_replay_queue(&mut self) {
         let message_already_logged = self.state.message_logged_this_input;
         while let Some(key) = self.state.macros.next_replay_key() {
+            let runs_from = self.state.pipe_runs.mark();
             self.handle_input(TerminalEvent::Key(key));
-            if self.run_queued_pipe_inline() == Some(PipeEnd::Cancelled) {
+            if self.wait_pipe_runs_from(runs_from) == Some(PipeEnd::Cancelled) {
                 self.state.macros.abort_replay();
             }
             self.state.message_logged_this_input |= message_already_logged;

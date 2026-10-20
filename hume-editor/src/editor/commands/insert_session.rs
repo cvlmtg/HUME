@@ -359,9 +359,11 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState, mut session: 
     let allowed = autoindent_owned(&session, &sels);
     if has_blank_line_cursor(sels, &allowed) {
         let (buffers, mut stores) = state.closing_insert_parts(&mut session);
-        doc_ops::apply_doc_edit_grouped(buffers, &mut stores, pid, bid, move |s| {
+        if let Err(e) = doc_ops::apply_doc_edit_grouped(buffers, &mut stores, pid, bid, move |s| {
             clear_blank_line_indent(s, &allowed)
-        });
+        }) {
+            state.report_error(&e);
+        }
     }
     // Every insert entry pins one typed run via `begin_typed_run`, so
     // reconstruct each selection's typed span here via `typed_span`. A count

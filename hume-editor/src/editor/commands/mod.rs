@@ -23,7 +23,7 @@ use hume_engine::display_lines::{DisplayColTarget, DisplayLineMap};
 use hume_engine::pane::{Pane, Viewport};
 use hume_engine::pipeline::{BufferId, ContentWidth, EngineView, PaneId};
 
-use super::buffer::Buffer;
+use super::buffer::{Buffer, TextRefusal};
 use super::doc_ops;
 use super::jump_list::{JumpRule, with_jump};
 use super::register_ops;
@@ -116,8 +116,8 @@ pub(in crate::editor::commands) fn apply_pane_edit(
 /// `pane_state.rs`'s module doc), so a `Pane`-category body (which may
 /// target a pane other than focus) has no business opening one.
 ///
-/// Thin wrapper around [`doc_ops::apply_doc_edit_grouped`]; see
-/// [`apply_pane_motion`]. `pub(in crate::editor)`, not `pub(in crate::editor::
+/// Thin wrapper around [`doc_ops::apply_doc_edit_grouped`] that reports a
+/// refusal; see [`apply_pane_motion`]. `pub(in crate::editor)`, not `pub(in crate::editor::
 /// commands)`: `replay::apply_cursor_replacement` is a caller outside this
 /// module, and the alternative (spelling out `doc_ops::apply_doc_edit_
 /// grouped`'s own 8 arguments there instead) is exactly the duplication
@@ -130,7 +130,9 @@ pub(in crate::editor) fn apply_focused_edit_grouped(
 ) {
     let buf = fp.bid(view);
     let (buffers, mut stores) = state.edit_parts();
-    doc_ops::apply_doc_edit_grouped(buffers, &mut stores, fp.pid(), buf, cmd);
+    if let Err(e) = doc_ops::apply_doc_edit_grouped(buffers, &mut stores, fp.pid(), buf, cmd) {
+        state.report_error(&e);
+    }
 }
 
 /// `Err` for an edit-mode command on a read-only buffer, so the caller bails
@@ -147,18 +149,31 @@ pub(in crate::editor::commands) fn ensure_writable(
     view: &EngineView,
     t: CommandPane,
 ) -> Result<(), CommandError> {
-    if doc(state, view, t).is_read_only() {
-        return Err(read_only_refusal(state));
+    match doc(state, view, t).text_refusal() {
+        Some(refusal) => Err(refuse_text_change(state, refusal)),
+        None => Ok(()),
     }
-    Ok(())
 }
 
-/// The refusal [`ensure_writable`] returns, for a caller that learned the
-/// buffer is read-only from somewhere else (`history_step`, from the walk's
-/// own result).
+/// The refusal [`ensure_writable`] returns for a read-only buffer, for a
+/// caller that learned the buffer is read-only from somewhere else
+/// (`history_step`, from the walk's own result).
 pub(in crate::editor::commands) fn read_only_refusal(state: &mut EditorState) -> CommandError {
+    refuse_text_change(state, TextRefusal::ReadOnly)
+}
+
+/// The refusal a command that would stop `bid`'s pipe run gives without `!`.
+pub(in crate::editor::commands) fn pipe_running_refusal(
+    state: &EditorState,
+    bid: BufferId,
+) -> CommandError {
+    let name = state.buffers.get(bid).display_name();
+    CommandError::transient(format!("A pipe is running in {name} (add ! to override)"))
+}
+
+fn refuse_text_change(state: &mut EditorState, refusal: TextRefusal) -> CommandError {
     state.register_prefix = None;
-    CommandError::transient("Buffer is read-only")
+    doc_ops::refusal_error(refusal)
 }
 
 /// `t`'s pane's selections for `t`'s buffer.
@@ -404,7 +419,7 @@ pub(in crate::editor) use insert_session::{
 };
 use pane::{SPLIT_TOO_SMALL_MSG, close_focused_pane};
 pub(in crate::editor) use pane::{fits_split, split_pane_onto};
-pub(in crate::editor) use pipe::{apply_pipe_output, cmd_pipe};
+pub(in crate::editor) use pipe::{apply_pipe_output, cmd_cancel_pipe, cmd_pipe};
 // `open_pane_in_layout` has no non-test caller outside `pane.rs` itself
 // (which reaches it directly too). Only `editor::tests` calls it through
 // this path, so the re-export is test-only to avoid an "unused import"

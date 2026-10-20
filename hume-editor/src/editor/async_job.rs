@@ -27,7 +27,7 @@ impl Editor {
     /// read that failed or exceeded `JOB_STDOUT_CAP` (`stderr` then names
     /// the failure instead of carrying the child's own diagnostics).
     /// Queued via
-    /// `queue_steel_call`, never invoked inline: this runs from
+    /// `queue_background_call`, never invoked inline: this runs from
     /// `drain_async_sources`, the same per-frame chokepoint the LSP/timer
     /// callbacks already share, which is what puts a completing job's
     /// callback under the watchdog/step-budget guard for free.
@@ -51,7 +51,7 @@ impl Editor {
                 .remove(&id)
                 .expect("just found by get_mut above");
             let code = result.status.and_then(|s| s.code()).unwrap_or(-1);
-            self.state.queue_steel_call(
+            self.state.queue_background_call(
                 pending.callback,
                 vec![
                     SteelVal::StringV(String::from_utf8_lossy(&result.stdout).into_owned().into()),

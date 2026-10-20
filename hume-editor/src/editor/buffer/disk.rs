@@ -346,16 +346,17 @@ impl Editor {
         let Some(fp) = self.focused_answer_target(bid, "reloading") else {
             return;
         };
-        let buf = self.state.buffers.get(bid);
-        let Some(path) = buf.path().map(std::path::Path::to_path_buf) else {
+        let Some(path) = self
+            .state
+            .buffers
+            .get(bid)
+            .path()
+            .map(std::path::Path::to_path_buf)
+        else {
             return;
         };
-        let display = buf
-            .display_path()
-            .expect("path is Some ⇒ display_path is Some (Buffer::set_path)")
-            .to_string();
         if let Err(e) = self.reload_from_path(fp, &path) {
-            self.report(Severity::Warning, format!("{display}: {e}"));
+            self.report(Severity::Warning, e.message().to_string());
         }
     }
 
@@ -382,20 +383,34 @@ impl Editor {
 
     /// Read `path` fresh, swap it into `fp`'s buffer in place (via
     /// `reload_buffer_in_place`), and report the success. Shared by the
-    /// no-arg `:e`/`:e!` path (which propagates a read failure as a
+    /// no-arg `:e`/`:e!` path (which propagates a failure as a
     /// `CommandError`, `Severity::Error`) and `reload_buffer_from_disk`
     /// (which reports one as `Severity::Warning` and swallows it, since a
     /// background reload has no caller to propagate an `Err` to). Callers
     /// choose their own error severity/propagation; this only owns the
-    /// read-swap-report-success sequence, not the failure path.
+    /// read-swap-report-success sequence, not the failure path. A read
+    /// failure names the buffer's display path. A held buffer is refused
+    /// before the file is read.
     pub(in crate::editor) fn reload_from_path(
         &mut self,
         fp: crate::editor::commands::FocusedPane,
         path: &std::path::Path,
-    ) -> std::io::Result<()> {
-        let doc = Buffer::from_file(path)?;
+    ) -> Result<(), crate::editor::error::CommandError> {
         let bid = fp.bid(&self.view);
-        self.reload_buffer_in_place(fp, ReplaceSource::disk(doc));
+        if self.state.buffers.get(bid).is_busy() {
+            return Err(crate::editor::doc_ops::refusal_error(
+                super::TextRefusal::Busy,
+            ));
+        }
+        let doc =
+            Buffer::from_file(path).map_err(|e| {
+                let display =
+                    self.state.buffers.get(bid).display_path().expect(
+                        "a buffer reloaded from a path has a display path (Buffer::set_path)",
+                    );
+                crate::editor::error::CommandError::new(format!("{display}: {e}"))
+            })?;
+        self.reload_buffer_in_place(fp, ReplaceSource::disk(doc))?;
         let name = self.state.buffers.get(bid).display_name();
         self.report(Severity::Info, format!("Reloaded {name}"));
         Ok(())

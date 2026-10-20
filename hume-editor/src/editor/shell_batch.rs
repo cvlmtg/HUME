@@ -1,10 +1,9 @@
 //! Running one shell command line once per input, each input on its own
-//! process's stdin, at most `limit` processes at a time: the process side of
-//! `pipe`. Polled, never blocking, so a caller can wait on it while it keeps
-//! reading keys.
+//! process's stdin, within a budget of process slots the caller shares
+//! across batches: the process side of `pipe`. Polled, never blocking, so a
+//! caller can wait on it while it keeps reading keys.
 
 use std::collections::VecDeque;
-use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 
 use hume_platform::process::WakeCallback;
@@ -19,7 +18,7 @@ pub(in crate::editor) struct Captured {
     pub(in crate::editor) stderr: String,
 }
 
-/// Where a batch stands after a [`ShellBatch::poll`].
+/// Where a batch stands after a [`ShellBatch::fill`].
 pub(in crate::editor) enum BatchProgress {
     /// `done` processes have finished.
     Running { done: usize },
@@ -39,24 +38,19 @@ pub(in crate::editor) struct ShellBatch {
     cwd: PathBuf,
     /// Inputs not started yet, with their index.
     waiting: VecDeque<(usize, String)>,
-    running: Vec<(usize, SpawnedJob)>,
+    jobs: Vec<(usize, SpawnedJob)>,
     /// One slot per input, filled as its process finishes.
     outputs: Vec<Option<Captured>>,
-    limit: NonZeroUsize,
-    wake: WakeCallback,
 }
 
 impl ShellBatch {
     /// A batch running `command` under `shell` in `cwd` once per input.
-    /// Nothing starts until the first [`Self::poll`]. `wake` fires whenever
-    /// a process finishes.
+    /// Nothing starts until the first [`Self::fill`].
     pub(in crate::editor) fn new(
         shell: &ShellCommand,
         command: &str,
         cwd: &Path,
         inputs: Vec<String>,
-        limit: NonZeroUsize,
-        wake: WakeCallback,
     ) -> Self {
         let (program, args) = shell.argv(command);
         Self {
@@ -65,26 +59,41 @@ impl ShellBatch {
             cwd: cwd.to_path_buf(),
             outputs: inputs.iter().map(|_| None).collect(),
             waiting: inputs.into_iter().enumerate().collect(),
-            running: Vec::new(),
-            limit,
-            wake,
+            jobs: Vec::new(),
         }
     }
 
-    /// Collect the processes that finished and start waiting inputs in the
-    /// freed slots. `Err` at the first process that fails.
-    pub(in crate::editor) fn poll(&mut self) -> Result<BatchProgress, ShellFailure> {
+    /// How many of this batch's processes are running: the slots it holds.
+    pub(in crate::editor) fn running(&self) -> usize {
+        self.jobs.len()
+    }
+
+    /// Collect the processes that finished, giving their slots back to
+    /// `free`. `Err` at the first process that fails.
+    pub(in crate::editor) fn collect(&mut self, free: &mut usize) -> Result<(), ShellFailure> {
         let mut i = 0;
-        while i < self.running.len() {
-            match self.running[i].1.try_take_result() {
+        while i < self.jobs.len() {
+            match self.jobs[i].1.try_take_result() {
                 Some(result) => {
-                    let (index, _) = self.running.swap_remove(i);
+                    let (index, _) = self.jobs.swap_remove(i);
+                    *free += 1;
                     self.outputs[index] = Some(captured(&self.program, result)?);
                 }
                 None => i += 1,
             }
         }
-        while self.running.len() < self.limit.get()
+        Ok(())
+    }
+
+    /// Start waiting inputs while `free` has slots, taking one each, and
+    /// report where the batch stands. `wake` fires when a process started
+    /// here finishes. `Err` when a process cannot start.
+    pub(in crate::editor) fn fill(
+        &mut self,
+        free: &mut usize,
+        wake: &WakeCallback,
+    ) -> Result<BatchProgress, ShellFailure> {
+        while *free > 0
             && let Some((index, input)) = self.waiting.pop_front()
         {
             let job = spawn_job(
@@ -92,12 +101,13 @@ impl ShellBatch {
                 &self.args,
                 &self.cwd,
                 input.into_bytes(),
-                self.wake.clone(),
+                wake.clone(),
             )
             .map_err(|e| ShellFailure(format!("cannot run {}: {e}", self.program)))?;
-            self.running.push((index, job));
+            self.jobs.push((index, job));
+            *free -= 1;
         }
-        if self.running.is_empty() && self.waiting.is_empty() {
+        if self.jobs.is_empty() && self.waiting.is_empty() {
             let outputs = std::mem::take(&mut self.outputs)
                 .into_iter()
                 .map(|out| out.expect("every input ran before the batch finished"))
@@ -105,7 +115,7 @@ impl ShellBatch {
             return Ok(BatchProgress::Finished(outputs));
         }
         Ok(BatchProgress::Running {
-            done: self.outputs.len() - self.waiting.len() - self.running.len(),
+            done: self.outputs.len() - self.waiting.len() - self.jobs.len(),
         })
     }
 }

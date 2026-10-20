@@ -163,27 +163,35 @@ impl Editor {
     /// Replace `bid`'s text with its crash dump as one undoable edit, then
     /// delete the dump. The buffer keeps its path and file metadata and reads
     /// as dirty. Bails with a warning, leaving the question open, if `bid`
-    /// lost focus before the answer.
+    /// lost focus before the answer or its text is held.
     pub(in crate::editor) fn restore_dump(&mut self, bid: BufferId) {
         let Some(fp) = self.focused_answer_target(bid, "restoring") else {
             return;
         };
-        let name = self.state.buffers.get(bid).display_name();
-        let Some(dump) = self.take_pending_dump(bid) else {
+        let buf = self.state.buffers.get(bid);
+        let name = buf.display_name();
+        let Some(dump) = buf.pending_dump.clone() else {
             return;
         };
-        match hume_platform::io::read_own_file(&dump) {
-            Ok(content) => {
-                let text = BufferText::from(content.as_str());
-                self.reload_buffer_in_place(fp, ReplaceSource::Dump(text));
-                self.remove_dump(&name, &dump);
-                self.report(Severity::Info, format!("Restored {name} from its dump"));
+        let content = match hume_platform::io::read_own_file(&dump) {
+            Ok(content) => content,
+            Err(e) => {
+                self.take_pending_dump(bid);
+                self.report(
+                    Severity::Warning,
+                    format!("{name}: cannot read {}: {e}", dump.display()),
+                );
+                return;
             }
-            Err(e) => self.report(
-                Severity::Warning,
-                format!("{name}: cannot read {}: {e}", dump.display()),
-            ),
+        };
+        let text = BufferText::from(content.as_str());
+        if let Err(e) = self.reload_buffer_in_place(fp, ReplaceSource::Dump(text)) {
+            self.report(Severity::Warning, format!("{name}: {}", e.message()));
+            return;
         }
+        self.take_pending_dump(bid);
+        self.remove_dump(&name, &dump);
+        self.report(Severity::Info, format!("Restored {name} from its dump"));
     }
 
     /// Delete `bid`'s crash dump without applying it.

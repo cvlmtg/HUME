@@ -952,9 +952,11 @@ impl Editor {
             crate::editor::pane_state::PaneChrome::Bare,
         );
         let focus = super::focus::Focus::new(&mut engine_view, focus_key, unattached);
+        let (wake, detached) = super::pipe_run::Detached::pair();
 
         Self {
             state: EditorState {
+                wake,
                 buffers,
                 lsp: super::lsp::LspState::new_inline(),
                 settings,
@@ -981,6 +983,7 @@ impl Editor {
             applied_mouse_mode: initial_mouse_mode,
             applied_cwd: None,
             startup_positions: Vec::new(),
+            detached: Some(detached),
             inline_pipe_console: None,
         }
     }
@@ -1520,6 +1523,7 @@ mod bracketed_paste;
 mod buffer;
 mod buffer_store;
 mod buffer_text_steel;
+mod busy_buffer;
 mod command_arg;
 mod command_exists;
 mod command_keymap;
@@ -1533,6 +1537,7 @@ mod crash_dump;
 mod cwd_report;
 mod diff_steel;
 mod disk_change;
+mod doc_ops;
 mod dump_restore;
 // `pub(in crate::editor)`, unlike its siblings: the sibling `editor::{cursor,scroll,mouse}
 // ::tests` subtrees register the same doubles and reach them through here.
@@ -1543,6 +1548,7 @@ mod editor_cwd;
 mod events;
 mod file_io;
 mod find;
+mod frame_pacing;
 mod geometry_replaces_caret;
 mod goto_revision;
 mod horizontal_scroll_follow;

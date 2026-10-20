@@ -94,7 +94,7 @@ pub(in crate::editor) fn typed_quit(
     // buffer with unsaved edits (rescues a scratch the user has typed into).
     // Empty scratch buffers and read-only views (e.g. [messages]) are disposable:
     // :q exits rather than parking on them.
-    let any_other_real = ed
+    let stays = ed
         .state
         .buffers
         .iter()
@@ -102,11 +102,20 @@ pub(in crate::editor) fn typed_quit(
         .any(|(id, buf)| {
             (buf.path().is_some() && !buf.is_read_only()) || ed.state.has_unsaved_changes(id)
         });
-
-    if !any_other_real {
-        ed.state.should_quit = true;
+    // Exiting stops every pipe run; closing the buffer stops its own.
+    let stopped_run = if stays {
+        Some(current).filter(|&id| ed.state.buffers.get(id).is_busy())
     } else {
+        ed.state.pipe_runs.first_busy_buffer()
+    };
+    if !force && let Some(busy) = stopped_run {
+        return Err(super::pipe_running_refusal(&ed.state, busy));
+    }
+
+    if stays {
         ed.close_buffer(current);
+    } else {
+        ed.state.should_quit = true;
     }
     Ok(())
 }
@@ -146,6 +155,9 @@ pub(in crate::editor) fn typed_quit_all(
             return Err(CommandError::new(format!(
                 "Unsaved changes in {name} (add ! to override)"
             )));
+        }
+        if let Some(busy) = ed.state.pipe_runs.first_busy_buffer() {
+            return Err(super::pipe_running_refusal(&ed.state, busy));
         }
     }
     ed.state.request_quit();
@@ -217,7 +229,7 @@ pub(in crate::editor) fn conclude_write(
         Err(WriteError::InProgress) => Err(WriteError::InProgress.into()),
         Err(e) if force => {
             typed_quit(ed, pane, None, true)
-                .expect("force quit cannot fail: dirty check is skipped");
+                .expect("force quit cannot fail: it skips the unsaved-changes and pipe checks");
             Err(e.into())
         }
         Err(e) => Err(e.into()),

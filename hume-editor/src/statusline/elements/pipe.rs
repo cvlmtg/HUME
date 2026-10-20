@@ -9,11 +9,11 @@ use crate::statusline::colors::EditorColors;
 pub(in crate::statusline) struct PipeElement;
 
 impl StatuslineElement for PipeElement {
-    /// The pipe being run, if any.
+    /// The focused buffer's pipe run, if any.
     type Data = Option<PipeProgress>;
 
     fn read(editor: &HumeStatusline<'_>) -> Self::Data {
-        editor.state.running_pipe.clone()
+        editor.state.pipe_runs.progress(editor.focused_bid)
     }
 
     fn format(progress: Self::Data, colors: &EditorColors) -> (Cow<'static, str>, ResolvedStyle) {

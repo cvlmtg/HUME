@@ -14,6 +14,16 @@ use hume_platform::path::strip_unc_prefix_cow;
 
 use crate::editor::buffer::{Buffer, ViewLabel};
 
+/// Who is changing text: the user, through a key, a command or a callback
+/// answering their input, or background work (a pipe landing, a language
+/// server's edit, a timer, a hook, an async job's callback). Only a user
+/// edit moves [`BufferStore::edit_seq`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::editor) enum EditOrigin {
+    User,
+    Background,
+}
+
 /// Mirrors the engine's `SlotMap<BufferId, ()>` with the full
 /// `Buffer` structs. Owns all per-buffer content, history, and file metadata.
 pub(crate) struct BufferStore {
@@ -34,11 +44,15 @@ pub(crate) struct BufferStore {
     /// buffer. The `doc_ops` five-function chokepoint is the sole writer.
     /// Unlike a buffer text's version (per-buffer, and moved by system refreshes too:
     /// `set_view_content`, `replace_text_recorded`), this is global
-    /// and edit-only: `PasteStamp` stamps it so a paste can tell "did
-    /// anything change, anywhere" without caring which buffer, and a
-    /// `:messages` refresh or `:e!` between a kill and a paste must not look
-    /// like an edit. See `PasteStamp`'s doc for the read side.
+    /// and edit-only: `PasteStamp` stamps it so a paste can tell "did the
+    /// user change anything, anywhere" without caring which buffer, and a
+    /// `:messages` refresh, an `:e!` or an edit from background work between
+    /// a kill and a paste must not look like one. See `PasteStamp`'s doc for
+    /// the read side.
     edit_seq: u64,
+    /// Who the edits made now come from. Background work sets it for its
+    /// own extent through `Editor::with_edit_origin`.
+    edit_origin: EditOrigin,
 }
 
 impl BufferStore {
@@ -48,6 +62,7 @@ impl BufferStore {
             order: Vec::new(),
             mru: Vec::new(),
             edit_seq: 0,
+            edit_origin: EditOrigin::User,
         }
     }
 
@@ -56,11 +71,20 @@ impl BufferStore {
         self.edit_seq
     }
 
-    /// Advance the edit sequence by one. Called only from the `doc_ops`
-    /// chokepoint, once per actual mutation (never on a no-op undo/redo at a
-    /// history boundary, never on a read-only-refused edit).
+    /// Advance the edit sequence by one for a user edit, and leave it for a
+    /// background one. Called only from the `doc_ops` chokepoint, once per
+    /// actual mutation (never on a no-op undo/redo at a history boundary,
+    /// never on a read-only-refused edit).
     pub(in crate::editor) fn bump_edit_seq(&mut self) {
-        self.edit_seq += 1;
+        if self.edit_origin == EditOrigin::User {
+            self.edit_seq += 1;
+        }
+    }
+
+    /// Make the edits from now on `origin`'s, returning the origin to put
+    /// back once that extent ends.
+    pub(in crate::editor) fn set_edit_origin(&mut self, origin: EditOrigin) -> EditOrigin {
+        std::mem::replace(&mut self.edit_origin, origin)
     }
 
     /// Register a new buffer slot.

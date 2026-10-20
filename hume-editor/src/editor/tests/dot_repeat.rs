@@ -2184,7 +2184,8 @@ fn dot_repeat_ignores_a_foreign_edit_made_while_a_picker_is_open() {
     let (buffers, mut stores) = ed.state.edit_parts();
     crate::editor::doc_ops::apply_doc_edit_grouped(buffers, &mut stores, pid, bid, |s| {
         hume_ops::edit::insert_char(s, 'Z')
-    });
+    })
+    .expect("the buffer is not held");
     assert_eq!(ed.doc().text().to_string(), "abc Zdef\nuvw xyz\n");
 
     ed.feed_key(key_enter());
@@ -2247,7 +2248,8 @@ fn dot_repeat_keeps_a_pick_when_a_foreign_edit_follows_the_bindings_own_edit() {
     let (buffers, mut stores) = ed.state.edit_parts();
     crate::editor::doc_ops::apply_doc_edit_grouped(buffers, &mut stores, pid, bid, |s| {
         hume_ops::edit::insert_char(s, 'Z')
-    });
+    })
+    .expect("the buffer is not held");
 
     ed.feed_key(key_enter()); // picks "alpha", runs delete-word-backward
     ed.settle();

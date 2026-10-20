@@ -189,6 +189,7 @@ pub(in crate::editor) fn close_buffer(
     ev: &mut EngineView,
     id: BufferId,
 ) -> Option<BufferId> {
+    state.cancel_pipe_run(id);
     let (next, opened) = match state.buffers.mru_excluding(id) {
         Some(next) => (next, None),
         None => {

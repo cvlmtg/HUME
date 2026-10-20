@@ -36,7 +36,8 @@ fn reload_carries_the_selections_of_a_pane_showing_another_buffer() {
     ed.reload_buffer_in_place(
         FocusedPane::current(&ed.view),
         ReplaceSource::disk(replacement),
-    );
+    )
+    .expect("the buffer is not held");
 
     ed.feed_event(key_ctrl('p'));
     ed.feed_event(key('p'));
@@ -237,7 +238,8 @@ fn a_tracked_position_follows_a_reload() {
     ed.reload_buffer_in_place(
         FocusedPane::current(&ed.view),
         ReplaceSource::disk(replacement),
-    );
+    )
+    .expect("the buffer is not held");
 
     assert_eq!(
         ed.state.panes.tracked.position(token, &ed.state.buffers),

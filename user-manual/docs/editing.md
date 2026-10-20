@@ -137,6 +137,7 @@ The comment follows the language at the cursor: in a Markdown file, a fenced Rus
 |-----|--------|
 | `\|` | Run a shell command on each selection and replace the selection with its output |
 | `Ctrl-\|` (Insert mode, kitty) | Run a shell command and insert its output at each cursor |
+| `Ctrl-c` | Stop the shell command running in this buffer |
 
 `|` asks for a command and runs it once for each selection, each in its own process, with the selection's text as its input. The output replaces the selection, and the selection then covers the output. `| sort` sorts the lines of each selection; `| jq .` formats a selected JSON value.
 
@@ -146,7 +147,11 @@ When the selection doesn't end with a line break, one line break at the end of t
 
 If any process fails (it can't start, exits with an error, or prints something that isn't UTF-8 text), nothing changes, and the error goes to `:messages` with what the command printed on its error output. A command that succeeds but prints on its error output has that text added to `:messages` without an error.
 
-While the commands run, the editor waits for them. If they take more than a moment, the statusline shows the command and how many of its processes have finished: ``running `sort` 3/10``. `Ctrl-c` stops them all and changes nothing. Other keys you press meanwhile take effect once the commands finish. When `.` runs a command again, the statusline doesn't show it, but `Ctrl-c` still stops it. In a macro, `Ctrl-c` also stops the rest of the macro; a command that fails doesn't.
+`|` runs in the background: while its commands run you can keep working in other buffers and panes, and move around in this one. Until they finish, the buffer's text can't change. Editing, undo, paste, entering Insert mode, reloading the file, and changes from plugins and language servers are refused with "Buffer is busy: a pipe is running". When the commands finish, their output replaces the selections `|` ran on, even if you have moved since or the pane now shows another buffer. A buffer runs one `|` at a time.
+
+If the commands take more than a moment, the statusline shows the command and how many of its processes have finished, while you are in that buffer: ``running `sort` 3/10``. `Ctrl-c` in Normal mode stops them and changes nothing. Closing the pane you ran `|` from, or the buffer, stops them too. `:q`, `:qa` and `:bd` refuse while they run; add `!` to stop them and go ahead. A failure or a stop is reported with the buffer's name, since you may be somewhere else when it happens.
+
+`Ctrl-|` waits for its commands instead, and so does `|` while you record a macro, when `.` runs a command again and when a macro runs: the keys after it need the output. While the editor waits, `Ctrl-c` stops the commands and changes nothing, and other keys you press take effect once the commands finish. When `.` runs a command again, the statusline doesn't show it, but `Ctrl-c` still stops it. In a macro, `Ctrl-c` also stops the rest of the macro; a command that fails doesn't.
 
 A run that fails or is stopped leaves `.` repeating whatever it repeated before.
 

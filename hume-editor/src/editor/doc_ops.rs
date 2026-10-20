@@ -10,7 +10,7 @@
 use hume_engine::pipeline::{BufferId, PaneId};
 
 use crate::editor::buffer::store::BufferStore;
-use crate::editor::buffer::{Buffer, HistoryWalkResult};
+use crate::editor::buffer::{Buffer, HistoryWalkResult, TextRefusal};
 use crate::editor::edit_session::{self, EditSession, EditSessionKind, InsertSession, OpenSession};
 use crate::editor::error::CommandError;
 use crate::editor::pane_state::PaneEntries;
@@ -75,16 +75,31 @@ fn finish_edit(
     buffers.bump_edit_seq();
 }
 
+/// The error a text change refused for `refusal` reports.
+pub(in crate::editor) fn refusal_error(refusal: TextRefusal) -> CommandError {
+    CommandError::transient(refusal.to_string())
+}
+
 /// `Ok(false)` when `buf_id` is read-only and the edit must do nothing;
-/// `Err` when [`check_no_conflicting_session`] refuses it. The admission
-/// every buffer-mutating chokepoint below runs before touching the text.
+/// `Err` when its text is held ([`TextRefusal::Busy`]). The check every
+/// buffer-mutating chokepoint below runs before touching the text.
+fn text_gate(buffers: &BufferStore, buf_id: BufferId) -> Result<bool, CommandError> {
+    match buffers.get(buf_id).text_refusal() {
+        Some(TextRefusal::ReadOnly) => Ok(false),
+        Some(TextRefusal::Busy) => Err(refusal_error(TextRefusal::Busy)),
+        None => Ok(true),
+    }
+}
+
+/// [`text_gate`], then `Err` when [`check_no_conflicting_session`] refuses
+/// the edit.
 fn admit(
     buffers: &BufferStore,
     stores: &PositionStores<'_>,
     acting: Option<PaneId>,
     buf_id: BufferId,
 ) -> Result<bool, CommandError> {
-    if buffers.get(buf_id).is_read_only() {
+    if !text_gate(buffers, buf_id)? {
         return Ok(false);
     }
     check_no_conflicting_session(stores.open_session(), acting, buf_id)?;
@@ -146,11 +161,27 @@ pub(in crate::editor) fn apply_doc_edit(
     buf_id: BufferId,
     cmd: impl FnOnce(EditState) -> Edited,
 ) -> Result<(), CommandError> {
+    let sels = stores.panes.seeded(pane_id, buf_id).selections().clone();
+    apply_doc_edit_on(buffers, stores, pane_id, buf_id, sels, cmd)
+}
+
+/// [`apply_doc_edit`] from `sels`, a set for `buf_id`'s current text, in
+/// place of the pane's own selections for it: the edit acts on `sels`, the
+/// undo step restores `sels`, and the result becomes the pane's selections
+/// for `buf_id`, shown or not.
+pub(in crate::editor) fn apply_doc_edit_on(
+    buffers: &mut BufferStore,
+    stores: &mut PositionStores<'_>,
+    pane_id: PaneId,
+    buf_id: BufferId,
+    sels: SelectionSet,
+    cmd: impl FnOnce(EditState) -> Edited,
+) -> Result<(), CommandError> {
     if !admit(buffers, stores, Some(pane_id), buf_id)? {
         return Ok(());
     }
     if stores.insert_at_mut(pane_id, buf_id).is_some() {
-        apply_doc_edit_grouped(buffers, stores, pane_id, buf_id, cmd);
+        apply_grouped_from(buffers, stores, pane_id, buf_id, sels, cmd);
         return Ok(());
     }
     // Scoped to this exact (pane, buffer): `commit_paste_group` alone would
@@ -166,7 +197,6 @@ pub(in crate::editor) fn apply_doc_edit(
     {
         commit_paste_group(buffers, stores.panes, stores.session);
     }
-    let sels = stores.panes.seeded(pane_id, buf_id).selections().clone();
     let (new_sels, cs) =
         buffers
             .get_mut(buf_id)
@@ -225,6 +255,7 @@ pub(in crate::editor) fn apply_changes(
 ///
 /// Returns the applied `ChangeSet`: completion accept maps positions a
 /// later resolve response computed against the pre-accept text through it.
+/// An identity one on a read-only buffer; `Err` when the text is held.
 ///
 /// An Insert session must be open on `(pane_id, buf_id)`, a caller
 /// contract. Panics otherwise.
@@ -234,15 +265,29 @@ pub(in crate::editor) fn apply_doc_edit_grouped(
     pane_id: PaneId,
     buf_id: BufferId,
     cmd: impl FnOnce(EditState) -> Edited,
-) -> ChangeSet {
-    if buffers.get(buf_id).is_read_only() {
-        // Identity changeset: a read-only buffer means nothing happened, so a
-        // caller remapping other state through the result must see a no-op,
-        // not a stale/mismatched-length one.
-        return ChangeSet::identity(buffers.get(buf_id).text().len_chars());
+) -> Result<ChangeSet, CommandError> {
+    // Identity changeset: a read-only buffer means nothing happened, so a
+    // caller remapping other state through the result must see a no-op,
+    // not a stale/mismatched-length one.
+    if !text_gate(buffers, buf_id)? {
+        return Ok(ChangeSet::identity(buffers.get(buf_id).text().len_chars()));
     }
-    let text_pre = buffers.get(buf_id).text().clone();
     let sels = stores.panes.seeded(pane_id, buf_id).selections().clone();
+    Ok(apply_grouped_from(
+        buffers, stores, pane_id, buf_id, sels, cmd,
+    ))
+}
+
+/// [`apply_doc_edit_grouped`] past its refusal checks, acting on `sels`.
+fn apply_grouped_from(
+    buffers: &mut BufferStore,
+    stores: &mut PositionStores<'_>,
+    pane_id: PaneId,
+    buf_id: BufferId,
+    sels: SelectionSet,
+    cmd: impl FnOnce(EditState) -> Edited,
+) -> ChangeSet {
+    let text_pre = buffers.get(buf_id).text().clone();
     assert!(
         stores.insert_at_mut(pane_id, buf_id).is_some(),
         "apply_doc_edit_grouped called without an open Insert session on this (pane, buffer)"
@@ -271,16 +316,17 @@ pub(in crate::editor) fn apply_doc_edit_grouped(
 /// Propagates the resulting CS (mapping current text → new text) to all other
 /// panes. `stores.session` must hold a Paste-kind session on
 /// `(pane_id, buf_id)`. The caller must have opened it via
-/// `commands::paste`'s `do_paste` first. Panics otherwise.
+/// `commands::paste`'s `do_paste` first. Panics otherwise. `Err` when the
+/// text is held.
 pub(in crate::editor) fn apply_doc_edit_regrouped(
     buffers: &mut BufferStore,
     stores: &mut PositionStores<'_>,
     pane_id: PaneId,
     buf_id: BufferId,
     cmd: impl FnOnce(EditState) -> Edited,
-) {
-    if buffers.get(buf_id).is_read_only() {
-        return;
+) -> Result<(), CommandError> {
+    if !text_gate(buffers, buf_id)? {
+        return Ok(());
     }
     let group = stores
         .session
@@ -313,6 +359,7 @@ pub(in crate::editor) fn apply_doc_edit_regrouped(
         new_sels,
         &propagation_cs,
     );
+    Ok(())
 }
 
 /// The refusal of a history walk under an open Insert session or Replay

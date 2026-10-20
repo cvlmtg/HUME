@@ -308,3 +308,15 @@ fn schedule_any(ed: &mut Editor, after: Duration) {
     ed.timers
         .schedule(after, TimerPayload::DiagnosticPullDebounce(bid));
 }
+
+#[test]
+fn a_started_pipe_run_wakes_the_loop_by_its_grace_end() {
+    let mut ed = editor_from("-[abc]>\n");
+    assert_eq!(ed.wake_timeout(), None, "setup: nothing to wake for");
+    for k in "|sort".chars() {
+        ed.handle_key(key(k));
+    }
+    ed.handle_key(key_enter());
+    let timeout = ed.wake_timeout().expect("the run's grace end is a wake");
+    assert!(timeout <= Duration::from_millis(100), "got {timeout:?}");
+}

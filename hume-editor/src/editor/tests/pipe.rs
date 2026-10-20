@@ -1,6 +1,7 @@
-//! `pipe`'s prompt and command up to the queued run. Keys go through
-//! `handle_key`, which leaves the run queued for the main loop instead of
-//! running a process; the runs themselves are in `unix/pipe.rs`.
+//! `pipe`'s prompt and command up to the started run. Keys go through
+//! `handle_key`, which leaves the run in flight for the main loop to wait
+//! for, before any process starts; the runs themselves are in
+//! `unix/pipe.rs`.
 
 use super::*;
 use crate::editor::input_stack::shell_prompt::ShellPromptLayer;
@@ -16,9 +17,13 @@ fn keys(ed: &mut Editor, text: &str) {
     }
 }
 
-/// The queued run's command and kind, taking it off the queue.
-fn take_queued(ed: &mut Editor) -> Option<(String, PipeKind)> {
-    ed.state.queued_pipe.take().map(|q| (q.command, q.kind))
+/// The focused buffer's run's command and kind, taking the run out.
+fn take_run(ed: &mut Editor) -> Option<(String, PipeKind)> {
+    let bid = ed.focused_buffer_id();
+    ed.state
+        .pipe_runs
+        .take_buffer(bid)
+        .map(|launch| (launch.command, launch.kind))
 }
 
 fn prompt_label(ed: &Editor) -> Option<String> {
@@ -26,7 +31,7 @@ fn prompt_label(ed: &Editor) -> Option<String> {
 }
 
 #[test]
-fn bar_prompts_for_a_command_and_enter_queues_a_replace() {
+fn bar_prompts_for_a_command_and_enter_starts_a_replace() {
     let mut ed = editor_from("-[abc]>\n");
     ed.handle_key(key('|'));
     assert_eq!(prompt_label(&ed).as_deref(), Some("|"));
@@ -35,13 +40,13 @@ fn bar_prompts_for_a_command_and_enter_queues_a_replace() {
     ed.handle_key(key_enter());
     assert!(ed.state.minibuf().is_none());
     assert_eq!(
-        take_queued(&mut ed),
+        take_run(&mut ed),
         Some(("sort -u".to_string(), PipeKind::Replace))
     );
 }
 
 #[test]
-fn ctrl_bar_prompts_over_insert_and_queues_an_insert() {
+fn ctrl_bar_prompts_over_insert_and_starts_an_insert() {
     let mut ed = editor_from_kitty("-[abc]>\n");
     ed.handle_key(key('i'));
     ed.handle_key(key_ctrl('|'));
@@ -52,7 +57,7 @@ fn ctrl_bar_prompts_over_insert_and_queues_an_insert() {
     assert!(ed.state.minibuf().is_none());
     assert_eq!(ed.state.mode(), Mode::Insert);
     assert_eq!(
-        take_queued(&mut ed),
+        take_run(&mut ed),
         Some(("date".to_string(), PipeKind::Insert))
     );
 }
@@ -66,7 +71,7 @@ fn escape_closes_the_prompt_and_the_insert_session_goes_on() {
     ed.handle_key(key_esc());
     assert!(ed.state.minibuf().is_none());
     assert_eq!(ed.state.mode(), Mode::Insert);
-    assert!(ed.state.queued_pipe.is_none());
+    assert!(!ed.doc().is_busy());
     ed.handle_key(key('x'));
     assert_eq!(ed.doc().text().to_string(), "xabc\n");
 }
@@ -79,7 +84,7 @@ fn a_cancelled_shell_prompt_keeps_the_previous_change() {
     ed.handle_key(key('|'));
     keys(&mut ed, "sort");
     ed.handle_key(key_esc());
-    assert!(ed.state.queued_pipe.is_none());
+    assert!(!ed.doc().is_busy());
     assert_eq!(
         ed.state.last_action().map(|a| a.command.as_ref()),
         Some("replace")
@@ -100,7 +105,7 @@ fn the_prompt_recalls_its_own_history_only() {
     ed.handle_key(key('|'));
     keys(&mut ed, "sort");
     ed.handle_key(key_enter());
-    take_queued(&mut ed);
+    take_run(&mut ed);
 
     ed.handle_key(key('|'));
     ed.handle_key(key_up());
@@ -120,12 +125,12 @@ fn the_prompt_recalls_its_own_history_only() {
 }
 
 #[test]
-fn a_blank_command_queues_nothing() {
+fn a_blank_command_starts_nothing() {
     let mut ed = editor_from("-[abc]>\n");
     ed.handle_key(key('|'));
     keys(&mut ed, "  ");
     ed.handle_key(key_enter());
-    assert!(ed.state.queued_pipe.is_none());
+    assert!(!ed.doc().is_busy());
     assert_eq!(state(&ed), "-[abc]>\n");
 }
 
@@ -135,7 +140,7 @@ fn a_read_only_buffer_refuses_before_anything_runs() {
     ed.handle_key(key('|'));
     keys(&mut ed, "sort");
     ed.handle_key(key_enter());
-    assert!(ed.state.queued_pipe.is_none());
+    assert!(!ed.doc().is_busy());
     assert_eq!(status(&ed), "Buffer is read-only");
 }
 
@@ -167,7 +172,7 @@ fn call_refuses_pipe() {
         .bind_user_with_extend(BindMode::Normal, &[f2], "f2-body".into(), false);
     ed.handle_key(f2);
     assert!(has_error(&ed, "'pipe': runs only from a key"));
-    assert!(ed.state.queued_pipe.is_none());
+    assert!(!ed.doc().is_busy());
 }
 
 #[test]
@@ -218,5 +223,283 @@ fn a_script_prompt_closes_the_shell_prompt() {
     assert!(ed.state.input.ref_of::<ShellPromptLayer>().is_none());
     ed.handle_key(key_esc());
     assert!(ed.state.minibuf().is_none());
-    assert!(ed.state.queued_pipe.is_none());
+    assert!(!ed.doc().is_busy());
+}
+
+#[test]
+fn bar_holds_the_buffer_from_enter_on() {
+    let mut ed = editor_from("-[abc]>\n");
+    ed.handle_key(key('|'));
+    keys(&mut ed, "sort");
+    assert!(!ed.doc().is_busy(), "the prompt holds nothing");
+    ed.handle_key(key_enter());
+    assert!(ed.doc().is_busy());
+    take_run(&mut ed);
+    assert!(!ed.doc().is_busy(), "ending the run releases the buffer");
+}
+
+#[test]
+fn bar_starts_a_background_run() {
+    let mut ed = editor_from("-[abc]>\n");
+    ed.handle_key(key('|'));
+    keys(&mut ed, "sort");
+    ed.handle_key(key_enter());
+    assert!(ed.doc().is_busy());
+    assert_eq!(ed.state.pipe_runs.foreground(), None);
+}
+
+#[test]
+fn ctrl_bar_starts_a_foreground_run() {
+    let mut ed = editor_from_kitty("-[abc]>\n");
+    ed.handle_key(key('i'));
+    ed.handle_key(key_ctrl('|'));
+    keys(&mut ed, "date");
+    ed.handle_key(key_enter());
+    assert!(ed.state.pipe_runs.foreground().is_some());
+}
+
+#[test]
+fn bar_while_recording_a_macro_starts_a_foreground_run() {
+    let mut ed = editor_from("-[abc]>\n");
+    keys(&mut ed, "QQ|sort");
+    ed.handle_key(key_enter());
+    assert!(ed.state.macros.recording_register().is_some());
+    assert!(ed.state.pipe_runs.foreground().is_some());
+}
+
+/// Starts a background `|sort` on the focused buffer through `handle_key`;
+/// nothing settles, so no process starts.
+fn start_sort(ed: &mut Editor) {
+    ed.handle_key(key('|'));
+    keys(ed, "sort");
+    ed.handle_key(key_enter());
+    assert!(ed.doc().is_busy(), "setup: the run is in flight");
+}
+
+fn cancelled(ed: &Editor, bid: BufferId) -> String {
+    format!(
+        "pipe in {} cancelled",
+        ed.state.buffers.get(bid).display_name()
+    )
+}
+
+#[test]
+fn ctrl_c_cancels_the_run_in_this_buffer_and_changes_nothing() {
+    let mut ed = editor_from("-[a]>\n");
+    let bid = ed.focused_buffer_id();
+    keys(&mut ed, "rx");
+    start_sort(&mut ed);
+    ed.handle_key(key_ctrl('c'));
+    assert!(!ed.doc().is_busy());
+    assert_eq!(state(&ed), "-[x]>\n");
+    assert_eq!(status(&ed), cancelled(&ed, bid));
+    assert_eq!(
+        ed.state.last_action().map(|a| a.command.as_ref()),
+        Some("replace")
+    );
+}
+
+#[test]
+fn ctrl_c_in_extend_mode_cancels() {
+    let mut ed = editor_from("-[a]>\n");
+    start_sort(&mut ed);
+    ed.handle_key(key('e'));
+    assert_eq!(ed.state.mode(), Mode::Extend, "setup");
+    ed.handle_key(key_ctrl('c'));
+    assert!(!ed.doc().is_busy());
+}
+
+#[test]
+fn ctrl_c_without_a_run_says_so() {
+    let mut ed = editor_from("-[a]>\n");
+    ed.handle_key(key_ctrl('c'));
+    assert_eq!(status(&ed), "No pipe is running in this buffer");
+    assert_eq!(state(&ed), "-[a]>\n");
+}
+
+#[test]
+fn closing_the_launching_pane_cancels_its_run() {
+    let mut ed = editor_from("-[a]>\n");
+    let bid = ed.focused_buffer_id();
+    ed.execute_keymap_command("pane-vsplit".into(), None, false);
+    start_sort(&mut ed);
+    ed.execute_keymap_command("pane-close".into(), None, false);
+    assert!(!ed.state.buffers.get(bid).is_busy());
+    assert_eq!(status(&ed), cancelled(&ed, bid));
+}
+
+#[test]
+fn closing_another_pane_on_the_buffer_keeps_the_run() {
+    let mut ed = editor_from("-[a]>\n");
+    let bid = ed.focused_buffer_id();
+    start_sort(&mut ed);
+    ed.execute_keymap_command("pane-vsplit".into(), None, false);
+    ed.execute_keymap_command("pane-close".into(), None, false);
+    assert!(ed.state.buffers.get(bid).is_busy());
+}
+
+#[test]
+fn switching_the_launching_pane_away_keeps_the_run() {
+    let mut ed = editor_from("-[a]>\n");
+    let bid = ed.focused_buffer_id();
+    start_sort(&mut ed);
+    open_other_buffer(&mut ed, "x\n");
+    assert!(ed.state.buffers.get(bid).is_busy());
+}
+
+#[test]
+fn closing_the_buffer_cancels_its_run() {
+    let mut ed = editor_from("-[a]>\n");
+    let bid = ed.focused_buffer_id();
+    let message = cancelled(&ed, bid);
+    start_sort(&mut ed);
+    ed.close_buffer(bid);
+    assert!(ed.state.pipe_runs.take_buffer(bid).is_none());
+    assert_eq!(status(&ed), message);
+}
+
+/// `rx` in one buffer, then a background `|sort` in it and in a second
+/// buffer: two runs in flight, each holding the change before it.
+fn two_runs_after_a_replace(ed: &mut Editor) -> (BufferId, BufferId) {
+    let first = ed.focused_buffer_id();
+    keys(ed, "rx");
+    start_sort(ed);
+    let second = open_other_buffer(ed, "b\n");
+    start_sort(ed);
+    (first, second)
+}
+
+fn last_command(ed: &Editor) -> Option<&str> {
+    ed.state.last_action().map(|a| a.command.as_ref())
+}
+
+#[test]
+fn two_cancelled_runs_leave_the_change_before_both_newest_first() {
+    let mut ed = editor_from("-[a]>\n");
+    let (first, second) = two_runs_after_a_replace(&mut ed);
+    ed.state.cancel_pipe_run(second);
+    ed.state.cancel_pipe_run(first);
+    assert_eq!(last_command(&ed), Some("replace"));
+}
+
+#[test]
+fn two_cancelled_runs_leave_the_change_before_both_oldest_first() {
+    let mut ed = editor_from("-[a]>\n");
+    let (first, second) = two_runs_after_a_replace(&mut ed);
+    ed.state.cancel_pipe_run(first);
+    assert_eq!(last_command(&ed), Some("pipe"), "the newer run's change");
+    ed.state.cancel_pipe_run(second);
+    assert_eq!(last_command(&ed), Some("replace"));
+}
+
+/// The refusal `:q`, `:qa` and `:bd` give while `bid` runs a pipe.
+fn pipe_running(ed: &Editor, bid: BufferId) -> String {
+    format!(
+        "A pipe is running in {} (add ! to override)",
+        ed.state.buffers.get(bid).display_name()
+    )
+}
+
+#[test]
+fn q_refuses_while_a_run_is_in_flight() {
+    let mut ed = editor_from("-[a]>\n");
+    start_sort(&mut ed);
+    type_cmd(&mut ed, ":q");
+    assert!(!ed.state.should_quit);
+    insta::assert_snapshot!(status(&ed), @"A pipe is running in *scratch* (add ! to override)");
+    assert!(ed.doc().is_busy());
+}
+
+#[test]
+fn q_that_would_exit_names_the_busy_buffer() {
+    let mut ed = editor_from("-[a]>\n");
+    let busy = ed.focused_buffer_id();
+    start_sort(&mut ed);
+    open_other_buffer(&mut ed, "b\n");
+    type_cmd(&mut ed, ":q");
+    assert!(!ed.state.should_quit);
+    assert_eq!(status(&ed), pipe_running(&ed, busy));
+}
+
+#[test]
+fn q_refuses_to_close_the_busy_buffer() {
+    let (mut ed, _file) = editor_with_file("-[a]>\n", "a\n");
+    let busy = ed.focused_buffer_id();
+    let (other, _other_file) = temp_file("b\n");
+    type_cmd(&mut ed, &format!(":e {}", other.display()));
+    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), busy);
+    start_sort(&mut ed);
+    type_cmd(&mut ed, ":q");
+    assert_eq!(status(&ed), pipe_running(&ed, busy));
+    assert!(ed.state.buffers.try_get(busy).is_some());
+    assert!(!ed.state.should_quit);
+}
+
+#[test]
+fn q_bang_quits() {
+    let mut ed = editor_from("-[a]>\n");
+    start_sort(&mut ed);
+    type_cmd(&mut ed, ":q!");
+    assert!(ed.state.should_quit);
+}
+
+#[test]
+fn q_in_a_split_closes_the_pane_and_cancels() {
+    let mut ed = editor_from("-[a]>\n");
+    let bid = ed.focused_buffer_id();
+    ed.execute_keymap_command("pane-vsplit".into(), None, false);
+    start_sort(&mut ed);
+    type_cmd(&mut ed, ":q");
+    assert!(!ed.state.should_quit);
+    assert!(!ed.state.buffers.get(bid).is_busy());
+}
+
+#[test]
+fn qa_refuses_naming_the_busy_buffer() {
+    let mut ed = editor_from("-[a]>\n");
+    let bid = ed.focused_buffer_id();
+    start_sort(&mut ed);
+    open_other_buffer(&mut ed, "b\n");
+    type_cmd(&mut ed, ":qa");
+    assert!(!ed.state.should_quit);
+    assert_eq!(status(&ed), pipe_running(&ed, bid));
+}
+
+#[test]
+fn qa_bang_quits() {
+    let mut ed = editor_from("-[a]>\n");
+    start_sort(&mut ed);
+    type_cmd(&mut ed, ":qa!");
+    assert!(ed.state.should_quit);
+}
+
+#[test]
+fn bd_refuses() {
+    let mut ed = editor_from("-[a]>\n");
+    let bid = ed.focused_buffer_id();
+    start_sort(&mut ed);
+    type_cmd(&mut ed, ":bd");
+    assert_eq!(status(&ed), pipe_running(&ed, bid));
+    assert!(ed.state.buffers.get(bid).is_busy());
+}
+
+#[test]
+fn bd_bang_cancels_the_buffers_run() {
+    let mut ed = editor_from("-[a]>\n");
+    let bid = ed.focused_buffer_id();
+    start_sort(&mut ed);
+    type_cmd(&mut ed, ":bd!");
+    assert!(ed.state.buffers.try_get(bid).is_none());
+}
+
+#[test]
+fn wq_writes_then_refuses() {
+    let (mut ed, file) = editor_with_file("-[a]>\n", "a\n");
+    let bid = ed.focused_buffer_id();
+    keys(&mut ed, "rx");
+    start_sort(&mut ed);
+    type_cmd(&mut ed, ":wq");
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), "x\n");
+    assert!(!ed.state.should_quit);
+    assert_eq!(status(&ed), pipe_running(&ed, bid));
 }

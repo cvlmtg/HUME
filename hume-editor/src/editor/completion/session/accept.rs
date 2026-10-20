@@ -378,7 +378,8 @@ impl BufferSession {
                     &new_text,
                 )
             },
-        );
+        )
+        .map_err(|e| e.message().to_string())?;
 
         // The full pre-accept-document → post-accept-document transform:
         // `ResolveBase::apply` needs it composed, not just the cursor edit's

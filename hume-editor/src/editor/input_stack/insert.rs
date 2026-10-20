@@ -211,9 +211,11 @@ impl EditorState {
         let focused = view.focused_pane();
         let buf = view.panes[focused].buffer_id();
         let (buffers, mut stores) = self.edit_parts();
-        doc_ops::apply_doc_edit_grouped(buffers, &mut stores, focused, buf, |s| {
+        if let Err(e) = doc_ops::apply_doc_edit_grouped(buffers, &mut stores, focused, buf, |s| {
             hume_ops::edit::insert_values(s, values)
-        });
+        }) {
+            self.report_error(&e);
+        }
         self.dismiss_completion(view);
     }
 }

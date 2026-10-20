@@ -1,7 +1,7 @@
 use hume_grid::{Position, Rect};
 use std::io;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use termina::event::{Event as TerminalEvent, KeyEvent, KeyEventKind};
 
@@ -10,11 +10,9 @@ use hume_engine::pipeline::{BufferId, EngineView, RenderContext};
 use hume_platform::screen::Screen;
 use hume_platform::terminal::SharedTerm;
 
-use hume_platform::process::WakeCallback;
-
 use super::event::EditorEvent;
 use super::input_stack::InputEvent;
-use super::pipe_run::{PipeConsole, ReaderConsole, WaitEvent};
+use super::pipe_run::{Detached, PipeConsole, ReaderConsole, WaitEvent};
 use super::tui::Tui;
 use super::{Editor, Severity};
 use crate::cli::{ConfigSource, FileArg};
@@ -41,6 +39,42 @@ pub(crate) enum Driver {
 /// statusline under an 80x24 pane.
 pub(crate) const HEADLESS_TERMINAL: Rect = Rect::new(0, 0, 80, 25);
 
+/// The shortest time between two frames not drawn for input, so wakes in
+/// quick succession (processes finishing, a picker source streaming lines)
+/// draw one frame, not one each.
+pub(in crate::editor) const FRAME_GAP: Duration = Duration::from_millis(16);
+
+/// When the run loop may draw: at once after input, otherwise no sooner
+/// than [`FRAME_GAP`] after the last frame.
+#[derive(Debug, Default)]
+pub(in crate::editor) struct FramePacer {
+    last_frame: Option<Instant>,
+    /// Input arrived since the last frame.
+    input: bool,
+}
+
+impl FramePacer {
+    /// Input arrived: the next frame is due at once.
+    pub(in crate::editor) fn input(&mut self) {
+        self.input = true;
+    }
+
+    /// How long until the next frame is due, `None` when it is due at `now`.
+    pub(in crate::editor) fn wait(&self, now: Instant) -> Option<Duration> {
+        if self.input {
+            return None;
+        }
+        let due = self.last_frame? + FRAME_GAP;
+        (due > now).then(|| due - now)
+    }
+
+    /// A frame was drawn at `now`.
+    pub(in crate::editor) fn drew(&mut self, now: Instant) {
+        self.last_frame = Some(now);
+        self.input = false;
+    }
+}
+
 /// What `Editor::run`'s loop draws frames with, kept from one frame to the
 /// next.
 struct FrameTarget<'a> {
@@ -62,10 +96,6 @@ struct TerminalConsole<'f, 'a> {
 }
 
 impl PipeConsole for TerminalConsole<'_, '_> {
-    fn wake(&self) -> WakeCallback {
-        self.input.wake()
-    }
-
     fn next(&mut self, timeout: Option<Duration>) -> io::Result<WaitEvent> {
         self.input.next(timeout)
     }
@@ -223,6 +253,7 @@ impl Editor {
             applied_mouse_mode: initial_mouse_mode,
             applied_cwd: None,
             startup_positions: Vec::new(),
+            detached: None,
             #[cfg(test)]
             inline_pipe_console: None,
         };
@@ -253,17 +284,18 @@ impl Editor {
         let (first, rest) = files
             .split_first()
             .map_or((None, &[][..]), |(f, r)| (Some(f), r));
-        let (wake, kitty_enabled, headless, terminal): (Arc<dyn Fn() + Send + Sync>, _, _, _) =
-            match driver {
-                Driver::Terminal {
-                    kitty_enabled,
-                    wake,
-                    size,
-                } => (wake, kitty_enabled, false, size),
-                // No event loop to wake: background threads (parse worker, LSP
-                // transport) call this into the void.
-                Driver::Headless => (Arc::new(|| {}), true, true, HEADLESS_TERMINAL),
-            };
+        let (wake, detached, kitty_enabled, headless, terminal) = match driver {
+            Driver::Terminal {
+                kitty_enabled,
+                wake,
+                size,
+            } => (wake, None, kitty_enabled, false, size),
+            // No event loop: only a pipe run's wait reads this waker.
+            Driver::Headless => {
+                let (wake, detached) = Detached::pair();
+                (wake, Some(detached), true, true, HEADLESS_TERMINAL)
+            }
+        };
         let mut editor = Self::open(
             first.map(|f| f.path.clone()),
             terminal,
@@ -271,6 +303,7 @@ impl Editor {
             dirs,
             startup_cwd,
         )?;
+        editor.detached = detached;
         editor.set_kitty_support(kitty_enabled);
         editor.state.headless = headless;
         editor.set_config_source(config);
@@ -370,8 +403,8 @@ impl Editor {
         }
     }
 
-    /// Process one key event: dispatch it, run a pipe it queued, sync the
-    /// search cache, drain any macro replay, sync again.
+    /// Process one key event: dispatch it, wait for a pipe run it started,
+    /// sync the search cache, drain any macro replay, sync again.
     ///
     /// This is the single, non-test path for feeding one keystroke to the editor
     /// from outside the interactive event loop (e.g. headless key-runner). Unlike
@@ -383,8 +416,9 @@ impl Editor {
     /// function's doc). Here we use
     /// [`Self::handle_key`] directly so the caller doesn't need a scripting host.
     pub(crate) fn step(&mut self, key: KeyEvent) {
+        let runs_from = self.state.pipe_runs.mark();
         self.handle_key(key);
-        self.run_queued_pipe_inline();
+        self.wait_pipe_runs_from(runs_from);
         self.sync_search_cache();
         self.drain_replay_queue();
         self.sync_search_cache();
@@ -460,8 +494,10 @@ impl Editor {
     ///    a queued event from stranding), observe
     ///    `should_quit`, then prepare the frame: sync all editor state to
     ///    the engine pane.
-    /// 2. Run a pipe the last input queued and start over (its wait draws
-    ///    its own frames; see `Editor::run_queued_pipe`), or render.
+    /// 2. Wait for a foreground pipe run the last input started and start
+    ///    over (its wait draws its own frames; see `Editor::wait_pipe_run`),
+    ///    or render: at once after input, otherwise once the
+    ///    [`FramePacer`] says a frame is due.
     /// 3. Block until the next terminal event.
     /// 4. Dispatch the event.
     ///
@@ -623,6 +659,7 @@ impl Editor {
             ctx: RenderContext::new(),
             cursor_black: None,
         };
+        let mut pacer = FramePacer::default();
         loop {
             // A signal asked us to quit. Checked before drawing, since the
             // terminator thread's grace window is already ticking and a
@@ -655,8 +692,8 @@ impl Editor {
             // `resize_terminal` → `settle` → `prepare_frame` sequence for
             // snapshot tests. A step added to this loop needs the same step
             // added there, or every snapshot renders a frame this loop no
-            // longer produces. A queued pipe is not such a step: tests run it
-            // through `step`.
+            // longer produces. Waiting for a pipe run is not such a step: tests
+            // wait through `step`.
             let (term_width, term_height) = frame.screen.size()?;
             self.resize_terminal(term_width, term_height);
             self.settle();
@@ -672,20 +709,26 @@ impl Editor {
                 break;
             }
             // ── 2. Draw ───────────────────────────────────────────────────────
-            // A pipe the last input queued runs here, after the settle and
-            // before anything else can run. Its wait draws its own frames,
-            // and the next pass draws its result.
-            if self.state.queued_pipe.is_some() {
-                self.run_queued_pipe(&mut TerminalConsole {
-                    frame: &mut frame,
-                    input: ReaderConsole {
-                        reader: reader.clone(),
-                        wake: Arc::clone(&self.state.wake),
+            // A foreground pipe run the last input started is waited for
+            // here, after the settle and before anything else can run. Its
+            // wait draws its own frames, and the next pass draws its result.
+            if let Some(run) = self.state.pipe_runs.foreground() {
+                self.wait_pipe_run(
+                    run,
+                    &mut TerminalConsole {
+                        frame: &mut frame,
+                        input: ReaderConsole {
+                            reader: reader.clone(),
+                        },
                     },
-                })?;
+                )?;
                 continue;
             }
-            self.draw_frame(&mut frame)?;
+            let frame_wait = pacer.wait(Instant::now());
+            if frame_wait.is_none() {
+                self.draw_frame(&mut frame)?;
+                pacer.drew(Instant::now());
+            }
 
             // ── 3. Terminal event ─────────────────────────────────────────────
             // Blocks until a matching event is available, a wake from a
@@ -696,8 +739,13 @@ impl Editor {
             // at rest. `Ok(false)` covers both a timeout and a waker
             // interrupt. Either way, loop back to the top: `settle()`
             // drains every async source regardless of why we woke, and
-            // `term.size()` re-reads the viewport (covers SIGWINCH).
-            match reader.poll(self.wake_timeout(), |_| true) {
+            // `term.size()` re-reads the viewport (covers SIGWINCH). A frame
+            // the pacer held back bounds the wait too.
+            let timeout = match (self.wake_timeout(), frame_wait) {
+                (Some(source), Some(frame)) => Some(source.min(frame)),
+                (source, frame) => source.or(frame),
+            };
+            match reader.poll(timeout, |_| true) {
                 Ok(true) => {}
                 Ok(false) => continue,
                 Err(e) => return Err(e),
@@ -730,6 +778,7 @@ impl Editor {
                 }
                 ev => self.dispatch_terminal_event(ev),
             }
+            pacer.input();
 
             // Not a `break`: this loop's top now owns the one quit-observation
             // point that runs after `settle()` (see this function's doc).

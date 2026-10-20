@@ -24,9 +24,10 @@ use crate::editor::edit_session::{self, EditSessionKind};
 use crate::editor::error::CommandError;
 
 /// Which source a bare paste (no `"<reg>` prefix) reads, valid only while
-/// [`crate::editor::buffer::store::BufferStore::edit_seq`] is still `seq`. The moment any
-/// buffer is edited (or undone/redone), the stamped `seq` falls behind and a
-/// bare `smart-paste-*` falls through to the clipboard instead.
+/// [`crate::editor::buffer::store::BufferStore::edit_seq`] is still `seq`. The moment the
+/// user edits any buffer (or undoes/redoes), the stamped `seq` falls behind
+/// and a bare `smart-paste-*` falls through to the clipboard instead. An
+/// edit from background work (`EditOrigin::Background`) leaves it.
 ///
 /// Written by every capture that pushes onto the kill ring (`d`/`c`/`y`, bare
 /// or `"k`-prefixed; see `EditorState::capture_to_ring`) and by every
@@ -180,7 +181,9 @@ fn do_paste(
     )?;
     let paste_fn = if before { paste_before } else { paste_after };
     let (buffers, mut stores) = state.edit_parts();
-    doc_ops::apply_doc_edit_regrouped(buffers, &mut stores, focused, buf, |s| paste_fn(s, &values));
+    doc_ops::apply_doc_edit_regrouped(buffers, &mut stores, focused, buf, |s| {
+        paste_fn(s, &values)
+    })?;
 
     // An explicit register prefix opts out of the stamp entirely; see
     // PasteStamp's doc for why.
@@ -488,7 +491,9 @@ fn do_paste_cycle(
     })?;
     let paste_fn = if before { paste_before } else { paste_after };
     let (buffers, mut stores) = state.edit_parts();
-    doc_ops::apply_doc_edit_regrouped(buffers, &mut stores, focused, buf, |s| paste_fn(s, &values));
+    doc_ops::apply_doc_edit_regrouped(buffers, &mut stores, focused, buf, |s| {
+        paste_fn(s, &values)
+    })?;
     // Cycling always lands on a ring slot, so reflect it in the stamp so a
     // following bare paste (of either variant) continues from here.
     if let Some(slot) = state.kill_ring.cycle_position() {

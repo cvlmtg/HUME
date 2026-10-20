@@ -117,12 +117,7 @@ pub(in crate::editor) fn typed_edit(
                 "unsaved changes (use :e! to force)",
             ));
         }
-        let display = doc
-            .display_path()
-            .expect("path is Some ⇒ display_path is Some (Buffer::set_path)")
-            .to_string();
         ed.reload_from_path(fp, &path)
-            .map_err(|e| CommandError::new(format!("{display}: {e}")))
     }
 }
 
@@ -191,8 +186,9 @@ pub(in crate::editor) fn typed_pwd(
 
 /// `:bd`: delete (close) the focused buffer.
 ///
-/// If the buffer is dirty and `force` is false, returns an error.
-/// If it is the only buffer, it is replaced with a scratch buffer.
+/// If the buffer is dirty or a pipe runs on it and `force` is false,
+/// returns an error; with `force` the run is cancelled. If it is the only
+/// buffer, it is replaced with a scratch buffer.
 pub(in crate::editor) fn typed_buffer_delete(
     ed: &mut Editor,
     fp: FocusedPane,
@@ -204,6 +200,9 @@ pub(in crate::editor) fn typed_buffer_delete(
         return Err(CommandError::transient(
             "unsaved changes (use :bd! to force)",
         ));
+    }
+    if ed.state.buffers.get(id).is_busy() && !force {
+        return Err(super::pipe_running_refusal(&ed.state, id));
     }
     ed.close_buffer(id);
     Ok(())

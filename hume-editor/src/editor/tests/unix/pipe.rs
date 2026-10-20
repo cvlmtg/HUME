@@ -1,20 +1,20 @@
 //! `pipe`'s process side: [`ShellBatch`] running one shell command per
-//! input, and the wait that runs a queued pipe. Unix-only because every
+//! input, and the wait for a pipe run. Unix-only because every
 //! test runs `sh`.
 
 use super::*;
 
 use std::collections::VecDeque;
 use std::io;
-use std::num::NonZeroUsize;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use hume_platform::process::WakeCallback;
 
+use crate::editor::lifecycle::FRAME_GAP;
 use crate::editor::pipe_run::{
-    Detached, PROGRESS_FRAME_GAP, PipeConsole, PipeKind, PipeProgress, QueuedPipe, WaitEvent,
+    Detached, PipeConsole, PipeKind, PipeProgress, PipeRuns, RunId, WaitEvent,
 };
 use crate::editor::replay::Answer;
 use crate::editor::settings::{SettingText, ShellCommand};
@@ -24,27 +24,54 @@ fn no_op_wake() -> WakeCallback {
     Arc::new(|| {})
 }
 
-fn batch(command: &str, inputs: &[&str], limit: usize) -> ShellBatch {
+fn batch(command: &str, inputs: &[&str]) -> ShellBatch {
     ShellBatch::new(
         &ShellCommand::default(),
         command,
         Path::new("."),
         inputs.iter().map(|s| s.to_string()).collect(),
-        NonZeroUsize::new(limit).expect("a test limit is at least 1"),
-        no_op_wake(),
     )
 }
 
-/// Polls `batch` to the end, with a bound so a stuck child fails the test.
-fn finish(batch: &mut ShellBatch) -> Result<Vec<Captured>, ShellFailure> {
+/// Collect `batch`'s finished processes, then start what `free` allows.
+fn poll(batch: &mut ShellBatch, free: &mut usize) -> Result<BatchProgress, ShellFailure> {
+    batch.collect(free)?;
+    batch.fill(free, &no_op_wake())
+}
+
+/// Polls `batch` to the end with `limit` process slots of its own, with a
+/// bound so a stuck child fails the test.
+fn finish(batch: &mut ShellBatch, limit: usize) -> Result<Vec<Captured>, ShellFailure> {
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
-        if let BatchProgress::Finished(outputs) = batch.poll()? {
+        let mut free = limit - batch.running();
+        if let BatchProgress::Finished(outputs) = poll(batch, &mut free)? {
             return Ok(outputs);
         }
         assert!(Instant::now() < deadline, "batch never finished");
         std::thread::sleep(Duration::from_millis(5));
     }
+}
+
+/// A command that logs `+` as it starts and `-` as it ends to `log`.
+fn logging_command(log: &Path) -> String {
+    format!(
+        "echo + >> '{log}'; sleep 0.1; echo - >> '{log}'",
+        log = log.display()
+    )
+}
+
+/// How many processes `logging_command` saw start, and the most that ran
+/// at once.
+fn starts_and_peak(log: &Path) -> (usize, i32) {
+    let events = std::fs::read_to_string(log).expect("log written");
+    let mut running = 0i32;
+    let mut peak = 0;
+    for line in events.lines() {
+        running += if line == "+" { 1 } else { -1 };
+        peak = peak.max(running);
+    }
+    (events.lines().filter(|&line| line == "+").count(), peak)
 }
 
 fn stdouts(outputs: &[Captured]) -> Vec<&str> {
@@ -58,21 +85,20 @@ fn each_input_gets_its_own_process_and_outputs_keep_input_order() {
     let mut b = batch(
         r#"read x; [ "$x" = slow ] && sleep 0.2; echo "<$x>""#,
         &["slow\n", "fast\n"],
-        2,
     );
-    let outputs = finish(&mut b).expect("both succeed");
+    let outputs = finish(&mut b, 2).expect("both succeed");
     assert_eq!(stdouts(&outputs), ["<slow>\n", "<fast>\n"]);
 }
 
 #[test]
 fn progress_counts_finished_processes() {
     let _path = path_reader();
-    let mut b = batch("cat", &["a", "b", "c"], 1);
-    let BatchProgress::Running { done } = b.poll().expect("starts") else {
+    let mut b = batch("cat", &["a", "b", "c"]);
+    let BatchProgress::Running { done } = poll(&mut b, &mut 1).expect("starts") else {
         panic!("nothing can have finished before the first poll started it");
     };
     assert_eq!(done, 0);
-    finish(&mut b).expect("all succeed");
+    finish(&mut b, 1).expect("all succeed");
 }
 
 #[test]
@@ -80,29 +106,47 @@ fn the_limit_bounds_how_many_processes_run_at_once() {
     let _path = path_reader();
     let dir = tempfile::tempdir().expect("tempdir");
     let log = dir.path().join("log");
-    let command = format!(
-        "echo + >> '{log}'; sleep 0.1; echo - >> '{log}'",
-        log = log.display()
-    );
-    let mut b = batch(&command, &["", "", "", "", "", ""], 2);
-    finish(&mut b).expect("all succeed");
+    let command = logging_command(&log);
+    let mut b = batch(&command, &["", "", "", "", "", ""]);
+    finish(&mut b, 2).expect("all succeed");
 
-    let events = std::fs::read_to_string(&log).expect("log written");
-    let mut running = 0i32;
-    let mut peak = 0;
-    for line in events.lines() {
-        running += if line == "+" { 1 } else { -1 };
-        peak = peak.max(running);
+    assert_eq!(starts_and_peak(&log), (6, 2));
+}
+
+#[test]
+fn batches_sharing_one_budget_never_run_more_processes_together() {
+    let _path = path_reader();
+    let dir = tempfile::tempdir().expect("tempdir");
+    let log = dir.path().join("log");
+    let command = logging_command(&log);
+    let mut first = batch(&command, &["", "", ""]);
+    let mut second = batch(&command, &["", "", ""]);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let (mut first_done, mut second_done) = (false, false);
+    while !(first_done && second_done) {
+        let mut free = 2 - first.running() - second.running();
+        first_done = first_done
+            || matches!(
+                poll(&mut first, &mut free).expect("succeeds"),
+                BatchProgress::Finished(_)
+            );
+        second_done = second_done
+            || matches!(
+                poll(&mut second, &mut free).expect("succeeds"),
+                BatchProgress::Finished(_)
+            );
+        assert!(Instant::now() < deadline, "batches never finished");
+        std::thread::sleep(Duration::from_millis(5));
     }
-    assert_eq!(events.lines().count(), 12);
-    assert_eq!(peak, 2);
+
+    assert_eq!(starts_and_peak(&log), (6, 2));
 }
 
 #[test]
 fn a_failing_process_fails_the_batch_with_its_exit_code_and_stderr() {
     let _path = path_reader();
-    let mut b = batch(r#"echo boom >&2; exit 3"#, &["x"], 1);
-    let ShellFailure(msg) = finish(&mut b).expect_err("exit 3 is a failure");
+    let mut b = batch(r#"echo boom >&2; exit 3"#, &["x"]);
+    let ShellFailure(msg) = finish(&mut b, 1).expect_err("exit 3 is a failure");
     assert!(msg.contains("exit code 3"), "got: {msg}");
     assert!(msg.contains("boom"), "got: {msg}");
 }
@@ -116,8 +160,8 @@ fn the_first_failure_ends_the_batch_and_dropping_it_kills_the_rest() {
         r#"read x; if [ "$x" = fail ]; then sleep 0.3; exit 1; fi; echo $$ > '{}'; exec sleep 30"#,
         pid_file.display()
     );
-    let mut b = batch(&command, &["fail\n", "slow\n"], 2);
-    finish(&mut b).expect_err("one input fails");
+    let mut b = batch(&command, &["fail\n", "slow\n"]);
+    finish(&mut b, 2).expect_err("one input fails");
     drop(b);
 
     let pid: u32 = std::fs::read_to_string(&pid_file)
@@ -134,8 +178,8 @@ fn the_first_failure_ends_the_batch_and_dropping_it_kills_the_rest() {
 #[test]
 fn output_that_is_not_utf8_fails_the_batch() {
     let _path = path_reader();
-    let mut b = batch(r"printf '\377'", &["x"], 1);
-    let ShellFailure(msg) = finish(&mut b).expect_err("invalid UTF-8");
+    let mut b = batch(r"printf '\377'", &["x"]);
+    let ShellFailure(msg) = finish(&mut b, 1).expect_err("invalid UTF-8");
     assert!(msg.contains("UTF-8"), "got: {msg}");
 }
 
@@ -143,15 +187,8 @@ fn output_that_is_not_utf8_fails_the_batch() {
 fn a_shell_that_cannot_start_fails_the_batch() {
     let _path = path_reader();
     let shell = ShellCommand::parse("definitely-not-a-real-shell-xyz -c").expect("a word list");
-    let mut b = ShellBatch::new(
-        &shell,
-        "true",
-        Path::new("."),
-        vec!["x".to_string()],
-        NonZeroUsize::MIN,
-        no_op_wake(),
-    );
-    let ShellFailure(msg) = finish(&mut b).expect_err("no such program");
+    let mut b = ShellBatch::new(&shell, "true", Path::new("."), vec!["x".to_string()]);
+    let ShellFailure(msg) = finish(&mut b, 1).expect_err("no such program");
     assert!(
         msg.contains("definitely-not-a-real-shell-xyz"),
         "got: {msg}"
@@ -161,13 +198,13 @@ fn a_shell_that_cannot_start_fails_the_batch() {
 #[test]
 fn stderr_of_a_successful_process_is_kept() {
     let _path = path_reader();
-    let mut b = batch("echo warn >&2; echo ok", &["x"], 1);
-    let outputs = finish(&mut b).expect("exit 0");
+    let mut b = batch("echo warn >&2; echo ok", &["x"]);
+    let outputs = finish(&mut b, 1).expect("exit 0");
     assert_eq!(outputs[0].stdout, "ok\n");
     assert_eq!(outputs[0].stderr, "warn\n");
 }
 
-// ── Waiting for a queued pipe ─────────────────────────────────────────────────
+// ── Waiting for a pipe run ───────────────────────────────────────────────────────
 
 /// A console that waits like a detached run, handing out `events` first
 /// once the run has drawn its first frame (the wait has no timeout then),
@@ -180,10 +217,14 @@ struct ScriptedConsole {
 }
 
 impl ScriptedConsole {
-    fn new(events: impl IntoIterator<Item = WaitEvent>) -> Self {
+    /// Waits on `ed`'s waker.
+    fn new(ed: &Editor, events: impl IntoIterator<Item = WaitEvent>) -> Self {
         Self {
             events: events.into_iter().collect(),
-            detached: Detached::new(),
+            detached: ed
+                .detached
+                .clone()
+                .expect("a test editor has its own waker"),
             repaints: Vec::new(),
             painted_at: Vec::new(),
         }
@@ -191,10 +232,6 @@ impl ScriptedConsole {
 }
 
 impl PipeConsole for ScriptedConsole {
-    fn wake(&self) -> WakeCallback {
-        self.detached.wake()
-    }
-
     fn next(&mut self, timeout: Option<Duration>) -> io::Result<WaitEvent> {
         match timeout.is_none().then(|| self.events.pop_front()).flatten() {
             Some(event) => Ok(event),
@@ -203,19 +240,17 @@ impl PipeConsole for ScriptedConsole {
     }
 
     fn repaint(&mut self, ed: &mut Editor) -> io::Result<()> {
-        self.repaints.push(ed.state.running_pipe.clone());
+        self.repaints
+            .push(ed.state.pipe_runs.progress(ed.focused_buffer_id()));
         self.painted_at.push(Instant::now());
         Ok(())
     }
 }
 
-fn queue_pipe(ed: &mut Editor, command: &str, kind: PipeKind) {
-    ed.state.queued_pipe = Some(QueuedPipe {
-        pane: focused_pane(ed),
-        command: command.to_string(),
-        kind,
-        settles: None,
-    });
+fn start_run(ed: &mut Editor, command: &str, kind: PipeKind) -> RunId {
+    let (pid, bid) = (ed.view.focused_pane(), ed.focused_buffer_id());
+    ed.state
+        .start_pipe_run(pid, bid, command.to_string(), kind, None)
 }
 
 fn progress(command: &str, done: usize, total: usize) -> Option<PipeProgress> {
@@ -226,23 +261,31 @@ fn progress(command: &str, done: usize, total: usize) -> Option<PipeProgress> {
     })
 }
 
-fn run_with(ed: &mut Editor, console: &mut ScriptedConsole) {
-    ed.run_queued_pipe(console)
+fn run_with(ed: &mut Editor, run: RunId, console: &mut ScriptedConsole) {
+    ed.wait_pipe_run(run, console)
         .expect("a scripted console never fails");
-    assert!(ed.state.queued_pipe.is_none(), "the run takes the queue");
-    assert!(
-        ed.state.running_pipe.is_none(),
-        "the indicator ends with the run"
-    );
+    assert!(!ed.doc().is_busy(), "the wait ends the run");
 }
 
 #[test]
-fn a_queued_pipe_replaces_the_selection_with_its_output() {
+fn the_output_lands_on_the_selections_the_run_started_from() {
+    let _path = path_reader();
+    let mut ed = editor_from("-[ab]> cd\n");
+    let run = start_run(&mut ed, "tr a-z A-Z", PipeKind::Replace);
+    ed.execute_keymap_command("select-next-word".into(), None, false);
+    assert_ne!(state(&ed), "-[ab]> cd\n", "setup: the selection moved");
+    let mut console = ScriptedConsole::new(&ed, []);
+    run_with(&mut ed, run, &mut console);
+    assert_eq!(state(&ed), "-[AB]> cd\n");
+}
+
+#[test]
+fn a_run_replaces_the_selection_with_its_output() {
     let _path = path_reader();
     let mut ed = editor_from("-[b\na]>\nz\n");
-    queue_pipe(&mut ed, "sort", PipeKind::Replace);
-    let mut console = ScriptedConsole::new([]);
-    run_with(&mut ed, &mut console);
+    let run = start_run(&mut ed, "sort", PipeKind::Replace);
+    let mut console = ScriptedConsole::new(&ed, []);
+    run_with(&mut ed, run, &mut console);
     assert_eq!(state(&ed), "-[a\nb]>\nz\n");
 }
 
@@ -250,9 +293,9 @@ fn a_queued_pipe_replaces_the_selection_with_its_output() {
 fn a_run_that_ends_within_the_grace_draws_no_frame() {
     let _path = path_reader();
     let mut ed = editor_from("-[abc]>\n");
-    queue_pipe(&mut ed, "cat", PipeKind::Replace);
-    let mut console = ScriptedConsole::new([]);
-    run_with(&mut ed, &mut console);
+    let run = start_run(&mut ed, "cat", PipeKind::Replace);
+    let mut console = ScriptedConsole::new(&ed, []);
+    run_with(&mut ed, run, &mut console);
     assert_eq!(state(&ed), "-[abc]>\n");
     assert_eq!(console.repaints, []);
 }
@@ -262,9 +305,9 @@ fn progress_repaints_as_processes_finish() {
     let _path = path_reader();
     let mut ed = editor_from("-{fast}> -[mid]> -[slow]>\n");
     let command = r#"read x; case $x in mid) sleep 0.4;; slow) sleep 0.8;; esac; printf '%s' "$x""#;
-    queue_pipe(&mut ed, command, PipeKind::Replace);
-    let mut console = ScriptedConsole::new([]);
-    run_with(&mut ed, &mut console);
+    let run = start_run(&mut ed, command, PipeKind::Replace);
+    let mut console = ScriptedConsole::new(&ed, []);
+    run_with(&mut ed, run, &mut console);
     let done: Vec<usize> = console
         .repaints
         .iter()
@@ -289,9 +332,9 @@ fn progress_repaints_as_processes_finish() {
 fn progress_frames_are_at_least_a_frame_gap_apart() {
     let _path = path_reader();
     let mut ed = editor_from("-{a}> -[b]> -[c]> -[d]> -[e]> -[f]>\n");
-    queue_pipe(&mut ed, "sleep 0.15; cat", PipeKind::Replace);
-    let mut console = ScriptedConsole::new([]);
-    run_with(&mut ed, &mut console);
+    let run = start_run(&mut ed, "sleep 0.15; cat", PipeKind::Replace);
+    let mut console = ScriptedConsole::new(&ed, []);
+    run_with(&mut ed, run, &mut console);
     assert_eq!(state(&ed), "-{a}> -[b]> -[c]> -[d]> -[e]> -[f]>\n");
     let gaps: Vec<Duration> = console
         .painted_at
@@ -299,7 +342,7 @@ fn progress_frames_are_at_least_a_frame_gap_apart() {
         .map(|pair| pair[1] - pair[0])
         .collect();
     assert!(
-        gaps.iter().all(|&gap| gap >= PROGRESS_FRAME_GAP),
+        gaps.iter().all(|&gap| gap >= FRAME_GAP),
         "gaps between progress frames: {gaps:?}"
     );
 }
@@ -308,9 +351,9 @@ fn progress_frames_are_at_least_a_frame_gap_apart() {
 fn a_resize_during_the_wait_repaints() {
     let _path = path_reader();
     let mut ed = editor_from("-[abc]>\n");
-    queue_pipe(&mut ed, "sleep 0.5; cat", PipeKind::Replace);
-    let mut console = ScriptedConsole::new([WaitEvent::Resized]);
-    run_with(&mut ed, &mut console);
+    let run = start_run(&mut ed, "sleep 0.5; cat", PipeKind::Replace);
+    let mut console = ScriptedConsole::new(&ed, [WaitEvent::Resized]);
+    run_with(&mut ed, run, &mut console);
     assert_eq!(
         console.repaints,
         [
@@ -324,9 +367,10 @@ fn a_resize_during_the_wait_repaints() {
 fn an_interrupt_cancels_the_run_and_changes_nothing() {
     let _path = path_reader();
     let mut ed = editor_from("-[abc]>\n");
-    queue_pipe(&mut ed, "sleep 30; echo late", PipeKind::Replace);
+    let run = start_run(&mut ed, "sleep 30; echo late", PipeKind::Replace);
     let started = Instant::now();
-    run_with(&mut ed, &mut ScriptedConsole::new([WaitEvent::Interrupt]));
+    let mut console = ScriptedConsole::new(&ed, [WaitEvent::Interrupt]);
+    run_with(&mut ed, run, &mut console);
     assert!(started.elapsed() < Duration::from_secs(5));
     assert_eq!(state(&ed), "-[abc]>\n");
     assert_eq!(status(&ed), "pipe cancelled");
@@ -339,9 +383,10 @@ fn a_termination_request_cancels_the_run() {
     ed.state
         .terminate_exit_code
         .store(143, std::sync::atomic::Ordering::Release);
-    queue_pipe(&mut ed, "sleep 30; echo late", PipeKind::Replace);
+    let run = start_run(&mut ed, "sleep 30; echo late", PipeKind::Replace);
     let started = Instant::now();
-    run_with(&mut ed, &mut ScriptedConsole::new([]));
+    let mut console = ScriptedConsole::new(&ed, []);
+    run_with(&mut ed, run, &mut console);
     assert!(started.elapsed() < Duration::from_secs(5));
     assert_eq!(state(&ed), "-[abc]>\n");
 }
@@ -460,14 +505,9 @@ fn dot_replays_an_insert_session_with_its_command_in_order() {
 /// Interrupts the wait once the process has written its pid to `pid_file`.
 struct InterruptOnceStarted {
     pid_file: std::path::PathBuf,
-    detached: Detached,
 }
 
 impl PipeConsole for InterruptOnceStarted {
-    fn wake(&self) -> WakeCallback {
-        self.detached.wake()
-    }
-
     fn next(&mut self, _timeout: Option<Duration>) -> io::Result<WaitEvent> {
         let deadline = Instant::now() + Duration::from_secs(5);
         while !self.pid_file.exists() {
@@ -497,7 +537,6 @@ fn an_interrupt_during_dot_kills_the_run_and_changes_nothing() {
     std::fs::write(&marker, "").expect("marker written");
     ed.inline_pipe_console = Some(Box::new(InterruptOnceStarted {
         pid_file: pid_file.clone(),
-        detached: Detached::new(),
     }));
     ed.feed_key(key('.'));
     assert_eq!(state(&ed), "-[A]>\n");
@@ -543,7 +582,7 @@ fn an_interrupted_pipe_keeps_the_previous_change() {
     let _path = path_reader();
     let mut ed = editor_from("-[a]>\n");
     replace_with_x(&mut ed);
-    ed.inline_pipe_console = Some(Box::new(ScriptedConsole::new([WaitEvent::Interrupt])));
+    ed.inline_pipe_console = Some(Box::new(ScriptedConsole::new(&ed, [WaitEvent::Interrupt])));
     ed.feed_key(key('|'));
     type_cmd(&mut ed, "sleep 30");
     assert_eq!(status(&ed), "pipe cancelled");
@@ -615,7 +654,7 @@ fn an_interrupted_pipe_in_a_macro_stops_the_macro() {
     ed.feed_key(key('r'));
     ed.feed_key(key('b'));
     std::fs::write(&marker, "").expect("marker written");
-    ed.inline_pipe_console = Some(Box::new(ScriptedConsole::new([WaitEvent::Interrupt])));
+    ed.inline_pipe_console = Some(Box::new(ScriptedConsole::new(&ed, [WaitEvent::Interrupt])));
     ed.feed_key(key('q'));
     ed.feed_key(key('q'));
     assert_eq!(state(&ed), "-[b]>\n");
@@ -644,4 +683,242 @@ fn a_failed_pipe_in_a_macro_lets_the_macro_go_on() {
     ed.feed_key(key('q'));
     ed.feed_key(key('q'));
     assert_eq!(state(&ed), "-[x]>\n");
+}
+
+// ── Background runs ───────────────────────────────────────────────────────────
+
+/// Types `|command` Enter through `handle_key`, which starts a Normal-mode
+/// run without waiting for it.
+fn bar(ed: &mut Editor, command: &str) {
+    for k in std::iter::once('|').chain(command.chars()) {
+        ed.handle_key(key(k));
+    }
+    ed.handle_key(key_enter());
+}
+
+fn busy(ed: &Editor, bid: BufferId) -> bool {
+    ed.state.buffers.get(bid).is_busy()
+}
+
+#[test]
+fn bar_runs_in_the_background_and_lands() {
+    let _path = path_reader();
+    let mut ed = editor_from("-[b\na]>\n");
+    let bid = ed.focused_buffer_id();
+    bar(&mut ed, "sort");
+    assert!(busy(&ed, bid), "the run is in flight after Enter");
+    assert_eq!(state(&ed), "-[b\na]>\n");
+    drain_until(&mut ed, |ed| !busy(ed, bid));
+    assert_eq!(state(&ed), "-[a\nb]>\n");
+}
+
+#[test]
+fn keys_move_selections_meanwhile_and_the_output_lands_on_the_started_ones() {
+    let _path = path_reader();
+    let mut ed = editor_from("-[ab]> cd\n");
+    let bid = ed.focused_buffer_id();
+    bar(&mut ed, "sleep 0.2; tr a-z A-Z");
+    ed.handle_key(key('w'));
+    assert_ne!(state(&ed), "-[ab]> cd\n", "the selection moved meanwhile");
+    drain_until(&mut ed, |ed| !busy(ed, bid));
+    assert_eq!(state(&ed), "-[AB]> cd\n");
+}
+
+#[test]
+fn the_output_lands_in_the_buffer_the_pane_left() {
+    let _path = path_reader();
+    let mut ed = editor_from("-[ab]>\n");
+    let bid = ed.focused_buffer_id();
+    bar(&mut ed, "sleep 0.2; tr a-z A-Z");
+    open_other_buffer(&mut ed, "x\n");
+    drain_until(&mut ed, |ed| !busy(ed, bid));
+    assert_eq!(ed.state.buffers.get(bid).text().to_string(), "AB\n");
+    assert_eq!(ed.doc().text().to_string(), "x\n");
+}
+
+#[test]
+fn a_failed_background_run_reports_naming_the_buffer_and_keeps_the_previous_change() {
+    let _path = path_reader();
+    let mut ed = editor_from("-[a]>\n");
+    let bid = ed.focused_buffer_id();
+    ed.handle_key(key('r'));
+    ed.handle_key(key('x'));
+    bar(&mut ed, "exit 3");
+    drain_until(&mut ed, |ed| !busy(ed, bid));
+    let name = ed.doc().display_name();
+    assert!(
+        error_log(&ed)
+            .iter()
+            .any(|e| e.starts_with(&format!("pipe in {name}: ")) && e.contains("exit code 3")),
+        "got {:?}",
+        error_log(&ed)
+    );
+    assert_eq!(
+        ed.state.last_action().map(|a| a.command.as_ref()),
+        Some("replace")
+    );
+}
+
+#[test]
+fn the_indicator_shows_after_the_grace_for_the_focused_buffer_only() {
+    let _path = path_reader();
+    let mut ed = editor_from("-[a]>\n");
+    let bid = ed.focused_buffer_id();
+    bar(&mut ed, "sleep 0.5; cat");
+    assert_eq!(ed.state.pipe_runs.progress(bid), None, "within the grace");
+    std::thread::sleep(Duration::from_millis(150));
+    assert_eq!(
+        ed.state.pipe_runs.progress(bid),
+        progress("sleep 0.5; cat", 0, 1)
+    );
+    let other = open_other_buffer(&mut ed, "x\n");
+    assert_eq!(ed.state.pipe_runs.progress(other), None);
+}
+
+#[test]
+fn runs_in_two_buffers_share_one_process_cap() {
+    let _path = path_reader();
+    let dir = tempfile::tempdir().expect("tempdir");
+    let log = dir.path().join("log");
+    let mut ed = editor_from("-{a}> -[b]> -[c]>\n");
+    ed.state.pipe_runs = PipeRuns::with_limit(2);
+    let first = ed.focused_buffer_id();
+    bar(&mut ed, &logging_command(&log));
+    let second = open_other_buffer(&mut ed, "a b c\n");
+    ed.handle_key(key('%'));
+    ed.handle_key(key('s'));
+    ed.handle_key(key('\\'));
+    ed.handle_key(key('w'));
+    ed.handle_key(key_enter());
+    bar(&mut ed, &logging_command(&log));
+    assert!(busy(&ed, first) && busy(&ed, second), "setup: both run");
+    drain_until(&mut ed, |ed| !busy(ed, first) && !busy(ed, second));
+    assert_eq!(starts_and_peak(&log), (6, 2));
+}
+
+#[test]
+fn a_waited_run_takes_the_next_free_slot_before_an_older_background_run() {
+    let _path = path_reader();
+    let mut ed = editor_from("-{a}> -[b]> -[c]> -[d]> -[e]>\n");
+    ed.state.pipe_runs = PipeRuns::with_limit(1);
+    let background = ed.focused_buffer_id();
+    bar(&mut ed, "sleep 0.5; cat");
+    ed.settle();
+    // Past the statusline grace, with the first process still in the slot.
+    std::thread::sleep(Duration::from_millis(150));
+    open_other_buffer(&mut ed, "x\n");
+    ed.feed_key(key('|'));
+    type_cmd(&mut ed, "tr a-z A-Z");
+    assert_eq!(ed.doc().text().to_string(), "X\n");
+    let left = ed
+        .state
+        .pipe_runs
+        .progress(background)
+        .expect("the background run still has processes to run");
+    assert!(left.done < left.total, "{left:?}");
+}
+
+#[test]
+fn a_background_landing_leaves_a_kill_for_smart_paste() {
+    let _path = path_reader();
+    let mut ed = editor_from("-[b\na]>\n");
+    seed_clipboard(&mut ed, "CLIP");
+    let sorted = ed.focused_buffer_id();
+    bar(&mut ed, "sort");
+    open_other_buffer(&mut ed, "xy\n");
+    ed.feed_key(key('d'));
+    drain_until(&mut ed, |ed| !busy(ed, sorted));
+    assert_eq!(
+        ed.state.buffers.get(sorted).text().to_string(),
+        "a\nb\n",
+        "setup: the run landed"
+    );
+    ed.feed_key(key('p'));
+    assert_eq!(ed.doc().text().to_string(), "yx\n");
+}
+
+#[test]
+fn step_waits_only_for_the_run_its_key_started() {
+    let _path = path_reader();
+    let mut ed = editor_from("-[a]>\n");
+    let first = ed.focused_buffer_id();
+    bar(&mut ed, "sleep 1; cat");
+    let second = open_other_buffer(&mut ed, "b\n");
+    ed.feed_key(key('|'));
+    type_cmd(&mut ed, "tr a-z A-Z");
+    assert_eq!(ed.doc().text().to_string(), "B\n");
+    assert!(busy(&ed, first), "the other buffer's run goes on");
+    assert!(!busy(&ed, second));
+}
+
+/// A command that writes its pid to `pid_file`, then sleeps.
+fn sleeper(pid_file: &Path) -> String {
+    format!("echo $$ > '{}'; exec sleep 30", pid_file.display())
+}
+
+/// The pid `sleeper` wrote, once the run has started its process.
+fn started_pid(ed: &mut Editor, pid_file: &Path) -> u32 {
+    drain_until(ed, |_| {
+        std::fs::read_to_string(pid_file).is_ok_and(|s| s.ends_with('\n'))
+    });
+    std::fs::read_to_string(pid_file)
+        .expect("pid written")
+        .trim()
+        .parse()
+        .expect("a pid")
+}
+
+#[test]
+fn ctrl_c_kills_the_background_processes() {
+    let _path = path_reader();
+    let dir = tempfile::tempdir().expect("tempdir");
+    let pid_file = dir.path().join("pid");
+    let mut ed = editor_from("-[a]>\n");
+    bar(&mut ed, &sleeper(&pid_file));
+    let pid = started_pid(&mut ed, &pid_file);
+    ed.handle_key(key_ctrl('c'));
+    assert!(!ed.doc().is_busy());
+    assert!(!process_is_alive(pid), "the process is gone after Ctrl-c");
+    assert_eq!(state(&ed), "-[a]>\n");
+}
+
+#[test]
+fn close_buffer_from_steel_cancels_the_run() {
+    let _path = path_reader();
+    let dir = tempfile::tempdir().expect("tempdir");
+    let pid_file = dir.path().join("pid");
+    let mut ed = editor_from("-[a]>\n");
+    run(
+        &mut ed,
+        dir.path(),
+        r#"(define-command! "closer" "" (lambda (pane) (close-buffer! pane)))"#,
+    );
+    let bid = ed.focused_buffer_id();
+    bar(&mut ed, &sleeper(&pid_file));
+    let pid = started_pid(&mut ed, &pid_file);
+    ed.execute_keymap_command("closer".into(), None, false);
+    assert!(ed.state.buffers.try_get(bid).is_none(), "the buffer closed");
+    assert!(!process_is_alive(pid), "its run's process is gone");
+}
+
+#[test]
+fn an_older_run_that_landed_survives_a_newer_one_withdrawn() {
+    let _path = path_reader();
+    let mut ed = editor_from("-[a]>\n");
+    let first = ed.focused_buffer_id();
+    for k in ['r', 'x'] {
+        ed.handle_key(key(k));
+    }
+    bar(&mut ed, "tr a-z A-Z");
+    let second = open_other_buffer(&mut ed, "b\n");
+    bar(&mut ed, "sleep 30; cat");
+    drain_until(&mut ed, |ed| !busy(ed, first));
+    assert_eq!(ed.state.buffers.get(first).text().to_string(), "X\n");
+    ed.handle_key(key_ctrl('c'));
+    assert!(!busy(&ed, second));
+    assert_eq!(
+        ed.state.last_action().map(|a| a.command.as_ref()),
+        Some("pipe"),
+        "the landed run's change, not the replace before it"
+    );
 }

@@ -35,7 +35,7 @@ impl<'a> AsyncProcessHost for EditorHostImpl<'a> {
             // child produces (the sentinel `%run-inline-output!` already
             // uses; a real exit code can never be -1, it's u8-wide).
             Err(e) => {
-                self.state.queue_steel_call(
+                self.state.queue_background_call(
                     callback,
                     vec![
                         steel::rvals::SteelVal::StringV("".into()),

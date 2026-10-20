@@ -32,7 +32,8 @@ fn reload_shrinking_the_document_leaves_the_next_frames_top_inside_it() {
     ed.reload_buffer_in_place(
         FocusedPane::current(&ed.view),
         ReplaceSource::disk(replacement),
-    );
+    )
+    .expect("the buffer is not held");
 
     // Whatever pass resolves the top next (the render/scroll pipeline here),
     // it must land inside the shrunken 2-line document, not past its end.

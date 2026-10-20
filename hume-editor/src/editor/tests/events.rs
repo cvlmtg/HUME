@@ -1593,7 +1593,8 @@ fn e_bang_reload_fires_on_text_changed() {
     ed.reload_buffer_in_place(
         FocusedPane::current(&ed.view),
         ReplaceSource::disk(replacement),
-    );
+    )
+    .expect("the buffer is not held");
     ed.settle();
 
     let fires = ed
@@ -2098,7 +2099,8 @@ fn identity_reload_fires_no_on_text_changed() {
     ed.reload_buffer_in_place(
         FocusedPane::current(&ed.view),
         ReplaceSource::disk(replacement),
-    );
+    )
+    .expect("the buffer is not held");
     ed.settle();
 
     assert_eq!(

@@ -1,5 +1,6 @@
 use std::io;
 use std::path::{Path, PathBuf};
+use std::rc::{Rc, Weak};
 use std::time::{Duration, SystemTime};
 
 use super::search::{SearchMatches, SearchPattern};
@@ -147,7 +148,9 @@ impl HistoryMark {
 /// them. The three edit entry points (`apply_edit`, `apply_edit_grouped`,
 /// `apply_edit_regrouped`) each return the acting pane's post-edit
 /// `SelectionSet` + the `ChangeSet` it applied, and handle undo bookkeeping
-/// internally.
+/// internally. While a [`TextHold`] on the buffer is alive, `install`
+/// panics: every gate that would change the text refuses first, through
+/// [`Self::text_refusal`].
 pub(crate) struct Buffer {
     text: BufferText,
     history: History,
@@ -217,6 +220,8 @@ pub(crate) struct Buffer {
     /// layer. Entering Insert mode is also refused. Read-only is orthogonal to
     /// language/syntax: a read-only buffer may still be highlighted.
     pub(in crate::editor) read_only: bool,
+    /// The [`TextHold`] keeping the text as it is, if one is alive.
+    hold: Weak<()>,
     /// Display name used for synthetic, path-less view buffers (e.g. `"[messages]"`).
     /// Shown in the statusline and `:ls` instead of `*scratch*`.
     pub(in crate::editor) label: Option<ViewLabel>,
@@ -242,6 +247,32 @@ pub(crate) struct Buffer {
     /// restore prompt for it. Kept as a path, not re-derived from `path`: a
     /// save-as changes `path` but not which dump the prompt is about.
     pub(in crate::editor) pending_dump: Option<PathBuf>,
+}
+
+/// While alive, nothing may change its buffer's text: the work that owns
+/// it will land on the text as it is. Minted only by [`Buffer::hold_text`];
+/// dropping it releases the buffer.
+#[must_use]
+#[derive(Debug)]
+pub(in crate::editor) struct TextHold {
+    _alive: Rc<()>,
+}
+
+/// Why a buffer's text may not change now.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::editor) enum TextRefusal {
+    ReadOnly,
+    /// A [`TextHold`] is alive.
+    Busy,
+}
+
+impl std::fmt::Display for TextRefusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::ReadOnly => "Buffer is read-only",
+            Self::Busy => "Buffer is busy: a pipe is running",
+        })
+    }
 }
 
 /// How a new text relates to the one it replaces, for [`Buffer::install`].
@@ -292,6 +323,7 @@ impl Buffer {
             announced_history,
             syntax: None,
             read_only: false,
+            hold: Weak::new(),
             label: None,
             open_hook_pending: false,
             disk_state: disk::DiskState::InSync,
@@ -409,6 +441,38 @@ impl Buffer {
         self.read_only
     }
 
+    /// `true` while a [`TextHold`] on this buffer is alive.
+    pub(in crate::editor) fn is_busy(&self) -> bool {
+        self.hold.strong_count() > 0
+    }
+
+    /// Why the text may not change now, `None` when it may.
+    pub(in crate::editor) fn text_refusal(&self) -> Option<TextRefusal> {
+        if self.read_only {
+            Some(TextRefusal::ReadOnly)
+        } else if self.is_busy() {
+            Some(TextRefusal::Busy)
+        } else {
+            None
+        }
+    }
+
+    /// Hold the text as it is until the returned hold drops.
+    ///
+    /// # Panics
+    /// Panics when the text may not change now: a hold is for work that
+    /// will change it.
+    pub(in crate::editor) fn hold_text(&mut self) -> TextHold {
+        assert_eq!(
+            self.text_refusal(),
+            None,
+            "hold_text: only a writable, unheld buffer can be held"
+        );
+        let alive = Rc::new(());
+        self.hold = Rc::downgrade(&alive);
+        TextHold { _alive: alive }
+    }
+
     /// `true` for in-memory view buffers (e.g. `[messages]`, `[plugin-status]`).
     ///
     /// Synthetic buffers have no backing file (`path = None`) but carry a
@@ -435,6 +499,7 @@ impl Buffer {
         change: Change<'_>,
         acting: Option<PaneId>,
     ) {
+        assert!(!self.is_busy(), "install: a held buffer's text changed");
         let relabel = text.generation() == self.text.generation();
         debug_assert!(
             text.generation() > self.text.generation()
@@ -635,13 +700,14 @@ impl Buffer {
     }
 
     /// Set the line ending a save writes. Not an edit: no revision is
-    /// recorded, so undo does not revert it. Refused on a read-only buffer.
+    /// recorded, so undo does not revert it. Refused while the text may not
+    /// change ([`Self::text_refusal`]).
     pub(in crate::editor) fn set_line_ending(
         &mut self,
         line_ending: LineEnding,
     ) -> Result<(), String> {
-        if self.read_only {
-            return Err("buffer is read-only".to_string());
+        if let Some(refusal) = self.text_refusal() {
+            return Err(refusal.to_string());
         }
         self.adopt_line_ending(line_ending);
         Ok(())
@@ -650,6 +716,10 @@ impl Buffer {
     /// Take the line ending of text read from disk, which a read-only buffer
     /// accepts too.
     fn adopt_line_ending(&mut self, line_ending: LineEnding) {
+        assert!(
+            !self.is_busy(),
+            "adopt_line_ending: a held buffer's text changed"
+        );
         self.text = self.text.clone().with_line_ending(line_ending);
     }
 

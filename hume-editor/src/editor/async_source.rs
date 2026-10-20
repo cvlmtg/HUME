@@ -1,6 +1,6 @@
 //! Generalized event-loop wake: composes every asynchronous work source
-//! (the LSP backend, the timer wheel) behind one `next_wake` predicate so
-//! `run`'s wait primitive doesn't hard-code a single source.
+//! (the LSP backend, the timer wheel, the pipe runs) behind one `next_wake`
+//! predicate so `run`'s wait primitive doesn't hard-code a single source.
 //!
 //! Sources report deadlines only: a request timeout, a `$/progress`
 //! spinner tick, a timer's fire time, or `now` for work already waiting
@@ -21,10 +21,11 @@
 use std::time::{Duration, Instant};
 
 use super::Editor;
+use super::buffer::store::EditOrigin;
 
 /// One source of asynchronous work the event loop must wake for.
 ///
-/// Implemented by the LSP backend and the timer wheel.
+/// Implemented by the LSP backend, the timer wheel and the pipe runs.
 pub(in crate::editor) trait AsyncSource {
     /// Next instant the event loop should wake for this source, if any.
     /// `None` means this source needs no wake: the loop may block on input.
@@ -34,8 +35,8 @@ pub(in crate::editor) trait AsyncSource {
 impl Editor {
     /// One place to enumerate async sources. Adding a source = one line here
     /// plus its `AsyncSource` impl.
-    fn async_sources(&self) -> [&dyn AsyncSource; 2] {
-        [&self.timers, &self.state.lsp]
+    fn async_sources(&self) -> [&dyn AsyncSource; 3] {
+        [&self.timers, &self.state.lsp, &self.state.pipe_runs]
     }
 
     /// `Some(timeout)` => wait with it; `None` => block indefinitely.
@@ -57,9 +58,25 @@ impl Editor {
     /// `Editor::settle`, once per call and outside its `pending_work`
     /// fixpoint; see that function's doc for why.
     pub(super) fn drain_async_sources(&mut self) {
-        self.drain_due_timers();
-        self.drain_lsp();
-        self.drain_picker_source();
-        self.drain_async_jobs();
+        self.with_edit_origin(EditOrigin::Background, |ed| {
+            ed.drain_due_timers();
+            ed.drain_lsp();
+            ed.drain_picker_source();
+            ed.drain_async_jobs();
+            ed.state.drain_pipe_runs();
+        });
+    }
+
+    /// Run `f` with the edits it makes counted as `origin`'s, then put back
+    /// the origin before it.
+    pub(super) fn with_edit_origin<R>(
+        &mut self,
+        origin: EditOrigin,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        let outer = self.state.buffers.set_edit_origin(origin);
+        let result = f(self);
+        self.state.buffers.set_edit_origin(outer);
+        result
     }
 }

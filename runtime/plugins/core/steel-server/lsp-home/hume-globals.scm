@@ -62,6 +62,7 @@
 (#%register-global "bundled-language-grammar")
 (#%register-global "call!")
 (#%register-global "cancel-async!")
+(#%register-global "cancel-pipe")
 (#%register-global "cancel-timer!")
 (#%register-global "center-view-on-cursor")
 (#%register-global "change")

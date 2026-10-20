@@ -22,7 +22,7 @@
 - Options start with the area they belong to, so related ones sit together in `:set` completion. Rename them in your `init.scm` and `:set` calls: `tab-width` → `indent-width`, `tab-style` → `indent-style`, `smart-indent` → `indent-smart`, `auto-pairs` → `insert-auto-pairs`, `cursor-shape-insert` → `insert-cursor-shape`, `select-inserted-text` → `insert-select-on-exit`, `line-number-style` → `gutter-line-numbers`, `signcolumn` → `gutter-signs`, `object-jump-align` → `scroll-jump-align`, `jump-line-threshold` → `jump-list-min-lines`, `history-capacity` → `prompt-history-levels`, `prefer-line-comments` → `comment-prefer-line`, `auto-read` → `file-reload-prompt`, `before-save-timeout-ms` → `hook-before-save-timeout-ms`, `viewport-debounce-ms` → `hook-viewport-debounce-ms`, `statusline.mode-colors` → `statusline-mode-colors`, `lsp.diagnostics-severity-floor` → `lsp-diagnostics-min-severity`, and the other `lsp.` options take `lsp-` (`lsp-request-timeout-ms`).
 
 ### Editing
-- `|` pipes each selection through a shell command, and `Ctrl-|` in Insert mode inserts a command's output at each cursor.
+- `|` pipes each selection through a shell command in the background, `Ctrl-c` stops it, and `Ctrl-|` in Insert mode inserts a command's output at each cursor.
 - `Ctrl-r` in Insert mode and on the command line inserts a register or the current file's path.
 - `m i x` and `m a x` select inside or around a tag pair, and `g x` and `g X` jump to the next or previous one, with or without a markup grammar.
 - `Ctrl-a` and `Ctrl-s` add to or subtract from the number, date or time at each selection, and `G A` and `G S` count up or down across selections.
@@ -65,6 +65,7 @@
 - `#` on a closing tag finds its opening tag past a commented-out tag.
 - `[` after pasting from the clipboard or a register skips the kill-ring entry holding the same text instead of pasting it again.
 - A key bound with `bind-key-extend!` extends the selection, not only when the binding starts with `Ctrl`.
+- `p` still pastes what you last deleted, changed or yanked after a language server, a background `|`, or a plugin's timer or hook changes some text.
 
 ## [0.15.0] - 2026-10-15
 

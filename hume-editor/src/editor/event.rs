@@ -11,6 +11,7 @@ use hume_scripting::{PaneHandle, ServerRef, SteelPane};
 use steel::rvals::SteelVal;
 
 use super::Mode;
+use super::buffer::store::EditOrigin;
 
 /// Something that happened in the editor, carrying whatever payload its
 /// Steel handlers (and, for a growing subset, Rust-side reactions) need.
@@ -527,6 +528,9 @@ pub(in crate::editor) enum PendingWork {
         /// inside the input's scope (`Editor::run_answered`), so only this
         /// call's own work belongs to the change.
         answer: Option<super::replay::AnswerTicket>,
+        /// Whose edits the call makes: the user's for a callback a key of
+        /// theirs fired, background ones otherwise.
+        origin: EditOrigin,
     },
     /// An editor event to fire by name at drain time. Args are built by
     /// `into_steel_args()` only if a handler is actually registered.

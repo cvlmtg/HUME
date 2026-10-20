@@ -5,8 +5,9 @@ use hume_editing::text::BufferText;
 use hume_engine::pipeline::BufferId;
 use hume_platform::io::FileMeta;
 
-use crate::editor::buffer::{Buffer, ViewLabel};
+use crate::editor::buffer::{Buffer, TextRefusal, ViewLabel};
 use crate::editor::commands::FocusedPane;
+use crate::editor::error::CommandError;
 use crate::editor::event::EditorEvent;
 
 use super::lifecycle;
@@ -216,12 +217,17 @@ impl Editor {
     /// rebuilds lazily) and the syntax tree, which the edit shifts like any
     /// other. Dropped as stale: in-progress edit groups/paste sessions and
     /// saved scrolls.
+    ///
+    /// `Err`, with nothing changed, while the buffer's text is held.
     pub(in crate::editor) fn reload_buffer_in_place(
         &mut self,
         fp: FocusedPane,
         source: ReplaceSource,
-    ) {
+    ) -> Result<(), CommandError> {
         let id = fp.bid(&self.view);
+        if self.state.buffers.get(id).is_busy() {
+            return Err(crate::editor::doc_ops::refusal_error(TextRefusal::Busy));
+        }
         // End any open Insert/paste session the same way every other
         // buffer/focus-invalidating path does (`switch_pane_to_buffer`,
         // `reset_config_state`), before the replacement invalidates the text
@@ -272,6 +278,7 @@ impl Editor {
         // outright rather than recalling a clamped-but-arbitrary spot.
         // Every pane, active tab or not.
         lifecycle::forget_saved_views(&mut self.view, id);
+        Ok(())
     }
 
     /// Redirect `fp` to `target` without recording a jump.

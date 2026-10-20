@@ -209,8 +209,9 @@ fn register_prefix_consumed_by_paste() {
 // A bare paste reads the kill ring while `PasteStamp::seq` still matches
 // `BufferStore::edit_seq()`, set by every capture that pushes to the ring
 // (`d`/`c`/`y`, bare or `"k`-prefixed) and re-stamped by every completed bare
-// paste and ring cycle. Any edit (or undo/redo), anywhere, moves `edit_seq`
-// past the stamp; a plain motion does not, since it never touches the buffer.
+// paste and ring cycle. Any user edit (or undo/redo), anywhere, moves
+// `edit_seq` past the stamp; a plain motion does not, since it never touches
+// the buffer, and neither does an edit from background work.
 // See `PasteStamp`'s doc in `commands/paste.rs`.
 
 /// `d` then `p` reads from the kill ring (char-swap / dp pattern).
@@ -571,6 +572,93 @@ fn edit_in_other_buffer_invalidates_ring_stamp() {
         buf.contains("CLIP"),
         "p in buffer A after an edit in buffer B must read the clipboard, not the ring; buf={buf:?}"
     );
+}
+
+/// `(edit-text! pane …)` inserting `text` before `d` in `cd`.
+fn insert_before_d(pane: &str, text: &str) -> String {
+    format!("(edit-text! {pane} (list (hash 'start-char 1 'end-char 1 'text {text})))")
+}
+
+#[test]
+fn a_timer_edit_leaves_the_ring_stamp_fresh() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[ab]>cd\n");
+    seed_clipboard(&mut ed, "CLIP");
+    run(
+        &mut ed,
+        tmp.path(),
+        &format!(
+            r#"(define-typed-command! "arm" "" (lambda (pane)
+                 (after! 0 (lambda () {}))))"#,
+            insert_before_d("pane", r#""!""#)
+        ),
+    );
+    type_cmd(&mut ed, ":arm");
+    ed.feed_key(key('d'));
+    ed.settle();
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "c!d\n",
+        "setup: the timer edited"
+    );
+    ed.feed_key(key('p'));
+    assert_eq!(ed.doc().text().to_string(), "cab!d\n");
+}
+
+#[test]
+fn a_hook_edit_leaves_the_ring_stamp_fresh() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[ab]>cd\n");
+    seed_clipboard(&mut ed, "CLIP");
+    run(
+        &mut ed,
+        tmp.path(),
+        &format!(
+            r#"(define fired #f)
+               (register-hook! 'on-mode-change (lambda (old new)
+                 (if fired #f (begin (set! fired #t) {}))))"#,
+            insert_before_d("(focused-pane)", r#""!""#)
+        ),
+    );
+    ed.feed_key(key('d'));
+    ed.feed_key(key('e'));
+    ed.settle();
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "c!d\n",
+        "setup: the hook edited"
+    );
+    ed.feed_key(key('e'));
+    ed.settle();
+    ed.feed_key(key('p'));
+    assert_eq!(ed.doc().text().to_string(), "cab!d\n");
+}
+
+#[test]
+fn a_prompt_answer_that_edits_invalidates_the_ring_stamp() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[ab]>cd\n");
+    seed_clipboard(&mut ed, "CLIP");
+    run(
+        &mut ed,
+        tmp.path(),
+        &format!(
+            r#"(define-typed-command! "ask" "" (lambda (pane)
+                 (prompt! pane "x: " (lambda (s) {}))))"#,
+            insert_before_d("pane", "s")
+        ),
+    );
+    ed.feed_key(key('d'));
+    type_cmd(&mut ed, ":ask");
+    type_cmd(&mut ed, "!");
+    ed.settle();
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "c!d\n",
+        "setup: the answer edited"
+    );
+    ed.feed_key(key('p'));
+    assert_eq!(ed.doc().text().to_string(), "cCLIP!d\n");
 }
 
 /// `"5p` reads in-memory register '5', not the kill ring.

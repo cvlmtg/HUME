@@ -1220,3 +1220,32 @@ fn rereading_a_file_has_no_pending_dump() {
 
     assert_eq!(buf.pending_dump, None);
 }
+
+#[test]
+fn a_hold_makes_the_buffer_busy_until_it_drops() {
+    let mut d = doc("-[a]>\n");
+    assert_eq!(d.buf.text_refusal(), None);
+    let hold = d.buf.hold_text();
+    assert_eq!(d.buf.text_refusal(), Some(TextRefusal::Busy));
+    drop(hold);
+    assert_eq!(d.buf.text_refusal(), None);
+}
+
+#[test]
+#[should_panic(expected = "a held buffer's text changed")]
+fn changing_a_held_buffers_text_panics() {
+    let mut d = doc("-[a]>\n");
+    let _hold = d.buf.hold_text();
+    d.apply_edit(|s| insert_char(s, 'x'));
+}
+
+#[test]
+fn a_held_buffer_refuses_a_line_ending_change() {
+    let mut d = doc("-[a]>\n");
+    let _hold = d.buf.hold_text();
+    assert_eq!(
+        d.buf.set_line_ending(LineEnding::CrLf),
+        Err(TextRefusal::Busy.to_string())
+    );
+    assert_eq!(d.buf.text().line_ending(), LineEnding::Lf);
+}

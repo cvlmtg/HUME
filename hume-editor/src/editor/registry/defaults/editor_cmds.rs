@@ -443,8 +443,8 @@ impl CommandRegistry {
         .reg(self);
 
         // ── Editor commands — shell ───────────────────────────────────────────
-        // The run waits past this dispatch, in the main loop or a replay, so
-        // a script's `call!` would return before it ran (`.key_only()`).
+        // The output lands after this dispatch returns, so a script's `call!`
+        // would return before it (`.key_only()`).
         ecmd_pane_text(
             "pipe",
             "Run a shell command once per selection, with the selection as its input, and replace the selection with its output. In Insert mode, insert its output at each cursor.",
@@ -454,6 +454,12 @@ impl CommandRegistry {
         .repeatable()
         .clears_extend()
         .key_only()
+        .reg(self);
+        ecmd_pane(
+            "cancel-pipe",
+            "Stop the shell command running in this buffer and change nothing.",
+            cmd_cancel_pipe,
+        )
         .reg(self);
         // `EditorCmd`, not `selection!`: the body needs `EditorState` to read
         // the buffer's search pattern, a channel `Selection`'s pure

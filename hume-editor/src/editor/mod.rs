@@ -8,7 +8,7 @@ use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 use self::registry::CommandRegistry;
 use self::replay::{PendingRepeat, SelectionStep};
 use crate::editor::buffer::Buffer;
-use crate::editor::buffer::store::BufferStore;
+use crate::editor::buffer::store::{BufferStore, EditOrigin};
 use crate::editor::pane_state::PaneView;
 use crate::editor::settings::EditorSettings;
 use hume_editing::selection::SelectionSet;
@@ -157,8 +157,9 @@ pub(crate) struct ConfigState {
         rustc_hash::FxHashMap<BufferId, rustc_hash::FxHashMap<Box<str>, Box<str>>>,
     /// Deferred Steel work: events enqueued during command dispatch
     /// (`EditorState::queue_event`) and specific-closure completions
-    /// (`EditorState::queue_steel_call`: an `lsp-request!` callback, a timer
-    /// thunk, a prompt callback), drained in FIFO order by `Editor::settle`.
+    /// (`EditorState::queue_steel_call` and its siblings: an `lsp-request!`
+    /// callback, a timer thunk, a prompt callback), drained in FIFO order by
+    /// `Editor::settle`.
     /// One queue, not two: see `event::PendingWork`'s doc for why a shared
     /// queue matters. No work item is ever evaluated inline during command
     /// execution or a completion callback.
@@ -379,12 +380,9 @@ pub(crate) struct EditorState {
     /// Deferred dot-repeat job enqueued by `cmd_repeat`; consumed by
     /// `replay_dot` at the tail of `handle_key`.
     pub(super) pending_repeat: Option<PendingRepeat>,
-    /// A `pipe` its command accepted, run by the main loop or, during a
-    /// replay, before the next replayed key (`pipe_run`).
-    pub(in crate::editor) queued_pipe: Option<pipe_run::QueuedPipe>,
-    /// The pipe being run, `Some` for the whole wait: what the statusline's
-    /// `Pipe` element shows.
-    pub(crate) running_pipe: Option<PipeProgress>,
+    /// Every `pipe` run in flight; the statusline's `Pipe` element shows the
+    /// focused buffer's.
+    pub(crate) pipe_runs: pipe_run::PipeRuns,
     /// The live sift preview's result for the `sift-within` its Enter runs,
     /// taken by the next `sift-within` whatever it sifts.
     pub(in crate::editor) sift_reuse: Option<input_stack::SiftReuse>,
@@ -518,8 +516,7 @@ impl EditorState {
             selection_recipe: Vec::new(),
             selection_recipe_touched: false,
             pending_repeat: None,
-            queued_pipe: None,
-            running_pipe: None,
+            pipe_runs: pipe_run::PipeRuns::new(),
             sift_reuse: None,
             #[cfg(test)]
             sift_scans: 0,
@@ -775,8 +772,9 @@ impl EditorState {
     /// Queue `(proc, args)` for evaluation at the next drain boundary,
     /// never called inline (LSP dispatch, timer fire, and minibuffer key
     /// handling all detect their completion from inside a borrow that can't
-    /// re-enter Steel). Shared delivery mechanism for the `lsp-request!`
-    /// callback, timer thunks, and drawer and live-picker query callbacks; an
+    /// re-enter Steel). The delivery for a callback a key of the user's
+    /// fired: a drawer, live-picker query or completion-source callback.
+    /// Background work queues through [`Self::queue_background_call`]; an
     /// interactive input's callback is built by `EditorState::answered_call`
     /// instead. Lives on `EditorState` (not `Editor`) so a drawer layer and
     /// `EditorHostImpl`'s spawn-failure arm (which only hold `&mut
@@ -787,10 +785,21 @@ impl EditorState {
         proc: steel::rvals::SteelVal,
         args: Vec<steel::rvals::SteelVal>,
     ) {
-        self.queue_lsp_callback(proc, args, None, None);
+        self.queue_call(proc, args, None, None, EditOrigin::User);
     }
 
-    /// [`Self::queue_steel_call`]'s counterpart for an `lsp-request!`
+    /// [`Self::queue_steel_call`] for a callback background work fires: a
+    /// timer thunk, an async job's or process's callback. Its edits do not
+    /// count as the user's.
+    pub(in crate::editor) fn queue_background_call(
+        &mut self,
+        proc: steel::rvals::SteelVal,
+        args: Vec<steel::rvals::SteelVal>,
+    ) {
+        self.queue_call(proc, args, None, None, EditOrigin::Background);
+    }
+
+    /// [`Self::queue_background_call`]'s counterpart for an `lsp-request!`
     /// callback: carries the delivery's `ResponseAnchor` (`None` for a
     /// request no server took) and the request's hold on its `#:tracked`
     /// position, dropped once the call has run or been dropped. Never
@@ -802,6 +811,17 @@ impl EditorState {
         anchor: Option<lsp::ResponseAnchor>,
         tracked: Option<hume_scripting::host::TrackedHold>,
     ) {
+        self.queue_call(proc, args, anchor, tracked, EditOrigin::Background);
+    }
+
+    fn queue_call(
+        &mut self,
+        proc: steel::rvals::SteelVal,
+        args: Vec<steel::rvals::SteelVal>,
+        anchor: Option<lsp::ResponseAnchor>,
+        tracked: Option<hume_scripting::host::TrackedHold>,
+        origin: EditOrigin,
+    ) {
         self.config
             .pending_work
             .push_back(event::PendingWork::Call {
@@ -810,6 +830,7 @@ impl EditorState {
                 anchor,
                 tracked,
                 answer: None,
+                origin,
             });
     }
 }
@@ -900,6 +921,9 @@ pub(crate) struct Editor {
     /// Startup cursor placements, one per CLI `path:line[:col]` argument,
     /// queued by `Editor::start` and drained by `apply_startup_positions`.
     startup_positions: Vec<(BufferId, crate::cli::PathPosition)>,
+    /// The receiving end of `state.wake`, which a pipe run with no terminal
+    /// waits on. `None` when `state.wake` wakes a terminal's reader.
+    pub(in crate::editor) detached: Option<pipe_run::Detached>,
     /// The console the next pipe run during a replay waits on, in place of
     /// the terminal.
     #[cfg(test)]

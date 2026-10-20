@@ -98,7 +98,9 @@ impl Editor {
     pub(super) fn drain_due_timers(&mut self) {
         for payload in self.timers.take_due(Instant::now()) {
             match payload {
-                TimerPayload::SteelThunk(thunk) => self.state.queue_steel_call(thunk, Vec::new()),
+                TimerPayload::SteelThunk(thunk) => {
+                    self.state.queue_background_call(thunk, Vec::new());
+                }
                 TimerPayload::ViewportDebounce(pane_id) => {
                     self.viewport_debounce.remove(&pane_id);
                     self.queue_viewport_change(pane_id);

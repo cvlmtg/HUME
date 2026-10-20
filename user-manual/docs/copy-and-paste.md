@@ -36,6 +36,8 @@ Text from outside HUME, such as the system clipboard after another program wrote
 - **Nothing edited since the last `d`, `c`, or `y`**: reads the kill ring. Right after a `d`, `c`, or `y` that is the head (the most recently killed, changed, or yanked text); right after a paste or a `[`/`]` cycle it is the entry that paste or cycle used.
 - **Something edited since**: reads the system clipboard. A first paste falls back to the kill ring head when the clipboard is empty or unavailable. Once a press has read the clipboard, a further `p` or `P` pastes nothing, and says why, if the clipboard is then empty or unavailable.
 
+Only your own edits count, in any buffer. Text that a language server, a `|` finishing in the background, or a plugin's timer or hook changes in the meantime does not.
+
 Since `y` writes to both the clipboard and the kill ring, `y` then `p` pastes what you just yanked. Yanking to an explicit register instead (`"0y`) leaves both the clipboard and this "what should a bare `p` read" tracking untouched. A following bare `p` behaves exactly as it would have if the `"0y` hadn't happened. Use `"0p` to read the register back.
 
 `[` and `]` only work inside a **paste session**, one opened by a preceding `p` or `P`. Each cycle replaces the previous paste, and the whole session records as a single undo step. After a paste from the clipboard or a register, `[` skips the kill-ring entry that holds the same text, such as the one a `y` just put in both. Consecutive `p` presses append copies (each its own separate undo step) for the same reason pasting over a matching selection does: pasting the same text again lands next to it, not over it.

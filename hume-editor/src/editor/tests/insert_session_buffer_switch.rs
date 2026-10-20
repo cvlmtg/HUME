@@ -257,7 +257,8 @@ fn reload_buffer_in_place_ends_insert_session_on_focused_pane() {
     ed.reload_buffer_in_place(
         FocusedPane::current(&ed.view),
         ReplaceSource::disk(Buffer::at_start(BufferText::from("xyz\n"))),
-    );
+    )
+    .expect("the buffer is not held");
 
     assert_eq!(
         ed.state.mode(),

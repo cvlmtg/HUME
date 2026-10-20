@@ -552,7 +552,8 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
     ed.reload_buffer_in_place(
         FocusedPane::current(&ed.view),
         ReplaceSource::disk(replacement),
-    );
+    )
+    .expect("the buffer is not held");
     assert!(
         ed.state
             .buffers
@@ -599,7 +600,8 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
     ed.reload_buffer_in_place(
         FocusedPane::current(&ed.view),
         ReplaceSource::disk(identical),
-    );
+    )
+    .expect("the buffer is not held");
     ed.reparse_stale_buffers();
     ed.reparse_stale_buffers();
 

@@ -148,6 +148,7 @@ Modify buffer text.
 | Command | Default key | Effect |
 |---------|-------------|--------|
 | `align-selections` | `&` | Align each selection's anchor to the primary selection's anchor column. |
+| `cancel-pipe` | `Ctrl-c` | Stop the shell command `pipe` is running in the buffer and change nothing. Says so when none is running there. |
 | `change` | `c` | Delete selections onto the kill ring, then enter insert mode (one undo group). |
 | `decrement` | `Ctrl-s` | Subtract the count from the number, date or time at each selection. |
 | `decrement-sequence` | `G S` | Subtract n times the count from the number, date or time at the n-th selection. |
@@ -180,8 +181,8 @@ Move text between the buffer, the kill ring, and the system clipboard.
 | `paste-before` | — | Paste register contents before the selection. Bare (no `"<reg>` prefix) reads the kill-ring head, with no clipboard fallback. |
 | `paste-ring-newer` | `]` | Cycle kill ring one step newer and re-paste. |
 | `paste-ring-older` | `[` | Cycle kill ring one step older and re-paste. |
-| `smart-paste-after` | `p` | Paste after the selection: kill-ring head while nothing has been edited since the last capture, clipboard otherwise. |
-| `smart-paste-before` | `P` | Paste before the selection: kill-ring head while nothing has been edited since the last capture, clipboard otherwise. |
+| `smart-paste-after` | `p` | Paste after the selection: kill-ring head while you have edited nothing since the last capture, clipboard otherwise. |
+| `smart-paste-before` | `P` | Paste before the selection: kill-ring head while you have edited nothing since the last capture, clipboard otherwise. |
 | `yank` | `y` | Copy selections to the clipboard and kill ring without deleting. |
 
 ## Undo and repeat

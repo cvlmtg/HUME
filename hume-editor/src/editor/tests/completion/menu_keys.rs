@@ -615,7 +615,8 @@ fn a_stale_session_after_a_buffer_reload_is_dismissed_at_settle() {
     ed.reload_buffer_in_place(
         FocusedPane::current(&ed.view),
         ReplaceSource::disk(replacement),
-    );
+    )
+    .expect("the buffer is not held");
 
     ed.settle();
     assert!(ed.state.input.buffer_completion().is_none());
