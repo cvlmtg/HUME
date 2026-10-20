@@ -19,21 +19,75 @@ import {
 // so it stays out even though it's an underline-related word.
 export const STYLE_KEYS = GENERATED_STYLE_KEYS;
 
-export function resolveColor(c, pal) {
+// The one owner of a theme's palette and scopes. Both are keyed by names the
+// theme supplies, and `constructor` is a real tree-sitter scope, so they live
+// in private Maps: a plain object answers an Object.prototype member for a
+// name the theme leaves undefined. Every change returns a new Theme, because
+// the editor holds one in React state.
+export class Theme {
+  #palette;
+  #scopes;
+
+  constructor(paletteEntries, scopeEntries) {
+    this.#palette = new Map(paletteEntries);
+    this.#scopes = new Map(scopeEntries);
+  }
+
+  static from({ palette = {}, scopes = {} }) {
+    return new Theme(Object.entries(palette), Object.entries(scopes));
+  }
+
+  color(name) { return this.#palette.get(name); }
+  scope(id) { return this.#scopes.get(id); }
+  colors() { return [...this.#palette]; }
+  scopes() { return [...this.#scopes]; }
+
+  withColor(name, value) { return new Theme([...this.#palette, [name, value]], this.#scopes); }
+  withoutColor(name) { return new Theme([...this.#palette].filter(([k]) => k !== name), this.#scopes); }
+  withScope(id, value) { return new Theme(this.#palette, [...this.#scopes, [id, value]]); }
+  withoutScope(id) { return new Theme(this.#palette, [...this.#scopes].filter(([k]) => k !== id)); }
+
+  mapColors(fn) {
+    return new Theme([...this.#palette].map(([k, v]) => [k, fn(v)]), this.#scopes);
+  }
+
+  // `child`'s entries win, as an `inherits` child's do over its parent's.
+  overlay(child) {
+    return new Theme([...this.#palette, ...child.#palette], [...this.#scopes, ...child.#scopes]);
+  }
+
+  // The entries whose value differs from (or is absent in) `baseline`: an
+  // inherits child exports as its own overrides, not the merged state. Values
+  // compare by their JSON text, so a table with the same fields in another
+  // order counts as changed.
+  changedFrom(baseline) {
+    const changed = (entries, base) =>
+      [...entries].filter(([k, v]) => JSON.stringify(v) !== JSON.stringify(base.get(k)));
+    return new Theme(changed(this.#palette, baseline.#palette), changed(this.#scopes, baseline.#scopes));
+  }
+}
+
+// Looked up by names that arrive as runtime strings, so Maps for the same
+// reason as Theme's storage.
+const ANSI = new Map(Object.entries(ANSI_COLORS));
+const LADDERS = new Map(Object.entries(CURSOR_LADDERS));
+
+export function resolveColor(c, theme) {
   if (!c || typeof c !== "string") return null;
-  return c.startsWith("#") ? c : (pal[c] || ANSI_COLORS[c] || c);
+  return c.startsWith("#") ? c : (theme.color(c) || ANSI.get(c) || c);
 }
 
-export function resolve(val, pal) {
+export function resolve(val, theme) {
   if (!val) return null;
-  if (typeof val === "object") return { fg: resolveColor(val.fg, pal), bg: resolveColor(val.bg, pal) };
-  return resolveColor(val, pal);
+  if (typeof val === "object") return { fg: resolveColor(val.fg, theme), bg: resolveColor(val.bg, theme) };
+  return resolveColor(val, theme);
 }
 
-export function lookupRaw(id, sc) {
+export function lookupRaw(id, theme) {
   let key = id;
   while (key) {
-    if (sc[key] !== undefined && sc[key] !== "") return sc[key];
+    const v = theme.scope(key);
+    if (v !== undefined && v !== "") return v;
     const dot = key.lastIndexOf(".");
     if (dot === -1) break;
     key = key.slice(0, dot);
@@ -41,19 +95,19 @@ export function lookupRaw(id, sc) {
   return null;
 }
 
-export function scopeLookup(id, sc, pal) {
-  const v = lookupRaw(id, sc);
-  return v == null ? null : resolve(v, pal);
+export function scopeLookup(id, theme) {
+  const v = lookupRaw(id, theme);
+  return v == null ? null : resolve(v, theme);
 }
 
-export function fgc(id, sc, pal, fb) {
-  const c = scopeLookup(id, sc, pal);
+export function fgc(id, theme, fb) {
+  const c = scopeLookup(id, theme);
   if (!c) return fb;
   return typeof c === "object" ? (c.fg || fb) : c;
 }
 
-export function bgc(id, sc, pal, fb) {
-  const c = scopeLookup(id, sc, pal);
+export function bgc(id, theme, fb) {
+  const c = scopeLookup(id, theme);
   if (!c) return fb;
   return typeof c === "object" ? (c.bg || fb) : "transparent";
 }
@@ -65,18 +119,18 @@ export function bgc(id, sc, pal, fb) {
 // than carrying a literal of its own, so a theme that leaves a chrome scope
 // unset previews the colour HUME would actually render for it. The literals
 // here are the true last resort: a theme that defines neither.
-export const baseFg = (sc, pal) => fgc("ui.text", sc, pal, "#c0caf5");
-export const baseBg = (sc, pal) => bgc("ui.background", sc, pal, "#1a1b26");
+export const baseFg = (theme) => fgc("ui.text", theme, "#c0caf5");
+export const baseBg = (theme) => bgc("ui.background", theme, "#1a1b26");
 
 // Normalise a raw scope value (a bare color string, or a `{fg,bg,modifiers,
 // underline}` table) into a fully-resolved style. Shared by `fullStyle` and
 // `fullStyleChain` so the two lookup strategies below produce the same shape.
-function normalizeStyle(v, pal) {
-  if (typeof v === "string") return { fg: resolveColor(v, pal), bg: null, mods: [], underline: null };
+function normalizeStyle(v, theme) {
+  if (typeof v === "string") return { fg: resolveColor(v, theme), bg: null, mods: [], underline: null };
   const u = v.underline;
   return {
-    fg: resolveColor(v.fg, pal),
-    bg: resolveColor(v.bg, pal),
+    fg: resolveColor(v.fg, theme),
+    bg: resolveColor(v.bg, theme),
     mods: Array.isArray(v.modifiers) ? v.modifiers : [],
     // A table form with no `style` key resolves to no underline at all, not to
     // a solid one: `parse_style_table` (hume-engine/src/theme/loader.rs) sets
@@ -87,16 +141,16 @@ function normalizeStyle(v, pal) {
     underline: u
       ? (typeof u === "string"
           ? { style: u, color: null }
-          : (u.style ? { style: u.style, color: resolveColor(u.color, pal) } : null))
+          : (u.style ? { style: u.style, color: resolveColor(u.color, theme) } : null))
       : null,
   };
 }
 
 // Returns a fully normalised style for a scope (including modifiers and underline),
 // walking the dotted fallback chain. Returns null when no scope matches.
-export function fullStyle(id, sc, pal) {
-  const v = lookupRaw(id, sc);
-  return v == null ? null : normalizeStyle(v, pal);
+export function fullStyle(id, theme) {
+  const v = lookupRaw(id, theme);
+  return v == null ? null : normalizeStyle(v, theme);
 }
 
 // The text-span squiggle a diagnostic of severity `sev` draws — HUME's
@@ -104,8 +158,8 @@ export function fullStyle(id, sc, pal) {
 // and the end-of-line summary (`<sev>.diagnostic.inline`) the preview also
 // shows. A thin wrapper over `fullStyle` so the scope-name string lives in
 // one place and the resolution is unit-testable without importing JSX.
-export function diagnosticStyle(sev, sc, pal) {
-  return fullStyle("diagnostic." + sev, sc, pal);
+export function diagnosticStyle(sev, theme) {
+  return fullStyle("diagnostic." + sev, theme);
 }
 
 // Resolve the first key in `ids` that has an explicit scope entry — no
@@ -115,10 +169,10 @@ export function diagnosticStyle(sev, sc, pal) {
 // always lists a final rung (`ui.selection`) a real theme is expected to
 // define, so this is the rare "theme defines none of its cursor scopes at
 // all" case, not the common one.
-export function fullStyleChain(ids, sc, pal) {
+export function fullStyleChain(ids, theme) {
   for (const id of ids) {
-    const v = sc[id];
-    if (v !== undefined && v !== "") return normalizeStyle(v, pal);
+    const v = theme.scope(id);
+    if (v !== undefined && v !== "") return normalizeStyle(v, theme);
   }
   return null;
 }
@@ -140,14 +194,14 @@ export function fullStyleChain(ids, sc, pal) {
 // mode, keyed by its scope suffix — the same three chains this function has
 // always accepted.
 export function cursorLadderIds(chain, primary) {
-  const ladder = CURSOR_LADDERS[chain];
+  const ladder = LADDERS.get(chain);
   if (!ladder) throw new Error(`unknown cursor chain "${chain}"`);
   return primary ? ladder.primary : ladder.secondary;
 }
 
-export function cursorColors(chain, primary, sc, pal) {
+export function cursorColors(chain, primary, theme) {
   const ids = cursorLadderIds(chain, primary);
-  return fullStyleChain(ids, sc, pal) ?? { fg: null, bg: null, mods: [], underline: null };
+  return fullStyleChain(ids, theme) ?? { fg: null, bg: null, mods: [], underline: null };
 }
 
 // `UNDERLINE_NAMES` (generated) is the underline styles the loader accepts;
@@ -163,7 +217,7 @@ const UNDERLINE_STYLE_CSS = {
   dashed: "dashed",
   double_line: "double",
 };
-export const UNDERLINE_STYLES = Object.fromEntries(
+export const UNDERLINE_STYLES = new Map(
   UNDERLINE_NAMES.map((name) => [name, UNDERLINE_STYLE_CSS[name]]),
 );
 
@@ -173,15 +227,15 @@ export const UNDERLINE_STYLES = Object.fromEntries(
 export const MODIFIERS = [...MODIFIER_NAMES, UNDERLINE_MODIFIER];
 
 export function cssUnderlineStyle(s) {
-  return UNDERLINE_STYLES[s] ?? "solid";
+  return UNDERLINE_STYLES.get(s) ?? "solid";
 }
 
 // Build a React style object for a token or markup span from its scope's theme style.
 // `tag` (optional) overrides fg/bg and appends modifiers (used for cursor/selection/match).
 // `editorBg` is the canvas background, the `reversed` modifier's fallback fg
 // when the scope carries no bg of its own to swap against.
-export function tokenStyle(scopeId, sc, pal, fallbackFg, editorBg, tag) {
-  const s = scopeId ? fullStyle(scopeId, sc, pal) : null;
+export function tokenStyle(scopeId, theme, fallbackFg, editorBg, tag) {
+  const s = scopeId ? fullStyle(scopeId, theme) : null;
   let fg = tag?.fg ?? s?.fg ?? fallbackFg;
   let bg = tag?.bg ?? s?.bg ?? null;
   const mods = [...(s?.mods ?? []), ...(tag?.mods ?? [])];

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { ALL_SCOPES, DEFAULT_SC } from '../src/data.js';
+import { ALL_SCOPES, DEFAULT_THEME } from '../src/data.js';
 import {
   RUST_SAMPLE, HTML_SAMPLE, MARKDOWN_SAMPLE, DIFF_SAMPLE, CHROME_SCOPES,
   NEIGHBOR_TOP, NEIGHBOR_BOTTOM,
@@ -33,7 +33,7 @@ const NOT_YET_PREVIEWED_CHROME = ['ui.tabline', 'ui.tabline.active', 'ui.bufferl
 // paired with the source fragment that generates it, so the check still fails
 // if that call site goes away — it just can't match on the whole name.
 const COMPOSED = [
-  [/^ui\.(background|text)$/, 'baseBg(sc, pal)'],
+  [/^ui\.(background|text)$/, 'baseBg(theme)'],
   [/^ui\.cursor\.(primary\.)?(normal|insert|select)$/, 'cursorColors('],
   [/^diagnostic\.(error|warning|info|hint)$/, 'diagnosticStyle('],
   [/^diagnostic\.(error|warning|info|hint)\.message(-text)?$/, '"diagnostic." + e.sev'],
@@ -99,7 +99,7 @@ const DEFAULT_SC_INTENTIONAL_GAPS = ['ui.cursor.insert', 'ui.cursor.primary.inse
 
 test('every catalog scope has a DEFAULT_SC entry, except the documented cursor gaps', () => {
   const missing = ALL_SCOPES.filter(
-    id => !(id in DEFAULT_SC) && !DEFAULT_SC_INTENTIONAL_GAPS.includes(id)
+    id => DEFAULT_THEME.scope(id) === undefined && !DEFAULT_SC_INTENTIONAL_GAPS.includes(id)
   );
   assert.deepEqual(missing, [], `editable but blank on a fresh theme: ${missing.join(', ')}`);
 });

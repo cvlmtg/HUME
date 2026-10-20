@@ -1,16 +1,16 @@
 import { useState, useCallback, useMemo, useRef } from 'react';
 import { C, MONO, INPUT, COLOR_PICKER, pill } from '../ui.js';
 import { adjustPalette } from '../lib/color.js';
-import { parseTOML, extractScopes, exportTOML, diffFromBaseline } from '../lib/toml.js';
-import { SCOPES, ALL_SCOPES, DEFAULT_PAL, DEFAULT_SC } from '../data.js';
+import { Theme } from '../lib/theme.js';
+import { parseTOML, extractScopes, exportTOML } from '../lib/toml.js';
+import { SCOPES, ALL_SCOPES, DEFAULT_THEME } from '../data.js';
 import Acc from './Acc.jsx';
 import ScopeRow from './ScopeRow.jsx';
 import EditorPane from '../preview/EditorPane.jsx';
 import MessagesPane from '../preview/MessagesPane.jsx';
 
 export default function HelixThemeEditor() {
-  const [palette, setPalette] = useState(() => ({...DEFAULT_PAL}));
-  const [scopes, setScopes] = useState(() => ({...DEFAULT_SC}));
+  const [theme, setTheme] = useState(DEFAULT_THEME);
   const [newName, setNewName] = useState("");
   const [newColor, setNewColor] = useState("#ffffff");
   const [filter, setFilter] = useState("");
@@ -18,7 +18,7 @@ export default function HelixThemeEditor() {
   const [hShift, setHShift] = useState(0);
   const [sShift, setSShift] = useState(0);
   const [lShift, setLShift] = useState(0);
-  const adjPalette = useMemo(() => adjustPalette(palette, hShift, sShift, lShift), [palette, hShift, sShift, lShift]);
+  const adjTheme = useMemo(() => adjustPalette(theme, hShift, sShift, lShift), [theme, hShift, sShift, lShift]);
   const [palOpen, setPalOpen] = useState(true);
   const [scOpen, setScOpen] = useState(true);
   const [hslOpen, setHslOpen] = useState(true);
@@ -40,8 +40,8 @@ export default function HelixThemeEditor() {
   // Lines the parser couldn't make sense of. Distinct from `importError`: the
   // theme still imported, so this warns rather than reporting a failure.
   const [importWarnings, setImportWarnings] = useState([]);
-  // Snapshot of the resolved parent's own palette/scopes, taken the moment a
-  // child theme merges onto it — `{ name, palette, scopes }` or `null`. Lets
+  // Snapshot of the resolved parent's own theme, taken the moment a child
+  // theme merges onto it — `{ name, theme }` or `null`. Lets
   // `handleExport` emit only this theme's own overrides plus `inherits`,
   // instead of the merged (parent + child) state the app actually renders
   // from. `null` covers both "this is a plain root theme" and "still waiting
@@ -51,15 +51,8 @@ export default function HelixThemeEditor() {
   const fileRef = useRef(null);
 
   // Merge a most-derived-first override stack onto a base, most-derived wins.
-  const mergeChildStack = (children, basePalette = {}, baseScopes = {}) => {
-    let palette = { ...basePalette };
-    let scopes = { ...baseScopes };
-    for (let i = children.length - 1; i >= 0; i--) {
-      palette = { ...palette, ...children[i].palette };
-      scopes = { ...scopes, ...children[i].scopes };
-    }
-    return { palette, scopes };
-  };
+  const mergeChildStack = (children, base = Theme.from({})) =>
+    children.reduceRight((merged, child) => merged.overlay(child), base);
 
   const handleImport = useCallback(e => {
     const file = e.target.files?.[0];
@@ -72,8 +65,7 @@ export default function HelixThemeEditor() {
         const parsed = parseTOML(ev.target.result, diagnostics);
         setImportError(null);
         setImportWarnings(diagnostics);
-        const newPalette = parsed.palette || {};
-        const newScopes = extractScopes(parsed);
+        const imported = Theme.from({ palette: parsed.palette || {}, scopes: extractScopes(parsed) });
         const hasInherits = typeof parsed.inherits === "string" && parsed.inherits.length > 0;
         setHShift(0); setSShift(0); setLShift(0);
 
@@ -81,14 +73,13 @@ export default function HelixThemeEditor() {
           if (loadedThemeName && loadedThemeName === parsed.inherits) {
             // The loaded theme is confirmed (by name) to be this child's
             // declared parent — merge child overrides directly on top of it.
-            // The pre-merge `palette`/`scopes` state *is* that parent's own
-            // content, so it becomes the new export baseline. Track this
-            // child as the now-loaded theme (not the parent it just merged
-            // onto) so a further import naming *it* as their parent (a
-            // theme -> variant -> base chain) also matches.
-            setParentBaseline({ name: loadedThemeName, palette, scopes });
-            setPalette(p => ({...p, ...newPalette}));
-            setScopes(s => ({...s, ...newScopes}));
+            // The pre-merge `theme` state *is* that parent's own content, so
+            // it becomes the new export baseline. Track this child as the
+            // now-loaded theme (not the parent it just merged onto) so a
+            // further import naming *it* as their parent (a theme -> variant
+            // -> base chain) also matches.
+            setParentBaseline({ name: loadedThemeName, theme });
+            setTheme(t => t.overlay(imported));
             setPendingChildren([]);
             setInheritBanner(null);
             setLoadedThemeName(themeName);
@@ -99,11 +90,9 @@ export default function HelixThemeEditor() {
             // stack for visual feedback, and point the banner at the real
             // ancestor this file names. The resolved baseline is unknown
             // until that ancestor arrives.
-            const nextPending = [...pendingChildren, { palette: newPalette, scopes: newScopes }];
+            const nextPending = [...pendingChildren, imported];
             setPendingChildren(nextPending);
-            const merged = mergeChildStack(nextPending);
-            setPalette(merged.palette);
-            setScopes(merged.scopes);
+            setTheme(mergeChildStack(nextPending));
             setInheritBanner({ parent: parsed.inherits });
             setParentBaseline(null);
             setLoadedThemeName(null);
@@ -112,18 +101,15 @@ export default function HelixThemeEditor() {
           if (pendingChildren.length && inheritBanner?.parent === themeName) {
             // This is the ancestor the banner asked for — its own content,
             // before the pending stack lands on top, is the export baseline.
-            setParentBaseline({ name: themeName, palette: newPalette, scopes: newScopes });
-            const merged = mergeChildStack(pendingChildren, newPalette, newScopes);
-            setPalette(merged.palette);
-            setScopes(merged.scopes);
+            setParentBaseline({ name: themeName, theme: imported });
+            setTheme(mergeChildStack(pendingChildren, imported));
             setPendingChildren([]);
             setInheritBanner(null);
           } else {
             // A fresh root theme — any stashed children were waiting on a
             // different ancestor and no longer apply, and a root theme has
             // no parent to diff its export against.
-            setPalette(newPalette);
-            setScopes(newScopes);
+            setTheme(imported);
             setPendingChildren([]);
             setInheritBanner(null);
             setParentBaseline(null);
@@ -140,26 +126,24 @@ export default function HelixThemeEditor() {
       setImportError(`could not read ${file.name}: ${reader.error?.message ?? "read failed"}`);
     reader.readAsText(file);
     e.target.value = "";
-  }, [loadedThemeName, pendingChildren, inheritBanner, palette, scopes]);
+  }, [loadedThemeName, pendingChildren, inheritBanner, theme]);
 
   const handleExport = useCallback(() => {
-    // A resolved `parentBaseline` means `scopes`/`adjPalette` hold the
-    // *merged* state (parent content plus this theme's own overrides) — diff
-    // against the baseline so the export is `inherits` plus only the child's
-    // own overrides, round-tripping as the small file it started as instead
-    // of a flattened ~340-scope dump of everything the parent also provides.
+    // A resolved `parentBaseline` means `adjTheme` holds the *merged* state
+    // (parent content plus this theme's own overrides) — diff against the
+    // baseline so the export is `inherits` plus only the child's own
+    // overrides, round-tripping as the small file it started as instead of a
+    // flattened ~340-scope dump of everything the parent also provides.
     // Without one (a plain root theme, or an inherits chain still waiting on
     // its ancestor) export everything, unchanged from before.
-    let exportPalette = adjPalette;
-    let exportScopes = scopes;
+    let exported = adjTheme;
     let inherits = inheritBanner?.parent;
     if (parentBaseline) {
       inherits = parentBaseline.name;
-      exportPalette = diffFromBaseline(adjPalette, parentBaseline.palette);
-      exportScopes = diffFromBaseline(scopes, parentBaseline.scopes);
+      exported = adjTheme.changedFrom(parentBaseline.theme);
     }
 
-    const toml = exportTOML(exportPalette, exportScopes, inherits);
+    const toml = exportTOML(exported, inherits);
     const blob = new Blob([toml], { type: "application/toml" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -167,11 +151,11 @@ export default function HelixThemeEditor() {
     a.download = loadedThemeName ? `${loadedThemeName}.toml` : "theme.toml";
     a.click();
     URL.revokeObjectURL(url);
-  }, [adjPalette, scopes, inheritBanner, parentBaseline, loadedThemeName]);
+  }, [adjTheme, inheritBanner, parentBaseline, loadedThemeName]);
 
   const addColor = () => {
     if (newName.trim() && /^#[0-9a-fA-F]{6}$/.test(newColor)) {
-      setPalette(p => ({...p, [newName.trim()]: newColor}));
+      setTheme(t => t.withColor(newName.trim(), newColor));
       setNewName("");
       setNewColor("#ffffff");
     }
@@ -235,19 +219,19 @@ export default function HelixThemeEditor() {
 
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
         <div style={{ flex: 1, padding: 24, overflowY: "auto", display: "flex", flexDirection: "column", gap: 20 }}>
-          <EditorPane pal={adjPalette} sc={scopes} />
-          <MessagesPane pal={adjPalette} sc={scopes} />
+          <EditorPane theme={adjTheme} />
+          <MessagesPane theme={adjTheme} />
         </div>
 
         <div style={{ width: 340, flexShrink: 0, background: C.bgPanel, borderLeft: "1px solid " + C.border, overflowY: "auto", display: "flex", flexDirection: "column" }}>
-          <Acc title="Palette" open={palOpen} onToggle={() => setPalOpen(!palOpen)} count={Object.keys(palette).length}>
+          <Acc title="Palette" open={palOpen} onToggle={() => setPalOpen(!palOpen)} count={theme.colors().length}>
             <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-              {Object.entries(palette).map(([name, color]) => (
+              {theme.colors().map(([name, color]) => (
                 <div key={name} style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 2px", borderBottom: "1px solid " + C.bgRow }}>
-                  <input type="color" value={color} onChange={e => setPalette(p => ({...p, [name]: e.target.value}))} style={COLOR_PICKER} />
+                  <input type="color" value={color} onChange={e => setTheme(t => t.withColor(name, e.target.value))} style={COLOR_PICKER} />
                   <span style={{ flex: 1, fontSize: 12, color: C.textInput, fontFamily: MONO, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
                   <span style={{ fontSize: 10, color: C.textDim, fontFamily: MONO, flexShrink: 0 }}>{color}</span>
-                  <button onClick={() => setPalette(p => { const n = {...p}; delete n[name]; return n; })} style={{ background: "none", border: "none", color: C.textDim, cursor: "pointer", padding: "0 2px", fontSize: 14, lineHeight: 1, flexShrink: 0 }} title="Remove">{"×"}</button>
+                  <button onClick={() => setTheme(t => t.withoutColor(name))} style={{ background: "none", border: "none", color: C.textDim, cursor: "pointer", padding: "0 2px", fontSize: 14, lineHeight: 1, flexShrink: 0 }} title="Remove">{"×"}</button>
                 </div>
               ))}
             </div>
@@ -268,10 +252,8 @@ export default function HelixThemeEditor() {
               </div>
             </div>
             {filtered.map(id => (
-              <ScopeRow key={id} id={id} value={scopes[id] || ""} palette={adjPalette} onChange={v => setScopes(s => {
-                if (v === null) { const n = {...s}; delete n[id]; return n; }
-                return {...s, [id]: v};
-              })} />
+              <ScopeRow key={id} id={id} theme={adjTheme} onChange={v =>
+                setTheme(t => (v === null ? t.withoutScope(id) : t.withScope(id, v)))} />
             ))}
           </Acc>
 
@@ -304,7 +286,7 @@ export default function HelixThemeEditor() {
                 style={{ flex: 1, background: C.bgBtn, color: C.textMuted, border: "1px solid " + C.surface, borderRadius: 4, padding: "4px 8px", cursor: "pointer", fontFamily: MONO, fontSize: 10 }}>
                 {"Reset All"}
               </button>
-              <button onClick={() => { setPalette({...adjPalette}); setHShift(0); setSShift(0); setLShift(0); }}
+              <button onClick={() => { setTheme(adjTheme); setHShift(0); setSShift(0); setLShift(0); }}
                 style={{ flex: 1, background: C.accent, color: C.bg, border: "none", borderRadius: 4, padding: "4px 8px", cursor: "pointer", fontFamily: MONO, fontSize: 10, fontWeight: 600 }}>
                 {"Apply to Palette"}
               </button>

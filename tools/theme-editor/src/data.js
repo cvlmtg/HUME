@@ -10,6 +10,7 @@
 import {
   CURSOR_LADDERS, CURSOR_MATCH_SCOPES, DIAGNOSTIC_SCOPES, UI_SCOPES, VIRTUAL_SCOPES,
 } from "./lib/vocabulary.generated.js";
+import { Theme } from "./lib/theme.js";
 
 // The 8 fallback-ladder scopes come from CURSOR_LADDERS (generated from
 // cursor_ladder_ids/CURSOR_MODES in hume-engine/src/theme/mod.rs) rather
@@ -83,13 +84,13 @@ export const SCOPES = [
 
 export const ALL_SCOPES = SCOPES.flatMap(([, items]) => items);
 
-export const DEFAULT_PAL = {
+const DEFAULT_PAL = {
   black: "#1a1b26", red: "#f7768e", green: "#9ece6a", yellow: "#e0af68",
   blue: "#7aa2f7", magenta: "#bb9af7", cyan: "#7dcfff", white: "#c0caf5",
   orange: "#ff9e64", gray: "#565f89", "light-gray": "#a9b1d6", "dark-gray": "#33374c",
 };
 
-export const DEFAULT_SC = {
+const DEFAULT_SC = {
   "ui.background": { bg: "black" }, "ui.text": "white", "ui.cursor": { fg: "black", bg: "blue" },
   "ui.text.focus": { fg: "black", bg: "blue" },
   // `.normal`/`.select` (secondary) and `.primary`/`.primary.normal`/
@@ -199,3 +200,5 @@ export const DEFAULT_SC = {
   // render a hardcoded grey instead of a themed color (`EditorPane.jsx`).
   error: "red", warning: "yellow", info: "blue", hint: "cyan",
 };
+
+export const DEFAULT_THEME = Theme.from({ palette: DEFAULT_PAL, scopes: DEFAULT_SC });

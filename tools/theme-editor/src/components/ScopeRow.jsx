@@ -3,9 +3,10 @@ import { C, INPUT, MONO, pill } from '../ui.js';
 import { resolve, STYLE_KEYS, MODIFIERS, UNDERLINE_STYLES } from '../lib/theme.js';
 import Swatch from './Swatch.jsx';
 
-const UNDERLINE_STYLE_NAMES = Object.keys(UNDERLINE_STYLES);
+const UNDERLINE_STYLE_NAMES = [...UNDERLINE_STYLES.keys()];
 
-export default function ScopeRow({ id, value, palette, onChange }) {
+export default function ScopeRow({ id, theme, onChange }) {
+  const value = theme.scope(id) || "";
   const isObj = typeof value === "object" && value !== null;
   const fgVal = isObj ? (value.fg || "") : (value || "");
   const bgVal = isObj ? (value.bg || "") : "";
@@ -19,7 +20,7 @@ export default function ScopeRow({ id, value, palette, onChange }) {
   // imported `{ fg = "red", underline = "curl" }` has a real, rendered
   // underline with no modifier set, and must be editable here.
   const hasUnderline = modifiers.includes("underlined") || underlineRaw != null;
-  const palNames = Object.keys(palette);
+  const palNames = theme.colors().map(([name]) => name);
 
   const [fgCustom, setFgCustom] = useState(false);
   const [bgCustom, setBgCustom] = useState(false);
@@ -29,8 +30,8 @@ export default function ScopeRow({ id, value, palette, onChange }) {
   const [ulColorHex, setUlColorHex] = useState("");
 
   // Rows are keyed by a fixed `id` (see App.jsx), so a row is never remounted
-  // when `value` changes out from under it (e.g. a theme import overwrites
-  // `scopes` while this row is showing a typed-but-uncommitted custom hex).
+  // when `value` changes out from under it (e.g. a theme import replaces the
+  // theme while this row is showing a typed-but-uncommitted custom hex).
   // Reset the local "custom hex" state whenever the resolved fg/bg actually
   // changes — this is the React-documented "adjust state during render"
   // pattern, not an effect, so it applies before paint with no extra render.
@@ -112,8 +113,8 @@ export default function ScopeRow({ id, value, palette, onChange }) {
 
   const sel = { ...INPUT, flex: 1, minWidth: 0 };
 
-  const rFg = resolve(fgVal, palette);
-  const rBg = resolve(bgVal, palette);
+  const rFg = resolve(fgVal, theme);
+  const rBg = resolve(bgVal, theme);
 
   function renderSelect(val, isCustom, hexVal, setCustom, setHex, onCommit) {
     // A value that isn't blank and isn't a known palette name (e.g. an imported

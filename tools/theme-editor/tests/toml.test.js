@@ -1,8 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { parseTOML, extractScopes, exportTOML, diffFromBaseline, unescapeBasic, parseInlineTable } from '../src/lib/toml.js';
-import { bgc, lookupRaw, STYLE_KEYS } from '../src/lib/theme.js';
+import { parseTOML, extractScopes, exportTOML, unescapeBasic, parseInlineTable } from '../src/lib/toml.js';
+import { Theme, bgc, lookupRaw, STYLE_KEYS } from '../src/lib/theme.js';
+
+const theme = ({ scopes = {}, palette = {} } = {}) => Theme.from({ scopes, palette });
+
+// The parser's tables have no prototype, which strict deepEqual compares.
+// A JSON round-trip turns them into plain objects with the same entries.
+const plain = (v) => JSON.parse(JSON.stringify(v));
 
 test('unescapeBasic handles \\", \\\\, \\n, \\t, \\r', () => {
   assert.equal(unescapeBasic('a\\"b'), 'a"b');
@@ -25,7 +31,7 @@ test('parseTOML unescapes double-quoted strings, keeps single-quoted literal', (
 
 test('escaped-quote string round-trips through export byte-for-byte', () => {
   const parsed = parseTOML('k = "a\\"b\\ntab\\tend"');
-  const exported = exportTOML({}, { k: parsed.k });
+  const exported = exportTOML(theme({ scopes: { k: parsed.k } }));
   assert.equal(exported, '"k" = "a\\"b\\ntab\\tend"\n\n[palette]\n');
 });
 
@@ -39,7 +45,7 @@ test('parseTOML parses numbers and booleans as their real types', () => {
 });
 
 test('number/boolean values round-trip through export unquoted', () => {
-  const exported = exportTOML({}, { x: 42, y: true });
+  const exported = exportTOML(theme({ scopes: { x: 42, y: true } }));
   assert.match(exported, /^"x" = 42\n"y" = true\n/);
 });
 
@@ -50,25 +56,19 @@ test('a string that merely looks like a hex color still parses as a string', () 
 });
 
 test('exportTOML with an inherits name emits it as the first line and round-trips', () => {
-  const exported = exportTOML({ bg0: '#eeeeee' }, { 'ui.cursorline': { bg: 'bg1' } }, 'gruvbox');
+  const exported = exportTOML(
+    theme({ palette: { bg0: '#eeeeee' }, scopes: { 'ui.cursorline': { bg: 'bg1' } } }),
+    'gruvbox',
+  );
   assert.match(exported, /^inherits = "gruvbox"\n\n/);
   const reparsed = parseTOML(exported);
   assert.equal(reparsed.inherits, 'gruvbox');
-  assert.deepEqual(extractScopes(reparsed), { 'ui.cursorline': { bg: 'bg1' } });
+  assert.deepEqual(plain(extractScopes(reparsed)), { 'ui.cursorline': { bg: 'bg1' } });
 });
 
 test('exportTOML without an inherits name omits the key, as before', () => {
-  const exported = exportTOML({}, { k: 'v' });
+  const exported = exportTOML(theme({ scopes: { k: 'v' } }));
   assert.doesNotMatch(exported, /^inherits/);
-});
-
-test('diffFromBaseline finds only the overridden and newly-added entries', () => {
-  const baseline = { keyword: 'red', comment: 'gray' };
-  const current = { keyword: 'blue', comment: 'gray', 'markup.link': 'cyan' };
-  assert.deepEqual(diffFromBaseline(current, baseline), {
-    keyword: 'blue',
-    'markup.link': 'cyan',
-  });
 });
 
 // The end-to-end shape App.jsx's handleExport relies on: a resolved child
@@ -77,42 +77,41 @@ test('diffFromBaseline finds only the overridden and newly-added entries', () =>
 // round-tripping as the small file it started as, not the merged state the
 // editor renders from.
 test('a merged inherits-child exports and round-trips as inherits plus only its own overrides', () => {
-  const parentPalette = { bg0: '#111111', bg1: '#222222' };
-  const parentScopes = { keyword: 'bg0', comment: { fg: 'bg1', modifiers: ['italic'] } };
+  const parent = theme({
+    palette: { bg0: '#111111', bg1: '#222222' },
+    scopes: { keyword: 'bg0', comment: { fg: 'bg1', modifiers: ['italic'] } },
+  });
 
   // What the app actually holds after merging the child onto the parent: a
   // new `bg0` color, and `keyword` re-pointed at `bg1` instead of `bg0`.
-  const mergedPalette = { ...parentPalette, bg0: '#999999' };
-  const mergedScopes = { ...parentScopes, keyword: 'bg1' };
+  const merged = parent.overlay(theme({ palette: { bg0: '#999999' }, scopes: { keyword: 'bg1' } }));
 
-  const exportPalette = diffFromBaseline(mergedPalette, parentPalette);
-  const exportScopes = diffFromBaseline(mergedScopes, parentScopes);
-  const exported = exportTOML(exportPalette, exportScopes, 'base');
+  const exported = exportTOML(merged.changedFrom(parent), 'base');
 
   assert.match(exported, /^inherits = "base"\n\n/);
   const reparsed = parseTOML(exported);
   assert.equal(reparsed.inherits, 'base');
   // Only the child's own override survives — the untouched `comment` scope
   // and `bg1` palette entry, both still exactly the parent's, are absent.
-  assert.deepEqual(extractScopes(reparsed), { keyword: 'bg1' });
-  assert.deepEqual(reparsed.palette, { bg0: '#999999' });
+  assert.deepEqual(plain(extractScopes(reparsed)), { keyword: 'bg1' });
+  assert.deepEqual(plain(reparsed.palette), { bg0: '#999999' });
 });
 
 test('parseInlineTable splits on the "=" outside a quoted key containing one', () => {
   const parsed = parseInlineTable('{ "a=b" = "c", x = 1 }');
-  assert.deepEqual(parsed, { 'a=b': 'c', x: 1 });
+  assert.deepEqual(plain(parsed), { 'a=b': 'c', x: 1 });
 });
 
 test('extractScopes preserves an empty scope def ({}), e.g. ui.cursor.insert', () => {
   const parsed = parseTOML('"ui.cursor.insert" = {}');
-  assert.deepEqual(extractScopes(parsed), { 'ui.cursor.insert': {} });
+  assert.deepEqual(plain(extractScopes(parsed)), { 'ui.cursor.insert': {} });
 });
 
 test('extractScopes flattens a depth-3 section header into one dotted scope', () => {
   const parsed = parseTOML(
     '[ui.statusline.normal]\nfg = "black"\nbg = "blue"\n[palette]\nblue = "#7aa2f7"'
   );
-  assert.deepEqual(extractScopes(parsed), {
+  assert.deepEqual(plain(extractScopes(parsed)), {
     'ui.statusline.normal': { fg: 'black', bg: 'blue' },
   });
 });
@@ -120,7 +119,7 @@ test('extractScopes flattens a depth-3 section header into one dotted scope', ()
 test('extractScopes flattens a mixed def-and-children table', () => {
   // [ui] with both a direct style key and a nested sub-table.
   const parsed = { ui: { fg: 'white', cursor: { fg: 'blue' } } };
-  assert.deepEqual(extractScopes(parsed), {
+  assert.deepEqual(plain(extractScopes(parsed)), {
     ui: { fg: 'white' },
     'ui.cursor': { fg: 'blue' },
   });
@@ -130,25 +129,25 @@ test('extractScopes skips palette and inherits at the top level only', () => {
   const parsed = parseTOML(
     'inherits = "base16_default_dark"\ncomment = "gray"\n[palette]\nblack = "#000000"'
   );
-  assert.deepEqual(extractScopes(parsed), { comment: 'gray' });
+  assert.deepEqual(plain(extractScopes(parsed)), { comment: 'gray' });
 });
 
 test('bgc returns "transparent" for a bare fg-only string scope value', () => {
   const sc = { 'ui.background': 'black' };
   const pal = { black: '#1a1b26' };
-  assert.equal(bgc('ui.background', sc, pal, '#fallback'), 'transparent');
+  assert.equal(bgc('ui.background', theme({ scopes: sc, palette: pal }), '#fallback'), 'transparent');
 });
 
 test('an empty scope def ({}) blocks dotted-chain fallback (intentional Helix semantics)', () => {
   // ui.cursorline defines a real bg; ui.cursorline.primary is explicitly {} —
   // that should NOT fall back to the parent's bg, it should resolve to nothing.
   const sc = { 'ui.cursorline': { bg: 'red' }, 'ui.cursorline.primary': {} };
-  assert.deepEqual(lookupRaw('ui.cursorline.primary', sc), {});
+  assert.deepEqual(lookupRaw('ui.cursorline.primary', theme({ scopes: sc })), {});
 });
 
 test('lookupRaw falls back through the dotted chain when no exact key is defined', () => {
   const sc = { 'ui.cursorline': { bg: 'red' } };
-  assert.deepEqual(lookupRaw('ui.cursorline.primary', sc), { bg: 'red' });
+  assert.deepEqual(lookupRaw('ui.cursorline.primary', theme({ scopes: sc })), { bg: 'red' });
 });
 
 // ── Coverage gaps closed: modifiers/array, nested inline object, malformed
@@ -157,11 +156,11 @@ test('lookupRaw falls back through the dotted chain when no exact key is defined
 test('a scope def with a modifiers array round-trips through export and re-parse', () => {
   const parsed = parseTOML('"a" = { fg = "red", modifiers = ["bold", "italic"] }');
   const original = extractScopes(parsed);
-  assert.deepEqual(original, { a: { fg: 'red', modifiers: ['bold', 'italic'] } });
+  assert.deepEqual(plain(original), { a: { fg: 'red', modifiers: ['bold', 'italic'] } });
 
   // Independent oracle: re-parse the exported text and compare against the
   // pre-export structure, not against a string the export step produced.
-  const reparsed = extractScopes(parseTOML(exportTOML({}, original)));
+  const reparsed = extractScopes(parseTOML(exportTOML(theme({ scopes: original }))));
   assert.deepEqual(reparsed, original);
 });
 
@@ -172,15 +171,15 @@ test('a scope def with a modifiers array round-trips through export and re-parse
 test('a bare `style` key in a scope table is a child, not a style field', () => {
   const parsed = parseTOML('"a" = { style = { bold = true } }');
   const original = extractScopes(parsed);
-  assert.deepEqual(original, { 'a.style.bold': true });
+  assert.deepEqual(plain(original), { 'a.style.bold': true });
 
-  const reparsed = extractScopes(parseTOML(exportTOML({}, original)));
+  const reparsed = extractScopes(parseTOML(exportTOML(theme({ scopes: original }))));
   assert.deepEqual(reparsed, original);
 });
 
 test('`underline = { color, style }` keeps its nested style field', () => {
   const parsed = parseTOML('"a" = { underline = { color = "#ff0000", style = "curl" } }');
-  assert.deepEqual(extractScopes(parsed), {
+  assert.deepEqual(plain(extractScopes(parsed)), {
     a: { underline: { color: '#ff0000', style: 'curl' } },
   });
 });
@@ -203,15 +202,15 @@ test('the style-field set matches the loader\'s STYLE_KEYS', () => {
 // imported theme carrying one lost it on export.
 test('a non-string scalar scope value is preserved, not dropped', () => {
   const original = extractScopes(parseTOML('"a" = 42\n"b" = true'));
-  assert.deepEqual(original, { a: 42, b: true });
+  assert.deepEqual(plain(original), { a: 42, b: true });
 
-  const reparsed = extractScopes(parseTOML(exportTOML({}, original)));
+  const reparsed = extractScopes(parseTOML(exportTOML(theme({ scopes: original }))));
   assert.deepEqual(reparsed, original);
 });
 
 test('parseTOML skips a malformed line with no "=" instead of throwing', () => {
   const parsed = parseTOML('not a valid toml line\nk = "v"');
-  assert.deepEqual(parsed, { k: 'v' });
+  assert.deepEqual(plain(parsed), { k: 'v' });
 });
 
 // Skipping is right — one bad line shouldn't cost the rest of the theme, the
@@ -281,19 +280,19 @@ test('a quoted key containing "." is kept as one flat key, not split into a nest
 // recognise it as the `underline` style field and promotes it into an invented
 // child scope instead, losing the real scope's underline.
 test('a dotted key inside an inline table nests instead of staying literal', () => {
-  assert.deepEqual(parseInlineTable('{ underline.style = "line" }'), {
+  assert.deepEqual(plain(parseInlineTable('{ underline.style = "line" }')), {
     underline: { style: 'line' },
   });
 });
 
 test('a dotted inline key merges with its sibling rather than replacing it', () => {
-  assert.deepEqual(parseInlineTable('{ underline.color = "#ff0000", underline.style = "curl" }'), {
+  assert.deepEqual(plain(parseInlineTable('{ underline.color = "#ff0000", underline.style = "curl" }')), {
     underline: { color: '#ff0000', style: 'curl' },
   });
 });
 
 test('a quoted inline key containing "." stays one segment', () => {
-  assert.deepEqual(parseInlineTable('{ "a.b" = 1 }'), { 'a.b': 1 });
+  assert.deepEqual(plain(parseInlineTable('{ "a.b" = 1 }')), { 'a.b': 1 });
 });
 
 // Reads the shipped theme rather than a fixture: `ui.picker.header.column`'s
@@ -304,7 +303,7 @@ test('a shipped theme with a dotted inline key imports with its scope intact', (
   const src = readFileSync(
     new URL('../../../runtime/themes/gruvbox.toml', import.meta.url), 'utf8');
   const scopes = extractScopes(parseTOML(src));
-  assert.deepEqual(scopes['ui.picker.header.column'], { underline: { style: 'line' } });
+  assert.deepEqual(plain(scopes['ui.picker.header.column']), { underline: { style: 'line' } });
   assert.ok(!('ui.picker.header.column.underline.style' in scopes));
 });
 
@@ -316,22 +315,51 @@ test('a shipped theme with a dotted inline key imports with its scope intact', (
 // nothing resolves.
 test('a scalar beside a style field is dropped, not promoted to a child scope', () => {
   const parsed = parseTOML('[ui]\nfg = "white"\ntext = "#ffffff"');
-  assert.deepEqual(extractScopes(parsed), { ui: { fg: 'white' } });
+  assert.deepEqual(plain(extractScopes(parsed)), { ui: { fg: 'white' } });
 });
 
 // The other half of the same rule: with no style field present the table is a
 // pure container, so its scalar entries are real child scopes.
 test('a scalar in a table with no style field is still a child scope', () => {
   const parsed = parseTOML('[ui]\ntext = "#ffffff"');
-  assert.deepEqual(extractScopes(parsed), { 'ui.text': '#ffffff' });
+  assert.deepEqual(plain(extractScopes(parsed)), { 'ui.text': '#ffffff' });
 });
 
 // A sub-table beside a style field stays a child — there's nothing else it
 // could be, so only scalars are dropped.
 test('a sub-table beside a style field is still a child scope', () => {
   const parsed = { ui: { fg: 'white', cursor: { bg: 'blue' } } };
-  assert.deepEqual(extractScopes(parsed), {
+  assert.deepEqual(plain(extractScopes(parsed)), {
     ui: { fg: 'white' },
     'ui.cursor': { bg: 'blue' },
   });
+});
+
+// ── Keys named like Object.prototype members ──────────────────────────────
+
+test('a [__proto__] section is an ordinary table, not Object.prototype', () => {
+  try {
+    const parsed = parseTOML('[__proto__]\nhumeProbe = "yes"');
+    assert.equal(({}).humeProbe, undefined);
+    assert.deepEqual(plain(parsed), { ['__proto__']: { humeProbe: 'yes' } });
+  } finally {
+    delete Object.prototype.humeProbe;
+  }
+});
+
+test('a dotted __proto__ key inside an inline table is an ordinary key', () => {
+  try {
+    const parsed = parseInlineTable('{ __proto__.humeProbe = 1 }');
+    assert.equal(({}).humeProbe, undefined);
+    assert.deepEqual(plain(parsed), { ['__proto__']: { humeProbe: 1 } });
+  } finally {
+    delete Object.prototype.humeProbe;
+  }
+});
+
+test('"__proto__" and "constructor" keys parse as own entries', () => {
+  const parsed = parseTOML('"__proto__" = "a"\n[constructor]\nfg = "red"');
+  assert.deepEqual(Object.keys(parsed).sort(), ['__proto__', 'constructor']);
+  assert.equal(Object.getOwnPropertyDescriptor(parsed, '__proto__').value, 'a');
+  assert.deepEqual(plain(extractScopes(parsed)), { ['__proto__']: 'a', constructor: { fg: 'red' } });
 });

@@ -59,9 +59,7 @@ export function adjustColor(hex, hShift, sShift, lShift) {
   return rgb + alpha;
 }
 
-export function adjustPalette(pal, hShift, sShift, lShift) {
-  if (hShift === 0 && sShift === 0 && lShift === 0) return pal;
-  const out = {};
-  for (const k of Object.keys(pal)) out[k] = adjustColor(pal[k], hShift, sShift, lShift);
-  return out;
+export function adjustPalette(theme, hShift, sShift, lShift) {
+  if (hShift === 0 && sShift === 0 && lShift === 0) return theme;
+  return theme.mapColors(c => adjustColor(c, hShift, sShift, lShift));
 }

@@ -108,10 +108,13 @@ export function parseInlineVal(s) {
   return s;
 }
 
+// Every table this module builds has no prototype, so a theme key named
+// `__proto__` or `constructor` is an ordinary entry rather than a path into
+// Object.prototype.
 export function parseInlineTable(s) {
   const inner = s.slice(1, -1).trim();
-  if (!inner) return {};
-  const obj = {};
+  if (!inner) return Object.create(null);
+  const obj = Object.create(null);
   for (const pair of splitPairs(inner)) {
     // Find '=' outside string literals (keys may contain quoted '=').
     let eq = -1;
@@ -129,7 +132,7 @@ export function parseInlineTable(s) {
     const val = parseInlineVal(pair.slice(eq + 1).trim());
     let node = obj;
     for (const seg of path.slice(0, -1)) {
-      if (!isTable(node[seg])) node[seg] = {};
+      if (!isTable(node[seg])) node[seg] = Object.create(null);
       node = node[seg];
     }
     node[path[path.length - 1]] = val;
@@ -145,7 +148,7 @@ export function parseInlineTable(s) {
 // what came back.
 export function parseTOML(text, diagnostics) {
   const note = (n, msg) => diagnostics?.push(`line ${n}: ${msg}`);
-  const result = {};
+  const result = Object.create(null);
   let cur = result;
   const lines = text.split("\n");
   let i = 0;
@@ -159,7 +162,7 @@ export function parseTOML(text, diagnostics) {
     if (sec) {
       cur = result;
       for (const part of splitDottedKey(sec[1])) {
-        if (!cur[part]) cur[part] = {};
+        if (!cur[part]) cur[part] = Object.create(null);
         cur = cur[part];
       }
       continue;
@@ -228,7 +231,7 @@ function walkScopes(ns, obj, prefix) {
   const keys = Object.keys(obj);
   const styleKeys = keys.filter(k => STYLE_KEYS.includes(k));
   if (prefix && (keys.length === 0 || styleKeys.length > 0)) {
-    const def = {};
+    const def = Object.create(null);
     for (const k of styleKeys) def[k] = obj[k];
     ns[prefix] = def;
   }
@@ -253,34 +256,20 @@ function walkScopes(ns, obj, prefix) {
 }
 
 export function extractScopes(parsed) {
-  const ns = {};
+  const ns = Object.create(null);
   walkScopes(ns, parsed, "");
   return ns;
-}
-
-// Entries in `current` whose value differs from (or is entirely absent from)
-// `baseline` — used to export an inherits-child theme as just its own
-// overrides rather than the merged (parent + child) state the editor renders
-// from. A plain string-keyed diff, structural on the value: scope defs are
-// small `{fg,bg,modifiers,underline}` objects, so a JSON comparison is exact
-// and doesn't need a deep-equal dependency.
-export function diffFromBaseline(current, baseline) {
-  const out = {};
-  for (const [k, v] of Object.entries(current)) {
-    if (JSON.stringify(v) !== JSON.stringify(baseline[k])) out[k] = v;
-  }
-  return out;
 }
 
 // Emit every scope as a flat top-level quoted dotted key, then [palette] last.
 // We avoid [section] headers: TOML section semantics would merge a `[diff]` header
 // with an existing top-level `"diff" = "overlay"` into one nested object, losing
 // sub-keys after extractScopes. Flat keys match upstream Helix themes (rose_pine, etc.).
-export function exportTOML(palette, scopes, inherits) {
+export function exportTOML(theme, inherits) {
   let out = "";
   if (inherits) out += "inherits = " + formatVal(inherits) + "\n\n";
-  for (const [k, v] of Object.entries(scopes)) out += '"' + k + '" = ' + formatVal(v) + '\n';
+  for (const [k, v] of theme.scopes()) out += '"' + k + '" = ' + formatVal(v) + '\n';
   out += "\n[palette]\n";
-  for (const [k, v] of Object.entries(palette)) out += '"' + k + '" = ' + formatVal(v) + '\n';
+  for (const [k, v] of theme.colors()) out += '"' + k + '" = ' + formatVal(v) + '\n';
   return out;
 }

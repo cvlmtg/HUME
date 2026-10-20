@@ -13,19 +13,19 @@ const ENTRIES = [
   { sev: "hint", label: "HINT", text: "3 unsaved buffers" },
 ];
 
-export default function MessagesPane({ pal, sc }) {
-  const BG = baseBg(sc, pal);
-  const FG = baseFg(sc, pal);
+export default function MessagesPane({ theme }) {
+  const BG = baseBg(theme);
+  const FG = baseFg(theme);
 
   return (
     <div style={{ borderRadius: 6, overflow: "hidden", border: "1px solid " + C.border, fontFamily: MONO, fontSize: 12, background: BG }}>
       <div style={{ padding: "4px 12px", background: C.bgChrome, color: C.textDimmer, fontSize: 10, borderBottom: "1px solid " + C.border }}>{":messages"}</div>
       {ENTRIES.map(e => (
         <div key={e.sev} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 12px" }}>
-          <span style={{ ...tokenStyle("diagnostic." + e.sev + ".message", sc, pal, FG, BG, null), borderRadius: 3, padding: "1px 6px", fontSize: 10, fontWeight: 700 }}>
+          <span style={{ ...tokenStyle("diagnostic." + e.sev + ".message", theme, FG, BG, null), borderRadius: 3, padding: "1px 6px", fontSize: 10, fontWeight: 700 }}>
             {e.label}
           </span>
-          <span style={tokenStyle("diagnostic." + e.sev + ".message-text", sc, pal, FG, BG, null)}>{e.text}</span>
+          <span style={tokenStyle("diagnostic." + e.sev + ".message-text", theme, FG, BG, null)}>{e.text}</span>
         </div>
       ))}
     </div>

@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { adjustColor, hexToHSL, hslToHex } from '../src/lib/color.js';
+import { adjustColor, adjustPalette, hexToHSL, hslToHex } from '../src/lib/color.js';
+import { Theme } from '../src/lib/theme.js';
 
 test('adjustColor is a no-op on a 6-digit hex when all shifts are zero', () => {
   assert.equal(adjustColor('#7aa2f7', 0, 0, 0), '#7aa2f7');
@@ -31,4 +32,16 @@ test('adjustColor shifts a #rgb shorthand the same as its expanded form', () => 
 test('hexToHSL/hslToHex round-trip a primary color', () => {
   const [h, s, l] = hexToHSL('#ff0000');
   assert.equal(hslToHex(h, s, l), '#ff0000');
+});
+
+test('adjustPalette shifts every palette color and leaves the scopes alone', () => {
+  const theme = Theme.from({ palette: { fg: '#7aa2f7' }, scopes: { keyword: 'fg' } });
+  const out = adjustPalette(theme, 0, 0, 10);
+  assert.deepEqual(out.colors(), [['fg', adjustColor('#7aa2f7', 0, 0, 10)]]);
+  assert.deepEqual(out.scopes(), [['keyword', 'fg']]);
+});
+
+test('adjustPalette with no shift returns the same theme', () => {
+  const theme = Theme.from({ palette: { fg: '#7aa2f7' } });
+  assert.equal(adjustPalette(theme, 0, 0, 0), theme);
 });

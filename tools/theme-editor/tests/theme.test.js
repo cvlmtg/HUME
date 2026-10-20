@@ -1,20 +1,33 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { resolveColor, cursorColors, diagnosticStyle, fullStyle, tokenStyle, MODIFIERS, UNDERLINE_STYLES } from '../src/lib/theme.js';
+import { Theme, resolveColor, cursorColors, cursorLadderIds, cssUnderlineStyle, diagnosticStyle, fullStyle, tokenStyle, MODIFIERS, UNDERLINE_STYLES } from '../src/lib/theme.js';
 import { MODIFIER_NAMES } from '../src/lib/vocabulary.generated.js';
 
+const theme = ({ scopes = {}, palette = {} } = {}) => Theme.from({ scopes, palette });
+
 test('resolveColor resolves a bare ANSI name to its fixed hex value', () => {
-  assert.equal(resolveColor('red', {}), '#cd0000');
-  assert.equal(resolveColor('light-gray', {}), '#e5e5e5');
+  assert.equal(resolveColor('red', theme()), '#cd0000');
+  assert.equal(resolveColor('light-gray', theme()), '#e5e5e5');
 });
 
 test("resolveColor lets a theme's own palette entry override an ANSI name", () => {
-  assert.equal(resolveColor('red', { red: '#123456' }), '#123456');
+  assert.equal(resolveColor('red', theme({ palette: { red: '#123456' } })), '#123456');
 });
 
 test('resolveColor passes an unrecognised name straight through', () => {
-  assert.equal(resolveColor('crimson', {}), 'crimson');
+  assert.equal(resolveColor('crimson', theme()), 'crimson');
+});
+
+// Scope and palette names come from the theme, and `constructor` is a real
+// tree-sitter scope. A name that is also an Object.prototype member must
+// resolve like any other undefined name.
+test('a name inherited from Object.prototype resolves as undefined', () => {
+  assert.equal(resolveColor('toString', theme()), 'toString');
+  assert.equal(fullStyle('constructor', theme()), null);
+  assert.equal(fullStyle('constructor.builtin', theme({ scopes: { constructor: '#123456' } })).fg, '#123456');
+  assert.equal(cssUnderlineStyle('constructor'), 'solid');
+  assert.throws(() => cursorLadderIds('constructor', true), /unknown cursor chain/);
 });
 
 // ── cursorColors — mirrors hume-engine/src/theme/mod.rs's cursor_ladder ────
@@ -28,30 +41,30 @@ test('cursorColors resolves the most specific rung of each chain', () => {
     'ui.cursor.primary.insert': '#500000',
     'ui.cursor.primary.select': '#600000',
   };
-  assert.equal(cursorColors('normal', false, sc, {}).fg, '#100000');
-  assert.equal(cursorColors('insert', false, sc, {}).fg, '#200000');
-  assert.equal(cursorColors('select', false, sc, {}).fg, '#300000');
-  assert.equal(cursorColors('normal', true, sc, {}).fg, '#400000');
-  assert.equal(cursorColors('insert', true, sc, {}).fg, '#500000');
-  assert.equal(cursorColors('select', true, sc, {}).fg, '#600000');
+  assert.equal(cursorColors('normal', false, theme({ scopes: sc })).fg, '#100000');
+  assert.equal(cursorColors('insert', false, theme({ scopes: sc })).fg, '#200000');
+  assert.equal(cursorColors('select', false, theme({ scopes: sc })).fg, '#300000');
+  assert.equal(cursorColors('normal', true, theme({ scopes: sc })).fg, '#400000');
+  assert.equal(cursorColors('insert', true, theme({ scopes: sc })).fg, '#500000');
+  assert.equal(cursorColors('select', true, theme({ scopes: sc })).fg, '#600000');
 });
 
 test('cursorColors secondary chain falls back through ui.cursor to ui.selection', () => {
-  assert.equal(cursorColors('insert', false, { 'ui.cursor': '#abcdef' }, {}).fg, '#abcdef');
-  assert.equal(cursorColors('insert', false, { 'ui.selection': '#123456' }, {}).fg, '#123456');
+  assert.equal(cursorColors('insert', false, theme({ scopes: { 'ui.cursor': '#abcdef' } })).fg, '#abcdef');
+  assert.equal(cursorColors('insert', false, theme({ scopes: { 'ui.selection': '#123456' } })).fg, '#123456');
 });
 
 test('cursorColors primary chain reaches the bare "ui" rung the secondary chain skips', () => {
   const sc = { ui: '#654321' };
-  assert.equal(cursorColors('insert', true, sc, {}).fg, '#654321');
+  assert.equal(cursorColors('insert', true, theme({ scopes: sc })).fg, '#654321');
   // The secondary ladder has no "ui" rung at all — it must fall through
   // past it rather than resolving the same way the primary ladder did.
-  assert.equal(cursorColors('insert', false, sc, {}).fg, null);
+  assert.equal(cursorColors('insert', false, theme({ scopes: sc })).fg, null);
 });
 
 test('cursorColors always returns a normalized style, never null', () => {
-  assert.deepEqual(cursorColors('insert', true, {}, {}), { fg: null, bg: null, mods: [], underline: null });
-  assert.deepEqual(cursorColors('select', false, {}, {}), { fg: null, bg: null, mods: [], underline: null });
+  assert.deepEqual(cursorColors('insert', true, theme()), { fg: null, bg: null, mods: [], underline: null });
+  assert.deepEqual(cursorColors('select', false, theme()), { fg: null, bg: null, mods: [], underline: null });
 });
 
 // ── diagnosticStyle — the diagnostic.<sev> text-span squiggle ──────────────
@@ -61,14 +74,14 @@ test('diagnosticStyle resolves the diagnostic.<sev> scope, distinct per severity
     'diagnostic.error': { fg: '#ff0000', modifiers: ['underlined'] },
     'diagnostic.warning': '#ffff00',
   };
-  const err = diagnosticStyle('error', sc, {});
+  const err = diagnosticStyle('error', theme({ scopes: sc }));
   assert.equal(err.fg, '#ff0000');
   assert.deepEqual(err.mods, ['underlined']);
-  assert.equal(diagnosticStyle('warning', sc, {}).fg, '#ffff00');
+  assert.equal(diagnosticStyle('warning', theme({ scopes: sc })).fg, '#ffff00');
 });
 
 test('diagnosticStyle returns null for a severity the theme leaves unset', () => {
-  assert.equal(diagnosticStyle('hint', {}, {}), null);
+  assert.equal(diagnosticStyle('hint', theme()), null);
 });
 
 // ── vocabulary — generated from the loader, checked here for gaps the
@@ -79,7 +92,7 @@ test('diagnosticStyle returns null for a severity the theme leaves unset', () =>
 // style added with no matching entry there would silently fall back to
 // "solid" via `cssUnderlineStyle` instead of failing anywhere.
 test('every generated underline style has a CSS mapping', () => {
-  const missing = Object.entries(UNDERLINE_STYLES)
+  const missing = [...UNDERLINE_STYLES]
     .filter(([, css]) => css === undefined)
     .map(([name]) => name);
   assert.deepEqual(missing, [], `no CSS mapping in theme.js's UNDERLINE_STYLE_CSS: ${missing.join(', ')}`);
@@ -107,16 +120,16 @@ test('every generated modifier name is handled somewhere in theme.js', () => {
 // underline the editor it previews never renders.
 test('an underline table with a colour but no style resolves to no underline', () => {
   const sc = { definition: { underline: { color: '#8ec07c' } } };
-  assert.equal(fullStyle('definition', sc, {}).underline, null);
+  assert.equal(fullStyle('definition', theme({ scopes: sc })).underline, null);
 });
 
 test('an underline table with an explicit style keeps both fields', () => {
   const sc = { a: { underline: { color: '#ff0000', style: 'curl' } } };
-  assert.deepEqual(fullStyle('a', sc, {}).underline, { style: 'curl', color: '#ff0000' });
+  assert.deepEqual(fullStyle('a', theme({ scopes: sc })).underline, { style: 'curl', color: '#ff0000' });
 });
 
 test('a shorthand string underline resolves with no colour of its own', () => {
-  assert.deepEqual(fullStyle('a', { a: { underline: 'curl' } }, {}).underline, {
+  assert.deepEqual(fullStyle('a', theme({ scopes: { a: { underline: 'curl' } } })).underline, {
     style: 'curl',
     color: null,
   });
@@ -129,10 +142,10 @@ test('a shorthand string underline resolves with no colour of its own', () => {
 // them: the squiggle simply never rendered.
 test('tokenStyle takes the underline from an overlaid tag', () => {
   const sc = { variable: '#ebdbb2' };
-  const tag = fullStyle('diagnostic.error', {
-    'diagnostic.error': { fg: '#fb4934', underline: { color: '#fb4934', style: 'curl' } },
-  }, {});
-  const css = tokenStyle('variable', sc, {}, '#fff', '#282828', tag);
+  const tag = fullStyle('diagnostic.error', theme({
+    scopes: { 'diagnostic.error': { fg: '#fb4934', underline: { color: '#fb4934', style: 'curl' } } },
+  }));
+  const css = tokenStyle('variable', theme({ scopes: sc }), '#fff', '#282828', tag);
   assert.equal(css.textDecoration, 'underline');
   assert.equal(css.textDecorationStyle, 'wavy');
   assert.equal(css.textDecorationColor, '#fb4934');
@@ -141,7 +154,7 @@ test('tokenStyle takes the underline from an overlaid tag', () => {
 // A tag that carries no underline must not erase the token's own.
 test("tokenStyle keeps the token's own underline when the tag has none", () => {
   const sc = { a: { fg: '#ffffff', underline: 'dotted' } };
-  const css = tokenStyle('a', sc, {}, '#fff', '#282828', { fg: '#ff0000', mods: [] });
+  const css = tokenStyle('a', theme({ scopes: sc }), '#fff', '#282828', { fg: '#ff0000', mods: [] });
   assert.equal(css.textDecorationStyle, 'dotted');
 });
 
@@ -150,7 +163,7 @@ test("tokenStyle keeps the token's own underline when the tag has none", () => {
 // drops a scope's own bg entirely, which is wrong whenever one is set.
 test('tokenStyle swaps against the scope\'s own bg when reversed', () => {
   const sc = { a: { fg: '#111111', bg: '#eeeeee', modifiers: ['reversed'] } };
-  const css = tokenStyle('a', sc, {}, '#fff', '#282828');
+  const css = tokenStyle('a', theme({ scopes: sc }), '#fff', '#282828');
   assert.equal(css.color, '#eeeeee');
   assert.equal(css.background, '#111111');
 });
