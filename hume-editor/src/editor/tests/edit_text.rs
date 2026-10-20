@@ -29,29 +29,23 @@ fn after(initial: &str, edits: &str) -> String {
     let mut ed = editor_from(initial);
     define_probe(&mut ed, tmp.path(), edits);
     run_probe(&mut ed);
-    assert_eq!(errors(&ed), Vec::<String>::new());
+    assert_eq!(error_log(&ed), Vec::<String>::new());
     state(&ed)
 }
 
-/// The error `edits` reports on `initial`, with the text checked unchanged.
+/// The error `edits` reports on `initial`, with the text checked unchanged
+/// and the message checked to name `edit-text!`.
 fn error_for(initial: &str, edits: &str) -> String {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from(initial);
     define_probe(&mut ed, tmp.path(), edits);
     run_probe(&mut ed);
     assert_eq!(state(&ed), initial, "a refused edit changes nothing");
-    let errors = errors(&ed);
+    let errors = error_log(&ed);
     assert_eq!(errors.len(), 1, "one error expected, got {errors:?}");
-    errors.into_iter().next().unwrap_or_default()
-}
-
-fn errors(ed: &Editor) -> Vec<String> {
-    ed.state
-        .message_log
-        .entries()
-        .filter(|e| e.severity == Severity::Error)
-        .map(|e| e.text.to_string())
-        .collect()
+    let msg = errors.into_iter().next().unwrap_or_default();
+    assert!(msg.contains("edit-text!"), "got: {msg}");
+    msg
 }
 
 fn edit(start: usize, end: usize, text: &str) -> String {
@@ -207,28 +201,19 @@ fn an_empty_list_changes_nothing() {
 #[test]
 fn an_offset_past_the_end_raises() {
     let msg = error_for("-[a]>bc\n", &edits(&[edit(0, 9, "")]));
-    assert!(
-        msg.contains("edit-text!") && msg.contains("past the end"),
-        "got: {msg}"
-    );
+    assert!(msg.contains("past the end"), "got: {msg}");
 }
 
 #[test]
 fn a_reversed_range_raises() {
     let msg = error_for("-[a]>bc\n", &edits(&[edit(2, 1, "")]));
-    assert!(
-        msg.contains("edit-text!") && msg.contains("ends before it starts"),
-        "got: {msg}"
-    );
+    assert!(msg.contains("ends before it starts"), "got: {msg}");
 }
 
 #[test]
 fn overlapping_edits_raise() {
     let msg = error_for("-[a]>bcd\n", &edits(&[edit(0, 2, ""), edit(1, 3, "")]));
-    assert!(
-        msg.contains("edit-text!") && msg.contains("overlap"),
-        "got: {msg}"
-    );
+    assert!(msg.contains("overlap"), "got: {msg}");
 }
 
 #[test]
@@ -237,10 +222,7 @@ fn edges_widened_into_each_other_raise_as_overlapping() {
         "-[a]>e\u{301}b\n",
         &edits(&[edit(1, 2, "X"), edit(2, 3, "Y")]),
     );
-    assert!(
-        msg.contains("edit-text!") && msg.contains("overlap"),
-        "got: {msg}"
-    );
+    assert!(msg.contains("overlap"), "got: {msg}");
 }
 
 #[test]
@@ -252,7 +234,7 @@ fn a_read_only_buffer_raises() {
     ed.state.buffers.get_mut(bid).read_only = true;
     run_probe(&mut ed);
     assert_eq!(state(&ed), "-[a]>bc\n");
-    let errors = errors(&ed);
+    let errors = error_log(&ed);
     assert!(
         errors
             .iter()
@@ -275,7 +257,7 @@ fn an_insert_mode_binding_edits_without_leaving_insert_mode() {
     ed.feed_key(key_ctrl('x'));
     assert_eq!(ed.doc().text().to_string(), "abc!\n");
     assert_eq!(ed.state.mode(), Mode::Insert);
-    assert_eq!(errors(&ed), Vec::<String>::new());
+    assert_eq!(error_log(&ed), Vec::<String>::new());
 }
 
 #[test]
@@ -287,7 +269,7 @@ fn an_empty_list_changes_nothing_in_a_read_only_buffer_either() {
     ed.state.buffers.get_mut(bid).read_only = true;
     run_probe(&mut ed);
     assert_eq!(state(&ed), "-[a]>bc\n");
-    assert_eq!(errors(&ed), Vec::<String>::new());
+    assert_eq!(error_log(&ed), Vec::<String>::new());
 }
 
 #[test]

@@ -1080,15 +1080,9 @@ fn confirm_does_not_open_mid_pending_key_sequence() {
 /// doesn't hold the confirm back.
 #[test]
 fn confirm_opens_despite_a_sequence_left_in_another_buffer() {
-    let (mut ed, tmp) = editor_with_file(
-        "-[h]>ello
-",
-        "hello
-",
-    );
+    let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
     let bid = ed.focused_buffer_id();
-    let other = ed.open_buffer(Buffer::at_start(BufferText::from("other\n")));
-    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), other);
+    open_other_buffer(&mut ed, "other\n");
     ed.feed_key(key('g'));
     ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid);
     rewrite_externally(&tmp, "hello, externally changed!\n");

@@ -186,30 +186,7 @@ fn set_inlay_hints_errors_loudly_on_an_after_hint_at_the_trailing_newline() {
 /// every kind's host-boundary conversion holds to.
 #[test]
 fn set_extra_highlights_errors_loudly_on_an_out_of_range_end() {
-    let tmp = tempfile::tempdir().unwrap();
-    let mut ed = editor_from("-[x]>abcdef\n"); // 8 chars total
-    let bid = ed.focused_buffer_id();
-    let mut host = ScriptingHost::new(&Dirs::none());
-    eval_with_real_host(
-        &mut ed,
-        &mut host,
-        r#"(define-typed-command! "arm-bad" "" (lambda (bid)
-             (set-extra-highlights! "linter" bid (list (hash 'start-char 0 'end-char 100 'scope "unused")))))"#,
-        tmp.path(),
-    );
-    ed.scripting = Some(host);
-    type_cmd(&mut ed, ":arm-bad");
-
-    assert!(
-        ed.state
-            .config
-            .decorations
-            .extra_highlights_for_buffer(bid)
-            .next()
-            .is_none(),
-        "a malformed entry must not land in the store at all"
-    );
-    let log = ed.state.message_log.format_for_display();
+    let log = extra_highlights_error(0, 100);
     assert!(
         log.contains("100") && log.contains("set-extra-highlights!"),
         "must name the builtin and the offending value: {log:?}"
@@ -220,7 +197,7 @@ fn set_extra_highlights_errors_loudly_on_an_out_of_range_end() {
 /// from `start` to `end`, with the store checked empty.
 fn extra_highlights_error(start: usize, end: usize) -> String {
     let tmp = tempfile::tempdir().unwrap();
-    let mut ed = editor_from("-[x]>abcdef\n");
+    let mut ed = editor_from("-[x]>abcdef\n"); // 8 chars total
     let bid = ed.focused_buffer_id();
     let mut host = ScriptingHost::new(&Dirs::none());
     eval_with_real_host(

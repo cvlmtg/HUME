@@ -95,12 +95,7 @@ impl Editor {
                     // `try_get` guard in `bridge.rs`. `set_buffer_language_
                     // explicit` uses the panicking `get_mut`, so this must
                     // check first rather than let it panic.
-                    if self.state.buffers.try_get(buffer).is_none() {
-                        self.report(
-                            Severity::Trace,
-                            format!("set-buffer-option!: buffer {buffer:?} no longer exists"),
-                        );
-                    } else {
+                    if !self.effect_buffer_gone("set-buffer-option!", buffer) {
                         self.set_buffer_language_by_name(buffer, language.as_deref())
                     }
                 }
@@ -189,17 +184,27 @@ impl Editor {
         name: &str,
         change: fn(&mut LocalKeymaps, BufferId, &str) -> Result<(), UnknownKeymap>,
     ) {
-        if self.state.buffers.try_get(buffer).is_none() {
-            self.report(
-                Severity::Trace,
-                format!("{builtin}: buffer {buffer:?} no longer exists"),
-            );
-        } else if change(&mut self.state.config.local_keymaps, buffer, name).is_err() {
+        if !self.effect_buffer_gone(builtin, buffer)
+            && change(&mut self.state.config.local_keymaps, buffer, name).is_err()
+        {
             self.report(
                 Severity::Warning,
                 format!("{builtin}: no keymap named '{name}'"),
             );
         }
+    }
+
+    /// Whether `buffer`, which an effect from `builtin` targets, closed after
+    /// the effect was queued. Traced when it did.
+    fn effect_buffer_gone(&mut self, builtin: &str, buffer: BufferId) -> bool {
+        let gone = self.state.buffers.try_get(buffer).is_none();
+        if gone {
+            self.report(
+                Severity::Trace,
+                format!("{builtin}: buffer {buffer:?} no longer exists"),
+            );
+        }
+        gone
     }
 
     /// End a Steel session that returned `Result<Vec<Effect>, EvalError>`:

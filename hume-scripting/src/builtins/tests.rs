@@ -1,13 +1,13 @@
 use hume_platform::dirs::Dirs;
 
-// These two tests exercise a `cmd` and a `config` table entry through a
-// real `ScriptingHost` (register_all → Steel dispatch → the wrapper
-// closure's gate call) rather than calling `errors::require_cmd`/
-// `require_config` directly, proving the registration table's kind tags
-// actually wire a builtin to its gate, which the per-builtin unit tests
-// (calling the gate primitive with the builtin's name as a string) can't
-// catch on their own: a `cmd` entry mistyped as `open` would silently
-// stop gating without failing any of those.
+// The tests below exercise table entries' gates through a real
+// `ScriptingHost` (register_all → Steel dispatch → the wrapper closure's
+// gate call) rather than calling `errors::require_cmd`/`require_config`
+// directly, proving the registration table's kind tags actually wire a
+// builtin to its gate, which the per-builtin unit tests (calling the gate
+// primitive with the builtin's name as a string) can't catch on their own:
+// a `cmd` entry mistyped as `open` would stop gating without failing any of
+// those.
 
 /// A `cmd`-gated builtin (`focused-pane`) called from init.scm (where
 /// `register_all`'s wrapper closure is the only place the gate lives)
@@ -31,17 +31,7 @@ fn cmd_gated_builtin_rejected_from_init_through_real_registration() {
 /// `register-hook!` is `config`-gated.
 #[test]
 fn config_gated_builtin_rejected_from_command_body_through_real_registration() {
-    let mut host = crate::ScriptingHost::new(&Dirs::none());
-    let mut store = crate::null_host::CommandStoreHost::default();
-    host.eval_source(
-        r#"(define-command! "probe-register-hook" "doc"
-             (lambda () (register-hook! 'on-buffer-open (lambda (pane) (begin)))))"#,
-        &mut store,
-    )
-    .expect("defining the probe command must not error");
-
-    let err = host
-        .call_steel_cmd_by_name("probe-register-hook", vec![], &mut store)
+    let err = call_probe("(register-hook! 'on-buffer-open (lambda (pane) (begin)))")
         .expect_err("register-hook! must be rejected from a command body");
     assert!(err.message.contains("command body"), "got: {err:?}");
 }
@@ -50,16 +40,7 @@ fn config_gated_builtin_rejected_from_command_body_through_real_registration() {
 /// and plugin loading may do.
 #[test]
 fn global_bind_key_rejected_from_command_body_through_real_registration() {
-    let mut host = crate::ScriptingHost::new(&Dirs::none());
-    let mut store = crate::null_host::CommandStoreHost::default();
-    host.eval_source(
-        r#"(define-command! "probe-bind-key" "doc" (lambda () (bind-key! 'normal "Q" "move-down")))"#,
-        &mut store,
-    )
-    .expect("defining the probe command must not error");
-
-    let err = host
-        .call_steel_cmd_by_name("probe-bind-key", vec![], &mut store)
+    let err = call_probe(r#"(bind-key! 'normal "Q" "move-down")"#)
         .expect_err("a global bind-key! must be rejected from a command body");
     assert!(err.message.contains("command body"), "got: {err:?}");
 }
@@ -68,17 +49,7 @@ fn global_bind_key_rejected_from_command_body_through_real_registration() {
 /// body may do.
 #[test]
 fn named_bind_key_allowed_from_command_body_through_real_registration() {
-    let mut host = crate::ScriptingHost::new(&Dirs::none());
-    let mut store = crate::null_host::CommandStoreHost::default();
-    host.eval_source(
-        r#"(define-command! "probe-bind-key" "doc"
-             (lambda () (bind-key! 'normal "Q" "move-down" #:keymap 'probe-keys)))"#,
-        &mut store,
-    )
-    .expect("defining the probe command must not error");
-
-    let effects = host
-        .call_steel_cmd_by_name("probe-bind-key", vec![], &mut store)
+    let effects = call_probe(r#"(bind-key! 'normal "Q" "move-down" #:keymap 'probe-keys)"#)
         .expect("a named bind-key! must be allowed from a command body");
     assert!(
         matches!(
@@ -88,6 +59,18 @@ fn named_bind_key_allowed_from_command_body_through_real_registration() {
         ),
         "got: {effects:?}"
     );
+}
+
+/// Define a command whose body is `body`, then call it as a command.
+fn call_probe(body: &str) -> Result<Vec<crate::Effect>, crate::EvalError> {
+    let mut host = crate::ScriptingHost::new(&Dirs::none());
+    let mut store = crate::null_host::CommandStoreHost::default();
+    host.eval_source(
+        &format!(r#"(define-command! "probe" "doc" (lambda () {body}))"#),
+        &mut store,
+    )
+    .expect("defining the probe command must not error");
+    host.call_steel_cmd_by_name("probe", vec![], &mut store)
 }
 
 /// Every explicit-`bid` builtin declared `args::LivePane` in the `builtins!`

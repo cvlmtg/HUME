@@ -1,9 +1,10 @@
 //! LSP-driven text edits, workspace edits, and go-to-location, plus
 //! `goto-revision!` (undo-history navigation), `insert-key!`, `paste-text!`
-//! and `edit-text!`, which edit too but aren't LSP-driven. They live here rather than in their own trait
-//! because one capability accessor (`EditorHost::edits`) already gates every
-//! buffer-mutating builtin that isn't a named editor command, and a second
-//! accessor for them would only duplicate that gate.
+//! and `edit-text!`, which edit too but aren't LSP-driven. They live here
+//! rather than in their own trait because one capability accessor
+//! (`EditorHost::edits`) already gates every buffer-mutating builtin that
+//! isn't a named editor command, and a second accessor for them would only
+//! duplicate that gate.
 
 use hume_engine::pipeline::BufferId;
 use hume_rope::position_encoding::PositionEncoding;

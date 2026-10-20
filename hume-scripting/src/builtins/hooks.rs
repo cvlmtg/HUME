@@ -3,7 +3,7 @@
 use steel::rvals::SteelVal;
 
 use super::SteelResult;
-use super::args::{callable_arg, closure_shape, token_arg};
+use super::args::{callable_arg, closure_shape, symbol_arg, token_arg};
 use crate::SteelCtx;
 
 /// Decode a Steel event name: a symbol, validated against the host's
@@ -26,11 +26,7 @@ pub(crate) fn event_name_arg(
     val: &SteelVal,
     verb: &str,
 ) -> Result<String, steel::rerrs::SteelErr> {
-    let name_str = match val {
-        SteelVal::SymbolV(s) => s.to_string(),
-        _ => steel::stop!(TypeMismatch =>
-            "{verb}: expected an event-name symbol like 'on-buffer-save, got {:?}", val),
-    };
+    let name_str = symbol_arg(val, verb, "an event-name symbol like 'on-buffer-save")?;
     require_known_event(ctx, &name_str, verb)?;
     Ok(name_str)
 }

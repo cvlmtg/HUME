@@ -577,13 +577,6 @@ fn resolve_pane_settings_honours_the_buffer_rung() {
 // This is what lets a per-filetype `on-language-set` default reach a pane
 // that toggled wrap off in an earlier, unrelated buffer.
 
-fn open_second_buffer(ed: &mut Editor) -> BufferId {
-    let text = BufferText::from("other buffer\n");
-    let bid = ed.open_buffer(Buffer::at_start(text));
-    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid);
-    bid
-}
-
 /// `:wrap` off pins the pane for the buffer it was toggled in. Switching to
 /// another buffer in the same pane must not carry that pin along. The new
 /// buffer resolves through its own buffer/global chain, which is exactly
@@ -595,7 +588,7 @@ fn wrap_off_pin_does_not_follow_a_buffer_switch() {
     ed.execute_typed("wrap", None).unwrap(); // off
     assert_eq!(focused_pane(&ed).wrap().mode, Some(WrapMode::None));
 
-    open_second_buffer(&mut ed);
+    open_other_buffer(&mut ed, "other buffer\n");
     assert_ne!(
         ed.focused_buffer_id(),
         bid_first,
@@ -622,7 +615,7 @@ fn wrap_off_pin_is_restored_on_switching_back() {
     ed.execute_typed("wrap", None).unwrap(); // off
     assert_eq!(focused_pane(&ed).wrap().mode, Some(WrapMode::None));
 
-    open_second_buffer(&mut ed);
+    open_other_buffer(&mut ed, "other buffer\n");
     ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid_first);
     assert_eq!(
         focused_pane(&ed).wrap().mode,
@@ -638,7 +631,7 @@ fn set_pane_wrap_mode_pin_does_not_leak_to_another_buffer() {
     let mut ed = editor_from("-[a]>b\n");
     run_set(&mut ed, "pane wrap-mode=word").expect(":set pane wrap-mode=word failed");
 
-    open_second_buffer(&mut ed);
+    open_other_buffer(&mut ed, "other buffer\n");
     assert_eq!(
         focused_pane(&ed).wrap().mode,
         None,
@@ -653,7 +646,7 @@ fn closing_a_buffer_drops_its_wrap_override() {
     let mut ed = editor_from("-[a]>b\n");
     let bid_first = ed.focused_buffer_id();
     ed.execute_typed("wrap", None).unwrap(); // off, pins bid_first
-    let bid_second = open_second_buffer(&mut ed);
+    let bid_second = open_other_buffer(&mut ed, "other buffer\n");
 
     ed.close_buffer(bid_first);
     assert_eq!(

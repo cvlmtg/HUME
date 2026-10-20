@@ -106,11 +106,11 @@ pub(in crate::editor) fn past_document_end(range: &lsp_types::Range, rope: &rope
 /// Shared tail for [`build_edit_changeset`] (wire positions, converted to
 /// char offsets above), the completion-resolve path (already char offsets,
 /// mapped forward through the accept edit) and `edit-text!` (char offsets
-/// from Steel, checked by the host): sort, overlap-check,
-/// then walk once to build the `ChangeSet`. `edits` need not arrive sorted;
-/// `new_text` borrows from the caller's own edit list. A server's `new_text`
-/// is under no obligation to use LF, but needs no handling here: the
-/// changeset builder normalizes every insertion.
+/// from Steel, checked by the host): sort, overlap-check, then walk once to
+/// build the `ChangeSet`. `edits` need not arrive sorted; `new_text` borrows
+/// from the caller's own edit list. A server's `new_text` is under no
+/// obligation to use LF, but needs no handling here: the changeset builder
+/// normalizes every insertion.
 ///
 /// A server works on a file that may not end with a newline, while the
 /// buffer always does: an edit that drops the final `\n` gets it back under

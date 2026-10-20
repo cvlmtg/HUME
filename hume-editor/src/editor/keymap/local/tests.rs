@@ -22,6 +22,19 @@ fn bind(
     local.bind(name, mode, keys, Cow::Borrowed(command), false);
 }
 
+/// `LocalKeymaps` with one binding in the keymap "k", attached to `buffer`.
+fn attached_with(
+    buffer: BufferId,
+    mode: BindMode,
+    keys: &[KeyEvent],
+    command: &'static str,
+) -> LocalKeymaps {
+    let mut local = LocalKeymaps::default();
+    bind(&mut local, "k", mode, keys, command);
+    local.attach(buffer, "k").expect("k exists");
+    local
+}
+
 /// The command `keys` run in `buffer`, `"<prefix>"` when more keys are
 /// needed, or `"<none>"`.
 fn resolved(
@@ -41,9 +54,7 @@ fn resolved(
 #[test]
 fn a_new_keymap_has_no_bindings_of_its_own() {
     let (buf, _) = buffers();
-    let mut local = LocalKeymaps::default();
-    bind(&mut local, "k", BindMode::Normal, &[key!('z')], "zed");
-    local.attach(buf, "k").expect("k exists");
+    let local = attached_with(buf, BindMode::Normal, &[key!('z')], "zed");
     let global = Keymap::empty();
     assert_eq!(
         resolved(&local, &global, buf, BindMode::Normal, &[key!('h')]),
@@ -59,9 +70,7 @@ fn a_new_keymap_has_no_bindings_of_its_own() {
 fn an_attached_binding_hides_the_global_one() {
     let (buf, _) = buffers();
     let global = global_with(BindMode::Normal, &[key!('h')], "move-left");
-    let mut local = LocalKeymaps::default();
-    bind(&mut local, "k", BindMode::Normal, &[key!('h')], "local-h");
-    local.attach(buf, "k").expect("k exists");
+    let local = attached_with(buf, BindMode::Normal, &[key!('h')], "local-h");
     assert_eq!(
         resolved(&local, &global, buf, BindMode::Normal, &[key!('h')]),
         "local-h"
@@ -72,9 +81,7 @@ fn an_attached_binding_hides_the_global_one() {
 fn an_attached_binding_hides_a_global_prefix() {
     let (buf, _) = buffers();
     let global = global_with(BindMode::Normal, &[key!('g'), key!('g')], "goto-file-start");
-    let mut local = LocalKeymaps::default();
-    bind(&mut local, "k", BindMode::Normal, &[key!('g')], "local-g");
-    local.attach(buf, "k").expect("k exists");
+    let local = attached_with(buf, BindMode::Normal, &[key!('g')], "local-g");
     assert_eq!(
         resolved(&local, &global, buf, BindMode::Normal, &[key!('g')]),
         "local-g"
@@ -85,15 +92,7 @@ fn an_attached_binding_hides_a_global_prefix() {
 fn an_attached_prefix_hides_a_global_binding() {
     let (buf, _) = buffers();
     let global = global_with(BindMode::Normal, &[key!('Z')], "global-z");
-    let mut local = LocalKeymaps::default();
-    bind(
-        &mut local,
-        "k",
-        BindMode::Normal,
-        &[key!('Z'), key!('a')],
-        "local-za",
-    );
-    local.attach(buf, "k").expect("k exists");
+    let local = attached_with(buf, BindMode::Normal, &[key!('Z'), key!('a')], "local-za");
     assert_eq!(
         resolved(&local, &global, buf, BindMode::Normal, &[key!('Z')]),
         "<prefix>"
@@ -114,15 +113,7 @@ fn an_attached_prefix_hides_a_global_binding() {
 fn local_and_global_prefixes_combine() {
     let (buf, _) = buffers();
     let global = global_with(BindMode::Normal, &[key!('G'), key!('G')], "toggle-comment");
-    let mut local = LocalKeymaps::default();
-    bind(
-        &mut local,
-        "k",
-        BindMode::Normal,
-        &[key!('G'), key!('H')],
-        "heading",
-    );
-    local.attach(buf, "k").expect("k exists");
+    let local = attached_with(buf, BindMode::Normal, &[key!('G'), key!('H')], "heading");
     assert_eq!(
         resolved(
             &local,
@@ -242,9 +233,7 @@ fn detaching_one_keymap_keeps_the_others() {
 fn a_forgotten_buffer_has_only_the_global_keys() {
     let (buf, _) = buffers();
     let global = global_with(BindMode::Normal, &[key!('z')], "global-z");
-    let mut local = LocalKeymaps::default();
-    bind(&mut local, "k", BindMode::Normal, &[key!('z')], "local-z");
-    local.attach(buf, "k").expect("k exists");
+    let mut local = attached_with(buf, BindMode::Normal, &[key!('z')], "local-z");
     local.forget_buffer(buf);
     assert_eq!(
         resolved(&local, &global, buf, BindMode::Normal, &[key!('z')]),
@@ -256,9 +245,7 @@ fn a_forgotten_buffer_has_only_the_global_keys() {
 fn another_buffer_has_only_the_global_keys() {
     let (buf, other) = buffers();
     let global = global_with(BindMode::Normal, &[key!('z')], "global-z");
-    let mut local = LocalKeymaps::default();
-    bind(&mut local, "k", BindMode::Normal, &[key!('z')], "local-z");
-    local.attach(buf, "k").expect("k exists");
+    let local = attached_with(buf, BindMode::Normal, &[key!('z')], "local-z");
     assert_eq!(
         resolved(&local, &global, other, BindMode::Normal, &[key!('z')]),
         "global-z"
@@ -269,9 +256,7 @@ fn another_buffer_has_only_the_global_keys() {
 fn a_binding_added_after_attaching_applies() {
     let (buf, _) = buffers();
     let global = Keymap::empty();
-    let mut local = LocalKeymaps::default();
-    bind(&mut local, "k", BindMode::Normal, &[key!('a')], "local-a");
-    local.attach(buf, "k").expect("k exists");
+    let mut local = attached_with(buf, BindMode::Normal, &[key!('a')], "local-a");
     bind(&mut local, "k", BindMode::Normal, &[key!('z')], "local-z");
     assert_eq!(
         resolved(&local, &global, buf, BindMode::Normal, &[key!('z')]),
@@ -283,9 +268,7 @@ fn a_binding_added_after_attaching_applies() {
 fn extend_mode_tries_each_keymap_whole_before_the_next() {
     let (buf, _) = buffers();
     let global = global_with(BindMode::Extend, &[key!('o')], "global-extend-o");
-    let mut local = LocalKeymaps::default();
-    bind(&mut local, "k", BindMode::Normal, &[key!('o')], "local-o");
-    local.attach(buf, "k").expect("k exists");
+    let local = attached_with(buf, BindMode::Normal, &[key!('o')], "local-o");
     let found = local.resolve(&global, buf, BindMode::Extend, &[key!('o')]);
     assert!(matches!(found.walk, WalkResult::Leaf(ref c) if c.name == "local-o"));
     assert!(!found.extend_override);
@@ -314,15 +297,7 @@ fn an_extend_override_wins_over_normal_in_its_own_keymap() {
 fn normal_mode_ignores_extend_overrides() {
     let (buf, _) = buffers();
     let global = global_with(BindMode::Normal, &[key!('o')], "global-o");
-    let mut local = LocalKeymaps::default();
-    bind(
-        &mut local,
-        "k",
-        BindMode::Extend,
-        &[key!('o')],
-        "local-extend-o",
-    );
-    local.attach(buf, "k").expect("k exists");
+    let local = attached_with(buf, BindMode::Extend, &[key!('o')], "local-extend-o");
     assert_eq!(
         resolved(&local, &global, buf, BindMode::Normal, &[key!('o')]),
         "global-o"

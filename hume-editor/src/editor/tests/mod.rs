@@ -357,6 +357,13 @@ fn has_error(ed: &Editor, needle: &str) -> bool {
         .any(|e| e.severity == Severity::Error && e.text.contains(needle))
 }
 
+/// Open a buffer holding `text` and switch the focused pane to it.
+fn open_other_buffer(ed: &mut Editor, text: &str) -> BufferId {
+    let bid = ed.open_buffer(Buffer::at_start(BufferText::from(text)));
+    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid);
+    bid
+}
+
 /// The text of every error in the message log, oldest first.
 fn error_log(ed: &Editor) -> Vec<String> {
     ed.state

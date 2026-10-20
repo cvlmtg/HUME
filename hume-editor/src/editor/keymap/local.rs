@@ -113,7 +113,7 @@ impl LocalKeymaps {
     ) -> Resolved {
         let attached = self.attached.get(&buffer).into_iter().flatten().rev();
         attached
-            .filter_map(|name| self.maps.get(name))
+            .map(|name| &self.maps[name])
             .chain(std::iter::once(global))
             .find_map(|keymap| keymap.resolve(mode, keys))
             .unwrap_or(Resolved {

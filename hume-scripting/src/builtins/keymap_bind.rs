@@ -10,7 +10,7 @@ use crate::keys::parse_key_sequence;
 use crate::{Effect, PaneHandle, SteelCtx};
 
 use super::SteelResult;
-use super::args::{optional_symbol_arg, symbol_enum_arg};
+use super::args::{optional_symbol_arg, symbol_arg, symbol_enum_arg};
 use super::errors::{self, generic_err};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -24,11 +24,7 @@ const MODES: [(&str, BindMode); 4] = [
 ];
 
 fn mode_from_symbol(mode: &SteelVal, fn_name: &str) -> Result<BindMode, SteelErr> {
-    let mode_str = match mode {
-        SteelVal::SymbolV(s) => s.to_string(),
-        _ => steel::stop!(TypeMismatch =>
-            "{fn_name}: expected a mode symbol like 'normal, got {:?}", mode),
-    };
+    let mode_str = symbol_arg(mode, fn_name, "a mode symbol like 'normal")?;
     symbol_enum_arg(&mode_str, &format!("{fn_name} mode"), &MODES)
 }
 
@@ -162,11 +158,7 @@ pub(crate) fn unbind_key(
 }
 
 fn keymap_name(name: SteelVal, fn_name: &str) -> Result<String, SteelErr> {
-    match name {
-        SteelVal::SymbolV(s) => Ok(s.to_string()),
-        other => steel::stop!(TypeMismatch =>
-            "{fn_name}: expected a keymap name symbol like 'my-keys, got {:?}", other),
-    }
+    symbol_arg(&name, fn_name, "a keymap name symbol like 'my-keys")
 }
 
 /// `(attach-keymap! pane name)`

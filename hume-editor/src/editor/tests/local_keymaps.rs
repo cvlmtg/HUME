@@ -3,6 +3,7 @@
 
 use super::*;
 use crate::editor::keymap::BindMode;
+use crate::editor::tests::before_save::warning_texts;
 use pretty_assertions::assert_eq;
 use std::borrow::Cow;
 
@@ -12,11 +13,6 @@ fn bind_here(ed: &mut Editor, mode: BindMode, keys: &[KeyEvent], command: &'stat
     let local = &mut ed.state.config.local_keymaps;
     local.bind("test", mode, keys, Cow::Borrowed(command), false);
     local.attach(bid, "test").expect("bound above");
-}
-
-fn open_other_buffer(ed: &mut Editor, text: &str) {
-    let bid = ed.open_buffer(Buffer::at_start(BufferText::from(text)));
-    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid);
 }
 
 #[test]
@@ -186,18 +182,12 @@ fn a_named_bind_to_an_unknown_command_is_reported() {
         tmp.path(),
         r#"(bind-key! 'normal "z" "no-such-command" #:keymap 'test-keys)"#,
     );
+    let warnings = warning_texts(&ed);
     assert!(
-        ed.state
-            .message_log
-            .entries()
-            .any(|e| e.severity == Severity::Warning
-                && e.text.contains("unknown command 'no-such-command'")),
-        "messages: {:?}",
-        ed.state
-            .message_log
-            .entries()
-            .map(|e| &e.text)
-            .collect::<Vec<_>>()
+        warnings
+            .iter()
+            .any(|w| w.contains("unknown command 'no-such-command'")),
+        "warnings: {warnings:?}"
     );
 }
 
@@ -229,15 +219,6 @@ fn after_l(ed: &mut Editor) -> String {
     state(ed)
 }
 
-fn warnings(ed: &Editor) -> Vec<String> {
-    ed.state
-        .message_log
-        .entries()
-        .filter(|e| e.severity == Severity::Warning)
-        .map(|e| e.text.to_string())
-        .collect()
-}
-
 const LANGUAGE_RECIPE: &str = r#"
 (register-hook! 'on-language-set
   (lambda (pane lang)
@@ -255,7 +236,7 @@ fn the_language_recipe_attaches_for_markdown_and_detaches_on_change() {
     assert_eq!(after_l(&mut ed), "-[a]>bc\n");
     set_language(&mut ed, "rust");
     assert_eq!(after_l(&mut ed), "a-[b]>c\n");
-    assert_eq!(warnings(&ed), Vec::<String>::new());
+    assert_eq!(warning_texts(&ed), Vec::<String>::new());
 }
 
 #[test]
@@ -287,7 +268,7 @@ fn attaching_a_keymap_nothing_is_bound_into_warns_and_changes_nothing() {
     set_language(&mut ed, "markdown");
     assert_eq!(after_l(&mut ed), "ab-[c]>\n");
     assert_eq!(
-        warnings(&ed),
+        warning_texts(&ed),
         vec!["attach-keymap!: no keymap named 'later-keys'".to_owned()]
     );
 }
@@ -304,7 +285,7 @@ fn detaching_a_keymap_nothing_is_bound_into_warns() {
     );
     set_language(&mut ed, "markdown");
     assert_eq!(
-        warnings(&ed),
+        warning_texts(&ed),
         vec!["detach-keymap!: no keymap named 'no-keys'".to_owned()]
     );
 }
@@ -316,7 +297,7 @@ fn detaching_a_keymap_that_is_not_attached_says_nothing() {
     run_with_test_keys(&mut ed, tmp.path(), LANGUAGE_RECIPE);
     set_language(&mut ed, "rust");
     assert_eq!(after_l(&mut ed), "ab-[c]>\n");
-    assert_eq!(warnings(&ed), Vec::<String>::new());
+    assert_eq!(warning_texts(&ed), Vec::<String>::new());
 }
 
 #[test]

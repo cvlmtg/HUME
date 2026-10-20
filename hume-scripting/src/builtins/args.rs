@@ -113,6 +113,19 @@ pub(crate) fn optional_symbol_arg(
     }
 }
 
+/// A required symbol argument. `expected` names what the symbol stands for,
+/// with an example (`"a mode symbol like 'normal"`), for the error.
+pub(crate) fn symbol_arg(
+    val: &SteelVal,
+    ctx_name: &str,
+    expected: &str,
+) -> Result<String, SteelErr> {
+    match val {
+        SteelVal::SymbolV(s) => Ok(s.to_string()),
+        _ => steel::stop!(TypeMismatch => "{}: expected {}, got {:?}", ctx_name, expected, val),
+    }
+}
+
 /// Maps an already-decoded keyword string to one of a fixed set of enum
 /// values via a `(spelling, value)` table: the "must be 'a, 'b, or 'c, got
 /// 'x" shape shared by every Steel enum-keyword decoder. Callers
