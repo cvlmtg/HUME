@@ -1,13 +1,10 @@
 use super::super::args::{cons_pair, string_list, symbol_hash};
 use super::*;
-use crate::{ConfigOrigin, PendingLanguageReg, test_support::SteelCtxTestHarness};
+use crate::test_support::{SteelCtxTestHarness, str_val};
+use crate::{ConfigOrigin, PendingLanguageReg};
 use hume_editing::comment::{BlockCommentTokens, LineCommentTokens};
 use hume_treesitter::registry::{LanguageFields, OptionalQuery};
 use steel::rvals::IntoSteelVal as _;
-
-fn str_val(s: &str) -> SteelVal {
-    SteelVal::StringV(s.into())
-}
 
 fn empty_list() -> SteelVal {
     Vec::<SteelVal>::new().into_steelval().unwrap()

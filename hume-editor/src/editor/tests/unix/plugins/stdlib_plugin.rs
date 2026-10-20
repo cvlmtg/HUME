@@ -586,10 +586,12 @@ const MARKDOWN_HEADING: &str = r#"
 
 /// An editor on `input` in a `language` buffer, with the shipped
 /// `core:stdlib` and the example loaded the way a user's `init.scm` would
-/// load them. The returned guards keep the runtime and init directories alive.
-fn markdown_heading_editor(
+/// load them, after `keys` are pressed. The returned guards keep the runtime
+/// and init directories alive.
+fn heading_editor_after(
     language: &str,
     input: &str,
+    keys: &str,
 ) -> (Editor, RuntimeDirs, tempfile::TempDir) {
     let guard = RuntimeDirs::new();
     write_core_plugin(&guard, "stdlib", STDLIB_PLUGIN);
@@ -605,6 +607,9 @@ fn markdown_heading_editor(
     let language = ed.state.config.languages.intern(language);
     ed.set_buffer_language(bid, Some(language));
     ed.settle();
+    for ch in keys.chars() {
+        ed.feed_key(key(ch));
+    }
     (ed, guard, init_dir)
 }
 
@@ -613,10 +618,7 @@ fn heading_after(input: &str, keys: &str) -> String {
 }
 
 fn heading_after_in(language: &str, input: &str, keys: &str) -> String {
-    let (mut ed, _guard, _init_dir) = markdown_heading_editor(language, input);
-    for ch in keys.chars() {
-        ed.feed_key(key(ch));
-    }
+    let (ed, _guard, _init_dir) = heading_editor_after(language, input, keys);
     ed.state
         .buffers
         .get(ed.focused_buffer_id())
@@ -626,10 +628,7 @@ fn heading_after_in(language: &str, input: &str, keys: &str) -> String {
 
 /// The marked state after `keys`, in a Markdown buffer.
 fn heading_state_after(input: &str, keys: &str) -> String {
-    let (mut ed, _guard, _init_dir) = markdown_heading_editor("markdown", input);
-    for ch in keys.chars() {
-        ed.feed_key(key(ch));
-    }
+    let (ed, _guard, _init_dir) = heading_editor_after("markdown", input, keys);
     state(&ed)
 }
 

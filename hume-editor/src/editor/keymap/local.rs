@@ -33,14 +33,14 @@ impl LocalKeymaps {
     /// Bind `keys` in the keymap `name`, creating the keymap if needed.
     pub(in crate::editor) fn bind(
         &mut self,
-        name: &str,
+        name: String,
         mode: BindMode,
         keys: &[KeyEvent],
         command: Cow<'static, str>,
         force_extend: bool,
     ) {
         self.maps
-            .entry(name.into())
+            .entry(name.into_boxed_str())
             .or_insert_with(Keymap::empty)
             .bind_user_with_extend(mode, keys, command, force_extend);
     }

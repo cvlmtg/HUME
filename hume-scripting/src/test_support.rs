@@ -38,6 +38,16 @@ pub(crate) fn default_pane_with_pane() -> crate::types::PaneHandle {
     crate::types::PaneHandle::with_pane(default_bid(), hume_engine::pipeline::PaneId::default())
 }
 
+/// The Steel symbol `name`.
+pub(crate) fn sym(name: &str) -> steel::rvals::SteelVal {
+    steel::rvals::SteelVal::SymbolV(name.into())
+}
+
+/// The Steel string `s`.
+pub(crate) fn str_val(s: &str) -> steel::rvals::SteelVal {
+    steel::rvals::SteelVal::StringV(s.into())
+}
+
 /// Backing storage for [`SteelCtx`] in scripting-crate unit tests.
 ///
 /// Uses [`NullHost`], sufficient for tests that only need to check that

@@ -130,7 +130,7 @@ impl Editor {
                                 self.report_unbound_key_command(&cmd);
                             }
                             self.state.config.local_keymaps.bind(
-                                &name,
+                                name,
                                 mode,
                                 &keys,
                                 cmd,

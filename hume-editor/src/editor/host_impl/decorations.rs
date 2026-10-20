@@ -148,11 +148,11 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
             .map(|(start, end, scope)| {
                 let fail = |e: String| format!("set-extra-highlights!: range {e}");
                 let range = super::checked_char_range(text, start, end).map_err(fail)?;
+                if range.is_empty() {
+                    return Err(fail(format!("{start}..{end} is empty")));
+                }
                 // Widened to whole clusters: the renderer paints a cluster at a time.
-                let range = text
-                    .covering(range)
-                    .ok_or_else(|| fail(format!("{start}..{end} is empty")))?
-                    .chars();
+                let range = super::widened_to_clusters(text, range);
                 Ok(hume_decorations::ExtraHighlightEntry {
                     start: range.start,
                     end: range.end,

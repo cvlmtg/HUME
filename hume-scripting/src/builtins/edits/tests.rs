@@ -1,7 +1,7 @@
 use super::*;
 use crate::builtins::args::symbol_hash;
 use crate::json::JsonHandle;
-use crate::test_support::{SteelCtxTestHarness, default_pane};
+use crate::test_support::{SteelCtxTestHarness, default_pane, str_val};
 use hume_rope::position_encoding::PositionEncoding;
 use steel::rvals::IntoSteelVal as _;
 
@@ -307,10 +307,6 @@ fn edit_entry(entry: Vec<(&'static str, SteelVal)>) -> SteelVal {
     vec![symbol_hash(entry)].into_steelval().unwrap()
 }
 
-fn text(s: &str) -> SteelVal {
-    s.to_string().into_steelval().unwrap()
-}
-
 fn edit_text_error(edits: SteelVal) -> String {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
@@ -326,7 +322,7 @@ fn edit_text_without_edit_host_names_the_builtin() {
     let msg = edit_text_error(edit_entry(vec![
         ("start-char", SteelVal::IntV(0)),
         ("end-char", SteelVal::IntV(2)),
-        ("text", text("ab")),
+        ("text", str_val("ab")),
     ]));
     assert!(msg.contains("not supported by this host"), "got: {msg}");
     assert!(msg.contains("edit-text!"), "got: {msg}");
@@ -353,7 +349,7 @@ fn edit_text_rejects_an_unknown_key() {
     let msg = edit_text_error(edit_entry(vec![
         ("start-char", SteelVal::IntV(0)),
         ("end", SteelVal::IntV(0)),
-        ("text", text("")),
+        ("text", str_val("")),
     ]));
     assert!(msg.contains("edit-text!"), "got: {msg}");
     assert!(msg.contains("end"), "got: {msg}");
@@ -365,7 +361,7 @@ fn edit_text_rejects_a_negative_offset() {
     let msg = edit_text_error(edit_entry(vec![
         ("start-char", SteelVal::IntV(-1)),
         ("end-char", SteelVal::IntV(0)),
-        ("text", text("")),
+        ("text", str_val("")),
     ]));
     assert!(msg.contains("edit-text! 'start-char"), "got: {msg}");
 }

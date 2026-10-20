@@ -314,35 +314,36 @@ fn kitty_ctrl_0_extends_line_start() {
 
 // ── Always-extending bindings without Ctrl ─────────────────────────────────
 
-/// A plain key bound with `force_extend` extends in Normal mode.
-#[test]
-fn force_extend_binding_on_plain_key_extends() {
+/// The state after pressing `keys`, bound in Normal mode to `goto-line-end`
+/// with `force_extend`.
+fn force_extend_after(keys: &[KeyEvent]) -> String {
     use crate::editor::keymap::BindMode;
     let mut ed = editor_from("-[h]>ello world\n");
     ed.state.config.keymap.bind_user_with_extend(
         BindMode::Normal,
-        &[key('z')],
+        keys,
         "goto-line-end".into(),
         true,
     );
-    ed.handle_key(key('z'));
-    assert_eq!(state(&ed), "-[hello world]>\n");
+    for &k in keys {
+        ed.handle_key(k);
+    }
+    state(&ed)
+}
+
+/// A plain key bound with `force_extend` extends in Normal mode.
+#[test]
+fn force_extend_binding_on_plain_key_extends() {
+    assert_eq!(force_extend_after(&[key('z')]), "-[hello world]>\n");
 }
 
 /// A key sequence bound with `force_extend` extends in Normal mode.
 #[test]
 fn force_extend_binding_on_key_sequence_extends() {
-    use crate::editor::keymap::BindMode;
-    let mut ed = editor_from("-[h]>ello world\n");
-    ed.state.config.keymap.bind_user_with_extend(
-        BindMode::Normal,
-        &[key('g'), key('z')],
-        "goto-line-end".into(),
-        true,
+    assert_eq!(
+        force_extend_after(&[key('g'), key('z')]),
+        "-[hello world]>\n"
     );
-    ed.handle_key(key('g'));
-    ed.handle_key(key('z'));
-    assert_eq!(state(&ed), "-[hello world]>\n");
 }
 
 // ── Ctrl-prefix sequences — one-shot extend via Interior nodes ─────────────

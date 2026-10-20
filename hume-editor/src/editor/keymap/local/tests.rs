@@ -19,7 +19,7 @@ fn bind(
     keys: &[KeyEvent],
     command: &'static str,
 ) {
-    local.bind(name, mode, keys, Cow::Borrowed(command), false);
+    local.bind(name.into(), mode, keys, Cow::Borrowed(command), false);
 }
 
 /// `LocalKeymaps` with one binding in the keymap "k", attached to `buffer`.

@@ -1,6 +1,6 @@
 use super::*;
 use crate::host::KeymapTarget;
-use crate::test_support::SteelCtxTestHarness;
+use crate::test_support::{SteelCtxTestHarness, sym};
 
 /// Effects queued so far, in emission order.
 fn effects(h: &SteelCtxTestHarness) -> Vec<&Effect> {
@@ -8,10 +8,6 @@ fn effects(h: &SteelCtxTestHarness) -> Vec<&Effect> {
 }
 
 // ── Global binds are init-only, named keymaps are not ─────────────────────
-
-fn sym(name: &str) -> SteelVal {
-    SteelVal::SymbolV(name.into())
-}
 
 fn no_keymap() -> SteelVal {
     SteelVal::BoolV(false)
@@ -157,7 +153,7 @@ fn bind_key_invalid_mode_errors() {
     let mut ctx = h.ctx_init();
     let result = bind_key(
         &mut ctx,
-        SteelVal::SymbolV("visual".into()),
+        sym("visual"),
         "z".into(),
         "move-right".into(),
         no_keymap(),
@@ -180,12 +176,7 @@ fn bind_key_invalid_mode_errors() {
 fn unbind_key_invalid_mode_errors() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx_init();
-    let result = unbind_key(
-        &mut ctx,
-        SteelVal::SymbolV("visual".into()),
-        "z".into(),
-        no_keymap(),
-    );
+    let result = unbind_key(&mut ctx, sym("visual"), "z".into(), no_keymap());
     assert!(result.is_err(), "unbind-key! must reject unknown mode");
     drop(ctx);
     assert!(
@@ -227,7 +218,7 @@ fn bind_key_invalid_key_sequence_errors() {
     // "<NOTAKEY>" is not a valid key name.
     let result = bind_key(
         &mut ctx,
-        SteelVal::SymbolV("normal".into()),
+        sym("normal"),
         "<NOTAKEY>".into(),
         "move-right".into(),
         no_keymap(),
@@ -248,12 +239,7 @@ fn bind_key_invalid_key_sequence_errors() {
 fn unbind_key_invalid_key_sequence_errors() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx_init();
-    let result = unbind_key(
-        &mut ctx,
-        SteelVal::SymbolV("normal".into()),
-        "<NOTAKEY>".into(),
-        no_keymap(),
-    );
+    let result = unbind_key(&mut ctx, sym("normal"), "<NOTAKEY>".into(), no_keymap());
     assert!(
         result.is_err(),
         "unbind-key! must reject invalid key sequences"
@@ -278,7 +264,7 @@ fn bind_key_init_mode_queues_bind_effect() {
         let mut ctx = h.ctx_init();
         let result = bind_key(
             &mut ctx,
-            SteelVal::SymbolV("normal".into()),
+            sym("normal"),
             "z".into(),
             "move-right".into(),
             no_keymap(),
@@ -305,7 +291,7 @@ fn bind_key_extend_queues_force_extend_effect() {
         let mut ctx = h.ctx_init();
         bind_key_extend(
             &mut ctx,
-            SteelVal::SymbolV("normal".into()),
+            sym("normal"),
             "z".into(),
             "select-line".into(),
             no_keymap(),
@@ -330,7 +316,7 @@ fn bind_key_command_mode_queues_bind_effect() {
         let mut ctx = h.ctx_init();
         bind_key(
             &mut ctx,
-            SteelVal::SymbolV("command".into()),
+            sym("command"),
             "ctrl-r".into(),
             "my-cmd".into(),
             no_keymap(),
@@ -402,13 +388,8 @@ fn unbind_key_queues_unbind_effect() {
     let mut h = SteelCtxTestHarness::new();
     {
         let mut ctx = h.ctx_init();
-        unbind_key(
-            &mut ctx,
-            SteelVal::SymbolV("normal".into()),
-            "z".into(),
-            no_keymap(),
-        )
-        .expect("unbind-key! must succeed");
+        unbind_key(&mut ctx, sym("normal"), "z".into(), no_keymap())
+            .expect("unbind-key! must succeed");
     }
     assert!(
         matches!(
@@ -434,7 +415,7 @@ fn bind_key_permitted_during_plugin_load() {
         let mut ctx = h.ctx(); // EvalMode::PluginActivation → allowed
         let result = bind_key(
             &mut ctx,
-            SteelVal::SymbolV("normal".into()),
+            sym("normal"),
             "z".into(),
             "cmd".into(),
             no_keymap(),

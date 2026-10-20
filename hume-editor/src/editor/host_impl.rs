@@ -251,5 +251,25 @@ pub(in crate::editor) fn checked_char_range(
     Ok(hume_rope::offset::ExclusiveRange::new(start_at, end_at))
 }
 
+/// `range`, a checked range of `text`, on cluster boundaries: an edge inside
+/// a grapheme cluster widens it to the whole cluster, and an empty range
+/// inside one moves to the cluster's start, so no range it returns splits one.
+pub(in crate::editor) fn widened_to_clusters(
+    text: &hume_editing::text::BufferText,
+    range: hume_rope::offset::ExclusiveRange<hume_rope::offset::CharOffset>,
+) -> hume_rope::offset::ExclusiveRange<hume_rope::offset::CharOffset> {
+    if range.is_empty() {
+        let at = if range.start == text.end() {
+            range.start
+        } else {
+            text.snap(range.start).offset()
+        };
+        return hume_rope::offset::ExclusiveRange::new(at, at);
+    }
+    text.covering(range)
+        .expect("a non-empty range within the text covers a cluster")
+        .chars()
+}
+
 #[cfg(test)]
 mod tests;

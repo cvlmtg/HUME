@@ -1,10 +1,6 @@
 use super::*;
 use crate::host::CompletionSourceTarget;
-use crate::test_support::SteelCtxTestHarness;
-
-fn sym(s: &str) -> SteelVal {
-    SteelVal::SymbolV(s.into())
-}
+use crate::test_support::{SteelCtxTestHarness, sym};
 
 fn dummy_proc(_: &[SteelVal]) -> Result<SteelVal, SteelErr> {
     Ok(SteelVal::Void)

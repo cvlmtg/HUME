@@ -1,13 +1,11 @@
 //! `EditorHostImpl`'s LSP-driven text edits, workspace edits,
 //! go-to-location, `insert-key!`, `paste-text!` and `edit-text!`.
 
-use hume_editing::text::BufferText;
 use hume_engine::pipeline::BufferId;
 use hume_rope::column::CharCol;
-use hume_rope::offset::{CharOffset, ExclusiveRange};
 use termina::event::KeyEvent;
 
-use super::{EditorHostImpl, checked_char_range};
+use super::{EditorHostImpl, checked_char_range, widened_to_clusters};
 use crate::editor::commands::{self, FocusedPane};
 use crate::editor::doc_ops::HistoryWalk;
 use crate::editor::input_stack::PastedText;
@@ -184,9 +182,12 @@ impl<'a> EditHost for EditorHostImpl<'a> {
         let text = self.state.buffers.get(bid).text();
         let char_edits = edits
             .iter()
-            .map(|e| Ok((char_range(text, e.start, e.end)?, e.text.as_str())))
-            .collect::<Result<Vec<_>, String>>()
-            .map_err(fail)?;
+            .map(|e| {
+                let range = checked_char_range(text, e.start, e.end)
+                    .map_err(|err| fail(format!("range {err}")))?;
+                Ok((widened_to_clusters(text, range), e.text.as_str()))
+            })
+            .collect::<Result<Vec<_>, String>>()?;
         crate::editor::lsp::edits::commit_char_edits(
             self.state,
             &self.view.panes,
@@ -197,27 +198,4 @@ impl<'a> EditHost for EditorHostImpl<'a> {
         .map(|_| ())
         .map_err(fail)
     }
-}
-
-/// The chars `start..end` of `text` name, checked against it. An edge inside
-/// a grapheme cluster widens the range to the whole cluster, and an empty
-/// range inside one moves to the cluster's start, so no edit splits one.
-fn char_range(
-    text: &BufferText,
-    start: usize,
-    end: usize,
-) -> Result<ExclusiveRange<CharOffset>, String> {
-    let range = checked_char_range(text, start, end).map_err(|e| format!("range {e}"))?;
-    if range.is_empty() {
-        let at = if range.start == text.end() {
-            range.start
-        } else {
-            text.snap(range.start).offset()
-        };
-        return Ok(ExclusiveRange::new(at, at));
-    }
-    Ok(text
-        .covering(range)
-        .expect("a non-empty range within the text covers a cluster")
-        .chars())
 }
