@@ -534,3 +534,113 @@ fn core_stdlib_report_section_command() {
       none
     ");
 }
+
+// ── The markdown-heading example in writing-plugins.md ───────────────────────
+
+/// The `markdown-heading` command `writing-plugins.md` shows, with its
+/// binding: rewrite the line of each selection's anchor as a heading whose
+/// level is the count.
+const MARKDOWN_HEADING: &str = r#"
+(define (heading-line line level)
+  (let* ((n (string-length line))
+         (skip (lambda (i c)
+                 (let loop ((i i))
+                   (if (and (< i n) (char=? (string-ref line i) c))
+                       (loop (+ i 1))
+                       i))))
+         (rest (substring line (skip (skip 0 #\#) #\space))))
+    (if (= n 0)
+        ""
+        (string-append (make-string level #\#) " " rest "\n"))))
+
+(define-command! "markdown-heading"
+  "Turn the line of each selection's anchor into a Markdown heading. The count sets the level."
+  (lambda (pane count)
+    (let ((level (min 6 (max 1 count))))
+      (call! "collapse-to-anchor-and-exit-extend" pane)
+      (call! "around-line" pane)
+      (insert-text! pane
+        (map (lambda (sel)
+               (let ((line (char-offset->line pane (call! "stdlib/selection-start-char" sel))))
+                 (heading-line
+                   (car (buffer-lines pane #:range (hash 'start-line line 'end-line (+ line 1))))
+                   level)))
+             (buffer-selections pane))))))
+
+(bind-key! 'normal "G H" "markdown-heading")
+"#;
+
+/// An editor on `input` with the shipped `core:stdlib` and the example
+/// loaded the way a user's `init.scm` would load them. The returned guards
+/// keep the runtime and init directories alive.
+fn markdown_heading_editor(input: &str) -> (Editor, RuntimeDirs, tempfile::TempDir) {
+    let guard = RuntimeDirs::new();
+    write_core_plugin(&guard, "stdlib", STDLIB_PLUGIN);
+    let mut ed = editor_from(input);
+    ed.state.dirs = guard.dirs();
+    let init_dir = tempfile::tempdir().unwrap();
+    run(
+        &mut ed,
+        init_dir.path(),
+        &format!("(load-plugin! \"core:stdlib\")\n{MARKDOWN_HEADING}"),
+    );
+    (ed, guard, init_dir)
+}
+
+fn heading_after(input: &str, keys: &str) -> String {
+    let (mut ed, _guard, _init_dir) = markdown_heading_editor(input);
+    for ch in keys.chars() {
+        ed.feed_key(key(ch));
+    }
+    ed.state
+        .buffers
+        .get(ed.focused_buffer_id())
+        .text()
+        .to_string()
+}
+
+#[test]
+fn markdown_heading_without_a_count_makes_a_level_one_heading() {
+    assert_eq!(heading_after("-[f]>oo\n", "GH"), "# foo\n");
+}
+
+#[test]
+fn markdown_heading_replaces_the_existing_level() {
+    assert_eq!(heading_after("-[#]>## foo\n", "2GH"), "## foo\n");
+}
+
+#[test]
+fn markdown_heading_handles_headings_and_plain_lines_together() {
+    assert_eq!(
+        heading_after("-{f}>oo\n#### -[b]>ar\n", "3GH"),
+        "### foo\n### bar\n"
+    );
+}
+
+#[test]
+fn markdown_heading_caps_the_level_at_six() {
+    assert_eq!(heading_after("-[f]>oo\n", "9GH"), "###### foo\n");
+}
+
+#[test]
+fn markdown_heading_changes_only_the_line_of_the_anchor() {
+    assert_eq!(heading_after("a -[bc\nd]>e\nf\n", "GH"), "# a bc\nde\nf\n");
+}
+
+#[test]
+fn markdown_heading_leaves_an_empty_line_alone() {
+    assert_eq!(heading_after("-{\n}>-[f]>oo\n", "GH"), "\n# foo\n");
+}
+
+#[test]
+fn markdown_heading_with_two_cursors_on_one_line_writes_one_heading() {
+    assert_eq!(heading_after("-{f}>o-[o]>\n", "2GH"), "## foo\n");
+}
+
+#[test]
+fn markdown_heading_is_undone_by_one_undo() {
+    assert_eq!(
+        heading_after("-{f}>oo\n## -[b]>ar\n", "2GHu"),
+        "foo\n## bar\n"
+    );
+}

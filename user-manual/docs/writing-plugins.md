@@ -420,6 +420,46 @@ Returns the buffer's content line count as an integer, same count `buffer-lines`
 
 Returns the 0-based char offset where content line `line` (0-based) starts: the conversion decoration builtins that take char offsets (like `set-extra-highlights!`) need when all you have is a line number, e.g. from a diff hunk. Raises if `line` is at or past the buffer's content line count.
 
+### Example: Markdown headings
+
+Reading lines and pasting a list of strings together give a command that turns lines into Markdown headings. `G H` makes a level-one heading, and a count picks the level: `2GH` turns `Title` into `## Title`, and `### Title` into `## Title` too. It uses `core:stdlib`'s selection accessors, so load that plugin first:
+
+```scheme
+(define (heading-line line level)
+  (let* ((n (string-length line))
+         (skip (lambda (i c)
+                 (let loop ((i i))
+                   (if (and (< i n) (char=? (string-ref line i) c))
+                       (loop (+ i 1))
+                       i))))
+         (rest (substring line (skip (skip 0 #\#) #\space))))
+    (if (= n 0)
+        ""
+        (string-append (make-string level #\#) " " rest "\n"))))
+
+(define-command! "markdown-heading"
+  "Turn the line of each selection's anchor into a Markdown heading. The count sets the level."
+  (lambda (pane count)
+    (let ((level (min 6 (max 1 count))))
+      (call! "collapse-to-anchor-and-exit-extend" pane)
+      (call! "around-line" pane)
+      (insert-text! pane
+        (map (lambda (sel)
+               (let ((line (char-offset->line pane (call! "stdlib/selection-start-char" sel))))
+                 (heading-line
+                   (car (buffer-lines pane #:range (hash 'start-line line 'end-line (+ line 1))))
+                   level)))
+             (buffer-selections pane))))))
+
+(bind-key! 'normal "G H" "markdown-heading")
+```
+
+Each selection shrinks to its anchor, then grows to that whole line, line break included. Two selections on the same line become one. `heading-line` builds the new text of each line: it drops any `#`s and spaces the line starts with, then puts the new ones in front. `insert-text!` gets one string per selection, so every line is replaced in a single edit that one `u` undoes, and no register changes.
+
+Building the strings is what lets one command handle lines that are headings already and lines that aren't. Sifting each line with `^#+` would drop the lines without a `#`, and they would never get one.
+
+An empty line gets `""` and stays as it is. Its selection is only its line break, and text pasted over a one-character selection goes in front of it instead of replacing it, so a heading there would push the empty line down.
+
 ## Comparing text
 
 Two functions compute a line-level diff, useful for anything that shows what changed between two versions of a file, like a git-status indicator:
@@ -544,7 +584,7 @@ If the user keeps typing or closes the menu before `git` answers, the request is
 - **`#:target`** (required): `'buffer` serves Insert mode and calls `(proc id pane prefix)`. Its token is the run of word characters before the cursor. `'minibuf` serves the `:` line and calls `(proc id input cursor)`, with `input` the whole command line. Its token is the whitespace-delimited argument the cursor is in. Either way, the token is what the items are matched against and what accepting one replaces.
 - **`#:match`**: how items are scored against the token. `'fuzzy` (default) keeps items containing the typed characters in order, not necessarily adjacent. `'string` keeps only items that start with the token, all scored equally, so once something is typed, fuzzy matches from other sources rank above them. `'delegated` treats the answer as already filtered and keeps the source's own order.
 - **`#:priority`** (default `0`): breaks score ties between sources, higher first.
-- **`#:token-chars`** (`'buffer` sources only, default `""`): adds characters to the token on top of the buffer's `word-chars`. With `#:token-chars "-$"`, `foo-ba` is one token: it is what `prefix` holds and what accepting an item replaces, and typing `-` keeps the menu open. It cannot contain whitespace.
+- **`#:token-chars`** (`'buffer` sources only, default `""`): adds characters to the token on top of the buffer's `word-chars`. With `#:token-chars "-$"`, `foo-bar` is one token: it is what `prefix` holds and what accepting an item replaces, and typing `-` keeps the menu open. It cannot contain whitespace.
 - **`#:resolve #t`** (`'buffer` sources only, default `#f`): this source's items come from the buffer's language server, so highlighting one (for its documentation) or accepting one may send `completionItem/resolve` for it. Set it only for a source that forwards that server's items, never for one that builds its own items in a buffer with a server attached.
 - **Names**: `'buffer` and `'minibuf` sources have separate names. Registering `name` again under the same target replaces the earlier source; the same `name` under the other target is a second, independent source.
 - **`#:incomplete #t`** on `completion-emit!` asks for the source to be called again as the user keeps typing, instead of filtering the first answer. A server response marked incomplete does the same.
