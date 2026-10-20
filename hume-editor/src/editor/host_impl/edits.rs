@@ -1,16 +1,18 @@
 //! `EditorHostImpl`'s LSP-driven text edits, workspace edits,
-//! go-to-location, and `insert-key!`.
+//! go-to-location, `insert-key!`, `paste-text!` and `edit-text!`.
 
+use hume_editing::text::BufferText;
 use hume_engine::pipeline::BufferId;
 use hume_rope::column::CharCol;
+use hume_rope::offset::{CharOffset, ExclusiveRange};
 use termina::event::KeyEvent;
 
-use super::EditorHostImpl;
+use super::{EditorHostImpl, checked_char_offset};
 use crate::editor::commands::{self, FocusedPane};
 use crate::editor::doc_ops::HistoryWalk;
 use crate::editor::input_stack::PastedText;
 use hume_scripting::PaneHandle;
-use hume_scripting::host::EditHost;
+use hume_scripting::host::{CharTextEdit, EditHost};
 
 impl<'a> EditHost for EditorHostImpl<'a> {
     // ── Edit + navigation primitives ────────────────────────────────────
@@ -174,4 +176,58 @@ impl<'a> EditHost for EditorHostImpl<'a> {
         }
         Ok(())
     }
+
+    fn edit_text(&mut self, pane: PaneHandle, edits: Vec<CharTextEdit>) -> Result<(), String> {
+        let fail = |e: String| format!("edit-text!: {e}");
+        let target = self.command_pane(pane).map_err(fail)?;
+        let (pid, bid) = (target.pid(), target.bid(self.view));
+        let text = self.state.buffers.get(bid).text();
+        let ranges = edits
+            .iter()
+            .map(|e| char_range(text, e.start, e.end))
+            .collect::<Result<Vec<_>, String>>()
+            .map_err(fail)?;
+        let char_edits = ranges
+            .into_iter()
+            .zip(edits.iter().map(|e| e.text.as_str()))
+            .collect();
+        crate::editor::lsp::edits::commit_char_edits(
+            self.state,
+            &self.view.panes,
+            pid,
+            bid,
+            char_edits,
+        )
+        .map(|_| ())
+        .map_err(fail)
+    }
+}
+
+/// The chars `start..end` of `text` name, checked against it. An edge inside
+/// a grapheme cluster widens the range to the whole cluster, and an empty
+/// range inside one moves to the cluster's start, so no edit splits one.
+fn char_range(
+    text: &BufferText,
+    start: usize,
+    end: usize,
+) -> Result<ExclusiveRange<CharOffset>, String> {
+    let start_at = checked_char_offset(text, start)?;
+    let end_at = checked_char_offset(text, end)?;
+    if end < start {
+        return Err(format!(
+            "range ({start}, {end}) has its end before its start"
+        ));
+    }
+    if start == end {
+        let at = if start_at == text.end() {
+            start_at
+        } else {
+            text.snap(start_at).offset()
+        };
+        return Ok(ExclusiveRange::new(at, at));
+    }
+    Ok(text
+        .covering(ExclusiveRange::new(start_at, end_at))
+        .expect("a non-empty range within the text covers a cluster")
+        .chars())
 }

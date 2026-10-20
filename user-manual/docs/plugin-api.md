@@ -169,6 +169,7 @@ A value naming a closed buffer raises for almost every call: the reads that need
 | `(goto-revision! pane id)` | Move `pane`'s buffer to revision `id` of its undo history, a number from `buffer-undo-tree`, across branches. Raises when the buffer has no such revision (it was never made, or the `undo-levels` limit dropped it) and when the buffer is read-only. Redo then follows the branch it entered |
 | `(insert-key! pane key)` | Run `key`'s normal Insert-mode behaviour (indent-style-aware Tab, auto-pairs, auto-indented Enter, …) on `pane`, as if it had no Insert-mode binding; `key` is one chord in `bind-key!`'s own syntax. Raises for a sequence of more than one key, and for a key with no default Insert-mode behaviour |
 | `(paste-text! pane text)` | Paste `text`, a string or a list of strings, where you're typing, as a terminal paste would. Raises when `pane` isn't the focused pane |
+| `(edit-text! pane edits)` | Replace char ranges of `pane`'s buffer as one edit, each entry a `(hash 'start-char s 'end-char e 'text t)`: an empty range inserts, empty text deletes |
 
 `#:expect-generation` guards against applying a stale edit: pass a `buffer-generation` snapshot and the call fails if the buffer has mutated since. `apply-text-edits!`/`goto-location!`'s wire shape, like [`apply-workspace-edit!`](lsp-api.md#language-servers)'s, each decode their positions with the encoding of the server that sent them. A plain hashmap you build by hand (not pulled from a response via `json-ref`/`json-list`) has no such encoding to decode with, and is rejected.
 
@@ -193,6 +194,8 @@ A value naming a closed buffer raises for almost every call: the reads that need
 (bind-key! 'insert "ctrl-g" "insert-cwd")
 (bind-key! 'command "ctrl-g" "insert-cwd")
 ```
+
+`edit-text!` is for a change that differs from one selection to the next, which commands and `paste-text!` can't make since they do the same thing at every selection (see [Example: Markdown headings](writing-plugins.md#example-markdown-headings)). Every range counts against the text as it was before the call, the entries can come in any order, and two insertions at the same offset go in list order. One `u` undoes the whole list. Selections in every pane showing the buffer follow the text: a cursor where text is inserted moves past it, and one on replaced or deleted text lands where the new text starts. A range edge inside a character made of several char offsets widens to cover the character, and an insertion inside one moves to its start. Text inserted at the very end of the buffer gets its own line break, and the buffer's last line break is never deleted. An empty list does nothing. Nothing changes, and the call raises, for an offset past the end of the buffer, a range that ends before it starts, ranges that overlap, and a read-only buffer.
 
 ## Registers
 

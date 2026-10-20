@@ -115,6 +115,7 @@
 (#%register-global "diff-lines")
 (#%register-global "diff-words")
 (#%register-global "drawer-selected-index")
+(#%register-global "edit-text!")
 (#%register-global "exit-insert")
 (#%register-global "find-backward")
 (#%register-global "find-forward")

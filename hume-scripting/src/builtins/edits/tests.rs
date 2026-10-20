@@ -302,3 +302,80 @@ fn goto_location_accepts_paths_that_hold_a_colon() {
         );
     }
 }
+
+fn edit_entry(entry: Vec<(&'static str, SteelVal)>) -> SteelVal {
+    vec![symbol_hash(entry)].into_steelval().unwrap()
+}
+
+fn text(s: &str) -> SteelVal {
+    s.to_string().into_steelval().unwrap()
+}
+
+fn edit_text_error(edits: SteelVal) -> String {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    edit_text(&mut ctx, default_pane(), edits)
+        .unwrap_err()
+        .to_string()
+}
+
+/// A well-formed edit decodes and reaches the host, which this harness
+/// doesn't have.
+#[test]
+fn edit_text_without_edit_host_names_the_builtin() {
+    let msg = edit_text_error(edit_entry(vec![
+        ("start-char", SteelVal::IntV(0)),
+        ("end-char", SteelVal::IntV(2)),
+        ("text", text("ab")),
+    ]));
+    assert!(msg.contains("not supported by this host"), "got: {msg}");
+    assert!(msg.contains("edit-text!"), "got: {msg}");
+}
+
+#[test]
+fn edit_text_rejects_a_value_that_is_not_a_list() {
+    let msg = edit_text_error(SteelVal::IntV(5));
+    assert!(msg.contains("edit-text!"), "got: {msg}");
+    assert!(!msg.contains("not supported by this host"), "got: {msg}");
+}
+
+#[test]
+fn edit_text_rejects_an_entry_without_text() {
+    let msg = edit_text_error(edit_entry(vec![
+        ("start-char", SteelVal::IntV(0)),
+        ("end-char", SteelVal::IntV(0)),
+    ]));
+    assert!(msg.contains("edit-text!: missing 'text"), "got: {msg}");
+}
+
+#[test]
+fn edit_text_rejects_an_unknown_key() {
+    let msg = edit_text_error(edit_entry(vec![
+        ("start-char", SteelVal::IntV(0)),
+        ("end", SteelVal::IntV(0)),
+        ("text", text("")),
+    ]));
+    assert!(msg.contains("edit-text!"), "got: {msg}");
+    assert!(msg.contains("end"), "got: {msg}");
+    assert!(!msg.contains("not supported by this host"), "got: {msg}");
+}
+
+#[test]
+fn edit_text_rejects_a_negative_offset() {
+    let msg = edit_text_error(edit_entry(vec![
+        ("start-char", SteelVal::IntV(-1)),
+        ("end-char", SteelVal::IntV(0)),
+        ("text", text("")),
+    ]));
+    assert!(msg.contains("edit-text! 'start-char"), "got: {msg}");
+}
+
+#[test]
+fn edit_text_rejects_text_that_is_not_a_string() {
+    let msg = edit_text_error(edit_entry(vec![
+        ("start-char", SteelVal::IntV(0)),
+        ("end-char", SteelVal::IntV(0)),
+        ("text", SteelVal::IntV(1)),
+    ]));
+    assert!(msg.contains("edit-text! 'text"), "got: {msg}");
+}

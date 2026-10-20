@@ -422,34 +422,42 @@ Returns the 0-based char offset where content line `line` (0-based) starts: the 
 
 ### Example: Markdown headings
 
-Reading lines and pasting a list of strings together give a command that turns lines into Markdown headings. `G H` makes a level-one heading, and a count picks the level: `2GH` turns `Title` into `## Title`, and `### Title` into `## Title` too. It uses `core:stdlib`'s selection accessors, so load that plugin first:
+Reading lines and editing char ranges together give a command that turns lines into Markdown headings. `G H` makes a level-one heading, and a count picks the level: `2GH` turns `Title` into `## Title`, and `### Title` into `## Title` too. It uses `core:stdlib`'s selection accessors, so load that plugin first:
 
 ```scheme
-(define (heading-line line level)
+(define (heading-prefix-length line)
   (let* ((n (string-length line))
          (skip (lambda (i c)
                  (let loop ((i i))
                    (if (and (< i n) (char=? (string-ref line i) c))
                        (loop (+ i 1))
-                       i))))
-         (rest (substring line (skip (skip 0 #\#) #\space))))
-    (if (= n 0)
-        ""
-        (string-append (make-string level #\#) " " rest "\n"))))
+                       i)))))
+    (skip (skip 0 #\#) #\space)))
+
+(define (anchor-lines pane)
+  (let loop ((sels (buffer-selections pane)) (lines '()))
+    (if (null? sels)
+        (reverse lines)
+        (let ((line (char-offset->line pane (call! "stdlib/selection-anchor" (car sels)))))
+          (loop (cdr sels)
+                (if (and (pair? lines) (= line (car lines)))
+                    lines
+                    (cons line lines)))))))
 
 (define-command! "markdown-heading"
   "Turn the line of each selection's anchor into a Markdown heading. The count sets the level."
   (lambda (pane count)
-    (let ((level (min 6 (max 1 count))))
-      (call! "collapse-to-anchor-and-exit-extend" pane)
-      (call! "around-line" pane)
-      (paste-text! pane
-        (map (lambda (sel)
-               (let ((line (char-offset->line pane (call! "stdlib/selection-start-char" sel))))
-                 (heading-line
-                   (car (buffer-lines pane #:range (hash 'start-line line 'end-line (+ line 1))))
-                   level)))
-             (buffer-selections pane))))))
+    (let ((prefix (string-append (make-string (min 6 (max 1 count)) #\#) " ")))
+      (edit-text! pane
+        (filter (lambda (edit) edit)
+          (map (lambda (line)
+                 (let ((text (car (buffer-lines pane #:range (hash 'start-line line 'end-line (+ line 1))))))
+                   (and (> (string-length text) 0)
+                        (let ((start (line->char-offset pane line)))
+                          (hash 'start-char start
+                                'end-char (+ start (heading-prefix-length text))
+                                'text prefix)))))
+               (anchor-lines pane)))))))
 
 (bind-key! 'normal "G H" "markdown-heading" #:keymap 'markdown-keys)
 
@@ -462,11 +470,9 @@ Reading lines and pasting a list of strings together give a command that turns l
 
 The keys go into a keymap of their own, which the hook turns on in Markdown buffers only (see [Keys for one buffer](configuration.md#keys-for-one-buffer)).
 
-Each selection shrinks to its anchor, then grows to that whole line, line break included. Two selections on the same line become one. `heading-line` builds the new text of each line: it drops any `#`s and spaces the line starts with, then puts the new ones in front. `paste-text!` gets one string per selection, so every line is replaced in a single edit that one `u` undoes, and no register changes.
+`anchor-lines` lists the line of each selection's anchor, once per line: selections come in order and never overlap, so two on the same line are next to each other. For each line with text, the command builds one edit that replaces the `#`s and spaces the line starts with by the new ones (an empty range when there are none), and [`edit-text!`](plugin-api.md#editing-navigation) applies them all as one edit that one `u` undoes. Every selection stays where it was: a cursor on the old `#`s moves to the start of the line, and any other cursor stays on its character.
 
-Building the strings is what lets one command handle lines that are headings already and lines that aren't. Sifting each line with `^#+` would drop the lines without a `#`, and they would never get one.
-
-An empty line gets `""` and stays as it is. Its selection is only its line break, and text pasted over a one-character selection goes in front of it instead of replacing it, so a heading there would push the empty line down.
+Each line needs something different here: a heading loses its old `#`s, a plain line only gets new ones, and an empty line nothing. Commands like `around-line` do the same thing to every selection, and `paste-text!` pastes over each selection the way a paste does, so neither can say that. When every selection gets the same change, compose commands with `call!`. When each one needs its own, compute the edits and apply them with `edit-text!`.
 
 ## Comparing text
 

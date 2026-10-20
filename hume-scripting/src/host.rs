@@ -31,7 +31,7 @@ pub use completion::{CompletionHost, CompletionSourceTarget, MatchKind, PendingC
 pub use cursor::{CursorHost, SelectionInfo};
 pub use decorations::{DecorationHost, DiagnosticEntry};
 pub use diff::DiffHost;
-pub use edits::{EditHost, WireTextEdit};
+pub use edits::{CharTextEdit, EditHost, WireTextEdit};
 pub use events::EventHost;
 pub use language::LanguageHost;
 pub use lsp::{LocationPlace, LspHost, Place, PositionParams, RangeParams, RangesParams};

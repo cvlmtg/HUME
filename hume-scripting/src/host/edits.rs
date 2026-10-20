@@ -1,6 +1,6 @@
 //! LSP-driven text edits, workspace edits, and go-to-location, plus
-//! `goto-revision!` (undo-history navigation) and `insert-key!`, which edit
-//! too but aren't LSP-driven. They live here rather than in their own trait
+//! `goto-revision!` (undo-history navigation), `insert-key!`, `paste-text!`
+//! and `edit-text!`, which edit too but aren't LSP-driven. They live here rather than in their own trait
 //! because one capability accessor (`EditorHost::edits`) already gates every
 //! buffer-mutating builtin that isn't a named editor command, and a second
 //! accessor for them would only duplicate that gate.
@@ -21,6 +21,16 @@ pub struct WireTextEdit {
     pub range: hume_rope::offset::ExclusiveRange<hume_rope::position_encoding::WirePos>,
     pub new_text: String,
     pub encoding: PositionEncoding,
+}
+
+/// One `edit-text!` entry: the chars `start..end` of the buffer as it was
+/// before the call, replaced by `text`. Plain offsets, converted to
+/// `CharOffset` and checked against the buffer by the host.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CharTextEdit {
+    pub start: usize,
+    pub end: usize,
+    pub text: String,
 }
 
 /// LSP-driven text edits, workspace edits, and go-to-location, accessed
@@ -152,4 +162,12 @@ pub trait EditHost {
     /// `p` places a register's. `Err` only when `pane` isn't the focused
     /// pane.
     fn paste_text(&mut self, pane: PaneHandle, values: Vec<String>) -> Result<(), String>;
+
+    /// `(edit-text! pane edits)`: applies `edits`, all positioned against the
+    /// text before the call, to `pane`'s buffer as one undo step through
+    /// `pane`, carrying every selection through the change. An empty list
+    /// changes nothing. `Err` for an offset past the end, a reversed or
+    /// overlapping range, a read-only buffer, or a `pane` that names no live
+    /// pane showing its buffer.
+    fn edit_text(&mut self, pane: PaneHandle, edits: Vec<CharTextEdit>) -> Result<(), String>;
 }

@@ -1,5 +1,6 @@
 //! Edit + navigation primitives: `apply-text-edits!`,
-//! `apply-workspace-edit!`, `goto-location!`.
+//! `apply-workspace-edit!`, `goto-location!`, and the char-range commit
+//! `edit-text!` shares with them.
 //!
 //! Everything here is state/view-only (no `&mut Editor` needed), so it is
 //! callable directly from `EditorHostImpl`, the same discipline as the
@@ -108,8 +109,9 @@ pub(in crate::editor) fn past_document_end(range: &lsp_types::Range, rope: &rope
 }
 
 /// Shared tail for [`build_edit_changeset`] (wire positions, converted to
-/// char offsets above) and the completion-resolve path (already char
-/// offsets, mapped forward through the accept edit): sort, overlap-check,
+/// char offsets above), the completion-resolve path (already char offsets,
+/// mapped forward through the accept edit) and `edit-text!` (char offsets
+/// from Steel, checked by the host): sort, overlap-check,
 /// then walk once to build the `ChangeSet`. `edits` need not arrive sorted;
 /// `new_text` borrows from the caller's own edit list. A server's `new_text`
 /// is under no obligation to use LF, but needs no handling here: the

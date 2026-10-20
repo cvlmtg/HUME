@@ -1583,3 +1583,22 @@ input as part of the no-op. Stay silent only for states that are normal and
 expected, like detaching something that isn't attached.
 
 **Files:** `hume-editor/src/editor/scripting_setup.rs` (`apply_script_effects`).
+
+## L46 — A per-selection edit was forced through paste (2026-10-20)
+
+**Root cause:** the Markdown heading example needed a different change on
+each line, but the scripting API could only write text through a paste
+(`insert-text!`) or language-server edits. The example replaced whole lines
+through a paste to fit, which left the cursor on the next line and needed
+special cases for empty and one-character lines. Each fix proposed another
+workaround on top of paste until the user asked whether the API itself was
+missing something.
+
+**Prevention rule:** When a script works out a different change per
+selection, check that the API has a write matching what it reads. If the
+only way to write is a tool built for something else, propose the missing
+primitive instead of another workaround around the wrong tool.
+
+**Files:** `hume-scripting/src/builtins/edits.rs` (`edit_text`),
+`hume-editor/src/editor/host_impl/edits.rs`,
+`user-manual/docs/writing-plugins.md` (Example: Markdown headings).

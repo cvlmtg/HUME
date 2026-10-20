@@ -37,6 +37,7 @@
 - New `on-before-buffer-save` hook, which can hold a write until its handler is done.
 - `core:git-diff` has key-bindable `git-diff/toggle-inline-diff` and `git-diff/toggle-git-signs`.
 - New `paste-text!` inserts text as a paste would.
+- New `edit-text!` replaces char ranges of a buffer in one edit, for changes that differ from one selection to the next.
 - `bind-key!` takes `'command` to bind keys in the command mode prompt and in plugin prompts.
 - Key bindings can apply to some buffers only: bind them into a named keymap with `#:keymap`, then turn it on in a buffer with `attach-keymap!`.
 - `buffer-display-path` takes `#:relative #t` for the path relative to the working directory.

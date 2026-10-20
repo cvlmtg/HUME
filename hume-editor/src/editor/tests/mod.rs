@@ -1530,6 +1530,7 @@ mod dump_restore;
 // ::tests` subtrees register the same doubles and reach them through here.
 mod dot_repeat;
 pub(in crate::editor) mod doubles;
+mod edit_text;
 mod editor_cwd;
 mod events;
 mod file_io;

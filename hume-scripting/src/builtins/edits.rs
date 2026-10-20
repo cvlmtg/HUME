@@ -1,18 +1,19 @@
 //! BufferText-edit application and cursor navigation primitives fed by LSP
-//! responses (code actions, rename, go-to-definition); `insert-key!` too,
-//! which isn't LSP-driven but shares `EditHost`'s capability gate (see that
-//! trait's own doc).
+//! responses (code actions, rename, go-to-definition); `insert-key!`,
+//! `paste-text!` and `edit-text!` too, which aren't LSP-driven but share
+//! `EditHost`'s capability gate (see that trait's own doc).
 
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
+use crate::host::CharTextEdit;
 use crate::types::PaneHandle;
 
 use super::SteelResult;
 use super::args::{
-    CHAR_OFFSET, hash_entry, list_items, optional_usize_arg, single_key_arg, string_arg,
-    strings_arg, tagged_json_arg, wire_text_edit_arg,
+    CHAR_OFFSET, END_CHAR, START_CHAR, hash_entry, hash_list, list_items, optional_usize_arg,
+    single_key_arg, string_arg, strings_arg, tagged_json_arg, wire_text_edit_arg,
 };
 use super::errors::{generic_err, require_cap};
 
@@ -177,6 +178,28 @@ pub(crate) fn paste_text(ctx: &mut SteelCtx, pane: PaneHandle, text: SteelVal) -
     let values = strings_arg(text, "paste-text!")?;
     require_cap(ctx.host.edits(), "paste-text!")?
         .paste_text(pane, values)
+        .map(|()| SteelVal::Void)
+        .map_err(generic_err)
+}
+
+/// `(edit-text! pane edits)`: replace char ranges of `pane`'s buffer, each
+/// entry a `(hash 'start-char s 'end-char e 'text t)`, as one edit.
+pub(crate) fn edit_text(ctx: &mut SteelCtx, pane: PaneHandle, edits: SteelVal) -> SteelResult {
+    let edits = hash_list(
+        edits,
+        "edit-text!",
+        &[START_CHAR, END_CHAR, "text"],
+        |entry| {
+            let (start, end) = entry.char_range()?;
+            Ok(CharTextEdit {
+                start,
+                end,
+                text: entry.string("text")?,
+            })
+        },
+    )?;
+    require_cap(ctx.host.edits(), "edit-text!")?
+        .edit_text(pane, edits)
         .map(|()| SteelVal::Void)
         .map_err(generic_err)
 }

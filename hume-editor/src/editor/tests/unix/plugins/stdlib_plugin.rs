@@ -541,31 +541,39 @@ fn core_stdlib_report_section_command() {
 /// binding for Markdown buffers: rewrite the line of each selection's anchor
 /// as a heading whose level is the count.
 const MARKDOWN_HEADING: &str = r#"
-(define (heading-line line level)
+(define (heading-prefix-length line)
   (let* ((n (string-length line))
          (skip (lambda (i c)
                  (let loop ((i i))
                    (if (and (< i n) (char=? (string-ref line i) c))
                        (loop (+ i 1))
-                       i))))
-         (rest (substring line (skip (skip 0 #\#) #\space))))
-    (if (= n 0)
-        ""
-        (string-append (make-string level #\#) " " rest "\n"))))
+                       i)))))
+    (skip (skip 0 #\#) #\space)))
+
+(define (anchor-lines pane)
+  (let loop ((sels (buffer-selections pane)) (lines '()))
+    (if (null? sels)
+        (reverse lines)
+        (let ((line (char-offset->line pane (call! "stdlib/selection-anchor" (car sels)))))
+          (loop (cdr sels)
+                (if (and (pair? lines) (= line (car lines)))
+                    lines
+                    (cons line lines)))))))
 
 (define-command! "markdown-heading"
   "Turn the line of each selection's anchor into a Markdown heading. The count sets the level."
   (lambda (pane count)
-    (let ((level (min 6 (max 1 count))))
-      (call! "collapse-to-anchor-and-exit-extend" pane)
-      (call! "around-line" pane)
-      (paste-text! pane
-        (map (lambda (sel)
-               (let ((line (char-offset->line pane (call! "stdlib/selection-start-char" sel))))
-                 (heading-line
-                   (car (buffer-lines pane #:range (hash 'start-line line 'end-line (+ line 1))))
-                   level)))
-             (buffer-selections pane))))))
+    (let ((prefix (string-append (make-string (min 6 (max 1 count)) #\#) " ")))
+      (edit-text! pane
+        (filter (lambda (edit) edit)
+          (map (lambda (line)
+                 (let ((text (car (buffer-lines pane #:range (hash 'start-line line 'end-line (+ line 1))))))
+                   (and (> (string-length text) 0)
+                        (let ((start (line->char-offset pane line)))
+                          (hash 'start-char start
+                                'end-char (+ start (heading-prefix-length text))
+                                'text prefix)))))
+               (anchor-lines pane)))))))
 
 (bind-key! 'normal "G H" "markdown-heading" #:keymap 'markdown-keys)
 
@@ -614,6 +622,44 @@ fn heading_after_in(language: &str, input: &str, keys: &str) -> String {
         .get(ed.focused_buffer_id())
         .text()
         .to_string()
+}
+
+/// The marked state after `keys`, in a Markdown buffer.
+fn heading_state_after(input: &str, keys: &str) -> String {
+    let (mut ed, _guard, _init_dir) = markdown_heading_editor("markdown", input);
+    for ch in keys.chars() {
+        ed.feed_key(key(ch));
+    }
+    state(&ed)
+}
+
+#[test]
+fn markdown_heading_leaves_the_cursor_on_its_character() {
+    assert_eq!(
+        heading_state_after("f-[o]>o\nbar\n", "GH"),
+        "# f-[o]>o\nbar\n"
+    );
+}
+
+#[test]
+fn markdown_heading_on_the_last_line_leaves_the_cursor_on_it() {
+    assert_eq!(
+        heading_state_after("foo\n-[b]>ar\n", "GH"),
+        "foo\n# -[b]>ar\n"
+    );
+}
+
+#[test]
+fn markdown_heading_leaves_each_cursor_on_its_own_heading() {
+    assert_eq!(
+        heading_state_after("-{f}>oo\nbar\n-[b]>az\n", "2GH"),
+        "## -{f}>oo\nbar\n## -[b]>az\n"
+    );
+}
+
+#[test]
+fn markdown_heading_keeps_a_cursor_on_the_old_prefix_at_the_line_start() {
+    assert_eq!(heading_state_after("-[#]> foo\n", "2GH"), "-[#]># foo\n");
 }
 
 #[test]
