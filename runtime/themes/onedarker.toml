@@ -1,0 +1,208 @@
+# One Darker — ported from Helix's runtime/themes/onedarker.toml.
+# Author : nuid32 <lvkuzvesov@proton.me>
+#
+# Source: https://github.com/helix-editor/helix/blob/ba40e547426b0f9896c8bdc699a4ab11f2b37dbc/runtime/themes/onedarker.toml
+# License: licenses/onedark.license
+#
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+#
+# Same as upstream, plus HUME's own additions and deviations marked inline
+# below (see the "HUME additions" marker).
+
+"attribute" = { fg = "yellow" }
+"comment" = { fg = "light-gray", modifiers = ["italic"] }
+"constant" = { fg = "gold" }
+"constant.numeric" = { fg = "gold" }
+"constant.builtin" = { fg = "gold" }
+"constant.character.escape" = { fg = "gold" }
+"constructor" = { fg = "blue" }
+"function" = { fg = "white" }
+"function.builtin" = { fg = "blue" }
+"function.macro" = { fg = "purple" }
+"keyword" = { fg = "purple" }
+"keyword.control" = { fg = "purple" }
+"keyword.control.import" = { fg = "purple" }
+"keyword.directive" = { fg = "purple" }
+"label" = { fg = "purple" }
+"namespace" = { fg = "purple" }
+"operator" = { fg = "white" }
+"keyword.operator" = { fg = "white" }
+"special" = { fg = "blue" }
+"string" = { fg = "green" }
+"tag" = { fg = "purple" }
+"type" = { fg = "yellow" }
+"variable" = { fg = "white" }
+"variable.builtin" = { fg = "red" }
+"variable.parameter" = { fg = "red" }
+"variable.other.member" = { fg = "blue" }
+
+"markup.heading" = { fg = "red" }
+"markup.raw.inline" = { fg = "green" }
+"markup.raw.block" = { fg = "white" }
+"markup.bold" = { fg = "gold", modifiers = ["bold"] }
+"markup.italic" = { fg = "purple", modifiers = ["italic"] }
+"markup.strikethrough" = { modifiers = ["crossed_out"] }
+"markup.list" = { fg = "red" }
+"markup.quote" = { fg = "yellow" }
+"markup.link.url" = { fg = "blue", modifiers = ["underlined"]}
+"markup.link.text" = { fg = "white" }
+"markup.link.label" = { fg = "white" }
+
+"diff.plus" = "green"
+"diff.delta" = "gold"
+"diff.minus" = "red"
+
+# `fg` added to each (upstream sets only `underline`): a plugin-defined
+# sub-scope like "diagnostic.warning.<marker>" falls back to this scope by
+# dot-notation and needs a real color, not just an underline, to resolve to.
+"diagnostic.info".underline = { color = "blue", style = "curl" } 
+"diagnostic.info".fg = "blue"
+"diagnostic.hint".underline = { color = "green", style = "curl" } 
+"diagnostic.hint".fg = "green"
+"diagnostic.warning".underline = { color = "yellow", style = "curl" } 
+"diagnostic.warning".fg = "yellow"
+"diagnostic.error".underline = { color = "red", style = "curl" } 
+"diagnostic.error".fg = "red"
+"diagnostic.unnecessary" = { modifiers = ["dim"] }
+"diagnostic.deprecated" = { modifiers = ["crossed_out"] }
+
+"info" = { fg = "blue", modifiers = ["bold"] }
+"hint" = { fg = "green", modifiers = ["bold"] }
+"warning" = { fg = "yellow", modifiers = ["bold"] }
+"error" = { fg = "red", modifiers = ["bold"] }
+
+"ui.background" = { bg = "black" }
+"ui.virtual" = { fg = "faint-gray" }
+"ui.virtual.indent-guide" = { fg = "faint-gray" }
+"ui.virtual.whitespace" = { fg = "light-gray" }
+"ui.virtual.ruler" = { bg = "gray" }
+"ui.virtual.inlay-hint" = { fg = "light-gray" }
+"ui.virtual.jump-label" = { fg = "gold", modifiers = ["bold", "underlined"] }
+
+"ui.cursor" = { fg = "white", modifiers = ["reversed"] }
+"ui.cursor.primary" = { fg = "white", modifiers = ["reversed"] }
+"ui.cursor.match" = { fg = "blue", modifiers = ["underlined"]}
+
+"ui.selection" = { bg = "black", modifiers = ["reversed"] }
+"ui.selection.primary" = { bg = "gray" }
+"ui.cursorline.primary" = { bg = "dark-black" }
+
+"ui.linenr" = { fg = "linenr" }
+"ui.linenr.selected" = { fg = "white" }
+
+"ui.statusline" = { fg = "white", bg = "light-black" }
+"ui.statusline.inactive" = { fg = "light-gray", bg = "light-black" }
+"ui.statusline.normal" = { fg = "light-black", bg = "purple", modifiers = ["bold"] }
+"ui.statusline.insert" = { fg = "light-black", bg = "green", modifiers = ["bold"] }
+"ui.statusline.select" = { fg = "light-black", bg = "cyan", modifiers = ["bold"] }
+
+"ui.bufferline" = { fg = "light-gray", bg = "light-black" }
+"ui.bufferline.active" = { fg = "light-black", bg = "blue", underline = { color = "light-black", style = "line" } }
+"ui.bufferline.background" = { bg = "light-black" }
+
+"ui.text" = { fg = "white" }
+"ui.text.directory" = { fg = "blue" }
+"ui.text.focus" = { fg = "white", bg = "light-black", modifiers = ["bold"] }
+
+"ui.help" = { fg = "white", bg = "gray" }
+"ui.debug" = { fg = "red" }
+"ui.highlight.frameline" = { bg = "#97202a" }
+"ui.popup" = { bg = "gray" }
+"ui.window" = { fg = "gray" }
+"ui.menu" = { fg = "white", bg = "gray" }
+"ui.menu.selected" = { fg = "black", bg = "blue" }
+"ui.menu.scroll" = { fg = "white", bg = "light-gray" }
+
+# ── HUME additions ─────────────────────────────────────────────────────────
+# Scopes below have no value upstream. Values draw only on the palette
+# below, chosen to sit naturally alongside it.
+
+# Focused-pane seam accent (`ui.window` above is the unfocused seam).
+"ui.window.focused" = { fg = "blue" }
+
+# Every visible search match, distinct from the bracket-match
+# `ui.cursor.match` above.
+"ui.cursor.match.search" = { fg = "light-black", bg = "gold" }
+
+# The `<200b>` stand-in for a character the terminal must not be shown. Not
+# muted like the rest of `ui.virtual`: a bidi override hiding in source is
+# what this has to catch the eye for.
+"ui.virtual.invisible" = { fg = "light-black", bg = "red" }
+
+# Mode rows. The whole statusline tints with the mode's style, so each
+# mode needs its own `bg` (Extend reads Helix's `ui.statusline.select`).
+"ui.statusline.search" = { fg = "light-black", bg = "gold", modifiers = ["bold"] }
+"ui.statusline.command" = { fg = "light-black", bg = "blue", modifiers = ["bold"] }
+"ui.statusline.sift" = { fg = "light-black", bg = "yellow", modifiers = ["bold"] }
+"ui.statusline.separator" = { fg = "light-gray" }
+
+# Tab bar, a HUME-only surface distinct from Helix's own `ui.bufferline*`.
+"ui.tabline" = { fg = "light-gray", bg = "light-black" }
+"ui.tabline.active" = { fg = "light-black", bg = "blue", modifiers = ["bold"] }
+
+"ui.popup.scroll" = { fg = "white", bg = "light-gray" }
+"ui.drawer" = { fg = "white", bg = "light-black" }
+
+# End-of-line diagnostic summary. Its own scope so this virtual text carries
+# no `underlined` modifier from the `diagnostic.*` squiggle above; muted
+# against that squiggle so the line's own code stays the brighter thing.
+"error.diagnostic.inline" = { fg = "error_inline" }
+"warning.diagnostic.inline" = { fg = "warning_inline" }
+"info.diagnostic.inline" = { fg = "info_inline" }
+"hint.diagnostic.inline" = { fg = "hint_inline" }
+
+# :messages severity badge/body
+"diagnostic.error.message" = { fg = "light-black", bg = "red" }
+"diagnostic.warning.message" = { fg = "light-black", bg = "yellow" }
+"diagnostic.info.message" = { fg = "light-black", bg = "blue" }
+"diagnostic.hint.message" = { fg = "light-black", bg = "green" }
+"diagnostic.error.message-text" = { fg = "red" }
+"diagnostic.warning.message-text" = { fg = "yellow" }
+"diagnostic.info.message-text" = { fg = "blue" }
+"diagnostic.hint.message-text" = { fg = "green" }
+
+# Whole-line diff tint (see the manual's Themes section for the details).
+"diff.plus.line" = { bg = "diff_plus_bg" }
+"diff.minus.line" = { fg = "white", bg = "diff_minus_bg" }
+"diff.delta.line" = { bg = "diff_delta_bg" }
+
+# Word-level segments mark the exact changed span inside a
+# `diff.plus.line`/`diff.minus.line`-tinted line.
+"diff.plus.word" = { fg = "white", bg = "diff_plus_word_bg", modifiers = ["bold"] }
+"diff.minus.word" = { fg = "white", bg = "diff_minus_word_bg", modifiers = ["bold", "crossed_out"] }
+
+# Markdown scopes upstream leaves unset.
+"markup.heading.marker" = { fg = "light-gray" }
+"markup.link" = { fg = "blue", modifiers = ["underlined"] }
+
+[palette]
+
+yellow = "#D5B06B"
+blue = "#519FDF"
+red = "#D05C65"
+purple = "#B668CD"
+green = "#7DA869"
+gold = "#D19A66"
+cyan = "#46A6B2"
+white = "#ABB2BF"
+black = "#16181A"
+dark-black = "#12100E"
+light-black = "#2C323C"
+gray = "#252D30"
+faint-gray = "#ABB2BF"
+light-gray = "#636C6E"
+linenr = "#282C34"
+
+# HUME additions — inline-diagnostic and diff tints, each a palette color
+# blended toward `black`.
+error_inline = "#98484e"
+warning_inline = "#9c8253"
+info_inline = "#3f76a4"
+hint_inline = "#5e7d51"
+diff_plus_bg = "#293228"
+diff_plus_word_bg = "#3b4c36"
+diff_minus_bg = "#372428"
+diff_minus_word_bg = "#593035"
+diff_delta_bg = "#1e2b36"

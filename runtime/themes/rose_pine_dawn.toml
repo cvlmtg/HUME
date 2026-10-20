@@ -1,0 +1,45 @@
+# Rosé Pine Dawn — ported from rose-pine/helix's rose_pine_dawn.toml.
+# Author: Rosé Pine <hi@rosepinetheme.com>
+#
+# Source: https://github.com/rose-pine/helix/blob/2e8b94d54d48980ac9bbdfa6aae40b02227b71c3/rose_pine_dawn.toml
+# License: licenses/rose_pine.license
+#
+# Same as upstream, plus HUME's own additions and deviations marked inline
+# below (see the "HUME additions" marker).
+
+inherits = "rose_pine"
+
+[palette]
+base           = "#faf4ed" 
+surface        = "#fffaf3" 
+overlay        = "#f2e9e1"
+muted          = "#9893a5"
+subtle         = "#797593"
+text           = "#575279"
+love           = "#b4637a"
+love_10        = "#f6e4e0"
+gold           = "#ea9d34"
+gold_10        = "#fbead8"
+rose           = "#d7827e"
+rose_10        = "#fae8e1"
+pine           = "#286983"
+pine_10        = "#e5e6e2"
+foam           = "#56949f"
+foam_10        = "#eaeae5"
+iris           = "#907aa9"
+iris_10        = "#f1e8e6"
+highlight_low  = "#f4ede8"
+highlight_med  = "#dfdad9"
+highlight_high = "#cecacd"
+
+# HUME additions — inline-diagnostic and diff tints, each a palette color
+# blended toward `base`.
+error_inline = "#c98e9c"
+warning_inline = "#efb76c"
+info_inline = "#87b1b6"
+hint_inline = "#b09fbd"
+diff_plus_bg = "#dce3df"
+diff_plus_word_bg = "#bfd1d1"
+diff_minus_bg = "#eddad8"
+diff_minus_word_bg = "#e1c0c4"
+diff_delta_bg = "#f5e4dd"

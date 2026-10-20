@@ -30,6 +30,7 @@
 - `Shift-Tab` (kitty) and `Ctrl-p P` focus the previous pane.
 - `core:git-diff`'s new `"branch-style"` config can show the statusline branch as `⎇ main`.
 - The bottom drawer has a border, open at the bottom, which `popup-border` turns off.
+- New bundled themes: Catppuccin, Tokyo Night, One Dark, Dracula, GitHub, Kanagawa, Rosé Pine, Solarized and Nord, with their variants. Type `:theme ` and press `Tab` to list them.
 
 ### Plugins & scripting
 - A `live-picker!` source gets a token per query, so a slow source can't overwrite newer rows.

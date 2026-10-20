@@ -1,0 +1,242 @@
+# Kanagawa Lotus — ported from Helix's runtime/themes/kanagawa-lotus.toml.
+# Kanagawa-lotus
+# Author: vmanolop
+#
+# Source: https://github.com/helix-editor/helix/blob/ba40e547426b0f9896c8bdc699a4ab11f2b37dbc/runtime/themes/kanagawa-lotus.toml
+# License: licenses/kanagawa.license
+#
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+#
+# Same as upstream, plus HUME's own additions and deviations marked inline
+# below (see the "HUME additions" marker).
+
+# A light variant of the Kanagawa theme, based on the original dark Kanagawa theme
+# and inspired by the lotus variant of https://github.com/rebelot/kanagawa.nvim
+
+## User interface
+"ui.selection" = { bg = "lotusBlue1" }
+"ui.selection.primary" = { bg = "lotusBlue1" }
+"ui.background" = { fg = "lotusInk0", bg = "lotusWhite0" }
+
+"ui.linenr" = { fg = "lotusInk1" }
+"ui.linenr.selected" = { fg = "lotusBrightOrange", modifiers = ["bold"] }
+"ui.gutter" = { fg = "lotusInk1", bg = "lotusWhite1" }
+
+"ui.virtual" = "lotusInk1"
+"ui.virtual.ruler" = { bg = "lotusWhite1" }
+"ui.virtual.inlay-hint" = "lotusInk2"
+"ui.virtual.jump-label" = { fg = "lotusRed", modifiers = ["bold"] }
+"ui.virtual.whitespace" = { fg = "lotusWhite2" }
+
+"ui.statusline" = { fg = "lotusInk0", bg = "lotusWhite2" }
+"ui.statusline.inactive" = { fg = "lotusInk1", bg = "lotusWhite2" }
+"ui.statusline.normal" = { fg = "lotusWhite2", bg = "lotusBlue1", modifiers = ["bold"] }
+"ui.statusline.insert" = { fg = "lotusWhite2", bg = "lotusBrightGreen", modifiers = ["bold"] }
+"ui.statusline.select" = { fg = "lotusWhite2", bg = "lotusBrightViolet", modifiers = ["bold"] }
+
+"ui.bufferline" = { fg = "lotusInk1", bg = "lotusWhite2" }
+"ui.bufferline.active" = { fg = "lotusInk0", bg = "lotusWhite2" }
+"ui.bufferline.background" = { bg = "lotusWhite2" }
+
+"ui.popup" = { fg = "lotusInk0", bg = "lotusWhite2" }
+"ui.window" = { fg = "lotusWhite2" }
+"ui.help" = { fg = "lotusInk0", bg = "lotusWhite2" }
+"ui.text" = "lotusInk0"
+"ui.text.focus" = { fg = "lotusInk0", bg = "lotusBlue1", modifiers = ["bold"] }
+
+"ui.cursor" = { fg = "lotusSuperBlue", bg = "lotusInk3" }
+"ui.cursor.primary" = { fg = "lotusSuperBlue", bg = "lotusPink" }
+"ui.cursor.match" = { fg = "lotusRed", modifiers = ["bold"] }
+"ui.highlight" = { fg = "lotusInk0", bg = "lotusBlue1" }
+"ui.menu" = { fg = "lotusInk0", bg = "lotusBlue1" }
+"ui.menu.selected" = { fg = "lotusWhite0", bg = "lotusBlue3", modifiers = ["bold"] }
+"ui.menu.scroll" = { fg = "lotusInk0", bg = "lotusBlue1" }
+
+"ui.cursorline.primary" = { bg = "lotusWhite1" }
+"ui.cursorcolumn.primary" = { bg = "lotusWhite1" }
+
+"ui.debug.breakpoint" = "lotusBlue3"
+"ui.debug.active" = "lotusRed"
+
+# `fg` added to each (upstream sets only `underline`): a plugin-defined
+# sub-scope like "diagnostic.warning.<marker>" falls back to this scope by
+# dot-notation and needs a real color, not just an underline, to resolve to.
+"diagnostic.error" = { fg = "lotusRed", underline = { color = "lotusRed", style = "curl" } }
+"diagnostic.warning" = { fg = "lotusBrightOrange", underline = { color = "lotusBrightOrange", style = "curl" } }
+"diagnostic.info" = { fg = "lotusBlue3", underline = { color = "lotusBlue3", style = "curl" } }
+"diagnostic.hint" = { fg = "lotusGreen", underline = { color = "lotusGreen", style = "curl" } }
+"diagnostic.unnecessary" = { modifiers = ["dim"] }
+"diagnostic.deprecated" = { modifiers = ["crossed_out"] }
+
+error = "lotusRed"
+warning = "lotusBrightOrange"
+info = "lotusBlue3"
+hint = "lotusGreen"
+
+## Diff
+"diff.plus" = "lotusBrightGreen"
+"diff.minus" = "lotusRed"
+"diff.delta" = "lotusBrightOrange"
+
+## Syntax highlighting
+"attribute" = "lotusAutumnRed"
+"type" = { fg = "lotusSuperAqua" }
+"type.builtin" = { fg = "lotusBlue3" }
+"constructor" = { fg = "lotusBlue3" }
+"constant" = { fg = "lotusSuperOrange" }
+"constant.numeric" = { fg = "lotusSuperPink" }
+"constant.character.escape" = { fg = "lotusYellow2" }
+"string" = { fg = "lotusSuperBlue" }
+"string.regexp" = { fg = "lotusYellow2" }
+"string.special.url" = { fg = "lotusSuperGreen" }
+"string.special.symbol" = { fg = "lotusSuperViolet" }
+"comment" = { fg = "lotusInk1", modifiers = ["italic"] }
+"variable" = { fg = "lotusInk0" }
+"variable.builtin" = { fg = "lotusAutumnRed" }
+"variable.parameter" = { fg = "lotusSuperViolet" }
+"variable.other.member" = { fg = "lotusSuperOrange" }
+"label" = { fg = "lotusBlue3" }
+"punctuation" = { fg = "lotusPunctuation" }
+"keyword" = { fg = "lotusSuperViolet", modifiers = ["italic"] }
+"keyword.control.return" = { fg = "lotusSuperPink" }
+"keyword.control.exception" = { fg = "lotusSuperPink" }
+"keyword.directive" = { fg = "lotusAutumnRed" }
+"operator" = { fg = "lotusBrightPink", modifiers = ["bold"] }
+"function" = { fg = "lotusBlue2" }
+"function.builtin" = { fg = "lotusCyan" }
+"function.macro" = { fg = "lotusAutumnRed" }
+"tag" = { fg = "lotusSuperAqua" }
+"namespace" = { fg = "lotusSuperOrange" }
+"special" = { fg = "lotusSuperPink" }
+
+## Markup modifiers
+"markup.heading" = { fg = "lotusBlue3", modifiers = ["bold"] }
+"markup.heading.marker" = "lotusBlue3"
+"markup.heading.1" = { fg = "lotusYellow", modifiers = ["bold"] }
+"markup.heading.2" = { fg = "lotusBlue3", modifiers = ["bold"] }
+"markup.heading.3" = { fg = "lotusSuperAqua", modifiers = ["bold"] }
+"markup.list" = { fg = "lotusSuperPink" }
+"markup.bold" = { modifiers = ["bold"] }
+"markup.italic" = { modifiers = ["italic"] }
+"markup.strikethrough" = { modifiers = ["crossed_out"] }
+"markup.link.text" = { fg = "lotusBlue3" }
+"markup.link.url" = { fg = "lotusCyan" }
+"markup.link.label" = { fg = "lotusSuperOrange" }
+"markup.quote" = { fg = "lotusViolet", modifiers = ["italic"] }
+"markup.raw" = { fg = "lotusSuperGreen" }
+
+# ── HUME additions ─────────────────────────────────────────────────────────
+# Scopes below have no value upstream. Values draw only on the palette
+# below, chosen to sit naturally alongside it.
+
+# Focused-pane seam accent (`ui.window` above is the unfocused seam).
+"ui.window.focused" = { fg = "lotusBlue2" }
+
+# Every visible search match, distinct from the bracket-match
+# `ui.cursor.match` above.
+"ui.cursor.match.search" = { fg = "lotusWhite0", bg = "lotusYellow2" }
+
+# The `<200b>` stand-in for a character the terminal must not be shown. Not
+# muted like the rest of `ui.virtual`: a bidi override hiding in source is
+# what this has to catch the eye for.
+"ui.virtual.invisible" = { fg = "lotusWhite0", bg = "lotusRed" }
+
+# Mode rows. The whole statusline tints with the mode's style, so each
+# mode needs its own `bg` (Extend reads Helix's `ui.statusline.select`).
+"ui.statusline.search" = { fg = "lotusWhite0", bg = "lotusSuperOrange", modifiers = ["bold"] }
+"ui.statusline.command" = { fg = "lotusWhite0", bg = "lotusCyan", modifiers = ["bold"] }
+"ui.statusline.sift" = { fg = "lotusWhite0", bg = "lotusBrightPink", modifiers = ["bold"] }
+"ui.statusline.separator" = { fg = "lotusInk1" }
+
+# Tab bar, a HUME-only surface distinct from Helix's own `ui.bufferline*`.
+"ui.tabline" = { fg = "lotusInk1", bg = "lotusWhite2" }
+"ui.tabline.active" = { fg = "lotusInk0", bg = "lotusBlue1", modifiers = ["bold"] }
+
+"ui.popup.scroll" = { fg = "lotusInk1", bg = "lotusWhite2" }
+"ui.drawer" = { fg = "lotusInk0", bg = "lotusWhite1" }
+
+# End-of-line diagnostic summary. Its own scope so this virtual text carries
+# no `underlined` modifier from the `diagnostic.*` squiggle above; muted
+# against that squiggle so the line's own code stays the brighter thing.
+"error.diagnostic.inline" = { fg = "error_inline" }
+"warning.diagnostic.inline" = { fg = "warning_inline" }
+"info.diagnostic.inline" = { fg = "info_inline" }
+"hint.diagnostic.inline" = { fg = "hint_inline" }
+
+# :messages severity badge/body
+"diagnostic.error.message" = { fg = "lotusWhite0", bg = "lotusRed" }
+"diagnostic.warning.message" = { fg = "lotusWhite0", bg = "lotusBrightOrange" }
+"diagnostic.info.message" = { fg = "lotusWhite0", bg = "lotusBlue3" }
+"diagnostic.hint.message" = { fg = "lotusWhite0", bg = "lotusGreen" }
+"diagnostic.error.message-text" = { fg = "lotusRed" }
+"diagnostic.warning.message-text" = { fg = "lotusBrightOrange" }
+"diagnostic.info.message-text" = { fg = "lotusBlue3" }
+"diagnostic.hint.message-text" = { fg = "lotusGreen" }
+
+# Whole-line diff tint (see the manual's Themes section for the details).
+"diff.plus.line" = { bg = "diff_plus_bg" }
+"diff.minus.line" = { fg = "lotusInk0", bg = "diff_minus_bg" }
+"diff.delta.line" = { bg = "diff_delta_bg" }
+
+# Word-level segments mark the exact changed span inside a
+# `diff.plus.line`/`diff.minus.line`-tinted line.
+"diff.plus.word" = { fg = "lotusInk0", bg = "diff_plus_word_bg", modifiers = ["bold"] }
+"diff.minus.word" = { fg = "lotusInk0", bg = "diff_minus_word_bg", modifiers = ["bold", "crossed_out"] }
+
+# Markdown scopes upstream leaves unset.
+"markup.link" = { fg = "lotusBlue2", modifiers = ["underlined"] }
+
+[palette]
+lotusWhite0       = "#FDFCFB"
+lotusWhite1       = "#F7ECE1"
+lotusWhite2       = "#EAE3D7"
+
+lotusInk0         = "#181825"
+lotusInk1         = "#8F909C"
+lotusInk2         = "#8AA6B8"
+lotusInk3         = "#65869C"
+
+lotusBlue1        = "#B7C5D8"
+lotusBlue2        = "#086187"
+lotusBlue3        = "#223249"
+
+lotusGreen        = "#76946A"
+lotusBrightGreen  = "#2E8B57"
+
+lotusViolet       = "#957FB8"
+lotusBrightViolet = "#7C3AED"
+
+lotusAutumnRed    = "#C34043"
+lotusRed          = "#E82424"
+lotusPink         = "#D27E99"
+lotusBrightPink   = "#FF5D62"
+
+lotusYellow       = "#DCA561"
+lotusYellow2      = "#AD8700"
+lotusBrightOrange = "#FF8800"
+
+lotusCyan         = "#0081A7"
+
+lotusPunctuation  = "#473428"
+
+# Max contrast accent colors
+lotusSuperGreen   = "#00612D"
+lotusSuperAqua    = "#006A6A"
+lotusSuperViolet  = "#43098A"
+lotusSuperOrange  = "#A34100"
+lotusSuperPink    = "#861657"
+lotusSuperBlue    = "#0D267D"
+
+# HUME additions — inline-diagnostic and diff tints, each a palette color
+# blended toward `lotusWhite0`.
+error_inline = "#ee6565"
+warning_inline = "#feab4b"
+info_inline = "#646f7e"
+hint_inline = "#9eb396"
+diff_plus_bg = "#e5e9e1"
+diff_plus_word_bg = "#ccd7c7"
+diff_minus_bg = "#f3dada"
+diff_minus_word_bg = "#e8b8b9"
+diff_delta_bg = "#dbe6eb"
