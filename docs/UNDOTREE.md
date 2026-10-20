@@ -199,7 +199,7 @@ builtins return `hume-editing`'s `ChangeHunk`, the one hunk type behind
       `hume-scripting`)
 - [ ] Panes as Steel inputs: `focused-pane`/`panes` return `PaneId`s but no
       builtin accepts one to place a buffer in a narrow pane
-- [ ] Per-buffer keymaps
+- [x] Per-buffer keymaps
 - [ ] Port the Phase 1 renderer unchanged — it is pure data to strings,
       independent of which host displays it
 

@@ -1568,3 +1568,18 @@ behaviours in question, not only that it passes.
 **Files:** `hume-editor/src/editor/tests/mouse.rs`,
 `hume-editor/src/editor/lifecycle.rs` (`run`),
 `hume-editor/src/editor/input_stack/popup.rs` (`popup_input`).
+
+## L45 — A no-op on an unknown name was planned without a message (2026-10-20)
+
+**Root cause:** the buffer-local keymap plan had `attach-keymap!` and
+`detach-keymap!` do nothing, with no message, when no keymap of the given
+name existed. The user wanted the no-op kept, but with a warning: a typo in
+a keymap name, or an attach that runs before the binds it expects, would
+otherwise look like a working call.
+
+**Prevention rule:** When a call is specified to do nothing on input it
+can't use (an unknown name, a missing target), plan a warning naming that
+input as part of the no-op. Stay silent only for states that are normal and
+expected, like detaching something that isn't attached.
+
+**Files:** `hume-editor/src/editor/scripting_setup.rs` (`apply_script_effects`).

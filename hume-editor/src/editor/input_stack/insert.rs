@@ -14,7 +14,7 @@ use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 use hume_engine::types::EditorMode;
 
 use super::super::edit_session::InsertSession;
-use super::super::keymap::WalkResult;
+use super::super::keymap::{BindMode, WalkResult};
 use super::super::replay::{Input, dispatch_insert_key};
 use super::super::{Editor, EditorState, commands, doc_ops};
 use super::paste::PastedText;
@@ -140,7 +140,7 @@ fn handle_insert(ed: &mut Editor, key: KeyEvent) {
     // Only Esc, Ctrl-c, arrows, and user bindings live in the insert trie;
     // plain chars, Tab, Enter, Backspace, and Delete fall through to their
     // default behaviour below.
-    let trie_result = ed.state.config.keymap.insert.walk(&[key]);
+    let trie_result = ed.resolve_keys(BindMode::Insert, &[key]).walk;
     match trie_result {
         WalkResult::Leaf(cmd) => {
             // A bound command edits through `commands::run_body`, never

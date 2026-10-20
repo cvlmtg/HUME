@@ -142,6 +142,15 @@
 (define (buffer-lines pane #:range [range #f])
   (%buffer-lines pane range))
 
+(define (bind-key! mode key cmd #:keymap [keymap #f])
+  (%bind-key! mode key cmd keymap))
+
+(define (bind-key-extend! mode key cmd #:keymap [keymap #f])
+  (%bind-key-extend! mode key cmd keymap))
+
+(define (unbind-key! mode key #:keymap [keymap #f])
+  (%unbind-key! mode key keymap))
+
 (define (buffer-display-path pane #:relative [relative #f])
   (%buffer-display-path pane relative))
 

@@ -538,8 +538,8 @@ fn core_stdlib_report_section_command() {
 // ── The markdown-heading example in writing-plugins.md ───────────────────────
 
 /// The `markdown-heading` command `writing-plugins.md` shows, with its
-/// binding: rewrite the line of each selection's anchor as a heading whose
-/// level is the count.
+/// binding for Markdown buffers: rewrite the line of each selection's anchor
+/// as a heading whose level is the count.
 const MARKDOWN_HEADING: &str = r#"
 (define (heading-line line level)
   (let* ((n (string-length line))
@@ -567,13 +567,22 @@ const MARKDOWN_HEADING: &str = r#"
                    level)))
              (buffer-selections pane))))))
 
-(bind-key! 'normal "G H" "markdown-heading")
+(bind-key! 'normal "G H" "markdown-heading" #:keymap 'markdown-keys)
+
+(register-hook! 'on-language-set
+  (lambda (pane lang)
+    (if (equal? lang "markdown")
+        (attach-keymap! pane 'markdown-keys)
+        (detach-keymap! pane 'markdown-keys))))
 "#;
 
-/// An editor on `input` with the shipped `core:stdlib` and the example
-/// loaded the way a user's `init.scm` would load them. The returned guards
-/// keep the runtime and init directories alive.
-fn markdown_heading_editor(input: &str) -> (Editor, RuntimeDirs, tempfile::TempDir) {
+/// An editor on `input` in a `language` buffer, with the shipped
+/// `core:stdlib` and the example loaded the way a user's `init.scm` would
+/// load them. The returned guards keep the runtime and init directories alive.
+fn markdown_heading_editor(
+    language: &str,
+    input: &str,
+) -> (Editor, RuntimeDirs, tempfile::TempDir) {
     let guard = RuntimeDirs::new();
     write_core_plugin(&guard, "stdlib", STDLIB_PLUGIN);
     let mut ed = editor_from(input);
@@ -584,11 +593,19 @@ fn markdown_heading_editor(input: &str) -> (Editor, RuntimeDirs, tempfile::TempD
         init_dir.path(),
         &format!("(load-plugin! \"core:stdlib\")\n{MARKDOWN_HEADING}"),
     );
+    let bid = ed.focused_buffer_id();
+    let language = ed.state.config.languages.intern(language);
+    ed.set_buffer_language(bid, Some(language));
+    ed.settle();
     (ed, guard, init_dir)
 }
 
 fn heading_after(input: &str, keys: &str) -> String {
-    let (mut ed, _guard, _init_dir) = markdown_heading_editor(input);
+    heading_after_in("markdown", input, keys)
+}
+
+fn heading_after_in(language: &str, input: &str, keys: &str) -> String {
+    let (mut ed, _guard, _init_dir) = markdown_heading_editor(language, input);
     for ch in keys.chars() {
         ed.feed_key(key(ch));
     }
@@ -635,6 +652,11 @@ fn markdown_heading_leaves_an_empty_line_alone() {
 #[test]
 fn markdown_heading_with_two_cursors_on_one_line_writes_one_heading() {
     assert_eq!(heading_after("-{f}>o-[o]>\n", "2GH"), "## foo\n");
+}
+
+#[test]
+fn markdown_heading_keys_do_nothing_outside_markdown() {
+    assert_eq!(heading_after_in("rust", "-[f]>oo\n", "GH"), "foo\n");
 }
 
 #[test]

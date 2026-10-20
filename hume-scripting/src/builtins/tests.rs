@@ -22,15 +22,34 @@ fn cmd_gated_builtin_rejected_from_init_through_real_registration() {
     assert!(err.contains("not available during init"), "got: {err}");
 }
 
-/// A `config`-gated builtin (`bind-key!`) called from inside a command body
-/// (`EvalMode::Command`, dispatched via the real `call_steel_cmd` path) must
-/// still raise "not from a Steel command body".
+/// A `config`-gated builtin (`register-hook!`) called from inside a command
+/// body (`EvalMode::Command`, dispatched via the real `call_steel_cmd` path)
+/// must still raise "not from a Steel command body".
 ///
 /// `set-option!` is `open` (callable from any context; see
 /// `builtins/settings.rs`'s docs), so it can't exercise this rejection path;
-/// `bind-key!` is `config`-gated.
+/// `register-hook!` is `config`-gated.
 #[test]
 fn config_gated_builtin_rejected_from_command_body_through_real_registration() {
+    let mut host = crate::ScriptingHost::new(&Dirs::none());
+    let mut store = crate::null_host::CommandStoreHost::default();
+    host.eval_source(
+        r#"(define-command! "probe-register-hook" "doc"
+             (lambda () (register-hook! 'on-buffer-open (lambda (pane) (begin)))))"#,
+        &mut store,
+    )
+    .expect("defining the probe command must not error");
+
+    let err = host
+        .call_steel_cmd_by_name("probe-register-hook", vec![], &mut store)
+        .expect_err("register-hook! must be rejected from a command body");
+    assert!(err.message.contains("command body"), "got: {err:?}");
+}
+
+/// `bind-key!` without `#:keymap` changes the global keymap, which only init
+/// and plugin loading may do.
+#[test]
+fn global_bind_key_rejected_from_command_body_through_real_registration() {
     let mut host = crate::ScriptingHost::new(&Dirs::none());
     let mut store = crate::null_host::CommandStoreHost::default();
     host.eval_source(
@@ -41,8 +60,34 @@ fn config_gated_builtin_rejected_from_command_body_through_real_registration() {
 
     let err = host
         .call_steel_cmd_by_name("probe-bind-key", vec![], &mut store)
-        .expect_err("bind-key! must be rejected from a command body");
+        .expect_err("a global bind-key! must be rejected from a command body");
     assert!(err.message.contains("command body"), "got: {err:?}");
+}
+
+/// `bind-key!` with `#:keymap` binds into a named keymap, which a command
+/// body may do.
+#[test]
+fn named_bind_key_allowed_from_command_body_through_real_registration() {
+    let mut host = crate::ScriptingHost::new(&Dirs::none());
+    let mut store = crate::null_host::CommandStoreHost::default();
+    host.eval_source(
+        r#"(define-command! "probe-bind-key" "doc"
+             (lambda () (bind-key! 'normal "Q" "move-down" #:keymap 'probe-keys)))"#,
+        &mut store,
+    )
+    .expect("defining the probe command must not error");
+
+    let effects = host
+        .call_steel_cmd_by_name("probe-bind-key", vec![], &mut store)
+        .expect("a named bind-key! must be allowed from a command body");
+    assert!(
+        matches!(
+            effects.as_slice(),
+            [crate::Effect::BindKey { keymap: crate::host::KeymapTarget::Named(name), .. }]
+                if name == "probe-keys"
+        ),
+        "got: {effects:?}"
+    );
 }
 
 /// Every explicit-`bid` builtin declared `args::LivePane` in the `builtins!`

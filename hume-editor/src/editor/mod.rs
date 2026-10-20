@@ -16,7 +16,7 @@ use hume_ops::register::{KillRing, RegisterSet};
 use hume_treesitter::parse_worker::ParseBackend;
 use hume_treesitter::registry::LanguageRegistry;
 
-use self::keymap::Keymap;
+use self::keymap::{Keymap, LocalKeymaps};
 
 mod async_job;
 mod async_source;
@@ -117,6 +117,9 @@ use self::tui::Tui;
 pub(crate) struct ConfigState {
     /// The trie-based keymap for each mode.
     pub(in crate::editor) keymap: Keymap,
+    /// Named keymaps and the buffers each is attached to, looked up before
+    /// `keymap`.
+    pub(in crate::editor) local_keymaps: LocalKeymaps,
     /// Registry of all mappable commands (motions, selections, edits), plus
     /// every `%define-command!`/`%declare-plugin!` dynamic and lazy entry.
     pub(in crate::editor) registry: CommandRegistry,
@@ -193,6 +196,7 @@ impl ConfigState {
     pub(super) fn new(kitty_enabled: bool, prior_clock: u64) -> Self {
         Self {
             keymap: default_keymap_for(kitty_enabled),
+            local_keymaps: LocalKeymaps::default(),
             registry: CommandRegistry::with_defaults(),
             completion_sources: completion::SourceRegistry::with_defaults(),
             languages: LanguageRegistry::new(),

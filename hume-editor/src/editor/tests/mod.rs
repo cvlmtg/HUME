@@ -1552,6 +1552,7 @@ mod language;
 mod lazy_drawer;
 mod line_store;
 mod list_buffers_drawer;
+mod local_keymaps;
 mod lsp;
 mod lsp_bridge;
 mod lsp_decorations;

@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use hume_engine::pipeline::BufferId;
 
+use hume_scripting::host::KeymapTarget;
 use hume_scripting::{Effect, PaneHandle};
 use steel::rvals::SteelVal;
 
@@ -9,6 +10,7 @@ use super::buffer::DiskCheckTrigger;
 use super::commands::CommandPane;
 use super::error::CommandError;
 use super::event::{EditorEvent, PendingWork};
+use super::keymap::{LocalKeymaps, UnknownKeymap};
 use super::reload::ReloadSnapshot;
 use super::{Editor, Severity, host_impl::EditorHostImpl};
 use crate::cli::ConfigSource;
@@ -115,17 +117,48 @@ impl Editor {
                     keys,
                     cmd,
                     force_extend,
-                } => self.state.config.keymap.bind_user_with_extend(
-                    to_editor_bind_mode(mode),
-                    &keys,
-                    std::borrow::Cow::Owned(cmd),
-                    force_extend,
-                ),
-                Effect::UnbindKey { mode, keys } => self
-                    .state
-                    .config
-                    .keymap
-                    .unbind_user(to_editor_bind_mode(mode), &keys),
+                    keymap,
+                } => {
+                    let mode = to_editor_bind_mode(mode);
+                    let cmd = std::borrow::Cow::Owned(cmd);
+                    match keymap {
+                        KeymapTarget::Global => self.state.config.keymap.bind_user_with_extend(
+                            mode,
+                            &keys,
+                            cmd,
+                            force_extend,
+                        ),
+                        // Bound after init too, so checked here rather than by
+                        // the post-init lint, which covers the global keymap.
+                        KeymapTarget::Named(name) => {
+                            if self.state.config.registry.get_mappable(&cmd).is_none() {
+                                self.report_unbound_key_command(&cmd);
+                            }
+                            self.state.config.local_keymaps.bind(
+                                &name,
+                                mode,
+                                &keys,
+                                cmd,
+                                force_extend,
+                            );
+                        }
+                    }
+                }
+                Effect::UnbindKey { mode, keys, keymap } => {
+                    let mode = to_editor_bind_mode(mode);
+                    match keymap {
+                        KeymapTarget::Global => self.state.config.keymap.unbind_user(mode, &keys),
+                        KeymapTarget::Named(name) => {
+                            self.state.config.local_keymaps.unbind(&name, mode, &keys)
+                        }
+                    }
+                }
+                Effect::AttachKeymap { buffer, name } => {
+                    self.change_attachment("attach-keymap!", buffer, &name, LocalKeymaps::attach)
+                }
+                Effect::DetachKeymap { buffer, name } => {
+                    self.change_attachment("detach-keymap!", buffer, &name, LocalKeymaps::detach)
+                }
                 Effect::RegisterCompletionSource(reg) => self.register_completion_source(reg),
                 Effect::SetTriggers {
                     kind,
@@ -145,6 +178,28 @@ impl Editor {
             }
         }
         self.detect_pending_languages();
+    }
+
+    /// Attach or detach the keymap `name` in `buffer`. A name nothing is bound
+    /// into warns, since the call then does nothing.
+    fn change_attachment(
+        &mut self,
+        builtin: &str,
+        buffer: BufferId,
+        name: &str,
+        change: fn(&mut LocalKeymaps, BufferId, &str) -> Result<(), UnknownKeymap>,
+    ) {
+        if self.state.buffers.try_get(buffer).is_none() {
+            self.report(
+                Severity::Trace,
+                format!("{builtin}: buffer {buffer:?} no longer exists"),
+            );
+        } else if change(&mut self.state.config.local_keymaps, buffer, name).is_err() {
+            self.report(
+                Severity::Warning,
+                format!("{builtin}: no keymap named '{name}'"),
+            );
+        }
     }
 
     /// End a Steel session that returned `Result<Vec<Effect>, EvalError>`:
@@ -851,12 +906,7 @@ impl Editor {
         {
             let config = &self.state.config;
             for name in config.keymap.unknown_command_names(&config.registry) {
-                self.report_unknown_command(
-                    &name,
-                    format!(
-                        "key bound to unknown command '{name}': typo, or missing from #:commands?"
-                    ),
-                );
+                self.report_unbound_key_command(&name);
             }
         }
         // Post-init lint: warn on #:languages activation entries whose language name

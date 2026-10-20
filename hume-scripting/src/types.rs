@@ -678,8 +678,8 @@ pub enum Effect {
     GrammarSweep(String),
     LspRequest(PendingLspRequest),
     LspNotify(PendingLspNotify),
-    /// `(bind-key! …)` / `(bind-key-extend! …)`: applied via
-    /// `Keymap::bind_user_with_extend`.
+    /// `(bind-key! …)` / `(bind-key-extend! …)`: applied to the global keymap,
+    /// or with `#:keymap` to that named keymap.
     ///
     /// Queued rather than applied inline through a host capability so a failed
     /// plugin activation's binds are *never applied*: `pop_effect_marks(false)`
@@ -693,13 +693,26 @@ pub enum Effect {
         keys: Vec<termina::event::KeyEvent>,
         cmd: String,
         force_extend: bool,
+        keymap: crate::host::KeymapTarget,
     },
-    /// `(unbind-key! …)`: applied via `Keymap::unbind_user`. Queued like the
-    /// two binders above so a same-eval bind-then-unbind on one key applies
-    /// in Steel's emission order.
+    /// `(unbind-key! …)`: removes a binding from the keymap `keymap` names.
+    /// Queued like the two binders above so a same-eval bind-then-unbind on
+    /// one key applies in Steel's emission order.
     UnbindKey {
         mode: crate::host::BindMode,
         keys: Vec<termina::event::KeyEvent>,
+        keymap: crate::host::KeymapTarget,
+    },
+    /// `(attach-keymap! pane name)`: the named keymap applies in `buffer`.
+    /// Queued like the binds so a same-eval bind-then-attach applies in order.
+    AttachKeymap {
+        buffer: BufferId,
+        name: String,
+    },
+    /// `(detach-keymap! pane name)`.
+    DetachKeymap {
+        buffer: BufferId,
+        name: String,
     },
     /// `(register-completion-source! …)`: applied into the editor's
     /// completion source registry. Queued rather than applied inline through

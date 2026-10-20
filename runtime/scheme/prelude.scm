@@ -3,16 +3,22 @@
 
 (define-syntax bind-keys!
   (syntax-rules ()
+    ((_ mode #:keymap keymap (key cmd) ...)
+     (begin (bind-key! mode key cmd #:keymap keymap) ...))
     ((_ mode (key cmd) ...)
      (begin (bind-key! mode key cmd) ...))))
 
 (define-syntax bind-keys-extend!
   (syntax-rules ()
+    ((_ mode #:keymap keymap (key cmd) ...)
+     (begin (bind-key-extend! mode key cmd #:keymap keymap) ...))
     ((_ mode (key cmd) ...)
      (begin (bind-key-extend! mode key cmd) ...))))
 
 (define-syntax unbind-keys!
   (syntax-rules ()
+    ((_ mode #:keymap keymap key ...)
+     (begin (unbind-key! mode key #:keymap keymap) ...))
     ((_ mode key ...)
      (begin (unbind-key! mode key) ...))))
 

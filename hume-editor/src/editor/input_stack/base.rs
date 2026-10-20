@@ -4,13 +4,13 @@
 
 use termina::event::{KeyCode, KeyEvent, Modifiers};
 
-use hume_engine::pipeline::EngineView;
+use hume_engine::pipeline::{BufferId, EngineView};
 use hume_engine::types::EditorMode;
 use hume_ops::MotionMode;
 use hume_scripting::host::MAX_COUNT;
 
 use super::super::commands::cmd_clear_search;
-use super::super::keymap::WalkResult;
+use super::super::keymap::{BindMode, WalkResult};
 use super::super::{Editor, EditorState};
 use super::char::{CharRead, MacroRead, read_char};
 use super::paste::PastedText;
@@ -27,14 +27,17 @@ pub(in crate::editor) struct BaseLayer {
 }
 
 /// The keys of the current multi-key Normal/Extend sequence (max depth 3),
-/// and whether it began with a kitty one-shot Ctrl key that resolved to a
-/// prefix node. The two are one state: clearing the keys drops the extend
-/// intent too, so an abandoned sequence never extends the next one. At Leaf
-/// resolution the intent applies only if the command is extendable.
+/// whether it began with a kitty one-shot Ctrl key that resolved to a
+/// prefix node, and the buffer its first key was pressed in. The three are
+/// one state: clearing the keys drops the extend intent and the buffer too,
+/// so an abandoned sequence never extends the next one. At Leaf resolution
+/// the intent applies only if the command is extendable.
 #[derive(Default)]
 pub(in crate::editor) struct PendingSequence {
     keys: Vec<KeyEvent>,
     ctrl_extend: bool,
+    /// `Some` while `keys` is non-empty, `None` otherwise.
+    buffer: Option<BufferId>,
 }
 
 impl PendingSequence {
@@ -42,8 +45,19 @@ impl PendingSequence {
         &self.keys
     }
 
-    pub(in crate::editor) fn push(&mut self, key: KeyEvent) {
+    /// Add `key`, pressed in `buffer`, which must be where the sequence
+    /// started.
+    pub(in crate::editor) fn push(&mut self, key: KeyEvent, buffer: BufferId) {
+        debug_assert!(self.buffer.is_none_or(|started| started == buffer));
+        self.buffer = Some(buffer);
         self.keys.push(key);
+    }
+
+    /// Whether the sequence started in a buffer other than `buffer`. Its
+    /// keys were resolved against that buffer's keymaps, so it can't go on
+    /// here.
+    pub(in crate::editor) fn started_outside(&self, buffer: BufferId) -> bool {
+        self.buffer.is_some_and(|started| started != buffer)
     }
 
     pub(in crate::editor) fn ctrl_extend(&self) -> bool {
@@ -57,6 +71,7 @@ impl PendingSequence {
     pub(in crate::editor) fn clear(&mut self) {
         self.keys.clear();
         self.ctrl_extend = false;
+        self.buffer = None;
     }
 }
 
@@ -153,6 +168,12 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
         key
     };
 
+    let buffer = ed.focused_buffer_id();
+    if ed.state.pending.started_outside(buffer) {
+        ed.state.pending.clear();
+        ed.state.count = None;
+    }
+
     // ── Hard-reset on Esc ─────────────────────────────────────────────────
     if key.code == KeyCode::Escape {
         ed.state.pending.clear();
@@ -243,37 +264,7 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
         }
     }
 
-    // ── Stage 1: Extend-trie override ────────────────────────────────────
-    //
-    // We walk with [pending keys..., key] without committing the push yet.
-    // Only `Interior` commits the key (so the sequence accumulates correctly
-    // across keypresses). On `NoMatch` the key is not yet pending,
-    // so the normal-trie path below can push it as usual.
-    if ed.state.mode() == EditorMode::Extend
-        && !ed.state.config.keymap.extend.is_empty()
-        && !key.modifiers.contains(Modifiers::CONTROL)
-    {
-        let mut seq = ed.state.pending.keys().to_vec();
-        seq.push(key);
-        match ed.state.config.keymap.extend.walk(&seq) {
-            WalkResult::Leaf(cmd) => {
-                ed.state.pending.clear();
-                let count = ed.state.count.take();
-                ed.execute_keymap_command(cmd.name.clone(), count, false);
-                return;
-            }
-            WalkResult::Interior => {
-                // Mid-sequence: commit the key and wait for more.
-                ed.state.pending.push(key);
-                return;
-            }
-            WalkResult::NoMatch => {
-                // No extend-trie match: fall through to normal trie.
-            }
-        }
-    }
-
-    // ── Stage 2: Ctrl-key normalisation + one-shot extend ────────────────
+    // ── Stage 1: Ctrl-key normalisation + one-shot extend ────────────────
     //
     // Two categories of CONTROL keys:
     // 1. Explicit Ctrl bindings (Ctrl-c, Ctrl-r, Ctrl-,, Ctrl-x, Ctrl-X):
@@ -298,17 +289,18 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
     // For Ctrl keys at the trie root, walk once to check for an explicit
     // binding. If found, reuse that result directly (no second walk).
     // If NoMatch, strip CONTROL and re-walk only on kitty terminals.
-    let (result, ctrl_extend) =
+    let (resolved, ctrl_extend) =
         if key.modifiers.contains(Modifiers::CONTROL) && ed.state.pending.keys().is_empty() {
-            match ed.state.config.keymap.normal.walk(&[key]) {
+            let explicit = ed.resolve_keys(BindMode::Normal, &[key]);
+            match explicit.walk {
                 WalkResult::NoMatch if ed.kitty_enabled => {
                     // Kitty mode: strip CONTROL, re-walk as extend. Only proceed if the
                     // resolved command is extendable. This prevents e.g. Ctrl-u running
                     // "undo" (not a motion) as a one-shot extend.
                     let bare = KeyEvent::new(key.code, Modifiers::NONE);
-                    ed.state.pending.push(bare);
-                    let result = ed.state.config.keymap.normal.walk(ed.state.pending.keys());
-                    let ctrl_extend = match &result {
+                    ed.state.pending.push(bare, buffer);
+                    let resolved = ed.resolve_keys(BindMode::Normal, ed.state.pending.keys());
+                    let ctrl_extend = match &resolved.walk {
                         // Prefix key (g, m, z…): persist extend intent for the
                         // remaining keys in the sequence. Extendability is
                         // checked at Leaf resolution, not here.
@@ -329,7 +321,7 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
                         ed.state.count = None;
                         return;
                     }
-                    (result, true)
+                    (resolved, true)
                 }
                 WalkResult::NoMatch => return, // Legacy: no-op.
                 // Explicit Ctrl-letter binding. Extend only if the binding
@@ -340,33 +332,42 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
                 // Interior: the Ctrl-key starts a multi-key sequence (e.g.
                 // Ctrl-p → pane prefix); save it as pending so the
                 // follow-up keypress can complete the trie walk.
-                matched => {
-                    let ctrl_extend = match &matched {
-                        WalkResult::Leaf(c) => c.force_extend,
-                        _ => false,
-                    };
-                    if matches!(matched, WalkResult::Interior) {
-                        ed.state.pending.push(key);
-                    }
-                    (matched, ctrl_extend)
+                WalkResult::Leaf(ref c) => {
+                    let ctrl_extend = c.force_extend;
+                    (explicit, ctrl_extend)
+                }
+                WalkResult::Interior => {
+                    ed.state.pending.push(key, buffer);
+                    (explicit, false)
                 }
             }
         } else {
-            ed.state.pending.push(key);
+            // A Ctrl key never takes an Extend-mode override.
+            let mode = if ed.state.mode() == EditorMode::Extend
+                && !key.modifiers.contains(Modifiers::CONTROL)
+            {
+                BindMode::Extend
+            } else {
+                BindMode::Normal
+            };
+            ed.state.pending.push(key, buffer);
             (
-                ed.state.config.keymap.normal.walk(ed.state.pending.keys()),
+                ed.resolve_keys(mode, ed.state.pending.keys()),
                 ed.state.pending.ctrl_extend(),
             )
         };
 
-    // ── Stage 3: Final extend merge ───────────────────────────────────────
+    // ── Stage 2: Final extend merge ───────────────────────────────────────
     //
     // Both inputs are now available: sticky extend from editor mode, and
     // one-shot extend from the Ctrl path (ctrl_extend). Merge them here.
-    // `extend` is passed as a parameter; no mode transition occurs.
-    let extend = (ed.state.mode() == EditorMode::Extend) || ctrl_extend;
+    // `extend` is passed as a parameter; no mode transition occurs. An
+    // Extend-mode override is a command of its own, not an extend variant of
+    // a normal one, so it never extends.
+    let extend =
+        !resolved.extend_override && ((ed.state.mode() == EditorMode::Extend) || ctrl_extend);
 
-    match result {
+    match resolved.walk {
         WalkResult::Leaf(cmd) => {
             ed.state.pending.clear();
             // Only apply one-shot extend if the command supports it.

@@ -20,7 +20,7 @@ use hume_ui::popup::SideSlot;
 use super::super::completion::{
     BufferSession, CompletionItem, Documentation, ItemKey, MinibufSession,
 };
-use super::super::keymap::WalkResult;
+use super::super::keymap::{BindMode, WalkResult};
 use super::super::popup_syntax::{build_markup_syntax, popup_content};
 use super::super::{Editor, EditorState, Severity};
 use super::paste::PastedText;
@@ -445,7 +445,7 @@ fn completion_input_buffer(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
     // tokens correctly tracked. Walked before delegating, since the
     // command itself may reload the keymap.
     let is_command = matches!(
-        ed.state.config.keymap.insert.walk(&[key]),
+        ed.resolve_keys(BindMode::Insert, &[key]).walk,
         WalkResult::Leaf(_)
     );
     ed.fall_through(r, InputEvent::Key(key));

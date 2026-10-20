@@ -70,7 +70,7 @@ fn unbind_key_queues_unbind_effect() {
     assert!(
         matches!(
             effects.as_slice(),
-            [Effect::UnbindKey { mode: BindMode::Normal, keys }] if keys.as_slice() == [h_key]
+            [Effect::UnbindKey { mode: BindMode::Normal, keys, keymap: hume_scripting::host::KeymapTarget::Global }] if keys.as_slice() == [h_key]
         ),
         "expected one Effect::UnbindKey for 'h'; got: {effects:?}"
     );
@@ -188,6 +188,39 @@ fn prelude_unbind_keys_batch_removes_bindings() {
             ] if k1.as_slice() == [h_key] && k2.as_slice() == [l_key]
         ),
         "unbind-keys! must expand to one unbind per key, in order; got: {effects:?}"
+    );
+}
+
+#[test]
+fn prelude_batch_macros_bind_into_a_named_keymap() {
+    use hume_scripting::host::KeymapTarget;
+
+    let mut h = host();
+    let mut mock = MockHost::new();
+
+    h.eval_source(&real_prelude_source(), &mut mock).unwrap();
+    let effects = h
+        .eval_source(
+            r#"(bind-keys! 'normal #:keymap 'test-keys ("z" "move-left") ("l" "move-right"))
+               (bind-keys-extend! 'normal #:keymap 'test-keys ("Q" "select-line"))
+               (unbind-keys! 'normal #:keymap 'test-keys "h")"#,
+            &mut mock,
+        )
+        .unwrap();
+
+    let named = |target: &KeymapTarget| *target == KeymapTarget::Named("test-keys".into());
+    assert!(
+        matches!(
+            effects.as_slice(),
+            [
+                Effect::BindKey { cmd: c1, force_extend: false, keymap: t1, .. },
+                Effect::BindKey { cmd: c2, force_extend: false, keymap: t2, .. },
+                Effect::BindKey { cmd: c3, force_extend: true, keymap: t3, .. },
+                Effect::UnbindKey { keymap: t4, .. },
+            ] if c1 == "move-left" && c2 == "move-right" && c3 == "select-line"
+                && named(t1) && named(t2) && named(t3) && named(t4)
+        ),
+        "each batch macro must pass #:keymap to every bind it expands to; got: {effects:?}"
     );
 }
 

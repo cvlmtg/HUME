@@ -22,7 +22,7 @@ Editor commands and builtins are different things. A command, such as `completio
 - Optional arguments are keywords with a default, like `#:cwd`, never a positional `#f` placeholder. The exception is `define-language!`, whose extensions, globs, and shebangs are positional lists you can drop from the end.
 - A structured value you pass in or get back (a decoration entry, a diagnostic, a request error) is a hashmap with symbol keys: `(hash 'line 0 'text "!" 'scope "error")`, read with `(hash-ref d 'message)`. Values decoded from server JSON are JSON handles instead (see [JSON handles](lsp-api.md#json-handles)). Two kinds of value are hashmaps with string keys, the wire shape: the `lsp-*-params` results (`(hash-ref (lsp-position-params pane) "position")`) and the items `completion-top` returns, whose source is `(hash-ref item "source")`. Picker items `(display . payload)`, picker `#:actions` `(key-spec . proc)`, and `register-lsp-server!`'s `#:env` `("KEY" . "VALUE")` are pairs, not records: the first two are per-row data on a hot path, the last a map.
 - Every UI opener (`show-popup!`, `show-menu!`, `show-drawer-list!`, `picker!`, `live-picker!`) returns a token, and every call that closes or changes that widget takes it. A stale token (the widget already closed or was replaced) is a no-op, so a late callback can never touch someone else's widget. `#f` — an opener's own answer when the open was dropped before it could happen — is stale by construction and a no-op the same way.
-- Where a call may run depends on what it touches. Calls that read or change a live buffer, pane, selection, or widget raise at the top level of `init.scm` and in a plugin body loaded at startup, since nothing is on screen yet; call them from a command, hook, timer, or callback. Registrations (`bind-key!` and its variants, `define-command!`, `define-typed-command!`, `register-hook!`, `register-lsp-notification-hook!`, `register-completion-source!`, `define-language!`, `configure-language!`) raise inside a command, hook, timer, or callback; call them at the top level of `init.scm` or in a plugin body. `load-plugin!` and `declare-plugin!` work only at the top level of `init.scm`.
+- Where a call may run depends on what it touches. Calls that read or change a live buffer, pane, selection, or widget raise at the top level of `init.scm` and in a plugin body loaded at startup, since nothing is on screen yet; call them from a command, hook, timer, or callback. Registrations (`bind-key!` and its variants without `#:keymap`, `define-command!`, `define-typed-command!`, `register-hook!`, `register-lsp-notification-hook!`, `register-completion-source!`, `define-language!`, `configure-language!`) raise inside a command, hook, timer, or callback; call them at the top level of `init.scm` or in a plugin body. `load-plugin!` and `declare-plugin!` work only at the top level of `init.scm`.
 - A value from a fixed set of names (a mode, a hook name, a log level, an enum option's value) is a symbol, like `'insert`. Compare symbols with `equal?`: Steel's `eq?` checks identity, so a symbol the editor hands you is never `eq?` to one you wrote.
 
 ## Settings & statusline
@@ -42,13 +42,15 @@ See [Reading options from Scheme](writing-plugins.md#reading-options-from-scheme
 
 | Call | Effect |
 |------|--------|
-| `(bind-key! mode key-string cmd-name)` | Bind a key in `'normal`, `'insert`, `'extend`, or `'command` mode; an `'insert` or `'command` binding is a single key |
-| `(bind-key-extend! mode key-string cmd-name)` | Same, but the binding always extends the selection; `'normal` only |
-| `(unbind-key! mode key-string)` | Remove a binding |
-| `(bind-keys! mode (key cmd) ...)`, `(bind-keys-extend! mode (key cmd) ...)`, `(unbind-keys! mode key ...)` | Batched forms of the three above |
+| `(bind-key! mode key-string cmd-name [#:keymap name])` | Bind a key in `'normal`, `'insert`, `'extend`, or `'command` mode; an `'insert` or `'command` binding is a single key. With `#:keymap`, the binding goes in the keymap `name`, created by its first binding |
+| `(bind-key-extend! mode key-string cmd-name [#:keymap name])` | Same, but the binding always extends the selection; `'normal` only |
+| `(unbind-key! mode key-string [#:keymap name])` | Remove a binding |
+| `(bind-keys! mode [#:keymap name] (key cmd) ...)`, `(bind-keys-extend! mode [#:keymap name] (key cmd) ...)`, `(unbind-keys! mode [#:keymap name] key ...)` | Batched forms of the three above |
+| `(attach-keymap! pane name)` | Turn on the keymap `name` in `pane`'s buffer, ahead of the keymaps attached before it; a name nothing has been bound into logs a warning and does nothing |
+| `(detach-keymap! pane name)` | Turn off the keymap `name` in `pane`'s buffer; a name nothing has been bound into logs a warning |
 | `(set-register-prefix! name)` | Target a specific register (`0`–`9`, `k`, `c`, `b`) for the rest of the current command body's `call!`s |
 
-See [Key bindings](configuration.md#key-bindings) for the key-string grammar and full examples, and [Register prefix](writing-plugins.md#register-prefix) for `set-register-prefix!`.
+See [Key bindings](configuration.md#key-bindings) for the key-string grammar and full examples, [Keys for one buffer](configuration.md#keys-for-one-buffer) for keymaps, and [Register prefix](writing-plugins.md#register-prefix) for `set-register-prefix!`.
 
 ## Commands
 

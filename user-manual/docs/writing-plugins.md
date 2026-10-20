@@ -451,8 +451,16 @@ Reading lines and pasting a list of strings together give a command that turns l
                    level)))
              (buffer-selections pane))))))
 
-(bind-key! 'normal "G H" "markdown-heading")
+(bind-key! 'normal "G H" "markdown-heading" #:keymap 'markdown-keys)
+
+(register-hook! 'on-language-set
+  (lambda (pane lang)
+    (if (equal? lang "markdown")
+        (attach-keymap! pane 'markdown-keys)
+        (detach-keymap! pane 'markdown-keys))))
 ```
+
+The keys go into a keymap of their own, which the hook turns on in Markdown buffers only (see [Keys for one buffer](configuration.md#keys-for-one-buffer)).
 
 Each selection shrinks to its anchor, then grows to that whole line, line break included. Two selections on the same line become one. `heading-line` builds the new text of each line: it drops any `#`s and spaces the line starts with, then puts the new ones in front. `insert-text!` gets one string per selection, so every line is replaced in a single edit that one `u` undoes, and no register changes.
 

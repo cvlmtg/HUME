@@ -4,7 +4,7 @@ use hume_ui::width::text_width;
 
 use self::history::{HistoryDir, HistoryKind};
 use super::input_stack::{InputEvent, LayerRef, PastedText};
-use super::keymap::WalkResult;
+use super::keymap::{BindMode, WalkResult};
 use super::replay::dispatch_command_line_key;
 use super::{Editor, EditorState};
 
@@ -277,7 +277,7 @@ pub(in crate::editor) fn command_line_input(
     ev: InputEvent,
 ) -> Option<MiniBufferEvent> {
     if let InputEvent::Key(key) = ev
-        && let WalkResult::Leaf(cmd) = ed.state.config.keymap.command.walk(&[key])
+        && let WalkResult::Leaf(cmd) = ed.resolve_keys(BindMode::Command, &[key]).walk
     {
         if let Some(cmd) = ed.resolve_mappable(cmd.name.as_ref()) {
             dispatch_command_line_key(ed, cmd);

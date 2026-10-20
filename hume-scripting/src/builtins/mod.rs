@@ -285,9 +285,11 @@ pub(crate) fn register_all(steel: &mut Engine) {
         open "hume/yield!" interrupt::hume_yield();
 
         // Keymap
-        config "bind-key!" keymap_bind::bind_key(mode: SteelVal, key_str: String, cmd_name: String);
-        config "bind-key-extend!" keymap_bind::bind_key_extend(mode: SteelVal, key_str: String, cmd_name: String);
-        config "unbind-key!" keymap_bind::unbind_key(mode: SteelVal, key_str: String);
+        open   "%bind-key!" keymap_bind::bind_key(mode: SteelVal, key_str: String, cmd_name: String, keymap: SteelVal);
+        open   "%bind-key-extend!" keymap_bind::bind_key_extend(mode: SteelVal, key_str: String, cmd_name: String, keymap: SteelVal);
+        open   "%unbind-key!" keymap_bind::unbind_key(mode: SteelVal, key_str: String, keymap: SteelVal);
+        cmd    "attach-keymap!" keymap_bind::attach_keymap(pane: args::LivePane, name: SteelVal);
+        cmd    "detach-keymap!" keymap_bind::detach_keymap(pane: args::LivePane, name: SteelVal);
         cmd    "set-register-prefix!" commands::set_register_prefix(name: String);
 
         // Registers: direct read/write, independent of set-register-prefix!'s

@@ -1,4 +1,5 @@
 use super::*;
+use crate::host::KeymapTarget;
 use crate::test_support::SteelCtxTestHarness;
 
 /// Effects queued so far, in emission order.
@@ -6,50 +7,142 @@ fn effects(h: &SteelCtxTestHarness) -> Vec<&Effect> {
     h.effects.iter().map(|e| &e.effect).collect()
 }
 
-// ── Init-only guard ───────────────────────────────────────────────────────
-//
-// All four bind builtins below are `config`-gated in `builtins!`'s
-// registration table. The gate lives in the registration wrapper
-// closure, not the body, so these test the gate primitive directly.
+// ── Global binds are init-only, named keymaps are not ─────────────────────
 
-/// `bind-key!` is blocked in plain command mode (`EvalMode::Command`).
-///
-/// An `open` table entry would let a plugin command body rebind keys at
-/// runtime.
+fn sym(name: &str) -> SteelVal {
+    SteelVal::SymbolV(name.into())
+}
+
+fn no_keymap() -> SteelVal {
+    SteelVal::BoolV(false)
+}
+
+/// A global `bind-key!`, `bind-key-extend!` or `unbind-key!` raises in a
+/// command body (`EvalMode::Command`) and queues nothing.
 #[test]
-fn bind_key_blocked_in_command_mode() {
+fn global_binds_are_rejected_in_command_mode() {
     let mut h = SteelCtxTestHarness::new();
-    let result = super::super::errors::require_config(&h.ctx(), "bind-key!");
-    assert!(result.is_err(), "bind-key! must error in command mode");
-    let msg = result.unwrap_err().to_string();
+    let results = {
+        let mut ctx = h.ctx();
+        [
+            bind_key(
+                &mut ctx,
+                sym("normal"),
+                "z".into(),
+                "move-right".into(),
+                no_keymap(),
+            ),
+            bind_key_extend(
+                &mut ctx,
+                sym("normal"),
+                "z".into(),
+                "move-right".into(),
+                no_keymap(),
+            ),
+            unbind_key(&mut ctx, sym("normal"), "z".into(), no_keymap()),
+        ]
+    };
+    for result in results {
+        let msg = result
+            .expect_err("a global bind must raise in command mode")
+            .to_string();
+        assert!(
+            msg.contains("init"),
+            "error must mention 'init'; got: {msg}"
+        );
+    }
+    assert!(effects(&h).is_empty());
+}
+
+/// With `#:keymap`, `bind-key!` works in a command body and queues a bind
+/// into that named keymap.
+#[test]
+fn bind_key_with_a_keymap_queues_a_named_bind_in_command_mode() {
+    let mut h = SteelCtxTestHarness::new();
+    {
+        let mut ctx = h.ctx();
+        bind_key(
+            &mut ctx,
+            sym("normal"),
+            "z".into(),
+            "move-right".into(),
+            sym("md-keys"),
+        )
+        .expect("a named bind is allowed in command mode");
+    }
     assert!(
-        msg.contains("init"),
-        "error must mention 'init'; got: {msg}"
+        matches!(
+            effects(&h).as_slice(),
+            [Effect::BindKey { cmd, force_extend: false, keymap: KeymapTarget::Named(name), .. }]
+                if cmd == "move-right" && name == "md-keys"
+        ),
+        "got: {:?}",
+        effects(&h)
     );
 }
 
-/// `bind-key-extend!` is blocked in plain command mode.
 #[test]
-fn bind_key_extend_blocked_in_command_mode() {
+fn bind_key_extend_with_a_keymap_queues_a_named_bind_in_command_mode() {
     let mut h = SteelCtxTestHarness::new();
-    let result = super::super::errors::require_config(&h.ctx(), "bind-key-extend!");
+    {
+        let mut ctx = h.ctx();
+        bind_key_extend(
+            &mut ctx,
+            sym("normal"),
+            "z".into(),
+            "select-line".into(),
+            sym("md-keys"),
+        )
+        .expect("a named bind is allowed in command mode");
+    }
     assert!(
-        result.is_err(),
-        "bind-key-extend! must error in command mode"
+        matches!(
+            effects(&h).as_slice(),
+            [Effect::BindKey { force_extend: true, keymap: KeymapTarget::Named(name), .. }]
+                if name == "md-keys"
+        ),
+        "got: {:?}",
+        effects(&h)
     );
 }
 
-/// `unbind-key!` is blocked in plain command mode.
 #[test]
-fn unbind_key_blocked_in_command_mode() {
+fn unbind_key_with_a_keymap_queues_a_named_unbind_in_command_mode() {
     let mut h = SteelCtxTestHarness::new();
-    let result = super::super::errors::require_config(&h.ctx(), "unbind-key!");
-    assert!(result.is_err(), "unbind-key! must error in command mode");
-    let msg = result.unwrap_err().to_string();
+    {
+        let mut ctx = h.ctx();
+        unbind_key(&mut ctx, sym("normal"), "z".into(), sym("md-keys"))
+            .expect("a named unbind is allowed in command mode");
+    }
     assert!(
-        msg.contains("init"),
-        "error must mention 'init'; got: {msg}"
+        matches!(
+            effects(&h).as_slice(),
+            [Effect::UnbindKey { keymap: KeymapTarget::Named(name), .. }] if name == "md-keys"
+        ),
+        "got: {:?}",
+        effects(&h)
     );
+}
+
+/// A keymap is named by a symbol; a string raises and queues nothing.
+#[test]
+fn a_keymap_named_by_a_string_is_rejected() {
+    let mut h = SteelCtxTestHarness::new();
+    let result = {
+        let mut ctx = h.ctx();
+        bind_key(
+            &mut ctx,
+            sym("normal"),
+            "z".into(),
+            "move-right".into(),
+            SteelVal::StringV("md-keys".into()),
+        )
+    };
+    let msg = result
+        .expect_err("a string keymap name must raise")
+        .to_string();
+    assert!(msg.contains("#:keymap"), "got: {msg}");
+    assert!(effects(&h).is_empty());
 }
 
 // ── Mode validation ───────────────────────────────────────────────────────
@@ -67,6 +160,7 @@ fn bind_key_invalid_mode_errors() {
         SteelVal::SymbolV("visual".into()),
         "z".into(),
         "move-right".into(),
+        no_keymap(),
     );
     assert!(result.is_err(), "bind-key! must reject unknown mode");
     let msg = result.unwrap_err().to_string();
@@ -86,7 +180,12 @@ fn bind_key_invalid_mode_errors() {
 fn unbind_key_invalid_mode_errors() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx_init();
-    let result = unbind_key(&mut ctx, SteelVal::SymbolV("visual".into()), "z".into());
+    let result = unbind_key(
+        &mut ctx,
+        SteelVal::SymbolV("visual".into()),
+        "z".into(),
+        no_keymap(),
+    );
     assert!(result.is_err(), "unbind-key! must reject unknown mode");
     drop(ctx);
     assert!(
@@ -105,6 +204,7 @@ fn bind_key_string_mode_errors() {
         SteelVal::StringV("normal".into()),
         "z".into(),
         "move-right".into(),
+        no_keymap(),
     );
     assert!(result.is_err(), "bind-key! must reject a string mode");
     let msg = result.unwrap_err().to_string();
@@ -130,6 +230,7 @@ fn bind_key_invalid_key_sequence_errors() {
         SteelVal::SymbolV("normal".into()),
         "<NOTAKEY>".into(),
         "move-right".into(),
+        no_keymap(),
     );
     assert!(
         result.is_err(),
@@ -151,6 +252,7 @@ fn unbind_key_invalid_key_sequence_errors() {
         &mut ctx,
         SteelVal::SymbolV("normal".into()),
         "<NOTAKEY>".into(),
+        no_keymap(),
     );
     assert!(
         result.is_err(),
@@ -179,13 +281,14 @@ fn bind_key_init_mode_queues_bind_effect() {
             SteelVal::SymbolV("normal".into()),
             "z".into(),
             "move-right".into(),
+            no_keymap(),
         );
         assert!(result.is_ok(), "bind-key! must succeed; got: {result:?}");
     }
     assert!(
         matches!(
             effects(&h).as_slice(),
-            [Effect::BindKey { mode: BindMode::Normal, keys, cmd, force_extend: false }]
+            [Effect::BindKey { mode: BindMode::Normal, keys, cmd, force_extend: false, keymap: KeymapTarget::Global }]
                 if keys.len() == 1 && cmd == "move-right"
         ),
         "expected one Effect::BindKey for 'z' → move-right; got: {:?}",
@@ -205,6 +308,7 @@ fn bind_key_extend_queues_force_extend_effect() {
             SteelVal::SymbolV("normal".into()),
             "z".into(),
             "select-line".into(),
+            no_keymap(),
         )
         .expect("bind-key-extend! must succeed");
     }
@@ -229,13 +333,14 @@ fn bind_key_command_mode_queues_bind_effect() {
             SteelVal::SymbolV("command".into()),
             "ctrl-r".into(),
             "my-cmd".into(),
+            no_keymap(),
         )
         .expect("bind-key! 'command must succeed");
     }
     assert!(
         matches!(
             effects(&h).as_slice(),
-            [Effect::BindKey { mode: BindMode::Command, keys, cmd, force_extend: false }]
+            [Effect::BindKey { mode: BindMode::Command, keys, cmd, force_extend: false, keymap: KeymapTarget::Global }]
                 if keys.len() == 1 && cmd == "my-cmd"
         ),
         "expected one Effect::BindKey in command mode; got: {:?}",
@@ -256,6 +361,7 @@ fn bind_key_rejects_a_key_sequence_in_insert_and_command_modes() {
                 SteelVal::SymbolV(mode.into()),
                 "ctrl-x a".into(),
                 "my-cmd".into(),
+                no_keymap(),
             )
             .unwrap_err()
             .to_string()
@@ -278,6 +384,7 @@ fn bind_key_extend_rejects_every_mode_but_normal() {
                 SteelVal::SymbolV(mode.into()),
                 "z".into(),
                 "my-cmd".into(),
+                no_keymap(),
             )
             .unwrap_err()
             .to_string()
@@ -295,13 +402,18 @@ fn unbind_key_queues_unbind_effect() {
     let mut h = SteelCtxTestHarness::new();
     {
         let mut ctx = h.ctx_init();
-        unbind_key(&mut ctx, SteelVal::SymbolV("normal".into()), "z".into())
-            .expect("unbind-key! must succeed");
+        unbind_key(
+            &mut ctx,
+            SteelVal::SymbolV("normal".into()),
+            "z".into(),
+            no_keymap(),
+        )
+        .expect("unbind-key! must succeed");
     }
     assert!(
         matches!(
             effects(&h).as_slice(),
-            [Effect::UnbindKey { mode: BindMode::Normal, keys }] if keys.len() == 1
+            [Effect::UnbindKey { mode: BindMode::Normal, keys, keymap: KeymapTarget::Global }] if keys.len() == 1
         ),
         "expected Effect::UnbindKey; got: {:?}",
         effects(&h)
@@ -325,6 +437,7 @@ fn bind_key_permitted_during_plugin_load() {
             SteelVal::SymbolV("normal".into()),
             "z".into(),
             "cmd".into(),
+            no_keymap(),
         );
         assert!(
             result.is_ok(),
@@ -336,4 +449,59 @@ fn bind_key_permitted_during_plugin_load() {
         "expected the bind to be queued; got: {:?}",
         effects(&h)
     );
+}
+
+// ── attach-keymap! / detach-keymap! ─────────────────────────────────────────
+
+#[test]
+fn attach_keymap_queues_an_attach_for_the_panes_buffer() {
+    use crate::test_support::{default_bid, default_pane};
+    let mut h = SteelCtxTestHarness::new();
+    {
+        let mut ctx = h.ctx();
+        attach_keymap(&mut ctx, default_pane(), sym("md-keys")).expect("attach must succeed");
+    }
+    assert!(
+        matches!(
+            effects(&h).as_slice(),
+            [Effect::AttachKeymap { buffer, name }] if *buffer == default_bid() && name == "md-keys"
+        ),
+        "got: {:?}",
+        effects(&h)
+    );
+}
+
+#[test]
+fn detach_keymap_queues_a_detach_for_the_panes_buffer() {
+    use crate::test_support::{default_bid, default_pane};
+    let mut h = SteelCtxTestHarness::new();
+    {
+        let mut ctx = h.ctx();
+        detach_keymap(&mut ctx, default_pane(), sym("md-keys")).expect("detach must succeed");
+    }
+    assert!(
+        matches!(
+            effects(&h).as_slice(),
+            [Effect::DetachKeymap { buffer, name }] if *buffer == default_bid() && name == "md-keys"
+        ),
+        "got: {:?}",
+        effects(&h)
+    );
+}
+
+#[test]
+fn attach_keymap_takes_a_symbol_name() {
+    use crate::test_support::default_pane;
+    let mut h = SteelCtxTestHarness::new();
+    let result = {
+        let mut ctx = h.ctx();
+        attach_keymap(
+            &mut ctx,
+            default_pane(),
+            SteelVal::StringV("md-keys".into()),
+        )
+    };
+    let msg = result.expect_err("a string name must raise").to_string();
+    assert!(msg.contains("attach-keymap!"), "got: {msg}");
+    assert!(effects(&h).is_empty());
 }

@@ -59,6 +59,14 @@ pub enum BindMode {
     Command,
 }
 
+/// Which keymap a bind or unbind changes: the global one, or the keymap a
+/// `#:keymap` symbol names.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum KeymapTarget {
+    Global,
+    Named(String),
+}
+
 /// "X: not supported by this host": the single source for capability-absence
 /// errors.
 pub(crate) fn unsupported(builtin: &str) -> String {

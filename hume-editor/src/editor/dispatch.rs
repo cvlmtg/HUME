@@ -449,6 +449,14 @@ impl Editor {
         self.report_error(&e);
     }
 
+    /// Report a key bound to `name`, which names no key-bindable command.
+    pub(in crate::editor) fn report_unbound_key_command(&mut self, name: &str) {
+        self.report_unknown_command(
+            name,
+            format!("key bound to unknown command '{name}': typo, or missing from #:commands?"),
+        );
+    }
+
     /// Looks up `name` in the command registry, reporting and returning
     /// `None` if it isn't there or its `Lazy` stub fails to activate. A
     /// `Lazy` stub is activated and its real entry returned, so every

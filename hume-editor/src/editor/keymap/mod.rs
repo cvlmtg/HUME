@@ -1,24 +1,28 @@
-//! Trie-based keymap for Normal, Insert and Command modes.
+//! Trie-based keymaps for Normal, Extend, Insert and Command modes.
 //!
 //! Each mode has a [`KeyTrie`] mapping [`KeyEvent`] sequences to
 //! [`KeymapCommand`]s: single keys and multi-key sequences (`m i <char>`,
-//! `g <key>`). The dispatcher in `mappings/execute.rs` walks the trie,
-//! accumulates a count prefix, and runs commands through
+//! `g <key>`). The global [`Keymap`] holds the default and user bindings, and
+//! [`LocalKeymaps`] the named keymaps attached to buffers. Key handlers look
+//! keys up through `Editor::resolve_keys`; the Normal-mode handler in
+//! `input_stack/base.rs` accumulates a count prefix and runs commands through
 //! [`crate::editor::registry::CommandRegistry`]. A command that takes a
 //! character (f/t/F/T/r) reads it from the next key itself.
 //!
 //! Only base command names are stored; Extend mode is a `MotionMode` parameter
-//! chosen at dispatch time. The sparse `extend` trie in [`Keymap`] holds
-//! overrides checked before the normal trie in Extend mode. It ships empty;
-//! plugins fill it. So does the `command` trie, the keys bound in the command
-//! mode prompt.
+//! chosen at dispatch time. Each keymap's sparse `extend` trie holds overrides
+//! checked before its own normal trie in Extend mode. The global one ships
+//! empty; plugins fill it. So does the `command` trie, the keys bound in the
+//! command mode prompt.
 
 mod canonical;
 #[macro_use]
 mod defaults;
+mod local;
 use defaults::{default_extend_keymap, default_insert_keymap, default_normal_keymap};
 
 pub(in crate::editor) use canonical::CanonicalKey;
+pub(in crate::editor) use local::{LocalKeymaps, Resolved, UnknownKeymap};
 
 use rustc_hash::FxHashMap;
 use std::borrow::Cow;
@@ -39,9 +43,10 @@ pub(in crate::editor) struct KeymapCommand {
     /// The command name to look up in the registry.
     pub name: Cow<'static, str>,
     /// When `true`, the dispatcher always dispatches this command with
-    /// `extend = true`, regardless of kitty mode. Only set on explicit Ctrl
+    /// `extend = true`, regardless of kitty mode. Set on default Ctrl
     /// bindings whose extend-line semantics are inherent (e.g. `Ctrl-x` →
-    /// `select-line`). Not exposed to Steel's `bind-key!`.
+    /// `select-line`), and on Normal-mode bindings made with Steel's
+    /// `bind-key-extend!`.
     pub force_extend: bool,
 }
 
@@ -58,8 +63,7 @@ pub(super) enum WalkResult {
 /// A single level of the keymap trie.
 ///
 /// Maps [`KeyEvent`] values to either a sub-trie (interior node) or a leaf
-/// command. The trie is built once at startup and never mutated during editing
-/// (the Steel config layer will support user overrides).
+/// command.
 #[derive(Clone)]
 pub(super) struct KeyTrie {
     map: FxHashMap<CanonicalKey, KeyTrieNode>,
@@ -82,14 +86,6 @@ impl KeyTrie {
 
     fn bind(&mut self, key: KeyEvent, node: KeyTrieNode) {
         self.map.insert(CanonicalKey::from(key), node);
-    }
-
-    /// True when nothing is bound: every [`Self::walk`] would return
-    /// [`WalkResult::NoMatch`]. Lets a caller skip building the sequence to
-    /// walk with, which for the Extend trie (empty until a plugin binds into
-    /// it) is the usual case.
-    pub(in crate::editor) fn is_empty(&self) -> bool {
-        self.map.is_empty()
     }
 
     fn bind_leaf(&mut self, key: KeyEvent, cmd: KeymapCommand) {
@@ -141,7 +137,7 @@ impl KeyTrie {
     }
 
     /// Walk a key sequence through the trie, returning the result after all keys.
-    pub(super) fn walk(&self, keys: &[KeyEvent]) -> WalkResult {
+    fn walk(&self, keys: &[KeyEvent]) -> WalkResult {
         debug_assert!(!keys.is_empty(), "walk called with empty key sequence");
 
         let mut current = self;
@@ -186,32 +182,31 @@ impl KeyTrie {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::editor) enum BindMode {
     Normal,
-    /// Sparse extend-mode overrides. These are checked first in extend mode;
-    /// a miss falls through to the normal trie with `extend = true`.
+    /// Sparse extend-mode overrides. In extend mode a keymap's overrides are
+    /// checked before its normal trie, whose match runs with `extend = true`.
     Extend,
     Insert,
     /// The command mode prompt: the `:` line and `prompt!` prompts.
     Command,
 }
 
-/// Per-mode keymap container. One instance lives on the [`Editor`].
-///
-/// [`Editor`]: super::Editor
+/// Per-mode keymap container: the editor's global keymap, and each named
+/// keymap in [`LocalKeymaps`].
 #[derive(Clone)]
 pub(in crate::editor) struct Keymap {
-    pub(super) normal: KeyTrie,
+    normal: KeyTrie,
     /// Sparse extend-mode overrides. Empty by default; plugins populate it
     /// (e.g. `core:vim-keybind`'s `o → flip-selections`).
     ///
-    /// Checked before the normal trie when the editor is in Extend mode.
-    /// A match dispatches directly with `extend = false`: these are
+    /// Checked before this keymap's normal trie when the editor is in Extend
+    /// mode. A match dispatches directly with `extend = false`: these are
     /// different commands, not extend variants of normal commands.
     /// A miss falls through to the normal trie with `extend = true`.
-    pub(super) extend: KeyTrie,
-    pub(super) insert: KeyTrie,
+    extend: KeyTrie,
+    insert: KeyTrie,
     /// Keys bound in the command mode prompt, walked one key at a time
     /// before the prompt's own keys. Empty by default.
-    pub(super) command: KeyTrie,
+    command: KeyTrie,
 }
 
 impl Default for Keymap {
@@ -226,6 +221,34 @@ impl Default for Keymap {
 }
 
 impl Keymap {
+    /// A keymap with nothing bound, unlike [`Keymap::default`], which holds
+    /// the default bindings.
+    pub(in crate::editor) fn empty() -> Self {
+        Self {
+            normal: KeyTrie::new(),
+            extend: KeyTrie::new(),
+            insert: KeyTrie::new(),
+            command: KeyTrie::new(),
+        }
+    }
+
+    /// What `keys` resolve to in this keymap alone, or `None` when they match
+    /// nothing here. See [`LocalKeymaps::resolve`] for what each mode walks.
+    fn resolve(&self, mode: BindMode, keys: &[KeyEvent]) -> Option<Resolved> {
+        let found = |walk: WalkResult, extend_override| {
+            (!matches!(walk, WalkResult::NoMatch)).then_some(Resolved {
+                walk,
+                extend_override,
+            })
+        };
+        match mode {
+            BindMode::Extend => {
+                found(self.extend.walk(keys), true).or_else(|| found(self.normal.walk(keys), false))
+            }
+            mode => found(self.trie(mode).walk(keys), false),
+        }
+    }
+
     /// Bind a key sequence to a command name in the given mode.
     ///
     /// Overwrites any existing binding for the same sequence. Single-key
@@ -273,9 +296,7 @@ impl Keymap {
         }
     }
 
-    /// The trie for `mode`. Test-only: production code only ever needs
-    /// mutable access via [`Self::trie_mut`].
-    #[cfg(test)]
+    /// The trie for `mode`.
     fn trie(&self, mode: BindMode) -> &KeyTrie {
         match mode {
             BindMode::Normal => &self.normal,

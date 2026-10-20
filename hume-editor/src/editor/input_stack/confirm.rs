@@ -173,7 +173,7 @@ impl Editor {
             && self.state.input.picker().is_none()
             && self.state.input.menu().is_none()
             && self.state.input.drawer().is_none()
-            && self.state.pending.keys().is_empty()
+            && (self.state.pending.keys().is_empty() || self.state.pending.started_outside(bid))
             && self.state.input.find::<super::CharLayer>().is_none()
             && !self.state.macros.is_replaying()
             && (trigger != DiskCheckTrigger::BufferEnter || !self.state.message_logged_this_input);

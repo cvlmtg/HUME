@@ -1069,11 +1069,33 @@ fn confirm_does_not_open_mid_pending_key_sequence() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
     let bid = ed.focused_buffer_id();
     rewrite_externally(&tmp, "hello, externally changed!\n");
-    ed.state.pending.push(key('g'));
+    ed.state.pending.push(key('g'), bid);
 
     ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);
 
     assert!(ed.state.input.confirm().is_none());
+}
+
+/// A sequence started in another buffer can't take the next key here, so it
+/// doesn't hold the confirm back.
+#[test]
+fn confirm_opens_despite_a_sequence_left_in_another_buffer() {
+    let (mut ed, tmp) = editor_with_file(
+        "-[h]>ello
+",
+        "hello
+",
+    );
+    let bid = ed.focused_buffer_id();
+    let other = ed.open_buffer(Buffer::at_start(BufferText::from("other\n")));
+    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), other);
+    ed.feed_key(key('g'));
+    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid);
+    rewrite_externally(&tmp, "hello, externally changed!\n");
+
+    ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);
+
+    assert!(ed.state.input.confirm().is_some());
 }
 
 // ── `OnBufferEnter`'s disk check: closing/cycling/clicking reveals a

@@ -51,7 +51,7 @@ pub(crate) fn require_cmd(ctx: &SteelCtx, name: &str) -> Result<(), SteelErr> {
     }
 }
 
-/// Gate for config/registration builtins (`set-option!`, `bind-key!`,
+/// Gate for config/registration builtins (`set-option!`, a global `bind-key!`,
 /// hook/LSP-server/language registration, …): valid at init.scm top level or
 /// inside any plugin body (eager load or lazy activation), but not from a
 /// plain command body. Looser than [`require_cmd`]: see [`EvalMode`]'s doc
