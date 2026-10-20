@@ -172,7 +172,8 @@ fn keymap_name(name: SteelVal, fn_name: &str) -> Result<String, SteelErr> {
 /// `(attach-keymap! pane name)`
 ///
 /// Makes the keymap `name` apply in `pane`'s buffer, ahead of the keymaps
-/// attached before it. The editor warns when no keymap has that name yet.
+/// attached before it. A keymap already attached keeps its place. The editor
+/// warns when no keymap has that name yet.
 pub(crate) fn attach_keymap(ctx: &mut SteelCtx, pane: PaneHandle, name: SteelVal) -> SteelResult {
     let name = keymap_name(name, "attach-keymap!")?;
     ctx.push_effect(Effect::AttachKeymap {

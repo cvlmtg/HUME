@@ -148,8 +148,10 @@ impl Editor {
     ///   buffer focus left, so this only guards against a different buffer's
     ///   check. A `Scrollable` popup does not block: it is evicted on landing.
     /// - Not headless: scripted keys would be taken as the answer.
-    /// - No pending keys or character read: the next keystroke is already
-    ///   spoken for.
+    /// - No pending keys started in `bid` and no character read: the next
+    ///   keystroke is already spoken for. A sequence started in another
+    ///   buffer can't continue in `bid`, and the next Normal-mode key drops
+    ///   it, so it does not block.
     /// - Not replaying a macro: replayed keys can't answer a prompt, so those
     ///   checks warn and the prompt waits for the next real buffer-enter.
     /// - For `BufferEnter` only, no warning or error logged by this input

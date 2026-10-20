@@ -46,7 +46,7 @@ See [Reading options from Scheme](writing-plugins.md#reading-options-from-scheme
 | `(bind-key-extend! mode key-string cmd-name [#:keymap name])` | Same, but the binding always extends the selection; `'normal` only |
 | `(unbind-key! mode key-string [#:keymap name])` | Remove a binding |
 | `(bind-keys! mode [#:keymap name] (key cmd) ...)`, `(bind-keys-extend! mode [#:keymap name] (key cmd) ...)`, `(unbind-keys! mode [#:keymap name] key ...)` | Batched forms of the three above |
-| `(attach-keymap! pane name)` | Turn on the keymap `name` in `pane`'s buffer, ahead of the keymaps attached before it; a name nothing has been bound into logs a warning and does nothing |
+| `(attach-keymap! pane name)` | Turn on the keymap `name` in `pane`'s buffer, ahead of the keymaps attached before it (one already attached keeps its place); a name nothing has been bound into logs a warning and does nothing |
 | `(detach-keymap! pane name)` | Turn off the keymap `name` in `pane`'s buffer; a name nothing has been bound into logs a warning |
 | `(set-register-prefix! name)` | Target a specific register (`0`–`9`, `k`, `c`, `b`) for the rest of the current command body's `call!`s |
 
