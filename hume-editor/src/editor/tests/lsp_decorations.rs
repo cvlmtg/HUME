@@ -216,6 +216,55 @@ fn set_extra_highlights_errors_loudly_on_an_out_of_range_end() {
     );
 }
 
+/// The message logged by a `set-extra-highlights!` call whose one span runs
+/// from `start` to `end`, with the store checked empty.
+fn extra_highlights_error(start: usize, end: usize) -> String {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>abcdef\n");
+    let bid = ed.focused_buffer_id();
+    let mut host = ScriptingHost::new(&Dirs::none());
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        &format!(
+            r#"(define-typed-command! "arm-bad" "" (lambda (bid)
+                 (set-extra-highlights! "linter" bid (list (hash 'start-char {start} 'end-char {end} 'scope "unused")))))"#
+        ),
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+    type_cmd(&mut ed, ":arm-bad");
+
+    assert!(
+        ed.state
+            .config
+            .decorations
+            .extra_highlights_for_buffer(bid)
+            .next()
+            .is_none(),
+        "a refused span must not land in the store"
+    );
+    ed.state.message_log.format_for_display()
+}
+
+#[test]
+fn set_extra_highlights_errors_on_a_reversed_span() {
+    let log = extra_highlights_error(5, 3);
+    assert!(
+        log.contains("set-extra-highlights!: range 5..3 ends before it starts"),
+        "must name the builtin and the offending span: {log:?}"
+    );
+}
+
+#[test]
+fn set_extra_highlights_errors_on_an_empty_span() {
+    let log = extra_highlights_error(3, 3);
+    assert!(
+        log.contains("set-extra-highlights!: range 3..3 is empty"),
+        "must name the builtin and the offending span: {log:?}"
+    );
+}
+
 /// An out-of-range `line` must error loudly at the boundary shared by
 /// signs/virtual-lines/EOL-text/line-backgrounds, rather than leaving the
 /// entry to never render.

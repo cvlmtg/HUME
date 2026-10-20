@@ -146,7 +146,13 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         let entries = spans
             .into_iter()
             .map(|(start, end, scope)| {
-                let range = validate_range(text, start, end, "set-extra-highlights!")?;
+                let fail = |e: String| format!("set-extra-highlights!: range {e}");
+                let range = super::checked_char_range(text, start, end).map_err(fail)?;
+                // Widened to whole clusters: the renderer paints a cluster at a time.
+                let range = text
+                    .covering(range)
+                    .ok_or_else(|| fail(format!("{start}..{end} is empty")))?
+                    .chars();
                 Ok(hume_decorations::ExtraHighlightEntry {
                     start: range.start,
                     end: range.end,
@@ -408,28 +414,4 @@ pub(super) fn validate_offset(
         }
     }
     Ok(pos)
-}
-
-/// `(start, end)` must be a valid, non-empty char range into `text`, `Err`
-/// naming `builtin` otherwise. An edge inside a grapheme cluster widens the
-/// range to the whole cluster: the renderer paints a cluster at a time.
-fn validate_range(
-    text: &hume_editing::text::BufferText,
-    start: usize,
-    end: usize,
-    builtin: &str,
-) -> Result<ExclusiveRange<CharOffset>, String> {
-    if start >= end {
-        return Err(format!(
-            "{builtin}: range ({start}, {end}) must have start < end"
-        ));
-    }
-    let end =
-        super::checked_char_offset(text, end).map_err(|e| format!("{builtin}: range end: {e}"))?;
-    // Trusted mint: `start < end` is checked above and `end` is within `text`.
-    let range = ExclusiveRange::new(CharOffset::new(start), end);
-    Ok(text
-        .covering(range)
-        .expect("a non-empty range within the text covers a cluster")
-        .chars())
 }
