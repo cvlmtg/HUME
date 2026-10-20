@@ -57,9 +57,10 @@ fn one_of_to_text_edit(
 
 /// Converts `edits` (wire positions, any order) into one composite
 /// `ChangeSet`: positions are resolved to char offsets, stable-sorted
-/// ascending by start (tie order = `edits`' own array order, per spec),
-/// checked for overlap (adjacent edits are fine; a shared boundary is not),
-/// then walked forward once to build the `ChangeSet`. Read-only, no
+/// ascending by start then end (so an insertion goes before a range starting
+/// at the same offset, and equal ranges keep `edits`' own array order, per
+/// spec), checked for overlap (adjacent edits are fine; a shared boundary is
+/// not), then walked forward once to build the `ChangeSet`. Read-only, no
 /// mutation: `apply_workspace_edit`'s "validate all, then apply all" needs
 /// to build every file's changeset before committing any of them.
 ///
@@ -81,12 +82,6 @@ fn build_edit_changeset(
         return Err("no edits given".to_string());
     }
     let rope = buf.text().rope();
-    // Stable ascending sort by start: two edits at the same position keep
-    // `edits`' own array order (per spec, the array's order defines the
-    // order same-position edits apply in; a descending sort followed by
-    // `.reverse()` would keep ties in *original* order through the sort but
-    // then flip that tie order via the whole-`Vec` reverse, applying them
-    // backwards).
     let char_edits = edits
         .iter()
         .map(|e| {
@@ -130,7 +125,9 @@ fn build_changeset_from_char_edits(
             range.end, range.start
         ));
     }
-    char_edits.sort_by_key(|e| e.0.start);
+    // An insertion sorts before a range that starts where it does, and edits
+    // with equal ranges keep their list order.
+    char_edits.sort_by_key(|e| (e.0.start, e.0.end));
     for w in char_edits.windows(2) {
         if w[1].0.start < w[0].0.end {
             return Err("text edits overlap".to_string());

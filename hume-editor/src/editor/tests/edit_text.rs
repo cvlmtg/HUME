@@ -176,6 +176,30 @@ fn deleting_everything_keeps_the_final_line_break() {
 }
 
 #[test]
+fn an_insertion_at_the_start_of_a_replacement_goes_first_in_either_order() {
+    let expected = "-[a]>iXYd\n";
+    assert_eq!(
+        after("-[a]>bcd\n", &edits(&[edit(1, 3, "XY"), edit(1, 1, "i")])),
+        expected
+    );
+    assert_eq!(
+        after("-[a]>bcd\n", &edits(&[edit(1, 1, "i"), edit(1, 3, "XY")])),
+        expected
+    );
+}
+
+#[test]
+fn insertions_around_a_deletion_at_one_offset_go_in_list_order() {
+    assert_eq!(
+        after(
+            "-[a]>bcd\n",
+            &edits(&[edit(1, 1, "i"), edit(1, 3, ""), edit(1, 1, "j")])
+        ),
+        "-[a]>ijd\n"
+    );
+}
+
+#[test]
 fn an_empty_list_changes_nothing() {
     assert_eq!(after("a-[b]>c\n", "(list)"), "a-[b]>c\n");
 }
