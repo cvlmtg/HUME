@@ -710,6 +710,35 @@ fn cmd_reads_back_what_it_writes() {
     reads_back_what_it_writes("cmd", &["", "\"", r"C:\"], &["a b&c^d(e)f,g;h=i", "plain"]);
 }
 
+// ── A variable naming a directory ────────────────────────────────────────────
+
+/// A name after a variable whose value ends in a separator lands past a
+/// separator: glued onto `$NAME` it would read as a longer variable name.
+/// A reference with a closing delimiter takes the name as it is.
+#[test]
+fn a_name_after_a_variable_naming_a_directory_is_never_glued_onto_it() {
+    let s = str::to_owned;
+    let env = claim_env();
+    let _dir = env.set_var("HUME_TEST_DIR", "/hume-test/dir/");
+    let mut host = shells_host();
+    for (dialect, typed, expected) in [
+        ("posix", "$HUME_TEST_DIR", s("$HUME_TEST_DIR/foo")),
+        ("posix", "$HUME_TEST_DIR/", s("$HUME_TEST_DIR/foo")),
+        ("posix", "\"$HUME_TEST_DIR", s("\"$HUME_TEST_DIR/foo\"")),
+        ("posix", "${HUME_TEST_DIR}", s("${HUME_TEST_DIR}foo")),
+        ("fish", "$HUME_TEST_DIR", s("$HUME_TEST_DIR/foo")),
+        ("pwsh", "$env:HUME_TEST_DIR", s("$env:HUME_TEST_DIR/foo")),
+        ("pwsh", "${env:HUME_TEST_DIR}", s("${env:HUME_TEST_DIR}foo")),
+        ("cmd", "%HUME_TEST_DIR%", s("%HUME_TEST_DIR%foo")),
+    ] {
+        assert_eq!(
+            write(&mut host, dialect, typed, "foo", true),
+            expected,
+            "{dialect} {typed:?}"
+        );
+    }
+}
+
 // ── Dialects in use ──────────────────────────────────────────────────────────
 
 /// `|` then `typed` and Tab, in an editor started over a runtime holding

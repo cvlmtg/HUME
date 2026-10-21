@@ -626,7 +626,7 @@ A word has two forms: what is on the line, like `"my dir/no` or `my\ dir/no`, an
 - **`#:parse`**: `(parse input cursor)` reads the word around `cursor` in the line `input` and returns `(shell-word start end command? typed dir open prefix)`:
   - `start`, `end`: where the word starts and ends in `input`, in characters. A completion replaces this part of the line, so it must hold `cursor`.
   - `command?`: whether the shell reads the word as a program name.
-  - `typed`: the word as typed, from its start to just past its last directory separator before the cursor, together with a quote that opens right after it. `""` when there is none.
+  - `typed`: the word as typed, from its start to just past its last directory separator before the cursor, together with a quote that opens right after it. `""` when there is none. When the last separator comes from a variable's value and a name written after the variable would read as part of its name (`$TMPDIR`), `typed` ends with that separator added, so it is `$TMPDIR/`.
   - `dir`: what the shell reads for `typed`, with `~` and variables expanded: the directory to list.
   - `open`: the quote still open at the end of `typed`, or `#f`.
   - `prefix`: what the shell reads from the end of `typed` up to the cursor: the start of the name.

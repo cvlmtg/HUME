@@ -55,7 +55,10 @@ The file holds, in order:
   `typed` (display: the word up to its last directory, plus a quote that opens right after it),
   `dir` (the value of `typed`), `open` (the quote open at the end of `typed`, or `#f`) and
   `prefix` (the value from the end of `typed` to the cursor). `typed` goes back on the line as
-  the user wrote it, so `~/`, `$HOME/` and an escaped `\~/` survive completion.
+  the user wrote it, so `~/`, `$HOME/` and an escaped `\~/` survive completion. When the
+  directory part ends on a variable that a following name would extend (`$TMPDIR`, whose value
+  ends in `/`), `typed` also gets that separator, so a name is written as `$TMPDIR/foo`, never
+  `$TMPDIRfoo`.
 - **The registry**: `register-shell-dialect!` and the list it fills. A dialect is found by the
   file name of the `shell` program, its directory, case and `.exe` aside. The dialect registered
   last wins, so `init.scm` and plugins, which run after this file, replace a shipped one by
@@ -64,8 +67,10 @@ The file holds, in order:
   escape character and the quotes it works inside, its quotes, operators, the operators and
   keywords after which a program name follows, its directory separators, whether `~` names the
   home directory) and one hook, `(read open c rest)`, which decodes the units only that shell
-  has (`$NAME`, `%NAME%`, PowerShell's doubled quotes, fish's `\n`) as `(value . chars-used)`,
-  or `#f` for a character that reads as itself. Each unit's value is kept only when the unit ends
+  has (`$NAME`, `%NAME%`, PowerShell's doubled quotes, fish's `\n`) as a `%shell-unit`: its
+  value, the chars it uses after `c`, and whether name characters after it would extend it
+  (`$NAME` and `$env:NAME` yes, `${NAME}` and `%NAME%` no); or `#f` for a character that reads
+  as itself. Each unit's value is kept only when the unit ends
   at or before the cursor: `my\‸ dir` completes `my`. A unit whose value ends with a separator
   ends the directory part, so an escaped `/` or a variable ending in one counts, and a separator
   inside quotes does too. Offsets are chars, the unit Steel indexes strings by and the one the
