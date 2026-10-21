@@ -102,60 +102,54 @@ fn expand_env_vars(
     let mut remaining = s;
     while let Some(pos) = remaining.find('$') {
         out.push_str(&remaining[..pos]);
-        remaining = &remaining[pos + 1..]; // slice starts just after `$`
-
-        if remaining.is_empty() {
-            out.push('$');
-            break;
-        }
-
-        if remaining.starts_with('{') {
-            // `${NAME}` form
-            let after_brace = &remaining[1..];
-            let nlen = var_name_len(after_brace);
-            if nlen == 0 {
-                out.push_str("${");
-                remaining = after_brace;
-                continue;
-            }
-            let name = &after_brace[..nlen];
-            let after_name = &after_brace[nlen..];
-            if let Some(after_close) = after_name.strip_prefix('}') {
-                match env_lookup(name) {
-                    Ok(val) => out.push_str(&val),
-                    Err(_) => {
-                        out.push_str("${");
-                        out.push_str(name);
-                        out.push('}');
-                    }
-                }
-                remaining = after_close;
-            } else {
-                // Unclosed `${...`: literal.
-                out.push_str("${");
-                out.push_str(name);
-                remaining = after_name;
-            }
-        } else {
-            // `$NAME` form
-            let nlen = var_name_len(remaining);
-            if nlen == 0 {
-                out.push('$');
-                // `remaining` already points past the `$`; keep scanning.
-                continue;
-            }
-            let name = &remaining[..nlen];
-            match env_lookup(name) {
-                Ok(val) => out.push_str(&val),
-                Err(_) => {
-                    out.push('$');
-                    out.push_str(name);
-                }
-            }
-            remaining = &remaining[nlen..];
-        }
+        let after = &remaining[pos + 1..];
+        remaining = &after[expand_dollar(after, env_lookup, out)..];
     }
     out.push_str(remaining);
+}
+
+/// Expands the `$NAME` or `${NAME}` reference that `after` (the text right
+/// after a `$`) starts with onto `out`, and returns how many bytes of
+/// `after` it read. An unknown variable, and a `$` that starts no
+/// reference, are pushed literally.
+pub(crate) fn expand_dollar(
+    after: &str,
+    env_lookup: &impl Fn(&str) -> Result<String, std::env::VarError>,
+    out: &mut String,
+) -> usize {
+    if let Some(after_brace) = after.strip_prefix('{') {
+        let nlen = var_name_len(after_brace);
+        if nlen == 0 {
+            out.push_str("${");
+            return 1;
+        }
+        let name = &after_brace[..nlen];
+        if !after_brace[nlen..].starts_with('}') {
+            // Unclosed `${...`: literal.
+            out.push_str("${");
+            out.push_str(name);
+            return 1 + nlen;
+        }
+        match env_lookup(name) {
+            Ok(val) => out.push_str(&val),
+            Err(_) => {
+                out.push_str("${");
+                out.push_str(name);
+                out.push('}');
+            }
+        }
+        return 1 + nlen + 1;
+    }
+    let nlen = var_name_len(after);
+    let name = &after[..nlen];
+    match (nlen > 0).then(|| env_lookup(name).ok()).flatten() {
+        Some(val) => out.push_str(&val),
+        None => {
+            out.push('$');
+            out.push_str(name);
+        }
+    }
+    nlen
 }
 
 /// Scan `s` for env-var references (Windows `%VAR%` syntax) and append the
@@ -287,58 +281,69 @@ pub fn split_path_at_sep(s: &str) -> (&str, &str) {
 
 // ── Programs on a search path ────────────────────────────────────────────────
 
-/// The names of the programs on `search_path` (a `PATH` value) that start
-/// with `prefix`, sorted and each listed once. A directory that can't be
-/// read lists nothing.
+/// The names of the programs on `search_path` (a `PATH` value) that POSIX
+/// `sh` runs by name and that start with `prefix`, sorted and each listed
+/// once. A directory that can't be read lists nothing.
 ///
 /// On Unix a program is a file (a symlink is followed) with any execute
-/// bit set. On Windows it is a file whose extension is in `PATHEXT`
-/// (cmd's own default list when unset), named by its stem, the name a
-/// shell runs it by.
+/// bit set. On Windows it is an `.exe`, named by its stem: the one
+/// extension `sh` adds to a bare name. Names there match and collapse
+/// without regard to ASCII case, as the filesystem compares them, and the
+/// spelling listed is the first one on the path.
 pub fn executables_in(search_path: &std::ffi::OsStr, prefix: &str) -> Vec<String> {
-    #[cfg(windows)]
-    let exts = std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".to_owned());
-    let mut names = std::collections::BTreeSet::new();
+    let mut names = std::collections::BTreeMap::new();
     for dir in std::env::split_paths(search_path) {
         let Ok(entries) = std::fs::read_dir(&dir) else {
             continue;
         };
         for entry in entries.flatten() {
             let file_name = entry.file_name();
-            let Some(name) = file_name.to_str() else {
+            let Some(program) = file_name
+                .to_str()
+                .and_then(|name| program_name(&entry, name, prefix))
+            else {
                 continue;
-            };
-            // A stem is a prefix of its name, so this check rules out no
-            // program and saves a `stat` on every other entry.
-            if !name.starts_with(prefix) {
-                continue;
-            }
-            let Ok(meta) = std::fs::metadata(entry.path()) else {
-                continue;
-            };
-            if !meta.is_file() {
-                continue;
-            }
-            #[cfg(unix)]
-            let program = {
-                use std::os::unix::fs::PermissionsExt;
-                (meta.permissions().mode() & 0o111 != 0).then_some(name)
             };
             #[cfg(windows)]
-            let program = name.rsplit_once('.').and_then(|(stem, ext)| {
-                exts.split(';')
-                    .any(|e| {
-                        e.strip_prefix('.')
-                            .is_some_and(|e| e.eq_ignore_ascii_case(ext))
-                    })
-                    .then_some(stem)
-            });
-            if let Some(program) = program.filter(|p| p.starts_with(prefix)) {
-                names.insert(program.to_owned());
-            }
+            let key = program.to_ascii_lowercase();
+            #[cfg(not(windows))]
+            let key = program.to_owned();
+            names.entry(key).or_insert_with(|| program.to_owned());
         }
     }
-    names.into_iter().collect()
+    names.into_values().collect()
+}
+
+/// The name `sh` runs directory entry `entry` (named `name`) by, when it
+/// is a program whose name starts with `prefix`.
+#[cfg(unix)]
+fn program_name<'a>(entry: &std::fs::DirEntry, name: &'a str, prefix: &str) -> Option<&'a str> {
+    use std::os::unix::fs::PermissionsExt;
+    if !name.starts_with(prefix) {
+        return None;
+    }
+    // The entry's own type is free from the listing on most filesystems,
+    // and only a file or a symlink can be a program, so a directory or a
+    // device never costs a `stat`.
+    let file_type = entry.file_type().ok()?;
+    if !(file_type.is_file() || file_type.is_symlink()) {
+        return None;
+    }
+    let meta = std::fs::metadata(entry.path()).ok()?;
+    (meta.is_file() && meta.permissions().mode() & 0o111 != 0).then_some(name)
+}
+
+/// The name `sh` runs directory entry `entry` (named `name`) by, when it
+/// is a program whose name starts with `prefix`.
+#[cfg(windows)]
+fn program_name<'a>(entry: &std::fs::DirEntry, name: &'a str, prefix: &str) -> Option<&'a str> {
+    let (stem, ext) = name.rsplit_once('.')?;
+    let matches = ext.eq_ignore_ascii_case("exe")
+        && stem
+            .get(..prefix.len())
+            .is_some_and(|head| head.eq_ignore_ascii_case(prefix));
+    // The entry's type comes with the listing, so this costs no file open.
+    (matches && !entry.file_type().ok()?.is_dir()).then_some(stem)
 }
 
 // ── Windows UNC prefix ───────────────────────────────────────────────────────

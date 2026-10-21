@@ -2,6 +2,8 @@ use std::borrow::Cow;
 use std::ffi::OsString;
 use std::ops::Range;
 
+use hume_platform::sh;
+
 use super::path::path_candidates;
 use super::{CompletionCtx, CompletionItem};
 
@@ -10,17 +12,11 @@ use super::{CompletionCtx, CompletionItem};
 /// The name this source registers under for the `|` line.
 pub(in crate::editor) const SHELL_SOURCE: &str = "shell";
 
-/// The operator characters, which end a word as whitespace does.
+/// The operator characters, which end a word as a blank does.
 const OPERATORS: &[char] = &['|', ';', '&', '(', ')', '<', '>'];
 
 /// The operators after which the next word names a program.
 const COMMAND_STARTERS: &[char] = &['|', ';', '&', '('];
-
-/// The characters POSIX `sh` reads specially inside a word.
-const SH_SPECIAL: &[char] = &[
-    ' ', '\t', '\n', '\\', '\'', '"', '`', '$', '&', ';', '|', '(', ')', '<', '>', '*', '?', '[',
-    ']', '{', '}', '!', '#', '~',
-];
 
 /// Completes the `|` line's word at the cursor: a program on `PATH` where
 /// the word names one, a file path anywhere else. A word that names a
@@ -44,25 +40,25 @@ fn complete_shell_with(
 ) -> (Range<usize>, Vec<CompletionItem>) {
     let word = shell_word_at(input, cursor);
     let typed = &input[word.span.start..cursor.min(input.len())];
-    let items = if word.command_position && !typed.contains(hume_platform::path::is_path_sep) {
+    let items = if word.command_position && !typed.contains(sh::PATH_SEP) {
         search_path().map_or_else(Vec::new, |path| {
-            hume_platform::path::executables_in(&path, &sh_unescape(typed))
+            hume_platform::path::executables_in(&path, &sh::prefix_value(typed))
                 .into_iter()
                 .map(|name| {
-                    let insert = sh_escape(&name).into_owned();
+                    let insert = sh::escape(&name).into_owned();
                     CompletionItem::plain(name, insert)
                 })
                 .collect()
         })
     } else {
-        let (typed_dir, typed_file) = hume_platform::path::split_path_at_sep(typed);
+        let (typed_dir, typed_file) = sh::split_at_sep(typed);
         path_candidates(
-            &sh_unescape(typed_dir),
-            &sh_unescape(typed_file),
+            &sh::prefix_value(typed_dir),
+            &sh::prefix_value(typed_file),
             ctx.cwd,
             false,
-            hume_platform::path::expand,
-            |name| format!("{typed_dir}{}", sh_escape(name)),
+            |dir| Cow::Borrowed(dir),
+            |name| format!("{typed_dir}{}", sh::escape(name)),
         )
     };
     (word.span, items)
@@ -77,77 +73,42 @@ struct ShellWord {
     command_position: bool,
 }
 
-/// The word around `cursor`: words end at unescaped whitespace and at
-/// [`OPERATORS`], and a backslash keeps the character after it in the
-/// word. Quotes are not read, so a quoted space still ends a word.
+/// The word around `cursor`: words end at unescaped [`sh::is_blank`]
+/// characters and at [`OPERATORS`], and a backslash keeps the character
+/// after it in the word, even with the cursor between the two. Quotes are
+/// not read, so a quoted space still ends a word.
 fn shell_word_at(input: &str, cursor: usize) -> ShellWord {
-    let cursor = cursor.min(input.len());
     let mut start = 0;
-    // The last non-whitespace character before `start`.
+    let mut end = input.len();
+    // The last non-blank character before `start`.
     let mut before_word = None;
     let mut last = None;
-    let mut head = input[..cursor].char_indices();
-    while let Some((i, c)) = head.next() {
+    let mut chars = input.char_indices();
+    while let Some((i, c)) = chars.next() {
         if c == '\\' {
-            head.next();
+            chars.next();
             last = Some(c);
-        } else if c.is_whitespace() {
-            start = i + c.len_utf8();
-            before_word = last;
-        } else if OPERATORS.contains(&c) {
-            start = i + c.len_utf8();
-            last = Some(c);
-            before_word = last;
-        } else {
-            last = Some(c);
+            continue;
         }
-    }
-    let mut end = input.len();
-    let mut tail = input[cursor..].char_indices();
-    while let Some((i, c)) = tail.next() {
-        if c == '\\' {
-            tail.next();
-        } else if c.is_whitespace() || OPERATORS.contains(&c) {
-            end = cursor + i;
+        let operator = OPERATORS.contains(&c);
+        if !operator && !sh::is_blank(c) {
+            last = Some(c);
+            continue;
+        }
+        if i >= cursor {
+            end = i;
             break;
         }
+        start = i + c.len_utf8();
+        if operator {
+            last = Some(c);
+        }
+        before_word = last;
     }
     ShellWord {
         span: start..end,
         command_position: before_word.is_none_or(|c| COMMAND_STARTERS.contains(&c)),
     }
-}
-
-/// `name` with a backslash before each of [`SH_SPECIAL`].
-fn sh_escape(name: &str) -> Cow<'_, str> {
-    if !name.contains(SH_SPECIAL) {
-        return Cow::Borrowed(name);
-    }
-    let mut out = String::with_capacity(name.len());
-    for c in name.chars() {
-        if SH_SPECIAL.contains(&c) {
-            out.push('\\');
-        }
-        out.push(c);
-    }
-    Cow::Owned(out)
-}
-
-/// `word` with each backslash pair read as the character it escapes; a
-/// trailing lone backslash escapes nothing and is dropped.
-fn sh_unescape(word: &str) -> Cow<'_, str> {
-    if !word.contains('\\') {
-        return Cow::Borrowed(word);
-    }
-    let mut out = String::with_capacity(word.len());
-    let mut chars = word.chars();
-    while let Some(c) = chars.next() {
-        match c {
-            '\\' => out.extend(chars.next()),
-            c => out.push(c),
-        }
-    }
-    Cow::Owned(out)
 }
 
 #[cfg(test)]

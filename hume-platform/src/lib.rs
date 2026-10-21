@@ -15,6 +15,7 @@
 //!   hashing, archive unpacking).
 //! - [`dirs`]: XDG/platform config, data, home, and runtime directories.
 //! - [`path`]: tilde/env-var expansion and path-separator utilities.
+//! - [`sh`]: POSIX `sh` word syntax, for completing a shell command line.
 //! - [`version`]: the running build's version and commit, stamped by `build.rs`.
 //! - [`worker_panic`]: keeps a panic on a background thread from touching the
 //!   terminal and queues it for the editor to report.
@@ -36,6 +37,7 @@ pub mod io;
 pub mod path;
 pub mod process;
 pub mod screen;
+pub mod sh;
 pub mod terminal;
 pub mod version;
 pub mod wake;

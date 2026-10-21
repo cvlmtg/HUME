@@ -3,7 +3,7 @@
 
 use crate::editor::Severity;
 use crate::editor::completion::{
-    BufferSourceEntry, MinibufBody, MinibufSourceEntry, RegisterOutcome,
+    BufferSourceEntry, CUT_ANYWHERE, MinibufBody, MinibufSourceEntry, RegisterOutcome,
 };
 
 use super::EditorHostImpl;
@@ -63,6 +63,7 @@ impl crate::editor::Editor {
                     match_kind,
                     priority: reg.priority,
                     body: MinibufBody::Steel(reg.proc),
+                    prefix_cut: CUT_ANYWHERE,
                 }),
         };
         if outcome == RegisterOutcome::Replaced {

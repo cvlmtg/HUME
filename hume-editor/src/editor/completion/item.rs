@@ -236,7 +236,7 @@ impl CompletionItem {
         }
     }
 
-    /// Whether this item names a directory to descend into. The `:` line's
+    /// Whether this item names a directory to descend into. The minibuffer's
     /// Enter handler (`input_stack/completion.rs`) reads this generically
     /// rather than checking which source produced the candidate; any
     /// source's item can opt in the same way `path.rs`'s directory entries

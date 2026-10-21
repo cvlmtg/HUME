@@ -1,9 +1,10 @@
-//! The `:` command-line completion session: [`MinibufSession`]. Tab and
-//! Shift-Tab pick a row and immediately splice that candidate into the
-//! minibuffer, with no separate accept step; before any row is picked, Tab
-//! splices the candidates' common prefix instead. The popup's own key
-//! handler (`input_stack/completion.rs`) dismisses on any other key, unlike
-//! [`super::BufferSession`], which refilters in place as the user types.
+//! The minibuffer completion session (the `:` and `|` lines):
+//! [`MinibufSession`]. Tab and Shift-Tab pick a row and immediately splice
+//! that candidate into the minibuffer, with no separate accept step; before
+//! any row is picked, Tab splices the candidates' common prefix instead.
+//! The popup's own key handler (`input_stack/completion.rs`) dismisses on
+//! any other key, unlike [`super::BufferSession`], which refilters in place
+//! as the user types.
 
 use std::borrow::Cow;
 use std::ops::Range;
@@ -15,8 +16,8 @@ use super::super::registry::{MinibufSourceId, SourceRegistry};
 use super::slots::{Invocation, SlotSet, SlotTokens};
 
 /// Byte range in [`MinibufSession`]'s own `input` that a `Minibuf`
-/// invocation answered for. Never moves: nothing can edit the `:` line
-/// while a session is open without dismissing it. `pub(in crate::editor)`:
+/// invocation answered for. Never moves: nothing can edit the line while
+/// a session is open without dismissing it. `pub(in crate::editor)`:
 /// `orchestrate.rs` names `Invocation<MinibufSpan>` at every invoke call
 /// site.
 pub(in crate::editor) struct MinibufSpan {
@@ -34,7 +35,7 @@ impl Invocation<MinibufSpan> {
     }
 }
 
-/// The `:` command-line completion session: the input every source saw,
+/// The minibuffer completion session: the input every source saw,
 /// restored verbatim before each cycle-apply (`orchestrate.rs`), so
 /// applying candidate *k* over a slot's span is idempotent in these
 /// coordinates: no "what did the previous candidate leave behind"
@@ -67,7 +68,7 @@ fn common_prefix<'a>(a: &'a str, b: &str) -> &'a str {
 }
 
 impl MinibufSession {
-    /// A session over the `:` line's `input`, cursor at byte `cursor`.
+    /// A session over a minibuffer line's `input`, cursor at byte `cursor`.
     pub(in crate::editor) fn open(input: String, cursor: usize) -> Self {
         Self {
             input,
@@ -168,7 +169,7 @@ impl MinibufSession {
         self.core.top(n, sources)
     }
 
-    /// Rows always carry `detail`: the `:` line has no documentation box.
+    /// Rows always carry `detail`: the minibuffer has no documentation box.
     pub(in crate::editor) fn rows_in(&self, range: Range<usize>) -> Vec<hume_ui::popup::MenuRow> {
         self.core.rows_in(range, true)
     }
@@ -181,24 +182,29 @@ impl MinibufSession {
     }
 
     /// The edit Tab applies: the picked candidate over its span, or with
-    /// nothing picked, the candidates' common prefix over the span. `None`
-    /// when there is nothing to apply, including a common prefix that does
-    /// not extend what is already typed (a fuzzy match can share less than
-    /// the typed text). The typed text is the whole token, so with the
-    /// cursor mid-token the prefix rarely extends it and the first Tab only
-    /// opens the popup.
-    pub(in crate::editor) fn proposed_apply(&self) -> Option<(Range<usize>, Cow<'_, str>)> {
+    /// nothing picked, the candidates' common prefix over the span, cut by
+    /// each candidate's source's `prefix_cut`. `None` when there is nothing
+    /// to apply, including a common prefix that does not extend what is
+    /// already typed (a fuzzy match can share less than the typed text).
+    /// The typed text is the whole token, so with the cursor mid-token the
+    /// prefix rarely extends it and the first Tab only opens the popup.
+    pub(in crate::editor) fn proposed_apply(
+        &self,
+        sources: &SourceRegistry,
+    ) -> Option<(Range<usize>, Cow<'_, str>)> {
         if self.picked {
             let (_, inv, item) = self.core.ranked(self.core.selected())?;
             return Some((inv.span.bytes.clone(), Cow::Borrowed(item.insert_text())));
         }
-        let (_, inv, first) = self.core.ranked(0)?;
+        let cut = |source| sources.minibuf_get(source).prefix_cut;
+        let (first_source, inv, first) = self.core.ranked(0)?;
         let span = inv.span.bytes.clone();
         let prefix = (1..self.core.len())
-            .filter_map(|i| self.core.selected_item(i))
-            .fold(first.insert_text(), |p, item| {
-                common_prefix(p, item.insert_text())
-            });
+            .filter_map(|i| self.core.ranked(i))
+            .fold(
+                cut(first_source)(first.insert_text()),
+                |p, (source, _, item)| cut(source)(common_prefix(p, item.insert_text())),
+            );
         let typed = &self.input[span.clone()];
         let extends = prefix.len() > typed.len() && super::prefix_matches(prefix, typed, false);
         extends.then_some((span, Cow::Borrowed(prefix)))

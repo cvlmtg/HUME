@@ -1,13 +1,13 @@
 //! The two completion session types: [`buffer::BufferSession`] (Insert mode)
-//! and [`minibuf::MinibufSession`] (the `:` line). Each stores what every
-//! participating source answered and ranks it per keystroke against that
-//! source's own token. `orchestrate.rs` opens sessions, invokes sources, and
+//! and [`minibuf::MinibufSession`] (the `:` and `|` lines). Each stores what
+//! every participating source answered and ranks it per keystroke against
+//! that source's own token. `orchestrate.rs` opens sessions, invokes sources, and
 //! reconciles the buffer session with its text; this module knows only what
 //! a source said and where.
 //!
 //! Ranking and menu bookkeeping are shared in [`slots::SlotSet`], generic over
 //! each target's id and span types. What differs (accepting as a buffer edit
-//! vs. a splice into the `:` line, further-typing behavior, cross-source
+//! vs. a splice into the minibuffer, further-typing behavior, cross-source
 //! dedup) belongs to each session type, so the type itself says which target
 //! a caller holds.
 //!

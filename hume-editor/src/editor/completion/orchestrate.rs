@@ -351,7 +351,10 @@ impl EditorState {
         let Some(layer) = self.input.at::<MinibufCompletionLayer>(r) else {
             return;
         };
-        let Some((span, text)) = layer.session.proposed_apply() else {
+        let Some((span, text)) = layer
+            .session
+            .proposed_apply(&self.config.completion_sources)
+        else {
             return;
         };
         let (input, text) = (layer.session.input().to_owned(), text.into_owned());

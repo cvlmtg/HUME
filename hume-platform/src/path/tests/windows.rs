@@ -119,14 +119,34 @@ fn relative_to_ignores_a_verbatim_prefix_on_either_side() {
 // ── executables_in ────────────────────────────────────────────────────────
 
 #[test]
-fn executables_in_lists_a_pathext_program_by_its_stem() {
+fn executables_in_lists_an_exe_by_its_stem_and_nothing_else() {
     let bin = tempfile::tempdir().unwrap();
-    for name in ["probe.exe", "probe-script.CMD", "probe-notes.txt", "probe"] {
+    for name in [
+        "probe.exe",
+        "probe-upper.EXE",
+        "probe-script.cmd",
+        "probe-batch.bat",
+        "probe-notes.txt",
+        "probe",
+    ] {
         std::fs::write(bin.path().join(name), b"").unwrap();
     }
     assert_eq!(
         executables_in(&search_path([bin.path()]), "probe"),
-        ["probe", "probe-script"]
+        ["probe", "probe-upper"]
+    );
+}
+
+#[test]
+fn executables_in_ignores_case_and_keeps_the_first_spelling_on_the_path() {
+    let first = tempfile::tempdir().unwrap();
+    let second = tempfile::tempdir().unwrap();
+    std::fs::write(first.path().join("Code.exe"), b"").unwrap();
+    std::fs::write(second.path().join("CODE.exe"), b"").unwrap();
+    std::fs::write(second.path().join("codex.exe"), b"").unwrap();
+    assert_eq!(
+        executables_in(&search_path([first.path(), second.path()]), "cod"),
+        ["Code", "codex"]
     );
 }
 

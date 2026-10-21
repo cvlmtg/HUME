@@ -4,8 +4,8 @@
 
 use super::super::item::CompletionItem;
 use super::super::registry::{
-    BufferSourceEntry, BufferSourceId, MinibufBody, MinibufSourceEntry, MinibufSourceId,
-    SourceRegistry,
+    BufferSourceEntry, BufferSourceId, CUT_ANYWHERE, MinibufBody, MinibufSourceEntry,
+    MinibufSourceId, SourceRegistry,
 };
 use super::*;
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
@@ -54,6 +54,7 @@ fn minibuf_registry(sources: &[(&str, i64)]) -> SourceRegistry {
             match_kind: MatchKind::Fuzzy,
             priority: *priority,
             body: MinibufBody::Steel(SteelVal::Void),
+            prefix_cut: CUT_ANYWHERE,
         });
     }
     reg

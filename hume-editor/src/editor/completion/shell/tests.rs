@@ -48,6 +48,11 @@ fn the_word_at_the_cursor_and_whether_it_names_a_program() {
         (r"cat a\|b‸", r"a\|b", false),
         ("cat fi‸le other", "file", false),
         ("cat fi‸le|wc", "file", false),
+        ("cat 5.48\u{202f}P‸M.png", "5.48\u{202f}PM.png", false),
+        ("cat a\u{a0}b‸ c", "a\u{a0}b", false),
+        (r"cat my\‸ dir", r"my\ dir", false),
+        (r"cat my\‸ \ dir x", r"my\ \ dir", false),
+        (r"cat a\\‸ b", r"a\\", false),
     ] {
         let (input, cursor) = split_cursor(line);
         let word = shell_word_at(&input, cursor);
@@ -57,21 +62,6 @@ fn the_word_at_the_cursor_and_whether_it_names_a_program() {
             "{line:?}"
         );
     }
-}
-
-#[test]
-fn escaping_backslashes_every_special_character() {
-    assert_eq!(sh_escape("plain-name.txt"), "plain-name.txt");
-    assert_eq!(sh_escape("my notes.txt"), r"my\ notes.txt");
-    assert_eq!(sh_escape("a$b'c\"d"), r#"a\$b\'c\"d"#);
-    assert_eq!(sh_escape(r"x\y*z"), r"x\\y\*z");
-}
-
-#[test]
-fn unescaping_reverses_escaping() {
-    let name = "a b\t$c'd\"e\\f|g;h&i(j)k<l>m*n?o[p]q{r}s!t#u~v`w";
-    assert_eq!(sh_unescape(&sh_escape(name)), name);
-    assert_eq!(sh_unescape(r"my\ dir/"), "my dir/");
 }
 
 #[test]
@@ -112,6 +102,58 @@ fn an_escaped_directory_is_looked_up_unescaped_and_kept_as_typed() {
         texts(&items),
         [("c.txt".to_owned(), r"a\ b/c.txt".to_owned())]
     );
+}
+
+#[test]
+fn an_escaped_space_before_the_cursor_stays_in_the_file_prefix() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("my notes.txt"), b"").unwrap();
+    let (reg, store) = (CommandRegistry::with_defaults(), BufferStore::new());
+    let input = r"cat my\ n";
+    let (span, items) = complete_shell_with(
+        input,
+        input.len(),
+        &ctx(&reg, &store, dir.path()),
+        unread_path,
+    );
+    assert_eq!(span, 4..input.len());
+    assert_eq!(
+        texts(&items),
+        [("my notes.txt".to_owned(), r"my\ notes.txt".to_owned())]
+    );
+}
+
+#[test]
+fn an_escaped_tilde_names_a_directory_called_tilde() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir(dir.path().join("~")).unwrap();
+    std::fs::write(dir.path().join("~/inside-tilde"), b"").unwrap();
+    let (reg, store) = (CommandRegistry::with_defaults(), BufferStore::new());
+    let input = r"cat \~/";
+    let (span, items) = complete_shell_with(
+        input,
+        input.len(),
+        &ctx(&reg, &store, dir.path()),
+        unread_path,
+    );
+    assert_eq!(span, 4..input.len());
+    assert_eq!(
+        texts(&items),
+        [("inside-tilde".to_owned(), r"\~/inside-tilde".to_owned())]
+    );
+}
+
+#[test]
+fn a_program_word_with_an_escaped_space_reads_the_search_path() {
+    let dir = tempfile::tempdir().unwrap();
+    let (reg, store) = (CommandRegistry::with_defaults(), BufferStore::new());
+    let read = std::cell::Cell::new(false);
+    let input = r"probe\ to";
+    complete_shell_with(input, input.len(), &ctx(&reg, &store, dir.path()), || {
+        read.set(true);
+        None
+    });
+    assert!(read.get(), "a backslash is an escape, not a separator");
 }
 
 #[test]

@@ -159,7 +159,7 @@ A run that fails or is stopped leaves `.` repeating whatever it repeated before.
 
 A run is one undo step. In Insert mode its output belongs to the insert session's undo step, like the text you type.
 
-The prompt edits like the [command line](default-keys.md#command-line) and keeps its own history: `Up` and `Down` recall earlier commands. `Tab` completes the word under the cursor: a program on your `PATH` where a command's name goes (at the start of the line, or after `|`, `;`, `&` or `(`), and a file path anywhere else or when the word contains a `/`. A completed name with spaces or other characters special to `sh` has them escaped with `\`. Quotes are not understood: a space inside quotes still ends the word `Tab` completes.
+The prompt edits like the [command line](default-keys.md#command-line) and keeps its own history: `Up` and `Down` recall earlier commands. `Tab` completes the word under the cursor: a program on your `PATH` where a command's name goes (at the start of the line, or after `|`, `;`, `&` or `(`), and a file path anywhere else or when the word contains a `/`. A completed name with spaces or other characters special to `sh` has them escaped for `sh`. Quotes are not understood: a space inside quotes still ends the word `Tab` completes.
 
 Commands run with `sh -c`, in HUME's working directory. Set the `shell` option to use another shell (see [Global options](settings.md#global-options)). A command that asks the terminal for input, such as `fzf` or a `sudo` password prompt, can't get it and waits until you press `Ctrl-c`.
 
