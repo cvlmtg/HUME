@@ -12,7 +12,7 @@ use crate::{Effect, SteelCtx};
 use super::SteelResult;
 use super::args::{
     bool_arg, callable_arg, chars_arg, int_arg, json_arg, list_items, optional_pair_fields,
-    server_arg, string_arg, symbol_enum_arg, usize_arg,
+    optional_string_arg, server_arg, string_arg, symbol_enum_arg, usize_arg,
 };
 use super::errors::{generic_err, require_cap};
 use super::lsp::required_feature_arg;
@@ -213,9 +213,8 @@ pub(crate) fn completion_emit(
         .transpose()?;
     let prefix = match prefix {
         SteelVal::BoolV(true) => FirstTab::Common,
-        SteelVal::BoolV(false) => FirstTab::Nothing,
-        SteelVal::StringV(s) => FirstTab::Named(s.to_string()),
-        _ => steel::stop!(TypeMismatch => "completion-emit! #:prefix: expected a string or #f"),
+        other => optional_string_arg(other, "completion-emit! #:prefix")?
+            .map_or(FirstTab::Nothing, FirstTab::Named),
     };
     let parts = list_items(items, "completion-emit! items")?
         .into_iter()

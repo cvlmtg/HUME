@@ -678,7 +678,7 @@ fn an_empty_prefix_is_refused() {
 
 #[test]
 fn a_prefix_that_is_not_a_string_is_refused() {
-    let ed = greet_tab("ab", "delegated", r#"(list "abc" "abd")"#, "#:prefix 'abx");
+    let ed = greet_tab("ab", "delegated", r#"(list "abc" "abd")"#, "#:prefix 3");
     assert!(prefix_refused(&ed));
     assert_eq!(minibuf_input(&ed), "greet ab");
 }
