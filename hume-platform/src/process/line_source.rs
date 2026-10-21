@@ -1,12 +1,14 @@
 //! Streaming a child process's stdout into complete lines.
 //!
-//! `LineSplitter` is the pure, allocation-light half of the picker's
-//! external-command source (`picker-source-spawn!`, `hume-editor`'s
-//! `picker_source.rs`): a reader thread
-//! feeds it arbitrary-sized chunks off a pipe, and it yields only complete
-//! lines, carrying any trailing partial line across chunk boundaries. Kept
-//! separate from the spawn/thread machinery so the boundary-carry logic is
-//! unit-testable without ever touching a real process.
+//! [`read_lines`](crate::process::line_source::read_lines) is the reader
+//! thread of the picker's external-command source (`picker-source-spawn!`,
+//! `hume-editor`'s `picker_source.rs`) and of a language server's stderr
+//! forwarding (`hume-lsp`'s `transport.rs`): it feeds `LineSplitter`
+//! arbitrary-sized chunks off a pipe, and `LineSplitter` yields only
+//! complete lines, carrying any trailing partial line across chunk
+//! boundaries. `LineSplitter` is kept separate from the spawn/thread
+//! machinery so the boundary-carry logic is unit-testable without ever
+//! touching a real process.
 //!
 //! [`spawn_line_source`](crate::process::line_source::spawn_line_source) is
 //! the other half: spawns `cmd` with piped stdio, closes stdin immediately
@@ -36,6 +38,12 @@ use crate::wake::{WakeCallback, spawn_waking};
 /// (Windows CRLF output); NUL-delimited streams (`#:nul #t`, e.g.
 /// `git ls-files -z`) do not, since NUL-separated records have no CRLF
 /// convention to strip.
+/// The longest line a [`LineSplitter`] keeps. Bytes past it, up to the next
+/// delimiter, are dropped: a stream with no delimiters (binary output, a
+/// progress bar redrawn with `\r`) would otherwise grow the carried line
+/// for as long as the child runs.
+const MAX_LINE_BYTES: usize = 1024 * 1024;
+
 struct LineSplitter {
     delim: u8,
     strip_cr: bool,
@@ -56,17 +64,22 @@ impl LineSplitter {
     /// (or [`finish`](Self::finish)'s) output; it never appears here.
     fn push_chunk(&mut self, chunk: &[u8]) -> Vec<String> {
         let mut lines = Vec::new();
-        let mut start = 0;
-        for (i, &byte) in chunk.iter().enumerate() {
-            if byte == self.delim {
-                let mut line = std::mem::take(&mut self.carry);
-                line.extend_from_slice(&chunk[start..i]);
-                lines.push(self.finish_line(line));
-                start = i + 1;
-            }
+        let mut rest = chunk;
+        while let Some(i) = rest.iter().position(|&byte| byte == self.delim) {
+            self.carry_capped(&rest[..i]);
+            let line = std::mem::take(&mut self.carry);
+            lines.push(self.finish_line(line));
+            rest = &rest[i + 1..];
         }
-        self.carry.extend_from_slice(&chunk[start..]);
+        self.carry_capped(rest);
         lines
+    }
+
+    /// Appends `bytes` to the carried line, up to [`MAX_LINE_BYTES`].
+    fn carry_capped(&mut self, bytes: &[u8]) {
+        let room = MAX_LINE_BYTES.saturating_sub(self.carry.len());
+        self.carry
+            .extend_from_slice(&bytes[..bytes.len().min(room)]);
     }
 
     /// The trailing unterminated line at end-of-stream, if any bytes are
@@ -148,7 +161,13 @@ pub fn spawn_line_source(
     // killing the child closes stdout/stderr, which ends its blocking read.
     let reader_wake = Arc::clone(&wake);
     spawn_waking("hume-line-source-reader", wake, move || {
-        reader_loop(stdout, delimiter, &tx, &reader_wake);
+        read_lines(stdout, delimiter, |batch| {
+            let sent = tx.send(batch).is_ok();
+            if sent {
+                reader_wake();
+            }
+            sent
+        });
     })
     .map_err(|e| start_failed(cmd, e))?;
 
@@ -250,15 +269,10 @@ impl Drop for SpawnedLineSource {
     }
 }
 
-/// Reads raw bytes until EOF or a read error, splitting them into lines and
-/// forwarding each non-empty batch, waking the main loop after every send.
-/// Factored over `impl Read` so it's testable without a real pipe.
-fn reader_loop(
-    mut r: impl Read,
-    delimiter: u8,
-    tx: &mpsc::SyncSender<Vec<String>>,
-    wake: &WakeCallback,
-) {
+/// Reads `r` until EOF or a read error, handing `sink` each read's complete
+/// lines split on `delimiter` (never an empty batch), then the trailing
+/// unterminated line, if any. Stops reading once `sink` returns `false`.
+pub fn read_lines(mut r: impl Read, delimiter: u8, mut sink: impl FnMut(Vec<String>) -> bool) {
     let mut splitter = LineSplitter::new(delimiter);
     let mut buf = [0u8; 64 * 1024];
     loop {
@@ -266,11 +280,8 @@ fn reader_loop(
             Ok(0) => break,
             Ok(n) => {
                 let batch = splitter.push_chunk(&buf[..n]);
-                if !batch.is_empty() {
-                    if tx.send(batch).is_err() {
-                        return;
-                    }
-                    wake();
+                if !batch.is_empty() && !sink(batch) {
+                    return;
                 }
             }
             Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
@@ -278,11 +289,8 @@ fn reader_loop(
         }
     }
     if let Some(last) = splitter.finish() {
-        let _ = tx.send(vec![last]);
-        wake();
+        sink(vec![last]);
     }
-    // `tx` (moved into the caller's closure) drops when this returns,
-    // disconnecting the channel, and the drain side observes that as EOF.
 }
 
 #[cfg(test)]
@@ -349,6 +357,19 @@ mod tests {
     fn interior_empty_lines_are_emitted() {
         let mut s = LineSplitter::new(b'\n');
         assert_eq!(s.push_chunk(b"a\n\nb\n"), vec!["a", "", "b"]);
+    }
+
+    #[test]
+    fn a_line_past_the_cap_is_truncated_and_the_next_line_is_whole() {
+        let mut s = LineSplitter::new(b'\n');
+        let half = vec![b'x'; MAX_LINE_BYTES / 2 + 1];
+        assert_eq!(s.push_chunk(&half), Vec::<String>::new());
+        assert_eq!(s.push_chunk(&half), Vec::<String>::new());
+        let lines = s.push_chunk(b"tail\nnext\n");
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0].len(), MAX_LINE_BYTES);
+        assert!(lines[0].bytes().all(|b| b == b'x'));
+        assert_eq!(lines[1], "next");
     }
 
     #[test]

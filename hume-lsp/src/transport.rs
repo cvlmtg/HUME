@@ -4,12 +4,13 @@
 //! Mirrors `hume-treesitter`'s `ThreadedParseBackend`: thread + channel
 //! ownership, the `Option<Sender>` close-to-signal pattern, `Drop` ordering.
 
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::mpsc;
 use std::thread;
 
+use hume_platform::process::line_source::read_lines;
 use hume_platform::process::tracked::TrackedChild;
 use hume_platform::process::{spawn_piped, start_failed};
 use hume_platform::wake::{WakeCallback, spawn_waking};
@@ -20,7 +21,8 @@ use crate::codec::{self, Message};
 #[derive(Debug)]
 pub enum InboundEvent {
     Message(Message),
-    /// One line of stderr output, already utf8-lossy decoded.
+    /// One line of stderr output, decoded with invalid UTF-8 replaced by
+    /// U+FFFD.
     Stderr(String),
     /// The reader hit EOF or a codec error; the connection is dead.
     Eof {
@@ -109,7 +111,7 @@ impl ServerHandle {
 
         let stderr_wake = Arc::clone(&wake);
         let stderr_thread = spawn_waking("hume-lsp-stderr", wake, move || {
-            stderr_loop(BufReader::new(stderr), &tx_stderr, &stderr_wake)
+            stderr_loop(stderr, &tx_stderr, &stderr_wake)
         })
         .map_err(|e| start_failed(cmd, e))?;
 
@@ -257,16 +259,24 @@ fn writer_loop(mut w: impl Write, rx: mpsc::Receiver<Message>) {
 /// Known risk: a server that crashes right after a burst fills the channel
 /// can have its most useful line (the one explaining *why*) dropped
 /// along with the flood, right when the log is most needed.
-fn stderr_loop(r: impl BufRead, tx: &mpsc::SyncSender<String>, wake: &WakeCallback) {
-    for line in r.lines() {
-        match line {
-            Ok(l) => match tx.try_send(l) {
-                Ok(()) => wake(),
-                Err(mpsc::TrySendError::Full(_)) => {}
-                Err(mpsc::TrySendError::Disconnected(_)) => return,
-            },
-            Err(_) => return,
+fn stderr_loop(r: impl Read, tx: &mpsc::SyncSender<String>, wake: &WakeCallback) {
+    read_lines(r, b'\n', |lines| {
+        lines
+            .into_iter()
+            .all(|line| forward_stderr_line(line, tx, wake))
+    });
+}
+
+/// Sends `line` without blocking, waking the main loop when it was sent.
+/// `false` once the receiver is gone.
+fn forward_stderr_line(line: String, tx: &mpsc::SyncSender<String>, wake: &WakeCallback) -> bool {
+    match tx.try_send(line) {
+        Ok(()) => {
+            wake();
+            true
         }
+        Err(mpsc::TrySendError::Full(_)) => true,
+        Err(mpsc::TrySendError::Disconnected(_)) => false,
     }
 }
 

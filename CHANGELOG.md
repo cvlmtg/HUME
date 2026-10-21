@@ -53,6 +53,7 @@
 ### Fixes
 - On Windows, cancelling a pipe, closing a picker or stopping a language server also stops the programs it started.
 - Git run by a language server fails at once on a private repository or expired credentials, instead of waiting for a password nobody can type.
+- A language server's log keeps going after a line that is not valid UTF-8.
 - A command or language server that cannot start because its working directory is missing says so, instead of reporting the program as missing.
 - A failed `:plum-install-theme` of an installed theme repo keeps the installed copy instead of deleting it.
 - A failed `:plum-install-grammar` of an installed grammar keeps it working instead of deleting its highlighting queries.

@@ -128,6 +128,15 @@ fn stderr_loop_forwards_lines() {
 }
 
 #[test]
+fn stderr_loop_forwards_lines_after_one_that_is_not_utf8() {
+    let cursor = Cursor::new(b"ok\n\xffbad\nafter\n".to_vec());
+    let (tx, rx) = mpsc::sync_channel(STDERR_CHANNEL_BOUND);
+    stderr_loop(cursor, &tx, &no_op_wake());
+    let lines: Vec<String> = rx.try_iter().collect();
+    assert_eq!(lines, ["ok", "\u{FFFD}bad", "after"]);
+}
+
+#[test]
 fn stderr_loop_wakes_on_forwarded_lines() {
     let cursor = Cursor::new(b"first line\nsecond line\n".to_vec());
     let (tx, _rx) = mpsc::sync_channel(STDERR_CHANNEL_BOUND);
