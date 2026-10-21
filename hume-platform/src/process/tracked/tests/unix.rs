@@ -12,7 +12,7 @@ use nix::sys::signal::{Signal, kill};
 use nix::sys::wait::{WaitPidFlag, WaitStatus, waitpid};
 use nix::unistd::Pid;
 use std::os::unix::process::ExitStatusExt;
-use std::process::Command;
+use std::process::{Command, ExitStatus};
 use std::sync::Arc;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
@@ -129,7 +129,7 @@ fn kill_all_kills_the_whole_process_group() {
     let mut child = spawn_in_own_group(&mut cmd).expect("spawn sh");
     let direct_pid = child.id() as i32;
 
-    let stdout = child.stdout.take().expect("piped stdout");
+    let stdout = child.child_mut().stdout.take().expect("piped stdout");
     let mut line = String::new();
     std::io::BufRead::read_line(&mut std::io::BufReader::new(stdout), &mut line)
         .expect("read grandchild pid line");
@@ -220,7 +220,7 @@ fn reap_kills_the_whole_process_group() {
         .stdout(std::process::Stdio::piped());
     let mut child = spawn_in_own_group(&mut cmd).expect("spawn sh");
 
-    let stdout = child.stdout.take().expect("piped stdout");
+    let stdout = child.child_mut().stdout.take().expect("piped stdout");
     let mut line = String::new();
     std::io::BufRead::read_line(&mut std::io::BufReader::new(stdout), &mut line)
         .expect("read grandchild pid line");
@@ -372,4 +372,81 @@ fn kill_all_retries_a_slot_contended_by_a_non_killing_reader() {
          reach the child once it's released, not abandon it on the first failed \
          try_lock: got {status:?}"
     );
+}
+
+/// Runs `script` under `sh -c` as a tracked child of `registry`.
+fn track_sh(script: &str, registry: &ChildRegistry) -> TrackedChild {
+    let mut cmd = Command::new("sh");
+    cmd.args(["-c", script]);
+    let child = spawn_in_own_group(&mut cmd).expect("spawn sh");
+    TrackedChild::in_registry(child, registry)
+}
+
+/// `wait_for_exit` on its own thread, its result sent back.
+fn wait_on_thread(tracked: &TrackedChild) -> mpsc::Receiver<std::io::Result<ExitStatus>> {
+    let (tx, rx) = mpsc::channel();
+    let waited = tracked.clone();
+    std::thread::spawn(move || tx.send(waited.wait_for_exit()));
+    rx
+}
+
+const WAIT_BOUND: Duration = Duration::from_secs(5);
+
+#[test]
+fn wait_for_exit_reports_a_child_that_runs_on_after_closing_its_pipes() {
+    let registry = ChildRegistry::new();
+    let tracked = track_sh("exec 1>&- 2>&-; sleep 0.3; exit 7", &registry);
+    let status = wait_on_thread(&tracked)
+        .recv_timeout(WAIT_BOUND)
+        .expect("the wait ends")
+        .expect("the wait succeeds");
+    assert_eq!(status.code(), Some(7));
+}
+
+#[test]
+fn wait_for_exit_reports_a_child_that_exited_before_the_wait() {
+    let registry = ChildRegistry::new();
+    let tracked = track_sh("exit 4", &registry);
+    std::thread::sleep(Duration::from_millis(300));
+    let status = wait_on_thread(&tracked)
+        .recv_timeout(WAIT_BOUND)
+        .expect("the wait ends")
+        .expect("the wait succeeds");
+    assert_eq!(status.code(), Some(4));
+}
+
+#[test]
+fn a_waiting_thread_leaves_reap_free_to_kill() {
+    let registry = ChildRegistry::new();
+    let tracked = track_sh("exec sleep 30", &registry);
+    let waited = wait_on_thread(&tracked);
+    std::thread::sleep(Duration::from_millis(100));
+
+    let started = Instant::now();
+    tracked.reap();
+    assert!(
+        started.elapsed() < Duration::from_secs(2),
+        "reap took {:?} while another thread waited",
+        started.elapsed()
+    );
+    let status = waited
+        .recv_timeout(WAIT_BOUND)
+        .expect("the wait ends")
+        .expect("the wait succeeds");
+    assert_eq!(status.signal(), Some(Signal::SIGKILL as i32));
+}
+
+#[test]
+fn concurrent_waits_each_report_their_own_child() {
+    let registry = ChildRegistry::new();
+    let first = track_sh("sleep 0.2; exit 1", &registry);
+    let second = track_sh("sleep 0.4; exit 2", &registry);
+    let (first_rx, second_rx) = (wait_on_thread(&first), wait_on_thread(&second));
+    let code = |rx: mpsc::Receiver<std::io::Result<ExitStatus>>| {
+        rx.recv_timeout(WAIT_BOUND)
+            .expect("the wait ends")
+            .expect("the wait succeeds")
+            .code()
+    };
+    assert_eq!((code(first_rx), code(second_rx)), (Some(1), Some(2)));
 }

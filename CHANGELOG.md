@@ -50,6 +50,7 @@
 - New `lsp/format-document` formats the buffer from a save hook. The manual's earlier format-on-save recipe never formatted the saved file: replace it with the new one.
 
 ### Fixes
+- On Windows, cancelling a pipe, closing a picker or stopping a language server also stops the programs it started.
 - A failed `:plum-install-theme` of an installed theme repo keeps the installed copy instead of deleting it.
 - A failed `:plum-install-grammar` of an installed grammar keeps it working instead of deleting its highlighting queries.
 - In Insert mode, `End`, `↑` and `↓` reach the end of a line, after its last character.

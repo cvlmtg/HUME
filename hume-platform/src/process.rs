@@ -48,6 +48,14 @@ pub mod job;
 /// Process-wide tracking so a force-exit can still reap long-lived children.
 pub mod tracked;
 
+/// SIGCHLD as a counter, behind [`tracked::TrackedChild::wait_for_exit`].
+#[cfg(unix)]
+mod exit_watch;
+
+/// The Job Object a Windows child from [`spawn_in_own_group`] runs in.
+#[cfg(windows)]
+mod job_object;
+
 /// `Command::new(cmd)` with `args`, `cwd` (via `strip_unc_prefix`, a no-op
 /// on non-Windows), and `GIT_TERMINAL_PROMPT=0` already applied: the
 /// preamble every spawn site in this crate shares. Each caller layers its
@@ -325,31 +333,53 @@ pub fn no_windows_compiler_found(cwd: &Path) -> bool {
     .is_none()
 }
 
-/// Spawns `command` as its own process group leader on Unix; a no-op
-/// `Command::spawn()` on other platforms, where `std` has no process-group
-/// concept.
+/// A child spawned by [`spawn_in_own_group`], with what a kill needs to
+/// reach the processes it starts: on Unix the process group the child
+/// leads, on Windows the job it runs in. Dropping it on Windows closes the
+/// job, which ends every process in it.
+pub struct GroupedChild {
+    child: std::process::Child,
+    #[cfg(windows)]
+    job: job_object::Job,
+}
+
+impl GroupedChild {
+    /// The child's OS process id.
+    pub fn id(&self) -> u32 {
+        self.child.id()
+    }
+
+    /// The child itself, e.g. to `.take()` its stdio pipes.
+    pub fn child_mut(&mut self) -> &mut std::process::Child {
+        &mut self.child
+    }
+}
+
+/// Spawns `command` so that a kill reaches every process it starts: as its
+/// own process group leader on Unix, inside a new Job Object on Windows.
 ///
-/// Pair with [`tracked::TrackedChild::new`] for a long-lived child: a group
-/// leader lets `tracked::kill_tracked_children` reach the child's own
-/// children with one `killpg` (rust-analyzer's `proc-macro-srv`, build
-/// scripts, ...) instead of leaving them orphaned. `NewProcessGroup`'s
-/// other use (Ctrl-c isolation for `run_inline_output`'s short-lived
-/// children) doesn't need this wrapper, just the trait: a plain `.status()`
-/// call has nothing to track.
+/// Pair with [`tracked::TrackedChild::new`] for a long-lived child: its
+/// group lets `tracked::kill_tracked_children` reach the child's own
+/// children (rust-analyzer's `proc-macro-srv`, build scripts, the command
+/// under a `sh -c` or `cmd /C`, ...) instead of leaving them orphaned.
+/// `NewProcessGroup`'s other use (Ctrl-c isolation for
+/// `run_inline_output`'s short-lived children) doesn't need this wrapper,
+/// just the trait: a plain `.status()` call has nothing to track.
 ///
-/// Trade-off: leaving the foreground process group costs these children the
-/// kernel's SIGHUP on pty teardown (only the foreground group gets one),
-/// covered instead by the LSP `processId` convention and stdin EOF for
-/// everything else.
+/// Trade-off on Unix: leaving the foreground process group costs these
+/// children the kernel's SIGHUP on pty teardown (only the foreground group
+/// gets one), covered instead by the LSP `processId` convention and stdin
+/// EOF for everything else.
 ///
 /// `process_group(0)` runs `setpgid(0, 0)` from the child's own pre-exec
 /// hook, racing the parent: this function hasn't returned when that hook
-/// runs, so a caller that registers/signals the returned `Child` right away
+/// runs, so a caller that registers/signals the returned child right away
 /// could still be racing a child that hasn't exec'd. The parent-side
 /// `setpgid(pid, pid)` below closes that race. It's idempotent, and `EACCES`
 /// here just means the child's own call won first (see
 /// `sigint_to_child_group_does_not_kill_hume`).
-pub fn spawn_in_own_group(command: &mut Command) -> io::Result<std::process::Child> {
+#[cfg(not(windows))]
+pub fn spawn_in_own_group(command: &mut Command) -> io::Result<GroupedChild> {
     let child = command.new_process_group().spawn()?;
     #[cfg(unix)]
     {
@@ -359,7 +389,15 @@ pub fn spawn_in_own_group(command: &mut Command) -> io::Result<std::process::Chi
             let _ = setpgid(pid, pid);
         }
     }
-    Ok(child)
+    Ok(GroupedChild { child })
+}
+
+/// Spawns `command` so that a kill reaches every process it starts: inside
+/// a new Job Object. See the Unix variant for the rest.
+#[cfg(windows)]
+pub fn spawn_in_own_group(command: &mut Command) -> io::Result<GroupedChild> {
+    let (child, job) = job_object::Job::spawn(command)?;
+    Ok(GroupedChild { child, job })
 }
 
 /// Kills and reaps the wrapped child if still armed when dropped.
@@ -371,10 +409,10 @@ pub fn spawn_in_own_group(command: &mut Command) -> io::Result<std::process::Chi
 /// already-running process (`Child`'s own `Drop` does not kill). Call
 /// [`into_inner`](Self::into_inner) once setup has fully succeeded to hand
 /// the child off without paying the kill.
-pub struct ReapOnDrop(Option<std::process::Child>);
+pub struct ReapOnDrop(Option<GroupedChild>);
 
 impl ReapOnDrop {
-    pub fn new(child: std::process::Child) -> Self {
+    pub fn new(child: GroupedChild) -> Self {
         ReapOnDrop(Some(child))
     }
 
@@ -384,11 +422,12 @@ impl ReapOnDrop {
         self.0
             .as_mut()
             .expect("only emptied by into_inner, which consumes self")
+            .child_mut()
     }
 
     /// Disarms the guard and returns the child, once every bridging thread
     /// needed to hand it off (typically to `TrackedChild::new`) has started.
-    pub fn into_inner(mut self) -> std::process::Child {
+    pub fn into_inner(mut self) -> GroupedChild {
         self.0
             .take()
             .expect("only emptied by into_inner, which consumes self")
@@ -397,9 +436,9 @@ impl ReapOnDrop {
 
 impl Drop for ReapOnDrop {
     fn drop(&mut self) {
-        if let Some(mut child) = self.0.take() {
-            let _ = child.kill();
-            let _ = child.wait();
+        if let Some(mut grouped) = self.0.take() {
+            let _ = grouped.child.kill();
+            let _ = grouped.child.wait();
         }
     }
 }

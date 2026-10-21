@@ -7,11 +7,11 @@
 //! pipes reaching EOF. A child can close (or exec away from) its stdio
 //! while continuing to run, so "both pipes at EOF" is not "the child is
 //! done". The capture thread this module spawns is free to block, so it
-//! reads stdout to EOF, joins the stderr thread, then polls the child's
-//! real exit status (never a blocking `wait`, which would hold the shared
-//! [`TrackedChild`](crate::process::tracked::TrackedChild) slot's lock for
-//! the child's entire remaining lifetime and starve a concurrent
-//! `cancel-async!`/`SpawnedJob`'s `Drop`), and only then sends the complete
+//! reads stdout to EOF, joins the stderr thread, then waits for the child's
+//! real exit status with
+//! [`TrackedChild::wait_for_exit`](crate::process::tracked::TrackedChild::wait_for_exit),
+//! which leaves the shared slot's lock free for a concurrent
+//! `cancel-async!`/`SpawnedJob`'s `Drop`, and only then sends the complete
 //! result. [`SpawnedJob::try_take_result`](crate::process::job::SpawnedJob::try_take_result)
 //! is a pure receive with no reaping of its own, unlike
 //! `line_source::SpawnedLineSource::finish`, which reaps on the main thread
@@ -29,7 +29,6 @@ use std::path::Path;
 use std::process::{ChildStdin, ExitStatus};
 use std::sync::mpsc;
 use std::thread::{self, JoinHandle};
-use std::time::Duration;
 
 use crate::process::WakeCallback;
 use crate::process::child::{
@@ -43,14 +42,13 @@ use crate::process::tracked::TrackedChild;
 /// back a short prefix), whole stderr (capped at `STDERR_CAPTURE_CAP`;
 /// diagnostic only, so truncation there is fine), and exit status (`None`
 /// on a stdout read failure/overflow or a failed stdin write, or if the
-/// capture thread's own exit-status poll errored, or the thread panicked
-/// before sending, the last three vanishingly rare).
+/// capture thread's wait for the exit failed or the thread panicked before
+/// sending, the last two vanishingly rare).
 ///
-/// Also what the capture thread sends the main thread over the channel:
-/// `status` is `None` there only if the exit-status poll itself errored; a
-/// thread that panics before sending is handled separately, by
-/// [`SpawnedJob::try_take_result`] synthesizing an empty `JobResult` on
-/// channel disconnect.
+/// Also what the capture thread sends the main thread over the channel,
+/// every case above but the panic: a thread that panics before sending is
+/// handled separately, by [`SpawnedJob::try_take_result`] synthesizing an
+/// empty `JobResult` on channel disconnect.
 pub struct JobResult {
     pub stdout: Vec<u8>,
     pub stderr: String,
@@ -87,7 +85,7 @@ pub fn spawn_job(
     let (child, stdin, stdout, stderr) = spawn_piped(cmd, args, cwd)?;
     // Converted to a `TrackedChild` up front, not deferred to the end like
     // `line_source` does. The job thread below needs its own handle to
-    // poll the child's exit status, so it and this function's returned
+    // wait for the child's exit status, so it and this function's returned
     // `SpawnedJob` must share the same tracked slot from the start. From
     // here on this function owns reaping the child on every early return
     // (the disarmed `ReapOnDrop` guard no longer covers it).
@@ -125,7 +123,7 @@ pub fn spawn_job(
             // wedging this job forever. The exit status still carries the
             // failure, and stdout is what most callers actually want.
             let stderr_bytes = stderr_thread.join().unwrap_or_default();
-            let status = wait_for_exit(&job_child);
+            let status = job_child.wait_for_exit().ok();
             // Joined after the exit: a writer still blocked on a full pipe
             // is released by the child's death, never the other way round.
             let stdin_result = writer.map_or(Ok(()), |writer| {
@@ -180,26 +178,6 @@ fn feed_stdin(stdin: ChildStdin, input: Vec<u8>) -> io::Result<Option<JoinHandle
         })?;
     Ok(Some(writer))
 }
-
-/// Polls `child`'s exit status rather than blocking on a plain `wait()`:
-/// `wait()` would hold the shared slot's mutex for the child's entire
-/// remaining lifetime, starving the `try_wait`/`reap` calls a concurrent
-/// `cancel-async!` or [`SpawnedJob::drop`] needs that same lock for. `None`
-/// only if `try_wait` itself errors, which is vanishingly rare.
-fn wait_for_exit(child: &TrackedChild) -> Option<ExitStatus> {
-    loop {
-        match child.try_wait() {
-            Ok(Some(status)) => return Some(status),
-            Ok(None) => thread::sleep(EXIT_POLL_INTERVAL),
-            Err(_) => return None,
-        }
-    }
-}
-
-/// Poll interval for [`wait_for_exit`]: frequent enough that a job's
-/// result is delivered promptly after the child actually exits, cheap
-/// enough that a long-running child costs nothing but idle wakeups.
-const EXIT_POLL_INTERVAL: Duration = Duration::from_millis(5);
 
 impl SpawnedJob {
     /// The child's OS process id, for a signal-0 liveness probe independent

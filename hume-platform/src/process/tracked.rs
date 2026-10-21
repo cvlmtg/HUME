@@ -15,6 +15,8 @@
 
 use std::process::Child;
 use std::sync::{Arc, Mutex, TryLockError, Weak};
+
+use super::GroupedChild;
 use std::time::Duration;
 
 #[cfg(unix)]
@@ -29,39 +31,49 @@ struct TrackedInner {
     /// `getpgid` on a dead pid would just report `ESRCH`. This remembers
     /// what `spawn_in_own_group` actually established, not what's still
     /// true this instant.
-    #[cfg_attr(not(unix), allow(dead_code))]
+    #[cfg(unix)]
     group_leader: bool,
+    /// The job the child and every process it starts run in.
+    #[cfg(windows)]
+    job: super::job_object::Job,
 }
 
 impl TrackedInner {
-    /// Kill, group-directed when this child leads its own process group so
-    /// grandchildren (rust-analyzer's `proc-macro-srv`, build scripts, ...)
-    /// go down with it. Shared by every kill path (a normal-exit `Drop`'s
-    /// [`TrackedChild::reap`] and [`kill_tracked_children`]'s force-exit
-    /// reap) so a grandchild is never left behind depending on which one
-    /// happens to run.
+    /// Kill the child and the processes it started: through its process
+    /// group on Unix when it leads one, through its job on Windows, so
+    /// grandchildren (rust-analyzer's `proc-macro-srv`, build scripts, the
+    /// command under a `sh -c` or `cmd /C`, ...) go down with it. Shared by
+    /// every kill path (a normal-exit `Drop`'s [`TrackedChild::reap`] and
+    /// [`kill_tracked_children`]'s force-exit reap) so a grandchild is never
+    /// left behind depending on which one happens to run.
     fn kill(&mut self) {
+        // A job handle names the job, never a pid the system may have
+        // reused, so the job is ended even after the child exited: a
+        // process the child started can still be running in it.
+        #[cfg(windows)]
+        let job_ended = self.job.terminate().is_ok();
         // `Child::kill`'s own pid-reuse guard (checked in the vendored `std`
         // source: it no-ops once the child's exit status has been cached)
         // does not cover the `killpg` path below, which bypasses `Child`
         // entirely and signals a raw pid via `nix`. Consult (and cache) the
         // exit status the same way `Child::kill` does internally, so a
         // child that already exited (and whose pid the kernel may already
-        // have reused) is never signalled at all, group or otherwise.
+        // have reused) is never signalled by pid, group or otherwise.
         if !matches!(self.child.try_wait(), Ok(None)) {
             return;
         }
+        // Each group kill falls through to the direct kill below on failure:
+        // an unconditional `return` would leave the child unsignalled and
+        // `reap()`'s `wait()` blocking forever on it.
         #[cfg(unix)]
         if self.group_leader
             && let Ok(pid) = i32::try_from(self.child.id())
-            // Group-directed: reaches grandchildren (rust-analyzer's
-            // `proc-macro-srv`, build scripts, ...) that signalling just the
-            // tracked pid would leave orphaned. Falls through to the direct
-            // kill below on failure: an unconditional `return` here would
-            // leave the child unsignalled and `reap()`'s `wait()` blocking
-            // forever on it.
             && killpg(Pid::from_raw(pid), Signal::SIGKILL).is_ok()
         {
+            return;
+        }
+        #[cfg(windows)]
+        if job_ended {
             return;
         }
         let _ = self.child.kill();
@@ -145,25 +157,32 @@ pub(crate) fn kill_tracked_children() {
 pub struct TrackedChild(Arc<ChildSlot>);
 
 impl TrackedChild {
-    /// Registers `child` with the process-wide reaper. Pair with
-    /// [`spawn_in_own_group`](super::spawn_in_own_group) so the
-    /// group-leader check below actually has a group to find.
-    pub fn new(child: Child) -> Self {
+    /// Registers `child`, spawned by
+    /// [`spawn_in_own_group`](super::spawn_in_own_group), with the
+    /// process-wide reaper.
+    pub fn new(child: GroupedChild) -> Self {
         Self::in_registry(child, &GLOBAL)
     }
 
-    fn in_registry(child: Child, registry: &ChildRegistry) -> Self {
+    fn in_registry(grouped: GroupedChild, registry: &ChildRegistry) -> Self {
         #[cfg(unix)]
-        let group_leader = i32::try_from(child.id())
-            .map(Pid::from_raw)
-            .is_ok_and(|pid| getpgid(Some(pid)) == Ok(pid));
-        #[cfg(not(unix))]
-        let group_leader = false;
+        let inner = {
+            let GroupedChild { child } = grouped;
+            let group_leader = i32::try_from(child.id())
+                .map(Pid::from_raw)
+                .is_ok_and(|pid| getpgid(Some(pid)) == Ok(pid));
+            TrackedInner {
+                child,
+                group_leader,
+            }
+        };
+        #[cfg(windows)]
+        let inner = {
+            let GroupedChild { child, job } = grouped;
+            TrackedInner { child, job }
+        };
 
-        let slot = Arc::new(Mutex::new(TrackedInner {
-            child,
-            group_leader,
-        }));
+        let slot = Arc::new(Mutex::new(inner));
         registry.register(&slot);
         TrackedChild(slot)
     }
@@ -178,6 +197,44 @@ impl TrackedChild {
     /// [`reap`](Self::reap) themselves on `Ok(None)`.
     pub fn try_wait(&self) -> std::io::Result<Option<std::process::ExitStatus>> {
         lock_recovering(&self.0).child.try_wait()
+    }
+
+    /// Blocks until the child exits and returns its status. The slot's lock
+    /// is held only for each `try_wait`, never while blocked, so a
+    /// concurrent [`reap`](Self::reap) or force-exit kill is not held up.
+    #[cfg(unix)]
+    pub fn wait_for_exit(&self) -> std::io::Result<std::process::ExitStatus> {
+        let signal = super::exit_watch::exit_signal()?;
+        loop {
+            let seen = signal.generation();
+            if let Some(status) = self.try_wait()? {
+                return Ok(status);
+            }
+            signal.wait_past(seen);
+        }
+    }
+
+    /// Blocks until the child exits and returns its status. The wait is on
+    /// a clone of the process handle, so the slot's lock is not held while
+    /// blocked and a concurrent [`reap`](Self::reap) or force-exit kill is
+    /// not held up.
+    #[cfg(windows)]
+    pub fn wait_for_exit(&self) -> std::io::Result<std::process::ExitStatus> {
+        use std::os::windows::io::{AsHandle, AsRawHandle};
+        use windows_sys::Win32::Foundation::WAIT_OBJECT_0;
+        use windows_sys::Win32::System::Threading::{INFINITE, WaitForSingleObject};
+
+        let process = lock_recovering(&self.0)
+            .child
+            .as_handle()
+            .try_clone_to_owned()?;
+        // SAFETY: `process` is an open process handle this function owns
+        // until it returns, so it outlives the wait.
+        if unsafe { WaitForSingleObject(process.as_raw_handle(), INFINITE) } != WAIT_OBJECT_0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        self.try_wait()?
+            .ok_or_else(|| std::io::Error::other("the process exited but has no exit status"))
     }
 
     /// Kill (group-directed when this child leads its own process group;

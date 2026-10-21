@@ -207,6 +207,6 @@ fn spawn_in_own_group_makes_the_child_its_own_group_leader() {
         "the child must be its own process group leader immediately after spawn_in_own_group returns"
     );
 
-    let _ = child.kill();
-    let _ = child.wait();
+    let _ = child.child_mut().kill();
+    let _ = child.child_mut().wait();
 }

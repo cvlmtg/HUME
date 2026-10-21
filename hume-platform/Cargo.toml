@@ -27,3 +27,10 @@ signal-hook = { version = "0.4", default-features = false }
 # dropped: that feature only does anything in ctrlc's own Unix code path,
 # which is never compiled here.
 ctrlc = { version = "3" }
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_JobObjects",
+    "Win32_System_Threading",
+] }
