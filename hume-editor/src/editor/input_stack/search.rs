@@ -7,6 +7,7 @@ use hume_engine::types::EditorMode;
 use hume_ops::MotionMode;
 use hume_ops::search::{MatchScan, MatchSeed, SearchDirection};
 
+use super::super::error::CommandError;
 use super::super::jump_list::JumpEntry;
 use super::super::minibuf::history::{HistoryDir, HistoryKind, HistoryStore};
 use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent};
@@ -115,10 +116,16 @@ pub(in crate::editor) fn search_input(ed: &mut Editor, r: LayerRef, ev: InputEve
     }
 }
 
-fn search_paste(state: &mut EditorState, _view: &EngineView, r: LayerRef, text: PastedText) {
+fn search_paste(
+    state: &mut EditorState,
+    _view: &EngineView,
+    r: LayerRef,
+    text: PastedText,
+) -> Result<(), CommandError> {
     if minibuf::paste_into_minibuf(state, &text) {
         search_edited(state, r);
     }
+    Ok(())
 }
 
 /// What an edit to the pattern does beyond changing it: demotes any active

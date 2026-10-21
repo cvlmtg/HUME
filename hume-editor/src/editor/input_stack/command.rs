@@ -112,10 +112,16 @@ pub(in crate::editor) fn command_input(ed: &mut Editor, r: LayerRef, ev: InputEv
     }
 }
 
-fn command_paste(state: &mut EditorState, _view: &EngineView, _r: LayerRef, text: PastedText) {
+fn command_paste(
+    state: &mut EditorState,
+    _view: &EngineView,
+    _r: LayerRef,
+    text: PastedText,
+) -> Result<(), CommandError> {
     if minibuf::paste_into_minibuf(state, &text) {
         command_line_edited(state);
     }
+    Ok(())
 }
 
 /// Demotes any active history recall back to scratch: what an edit or a

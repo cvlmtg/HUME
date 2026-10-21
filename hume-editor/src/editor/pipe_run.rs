@@ -576,7 +576,10 @@ impl Editor {
     /// or report its failure and change nothing. `Ctrl-c` and a termination
     /// request cancel it and kill its processes. A waited run is a
     /// foreground one from here on, whoever started it. The input `console`
-    /// left to the run loop joins [`Editor::input_backlog`].
+    /// left to the run loop joins [`Editor::input_backlog`]. A run something
+    /// else took out while it was waited for, as a drawer's render proc
+    /// closing its buffer does, ends `Cancelled`: whatever took it out
+    /// reported it.
     ///
     /// `Err` only when `console` fails; the run is cancelled first.
     pub(in crate::editor) fn wait_pipe_run(
@@ -587,11 +590,9 @@ impl Editor {
         self.state.pipe_runs.claim(id);
         let waited = self.wait_until_ended(id, console);
         self.input_backlog.extend(console.take_deferred());
-        let (launch, outcome) = self
-            .state
-            .pipe_runs
-            .take_where(|run| run.id == id)
-            .expect("only its own wait ends a waited run");
+        let Some((launch, outcome)) = self.state.pipe_runs.take_where(|run| run.id == id) else {
+            return waited.map(|_| PipeEnd::Cancelled);
+        };
         match waited {
             Ok(Waited::Ended) => {
                 let outcome = outcome.expect("an ended run has its outcome");
@@ -622,11 +623,9 @@ impl Editor {
             if self.state.terminate_requested() {
                 return Ok(Waited::Cancelled);
             }
-            let polled = self
-                .state
-                .pipe_runs
-                .poll(Some(id), &self.state.wake)
-                .expect("a waited run is in flight");
+            let Some(polled) = self.state.pipe_runs.poll(Some(id), &self.state.wake) else {
+                return Ok(Waited::Cancelled);
+            };
             let RunPoll::Running { changed } = polled else {
                 return Ok(Waited::Ended);
             };
@@ -652,15 +651,17 @@ impl Editor {
     /// Wait for every run started at or after `mark`, oldest first, so the
     /// key or command that started them is followed by their output. Draws
     /// no frames, so a run shows no progress; with a terminal attached
-    /// `Ctrl-c` still cancels it, and the runs after it too. The last run's
-    /// end, `Cancelled` when one was cancelled, `None` when none was started.
-    pub(in crate::editor) fn wait_pipe_runs_from(&mut self, mark: RunId) -> Option<PipeEnd> {
-        self.state.pipe_runs.oldest_from(mark)?;
+    /// `Ctrl-c` still cancels it, and the runs after it too. A cancel stops
+    /// the replay that waits, as [`EditorState::stop_replays`] says.
+    pub(in crate::editor) fn wait_pipe_runs_from(&mut self, mark: RunId) {
+        if self.state.pipe_runs.oldest_from(mark).is_none() {
+            return;
+        }
         #[cfg(test)]
         if let Some(mut console) = self.inline_pipe_console.take() {
-            return self
-                .wait_runs_from(mark, console.as_mut())
+            self.wait_runs_from(mark, console.as_mut())
                 .expect("a test console never fails");
+            return;
         }
         let result = match self.tui.terminal().map(|term| term.event_reader()) {
             Some(reader) => self.wait_runs_from(
@@ -678,35 +679,28 @@ impl Editor {
                 self.wait_runs_from(mark, &mut console)
             }
         };
-        result.unwrap_or_else(|e| {
+        if let Err(e) = result {
             self.report(
                 Severity::Error,
                 format!("pipe: reading the terminal failed: {e}"),
             );
-            Some(PipeEnd::Cancelled)
-        })
+        }
     }
 
-    /// [`Self::wait_pipe_runs_from`]'s waits on `console`.
-    fn wait_runs_from(
-        &mut self,
-        mark: RunId,
-        console: &mut dyn PipeConsole,
-    ) -> io::Result<Option<PipeEnd>> {
-        let mut last = None;
+    /// [`Self::wait_pipe_runs_from`]'s waits on `console`. A cancelled run,
+    /// or a console that failed, withdraws the runs after it and stops the
+    /// replays.
+    fn wait_runs_from(&mut self, mark: RunId, console: &mut dyn PipeConsole) -> io::Result<()> {
         while let Some(id) = self.state.pipe_runs.oldest_from(mark) {
             match self.wait_pipe_run(id, console) {
-                Ok(PipeEnd::Cancelled) => {
+                Ok(PipeEnd::Landed | PipeEnd::Failed) => {}
+                end => {
                     self.state.withdraw_pipe_runs_from(mark);
-                    return Ok(Some(PipeEnd::Cancelled));
-                }
-                Ok(end) => last = Some(end),
-                Err(e) => {
-                    self.state.withdraw_pipe_runs_from(mark);
-                    return Err(e);
+                    self.state.stop_replays();
+                    return end.map(|_| ());
                 }
             }
         }
-        Ok(last)
+        Ok(())
     }
 }

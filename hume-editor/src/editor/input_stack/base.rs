@@ -10,6 +10,7 @@ use hume_ops::MotionMode;
 use hume_scripting::host::MAX_COUNT;
 
 use super::super::commands::cmd_clear_search;
+use super::super::error::CommandError;
 use super::super::keymap::{BindMode, WalkResult};
 use super::super::{Editor, EditorState};
 use super::char::{CharRead, MacroRead, read_char};
@@ -121,18 +122,13 @@ fn paste_over_selections(
     view: &EngineView,
     _r: LayerRef,
     text: PastedText,
-) {
+) -> Result<(), CommandError> {
     let focused = view.focused_pane();
     let buf = view.panes[focused].buffer_id();
-    // A paste bypasses the dispatch pipeline entirely (no `commands::run`
-    // to report a refusal), so a refusal here has nowhere to report to but
-    // the statusline directly.
     let (buffers, mut stores) = state.edit_parts();
-    if let Err(e) = super::super::doc_ops::apply_doc_edit(buffers, &mut stores, focused, buf, |s| {
+    super::super::doc_ops::apply_doc_edit(buffers, &mut stores, focused, buf, |s| {
         hume_ops::edit::insert_values(s, text.values())
-    }) {
-        state.report_error(&e);
-    }
+    })
 }
 
 // ── Normal mode ───────────────────────────────────────────────────────────

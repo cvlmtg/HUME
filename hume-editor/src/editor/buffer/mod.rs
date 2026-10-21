@@ -266,12 +266,15 @@ pub(in crate::editor) enum TextRefusal {
     Busy,
 }
 
-impl std::fmt::Display for TextRefusal {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::ReadOnly => "Buffer is read-only",
-            Self::Busy => "Buffer is busy: a pipe is running",
-        })
+impl TextRefusal {
+    /// What refusing a change to `buffer`'s text reports. A busy buffer is
+    /// named: the change can come from a script, a timer or a language
+    /// server, for a buffer not in view.
+    pub(in crate::editor) fn message(self, buffer: &Buffer) -> String {
+        match self {
+            Self::ReadOnly => "Buffer is read-only".to_string(),
+            Self::Busy => format!("{} is busy: a pipe is running", buffer.display_name()),
+        }
     }
 }
 
@@ -707,7 +710,7 @@ impl Buffer {
         line_ending: LineEnding,
     ) -> Result<(), String> {
         if let Some(refusal) = self.text_refusal() {
-            return Err(refusal.to_string());
+            return Err(refusal.message(self));
         }
         self.adopt_line_ending(line_ending);
         Ok(())

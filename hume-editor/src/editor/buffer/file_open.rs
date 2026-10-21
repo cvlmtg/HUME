@@ -225,8 +225,12 @@ impl Editor {
         source: ReplaceSource,
     ) -> Result<(), CommandError> {
         let id = fp.bid(&self.view);
-        if self.state.buffers.get(id).is_busy() {
-            return Err(crate::editor::doc_ops::refusal_error(TextRefusal::Busy));
+        let buffer = self.state.buffers.get(id);
+        if buffer.is_busy() {
+            return Err(crate::editor::doc_ops::refusal_error(
+                TextRefusal::Busy,
+                buffer,
+            ));
         }
         // End any open Insert/paste session the same way every other
         // buffer/focus-invalidating path does (`switch_pane_to_buffer`,

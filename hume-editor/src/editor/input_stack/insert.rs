@@ -14,6 +14,7 @@ use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 use hume_engine::types::EditorMode;
 
 use super::super::edit_session::InsertSession;
+use super::super::error::CommandError;
 use super::super::keymap::{BindMode, WalkResult};
 use super::super::replay::{Input, dispatch_insert_key};
 use super::super::{Editor, EditorState, commands};
@@ -126,9 +127,15 @@ pub(in crate::editor) fn insert_input(ed: &mut Editor, r: LayerRef, ev: InputEve
     }
 }
 
-fn insert_paste(state: &mut EditorState, view: &EngineView, _r: LayerRef, text: PastedText) {
-    state.apply_insert_mode_paste(view, text.values());
+fn insert_paste(
+    state: &mut EditorState,
+    view: &EngineView,
+    _r: LayerRef,
+    text: PastedText,
+) -> Result<(), CommandError> {
+    state.apply_insert_mode_paste(view, text.values())?;
     state.record_paste(text.into_values());
+    Ok(())
 }
 
 /// Walks the Insert keymap for `key`: a bound key re-dispatches its
@@ -207,13 +214,14 @@ impl EditorState {
         &mut self,
         view: &EngineView,
         values: &[String],
-    ) {
-        commands::apply_focused_edit_grouped(
+    ) -> Result<(), CommandError> {
+        commands::try_apply_focused_edit_grouped(
             self,
             view,
             commands::FocusedPane::current(view),
             |s| hume_ops::edit::insert_values(s, values),
-        );
+        )?;
         self.dismiss_completion(view);
+        Ok(())
     }
 }

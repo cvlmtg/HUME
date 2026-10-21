@@ -1245,7 +1245,10 @@ fn a_held_buffer_refuses_a_line_ending_change() {
     let _hold = d.buf.hold_text();
     assert_eq!(
         d.buf.set_line_ending(LineEnding::CrLf),
-        Err(TextRefusal::Busy.to_string())
+        Err(format!(
+            "{} is busy: a pipe is running",
+            d.buf.display_name()
+        ))
     );
     assert_eq!(d.buf.text().line_ending(), LineEnding::Lf);
 }

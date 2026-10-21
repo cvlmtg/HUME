@@ -28,8 +28,8 @@ use crate::editor::jump_list::{JumpRule, with_jump};
 /// Dedup uses `find_by_path` (canonical path comparison, or best-effort for a
 /// not-yet-existing path; see `Editor::resolve_buffer_path`). `force` (`!`
 /// suffix) only takes effect in the no-arg reload branch: it discards unsaved
-/// changes and re-reads the file from disk. When a path is given, `force` is
-/// unused.
+/// changes, stops a pipe running in the buffer, and re-reads the file from
+/// disk. When a path is given, `force` is unused.
 pub(in crate::editor) fn typed_edit(
     ed: &mut Editor,
     fp: FocusedPane,
@@ -116,6 +116,9 @@ pub(in crate::editor) fn typed_edit(
             return Err(CommandError::transient(
                 "unsaved changes (use :e! to force)",
             ));
+        }
+        if force {
+            ed.state.cancel_pipe_run(fp.bid(&ed.view));
         }
         ed.reload_from_path(fp, &path)
     }

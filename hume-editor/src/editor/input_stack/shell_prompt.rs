@@ -5,6 +5,7 @@
 use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
 
+use super::super::error::CommandError;
 use super::super::minibuf::history::{HistoryDir, HistoryKind};
 use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent};
 use super::super::replay::WaitingInput;
@@ -69,10 +70,16 @@ fn shell_prompt_input(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
     }
 }
 
-fn shell_prompt_paste(state: &mut EditorState, _view: &EngineView, _r: LayerRef, text: PastedText) {
+fn shell_prompt_paste(
+    state: &mut EditorState,
+    _view: &EngineView,
+    _r: LayerRef,
+    text: PastedText,
+) -> Result<(), CommandError> {
     if minibuf::paste_into_minibuf(state, &text) {
         shell_line_edited(state);
     }
+    Ok(())
 }
 
 /// Demotes any active history recall back to scratch: what an edit or a
@@ -87,10 +94,12 @@ fn handle_shell_prompt_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEven
         | MiniBufferEvent::ConfirmEmpty
         | MiniBufferEvent::BackspaceOnEmpty => finish_shell_prompt(ed, r, None),
         MiniBufferEvent::Confirm(command) => {
-            ed.state
-                .history
-                .get_mut(HistoryKind::Pipe)
-                .push(command.clone());
+            if !commands::is_blank_command(&command) {
+                ed.state
+                    .history
+                    .get_mut(HistoryKind::Pipe)
+                    .push(command.clone());
+            }
             finish_shell_prompt(ed, r, Some(command));
         }
         MiniBufferEvent::EmptiedByBackspace

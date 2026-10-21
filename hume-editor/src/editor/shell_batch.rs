@@ -35,6 +35,8 @@ pub(in crate::editor) struct ShellFailure(pub(in crate::editor) String);
 pub(in crate::editor) struct ShellBatch {
     program: String,
     args: Vec<String>,
+    /// The command line in backticks, as a failure names it.
+    label: String,
     cwd: PathBuf,
     /// Inputs not started yet, with their index.
     waiting: VecDeque<(usize, String)>,
@@ -56,6 +58,7 @@ impl ShellBatch {
         Self {
             program,
             args,
+            label: format!("`{command}`"),
             cwd: cwd.to_path_buf(),
             outputs: inputs.iter().map(|_| None).collect(),
             waiting: inputs.into_iter().enumerate().collect(),
@@ -77,7 +80,7 @@ impl ShellBatch {
                 Some(result) => {
                     let (index, _) = self.jobs.swap_remove(i);
                     *free += 1;
-                    self.outputs[index] = Some(captured(&self.program, result)?);
+                    self.outputs[index] = Some(captured(&self.label, result)?);
                 }
                 None => i += 1,
             }
@@ -121,8 +124,9 @@ impl ShellBatch {
 }
 
 /// A finished process's output, or why it counts as a failure: a non-zero
-/// exit, no exit status at all, or stdout that is not UTF-8.
-fn captured(program: &str, result: JobResult) -> Result<Captured, ShellFailure> {
+/// exit, no exit status at all, or stdout that is not UTF-8. A failure names
+/// the command as `label`.
+fn captured(label: &str, result: JobResult) -> Result<Captured, ShellFailure> {
     let JobResult {
         stdout,
         stderr,
@@ -130,10 +134,10 @@ fn captured(program: &str, result: JobResult) -> Result<Captured, ShellFailure> 
     } = result;
     if !status.is_some_and(|status| status.success()) {
         return Err(ShellFailure(hume_platform::process::failure_message(
-            program, status, &stderr,
+            label, status, &stderr,
         )));
     }
     let stdout = String::from_utf8(stdout)
-        .map_err(|_| ShellFailure(format!("{program} printed output that is not UTF-8")))?;
+        .map_err(|_| ShellFailure(format!("{label} printed output that is not UTF-8")))?;
     Ok(Captured { stdout, stderr })
 }

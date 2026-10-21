@@ -20,6 +20,7 @@ use hume_ui::popup::SideSlot;
 use super::super::completion::{
     BufferSession, CompletionItem, Documentation, ItemKey, MinibufSession,
 };
+use super::super::error::CommandError;
 use super::super::keymap::{BindMode, WalkResult};
 use super::super::popup_syntax::{build_markup_syntax, popup_content};
 use super::super::{Editor, EditorState, Severity};
@@ -375,9 +376,9 @@ fn dismiss_and_pass_paste(
     view: &EngineView,
     r: LayerRef,
     text: PastedText,
-) {
+) -> Result<(), CommandError> {
     state.dismiss_completion(view);
-    state.fall_through_paste(view, r, text);
+    state.fall_through_paste(view, r, text)
 }
 
 /// Handles one key while an Insert-mode completion session is open.

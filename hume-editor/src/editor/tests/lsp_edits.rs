@@ -86,6 +86,28 @@ fn apply_text_edits_single_edit() {
     assert_eq!(ed.doc().text().to_string(), "aXYdef\n");
 }
 
+#[test]
+fn apply_text_edits_on_a_busy_buffer_is_refused_naming_it() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = text_edits_editor(
+        tmp.path(),
+        "-[a]>bcdef\n",
+        vec![wire_edit((0, 1), (0, 3), "XY")],
+    );
+    let bid = ed.focused_buffer_id();
+    let _hold = ed.state.buffers.get_mut(bid).hold_text();
+    apply_wire_text_edits(&mut ed, tmp.path(), "");
+    assert_eq!(ed.doc().text().to_string(), "abcdef\n");
+    let busy = format!("{} is busy: a pipe is running", ed.doc().display_name());
+    assert!(
+        ed.state
+            .message_log
+            .entries()
+            .any(|e| e.text.contains(&busy)),
+        "the refusal names the buffer"
+    );
+}
+
 /// A server replacing the whole document with text that has no final newline
 /// leaves the buffer's structural `\n` in place.
 #[test]

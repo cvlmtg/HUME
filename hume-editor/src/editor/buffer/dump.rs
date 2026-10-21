@@ -186,7 +186,7 @@ impl Editor {
         };
         let text = BufferText::from(content.as_str());
         if let Err(e) = self.reload_buffer_in_place(fp, ReplaceSource::Dump(text)) {
-            self.report(Severity::Warning, format!("{name}: {}", e.message()));
+            self.report(Severity::Warning, e.message().to_string());
             return;
         }
         self.take_pending_dump(bid);

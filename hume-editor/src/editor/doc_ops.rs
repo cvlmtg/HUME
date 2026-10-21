@@ -75,18 +75,19 @@ fn finish_edit(
     buffers.bump_edit_seq();
 }
 
-/// The error a text change refused for `refusal` reports.
-pub(in crate::editor) fn refusal_error(refusal: TextRefusal) -> CommandError {
-    CommandError::transient(refusal.to_string())
+/// The error a change to `buffer`'s text refused for `refusal` reports.
+pub(in crate::editor) fn refusal_error(refusal: TextRefusal, buffer: &Buffer) -> CommandError {
+    CommandError::transient(refusal.message(buffer))
 }
 
 /// `Ok(false)` when `buf_id` is read-only and the edit must do nothing;
 /// `Err` when its text is held ([`TextRefusal::Busy`]). The check every
 /// buffer-mutating chokepoint below runs before touching the text.
 fn text_gate(buffers: &BufferStore, buf_id: BufferId) -> Result<bool, CommandError> {
-    match buffers.get(buf_id).text_refusal() {
+    let buffer = buffers.get(buf_id);
+    match buffer.text_refusal() {
         Some(TextRefusal::ReadOnly) => Ok(false),
-        Some(TextRefusal::Busy) => Err(refusal_error(TextRefusal::Busy)),
+        Some(TextRefusal::Busy) => Err(refusal_error(TextRefusal::Busy, buffer)),
         None => Ok(true),
     }
 }

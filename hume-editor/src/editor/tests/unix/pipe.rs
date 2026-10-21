@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 
 use crate::editor::lifecycle::FRAME_GAP;
 use crate::editor::pipe_run::{
-    Detached, PipeConsole, PipeKind, PipeProgress, PipeRuns, RunId, WaitEvent,
+    Detached, PipeConsole, PipeEnd, PipeKind, PipeProgress, PipeRuns, RunId, WaitEvent,
 };
 use crate::editor::replay::Answer;
 use crate::editor::settings::{SettingText, ShellCommand};
@@ -140,8 +140,7 @@ fn a_failing_process_fails_the_batch_with_its_exit_code_and_stderr() {
     let _path = path_reader();
     let mut b = batch(r#"echo boom >&2; exit 3"#, &["x"]);
     let ShellFailure(msg) = finish(&mut b, 1).expect_err("exit 3 is a failure");
-    assert!(msg.contains("exit code 3"), "got: {msg}");
-    assert!(msg.contains("boom"), "got: {msg}");
+    insta::assert_snapshot!(msg, @"`echo boom >&2; exit 3` failed (exit code 3): boom");
 }
 
 #[test]
@@ -173,7 +172,7 @@ fn output_that_is_not_utf8_fails_the_batch() {
     let _path = path_reader();
     let mut b = batch(r"printf '\377'", &["x"]);
     let ShellFailure(msg) = finish(&mut b, 1).expect_err("invalid UTF-8");
-    assert!(msg.contains("UTF-8"), "got: {msg}");
+    insta::assert_snapshot!(msg, @r"`printf '\377'` printed output that is not UTF-8");
 }
 
 #[test]
@@ -681,6 +680,62 @@ fn an_interrupted_pipe_in_a_macro_stops_the_macro() {
 }
 
 #[test]
+fn an_interrupted_dot_in_a_macro_stops_the_macro() {
+    let _path = path_reader();
+    let dir = tempfile::tempdir().expect("tempdir");
+    let marker = dir.path().join("slow");
+    let command = format!(
+        "if [ -e '{}' ]; then sleep 30; fi; tr a-z A-Z",
+        marker.display()
+    );
+    let mut ed = editor_from("-[a]>\n");
+    ed.feed_key(key('|'));
+    type_cmd(&mut ed, &command);
+    ed.feed_key(key('Q'));
+    ed.feed_key(key('Q'));
+    ed.feed_key(key('.'));
+    ed.feed_key(key('r'));
+    ed.feed_key(key('x'));
+    ed.feed_key(key('Q'));
+    assert_eq!(state(&ed), "-[x]>\n");
+
+    ed.feed_key(key('|'));
+    type_cmd(&mut ed, &command);
+    assert_eq!(state(&ed), "-[X]>\n");
+    std::fs::write(&marker, "").expect("marker written");
+    ed.inline_pipe_console = Some(Box::new(ScriptedConsole::new(&ed, [WaitEvent::Interrupt])));
+    ed.feed_key(key('q'));
+    ed.feed_key(key('q'));
+    assert_eq!(state(&ed), "-[X]>\n");
+    assert!(!ed.state.macros.has_queued_keys());
+}
+
+#[test]
+fn an_interrupt_during_dot_stops_the_rest_of_its_insert_session() {
+    let _path = path_reader();
+    let dir = tempfile::tempdir().expect("tempdir");
+    let marker = dir.path().join("slow");
+    let command = format!(
+        "if [ -e '{}' ]; then sleep 30; fi; printf v",
+        marker.display()
+    );
+    let mut ed = editor_from_kitty("-[z]>\n");
+    ed.feed_key(key('i'));
+    type_chars(&mut ed, "a");
+    ed.feed_key(key_ctrl('|'));
+    type_cmd(&mut ed, &command);
+    type_chars(&mut ed, "b");
+    ed.feed_key(key_esc());
+    assert_eq!(text(&ed), "avbz\n");
+
+    std::fs::write(&marker, "").expect("marker written");
+    ed.inline_pipe_console = Some(Box::new(ScriptedConsole::new(&ed, [WaitEvent::Interrupt])));
+    ed.feed_key(key('.'));
+    assert_eq!(text(&ed), "aavbz\n");
+    assert_eq!(ed.state.mode(), Mode::Normal);
+}
+
+#[test]
 fn a_failed_pipe_in_a_macro_lets_the_macro_go_on() {
     let _path = path_reader();
     let dir = tempfile::tempdir().expect("tempdir");
@@ -885,6 +940,21 @@ fn ctrl_c_kills_the_background_processes() {
 }
 
 #[test]
+fn e_bang_stops_the_run_and_reloads() {
+    let _path = path_reader();
+    let dir = tempfile::tempdir().expect("tempdir");
+    let pid_file = dir.path().join("pid");
+    let (mut ed, file) = editor_with_file("-[h]>ello\n", "hello\n");
+    type_pipe(&mut ed, &sleeper(&pid_file));
+    let pid = started_pid(&mut ed, &pid_file);
+    std::fs::write(&file, "HELLO!!\n").expect("file rewritten");
+    type_cmd(&mut ed, ":e!");
+    assert!(!ed.doc().is_busy(), "the run stopped");
+    assert!(!process_is_alive(pid), "its process is gone");
+    assert_eq!(text(&ed), "HELLO!!\n");
+}
+
+#[test]
 fn close_buffer_from_steel_cancels_the_run() {
     let _path = path_reader();
     let dir = tempfile::tempdir().expect("tempdir");
@@ -901,6 +971,46 @@ fn close_buffer_from_steel_cancels_the_run() {
     ed.execute_keymap_command("closer".into(), None, false);
     assert!(ed.state.buffers.try_get(bid).is_none(), "the buffer closed");
     assert!(!process_is_alive(pid), "its run's process is gone");
+}
+
+/// Closes `bid` the first time it draws, as a drawer's render proc calling
+/// `close-buffer!` would.
+struct ClosesOnRepaint {
+    detached: Detached,
+    bid: BufferId,
+}
+
+impl PipeConsole for ClosesOnRepaint {
+    fn next(&mut self, timeout: Option<Duration>) -> io::Result<WaitEvent> {
+        self.detached.next(timeout)
+    }
+
+    fn repaint(&mut self, ed: &mut Editor) -> io::Result<()> {
+        if ed.state.buffers.try_get(self.bid).is_some() {
+            crate::editor::buffer::lifecycle::close_buffer(&mut ed.state, &mut ed.view, self.bid);
+        }
+        Ok(())
+    }
+}
+
+#[test]
+fn a_wait_whose_buffer_closes_while_it_draws_ends_cancelled() {
+    let _path = path_reader();
+    let mut ed = editor_from("-[a]>\n");
+    let bid = ed.focused_buffer_id();
+    let run = start_run(&mut ed, "sleep 30", PipeKind::Replace);
+    let mut console = ClosesOnRepaint {
+        detached: ed
+            .detached
+            .clone()
+            .expect("a test editor has its own waker"),
+        bid,
+    };
+    let end = ed
+        .wait_pipe_run(run, &mut console)
+        .expect("the console never fails");
+    assert_eq!(end, PipeEnd::Cancelled);
+    assert!(ed.state.buffers.try_get(bid).is_none());
 }
 
 #[test]

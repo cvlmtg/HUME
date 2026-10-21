@@ -397,9 +397,11 @@ impl Editor {
         path: &std::path::Path,
     ) -> Result<(), crate::editor::error::CommandError> {
         let bid = fp.bid(&self.view);
-        if self.state.buffers.get(bid).is_busy() {
+        let buffer = self.state.buffers.get(bid);
+        if buffer.is_busy() {
             return Err(crate::editor::doc_ops::refusal_error(
                 super::TextRefusal::Busy,
+                buffer,
             ));
         }
         let doc =

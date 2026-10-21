@@ -36,7 +36,7 @@ pub(in crate::editor) fn checked_buffer(
         return Err("no such buffer".to_string());
     };
     if let Some(refusal) = buf.text_refusal() {
-        return Err(refusal.to_string());
+        return Err(refusal.message(buf));
     }
     if let Some(expected_gen) = expect_gen
         && buf.text().generation() != expected_gen

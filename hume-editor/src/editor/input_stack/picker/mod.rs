@@ -15,6 +15,7 @@ use hume_scripting::host::HostToken;
 use steel::rvals::SteelVal;
 
 use super::super::commands::half_page;
+use super::super::error::CommandError;
 use super::super::keymap::CanonicalKey;
 use super::super::replay::{Answer, InputOpener, PendingAnswer, Pick, Picked, WaitingInput};
 use super::super::{Editor, EditorState};
@@ -419,9 +420,15 @@ pub(in crate::editor) fn picker_input(ed: &mut Editor, r: LayerRef, ev: InputEve
 /// Joined and flattened to one line, same as a minibuffer paste, then
 /// appended to the query in one bulk mutation: one rerank, at most one
 /// `on_query_change` callback, instead of one per pasted char.
-fn picker_paste(state: &mut EditorState, _view: &EngineView, r: LayerRef, text: PastedText) {
+fn picker_paste(
+    state: &mut EditorState,
+    _view: &EngineView,
+    r: LayerRef,
+    text: PastedText,
+) -> Result<(), CommandError> {
     let cb = picker_mut(state, r).insert_str(&text.single_line());
     queue_query_change(state, r, cb);
+    Ok(())
 }
 
 /// Queues `cb`, the `on_query_change` callback a `PickerSession` query

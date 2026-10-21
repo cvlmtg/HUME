@@ -116,21 +116,30 @@ pub(in crate::editor::commands) fn apply_pane_edit(
 /// `pane_state.rs`'s module doc), so a `Pane`-category body (which may
 /// target a pane other than focus) has no business opening one.
 ///
-/// Thin wrapper around [`doc_ops::apply_doc_edit_grouped`] that reports a
-/// refusal; see [`apply_pane_motion`]. `pub(in crate::editor)`, not `pub(in crate::editor::
-/// commands)`: `replay::apply_cursor_replacement` is a caller outside this
-/// module, and the alternative (spelling out `doc_ops::apply_doc_edit_
-/// grouped`'s own 8 arguments there instead) is exactly the duplication
-/// this wrapper exists to avoid.
+/// Thin wrapper around [`doc_ops::apply_doc_edit_grouped`]; see
+/// [`apply_pane_motion`]. `pub(in crate::editor)`, not `pub(in crate::editor::
+/// commands)`: callers outside this module (`replay`, Insert-mode paste)
+/// would otherwise spell out `doc_ops::apply_doc_edit_grouped`'s own 8
+/// arguments, the duplication this wrapper exists to avoid.
+pub(in crate::editor) fn try_apply_focused_edit_grouped(
+    state: &mut EditorState,
+    view: &EngineView,
+    fp: FocusedPane,
+    cmd: impl FnOnce(hume_editing::state::EditState) -> hume_editing::edit::Edited,
+) -> Result<(), CommandError> {
+    let buf = fp.bid(view);
+    let (buffers, mut stores) = state.edit_parts();
+    doc_ops::apply_doc_edit_grouped(buffers, &mut stores, fp.pid(), buf, cmd).map(drop)
+}
+
+/// [`try_apply_focused_edit_grouped`], reporting a refusal.
 pub(in crate::editor) fn apply_focused_edit_grouped(
     state: &mut EditorState,
     view: &EngineView,
     fp: FocusedPane,
     cmd: impl FnOnce(hume_editing::state::EditState) -> hume_editing::edit::Edited,
 ) {
-    let buf = fp.bid(view);
-    let (buffers, mut stores) = state.edit_parts();
-    if let Err(e) = doc_ops::apply_doc_edit_grouped(buffers, &mut stores, fp.pid(), buf, cmd) {
+    if let Err(e) = try_apply_focused_edit_grouped(state, view, fp, cmd) {
         state.report_error(&e);
     }
 }
@@ -149,17 +158,26 @@ pub(in crate::editor::commands) fn ensure_writable(
     view: &EngineView,
     t: CommandPane,
 ) -> Result<(), CommandError> {
-    match doc(state, view, t).text_refusal() {
-        Some(refusal) => Err(refuse_text_change(state, refusal)),
+    let buffer = doc(state, view, t);
+    match buffer.text_refusal() {
+        Some(refusal) => {
+            let error = doc_ops::refusal_error(refusal, buffer);
+            Err(refuse_text_change(state, error))
+        }
         None => Ok(()),
     }
 }
 
-/// The refusal [`ensure_writable`] returns for a read-only buffer, for a
+/// The refusal [`ensure_writable`] returns for `t`'s read-only buffer, for a
 /// caller that learned the buffer is read-only from somewhere else
 /// (`history_step`, from the walk's own result).
-pub(in crate::editor::commands) fn read_only_refusal(state: &mut EditorState) -> CommandError {
-    refuse_text_change(state, TextRefusal::ReadOnly)
+pub(in crate::editor::commands) fn read_only_refusal(
+    state: &mut EditorState,
+    view: &EngineView,
+    t: CommandPane,
+) -> CommandError {
+    let error = doc_ops::refusal_error(TextRefusal::ReadOnly, doc(state, view, t));
+    refuse_text_change(state, error)
 }
 
 /// The refusal a command that would stop `bid`'s pipe run gives without `!`.
@@ -171,9 +189,10 @@ pub(in crate::editor::commands) fn pipe_running_refusal(
     CommandError::transient(format!("A pipe is running in {name} (add ! to override)"))
 }
 
-fn refuse_text_change(state: &mut EditorState, refusal: TextRefusal) -> CommandError {
+/// `error`, with the register prefix the refused command consumed cleared.
+fn refuse_text_change(state: &mut EditorState, error: CommandError) -> CommandError {
     state.register_prefix = None;
-    doc_ops::refusal_error(refusal)
+    error
 }
 
 /// `t`'s pane's selections for `t`'s buffer.
@@ -419,7 +438,7 @@ pub(in crate::editor) use insert_session::{
 };
 use pane::{SPLIT_TOO_SMALL_MSG, close_focused_pane};
 pub(in crate::editor) use pane::{fits_split, split_pane_onto};
-pub(in crate::editor) use pipe::{apply_pipe_output, cmd_cancel_pipe, cmd_pipe};
+pub(in crate::editor) use pipe::{apply_pipe_output, cmd_cancel_pipe, cmd_pipe, is_blank_command};
 // `open_pane_in_layout` has no non-test caller outside `pane.rs` itself
 // (which reaches it directly too). Only `editor::tests` calls it through
 // this path, so the re-export is test-only to avoid an "unused import"

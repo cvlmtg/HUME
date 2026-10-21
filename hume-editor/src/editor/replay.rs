@@ -34,7 +34,7 @@ use super::dot_chain::{ChainBroken, DotChain};
 use super::edit_session::{self, DotCapture, EditSessionKind, InsertSession};
 use super::input_stack::char::{AfterRead, CharRead};
 use super::keymap::CanonicalKey;
-use super::pipe_run::{PipeEnd, RunId};
+use super::pipe_run::RunId;
 use super::registry::{Dispatchable, MappableCommand};
 use super::{Editor, EditorState, Mode, commands, doc_ops};
 
@@ -682,6 +682,27 @@ pub(in crate::editor) struct DotReplay {
     pending: VecDeque<PendingAnswer>,
     /// Every pipe run the replay starts has an id at least this.
     runs_from: RunId,
+    /// `Ctrl-c` stopped a pipe run the replay started: nothing after it runs.
+    stopped: bool,
+}
+
+impl EditorState {
+    /// Stop every replay in progress after a pipe run it waited for was
+    /// cancelled: the macro's queued keys are dropped, and a `.` runs
+    /// nothing after the input that started the run.
+    pub(in crate::editor) fn stop_replays(&mut self) {
+        self.macros.abort_replay();
+        if let Some(replay) = self.dot_replay.as_mut() {
+            replay.stopped = true;
+        }
+    }
+
+    /// Whether [`Self::stop_replays`] stopped the `.` in progress.
+    fn dot_replay_stopped(&self) -> bool {
+        self.dot_replay
+            .as_ref()
+            .is_some_and(|replay| replay.stopped)
+    }
 }
 
 /// What a re-run interactive input finds as its answer.
@@ -1299,6 +1320,7 @@ impl Editor {
             answers: recording.action.answers.iter().cloned().collect(),
             pending: VecDeque::new(),
             runs_from: self.state.pipe_runs.mark(),
+            stopped: false,
         };
         let prev = self.state.dot_replay.replace(replay);
         self.replay_action(&recording.action, count);
@@ -1430,8 +1452,9 @@ impl Editor {
         // `Result` the new text rejects, is reported and skipped rather than
         // stopping the loop: the live session kept going past it too. A
         // `Binding` that leaves Insert stops the walk: nothing recorded after
-        // it belongs to a session that's gone. `break`, not `return`, so
-        // `finish_replay_session` below still runs.
+        // it belongs to a session that's gone. So does one whose pipe run was
+        // cancelled. `break`, not `return`, so `finish_replay_session` below
+        // still runs.
         for input in &action.transcript {
             match input {
                 Input::Key(key) => {
@@ -1442,7 +1465,11 @@ impl Editor {
                         .expect("a replayed Insert key runs in the replayed Insert session");
                     commands::insert_default_key(&mut self.state, &self.view, &entry, fp, *key);
                 }
-                Input::Paste(values) => self.state.apply_insert_mode_paste(&self.view, values),
+                Input::Paste(values) => {
+                    if let Err(e) = self.state.apply_insert_mode_paste(&self.view, values) {
+                        self.state.report_error(&e);
+                    }
+                }
                 Input::Result(r) => {
                     if let Err(msg) = self.state.apply_cursor_replacement(&self.view, fp, r) {
                         self.report(super::Severity::Error, msg);
@@ -1465,7 +1492,7 @@ impl Editor {
                     // differently than it did live) refuses loudly instead.
                     let ran = dispatch_insert_key(self, None, cmd);
                     self.finish_replayed_answers(ran);
-                    if self.state.mode() != Mode::Insert {
+                    if self.state.mode() != Mode::Insert || self.state.dot_replay_stopped() {
                         break;
                     }
                 }
@@ -1483,8 +1510,8 @@ impl Editor {
     /// output.
     ///
     /// Returns whether the body ran: `ran`, and the native command a read
-    /// collected the operand for, if any, ran too. A failed one drops the
-    /// answers after it.
+    /// collected the operand for, if any, ran too, and no pipe run it
+    /// started was cancelled. A failed one drops the answers after it.
     fn finish_replayed_answers(&mut self, mut ran: bool) -> bool {
         while ran
             && let Some(answer) = self
@@ -1530,7 +1557,7 @@ impl Editor {
         replay.pending.clear();
         let runs_from = replay.runs_from;
         self.wait_pipe_runs_from(runs_from);
-        ran
+        ran && !self.state.dot_replay_stopped()
     }
 
     // ── Dot capture (completion accepts) ──────────────────────────────────────
@@ -1583,7 +1610,8 @@ impl Editor {
 
     /// Drain the macro replay queue, executing each key in order, waiting for
     /// a pipe run it started, and settling after each one. A run the user
-    /// cancels drops the keys still queued: `Ctrl-c` stops the macro too.
+    /// cancels drops the keys still queued ([`EditorState::stop_replays`]):
+    /// `Ctrl-c` stops the macro too.
     ///
     /// Marks a replay in progress for the duration so that `Q`/`q` intercepts
     /// inside replayed keys cannot start nested recording or replay sessions,
@@ -1610,9 +1638,7 @@ impl Editor {
         while let Some(key) = self.state.macros.next_replay_key() {
             let runs_from = self.state.pipe_runs.mark();
             self.handle_input(TerminalEvent::Key(key));
-            if self.wait_pipe_runs_from(runs_from) == Some(PipeEnd::Cancelled) {
-                self.state.macros.abort_replay();
-            }
+            self.wait_pipe_runs_from(runs_from);
             self.state.message_logged_this_input |= message_already_logged;
             self.settle();
             if self.state.should_quit {

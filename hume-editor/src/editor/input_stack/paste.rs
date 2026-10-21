@@ -9,6 +9,7 @@ use hume_editing::text::normalize_line_endings_owned;
 use hume_engine::pipeline::EngineView;
 
 use super::super::EditorState;
+use super::super::error::CommandError;
 use super::super::minibuf::flatten_single_line;
 use super::stack::LayerRef;
 
@@ -52,18 +53,28 @@ impl PastedText {
 }
 
 impl EditorState {
-    /// Paste `text` into whatever layer is on top of the stack.
-    pub(in crate::editor) fn paste(&mut self, view: &EngineView, text: PastedText) {
+    /// Paste `text` into whatever layer is on top of the stack. `Err` when
+    /// the layer refused it.
+    pub(in crate::editor) fn paste(
+        &mut self,
+        view: &EngineView,
+        text: PastedText,
+    ) -> Result<(), CommandError> {
         let top = self.input.top();
-        self.paste_at(view, top, text);
+        self.paste_at(view, top, text)
     }
 
-    fn paste_at(&mut self, view: &EngineView, r: LayerRef, text: PastedText) {
+    fn paste_at(
+        &mut self,
+        view: &EngineView,
+        r: LayerRef,
+        text: PastedText,
+    ) -> Result<(), CommandError> {
         let f = self
             .input
             .paste_handler(r)
             .expect("paste target is live: top(), or below(r) under the index invariant");
-        f(self, view, r, text);
+        f(self, view, r, text)
     }
 
     /// Hand `text` to the layer directly below `r`, which stays addressable
@@ -73,9 +84,9 @@ impl EditorState {
         view: &EngineView,
         r: LayerRef,
         text: PastedText,
-    ) {
+    ) -> Result<(), CommandError> {
         let below = self.input.below(r);
-        self.paste_at(view, below, text);
+        self.paste_at(view, below, text)
     }
 }
 
@@ -85,5 +96,6 @@ pub(in crate::editor) fn ignore_paste(
     _view: &EngineView,
     _r: LayerRef,
     _text: PastedText,
-) {
+) -> Result<(), CommandError> {
+    Ok(())
 }

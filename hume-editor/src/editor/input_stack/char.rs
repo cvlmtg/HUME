@@ -22,6 +22,7 @@ use steel::rvals::SteelVal;
 use termina::event::{KeyCode, Modifiers, MouseEventKind};
 
 use super::super::commands::{self, PendingDispatch};
+use super::super::error::CommandError;
 use super::super::event::PendingWork;
 use super::super::replay::{Answer, AnswerTicket, InputOpener, PendingAnswer};
 use super::super::{Editor, EditorState};
@@ -319,8 +320,14 @@ fn char_input(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
 
 /// A paste supplies no character: it ends every pending read, as any other
 /// non-character input does, and pastes nothing.
-fn end_reads_on_paste(state: &mut EditorState, view: &EngineView, r: LayerRef, _text: PastedText) {
+fn end_reads_on_paste(
+    state: &mut EditorState,
+    view: &EngineView,
+    r: LayerRef,
+    _text: PastedText,
+) -> Result<(), CommandError> {
     state.truncate_layers(view, r);
+    Ok(())
 }
 
 /// Whether `ch` completes a read for `then`: any character for a command or a

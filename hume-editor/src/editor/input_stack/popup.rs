@@ -11,6 +11,7 @@ use hume_engine::types::EditorMode;
 use hume_scripting::host::HostToken;
 
 use super::super::commands::half_page;
+use super::super::error::CommandError;
 use super::super::host_token;
 use super::super::{Editor, EditorState};
 use super::paste::PastedText;
@@ -259,9 +260,14 @@ pub(in crate::editor) fn popup_input(ed: &mut Editor, r: LayerRef, ev: InputEven
 
 /// Retires the popup and lets the layer below take the paste, as
 /// [`popup_input`] does for a key it doesn't scroll with.
-fn popup_paste(state: &mut EditorState, view: &EngineView, r: LayerRef, text: PastedText) {
+fn popup_paste(
+    state: &mut EditorState,
+    view: &EngineView,
+    r: LayerRef,
+    text: PastedText,
+) -> Result<(), CommandError> {
     state.truncate_layers(view, r);
-    state.fall_through_paste(view, r, text);
+    state.fall_through_paste(view, r, text)
 }
 
 /// The open popup's visible content height and total row count, measured

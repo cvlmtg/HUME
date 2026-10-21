@@ -26,7 +26,7 @@ pub(in crate::editor) fn cmd_pipe(
     _mode: MotionMode,
     command: &str,
 ) -> Result<(), CommandError> {
-    if command.trim().is_empty() {
+    if is_blank_command(command) {
         return Err(CommandError::transient("pipe: no command to run"));
     }
     ensure_writable(state, view, t)?;
@@ -39,6 +39,12 @@ pub(in crate::editor) fn cmd_pipe(
     let settles = state.defer_change();
     state.start_pipe_run(pid, bid, command.to_string(), kind, settles);
     Ok(())
+}
+
+/// Whether `command` has nothing to run: [`cmd_pipe`] refuses it, and the
+/// `|` prompt does not record it in its history.
+pub(in crate::editor) fn is_blank_command(command: &str) -> bool {
+    command.trim().is_empty()
 }
 
 /// `cancel-pipe`: cancel the pipe running in `t`'s buffer, changing

@@ -8,6 +8,7 @@ use hume_engine::types::EditorMode;
 use hume_ops::search::compile_search_input;
 use hume_ops::selection_cmd::sift_matches_within;
 
+use super::super::error::CommandError;
 use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent};
 use super::super::replay::WaitingInput;
 use super::super::{Editor, EditorState, commands};
@@ -144,10 +145,16 @@ pub(in crate::editor) fn sift_input(ed: &mut Editor, r: LayerRef, ev: InputEvent
     }
 }
 
-fn sift_paste(state: &mut EditorState, _view: &EngineView, r: LayerRef, text: PastedText) {
+fn sift_paste(
+    state: &mut EditorState,
+    _view: &EngineView,
+    r: LayerRef,
+    text: PastedText,
+) -> Result<(), CommandError> {
     if minibuf::paste_into_minibuf(state, &text) {
         update_live_sift(state, r);
     }
+    Ok(())
 }
 
 fn handle_sift_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {

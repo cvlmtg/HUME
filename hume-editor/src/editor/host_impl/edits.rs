@@ -169,10 +169,10 @@ impl<'a> EditHost for EditorHostImpl<'a> {
 
     fn paste_text(&mut self, pane: PaneHandle, values: Vec<String>) -> Result<(), String> {
         FocusedPane::resolve(self.state, self.view, pane).map_err(|e| e.to_string())?;
-        if let Some(text) = PastedText::new(values) {
-            self.state.paste(self.view, text);
+        match PastedText::new(values) {
+            Some(text) => self.state.paste(self.view, text).map_err(|e| e.to_string()),
+            None => Ok(()),
         }
-        Ok(())
     }
 
     fn edit_text(&mut self, pane: PaneHandle, edits: Vec<CharTextEdit>) -> Result<(), String> {

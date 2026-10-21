@@ -122,6 +122,28 @@ fn the_prompt_recalls_its_own_history_only() {
 }
 
 #[test]
+fn a_blank_command_is_not_recorded_in_history() {
+    let mut ed = editor_from("-[abc]>\n");
+    ed.handle_key(key('|'));
+    keys(&mut ed, "sort");
+    ed.handle_key(key_enter());
+    take_run(&mut ed);
+
+    ed.handle_key(key('|'));
+    keys(&mut ed, "   ");
+    ed.handle_key(key_enter());
+    let entries: Vec<_> = ed
+        .state
+        .history
+        .get(HistoryKind::Pipe)
+        .entries()
+        .iter()
+        .cloned()
+        .collect();
+    assert_eq!(entries, ["sort"]);
+}
+
+#[test]
 fn a_blank_command_starts_nothing() {
     let mut ed = editor_from("-[abc]>\n");
     ed.handle_key(key('|'));
@@ -221,6 +243,25 @@ fn a_script_prompt_closes_the_shell_prompt() {
     ed.handle_key(key_esc());
     assert!(ed.state.minibuf().is_none());
     assert!(!ed.doc().is_busy());
+}
+
+#[test]
+fn a_script_entering_insert_closes_the_shell_prompt() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let mut ed = editor_from("-[abc]>\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "arm" "" (lambda (pane)
+             (after! 0 (lambda () (call! "insert-at-selection-start" pane)))))"#,
+    );
+    type_cmd(&mut ed, ":arm");
+    ed.handle_key(key('|'));
+    keys(&mut ed, "sort");
+    ed.settle();
+    assert_eq!(ed.state.mode(), Mode::Insert);
+    assert!(ed.state.input.ref_of::<ShellPromptLayer>().is_none());
+    assert!(ed.state.minibuf().is_none());
 }
 
 #[test]

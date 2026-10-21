@@ -6,6 +6,7 @@
 use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
 
+use super::super::error::CommandError;
 use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent};
 use super::super::replay::{Answer, InputOpener, PendingAnswer, WaitingInput};
 use super::super::{Editor, EditorState};
@@ -147,8 +148,14 @@ pub(in crate::editor) fn prompt_input(ed: &mut Editor, r: LayerRef, ev: InputEve
 
 /// An edit has no follow-up here, as `handle_steel_prompt_event`'s `Edited`
 /// arm shows.
-fn prompt_paste(state: &mut EditorState, _view: &EngineView, _r: LayerRef, text: PastedText) {
+fn prompt_paste(
+    state: &mut EditorState,
+    _view: &EngineView,
+    _r: LayerRef,
+    text: PastedText,
+) -> Result<(), CommandError> {
     minibuf::paste_into_minibuf(state, &text);
+    Ok(())
 }
 
 /// Routes a `Prompt` layer's key for a Steel `(prompt! …)` session

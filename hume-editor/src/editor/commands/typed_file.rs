@@ -69,7 +69,8 @@ pub(in crate::editor) fn typed_quit(
     // When the active tab has more than one pane, `:q` closes the focused
     // pane, not the tab or the editor. The buffer stays open (no edits lost),
     // so no dirty check. That guard belongs to the steps below, which
-    // actually close something the user can't get back without saving.
+    // actually close something the user can't get back without saving. A
+    // pipe run the pane started stops with it, as on any pane close.
     if super::close_focused_pane(&mut ed.state, &mut ed.view).is_ok() {
         return Ok(());
     }

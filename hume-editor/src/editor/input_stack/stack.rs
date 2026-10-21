@@ -24,6 +24,7 @@ use hume_engine::theme::{ScopeRegistry, Theme};
 use hume_engine::types::EditorMode;
 
 use super::super::edit_session::InsertSession;
+use super::super::error::CommandError;
 use super::super::event::mode_name;
 use super::super::minibuf::MiniBuffer;
 use super::super::{Editor, EditorState, Severity};
@@ -61,8 +62,10 @@ pub(in crate::editor) enum InputEvent {
 pub(in crate::editor) type LayerHandler = fn(&mut Editor, LayerRef, InputEvent);
 
 /// The function that lands a paste at a layer: [`LayerHandler`]'s
-/// counterpart for a paste, a fn pointer for the same reason.
-pub(in crate::editor) type PasteHandler = fn(&mut EditorState, &EngineView, LayerRef, PastedText);
+/// counterpart for a paste, a fn pointer for the same reason. `Err` when
+/// the paste was refused, for the entry point to report or return.
+pub(in crate::editor) type PasteHandler =
+    fn(&mut EditorState, &EngineView, LayerRef, PastedText) -> Result<(), CommandError>;
 
 /// Which popup home(s) landing here evicts. Read by
 /// [`EditorState::push_layer`] right after [`Layer::setup`] runs, so no
@@ -670,7 +673,7 @@ impl InputStack {
     /// mode layers (`Command`/`Search`/`Sift`/`Prompt`) and the
     /// `ShellPrompt` overlay. At most one of them is ever on the stack:
     /// [`EditorState::push_layer`] retires the open one before pushing
-    /// another. So "topmost" and "only" coincide.
+    /// another, or a mode layer. So "topmost" and "only" coincide.
     pub(in crate::editor) fn minibuf(&self) -> Option<&MiniBuffer> {
         self.layers
             .iter()
@@ -834,14 +837,15 @@ impl EditorState {
     /// own `setup` needs to run its dismiss-and-replace work first; eviction
     /// only ever touches the two popup homes, never selections, completion,
     /// or picker state, so nothing else can observe the difference. A layer
-    /// holding a minibuffer first retires the one already open, so keys
-    /// never reach a buried minibuffer.
+    /// holding a minibuffer, and a mode layer, first retire the minibuffer
+    /// already open: keys never reach a buried minibuffer, and none stays
+    /// drawn over a mode that does not read it.
     pub(in crate::editor) fn push_layer<L: Layer>(
         &mut self,
         view: &EngineView,
         mut layer: L,
     ) -> LayerRef {
-        if layer.minibuf().is_some()
+        if (layer.minibuf().is_some() || layer.mode().is_some())
             && let Some(open) = self.input.minibuf_owner()
         {
             self.retire_at(view, open);

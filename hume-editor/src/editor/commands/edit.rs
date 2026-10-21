@@ -215,7 +215,9 @@ fn history_step(
         Ok(walk(b, id, stores, pane, count))
     })?;
     match result {
-        doc_ops::HistoryWalk::RefusedReadOnly => return Err(super::read_only_refusal(state)),
+        doc_ops::HistoryWalk::RefusedReadOnly => {
+            return Err(super::read_only_refusal(state, view, t));
+        }
         doc_ops::HistoryWalk::Took(taken) if taken < count => {
             state.report(Severity::Info, exhausted_msg.to_string());
         }

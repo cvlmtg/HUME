@@ -64,6 +64,51 @@ fn replace_each_selection_over_the_whole_text_keeps_the_final_break() {
 }
 
 #[test]
+fn replace_each_selection_over_the_final_break_with_output_lacking_one_keeps_it() {
+    assert_state!(
+        "-[b\na\n]>",
+        |(text, sels)| replace_each_selection(state(text, sels), &values(&["a\nb"])),
+        "-[a\nb]>\n"
+    );
+}
+
+#[test]
+fn replace_each_selection_with_empty_output_over_the_final_break_keeps_it() {
+    assert_state!(
+        "x-[a\n]>",
+        |(text, sels)| replace_each_selection(state(text, sels), &values(&[""])),
+        "x-[\n]>"
+    );
+}
+
+#[test]
+fn replace_each_selection_output_starting_with_a_combining_mark_joins_the_cluster_before() {
+    assert_state!(
+        "e-[x]>\n",
+        |(text, sels)| replace_each_selection(state(text, sels), &values(&["\u{301}"])),
+        "-[e\u{301}]>\n"
+    );
+}
+
+#[test]
+fn replace_each_selection_normalizes_crlf_inside_the_output() {
+    assert_state!(
+        "-[ab]>\n",
+        |(text, sels)| replace_each_selection(state(text, sels), &values(&["x\r\ny"])),
+        "-[x\ny]>\n"
+    );
+}
+
+#[test]
+fn replace_each_selection_with_empty_outputs_keeps_each_facing() {
+    assert_state!(
+        "-[ab]> <{cd}-x\n",
+        |(text, sels)| replace_each_selection(state(text, sels), &values(&["", ""])),
+        "-[ ]><{x}-\n"
+    );
+}
+
+#[test]
 fn replace_each_selection_with_identical_output_changes_nothing() {
     let (text, sels) = parse_state("-[ab]> -{cd}>\n");
     let edited = replace_each_selection(state(text, sels), &values(&["ab", "cd"]));
@@ -97,7 +142,8 @@ fn fit_pipe_output_drops_one_break_only_when_the_input_had_none() {
         (false, "ABC\r\n", "ABC"),
         (false, "ABC\n\n", "ABC\n"),
         (false, "ABC", "ABC"),
-        (false, "ABC\r", "ABC\r"),
+        (false, "ABC\r", "ABC"),
+        (false, "ABC\n\r", "ABC\n"),
         (true, "ABC\n", "ABC\n"),
         (true, "ABC", "ABC"),
         (false, "", ""),
