@@ -75,7 +75,8 @@ The file holds, in order:
   ends the directory part, so an escaped `/` or a variable ending in one counts, and a separator
   inside quotes does too. Offsets are chars, the unit Steel indexes strings by and the one the
   completion source contract uses.
-- **The dialects**: POSIX `sh` (also `bash`, `zsh`, `dash`, `ksh`), fish, PowerShell and `cmd`,
+- **The dialects**: POSIX `sh` (also `bash`, `zsh`, `dash`, `ksh`, `ash`, `mksh`, `yash`, `posh`,
+  `busybox`), fish, PowerShell and `cmd`,
   each a `%shell-rules` value, its `read` hook, and its writer. `shell/posix-parse` and
   `shell/posix-write` (and the same for `fish`, `pwsh`, `cmd`) are public so a new dialect can
   reuse them. `PATHEXT` is read once, at load.
@@ -86,8 +87,9 @@ The file holds, in order:
   several names writes
   their shared value prefix unfinished as `#:prefix`, so the first `Tab` inserts it, or `#f`
   when that prefix adds nothing to what is typed, so no escaped text is cut. With no
-  dialect for the shell it logs a warning and answers nothing, which closes the menu: completing
-  by another shell's rules could insert text this shell reads differently.
+  dialect for the shell it answers nothing, which closes the menu, and logs a warning the first
+  time per `shell` program until the file is evaluated again: completing by another shell's
+  rules could insert text this shell reads differently.
 
 ### The dialects' rules
 

@@ -499,6 +499,24 @@ fn a_shell_with_no_dialect_completes_nothing_and_says_so() {
 }
 
 #[test]
+fn a_shell_with_no_dialect_is_named_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut ed = pipe_line_in(dir.path(), "cat no");
+    ed.state.settings.shell =
+        hume_platform::process::batch::ShellCommand::from_words(vec!["nu".into(), "-c".into()])
+            .unwrap();
+    press(&mut ed, key_tab());
+    press(&mut ed, key_tab());
+    let warnings = ed
+        .state
+        .message_log
+        .entries()
+        .filter(|e| e.text.contains("no shell dialect for nu"))
+        .count();
+    assert_eq!(warnings, 1);
+}
+
+#[test]
 fn completion_survives_a_config_reload() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("notes.txt"), b"").unwrap();

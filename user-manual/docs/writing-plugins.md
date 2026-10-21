@@ -609,11 +609,11 @@ If the user keeps typing or closes the menu before `git` answers, the request is
 
 ## Shell dialects
 
-`Tab` on the `|` prompt finds, reads and writes the word under the cursor by the rules of the shell the `shell` option runs. HUME ships rules, called dialects, for `sh`, `bash`, `zsh`, `dash` and `ksh` (one POSIX dialect), `fish`, PowerShell and `cmd`. For another shell, register a dialect from `init.scm` or a plugin. A shell that reads words the way `sh` does can reuse the shipped procedures:
+`Tab` on the `|` prompt finds, reads and writes the word under the cursor by the rules of the shell the `shell` option runs. HUME ships rules, called dialects, for `sh`, `bash`, `zsh`, `dash`, `ksh`, `ash`, `mksh`, `yash`, `posh` and `busybox` (one POSIX dialect), `fish`, PowerShell and `cmd`. For another shell, register a dialect from `init.scm` or a plugin. A shell that reads words the way `sh` does can reuse the shipped procedures:
 
 ```scheme
-(register-shell-dialect! "mksh"
-  #:programs '("mksh")
+(register-shell-dialect! "oksh"
+  #:programs '("oksh")
   #:parse shell/posix-parse
   #:write shell/posix-write)
 ```

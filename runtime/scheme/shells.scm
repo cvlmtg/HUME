@@ -209,7 +209,7 @@
      (%shell-close open close?))))
 
 (register-shell-dialect! "posix"
-  #:programs '("sh" "bash" "zsh" "dash" "ksh")
+  #:programs '("sh" "bash" "zsh" "dash" "ksh" "ash" "mksh" "yash" "posh" "busybox")
   #:parse shell/posix-parse
   #:write shell/posix-write)
 
@@ -387,13 +387,17 @@
                             ": #:parse must return a shell-word whose span holds the cursor, with string typed, dir and prefix")))
     word))
 
+(define *shell-programs-warned* '())
+
 (define (%shell-complete id input cursor)
   (let* ((program (car (get-option "shell")))
          (dialect (%shell-dialect-for program)))
     (if (not dialect)
         (begin
-          (log! 'warn (string-append "| completion: no shell dialect for " program
-                                     "; register one with register-shell-dialect!"))
+          (unless (member program *shell-programs-warned*)
+            (set! *shell-programs-warned* (cons program *shell-programs-warned*))
+            (log! 'warn (string-append "| completion: no shell dialect for " program
+                                       "; register one with register-shell-dialect!")))
           (completion-emit! id '()))
         (let* ((word (%shell-parse dialect input cursor))
                (write-word (hash-ref dialect 'write))

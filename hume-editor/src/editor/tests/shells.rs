@@ -205,7 +205,17 @@ const NASTY_NAME: &str = "a b\t$c'd\"e\\f|g;h&i(j)k<l>m*n?o[p]q{r}s!t#u~v`w";
 #[test]
 fn a_dialect_is_chosen_by_the_shell_program_file() {
     let mut host = shells_host();
-    for program in ["sh", "/bin/bash", "ZSH", r"C:\tools\Bash.EXE"] {
+    for program in [
+        "sh",
+        "/bin/bash",
+        "ZSH",
+        r"C:\tools\Bash.EXE",
+        "ash",
+        "mksh",
+        "yash",
+        "posh",
+        "busybox",
+    ] {
         assert!(
             matches!(
                 eval(
