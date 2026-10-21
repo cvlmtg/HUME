@@ -1,5 +1,6 @@
 use hume_editing::selection::SelectionView;
 use hume_rope::cluster::ClusterStart;
+use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 use crate::pair::matching_bracket;
 use crate::tag::matching_tag;
@@ -9,7 +10,8 @@ use crate::tag::matching_tag;
 /// no-op. Tags resolve from the head only, because the tag scan is unbounded
 /// per position.
 pub(super) fn goto_matching_pair(sel: SelectionView<'_>) -> ClusterStart {
-    matching_bracket(sel)
+    let whole = ExclusiveRange::new(CharOffset::default(), sel.text().end());
+    matching_bracket(sel, whole)
         .or_else(|| matching_tag(sel.text(), sel.head()))
         .unwrap_or(sel.head())
 }

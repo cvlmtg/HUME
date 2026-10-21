@@ -1,6 +1,6 @@
 use super::find_tightest_bracket_pair;
 use hume_editing::text::BufferText;
-use hume_rope::offset::CharOffset;
+use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 // These assert find_tightest_bracket_pair's own (open, close) contract
 // directly, rather than only through cmd_inner_argument in
@@ -94,7 +94,37 @@ fn no_enclosing_bracket_of_any_type_is_none() {
 fn partner(marked: &str) -> Option<usize> {
     let (text, sels) = test_fixtures::testing::parse_state(marked);
     let state = test_fixtures::testing::state(text, sels);
-    super::matching_bracket(state.view().primary()).map(|pos| pos.offset().index())
+    let view = state.view();
+    let whole = ExclusiveRange::new(CharOffset::default(), view.text().end());
+    super::matching_bracket(view.primary(), whole).map(|pos| pos.offset().index())
+}
+
+/// [`partner`], with the scan limited to the chars `start..end`.
+fn partner_within(marked: &str, start: usize, end: usize) -> Option<usize> {
+    let (text, sels) = test_fixtures::testing::parse_state(marked);
+    let state = test_fixtures::testing::state(text, sels);
+    let bound = ExclusiveRange::new(CharOffset::new(start), CharOffset::new(end));
+    super::matching_bracket(state.view().primary(), bound).map(|pos| pos.offset().index())
+}
+
+#[test]
+fn matching_bracket_finds_a_close_inside_the_bound() {
+    assert_eq!(partner_within("-[(]>abc\ndef)\nghi\n", 0, 10), Some(8));
+}
+
+#[test]
+fn matching_bracket_ignores_a_close_past_the_bound() {
+    assert_eq!(partner_within("-[(]>abc\ndef)\nghi\n", 0, 5), None);
+}
+
+#[test]
+fn matching_bracket_ignores_an_open_before_the_bound() {
+    assert_eq!(partner_within("(abc\ndef-[)]>\nghi\n", 5, 14), None);
+}
+
+#[test]
+fn matching_bracket_finds_an_open_at_the_bound_start() {
+    assert_eq!(partner_within("abc\n(def-[)]>\nghi\n", 4, 14), Some(4));
 }
 
 #[test]

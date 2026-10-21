@@ -43,16 +43,21 @@ pub(crate) fn delimiter_at(
 /// separate scan ([`crate::tag`]).
 const BRACKET_PAIRS: [(char, char); 3] = [('(', ')'), ('[', ']'), ('{', '}')];
 
-/// Scan left from `pos` (exclusive) to find an unmatched `open` bracket.
+/// Scan left from `pos` (exclusive) to find an unmatched `open` bracket at
+/// or after `bound.start`.
 pub(crate) fn scan_left_for_open(
     text: &BufferText,
     pos: CharOffset,
     open: char,
     close: char,
+    bound: ExclusiveRange<CharOffset>,
 ) -> Option<CharOffset> {
     let mut depth = 0usize;
     let mut cursor = text.chars_at(pos);
     while let Some((i, ch)) = cursor.prev() {
+        if i < bound.start {
+            return None;
+        }
         if ch == close {
             depth += 1;
         } else if ch == open {
@@ -65,15 +70,20 @@ pub(crate) fn scan_left_for_open(
     None
 }
 
-/// Scan right from `pos` (exclusive) to find an unmatched `close` bracket.
+/// Scan right from `pos` (exclusive) to find an unmatched `close` bracket
+/// before `bound.end`.
 pub(crate) fn scan_right_for_close(
     text: &BufferText,
     pos: CharOffset,
     open: char,
     close: char,
+    bound: ExclusiveRange<CharOffset>,
 ) -> Option<CharOffset> {
     let mut depth = 0usize;
     for (i, ch) in text.chars_at(pos) {
+        if i >= bound.end {
+            return None;
+        }
         if ch == open {
             depth += 1;
         } else if ch == close {
@@ -91,24 +101,26 @@ pub(crate) fn scan_right_for_close(
 ///
 /// If `pos` is ON an open bracket, that bracket itself is the start.
 /// If ON a close bracket, that bracket is the end.
-/// Otherwise, scans both directions for the enclosing pair.
+/// Otherwise, scans both directions for the enclosing pair. Neither scan
+/// leaves `bound`.
 fn bracket_pair_chars(
     text: &BufferText,
     pos: CharOffset,
     open: char,
     close: char,
+    bound: ExclusiveRange<CharOffset>,
 ) -> Option<(CharOffset, CharOffset)> {
     match text.char_at(pos)? {
         ch if ch == open => {
             // `pos.shift(1)` cannot panic: `char_at` above already proved
             // `pos < text.len_chars()`.
-            let close_pos = scan_right_for_close(text, pos.shift(1), open, close)?;
+            let close_pos = scan_right_for_close(text, pos.shift(1), open, close, bound)?;
             Some((pos, close_pos))
         }
-        ch if ch == close => Some((scan_left_for_open(text, pos, open, close)?, pos)),
+        ch if ch == close => Some((scan_left_for_open(text, pos, open, close, bound)?, pos)),
         _ => Some((
-            scan_left_for_open(text, pos, open, close)?,
-            scan_right_for_close(text, pos, open, close)?,
+            scan_left_for_open(text, pos, open, close, bound)?,
+            scan_right_for_close(text, pos, open, close, bound)?,
         )),
     }
 }
@@ -123,7 +135,8 @@ pub(crate) fn find_bracket_pair(
 ) -> Option<ClusterRange> {
     let at =
         delimiter_at(text, pos, |ch| ch == open || ch == close).map_or(pos.offset(), |(at, _)| at);
-    let (open_pos, close_pos) = bracket_pair_chars(text, at, open, close)?;
+    let whole = ExclusiveRange::new(CharOffset::default(), text.end());
+    let (open_pos, close_pos) = bracket_pair_chars(text, at, open, close, whole)?;
     Some(delimited(text, open_pos, close_pos))
 }
 
@@ -386,10 +399,17 @@ fn nearest_bracket(sel: SelectionView<'_>) -> Option<(CharOffset, char, char)> {
 /// cursor highlight (`hume-editor`'s `decoration_providers`). Both need the
 /// same answer to "what does this character pair with", so there is exactly
 /// one place `BRACKET_PAIRS` gets consulted for it.
-pub fn matching_bracket(sel: SelectionView<'_>) -> Option<ClusterStart> {
+///
+/// The partner scan stays inside `bound` and yields `None` past it. The
+/// highlight runs on every frame and paints only visible lines, so it bounds
+/// the scan to them; `%` passes the whole text.
+pub fn matching_bracket(
+    sel: SelectionView<'_>,
+    bound: ExclusiveRange<CharOffset>,
+) -> Option<ClusterStart> {
     let text = sel.text();
     let (bracket_pos, open, close) = nearest_bracket(sel)?;
-    let (open_pos, close_pos) = bracket_pair_chars(text, bracket_pos, open, close)?;
+    let (open_pos, close_pos) = bracket_pair_chars(text, bracket_pos, open, close, bound)?;
     let partner = if bracket_pos == open_pos {
         close_pos
     } else {

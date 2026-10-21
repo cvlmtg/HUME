@@ -174,7 +174,10 @@ impl Editor {
         if !in_insert {
             let text = self.doc().text();
             let pbs = self.state.panes.entries.shown(&self.view.panes, focused);
-            if let Some(match_pos) = matching_bracket(pbs.view(text).primary()) {
+            let visible = panes.iter().find(|p| p.pid == focused).map(|p| p.chars);
+            if let Some(match_pos) =
+                visible.and_then(|chars| matching_bracket(pbs.view(text).primary(), chars))
+            {
                 let (line, byte) = text.columns().byte_position(match_pos.offset());
                 // The whole cluster holding the partner bracket.
                 let cluster = hume_rope::cluster::ClusterRange::of(text.full_slice(), match_pos);
