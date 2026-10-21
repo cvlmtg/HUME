@@ -141,6 +141,8 @@ The comment follows the language at the cursor: in a Markdown file, a fenced Rus
 
 `|` asks for a command and runs it once for each selection, each in its own process, with the selection's text as its input. The output replaces the selection, and the selection then covers the output. `| sort` sorts the lines of each selection; `| jq .` formats a selected JSON value.
 
+Any program that reads text and prints a result works, including AI assistants that can run without a chat window. With [Claude Code](https://claude.com/claude-code), select a paragraph and run `| claude -p "turn this into a bullet list"` to replace it with the list, or `| claude -p "summarize in one sentence"` to replace it with a summary. Since `|` runs in the background, you can keep working while it answers.
+
 In Insert mode, `Ctrl-|` runs the command once for each cursor, with no input, and inserts its output where you are typing. You stay in Insert mode. Since every cursor gets its own process, `uuidgen` gives each cursor a different value.
 
 When the selection doesn't end with a line break, one line break at the end of the output is dropped, so `| sort` on a word keeps it on its line. `Ctrl-|` has no input, so it always drops one: `Ctrl-| date` inserts the date without starting a new line.
