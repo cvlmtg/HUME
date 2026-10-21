@@ -10,8 +10,8 @@ use std::sync::Arc;
 use std::sync::mpsc;
 use std::thread;
 
-use hume_platform::process::spawn_piped;
 use hume_platform::process::tracked::TrackedChild;
+use hume_platform::process::{spawn_piped, start_failed};
 use hume_platform::wake::{WakeCallback, spawn_waking};
 
 use crate::codec::{self, Message};
@@ -95,7 +95,8 @@ impl ServerHandle {
         let reader_wake = Arc::clone(&wake);
         let reader = spawn_waking("hume-lsp-reader", Arc::clone(&wake), move || {
             reader_loop(BufReader::new(stdout), &tx_events, &reader_wake)
-        })?;
+        })
+        .map_err(|e| start_failed(cmd, e))?;
 
         let (writer_done_tx, writer_done) = mpsc::channel::<()>();
         let writer = thread::Builder::new()
@@ -103,12 +104,14 @@ impl ServerHandle {
             .spawn(move || {
                 let _done = writer_done_tx;
                 writer_loop(stdin, rx_out)
-            })?;
+            })
+            .map_err(|e| start_failed(cmd, e))?;
 
         let stderr_wake = Arc::clone(&wake);
         let stderr_thread = spawn_waking("hume-lsp-stderr", wake, move || {
             stderr_loop(BufReader::new(stderr), &tx_stderr, &stderr_wake)
-        })?;
+        })
+        .map_err(|e| start_failed(cmd, e))?;
 
         Ok(ServerHandle {
             tx: Some(tx_out),

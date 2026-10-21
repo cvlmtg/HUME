@@ -33,6 +33,7 @@ use std::thread::{self, JoinHandle};
 use crate::process::child::{
     JOB_STDOUT_CAP, STDERR_CAPTURE_CAP, read_bounded, read_capped, spawn_piped,
 };
+use crate::process::start_failed;
 use crate::process::tracked::TrackedChild;
 use crate::wake::{WakeCallback, spawn_waking};
 
@@ -90,19 +91,19 @@ pub fn spawn_job(
     // here on this function owns reaping the child on every early return
     // (the disarmed `ReapOnDrop` guard no longer covers it).
     let child = TrackedChild::new(child.into_inner());
+    let failed = |e| {
+        child.reap();
+        start_failed(cmd, e)
+    };
 
     let (tx, rx) = mpsc::sync_channel::<JobResult>(1);
 
-    let writer = feed_stdin(stdin, input).inspect_err(|_| {
-        child.reap();
-    })?;
+    let writer = feed_stdin(stdin, input).map_err(failed)?;
 
     let stderr_thread = thread::Builder::new()
         .name("hume-job-stderr".into())
         .spawn(move || read_capped(stderr, STDERR_CAPTURE_CAP))
-        .inspect_err(|_| {
-            child.reap();
-        })?;
+        .map_err(failed)?;
 
     let job_child = child.clone();
     let job_cmd = cmd.to_string();
@@ -147,9 +148,7 @@ pub fn spawn_job(
         };
         let _ = tx.send(result);
     })
-    .inspect_err(|_| {
-        child.reap();
-    })?;
+    .map_err(failed)?;
 
     Ok(SpawnedJob {
         child,
@@ -228,24 +227,36 @@ mod tests {
     use crate::wake::no_op_wake;
 
     #[test]
-    fn spawn_missing_binary_is_io_error() {
+    fn a_missing_binary_fails_to_spawn_naming_the_program() {
+        let Err(e) = spawn_job(
+            "definitely-not-a-real-binary-xyz",
+            &[],
+            Path::new("."),
+            Vec::new(),
+            no_op_wake(),
+        ) else {
+            panic!("a missing binary cannot spawn");
+        };
+        assert_eq!(e.kind(), io::ErrorKind::NotFound);
         assert!(
-            spawn_job(
-                "definitely-not-a-real-binary-xyz",
-                &[],
-                Path::new("."),
-                Vec::new(),
-                no_op_wake()
-            )
-            .is_err()
+            e.to_string()
+                .starts_with("cannot run 'definitely-not-a-real-binary-xyz': "),
+            "got: {e}"
         );
     }
 
     #[test]
-    fn nonexistent_cwd_is_error() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let bogus = dir.path().join("does-not-exist");
-        assert!(spawn_job("sh", &[], &bogus, Vec::new(), no_op_wake()).is_err());
+    fn nonexistent_cwd_is_reported_as_the_missing_directory() {
+        let Err(e) = spawn_job(
+            "sh",
+            &[],
+            Path::new("hume-no-such-dir"),
+            Vec::new(),
+            no_op_wake(),
+        ) else {
+            panic!("a missing working directory cannot spawn");
+        };
+        insta::assert_snapshot!(e, @"cannot run 'sh': directory 'hume-no-such-dir' does not exist");
     }
 
     #[cfg(unix)]

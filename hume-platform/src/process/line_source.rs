@@ -25,6 +25,7 @@ use std::thread;
 use std::time::Duration;
 
 use crate::process::child::{STDERR_CAPTURE_CAP, read_capped, spawn_piped};
+use crate::process::start_failed;
 use crate::process::tracked::TrackedChild;
 use crate::wake::{WakeCallback, spawn_waking};
 
@@ -148,14 +149,16 @@ pub fn spawn_line_source(
     let reader_wake = Arc::clone(&wake);
     spawn_waking("hume-line-source-reader", wake, move || {
         reader_loop(stdout, delimiter, &tx, &reader_wake);
-    })?;
+    })
+    .map_err(|e| start_failed(cmd, e))?;
 
     thread::Builder::new()
         .name("hume-line-source-stderr".into())
         .spawn(move || {
             let captured = read_capped(stderr, STDERR_CAPTURE_CAP);
             let _ = tx_err.send(String::from_utf8_lossy(&captured).into_owned());
-        })?;
+        })
+        .map_err(|e| start_failed(cmd, e))?;
 
     Ok(SpawnedLineSource {
         cmd: cmd.to_string(),

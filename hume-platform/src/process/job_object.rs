@@ -30,13 +30,16 @@ impl Job {
     /// only once it is in the job, so no process it starts escapes the job.
     /// On any failure after the spawn the child is killed and reaped.
     pub(crate) fn spawn(command: &mut Command) -> io::Result<(Child, Job)> {
-        let mut child = command.creation_flags(CREATE_SUSPENDED).spawn()?;
+        let mut child = command
+            .creation_flags(CREATE_SUSPENDED)
+            .spawn()
+            .map_err(|e| super::spawn_failed(command, e))?;
         match Self::adopt(&child) {
             Ok(job) => Ok((child, job)),
             Err(e) => {
                 let _ = child.kill();
                 let _ = child.wait();
-                Err(e)
+                Err(super::spawn_failed(command, e))
             }
         }
     }

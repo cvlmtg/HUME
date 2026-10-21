@@ -356,11 +356,7 @@ fn a_server_that_fails_to_start_is_reported_once_for_all_its_buffers() {
     );
 
     let log = rig.ed.state.message_log.format_for_display();
-    assert_eq!(
-        log.matches("lsp: failed to start 'ghost'").count(),
-        1,
-        "{log:?}"
-    );
+    assert_eq!(log.matches("lsp: cannot run 'ghost'").count(), 1, "{log:?}");
 }
 
 /// A language change that alters the `languageId` the servers were told

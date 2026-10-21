@@ -119,9 +119,9 @@ impl LspBackend for InlineLspBackend {
         _env: &[(String, String)],
     ) -> std::io::Result<ServerId> {
         if self.refused.iter().any(|refused| refused == cmd) {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                "no such command",
+            return Err(hume_platform::process::start_failed(
+                cmd,
+                std::io::ErrorKind::NotFound.into(),
             ));
         }
         let id = ServerId(self.next);

@@ -108,10 +108,12 @@ pub fn run_inline_output(
     cwd: &Path,
     env: &[(String, String)],
 ) -> io::Result<ExitStatus> {
-    base_command(cmd, args, cwd)
+    let mut command = base_command(cmd, args, cwd);
+    command
         .envs(env.iter().map(|(k, v)| (k, v)))
         .new_process_group()
         .status()
+        .map_err(|e| spawn_failed(&command, e))
 }
 
 /// Run `cmd` with `args`, both stdout and stderr fully captured, stdin
@@ -127,10 +129,12 @@ pub fn run_inline_output(
 ///
 /// See `base_command`'s own doc for why `GIT_TERMINAL_PROMPT=0` is set.
 pub fn run_capture(cmd: &str, args: &[String], cwd: &Path) -> io::Result<std::process::Output> {
-    base_command(cmd, args, cwd)
+    let mut command = base_command(cmd, args, cwd);
+    command
         .stdin(Stdio::null())
         .new_process_group()
         .output()
+        .map_err(|e| spawn_failed(&command, e))
 }
 
 /// Compile a tree-sitter grammar source at `src` to a shared library at `out`
@@ -160,7 +164,9 @@ pub fn tree_sitter_build(src: &Path, out: &Path, cwd: &Path) -> io::Result<ExitS
         cmd.env("CC", cc).env("CXX", cxx);
     }
 
-    cmd.new_process_group().status()
+    cmd.new_process_group()
+        .status()
+        .map_err(|e| spawn_failed(&cmd, e))
 }
 
 /// Whether `name` resolves to a runnable executable on `PATH`.
@@ -292,6 +298,29 @@ fn target_stripping_wrapper_script(invocation: &str) -> String {
     )
 }
 
+/// `e`, from any step of starting `program` (the spawn itself or a thread
+/// that bridges its stdio), with a message that names the program. The
+/// error's kind is kept, so a caller can still tell a missing program
+/// (`NotFound`) apart.
+pub fn start_failed(program: &str, e: io::Error) -> io::Error {
+    io::Error::new(e.kind(), format!("cannot run '{program}': {e}"))
+}
+
+/// [`start_failed`] for `command`'s own spawn. On Unix a missing working
+/// directory fails the spawn with the same error as a missing program, so
+/// the message names the directory instead.
+fn spawn_failed(command: &Command, e: io::Error) -> io::Error {
+    let program = command.get_program().to_string_lossy();
+    let e = match command.get_current_dir() {
+        Some(dir) if !dir.is_dir() => io::Error::new(
+            e.kind(),
+            format!("directory '{}' does not exist", dir.display()),
+        ),
+        _ => e,
+    };
+    start_failed(&program, e)
+}
+
 /// The message for `program` failing: its exit, when it had one, and its
 /// stderr, when it wrote any.
 pub fn failure_message(program: &str, status: Option<ExitStatus>, stderr: &str) -> String {
@@ -382,7 +411,10 @@ impl GroupedChild {
 /// `sigint_to_child_group_does_not_kill_hume`).
 #[cfg(not(windows))]
 pub(crate) fn spawn_in_own_group(command: &mut Command) -> io::Result<GroupedChild> {
-    let child = command.new_process_group().spawn()?;
+    let child = command
+        .new_process_group()
+        .spawn()
+        .map_err(|e| spawn_failed(command, e))?;
     #[cfg(unix)]
     {
         use nix::unistd::{Pid, setpgid};

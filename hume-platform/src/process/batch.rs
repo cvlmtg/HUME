@@ -150,7 +150,7 @@ impl ShellBatch {
                 input.into_bytes(),
                 wake.clone(),
             )
-            .map_err(|e| ShellFailure(format!("cannot run {}: {e}", self.program)))?;
+            .map_err(|e| ShellFailure(e.to_string()))?;
             self.jobs.push((index, job));
             *free -= 1;
         }

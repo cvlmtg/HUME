@@ -76,7 +76,7 @@ pub(crate) fn compile_grammar(ctx: &mut SteelCtx, src: String, out: String) -> S
             Some(status),
             "",
         ),
-        Err(e) => format!("compile-grammar!: cannot run tree-sitter: {e}"),
+        Err(e) => format!("compile-grammar!: {e}"),
     };
     // A failure with no compiler at all on PATH is a common, fixable cause on
     // Windows (no MSVC Build Tools): point the user at it instead of leaving

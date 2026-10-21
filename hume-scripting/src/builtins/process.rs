@@ -98,7 +98,7 @@ pub(crate) fn run_capture(
             String::from_utf8_lossy(&output.stderr).into_owned(),
             output.status.code(),
         ),
-        Err(e) => (String::new(), format!("{cmd}: {e}"), None),
+        Err(e) => (String::new(), e.to_string(), None),
     };
     Ok(symbol_hash([
         ("stdout", SteelVal::StringV(stdout.into())),
@@ -149,7 +149,7 @@ pub(crate) fn run_inline_output(
     }
 
     let status = hume_platform::process::run_inline_output(&cmd, &args, &cwd, &env)
-        .map_err(|e| generic_err(format!("run-inline-output!: cannot run '{cmd}': {e}")))?;
+        .map_err(|e| generic_err(format!("run-inline-output!: {e}")))?;
 
     // `-1` for a signal-killed child (no exit code); matches the sentinel a
     // real exit code can never produce, since process exit codes are u8-wide.

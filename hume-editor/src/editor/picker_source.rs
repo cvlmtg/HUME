@@ -50,7 +50,7 @@ pub(super) fn spawn_source(
         delimiter,
         Arc::clone(&state.wake),
     )
-    .map_err(|e| format!("cannot run '{cmd}': {e}"))?;
+    .map_err(|e| e.to_string())?;
     take_and_report_outgoing_source(state);
     session_for_feed(state, token)
         .expect("checked Some above")

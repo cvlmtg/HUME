@@ -39,7 +39,7 @@ impl<'a> AsyncProcessHost for EditorHostImpl<'a> {
                     callback,
                     vec![
                         steel::rvals::SteelVal::StringV("".into()),
-                        steel::rvals::SteelVal::StringV(format!("cannot run '{cmd}': {e}").into()),
+                        steel::rvals::SteelVal::StringV(e.to_string().into()),
                         steel::rvals::SteelVal::IntV(-1),
                     ],
                 );

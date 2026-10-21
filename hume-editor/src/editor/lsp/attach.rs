@@ -301,7 +301,7 @@ impl EditorState {
         let config = registry.get(&wanted.name)?;
         let spawned = instances
             .spawn(backend.as_mut(), &wanted.name, config, wanted.root.clone())
-            .map_err(|e| format!("lsp: failed to start '{}': {e}", config.command));
+            .map_err(|e| format!("lsp: {e}"));
         match spawned {
             Ok(sid) => Some(sid),
             Err(msg) => {
