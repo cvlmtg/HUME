@@ -427,7 +427,10 @@ fn install_real_json_grammar_e2e() {
     }
     assert!(src_dir.exists(), "clone must create src dir");
 
-    let tool = workspace_grammar_build();
+    let tool = match workspace_grammar_build() {
+        GrammarBuild::Found(tool) => tool,
+        missing => panic!("build hume-grammar-build first (cargo build --workspace): {missing:?}"),
+    };
     let status = hume_platform::process::grammar_build(&tool, &src_dir, &out_path, &src_dir)
         .expect("grammar_build must not fail to spawn");
     assert!(status.success(), "grammar compiler failed");
@@ -546,8 +549,7 @@ fn setup_editor_with_languages_scm(
         config: Some(hume_config),
         data: Some(data_tmp.path().join("hume")),
         runtime: Some(runtime_tmp.path().to_path_buf()),
-        tmp: None,
-        grammar_build: Dirs::none().grammar_build,
+        ..Dirs::none()
     };
     ed.init_scripting(&mut Default::default());
 
@@ -643,8 +645,7 @@ fn tsx_bundled_language_id_is_typescriptreact() {
         config: Some(hume_config),
         data: Some(data_tmp.path().join("hume")),
         runtime: Some(repo_runtime_dir()),
-        tmp: None,
-        grammar_build: Dirs::none().grammar_build,
+        ..Dirs::none()
     };
     ed.init_scripting(&mut Default::default());
     let bid = ed.focused_buffer_id();
@@ -910,8 +911,7 @@ fn init_errors_with_json_data(
         config: Some(hume_config),
         data: Some(data_tmp.path().join("hume")),
         runtime: Some(runtime_tmp.path().to_path_buf()),
-        tmp: None,
-        grammar_build: Dirs::none().grammar_build,
+        ..Dirs::none()
     };
     ed.init_scripting(&mut Default::default());
 
@@ -1180,8 +1180,7 @@ fn bundled_languages_carry_root_markers() {
         config: Some(hume_config),
         data: Some(data_tmp.path().join("hume")),
         runtime: Some(repo_runtime_dir()),
-        tmp: None,
-        grammar_build: Dirs::none().grammar_build,
+        ..Dirs::none()
     };
     ed.init_scripting(&mut Default::default());
     let bid = ed.focused_buffer_id();

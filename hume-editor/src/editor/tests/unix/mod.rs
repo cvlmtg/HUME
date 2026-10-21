@@ -193,8 +193,7 @@ impl ReloadFixture {
             config: Some(self.config_dir.clone()),
             data: Some(self.data_dir.clone()),
             runtime: Some(self.runtime_dir.clone()),
-            tmp: None,
-            grammar_build: Dirs::none().grammar_build,
+            ..Dirs::none()
         }
     }
 
@@ -473,8 +472,7 @@ impl StagedGrammarFixture {
             config: Some(self.config_dir.clone()),
             data: Some(self.data_dir.clone()),
             runtime: Some(repo_runtime_dir()),
-            tmp: None,
-            grammar_build: Dirs::none().grammar_build,
+            ..Dirs::none()
         }
     }
 

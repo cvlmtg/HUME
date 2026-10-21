@@ -40,7 +40,7 @@ pub struct Dirs {
     pub runtime: Option<PathBuf>,
     /// Where `:tutor` writes its editable copy of the lesson.
     pub tmp: Option<PathBuf>,
-    /// The grammar compiler `hume-grammar-build`; see `grammar_build_with`
+    /// The grammar compiler `hume-grammar-build`; see [`GrammarBuild::beside`]
     /// for where it is looked for.
     pub grammar_build: GrammarBuild,
 }
@@ -49,11 +49,12 @@ pub struct Dirs {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum GrammarBuild {
     Found(PathBuf),
-    /// `searched` is empty when the executable's own path is unknown, since
-    /// every candidate is relative to it.
     Missing {
         searched: Vec<PathBuf>,
     },
+    /// The executable's own path is unknown, and every candidate is
+    /// relative to it.
+    ExeUnknown,
 }
 
 impl Dirs {
@@ -87,7 +88,9 @@ impl Dirs {
         Self {
             config: config_dir_with(&env).map(pin),
             data: data_dir_with(&env).map(pin),
-            grammar_build: grammar_build_with(exe.as_deref()),
+            grammar_build: exe
+                .as_deref()
+                .map_or(GrammarBuild::ExeUnknown, GrammarBuild::beside),
             runtime: runtime_dir_with(&env, exe, cwd.clone()).map(pin),
             tmp: Some(pin(tmp)),
         }
@@ -101,9 +104,7 @@ impl Dirs {
             data: None,
             runtime: None,
             tmp: None,
-            grammar_build: GrammarBuild::Missing {
-                searched: Vec::new(),
-            },
+            grammar_build: GrammarBuild::ExeUnknown,
         }
     }
 }
@@ -215,32 +216,32 @@ fn runtime_dir_with(
     None
 }
 
-/// Where the grammar compiler is, relative to the executable `exe`:
-///
-/// 1. `../libexec/hume/` relative to the binary: Unix / macOS installed
-///    layout, which keeps a helper only HUME runs off `PATH`.
-/// 2. The binary's own directory: the Windows archive layout, and a cargo
-///    build, which puts every workspace binary in one `target/<profile>/`.
-///
-/// The first candidate that exists wins.
-fn grammar_build_with(exe: Option<&Path>) -> GrammarBuild {
-    let Some(exe_dir) = exe.and_then(Path::parent) else {
-        return GrammarBuild::Missing {
-            searched: Vec::new(),
+impl GrammarBuild {
+    /// Where the grammar compiler is, relative to the executable `exe`:
+    ///
+    /// 1. `../libexec/hume/` relative to the binary: Unix / macOS installed
+    ///    layout, which keeps a helper only HUME runs off `PATH`.
+    /// 2. The binary's own directory: the Windows archive layout, and a cargo
+    ///    build, which puts every workspace binary in one `target/<profile>/`.
+    ///
+    /// The first candidate that exists wins.
+    pub fn beside(exe: &Path) -> Self {
+        let Some(exe_dir) = exe.parent() else {
+            return Self::ExeUnknown;
         };
-    };
-    let file = format!("hume-grammar-build{}", env::consts::EXE_SUFFIX);
+        let file = format!("hume-grammar-build{}", env::consts::EXE_SUFFIX);
 
-    let mut searched = Vec::new();
-    #[cfg(not(windows))]
-    if let Some(prefix) = exe_dir.parent() {
-        searched.push(prefix.join("libexec").join("hume").join(&file));
-    }
-    searched.push(exe_dir.join(file));
+        let mut searched = Vec::new();
+        #[cfg(not(windows))]
+        if let Some(prefix) = exe_dir.parent() {
+            searched.push(prefix.join("libexec").join("hume").join(&file));
+        }
+        searched.push(exe_dir.join(file));
 
-    match searched.iter().find(|tool| tool.exists()) {
-        Some(tool) => GrammarBuild::Found(tool.clone()),
-        None => GrammarBuild::Missing { searched },
+        match searched.iter().find(|tool| tool.exists()) {
+            Some(tool) => Self::Found(tool.clone()),
+            None => Self::Missing { searched },
+        }
     }
 }
 

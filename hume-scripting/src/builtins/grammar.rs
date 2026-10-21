@@ -15,6 +15,7 @@
 use std::path::Path;
 
 use hume_platform::dirs::GrammarBuild;
+use hume_platform::path::display_form;
 use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
@@ -32,7 +33,7 @@ use super::errors::generic_err;
 pub(crate) fn compile_grammar(ctx: &mut SteelCtx, src: String, out: String) -> SteelResult {
     let msg = match build(ctx, &src, &out) {
         Ok(()) => return Ok(SteelVal::Void),
-        Err(msg) => msg,
+        Err(msg) => format!("compile-grammar!: {msg}"),
     };
     if ctx.session == crate::context::EvalSession::Init {
         ctx.log(LogLevel::Warning, msg);
@@ -46,23 +47,24 @@ pub(crate) fn compile_grammar(ctx: &mut SteelCtx, src: String, out: String) -> S
 fn build(ctx: &mut SteelCtx, src: &str, out: &str) -> Result<(), String> {
     let tool = match &ctx.dirs.grammar_build {
         GrammarBuild::Found(tool) => tool.clone(),
-        GrammarBuild::Missing { searched } if searched.is_empty() => {
-            return Err("compile-grammar!: hume-grammar-build was not found: \
+        GrammarBuild::ExeUnknown => {
+            return Err("hume-grammar-build was not found: \
                  the location of the hume executable is unknown"
                 .to_string());
         }
         GrammarBuild::Missing { searched } => {
-            let paths: Vec<String> = searched.iter().map(|p| p.display().to_string()).collect();
+            let paths: Vec<String> = searched.iter().map(|p| display_form(p)).collect();
             return Err(format!(
-                "compile-grammar!: hume-grammar-build was not found; looked for {}",
+                "hume-grammar-build was not found; looked for {}",
                 paths.join(", ")
             ));
         }
     };
+    let program = display_form(&tool);
 
     ctx.log(
         LogLevel::Trace,
-        format!("compile-grammar!: `{} -o {out} {src}`", tool.display()),
+        format!("compile-grammar!: `{program} -o {out} {src}`"),
     );
 
     // The compiler inherits stdio, so this is a real terminal write, so open
@@ -73,19 +75,18 @@ fn build(ctx: &mut SteelCtx, src: &str, out: &str) -> Result<(), String> {
     {
         output
             .ensure_inline_output_screen()
-            .map_err(|e| format!("compile-grammar!: {e}"))?;
+            .map_err(|e| e.to_string())?;
     }
 
     let cwd = ctx.host.buffers().cwd();
-    let program = tool.display().to_string();
     match hume_platform::process::grammar_build(&tool, Path::new(src), Path::new(out), &cwd) {
         Ok(status) if status.success() => Ok(()),
         Ok(status) => Err(hume_platform::process::failure_message(
-            &format!("compile-grammar!: `{program}`"),
+            &format!("`{program}`"),
             Some(status),
             "",
         )),
-        Err(e) => Err(format!("compile-grammar!: {e}")),
+        Err(e) => Err(e.to_string()),
     }
 }
 

@@ -118,10 +118,10 @@ fn msvc_c_scanner_is_compiled_with_the_parser() {
         vec![
             [
                 "/nologo",
-                "/LD",
                 "/utf-8",
                 "/I",
                 "/g/src",
+                "/LD",
                 "/std:c11",
                 "/g/src/scanner.c",
                 "/g/src/parser.c",
@@ -161,10 +161,10 @@ fn msvc_cpp_scanner_is_an_object_linked_with_the_parser() {
             .to_vec(),
             [
                 "/nologo",
-                "/LD",
                 "/utf-8",
                 "/I",
                 "/g/src",
+                "/LD",
                 "/std:c11",
                 object,
                 "/g/src/parser.c",

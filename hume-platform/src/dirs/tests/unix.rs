@@ -52,7 +52,7 @@ fn grammar_build_prefers_the_installed_libexec_layout_over_the_exe_dir() {
     std::fs::create_dir_all(&libexec).unwrap();
     std::fs::write(libexec.join("hume-grammar-build"), "").unwrap();
 
-    let result = grammar_build_with(Some(&bin_dir.join("hume")));
+    let result = GrammarBuild::beside(&bin_dir.join("hume"));
     assert_eq!(
         result,
         GrammarBuild::Found(libexec.join("hume-grammar-build"))
@@ -63,7 +63,7 @@ fn grammar_build_prefers_the_installed_libexec_layout_over_the_exe_dir() {
 fn grammar_build_missing_lists_libexec_then_the_exe_dir() {
     let prefix = tempfile::tempdir().unwrap();
     let bin_dir = prefix.path().join("bin");
-    let result = grammar_build_with(Some(&bin_dir.join("hume")));
+    let result = GrammarBuild::beside(&bin_dir.join("hume"));
     assert_eq!(
         result,
         GrammarBuild::Missing {

@@ -9,7 +9,7 @@
 
 use std::path::PathBuf;
 
-use hume_platform::dirs::GrammarBuild;
+use hume_platform::dirs::{Dirs, GrammarBuild};
 
 // ── Directory state ──────────────────────────────────────────────────────────
 
@@ -35,13 +35,11 @@ pub(crate) struct ScriptDirs {
 }
 
 impl ScriptDirs {
-    /// Compute all derived directory state from the raw data/runtime dirs.
-    /// With no data or runtime dir it does no filesystem work at all.
-    pub(crate) fn new(
-        data_dir: Option<PathBuf>,
-        runtime_dir: Option<PathBuf>,
-        grammar_build: GrammarBuild,
-    ) -> Self {
+    /// Compute all derived directory state from `dirs`. With no data or
+    /// runtime dir it does no filesystem work at all.
+    pub(crate) fn new(dirs: &Dirs) -> Self {
+        let data_dir = dirs.data.clone();
+        let runtime_dir = dirs.runtime.clone();
         // Canonicalize data_dir for the display form; fall back to raw path
         // when the directory doesn't exist (e.g. sandboxed FS test environments).
         let canonical_data = data_dir
@@ -62,7 +60,7 @@ impl ScriptDirs {
             data_dir_display,
             runtime_dir_display,
             init_dir: None,
-            grammar_build,
+            grammar_build: dirs.grammar_build.clone(),
         }
     }
 }

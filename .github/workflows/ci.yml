@@ -145,7 +145,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: tests/fixtures/grammars
-          key: grammars-${{ runner.os }}-${{ hashFiles('scripts/fetch-test-grammars.sh','runtime/scheme/languages/*.scm','hume-grammar-build/**') }}
+          key: grammars-${{ runner.os }}-${{ hashFiles('scripts/fetch-test-grammars.sh','runtime/scheme/languages/*.scm','hume-grammar-build/**','!hume-grammar-build/tests/**','!hume-grammar-build/src/**/tests.rs','!hume-grammar-build/src/**/tests/**') }}
 
       - name: Build grammar fixtures
         if: steps.fixture-cache.outputs.cache-hit != 'true'

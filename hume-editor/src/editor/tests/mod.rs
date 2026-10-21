@@ -1147,20 +1147,13 @@ fn repo_runtime_dir() -> PathBuf {
         .join("runtime")
 }
 
-/// The grammar compiler cargo built beside this test binary's
-/// `target/<profile>/deps/`, as `Dirs` would find it beside `hume`. A
-/// workspace `cargo build` or `cargo test` builds it; a `-p hume-editor`
-/// run alone does not.
-fn workspace_grammar_build() -> PathBuf {
+/// The grammar compiler `Dirs` finds beside the `hume` that cargo builds in
+/// this test binary's `target/<profile>/`. A workspace `cargo build` or
+/// `cargo test` builds it; a `-p hume-editor` run alone does not.
+fn workspace_grammar_build() -> GrammarBuild {
     let test_exe = std::env::current_exe().unwrap();
-    test_exe
-        .parent()
-        .and_then(std::path::Path::parent)
-        .unwrap()
-        .join(format!(
-            "hume-grammar-build{}",
-            std::env::consts::EXE_SUFFIX
-        ))
+    let profile_dir = test_exe.parent().and_then(std::path::Path::parent).unwrap();
+    GrammarBuild::beside(&profile_dir.join("hume"))
 }
 
 /// A session whose only directory is the repo's real `runtime/`, enough for
@@ -1211,7 +1204,7 @@ fn load_with_init_in_runtime(
         data: Some(data_dir.join("hume")),
         runtime: Some(runtime_dir.to_path_buf()),
         tmp: None,
-        grammar_build: GrammarBuild::Found(workspace_grammar_build()),
+        grammar_build: workspace_grammar_build(),
     };
     ed.init_scripting(&mut Default::default());
     // `config_tmp` is deleted on return, so a later `:reload-config` has to

@@ -23,26 +23,16 @@ pub(crate) fn steps(
 }
 
 fn gnu(sources: &Sources, work: &Path, library: &Path) -> Vec<Vec<OsString>> {
+    let common: [OsString; 3] = ["-fno-exceptions".into(), "-I".into(), (&sources.dir).into()];
     let mut steps = Vec::new();
-    let mut link: Vec<OsString> = vec![
-        "-shared".into(),
-        "-fno-exceptions".into(),
-        "-I".into(),
-        (&sources.dir).into(),
-        "-o".into(),
-        library.into(),
-    ];
+    let mut link: Vec<OsString> = vec!["-shared".into()];
+    link.extend(common.clone());
+    link.extend(["-o".into(), library.into()]);
     if let Some(Scanner::Cpp(scanner)) = &sources.scanner {
         let object = work.join("scanner.o");
-        steps.push(vec![
-            "-fno-exceptions".into(),
-            "-I".into(),
-            (&sources.dir).into(),
-            "-c".into(),
-            scanner.into(),
-            "-o".into(),
-            (&object).into(),
-        ]);
+        let mut compile = common.to_vec();
+        compile.extend(["-c".into(), scanner.into(), "-o".into(), (&object).into()]);
+        steps.push(compile);
         // An object listed after `-xc` would be read as C source.
         link.push(object.into());
     }
@@ -61,29 +51,23 @@ fn gnu(sources: &Sources, work: &Path, library: &Path) -> Vec<Vec<OsString>> {
 /// `cl` writes each object, and the import library and export file beside
 /// the DLL, into the directory it runs in, which is `work`.
 fn msvc(sources: &Sources, work: &Path, library: &Path) -> Vec<Vec<OsString>> {
-    let mut steps = Vec::new();
-    let mut link: Vec<OsString> = vec![
+    let common: [OsString; 4] = [
         "/nologo".into(),
-        "/LD".into(),
         "/utf-8".into(),
         "/I".into(),
         (&sources.dir).into(),
-        "/std:c11".into(),
     ];
+    let mut steps = Vec::new();
+    let mut link = common.to_vec();
+    link.extend(["/LD".into(), "/std:c11".into()]);
     match &sources.scanner {
         Some(Scanner::Cpp(scanner)) => {
             let object = work.join("scanner.obj");
             let mut fo = OsString::from("/Fo");
             fo.push(&object);
-            steps.push(vec![
-                "/nologo".into(),
-                "/utf-8".into(),
-                "/I".into(),
-                (&sources.dir).into(),
-                "/c".into(),
-                scanner.into(),
-                fo,
-            ]);
+            let mut compile = common.to_vec();
+            compile.extend(["/c".into(), scanner.into(), fo]);
+            steps.push(compile);
             link.push(object.into());
         }
         Some(Scanner::C(scanner)) => link.push(scanner.into()),

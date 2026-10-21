@@ -196,14 +196,11 @@ impl ScriptingHost {
     /// Create a new scripting host with the Steel standard library and all HUME
     /// builtins loaded.
     ///
-    /// `dirs` supplies the data and runtime directories builtins expose, so no
-    /// builtin reads environment variables on a call.
+    /// `dirs` supplies the data and runtime directories builtins expose, and
+    /// the grammar compiler, so no builtin reads environment variables on a
+    /// call.
     pub fn new(dirs: &hume_platform::dirs::Dirs) -> Self {
-        let dirs = builtins::dirs::ScriptDirs::new(
-            dirs.data.clone(),
-            dirs.runtime.clone(),
-            dirs.grammar_build.clone(),
-        );
+        let dirs = builtins::dirs::ScriptDirs::new(dirs);
         let mut steel = Engine::new();
         builtins::register_all(&mut steel);
         Self {

@@ -133,15 +133,14 @@ fn grammar_build_is_found_beside_the_exe() {
     let bin = tempfile::tempdir().unwrap();
     let tool = bin.path().join(grammar_build_file());
     std::fs::write(&tool, "").unwrap();
-    let result = grammar_build_with(Some(&bin.path().join("hume")));
+    let result = GrammarBuild::beside(&bin.path().join("hume"));
     assert_eq!(result, GrammarBuild::Found(tool));
 }
 
 #[test]
 fn grammar_build_missing_names_the_exe_dir_last() {
     let bin = tempfile::tempdir().unwrap();
-    let GrammarBuild::Missing { searched } = grammar_build_with(Some(&bin.path().join("hume")))
-    else {
+    let GrammarBuild::Missing { searched } = GrammarBuild::beside(&bin.path().join("hume")) else {
         panic!("no candidate exists");
     };
     assert_eq!(
@@ -151,13 +150,9 @@ fn grammar_build_missing_names_the_exe_dir_last() {
 }
 
 #[test]
-fn grammar_build_without_an_exe_searches_nowhere() {
-    assert_eq!(
-        grammar_build_with(None),
-        GrammarBuild::Missing {
-            searched: Vec::new()
-        }
-    );
+fn grammar_build_without_an_exe_is_exe_unknown() {
+    let dirs = Dirs::resolve(|_| None, None, None, PathBuf::from("scratch"));
+    assert_eq!(dirs.grammar_build, GrammarBuild::ExeUnknown);
 }
 
 #[cfg(unix)]

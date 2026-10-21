@@ -94,7 +94,7 @@ impl SteelCtxTestHarness {
             registries: ScriptingRegistries::default(),
             pending_messages: Vec::new(),
             effects: Vec::new(),
-            dirs: ScriptDirs::new(None, None, hume_platform::dirs::Dirs::none().grammar_build),
+            dirs: ScriptDirs::new(&hume_platform::dirs::Dirs::none()),
             interrupt_flag: Arc::new(AtomicBool::new(false)),
         }
     }
