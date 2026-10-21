@@ -5,7 +5,6 @@
 use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
 
-use super::super::completion::SHELL_SOURCE;
 use super::super::error::CommandError;
 use super::super::minibuf::history::{HistoryDir, HistoryKind};
 use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent, PromptCompletion};
@@ -13,6 +12,10 @@ use super::super::replay::WaitingInput;
 use super::super::{Editor, EditorState, commands};
 use super::paste::PastedText;
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, PasteHandler, Removal};
+
+/// The completion source `runtime/scheme/shells.scm` registers for the
+/// `|` line.
+const SHELL_SOURCE: &str = "shell";
 
 pub(in crate::editor) struct ShellPromptLayer {
     minibuf: MiniBuffer,

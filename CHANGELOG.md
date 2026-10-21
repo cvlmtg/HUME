@@ -26,7 +26,7 @@
 ### Editing
 - `|` pipes each selection through a shell command in the background, `Ctrl-c` stops it, and `Ctrl-|` in Insert mode inserts a command's output at each cursor.
 - New `shell` option sets the shell that `|` runs commands with.
-- `Tab` on the `|` prompt completes program names and file paths.
+- `Tab` on the `|` prompt completes program names and file paths, quoted for the shell the `shell` option runs.
 - `Ctrl-r` in Insert mode and on the command line inserts a register or the current file's path.
 - `m i x` and `m a x` select inside or around a tag pair, and `g x` and `g X` jump to the next or previous one, with or without a markup grammar.
 - `Ctrl-a` and `Ctrl-s` add to or subtract from the number, date or time at each selection, and `G A` and `G S` count up or down across selections.
@@ -49,6 +49,9 @@
 - Key bindings can apply to some buffers only: bind them into a named keymap with `#:keymap`, then turn it on in a buffer with `attach-keymap!`.
 - `buffer-display-path` takes `#:relative #t` for the path relative to the working directory.
 - New `register-name?` tells whether a string names a register.
+- New `register-shell-dialect!` teaches `Tab` on the `|` prompt another shell's quoting.
+- `completion-emit!` takes `#:span` and `#:prefix` for a `'minibuf` source.
+- New `path-entries`, `path-programs`, `home-dir` and `string-common-prefix`.
 - `load-plugin!` takes `#:ref` to pin a plugin to a tag, branch or commit, which PLUM installs and updates to. `declared-plugin-ref` reads it back.
 
 ### Language servers
@@ -56,6 +59,7 @@
 - New `lsp/format-document` formats the buffer from a save hook. The manual's earlier format-on-save recipe never formatted the saved file: replace it with the new one.
 
 ### Fixes
+- A `'minibuf` completion source gets the cursor counted in characters, not bytes.
 - On Windows, cancelling a pipe, closing a picker or stopping a language server also stops the programs it started.
 - Git run by a language server fails at once on a private repository or expired credentials, instead of waiting for a password nobody can type.
 - A language server's log keeps going after a line that is not valid UTF-8.

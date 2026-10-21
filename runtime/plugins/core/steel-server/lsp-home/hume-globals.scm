@@ -7,7 +7,7 @@
 ;;; `free identifier` errors while editing init.scm or a plugin file.
 ;;;
 ;;; Regenerate after any change to HUME's Steel builtins, bootstrap.scm, or
-;;; runtime/scheme/{prelude,languages,grammars}.scm:
+;;; runtime/scheme/{prelude,shells,languages,grammars}.scm:
 ;;;
 ;;;   HUME_WRITE_STEEL_GLOBALS=1 cargo test -p hume-editor hume_globals_scm_matches_generated_host_names
 ;;;
@@ -301,6 +301,7 @@
 (#%register-global "register-lsp-notification-hook!")
 (#%register-global "register-lsp-server!")
 (#%register-global "register-name?")
+(#%register-global "register-shell-dialect!")
 (#%register-global "register-sign-source!")
 (#%register-global "remove-primary-selection")
 (#%register-global "repeat-find-backward")
@@ -349,6 +350,23 @@
 (#%register-global "set-signs!")
 (#%register-global "set-statusline-text!")
 (#%register-global "set-virtual-lines!")
+(#%register-global "shell-word")
+(#%register-global "shell-word-command?")
+(#%register-global "shell-word-dir")
+(#%register-global "shell-word-end")
+(#%register-global "shell-word-open")
+(#%register-global "shell-word-prefix")
+(#%register-global "shell-word-start")
+(#%register-global "shell-word-typed")
+(#%register-global "shell-word?")
+(#%register-global "shell/cmd-parse")
+(#%register-global "shell/cmd-write")
+(#%register-global "shell/fish-parse")
+(#%register-global "shell/fish-write")
+(#%register-global "shell/posix-parse")
+(#%register-global "shell/posix-write")
+(#%register-global "shell/pwsh-parse")
+(#%register-global "shell/pwsh-write")
 (#%register-global "show-drawer-list!")
 (#%register-global "show-menu!")
 (#%register-global "show-popup!")
@@ -360,6 +378,7 @@
 (#%register-global "split-selection-on-newlines")
 (#%register-global "split-words")
 (#%register-global "stems-with-suffix")
+(#%register-global "string-common-prefix")
 (#%register-global "surround-add")
 (#%register-global "surround-angle")
 (#%register-global "surround-backtick")

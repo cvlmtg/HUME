@@ -260,12 +260,18 @@ impl ScriptingHost {
 /// - `hm.`-prefixed: `steel/meta`, aliased by `bootstrap.scm` for HUME's glue.
 /// - `#`-prefixed: steel-core's internal markers, including the
 ///   nondeterministically numbered `###ctx-funcN` builtin wrappers.
+/// - `struct:NAME` and `___NAME-options___`: the type descriptor and the
+///   options hash steel-core's `struct` macro binds beside every struct.
+///   A plugin builds and reads a struct through its constructor, predicate
+///   and accessors.
 #[cfg(any(test, feature = "test-util"))]
 fn is_internal_name(name: &str) -> bool {
     name.starts_with('%')
         || name.starts_with('#')
         || name.starts_with("hm.")
         || (name.starts_with('*') && name.ends_with('*'))
+        || name.starts_with("struct:")
+        || (name.starts_with("___") && name.ends_with("-options___"))
 }
 
 impl ScriptingHost {

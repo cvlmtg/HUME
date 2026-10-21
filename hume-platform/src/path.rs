@@ -102,54 +102,60 @@ fn expand_env_vars(
     let mut remaining = s;
     while let Some(pos) = remaining.find('$') {
         out.push_str(&remaining[..pos]);
-        let after = &remaining[pos + 1..];
-        remaining = &after[expand_dollar(after, env_lookup, out)..];
-    }
-    out.push_str(remaining);
-}
+        remaining = &remaining[pos + 1..]; // slice starts just after `$`
 
-/// Expands the `$NAME` or `${NAME}` reference that `after` (the text right
-/// after a `$`) starts with onto `out`, and returns how many bytes of
-/// `after` it read. An unknown variable, and a `$` that starts no
-/// reference, are pushed literally.
-pub(crate) fn expand_dollar(
-    after: &str,
-    env_lookup: &impl Fn(&str) -> Result<String, std::env::VarError>,
-    out: &mut String,
-) -> usize {
-    if let Some(after_brace) = after.strip_prefix('{') {
-        let nlen = var_name_len(after_brace);
-        if nlen == 0 {
-            out.push_str("${");
-            return 1;
+        if remaining.is_empty() {
+            out.push('$');
+            break;
         }
-        let name = &after_brace[..nlen];
-        if !after_brace[nlen..].starts_with('}') {
-            // Unclosed `${...`: literal.
-            out.push_str("${");
-            out.push_str(name);
-            return 1 + nlen;
-        }
-        match env_lookup(name) {
-            Ok(val) => out.push_str(&val),
-            Err(_) => {
+
+        if remaining.starts_with('{') {
+            // `${NAME}` form
+            let after_brace = &remaining[1..];
+            let nlen = var_name_len(after_brace);
+            if nlen == 0 {
+                out.push_str("${");
+                remaining = after_brace;
+                continue;
+            }
+            let name = &after_brace[..nlen];
+            let after_name = &after_brace[nlen..];
+            if let Some(after_close) = after_name.strip_prefix('}') {
+                match env_lookup(name) {
+                    Ok(val) => out.push_str(&val),
+                    Err(_) => {
+                        out.push_str("${");
+                        out.push_str(name);
+                        out.push('}');
+                    }
+                }
+                remaining = after_close;
+            } else {
+                // Unclosed `${...`: literal.
                 out.push_str("${");
                 out.push_str(name);
-                out.push('}');
+                remaining = after_name;
             }
+        } else {
+            // `$NAME` form
+            let nlen = var_name_len(remaining);
+            if nlen == 0 {
+                out.push('$');
+                // `remaining` already points past the `$`; keep scanning.
+                continue;
+            }
+            let name = &remaining[..nlen];
+            match env_lookup(name) {
+                Ok(val) => out.push_str(&val),
+                Err(_) => {
+                    out.push('$');
+                    out.push_str(name);
+                }
+            }
+            remaining = &remaining[nlen..];
         }
-        return 1 + nlen + 1;
     }
-    let nlen = var_name_len(after);
-    let name = &after[..nlen];
-    match (nlen > 0).then(|| env_lookup(name).ok()).flatten() {
-        Some(val) => out.push_str(&val),
-        None => {
-            out.push('$');
-            out.push_str(name);
-        }
-    }
-    nlen
+    out.push_str(remaining);
 }
 
 /// Scan `s` for env-var references (Windows `%VAR%` syntax) and append the

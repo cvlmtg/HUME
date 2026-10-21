@@ -374,8 +374,9 @@ pub(crate) fn register_all(steel: &mut Engine) {
         plain "json-list" json::json_list(handle: SteelVal);
         plain "json-array?" json::is_json_array(val: SteelVal);
         plain "json-object?" json::is_json_object(val: SteelVal);
-        // Word tokenization: context-free text transform, no host/buffer needed.
+        // Context-free text transforms: no host/buffer needed.
         plain "split-words" words::split_words(line: SteelVal, word_chars: SteelVal);
+        plain "string-common-prefix" words::string_common_prefix(strings: SteelVal);
 
         // Multi-buffer read-only builtins
         cmd "focused-pane" buffers::focused_pane();

@@ -4,8 +4,8 @@
 
 use super::super::item::CompletionItem;
 use super::super::registry::{
-    BufferSourceEntry, BufferSourceId, CUT_ANYWHERE, MinibufBody, MinibufSourceEntry,
-    MinibufSourceId, SourceRegistry,
+    BufferSourceEntry, BufferSourceId, MinibufBody, MinibufSourceEntry, MinibufSourceId,
+    SourceRegistry,
 };
 use super::*;
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
@@ -54,7 +54,6 @@ fn minibuf_registry(sources: &[(&str, i64)]) -> SourceRegistry {
             match_kind: MatchKind::Fuzzy,
             priority: *priority,
             body: MinibufBody::Steel(SteelVal::Void),
-            prefix_cut: CUT_ANYWHERE,
         });
     }
     reg
@@ -751,7 +750,7 @@ fn a_later_invocation_starts_from_its_own_snapshot() {
 
 #[test]
 fn step_selection_on_an_empty_ranking_does_not_move() {
-    let mut session = MinibufSession::open(String::new(), 0, CUT_ANYWHERE);
+    let mut session = MinibufSession::open(String::new(), 0);
     assert!(!session.step_selection(true));
     assert!(!session.step_selection(false));
     assert_eq!(session.selected(), None);
@@ -760,7 +759,7 @@ fn step_selection_on_an_empty_ranking_does_not_move() {
 #[test]
 fn step_selection_wraps_at_either_end() {
     let reg = minibuf_registry(&[("s", 0)]);
-    let mut session = MinibufSession::open("w".into(), 1, CUT_ANYWHERE);
+    let mut session = MinibufSession::open("w".into(), 1);
     let id = session.invoke(minibuf_id_of(&reg, "s"), Invocation::minibuf(0..1));
     assert!(session.contribute(id, items(&["wa", "wb"]), false, MinibufWord::default()));
     session.rank(&reg);

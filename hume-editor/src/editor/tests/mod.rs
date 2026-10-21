@@ -1666,6 +1666,7 @@ mod scripting_host_globals;
 mod search;
 mod select_all;
 mod settings_effects;
+mod shells;
 mod shift_punctuation;
 mod smart_indent;
 mod statusline_steel;

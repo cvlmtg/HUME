@@ -10,7 +10,7 @@
 //! - `orchestrate.rs`: the one *driver*: triggers, invokes sources, lands
 //!   answers, reacts to edits, applies the minibuffer's eager policy.
 //! - `item.rs`: the item type both targets share; `simple.rs`/`path.rs`/
-//!   `set.rs`/`shell.rs`: the native minibuffer sources.
+//!   `set.rs`: the native minibuffer sources.
 
 use std::path::Path;
 
@@ -24,21 +24,19 @@ mod path;
 mod registry;
 mod session;
 mod set;
-mod shell;
 mod simple;
 
 pub(in crate::editor) use item::{CompletionItem, Documentation};
 pub(in crate::editor) use orchestrate::Trigger;
 pub(in crate::editor) use path::{PATH_DIRS_ONLY_SOURCE, PATH_SOURCE};
 pub(in crate::editor) use registry::{
-    BufferSourceEntry, BufferSourceId, CUT_ANYWHERE, MinibufBody, MinibufSourceEntry,
-    RegisterOutcome, SourceRegistry,
+    BufferSourceEntry, BufferSourceId, MinibufBody, MinibufSourceEntry, RegisterOutcome,
+    SourceRegistry,
 };
 pub(in crate::editor) use session::{
     BufferSession, ItemKey, MatchKind, MinibufSession, MinibufWord,
 };
 pub(in crate::editor) use set::SET_SOURCE;
-pub(in crate::editor) use shell::SHELL_SOURCE;
 pub(in crate::editor) use simple::{BUFFER_NAME_SOURCE, COMMAND_SOURCE, THEME_SOURCE};
 
 // ── Context ──────────────────────────────────────────────────────────────────

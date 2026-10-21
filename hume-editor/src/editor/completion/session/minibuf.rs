@@ -9,7 +9,7 @@
 use std::borrow::Cow;
 use std::ops::Range;
 
-use unicode_segmentation::UnicodeSegmentation;
+use hume_rope::grapheme::common_str_prefix;
 
 use super::super::item::CompletionItem;
 use super::super::registry::{MinibufSourceId, SourceRegistry};
@@ -73,37 +73,17 @@ pub(in crate::editor) struct MinibufSession {
     /// last [`Self::rank`]. Until then nothing is highlighted and Tab
     /// proposes the candidates' common prefix instead of a candidate.
     picked: bool,
-    /// The invoked source's
-    /// [`prefix_cut`](super::super::registry::MinibufSourceEntry::prefix_cut).
-    prefix_cut: fn(&str) -> &str,
     core: SlotSet<MinibufSourceId, MinibufSpan>,
 }
 
-/// The longest run of whole grapheme clusters `a` and `b` start with.
-fn common_prefix<'a>(a: &'a str, b: &str) -> &'a str {
-    let len = a
-        .grapheme_indices(true)
-        .zip(b.graphemes(true))
-        .take_while(|((_, x), y)| x == y)
-        .last()
-        .map_or(0, |((i, x), _)| i + x.len());
-    &a[..len]
-}
-
 impl MinibufSession {
-    /// A session over a minibuffer line's `input`, cursor at byte `cursor`,
-    /// for a source whose common prefixes `prefix_cut` cuts.
-    pub(in crate::editor) fn open(
-        input: String,
-        cursor: usize,
-        prefix_cut: fn(&str) -> &str,
-    ) -> Self {
+    /// A session over a minibuffer line's `input`, cursor at byte `cursor`.
+    pub(in crate::editor) fn open(input: String, cursor: usize) -> Self {
         Self {
             input,
             cursor,
             menu_anchor: None,
             picked: false,
-            prefix_cut,
             core: SlotSet::new(),
         }
     }
@@ -169,7 +149,6 @@ impl MinibufSession {
             cursor,
             menu_anchor,
             picked,
-            prefix_cut: _,
             core,
         } = self;
         *picked = false;
@@ -230,7 +209,7 @@ impl MinibufSession {
 
     /// The edit Tab applies: the picked candidate over its span, or with
     /// nothing picked, the prefix the answer named over the span, else the
-    /// candidates' common prefix, cut by the source's `prefix_cut`. `None` when there is nothing to apply,
+    /// candidates' common prefix. `None` when there is nothing to apply,
     /// including a common prefix that does not extend what is already typed
     /// (a fuzzy match can share less than the typed text). The typed text
     /// is the whole token, so with the cursor mid-token the prefix rarely
@@ -245,14 +224,12 @@ impl MinibufSession {
         if let Some(prefix) = &inv.span.prefix {
             return Some((span, Cow::Borrowed(prefix)));
         }
-        let prefix = (self.prefix_cut)(
-            (1..self.core.len())
-                .filter_map(|i| self.core.selected_item(i))
-                .fold(first.insert_text(), |p, item| {
-                    common_prefix(p, item.insert_text())
-                }),
-        );
         let typed = &self.input[span.clone()];
+        let prefix = (1..self.core.len())
+            .filter_map(|i| self.core.selected_item(i))
+            .fold(first.insert_text(), |p, item| {
+                common_str_prefix(p, item.insert_text())
+            });
         let extends = prefix.len() > typed.len() && super::prefix_matches(prefix, typed, false);
         extends.then_some((span, Cow::Borrowed(prefix)))
     }

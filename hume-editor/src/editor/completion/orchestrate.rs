@@ -287,11 +287,7 @@ impl EditorState {
             );
             return;
         };
-        let mut session = MinibufSession::open(
-            input.clone(),
-            cursor,
-            self.config.completion_sources.minibuf_get(id).prefix_cut,
-        );
+        let mut session = MinibufSession::open(input.clone(), cursor);
         let ctx = CompletionCtx {
             registry: &self.config.registry,
             buffers: &self.buffers,

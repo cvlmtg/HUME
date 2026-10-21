@@ -17,7 +17,6 @@ fn steel_minibuf_entry(name: &str) -> MinibufSourceEntry {
         match_kind: MatchKind::Fuzzy,
         priority: 0,
         body: MinibufBody::Steel(SteelVal::Void),
-        prefix_cut: CUT_ANYWHERE,
     }
 }
 

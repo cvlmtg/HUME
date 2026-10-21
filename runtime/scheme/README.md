@@ -1,7 +1,7 @@
 # `runtime/scheme/`
 
-Scheme evaluated at editor startup, before any plugin or `init.scm` runs. Two hand-written
-files (`prelude.scm`, `grammars.scm`), one pin (`helix-pin.scm`), and the language data
+Scheme evaluated at editor startup, before any plugin or `init.scm` runs. Three hand-written
+files (`prelude.scm`, `shells.scm`, `grammars.scm`), one pin (`helix-pin.scm`), and the language data
 generated from it by the scripts in `../../scripts/` (see that directory's `README.md` for the
 regeneration run order, not repeated here). The LSP server catalogs live with their reader in
 `../plugins/core/lsp-install/`.
@@ -9,6 +9,7 @@ regeneration run order, not repeated here). The LSP server catalogs live with th
 | File | What | Loaded |
 |---|---|---|
 | `prelude.scm` | hand-written: `syntax-rules` sugar over the raw builtins, and the `insert-register` command with its default keys | startup, see below |
+| `shells.scm` | hand-written: the shell dialects and the `\|` line's completion source | startup, see below |
 | `languages.scm` | generated: language detection data | startup, see below |
 | `languages/<name>.scm` | generated: one language's data file | when the language is first used or its grammar is attached |
 | `grammars.scm` | hand-written: registers already-compiled grammars | startup, see below |
@@ -21,10 +22,11 @@ regeneration run order, not repeated here). The LSP server catalogs live with th
 1. `builtins/bootstrap.scm`: embedded in `hume-scripting` via `include_str!`, not part of
   this directory; defines `load-plugin!`/`declare-plugin!` and the inline-activation machinery.
 2. `prelude.scm`
-3. `languages.scm`
-4. `grammars.scm`: reads the data file of each language whose grammar is installed, and no other.
-5. the user's `init.scm`
-6. plugins named by `load-plugin!`/`declare-plugin!` in `init.scm`.
+3. `shells.scm`
+4. `languages.scm`
+5. `grammars.scm`: reads the data file of each language whose grammar is installed, and no other.
+6. the user's `init.scm`
+7. plugins named by `load-plugin!`/`declare-plugin!` in `init.scm`.
 
 Each file is read via `host.runtime_dir()`; a missing runtime directory or a missing file is a
 silent no-op, not an error. Only a file that exists but fails to parse is reported.
@@ -34,6 +36,66 @@ The files in `languages/` are never evaluated. They are parsed as data by one re
 buffer is first assigned a language or the language's grammar is attached, and the
 `bundled-language-grammar` and `bundled-grammar-languages` functions are built on it, so a plugin
 reads the files through those functions rather than opening them itself.
+
+## `shells.scm`
+
+Tab on the `|` line completes by the rules of the shell the `shell` option runs. Those rules
+live here so a config can add a dialect for any shell; the contract `register-shell-dialect!`
+takes is documented for users in `user-manual/docs/writing-plugins.md` ("Shell dialects").
+
+A word has two forms. Its *display* is the text on the line (`"my dir/a b"`, `my\ dir/a\ b`);
+its *value* is what the shell reads for it (`my dir/a b`). Listing, prefix matching and the
+shared prefix of several names work on values. A dialect converts between the two, once each
+way: `parse` reads the line into a `shell-word`, `write` puts a value back on the line. Nothing
+else reads shell syntax, the editor included.
+
+The file holds, in order:
+
+- **The word record** `shell-word`: `start` and `end` (the span, in characters), `command?`,
+  `typed` (display: the word up to its last directory, plus a quote that opens right after it),
+  `dir` (the value of `typed`), `open` (the quote open at the end of `typed`, or `#f`) and
+  `prefix` (the value from the end of `typed` to the cursor). `typed` goes back on the line as
+  the user wrote it, so `~/`, `$HOME/` and an escaped `\~/` survive completion.
+- **The registry**: `register-shell-dialect!` and the list it fills. A dialect is found by the
+  file name of the `shell` program, its directory, case and `.exe` aside. The dialect registered
+  last wins, so `init.scm` and plugins, which run after this file, replace a shipped one by
+  registering the same name or claiming the same program.
+- **Shared scanning**: `%shell-scan` walks the line once with a dialect's `%shell-rules` (its
+  escape character and the quotes it works inside, its quotes, operators, the operators and
+  keywords after which a program name follows, its directory separators, whether `~` names the
+  home directory) and one hook, `(read open c rest)`, which decodes the units only that shell
+  has (`$NAME`, `%NAME%`, PowerShell's doubled quotes, fish's `\n`) as `(value . chars-used)`,
+  or `#f` for a character that reads as itself. Each unit's value is kept only when the unit ends
+  at or before the cursor: `my\‸ dir` completes `my`. A unit whose value ends with a separator
+  ends the directory part, so an escaped `/` or a variable ending in one counts, and a separator
+  inside quotes does too. Offsets are chars, the unit Steel indexes strings by and the one the
+  completion source contract uses.
+- **The dialects**: POSIX `sh` (also `bash`, `zsh`, `dash`, `ksh`), fish, PowerShell and `cmd`,
+  each a `%shell-rules` value, its `read` hook, and its writer. `shell/posix-parse` and
+  `shell/posix-write` (and the same for `fish`, `pwsh`, `cmd`) are public so a new dialect can
+  reuse them. `PATHEXT` is read once, at load.
+- **The `|` completion source** `shell`, registered `'delegated`: it parses the word, checks
+  the record (a malformed one raises, naming the dialect), lists programs for a word in command
+  position whose `dir` is empty (so `"gr` lists programs too) and directory entries otherwise
+  (`path-programs`, `path-entries`, matched on values), writes each name finished, and with
+  several names writes
+  their shared value prefix unfinished as `#:prefix`, so the first `Tab` inserts it. With no
+  dialect for the shell it logs a warning and answers nothing, which closes the menu: completing
+  by another shell's rules could insert text this shell reads differently.
+
+### The dialects' rules
+
+| Dialect | Reads | Writes |
+|---|---|---|
+| POSIX | `\` escapes outside single quotes; inside double quotes only before `` $ ` " \ `` and a newline. `~/` at the word start, `$NAME`, `${NAME}`. Words end at `\| ; & ( ) < >`; a program follows `\| ; & (` | a backslash before each special character, a newline as `'\n'`; inside an open quote, only what that quote needs (`'\''` in single quotes) |
+| fish | `\` escapes outside quotes (`\n`, `\t`, `\r` are control characters, any other character reads as itself); in single quotes only `\'` and `\\`, in double quotes `\"`, `\$`, `\\`. `~/`, `$NAME`. A program also follows `and`, `or`, `not` | a backslash before each special character, braces included; `\n` and `\t` for a newline and a tab |
+| PowerShell | the backtick escapes outside single quotes (in double quotes `` `n `` and `` `t `` are control characters); `''` and `""` inside their quotes. `~` before a separator, `$env:NAME`, `${env:NAME}`, `$HOME`. Words also end at `{ } ,`, and a program follows `{`. `\` and `/` separate directories | a path that needs quoting in single quotes from the word start, `'` doubled; inside an open double quote, a backtick before `` ` " $ `` |
+| `cmd` | `^` escapes outside quotes, `"` quotes, `%NAME%` anywhere. `\` and `/` separate directories, so `"C:\Program Files\"` ends its quote | a path that needs quoting in double quotes from the word start |
+
+A finished name closes the quote the word is in, a directory's too, so a completed word stands
+on its own; the next `Tab` parses it again, and its `typed` part keeps that quote open for the
+name after it. An unfinished shared prefix leaves its quote open, since the user keeps typing
+into it. PowerShell (on Windows) and `cmd` end a directory with `\`.
 
 ## `languages.scm`
 

@@ -17,7 +17,7 @@ fn lsp_home_dir() -> std::path::PathBuf {
 
 /// Builds a `ScriptingHost` + `Editor` in the state `Editor::init_scripting`
 /// reaches just before evaluating the user's `init.scm`: native command names
-/// registered, then `prelude.scm`, `languages.scm` and `grammars.scm`
+/// registered, then `prelude.scm`, `shells.scm`, `languages.scm` and `grammars.scm`
 /// evaluated in production order. With no user config, `host_global_names()`
 /// is HUME's shipped surface. Also returns the command-registry names, for
 /// callers that evaluate more `.scm` with production's `builtin_names`.
@@ -45,7 +45,7 @@ fn host_and_editor_after_runtime_layers() -> (
     let builtin_names: hume_scripting::command_name::CommandNameSet =
         ed.state.config.registry.names().collect();
 
-    for rel in ["prelude.scm", "languages.scm", "grammars.scm"] {
+    for rel in ["prelude.scm", "shells.scm", "languages.scm", "grammars.scm"] {
         let path = runtime_root.join("scheme").join(rel);
         let effects = {
             let mut ih = init_host!(ed);
@@ -85,7 +85,7 @@ fn render_hume_globals_scm(names: &[String]) -> String {
 ;;; `free identifier` errors while editing init.scm or a plugin file.
 ;;;
 ;;; Regenerate after any change to HUME's Steel builtins, bootstrap.scm, or
-;;; runtime/scheme/{prelude,languages,grammars}.scm:
+;;; runtime/scheme/{prelude,shells,languages,grammars}.scm:
 ;;;
 ;;;   HUME_WRITE_STEEL_GLOBALS=1 cargo test -p hume-editor hume_globals_scm_matches_generated_host_names
 ;;;

@@ -570,7 +570,7 @@ To open the menu without `Ctrl-Space`, give the source trigger characters for a 
 (set-completion-triggers! "todo-markers" "markdown" '("@"))
 ```
 
-A source can also complete the argument of a `:` command. A `'minibuf` source is called with the whole command line and the cursor position. Here it answers asynchronously, once `git` has listed the branches. `#:complete` connects it to the command:
+A source can also complete the argument of a `:` command. A `'minibuf` source is called with the whole command line and the cursor position, counted in characters. Here it answers asynchronously, once `git` has listed the branches. `#:complete` connects it to the command:
 
 ```scheme
 (register-completion-source! "git-branches"
@@ -596,14 +596,43 @@ If the user keeps typing or closes the menu before `git` answers, the request is
 
 ### Source options
 
-- **`#:target`** (required): `'buffer` serves Insert mode and calls `(proc id pane prefix)`. Its token is the run of word characters before the cursor. `'minibuf` serves the `:` line and calls `(proc id input cursor)`, with `input` the whole command line. Its token is the whitespace-delimited argument the cursor is in. Either way, the token is what the items are matched against and what accepting one replaces.
+- **`#:target`** (required): `'buffer` serves Insert mode and calls `(proc id pane prefix)`. Its token is the run of word characters before the cursor. `'minibuf` serves the `:` and `|` lines and calls `(proc id input cursor)`, with `input` the whole line and `cursor` counted in characters. Its token is the whitespace-delimited argument the cursor is in, unless the answer names its own with `#:span`. Either way, the token is what the items are matched against and what accepting one replaces.
 - **`#:match`**: how items are scored against the token. `'fuzzy` (default) keeps items containing the typed characters in order, not necessarily adjacent. `'string` keeps only items that start with the token, all scored equally, so once something is typed, fuzzy matches from other sources rank above them. `'delegated` treats the answer as already filtered and keeps the source's own order.
 - **`#:priority`** (default `0`): breaks score ties between sources, higher first.
 - **`#:token-chars`** (`'buffer` sources only, default `""`): adds characters to the token on top of the buffer's `word-chars`. With `#:token-chars "-$"`, `foo-bar` is one token: it is what `prefix` holds and what accepting an item replaces, and typing `-` keeps the menu open. It cannot contain whitespace.
 - **`#:resolve #t`** (`'buffer` sources only, default `#f`): this source's items come from the buffer's language server, so highlighting one (for its documentation) or accepting one may send `completionItem/resolve` for it. Set it only for a source that forwards that server's items, never for one that builds its own items in a buffer with a server attached.
 - **Names**: `'buffer` and `'minibuf` sources have separate names. Registering `name` again under the same target replaces the earlier source; the same `name` under the other target is a second, independent source.
 - **`#:incomplete #t`** on `completion-emit!` asks for the source to be called again as the user keeps typing, instead of filtering the first answer. A server response marked incomplete does the same.
+- **`#:span (start . end)`** on `completion-emit!` (`'minibuf` sources registered with `#:match 'delegated` only): the part of the line the answer completes, in characters, in place of the argument the cursor is in. It must hold the cursor. Use it when a word can contain spaces, like a quoted shell word.
+- **`#:prefix`** on `completion-emit!` (`'minibuf` sources registered with `#:match 'delegated` only): what the first `Tab` inserts over the token when the answer has several items. Without it, `Tab` inserts what the items' insert texts all start with, when that extends what is typed. Use it when the insert texts have a syntax of their own, like quoted shell words, whose shared start is not something to put on the line. It cannot be empty; leave it out to propose nothing.
 - `completion-emit!` also takes a server's whole `textDocument/completion` response, as [`lsp-request!` or `lsp-request-all!`](lsp-api.md#language-servers) delivered it, in its `items` list; its items join the others. Any entry that is not a string, a hashmap with a `label`, or such a response is an error.
+
+## Shell dialects
+
+`Tab` on the `|` prompt finds, reads and writes the word under the cursor by the rules of the shell the `shell` option runs. HUME ships rules, called dialects, for `sh`, `bash`, `zsh`, `dash` and `ksh` (one POSIX dialect), `fish`, PowerShell and `cmd`. For another shell, register a dialect from `init.scm` or a plugin. A shell that reads words the way `sh` does can reuse the shipped procedures:
+
+```scheme
+(register-shell-dialect! "mksh"
+  #:programs '("mksh")
+  #:parse shell/posix-parse
+  #:write shell/posix-write)
+```
+
+A word has two forms: what is on the line, like `"my dir/no` or `my\ dir/no`, and what the shell reads for it, `my dir/no`. A dialect turns the first into the second with `#:parse`, and puts names back on the line with `#:write`. HUME finds and matches file names on what the shell reads, so a dialect only has to get the shell's quoting right.
+
+- **The name**: registering a name again replaces that dialect, a shipped one included.
+- **`#:programs`**: the shells the dialect is for, matched against the file name of the `shell` option's program, whatever its directory, letter case or `.exe`. When two dialects list a program, the one registered last is used.
+- **`#:program-extensions`** (default `'(".exe")`): on Windows, the file extensions that make a file a program, which is then offered without its extension. Elsewhere a program is a file anyone may run, and this is not used.
+- **`#:parse`**: `(parse input cursor)` reads the word around `cursor` in the line `input` and returns `(shell-word start end command? typed dir open prefix)`:
+  - `start`, `end`: where the word starts and ends in `input`, in characters. A completion replaces this part of the line, so it must hold `cursor`.
+  - `command?`: whether the shell reads the word as a program name.
+  - `typed`: the word as typed, from its start to just past its last directory separator before the cursor, together with a quote that opens right after it. `""` when there is none.
+  - `dir`: what the shell reads for `typed`, with `~` and variables expanded: the directory to list.
+  - `open`: the quote still open at the end of `typed`, or `#f`.
+  - `prefix`: what the shell reads from the end of `typed` up to the cursor: the start of the name.
+- **`#:write`**: `(write word name close?)` returns the text that replaces the word: usually `typed` as it is, then `name` written for the quote `open` names. `name` is a program or a directory entry, a directory's ending in `/`. With `close?` true the name is complete, and the result closes any quote it is in, also after a directory. With `close?` false the name is the start of several names and the user keeps typing, so a quote stays open.
+
+The shipped procedures are `shell/posix-parse` and `shell/posix-write`, and the same two for `fish`, `pwsh` and `cmd`.
 
 ## Custom pickers
 

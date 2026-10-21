@@ -241,14 +241,15 @@ Not LSP-specific (any plugin can populate these), but LSP diagnostics and inlay 
 
 ## Completion
 
-A plugin registers a completion *source*; the editor drives it. `Ctrl-Space` in Insert mode (the built-in `completion-trigger` command) asks every source registered for the buffer, a registered trigger character asks the source registered under its name, and the first `Tab` on a `:` command line asks the source that command declared. Each answer is ranked with every other source's, in one menu, against that source's own token; no source renders its own UI.
+A plugin registers a completion *source*; the editor drives it. `Ctrl-Space` in Insert mode (the built-in `completion-trigger` command) asks every source registered for the buffer, a registered trigger character asks the source registered under its name, the first `Tab` on a `:` command line asks the source that command declared, and the first `Tab` on the `|` prompt asks the source for the shell the `shell` option runs. Each answer is ranked with every other source's, in one menu, against that source's own token; no source renders its own UI.
 
 Full walkthrough (a static source, richer items, trigger characters, an asynchronous `:` command argument source) and every option `register-completion-source!` takes are in [Completion sources](writing-plugins.md#completion-sources). `#:complete` on `define-typed-command!` also accepts a built-in source such as `"path"`. The per-server variants of the two trigger calls are on the [Language Server API](lsp-api.md#language-servers) page. See [Hooks](writing-plugins.md#hooks) for the `on-trigger-char` and `on-completion-accept` lambda signatures.
 
 | Call | Effect |
 |------|--------|
 | `(register-completion-source! name proc #:target #:match #:priority #:resolve #:token-chars)` | Register `proc` as completion source `name` (see [Source options](writing-plugins.md#source-options)) |
-| `(completion-emit! id items #:incomplete)` | Answer request `id` with `items`; `#f` if the answer was dropped as out of date |
+| `(completion-emit! id items #:incomplete #:span #:prefix)` | Answer request `id` with `items`; `#f` if the answer was dropped as out of date |
+| `(register-shell-dialect! name #:programs #:program-extensions #:parse #:write)` | How `Tab` on the `\|` prompt reads and writes a word for the shells `#:programs` names (see [Shell dialects](writing-plugins.md#shell-dialects)) |
 | `(set-completion-triggers! source language chars)` | Characters that invoke `'buffer` source `source` when typed in a `language` buffer; replaces the previous set, and `'()` removes it. An unknown `source` is reported in the message log |
 | `(set-hook-triggers! source language chars)` | Characters that fire the `on-trigger-char` hook, tagged `source`, when typed in a `language` buffer; replaces the previous set, and `'()` removes it. For features other than completion, such as signature help |
 | `(completion-top n)` | The top `n` ranked items of the open menu, each carrying its `source` |
@@ -324,6 +325,7 @@ Everyday string work (trimming, splitting on a separator, case conversion, prefi
 | Call | Effect |
 |------|--------|
 | `(split-words line word-chars)` | Every word in `line`, in order: the same classification `w`/`b` motions and text objects use, so a word here is exactly what one of those would select. `word-chars` extends what counts as a word, same as the buffer option of the same name (`""` for none) |
+| `(string-common-prefix strings)` | The longest start every string in `strings` shares, never ending partway through a character the editor shows as one (an accented letter written as two code points, an emoji sequence); `""` for an empty list |
 
 ## Filesystem & directories
 
@@ -335,6 +337,9 @@ Everyday string work (trimming, splitting on a separator, case conversion, prefi
 | `(set-cwd! path)` | Change HUME's working directory, like `:cd`; a relative `path` is joined onto the current one; raises if `path` is not a directory |
 | `(path-join seg ...)` | Join path segments with the OS-native separator |
 | `(safe-path-segment? name)` | `#t` iff `name` is a string safe to use as one path component: not empty, not `.` or `..`, and free of a path separator, `:`, `"` and NUL; `#f` for anything else. Use it before joining a user-typed or downloaded name onto a path |
+| `(path-entries dir prefix)` | The names in directory `dir` (relative to the working directory) starting with `prefix`, sorted, each directory's ending in `/`, as `:e` completes them: hidden entries only when `prefix` starts with `.`. `'()` when `dir` can't be read |
+| `(path-programs prefix extensions)` | The programs on `PATH` whose names start with `prefix`, sorted. On Windows a program is a file ending in one of `extensions` (`'(".exe")`), named without it |
+| `(home-dir)` | The user's home directory, or `#f` when the environment names none |
 | `(path->display path)` | Run an absolute `path` string through HUME's display-form pipeline (Windows `\\?\` stripping, `~`-collapse); no filesystem access |
 | `(read-data-file path)` | The one Scheme value written in the file at `path`; `;` comments are allowed around it. Raises an error naming the file when its text doesn't parse or holds more than one value. Use it instead of Steel's `read` for data files: `read` returns end-of-file instead of raising on bad syntax, and leaves the bad text for the next `read` |
 | `(data-file dir name)` | The path of `name.scm` in `dir` when `dir` holds that file, else `#f`. Only a name spelled exactly like one of `dir`'s files matches, so `Rust` does not match `rust.scm` on any platform and `../x` never reaches outside `dir` |

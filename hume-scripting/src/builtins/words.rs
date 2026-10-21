@@ -1,5 +1,6 @@
 //! `(split-words line word-chars)`: native word tokenization for Steel
-//! plugins.
+//! plugins. `(string-common-prefix strings)`: the grapheme-cluster common
+//! prefix, for the same reason, below.
 //!
 //! Reuses `hume-ops`'s own word-motion scan primitives (`word_runs`, built
 //! on the same grapheme-cluster/combining-mark-safe stepping and
@@ -21,7 +22,7 @@ use hume_ops::motion::word_runs;
 use steel::rvals::SteelVal;
 
 use super::SteelResult;
-use super::args::{string_arg, string_list};
+use super::args::{list_to_strings, string_arg, string_list};
 use super::errors::generic_err;
 
 /// `(split-words line word-chars)` -> list of word strings, in order.
@@ -43,6 +44,20 @@ pub(crate) fn split_words(line: SteelVal, word_chars: SteelVal) -> SteelResult {
         .into_iter()
         .map(|range| text.slice(range.chars()).to_string());
     Ok(string_list(words))
+}
+
+/// `(string-common-prefix strings)` -> the longest run of whole grapheme
+/// clusters every string in `strings` starts with, `""` for `'()`. Steel
+/// strings index by char, so a Scheme loop would cut a combining sequence.
+pub(crate) fn string_common_prefix(strings: SteelVal) -> SteelResult {
+    let strings = list_to_strings(strings, "string-common-prefix")?;
+    let mut rest = strings.iter();
+    let common = rest.next().map_or("", |first| {
+        rest.fold(first.as_str(), |prefix, s| {
+            hume_rope::grapheme::common_str_prefix(prefix, s)
+        })
+    });
+    Ok(SteelVal::StringV(common.into()))
 }
 
 #[cfg(test)]

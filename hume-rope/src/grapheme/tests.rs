@@ -747,6 +747,41 @@ fn str_boundaries_walk_every_corpus_cluster_both_ways() {
 }
 
 #[test]
+fn common_str_prefix_ends_where_two_strings_differ() {
+    for (a, b, expected) in [
+        ("", "", ""),
+        ("abc", "", ""),
+        ("abc", "abc", "abc"),
+        ("abc", "abd", "ab"),
+        ("ab", "abcd", "ab"),
+        ("my dir/a", "my dir/b", "my dir/"),
+    ] {
+        assert_eq!(common_str_prefix(a, b), expected, "{a:?} {b:?}");
+    }
+}
+
+#[test]
+fn common_str_prefix_never_splits_a_corpus_cluster() {
+    for sample in test_fixtures::unicode::single_clusters()
+        .filter(|s| test_fixtures::unicode::standalone().any(|t| t == *s))
+    {
+        let whole = format!("x{sample}y");
+        assert_eq!(
+            common_str_prefix(&whole, &format!("x{sample}z")),
+            format!("x{sample}"),
+            "{sample:?}"
+        );
+        let mut chars = sample.chars();
+        chars.next_back();
+        let truncated = format!("x{}", chars.as_str());
+        if truncated != "x" {
+            assert_eq!(common_str_prefix(&whole, &truncated), "x", "{sample:?}");
+        }
+    }
+    assert_eq!(common_str_prefix("e\u{301}", "e\u{300}"), "");
+}
+
+#[test]
 fn prev_and_next_boundary_agree_with_segmentation_across_chunk_boundaries() {
     let (r, probes) = chunk_straddling_text();
     let boundaries = segmentation_boundaries(&r.to_string());

@@ -918,12 +918,32 @@ fn tab_completes_a_program_name_from_path() {
     let bin = probe_path_dir();
     let _path = lock.set_var("PATH", bin.path());
     let mut ed = editor_from("-[abc]>\n");
+    ed.state.dirs = repo_runtime_dirs();
+    ed.init_scripting(&mut Default::default());
     for line in ["hume-probe", "ls | hume-probe"] {
         ed.handle_key(key('|'));
         keys(&mut ed, line);
         ed.handle_key(key_tab());
+        ed.settle();
         assert_eq!(minibuf_input(&ed), format!("{line}-tool"));
         assert!(ed.state.input.minibuf_completion().is_none());
         ed.handle_key(key_esc());
     }
+}
+
+#[test]
+fn tab_completes_a_quoted_program_name_from_path() {
+    let lock = claim_env();
+    let bin = probe_path_dir();
+    let cwd = tempfile::tempdir().unwrap();
+    let _path = lock.set_var("PATH", bin.path());
+    let mut ed = editor_from("-[abc]>\n");
+    ed.state.dirs = repo_runtime_dirs();
+    ed.init_scripting(&mut Default::default());
+    ed.state.cwd = cwd.path().to_path_buf();
+    ed.handle_key(key('|'));
+    keys(&mut ed, "\"hume-probe");
+    ed.handle_key(key_tab());
+    ed.settle();
+    assert_eq!(minibuf_input(&ed), "\"hume-probe-tool\"");
 }

@@ -109,15 +109,7 @@ pub(in crate::editor) struct MinibufSourceEntry {
     pub(in crate::editor) match_kind: MatchKind,
     pub(in crate::editor) priority: i64,
     pub(in crate::editor) body: MinibufBody,
-    /// The longest prefix of a common prefix of this source's insert texts
-    /// that can stand on the line: an escaped encoding can't be cut inside
-    /// an escape. [`CUT_ANYWHERE`] for plain text.
-    pub(in crate::editor) prefix_cut: fn(&str) -> &str,
 }
-
-/// A [`MinibufSourceEntry::prefix_cut`] for insert texts that can be cut
-/// at any character.
-pub(in crate::editor) const CUT_ANYWHERE: fn(&str) -> &str = |s| s;
 
 /// Index into [`SourceRegistry::buffer`], stable for an entry's whole
 /// life, since a re-registration under the same name overwrites the slot in
@@ -146,20 +138,18 @@ pub(in crate::editor) enum RegisterOutcome {
 
 impl SourceRegistry {
     pub(in crate::editor) fn with_defaults() -> Self {
-        use super::{path, set, shell, simple};
+        use super::{path, set, simple};
         let universe = |name: &str, case_sensitive, body| MinibufSourceEntry {
             name: name.into(),
             match_kind: MatchKind::String { case_sensitive },
             priority: 0,
             body: MinibufBody::NativeUniverse(body),
-            prefix_cut: CUT_ANYWHERE,
         };
-        let delegated = |name: &str, body, prefix_cut| MinibufSourceEntry {
+        let delegated = |name: &str, body| MinibufSourceEntry {
             name: name.into(),
             match_kind: MatchKind::Delegated,
             priority: 0,
             body: MinibufBody::NativeDelegated(body),
-            prefix_cut,
         };
         Self {
             buffer: Vec::new(),
@@ -171,18 +161,9 @@ impl SourceRegistry {
                     simple::complete_buffer_name,
                 ),
                 universe(simple::THEME_SOURCE, true, simple::complete_theme),
-                delegated(path::PATH_SOURCE, path::complete_path, CUT_ANYWHERE),
-                delegated(
-                    path::PATH_DIRS_ONLY_SOURCE,
-                    path::complete_path_dirs_only,
-                    CUT_ANYWHERE,
-                ),
-                delegated(
-                    shell::SHELL_SOURCE,
-                    shell::complete_shell,
-                    hume_platform::sh::whole_prefix,
-                ),
-                delegated(set::SET_SOURCE, set::complete_set, CUT_ANYWHERE),
+                delegated(path::PATH_SOURCE, path::complete_path),
+                delegated(path::PATH_DIRS_ONLY_SOURCE, path::complete_path_dirs_only),
+                delegated(set::SET_SOURCE, set::complete_set),
             ],
         }
     }

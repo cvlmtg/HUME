@@ -165,3 +165,29 @@ mod language_data;
 
 #[cfg(unix)]
 mod unix;
+
+/// A struct's own names are listed by its visibility: a public struct's
+/// constructor, predicate and accessors, a private one's none. Its type
+/// descriptor and the options hash steel-core's `struct` macro binds are
+/// never listed.
+#[test]
+fn host_global_names_list_a_struct_by_its_visibility() {
+    let mut host = ScriptingHost::new(&Dirs::none());
+    host.eval_source(
+        "(struct probe-public (a)) (struct %probe-private (a))",
+        &mut NullHost,
+    )
+    .expect("the structs evaluate");
+    let names = host.host_global_names();
+    for listed in ["probe-public", "probe-public?", "probe-public-a"] {
+        assert!(names.iter().any(|n| n == listed), "{listed} missing");
+    }
+    for hidden in [
+        "struct:probe-public",
+        "___probe-public-options___",
+        "struct:%probe-private",
+        "___%probe-private-options___",
+    ] {
+        assert!(!names.iter().any(|n| n == hidden), "{hidden} listed");
+    }
+}

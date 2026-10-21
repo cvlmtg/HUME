@@ -88,3 +88,47 @@ fn raises_on_word_chars_containing_a_stray_whitespace_char() {
         "got: {err}"
     );
 }
+
+fn strings(items: &[&str]) -> SteelVal {
+    items
+        .iter()
+        .map(|s| s.into_steelval().unwrap())
+        .collect::<Vec<_>>()
+        .into_steelval()
+        .unwrap()
+}
+
+fn common_prefix_of(items: &[&str]) -> String {
+    match string_common_prefix(strings(items)).expect("string-common-prefix must succeed") {
+        SteelVal::StringV(s) => s.to_string(),
+        other => panic!("expected a string, got {other:?}"),
+    }
+}
+
+#[test]
+fn common_prefix_is_what_every_string_starts_with() {
+    assert_eq!(
+        common_prefix_of(&["my dir/a", "my dir/b", "my docs/"]),
+        "my d"
+    );
+    assert_eq!(common_prefix_of(&["notes.txt"]), "notes.txt");
+    assert_eq!(common_prefix_of(&[]), "");
+    assert_eq!(common_prefix_of(&["abc", "xyz"]), "");
+}
+
+#[test]
+fn common_prefix_never_splits_a_cluster() {
+    assert_eq!(common_prefix_of(&["ae\u{301}", "ae\u{300}"]), "a");
+}
+
+#[test]
+fn common_prefix_raises_on_a_non_string_element() {
+    let list = vec!["a".into_steelval().unwrap(), SteelVal::IntV(1)]
+        .into_steelval()
+        .unwrap();
+    let err = string_common_prefix(list).unwrap_err();
+    assert!(
+        err.to_string().contains("string-common-prefix"),
+        "got: {err}"
+    );
+}

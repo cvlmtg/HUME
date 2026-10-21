@@ -826,7 +826,8 @@ impl Editor {
             self.state.config.registry.names().collect();
         self.builtin_cmd_names = builtin_names.clone();
         // Load runtime/scheme/prelude.scm before init.scm so its macros
-        // (bind-keys! etc.) are available to init.scm and plugin modules.
+        // (bind-keys! etc.) are available to init.scm and plugin modules,
+        // and shells.scm so init.scm can add or replace a shell dialect.
         // Then languages.scm ((define-language! …) identities) and
         // grammars.scm (registers already-compiled grammars; see its own
         // header). languages.scm runs first so identity registration owns
@@ -840,6 +841,7 @@ impl Editor {
         // `require_cmd_ctx!` guard keeps command-mode builtins unreachable
         // during init evals.
         self.eval_runtime_scheme(&mut host, "scheme/prelude.scm", builtin_names.clone());
+        self.eval_runtime_scheme(&mut host, "scheme/shells.scm", builtin_names.clone());
         self.eval_runtime_scheme(&mut host, "scheme/languages.scm", builtin_names.clone());
         self.eval_runtime_scheme(&mut host, "scheme/grammars.scm", builtin_names.clone());
         // `Skipped` (`--no-config`) and `NoConfigDir` both mean there's no

@@ -370,6 +370,18 @@ pub fn next_str_boundary(s: &str, byte_pos: usize) -> usize {
         .unwrap_or(s.len())
 }
 
+/// The longest run of whole grapheme clusters `a` and `b` both start with,
+/// borrowed from `a`.
+pub fn common_str_prefix<'a>(a: &'a str, b: &str) -> &'a str {
+    let len = a
+        .grapheme_indices(true)
+        .zip(b.graphemes(true))
+        .take_while(|((_, x), y)| x == y)
+        .last()
+        .map_or(0, |((i, x), _)| i + x.len());
+    &a[..len]
+}
+
 /// Count grapheme clusters in the char range `[from_char, to_char)`.
 ///
 /// `to_char` is an **exclusive** upper bound: the character at `to_char` is

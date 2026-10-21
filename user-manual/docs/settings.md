@@ -33,7 +33,7 @@ The `lsp-` options configure HUME's built-in language-server support, which `cor
 | `prompt-history-levels` | integer ≥ 1 | `100` | Max entries per `:`/`/`/`?`/`\|` prompt history |
 | `scroll-jump-align` | `top`/`center`/`off` | `center` | Where the view lands after jumping forward to a paragraph or structural object (`}`, `g f`, …); `top` is still subject to `scroll-margin` |
 | `scroll-margin` | integer | `3` | Minimum lines kept above/below cursor |
-| `shell` | word list | `sh -c` | The program, and its first arguments, that runs a shell command typed after `\|`; the command is passed as the last argument. Separate words with spaces and put a word that contains spaces in double quotes. From Scheme, a list of strings works too: `(set-option! "shell" '("fish" "-c"))` |
+| `shell` | word list | `sh -c` | The program, and its first arguments, that runs a shell command typed after `\|`; the command is passed as the last argument. Separate words with spaces and put a word that contains spaces in double quotes. From Scheme, a list of strings works too: `(set-option! "shell" '("fish" "-c"))`. `Tab` on the `\|` prompt follows this shell's quoting (see [Shell commands](editing.md#shell-commands)) |
 | `statusline` | `left` \| `center` \| `right` | see [Statusline](#statusline) | Three `\|`-separated sections of comma-separated element names. Set it with `configure-statusline!` |
 | `statusline-mode-colors` | bool | `#t` | Tint the whole statusline with the current mode's color; off shows the [theme](themes.md)'s base `ui.statusline` color in every mode |
 | `steel-command-budget-ms` | integer ≥ 1 | `1000` | Max Steel command evaluation time (ms) |
