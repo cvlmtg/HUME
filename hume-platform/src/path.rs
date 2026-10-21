@@ -102,7 +102,7 @@ fn expand_env_vars(
     let mut remaining = s;
     while let Some(pos) = remaining.find('$') {
         out.push_str(&remaining[..pos]);
-        remaining = &remaining[pos + 1..]; // slice starts just after `$`
+        remaining = &remaining[pos + 1..];
 
         if remaining.is_empty() {
             out.push('$');
@@ -110,7 +110,6 @@ fn expand_env_vars(
         }
 
         if remaining.starts_with('{') {
-            // `${NAME}` form
             let after_brace = &remaining[1..];
             let nlen = var_name_len(after_brace);
             if nlen == 0 {
@@ -137,11 +136,9 @@ fn expand_env_vars(
                 remaining = after_name;
             }
         } else {
-            // `$NAME` form
             let nlen = var_name_len(remaining);
             if nlen == 0 {
                 out.push('$');
-                // `remaining` already points past the `$`; keep scanning.
                 continue;
             }
             let name = &remaining[..nlen];
