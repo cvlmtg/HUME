@@ -87,15 +87,15 @@ struct MinibufSourceEntry { name, match_kind, priority, body: MinibufBody }
 Every `Buffer` source is Steel, by design — there is no native `Buffer`
 shape to have a body enum over; the buffer-words source
 (`runtime/plugins/core/buffer-words/`) dogfoods this plugin-facing API
-rather than the Rust-internal machinery the six native minibuffer sources
+rather than the Rust-internal machinery the native minibuffer sources
 already validate. A `Buffer` source's token is the run of word characters
 before the cursor: the buffer's `word-chars` plus the source's own
 `#:token-chars`. A `Minibuf` source's is the whitespace-delimited argument,
 so `#:token-chars` is refused there.
 
-The six native minibuffer sources (`command`, `buffer-name`, `theme` —
-`NativeUniverse`; `path`, `path-dirs-only`, `set` — `NativeDelegated`) are
-compiled in. `TypedCommand.completer` (`Option<Cow<'static, str>>`) names any
+The seven native minibuffer sources (`command`, `buffer-name`, `theme` —
+`NativeUniverse`; `path`, `path-dirs-only`, `set`, `shell` —
+`NativeDelegated`) are compiled in. `TypedCommand.completer` (`Option<Cow<'static, str>>`) names any
 entry by name — a built-in's `&'static str` constant, or the runtime string
 `define-typed-command! … #:complete "name"` hands over.
 
@@ -247,10 +247,14 @@ resolutions of the answer it replaces, matched by label and kind
 docs without a new request. The setting
 `completion-docs` turns this off with the box below.
 
-### The `:` line
+### The `:` and `|` lines
 
-`trigger_minibuf_completion` resolves the one source the input shape names
-(the command name itself, or the command's declared completer), runs it, and
+A minibuffer line completes only when its opener declares a
+`PromptCompletion` on the `MiniBuffer`; search and `prompt!` lines declare
+none. `trigger_minibuf_completion` resolves the one source the line and its
+input shape name (on `:`, the command name itself or the command's declared
+completer; on `|`, the `shell` source, which finds its own word and reads
+`PATH` only for a word in command position), runs it, and
 applies the eager policy once nothing is pending: no candidate → no popup;
 exactly one → applied silently; two or more → the first applied and the
 popup open for Tab to cycle. Cycling restores the input every source saw and
@@ -338,7 +342,7 @@ empty answer when the buffer's server has no `completionProvider`;
 
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
-| Source registry | **One, in Rust, on `ConfigState`, holding native and Steel sources** | The minibuffer's six native sources must work with `hume --no-config`, so a Rust registry exists regardless; a second, Steel-only registry for Insert mode meant two registries and two source contracts. The frequency-cut rule is about what runs when, not where the list of sources lives — invocation is user-intent frequency either way. |
+| Source registry | **One, in Rust, on `ConfigState`, holding native and Steel sources** | The minibuffer's native sources must work with `hume --no-config`, so a Rust registry exists regardless; a second, Steel-only registry for Insert mode meant two registries and two source contracts. The frequency-cut rule is about what runs when, not where the list of sources lives — invocation is user-intent frequency either way. |
 | Orchestration | **Rust, `impl EditorState`** | One driver for both targets, reachable from `EditorHostImpl` (`completion-emit!`) and key handlers alike; Steel sources are only ever queued (`queue_steel_call`), the picker's live-source precedent. |
 | Token boundary | **One rule per target (buffer: the word before the cursor; minibuf: the whitespace-delimited argument), resolved by Rust before the source runs** | Deterministic, identical on every re-invocation, known while the source is pending. A `'cursor`/`'custom` per-source choice existed once; no shipping source used either, so both were removed rather than carried as unvalidated surface. |
 | Async identity | **Per-invocation id; an answer applies only to its slot's latest call** | Strictly stronger than a session token plus replace-per-source: a superseded call's late answer can never land at all. |

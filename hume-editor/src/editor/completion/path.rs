@@ -33,13 +33,9 @@ pub(super) fn complete_path_dirs_only(
     complete_path_with_expand(input, cursor, ctx, true, hume_platform::path::expand)
 }
 
-/// Testable core of [`complete_path`]/[`complete_path_dirs_only`].
-///
-/// Splits the arg into a directory prefix and a filename prefix.  Reads the
-/// directory and filters by the filename prefix.  Directory entries get a
-/// trailing `/` in both the label and the insert text.  Hidden files
-/// (leading `.`) are excluded unless the filename prefix itself starts with
-/// `.`.
+/// Testable core of [`complete_path`]/[`complete_path_dirs_only`]: the
+/// argument is everything after the command name, split into a directory
+/// prefix and a filename prefix, inserted as typed.
 ///
 /// `expand_fn` mirrors `hume_platform::path::expand`: given a raw path
 /// string it returns the tilde/env-var expanded form.  Tests pass a stub
@@ -56,31 +52,49 @@ where
 {
     let (arg_start, prefix) = arg_prefix(input, cursor);
     let arg_end = token_end_at(input, cursor, &[' ']);
-
-    // Split prefix into (dir_str, file_prefix).
     let (dir_str, file_prefix) = hume_platform::path::split_path_at_sep(prefix);
+    let items = path_candidates(
+        dir_str,
+        file_prefix,
+        ctx.cwd,
+        dirs_only,
+        expand_fn,
+        |name| format!("{dir_str}{name}"),
+    );
+    (arg_start..arg_end, items)
+}
 
-    // Expand `~` and env vars for the directory lookup only; the literal
-    // `dir_str` is still used in the insert text below so `~/` is preserved
-    // in the minibuffer exactly as the user typed it.
-    let expanded_dir = expand_fn(dir_str);
-
-    // Resolve the directory: absolute if it starts with '/', else relative to cwd.
+/// The entries of directory `dir` (relative to `cwd` unless absolute,
+/// `~` and env vars expanded by `expand_fn`) whose names start with
+/// `file_prefix`, sorted by label. Directories get a trailing `/` in both
+/// label and insert text. Hidden entries (leading `.`) are left out unless
+/// `file_prefix` itself starts with `.`. `insert` turns a name (with its
+/// `/`) into the text that replaces the completed token; the label is the
+/// name alone. An unreadable directory lists nothing.
+pub(super) fn path_candidates<F>(
+    dir: &str,
+    file_prefix: &str,
+    cwd: &Path,
+    dirs_only: bool,
+    expand_fn: F,
+    insert: impl Fn(&str) -> String,
+) -> Vec<CompletionItem>
+where
+    F: for<'a> Fn(&'a str) -> std::borrow::Cow<'a, str>,
+{
+    let expanded_dir = expand_fn(dir);
     let dir: PathBuf = if expanded_dir.is_empty() {
-        ctx.cwd.to_owned()
+        cwd.to_owned()
     } else if Path::new(expanded_dir.as_ref()).is_absolute() {
         PathBuf::from(expanded_dir.as_ref())
     } else {
-        ctx.cwd.join(expanded_dir.as_ref())
+        cwd.join(expanded_dir.as_ref())
     };
 
     let include_hidden = file_prefix.starts_with('.');
 
-    // On error (dir doesn't exist or no permission), return no
-    // candidates, not a hard error.
-    let rd = match std::fs::read_dir(&dir) {
-        Ok(rd) => rd,
-        Err(_) => return (arg_start..arg_end, Vec::new()),
+    let Ok(rd) = std::fs::read_dir(&dir) else {
+        return Vec::new();
     };
 
     let mut candidates: Vec<CompletionItem> = rd
@@ -99,11 +113,10 @@ where
             }
             let suffix = if is_dir { "/" } else { "" };
             let label = format!("{name}{suffix}");
-            // Build the full insert text: dir_str + name + suffix.
-            let insert_text = format!("{dir_str}{name}{suffix}");
+            let insert_text = insert(&label);
             let mut item = CompletionItem::plain(label, insert_text);
-            // The `:` line's Enter handler reads this to decide whether the
-            // selected candidate is a directory to descend into, rather
+            // The minibuffer's Enter handler reads this to decide whether
+            // the selected candidate is a directory to descend into, rather
             // than naming this source explicitly; any source's item can
             // opt in the same way.
             if is_dir {
@@ -113,8 +126,7 @@ where
         })
         .collect();
     candidates.sort_unstable_by(|a, b| a.label.cmp(&b.label));
-
-    (arg_start..arg_end, candidates)
+    candidates
 }
 
 #[cfg(test)]

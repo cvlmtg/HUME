@@ -14,7 +14,7 @@ The `lsp-` options configure HUME's built-in language-server support, which `cor
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `command-completion` | `common-prefix` \| `first-candidate` | `common-prefix` | What the first `Tab` on the `:` line does when several candidates match: `common-prefix` completes the longest text they share and picks nothing, so the next `Tab` picks the first candidate; `first-candidate` fills in the first candidate at once |
+| `command-completion` | `common-prefix` \| `first-candidate` | `common-prefix` | What the first `Tab` on the `:` or `|` line does when several candidates match: `common-prefix` completes the longest text they share and picks nothing, so the next `Tab` picks the first candidate; `first-candidate` fills in the first candidate at once |
 | `completion-docs` | bool | `#t` | Show the highlighted completion's details and documentation in a box beside the completion menu. When off, or when there is no room for the box beside the menu, the details show in the menu instead. When a language server's completion arrives without them, HUME asks the server for them as you highlight it |
 | `hook-before-save-timeout-ms` | integer ≥ 1 | `1000` | How long a save waits for `on-before-buffer-save` handlers before writing the file anyway |
 | `hook-viewport-debounce-ms` | integer ≥ 1 | `150` | Delay after scrolling stops before plugins are told which lines are visible, e.g. to request inlay hints for them |

@@ -161,3 +161,64 @@ fn display_form_with_no_home_returns_full_path() {
     let got = display_form_with(Path::new("/tmp/foo"), || None);
     assert_eq!(got, "/tmp/foo");
 }
+
+// ── executables_in ────────────────────────────────────────────────────────
+
+/// Writes `name` into `dir` with permission bits `mode`.
+fn write_mode(dir: &Path, name: &str, mode: u32) -> PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+    let path = dir.join(name);
+    std::fs::write(&path, b"#!/bin/sh\n").unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode)).unwrap();
+    path
+}
+
+#[test]
+fn executables_in_lists_files_with_an_execute_bit() {
+    let bin = tempfile::tempdir().unwrap();
+    write_mode(bin.path(), "probe-owner", 0o744);
+    write_mode(bin.path(), "probe-other", 0o601);
+    write_mode(bin.path(), "probe-plain", 0o644);
+    assert_eq!(
+        executables_in(&search_path([bin.path()]), "probe"),
+        ["probe-other", "probe-owner"]
+    );
+}
+
+#[test]
+fn executables_in_filters_by_prefix() {
+    let bin = tempfile::tempdir().unwrap();
+    write_mode(bin.path(), "alpha", 0o755);
+    write_mode(bin.path(), "beta", 0o755);
+    assert_eq!(executables_in(&search_path([bin.path()]), "al"), ["alpha"]);
+}
+
+#[test]
+fn executables_in_follows_a_symlink_to_a_program() {
+    let bin = tempfile::tempdir().unwrap();
+    let real = write_mode(bin.path(), "real", 0o755);
+    let plain = write_mode(bin.path(), "plain", 0o644);
+    std::os::unix::fs::symlink(&real, bin.path().join("link-to-real")).unwrap();
+    std::os::unix::fs::symlink(&plain, bin.path().join("link-to-plain")).unwrap();
+    std::os::unix::fs::symlink(bin.path().join("gone"), bin.path().join("link-dangling")).unwrap();
+    assert_eq!(
+        executables_in(&search_path([bin.path()]), "link"),
+        ["link-to-real"]
+    );
+}
+
+#[test]
+fn executables_in_lists_a_name_on_two_directories_once() {
+    let first = tempfile::tempdir().unwrap();
+    let second = tempfile::tempdir().unwrap();
+    write_mode(first.path(), "tool", 0o644);
+    write_mode(second.path(), "tool", 0o755);
+    write_mode(second.path(), "toolkit", 0o755);
+    assert_eq!(
+        executables_in(
+            &search_path([first.path(), second.path(), second.path()]),
+            "tool"
+        ),
+        ["tool", "toolkit"]
+    );
+}

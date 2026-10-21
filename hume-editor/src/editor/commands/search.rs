@@ -49,7 +49,7 @@ pub(super) fn open_search_prompt(
         view,
         SearchLayer::new(
             input,
-            MiniBuffer::new(prompt),
+            MiniBuffer::new(prompt, None),
             PaneSnapshot::new(fp.pid()),
             direction,
             then,
@@ -309,7 +309,7 @@ pub(super) fn open_sift_prompt(
         view,
         SiftLayer::new(
             input,
-            MiniBuffer::new("⫽"),
+            MiniBuffer::new("⫽", None),
             PaneSnapshot::new(fp.pid()),
             then,
         ),

@@ -115,3 +115,27 @@ fn relative_to_ignores_a_verbatim_prefix_on_either_side() {
         expected
     );
 }
+
+// ── executables_in ────────────────────────────────────────────────────────
+
+#[test]
+fn executables_in_lists_a_pathext_program_by_its_stem() {
+    let bin = tempfile::tempdir().unwrap();
+    for name in ["probe.exe", "probe-script.CMD", "probe-notes.txt", "probe"] {
+        std::fs::write(bin.path().join(name), b"").unwrap();
+    }
+    assert_eq!(
+        executables_in(&search_path([bin.path()]), "probe"),
+        ["probe", "probe-script"]
+    );
+}
+
+#[test]
+fn executables_in_matches_the_prefix_against_the_stem() {
+    let bin = tempfile::tempdir().unwrap();
+    std::fs::write(bin.path().join("bash.exe"), b"").unwrap();
+    assert_eq!(
+        executables_in(&search_path([bin.path()]), "bash.e"),
+        Vec::<String>::new()
+    );
+}

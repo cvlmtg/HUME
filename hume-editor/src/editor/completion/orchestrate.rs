@@ -24,6 +24,7 @@ use super::{CompletionCtx, CompletionItem, arg_span};
 use crate::editor::buffer::store::BufferStore;
 use crate::editor::input_stack::{BufferCompletionLayer, LayerRef, MinibufCompletionLayer};
 use crate::editor::lsp::{RustDelivery, RustResponder};
+use crate::editor::minibuf::PromptCompletion;
 use crate::editor::registry::CommandRegistry;
 use crate::editor::replay::Interactive;
 use crate::editor::settings::{CommandCompletion, EditorSettings};
@@ -241,34 +242,34 @@ impl EditorState {
 
     // ── Minibuffer target ────────────────────────────────────────────────────
 
-    /// The `:` line's current target command name, if the minibuf is open
-    /// on a `:` prompt and the cursor sits past it (in its argument).
+    /// The `:` line's current target command name, if the open minibuffer
+    /// is the `:` line and the cursor sits past it (in its argument).
     /// `Editor::activate_minibuf_completion_target` reads this before
     /// calling [`Self::trigger_minibuf_completion`], to activate a still-
     /// `TypedBody::Lazy` owner (see that method's own doc) before the
     /// resolve below runs.
     pub(in crate::editor) fn minibuf_target_command(&self) -> Option<String> {
         let mb = self.input.minibuf()?;
-        if mb.prompt != ":" {
+        if mb.completion != Some(PromptCompletion::CommandLine) {
             return None;
         }
         let (name, _) = target_command_name(&mb.input, mb.cursor)?;
         Some(name.to_owned())
     }
 
-    /// The first Tab on the `:` line: resolves the one source the input
-    /// shape names (the command name itself, or the command's declared
-    /// argument completer), runs it, and applies the `:` line's own
-    /// eager policy ([`Self::settle_minibuf_session`]).
+    /// The first Tab on a minibuffer line that completes: resolves the one
+    /// source the line and its input shape name, runs it, and applies the
+    /// minibuffer's eager policy ([`Self::settle_minibuf_session`]).
     pub(in crate::editor) fn trigger_minibuf_completion(&mut self, view: &EngineView) {
         let Some(mb) = self.input.minibuf() else {
             return;
         };
-        if mb.prompt != ":" {
+        let Some(completion) = mb.completion else {
             return;
-        }
+        };
         let (input, cursor) = (mb.input.clone(), mb.cursor);
-        let Some((name, floor)) = resolve_minibuf_source(&self.config.registry, &input, cursor)
+        let Some((name, floor)) =
+            resolve_minibuf_source(&self.config.registry, completion, &input, cursor)
         else {
             return;
         };
@@ -306,7 +307,7 @@ impl EditorState {
         self.settle_minibuf_session(view, r);
     }
 
-    /// The `:` line's eager policy, once every source has answered: nothing
+    /// The minibuffer's eager policy, once every source has answered: nothing
     /// → the popup never shows; one candidate → applied silently, popup
     /// gone; two or more → under `CommonPrefix` the candidates' common
     /// prefix is applied and nothing is picked, under `FirstCandidate` the
@@ -342,7 +343,7 @@ impl EditorState {
         }
     }
 
-    /// Splices the session's proposed edit at `r` into the `:` line, over
+    /// Splices the session's proposed edit at `r` into the minibuffer, over
     /// its own source's token, restoring the input the sources saw first,
     /// so cycling from one candidate to the next never has to know what the
     /// previous one left behind. With no proposal the line is left as typed.
@@ -581,21 +582,26 @@ fn target_command_name(input: &str, cursor: usize) -> Option<(&str, usize)> {
     (cursor > cmd_end).then_some((cmd, cmd_end))
 }
 
-/// Resolves which registered source applies to the current `(input,
-/// cursor)` shape (the command name itself while the cursor is within it
-/// (no space yet, or moved left past the space), else the resolved
-/// command's declared argument completer) and the byte offset
-/// [`invoke_minibuf_source`]'s own argument span must not cross: `0` for
-/// the command-name case (the whole prefix typed so far is the token), the
-/// name's own end for the argument case.
+/// Resolves which registered source applies to `completion`'s line in its
+/// current `(input, cursor)` shape, and the byte offset
+/// [`invoke_minibuf_source`]'s own argument span must not cross. On the
+/// `:` line that is the command name itself while the cursor is within it
+/// (no space yet, or moved left past the space), with floor `0` (the whole
+/// prefix typed so far is the token), else the resolved command's declared
+/// argument completer, with the name's own end as the floor. The `|` line
+/// has the one source, which finds its own word.
 fn resolve_minibuf_source(
     registry: &CommandRegistry,
+    completion: PromptCompletion,
     input: &str,
     cursor: usize,
 ) -> Option<(std::borrow::Cow<'static, str>, usize)> {
     use std::borrow::Cow;
-    match target_command_name(input, cursor) {
-        None => Some((Cow::Borrowed(super::COMMAND_SOURCE), 0)),
-        Some((cmd, cmd_end)) => Some((registry.get_typed(cmd)?.completer.clone()?, cmd_end)),
+    match completion {
+        PromptCompletion::Shell => Some((Cow::Borrowed(super::SHELL_SOURCE), 0)),
+        PromptCompletion::CommandLine => match target_command_name(input, cursor) {
+            None => Some((Cow::Borrowed(super::COMMAND_SOURCE), 0)),
+            Some((cmd, cmd_end)) => Some((registry.get_typed(cmd)?.completer.clone()?, cmd_end)),
+        },
     }
 }

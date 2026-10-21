@@ -194,7 +194,7 @@ impl Editor {
         }
     }
 
-    /// The `:` line's Tab, end to end: [`Self::activate_minibuf_completion_
+    /// A minibuffer line's Tab, end to end: [`Self::activate_minibuf_completion_
     /// target`] then `EditorState::trigger_minibuf_completion`, in one call so
     /// the two can't be split at a call site that forgets the first, which
     /// would silently leave a lazily-declared command's `#:complete`

@@ -1,5 +1,5 @@
 //! Completion: both of the editor's completion targets (Insert mode and
-//! the `:` command line), on one model:
+//! the minibuffer's `:` and `|` lines), on one model:
 //!
 //! - `registry.rs`: every *source*, native or Steel-registered, keyed by
 //!   name: what it targets, how its items score.
@@ -8,9 +8,9 @@
 //!   items), ranked per keystroke against each source's own token;
 //!   `session/accept.rs` applies the accepted item as a buffer edit.
 //! - `orchestrate.rs`: the one *driver*: triggers, invokes sources, lands
-//!   answers, reacts to edits, applies the `:` line's eager policy.
+//!   answers, reacts to edits, applies the minibuffer's eager policy.
 //! - `item.rs`: the item type both targets share; `simple.rs`/`path.rs`/
-//!   `set.rs`: the native minibuffer sources.
+//!   `set.rs`/`shell.rs`: the native minibuffer sources.
 
 use std::path::Path;
 
@@ -24,6 +24,7 @@ mod path;
 mod registry;
 mod session;
 mod set;
+mod shell;
 mod simple;
 
 pub(in crate::editor) use item::{CompletionItem, Documentation};
@@ -35,6 +36,7 @@ pub(in crate::editor) use registry::{
 };
 pub(in crate::editor) use session::{BufferSession, ItemKey, MatchKind, MinibufSession};
 pub(in crate::editor) use set::SET_SOURCE;
+pub(in crate::editor) use shell::SHELL_SOURCE;
 pub(in crate::editor) use simple::{BUFFER_NAME_SOURCE, COMMAND_SOURCE, THEME_SOURCE};
 
 // ── Context ──────────────────────────────────────────────────────────────────

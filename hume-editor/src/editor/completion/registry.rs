@@ -1,7 +1,7 @@
-//! Every completion source the editor knows: the six native minibuffer
+//! Every completion source the editor knows: the seven native minibuffer
 //! sources compiled in, plus whatever Steel registered via
 //! `(register-completion-source! …)`. **Two separate namespaces, one per
-//! target**: a `TypedCommand.completer` names an entry in [`SourceRegistry::minibuf`],
+//! target**: a `TypedCommand.completer` or the `|` line names an entry in [`SourceRegistry::minibuf`],
 //! an Insert-mode trigger invokes entries in [`SourceRegistry::buffer`]. A
 //! name can be taken in both namespaces at once: `"path"` as a `Buffer`
 //! source and `"path"` as a `Minibuf` source are two unrelated
@@ -138,7 +138,7 @@ pub(in crate::editor) enum RegisterOutcome {
 
 impl SourceRegistry {
     pub(in crate::editor) fn with_defaults() -> Self {
-        use super::{path, set, simple};
+        use super::{path, set, shell, simple};
         let universe = |name: &str, case_sensitive, body| MinibufSourceEntry {
             name: name.into(),
             match_kind: MatchKind::String { case_sensitive },
@@ -163,6 +163,7 @@ impl SourceRegistry {
                 universe(simple::THEME_SOURCE, true, simple::complete_theme),
                 delegated(path::PATH_SOURCE, path::complete_path),
                 delegated(path::PATH_DIRS_ONLY_SOURCE, path::complete_path_dirs_only),
+                delegated(shell::SHELL_SOURCE, shell::complete_shell),
                 delegated(set::SET_SOURCE, set::complete_set),
             ],
         }

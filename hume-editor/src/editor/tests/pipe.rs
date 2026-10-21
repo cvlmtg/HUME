@@ -3,6 +3,8 @@
 //! for, before any process starts; the runs themselves are in
 //! `unix/pipe.rs`.
 
+use std::path::Path;
+
 use super::*;
 use crate::editor::input_stack::shell_prompt::ShellPromptLayer;
 use crate::editor::keymap::BindMode;
@@ -192,6 +194,100 @@ fn call_refuses_pipe() {
     ed.handle_key(f2);
     assert!(has_error(&ed, "'pipe': runs only from a key"));
     assert!(!ed.doc().is_busy());
+}
+
+// ── Tab completion ───────────────────────────────────────────────────────────
+
+/// An editor working in `dir`, with `typed` on an open `|` line.
+fn pipe_line_in(dir: &Path, typed: &str) -> Editor {
+    let mut ed = editor_from("-[abc]>\n");
+    ed.state.cwd = dir.to_path_buf();
+    ed.handle_key(key('|'));
+    keys(&mut ed, typed);
+    ed
+}
+
+#[test]
+fn tab_completes_a_path_argument() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("notes.txt"), b"").unwrap();
+    let mut ed = pipe_line_in(dir.path(), "cat no");
+    ed.handle_key(key_tab());
+    assert_eq!(minibuf_input(&ed), "cat notes.txt");
+    assert!(ed.state.input.minibuf_completion().is_none());
+}
+
+#[test]
+fn tab_completes_only_the_word_under_the_cursor() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("beta.txt"), b"").unwrap();
+    let mut ed = pipe_line_in(dir.path(), "diff alpha be");
+    ed.handle_key(key_tab());
+    assert_eq!(minibuf_input(&ed), "diff alpha beta.txt");
+}
+
+#[test]
+fn tab_applies_the_shared_prefix_then_cycles_and_enter_runs_the_command() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("alpha1"), b"").unwrap();
+    std::fs::write(dir.path().join("alpha2"), b"").unwrap();
+    let mut ed = pipe_line_in(dir.path(), "cat al");
+    ed.handle_key(key_tab());
+    assert_eq!(minibuf_input(&ed), "cat alpha");
+    assert_eq!(
+        ed.state.input.minibuf_completion().map(|s| s.len()),
+        Some(2)
+    );
+    ed.handle_key(key_tab());
+    assert_eq!(minibuf_input(&ed), "cat alpha1");
+    ed.handle_key(key_enter());
+    assert!(ed.state.minibuf().is_none());
+    assert_eq!(
+        take_run(&mut ed),
+        Some(("cat alpha1".to_string(), PipeKind::Replace))
+    );
+}
+
+#[test]
+fn enter_on_a_directory_candidate_goes_into_it() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir(dir.path().join("docs")).unwrap();
+    std::fs::create_dir(dir.path().join("src")).unwrap();
+    std::fs::write(dir.path().join("docs/one.md"), b"").unwrap();
+    std::fs::write(dir.path().join("docs/two.md"), b"").unwrap();
+    let mut ed = pipe_line_in(dir.path(), "cat ");
+    ed.handle_key(key_tab());
+    ed.handle_key(key_tab());
+    assert_eq!(minibuf_input(&ed), "cat docs/");
+    ed.handle_key(key_enter());
+    assert_eq!(prompt_label(&ed).as_deref(), Some("|"));
+    assert_eq!(minibuf_input(&ed), "cat docs/");
+    assert_eq!(
+        ed.state.input.minibuf_completion().map(|s| s.len()),
+        Some(2)
+    );
+}
+
+#[test]
+fn a_name_with_a_space_is_escaped_and_completes_inside() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir(dir.path().join("my dir")).unwrap();
+    std::fs::write(dir.path().join("my dir/inner.txt"), b"").unwrap();
+    let mut ed = pipe_line_in(dir.path(), "cat my");
+    ed.handle_key(key_tab());
+    assert_eq!(minibuf_input(&ed), r"cat my\ dir/");
+    keys(&mut ed, "in");
+    ed.handle_key(key_tab());
+    assert_eq!(minibuf_input(&ed), r"cat my\ dir/inner.txt");
+}
+
+#[test]
+fn a_command_word_with_a_separator_completes_as_a_path() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("run.sh"), b"").unwrap();
+    let mut ed = pipe_line_in(dir.path(), "./ru");
+    ed.handle_key(key_tab());
+    assert_eq!(minibuf_input(&ed), "./run.sh");
 }
 
 #[test]

@@ -26,6 +26,7 @@
 ### Editing
 - `|` pipes each selection through a shell command in the background, `Ctrl-c` stops it, and `Ctrl-|` in Insert mode inserts a command's output at each cursor.
 - New `shell` option sets the shell that `|` runs commands with.
+- `Tab` on the `|` prompt completes program names and file paths.
 - `Ctrl-r` in Insert mode and on the command line inserts a register or the current file's path.
 - `m i x` and `m a x` select inside or around a tag pair, and `g x` and `g X` jump to the next or previous one, with or without a markup grammar.
 - `Ctrl-a` and `Ctrl-s` add to or subtract from the number, date or time at each selection, and `G A` and `G S` count up or down across selections.

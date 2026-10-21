@@ -10,9 +10,6 @@ use super::{Editor, EditorState};
 
 /// The command-line mini-buffer, active while the user is typing a command
 /// or search pattern.
-///
-/// `prompt` distinguishes the context (`:` for commands, `/` or `?` for search)
-/// without needing separate mode variants for each prompt type.
 #[derive(Clone)]
 pub(crate) struct MiniBuffer {
     /// The text shown before the input: `:` for commands, `/`/`?` for search,
@@ -22,6 +19,19 @@ pub(crate) struct MiniBuffer {
     pub input: String,
     /// Byte offset of the edit cursor within `input`. Always on a UTF-8 char boundary.
     pub cursor: usize,
+    /// What Tab completes on this line, declared by whoever opened it;
+    /// `None` for a line Tab does nothing on.
+    pub completion: Option<PromptCompletion>,
+}
+
+/// The completion a minibuffer line offers, which decides the source Tab
+/// resolves to (`EditorState::trigger_minibuf_completion`).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum PromptCompletion {
+    /// The `:` line: the command name, then that command's own completer.
+    CommandLine,
+    /// The `|` line: program names in command position, paths elsewhere.
+    Shell,
 }
 
 /// Outcome of feeding one key to [`MiniBuffer::handle_key`].
@@ -59,18 +69,23 @@ pub(super) enum MiniBufferEvent {
 impl MiniBuffer {
     /// A fresh minibuffer for `prompt`, with empty input and the cursor at
     /// its start: the shape every opener but `prompt!` needs.
-    pub(in crate::editor) fn new(prompt: impl Into<String>) -> Self {
-        Self::with_prefill(prompt, String::new())
-    }
-
-    /// A minibuffer for `prompt` pre-populated with `input`, cursor parked
-    /// at its end: `(prompt! label prefill …)`'s shape.
-    pub(in crate::editor) fn with_prefill(prompt: impl Into<String>, input: String) -> Self {
-        let mut mb = Self {
+    pub(in crate::editor) fn new(
+        prompt: impl Into<String>,
+        completion: Option<PromptCompletion>,
+    ) -> Self {
+        Self {
             prompt: prompt.into(),
             input: String::new(),
             cursor: 0,
-        };
+            completion,
+        }
+    }
+
+    /// A minibuffer for `prompt` pre-populated with `input`, cursor parked
+    /// at its end: `(prompt! label prefill …)`'s shape, which completes
+    /// nothing.
+    pub(in crate::editor) fn with_prefill(prompt: impl Into<String>, input: String) -> Self {
+        let mut mb = Self::new(prompt, None);
         mb.set_input(input);
         mb
     }

@@ -258,6 +258,24 @@ fn relative_to_the_base_itself_is_empty() {
     );
 }
 
+// ── executables_in ────────────────────────────────────────────────────────
+
+/// `dirs` joined into one `PATH` value.
+fn search_path<const N: usize>(dirs: [&Path; N]) -> std::ffi::OsString {
+    std::env::join_paths(dirs).unwrap()
+}
+
+#[test]
+fn executables_in_skips_a_missing_directory_and_lists_no_directory() {
+    let bin = tempfile::tempdir().unwrap();
+    std::fs::create_dir(bin.path().join("probe.exe")).unwrap();
+    let missing = bin.path().join("missing");
+    assert_eq!(
+        executables_in(&search_path([&missing, bin.path()]), ""),
+        Vec::<String>::new()
+    );
+}
+
 #[cfg(unix)]
 mod unix;
 #[cfg(windows)]

@@ -6,7 +6,7 @@ use hume_engine::types::EditorMode;
 use super::super::dispatch::unknown_command_text;
 use super::super::error::CommandError;
 use super::super::minibuf::history::{HistoryDir, HistoryKind};
-use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent};
+use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent, PromptCompletion};
 use super::super::registry::{ArgExpansion, TypedBody};
 use super::super::replay::WaitingInput;
 use super::super::{Editor, EditorState, commands};
@@ -22,7 +22,7 @@ pub(in crate::editor) struct CommandLayer {
 impl CommandLayer {
     pub(in crate::editor) fn new(input: WaitingInput) -> Self {
         Self {
-            minibuf: MiniBuffer::new(":"),
+            minibuf: MiniBuffer::new(":", Some(PromptCompletion::CommandLine)),
             _input: input,
         }
     }

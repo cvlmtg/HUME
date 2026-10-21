@@ -285,6 +285,62 @@ pub fn split_path_at_sep(s: &str) -> (&str, &str) {
     }
 }
 
+// ── Programs on a search path ────────────────────────────────────────────────
+
+/// The names of the programs on `search_path` (a `PATH` value) that start
+/// with `prefix`, sorted and each listed once. A directory that can't be
+/// read lists nothing.
+///
+/// On Unix a program is a file (a symlink is followed) with any execute
+/// bit set. On Windows it is a file whose extension is in `PATHEXT`
+/// (cmd's own default list when unset), named by its stem, the name a
+/// shell runs it by.
+pub fn executables_in(search_path: &std::ffi::OsStr, prefix: &str) -> Vec<String> {
+    #[cfg(windows)]
+    let exts = std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".to_owned());
+    let mut names = std::collections::BTreeSet::new();
+    for dir in std::env::split_paths(search_path) {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let file_name = entry.file_name();
+            let Some(name) = file_name.to_str() else {
+                continue;
+            };
+            // A stem is a prefix of its name, so this check rules out no
+            // program and saves a `stat` on every other entry.
+            if !name.starts_with(prefix) {
+                continue;
+            }
+            let Ok(meta) = std::fs::metadata(entry.path()) else {
+                continue;
+            };
+            if !meta.is_file() {
+                continue;
+            }
+            #[cfg(unix)]
+            let program = {
+                use std::os::unix::fs::PermissionsExt;
+                (meta.permissions().mode() & 0o111 != 0).then_some(name)
+            };
+            #[cfg(windows)]
+            let program = name.rsplit_once('.').and_then(|(stem, ext)| {
+                exts.split(';')
+                    .any(|e| {
+                        e.strip_prefix('.')
+                            .is_some_and(|e| e.eq_ignore_ascii_case(ext))
+                    })
+                    .then_some(stem)
+            });
+            if let Some(program) = program.filter(|p| p.starts_with(prefix)) {
+                names.insert(program.to_owned());
+            }
+        }
+    }
+    names.into_iter().collect()
+}
+
 // ── Windows UNC prefix ───────────────────────────────────────────────────────
 
 /// If `p` carries the `\\?\` verbatim **drive** prefix, returns the plain

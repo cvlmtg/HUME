@@ -1,5 +1,5 @@
 //! The completion overlay: [`BufferCompletionLayer`] pushed above `Insert`,
-//! [`MinibufCompletionLayer`] pushed above `Command`. Two concrete layer
+//! [`MinibufCompletionLayer`] pushed above the `:` or `|` line. Two concrete layer
 //! types, not one: `completion/session.rs`'s module doc explains why a
 //! `Buffer`/`Minibuf` session are different types rather than one enum,
 //! and the same split carries into their layers, so `dispatch_at`
@@ -110,7 +110,8 @@ impl DocView {
     }
 }
 
-/// [`BufferCompletionLayer`]'s `:` command-line counterpart.
+/// [`BufferCompletionLayer`]'s minibuffer counterpart, above the `:` or
+/// `|` line it completes.
 pub(in crate::editor) struct MinibufCompletionLayer {
     pub(in crate::editor) session: MinibufSession,
 }
@@ -356,7 +357,7 @@ impl super::stack::InputStack {
     }
 
     /// The open completion menu's selected row: `None` when neither layer
-    /// is open or a `:` line session has not picked a row yet.
+    /// is open or a minibuffer session has not picked a row yet.
     #[cfg(test)]
     pub(in crate::editor) fn completion_selected(&self) -> Option<usize> {
         match self.buffer_completion() {
@@ -500,7 +501,7 @@ fn completion_input_minibuf(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
             // candidate is already in the input (Tab applied it), so
             // dismiss this session and restart completion for the
             // directory's children, rather than falling through to
-            // `Command`'s own Confirm handling. Gated on the item's own
+            // the line's own Confirm handling. Gated on the item's own
             // declared kind, not its source's identity or its text: any
             // `'minibuf` source's item can opt in this way, and an
             // unrelated candidate that merely ends in `/` (a URL, a

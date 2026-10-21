@@ -900,3 +900,35 @@ fn an_older_run_that_landed_survives_a_newer_one_withdrawn() {
         "the landed run's change, not the replace before it"
     );
 }
+
+// ── Tab completion of program names ──────────────────────────────────────────
+
+/// A `PATH` directory holding the executable `hume-probe-tool` and the
+/// plain file `hume-probe-data`.
+fn probe_path_dir() -> tempfile::TempDir {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    let tool = dir.path().join("hume-probe-tool");
+    std::fs::write(&tool, b"#!/bin/sh\n").unwrap();
+    std::fs::set_permissions(&tool, std::fs::Permissions::from_mode(0o755)).unwrap();
+    std::fs::write(dir.path().join("hume-probe-data"), b"").unwrap();
+    dir
+}
+
+#[test]
+fn tab_completes_a_program_name_from_path() {
+    let lock = claim_env();
+    let bin = probe_path_dir();
+    let _path = lock.set_var("PATH", bin.path());
+    let mut ed = editor_from("-[abc]>\n");
+    for line in ["hume-probe", "ls | hume-probe"] {
+        ed.handle_key(key('|'));
+        for ch in line.chars() {
+            ed.handle_key(key(ch));
+        }
+        ed.handle_key(key_tab());
+        assert_eq!(minibuf_input(&ed), format!("{line}-tool"));
+        assert!(ed.state.input.minibuf_completion().is_none());
+        ed.handle_key(key_esc());
+    }
+}
