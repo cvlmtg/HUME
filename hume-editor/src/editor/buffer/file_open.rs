@@ -5,10 +5,10 @@ use hume_editing::text::BufferText;
 use hume_engine::pipeline::BufferId;
 use hume_platform::io::FileMeta;
 
-use crate::editor::buffer::{Buffer, TextRefusal, ViewLabel};
+use crate::editor::buffer::{Buffer, ViewLabel};
 use crate::editor::commands::FocusedPane;
-use crate::editor::error::CommandError;
 use crate::editor::event::EditorEvent;
+use crate::editor::pipe_run::PipeRunning;
 
 use super::lifecycle;
 use crate::editor::{Editor, EditorState, Severity};
@@ -192,12 +192,10 @@ impl Editor {
         lifecycle::open_buffer_and_notify(&mut self.view, &mut self.state, doc)
     }
 
-    /// Remove buffer `id`, as [`lifecycle::close_buffer_and_notify`] does,
-    /// refusing while a pipe runs in it.
-    pub(in crate::editor) fn close_buffer(
-        &mut self,
-        id: BufferId,
-    ) -> Result<(), crate::editor::pipe_run::PipeRunning> {
+    /// Tests' entry point to [`lifecycle::close_buffer_and_notify`], the
+    /// production close chokepoint, refusing while a pipe runs in `id`.
+    #[cfg(test)]
+    pub(in crate::editor) fn close_buffer(&mut self, id: BufferId) -> Result<(), PipeRunning> {
         lifecycle::close_buffer_and_notify(&mut self.view, &mut self.state, id)
     }
 
@@ -221,19 +219,15 @@ impl Editor {
     /// other. Dropped as stale: in-progress edit groups/paste sessions and
     /// saved scrolls.
     ///
-    /// `Err`, with nothing changed, while the buffer's text is held.
+    /// `Err`, with nothing changed, while a pipe runs in the buffer.
     pub(in crate::editor) fn reload_buffer_in_place(
         &mut self,
         fp: FocusedPane,
         source: ReplaceSource,
-    ) -> Result<(), CommandError> {
+    ) -> Result<(), PipeRunning> {
         let id = fp.bid(&self.view);
-        let buffer = self.state.buffers.get(id);
-        if buffer.is_busy() {
-            return Err(crate::editor::doc_ops::refusal_error(
-                TextRefusal::Busy,
-                buffer,
-            ));
+        if self.state.buffers.get(id).is_busy() {
+            return Err(PipeRunning(id));
         }
         // End any open Insert/paste session the same way every other
         // buffer/focus-invalidating path does (`switch_pane_to_buffer`,

@@ -191,34 +191,12 @@ pub(in crate::editor::commands) fn pipe_running_refusal(
     way_out: &str,
 ) -> CommandError {
     let name = state.buffers.get(bid).display_name();
-    let focused = view.panes[view.focused_pane()].buffer_id() == bid;
+    let focused = FocusedPane::current(view).bid(view) == bid;
     CommandError::transient(if focused {
         format!("A pipe is running in {name}: Ctrl-c stops it, or use {way_out}")
     } else {
         format!("A pipe is running in {name}: use {way_out}")
     })
-}
-
-/// Run `close`; with `force`, stop each pipe run that refuses it and run it
-/// again: the `!` of a typed close. A refusal other than a pipe run, and
-/// any refusal without `force`, comes back as it is.
-pub(in crate::editor::commands) fn close_stopping_pipes(
-    state: &mut EditorState,
-    view: &mut EngineView,
-    force: bool,
-    mut close: impl FnMut(&mut EditorState, &mut EngineView) -> Result<(), CloseRefused>,
-) -> Result<(), CloseRefused> {
-    loop {
-        match close(state, view) {
-            Err(CloseRefused::PipeRunning(PipeRunning(bid))) if force => {
-                assert!(
-                    state.cancel_pipe_run(bid),
-                    "a close refused for a run that is not in flight"
-                );
-            }
-            closed => return closed,
-        }
-    }
 }
 
 /// `error`, with the register prefix the refused command consumed cleared.

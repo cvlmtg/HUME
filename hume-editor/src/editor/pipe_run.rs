@@ -37,6 +37,19 @@ pub(in crate::editor) enum PipeKind {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(in crate::editor) struct PipeRunning(pub(in crate::editor) BufferId);
 
+/// A refusal a run in flight may be the reason for, which the `!` of a typed
+/// command stops before trying again.
+pub(in crate::editor) trait PipeRefusal {
+    /// The run in the way, when that is the reason.
+    fn pipe_running(&self) -> Option<PipeRunning>;
+}
+
+impl PipeRefusal for PipeRunning {
+    fn pipe_running(&self) -> Option<PipeRunning> {
+        Some(*self)
+    }
+}
+
 /// A run's identity. Ids grow in start order.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(in crate::editor) struct RunId(u64);
@@ -578,6 +591,28 @@ impl EditorState {
 }
 
 impl Editor {
+    /// Run `act`; with `force`, stop each pipe run that refuses it and run it
+    /// again: the `!` of a typed command a pipe run refuses, a close or `:e`.
+    /// A refusal other than a pipe run, and any refusal without `force`,
+    /// comes back as it is.
+    pub(in crate::editor) fn run_stopping_pipes<R: PipeRefusal>(
+        &mut self,
+        force: bool,
+        mut act: impl FnMut(&mut Self) -> Result<(), R>,
+    ) -> Result<(), R> {
+        loop {
+            let refused = match act(self) {
+                Err(refused) if force => refused,
+                done => return done,
+            };
+            let Some(PipeRunning(bid)) = refused.pipe_running() else {
+                return Err(refused);
+            };
+            let stopped = self.state.cancel_pipe_run(bid);
+            assert!(stopped, "a command refused for a run that is not in flight");
+        }
+    }
+
     /// Wait for run `id` while `console` reads input, then land its output,
     /// or report its failure and change nothing. `Ctrl-c` and a termination
     /// request cancel it and kill its processes. A waited run is a

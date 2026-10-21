@@ -636,7 +636,7 @@ impl FocusedLayout {
         Ok(DetachedPane(std::mem::replace(&mut self.focus, survivor)))
     }
 
-    fn refuse_single_pane(&self) -> Result<(), SinglePane> {
+    pub(crate) fn refuse_single_pane(&self) -> Result<(), SinglePane> {
         match self.tree {
             LayoutTree::Leaf(_) => Err(SinglePane),
             LayoutTree::Split { .. } => Ok(()),

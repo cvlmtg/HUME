@@ -381,6 +381,12 @@ impl EngineView {
         self.layout.close_focused()
     }
 
+    /// The refusal [`Self::close_focused`] would give, without closing
+    /// anything: for a caller whose own checks come after this one.
+    pub fn refuse_close_focused(&self) -> Result<(), SinglePane> {
+        self.layout.refuse_single_pane()
+    }
+
     /// Rotate the row or column the focused pane sits in by `steps` places.
     /// Focus stays on the same pane.
     pub fn rotate_focused(&mut self, rotation: Rotation, steps: usize) -> Result<(), SinglePane> {

@@ -23,16 +23,17 @@ mod dump;
 // Sibling buffer submodules (`file_open::enter_buffer`,
 // `Buffer::disk_state`'s field type) reach `disk::{DiskCheckTrigger,
 // DiskState}` via `super::disk::` instead, staying inside the `buffer`
-// module tree. `DiskCheckTrigger` is re-exported unconditionally because
-// `commands::typed_buffer::typed_checktime`, outside the tree, needs
-// `DiskCheckTrigger::Explicit` to name its own trigger; `DiskState` stays
-// `#[cfg(test)]`-only since only test code (a different module tree
+// module tree. `DiskCheckTrigger` and `ReloadError` are re-exported
+// unconditionally because `commands::typed_buffer`, outside the tree, needs
+// them: `typed_checktime` names `DiskCheckTrigger::Explicit` as its own
+// trigger, and `typed_edit` tells a reload's two failures apart. `DiskState`
+// stays `#[cfg(test)]`-only since only test code (a different module tree
 // entirely, passing a trigger to `check_buffer_disk_state` directly or
 // injecting a `DiskState` value to test the state machine without depending
 // on filesystem mtime precision) needs it outside `buffer` itself.
-pub(in crate::editor) use disk::DiskCheckTrigger;
 #[cfg(test)]
 pub(in crate::editor) use disk::DiskState;
+pub(in crate::editor) use disk::{DiskCheckTrigger, ReloadError};
 #[cfg(test)]
 pub(in crate::editor) use dump::dump_path_for;
 pub(crate) use dump::{print_worker_panics, report_dumps};

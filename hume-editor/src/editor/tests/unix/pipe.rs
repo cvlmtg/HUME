@@ -908,17 +908,18 @@ fn step_waits_only_for_the_run_its_key_started() {
     assert!(!busy(&ed, second));
 }
 
-/// A command that writes its pid to `pid_file`, then sleeps.
-fn sleeper(pid_file: &Path) -> String {
-    format!("echo $$ > '{}'; exec sleep 30", pid_file.display())
-}
-
-/// The pid `sleeper` wrote, once the run has started its process.
-fn started_pid(ed: &mut Editor, pid_file: &Path) -> u32 {
+/// Type a `|` of a command that writes its pid to a file in `dir`, then
+/// sleeps, and return that pid once the run has started its process.
+fn start_sleeper(ed: &mut Editor, dir: &Path) -> u32 {
+    let pid_file = dir.join("pid");
+    type_pipe(
+        ed,
+        &format!("echo $$ > '{}'; exec sleep 30", pid_file.display()),
+    );
     drain_until(ed, |_| {
-        std::fs::read_to_string(pid_file).is_ok_and(|s| s.ends_with('\n'))
+        std::fs::read_to_string(&pid_file).is_ok_and(|s| s.ends_with('\n'))
     });
-    std::fs::read_to_string(pid_file)
+    std::fs::read_to_string(&pid_file)
         .expect("pid written")
         .trim()
         .parse()
@@ -929,10 +930,8 @@ fn started_pid(ed: &mut Editor, pid_file: &Path) -> u32 {
 fn ctrl_c_kills_the_background_processes() {
     let _path = path_reader();
     let dir = tempfile::tempdir().expect("tempdir");
-    let pid_file = dir.path().join("pid");
     let mut ed = editor_from("-[a]>\n");
-    type_pipe(&mut ed, &sleeper(&pid_file));
-    let pid = started_pid(&mut ed, &pid_file);
+    let pid = start_sleeper(&mut ed, dir.path());
     ed.handle_key(key_ctrl('c'));
     assert!(!ed.doc().is_busy());
     assert!(!process_is_alive(pid), "the process is gone after Ctrl-c");
@@ -943,10 +942,8 @@ fn ctrl_c_kills_the_background_processes() {
 fn e_bang_stops_the_run_and_reloads() {
     let _path = path_reader();
     let dir = tempfile::tempdir().expect("tempdir");
-    let pid_file = dir.path().join("pid");
     let (mut ed, file) = editor_with_file("-[h]>ello\n", "hello\n");
-    type_pipe(&mut ed, &sleeper(&pid_file));
-    let pid = started_pid(&mut ed, &pid_file);
+    let pid = start_sleeper(&mut ed, dir.path());
     std::fs::write(&file, "HELLO!!\n").expect("file rewritten");
     type_cmd(&mut ed, ":e!");
     assert!(!ed.doc().is_busy(), "the run stopped");
@@ -958,7 +955,6 @@ fn e_bang_stops_the_run_and_reloads() {
 fn close_buffer_from_steel_raises_while_the_run_is_in_flight() {
     let _path = path_reader();
     let dir = tempfile::tempdir().expect("tempdir");
-    let pid_file = dir.path().join("pid");
     let mut ed = editor_from("-[a]>\n");
     run(
         &mut ed,
@@ -966,8 +962,7 @@ fn close_buffer_from_steel_raises_while_the_run_is_in_flight() {
         r#"(define-command! "closer" "" (lambda (pane) (close-buffer! pane)))"#,
     );
     let bid = ed.focused_buffer_id();
-    type_pipe(&mut ed, &sleeper(&pid_file));
-    let pid = started_pid(&mut ed, &pid_file);
+    let pid = start_sleeper(&mut ed, dir.path());
     ed.execute_keymap_command("closer".into(), None, false);
     assert!(ed.state.buffers.try_get(bid).is_some(), "the buffer stays");
     assert!(process_is_alive(pid), "its run goes on");
@@ -984,7 +979,6 @@ fn close_buffer_from_steel_raises_while_the_run_is_in_flight() {
 fn calling_cancel_pipe_then_close_buffer_from_steel_closes_it() {
     let _path = path_reader();
     let dir = tempfile::tempdir().expect("tempdir");
-    let pid_file = dir.path().join("pid");
     let mut ed = editor_from("-[a]>\n");
     run(
         &mut ed,
@@ -994,8 +988,7 @@ fn calling_cancel_pipe_then_close_buffer_from_steel_closes_it() {
              (close-buffer! pane)))"#,
     );
     let bid = ed.focused_buffer_id();
-    type_pipe(&mut ed, &sleeper(&pid_file));
-    let pid = started_pid(&mut ed, &pid_file);
+    let pid = start_sleeper(&mut ed, dir.path());
     ed.execute_keymap_command("closer".into(), None, false);
     assert!(ed.state.buffers.try_get(bid).is_none(), "the buffer closed");
     assert!(!process_is_alive(pid), "its run's process is gone");
@@ -1005,11 +998,9 @@ fn calling_cancel_pipe_then_close_buffer_from_steel_closes_it() {
 fn calling_cancel_pipe_says_whether_it_stopped_a_run() {
     let _path = path_reader();
     let dir = tempfile::tempdir().expect("tempdir");
-    let pid_file = dir.path().join("pid");
     let mut ed = editor_from("-[a]>\n");
     let bid = ed.focused_buffer_id();
-    type_pipe(&mut ed, &sleeper(&pid_file));
-    let pid = started_pid(&mut ed, &pid_file);
+    let pid = start_sleeper(&mut ed, dir.path());
     run(
         &mut ed,
         dir.path(),

@@ -11,7 +11,7 @@ use crate::editor::commands::FocusedPane;
 use crate::editor::error::CommandError;
 use crate::editor::focus::{self, focus_pane};
 use crate::editor::pane_state::PaneChrome;
-use crate::editor::pipe_run::PipeRunning;
+use crate::editor::pipe_run::{PipeRefusal, PipeRunning};
 
 /// A new pane viewing `bid`, with the full chrome, not yet in any layout.
 /// The returned token makes the caller splice it into one.
@@ -84,6 +84,15 @@ pub(in crate::editor) enum CloseRefused {
     PipeRunning(PipeRunning),
 }
 
+impl PipeRefusal for CloseRefused {
+    fn pipe_running(&self) -> Option<PipeRunning> {
+        match *self {
+            CloseRefused::Last => None,
+            CloseRefused::PipeRunning(running) => Some(running),
+        }
+    }
+}
+
 /// `Err` when one of `panes` started a pipe run still in flight.
 pub(super) fn check_no_pipe_from(
     state: &EditorState,
@@ -103,9 +112,8 @@ pub(super) fn close_focused_pane(
     state: &mut EditorState,
     view: &mut EngineView,
 ) -> Result<(), CloseRefused> {
-    if view.active_pane_ids().len() == 1 {
-        return Err(CloseRefused::Last);
-    }
+    view.refuse_close_focused()
+        .map_err(|SinglePane| CloseRefused::Last)?;
     check_no_pipe_from(state, &[view.focused_pane()])?;
     let detached = focus::close_focused(state, view).unwrap_or_else(|SinglePane| {
         unreachable!("a tab with several panes closes its focused one")

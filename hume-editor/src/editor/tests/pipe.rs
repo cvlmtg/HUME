@@ -407,7 +407,6 @@ fn two_cancelled_runs_leave_the_change_before_both_oldest_first() {
     assert_eq!(last_command(&ed), Some("replace"));
 }
 
-/// The refusal `:q`, `:qa` and `:bd` give while `bid` runs a pipe.
 /// The refusal of a close that would stop `bid`'s run, `bid` in the
 /// focused pane, naming `way_out`.
 fn pipe_running(ed: &Editor, bid: BufferId, way_out: &str) -> String {
@@ -469,12 +468,27 @@ fn q_bang_quits() {
     assert!(ed.state.should_quit);
 }
 
-#[test]
-fn q_in_a_split_refuses_while_the_panes_run_is_in_flight() {
+/// A vertical split whose focused pane started a run in `bid`.
+fn split_running_sort() -> (Editor, BufferId) {
     let mut ed = editor_from("-[a]>\n");
     let bid = ed.focused_buffer_id();
     ed.execute_keymap_command("pane-vsplit".into(), None, false);
     start_sort(&mut ed);
+    (ed, bid)
+}
+
+/// A second tab whose only pane started a run in `bid`.
+fn tab_running_sort() -> (Editor, BufferId) {
+    let mut ed = editor_from("-[a]>\n");
+    ed.execute_keymap_command("tab-new".into(), None, false);
+    let bid = ed.focused_buffer_id();
+    start_sort(&mut ed);
+    (ed, bid)
+}
+
+#[test]
+fn q_in_a_split_refuses_while_the_panes_run_is_in_flight() {
+    let (mut ed, bid) = split_running_sort();
     type_cmd(&mut ed, ":q");
     assert_eq!(status(&ed), pipe_running(&ed, bid, ":q!"));
     assert_eq!(ed.view.active_pane_ids().len(), 2);
@@ -483,10 +497,7 @@ fn q_in_a_split_refuses_while_the_panes_run_is_in_flight() {
 
 #[test]
 fn q_bang_in_a_split_closes_the_pane_and_cancels() {
-    let mut ed = editor_from("-[a]>\n");
-    let bid = ed.focused_buffer_id();
-    ed.execute_keymap_command("pane-vsplit".into(), None, false);
-    start_sort(&mut ed);
+    let (mut ed, bid) = split_running_sort();
     type_cmd(&mut ed, ":q!");
     assert!(!ed.state.should_quit);
     assert_eq!(ed.view.active_pane_ids().len(), 1);
@@ -506,10 +517,7 @@ fn q_in_a_split_closes_a_pane_whose_buffer_runs_a_pipe_started_elsewhere() {
 
 #[test]
 fn q_on_a_tabs_last_pane_refuses_while_its_run_is_in_flight() {
-    let mut ed = editor_from("-[a]>\n");
-    ed.execute_keymap_command("tab-new".into(), None, false);
-    let bid = ed.focused_buffer_id();
-    start_sort(&mut ed);
+    let (mut ed, bid) = tab_running_sort();
     type_cmd(&mut ed, ":q");
     assert_eq!(status(&ed), pipe_running(&ed, bid, ":q!"));
     assert_eq!(ed.state.tabs.len(), 2);
@@ -518,10 +526,7 @@ fn q_on_a_tabs_last_pane_refuses_while_its_run_is_in_flight() {
 
 #[test]
 fn q_bang_on_a_tabs_last_pane_closes_the_tab_and_cancels() {
-    let mut ed = editor_from("-[a]>\n");
-    ed.execute_keymap_command("tab-new".into(), None, false);
-    let bid = ed.focused_buffer_id();
-    start_sort(&mut ed);
+    let (mut ed, bid) = tab_running_sort();
     type_cmd(&mut ed, ":q!");
     assert!(!ed.state.should_quit);
     assert_eq!(ed.state.tabs.len(), 1);
@@ -530,10 +535,7 @@ fn q_bang_on_a_tabs_last_pane_closes_the_tab_and_cancels() {
 
 #[test]
 fn tabclose_refuses_while_a_run_from_the_tab_is_in_flight() {
-    let mut ed = editor_from("-[a]>\n");
-    ed.execute_keymap_command("tab-new".into(), None, false);
-    let bid = ed.focused_buffer_id();
-    start_sort(&mut ed);
+    let (mut ed, bid) = tab_running_sort();
     type_cmd(&mut ed, ":tabclose");
     assert_eq!(status(&ed), pipe_running(&ed, bid, ":tabclose!"));
     assert_eq!(ed.state.tabs.len(), 2);
@@ -542,10 +544,7 @@ fn tabclose_refuses_while_a_run_from_the_tab_is_in_flight() {
 
 #[test]
 fn tabclose_bang_closes_the_tab_and_cancels() {
-    let mut ed = editor_from("-[a]>\n");
-    ed.execute_keymap_command("tab-new".into(), None, false);
-    let bid = ed.focused_buffer_id();
-    start_sort(&mut ed);
+    let (mut ed, bid) = tab_running_sort();
     type_cmd(&mut ed, ":tabclose!");
     assert_eq!(ed.state.tabs.len(), 1);
     assert!(!busy(&ed, bid));
@@ -566,15 +565,37 @@ fn wq_in_a_split_writes_then_refuses() {
 
 #[test]
 fn the_pane_close_key_refuses_while_the_panes_run_is_in_flight() {
-    let mut ed = editor_from("-[a]>\n");
-    let bid = ed.focused_buffer_id();
-    ed.execute_keymap_command("pane-vsplit".into(), None, false);
-    start_sort(&mut ed);
+    let (mut ed, bid) = split_running_sort();
     ed.handle_key(key_ctrl('p'));
     ed.handle_key(key('c'));
     assert_eq!(status(&ed), pipe_running(&ed, bid, ":q!"));
     assert_eq!(ed.view.active_pane_ids().len(), 2);
     assert!(busy(&ed, bid));
+}
+
+#[test]
+fn e_refuses_while_a_run_is_in_flight() {
+    let (mut ed, file) = editor_with_file("-[h]>ello\n", "hello\n");
+    let bid = ed.focused_buffer_id();
+    std::fs::write(&file, "HELLO!!\n").expect("file rewritten");
+    start_sort(&mut ed);
+    type_cmd(&mut ed, ":e");
+    assert_eq!(status(&ed), pipe_running(&ed, bid, ":e!"));
+    assert_eq!(ed.doc().text().to_string(), "hello\n");
+    assert!(busy(&ed, bid));
+}
+
+#[test]
+fn e_bang_on_a_deleted_file_stops_the_run_and_reports_the_read_error() {
+    let (mut ed, file) = editor_with_file("-[h]>ello\n", "hello\n");
+    let bid = ed.focused_buffer_id();
+    std::fs::remove_file(&file).expect("file removed");
+    start_sort(&mut ed);
+    type_cmd(&mut ed, ":e!");
+    let display = ed.doc().display_path().expect("a file buffer").to_string();
+    assert!(has_error(&ed, &format!("{display}: ")));
+    assert_eq!(ed.doc().text().to_string(), "hello\n");
+    assert!(!busy(&ed, bid));
 }
 
 #[test]

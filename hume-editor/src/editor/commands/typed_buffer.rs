@@ -4,7 +4,7 @@ use super::super::Editor;
 use super::super::Severity;
 use super::jump::goto_buffer_in_order;
 use super::{FocusedPane, jump_pane_to};
-use crate::editor::buffer::DiskCheckTrigger;
+use crate::editor::buffer::{DiskCheckTrigger, ReloadError, lifecycle};
 use crate::editor::error::CommandError;
 use crate::editor::jump_list::{JumpRule, with_jump};
 
@@ -117,10 +117,13 @@ pub(in crate::editor) fn typed_edit(
                 "unsaved changes (use :e! to force)",
             ));
         }
-        if force {
-            ed.state.cancel_pipe_run(fp.bid(&ed.view));
-        }
-        ed.reload_from_path(fp, &path)
+        ed.run_stopping_pipes(force, |ed| ed.reload_from_path(fp, &path))
+            .map_err(|error| match error {
+                ReloadError::PipeRunning(running) => {
+                    super::pipe_running_refusal(&ed.state, &ed.view, running, ":e!")
+                }
+                ReloadError::Read(e) => e,
+            })
     }
 }
 
@@ -204,11 +207,10 @@ pub(in crate::editor) fn typed_buffer_delete(
             "unsaved changes (use :bd! to force)",
         ));
     }
-    if force {
-        ed.state.cancel_pipe_run(id);
-    }
-    ed.close_buffer(id)
-        .map_err(|running| super::pipe_running_refusal(&ed.state, &ed.view, running, ":bd!"))
+    ed.run_stopping_pipes(force, |ed| {
+        lifecycle::close_buffer_and_notify(&mut ed.view, &mut ed.state, id)
+    })
+    .map_err(|running| super::pipe_running_refusal(&ed.state, &ed.view, running, ":bd!"))
 }
 
 /// `:b` / `:buffer`: switch to an open buffer by name, prefix, index, or full path.

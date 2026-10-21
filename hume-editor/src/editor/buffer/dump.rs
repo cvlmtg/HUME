@@ -6,8 +6,9 @@ use hume_editing::text::BufferText;
 use hume_engine::pipeline::BufferId;
 use hume_platform::worker_panic::{WorkerPanics, payload_message};
 
-use super::{Buffer, DiskCheckTrigger, ReplaceSource};
+use super::{Buffer, DiskCheckTrigger, ReplaceSource, TextRefusal};
 use crate::editor::input_stack::{ConfirmAction, ConfirmLayer};
+use crate::editor::pipe_run::PipeRunning;
 use crate::editor::{Editor, Severity};
 
 /// The crash-dump file for the buffer backed by `path`: the same path with
@@ -185,8 +186,9 @@ impl Editor {
             }
         };
         let text = BufferText::from(content.as_str());
-        if let Err(e) = self.reload_buffer_in_place(fp, ReplaceSource::Dump(text)) {
-            self.report(Severity::Warning, e.message().to_string());
+        if let Err(PipeRunning(bid)) = self.reload_buffer_in_place(fp, ReplaceSource::Dump(text)) {
+            let message = TextRefusal::Busy.message(self.state.buffers.get(bid));
+            self.report(Severity::Warning, message);
             return;
         }
         self.take_pending_dump(bid);

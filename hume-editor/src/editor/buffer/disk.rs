@@ -10,10 +10,12 @@
 
 use hume_engine::pipeline::BufferId;
 
+use crate::editor::error::CommandError;
 use crate::editor::input_stack::{ConfirmAction, ConfirmLayer, ConfirmPermit};
+use crate::editor::pipe_run::{PipeRefusal, PipeRunning};
 use crate::editor::{Editor, Severity};
 
-use super::{Buffer, ReplaceSource};
+use super::{Buffer, ReplaceSource, TextRefusal};
 
 /// Result of comparing a buffer's stored file signature against a fresh stat.
 /// `Changed` carries the freshly-read signature so the caller can store it
@@ -355,8 +357,14 @@ impl Editor {
         else {
             return;
         };
-        if let Err(e) = self.reload_from_path(fp, &path) {
-            self.report(Severity::Warning, e.message().to_string());
+        if let Err(error) = self.reload_from_path(fp, &path) {
+            let message = match error {
+                ReloadError::PipeRunning(PipeRunning(bid)) => {
+                    TextRefusal::Busy.message(self.state.buffers.get(bid))
+                }
+                ReloadError::Read(e) => e.message().to_string(),
+            };
+            self.report(Severity::Warning, message);
         }
     }
 
@@ -389,20 +397,16 @@ impl Editor {
     /// background reload has no caller to propagate an `Err` to). Callers
     /// choose their own error severity/propagation; this only owns the
     /// read-swap-report-success sequence, not the failure path. A read
-    /// failure names the buffer's display path. A held buffer is refused
-    /// before the file is read.
+    /// failure names the buffer's display path. A buffer a pipe runs in is
+    /// refused before the file is read.
     pub(in crate::editor) fn reload_from_path(
         &mut self,
         fp: crate::editor::commands::FocusedPane,
         path: &std::path::Path,
-    ) -> Result<(), crate::editor::error::CommandError> {
+    ) -> Result<(), ReloadError> {
         let bid = fp.bid(&self.view);
-        let buffer = self.state.buffers.get(bid);
-        if buffer.is_busy() {
-            return Err(crate::editor::doc_ops::refusal_error(
-                super::TextRefusal::Busy,
-                buffer,
-            ));
+        if self.state.buffers.get(bid).is_busy() {
+            return Err(ReloadError::PipeRunning(PipeRunning(bid)));
         }
         let doc =
             Buffer::from_file(path).map_err(|e| {
@@ -410,11 +414,30 @@ impl Editor {
                     self.state.buffers.get(bid).display_path().expect(
                         "a buffer reloaded from a path has a display path (Buffer::set_path)",
                     );
-                crate::editor::error::CommandError::new(format!("{display}: {e}"))
+                ReloadError::Read(CommandError::new(format!("{display}: {e}")))
             })?;
-        self.reload_buffer_in_place(fp, ReplaceSource::disk(doc))?;
+        self.reload_buffer_in_place(fp, ReplaceSource::disk(doc))
+            .map_err(ReloadError::PipeRunning)?;
         let name = self.state.buffers.get(bid).display_name();
         self.report(Severity::Info, format!("Reloaded {name}"));
         Ok(())
+    }
+}
+
+/// Why [`Editor::reload_from_path`] changed nothing.
+#[derive(Debug)]
+pub(in crate::editor) enum ReloadError {
+    /// A pipe runs in the buffer.
+    PipeRunning(PipeRunning),
+    /// The file could not be read.
+    Read(CommandError),
+}
+
+impl PipeRefusal for ReloadError {
+    fn pipe_running(&self) -> Option<PipeRunning> {
+        match self {
+            Self::PipeRunning(running) => Some(*running),
+            Self::Read(_) => None,
+        }
     }
 }

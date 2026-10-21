@@ -183,17 +183,18 @@ pub(in crate::editor) fn typed_tabnew(
 
 /// `:tabclose`: close the current tab and every pane it owns. Refused with
 /// a status message when it's the only tab open (fail fast, no silent
-/// no-op), and without `!` while a pane in it started a pipe run still in
-/// flight, which closing would stop. Typed-only: unlike `:split`'s shared core (`split_pane_onto`),
+/// no-op). Typed-only: unlike `:split`'s shared core (`split_pane_onto`),
 /// this has no keymap-bound/`call!`-reachable native sibling, so there is no
-/// `Err` counterpart to give this refusal a `call!` boolean.
+/// `Err` counterpart to give the last-tab refusal a `call!` boolean.
+/// Refused without `!` while a pane in it started a pipe run still in
+/// flight, which closing would stop.
 pub(in crate::editor) fn typed_tabclose(
     ed: &mut Editor,
     _fp: FocusedPane,
     _arg: Option<&str>,
     force: bool,
 ) -> Result<(), CommandError> {
-    match super::close_stopping_pipes(&mut ed.state, &mut ed.view, force, super::close_tab) {
+    match ed.run_stopping_pipes(force, |ed| super::close_tab(&mut ed.state, &mut ed.view)) {
         Ok(()) => Ok(()),
         Err(super::CloseRefused::Last) => {
             ed.report(Severity::Info, "cannot close the last tab page".to_string());

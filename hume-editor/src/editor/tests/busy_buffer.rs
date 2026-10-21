@@ -105,26 +105,6 @@ fn a_line_ending_change_is_refused() {
 }
 
 #[test]
-fn a_reload_from_disk_is_refused() {
-    let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
-    std::fs::write(&tmp, "HELLO!!\n").unwrap();
-    let _hold = hold(&mut ed);
-    type_cmd(&mut ed, ":e");
-    assert_eq!(ed.doc().text().to_string(), "hello\n");
-    assert_eq!(status(&ed), busy(&ed));
-}
-
-#[test]
-fn a_reload_of_a_deleted_file_reports_the_busy_refusal() {
-    let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
-    std::fs::remove_file(&tmp).unwrap();
-    let _hold = hold(&mut ed);
-    type_cmd(&mut ed, ":e!");
-    assert_eq!(ed.doc().text().to_string(), "hello\n");
-    assert_eq!(status(&ed), busy(&ed));
-}
-
-#[test]
 fn the_reload_answer_to_a_disk_change_is_refused() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
     std::fs::write(&tmp, "HELLO!!\n").unwrap();
