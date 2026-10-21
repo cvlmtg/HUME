@@ -368,7 +368,7 @@ A few extra functions cover things Scheme has no way to know on its own:
 ```scheme
 (spawn-async! "git" (list "show" (string-append ref ":" path))
   (lambda (stdout stderr exit-code)
-    (if (= exit-code 0)
+    (if (equal? exit-code 0)
         (use-the-output stdout)
         (report-the-failure stderr)))
   #:cwd repo-root)
@@ -377,8 +377,9 @@ A few extra functions cover things Scheme has no way to know on its own:
 `spawn-async!` starts `cmd` with `args` (in `#:cwd`, or HUME's working
 directory when omitted) and returns immediately; nothing blocks. `callback` is called exactly once,
 later, once the command has finished: `stdout` and `stderr` are its complete output as
-strings, `exit-code` is its exit code (`-1` if it was killed by a signal, or if the
-command couldn't even be started, like a missing binary). A command that fails to
+strings, `exit-code` is its exit code (`#f` if it was killed by a signal, or if the
+command couldn't even be started, like a missing binary, so compare it with `equal?`
+rather than `=`). A command that fails to
 start or exits non-zero still calls `callback` rather than raising an error, so there's
 only one place to handle the outcome. `spawn-async!` returns an id; call
 `(cancel-async! id)` to kill the command and discard its callback before it fires,
@@ -577,7 +578,7 @@ A source can also complete the argument of a `:` command. A `'minibuf` source is
     (spawn-async! "git" '("branch" "--format=%(refname:short)")
       (lambda (stdout stderr exit-code)
         (completion-emit! id
-          (if (= exit-code 0)
+          (if (equal? exit-code 0)
               (filter (lambda (s) (not (equal? s ""))) (split-many stdout "\n"))
               '())))))
   #:target 'minibuf #:match 'string)
@@ -587,7 +588,7 @@ A source can also complete the argument of a `:` command. A `'minibuf` source is
     (when (string? arg)
       (spawn-async! "git" (list "checkout" arg)
         (lambda (stdout stderr exit-code)
-          (unless (= exit-code 0) (log! 'error stderr))))))
+          (unless (equal? exit-code 0) (log! 'error stderr))))))
   #:complete "git-branches")
 ```
 

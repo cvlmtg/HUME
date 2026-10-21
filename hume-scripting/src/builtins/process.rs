@@ -11,6 +11,7 @@
 use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
+use crate::host::exit_code_value;
 use crate::log::LogLevel;
 
 use super::SteelResult;
@@ -28,7 +29,7 @@ use super::errors::{generic_err, require_cap};
 /// once the child exits; never inline, so typing never stalls waiting for
 /// it. Unlike `picker-source-spawn!`, a spawn failure (missing binary, bad
 /// `cwd`) does not raise: `callback` still fires, with empty stdout, a
-/// message naming `cmd` in stderr, and `exit-code` `-1`: the same
+/// message naming `cmd` in stderr, and `exit-code` `#f`: the same
 /// "callback always fires, exactly once" contract as `lsp-request!`, so a
 /// plugin never has to handle failure in two places. Returns a job id for
 /// `cancel-async!`.
@@ -103,16 +104,13 @@ pub(crate) fn run_capture(
     Ok(symbol_hash([
         ("stdout", SteelVal::StringV(stdout.into())),
         ("stderr", SteelVal::StringV(stderr.into())),
-        (
-            "exit",
-            code.map_or(SteelVal::BoolV(false), |c| SteelVal::IntV(c as isize)),
-        ),
+        ("exit", exit_code_value(code)),
     ]))
 }
 
 /// `(%run-inline-output! cmd args cwd env)`: spawn `cmd` with `args` (a list of
 /// strings), inherited stdio, in its own process group; blocks until exit and
-/// returns the exit code as an int. `cwd` is a string or `#f` (the editor's
+/// raises unless it exited 0. `cwd` is a string or `#f` (the editor's
 /// cwd; a relative path joins onto it); `env` is a list
 /// of `("KEY" . "VALUE")` pairs added to the inherited environment.
 ///
@@ -124,7 +122,8 @@ pub(crate) fn run_capture(
 /// are trusted code (see `user-manual/docs/plugins.md`'s "Filesystem and processes").
 ///
 /// # Errors
-/// The binary can't be spawned (e.g. not found on `PATH`).
+/// The binary can't be spawned (e.g. not found on `PATH`), or it exited
+/// non-zero or was killed by a signal.
 pub(crate) fn run_inline_output(
     ctx: &mut SteelCtx,
     cmd: String,
@@ -151,9 +150,15 @@ pub(crate) fn run_inline_output(
     let status = hume_platform::process::run_inline_output(&cmd, &args, &cwd, &env)
         .map_err(|e| generic_err(format!("run-inline-output!: {e}")))?;
 
-    // `-1` for a signal-killed child (no exit code); matches the sentinel a
-    // real exit code can never produce, since process exit codes are u8-wide.
-    Ok(SteelVal::IntV(status.code().unwrap_or(-1) as isize))
+    if status.success() {
+        Ok(SteelVal::Void)
+    } else {
+        Err(generic_err(hume_platform::process::failure_message(
+            &format!("run-inline-output!: {cmd}"),
+            Some(status),
+            "",
+        )))
+    }
 }
 
 #[cfg(test)]

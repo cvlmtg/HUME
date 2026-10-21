@@ -208,8 +208,9 @@ macro_rules! builtins {
 // editor. picker-close! and picker-source-stop! also accept the token
 // live-picker! returned.
 //
-// run-inline-output!: raises on a nonzero exit. %run-inline-output! spawns in
-// an isolated process group (see hume-platform::process::run_inline_output).
+// run-inline-output!: %run-inline-output! raises unless the command exits 0,
+// and spawns it in an isolated process group (see
+// hume-platform::process::run_inline_output).
 //
 // %port-safe?: a port is safe unless it is the real stdout, where the gate
 // decides. Every print shim's explicit-port branch uses it (io.rs module doc).

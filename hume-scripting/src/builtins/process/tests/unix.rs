@@ -5,7 +5,7 @@ use super::*;
 use hume_platform::dirs::Dirs;
 
 #[test]
-fn run_inline_output_returns_exit_code() {
+fn run_inline_output_succeeds_on_exit_zero_and_raises_naming_any_other_exit() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
     let result = run_inline_output(
@@ -16,17 +16,27 @@ fn run_inline_output_returns_exit_code() {
         list_val(&[]),
     )
     .unwrap();
-    assert_eq!(result, SteelVal::IntV(0));
+    assert_eq!(result, SteelVal::Void);
 
-    let result = run_inline_output(
+    let err = run_inline_output(
         &mut ctx,
         "false".to_string(),
         list_val(&[]),
         SteelVal::BoolV(false),
         list_val(&[]),
     )
-    .unwrap();
-    assert_eq!(result, SteelVal::IntV(1));
+    .unwrap_err();
+    insta::assert_snapshot!(err, @"Error: Generic: run-inline-output!: false failed (exit code 1)");
+
+    let err = run_inline_output(
+        &mut ctx,
+        "sh".to_string(),
+        list_val(&["-c", "kill -9 $$"]),
+        SteelVal::BoolV(false),
+        list_val(&[]),
+    )
+    .unwrap_err();
+    insta::assert_snapshot!(err, @"Error: Generic: run-inline-output!: sh failed (killed by signal)");
 }
 
 #[test]
@@ -43,11 +53,7 @@ fn run_inline_output_honors_cwd_arg() {
         list_val(&[]),
     )
     .unwrap();
-    assert_eq!(
-        result,
-        SteelVal::IntV(0),
-        "marker.txt must be found via cwd"
-    );
+    assert_eq!(result, SteelVal::Void, "marker.txt must be found via cwd");
 }
 
 #[test]

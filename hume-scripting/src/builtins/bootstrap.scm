@@ -181,9 +181,7 @@
   (%run-capture! cmd args cwd))
 
 (define (run-inline-output! cmd args #:cwd [cwd #f] #:env [env '()])
-  (let ([code (%run-inline-output! cmd args cwd env)])
-    (unless (= code 0)
-      (error (string-append cmd ": failed (exit " (number->string code) ")")))))
+  (%run-inline-output! cmd args cwd env))
 
 (define (show-popup! pane text #:anchor [anchor 'cursor] #:kind [kind 'sticky] #:lang [lang #f])
   (%show-popup! pane text anchor kind lang))

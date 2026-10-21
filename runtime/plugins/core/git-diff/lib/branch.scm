@@ -12,10 +12,10 @@
 
 ;;; `spawn-async!` callback for `git rev-parse --abbrev-ref HEAD` — see docs/pipeline.md.
 (define (git-diff/handle-branch-result! pane style stdout stderr exit-code)
-  (if (= exit-code 0)
+  (if (equal? exit-code 0)
       (set-statusline-text! "git-branch" pane (git-diff/format-branch style (trim stdout)))
       (begin
-        (when (= exit-code -1)
+        (when (not exit-code)
           (log! 'error (string-append "git-diff: `git rev-parse` failed: " (trim stderr))))
         (set-statusline-text! "git-branch" pane ""))))
 

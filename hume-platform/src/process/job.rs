@@ -311,7 +311,7 @@ mod tests {
             // Closes both pipes, then keeps running for a bit before a
             // real, successful exit. Both pipes reaching EOF must not be
             // mistaken for the child having exited (reaping it right there
-            // would turn this into exit code -1).
+            // would kill it, leaving no exit code).
             let mut job = spawn_sh("printf hi; exec 1>&- 2>&-; sleep 0.3; exit 0");
             let result = poll_until_result(&mut job);
             assert_eq!(result.stdout, b"hi");

@@ -43,13 +43,13 @@
 
 ;;; `spawn-async!` callback for the `git cat-file` below — see docs/pipeline.md.
 (define (git-diff/handle-fetch-result! pane stdout stderr exit-code)
-  (if (= exit-code 0)
+  (if (equal? exit-code 0)
       (begin
         (git-diff/entry-set! pane "ref-text" stdout)
         (git-diff/apply-hunks! pane (diff-buffer-lines pane stdout)))
       (begin
         (let ([entry (git-diff/buffer-entry pane)])
-          (log! (cond [(= exit-code -1) 'error]
+          (log! (cond [(not exit-code) 'error]
                       [(hash-ref entry "ref") 'warn]
                       [else 'trace])
                 (string-append "git-diff: `git cat-file` failed: " (trim stderr))))

@@ -77,7 +77,7 @@
                           (string-append "--untracked-files="
                                           (if pickers/untracked "all" "no")))
                     (lambda (stdout stderr exit-code)
-                      (if (= exit-code 0)
+                      (if (equal? exit-code 0)
                           (picker-push! token (pickers/parse-git-status stdout))
                           (begin
                             (picker-close! token)

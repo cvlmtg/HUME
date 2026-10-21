@@ -83,7 +83,7 @@ fn nonzero_exit_and_stderr_reach_the_callback() {
 }
 
 #[test]
-fn missing_binary_fires_the_callback_with_code_negative_one() {
+fn missing_binary_fires_the_callback_with_no_exit_code() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bc\n");
     run(
@@ -93,7 +93,7 @@ fn missing_binary_fires_the_callback_with_code_negative_one() {
         (define-command! "go" "" (lambda ()
           (spawn-async! "definitely-not-a-real-binary-xyz" '()
             (lambda (out err code)
-              (log! 'info (number->string code))))))
+              (log! 'info (if code (number->string code) "no exit code"))))))
         "#,
     );
     call(&mut ed, "go");
@@ -102,7 +102,7 @@ fn missing_binary_fires_the_callback_with_code_negative_one() {
     // queued-call drain.
     ed.settle();
 
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "-1");
+    assert_eq!(ed.state.status_msg.clone().unwrap(), "no exit code");
 }
 
 #[test]
@@ -116,7 +116,7 @@ fn empty_cmd_fires_the_callback_instead_of_raising() {
         (define-command! "go" "" (lambda ()
           (spawn-async! "" '()
             (lambda (out err code)
-              (log! 'info (number->string code))))))
+              (log! 'info (if code (number->string code) "no exit code"))))))
         "#,
     );
     call(&mut ed, "go");
@@ -126,7 +126,7 @@ fn empty_cmd_fires_the_callback_instead_of_raising() {
 
     assert_eq!(
         ed.state.status_msg.clone().unwrap(),
-        "-1",
+        "no exit code",
         "an empty cmd must fire the documented failure triple, never raise"
     );
 }

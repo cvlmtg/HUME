@@ -24,7 +24,7 @@ mod timers;
 mod token;
 mod ui;
 
-pub use async_process::AsyncProcessHost;
+pub use async_process::{AsyncProcessHost, async_callback_args, exit_code_value};
 pub use buffers::{BufferHost, DisplayPathForm, UndoNode};
 pub use commands::{CommandArg, CommandHost, MAX_COUNT, NativeCall};
 pub use completion::{CompletionHost, CompletionSourceTarget, MatchKind, PendingCompletionSource};

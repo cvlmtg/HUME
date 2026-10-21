@@ -3,6 +3,7 @@
 //! entry, only a drain call from `drain_async_sources` (see
 //! `async_source.rs`'s module doc).
 
+use hume_scripting::host::async_callback_args;
 use steel::rvals::SteelVal;
 
 use super::Editor;
@@ -22,7 +23,7 @@ pub(in crate::editor) struct PendingJob {
 
 impl Editor {
     /// Fires the callback of every job that has completed since the last
-    /// frame: `(stdout stderr exit-code)`, `exit-code` `-1` for a
+    /// frame: `(stdout stderr exit-code)`, `exit-code` `#f` for a
     /// signal-killed child, a status the OS never returned, or a stdout
     /// read that failed or exceeded `JOB_STDOUT_CAP` (`stderr` then names
     /// the failure instead of carrying the child's own diagnostics).
@@ -50,16 +51,11 @@ impl Editor {
                 .async_jobs
                 .remove(&id)
                 .expect("just found by get_mut above");
-            let code = result.status.and_then(|s| s.code()).unwrap_or(-1);
             let stdout = String::from_utf8(result.stdout)
                 .unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned());
             self.state.queue_background_call(
                 pending.callback,
-                vec![
-                    SteelVal::StringV(stdout.into()),
-                    SteelVal::StringV(result.stderr.into()),
-                    SteelVal::IntV(code as isize),
-                ],
+                async_callback_args(stdout, result.stderr, result.status.and_then(|s| s.code())),
             );
         }
     }

@@ -70,7 +70,7 @@ none). See [Closed buffers](#closed-buffers).
 
 | Exit code | Severity | Why |
 |---|---|---|
-| `-1` | `'error` | `git` could not run: an environment fault, not a fact about this file |
+| `#f` (none) | `'error` | `git` could not run: an environment fault, not a fact about this file |
 | any other nonzero, with a runtime ref override set | `'warn` | A direct answer to a command the user just typed |
 | any other nonzero, no override | `'trace` | Untracked file, brand-new file, buffer outside any repo, bad `ref` config. These cannot be told apart without parsing `stderr` further; the line is visible in `:messages` for diagnosis and otherwise quiet |
 
@@ -151,7 +151,7 @@ or `'unavailable` state. The refresh debounces at 150ms, keyed per buffer.
 | Exit code | Result |
 |---|---|
 | `0` | The element shows `(<branch>)` |
-| `-1` (git could not run) | Logs `'error`, clears the element |
+| `#f` (git could not run) | Logs `'error`, clears the element |
 | any other nonzero (usually "not a git repository") | Clears the element, logs nothing |
 
 Branch tracking runs for every buffer the hooks fire on, not only those opted in with

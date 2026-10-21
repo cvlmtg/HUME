@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 
 use super::EditorHostImpl;
-use hume_scripting::host::AsyncProcessHost;
+use hume_scripting::host::{AsyncProcessHost, async_callback_args};
 
 impl<'a> AsyncProcessHost for EditorHostImpl<'a> {
     fn spawn_async(
@@ -31,17 +31,11 @@ impl<'a> AsyncProcessHost for EditorHostImpl<'a> {
             }
             // Spawn failed before a job/callback contract could exist: fire
             // the callback right here rather than leaving it unfired, with
-            // the same "no output, -1 exit code" shape a signal-killed
-            // child produces (the sentinel `%run-inline-output!` already
-            // uses; a real exit code can never be -1, it's u8-wide).
+            // no output and no exit code, as for a signal-killed child.
             Err(e) => {
                 self.state.queue_background_call(
                     callback,
-                    vec![
-                        steel::rvals::SteelVal::StringV("".into()),
-                        steel::rvals::SteelVal::StringV(e.to_string().into()),
-                        steel::rvals::SteelVal::IntV(-1),
-                    ],
+                    async_callback_args(String::new(), e.to_string(), None),
                 );
                 // The `Ok` arm needs no wake: the job thread wakes the loop
                 // itself on completion. This callback has no background

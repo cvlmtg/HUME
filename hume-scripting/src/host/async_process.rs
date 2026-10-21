@@ -2,15 +2,36 @@
 
 use std::path::PathBuf;
 
+use steel::rvals::SteelVal;
+
+/// A process's exit code as Steel sees it: the code, or `#f` when there is
+/// none (the process could not start, was killed by a signal, or its exit
+/// could not be read). Every builtin that reports an exit code uses this, so
+/// "no exit code" has one spelling.
+pub fn exit_code_value(code: Option<i32>) -> SteelVal {
+    code.map_or(SteelVal::BoolV(false), |code| SteelVal::IntV(code as isize))
+}
+
+/// The arguments a `spawn-async!` callback receives:
+/// `(stdout stderr exit-code)`, with `exit-code` from [`exit_code_value`].
+pub fn async_callback_args(stdout: String, stderr: String, code: Option<i32>) -> Vec<SteelVal> {
+    vec![
+        SteelVal::StringV(stdout.into()),
+        SteelVal::StringV(stderr.into()),
+        exit_code_value(code),
+    ]
+}
+
 /// Async subprocess execution, accessed through
 /// [`EditorHost::async_process`](super::EditorHost::async_process). Backs `(spawn-async! cmd args callback
 /// #:cwd dir)` / `(cancel-async! id)`.
 pub trait AsyncProcessHost {
     /// Spawns `cmd` with `args` (direct argv, no shell) in `cwd`, capturing its whole stdout/stderr to
     /// completion. Always returns a job id, even if the spawn itself fails;
-    /// `callback` still fires exactly once either way, `(stdout stderr
-    /// exit-code)`, `exit-code` `-1` for a signal-killed child, a status the
-    /// OS never returned, or a spawn failure (missing binary, bad `cwd`).
+    /// `callback` still fires exactly once either way, with
+    /// [`async_callback_args`]: `exit-code` is `#f` for a signal-killed
+    /// child, a status the OS never returned, or a spawn failure (missing
+    /// binary, bad `cwd`).
     /// No error channel: a plugin holding a callback should never have to
     /// handle failure in two places, matching `lsp-request!`/`prompt!`/
     /// `picker!`'s exactly-once contract.

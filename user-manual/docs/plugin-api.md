@@ -299,7 +299,7 @@ Full walkthroughs (batch vs. streaming population, truncation direction, exit-co
 
 | Call | Effect |
 |------|--------|
-| `(spawn-async! cmd args callback #:cwd dir)` | Run `cmd` in the background, in `dir` (default: HUME's working directory; a relative `dir` is joined onto it); `callback` (`(lambda (stdout stderr exit-code) ...)`) fires exactly once, later. Returns a job id for `cancel-async!`. A failed spawn doesn't raise: `callback` fires with empty stdout, the error in stderr, and exit code `-1` |
+| `(spawn-async! cmd args callback #:cwd dir)` | Run `cmd` in the background, in `dir` (default: HUME's working directory; a relative `dir` is joined onto it); `callback` (`(lambda (stdout stderr exit-code) ...)`) fires exactly once, later. Returns a job id for `cancel-async!`. A failed spawn doesn't raise: `callback` fires with empty stdout, the error in stderr, and exit code `#f`, which a signal-killed command also gets |
 | `(cancel-async! id)` | Kill a still-running `spawn-async!` job and drop its callback; idempotent |
 | `(run-inline-output! cmd args #:cwd #:env)` | Run `cmd`, streaming output to the terminal inside an `#:inline-output` command; `#:env` is a list of `("KEY" . "VALUE")` pairs added to the environment; raises on nonzero exit |
 | `(run-capture! cmd args #:cwd dir)` | Run `cmd` in `dir` (default: HUME's working directory; a relative `dir` is joined onto it), blocking until it exits; returns `(hash 'stdout s 'stderr s 'exit code)`, with `'exit` `#f` when the spawn failed (stderr says why) or a signal killed the process. `core:stdlib`'s `stdlib/run!` (see [Standard Library](standard-library.md)) is this call under its usual name |

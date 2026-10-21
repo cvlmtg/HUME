@@ -64,7 +64,21 @@ fn nonzero_exit_and_stderr_reach_the_callback() {
 }
 
 #[test]
-fn missing_binary_fires_the_callback_synchronously_with_code_negative_one() {
+fn a_child_killed_by_a_signal_has_no_exit_code() {
+    // Spawns "sh" by unqualified name; see `PathReader`'s doc.
+    let _path = path_reader();
+    let mut ed = editor_from("-[a]>bc\n");
+    let args = vec!["-c".to_string(), "kill -9 $$".to_string()];
+    spawn_async(&mut ed, "sh", args, SteelVal::BoolV(false));
+
+    drain_sources_until(&mut ed, |ed| !ed.state.config.pending_work.is_empty());
+
+    let (_, call_args) = pending_calls(&ed)[0];
+    assert_eq!(call_args[2], SteelVal::BoolV(false));
+}
+
+#[test]
+fn missing_binary_fires_the_callback_synchronously_with_no_exit_code() {
     let mut ed = editor_from("-[a]>bc\n");
     let id = spawn_async(
         &mut ed,
@@ -79,7 +93,7 @@ fn missing_binary_fires_the_callback_synchronously_with_code_negative_one() {
     assert_eq!(pending_calls(&ed).len(), 1);
     let (_, call_args) = pending_calls(&ed)[0];
     assert_eq!(call_args[0], SteelVal::StringV("".into()));
-    assert_eq!(call_args[2], SteelVal::IntV(-1));
+    assert_eq!(call_args[2], SteelVal::BoolV(false));
     let SteelVal::StringV(stderr) = &call_args[1] else {
         panic!("expected a string stderr arg");
     };

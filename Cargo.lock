@@ -933,6 +933,7 @@ dependencies = [
  "hume-platform",
  "hume-rope",
  "hume-treesitter",
+ "insta",
  "num-traits",
  "rustc-hash",
  "serde_json",
