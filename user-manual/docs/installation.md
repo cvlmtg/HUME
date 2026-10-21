@@ -114,3 +114,9 @@ HUME targets modern terminals and degrades quietly rather than refusing to start
 - **24-bit true color.** Colors are always emitted as RGB. Terminals without true color will show approximate or wrong colors, but HUME still runs.
 - **Synchronized output.** Sent once per frame to avoid tearing; terminals that don't recognise it ignore it harmlessly.
 - **The kitty keyboard protocol.** Detected automatically on WezTerm, kitty, ghostty, and foot. It unlocks a handful of extra key combinations. Everything else works without it, and the manual marks those keys "kitty only".
+
+WezTerm on macOS doesn't send `Ctrl-|` correctly, so HUME never receives it. To make it work, add this line to the `config.keys` table in your `.wezterm.lua`:
+
+```lua
+{ key = '|', mods = 'CTRL|SHIFT', action = wezterm.action.SendString '\x1b[92:124;6u' },
+```
