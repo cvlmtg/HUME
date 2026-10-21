@@ -19,7 +19,7 @@ use termina::event::{Event as TerminalEvent, KeyCode, KeyEventKind, Modifiers};
 
 use super::buffer::TextHold;
 use super::commands;
-use super::lifecycle::FRAME_GAP;
+use super::lifecycle::FramePacer;
 use super::replay::{DeferredChange, DeferredOutcome};
 use super::shell_batch::{BatchProgress, Captured, ShellBatch, ShellFailure};
 use super::{Editor, EditorState, Severity};
@@ -189,27 +189,6 @@ impl PipeRuns {
         run.launch.foreground = true;
     }
 
-    /// The buffer of the oldest run in flight.
-    pub(in crate::editor) fn first_busy_buffer(&self) -> Option<BufferId> {
-        self.runs.first().map(|run| run.launch.buffer)
-    }
-
-    /// `bid`'s run, if one is in flight.
-    fn of_buffer(&self, bid: BufferId) -> Option<RunId> {
-        self.runs
-            .iter()
-            .find(|run| run.launch.buffer == bid)
-            .map(|run| run.id)
-    }
-
-    /// The buffer of a run `pid` started, if one is in flight.
-    fn launched_by(&self, pid: PaneId) -> Option<BufferId> {
-        self.runs
-            .iter()
-            .find(|run| run.launch.pane == pid)
-            .map(|run| run.launch.buffer)
-    }
-
     /// The oldest run in flight started at or after `mark`.
     fn oldest_from(&self, mark: RunId) -> Option<RunId> {
         self.runs.iter().map(|run| run.id).find(|&id| id >= mark)
@@ -284,27 +263,25 @@ impl PipeRuns {
         waited_poll
     }
 
-    /// Take run `id` out of the registry, as [`PipeRun::into_parts`] does.
-    fn take(&mut self, id: RunId) -> Option<(Launch, Option<Outcome>)> {
-        let i = self.runs.iter().position(|run| run.id == id)?;
+    /// Take the oldest run matching `pred` out of the registry, as
+    /// [`PipeRun::into_parts`] does.
+    fn take_where(&mut self, pred: impl Fn(&PipeRun) -> bool) -> Option<(Launch, Option<Outcome>)> {
+        let i = self.runs.iter().position(pred)?;
         Some(self.runs.remove(i).into_parts())
     }
 
     /// Take out the oldest background run whose processes are done.
     fn take_ended_background(&mut self) -> Option<(Launch, Outcome)> {
-        let i = self
-            .runs
-            .iter()
-            .position(|run| !run.launch.foreground && matches!(run.state, RunState::Ended(_)))?;
-        let (launch, outcome) = self.runs.remove(i).into_parts();
+        let (launch, outcome) = self
+            .take_where(|run| !run.launch.foreground && matches!(run.state, RunState::Ended(_)))?;
         Some((launch, outcome.expect("an ended run has its outcome")))
     }
 
-    /// `bid`'s run, if any, taken out as [`Self::take`] does.
+    /// `bid`'s run, if any, taken out as [`Self::take_where`] does.
     #[cfg(test)]
     pub(in crate::editor) fn take_buffer(&mut self, bid: BufferId) -> Option<Launch> {
-        let id = self.of_buffer(bid)?;
-        self.take(id).map(|(launch, _)| launch)
+        self.take_where(|run| run.launch.buffer == bid)
+            .map(|(launch, _)| launch)
     }
 }
 
@@ -357,25 +334,38 @@ pub(in crate::editor) trait PipeConsole {
     fn repaint(&mut self, _ed: &mut Editor) -> io::Result<()> {
         Ok(())
     }
+    /// The input this console read and left to the run loop, oldest first.
+    /// None by default.
+    fn take_deferred(&mut self) -> Vec<TerminalEvent> {
+        Vec::new()
+    }
 }
 
 /// Reads the terminal for `Ctrl-c` and resizes and draws nothing: a run
-/// during replay, and the input side of the run loop's console. Every other
-/// event stays queued in `reader` for the main loop to handle once the run
-/// ends.
+/// during replay, and the input side of the run loop's console. It reads
+/// every event and keeps the rest, in order, for the run loop: a filtered
+/// `EventReader::poll` that a wake interrupts holds the events it skipped
+/// out of the reader's queue until a later event arrives.
 pub(in crate::editor) struct ReaderConsole {
     /// Woken by the editor's waker.
     pub(in crate::editor) reader: EventReader,
+    pub(in crate::editor) deferred: Vec<TerminalEvent>,
 }
 
 impl PipeConsole for ReaderConsole {
     fn next(&mut self, timeout: Option<Duration>) -> io::Result<WaitEvent> {
-        let waits_for = |event: &TerminalEvent| wait_event(event).is_some();
-        if !self.reader.poll(timeout, waits_for)? {
+        if !self.reader.poll(timeout, |_| true)? {
             return Ok(WaitEvent::Woken);
         }
-        let event = self.reader.read(waits_for)?;
-        Ok(wait_event(&event).expect("the read takes only an event the wait is for"))
+        let event = self.reader.read(|_| true)?;
+        Ok(wait_event(&event).unwrap_or_else(|| {
+            self.deferred.push(event);
+            WaitEvent::Woken
+        }))
+    }
+
+    fn take_deferred(&mut self) -> Vec<TerminalEvent> {
+        std::mem::take(&mut self.deferred)
     }
 }
 
@@ -550,25 +540,23 @@ impl EditorState {
     /// nothing, report it and put back the change it replaced. Whether there
     /// was one.
     pub(in crate::editor) fn cancel_pipe_run(&mut self, bid: BufferId) -> bool {
-        let Some(id) = self.pipe_runs.of_buffer(bid) else {
+        let Some((launch, _)) = self.pipe_runs.take_where(|run| run.launch.buffer == bid) else {
             return false;
         };
-        let (launch, _) = self.pipe_runs.take(id).expect("the run was just found");
         self.withdraw_pipe_run(launch);
         true
     }
 
     /// Cancel every run `pid` started, as [`Self::cancel_pipe_run`] does.
     pub(in crate::editor) fn cancel_pipe_runs_launched_by(&mut self, pid: PaneId) {
-        while let Some(bid) = self.pipe_runs.launched_by(pid) {
-            self.cancel_pipe_run(bid);
+        while let Some((launch, _)) = self.pipe_runs.take_where(|run| run.launch.pane == pid) {
+            self.withdraw_pipe_run(launch);
         }
     }
 
     /// Withdraw every run started at or after `mark`.
     fn withdraw_pipe_runs_from(&mut self, mark: RunId) {
-        while let Some(id) = self.pipe_runs.oldest_from(mark) {
-            let (launch, _) = self.pipe_runs.take(id).expect("the run was just found");
+        while let Some((launch, _)) = self.pipe_runs.take_where(|run| run.id >= mark) {
             self.withdraw_pipe_run(launch);
         }
     }
@@ -587,7 +575,8 @@ impl Editor {
     /// Wait for run `id` while `console` reads input, then land its output,
     /// or report its failure and change nothing. `Ctrl-c` and a termination
     /// request cancel it and kill its processes. A waited run is a
-    /// foreground one from here on, whoever started it.
+    /// foreground one from here on, whoever started it. The input `console`
+    /// left to the run loop joins [`Editor::input_backlog`].
     ///
     /// `Err` only when `console` fails; the run is cancelled first.
     pub(in crate::editor) fn wait_pipe_run(
@@ -597,10 +586,11 @@ impl Editor {
     ) -> io::Result<PipeEnd> {
         self.state.pipe_runs.claim(id);
         let waited = self.wait_until_ended(id, console);
+        self.input_backlog.extend(console.take_deferred());
         let (launch, outcome) = self
             .state
             .pipe_runs
-            .take(id)
+            .take_where(|run| run.id == id)
             .expect("only its own wait ends a waited run");
         match waited {
             Ok(Waited::Ended) => {
@@ -621,14 +611,13 @@ impl Editor {
     /// Poll run `id`, and the background runs with it, until `id`'s
     /// processes are done. A run still going after [`PROGRESS_GRACE`] draws
     /// its progress, redraws it when it changes, at most once per
-    /// [`FRAME_GAP`], and redraws it at once when the terminal is
+    /// [`FRAME_GAP`](super::lifecycle::FRAME_GAP), and redraws it at once when the terminal is
     /// resized; a quicker one draws nothing.
     fn wait_until_ended(&mut self, id: RunId, console: &mut dyn PipeConsole) -> io::Result<Waited> {
         let mut shown = false;
-        // Whether the progress differs from what the last frame showed, and
-        // the earliest the next frame may draw.
+        // Whether the progress differs from what the last frame showed.
         let mut stale = true;
-        let mut next_frame = Instant::now() + PROGRESS_GRACE;
+        let mut pacer = FramePacer::not_before(Instant::now() + PROGRESS_GRACE);
         loop {
             if self.state.terminate_requested() {
                 return Ok(Waited::Cancelled);
@@ -642,18 +631,18 @@ impl Editor {
                 return Ok(Waited::Ended);
             };
             stale |= changed;
-            if stale && Instant::now() >= next_frame {
+            if stale && pacer.wait(Instant::now()).is_none() {
                 console.repaint(self)?;
                 shown = true;
                 stale = false;
-                next_frame = Instant::now() + FRAME_GAP;
+                pacer.drew(Instant::now());
             }
-            let timeout = stale.then(|| next_frame.saturating_duration_since(Instant::now()));
+            let timeout = stale.then(|| pacer.wait(Instant::now()).unwrap_or_default());
             match console.next(timeout)? {
                 WaitEvent::Interrupt => return Ok(Waited::Cancelled),
                 WaitEvent::Resized if shown => {
                     stale = true;
-                    next_frame = Instant::now();
+                    pacer.input();
                 }
                 WaitEvent::Resized | WaitEvent::Woken => {}
             }
@@ -674,7 +663,13 @@ impl Editor {
                 .expect("a test console never fails");
         }
         let result = match self.tui.terminal().map(|term| term.event_reader()) {
-            Some(reader) => self.wait_runs_from(mark, &mut ReaderConsole { reader }),
+            Some(reader) => self.wait_runs_from(
+                mark,
+                &mut ReaderConsole {
+                    reader,
+                    deferred: Vec::new(),
+                },
+            ),
             None => {
                 let mut console = self
                     .detached

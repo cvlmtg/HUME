@@ -150,19 +150,6 @@ fn setting_value_shell_defaults_to_sh_c() {
     );
 }
 
-#[test]
-fn shell_reads_back_the_words_it_was_set_to() {
-    let mut s = EditorSettings::default();
-    write_global("shell", &text(r#""/opt/my sh" -lc"#), &mut s).unwrap();
-    assert_eq!(
-        setting_value("shell", &s, None),
-        Some(OptionValue::List(vec![
-            "/opt/my sh".to_string(),
-            "-lc".to_string()
-        ]))
-    );
-}
-
 fn text(value: &str) -> OptionInput {
     OptionInput::Text(value.to_string())
 }
@@ -172,21 +159,24 @@ fn words(items: &[&str]) -> OptionInput {
 }
 
 #[test]
-fn shell_takes_a_list_of_words() {
-    let mut s = EditorSettings::default();
-    write_global("shell", &words(&["/opt/my sh", "-lc"]), &mut s).unwrap();
-    assert_eq!(
-        setting_value("shell", &s, None),
-        Some(OptionValue::List(vec![
-            "/opt/my sh".to_string(),
-            "-lc".to_string()
-        ]))
-    );
+fn shell_reads_back_the_words_it_was_set_to() {
+    for value in [text(r#""/opt/my sh" -lc"#), words(&["/opt/my sh", "-lc"])] {
+        let mut s = EditorSettings::default();
+        write_global("shell", &value, &mut s).unwrap();
+        assert_eq!(
+            setting_value("shell", &s, None),
+            Some(OptionValue::List(vec![
+                "/opt/my sh".to_string(),
+                "-lc".to_string()
+            ])),
+            "{value:?}"
+        );
+    }
 }
 
 #[test]
 fn shell_refuses_an_empty_program() {
-    for value in [text(r#""" -c"#), words(&["", "-c"]), words(&[])] {
+    for value in [text("  "), text(r#""" -c"#), words(&["", "-c"]), words(&[])] {
         let mut s = EditorSettings::default();
         let err = write_global("shell", &value, &mut s)
             .expect_err(&format!("{value:?} names no program"));
@@ -196,23 +186,13 @@ fn shell_refuses_an_empty_program() {
 }
 
 #[test]
-fn only_a_word_list_setting_takes_a_list() {
+fn only_the_shell_setting_takes_a_list() {
     let mut s = EditorSettings::default();
     let err = write_global("word-chars", &words(&["_", "-"]), &mut s)
         .expect_err("word-chars is not a word list");
     assert!(err.starts_with("invalid value for 'word-chars'"), "{err}");
     let mut ov = BufferOverrides::default();
     assert!(write_buffer("indent-width", &words(&["4"]), &mut ov).is_err());
-}
-
-#[test]
-fn shell_refuses_an_empty_value() {
-    let mut s = EditorSettings::default();
-    let err = write_global("shell", &text("  "), &mut s).expect_err("no program to run");
-    assert!(
-        err.starts_with("invalid value for 'shell'"),
-        "a value error, not an unknown key: {err}"
-    );
 }
 
 #[test]

@@ -128,23 +128,10 @@ fn captured(program: &str, result: JobResult) -> Result<Captured, ShellFailure> 
         stderr,
         status,
     } = result;
-    let detail = |what: String| {
-        let stderr = stderr.trim();
-        if stderr.is_empty() {
-            ShellFailure(what)
-        } else {
-            ShellFailure(format!("{what}: {stderr}"))
-        }
-    };
-    match status {
-        Some(status) if status.success() => {}
-        Some(status) => {
-            return Err(detail(format!(
-                "{program} failed ({})",
-                hume_platform::process::exit_code_str(status)
-            )));
-        }
-        None => return Err(detail(format!("{program} failed"))),
+    if !status.is_some_and(|status| status.success()) {
+        return Err(ShellFailure(hume_platform::process::failure_message(
+            program, status, &stderr,
+        )));
     }
     let stdout = String::from_utf8(stdout)
         .map_err(|_| ShellFailure(format!("{program} printed output that is not UTF-8")))?;

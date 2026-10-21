@@ -212,23 +212,33 @@ impl HistoryStore {
         }
     }
 
+    /// Every ring. The pattern names each field, so a new ring is a compile
+    /// error here until it is listed.
+    fn rings_mut(&mut self) -> [&mut History; 4] {
+        let Self {
+            command,
+            search_f,
+            search_b,
+            pipe,
+        } = self;
+        [command, search_f, search_b, pipe]
+    }
+
     /// Reset per-session nav state on every ring. Called when any minibuffer
     /// opens or closes.
     pub(in crate::editor) fn begin_session_all(&mut self) {
-        self.command.begin_session();
-        self.search_f.begin_session();
-        self.search_b.begin_session();
-        self.pipe.begin_session();
+        for ring in self.rings_mut() {
+            ring.begin_session();
+        }
     }
 
     /// Update the capacity of every ring; see `History::set_capacity` for
     /// why this doesn't trim. Called when the `prompt-history-levels` setting
     /// changes at runtime.
     pub(in crate::editor) fn set_capacity(&mut self, new_cap: usize) {
-        self.command.set_capacity(new_cap);
-        self.search_f.set_capacity(new_cap);
-        self.search_b.set_capacity(new_cap);
-        self.pipe.set_capacity(new_cap);
+        for ring in self.rings_mut() {
+            ring.set_capacity(new_cap);
+        }
     }
 }
 

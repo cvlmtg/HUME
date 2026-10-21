@@ -1,4 +1,5 @@
 use hume_grid::{Position, Rect};
+use std::collections::VecDeque;
 use std::io;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -44,16 +45,25 @@ pub(crate) const HEADLESS_TERMINAL: Rect = Rect::new(0, 0, 80, 25);
 /// draw one frame, not one each.
 pub(in crate::editor) const FRAME_GAP: Duration = Duration::from_millis(16);
 
-/// When the run loop may draw: at once after input, otherwise no sooner
-/// than [`FRAME_GAP`] after the last frame.
+/// When a loop may draw: at once after input, otherwise no sooner than
+/// [`FRAME_GAP`] after the last frame.
 #[derive(Debug, Default)]
 pub(in crate::editor) struct FramePacer {
-    last_frame: Option<Instant>,
+    /// The earliest a frame not drawn for input may draw, `None` for at once.
+    next_due: Option<Instant>,
     /// Input arrived since the last frame.
     input: bool,
 }
 
 impl FramePacer {
+    /// A pacer whose first frame not drawn for input is due at `at`.
+    pub(in crate::editor) fn not_before(at: Instant) -> Self {
+        Self {
+            next_due: Some(at),
+            input: false,
+        }
+    }
+
     /// Input arrived: the next frame is due at once.
     pub(in crate::editor) fn input(&mut self) {
         self.input = true;
@@ -64,13 +74,13 @@ impl FramePacer {
         if self.input {
             return None;
         }
-        let due = self.last_frame? + FRAME_GAP;
+        let due = self.next_due?;
         (due > now).then(|| due - now)
     }
 
     /// A frame was drawn at `now`.
     pub(in crate::editor) fn drew(&mut self, now: Instant) {
-        self.last_frame = Some(now);
+        self.next_due = Some(now + FRAME_GAP);
         self.input = false;
     }
 }
@@ -98,6 +108,10 @@ struct TerminalConsole<'f, 'a> {
 impl PipeConsole for TerminalConsole<'_, '_> {
     fn next(&mut self, timeout: Option<Duration>) -> io::Result<WaitEvent> {
         self.input.next(timeout)
+    }
+
+    fn take_deferred(&mut self) -> Vec<TerminalEvent> {
+        self.input.take_deferred()
     }
 
     fn repaint(&mut self, ed: &mut Editor) -> io::Result<()> {
@@ -254,6 +268,7 @@ impl Editor {
             applied_cwd: None,
             startup_positions: Vec::new(),
             detached: None,
+            input_backlog: VecDeque::new(),
             #[cfg(test)]
             inline_pipe_console: None,
         };
@@ -719,6 +734,7 @@ impl Editor {
                         frame: &mut frame,
                         input: ReaderConsole {
                             reader: reader.clone(),
+                            deferred: Vec::new(),
                         },
                     },
                 )?;
@@ -731,7 +747,8 @@ impl Editor {
             }
 
             // ── 3. Terminal event ─────────────────────────────────────────────
-            // Blocks until a matching event is available, a wake from a
+            // Input a pipe wait left behind comes first, oldest first.
+            // Otherwise blocks until an event is available, a wake from a
             // background thread (parse worker, LSP transport, SIGWINCH: the
             // reader's source routes it internally), or the nearest async
             // source's deadline, whichever comes first. Idle (no deadline)
@@ -741,23 +758,29 @@ impl Editor {
             // drains every async source regardless of why we woke, and
             // `term.size()` re-reads the viewport (covers SIGWINCH). A frame
             // the pacer held back bounds the wait too.
-            let timeout = match (self.wake_timeout(), frame_wait) {
-                (Some(source), Some(frame)) => Some(source.min(frame)),
-                (source, frame) => source.or(frame),
+            let event = match self.input_backlog.pop_front() {
+                Some(event) => event,
+                None => {
+                    let timeout = match (self.wake_timeout(), frame_wait) {
+                        (Some(source), Some(frame)) => Some(source.min(frame)),
+                        (source, frame) => source.or(frame),
+                    };
+                    match reader.poll(timeout, |_| true) {
+                        Ok(true) => {}
+                        Ok(false) => continue,
+                        Err(e) => return Err(e),
+                    }
+                    reader.read(|_| true)?
+                }
             };
-            match reader.poll(timeout, |_| true) {
-                Ok(true) => {}
-                Ok(false) => continue,
-                Err(e) => return Err(e),
-            }
             // A parse that finished while `poll` was blocked has its result
             // waiting in the worker's channel, and the wake that would have
-            // carried the loop back to `settle()` was consumed by the input
-            // event about to be read. Install it here so a structural
-            // command in this dispatch reads a current tree instead of
-            // rebuilding one `ensure_syntax_current` would parse inline.
+            // carried the loop back to `settle()` was consumed by this input
+            // event. Install it here so a structural command in this
+            // dispatch reads a current tree instead of rebuilding one
+            // `ensure_syntax_current` would parse inline.
             self.install_parse_results();
-            match reader.read(|_| true)? {
+            match event {
                 TerminalEvent::WindowResized(_) => {
                     // Drain any additional resize events that are already queued
                     // so a drag (which emits one event per delta) collapses into a

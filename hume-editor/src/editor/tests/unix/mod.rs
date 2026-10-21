@@ -21,6 +21,11 @@ use std::time::{Duration, Instant};
 // single drain call. A background thread's result can land on any frame,
 // so CI scheduling jitter would flake a "drain once and assert" test.
 
+/// A wake callback for a spawn whose wakes the test does not wait on.
+fn no_op_wake() -> Arc<dyn Fn() + Send + Sync> {
+    Arc::new(|| {})
+}
+
 /// Runs `step` in a bounded loop until `until` returns true.
 fn poll_until(
     ed: &mut Editor,

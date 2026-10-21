@@ -10,7 +10,6 @@ use crate::editor::input_stack::picker::{self, item};
 use hume_engine::types::TruncateEnd;
 use hume_platform::process::line_source::spawn_line_source;
 use hume_scripting::host::{LivePickerOpts, PickerOpts};
-use std::sync::Arc;
 use steel::rvals::SteelVal;
 
 fn open_bare_picker(ed: &mut Editor) {
@@ -32,10 +31,6 @@ fn open_live_picker(ed: &mut Editor) {
     );
     picker::open_picker(&mut ed.state, &ed.view, session, "picker!")
         .expect("no `.` is in progress");
-}
-
-fn no_op_wake() -> Arc<dyn Fn() + Send + Sync> {
-    Arc::new(|| {})
 }
 
 /// Spawns `sh -c script` and attaches it to the already-open picker with
@@ -202,6 +197,19 @@ fn allowlist_omitting_zero_reports_a_successful_exit() {
         msg.contains("failed"),
         "an allowlist omitting 0 must report a successful exit, got: {msg}"
     );
+}
+
+#[test]
+fn a_failed_source_with_no_stderr_reports_only_its_exit() {
+    // Spawns "sh" by unqualified name. See `PathReader`'s doc.
+    let _path = path_reader();
+    let mut ed = editor_from("-[a]>bc\n");
+    open_bare_picker(&mut ed);
+    attach_sh(&mut ed, "exit 3", vec![0]);
+
+    drain_sources_until(&mut ed, |ed| ed.state.status_msg.is_some());
+
+    insta::assert_snapshot!(ed.state.status_msg.as_deref().unwrap_or_default(), @"sh failed (exit code 3)");
 }
 
 #[test]

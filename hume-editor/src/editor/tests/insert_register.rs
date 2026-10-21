@@ -33,10 +33,6 @@ fn ctrl_r(ed: &mut Editor, name: KeyEvent) {
     ed.settle();
 }
 
-fn text(ed: &Editor) -> String {
-    ed.doc().text().to_string()
-}
-
 // ── Paths ───────────────────────────────────────────────────────────────────
 
 #[test]

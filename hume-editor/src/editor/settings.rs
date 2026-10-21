@@ -479,11 +479,11 @@ impl SettingText for ShellCommand {
     const VALUES: &'static [&'static str] = &[];
 
     fn parse(s: &str) -> Result<Self, String> {
-        Self::from_words(hume_scripting::host::parse_word_list(s)?)
+        Self::from_words(word_list::parse_word_list(s)?)
     }
 
     fn to_text(&self) -> String {
-        hume_scripting::host::format_word_list(&self.words())
+        word_list::format_word_list(&self.words())
     }
 }
 
@@ -608,7 +608,7 @@ macro_rules! parse_setting {
     (@raw $value:expr, word_chars) => {
         parse_word_chars($value)
     };
-    ($value:expr, $key:expr, word_list) => {
+    ($value:expr, $key:expr, shell_command) => {
         for_key(
             $key,
             match $value {
@@ -637,8 +637,8 @@ macro_rules! parse_setting {
 /// own `parse`.
 /// `show_newline` stores a plain `bool` but its wire format is `none`/`all`,
 /// so it round-trips as `Symbol` via [`format_show_newline`], the inverse of
-/// [`parse_show_newline`]. `word_list` reads back as `List`, one string per
-/// word.
+/// [`parse_show_newline`]. `shell_command` reads back as `List`, one string
+/// per word.
 macro_rules! option_value {
     ($value:expr, bool) => {
         hume_scripting::host::OptionValue::Bool($value)
@@ -667,7 +667,7 @@ macro_rules! option_value {
     ($value:expr, word_chars) => {
         hume_scripting::host::OptionValue::Str($value.to_string())
     };
-    ($value:expr, word_list) => {
+    ($value:expr, shell_command) => {
         hume_scripting::host::OptionValue::List($value.words())
     };
 }
@@ -731,9 +731,9 @@ macro_rules! buffer_accessor {
 /// | `string` | `value.to_owned()` |
 /// | `show_newline` | `parse_show_newline(value)` (`none`/`all` wire format, reads back as a symbol) |
 /// | `word_chars` | `parse_word_chars(value)` (validated, unlike `string`) |
-/// | `word_list` | `ShellCommand`'s `SettingText::parse` for text, [`ShellCommand::from_words`] for a script's list; reads back as a list of strings |
+/// | `shell_command` | `ShellCommand`'s `SettingText::parse` for text, [`ShellCommand::from_words`] for a script's list; reads back as a list of strings |
 ///
-/// Every kind but `word_list` takes one value and refuses a list.
+/// Every kind but `shell_command` takes one value and refuses a list.
 macro_rules! define_settings {
     (
         global {
@@ -1068,7 +1068,7 @@ define_settings! {
         // The program `pipe` runs each command line with.
         "shell" => shell: ShellCommand = ShellCommand::default(),
             scope: [Scope::Global],
-            parser: word_list;
+            parser: shell_command;
         "syntax-highlight-max-bytes" => syntax_highlight_max_bytes: usize = 1_048_576,
             scope: [Scope::Global],
             parser: usize_nonzero;
@@ -1381,6 +1381,8 @@ fn parse_word_chars(value: &str) -> Result<String, String> {
 /// name `ops::write_global_for_test`; every other item in `ops` keeps its
 /// own narrower per-item visibility regardless of the path being nameable.
 pub(crate) mod ops;
+
+mod word_list;
 
 #[cfg(test)]
 mod tests;

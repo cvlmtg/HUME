@@ -83,11 +83,6 @@ impl CommandPane {
         view.panes[self.0].buffer_id()
     }
 
-    /// This pane and the buffer it shows, as Steel names a pane.
-    pub(in crate::editor) fn handle(self, view: &EngineView) -> PaneHandle {
-        PaneHandle::with_pane(self.bid(view), self.pid())
-    }
-
     /// `t`'s state for the buffer it shows.
     pub(in crate::editor) fn state<'a>(
         self,
@@ -170,7 +165,7 @@ impl FocusedPane {
     /// the focused pid, never bare focus state a callee would have to
     /// re-derive.
     pub(in crate::editor) fn handle(self, view: &EngineView) -> PaneHandle {
-        self.0.handle(view)
+        PaneHandle::with_pane(self.bid(view), self.pid())
     }
 }
 

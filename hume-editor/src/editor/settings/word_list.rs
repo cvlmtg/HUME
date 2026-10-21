@@ -1,5 +1,5 @@
-//! The text form of a word-list option (`shell`): what `:set` takes and
-//! what a Steel list of strings becomes on its way to the settings layer.
+//! The text form of a word-list setting (`shell`), as `:set` takes it and
+//! as the setting reads back as text.
 //!
 //! Words are separated by whitespace. A `"…"` segment is part of the word
 //! around it and may hold whitespace; inside one, `\"` and `\\` stand for
@@ -9,7 +9,7 @@
 use std::borrow::Cow;
 
 /// The words `text` spells. `Err` for no words or an unterminated quote.
-pub fn parse_word_list(text: &str) -> Result<Vec<String>, String> {
+pub(super) fn parse_word_list(text: &str) -> Result<Vec<String>, String> {
     const UNTERMINATED: &str = "unterminated quote";
     let mut words = Vec::new();
     // `Some` once a word has started, so `""` is an empty word, not none.
@@ -48,7 +48,7 @@ pub fn parse_word_list(text: &str) -> Result<Vec<String>, String> {
 
 /// The text [`parse_word_list`] reads back as `words`. A word is quoted
 /// only when it is empty or holds whitespace or a `"`.
-pub fn format_word_list(words: &[String]) -> String {
+pub(super) fn format_word_list(words: &[String]) -> String {
     words
         .iter()
         .map(|word| quote_word(word))

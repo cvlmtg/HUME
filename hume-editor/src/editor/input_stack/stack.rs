@@ -668,14 +668,24 @@ impl InputStack {
 
     /// The active minibuffer, topmost-wins across the four minibuf-backed
     /// mode layers (`Command`/`Search`/`Sift`/`Prompt`) and the
-    /// `ShellPrompt` overlay. At most one of them is ever on the stack: the
-    /// overlay refuses to open over another, and a mode layer's push removes
-    /// it. So "topmost" and "only" coincide.
+    /// `ShellPrompt` overlay. At most one of them is ever on the stack:
+    /// [`EditorState::push_layer`] retires the open one before pushing
+    /// another. So "topmost" and "only" coincide.
     pub(in crate::editor) fn minibuf(&self) -> Option<&MiniBuffer> {
         self.layers
             .iter()
             .rev()
             .find_map(|(_, layer)| layer.minibuf())
+    }
+
+    /// The layer holding the open minibuffer, if any.
+    fn minibuf_owner(&self) -> Option<LayerRef> {
+        self.layers
+            .iter()
+            .enumerate()
+            .rev()
+            .find(|(_, (_, layer))| layer.minibuf().is_some())
+            .map(|(depth, (id, _))| LayerRef { depth, id: *id })
     }
 
     pub(in crate::editor) fn minibuf_mut(&mut self) -> Option<&mut MiniBuffer> {
@@ -823,12 +833,19 @@ impl EditorState {
     /// no-op ordering difference for every layer but `PickerLayer`, whose
     /// own `setup` needs to run its dismiss-and-replace work first; eviction
     /// only ever touches the two popup homes, never selections, completion,
-    /// or picker state, so nothing else can observe the difference.
+    /// or picker state, so nothing else can observe the difference. A layer
+    /// holding a minibuffer first retires the one already open, so keys
+    /// never reach a buried minibuffer.
     pub(in crate::editor) fn push_layer<L: Layer>(
         &mut self,
         view: &EngineView,
         mut layer: L,
     ) -> LayerRef {
+        if layer.minibuf().is_some()
+            && let Some(open) = self.input.minibuf_owner()
+        {
+            self.retire_at(view, open);
+        }
         layer.setup(self, view);
         match layer.popup_eviction() {
             PopupEviction::Both => self.input.clear_popups(),

@@ -73,7 +73,7 @@ fn escape_closes_the_prompt_and_the_insert_session_goes_on() {
     assert_eq!(ed.state.mode(), Mode::Insert);
     assert!(!ed.doc().is_busy());
     ed.handle_key(key('x'));
-    assert_eq!(ed.doc().text().to_string(), "xabc\n");
+    assert_eq!(text(&ed), "xabc\n");
 }
 
 #[test]
@@ -85,10 +85,7 @@ fn a_cancelled_shell_prompt_keeps_the_previous_change() {
     keys(&mut ed, "sort");
     ed.handle_key(key_esc());
     assert!(!ed.doc().is_busy());
-    assert_eq!(
-        ed.state.last_action().map(|a| a.command.as_ref()),
-        Some("replace")
-    );
+    assert_eq!(last_command(&ed), Some("replace"));
 }
 
 #[test]
@@ -241,9 +238,7 @@ fn bar_holds_the_buffer_from_enter_on() {
 #[test]
 fn bar_starts_a_background_run() {
     let mut ed = editor_from("-[abc]>\n");
-    ed.handle_key(key('|'));
-    keys(&mut ed, "sort");
-    ed.handle_key(key_enter());
+    type_pipe(&mut ed, "sort");
     assert!(ed.doc().is_busy());
     assert_eq!(ed.state.pipe_runs.foreground(), None);
 }
@@ -270,9 +265,7 @@ fn bar_while_recording_a_macro_starts_a_foreground_run() {
 /// Starts a background `|sort` on the focused buffer through `handle_key`;
 /// nothing settles, so no process starts.
 fn start_sort(ed: &mut Editor) {
-    ed.handle_key(key('|'));
-    keys(ed, "sort");
-    ed.handle_key(key_enter());
+    type_pipe(ed, "sort");
     assert!(ed.doc().is_busy(), "setup: the run is in flight");
 }
 
@@ -293,10 +286,7 @@ fn ctrl_c_cancels_the_run_in_this_buffer_and_changes_nothing() {
     assert!(!ed.doc().is_busy());
     assert_eq!(state(&ed), "-[x]>\n");
     assert_eq!(status(&ed), cancelled(&ed, bid));
-    assert_eq!(
-        ed.state.last_action().map(|a| a.command.as_ref()),
-        Some("replace")
-    );
+    assert_eq!(last_command(&ed), Some("replace"));
 }
 
 #[test]
@@ -324,7 +314,7 @@ fn closing_the_launching_pane_cancels_its_run() {
     ed.execute_keymap_command("pane-vsplit".into(), None, false);
     start_sort(&mut ed);
     ed.execute_keymap_command("pane-close".into(), None, false);
-    assert!(!ed.state.buffers.get(bid).is_busy());
+    assert!(!busy(&ed, bid));
     assert_eq!(status(&ed), cancelled(&ed, bid));
 }
 
@@ -335,7 +325,7 @@ fn closing_another_pane_on_the_buffer_keeps_the_run() {
     start_sort(&mut ed);
     ed.execute_keymap_command("pane-vsplit".into(), None, false);
     ed.execute_keymap_command("pane-close".into(), None, false);
-    assert!(ed.state.buffers.get(bid).is_busy());
+    assert!(busy(&ed, bid));
 }
 
 #[test]
@@ -344,7 +334,7 @@ fn switching_the_launching_pane_away_keeps_the_run() {
     let bid = ed.focused_buffer_id();
     start_sort(&mut ed);
     open_other_buffer(&mut ed, "x\n");
-    assert!(ed.state.buffers.get(bid).is_busy());
+    assert!(busy(&ed, bid));
 }
 
 #[test]
@@ -367,10 +357,6 @@ fn two_runs_after_a_replace(ed: &mut Editor) -> (BufferId, BufferId) {
     let second = open_other_buffer(ed, "b\n");
     start_sort(ed);
     (first, second)
-}
-
-fn last_command(ed: &Editor) -> Option<&str> {
-    ed.state.last_action().map(|a| a.command.as_ref())
 }
 
 #[test]
@@ -451,7 +437,7 @@ fn q_in_a_split_closes_the_pane_and_cancels() {
     start_sort(&mut ed);
     type_cmd(&mut ed, ":q");
     assert!(!ed.state.should_quit);
-    assert!(!ed.state.buffers.get(bid).is_busy());
+    assert!(!busy(&ed, bid));
 }
 
 #[test]
@@ -480,7 +466,7 @@ fn bd_refuses() {
     start_sort(&mut ed);
     type_cmd(&mut ed, ":bd");
     assert_eq!(status(&ed), pipe_running(&ed, bid));
-    assert!(ed.state.buffers.get(bid).is_busy());
+    assert!(busy(&ed, bid));
 }
 
 #[test]

@@ -576,6 +576,28 @@ fn type_cmd(ed: &mut Editor, cmd: &str) {
     ed.feed_key(key_enter());
 }
 
+/// Types `|command` Enter through `handle_key`, which starts a Normal-mode
+/// pipe run and leaves it in flight.
+fn type_pipe(ed: &mut Editor, command: &str) {
+    for ch in std::iter::once('|').chain(command.chars()) {
+        ed.handle_key(key(ch));
+    }
+    ed.handle_key(key_enter());
+}
+
+/// The command `.` would repeat now.
+fn last_command(ed: &Editor) -> Option<&str> {
+    ed.state.last_action().map(|a| a.command.as_ref())
+}
+
+fn text(ed: &Editor) -> String {
+    ed.doc().text().to_string()
+}
+
+fn busy(ed: &Editor, bid: BufferId) -> bool {
+    ed.state.buffers.get(bid).is_busy()
+}
+
 /// `type_cmd`'s twin, routed through `handle_input` (see `Editor::feed_event`)
 /// instead of `feed_key`/`step`. Use when the test needs the buffer-enter
 /// disk check to run on the command's own dispatch, not just its keystrokes.
@@ -984,6 +1006,7 @@ impl Editor {
             applied_cwd: None,
             startup_positions: Vec::new(),
             detached: Some(detached),
+            input_backlog: std::collections::VecDeque::new(),
             inline_pipe_console: None,
         }
     }

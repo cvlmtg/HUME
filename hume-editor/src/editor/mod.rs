@@ -703,10 +703,9 @@ impl EditorState {
     ///
     /// Tears down the current mode layer unless it is `Base`
     /// (teardown is cancel), clears Extend, and calls [`Self::push_layer`].
-    /// Overlays below the outgoing mode layer stay, except the shell prompt:
-    /// its minibuffer would sit under the new layer's, so it is retired
-    /// wherever it is. `push_layer` evicts any popup in `Base`'s slot, so a
-    /// popup is never buried.
+    /// Overlays below the outgoing mode layer stay, except one holding a
+    /// minibuffer, which `push_layer` retires. `push_layer` evicts any popup
+    /// in `Base`'s slot, so a popup is never buried.
     ///
     /// Never gated: a key only reaches `Base` after every overlay above it
     /// fell through, and a Steel-initiated push (a timer's `prompt!`) lands on
@@ -716,7 +715,6 @@ impl EditorState {
         view: &EngineView,
         layer: L,
     ) {
-        self.retire::<input_stack::shell_prompt::ShellPromptLayer>(view);
         let mode_layer = self.input.mode_layer();
         if !self.input.is::<input_stack::BaseLayer>(mode_layer) {
             self.truncate_layers(view, mode_layer);
@@ -924,6 +922,9 @@ pub(crate) struct Editor {
     /// The receiving end of `state.wake`, which a pipe run with no terminal
     /// waits on. `None` when `state.wake` wakes a terminal's reader.
     pub(in crate::editor) detached: Option<pipe_run::Detached>,
+    /// Terminal input a pipe wait read and left to the run loop, oldest
+    /// first. The run loop handles it before reading the terminal again.
+    pub(in crate::editor) input_backlog: VecDeque<termina::event::Event>,
     /// The console the next pipe run during a replay waits on, in place of
     /// the terminal.
     #[cfg(test)]

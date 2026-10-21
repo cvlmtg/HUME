@@ -16,7 +16,7 @@ use hume_engine::types::EditorMode;
 use super::super::edit_session::InsertSession;
 use super::super::keymap::{BindMode, WalkResult};
 use super::super::replay::{Input, dispatch_insert_key};
-use super::super::{Editor, EditorState, commands, doc_ops};
+use super::super::{Editor, EditorState, commands};
 use super::paste::PastedText;
 use super::popup::PopupLayer;
 use super::stack::{InputEvent, InputStack, Layer, LayerHandler, LayerRef, PasteHandler, Removal};
@@ -208,14 +208,12 @@ impl EditorState {
         view: &EngineView,
         values: &[String],
     ) {
-        let focused = view.focused_pane();
-        let buf = view.panes[focused].buffer_id();
-        let (buffers, mut stores) = self.edit_parts();
-        if let Err(e) = doc_ops::apply_doc_edit_grouped(buffers, &mut stores, focused, buf, |s| {
-            hume_ops::edit::insert_values(s, values)
-        }) {
-            self.report_error(&e);
-        }
+        commands::apply_focused_edit_grouped(
+            self,
+            view,
+            commands::FocusedPane::current(view),
+            |s| hume_ops::edit::insert_values(s, values),
+        );
         self.dismiss_completion(view);
     }
 }

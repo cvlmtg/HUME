@@ -7,10 +7,7 @@ use super::*;
 use std::collections::VecDeque;
 use std::io;
 use std::path::Path;
-use std::sync::Arc;
 use std::time::{Duration, Instant};
-
-use hume_platform::process::WakeCallback;
 
 use crate::editor::lifecycle::FRAME_GAP;
 use crate::editor::pipe_run::{
@@ -19,10 +16,6 @@ use crate::editor::pipe_run::{
 use crate::editor::replay::Answer;
 use crate::editor::settings::{SettingText, ShellCommand};
 use crate::editor::shell_batch::{BatchProgress, Captured, ShellBatch, ShellFailure};
-
-fn no_op_wake() -> WakeCallback {
-    Arc::new(|| {})
-}
 
 fn batch(command: &str, inputs: &[&str]) -> ShellBatch {
     ShellBatch::new(
@@ -208,9 +201,11 @@ fn stderr_of_a_successful_process_is_kept() {
 
 /// A console that waits like a detached run, handing out `events` first
 /// once the run has drawn its first frame (the wait has no timeout then),
-/// and records the progress each repaint showed and when it drew.
+/// and records the progress each repaint showed and when it drew. It leaves
+/// `deferred` to the run loop.
 struct ScriptedConsole {
     events: VecDeque<WaitEvent>,
+    deferred: Vec<TerminalEvent>,
     detached: Detached,
     repaints: Vec<Option<PipeProgress>>,
     painted_at: Vec<Instant>,
@@ -221,6 +216,7 @@ impl ScriptedConsole {
     fn new(ed: &Editor, events: impl IntoIterator<Item = WaitEvent>) -> Self {
         Self {
             events: events.into_iter().collect(),
+            deferred: Vec::new(),
             detached: ed
                 .detached
                 .clone()
@@ -244,6 +240,10 @@ impl PipeConsole for ScriptedConsole {
             .push(ed.state.pipe_runs.progress(ed.focused_buffer_id()));
         self.painted_at.push(Instant::now());
         Ok(())
+    }
+
+    fn take_deferred(&mut self) -> Vec<TerminalEvent> {
+        std::mem::take(&mut self.deferred)
     }
 }
 
@@ -277,6 +277,36 @@ fn the_output_lands_on_the_selections_the_run_started_from() {
     let mut console = ScriptedConsole::new(&ed, []);
     run_with(&mut ed, run, &mut console);
     assert_eq!(state(&ed), "-[AB]> cd\n");
+}
+
+#[test]
+fn a_wait_leaves_the_input_it_did_not_handle_to_the_run_loop_in_order() {
+    let _path = path_reader();
+    let mut ed = editor_from("-[abc]>\n");
+    let run = start_run(&mut ed, "cat", PipeKind::Replace);
+    let mut console = ScriptedConsole::new(&ed, []);
+    console.deferred = vec![TerminalEvent::Key(key('x')), TerminalEvent::Key(key('y'))];
+    run_with(&mut ed, run, &mut console);
+    assert_eq!(
+        ed.input_backlog,
+        [TerminalEvent::Key(key('x')), TerminalEvent::Key(key('y'))]
+    );
+}
+
+#[test]
+fn a_cancelled_wait_queues_its_input_behind_the_input_already_waiting() {
+    let _path = path_reader();
+    let mut ed = editor_from("-[abc]>\n");
+    ed.input_backlog.push_back(TerminalEvent::Key(key('a')));
+    let run = start_run(&mut ed, "sleep 5; cat", PipeKind::Replace);
+    let mut console = ScriptedConsole::new(&ed, [WaitEvent::Interrupt]);
+    console.deferred = vec![TerminalEvent::Key(key('x'))];
+    run_with(&mut ed, run, &mut console);
+    assert_eq!(state(&ed), "-[abc]>\n", "setup: the run was cancelled");
+    assert_eq!(
+        ed.input_backlog,
+        [TerminalEvent::Key(key('a')), TerminalEvent::Key(key('x'))]
+    );
 }
 
 #[test]
@@ -392,10 +422,6 @@ fn a_termination_request_cancels_the_run() {
 }
 
 // ── `|` and `Ctrl-|` end to end ───────────────────────────────────────────────
-
-fn text(ed: &Editor) -> String {
-    ed.doc().text().to_string()
-}
 
 #[test]
 fn bar_replaces_each_selection_and_one_undo_restores_them() {
@@ -553,17 +579,12 @@ fn an_interrupt_during_dot_kills_the_run_and_changes_nothing() {
     assert!(!ed.doc().can_undo());
 }
 
-/// The command `.` would repeat now.
-fn last_command(ed: &Editor) -> Option<String> {
-    ed.state.last_action().map(|a| a.command.to_string())
-}
-
 /// Replaces the selection with `x`, the change a failed pipe must leave in
 /// place.
 fn replace_with_x(ed: &mut Editor) {
     ed.feed_key(key('r'));
     ed.feed_key(key('x'));
-    assert_eq!(last_command(ed).as_deref(), Some("replace"));
+    assert_eq!(last_command(ed), Some("replace"));
 }
 
 #[test]
@@ -574,7 +595,7 @@ fn a_failed_pipe_keeps_the_previous_change() {
     ed.feed_key(key('|'));
     type_cmd(&mut ed, "exit 3");
     assert!(has_error(&ed, "exit"));
-    assert_eq!(last_command(&ed).as_deref(), Some("replace"));
+    assert_eq!(last_command(&ed), Some("replace"));
 }
 
 #[test]
@@ -586,7 +607,7 @@ fn an_interrupted_pipe_keeps_the_previous_change() {
     ed.feed_key(key('|'));
     type_cmd(&mut ed, "sleep 30");
     assert_eq!(status(&ed), "pipe cancelled");
-    assert_eq!(last_command(&ed).as_deref(), Some("replace"));
+    assert_eq!(last_command(&ed), Some("replace"));
 }
 
 #[test]
@@ -626,10 +647,7 @@ fn a_failed_ctrl_bar_keeps_its_insert_session_change() {
     type_chars(&mut ed, "b");
     ed.feed_key(key_esc());
     assert_eq!(text(&ed), "abz\n");
-    assert_eq!(
-        last_command(&ed).as_deref(),
-        Some("insert-at-selection-start")
-    );
+    assert_eq!(last_command(&ed), Some("insert-at-selection-start"));
 }
 
 #[test]
@@ -687,25 +705,12 @@ fn a_failed_pipe_in_a_macro_lets_the_macro_go_on() {
 
 // ── Background runs ───────────────────────────────────────────────────────────
 
-/// Types `|command` Enter through `handle_key`, which starts a Normal-mode
-/// run without waiting for it.
-fn bar(ed: &mut Editor, command: &str) {
-    for k in std::iter::once('|').chain(command.chars()) {
-        ed.handle_key(key(k));
-    }
-    ed.handle_key(key_enter());
-}
-
-fn busy(ed: &Editor, bid: BufferId) -> bool {
-    ed.state.buffers.get(bid).is_busy()
-}
-
 #[test]
 fn bar_runs_in_the_background_and_lands() {
     let _path = path_reader();
     let mut ed = editor_from("-[b\na]>\n");
     let bid = ed.focused_buffer_id();
-    bar(&mut ed, "sort");
+    type_pipe(&mut ed, "sort");
     assert!(busy(&ed, bid), "the run is in flight after Enter");
     assert_eq!(state(&ed), "-[b\na]>\n");
     drain_until(&mut ed, |ed| !busy(ed, bid));
@@ -717,7 +722,7 @@ fn keys_move_selections_meanwhile_and_the_output_lands_on_the_started_ones() {
     let _path = path_reader();
     let mut ed = editor_from("-[ab]> cd\n");
     let bid = ed.focused_buffer_id();
-    bar(&mut ed, "sleep 0.2; tr a-z A-Z");
+    type_pipe(&mut ed, "sleep 0.2; tr a-z A-Z");
     ed.handle_key(key('w'));
     assert_ne!(state(&ed), "-[ab]> cd\n", "the selection moved meanwhile");
     drain_until(&mut ed, |ed| !busy(ed, bid));
@@ -729,11 +734,11 @@ fn the_output_lands_in_the_buffer_the_pane_left() {
     let _path = path_reader();
     let mut ed = editor_from("-[ab]>\n");
     let bid = ed.focused_buffer_id();
-    bar(&mut ed, "sleep 0.2; tr a-z A-Z");
+    type_pipe(&mut ed, "sleep 0.2; tr a-z A-Z");
     open_other_buffer(&mut ed, "x\n");
     drain_until(&mut ed, |ed| !busy(ed, bid));
     assert_eq!(ed.state.buffers.get(bid).text().to_string(), "AB\n");
-    assert_eq!(ed.doc().text().to_string(), "x\n");
+    assert_eq!(text(&ed), "x\n");
 }
 
 #[test]
@@ -743,7 +748,7 @@ fn a_failed_background_run_reports_naming_the_buffer_and_keeps_the_previous_chan
     let bid = ed.focused_buffer_id();
     ed.handle_key(key('r'));
     ed.handle_key(key('x'));
-    bar(&mut ed, "exit 3");
+    type_pipe(&mut ed, "exit 3");
     drain_until(&mut ed, |ed| !busy(ed, bid));
     let name = ed.doc().display_name();
     assert!(
@@ -753,10 +758,7 @@ fn a_failed_background_run_reports_naming_the_buffer_and_keeps_the_previous_chan
         "got {:?}",
         error_log(&ed)
     );
-    assert_eq!(
-        ed.state.last_action().map(|a| a.command.as_ref()),
-        Some("replace")
-    );
+    assert_eq!(last_command(&ed), Some("replace"));
 }
 
 #[test]
@@ -764,7 +766,7 @@ fn the_indicator_shows_after_the_grace_for_the_focused_buffer_only() {
     let _path = path_reader();
     let mut ed = editor_from("-[a]>\n");
     let bid = ed.focused_buffer_id();
-    bar(&mut ed, "sleep 0.5; cat");
+    type_pipe(&mut ed, "sleep 0.5; cat");
     assert_eq!(ed.state.pipe_runs.progress(bid), None, "within the grace");
     std::thread::sleep(Duration::from_millis(150));
     assert_eq!(
@@ -783,14 +785,14 @@ fn runs_in_two_buffers_share_one_process_cap() {
     let mut ed = editor_from("-{a}> -[b]> -[c]>\n");
     ed.state.pipe_runs = PipeRuns::with_limit(2);
     let first = ed.focused_buffer_id();
-    bar(&mut ed, &logging_command(&log));
+    type_pipe(&mut ed, &logging_command(&log));
     let second = open_other_buffer(&mut ed, "a b c\n");
     ed.handle_key(key('%'));
     ed.handle_key(key('s'));
     ed.handle_key(key('\\'));
     ed.handle_key(key('w'));
     ed.handle_key(key_enter());
-    bar(&mut ed, &logging_command(&log));
+    type_pipe(&mut ed, &logging_command(&log));
     assert!(busy(&ed, first) && busy(&ed, second), "setup: both run");
     drain_until(&mut ed, |ed| !busy(ed, first) && !busy(ed, second));
     assert_eq!(starts_and_peak(&log), (6, 2));
@@ -802,14 +804,14 @@ fn a_waited_run_takes_the_next_free_slot_before_an_older_background_run() {
     let mut ed = editor_from("-{a}> -[b]> -[c]> -[d]> -[e]>\n");
     ed.state.pipe_runs = PipeRuns::with_limit(1);
     let background = ed.focused_buffer_id();
-    bar(&mut ed, "sleep 0.5; cat");
+    type_pipe(&mut ed, "sleep 0.5; cat");
     ed.settle();
     // Past the statusline grace, with the first process still in the slot.
     std::thread::sleep(Duration::from_millis(150));
     open_other_buffer(&mut ed, "x\n");
     ed.feed_key(key('|'));
     type_cmd(&mut ed, "tr a-z A-Z");
-    assert_eq!(ed.doc().text().to_string(), "X\n");
+    assert_eq!(text(&ed), "X\n");
     let left = ed
         .state
         .pipe_runs
@@ -824,7 +826,7 @@ fn a_background_landing_leaves_a_kill_for_smart_paste() {
     let mut ed = editor_from("-[b\na]>\n");
     seed_clipboard(&mut ed, "CLIP");
     let sorted = ed.focused_buffer_id();
-    bar(&mut ed, "sort");
+    type_pipe(&mut ed, "sort");
     open_other_buffer(&mut ed, "xy\n");
     ed.feed_key(key('d'));
     drain_until(&mut ed, |ed| !busy(ed, sorted));
@@ -834,7 +836,7 @@ fn a_background_landing_leaves_a_kill_for_smart_paste() {
         "setup: the run landed"
     );
     ed.feed_key(key('p'));
-    assert_eq!(ed.doc().text().to_string(), "yx\n");
+    assert_eq!(text(&ed), "yx\n");
 }
 
 #[test]
@@ -842,11 +844,11 @@ fn step_waits_only_for_the_run_its_key_started() {
     let _path = path_reader();
     let mut ed = editor_from("-[a]>\n");
     let first = ed.focused_buffer_id();
-    bar(&mut ed, "sleep 1; cat");
+    type_pipe(&mut ed, "sleep 1; cat");
     let second = open_other_buffer(&mut ed, "b\n");
     ed.feed_key(key('|'));
     type_cmd(&mut ed, "tr a-z A-Z");
-    assert_eq!(ed.doc().text().to_string(), "B\n");
+    assert_eq!(text(&ed), "B\n");
     assert!(busy(&ed, first), "the other buffer's run goes on");
     assert!(!busy(&ed, second));
 }
@@ -874,7 +876,7 @@ fn ctrl_c_kills_the_background_processes() {
     let dir = tempfile::tempdir().expect("tempdir");
     let pid_file = dir.path().join("pid");
     let mut ed = editor_from("-[a]>\n");
-    bar(&mut ed, &sleeper(&pid_file));
+    type_pipe(&mut ed, &sleeper(&pid_file));
     let pid = started_pid(&mut ed, &pid_file);
     ed.handle_key(key_ctrl('c'));
     assert!(!ed.doc().is_busy());
@@ -894,7 +896,7 @@ fn close_buffer_from_steel_cancels_the_run() {
         r#"(define-command! "closer" "" (lambda (pane) (close-buffer! pane)))"#,
     );
     let bid = ed.focused_buffer_id();
-    bar(&mut ed, &sleeper(&pid_file));
+    type_pipe(&mut ed, &sleeper(&pid_file));
     let pid = started_pid(&mut ed, &pid_file);
     ed.execute_keymap_command("closer".into(), None, false);
     assert!(ed.state.buffers.try_get(bid).is_none(), "the buffer closed");
@@ -909,15 +911,15 @@ fn an_older_run_that_landed_survives_a_newer_one_withdrawn() {
     for k in ['r', 'x'] {
         ed.handle_key(key(k));
     }
-    bar(&mut ed, "tr a-z A-Z");
+    type_pipe(&mut ed, "tr a-z A-Z");
     let second = open_other_buffer(&mut ed, "b\n");
-    bar(&mut ed, "sleep 30; cat");
+    type_pipe(&mut ed, "sleep 30; cat");
     drain_until(&mut ed, |ed| !busy(ed, first));
     assert_eq!(ed.state.buffers.get(first).text().to_string(), "X\n");
     ed.handle_key(key_ctrl('c'));
     assert!(!busy(&ed, second));
     assert_eq!(
-        ed.state.last_action().map(|a| a.command.as_ref()),
+        last_command(&ed),
         Some("pipe"),
         "the landed run's change, not the replace before it"
     );

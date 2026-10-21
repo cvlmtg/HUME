@@ -174,6 +174,7 @@ fn editor_fields_are_classified() {
             // first settle, long before any :reload-config could run
             startup_positions: _,
             detached: _,            // preserved: pairs with state.wake
+            input_backlog: _,       // preserved: input the user typed
             inline_pipe_console: _, // preserved
         } = e;
     }

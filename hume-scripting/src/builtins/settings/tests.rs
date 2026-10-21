@@ -40,65 +40,39 @@ fn set_option_invalid_value_type_errors() {
     assert!(msg.contains("must be"), "type error expected, got: {msg}");
 }
 
-/// A list of strings is forwarded as its words, so the editor can refuse it
-/// for a setting that is not a word list.
+/// A list of strings or symbols is forwarded as its words, so the editor
+/// can refuse it for a setting that is not a word list. A symbol in a list
+/// is a word, as a symbol on its own is the text.
 #[test]
 fn a_list_value_is_forwarded_as_words() {
-    let mut h = SteelCtxTestHarness::new();
-    let mut host = RecordingBufferOptionHost::default();
-    let target = BufferId::default();
-    let mut ctx = h.ctx_with_host(&mut host);
-    let list = vec![
-        SteelVal::StringV("/opt/my sh".into()),
-        SteelVal::StringV("-c".into()),
-    ]
-    .into_steelval()
-    .unwrap();
-    set_buffer_option(
-        &mut ctx,
-        crate::types::PaneHandle::buffer_only(target),
-        "shell".into(),
-        list,
-    )
-    .expect("a list of strings must be accepted");
-    assert_eq!(
-        host.calls,
-        vec![(
-            "shell".to_string(),
-            OptionInput::Words(vec!["/opt/my sh".to_string(), "-c".to_string()]),
-            target
-        )]
-    );
-}
-
-/// A symbol in a list is a word, as a symbol on its own is the text.
-#[test]
-fn a_list_of_symbols_is_forwarded_as_words() {
-    let mut h = SteelCtxTestHarness::new();
-    let mut host = RecordingBufferOptionHost::default();
-    let target = BufferId::default();
-    let mut ctx = h.ctx_with_host(&mut host);
-    let list = vec![
-        SteelVal::SymbolV("bash".into()),
-        SteelVal::SymbolV("-c".into()),
-    ]
-    .into_steelval()
-    .unwrap();
-    set_buffer_option(
-        &mut ctx,
-        crate::types::PaneHandle::buffer_only(target),
-        "shell".into(),
-        list,
-    )
-    .expect("a list of symbols must be accepted");
-    assert_eq!(
-        host.calls,
-        vec![(
-            "shell".to_string(),
-            OptionInput::Words(vec!["bash".to_string(), "-c".to_string()]),
-            target
-        )]
-    );
+    let forms: [fn(&str) -> SteelVal; 2] = [
+        |word| SteelVal::StringV(word.into()),
+        |word| SteelVal::SymbolV(word.into()),
+    ];
+    for form in forms {
+        let mut h = SteelCtxTestHarness::new();
+        let mut host = RecordingBufferOptionHost::default();
+        let target = BufferId::default();
+        let mut ctx = h.ctx_with_host(&mut host);
+        let list = vec![form("/opt/my sh"), form("-c")]
+            .into_steelval()
+            .unwrap();
+        set_buffer_option(
+            &mut ctx,
+            crate::types::PaneHandle::buffer_only(target),
+            "shell".into(),
+            list,
+        )
+        .expect("a list of words must be accepted");
+        assert_eq!(
+            host.calls,
+            vec![(
+                "shell".to_string(),
+                OptionInput::Words(vec!["/opt/my sh".to_string(), "-c".to_string()]),
+                target
+            )]
+        );
+    }
 }
 
 #[test]

@@ -149,11 +149,7 @@ fn report_source_exit(state: &mut EditorState, source: SpawnedLineSource, ok_exi
     }
     state.report(
         Severity::Error,
-        format!(
-            "{cmd} failed ({}): {}",
-            hume_platform::process::exit_code_str(status),
-            exit.stderr.trim()
-        ),
+        hume_platform::process::failure_message(&cmd, Some(status), &exit.stderr),
     );
 }
 

@@ -106,7 +106,7 @@ pub(in crate::editor) fn typed_quit(
     let stopped_run = if stays {
         Some(current).filter(|&id| ed.state.buffers.get(id).is_busy())
     } else {
-        ed.state.pipe_runs.first_busy_buffer()
+        ed.state.buffers.first_busy()
     };
     if !force && let Some(busy) = stopped_run {
         return Err(super::pipe_running_refusal(&ed.state, busy));
@@ -156,7 +156,7 @@ pub(in crate::editor) fn typed_quit_all(
                 "Unsaved changes in {name} (add ! to override)"
             )));
         }
-        if let Some(busy) = ed.state.pipe_runs.first_busy_buffer() {
+        if let Some(busy) = ed.state.buffers.first_busy() {
             return Err(super::pipe_running_refusal(&ed.state, busy));
         }
     }

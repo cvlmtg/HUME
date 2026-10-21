@@ -284,13 +284,20 @@ fn target_stripping_wrapper_script(invocation: &str) -> String {
     )
 }
 
-/// Convert a non-successful `ExitStatus` to a human-readable string for error
-/// messages.
-pub fn exit_code_str(status: ExitStatus) -> String {
-    match status.code() {
-        Some(c) => format!("exit code {c}"),
-        None => "killed by signal".to_string(),
+/// The message for `program` failing: its exit, when it had one, and its
+/// stderr, when it wrote any.
+pub fn failure_message(program: &str, status: Option<ExitStatus>, stderr: &str) -> String {
+    let mut message = format!("{program} failed");
+    match status.map(|status| status.code()) {
+        Some(Some(code)) => message.push_str(&format!(" (exit code {code})")),
+        Some(None) => message.push_str(" (killed by signal)"),
+        None => {}
     }
+    let stderr = stderr.trim();
+    if !stderr.is_empty() {
+        message.push_str(&format!(": {stderr}"));
+    }
+    message
 }
 
 /// Whether no C compiler at all was found on `PATH` (neither `cl` nor any of

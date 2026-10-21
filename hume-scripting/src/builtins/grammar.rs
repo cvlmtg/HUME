@@ -71,9 +71,10 @@ pub(crate) fn compile_grammar(ctx: &mut SteelCtx, src: String, out: String) -> S
     let result = hume_platform::process::tree_sitter_build(&src_path, &out_path, &cwd);
     let msg = match result {
         Ok(status) if status.success() => return Ok(SteelVal::Void),
-        Ok(status) => format!(
-            "compile-grammar!: `tree-sitter build` failed ({})",
-            hume_platform::process::exit_code_str(status)
+        Ok(status) => hume_platform::process::failure_message(
+            "compile-grammar!: `tree-sitter build`",
+            Some(status),
+            "",
         ),
         Err(e) => format!("compile-grammar!: cannot run tree-sitter: {e}"),
     };

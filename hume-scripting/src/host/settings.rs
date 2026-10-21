@@ -2,10 +2,6 @@
 
 use hume_engine::pipeline::BufferId;
 
-mod word_list;
-
-pub use word_list::{format_word_list, parse_word_list};
-
 /// A buffer option stored on the buffer itself rather than in the settings
 /// tables. Each has no global default and is valid only for `:set buffer`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -163,6 +163,12 @@ impl BufferStore {
             .filter_map(|&id| self.buffers.get(id).map(|buf| (id, buf)))
     }
 
+    /// The first open buffer, in open order, that [`Buffer::is_busy`].
+    pub(in crate::editor) fn first_busy(&self) -> Option<BufferId> {
+        self.iter()
+            .find_map(|(id, buf)| buf.is_busy().then_some(id))
+    }
+
     /// Every open buffer whose text generation has moved since the last call:
     /// the observation-point source for `on-text-changed`
     /// (`EditorEvent::OnTextChanged`'s doc has the full contract: what bumps

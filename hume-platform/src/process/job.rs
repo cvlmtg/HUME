@@ -285,6 +285,15 @@ mod tests {
             Arc::new(|| {})
         }
 
+        fn spawn_sh(script: &str) -> SpawnedJob {
+            spawn_sh_with(script, Vec::new(), no_op_wake())
+        }
+
+        fn spawn_sh_with(script: &str, input: Vec<u8>, wake: WakeCallback) -> SpawnedJob {
+            let args = ["-c".to_string(), script.to_string()];
+            spawn_job("sh", &args, Path::new("."), input, wake).expect("spawn sh")
+        }
+
         fn counting_wake() -> (WakeCallback, Arc<AtomicUsize>) {
             let count = Arc::new(AtomicUsize::new(0));
             let counted = Arc::clone(&count);
@@ -310,9 +319,7 @@ mod tests {
 
         #[test]
         fn happy_path_captures_stdout_and_success() {
-            let args = vec!["-c".to_string(), "printf 'hi'".to_string()];
-            let mut job =
-                spawn_job("sh", &args, Path::new("."), Vec::new(), no_op_wake()).expect("spawn sh");
+            let mut job = spawn_sh("printf 'hi'");
             let result = poll_until_result(&mut job);
             assert_eq!(result.stdout, b"hi");
             assert_eq!(result.stderr, "");
@@ -321,9 +328,7 @@ mod tests {
 
         #[test]
         fn nonzero_exit_and_stderr_are_captured() {
-            let args = vec!["-c".to_string(), "echo oops >&2; exit 3".to_string()];
-            let mut job =
-                spawn_job("sh", &args, Path::new("."), Vec::new(), no_op_wake()).expect("spawn sh");
+            let mut job = spawn_sh("echo oops >&2; exit 3");
             let result = poll_until_result(&mut job);
             assert_eq!(result.status.and_then(|s| s.code()), Some(3));
             assert!(result.stderr.contains("oops"), "got: {:?}", result.stderr);
@@ -335,12 +340,7 @@ mod tests {
             // real, successful exit. Both pipes reaching EOF must not be
             // mistaken for the child having exited (reaping it right there
             // would turn this into exit code -1).
-            let args = vec![
-                "-c".to_string(),
-                "printf hi; exec 1>&- 2>&-; sleep 0.3; exit 0".to_string(),
-            ];
-            let mut job =
-                spawn_job("sh", &args, Path::new("."), Vec::new(), no_op_wake()).expect("spawn sh");
+            let mut job = spawn_sh("printf hi; exec 1>&- 2>&-; sleep 0.3; exit 0");
             let result = poll_until_result(&mut job);
             assert_eq!(result.stdout, b"hi");
             assert_eq!(
@@ -352,24 +352,14 @@ mod tests {
 
         #[test]
         fn stderr_capture_is_capped() {
-            let args = vec![
-                "-c".to_string(),
-                "yes x | head -c 200000 1>&2; exit 0".to_string(),
-            ];
-            let mut job =
-                spawn_job("sh", &args, Path::new("."), Vec::new(), no_op_wake()).expect("spawn sh");
+            let mut job = spawn_sh("yes x | head -c 200000 1>&2; exit 0");
             let result = poll_until_result(&mut job);
             assert!(result.stderr.len() <= STDERR_CAPTURE_CAP);
         }
 
         #[test]
         fn stdout_is_not_truncated() {
-            let args = vec![
-                "-c".to_string(),
-                "yes x | head -c 200000; exit 0".to_string(),
-            ];
-            let mut job =
-                spawn_job("sh", &args, Path::new("."), Vec::new(), no_op_wake()).expect("spawn sh");
+            let mut job = spawn_sh("yes x | head -c 200000; exit 0");
             let result = poll_until_result(&mut job);
             assert_eq!(
                 result.stdout.len(),
@@ -383,12 +373,8 @@ mod tests {
             // Both streams fill well past a pipe buffer at the same time:
             // this is exactly the shape a sequential stdout-then-stderr
             // read would deadlock on.
-            let args = vec![
-                "-c".to_string(),
-                "(yes x | head -c 200000) & (yes y | head -c 200000 1>&2) & wait".to_string(),
-            ];
             let mut job =
-                spawn_job("sh", &args, Path::new("."), Vec::new(), no_op_wake()).expect("spawn sh");
+                spawn_sh("(yes x | head -c 200000) & (yes y | head -c 200000 1>&2) & wait");
             let result = poll_until_result(&mut job);
             assert_eq!(result.stdout.len(), 200_000);
             assert!(result.stderr.len() <= STDERR_CAPTURE_CAP);
@@ -397,18 +383,14 @@ mod tests {
         #[test]
         fn wake_fires_exactly_once() {
             let (wake, count) = counting_wake();
-            let args = vec!["-c".to_string(), "printf hi".to_string()];
-            let mut job =
-                spawn_job("sh", &args, Path::new("."), Vec::new(), wake).expect("spawn sh");
+            let mut job = spawn_sh_with("printf hi", Vec::new(), wake);
             poll_until_result(&mut job);
             assert_eq!(count.load(Ordering::SeqCst), 1);
         }
 
         #[test]
         fn self_signal_kill_reports_no_exit_code() {
-            let args = vec!["-c".to_string(), "kill -9 $$".to_string()];
-            let mut job =
-                spawn_job("sh", &args, Path::new("."), Vec::new(), no_op_wake()).expect("spawn sh");
+            let mut job = spawn_sh("kill -9 $$");
             let result = poll_until_result(&mut job);
             assert_eq!(
                 result.status.and_then(|s| s.code()),
@@ -445,10 +427,8 @@ mod tests {
 
         #[test]
         fn a_child_that_stops_reading_stdin_still_succeeds() {
-            let args = vec!["-c".to_string(), "head -c 1".to_string()];
             let input = vec![b'y'; 1024 * 1024];
-            let mut job =
-                spawn_job("sh", &args, Path::new("."), input, no_op_wake()).expect("spawn sh");
+            let mut job = spawn_sh_with("head -c 1", input, no_op_wake());
             let result = poll_until_result(&mut job);
             assert_eq!(result.stdout, b"y");
             assert_eq!(result.status.map(|s| s.success()), Some(true));
@@ -456,9 +436,7 @@ mod tests {
 
         #[test]
         fn stdout_bytes_are_delivered_undecoded() {
-            let args = vec!["-c".to_string(), r"printf '\377'".to_string()];
-            let mut job =
-                spawn_job("sh", &args, Path::new("."), Vec::new(), no_op_wake()).expect("spawn sh");
+            let mut job = spawn_sh(r"printf '\377'");
             let result = poll_until_result(&mut job);
             assert_eq!(result.stdout, [0xff]);
         }
