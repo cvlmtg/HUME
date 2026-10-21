@@ -725,6 +725,19 @@ impl ChangeSet {
                     let b_len = op_consuming_len(&b);
                     let min = a_len.min(b_len);
 
+                    // B retains all of A's insert: move the text instead of
+                    // copying it. An Insert session composes every keystroke
+                    // into a group that retains the whole run typed so far.
+                    if min == a_len
+                        && matches!(b, Operation::Retain(_))
+                        && let Operation::Insert(s) = a
+                    {
+                        push_merge(&mut result, Operation::Insert(s));
+                        a_cur = a_ops.next();
+                        b_cur = advance_op(b, min, &mut b_ops);
+                        continue;
+                    }
+
                     match (&a, &b) {
                         // Retain + Retain → Retain
                         (Operation::Retain(_), Operation::Retain(_)) => {
@@ -736,16 +749,15 @@ impl ChangeSet {
                             push_merge(&mut result, Operation::Delete(min));
                         }
                         // Insert + Retain → Insert (first `min` chars)
-                        // (A inserted text that B retains.)
+                        // (A inserted text that B retains in part; the
+                        // whole-insert case is moved above.)
                         (Operation::Insert(s), Operation::Retain(_)) => {
                             // Slice at the `min`-th char boundary rather than
-                            // re-encoding the prefix char by char. `min <=
-                            // a_len`, so a shorter-than-`min` string can only
-                            // mean the whole of it.
-                            let end = s
+                            // re-encoding the prefix char by char.
+                            let (end, _) = s
                                 .char_indices()
                                 .nth(min)
-                                .map_or(s.len(), |(byte_idx, _)| byte_idx);
+                                .expect("B retains fewer chars than A inserted");
                             push_merge(&mut result, Operation::Insert(s[..end].to_string()));
                         }
                         // Insert + Delete → cancel
