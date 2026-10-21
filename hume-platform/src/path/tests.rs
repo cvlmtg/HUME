@@ -271,7 +271,7 @@ fn executables_in_skips_a_missing_directory_and_lists_no_directory() {
     std::fs::create_dir(bin.path().join("probe.exe")).unwrap();
     let missing = bin.path().join("missing");
     assert_eq!(
-        executables_in(&search_path([&missing, bin.path()]), ""),
+        executables_in(&search_path([&missing, bin.path()]), "", &[".exe"]),
         Vec::<String>::new()
     );
 }

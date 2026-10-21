@@ -547,6 +547,9 @@ pub(crate) fn register_all(steel: &mut Engine) {
         open "runtime-dir" fs::runtime_dir();
         open "cwd" fs::cwd();
         cmd "set-cwd!" fs::set_cwd(path: String);
+        open "path-entries" fs::path_entries(dir: String, prefix: String);
+        plain "path-programs" fs::path_programs(prefix: String, extensions: SteelVal);
+        plain "home-dir" fs::home_dir();
     }
 
     // Context-free builtins that don't fit the typed-arity table above: raw

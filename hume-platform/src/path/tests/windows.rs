@@ -132,8 +132,29 @@ fn executables_in_lists_an_exe_by_its_stem_and_nothing_else() {
         std::fs::write(bin.path().join(name), b"").unwrap();
     }
     assert_eq!(
-        executables_in(&search_path([bin.path()]), "probe"),
+        executables_in(&search_path([bin.path()]), "probe", &[".exe"]),
         ["probe", "probe-upper"]
+    );
+}
+
+#[test]
+fn executables_in_lists_each_given_extension_by_its_stem() {
+    let bin = tempfile::tempdir().unwrap();
+    for name in [
+        "probe.exe",
+        "probe-script.cmd",
+        "probe-batch.BAT",
+        "probe-shell.ps1",
+    ] {
+        std::fs::write(bin.path().join(name), b"").unwrap();
+    }
+    assert_eq!(
+        executables_in(
+            &search_path([bin.path()]),
+            "probe",
+            &[".EXE", ".bat", ".ps1"]
+        ),
+        ["probe", "probe-batch", "probe-shell"]
     );
 }
 
@@ -145,7 +166,11 @@ fn executables_in_ignores_case_and_keeps_the_first_spelling_on_the_path() {
     std::fs::write(second.path().join("CODE.exe"), b"").unwrap();
     std::fs::write(second.path().join("codex.exe"), b"").unwrap();
     assert_eq!(
-        executables_in(&search_path([first.path(), second.path()]), "cod"),
+        executables_in(
+            &search_path([first.path(), second.path()]),
+            "cod",
+            &[".exe"]
+        ),
         ["Code", "codex"]
     );
 }
@@ -155,7 +180,7 @@ fn executables_in_matches_the_prefix_against_the_stem() {
     let bin = tempfile::tempdir().unwrap();
     std::fs::write(bin.path().join("bash.exe"), b"").unwrap();
     assert_eq!(
-        executables_in(&search_path([bin.path()]), "bash.e"),
+        executables_in(&search_path([bin.path()]), "bash.e", &[".exe"]),
         Vec::<String>::new()
     );
 }

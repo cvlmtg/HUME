@@ -279,18 +279,53 @@ pub fn split_path_at_sep(s: &str) -> (&str, &str) {
     }
 }
 
+// ── Directory entries for completion ─────────────────────────────────────────
+
+/// The names in directory `dir` that start with `prefix`, sorted, each
+/// directory with a trailing `/`: what a typed path completes to. Hidden
+/// entries (a leading `.`) are left out unless `prefix` starts with `.`,
+/// and with `dirs_only` every non-directory is. An unreadable directory
+/// lists nothing.
+pub fn completion_entries(dir: &Path, prefix: &str, dirs_only: bool) -> Vec<String> {
+    let include_hidden = prefix.starts_with('.');
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut names: Vec<String> = entries
+        .flatten()
+        .filter_map(|entry| {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if !name.starts_with(prefix) || (!include_hidden && name.starts_with('.')) {
+                return None;
+            }
+            let is_dir = entry.file_type().is_ok_and(|ft| ft.is_dir());
+            if dirs_only && !is_dir {
+                return None;
+            }
+            Some(if is_dir { name + "/" } else { name })
+        })
+        .collect();
+    names.sort_unstable();
+    names
+}
+
 // ── Programs on a search path ────────────────────────────────────────────────
 
-/// The names of the programs on `search_path` (a `PATH` value) that POSIX
-/// `sh` runs by name and that start with `prefix`, sorted and each listed
+/// The names of the programs on `search_path` (a `PATH` value) that a
+/// shell runs by name and that start with `prefix`, sorted and each listed
 /// once. A directory that can't be read lists nothing.
 ///
 /// On Unix a program is a file (a symlink is followed) with any execute
-/// bit set. On Windows it is an `.exe`, named by its stem: the one
-/// extension `sh` adds to a bare name. Names there match and collapse
+/// bit set, and `extensions` is unused. On Windows it is a file whose name
+/// ends with one of `extensions` (`.exe`, as `sh` adds to a bare name, or
+/// `PATHEXT`'s list), named by its stem. Names there match and collapse
 /// without regard to ASCII case, as the filesystem compares them, and the
 /// spelling listed is the first one on the path.
-pub fn executables_in(search_path: &std::ffi::OsStr, prefix: &str) -> Vec<String> {
+pub fn executables_in(
+    search_path: &std::ffi::OsStr,
+    prefix: &str,
+    extensions: &[&str],
+) -> Vec<String> {
     let mut names = std::collections::BTreeMap::new();
     for dir in std::env::split_paths(search_path) {
         let Ok(entries) = std::fs::read_dir(&dir) else {
@@ -300,7 +335,7 @@ pub fn executables_in(search_path: &std::ffi::OsStr, prefix: &str) -> Vec<String
             let file_name = entry.file_name();
             let Some(program) = file_name
                 .to_str()
-                .and_then(|name| program_name(&entry, name, prefix))
+                .and_then(|name| program_name(&entry, name, prefix, extensions))
             else {
                 continue;
             };
@@ -315,10 +350,15 @@ pub fn executables_in(search_path: &std::ffi::OsStr, prefix: &str) -> Vec<String
     names.into_values().collect()
 }
 
-/// The name `sh` runs directory entry `entry` (named `name`) by, when it
-/// is a program whose name starts with `prefix`.
+/// The name a shell runs directory entry `entry` (named `name`) by, when
+/// it is a program whose name starts with `prefix`.
 #[cfg(unix)]
-fn program_name<'a>(entry: &std::fs::DirEntry, name: &'a str, prefix: &str) -> Option<&'a str> {
+fn program_name<'a>(
+    entry: &std::fs::DirEntry,
+    name: &'a str,
+    prefix: &str,
+    _extensions: &[&str],
+) -> Option<&'a str> {
     use std::os::unix::fs::PermissionsExt;
     if !name.starts_with(prefix) {
         return None;
@@ -334,15 +374,26 @@ fn program_name<'a>(entry: &std::fs::DirEntry, name: &'a str, prefix: &str) -> O
     (meta.is_file() && meta.permissions().mode() & 0o111 != 0).then_some(name)
 }
 
-/// The name `sh` runs directory entry `entry` (named `name`) by, when it
-/// is a program whose name starts with `prefix`.
+/// The name a shell runs directory entry `entry` (named `name`) by, when
+/// it is a program whose name starts with `prefix`.
 #[cfg(windows)]
-fn program_name<'a>(entry: &std::fs::DirEntry, name: &'a str, prefix: &str) -> Option<&'a str> {
-    let (stem, ext) = name.rsplit_once('.')?;
-    let matches = ext.eq_ignore_ascii_case("exe")
-        && stem
-            .get(..prefix.len())
-            .is_some_and(|head| head.eq_ignore_ascii_case(prefix));
+fn program_name<'a>(
+    entry: &std::fs::DirEntry,
+    name: &'a str,
+    prefix: &str,
+    extensions: &[&str],
+) -> Option<&'a str> {
+    let stem = extensions.iter().find_map(|ext| {
+        let split = name
+            .len()
+            .checked_sub(ext.len())
+            .filter(|&split| split > 0)?;
+        let tail = name.get(split..)?;
+        tail.eq_ignore_ascii_case(ext).then(|| &name[..split])
+    })?;
+    let matches = stem
+        .get(..prefix.len())
+        .is_some_and(|head| head.eq_ignore_ascii_case(prefix));
     // The entry's type comes with the listing, so this costs no file open.
     (matches && !entry.file_type().ok()?.is_dir()).then_some(stem)
 }

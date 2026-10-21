@@ -172,7 +172,7 @@ fn executables_in_lists_files_with_an_execute_bit() {
     write_program(bin.path(), "probe-other", 0o601);
     write_program(bin.path(), "probe-plain", 0o644);
     assert_eq!(
-        executables_in(&search_path([bin.path()]), "probe"),
+        executables_in(&search_path([bin.path()]), "probe", &[".exe"]),
         ["probe-other", "probe-owner"]
     );
 }
@@ -182,7 +182,10 @@ fn executables_in_filters_by_prefix() {
     let bin = tempfile::tempdir().unwrap();
     write_program(bin.path(), "alpha", 0o755);
     write_program(bin.path(), "beta", 0o755);
-    assert_eq!(executables_in(&search_path([bin.path()]), "al"), ["alpha"]);
+    assert_eq!(
+        executables_in(&search_path([bin.path()]), "al", &[".exe"]),
+        ["alpha"]
+    );
 }
 
 #[test]
@@ -194,7 +197,7 @@ fn executables_in_follows_a_symlink_to_a_program() {
     std::os::unix::fs::symlink(&plain, bin.path().join("link-to-plain")).unwrap();
     std::os::unix::fs::symlink(bin.path().join("gone"), bin.path().join("link-dangling")).unwrap();
     assert_eq!(
-        executables_in(&search_path([bin.path()]), "link"),
+        executables_in(&search_path([bin.path()]), "link", &[".exe"]),
         ["link-to-real"]
     );
 }
@@ -209,7 +212,8 @@ fn executables_in_lists_a_name_on_two_directories_once() {
     assert_eq!(
         executables_in(
             &search_path([first.path(), second.path(), second.path()]),
-            "tool"
+            "tool",
+            &[".exe"]
         ),
         ["tool", "toolkit"]
     );

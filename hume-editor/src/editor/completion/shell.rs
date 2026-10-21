@@ -35,7 +35,7 @@ fn complete_shell_with(
     let typed = &input[word.span.start..cursor.min(input.len())];
     let items = if word.command_position && !typed.contains(sh::PATH_SEP) {
         search_path().map_or_else(Vec::new, |path| {
-            hume_platform::path::executables_in(&path, &sh::prefix_value(typed))
+            hume_platform::path::executables_in(&path, &sh::prefix_value(typed), &[".exe"])
                 .into_iter()
                 .map(|name| {
                     let insert = sh::escape(&name).into_owned();

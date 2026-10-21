@@ -243,3 +243,100 @@ fn data_dir_resolves_through_real_registration() {
         msgs
     );
 }
+
+// ── completion listings ──────────────────────────────────────────────────
+
+/// `source`'s value, evaluated by a real `ScriptingHost` over `NullHost`.
+fn eval_value(source: &str) -> SteelVal {
+    let mut host = crate::ScriptingHost::new(&Dirs::none());
+    host.eval_source_for_value(source, &mut crate::null_host::NullHost)
+        .unwrap_or_else(|e| panic!("{source}: {e}"))
+}
+
+/// The strings of a Steel list.
+fn strings(list: SteelVal) -> Vec<String> {
+    crate::builtins::args::list_to_strings(list, "test").unwrap()
+}
+
+#[test]
+fn path_entries_lists_what_a_typed_path_completes_to() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir(dir.path().join("a dir")).unwrap();
+    std::fs::write(dir.path().join("b.txt"), b"").unwrap();
+    std::fs::write(dir.path().join("other"), b"").unwrap();
+    std::fs::write(dir.path().join(".hidden"), b"").unwrap();
+    let listed = |prefix: &str| {
+        strings(eval_value(&format!(
+            "(path-entries {:?} {prefix:?})",
+            dir.path().to_string_lossy()
+        )))
+    };
+    assert_eq!(listed(""), ["a dir/", "b.txt", "other"]);
+    assert_eq!(listed("b"), ["b.txt"]);
+    assert_eq!(listed("."), [".hidden"]);
+}
+
+#[test]
+fn path_entries_of_an_unreadable_directory_is_empty() {
+    let dir = tempfile::tempdir().unwrap();
+    let missing = dir.path().join("missing");
+    assert_eq!(
+        strings(eval_value(&format!(
+            "(path-entries {:?} \"\")",
+            missing.to_string_lossy()
+        ))),
+        Vec::<String>::new()
+    );
+}
+
+#[test]
+fn path_programs_with_no_search_path_is_empty() {
+    assert_eq!(
+        strings(programs_on(None, "", &[".exe".to_owned()])),
+        Vec::<String>::new()
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn path_programs_lists_the_programs_on_the_search_path() {
+    use std::os::unix::fs::PermissionsExt;
+    let bin = tempfile::tempdir().unwrap();
+    for (name, mode) in [
+        ("probe-run", 0o755),
+        ("probe-data", 0o644),
+        ("other", 0o755),
+    ] {
+        let path = bin.path().join(name);
+        std::fs::write(&path, b"").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode)).unwrap();
+    }
+    assert_eq!(
+        strings(programs_on(Some(bin.path().as_os_str()), "probe", &[])),
+        ["probe-run"]
+    );
+}
+
+#[test]
+fn path_programs_reads_its_extensions_as_strings() {
+    assert!(
+        crate::ScriptingHost::new(&Dirs::none())
+            .eval_source_for_value("(path-programs \"\" '(1))", &mut crate::null_host::NullHost)
+            .is_err()
+    );
+    assert!(matches!(
+        eval_value("(path-programs \"hume-no-such-program-\" '(\".exe\"))"),
+        SteelVal::ListV(l) if l.is_empty()
+    ));
+}
+
+#[test]
+fn home_dir_is_the_platform_home_directory() {
+    let expected = hume_platform::dirs::home_dir().map(|home| home.to_string_lossy().into_owned());
+    let got = match eval_value("(home-dir)") {
+        SteelVal::StringV(s) => Some(s.to_string()),
+        SteelVal::BoolV(false) => None,
+        other => panic!("expected a string or #f, got {other:?}"),
+    };
+    assert_eq!(got, expected);
+}

@@ -1,5 +1,5 @@
 use std::ops::Range;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use super::{CompletionCtx, CompletionItem, arg_prefix, token_end_at};
 
@@ -63,13 +63,11 @@ where
     (arg_start..arg_end, items)
 }
 
-/// The entries of directory `dir` (relative to `cwd` unless absolute, and
-/// already expanded by the caller's own rules) whose names start with
-/// `file_prefix`, sorted by label. Directories get a trailing `/` in both
-/// label and insert text. Hidden entries (leading `.`) are left out unless
-/// `file_prefix` itself starts with `.`. `insert` turns a name (with its
-/// `/`) into the text that replaces the completed token; the label is the
-/// name alone. An unreadable directory lists nothing.
+/// The [`hume_platform::path::completion_entries`] of directory `dir`
+/// (relative to `cwd` unless absolute, and already expanded by the caller's
+/// own rules) as items labelled by name, a directory's with its trailing
+/// `/`. `insert` turns a label into the text that replaces the completed
+/// token.
 pub(super) fn path_candidates(
     dir: &str,
     file_prefix: &str,
@@ -77,37 +75,11 @@ pub(super) fn path_candidates(
     dirs_only: bool,
     insert: impl Fn(&str) -> String,
 ) -> Vec<CompletionItem> {
-    let dir: PathBuf = if dir.is_empty() {
-        cwd.to_owned()
-    } else if Path::new(dir).is_absolute() {
-        PathBuf::from(dir)
-    } else {
-        cwd.join(dir)
-    };
-
-    let include_hidden = file_prefix.starts_with('.');
-
-    let Ok(rd) = std::fs::read_dir(&dir) else {
-        return Vec::new();
-    };
-
-    let mut candidates: Vec<CompletionItem> = rd
-        .filter_map(|entry| entry.ok())
-        .filter_map(|entry| {
-            let name = entry.file_name().to_string_lossy().into_owned();
-            if !name.starts_with(file_prefix) {
-                return None;
-            }
-            if !include_hidden && name.starts_with('.') {
-                return None;
-            }
-            let is_dir = entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false);
-            if dirs_only && !is_dir {
-                return None;
-            }
-            let suffix = if is_dir { "/" } else { "" };
-            let label = format!("{name}{suffix}");
+    hume_platform::path::completion_entries(&cwd.join(dir), file_prefix, dirs_only)
+        .into_iter()
+        .map(|label| {
             let insert_text = insert(&label);
+            let is_dir = label.ends_with('/');
             let mut item = CompletionItem::plain(label, insert_text);
             // The minibuffer's Enter handler reads this to decide whether
             // the selected candidate is a directory to descend into, rather
@@ -116,11 +88,9 @@ pub(super) fn path_candidates(
             if is_dir {
                 item.kind = Some(lsp_types::CompletionItemKind::FOLDER);
             }
-            Some(item)
+            item
         })
-        .collect();
-    candidates.sort_unstable_by(|a, b| a.label.cmp(&b.label));
-    candidates
+        .collect()
 }
 
 #[cfg(test)]

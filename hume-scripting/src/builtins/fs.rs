@@ -16,6 +16,9 @@
 //! | `path-join`     | `string… → string`             | OS-native join; no sandbox, no filesystem access |
 //! | `path->display` | `string → string`               | UNC-strip + `~`-collapse; no filesystem access |
 //! | `safe-path-segment?` | `any → bool`              | `#t` for a string safe as one path segment   |
+//! | `path-entries`  | `string string → list`         | What a typed path completes to, as `:e` lists it |
+//! | `path-programs` | `string list → list`           | Programs on `PATH` by name prefix            |
+//! | `home-dir`      | `() → string \| #f`            | The user's home directory                    |
 //!
 //! `path-separator` is *not* registered here: steel-core's `steel/meta`
 //! module already provides it as a bare global (`Engine::new()` baseline),
@@ -28,6 +31,7 @@ use steel::rvals::{IntoSteelVal, SteelVal};
 use crate::SteelCtx;
 
 use super::SteelResult;
+use super::args::{list_to_strings, string_list};
 use super::errors::generic_err;
 
 // ── data-dir / runtime-dir ───────────────────────────────────────────────────
@@ -83,6 +87,49 @@ pub(crate) fn set_cwd(ctx: &mut SteelCtx, path: String) -> SteelResult {
         .set_cwd(Path::new(&path))
         .map_err(generic_err)?;
     Ok(SteelVal::Void)
+}
+
+// ── Completion listings ──────────────────────────────────────────────────────
+
+/// `(path-entries dir prefix)`: the names in `dir` (relative to `(cwd)`)
+/// that a typed path ending in `prefix` completes to, as `:e` lists them:
+/// [`hume_platform::path::completion_entries`]'s rule.
+pub(crate) fn path_entries(ctx: &mut SteelCtx, dir: String, prefix: String) -> SteelResult {
+    let dir = ctx.host.buffers().cwd().join(dir);
+    Ok(string_list(hume_platform::path::completion_entries(
+        &dir, &prefix, false,
+    )))
+}
+
+/// `(path-programs prefix extensions)`: the programs on `PATH` whose names
+/// start with `prefix`; `extensions` (`".exe"`, …) are the file extensions
+/// that name a program on Windows.
+pub(crate) fn path_programs(prefix: String, extensions: SteelVal) -> SteelResult {
+    let extensions = list_to_strings(extensions, "path-programs")?;
+    Ok(programs_on(
+        std::env::var_os("PATH").as_deref(),
+        &prefix,
+        &extensions,
+    ))
+}
+
+/// Testable core of [`path_programs`]: [`hume_platform::path::executables_in`]
+/// over `search_path`, `'()` without one.
+fn programs_on(
+    search_path: Option<&std::ffi::OsStr>,
+    prefix: &str,
+    extensions: &[String],
+) -> SteelVal {
+    let extensions: Vec<&str> = extensions.iter().map(String::as_str).collect();
+    string_list(search_path.map_or_else(Vec::new, |path| {
+        hume_platform::path::executables_in(path, prefix, &extensions)
+    }))
+}
+
+/// `(home-dir)`: the user's home directory, or `#f` when the environment
+/// names none.
+pub(crate) fn home_dir() -> SteelResult {
+    dir_builtin(hume_platform::dirs::home_dir().as_deref())
 }
 
 // ── path-join ─────────────────────────────────────────────────────────────────
