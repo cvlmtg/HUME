@@ -115,13 +115,13 @@ pub(crate) fn optional_symbol_arg(
 
 /// A required symbol argument. `expected` names what the symbol stands for,
 /// with an example (`"a mode symbol like 'normal"`), for the error.
-pub(crate) fn symbol_arg(
-    val: &SteelVal,
+pub(crate) fn symbol_arg<'a>(
+    val: &'a SteelVal,
     ctx_name: &str,
     expected: &str,
-) -> Result<String, SteelErr> {
+) -> Result<&'a str, SteelErr> {
     match val {
-        SteelVal::SymbolV(s) => Ok(s.to_string()),
+        SteelVal::SymbolV(s) => Ok(s.as_str()),
         _ => steel::stop!(TypeMismatch => "{}: expected {}, got {:?}", ctx_name, expected, val),
     }
 }

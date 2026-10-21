@@ -497,7 +497,7 @@ impl EditorState {
         let inputs: Vec<String> = {
             let view = pane_state.view(self.buffers.get(buffer).text());
             match kind {
-                PipeKind::Replace => view.iter().map(|sel| sel.slice().to_string()).collect(),
+                PipeKind::Replace => view.iter().map(|sel| String::from(sel.slice())).collect(),
                 PipeKind::Insert => vec![String::new(); view.len()],
             }
         };

@@ -27,8 +27,8 @@ pub(crate) fn event_name_arg(
     verb: &str,
 ) -> Result<String, steel::rerrs::SteelErr> {
     let name_str = symbol_arg(val, verb, "an event-name symbol like 'on-buffer-save")?;
-    require_known_event(ctx, &name_str, verb)?;
-    Ok(name_str)
+    require_known_event(ctx, name_str, verb)?;
+    Ok(name_str.to_owned())
 }
 
 /// Errors unless the host knows the event `name`.

@@ -127,7 +127,7 @@ impl<'a> Graphemes<'a> {
         let (cluster, text) = self.step()?;
         let text = match text {
             Some(text) => Cow::Borrowed(text),
-            None => Cow::Owned(self.cur.slice().byte_slice(start..self.byte).to_string()),
+            None => Cow::Owned(String::from(self.cur.slice().byte_slice(start..self.byte))),
         };
         Some((cluster, text))
     }

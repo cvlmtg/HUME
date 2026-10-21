@@ -25,7 +25,7 @@ const MODES: [(&str, BindMode); 4] = [
 
 fn mode_from_symbol(mode: &SteelVal, fn_name: &str) -> Result<BindMode, SteelErr> {
     let mode_str = symbol_arg(mode, fn_name, "a mode symbol like 'normal")?;
-    symbol_enum_arg(&mode_str, &format!("{fn_name} mode"), &MODES)
+    symbol_enum_arg(mode_str, &format!("{fn_name} mode"), &MODES)
 }
 
 fn mode_symbol(mode: BindMode) -> &'static str {
@@ -158,7 +158,7 @@ pub(crate) fn unbind_key(
 }
 
 fn keymap_name(name: SteelVal, fn_name: &str) -> Result<String, SteelErr> {
-    symbol_arg(&name, fn_name, "a keymap name symbol like 'my-keys")
+    symbol_arg(&name, fn_name, "a keymap name symbol like 'my-keys").map(str::to_owned)
 }
 
 /// `(attach-keymap! pane name)`

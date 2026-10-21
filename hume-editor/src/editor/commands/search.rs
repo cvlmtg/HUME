@@ -373,7 +373,7 @@ pub(in crate::editor) fn cmd_search_selection(
     _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let selected = pane_view(state, view, t).primary().slice().to_string();
+    let selected = String::from(pane_view(state, view, t).primary().slice());
 
     // No-op on a bare structural newline (a collapsed cursor sitting on one):
     // a raw `\n` pattern would match every line end, the same "useless

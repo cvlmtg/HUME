@@ -369,7 +369,7 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
                     .get_mappable(cmd.name.as_ref())
                     .is_some_and(|r| r.is_extendable());
             let count = ed.state.count.take();
-            ed.execute_keymap_command(cmd.name.clone(), count, extend);
+            ed.execute_keymap_command(cmd.name, count, extend);
         }
         WalkResult::Interior => {
             // More keys needed. The pending sequence stays populated.

@@ -125,7 +125,7 @@ fn group_hunk(
     let stop = text.line_to_char(end);
     let slice = |from: CharOffset, to: CharOffset| text.slice(ExclusiveRange::new(from, to));
 
-    let new_text = slice(start, stop).to_string();
+    let new_text = String::from(slice(start, stop));
     let mut old_text = String::new();
     let mut old_chars = 0;
     let mut cursor = start;

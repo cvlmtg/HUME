@@ -31,7 +31,7 @@ enum CaseTransform {
 /// mapping can also change the char count (e.g. `ß` → `SS`).
 fn transform_case(state: EditState, kind: CaseTransform) -> Edited {
     apply_edit(state, |b, sel| {
-        let selected = sel.slice().to_string();
+        let selected = String::from(sel.slice());
         let mapped = match kind {
             CaseTransform::Lower => selected.to_lowercase(),
             CaseTransform::Upper => selected.to_uppercase(),

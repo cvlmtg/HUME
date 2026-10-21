@@ -581,20 +581,19 @@ impl Editor {
                 // resolved it. The display-line map that decided *where to
                 // scroll* had to answer this question anyway, so re-deriving
                 // it here would walk the same display lines a second time.
-                //
-                // The focused pane's origin in the frame's layout, so the
-                // cursor lands inside the pane, not at the origin.
-                let layout = self.view.focused_layout();
-                let pane_rect = frame_layout.focused_rect(layout);
-                let gutter_w = self
-                    .state
-                    .pane_geometry(
-                        &self.view,
-                        self.view.focused_pane(),
-                        frame_layout.focused_size(layout),
-                    )
-                    .gutter_width;
                 ctx.cursor_content_pos.map(|(content_x, row)| {
+                    // The focused pane's origin in the frame's layout, so the
+                    // cursor lands inside the pane, not at the origin.
+                    let layout = self.view.focused_layout();
+                    let pane_rect = frame_layout.focused_rect(layout);
+                    let gutter_w = self
+                        .state
+                        .pane_geometry(
+                            &self.view,
+                            self.view.focused_pane(),
+                            frame_layout.focused_size(layout),
+                        )
+                        .gutter_width;
                     let (x, y) =
                         super::mouse::content_pos_to_screen(content_x, row, gutter_w, pane_rect);
                     Position::new(x, y)

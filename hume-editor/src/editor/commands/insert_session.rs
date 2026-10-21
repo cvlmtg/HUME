@@ -123,7 +123,7 @@ fn armed_entry(
     text: &BufferText,
     range: ExclusiveRange<CharOffset>,
 ) -> (ExclusiveRange<CharOffset>, String) {
-    (range, text.slice(range).to_string())
+    (range, String::from(text.slice(range)))
 }
 
 /// Re-arm the selections at `rewritten` (sorted by selection index, each

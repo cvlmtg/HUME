@@ -303,7 +303,8 @@ pub fn failure_message(program: &str, status: Option<ExitStatus>, stderr: &str) 
     }
     let stderr = stderr.trim();
     if !stderr.is_empty() {
-        message.push_str(&format!(": {stderr}"));
+        message.push_str(": ");
+        message.push_str(stderr);
     }
     message
 }
