@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::ffi::OsString;
 use std::ops::Range;
 
@@ -57,7 +56,6 @@ fn complete_shell_with(
             &sh::prefix_value(typed_file),
             ctx.cwd,
             false,
-            |dir| Cow::Borrowed(dir),
             |name| format!("{typed_dir}{}", sh::escape(name)),
         )
     };

@@ -54,41 +54,35 @@ where
     let arg_end = token_end_at(input, cursor, &[' ']);
     let (dir_str, file_prefix) = hume_platform::path::split_path_at_sep(prefix);
     let items = path_candidates(
-        dir_str,
+        &expand_fn(dir_str),
         file_prefix,
         ctx.cwd,
         dirs_only,
-        expand_fn,
         |name| format!("{dir_str}{name}"),
     );
     (arg_start..arg_end, items)
 }
 
-/// The entries of directory `dir` (relative to `cwd` unless absolute,
-/// `~` and env vars expanded by `expand_fn`) whose names start with
+/// The entries of directory `dir` (relative to `cwd` unless absolute, and
+/// already expanded by the caller's own rules) whose names start with
 /// `file_prefix`, sorted by label. Directories get a trailing `/` in both
 /// label and insert text. Hidden entries (leading `.`) are left out unless
 /// `file_prefix` itself starts with `.`. `insert` turns a name (with its
 /// `/`) into the text that replaces the completed token; the label is the
 /// name alone. An unreadable directory lists nothing.
-pub(super) fn path_candidates<F>(
+pub(super) fn path_candidates(
     dir: &str,
     file_prefix: &str,
     cwd: &Path,
     dirs_only: bool,
-    expand_fn: F,
     insert: impl Fn(&str) -> String,
-) -> Vec<CompletionItem>
-where
-    F: for<'a> Fn(&'a str) -> std::borrow::Cow<'a, str>,
-{
-    let expanded_dir = expand_fn(dir);
-    let dir: PathBuf = if expanded_dir.is_empty() {
+) -> Vec<CompletionItem> {
+    let dir: PathBuf = if dir.is_empty() {
         cwd.to_owned()
-    } else if Path::new(expanded_dir.as_ref()).is_absolute() {
-        PathBuf::from(expanded_dir.as_ref())
+    } else if Path::new(dir).is_absolute() {
+        PathBuf::from(dir)
     } else {
-        cwd.join(expanded_dir.as_ref())
+        cwd.join(dir)
     };
 
     let include_hidden = file_prefix.starts_with('.');
