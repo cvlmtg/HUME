@@ -712,14 +712,28 @@ impl DecorationStores {
     }
 
     /// All EOL text entries for `bid`, across every source, paired with
-    /// their source name. The render write side needs the name for a
-    /// deterministic tie-break when a remap collapses two sources' entries
-    /// onto the same line (mirrors `line_backgrounds_for_buffer`).
+    /// their source name: an assertion helper for tests. Production reads go
+    /// through [`Self::eol_text_in_range`].
+    #[cfg(any(test, feature = "test-util"))]
     pub fn eol_text_for_buffer(
         &self,
         bid: BufferId,
     ) -> impl Iterator<Item = (&str, &EolTextEntry)> {
         self.eol_text.for_buffer(bid).map(|(s, e)| (s.as_str(), e))
+    }
+
+    /// EOL text entries for `bid` anchored inside `range`, paired with their
+    /// source name, sources in ascending name order. The render write side
+    /// needs the name for a deterministic tie-break when a remap collapses
+    /// two sources' entries onto the same line.
+    pub fn eol_text_in_range(
+        &self,
+        bid: BufferId,
+        range: ExclusiveRange<CharOffset>,
+    ) -> impl Iterator<Item = (&str, &EolTextEntry)> {
+        self.eol_text
+            .groups_in_range(bid, range)
+            .flat_map(|(s, es)| es.iter().map(move |e| (s.as_str(), e)))
     }
 
     /// Replaces `source`'s line backgrounds for `bid` wholesale.
@@ -738,16 +752,18 @@ impl DecorationStores {
         self.line_backgrounds.entries_for(source, bid)
     }
 
-    /// All line-background entries for `bid`, across every source, paired
-    /// with their source name. The render write side needs the name for a
-    /// deterministic tie-break when two sources tint the same line.
-    pub fn line_backgrounds_for_buffer(
+    /// Line-background entries for `bid` anchored inside `range`, paired
+    /// with their source name, sources in ascending name order. The render
+    /// write side needs the name for a deterministic tie-break when two
+    /// sources tint the same line.
+    pub fn line_backgrounds_in_range(
         &self,
         bid: BufferId,
+        range: ExclusiveRange<CharOffset>,
     ) -> impl Iterator<Item = (&str, &LineBgEntry)> {
         self.line_backgrounds
-            .for_buffer(bid)
-            .map(|(s, e)| (s.as_str(), e))
+            .groups_in_range(bid, range)
+            .flat_map(|(s, es)| es.iter().map(move |e| (s.as_str(), e)))
     }
 
     /// Replaces `source`'s extra highlights for `bid` wholesale.
@@ -766,13 +782,29 @@ impl DecorationStores {
         self.extra_highlights.entries_for(source, bid)
     }
 
-    /// All extra-highlight entries for `bid`, across every source. The
-    /// render write side merges them all into one highlight-tier bucket.
+    /// All extra-highlight entries for `bid`, across every source: an
+    /// assertion helper for tests. Production reads go through
+    /// [`Self::extra_highlights_starting_before`].
+    #[cfg(any(test, feature = "test-util"))]
     pub fn extra_highlights_for_buffer(
         &self,
         bid: BufferId,
     ) -> impl Iterator<Item = &ExtraHighlightEntry> {
         self.extra_highlights.for_buffer(bid).map(|(_, e)| e)
+    }
+
+    /// Extra-highlight entries for `bid` that start before `end`, sources in
+    /// ascending name order. Each source's entries are sorted by `start`, so
+    /// the upper bound is a binary search. `end` isn't sorted, so a caller
+    /// wanting a window still drops the spans that end before it.
+    pub fn extra_highlights_starting_before(
+        &self,
+        bid: BufferId,
+        end: CharOffset,
+    ) -> impl Iterator<Item = &ExtraHighlightEntry> {
+        self.extra_highlights
+            .groups_for_buffer(bid)
+            .flat_map(move |(_, es)| es[..es.partition_point(|e| e.start < end)].iter())
     }
 
     /// Whether `bid` has any decoration, of any kind, that needs to stay in

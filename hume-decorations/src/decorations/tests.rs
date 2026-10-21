@@ -414,3 +414,67 @@ fn removing_a_buffers_last_source_forgets_the_buffer() {
     assert!(store.remove_source_for_buffer(&"x", a));
     assert_eq!(store.buffers().count(), 0);
 }
+
+fn line_bg(pos: usize) -> LineBgEntry {
+    LineBgEntry {
+        pos: co(pos),
+        scope: ScopeId(0),
+    }
+}
+
+fn extra(start: usize, end: usize) -> ExtraHighlightEntry {
+    ExtraHighlightEntry {
+        start: co(start),
+        end: co(end),
+        scope: ScopeId(0),
+    }
+}
+
+#[test]
+fn eol_text_in_range_keeps_in_range_entries_in_source_order() {
+    let mut store = DecorationStores::default();
+    let (a, b) = make_two_bids();
+    store.set_eol_text(
+        "zeta".to_string(),
+        a,
+        vec![eol(0, "z0"), eol(12, "z12"), eol(4, "z4")],
+    );
+    store.set_eol_text("alpha".to_string(), a, vec![eol(8, "a8"), eol(10, "a10")]);
+    store.set_eol_text("alpha".to_string(), b, vec![eol(4, "b4")]);
+
+    let got: Vec<(&str, &str)> = store
+        .eol_text_in_range(a, hume_rope::offset::ExclusiveRange::new(co(4), co(10)))
+        .map(|(s, e)| (s, e.text.as_str()))
+        .collect();
+    assert_eq!(got, vec![("alpha", "a8"), ("zeta", "z4")]);
+}
+
+#[test]
+fn line_backgrounds_in_range_keeps_in_range_entries_in_source_order() {
+    let mut store = DecorationStores::default();
+    let (a, b) = make_two_bids();
+    store.set_line_backgrounds("zeta".to_string(), a, vec![line_bg(0), line_bg(4)]);
+    store.set_line_backgrounds("alpha".to_string(), a, vec![line_bg(8), line_bg(10)]);
+    store.set_line_backgrounds("alpha".to_string(), b, vec![line_bg(4)]);
+
+    let got: Vec<(&str, usize)> = store
+        .line_backgrounds_in_range(a, hume_rope::offset::ExclusiveRange::new(co(4), co(10)))
+        .map(|(s, e)| (s, e.pos.index()))
+        .collect();
+    assert_eq!(got, vec![("alpha", 8), ("zeta", 4)]);
+}
+
+#[test]
+fn extra_highlights_starting_before_keeps_spans_that_start_before_the_end() {
+    let mut store = DecorationStores::default();
+    let (a, b) = make_two_bids();
+    store.set_extra_highlights("zeta".to_string(), a, vec![extra(25, 27), extra(0, 3)]);
+    store.set_extra_highlights("alpha".to_string(), a, vec![extra(2, 30), extra(10, 12)]);
+    store.set_extra_highlights("alpha".to_string(), b, vec![extra(0, 1)]);
+
+    let got: Vec<(usize, usize)> = store
+        .extra_highlights_starting_before(a, co(10))
+        .map(|e| (e.start.index(), e.end.index()))
+        .collect();
+    assert_eq!(got, vec![(2, 30), (0, 3)]);
+}

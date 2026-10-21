@@ -255,20 +255,20 @@ impl Editor {
                         .state
                         .config
                         .decorations
-                        .extra_highlights_for_buffer(bid)
+                        .extra_highlights_starting_before(bid, visible.end)
                     {
-                        if e.start >= visible.end || e.end <= visible.start {
+                        if e.end <= visible.start {
                             continue;
                         }
                         let start = e.start.max(visible.start);
                         let end = e.end.min(visible.end);
                         // No severity concept for plugin-supplied spans:
                         // uniform priority; overlap ties resolve by push
-                        // order, which `extra_highlights_for_buffer`
-                        // (`SourceStore::for_buffer`) yields ascending by
-                        // source name, so the alphabetically-first source wins,
-                        // deterministic across sessions rather than whichever
-                        // source happened to call `set-extra-highlights!` first.
+                        // order, which `extra_highlights_starting_before`
+                        // yields ascending by source name, so the
+                        // alphabetically-first source wins, deterministic
+                        // across sessions rather than whichever source
+                        // happened to call `set-extra-highlights!` first.
                         push_priority_highlight_lines(
                             text,
                             ExclusiveRange::new(start, end),
@@ -447,7 +447,10 @@ impl Editor {
                 visible_line_anchored(
                     text,
                     visible_lines,
-                    self.state.config.decorations.eol_text_for_buffer(bid),
+                    self.state
+                        .config
+                        .decorations
+                        .eol_text_in_range(bid, p.chars),
                     |e| e.pos,
                 )
                 .filter(|&(_, line, e)| !(e.hide_on_insert_line && Some(line) == p.insert_line))
@@ -591,7 +594,7 @@ impl Editor {
                 self.state
                     .config
                     .decorations
-                    .line_backgrounds_for_buffer(bid),
+                    .line_backgrounds_in_range(bid, p.chars),
                 |e| e.pos,
             )
             .map(|(source, line, e)| (source, line, e.scope))
@@ -740,8 +743,8 @@ fn push_priority_highlight_lines(
 /// `TieBreak::FirstPushed` matches this function's original contract:
 /// same-priority ties keep whichever span was pushed to `raw` first, pinned
 /// by `overlapping_extra_highlights_from_two_sources_resolve_alphabetically`
-/// (`raw`'s push order comes from `SourceStore::for_buffer`'s ascending
-/// source-name order). `raw` need not be pre-sorted.
+/// (`raw`'s push order comes from `extra_highlights_starting_before`'s
+/// ascending source-name order). `raw` need not be pre-sorted.
 ///
 /// Takes `raw` by value and returns the flattened spans; the caller assigns
 /// the result straight into its target `Vec` (a brief write-lock for the
