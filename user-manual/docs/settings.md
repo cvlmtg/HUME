@@ -123,7 +123,7 @@ Available elements:
 | `"KittyProtocol"` | Kitty keyboard protocol indicator |
 | `"DirtyIndicator"` | `[+]` when buffer has unsaved changes |
 | `"LineEnding"` | Line ending type (LF/CRLF) |
-| `"SearchMatches"` | Current search match count |
+| `"SearchMatches"` | Current search match count, hidden once you type in Insert mode until you leave it |
 | `"MiniBuf"` | Pending key sequence hint |
 | `"MacroRecording"` | Macro recording indicator |
 | `"Pipe"` | The shell command running after `\|`, and how many of its processes have finished |

@@ -290,6 +290,36 @@ fn search_matches_follow_a_paste_whose_group_is_still_open() {
     assert_eq!(ed.search_matches().matches(ed.doc().text()).len(), 2);
 }
 
+/// Typing in Insert mode doesn't re-run the search over the buffer, and the
+/// match count for the old text is not shown. Leaving Insert re-runs it once.
+#[test]
+fn typing_in_insert_defers_the_search_scan_until_insert_ends() {
+    let mut ed = editor_from("-[h]>ello hello\n").with_search_regex("hello");
+    let bid = ed.focused_buffer_id();
+    let scans = ed.state.buffers.get(bid).search_scans;
+
+    ed.handle_key(key('i'));
+    for ch in "hello ".chars() {
+        ed.handle_key(key(ch));
+        ed.sync_search_cache();
+    }
+
+    assert_eq!(ed.state.buffers.get(bid).search_scans, scans);
+    assert_eq!(ed.current_search_cursor().match_count, None);
+
+    ed.handle_key(KeyEvent::new(KeyCode::Escape, Modifiers::NONE));
+    ed.sync_search_cache();
+
+    assert_eq!(ed.state.mode(), Mode::Normal);
+    assert_eq!(ed.state.buffers.get(bid).search_scans, scans + 1);
+    assert_eq!(
+        ed.current_search_cursor()
+            .match_count
+            .map(|(_, total)| total),
+        Some(3)
+    );
+}
+
 // ── Sift within (s) ────────────────────────────────────────────────────────
 
 /// `s` is a noop when all selections are collapsed (anchor == head).

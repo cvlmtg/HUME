@@ -16,6 +16,7 @@ use hume_editing::tracked::Tracked;
 use std::sync::Arc;
 
 use hume_engine::pipeline::{BufferId, PaneId, PanePool};
+use hume_engine::types::EditorMode;
 
 #[cfg(test)]
 use super::SearchPattern;
@@ -84,7 +85,8 @@ pub(in crate::editor) fn update_buffer_matches(buffers: &mut BufferStore, bid: B
 }
 
 /// Recompute the search cursor's `match_count` for the buffer `pid` shows,
-/// if stale.
+/// if stale. Clears it when the match list is not for the current text, so
+/// a count for an older text is never shown.
 ///
 /// Takes `buffers: &BufferStore` and `pane_state: &mut ...` as separate
 /// parameters: the match-list reference and the cursor write are disjoint,
@@ -99,10 +101,11 @@ pub(in crate::editor::search::ops) fn update_pane_cursor(
     let text = buffers.get(bid).text();
     let state = pane_state.shown_mut(panes, pid);
     let head = state.view(text).primary().head();
+    let cursor = &mut state.search_cursor;
     let Some((pattern, matches)) = buffers.get(bid).search_matches.found(text) else {
+        cursor.match_count = None;
         return;
     };
-    let cursor = &mut state.search_cursor;
     if cursor
         .computed_for
         .as_ref()
@@ -114,18 +117,6 @@ pub(in crate::editor::search::ops) fn update_pane_cursor(
     let count = search_match_info(matches, head);
     cursor.match_count = Some(count);
     cursor.computed_for = Some(Tracked::new((pattern.to_owned(), head), text));
-}
-
-/// Convenience: run `update_buffer_matches` + `update_pane_cursor` for
-/// `pid` and the buffer it shows.
-pub(in crate::editor) fn sync_search_cache(
-    buffers: &mut BufferStore,
-    pane_state: &mut PaneEntries,
-    panes: &PanePool,
-    pid: PaneId,
-) {
-    update_buffer_matches(buffers, panes[pid].buffer_id());
-    update_pane_cursor(buffers, pane_state, panes, pid);
 }
 
 impl Editor {
@@ -162,12 +153,21 @@ impl Editor {
 
     /// Recompute the match list and pane search cursor for the focused buffer,
     /// if stale. No-op when no search is active.
+    ///
+    /// Insert mode leaves the match list alone: its highlights are hidden
+    /// there, and re-running the regex over the whole buffer on every typed
+    /// key would make typing cost grow with the file. The count is cleared
+    /// once the text changes, and the first sync after Insert re-scans.
     pub(in crate::editor) fn sync_search_cache(&mut self) {
-        sync_search_cache(
-            &mut self.state.buffers,
+        let pid = self.view.focused_pane();
+        if self.state.mode() != EditorMode::Insert {
+            update_buffer_matches(&mut self.state.buffers, self.view.panes[pid].buffer_id());
+        }
+        update_pane_cursor(
+            &self.state.buffers,
             &mut self.state.panes.entries,
             &self.view.panes,
-            self.view.focused_pane(),
+            pid,
         );
     }
 }
