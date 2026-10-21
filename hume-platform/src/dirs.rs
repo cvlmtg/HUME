@@ -231,12 +231,11 @@ impl GrammarBuild {
         };
         let file = format!("hume-grammar-build{}", env::consts::EXE_SUFFIX);
 
-        let mut searched = Vec::new();
-        #[cfg(not(windows))]
-        if let Some(prefix) = exe_dir.parent() {
-            searched.push(prefix.join("libexec").join("hume").join(&file));
-        }
-        searched.push(exe_dir.join(file));
+        let libexec = exe_dir
+            .parent()
+            .filter(|_| cfg!(not(windows)))
+            .map(|prefix| prefix.join("libexec").join("hume").join(&file));
+        let searched: Vec<_> = libexec.into_iter().chain([exe_dir.join(file)]).collect();
 
         match searched.iter().find(|tool| tool.exists()) {
             Some(tool) => Self::Found(tool.clone()),
