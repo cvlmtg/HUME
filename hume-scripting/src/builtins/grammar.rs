@@ -14,6 +14,7 @@
 
 use std::path::Path;
 
+use hume_platform::dirs::GrammarBuild;
 use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
@@ -43,9 +44,21 @@ pub(crate) fn compile_grammar(ctx: &mut SteelCtx, src: String, out: String) -> S
 
 /// Run the grammar compiler, or say why it did not build `src`.
 fn build(ctx: &mut SteelCtx, src: &str, out: &str) -> Result<(), String> {
-    let tool = ctx.dirs.grammar_build.clone().ok_or(
-        "compile-grammar!: hume-grammar-build is not installed beside the hume executable",
-    )?;
+    let tool = match &ctx.dirs.grammar_build {
+        GrammarBuild::Found(tool) => tool.clone(),
+        GrammarBuild::Missing { searched } if searched.is_empty() => {
+            return Err("compile-grammar!: hume-grammar-build was not found: \
+                 the location of the hume executable is unknown"
+                .to_string());
+        }
+        GrammarBuild::Missing { searched } => {
+            let paths: Vec<String> = searched.iter().map(|p| p.display().to_string()).collect();
+            return Err(format!(
+                "compile-grammar!: hume-grammar-build was not found; looked for {}",
+                paths.join(", ")
+            ));
+        }
+    };
 
     ctx.log(
         LogLevel::Trace,

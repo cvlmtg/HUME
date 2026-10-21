@@ -547,7 +547,7 @@ fn setup_editor_with_languages_scm(
         data: Some(data_tmp.path().join("hume")),
         runtime: Some(runtime_tmp.path().to_path_buf()),
         tmp: None,
-        grammar_build: None,
+        grammar_build: Dirs::none().grammar_build,
     };
     ed.init_scripting(&mut Default::default());
 
@@ -644,7 +644,7 @@ fn tsx_bundled_language_id_is_typescriptreact() {
         data: Some(data_tmp.path().join("hume")),
         runtime: Some(repo_runtime_dir()),
         tmp: None,
-        grammar_build: None,
+        grammar_build: Dirs::none().grammar_build,
     };
     ed.init_scripting(&mut Default::default());
     let bid = ed.focused_buffer_id();
@@ -911,7 +911,7 @@ fn init_errors_with_json_data(
         data: Some(data_tmp.path().join("hume")),
         runtime: Some(runtime_tmp.path().to_path_buf()),
         tmp: None,
-        grammar_build: None,
+        grammar_build: Dirs::none().grammar_build,
     };
     ed.init_scripting(&mut Default::default());
 
@@ -1181,7 +1181,7 @@ fn bundled_languages_carry_root_markers() {
         data: Some(data_tmp.path().join("hume")),
         runtime: Some(repo_runtime_dir()),
         tmp: None,
-        grammar_build: None,
+        grammar_build: Dirs::none().grammar_build,
     };
     ed.init_scripting(&mut Default::default());
     let bid = ed.focused_buffer_id();

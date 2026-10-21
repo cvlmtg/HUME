@@ -361,7 +361,7 @@ fn failed_third_party_load_does_not_block_plum_declared_afterward() {
         data: Some(data_tmp.path().join("hume")),
         runtime: Some(runtime_dir),
         tmp: None,
-        grammar_build: None,
+        grammar_build: Dirs::none().grammar_build,
     };
     ed.init_scripting(&mut Default::default());
 

@@ -21,7 +21,7 @@ impl ThemeDirsFixture {
                 data: Some(data_tmp.path().join("hume")),
                 runtime: Some(runtime_tmp.path().to_path_buf()),
                 tmp: None,
-                grammar_build: None,
+                grammar_build: Dirs::none().grammar_build,
             },
             _tmps: (config_tmp, data_tmp, runtime_tmp),
         }

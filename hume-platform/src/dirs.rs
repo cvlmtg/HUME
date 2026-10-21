@@ -41,8 +41,19 @@ pub struct Dirs {
     /// Where `:tutor` writes its editable copy of the lesson.
     pub tmp: Option<PathBuf>,
     /// The grammar compiler `hume-grammar-build`; see `grammar_build_with`
-    /// for where it is looked for. `None` when no candidate exists.
-    pub grammar_build: Option<PathBuf>,
+    /// for where it is looked for.
+    pub grammar_build: GrammarBuild,
+}
+
+/// Where the grammar compiler was found, or every path looked at for it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum GrammarBuild {
+    Found(PathBuf),
+    /// `searched` is empty when the executable's own path is unknown, since
+    /// every candidate is relative to it.
+    Missing {
+        searched: Vec<PathBuf>,
+    },
 }
 
 impl Dirs {
@@ -90,7 +101,9 @@ impl Dirs {
             data: None,
             runtime: None,
             tmp: None,
-            grammar_build: None,
+            grammar_build: GrammarBuild::Missing {
+                searched: Vec::new(),
+            },
         }
     }
 }
@@ -209,21 +222,26 @@ fn runtime_dir_with(
 /// 2. The binary's own directory: the Windows archive layout, and a cargo
 ///    build, which puts every workspace binary in one `target/<profile>/`.
 ///
-/// Existence-checked; `None` if neither exists.
-fn grammar_build_with(exe: Option<&Path>) -> Option<PathBuf> {
-    let exe_dir = exe?.parent()?;
+/// The first candidate that exists wins.
+fn grammar_build_with(exe: Option<&Path>) -> GrammarBuild {
+    let Some(exe_dir) = exe.and_then(Path::parent) else {
+        return GrammarBuild::Missing {
+            searched: Vec::new(),
+        };
+    };
     let file = format!("hume-grammar-build{}", env::consts::EXE_SUFFIX);
 
+    let mut searched = Vec::new();
     #[cfg(not(windows))]
-    if let Some(libexec) = exe_dir
-        .parent()
-        .map(|p| p.join("libexec").join("hume").join(&file))
-        && libexec.exists()
-    {
-        return Some(libexec);
+    if let Some(prefix) = exe_dir.parent() {
+        searched.push(prefix.join("libexec").join("hume").join(&file));
     }
+    searched.push(exe_dir.join(file));
 
-    Some(exe_dir.join(file)).filter(|tool| tool.exists())
+    match searched.iter().find(|tool| tool.exists()) {
+        Some(tool) => GrammarBuild::Found(tool.clone()),
+        None => GrammarBuild::Missing { searched },
+    }
 }
 
 #[cfg(test)]

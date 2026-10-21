@@ -2,13 +2,19 @@ use super::*;
 use crate::builtins::dirs::ScriptDirs;
 use crate::null_host::RecordingInlineOutputHost;
 use crate::test_support::SteelCtxTestHarness;
+use hume_platform::dirs::GrammarBuild;
+use std::path::PathBuf;
 use tempfile::TempDir;
 
 /// A harness whose grammar compiler is a missing file in `tmp`, so every
 /// compile fails to spawn, plus a missing `src` and an `out` inside `tmp`.
 fn failing_compile(tmp: &TempDir) -> (SteelCtxTestHarness, String, String) {
     let mut h = SteelCtxTestHarness::new();
-    h.dirs = ScriptDirs::new(None, None, Some(tmp.path().join("hume-grammar-build")));
+    h.dirs = ScriptDirs::new(
+        None,
+        None,
+        GrammarBuild::Found(tmp.path().join("hume-grammar-build")),
+    );
     let src = tmp
         .path()
         .join("does-not-exist")
@@ -66,20 +72,40 @@ fn compile_grammar_calls_ensure_before_build_in_command_mode() {
     assert_eq!(host.ensure_calls, 1);
 }
 
-/// With no grammar compiler found at startup there is nothing to run.
-#[test]
-fn compile_grammar_without_a_grammar_compiler_raises_naming_it() {
+/// The error raised when no grammar compiler was found at startup.
+fn missing_compiler_error(searched: Vec<PathBuf>) -> String {
     let tmp = TempDir::new().unwrap();
     let src = tmp.path().to_string_lossy().to_string();
     let out = tmp.path().join("out.dylib").to_string_lossy().to_string();
 
     let mut h = SteelCtxTestHarness::new();
+    h.dirs = ScriptDirs::new(None, None, GrammarBuild::Missing { searched });
     let mut ctx = h.ctx();
     ctx.session = crate::context::EvalSession::Runtime;
-    let err = compile_grammar(&mut ctx, src, out).unwrap_err();
+    compile_grammar(&mut ctx, src, out).unwrap_err().to_string()
+}
+
+/// A user who finds no grammar compiler is told every path HUME looked at.
+#[test]
+fn compile_grammar_without_a_grammar_compiler_names_where_it_looked() {
+    let searched = vec![
+        PathBuf::from("/opt/hume/libexec/hume/hume-grammar-build"),
+        PathBuf::from("/opt/hume/bin/hume-grammar-build"),
+    ];
+    let err = missing_compiler_error(searched.clone());
+    for path in &searched {
+        assert!(
+            err.contains(&path.display().to_string()),
+            "{path:?} missing from: {err}"
+        );
+    }
+}
+
+#[test]
+fn compile_grammar_without_an_executable_path_says_so() {
+    let err = missing_compiler_error(Vec::new());
     assert!(
-        err.to_string()
-            .contains("hume-grammar-build is not installed beside the hume executable"),
+        err.contains("location of the hume executable is unknown"),
         "unexpected error: {err}"
     );
 }

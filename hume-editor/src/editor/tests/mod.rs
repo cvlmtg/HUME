@@ -1,7 +1,7 @@
 // Shared imports and harness helpers used by all test submodules.
 // Each submodule does `use super::*;` to access these.
 
-use hume_platform::dirs::Dirs;
+use hume_platform::dirs::{Dirs, GrammarBuild};
 use hume_platform::wake::no_op_wake;
 use hume_scripting::host::NativeCall;
 use std::cell::Cell;
@@ -1211,7 +1211,7 @@ fn load_with_init_in_runtime(
         data: Some(data_dir.join("hume")),
         runtime: Some(runtime_dir.to_path_buf()),
         tmp: None,
-        grammar_build: Some(workspace_grammar_build()),
+        grammar_build: GrammarBuild::Found(workspace_grammar_build()),
     };
     ed.init_scripting(&mut Default::default());
     // `config_tmp` is deleted on return, so a later `:reload-config` has to
