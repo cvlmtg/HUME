@@ -39,9 +39,10 @@ pub use insert::{
 };
 pub use join::join_lines_select_spaces;
 pub use paste::{paste_after, paste_before};
-pub use pipe::{fit_pipe_output, replace_each_selection};
+pub use pipe::fit_pipe_output;
 pub use replace::{
-    replace_around_cursors, replace_selections, replace_span_around_cursors, word_start_before,
+    replace_around_cursors, replace_each_selection, replace_selections,
+    replace_span_around_cursors, word_start_before,
 };
 pub use sort::{SortOpts, SortRefusal, sort_lines};
 

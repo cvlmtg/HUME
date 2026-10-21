@@ -2,12 +2,11 @@
 //! applied to each selection as a whole string.
 
 use hume_editing::edit::Edited;
-use hume_editing::edit::Landing;
 use hume_editing::state::EditState;
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_titlecase::TitleCase;
 
-use super::apply_edit;
+use super::replace::replace_each_selection;
 
 /// Which case transform [`transform_case`] applies.
 enum CaseTransform {
@@ -30,16 +29,19 @@ enum CaseTransform {
 /// `σ` even at a word's end. Each selection is replaced whole, since case
 /// mapping can also change the char count (e.g. `ß` → `SS`).
 fn transform_case(state: EditState, kind: CaseTransform) -> Edited {
-    apply_edit(state, |b, sel| {
-        let selected = String::from(sel.slice());
-        let mapped = match kind {
-            CaseTransform::Lower => selected.to_lowercase(),
-            CaseTransform::Upper => selected.to_uppercase(),
-            CaseTransform::Capitalize => capitalize_words(&selected),
-        };
-        let mark = b.replace(sel.covered(), &mapped);
-        Landing::covering(mark, sel.facing())
-    })
+    let mapped: Vec<String> = state
+        .view()
+        .iter()
+        .map(|sel| {
+            let selected = String::from(sel.slice());
+            match kind {
+                CaseTransform::Lower => selected.to_lowercase(),
+                CaseTransform::Upper => selected.to_uppercase(),
+                CaseTransform::Capitalize => capitalize_words(&selected),
+            }
+        })
+        .collect();
+    replace_each_selection(state, &mapped)
 }
 
 /// Capitalize every alphanumeric word run in `text`: titlecase the first

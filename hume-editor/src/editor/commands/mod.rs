@@ -26,7 +26,7 @@ use hume_engine::pipeline::{BufferId, ContentWidth, EngineView, PaneId};
 use super::buffer::{Buffer, TextRefusal};
 use super::doc_ops;
 use super::jump_list::{JumpRule, with_jump};
-use super::pipe_run::PipeRunning;
+use super::pipe_run::{PipeRunning, STOP_KEY_NAME};
 use super::register_ops;
 use super::{EditorState, Severity};
 use crate::editor::error::CommandError;
@@ -182,20 +182,21 @@ pub(in crate::editor::commands) fn read_only_refusal(
 }
 
 /// The refusal of a close that would stop `running`, naming `way_out`, the
-/// typed command that goes ahead. `Ctrl-c` is offered too when the run's
-/// buffer is in the focused pane, the only buffer it stops.
+/// typed command that goes ahead. The stop key is offered too when the
+/// run's buffer is in the focused pane, the only buffer it stops, and the
+/// key still runs `cancel-pipe` there.
 pub(in crate::editor::commands) fn pipe_running_refusal(
     state: &EditorState,
     view: &EngineView,
     PipeRunning(bid): PipeRunning,
     way_out: &str,
 ) -> CommandError {
-    let name = state.buffers.get(bid).display_name();
-    let focused = FocusedPane::current(view).bid(view) == bid;
-    CommandError::transient(if focused {
-        format!("A pipe is running in {name}: Ctrl-c stops it, or use {way_out}")
+    let busy = TextRefusal::Busy.message(state.buffers.get(bid));
+    let stops = FocusedPane::current(view).bid(view) == bid && state.stop_key_cancels_pipe(bid);
+    CommandError::transient(if stops {
+        format!("{busy}. {STOP_KEY_NAME} stops it, or use {way_out}")
     } else {
-        format!("A pipe is running in {name}: use {way_out}")
+        format!("{busy}. Use {way_out}")
     })
 }
 

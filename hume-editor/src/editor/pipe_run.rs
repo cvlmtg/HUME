@@ -15,10 +15,11 @@ use hume_editing::selection::SelectionSet;
 use hume_engine::pipeline::{BufferId, PaneId};
 use hume_platform::process::WakeCallback;
 use termina::EventReader;
-use termina::event::{Event as TerminalEvent, KeyCode, KeyEventKind, Modifiers};
+use termina::event::{Event as TerminalEvent, KeyCode, KeyEvent, KeyEventKind, Modifiers};
 
 use super::buffer::TextHold;
 use super::commands;
+use super::keymap::{BindMode, WalkResult};
 use super::lifecycle::FramePacer;
 use super::replay::{DeferredChange, DeferredOutcome};
 use super::shell_batch::{BatchProgress, Captured, ShellBatch, ShellFailure};
@@ -163,22 +164,15 @@ pub(crate) struct PipeRuns {
 
 impl PipeRuns {
     pub(in crate::editor) fn new() -> Self {
-        Self::with_limit(
-            std::thread::available_parallelism()
-                .unwrap_or(NonZeroUsize::MIN)
-                .get(),
-        )
+        Self::with_limit(std::thread::available_parallelism().unwrap_or(NonZeroUsize::MIN))
     }
 
     /// No runs, sharing `limit` process slots.
-    ///
-    /// # Panics
-    /// Panics when `limit` is 0.
-    pub(in crate::editor) fn with_limit(limit: usize) -> Self {
+    pub(in crate::editor) fn with_limit(limit: NonZeroUsize) -> Self {
         Self {
             runs: Vec::new(),
             next: 0,
-            limit: NonZeroUsize::new(limit).expect("a run needs at least one process slot"),
+            limit,
         }
     }
 
@@ -395,14 +389,22 @@ impl PipeConsole for ReaderConsole {
     }
 }
 
+/// The key that stops a pipe: it cancels a waited run, and `cancel-pipe`
+/// is bound to it by default.
+const STOP_KEY: (KeyCode, Modifiers) = (KeyCode::Char('c'), Modifiers::CONTROL);
+
+/// [`STOP_KEY`] as a message names it.
+pub(in crate::editor) const STOP_KEY_NAME: &str = "Ctrl-c";
+
 /// What `event` means to a waiting run, `None` for an event it leaves to
 /// the main loop.
 pub(in crate::editor) fn wait_event(event: &TerminalEvent) -> Option<WaitEvent> {
+    let (stop_code, stop_modifiers) = STOP_KEY;
     match event {
         TerminalEvent::Key(key)
             if key.kind != KeyEventKind::Release
-                && key.code == KeyCode::Char('c')
-                && key.modifiers.contains(Modifiers::CONTROL) =>
+                && key.code == stop_code
+                && key.modifiers.contains(stop_modifiers) =>
         {
             Some(WaitEvent::Interrupt)
         }
@@ -560,6 +562,19 @@ impl EditorState {
     /// run its starter waits for.
     fn background_name(&self, launch: &Launch) -> Option<String> {
         (!launch.foreground).then(|| self.buffers.get(launch.buffer).display_name())
+    }
+
+    /// Whether [`STOP_KEY`] runs `cancel-pipe` in `bid`'s Normal keymap, so
+    /// a message may offer it as the way to stop `bid`'s run.
+    pub(in crate::editor) fn stop_key_cancels_pipe(&self, bid: BufferId) -> bool {
+        let (code, modifiers) = STOP_KEY;
+        let resolved = self.config.local_keymaps.resolve(
+            &self.config.keymap,
+            bid,
+            BindMode::Normal,
+            &[KeyEvent::new(code, modifiers)],
+        );
+        matches!(resolved.walk, WalkResult::Leaf(cmd) if cmd.name == "cancel-pipe")
     }
 
     /// Cancel `bid`'s run, if one is in flight: kill its processes, change

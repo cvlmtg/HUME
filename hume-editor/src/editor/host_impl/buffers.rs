@@ -9,7 +9,7 @@ use hume_rope::lines::line_token_content;
 use hume_rope::offset::ExclusiveRange;
 
 use super::EditorHostImpl;
-use crate::editor::buffer::ViewLabel;
+use crate::editor::buffer::{TextRefusal, ViewLabel};
 use crate::editor::commands::FocusedPane;
 use hume_scripting::PaneHandle;
 use hume_scripting::host::{BufferHost, DisplayPathForm};
@@ -112,8 +112,8 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
         crate::editor::buffer::lifecycle::close_buffer_and_notify(self.view, self.state, id)
             .map_err(|_| {
                 format!(
-                    r#"close-buffer!: a pipe is running in {}; stop it first with (call! "cancel-pipe" pane)"#,
-                    self.state.buffers.get(id).display_name()
+                    r#"close-buffer!: {}. Stop it first with (call! "cancel-pipe" pane)"#,
+                    TextRefusal::Busy.message(self.state.buffers.get(id))
                 )
             })
     }

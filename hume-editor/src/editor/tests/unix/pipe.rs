@@ -6,6 +6,7 @@ use super::*;
 
 use std::collections::VecDeque;
 use std::io;
+use std::num::NonZeroUsize;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
@@ -838,7 +839,7 @@ fn runs_in_two_buffers_share_one_process_cap() {
     let dir = tempfile::tempdir().expect("tempdir");
     let log = dir.path().join("log");
     let mut ed = editor_from("-{a}> -[b]> -[c]>\n");
-    ed.state.pipe_runs = PipeRuns::with_limit(2);
+    ed.state.pipe_runs = PipeRuns::with_limit(NonZeroUsize::new(2).expect("two is not zero"));
     let first = ed.focused_buffer_id();
     type_pipe(&mut ed, &logging_command(&log));
     let second = open_other_buffer(&mut ed, "a b c\n");
@@ -857,7 +858,7 @@ fn runs_in_two_buffers_share_one_process_cap() {
 fn a_waited_run_takes_the_next_free_slot_before_an_older_background_run() {
     let _path = path_reader();
     let mut ed = editor_from("-{a}> -[b]> -[c]> -[d]> -[e]>\n");
-    ed.state.pipe_runs = PipeRuns::with_limit(1);
+    ed.state.pipe_runs = PipeRuns::with_limit(NonZeroUsize::MIN);
     let background = ed.focused_buffer_id();
     type_pipe(&mut ed, "sleep 0.5; cat");
     ed.settle();
@@ -969,7 +970,7 @@ fn close_buffer_from_steel_raises_while_the_run_is_in_flight() {
     assert!(has_error(
         &ed,
         &format!(
-            r#"close-buffer!: a pipe is running in {}; stop it first with (call! "cancel-pipe" pane)"#,
+            r#"close-buffer!: {} is busy: a pipe is running. Stop it first with (call! "cancel-pipe" pane)"#,
             ed.doc().display_name()
         )
     ));

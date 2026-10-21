@@ -945,3 +945,40 @@ fn queued_callback_restales_against_an_earlier_siblings_edit_in_the_same_batch()
         "callback 2 must be dropped once callback 1's edit changes the text version: {log:?}"
     );
 }
+
+// ── Edit origin ──────────────────────────────────────────────────────────────
+
+/// An edit an `lsp-request!` callback makes is background work's, not the
+/// user's: a bare `p` after it still pastes the kill-ring head.
+#[test]
+fn an_lsp_callback_edit_leaves_the_ring_stamp_fresh() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = setup_with(tmp.path(), "-[ab]>cd\n", |b, _sid| {
+        b.respond_to("textDocument/hover", serde_json::json!({}));
+    })
+    .ed;
+    seed_clipboard(&mut ed, "CLIP");
+    let mut host = ScriptingHost::new(&Dirs::none());
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(define-typed-command! "ask" "" (lambda (pane)
+             (lsp-request! pane "textDocument/hover" (hash)
+               (lambda (err result)
+                 (edit-text! pane (list (hash 'start-char 1 'end-char 1 'text "!")))))))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+
+    ed.feed_key(key('d'));
+    type_cmd(&mut ed, ":ask");
+    ed.drain_lsp();
+    ed.settle();
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "c!d\n",
+        "setup: the callback edited"
+    );
+    ed.feed_key(key('p'));
+    assert_eq!(ed.doc().text().to_string(), "cab!d\n");
+}

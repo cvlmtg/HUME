@@ -3,7 +3,8 @@
 //! `BufferStore` holds the authoritative `Buffer` structs keyed by `BufferId`.
 //! IDs are allocated by the engine's `SlotMap<BufferId, ()>`; this
 //! store mirrors that slotmap. **Never insert/remove through only one side**:
-//! always go through the `Editor::open_buffer` / `Editor::close_buffer` choke-points.
+//! always go through the `Editor::open_buffer` /
+//! `lifecycle::close_buffer_and_notify` choke-points.
 
 use std::path::Path;
 

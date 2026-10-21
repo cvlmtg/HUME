@@ -37,7 +37,7 @@ use crate::process::child::{
 use crate::process::tracked::TrackedChild;
 
 /// The complete output of a finished [`SpawnedJob`]: whole stdout as raw
-/// bytes, left to the caller to decode (never *silently* truncated: capped
+/// bytes, left to the caller to decode (never truncated: capped
 /// at `JOB_STDOUT_CAP`, but exceeding it fails the job rather than handing
 /// back a short prefix), whole stderr (capped at `STDERR_CAPTURE_CAP`;
 /// diagnostic only, so truncation there is fine), and exit status (`None`
@@ -140,7 +140,7 @@ pub fn spawn_job(
                 // A truncated stdout, or output computed from truncated
                 // input, is worse than none: hand back the documented
                 // spawn-failure shape (empty stdout, a message in stderr,
-                // no exit code) rather than silently short data.
+                // no exit code) rather than short data.
                 Err(e) => JobResult {
                     stdout: Vec::new(),
                     stderr: format!("{job_cmd}: {e}"),

@@ -45,9 +45,10 @@ pub(in crate::editor) fn close_tab(
     state: &mut EditorState,
     view: &mut EngineView,
 ) -> Result<(), CloseRefused> {
-    if state.tabs.len() == 1 {
-        return Err(CloseRefused::Last);
-    }
+    state
+        .tabs
+        .refuse_close()
+        .map_err(|SingleTab| CloseRefused::Last)?;
     check_no_pipe_from(state, &view.active_pane_ids())?;
     let detached = crate::editor::tab::close_tab(state, view)
         .unwrap_or_else(|SingleTab| unreachable!("one of several tabs closes"));

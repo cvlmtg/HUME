@@ -156,7 +156,7 @@ fn fire_viewport_change(ed: &mut Editor) {
 /// `drain_async_sources` runs once, at its top, before its fixpoint drains
 /// `pending_work`:
 /// - **Round 1** picks up the now-due debounce timer (`drain_due_timers`
-///   queues the thunk via `queue_steel_call`), and the same call's fixpoint
+///   queues the thunk via `queue_background_call`), and the same call's fixpoint
 ///   runs it immediately, sending the wire request. The scripted backend
 ///   auto-queues its response synchronously, but this round's
 ///   `drain_async_sources` already ran, so it isn't seen yet.

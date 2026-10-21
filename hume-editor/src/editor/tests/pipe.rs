@@ -411,16 +411,16 @@ fn two_cancelled_runs_leave_the_change_before_both_oldest_first() {
 /// focused pane, naming `way_out`.
 fn pipe_running(ed: &Editor, bid: BufferId, way_out: &str) -> String {
     format!(
-        "A pipe is running in {}: Ctrl-c stops it, or use {way_out}",
+        "{} is busy: a pipe is running. Ctrl-c stops it, or use {way_out}",
         ed.state.buffers.get(bid).display_name()
     )
 }
 
 /// [`pipe_running`] for a `bid` no focused pane shows, which `Ctrl-c`
-/// does not reach.
+/// does not reach, or with `Ctrl-c` not bound to `cancel-pipe`.
 fn pipe_running_elsewhere(ed: &Editor, bid: BufferId, way_out: &str) -> String {
     format!(
-        "A pipe is running in {}: use {way_out}",
+        "{} is busy: a pipe is running. Use {way_out}",
         ed.state.buffers.get(bid).display_name()
     )
 }
@@ -431,7 +431,7 @@ fn q_refuses_while_a_run_is_in_flight() {
     start_sort(&mut ed);
     type_cmd(&mut ed, ":q");
     assert!(!ed.state.should_quit);
-    insta::assert_snapshot!(status(&ed), @"A pipe is running in *scratch*: Ctrl-c stops it, or use :q!");
+    insta::assert_snapshot!(status(&ed), @"*scratch* is busy: a pipe is running. Ctrl-c stops it, or use :q!");
     assert!(ed.doc().is_busy());
 }
 
@@ -607,7 +607,7 @@ fn qa_refuses_naming_the_busy_buffer() {
     type_cmd(&mut ed, ":qa");
     assert!(!ed.state.should_quit);
     assert_eq!(status(&ed), pipe_running_elsewhere(&ed, bid, ":qa!"));
-    insta::assert_snapshot!(status(&ed), @"A pipe is running in *scratch*: use :qa!");
+    insta::assert_snapshot!(status(&ed), @"*scratch* is busy: a pipe is running. Use :qa!");
 }
 
 #[test]
@@ -619,13 +619,26 @@ fn qa_bang_quits() {
 }
 
 #[test]
+fn a_refusal_names_ctrl_c_only_while_it_runs_cancel_pipe() {
+    let mut ed = editor_from("-[a]>\n");
+    let bid = ed.focused_buffer_id();
+    ed.state
+        .config
+        .keymap
+        .unbind_user(BindMode::Normal, &[key_ctrl('c')]);
+    start_sort(&mut ed);
+    type_cmd(&mut ed, ":bd");
+    assert_eq!(status(&ed), pipe_running_elsewhere(&ed, bid, ":bd!"));
+}
+
+#[test]
 fn bd_refuses() {
     let mut ed = editor_from("-[a]>\n");
     let bid = ed.focused_buffer_id();
     start_sort(&mut ed);
     type_cmd(&mut ed, ":bd");
     assert_eq!(status(&ed), pipe_running(&ed, bid, ":bd!"));
-    insta::assert_snapshot!(status(&ed), @"A pipe is running in *scratch*: Ctrl-c stops it, or use :bd!");
+    insta::assert_snapshot!(status(&ed), @"*scratch* is busy: a pipe is running. Ctrl-c stops it, or use :bd!");
     assert!(busy(&ed, bid));
 }
 

@@ -147,14 +147,21 @@ impl TabStore {
         assert!(replaced.is_none(), "the active tab has no stashed layout");
     }
 
+    /// The refusal closing `current` gives, without closing anything: `Err`
+    /// when it is the only tab.
+    pub(in crate::editor) fn refuse_close(&self) -> Result<(), SingleTab> {
+        if self.order.len() == 1 {
+            return Err(SingleTab);
+        }
+        Ok(())
+    }
+
     /// The tab that should gain focus once `current` closes: its right
     /// neighbour, or its left one when `current` is already the rightmost
     /// tab (Vim's own `:tabclose` placement: adjacent, never a wrap to the
     /// far end). Refused when `current` is the only tab.
     pub(in crate::editor::tab) fn adjacent(&self) -> Result<TabId, SingleTab> {
-        if self.order.len() == 1 {
-            return Err(SingleTab);
-        }
+        self.refuse_close()?;
         let pos = self.current_pos();
         let neighbor = if pos + 1 < self.order.len() {
             pos + 1

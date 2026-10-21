@@ -345,7 +345,8 @@ pub struct GroupedChild {
 }
 
 impl GroupedChild {
-    /// The child's OS process id.
+    /// The child's OS process id. Test-support only.
+    #[cfg(test)]
     pub fn id(&self) -> u32 {
         self.child.id()
     }

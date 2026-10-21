@@ -6,9 +6,9 @@
 //! host through `SteelCtx`), just never the same `Editor` these live on, so
 //! they take `state`/`ev` directly instead of `&mut self`.
 //!
-//! The `impl Editor` choke-points (`close_buffer`,
-//! `switch_to_buffer_with_jump`, `open_read_only_view`) are thin
-//! delegators; all logic lives here.
+//! The `impl Editor` choke-points (`switch_to_buffer_with_jump`,
+//! `open_read_only_view`) are thin delegators; all logic lives here.
+//! Production closes call [`close_buffer_and_notify`] directly.
 
 use hume_editing::text::BufferText;
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
@@ -224,9 +224,10 @@ fn close_buffer(state: &mut EditorState, ev: &mut EngineView, id: BufferId) -> O
     opened
 }
 
-/// [`close_buffer`] plus the pre-close LSP sync and post-close cleanup
-/// `Editor::close_buffer` performs: `didClose` notification, diagnostics
-/// clear, decoration clear, and the `OnBufferClose` hook enqueue.
+/// Close buffer `id`, the chokepoint every close goes through:
+/// [`close_buffer`] plus the pre-close LSP sync and post-close cleanup,
+/// which are the `didClose` notification, diagnostics clear, decoration
+/// clear, and the `OnBufferClose` hook enqueue.
 ///
 /// Unlike buffer open, none of this needs Steel eval (`didClose` is pure
 /// protocol, diagnostics/decorations are plain state), so, unlike

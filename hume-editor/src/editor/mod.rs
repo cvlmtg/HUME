@@ -767,17 +767,11 @@ impl EditorState {
             .push_back(event::PendingWork::Event(event));
     }
 
-    /// Queue `(proc, args)` for evaluation at the next drain boundary,
-    /// never called inline (LSP dispatch, timer fire, and minibuffer key
-    /// handling all detect their completion from inside a borrow that can't
-    /// re-enter Steel). The delivery for a callback a key of the user's
-    /// fired: a drawer, live-picker query or completion-source callback.
-    /// Background work queues through [`Self::queue_background_call`]; an
-    /// interactive input's callback is built by `EditorState::answered_call`
-    /// instead. Lives on `EditorState` (not `Editor`) so a drawer layer and
-    /// `EditorHostImpl`'s spawn-failure arm (which only hold `&mut
-    /// EditorState`) can reach it too, the same reason `queue_event` lives
-    /// here.
+    /// Queue `(proc, args)`, a callback a key of the user's fired, for
+    /// [`Self::queue_call`]: a drawer, live-picker query or completion-source
+    /// callback. Background work queues through
+    /// [`Self::queue_background_call`]; an interactive input's callback is
+    /// built by `EditorState::answered_call` instead.
     pub(in crate::editor) fn queue_steel_call(
         &mut self,
         proc: steel::rvals::SteelVal,
@@ -812,6 +806,13 @@ impl EditorState {
         self.queue_call(proc, args, anchor, tracked, EditOrigin::Background);
     }
 
+    /// Queue `(proc, args)` for evaluation at the next drain boundary, never
+    /// called inline: LSP dispatch, timer fire and minibuffer key handling
+    /// all detect their completion from inside a borrow that can't re-enter
+    /// Steel. Its edits count as `origin`'s. Lives on `EditorState` (not
+    /// `Editor`) so a drawer layer and `EditorHostImpl`, which only hold
+    /// `&mut EditorState`, can queue too, the same reason `queue_event` lives
+    /// here.
     fn queue_call(
         &mut self,
         proc: steel::rvals::SteelVal,

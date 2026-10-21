@@ -566,7 +566,7 @@ impl Editor {
         } else {
             // Reads `cursor_shape()` directly rather than through
             // `resolve_pane_settings`: the focused pane's own
-            // `cursor_is_block` is defined as exactly this comparison
+            // `cursor_is_block` is defined as this same comparison
             // (`frame.rs`), and resolving full pane settings
             // (a `FormatKey` build included) just to throw away
             // everything but this one bool would repeat, for the
@@ -603,7 +603,7 @@ impl Editor {
 
         // Open the synchronized-output envelope so the terminal defers
         // display until after every byte of this frame has been written.
-        // Terminals that don't support DEC 2026 silently ignore the
+        // Terminals that don't support DEC 2026 ignore the
         // sequence, hence `let _ =` rather than `?`.
         let _ = hume_platform::terminal::begin_synchronized_update(term);
         let area = self.view.terminal_area();
@@ -627,7 +627,7 @@ impl Editor {
         // the cursor *colour* below, which is gated on one. That's the
         // point of emitting it here: the show-cursor sequence closing a
         // frame resets the shape on some terminals, so a shape sent once
-        // when the mode changed would be silently undone by the next
+        // when the mode changed would be undone by the next
         // frame. One SGR-sized write per frame is not worth tracking.
         //
         // The write is best-effort: a terminal that doesn't understand

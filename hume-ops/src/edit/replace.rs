@@ -1,5 +1,6 @@
 //! Multi-cursor "replace around each head" primitives (`r`, and LSP
-//! completion's fallback insert path) and word-boundary lookup.
+//! completion's fallback insert path), replacing each selection with its
+//! own value (`pipe`, case transforms), and word-boundary lookup.
 
 use hume_editing::edit::Edited;
 use hume_editing::edit::Landing;
@@ -10,6 +11,24 @@ use hume_rope::cluster::ClusterRange;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 use super::apply_edit;
+
+/// Replace selection `i` with `values[i]`, in document order. Each result
+/// covers its replacement and keeps its facing; an empty value leaves a
+/// cursor on the cluster after the removed text.
+///
+/// # Panics
+/// Panics if `values` and the selections differ in number.
+pub fn replace_each_selection(state: EditState, values: &[String]) -> Edited {
+    assert_eq!(
+        values.len(),
+        state.view().len(),
+        "replace_each_selection: needs one value per selection"
+    );
+    apply_edit(state, |b, sel| {
+        let mark = b.replace(sel.covered(), &values[sel.index()]);
+        Landing::covering(mark, sel.facing())
+    })
+}
 
 /// The start of the run of identifier (`Word`-class) clusters ending at
 /// `pos`: the token immediately preceding it, or `pos` itself when the

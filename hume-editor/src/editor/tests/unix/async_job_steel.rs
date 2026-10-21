@@ -209,3 +209,31 @@ fn cancel_async_prevents_the_callback_and_kills_the_child() {
         "a cancelled job's callback must never fire"
     );
 }
+
+/// An edit a job's callback makes is background work's, not the user's: a
+/// bare `p` after it still pastes the kill-ring head.
+#[test]
+fn an_async_job_callback_edit_leaves_the_ring_stamp_fresh() {
+    let _path = path_reader();
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[ab]>cd\n");
+    seed_clipboard(&mut ed, "CLIP");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"
+        (define-command! "go" "" (lambda ()
+          (spawn-async! "sh" (list "-c" "true")
+            (lambda (out err code)
+              (edit-text! (focused-pane)
+                (list (hash 'start-char 1 'end-char 1 'text "!")))))))
+        "#,
+    );
+    ed.feed_key(key('d'));
+    call(&mut ed, "go");
+
+    drain_until(&mut ed, |ed| ed.doc().text().to_string() == "c!d\n");
+
+    ed.feed_key(key('p'));
+    assert_eq!(ed.doc().text().to_string(), "cab!d\n");
+}
