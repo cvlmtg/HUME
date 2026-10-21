@@ -35,6 +35,8 @@
 - `core:git-diff`'s new `"branch-style"` config can show the statusline branch as `⎇ main`.
 - The bottom drawer has a border, open at the bottom, which `popup-border` turns off.
 - New bundled themes: Catppuccin, Tokyo Night, One Dark, Dracula, GitHub, Kanagawa, Rosé Pine, Solarized and Nord, with their variants. Type `:theme ` and press `Tab` to list them.
+- Typing, scrolling and redrawing are faster.
+- The statusline's search match count hides once you type in Insert mode and comes back when you leave it.
 
 ### Plugins & scripting
 - A `live-picker!` source gets a token per query, so a slow source can't overwrite newer rows.
