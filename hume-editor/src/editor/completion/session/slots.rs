@@ -334,6 +334,15 @@ impl<Id: Copy + PartialEq, S> SlotSet<Id, S> {
         self.slots.iter().any(|s| s.inflight.is_some())
     }
 
+    /// The source whose latest call is invocation `id`: the one an answer
+    /// to `id` would land on.
+    pub(super) fn source_of(&self, id: u64) -> Option<Id> {
+        self.slots
+            .iter()
+            .find(|s| s.latest_id() == Some(id))
+            .map(|s| s.source)
+    }
+
     pub(super) fn is_live(&self) -> bool {
         self.slots.iter().any(SourceSlot::is_live)
     }

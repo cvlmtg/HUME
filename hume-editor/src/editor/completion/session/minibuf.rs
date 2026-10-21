@@ -22,6 +22,22 @@ use super::slots::{Invocation, SlotSet, SlotTokens};
 /// site.
 pub(in crate::editor) struct MinibufSpan {
     bytes: Range<usize>,
+    /// What the first Tab puts over `bytes` while no row is picked, when
+    /// the source named it ([`MinibufWord::prefix`]).
+    prefix: Option<String>,
+}
+
+/// What an answer says about the word it completes: the span it replaces,
+/// a byte range of [`MinibufSession::input`] (`None` keeps the invocation's
+/// own), and the text the first Tab puts over it (`None` lets the session
+/// propose what the insert texts start with). A source names `prefix` when
+/// its insert texts have a syntax the session cannot cut, so it is applied
+/// as given: the typed text and the prefix need not share a display form
+/// (`dir/a` and `'dir/a b` read as the same path start in PowerShell).
+#[derive(Default)]
+pub(in crate::editor) struct MinibufWord {
+    pub(in crate::editor) span: Option<Range<usize>>,
+    pub(in crate::editor) prefix: Option<String>,
 }
 
 impl Invocation<MinibufSpan> {
@@ -29,9 +45,13 @@ impl Invocation<MinibufSpan> {
     /// argument the cursor is in, every minibuffer source's token rule,
     /// except a `NativeDelegated` one, which computes its own span
     /// synchronously before this is minted (`orchestrate.rs`'s
-    /// `invoke_minibuf_source`).
+    /// `invoke_minibuf_source`), and a delegated Steel one, whose answer
+    /// may name its span ([`MinibufSession::contribute`]).
     pub(in crate::editor) fn minibuf(bytes: Range<usize>) -> Self {
-        Self::new(MinibufSpan { bytes })
+        Self::new(MinibufSpan {
+            bytes,
+            prefix: None,
+        })
     }
 }
 
@@ -92,6 +112,11 @@ impl MinibufSession {
         &self.input
     }
 
+    /// The cursor's byte offset into [`Self::input`].
+    pub(in crate::editor) fn cursor(&self) -> usize {
+        self.cursor
+    }
+
     // ── Sources in and out ───────────────────────────────────────────────────
 
     pub(in crate::editor) fn invoke(
@@ -102,13 +127,25 @@ impl MinibufSession {
         self.core.invoke(source, invocation)
     }
 
+    /// Lands an answer for invocation `id`, completing `word`.
     pub(in crate::editor) fn contribute(
         &mut self,
         id: u64,
         items: Vec<CompletionItem>,
         incomplete: bool,
+        word: MinibufWord,
     ) -> bool {
-        self.core.contribute(id, items, incomplete, |_, _, _| {})
+        self.core.contribute(id, items, incomplete, |_, minted, _| {
+            if let Some(bytes) = word.span {
+                minted.bytes = bytes;
+            }
+            minted.prefix = word.prefix;
+        })
+    }
+
+    /// The source whose latest call is invocation `id`.
+    pub(in crate::editor) fn source_of(&self, id: u64) -> Option<MinibufSourceId> {
+        self.core.source_of(id)
     }
 
     pub(in crate::editor) fn is_pending(&self) -> bool {
@@ -192,8 +229,8 @@ impl MinibufSession {
     }
 
     /// The edit Tab applies: the picked candidate over its span, or with
-    /// nothing picked, the candidates' common prefix over the span, cut by
-    /// the source's `prefix_cut`. `None` when there is nothing to apply,
+    /// nothing picked, the prefix the answer named over the span, else the
+    /// candidates' common prefix, cut by the source's `prefix_cut`. `None` when there is nothing to apply,
     /// including a common prefix that does not extend what is already typed
     /// (a fuzzy match can share less than the typed text). The typed text
     /// is the whole token, so with the cursor mid-token the prefix rarely
@@ -205,6 +242,9 @@ impl MinibufSession {
         }
         let (_, inv, first) = self.core.ranked(0)?;
         let span = inv.span.bytes.clone();
+        if let Some(prefix) = &inv.span.prefix {
+            return Some((span, Cow::Borrowed(prefix)));
+        }
         let prefix = (self.prefix_cut)(
             (1..self.core.len())
                 .filter_map(|i| self.core.selected_item(i))

@@ -4,15 +4,15 @@
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
-use crate::host::{CompletionSourceTarget, MatchKind};
+use crate::host::{CompletionSourceTarget, EmittedWord, MatchKind};
 use crate::json::json_to_steel;
 use crate::types::{PaneHandle, TriggerKind, TriggerScope};
 use crate::{Effect, SteelCtx};
 
 use super::SteelResult;
 use super::args::{
-    bool_arg, callable_arg, chars_arg, int_arg, json_arg, list_items, server_arg, string_arg,
-    symbol_enum_arg, usize_arg,
+    bool_arg, callable_arg, chars_arg, int_arg, json_arg, list_items, optional_pair_fields,
+    optional_string_arg, server_arg, string_arg, symbol_enum_arg, usize_arg,
 };
 use super::errors::{generic_err, require_cap};
 use super::lsp::required_feature_arg;
@@ -185,8 +185,10 @@ pub(crate) fn register_completion_source(
     Ok(SteelVal::Void)
 }
 
-/// `(%completion-emit! id items incomplete)`: the `completion-emit!`
-/// Scheme wrapper supplies `#:incomplete`'s `#f` default. `items` is a list
+/// `(%completion-emit! id items incomplete span prefix)`: the
+/// `completion-emit!` Scheme wrapper supplies the defaults of
+/// `#:incomplete` and of [`EmittedWord`]'s `#:span` (a `(start . end)`
+/// pair, or `#f`) and `#:prefix` (a string, or `#f`). `items` is a list
 /// whose elements are `CompletionItem` hashmaps, bare-string labels, or
 /// whole LSP `textDocument/completion` responses passed straight through;
 /// each crosses `json_arg` (the funnel every JSON-taking builtin uses) with
@@ -198,15 +200,22 @@ pub(crate) fn completion_emit(
     id: SteelVal,
     items: SteelVal,
     incomplete: SteelVal,
+    span: SteelVal,
+    prefix: SteelVal,
 ) -> SteelResult {
     let id = usize_arg(id, "completion-emit! id")? as u64;
     let incomplete = bool_arg(incomplete, "completion-emit! #:incomplete")?;
+    const SPAN: &str = "completion-emit! #:span";
+    let span = optional_pair_fields(span, SPAN, "a (start . end) pair")?
+        .map(|(start, end)| Ok::<_, SteelErr>(usize_arg(start, SPAN)?..usize_arg(end, SPAN)?))
+        .transpose()?;
+    let prefix = optional_string_arg(prefix, "completion-emit! #:prefix")?;
     let parts = list_items(items, "completion-emit! items")?
         .into_iter()
         .map(|item| json_arg(item, "completion-emit! items"))
         .collect::<Result<Vec<_>, _>>()?;
     let applied = require_cap(ctx.host.completions(), "completion-emit!")?
-        .completion_emit(id, parts, incomplete)
+        .completion_emit(id, parts, incomplete, EmittedWord { span, prefix })
         .map_err(generic_err)?;
     Ok(SteelVal::BoolV(applied))
 }

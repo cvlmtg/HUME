@@ -14,12 +14,16 @@
 //! (`rank`) stays here in Rust and only a source flagged `isIncomplete` is
 //! called again as the user types.
 
+use std::ops::Range;
+
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 use hume_rope::offset::CharOffset;
 use steel::rvals::SteelVal;
 
 use super::registry::{BufferSourceId, MinibufBody, MinibufSourceId, SourceRegistry};
-use super::session::{BufferSession, Invocation, LiveDoc, MinibufSession, Reconciled};
+use super::session::{
+    BufferSession, Invocation, LiveDoc, MatchKind, MinibufSession, MinibufWord, Reconciled,
+};
 use super::{CompletionCtx, CompletionItem, arg_span};
 use crate::editor::buffer::store::BufferStore;
 use crate::editor::input_stack::{BufferCompletionLayer, LayerRef, MinibufCompletionLayer};
@@ -368,6 +372,81 @@ impl EditorState {
 
     // ── Answers ──────────────────────────────────────────────────────────────
 
+    /// The word an answer to `id` completes on the open minibuffer line:
+    /// `span`, a char range of the line, and `prefix`, what the first Tab
+    /// puts over it. `Ok(None)` when no session awaits `id`. `Err` for an
+    /// empty `prefix`, for either from a `'buffer` source or from a source
+    /// the editor matches for (it filters that source's items, so the set a
+    /// prefix describes is not the source's), and for a span that does not
+    /// hold the cursor within the line.
+    pub(in crate::editor) fn answer_word(
+        &self,
+        id: u64,
+        span: Option<Range<usize>>,
+        prefix: Option<String>,
+    ) -> Result<Option<MinibufWord>, String> {
+        if prefix.as_deref() == Some("") {
+            return Err(
+                "completion-emit!: #:prefix would blank the word; send #f to let the editor \
+                 propose one"
+                    .to_string(),
+            );
+        }
+        if self.input.buffer_completion().is_some_and(|s| s.awaits(id)) {
+            return Err(
+                "completion-emit!: #:span and #:prefix are for a 'minibuf source; a 'buffer \
+                 source's token is the word before the cursor"
+                    .to_string(),
+            );
+        }
+        let Some(session) = self.input.minibuf_completion() else {
+            return Ok(None);
+        };
+        let Some(source) = session.source_of(id) else {
+            return Ok(None);
+        };
+        if self
+            .config
+            .completion_sources
+            .minibuf_get(source)
+            .match_kind
+            != MatchKind::Delegated
+        {
+            return Err(
+                "completion-emit!: #:span and #:prefix need a source registered with #:match \
+                 'delegated"
+                    .to_string(),
+            );
+        }
+        let Some(chars) = span else {
+            return Ok(Some(MinibufWord { span: None, prefix }));
+        };
+        let input = session.input();
+        let byte_at = |n: usize| {
+            input
+                .char_indices()
+                .map(|(i, _)| i)
+                .chain([input.len()])
+                .nth(n)
+        };
+        let cursor = input[..session.cursor()].chars().count();
+        match (byte_at(chars.start), byte_at(chars.end)) {
+            (Some(start), Some(end)) if chars.start <= cursor && cursor <= chars.end => {
+                Ok(Some(MinibufWord {
+                    span: Some(start..end),
+                    prefix,
+                }))
+            }
+            _ => Err(format!(
+                "completion-emit!: #:span ({} . {}) must hold the cursor ({cursor}) within the \
+                 line's {} chars",
+                chars.start,
+                chars.end,
+                input.chars().count()
+            )),
+        }
+    }
+
     /// A source's answer to invocation `id`: `completion-emit!`. `false`
     /// when no open session has that invocation as a slot's latest call
     /// (superseded, replaced, or dismissed since: expected-normal for a late
@@ -375,12 +454,14 @@ impl EditorState {
     /// `true`: a dropped answer changed nothing, and settling anyway would
     /// still reset the menu's selection out from under a user who has since
     /// Tabbed to a row an unrelated, superseded call has no bearing on.
+    /// `word`, from [`Self::answer_word`], is for a minibuffer session only.
     pub(in crate::editor) fn contribute(
         &mut self,
         view: &EngineView,
         id: u64,
         items: Vec<CompletionItem>,
         incomplete: bool,
+        word: MinibufWord,
     ) -> bool {
         if self.input.ref_of::<BufferCompletionLayer>().is_some() {
             let session = self
@@ -405,7 +486,7 @@ impl EditorState {
             .input
             .minibuf_completion_mut()
             .expect("ref_of found the layer");
-        let landed = session.contribute(id, items, incomplete);
+        let landed = session.contribute(id, items, incomplete, word);
         if landed {
             self.settle_minibuf_session(view, r);
         }
@@ -552,23 +633,25 @@ fn invoke_minibuf_source(
     match &entry.body {
         MinibufBody::NativeUniverse(f) => {
             let invocation_id = session.invoke(id, Invocation::minibuf(arg()));
-            session.contribute(invocation_id, f(ctx), false);
+            session.contribute(invocation_id, f(ctx), false, MinibufWord::default());
             None
         }
         MinibufBody::NativeDelegated(f) => {
             let (span, items) = f(input, cursor, ctx);
             let invocation_id = session.invoke(id, Invocation::minibuf(span));
-            session.contribute(invocation_id, items, false);
+            session.contribute(invocation_id, items, false, MinibufWord::default());
             None
         }
         MinibufBody::Steel(proc) => {
             let invocation_id = session.invoke(id, Invocation::minibuf(arg()));
+            // Steel indexes a string by char.
+            let cursor_chars = input[..cursor].chars().count();
             Some((
                 proc.clone(),
                 vec![
                     SteelVal::IntV(invocation_id as isize),
                     SteelVal::StringV(input.into()),
-                    SteelVal::IntV(cursor as isize),
+                    SteelVal::IntV(cursor_chars as isize),
                 ],
             ))
         }

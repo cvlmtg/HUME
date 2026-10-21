@@ -3,11 +3,11 @@
 
 use crate::editor::Severity;
 use crate::editor::completion::{
-    BufferSourceEntry, CUT_ANYWHERE, MinibufBody, MinibufSourceEntry, RegisterOutcome,
+    BufferSourceEntry, CUT_ANYWHERE, MinibufBody, MinibufSourceEntry, MinibufWord, RegisterOutcome,
 };
 
 use super::EditorHostImpl;
-use hume_scripting::host::{self, CompletionHost};
+use hume_scripting::host::{self, CompletionHost, EmittedWord};
 
 /// `hume-scripting`'s `MatchKind` is the Steel/host-trait boundary's own
 /// mirror (see its doc), converted here into the editor's richer internal
@@ -81,6 +81,7 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
         id: u64,
         parts: Vec<hume_scripting::json::JsonHandle>,
         incomplete: bool,
+        word: EmittedWord,
     ) -> Result<bool, String> {
         // `hume-scripting` hands each part over as an opaque `JsonHandle`;
         // telling an item from a response happens here, the one place that
@@ -119,7 +120,18 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
                 self.parse_item(v, raw_item, default_range.as_ref(), &mut parsed);
             }
         }
-        Ok(self.state.contribute(self.view, id, parsed, incomplete))
+        let word = if word == EmittedWord::default() {
+            MinibufWord::default()
+        } else {
+            let EmittedWord { span, prefix } = word;
+            match self.state.answer_word(id, span, prefix)? {
+                Some(word) => word,
+                None => return Ok(false),
+            }
+        };
+        Ok(self
+            .state
+            .contribute(self.view, id, parsed, incomplete, word))
     }
 
     fn completion_top(&self, n: usize) -> Vec<serde_json::Value> {

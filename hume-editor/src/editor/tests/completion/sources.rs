@@ -659,6 +659,54 @@ fn a_part_that_is_neither_an_item_nor_a_response_raises() {
     );
 }
 
+/// A buffer source's token is the word before the cursor, so it cannot
+/// name a span of its own.
+#[test]
+fn a_span_from_a_buffer_source_is_refused() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    insert_with_script(
+        &mut ed,
+        tmp.path(),
+        r#"(register-completion-source! "test"
+             (lambda (id bid prefix)
+               (completion-emit! id (list "plain") #:span (cons 0 0)))
+             #:target 'buffer)"#,
+    );
+    assert!(labels(&ed).is_empty());
+    assert!(
+        ed.state
+            .message_log
+            .entries()
+            .any(|e| e.severity == Severity::Error && e.text.contains("#:span")),
+        "expected a raised #:span error in the message log"
+    );
+}
+
+/// A buffer source's insert texts are plain words, so it has no first-Tab
+/// prefix of its own to name.
+#[test]
+fn a_prefix_from_a_buffer_source_is_refused() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    insert_with_script(
+        &mut ed,
+        tmp.path(),
+        r#"(register-completion-source! "test"
+             (lambda (id bid prefix)
+               (completion-emit! id (list "plain") #:prefix "pl"))
+             #:target 'buffer)"#,
+    );
+    assert!(labels(&ed).is_empty());
+    assert!(
+        ed.state
+            .message_log
+            .entries()
+            .any(|e| e.severity == Severity::Error && e.text.contains("#:prefix")),
+        "expected a raised #:prefix error in the message log"
+    );
+}
+
 /// The old answer stays ranked (against the new token text) until the
 /// re-invocation's own answer lands, so the menu never blinks empty.
 #[test]

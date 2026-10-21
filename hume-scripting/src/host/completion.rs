@@ -49,6 +49,23 @@ pub struct PendingCompletionSource {
     pub token_chars: String,
 }
 
+/// What a `'minibuf` source's answer says about the word it completes.
+/// The default says nothing.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct EmittedWord {
+    /// `#:span`: the char range of the line the answer completes, in place
+    /// of the argument the cursor is in. Only a source registered with
+    /// `#:match 'delegated` may name one, and it must hold the cursor
+    /// within the line.
+    pub span: Option<std::ops::Range<usize>>,
+    /// `#:prefix`: what the first Tab puts over the span while no row is
+    /// picked, from a source whose insert texts have a syntax the editor
+    /// cannot cut (a quoted shell word). `None` lets the editor propose
+    /// what the insert texts start with. Only a source registered with
+    /// `#:match 'delegated` may name one, and it is never empty.
+    pub prefix: Option<String>,
+}
+
 /// Completion session orchestration, accessed through
 /// [`EditorHost::completions`](super::EditorHost::completions).
 pub trait CompletionHost {
@@ -70,11 +87,14 @@ pub trait CompletionHost {
     /// expected-normal for a late async source, never an error. `Err` for a
     /// part that is neither an item nor a response, a caller error, not
     /// dropped.
+    ///
+    /// `word` is for a `'minibuf` source only, `Err` from a `'buffer` one.
     fn completion_emit(
         &mut self,
         id: u64,
         parts: Vec<crate::json::JsonHandle>,
         incomplete: bool,
+        word: EmittedWord,
     ) -> Result<bool, String>;
 
     /// `(completion-top n)`: up to `n` ranked items as hashmaps, `[]` with

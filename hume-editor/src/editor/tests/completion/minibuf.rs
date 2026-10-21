@@ -536,6 +536,140 @@ fn a_minibuf_source_gets_only_the_argument_the_cursor_is_in() {
     );
 }
 
+/// Steel indexes a string by char, so the cursor a source gets counts
+/// chars: `greet é` is 7 chars and 8 bytes long.
+#[test]
+fn a_minibuf_source_gets_the_cursor_as_a_char_offset() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[h]>ello\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(register-completion-source! "cursor-echo"
+             (lambda (id input cursor)
+               (completion-emit! id (list (string-append "é" (to-string cursor)))))
+             #:target 'minibuf #:match 'delegated)
+           (define-typed-command! "greet" "" (lambda (bid arg) (log! 'info arg)) #:complete "cursor-echo")"#,
+    );
+    ed.handle_key(key(':'));
+    type_chars(&mut ed, "greet é");
+    ed.handle_key(key_tab());
+    ed.settle();
+    assert_eq!(minibuf_input(&ed), "greet é7");
+}
+
+// ── A source's own span ──────────────────────────────────────────────────────
+
+/// `:greet <typed>` with Tab pressed, completed by a `match_kind` source
+/// that answers `items` (a Scheme list) with the extra `completion-emit!`
+/// arguments `emit`.
+fn greet_tab(typed: &str, match_kind: &str, items: &str, emit: &str) -> Editor {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[h]>ello\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        &format!(
+            r#"(register-completion-source! "words"
+                 (lambda (id input cursor) (completion-emit! id {items} {emit}))
+                 #:target 'minibuf #:match '{match_kind})
+               (define-typed-command! "greet" "" (lambda (bid arg) (log! 'info arg)) #:complete "words")"#
+        ),
+    );
+    ed.handle_key(key(':'));
+    type_chars(&mut ed, &format!("greet {typed}"));
+    ed.handle_key(key_tab());
+    ed.settle();
+    ed
+}
+
+/// [`greet_tab`] on `"my no` with a source answering `"my notes"`.
+fn greet_with_a_spanning_source(match_kind: &str, emit: &str) -> Editor {
+    greet_tab("\"my no", match_kind, r#"(list "\"my notes\"")"#, emit)
+}
+
+/// Whether a `completion-emit!` error naming `#:span` was reported.
+fn span_refused(ed: &Editor) -> bool {
+    ed.state
+        .message_log
+        .entries()
+        .any(|e| e.severity == Severity::Error && e.text.contains("#:span"))
+}
+
+#[test]
+fn a_delegated_source_completes_the_span_it_names() {
+    let ed = greet_with_a_spanning_source("delegated", "#:span (cons 6 12)");
+    assert_eq!(minibuf_input(&ed), "greet \"my notes\"");
+}
+
+#[test]
+fn a_span_from_a_source_the_editor_matches_for_is_refused() {
+    let ed = greet_with_a_spanning_source("string", "#:span (cons 6 12)");
+    assert!(span_refused(&ed));
+    assert_eq!(minibuf_input(&ed), "greet \"my no");
+}
+
+#[test]
+fn a_span_that_leaves_out_the_cursor_is_refused() {
+    let ed = greet_with_a_spanning_source("delegated", "#:span (cons 0 5)");
+    assert!(span_refused(&ed));
+    assert_eq!(minibuf_input(&ed), "greet \"my no");
+}
+
+#[test]
+fn a_span_past_the_line_end_is_refused() {
+    let ed = greet_with_a_spanning_source("delegated", "#:span (cons 6 13)");
+    assert!(span_refused(&ed));
+    assert_eq!(minibuf_input(&ed), "greet \"my no");
+}
+
+// ── What the first Tab inserts ───────────────────────────────────────────────
+
+#[test]
+fn the_common_prefix_is_taken_after_an_exact_match_drops_out() {
+    let ed = greet_tab("foo", "delegated", r#"(list "foo" "foobar" "foobaz")"#, "");
+    assert_eq!(minibuf_input(&ed), "greet fooba");
+}
+
+/// The insert texts share `'dir/a b`, which does not start with the typed
+/// `dir/a`, so only the source can say it extends the word.
+#[test]
+fn a_delegated_source_names_what_the_first_tab_inserts() {
+    let ed = greet_tab(
+        "dir/a",
+        "delegated",
+        r#"(list "'dir/a b1'" "'dir/a b2'")"#,
+        r#"#:prefix "'dir/a b""#,
+    );
+    assert_eq!(minibuf_input(&ed), "greet 'dir/a b");
+    assert_eq!(
+        ed.state.input.minibuf_completion().map(|s| s.len()),
+        Some(2)
+    );
+}
+
+/// Whether a `completion-emit!` error naming `#:prefix` was reported.
+fn prefix_refused(ed: &Editor) -> bool {
+    ed.state
+        .message_log
+        .entries()
+        .any(|e| e.severity == Severity::Error && e.text.contains("#:prefix"))
+}
+
+#[test]
+fn a_prefix_from_a_source_the_editor_matches_for_is_refused() {
+    let ed = greet_tab("ab", "string", r#"(list "abc" "abd")"#, r#"#:prefix "abx""#);
+    assert!(prefix_refused(&ed));
+    assert_eq!(minibuf_input(&ed), "greet ab");
+}
+
+#[test]
+fn an_empty_prefix_is_refused() {
+    let ed = greet_tab("ab", "delegated", r#"(list "abc" "abd")"#, r#"#:prefix """#);
+    assert!(prefix_refused(&ed));
+    assert_eq!(minibuf_input(&ed), "greet ab");
+}
+
 // ── Buffer-name completion ───────────────────────────────────────────────────
 
 #[test]

@@ -275,6 +275,11 @@ impl BufferSession {
         landed
     }
 
+    /// Whether an answer to invocation `id` would land in this session.
+    pub(in crate::editor) fn awaits(&self, id: u64) -> bool {
+        self.core.source_of(id).is_some()
+    }
+
     /// Whether any slot still awaits an answer. Test-only: production reads
     /// [`Self::is_spent`] instead, which already folds this in.
     #[cfg(test)]
