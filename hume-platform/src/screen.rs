@@ -110,13 +110,15 @@ impl Screen {
     /// `cursor` is where the hardware cursor should be left visible; `None`
     /// leaves it hidden, which is what modes that paint their own cursor
     /// block want.
+    ///
+    /// Buffered: the caller flushes once the frame is complete
+    /// (`terminal::end_synchronized_update`).
     pub fn present(&mut self, cursor: Option<Position>) -> io::Result<()> {
         self.out.clear();
         let prev = (!self.force_full).then_some(&self.front);
         frame(&mut self.out, &self.back, prev, cursor);
 
         self.term.write_all(self.out.as_bytes())?;
-        self.term.flush()?;
 
         std::mem::swap(&mut self.front, &mut self.back);
         self.force_full = false;

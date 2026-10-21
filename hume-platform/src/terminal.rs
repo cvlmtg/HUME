@@ -422,6 +422,9 @@ pub fn restore(term: &SharedTerm) -> io::Result<()> {
 /// mode) where the default colour would be invisible.
 ///
 /// When `black` is `false`, resets to the user's configured terminal default.
+///
+/// Buffered: the sequence reaches the terminal at the next flush, which
+/// [`end_synchronized_update`] makes at the end of every frame.
 pub fn set_cursor_color(term: &SharedTerm, black: bool) -> io::Result<()> {
     let mut term = term.clone();
     if black {
@@ -432,15 +435,14 @@ pub fn set_cursor_color(term: &SharedTerm, black: bool) -> io::Result<()> {
                 DynamicColorNumber::TextCursorColor,
                 vec![ColorOrQuery::Color(RgbColor::new(0, 0, 0))],
             )
-        )?;
+        )
     } else {
         write!(
             term,
             "{}",
             Osc::ResetDynamicColor(DynamicColorNumber::TextCursorColor)
-        )?;
+        )
     }
-    term.flush()
 }
 
 /// Tell the terminal the working directory (OSC 7), so a new split or tab
@@ -469,10 +471,11 @@ pub fn set_clipboard(term: &SharedTerm, text: &str) -> io::Result<()> {
 /// setting enum: that enum lives in `hume-editor` (a settings concept this
 /// crate has no business depending on), so the `CursorShape` → `CursorStyle`
 /// mapping is the caller's job.
+///
+/// Buffered, like [`set_cursor_color`].
 pub fn set_cursor_shape(term: &SharedTerm, style: CursorStyle) -> io::Result<()> {
     let mut term = term.clone();
-    write!(term, "{}", Csi::Cursor(Cursor::CursorStyle(style)))?;
-    term.flush()
+    write!(term, "{}", Csi::Cursor(Cursor::CursorStyle(style)))
 }
 
 /// Ask the terminal to defer display updates until [`end_synchronized_update`]
@@ -481,11 +484,11 @@ pub fn set_cursor_shape(term: &SharedTerm, style: CursorStyle) -> io::Result<()>
 /// Call once per frame, before `term.draw(…)`. Terminals that do not
 /// recognise DEC 2026 silently ignore the sequence, so this is safe to emit
 /// unconditionally. The `let _ = …` pattern at the call site is intentional:
-/// a write failure here must never abort the render loop.
+/// a write failure here must never abort the render loop. Buffered, like the
+/// rest of the frame, until [`end_synchronized_update`] flushes it.
 pub fn begin_synchronized_update(term: &SharedTerm) -> io::Result<()> {
     let mut term = term.clone();
-    write!(term, "{}", dec_set(DecPrivateModeCode::SynchronizedOutput))?;
-    term.flush()
+    write!(term, "{}", dec_set(DecPrivateModeCode::SynchronizedOutput))
 }
 
 /// Signal the terminal that the current frame is complete and it may paint
@@ -493,6 +496,7 @@ pub fn begin_synchronized_update(term: &SharedTerm) -> io::Result<()> {
 ///
 /// Call after every write that contributes to the current frame (draw,
 /// cursor shape, cursor colour). Pairs with [`begin_synchronized_update`].
+/// This is the frame's one flush: the writes before it only buffer.
 pub fn end_synchronized_update(term: &SharedTerm) -> io::Result<()> {
     let mut term = term.clone();
     write_sync_reset(&mut term)

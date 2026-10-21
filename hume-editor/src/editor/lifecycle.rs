@@ -632,8 +632,8 @@ impl Editor {
         // frame. One SGR-sized write per frame is not worth tracking.
         //
         // The write is best-effort: a terminal that doesn't understand
-        // DECSCUSR ignores it, and a genuine I/O failure here would
-        // already have surfaced from `screen.present` above.
+        // DECSCUSR ignores it, and a genuine I/O failure surfaces from the
+        // frame's one flush below.
         let shape = if self.state.minibuf().is_some() {
             crate::editor::settings::CursorShape::Bar
         } else {
@@ -660,8 +660,8 @@ impl Editor {
         }
         // Close the synchronized-output envelope: the terminal now atomically
         // paints the complete frame: clear + cells + cursor shape in one shot.
-        let _ = hume_platform::terminal::end_synchronized_update(term);
-        Ok(())
+        // This is the frame's only flush, so its error is the frame's.
+        hume_platform::terminal::end_synchronized_update(term)
     }
 
     /// The loop itself, described by [`Self::run`]'s doc, split out so
