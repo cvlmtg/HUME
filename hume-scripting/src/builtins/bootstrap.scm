@@ -172,7 +172,7 @@
   (%register-completion-source! name proc target match-kind priority resolve token-chars))
 
 (define (completion-emit! id items #:incomplete [incomplete #f] #:span [span #f]
-                                   #:prefix [prefix #f])
+                                   #:prefix [prefix #t])
   (%completion-emit! id items incomplete span prefix))
 
 (define (spawn-async! cmd args callback #:cwd [cwd #f])

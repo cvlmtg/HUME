@@ -262,6 +262,20 @@ fn the_shared_prefix_never_ends_between_a_backslash_and_what_it_escapes() {
 }
 
 #[test]
+fn escaped_names_sharing_only_the_typed_start_leave_the_line_as_typed() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("ab c.txt"), b"").unwrap();
+    std::fs::write(dir.path().join("ab$d"), b"").unwrap();
+    let mut ed = pipe_line_in(dir.path(), "cat ab");
+    press(&mut ed, key_tab());
+    assert_eq!(minibuf_input(&ed), "cat ab");
+    assert_eq!(
+        ed.state.input.minibuf_completion().map(|s| s.len()),
+        Some(2)
+    );
+}
+
+#[test]
 fn enter_on_a_directory_candidate_goes_into_it() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::create_dir(dir.path().join("docs")).unwrap();

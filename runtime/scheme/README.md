@@ -79,7 +79,8 @@ The file holds, in order:
   position whose `dir` is empty (so `"gr` lists programs too) and directory entries otherwise
   (`path-programs`, `path-entries`, matched on values), writes each name finished, and with
   several names writes
-  their shared value prefix unfinished as `#:prefix`, so the first `Tab` inserts it. With no
+  their shared value prefix unfinished as `#:prefix`, so the first `Tab` inserts it, or `#f`
+  when that prefix adds nothing to what is typed, so no escaped text is cut. With no
   dialect for the shell it logs a warning and answers nothing, which closes the menu: completing
   by another shell's rules could insert text this shell reads differently.
 

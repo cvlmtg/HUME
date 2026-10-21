@@ -18,6 +18,7 @@ use std::ops::Range;
 
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 use hume_rope::offset::CharOffset;
+use hume_scripting::host::FirstTab;
 use steel::rvals::SteelVal;
 
 use super::registry::{BufferSourceId, MinibufBody, MinibufSourceId, SourceRegistry};
@@ -371,20 +372,20 @@ impl EditorState {
     /// The word an answer to `id` completes on the open minibuffer line:
     /// `span`, a char range of the line, and `prefix`, what the first Tab
     /// puts over it. `Ok(None)` when no session awaits `id`. `Err` for an
-    /// empty `prefix`, for either from a `'buffer` source or from a source
-    /// the editor matches for (it filters that source's items, so the set a
-    /// prefix describes is not the source's), and for a span that does not
-    /// hold the cursor within the line.
+    /// empty named `prefix`, for either from a `'buffer` source or from a
+    /// source the editor matches for (it filters that source's items, so the
+    /// set a prefix describes is not the source's), and for a span that does
+    /// not hold the cursor within the line.
     pub(in crate::editor) fn answer_word(
         &self,
         id: u64,
         span: Option<Range<usize>>,
-        prefix: Option<String>,
+        prefix: FirstTab,
     ) -> Result<Option<MinibufWord>, String> {
-        if prefix.as_deref() == Some("") {
+        if prefix == FirstTab::Named(String::new()) {
             return Err(
-                "completion-emit!: #:prefix would blank the word; send #f to let the editor \
-                 propose one"
+                "completion-emit!: #:prefix would blank the word; send #f to propose nothing, \
+                 or leave #:prefix out to let the editor propose one"
                     .to_string(),
             );
         }

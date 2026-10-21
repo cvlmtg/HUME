@@ -10,6 +10,7 @@ use std::borrow::Cow;
 use std::ops::Range;
 
 use hume_rope::grapheme::common_str_prefix;
+use hume_scripting::host::FirstTab;
 
 use super::super::item::CompletionItem;
 use super::super::registry::{MinibufSourceId, SourceRegistry};
@@ -22,22 +23,21 @@ use super::slots::{Invocation, SlotSet, SlotTokens};
 /// site.
 pub(in crate::editor) struct MinibufSpan {
     bytes: Range<usize>,
-    /// What the first Tab puts over `bytes` while no row is picked, when
-    /// the source named it ([`MinibufWord::prefix`]).
-    prefix: Option<String>,
+    /// What the first Tab puts over `bytes` while no row is picked
+    /// ([`MinibufWord::prefix`]).
+    prefix: FirstTab,
 }
 
 /// What an answer says about the word it completes: the span it replaces,
 /// a byte range of [`MinibufSession::input`] (`None` keeps the invocation's
-/// own), and the text the first Tab puts over it (`None` lets the session
-/// propose what the insert texts start with). A source names `prefix` when
-/// its insert texts have a syntax the session cannot cut, so it is applied
-/// as given: the typed text and the prefix need not share a display form
-/// (`dir/a` and `'dir/a b` read as the same path start in PowerShell).
+/// own), and what the first Tab puts over it. A [`FirstTab::Named`] text
+/// has a syntax the session cannot read, so it is applied as given: the
+/// typed text and the prefix need not share a display form (`dir/a` and
+/// `'dir/a b` read as the same path start in PowerShell).
 #[derive(Default)]
 pub(in crate::editor) struct MinibufWord {
     pub(in crate::editor) span: Option<Range<usize>>,
-    pub(in crate::editor) prefix: Option<String>,
+    pub(in crate::editor) prefix: FirstTab,
 }
 
 impl Invocation<MinibufSpan> {
@@ -50,7 +50,7 @@ impl Invocation<MinibufSpan> {
     pub(in crate::editor) fn minibuf(bytes: Range<usize>) -> Self {
         Self::new(MinibufSpan {
             bytes,
-            prefix: None,
+            prefix: FirstTab::Common,
         })
     }
 }
@@ -208,12 +208,14 @@ impl MinibufSession {
     }
 
     /// The edit Tab applies: the picked candidate over its span, or with
-    /// nothing picked, the prefix the answer named over the span, else the
-    /// candidates' common prefix. `None` when there is nothing to apply,
-    /// including a common prefix that does not extend what is already typed
-    /// (a fuzzy match can share less than the typed text). The typed text
-    /// is the whole token, so with the cursor mid-token the prefix rarely
-    /// extends it and the first Tab only opens the popup.
+    /// nothing picked, what the answer's [`FirstTab`] says over the span.
+    /// `None` when there is nothing to apply: a [`FirstTab::Nothing`], a
+    /// named prefix with the cursor before the span's end (the span's text
+    /// after the cursor is not something the source read), or a common
+    /// prefix that does not extend what is already typed (a fuzzy match can
+    /// share less than the typed text). The typed text is the whole token,
+    /// so with the cursor mid-token the common prefix rarely extends it and
+    /// the first Tab only opens the popup.
     pub(in crate::editor) fn proposed_apply(&self) -> Option<(Range<usize>, Cow<'_, str>)> {
         if self.picked {
             let (_, inv, item) = self.core.ranked(self.core.selected())?;
@@ -221,16 +223,22 @@ impl MinibufSession {
         }
         let (_, inv, first) = self.core.ranked(0)?;
         let span = inv.span.bytes.clone();
-        if let Some(prefix) = &inv.span.prefix {
-            return Some((span, Cow::Borrowed(prefix)));
+        match &inv.span.prefix {
+            FirstTab::Nothing => None,
+            FirstTab::Named(prefix) => {
+                (self.cursor == span.end).then_some((span, Cow::Borrowed(prefix)))
+            }
+            FirstTab::Common => {
+                let typed = &self.input[span.clone()];
+                let prefix = (1..self.core.len())
+                    .filter_map(|i| self.core.selected_item(i))
+                    .fold(first.insert_text(), |p, item| {
+                        common_str_prefix(p, item.insert_text())
+                    });
+                let extends =
+                    prefix.len() > typed.len() && super::prefix_matches(prefix, typed, false);
+                extends.then_some((span, Cow::Borrowed(prefix)))
+            }
         }
-        let typed = &self.input[span.clone()];
-        let prefix = (1..self.core.len())
-            .filter_map(|i| self.core.selected_item(i))
-            .fold(first.insert_text(), |p, item| {
-                common_str_prefix(p, item.insert_text())
-            });
-        let extends = prefix.len() > typed.len() && super::prefix_matches(prefix, typed, false);
-        extends.then_some((span, Cow::Borrowed(prefix)))
     }
 }

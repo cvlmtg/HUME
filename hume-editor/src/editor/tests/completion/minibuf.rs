@@ -560,10 +560,10 @@ fn a_minibuf_source_gets_the_cursor_as_a_char_offset() {
 
 // ── A source's own span ──────────────────────────────────────────────────────
 
-/// `:greet <typed>` with Tab pressed, completed by a `match_kind` source
+/// `:greet <typed>` on an open line, completed by a `match_kind` source
 /// that answers `items` (a Scheme list) with the extra `completion-emit!`
 /// arguments `emit`.
-fn greet_tab(typed: &str, match_kind: &str, items: &str, emit: &str) -> Editor {
+fn greet_line(typed: &str, match_kind: &str, items: &str, emit: &str) -> Editor {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[h]>ello\n");
     run(
@@ -578,6 +578,12 @@ fn greet_tab(typed: &str, match_kind: &str, items: &str, emit: &str) -> Editor {
     );
     ed.handle_key(key(':'));
     type_chars(&mut ed, &format!("greet {typed}"));
+    ed
+}
+
+/// [`greet_line`] with Tab pressed.
+fn greet_tab(typed: &str, match_kind: &str, items: &str, emit: &str) -> Editor {
+    let mut ed = greet_line(typed, match_kind, items, emit);
     ed.handle_key(key_tab());
     ed.settle();
     ed
@@ -668,6 +674,51 @@ fn an_empty_prefix_is_refused() {
     let ed = greet_tab("ab", "delegated", r#"(list "abc" "abd")"#, r#"#:prefix """#);
     assert!(prefix_refused(&ed));
     assert_eq!(minibuf_input(&ed), "greet ab");
+}
+
+#[test]
+fn a_prefix_that_is_not_a_string_is_refused() {
+    let ed = greet_tab("ab", "delegated", r#"(list "abc" "abd")"#, "#:prefix 'abx");
+    assert!(prefix_refused(&ed));
+    assert_eq!(minibuf_input(&ed), "greet ab");
+}
+
+/// The insert texts share `my\`, which ends inside an escape.
+#[test]
+fn a_false_prefix_proposes_nothing() {
+    let ed = greet_tab(
+        "my",
+        "delegated",
+        r#"(list "my\\ file" "my\\(1\\)")"#,
+        "#:prefix #f",
+    );
+    assert_eq!(minibuf_input(&ed), "greet my");
+    assert_eq!(
+        ed.state.input.minibuf_completion().map(|s| s.len()),
+        Some(2)
+    );
+}
+
+/// The span runs past the cursor to the end of `gixyz`, and the source's
+/// prefix was read only up to the cursor.
+#[test]
+fn a_named_prefix_waits_for_the_cursor_at_the_span_end() {
+    let mut ed = greet_line(
+        "gixyz",
+        "delegated",
+        r#"(list "git" "gitk")"#,
+        r#"#:span (cons 6 11) #:prefix "git""#,
+    );
+    for _ in 0..3 {
+        ed.handle_key(key_left());
+    }
+    ed.handle_key(key_tab());
+    ed.settle();
+    assert_eq!(minibuf_input(&ed), "greet gixyz");
+    assert_eq!(
+        ed.state.input.minibuf_completion().map(|s| s.len()),
+        Some(2)
+    );
 }
 
 // ── Buffer-name completion ───────────────────────────────────────────────────

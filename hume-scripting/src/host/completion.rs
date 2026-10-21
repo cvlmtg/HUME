@@ -59,11 +59,22 @@ pub struct EmittedWord {
     /// within the line.
     pub span: Option<std::ops::Range<usize>>,
     /// `#:prefix`: what the first Tab puts over the span while no row is
-    /// picked, from a source whose insert texts have a syntax the editor
-    /// cannot cut (a quoted shell word). `None` lets the editor propose
-    /// what the insert texts start with. Only a source registered with
-    /// `#:match 'delegated` may name one, and it is never empty.
-    pub prefix: Option<String>,
+    /// picked. Only a source registered with `#:match 'delegated` may say
+    /// anything but [`FirstTab::Common`].
+    pub prefix: FirstTab,
+}
+
+/// What the first Tab puts over a minibuffer word while no row is picked.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub enum FirstTab {
+    /// What the insert texts all start with, when that extends the word.
+    #[default]
+    Common,
+    /// This text, never empty, from a source whose insert texts have a
+    /// syntax the editor cannot cut (a quoted shell word).
+    Named(String),
+    /// Nothing: the first Tab only opens the menu.
+    Nothing,
 }
 
 /// Completion session orchestration, accessed through

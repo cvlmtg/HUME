@@ -4,7 +4,7 @@
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
-use crate::host::{CompletionSourceTarget, EmittedWord, MatchKind};
+use crate::host::{CompletionSourceTarget, EmittedWord, FirstTab, MatchKind};
 use crate::json::json_to_steel;
 use crate::types::{PaneHandle, TriggerKind, TriggerScope};
 use crate::{Effect, SteelCtx};
@@ -12,7 +12,7 @@ use crate::{Effect, SteelCtx};
 use super::SteelResult;
 use super::args::{
     bool_arg, callable_arg, chars_arg, int_arg, json_arg, list_items, optional_pair_fields,
-    optional_string_arg, server_arg, string_arg, symbol_enum_arg, usize_arg,
+    server_arg, string_arg, symbol_enum_arg, usize_arg,
 };
 use super::errors::{generic_err, require_cap};
 use super::lsp::required_feature_arg;
@@ -188,7 +188,9 @@ pub(crate) fn register_completion_source(
 /// `(%completion-emit! id items incomplete span prefix)`: the
 /// `completion-emit!` Scheme wrapper supplies the defaults of
 /// `#:incomplete` and of [`EmittedWord`]'s `#:span` (a `(start . end)`
-/// pair, or `#f`) and `#:prefix` (a string, or `#f`). `items` is a list
+/// pair, or `#f`) and `#:prefix` (`#t` when left out, which is
+/// [`FirstTab::Common`]; `#f` is [`FirstTab::Nothing`] and a string
+/// [`FirstTab::Named`]). `items` is a list
 /// whose elements are `CompletionItem` hashmaps, bare-string labels, or
 /// whole LSP `textDocument/completion` responses passed straight through;
 /// each crosses `json_arg` (the funnel every JSON-taking builtin uses) with
@@ -209,7 +211,12 @@ pub(crate) fn completion_emit(
     let span = optional_pair_fields(span, SPAN, "a (start . end) pair")?
         .map(|(start, end)| Ok::<_, SteelErr>(usize_arg(start, SPAN)?..usize_arg(end, SPAN)?))
         .transpose()?;
-    let prefix = optional_string_arg(prefix, "completion-emit! #:prefix")?;
+    let prefix = match prefix {
+        SteelVal::BoolV(true) => FirstTab::Common,
+        SteelVal::BoolV(false) => FirstTab::Nothing,
+        SteelVal::StringV(s) => FirstTab::Named(s.to_string()),
+        _ => steel::stop!(TypeMismatch => "completion-emit! #:prefix: expected a string or #f"),
+    };
     let parts = list_items(items, "completion-emit! items")?
         .into_iter()
         .map(|item| json_arg(item, "completion-emit! items"))
