@@ -13,6 +13,8 @@ use std::panic::{self, PanicHookInfo};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread;
 
+use crate::wake::WakeCallback;
+
 /// One panic on a background thread.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WorkerPanic {
@@ -86,7 +88,7 @@ impl WorkerPanics {
     ///
     /// Call it on the main thread after the terminal is initialized, so the
     /// hook it wraps is the terminal's.
-    pub fn install(wake: Arc<dyn Fn() + Send + Sync>) -> Self {
+    pub fn install(wake: WakeCallback) -> Self {
         let previous = panic::take_hook();
         let main = thread::current().id();
         let panics = Self::default();

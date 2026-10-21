@@ -32,7 +32,7 @@ use hume_lsp::client::{LspClient, RequestMeta, ServerState};
 use hume_lsp::codec::RequestId;
 #[cfg(test)]
 use hume_lsp::inline::InlineLspBackend;
-use hume_lsp::transport::WakeCallback;
+use hume_platform::wake::WakeCallback;
 use hume_rope::position_encoding::PositionEncoding;
 use hume_scripting::ServerName;
 

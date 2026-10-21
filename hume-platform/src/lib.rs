@@ -18,6 +18,8 @@
 //! - [`version`]: the running build's version and commit, stamped by `build.rs`.
 //! - [`worker_panic`]: keeps a panic on a background thread from touching the
 //!   terminal and queues it for the editor to report.
+//! - [`wake`]: the callback a background thread wakes the main loop with, and
+//!   the thread spawn that calls it when the thread ends.
 //!
 //! All platform-conditional code (`#[cfg(unix)]`, `#[cfg(windows)]`) is
 //! hidden behind private sub-modules; every public function has a uniform
@@ -36,6 +38,7 @@ pub mod process;
 pub mod screen;
 pub mod terminal;
 pub mod version;
+pub mod wake;
 pub mod worker_panic;
 
 use std::sync::atomic::{AtomicBool, Ordering};

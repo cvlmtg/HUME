@@ -3,11 +3,12 @@
 //! `/bin/cat` as a stand-in server.
 
 use super::super::*;
+use hume_platform::wake::{counting_wake, no_op_wake};
 
 #[test]
 fn start_send_drain_round_trips_through_cat() {
     let root = std::env::current_dir().unwrap();
-    let mut backend = ThreadedLspBackend::with_waker(Arc::new(|| {}));
+    let mut backend = ThreadedLspBackend::with_waker(no_op_wake());
     let id = backend
         .start("/bin/cat", &[], &root, &[])
         .expect("spawn cat");
@@ -50,10 +51,7 @@ fn start_threads_the_waker_through_to_the_spawned_server() {
     // forwards its own `wake` field into `ServerHandle::spawn` in the
     // first place (rather than, say, a stray no-op).
     let root = std::env::current_dir().unwrap();
-    let (tx_wake, rx_wake) = std::sync::mpsc::channel::<()>();
-    let wake: WakeCallback = Arc::new(move || {
-        let _ = tx_wake.send(());
-    });
+    let (wake, rx_wake) = counting_wake();
     let mut backend = ThreadedLspBackend::with_waker(wake);
     let id = backend
         .start("/bin/cat", &[], &root, &[])

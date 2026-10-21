@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 
 use hume_editing::selection::SelectionSet;
 use hume_engine::pipeline::{BufferId, PaneId};
-use hume_platform::process::WakeCallback;
+use hume_platform::wake::WakeCallback;
 use termina::EventReader;
 use termina::event::{Event as TerminalEvent, KeyCode, KeyEvent, KeyEventKind, Modifiers};
 

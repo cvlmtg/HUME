@@ -30,11 +30,11 @@ use std::process::{ChildStdin, ExitStatus};
 use std::sync::mpsc;
 use std::thread::{self, JoinHandle};
 
-use crate::process::WakeCallback;
 use crate::process::child::{
-    JOB_STDOUT_CAP, STDERR_CAPTURE_CAP, WakeOnDrop, read_bounded, read_capped, spawn_piped,
+    JOB_STDOUT_CAP, STDERR_CAPTURE_CAP, read_bounded, read_capped, spawn_piped,
 };
 use crate::process::tracked::TrackedChild;
+use crate::wake::{WakeCallback, spawn_waking};
 
 /// The complete output of a finished [`SpawnedJob`]: whole stdout as raw
 /// bytes, left to the caller to decode (never truncated: capped
@@ -111,47 +111,45 @@ pub fn spawn_job(
     // whose handle is discarded). Nothing here ever needs to join it, so
     // keeping it around would just be a field that's written once and read
     // never.
-    thread::Builder::new()
-        .name("hume-job".into())
-        .spawn(move || {
-            // Fires as this closure returns, after the send below, so a
-            // panicking read still wakes the drain to observe the
-            // synthesized result `try_take_result` produces on disconnect.
-            let _wake_on_drop = WakeOnDrop(wake);
-            let stdout_result = read_bounded(stdout, JOB_STDOUT_CAP);
-            // A panicked stderr thread degrades to empty stderr rather than
-            // wedging this job forever. The exit status still carries the
-            // failure, and stdout is what most callers actually want.
-            let stderr_bytes = stderr_thread.join().unwrap_or_default();
-            let status = job_child.wait_for_exit().ok();
-            // Joined after the exit: a writer still blocked on a full pipe
-            // is released by the child's death, never the other way round.
-            let stdin_result = writer.map_or(Ok(()), |writer| {
-                writer
-                    .join()
-                    .unwrap_or_else(|_| Err(io::Error::other("stdin writer panicked")))
-            });
-            let result = match stdout_result.and_then(|out| stdin_result.map(|()| out)) {
-                Ok(stdout_bytes) => JobResult {
-                    stdout: stdout_bytes,
-                    stderr: String::from_utf8_lossy(&stderr_bytes).into_owned(),
-                    status,
-                },
-                // A truncated stdout, or output computed from truncated
-                // input, is worse than none: hand back the documented
-                // spawn-failure shape (empty stdout, a message in stderr,
-                // no exit code) rather than short data.
-                Err(e) => JobResult {
-                    stdout: Vec::new(),
-                    stderr: format!("{job_cmd}: {e}"),
-                    status: None,
-                },
-            };
-            let _ = tx.send(result);
-        })
-        .inspect_err(|_| {
-            child.reap();
-        })?;
+    //
+    // The wake fires as the body returns, after the send below, so a
+    // panicking read still wakes the drain to observe the synthesized
+    // result `try_take_result` produces on disconnect.
+    spawn_waking("hume-job", wake, move || {
+        let stdout_result = read_bounded(stdout, JOB_STDOUT_CAP);
+        // A panicked stderr thread degrades to empty stderr rather than
+        // wedging this job forever. The exit status still carries the
+        // failure, and stdout is what most callers actually want.
+        let stderr_bytes = stderr_thread.join().unwrap_or_default();
+        let status = job_child.wait_for_exit().ok();
+        // Joined after the exit: a writer still blocked on a full pipe
+        // is released by the child's death, never the other way round.
+        let stdin_result = writer.map_or(Ok(()), |writer| {
+            writer
+                .join()
+                .unwrap_or_else(|_| Err(io::Error::other("stdin writer panicked")))
+        });
+        let result = match stdout_result.and_then(|out| stdin_result.map(|()| out)) {
+            Ok(stdout_bytes) => JobResult {
+                stdout: stdout_bytes,
+                stderr: String::from_utf8_lossy(&stderr_bytes).into_owned(),
+                status,
+            },
+            // A truncated stdout, or output computed from truncated
+            // input, is worse than none: hand back the documented
+            // spawn-failure shape (empty stdout, a message in stderr,
+            // no exit code) rather than short data.
+            Err(e) => JobResult {
+                stdout: Vec::new(),
+                stderr: format!("{job_cmd}: {e}"),
+                status: None,
+            },
+        };
+        let _ = tx.send(result);
+    })
+    .inspect_err(|_| {
+        child.reap();
+    })?;
 
     Ok(SpawnedJob {
         child,
@@ -227,17 +225,17 @@ impl Drop for SpawnedJob {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::wake::no_op_wake;
 
     #[test]
     fn spawn_missing_binary_is_io_error() {
-        let wake: WakeCallback = std::sync::Arc::new(|| {});
         assert!(
             spawn_job(
                 "definitely-not-a-real-binary-xyz",
                 &[],
                 Path::new("."),
                 Vec::new(),
-                wake
+                no_op_wake()
             )
             .is_err()
         );
@@ -247,21 +245,15 @@ mod tests {
     fn nonexistent_cwd_is_error() {
         let dir = tempfile::tempdir().expect("tempdir");
         let bogus = dir.path().join("does-not-exist");
-        let wake: WakeCallback = std::sync::Arc::new(|| {});
-        assert!(spawn_job("sh", &[], &bogus, Vec::new(), wake).is_err());
+        assert!(spawn_job("sh", &[], &bogus, Vec::new(), no_op_wake()).is_err());
     }
 
     #[cfg(unix)]
     mod unix {
-        use std::sync::Arc;
-        use std::sync::atomic::{AtomicUsize, Ordering};
         use std::time::{Duration, Instant};
 
         use super::*;
-
-        fn no_op_wake() -> WakeCallback {
-            Arc::new(|| {})
-        }
+        use crate::wake::counting_wake;
 
         fn spawn_sh(script: &str) -> SpawnedJob {
             spawn_sh_with(script, Vec::new(), no_op_wake())
@@ -270,15 +262,6 @@ mod tests {
         fn spawn_sh_with(script: &str, input: Vec<u8>, wake: WakeCallback) -> SpawnedJob {
             let args = ["-c".to_string(), script.to_string()];
             spawn_job("sh", &args, Path::new("."), input, wake).expect("spawn sh")
-        }
-
-        fn counting_wake() -> (WakeCallback, Arc<AtomicUsize>) {
-            let count = Arc::new(AtomicUsize::new(0));
-            let counted = Arc::clone(&count);
-            let wake: WakeCallback = Arc::new(move || {
-                counted.fetch_add(1, Ordering::SeqCst);
-            });
-            (wake, count)
         }
 
         /// Polls `job` until its result arrives, with a generous bound so a
@@ -360,10 +343,10 @@ mod tests {
 
         #[test]
         fn wake_fires_exactly_once() {
-            let (wake, count) = counting_wake();
+            let (wake, woken) = counting_wake();
             let mut job = spawn_sh_with("printf hi", Vec::new(), wake);
             poll_until_result(&mut job);
-            assert_eq!(count.load(Ordering::SeqCst), 1);
+            assert_eq!(woken.try_iter().count(), 1);
         }
 
         #[test]

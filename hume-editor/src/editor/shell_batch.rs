@@ -6,8 +6,8 @@
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 
-use hume_platform::process::WakeCallback;
 use hume_platform::process::job::{JobResult, SpawnedJob, spawn_job};
+use hume_platform::wake::WakeCallback;
 
 use super::settings::ShellCommand;
 

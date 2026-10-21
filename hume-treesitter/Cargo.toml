@@ -7,6 +7,7 @@ edition = "2024"
 hume-engine = { path = "../hume-engine" }
 hume-editing = { path = "../hume-editing" }
 hume-rope = { path = "../hume-rope" }
+hume-platform = { path = "../hume-platform" }
 globset = "0.4"
 tree-sitter.workspace = true
 tree-sitter-language = "0.1"
@@ -16,6 +17,7 @@ ropey.workspace = true
 rustc-hash.workspace = true
 
 [dev-dependencies]
+hume-platform = { path = "../hume-platform", features = ["test-util"] }
 slotmap = "1"
 tempfile = "3"
 test-fixtures = { path = "../test-fixtures" }

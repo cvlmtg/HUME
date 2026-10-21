@@ -13,6 +13,9 @@ serde_json.workspace = true
 ropey.workspace = true
 rustc-hash.workspace = true
 
+[dev-dependencies]
+hume-platform = { path = "../hume-platform", features = ["test-util"] }
+
 [features]
 # Exposes test-only doubles and oracles (RecordingLspBackend,
 # apply_events_to_string_mirror) to consumers' own test code — hume-editor's

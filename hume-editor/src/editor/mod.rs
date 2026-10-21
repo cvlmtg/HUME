@@ -13,6 +13,7 @@ use crate::editor::pane_state::PaneView;
 use crate::editor::settings::EditorSettings;
 use hume_editing::selection::SelectionSet;
 use hume_ops::register::{KillRing, RegisterSet};
+use hume_platform::wake::WakeCallback;
 use hume_treesitter::parse_worker::ParseBackend;
 use hume_treesitter::registry::LanguageRegistry;
 
@@ -459,7 +460,7 @@ pub(crate) struct EditorState {
     /// EditorState` borrow, never a whole `&mut Editor`) can hand it to a
     /// spawned picker source (`picker-source-spawn!`) so its reader thread
     /// can wake the event loop. A no-op `Arc` in tests/headless.
-    pub(super) wake: Arc<dyn Fn() + Send + Sync>,
+    pub(super) wake: WakeCallback,
 }
 
 impl EditorState {

@@ -24,9 +24,9 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
-use crate::process::WakeCallback;
-use crate::process::child::{STDERR_CAPTURE_CAP, WakeOnDrop, read_capped, spawn_piped};
+use crate::process::child::{STDERR_CAPTURE_CAP, read_capped, spawn_piped};
 use crate::process::tracked::TrackedChild;
+use crate::wake::{WakeCallback, spawn_waking};
 
 /// Splits a byte stream into complete lines on `delim`, carrying a trailing
 /// partial line across `push_chunk` calls.
@@ -146,12 +146,9 @@ pub fn spawn_line_source(
     // process to leak. A thread that already started is not joined here:
     // killing the child closes stdout/stderr, which ends its blocking read.
     let reader_wake = Arc::clone(&wake);
-    thread::Builder::new()
-        .name("hume-line-source-reader".into())
-        .spawn(move || {
-            let _wake_on_drop = WakeOnDrop(Arc::clone(&reader_wake));
-            reader_loop(stdout, delimiter, &tx, &reader_wake);
-        })?;
+    spawn_waking("hume-line-source-reader", wake, move || {
+        reader_loop(stdout, delimiter, &tx, &reader_wake);
+    })?;
 
     thread::Builder::new()
         .name("hume-line-source-stderr".into())
@@ -288,6 +285,7 @@ fn reader_loop(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::wake::no_op_wake;
 
     #[test]
     fn splits_multiple_lines_in_one_chunk() {
@@ -362,14 +360,13 @@ mod tests {
 
     #[test]
     fn spawn_missing_binary_is_io_error() {
-        let wake: WakeCallback = Arc::new(|| {});
         assert!(
             spawn_line_source(
                 "definitely-not-a-real-binary-xyz",
                 &[],
                 Path::new("."),
                 b'\n',
-                wake
+                no_op_wake()
             )
             .is_err()
         );
@@ -378,21 +375,8 @@ mod tests {
     #[cfg(unix)]
     mod unix {
         use super::*;
-        use std::sync::atomic::{AtomicUsize, Ordering};
+        use crate::wake::counting_wake;
         use std::time::Instant;
-
-        fn no_op_wake() -> WakeCallback {
-            Arc::new(|| {})
-        }
-
-        fn counting_wake() -> (WakeCallback, Arc<AtomicUsize>) {
-            let count = Arc::new(AtomicUsize::new(0));
-            let counted = Arc::clone(&count);
-            let wake: WakeCallback = Arc::new(move || {
-                counted.fetch_add(1, Ordering::SeqCst);
-            });
-            (wake, count)
-        }
 
         /// Drains `source` until the reader disconnects, with a generous
         /// bound so a slow CI box can't flake this.
@@ -433,15 +417,12 @@ mod tests {
 
         #[test]
         fn wake_is_called_after_a_batch_arrives() {
-            let (wake, count) = counting_wake();
+            let (wake, woken) = counting_wake();
             let args = vec!["-c".to_string(), "printf 'a\\n'".to_string()];
             let mut source =
                 spawn_line_source("sh", &args, Path::new("."), b'\n', wake).expect("spawn sh");
             drain_until_disconnected(&mut source);
-            assert!(
-                count.load(Ordering::SeqCst) > 0,
-                "wake must fire at least once"
-            );
+            assert!(woken.try_iter().count() > 0, "wake must fire at least once");
         }
 
         #[test]

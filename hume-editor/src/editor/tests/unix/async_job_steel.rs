@@ -4,9 +4,9 @@
 // coverage that never actually spawns anything, and `unix/async_job.rs` for
 // the Rust-only registry/drain coverage that skips Steel entirely.
 
-use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
+
+use hume_platform::wake::counting_wake;
 
 use super::*;
 
@@ -135,11 +135,8 @@ fn empty_cmd_fires_the_callback_instead_of_raising() {
 fn spawn_failure_wakes_the_event_loop() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bc\n");
-    let woken = Arc::new(AtomicUsize::new(0));
-    let counted = Arc::clone(&woken);
-    ed.state.wake = Arc::new(move || {
-        counted.fetch_add(1, Ordering::SeqCst);
-    });
+    let (wake, woken) = counting_wake();
+    ed.state.wake = wake;
     run(
         &mut ed,
         tmp.path(),
@@ -152,7 +149,7 @@ fn spawn_failure_wakes_the_event_loop() {
     call(&mut ed, "go");
 
     assert_eq!(
-        woken.load(Ordering::SeqCst),
+        woken.try_iter().count(),
         1,
         "a spawn failure must wake the loop the same way a completing job does, \
          so a callback chained from inside a queued Steel call isn't stranded \

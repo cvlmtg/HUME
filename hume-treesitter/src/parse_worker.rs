@@ -7,6 +7,7 @@ use std::sync::{
 use std::thread;
 
 use hume_engine::pipeline::BufferId;
+use hume_platform::wake::{WakeCallback, spawn_waking};
 
 use crate::edited_bytes::EditedBytes;
 use crate::injections::{
@@ -14,26 +15,6 @@ use crate::injections::{
 };
 use crate::registry::GrammarBundle;
 use hume_editing::text::BufferText;
-
-/// Called by the worker thread after posting results, so the editor's main
-/// loop wakes and drains them instead of rechecking on a poll cadence.
-/// Type-erased so this crate stays free of a `hume-platform` dependency;
-/// production wraps `termina::PlatformWaker::wake`.
-pub type WakeCallback = Arc<dyn Fn() + Send + Sync>;
-
-/// Invokes a [`WakeCallback`] on drop. Fires whether the worker thread
-/// exits normally or unwinds from a panic, so a dead worker still wakes the
-/// main loop once (the subsequent drain observes the disconnect via the
-/// existing channel and reports it through `is_disconnected`). A normal
-/// exit firing one extra, spurious wake is harmless: callers already
-/// tolerate spurious wakes by design.
-struct WakeOnDrop(WakeCallback);
-
-impl Drop for WakeOnDrop {
-    fn drop(&mut self) {
-        (self.0)();
-    }
-}
 
 // Compile-time Send assertions: tree_sitter::Tree is Send+Sync;
 // tree_sitter::Parser is Send+!Sync (lives on the worker thread only).
@@ -337,12 +318,7 @@ impl ThreadedParseBackend {
             wake: Arc::clone(&wake),
         };
 
-        let thread = thread::Builder::new()
-            .name("hume-parse-worker".into())
-            .spawn(move || {
-                let _wake_on_drop = WakeOnDrop(wake);
-                state.run()
-            })
+        let thread = spawn_waking("hume-parse-worker", wake, move || state.run())
             .expect("failed to spawn parse worker thread");
 
         Self {

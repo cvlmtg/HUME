@@ -949,6 +949,7 @@ dependencies = [
  "globset",
  "hume-editing",
  "hume-engine",
+ "hume-platform",
  "hume-rope",
  "libloading",
  "proptest",

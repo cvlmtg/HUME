@@ -4,6 +4,7 @@ use std::time::Duration;
 use rustc_hash::FxHashMap;
 
 use hume_engine::pipeline::BufferId;
+use hume_platform::wake::{counting_wake, no_op_wake};
 
 use super::ParseBackend as _;
 use super::{BufferText, ParseOutcome, ParseRequest, ThreadedParseBackend, coalesce_one};
@@ -160,7 +161,7 @@ fn coalesce_one_same_gen_different_lang_replaces() {
 fn worker_shutdown_joins_thread() {
     let (tx, rx) = std::sync::mpsc::channel::<()>();
     std::thread::spawn(move || {
-        drop(ThreadedParseBackend::with_waker(Arc::new(|| {})));
+        drop(ThreadedParseBackend::with_waker(no_op_wake()));
         let _ = tx.send(());
     });
     rx.recv_timeout(Duration::from_secs(1))
@@ -174,7 +175,7 @@ fn worker_language_switch_produces_trees_for_both() {
     require_grammars(&["json", "rust"]);
     let json_bundle = make_bundle("json", "tree_sitter_json");
     let rust_bundle = make_bundle("rust", "tree_sitter_rust");
-    let mut worker = ThreadedParseBackend::with_waker(Arc::new(|| {}));
+    let mut worker = ThreadedParseBackend::with_waker(no_op_wake());
     let bid = fresh_bid();
 
     worker.post(ParseRequest {
@@ -221,10 +222,7 @@ fn worker_language_switch_produces_trees_for_both() {
 #[test]
 fn parse_completion_fires_waker() {
     require_grammars(&["json"]);
-    let (tx_wake, rx_wake) = std::sync::mpsc::channel::<()>();
-    let wake: super::WakeCallback = Arc::new(move || {
-        let _ = tx_wake.send(());
-    });
+    let (wake, rx_wake) = counting_wake();
     let mut worker = ThreadedParseBackend::with_waker(wake);
     let bundle = make_bundle("json", "tree_sitter_json");
 
@@ -243,20 +241,4 @@ fn parse_completion_fires_waker() {
     rx_wake
         .recv_timeout(Duration::from_secs(1))
         .expect("waker must fire after the worker posts a result");
-}
-
-#[test]
-fn wake_on_drop_fires_during_unwind() {
-    let (tx_wake, rx_wake) = std::sync::mpsc::channel::<()>();
-    let wake: super::WakeCallback = Arc::new(move || {
-        let _ = tx_wake.send(());
-    });
-    let handle = std::thread::spawn(move || {
-        let _guard = super::WakeOnDrop(wake);
-        panic!("simulated worker crash");
-    });
-    assert!(handle.join().is_err(), "thread should have panicked");
-    rx_wake
-        .recv_timeout(Duration::from_secs(1))
-        .expect("WakeOnDrop must fire its callback during unwind");
 }

@@ -1,35 +1,13 @@
 //! Shared subprocess transport: spawning with piped stdio under a fixed
-//! process-group/reap discipline, plus the wake-on-completion primitives
-//! both consumption shapes build on: [`crate::process::line_source`]'s line-batch
-//! streaming and [`crate::process::job`]'s whole-output capture. Extracted so the
-//! two never duplicate the spawn/wake/reap machinery between them.
+//! process-group/reap discipline, plus the capped readers both consumption
+//! shapes build on: [`crate::process::line_source`]'s line-batch streaming
+//! and [`crate::process::job`]'s whole-output capture.
 
 use std::io::{self, Read};
 use std::path::Path;
 use std::process::{ChildStderr, ChildStdin, ChildStdout, Stdio};
-use std::sync::Arc;
 
 use crate::process::{ReapOnDrop, base_command, spawn_in_own_group};
-
-/// Called by a background thread the moment it has something to hand off
-/// (a line batch from [`crate::process::line_source`], or a finished capture from
-/// [`crate::process::job`]), so the editor's main loop wakes and drains it instead
-/// of rechecking on a poll cadence. Type-erased so this crate stays free of
-/// a `hume-lsp`/`termina` dependency; production wraps
-/// `termina::PlatformWaker::wake`.
-pub type WakeCallback = Arc<dyn Fn() + Send + Sync>;
-
-/// Invokes a [`WakeCallback`] on drop. Fires whether the owning thread
-/// exits normally or unwinds from a panic, so a dead source still wakes the
-/// main loop once (the subsequent drain observes the disconnect via the
-/// existing channel). Mirrors `hume-lsp::transport::WakeOnDrop`.
-pub(crate) struct WakeOnDrop(pub(crate) WakeCallback);
-
-impl Drop for WakeOnDrop {
-    fn drop(&mut self) {
-        (self.0)();
-    }
-}
 
 /// Cap on captured stderr bytes: enough for a useful error message. Bytes
 /// past the cap are still drained from the pipe (so a chatty child never

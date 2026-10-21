@@ -14,17 +14,14 @@ use super::*;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
+use hume_platform::wake::no_op_wake;
+
 // ── Shared async-drain helpers ────────────────────────────────────────────────
 //
 // Every unix test that waits on a spawned child or streaming source (a
 // picker source, a `spawn-async!` job) polls in a bounded loop instead of a
 // single drain call. A background thread's result can land on any frame,
 // so CI scheduling jitter would flake a "drain once and assert" test.
-
-/// A wake callback for a spawn whose wakes the test does not wait on.
-fn no_op_wake() -> Arc<dyn Fn() + Send + Sync> {
-    Arc::new(|| {})
-}
 
 /// Runs `step` in a bounded loop until `until` returns true.
 fn poll_until(

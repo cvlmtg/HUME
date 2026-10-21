@@ -10,6 +10,7 @@ use hume_engine::pipeline::{BufferId, EngineView, RenderContext};
 
 use hume_platform::screen::Screen;
 use hume_platform::terminal::SharedTerm;
+use hume_platform::wake::WakeCallback;
 
 use super::event::EditorEvent;
 use super::input_stack::InputEvent;
@@ -25,7 +26,7 @@ pub(crate) enum Driver {
     /// (see `Editor::open`).
     Terminal {
         kitty_enabled: bool,
-        wake: Arc<dyn Fn() + Send + Sync>,
+        wake: WakeCallback,
         /// The terminal's size when the editor starts.
         size: Rect,
     },
@@ -178,7 +179,7 @@ impl Editor {
     pub(in crate::editor) fn open(
         file_path: Option<std::path::PathBuf>,
         terminal: Rect,
-        wake: Arc<dyn Fn() + Send + Sync>,
+        wake: WakeCallback,
         dirs: hume_platform::dirs::Dirs,
         startup_cwd: std::path::PathBuf,
     ) -> io::Result<Self> {

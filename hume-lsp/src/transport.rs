@@ -13,29 +13,9 @@ use std::thread;
 
 use hume_platform::process::tracked::TrackedChild;
 use hume_platform::process::{ReapOnDrop, spawn_in_own_group};
+use hume_platform::wake::{WakeCallback, spawn_waking};
 
 use crate::codec::{self, Message};
-
-/// Called by the reader/stderr threads after posting an event, so the
-/// editor's main loop wakes and drains it instead of rechecking on a poll
-/// cadence. Type-erased to keep `termina` types out of this
-/// crate's API even though it depends on `hume-platform` for
-/// [`TrackedChild`].
-/// Production wraps `termina::PlatformWaker::wake`.
-pub type WakeCallback = Arc<dyn Fn() + Send + Sync>;
-
-/// Invokes a [`WakeCallback`] on drop. Fires whether a thread exits
-/// normally or unwinds from a panic, so a dead transport thread still wakes
-/// the main loop once (the subsequent drain observes the disconnect via the
-/// existing channel). A normal exit firing one extra, spurious wake is
-/// harmless: callers already tolerate spurious wakes by design.
-struct WakeOnDrop(WakeCallback);
-
-impl Drop for WakeOnDrop {
-    fn drop(&mut self) {
-        (self.0)();
-    }
-}
 
 /// One event surfaced by the reader or stderr thread.
 #[derive(Debug)]
@@ -141,12 +121,9 @@ impl ServerHandle {
         // reader/stderr loops, and the writer loop ends once `tx_out` (and
         // every other sender into `rx_out`) drops at the same `?` return.
         let reader_wake = Arc::clone(&wake);
-        let reader = thread::Builder::new()
-            .name("hume-lsp-reader".into())
-            .spawn(move || {
-                let _wake_on_drop = WakeOnDrop(Arc::clone(&reader_wake));
-                reader_loop(BufReader::new(stdout), &tx_events, &reader_wake)
-            })?;
+        let reader = spawn_waking("hume-lsp-reader", Arc::clone(&wake), move || {
+            reader_loop(BufReader::new(stdout), &tx_events, &reader_wake)
+        })?;
 
         let (writer_done_tx, writer_done) = mpsc::channel::<()>();
         let writer = thread::Builder::new()
@@ -157,12 +134,9 @@ impl ServerHandle {
             })?;
 
         let stderr_wake = Arc::clone(&wake);
-        let stderr_thread = thread::Builder::new()
-            .name("hume-lsp-stderr".into())
-            .spawn(move || {
-                let _wake_on_drop = WakeOnDrop(Arc::clone(&stderr_wake));
-                stderr_loop(BufReader::new(stderr), &tx_stderr, &stderr_wake)
-            })?;
+        let stderr_thread = spawn_waking("hume-lsp-stderr", wake, move || {
+            stderr_loop(BufReader::new(stderr), &tx_stderr, &stderr_wake)
+        })?;
 
         Ok(ServerHandle {
             tx: Some(tx_out),

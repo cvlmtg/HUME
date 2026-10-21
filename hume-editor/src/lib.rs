@@ -147,7 +147,7 @@ pub fn run(
     // worker) call `wake()` after posting a result so the main loop wakes
     // instead of polling for completion (see `Editor::run`'s event step).
     let waker = shared.event_reader().waker();
-    let wake: std::sync::Arc<dyn Fn() + Send + Sync> = std::sync::Arc::new(move || {
+    let wake: hume_platform::wake::WakeCallback = std::sync::Arc::new(move || {
         let _ = waker.wake();
     });
 

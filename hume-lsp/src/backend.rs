@@ -7,8 +7,10 @@
 use std::path::Path;
 use std::sync::Arc;
 
+use hume_platform::wake::WakeCallback;
+
 use crate::codec::Message;
-use crate::transport::{InboundEvent, ServerHandle, WakeCallback};
+use crate::transport::{InboundEvent, ServerHandle};
 
 /// `Ord` derives so `hume-decorations`'s `DecorationStores` and
 /// `hume-editor`'s `DiagnosticsStore` (both built on the generic

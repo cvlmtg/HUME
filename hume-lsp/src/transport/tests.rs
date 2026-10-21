@@ -1,21 +1,6 @@
 use super::*;
+use hume_platform::wake::{counting_wake, no_op_wake};
 use std::io::Cursor;
-
-fn no_op_wake() -> WakeCallback {
-    Arc::new(|| {})
-}
-
-/// A [`WakeCallback`] that counts invocations via an `mpsc` channel:
-/// `recv_timeout` gives a deterministic, non-polling way to assert a
-/// wake fired (or didn't, within the timeout) without racing the
-/// background thread that calls it.
-fn counting_wake() -> (WakeCallback, mpsc::Receiver<()>) {
-    let (tx, rx) = mpsc::channel::<()>();
-    let wake: WakeCallback = Arc::new(move || {
-        let _ = tx.send(());
-    });
-    (wake, rx)
-}
 
 #[test]
 fn reader_loop_forwards_messages_then_eof() {

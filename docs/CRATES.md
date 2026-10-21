@@ -32,10 +32,11 @@ The frame's cell grid and the diff that finds what to repaint between two frames
 - hume-grid
 ### Used by
 - hume-lsp
+- hume-treesitter
 - hume-scripting
 - hume-editor
 ## Description
-Platform abstraction layer: terminal control, process spawning, atomic file writes, and OS directory conventions.
+Platform abstraction layer: terminal control, process spawning, waking the main loop from background threads, atomic file writes, and OS directory conventions.
 
 # hume-editing
 ### Depends on
@@ -105,6 +106,7 @@ Steel (Scheme) scripting host: runs plugins and configuration, and exposes edito
 ### Depends on
 - hume-editing
 - hume-engine
+- hume-platform
 - hume-rope
 - test-fixtures *(dev-only)*
 ### Used by
