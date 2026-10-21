@@ -108,8 +108,8 @@ its target's permissions changed, and a symlinked bin path fails the check above
 After the package manager runs, the binary must exist under the kind's bin directory
 (relative to the server dir), or the install fails. `cargo`, `go`, `pip`, `gem` and
 `dotnet` share one check; `npm` has its own at `node_modules/.bin`. On Windows the
-expected file gets a suffix: `.cmd` for npm (invoked as `npm.cmd`, and HUME's LSP
-transport wraps `.cmd` and `.bat` commands in `cmd /C`), `.bat` for gem (invoked as
+expected file gets a suffix: `.cmd` for npm (invoked as `npm.cmd`; a `.cmd` or `.bat`
+program runs through `cmd.exe`), `.bat` for gem (invoked as
 `gem.cmd`), and `.exe` for the others. The pip venv's bin directory is `venv/Scripts` on
 Windows and `venv/bin` elsewhere. The cargo path passes `--locked`, the closest analog to
 the sha256 pin that github assets get: it builds with upstream's published `Cargo.lock`.

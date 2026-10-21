@@ -6,13 +6,12 @@
 
 use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
-use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::sync::mpsc;
 use std::thread;
 
+use hume_platform::process::spawn_piped;
 use hume_platform::process::tracked::TrackedChild;
-use hume_platform::process::{ReapOnDrop, spawn_in_own_group};
 use hume_platform::wake::{WakeCallback, spawn_waking};
 
 use crate::codec::{self, Message};
@@ -80,34 +79,7 @@ impl ServerHandle {
         env: &[(String, String)],
         wake: WakeCallback,
     ) -> std::io::Result<ServerHandle> {
-        #[cfg(windows)]
-        let mut command = if needs_cmd_shim(cmd) {
-            // npm-kind servers register a `.cmd` shim (e.g.
-            // `node_modules/.bin/typescript-language-server.cmd`), which
-            // `CreateProcess` cannot spawn directly. Args with cmd.exe
-            // metacharacters are unsupported here; registered npm-kind args
-            // are trivial (e.g. `--stdio`).
-            let mut c = Command::new("cmd");
-            c.arg("/C").arg(cmd);
-            c
-        } else {
-            Command::new(cmd)
-        };
-        #[cfg(not(windows))]
-        let mut command = Command::new(cmd);
-
-        command
-            .args(args)
-            .envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
-            .current_dir(root)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        let mut child = ReapOnDrop::new(spawn_in_own_group(&mut command)?);
-
-        let stdin = child.get_mut().stdin.take().expect("piped stdin");
-        let stdout = child.get_mut().stdout.take().expect("piped stdout");
-        let stderr = child.get_mut().stderr.take().expect("piped stderr");
+        let (child, stdin, stdout, stderr) = spawn_piped(cmd, args, root, env)?;
 
         let (tx_events, rx_events) = mpsc::sync_channel::<InboundEvent>(EVENTS_CHANNEL_BOUND);
         let (tx_stderr, rx_stderr) = mpsc::sync_channel::<String>(STDERR_CHANNEL_BOUND);
@@ -229,17 +201,6 @@ impl Drop for ServerHandle {
             let _ = t.join();
         }
     }
-}
-
-/// Whether `cmd` is a Windows `.cmd`/`.bat` shim, which `CreateProcess`
-/// cannot spawn directly and must instead be run via `cmd /C`.
-///
-/// Cfg-free and unit-testable on every platform even though it's only
-/// consulted (in `ServerHandle::spawn`) on Windows, dead on other targets.
-#[cfg_attr(not(windows), allow(dead_code))]
-fn needs_cmd_shim(cmd: &str) -> bool {
-    let lower = cmd.to_ascii_lowercase();
-    lower.ends_with(".cmd") || lower.ends_with(".bat")
 }
 
 /// Reads frames until EOF or a codec error, forwarding each as an event and

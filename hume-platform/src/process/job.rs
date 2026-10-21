@@ -82,7 +82,7 @@ pub fn spawn_job(
     input: Vec<u8>,
     wake: WakeCallback,
 ) -> io::Result<SpawnedJob> {
-    let (child, stdin, stdout, stderr) = spawn_piped(cmd, args, cwd)?;
+    let (child, stdin, stdout, stderr) = spawn_piped(cmd, args, cwd, &[])?;
     // Converted to a `TrackedChild` up front, not deferred to the end like
     // `line_source` does. The job thread below needs its own handle to
     // wait for the child's exit status, so it and this function's returned

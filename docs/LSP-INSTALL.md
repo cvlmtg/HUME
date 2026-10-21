@@ -278,8 +278,9 @@ A `registrations/` record omits each default field: `command` when it equals the
   symlink/junction/shim question — junctions are directory-only and file symlinks need
   Developer Mode. One less moving part on every platform.
 - **Windows spawn wrinkle**: npm's `node_modules/.bin` entries on Windows are `.cmd` shims,
-  which `CreateProcess` cannot spawn directly. The client's single process-spawn site
-  (`hume-lsp`'s transport) wraps `.cmd`/`.bat` commands in `cmd /C`, cfg-gated.
+  which `CreateProcess` cannot spawn directly. Rust's `std::process::Command` runs a program
+  ending in `.cmd`/`.bat` through `cmd.exe` with its arguments escaped, so the server's spawn
+  (`hume-platform`'s `spawn_piped`) needs no shim of its own.
 - **Cross-process install lock**: `:lsp-install`/`:lsp-uninstall` acquire
   `<data>/servers/.install-lock` (created with `open-output-file`, which fails on an existing file — `lock.scm`)
   before mutating `servers/`, so two HUME processes racing the same operation refuse rather

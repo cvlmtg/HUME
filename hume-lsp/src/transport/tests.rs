@@ -274,34 +274,5 @@ fn wait_for_finish_times_out_while_the_thread_is_still_running() {
     let _ = handle.join();
 }
 
-// ── needs_cmd_shim ────────────────────────────────────────────────────────
-
-#[test]
-fn needs_cmd_shim_detects_cmd_extension() {
-    assert!(needs_cmd_shim("typescript-language-server.cmd"));
-}
-
-#[test]
-fn needs_cmd_shim_detects_bat_extension() {
-    assert!(needs_cmd_shim("run-server.bat"));
-}
-
-#[test]
-fn needs_cmd_shim_is_case_insensitive() {
-    assert!(needs_cmd_shim("SERVER.CMD"));
-    assert!(needs_cmd_shim("server.Bat"));
-}
-
-#[test]
-fn needs_cmd_shim_false_for_plain_executable() {
-    assert!(!needs_cmd_shim("rust-analyzer"));
-    assert!(!needs_cmd_shim("rust-analyzer.exe"));
-}
-
-#[test]
-fn needs_cmd_shim_false_for_extension_in_the_middle() {
-    assert!(!needs_cmd_shim("server.cmd.exe"));
-}
-
 #[cfg(unix)]
 mod unix;

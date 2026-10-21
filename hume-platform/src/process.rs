@@ -2,7 +2,7 @@
 //!
 //! Every `std::process::Command` that needs process-group isolation or
 //! force-exit reaping goes through this module, either directly for
-//! short-lived children or via [`spawn_in_own_group`] +
+//! short-lived children or via [`spawn_piped`] +
 //! [`tracked::TrackedChild`] for long-lived ones. Plugins spawn processes
 //! through Steel's `steel/process` stdlib, except [`run_capture`] (backing
 //! `run-capture!`): Steel reads stdout to EOF before stderr, so a child that
@@ -23,11 +23,14 @@ use std::os::unix::process::CommandExt as _;
 
 use crate::path::strip_unc_prefix;
 
-/// Shared spawn/pipe/wake machinery underneath [`line_source`] (line-batch
+/// Shared spawn/pipe machinery underneath [`line_source`] (line-batch
 /// streaming, for the picker's external-command source) and [`job`]
-/// (whole-output capture, for `spawn-async!` and `pipe`), kept internal since neither
-/// consumption shape is meant to be built a third way.
+/// (whole-output capture, for `spawn-async!` and `pipe`). Only
+/// [`spawn_piped`] is public, for a child that bridges its own stdio, such
+/// as a language server.
 pub(crate) mod child;
+
+pub use child::spawn_piped;
 
 /// Streaming a child's stdout into complete lines, for the picker's
 /// external-command source (`picker-source-spawn!`).
@@ -327,8 +330,8 @@ pub fn no_windows_compiler_found(cwd: &Path) -> bool {
     .is_none()
 }
 
-/// A child spawned by [`spawn_in_own_group`], with what a kill needs to
-/// reach the processes it starts: on Unix the process group the child
+/// A child started in its own process group, as [`spawn_piped`] starts
+/// one, with what a kill needs to reach the processes it starts: on Unix the process group the child
 /// leads, on Windows the job it runs in. Dropping it on Windows closes the
 /// job, which ends every process in it.
 pub struct GroupedChild {
@@ -374,7 +377,7 @@ impl GroupedChild {
 /// here just means the child's own call won first (see
 /// `sigint_to_child_group_does_not_kill_hume`).
 #[cfg(not(windows))]
-pub fn spawn_in_own_group(command: &mut Command) -> io::Result<GroupedChild> {
+pub(crate) fn spawn_in_own_group(command: &mut Command) -> io::Result<GroupedChild> {
     let child = command.new_process_group().spawn()?;
     #[cfg(unix)]
     {
@@ -390,7 +393,7 @@ pub fn spawn_in_own_group(command: &mut Command) -> io::Result<GroupedChild> {
 /// Spawns `command` so that a kill reaches every process it starts: inside
 /// a new Job Object. See the Unix variant for the rest.
 #[cfg(windows)]
-pub fn spawn_in_own_group(command: &mut Command) -> io::Result<GroupedChild> {
+pub(crate) fn spawn_in_own_group(command: &mut Command) -> io::Result<GroupedChild> {
     let (child, job) = job_object::Job::spawn(command)?;
     Ok(GroupedChild { child, job })
 }

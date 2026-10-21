@@ -9,8 +9,8 @@
 //! owns cleanup on a normal exit. The table is global because the terminator
 //! thread has no other path to children spawned elsewhere.
 //!
-//! Synchronous `.status()` children (`tree_sitter_build`, `unpack_*`,
-//! `run_inline_output`) are not tracked and can be orphaned by a force-exit.
+//! Children run to completion in place (`run_capture`, `run_inline_output`,
+//! `tree_sitter_build`) are not tracked and can be orphaned by a force-exit.
 //! They are short-lived and self-terminating.
 
 use std::process::Child;
@@ -157,9 +157,8 @@ pub(crate) fn kill_tracked_children() {
 pub struct TrackedChild(Arc<ChildSlot>);
 
 impl TrackedChild {
-    /// Registers `child`, spawned by
-    /// [`spawn_in_own_group`](super::spawn_in_own_group), with the
-    /// process-wide reaper.
+    /// Registers `child`, spawned by [`spawn_piped`](super::spawn_piped),
+    /// with the process-wide reaper.
     pub fn new(child: GroupedChild) -> Self {
         Self::in_registry(child, &GLOBAL)
     }

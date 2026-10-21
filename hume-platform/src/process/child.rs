@@ -24,7 +24,8 @@ pub(crate) const STDERR_CAPTURE_CAP: usize = 8 * 1024;
 pub(crate) const JOB_STDOUT_CAP: usize = 64 * 1024 * 1024;
 
 /// Spawns `cmd` with `args` (direct argv, no shell) in its own process
-/// group, all three stdio streams piped. The child never inherits the
+/// group, all three stdio streams piped, with `env` added to the inherited
+/// environment. The child never inherits the
 /// terminal as stdin: the caller feeds the returned stdin and closes it, or
 /// closes it at once, so a read sees EOF rather than racing the editor's own
 /// key reads (same contract as `hume_platform::process::run_capture`).
@@ -34,13 +35,15 @@ pub(crate) const JOB_STDOUT_CAP: usize = 64 * 1024 * 1024;
 /// caller starts its bridging threads before converting the guard into a
 /// [`crate::process::tracked::TrackedChild`], so a thread failing to spawn
 /// leaves nothing for the process to leak.
-pub(crate) fn spawn_piped(
+pub fn spawn_piped(
     cmd: &str,
     args: &[String],
     cwd: &Path,
+    env: &[(String, String)],
 ) -> io::Result<(ReapOnDrop, ChildStdin, ChildStdout, ChildStderr)> {
     let mut command = base_command(cmd, args, cwd);
     command
+        .envs(env.iter().map(|(k, v)| (k, v)))
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());

@@ -78,6 +78,38 @@ fn env_reaches_the_spawned_process() {
     )
     .expect("spawn sh");
 
+    let stderr = stderr_until(&handle, "steel-lsp-home");
+    assert!(
+        stderr.contains("steel-lsp-home"),
+        "child process must see HUME_TEST_VAR from `env`, got stderr: {stderr:?}"
+    );
+
+    drop(handle);
+}
+
+/// A server cannot answer a credential prompt, so git run by it fails at
+/// once instead of waiting on the terminal.
+#[test]
+fn the_server_runs_with_git_terminal_prompts_off() {
+    let root = std::env::current_dir().unwrap();
+    let handle = ServerHandle::spawn(
+        "/bin/sh",
+        &[
+            "-c".to_string(),
+            "echo \"prompt=${GIT_TERMINAL_PROMPT-unset}\" 1>&2".to_string(),
+        ],
+        &root,
+        &[],
+        no_op_wake(),
+    )
+    .expect("spawn sh");
+
+    assert_eq!(stderr_until(&handle, "prompt="), "prompt=0");
+}
+
+/// The server's stderr lines, joined, once one contains `needle` or five
+/// seconds have passed.
+fn stderr_until(handle: &ServerHandle, needle: &str) -> String {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
     let mut stderr = String::new();
     while std::time::Instant::now() < deadline {
@@ -86,18 +118,12 @@ fn env_reaches_the_spawned_process() {
                 stderr.push_str(&s);
             }
         }
-        if stderr.contains("steel-lsp-home") {
+        if stderr.contains(needle) {
             break;
         }
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
-
-    assert!(
-        stderr.contains("steel-lsp-home"),
-        "child process must see HUME_TEST_VAR from `env`, got stderr: {stderr:?}"
-    );
-
-    drop(handle);
+    stderr
 }
 
 #[test]
