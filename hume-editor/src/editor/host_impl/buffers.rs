@@ -109,8 +109,13 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
         if self.state.buffers.try_get(id).is_none() {
             return Err(format!("close-buffer!: buffer {id:?} does not exist"));
         }
-        crate::editor::buffer::lifecycle::close_buffer_and_notify(self.view, self.state, id);
-        Ok(())
+        crate::editor::buffer::lifecycle::close_buffer_and_notify(self.view, self.state, id)
+            .map_err(|_| {
+                format!(
+                    r#"close-buffer!: a pipe is running in {}; stop it first with (call! "cancel-pipe" pane)"#,
+                    self.state.buffers.get(id).display_name()
+                )
+            })
     }
     fn switch_to_buffer(&mut self, pane: PaneHandle, target: BufferId) -> Result<(), String> {
         let t = self.command_pane(pane)?;

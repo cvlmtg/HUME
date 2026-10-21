@@ -7,7 +7,7 @@ use super::*;
 use crate::editor::input_stack::shell_prompt::ShellPromptLayer;
 use crate::editor::keymap::BindMode;
 use crate::editor::minibuf::history::HistoryKind;
-use crate::editor::pipe_run::{PipeKind, WaitEvent, wait_event};
+use crate::editor::pipe_run::{PipeKind, PipeRunning, WaitEvent, wait_event};
 use termina::WindowSize;
 use termina::event::KeyEventKind;
 
@@ -349,17 +349,6 @@ fn ctrl_c_without_a_run_says_so() {
 }
 
 #[test]
-fn closing_the_launching_pane_cancels_its_run() {
-    let mut ed = editor_from("-[a]>\n");
-    let bid = ed.focused_buffer_id();
-    ed.execute_keymap_command("pane-vsplit".into(), None, false);
-    start_sort(&mut ed);
-    ed.execute_keymap_command("pane-close".into(), None, false);
-    assert!(!busy(&ed, bid));
-    assert_eq!(status(&ed), cancelled(&ed, bid));
-}
-
-#[test]
 fn closing_another_pane_on_the_buffer_keeps_the_run() {
     let mut ed = editor_from("-[a]>\n");
     let bid = ed.focused_buffer_id();
@@ -379,14 +368,13 @@ fn switching_the_launching_pane_away_keeps_the_run() {
 }
 
 #[test]
-fn closing_the_buffer_cancels_its_run() {
+fn closing_a_busy_buffer_is_refused_and_keeps_its_run() {
     let mut ed = editor_from("-[a]>\n");
     let bid = ed.focused_buffer_id();
-    let message = cancelled(&ed, bid);
     start_sort(&mut ed);
-    ed.close_buffer(bid);
-    assert!(ed.state.pipe_runs.take_buffer(bid).is_none());
-    assert_eq!(status(&ed), message);
+    assert_eq!(ed.close_buffer(bid), Err(PipeRunning(bid)));
+    assert!(ed.state.buffers.try_get(bid).is_some());
+    assert!(busy(&ed, bid));
 }
 
 /// `rx` in one buffer, then a background `|sort` in it and in a second
@@ -420,9 +408,20 @@ fn two_cancelled_runs_leave_the_change_before_both_oldest_first() {
 }
 
 /// The refusal `:q`, `:qa` and `:bd` give while `bid` runs a pipe.
-fn pipe_running(ed: &Editor, bid: BufferId) -> String {
+/// The refusal of a close that would stop `bid`'s run, `bid` in the
+/// focused pane, naming `way_out`.
+fn pipe_running(ed: &Editor, bid: BufferId, way_out: &str) -> String {
     format!(
-        "A pipe is running in {} (add ! to override)",
+        "A pipe is running in {}: Ctrl-c stops it, or use {way_out}",
+        ed.state.buffers.get(bid).display_name()
+    )
+}
+
+/// [`pipe_running`] for a `bid` no focused pane shows, which `Ctrl-c`
+/// does not reach.
+fn pipe_running_elsewhere(ed: &Editor, bid: BufferId, way_out: &str) -> String {
+    format!(
+        "A pipe is running in {}: use {way_out}",
         ed.state.buffers.get(bid).display_name()
     )
 }
@@ -433,7 +432,7 @@ fn q_refuses_while_a_run_is_in_flight() {
     start_sort(&mut ed);
     type_cmd(&mut ed, ":q");
     assert!(!ed.state.should_quit);
-    insta::assert_snapshot!(status(&ed), @"A pipe is running in *scratch* (add ! to override)");
+    insta::assert_snapshot!(status(&ed), @"A pipe is running in *scratch*: Ctrl-c stops it, or use :q!");
     assert!(ed.doc().is_busy());
 }
 
@@ -445,7 +444,7 @@ fn q_that_would_exit_names_the_busy_buffer() {
     open_other_buffer(&mut ed, "b\n");
     type_cmd(&mut ed, ":q");
     assert!(!ed.state.should_quit);
-    assert_eq!(status(&ed), pipe_running(&ed, busy));
+    assert_eq!(status(&ed), pipe_running_elsewhere(&ed, busy, ":q!"));
 }
 
 #[test]
@@ -457,7 +456,7 @@ fn q_refuses_to_close_the_busy_buffer() {
     ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), busy);
     start_sort(&mut ed);
     type_cmd(&mut ed, ":q");
-    assert_eq!(status(&ed), pipe_running(&ed, busy));
+    assert_eq!(status(&ed), pipe_running(&ed, busy, ":q!"));
     assert!(ed.state.buffers.try_get(busy).is_some());
     assert!(!ed.state.should_quit);
 }
@@ -471,14 +470,111 @@ fn q_bang_quits() {
 }
 
 #[test]
-fn q_in_a_split_closes_the_pane_and_cancels() {
+fn q_in_a_split_refuses_while_the_panes_run_is_in_flight() {
     let mut ed = editor_from("-[a]>\n");
     let bid = ed.focused_buffer_id();
     ed.execute_keymap_command("pane-vsplit".into(), None, false);
     start_sort(&mut ed);
     type_cmd(&mut ed, ":q");
+    assert_eq!(status(&ed), pipe_running(&ed, bid, ":q!"));
+    assert_eq!(ed.view.active_pane_ids().len(), 2);
+    assert!(busy(&ed, bid));
+}
+
+#[test]
+fn q_bang_in_a_split_closes_the_pane_and_cancels() {
+    let mut ed = editor_from("-[a]>\n");
+    let bid = ed.focused_buffer_id();
+    ed.execute_keymap_command("pane-vsplit".into(), None, false);
+    start_sort(&mut ed);
+    type_cmd(&mut ed, ":q!");
     assert!(!ed.state.should_quit);
+    assert_eq!(ed.view.active_pane_ids().len(), 1);
     assert!(!busy(&ed, bid));
+}
+
+#[test]
+fn q_in_a_split_closes_a_pane_whose_buffer_runs_a_pipe_started_elsewhere() {
+    let mut ed = editor_from("-[a]>\n");
+    let bid = ed.focused_buffer_id();
+    start_sort(&mut ed);
+    ed.execute_keymap_command("pane-vsplit".into(), None, false);
+    type_cmd(&mut ed, ":q");
+    assert_eq!(ed.view.active_pane_ids().len(), 1);
+    assert!(busy(&ed, bid), "the run from the pane left open goes on");
+}
+
+#[test]
+fn q_on_a_tabs_last_pane_refuses_while_its_run_is_in_flight() {
+    let mut ed = editor_from("-[a]>\n");
+    ed.execute_keymap_command("tab-new".into(), None, false);
+    let bid = ed.focused_buffer_id();
+    start_sort(&mut ed);
+    type_cmd(&mut ed, ":q");
+    assert_eq!(status(&ed), pipe_running(&ed, bid, ":q!"));
+    assert_eq!(ed.state.tabs.len(), 2);
+    assert!(busy(&ed, bid));
+}
+
+#[test]
+fn q_bang_on_a_tabs_last_pane_closes_the_tab_and_cancels() {
+    let mut ed = editor_from("-[a]>\n");
+    ed.execute_keymap_command("tab-new".into(), None, false);
+    let bid = ed.focused_buffer_id();
+    start_sort(&mut ed);
+    type_cmd(&mut ed, ":q!");
+    assert!(!ed.state.should_quit);
+    assert_eq!(ed.state.tabs.len(), 1);
+    assert!(!busy(&ed, bid));
+}
+
+#[test]
+fn tabclose_refuses_while_a_run_from_the_tab_is_in_flight() {
+    let mut ed = editor_from("-[a]>\n");
+    ed.execute_keymap_command("tab-new".into(), None, false);
+    let bid = ed.focused_buffer_id();
+    start_sort(&mut ed);
+    type_cmd(&mut ed, ":tabclose");
+    assert_eq!(status(&ed), pipe_running(&ed, bid, ":tabclose!"));
+    assert_eq!(ed.state.tabs.len(), 2);
+    assert!(busy(&ed, bid));
+}
+
+#[test]
+fn tabclose_bang_closes_the_tab_and_cancels() {
+    let mut ed = editor_from("-[a]>\n");
+    ed.execute_keymap_command("tab-new".into(), None, false);
+    let bid = ed.focused_buffer_id();
+    start_sort(&mut ed);
+    type_cmd(&mut ed, ":tabclose!");
+    assert_eq!(ed.state.tabs.len(), 1);
+    assert!(!busy(&ed, bid));
+}
+
+#[test]
+fn wq_in_a_split_writes_then_refuses() {
+    let (mut ed, file) = editor_with_file("-[a]>\n", "a\n");
+    let bid = ed.focused_buffer_id();
+    ed.execute_keymap_command("pane-vsplit".into(), None, false);
+    keys(&mut ed, "rx");
+    start_sort(&mut ed);
+    type_cmd(&mut ed, ":wq");
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), "x\n");
+    assert_eq!(ed.view.active_pane_ids().len(), 2);
+    assert_eq!(status(&ed), pipe_running(&ed, bid, ":q!"));
+}
+
+#[test]
+fn the_pane_close_key_refuses_while_the_panes_run_is_in_flight() {
+    let mut ed = editor_from("-[a]>\n");
+    let bid = ed.focused_buffer_id();
+    ed.execute_keymap_command("pane-vsplit".into(), None, false);
+    start_sort(&mut ed);
+    ed.handle_key(key_ctrl('p'));
+    ed.handle_key(key('c'));
+    assert_eq!(status(&ed), pipe_running(&ed, bid, ":q!"));
+    assert_eq!(ed.view.active_pane_ids().len(), 2);
+    assert!(busy(&ed, bid));
 }
 
 #[test]
@@ -489,7 +585,8 @@ fn qa_refuses_naming_the_busy_buffer() {
     open_other_buffer(&mut ed, "b\n");
     type_cmd(&mut ed, ":qa");
     assert!(!ed.state.should_quit);
-    assert_eq!(status(&ed), pipe_running(&ed, bid));
+    assert_eq!(status(&ed), pipe_running_elsewhere(&ed, bid, ":qa!"));
+    insta::assert_snapshot!(status(&ed), @"A pipe is running in *scratch*: use :qa!");
 }
 
 #[test]
@@ -506,7 +603,8 @@ fn bd_refuses() {
     let bid = ed.focused_buffer_id();
     start_sort(&mut ed);
     type_cmd(&mut ed, ":bd");
-    assert_eq!(status(&ed), pipe_running(&ed, bid));
+    assert_eq!(status(&ed), pipe_running(&ed, bid, ":bd!"));
+    insta::assert_snapshot!(status(&ed), @"A pipe is running in *scratch*: Ctrl-c stops it, or use :bd!");
     assert!(busy(&ed, bid));
 }
 
@@ -528,5 +626,5 @@ fn wq_writes_then_refuses() {
     type_cmd(&mut ed, ":wq");
     assert_eq!(std::fs::read_to_string(&file).unwrap(), "x\n");
     assert!(!ed.state.should_quit);
-    assert_eq!(status(&ed), pipe_running(&ed, bid));
+    assert_eq!(status(&ed), pipe_running(&ed, bid, ":q!"));
 }

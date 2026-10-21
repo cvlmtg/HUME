@@ -429,7 +429,7 @@ fn startup_buffer_close_before_any_drain_fires_no_on_buffer_close() {
     // Closed before any `detect_pending_languages` drain: no scripting host
     // is even attached yet, matching a real early-exit (e.g. `:q` before the
     // first frame).
-    ed.close_buffer(bid);
+    ed.close_buffer(bid).expect("the buffer runs no pipe");
 
     let queued_close = ed.state.config.pending_work.iter().any(|w| {
         matches!(w, crate::editor::event::PendingWork::Event(e) if e.name() == "on-buffer-close")
@@ -1778,7 +1778,7 @@ fn last_buffer_close_opens_a_fresh_scratch_buffer_not_a_content_swap() {
     ed.scripting = Some(host);
     ed.settle();
 
-    ed.close_buffer(bid);
+    ed.close_buffer(bid).expect("the buffer runs no pipe");
     ed.settle();
 
     let new_bid = ed.focused_buffer_id();
@@ -2298,7 +2298,7 @@ fn buffer_scoped_event_is_skipped_once_its_buffer_has_closed() {
     // here, a direct close between queueing and the drain, rather than a
     // timer thunk queued ahead of the event; the observable failure mode
     // (the batch reaches a dead bid) is identical either way.
-    ed.close_buffer(bid);
+    ed.close_buffer(bid).expect("the buffer runs no pipe");
     ed.settle();
 
     let log = ed.state.message_log.format_for_display();

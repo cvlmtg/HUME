@@ -511,7 +511,8 @@ fn settle_opened(
     landed: Option<ClusterStart>,
 ) -> Option<(BufferId, ClusterStart)> {
     if landed.is_none() && opened {
-        crate::editor::buffer::lifecycle::close_buffer_and_notify(view, state, bid);
+        crate::editor::buffer::lifecycle::close_buffer_and_notify(view, state, bid)
+            .expect("a buffer this call just opened runs no pipe");
     }
     landed.map(|cluster| (bid, cluster))
 }

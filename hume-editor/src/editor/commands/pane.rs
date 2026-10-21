@@ -11,6 +11,7 @@ use crate::editor::commands::FocusedPane;
 use crate::editor::error::CommandError;
 use crate::editor::focus::{self, focus_pane};
 use crate::editor::pane_state::PaneChrome;
+use crate::editor::pipe_run::PipeRunning;
 
 /// A new pane viewing `bid`, with the full chrome, not yet in any layout.
 /// The returned token makes the caller splice it into one.
@@ -54,27 +55,61 @@ pub(in crate::editor) fn open_pane_as_new_tab(
 
 /// Remove every per-pane state map entry for a detached pane (`panes`,
 /// per-buffer state, jump list, render handles): the inverse of
-/// `open_pane`'s seeding. The pipe runs it started are cancelled and input
-/// layers bound to it retired first. Takes a `DetachedPane` rather than a bare
-/// `PaneId`: the token is proof the pane is already unreachable from every
-/// layout tree (see `DetachedPane`'s own doc), so this can never be called
-/// on a pane a tree still references.
+/// `open_pane`'s seeding. Input layers bound to it are retired first. Takes
+/// a `DetachedPane` rather than a bare `PaneId`: the token is proof the pane
+/// is already unreachable from every layout tree (see `DetachedPane`'s own
+/// doc), so this can never be called on a pane a tree still references.
+///
+/// # Panics
+/// Panics when the pane started a pipe run still in flight: every close
+/// refuses that before detaching a pane ([`CloseRefused::PipeRunning`]).
 pub(super) fn drop_pane_state(state: &mut EditorState, view: &mut EngineView, pane: DetachedPane) {
     let pid = pane.pane_id();
-    state.cancel_pipe_runs_launched_by(pid);
+    assert_eq!(
+        state.pipe_runs.launched_from(&[pid]),
+        None,
+        "drop_pane_state: a closed pane's pipe run would stop"
+    );
     state.retire_bound_to(view, pid);
     view.remove_pane(pane);
     state.panes.remove(pid);
 }
 
+/// Why a pane or tab close changed nothing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::editor) enum CloseRefused {
+    /// The tab's only pane, or the only tab.
+    Last,
+    /// Closing would stop this pipe run, started from a pane being closed.
+    PipeRunning(PipeRunning),
+}
+
+/// `Err` when one of `panes` started a pipe run still in flight.
+pub(super) fn check_no_pipe_from(
+    state: &EditorState,
+    panes: &[PaneId],
+) -> Result<(), CloseRefused> {
+    match state.pipe_runs.launched_from(panes) {
+        Some(bid) => Err(CloseRefused::PipeRunning(PipeRunning(bid))),
+        None => Ok(()),
+    }
+}
+
 /// Close the focused pane: prune it from the active tab's layout, move focus
 /// to the promoted sibling, and drop all its per-pane state. Refused, with
-/// nothing changed, when it is the tab's only pane.
+/// nothing changed, when it is the tab's only pane, or when it started a
+/// pipe run still in flight.
 pub(super) fn close_focused_pane(
     state: &mut EditorState,
     view: &mut EngineView,
-) -> Result<(), SinglePane> {
-    let detached = focus::close_focused(state, view)?;
+) -> Result<(), CloseRefused> {
+    if view.active_pane_ids().len() == 1 {
+        return Err(CloseRefused::Last);
+    }
+    check_no_pipe_from(state, &[view.focused_pane()])?;
+    let detached = focus::close_focused(state, view).unwrap_or_else(|SinglePane| {
+        unreachable!("a tab with several panes closes its focused one")
+    });
     drop_pane_state(state, view, detached);
     Ok(())
 }

@@ -5,9 +5,10 @@ use hume_scripting::host::OptionInput;
 use super::super::Editor;
 use super::super::Severity;
 use super::super::before_save::{AfterWrite, SAVE_IN_PROGRESS};
-use super::FocusedPane;
+use super::{CloseRefused, FocusedPane};
 use crate::editor::buffer::Buffer;
 use crate::editor::error::CommandError;
+use crate::editor::pipe_run::PipeRunning;
 use crate::editor::settings::ops as settings_ops;
 use crate::editor::settings::{WRAP_MODE_KEY, parse_setting_text};
 
@@ -70,9 +71,18 @@ pub(in crate::editor) fn typed_quit(
     // pane, not the tab or the editor. The buffer stays open (no edits lost),
     // so no dirty check. That guard belongs to the steps below, which
     // actually close something the user can't get back without saving. A
-    // pipe run the pane started stops with it, as on any pane close.
-    if super::close_focused_pane(&mut ed.state, &mut ed.view).is_ok() {
-        return Ok(());
+    // pipe run the pane started would stop with it, so that needs `!`.
+    match super::close_stopping_pipes(
+        &mut ed.state,
+        &mut ed.view,
+        force,
+        super::close_focused_pane,
+    ) {
+        Ok(()) => return Ok(()),
+        Err(CloseRefused::PipeRunning(running)) => {
+            return Err(quit_refusal(ed, running));
+        }
+        Err(CloseRefused::Last) => {}
     }
 
     // The active tab is down to its last pane, but other tabs remain open:
@@ -80,8 +90,12 @@ pub(in crate::editor) fn typed_quit(
     // of a tab closes the tab, not the editor). Same no-dirty-check reasoning:
     // the buffer stays open in whichever other tab(s) show it, or in the
     // buffer list if none do.
-    if super::close_tab(&mut ed.state, &mut ed.view).is_ok() {
-        return Ok(());
+    match super::close_stopping_pipes(&mut ed.state, &mut ed.view, force, super::close_tab) {
+        Ok(()) => return Ok(()),
+        Err(CloseRefused::PipeRunning(running)) => {
+            return Err(quit_refusal(ed, running));
+        }
+        Err(CloseRefused::Last) => {}
     }
 
     let current = fp.bid(&ed.view);
@@ -103,22 +117,25 @@ pub(in crate::editor) fn typed_quit(
         .any(|(id, buf)| {
             (buf.path().is_some() && !buf.is_read_only()) || ed.state.has_unsaved_changes(id)
         });
-    // Exiting stops every pipe run; closing the buffer stops its own.
-    let stopped_run = if stays {
-        Some(current).filter(|&id| ed.state.buffers.get(id).is_busy())
-    } else {
-        ed.state.buffers.first_busy()
-    };
-    if !force && let Some(busy) = stopped_run {
-        return Err(super::pipe_running_refusal(&ed.state, busy));
-    }
-
     if stays {
-        ed.close_buffer(current);
+        if force {
+            ed.state.cancel_pipe_run(current);
+        }
+        ed.close_buffer(current)
+            .map_err(|running| quit_refusal(ed, running))?;
     } else {
+        // Exiting stops every pipe run, with the process.
+        if !force && let Some(busy) = ed.state.buffers.first_busy() {
+            return Err(quit_refusal(ed, PipeRunning(busy)));
+        }
         ed.state.should_quit = true;
     }
     Ok(())
+}
+
+/// The refusal `:q` gives when what it closes would stop `running`.
+fn quit_refusal(ed: &Editor, running: PipeRunning) -> CommandError {
+    super::pipe_running_refusal(&ed.state, &ed.view, running, ":q!")
 }
 
 pub(in crate::editor) fn typed_quit_all(
@@ -158,7 +175,12 @@ pub(in crate::editor) fn typed_quit_all(
             )));
         }
         if let Some(busy) = ed.state.buffers.first_busy() {
-            return Err(super::pipe_running_refusal(&ed.state, busy));
+            return Err(super::pipe_running_refusal(
+                &ed.state,
+                &ed.view,
+                PipeRunning(busy),
+                ":qa!",
+            ));
         }
     }
     ed.state.request_quit();

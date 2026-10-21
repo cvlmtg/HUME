@@ -192,10 +192,13 @@ impl Editor {
         lifecycle::open_buffer_and_notify(&mut self.view, &mut self.state, doc)
     }
 
-    /// Remove buffer `id`; see [`lifecycle::close_buffer`]'s own doc for
-    /// the last-buffer case (a fresh scratch buffer, not `id` reused).
-    pub(in crate::editor) fn close_buffer(&mut self, id: BufferId) {
-        lifecycle::close_buffer_and_notify(&mut self.view, &mut self.state, id);
+    /// Remove buffer `id`, as [`lifecycle::close_buffer_and_notify`] does,
+    /// refusing while a pipe runs in it.
+    pub(in crate::editor) fn close_buffer(
+        &mut self,
+        id: BufferId,
+    ) -> Result<(), crate::editor::pipe_run::PipeRunning> {
+        lifecycle::close_buffer_and_notify(&mut self.view, &mut self.state, id)
     }
 
     /// Replace `fp`'s buffer text with `source`'s in place, preserving the

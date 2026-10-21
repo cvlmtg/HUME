@@ -969,7 +969,8 @@ fn a_pending_jump_into_a_buffer_the_navigation_closed_is_dropped() {
         t,
         JumpRule::IfMoved,
         |state, view| {
-            crate::editor::buffer::lifecycle::close_buffer(state, view, closing);
+            crate::editor::buffer::lifecycle::close_buffer_and_notify(view, state, closing)
+                .expect("the buffer runs no pipe");
         },
     );
 

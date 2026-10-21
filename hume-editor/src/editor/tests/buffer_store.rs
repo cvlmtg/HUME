@@ -42,7 +42,7 @@ fn p6_close_buffer_redirects_to_mru() {
     ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid_beta);
     assert_eq!(ed.focused_buffer_id(), bid_beta);
     // Close beta: should redirect focused pane back to alpha.
-    ed.close_buffer(bid_beta);
+    ed.close_buffer(bid_beta).expect("the buffer runs no pipe");
     assert_eq!(
         ed.focused_buffer_id(),
         bid_alpha,
@@ -61,7 +61,7 @@ fn p6_close_buffer_redirects_to_mru() {
 fn p6_close_last_buffer_becomes_scratch() {
     let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("only\n")));
     let bid = ed.focused_buffer_id();
-    ed.close_buffer(bid);
+    ed.close_buffer(bid).expect("the buffer runs no pipe");
     assert!(
         ed.state.buffers.try_get(bid).is_none(),
         "the closed buffer's own slot must be freed, not reused"
@@ -132,7 +132,7 @@ fn p6_close_last_buffer_reseeds_selections() {
             st.with_selections(vec![cursor], 0)
         },
     );
-    ed.close_buffer(bid);
+    ed.close_buffer(bid).expect("the buffer runs no pipe");
     // Selections should be reset to initial (cursor at 0).
     let sels = ed.current_view();
     assert_eq!(
@@ -325,7 +325,7 @@ fn p6_close_buffer_redirects_all_panes_to_mru() {
     );
 
     // Close A; mru_excluding(A) == B (B was opened last, so it's at the MRU tail).
-    ed.close_buffer(bid_a);
+    ed.close_buffer(bid_a).expect("the buffer runs no pipe");
 
     assert_eq!(
         ed.view.panes[pid_1].buffer_id(),

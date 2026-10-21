@@ -505,7 +505,7 @@ fn close_buffer_prunes_stored_diagnostics_and_decorations() {
     let ed = &mut rig.ed;
     seed_diagnostic_and_hint(ed, sid, bid, &uri);
 
-    ed.close_buffer(bid);
+    ed.close_buffer(bid).expect("the buffer runs no pipe");
 
     assert_eq!(
         ed.diagnostic_counts(bid),

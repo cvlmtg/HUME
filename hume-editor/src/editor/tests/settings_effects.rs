@@ -549,7 +549,7 @@ fn get_buffer_option_closed_bid_errors() {
 
     let mut ed = editor_from("-[a]>b\n");
     let bid2 = ed.open_buffer(Buffer::at_start(BufferText::from("x\n")));
-    ed.close_buffer(bid2);
+    ed.close_buffer(bid2).expect("the buffer runs no pipe");
 
     let mut host = crate::editor::host_impl::EditorHostImpl::new(&mut ed.state, &mut ed.view);
     let err = host

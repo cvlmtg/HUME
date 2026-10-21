@@ -955,7 +955,7 @@ fn e_bang_stops_the_run_and_reloads() {
 }
 
 #[test]
-fn close_buffer_from_steel_cancels_the_run() {
+fn close_buffer_from_steel_raises_while_the_run_is_in_flight() {
     let _path = path_reader();
     let dir = tempfile::tempdir().expect("tempdir");
     let pid_file = dir.path().join("pid");
@@ -969,37 +969,92 @@ fn close_buffer_from_steel_cancels_the_run() {
     type_pipe(&mut ed, &sleeper(&pid_file));
     let pid = started_pid(&mut ed, &pid_file);
     ed.execute_keymap_command("closer".into(), None, false);
+    assert!(ed.state.buffers.try_get(bid).is_some(), "the buffer stays");
+    assert!(process_is_alive(pid), "its run goes on");
+    assert!(has_error(
+        &ed,
+        &format!(
+            r#"close-buffer!: a pipe is running in {}; stop it first with (call! "cancel-pipe" pane)"#,
+            ed.doc().display_name()
+        )
+    ));
+}
+
+#[test]
+fn calling_cancel_pipe_then_close_buffer_from_steel_closes_it() {
+    let _path = path_reader();
+    let dir = tempfile::tempdir().expect("tempdir");
+    let pid_file = dir.path().join("pid");
+    let mut ed = editor_from("-[a]>\n");
+    run(
+        &mut ed,
+        dir.path(),
+        r#"(define-command! "closer" "" (lambda (pane)
+             (call! "cancel-pipe" pane)
+             (close-buffer! pane)))"#,
+    );
+    let bid = ed.focused_buffer_id();
+    type_pipe(&mut ed, &sleeper(&pid_file));
+    let pid = started_pid(&mut ed, &pid_file);
+    ed.execute_keymap_command("closer".into(), None, false);
     assert!(ed.state.buffers.try_get(bid).is_none(), "the buffer closed");
     assert!(!process_is_alive(pid), "its run's process is gone");
 }
 
-/// Closes `bid` the first time it draws, as a drawer's render proc calling
-/// `close-buffer!` would.
-struct ClosesOnRepaint {
+#[test]
+fn calling_cancel_pipe_says_whether_it_stopped_a_run() {
+    let _path = path_reader();
+    let dir = tempfile::tempdir().expect("tempdir");
+    let pid_file = dir.path().join("pid");
+    let mut ed = editor_from("-[a]>\n");
+    let bid = ed.focused_buffer_id();
+    type_pipe(&mut ed, &sleeper(&pid_file));
+    let pid = started_pid(&mut ed, &pid_file);
+    run(
+        &mut ed,
+        dir.path(),
+        r#"(define-command! "stopper" "" (lambda (pane)
+             (let* ((first (call! "cancel-pipe" pane))
+                    (second (call! "cancel-pipe" pane)))
+               (log! 'warn (if (and first (not second)) "stopped once" "wrong")))))"#,
+    );
+    ed.execute_keymap_command("stopper".into(), None, false);
+    assert!(!busy(&ed, bid));
+    assert!(!process_is_alive(pid), "its run's process is gone");
+    assert!(
+        ed.state
+            .message_log
+            .entries()
+            .any(|e| e.text == "stopped once"),
+        "#t for the run it stopped, then #f"
+    );
+}
+
+/// Stops `bid`'s run when it draws, as a drawer's render proc calling
+/// `(call! "cancel-pipe" pane)` would.
+struct CancelsOnRepaint {
     detached: Detached,
     bid: BufferId,
 }
 
-impl PipeConsole for ClosesOnRepaint {
+impl PipeConsole for CancelsOnRepaint {
     fn next(&mut self, timeout: Option<Duration>) -> io::Result<WaitEvent> {
         self.detached.next(timeout)
     }
 
     fn repaint(&mut self, ed: &mut Editor) -> io::Result<()> {
-        if ed.state.buffers.try_get(self.bid).is_some() {
-            crate::editor::buffer::lifecycle::close_buffer(&mut ed.state, &mut ed.view, self.bid);
-        }
+        ed.state.cancel_pipe_run(self.bid);
         Ok(())
     }
 }
 
 #[test]
-fn a_wait_whose_buffer_closes_while_it_draws_ends_cancelled() {
+fn a_wait_whose_run_is_cancelled_while_it_draws_ends_cancelled() {
     let _path = path_reader();
     let mut ed = editor_from("-[a]>\n");
     let bid = ed.focused_buffer_id();
     let run = start_run(&mut ed, "sleep 30", PipeKind::Replace);
-    let mut console = ClosesOnRepaint {
+    let mut console = CancelsOnRepaint {
         detached: ed
             .detached
             .clone()
@@ -1010,7 +1065,7 @@ fn a_wait_whose_buffer_closes_while_it_draws_ends_cancelled() {
         .wait_pipe_run(run, &mut console)
         .expect("the console never fails");
     assert_eq!(end, PipeEnd::Cancelled);
-    assert!(ed.state.buffers.try_get(bid).is_none());
+    assert!(!busy(&ed, bid));
 }
 
 #[test]

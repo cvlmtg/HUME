@@ -82,7 +82,7 @@ A **tab** is a saved window layout (its own splits and focused pane), not a per-
 | Command | Aliases | Effect |
 |---------|---------|--------|
 | `:tabnew [path]` | `:tabe` | Open a new tab and switch to it |
-| `:tabclose` | `:tabc` | Close the current tab and every pane it owns |
+| `:tabclose` | `:tabc` | Close the current tab and every pane it owns; `!` closes it even while a `\|` run from it is running |
 | `:tabnext` | `:tabn` | Switch to the next tab (wraps around) |
 | `:tabprev` | `:tabp` | Switch to the previous tab (wraps around) |
 

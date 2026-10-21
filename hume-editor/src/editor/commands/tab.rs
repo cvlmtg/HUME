@@ -25,11 +25,12 @@ use crate::editor::error::CommandError;
 use crate::editor::tab::{SingleTab, switch_to_tab};
 
 use super::FocusedPane;
-use super::pane::{drop_pane_state, open_pane_as_new_tab};
+use super::pane::{CloseRefused, check_no_pipe_from, drop_pane_state, open_pane_as_new_tab};
 
 /// `:tabclose`'s core, and `typed_quit`'s tab-close step for `:q` on a
 /// tab's last pane: close the current tab and free every pane it reached.
-/// Refused, with nothing changed, when it is the only tab.
+/// Refused, with nothing changed, when it is the only tab, or when one of
+/// its panes started a pipe run still in flight.
 ///
 /// The adjacent tab (Vim's placement, see `TabStore::adjacent`) goes live
 /// before any pane state is dropped. `focus::install_layout` ends the
@@ -43,8 +44,14 @@ use super::pane::{drop_pane_state, open_pane_as_new_tab};
 pub(in crate::editor) fn close_tab(
     state: &mut EditorState,
     view: &mut EngineView,
-) -> Result<(), SingleTab> {
-    for detached in crate::editor::tab::close_tab(state, view)? {
+) -> Result<(), CloseRefused> {
+    if state.tabs.len() == 1 {
+        return Err(CloseRefused::Last);
+    }
+    check_no_pipe_from(state, &view.active_pane_ids())?;
+    let detached = crate::editor::tab::close_tab(state, view)
+        .unwrap_or_else(|SingleTab| unreachable!("one of several tabs closes"));
+    for detached in detached {
         drop_pane_state(state, view, detached);
     }
     Ok(())

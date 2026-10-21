@@ -425,7 +425,7 @@ fn closing_the_last_buffer_clears_engine_syntax_state() {
     // `bid` is the only open buffer, so this hits close_buffer's last-buffer
     // branch: `bid`'s slot is freed outright and a fresh scratch buffer
     // (no path, language=None, no syntax) opens under a new id.
-    ed.close_buffer(bid);
+    ed.close_buffer(bid).expect("the buffer runs no pipe");
 
     assert!(
         ed.state.buffers.try_get(bid).is_none(),

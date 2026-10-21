@@ -62,7 +62,7 @@ fn closing_the_buffer_a_search_prompt_snapshotted_leaves_the_prompt_usable() {
     ed.handle_key(key('/'));
     assert_eq!(ed.state.mode(), Mode::Search, "setup: search is open");
 
-    ed.close_buffer(closed);
+    ed.close_buffer(closed).expect("the buffer runs no pipe");
     ed.handle_key(key('o'));
     ed.handle_key(key_esc());
 
@@ -294,7 +294,7 @@ fn a_tracked_position_is_dropped_when_its_buffer_closes() {
         .tracked
         .track(other, ed.state.buffers.get(other).text(), head);
 
-    ed.close_buffer(other);
+    ed.close_buffer(other).expect("the buffer runs no pipe");
 
     assert_eq!(
         ed.state.panes.tracked.position(token, &ed.state.buffers),

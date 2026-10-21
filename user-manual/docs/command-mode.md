@@ -80,7 +80,7 @@ A tab is a saved window layout (its own set of panes and splits), not a per-buff
 | Command | Effect |
 |---------|--------|
 | `:tabnew [path]`, `:tabe [path]` | Open a new tab. With no `path`, the new tab's pane views the same buffer as the current one; with `path`, it opens that file instead |
-| `:tabclose`, `:tabc` | Close the current tab and every pane it owns. Refused with a message if it's the only tab |
+| `:tabclose`, `:tabc` | Close the current tab and every pane it owns. Refused with a message if it's the only tab, or if a `\|` run from one of its panes is still running; `:tabclose!` stops it and closes the tab |
 | `:tabnext`, `:tabn` | Switch to the next tab in display order |
 | `:tabprev`, `:tabp` | Switch to the previous tab in display order |
 

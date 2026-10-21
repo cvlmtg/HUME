@@ -257,7 +257,8 @@ pub(in crate::editor) fn cmd_vsplit_pane(
 
 /// `Ctrl-p c`: close the focused pane, collapsing the split onto its sibling.
 /// Refuses when it's the tab's only pane (`:q` owns closing the tab in that
-/// case; see `typed_quit`).
+/// case; see `typed_quit`), and while the pane's pipe run is in flight,
+/// naming `:q!`, the typed close that stops it.
 pub(in crate::editor) fn cmd_close_pane(
     state: &mut EditorState,
     view: &mut EngineView,
@@ -265,8 +266,12 @@ pub(in crate::editor) fn cmd_close_pane(
     _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    super::close_focused_pane(state, view)
-        .map_err(|_| CommandError::transient("cannot close last pane"))
+    super::close_focused_pane(state, view).map_err(|refused| match refused {
+        super::CloseRefused::Last => CommandError::transient("cannot close last pane"),
+        super::CloseRefused::PipeRunning(running) => {
+            super::pipe_running_refusal(state, view, running, ":q!")
+        }
+    })
 }
 
 /// `Ctrl-p r`: rotate the focused pane's row or column forward by `count`

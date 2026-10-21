@@ -33,6 +33,10 @@ pub(in crate::editor) enum PipeKind {
     Insert,
 }
 
+/// A close refused because it would stop the run in flight in this buffer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::editor) struct PipeRunning(pub(in crate::editor) BufferId);
+
 /// A run's identity. Ids grow in start order.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(in crate::editor) struct RunId(u64);
@@ -187,6 +191,15 @@ impl PipeRuns {
             .find(|run| run.id == id)
             .expect("a claimed run is in flight");
         run.launch.foreground = true;
+    }
+
+    /// The buffer of the oldest run in flight that one of `panes` started:
+    /// the run closing them would stop.
+    pub(in crate::editor) fn launched_from(&self, panes: &[PaneId]) -> Option<BufferId> {
+        self.runs
+            .iter()
+            .find(|run| panes.contains(&run.launch.pane))
+            .map(|run| run.launch.buffer)
     }
 
     /// The oldest run in flight started at or after `mark`.
@@ -547,13 +560,6 @@ impl EditorState {
         true
     }
 
-    /// Cancel every run `pid` started, as [`Self::cancel_pipe_run`] does.
-    pub(in crate::editor) fn cancel_pipe_runs_launched_by(&mut self, pid: PaneId) {
-        while let Some((launch, _)) = self.pipe_runs.take_where(|run| run.launch.pane == pid) {
-            self.withdraw_pipe_run(launch);
-        }
-    }
-
     /// Withdraw every run started at or after `mark`.
     fn withdraw_pipe_runs_from(&mut self, mark: RunId) {
         while let Some((launch, _)) = self.pipe_runs.take_where(|run| run.id >= mark) {
@@ -578,8 +584,8 @@ impl Editor {
     /// foreground one from here on, whoever started it. The input `console`
     /// left to the run loop joins [`Editor::input_backlog`]. A run something
     /// else took out while it was waited for, as a drawer's render proc
-    /// closing its buffer does, ends `Cancelled`: whatever took it out
-    /// reported it.
+    /// calling `(call! "cancel-pipe" pane)` does, ends `Cancelled`: whatever
+    /// took it out reported it.
     ///
     /// `Err` only when `console` fails; the run is cancelled first.
     pub(in crate::editor) fn wait_pipe_run(

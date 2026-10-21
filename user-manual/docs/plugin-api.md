@@ -148,7 +148,7 @@ A value naming a closed buffer raises for almost every call: the reads that need
 | `(line->char-offset pane line)` | 0-based char offset where 0-based content line `line` starts; raises when `line` is past the last line |
 | `(viewport-range pane)` | `(hash 'start-line first-line 'end-line end-line)` shown in `pane`'s own pane, 0-based end-exclusive; with wrapping on, `'end-line` may run a few lines past the bottom edge |
 | `(open-buffer! path)` | Open `path`, returning a pane-less pane value for it |
-| `(close-buffer! pane)` | Close a buffer |
+| `(close-buffer! pane)` | Close a buffer. Raises while a `\|` runs in it: stop it first with `(call! "cancel-pipe" pane)`, which returns whether one was running |
 | `(switch-to-buffer! pane target)` | Redirect `pane`'s own pane to `target`'s buffer |
 | `(show-read-only-buffer! pane name text)` | Show `text` in `pane`'s own pane, in a read-only buffer named `[name]` with the cursor on the first line. Calling it again with the same `name` replaces the text in that buffer. Raises for an empty `name` and for `messages`, `plugin-status` and `lsp-status`, which HUME's own commands use |
 | `(buffer-generation pane)` | Int, bumped by every mutation to the buffer: a staleness token for comparing against a stored snapshot |

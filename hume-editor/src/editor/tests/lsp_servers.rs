@@ -181,7 +181,9 @@ fn closing_the_last_buffer_of_a_server_stops_it_at_once() {
     let tmp = tempfile::tempdir().unwrap();
     let mut rig = two_servers(&tmp);
 
-    rig.ed.close_buffer(rig.bid);
+    rig.ed
+        .close_buffer(rig.bid)
+        .expect("the buffer runs no pipe");
 
     assert_eq!(rig.ed.state.lsp.instance_count_for_test(), 0);
 }
@@ -202,7 +204,9 @@ fn a_crashed_server_without_buffers_is_stopped_by_its_last_detach() {
         "a crashed instance keeps its buffers"
     );
 
-    rig.ed.close_buffer(rig.bid);
+    rig.ed
+        .close_buffer(rig.bid)
+        .expect("the buffer runs no pipe");
 
     assert_eq!(rig.ed.state.lsp.instance_count_for_test(), 0);
 }

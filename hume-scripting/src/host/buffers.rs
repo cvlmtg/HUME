@@ -107,7 +107,8 @@ pub trait BufferHost {
     /// Open a file at `path`, deduplicating if already open.
     /// Returns the `BufferId` (new or existing).
     fn open_buffer(&mut self, path: &Path) -> Result<BufferId, String>;
-    /// Close `id`. `Err` when `id` does not name an open buffer.
+    /// Close `id`. `Err` when `id` does not name an open buffer, or while a
+    /// pipe runs in it.
     fn close_buffer(&mut self, id: BufferId) -> Result<(), String>;
     /// Switch the focused pane to `target`, recording a jump entry.
     /// Redirect `pane`'s own pane to `target`, recording a jump entry.

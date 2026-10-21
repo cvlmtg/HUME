@@ -1354,7 +1354,8 @@ fn closing_a_buffer_retires_its_open_reload_confirm() {
         "setup: confirm must be open"
     );
 
-    crate::editor::buffer::lifecycle::close_buffer_and_notify(&mut ed.view, &mut ed.state, bid);
+    crate::editor::buffer::lifecycle::close_buffer_and_notify(&mut ed.view, &mut ed.state, bid)
+        .expect("the buffer runs no pipe");
 
     assert!(
         ed.state.input.confirm().is_none(),

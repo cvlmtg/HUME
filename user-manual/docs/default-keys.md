@@ -232,7 +232,7 @@ Press `Ctrl-p` then a second key:
 | `Ctrl-p l` | `pane-focus-right` |  | Focus pane to the right |
 | `Ctrl-p s` | `pane-split` |  | Split the focused pane, stacking the new pane below it |
 | `Ctrl-p v` | `pane-vsplit` |  | Split the focused pane side by side |
-| `Ctrl-p c` | `pane-close` |  | Close the focused pane (does nothing if it's the only pane) |
+| `Ctrl-p c` | `pane-close` |  | Close the focused pane (does nothing if it's the only pane, and refuses while a `\|` run from it is running) |
 | `Ctrl-p r` | `pane-rotate-forward` |  | Move each pane in the focused pane's row or column one place right or down (that many places with a count); the last one wraps to the first |
 | `Ctrl-p R` | `pane-rotate-backward` |  | Move each pane in the focused pane's row or column one place left or up (that many places with a count); the first one wraps to the last |
 | `Ctrl-p t` | `goto-next-tab` |  | Switch to the next tab in display order |

@@ -257,7 +257,7 @@ fn toggle_extend_runs_on_the_focused_pane() {
 fn closed_buffer_errors_for_every_command() {
     let mut ed = editor_from("-[a]>bc\n");
     let bid_b = ed.open_buffer(Buffer::at_start(BufferText::from("bbb\n")));
-    ed.close_buffer(bid_b);
+    ed.close_buffer(bid_b).expect("the buffer runs no pipe");
     assert!(ed.state.buffers.try_get(bid_b).is_none());
 
     for name in ["delete", "insert-before"]

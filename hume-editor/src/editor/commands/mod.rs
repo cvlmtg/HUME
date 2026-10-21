@@ -26,6 +26,7 @@ use hume_engine::pipeline::{BufferId, ContentWidth, EngineView, PaneId};
 use super::buffer::{Buffer, TextRefusal};
 use super::doc_ops;
 use super::jump_list::{JumpRule, with_jump};
+use super::pipe_run::PipeRunning;
 use super::register_ops;
 use super::{EditorState, Severity};
 use crate::editor::error::CommandError;
@@ -180,13 +181,44 @@ pub(in crate::editor::commands) fn read_only_refusal(
     refuse_text_change(state, error)
 }
 
-/// The refusal a command that would stop `bid`'s pipe run gives without `!`.
+/// The refusal of a close that would stop `running`, naming `way_out`, the
+/// typed command that goes ahead. `Ctrl-c` is offered too when the run's
+/// buffer is in the focused pane, the only buffer it stops.
 pub(in crate::editor::commands) fn pipe_running_refusal(
     state: &EditorState,
-    bid: BufferId,
+    view: &EngineView,
+    PipeRunning(bid): PipeRunning,
+    way_out: &str,
 ) -> CommandError {
     let name = state.buffers.get(bid).display_name();
-    CommandError::transient(format!("A pipe is running in {name} (add ! to override)"))
+    let focused = view.panes[view.focused_pane()].buffer_id() == bid;
+    CommandError::transient(if focused {
+        format!("A pipe is running in {name}: Ctrl-c stops it, or use {way_out}")
+    } else {
+        format!("A pipe is running in {name}: use {way_out}")
+    })
+}
+
+/// Run `close`; with `force`, stop each pipe run that refuses it and run it
+/// again: the `!` of a typed close. A refusal other than a pipe run, and
+/// any refusal without `force`, comes back as it is.
+pub(in crate::editor::commands) fn close_stopping_pipes(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    force: bool,
+    mut close: impl FnMut(&mut EditorState, &mut EngineView) -> Result<(), CloseRefused>,
+) -> Result<(), CloseRefused> {
+    loop {
+        match close(state, view) {
+            Err(CloseRefused::PipeRunning(PipeRunning(bid))) if force => {
+                assert!(
+                    state.cancel_pipe_run(bid),
+                    "a close refused for a run that is not in flight"
+                );
+            }
+            closed => return closed,
+        }
+    }
 }
 
 /// `error`, with the register prefix the refused command consumed cleared.
@@ -436,6 +468,7 @@ pub(in crate::editor) use collect::{collect_operand, finish_text_operand, run_co
 pub(in crate::editor) use insert_session::{
     arm_autoindent, autoindent_owned, end_insert_session, tear_down_insert,
 };
+pub(in crate::editor) use pane::CloseRefused;
 use pane::{SPLIT_TOO_SMALL_MSG, close_focused_pane};
 pub(in crate::editor) use pane::{fits_split, split_pane_onto};
 pub(in crate::editor) use pipe::{apply_pipe_output, cmd_cancel_pipe, cmd_pipe, is_blank_command};

@@ -876,7 +876,7 @@ fn reload_config_explicit_language_restore_skips_a_bid_that_closed_after_the_sna
 
     // The close lands between the snapshot and the sweep that would
     // otherwise restore onto `bid`: `bid`'s slot is now freed.
-    ed.close_buffer(bid);
+    ed.close_buffer(bid).expect("the buffer runs no pipe");
     assert!(
         ed.state.buffers.try_get(bid).is_none(),
         "setup: bid's slot must actually be freed"

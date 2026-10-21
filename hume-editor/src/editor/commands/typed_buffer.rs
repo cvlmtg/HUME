@@ -189,9 +189,9 @@ pub(in crate::editor) fn typed_pwd(
 
 /// `:bd`: delete (close) the focused buffer.
 ///
-/// If the buffer is dirty or a pipe runs on it and `force` is false,
-/// returns an error; with `force` the run is cancelled. If it is the only
-/// buffer, it is replaced with a scratch buffer.
+/// If the buffer is dirty or a pipe runs in it and `force` is false,
+/// returns an error; with `force` the run is stopped first. If it is the
+/// only buffer, it is replaced with a scratch buffer.
 pub(in crate::editor) fn typed_buffer_delete(
     ed: &mut Editor,
     fp: FocusedPane,
@@ -204,11 +204,11 @@ pub(in crate::editor) fn typed_buffer_delete(
             "unsaved changes (use :bd! to force)",
         ));
     }
-    if ed.state.buffers.get(id).is_busy() && !force {
-        return Err(super::pipe_running_refusal(&ed.state, id));
+    if force {
+        ed.state.cancel_pipe_run(id);
     }
-    ed.close_buffer(id);
-    Ok(())
+    ed.close_buffer(id)
+        .map_err(|running| super::pipe_running_refusal(&ed.state, &ed.view, running, ":bd!"))
 }
 
 /// `:b` / `:buffer`: switch to an open buffer by name, prefix, index, or full path.

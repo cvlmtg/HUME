@@ -306,7 +306,7 @@ pub(crate) fn open_buffer(ctx: &mut SteelCtx, path: String) -> SteelResult {
 /// `(close-buffer! pane)` → void.
 ///
 /// Closes `pane`'s buffer. Raises a Steel error for an invalid or unknown
-/// buffer.
+/// buffer, or one a pipe is running in.
 pub(crate) fn close_buffer(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
     // The host applies the close (and its focus fallout) synchronously, not
     // as a deferred effect: `focused-pane`/`switch-to-buffer!`'s own

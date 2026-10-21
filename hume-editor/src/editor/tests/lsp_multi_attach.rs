@@ -100,7 +100,9 @@ fn two_servers_both_receive_did_open_change_save_close() {
     type_insert(&mut rig.ed, "x");
     rig.ed.drain_lsp();
     rig.ed.execute_typed("w", None).unwrap();
-    rig.ed.close_buffer(rig.bid);
+    rig.ed
+        .close_buffer(rig.bid)
+        .expect("the buffer runs no pipe");
 
     for sid in [ra, lint] {
         assert_eq!(rig.sent(sid, "textDocument/didOpen").len(), 1, "{sid:?}");
