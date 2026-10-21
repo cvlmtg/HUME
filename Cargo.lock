@@ -902,6 +902,7 @@ dependencies = [
  "ctrlc",
  "gethostname",
  "hume-grid",
+ "insta",
  "nix",
  "signal-hook 0.4.4",
  "tempfile",

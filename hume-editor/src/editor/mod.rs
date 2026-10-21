@@ -66,7 +66,6 @@ mod registry;
 mod replay;
 pub(crate) mod search;
 pub(crate) mod settings;
-mod shell_batch;
 mod syntax;
 pub(crate) mod tab;
 mod theme;

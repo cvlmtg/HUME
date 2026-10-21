@@ -28,6 +28,7 @@ use hume_editing::tab_style::TabStyle;
 use hume_editing::text::LineEnding;
 use hume_engine::builtins::line_number::LineNumberStyle;
 use hume_engine::pane::{WhitespaceConfig, WhitespaceRender, WrapMode};
+use hume_platform::process::batch::ShellCommand;
 use hume_scripting::host::OptionInput;
 
 use crate::editor::lsp::diagnostics::DiagSeverity;
@@ -425,55 +426,6 @@ settings_enum!(WordSelectsWhitespace, [
     Before => "before",
     After => "after",
 ]);
-
-/// The program and leading arguments a shell command line runs under; the
-/// command line itself is appended as one more argument (`sh -c <line>`).
-/// The program is never empty: [`Self::from_words`], which every value goes
-/// through, refuses one.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ShellCommand {
-    program: String,
-    args: Vec<String>,
-}
-
-impl Default for ShellCommand {
-    fn default() -> Self {
-        Self {
-            program: "sh".to_string(),
-            args: vec!["-c".to_string()],
-        }
-    }
-}
-
-impl ShellCommand {
-    /// The program to run and its arguments, `command_line` last.
-    pub(in crate::editor) fn argv(&self, command_line: &str) -> (String, Vec<String>) {
-        let mut args = self.args.clone();
-        args.push(command_line.to_string());
-        (self.program.clone(), args)
-    }
-
-    /// The command whose program is `words`' first and whose arguments are
-    /// the rest. `Err` when there is no first word or it is empty.
-    pub(in crate::editor) fn from_words(words: Vec<String>) -> Result<Self, String> {
-        let mut words = words.into_iter();
-        let program = words
-            .next()
-            .filter(|program| !program.is_empty())
-            .ok_or_else(|| "needs a program to run".to_string())?;
-        Ok(Self {
-            program,
-            args: words.collect(),
-        })
-    }
-
-    fn words(&self) -> Vec<String> {
-        std::iter::once(&self.program)
-            .chain(&self.args)
-            .cloned()
-            .collect()
-    }
-}
 
 impl SettingText for ShellCommand {
     const VALUES: &'static [&'static str] = &[];

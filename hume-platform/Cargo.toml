@@ -9,6 +9,9 @@ termina = "0.4.0"
 gethostname = "1"
 tempfile = "3"
 
+[dev-dependencies]
+insta = "1.47"
+
 [features]
 # Exposes test-only doubles/constants to consumer crates — same convention as
 # hume-lsp's `test-util` (see its `src/lib.rs`).

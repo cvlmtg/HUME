@@ -13,6 +13,7 @@ use std::time::{Duration, Instant};
 
 use hume_editing::selection::SelectionSet;
 use hume_engine::pipeline::{BufferId, PaneId};
+use hume_platform::process::batch::{BatchProgress, Captured, ShellBatch, ShellFailure};
 use hume_platform::wake::WakeCallback;
 use termina::EventReader;
 use termina::event::{Event as TerminalEvent, KeyCode, KeyEvent, KeyEventKind, Modifiers};
@@ -22,7 +23,6 @@ use super::commands;
 use super::keymap::{BindMode, WalkResult};
 use super::lifecycle::FramePacer;
 use super::replay::{DeferredChange, DeferredOutcome};
-use super::shell_batch::{BatchProgress, Captured, ShellBatch, ShellFailure};
 use super::{Editor, EditorState, Severity};
 
 /// What a pipe does with its command's output.

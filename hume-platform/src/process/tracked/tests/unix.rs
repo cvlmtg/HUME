@@ -8,6 +8,7 @@
 
 use super::super::*;
 use crate::process::spawn_in_own_group;
+use crate::process::test_support::is_alive;
 use nix::sys::signal::{Signal, kill};
 use nix::sys::wait::{WaitPidFlag, WaitStatus, waitpid};
 use nix::unistd::Pid;
@@ -16,10 +17,6 @@ use std::process::{Command, ExitStatus};
 use std::sync::Arc;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
-
-fn is_alive(pid: i32) -> bool {
-    kill(Pid::from_raw(pid), None).is_ok()
-}
 
 /// SIGKILLs and reaps a child this test spawned but never routed through a
 /// `Child` the test still holds. `kill_tracked_children`'s own reap path

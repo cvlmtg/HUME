@@ -44,6 +44,10 @@ pub mod job;
 /// Process-wide tracking so a force-exit can still reap long-lived children.
 pub mod tracked;
 
+/// One shell command line run once per input under a shared limit on
+/// running processes, for the editor's `pipe`.
+pub mod batch;
+
 /// SIGCHLD as a counter, behind [`tracked::TrackedChild::wait_for_exit`].
 #[cfg(unix)]
 mod exit_watch;
@@ -463,3 +467,6 @@ impl NewProcessGroup for Command {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(all(test, unix))]
+mod test_support;
