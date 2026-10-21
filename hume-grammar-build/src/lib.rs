@@ -30,8 +30,8 @@ enum Scanner {
 }
 
 impl Sources {
-    /// `scanner.c` is used when a grammar ships both scanners, as the
-    /// tree-sitter CLI does.
+    /// The scanner is the first of `scanner.c`, `scanner.cc` and
+    /// `scanner.cpp` that the grammar ships.
     fn find(grammar_dir: &Path) -> Result<Self, Error> {
         let dir = grammar_dir.join("src");
         let parser = dir.join("parser.c");
@@ -39,13 +39,14 @@ impl Sources {
             return Err(Error::NoParser(parser));
         }
         let c = dir.join("scanner.c");
-        let cpp = dir.join("scanner.cc");
         let scanner = if c.is_file() {
             Some(Scanner::C(c))
-        } else if cpp.is_file() {
-            Some(Scanner::Cpp(cpp))
         } else {
-            None
+            ["scanner.cc", "scanner.cpp"]
+                .into_iter()
+                .map(|name| dir.join(name))
+                .find(|path| path.is_file())
+                .map(Scanner::Cpp)
         };
         Ok(Self {
             dir,

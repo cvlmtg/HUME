@@ -61,10 +61,10 @@ cp -R hume-*/bin hume-*/libexec hume-*/share /usr/local/
 ```
 
 ::: warning macOS: "cannot be opened" dialog
-The binaries aren't signed, so Gatekeeper may refuse to run them with a "cannot be opened" dialog. This happens if you extract the archive by double-clicking it in Finder rather than with `tar` above. Clear the quarantine flag once and it won't come back:
+The binaries aren't signed, so Gatekeeper may refuse to run them with a "cannot be opened" dialog. This happens if you extract the archive by double-clicking it in Finder rather than with `tar` above. Clear the quarantine flag from the whole extracted folder once and it won't come back:
 
 ```sh
-xattr -d com.apple.quarantine hume-*/bin/hume
+xattr -dr com.apple.quarantine hume-*
 ```
 :::
 

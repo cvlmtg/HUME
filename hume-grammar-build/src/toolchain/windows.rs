@@ -4,8 +4,8 @@
 //! is not installed. It also treats `clang` and `zig cc` as clang-family and
 //! passes them `--target=<host LLVM triple>`, which `zig cc` rejects and
 //! which forces the MSVC ABI onto a clang paired with MinGW. A fallback
-//! driver here runs with no `cc` arguments at all, so each compiler keeps
-//! its own native target.
+//! driver here runs with its own arguments in place of `cc`'s, so each
+//! compiler keeps its own native target.
 
 use std::io;
 use std::process::Command;
@@ -14,7 +14,7 @@ use super::{Compiler, Flavor, TARGET};
 use crate::Error;
 
 /// A compiler found on `PATH`, in the order they are preferred.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum WindowsCompiler {
     Msvc,
     Clang,
@@ -36,6 +36,29 @@ fn choose_windows_compiler(exists: impl Fn(&str) -> bool) -> Option<WindowsCompi
     .map(|(_, compiler)| compiler)
 }
 
+/// The program and arguments that drive `compiler` in place of `cc`, or
+/// `None` for MSVC, which `cc` drives itself.
+///
+/// The arguments stand in for those `cc` would add: an optimization level,
+/// and for g++ a static C++ runtime, so the DLL does not need MinGW's
+/// runtime DLLs on `PATH` when HUME loads it.
+fn fallback_driver(
+    compiler: WindowsCompiler,
+    cpp: bool,
+) -> Option<(&'static str, Vec<&'static str>)> {
+    match (compiler, cpp) {
+        (WindowsCompiler::Msvc, _) => None,
+        (WindowsCompiler::Clang, false) => Some(("clang", vec!["-O2"])),
+        (WindowsCompiler::Clang, true) => Some(("clang++", vec!["-O2"])),
+        (WindowsCompiler::Gcc, false) => Some(("gcc", vec!["-O2"])),
+        (WindowsCompiler::Gcc, true) => {
+            Some(("g++", vec!["-O2", "-static-libgcc", "-static-libstdc++"]))
+        }
+        (WindowsCompiler::Zig, false) => Some(("zig", vec!["cc", "-O2"])),
+        (WindowsCompiler::Zig, true) => Some(("zig", vec!["c++", "-O2"])),
+    }
+}
+
 /// A non-MSVC driver, or `None` to let `cc` choose: when `CC`/`CXX` names
 /// one, or MSVC is installed.
 pub(super) fn without_msvc(cpp: bool) -> Result<Option<Compiler>, Error> {
@@ -46,24 +69,20 @@ pub(super) fn without_msvc(cpp: bool) -> Result<Option<Compiler>, Error> {
         (name == "cl" && cc::windows_registry::find_tool(TARGET, "cl.exe").is_some())
             || exe_on_path(name)
     };
-    let (program, args): (&str, &[&str]) = match choose_windows_compiler(exists) {
-        Some(WindowsCompiler::Msvc) => return Ok(None),
-        Some(WindowsCompiler::Clang) => (if cpp { "clang++" } else { "clang" }, &[]),
-        Some(WindowsCompiler::Gcc) => (if cpp { "g++" } else { "gcc" }, &[]),
-        Some(WindowsCompiler::Zig) => ("zig", if cpp { &["c++"] } else { &["cc"] }),
-        None => {
-            return Err(Error::NoCompiler(
-                "install one of: MSVC Build Tools, clang, gcc, or zig, and ensure it is on PATH"
-                    .to_string(),
-            ));
-        }
-    };
-    Ok(Some(Compiler {
-        program: program.into(),
-        args: args.iter().map(Into::into).collect(),
-        env: Vec::new(),
-        flavor: Flavor::Gnu,
-    }))
+    let compiler = choose_windows_compiler(exists).ok_or_else(|| {
+        Error::NoCompiler(
+            "install one of: MSVC Build Tools, clang, gcc, or zig, and ensure it is on PATH"
+                .to_string(),
+        )
+    })?;
+    Ok(
+        fallback_driver(compiler, cpp).map(|(program, args)| Compiler {
+            program: program.into(),
+            args: args.into_iter().map(Into::into).collect(),
+            env: Vec::new(),
+            flavor: Flavor::Gnu,
+        }),
+    )
 }
 
 /// Whether `name` resolves to a runnable executable on `PATH`.

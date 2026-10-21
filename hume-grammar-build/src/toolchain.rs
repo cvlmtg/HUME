@@ -19,7 +19,8 @@ pub(crate) enum Flavor {
 pub(crate) struct Compiler {
     program: PathBuf,
     args: Vec<OsString>,
-    env: Vec<(OsString, OsString)>,
+    /// `None` removes the variable.
+    env: Vec<(OsString, Option<OsString>)>,
     flavor: Flavor,
 }
 
@@ -42,10 +43,16 @@ impl Compiler {
             .target(TARGET)
             .try_get_compiler()
             .map_err(|e| Error::NoCompiler(e.to_string()))?;
+        // `to_command` is what adds the extra words of `CC`/`CXX` (a wrapper
+        // such as `ccache`, or flags), which `path()` and `args()` leave out.
+        let command = tool.to_command();
         Ok(Self {
-            program: tool.path().to_path_buf(),
-            args: tool.args().to_vec(),
-            env: tool.env().to_vec(),
+            program: command.get_program().into(),
+            args: command.get_args().map(OsString::from).collect(),
+            env: command
+                .get_envs()
+                .map(|(key, value)| (key.to_owned(), value.map(OsString::from)))
+                .collect(),
             flavor: if tool.is_like_msvc() {
                 Flavor::Msvc
             } else {
@@ -60,16 +67,18 @@ impl Compiler {
 
     /// Run the driver with `args` after its own, in `cwd`, inheriting stdio.
     pub(crate) fn run(&self, args: &[OsString], cwd: &Path) -> Result<(), Error> {
-        let status = Command::new(&self.program)
-            .args(&self.args)
-            .args(args)
-            .envs(self.env.iter().map(|(key, value)| (key, value)))
-            .current_dir(cwd)
-            .status()
-            .map_err(|source| Error::Spawn {
-                program: self.program.clone(),
-                source,
-            })?;
+        let mut command = Command::new(&self.program);
+        command.args(&self.args).args(args).current_dir(cwd);
+        for (key, value) in &self.env {
+            match value {
+                Some(value) => command.env(key, value),
+                None => command.env_remove(key),
+            };
+        }
+        let status = command.status().map_err(|source| Error::Spawn {
+            program: self.program.clone(),
+            source,
+        })?;
         if status.success() {
             Ok(())
         } else {

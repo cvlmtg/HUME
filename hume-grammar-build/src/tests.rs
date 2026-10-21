@@ -32,6 +32,13 @@ fn sources_find_a_cpp_scanner() {
 }
 
 #[test]
+fn sources_find_a_cpp_scanner_with_the_cpp_extension() {
+    let dir = grammar(&[("parser.c", ""), ("scanner.cpp", "")]);
+    let sources = Sources::find(dir.path()).expect("sources");
+    assert!(matches!(sources.scanner, Some(Scanner::Cpp(path)) if path.ends_with("scanner.cpp")));
+}
+
+#[test]
 fn sources_without_a_scanner_have_none() {
     let dir = grammar(&[("parser.c", "")]);
     let sources = Sources::find(dir.path()).expect("sources");

@@ -29,3 +29,33 @@ fn choose_windows_compiler_none_when_nothing_present() {
     let choice = choose_windows_compiler(|_| false);
     assert_eq!(choice, None);
 }
+
+#[test]
+fn fallback_driver_leaves_msvc_to_cc() {
+    assert_eq!(fallback_driver(WindowsCompiler::Msvc, false), None);
+    assert_eq!(fallback_driver(WindowsCompiler::Msvc, true), None);
+}
+
+#[test]
+fn fallback_drivers_name_the_language_driver_and_optimize() {
+    let cases = [
+        (WindowsCompiler::Clang, false, "clang", vec!["-O2"]),
+        (WindowsCompiler::Clang, true, "clang++", vec!["-O2"]),
+        (WindowsCompiler::Gcc, false, "gcc", vec!["-O2"]),
+        (
+            WindowsCompiler::Gcc,
+            true,
+            "g++",
+            vec!["-O2", "-static-libgcc", "-static-libstdc++"],
+        ),
+        (WindowsCompiler::Zig, false, "zig", vec!["cc", "-O2"]),
+        (WindowsCompiler::Zig, true, "zig", vec!["c++", "-O2"]),
+    ];
+    for (compiler, cpp, program, args) in cases {
+        assert_eq!(
+            fallback_driver(compiler, cpp),
+            Some((program, args)),
+            "{compiler:?} cpp={cpp}"
+        );
+    }
+}
