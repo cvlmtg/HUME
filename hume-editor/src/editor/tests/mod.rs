@@ -2,6 +2,7 @@
 // Each submodule does `use super::*;` to access these.
 
 use hume_platform::dirs::Dirs;
+use hume_platform::wake::no_op_wake;
 use hume_scripting::host::NativeCall;
 use std::cell::Cell;
 use std::path::PathBuf;
@@ -79,7 +80,7 @@ fn open_headless(path: Option<PathBuf>) -> Editor {
     Editor::open(
         path,
         crate::editor::lifecycle::HEADLESS_TERMINAL,
-        std::sync::Arc::new(|| {}),
+        no_op_wake(),
         Dirs::none(),
         test_cwd(),
     )

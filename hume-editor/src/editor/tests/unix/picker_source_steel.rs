@@ -185,7 +185,7 @@ fn picker_source_stop_kills_the_child_and_no_further_rows_land() {
     );
 
     assert!(
-        !process_is_alive(pid),
+        !is_alive(pid),
         "picker-source-stop! must kill its source child"
     );
 }
@@ -307,7 +307,7 @@ fn picker_close_kills_the_source_child() {
     );
 
     assert!(
-        !process_is_alive(pid),
+        !is_alive(pid),
         "closing the picker must kill its source child"
     );
 

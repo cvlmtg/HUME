@@ -238,7 +238,7 @@ fn close_picker_kills_the_source_child() {
     picker::close_picker(&mut ed.state, &ed.view);
 
     assert!(
-        !process_is_alive(pid),
+        !is_alive(pid),
         "closing the picker must kill its source child"
     );
 }
@@ -273,7 +273,7 @@ fn replacing_the_session_kills_the_previous_source_child() {
         .expect("no `.` is in progress");
 
     assert!(
-        !process_is_alive(pid),
+        !is_alive(pid),
         "replacing the session must kill the old session's source child"
     );
 }
@@ -317,7 +317,7 @@ fn a_second_attach_source_kills_the_first_source_child() {
         .attach_source(second, vec![0]);
 
     assert!(
-        !process_is_alive(first_pid),
+        !is_alive(first_pid),
         "attaching a second source must kill the first (re-spawn-replaces-source semantics)"
     );
 }

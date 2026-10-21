@@ -137,37 +137,31 @@ fn stderr_loop_forwards_lines_after_one_that_is_not_utf8() {
 }
 
 #[test]
-fn stderr_loop_wakes_on_forwarded_lines() {
-    let cursor = Cursor::new(b"first line\nsecond line\n".to_vec());
-    let (tx, _rx) = mpsc::sync_channel(STDERR_CHANNEL_BOUND);
+fn stderr_loop_wakes_once_per_read_that_forwarded_lines() {
+    // `Chain` never crosses from one cursor to the next within one read,
+    // so this is two reads: two lines, then one.
+    let reader = Cursor::new(b"first line\nsecond line\n".to_vec())
+        .chain(Cursor::new(b"third line\n".to_vec()));
+    let (tx, rx) = mpsc::sync_channel(STDERR_CHANNEL_BOUND);
     let (wake, rx_wake) = counting_wake();
-    stderr_loop(cursor, &tx, &wake);
-    rx_wake
-        .recv_timeout(std::time::Duration::from_secs(1))
-        .expect("wake for first line");
-    rx_wake
-        .recv_timeout(std::time::Duration::from_secs(1))
-        .expect("wake for second line");
-    assert!(rx_wake.try_recv().is_err(), "exactly two lines, two wakes");
+    stderr_loop(reader, &tx, &wake);
+    assert_eq!(rx.try_iter().count(), 3);
+    assert_eq!(rx_wake.try_iter().count(), 2, "one wake per read");
 }
 
 #[test]
-fn stderr_flood_wakes_only_for_lines_that_were_actually_forwarded() {
-    // Bound of 2, 5 lines: 3 are dropped by `try_send`'s `Full` arm and
-    // must not wake (see `stderr_loop`'s doc): only 2 wakes expected.
-    let cursor = Cursor::new(b"a\nb\nc\nd\ne\n".to_vec());
+fn stderr_flood_wakes_only_for_a_read_that_forwarded_a_line() {
+    // Bound of 2. The first read's two lines fill the channel; the second
+    // read's three are all dropped by `try_send`'s `Full` arm and must not
+    // wake (see `stderr_loop`'s doc).
+    let reader = Cursor::new(b"a\nb\n".to_vec()).chain(Cursor::new(b"c\nd\ne\n".to_vec()));
     let (tx, _rx) = mpsc::sync_channel(2);
     let (wake, rx_wake) = counting_wake();
-    stderr_loop(cursor, &tx, &wake);
-    rx_wake
-        .recv_timeout(std::time::Duration::from_secs(1))
-        .expect("wake 1");
-    rx_wake
-        .recv_timeout(std::time::Duration::from_secs(1))
-        .expect("wake 2");
-    assert!(
-        rx_wake.try_recv().is_err(),
-        "dropped lines under the flood must not also wake"
+    stderr_loop(reader, &tx, &wake);
+    assert_eq!(
+        rx_wake.try_iter().count(),
+        1,
+        "a read whose lines were all dropped must not wake"
     );
 }
 

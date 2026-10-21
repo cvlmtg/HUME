@@ -186,29 +186,5 @@ fn captured(label: &str, result: JobResult) -> Result<Captured, ShellFailure> {
     Ok(Captured { stdout, stderr })
 }
 
-/// A `sh` command that logs `+` as it starts and `-` as it ends to `log`,
-/// for a test of how many processes run at once.
-#[cfg(all(unix, any(test, feature = "test-util")))]
-pub fn logging_command(log: &Path) -> String {
-    format!(
-        "echo + >> '{log}'; sleep 0.1; echo - >> '{log}'",
-        log = log.display()
-    )
-}
-
-/// How many processes [`logging_command`] saw start, and the most that ran
-/// at once.
-#[cfg(all(unix, any(test, feature = "test-util")))]
-pub fn starts_and_peak(log: &Path) -> (usize, i32) {
-    let events = std::fs::read_to_string(log).expect("log written");
-    let mut running = 0i32;
-    let mut peak = 0;
-    for line in events.lines() {
-        running += if line == "+" { 1 } else { -1 };
-        peak = peak.max(running);
-    }
-    (events.lines().filter(|&line| line == "+").count(), peak)
-}
-
 #[cfg(test)]
 mod tests;

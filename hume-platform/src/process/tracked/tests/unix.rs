@@ -36,7 +36,7 @@ fn kill_and_reap(pid: i32) {
 fn wait_until_dead(pid: i32, timeout: Duration) -> bool {
     let deadline = Instant::now() + timeout;
     while Instant::now() < deadline {
-        if !is_alive(pid) {
+        if !is_alive(pid.unsigned_abs()) {
             return true;
         }
         std::thread::sleep(Duration::from_millis(10));
@@ -174,7 +174,7 @@ fn kill_all_does_not_reach_a_dropped_and_deregistered_child() {
     // child is still alive before cleaning it up ourselves.
     std::thread::sleep(Duration::from_millis(100));
     assert!(
-        is_alive(pid),
+        is_alive(pid.unsigned_abs()),
         "kill_all must not reach a child whose handle was already dropped"
     );
     kill_and_reap(pid);
@@ -262,7 +262,7 @@ fn kill_all_waits_for_a_contended_table_lock() {
     // skip the child while the lock is still held.
     std::thread::sleep(Duration::from_millis(100));
     assert!(
-        is_alive(pid),
+        is_alive(pid.unsigned_abs()),
         "kill_all must not have run yet: the table lock is still held"
     );
 

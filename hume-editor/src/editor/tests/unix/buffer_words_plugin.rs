@@ -34,7 +34,7 @@ fn setup(guard: &RuntimeDirs, tmp: &Path, config_expr: Option<&str>) -> Editor {
     let mut ed = Editor::open(
         None,
         crate::editor::lifecycle::HEADLESS_TERMINAL,
-        std::sync::Arc::new(|| {}),
+        no_op_wake(),
         guard.dirs(),
         test_cwd(),
     )
@@ -548,7 +548,7 @@ fn an_invalid_match_config_fails_the_load() {
     let mut ed = Editor::open(
         None,
         crate::editor::lifecycle::HEADLESS_TERMINAL,
-        std::sync::Arc::new(|| {}),
+        no_op_wake(),
         guard.dirs(),
         test_cwd(),
     )

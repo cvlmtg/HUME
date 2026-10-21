@@ -14,6 +14,7 @@ use super::*;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
+use hume_platform::process::test_support::is_alive;
 use hume_platform::wake::no_op_wake;
 
 // ── Shared async-drain helpers ────────────────────────────────────────────────
@@ -79,20 +80,6 @@ fn drain_until_picker_total(ed: &mut Editor, n: usize) {
 /// using.
 fn source_detached(ed: &Editor) -> bool {
     ed.state.input.picker().is_some_and(|p| !p.has_source())
-}
-
-// ── Shared process-liveness helper ──────────────────────────────────────────
-
-/// `kill -0` against the real OS as an independent liveness check. It never
-/// asks the handle itself whether it thinks the child is alive.
-fn process_is_alive(pid: u32) -> bool {
-    std::process::Command::new("kill")
-        .args(["-0", &pid.to_string()])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .expect("spawn kill -0")
-        .success()
 }
 
 // ── Shared unix-only guards and fixtures ─────────────────────────────────────

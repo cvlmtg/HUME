@@ -5,6 +5,7 @@
 
 use super::test_cwd;
 use hume_platform::dirs::Dirs;
+use hume_platform::wake::no_op_wake;
 use std::path::{Path, PathBuf};
 
 use hume_engine::pipeline::BufferId;
@@ -131,7 +132,7 @@ impl LspRig {
         let mut ed = Editor::open(
             None,
             crate::editor::lifecycle::HEADLESS_TERMINAL,
-            std::sync::Arc::new(|| {}),
+            no_op_wake(),
             spec.dirs.clone(),
             test_cwd(),
         )

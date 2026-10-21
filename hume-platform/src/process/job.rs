@@ -28,14 +28,15 @@ use std::io::{self, Write};
 use std::path::Path;
 use std::process::{ChildStdin, ExitStatus};
 use std::sync::mpsc;
-use std::thread::{self, JoinHandle};
+use std::thread::JoinHandle;
 
 use crate::process::child::{
-    JOB_STDOUT_CAP, STDERR_CAPTURE_CAP, read_bounded, read_capped, spawn_piped,
+    JOB_STDOUT_CAP, STDERR_CAPTURE_CAP, read_bounded, read_capped, spawn_bridge,
+    spawn_bridge_waking, spawn_piped,
 };
-use crate::process::start_failed;
+use crate::process::decode_lossy;
 use crate::process::tracked::TrackedChild;
-use crate::wake::{WakeCallback, spawn_waking};
+use crate::wake::WakeCallback;
 
 /// The complete output of a finished [`SpawnedJob`]: whole stdout as raw
 /// bytes, left to the caller to decode (never truncated: capped
@@ -54,6 +55,18 @@ pub struct JobResult {
     pub stdout: Vec<u8>,
     pub stderr: String,
     pub status: Option<ExitStatus>,
+}
+
+impl JobResult {
+    /// The result of a job that produced no usable output: no stdout, no
+    /// exit status, and `stderr` saying why.
+    pub fn failed(stderr: String) -> Self {
+        Self {
+            stdout: Vec::new(),
+            stderr,
+            status: None,
+        }
+    }
 }
 
 /// A running external command whose whole output is being captured to
@@ -93,17 +106,17 @@ pub fn spawn_job(
     let child = TrackedChild::new(child.into_inner());
     let failed = |e| {
         child.reap();
-        start_failed(cmd, e)
+        e
     };
 
     let (tx, rx) = mpsc::sync_channel::<JobResult>(1);
 
-    let writer = feed_stdin(stdin, input).map_err(failed)?;
+    let writer = feed_stdin(cmd, stdin, input).map_err(failed)?;
 
-    let stderr_thread = thread::Builder::new()
-        .name("hume-job-stderr".into())
-        .spawn(move || read_capped(stderr, STDERR_CAPTURE_CAP))
-        .map_err(failed)?;
+    let stderr_thread = spawn_bridge(cmd, "hume-job-stderr", move || {
+        read_capped(stderr, STDERR_CAPTURE_CAP)
+    })
+    .map_err(failed)?;
 
     let job_child = child.clone();
     let job_cmd = cmd.to_string();
@@ -116,7 +129,7 @@ pub fn spawn_job(
     // The wake fires as the body returns, after the send below, so a
     // panicking read still wakes the drain to observe the synthesized
     // result `try_take_result` produces on disconnect.
-    spawn_waking("hume-job", wake, move || {
+    spawn_bridge_waking(cmd, "hume-job", wake, move |_| {
         let stdout_result = read_bounded(stdout, JOB_STDOUT_CAP);
         // A panicked stderr thread degrades to empty stderr rather than
         // wedging this job forever. The exit status still carries the
@@ -133,18 +146,14 @@ pub fn spawn_job(
         let result = match stdout_result.and_then(|out| stdin_result.map(|()| out)) {
             Ok(stdout_bytes) => JobResult {
                 stdout: stdout_bytes,
-                stderr: String::from_utf8_lossy(&stderr_bytes).into_owned(),
+                stderr: decode_lossy(stderr_bytes),
                 status,
             },
             // A truncated stdout, or output computed from truncated
             // input, is worse than none: hand back the documented
             // spawn-failure shape (empty stdout, a message in stderr,
             // no exit code) rather than short data.
-            Err(e) => JobResult {
-                stdout: Vec::new(),
-                stderr: format!("{job_cmd}: {e}"),
-                status: None,
-            },
+            Err(e) => JobResult::failed(format!("{job_cmd}: {e}")),
         };
         let _ = tx.send(result);
     })
@@ -158,21 +167,23 @@ pub fn spawn_job(
 
 /// Writes `input` to `stdin` on its own thread and closes it; empty input
 /// closes it at once, with no thread.
-fn feed_stdin(stdin: ChildStdin, input: Vec<u8>) -> io::Result<Option<JoinHandle<io::Result<()>>>> {
+fn feed_stdin(
+    cmd: &str,
+    stdin: ChildStdin,
+    input: Vec<u8>,
+) -> io::Result<Option<JoinHandle<io::Result<()>>>> {
     if input.is_empty() {
         return Ok(None);
     }
-    let writer = thread::Builder::new()
-        .name("hume-job-stdin".into())
-        .spawn(move || {
-            let mut stdin = stdin;
-            match stdin.write_all(&input) {
-                // A child may exit without reading all of its input
-                // (`head -1`); its exit status decides whether it failed.
-                Err(e) if e.kind() == io::ErrorKind::BrokenPipe => Ok(()),
-                other => other.map_err(|e| io::Error::new(e.kind(), format!("writing stdin: {e}"))),
-            }
-        })?;
+    let writer = spawn_bridge(cmd, "hume-job-stdin", move || {
+        let mut stdin = stdin;
+        match stdin.write_all(&input) {
+            // A child may exit without reading all of its input
+            // (`head -1`); its exit status decides whether it failed.
+            Err(e) if e.kind() == io::ErrorKind::BrokenPipe => Ok(()),
+            other => other.map_err(|e| io::Error::new(e.kind(), format!("writing stdin: {e}"))),
+        }
+    })?;
     Ok(Some(writer))
 }
 
@@ -199,11 +210,7 @@ impl SpawnedJob {
         let result = match rx.try_recv() {
             Ok(result) => result,
             Err(mpsc::TryRecvError::Empty) => return None,
-            Err(mpsc::TryRecvError::Disconnected) => JobResult {
-                stdout: Vec::new(),
-                stderr: String::new(),
-                status: None,
-            },
+            Err(mpsc::TryRecvError::Disconnected) => JobResult::failed(String::new()),
         };
         self.rx = None;
         Some(result)
@@ -264,6 +271,7 @@ mod tests {
         use std::time::{Duration, Instant};
 
         use super::*;
+        use crate::process::test_support::is_alive;
         use crate::wake::counting_wake;
 
         fn spawn_sh(script: &str) -> SpawnedJob {
@@ -285,7 +293,7 @@ mod tests {
                     return result;
                 }
                 assert!(Instant::now() < deadline, "job never completed");
-                thread::sleep(Duration::from_millis(10));
+                std::thread::sleep(Duration::from_millis(10));
             }
         }
 
@@ -418,7 +426,7 @@ mod tests {
             let args = vec!["30".to_string()];
             let job = spawn_job("sleep", &args, Path::new("."), Vec::new(), no_op_wake())
                 .expect("spawn sleep");
-            let pid = nix::unistd::Pid::from_raw(i32::try_from(job.pid()).expect("pid fits i32"));
+            let pid = job.pid();
             let started = Instant::now();
             drop(job);
             assert!(
@@ -427,7 +435,7 @@ mod tests {
                 started.elapsed()
             );
             assert!(
-                nix::sys::signal::kill(pid, None).is_err(),
+                !is_alive(pid),
                 "child must already be dead once Drop has returned"
             );
         }

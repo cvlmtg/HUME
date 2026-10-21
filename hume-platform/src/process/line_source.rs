@@ -21,15 +21,21 @@
 use std::io::{self, Read};
 use std::path::Path;
 use std::process::ExitStatus;
-use std::sync::Arc;
 use std::sync::mpsc;
-use std::thread;
 use std::time::Duration;
 
-use crate::process::child::{STDERR_CAPTURE_CAP, read_capped, spawn_piped};
-use crate::process::start_failed;
+use crate::process::child::{
+    STDERR_CAPTURE_CAP, read_capped, spawn_bridge, spawn_bridge_waking, spawn_piped,
+};
+use crate::process::decode_lossy;
 use crate::process::tracked::TrackedChild;
-use crate::wake::{WakeCallback, spawn_waking};
+use crate::wake::WakeCallback;
+
+/// The longest line a [`LineSplitter`] keeps. Bytes past it, up to the next
+/// delimiter, are dropped: a stream with no delimiters (binary output, a
+/// progress bar redrawn with `\r`) would otherwise grow the carried line
+/// for as long as the child runs.
+const MAX_LINE_BYTES: usize = 1024 * 1024;
 
 /// Splits a byte stream into complete lines on `delim`, carrying a trailing
 /// partial line across `push_chunk` calls.
@@ -38,12 +44,6 @@ use crate::wake::{WakeCallback, spawn_waking};
 /// (Windows CRLF output); NUL-delimited streams (`#:nul #t`, e.g.
 /// `git ls-files -z`) do not, since NUL-separated records have no CRLF
 /// convention to strip.
-/// The longest line a [`LineSplitter`] keeps. Bytes past it, up to the next
-/// delimiter, are dropped: a stream with no delimiters (binary output, a
-/// progress bar redrawn with `\r`) would otherwise grow the carried line
-/// for as long as the child runs.
-const MAX_LINE_BYTES: usize = 1024 * 1024;
-
 struct LineSplitter {
     delim: u8,
     strip_cr: bool,
@@ -97,7 +97,7 @@ impl LineSplitter {
         if self.strip_cr && line.last() == Some(&b'\r') {
             line.pop();
         }
-        String::from_utf8_lossy(&line).into_owned()
+        decode_lossy(line)
     }
 }
 
@@ -159,25 +159,20 @@ pub fn spawn_line_source(
     // below, so a bridging thread failing to spawn leaves nothing for the
     // process to leak. A thread that already started is not joined here:
     // killing the child closes stdout/stderr, which ends its blocking read.
-    let reader_wake = Arc::clone(&wake);
-    spawn_waking("hume-line-source-reader", wake, move || {
+    spawn_bridge_waking(cmd, "hume-line-source-reader", wake, move |wake| {
         read_lines(stdout, delimiter, |batch| {
             let sent = tx.send(batch).is_ok();
             if sent {
-                reader_wake();
+                wake();
             }
             sent
         });
-    })
-    .map_err(|e| start_failed(cmd, e))?;
+    })?;
 
-    thread::Builder::new()
-        .name("hume-line-source-stderr".into())
-        .spawn(move || {
-            let captured = read_capped(stderr, STDERR_CAPTURE_CAP);
-            let _ = tx_err.send(String::from_utf8_lossy(&captured).into_owned());
-        })
-        .map_err(|e| start_failed(cmd, e))?;
+    spawn_bridge(cmd, "hume-line-source-stderr", move || {
+        let captured = read_capped(stderr, STDERR_CAPTURE_CAP);
+        let _ = tx_err.send(decode_lossy(captured));
+    })?;
 
     Ok(SpawnedLineSource {
         cmd: cmd.to_string(),
@@ -399,6 +394,7 @@ mod tests {
     #[cfg(unix)]
     mod unix {
         use super::*;
+        use crate::process::test_support::is_alive;
         use crate::wake::counting_wake;
         use std::time::Instant;
 
@@ -414,7 +410,7 @@ mod tests {
                     return lines;
                 }
                 assert!(Instant::now() < deadline, "reader never disconnected");
-                thread::sleep(Duration::from_millis(10));
+                std::thread::sleep(Duration::from_millis(10));
             }
         }
 
@@ -491,8 +487,7 @@ mod tests {
             let mut source = spawn_line_source("sh", &args, Path::new("."), b'\n', no_op_wake())
                 .expect("spawn sh");
             drain_until_disconnected(&mut source);
-            let pid =
-                nix::unistd::Pid::from_raw(i32::try_from(source.child.id()).expect("pid fits i32"));
+            let pid = source.child.id();
 
             // 5s, not a tight bound on the kill/reap/stderr-EOF handoff
             // itself (which spans two thread wakeups and is scheduler-
@@ -512,7 +507,7 @@ mod tests {
                 "the killed child must still be reaped, not left as unknown"
             );
             assert!(
-                nix::sys::signal::kill(pid, None).is_err(),
+                !is_alive(pid),
                 "child must already be dead once finish() has returned"
             );
         }
@@ -527,8 +522,7 @@ mod tests {
             let args = vec!["30".to_string()];
             let source = spawn_line_source("sleep", &args, Path::new("."), b'\n', no_op_wake())
                 .expect("spawn sleep");
-            let pid =
-                nix::unistd::Pid::from_raw(i32::try_from(source.child.id()).expect("pid fits i32"));
+            let pid = source.child.id();
             let started = Instant::now();
             drop(source);
             assert!(
@@ -537,7 +531,7 @@ mod tests {
                 started.elapsed()
             );
             assert!(
-                nix::sys::signal::kill(pid, None).is_err(),
+                !is_alive(pid),
                 "child must already be dead once Drop has returned"
             );
         }

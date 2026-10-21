@@ -194,10 +194,7 @@ fn cancel_async_prevents_the_callback_and_kills_the_child() {
         started.elapsed()
     );
 
-    assert!(
-        !process_is_alive(pid),
-        "cancel-async! must kill its job's child"
-    );
+    assert!(!is_alive(pid), "cancel-async! must kill its job's child");
 
     ed.drain_async_sources();
     ed.settle();

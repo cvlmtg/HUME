@@ -5,8 +5,7 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use super::super::*;
-use crate::process::batch::{logging_command, starts_and_peak};
-use crate::process::test_support::is_alive;
+use crate::process::test_support::{is_alive, logging_command, starts_and_peak};
 use crate::wake::no_op_wake;
 
 fn batch(command: &str, inputs: &[&str]) -> ShellBatch {
@@ -121,7 +120,7 @@ fn the_first_failure_ends_the_batch_and_dropping_it_kills_the_rest() {
     finish(&mut b, 2).expect_err("one input fails");
     drop(b);
 
-    let pid: i32 = std::fs::read_to_string(&pid_file)
+    let pid: u32 = std::fs::read_to_string(&pid_file)
         .expect("the slow process started before the failure")
         .trim()
         .parse()

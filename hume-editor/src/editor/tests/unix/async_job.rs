@@ -128,10 +128,7 @@ fn cancel_kills_the_child_and_drops_the_callback_without_firing_it() {
         started.elapsed()
     );
 
-    assert!(
-        !process_is_alive(pid),
-        "cancel-async! must kill its job's child"
-    );
+    assert!(!is_alive(pid), "cancel-async! must kill its job's child");
     assert!(!ed.state.config.async_jobs.contains_key(&id));
 
     // Draining after cancel must never fire the dropped callback.

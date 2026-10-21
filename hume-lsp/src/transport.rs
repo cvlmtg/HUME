@@ -12,8 +12,8 @@ use std::thread;
 
 use hume_platform::process::line_source::read_lines;
 use hume_platform::process::tracked::TrackedChild;
-use hume_platform::process::{spawn_piped, start_failed};
-use hume_platform::wake::{WakeCallback, spawn_waking};
+use hume_platform::process::{spawn_bridge, spawn_bridge_waking, spawn_piped};
+use hume_platform::wake::WakeCallback;
 
 use crate::codec::{self, Message};
 
@@ -94,26 +94,19 @@ impl ServerHandle {
         // happens: killing the child closes stdout/stderr, ending the
         // reader/stderr loops, and the writer loop ends once `tx_out` (and
         // every other sender into `rx_out`) drops at the same `?` return.
-        let reader_wake = Arc::clone(&wake);
-        let reader = spawn_waking("hume-lsp-reader", Arc::clone(&wake), move || {
-            reader_loop(BufReader::new(stdout), &tx_events, &reader_wake)
-        })
-        .map_err(|e| start_failed(cmd, e))?;
+        let reader = spawn_bridge_waking(cmd, "hume-lsp-reader", Arc::clone(&wake), move |wake| {
+            reader_loop(BufReader::new(stdout), &tx_events, wake)
+        })?;
 
         let (writer_done_tx, writer_done) = mpsc::channel::<()>();
-        let writer = thread::Builder::new()
-            .name("hume-lsp-writer".into())
-            .spawn(move || {
-                let _done = writer_done_tx;
-                writer_loop(stdin, rx_out)
-            })
-            .map_err(|e| start_failed(cmd, e))?;
+        let writer = spawn_bridge(cmd, "hume-lsp-writer", move || {
+            let _done = writer_done_tx;
+            writer_loop(stdin, rx_out)
+        })?;
 
-        let stderr_wake = Arc::clone(&wake);
-        let stderr_thread = spawn_waking("hume-lsp-stderr", wake, move || {
-            stderr_loop(stderr, &tx_stderr, &stderr_wake)
-        })
-        .map_err(|e| start_failed(cmd, e))?;
+        let stderr_thread = spawn_bridge_waking(cmd, "hume-lsp-stderr", wake, move |wake| {
+            stderr_loop(stderr, &tx_stderr, wake)
+        })?;
 
         Ok(ServerHandle {
             tx: Some(tx_out),
@@ -254,30 +247,27 @@ fn writer_loop(mut w: impl Write, rx: mpsc::Receiver<Message>) {
 /// the line rather than blocking (see `STDERR_CHANNEL_BOUND`): stderr is
 /// Trace-level logging, not protocol traffic, so losing a line under a
 /// flood is an acceptable trade against ever stalling this thread. Wakes
-/// the main loop only on a forwarded line. A dropped (`Full`) line adds no
-/// observable data, and the send that filled the channel already woke it.
+/// the main loop once per read that forwarded a line. A dropped (`Full`)
+/// line adds no observable data, and the send that filled the channel
+/// already woke it. Stops once the receiver is gone.
 /// Known risk: a server that crashes right after a burst fills the channel
 /// can have its most useful line (the one explaining *why*) dropped
 /// along with the flood, right when the log is most needed.
 fn stderr_loop(r: impl Read, tx: &mpsc::SyncSender<String>, wake: &WakeCallback) {
     read_lines(r, b'\n', |lines| {
-        lines
-            .into_iter()
-            .all(|line| forward_stderr_line(line, tx, wake))
-    });
-}
-
-/// Sends `line` without blocking, waking the main loop when it was sent.
-/// `false` once the receiver is gone.
-fn forward_stderr_line(line: String, tx: &mpsc::SyncSender<String>, wake: &WakeCallback) -> bool {
-    match tx.try_send(line) {
-        Ok(()) => {
-            wake();
-            true
+        let mut forwarded = false;
+        for line in lines {
+            match tx.try_send(line) {
+                Ok(()) => forwarded = true,
+                Err(mpsc::TrySendError::Full(_)) => {}
+                Err(mpsc::TrySendError::Disconnected(_)) => return false,
+            }
         }
-        Err(mpsc::TrySendError::Full(_)) => true,
-        Err(mpsc::TrySendError::Disconnected(_)) => false,
-    }
+        if forwarded {
+            wake();
+        }
+        true
+    });
 }
 
 #[cfg(test)]

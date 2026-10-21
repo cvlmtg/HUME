@@ -23,16 +23,16 @@ impl Drop for WakeOnDrop {
 /// Spawns a thread named `name` running `body`, and calls `wake` once when
 /// the thread ends, whether `body` returns or panics. A drain woken that
 /// way sees the thread's channel disconnect, so a dead worker is noticed
-/// without polling. A `body` that also wakes after each result it posts
-/// takes its own clone of `wake`.
+/// without polling. `body` is lent the same `wake`, for one that also wakes
+/// after each result it posts.
 pub fn spawn_waking<T, F>(name: &str, wake: WakeCallback, body: F) -> io::Result<JoinHandle<T>>
 where
-    F: FnOnce() -> T + Send + 'static,
+    F: FnOnce(&WakeCallback) -> T + Send + 'static,
     T: Send + 'static,
 {
     thread::Builder::new().name(name.into()).spawn(move || {
-        let _wake_on_drop = WakeOnDrop(wake);
-        body()
+        let wake_on_drop = WakeOnDrop(wake);
+        body(&wake_on_drop.0)
     })
 }
 
@@ -62,7 +62,7 @@ mod tests {
     #[test]
     fn a_waking_thread_wakes_once_when_its_body_returns() {
         let (wake, woken) = counting_wake();
-        let handle = spawn_waking("hume-test-waking", wake, || 7).expect("spawn");
+        let handle = spawn_waking("hume-test-waking", wake, |_| 7).expect("spawn");
         assert_eq!(handle.join().expect("no panic"), 7);
         assert_eq!(woken.try_iter().count(), 1);
     }
@@ -70,7 +70,7 @@ mod tests {
     #[test]
     fn a_waking_thread_wakes_when_its_body_panics() {
         let (wake, woken) = counting_wake();
-        let handle = spawn_waking::<(), _>("hume-test-waking", wake, || {
+        let handle = spawn_waking::<(), _>("hume-test-waking", wake, |_| {
             panic!("simulated worker crash")
         })
         .expect("spawn");

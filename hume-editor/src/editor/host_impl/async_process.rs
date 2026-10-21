@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 
 use super::EditorHostImpl;
+use hume_platform::process::job::JobResult;
 use hume_scripting::host::{AsyncProcessHost, async_callback_args};
 
 impl<'a> AsyncProcessHost for EditorHostImpl<'a> {
@@ -35,7 +36,7 @@ impl<'a> AsyncProcessHost for EditorHostImpl<'a> {
             Err(e) => {
                 self.state.queue_background_call(
                     callback,
-                    async_callback_args(String::new(), e.to_string(), None),
+                    async_callback_args(JobResult::failed(e.to_string())),
                 );
                 // The `Ok` arm needs no wake: the job thread wakes the loop
                 // itself on completion. This callback has no background

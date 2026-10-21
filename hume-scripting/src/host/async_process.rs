@@ -1,24 +1,29 @@
 //! Async subprocess execution (`spawn-async!`/`cancel-async!`).
 
 use std::path::PathBuf;
+use std::process::ExitStatus;
 
+use hume_platform::process::decode_lossy;
+use hume_platform::process::job::JobResult;
 use steel::rvals::SteelVal;
 
 /// A process's exit code as Steel sees it: the code, or `#f` when there is
 /// none (the process could not start, was killed by a signal, or its exit
 /// could not be read). Every builtin that reports an exit code uses this, so
 /// "no exit code" has one spelling.
-pub fn exit_code_value(code: Option<i32>) -> SteelVal {
-    code.map_or(SteelVal::BoolV(false), |code| SteelVal::IntV(code as isize))
+pub(crate) fn exit_code_value(status: Option<ExitStatus>) -> SteelVal {
+    status
+        .and_then(|status| status.code())
+        .map_or(SteelVal::BoolV(false), |code| SteelVal::IntV(code as isize))
 }
 
-/// The arguments a `spawn-async!` callback receives:
-/// `(stdout stderr exit-code)`, with `exit-code` from [`exit_code_value`].
-pub fn async_callback_args(stdout: String, stderr: String, code: Option<i32>) -> Vec<SteelVal> {
+/// The arguments a `spawn-async!` callback receives for `result`:
+/// `(stdout stderr exit-code)`, with `exit-code` `#f` when there is none.
+pub fn async_callback_args(result: JobResult) -> Vec<SteelVal> {
     vec![
-        SteelVal::StringV(stdout.into()),
-        SteelVal::StringV(stderr.into()),
-        exit_code_value(code),
+        SteelVal::StringV(decode_lossy(result.stdout).into()),
+        SteelVal::StringV(result.stderr.into()),
+        exit_code_value(result.status),
     ]
 }
 

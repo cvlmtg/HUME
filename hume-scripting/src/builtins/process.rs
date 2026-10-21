@@ -8,6 +8,7 @@
 //! doc for why this is a one-shot capture rather than the picker's
 //! line-batch streaming (`picker-source-spawn!`).
 
+use hume_platform::process::decode_lossy;
 use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
@@ -93,18 +94,18 @@ pub(crate) fn run_capture(
         format!("run-capture!: running {cmd} {args:?}"),
     );
 
-    let (stdout, stderr, code) = match hume_platform::process::run_capture(&cmd, &args, &cwd) {
+    let (stdout, stderr, status) = match hume_platform::process::run_capture(&cmd, &args, &cwd) {
         Ok(output) => (
-            String::from_utf8_lossy(&output.stdout).into_owned(),
-            String::from_utf8_lossy(&output.stderr).into_owned(),
-            output.status.code(),
+            decode_lossy(output.stdout),
+            decode_lossy(output.stderr),
+            Some(output.status),
         ),
         Err(e) => (String::new(), e.to_string(), None),
     };
     Ok(symbol_hash([
         ("stdout", SteelVal::StringV(stdout.into())),
         ("stderr", SteelVal::StringV(stderr.into())),
-        ("exit", exit_code_value(code)),
+        ("exit", exit_code_value(status)),
     ]))
 }
 

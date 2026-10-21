@@ -26,11 +26,12 @@ use crate::path::strip_unc_prefix;
 /// Shared spawn/pipe machinery underneath [`line_source`] (line-batch
 /// streaming, for the picker's external-command source) and [`job`]
 /// (whole-output capture, for `spawn-async!` and `pipe`). Only
-/// [`spawn_piped`] is public, for a child that bridges its own stdio, such
-/// as a language server.
+/// [`spawn_piped`] and its thread starters [`spawn_bridge`] and
+/// [`spawn_bridge_waking`] are public, for a child that bridges its own
+/// stdio, such as a language server.
 pub(crate) mod child;
 
-pub use child::spawn_piped;
+pub use child::{spawn_bridge, spawn_bridge_waking, spawn_piped};
 
 /// Streaming a child's stdout into complete lines, for the picker's
 /// external-command source (`picker-source-spawn!`).
@@ -338,6 +339,12 @@ pub fn failure_message(program: &str, status: Option<ExitStatus>, stderr: &str) 
     message
 }
 
+/// A child's output as text, each invalid UTF-8 sequence replaced with
+/// U+FFFD. Valid output is reused, not copied.
+pub fn decode_lossy(bytes: Vec<u8>) -> String {
+    String::from_utf8(bytes).unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned())
+}
+
 /// Whether no C compiler at all was found on `PATH` (neither `cl` nor any of
 /// the `choose_windows_compiler` fallbacks). Used to append an install hint
 /// to grammar-compile failure messages, without misattributing a real
@@ -364,9 +371,9 @@ pub fn no_windows_compiler_found(cwd: &Path) -> bool {
 }
 
 /// A child started in its own process group, as [`spawn_piped`] starts
-/// one, with what a kill needs to reach the processes it starts: on Unix the process group the child
-/// leads, on Windows the job it runs in. Dropping it on Windows closes the
-/// job, which ends every process in it.
+/// one, with what a kill needs to reach the processes it starts: on Unix
+/// the process group the child leads, on Windows the job it runs in.
+/// Dropping it on Windows closes the job, which ends every process in it.
 pub struct GroupedChild {
     child: std::process::Child,
     #[cfg(windows)]
@@ -500,5 +507,5 @@ impl NewProcessGroup for Command {
 #[cfg(test)]
 mod tests;
 
-#[cfg(all(test, unix))]
-mod test_support;
+#[cfg(all(unix, any(test, feature = "test-util")))]
+pub mod test_support;

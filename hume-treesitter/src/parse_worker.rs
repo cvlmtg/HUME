@@ -236,11 +236,10 @@ struct WorkerState {
     tx: mpsc::Sender<ParseDone>,
     parser: tree_sitter::Parser,
     cancel: Arc<AtomicBool>,
-    wake: WakeCallback,
 }
 
 impl WorkerState {
-    fn run(mut self) {
+    fn run(mut self, wake: &WakeCallback) {
         loop {
             // Block until at least one request arrives; exit when the main
             // thread closes the channel (editor shutting down).
@@ -267,7 +266,7 @@ impl WorkerState {
                 if self.tx.send(done).is_err() {
                     return;
                 }
-                (self.wake)();
+                wake();
             }
 
             if disconnected {
@@ -315,10 +314,9 @@ impl ThreadedParseBackend {
             tx: tx_done,
             parser: tree_sitter::Parser::new(),
             cancel: Arc::clone(&cancel),
-            wake: Arc::clone(&wake),
         };
 
-        let thread = spawn_waking("hume-parse-worker", wake, move || state.run())
+        let thread = spawn_waking("hume-parse-worker", wake, move |wake| state.run(wake))
             .expect("failed to spawn parse worker thread");
 
         Self {

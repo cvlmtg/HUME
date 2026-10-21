@@ -51,12 +51,8 @@ impl Editor {
                 .async_jobs
                 .remove(&id)
                 .expect("just found by get_mut above");
-            let stdout = String::from_utf8(result.stdout)
-                .unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned());
-            self.state.queue_background_call(
-                pending.callback,
-                async_callback_args(stdout, result.stderr, result.status.and_then(|s| s.code())),
-            );
+            self.state
+                .queue_background_call(pending.callback, async_callback_args(result));
         }
     }
 }

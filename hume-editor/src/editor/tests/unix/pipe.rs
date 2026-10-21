@@ -14,7 +14,7 @@ use crate::editor::pipe_run::{
     Detached, PipeConsole, PipeEnd, PipeKind, PipeProgress, PipeRuns, RunId, WaitEvent,
 };
 use crate::editor::replay::Answer;
-use hume_platform::process::batch::{logging_command, starts_and_peak};
+use hume_platform::process::test_support::{logging_command, starts_and_peak};
 
 // ── Waiting for a pipe run ───────────────────────────────────────────────────────
 
@@ -391,7 +391,7 @@ fn an_interrupt_during_dot_kills_the_run_and_changes_nothing() {
         .trim()
         .parse()
         .expect("a pid");
-    assert!(!process_is_alive(pid), "the cancelled process must be gone");
+    assert!(!is_alive(pid), "the cancelled process must be gone");
 
     ed.feed_key(key('u'));
     assert_eq!(text(&ed), "a\n");
@@ -754,7 +754,7 @@ fn ctrl_c_kills_the_background_processes() {
     let pid = start_sleeper(&mut ed, dir.path());
     ed.handle_key(key_ctrl('c'));
     assert!(!ed.doc().is_busy());
-    assert!(!process_is_alive(pid), "the process is gone after Ctrl-c");
+    assert!(!is_alive(pid), "the process is gone after Ctrl-c");
     assert_eq!(state(&ed), "-[a]>\n");
 }
 
@@ -767,7 +767,7 @@ fn e_bang_stops_the_run_and_reloads() {
     std::fs::write(&file, "HELLO!!\n").expect("file rewritten");
     type_cmd(&mut ed, ":e!");
     assert!(!ed.doc().is_busy(), "the run stopped");
-    assert!(!process_is_alive(pid), "its process is gone");
+    assert!(!is_alive(pid), "its process is gone");
     assert_eq!(text(&ed), "HELLO!!\n");
 }
 
@@ -785,7 +785,7 @@ fn close_buffer_from_steel_raises_while_the_run_is_in_flight() {
     let pid = start_sleeper(&mut ed, dir.path());
     ed.execute_keymap_command("closer".into(), None, false);
     assert!(ed.state.buffers.try_get(bid).is_some(), "the buffer stays");
-    assert!(process_is_alive(pid), "its run goes on");
+    assert!(is_alive(pid), "its run goes on");
     assert!(has_error(
         &ed,
         &format!(
@@ -811,7 +811,7 @@ fn calling_cancel_pipe_then_close_buffer_from_steel_closes_it() {
     let pid = start_sleeper(&mut ed, dir.path());
     ed.execute_keymap_command("closer".into(), None, false);
     assert!(ed.state.buffers.try_get(bid).is_none(), "the buffer closed");
-    assert!(!process_is_alive(pid), "its run's process is gone");
+    assert!(!is_alive(pid), "its run's process is gone");
 }
 
 #[test]
@@ -831,7 +831,7 @@ fn calling_cancel_pipe_says_whether_it_stopped_a_run() {
     );
     ed.execute_keymap_command("stopper".into(), None, false);
     assert!(!busy(&ed, bid));
-    assert!(!process_is_alive(pid), "its run's process is gone");
+    assert!(!is_alive(pid), "its run's process is gone");
     assert!(
         ed.state
             .message_log

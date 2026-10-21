@@ -68,7 +68,7 @@ fn setup_with_source(
     let mut ed = Editor::open(
         None,
         crate::editor::lifecycle::HEADLESS_TERMINAL,
-        std::sync::Arc::new(|| {}),
+        no_op_wake(),
         guard.dirs(),
         test_cwd(),
     )

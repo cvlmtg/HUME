@@ -6,8 +6,10 @@
 use std::io::{self, Read};
 use std::path::Path;
 use std::process::{ChildStderr, ChildStdin, ChildStdout, Stdio};
+use std::thread::{self, JoinHandle};
 
-use crate::process::{ReapOnDrop, base_command, spawn_in_own_group};
+use crate::process::{ReapOnDrop, base_command, spawn_in_own_group, start_failed};
+use crate::wake::{WakeCallback, spawn_waking};
 
 /// Cap on captured stderr bytes: enough for a useful error message. Bytes
 /// past the cap are still drained from the pipe (so a chatty child never
@@ -52,6 +54,34 @@ pub fn spawn_piped(
     let stdout = child.get_mut().stdout.take().expect("piped stdout");
     let stderr = child.get_mut().stderr.take().expect("piped stderr");
     Ok((child, stdin, stdout, stderr))
+}
+
+/// Starts a thread named `name` that bridges `program`'s stdio. A failure
+/// to start it names `program`, as a failed spawn does.
+pub fn spawn_bridge<T, F>(program: &str, name: &str, body: F) -> io::Result<JoinHandle<T>>
+where
+    F: FnOnce() -> T + Send + 'static,
+    T: Send + 'static,
+{
+    thread::Builder::new()
+        .name(name.into())
+        .spawn(body)
+        .map_err(|e| start_failed(program, e))
+}
+
+/// [`spawn_bridge`] for a thread that wakes the main loop, started through
+/// [`spawn_waking`].
+pub fn spawn_bridge_waking<T, F>(
+    program: &str,
+    name: &str,
+    wake: WakeCallback,
+    body: F,
+) -> io::Result<JoinHandle<T>>
+where
+    F: FnOnce(&WakeCallback) -> T + Send + 'static,
+    T: Send + 'static,
+{
+    spawn_waking(name, wake, body).map_err(|e| start_failed(program, e))
 }
 
 /// Reads `r` to EOF, retaining at most `cap` bytes but always draining the

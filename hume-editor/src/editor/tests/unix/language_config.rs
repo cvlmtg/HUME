@@ -53,7 +53,7 @@ fn boot_with_file(file: &str, dirs: Dirs, fixture: &ReloadFixture) -> Editor {
     let mut ed = Editor::open(
         Some(path),
         crate::editor::lifecycle::HEADLESS_TERMINAL,
-        std::sync::Arc::new(|| {}),
+        no_op_wake(),
         dirs,
         test_cwd(),
     )
