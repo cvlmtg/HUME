@@ -85,6 +85,49 @@ fn a_word_splits_at_its_last_slash() {
     assert_eq!(split_at_sep(r"a\b"), ("", r"a\b"));
 }
 
+/// Marks the cursor in a test line; `|` would read as an operator.
+const CURSOR: char = '‸';
+
+#[test]
+fn the_word_at_the_cursor_and_whether_it_names_a_program() {
+    for (line, expected, command_position) in [
+        ("‸", "", true),
+        ("gr‸", "gr", true),
+        ("  gr‸", "gr", true),
+        ("ls gr‸", "gr", false),
+        ("ls ‸", "", false),
+        ("ls | gr‸", "gr", true),
+        ("ls | ‸", "", true),
+        ("ls|gr‸", "gr", true),
+        ("a || gr‸", "gr", true),
+        ("a && gr‸", "gr", true),
+        ("a & gr‸", "gr", true),
+        ("a; gr‸", "gr", true),
+        ("(gr‸", "gr", true),
+        ("echo $(gr‸", "gr", true),
+        ("sort > ou‸", "ou", false),
+        ("cat <in‸", "in", false),
+        (r"cat my\ di‸", r"my\ di", false),
+        (r"cat a\|b‸", r"a\|b", false),
+        ("cat fi‸le other", "file", false),
+        ("cat fi‸le|wc", "file", false),
+        ("cat 5.48\u{202f}P‸M.png", "5.48\u{202f}PM.png", false),
+        ("cat a\u{a0}b‸ c", "a\u{a0}b", false),
+        (r"cat my\‸ dir", r"my\ dir", false),
+        (r"cat my\‸ \ dir x", r"my\ \ dir", false),
+        (r"cat a\\‸ b", r"a\\", false),
+    ] {
+        let cursor = line.find(CURSOR).expect("a cursor mark");
+        let input = line.replacen(CURSOR, "", 1);
+        let word = word_at(&input, cursor);
+        assert_eq!(
+            (&input[word.span], word.command_position),
+            (expected, command_position),
+            "{line:?}"
+        );
+    }
+}
+
 #[test]
 fn blanks_are_space_tab_and_newline() {
     assert!([' ', '\t', '\n'].into_iter().all(is_blank));

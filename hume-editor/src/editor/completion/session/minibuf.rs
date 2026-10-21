@@ -53,6 +53,9 @@ pub(in crate::editor) struct MinibufSession {
     /// last [`Self::rank`]. Until then nothing is highlighted and Tab
     /// proposes the candidates' common prefix instead of a candidate.
     picked: bool,
+    /// The invoked source's
+    /// [`prefix_cut`](super::super::registry::MinibufSourceEntry::prefix_cut).
+    prefix_cut: fn(&str) -> &str,
     core: SlotSet<MinibufSourceId, MinibufSpan>,
 }
 
@@ -68,13 +71,19 @@ fn common_prefix<'a>(a: &'a str, b: &str) -> &'a str {
 }
 
 impl MinibufSession {
-    /// A session over a minibuffer line's `input`, cursor at byte `cursor`.
-    pub(in crate::editor) fn open(input: String, cursor: usize) -> Self {
+    /// A session over a minibuffer line's `input`, cursor at byte `cursor`,
+    /// for a source whose common prefixes `prefix_cut` cuts.
+    pub(in crate::editor) fn open(
+        input: String,
+        cursor: usize,
+        prefix_cut: fn(&str) -> &str,
+    ) -> Self {
         Self {
             input,
             cursor,
             menu_anchor: None,
             picked: false,
+            prefix_cut,
             core: SlotSet::new(),
         }
     }
@@ -123,6 +132,7 @@ impl MinibufSession {
             cursor,
             menu_anchor,
             picked,
+            prefix_cut: _,
             core,
         } = self;
         *picked = false;
@@ -183,28 +193,25 @@ impl MinibufSession {
 
     /// The edit Tab applies: the picked candidate over its span, or with
     /// nothing picked, the candidates' common prefix over the span, cut by
-    /// each candidate's source's `prefix_cut`. `None` when there is nothing
-    /// to apply, including a common prefix that does not extend what is
-    /// already typed (a fuzzy match can share less than the typed text).
-    /// The typed text is the whole token, so with the cursor mid-token the
-    /// prefix rarely extends it and the first Tab only opens the popup.
-    pub(in crate::editor) fn proposed_apply(
-        &self,
-        sources: &SourceRegistry,
-    ) -> Option<(Range<usize>, Cow<'_, str>)> {
+    /// the source's `prefix_cut`. `None` when there is nothing to apply,
+    /// including a common prefix that does not extend what is already typed
+    /// (a fuzzy match can share less than the typed text). The typed text
+    /// is the whole token, so with the cursor mid-token the prefix rarely
+    /// extends it and the first Tab only opens the popup.
+    pub(in crate::editor) fn proposed_apply(&self) -> Option<(Range<usize>, Cow<'_, str>)> {
         if self.picked {
             let (_, inv, item) = self.core.ranked(self.core.selected())?;
             return Some((inv.span.bytes.clone(), Cow::Borrowed(item.insert_text())));
         }
-        let cut = |source| sources.minibuf_get(source).prefix_cut;
-        let (first_source, inv, first) = self.core.ranked(0)?;
+        let (_, inv, first) = self.core.ranked(0)?;
         let span = inv.span.bytes.clone();
-        let prefix = (1..self.core.len())
-            .filter_map(|i| self.core.ranked(i))
-            .fold(
-                cut(first_source)(first.insert_text()),
-                |p, (source, _, item)| cut(source)(common_prefix(p, item.insert_text())),
-            );
+        let prefix = (self.prefix_cut)(
+            (1..self.core.len())
+                .filter_map(|i| self.core.selected_item(i))
+                .fold(first.insert_text(), |p, item| {
+                    common_prefix(p, item.insert_text())
+                }),
+        );
         let typed = &self.input[span.clone()];
         let extends = prefix.len() > typed.len() && super::prefix_matches(prefix, typed, false);
         extends.then_some((span, Cow::Borrowed(prefix)))

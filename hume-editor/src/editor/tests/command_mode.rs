@@ -1265,7 +1265,7 @@ fn history_up_clears_completion_popup() {
     // Open and trigger completion.
     ed.handle_key(key(':'));
     ed.handle_key(key('q')); // partial input
-    ed.handle_key(key_tab()); // Tab → CompleteRequested → may open popup
+    ed.handle_key(key_tab()); // may open the popup
     // Completion may or may not be Some depending on candidates, but pressing
     // Up must clear it regardless.
     ed.handle_key(key_up());

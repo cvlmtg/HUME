@@ -93,7 +93,7 @@ before the cursor: the buffer's `word-chars` plus the source's own
 `#:token-chars`. A `Minibuf` source's is the whitespace-delimited argument,
 so `#:token-chars` is refused there.
 
-The seven native minibuffer sources (`command`, `buffer-name`, `theme` —
+The native minibuffer sources (`command`, `buffer-name`, `theme` —
 `NativeUniverse`; `path`, `path-dirs-only`, `set`, `shell` —
 `NativeDelegated`) are compiled in. `TypedCommand.completer` (`Option<Cow<'static, str>>`) names any
 entry by name — a built-in's `&'static str` constant, or the runtime string

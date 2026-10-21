@@ -5,6 +5,7 @@
 use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
 
+use super::super::completion::SHELL_SOURCE;
 use super::super::error::CommandError;
 use super::super::minibuf::history::{HistoryDir, HistoryKind};
 use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent, PromptCompletion};
@@ -33,7 +34,7 @@ pub(in crate::editor) fn open_shell_prompt(
     state.push_layer(
         view,
         ShellPromptLayer {
-            minibuf: MiniBuffer::new("|", Some(PromptCompletion::Shell)),
+            minibuf: MiniBuffer::new("|", Some(PromptCompletion::Source(SHELL_SOURCE))),
             then,
             input,
         },
@@ -111,8 +112,7 @@ fn handle_shell_prompt_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEven
         MiniBufferEvent::HistoryNext => {
             minibuf::recall_history(ed, HistoryKind::Pipe, HistoryDir::Next);
         }
-        MiniBufferEvent::CompleteRequested { reverse: false } => ed.start_minibuf_completion(),
-        MiniBufferEvent::CompleteRequested { reverse: true } | MiniBufferEvent::Ignored => {}
+        MiniBufferEvent::Ignored => {}
     }
 }
 

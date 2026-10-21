@@ -1,8 +1,10 @@
-//! POSIX `sh` word syntax: reading a typed word the way `sh` will, and
-//! writing a name back so `sh` reads it unchanged. Quotes, backticks and
-//! `$(…)` in a typed word are not read.
+//! POSIX `sh` word syntax: finding the word a cursor sits in, reading a
+//! typed word the way `sh` will, and writing a name back so `sh` reads it
+//! unchanged. Quotes, backticks and `$(…)` in a typed word are not read,
+//! so a quoted space still ends a word.
 
 use std::borrow::Cow;
+use std::ops::Range;
 use std::path::PathBuf;
 
 /// The path separator `sh` reads in a word, on every platform: a `\` is an
@@ -15,9 +17,57 @@ const SPECIAL: &[char] = &[
     ']', '{', '}', '!', '#', '~',
 ];
 
+/// The operator characters, which end a word as a blank does.
+const OPERATORS: &[char] = &['|', ';', '&', '(', ')', '<', '>'];
+
+/// The operators after which the next word names a program.
+const COMMAND_STARTERS: &[char] = &['|', ';', '&', '('];
+
 /// Whether `c` ends a word: `sh` splits on space, tab and newline only.
-pub fn is_blank(c: char) -> bool {
+fn is_blank(c: char) -> bool {
     matches!(c, ' ' | '\t' | '\n')
+}
+
+/// The word of a command line a cursor sits in.
+pub struct Word {
+    /// From the word's start to its end, past the cursor.
+    pub span: Range<usize>,
+    /// The word stands where `sh` reads a program name: first on the line
+    /// or right after one of [`COMMAND_STARTERS`].
+    pub command_position: bool,
+}
+
+/// The word of command line `input` around byte `cursor`: words end at
+/// unescaped blanks and at [`OPERATORS`], and a backslash keeps the
+/// character after it in the word, even with the cursor between the two.
+pub fn word_at(input: &str, cursor: usize) -> Word {
+    let mut start = 0;
+    let mut end = input.len();
+    // The last non-blank character before `start`.
+    let mut before_word = None;
+    let mut last = None;
+    let mut chars = input.char_indices();
+    while let Some((i, c)) = chars.next() {
+        if c == '\\' {
+            chars.next();
+        }
+        let boundary = c != '\\' && (is_blank(c) || OPERATORS.contains(&c));
+        if boundary && i >= cursor {
+            end = i;
+            break;
+        }
+        if !is_blank(c) {
+            last = Some(c);
+        }
+        if boundary {
+            start = i + c.len_utf8();
+            before_word = last;
+        }
+    }
+    Word {
+        span: start..end,
+        command_position: before_word.is_none_or(|c| COMMAND_STARTERS.contains(&c)),
+    }
 }
 
 /// `word` split after its last [`PATH_SEP`] into `(dir, file)`, `dir`

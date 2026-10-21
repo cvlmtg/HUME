@@ -183,9 +183,7 @@ fn handle_search_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
         MiniBufferEvent::Edited => search_edited(&mut ed.state, r),
         MiniBufferEvent::HistoryPrev => recall_search_history(ed, r, HistoryDir::Prev),
         MiniBufferEvent::HistoryNext => recall_search_history(ed, r, HistoryDir::Next),
-        MiniBufferEvent::CursorMoved
-        | MiniBufferEvent::Ignored
-        | MiniBufferEvent::CompleteRequested { .. } => {}
+        MiniBufferEvent::CursorMoved | MiniBufferEvent::Ignored => {}
     }
 }
 

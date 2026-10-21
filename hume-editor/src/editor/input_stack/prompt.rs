@@ -170,12 +170,10 @@ fn handle_steel_prompt_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEven
         MiniBufferEvent::Confirm(text) => finish_steel_prompt(ed, r, Some(text)),
         // Plain editing (char typed/deleted, cursor moved) is already
         // applied by `MiniBuffer::handle_key`; nothing further to do.
-        // Tab/Up/Down are no-ops here (no completion, no history for a
-        // one-shot prompt).
+        // Up/Down are no-ops here (no history for a one-shot prompt).
         MiniBufferEvent::Edited
         | MiniBufferEvent::CursorMoved
         | MiniBufferEvent::EmptiedByBackspace
-        | MiniBufferEvent::CompleteRequested { .. }
         | MiniBufferEvent::HistoryPrev
         | MiniBufferEvent::HistoryNext
         | MiniBufferEvent::Ignored => {}

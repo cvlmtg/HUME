@@ -30,8 +30,9 @@ pub(crate) struct MiniBuffer {
 pub(crate) enum PromptCompletion {
     /// The `:` line: the command name, then that command's own completer.
     CommandLine,
-    /// The `|` line: program names in command position, paths elsewhere.
-    Shell,
+    /// One registered minibuffer source, which finds its own token in the
+    /// whole line.
+    Source(&'static str),
 }
 
 /// Outcome of feeding one key to [`MiniBuffer::handle_key`].
@@ -56,8 +57,6 @@ pub(super) enum MiniBufferEvent {
     BackspaceOnEmpty,
     /// Cursor moved left/right; content unchanged.
     CursorMoved,
-    /// Tab (forward) or Shift-Tab (reverse) pressed: caller should cycle completions.
-    CompleteRequested { reverse: bool },
     /// Up pressed: caller should recall the previous history entry for this prompt.
     HistoryPrev,
     /// Down pressed: caller should recall the next history entry (or restore scratch).
@@ -180,8 +179,6 @@ impl MiniBuffer {
                 self.cursor = hume_rope::grapheme::next_str_boundary(&self.input, self.cursor);
                 MiniBufferEvent::CursorMoved
             }
-            KeyCode::Tab => MiniBufferEvent::CompleteRequested { reverse: false },
-            KeyCode::BackTab => MiniBufferEvent::CompleteRequested { reverse: true },
             // Up/Down are handled by the caller (mode-specific history ring).
             // Do NOT bind Ctrl-n / Ctrl-p here: those are reserved for
             // future completion-popup navigation.
@@ -263,7 +260,10 @@ fn word_boundary_back(s: &str, cursor: usize) -> usize {
 /// Converts one `InputEvent` into a `MiniBufferEvent` for whichever
 /// minibuf-backed layer (`Command`/`Search`/`Sift`/`Prompt`/`ShellPrompt`)
 /// is dispatching: the single place a key becomes an edit to the
-/// minibuffer, shared by all five. A mouse event has no minibuffer edit to become: it falls through
+/// minibuffer, shared by all five. Tab starts the line's
+/// [`MiniBuffer::completion`], if it declares one, and returns `None`; once
+/// a popup opens, the completion layer above takes Tab and Shift-Tab
+/// before they reach here. A mouse event has no minibuffer edit to become: it falls through
 /// (the cursor still moves under an open `:`/`/`/`s` prompt) and
 /// returns `None` either way. `None` also covers
 /// the case where no minibuffer is live (dispatch reached this layer
@@ -277,6 +277,10 @@ pub(in crate::editor) fn minibuf_input(
     match ev {
         InputEvent::Mouse(mouse) => {
             ed.fall_through(r, InputEvent::Mouse(mouse));
+            None
+        }
+        InputEvent::Key(key) if key.code == termina::event::KeyCode::Tab => {
+            ed.start_minibuf_completion();
             None
         }
         InputEvent::Key(key) => Some(ed.state.input.minibuf_mut()?.handle_key(key)),

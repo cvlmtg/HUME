@@ -178,16 +178,6 @@ fn handle_command_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
         MiniBufferEvent::EmptiedByBackspace
         | MiniBufferEvent::Edited
         | MiniBufferEvent::CursorMoved => command_line_edited(&mut ed.state),
-        // Shift-Tab with no open popup is a no-op; once one opens (a
-        // `MinibufCompletionLayer` pushed above this one), every subsequent
-        // Tab/Shift-Tab (and the directory-descend-on-Enter check) is
-        // handled by that layer's own key handler
-        // (`completion_input_minibuf`, `input_stack/completion.rs`) before
-        // it ever reaches here again.
-        MiniBufferEvent::CompleteRequested { reverse: false } => {
-            ed.start_minibuf_completion();
-        }
-        MiniBufferEvent::CompleteRequested { reverse: true } => {}
         MiniBufferEvent::HistoryPrev => {
             minibuf::recall_history(ed, HistoryKind::Command, HistoryDir::Prev);
         }

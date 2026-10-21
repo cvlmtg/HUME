@@ -177,7 +177,6 @@ fn handle_sift_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
         // Up/Down are reserved for minibuffer history: no-op in sift-within.
         MiniBufferEvent::CursorMoved
         | MiniBufferEvent::Ignored
-        | MiniBufferEvent::CompleteRequested { .. }
         | MiniBufferEvent::HistoryPrev
         | MiniBufferEvent::HistoryNext => {}
     }

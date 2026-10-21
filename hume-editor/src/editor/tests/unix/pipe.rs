@@ -14,7 +14,7 @@ use crate::editor::pipe_run::{
     Detached, PipeConsole, PipeEnd, PipeKind, PipeProgress, PipeRuns, RunId, WaitEvent,
 };
 use crate::editor::replay::Answer;
-use hume_platform::process::test_support::{logging_command, starts_and_peak};
+use hume_platform::process::test_support::{logging_command, starts_and_peak, write_program};
 
 // ── Waiting for a pipe run ───────────────────────────────────────────────────────
 
@@ -906,11 +906,8 @@ fn an_older_run_that_landed_survives_a_newer_one_withdrawn() {
 /// A `PATH` directory holding the executable `hume-probe-tool` and the
 /// plain file `hume-probe-data`.
 fn probe_path_dir() -> tempfile::TempDir {
-    use std::os::unix::fs::PermissionsExt;
     let dir = tempfile::tempdir().unwrap();
-    let tool = dir.path().join("hume-probe-tool");
-    std::fs::write(&tool, b"#!/bin/sh\n").unwrap();
-    std::fs::set_permissions(&tool, std::fs::Permissions::from_mode(0o755)).unwrap();
+    write_program(dir.path(), "hume-probe-tool", 0o755);
     std::fs::write(dir.path().join("hume-probe-data"), b"").unwrap();
     dir
 }
@@ -923,9 +920,7 @@ fn tab_completes_a_program_name_from_path() {
     let mut ed = editor_from("-[abc]>\n");
     for line in ["hume-probe", "ls | hume-probe"] {
         ed.handle_key(key('|'));
-        for ch in line.chars() {
-            ed.handle_key(key(ch));
-        }
+        keys(&mut ed, line);
         ed.handle_key(key_tab());
         assert_eq!(minibuf_input(&ed), format!("{line}-tool"));
         assert!(ed.state.input.minibuf_completion().is_none());

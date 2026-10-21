@@ -304,10 +304,11 @@ pub fn executables_in(search_path: &std::ffi::OsStr, prefix: &str) -> Vec<String
             else {
                 continue;
             };
-            #[cfg(windows)]
-            let key = program.to_ascii_lowercase();
-            #[cfg(not(windows))]
-            let key = program.to_owned();
+            let key = if cfg!(windows) {
+                program.to_ascii_lowercase()
+            } else {
+                program.to_owned()
+            };
             names.entry(key).or_insert_with(|| program.to_owned());
         }
     }

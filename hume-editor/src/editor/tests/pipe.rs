@@ -13,12 +13,6 @@ use crate::editor::pipe_run::{PipeKind, PipeRunning, WaitEvent, wait_event};
 use termina::WindowSize;
 use termina::event::KeyEventKind;
 
-fn keys(ed: &mut Editor, text: &str) {
-    for ch in text.chars() {
-        ed.handle_key(key(ch));
-    }
-}
-
 /// The focused buffer's run's command and kind, taking the run out.
 fn take_run(ed: &mut Editor) -> Option<(String, PipeKind)> {
     let bid = ed.focused_buffer_id();

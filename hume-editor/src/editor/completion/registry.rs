@@ -1,4 +1,4 @@
-//! Every completion source the editor knows: the seven native minibuffer
+//! Every completion source the editor knows: the native minibuffer
 //! sources compiled in, plus whatever Steel registered via
 //! `(register-completion-source! …)`. **Two separate namespaces, one per
 //! target**: a `TypedCommand.completer` or the `|` line names an entry in [`SourceRegistry::minibuf`],

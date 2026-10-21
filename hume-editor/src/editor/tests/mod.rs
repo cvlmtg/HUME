@@ -577,6 +577,13 @@ fn type_cmd(ed: &mut Editor, cmd: &str) {
     ed.feed_key(key_enter());
 }
 
+/// Types each character of `text` through `handle_key`.
+fn keys(ed: &mut Editor, text: &str) {
+    for ch in text.chars() {
+        ed.handle_key(key(ch));
+    }
+}
+
 /// Types `|command` Enter through `handle_key`, which starts a Normal-mode
 /// pipe run and leaves it in flight.
 fn type_pipe(ed: &mut Editor, command: &str) {

@@ -283,7 +283,11 @@ impl EditorState {
             );
             return;
         };
-        let mut session = MinibufSession::open(input.clone(), cursor);
+        let mut session = MinibufSession::open(
+            input.clone(),
+            cursor,
+            self.config.completion_sources.minibuf_get(id).prefix_cut,
+        );
         let ctx = CompletionCtx {
             registry: &self.config.registry,
             buffers: &self.buffers,
@@ -351,10 +355,7 @@ impl EditorState {
         let Some(layer) = self.input.at::<MinibufCompletionLayer>(r) else {
             return;
         };
-        let Some((span, text)) = layer
-            .session
-            .proposed_apply(&self.config.completion_sources)
-        else {
+        let Some((span, text)) = layer.session.proposed_apply() else {
             return;
         };
         let (input, text) = (layer.session.input().to_owned(), text.into_owned());
@@ -591,8 +592,8 @@ fn target_command_name(input: &str, cursor: usize) -> Option<(&str, usize)> {
 /// `:` line that is the command name itself while the cursor is within it
 /// (no space yet, or moved left past the space), with floor `0` (the whole
 /// prefix typed so far is the token), else the resolved command's declared
-/// argument completer, with the name's own end as the floor. The `|` line
-/// has the one source, which finds its own word.
+/// argument completer, with the name's own end as the floor. A line that
+/// names its source gets it with floor `0`.
 fn resolve_minibuf_source(
     registry: &CommandRegistry,
     completion: PromptCompletion,
@@ -601,7 +602,7 @@ fn resolve_minibuf_source(
 ) -> Option<(std::borrow::Cow<'static, str>, usize)> {
     use std::borrow::Cow;
     match completion {
-        PromptCompletion::Shell => Some((Cow::Borrowed(super::SHELL_SOURCE), 0)),
+        PromptCompletion::Source(name) => Some((Cow::Borrowed(name), 0)),
         PromptCompletion::CommandLine => match target_command_name(input, cursor) {
             None => Some((Cow::Borrowed(super::COMMAND_SOURCE), 0)),
             Some((cmd, cmd_end)) => Some((registry.get_typed(cmd)?.completer.clone()?, cmd_end)),
