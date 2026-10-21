@@ -24,15 +24,17 @@ Build and run:
 
 ```sh
 cargo build
-cargo run -p hume-editor -- README.md
+cargo hume README.md
 ```
+
+`cargo hume` is an alias (`.cargo/config.toml`) for `cargo run -p hume-editor --bin hume --`.
 
 Run from the workspace root — HUME finds its bundled `runtime/` relative to the current
 directory in a dev build. From anywhere else, point `HUME_RUNTIME` at `runtime/`.
 
 Installing a grammar runs `hume-grammar-build` from beside the `hume` executable. The
-`cargo build` above builds both into `target/debug/`; `cargo run -p hume-editor` alone
-builds only `hume`.
+`cargo build` above builds both into `target/debug/`; `cargo hume` alone builds only
+`hume`.
 
 Orientation: `docs/CRATES.md` maps the workspace crates, what each owns, and the dependency edges between them. `docs/ROADMAP.md` tracks open questions. `docs/LEARNING.md` explains the concepts behind the editor.
 
