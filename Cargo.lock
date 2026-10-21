@@ -851,6 +851,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "hume-grammar-build"
+version = "0.16.0"
+dependencies = [
+ "cc",
+ "tempfile",
+]
+
+[[package]]
 name = "hume-grid"
 version = "0.16.0"
 dependencies = [

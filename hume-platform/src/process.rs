@@ -9,11 +9,12 @@
 //! fills its stderr pipe deadlocks, while `Command::output` drains both.
 //!
 //! Stdio is captured ([`run_capture`]) or inherited so the user sees live
-//! progress (`run_inline_output`, `tree_sitter_build`).
+//! progress (`run_inline_output`, `grammar_build`).
 //!
 //! External tools reject Windows' `\\?\` prefix, so every path handed to a
 //! `Command` here goes through `strip_unc_prefix` first.
 
+use std::ffi::OsStr;
 use std::io;
 use std::path::Path;
 use std::process::{Command, ExitStatus, Stdio};
@@ -72,10 +73,10 @@ mod job_object;
 /// would instead open `/dev/tty` directly and hang there. Left unset,
 /// either shape turns a private repo or an expired token into a hang
 /// instead of a fast, readable git error.
-fn base_command<I>(cmd: &str, args: I, cwd: &Path) -> Command
+fn base_command<I>(cmd: impl AsRef<OsStr>, args: I, cwd: &Path) -> Command
 where
     I: IntoIterator,
-    I::Item: AsRef<std::ffi::OsStr>,
+    I::Item: AsRef<OsStr>,
 {
     let mut command = Command::new(cmd);
     command
@@ -138,165 +139,22 @@ pub fn run_capture(cmd: &str, args: &[String], cwd: &Path) -> io::Result<std::pr
         .map_err(|e| spawn_failed(&command, e))
 }
 
-/// Compile a tree-sitter grammar source at `src` to a shared library at `out`
-/// using `tree-sitter build`, with inherited stdio.
-///
-/// `tree-sitter build` shells out to a C compiler via the `cc` crate. On
-/// Windows that defaults to MSVC's `cl.exe`, which many machines don't have.
-/// If `cl` is missing, we point `cc` at whichever alternative compiler is on
-/// `PATH` (clang, gcc, or zig) via `CC`/`CXX` (see `choose_windows_compiler`).
-pub fn tree_sitter_build(src: &Path, out: &Path, cwd: &Path) -> io::Result<ExitStatus> {
+/// Compile the tree-sitter grammar at `src` to a shared library at `out`
+/// by running the grammar compiler `tool` (see [`crate::dirs::Dirs::grammar_build`]),
+/// with inherited stdio.
+pub fn grammar_build(tool: &Path, src: &Path, out: &Path, cwd: &Path) -> io::Result<ExitStatus> {
+    let tool = strip_unc_prefix(tool.to_path_buf());
     let src = strip_unc_prefix(src.to_path_buf());
     let out = strip_unc_prefix(out.to_path_buf());
-    let mut cmd = base_command(
-        "tree-sitter",
-        [
-            std::ffi::OsStr::new("build"),
-            std::ffi::OsStr::new("-o"),
-            out.as_os_str(),
-            src.as_os_str(),
-        ],
+    let mut command = base_command(
+        &tool,
+        [OsStr::new("-o"), out.as_os_str(), src.as_os_str()],
         cwd,
     );
-
-    #[cfg(windows)]
-    if let Some(compiler) = choose_windows_compiler(|name| exe_on_path(name, cwd)) {
-        let (cc, cxx) = compiler_env_vars(compiler)?;
-        cmd.env("CC", cc).env("CXX", cxx);
-    }
-
-    cmd.new_process_group()
+    command
+        .new_process_group()
         .status()
-        .map_err(|e| spawn_failed(&cmd, e))
-}
-
-/// Whether `name` resolves to a runnable executable on `PATH`.
-///
-/// Spawns `name --version` and treats `NotFound` as absent; any other
-/// outcome (success, nonzero exit, permission error) means the executable
-/// exists. This respects `PATHEXT` on Windows without an extra dependency.
-#[cfg(windows)]
-fn exe_on_path(name: &str, cwd: &Path) -> bool {
-    match base_command(name, ["--version"], cwd).output() {
-        Ok(_) => true,
-        Err(e) => e.kind() != io::ErrorKind::NotFound,
-    }
-}
-
-/// An alternate C/C++ compiler found on `PATH` to use in place of MSVC.
-#[cfg(windows)]
-#[derive(Debug, PartialEq, Eq)]
-enum WindowsCompiler {
-    Clang,
-    Gcc,
-    Zig,
-}
-
-/// Pick an alternate compiler for `tree-sitter build` on Windows.
-///
-/// Returns `None` if MSVC's `cl` is available (use the platform default) or
-/// if no known compiler is found. Otherwise returns the first available
-/// candidate from an ordered list. `exists` is injected so this stays a
-/// pure, unit-testable function independent of the real `PATH`.
-#[cfg(windows)]
-fn choose_windows_compiler(exists: impl Fn(&str) -> bool) -> Option<WindowsCompiler> {
-    if exists("cl") {
-        return None;
-    }
-    if exists("clang") {
-        return Some(WindowsCompiler::Clang);
-    }
-    if exists("gcc") {
-        return Some(WindowsCompiler::Gcc);
-    }
-    if exists("zig") {
-        return Some(WindowsCompiler::Zig);
-    }
-    None
-}
-
-/// Resolve a `WindowsCompiler` to the `(CC, CXX)` values to set.
-///
-/// `gcc` is a single executable name, so it passes straight through as
-/// `CC`/`CXX`: the `cc` crate never adds `--target` for GNU-family
-/// compilers, so there's nothing to strip.
-///
-/// `clang` and `zig` both get `.cmd` wrappers instead of a bare executable
-/// name. Both need `--target` stripped (see
-/// `target_stripping_wrapper_script`): the `cc` crate detects both as
-/// clang-family and force-feeds them the host's LLVM triple, wrong for any
-/// install not paired with MSVC. `zig` additionally can't be named directly
-/// in `CC`, since its C/C++ compilers are invoked as `zig cc` / `zig c++`,
-/// not standalone executables. `CC="zig cc"` relies on the `cc` crate
-/// splitting on whitespace and reassembling wrapper + args, which has
-/// changed across `cc` crate versions and is broken in at least one still in
-/// the wild (drops the `cc`/`c++` argument, so flags like `-O2` go straight
-/// to `zig` as an unknown top-level command). The wrapper sidesteps this:
-/// `CC`/`CXX` point at one filesystem token, no splitting involved.
-#[cfg(windows)]
-fn compiler_env_vars(compiler: WindowsCompiler) -> io::Result<(String, String)> {
-    match compiler {
-        WindowsCompiler::Clang => {
-            let cc = write_target_stripping_wrapper("hume-clang-cc.cmd", "clang")?;
-            let cxx = write_target_stripping_wrapper("hume-clang-cxx.cmd", "clang++")?;
-            Ok((cc, cxx))
-        }
-        WindowsCompiler::Gcc => Ok(("gcc".to_string(), "g++".to_string())),
-        WindowsCompiler::Zig => {
-            let cc = write_target_stripping_wrapper("hume-zig-cc.cmd", "zig cc")?;
-            let cxx = write_target_stripping_wrapper("hume-zig-cxx.cmd", "zig c++")?;
-            Ok((cc, cxx))
-        }
-    }
-}
-
-/// Write a `.cmd` wrapper forwarding arguments to `invocation` (minus any
-/// `--target`) into the system temp dir, and return its path.
-#[cfg(windows)]
-fn write_target_stripping_wrapper(file_name: &str, invocation: &str) -> io::Result<String> {
-    let path = std::env::temp_dir().join(file_name);
-    std::fs::write(&path, target_stripping_wrapper_script(invocation))?;
-    Ok(path.to_string_lossy().into_owned())
-}
-
-/// Batch script body forwarding arguments to `invocation` (e.g. `"clang"` or
-/// `"zig cc"`), with any `--target`/`-target` (and its value) stripped.
-///
-/// The `cc` crate treats `clang` and `zig cc` as the same compiler family and
-/// injects `--target=<host LLVM triple>` for both (e.g.
-/// `x86_64-pc-windows-msvc`), on the assumption that "clang on Windows" means
-/// the official LLVM.org build paired with MSVC. That assumption breaks two
-/// ways:
-///
-/// - `zig cc` parses `--target` as a zig target query (a 3-field
-///   `<arch>-<os>-<abi>` string, not the 4-field LLVM triple), so the `pc`
-///   vendor component reads as an unknown OS and zig rejects it outright.
-/// - A real `clang` that isn't paired with MSVC (e.g. `llvm-mingw`, MSYS2's
-///   `clang64`) parses the triple fine but has no MSVC sysroot to satisfy
-///   it, and forcing the msvc ABI overrides that install's own correct
-///   `-gnu` default.
-///
-/// Dropping the flag lets each compiler fall back to its own native target,
-/// which is the `-gnu` ABI whenever MSVC (`cl`) is absent, exactly the case
-/// these wrappers are used in.
-#[cfg(windows)]
-fn target_stripping_wrapper_script(invocation: &str) -> String {
-    format!(
-        "@echo off\r\n\
-         setlocal enabledelayedexpansion\r\n\
-         set \"ARGS=\"\r\n\
-         :loop\r\n\
-         if \"%~1\"==\"\" goto run\r\n\
-         set \"TOK=%~1\"\r\n\
-         if /i \"!TOK:~0,9!\"==\"--target=\" (shift & goto loop)\r\n\
-         if /i \"!TOK!\"==\"--target\" (shift & shift & goto loop)\r\n\
-         if /i \"!TOK!\"==\"-target\" (shift & shift & goto loop)\r\n\
-         set \"ARGS=!ARGS! %1\"\r\n\
-         shift\r\n\
-         goto loop\r\n\
-         :run\r\n\
-         {invocation} !ARGS!\r\n"
-    )
+        .map_err(|e| spawn_failed(&command, e))
 }
 
 /// `e`, from any step of starting `program` (the spawn itself or a thread
@@ -343,31 +201,6 @@ pub fn failure_message(program: &str, status: Option<ExitStatus>, stderr: &str) 
 /// U+FFFD. Valid output is reused, not copied.
 pub fn decode_lossy(bytes: Vec<u8>) -> String {
     String::from_utf8(bytes).unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned())
-}
-
-/// Whether no C compiler at all was found on `PATH` (neither `cl` nor any of
-/// the `choose_windows_compiler` fallbacks). Used to append an install hint
-/// to grammar-compile failure messages, without misattributing a real
-/// compile error (compiler present, grammar source broken) to a missing
-/// toolchain.
-#[cfg(windows)]
-pub fn no_windows_compiler_found(cwd: &Path) -> bool {
-    // Probe `cl` once and reuse it: `choose_windows_compiler` checks `cl`
-    // first internally, so passing `exe_on_path` straight through here would
-    // spawn a second `cl --version` on top of the one `tree_sitter_build`
-    // already ran on the same failure path.
-    let has_cl = exe_on_path("cl", cwd);
-    if has_cl {
-        return false;
-    }
-    choose_windows_compiler(|name| {
-        if name == "cl" {
-            has_cl
-        } else {
-            exe_on_path(name, cwd)
-        }
-    })
-    .is_none()
 }
 
 /// A child started in its own process group, as [`spawn_piped`] starts

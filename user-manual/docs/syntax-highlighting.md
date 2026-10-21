@@ -24,14 +24,13 @@ Installing a grammar runs a few external tools. Most are already on your system;
 
 - `git`
 - `curl`
-- `tree-sitter-cli` (the tree-sitter CLI)
-- A C compiler (`cc`, `gcc`, or `clang`), pre-installed on macOS and most Linux distributions.
+- A C and C++ compiler (`cc` and `c++`, from `gcc` or `clang`), pre-installed on macOS and most Linux distributions. Some grammars are partly written in C++. Set `CC` or `CXX` to use a specific one.
 
 How you install these depends on your operating system:
 
-- **macOS**: [Homebrew](https://brew.sh) covers all four: `brew install git curl tree-sitter-cli`. A C compiler comes with Xcode's Command Line Tools (`xcode-select --install`).
-- **Linux**: use your distribution's package manager. `git` and `curl` are usually preinstalled; `gcc` or `clang` come from your distro's base-devel/build-essential group. The `tree-sitter` CLI isn't in every distro's repos. If yours doesn't have it, install it via `cargo install tree-sitter-cli` (needs a [Rust toolchain](https://rustup.rs)) or `npm install -g tree-sitter-cli`.
-- **Windows**: [winget](https://learn.microsoft.com/windows/package-manager/winget/) or [Scoop](https://scoop.sh) can install `git`, `curl`, and `tree-sitter-cli`; for a C compiler, install the [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) (select the "Desktop development with C++" workload), or run HUME under WSL and follow the Linux instructions above. If you'd rather skip the Build Tools install, `clang`, `gcc`, or [zig](https://ziglang.org/download/) (e.g. `winget install zig.zig`) work too, since tree-sitter picks up whichever it finds on `PATH`.
+- **macOS**: [Homebrew](https://brew.sh) covers `git` and `curl`: `brew install git curl`. The compilers come with Xcode's Command Line Tools (`xcode-select --install`).
+- **Linux**: use your distribution's package manager. `git` and `curl` are usually preinstalled; `gcc` and `g++`, or `clang`, come from your distro's base-devel/build-essential group.
+- **Windows**: [winget](https://learn.microsoft.com/windows/package-manager/winget/) or [Scoop](https://scoop.sh) can install `git` and `curl`; for the compilers, install the [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) (select the "Desktop development with C++" workload), or run HUME under WSL and follow the Linux instructions above. If you'd rather skip the Build Tools install, `clang`, `gcc`, or [zig](https://ziglang.org/download/) (e.g. `winget install zig.zig`) work too: without the Build Tools, HUME uses whichever of them it finds on `PATH`.
 
 ## Install a grammar
 

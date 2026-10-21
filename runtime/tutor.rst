@@ -1610,10 +1610,10 @@ like ``:plum-i`` and press ``Tab`` to autocomplete it, and keep pressing
 ``Tab`` to cycle through the matches. Press ``Enter`` to run it, then
 wait for the grammar to finish installing.
 
-This needs ``git``, ``curl``, the ``tree-sitter`` CLI, and a C compiler on
-your system. How you install them depends on your operating system: on
-macOS, Homebrew (``brew install git curl tree-sitter``) covers all four,
-with a C compiler coming from Xcode's Command Line Tools; on Linux, your
+This needs ``git``, ``curl``, and a C and C++ compiler on your system.
+How you install them depends on your operating system: on macOS,
+Homebrew (``brew install git curl``) covers the first two, with the
+compilers coming from Xcode's Command Line Tools; on Linux, your
 distribution's package manager (``apt``, ``dnf``, ``pacman``, ...) provides
 them; on Windows, reach for ``winget``, ``Scoop``, or WSL.
 

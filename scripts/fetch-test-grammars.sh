@@ -22,9 +22,14 @@ FIXTURES="$REPO_ROOT/tests/fixtures/grammars"
 LANGUAGES_DIR="$REPO_ROOT/runtime/scheme/languages"
 mkdir -p "$FIXTURES"
 
+MANIFEST="$REPO_ROOT/Cargo.toml"
+cargo build --locked --manifest-path "$MANIFEST" -p hume-grammar-build
+TARGET_DIR="$(cargo metadata --format-version 1 --no-deps --manifest-path "$MANIFEST" \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')"
+GRAMMAR_BUILD="$TARGET_DIR/debug/hume-grammar-build"
 case "$(uname -s)" in
   Darwin)               EXT="dylib" ;;
-  MINGW*|MSYS*|CYGWIN*) EXT="dll"   ;;
+  MINGW*|MSYS*|CYGWIN*) EXT="dll"; GRAMMAR_BUILD="$GRAMMAR_BUILD.exe" ;;
   *)                    EXT="so"    ;;
 esac
 
@@ -41,7 +46,7 @@ compile_grammar() {
 
   echo "  $name: compiling..."
   mkdir -p "$out_dir"
-  tree-sitter build -o "$out" "$src_dir"
+  "$GRAMMAR_BUILD" -o "$out" "$src_dir"
   echo "  $name: built $out"
 }
 
@@ -150,6 +155,7 @@ fetch_grammar "markdown.inline"
 fetch_grammar "python"
 fetch_grammar "c"
 fetch_grammar "html"
+fetch_grammar "yaml"
 fetch_helix_query "markdown" "injections.scm"
 # rust/textobjects.scm has no `; inherits:` header, so a plain fetch is
 # complete — a language whose file inherits would need PLUM's resolver.

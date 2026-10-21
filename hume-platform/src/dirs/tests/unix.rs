@@ -43,6 +43,20 @@ fn data_dir_respects_xdg_data_home() {
 }
 
 #[test]
+fn grammar_build_prefers_the_installed_libexec_layout_over_the_exe_dir() {
+    let prefix = tempfile::tempdir().unwrap();
+    let bin_dir = prefix.path().join("bin");
+    std::fs::create_dir(&bin_dir).unwrap();
+    std::fs::write(bin_dir.join("hume-grammar-build"), "").unwrap();
+    let libexec = prefix.path().join("libexec").join("hume");
+    std::fs::create_dir_all(&libexec).unwrap();
+    std::fs::write(libexec.join("hume-grammar-build"), "").unwrap();
+
+    let result = grammar_build_with(Some(&bin_dir.join("hume")));
+    assert_eq!(result, Some(libexec.join("hume-grammar-build")));
+}
+
+#[test]
 fn runtime_dir_prefers_installed_share_layout_over_exe_relative_runtime() {
     // Installed FHS layout: <prefix>/bin/hume -> <prefix>/share/hume, even when an
     // exe-relative runtime/ also happens to exist (share/ wins).

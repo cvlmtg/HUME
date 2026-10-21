@@ -347,9 +347,9 @@ pub(crate) fn register_all(steel: &mut Engine) {
         open "command-plugin" commands::command_plugin(name: String);
         open "%command-callable?" commands::command_callable(name: String);
 
-        // Grammar compilation: sandbox-free, full-trust plugin model. Kept as a
-        // Rust builtin only for the Windows compiler-selection dance (see
-        // grammar.rs's module doc); `grammar-output-path` is plain Scheme.
+        // Grammar compilation: sandbox-free, full-trust plugin model. A Rust
+        // builtin for the reasons in grammar.rs's module doc;
+        // `grammar-output-path` is plain Scheme.
         open "compile-grammar!" grammar::compile_grammar(src: String, out: String);
 
         // Inline-output subprocess: process-group-isolated spawn for

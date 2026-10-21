@@ -194,6 +194,7 @@ impl ReloadFixture {
             data: Some(self.data_dir.clone()),
             runtime: Some(self.runtime_dir.clone()),
             tmp: None,
+            grammar_build: None,
         }
     }
 
@@ -473,6 +474,7 @@ impl StagedGrammarFixture {
             data: Some(self.data_dir.clone()),
             runtime: Some(repo_runtime_dir()),
             tmp: None,
+            grammar_build: None,
         }
     }
 

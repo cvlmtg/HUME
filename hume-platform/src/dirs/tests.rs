@@ -124,6 +124,26 @@ fn resolve_without_a_cwd_leaves_relative_values_as_given() {
     assert_eq!(dirs.tmp, Some(PathBuf::from("scratch")));
 }
 
+fn grammar_build_file() -> String {
+    format!("hume-grammar-build{}", env::consts::EXE_SUFFIX)
+}
+
+#[test]
+fn grammar_build_is_found_beside_the_exe() {
+    let bin = tempfile::tempdir().unwrap();
+    let tool = bin.path().join(grammar_build_file());
+    std::fs::write(&tool, "").unwrap();
+    let result = grammar_build_with(Some(&bin.path().join("hume")));
+    assert_eq!(result, Some(tool));
+}
+
+#[test]
+fn grammar_build_is_none_when_no_candidate_exists() {
+    let bin = tempfile::tempdir().unwrap();
+    assert_eq!(grammar_build_with(Some(&bin.path().join("hume"))), None);
+    assert_eq!(grammar_build_with(None), None);
+}
+
 #[cfg(unix)]
 mod unix;
 #[cfg(windows)]

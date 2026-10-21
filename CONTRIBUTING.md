@@ -16,8 +16,8 @@ Prerequisites:
 | Need | Why |
 |---|---|
 | Rust, current stable | The workspace is edition 2024 (needs 1.85 or newer). Install via [rustup](https://rustup.rs). |
-| A C compiler | Tree-sitter grammars are compiled from C for the test fixtures. On Windows, MSVC build tools. |
-| Node + npm | `tree-sitter-cli` (`npm install -g tree-sitter-cli`) for grammar fixtures; also builds the manual and runs the theme editor's own tests. |
+| A C and C++ compiler | Tree-sitter grammars are compiled from C, and some scanners from C++, for the test fixtures. On Windows, MSVC build tools. |
+| Node + npm | Builds the manual and runs the theme editor's own tests. |
 | Bash | The scripts in `scripts/` are bash. On Windows, use Git Bash or WSL. |
 
 Build and run:
@@ -30,7 +30,11 @@ cargo run -p hume-editor -- README.md
 Run from the workspace root — HUME finds its bundled `runtime/` relative to the current
 directory in a dev build. From anywhere else, point `HUME_RUNTIME` at `runtime/`.
 
-Orientation: `docs/CRATES.md` maps the ten workspace crates, what each owns, and the dependency edges between them. `docs/ROADMAP.md` tracks open questions. `docs/LEARNING.md` explains the concepts behind the editor.
+Installing a grammar runs `hume-grammar-build` from beside the `hume` executable. The
+`cargo build` above builds both into `target/debug/`; `cargo run -p hume-editor` alone
+builds only `hume`.
+
+Orientation: `docs/CRATES.md` maps the workspace crates, what each owns, and the dependency edges between them. `docs/ROADMAP.md` tracks open questions. `docs/LEARNING.md` explains the concepts behind the editor.
 
 ## Where changes land
 

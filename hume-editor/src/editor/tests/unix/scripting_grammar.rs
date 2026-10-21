@@ -371,7 +371,7 @@ fn passive_load_registers_grammar_and_unknown_call_logs_warning() {
 /// Tab on `:plum-install-grammar`'s argument completes against the real
 /// shipped language data (`runtime/scheme/languages/`), not a fixture:
 /// no network, no install, so it needs neither `require_grammars` nor the
-/// e2e tests' own PATH/tree-sitter setup below. "ag" is unique to "agda"
+/// e2e tests' own PATH and grammar-compiler setup below. "ag" is unique to "agda"
 /// among every declared name (checked at authoring time; re-verified by
 /// this test every run, same discipline as this file's fixture-server
 /// module doc elsewhere in this test tree).
@@ -390,14 +390,15 @@ fn plum_install_grammar_tab_completes_a_declared_name() {
 }
 
 // ---------------------------------------------------------------------------
-// e2e grammar install (network + tree-sitter CLI required)
+// e2e grammar install (network + an installed grammar compiler required)
 // ---------------------------------------------------------------------------
 
-/// End-to-end: clone → curl → tree-sitter build → register-grammar! for JSON.
-/// Requires `git`, `curl`, and `tree-sitter` on `PATH`, and network access.
+/// End-to-end: clone → curl → grammar compiler → register-grammar! for JSON.
+/// Requires `git` and `curl` on `PATH`, a workspace-built grammar compiler
+/// (see `workspace_grammar_build`), and network access.
 #[test]
 fn install_real_json_grammar_e2e() {
-    // git/curl/tree-sitter are all spawned by unqualified name below, so this
+    // git and curl are spawned by unqualified name below, so this
     // test is a `PATH` reader for its whole duration.
     // `scripting_lsp_install.rs` narrows process `PATH` to an empty or
     // shim-only dir in several tests, and a spawn landing inside that window
@@ -426,9 +427,10 @@ fn install_real_json_grammar_e2e() {
     }
     assert!(src_dir.exists(), "clone must create src dir");
 
-    let status = hume_platform::process::tree_sitter_build(&src_dir, &out_path, &src_dir)
-        .expect("tree_sitter_build must not fail to spawn");
-    assert!(status.success(), "tree-sitter build failed");
+    let tool = workspace_grammar_build();
+    let status = hume_platform::process::grammar_build(&tool, &src_dir, &out_path, &src_dir)
+        .expect("grammar_build must not fail to spawn");
+    assert!(status.success(), "grammar compiler failed");
     assert!(out_path.exists(), "compiled grammar must exist after build");
 
     let hl_path = src_dir.join("highlights.scm");
@@ -545,6 +547,7 @@ fn setup_editor_with_languages_scm(
         data: Some(data_tmp.path().join("hume")),
         runtime: Some(runtime_tmp.path().to_path_buf()),
         tmp: None,
+        grammar_build: None,
     };
     ed.init_scripting(&mut Default::default());
 
@@ -641,6 +644,7 @@ fn tsx_bundled_language_id_is_typescriptreact() {
         data: Some(data_tmp.path().join("hume")),
         runtime: Some(repo_runtime_dir()),
         tmp: None,
+        grammar_build: None,
     };
     ed.init_scripting(&mut Default::default());
     let bid = ed.focused_buffer_id();
@@ -907,6 +911,7 @@ fn init_errors_with_json_data(
         data: Some(data_tmp.path().join("hume")),
         runtime: Some(runtime_tmp.path().to_path_buf()),
         tmp: None,
+        grammar_build: None,
     };
     ed.init_scripting(&mut Default::default());
 
@@ -1176,6 +1181,7 @@ fn bundled_languages_carry_root_markers() {
         data: Some(data_tmp.path().join("hume")),
         runtime: Some(repo_runtime_dir()),
         tmp: None,
+        grammar_build: None,
     };
     ed.init_scripting(&mut Default::default());
     let bid = ed.focused_buffer_id();

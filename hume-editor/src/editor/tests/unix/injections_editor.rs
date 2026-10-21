@@ -377,8 +377,9 @@ fn inline_output_command_with_real_output_still_skips_bracket_off_event_loop() {
 /// break `:plum-install-grammar`: the install builds in a staging clone and
 /// then replaces the whole source dir with it.
 ///
-/// Hits the network (real git fetch + curl fetch + tree-sitter build of the
-/// `json` grammar); requires `git`, `curl`, and `tree-sitter` on `PATH`.
+/// Hits the network (real git fetch + curl fetch + compile of the `json`
+/// grammar); requires `git` and `curl` on `PATH`, and a workspace-built
+/// grammar compiler (see `workspace_grammar_build`).
 #[test]
 fn plum_install_grammar_recovers_from_stale_source_dir_on_first_try() {
     let _path = path_reader();
@@ -424,10 +425,10 @@ fn plum_install_grammar_recovers_from_stale_source_dir_on_first_try() {
 /// resolve that chain (`plum/resolve-query` in `grammars.scm`) so the file
 /// written to disk has real capture patterns, not a dangling directive.
 ///
-/// Hits the network (real git clone + tree-sitter build of the `tsx` grammar,
-/// plus curl fetches of its `highlights.scm` and its `ecma`/`_typescript`/
-/// `_jsx` query dependencies); requires `git`, `curl`, and `tree-sitter` on
-/// `PATH`.
+/// Hits the network (real git clone + compile of the `tsx` grammar, plus
+/// curl fetches of its `highlights.scm` and its `ecma`/`_typescript`/`_jsx`
+/// query dependencies); requires `git` and `curl` on `PATH`, and a
+/// workspace-built grammar compiler (see `workspace_grammar_build`).
 ///
 /// Plain `curl-fetch` in place of `plum/fetch-query!` would leave
 /// `highlights.scm` as the raw `; inherits: …` stub, a comment-only file with

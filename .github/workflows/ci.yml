@@ -133,25 +133,19 @@ jobs:
       # Fixtures are grammar shared libraries (.so/.dylib/.dll) compiled from the
       # grammar revisions in runtime/scheme/languages/<name>.scm (the shipped SSOT).
       # A helix-pin bump changes those files and therefore the cache key,
-      # triggering a rebuild. On Windows, MSVC dev tools are needed by tree-sitter build.
+      # triggering a rebuild, as does a change to the grammar compiler.
       #
-      # The tree-sitter CLI is installed unconditionally (not gated on cache-hit)
-      # because the live-grammar e2e tests run their own clone + tree-sitter build
-      # and need the CLI regardless of fixture cache state.
-
-      - name: Setup MSVC developer environment (Windows)
-        if: runner.os == 'Windows'
-        uses: egor-tensin/vs-shell@v2.2
+      # The Build step above builds the grammar compiler (hume-grammar-build)
+      # into target/debug/, where the live-grammar e2e tests find it whatever
+      # the fixture cache state. It finds MSVC itself, so Windows needs no
+      # developer shell.
 
       - name: Cache grammar fixtures
         id: fixture-cache
         uses: actions/cache@v5
         with:
           path: tests/fixtures/grammars
-          key: grammars-${{ runner.os }}-${{ hashFiles('scripts/fetch-test-grammars.sh','runtime/scheme/languages/*.scm') }}
-
-      - name: Install tree-sitter CLI
-        run: npm install -g tree-sitter-cli
+          key: grammars-${{ runner.os }}-${{ hashFiles('scripts/fetch-test-grammars.sh','runtime/scheme/languages/*.scm','hume-grammar-build/**') }}
 
       - name: Build grammar fixtures
         if: steps.fixture-cache.outputs.cache-hit != 'true'

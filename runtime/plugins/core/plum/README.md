@@ -184,8 +184,8 @@ reinstall leaves an installed grammar working:
    [Pinned plugins](#pinned-plugins)). Its `#:build` then runs steps 3 to 5 in the
    staging clone.
 3. Download the highlights query, resolving any `; inherits:` chain.
-4. Compile with tree-sitter build into the shared library, after a status line, since
-   the C compiler prints nothing and a slow grammar would look hung.
+4. Compile into the shared library with `compile-grammar!`, after a status line, since
+   the compiler prints nothing and a slow grammar would look hung.
 5. Download each optional Helix query the editor can compile (the kinds
    `grammar-optional-queries` lists), if any.
 6. Replace the source tree with the staging clone.

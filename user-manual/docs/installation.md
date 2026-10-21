@@ -24,7 +24,7 @@ tar xzf hume-*.tar.gz
 Or copy it into `~/.local` for a single-user install (no sudo needed):
 
 ```sh
-mkdir -p ~/.local && cp -R hume-*/bin hume-*/share ~/.local/
+mkdir -p ~/.local && cp -R hume-*/bin hume-*/libexec hume-*/share ~/.local/
 ```
 
 Then make sure `~/.local/bin` is on your `$PATH`:
@@ -57,7 +57,7 @@ fish_add_path $HOME/.local/bin
 Or copy it into `/usr/local/` for a system-wide install:
 
 ```sh
-cp -R hume-*/bin hume-*/share /usr/local/
+cp -R hume-*/bin hume-*/libexec hume-*/share /usr/local/
 ```
 
 ::: warning macOS: "cannot be opened" dialog
@@ -72,7 +72,7 @@ xattr -d com.apple.quarantine hume-*/bin/hume
 
 Extract the `.zip`, then run `hume.exe` from inside the extracted folder, or add that folder to your `PATH`.
 
-Keep the whole extracted folder intact: HUME finds its runtime files (themes, plugins, language definitions) relative to the binary's location: `../share/hume/` next to `bin/hume` on macOS/Linux, `runtime/` next to `hume.exe` on Windows. Moving just the binary out on its own leaves it without them.
+Keep the whole extracted folder intact: HUME finds its runtime files (themes, plugins, language definitions) and `hume-grammar-build`, the helper that compiles grammars, relative to the binary's location. On macOS/Linux they are `../share/hume/` and `../libexec/hume/` next to `bin/hume`; on Windows, `runtime/` and `hume-grammar-build.exe` next to `hume.exe`. Moving just the binary out on its own leaves it without them.
 
 ### Check it works
 
@@ -96,7 +96,7 @@ cargo build --release
 Run it from the repository root, as above. HUME picks up the `runtime/` directory sitting there.
 
 ::: warning `cargo install` needs one extra step
-`cargo install --git https://github.com/cvlmtg/HUME` installs the binary but **not** the runtime files, so themes, plugins, `:tutor`, and syntax highlighting won't work. Point HUME at a copy of the `runtime/` directory to fix it:
+`cargo install --git https://github.com/cvlmtg/HUME hume-editor hume-grammar-build` installs the binaries but **not** the runtime files, so themes, plugins, `:tutor`, and syntax highlighting won't work. Point HUME at a copy of the `runtime/` directory to fix it:
 
 ```sh
 export HUME_RUNTIME=/path/to/HUME/runtime
@@ -105,7 +105,7 @@ export HUME_RUNTIME=/path/to/HUME/runtime
 
 ## Syntax highlighting
 
-HUME highlights code with tree-sitter, and installs grammars on demand rather than shipping them. That first install needs `git`, `curl`, the tree-sitter CLI (`tree-sitter-cli`), and a C compiler on your `PATH`. See [Syntax Highlighting](syntax-highlighting.md) for the walkthrough.
+HUME highlights code with tree-sitter, and installs grammars on demand rather than shipping them. That first install needs `git`, `curl`, and a C and C++ compiler on your `PATH`. See [Syntax Highlighting](syntax-highlighting.md) for the walkthrough.
 
 ## Terminal compatibility
 

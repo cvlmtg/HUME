@@ -8,7 +8,7 @@ fn harness_with_data_dir(tmp: &TempDir) -> SteelCtxTestHarness {
     let data_dir = tmp.path().join("hume");
     std::fs::create_dir_all(&data_dir).unwrap();
     let mut h = SteelCtxTestHarness::new();
-    h.dirs = ScriptDirs::new(Some(data_dir), None);
+    h.dirs = ScriptDirs::new(Some(data_dir), None, None);
     h
 }
 

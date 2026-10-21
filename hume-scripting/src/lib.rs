@@ -199,7 +199,11 @@ impl ScriptingHost {
     /// `dirs` supplies the data and runtime directories builtins expose, so no
     /// builtin reads environment variables on a call.
     pub fn new(dirs: &hume_platform::dirs::Dirs) -> Self {
-        let dirs = builtins::dirs::ScriptDirs::new(dirs.data.clone(), dirs.runtime.clone());
+        let dirs = builtins::dirs::ScriptDirs::new(
+            dirs.data.clone(),
+            dirs.runtime.clone(),
+            dirs.grammar_build.clone(),
+        );
         let mut steel = Engine::new();
         builtins::register_all(&mut steel);
         Self {

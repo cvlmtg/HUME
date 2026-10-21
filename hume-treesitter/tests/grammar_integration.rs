@@ -142,6 +142,19 @@ fn parses_json_object() {
     assert_eq!(value.kind(), "object");
 }
 
+/// A block scalar is recognised by the grammar's C++ external scanner.
+#[test]
+fn parses_yaml_block_scalar_through_its_cpp_scanner() {
+    require_grammars(&["yaml"]);
+    let (tree, _rope) = open_and_parse("yaml", "tree_sitter_yaml", "key: |\n  line one\n");
+    assert_eq!(
+        tree.root_node().to_sexp(),
+        "(stream (document (block_node (block_mapping (block_mapping_pair \
+         key: (flow_node (plain_scalar (string_scalar))) \
+         value: (block_node (block_scalar)))))))"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Highlight tests
 // ---------------------------------------------------------------------------

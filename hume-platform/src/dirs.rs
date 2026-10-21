@@ -40,6 +40,9 @@ pub struct Dirs {
     pub runtime: Option<PathBuf>,
     /// Where `:tutor` writes its editable copy of the lesson.
     pub tmp: Option<PathBuf>,
+    /// The grammar compiler `hume-grammar-build`; see `grammar_build_with`
+    /// for where it is looked for. `None` when no candidate exists.
+    pub grammar_build: Option<PathBuf>,
 }
 
 impl Dirs {
@@ -73,6 +76,7 @@ impl Dirs {
         Self {
             config: config_dir_with(&env).map(pin),
             data: data_dir_with(&env).map(pin),
+            grammar_build: grammar_build_with(exe.as_deref()),
             runtime: runtime_dir_with(&env, exe, cwd.clone()).map(pin),
             tmp: Some(pin(tmp)),
         }
@@ -86,6 +90,7 @@ impl Dirs {
             data: None,
             runtime: None,
             tmp: None,
+            grammar_build: None,
         }
     }
 }
@@ -195,6 +200,30 @@ fn runtime_dir_with(
     }
 
     None
+}
+
+/// Where the grammar compiler is, relative to the executable `exe`:
+///
+/// 1. `../libexec/hume/` relative to the binary: Unix / macOS installed
+///    layout, which keeps a helper only HUME runs off `PATH`.
+/// 2. The binary's own directory: the Windows archive layout, and a cargo
+///    build, which puts every workspace binary in one `target/<profile>/`.
+///
+/// Existence-checked; `None` if neither exists.
+fn grammar_build_with(exe: Option<&Path>) -> Option<PathBuf> {
+    let exe_dir = exe?.parent()?;
+    let file = format!("hume-grammar-build{}", env::consts::EXE_SUFFIX);
+
+    #[cfg(not(windows))]
+    if let Some(libexec) = exe_dir
+        .parent()
+        .map(|p| p.join("libexec").join("hume").join(&file))
+        && libexec.exists()
+    {
+        return Some(libexec);
+    }
+
+    Some(exe_dir.join(file)).filter(|tool| tool.exists())
 }
 
 #[cfg(test)]

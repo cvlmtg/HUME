@@ -28,12 +28,18 @@ pub(crate) struct ScriptDirs {
     /// `./file.scm` resolves against it. `None` until `eval_init` sets it, so
     /// it stays unset under `--no-config`.
     pub(crate) init_dir: Option<PathBuf>,
+    /// The grammar compiler `compile-grammar!` runs.
+    pub(crate) grammar_build: Option<PathBuf>,
 }
 
 impl ScriptDirs {
     /// Compute all derived directory state from the raw data/runtime dirs.
-    /// `new(None, None)` does no filesystem work at all.
-    pub(crate) fn new(data_dir: Option<PathBuf>, runtime_dir: Option<PathBuf>) -> Self {
+    /// `new(None, None, None)` does no filesystem work at all.
+    pub(crate) fn new(
+        data_dir: Option<PathBuf>,
+        runtime_dir: Option<PathBuf>,
+        grammar_build: Option<PathBuf>,
+    ) -> Self {
         // Canonicalize data_dir for the display form; fall back to raw path
         // when the directory doesn't exist (e.g. sandboxed FS test environments).
         let canonical_data = data_dir
@@ -54,6 +60,7 @@ impl ScriptDirs {
             data_dir_display,
             runtime_dir_display,
             init_dir: None,
+            grammar_build,
         }
     }
 }

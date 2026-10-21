@@ -2,18 +2,17 @@
 //!
 //! | Steel name             | Signature           | Notes                          |
 //! |------------------------|---------------------|--------------------------------|
-//! | `compile-grammar!`     | `string string → void` | `tree-sitter build -o out src` |
+//! | `compile-grammar!`     | `string string → void` | `hume-grammar-build -o out src` |
 //!
 //! No sandbox checks: full-trust plugin model (see
-//! `user-manual/docs/plugins.md`'s "Filesystem and processes"). This stays a Rust builtin only for the
-//! Windows compiler-selection dance (`hume_platform::process::tree_sitter_build`
-//! probes `cl`/`clang`/`gcc`/`zig` and writes `--target`-stripping wrapper
-//! scripts); a Scheme rewrite would only make that logic worse.
-//! `grammar-output-path` (path construction, no filesystem access) lives in
-//! Scheme (`runtime/scheme/grammars.scm`): it isn't platform-conditional in
-//! the same way.
+//! `user-manual/docs/plugins.md`'s "Filesystem and processes"). This is a Rust
+//! builtin because the compiler is found beside the HUME executable, which
+//! only the scripting host knows, and because its inherited output needs the
+//! inline-output screen opened first. `grammar-output-path` (path
+//! construction, no filesystem access) lives in Scheme
+//! (`runtime/scheme/grammars.scm`).
 
-use std::path::PathBuf;
+use std::path::Path;
 
 use steel::rvals::SteelVal;
 
@@ -23,71 +22,57 @@ use crate::log::LogLevel;
 use super::SteelResult;
 use super::errors::generic_err;
 
-/// Suffix appended to a grammar-compile failure message when no C compiler
-/// was found on `PATH`. Empty on non-Windows, where a compiler is either
-/// preinstalled or the platform-native error is already clear enough.
-#[cfg(windows)]
-fn windows_compiler_hint(cwd: &std::path::Path) -> String {
-    if hume_platform::process::no_windows_compiler_found(cwd) {
-        return ". No C compiler found; install one of: MSVC Build Tools, clang, gcc, or zig, \
-                 and ensure it is on PATH"
-            .to_string();
-    }
-    String::new()
-}
-
-#[cfg(not(windows))]
-fn windows_compiler_hint(_cwd: &std::path::Path) -> String {
-    String::new()
-}
-
 /// `(compile-grammar! src out)`: compile the tree-sitter grammar source at
-/// `src` to `out` via `tree-sitter build -o <out> <src>`.
+/// `src` to `out` with the grammar compiler shipped beside HUME.
 ///
 /// - **Init mode**: logs a Warning on failure and returns `#<void>`; a
-///   missing `tree-sitter` binary should not abort the editor on startup.
+///   grammar that fails to build should not abort the editor on startup.
 /// - **Command mode**: raises a Steel error on failure so the user sees it.
 pub(crate) fn compile_grammar(ctx: &mut SteelCtx, src: String, out: String) -> SteelResult {
-    let src_path = PathBuf::from(&src);
-    let out_path = PathBuf::from(&out);
-
-    ctx.log(
-        LogLevel::Trace,
-        format!("compile-grammar!: `tree-sitter build -o {out} {src}`"),
-    );
-
-    // `tree-sitter build` inherits stdio, so this is a real terminal write,
-    // so open the bracket first. Init-time compiles run pre-terminal (no screen
-    // to enter, and no `#:inline-output` frame is ever armed there anyway).
-    if ctx.session == crate::context::EvalSession::Runtime
-        && let Some(output) = ctx.host.output()
-    {
-        output
-            .ensure_inline_output_screen()
-            .map_err(|e| generic_err(format!("compile-grammar!: {e}")))?;
-    }
-
-    let cwd = ctx.host.buffers().cwd();
-    let result = hume_platform::process::tree_sitter_build(&src_path, &out_path, &cwd);
-    let msg = match result {
-        Ok(status) if status.success() => return Ok(SteelVal::Void),
-        Ok(status) => hume_platform::process::failure_message(
-            "compile-grammar!: `tree-sitter build`",
-            Some(status),
-            "",
-        ),
-        Err(e) => format!("compile-grammar!: {e}"),
+    let msg = match build(ctx, &src, &out) {
+        Ok(()) => return Ok(SteelVal::Void),
+        Err(msg) => msg,
     };
-    // A failure with no compiler at all on PATH is a common, fixable cause on
-    // Windows (no MSVC Build Tools): point the user at it instead of leaving
-    // them with a bare tree-sitter exit code.
-    let msg = format!("{msg}{}", windows_compiler_hint(&cwd));
-
     if ctx.session == crate::context::EvalSession::Init {
         ctx.log(LogLevel::Warning, msg);
         Ok(SteelVal::Void)
     } else {
         Err(generic_err(msg))
+    }
+}
+
+/// Run the grammar compiler, or say why it did not build `src`.
+fn build(ctx: &mut SteelCtx, src: &str, out: &str) -> Result<(), String> {
+    let tool = ctx.dirs.grammar_build.clone().ok_or(
+        "compile-grammar!: hume-grammar-build is not installed beside the hume executable",
+    )?;
+
+    ctx.log(
+        LogLevel::Trace,
+        format!("compile-grammar!: `{} -o {out} {src}`", tool.display()),
+    );
+
+    // The compiler inherits stdio, so this is a real terminal write, so open
+    // the bracket first. Init-time compiles run pre-terminal (no screen to
+    // enter, and no `#:inline-output` frame is ever armed there anyway).
+    if ctx.session == crate::context::EvalSession::Runtime
+        && let Some(output) = ctx.host.output()
+    {
+        output
+            .ensure_inline_output_screen()
+            .map_err(|e| format!("compile-grammar!: {e}"))?;
+    }
+
+    let cwd = ctx.host.buffers().cwd();
+    let program = tool.display().to_string();
+    match hume_platform::process::grammar_build(&tool, Path::new(src), Path::new(out), &cwd) {
+        Ok(status) if status.success() => Ok(()),
+        Ok(status) => Err(hume_platform::process::failure_message(
+            &format!("compile-grammar!: `{program}`"),
+            Some(status),
+            "",
+        )),
+        Err(e) => Err(format!("compile-grammar!: {e}")),
     }
 }
 

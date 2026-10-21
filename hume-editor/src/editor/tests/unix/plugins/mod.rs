@@ -55,6 +55,7 @@ fn setup_editor_with_init_files(
         data: Some(data_tmp.path().join("hume")),
         runtime: Some(runtime_path.to_path_buf()),
         tmp: None,
+        grammar_build: None,
     };
     ed.init_scripting(&mut Default::default());
 
@@ -95,6 +96,7 @@ fn setup_lang_lint_editor(init_body: &str) -> (Editor, Vec<tempfile::TempDir>) {
         data: Some(data_tmp.path().join("hume")),
         runtime: Some(runtime_tmp.path().to_path_buf()),
         tmp: None,
+        grammar_build: None,
     };
     ed.init_scripting(&mut Default::default());
 

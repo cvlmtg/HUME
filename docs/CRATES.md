@@ -167,6 +167,12 @@ Stores for the gutter signs, inlay hints, virtual lines, and highlights that scr
 ## Description
 Editor state, keymaps, command dispatch, and the `hume` binary: the crate that ties the others into a running editor.
 
+# hume-grammar-build
+### Used by
+- *(nothing — builds the `hume-grammar-build` binary, which HUME runs as a separate process from beside its own executable)*
+## Description
+The grammar compiler: builds a tree-sitter grammar's C parser and its C or C++ external scanner into the shared library HUME loads, finding the system compiler through the `cc` crate.
+
 # arch-lints
 ## Description
 Architectural lints, run as `cargo test` integration tests that scan source files for rule violations.

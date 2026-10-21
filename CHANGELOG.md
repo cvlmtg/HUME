@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Breaking changes
+- Grammars are compiled by `hume-grammar-build`, which ships beside `hume`: `libexec/hume/` in the macOS and Linux archives, `hume-grammar-build.exe` in the Windows one. Copy it along with `hume` when you install by hand, and name both packages with `cargo install`: `cargo install --git https://github.com/cvlmtg/HUME hume-editor hume-grammar-build`.
 - Key-bindable commands of the core plugins take their plugin's prefix. Rename them in your bindings and `call!`s: `lsp-fmt` is `lsp/format-source`, the other `lsp-*` commands and `goto-next-diagnostic`/`goto-prev-diagnostic` take `lsp/` (`lsp/hover`, `lsp/goto-next-diagnostic`), `toggle-undotree` is `undotree/toggle`, `picker-*` are `pickers/*`, `plum-ensure-grammars` is `plum/ensure-grammars`, `classic-*` and `vim-*` are `classic-paste/*` and `vim-keybind/*`, and `helix-delete-surround`/`helix-replace-surround` are `helix-surround/delete`/`helix-surround/replace`. Typed `:` commands keep their names.
 - `lsp-locations->display-parts` is `lsp-locations->places`, which no longer merges locations; `lsp-locations->merged-places` does.
 - Position hashes name their unit: `'start`/`'end` are `'start-char`/`'end-char` or `'start-line`/`'end-line` in `viewport-range`, `lsp-range->char-range`, `set-extra-highlights!`, `set-virtual-lines!` segments and `diagnostics-for-buffer`, whose `'line` is `'start-line`. `set-inlay-hints!` takes `'char-offset` for `'offset`, and `diff-words` hunks carry `'old-start-char`, `'old-end-char`, `'new-start-char` and `'new-end-char`.
@@ -58,6 +59,7 @@
 - A command or language server that cannot start because its working directory is missing says so, instead of reporting the program as missing.
 - A failed `:plum-install-theme` of an installed theme repo keeps the installed copy instead of deleting it.
 - A failed `:plum-install-grammar` of an installed grammar keeps it working instead of deleting its highlighting queries.
+- `:plum-install-grammar` installs the YAML, Vue, Astro, Lean, Org and haskell-persistent grammars, which are partly written in C++. Installing a grammar no longer needs the tree-sitter CLI.
 - In Insert mode, `End`, `↑` and `↓` reach the end of a line, after its last character.
 - The command line's completion menu opens right above the command line, over an open drawer or docked popup, instead of above them.
 - Headless `--keys` runs print warnings and errors on stderr and exit with status 1 when an error is logged.

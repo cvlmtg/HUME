@@ -1,0 +1,8 @@
+[package]
+name = "hume-grammar-build"
+version.workspace = true
+edition = "2024"
+
+[dependencies]
+cc = "1"
+tempfile = "3"
