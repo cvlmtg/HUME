@@ -83,7 +83,7 @@ use watchdog::EvalWatchdog;
 // needs this same Windows-safe escaping. See `steel_path_literal`'s own doc
 // comment for why it isn't hand-rolled per call site.
 #[cfg(any(test, feature = "test-util"))]
-pub use builtins::plugins::steel_path_literal;
+pub use builtins::plugins::paths::steel_path_literal;
 
 // ── Internal re-exports (within-crate use) ────────────────────────────────────
 pub(crate) use context::SteelCtx;

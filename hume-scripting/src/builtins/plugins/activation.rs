@@ -23,7 +23,8 @@
 use steel::rerrs::SteelErr;
 use steel::rvals::{IntoSteelVal, SteelVal};
 
-use super::{entry_file_arg, require_program_for_path};
+use super::entry_file_arg;
+use super::paths::require_program_for_path;
 use crate::SteelCtx;
 use crate::attribution::{EntryFile, EntryId, PluginId};
 use crate::builtins::SteelResult;
