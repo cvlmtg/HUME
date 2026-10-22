@@ -200,7 +200,7 @@ impl ConfigState {
     /// field here.
     pub(super) fn new(kitty_enabled: bool, prior_clock: u64) -> Self {
         Self {
-            keymap: default_keymap_for(kitty_enabled),
+            keymap: Keymap::with_defaults(kitty_enabled),
             local_keymaps: LocalKeymaps::default(),
             registry: CommandRegistry::with_defaults(),
             completion_sources: completion::SourceRegistry::with_defaults(),
@@ -214,17 +214,6 @@ impl ConfigState {
             next_async_job_id: 0,
         }
     }
-}
-
-/// The keymap every session and every `:reload-config` starts from: the
-/// compiled-in trie, plus the kitty-only default binds when the terminal
-/// supports the protocol.
-pub(in crate::editor) fn default_keymap_for(kitty_enabled: bool) -> Keymap {
-    let mut keymap = Keymap::default();
-    if kitty_enabled {
-        keymap.apply_kitty_defaults();
-    }
-    keymap
 }
 
 // ── EditorState ───────────────────────────────────────────────────────────────
@@ -573,70 +562,6 @@ impl EditorState {
     /// Unconditional quit-the-whole-editor: quit all, no confirmation.
     pub(in crate::editor) fn request_quit(&mut self) {
         self.should_quit = true;
-    }
-
-    /// Pushes a mode layer: the single write path for mode transitions.
-    /// `OnModeChange` fires later, from `Editor::detect_mode_change` at the
-    /// next `settle()`.
-    ///
-    /// A same-kind re-entry replaces the layer, since its payload may
-    /// differ. An Insert layer is never re-entered this way: one is built
-    /// only from a freshly opened session, and `begin_insert_session` joins
-    /// an open one instead.
-    ///
-    /// Tears down the current mode layer unless it is `Base`
-    /// (teardown is cancel), clears Extend, and calls [`Self::push_layer`].
-    /// Overlays below the outgoing mode layer stay, except one holding a
-    /// minibuffer, which `push_layer` retires. `push_layer` evicts any popup
-    /// in `Base`'s slot, so a popup is never buried.
-    ///
-    /// Never gated: a key only reaches `Base` after every overlay above it
-    /// fell through, and a Steel-initiated push (a timer's `prompt!`) lands on
-    /// top of an open picker, which stays suspended until the layer retires.
-    pub(in crate::editor) fn push_mode_layer<L: input_stack::Layer>(
-        &mut self,
-        view: &EngineView,
-        layer: L,
-    ) {
-        let mode_layer = self.input.mode_layer();
-        if !self.input.is::<input_stack::BaseLayer>(mode_layer) {
-            self.truncate_layers(view, mode_layer);
-        }
-        self.input.set_extend(false);
-        self.push_layer(view, layer);
-    }
-
-    /// Retires whichever completion layer is open, wherever it is on the
-    /// stack: a completion layer can sit under a `Popup`, and a
-    /// pop-if-top rule would leave a stale session behind one. At most one
-    /// of the two is ever actually open; `retire` no-ops on the other. A
-    /// no-op when no session is open at all.
-    pub(in crate::editor) fn dismiss_completion(&mut self, view: &EngineView) {
-        self.retire::<input_stack::BufferCompletionLayer>(view);
-        self.retire::<input_stack::MinibufCompletionLayer>(view);
-    }
-
-    /// [`Self::dismiss_completion`]'s variant for the two accept paths and
-    /// the trigger that reuses an open session, which need the session *by
-    /// value* rather than merely retired. The session is reconciled with
-    /// the buffer first, so a session that no longer applies is dismissed
-    /// (`None`) instead of handed out. A session held by value is not
-    /// carried through text changes: the caller edits with it in hand only
-    /// to drop it, or puts it back before the next edit.
-    /// [`Self::take_layer`] handles the truncate-and-pull-out and never runs
-    /// the layer's own `tear_down` (only whatever was pushed above it), so
-    /// this closes the session's views itself. `Buffer`-target only: both
-    /// accept paths only ever act on one. `None` when no `Buffer` session is
-    /// open.
-    pub(in crate::editor) fn take_buffer_completion(
-        &mut self,
-        view: &EngineView,
-    ) -> Option<completion::BufferSession> {
-        self.reconcile_completion(view);
-        let r = self.input.ref_of::<input_stack::BufferCompletionLayer>()?;
-        let completion = self.take_layer::<input_stack::BufferCompletionLayer>(view, r);
-        self.close_buffer_completion_views();
-        Some(completion.session)
     }
 }
 

@@ -515,6 +515,17 @@ pub(super) fn default_insert_keymap() -> KeyTrie {
 // ── Kitty-only default binds ──────────────────────────────────────────────────
 
 impl Keymap {
+    /// The keymap every session and every `:reload-config` starts from: the
+    /// compiled-in trie, plus the kitty-only default binds when the terminal
+    /// supports the protocol.
+    pub(in crate::editor) fn with_defaults(kitty_enabled: bool) -> Self {
+        let mut keymap = Keymap::default();
+        if kitty_enabled {
+            keymap.apply_kitty_defaults();
+        }
+        keymap
+    }
+
     /// Bind the default keys that are only delivered under the kitty keyboard
     /// protocol. Call this once after the kitty probe succeeds so the binds
     /// exist only when the terminal can actually produce them.

@@ -1,5 +1,5 @@
 //! A paste: text landed at the top of the stack through each layer's
-//! [`Layer::paste_handler`](super::Layer::paste_handler).
+//! [`Layer::paste_handler`](super::stack::Layer::paste_handler).
 //! [`EditorState::paste`] is the one implementation; an entry point only
 //! builds a [`PastedText`] and calls it.
 

@@ -52,6 +52,42 @@ pub(in crate::editor) enum Trigger {
 type SteelCall = (SteelVal, Vec<SteelVal>);
 
 impl EditorState {
+    /// Retires whichever completion layer is open, wherever it is on the
+    /// stack: a completion layer can sit under a `Popup`, and a
+    /// pop-if-top rule would leave a stale session behind one. At most one
+    /// of the two is ever actually open; `retire` no-ops on the other. A
+    /// no-op when no session is open at all.
+    pub(in crate::editor) fn dismiss_completion(&mut self, view: &EngineView) {
+        self.retire::<crate::editor::input_stack::BufferCompletionLayer>(view);
+        self.retire::<crate::editor::input_stack::MinibufCompletionLayer>(view);
+    }
+
+    /// [`Self::dismiss_completion`]'s variant for the two accept paths and
+    /// the trigger that reuses an open session, which need the session *by
+    /// value* rather than merely retired. The session is reconciled with
+    /// the buffer first, so a session that no longer applies is dismissed
+    /// (`None`) instead of handed out. A session held by value is not
+    /// carried through text changes: the caller edits with it in hand only
+    /// to drop it, or puts it back before the next edit.
+    /// [`Self::take_layer`] handles the truncate-and-pull-out and never runs
+    /// the layer's own `tear_down` (only whatever was pushed above it), so
+    /// this closes the session's views itself. `Buffer`-target only: both
+    /// accept paths only ever act on one. `None` when no `Buffer` session is
+    /// open.
+    pub(in crate::editor) fn take_buffer_completion(
+        &mut self,
+        view: &EngineView,
+    ) -> Option<super::BufferSession> {
+        self.reconcile_completion(view);
+        let r = self
+            .input
+            .ref_of::<crate::editor::input_stack::BufferCompletionLayer>()?;
+        let completion =
+            self.take_layer::<crate::editor::input_stack::BufferCompletionLayer>(view, r);
+        self.close_buffer_completion_views();
+        Some(completion.session)
+    }
+
     // ── Buffer target ────────────────────────────────────────────────────────
 
     /// Opens (or re-invokes into) the Insert-mode completion session on the

@@ -93,7 +93,7 @@ impl Editor {
 
     /// Apply the kitty keyboard-protocol probe result atomically: set the
     /// runtime flag and re-derive the keymap via the same
-    /// [`super::default_keymap_for`] `ConfigState::new` uses, so the kitty-only
+    /// [`Keymap::with_defaults`](super::keymap::Keymap::with_defaults) `ConfigState::new` uses, so the kitty-only
     /// default keybinds (when enabled) are installed identically at startup
     /// and on every `:reload-config`. Called once, from [`Self::start`], so
     /// the binds can never diverge from the flag.
@@ -103,7 +103,7 @@ impl Editor {
     /// `bind-key!` on top of it.
     pub(in crate::editor) fn set_kitty_support(&mut self, kitty_enabled: bool) {
         self.kitty_enabled = kitty_enabled;
-        self.state.config.keymap = super::default_keymap_for(kitty_enabled);
+        self.state.config.keymap = super::keymap::Keymap::with_defaults(kitty_enabled);
     }
 
     /// Open a file from disk, or create a new empty scratch buffer.

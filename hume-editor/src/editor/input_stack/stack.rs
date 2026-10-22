@@ -817,6 +817,33 @@ impl InputStack {
 }
 
 impl EditorState {
+    /// Pushes a mode layer: the single write path for mode transitions.
+    /// `OnModeChange` fires later, from `Editor::detect_mode_change` at the
+    /// next `settle()`.
+    ///
+    /// A same-kind re-entry replaces the layer, since its payload may
+    /// differ. An Insert layer is never re-entered this way: one is built
+    /// only from a freshly opened session, and `begin_insert_session` joins
+    /// an open one instead.
+    ///
+    /// Tears down the current mode layer unless it is `Base`
+    /// (teardown is cancel), clears Extend, and calls [`Self::push_layer`].
+    /// Overlays below the outgoing mode layer stay, except one holding a
+    /// minibuffer, which `push_layer` retires. `push_layer` evicts any popup
+    /// in `Base`'s slot, so a popup is never buried.
+    ///
+    /// Never gated: a key only reaches `Base` after every overlay above it
+    /// fell through, and a Steel-initiated push (a timer's `prompt!`) lands on
+    /// top of an open picker, which stays suspended until the layer retires.
+    pub(in crate::editor) fn push_mode_layer<L: Layer>(&mut self, view: &EngineView, layer: L) {
+        let mode_layer = self.input.mode_layer();
+        if !self.input.is::<super::BaseLayer>(mode_layer) {
+            self.truncate_layers(view, mode_layer);
+        }
+        self.input.set_extend(false);
+        self.push_layer(view, layer);
+    }
+
     /// Ends the open Insert or paste session (`focus::end_focus_sessions`),
     /// then drops every layer above `Base` without its teardown and resets
     /// `Base` ([`InputStack::truncate_to_base`]): a config reload's reset of

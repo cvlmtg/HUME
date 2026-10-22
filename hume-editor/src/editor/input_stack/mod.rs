@@ -4,11 +4,11 @@
 //! The stack is the only precedence mechanism: the top layer sees a key first
 //! and its handler decides whether it handles, falls through, or discards it.
 //! `push` never refuses. [`InputStack::is_settled_for`] only answers whether an
-//! async opener's request has gone stale, and [`Layer::setup`] only clears what
+//! async opener's request has gone stale, and [`Layer::setup`](stack::Layer::setup) only clears what
 //! a layer needs out of its way on entry (chiefly an open popup).
 //!
 //! `stack.rs` holds the mechanism ([`InputStack`], [`LayerRef`], [`InputEvent`],
-//! the [`Layer`] trait) and names no concrete layer. Each concrete layer (state,
+//! the [`Layer`](stack::Layer) trait) and names no concrete layer. Each concrete layer (state,
 //! `Layer` impl, handlers, render sync, lookup helpers) lives in its own file
 //! with a `mod` line below. `placement.rs` (overlay placement shared by `popup`,
 //! `menu`, `completion`), `snapshot.rs` (pre-entry selection capture shared
@@ -37,7 +37,7 @@ pub(in crate::editor) mod shell_prompt;
 pub(in crate::editor) mod sift;
 
 pub(in crate::editor) use paste::PastedText;
-pub(in crate::editor) use stack::{InputEvent, InputStack, Layer, LayerRef, OtherLayers};
+pub(in crate::editor) use stack::{InputEvent, InputStack, LayerRef, OtherLayers};
 
 pub(in crate::editor) use base::{BaseLayer, PendingSequence};
 pub(in crate::editor) use char::{CharLayer, read_command_char, read_steel_char};
