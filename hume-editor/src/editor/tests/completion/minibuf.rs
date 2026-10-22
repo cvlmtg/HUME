@@ -604,27 +604,27 @@ fn span_refused(ed: &Editor) -> bool {
 
 #[test]
 fn a_delegated_source_completes_the_span_it_names() {
-    let ed = greet_with_a_spanning_source("delegated", "#:span (cons 6 12)");
+    let ed = greet_with_a_spanning_source("delegated", "#:span (hash 'start-char 6 'end-char 12)");
     assert_eq!(minibuf_input(&ed), "greet \"my notes\"");
 }
 
 #[test]
 fn a_span_from_a_source_the_editor_matches_for_is_refused() {
-    let ed = greet_with_a_spanning_source("string", "#:span (cons 6 12)");
+    let ed = greet_with_a_spanning_source("string", "#:span (hash 'start-char 6 'end-char 12)");
     assert!(span_refused(&ed));
     assert_eq!(minibuf_input(&ed), "greet \"my no");
 }
 
 #[test]
 fn a_span_that_leaves_out_the_cursor_is_refused() {
-    let ed = greet_with_a_spanning_source("delegated", "#:span (cons 0 5)");
+    let ed = greet_with_a_spanning_source("delegated", "#:span (hash 'start-char 0 'end-char 5)");
     assert!(span_refused(&ed));
     assert_eq!(minibuf_input(&ed), "greet \"my no");
 }
 
 #[test]
 fn a_span_past_the_line_end_is_refused() {
-    let ed = greet_with_a_spanning_source("delegated", "#:span (cons 6 13)");
+    let ed = greet_with_a_spanning_source("delegated", "#:span (hash 'start-char 6 'end-char 13)");
     assert!(span_refused(&ed));
     assert_eq!(minibuf_input(&ed), "greet \"my no");
 }
@@ -707,7 +707,7 @@ fn a_named_prefix_waits_for_the_cursor_at_the_span_end() {
         "gixyz",
         "delegated",
         r#"(list "git" "gitk")"#,
-        r#"#:span (cons 6 11) #:prefix "git""#,
+        r#"#:span (hash 'start-char 6 'end-char 11) #:prefix "git""#,
     );
     for _ in 0..3 {
         ed.handle_key(key_left());

@@ -730,17 +730,6 @@ pub(crate) fn pair_fields(
     }
 }
 
-/// [`pair_fields`] for a pair that may be `#f` (absent).
-pub(crate) fn optional_pair_fields(
-    val: SteelVal,
-    ctx_name: &str,
-    shape: &str,
-) -> Result<Option<(SteelVal, SteelVal)>, SteelErr> {
-    optional(val, ctx_name, |val, ctx_name| {
-        pair_fields(val, ctx_name, shape)
-    })
-}
-
 /// Builds a dotted pair `(a . b)`: the shared encode counterpart to
 /// `pair_fields`, via steel-core's public `cons` primitive (the only public
 /// pair-construction API; the `Pair` type itself is unnameable outside

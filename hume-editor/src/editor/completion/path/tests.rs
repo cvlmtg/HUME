@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use super::super::testing::*;
 use super::*;
 use crate::editor::buffer::store::BufferStore;

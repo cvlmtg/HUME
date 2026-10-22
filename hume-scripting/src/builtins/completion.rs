@@ -11,8 +11,8 @@ use crate::{Effect, SteelCtx};
 
 use super::SteelResult;
 use super::args::{
-    bool_arg, callable_arg, chars_arg, int_arg, json_arg, list_items, optional_pair_fields,
-    optional_string_arg, server_arg, string_arg, symbol_enum_arg, usize_arg,
+    CHAR_RANGE_KEYS, bool_arg, callable_arg, chars_arg, int_arg, json_arg, list_items,
+    optional_hash_entry, optional_string_arg, server_arg, string_arg, symbol_enum_arg, usize_arg,
 };
 use super::errors::{generic_err, require_cap};
 use super::lsp::required_feature_arg;
@@ -187,10 +187,10 @@ pub(crate) fn register_completion_source(
 
 /// `(%completion-emit! id items incomplete span prefix)`: the
 /// `completion-emit!` Scheme wrapper supplies the defaults of
-/// `#:incomplete` and of [`EmittedWord`]'s `#:span` (a `(start . end)`
-/// pair, or `#f`) and `#:prefix` (`#t` when left out, which is
-/// [`FirstTab::Common`]; `#f` is [`FirstTab::Nothing`] and a string
-/// [`FirstTab::Named`]). `items` is a list
+/// `#:incomplete` and of [`EmittedWord`]'s `#:span` (a char range hash,
+/// or `#f`) and `#:prefix` (`#t` when left out, which is
+/// [`FirstTab::Common`]; `#f` is [`FirstTab::Nothing`] and a non-empty
+/// string [`FirstTab::Named`]). `items` is a list
 /// whose elements are `CompletionItem` hashmaps, bare-string labels, or
 /// whole LSP `textDocument/completion` responses passed straight through;
 /// each crosses `json_arg` (the funnel every JSON-taking builtin uses) with
@@ -207,14 +207,22 @@ pub(crate) fn completion_emit(
 ) -> SteelResult {
     let id = usize_arg(id, "completion-emit! id")? as u64;
     let incomplete = bool_arg(incomplete, "completion-emit! #:incomplete")?;
-    const SPAN: &str = "completion-emit! #:span";
-    let span = optional_pair_fields(span, SPAN, "a (start . end) pair")?
-        .map(|(start, end)| Ok::<_, SteelErr>(usize_arg(start, SPAN)?..usize_arg(end, SPAN)?))
-        .transpose()?;
+    let span = optional_hash_entry(span, "completion-emit! #:span", CHAR_RANGE_KEYS)?
+        .map(|range| range.char_range())
+        .transpose()?
+        .map(|(start, end)| start..end);
     let prefix = match prefix {
         SteelVal::BoolV(true) => FirstTab::Common,
-        other => optional_string_arg(other, "completion-emit! #:prefix")?
-            .map_or(FirstTab::Nothing, FirstTab::Named),
+        other => match optional_string_arg(other, "completion-emit! #:prefix")? {
+            None => FirstTab::Nothing,
+            Some(text) if text.is_empty() => {
+                return Err(generic_err(
+                    "completion-emit!: #:prefix would blank the word; send #f to propose \
+                     nothing, or leave #:prefix out to let the editor propose one",
+                ));
+            }
+            Some(text) => FirstTab::Named(text),
+        },
     };
     let parts = list_items(items, "completion-emit! items")?
         .into_iter()

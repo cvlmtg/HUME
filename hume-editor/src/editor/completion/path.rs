@@ -1,5 +1,4 @@
 use std::ops::Range;
-use std::path::Path;
 
 use super::{CompletionCtx, CompletionItem, arg_prefix, token_end_at};
 
@@ -53,32 +52,12 @@ where
     let (arg_start, prefix) = arg_prefix(input, cursor);
     let arg_end = token_end_at(input, cursor, &[' ']);
     let (dir_str, file_prefix) = hume_platform::path::split_path_at_sep(prefix);
-    let items = path_candidates(
-        &expand_fn(dir_str),
-        file_prefix,
-        ctx.cwd,
-        dirs_only,
-        |name| format!("{dir_str}{name}"),
-    );
-    (arg_start..arg_end, items)
-}
-
-/// The [`hume_platform::path::completion_entries`] of directory `dir`
-/// (relative to `cwd` unless absolute, and already expanded by the caller's
-/// own rules) as items labelled by name, a directory's with its trailing
-/// `/`. `insert` turns a label into the text that replaces the completed
-/// token.
-pub(super) fn path_candidates(
-    dir: &str,
-    file_prefix: &str,
-    cwd: &Path,
-    dirs_only: bool,
-    insert: impl Fn(&str) -> String,
-) -> Vec<CompletionItem> {
-    hume_platform::path::completion_entries(&cwd.join(dir), file_prefix, dirs_only)
+    // `join` keeps an absolute expanded directory as it is.
+    let dir = ctx.cwd.join(&*expand_fn(dir_str));
+    let items = hume_platform::path::completion_entries(&dir, file_prefix, dirs_only)
         .into_iter()
         .map(|label| {
-            let insert_text = insert(&label);
+            let insert_text = format!("{dir_str}{label}");
             let is_dir = label.ends_with('/');
             let mut item = CompletionItem::plain(label, insert_text);
             // The minibuffer's Enter handler reads this to decide whether
@@ -90,7 +69,8 @@ pub(super) fn path_candidates(
             }
             item
         })
-        .collect()
+        .collect();
+    (arg_start..arg_end, items)
 }
 
 #[cfg(test)]

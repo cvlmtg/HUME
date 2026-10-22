@@ -26,13 +26,13 @@
               (filter (lambda (entry) (not (equal? (car entry) name))) *shell-dialects*))))
 
 (define (%shell-dialect-for program)
-  (let* ((file (last (split-many (string-replace program "\\" "/") "/")))
-         (name (string-downcase (if (ends-with? (string-downcase file) ".exe")
-                                    (substring file 0 (- (string-length file) 4))
-                                    file)))
-         (entry (filter (lambda (entry) (member name (hash-ref (cdr entry) 'programs)))
-                        *shell-dialects*)))
-    (and (pair? entry) (cdr (car entry)))))
+  (let* ((file (string-downcase (file-name (string-replace program "\\" "/"))))
+         (name (if (ends-with? file ".exe")
+                   (substring file 0 (- (string-length file) 4))
+                   file))
+         (entry (findf (lambda (entry) (member name (hash-ref (cdr entry) 'programs)))
+                       *shell-dialects*)))
+    (and entry (cdr entry))))
 
 ;; ── Shared scanning ─────────────────────────────────────────────────────────
 
@@ -41,9 +41,6 @@
 (struct %shell-unit (value n extendable?))
 
 (define (%shell-blank? c) (memv c '(#\space #\tab #\newline)))
-
-(define (%shell-any pred xs)
-  (and (pair? xs) (or (pred (car xs)) (%shell-any pred (cdr xs)))))
 
 (define (%shell-scan rules input cursor)
   (define escape (%shell-rules-escape rules))
@@ -131,15 +128,16 @@
                    (loop rest (+ i 1)))))
             ((and (not open) (%shell-rules-tilde? rules) (= i start) (char=? c #\~)
                   (pair? rest) (memv (car rest) separators) (home-dir))
-             (set! last c)
-             (loop rest (unit! (%shell-unit (home-dir) 0 #f) i)))
+             => (lambda (home)
+                  (set! last c)
+                  (loop rest (unit! (%shell-unit home 0 #f) i))))
             (else
              (set! last c)
              (let ((r (or (read open c rest) (%shell-unit (string c) 0 #f))))
                (loop (list-tail rest (%shell-unit-n r)) (unit! r i)))))))))
 
 (define (%shell-map-chars name escape-char)
-  (if (not (%shell-any escape-char (string->list name)))
+  (if (not (findf escape-char (string->list name)))
       name
       (apply string-append (map (lambda (c) (or (escape-char c) (string c))) (string->list name)))))
 
@@ -292,8 +290,8 @@
     ((after-prefix "home" cs)
      => (lambda (after)
           (and (not (and (pair? after) (%shell-var-char? (car after) #f)))
-               (home-dir)
-               (%shell-unit (home-dir) 4 #t))))
+               (let ((home (home-dir)))
+                 (and home (%shell-unit home 4 #t))))))
     (else #f)))
 
 (define (%pwsh-read open c rest)
@@ -314,7 +312,7 @@
 (define %pwsh-special
   (string->list " \t'\"`$&;|(){}<>,@#"))
 
-(define %pwsh-separator (if (equal? (current-os!) "windows") "\\" "/"))
+(define %pwsh-separator (path-separator))
 
 (define (shell/pwsh-write word name close?)
   (let ((open (shell-word-open word))
@@ -329,7 +327,7 @@
                       (%shell-close open close?)))
       (else
        (let ((path (string-append (shell-word-dir word) name)))
-         (if (%shell-any (lambda (c) (memv c %pwsh-special)) (string->list path))
+         (if (findf (lambda (c) (memv c %pwsh-special)) (string->list path))
              (string-append "'" (string-replace path "'" "''") (%shell-close #\' close?))
              (string-append typed name)))))))
 
@@ -364,7 +362,7 @@
     (if open
         (string-append (shell-word-typed word) name (%shell-close open close?))
         (let ((path (string-append (shell-word-dir word) name)))
-          (if (%shell-any (lambda (c) (memv c %cmd-special)) (string->list path))
+          (if (findf (lambda (c) (memv c %cmd-special)) (string->list path))
               (string-append "\"" path (%shell-close #\" close?))
               (string-append (shell-word-typed word) name))))))
 
@@ -406,14 +404,14 @@
                           (path-programs prefix (hash-ref dialect 'program-extensions))
                           (path-entries (shell-word-dir word) prefix)))
                (item (lambda (name)
-                       (if (ends-with? name "/")
-                           (hash "label" name "insertText" (write-word word name #t) "kind" 19)
-                           (hash "label" name "insertText" (write-word word name #t)))))
-               (common (string-common-prefix names)))
+                       (let ((item (hash "label" name "insertText" (write-word word name #t))))
+                         (if (ends-with? name "/") (hash-insert item "kind" 19) item)))))
           (completion-emit! id (map item names)
-                            #:span (cons (shell-word-start word) (shell-word-end word))
+                            #:span (hash 'start-char (shell-word-start word)
+                                         'end-char (shell-word-end word))
                             #:prefix (and (> (length names) 1)
-                                          (> (string-length common) (string-length prefix))
-                                          (write-word word common #f)))))))
+                                          (let ((common (string-common-prefix names)))
+                                            (and (> (string-length common) (string-length prefix))
+                                                 (write-word word common #f)))))))))
 
 (register-completion-source! "shell" %shell-complete #:target 'minibuf #:match 'delegated)

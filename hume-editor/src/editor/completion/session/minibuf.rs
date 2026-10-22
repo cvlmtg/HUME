@@ -10,10 +10,11 @@ use std::borrow::Cow;
 use std::ops::Range;
 
 use hume_rope::grapheme::common_str_prefix;
-use hume_scripting::host::FirstTab;
+use hume_scripting::host::{EmittedWord, FirstTab};
 
 use super::super::item::CompletionItem;
 use super::super::registry::{MinibufSourceId, SourceRegistry};
+use super::MatchKind;
 use super::slots::{Invocation, SlotSet, SlotTokens};
 
 /// Byte range in [`MinibufSession`]'s own `input` that a `Minibuf`
@@ -23,21 +24,8 @@ use super::slots::{Invocation, SlotSet, SlotTokens};
 /// site.
 pub(in crate::editor) struct MinibufSpan {
     bytes: Range<usize>,
-    /// What the first Tab puts over `bytes` while no row is picked
-    /// ([`MinibufWord::prefix`]).
+    /// What the first Tab puts over `bytes` while no row is picked.
     prefix: FirstTab,
-}
-
-/// What an answer says about the word it completes: the span it replaces,
-/// a byte range of [`MinibufSession::input`] (`None` keeps the invocation's
-/// own), and what the first Tab puts over it. A [`FirstTab::Named`] text
-/// has a syntax the session cannot read, so it is applied as given: the
-/// typed text and the prefix need not share a display form (`dir/a` and
-/// `'dir/a b` read as the same path start in PowerShell).
-#[derive(Default)]
-pub(in crate::editor) struct MinibufWord {
-    pub(in crate::editor) span: Option<Range<usize>>,
-    pub(in crate::editor) prefix: FirstTab,
 }
 
 impl Invocation<MinibufSpan> {
@@ -46,7 +34,7 @@ impl Invocation<MinibufSpan> {
     /// except a `NativeDelegated` one, which computes its own span
     /// synchronously before this is minted (`orchestrate.rs`'s
     /// `invoke_minibuf_source`), and a delegated Steel one, whose answer
-    /// may name its span ([`MinibufSession::contribute`]).
+    /// may name its span ([`MinibufSession::emit`]).
     pub(in crate::editor) fn minibuf(bytes: Range<usize>) -> Self {
         Self::new(MinibufSpan {
             bytes,
@@ -92,11 +80,6 @@ impl MinibufSession {
         &self.input
     }
 
-    /// The cursor's byte offset into [`Self::input`].
-    pub(in crate::editor) fn cursor(&self) -> usize {
-        self.cursor
-    }
-
     // ── Sources in and out ───────────────────────────────────────────────────
 
     pub(in crate::editor) fn invoke(
@@ -107,25 +90,83 @@ impl MinibufSession {
         self.core.invoke(source, invocation)
     }
 
-    /// Lands an answer for invocation `id`, completing `word`.
+    /// Lands a native source's answer for invocation `id` over the span the
+    /// invocation was minted with.
     pub(in crate::editor) fn contribute(
         &mut self,
         id: u64,
         items: Vec<CompletionItem>,
         incomplete: bool,
-        word: MinibufWord,
     ) -> bool {
-        self.core.contribute(id, items, incomplete, |_, minted, _| {
-            if let Some(bytes) = word.span {
-                minted.bytes = bytes;
-            }
-            minted.prefix = word.prefix;
-        })
+        self.core.contribute(id, items, incomplete, |_, _, _| {})
     }
 
-    /// The source whose latest call is invocation `id`.
-    pub(in crate::editor) fn source_of(&self, id: u64) -> Option<MinibufSourceId> {
-        self.core.source_of(id)
+    /// Lands a Steel source's answer for invocation `id`, completing the
+    /// word it names: `word.span`, a char range of [`Self::input`] (`None`
+    /// keeps the invocation's own), and `word.prefix`, what the first Tab
+    /// puts over it. A [`FirstTab::Named`] text has a syntax the session
+    /// cannot read, so it is applied as given: the typed text and the
+    /// prefix need not share a display form (`dir/a` and `'dir/a b` read as
+    /// the same path start in PowerShell). `Ok(false)` when no slot's latest
+    /// call is `id`. `Err` for a word from a source the editor matches for
+    /// (it filters that source's items, so the set a prefix describes is
+    /// not the source's), and for a span that does not hold the cursor
+    /// within the line.
+    pub(in crate::editor) fn emit(
+        &mut self,
+        registry: &SourceRegistry,
+        id: u64,
+        items: Vec<CompletionItem>,
+        incomplete: bool,
+        word: EmittedWord,
+    ) -> Result<bool, String> {
+        if word == EmittedWord::default() {
+            return Ok(self.contribute(id, items, incomplete));
+        }
+        let Some(source) = self.core.source_of(id) else {
+            return Ok(false);
+        };
+        if registry.minibuf_get(source).match_kind != MatchKind::Delegated {
+            return Err(
+                "completion-emit!: #:span and #:prefix need a source registered with #:match \
+                 'delegated"
+                    .to_string(),
+            );
+        }
+        let EmittedWord { span, prefix } = word;
+        let bytes = span.map(|chars| self.span_bytes(chars)).transpose()?;
+        Ok(self.core.contribute(id, items, incomplete, |_, minted, _| {
+            if let Some(bytes) = bytes {
+                minted.bytes = bytes;
+            }
+            minted.prefix = prefix;
+        }))
+    }
+
+    /// Char range `chars` of [`Self::input`] as bytes, `Err` unless it
+    /// holds the cursor within the line.
+    fn span_bytes(&self, chars: Range<usize>) -> Result<Range<usize>, String> {
+        let input = &self.input;
+        let byte_at = |n: usize| {
+            input
+                .char_indices()
+                .map(|(i, _)| i)
+                .chain([input.len()])
+                .nth(n)
+        };
+        let cursor = input[..self.cursor].chars().count();
+        match (byte_at(chars.start), byte_at(chars.end)) {
+            (Some(start), Some(end)) if chars.start <= cursor && cursor <= chars.end => {
+                Ok(start..end)
+            }
+            _ => Err(format!(
+                "completion-emit!: #:span from char {} to {} must hold the cursor ({cursor}) \
+                 within the line's {} chars",
+                chars.start,
+                chars.end,
+                input.chars().count()
+            )),
+        }
     }
 
     pub(in crate::editor) fn is_pending(&self) -> bool {

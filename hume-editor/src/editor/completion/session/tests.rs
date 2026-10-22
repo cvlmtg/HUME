@@ -761,7 +761,7 @@ fn step_selection_wraps_at_either_end() {
     let reg = minibuf_registry(&[("s", 0)]);
     let mut session = MinibufSession::open("w".into(), 1);
     let id = session.invoke(minibuf_id_of(&reg, "s"), Invocation::minibuf(0..1));
-    assert!(session.contribute(id, items(&["wa", "wb"]), false, MinibufWord::default()));
+    assert!(session.contribute(id, items(&["wa", "wb"]), false));
     session.rank(&reg);
     assert_eq!(session.selected(), None, "rank leaves nothing picked");
     assert!(session.step_selection(true));

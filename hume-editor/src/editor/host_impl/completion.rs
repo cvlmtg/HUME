@@ -3,7 +3,7 @@
 
 use crate::editor::Severity;
 use crate::editor::completion::{
-    BufferSourceEntry, MinibufBody, MinibufSourceEntry, MinibufWord, RegisterOutcome,
+    BufferSourceEntry, MinibufBody, MinibufSourceEntry, RegisterOutcome,
 };
 
 use super::EditorHostImpl;
@@ -119,18 +119,8 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
                 self.parse_item(v, raw_item, default_range.as_ref(), &mut parsed);
             }
         }
-        let word = if word == EmittedWord::default() {
-            MinibufWord::default()
-        } else {
-            let EmittedWord { span, prefix } = word;
-            match self.state.answer_word(id, span, prefix)? {
-                Some(word) => word,
-                None => return Ok(false),
-            }
-        };
-        Ok(self
-            .state
-            .contribute(self.view, id, parsed, incomplete, word))
+        self.state
+            .contribute(self.view, id, parsed, incomplete, word)
     }
 
     fn completion_top(&self, n: usize) -> Vec<serde_json::Value> {

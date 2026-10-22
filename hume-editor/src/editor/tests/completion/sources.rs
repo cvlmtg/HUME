@@ -670,7 +670,7 @@ fn a_span_from_a_buffer_source_is_refused() {
         tmp.path(),
         r#"(register-completion-source! "test"
              (lambda (id bid prefix)
-               (completion-emit! id (list "plain") #:span (cons 0 0)))
+               (completion-emit! id (list "plain") #:span (hash 'start-char 0 'end-char 0)))
              #:target 'buffer)"#,
     );
     assert!(labels(&ed).is_empty());
