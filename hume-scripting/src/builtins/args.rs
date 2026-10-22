@@ -27,7 +27,7 @@ use super::errors::generic_err;
 
 /// The shared "this bid names no open buffer" error: one wording for every
 /// liveness check that raises on a stale `PaneHandle`'s buffer: [`LivePane`]'s
-/// own decode-time check, [`LspTargetArg::Buffer`]'s, and every
+/// own decode-time check, [`LspTargetArg::Buffer`](super::lsp::LspTargetArg::Buffer)'s, and every
 /// `buffers.rs`/`diff.rs` builtin whose host call already does the liveness
 /// lookup (so a second `buffer_exists` check would be redundant) but still
 /// needs this message.
