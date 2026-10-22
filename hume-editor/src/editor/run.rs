@@ -385,7 +385,7 @@ impl Editor {
     /// always runs, and `should_quit` is always observed, before this loop's
     /// `prepare_frame`/draw. `run` itself needs a live terminal and event
     /// reader, so this is verified by this function's own structure below
-    /// plus `tests/events.rs`' `:wq`-fires-`OnBufferSave` regression test,
+    /// plus `tests/events/settle_queue.rs`' `:wq`-fires-`OnBufferSave` regression test,
     /// which covers the drain but not the loop ordering, recorded here
     /// rather than faked with a shape-assertion test.
     pub(crate) fn run(&mut self, term: &SharedTerm, screen: &mut Screen) -> io::Result<()> {

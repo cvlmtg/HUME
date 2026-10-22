@@ -13,7 +13,7 @@ use crate::editor::{Editor, EditorState};
 
 /// One item of deferred Steel work, queued by a raise site and drained by
 /// `Editor::settle()` in FIFO order. One merged queue closes the stranded-
-/// events bug (see `tests/events.rs`'s
+/// events bug (see `tests/events/settle_queue.rs`'s
 /// `event_raised_from_async_work_fires_on_settle_with_no_input`): a `Call`
 /// and an `Event` queued in the same batch drain in insertion order, in one
 /// fixpoint, instead of two queues drained at two different points of the
