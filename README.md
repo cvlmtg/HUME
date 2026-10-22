@@ -23,17 +23,18 @@ I have written this editor for my own use, and release it without expectation. I
 
 **The pragmatic modal editor.**
 
-Zero friction, maximum output. HUME is built on a simple premise: the common case should be the short case, and the classic papercuts of text editing should be designed out from the start.
+Zero friction, maximum output. HUME is a selection-first modal editor for the terminal, built on a simple premise: the common case should be the short case, and the classic papercuts of text editing should be designed out from the start.
 
-HUME is my daily editor, driven by curiosity and the pure joy of hacking. Feel free to try it out, and expect a few rough edges.
+HUME is my daily editor, driven by curiosity and the pure joy of hacking. I design and steer it, and AI agents are the tools I build it with. Feel free to try it out, and expect a few rough edges.
 
 ## Why try it
 
 - **Less typing for what you do most**. Selections come first, so acting on text is short and direct.
-- **Usable immediately, yours to shape**. Sensible defaults on day one; customize everything in a single language when you're ready.
+- **Usable immediately, yours to shape**. Sensible defaults on day one. Configuration and plugins are written in [Scheme](https://github.com/mattwparas/steel), and PLUM installs plugins straight from GitHub.
 - **Bundled, one line away**. Fuzzy pickers, language servers, live git diff, and 300+ language definitions ship with the editor — each is one line of config from being on.
 - **Paste that does the obvious thing**. `p` reaches for what you most likely meant, and a kill ring keeps your recent deletes and yanks within reach.
 - **Comfortable with real text**. Emoji, accents, and other multi-byte characters are treated as single characters, the way you'd expect.
+- **Make it look your way**. 35 bundled themes, most Helix themes work unchanged, more installable with one command.
 
 ## Quick start
 
@@ -52,3 +53,7 @@ See the [installation guide](https://cvlmtg.github.io/HUME/installation.html) to
 Read the full user manual [here](https://cvlmtg.github.io/HUME/), or type `:tutor` inside HUME for an interactive introduction.
 
 Coming from another modal editor? See [Helix](https://cvlmtg.github.io/HUME/from-helix.html), [Kakoune](https://cvlmtg.github.io/HUME/from-kakoune.html), or [Vim](https://cvlmtg.github.io/HUME/from-vim.html).
+
+## License
+
+[MIT](LICENSE)
