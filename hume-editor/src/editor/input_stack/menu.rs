@@ -30,7 +30,7 @@ use super::stack::{
 pub(in crate::editor) struct MenuLayer {
     pub(in crate::editor) rows: Vec<hume_ui::popup::MenuRow>,
     pub(in crate::editor) selected: usize,
-    pub(in crate::editor) callback: steel::rvals::SteelVal,
+    pub(in crate::editor) callback: hume_scripting::Rooted,
     /// Identifies which `show-menu!` call opened this menu; see
     /// [`Self::token`]'s doc.
     token: HostToken,
@@ -52,7 +52,7 @@ pub(in crate::editor) fn open_menu(
     state: &mut EditorState,
     view: &EngineView,
     items: Vec<String>,
-    callback: steel::rvals::SteelVal,
+    callback: hume_scripting::Rooted,
 ) -> Result<Option<HostToken>, String> {
     const WHAT: &str = "show-menu!";
     if let Some(replay) = state.dot_replay.as_mut() {
@@ -72,7 +72,7 @@ pub(in crate::editor) fn open_menu(
                     .transpose()?;
                 Ok(PendingAnswer::Call {
                     proc: callback,
-                    arg: menu_arg(index),
+                    arg: hume_scripting::Rooted::new(menu_arg(index)),
                 })
             },
         )?;
@@ -110,7 +110,7 @@ impl MenuLayer {
     /// A fresh menu over single-column `items`, selection at row 0, with a
     /// freshly minted token (the only minting site, same as
     /// `DrawerLayer::new`).
-    fn new(input: WaitingInput, items: Vec<String>, callback: steel::rvals::SteelVal) -> Self {
+    fn new(input: WaitingInput, items: Vec<String>, callback: hume_scripting::Rooted) -> Self {
         Self {
             rows: items
                 .into_iter()
@@ -133,7 +133,7 @@ impl MenuLayer {
             self.input.take_answer(),
             Answer::Menu(picked),
             self.callback.clone(),
-            menu_arg(choice),
+            hume_scripting::Rooted::new(menu_arg(choice)),
         );
     }
 
@@ -141,7 +141,7 @@ impl MenuLayer {
     #[cfg(test)]
     pub(in crate::editor) fn for_test(
         items: Vec<String>,
-        callback: steel::rvals::SteelVal,
+        callback: hume_scripting::Rooted,
     ) -> Self {
         Self::new(WaitingInput::for_test(), items, callback)
     }

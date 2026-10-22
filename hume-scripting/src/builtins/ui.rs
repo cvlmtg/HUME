@@ -12,11 +12,11 @@ use termina::event::KeyEvent;
 
 use hume_engine::types::TruncateEnd;
 
-use crate::SteelCtx;
 use crate::host::{
     DrawerItems, LivePickerOpts, PickerFeedMode, PickerOpts, PickerSourceOpts, PopupKind,
 };
 use crate::types::PaneHandle;
+use crate::{Rooted, SteelCtx};
 
 use super::SteelResult;
 use super::args::{
@@ -85,7 +85,7 @@ pub(crate) fn show_menu(
 ) -> SteelResult {
     let items = list_to_strings(items, "show-menu! items")?;
     let token = require_cap(ctx.host.ui(), "show-menu!")?
-        .show_menu(pane, items, on_select)
+        .show_menu(pane, items, Rooted::new(on_select))
         .map_err(generic_err)?;
     Ok(token_or_false(token))
 }
@@ -119,7 +119,7 @@ pub(crate) fn show_drawer_list(
     let items = drawer_items(items, render, "show-drawer-list!")?;
     let selected = usize_arg(selected, "show-drawer-list! selected")?;
     let token = require_cap(ctx.host.ui(), "show-drawer-list!")?
-        .show_drawer_list(pane, items, on_select, selected)
+        .show_drawer_list(pane, items, Rooted::new(on_select), selected)
         .map_err(generic_err)?;
     Ok(token_or_false(token))
 }
@@ -152,8 +152,12 @@ pub(crate) fn update_drawer_list(
     let token = token_arg(token, "update-drawer-list! token")?;
     let items = drawer_items(items, render, "update-drawer-list!")?;
     let selected = usize_arg(selected, "update-drawer-list! selected")?;
-    let applied = require_cap(ctx.host.ui(), "update-drawer-list!")?
-        .update_drawer_list(token, items, on_select, selected);
+    let applied = require_cap(ctx.host.ui(), "update-drawer-list!")?.update_drawer_list(
+        token,
+        items,
+        Rooted::new(on_select),
+        selected,
+    );
     Ok(SteelVal::BoolV(applied))
 }
 
@@ -165,7 +169,10 @@ fn drawer_items(items: SteelVal, render: SteelVal, builtin: &str) -> Result<Draw
         match optional_callable_arg(render, &format!("{builtin} render"))? {
             None => DrawerItems::Rows(list_to_strings(items, &items_name)?),
             Some(render) => DrawerItems::Keys {
-                keys: list_items(items, &items_name)?,
+                keys: list_items(items, &items_name)?
+                    .into_iter()
+                    .map(Rooted::new)
+                    .collect(),
                 render,
             },
         },
@@ -196,7 +203,7 @@ pub(crate) fn prompt(
     let label = string_arg(label, "prompt! label")?;
     let prefill = string_arg(prefill, "prompt! prefill")?;
     require_cap(ctx.host.ui(), "prompt!")?
-        .prompt(pane, label, prefill, on_confirm)
+        .prompt(pane, label, prefill, Rooted::new(on_confirm))
         .map(|()| SteelVal::Void)
         .map_err(generic_err)
 }
@@ -223,7 +230,7 @@ pub(crate) fn on_next_char(ctx: &mut SteelCtx, callback: SteelVal) -> SteelResul
 /// the dismiss signal (`on-select` receives it on Esc / `picker-close!` /
 /// replace), so a `#f` payload would make an accepted row indistinguishable
 /// from a dismissal.
-fn picker_items(items: SteelVal, ctx_name: &str) -> Result<Vec<(String, SteelVal)>, SteelErr> {
+fn picker_items(items: SteelVal, ctx_name: &str) -> Result<Vec<(String, Rooted)>, SteelErr> {
     list_items(items, ctx_name)?
         .into_iter()
         .map(|entry| {
@@ -232,7 +239,7 @@ fn picker_items(items: SteelVal, ctx_name: &str) -> Result<Vec<(String, SteelVal
             if matches!(payload, SteelVal::BoolV(false)) {
                 steel::stop!(Generic => "{}: item payload must not be #f (#f is reserved for the dismiss signal)", ctx_name);
             }
-            Ok((string_arg(display, ctx_name)?, payload))
+            Ok((string_arg(display, ctx_name)?, Rooted::new(payload)))
         })
         .collect()
 }
@@ -243,10 +250,7 @@ fn picker_items(items: SteelVal, ctx_name: &str) -> Result<Vec<(String, SteelVal
 /// [`single_key_arg`]) to exactly one `KeyEvent`. The picker dispatches
 /// one chord at a time, so a multi-key spec like `"z f"` silently binding
 /// only its first key would be a trap rather than a useful feature.
-fn picker_actions(
-    actions: SteelVal,
-    ctx_name: &str,
-) -> Result<Vec<(KeyEvent, SteelVal)>, SteelErr> {
+fn picker_actions(actions: SteelVal, ctx_name: &str) -> Result<Vec<(KeyEvent, Rooted)>, SteelErr> {
     list_items(actions, ctx_name)?
         .into_iter()
         .map(|entry| {
@@ -302,7 +306,7 @@ pub(crate) fn picker(
         actions,
     };
     let token = require_cap(ctx.host.ui(), "picker!")?
-        .open_picker(pane, items, on_select, opts)
+        .open_picker(pane, items, Rooted::new(on_select), opts)
         .map_err(generic_err)?;
     Ok(token.to_steel())
 }
@@ -344,7 +348,7 @@ pub(crate) fn live_picker(
         actions,
     };
     let token = require_cap(ctx.host.ui(), "live-picker!")?
-        .open_live_picker(pane, on_select, opts)
+        .open_live_picker(pane, Rooted::new(on_select), opts)
         .map_err(generic_err)?;
     Ok(token.to_steel())
 }

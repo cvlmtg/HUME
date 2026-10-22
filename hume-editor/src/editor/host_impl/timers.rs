@@ -7,7 +7,7 @@ use crate::editor::timers::TimerId;
 use hume_scripting::host::TimerHost;
 
 impl<'a> TimerHost for EditorHostImpl<'a> {
-    fn schedule_timer(&mut self, ms: u64, thunk: steel::rvals::SteelVal) -> Option<u64> {
+    fn schedule_timer(&mut self, ms: u64, thunk: hume_scripting::Rooted) -> Option<u64> {
         let id = self.timers.as_mut()?.schedule(
             std::time::Duration::from_millis(ms),
             TimerPayload::SteelThunk(thunk),

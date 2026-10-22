@@ -12,7 +12,7 @@ impl<'a> AsyncProcessHost for EditorHostImpl<'a> {
         cmd: &str,
         args: Vec<String>,
         cwd: PathBuf,
-        callback: steel::rvals::SteelVal,
+        callback: hume_scripting::Rooted,
     ) -> u64 {
         let id = self.state.config.next_async_job_id;
         self.state.config.next_async_job_id += 1;
@@ -58,7 +58,7 @@ impl<'a> AsyncProcessHost for EditorHostImpl<'a> {
 
     fn cancel_async(&mut self, id: u64) {
         // Dropping the entry drops its `SpawnedJob` (kills + reaps the
-        // child) and its callback `SteelVal` without ever calling it: a
+        // child) and its callback without ever calling it: a
         // no-op if `id` already completed, was already cancelled, or never
         // existed (a spawn failure that already fired its callback above).
         self.state.config.async_jobs.remove(&id);

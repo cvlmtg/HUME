@@ -191,13 +191,17 @@ fn marker(name: &str) -> SteelVal {
 }
 
 fn open_filter_test_picker(ed: &mut Editor, items: &[&str]) {
-    let mut session = PickerSession::new(marker("on-select"), PickerOpts::default(), Vec::new());
+    let mut session = PickerSession::new(
+        hume_scripting::Rooted::new(marker("on-select")),
+        PickerOpts::default(),
+        Vec::new(),
+    );
     session.push(
         items
             .iter()
             .map(|s| PickerItem {
                 display: s.to_string(),
-                payload: SteelVal::StringV((*s).into()),
+                payload: hume_scripting::Rooted::new(SteelVal::StringV((*s).into())),
             })
             .collect(),
     );
@@ -207,11 +211,11 @@ fn open_filter_test_picker(ed: &mut Editor, items: &[&str]) {
 
 pub(super) fn open_live_test_picker(ed: &mut Editor) {
     let session = PickerSession::new_live(
-        marker("on-select"),
+        hume_scripting::Rooted::new(marker("on-select")),
         LivePickerOpts {
             prompt: String::new(),
             query: String::new(),
-            on_query_change: marker("on-query-change"),
+            on_query_change: hume_scripting::Rooted::new(marker("on-query-change")),
             truncate: TruncateEnd::Head,
             actions: Vec::new(),
         },
@@ -270,7 +274,10 @@ fn menu_paste_is_swallowed_but_clears_the_status_message() {
     ed.state.status_msg = Some("previous message".to_string());
     ed.state.push_layer(
         &ed.view,
-        MenuLayer::for_test(vec!["m0".into()], marker("menu-cb")),
+        MenuLayer::for_test(
+            vec!["m0".into()],
+            hume_scripting::Rooted::new(marker("menu-cb")),
+        ),
     );
 
     ed.feed_paste("xyz");
@@ -288,7 +295,7 @@ fn drawer_paste_is_swallowed_but_clears_the_status_message() {
         &ed.view,
         DrawerLayer::new(
             hume_scripting::host::DrawerItems::Rows(vec!["d0".to_string()]),
-            DrawerSelect::Steel(marker("drawer-cb")),
+            DrawerSelect::Steel(hume_scripting::Rooted::new(marker("drawer-cb"))),
             0,
         ),
     );

@@ -233,7 +233,7 @@ pub(in crate::editor) fn open_picker(
                     .clone(),
             };
             let arg = match pick.picked {
-                None => SteelVal::BoolV(false),
+                None => hume_scripting::Rooted::new(SteelVal::BoolV(false)),
                 Some(Picked::Choice(choice)) => session
                     .payload_for(&choice)
                     .ok_or_else(|| choice.missing(what))?
@@ -260,7 +260,7 @@ pub(in crate::editor) enum PickerCallback {
     /// The `#:actions` `proc` bound to `key`.
     Action {
         key: CanonicalKey,
-        proc: SteelVal,
+        proc: hume_scripting::Rooted,
     },
 }
 
@@ -283,7 +283,7 @@ fn fire_callback(
             let (picked, payload) = session.picked(i);
             (Some(picked), payload)
         }
-        None => (None, SteelVal::BoolV(false)),
+        None => (None, hume_scripting::Rooted::new(SteelVal::BoolV(false))),
     };
     state.queue_answered_call(
         input.take_answer(),
@@ -448,7 +448,7 @@ fn picker_paste(
 /// `debounce_viewport_change`'s fire site (`timer_bridge.rs`), which is
 /// every scroll step of every frame and so earns its own Rust-side
 /// coalescer.
-fn queue_query_change(state: &mut EditorState, r: LayerRef, cb: Option<SteelVal>) {
+fn queue_query_change(state: &mut EditorState, r: LayerRef, cb: Option<hume_scripting::Rooted>) {
     let Some(cb) = cb else {
         return;
     };

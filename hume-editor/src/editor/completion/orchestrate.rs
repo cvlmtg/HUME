@@ -49,7 +49,8 @@ pub(in crate::editor) enum Trigger {
 
 /// A Steel proc plus its args, minted while a session is borrowed and
 /// queued once it isn't: `queue_steel_call` needs the whole `EditorState`.
-type SteelCall = (SteelVal, Vec<SteelVal>);
+// steel-val-transient: queued, which roots the args, before any Steel evaluation.
+type SteelCall = (hume_scripting::Rooted, Vec<SteelVal>);
 
 impl EditorState {
     /// Retires whichever completion layer is open, wherever it is on the

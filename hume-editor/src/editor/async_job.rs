@@ -3,8 +3,8 @@
 //! entry, only a drain call from `drain_async_sources` (see
 //! `async_source.rs`'s module doc).
 
+use hume_scripting::Rooted;
 use hume_scripting::host::async_callback_args;
-use steel::rvals::SteelVal;
 
 use super::Editor;
 
@@ -18,7 +18,7 @@ use super::Editor;
 /// callback map.
 pub(in crate::editor) struct PendingJob {
     pub(in crate::editor) job: hume_platform::process::job::SpawnedJob,
-    pub(in crate::editor) callback: SteelVal,
+    pub(in crate::editor) callback: Rooted,
 }
 
 impl Editor {

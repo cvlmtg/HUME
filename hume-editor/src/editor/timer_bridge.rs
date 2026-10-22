@@ -8,7 +8,6 @@
 use std::time::{Duration, Instant};
 
 use hume_engine::pipeline::{BufferId, PaneId};
-use steel::rvals::SteelVal;
 
 use super::Editor;
 use super::async_source::AsyncSource;
@@ -21,7 +20,7 @@ use super::timers::{TimerId, TimerWheel};
 /// diagnostics-pull debounce, which pulls for the buffer as it is when it
 /// fires).
 pub(super) enum TimerPayload {
-    SteelThunk(SteelVal),
+    SteelThunk(hume_scripting::Rooted),
     ViewportDebounce(PaneId),
     DiagnosticPullDebounce(BufferId),
     BeforeSaveTimeout(BufferId),

@@ -108,7 +108,7 @@ impl Editor {
                 // parser still needs the unambiguous separator to split a
                 // path containing a literal colon.
                 display: line.replace('\0', ":"),
-                payload: SteelVal::StringV(line.into()),
+                payload: hume_scripting::Rooted::new(SteelVal::StringV(line.into())),
             })
             .collect();
         let delivered_a_batch = !items.is_empty();

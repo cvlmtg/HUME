@@ -14,7 +14,12 @@ use crate::editor::host_impl::EditorHostImpl;
 
 fn spawn_async(ed: &mut Editor, cmd: &str, args: Vec<String>, callback: SteelVal) -> u64 {
     let cwd = ed.state.cwd.clone();
-    EditorHostImpl::new(&mut ed.state, &mut ed.view).spawn_async(cmd, args, cwd, callback)
+    EditorHostImpl::new(&mut ed.state, &mut ed.view).spawn_async(
+        cmd,
+        args,
+        cwd,
+        hume_scripting::Rooted::new(callback),
+    )
 }
 
 #[test]
@@ -30,10 +35,10 @@ fn end_to_end_drain_delivers_the_full_result_exactly_once() {
         "a completed job must be removed from the registry"
     );
     assert_eq!(pending_calls(&ed).len(), 1);
-    let (_, call_args) = pending_calls(&ed)[0];
+    let (_, call_args) = pending_calls(&ed).remove(0);
     assert_eq!(
         call_args,
-        &vec![
+        vec![
             SteelVal::StringV("hi".into()),
             SteelVal::StringV("".into()),
             SteelVal::IntV(0),
@@ -54,7 +59,7 @@ fn nonzero_exit_and_stderr_reach_the_callback() {
 
     drain_sources_until(&mut ed, |ed| !ed.state.config.pending_work.is_empty());
 
-    let (_, call_args) = pending_calls(&ed)[0];
+    let (_, call_args) = pending_calls(&ed).remove(0);
     assert_eq!(call_args[1], SteelVal::StringV("boom\n".into()));
     assert_eq!(call_args[2], SteelVal::IntV(3));
 }
@@ -67,7 +72,7 @@ fn a_child_killed_by_a_signal_has_no_exit_code() {
 
     drain_sources_until(&mut ed, |ed| !ed.state.config.pending_work.is_empty());
 
-    let (_, call_args) = pending_calls(&ed)[0];
+    let (_, call_args) = pending_calls(&ed).remove(0);
     assert_eq!(call_args[2], SteelVal::BoolV(false));
 }
 
@@ -85,7 +90,7 @@ fn missing_binary_fires_the_callback_synchronously_with_no_exit_code() {
     // inside `spawn_async` itself.
     assert!(!ed.state.config.async_jobs.contains_key(&id));
     assert_eq!(pending_calls(&ed).len(), 1);
-    let (_, call_args) = pending_calls(&ed)[0];
+    let (_, call_args) = pending_calls(&ed).remove(0);
     assert_eq!(call_args[0], SteelVal::StringV("".into()));
     assert_eq!(call_args[2], SteelVal::BoolV(false));
     let SteelVal::StringV(stderr) = &call_args[1] else {

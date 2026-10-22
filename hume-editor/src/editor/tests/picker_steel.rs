@@ -631,8 +631,11 @@ fn direct_host_impl_open_push_and_close_with_no_lsp_borrow() {
     let token = host
         .open_picker(
             pane,
-            vec![("one".to_string(), SteelVal::StringV("p1".into()))],
-            SteelVal::Void,
+            vec![(
+                "one".to_string(),
+                hume_scripting::Rooted::new(SteelVal::StringV("p1".into())),
+            )],
+            hume_scripting::Rooted::new(SteelVal::Void),
             PickerOpts::default(),
         )
         .unwrap();
@@ -642,7 +645,7 @@ fn direct_host_impl_open_push_and_close_with_no_lsp_borrow() {
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     assert!(!host.picker_feed(
         crate::editor::host_token::mint(),
-        vec![("x".to_string(), SteelVal::Void)],
+        vec![("x".to_string(), hume_scripting::Rooted::new(SteelVal::Void))],
         PickerFeedMode::Append
     ));
     assert_eq!(ed.state.input.picker().unwrap().total_len(), 1);
@@ -675,8 +678,11 @@ fn direct_host_impl_picker_close_with_a_stale_token_is_a_no_op() {
     let token = host
         .open_picker(
             pane,
-            vec![("one".to_string(), SteelVal::StringV("p1".into()))],
-            SteelVal::Void,
+            vec![(
+                "one".to_string(),
+                hume_scripting::Rooted::new(SteelVal::StringV("p1".into())),
+            )],
+            hume_scripting::Rooted::new(SteelVal::Void),
             PickerOpts::default(),
         )
         .unwrap();

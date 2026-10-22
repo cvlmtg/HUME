@@ -12,14 +12,24 @@ use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 use steel::steel_vm::engine::Engine;
 
+use crate::Rooted;
 use crate::attribution::{EntryId, Owner};
 
 /// `owner` is shared so that cloning a proc on every dispatch copies no
 /// strings.
 #[derive(Clone, Debug)]
 struct Defined {
-    proc: SteelVal,
+    proc: Rooted,
     owner: Rc<Owner>,
+}
+
+impl Defined {
+    fn new(proc: Rooted, owner: Owner) -> Self {
+        Self {
+            proc,
+            owner: Rc::new(owner),
+        }
+    }
 }
 
 /// A `define-command!` proc. `call!` hands it to the VM as a value.
@@ -27,29 +37,26 @@ struct Defined {
 pub struct MappableProc(Defined);
 
 impl MappableProc {
-    pub(crate) fn new(proc: SteelVal, owner: Owner) -> Self {
-        Self(Defined {
-            proc,
-            owner: Rc::new(owner),
-        })
+    pub(crate) fn new(proc: Rooted, owner: Owner) -> Self {
+        Self(Defined::new(proc, owner))
     }
 
     /// A placeholder proc owned by the user, for a test that builds a
     /// registry entry it never calls.
     #[cfg(any(test, feature = "test-util"))]
     pub fn for_test() -> Self {
-        Self::new(SteelVal::Void, Owner::User)
+        Self::new(Rooted::new(SteelVal::Void), Owner::User)
     }
 
     /// A placeholder proc that `plugin`'s entry file defined.
     #[cfg(any(test, feature = "test-util"))]
     pub fn for_test_defined_by(plugin: EntryId) -> Self {
-        Self::new(SteelVal::Void, Owner::Plugin(plugin))
+        Self::new(Rooted::new(SteelVal::Void), Owner::Plugin(plugin))
     }
 
     /// The proc as a value `%dispatch-command!` applies inside the VM.
     pub(crate) fn steel_val(&self) -> SteelVal {
-        self.0.proc.clone()
+        self.0.proc.value().clone()
     }
 }
 
@@ -61,24 +68,21 @@ impl MappableProc {
 pub struct TypedProc(Defined);
 
 impl TypedProc {
-    pub(crate) fn new(proc: SteelVal, owner: Owner) -> Self {
-        Self(Defined {
-            proc,
-            owner: Rc::new(owner),
-        })
+    pub(crate) fn new(proc: Rooted, owner: Owner) -> Self {
+        Self(Defined::new(proc, owner))
     }
 
     /// A placeholder proc owned by the user, for a test that builds a
     /// registry entry it never calls.
     #[cfg(any(test, feature = "test-util"))]
     pub fn for_test() -> Self {
-        Self::new(SteelVal::Void, Owner::User)
+        Self::new(Rooted::new(SteelVal::Void), Owner::User)
     }
 
     /// A placeholder proc that `plugin`'s entry file defined.
     #[cfg(any(test, feature = "test-util"))]
     pub fn for_test_defined_by(plugin: EntryId) -> Self {
-        Self::new(SteelVal::Void, Owner::Plugin(plugin))
+        Self::new(Rooted::new(SteelVal::Void), Owner::Plugin(plugin))
     }
 }
 
@@ -101,7 +105,7 @@ impl CommandProc {
         steel: &mut Engine,
         args: Vec<SteelVal>,
     ) -> Result<SteelVal, SteelErr> {
-        steel.call_function_with_args(self.defined().proc.clone(), args)
+        steel.call_function_with_args(self.defined().proc.value().clone(), args)
     }
 
     pub(crate) fn owner(&self) -> &Owner {

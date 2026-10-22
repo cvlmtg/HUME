@@ -15,7 +15,7 @@ use super::errors::require_cap;
 /// same queued-Steel-call delivery as the LSP callbacks).
 pub(crate) fn after(ctx: &mut SteelCtx, ms: SteelVal, thunk: SteelVal) -> SteelResult {
     let ms = usize_arg(ms, "after!")? as u64;
-    match require_cap(ctx.host.timers(), "after!")?.schedule_timer(ms, thunk) {
+    match require_cap(ctx.host.timers(), "after!")?.schedule_timer(ms, crate::Rooted::new(thunk)) {
         Some(id) => Ok(SteelVal::IntV(id as isize)),
         None => steel::stop!(Generic => "after!: no timer wheel in this context"),
     }

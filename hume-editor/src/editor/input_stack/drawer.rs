@@ -29,7 +29,7 @@ use super::stack::{
 /// What `Enter` on a drawer row does.
 pub(in crate::editor) enum DrawerSelect {
     /// Calls a Steel `on-select` with the row index and the drawer's token.
-    Steel(SteelVal),
+    Steel(hume_scripting::Rooted),
     /// Row `i` names `buffers[i]`: switches the focused pane to it.
     Buffers(Vec<BufferId>),
 }
@@ -160,7 +160,7 @@ pub(in crate::editor) struct DrawerRows {
     /// references batch can carry thousands of rows.
     text: Arc<Vec<Option<String>>>,
     /// For lazy rows: one key per entry of `text`, and the render proc.
-    lazy: Option<(Vec<SteelVal>, SteelVal)>,
+    lazy: Option<(Vec<hume_scripting::Rooted>, hume_scripting::Rooted)>,
 }
 
 impl DrawerRows {
@@ -193,7 +193,8 @@ impl DrawerRows {
         let window = window.start.min(self.len())..window.end.min(self.len());
         let first = window.clone().find(|&i| self.text[i].is_none())?;
         let last = window.rev().find(|&i| self.text[i].is_none())?;
-        Some((first, keys[first..=last].to_vec(), render.clone()))
+        let keys = keys[first..=last].iter().map(|key| key.value().clone());
+        Some((first, keys.collect(), render.value().clone()))
     }
 
     /// Stores `rendered` as the text of the rows from `start` on.
@@ -321,7 +322,7 @@ impl EditorState {
         &mut self,
         token: HostToken,
         items: DrawerItems,
-        callback: steel::rvals::SteelVal,
+        callback: hume_scripting::Rooted,
         selected: usize,
     ) -> bool {
         if items.is_empty() {

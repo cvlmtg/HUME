@@ -1,11 +1,12 @@
 use super::*;
+use steel::rvals::SteelVal;
 
 fn steel_buffer_entry(name: &str) -> BufferSourceEntry {
     BufferSourceEntry {
         name: name.into(),
         match_kind: MatchKind::Fuzzy,
         priority: 0,
-        proc: SteelVal::Void,
+        proc: hume_scripting::Rooted::new(SteelVal::Void),
         resolve: false,
         token_chars: "".into(),
     }
@@ -16,7 +17,7 @@ fn steel_minibuf_entry(name: &str) -> MinibufSourceEntry {
         name: name.into(),
         match_kind: MatchKind::Fuzzy,
         priority: 0,
-        body: MinibufBody::Steel(SteelVal::Void),
+        body: MinibufBody::Steel(hume_scripting::Rooted::new(SteelVal::Void)),
     }
 }
 

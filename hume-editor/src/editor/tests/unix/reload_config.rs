@@ -1027,3 +1027,53 @@ fn reload_config_preserves_undo_jumplist_history_registers_mode_and_focus() {
          the reload (start of the buffer, before the goto-last-line jump)"
     );
 }
+
+/// Every value the outgoing engine left with the editor is dropped before
+/// `:reload-config` drops that engine: a collection in the new one then
+/// traces no root into the old heap. One store of each kind holds a value
+/// over a box: a command, a hook, a pending timer, an async job's callback,
+/// an open picker's callback and payload.
+#[test]
+fn a_collection_after_reload_traces_nothing_from_the_old_engine() {
+    let fixture = ReloadFixture::new(
+        r#"(define-typed-command! "count" ""
+             (let ((n 0)) (lambda () (set! n (+ n 1)))))
+           (register-hook! 'on-buffer-save
+             (let ((cell (box 1))) (lambda (pane) (unbox cell))))
+           (define-typed-command! "fill" ""
+             (lambda (pane)
+               (after! 100000 (let ((cell (box 1))) (lambda () (unbox cell))))
+               (spawn-async! "sleep" '("10")
+                 (let ((cell (box 1))) (lambda (out err code) (unbox cell))))
+               (picker! pane (list (cons "one" (hash 'cell (box 1))))
+                 (let ((cell (box 1))) (lambda (choice) (unbox cell))))))"#,
+    );
+    let mut ed = editor_from("-[a]>b\n");
+    ed.state.dirs = fixture.dirs();
+    ed.init_scripting(&mut Default::default());
+    type_cmd(&mut ed, ":count");
+    type_cmd(&mut ed, ":fill");
+    assert!(
+        ed.state.input.picker().is_some(),
+        "sanity: :fill opened its picker"
+    );
+
+    fixture.write_init(
+        r#"(define-typed-command! "churn" ""
+             (lambda ()
+               (#%gc-collect)
+               (let loop ((i 0)) (when (< i 200000) (box "junk") (loop (+ i 1))))))"#,
+    );
+    ed.execute_typed("reload-config", None)
+        .expect(":reload-config runs");
+    type_cmd(&mut ed, ":churn");
+
+    let errors: Vec<_> = ed
+        .state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Error)
+        .map(|e| e.text.to_string())
+        .collect();
+    assert!(errors.is_empty(), "{errors:?}");
+}

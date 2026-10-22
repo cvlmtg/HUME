@@ -49,8 +49,12 @@ pub(crate) fn spawn_async(
     let args = list_to_strings(args, "spawn-async! args")?;
     let cwd = cwd_arg(cwd, &ctx.host.buffers().cwd(), "spawn-async! cwd")?;
 
-    let id = require_cap(ctx.host.async_process(), "spawn-async!")?
-        .spawn_async(&cmd, args, cwd, callback);
+    let id = require_cap(ctx.host.async_process(), "spawn-async!")?.spawn_async(
+        &cmd,
+        args,
+        cwd,
+        crate::Rooted::new(callback),
+    );
     Ok(SteelVal::IntV(id as isize))
 }
 

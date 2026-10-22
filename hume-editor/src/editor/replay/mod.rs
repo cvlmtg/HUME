@@ -24,7 +24,6 @@ use hume_engine::pipeline::EngineView;
 use std::borrow::Cow;
 use std::collections::VecDeque;
 use std::rc::{Rc, Weak};
-use steel::rvals::SteelVal;
 
 use super::dispatch::CmdCtx;
 use super::edit_session::{self, EditSessionKind, InsertSession};
@@ -528,8 +527,8 @@ pub(in crate::editor) enum PendingAnswer {
     Text(commands::PendingDispatch, Option<String>),
     /// A picker, prompt or menu callback and the argument its answer gives.
     Call {
-        proc: SteelVal,
-        arg: SteelVal,
+        proc: hume_scripting::Rooted,
+        arg: hume_scripting::Rooted,
     },
 }
 
@@ -824,8 +823,8 @@ impl EditorState {
         &mut self,
         ticket: Option<AnswerTicket>,
         answer: Answer,
-        proc: SteelVal,
-        arg: SteelVal,
+        proc: hume_scripting::Rooted,
+        arg: hume_scripting::Rooted,
     ) -> super::event::PendingWork {
         if let Some(ticket) = &ticket {
             self.record_answer(ticket, answer);
@@ -839,8 +838,8 @@ impl EditorState {
         &mut self,
         ticket: Option<AnswerTicket>,
         answer: Answer,
-        proc: SteelVal,
-        arg: SteelVal,
+        proc: hume_scripting::Rooted,
+        arg: hume_scripting::Rooted,
     ) {
         let call = self.answered_call(ticket, answer, proc, arg);
         self.push_work(call);

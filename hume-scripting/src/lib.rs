@@ -41,6 +41,7 @@ mod eval;
 #[cfg(test)]
 mod null_host;
 mod read_only_host;
+mod rooted;
 #[cfg(any(test, feature = "test-util"))]
 mod test_scm;
 #[cfg(test)]
@@ -61,6 +62,7 @@ pub use host::PendingCompletionSource;
 pub use keys::parse_key_stream;
 pub use lazy::PluginStatus;
 pub use log::LogLevel;
+pub use rooted::Rooted;
 pub use types::{
     CapabilityQuery, ConfigOrigin, DocSpan, Effect, EvalError, FeatureFilter, GrammarReg,
     ListEntry, ListLayer, LspFeature, LspServerStatusEntry, LspServerTarget, PaneHandle, Params,

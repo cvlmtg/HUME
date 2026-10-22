@@ -15,7 +15,7 @@ use hume_scripting::host::{
 
 impl<'a> UiHost for EditorHostImpl<'a> {
     // ── Minibuffer prompt ────────────────────────────────────────────────
-    fn on_next_char(&mut self, callback: steel::rvals::SteelVal) -> Result<(), String> {
+    fn on_next_char(&mut self, callback: hume_scripting::Rooted) -> Result<(), String> {
         crate::editor::input_stack::read_steel_char(self.state, self.view, callback)
     }
 
@@ -24,7 +24,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         pane: PaneHandle,
         label: String,
         prefill: String,
-        callback: steel::rvals::SteelVal,
+        callback: hume_scripting::Rooted,
     ) -> Result<(), String> {
         self.require_focused_pane(pane)?;
         prompt::open_prompt(self.state, self.view, label, prefill, callback)
@@ -133,7 +133,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         &mut self,
         pane: PaneHandle,
         items: Vec<String>,
-        callback: steel::rvals::SteelVal,
+        callback: hume_scripting::Rooted,
     ) -> Result<Option<HostToken>, String> {
         self.require_focused_pane(pane)?;
         menu::open_menu(self.state, self.view, items, callback)
@@ -157,7 +157,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         &mut self,
         pane: PaneHandle,
         items: DrawerItems,
-        callback: steel::rvals::SteelVal,
+        callback: hume_scripting::Rooted,
         selected: usize,
     ) -> Result<Option<HostToken>, String> {
         self.require_focused_pane(pane)?;
@@ -215,7 +215,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         &mut self,
         token: HostToken,
         items: DrawerItems,
-        callback: steel::rvals::SteelVal,
+        callback: hume_scripting::Rooted,
         selected: usize,
     ) -> bool {
         self.state
@@ -233,8 +233,8 @@ impl<'a> UiHost for EditorHostImpl<'a> {
     fn open_picker(
         &mut self,
         pane: PaneHandle,
-        items: Vec<(String, steel::rvals::SteelVal)>,
-        on_select: steel::rvals::SteelVal,
+        items: Vec<(String, hume_scripting::Rooted)>,
+        on_select: hume_scripting::Rooted,
         opts: PickerOpts,
     ) -> Result<HostToken, String> {
         self.require_focused_pane(pane)?;
@@ -245,7 +245,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
     fn open_live_picker(
         &mut self,
         pane: PaneHandle,
-        on_select: steel::rvals::SteelVal,
+        on_select: hume_scripting::Rooted,
         opts: LivePickerOpts,
     ) -> Result<HostToken, String> {
         self.require_focused_pane(pane)?;
@@ -256,7 +256,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
     fn picker_feed(
         &mut self,
         token: HostToken,
-        items: Vec<(String, steel::rvals::SteelVal)>,
+        items: Vec<(String, hume_scripting::Rooted)>,
         mode: PickerFeedMode,
     ) -> bool {
         let Some(session) = picker::session_for_feed(self.state, token) else {

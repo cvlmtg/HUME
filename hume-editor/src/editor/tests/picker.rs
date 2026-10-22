@@ -19,12 +19,12 @@ fn marker(name: &str) -> SteelVal {
 }
 
 fn open_test_session(ed: &mut Editor, items: &[&str], callback: SteelVal, opts: PickerOpts) {
-    let mut session = PickerSession::new(callback, opts, Vec::new());
+    let mut session = PickerSession::new(hume_scripting::Rooted::new(callback), opts, Vec::new());
     let picker_items: Vec<PickerItem> = items
         .iter()
         .map(|s| PickerItem {
             display: s.to_string(),
-            payload: SteelVal::StringV((*s).into()),
+            payload: hume_scripting::Rooted::new(SteelVal::StringV((*s).into())),
         })
         .collect();
     session.push(picker_items);
@@ -229,7 +229,10 @@ fn bound_action_key_closes_picker_and_fires_its_own_callback_not_on_select() {
         &["one", "two"],
         marker("cb"),
         PickerOpts {
-            actions: vec![(key_ctrl('t'), marker("split-cb"))],
+            actions: vec![(
+                key_ctrl('t'),
+                hume_scripting::Rooted::new(marker("split-cb")),
+            )],
             ..Default::default()
         },
     );
@@ -241,9 +244,9 @@ fn bound_action_key_closes_picker_and_fires_its_own_callback_not_on_select() {
         "a bound action key must close the picker"
     );
     assert_eq!(pending_calls(&ed).len(), 1);
-    let (proc, args) = pending_calls(&ed)[0];
+    let (proc, args) = pending_calls(&ed).remove(0);
     assert_eq!(
-        callback_name(proc),
+        callback_name(&proc),
         "split-cb",
         "the action's own proc must fire, not on-select"
     );
@@ -276,8 +279,14 @@ fn actions_entry_for_a_reserved_key_never_overrides_the_built_in_behavior() {
             // Enter and Ctrl-n are already handled by `Editor::picker_input`
             // before the action-lookup arm ever runs.
             actions: vec![
-                (key_enter(), marker("hijacked-enter")),
-                (key_ctrl('n'), marker("hijacked-ctrl-n")),
+                (
+                    key_enter(),
+                    hume_scripting::Rooted::new(marker("hijacked-enter")),
+                ),
+                (
+                    key_ctrl('n'),
+                    hume_scripting::Rooted::new(marker("hijacked-ctrl-n")),
+                ),
             ],
             ..Default::default()
         },
@@ -293,7 +302,7 @@ fn actions_entry_for_a_reserved_key_never_overrides_the_built_in_behavior() {
     ed.feed_key(key_enter());
     assert_eq!(pending_calls(&ed).len(), 1);
     assert_eq!(
-        callback_name(pending_calls(&ed)[0].0),
+        callback_name(&pending_calls(&ed)[0].0),
         "cb",
         "Enter must still fire on-select, not the actions entry"
     );
@@ -337,8 +346,8 @@ fn enter_fires_on_select_with_payload_and_closes() {
         "picker must close on Enter"
     );
     assert_eq!(pending_calls(&ed).len(), 1);
-    let (proc, args) = pending_calls(&ed)[0];
-    assert_eq!(callback_name(proc), "cb");
+    let (proc, args) = pending_calls(&ed).remove(0);
+    assert_eq!(callback_name(&proc), "cb");
     assert_eq!(args.len(), 1);
     assert_eq!(payload_str(&args[0]), "one", "top-ranked item's payload");
 
@@ -363,9 +372,9 @@ fn esc_fires_false_and_closes() {
 
     assert!(ed.state.input.picker().is_none());
     assert_eq!(pending_calls(&ed).len(), 1);
-    let (proc, args) = pending_calls(&ed)[0];
-    assert_eq!(callback_name(proc), "cb");
-    assert_eq!(args, &vec![SteelVal::BoolV(false)]);
+    let (proc, args) = pending_calls(&ed).remove(0);
+    assert_eq!(callback_name(&proc), "cb");
+    assert_eq!(args, vec![SteelVal::BoolV(false)]);
 
     // Typing after the close edits the buffer normally.
     ed.feed_key(key('i'));
@@ -385,8 +394,8 @@ fn enter_with_no_match_dismisses_with_false() {
 
     ed.feed_key(key_enter());
     assert!(ed.state.input.picker().is_none());
-    let (_, args) = pending_calls(&ed)[0];
-    assert_eq!(args, &vec![SteelVal::BoolV(false)]);
+    let (_, args) = pending_calls(&ed).remove(0);
+    assert_eq!(args, vec![SteelVal::BoolV(false)]);
 }
 
 // ── any-mode open, clears a live completion session ─────────────────────────
@@ -469,9 +478,9 @@ fn close_picker_tears_down_an_insert_session_stacked_above_it() {
         1,
         "on_select must fire exactly once, not once per removed layer"
     );
-    let (proc, args) = pending_calls(&ed)[0];
-    assert_eq!(callback_name(proc), "cb");
-    assert_eq!(args, &vec![SteelVal::BoolV(false)]);
+    let (proc, args) = pending_calls(&ed).remove(0);
+    assert_eq!(callback_name(&proc), "cb");
+    assert_eq!(args, vec![SteelVal::BoolV(false)]);
 }
 
 // ── Replacing an open picker ─────────────────────────────────────────────────
@@ -483,15 +492,15 @@ fn open_over_open_picker_fires_old_callback_with_false() {
     open_test_picker_with_callback(&mut ed, &["two"], marker("second"));
 
     assert_eq!(pending_calls(&ed).len(), 1);
-    let (proc, args) = pending_calls(&ed)[0];
-    assert_eq!(callback_name(proc), "first");
-    assert_eq!(args, &vec![SteelVal::BoolV(false)]);
+    let (proc, args) = pending_calls(&ed).remove(0);
+    assert_eq!(callback_name(&proc), "first");
+    assert_eq!(args, vec![SteelVal::BoolV(false)]);
 
     ed.feed_key(key_esc());
     assert_eq!(pending_calls(&ed).len(), 2);
-    let (proc, args) = pending_calls(&ed)[1];
-    assert_eq!(callback_name(proc), "second");
-    assert_eq!(args, &vec![SteelVal::BoolV(false)]);
+    let (proc, args) = pending_calls(&ed).remove(1);
+    assert_eq!(callback_name(&proc), "second");
+    assert_eq!(args, vec![SteelVal::BoolV(false)]);
 }
 
 // ── Token guard (session_for_token) ─────────────────────────────────────────
@@ -528,7 +537,7 @@ fn picker_feed_rejects_a_stale_token_and_leaves_items_and_pending_untouched() {
     host.open_picker(
         pane,
         vec![],
-        SteelVal::Void,
+        hume_scripting::Rooted::new(SteelVal::Void),
         PickerOpts {
             pending: true,
             ..Default::default()
@@ -540,7 +549,10 @@ fn picker_feed_rejects_a_stale_token_and_leaves_items_and_pending_untouched() {
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     assert!(!host.picker_feed(
         crate::editor::host_token::mint(),
-        vec![("x".to_string(), SteelVal::StringV("p".into()))],
+        vec![(
+            "x".to_string(),
+            hume_scripting::Rooted::new(SteelVal::StringV("p".into()))
+        )],
         PickerFeedMode::Append,
     ));
     let session = ed.state.input.picker().unwrap();
@@ -565,8 +577,11 @@ fn picker_feed_replace_mode_rejects_a_stale_token_and_leaves_items_untouched() {
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.open_picker(
         pane,
-        vec![("a".to_string(), SteelVal::StringV("a".into()))],
-        SteelVal::Void,
+        vec![(
+            "a".to_string(),
+            hume_scripting::Rooted::new(SteelVal::StringV("a".into())),
+        )],
+        hume_scripting::Rooted::new(SteelVal::Void),
         PickerOpts::default(),
     )
     .unwrap();
@@ -575,7 +590,10 @@ fn picker_feed_replace_mode_rejects_a_stale_token_and_leaves_items_untouched() {
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     assert!(!host.picker_feed(
         crate::editor::host_token::mint(),
-        vec![("z".to_string(), SteelVal::StringV("z".into()))],
+        vec![(
+            "z".to_string(),
+            hume_scripting::Rooted::new(SteelVal::StringV("z".into()))
+        )],
         PickerFeedMode::Replace,
     ));
     assert_eq!(
@@ -600,14 +618,18 @@ fn picker_opens_over_a_live_menu_and_the_menu_resumes_once_it_closes() {
         &ed.view,
         crate::editor::input_stack::MenuLayer::for_test(
             vec!["m0".into(), "m1".into()],
-            marker("menu-cb"),
+            hume_scripting::Rooted::new(marker("menu-cb")),
         ),
     );
 
-    let mut session = PickerSession::new(marker("cb"), PickerOpts::default(), Vec::new());
+    let mut session = PickerSession::new(
+        hume_scripting::Rooted::new(marker("cb")),
+        PickerOpts::default(),
+        Vec::new(),
+    );
     session.push(vec![PickerItem {
         display: "a".to_string(),
-        payload: SteelVal::StringV("a".into()),
+        payload: hume_scripting::Rooted::new(SteelVal::StringV("a".into())),
     }]);
     picker::open_picker(&mut ed.state, &ed.view, session, "picker!")
         .expect("no `.` is in progress");

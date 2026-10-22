@@ -147,7 +147,10 @@ fn declare_plugin_drops_sole_command_conflicting_with_eager() {
     let mut editor_host = CommandStoreHost::default();
     editor_host.define(
         "my-eager-cmd",
-        CommandProc::Mappable(MappableProc::new(SteelVal::BoolV(false), Owner::User)),
+        CommandProc::Mappable(MappableProc::new(
+            crate::Rooted::new(SteelVal::BoolV(false)),
+            Owner::User,
+        )),
     );
 
     let result = host.eval_source(

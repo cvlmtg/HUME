@@ -19,6 +19,7 @@ use termina::event::KeyEvent;
 
 use hume_engine::pipeline::BufferId;
 
+use crate::Rooted;
 use crate::host::HostToken;
 use crate::keys::parse_key_sequence;
 use crate::types::{PaneHandle, Params};
@@ -279,18 +280,27 @@ pub(crate) fn bool_arg(val: SteelVal, ctx_name: &str) -> Result<bool, SteelErr> 
 /// variants `define-command!`'s own `proc` check accepts. Kept in one place
 /// so a second "is this callable" decode (e.g. `live-picker!`'s
 /// `#:source`) never drifts from that list.
-pub(crate) fn callable_arg(val: SteelVal, ctx_name: &str) -> Result<SteelVal, SteelErr> {
-    match val {
-        SteelVal::Closure(_) | SteelVal::FuncV(_) | SteelVal::MutFunc(_) => Ok(val),
-        _ => steel::stop!(TypeMismatch => "{}: expected a callable, got {:?}", ctx_name, val),
+fn is_callable_value(val: &SteelVal) -> bool {
+    matches!(
+        val,
+        SteelVal::Closure(_) | SteelVal::FuncV(_) | SteelVal::MutFunc(_)
+    )
+}
+
+/// A callable argument, rooted: every builtin that takes one keeps it past
+/// the call.
+pub(crate) fn callable_arg(val: SteelVal, ctx_name: &str) -> Result<Rooted, SteelErr> {
+    if !is_callable_value(&val) {
+        steel::stop!(TypeMismatch => "{}: expected a callable, got {:?}", ctx_name, val);
     }
+    Ok(Rooted::new(val))
 }
 
 /// A callable argument that may be `#f` (absent).
 pub(crate) fn optional_callable_arg(
     val: SteelVal,
     ctx_name: &str,
-) -> Result<Option<SteelVal>, SteelErr> {
+) -> Result<Option<Rooted>, SteelErr> {
     optional(val, ctx_name, callable_arg)
 }
 
@@ -299,14 +309,14 @@ pub(crate) fn optional_callable_arg(
 /// `live-picker!` must validate its source in Scheme before composing the
 /// debounced-requery wrapper around it: once wrapped, `%live-picker!`'s own
 /// `callable_arg` check on `on_query_change` sees only the wrapper closure,
-/// not the caller's value. Uses `callable_arg`'s `is_ok()`, not
+/// not the caller's value. Uses `callable_arg`'s own check, not
 /// Steel's own `function?`/`procedure?`, which accept
 /// `BoxedFunction`/`ContinuationFunction`/`BuiltIn` too, wider than the
 /// three variants `callable_arg` (and `define-command!`'s `proc` check)
 /// accept; a second, looser "is this callable" decode here would be exactly
-/// the drift `callable_arg`'s own doc comment says to avoid.
+/// the drift `is_callable_value`'s own doc comment says to avoid.
 pub(crate) fn is_callable(val: SteelVal) -> bool {
-    callable_arg(val, "").is_ok()
+    is_callable_value(&val)
 }
 
 /// A Steel list, unpacked to a `Vec<SteelVal>`.
@@ -492,6 +502,7 @@ pub(crate) fn optional_steel_error_arg(
 /// is a scan over a few short names rather than a hashmap probe.
 pub(crate) struct HashEntry<'a> {
     keys: &'a [&'a str],
+    // steel-val-transient: decoded and read within one builtin call.
     slots: Vec<Option<SteelVal>>,
     ctx_name: &'a str,
 }

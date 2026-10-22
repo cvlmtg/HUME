@@ -4,7 +4,6 @@
 
 use std::borrow::Cow;
 
-use steel::rvals::SteelVal;
 use termina::event::KeyEvent;
 
 use super::{BindingId, SelectionStep};
@@ -55,7 +54,7 @@ pub(crate) enum Picked {
     /// opened (`#:pending`, `picker-push!`, a spawned source, a
     /// `live-picker!`): the re-run picker holds none of them yet when `.`
     /// answers it.
-    Payload(SteelVal),
+    Payload(hume_scripting::Rooted),
     /// A `Payload` a reload forgot: it belonged to the Steel engine the
     /// reload replaced. `.` refuses it.
     PayloadForgotten,

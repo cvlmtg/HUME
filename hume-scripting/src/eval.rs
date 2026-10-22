@@ -17,7 +17,7 @@ use crate::log::LogLevel;
 use crate::read_only_host::ReadOnlyHost;
 use crate::types::{Effect, EvalError};
 use crate::watchdog::EvalWatchdog;
-use crate::{HostBundle, ScriptingHost, attribution, builtins};
+use crate::{HostBundle, Rooted, ScriptingHost, attribution, builtins};
 
 mod session;
 
@@ -26,7 +26,7 @@ use session::{SessionError, run_steel_session};
 /// The handlers of a held event at the moment it is raised, so the raiser
 /// can open one hold per handler that takes `done` before any of them runs.
 pub struct HeldHandlers {
-    handlers: Vec<(SteelVal, bool)>,
+    handlers: Vec<(Rooted, bool)>,
 }
 
 impl HeldHandlers {
@@ -332,7 +332,7 @@ impl ScriptingHost {
         // to run_steel_calls, which already is the general "run these
         // (proc, args) pairs in one session, first error aborts the rest"
         // machinery this needs.
-        let calls: Vec<(SteelVal, Vec<SteelVal>)> = self
+        let procs: Vec<Rooted> = self
             .registries
             .hooks
             .matching(name, key)
@@ -341,9 +341,14 @@ impl ScriptingHost {
                     !e.takes_done,
                     "'{name} has a handler taking `done`; raise it through fire_held_hook"
                 );
-                (e.proc.clone(), args.to_vec())
+                e.proc.clone()
             })
             .collect();
+        if procs.is_empty() {
+            return Ok(Vec::new());
+        }
+        let args: Vec<Rooted> = args.iter().cloned().map(Rooted::new).collect();
+        let calls = procs.into_iter().map(|proc| (proc, args.clone())).collect();
         self.run_steel_calls(calls, host)
     }
 
@@ -391,7 +396,9 @@ impl ScriptingHost {
                 });
             }
         };
-        let args_list = SteelVal::ListV(args.to_vec().into());
+        let helper = Rooted::new(helper);
+        let args_list = Rooted::new(SteelVal::ListV(args.to_vec().into()));
+        let args: Vec<Rooted> = args.iter().cloned().map(Rooted::new).collect();
         let mut holds = holds.into_iter();
         let mut held_at: Vec<Option<HostToken>> = Vec::with_capacity(handlers.handlers.len());
         let mut calls = Vec::with_capacity(handlers.handlers.len());
@@ -401,11 +408,11 @@ impl ScriptingHost {
                 held_at.push(Some(hold));
                 calls.push((
                     helper.clone(),
-                    vec![proc, hold.to_steel(), args_list.clone()],
+                    vec![proc, Rooted::new(hold.to_steel()), args_list.clone()],
                 ));
             } else {
                 held_at.push(None);
-                calls.push((proc, args.to_vec()));
+                calls.push((proc, args.clone()));
             }
         }
         let (completed, result) = self.run_tracked_calls(calls, host);
@@ -446,7 +453,7 @@ impl ScriptingHost {
     /// args)` and this runs at the drain boundary.
     pub fn run_steel_calls<'a>(
         &'a mut self,
-        calls: Vec<(SteelVal, Vec<SteelVal>)>,
+        calls: Vec<(Rooted, Vec<Rooted>)>,
         host: &'a mut dyn EditorHost,
     ) -> Result<Vec<Effect>, EvalError> {
         self.run_tracked_calls(calls, host).1
@@ -457,7 +464,7 @@ impl ScriptingHost {
     /// interrupt kept from running at all.
     fn run_tracked_calls<'a>(
         &'a mut self,
-        calls: Vec<(SteelVal, Vec<SteelVal>)>,
+        calls: Vec<(Rooted, Vec<Rooted>)>,
         host: &'a mut dyn EditorHost,
     ) -> (Vec<bool>, Result<Vec<Effect>, EvalError>) {
         let mut completed = vec![false; calls.len()];
@@ -473,7 +480,10 @@ impl ScriptingHost {
             let (steel, watchdog, bundle) = self.steel_and_bundle();
             let mut steel_ctx = SteelCtx::new_command(host, bundle);
             let result = run_steel_session(steel, watchdog, &mut steel_ctx, budget_ms, |steel| {
-                steel.call_function_with_args(proc, args).map(|_| ())
+                let args = args.iter().map(|arg| arg.value().clone()).collect();
+                steel
+                    .call_function_with_args(proc.value().clone(), args)
+                    .map(|_| ())
             });
             match result {
                 Ok(()) => completed[index] = true,

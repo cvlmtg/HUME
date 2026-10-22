@@ -2,13 +2,14 @@
 //! every other large module in `editor/` follows for its own `mod tests`.
 
 use super::*;
+use steel::rvals::SteelVal;
 
 fn items(displays: &[&str]) -> Vec<PickerItem> {
     displays.iter().map(|d| item(d)).collect()
 }
 
-fn dummy_on_select() -> SteelVal {
-    SteelVal::BoolV(false)
+fn dummy_on_select() -> Rooted {
+    Rooted::new(SteelVal::BoolV(false))
 }
 
 fn open() -> PickerSession {
@@ -44,7 +45,7 @@ fn open_live() -> PickerSession {
 }
 
 fn selected_payload(s: &PickerSession) -> Option<SteelVal> {
-    s.selected_index().map(|i| s.picked(i).1)
+    s.selected_index().map(|i| s.picked(i).1.value().clone())
 }
 
 fn payload_str(v: &SteelVal) -> &str {
@@ -330,13 +331,13 @@ fn equal_scores_tie_break_by_insertion_order() {
     for i in 0..TIER {
         tagged.push(PickerItem {
             display: "fxxbxx".to_string(),
-            payload: SteelVal::StringV(format!("low{i}").into()),
+            payload: Rooted::new(SteelVal::StringV(format!("low{i}").into())),
         });
     }
     for i in 0..TIER {
         tagged.push(PickerItem {
             display: "foo/bar".to_string(),
-            payload: SteelVal::StringV(format!("high{i}").into()),
+            payload: Rooted::new(SteelVal::StringV(format!("high{i}").into())),
         });
     }
     s.push(tagged);

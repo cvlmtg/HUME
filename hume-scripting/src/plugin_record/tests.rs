@@ -6,7 +6,7 @@ fn id(name: &str) -> PluginId {
 
 fn loaded(n: isize) -> Option<LoadCall> {
     Some(LoadCall {
-        config: SteelVal::IntV(n),
+        config: Rooted::new(SteelVal::IntV(n)),
         git_ref: None,
     })
 }

@@ -8,6 +8,7 @@
 
 use steel::rvals::SteelVal;
 
+use super::Rooted;
 use super::attribution::PluginId;
 
 /// What looking the plugin up found, beyond the entries the lazy registry
@@ -32,7 +33,7 @@ impl Resolution {
 
 /// What one `load-plugin!` call passed.
 pub(crate) struct LoadCall {
-    pub(crate) config: SteelVal,
+    pub(crate) config: Rooted,
     /// The `#:ref` PLUM checks the plugin's clone out at.
     pub(crate) git_ref: Option<GitRef>,
 }
@@ -108,7 +109,7 @@ impl PluginRecords {
 
     /// The config `load-plugin!` last passed for `id`.
     pub(crate) fn config(&self, id: &PluginId) -> Option<&SteelVal> {
-        Some(&self.load(id)?.config)
+        Some(self.load(id)?.config.value())
     }
 
     /// The `#:ref` `load-plugin!` last passed for `id`.

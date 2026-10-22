@@ -108,7 +108,7 @@ fn show_drawer_list_over_a_live_popup_clears_it() {
     host.show_drawer_list(
         pane,
         hume_scripting::host::DrawerItems::Rows(vec!["one".to_string()]),
-        steel::rvals::SteelVal::BoolV(false),
+        hume_scripting::Rooted::new(steel::rvals::SteelVal::BoolV(false)),
         0,
     )
     .expect("show-drawer-list! must succeed");
@@ -133,7 +133,7 @@ fn show_drawer_list_drops_silently_when_a_picker_is_open() {
 
     let mut ed = editor_from("-[x]>abcdefgh\n");
     let session = crate::editor::input_stack::picker::PickerSession::new(
-        steel::rvals::SteelVal::BoolV(false),
+        hume_scripting::Rooted::new(steel::rvals::SteelVal::BoolV(false)),
         PickerOpts::default(),
         Vec::new(),
     );
@@ -152,7 +152,7 @@ fn show_drawer_list_drops_silently_when_a_picker_is_open() {
     let result = host.show_drawer_list(
         pane,
         hume_scripting::host::DrawerItems::Rows(vec!["a".to_string()]),
-        steel::rvals::SteelVal::Void,
+        hume_scripting::Rooted::new(steel::rvals::SteelVal::Void),
         0,
     );
     assert!(
@@ -244,7 +244,7 @@ fn show_drawer_list_from_insert_warns_instead_of_opening() {
     let result = host.show_drawer_list(
         pane,
         hume_scripting::host::DrawerItems::Rows(vec!["a".to_string()]),
-        steel::rvals::SteelVal::Void,
+        hume_scripting::Rooted::new(steel::rvals::SteelVal::Void),
         0,
     );
     assert!(
@@ -427,7 +427,7 @@ fn update_drawer_list_with_a_mismatched_token_is_a_noop_false() {
     let applied = host.update_drawer_list(
         crate::editor::host_token::mint(),
         hume_scripting::host::DrawerItems::Rows(vec!["x".to_string()]),
-        steel::rvals::SteelVal::Void,
+        hume_scripting::Rooted::new(steel::rvals::SteelVal::Void),
         0,
     );
 
@@ -773,7 +773,7 @@ fn show_with_empty_items_errors_and_opens_nothing() {
     let result = host.show_drawer_list(
         pane,
         hume_scripting::host::DrawerItems::Rows(Vec::new()),
-        steel::rvals::SteelVal::BoolV(false),
+        hume_scripting::Rooted::new(steel::rvals::SteelVal::BoolV(false)),
         0,
     );
     assert!(

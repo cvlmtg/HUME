@@ -2,7 +2,7 @@
 //! callback to call, each raised here and drained in order by `pump`.
 
 use hume_engine::pipeline::BufferId;
-use hume_scripting::PaneHandle;
+use hume_scripting::{PaneHandle, Rooted};
 use steel::rvals::SteelVal;
 
 use super::EditorEvent;
@@ -40,8 +40,8 @@ pub(in crate::editor) enum PendingWork {
     /// check saw. `None` for every other source (a timer thunk, a picker
     /// callback, a request no server took, …).
     Call {
-        proc: SteelVal,
-        args: Vec<SteelVal>,
+        proc: Rooted,
+        args: Vec<Rooted>,
         anchor: Option<crate::editor::lsp::ResponseAnchor>,
         /// An `lsp-request!` callback's hold on its `#:tracked` position,
         /// dropped once the call has run, raised, or been dropped by its
@@ -69,8 +69,8 @@ impl PendingWork {
     /// The `Call` an interactive input's callback queues: the user's, with
     /// no anchor or tracked position, answering `ticket`'s input if any.
     pub(in crate::editor) fn answer(
-        proc: SteelVal,
-        arg: SteelVal,
+        proc: Rooted,
+        arg: Rooted,
         ticket: Option<AnswerTicket>,
     ) -> Self {
         Self::Call {
@@ -99,22 +99,14 @@ impl EditorState {
     /// callback. Background work queues through
     /// [`Self::queue_background_call`]; an interactive input's callback is
     /// built by `EditorState::answered_call` instead.
-    pub(in crate::editor) fn queue_steel_call(
-        &mut self,
-        proc: steel::rvals::SteelVal,
-        args: Vec<steel::rvals::SteelVal>,
-    ) {
+    pub(in crate::editor) fn queue_steel_call(&mut self, proc: Rooted, args: Vec<SteelVal>) {
         self.queue_call(proc, args, None, None, EditOrigin::User);
     }
 
     /// [`Self::queue_steel_call`] for a callback background work fires: a
     /// timer thunk, an async job's or process's callback. Its edits do not
     /// count as the user's.
-    pub(in crate::editor) fn queue_background_call(
-        &mut self,
-        proc: steel::rvals::SteelVal,
-        args: Vec<steel::rvals::SteelVal>,
-    ) {
+    pub(in crate::editor) fn queue_background_call(&mut self, proc: Rooted, args: Vec<SteelVal>) {
         self.queue_call(proc, args, None, None, EditOrigin::Background);
     }
 
@@ -125,8 +117,8 @@ impl EditorState {
     /// carries an answer ticket: an LSP response resolves no waiting input.
     pub(in crate::editor) fn queue_lsp_callback(
         &mut self,
-        proc: steel::rvals::SteelVal,
-        args: Vec<steel::rvals::SteelVal>,
+        proc: Rooted,
+        args: Vec<SteelVal>,
         anchor: Option<ResponseAnchor>,
         tracked: Option<hume_scripting::host::TrackedHold>,
     ) {
@@ -142,15 +134,15 @@ impl EditorState {
     /// here.
     fn queue_call(
         &mut self,
-        proc: steel::rvals::SteelVal,
-        args: Vec<steel::rvals::SteelVal>,
+        proc: Rooted,
+        args: Vec<SteelVal>,
         anchor: Option<ResponseAnchor>,
         tracked: Option<hume_scripting::host::TrackedHold>,
         origin: EditOrigin,
     ) {
         self.push_work(PendingWork::Call {
             proc,
-            args,
+            args: args.into_iter().map(Rooted::new).collect(),
             anchor,
             tracked,
             answer: None,

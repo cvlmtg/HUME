@@ -457,7 +457,7 @@ fn reset_reload_drawer_view_self_heals_on_the_next_frame() {
     host.show_drawer_list(
         pane,
         hume_scripting::host::DrawerItems::Rows(vec!["one".to_string(), "two".to_string()]),
-        steel::rvals::SteelVal::Void,
+        hume_scripting::Rooted::new(steel::rvals::SteelVal::Void),
         0,
     )
     .unwrap();
@@ -613,13 +613,13 @@ fn reset_clears_extend_and_does_not_fire_a_phantom_mode_change() {
 fn reset_tears_down_an_open_picker_session_without_firing_its_callback() {
     let mut ed = editor_from("-[a]>b\n");
     let mut session = crate::editor::input_stack::picker::PickerSession::new(
-        steel::rvals::SteelVal::StringV("cb".into()),
+        hume_scripting::Rooted::new(steel::rvals::SteelVal::StringV("cb".into())),
         hume_scripting::host::PickerOpts::default(),
         Vec::new(),
     );
     session.push(vec![crate::editor::input_stack::picker::PickerItem {
         display: "one".to_string(),
-        payload: steel::rvals::SteelVal::StringV("one".into()),
+        payload: hume_scripting::Rooted::new(steel::rvals::SteelVal::StringV("one".into())),
     }]);
     crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session, "picker!")
         .expect("no `.` is in progress");

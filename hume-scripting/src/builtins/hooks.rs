@@ -101,11 +101,11 @@ pub(crate) fn held_done(ctx: &mut SteelCtx, hold: SteelVal) -> SteelResult {
 pub(crate) fn register_entry(
     ctx: &mut SteelCtx,
     name: &str,
-    proc: SteelVal,
+    proc: crate::Rooted,
     keys: Option<Box<[String]>>,
 ) -> Result<(), steel::rerrs::SteelErr> {
     let takes_done = match ctx.host.events().held_event_arg_count(name) {
-        Some(event_args) => held_handler_takes_done(name, event_args, &proc)?,
+        Some(event_args) => held_handler_takes_done(name, event_args, proc.value())?,
         None => false,
     };
     let owner = ctx.plugin_stack.current().cloned();

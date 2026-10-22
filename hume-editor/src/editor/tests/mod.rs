@@ -53,7 +53,10 @@ fn attach_steel(ed: &mut Editor, src: &str) {
         .map(str::to_owned)
         .collect();
     let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
-    let mut host = hume_scripting::ScriptingHost::new(&Dirs::none());
+    let mut host = ed
+        .scripting
+        .take()
+        .unwrap_or_else(|| hume_scripting::ScriptingHost::new(&Dirs::none()));
     host.register_command_names(&name_refs);
     let mut init_host = crate::editor::host_impl::EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.eval_source(src, &mut init_host)
@@ -301,13 +304,16 @@ fn state(ed: &Editor) -> String {
 /// ignoring any interleaved `Event` items, for tests that assert on
 /// specific queued callbacks (an `lsp-request!`/timer/prompt/menu/drawer/
 /// picker callback).
-fn pending_calls(ed: &Editor) -> Vec<(&steel::rvals::SteelVal, &Vec<steel::rvals::SteelVal>)> {
+fn pending_calls(ed: &Editor) -> Vec<(steel::rvals::SteelVal, Vec<steel::rvals::SteelVal>)> {
     ed.state
         .config
         .pending_work
         .iter()
         .filter_map(|w| match w {
-            crate::editor::event::PendingWork::Call { proc, args, .. } => Some((proc, args)),
+            crate::editor::event::PendingWork::Call { proc, args, .. } => Some((
+                proc.value().clone(),
+                args.iter().map(|arg| arg.value().clone()).collect(),
+            )),
             crate::editor::event::PendingWork::Event(_) => None,
         })
         .collect()
@@ -423,7 +429,7 @@ fn open_drawer_via_host(ed: &mut Editor, items: &[&str]) -> hume_scripting::host
         .show_drawer_list(
             pane,
             hume_scripting::host::DrawerItems::Rows(items.iter().map(|s| s.to_string()).collect()),
-            steel::rvals::SteelVal::Void,
+            hume_scripting::Rooted::new(steel::rvals::SteelVal::Void),
             0,
         )
         .unwrap()
@@ -1227,17 +1233,33 @@ fn install_source(
     source: &str,
     tmp: &std::path::Path,
 ) {
+    assert!(
+        ed.scripting.is_none(),
+        "the editor already has an engine: evaluate into it (`run`), since replacing it \
+         orphans the closures the editor holds from it"
+    );
     eval_with_real_host(ed, &mut host, source, tmp);
     ed.scripting = Some(host);
     ed.detect_pending_languages();
 }
 
-/// Evaluates `source` against a fresh `ScriptingHost` and installs it on
-/// `ed`, for a test that only needs a command/plugin defined, not a probe
-/// wrapped around one.
+/// Evaluates `source` against the editor's `ScriptingHost`, or a fresh one
+/// installed on `ed` when it has none, for a test that only needs a
+/// command/plugin defined, not a probe wrapped around one. An editor keeps
+/// one engine, as outside tests: closures it holds from an engine run only
+/// against that engine's heap and constants.
 fn run(ed: &mut Editor, tmp: &std::path::Path, source: &str) {
-    let host = hume_scripting::ScriptingHost::new(&ed.state.dirs);
+    let host = editor_host(ed);
     install_source(ed, host, source, tmp);
+}
+
+/// The editor's `ScriptingHost`, taken out to evaluate into, or a fresh one
+/// when it has none: how a test layers more source onto an editor that may
+/// already hold closures from its engine.
+fn editor_host(ed: &mut Editor) -> hume_scripting::ScriptingHost {
+    ed.scripting
+        .take()
+        .unwrap_or_else(|| hume_scripting::ScriptingHost::new(&ed.state.dirs))
 }
 
 /// Defines a one-arg Steel command whose body is `body` and binds it to
@@ -1476,6 +1498,7 @@ mod events;
 mod file_io;
 mod find;
 mod frame_pacing;
+mod gc_rooting;
 mod geometry_replaces_caret;
 mod goto_revision;
 mod horizontal_scroll_follow;

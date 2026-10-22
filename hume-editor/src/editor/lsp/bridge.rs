@@ -127,7 +127,7 @@ enum Responder {
     /// and the request's hold on its `#:tracked` position, dropped once the
     /// callback has run or will never run.
     Steel {
-        callback: SteelVal,
+        callback: hume_scripting::Rooted,
         tracked: Option<TrackedHold>,
     },
     /// A Rust closure, given the one server's answer or why it has none.

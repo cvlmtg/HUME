@@ -2,8 +2,8 @@
 //! features, server registrations, request routing and params, and
 //! trigger-char sets.
 
+use crate::Rooted;
 use hume_engine::pipeline::{BufferId, PaneId};
-use steel::rvals::SteelVal;
 
 /// A language server's registration name: non-empty, no whitespace, so it
 /// reads unambiguously as a `:lsp-stop`/`:lsp-restart` argument.
@@ -413,7 +413,7 @@ pub struct PendingLspRequest {
     pub mode: RequestMode,
     pub route: RouteSpec,
     pub when_unavailable: WhenUnavailable,
-    pub callback: SteelVal,
+    pub callback: Rooted,
     pub allow_stale: bool,
     /// `#:supersede`: a new request under the same key cancels the
     /// previous one still in flight under it, on every server it went to.

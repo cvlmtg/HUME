@@ -2,8 +2,6 @@
 //! points that raise events no write site can, and running each queued
 //! event and call.
 
-use steel::rvals::SteelVal;
-
 use super::{EditorEvent, PendingWork};
 use crate::editor::buffer::DiskCheckTrigger;
 use crate::editor::buffer::store::EditOrigin;
@@ -438,7 +436,10 @@ impl Editor {
     /// session: the per-batch body of `settle`'s `Call` arm. Preserves
     /// `run_steel_calls`' existing "one session, first error aborts the
     /// rest" semantics for calls that were queued back-to-back.
-    fn run_call_batch(&mut self, calls: Vec<(SteelVal, Vec<SteelVal>)>) {
+    fn run_call_batch(
+        &mut self,
+        calls: Vec<(hume_scripting::Rooted, Vec<hume_scripting::Rooted>)>,
+    ) {
         let Some((host_scr, mut impl_host)) = self.scripting_with_host() else {
             return;
         };

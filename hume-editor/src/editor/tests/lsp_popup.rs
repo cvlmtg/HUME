@@ -159,7 +159,7 @@ fn show_popup_scrollable_does_not_land_above_an_open_picker() {
     let mut ed = editor_from("-[x]>abcdefgh\n");
 
     let session = crate::editor::input_stack::picker::PickerSession::new(
-        steel::rvals::SteelVal::BoolV(false),
+        hume_scripting::Rooted::new(steel::rvals::SteelVal::BoolV(false)),
         hume_scripting::host::PickerOpts::default(),
         Vec::new(),
     );

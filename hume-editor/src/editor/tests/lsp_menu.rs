@@ -146,7 +146,7 @@ fn close_menu_drops_the_callback_without_invoking_it() {
         .show_menu(
             pane,
             vec!["a".to_string(), "b".to_string()],
-            steel::rvals::SteelVal::Void,
+            hume_scripting::Rooted::new(steel::rvals::SteelVal::Void),
         )
         .unwrap()
         .expect("a menu opened from Normal is not dropped");
@@ -195,7 +195,11 @@ fn show_menu_from_insert_warns_instead_of_opening() {
 
     let pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    let result = host.show_menu(pane, vec!["a".to_string()], steel::rvals::SteelVal::Void);
+    let result = host.show_menu(
+        pane,
+        vec!["a".to_string()],
+        hume_scripting::Rooted::new(steel::rvals::SteelVal::Void),
+    );
     assert!(
         result.is_ok(),
         "a mode-layer race must never error: it would abort the whole call batch"
@@ -230,7 +234,11 @@ fn show_menu_accepted_in_normal_mode() {
     let mut ed = editor_from("-[x]>abcdefgh\n");
     let pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    let result = host.show_menu(pane, vec!["a".to_string()], steel::rvals::SteelVal::Void);
+    let result = host.show_menu(
+        pane,
+        vec!["a".to_string()],
+        hume_scripting::Rooted::new(steel::rvals::SteelVal::Void),
+    );
     assert!(result.is_ok());
     assert!(ed.state.input.menu().is_some());
 }
@@ -248,7 +256,7 @@ fn show_menu_drops_silently_when_a_picker_is_open() {
 
     let mut ed = editor_from("-[x]>abcdefgh\n");
     let session = crate::editor::input_stack::picker::PickerSession::new(
-        steel::rvals::SteelVal::BoolV(false),
+        hume_scripting::Rooted::new(steel::rvals::SteelVal::BoolV(false)),
         PickerOpts::default(),
         Vec::new(),
     );
@@ -264,7 +272,11 @@ fn show_menu_drops_silently_when_a_picker_is_open() {
 
     let pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    let result = host.show_menu(pane, vec!["a".to_string()], steel::rvals::SteelVal::Void);
+    let result = host.show_menu(
+        pane,
+        vec!["a".to_string()],
+        hume_scripting::Rooted::new(steel::rvals::SteelVal::Void),
+    );
     assert!(
         result.is_ok(),
         "a stale async response must never error: it would abort the whole call batch"
@@ -311,7 +323,11 @@ fn show_menu_opens_over_an_open_drawer() {
 
     let pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    let result = host.show_menu(pane, vec!["a".to_string()], steel::rvals::SteelVal::Void);
+    let result = host.show_menu(
+        pane,
+        vec!["a".to_string()],
+        hume_scripting::Rooted::new(steel::rvals::SteelVal::Void),
+    );
 
     assert!(result.is_ok());
     assert!(
@@ -339,8 +355,12 @@ fn show_menu_replaces_a_menu_already_open_and_fires_its_callback() {
     let mut ed = editor_from("-[x]>abcdefgh\n");
     let pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.show_menu(pane, vec!["old".to_string()], steel::rvals::SteelVal::Void)
-        .unwrap();
+    host.show_menu(
+        pane,
+        vec!["old".to_string()],
+        hume_scripting::Rooted::new(steel::rvals::SteelVal::Void),
+    )
+    .unwrap();
     assert!(ed.state.input.menu().is_some(), "sanity: first menu open");
 
     let pane = focused_pane(&ed);
@@ -348,7 +368,7 @@ fn show_menu_replaces_a_menu_already_open_and_fires_its_callback() {
     let result = host.show_menu(
         pane,
         vec!["new-a".to_string(), "new-b".to_string()],
-        steel::rvals::SteelVal::Void,
+        hume_scripting::Rooted::new(steel::rvals::SteelVal::Void),
     );
 
     assert!(result.is_ok());
@@ -361,7 +381,7 @@ fn show_menu_replaces_a_menu_already_open_and_fires_its_callback() {
         matches!(
             ed.state.config.pending_work.front(),
             Some(crate::editor::event::PendingWork::Call { args, .. })
-                if matches!(args.as_slice(), [steel::rvals::SteelVal::BoolV(false)])
+                if matches!(args.as_slice(), [arg] if matches!(arg.value(), steel::rvals::SteelVal::BoolV(false)))
         ),
         "the outgoing menu's callback must fire with #f"
     );

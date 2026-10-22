@@ -16,7 +16,7 @@ use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, PasteHandler, Remo
 /// Built only by [`open_prompt`].
 pub(in crate::editor) struct PromptLayer {
     minibuf: MiniBuffer,
-    callback: steel::rvals::SteelVal,
+    callback: hume_scripting::Rooted,
     /// The check this prompt passed as it opened, holding where its answer
     /// records when it belongs to a recorded change.
     input: WaitingInput,
@@ -34,7 +34,7 @@ pub(in crate::editor) fn open_prompt(
     view: &EngineView,
     label: String,
     prefill: String,
-    callback: steel::rvals::SteelVal,
+    callback: hume_scripting::Rooted,
 ) -> Result<(), String> {
     const WHAT: &str = "prompt!";
     if let Some(replay) = state.dot_replay.as_mut() {
@@ -47,7 +47,7 @@ pub(in crate::editor) fn open_prompt(
             |text| {
                 Ok(PendingAnswer::Call {
                     proc: callback,
-                    arg: prompt_arg(text),
+                    arg: hume_scripting::Rooted::new(prompt_arg(text)),
                 })
             },
         );
@@ -85,7 +85,7 @@ impl PromptLayer {
     /// Queue this prompt's callback with `text`, or `#f`, recording it under
     /// its answer ticket, if it has one. Every way a prompt closes ends here.
     fn fire(&mut self, state: &mut EditorState, text: Option<String>) {
-        let arg = prompt_arg(text.clone());
+        let arg = hume_scripting::Rooted::new(prompt_arg(text.clone()));
         state.queue_answered_call(
             self.input.take_answer(),
             Answer::Prompt(text),

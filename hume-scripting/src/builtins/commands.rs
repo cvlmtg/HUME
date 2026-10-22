@@ -104,7 +104,7 @@ pub(crate) fn define_command(
     }
     check_definable(ctx, "define-command!", &name)?;
     let proc = super::args::callable_arg(proc, "define-command! third arg (proc)")?;
-    let (arity, is_variadic) = super::args::command_shape(&proc);
+    let (arity, is_variadic) = super::args::command_shape(proc.value());
     let proc = MappableProc::new(proc, ctx.plugin_stack.current_owner());
     ctx.host
         .commands()
@@ -154,7 +154,7 @@ pub(crate) fn define_typed_command(
     let proc = super::args::callable_arg(proc, "define-typed-command! third arg (proc)")?;
     let completer =
         super::args::optional_string_arg(completer, "define-typed-command! #:complete")?;
-    let (arity, is_variadic) = super::args::command_shape(&proc);
+    let (arity, is_variadic) = super::args::command_shape(proc.value());
     let proc = TypedProc::new(proc, ctx.plugin_stack.current_owner());
     ctx.host
         .commands()

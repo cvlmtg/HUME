@@ -22,8 +22,6 @@
 
 use std::ops::Range;
 
-use steel::rvals::SteelVal;
-
 use super::{CompletionCtx, CompletionItem, MatchKind};
 
 /// A native minibuffer source that enumerates a stable universe: the
@@ -47,7 +45,7 @@ pub(in crate::editor) enum MinibufBody {
     NativeDelegated(NativeDelegatedFn),
     /// Invoked via `EditorState::queue_steel_call` as `(proc id input
     /// cursor)`, answered by `(completion-emit! id …)`.
-    Steel(SteelVal),
+    Steel(hume_scripting::Rooted),
 }
 
 pub(in crate::editor) struct BufferSourceEntry {
@@ -56,7 +54,7 @@ pub(in crate::editor) struct BufferSourceEntry {
     pub(in crate::editor) priority: i64,
     /// Invoked via `EditorState::queue_steel_call` as `(proc id bid
     /// prefix)`, answered by `(completion-emit! id …)`.
-    pub(in crate::editor) proc: SteelVal,
+    pub(in crate::editor) proc: hume_scripting::Rooted,
     /// `#:resolve`: this source's own claim that its items are wire
     /// `CompletionItem`s from the buffer's attached LSP server, so
     /// `completionItem/resolve` may be sent for a selected or accepted one

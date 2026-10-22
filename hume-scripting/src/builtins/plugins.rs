@@ -12,7 +12,7 @@ use steel::rerrs::SteelErr;
 use steel::rvals::{IntoSteelVal, SteelVal};
 
 use crate::{
-    SteelCtx,
+    Rooted, SteelCtx,
     attribution::{EntryFile, EntryId, PluginId},
     lazy::PluginState,
     plugin_record::{GitRef, LoadCall, Resolution},
@@ -394,9 +394,13 @@ pub(crate) fn load_plugin(
     let plugin_id = PluginId::parse_installed(&name).map_err(generic_err)?;
     let git_ref = git_ref_arg(&plugin_id, git_ref)?;
 
-    ctx.registries
-        .plugin_records
-        .note(plugin_id.clone(), Some(LoadCall { config, git_ref }));
+    ctx.registries.plugin_records.note(
+        plugin_id.clone(),
+        Some(LoadCall {
+            config: Rooted::new(config),
+            git_ref,
+        }),
+    );
 
     if ctx
         .registries

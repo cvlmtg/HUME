@@ -12,8 +12,7 @@
 
 use rustc_hash::FxHashMap;
 
-use steel::rvals::SteelVal;
-
+use crate::Rooted;
 use crate::attribution::EntryId;
 
 // ── HookRegistry ──────────────────────────────────────────────────────────────
@@ -33,7 +32,7 @@ use crate::attribution::EntryId;
 #[derive(Debug)]
 pub(crate) struct HookEntry {
     pub(crate) owner: Option<EntryId>,
-    pub(crate) proc: SteelVal,
+    pub(crate) proc: Rooted,
     pub(crate) keys: Option<Box<[String]>>,
     pub(crate) takes_done: bool,
 }
@@ -60,7 +59,7 @@ impl HookRegistry {
         &mut self,
         name: &str,
         owner: Option<EntryId>,
-        proc: SteelVal,
+        proc: Rooted,
         keys: Option<Box<[String]>>,
         takes_done: bool,
     ) {

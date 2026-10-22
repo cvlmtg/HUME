@@ -13,18 +13,22 @@ use hume_scripting::host::{LivePickerOpts, PickerOpts};
 use steel::rvals::SteelVal;
 
 fn open_bare_picker(ed: &mut Editor) {
-    let session = PickerSession::new(SteelVal::BoolV(false), PickerOpts::default(), Vec::new());
+    let session = PickerSession::new(
+        hume_scripting::Rooted::new(SteelVal::BoolV(false)),
+        PickerOpts::default(),
+        Vec::new(),
+    );
     picker::open_picker(&mut ed.state, &ed.view, session, "picker!")
         .expect("no `.` is in progress");
 }
 
 fn open_live_picker(ed: &mut Editor) {
     let session = PickerSession::new_live(
-        SteelVal::BoolV(false),
+        hume_scripting::Rooted::new(SteelVal::BoolV(false)),
         LivePickerOpts {
             prompt: String::new(),
             query: String::new(),
-            on_query_change: SteelVal::BoolV(false),
+            on_query_change: hume_scripting::Rooted::new(SteelVal::BoolV(false)),
             truncate: TruncateEnd::Head,
             actions: Vec::new(),
         },
@@ -95,7 +99,9 @@ fn a_nul_inside_a_line_shows_as_a_colon_but_the_payload_keeps_it() {
         "a NUL in the display must read as ':', the same field separator the tool prints without --null"
     );
     assert_eq!(
-        picker.selected_index().map(|i| picker.picked(i).1),
+        picker
+            .selected_index()
+            .map(|i| picker.picked(i).1.value().clone()),
         Some(SteelVal::StringV("a\0b".into())),
         "the payload must keep the raw NUL so a plugin's own split stays unambiguous"
     );
@@ -254,7 +260,11 @@ fn replacing_the_session_kills_the_previous_source_child() {
 
     // A fresh `open_picker` call replaces (and, via `close_picker`, drops)
     // whatever session was open, same as a second `picker!` from Steel.
-    let replacement = PickerSession::new(SteelVal::BoolV(false), PickerOpts::default(), Vec::new());
+    let replacement = PickerSession::new(
+        hume_scripting::Rooted::new(SteelVal::BoolV(false)),
+        PickerOpts::default(),
+        Vec::new(),
+    );
     picker::open_picker(&mut ed.state, &ed.view, replacement, "picker!")
         .expect("no `.` is in progress");
 

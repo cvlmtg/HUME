@@ -34,13 +34,17 @@ fn marker(name: &str) -> SteelVal {
 }
 
 fn open_test_picker(ed: &mut Editor, items: &[&str]) {
-    let mut session = PickerSession::new(marker("on-select"), PickerOpts::default(), Vec::new());
+    let mut session = PickerSession::new(
+        hume_scripting::Rooted::new(marker("on-select")),
+        PickerOpts::default(),
+        Vec::new(),
+    );
     session.push(
         items
             .iter()
             .map(|s| PickerItem {
                 display: s.to_string(),
-                payload: SteelVal::StringV((*s).into()),
+                payload: hume_scripting::Rooted::new(SteelVal::StringV((*s).into())),
             })
             .collect(),
     );
@@ -987,7 +991,10 @@ fn click_with_menu_open_cancels_it_and_falls_through() {
     ed.resize_terminal(80, 25);
     ed.state.push_layer(
         &ed.view,
-        MenuLayer::for_test(vec!["m0".into()], marker("menu-cb")),
+        MenuLayer::for_test(
+            vec!["m0".into()],
+            hume_scripting::Rooted::new(marker("menu-cb")),
+        ),
     );
 
     draw(&mut ed);
@@ -999,7 +1006,7 @@ fn click_with_menu_open_cancels_it_and_falls_through() {
     );
     assert_eq!(
         pending_calls(&ed),
-        vec![(&marker("menu-cb"), &vec![SteelVal::BoolV(false)])]
+        vec![(marker("menu-cb"), vec![SteelVal::BoolV(false)])]
     );
     assert_eq!(
         ed.current_view().primary().head().offset(),
@@ -1020,7 +1027,7 @@ fn click_under_drawer_falls_through_leaving_it_open() {
         &ed.view,
         DrawerLayer::new(
             hume_scripting::host::DrawerItems::Rows(vec!["d0".to_string()]),
-            DrawerSelect::Steel(marker("drawer-cb")),
+            DrawerSelect::Steel(hume_scripting::Rooted::new(marker("drawer-cb"))),
             0,
         ),
     );
@@ -1049,7 +1056,7 @@ fn wheel_under_drawer_scrolls_the_pane_leaving_it_open() {
         &ed.view,
         DrawerLayer::new(
             hume_scripting::host::DrawerItems::Rows(vec!["d0".to_string()]),
-            DrawerSelect::Steel(marker("drawer-cb")),
+            DrawerSelect::Steel(hume_scripting::Rooted::new(marker("drawer-cb"))),
             0,
         ),
     );

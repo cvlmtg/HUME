@@ -12,7 +12,7 @@ fn source(name: &str) -> BufferSourceEntry {
         name: name.into(),
         match_kind: MatchKind::Fuzzy,
         priority: 0,
-        proc: SteelVal::Void,
+        proc: hume_scripting::Rooted::new(SteelVal::Void),
         resolve: false,
         token_chars: "".into(),
     }

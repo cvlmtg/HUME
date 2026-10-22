@@ -45,7 +45,7 @@ pub trait AsyncProcessHost {
         cmd: &str,
         args: Vec<String>,
         cwd: PathBuf,
-        callback: steel::rvals::SteelVal,
+        callback: crate::Rooted,
     ) -> u64;
 
     /// Kills and reaps the job's child and drops its callback without

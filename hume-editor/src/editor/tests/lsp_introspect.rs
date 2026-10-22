@@ -70,9 +70,10 @@ fn lsp_capabilities_reads_raw_wire_caps_after_handshake() {
         serde_json::json!({"capabilities": {"hoverProvider": true}}),
     );
 
+    let host = editor_host(&mut rig.ed);
     let fired = run_probe(
         &mut rig.ed,
-        ScriptingHost::new(&Dirs::none()),
+        host,
         tmp.path(),
         r#"(equal? (json-ref (lsp-capabilities (car (lsp-servers bid))) "hoverProvider") #t)"#,
     );
@@ -100,9 +101,10 @@ fn lsp_capabilities_surfaces_a_field_lsp_types_does_not_model() {
         }}),
     );
 
+    let host = editor_host(&mut rig.ed);
     let fired = run_probe(
         &mut rig.ed,
-        ScriptingHost::new(&Dirs::none()),
+        host,
         tmp.path(),
         r#"(equal? (json-ref (lsp-capabilities (car (lsp-servers bid))) "documentRangeFormattingProvider" "rangesSupport")
                    #t)"#,
@@ -120,9 +122,10 @@ fn lsp_capabilities_is_false_before_running() {
     let (backend, _, _) = RecordingLspBackend::new();
     let mut rig = LspRig::open(tmp.path(), RigSpec::rust("-[a]>bcdef\n"), backend);
 
+    let host = editor_host(&mut rig.ed);
     let fired = run_probe(
         &mut rig.ed,
-        ScriptingHost::new(&Dirs::none()),
+        host,
         tmp.path(),
         r#"(equal? (lsp-capabilities (car (lsp-servers bid))) #f)"#,
     );
@@ -141,9 +144,10 @@ fn lsp_server_status_lists_the_running_server() {
         serde_json::json!({"capabilities": {}}),
     );
 
+    let host = editor_host(&mut rig.ed);
     let fired = run_probe(
         &mut rig.ed,
-        ScriptingHost::new(&Dirs::none()),
+        host,
         tmp.path(),
         &format!(
             r#"(let ((entry (car (lsp-server-status))))
@@ -356,9 +360,10 @@ fn lsp_linewise_ranges_params_splits_on_a_gap() {
         serde_json::json!({"capabilities": {}}),
     );
 
+    let host = editor_host(&mut rig.ed);
     let fired = run_probe(
         &mut rig.ed,
-        ScriptingHost::new(&Dirs::none()),
+        host,
         tmp.path(),
         r#"(equal? (length (hash-ref (lsp-linewise-ranges-params bid) "ranges")) 2)"#,
     );
@@ -386,9 +391,10 @@ fn lsp_linewise_ranges_params_does_not_bridge_across_a_collapsed_blank_line_sele
         serde_json::json!({"capabilities": {}}),
     );
 
+    let host = editor_host(&mut rig.ed);
     let fired = run_probe(
         &mut rig.ed,
-        ScriptingHost::new(&Dirs::none()),
+        host,
         tmp.path(),
         r#"(equal? (length (hash-ref (lsp-linewise-ranges-params bid) "ranges")) 2)"#,
     );
@@ -413,9 +419,10 @@ fn lsp_linewise_ranges_params_is_empty_for_a_lone_collapsed_blank_line_selection
         serde_json::json!({"capabilities": {}}),
     );
 
+    let host = editor_host(&mut rig.ed);
     let fired = run_probe(
         &mut rig.ed,
-        ScriptingHost::new(&Dirs::none()),
+        host,
         tmp.path(),
         r#"(equal? (hash-ref (lsp-linewise-ranges-params bid) "ranges") '())"#,
     );
@@ -465,9 +472,10 @@ fn lsp_linewise_ranges_params_is_empty_when_nothing_is_linewise() {
         serde_json::json!({"capabilities": {}}),
     );
 
+    let host = editor_host(&mut rig.ed);
     let fired = run_probe(
         &mut rig.ed,
-        ScriptingHost::new(&Dirs::none()),
+        host,
         tmp.path(),
         r#"(let ((p (lsp-linewise-ranges-params bid)))
              (and p
@@ -808,9 +816,10 @@ fn lsp_position_params_resolves_a_buffer_shown_in_a_non_focused_pane() {
     );
     rig.ed.state.focus.set_for_test(&mut rig.ed.view, other_pid);
 
+    let host = editor_host(&mut rig.ed);
     let fired = run_probe(
         &mut rig.ed,
-        ScriptingHost::new(&Dirs::none()),
+        host,
         tmp.path(),
         r#"(let* ((hidden (car (filter (lambda (b) (and (buffer-path b) (not (equal? (buffer-key b) (buffer-key bid))))) (buffers))))
                   (shown (car (buffer-panes hidden))))
@@ -853,9 +862,10 @@ fn lsp_position_params_resolves_a_buffer_shown_only_in_a_background_tab() {
     rig.ed.execute_typed("tabprev", None).unwrap();
     assert_eq!(rig.ed.state.tabs.current(), tab_a, "setup: back on A");
 
+    let host = editor_host(&mut rig.ed);
     let fired = run_probe(
         &mut rig.ed,
-        ScriptingHost::new(&Dirs::none()),
+        host,
         tmp.path(),
         r#"(let* ((hidden (car (filter (lambda (b) (and (buffer-path b) (not (equal? (buffer-key b) (buffer-key bid))))) (buffers))))
                   (shown (car (buffer-panes hidden))))
@@ -1391,12 +1401,7 @@ fn tracked_rig(tmp: &std::path::Path) -> LspRig {
         "abc\nd-[e]>f\n",
         serde_json::json!({"capabilities": {}}),
     );
-    install_source(
-        &mut rig.ed,
-        ScriptingHost::new(&Dirs::none()),
-        TRACKING_COMMANDS,
-        tmp,
-    );
+    run(&mut rig.ed, tmp, TRACKING_COMMANDS);
     type_cmd(&mut rig.ed, ":arm");
     rig
 }
@@ -1446,9 +1451,10 @@ fn a_false_token_answers_false_and_never_raises() {
         "-[a]>bc\n",
         serde_json::json!({"capabilities": {}}),
     );
+    let host = editor_host(&mut rig.ed);
     let fired = run_probe(
         &mut rig.ed,
-        ScriptingHost::new(&Dirs::none()),
+        host,
         tmp.path(),
         "(and (equal? (tracked-position-params #f) #f) (begin (untrack-position! #f) #t))",
     );
@@ -1516,9 +1522,10 @@ fn lsp_document_params_names_the_document_for_a_value_with_no_pane() {
         serde_json::json!({"capabilities": {}}),
     );
 
+    let host = editor_host(&mut rig.ed);
     let fired = run_probe(
         &mut rig.ed,
-        ScriptingHost::new(&Dirs::none()),
+        host,
         tmp.path(),
         r#"(let ((b (car (filter (lambda (b) (pair? (buffer-panes b))) (buffers)))))
              (hash-contains? (hash-ref (lsp-document-params b) "textDocument") "uri"))"#,

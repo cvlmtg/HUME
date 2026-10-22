@@ -3,7 +3,7 @@
 //! `Effect::RegisterCompletionSource` (see `crate::Effect`), so a failed
 //! plugin activation's registration is never applied.
 
-use steel::rvals::SteelVal;
+use crate::Rooted;
 
 /// How a source's items are matched against its token's typed text,
 /// decoded from `register-completion-source!`'s `#:match` symbol
@@ -32,7 +32,7 @@ pub enum CompletionSourceTarget {
 #[derive(Debug)]
 pub struct PendingCompletionSource {
     pub name: String,
-    pub proc: SteelVal,
+    pub proc: Rooted,
     pub target: CompletionSourceTarget,
     pub match_kind: MatchKind,
     pub priority: i64,

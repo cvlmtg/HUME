@@ -18,6 +18,7 @@ HUME (HUME's Unfinished Modal Editor) is a modal text editor for the terminal, w
 ## Rules
 - **Comments** follow the global ⛔ Comments rules. Rationale lives at the implementing site; update `docs/ROADMAP.md` only to remove a resolved open question or when milestones change.
 - **Comment vocabulary lint**: `arch-lints/tests/comment_vocabulary.rs` rejects the unambiguous banned phrases in any `.rs` comment.
+- **Steel values Rust keeps are rooted**: a Steel value held past one Steel evaluation is a `hume_scripting::Rooted` (`hume-scripting/src/rooted.rs`), or the collector frees what it captures. `arch-lints/tests/steel_val_fields.rs` rejects a bare `SteelVal` in a struct or enum of `hume-scripting`/`hume-editor`. A test editor keeps one engine: layer more source with `run`/`editor_host`, never install a second `ScriptingHost` over one.
 - **Rust idioms**: Write idiomatic Rust. Prefer pattern matching, iterators, and the type system over runtime checks. Use `Result` and `Option`; no `.unwrap()` in non-test code (`clippy::unwrap_used` is denied in CI, tests exempt).
 - **Terminal compatibility**: Require true color (24-bit) and synchronized output. Prefer kitty keyboard protocol but fall back gracefully to legacy encoding when unavailable. No shims for truly ancient terminals.
 - **Cross-platform**: macOS primary, Linux and Windows (Git Bash / WSL) secondary. Use `termina` or similar abstractions for platform differences. No platform-specific code unless behind `cfg` gates.

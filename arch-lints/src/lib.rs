@@ -206,19 +206,84 @@ impl std::fmt::Display for Violation {
     }
 }
 
-/// Shared skeleton for every line-by-line lint in this module: walks
-/// `paths` tracking `#[cfg(test)] mod tests { … }` extent (skipped
-/// entirely) and a two-tier opt-out, then calls `find` on each surviving,
-/// comment-stripped line, pushing one `Violation` per match it reports
-/// finding.
+/// The lines of `src` a lint checks, as `(0-based line index, line)`:
+/// everything outside `#[cfg(test)] mod tests { … }` blocks, except whole-
+/// line comments and lines a `marker` opt-out exempts.
 ///
 /// **Opt-out**: a comment containing `marker` (e.g. `"// test-global-safe:"`)
-/// suppresses a hit on the violation line itself; on the line *above*, only
-/// when the marker starts that line (after trimming). `cargo fmt` hoists a
-/// trailing comment onto its own line, so the marker often ends up above
-/// the forbidden pattern rather than beside it, but a marker merely
-/// *appearing* somewhere on an unrelated previous line must not silently
-/// exempt code it was never meant to.
+/// exempts the line it is on; on the line *above*, only when the marker
+/// starts that line (after trimming). `cargo fmt` hoists a trailing comment
+/// onto its own line, so the marker often ends up above the forbidden
+/// pattern rather than beside it, but a marker merely *appearing* somewhere
+/// on an unrelated previous line must not silently exempt code it was never
+/// meant to.
+fn eligible_lines<'a>(src: &'a str, marker: &str) -> Vec<(usize, &'a str)> {
+    let mut eligible = Vec::new();
+    let mut in_test_block = false;
+    let mut brace_depth: i64 = 0;
+    let mut test_entry_depth: i64 = 0;
+    let mut saw_cfg_test = false;
+    // The previous source line (blank or not), kept so an opt-out marker
+    // alone on the line *above* a violation exempts it.
+    let mut prev_line: &str = "";
+
+    for (index, line) in src.lines().enumerate() {
+        let trimmed = line.trim();
+        let prev_for_exempt = prev_line;
+        prev_line = line;
+
+        if trimmed == "#[cfg(test)]" {
+            saw_cfg_test = true;
+        }
+        if saw_cfg_test && trimmed.starts_with("mod tests") {
+            in_test_block = true;
+            test_entry_depth = brace_depth;
+            saw_cfg_test = false;
+        }
+
+        let opens = line.chars().filter(|&c| c == '{').count() as i64;
+        let closes = line.chars().filter(|&c| c == '}').count() as i64;
+        brace_depth += opens - closes;
+        if in_test_block && brace_depth <= test_entry_depth {
+            in_test_block = false;
+        }
+
+        if in_test_block || trimmed.starts_with("//") || line.contains(marker) {
+            continue;
+        }
+        // A *trailing* marker on the line above exempts only its own line;
+        // only a marker occupying that whole line reaches down to this one.
+        if prev_for_exempt.trim_start().starts_with(marker) {
+            continue;
+        }
+        eligible.push((index, line));
+    }
+    eligible
+}
+
+fn violation(file: &str, index: usize, line: &str) -> Violation {
+    Violation {
+        file: file.to_string(),
+        lineno: index + 1,
+        detail: line.trim().to_string(),
+    }
+}
+
+/// `path` as a lint reports it: relative to `display_root` when inside it.
+fn display_path(path: &std::path::Path, display_root: &std::path::Path) -> String {
+    path.strip_prefix(display_root)
+        .unwrap_or(path)
+        .display()
+        .to_string()
+}
+
+fn read_source(path: &std::path::Path) -> String {
+    std::fs::read_to_string(path).unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()))
+}
+
+/// Shared skeleton for every line-by-line lint in this module: calls `find`
+/// on each comment-stripped line `eligible_lines` keeps, pushing one
+/// `Violation` per match it reports finding.
 pub fn scan_lines(
     paths: &[std::path::PathBuf],
     display_root: &std::path::Path,
@@ -226,76 +291,184 @@ pub fn scan_lines(
     mut find: impl FnMut(&str) -> usize,
 ) -> Vec<Violation> {
     let mut violations = Vec::new();
-
     for path in paths {
-        let file = path
-            .strip_prefix(display_root)
-            .unwrap_or(path)
-            .display()
-            .to_string();
-        let src = std::fs::read_to_string(path)
-            .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
-
-        // Track whether we are inside a `#[cfg(test)] mod tests { … }` block
-        // so violations there don't get flagged.
-        let mut in_test_block = false;
-        let mut brace_depth: i64 = 0;
-        let mut test_entry_depth: i64 = 0;
-        let mut saw_cfg_test = false;
-        // The previous source line (blank or not), kept so an opt-out
-        // marker alone on the line *above* a violation suppresses it.
-        let mut prev_line: &str = "";
-
-        for (lineno, line) in src.lines().enumerate() {
-            let trimmed = line.trim();
-            let prev_for_exempt = prev_line;
-            prev_line = line;
-
-            if trimmed == "#[cfg(test)]" {
-                saw_cfg_test = true;
-            }
-            if saw_cfg_test && trimmed.starts_with("mod tests") {
-                in_test_block = true;
-                test_entry_depth = brace_depth;
-                saw_cfg_test = false;
-            }
-
-            let opens = line.chars().filter(|&c| c == '{').count() as i64;
-            let closes = line.chars().filter(|&c| c == '}').count() as i64;
-            brace_depth += opens - closes;
-            if in_test_block && brace_depth <= test_entry_depth {
-                in_test_block = false;
-            }
-
-            if in_test_block {
-                continue;
-            }
-            if trimmed.starts_with("//") {
-                continue;
-            }
-            // Same-line opt-out.
-            if line.contains(marker) {
-                continue;
-            }
-            // Preceding-line opt-out: a *trailing* marker up there exempts
-            // only its own line, not this one; only a marker occupying that
-            // whole line reaches down to the line below it.
-            if prev_for_exempt.trim_start().starts_with(marker) {
-                continue;
-            }
-
-            let code = strip_line_comment(line);
-            for _ in 0..find(code) {
-                violations.push(Violation {
-                    file: file.clone(),
-                    lineno: lineno + 1,
-                    detail: trimmed.to_string(),
-                });
+        let file = display_path(path, display_root);
+        let src = read_source(path);
+        for (index, line) in eligible_lines(&src, marker) {
+            for _ in 0..find(strip_line_comment(line)) {
+                violations.push(violation(&file, index, line));
             }
         }
     }
-
     violations
+}
+
+/// Every line where `token` appears inside the declaration of a `struct`,
+/// `enum`, `union` or `type` alias in `paths`, among the lines
+/// `eligible_lines` keeps: [`type_body_hits`] applied per file.
+pub fn scan_type_bodies(
+    paths: &[std::path::PathBuf],
+    display_root: &std::path::Path,
+    marker: &str,
+    token: &str,
+) -> Vec<Violation> {
+    let mut violations = Vec::new();
+    for path in paths {
+        let file = display_path(path, display_root);
+        let src = read_source(path);
+        let hits = type_body_hits(&src, token);
+        for (index, line) in eligible_lines(&src, marker) {
+            if hits.contains(&index) {
+                violations.push(violation(&file, index, line));
+            }
+        }
+    }
+    violations
+}
+
+/// The 0-based indexes of the lines of `src` where `token`, as a whole
+/// word, appears inside a `struct`, `enum`, `union` or `type` declaration:
+/// a field, a variant payload or an alias. A declaration starts at a line
+/// whose code begins with one of those keywords (after any visibility) and
+/// ends where its braces close, or at its `;` outside parentheses when it
+/// has no braced body. Braces and parentheses are counted on code with
+/// comments stripped and string and char literal contents blanked.
+pub fn type_body_hits(src: &str, token: &str) -> Vec<usize> {
+    let mut hits = Vec::new();
+    let mut depth: i64 = 0;
+    // The brace depth a declaration started at, whether its braced body
+    // has opened, and its parenthesis depth.
+    let mut decl: Option<(i64, bool, i64)> = None;
+
+    for (index, line) in src.lines().enumerate() {
+        let code = blank_literals(strip_line_comment(line));
+        if decl.is_none() && starts_type_declaration(&code) {
+            decl = Some((depth, false, 0));
+        }
+        let in_decl = decl.is_some();
+        for c in code.chars() {
+            match c {
+                '{' => {
+                    depth += 1;
+                    if let Some((start, opened, _)) = &mut decl
+                        && depth == *start + 1
+                    {
+                        *opened = true;
+                    }
+                }
+                '}' => {
+                    depth -= 1;
+                    if let Some((start, true, _)) = decl
+                        && depth == start
+                    {
+                        decl = None;
+                    }
+                }
+                '(' => {
+                    if let Some((_, _, parens)) = &mut decl {
+                        *parens += 1;
+                    }
+                }
+                ')' => {
+                    if let Some((_, _, parens)) = &mut decl {
+                        *parens -= 1;
+                    }
+                }
+                ';' => {
+                    if let Some((start, false, 0)) = decl
+                        && depth == start
+                    {
+                        decl = None;
+                    }
+                }
+                _ => {}
+            }
+        }
+        if in_decl && contains_word(&code, token) {
+            hits.push(index);
+        }
+    }
+    hits
+}
+
+/// Whether `code` begins a `struct`, `enum`, `union` or `type`
+/// declaration, after any `pub`/`pub(…)` visibility.
+fn starts_type_declaration(code: &str) -> bool {
+    let mut rest = code.trim_start();
+    if let Some(after) = rest.strip_prefix("pub") {
+        rest = match after.strip_prefix('(') {
+            Some(scoped) => match scoped.find(')') {
+                Some(close) => &scoped[close + 1..],
+                None => return false,
+            },
+            None => after,
+        };
+        if !rest.starts_with(char::is_whitespace) {
+            return false;
+        }
+        rest = rest.trim_start();
+    }
+    ["struct", "enum", "union", "type"].iter().any(|keyword| {
+        rest.strip_prefix(keyword)
+            .is_some_and(|after| after.starts_with(char::is_whitespace))
+    })
+}
+
+/// Whether `token` occurs in `code` with no identifier character on
+/// either side.
+fn contains_word(code: &str, token: &str) -> bool {
+    let is_ident = |c: char| c.is_alphanumeric() || c == '_';
+    code.match_indices(token).any(|(at, _)| {
+        !code[..at].chars().next_back().is_some_and(is_ident)
+            && !code[at + token.len()..]
+                .chars()
+                .next()
+                .is_some_and(is_ident)
+    })
+}
+
+/// `code` with the contents of every string and char literal replaced by
+/// spaces, so a `{` or `;` inside one is not counted. Same literal rules
+/// as [`strip_line_comment`].
+fn blank_literals(code: &str) -> String {
+    let mut out = String::with_capacity(code.len());
+    let mut chars = code.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '"' => {
+                out.push('"');
+                let mut escaped = false;
+                for inner in chars.by_ref() {
+                    if escaped {
+                        escaped = false;
+                    } else if inner == '\\' {
+                        escaped = true;
+                    } else if inner == '"' {
+                        out.push('"');
+                        break;
+                    }
+                    out.push(' ');
+                }
+            }
+            '\'' => {
+                let rest: String = chars.clone().take(3).collect();
+                let literal_len = if rest.starts_with('\\') && rest.chars().nth(2) == Some('\'') {
+                    3
+                } else if rest.chars().nth(1) == Some('\'') {
+                    2
+                } else {
+                    0
+                };
+                out.push('\'');
+                for _ in 0..literal_len {
+                    chars.next();
+                    out.push(' ');
+                }
+            }
+            other => out.push(other),
+        }
+    }
+    out
 }
 
 /// Extracts every double-quoted string literal's contents from `s`,

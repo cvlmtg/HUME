@@ -8,7 +8,10 @@ use crate::editor::replay::WaitingInput;
 use steel::rvals::SteelVal;
 
 fn menu(label: &str) -> MenuLayer {
-    MenuLayer::for_test(vec![label.to_string()], SteelVal::BoolV(false))
+    MenuLayer::for_test(
+        vec![label.to_string()],
+        hume_scripting::Rooted::new(SteelVal::BoolV(false)),
+    )
 }
 
 fn confirm() -> ConfirmLayer {
@@ -121,7 +124,7 @@ fn is_settled_for_tolerates_its_own_type_buried_under_a_non_modal_overlay() {
     stack.push(menu("m"));
     stack.push(DrawerLayer::new(
         hume_scripting::host::DrawerItems::Rows(vec!["d".to_string()]),
-        DrawerSelect::Steel(SteelVal::BoolV(false)),
+        DrawerSelect::Steel(hume_scripting::Rooted::new(SteelVal::BoolV(false))),
         0,
     ));
     assert!(stack.is_settled_for::<MenuLayer>());
