@@ -1,6 +1,6 @@
 //! The `Insert` layer and its key and paste handlers.
 //! [`EditorState::apply_insert_mode_paste`] is a method rather than part of
-//! the paste handler because it has a second caller: `replay.rs`'s
+//! the paste handler because it has a second caller: `replay`'s
 //! dot-repeat replay of a recorded paste.
 //!
 //! `handle_insert` itself only walks the Insert keymap and dispatches a

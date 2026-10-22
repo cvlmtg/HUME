@@ -1102,7 +1102,7 @@ coincidence, back when both cases shared one variant.
    assume the coincidence was structural.
 
 **Files:** `hume-editor/src/editor/edit_session.rs` (`EditSessionKind::
-Replay`, `is_replay_at`, `blocks_open`), `hume-editor/src/editor/replay.rs`
+Replay`, `is_replay_at`, `blocks_open`), `hume-editor/src/editor/replay/mod.rs`
 (`replay_dot`'s pre-open, `finish_replay_session`),
 `hume-editor/src/editor/commands/insert_session.rs`
 (`begin_insert_session_preserving_register`),
@@ -1199,10 +1199,11 @@ non-repeatable file picker bound in Insert mode.
 5. The Nth signal added to disambiguate the (N-1)th is L9's smell applied
    to state instead of call sites. At the third, redesign.
 
-**Files:** `hume-editor/src/editor/replay.rs` (`Recording`,
-`RecordingScope`, `Answer`, `waiting_input`, `record_answer`,
-`finish_replayed_answers`), `hume-editor/src/editor/edit_session.rs`
-(`DotCapture`), `hume-editor/src/editor/dot_chain.rs`,
+**Files:** `hume-editor/src/editor/replay/mod.rs` (`Recording`,
+`RecordingScope`, `waiting_input`, `record_answer`,
+`finish_replayed_answers`), `hume-editor/src/editor/replay/model.rs`
+(`Answer`), `hume-editor/src/editor/replay/capture.rs` (`DotCapture`,
+`DotChain`),
 `hume-editor/src/editor/input_stack/{char,prompt,menu,insert}.rs`,
 `hume-editor/src/editor/input_stack/picker/{mod,session}.rs`,
 `hume-editor/src/editor/commands/pipeline.rs` (`repeat_slot_owned`),
@@ -1440,7 +1441,7 @@ refused for operand reads in `call!`.
 
 **Files:** `hume-editor/src/editor/registry/command.rs` (`CmdMeta::key_only`),
 `hume-editor/src/editor/host_impl/commands.rs` (`run_command_sync`),
-`hume-editor/src/editor/replay.rs` (`PendingRepeat`),
+`hume-editor/src/editor/replay/mod.rs` (`PendingRepeat`),
 `hume-editor/src/editor/tests/sync_dispatch.rs`.
 
 ## L37 — A review cited Vim as the model for a selection behaviour (2026-10-11)

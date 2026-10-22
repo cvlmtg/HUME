@@ -1,6 +1,6 @@
 //! Insert-mode session lifecycle: entering/exiting Insert as a repeatable
 //! action, with the undo group, typed run, and autoindent state that
-//! entails. What `.` replays is recorded elsewhere (`replay.rs`).
+//! entails. What `.` replays is recorded elsewhere (`replay/`).
 
 use hume_editing::selection::{EditView, Facing, Selection, SelectionView};
 use hume_editing::state::EditState;

@@ -1472,7 +1472,7 @@ fn steel_repeatable_insert_dot_repeat_replays_command_and_typed_text() {
 /// The Steel `dispatch` path clones the recipe before the body runs. Without
 /// that snapshot, the kept change would take whatever `insert-before`'s
 /// inner dispatch left `selection_recipe` as via `commands::run`'s own
-/// `step_update_recipe` (an `EditorCmd` that is `Untracked`, so it clears).
+/// `update_recipe` (an `EditorCmd` that is `Untracked`, so it clears).
 #[test]
 fn steel_repeatable_insert_preserves_prior_selection_recipe() {
     // `x` (select-line) on "foo bar\n" selects the whole line, an in-place
@@ -1563,7 +1563,7 @@ fn steel_wrapper_of_copy_selection_composes_onto_prior_recipe() {
 /// all must still clear the recipe (the same as any other Untracked
 /// command would), so a prior `x` doesn't leak into a later, unrelated edit.
 ///
-/// A pure-Steel body makes no `step_update_recipe` call, so the
+/// A pure-Steel body makes no `update_recipe` call, so the
 /// `selection_recipe_touched` guard in `Editor::dispatch`'s Steel branch is
 /// what clears the recipe here.
 #[test]

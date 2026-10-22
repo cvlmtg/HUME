@@ -45,7 +45,6 @@ mod completion;
 mod cursor;
 mod dispatch;
 mod doc_ops;
-mod dot_chain;
 pub(crate) mod event;
 mod fuzzy;
 mod host_token;
@@ -347,21 +346,21 @@ pub(crate) struct EditorState {
     /// Tracks how the current selection was built: Motion/Selection commands
     /// append or reset this buffer; a repeatable edit snapshots it into
     /// `RepeatableAction::selection_recipe` and clears it, the native path
-    /// (`step_snapshot_recipe`) via `mem::take`, the Steel path
-    /// (`Editor::dispatch`) via `.clone()` followed by an explicit clear, so
-    /// an inner `call!` dispatch still sees the pre-body value to compose
-    /// onto. Non-selection commands clear it. See
+    /// (`take_recipe`) via `mem::take`, the Steel path
+    /// (`open_steel_recipe`/`close_steel_recipe`) via `.clone()` followed by
+    /// an explicit clear, so an inner `call!` dispatch still sees the
+    /// pre-body value to compose onto. Non-selection commands clear it. See
     /// `RepeatableAction::selection_recipe` for the invariant.
     pub(super) selection_recipe: Vec<SelectionStep>,
-    /// Set by every native dispatch's `step_update_recipe`
-    /// (`commands/pipeline.rs`), regardless of what it did to the recipe, and
-    /// reset before a Steel command body runs.
+    /// Set by every native dispatch's `update_recipe` (`replay/recipe.rs`),
+    /// regardless of what it did to the recipe, and reset before a Steel
+    /// command body runs.
     ///
-    /// `Editor::dispatch`'s Steel branch reads it after the body: `false`
+    /// `close_steel_recipe` reads it after a Steel body: `false`
     /// means the body dispatched no native command at all (a pure-Steel body),
     /// so `selection_recipe` (left untouched from before the body ran) must
     /// still be cleared, the same as any other non-selection command would.
-    /// `true` means an inner `call!` already ran `step_update_recipe` with its
+    /// `true` means an inner `call!` already ran `update_recipe` with its
     /// own correct decision, which the Steel branch must not override. A plain
     /// `selection_recipe == pre_recipe` snapshot comparison can't stand in for
     /// this: it would misfire when a body re-establishes the identical step it

@@ -596,7 +596,7 @@ fn dot_repeats_change_reselects_line() {
 /// not leak into the next edit's recipe.
 ///
 /// `undo` is `Untracked`, and the `SelectionTracking::Untracked` early-return
-/// in `step_update_recipe` (`commands/pipeline.rs`) is what clears the recipe.
+/// in `update_recipe` (`replay/recipe.rs`) is what clears the recipe.
 #[test]
 fn undo_clears_selection_recipe() {
     let mut ed = editor_from("-[a]>aa\nbbb\n");
@@ -757,7 +757,7 @@ fn dot_repeat_of_delete_leaves_ring_fresh_for_paste() {
 ///
 /// If `w` pushed an establish step, `.` would re-run `select-next-word` from
 /// the new cursor position and advance past the intended word, deleting the
-/// one after it. The `!ctx.extend` exclusion in `step_update_recipe`'s
+/// one after it. The `!ctx.extend` exclusion in `update_recipe`'s
 /// `SelectionTracking::Extends` arm keeps `w` (a `Motion`, always `Extends`)
 /// out of the recipe.
 ///
@@ -837,7 +837,7 @@ fn dot_repeat_of_match_surround_deletes_both_parens() {
 /// non-collapsed selection, unlike `ms(`
 /// (`dot_repeat_of_match_surround_deletes_both_parens` above). This pins that
 /// it replays correctly under `SelectionTracking::Establishes`, which
-/// restarts the dot-repeat recipe in Move mode (see `step_update_recipe`).
+/// restarts the dot-repeat recipe in Move mode (see `update_recipe`).
 #[test]
 fn dot_repeat_of_match_around_deletes_content() {
     let mut ed = editor_from("(-[f]>oo) (bar) baz\n");
@@ -4152,8 +4152,8 @@ fn a_non_repeatable_insert_bindings_read_ends_the_change() {
 /// recording directly.
 #[test]
 fn a_stale_answer_never_lands_in_a_later_bindings_entry() {
-    use crate::editor::dot_chain::DotChain;
-    use crate::editor::edit_session::DotCapture;
+    use crate::editor::replay::DotCapture;
+    use crate::editor::replay::capture::DotChain;
     use crate::editor::replay::{
         AnswerTicket, InputOpener, RecordingScope, finalize_dot_capture, with_recording_scope,
     };

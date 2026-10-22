@@ -440,7 +440,7 @@ pub(super) use typed_misc::*;
 // file, and the registry glob) since nothing outside `commands` calls them.
 // collect.rs, pane.rs, pipe.rs and pipeline.rs export nothing else siblings
 // need, so all four are re-exported explicitly instead of via glob. The items below
-// ARE called directly by `dispatch.rs`, `replay.rs`, `input_stack/`,
+// ARE called directly by `dispatch.rs`, `replay/`, `input_stack/`,
 // `host_impl/`, `editor/mod.rs`, and the `editor::tests` tree; they need
 // `pub(in editor)` breadth.
 pub(in crate::editor) use collect::{collect_operand, finish_text_operand, run_collected};

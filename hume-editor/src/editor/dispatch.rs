@@ -80,22 +80,13 @@ impl Editor {
         let name = &cmd.name;
         // BEFORE
         commands::step_paste_commit(&mut self.state, meta.defers_paste_commit);
-        // Snapshot the recipe before the body by cloning, not `mem::take`: an
-        // inner `call!` dispatch (e.g. vim-keybind's `C` wrapper calling
-        // `copy-selection-on-next-line`) must see and compose onto whatever the
-        // user already staged. The settled recording is filled from this
-        // snapshot, not the (possibly further-mutated) live value.
-        let pre_recipe = self.state.selection_recipe.clone();
+        let opened = self.state.open_steel_recipe();
         let change = meta.repeatable.then(|| replay::NewChange {
             command: name.clone(),
             count: ctx.count.unwrap_or(1),
             seed: None,
-            recipe: pre_recipe.clone(),
+            recipe: opened.recipe().to_vec(),
         });
-        // Reset the recipe-touched flag so the AFTER clear decision reflects
-        // only what this body dispatched natively; restore it afterward for
-        // any outer context.
-        let pre_touched = std::mem::replace(&mut self.state.selection_recipe_touched, false);
 
         // BODY.
         let ran = replay::record_change(self, change, |ed| {
@@ -109,24 +100,10 @@ impl Editor {
             (ran, ran)
         });
 
-        let touched = std::mem::replace(&mut self.state.selection_recipe_touched, pre_touched);
-
-        if !ran {
-            // Failed command: undo whatever a partial inner dispatch wrote to
-            // the recipe.
-            self.state.selection_recipe = pre_recipe;
-            return false;
-        }
-
         // AFTER
-        // Clear the live recipe when this outer command owns the decision: a
-        // repeatable command's recipe was just consumed, and a body that
-        // dispatched nothing natively is a non-selection command that clears
-        // it like any `Untracked` one. A body that DID dispatch natively
-        // already got the correct decision from that inner call, which must
-        // not be overridden.
-        if meta.repeatable || !touched {
-            self.state.selection_recipe.clear();
+        self.state.close_steel_recipe(opened, ran, meta.repeatable);
+        if !ran {
+            return false;
         }
         // Outer Steel commands skip with_jump, step_clear_extend, and
         // step_align_view: their meta hardcodes is_jump = clears_extend =

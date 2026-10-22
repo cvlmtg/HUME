@@ -1,12 +1,11 @@
-//! Dot-repeat (`.`) and macro-replay state and execution.
+//! Dot-repeat (`.`): recording a change and replaying it.
 //!
 //! Dot-repeat records a [`RepeatableAction`]: the repeatable command that
 //! began a change, its count, the selection recipe that built the extent it
 //! acted on, the [answers](Answer) its interactive inputs got, and an ordered
 //! [transcript](Input) of every Insert-session input the change consumed. It
 //! records a recipe rather than a raw changeset, since changesets are
-//! position-dependent and can't be replayed at a different cursor. Macro
-//! replay drains a queue of recorded keys through the normal event path.
+//! position-dependent and can't be replayed at a different cursor.
 //!
 //! A change is owned, while it is in flight, by a single [`Recording`]. It
 //! stays open while it has an outstanding input source (see [`Recording`])
@@ -26,212 +25,21 @@ use std::borrow::Cow;
 use std::collections::VecDeque;
 use std::rc::{Rc, Weak};
 use steel::rvals::SteelVal;
-use termina::event::{Event as TerminalEvent, KeyEvent};
 
 use super::dispatch::CmdCtx;
-use super::dot_chain::{ChainBroken, DotChain};
-use super::edit_session::{self, DotCapture, EditSessionKind, InsertSession};
+use super::edit_session::{self, EditSessionKind, InsertSession};
 use super::input_stack::char::{AfterRead, CharRead};
-use super::keymap::CanonicalKey;
 use super::pipe_run::RunId;
 use super::registry::{Dispatchable, MappableCommand};
 use super::{Editor, EditorState, Mode, commands};
 
-// ── The recorded change ───────────────────────────────────────────────────────
+pub(in crate::editor) mod capture;
+mod model;
+mod recipe;
 
-/// The user's choice at one interactive input: a character read, a picker,
-/// a prompt or a menu. Its place is taken when the input opens, so answers
-/// stay in the order their inputs opened, which is the order a re-run opens
-/// them in; it is filled when the input resolves. Handed back to the same
-/// input when `.` re-runs the command or binding that opened it, which then
-/// never waits for the user. What the command does with the
-/// choice is decided again at the new cursor.
-#[derive(Debug, Clone)]
-pub(crate) enum Answer {
-    /// A character: a native operand (`r`/`f`/`t`/`surround-add`) or an
-    /// `on-next-char!` answer. `None` when the read ended without one.
-    Char(Option<char>),
-    /// A picker pick or dismissal.
-    Pick(Pick),
-    /// A prompt's confirmed text, `None` when it was cancelled.
-    Prompt(Option<String>),
-    /// A menu's chosen item, `None` when it was dismissed.
-    Menu(Option<Choice>),
-    /// An input that opened but never resolved: one a reload or a cascade
-    /// cap dropped, or a menu `close-menu!` closed. Its callback never ran,
-    /// so on replay the input opens nothing and runs nothing.
-    Unanswered,
-}
-
-/// A picker's answer. `action` is the `#:actions` key that closed the
-/// picker, `None` for `on-select`; `picked` is `None` for a dismissal (the
-/// callback got `#f`).
-#[derive(Debug, Clone)]
-pub(crate) struct Pick {
-    pub(in crate::editor) action: Option<CanonicalKey>,
-    pub(in crate::editor) picked: Option<Picked>,
-}
-
-/// How `.` hands a picked item back to the re-run picker, decided when the
-/// pick is made.
-#[derive(Debug, Clone)]
-pub(crate) enum Picked {
-    /// By its text, when every item came from the list `picker!` opened
-    /// with: the re-run builds that list again, so the payload is the one
-    /// built for the new spot.
-    Choice(Choice),
-    /// By the payload the callback got, when items arrived after the picker
-    /// opened (`#:pending`, `picker-push!`, a spawned source, a
-    /// `live-picker!`): the re-run picker holds none of them yet when `.`
-    /// answers it.
-    Payload(SteelVal),
-    /// A `Payload` a reload forgot: it belonged to the Steel engine the
-    /// reload replaced. `.` refuses it.
-    PayloadForgotten,
-}
-
-/// A picked menu or picker item, named by its text: the `nth` (from 0, in
-/// list order) of the items shown as `label`. Replayed against the list the
-/// re-run builds, so the pick follows the item's text rather than its
-/// position, and of several items with the same text it is the same one.
-#[derive(Debug, Clone)]
-pub(crate) struct Choice {
-    pub(crate) label: String,
-    pub(crate) nth: usize,
-}
-
-impl Choice {
-    /// The choice naming `items[index]`, each item shown as `text` gives it.
-    pub(in crate::editor) fn of<T>(items: &[T], index: usize, text: impl Fn(&T) -> &str) -> Self {
-        let label = text(&items[index]);
-        Self {
-            label: label.to_owned(),
-            nth: items[..index]
-                .iter()
-                .filter(|item| text(item) == label)
-                .count(),
-        }
-    }
-
-    /// The index of the item this choice names in `items`, `None` when
-    /// fewer than `nth + 1` items are shown as `label`.
-    pub(in crate::editor) fn find<T>(
-        &self,
-        items: &[T],
-        text: impl Fn(&T) -> &str,
-    ) -> Option<usize> {
-        items
-            .iter()
-            .enumerate()
-            .filter(|(_, item)| text(item) == self.label)
-            .nth(self.nth)
-            .map(|(i, _)| i)
-    }
-
-    /// The refusal `what` raises during `.` when the re-run list has no item
-    /// this choice names.
-    pub(in crate::editor) fn missing(&self, what: &str) -> String {
-        let label = &self.label;
-        match self.nth {
-            0 => format!("{what}: `.` found no item \"{label}\" to pick"),
-            nth => format!(
-                "{what}: `.` found no item \"{label}\" number {} among those with that text",
-                nth + 1
-            ),
-        }
-    }
-}
-
-/// One Insert-session input a change consumed, in arrival order.
-///
-/// `.` replays a change by re-running its command and then re-feeding each
-/// transcript entry into the funnel live input goes through, never by
-/// inferring, after a dispatch, what it turned out to do. The one exception
-/// is a completion accept ([`Input::Result`]), recorded as its own net
-/// cursor edit, since it hands no choice to a callback that could take it
-/// again.
-#[derive(Debug, Clone)]
-pub(crate) enum Input {
-    /// A key with no Insert keymap binding: one run of its *default*
-    /// behaviour (`commands::insert_default_key`), never a keymap walk.
-    Key(KeyEvent),
-    /// A paste ([`EditorState::record_paste`]), replayed as one bulk insert
-    /// rather than synthetic per-char keys: a synthesized `Enter` would
-    /// auto-indent, which a real paste never does.
-    Paste(Vec<String>),
-    /// A key bound in the Insert keymap, re-run on replay through
-    /// [`Editor::dispatch`] as the live key was, so it decides again at the
-    /// new cursor, its own `call!`s, register prefix, and `#:extend`
-    /// included. Its interactive inputs are answered from `answers`. A binding whose
-    /// command is not repeatable has none: an input it opens ends the
-    /// change and drops this entry.
-    Binding {
-        id: BindingId,
-        name: Cow<'static, str>,
-        answers: Vec<Answer>,
-    },
-    /// The net edit a completion accept produced at the cursor: a completion
-    /// popup's Enter, or an Insert-key binding that called
-    /// `completion-accept!` (in place of that binding's own entry). Replayed
-    /// by applying the edit directly.
-    Result(CursorReplacement),
-}
-
-/// The net text a completion accept wrote at the cursor: `back` chars behind
-/// and `forward` ahead of the head, replaced by `text`. The primary cursor's
-/// own counts, applied uniformly at every cursor on replay. Anything
-/// document-absolute (a completion's `additionalTextEdits`) is excluded: it
-/// has no meaning at a different cursor.
-#[derive(Debug, Clone)]
-pub(crate) struct CursorReplacement {
-    pub(in crate::editor) back: usize,
-    pub(in crate::editor) forward: usize,
-    pub(in crate::editor) text: String,
-}
-
-/// One selection-building step in a dot-repeat recipe.
-///
-/// Recorded by `step_update_recipe` as Motion/Selection commands (or
-/// EditorCmds opting into `SelectionTracking::Establishes`/`Composes`) run,
-/// so that `replay_dot` can replay them before the edit, rebuilding the
-/// extent the edit acted on.
-#[derive(Debug, Clone)]
-pub(crate) struct SelectionStep {
-    /// Command name (e.g. `"select-line"`, `"surround-paren"`).
-    pub command: Cow<'static, str>,
-    /// Count prefix originally used.
-    pub count: usize,
-    /// `true` if this step ran in Extend mode (grew the existing selection).
-    pub extend: bool,
-}
-
-/// A recorded editing action that can be replayed by `.`.
-///
-/// Stores the recipe to re-execute a command rather than the raw changeset:
-/// changesets are position-dependent and can't be replayed at a different
-/// cursor.
-#[derive(Debug, Clone)]
-pub(crate) struct RepeatableAction {
-    /// The command name that began this change (e.g. `"delete"`, `"change"`).
-    /// `Cow::Borrowed` for built-ins (zero allocation); `Cow::Owned` for a
-    /// dynamically-registered (Steel) command.
-    pub command: Cow<'static, str>,
-    /// The count prefix the change ran with. Overridden when `.` itself is given a
-    /// count.
-    pub count: usize,
-    /// Selection-building recipe to replay BEFORE the command.
-    ///
-    /// `[]` (the command acted on a pre-existing selection), or a sequence of
-    /// `Establishes`/`Composes` steps; see `SelectionTracking`. Taken from
-    /// `EditorState::selection_recipe` when the change starts.
-    pub selection_recipe: Vec<SelectionStep>,
-    /// The answers the command's own interactive inputs got, in the order
-    /// their inputs opened. See [`Answer`].
-    pub answers: Vec<Answer>,
-    /// Every Insert-session input the change consumed, in arrival order.
-    /// See [`Input`].
-    pub transcript: Vec<Input>,
-}
+pub(in crate::editor) use capture::{DotCapture, finalize_dot_capture};
+pub(crate) use model::{Answer, Choice, CursorReplacement, Input, Pick, Picked, RepeatableAction};
+pub(crate) use recipe::SelectionStep;
 
 // ── Recording: the live owner of an in-flight change ──────────────────────────
 
@@ -1182,73 +990,6 @@ impl EditorState {
     }
 }
 
-/// Finalize a capture taken from `session` into the recording. Records
-/// nothing unless a completion trigger or accept made it interactive;
-/// then the entry of the binding it wrapped is replaced, so `.` does not
-/// re-run a binding whose completion it cannot replay: by its net cursor
-/// edit, an [`Input::Result`], when it changed text, otherwise by
-/// nothing. A bare completion-popup Enter, which has no entry, appends
-/// its net edit.
-///
-/// Takes the recording rather than the editor state, so `session` may be
-/// borrowed from the input stack; a broken chain comes back as the warning
-/// to report.
-pub(in crate::editor) fn finalize_dot_capture(
-    recording: &mut Option<Recording>,
-    session: &InsertSession,
-    cap: DotCapture,
-) -> Result<(), String> {
-    if !cap.interactive {
-        return Ok(());
-    }
-    let (replacement, outcome) = match cap.chain.finish() {
-        Ok(replacement) => (replacement, Ok(())),
-        Err(ChainBroken) => (
-            None,
-            Err("`.` won't repeat this edit: the buffer changed while it ran".to_string()),
-        ),
-    };
-    let Some(rec) = session_feed(recording, session) else {
-        return outcome;
-    };
-    let Some(binding) = cap.binding else {
-        if let Some(r) = replacement {
-            rec.action.transcript.push(Input::Result(r));
-        }
-        return outcome;
-    };
-    if let Some(i) = rec.binding_index(binding) {
-        match replacement {
-            Some(r) => rec.action.transcript[i] = Input::Result(r),
-            None => {
-                rec.action.transcript.remove(i);
-            }
-        }
-    }
-    outcome
-}
-
-/// The recording `session` holds a source on, while it accepts input.
-fn session_feed<'a>(
-    recording: &'a mut Option<Recording>,
-    session: &InsertSession,
-) -> Option<&'a mut Recording> {
-    let ticket = session.recording()?;
-    recording.as_mut().filter(|rec| rec.feeds(ticket))
-}
-
-// ── Macro recording state (EditorState) ───────────────────────────────────────
-
-impl EditorState {
-    /// Queue the keys of the macro in `reg` for replay, `count` times over.
-    /// No-op when the register is empty or holds text rather than a macro.
-    pub(in crate::editor) fn enqueue_macro_replay(&mut self, reg: char, count: usize) {
-        if let Some(keys) = self.registers.read(reg).and_then(|r| r.as_macro()) {
-            self.macros.enqueue(keys, count);
-        }
-    }
-}
-
 // ── Replay (Editor) ────────────────────────────────────────────────────────────
 
 impl Editor {
@@ -1546,94 +1287,15 @@ impl Editor {
         self.wait_pipe_runs_from(runs_from);
         ran && !self.state.dot_replay_stopped()
     }
+}
 
-    // ── Dot capture (completion accepts) ──────────────────────────────────────
-
-    /// Runs `f` with a fresh [`DotCapture`] armed on the focused Insert
-    /// session, wrapping an operation that may accept a completion: an
-    /// Insert-key binding's dispatch (`binding` is its entry), or a bare
-    /// completion-popup Enter (`binding` is `None`). Takes the capture back
-    /// and finalizes it once `f` returns. With no Insert session there, `f`
-    /// runs with nothing armed.
-    pub(in crate::editor) fn with_dot_capture(
-        &mut self,
-        binding: Option<BindingId>,
-        f: impl FnOnce(&mut Self),
-    ) {
-        let fp = commands::FocusedPane::current(&self.view);
-        let (pane, buffer) = (fp.pid(), fp.bid(&self.view));
-        let armed = self.state.input.inserting_into(pane, buffer);
-        if armed {
-            let head = commands::pane_view(&self.state, &self.view, fp.pane())
-                .primary()
-                .head();
-            let chain = DotChain::new(head, self.state.buffers.get(buffer).text());
-            if let Some(insert) = self.state.input.insert_session_mut() {
-                insert.arm_dot_capture(DotCapture {
-                    chain,
-                    interactive: false,
-                    binding,
-                });
-            }
-        }
-        f(self);
-        if !armed {
-            return;
-        }
-        let state = &mut self.state;
-        let Some(session) = state
-            .input
-            .insert_session_mut()
-            .filter(|s| s.owned_by(pane, buffer))
-        else {
-            return;
-        };
-        if let Some(cap) = session.take_dot_capture()
-            && let Err(warning) = finalize_dot_capture(&mut state.recording, session, cap)
-        {
-            state.report(super::Severity::Warning, warning);
-        }
-    }
-
-    /// Drain the macro replay queue, executing each key in order, waiting for
-    /// a pipe run it started, and settling after each one. A run the user
-    /// cancels drops the keys still queued ([`EditorState::stop_replays`]):
-    /// `Ctrl-c` stops the macro too.
-    ///
-    /// Marks a replay in progress for the duration so that `Q`/`q` intercepts
-    /// inside replayed keys cannot start nested recording or replay sessions,
-    /// including when the macro's last key is `Q` and the queue is already
-    /// empty.
-    ///
-    /// Replayed keys record changes as typed keys do: `.` inside a macro
-    /// repeats the latest change, the one made before the macro included,
-    /// and `.` after a macro repeats the last change it made.
-    ///
-    /// Settling once per replayed key, not once after the whole queue, keeps a
-    /// macro's own hooks in the loop: a plugin that reconfigures the buffer on
-    /// `on-buffer-open` (indent width, a language keymap) has that reaction run
-    /// before the macro's remaining keys type into the buffer, as it would for
-    /// keys typed by hand. The replay mark stays set across these settles,
-    /// so `confirm_permit` still holds back a confirm no queued key could
-    /// answer; it waits for the next real buffer-enter.
-    ///
-    /// `message_logged_this_input` is OR'd back in every iteration so a
-    /// stale-buffer warning from a later key's settle doesn't lose an earlier
-    /// message's shadowing guard.
-    pub(in crate::editor) fn drain_replay_queue(&mut self) {
-        let message_already_logged = self.state.message_logged_this_input;
-        while let Some(key) = self.state.macros.next_replay_key() {
-            let runs_from = self.state.pipe_runs.mark();
-            self.handle_input(TerminalEvent::Key(key));
-            self.wait_pipe_runs_from(runs_from);
-            self.state.message_logged_this_input |= message_already_logged;
-            self.settle();
-            if self.state.should_quit {
-                break;
-            }
-        }
-        self.state.macros.end_replay();
-    }
+/// The recording `session` holds a source on, while it accepts input.
+fn session_feed<'a>(
+    recording: &'a mut Option<Recording>,
+    session: &InsertSession,
+) -> Option<&'a mut Recording> {
+    let ticket = session.recording()?;
+    recording.as_mut().filter(|rec| rec.feeds(ticket))
 }
 
 /// The error an interactive input reached during `.` raises.

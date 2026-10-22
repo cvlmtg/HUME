@@ -1490,7 +1490,7 @@ impl Editor {
 /// seeding-dependent, the latter has dedicated tests.
 ///
 /// Deliberate exclusion, `selection_recipe`: an inner `call!` dispatch inside
-/// a Steel body sets it via its own `step_update_recipe` decision, and the
+/// a Steel body sets it via its own `update_recipe` decision, and the
 /// Steel `dispatch` branch only overrides that when the body dispatched
 /// nothing natively at all or the outer command is repeatable. Divergence
 /// from the native path is intentional per command, not a parity bug, so it

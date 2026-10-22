@@ -93,7 +93,7 @@ impl CommandRegistry {
         );
 
         // ── Word motions ──────────────────────────────────────────────────────
-        // All four are `Motion`s (`step_update_recipe` never establishes from
+        // All four are `Motion`s (`update_recipe` never establishes from
         // one; see its `is_motion` exclusion), but they are the one case
         // where that matters in practice: Move mode anchors the selection on
         // a word reached by navigating away from the cursor, so unlike a

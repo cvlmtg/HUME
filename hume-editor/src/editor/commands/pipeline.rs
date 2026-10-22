@@ -18,7 +18,7 @@ use crate::editor::registry::{
     CmdMeta, Count, EditFn, EditorCmdBody, FocusedCmdFn, NativeCommand, PaneCharCmdFn, PaneCmdFn,
     PaneTextCmdFn, SelectionBody, SelectionTracking, TextPrompt,
 };
-use crate::editor::replay::{Answer, InputOpener, NewChange, SelectionStep, record_change};
+use crate::editor::replay::{Answer, InputOpener, NewChange, record_change};
 use crate::editor::settings::ObjectJumpAlign;
 use crate::editor::{EditorState, Severity};
 use hume_ops::{MotionMode, WordCtx};
@@ -760,22 +760,6 @@ pub(in crate::editor) fn step_paste_commit(state: &mut EditorState, defers: bool
 
 // ── Native-only pre-body steps ─────────────────────────────────────────────────
 
-/// Snapshot selection recipe before body for dot-repeat recording.
-///
-/// The snapshot captures the selection extent the user built before the edit,
-/// so `.` can re-establish it.  Inner dispatches (Steel `call!`) may overwrite
-/// `selection_recipe` during the body; the snapshot is taken before they run.
-pub(in crate::editor::commands::pipeline) fn step_snapshot_recipe(
-    state: &mut EditorState,
-    repeatable: bool,
-) -> Option<Vec<SelectionStep>> {
-    if repeatable {
-        Some(std::mem::take(&mut state.selection_recipe))
-    } else {
-        None
-    }
-}
-
 // ── AFTER (native steps) ────────────────────────────────────────────────────
 
 /// Re-align the viewport after a forward object jump (`}`,
@@ -801,57 +785,6 @@ pub(in crate::editor::commands::pipeline) fn step_align_view(
         ObjectJumpAlign::Top => super::view_top(state, view, t.pid()),
         ObjectJumpAlign::Center => super::view_center(state, view, t.pid()),
     }
-}
-
-/// Update the selection recipe buffer after a command dispatch.
-///
-/// Accumulation rule:
-///   Extends + extend                    → append step
-///   Extends + move                      → clear (no replayable extent)
-///   Establishes/Composes + no change    → leave the recipe as-is
-///   Establishes + move (+ change)       → reset + push establish
-///   Establishes + extend (+ change)     → append step
-///   Composes (+ change)                 → append step
-///   Untracked                           → clear
-///
-/// `Extends` covers every `Motion`, word motions included: a Move-mode word
-/// motion looks replayable but would advance past the word on replay. Extend
-/// steps grow a selection by a relative amount and replay safely.
-///
-/// `selection_changed` gates `Establishes`/`Composes`, so a command that found
-/// nothing (`select-all-matches`, `ms(`) leaves the staged recipe untouched.
-// `&Cow` not `&str`: `.clone()` must preserve Borrowed (built-ins) or Owned
-// (Steel) without an unconditional heap alloc.
-#[allow(clippy::ptr_arg)]
-pub(in crate::editor::commands::pipeline) fn step_update_recipe(
-    state: &mut EditorState,
-    meta: &CmdMeta,
-    name: &Cow<'static, str>,
-    ctx: &CmdCtx,
-    selection_changed: bool,
-) {
-    state.selection_recipe_touched = true;
-    if meta.selection_tracking == SelectionTracking::Untracked {
-        state.selection_recipe.clear();
-        return;
-    }
-    // A Move-mode motion has no replayable extent to restart the recipe with.
-    if meta.selection_tracking == SelectionTracking::Extends && !ctx.extend {
-        state.selection_recipe.clear();
-        return;
-    }
-    if !selection_changed {
-        return;
-    }
-    // A Move-mode establish restarts the recipe.
-    if meta.selection_tracking == SelectionTracking::Establishes && !ctx.extend {
-        state.selection_recipe.clear();
-    }
-    state.selection_recipe.push(SelectionStep {
-        command: name.clone(),
-        count: ctx.count.unwrap_or(1),
-        extend: ctx.extend,
-    });
 }
 
 /// Exit sticky Extend mode after a selection-consuming edit.
@@ -902,7 +835,7 @@ pub(in crate::editor) fn run(
     let name = bound.name.clone();
     // A command cannot be both repeatable (an edit that modifies the buffer)
     // and a selection-builder (a pure cursor movement): the fresh-recording
-    // begin below and step_update_recipe would both fire. This is a property
+    // begin below and update_recipe would both fire. This is a property
     // of the registry, fixed at registration time, so it's checked once for
     // every command by
     // `registry::tests::no_command_is_both_repeatable_and_selection_tracking`
@@ -913,19 +846,19 @@ pub(in crate::editor) fn run(
     if focused.is_some() {
         step_paste_commit(state, meta.defers_paste_commit);
     }
-    let pre_recipe = focused.and_then(|_| step_snapshot_recipe(state, meta.repeatable));
+    let pre_recipe = focused.and_then(|_| state.take_recipe(meta.repeatable));
     // `pre_recipe` is the new change's selection recipe, and is dropped
     // rather than restored into `state.selection_recipe`: every repeatable
     // command is `SelectionTracking::Untracked` (enforced by
     // `registry::tests::no_command_is_both_repeatable_and_selection_tracking`),
-    // so `step_update_recipe` below clears it unconditionally.
+    // so `update_recipe` below clears it unconditionally.
     let change = pre_recipe.map(|recipe| NewChange {
         command: name.clone(),
         count: ctx.count.unwrap_or(1),
         seed: bound.operand_answer(),
         recipe,
     });
-    // Only snapshot the selection when step_update_recipe could push a step:
+    // Only snapshot the selection when update_recipe could push a step:
     // a Move-mode Motion (the overwhelming majority of keypresses) always
     // clears without needing one. Cloning here, not comparing, since the body
     // below mutates the live selection set in place. A dispatch through a
@@ -964,7 +897,7 @@ pub(in crate::editor) fn run(
     step_align_view(state, view, pane, meta.aligns_view, moved);
     if let Some(fp) = focused {
         // A command whose own snapshot is `None` never reaches the `!selection_changed`
-        // early return in step_update_recipe, so `true` here is inert filler.
+        // early return in update_recipe, so `true` here is inert filler.
         let selection_changed = match &pre_sels {
             Some(pre) => {
                 let t = fp.pane();
@@ -973,7 +906,7 @@ pub(in crate::editor) fn run(
             }
             None => true,
         };
-        step_update_recipe(state, &meta, &name, &ctx, selection_changed);
+        state.update_recipe(&meta, &name, &ctx, selection_changed);
         step_clear_extend(state, meta.clears_extend);
     }
     ran

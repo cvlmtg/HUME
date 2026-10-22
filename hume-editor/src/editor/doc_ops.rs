@@ -270,7 +270,7 @@ fn apply_grouped_from(
         .expect("checked above, and an edit closes no session");
     session.group_mut().compose(&cs);
     // This is the one funnel every grouped edit goes through, so it's the
-    // one place `DotCapture::chain` (`edit_session.rs`) can be fed without
+    // one place `DotCapture::chain` (`replay/capture.rs`) can be fed without
     // every caller remembering to do it itself; see that type's own doc.
     if let Some(cap) = session.dot_capture_mut() {
         cap.chain

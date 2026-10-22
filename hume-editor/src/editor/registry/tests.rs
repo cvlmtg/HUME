@@ -778,7 +778,7 @@ fn selection_tracking_matches_expected_commands() {
 
 /// A command cannot be both repeatable (an edit that modifies the buffer)
 /// and a selection-builder (a pure cursor movement): the fresh-recording begin
-/// and `step_update_recipe` (`commands/pipeline.rs`) both fire on the same
+/// and `update_recipe` (`replay/recipe.rs`) both fire on the same
 /// dispatch and would conflict. This property is fixed at registration
 /// time, so it is checked once here for every registered command rather than
 /// re-probed on every dispatch.

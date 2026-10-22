@@ -21,9 +21,9 @@ use hume_engine::pipeline::{BufferId, PaneId};
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 use crate::editor::buffer::store::BufferStore;
-use crate::editor::dot_chain::DotChain;
 use crate::editor::error::CommandError;
 use crate::editor::pane_state::PaneEntries;
+use crate::editor::replay::DotCapture;
 use crate::editor::replay::SourceTicket;
 
 /// The editor's open Paste session or dot-repeat placeholder, if any.
@@ -596,30 +596,6 @@ impl InsertSession {
     pub(in crate::editor) fn release_recording(&mut self) -> Option<SourceTicket> {
         self.recording.take()
     }
-}
-
-/// Armed around an Insert-key binding dispatch, or a completion-popup Enter,
-/// that may accept a completion: the one interactive choice with no callback
-/// to hand it back to, so `.` replays its net cursor edit instead.
-///
-/// Armed on the `InsertSession` it belongs to by `Editor::with_dot_capture`
-/// for the dispatch it wraps, and taken back and finalized when that
-/// dispatch returns. If the `InsertSession` ends first (an accept immediately
-/// followed by `exit-insert` in the same dispatch),
-/// `EditorState::end_insert_recording` finalizes it.
-/// `InsertSession::into_group`'s `debug_assert` is the enforcement: nothing
-/// may reach it with a capture still attached.
-#[derive(Debug)]
-pub(in crate::editor) struct DotCapture {
-    /// The edits recorded while this capture was armed and the head they are
-    /// measured from.
-    pub(in crate::editor) chain: DotChain,
-    /// Set by `EditorState::interactive_input`.
-    pub(in crate::editor) interactive: bool,
-    /// The entry of the Insert-key binding this capture wraps, which its
-    /// net edit takes the place of; `None` for a bare Enter-key accept
-    /// (`accept_completion_selection`), which has no entry of its own.
-    pub(in crate::editor) binding: Option<super::replay::BindingId>,
 }
 
 /// Accumulated state for an in-progress insert or paste session.
