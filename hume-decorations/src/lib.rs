@@ -13,6 +13,7 @@
 //! from a handle it was given, never from live editor state.
 
 #![deny(rustdoc::broken_intra_doc_links)]
+#![deny(rustdoc::private_intra_doc_links)]
 
 pub mod decorations;
 mod highlight_providers;

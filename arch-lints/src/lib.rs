@@ -10,6 +10,7 @@
 //! workspace member equally, `hume-editor` included.
 
 #![deny(rustdoc::broken_intra_doc_links)]
+#![deny(rustdoc::private_intra_doc_links)]
 
 /// The workspace root every lint resolves its scan paths against.
 ///

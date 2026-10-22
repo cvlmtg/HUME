@@ -23,6 +23,7 @@
 //! - `test_util` (behind the `test-util` feature): cross-crate test doubles.
 
 #![deny(rustdoc::broken_intra_doc_links)]
+#![deny(rustdoc::private_intra_doc_links)]
 
 pub mod backend;
 pub mod client;

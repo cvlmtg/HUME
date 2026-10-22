@@ -60,10 +60,11 @@ jobs:
       - run: cargo clippy --workspace --all-targets -- -D clippy::disallowed_methods -D clippy::unwrap_used
 
   # Platform-independent, so it runs once.
-  # Every crate root denies `rustdoc::broken_intra_doc_links` — this is what
-  # actually evaluates those links, since the attribute alone is inert
-  # without a `cargo doc` run to check it against. Private items too: most
-  # of the workspace's docs sit on crate-private items.
+  # Every crate root denies `rustdoc::broken_intra_doc_links` and
+  # `rustdoc::private_intra_doc_links` — this is what actually evaluates
+  # those links, since the attributes alone are inert without a `cargo doc`
+  # run to check them against. Private items too: most of the workspace's
+  # docs sit on crate-private items.
   doc:
     name: Doc
     runs-on: ubuntu-latest

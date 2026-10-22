@@ -10,6 +10,7 @@
 //! language's data file for subpaths.
 
 #![deny(rustdoc::broken_intra_doc_links)]
+#![deny(rustdoc::private_intra_doc_links)]
 
 use std::path::{Path, PathBuf};
 

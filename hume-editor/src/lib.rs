@@ -1,4 +1,5 @@
 #![deny(rustdoc::broken_intra_doc_links)]
+#![deny(rustdoc::private_intra_doc_links)]
 
 // The dump on panic runs while unwinding. Under `panic = "abort"` it would
 // never run, so the build is refused.

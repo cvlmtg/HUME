@@ -25,6 +25,7 @@
 //! `char_pos_at_display_col` debug-asserts against it.
 
 #![deny(rustdoc::broken_intra_doc_links)]
+#![deny(rustdoc::private_intra_doc_links)]
 
 pub mod cluster;
 pub mod column;
