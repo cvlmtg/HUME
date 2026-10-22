@@ -42,8 +42,8 @@ impl PluginState {
 }
 
 /// A plugin's lifecycle state without its `Declared` path: the public view
-/// the editor-crate test suite asserts on without reaching into
-/// `ScriptingHost` fields.
+/// the editor reads to tell a declared lazy plugin from a loaded one,
+/// without reaching into `ScriptingHost` fields.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PluginStatus {
     /// Declared but not yet loaded.

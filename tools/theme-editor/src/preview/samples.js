@@ -159,7 +159,7 @@ export const CHROME_SCOPES = SCOPES
 // three prompt modes because they render like Normal while a prompt is
 // open), so their primary head always paints from its chain, the same as
 // Normal — even for Command/Search, whose *own* bar cursor blinks in the
-// minibuf/statusline instead (`hume-editor/src/editor/lifecycle.rs`), a fact
+// minibuf/statusline instead (`hume-editor/src/editor/frame.rs`), a fact
 // with no effect on how the buffer itself renders. "cursor2" deliberately
 // ignores `barPrimary` regardless of mode — see `tagStyle` in
 // `EditorPane.jsx` for why.

@@ -135,15 +135,12 @@ fn build_client_capabilities() -> ClientCapabilities {
             //
             // `resource_operations` must be present (non-empty) or
             // rust-analyzer refuses *every* rename outright (confirmed
-            // live). That covers more than the file-rename-adjacent case
-            // below. `workspace_edit::
-            // file_edits` has no HUME equivalent for an actual
-            // `DocumentChangeOperation::Op` and rejects the whole edit if
-            // one ever arrives (a rename whose target shares its name with
-            // its containing module/file, which rust-analyzer folds a file
-            // rename into) is a real, occasional, safe-by-design rejection,
-            // not the common case, and the alternative (never declaring
-            // resource_operations) breaks every rename instead.
+            // live). With it declared, a rename whose target shares its name
+            // with its containing module/file arrives with the file rename
+            // folded in as a `DocumentChangeOperation::Op`.
+            // `workspace_edit::file_edits` has no HUME equivalent for an `Op`
+            // and refuses the whole edit: an occasional, safe refusal, where
+            // never declaring `resource_operations` would break every rename.
             workspace_edit: Some(WorkspaceEditClientCapabilities {
                 document_changes: Some(true),
                 resource_operations: Some(vec![

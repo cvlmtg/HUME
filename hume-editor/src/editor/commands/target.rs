@@ -85,20 +85,20 @@ impl CommandPane {
 ///
 /// Minted three ways: [`Self::resolve`] checks an explicit handle,
 /// [`Self::of`] checks a resolved target, and [`Self::current`] reads live
-/// focus. `current` belongs only at an entry
-/// point: the place an input first arrives and "the focused pane" is the
-/// meaning of the input itself: keypress and `:` dispatch (`dispatch.rs`,
-/// `input_stack/{base,command,insert,search}.rs`),
-/// dot-repeat replay, the `(focused-pane)` builtin, a confirm answer
-/// (`buffer/disk.rs`), an effect applied after its eval (`lsp/registry.rs`),
-/// and `Editor`'s own focused-pane readers (`mod.rs`). A command body, a
-/// typed command, or a helper they call receives the pane instead of
-/// minting it.
+/// focus. `current` belongs only at an entry point: the place an input first
+/// arrives and "the focused pane" is the meaning of the input itself:
+/// keypress and `:` dispatch (`dispatch.rs`,
+/// `input_stack/{base,command,insert,search}.rs`), dot-repeat replay, the
+/// `(focused-pane)` builtin, a confirm answer (`buffer/disk.rs`), an effect
+/// applied after its eval (`lsp/registry.rs`), and `Editor`'s own
+/// focused-pane readers (`mod.rs`). A command body, a typed command, or a
+/// helper they call receives the pane instead of minting it.
 ///
 /// `Copy`. It names the pane focused when it was minted, and a focus change
 /// (a function of the `focus` module) does not update it. Holding one
-/// across a command body that can move focus, as [`run`](super::run) does for its
-/// after-body steps, means "the pane focused at entry", not current focus.
+/// across a command body that can move focus, as [`run`](super::run) does
+/// for its after-body steps, means "the pane focused at entry", not current
+/// focus.
 #[derive(Clone, Copy, Debug)]
 pub(in crate::editor) struct FocusedPane(CommandPane);
 

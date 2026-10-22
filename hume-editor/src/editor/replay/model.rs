@@ -126,16 +126,17 @@ pub(crate) enum Input {
     /// A key with no Insert keymap binding: one run of its *default*
     /// behaviour (`commands::insert_default_key`), never a keymap walk.
     Key(KeyEvent),
-    /// A paste ([`EditorState::record_paste`](crate::editor::EditorState::record_paste)), replayed as one bulk insert
-    /// rather than synthetic per-char keys: a synthesized `Enter` would
-    /// auto-indent, which a real paste never does.
+    /// A paste
+    /// ([`EditorState::record_paste`](crate::editor::EditorState::record_paste)),
+    /// replayed as one bulk insert rather than synthetic per-char keys: a
+    /// synthesized `Enter` would auto-indent, which a real paste never does.
     Paste(Vec<String>),
     /// A key bound in the Insert keymap, re-run on replay through
-    /// [`Editor::dispatch`](crate::editor::Editor::dispatch) as the live key was, so it decides again at the
-    /// new cursor, its own `call!`s, register prefix, and `#:extend`
-    /// included. Its interactive inputs are answered from `answers`. A binding whose
-    /// command is not repeatable has none: an input it opens ends the
-    /// change and drops this entry.
+    /// [`Editor::dispatch`](crate::editor::Editor::dispatch) as the live key
+    /// was, so it decides again at the new cursor, its own `call!`s, register
+    /// prefix, and `#:extend` included. Its interactive inputs are answered
+    /// from `answers`. A binding whose command is not repeatable has none: an
+    /// input it opens ends the change and drops this entry.
     Binding {
         id: BindingId,
         name: Cow<'static, str>,

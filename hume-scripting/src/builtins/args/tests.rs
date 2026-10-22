@@ -264,7 +264,7 @@ fn usize_newtype_accepts_non_negative() {
 // ── LspTargetArg ─────────────────────────────────────────────────────────
 
 /// `LspTargetArg::from_steelval`: type check only, deciding `Buffer` vs
-/// `Language`; the `Buffer` case's liveness half is `BuiltinArg::resolve`'s
+/// `Name`; the `Buffer` case's liveness half is `BuiltinArg::resolve`'s
 /// job (proven through a real `ScriptingHost`, `builtins::tests::
 /// live_pane_builtins_raise_on_a_closed_buffer_through_real_registration`'s
 /// `lsp-stop!`/`lsp-restart!` rows).

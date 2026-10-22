@@ -150,12 +150,11 @@ impl Editor {
         } else {
             // Reads `cursor_shape()` directly rather than through
             // `resolve_pane_settings`: the focused pane's own
-            // `cursor_is_block` is defined as this same comparison
-            // (`frame.rs`), and resolving full pane settings
-            // (a `FormatKey` build included) just to throw away
-            // everything but this one bool would repeat, for the
-            // focused pane specifically, work `render_frame` already
-            // does for every pane this same frame.
+            // `cursor_is_block` is defined as this same comparison there,
+            // and resolving full pane settings (a `FormatKey` build
+            // included) just to throw away everything but this one bool
+            // would repeat, for the focused pane specifically, work
+            // `render_into` already does for every pane this same frame.
             if self.state.cursor_shape() == crate::editor::settings::CursorShape::Block {
                 None
             } else {
@@ -693,7 +692,7 @@ impl EditorState {
     /// Sift also resolve to `Block` here (their document heads render like
     /// Normal mode while a prompt is open), but their *real* terminal cursor
     /// never reflects this value: it lives in the minibuf, placed by a
-    /// separate branch in `Editor::run`'s `cursor_screen` that is
+    /// separate branch in `draw_frame`'s `cursor_screen` that is
     /// unconditionally a bar regardless of what this method returns. This is
     /// the single source both that branch's sibling (the non-minibuf case)
     /// and `resolve_pane_settings`' `cursor_is_block` read, so the real

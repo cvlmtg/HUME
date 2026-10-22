@@ -1049,7 +1049,8 @@ or a bare `Target::Focused(fp)`.
    fact into a call-ordering convention.
 
 **Files:** `hume-editor/src/editor/commands/pipeline.rs` (`Target`,
-`CommandPane::resolve`, `FocusedPane::resolve`, `run`, `run_body`),
+`run`, `run_body`), `hume-editor/src/editor/commands/target.rs`
+(`CommandPane::resolve`, `FocusedPane::resolve`),
 `hume-editor/src/editor/registry/command.rs` (`TargetCategory`),
 `hume-editor/src/editor/commands/insert_session.rs` (`tear_down_insert`),
 `hume-editor/src/editor/doc_ops.rs` (`commit_edit_group`),

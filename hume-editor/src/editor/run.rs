@@ -93,10 +93,11 @@ impl Editor {
 
     /// Apply the kitty keyboard-protocol probe result atomically: set the
     /// runtime flag and re-derive the keymap via the same
-    /// [`Keymap::with_defaults`](super::keymap::Keymap::with_defaults) `ConfigState::new` uses, so the kitty-only
-    /// default keybinds (when enabled) are installed identically at startup
-    /// and on every `:reload-config`. Called once, from [`Self::start`], so
-    /// the binds can never diverge from the flag.
+    /// [`Keymap::with_defaults`](super::keymap::Keymap::with_defaults)
+    /// `ConfigState::new` uses, so the kitty-only default keybinds (when
+    /// enabled) are installed identically at startup and on every
+    /// `:reload-config`. Called once, from [`Self::start`], so the binds can
+    /// never diverge from the flag.
     ///
     /// Must run before `init_scripting`: it replaces the keymap wholesale,
     /// so calling it after `init.scm` has evaluated would discard any user

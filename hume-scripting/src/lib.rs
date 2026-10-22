@@ -72,8 +72,8 @@ pub use types::{
 // Test-only external visibility: the editor's own test suite arms/cancels a
 // real watchdog directly (hume-editor/tests/scripting.rs) rather than
 // through a ScriptingHost eval entry point. Outside test/test-util builds,
-// `EvalWatchdog` is still needed unqualified below (the `watchdog` field,
-// `steel_and_bundle`'s signature), just not re-exported past this crate.
+// `EvalWatchdog` is still needed unqualified below (the `watchdog` field),
+// just not re-exported past this crate.
 #[cfg(any(test, feature = "test-util"))]
 pub use watchdog::EvalWatchdog;
 #[cfg(not(any(test, feature = "test-util")))]

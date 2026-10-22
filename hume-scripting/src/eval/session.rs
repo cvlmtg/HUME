@@ -90,9 +90,9 @@ pub(super) fn run_steel_session<'a, R>(
 /// raised when the step budget is exceeded) rather than an ordinary Steel
 /// error (a raised exception, a stale-buffer `LivePane` raise, an arity
 /// mismatch). `interrupted` is read off `ctx.interrupt_flag` before this
-/// session resets it. A caller that only wants the message (most of them)
-/// reads `.message` and ignores it; [`crate::ScriptingHost::run_steel_calls`] is
-/// the one caller that needs to know which.
+/// session resets it. `run_session` reads only `.message`;
+/// `run_tracked_calls` reads `interrupted` to skip the calls queued after an
+/// interrupted one.
 pub(super) struct SessionError {
     pub(super) message: String,
     pub(super) interrupted: bool,

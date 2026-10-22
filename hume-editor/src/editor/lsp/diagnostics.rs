@@ -3,7 +3,6 @@
 //! subsequent edit. Bulk never reaches Steel: Steel gets
 //! a signal + bounded pulls.
 
-use crate::editor::settings::SettingText as _;
 use std::sync::Arc;
 
 use hume_editing::changeset::ChangeSet;
@@ -18,6 +17,7 @@ use ropey::Rope;
 use rustc_hash::FxHashMap;
 
 use crate::editor::message_log::Severity;
+use crate::editor::settings::SettingText as _;
 use crate::editor::{Editor, EditorState};
 use hume_decorations::{Positioned, RangeAnchored, SourceStore};
 
