@@ -492,7 +492,7 @@ impl EditorState {
             .into_iter()
             .map(|WireDiagnostic { diagnostic: d, raw }| {
                 let raw = Arc::new(raw);
-                let range = super::wire_range_to_chars(&rope, &d.range, encoding);
+                let range = hume_lsp::position::lsp_range_to_chars(&rope, &d.range, encoding);
                 let range = if range.start == range.end {
                     widen_zero_length(&rope, range.start)
                 } else {

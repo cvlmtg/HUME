@@ -14,7 +14,7 @@ use hume_editing::word::{CharClass, WordChars};
 use hume_rope::cluster::ClusterStart;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
-use crate::editor::lsp::checked_wire_range_to_chars;
+use hume_lsp::position::checked_lsp_range_to_chars;
 
 use super::super::item::CompletionItem;
 use super::super::registry::{BufferSourceId, SourceRegistry};
@@ -62,7 +62,7 @@ impl BufferSpan {
             .map(|item| {
                 let te = item.text_edit.as_ref()?;
                 let encoding = item.wire_encoding(may_resolve, "").ok()?;
-                Some(checked_wire_range_to_chars(&doc.rope, &te.range, encoding)?.start)
+                Some(checked_lsp_range_to_chars(&doc.rope, &te.range, encoding)?.start)
             })
             .collect();
         let mut distinct: Vec<CharOffset> = item_starts.iter().flatten().copied().collect();

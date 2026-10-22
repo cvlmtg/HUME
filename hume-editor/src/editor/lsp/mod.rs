@@ -44,38 +44,6 @@ use instances::Instances;
 use progress::SpinnerClock;
 use registry::Registry;
 
-/// `lsp_types::Range` → char-offset span via
-/// [`hume_lsp::position::from_lsp_range`] and
-/// [`hume_rope::position_encoding::wire_range_to_char_range`]; see
-/// `hume_lsp::position` for why the `lsp_types` crossing is a free function
-/// rather than a `From` impl.
-pub(in crate::editor) fn wire_range_to_chars(
-    rope: &ropey::Rope,
-    range: &lsp_types::Range,
-    encoding: hume_rope::position_encoding::PositionEncoding,
-) -> hume_rope::offset::ExclusiveRange<hume_rope::offset::CharOffset> {
-    hume_rope::position_encoding::wire_range_to_char_range(
-        rope,
-        hume_lsp::position::from_lsp_range(range),
-        encoding,
-    )
-}
-
-/// [`wire_range_to_chars`] for an edit: `None` when the range ends past the
-/// document end, which no clamp can honestly stand in for. See
-/// [`hume_rope::position_encoding::checked_wire_range_to_char_range`].
-pub(in crate::editor) fn checked_wire_range_to_chars(
-    rope: &ropey::Rope,
-    range: &lsp_types::Range,
-    encoding: hume_rope::position_encoding::PositionEncoding,
-) -> Option<hume_rope::offset::ExclusiveRange<hume_rope::offset::CharOffset>> {
-    hume_rope::position_encoding::checked_wire_range_to_char_range(
-        rope,
-        hume_lsp::position::from_lsp_range(range),
-        encoding,
-    )
-}
-
 /// The content line and cluster a wire position names in `text`, where goto
 /// lands: the column placed on the line's content, so a column past the
 /// line's end lands on its last content cluster. `None` when the line is not

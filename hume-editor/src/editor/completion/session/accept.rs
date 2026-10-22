@@ -12,9 +12,10 @@ use super::super::item::CompletionItem;
 use super::buffer::{BufferSession, BufferSpan};
 use super::contains_cursor;
 use crate::editor::event::EditorEvent;
-use crate::editor::lsp::{RustDelivery, RustResponder, checked_wire_range_to_chars, edits};
+use crate::editor::lsp::{RustDelivery, RustResponder, edits};
 use crate::editor::replay::Interactive;
 use crate::editor::{EditorState, Severity};
+use hume_lsp::position::checked_lsp_range_to_chars;
 use hume_ops::edit::replace_span_around_cursors;
 
 impl BufferSession {
@@ -158,7 +159,7 @@ impl BufferSession {
         // are then shared by both, just after the match.
         let (start_now, end_now, new_text, what) = match &item.text_edit {
             Some(te) => {
-                let range = checked_wire_range_to_chars(&doc.rope, &te.range, encoding)
+                let range = checked_lsp_range_to_chars(&doc.rope, &te.range, encoding)
                     .ok_or_else(|| edits::past_document_end(&te.range, &doc.rope))?;
                 let (start_b, end_b) = (range.start, range.end);
                 if end_b < start_b {

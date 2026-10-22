@@ -1,11 +1,11 @@
 //! `hume_rope::position_encoding::WirePos` ↔ `lsp_types::Range`, plus
-//! `WirePos` ↔ the protocol's raw JSON object shape. [`wire_pos_from_json`] is
-//! the one decoder of that shape here. [`position_from_json`] and
-//! [`range_from_json`] narrow it into `lsp_types` for *lenient* callers
-//! (`completion_item`'s text edit and default edit range) that want `None`
-//! on a malformed field, not the per-field error text
-//! `location::decode_location` needs. That decoder reads the same JSON shape
-//! by hand instead of sharing these.
+//! `WirePos` ↔ the protocol's raw JSON object shape, plus an `lsp_types::Range`
+//! → a document's char offsets. [`wire_pos_from_json`] is the one decoder of
+//! that shape here. [`position_from_json`] and [`range_from_json`] narrow it
+//! into `lsp_types` for *lenient* callers (`completion_item`'s text edit and
+//! default edit range) that want `None` on a malformed field;
+//! [`decode_wire_pos`], [`decode_range_end`] and [`decode_wire_range`] are its
+//! strict form, for callers that report what is wrong.
 //!
 //! `hume-rope` has no `lsp-types` dependency (see
 //! `position_encoding`'s module doc), so the crossing lives here as free
@@ -13,8 +13,8 @@
 //! orphan rule would refuse that impl in either direction anyway, since
 //! neither type is local to this crate.
 
-use hume_rope::offset::ExclusiveRange;
-use hume_rope::position_encoding::WirePos;
+use hume_rope::offset::{CharOffset, ExclusiveRange};
+use hume_rope::position_encoding::{PositionEncoding, WirePos};
 
 /// A rope-derived wire range → `lsp_types::Range`, or `None` if `line`/
 /// `character` on either end exceeds `u32`, the protocol's own width.
@@ -75,10 +75,34 @@ pub fn wire_pos_from_json(v: &serde_json::Value) -> Option<WirePos> {
     })
 }
 
+/// [`wire_pos_from_json`] for a strict caller. The error names what is
+/// wrong, for the caller to prefix with its own name.
+pub fn decode_wire_pos(v: &serde_json::Value) -> Result<WirePos, String> {
+    wire_pos_from_json(v).ok_or_else(|| {
+        format!("position must be an object with numeric 'line' and 'character' fields, got {v}")
+    })
+}
+
+/// The `end` (`"start"` or `"end"`) position of the protocol's range object,
+/// by [`decode_wire_pos`]'s rules.
+pub fn decode_range_end(range: &serde_json::Value, end: &str) -> Result<WirePos, String> {
+    let pos = range
+        .get(end)
+        .ok_or_else(|| format!("range has no '{end}' field"))?;
+    decode_wire_pos(pos).map_err(|e| format!("range {end}: {e}"))
+}
+
+/// The protocol's `{"start": …, "end": …}` object, by [`decode_wire_pos`]'s
+/// rules.
+pub fn decode_wire_range(range: &serde_json::Value) -> Result<ExclusiveRange<WirePos>, String> {
+    Ok(ExclusiveRange::new(
+        decode_range_end(range, "start")?,
+        decode_range_end(range, "end")?,
+    ))
+}
+
 /// [`wire_pos_from_json`] as an `lsp_types::Position`: `None` too on an
 /// out-of-`u32` field; a lenient caller's own fallback applies from there.
-/// See this module's doc for why `location::decode_location` doesn't share
-/// this decoder.
 pub fn position_from_json(v: &serde_json::Value) -> Option<lsp_types::Position> {
     to_lsp_position(wire_pos_from_json(v)?)
 }
@@ -90,6 +114,31 @@ pub fn range_from_json(v: &serde_json::Value) -> Option<lsp_types::Range> {
         start: position_from_json(v.get("start")?)?,
         end: position_from_json(v.get("end")?)?,
     })
+}
+
+/// An `lsp_types::Range` → the char span it names in `rope`, by
+/// [`hume_rope::position_encoding::wire_range_to_char_range`]'s clamping.
+pub fn lsp_range_to_chars(
+    rope: &ropey::Rope,
+    range: &lsp_types::Range,
+    encoding: PositionEncoding,
+) -> ExclusiveRange<CharOffset> {
+    hume_rope::position_encoding::wire_range_to_char_range(rope, from_lsp_range(range), encoding)
+}
+
+/// [`lsp_range_to_chars`] for an edit: `None` when the range ends past the
+/// document end, which no clamp can honestly stand in for. See
+/// [`hume_rope::position_encoding::checked_wire_range_to_char_range`].
+pub fn checked_lsp_range_to_chars(
+    rope: &ropey::Rope,
+    range: &lsp_types::Range,
+    encoding: PositionEncoding,
+) -> Option<ExclusiveRange<CharOffset>> {
+    hume_rope::position_encoding::checked_wire_range_to_char_range(
+        rope,
+        from_lsp_range(range),
+        encoding,
+    )
 }
 
 #[cfg(test)]

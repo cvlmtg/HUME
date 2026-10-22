@@ -85,7 +85,7 @@ fn build_edit_changeset(
     let char_edits = edits
         .iter()
         .map(|e| {
-            let range = super::checked_wire_range_to_chars(rope, &e.range, encoding)
+            let range = hume_lsp::position::checked_lsp_range_to_chars(rope, &e.range, encoding)
                 .ok_or_else(|| past_document_end(&e.range, rope))?;
             Ok((range, e.new_text.as_str()))
         })
@@ -241,7 +241,7 @@ pub(in crate::editor) fn build_edits_from_earlier_document<'a>(
     let mut ranges = edits
         .iter()
         .map(|e| {
-            super::checked_wire_range_to_chars(rope_at, &e.range, encoding)
+            hume_lsp::position::checked_lsp_range_to_chars(rope_at, &e.range, encoding)
                 .ok_or_else(|| past_document_end(&e.range, rope_at))
         })
         .collect::<Result<Vec<ExclusiveRange<CharOffset>>, String>>()?;

@@ -70,7 +70,13 @@ fn missing_range_start_line_errors() {
         "range": {"start": {"character": 0}}
     });
     let err = decode_location(&loc).unwrap_err();
-    assert_eq!(err, "missing range.start.line");
+    assert_eq!(
+        err,
+        format!(
+            "range start: position must be an object with numeric 'line' and 'character' fields, got {}",
+            serde_json::json!({"character": 0})
+        )
+    );
 }
 
 #[test]
@@ -80,17 +86,29 @@ fn missing_range_start_character_errors() {
         "range": {"start": {"line": 0}}
     });
     let err = decode_location(&loc).unwrap_err();
-    assert_eq!(err, "missing range.start.character");
+    assert_eq!(
+        err,
+        format!(
+            "range start: position must be an object with numeric 'line' and 'character' fields, got {}",
+            serde_json::json!({"line": 0})
+        )
+    );
 }
 
 #[test]
-fn non_integer_line_errors_as_missing() {
+fn non_integer_line_errors() {
     let loc = serde_json::json!({
         "uri": "file:///tmp/a.rs",
         "range": {"start": {"line": "not-a-number", "character": 0}}
     });
     let err = decode_location(&loc).unwrap_err();
-    assert_eq!(err, "missing range.start.line");
+    assert_eq!(
+        err,
+        format!(
+            "range start: position must be an object with numeric 'line' and 'character' fields, got {}",
+            serde_json::json!({"line": "not-a-number", "character": 0})
+        )
+    );
 }
 
 #[test]

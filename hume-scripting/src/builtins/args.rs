@@ -924,11 +924,7 @@ pub(crate) fn wire_position(
     v: &serde_json::Value,
     what: &str,
 ) -> Result<hume_rope::position_encoding::WirePos, SteelErr> {
-    hume_lsp::position::wire_pos_from_json(v).ok_or_else(|| {
-        generic_err(format!(
-            "{what}: position must be a hashmap with numeric 'line' and 'character' keys, got {v}"
-        ))
-    })
+    hume_lsp::position::decode_wire_pos(v).map_err(|e| generic_err(format!("{what}: {e}")))
 }
 
 /// Decodes a wire `{"start" ... "end" ...}` range into its two positions;
@@ -937,15 +933,7 @@ pub(crate) fn wire_range(
     v: &serde_json::Value,
     ctx_name: &str,
 ) -> Result<hume_rope::offset::ExclusiveRange<hume_rope::position_encoding::WirePos>, SteelErr> {
-    let end_of = |key: &str| {
-        v.get(key)
-            .ok_or_else(|| generic_err(format!("{ctx_name}: range has no '{key}' field")))
-            .and_then(|pos| wire_position(pos, ctx_name))
-    };
-    Ok(hume_rope::offset::ExclusiveRange::new(
-        end_of("start")?,
-        end_of("end")?,
-    ))
+    hume_lsp::position::decode_wire_range(v).map_err(|e| generic_err(format!("{ctx_name}: {e}")))
 }
 
 /// Decodes a wire `{"range" {"start" ... "end" ...} "newText" ...}`

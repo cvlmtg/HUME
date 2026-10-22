@@ -51,21 +51,9 @@ pub fn decode_location(loc: &serde_json::Value) -> Result<WireLocation, String> 
         .as_str()
         .ok_or_else(|| "uri must be a string".to_string())?;
     let range = range.ok_or_else(|| "missing range".to_string())?;
-    let line = range
-        .pointer("/start/line")
-        .and_then(serde_json::Value::as_u64)
-        .and_then(|n| usize::try_from(n).ok())
-        .ok_or_else(|| "missing range.start.line".to_string())?;
-    let character = range
-        .pointer("/start/character")
-        .and_then(serde_json::Value::as_u64)
-        .and_then(|n| usize::try_from(n).ok())
-        .ok_or_else(|| "missing range.start.character".to_string())?;
+    let pos = crate::position::decode_range_end(range, "start")?;
     let uri = lsp_types::Uri::from_str(uri).map_err(|_| format!("bad uri {uri:?}"))?;
-    Ok(WireLocation {
-        uri,
-        pos: WirePos { line, character },
-    })
+    Ok(WireLocation { uri, pos })
 }
 
 #[cfg(test)]

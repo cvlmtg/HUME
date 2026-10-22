@@ -131,3 +131,34 @@ fn wire_pos_from_json_keeps_a_value_past_u32() {
         })
     );
 }
+
+#[test]
+fn decode_wire_range_reads_both_ends() {
+    let range = serde_json::json!({
+        "start": {"line": 1, "character": 2},
+        "end": {"line": 3, "character": 4},
+    });
+    let decoded = decode_wire_range(&range).unwrap();
+    assert_eq!((decoded.start, decoded.end), (wp(1, 2), wp(3, 4)));
+}
+
+#[test]
+fn decode_wire_range_names_a_missing_end() {
+    let range = serde_json::json!({"start": {"line": 1, "character": 2}});
+    assert_eq!(
+        decode_wire_range(&range).unwrap_err(),
+        "range has no 'end' field"
+    );
+}
+
+#[test]
+fn decode_wire_range_names_the_end_whose_position_is_malformed() {
+    let start = serde_json::json!({"line": -1, "character": 2});
+    let range = serde_json::json!({"start": start, "end": {"line": 3, "character": 4}});
+    assert_eq!(
+        decode_wire_range(&range).unwrap_err(),
+        format!(
+            "range start: position must be an object with numeric 'line' and 'character' fields, got {start}"
+        )
+    );
+}
