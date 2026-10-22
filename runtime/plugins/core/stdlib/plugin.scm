@@ -55,10 +55,9 @@
     (write-string content port)
     (close-output-port port)))
 
-;;; Idempotent, unlike Steel's own `delete-directory!` — see README.md's "Filesystem and list search".
+;;; See README.md's "Filesystem and list search".
 (define (stdlib/delete-dir! dir)
-  (when (path-exists? dir)
-    (delete-directory! dir)))
+  (delete-dir-tree! dir))
 
 ;;; Idempotent, unlike Steel's own `delete-file!` — see README.md's "Filesystem and list search".
 (define (stdlib/delete-file! path)

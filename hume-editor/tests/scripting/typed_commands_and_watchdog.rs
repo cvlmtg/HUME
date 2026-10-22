@@ -141,9 +141,10 @@ fn define_command_collides_with_existing_typed_name() {
 fn watchdog_cancel_wakes_thread_immediately() {
     let flag = Arc::new(AtomicBool::new(false));
     let budget = std::time::Duration::from_secs(10);
+    let vm = steel::steel_vm::engine::Engine::new().get_thread_state_controller();
     let start = std::time::Instant::now();
     let watchdog = EvalWatchdog::new();
-    watchdog.arm(Arc::clone(&flag), budget);
+    watchdog.arm(Arc::clone(&flag), vm, budget);
     watchdog.cancel();
     // cancel() must return well within the budget; 500 ms is generous.
     assert!(
@@ -158,7 +159,7 @@ fn watchdog_cancel_wakes_thread_immediately() {
     );
 }
 
-/// A watchdog with a tiny budget fires and causes (hume/yield!) to abort.
+/// A watchdog with a tiny budget stops a loop that would run forever.
 #[test]
 fn eval_source_watchdog_aborts_runaway() {
     let mut h = host();
@@ -170,7 +171,7 @@ fn eval_source_watchdog_aborts_runaway() {
     let err = h
         .eval_source_watchdog(
             // This loop would run forever without the watchdog.
-            "(let loop () (hume/yield!) (loop))",
+            "(let loop () (loop))",
             budget,
             &mut mock,
         )
@@ -201,7 +202,7 @@ fn call_steel_cmd_watchdog_aborts_runaway() {
 
     // Register a command whose body loops forever.
     h.eval_source(
-        r#"(define-command! "spin" "spin forever" (lambda () (let loop () (hume/yield!) (loop))))"#,
+        r#"(define-command! "spin" "spin forever" (lambda () (let loop () (loop))))"#,
         &mut mock,
     )
     .unwrap();
@@ -240,7 +241,7 @@ fn call_steel_cmd_interrupt_leaves_settings_unchanged() {
     let mut mock = MockHost::new();
 
     h.eval_source(
-        r#"(define-command! "looper" "loop" (lambda () (let loop () (hume/yield!) (loop))))"#,
+        r#"(define-command! "looper" "loop" (lambda () (let loop () (loop))))"#,
         &mut mock,
     )
     .unwrap();
@@ -284,5 +285,62 @@ fn call_steel_cmd_set_option_from_body_applies_the_setting() {
     assert_eq!(
         mock.settings.indent_width, 8,
         "indent-width must be applied"
+    );
+}
+
+/// The budget stops a command whose loop never calls a builtin.
+#[test]
+fn call_steel_cmd_budget_stops_a_loop_that_calls_nothing() {
+    let mut h = host();
+    let mut mock = MockHost::new();
+    h.eval_source(
+        r#"(define-command! "count-up" "doc"
+             (lambda () (let loop ((n 0)) (if (< n 50000000) (loop (+ n 1)) n))))
+           (define-command! "quick" "doc" (lambda () (log! 'info "quick ran")))"#,
+        &mut mock,
+    )
+    .unwrap();
+    mock.settings.steel_command_budget_ms = 50;
+
+    let start = std::time::Instant::now();
+    let err = h
+        .call_steel_cmd_by_name("count-up", vec![], &mut mock)
+        .unwrap_err();
+
+    assert!(
+        err.message.contains("interrupted"),
+        "expected 'interrupted', got: {err}"
+    );
+    assert!(
+        start.elapsed() < std::time::Duration::from_secs(1),
+        "the budget took {:?} to stop the loop",
+        start.elapsed()
+    );
+    h.call_steel_cmd_by_name("quick", vec![], &mut mock)
+        .expect("the next command runs once the stopped one has returned");
+}
+
+/// Time spent waiting on a child process does not count against the budget.
+#[test]
+fn call_steel_cmd_budget_does_not_count_a_wait_on_a_child() {
+    let mut h = host();
+    let mut mock = MockHost::new();
+    h.eval_source(
+        r#"(define-command! "wait-then-log" "doc"
+             (lambda ()
+               (run-capture! "sleep" '("0.3"))
+               (log! 'info "after the wait")))"#,
+        &mut mock,
+    )
+    .unwrap();
+    mock.settings.steel_command_budget_ms = 50;
+
+    h.call_steel_cmd_by_name("wait-then-log", vec![], &mut mock)
+        .expect("a wait on a child must not use up the budget");
+    assert!(
+        h.take_pending_messages()
+            .iter()
+            .any(|(_, msg)| msg == "after the wait"),
+        "the command must run past its wait"
     );
 }

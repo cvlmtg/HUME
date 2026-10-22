@@ -1,5 +1,5 @@
 //! `bind-key!`, `load-plugin!` path resolution, `configure-statusline!`,
-//! `hume/yield!`, `command-plugin`, and `define-command!` tests.
+//! `command-plugin` and `define-command!` tests.
 
 use super::*;
 
@@ -293,71 +293,6 @@ fn configure_statusline_wrong_arity_errors() {
         .eval_source("(configure-statusline! '())", &mut mock)
         .unwrap_err();
     assert!(!err.is_empty(), "expected arity error");
-}
-
-// ── hume/yield! ───────────────────────────────────────────────────────────
-
-#[test]
-fn hume_yield_no_interrupt_is_noop() {
-    let mut h = host();
-    let mut mock = MockHost::new();
-
-    // With no interrupt flag set, (hume/yield!) is a transparent no-op.
-    h.eval_source("(hume/yield!)", &mut mock).unwrap();
-}
-
-#[test]
-fn hume_yield_with_interrupt_errors() {
-    let mut h = host();
-    let mut mock = MockHost::new();
-
-    // Pre-set the interrupt flag before the eval.
-    h.interrupt_flag_for_test().store(true, Ordering::Relaxed);
-    let err = h.eval_source("(hume/yield!)", &mut mock).unwrap_err();
-    assert!(
-        err.contains("interrupted"),
-        "expected 'interrupted' in error, got: {err}"
-    );
-
-    // eval_source resets the flag after every call.
-    assert!(
-        !h.interrupt_flag_for_test().load(Ordering::Relaxed),
-        "flag should be false after eval"
-    );
-}
-
-#[test]
-fn hume_yield_stops_loop_when_interrupted() {
-    let mut h = host();
-    let mut mock = MockHost::new();
-
-    // Pre-set so the loop aborts on the very first yield call.
-    h.interrupt_flag_for_test().store(true, Ordering::Relaxed);
-    let err = h
-        .eval_source(
-            // Without the interrupt flag this loop would run forever.
-            "(let loop () (hume/yield!) (loop))",
-            &mut mock,
-        )
-        .unwrap_err();
-    assert!(err.contains("interrupted"), "got: {err}");
-}
-
-#[test]
-fn interrupt_flag_reset_after_eval() {
-    let mut h = host();
-    let mut mock = MockHost::new();
-
-    // Pre-set the flag; after eval_source it must be cleared.
-    h.interrupt_flag_for_test().store(true, Ordering::Relaxed);
-    h.eval_source("(hume/yield!)", &mut mock).unwrap_err(); // interrupted via pre-set flag
-    assert!(
-        !h.interrupt_flag_for_test().load(Ordering::Relaxed),
-        "interrupt_flag must be false after eval_source returns"
-    );
-
-    // Subsequent evals with no flag pre-set should succeed normally.
-    h.eval_source("(hume/yield!)", &mut mock).unwrap();
 }
 
 // ── command-plugin ────────────────────────────────────────────────────────

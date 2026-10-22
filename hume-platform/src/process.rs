@@ -216,6 +216,50 @@ fn spawn_failed(command: &Command, e: io::Error) -> io::Error {
     start_failed(&program, e)
 }
 
+/// Whether a process with id `pid` is running. One the caller may not signal
+/// or inspect still counts as running; id 0 names no process a caller could
+/// have recorded, so it never does.
+pub fn process_alive(pid: u32) -> bool {
+    pid != 0 && alive(pid)
+}
+
+#[cfg(unix)]
+fn alive(pid: u32) -> bool {
+    use nix::errno::Errno;
+    use nix::sys::signal::kill;
+    use nix::unistd::Pid;
+
+    let Ok(raw) = i32::try_from(pid) else {
+        return false;
+    };
+    matches!(kill(Pid::from_raw(raw), None), Ok(()) | Err(Errno::EPERM))
+}
+
+#[cfg(windows)]
+fn alive(pid: u32) -> bool {
+    use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
+
+    use windows_sys::Win32::Foundation::{ERROR_ACCESS_DENIED, GetLastError, STILL_ACTIVE};
+    use windows_sys::Win32::System::Threading::{
+        GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+
+    // SAFETY: no pointer arguments.
+    let raw = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+    if raw.is_null() {
+        // SAFETY: no arguments.
+        return unsafe { GetLastError() } == ERROR_ACCESS_DENIED;
+    }
+    // SAFETY: `raw` is a handle this function just opened, owned by nothing
+    // else.
+    let process = unsafe { OwnedHandle::from_raw_handle(raw) };
+    let mut code = 0u32;
+    // SAFETY: the handle is open with query access, and `code` outlives the
+    // call.
+    let queried = unsafe { GetExitCodeProcess(process.as_raw_handle(), &mut code) } != 0;
+    queried && code == STILL_ACTIVE as u32
+}
+
 /// The message for `program` failing: its exit, when it had one, and its
 /// stderr, when it wrote any.
 pub fn failure_message(program: &str, status: Option<ExitStatus>, stderr: &str) -> String {

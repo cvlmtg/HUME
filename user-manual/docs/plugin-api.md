@@ -62,9 +62,8 @@ See [Key bindings](configuration.md#key-bindings) for the key-string grammar and
 | `(on-next-char! callback)` | Call `callback` with the next key typed as a character, or with `#f` when that key isn't one |
 | `(command-plugin name)` | The id string of the plugin that registered command `name`: `"user"` for a top-level `init.scm` definition, `"hume"` for a built-in or a name that isn't a command |
 | `(command-exists? name)` | `#t` if `name` is something your plugin can use: a command reachable with `call!` (built-in, Scheme-defined, or a not-yet-loaded plugin's), or any procedure bound at the top level (a builtin, a Steel library function, or your own `define`). `#f` otherwise, including for macros such as `call!` |
-| `(hume/yield!)` | Check the interrupt/step-budget flag inside a long loop, aborting the script if it's set |
 
-`define-command!`, `define-typed-command!`, `call!`, and `on-next-char!` are covered with examples in [Defining commands](writing-plugins.md#defining-commands), [Calling other commands](writing-plugins.md#calling-other-commands), and [Reading characters](writing-plugins.md#reading-characters). `hume/yield!` only matters for a script doing real work in a loop. Without it, a script that runs past `steel-init-budget-ms`/`steel-command-budget-ms` (see [Global options](settings.md#global-options)) still runs to completion; interruption is cooperative, not preemptive.
+`define-command!`, `define-typed-command!`, `call!`, and `on-next-char!` are covered with examples in [Defining commands](writing-plugins.md#defining-commands), [Calling other commands](writing-plugins.md#calling-other-commands), and [Reading characters](writing-plugins.md#reading-characters). A script that runs past `steel-init-budget-ms`/`steel-command-budget-ms` (see [Global options](settings.md#global-options)) is stopped where it is, and none of its error handlers run.
 
 ## Supporting several HUME versions
 
@@ -303,6 +302,8 @@ Full walkthroughs (batch vs. streaming population, truncation direction, exit-co
 | `(spawn-async! cmd args callback #:cwd dir)` | Run `cmd` in the background, in `dir` (default: HUME's working directory; a relative `dir` is joined onto it); `callback` (`(lambda (stdout stderr exit-code) ...)`) fires exactly once, later. Returns a job id for `cancel-async!`. A failed spawn doesn't raise: `callback` fires with empty stdout, the error in stderr, and exit code `#f`, which a signal-killed command also gets |
 | `(cancel-async! id)` | Kill a still-running `spawn-async!` job and drop its callback; idempotent |
 | `(run-inline-output! cmd args #:cwd #:env)` | Run `cmd`, streaming output to the terminal inside an `#:inline-output` command; `#:env` is a list of `("KEY" . "VALUE")` pairs added to the environment; raises on nonzero exit |
+| `(current-process-id)` | HUME's process id, an integer: what a plugin writes into a lock file so another HUME can tell whether its owner is still running |
+| `(process-alive? pid)` | `#t` when a process with id `pid` is running; one HUME may not inspect counts as running |
 | `(run-capture! cmd args #:cwd dir)` | Run `cmd` in `dir` (default: HUME's working directory; a relative `dir` is joined onto it), blocking until it exits; returns `(hash 'stdout s 'stderr s 'exit code)`, with `'exit` `#f` when the spawn failed (stderr says why) or a signal killed the process. `core:stdlib`'s `stdlib/run!` (see [Standard Library](standard-library.md)) is this call under its usual name |
 
 Covered with examples in [Filesystem and processes](writing-plugins.md#filesystem-and-processes).
@@ -335,6 +336,7 @@ Everyday string work (trimming, splitting on a separator, case conversion, prefi
 | `(runtime-dir)` | HUME's runtime directory, or `#f` if unavailable |
 | `(cwd)` | HUME's working directory (what `:pwd` prints) |
 | `(set-cwd! path)` | Change HUME's working directory, like `:cd`; a relative `path` is joined onto the current one; raises if `path` is not a directory |
+| `(delete-dir-tree! path)` | Delete the directory `path` (relative to the working directory) and everything under it; nothing happens when it doesn't exist. Unlike Steel's `delete-directory!`, the time it takes doesn't count against the script budget, so a large tree is never left half deleted |
 | `(path-join seg ...)` | Join path segments with the OS-native separator |
 | `(safe-path-segment? name)` | `#t` iff `name` is a string safe to use as one path component: not empty, not `.` or `..`, and free of a path separator, `:`, `"` and NUL; `#f` for anything else. Use it before joining a user-typed or downloaded name onto a path |
 | `(path-entries dir prefix)` | The names in directory `dir` (relative to the working directory) starting with `prefix` (ignoring letter case on Windows), sorted, each directory's ending in `/` (a link to a directory included), as `:e` completes them: hidden entries only when `prefix` starts with `.`. `'()` when `dir` can't be read |

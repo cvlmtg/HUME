@@ -90,6 +90,20 @@ pub(crate) fn set_cwd(ctx: &mut SteelCtx, path: String) -> SteelResult {
     Ok(SteelVal::Void)
 }
 
+/// `(delete-dir-tree! path)`: removes the directory `path` (a relative one
+/// joins onto `(cwd)`) and everything under it; an absent `path` is a no-op.
+/// The removal is a wait on the OS that can take seconds for a large tree,
+/// so it runs with the session's budget stopped, unlike Steel's own
+/// `delete-directory!`.
+pub(crate) fn delete_dir_tree(ctx: &mut SteelCtx, path: String) -> SteelResult {
+    let dir = ctx.host.buffers().cwd().join(&path);
+    match ctx.while_waiting(|| std::fs::remove_dir_all(&dir)) {
+        Ok(()) => Ok(SteelVal::Void),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(SteelVal::Void),
+        Err(e) => Err(generic_err(format!("delete-dir-tree!: {path}: {e}"))),
+    }
+}
+
 // ── Completion listings ──────────────────────────────────────────────────────
 
 /// `(path-entries dir prefix)`: the names in `dir` (relative to `(cwd)`)

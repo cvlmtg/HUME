@@ -542,6 +542,7 @@ pub(crate) fn plugin_dir(ctx: &mut SteelCtx) -> SteelResult {
 }
 
 pub(super) mod activation;
+pub(crate) use activation::abandon_open_activations;
 pub(crate) mod paths;
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

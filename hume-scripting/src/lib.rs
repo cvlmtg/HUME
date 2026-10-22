@@ -134,6 +134,7 @@ pub(crate) struct HostBundle<'a> {
     /// Owned `Arc` clone: `new_init`/`new_command` consume it via move into
     /// `SteelCtx::interrupt_flag`, avoiding a second clone at eval time.
     interrupt_flag: Arc<AtomicBool>,
+    budget: watchdog::BudgetClock,
 }
 
 /// The embedded Steel scripting host.
@@ -167,10 +168,11 @@ pub struct ScriptingHost {
     /// Data/runtime directories (raw + display form) and the install-lock
     /// root, computed once at construction.
     dirs: builtins::dirs::ScriptDirs,
-    /// Shared interrupt flag.  Set to `true` by the watchdog to signal that
-    /// `(hume/yield!)` calls should abort the running script.  Reset to
-    /// `false` after every eval (command dispatch, hook fires, and plugin
-    /// activation, not just `eval_init`).
+    /// Shared interrupt flag.  Set to `true` by the watchdog when a session's
+    /// budget expires, beside interrupting the VM; it is how the session tells
+    /// an expired budget from an ordinary error.  Reset to `false` after
+    /// every eval (command dispatch, hook fires, and plugin activation, not
+    /// just `eval_init`).
     interrupt_flag: Arc<AtomicBool>,
     /// Persistent budget-enforcement thread, re-armed around every eval.
     watchdog: EvalWatchdog,

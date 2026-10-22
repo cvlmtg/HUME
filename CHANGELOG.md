@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Breaking changes
+- `(hume/yield!)` is gone: the script budget stops a script on its own, so delete any call to it.
+
+### Plugins & scripting
+- `steel-command-budget-ms` and `steel-init-budget-ms` stop a script that runs past them, so a plugin stuck in a loop can't freeze HUME. Time spent waiting for a program or deleting a directory tree doesn't count.
+- New `delete-dir-tree!`, `current-process-id` and `process-alive?`.
+- `:lsp-install` takes over the install lock of a HUME that has exited instead of waiting an hour.
+
 ## [0.16.1] - 2026-10-22
 
 ### Fixes

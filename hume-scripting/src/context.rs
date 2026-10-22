@@ -52,6 +52,8 @@ pub(crate) struct SteelCtx<'a> {
     pub(crate) builtin_cmd_names: crate::command_name::CommandNameSet,
     /// Interrupt flag shared with the `EvalWatchdog`.
     pub(crate) interrupt_flag: Arc<AtomicBool>,
+    /// Stops the session's budget while a builtin waits on the OS.
+    budget: crate::watchdog::BudgetClock,
     // ── Input state and command side-effects ─────────────────────────────────
     /// Register prefix set by `(set-register-prefix! …)` and inherited by
     /// subsequent `(call! …)` calls until changed.  Resets per invocation
@@ -138,6 +140,7 @@ impl<'a> SteelCtx<'a> {
             dirs: host_bundle.dirs,
             builtin_cmd_names,
             interrupt_flag: host_bundle.interrupt_flag,
+            budget: host_bundle.budget,
             current_register_prefix: None,
             session: EvalSession::Init,
             activation_effect_marks: Vec::new(),
@@ -229,6 +232,13 @@ impl<'a> SteelCtx<'a> {
             .extend(tail.into_iter().filter(|e| e.committed));
     }
 
+    /// Runs `wait`, a call that blocks on the OS (a child process, a tree
+    /// delete), with the session's budget stopped: the budget measures the
+    /// time spent running Scheme.
+    pub(crate) fn while_waiting<R>(&self, wait: impl FnOnce() -> R) -> R {
+        self.budget.waiting(wait)
+    }
+
     pub(crate) fn new_command(host: &'a mut dyn EditorHost, host_bundle: HostBundle<'a>) -> Self {
         Self {
             host,
@@ -239,6 +249,7 @@ impl<'a> SteelCtx<'a> {
             dirs: host_bundle.dirs,
             builtin_cmd_names: crate::command_name::CommandNameSet::default(),
             interrupt_flag: host_bundle.interrupt_flag,
+            budget: host_bundle.budget,
             current_register_prefix: None,
             session: EvalSession::Runtime,
             activation_effect_marks: Vec::new(),

@@ -18,7 +18,6 @@ pub(crate) mod fs;
 pub(crate) mod grammar;
 pub(crate) mod hooks;
 pub(crate) mod ids;
-pub(crate) mod interrupt;
 pub(crate) mod io;
 pub(crate) mod json;
 pub(crate) mod keymap_bind;
@@ -135,12 +134,11 @@ macro_rules! builtins {
 // guard and idempotency), eval-string runs it in the live VM, and
 // %finish-lazy-activation! records the outcome. The handler hands the error to
 // %finish-lazy-activation! and returns normally, so a failing plugin never
-// aborts the enclosing eval. The trailing
-// (hume/yield!) then re-checks the interrupt flag with a fresh raise: an
-// exhausted step budget must abort the whole eval, not be recorded as every
-// later plugin failing to load.
+// aborts the enclosing eval. A body stopped by the budget never reaches the
+// handler: the session ending closes its activation instead
+// (abandon_open_activations), and the whole eval fails.
 //
-// load-plugin!: with a manifest.scm, evaluates it under the same handler/yield
+// load-plugin!: with a manifest.scm, evaluates it under the same handler
 // contract, %finish-manifest-load! recording any error.
 //
 // define-typed-command!: the `:` counterpart of define-command!, sharing its
@@ -283,7 +281,6 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd  "get-buffer-option" settings::get_buffer_option(pane: args::LivePane, key: String);
 
         // Step budget
-        open "hume/yield!" interrupt::hume_yield();
 
         // Keymap
         open   "%bind-key!" keymap_bind::bind_key(mode: SteelVal, key_str: String, cmd_name: String, keymap: SteelVal);
@@ -535,6 +532,8 @@ pub(crate) fn register_all(steel: &mut Engine) {
         // gate either, and `stdlib/run!` is a plain helper any plugin body can
         // reach, not a top-level dispatched command.
         open "%run-capture!" process::run_capture(cmd: SteelVal, args: SteelVal, cwd: SteelVal);
+        plain "current-process-id" process::current_process_id();
+        plain "process-alive?" process::process_alive(pid: SteelVal);
 
         cmd "diff-lines" diff::diff_lines(old: SteelVal, new: SteelVal);
         cmd "diff-buffer-lines" diff::diff_buffer_lines(pane: args::LivePane, ref_text: SteelVal);
@@ -548,6 +547,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         open "runtime-dir" fs::runtime_dir();
         open "cwd" fs::cwd();
         cmd "set-cwd!" fs::set_cwd(path: String);
+        open "delete-dir-tree!" fs::delete_dir_tree(path: String);
         open "path-entries" fs::path_entries(dir: String, prefix: String);
         open "path-programs" fs::path_programs(prefix: String, extensions: SteelVal);
         open "%which" fs::which_program(name: String);

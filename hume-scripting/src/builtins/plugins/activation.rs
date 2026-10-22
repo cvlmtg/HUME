@@ -149,14 +149,7 @@ pub(crate) fn finish_lazy_activation(ctx: &mut SteelCtx, error: SteelVal) -> Ste
     ctx.pop_effect_marks(error.is_none());
 
     if let Some(err) = error {
-        fail_plugin_activation(ctx, &id);
-        // Roll back any commands the failed body partially registered.
-        ctx.host.commands().unregister_commands_defined_by(&id);
-
-        // Roll back hooks the failed body registered.
-        ctx.registries.hooks.remove_owned_by(&id);
-
-        ctx.failed_activations.push((id, err));
+        fail_activation_body(ctx, id, err);
     } else {
         ctx.registries
             .lazy_registry
@@ -169,6 +162,37 @@ pub(crate) fn finish_lazy_activation(ctx: &mut SteelCtx, error: SteelVal) -> Ste
     }
 
     Ok(SteelVal::Void)
+}
+
+/// Rolls a failed body's footprint back and records the failure for
+/// `run_steel_session` to report: the entry turns `Failed`, and the commands
+/// and hooks it registered are removed.
+fn fail_activation_body(ctx: &mut SteelCtx, id: EntryId, err: SteelErr) {
+    fail_plugin_activation(ctx, &id);
+    ctx.host.commands().unregister_commands_defined_by(&id);
+    ctx.registries.hooks.remove_owned_by(&id);
+    ctx.failed_activations.push((id, err));
+}
+
+/// Fails every activation and manifest load still open above `depth` when a
+/// session ends, innermost first, with `reason`: the state a caught error
+/// leaves through `%finish-lazy-activation!`/`%finish-manifest-load!`. Their
+/// handlers are Scheme, which a session stopped by its budget never runs.
+pub(crate) fn abandon_open_activations(ctx: &mut SteelCtx, depth: usize, reason: &SteelErr) {
+    while ctx.plugin_stack.len() > depth {
+        let id = ctx
+            .plugin_stack
+            .pop()
+            .expect("the stack is deeper than depth");
+        ctx.pop_effect_marks(false);
+        fail_activation_body(ctx, id, reason.clone());
+    }
+    if let Some(id) = ctx.manifest_resolving.take() {
+        ctx.pop_effect_marks(false);
+        if let Err(e) = fail_manifest_load(ctx, id, reason.clone()) {
+            ctx.log(crate::log::LogLevel::Error, e.to_string());
+        }
+    }
 }
 
 /// `(%lazy-command-owner name)`: return the owning entry as a `(plugin
@@ -251,24 +275,32 @@ pub(crate) fn finish_manifest_load(
     })?;
 
     if let Some(err) = error {
-        // A manifest declares its entries with `declare-plugin!` calls, some
-        // of which may commit before a *later* top-level form in the same
-        // file raises. `hm.eval-string` runs manifest.scm as one program, so
-        // rolling its entries back to `Failed` undoes them: a half-evaluated
-        // manifest.scm never leaves a live command stub behind for a plugin
-        // the user was just told failed to load. The plugin stays in the PLUM
-        // list, so PLUM still offers to install/update it.
-        ctx.registries
-            .plugin_records
-            .resolve(&id, Resolution::ManifestFailed)
-            .map_err(generic_err)?;
-        for entry in ctx.registries.lazy_registry.entries_of(&id) {
-            fail_plugin_activation(ctx, &entry);
-        }
-        ctx.failed_activations.push((EntryId::main(id), err));
+        fail_manifest_load(ctx, id, err)?;
     }
 
     Ok(SteelVal::Void)
+}
+
+/// Marks `id`'s manifest failed and rolls its entries back to `Failed`, then
+/// records the failure for `run_steel_session` to report.
+///
+/// A manifest declares its entries with `declare-plugin!` calls, some of
+/// which may commit before a *later* top-level form in the same file raises.
+/// `hm.eval-string` runs manifest.scm as one program, so rolling its entries
+/// back to `Failed` undoes them: a half-evaluated manifest.scm never leaves a
+/// live command stub behind for a plugin the user was just told failed to
+/// load. The plugin stays in the PLUM list, so PLUM still offers to
+/// install/update it.
+fn fail_manifest_load(ctx: &mut SteelCtx, id: PluginId, err: SteelErr) -> Result<(), SteelErr> {
+    ctx.registries
+        .plugin_records
+        .resolve(&id, Resolution::ManifestFailed)
+        .map_err(generic_err)?;
+    for entry in ctx.registries.lazy_registry.entries_of(&id) {
+        fail_plugin_activation(ctx, &entry);
+    }
+    ctx.failed_activations.push((EntryId::main(id), err));
+    Ok(())
 }
 
 #[cfg(test)]

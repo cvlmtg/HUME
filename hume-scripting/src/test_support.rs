@@ -61,6 +61,7 @@ pub(crate) struct SteelCtxTestHarness {
     pub(crate) effects: Vec<QueuedEffect>,
     pub(crate) dirs: ScriptDirs,
     pub(crate) interrupt_flag: Arc<AtomicBool>,
+    watchdog: crate::watchdog::EvalWatchdog,
 }
 
 /// Builds a [`HostBundle`] from the harness's persistent fields: the shared
@@ -75,6 +76,7 @@ fn bundle<'a>(
     effects: &'a mut Vec<QueuedEffect>,
     dirs: &'a ScriptDirs,
     interrupt_flag: &Arc<AtomicBool>,
+    watchdog: &crate::watchdog::EvalWatchdog,
 ) -> HostBundle<'a> {
     HostBundle {
         registries,
@@ -83,6 +85,7 @@ fn bundle<'a>(
         effects,
         dirs,
         interrupt_flag: Arc::clone(interrupt_flag),
+        budget: watchdog.clock(),
     }
 }
 
@@ -96,6 +99,7 @@ impl SteelCtxTestHarness {
             effects: Vec::new(),
             dirs: ScriptDirs::new(&hume_platform::dirs::Dirs::none()),
             interrupt_flag: Arc::new(AtomicBool::new(false)),
+            watchdog: crate::watchdog::EvalWatchdog::new(),
         }
     }
 
@@ -109,6 +113,7 @@ impl SteelCtxTestHarness {
             effects,
             dirs,
             interrupt_flag,
+            watchdog,
         } = self;
         SteelCtx::new_init(
             host,
@@ -119,6 +124,7 @@ impl SteelCtxTestHarness {
                 effects,
                 dirs,
                 interrupt_flag,
+                watchdog,
             ),
             Default::default(),
         )
@@ -138,6 +144,7 @@ impl SteelCtxTestHarness {
             effects,
             dirs,
             interrupt_flag,
+            watchdog,
             ..
         } = self;
         SteelCtx::new_init(
@@ -149,6 +156,7 @@ impl SteelCtxTestHarness {
                 effects,
                 dirs,
                 interrupt_flag,
+                watchdog,
             ),
             Default::default(),
         )
@@ -165,6 +173,7 @@ impl SteelCtxTestHarness {
             effects,
             dirs,
             interrupt_flag,
+            watchdog,
         } = self;
         SteelCtx::new_activation(
             host,
@@ -175,6 +184,7 @@ impl SteelCtxTestHarness {
                 effects,
                 dirs,
                 interrupt_flag,
+                watchdog,
             ),
             Default::default(),
         )
@@ -190,6 +200,7 @@ impl SteelCtxTestHarness {
             effects,
             dirs,
             interrupt_flag,
+            watchdog,
         } = self;
         SteelCtx::new_command(
             host,
@@ -200,6 +211,7 @@ impl SteelCtxTestHarness {
                 effects,
                 dirs,
                 interrupt_flag,
+                watchdog,
             ),
         )
     }
@@ -218,6 +230,7 @@ impl SteelCtxTestHarness {
             effects,
             dirs,
             interrupt_flag,
+            watchdog,
             ..
         } = self;
         SteelCtx::new_command(
@@ -229,6 +242,7 @@ impl SteelCtxTestHarness {
                 effects,
                 dirs,
                 interrupt_flag,
+                watchdog,
             ),
         )
     }

@@ -85,6 +85,7 @@ impl ScriptingHost {
                 effects,
                 dirs: &*dirs,
                 interrupt_flag: Arc::clone(interrupt_flag),
+                budget: watchdog.clock(),
             },
         )
     }
@@ -265,9 +266,8 @@ impl ScriptingHost {
     /// the caller to apply. `proc` is the one on the registry entry the
     /// editor resolved, so no second lookup can disagree with it.
     ///
-    /// A watchdog thread enforces `host.steel_command_budget_ms()`.  If the
-    /// script runs past the budget, `(hume/yield!)` calls abort it (cooperative
-    /// interruption).
+    /// A watchdog thread enforces `host.steel_command_budget_ms()`: a script
+    /// that runs past it is stopped.
     ///
     /// # Design note: Steel in the signature
     /// `args` is `Vec<SteelVal>` rather than an opaque owned type because the
@@ -434,8 +434,7 @@ impl ScriptingHost {
     /// stale-buffer `LivePane` raise, an arity mismatch) does not abort the
     /// rest of the batch, so one plugin's bug in one hook handler or queued
     /// callback can't silently drop every other one behind it in the same
-    /// batch. A cooperative watchdog interrupt (`hume/yield!`, raised when
-    /// the step budget is exceeded) is the one exception: it means the
+    /// batch. A call stopped by its budget is the one exception: it means the
     /// whole batch's time is spent, not just this call's, so it still
     /// aborts the rest, distinguished by the session's own `interrupted`
     /// flag, read off `ctx.interrupt_flag` before that session resets it,

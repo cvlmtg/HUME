@@ -32,8 +32,10 @@ pub(super) fn run_steel_session<'a, R>(
     budget_ms: u64,
     body: impl FnOnce(&mut Engine) -> Result<R, SteelErr>,
 ) -> Result<(), SessionError> {
+    let open_depth = ctx.plugin_stack.len();
     watchdog.arm(
         Arc::clone(&ctx.interrupt_flag),
+        steel.get_thread_state_controller(),
         std::time::Duration::from_millis(budget_ms),
     );
     // Bound to a `let` (rather than chained straight onto `.map`/`.map_err`)
@@ -53,13 +55,34 @@ pub(super) fn run_steel_session<'a, R>(
             res
         });
     watchdog.cancel();
-    // Read before the reset below, so a caller distinguishing a cooperative
-    // watchdog interrupt (`hume/yield!`) from an ordinary Steel error (see
-    // `SessionError`'s own doc) sees this session's own flag, not whatever
-    // the next session sets it to.
+    // An expired budget leaves the VM raising at every instruction; the next
+    // session must start running.
+    steel.get_thread_state_controller().resume();
+    // Read before the reset below, so a caller distinguishing an expired
+    // budget from an ordinary Steel error (see `SessionError`'s own doc)
+    // sees this session's own flag, not whatever the next session sets it to.
     let interrupted = ctx.interrupt_flag.swap(false, Ordering::Relaxed);
+    let stopped = interrupted.then(|| {
+        crate::builtins::errors::generic_err(format!(
+            "interrupted: ran past its {budget_ms} ms budget"
+        ))
+    });
     if let Some(output) = ctx.host.output() {
         output.truncate_inline_output(0);
+    }
+
+    // An activation or manifest load still open lost its Scheme handler to
+    // the budget (or to an error raised inside that handler).
+    if ctx.plugin_stack.len() > open_depth || ctx.manifest_resolving.is_some() {
+        let reason = stopped
+            .clone()
+            .or_else(|| raw_result.as_ref().err().cloned())
+            .unwrap_or_else(|| {
+                crate::builtins::errors::generic_err(
+                    "the session ended with a plugin activation still open",
+                )
+            });
+        crate::builtins::plugins::abandon_open_activations(ctx, open_depth, &reason);
     }
 
     // A plugin activation contained mid-session (see `finish_lazy_activation`/
@@ -80,15 +103,14 @@ pub(super) fn run_steel_session<'a, R>(
     }
 
     raw_result.map(|_| ()).map_err(|e| SessionError {
-        message: describe_steel_error(steel, &e),
+        message: describe_steel_error(steel, stopped.as_ref().unwrap_or(&e)),
         interrupted,
     })
 }
 
 /// A failed [`run_steel_session`]: the reported message, plus whether the
-/// failure was the watchdog's own cooperative interrupt (`hume/yield!`,
-/// raised when the step budget is exceeded) rather than an ordinary Steel
-/// error (a raised exception, a stale-buffer `LivePane` raise, an arity
+/// failure was the session's budget running out rather than an ordinary
+/// Steel error (a raised exception, a stale-buffer `LivePane` raise, an arity
 /// mismatch). `interrupted` is read off `ctx.interrupt_flag` before this
 /// session resets it. `run_session` reads only `.message`;
 /// `run_tracked_calls` reads `interrupted` to skip the calls queued after an

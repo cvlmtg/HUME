@@ -302,29 +302,30 @@ fn begin_lazy_activation_declared_returns_require_string() {
         r#"(define-command! "p-cmd" "doc" (lambda () 0))"#,
     );
     let id = plugin_id("core:p");
-    let mut host = ScriptingHost::new(&Dirs::none());
-    host.registries
+    let mut h = crate::test_support::SteelCtxTestHarness::new();
+    h.registries
         .lazy_registry
         .plugins
-        .insert(id.clone(), PluginState::Declared { path: path.clone() });
+        .insert(id.clone(), PluginState::Declared { path });
 
-    let program = r#"(define result (%begin-lazy-activation! "core:p" "plugin.scm"))"#;
-    host.eval_source(program, &mut NullHost).unwrap();
+    let result = begin_lazy_activation(
+        &mut h.ctx(),
+        "core:p".into(),
+        SteelVal::StringV("plugin.scm".into()),
+    );
 
-    // Plugin must be in Loading state.
+    assert!(
+        matches!(&result, Ok(SteelVal::StringV(program)) if program.starts_with("(require ")),
+        "got {result:?}"
+    );
     assert!(
         matches!(
-            host.registries.lazy_registry.plugins.get(&id),
+            h.registries.lazy_registry.plugins.get(&id),
             Some(PluginState::Loading)
         ),
         "Declared plugin must be Loading after %begin-lazy-activation!"
     );
-    // plugin_stack must have grown by one: begin pushed the id.
-    assert_eq!(
-        host.plugin_stack_depth_for_test(),
-        1,
-        "plugin_stack depth must be 1"
-    );
+    assert_eq!(h.plugin_stack.len(), 1, "begin pushed the id");
 }
 
 /// `%begin-lazy-activation!` on a `Loading` plugin returns `#f` (cycle guard).
@@ -891,25 +892,20 @@ fn lazy_plugin_can_define_its_own_activation_command() {
     );
 }
 
-// ── Interrupt during activation aborts the enclosing eval ─────────────────
+// ── The budget stopping an activation ────────────────────────────────────
 
-/// A's body raises via `(hume/yield!)` while the interrupt flag is already
-/// set (a real budget exhaustion sets this flag the same way; see
-/// `EvalWatchdog`): A's own activation is contained exactly as any other
-/// body error (Failed, rolled back), but the interrupt itself must not be:
-/// it must abort the whole eval before B ever loads. Without that,
-/// `%dispatch-command!`'s later `(%activate-plugin-inline! "core:b" #f)` would run past an
-/// exhausted budget, and B would falsely be blamed as "failed to load" for
-/// hitting the same still-set flag on its own first `(hume/yield!)`.
-///
-/// The abort comes from the `(hume/yield!)` re-check that
-/// `%activate-plugin-inline!` runs after its `with-handler`.
+/// The budget stops a plugin body that loops past it: the activation is
+/// failed as for any body error, nothing of it is left open for the next
+/// session, and the plugin after it never loads.
 #[test]
-fn interrupt_during_activation_aborts_before_next_plugin_loads() {
-    use std::sync::atomic::Ordering;
-
+fn budget_stopping_a_body_fails_its_activation_and_closes_it() {
     let dir = TempDir::new().unwrap();
-    let path_a = write_plugin(&dir, "a.scm", "(hume/yield!)");
+    let path_a = write_plugin(
+        &dir,
+        "a.scm",
+        r#"(define-command! "a-cmd" "doc" (lambda () 0))
+           (let loop ((n 0)) (if (< n 50000000) (loop (+ n 1)) n))"#,
+    );
     let path_b = write_plugin(
         &dir,
         "b.scm",
@@ -926,31 +922,30 @@ fn interrupt_during_activation_aborts_before_next_plugin_loads() {
         .lazy_registry
         .plugins
         .insert(id_b.clone(), PluginState::Declared { path: path_b });
-
-    host.interrupt_flag_for_test()
-        .store(true, Ordering::Relaxed);
+    let mut store = CommandStoreHost::default();
 
     let src = r##"(%activate-plugin-inline! "core:a" #f) (%activate-plugin-inline! "core:b" #f)"##;
-    let result = host.eval_source(src, &mut CommandStoreHost::default());
+    let result = host.eval_source_watchdog(src, std::time::Duration::from_millis(50), &mut store);
 
     assert!(
         result.is_err(),
-        "an interrupt mid-activation must abort the whole eval; got: {result:?}"
+        "the budget must stop the eval; got: {result:?}"
     );
     assert!(
         matches!(
             host.registries.lazy_registry.plugins.get(&id_a),
             Some(PluginState::Failed)
         ),
-        "A's own activation is still contained and Failed, not silently swallowed"
+        "A's activation is failed"
     );
     assert!(
         matches!(
             host.registries.lazy_registry.plugins.get(&id_b),
             Some(PluginState::Declared { .. })
         ),
-        "B must never have been reached once the abort fired"
+        "B is never reached"
     );
+    assert!(host.plugin_stack.is_empty(), "no activation is left open");
 }
 
 // ── `call!` of a command owned by a Failed plugin ──────────────────────────
@@ -1160,38 +1155,33 @@ fn begin_lazy_activation_at_depth_cap_errors_and_marks_failed() {
 /// Confirms the off-by-one is correct: depth 15 of 16 is still allowed.
 #[test]
 fn begin_lazy_activation_below_depth_cap_succeeds() {
-    use crate::{ScriptingHost, null_host::NullHost};
-    use std::io::Write as _;
-    use tempfile::TempDir;
-
     let dir = TempDir::new().unwrap();
-    let path = dir.path().join("ok.scm");
-    std::fs::File::create(&path)
-        .unwrap()
-        .write_all(b"(define x 1)")
-        .unwrap();
-
-    let id = EntryId::main(PluginId::parse("core:ok").unwrap());
-    let mut host = ScriptingHost::new(&Dirs::none());
-    host.registries
+    let path = write_plugin(&dir, "ok.scm", "(define x 1)");
+    let id = plugin_id("core:ok");
+    let mut h = crate::test_support::SteelCtxTestHarness::new();
+    h.registries
         .lazy_registry
         .plugins
         .insert(id.clone(), PluginState::Declared { path });
     // One below the cap: must still be allowed.
-    let dummy = EntryId::main(PluginId::parse("core:dummy").unwrap());
+    let dummy = plugin_id("core:dummy");
     for _ in 0..MAX_ACTIVATION_DEPTH - 1 {
-        host.push_plugin_for_test(dummy.clone());
+        h.plugin_stack.push(dummy.clone());
     }
 
-    // Transition to Loading and return the require-string (not an error).
-    let result = host.eval_source(
-        r#"(%begin-lazy-activation! "core:ok" "plugin.scm")"#,
-        &mut NullHost,
+    let result = begin_lazy_activation(
+        &mut h.ctx(),
+        "core:ok".into(),
+        SteelVal::StringV("plugin.scm".into()),
     );
-    assert!(result.is_ok(), "depth below cap must be allowed; got Err");
+
+    assert!(
+        result.is_ok(),
+        "depth below cap must be allowed; got {result:?}"
+    );
     assert!(
         matches!(
-            host.registries.lazy_registry.plugins.get(&id),
+            h.registries.lazy_registry.plugins.get(&id),
             Some(PluginState::Loading)
         ),
         "plugin must be Loading after successful %begin-lazy-activation!"
@@ -1283,39 +1273,33 @@ fn begin_lazy_activation_depth_cap_cleans_up_activation_entries_and_stub() {
 /// inside a Steel string literal without producing an invalid-escape error.
 ///
 /// This test inserts a synthetic backslash-bearing path without creating a
-/// real file; it checks only the returned require-string by comparing against
-/// the hand-computed expected value via Steel's `equal?`.
+/// real file; it checks only the returned require-string against the
+/// hand-computed expected value.
 #[test]
 fn begin_lazy_activation_escapes_backslashes_in_path() {
-    use crate::{ScriptingHost, null_host::NullHost};
-    use std::path::PathBuf;
-
-    let id = EntryId::main(PluginId::parse("core:winpath").unwrap());
-    let mut host = ScriptingHost::new(&Dirs::none());
-    host.registries.lazy_registry.plugins.insert(
+    let id = plugin_id("core:winpath");
+    let mut h = crate::test_support::SteelCtxTestHarness::new();
+    h.registries.lazy_registry.plugins.insert(
         id.clone(),
         PluginState::Declared {
-            path: PathBuf::from(r"C:\Users\x\plugin.scm"),
+            path: std::path::PathBuf::from(r"C:\Users\x\plugin.scm"),
         },
     );
 
-    // Each `\` in the path is doubled, so the Steel string value held in
-    // `__result` is:
-    //   (require "C:\\Users\\x\\plugin.scm")
-    // To express that as a Steel string literal we double every `\` again:
-    //   "(require \"C:\\\\Users\\\\x\\\\plugin.scm\")"
-    // In a Rust raw string (r#"…"#) there is no further Rust escaping.
-    let program = r#"
-(define __result (%begin-lazy-activation! "core:winpath" "plugin.scm"))
-(when (not (equal? __result "(require \"C:\\\\Users\\\\x\\\\plugin.scm\")"))
-  (error (string-append "backslash escaping wrong; got: " __result)))
-"#;
-    host.eval_source(program, &mut NullHost)
-        .expect("backslashes in path must be doubled for Steel string embedding");
+    let result = begin_lazy_activation(
+        &mut h.ctx(),
+        "core:winpath".into(),
+        SteelVal::StringV("plugin.scm".into()),
+    );
 
     assert!(
+        matches!(&result, Ok(SteelVal::StringV(program))
+            if program.as_str() == r#"(require "C:\\Users\\x\\plugin.scm")"#),
+        "backslashes in path must be doubled for Steel string embedding; got {result:?}"
+    );
+    assert!(
         matches!(
-            host.registries.lazy_registry.plugins.get(&id),
+            h.registries.lazy_registry.plugins.get(&id),
             Some(PluginState::Loading)
         ),
         "plugin must be Loading after %begin-lazy-activation!"

@@ -89,42 +89,6 @@ fn uncaught_native_error_propagates_one_hop_to_outer_tolerant_handler() {
         .expect("uncaught native error one-hop propagation to outer handler failed");
 }
 
-/// Characterizes the pattern `%activate-plugin-inline!` (`bootstrap.scm`)
-/// relies on for aborting on an interrupt: a *fresh* raise placed
-/// sequentially *after* a `with-handler` form returns is an ordinary
-/// uncaught raise from that point onward, and propagates one hop per
-/// nesting level even when a caught-and-returned handler sits at every
-/// level (a plugin activating a plugin activating a plugin, each checking
-/// the interrupt flag once its own body settles).
-#[test]
-fn fresh_raise_after_handler_return_propagates_cleanly_through_nested_levels() {
-    let mut host = ScriptingHost::new(&Dirs::none());
-    let mut null_host = NullHost;
-    let src = r#"
-        (define (inner)
-          (with-handler
-            (lambda (err) #f)
-            (begin 1 2 3))
-          (error "inner-yield-interrupt"))
-
-        (define (outer)
-          (with-handler
-            (lambda (err) (list 'caught err))
-            (inner))
-          (error "outer-yield-interrupt"))
-
-        (outer)
-    "#;
-    let err = host
-        .eval_source(src, &mut null_host)
-        .expect_err("outer's post-handler raise must escape uncaught");
-    assert!(
-        err.contains("outer-yield-interrupt"),
-        "expected outer's own fresh raise to be the one that escapes, not inner's \
-         (already caught by outer's handler) or VM corruption; got {err:?}"
-    );
-}
-
 /// `dynamic-wind`'s after thunk runs when its body raises a native error
 /// that an outer `with-handler` catches.
 #[test]

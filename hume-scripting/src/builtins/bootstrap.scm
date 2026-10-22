@@ -18,8 +18,7 @@
       ((string? next)
        (with-handler
          (lambda (e) (%finish-manifest-load! name e))
-         (begin (hm.eval-string next) (%finish-manifest-load! name #f)))
-       (hume/yield!))
+         (begin (hm.eval-string next) (%finish-manifest-load! name #f))))
       (next (%activate-plugin-inline! name #f)))))
 
 (define (%activate-plugin-inline! plugin entry)
@@ -27,8 +26,7 @@
     (when prog
       (with-handler
         (lambda (e) (%finish-lazy-activation! e))
-        (begin (hm.eval-string prog) (%finish-lazy-activation! #f)))
-      (hume/yield!))))
+        (begin (hm.eval-string prog) (%finish-lazy-activation! #f))))))
 
 (define (define-command! name doc proc
                          #:repeatable    [repeatable    #f]

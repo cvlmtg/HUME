@@ -163,9 +163,13 @@ uninstall both use it, so two HUME processes, or two `:lsp-install` calls, never
 the same server directory at once.
 
 - The file is created with `open-output-file`, which fails on an existing file, so creation
-  is atomic.
-- A lock older than an hour is replaced with a warning. One whose mtime is in the future
-  (clock skew) counts as live.
+  is atomic. It holds the process id of the HUME that took it.
+- A lock whose process has exited is replaced with a warning. That is how a lock left by
+  an install the script budget stopped is recovered: a stopped script runs no cleanup, so
+  `with-lock!` never released it.
+- A lock with no readable process id, or whose process is still running, is replaced with a
+  warning once it is older than an hour, in case the id now belongs to an unrelated process.
+  One whose mtime is in the future (clock skew) counts as live.
 - The thunk's error is not re-raised: every failure path ends in a plain log line. The function answers `#t` on success and
   `#f` on any failure, so a lock that could not be taken and a thunk that raised look the
   same to the caller.

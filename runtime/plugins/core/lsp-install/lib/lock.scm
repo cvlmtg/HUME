@@ -12,7 +12,16 @@
 
 (define (lsp-install/create-lock! path)
   (with-handler (lambda (err) #f)
-    (begin (close-output-port (open-output-file path)) #t)))
+    (let ((port (open-output-file path)))
+      (write-string (number->string (current-process-id)) port)
+      (close-output-port port)
+      #t)))
+
+;;; See docs/servers.md's "Install lock".
+(define (lsp-install/lock-owner path)
+  (with-handler (lambda (err) #f)
+    (let ((pid (string->number (trim (call-with-input-file path read-port-to-string)))))
+      (and (integer? pid) (> pid 0) pid))))
 
 (define (lsp-install/lock-stale? path)
   (with-handler (lambda (err) #f)
@@ -27,11 +36,17 @@
     (unless (lsp-install/create-lock! path)
       (unless (path-exists? path)
         (error (string-append "lsp-install/acquire-lock!: cannot create lock at " path)))
-      (unless (lsp-install/lock-stale? path)
-        (error "lsp-install/acquire-lock!: another install/uninstall is already in progress"))
-      (log! 'warn (string-append "LSP: stale install lock (older than "
-                               (number->string (quotient lsp-install/lock-stale-seconds 3600))
-                               "h), replacing"))
+      (let* ((owner (lsp-install/lock-owner path))
+             (exited? (and owner (not (process-alive? owner)))))
+        (unless (or exited? (lsp-install/lock-stale? path))
+          (error "lsp-install/acquire-lock!: another install/uninstall is already in progress"))
+        (log! 'warn
+          (if exited?
+              (string-append "LSP: install lock left by process " (number->string owner)
+                             ", which has exited, replacing")
+              (string-append "LSP: stale install lock (older than "
+                             (number->string (quotient lsp-install/lock-stale-seconds 3600))
+                             "h), replacing"))))
       (call! "stdlib/delete-file!" path)
       (unless (lsp-install/create-lock! path)
         (error (string-append "lsp-install/acquire-lock!: cannot create lock after removing stale one at "

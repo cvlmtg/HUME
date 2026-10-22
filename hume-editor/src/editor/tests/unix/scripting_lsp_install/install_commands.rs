@@ -168,6 +168,56 @@ fn lsp_install_refuses_when_the_cross_process_lock_is_already_held() {
     );
 }
 
+/// A lock whose owning process has exited is reclaimed with a warning: an
+/// install the script budget stopped before it released the lock does not
+/// block the next one.
+#[test]
+fn lsp_install_reclaims_a_lock_whose_owner_has_exited() {
+    let data_tmp = tempfile::tempdir().unwrap();
+    let servers_dir = canonical_data_dir(data_tmp.path()).join("servers");
+    std::fs::create_dir_all(&servers_dir).unwrap();
+    let mut exited = std::process::Command::new("true").spawn().unwrap();
+    exited.wait().unwrap();
+    std::fs::write(servers_dir.join(".install-lock"), exited.id().to_string()).unwrap();
+
+    let mut ed = editor_from("-[x]>\n");
+    load_lsp_install(&mut ed, data_tmp.path());
+    type_cmd(&mut ed, ":lsp-install ocaml");
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("has exited"),
+        "the reclaim must be reported: {log}"
+    );
+    assert!(
+        !log.contains("already in progress"),
+        "a lock whose owner has exited must not refuse the install: {log}"
+    );
+}
+
+/// A lock its running owner holds refuses the install.
+#[test]
+fn lsp_install_refuses_a_lock_its_running_owner_holds() {
+    let data_tmp = tempfile::tempdir().unwrap();
+    let servers_dir = canonical_data_dir(data_tmp.path()).join("servers");
+    std::fs::create_dir_all(&servers_dir).unwrap();
+    std::fs::write(
+        servers_dir.join(".install-lock"),
+        std::process::id().to_string(),
+    )
+    .unwrap();
+
+    let mut ed = editor_from("-[x]>\n");
+    load_lsp_install(&mut ed, data_tmp.path());
+    type_cmd(&mut ed, ":lsp-install rust");
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("already in progress"),
+        "a running owner's lock must refuse the install: {log}"
+    );
+}
+
 /// Proves the minibuffer's `IntV(1)` no-arg sentinel (see
 /// `dispatch.rs`'s `marshal_leading_args`) takes the buffer-language
 /// fallback branch, not the "no argument given" branch: a made-up language

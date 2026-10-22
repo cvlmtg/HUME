@@ -37,27 +37,40 @@ command calls and hook handlers.
 If the eval returns within the budget, the watchdog is told to stand down
 before it can fire — and the standing-down call waits for the watchdog's
 acknowledgement, so a timer that is already mid-expiry cannot leak its
-interrupt into the *next* evaluation's budget. If the budget expires first,
-the watchdog sets a shared flag to `true`.
+interrupt into the *next* evaluation's budget.
 
-Scripts cooperate by calling `(hume/yield!)` at their yield points — the Steel
-equivalent of "check if I should stop". Each `(hume/yield!)` call reads the
-flag. If it's set, the call aborts the script with an error.
+If the budget expires first, the watchdog interrupts the script itself. Steel
+checks, before every instruction it executes, whether the thread running it
+has been told to stop, and the watchdog thread can set that state from
+outside. From then on every instruction raises an error, so the script stops
+wherever it is, even in a loop that never calls into the editor. The state is
+*sticky*: it stays set until the evaluation is over, so an error handler in
+the script cannot catch the interrupt and carry on, but it also means none of
+the script's own clean-up handlers run. HUME clears it before the next
+evaluation starts.
 
-The cancellation is *cooperative*: HUME cannot forcibly stop a Steel program
-mid-instruction the way an OS can terminate a process. A script that never
-calls `(hume/yield!)` will still run to completion even after the budget
-expires — the flag is only an interrupt request, not a hard kill. For well-
-behaved plugins this is invisible; for misbehaving or long-running ones it
-bounds the freeze to the interval between yield points.
+A plugin that was loading when its budget ran out is left half-run, and its
+own error handling never gets the chance to mark it failed. The evaluation's
+end does it instead: every plugin load still open is marked failed and its
+commands and hooks are removed, the same as when its body raises an error.
+
+## What the budget counts
+
+The budget measures time spent *running Scheme*, not wall-clock time. A
+plugin that clones a git repository, downloads a language server, or deletes
+a large directory spends most of its time waiting on the operating system,
+and none of that is the script misbehaving. The editor builtins that wait
+this way (running a program and waiting for it, compiling a grammar,
+deleting a directory tree) tell the watchdog when a wait starts and ends; the
+watchdog stops its clock in between and resumes it with whatever budget was
+left. A one-second command budget therefore stops a runaway loop after one
+second of looping, but lets an install that waits two minutes on `git` finish.
+
+## Waiting without polling
 
 While armed, the watchdog thread sleeps in a wake-on-message wait rather than
 a plain sleep, and re-checks the deadline every time it wakes rather than
 trusting the wake itself as a signal to fire — an early or spurious wake can
 never trip the interrupt before the budget has actually elapsed. This also
 means standing the watchdog down is fast: no waiting out the remainder of the
-budget on the common case where the eval finishes early. The interrupt flag
-is reset right after every eval, so a trip on one eval cannot bleed into the
-next. The mechanism is designed so that a future Ctrl-c handler can set the
-same flag from outside the script and abort long-running code by the same
-cooperative protocol — for now that wiring is not yet hooked up.
+budget on the common case where the eval finishes early.
