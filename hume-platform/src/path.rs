@@ -352,10 +352,15 @@ pub fn executables_in(
         };
         for entry in entries.flatten() {
             let file_name = entry.file_name();
-            let Some(program) = file_name
-                .to_str()
-                .and_then(|name| program_name(&entry, name, prefix, extensions))
-            else {
+            let Some(name) = file_name.to_str() else {
+                continue;
+            };
+            // On Unix a program is keyed by its file name and the first one
+            // on the path wins, so a name already listed skips the `stat`.
+            if cfg!(unix) && names.contains_key(name) {
+                continue;
+            }
+            let Some(program) = program_name(&entry, name, prefix, extensions) else {
                 continue;
             };
             let key = if cfg!(windows) {
