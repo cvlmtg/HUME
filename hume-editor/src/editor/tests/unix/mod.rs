@@ -484,7 +484,7 @@ impl StagedGrammarFixture {
 // ── Shared plugin-loading helpers ─────────────────────────────────────────────
 //
 // Shared by every test file that loads a real core plugin from disk into an
-// isolated data and runtime directory (`scripting_lsp_install.rs`,
+// isolated data and runtime directory (`scripting_lsp_install/`,
 // `scripting_theme_install.rs`, `injections_editor.rs`).
 
 /// Canonicalizes `root` (mirrors what `hume_scripting`'s `ScriptDirs::new`

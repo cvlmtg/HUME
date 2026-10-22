@@ -400,7 +400,7 @@ fn plum_install_grammar_tab_completes_a_declared_name() {
 fn install_real_json_grammar_e2e() {
     // git and curl are spawned by unqualified name below, so this
     // test is a `PATH` reader for its whole duration.
-    // `scripting_lsp_install.rs` narrows process `PATH` to an empty or
+    // `scripting_lsp_install/` narrows process `PATH` to an empty or
     // shim-only dir in several tests, and a spawn landing inside that window
     // resolves to nothing (see `PathReader`'s doc).
     let _path = path_reader();

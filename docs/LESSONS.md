@@ -542,7 +542,7 @@ path, so they waited for the next keystroke — forever, on an idle editor.
 
 **Files:** `hume-editor/src/editor/commands/typed_buffer.rs`
 (`check_all_disk_state`), `hume-editor/src/editor/event/pump.rs`
-(`check_all_disk_state`), `hume-editor/src/editor/tests/disk_change.rs`
+(`check_all_disk_state`), `hume-editor/src/editor/tests/disk_change/`
 (`enter_buffer_with_jump`), `hume-scripting/src/lib.rs` (`focused_buffer_id`).
 
 ---
@@ -599,7 +599,7 @@ the spawn instant — and no reader was required to hold a claim at all.
 **Concrete instance:** `install_real_json_grammar_e2e`
 (`hume-editor/src/editor/tests/unix/scripting_grammar.rs`) spawns `git`,
 `curl`, and `tree-sitter` by name with no `TEST_GLOBALS` claim.
-`scripting_lsp_install.rs` has four tests that claim `PATH` and then
+`scripting_lsp_install/` has four tests that claim `PATH` and then
 narrow `PATH` to an empty (or shim-only) directory. A spawn from the e2e
 test landing inside one of those windows resolved to nothing — `Os { code:
 2, kind: NotFound }` — reproducing exactly under `--test-threads=16` at
