@@ -241,7 +241,7 @@ A `registrations/` record omits each default field: `command` when it equals the
 
 - **`#:settings` wired up**: pushed once as `workspace/didChangeConfiguration` after
   `initialized`, resolved per-item to answer `workspace/configuration` pull requests.
-  Mechanism: `hume-lsp/src/client.rs`'s `resolve_config_section`.
+  Mechanism: `hume-lsp/src/server_request.rs`'s `resolve_config_section`.
 - **Seeded catalog delivers its config correctly**: a `registrations/` record's `config` field is
   delivered as **both** `#:init-options` and `#:settings` by `core:lsp-install/lib/register.scm`,
   as the same blob goes to both — see

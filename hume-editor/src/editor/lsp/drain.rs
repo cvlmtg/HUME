@@ -8,8 +8,9 @@ use rustc_hash::FxHashSet;
 
 use hume_engine::pipeline::BufferId;
 use hume_lsp::backend::ServerId;
-use hume_lsp::client::{ClientAction, Outcome, RequestMeta, ServerState, server_request_response};
+use hume_lsp::client::{ClientAction, Outcome, RequestMeta, ServerState};
 use hume_lsp::codec::{Message, RequestId};
+use hume_lsp::server_request::server_request_response;
 use lsp_types::request::Request as _;
 
 use super::LspState;

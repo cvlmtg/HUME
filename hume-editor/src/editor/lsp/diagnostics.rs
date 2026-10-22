@@ -8,7 +8,7 @@ use std::sync::Arc;
 use hume_editing::changeset::ChangeSet;
 use hume_engine::pipeline::BufferId;
 use hume_lsp::backend::ServerId;
-use hume_lsp::client::{PublishedDiagnostics, WireDiagnostic};
+use hume_lsp::diagnostic::{PublishedDiagnostics, WireDiagnostic};
 use hume_lsp::sync::wire_version;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 #[cfg(test)]

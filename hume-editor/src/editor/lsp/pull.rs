@@ -8,7 +8,7 @@
 
 use hume_engine::pipeline::BufferId;
 use hume_lsp::backend::ServerId;
-use hume_lsp::client::parse_wire_diagnostics;
+use hume_lsp::diagnostic::{PullReport, parse_pull_report};
 use hume_scripting::{CapabilityQuery, LspFeature};
 use lsp_types::request::{DocumentDiagnosticRequest, Request as _};
 
@@ -113,7 +113,7 @@ impl EditorState {
             return;
         }
         let name = self.lsp_server_name(sid);
-        let mut report = match answer {
+        let report = match answer {
             Ok(report) => report,
             Err(error) => {
                 self.buffer_positions.lsp.set_pulled_at(bid, sid, None);
@@ -124,35 +124,16 @@ impl EditorState {
                 return;
             }
         };
-        let result_id = report
-            .get("resultId")
-            .and_then(serde_json::Value::as_str)
-            .map(str::to_owned);
-        match report.get("kind").and_then(serde_json::Value::as_str) {
-            Some("unchanged") => self
+        match parse_pull_report(report) {
+            Ok(PullReport::Unchanged { result_id }) => self
                 .buffer_positions
                 .lsp
                 .set_pull_result_id(bid, sid, result_id),
-            Some("full") => {
-                let Some(items) = report
-                    .get_mut("items")
-                    .and_then(serde_json::Value::as_array_mut)
-                else {
-                    self.report(
-                        Severity::Trace,
-                        format!("lsp: '{name}' sent a diagnostics report without items"),
-                    );
-                    return;
-                };
-                let Some((diagnostics, skipped)) = parse_wire_diagnostics(items) else {
-                    self.report(
-                        Severity::Trace,
-                        format!(
-                            "lsp: '{name}' sent a diagnostics report none of whose items parse"
-                        ),
-                    );
-                    return;
-                };
+            Ok(PullReport::Full {
+                result_id,
+                diagnostics,
+                skipped,
+            }) => {
                 self.note_skipped_diagnostics(sid, &skipped);
                 if self.store_server_diagnostics(sid, bid, diagnostics) {
                     self.buffer_positions
@@ -161,10 +142,7 @@ impl EditorState {
                     self.queue_event(EditorEvent::OnDiagnosticsChanged { buffer: bid });
                 }
             }
-            _ => self.report(
-                Severity::Trace,
-                format!("lsp: '{name}' sent a diagnostics report of an unknown kind"),
-            ),
+            Err(error) => self.report(Severity::Trace, format!("lsp: '{name}' sent {error}")),
         }
     }
 }

@@ -304,7 +304,7 @@ impl CompletionItem {
     ///
     /// An LSP item needs no exemption from this: HUME
     /// advertises no `completionItem.resolveSupport`
-    /// (`hume-lsp/src/client.rs`), so a server must send whatever
+    /// (`hume-lsp/src/initialize.rs`), so a server must send whatever
     /// `additionalTextEdits` it has *with* the item, not lazily via
     /// `completionItem/resolve`: an auto-import on an otherwise-typed name
     /// arrives as a non-empty `additional_text_edits` here, which is a real

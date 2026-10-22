@@ -288,7 +288,7 @@ fn a_diagnostic_that_does_not_parse_does_not_hide_the_rest() {
 fn skipped_diagnostics_are_warned_about_once_per_server() {
     let tmp = tempfile::tempdir().unwrap();
     let (mut rig, sid, _bid, uri) = plain_rig(&tmp, "one two three\n");
-    let publish = || hume_lsp::client::PublishedDiagnostics {
+    let publish = || hume_lsp::diagnostic::PublishedDiagnostics {
         uri: uri.parse().unwrap(),
         version: None,
         diagnostics: Vec::new(),

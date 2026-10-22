@@ -18,7 +18,10 @@
 //! - `transport`: server process management: reader/writer/stderr threads.
 //! - `backend`: the `LspBackend` trait + `ThreadedLspBackend`.
 //! - `inline`: `InlineLspBackend`, the scripted test double.
-//! - `client`: lifecycle, request bookkeeping.
+//! - `client`: lifecycle, request bookkeeping, notification classification.
+//! - `initialize`: the `initialize` params and advertised client capabilities.
+//! - `diagnostic`: pushed and pulled diagnostic decoding.
+//! - `server_request`: answers to server-initiated requests.
 //! - `sync`: `ChangeSet` → `TextDocumentContentChangeEvent[]`.
 //! - `test_util` (behind the `test-util` feature): cross-crate test doubles.
 
@@ -29,10 +32,13 @@ pub mod backend;
 pub mod client;
 pub mod codec;
 pub mod completion_item;
+pub mod diagnostic;
+mod initialize;
 #[cfg(any(test, feature = "test-util"))]
 pub mod inline;
 pub mod location;
 pub mod position;
+pub mod server_request;
 pub mod sync;
 #[cfg(any(test, feature = "test-util"))]
 pub mod test_util;
