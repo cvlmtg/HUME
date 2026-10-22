@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [0.16.0] - 2026-10-22
+
 ### Breaking changes
 - Grammars are compiled by `hume-grammar-build`, which ships beside `hume`: `libexec/hume/` in the macOS and Linux archives, `hume-grammar-build.exe` in the Windows one. Copy it along with `hume` when you install by hand, and name both packages with `cargo install`: `cargo install --git https://github.com/cvlmtg/HUME hume-editor hume-grammar-build`.
 - Key-bindable commands of the core plugins take their plugin's prefix. Rename them in your bindings and `call!`s: `lsp-fmt` is `lsp/format-source`, the other `lsp-*` commands and `goto-next-diagnostic`/`goto-prev-diagnostic` take `lsp/` (`lsp/hover`, `lsp/goto-next-diagnostic`), `toggle-undotree` is `undotree/toggle`, `picker-*` are `pickers/*`, `plum-ensure-grammars` is `plum/ensure-grammars`, `classic-*` and `vim-*` are `classic-paste/*` and `vim-keybind/*`, and `helix-delete-surround`/`helix-replace-surround` are `helix-surround/delete`/`helix-surround/replace`. Typed `:` commands keep their names.
