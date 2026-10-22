@@ -8,6 +8,7 @@
 //! buffers, ropes, and grammars.
 
 #![deny(rustdoc::broken_intra_doc_links)]
+#![deny(rustdoc::private_intra_doc_links)]
 
 mod edited_bytes;
 mod edits;

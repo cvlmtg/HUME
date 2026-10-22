@@ -10,6 +10,7 @@
 //! Plugin decoration stores and their providers live in `hume-decorations`.
 
 #![deny(rustdoc::broken_intra_doc_links)]
+#![deny(rustdoc::private_intra_doc_links)]
 
 pub mod drawer;
 pub mod menu_box;

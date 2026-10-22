@@ -30,10 +30,11 @@ python3 -m unittest discover -s scripts/tests
 # those is a separate decision, not a side effect of this one.
 cargo clippy --workspace --all-targets -- -D clippy::disallowed_methods -D clippy::unwrap_used
 
-# Every crate root denies `rustdoc::broken_intra_doc_links` — this is what
-# actually evaluates those links, since the attribute alone is inert without
-# a `cargo doc` run to check it against. Private items too: most of the
-# workspace's docs sit on crate-private items.
+# Every crate root denies `rustdoc::broken_intra_doc_links` and
+# `rustdoc::private_intra_doc_links` — this is what actually evaluates those
+# links, since the attributes alone are inert without a `cargo doc` run to
+# check them against. Private items too: most of the workspace's docs sit on
+# crate-private items.
 cargo doc --workspace --no-deps --document-private-items
 
 cargo test --all-targets

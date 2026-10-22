@@ -297,10 +297,11 @@ fn name_starts_with(name: &str, prefix: &str) -> bool {
 
 /// The names in directory `dir` that start with `prefix`, sorted, each
 /// directory with a trailing `/`: what a typed path completes to. A
-/// symlink is listed as what it points at. Names match as
-/// [`name_starts_with`] compares them. Hidden entries (a leading `.`) are
-/// left out unless `prefix` starts with `.`, and with `dirs_only` every
-/// non-directory is. An unreadable directory lists nothing.
+/// symlink is listed as what it points at. Names match `prefix` as the
+/// file system compares them: without regard to ASCII case on Windows.
+/// Hidden entries (a leading `.`) are left out unless `prefix` starts with
+/// `.`, and with `dirs_only` every non-directory is. An unreadable
+/// directory lists nothing.
 pub fn completion_entries(dir: &Path, prefix: &str, dirs_only: bool) -> Vec<String> {
     let include_hidden = prefix.starts_with('.');
     let Ok(entries) = std::fs::read_dir(dir) else {
@@ -337,9 +338,10 @@ pub fn completion_entries(dir: &Path, prefix: &str, dirs_only: bool) -> Vec<Stri
 /// On Unix a program is a file (a symlink is followed) with any execute
 /// bit set, and `extensions` is unused. On Windows it is a file whose name
 /// ends with one of `extensions` (`.exe`, as `sh` adds to a bare name, or
-/// `PATHEXT`'s list), named by its stem. Names match as
-/// [`name_starts_with`] compares them, collapse the same way on Windows,
-/// and the spelling listed is the first one on the path.
+/// `PATHEXT`'s list), named by its stem. Names match `prefix` as the file
+/// system compares them, without regard to ASCII case on Windows, where
+/// names differing only in ASCII case are listed once. The spelling listed
+/// is the first one on the path.
 pub fn executables_in(
     search_path: &std::ffi::OsStr,
     prefix: &str,
