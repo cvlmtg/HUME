@@ -141,7 +141,7 @@ fn severity_floor_hides_less_severe_diagnostics() {
 
 /// Byte offsets are hand-computed from the known ASCII
 /// content, not derived by calling the code under test (matches the
-/// multiline search-match test's convention in `multi_pane.rs`).
+/// multiline search-match test's convention in `multi_pane/split_inheritance.rs`).
 #[test]
 fn multiline_diagnostic_splits_into_per_line_spans() {
     // "abc\ndef\n": a diagnostic covering char 2 ('c') through char 6 ('f'),

@@ -313,7 +313,7 @@ fn a_wheel_notch_in_a_zero_height_pane_leaves_the_viewport_alone() {
 /// Terminal width 100, one real buffer line: `:vsplit` (1-column seam,
 /// `split_rect`'s `0.5` ratio) gives pane A `x ∈ [0, 49)`, pane B
 /// `x ∈ [50, 100)`, the same halves `vsplit_sizes_both_panes_from_layout`
-/// (`multi_pane.rs`) pins.
+/// (`multi_pane/split_layout.rs`) pins.
 ///
 /// Gutter width differs *by pane*, not just by test. Worth spelling out
 /// since it's easy to assume otherwise: pane A is the original
@@ -576,7 +576,7 @@ fn a_wheel_notch_outside_every_pane_scrolls_the_focused_pane() {
 /// Terminal height 25 (24 usable after the statusline): `:split` (1-row
 /// seam, ratio 0.5) gives pane A (top) `y ∈ [0, 11)`, pane B (bottom)
 /// `y ∈ [12, 24)`, the same halves `split_sizes_both_panes_stacked`
-/// (`multi_pane.rs`) pins. Pane B is `:split`'s freshly-opened pane (via
+/// (`multi_pane/split_layout.rs`) pins. Pane B is `:split`'s freshly-opened pane (via
 /// `build_pane`), so its gutter is 4 (line-number digit_count(5) + 1 = 2,
 /// sign column default width 2; see the `:vsplit` test above for why this
 /// differs from the source pane).

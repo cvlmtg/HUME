@@ -98,7 +98,7 @@ fn run_command_sync_unknown_name_errors() {
 }
 
 /// `run_command_sync` on a native command that refuses outright (here:
-/// `pane-vsplit` too small to fit; see `multi_pane.rs`'s
+/// `pane-vsplit` too small to fit; see `multi_pane/split_layout.rs`'s
 /// `vsplit_too_narrow_is_noop_with_warning` for the Rust-level guard this
 /// exercises through the Steel sync path) must return `Ok(false)`. This is
 /// the value `stdlib/with-pane-command` reads via `call!` to decide whether

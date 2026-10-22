@@ -1,5 +1,5 @@
 ---
-source: hume-editor/src/editor/tests/multi_pane.rs
+source: hume-editor/src/editor/tests/multi_pane/rendering_and_quit.rs
 expression: "render_to_styled_string(&mut ed, rect)"
 ---
 <fg=#32302f,bg=#736b5e>a</><fg=#8a826d,bg=#32302f>bc</>
