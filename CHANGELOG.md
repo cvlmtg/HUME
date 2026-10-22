@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Fixes
+- Installing into `~/.local` no longer mixes the bundled plugins and themes with your own: the macOS and Linux archives keep them in `share/hume/runtime/`. HUME refuses to start when `HUME_RUNTIME` points at the data directory.
+
 ## [0.16.0] - 2026-10-22
 
 ### Breaking changes

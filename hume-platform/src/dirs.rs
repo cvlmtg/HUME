@@ -57,11 +57,34 @@ pub enum GrammarBuild {
     ExeUnknown,
 }
 
+/// Why the resolved directories cannot be used.
+#[derive(Debug, PartialEq, Eq)]
+pub enum DirsError {
+    /// The runtime dir is the data dir, so the bundled `plugins/core/` and
+    /// `themes/` would read as user-installed ones.
+    RuntimeIsDataDir(PathBuf),
+}
+
+impl std::fmt::Display for DirsError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::RuntimeIsDataDir(dir) => write!(
+                f,
+                "the runtime directory {} is also the data directory; \
+                 set HUME_RUNTIME to a separate copy of runtime/",
+                dir.display()
+            ),
+        }
+    }
+}
+
+impl std::error::Error for DirsError {}
+
 impl Dirs {
     /// Resolve every directory from the process environment and the
     /// executable. `cwd` is the startup working directory that relative values
     /// are pinned to.
-    pub fn from_env(cwd: &std::path::Path) -> Self {
+    pub fn from_env(cwd: &std::path::Path) -> Result<Self, DirsError> {
         Self::resolve(
             env_var,
             env::current_exe().ok(),
@@ -75,17 +98,20 @@ impl Dirs {
     /// onto `cwd` here, once, so it keeps naming the same place after the
     /// working directory moves. Without a `cwd` there is nothing to join onto
     /// and values stay as given.
+    ///
+    /// A runtime dir that is the data dir, spelled alike or through a
+    /// symlink, is an error.
     fn resolve(
         env: impl Fn(&str) -> Option<String>,
         exe: Option<PathBuf>,
         cwd: Option<PathBuf>,
         tmp: PathBuf,
-    ) -> Self {
+    ) -> Result<Self, DirsError> {
         let pin = |dir: PathBuf| match &cwd {
             Some(cwd) => crate::path::absolute_unresolved(&dir, cwd),
             None => dir,
         };
-        Self {
+        let dirs = Self {
             config: config_dir_with(&env).map(pin),
             data: data_dir_with(&env).map(pin),
             grammar_build: exe
@@ -93,7 +119,17 @@ impl Dirs {
                 .map_or(GrammarBuild::ExeUnknown, GrammarBuild::beside),
             runtime: runtime_dir_with(&env, exe, cwd.clone()).map(pin),
             tmp: Some(pin(tmp)),
+        };
+        if let (Some(runtime), Some(data)) = (&dirs.runtime, &dirs.data)
+            && (runtime == data
+                || matches!(
+                    (runtime.canonicalize(), data.canonicalize()),
+                    (Ok(r), Ok(d)) if r == d
+                ))
+        {
+            return Err(DirsError::RuntimeIsDataDir(runtime.clone()));
         }
+        Ok(dirs)
     }
 
     /// No directory resolved: scripting runs without a runtime, data, config
@@ -177,7 +213,9 @@ fn home_dir_with(env: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
 ///
 /// Search order:
 /// 1. `HUME_RUNTIME` environment variable (dev escape hatch; not existence-checked).
-/// 2. `../share/hume/` relative to the binary, Unix / macOS installed (FHS) layout.
+/// 2. `../share/hume/runtime/` relative to the binary, Unix / macOS installed (FHS)
+///    layout. Not `../share/hume/` itself: with the binary in `~/.local/bin` that
+///    is the data dir, whose `plugins/` and `themes/` would alias the runtime's.
 /// 3. `runtime/` relative to the binary: portable/archive layout (nightly zips/tarballs
 ///    ship `hume(.exe)` next to a `runtime/` directory; this covers Windows, where there
 ///    is no `share/` layout, and any unpacked archive run in place on Unix).
@@ -196,10 +234,12 @@ fn runtime_dir_with(
 
     if let Some(exe_dir) = exe.as_deref().and_then(Path::parent) {
         #[cfg(not(windows))]
-        if let Some(share) = exe_dir.parent().map(|p| p.join("share").join("hume"))
-            && share.exists()
+        if let Some(share_runtime) = exe_dir
+            .parent()
+            .map(|p| p.join("share").join("hume").join("runtime"))
+            && share_runtime.exists()
         {
-            return Some(share);
+            return Some(share_runtime);
         }
         let exe_runtime = exe_dir.join("runtime");
         if exe_runtime.exists() {
