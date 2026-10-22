@@ -1338,7 +1338,7 @@ fn consecutive_paste_repeats_last_not_ring_head() {
 // `p`/`P` dispatch the smart variants (see the smart-p block above); these
 // commands are reachable by name only (`:`, `call!`, or a plugin keymap).
 // Dispatched the same way `classic-paste`'s Steel wrappers and
-// `async_job_steel.rs`/`dot_repeat.rs` dispatch a command by name: through
+// `async_job_steel.rs`/`dot_repeat/` dispatch a command by name: through
 // `execute_keymap_command`, the same pipeline a keymap or `(call! …)` uses
 // (not a direct fn call, and unlike `:`, it doesn't itself dispatch any
 // unrelated command in between two calls).
