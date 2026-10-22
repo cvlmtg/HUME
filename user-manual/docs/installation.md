@@ -72,7 +72,7 @@ xattr -dr com.apple.quarantine hume-*
 
 Extract the `.zip`, then run `hume.exe` from inside the extracted folder, or add that folder to your `PATH`.
 
-Keep the whole extracted folder intact: HUME finds its runtime files (themes, plugins, language definitions) and `hume-grammar-build`, the helper that compiles grammars, relative to the binary's location. On macOS/Linux they are `../share/hume/` and `../libexec/hume/` next to `bin/hume`; on Windows, `runtime/` and `hume-grammar-build.exe` next to `hume.exe`. Moving just the binary out on its own leaves it without them.
+Keep the whole extracted folder intact: HUME finds its runtime files (themes, plugins, language definitions) and `hume-grammar-build`, the helper that compiles grammars, relative to the binary's location. On macOS/Linux they are `../share/hume/runtime/` and `../libexec/hume/` next to `bin/hume`; on Windows, `runtime/` and `hume-grammar-build.exe` next to `hume.exe`. Moving just the binary out on its own leaves it without them.
 
 ### Check it works
 

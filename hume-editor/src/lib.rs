@@ -65,7 +65,7 @@ pub fn run_keys(
     let mut editor = editor::Editor::start(
         std::slice::from_ref(&input),
         editor::Driver::Headless,
-        hume_platform::dirs::Dirs::from_env(&cwd),
+        hume_platform::dirs::Dirs::from_env(&cwd)?,
         config,
         cwd,
     )?;
@@ -185,7 +185,7 @@ pub fn run(
             wake,
             size: hume_grid::Rect::new(0, 0, width, height),
         },
-        hume_platform::dirs::Dirs::from_env(&cwd),
+        hume_platform::dirs::Dirs::from_env(&cwd)?,
         config,
         cwd,
     )?;

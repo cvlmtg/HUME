@@ -26,9 +26,33 @@ fn resolve_joins_relative_xdg_dirs_onto_the_startup_cwd() {
         None,
         Some(cwd.path().to_path_buf()),
         PathBuf::from("/tmp"),
-    );
+    )
+    .unwrap();
     assert_eq!(dirs.config, Some(cwd.path().join("cfg").join("hume")));
     assert_eq!(dirs.data, Some(cwd.path().join("data").join("hume")));
+}
+
+#[test]
+fn resolve_rejects_a_runtime_that_reaches_the_data_dir_through_a_symlink() {
+    let base = tempfile::tempdir().unwrap();
+    let data = base.path().join("real").join("hume");
+    std::fs::create_dir_all(&data).unwrap();
+    let link = base.path().join("link");
+    std::os::unix::fs::symlink(base.path().join("real"), &link).unwrap();
+    let link_str = link.to_string_lossy().into_owned();
+    let data_str = data.to_string_lossy().into_owned();
+
+    let result = Dirs::resolve(
+        |k| match k {
+            "XDG_DATA_HOME" => Some(link_str.clone()),
+            "HUME_RUNTIME" => Some(data_str.clone()),
+            _ => None,
+        },
+        None,
+        None,
+        PathBuf::from("/tmp"),
+    );
+    assert_eq!(result, Err(DirsError::RuntimeIsDataDir(data)));
 }
 
 #[test]
@@ -81,17 +105,29 @@ fn grammar_build_missing_lists_libexec_then_the_exe_dir() {
 
 #[test]
 fn runtime_dir_prefers_installed_share_layout_over_exe_relative_runtime() {
-    // Installed FHS layout: <prefix>/bin/hume -> <prefix>/share/hume, even when an
-    // exe-relative runtime/ also happens to exist (share/ wins).
+    // Installed FHS layout: <prefix>/bin/hume -> <prefix>/share/hume/runtime, even
+    // when an exe-relative runtime/ also happens to exist (share/ wins).
     let prefix = tempfile::tempdir().unwrap();
     let bin_dir = prefix.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
     std::fs::create_dir(bin_dir.join("runtime")).unwrap();
-    let share_dir = prefix.path().join("share").join("hume");
-    std::fs::create_dir_all(&share_dir).unwrap();
+    let share_runtime = prefix.path().join("share").join("hume").join("runtime");
+    std::fs::create_dir_all(&share_runtime).unwrap();
 
     let result = runtime_dir_with(|_| None, Some(bin_dir.join("hume")), None);
-    assert_eq!(result, Some(share_dir));
+    assert_eq!(result, Some(share_runtime));
+}
+
+#[test]
+fn runtime_dir_skips_a_share_hume_without_a_runtime_subdir() {
+    // With <prefix> = ~/.local, <prefix>/share/hume is the data dir.
+    let prefix = tempfile::tempdir().unwrap();
+    let bin_dir = prefix.path().join("bin");
+    std::fs::create_dir(&bin_dir).unwrap();
+    std::fs::create_dir_all(prefix.path().join("share").join("hume").join("plugins")).unwrap();
+
+    let result = runtime_dir_with(|_| None, Some(bin_dir.join("hume")), None);
+    assert_eq!(result, None);
 }
 
 #[test]

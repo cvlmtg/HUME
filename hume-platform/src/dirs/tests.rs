@@ -85,7 +85,8 @@ fn resolve_joins_a_relative_runtime_and_tmp_onto_the_startup_cwd() {
         None,
         Some(cwd.path().to_path_buf()),
         PathBuf::from("scratch"),
-    );
+    )
+    .unwrap();
     assert_eq!(dirs.runtime, Some(cwd.path().join("rt")));
     assert_eq!(dirs.tmp, Some(cwd.path().join("scratch")));
 }
@@ -104,7 +105,8 @@ fn resolve_keeps_absolute_runtime_and_tmp_as_they_are() {
         None,
         Some(cwd.path().to_path_buf()),
         tmp.path().to_path_buf(),
-    );
+    )
+    .unwrap();
     assert_eq!(dirs.runtime, Some(rt.path().to_path_buf()));
     assert_eq!(dirs.tmp, Some(tmp.path().to_path_buf()));
 }
@@ -119,9 +121,29 @@ fn resolve_without_a_cwd_leaves_relative_values_as_given() {
         None,
         None,
         PathBuf::from("scratch"),
-    );
+    )
+    .unwrap();
     assert_eq!(dirs.runtime, Some(PathBuf::from("rt")));
     assert_eq!(dirs.tmp, Some(PathBuf::from("scratch")));
+}
+
+#[test]
+fn resolve_rejects_a_runtime_that_is_the_data_dir() {
+    let base = tempfile::tempdir().unwrap();
+    let base_str = base.path().to_string_lossy().into_owned();
+    let data = base.path().join("hume");
+    let data_str = data.to_string_lossy().into_owned();
+    let result = Dirs::resolve(
+        |k| match k {
+            "XDG_DATA_HOME" | "LOCALAPPDATA" => Some(base_str.clone()),
+            "HUME_RUNTIME" => Some(data_str.clone()),
+            _ => None,
+        },
+        None,
+        None,
+        PathBuf::from("scratch"),
+    );
+    assert_eq!(result, Err(DirsError::RuntimeIsDataDir(data)));
 }
 
 fn grammar_build_file() -> String {
@@ -151,7 +173,7 @@ fn grammar_build_missing_names_the_exe_dir_last() {
 
 #[test]
 fn grammar_build_without_an_exe_is_exe_unknown() {
-    let dirs = Dirs::resolve(|_| None, None, None, PathBuf::from("scratch"));
+    let dirs = Dirs::resolve(|_| None, None, None, PathBuf::from("scratch")).unwrap();
     assert_eq!(dirs.grammar_build, GrammarBuild::ExeUnknown);
 }
 

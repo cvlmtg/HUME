@@ -13,7 +13,7 @@ Pass `--config <FILE>` (see [Command-line Flags](cli.md)) to load a different fi
 
 ## Example init.scm
 
-HUME ships a starter config as `init.scm.example` in its runtime directory: `share/hume/init.scm.example` in the macOS/Linux release archive, `runtime/init.scm.example` on Windows or in a source checkout (see [File locations](#file-locations)). Copy it to `~/.config/hume/init.scm` (`%APPDATA%\hume\init.scm` on Windows) and edit it:
+HUME ships a starter config as `init.scm.example` in its runtime directory: `share/hume/runtime/init.scm.example` in the macOS/Linux release archive, `runtime/init.scm.example` on Windows or in a source checkout (see [File locations](#file-locations)). Copy it to `~/.config/hume/init.scm` (`%APPDATA%\hume\init.scm` on Windows) and edit it:
 
 <<< @/../../runtime/init.scm.example{scheme}
 
@@ -226,8 +226,8 @@ HUME resolves its directories per OS:
 
 HUME looks for its runtime directory in this order, taking the first that exists:
 
-1. `$HUME_RUNTIME`, if set
-2. `../share/hume/` relative to the binary (macOS and Linux only; this is the layout you get from the release archive)
+1. `$HUME_RUNTIME`, if set. HUME refuses to start when it names the data dir.
+2. `../share/hume/runtime/` relative to the binary (macOS and Linux only; this is the layout you get from the release archive)
 3. `runtime/` next to the binary (the Windows archive layout)
 4. `runtime/` in the current working directory (handy when running from a source checkout)
 
