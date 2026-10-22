@@ -85,7 +85,7 @@ fn initialize_params_advertise_the_v1_capability_set() {
     assert_eq!(we.document_changes, Some(true));
     // Must be present or rust-analyzer refuses every rename outright
     // (confirmed live). HUME still can't actually apply a resource
-    // op if one arrives (edits::collect_edit_entries rejects it by
+    // op if one arrives (workspace_edit::file_edits rejects it by
     // design), but the alternative breaks the common case.
     assert_eq!(
         we.resource_operations,

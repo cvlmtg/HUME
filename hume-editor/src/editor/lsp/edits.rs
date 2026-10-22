@@ -46,15 +46,6 @@ pub(in crate::editor) fn checked_buffer(
     Ok(buf)
 }
 
-fn one_of_to_text_edit(
-    oe: lsp_types::OneOf<lsp_types::TextEdit, lsp_types::AnnotatedTextEdit>,
-) -> lsp_types::TextEdit {
-    match oe {
-        lsp_types::OneOf::Left(te) => te,
-        lsp_types::OneOf::Right(ate) => ate.text_edit,
-    }
-}
-
 /// Converts `edits` (wire positions, any order) into one composite
 /// `ChangeSet`: positions are resolved to char offsets, stable-sorted
 /// ascending by start then end (so an insertion goes before a range starting
@@ -294,52 +285,6 @@ pub(in crate::editor) struct WorkspaceEditSummary {
     pub(in crate::editor) buffers_modified: usize,
 }
 
-/// One resolved file entry: its URI, plain `TextEdit`s (annotations
-/// stripped: HUME has no change-annotation UI), and the version to
-/// gen-check against, if the edit came from a versioned `documentChanges`
-/// entry.
-type EditEntry = (lsp_types::Uri, Vec<lsp_types::TextEdit>, Option<i32>);
-
-/// `documentChanges` takes precedence over `changes` when both are present
-/// (LSP spec). `DocumentChangeOperation::Op` (create/rename/delete file) has
-/// no HUME equivalent: errors rather than silently dropping a file
-/// operation the caller expected to happen.
-fn collect_edit_entries(we: lsp_types::WorkspaceEdit) -> Result<Vec<EditEntry>, String> {
-    if let Some(doc_changes) = we.document_changes {
-        match doc_changes {
-            lsp_types::DocumentChanges::Edits(edits) => Ok(edits
-                .into_iter()
-                .map(|tde| {
-                    let version = tde.text_document.version;
-                    let edits = tde.edits.into_iter().map(one_of_to_text_edit).collect();
-                    (tde.text_document.uri, edits, version)
-                })
-                .collect()),
-            lsp_types::DocumentChanges::Operations(ops) => ops
-                .into_iter()
-                .map(|op| match op {
-                    lsp_types::DocumentChangeOperation::Edit(tde) => {
-                        let version = tde.text_document.version;
-                        let edits = tde.edits.into_iter().map(one_of_to_text_edit).collect();
-                        Ok((tde.text_document.uri, edits, version))
-                    }
-                    lsp_types::DocumentChangeOperation::Op(_) => Err(
-                        "workspace edit contains an unsupported file operation (create/rename/delete)"
-                            .to_string(),
-                    ),
-                })
-                .collect::<Result<Vec<_>, String>>(),
-        }
-    } else if let Some(changes) = we.changes {
-        Ok(changes
-            .into_iter()
-            .map(|(uri, edits)| (uri, edits, None))
-            .collect())
-    } else {
-        Ok(Vec::new())
-    }
-}
-
 /// Opens `path` in a buffer, or finds the one already showing it. The flag
 /// is whether this call opened it.
 fn resolve_or_open(
@@ -401,9 +346,14 @@ pub(in crate::editor) fn apply_workspace_edit(
             );
         }
     }
-    let entries = collect_edit_entries(we)?;
+    let entries = hume_lsp::workspace_edit::file_edits(we)?;
     let mut planned: Vec<(EditTarget, ChangeSet)> = Vec::with_capacity(entries.len());
-    for (uri, edits, version) in entries {
+    for hume_lsp::workspace_edit::FileEdits {
+        uri,
+        edits,
+        version,
+    } in entries
+    {
         let path = hume_lsp::uri::uri_to_path(&uri).map_err(|e| format!("bad uri: {e:?}"))?;
         let (bid, _) = resolve_or_open(state, view, &path)?;
         // Each file's changeset is built against `state`'s *current* text:

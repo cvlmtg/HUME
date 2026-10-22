@@ -23,6 +23,7 @@
 //! - `diagnostic`: pushed and pulled diagnostic decoding.
 //! - `server_request`: answers to server-initiated requests.
 //! - `sync`: `ChangeSet` → `TextDocumentContentChangeEvent[]`.
+//! - `workspace_edit`: a `WorkspaceEdit` flattened into per-file edit lists.
 //! - `test_util` (behind the `test-util` feature): cross-crate test doubles.
 
 #![deny(rustdoc::broken_intra_doc_links)]
@@ -44,3 +45,4 @@ pub mod sync;
 pub mod test_util;
 pub mod transport;
 pub mod uri;
+pub mod workspace_edit;
