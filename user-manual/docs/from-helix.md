@@ -68,6 +68,21 @@ Indentation (Helix's per-language `indent.tab-width`/`indent.unit` in `languages
 
 `bind-key!` takes a command *name* (the same names listed in [Builtin Commands](builtin-commands.md)), not a key sequence — there's no key-to-key remapping.
 
+## Bringing your themes over
+
+HUME reads Helix's theme format: the same TOML with `[palette]` indirection, the same color forms (hex, a palette name, or one of the sixteen bare terminal color names like `red`), the same modifier names, and the same underline styles. Most Helix themes work unchanged.
+
+- **Your own themes:** copy them from `~/.config/helix/themes/` to `~/.config/hume/themes/` (`%APPDATA%\hume\themes\` on Windows). `inherits` works too, and HUME bundles many of Helix's popular themes (`onedark`, `catppuccin_mocha`, `gruvbox`, `nord`, …), so a theme built on one of them still finds its parent.
+- **Published themes:** run `:plum-install-theme <user/repo>` and [PLUM](core-plugins.md#core-plum) fetches the theme repo from GitHub, the same way it installs plugins.
+
+Type `:theme ` and press Tab to try one for the session, then set it as your default in your [`init.scm`](configuration.md#example-init-scm). Here's [Everforest](https://github.com/cvlmtg/everforest.hume), the first third-party theme for HUME, ported as-is from Helix:
+
+```scheme
+(set-option! "theme" "everforest_dark")
+```
+
+HUME's tab bar reads `ui.tabline`, and falls back to Helix's `ui.bufferline` when a theme doesn't set it. [Themes](themes.md) covers the few other places the formats differ and links a visual theme editor.
+
 ## What's the same
 
 - Select-then-act: motions change the selection; operators act on it
@@ -78,18 +93,6 @@ Indentation (Helix's per-language `indent.tab-width`/`indent.unit` in `languages
 - `>` / `<` indent / unindent the lines a selection touches, with count support (`3>`). HUME rewrites each line's whole indent in the buffer's `indent-style`; see [Lines and alignment](editing.md#lines-and-alignment)
 - `m i f`/`m a f`, `m i t`/`m a t`, `m i a`/`m a a`, `m i c`/`m a c`, `m i u`/`m a u`, `m i x`/`m a x`: the same letters as Helix's own match-mode textobjects except unit test (`T`→`u`; see below), selecting the enclosing function, class/type, argument, comment, unit test, or tag pair for any language with a tree-sitter grammar that ships a textobjects query
 - Enter, `o` and `O` indent new lines with Helix's indentation queries (see [Indentation](editing.md#indentation)), written in the buffer's `indent-style`. There is no `indent-heuristic` setting: HUME always uses Helix's default, `hybrid`; `indent-smart` turns automatic indentation off. HUME also moves a closing bracket or keyword back as you type it
-
-### Themes
-
-Helix uses TOML with `[palette]` indirection and dot-separated UI scope names. HUME's theme loader reads the same file format, the same color forms (hex, a palette name, or one of the sixteen bare terminal color names like `red`), the same modifier names, and the same underline styles, so most Helix themes work in HUME unchanged. [Themes](themes.md) covers the few places the formats differ and links a visual theme editor.
-
-Themes install the same way plugins do: run `:plum-install-theme <user/repo>` and [PLUM](core-plugins.md#core-plum) fetches the theme repo from GitHub.
-
-Then type `:theme ` and press Tab to try it for the session, or set it as your default theme in your [`init.scm`](configuration.md#example-init-scm): Here's [Everforest](https://github.com/cvlmtg/everforest.hume), the first third-party theme for HUME, ported as-is from Helix.
-
-```scheme
-(set-option! "theme" "everforest_dark")
-```
 
 ## Key differences
 
@@ -165,9 +168,7 @@ You can also add your own custom elements from Scheme; see [Statusline](settings
 
 Helix's `bufferline` (`never` / `always` / `multiple`) is a strip of open **buffers**: pick one and it swaps into the focused split. HUME's bar lists **tab pages** instead: a tab is a saved window layout (its own splits and focused pane), so switching tabs swaps the whole pane arrangement, not a single buffer. Buffers stay global across tabs and are reached with `:ls` / `:b` / `:bn` / `:bp`, not from the bar. See [Tabs](files-and-buffers.md#tabs).
 
-`:set global tabline=never/always/dynamic` controls visibility; `dynamic` (the default) is the analogue of Helix's `multiple`, showing the bar only once a second tab is open. Click a tab to switch to it; the bar scrolls when tabs overflow the width.
-
-A Helix theme needs no changes to look right: HUME's `ui.tabline` falls back to Helix's `ui.bufferline` when unset; see [Theme scopes](themes.md#theme-scopes).
+`:set global tabline=never/always/dynamic` controls visibility; `dynamic` (the default) is the analogue of Helix's `multiple`, showing the bar only once a second tab is open. Click a tab to switch to it; the bar scrolls when tabs overflow the width. A Helix theme colors it through `ui.bufferline`; see [Bringing your themes over](#bringing-your-themes-over).
 
 ### Surround
 
