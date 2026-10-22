@@ -194,7 +194,7 @@ fn call_refuses_pipe() {
 
 /// An editor started over the repo's runtime and working in `dir`, with
 /// `typed` on an open `|` line.
-fn pipe_line_in(dir: &Path, typed: &str) -> Editor {
+pub(super) fn pipe_line_in(dir: &Path, typed: &str) -> Editor {
     let mut ed = editor_from("-[abc]>\n");
     ed.state.dirs = repo_runtime_dirs();
     ed.init_scripting(&mut Default::default());
@@ -205,7 +205,7 @@ fn pipe_line_in(dir: &Path, typed: &str) -> Editor {
 }
 
 /// Presses `key` and lets the completion source it calls answer.
-fn press(ed: &mut Editor, key: KeyEvent) {
+pub(super) fn press(ed: &mut Editor, key: KeyEvent) {
     ed.handle_key(key);
     ed.settle();
 }
@@ -406,15 +406,6 @@ fn a_word_that_only_opens_a_quote_completes_inside_it() {
     let mut ed = pipe_line_in(dir.path(), "cat \"");
     press(&mut ed, key_tab());
     assert_eq!(minibuf_input(&ed), "cat \"my notes.txt\"");
-}
-
-#[test]
-fn an_escaped_quote_at_the_end_of_a_word_is_part_of_the_name() {
-    let dir = tempfile::tempdir().unwrap();
-    std::fs::write(dir.path().join("a\"b"), b"").unwrap();
-    let mut ed = pipe_line_in(dir.path(), r#"cat a\""#);
-    press(&mut ed, key_tab());
-    assert_eq!(minibuf_input(&ed), r#"cat a\"b"#);
 }
 
 #[test]

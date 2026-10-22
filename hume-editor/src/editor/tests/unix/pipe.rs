@@ -1,6 +1,8 @@
 //! `pipe` runs in the editor: waiting for a run, landing its output, and
-//! running in the background. Unix-only because every test runs `sh`.
+//! running in the background. Unix-only because every test runs `sh` or
+//! names a file Windows refuses.
 
+use super::super::pipe::{pipe_line_in, press};
 use super::*;
 
 use std::collections::VecDeque;
@@ -900,6 +902,17 @@ fn an_older_run_that_landed_survives_a_newer_one_withdrawn() {
         Some("pipe"),
         "the landed run's change, not the replace before it"
     );
+}
+
+// ── Tab completion of path names ─────────────────────────────────────────────
+
+#[test]
+fn an_escaped_quote_at_the_end_of_a_word_is_part_of_the_name() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("a\"b"), b"").unwrap();
+    let mut ed = pipe_line_in(dir.path(), r#"cat a\""#);
+    press(&mut ed, key_tab());
+    assert_eq!(minibuf_input(&ed), r#"cat a\"b"#);
 }
 
 // ── Tab completion of program names ──────────────────────────────────────────
