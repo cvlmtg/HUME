@@ -337,7 +337,7 @@ Everyday string work (trimming, splitting on a separator, case conversion, prefi
 | `(set-cwd! path)` | Change HUME's working directory, like `:cd`; a relative `path` is joined onto the current one; raises if `path` is not a directory |
 | `(path-join seg ...)` | Join path segments with the OS-native separator |
 | `(safe-path-segment? name)` | `#t` iff `name` is a string safe to use as one path component: not empty, not `.` or `..`, and free of a path separator, `:`, `"` and NUL; `#f` for anything else. Use it before joining a user-typed or downloaded name onto a path |
-| `(path-entries dir prefix)` | The names in directory `dir` (relative to the working directory) starting with `prefix`, sorted, each directory's ending in `/`, as `:e` completes them: hidden entries only when `prefix` starts with `.`. `'()` when `dir` can't be read |
+| `(path-entries dir prefix)` | The names in directory `dir` (relative to the working directory) starting with `prefix` (ignoring letter case on Windows), sorted, each directory's ending in `/` (a link to a directory included), as `:e` completes them: hidden entries only when `prefix` starts with `.`. `'()` when `dir` can't be read |
 | `(path-programs prefix extensions)` | The programs on `PATH` whose names start with `prefix`, sorted. On Windows a program is a file ending in one of `extensions` (`'(".exe")`), named without it |
 | `(home-dir)` | The user's home directory, or `#f` when the environment names none |
 | `(path->display path)` | Run an absolute `path` string through HUME's display-form pipeline (Windows `\\?\` stripping, `~`-collapse); no filesystem access |

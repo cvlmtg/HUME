@@ -116,6 +116,15 @@ fn relative_to_ignores_a_verbatim_prefix_on_either_side() {
     );
 }
 
+// ── completion_entries ────────────────────────────────────────────────────
+
+#[test]
+fn completion_entries_matches_the_prefix_in_any_case() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("probe.txt"), b"").unwrap();
+    assert_eq!(completion_entries(dir.path(), "PRO", false), ["probe.txt"]);
+}
+
 // ── executables_in ────────────────────────────────────────────────────────
 
 #[test]

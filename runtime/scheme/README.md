@@ -81,10 +81,11 @@ The file holds, in order:
   `shell/posix-write` (and the same for `fish`, `pwsh`, `cmd`) are public so a new dialect can
   reuse them. `PATHEXT` is read once, at load.
 - **The `|` completion source** `shell`, registered `'delegated`: it parses the word, checks
-  the record (a malformed one raises, naming the dialect), lists programs for a word in command
-  position whose `dir` is empty (so `"gr` lists programs too) and directory entries otherwise
-  (`path-programs`, `path-entries`, matched on values), writes each name finished, and with
-  several names writes
+  the record and each text the dialect writes (a malformed one raises, naming the dialect),
+  lists programs for a word in command position whose `dir` is empty (so `"gr` lists programs
+  too) and directory entries otherwise (`path-programs`, `path-entries`, matched on values),
+  writes each name finished, gives a directory's item the LSP Folder kind, which the line's
+  Enter goes into, and with several names writes
   their shared value prefix unfinished as `#:prefix`, so the first `Tab` inserts it, or `#f`
   when that prefix adds nothing to what is typed, so no escaped text is cut. With no
   dialect for the shell it answers nothing, which closes the menu, and logs a warning the first

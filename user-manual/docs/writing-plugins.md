@@ -630,7 +630,7 @@ A word has two forms: what is on the line, like `"my dir/no` or `my\ dir/no`, an
   - `dir`: what the shell reads for `typed`, with `~` and variables expanded: the directory to list.
   - `open`: the quote still open at the end of `typed`, or `#f`.
   - `prefix`: what the shell reads from the end of `typed` up to the cursor: the start of the name.
-- **`#:write`**: `(write word name close?)` returns the text that replaces the word: usually `typed` as it is, then `name` written for the quote `open` names. `name` is a program or a directory entry, a directory's ending in `/`. With `close?` true the name is complete, and the result closes any quote it is in, also after a directory. With `close?` false the name is the start of several names and the user keeps typing, so a quote stays open.
+- **`#:write`**: `(write word name close?)` returns the string that replaces the word: usually `typed` as it is, then `name` written for the quote `open` names. `name` is a program or a directory entry, a directory's ending in `/`. With `close?` true the name is complete, and the result closes any quote it is in, also after a directory. With `close?` false the name is the start of several names and the user keeps typing, so a quote stays open.
 
 The shipped procedures are `shell/posix-parse` and `shell/posix-write`, and the same two for `fish`, `pwsh` and `cmd`.
 

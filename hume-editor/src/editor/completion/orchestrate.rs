@@ -275,13 +275,16 @@ impl EditorState {
             return;
         };
         let Some(id) = self.config.completion_sources.minibuf_id_of(&name) else {
-            // `TypedCommand.completer` naming no registered source, a stale
-            // name after a rename. Silent to the user, same as `:bd`
-            // declaring no completer at all; loud enough to find in the log.
-            self.report(
-                Severity::Trace,
-                format!("no completion source named {name:?}"),
-            );
+            // On the `:` line this is a command's completer naming no
+            // registered source, a stale name after a rename: silent to the
+            // user, same as `:bd` declaring no completer at all. A line that
+            // names its own source has no other completion, so its Tab
+            // failing is the user's to see.
+            let severity = match completion {
+                PromptCompletion::CommandLine => Severity::Trace,
+                PromptCompletion::Source(_) => Severity::Warning,
+            };
+            self.report(severity, format!("no completion source named {name:?}"));
             return;
         };
         let mut session = MinibufSession::open(input.clone(), cursor);

@@ -4,7 +4,7 @@
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
-use crate::host::{CompletionSourceTarget, EmittedWord, FirstTab, MatchKind};
+use crate::host::{CompletionSourceTarget, EmittedWord, FirstTab, MatchKind, NamedPrefix};
 use crate::json::json_to_steel;
 use crate::types::{PaneHandle, TriggerKind, TriggerScope};
 use crate::{Effect, SteelCtx};
@@ -215,13 +215,12 @@ pub(crate) fn completion_emit(
         SteelVal::BoolV(true) => FirstTab::Common,
         other => match optional_string_arg(other, "completion-emit! #:prefix")? {
             None => FirstTab::Nothing,
-            Some(text) if text.is_empty() => {
-                return Err(generic_err(
+            Some(text) => FirstTab::Named(NamedPrefix::new(text).ok_or_else(|| {
+                generic_err(
                     "completion-emit!: #:prefix would blank the word; send #f to propose \
                      nothing, or leave #:prefix out to let the editor propose one",
-                ));
-            }
-            Some(text) => FirstTab::Named(text),
+                )
+            })?),
         },
     };
     let parts = list_items(items, "completion-emit! items")?

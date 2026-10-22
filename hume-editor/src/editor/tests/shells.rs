@@ -830,3 +830,23 @@ fn a_dialect_whose_parse_returns_no_word_is_reported_by_name() {
         "expected an error naming the dialect"
     );
 }
+
+#[test]
+fn a_dialect_whose_write_returns_no_string_is_reported_by_name() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("my notes.txt"), b"").unwrap();
+    let plugin = r#"(register-shell-dialect! "probe" #:programs '("probe-shell")
+                     #:parse shell/posix-parse
+                     #:write (lambda (word name close?) 0))"#;
+    let ed = tab_on_pipe_line(dir.path(), "probe-shell", Some(plugin), "cat my");
+    assert_eq!(minibuf_input(&ed), "cat my");
+    assert!(
+        ed.state
+            .message_log
+            .entries()
+            .any(|e| e.severity == Severity::Error
+                && e.text.contains("shell dialect probe")
+                && e.text.contains("#:write")),
+        "expected an error naming the dialect and its #:write"
+    );
+}

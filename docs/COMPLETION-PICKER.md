@@ -118,11 +118,11 @@ answer (`#:span`, the `shell` source's quoted words). A minibuffer session
 invokes one source once and is dismissed by any key but Tab, so nothing
 reads the span before the answer lands. Nothing in the
 framework guesses a boundary on a source's behalf, and nothing forces one
-source's boundary on another. An earlier design let a source name its own
-span via a `'custom` token and `#:span` on every answer, and a buffer source
-could ask for no seeding at all via a `'cursor` token; no shipping source
-ever used either, so both were removed rather than carried as unvalidated
-surface.
+source's boundary on another. An earlier design gave every source, buffer
+or minibuffer, a per-source token choice: a `'custom` token whose span came
+with each answer, or a `'cursor` token that asked for no seeding at all; no
+shipping source ever used either, so both were removed rather than carried
+as unvalidated surface.
 
 ### Invocations and answers
 

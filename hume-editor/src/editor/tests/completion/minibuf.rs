@@ -629,6 +629,40 @@ fn a_span_past_the_line_end_is_refused() {
     assert_eq!(minibuf_input(&ed), "greet \"my no");
 }
 
+/// A late answer has no session to check its source against, so a span
+/// it names is dropped with it, whatever the source's `#:match`.
+#[test]
+fn a_span_in_an_answer_after_the_line_closed_is_dropped_unchecked() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[h]>ello\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define saved #f)
+           (register-completion-source! "words"
+             (lambda (id input cursor) (set! saved id))
+             #:target 'minibuf #:match 'string)
+           (define-typed-command! "greet" "" (lambda (bid arg) (log! 'info arg)) #:complete "words")
+           (define-command! "late" "" (lambda ()
+             (log! 'info (if (completion-emit! saved (list "x")
+                                                #:span (hash 'start-char 6 'end-char 6))
+                             "applied"
+                             "dropped"))))"#,
+    );
+    ed.handle_key(key(':'));
+    type_chars(&mut ed, "greet ");
+    ed.handle_key(key_tab());
+    ed.settle();
+    ed.handle_key(key_esc());
+    assert!(
+        ed.state.input.minibuf().is_none(),
+        "sanity: the line closed"
+    );
+    ed.execute_keymap_command("late".into(), None, false);
+    assert_eq!(status(&ed), "dropped");
+    assert!(!span_refused(&ed));
+}
+
 // ── What the first Tab inserts ───────────────────────────────────────────────
 
 #[test]

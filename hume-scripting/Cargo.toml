@@ -24,6 +24,7 @@ rustc-hash.workspace = true
 
 [dev-dependencies]
 hume-editing = { path = "../hume-editing", features = ["test-util"] }
+hume-platform = { path = "../hume-platform", features = ["test-util"] }
 insta = "1.47"
 tempfile = "3"
 

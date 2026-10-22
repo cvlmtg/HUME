@@ -70,11 +70,27 @@ pub enum FirstTab {
     /// What the insert texts all start with, when that extends the word.
     #[default]
     Common,
-    /// This text, never empty, from a source whose insert texts have a
-    /// syntax the editor cannot cut (a quoted shell word).
-    Named(String),
+    /// This text, from a source whose insert texts have a syntax the editor
+    /// cannot cut (a quoted shell word).
+    Named(NamedPrefix),
     /// Nothing: the first Tab only opens the menu.
     Nothing,
+}
+
+/// The text of a [`FirstTab::Named`]: never empty, since an empty one
+/// would erase the word it is put over.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NamedPrefix(String);
+
+impl NamedPrefix {
+    /// `None` for `""`.
+    pub fn new(text: String) -> Option<Self> {
+        (!text.is_empty()).then_some(Self(text))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
 }
 
 /// Completion session orchestration, accessed through

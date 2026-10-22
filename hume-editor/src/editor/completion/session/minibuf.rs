@@ -267,7 +267,7 @@ impl MinibufSession {
         match &inv.span.prefix {
             FirstTab::Nothing => None,
             FirstTab::Named(prefix) => {
-                (self.cursor == span.end).then_some((span, Cow::Borrowed(prefix)))
+                (self.cursor == span.end).then_some((span, Cow::Borrowed(prefix.as_str())))
             }
             FirstTab::Common => {
                 let typed = &self.input[span.clone()];

@@ -29,7 +29,7 @@ pub use async_process::{AsyncProcessHost, async_callback_args};
 pub use buffers::{BufferHost, DisplayPathForm, UndoNode};
 pub use commands::{CommandArg, CommandHost, MAX_COUNT, NativeCall};
 pub use completion::{
-    CompletionHost, CompletionSourceTarget, EmittedWord, FirstTab, MatchKind,
+    CompletionHost, CompletionSourceTarget, EmittedWord, FirstTab, MatchKind, NamedPrefix,
     PendingCompletionSource,
 };
 pub use cursor::{CursorHost, SelectionInfo};

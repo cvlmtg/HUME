@@ -60,6 +60,8 @@
 
 ### Fixes
 - A `'minibuf` completion source gets the cursor counted in characters, not bytes.
+- Tab completion of a file path treats a link to a directory as a directory.
+- On Windows, Tab completion of a file path ignores letter case.
 - On Windows, cancelling a pipe, closing a picker or stopping a language server also stops the programs it started.
 - Git run by a language server fails at once on a private repository or expired credentials, instead of waiting for a password nobody can type.
 - A language server's log keeps going after a line that is not valid UTF-8.

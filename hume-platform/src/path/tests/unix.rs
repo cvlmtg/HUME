@@ -2,7 +2,7 @@
 //! in the parent.
 
 use super::*;
-use crate::process::test_support::write_program;
+use crate::path::test_support::write_program;
 
 // ── Unix env-var expansion ────────────────────────────────────────────────
 
@@ -161,6 +161,29 @@ fn display_form_with_no_home_returns_full_path() {
     use std::path::Path;
     let got = display_form_with(Path::new("/tmp/foo"), || None);
     assert_eq!(got, "/tmp/foo");
+}
+
+// ── completion_entries ────────────────────────────────────────────────────
+
+#[test]
+fn completion_entries_lists_a_link_as_what_it_points_at() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir(dir.path().join("real")).unwrap();
+    std::os::unix::fs::symlink(dir.path().join("real"), dir.path().join("link")).unwrap();
+    std::os::unix::fs::symlink(dir.path().join("missing"), dir.path().join("dangling")).unwrap();
+    assert_eq!(
+        completion_entries(dir.path(), "", false),
+        ["dangling", "link/", "real/"]
+    );
+    assert_eq!(completion_entries(dir.path(), "", true), ["link/", "real/"]);
+}
+
+#[test]
+fn completion_entries_matches_the_prefix_in_its_own_case() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("probe.txt"), b"").unwrap();
+    assert_eq!(completion_entries(dir.path(), "pro", false), ["probe.txt"]);
+    assert!(completion_entries(dir.path(), "PRO", false).is_empty());
 }
 
 // ── executables_in ────────────────────────────────────────────────────────

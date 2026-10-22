@@ -517,6 +517,23 @@ fn a_shell_with_no_dialect_is_named_once() {
 }
 
 #[test]
+fn tab_with_no_shell_source_registered_warns() {
+    let mut ed = editor_from("-[abc]>\n");
+    ed.handle_key(key('|'));
+    keys(&mut ed, "cat no");
+    press(&mut ed, key_tab());
+    assert_eq!(minibuf_input(&ed), "cat no");
+    assert!(
+        ed.state
+            .message_log
+            .entries()
+            .any(|e| e.severity == Severity::Warning
+                && e.text.contains("no completion source named \"shell\"")),
+        "expected a warning naming the missing source"
+    );
+}
+
+#[test]
 fn completion_survives_a_config_reload() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("notes.txt"), b"").unwrap();

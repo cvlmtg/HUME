@@ -14,7 +14,8 @@ use crate::editor::pipe_run::{
     Detached, PipeConsole, PipeEnd, PipeKind, PipeProgress, PipeRuns, RunId, WaitEvent,
 };
 use crate::editor::replay::Answer;
-use hume_platform::process::test_support::{logging_command, starts_and_peak, write_program};
+use hume_platform::path::test_support::write_program;
+use hume_platform::process::test_support::{logging_command, starts_and_peak};
 
 // ── Waiting for a pipe run ───────────────────────────────────────────────────────
 

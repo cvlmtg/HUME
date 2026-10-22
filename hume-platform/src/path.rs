@@ -284,11 +284,23 @@ pub fn split_path_at_sep(s: &str) -> (&str, &str) {
 
 // ── Directory entries for completion ─────────────────────────────────────────
 
+/// Whether file name `name` starts with `prefix`, as the platform's file
+/// system compares names: without regard to ASCII case on Windows.
+fn name_starts_with(name: &str, prefix: &str) -> bool {
+    if cfg!(windows) {
+        name.get(..prefix.len())
+            .is_some_and(|head| head.eq_ignore_ascii_case(prefix))
+    } else {
+        name.starts_with(prefix)
+    }
+}
+
 /// The names in directory `dir` that start with `prefix`, sorted, each
-/// directory with a trailing `/`: what a typed path completes to. Hidden
-/// entries (a leading `.`) are left out unless `prefix` starts with `.`,
-/// and with `dirs_only` every non-directory is. An unreadable directory
-/// lists nothing.
+/// directory with a trailing `/`: what a typed path completes to. A
+/// symlink is listed as what it points at. Names match as
+/// [`name_starts_with`] compares them. Hidden entries (a leading `.`) are
+/// left out unless `prefix` starts with `.`, and with `dirs_only` every
+/// non-directory is. An unreadable directory lists nothing.
 pub fn completion_entries(dir: &Path, prefix: &str, dirs_only: bool) -> Vec<String> {
     let include_hidden = prefix.starts_with('.');
     let Ok(entries) = std::fs::read_dir(dir) else {
@@ -298,10 +310,14 @@ pub fn completion_entries(dir: &Path, prefix: &str, dirs_only: bool) -> Vec<Stri
         .flatten()
         .filter_map(|entry| {
             let name = entry.file_name().to_string_lossy().into_owned();
-            if !name.starts_with(prefix) || (!include_hidden && name.starts_with('.')) {
+            if !name_starts_with(&name, prefix) || (!include_hidden && name.starts_with('.')) {
                 return None;
             }
-            let is_dir = entry.file_type().is_ok_and(|ft| ft.is_dir());
+            // Only a symlink costs a `stat`; the listing gives every other
+            // entry's type.
+            let is_dir = entry
+                .file_type()
+                .is_ok_and(|ft| ft.is_dir() || (ft.is_symlink() && entry.path().is_dir()));
             if dirs_only && !is_dir {
                 return None;
             }
@@ -321,9 +337,9 @@ pub fn completion_entries(dir: &Path, prefix: &str, dirs_only: bool) -> Vec<Stri
 /// On Unix a program is a file (a symlink is followed) with any execute
 /// bit set, and `extensions` is unused. On Windows it is a file whose name
 /// ends with one of `extensions` (`.exe`, as `sh` adds to a bare name, or
-/// `PATHEXT`'s list), named by its stem. Names there match and collapse
-/// without regard to ASCII case, as the filesystem compares them, and the
-/// spelling listed is the first one on the path.
+/// `PATHEXT`'s list), named by its stem. Names match as
+/// [`name_starts_with`] compares them, collapse the same way on Windows,
+/// and the spelling listed is the first one on the path.
 pub fn executables_in(
     search_path: &std::ffi::OsStr,
     prefix: &str,
@@ -363,7 +379,7 @@ fn program_name<'a>(
     _extensions: &[impl AsRef<str>],
 ) -> Option<&'a str> {
     use std::os::unix::fs::PermissionsExt;
-    if !name.starts_with(prefix) {
+    if !name_starts_with(name, prefix) {
         return None;
     }
     // The entry's own type is free from the listing on most filesystems,
@@ -395,11 +411,8 @@ fn program_name<'a>(
         let tail = name.get(split..)?;
         tail.eq_ignore_ascii_case(ext).then(|| &name[..split])
     })?;
-    let matches = stem
-        .get(..prefix.len())
-        .is_some_and(|head| head.eq_ignore_ascii_case(prefix));
     // The entry's type comes with the listing, so this costs no file open.
-    (matches && !entry.file_type().ok()?.is_dir()).then_some(stem)
+    (name_starts_with(stem, prefix) && !entry.file_type().ok()?.is_dir()).then_some(stem)
 }
 
 // ── Windows UNC prefix ───────────────────────────────────────────────────────
@@ -530,3 +543,6 @@ pub fn is_safe_segment(s: &str) -> bool {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(all(unix, any(test, feature = "test-util")))]
+pub mod test_support;

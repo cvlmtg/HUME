@@ -300,16 +300,13 @@ fn path_programs_with_no_search_path_is_empty() {
 #[cfg(unix)]
 #[test]
 fn path_programs_lists_the_programs_on_the_search_path() {
-    use std::os::unix::fs::PermissionsExt;
     let bin = tempfile::tempdir().unwrap();
     for (name, mode) in [
         ("probe-run", 0o755),
         ("probe-data", 0o644),
         ("other", 0o755),
     ] {
-        let path = bin.path().join(name);
-        std::fs::write(&path, b"").unwrap();
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode)).unwrap();
+        hume_platform::path::test_support::write_program(bin.path(), name, mode);
     }
     assert_eq!(
         strings(programs_on(Some(bin.path().as_os_str()), "probe", &[])),

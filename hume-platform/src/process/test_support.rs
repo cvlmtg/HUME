@@ -33,14 +33,3 @@ pub fn starts_and_peak(log: &Path) -> (usize, i32) {
     }
     (events.lines().filter(|&line| line == "+").count(), peak)
 }
-
-/// Writes a `sh` script named `name` into `dir` with permission bits
-/// `mode`, and returns its path.
-pub fn write_program(dir: &Path, name: &str, mode: u32) -> std::path::PathBuf {
-    use std::os::unix::fs::PermissionsExt;
-    let path = dir.join(name);
-    std::fs::write(&path, b"#!/bin/sh\n").expect("program written");
-    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode))
-        .expect("program mode set");
-    path
-}
