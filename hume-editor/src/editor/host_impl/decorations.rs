@@ -147,12 +147,13 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
             .into_iter()
             .map(|(start, end, scope)| {
                 let fail = |e: String| format!("set-extra-highlights!: range {e}");
-                let range = super::checked_char_range(text, start, end).map_err(fail)?;
+                let range = crate::editor::buffer::offsets::checked_char_range(text, start, end)
+                    .map_err(fail)?;
                 if range.is_empty() {
                     return Err(fail(format!("{start}..{end} is empty")));
                 }
                 // Widened to whole clusters: the renderer paints a cluster at a time.
-                let range = super::widened_to_clusters(text, range);
+                let range = crate::editor::buffer::offsets::widened_to_clusters(text, range);
                 Ok(hume_decorations::ExtraHighlightEntry {
                     start: range.start,
                     end: range.end,
@@ -248,7 +249,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         severity_floor: Option<&str>,
         range: Option<(usize, usize)>,
     ) -> Result<Vec<hume_scripting::host::DiagnosticEntry>, String> {
-        crate::editor::lsp::introspect::diagnostics_for_buffer(
+        crate::editor::lsp::diagnostics::diagnostics_for_buffer(
             self.state,
             bid,
             severity_floor,

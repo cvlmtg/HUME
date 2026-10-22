@@ -49,7 +49,7 @@ fn settle(ed: &mut Editor) {
 
 /// The messages stored for the rig's buffer, in buffer order.
 fn stored_messages(rig: &LspRig) -> Vec<String> {
-    crate::editor::lsp::introspect::diagnostics_for_buffer(&rig.ed.state, rig.bid, None, None)
+    crate::editor::lsp::diagnostics::diagnostics_for_buffer(&rig.ed.state, rig.bid, None, None)
         .unwrap()
         .into_iter()
         .map(|d| d.message)

@@ -158,7 +158,7 @@ fn end_line_is_one_past_the_last_line_the_diagnostic_touches() {
     let bid = ed.focused_buffer_id();
 
     let entries =
-        crate::editor::lsp::introspect::diagnostics_for_buffer(&ed.state, bid, None, None)
+        crate::editor::lsp::diagnostics::diagnostics_for_buffer(&ed.state, bid, None, None)
             .expect("diagnostics-for-buffer must not error");
     let lines = |msg: &str| {
         let entry = entries
@@ -185,7 +185,7 @@ fn start_of(text: &str, diag: DiagFixture) -> (usize, usize, usize) {
     } = setup_diagnostics(text, &[diag]);
     let bid = ed.focused_buffer_id();
     let entries =
-        crate::editor::lsp::introspect::diagnostics_for_buffer(&ed.state, bid, None, None)
+        crate::editor::lsp::diagnostics::diagnostics_for_buffer(&ed.state, bid, None, None)
             .expect("diagnostics-for-buffer must not error");
     let entry = &entries[0];
     (entry.start_char, entry.start_line, entry.grapheme_col)
@@ -408,7 +408,7 @@ fn ladder_is_buffer_wide_not_viewport_restricted() {
 /// diagnostics for the reloaded buffer and re-fire `on-diagnostics-changed`
 /// so `core:lsp` clears the now-stale sign along with the EOL summary.
 /// This proves the sign side of that hook does the same, not just the
-/// text-highlight side `introspect::diagnostics_for_buffer` already guards
+/// text-highlight side `diagnostics::diagnostics_for_buffer` already guards
 /// via its own end-of-file clamp.
 #[test]
 fn reload_to_shorter_text_clears_stale_diagnostics_and_does_not_panic() {

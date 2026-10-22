@@ -90,7 +90,11 @@ impl<'a> CursorHost for EditorHostImpl<'a> {
             .text();
         // `char_to_line` puts the offset `len_chars()` on the last content
         // line.
-        Ok(text.char_to_line(super::checked_char_offset(text, idx)?))
+        Ok(
+            text.char_to_line(crate::editor::buffer::offsets::checked_char_offset(
+                text, idx,
+            )?),
+        )
     }
 
     fn symbol_under_cursor(&self, pane: PaneHandle) -> Result<String, String> {

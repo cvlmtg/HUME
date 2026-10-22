@@ -223,7 +223,7 @@ fn a_stored_diagnostic_keeps_the_wire_value_a_server_sent() {
     });
 
     let entries =
-        crate::editor::lsp::introspect::diagnostics_for_buffer(&rig.ed.state, rig.bid, None, None)
+        crate::editor::lsp::diagnostics::diagnostics_for_buffer(&rig.ed.state, rig.bid, None, None)
             .unwrap();
     assert_eq!(
         entries[0].raw.get("x-ext"),

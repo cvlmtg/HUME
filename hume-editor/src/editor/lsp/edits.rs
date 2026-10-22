@@ -64,7 +64,7 @@ pub(in crate::editor) fn checked_buffer(
 fn build_edit_changeset(
     state: &EditorState,
     bid: BufferId,
-    edits: &[lsp_types::TextEdit],
+    edits: &[(ExclusiveRange<WirePos>, &str)],
     expect_gen: Option<u64>,
     encoding: PositionEncoding,
 ) -> Result<ChangeSet, String> {
@@ -75,18 +75,39 @@ fn build_edit_changeset(
     let rope = buf.text().rope();
     let char_edits = edits
         .iter()
-        .map(|e| {
-            let range = hume_lsp::position::checked_lsp_range_to_chars(rope, &e.range, encoding)
-                .ok_or_else(|| past_document_end(&e.range, rope))?;
-            Ok((range, e.new_text.as_str()))
-        })
+        .map(|&(range, new_text)| Ok((edit_range_to_chars(rope, range, encoding)?, new_text)))
         .collect::<Result<Vec<(ExclusiveRange<CharOffset>, &str)>, String>>()?;
     build_changeset_from_char_edits(buf.text(), char_edits)
 }
 
+/// `range`, a server's edit range against `rope`, as chars in `encoding`.
+/// Refused when it ends on a line past the document end, which no clamp can
+/// honestly stand in for, or ends before it starts.
+pub(in crate::editor) fn edit_range_to_chars(
+    rope: &ropey::Rope,
+    range: ExclusiveRange<WirePos>,
+    encoding: PositionEncoding,
+) -> Result<ExclusiveRange<CharOffset>, String> {
+    let chars =
+        hume_rope::position_encoding::checked_wire_range_to_char_range(rope, range, encoding)
+            .ok_or_else(|| past_document_end(range, rope))?;
+    if chars.end < chars.start {
+        return Err(reversed_range(chars));
+    }
+    Ok(chars)
+}
+
+/// Why an edit range that ends before it starts is refused.
+fn reversed_range(range: ExclusiveRange<CharOffset>) -> String {
+    format!(
+        "text edit has a reversed range (end {:?} before start {:?})",
+        range.end, range.start
+    )
+}
+
 /// Why a text edit whose range ends on a line past `rope`'s document end is
 /// refused.
-pub(in crate::editor) fn past_document_end(range: &lsp_types::Range, rope: &ropey::Rope) -> String {
+fn past_document_end(range: ExclusiveRange<WirePos>, rope: &ropey::Rope) -> String {
     format!(
         "text edit range ends past the end of the document (line {}, which has {} lines)",
         range.start.line.max(range.end.line),
@@ -111,10 +132,7 @@ fn build_changeset_from_char_edits(
     mut char_edits: Vec<(ExclusiveRange<CharOffset>, &str)>,
 ) -> Result<ChangeSet, String> {
     if let Some((range, _)) = char_edits.iter().find(|(r, _)| r.end < r.start) {
-        return Err(format!(
-            "text edit has a reversed range (end {:?} before start {:?})",
-            range.end, range.start
-        ));
+        return Err(reversed_range(*range));
     }
     // An insertion sorts before a range that starts where it does, and edits
     // with equal ranges keep their list order.
@@ -193,11 +211,11 @@ pub(in crate::editor) fn apply_text_edits(
     panes: &PanePool,
     requester: Option<PaneId>,
     bid: BufferId,
-    edits: Vec<lsp_types::TextEdit>,
+    edits: &[(ExclusiveRange<WirePos>, &str)],
     expect_gen: Option<u64>,
     encoding: PositionEncoding,
 ) -> Result<(), String> {
-    let cs = build_edit_changeset(state, bid, &edits, expect_gen, encoding)?;
+    let cs = build_edit_changeset(state, bid, edits, expect_gen, encoding)?;
     commit_changeset(state, EditTarget::for_buffer(panes, requester, bid), cs)?;
     Ok(())
 }
@@ -232,16 +250,13 @@ pub(in crate::editor) fn build_edits_from_earlier_document<'a>(
     let mut ranges = edits
         .iter()
         .map(|e| {
-            hume_lsp::position::checked_lsp_range_to_chars(rope_at, &e.range, encoding)
-                .ok_or_else(|| past_document_end(&e.range, rope_at))
+            edit_range_to_chars(
+                rope_at,
+                hume_lsp::position::from_lsp_range(&e.range),
+                encoding,
+            )
         })
         .collect::<Result<Vec<ExclusiveRange<CharOffset>>, String>>()?;
-    if let Some(range) = ranges.iter().find(|r| r.end < r.start) {
-        return Err(format!(
-            "text edit has a reversed range (end {:?} before start {:?})",
-            range.end, range.start
-        ));
-    }
     // `map_ranges` requires sorted-by-start input; sort the (range, text)
     // pairing together so the mapped range still lines up with its own text
     // afterward.
@@ -392,7 +407,16 @@ pub(in crate::editor) fn apply_workspace_edit(
             ));
         }
         let expect_gen = version.map(|v| v as u64);
-        let cs = build_edit_changeset(state, bid, &edits, expect_gen, encoding)
+        let wire_edits: Vec<_> = edits
+            .iter()
+            .map(|e| {
+                (
+                    hume_lsp::position::from_lsp_range(&e.range),
+                    e.new_text.as_str(),
+                )
+            })
+            .collect();
+        let cs = build_edit_changeset(state, bid, &wire_edits, expect_gen, encoding)
             .map_err(|e| format!("{}: {e}", display()))?;
         planned.push((target, cs));
     }
@@ -502,7 +526,7 @@ fn resolve_goto_target(
                 .try_get(bid)
                 .ok_or_else(|| "no such buffer".to_string())?
                 .text();
-            let offset = crate::editor::host_impl::checked_char_offset(text, char_offset)?;
+            let offset = crate::editor::buffer::offsets::checked_char_offset(text, char_offset)?;
             Ok(Some((bid, text.snap(offset))))
         }
     }

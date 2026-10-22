@@ -40,6 +40,7 @@ pub(crate) use dump::{print_worker_panics, report_dumps};
 pub(in crate::editor) use file_open::ReplaceSource;
 mod file_open;
 pub(in crate::editor) mod lifecycle;
+pub(in crate::editor) mod offsets;
 pub(in crate::editor) mod store;
 use hume_treesitter::layers::SyntaxLayers;
 use hume_treesitter::registry::LanguageId;

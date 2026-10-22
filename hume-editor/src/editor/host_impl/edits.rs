@@ -5,7 +5,8 @@ use hume_engine::pipeline::BufferId;
 use hume_rope::column::CharCol;
 use termina::event::KeyEvent;
 
-use super::{EditorHostImpl, checked_char_range, widened_to_clusters};
+use super::EditorHostImpl;
+use crate::editor::buffer::offsets::{checked_char_range, widened_to_clusters};
 use crate::editor::commands::{self, FocusedPane};
 use crate::editor::doc_ops::HistoryWalk;
 use crate::editor::input_stack::PastedText;
@@ -25,8 +26,7 @@ impl<'a> EditHost for EditorHostImpl<'a> {
         // e.g. two `additionalTextEdits` merged by a plugin), since a batch that
         // disagrees has no single encoding to convert wire positions with.
         let mut encoding = None;
-        let mut typed_edits = Vec::with_capacity(edits.len());
-        for edit in edits {
+        for edit in &edits {
             match encoding {
                 None => encoding = Some(edit.encoding),
                 Some(enc) if enc != edit.encoding => {
@@ -36,15 +36,6 @@ impl<'a> EditHost for EditorHostImpl<'a> {
                 }
                 _ => {}
             }
-            typed_edits.push(lsp_types::TextEdit {
-                // Untrusted plugin input, not an internal invariant: a
-                // position that doesn't fit `u32` is a malformed edit,
-                // reported as an error, never a panic.
-                range: hume_lsp::position::to_lsp_range(edit.range).ok_or_else(|| {
-                    "apply-text-edits!: position exceeds u32 (malformed edit)".to_string()
-                })?,
-                new_text: edit.new_text,
-            });
         }
         let Some(encoding) = encoding else {
             return Err("apply-text-edits!: no edits given".to_string());
@@ -54,7 +45,10 @@ impl<'a> EditHost for EditorHostImpl<'a> {
             &self.view.panes,
             pane.pane(),
             pane.buffer(),
-            typed_edits,
+            &edits
+                .iter()
+                .map(|e| (e.range, e.new_text.as_str()))
+                .collect::<Vec<_>>(),
             expect_gen,
             encoding,
         )

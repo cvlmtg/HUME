@@ -8,11 +8,9 @@ use hume_engine::pipeline::BufferId;
 use hume_lsp::backend::ServerId;
 
 use super::LspState;
-use super::diagnostics::DiagSeverity;
 use super::features::provider;
 use crate::editor::Editor;
 use crate::editor::EditorState;
-use crate::editor::settings::SettingText;
 use hume_scripting::{CapabilityQuery, ListEntry, LspFeature, ServerName};
 
 /// The feature a standard request `method` belongs to.
@@ -228,105 +226,6 @@ pub(in crate::editor) fn wire_point_to_char_for_buffer(
 ) -> Option<hume_rope::offset::CharOffset> {
     let rope = state.buffers.try_get(id)?.text().rope();
     hume_rope::position_encoding::checked_wire_to_char(rope, pos, encoding)
-}
-
-/// `(diagnostics-for-buffer bid #:severity floor #:range (start-char . end-char))`:
-/// decoded, filtered, capped-at-1000 hashmaps. `start-char`/`end-char`
-/// are char offsets, *addressing* units that `goto-location!`'s `'char-offset`
-/// takes as they are. `start-char` is clamped onto the buffer's last
-/// character, so a diagnostic past the end starts on the final line break.
-/// `start-line` is
-/// the line of `start-char` and `grapheme-col`
-/// its column, for *display*: the one unit every HUME surface (statusline,
-/// diagnostics, LSP location lists) shows the user; never render a char
-/// offset directly. `end-line` is one past the last line the diagnostic touches,
-/// clamped the same way `start-line` is, so `[start-line, end-line)` is
-/// never empty. The diagnostics plugin's gutter-sign pass marks every line
-/// in it. `severity-rank` is `DiagSeverity`'s own `Ord` discriminant (`0`
-/// for error, counting up to `3` for hint) alongside the `severity` string,
-/// so a caller compares severities by this rather than re-deriving the same
-/// order from the string. Errors loudly on an unknown `#:severity` name
-/// (e.g. `'warn` typoed for `'warning`) rather than silently returning
-/// nothing that qualifies. A `#:range` must lie within the buffer's text:
-/// it may end at the text's end, but not past it, and may not end before it
-/// starts.
-///
-/// With no `#:severity`, defaults to `lsp-diagnostics-min-severity`, the
-/// same floor `update_highlight_providers` applies to underlines, so a
-/// caller (e.g. the diagnostics plugin's EOL summary and gutter signs)
-/// agrees with what's on screen unless it explicitly asks for a different
-/// cut.
-pub(in crate::editor) fn diagnostics_for_buffer(
-    state: &EditorState,
-    bid: BufferId,
-    severity_floor: Option<&str>,
-    range: Option<(usize, usize)>,
-) -> Result<Vec<hume_scripting::host::DiagnosticEntry>, String> {
-    use hume_rope::offset::{CharOffset, ExclusiveRange};
-    const CAP: usize = 1000;
-    let floor = match severity_floor.map(DiagSeverity::parse) {
-        None => state.settings.lsp_diagnostics_min_severity,
-        Some(Ok(f)) => f,
-        Some(Err(e)) => return Err(format!("invalid severity floor: {e}")),
-    };
-    let Some(text) = state.buffers.try_get(bid).map(|b| b.text()) else {
-        return Ok(Vec::new());
-    };
-    // `text.end()`, not a `usize::MAX` sentinel: the buffer's own exclusive
-    // end bound is the honest "whole buffer" default, and only becomes
-    // available once `text` is in hand, as does the rope `#:range` is
-    // checked against.
-    let range = match range {
-        None => ExclusiveRange::new(CharOffset::new(0), text.end()),
-        Some((start, end)) => crate::editor::host_impl::checked_char_range(text, start, end)
-            .map_err(|e| format!("#:range {e}"))?,
-    };
-
-    let entries = state
-        .buffer_positions
-        .diagnostics
-        .for_range(bid, range, floor)
-        .take(CAP)
-        .map(|d| {
-            // Clamped to the last char, not `len_chars()`: a server can
-            // report a diagnostic anchored at end-of-file, and `len_chars()`
-            // itself resolves to the buffer's trailing phantom empty line
-            // (every buffer ends with a structural `\n`; see
-            // `hume-editor/src/editor/host_impl.rs`'s `line_start_offset`).
-            // Landing there instead of the last content line would hand
-            // plugins a `line` that later fails the fail-fast bound check
-            // every decoration setter enforces. The final `\n` is a valid
-            // cluster start, so a diagnostic on it keeps its offset.
-            let last_char = text.last_char();
-            let clamped_start = d.start.min(last_char);
-            let line = text.char_to_line(clamped_start);
-            let grapheme_col = text.columns().grapheme_col(line, clamped_start);
-            // `end-line` mirrors `line`'s clamp so a range that reaches (or
-            // overshoots) end-of-file still names the buffer's last content
-            // line rather than the phantom trailing one. An empty range, or
-            // one ending at a line's start, takes `line` as its last line.
-            let last_line = text
-                .char_to_line(d.end.retreat_saturating(1).min(last_char))
-                .max(line);
-            let end_line = last_line.advance(1);
-            hume_scripting::host::DiagnosticEntry {
-                start_char: clamped_start.index(),
-                end_char: d.end.index(),
-                start_line: line.index(),
-                end_line: end_line.index(),
-                grapheme_col: grapheme_col.index(),
-                severity: d.severity.to_text(),
-                severity_rank: d.severity as u8,
-                message: d.message.clone(),
-                code: d.code.clone(),
-                source: d.source.clone(),
-                raw: std::sync::Arc::clone(&d.raw),
-                server: d.server.clone(),
-                encoding: d.encoding,
-            }
-        })
-        .collect();
-    Ok(entries)
 }
 
 /// `(diagnostic-counts bid)` → `(errors, warnings)`.
