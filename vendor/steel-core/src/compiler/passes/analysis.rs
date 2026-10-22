@@ -1193,24 +1193,20 @@ impl<'a> VisitorMutUnitRef<'a> for AnalysisPass<'a> {
             };
 
             if call_site_kind == CallKind::TailCall {
-                let mut local_ids: SmallVec<[_; 6]> = SmallVec::new();
-
+                // An atom argument is a variable's last usage when the variable's
+                // innermost binding was last touched by that atom. `visit_atom` only
+                // records `last_used` on the binding of the atom's own name, so a
+                // lookup by name finds every such binding.
                 for arg in &l.args[1..] {
                     if let ExprKind::Atom(a) = arg {
-                        local_ids.push(a.syn.syntax_object_id);
-                    }
-                }
-
-                // Every time we hit a thing, lets just iterate the arguments, mark em.
-                for id in self
-                    .info
-                    .scope
-                    .iter()
-                    .filter_map(|x| x.1.last_used)
-                    .collect::<SmallVec<[_; 8]>>()
-                {
-                    if local_ids.contains(&id) {
-                        self.info.get_mut(&id).unwrap().last_usage = true;
+                        let id = a.syn.syntax_object_id;
+                        let last_used = a
+                            .ident()
+                            .and_then(|ident| self.info.scope.get(ident))
+                            .and_then(|x| x.last_used);
+                        if last_used == Some(id) {
+                            self.info.get_mut(&id).unwrap().last_usage = true;
+                        }
                     }
                 }
             }

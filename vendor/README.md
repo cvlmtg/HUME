@@ -33,6 +33,15 @@ argument, and `CodeGenerator::visit_let` (`src/compiler/code_gen.rs`) prints eac
 variable that is both captured and mutated. Both are deleted: stdout is the editor's terminal
 display.
 
+**The analysis pass marks a tail call's last-usage arguments by name lookup.** Upstream's
+`AnalysisPass::visit_list` (`src/compiler/passes/analysis.rs`) walks every name in the scope
+map at each tail call to find the variables an argument used last, and that map keeps every
+name bound anywhere in the program being compiled. The cost grows with tail calls times
+distinct names, and it was the compiler's largest hotspot at startup. `visit_atom` only sets
+`last_used` on the binding of the atom's own name, so looking up each atom argument's name
+finds the same bindings. With the walk replaced by that lookup, a release startup with core
+plugins loaded takes about 35 ms less.
+
 ## steel-parser 0.8.3
 
 Upstream: [mattwparas/steel](https://github.com/mattwparas/steel), `crates/steel-parser` at
