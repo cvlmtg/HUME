@@ -1,4 +1,6 @@
 use super::*;
+use crate::editor::lsp::diagnostics::DiagSeverity;
+use hume_editing::text::LineEnding;
 
 // ── Default values match previous hardcoded constants ─────────────────────
 
