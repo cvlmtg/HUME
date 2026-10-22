@@ -162,24 +162,6 @@ pub trait LspHost {
         encoding: PositionEncoding,
     ) -> Option<usize>;
 
-    /// Backs `(lsp-label-offsets->text label offsets)`: the `[start, end)`
-    /// slice of `label` named by a `ParameterInformation.label` wire offset
-    /// pair, in `encoding` (the builtin's own read of `offsets`'s tagged
-    /// producing-server encoding; `offsets` is itself drawn from the same
-    /// response `label` came from, via `json-ref`).
-    ///
-    /// `label` is server-authored display text (a
-    /// `SignatureInformation.label`), never document text, so no buffer
-    /// holds it and the other converters here don't fit. This needs no
-    /// `BufferId` at all, only the encoding.
-    fn lsp_label_offsets_to_text(
-        &self,
-        label: &str,
-        start: usize,
-        end: usize,
-        encoding: PositionEncoding,
-    ) -> String;
-
     /// `(lsp-locations->places locs)`: the filesystem path, wire
     /// line, and column of each raw `Location`/`LocationLink` handle in
     /// `locs`, decoded through the same `hume_lsp::location::decode_location`

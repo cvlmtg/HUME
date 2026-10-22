@@ -123,16 +123,6 @@ impl<'a> LspHost for EditorHostImpl<'a> {
             .map(|offset| offset.index())
     }
 
-    fn lsp_label_offsets_to_text(
-        &self,
-        label: &str,
-        start: usize,
-        end: usize,
-        encoding: hume_rope::position_encoding::PositionEncoding,
-    ) -> String {
-        crate::editor::lsp::introspect::label_slice(label, start, end, encoding)
-    }
-
     fn lsp_location_places(
         &self,
         locs: &[(

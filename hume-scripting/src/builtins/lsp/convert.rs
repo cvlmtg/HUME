@@ -91,9 +91,10 @@ pub(crate) fn lsp_label_offsets_to_text(
     };
     let start = json_usize(start, "lsp-label-offsets->text offsets")?;
     let end = json_usize(end, "lsp-label-offsets->text offsets")?;
-    let text = require_cap(ctx.host.lsp(), "lsp-label-offsets->text")?
-        .lsp_label_offsets_to_text(&label, start, end, encoding);
-    Ok(SteelVal::StringV(text.into()))
+    require_cap(ctx.host.lsp(), "lsp-label-offsets->text")?;
+    let range =
+        hume_rope::position_encoding::wire_offsets_to_byte_range(&label, start, end, encoding);
+    Ok(SteelVal::StringV(label[range].into()))
 }
 
 /// Decodes `locs` (a Steel list of raw `Location`/`LocationLink` handles)

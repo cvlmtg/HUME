@@ -194,8 +194,7 @@ pub(in crate::editor) fn server_encoding(
 /// (`JsonHandle::position_encoding`), never `id`'s *currently* attached
 /// server: the two can diverge (a restart renegotiates a different encoding,
 /// a detach leaves none), and the tag is always the encoding the range was
-/// actually written in. No `LspState` lookup needed at all, for the same
-/// reasoning as [`label_slice`]'s own `encoding` parameter, below.
+/// actually written in, so no `LspState` lookup is needed at all.
 ///
 /// A range's `end` legitimately lands exactly at the buffer's `len_chars()`
 /// (`set-extra-highlights!`'s `validate_range` accepts that boundary), so
@@ -230,24 +229,6 @@ pub(in crate::editor) fn wire_point_to_char_for_buffer(
 ) -> Option<hume_rope::offset::CharOffset> {
     let rope = state.buffers.try_get(id)?.text().rope();
     hume_rope::position_encoding::checked_wire_to_char(rope, pos, encoding)
-}
-
-/// `label` sliced by a `ParameterInformation.label` `[start, end)` wire
-/// offset pair, for `lsp-label-offsets->text`. The one place a wire offset
-/// indexes a *server-authored string* rather than a document: the offsets
-/// address `SignatureInformation.label`, which never reaches a buffer, so
-/// none of the `bid`-anchored converters above fit. `encoding` is the
-/// caller's own resolve (the `offsets` handle's tagged producing-server
-/// encoding). This function needs no buffer or `LspState` lookup at all.
-pub(in crate::editor) fn label_slice(
-    label: &str,
-    start: usize,
-    end: usize,
-    encoding: hume_rope::position_encoding::PositionEncoding,
-) -> String {
-    let range =
-        hume_rope::position_encoding::wire_offsets_to_byte_range(label, start, end, encoding);
-    label[range].to_string()
 }
 
 /// `(diagnostics-for-buffer bid #:severity floor #:range (start-char . end-char))`:

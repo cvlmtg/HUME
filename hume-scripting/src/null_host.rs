@@ -610,15 +610,6 @@ impl LspHost for EmptyLspHost {
     ) -> Option<usize> {
         None
     }
-    fn lsp_label_offsets_to_text(
-        &self,
-        _label: &str,
-        _start: usize,
-        _end: usize,
-        _encoding: hume_rope::position_encoding::PositionEncoding,
-    ) -> String {
-        String::new()
-    }
     fn lsp_location_places(
         &self,
         _locs: &[(

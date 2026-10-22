@@ -1389,8 +1389,24 @@ fn lsp_label_offsets_to_text_accepts_a_json_array_handle() {
     .to_string();
     assert!(
         msg.contains("lsp-label-offsets->text: not supported by this host"),
-        "the decoded offsets must reach the host; got: {msg}"
+        "the offsets must decode before the capability check; got: {msg}"
     );
+}
+
+/// The offsets count code units in the handle's encoding: `é` is one
+/// UTF-16 unit but two UTF-8 bytes, so `[5, 11)` names `a: i32` only when
+/// read as UTF-16.
+#[test]
+fn lsp_label_offsets_to_text_slices_the_label_in_the_handle_encoding() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut host = EmptyLspHost::default();
+    let mut ctx = h.ctx_with_host(&mut host);
+    let offsets = JsonHandle::server_for_test(serde_json::json!([5, 11]), PositionEncoding::Utf16)
+        .into_steel_val();
+    let text =
+        lsp_label_offsets_to_text(&mut ctx, SteelVal::StringV("fn é(a: i32)".into()), offsets)
+            .unwrap();
+    assert_eq!(text, SteelVal::StringV("a: i32".into()));
 }
 
 #[test]
