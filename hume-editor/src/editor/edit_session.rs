@@ -264,7 +264,7 @@ pub(in crate::editor) fn open_or_retarget(
 /// edit from another pane would make stale, and its next grouped edit panics
 /// in `ChangeSet::compose`'s length assert. Scoped to "some *other* pane"
 /// (not any open session at all) because the focused/target pane's own open
-/// session is exactly what routes an edit into
+/// session is what routes an edit into
 /// [`doc_ops::apply_doc_edit_grouped`](super::doc_ops::apply_doc_edit_grouped),
 /// a distinct, unrelated case this check must not shadow.
 ///
