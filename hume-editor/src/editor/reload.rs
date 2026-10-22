@@ -2,7 +2,7 @@
 //! re-init the scripting engine, then replay the buffer-open lifecycle.
 //!
 //! `Editor::init_scripting` is shared with startup and stays in
-//! `scripting_setup.rs`; this module owns the two reload-only halves around
+//! `scripting/init.rs`; this module owns the two reload-only halves around
 //! it ([`Editor::reset_config_state`], [`Editor::resync_config_state`]) plus
 //! the [`ReloadSnapshot`] threaded between them and the orchestrator,
 //! `typed_reload_config`.

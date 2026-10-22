@@ -17,7 +17,7 @@ regeneration run order, not repeated here). The LSP server catalogs live with th
 
 ## Load order
 
-`hume-editor/src/editor/scripting_setup.rs`'s `init_scripting` evaluates, in order:
+`hume-editor/src/editor/scripting/init.rs`'s `init_scripting` evaluates, in order:
 
 1. `builtins/bootstrap.scm`: embedded in `hume-scripting` via `include_str!`, not part of
   this directory; defines `load-plugin!`/`declare-plugin!` and the inline-activation machinery.

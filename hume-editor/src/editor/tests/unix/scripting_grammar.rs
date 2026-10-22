@@ -670,7 +670,7 @@ fn tsx_bundled_language_id_is_typescriptreact() {
 /// frame is highlighted at most one poll later, never long after a b/w flash.
 ///
 /// The detection + parse-post happens via the end-of-init
-/// `detect_and_set_language` loop in `scripting_setup.rs`.
+/// `detect_and_set_language` loop in `scripting/init.rs`.
 ///
 /// Without that loop, `syntax` would still be `None` when `init_scripting`
 /// returns.
@@ -806,7 +806,7 @@ fn grammar_registration_survives_plum_absence() {
 // ---------------------------------------------------------------------------
 
 /// `grammars.scm` attaches every already-compiled grammar before `init.scm`
-/// runs (`scripting_setup.rs`: prelude → languages → grammars → init.scm).
+/// runs (`scripting/init.rs`: prelude → languages → grammars → init.scm).
 /// `languages.scm`'s own header documents overriding an entry by redefining
 /// it in `init.scm`. This exercises exactly that documented pattern for an
 /// already-grammared language and asserts highlighting survives it.

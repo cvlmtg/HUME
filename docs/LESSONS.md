@@ -668,7 +668,7 @@ at runtime for keyword markers *also* miscompiles — not on nesting, but when
 two or more differently-shaped keyword calls to the same function appear in
 one compiled program (`FreeIdentifier: ... ##restN`, confirmed the same way,
 directly against `Engine`). `hume-scripting`'s `init_scripting`
-(`hume-editor/src/editor/scripting_setup.rs`) compiles `prelude.scm`,
+(`hume-editor/src/editor/scripting/init.rs`) compiles `prelude.scm`,
 `languages.scm`, `grammars.scm`, and a user's `init.scm` as *separate*
 programs, so this specific trigger is scoped to keyword calls within a
 single file — but nothing stops a user's own `init.scm` from registering two
@@ -1582,7 +1582,7 @@ can't use (an unknown name, a missing target), plan a warning naming that
 input as part of the no-op. Stay silent only for states that are normal and
 expected, like detaching something that isn't attached.
 
-**Files:** `hume-editor/src/editor/scripting_setup.rs` (`apply_script_effects`).
+**Files:** `hume-editor/src/editor/scripting/effects.rs` (`apply_script_effects`).
 
 ## L46 — A per-selection edit was forced through paste (2026-10-20)
 

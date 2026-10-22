@@ -13,6 +13,8 @@
 //!   Survives frame pops like `entered`, so the post-subprocess disk-change
 //!   sweep fires even for a command that never printed.
 
+use super::Editor;
+use super::event::EditorEvent;
 use super::tui::ActiveTui;
 
 /// One `#:inline-output` command currently on the Steel call stack.
@@ -174,6 +176,62 @@ impl InlineOutput {
     #[cfg(test)]
     pub(in crate::editor::inline_output) fn frame_count(&self) -> usize {
         self.frames.len()
+    }
+}
+
+impl Editor {
+    /// Close the `#:inline-output` bracket if a builtin actually opened it,
+    /// and queue the disk-change sweep an entered/ran subprocess may
+    /// warrant. Fits every Steel-session boundary that can arm one: the
+    /// top-level dispatch that owns the whole bracket lifecycle
+    /// ([`Self::call_steel_command_body`]), and a hook/queued-call batch
+    /// that only ever arms one indirectly, through a nested `(call! …)` to
+    /// an `#:inline-output` command
+    /// (`hume_scripting::host::OutputHost::arm_inline_output`).
+    ///
+    /// By the time this runs, `InlineOutput`'s frame stack is already
+    /// drained: every Steel session's own tail
+    /// (`hume-scripting`'s `run_steel_session`) does that whenever
+    /// its host has an output capability, as the editor's host always does,
+    /// including for the top-level dispatch's own frame, which nothing else
+    /// ever truncates. Truncated to zero again here regardless: this
+    /// boundary owns the guarantee that no frame outlives the dispatch, and
+    /// the session drain is only what satisfies it today.
+    /// `entered`/`ran` survive either drain (see `InlineOutput`'s own doc);
+    /// reading them here, once, is this boundary's whole job.
+    pub(in crate::editor) fn close_inline_output_bracket(&mut self) {
+        self.state.inline_output.truncate(0);
+        let ran = self.state.inline_output.take_ran();
+        if let Some(entered) = self.state.inline_output.take_entered() {
+            // `entered.tui` is the same `ActiveTui` `ensure_inline_output_screen`
+            // captured on entry. Read here, not `self.tui` again, so this
+            // always restores the terminal it actually left. `None` only
+            // for the test-only headless shape.
+            if let Some(term) = entered.tui.terminal() {
+                hume_platform::terminal::print_return_prompt();
+                hume_platform::terminal::wait_for_keypress(term);
+                let _ = hume_platform::terminal::leave_inline_output(
+                    term,
+                    entered.kitty,
+                    entered.mouse,
+                    entered.mouse_select,
+                );
+            }
+            self.state.force_full_redraw = true;
+        }
+        if ran {
+            // The editor regained the terminal: same trigger class
+            // as `TerminalEvent::FocusIn`, so it raises the same event rather
+            // than sweeping directly; the reaction is `OnFocusGained`'s Rust
+            // handler in `Editor::react_to_event`. That reaction runs inside
+            // the next `settle()`, after `message_logged_this_input` has
+            // already been set from this same dispatch's own message-log
+            // delta. `confirm_permit`'s message-shadow clause is scoped to
+            // `DiskCheckTrigger::BufferEnter` for exactly this reason, so a
+            // warning this command logged itself can't suppress the reload
+            // confirm its own subprocess just caused.
+            self.state.queue_event(EditorEvent::OnFocusGained);
+        }
     }
 }
 

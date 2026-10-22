@@ -343,7 +343,7 @@ fn on_buffer_open_queued_after_on_language_set() {
 /// `on-language-set`, once `detect_pending_languages` runs.
 ///
 /// Asserting the full two-element order (not just "did it fire") also
-/// covers a double-fire: the post-init sweep (`scripting_setup.rs`) that
+/// covers a double-fire: the post-init sweep (`scripting/init.rs`) that
 /// re-detects every open buffer's language calls `detect_and_set_language`
 /// a second time for this buffer, which would append a spurious third entry
 /// if `set_buffer_language_impl`'s unchanged-value early return ever broke.

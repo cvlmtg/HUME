@@ -43,7 +43,7 @@ impl ThemeDirsFixture {
 fn theme_search_paths_orders_config_then_data_then_runtime() {
     let fixture = ThemeDirsFixture::new();
 
-    let paths = crate::editor::scripting_setup::theme_search_paths(&fixture.dirs);
+    let paths = crate::editor::scripting::theme_search_paths(&fixture.dirs);
 
     assert_eq!(
         paths,
@@ -81,7 +81,7 @@ fn data_dir_theme_shadows_bundled_theme_of_same_name() {
 
     let theme = hume_engine::theme::loader::load_theme(
         "sand",
-        &crate::editor::scripting_setup::theme_search_paths(&fixture.dirs),
+        &crate::editor::scripting::theme_search_paths(&fixture.dirs),
     )
     .expect("sand theme should load from the data dir")
     .theme;

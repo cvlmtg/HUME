@@ -419,7 +419,7 @@ fn setup_diagnostics(content: &str, diags: &[DiagFixture]) -> DiagSetup {
 /// `runtime/` dir, and a data tempdir staged with a real compiled grammar at
 /// the exact paths core's `grammar-output-path`/`grammar-highlights-path`
 /// expect, so `init_scripting`'s unconditional `scheme/grammars.scm` eval (see
-/// `scripting_setup.rs`) registers it against the real language data.
+/// `scripting/init.rs`) registers it against the real language data.
 ///
 /// Held for the whole test so a later `:reload-config` dispatch can re-enter
 /// `init_scripting` against the same paths after `write_init` swaps in a new

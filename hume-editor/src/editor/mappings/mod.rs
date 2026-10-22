@@ -5,7 +5,6 @@ use super::input_stack::{InputEvent, LayerRef};
 
 mod bracketed_paste;
 mod execute;
-mod lazy;
 
 impl Editor {
     // ── Input dispatch ────────────────────────────────────────────────────────

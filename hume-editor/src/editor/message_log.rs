@@ -8,8 +8,8 @@ use std::collections::VecDeque;
 
 use hume_engine::theme::diagnostic_scopes;
 
-use super::EditorState;
 use super::error::CommandError;
+use super::{Editor, EditorState};
 
 /// Severity level for a message, controlling both logging and display.
 ///
@@ -280,6 +280,18 @@ impl MessageLog {
     }
 }
 
+impl Editor {
+    /// Report a message through [`EditorState::report`].
+    pub(in crate::editor) fn report(&mut self, severity: Severity, text: String) {
+        self.state.report(severity, text);
+    }
+
+    /// Report `e` at its own severity.
+    pub(in crate::editor) fn report_error(&mut self, e: &CommandError) {
+        self.state.report_error(e);
+    }
+}
+
 impl EditorState {
     // ── Status messages ───────────────────────────────────────────────────────
 
@@ -288,10 +300,12 @@ impl EditorState {
         self.report(e.severity(), e.message().to_owned());
     }
 
-    /// Record a status message / warning / error on this state.
+    /// Report a message, routing it based on severity:
     ///
-    /// Called by EditorCmd handlers that only have `&mut EditorState` access.
-    /// The `Editor::report` method delegates here.
+    /// - `Info`    → set `status_msg` only (ephemeral, not logged)
+    /// - `Warning` → push to `message_log` AND set `status_msg`
+    /// - `Error`   → push to `message_log` AND set `status_msg`
+    /// - `Trace`   → push to `message_log` only (not shown in statusline)
     pub(super) fn report(&mut self, severity: Severity, text: String) {
         match severity {
             Severity::Info => {

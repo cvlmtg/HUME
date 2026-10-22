@@ -542,7 +542,7 @@ fn register_lsp_server_before_eager_load_plugin_also_survives_the_scan() {
 ///
 /// `activate_lazy_language_plugins` (called from `set_buffer_language`,
 /// before `lsp_reconcile_buffer`) evaluates the plugin inline via
-/// `activate_and_register` (mappings/lazy.rs), which applies the activating
+/// `activate_and_register` (`scripting/lazy.rs`), which applies the activating
 /// body's queued side effects (including any `register-lsp-server!`)
 /// through `apply_script_effects` before returning.
 ///

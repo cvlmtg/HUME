@@ -33,7 +33,7 @@ mod input_stack;
 mod lifecycle;
 pub(crate) use lifecycle::Driver;
 mod reload;
-mod scripting_setup;
+mod scripting;
 mod tui;
 
 pub(crate) mod buffer;
@@ -76,8 +76,8 @@ mod triggers;
 mod visual_move;
 
 // Re-export module-level helpers so sibling submodules can call `super::foo()`.
-pub(in crate::editor) use scripting_setup::ConfigPath;
-use scripting_setup::theme_search_paths;
+pub(in crate::editor) use scripting::ConfigPath;
+use scripting::theme_search_paths;
 
 pub(in crate::editor) use minibuf::MiniBuffer;
 

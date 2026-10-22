@@ -236,7 +236,7 @@ fn raise_inside_call_bang_to_inline_output_command_does_not_leak_saved_state() {
 /// same way `call_steel_command_body` does for direct dispatch (see
 /// `apply_script_result`'s own doc).
 ///
-/// The gate opens whether or not `apply_script_result` (`scripting_setup.rs`)
+/// The gate opens whether or not `apply_script_result` (`scripting/effects.rs`)
 /// calls `self.close_inline_output_bracket()`. A missing close would leave a
 /// stuck bracket for the next dispatch, so the test also asserts the reset
 /// right after the batch that armed it.
@@ -442,7 +442,7 @@ fn hook_call_bang_to_inline_output_command_closes_the_bracket() {
 
 /// `EditorHostImpl::init`, the constructor behind every init/activation
 /// call site, including `Editor::activate_and_register`'s runtime
-/// lazy-plugin activation (`mappings/lazy.rs`), must arm `Tui`-aware
+/// lazy-plugin activation (`scripting/lazy.rs`), must arm `Tui`-aware
 /// rather than hardcoding it, since unlike `init.scm`'s own evals, a runtime
 /// activation can run with `Editor::run` already owning the terminal.
 ///
