@@ -327,7 +327,7 @@ pub fn completion_entries(dir: &Path, prefix: &str, dirs_only: bool) -> Vec<Stri
 pub fn executables_in(
     search_path: &std::ffi::OsStr,
     prefix: &str,
-    extensions: &[&str],
+    extensions: &[impl AsRef<str>],
 ) -> Vec<String> {
     let mut names = std::collections::BTreeMap::new();
     for dir in std::env::split_paths(search_path) {
@@ -360,7 +360,7 @@ fn program_name<'a>(
     entry: &std::fs::DirEntry,
     name: &'a str,
     prefix: &str,
-    _extensions: &[&str],
+    _extensions: &[impl AsRef<str>],
 ) -> Option<&'a str> {
     use std::os::unix::fs::PermissionsExt;
     if !name.starts_with(prefix) {
@@ -384,9 +384,10 @@ fn program_name<'a>(
     entry: &std::fs::DirEntry,
     name: &'a str,
     prefix: &str,
-    extensions: &[&str],
+    extensions: &[impl AsRef<str>],
 ) -> Option<&'a str> {
     let stem = extensions.iter().find_map(|ext| {
+        let ext = ext.as_ref();
         let split = name
             .len()
             .checked_sub(ext.len())

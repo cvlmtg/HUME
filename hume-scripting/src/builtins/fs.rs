@@ -120,9 +120,8 @@ fn programs_on(
     prefix: &str,
     extensions: &[String],
 ) -> SteelVal {
-    let extensions: Vec<&str> = extensions.iter().map(String::as_str).collect();
     string_list(search_path.map_or_else(Vec::new, |path| {
-        hume_platform::path::executables_in(path, prefix, &extensions)
+        hume_platform::path::executables_in(path, prefix, extensions)
     }))
 }
 
