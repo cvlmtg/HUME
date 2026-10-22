@@ -1,0 +1,82 @@
+name: build-archives
+
+on:
+  workflow_call:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            archive: tar.gz
+            layout: unix
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            # Oldest glibc the archive runs on. Zig links against this
+            # version's symbols instead of the runner's newer glibc.
+            glibc: '2.28'
+            archive: tar.gz
+            layout: unix
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            archive: zip
+            layout: windows
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0  # full history so build.rs can read the git SHA
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+
+      - if: matrix.glibc
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+
+      - if: matrix.glibc
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-zigbuild@0.23.4
+
+      - name: Build
+        run: cargo ${{ matrix.glibc && 'zigbuild' || 'build' }} --release --locked -p hume-editor -p hume-grammar-build --target ${{ matrix.target }}${{ matrix.glibc && format('.{0}', matrix.glibc) || '' }}
+
+      - name: Check glibc floor
+        if: matrix.glibc
+        run: bash scripts/check-glibc-floor.sh ${{ matrix.glibc }} target/${{ matrix.target }}/release/hume target/${{ matrix.target }}/release/hume-grammar-build
+
+      - name: Stage archive
+        shell: bash
+        run: bash scripts/stage.sh ${{ matrix.target }} ${{ matrix.layout }}
+
+      - name: Pack tar.gz
+        if: matrix.archive == 'tar.gz'
+        shell: bash
+        run: |
+          cd dist/stage
+          tar czf "../$(ls).tar.gz" "$(ls)"
+
+      - name: Pack zip
+        if: matrix.archive == 'zip'
+        shell: pwsh
+        run: |
+          $name = Get-ChildItem dist/stage | Select-Object -First 1 -ExpandProperty Name
+          Compress-Archive -Path "dist/stage/$name" -DestinationPath "dist/$name.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: archive-${{ matrix.target }}
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+          if-no-files-found: error

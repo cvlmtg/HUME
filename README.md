@@ -43,7 +43,7 @@ Grab the archive for your platform from the [latest release](https://github.com/
 | Platform | Archive |
 |---|---|
 | macOS (Apple Silicon) | `hume-*-aarch64-apple-darwin.tar.gz` |
-| Linux (x86\_64, glibc 2.39+) | `hume-*-x86_64-unknown-linux-gnu.tar.gz` |
+| Linux (x86\_64, glibc 2.28+) | `hume-*-x86_64-unknown-linux-gnu.tar.gz` |
 | Windows (x86\_64) | `hume-*-x86_64-pc-windows-msvc.zip` |
 
 See the [installation guide](https://cvlmtg.github.io/HUME/installation.html) to extract and run it.

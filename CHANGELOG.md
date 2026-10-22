@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Fixes
+- The Linux archive runs on glibc 2.28 and later: Ubuntu 20.04, Debian 10, RHEL 8 and newer.
+
 ### Breaking changes
 - `(hume/yield!)` is gone: the script budget stops a script on its own, so delete any call to it.
 
