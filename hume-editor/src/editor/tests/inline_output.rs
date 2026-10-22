@@ -212,7 +212,7 @@ fn nested_call_bang_restores_the_outer_commands_state() {
 /// the pinned VM-stack-corruption hazard).
 ///
 /// The `ctx.host.output()...truncate_inline_output(0)` call in
-/// `run_steel_session` (`activation.rs`) is what closes the gate here.
+/// `run_steel_session` (`eval/session.rs`) is what closes the gate here.
 #[test]
 fn raise_inside_call_bang_to_inline_output_command_does_not_leak_saved_state() {
     let ed = dispatch_backslash(
@@ -338,7 +338,7 @@ fn nested_call_bang_before_outer_prints_does_not_reenter_the_alt_screen() {
 /// either way, not just for an uncaught raise.
 ///
 /// Without the `ctx.host.output()...truncate_inline_output(0)` call in
-/// `run_steel_session` (`activation.rs`), the next dispatch's `SteelCtx`
+/// `run_steel_session` (`eval/session.rs`), the next dispatch's `SteelCtx`
 /// would inherit an already-open gate it never armed.
 #[test]
 fn caught_error_inside_call_bang_still_closes_bracket_and_drains_state() {

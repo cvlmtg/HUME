@@ -378,7 +378,7 @@ impl Editor {
     ///
     /// By the time this runs, `InlineOutput`'s frame stack is already
     /// drained: every Steel session's own tail
-    /// (`hume_scripting::activation::run_steel_session`) does that whenever
+    /// (`hume-scripting`'s `run_steel_session`) does that whenever
     /// its host has an output capability, as the editor's host always does,
     /// including for the top-level dispatch's own frame, which nothing else
     /// ever truncates. Truncated to zero again here regardless: this

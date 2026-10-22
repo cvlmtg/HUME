@@ -268,7 +268,7 @@ fn path_with_quote_char_transitions_to_failed() {
 
 // ── Stage B: eval-string plumbing ─────────────────────────────────────────
 
-/// A `define-command!` issued via `eval-string` inside a `run_steel` session
+/// A `define-command!` issued via `eval-string` inside an eval session
 /// defines the command, proving that the nested eval-string
 /// sees the same `ctx.registries` as the outer eval.
 #[test]
