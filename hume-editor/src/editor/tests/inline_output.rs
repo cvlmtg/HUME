@@ -3,7 +3,7 @@
 //! by keypress or `:`. See `Editor::call_steel_command_body`'s doc for the
 //! direct-dispatch case this complements; `dispatch.rs`'s own
 //! `inline_output_commands_own_warning_does_not_shadow_its_own_reload_confirm`
-//! (`disk_change.rs`) and the `unix::injections_editor` bracket tests cover
+//! (`disk_change/`) and the `unix::injections_editor` bracket tests cover
 //! that side.
 //!
 //! Every probe here calls `(%stdout-gate!)` directly and logs which branch it
@@ -268,7 +268,7 @@ fn timer_call_bang_to_inline_output_command_opens_the_gate() {
 //
 // `Tui::OnHeadless` drives the whole state machine (entering the alt-screen,
 // `close_inline_output_bracket`'s physical-teardown branch) without a real
-// TTY; see `ActiveTui`'s doc, and `disk_change.rs`'s
+// TTY; see `ActiveTui`'s doc, and `disk_change/focus_and_inline_output.rs`'s
 // `inline_output_commands_own_warning_does_not_shadow_its_own_reload_confirm`
 // for the same pattern.
 
@@ -364,7 +364,7 @@ fn caught_error_inside_call_bang_still_closes_bracket_and_drains_state() {
 
     // A different length than the fixture's original content, so the
     // on-disk signature differs by size alone regardless of mtime
-    // resolution (see `disk_change.rs`'s `rewrite_externally`).
+    // resolution (see `disk_change/mod.rs`'s `rewrite_externally`).
     std::fs::write(&tmp, "hello, world!\n").unwrap();
 
     ed.feed_event(key('\\'));
@@ -421,7 +421,7 @@ fn hook_call_bang_to_inline_output_command_closes_the_bracket() {
     );
 
     // A different length than the fixture's original content, so the
-    // on-disk signature differs by size alone (see `disk_change.rs`'s
+    // on-disk signature differs by size alone (see `disk_change/mod.rs`'s
     // `rewrite_externally`).
     std::fs::write(&tmp, "hello, world!\n").unwrap();
 
