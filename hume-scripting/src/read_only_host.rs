@@ -237,6 +237,9 @@ impl BufferHost for ReadOnlyHost<'_> {
     fn cwd(&self) -> PathBuf {
         self.inner.borrow_mut().buffers().cwd()
     }
+    fn search_path(&self) -> Option<std::ffi::OsString> {
+        self.inner.borrow_mut().buffers().search_path()
+    }
     fn set_cwd(&mut self, _path: &Path) -> Result<PathBuf, String> {
         Err(self.refuse("set_cwd"))
     }

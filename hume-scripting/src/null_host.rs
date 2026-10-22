@@ -130,6 +130,9 @@ impl BufferHost for NullHost {
     fn cwd(&self) -> PathBuf {
         PathBuf::from(".")
     }
+    fn search_path(&self) -> Option<std::ffi::OsString> {
+        None
+    }
     fn set_cwd(&mut self, _path: &Path) -> Result<PathBuf, String> {
         Err("NullHost: set_cwd not available".into())
     }

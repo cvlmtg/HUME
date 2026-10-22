@@ -2,8 +2,9 @@
 //! (mirrors the `hume-treesitter`/`hume-scripting` precedent).
 
 use std::cell::RefCell;
-use std::path::Path;
 use std::rc::Rc;
+
+use hume_platform::process::Launch;
 
 use crate::backend::{LspBackend, ServerId};
 use crate::codec::{Message, RequestId, ResponseError};
@@ -158,10 +159,10 @@ impl LspBackend for RecordingLspBackend {
         &mut self,
         cmd: &str,
         args: &[String],
-        root: &Path,
+        launch: Launch<'_>,
         env: &[(String, String)],
     ) -> std::io::Result<ServerId> {
-        let server = self.inner.start(cmd, args, root, env)?;
+        let server = self.inner.start(cmd, args, launch, env)?;
         self.started.push(server);
         Ok(server)
     }

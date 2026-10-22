@@ -91,7 +91,6 @@ fn run_with(ed: &mut Editor, run: RunId, console: &mut ScriptedConsole) {
 
 #[test]
 fn the_output_lands_on_the_selections_the_run_started_from() {
-    let _path = path_reader();
     let mut ed = editor_from("-[ab]> cd\n");
     let run = start_run(&mut ed, "tr a-z A-Z", PipeKind::Replace);
     ed.execute_keymap_command("select-next-word".into(), None, false);
@@ -103,7 +102,6 @@ fn the_output_lands_on_the_selections_the_run_started_from() {
 
 #[test]
 fn a_wait_leaves_the_input_it_did_not_handle_to_the_run_loop_in_order() {
-    let _path = path_reader();
     let mut ed = editor_from("-[abc]>\n");
     let run = start_run(&mut ed, "cat", PipeKind::Replace);
     let mut console = ScriptedConsole::new(&ed, []);
@@ -117,7 +115,6 @@ fn a_wait_leaves_the_input_it_did_not_handle_to_the_run_loop_in_order() {
 
 #[test]
 fn a_cancelled_wait_queues_its_input_behind_the_input_already_waiting() {
-    let _path = path_reader();
     let mut ed = editor_from("-[abc]>\n");
     ed.input_backlog.push_back(TerminalEvent::Key(key('a')));
     let run = start_run(&mut ed, "sleep 5; cat", PipeKind::Replace);
@@ -133,7 +130,6 @@ fn a_cancelled_wait_queues_its_input_behind_the_input_already_waiting() {
 
 #[test]
 fn a_run_replaces_the_selection_with_its_output() {
-    let _path = path_reader();
     let mut ed = editor_from("-[b\na]>\nz\n");
     let run = start_run(&mut ed, "sort", PipeKind::Replace);
     let mut console = ScriptedConsole::new(&ed, []);
@@ -143,7 +139,6 @@ fn a_run_replaces_the_selection_with_its_output() {
 
 #[test]
 fn a_run_that_ends_within_the_grace_draws_no_frame() {
-    let _path = path_reader();
     let mut ed = editor_from("-[abc]>\n");
     let run = start_run(&mut ed, "cat", PipeKind::Replace);
     let mut console = ScriptedConsole::new(&ed, []);
@@ -154,7 +149,6 @@ fn a_run_that_ends_within_the_grace_draws_no_frame() {
 
 #[test]
 fn progress_repaints_as_processes_finish() {
-    let _path = path_reader();
     let mut ed = editor_from("-{fast}> -[mid]> -[slow]>\n");
     let command = r#"read x; case $x in mid) sleep 0.4;; slow) sleep 0.8;; esac; printf '%s' "$x""#;
     let run = start_run(&mut ed, command, PipeKind::Replace);
@@ -182,7 +176,6 @@ fn progress_repaints_as_processes_finish() {
 
 #[test]
 fn progress_frames_are_at_least_a_frame_gap_apart() {
-    let _path = path_reader();
     let mut ed = editor_from("-{a}> -[b]> -[c]> -[d]> -[e]> -[f]>\n");
     let run = start_run(&mut ed, "sleep 0.15; cat", PipeKind::Replace);
     let mut console = ScriptedConsole::new(&ed, []);
@@ -201,7 +194,6 @@ fn progress_frames_are_at_least_a_frame_gap_apart() {
 
 #[test]
 fn a_resize_during_the_wait_repaints() {
-    let _path = path_reader();
     let mut ed = editor_from("-[abc]>\n");
     let run = start_run(&mut ed, "sleep 0.5; cat", PipeKind::Replace);
     let mut console = ScriptedConsole::new(&ed, [WaitEvent::Resized]);
@@ -217,7 +209,6 @@ fn a_resize_during_the_wait_repaints() {
 
 #[test]
 fn an_interrupt_cancels_the_run_and_changes_nothing() {
-    let _path = path_reader();
     let mut ed = editor_from("-[abc]>\n");
     let run = start_run(&mut ed, "sleep 30; echo late", PipeKind::Replace);
     let started = Instant::now();
@@ -230,7 +221,6 @@ fn an_interrupt_cancels_the_run_and_changes_nothing() {
 
 #[test]
 fn a_termination_request_cancels_the_run() {
-    let _path = path_reader();
     let mut ed = editor_from("-[abc]>\n");
     ed.state
         .terminate_exit_code
@@ -247,7 +237,6 @@ fn a_termination_request_cancels_the_run() {
 
 #[test]
 fn bar_replaces_each_selection_and_one_undo_restores_them() {
-    let _path = path_reader();
     let mut ed = editor_from("-{ab}> -[cd]>\n");
     ed.feed_key(key('|'));
     type_cmd(&mut ed, "tr a-z A-Z");
@@ -258,7 +247,6 @@ fn bar_replaces_each_selection_and_one_undo_restores_them() {
 
 #[test]
 fn ctrl_bar_inserts_at_each_cursor_and_joins_the_insert_session() {
-    let _path = path_reader();
     let mut ed = editor_from_kitty("-{a}> -[b]>\n");
     ed.feed_key(key('i'));
     ed.feed_key(key_ctrl('|'));
@@ -274,7 +262,6 @@ fn ctrl_bar_inserts_at_each_cursor_and_joins_the_insert_session() {
 
 #[test]
 fn one_failing_process_changes_nothing_and_logs_its_stderr() {
-    let _path = path_reader();
     let mut ed = editor_from("-{a}> -[b]>\n");
     ed.feed_key(key('|'));
     type_cmd(
@@ -288,7 +275,6 @@ fn one_failing_process_changes_nothing_and_logs_its_stderr() {
 
 #[test]
 fn output_identical_to_the_input_adds_no_undo_step() {
-    let _path = path_reader();
     let mut ed = editor_from("-[abc]>\n");
     ed.feed_key(key('|'));
     type_cmd(&mut ed, "cat");
@@ -298,7 +284,6 @@ fn output_identical_to_the_input_adds_no_undo_step() {
 
 #[test]
 fn stderr_of_a_successful_run_is_logged_at_trace() {
-    let _path = path_reader();
     let mut ed = editor_from("-[abc]>\n");
     ed.feed_key(key('|'));
     type_cmd(&mut ed, "echo note >&2; cat");
@@ -324,7 +309,6 @@ fn counting_command(dir: &Path) -> String {
 
 #[test]
 fn dot_runs_the_command_again() {
-    let _path = path_reader();
     let dir = tempfile::tempdir().expect("tempdir");
     let mut ed = editor_from("-[a]>\n");
     ed.feed_key(key('|'));
@@ -336,7 +320,6 @@ fn dot_runs_the_command_again() {
 
 #[test]
 fn dot_replays_an_insert_session_with_its_command_in_order() {
-    let _path = path_reader();
     let dir = tempfile::tempdir().expect("tempdir");
     let mut ed = editor_from_kitty("-[z]>\n");
     ed.feed_key(key('i'));
@@ -368,7 +351,6 @@ impl PipeConsole for InterruptOnceStarted {
 
 #[test]
 fn an_interrupt_during_dot_kills_the_run_and_changes_nothing() {
-    let _path = path_reader();
     let dir = tempfile::tempdir().expect("tempdir");
     let marker = dir.path().join("slow");
     let pid_file = dir.path().join("pid");
@@ -411,7 +393,6 @@ fn replace_with_x(ed: &mut Editor) {
 
 #[test]
 fn a_failed_pipe_keeps_the_previous_change() {
-    let _path = path_reader();
     let mut ed = editor_from("-[a]>\n");
     replace_with_x(&mut ed);
     ed.feed_key(key('|'));
@@ -422,7 +403,6 @@ fn a_failed_pipe_keeps_the_previous_change() {
 
 #[test]
 fn an_interrupted_pipe_keeps_the_previous_change() {
-    let _path = path_reader();
     let mut ed = editor_from("-[a]>\n");
     replace_with_x(&mut ed);
     ed.inline_pipe_console = Some(Box::new(ScriptedConsole::new(&ed, [WaitEvent::Interrupt])));
@@ -434,7 +414,6 @@ fn an_interrupted_pipe_keeps_the_previous_change() {
 
 #[test]
 fn a_failed_pipe_with_no_previous_change_leaves_none() {
-    let _path = path_reader();
     let mut ed = editor_from("-[a]>\n");
     ed.feed_key(key('|'));
     type_cmd(&mut ed, "exit 3");
@@ -443,7 +422,6 @@ fn a_failed_pipe_with_no_previous_change_leaves_none() {
 
 #[test]
 fn a_pipe_that_ran_replaces_the_previous_change() {
-    let _path = path_reader();
     let mut ed = editor_from("-[a]>\n");
     replace_with_x(&mut ed);
     ed.feed_key(key('|'));
@@ -460,7 +438,6 @@ fn a_pipe_that_ran_replaces_the_previous_change() {
 
 #[test]
 fn a_failed_ctrl_bar_keeps_its_insert_session_change() {
-    let _path = path_reader();
     let mut ed = editor_from_kitty("-[z]>\n");
     ed.feed_key(key('i'));
     type_chars(&mut ed, "a");
@@ -474,7 +451,6 @@ fn a_failed_ctrl_bar_keeps_its_insert_session_change() {
 
 #[test]
 fn an_interrupted_pipe_in_a_macro_stops_the_macro() {
-    let _path = path_reader();
     let dir = tempfile::tempdir().expect("tempdir");
     let marker = dir.path().join("slow");
     let command = format!(
@@ -504,7 +480,6 @@ fn an_interrupted_pipe_in_a_macro_stops_the_macro() {
 
 #[test]
 fn an_interrupted_dot_in_a_macro_stops_the_macro() {
-    let _path = path_reader();
     let dir = tempfile::tempdir().expect("tempdir");
     let marker = dir.path().join("slow");
     let command = format!(
@@ -535,7 +510,6 @@ fn an_interrupted_dot_in_a_macro_stops_the_macro() {
 
 #[test]
 fn an_interrupt_during_dot_stops_the_rest_of_its_insert_session() {
-    let _path = path_reader();
     let dir = tempfile::tempdir().expect("tempdir");
     let marker = dir.path().join("slow");
     let command = format!(
@@ -560,7 +534,6 @@ fn an_interrupt_during_dot_stops_the_rest_of_its_insert_session() {
 
 #[test]
 fn a_failed_pipe_in_a_macro_lets_the_macro_go_on() {
-    let _path = path_reader();
     let dir = tempfile::tempdir().expect("tempdir");
     let marker = dir.path().join("fail");
     let command = format!("if [ -e '{}' ]; then exit 1; fi; cat", marker.display());
@@ -585,7 +558,6 @@ fn a_failed_pipe_in_a_macro_lets_the_macro_go_on() {
 
 #[test]
 fn bar_runs_in_the_background_and_lands() {
-    let _path = path_reader();
     let mut ed = editor_from("-[b\na]>\n");
     let bid = ed.focused_buffer_id();
     type_pipe(&mut ed, "sort");
@@ -597,7 +569,6 @@ fn bar_runs_in_the_background_and_lands() {
 
 #[test]
 fn keys_move_selections_meanwhile_and_the_output_lands_on_the_started_ones() {
-    let _path = path_reader();
     let mut ed = editor_from("-[ab]> cd\n");
     let bid = ed.focused_buffer_id();
     type_pipe(&mut ed, "sleep 0.2; tr a-z A-Z");
@@ -609,7 +580,6 @@ fn keys_move_selections_meanwhile_and_the_output_lands_on_the_started_ones() {
 
 #[test]
 fn the_output_lands_in_the_buffer_the_pane_left() {
-    let _path = path_reader();
     let mut ed = editor_from("-[ab]>\n");
     let bid = ed.focused_buffer_id();
     type_pipe(&mut ed, "sleep 0.2; tr a-z A-Z");
@@ -621,7 +591,6 @@ fn the_output_lands_in_the_buffer_the_pane_left() {
 
 #[test]
 fn a_failed_background_run_reports_naming_the_buffer_and_keeps_the_previous_change() {
-    let _path = path_reader();
     let mut ed = editor_from("-[a]>\n");
     let bid = ed.focused_buffer_id();
     ed.handle_key(key('r'));
@@ -641,7 +610,6 @@ fn a_failed_background_run_reports_naming_the_buffer_and_keeps_the_previous_chan
 
 #[test]
 fn the_indicator_shows_after_the_grace_for_the_focused_buffer_only() {
-    let _path = path_reader();
     let mut ed = editor_from("-[a]>\n");
     let bid = ed.focused_buffer_id();
     type_pipe(&mut ed, "sleep 0.5; cat");
@@ -657,7 +625,6 @@ fn the_indicator_shows_after_the_grace_for_the_focused_buffer_only() {
 
 #[test]
 fn runs_in_two_buffers_share_one_process_cap() {
-    let _path = path_reader();
     let dir = tempfile::tempdir().expect("tempdir");
     let log = dir.path().join("log");
     let mut ed = editor_from("-{a}> -[b]> -[c]>\n");
@@ -678,7 +645,6 @@ fn runs_in_two_buffers_share_one_process_cap() {
 
 #[test]
 fn a_waited_run_takes_the_next_free_slot_before_an_older_background_run() {
-    let _path = path_reader();
     let mut ed = editor_from("-{a}> -[b]> -[c]> -[d]> -[e]>\n");
     ed.state.pipe_runs = PipeRuns::with_limit(NonZeroUsize::MIN);
     let background = ed.focused_buffer_id();
@@ -700,7 +666,6 @@ fn a_waited_run_takes_the_next_free_slot_before_an_older_background_run() {
 
 #[test]
 fn a_background_landing_leaves_a_kill_for_smart_paste() {
-    let _path = path_reader();
     let mut ed = editor_from("-[b\na]>\n");
     seed_clipboard(&mut ed, "CLIP");
     let sorted = ed.focused_buffer_id();
@@ -719,7 +684,6 @@ fn a_background_landing_leaves_a_kill_for_smart_paste() {
 
 #[test]
 fn step_waits_only_for_the_run_its_key_started() {
-    let _path = path_reader();
     let mut ed = editor_from("-[a]>\n");
     let first = ed.focused_buffer_id();
     type_pipe(&mut ed, "sleep 1; cat");
@@ -751,7 +715,6 @@ fn start_sleeper(ed: &mut Editor, dir: &Path) -> u32 {
 
 #[test]
 fn ctrl_c_kills_the_background_processes() {
-    let _path = path_reader();
     let dir = tempfile::tempdir().expect("tempdir");
     let mut ed = editor_from("-[a]>\n");
     let pid = start_sleeper(&mut ed, dir.path());
@@ -763,7 +726,6 @@ fn ctrl_c_kills_the_background_processes() {
 
 #[test]
 fn e_bang_stops_the_run_and_reloads() {
-    let _path = path_reader();
     let dir = tempfile::tempdir().expect("tempdir");
     let (mut ed, file) = editor_with_file("-[h]>ello\n", "hello\n");
     let pid = start_sleeper(&mut ed, dir.path());
@@ -776,7 +738,6 @@ fn e_bang_stops_the_run_and_reloads() {
 
 #[test]
 fn close_buffer_from_steel_raises_while_the_run_is_in_flight() {
-    let _path = path_reader();
     let dir = tempfile::tempdir().expect("tempdir");
     let mut ed = editor_from("-[a]>\n");
     run(
@@ -800,7 +761,6 @@ fn close_buffer_from_steel_raises_while_the_run_is_in_flight() {
 
 #[test]
 fn calling_cancel_pipe_then_close_buffer_from_steel_closes_it() {
-    let _path = path_reader();
     let dir = tempfile::tempdir().expect("tempdir");
     let mut ed = editor_from("-[a]>\n");
     run(
@@ -819,7 +779,6 @@ fn calling_cancel_pipe_then_close_buffer_from_steel_closes_it() {
 
 #[test]
 fn calling_cancel_pipe_says_whether_it_stopped_a_run() {
-    let _path = path_reader();
     let dir = tempfile::tempdir().expect("tempdir");
     let mut ed = editor_from("-[a]>\n");
     let bid = ed.focused_buffer_id();
@@ -864,7 +823,6 @@ impl PipeConsole for CancelsOnRepaint {
 
 #[test]
 fn a_wait_whose_run_is_cancelled_while_it_draws_ends_cancelled() {
-    let _path = path_reader();
     let mut ed = editor_from("-[a]>\n");
     let bid = ed.focused_buffer_id();
     let run = start_run(&mut ed, "sleep 30", PipeKind::Replace);
@@ -884,7 +842,6 @@ fn a_wait_whose_run_is_cancelled_while_it_draws_ends_cancelled() {
 
 #[test]
 fn an_older_run_that_landed_survives_a_newer_one_withdrawn() {
-    let _path = path_reader();
     let mut ed = editor_from("-[a]>\n");
     let first = ed.focused_buffer_id();
     for k in ['r', 'x'] {
@@ -928,11 +885,12 @@ fn probe_path_dir() -> tempfile::TempDir {
 
 #[test]
 fn tab_completes_a_program_name_from_path() {
-    let lock = claim_env();
     let bin = probe_path_dir();
-    let _path = lock.set_var("PATH", bin.path());
     let mut ed = editor_from("-[abc]>\n");
-    ed.state.dirs = repo_runtime_dirs();
+    ed.state.dirs = Dirs {
+        search_path: Some(bin.path().into()),
+        ..repo_runtime_dirs()
+    };
     ed.init_scripting(&mut Default::default());
     for line in ["hume-probe", "ls | hume-probe"] {
         ed.handle_key(key('|'));
@@ -947,12 +905,13 @@ fn tab_completes_a_program_name_from_path() {
 
 #[test]
 fn tab_completes_a_quoted_program_name_from_path() {
-    let lock = claim_env();
     let bin = probe_path_dir();
     let cwd = tempfile::tempdir().unwrap();
-    let _path = lock.set_var("PATH", bin.path());
     let mut ed = editor_from("-[abc]>\n");
-    ed.state.dirs = repo_runtime_dirs();
+    ed.state.dirs = Dirs {
+        search_path: Some(bin.path().into()),
+        ..repo_runtime_dirs()
+    };
     ed.init_scripting(&mut Default::default());
     ed.state.cwd = cwd.path().to_path_buf();
     ed.handle_key(key('|'));

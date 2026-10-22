@@ -12,7 +12,6 @@ use super::*;
 
 #[test]
 fn discovery_hint_fires_once_for_an_installable_unregistered_language() {
-    let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
@@ -49,7 +48,6 @@ fn discovery_hint_fires_once_for_an_installable_unregistered_language() {
 
 #[test]
 fn discovery_hint_does_not_fire_for_a_blocked_server() {
-    let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
@@ -70,7 +68,6 @@ fn discovery_hint_does_not_fire_for_a_blocked_server() {
 
 #[test]
 fn discovery_hint_does_not_fire_for_npm_kind_when_npm_missing_from_path() {
-    let _lock = claim_env();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
@@ -81,13 +78,11 @@ fn discovery_hint_does_not_fire_for_npm_kind_when_npm_missing_from_path() {
     // npm-on-$PATH check. Force $PATH to a directory
     // with no npm binary in it.
     let empty_path_dir = tempfile::tempdir().unwrap();
-    {
-        let _path = _lock.set_var("PATH", empty_path_dir.path());
-        let bid = ed.focused_buffer_id();
-        let lang = ed.state.config.languages.intern("systemverilog");
-        ed.set_buffer_language(bid, Some(lang));
-        ed.settle();
-    }
+    ed.state.dirs.search_path = Some(empty_path_dir.path().into());
+    let bid = ed.focused_buffer_id();
+    let lang = ed.state.config.languages.intern("systemverilog");
+    ed.set_buffer_language(bid, Some(lang));
+    ed.settle();
 
     let log = ed.state.message_log.format_for_display();
     assert!(
@@ -98,7 +93,6 @@ fn discovery_hint_does_not_fire_for_npm_kind_when_npm_missing_from_path() {
 
 #[test]
 fn discovery_hint_fires_for_cargo_kind() {
-    let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
@@ -124,7 +118,6 @@ fn discovery_hint_fires_for_cargo_kind() {
 
 #[test]
 fn discovery_hint_does_not_fire_for_cargo_kind_when_cargo_missing_from_path() {
-    let _lock = claim_env();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
@@ -132,13 +125,11 @@ fn discovery_hint_does_not_fire_for_cargo_kind_when_cargo_missing_from_path() {
     // Force $PATH to a directory with no cargo binary in it: must not hint
     // an install that would immediately fail the cargo-on-$PATH check.
     let empty_path_dir = tempfile::tempdir().unwrap();
-    {
-        let _path = _lock.set_var("PATH", empty_path_dir.path());
-        let bid = ed.focused_buffer_id();
-        let lang = ed.state.config.languages.intern("pest");
-        ed.set_buffer_language(bid, Some(lang));
-        ed.settle();
-    }
+    ed.state.dirs.search_path = Some(empty_path_dir.path().into());
+    let bid = ed.focused_buffer_id();
+    let lang = ed.state.config.languages.intern("pest");
+    ed.set_buffer_language(bid, Some(lang));
+    ed.settle();
 
     let log = ed.state.message_log.format_for_display();
     assert!(
@@ -149,20 +140,17 @@ fn discovery_hint_does_not_fire_for_cargo_kind_when_cargo_missing_from_path() {
 
 #[test]
 fn discovery_hint_does_not_fire_for_download_kind_when_download_tools_missing_from_path() {
-    let _lock = claim_env();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
 
     // rust-analyzer is a github-kind download: it needs curl and gzip.
     let empty_path_dir = tempfile::tempdir().unwrap();
-    {
-        let _path = _lock.set_var("PATH", empty_path_dir.path());
-        let bid = ed.focused_buffer_id();
-        let lang = ed.state.config.languages.intern("rust");
-        ed.set_buffer_language(bid, Some(lang));
-        ed.settle();
-    }
+    ed.state.dirs.search_path = Some(empty_path_dir.path().into());
+    let bid = ed.focused_buffer_id();
+    let lang = ed.state.config.languages.intern("rust");
+    ed.set_buffer_language(bid, Some(lang));
+    ed.settle();
 
     let log = ed.state.message_log.format_for_display();
     assert!(
@@ -173,7 +161,6 @@ fn discovery_hint_does_not_fire_for_download_kind_when_download_tools_missing_fr
 
 #[test]
 fn discovery_hint_does_not_fire_when_already_registered() {
-    let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
     fabricate_server(
         data_tmp.path(),
@@ -201,7 +188,6 @@ fn discovery_hint_does_not_fire_when_already_registered() {
 /// the primary's hint stays quiet. python lists ty before ruff.
 #[test]
 fn discovery_hint_does_not_fire_when_a_later_default_server_is_installed() {
-    let _path = path_reader();
     let python_hints = |installed: &[&str]| {
         let data_tmp = tempfile::tempdir().unwrap();
         for server in installed {
@@ -250,7 +236,6 @@ fn cargo_layout(bin_name: &str) -> String {
 
 #[test]
 fn lsp_install_cargo_runs_cargo_install_with_locked_root_and_registers() {
-    let _lock = claim_env();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
@@ -259,10 +244,8 @@ fn lsp_install_cargo_runs_cargo_install_with_locked_root_and_registers() {
     let args_file = args_tmp.path().join("argv.txt");
     let shim_dir = write_fake_tool_shim("cargo", &args_file, &cargo_layout("pest-language-server"));
 
-    {
-        let _path = _lock.set_var("PATH", shim_dir.path());
-        type_cmd(&mut ed, ":lsp-install pest");
-    }
+    ed.state.dirs.search_path = Some(shim_dir.path().into());
+    type_cmd(&mut ed, ":lsp-install pest");
 
     let argv: Vec<String> = std::fs::read_to_string(&args_file)
         .expect("shim must have run and recorded argv")
@@ -310,7 +293,6 @@ fn lsp_install_cargo_runs_cargo_install_with_locked_root_and_registers() {
 
 #[test]
 fn lsp_install_cargo_missing_binary_after_install_fails_loudly() {
-    let _lock = claim_env();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
@@ -321,10 +303,8 @@ fn lsp_install_cargo_missing_binary_after_install_fails_loudly() {
     // own post-check must catch.
     let shim_dir = write_fake_tool_shim("cargo", &args_file, "");
 
-    {
-        let _path = _lock.set_var("PATH", shim_dir.path());
-        type_cmd(&mut ed, ":lsp-install pest");
-    }
+    ed.state.dirs.search_path = Some(shim_dir.path().into());
+    type_cmd(&mut ed, ":lsp-install pest");
 
     let log = ed.state.message_log.format_for_display();
     assert!(

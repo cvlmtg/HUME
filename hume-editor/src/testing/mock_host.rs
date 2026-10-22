@@ -179,6 +179,9 @@ impl BufferHost for MockHost {
     fn cwd(&self) -> std::path::PathBuf {
         std::path::PathBuf::from(".")
     }
+    fn search_path(&self) -> Option<std::ffi::OsString> {
+        None
+    }
     fn set_cwd(&mut self, _path: &std::path::Path) -> Result<std::path::PathBuf, String> {
         Err("MockHost: set_cwd not available".into())
     }

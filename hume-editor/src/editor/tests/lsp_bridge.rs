@@ -553,10 +553,10 @@ impl LspBackend for OrderedLogBackend {
         &mut self,
         cmd: &str,
         args: &[String],
-        root: &Path,
+        launch: hume_platform::process::Launch<'_>,
         env: &[(String, String)],
     ) -> std::io::Result<ServerId> {
-        self.inner.start(cmd, args, root, env)
+        self.inner.start(cmd, args, launch, env)
     }
 
     fn send(&mut self, server: ServerId, msg: Message) {

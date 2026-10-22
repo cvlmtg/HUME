@@ -1,5 +1,6 @@
 //! Buffer/pane enumeration, reads, lifecycle, and viewport geometry.
 
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 use hume_engine::pipeline::BufferId;
@@ -94,10 +95,13 @@ pub trait BufferHost {
     /// Language stored on the buffer (not accounting for pending `set-buffer-option!`'s `"language"`).
     fn buffer_stored_language(&self, id: BufferId) -> Option<String>;
 
-    // ── Working directory ────────────────────────────────────────────────────
+    // ── Working directory and search path ───────────────────────────────────
     /// The editor's working directory: the base for relative paths and the
     /// default cwd of every spawned child. Backs `(cwd)`.
     fn cwd(&self) -> PathBuf;
+    /// The `PATH` every spawned child gets and `which` searches
+    /// (`Dirs::search_path`); `None` when unset.
+    fn search_path(&self) -> Option<OsString>;
     /// Moves the editor's working directory to `path` (a relative `path` joins
     /// onto the current one) and returns the new directory. The same
     /// operation as `:cd`. `Err` when `path` is not a directory.

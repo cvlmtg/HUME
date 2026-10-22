@@ -12,7 +12,6 @@ fn effective(ed: &Editor, language: &str) -> Vec<String> {
 
 #[test]
 fn scan_registers_secondary_and_sets_default_order() {
-    let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
     // Fabricated ruff before ty, the reverse of Helix's order, so the
     // result shows the catalog order, not the install order.
@@ -43,7 +42,6 @@ fn scan_registers_secondary_and_sets_default_order() {
 
 #[test]
 fn user_set_language_servers_overrides_install_default() {
-    let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
     fabricate_server(data_tmp.path(), "ruff", "0.0.1", "ruff");
     fabricate_server(data_tmp.path(), "ty", "0.0.1", "ty");
@@ -62,7 +60,6 @@ fn user_set_language_servers_overrides_install_default() {
 
 #[test]
 fn a_manual_registration_no_list_names_does_not_attach() {
-    let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
     fabricate_server(data_tmp.path(), "ruff", "0.0.1", "ruff");
     fabricate_server(data_tmp.path(), "ty", "0.0.1", "ty");
@@ -83,7 +80,6 @@ fn a_manual_registration_no_list_names_does_not_attach() {
 /// language the catalog does not list the server under.
 #[test]
 fn a_user_list_attaches_a_server_its_catalog_row_does_not_list() {
-    let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
     for server in [
         "typescript-language-server",
@@ -122,7 +118,6 @@ fn a_user_list_attaches_a_server_its_catalog_row_does_not_list() {
 /// installed: a server registered by hand is then picked up by name.
 #[test]
 fn default_lists_cover_every_catalog_language_with_nothing_installed() {
-    let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
 
     let mut ed = editor_from("-[x]>\n");
@@ -139,7 +134,6 @@ fn default_lists_cover_every_catalog_language_with_nothing_installed() {
 
 #[test]
 fn install_by_server_name_runs_the_same_pipeline() {
-    let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
     let version = seeded_version("ruff");
     let mut ed = editor_from("-[x]>\n");
@@ -158,7 +152,6 @@ fn install_by_server_name_runs_the_same_pipeline() {
 
 #[test]
 fn install_rejects_a_name_that_is_neither_language_nor_server() {
-    let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());

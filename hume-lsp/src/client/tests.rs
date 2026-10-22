@@ -1,5 +1,6 @@
 use super::*;
 use crate::inline::InlineLspBackend;
+use hume_platform::process::Launch;
 use lsp_types::ServerCapabilities;
 use std::path::PathBuf;
 
@@ -19,7 +20,12 @@ fn canned_result(encoding: Option<PositionEncodingKind>) -> serde_json::Value {
 fn handshake_round_trip_transitions_to_running() {
     let mut backend = InlineLspBackend::with_default_handshake();
     let sid = backend
-        .start("rust-analyzer", &[], std::path::Path::new("."), &[])
+        .start(
+            "rust-analyzer",
+            &[],
+            Launch::with_process_path(std::path::Path::new(".")),
+            &[],
+        )
         .unwrap();
     let mut client = LspClient::new(sid, PathBuf::from("."));
 
@@ -49,7 +55,12 @@ fn handshake_round_trip_transitions_to_running() {
 fn handshake_sends_did_change_configuration_when_settings_set() {
     let mut backend = InlineLspBackend::with_default_handshake();
     let sid = backend
-        .start("rust-analyzer", &[], std::path::Path::new("."), &[])
+        .start(
+            "rust-analyzer",
+            &[],
+            Launch::with_process_path(std::path::Path::new(".")),
+            &[],
+        )
         .unwrap();
     let mut client = LspClient::new(sid, PathBuf::from("."));
     client.set_settings(Some(serde_json::json!({"files": {"watcher": "server"}})));
@@ -89,7 +100,12 @@ fn handshake_sends_did_change_configuration_when_settings_set() {
 fn handshake_omits_did_change_configuration_when_settings_unset() {
     let mut backend = InlineLspBackend::with_default_handshake();
     let sid = backend
-        .start("rust-analyzer", &[], std::path::Path::new("."), &[])
+        .start(
+            "rust-analyzer",
+            &[],
+            Launch::with_process_path(std::path::Path::new(".")),
+            &[],
+        )
         .unwrap();
     let mut client = LspClient::new(sid, PathBuf::from("."));
 
@@ -110,7 +126,12 @@ fn handshake_omits_did_change_configuration_when_settings_unset() {
 fn did_change_configuration_is_queued_ahead_of_pending_did_open() {
     let mut backend = InlineLspBackend::with_default_handshake();
     let sid = backend
-        .start("rust-analyzer", &[], std::path::Path::new("."), &[])
+        .start(
+            "rust-analyzer",
+            &[],
+            Launch::with_process_path(std::path::Path::new(".")),
+            &[],
+        )
         .unwrap();
     let mut client = LspClient::new(sid, PathBuf::from("."));
     client.set_settings(Some(serde_json::json!({"a": 1})));
@@ -155,7 +176,12 @@ fn did_change_configuration_is_queued_ahead_of_pending_did_open() {
 fn initialize_request_carries_initialization_options_when_set() {
     let mut backend = InlineLspBackend::new();
     let sid = backend
-        .start("x", &[], std::path::Path::new("."), &[])
+        .start(
+            "x",
+            &[],
+            Launch::with_process_path(std::path::Path::new(".")),
+            &[],
+        )
         .unwrap();
     let mut client = LspClient::new(sid, PathBuf::from("."));
 
@@ -182,7 +208,12 @@ fn initialize_request_advertises_ranges_formatting_support() {
     // rather than on `build_initialize_params`'s typed return.
     let mut backend = InlineLspBackend::new();
     let sid = backend
-        .start("x", &[], std::path::Path::new("."), &[])
+        .start(
+            "x",
+            &[],
+            Launch::with_process_path(std::path::Path::new(".")),
+            &[],
+        )
         .unwrap();
     let mut client = LspClient::new(sid, PathBuf::from("."));
 
@@ -203,7 +234,12 @@ fn initialize_request_advertises_ranges_formatting_support() {
 fn initialize_request_omits_initialization_options_when_unset() {
     let mut backend = InlineLspBackend::new();
     let sid = backend
-        .start("x", &[], std::path::Path::new("."), &[])
+        .start(
+            "x",
+            &[],
+            Launch::with_process_path(std::path::Path::new(".")),
+            &[],
+        )
         .unwrap();
     let mut client = LspClient::new(sid, PathBuf::from("."));
 
@@ -225,7 +261,12 @@ fn handshake_failure_response_crashes() {
     let mut backend = InlineLspBackend::new();
     backend.fail_with("initialize", -32603, "boom");
     let sid = backend
-        .start("x", &[], std::path::Path::new("."), &[])
+        .start(
+            "x",
+            &[],
+            Launch::with_process_path(std::path::Path::new(".")),
+            &[],
+        )
         .unwrap();
     let mut client = LspClient::new(sid, PathBuf::from("."));
 
@@ -283,7 +324,12 @@ fn generic_initialize_request_is_not_hijacked_by_the_handshake_discriminator() {
 fn initialize_sweep_is_quiet_before_the_deadline() {
     let mut backend = InlineLspBackend::new();
     let sid = backend
-        .start("x", &[], std::path::Path::new("."), &[])
+        .start(
+            "x",
+            &[],
+            Launch::with_process_path(std::path::Path::new(".")),
+            &[],
+        )
         .unwrap();
     let mut client = LspClient::new(sid, PathBuf::from("."));
     client.start_handshake(&mut backend);
@@ -298,7 +344,12 @@ fn initialize_sweep_is_quiet_before_the_deadline() {
 fn initialize_timeout_crashes_via_the_sweep() {
     let mut backend = InlineLspBackend::new();
     let sid = backend
-        .start("x", &[], std::path::Path::new("."), &[])
+        .start(
+            "x",
+            &[],
+            Launch::with_process_path(std::path::Path::new(".")),
+            &[],
+        )
         .unwrap();
     let mut client = LspClient::new(sid, PathBuf::from("."));
     client.start_handshake(&mut backend);
@@ -338,7 +389,12 @@ fn initialize_never_times_out_once_running() {
 fn earliest_deadline_none_when_no_pending() {
     let mut backend = InlineLspBackend::new();
     let sid = backend
-        .start("x", &[], std::path::Path::new("."), &[])
+        .start(
+            "x",
+            &[],
+            Launch::with_process_path(std::path::Path::new(".")),
+            &[],
+        )
         .unwrap();
     let client = LspClient::new(sid, PathBuf::from("."));
     assert_eq!(client.earliest_deadline(), None);
@@ -379,7 +435,12 @@ fn earliest_deadline_is_min() {
 fn messages_sent_while_starting_are_queued_then_flushed_in_order() {
     let mut backend = InlineLspBackend::with_default_handshake();
     let sid = backend
-        .start("x", &[], std::path::Path::new("."), &[])
+        .start(
+            "x",
+            &[],
+            Launch::with_process_path(std::path::Path::new(".")),
+            &[],
+        )
         .unwrap();
     let mut client = LspClient::new(sid, PathBuf::from("."));
 
@@ -459,7 +520,12 @@ fn incremental_change(uri: &str, text: &str) -> Message {
 fn flushed_after_queueing(queue: Vec<Message>) -> Vec<String> {
     let mut backend = InlineLspBackend::with_default_handshake();
     let sid = backend
-        .start("x", &[], std::path::Path::new("."), &[])
+        .start(
+            "x",
+            &[],
+            Launch::with_process_path(std::path::Path::new(".")),
+            &[],
+        )
         .unwrap();
     let mut client = LspClient::new(sid, PathBuf::from("."));
     client.start_handshake(&mut backend);
@@ -554,7 +620,12 @@ fn send_request_while_starting_is_queued_then_flushed_and_still_correlates() {
     let mut backend = InlineLspBackend::with_default_handshake();
     backend.respond_to("textDocument/hover", serde_json::json!({"contents": "hi"}));
     let sid = backend
-        .start("x", &[], std::path::Path::new("."), &[])
+        .start(
+            "x",
+            &[],
+            Launch::with_process_path(std::path::Path::new(".")),
+            &[],
+        )
         .unwrap();
     let mut client = LspClient::new(sid, PathBuf::from("."));
 
@@ -628,7 +699,12 @@ fn utf8_negotiated_when_offered() {
         canned_result(Some(PositionEncodingKind::UTF8)),
     );
     let sid = backend
-        .start("x", &[], std::path::Path::new("."), &[])
+        .start(
+            "x",
+            &[],
+            Launch::with_process_path(std::path::Path::new(".")),
+            &[],
+        )
         .unwrap();
     let mut client = LspClient::new(sid, PathBuf::from("."));
 
@@ -644,7 +720,12 @@ fn utf16_is_the_default_when_server_omits_the_field() {
     let mut backend = InlineLspBackend::new();
     backend.respond_to("initialize", canned_result(None));
     let sid = backend
-        .start("x", &[], std::path::Path::new("."), &[])
+        .start(
+            "x",
+            &[],
+            Launch::with_process_path(std::path::Path::new(".")),
+            &[],
+        )
         .unwrap();
     let mut client = LspClient::new(sid, PathBuf::from("."));
 
@@ -674,7 +755,12 @@ fn handshaken_client(result: serde_json::Value) -> LspClient {
     let mut backend = InlineLspBackend::new();
     backend.respond_to("initialize", result);
     let sid = backend
-        .start("x", &[], std::path::Path::new("."), &[])
+        .start(
+            "x",
+            &[],
+            Launch::with_process_path(std::path::Path::new(".")),
+            &[],
+        )
         .unwrap();
     let mut client = LspClient::new(sid, PathBuf::from("."));
     client.start_handshake(&mut backend);
@@ -742,7 +828,12 @@ fn change_sync_absent_capability_means_no_change_notifications() {
 fn eof_transitions_to_crashed_and_further_sends_do_not_panic() {
     let mut backend = InlineLspBackend::new();
     let sid = backend
-        .start("x", &[], std::path::Path::new("."), &[])
+        .start(
+            "x",
+            &[],
+            Launch::with_process_path(std::path::Path::new(".")),
+            &[],
+        )
         .unwrap();
     let mut client = LspClient::new(sid, PathBuf::from("."));
 
@@ -778,7 +869,12 @@ fn eof_transitions_to_crashed_and_further_sends_do_not_panic() {
 fn drain_pending_completes_every_request_as_stopped() {
     let mut backend = InlineLspBackend::new();
     let sid = backend
-        .start("x", &[], std::path::Path::new("."), &[])
+        .start(
+            "x",
+            &[],
+            Launch::with_process_path(std::path::Path::new(".")),
+            &[],
+        )
         .unwrap();
     let mut client = LspClient::new(sid, PathBuf::from("."));
     let meta = || RequestMeta {
@@ -815,7 +911,12 @@ fn drain_pending_completes_every_request_as_stopped() {
 fn starting_client_with_a_queued_request() -> LspClient {
     let mut backend = InlineLspBackend::new();
     let sid = backend
-        .start("x", &[], std::path::Path::new("."), &[])
+        .start(
+            "x",
+            &[],
+            Launch::with_process_path(std::path::Path::new(".")),
+            &[],
+        )
         .unwrap();
     let mut client = LspClient::new(sid, PathBuf::from("."));
     client.start_handshake(&mut backend);
@@ -861,7 +962,12 @@ fn a_failed_initialize_drops_what_was_queued() {
 fn send_request_after_crashed_times_out_immediately_via_the_sweep() {
     let mut backend = InlineLspBackend::new();
     let sid = backend
-        .start("x", &[], std::path::Path::new("."), &[])
+        .start(
+            "x",
+            &[],
+            Launch::with_process_path(std::path::Path::new(".")),
+            &[],
+        )
         .unwrap();
     let mut client = LspClient::new(sid, PathBuf::from("."));
 
@@ -927,7 +1033,12 @@ fn shutdown_sends_shutdown_request_then_exit_notification_in_order() {
 fn begin_shutdown_sends_nothing_while_still_starting() {
     let mut backend = InlineLspBackend::new();
     let sid = backend
-        .start("x", &[], std::path::Path::new("."), &[])
+        .start(
+            "x",
+            &[],
+            Launch::with_process_path(std::path::Path::new(".")),
+            &[],
+        )
         .unwrap();
     let mut client = LspClient::new(sid, PathBuf::from("."));
     assert_eq!(client.state, ServerState::Starting);
@@ -953,7 +1064,12 @@ fn initialize_response_after_shutdown_while_starting_does_not_resurrect_the_clie
     let mut backend = InlineLspBackend::new();
     backend.respond_to("initialize", canned_result(None));
     let sid = backend
-        .start("x", &[], std::path::Path::new("."), &[])
+        .start(
+            "x",
+            &[],
+            Launch::with_process_path(std::path::Path::new(".")),
+            &[],
+        )
         .unwrap();
     let mut client = LspClient::new(sid, PathBuf::from("."));
 
@@ -1031,7 +1147,12 @@ fn shutdown_error_surfaces_as_err() {
 fn make_running_client() -> (InlineLspBackend, LspClient) {
     let mut backend = InlineLspBackend::with_default_handshake();
     let sid = backend
-        .start("x", &[], std::path::Path::new("."), &[])
+        .start(
+            "x",
+            &[],
+            Launch::with_process_path(std::path::Path::new(".")),
+            &[],
+        )
         .unwrap();
     let mut client = LspClient::new(sid, PathBuf::from("."));
     client.start_handshake(&mut backend);
@@ -1129,7 +1250,12 @@ fn cancel_removes_pending_and_sends_cancel_notification() {
 fn cancel_and_timeout_send_no_cancel_request_while_still_starting() {
     let mut backend = InlineLspBackend::new();
     let sid = backend
-        .start("x", &[], std::path::Path::new("."), &[])
+        .start(
+            "x",
+            &[],
+            Launch::with_process_path(std::path::Path::new(".")),
+            &[],
+        )
         .unwrap();
     let mut client = LspClient::new(sid, PathBuf::from("."));
     assert_eq!(client.state, ServerState::Starting);
@@ -1181,7 +1307,12 @@ fn cancelled_request_is_not_flushed_after_handshake_completes() {
     let mut backend = InlineLspBackend::new();
     backend.respond_to("initialize", canned_result(None));
     let sid = backend
-        .start("x", &[], std::path::Path::new("."), &[])
+        .start(
+            "x",
+            &[],
+            Launch::with_process_path(std::path::Path::new(".")),
+            &[],
+        )
         .unwrap();
     let mut client = LspClient::new(sid, PathBuf::from("."));
     client.start_handshake(&mut backend);

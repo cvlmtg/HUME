@@ -15,7 +15,7 @@ fn spawn_piped_runs_a_batch_file_with_its_argument_intact() {
     let (child, stdin, mut stdout, _stderr) = spawn_piped(
         script.to_str().expect("UTF-8 temp path"),
         &["two words".to_string()],
-        dir.path(),
+        Launch::with_process_path(dir.path()),
         &[],
     )
     .expect("spawn batch file");

@@ -4,8 +4,10 @@
 //! blocking, so a caller can wait on it while it keeps reading keys.
 
 use std::collections::VecDeque;
-use std::path::{Path, PathBuf};
+use std::ffi::OsString;
+use std::path::PathBuf;
 
+use crate::process::Launch;
 use crate::process::job::{JobResult, SpawnedJob, spawn_job};
 use crate::wake::WakeCallback;
 
@@ -87,6 +89,7 @@ pub struct ShellBatch {
     /// The command line in backticks, as a failure names it.
     label: String,
     cwd: PathBuf,
+    search_path: Option<OsString>,
     /// Inputs not started yet, with their index.
     waiting: VecDeque<(usize, String)>,
     jobs: Vec<(usize, SpawnedJob)>,
@@ -95,15 +98,21 @@ pub struct ShellBatch {
 }
 
 impl ShellBatch {
-    /// A batch running `command` under `shell` in `cwd` once per input.
+    /// A batch running `command` under `shell` from `launch` once per input.
     /// Nothing starts until the first [`Self::fill`].
-    pub fn new(shell: &ShellCommand, command: &str, cwd: &Path, inputs: Vec<String>) -> Self {
+    pub fn new(
+        shell: &ShellCommand,
+        command: &str,
+        launch: Launch<'_>,
+        inputs: Vec<String>,
+    ) -> Self {
         let (program, args) = shell.argv(command);
         Self {
             program,
             args,
             label: format!("`{command}`"),
-            cwd: cwd.to_path_buf(),
+            cwd: launch.cwd.to_path_buf(),
+            search_path: launch.search_path.map(ToOwned::to_owned),
             outputs: inputs.iter().map(|_| None).collect(),
             waiting: inputs.into_iter().enumerate().collect(),
             jobs: Vec::new(),
@@ -146,7 +155,10 @@ impl ShellBatch {
             let job = spawn_job(
                 &self.program,
                 &self.args,
-                &self.cwd,
+                Launch {
+                    cwd: &self.cwd,
+                    search_path: self.search_path.as_deref(),
+                },
                 input.into_bytes(),
                 wake.clone(),
             )

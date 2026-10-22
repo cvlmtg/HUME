@@ -25,7 +25,6 @@
 //! fills its stdout pipe stops reading stdin until someone drains it.
 
 use std::io::{self, Write};
-use std::path::Path;
 use std::process::{ChildStdin, ExitStatus};
 use std::sync::mpsc;
 use std::thread::JoinHandle;
@@ -34,8 +33,8 @@ use crate::process::child::{
     JOB_STDOUT_CAP, STDERR_CAPTURE_CAP, read_bounded, read_capped, spawn_bridge,
     spawn_bridge_waking, spawn_piped,
 };
-use crate::process::decode_lossy;
 use crate::process::tracked::TrackedChild;
+use crate::process::{Launch, decode_lossy};
 use crate::wake::WakeCallback;
 
 /// The complete output of a finished [`SpawnedJob`]: whole stdout as raw
@@ -92,11 +91,11 @@ pub struct SpawnedJob {
 pub fn spawn_job(
     cmd: &str,
     args: &[String],
-    cwd: &Path,
+    launch: Launch<'_>,
     input: Vec<u8>,
     wake: WakeCallback,
 ) -> io::Result<SpawnedJob> {
-    let (child, stdin, stdout, stderr) = spawn_piped(cmd, args, cwd, &[])?;
+    let (child, stdin, stdout, stderr) = spawn_piped(cmd, args, launch, &[])?;
     // Converted to a `TrackedChild` up front, not deferred to the end like
     // `line_source` does. The job thread below needs its own handle to
     // wait for the child's exit status, so it and this function's returned

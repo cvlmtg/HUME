@@ -377,7 +377,6 @@ fn passive_load_registers_grammar_and_unknown_call_logs_warning() {
 /// module doc elsewhere in this test tree).
 #[test]
 fn plum_install_grammar_tab_completes_a_declared_name() {
-    let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_plum(&mut ed, data_tmp.path());
@@ -398,13 +397,6 @@ fn plum_install_grammar_tab_completes_a_declared_name() {
 /// (see `workspace_grammar_build`), and network access.
 #[test]
 fn install_real_json_grammar_e2e() {
-    // git and curl are spawned by unqualified name below, so this
-    // test is a `PATH` reader for its whole duration.
-    // `scripting_lsp_install/` narrows process `PATH` to an empty or
-    // shim-only dir in several tests, and a spawn landing inside that window
-    // resolves to nothing (see `PathReader`'s doc).
-    let _path = path_reader();
-
     // Read the JSON grammar's url + pinned rev straight from the shipped data
     // (single source of truth, no hardcoded pins to drift out of sync).
     let (url, rev) = grammar_source("json");
@@ -431,8 +423,13 @@ fn install_real_json_grammar_e2e() {
         GrammarBuild::Found(tool) => tool,
         missing => panic!("build hume-grammar-build first (cargo build --workspace): {missing:?}"),
     };
-    let status = hume_platform::process::grammar_build(&tool, &src_dir, &out_path, &src_dir)
-        .expect("grammar_build must not fail to spawn");
+    let status = hume_platform::process::grammar_build(
+        &tool,
+        &src_dir,
+        &out_path,
+        hume_platform::process::Launch::with_process_path(&src_dir),
+    )
+    .expect("grammar_build must not fail to spawn");
     assert!(status.success(), "grammar compiler failed");
     assert!(out_path.exists(), "compiled grammar must exist after build");
 
@@ -465,7 +462,7 @@ fn install_real_json_grammar_e2e() {
 
     let mut host = ScriptingHost::new(&Dirs {
         data: Some(data_dir),
-        ..Dirs::none()
+        ..process_dirs()
     });
     {
         let mut ih = init_host!(ed);
@@ -522,8 +519,6 @@ fn setup_editor_with_languages_scm(
     languages_scm: &str,
     file_name: &str,
 ) -> (Editor, Vec<tempfile::TempDir>) {
-    let _path = path_reader();
-
     let config_tmp = tempfile::tempdir().unwrap();
     let runtime_tmp = tempfile::tempdir().unwrap();
     let data_tmp = tempfile::tempdir().unwrap();
@@ -633,7 +628,6 @@ fn configure_language_roots_keyword_round_trips_through_real_prelude() {
 /// `lsp_language_id_of` falling back to `name_of`, the id would be `"tsx"`.
 #[test]
 fn tsx_bundled_language_id_is_typescriptreact() {
-    let _path = path_reader();
     let config_tmp = tempfile::tempdir().unwrap();
     let data_tmp = tempfile::tempdir().unwrap();
     let hume_config = config_tmp.path().join("hume");
@@ -645,7 +639,7 @@ fn tsx_bundled_language_id_is_typescriptreact() {
         config: Some(hume_config),
         data: Some(data_tmp.path().join("hume")),
         runtime: Some(repo_runtime_dir()),
-        ..Dirs::none()
+        ..process_dirs()
     };
     ed.init_scripting(&mut Default::default());
     let bid = ed.focused_buffer_id();
@@ -879,8 +873,6 @@ fn init_errors_with_json_data(
     json_data: &str,
     populate_data: impl FnOnce(&std::path::Path),
 ) -> (Vec<String>, Editor, Vec<tempfile::TempDir>) {
-    let _path = path_reader();
-
     let config_tmp = tempfile::tempdir().unwrap();
     let runtime_tmp = tempfile::tempdir().unwrap();
     let data_tmp = tempfile::tempdir().unwrap();
@@ -1168,7 +1160,6 @@ fn register_grammar_from_sources_picks_up_only_the_optional_files_present() {
 /// `go` lists two, `gomod` none.
 #[test]
 fn bundled_languages_carry_root_markers() {
-    let _path = path_reader();
     let config_tmp = tempfile::tempdir().unwrap();
     let data_tmp = tempfile::tempdir().unwrap();
     let hume_config = config_tmp.path().join("hume");
@@ -1180,7 +1171,7 @@ fn bundled_languages_carry_root_markers() {
         config: Some(hume_config),
         data: Some(data_tmp.path().join("hume")),
         runtime: Some(repo_runtime_dir()),
-        ..Dirs::none()
+        ..process_dirs()
     };
     ed.init_scripting(&mut Default::default());
     let bid = ed.focused_buffer_id();

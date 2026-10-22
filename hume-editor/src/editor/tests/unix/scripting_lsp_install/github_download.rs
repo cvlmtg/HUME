@@ -61,7 +61,6 @@ fn write_fake_curl_shim(fixture: &Path, args_file: &Path) -> (tempfile::TempDir,
 fn lsp_install_tar_gz_unpacks_a_nested_binary_and_registers() {
     use std::os::unix::fs::PermissionsExt;
 
-    let _lock = claim_env();
     let work = tempfile::tempdir().unwrap();
     let payload = work.path().join("payload");
     std::fs::create_dir_all(payload.join("pkg/bin")).unwrap();
@@ -84,7 +83,7 @@ fn lsp_install_tar_gz_unpacks_a_nested_binary_and_registers() {
         &archive,
         "pkg/bin/lua-language-server",
     );
-    let (data_tmp, ed, _runtime) = install_from_fixture(&_lock, sources, &archive, "lua");
+    let (data_tmp, ed, _runtime) = install_from_fixture(sources, &archive, "lua");
 
     let server_dir = canonical_data_dir(data_tmp.path())
         .join("servers")
@@ -114,7 +113,6 @@ fn lsp_install_tar_gz_unpacks_a_nested_binary_and_registers() {
 fn lsp_install_tar_gz_with_empty_directories_marks_every_file_executable() {
     use std::os::unix::fs::PermissionsExt;
 
-    let _lock = claim_env();
     let work = tempfile::tempdir().unwrap();
     let payload = work.path().join("payload");
     for empty in ["a", "b", "c", "d"] {
@@ -146,7 +144,7 @@ fn lsp_install_tar_gz_with_empty_directories_marks_every_file_executable() {
         &archive,
         "pkg/bin/server",
     );
-    let (data_tmp, _ed, _runtime) = install_from_fixture(&_lock, sources, &archive, "lua");
+    let (data_tmp, _ed, _runtime) = install_from_fixture(sources, &archive, "lua");
 
     let server_dir = canonical_data_dir(data_tmp.path())
         .join("servers")
@@ -164,13 +162,12 @@ fn lsp_install_tar_gz_with_empty_directories_marks_every_file_executable() {
 fn lsp_install_raw_binary_is_marked_executable_and_kept() {
     use std::os::unix::fs::PermissionsExt;
 
-    let _lock = claim_env();
     let work = tempfile::tempdir().unwrap();
     let asset = work.path().join("marksman-fake");
     std::fs::write(&asset, b"#!/bin/sh\n").unwrap();
     std::fs::set_permissions(&asset, std::fs::Permissions::from_mode(0o644)).unwrap();
     let sources = &github_source("marksman", "marksman-fake", &asset, "marksman-fake");
-    let (data_tmp, ed, _runtime) = install_from_fixture(&_lock, sources, &asset, "markdown");
+    let (data_tmp, ed, _runtime) = install_from_fixture(sources, &asset, "markdown");
 
     let bin = canonical_data_dir(data_tmp.path())
         .join("servers")
@@ -196,7 +193,6 @@ fn lsp_install_raw_binary_is_marked_executable_and_kept() {
 /// hand under the same name: the installed copy is what runs afterwards.
 #[test]
 fn lsp_install_replaces_a_manual_registration_of_the_same_name() {
-    let _lock = claim_env();
     let work = tempfile::tempdir().unwrap();
     let asset = work.path().join("marksman-fake");
     std::fs::write(&asset, b"#!/bin/sh\n").unwrap();
@@ -219,10 +215,8 @@ fn lsp_install_replaces_a_manual_registration_of_the_same_name() {
         "precondition: the manual registration from init.scm took effect"
     );
 
-    {
-        let _path = _lock.set_var("PATH", &path);
-        type_cmd(&mut ed, ":lsp-install markdown");
-    }
+    ed.state.dirs.search_path = Some(path.into());
+    type_cmd(&mut ed, ":lsp-install markdown");
 
     let bin = canonical_data_dir(data_tmp.path())
         .join("servers")
@@ -241,7 +235,6 @@ fn lsp_install_replaces_a_manual_registration_of_the_same_name() {
 /// running binary cannot be replaced on every platform.
 #[test]
 fn lsp_install_over_an_existing_install_waits_for_the_server_to_stop() {
-    let _lock = claim_env();
     let work = tempfile::tempdir().unwrap();
     let asset = work.path().join("marksman-fake");
     std::fs::write(&asset, b"#!/bin/sh\necho new\n").unwrap();
@@ -255,7 +248,7 @@ fn lsp_install_over_an_existing_install_waits_for_the_server_to_stop() {
         .join("servers")
         .join("marksman")
         .join("marksman-fake");
-    let _path = _lock.set_var("PATH", &path);
+    ed.state.dirs.search_path = Some(path.into());
 
     type_cmd(&mut ed, ":lsp-install markdown");
     assert_eq!(
@@ -281,7 +274,6 @@ fn lsp_install_over_an_existing_install_waits_for_the_server_to_stop() {
 
 #[test]
 fn lsp_install_generic_kind_downloads_the_recorded_url_and_registers() {
-    let _lock = claim_env();
     let work = tempfile::tempdir().unwrap();
     let payload = work.path().join("payload");
     std::fs::create_dir_all(&payload).unwrap();
@@ -307,7 +299,7 @@ fn lsp_install_generic_kind_downloads_the_recorded_url_and_registers() {
         "terraform-ls".to_string(),
         format!("((kind . generic) (version . \"9.9.9\") (targets {targets}))"),
     )];
-    let (data_tmp, ed, _runtime) = install_from_fixture(&_lock, sources, &archive, "hcl");
+    let (data_tmp, ed, _runtime) = install_from_fixture(sources, &archive, "hcl");
 
     let argv = std::fs::read_to_string(archive.with_extension("curl-argv"))
         .expect("curl shim must have run");
@@ -332,7 +324,6 @@ fn lsp_install_generic_kind_downloads_the_recorded_url_and_registers() {
 /// shim serving `fixture`, and run `:lsp-install <lang>`. Returns the data dir
 /// and the editor for post-install assertions.
 fn install_from_fixture(
-    claim: &EnvClaim,
     sources: &[SourceFixture],
     fixture: &Path,
     lang: &str,
@@ -342,21 +333,14 @@ fn install_from_fixture(
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     let runtime = load_lsp_with_sources(&mut ed, sources, data_tmp.path());
-    {
-        let _path = claim.set_var("PATH", &path);
-        type_cmd(&mut ed, &format!(":lsp-install {lang}"));
-    }
+    ed.state.dirs.search_path = Some(path.into());
+    type_cmd(&mut ed, &format!(":lsp-install {lang}"));
     (data_tmp, ed, runtime)
 }
 
 /// Install `server` for `lang` from a gzip fixture while an executable named
 /// `command` is on `$PATH`, and return the status message the install leaves.
-fn install_status_with_command_on_path(
-    claim: &EnvClaim,
-    server: &str,
-    lang: &str,
-    command: &str,
-) -> String {
+fn install_status_with_command_on_path(server: &str, lang: &str, command: &str) -> String {
     use std::os::unix::fs::PermissionsExt;
 
     let work = tempfile::tempdir().unwrap();
@@ -381,10 +365,8 @@ fn install_status_with_command_on_path(
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     let _runtime = load_lsp_with_sources(&mut ed, &sources, data_tmp.path());
-    {
-        let _path = claim.set_var("PATH", &path);
-        type_cmd(&mut ed, &format!(":lsp-install {lang}"));
-    }
+    ed.state.dirs.search_path = Some(path.into());
+    type_cmd(&mut ed, &format!(":lsp-install {lang}"));
     ed.state.status_msg.clone().unwrap_or_default()
 }
 
@@ -392,9 +374,7 @@ fn install_status_with_command_on_path(
 /// named like itself.
 #[test]
 fn install_notes_a_path_command_named_like_the_server() {
-    let _lock = claim_env();
-
-    let msg = install_status_with_command_on_path(&_lock, "rust-analyzer", "rust", "rust-analyzer");
+    let msg = install_status_with_command_on_path("rust-analyzer", "rust", "rust-analyzer");
 
     assert!(
         msg.contains("rust-analyzer is also on $PATH"),
@@ -404,14 +384,8 @@ fn install_notes_a_path_command_named_like_the_server() {
 
 #[test]
 fn install_notes_a_path_command_from_the_commands_catalog() {
-    let _lock = claim_env();
-
-    let msg = install_status_with_command_on_path(
-        &_lock,
-        "ada-language-server",
-        "ada",
-        "ada_language_server",
-    );
+    let msg =
+        install_status_with_command_on_path("ada-language-server", "ada", "ada_language_server");
 
     assert!(
         msg.contains("ada_language_server is also on $PATH"),
@@ -423,7 +397,6 @@ fn install_notes_a_path_command_from_the_commands_catalog() {
 fn lsp_install_gz_asset_is_decoded_and_marked_executable() {
     use std::os::unix::fs::PermissionsExt;
 
-    let _lock = claim_env();
     let work = tempfile::tempdir().unwrap();
     let plain = work.path().join("rust-analyzer-fake");
     std::fs::write(&plain, b"#!/bin/sh\necho decoded\n").unwrap();
@@ -443,7 +416,7 @@ fn lsp_install_gz_asset_is_decoded_and_marked_executable() {
         "rust-analyzer",
     );
 
-    let (data_tmp, ed, _runtime) = install_from_fixture(&_lock, &sources, &archive, "rust");
+    let (data_tmp, ed, _runtime) = install_from_fixture(&sources, &archive, "rust");
 
     let server_dir = canonical_data_dir(data_tmp.path())
         .join("servers")
@@ -467,7 +440,6 @@ fn lsp_install_gz_asset_is_decoded_and_marked_executable() {
 fn lsp_install_zip_marks_every_regular_file_executable_and_never_follows_symlinks() {
     use std::os::unix::fs::PermissionsExt;
 
-    let _lock = claim_env();
     let work = tempfile::tempdir().unwrap();
     let outside = work.path().join("outside-target");
     std::fs::write(&outside, b"not part of the archive").unwrap();
@@ -493,7 +465,7 @@ fn lsp_install_zip_marks_every_regular_file_executable_and_never_follows_symlink
     );
     let sources = github_source("terraform-ls", "tfls.zip", &archive, "pkg/bin/server");
 
-    let (data_tmp, ed, _runtime) = install_from_fixture(&_lock, &sources, &archive, "hcl");
+    let (data_tmp, ed, _runtime) = install_from_fixture(&sources, &archive, "hcl");
 
     let pkg = canonical_data_dir(data_tmp.path())
         .join("servers")
@@ -532,7 +504,6 @@ fn lsp_install_zip_marks_every_regular_file_executable_and_never_follows_symlink
 
 #[test]
 fn lsp_install_missing_binary_after_unpack_fails_loudly() {
-    let _lock = claim_env();
     let work = tempfile::tempdir().unwrap();
     let payload = work.path().join("payload");
     std::fs::create_dir_all(&payload).unwrap();
@@ -556,7 +527,7 @@ fn lsp_install_missing_binary_after_unpack_fails_loudly() {
         "bin/lua-language-server",
     );
 
-    let (data_tmp, ed, _runtime) = install_from_fixture(&_lock, &sources, &archive, "lua");
+    let (data_tmp, ed, _runtime) = install_from_fixture(&sources, &archive, "lua");
 
     let log = ed.state.message_log.format_for_display();
     assert!(
@@ -577,7 +548,6 @@ fn lsp_install_missing_binary_after_unpack_fails_loudly() {
 
 #[test]
 fn lsp_install_sha256_mismatch_deletes_the_archive_and_fails() {
-    let _lock = claim_env();
     let work = tempfile::tempdir().unwrap();
     let archive = work.path().join("marksman-fake");
     std::fs::write(&archive, b"served bytes").unwrap();
@@ -585,7 +555,7 @@ fn lsp_install_sha256_mismatch_deletes_the_archive_and_fails() {
     std::fs::write(&pinned, b"different bytes").unwrap();
     let sources = github_source("marksman", "marksman-fake", &pinned, "marksman-fake");
 
-    let (data_tmp, ed, _runtime) = install_from_fixture(&_lock, &sources, &archive, "markdown");
+    let (data_tmp, ed, _runtime) = install_from_fixture(&sources, &archive, "markdown");
 
     let log = ed.state.message_log.format_for_display();
     assert!(
@@ -623,7 +593,6 @@ fn set_lock_mtime(lock_path: &Path, offset_secs: i64) {
 
 #[test]
 fn lsp_install_replaces_a_lock_older_than_an_hour() {
-    let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
     let servers_dir = canonical_data_dir(data_tmp.path()).join("servers");
     std::fs::create_dir_all(&servers_dir).unwrap();
@@ -650,7 +619,6 @@ fn lsp_install_replaces_a_lock_older_than_an_hour() {
 
 #[test]
 fn lsp_install_treats_a_lock_dated_in_the_future_as_live() {
-    let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
     let servers_dir = canonical_data_dir(data_tmp.path()).join("servers");
     std::fs::create_dir_all(&servers_dir).unwrap();

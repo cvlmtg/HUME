@@ -623,6 +623,11 @@ doc now names it) so it doesn't need re-discovering at each new spawn site.
 `hume-editor/src/editor/tests/unix/async_job_steel.rs`,
 `hume-editor/src/editor/tests/unix/picker_source_steel.rs`.
 
+**Status (2026-10-22):** tests never set process `PATH`. A session's `PATH`
+is `Dirs::search_path`, which every spawn and `which` read, so the lock,
+`PathReader` and the spawn lint were deleted. The rule holds for any
+process-global state tests still share.
+
 ---
 
 ## L12 — Steel 0.8.2 miscompiles a keyword-arg call nested inside another keyword-arg call (2026-09-02)

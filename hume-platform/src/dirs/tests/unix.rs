@@ -26,6 +26,7 @@ fn resolve_joins_relative_xdg_dirs_onto_the_startup_cwd() {
         None,
         Some(cwd.path().to_path_buf()),
         PathBuf::from("/tmp"),
+        None,
     )
     .unwrap();
     assert_eq!(dirs.config, Some(cwd.path().join("cfg").join("hume")));
@@ -51,6 +52,7 @@ fn resolve_rejects_a_runtime_that_reaches_the_data_dir_through_a_symlink() {
         None,
         None,
         PathBuf::from("/tmp"),
+        None,
     );
     assert_eq!(result, Err(DirsError::RuntimeIsDataDir(data)));
 }

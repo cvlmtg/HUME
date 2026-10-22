@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use super::*;
 use crate::wake::no_op_wake;
 
@@ -6,7 +8,7 @@ fn a_missing_binary_fails_to_spawn_naming_the_program() {
     let Err(e) = spawn_job(
         "definitely-not-a-real-binary-xyz",
         &[],
-        Path::new("."),
+        Launch::with_process_path(Path::new(".")),
         Vec::new(),
         no_op_wake(),
     ) else {
@@ -25,7 +27,7 @@ fn nonexistent_cwd_is_reported_as_the_missing_directory() {
     let Err(e) = spawn_job(
         "sh",
         &[],
-        Path::new("hume-no-such-dir"),
+        Launch::with_process_path(Path::new("hume-no-such-dir")),
         Vec::new(),
         no_op_wake(),
     ) else {
@@ -48,7 +50,14 @@ mod unix {
 
     fn spawn_sh_with(script: &str, input: Vec<u8>, wake: WakeCallback) -> SpawnedJob {
         let args = ["-c".to_string(), script.to_string()];
-        spawn_job("sh", &args, Path::new("."), input, wake).expect("spawn sh")
+        spawn_job(
+            "sh",
+            &args,
+            Launch::with_process_path(Path::new(".")),
+            input,
+            wake,
+        )
+        .expect("spawn sh")
     }
 
     /// Polls `job` until its result arrives, with a generous bound so a
@@ -151,7 +160,7 @@ mod unix {
         let mut job = spawn_job(
             "cat",
             &[],
-            Path::new("."),
+            Launch::with_process_path(Path::new(".")),
             b"one\ntwo".to_vec(),
             no_op_wake(),
         )
@@ -166,8 +175,14 @@ mod unix {
         // Both directions exceed a pipe buffer many times over: writing
         // all of stdin before reading stdout would block forever.
         let input = vec![b'x'; 1024 * 1024];
-        let mut job =
-            spawn_job("cat", &[], Path::new("."), input.clone(), no_op_wake()).expect("spawn cat");
+        let mut job = spawn_job(
+            "cat",
+            &[],
+            Launch::with_process_path(Path::new(".")),
+            input.clone(),
+            no_op_wake(),
+        )
+        .expect("spawn cat");
         let result = poll_until_result(&mut job);
         assert_eq!(result.stdout, input);
     }
@@ -191,8 +206,14 @@ mod unix {
     #[test]
     fn drop_kills_the_child_promptly() {
         let args = vec!["30".to_string()];
-        let job = spawn_job("sleep", &args, Path::new("."), Vec::new(), no_op_wake())
-            .expect("spawn sleep");
+        let job = spawn_job(
+            "sleep",
+            &args,
+            Launch::with_process_path(Path::new(".")),
+            Vec::new(),
+            no_op_wake(),
+        )
+        .expect("spawn sleep");
         let pid = job.pid();
         let started = Instant::now();
         drop(job);

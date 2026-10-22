@@ -817,7 +817,6 @@ dependencies = [
  "insta",
  "lsp-types",
  "nucleo-matcher",
- "parking_lot",
  "pretty_assertions",
  "proptest",
  "regex-cursor",
@@ -949,6 +948,7 @@ dependencies = [
  "steel-core",
  "tempfile",
  "termina",
+ "which",
 ]
 
 [[package]]

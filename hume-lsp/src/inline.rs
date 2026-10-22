@@ -3,7 +3,6 @@
 //! of `hume-treesitter`'s `InlineParseBackend`.
 
 use std::collections::VecDeque;
-use std::path::Path;
 
 use rustc_hash::FxHashMap;
 
@@ -13,6 +12,8 @@ use lsp_types::{
     PositionEncodingKind, ServerCapabilities, SignatureHelpOptions, TextDocumentSyncCapability,
     TextDocumentSyncKind, TypeDefinitionProviderCapability,
 };
+
+use hume_platform::process::Launch;
 
 use crate::backend::{LspBackend, ServerId};
 use crate::codec::{Message, ResponseError};
@@ -115,7 +116,7 @@ impl LspBackend for InlineLspBackend {
         &mut self,
         cmd: &str,
         _args: &[String],
-        _root: &Path,
+        _launch: Launch<'_>,
         _env: &[(String, String)],
     ) -> std::io::Result<ServerId> {
         if self.refused.iter().any(|refused| refused == cmd) {

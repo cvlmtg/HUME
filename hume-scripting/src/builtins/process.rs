@@ -8,7 +8,7 @@
 //! doc for why this is a one-shot capture rather than the picker's
 //! line-batch streaming (`picker-source-spawn!`).
 
-use hume_platform::process::decode_lossy;
+use hume_platform::process::{Launch, decode_lossy};
 use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
@@ -88,13 +88,18 @@ pub(crate) fn run_capture(
     let cmd = string_arg(cmd, "run-capture! cmd")?;
     let args = list_to_strings(args, "run-capture! args")?;
     let cwd = cwd_arg(cwd, &ctx.host.buffers().cwd(), "run-capture! cwd")?;
+    let search_path = ctx.host.buffers().search_path();
 
     ctx.log(
         LogLevel::Trace,
         format!("run-capture!: running {cmd} {args:?}"),
     );
 
-    let (stdout, stderr, status) = match hume_platform::process::run_capture(&cmd, &args, &cwd) {
+    let launch = Launch {
+        cwd: &cwd,
+        search_path: search_path.as_deref(),
+    };
+    let (stdout, stderr, status) = match hume_platform::process::run_capture(&cmd, &args, launch) {
         Ok(output) => (
             decode_lossy(output.stdout),
             decode_lossy(output.stderr),
@@ -139,6 +144,7 @@ pub(crate) fn run_inline_output(
         "%run-inline-output! cwd",
     )?;
     let env = list_to_string_pairs(env_val, "%run-inline-output! env", ENV_PAIR_SHAPE)?;
+    let search_path = ctx.host.buffers().search_path();
 
     // The child inherits stdio, so this is a real terminal write: open the
     // bracket before spawning it.
@@ -148,7 +154,11 @@ pub(crate) fn run_inline_output(
             .map_err(|e| generic_err(format!("run-inline-output!: {e}")))?;
     }
 
-    let status = hume_platform::process::run_inline_output(&cmd, &args, &cwd, &env)
+    let launch = Launch {
+        cwd: &cwd,
+        search_path: search_path.as_deref(),
+    };
+    let status = hume_platform::process::run_inline_output(&cmd, &args, launch, &env)
         .map_err(|e| generic_err(format!("run-inline-output!: {e}")))?;
 
     if status.success() {

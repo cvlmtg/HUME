@@ -5,14 +5,13 @@
 //! ownership, the `Option<Sender>` close-to-signal pattern, `Drop` ordering.
 
 use std::io::{BufRead, BufReader, Read, Write};
-use std::path::Path;
 use std::sync::Arc;
 use std::sync::mpsc;
 use std::thread;
 
 use hume_platform::process::line_source::read_lines;
 use hume_platform::process::tracked::TrackedChild;
-use hume_platform::process::{spawn_bridge, spawn_bridge_waking, spawn_piped};
+use hume_platform::process::{Launch, spawn_bridge, spawn_bridge_waking, spawn_piped};
 use hume_platform::wake::WakeCallback;
 
 use crate::codec::{self, Message};
@@ -69,7 +68,7 @@ pub(crate) struct ServerHandle {
 }
 
 impl ServerHandle {
-    /// Spawns the process (cwd = `root`) and its three bridging threads.
+    /// Spawns the process from `launch` and its three bridging threads.
     /// `env` is applied additively to the inherited environment (no
     /// `env_clear`). `wake` is called after the reader/stderr threads post
     /// an event, so the editor's main loop wakes instead of polling for
@@ -77,11 +76,11 @@ impl ServerHandle {
     pub fn spawn(
         cmd: &str,
         args: &[String],
-        root: &Path,
+        launch: Launch<'_>,
         env: &[(String, String)],
         wake: WakeCallback,
     ) -> std::io::Result<ServerHandle> {
-        let (child, stdin, stdout, stderr) = spawn_piped(cmd, args, root, env)?;
+        let (child, stdin, stdout, stderr) = spawn_piped(cmd, args, launch, env)?;
 
         let (tx_events, rx_events) = mpsc::sync_channel::<InboundEvent>(EVENTS_CHANNEL_BOUND);
         let (tx_stderr, rx_stderr) = mpsc::sync_channel::<String>(STDERR_CHANNEL_BOUND);

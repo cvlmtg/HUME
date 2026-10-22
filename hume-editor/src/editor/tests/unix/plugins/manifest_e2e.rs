@@ -327,7 +327,6 @@ fn core_plum_real_manifest_scm_resolves_via_load_plugin() {
 /// which is what keeps `plum-update-plugins` registered here.
 #[test]
 fn failed_third_party_load_does_not_block_plum_declared_afterward() {
-    let _path = path_reader();
     let config_tmp = tempfile::tempdir().unwrap();
     let data_tmp = tempfile::tempdir().unwrap();
     let runtime_dir = repo_runtime_dir();
@@ -360,7 +359,7 @@ fn failed_third_party_load_does_not_block_plum_declared_afterward() {
         config: Some(hume_config),
         data: Some(data_tmp.path().join("hume")),
         runtime: Some(runtime_dir),
-        ..Dirs::none()
+        ..process_dirs()
     };
     ed.init_scripting(&mut Default::default());
 

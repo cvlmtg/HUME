@@ -6,7 +6,6 @@ use super::*;
 
 #[test]
 fn lsp_uninstall_removes_registration_and_directory() {
-    let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
     fabricate_server(
         data_tmp.path(),
@@ -54,7 +53,6 @@ fn lsp_uninstall_removes_registration_and_directory() {
 /// `(path-exists? dir)` check, not the catalog, decides what's removable).
 #[test]
 fn lsp_uninstall_tab_completes_an_installed_server() {
-    let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
     fabricate_server(
         data_tmp.path(),
@@ -78,7 +76,6 @@ fn lsp_uninstall_tab_completes_an_installed_server() {
 /// must refuse the delete loudly, leaving the directory intact.
 #[test]
 fn lsp_uninstall_refuses_the_delete_when_the_cross_process_lock_is_already_held() {
-    let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
     fabricate_server(
         data_tmp.path(),
@@ -109,7 +106,6 @@ fn lsp_uninstall_refuses_the_delete_when_the_cross_process_lock_is_already_held(
 
 #[test]
 fn lsp_uninstall_of_never_installed_server_is_silent() {
-    let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
@@ -135,7 +131,6 @@ fn lsp_uninstall_of_never_installed_server_is_silent() {
 
 #[test]
 fn lsp_uninstall_rejects_path_traversal_name() {
-    let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
     // A sibling write-sandbox dir `../plugins` would canonicalize into:
     // it must survive untouched.
@@ -166,7 +161,6 @@ fn lsp_uninstall_rejects_path_traversal_name() {
 /// `hume_platform::path::is_safe_segment` exists to block.
 #[test]
 fn lsp_uninstall_rejects_colon_and_quote_in_name() {
-    let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
@@ -192,7 +186,6 @@ fn lsp_uninstall_rejects_colon_and_quote_in_name() {
 
 #[test]
 fn lsp_uninstall_without_a_name_reports_an_error() {
-    let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
@@ -213,7 +206,6 @@ fn lsp_uninstall_without_a_name_reports_an_error() {
 /// installed one with its version.
 #[test]
 fn lsp_catalog_shows_the_servers_in_a_read_only_buffer() {
-    let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
     fabricate_server(
         data_tmp.path(),
@@ -256,7 +248,6 @@ fn lsp_catalog_shows_the_servers_in_a_read_only_buffer() {
 
 #[test]
 fn lsp_status_opens_a_read_only_view_when_no_servers_are_running() {
-    let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp(&mut ed, data_tmp.path());
@@ -269,7 +260,6 @@ fn lsp_status_opens_a_read_only_view_when_no_servers_are_running() {
 
 #[test]
 fn lsp_stop_with_no_matching_server_reports_nothing_to_stop() {
-    let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp(&mut ed, data_tmp.path());
@@ -284,7 +274,6 @@ fn lsp_stop_with_no_matching_server_reports_nothing_to_stop() {
 
 #[test]
 fn lsp_restart_with_no_matching_server_reports_nothing_to_restart() {
-    let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp(&mut ed, data_tmp.path());
@@ -299,7 +288,6 @@ fn lsp_restart_with_no_matching_server_reports_nothing_to_restart() {
 
 #[test]
 fn lsp_client_alone_exposes_no_install_commands_and_registers_nothing() {
-    let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
     fabricate_server(data_tmp.path(), "rust-analyzer", "1.0.0", "rust-analyzer");
     let mut ed = editor_from("-[x]>\n");
@@ -324,7 +312,6 @@ fn lsp_client_alone_exposes_no_install_commands_and_registers_nothing() {
 
 #[test]
 fn plum_alone_does_not_expose_lsp_status_stop_restart() {
-    let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_plum(&mut ed, data_tmp.path());

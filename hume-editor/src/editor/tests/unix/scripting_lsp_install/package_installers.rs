@@ -6,7 +6,6 @@ use super::*;
 
 #[test]
 fn lsp_install_golang_runs_go_install_into_gobin_and_registers() {
-    let _lock = claim_env();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
@@ -15,10 +14,8 @@ fn lsp_install_golang_runs_go_install_into_gobin_and_registers() {
     let args_file = args_tmp.path().join("argv.txt");
     let shim_dir = write_fake_tool_shim("go", &args_file, &go_layout("gopls"));
 
-    {
-        let _path = _lock.set_var("PATH", shim_dir.path());
-        type_cmd(&mut ed, ":lsp-install go");
-    }
+    ed.state.dirs.search_path = Some(shim_dir.path().into());
+    type_cmd(&mut ed, ":lsp-install go");
 
     let argv: Vec<String> = std::fs::read_to_string(&args_file)
         .expect("shim must have run and recorded argv")
@@ -48,7 +45,6 @@ fn lsp_install_golang_runs_go_install_into_gobin_and_registers() {
 
 #[test]
 fn lsp_install_golang_missing_binary_after_install_fails_loudly() {
-    let _lock = claim_env();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
@@ -57,10 +53,8 @@ fn lsp_install_golang_missing_binary_after_install_fails_loudly() {
     let args_file = args_tmp.path().join("argv.txt");
     let shim_dir = write_fake_tool_shim("go", &args_file, "");
 
-    {
-        let _path = _lock.set_var("PATH", shim_dir.path());
-        type_cmd(&mut ed, ":lsp-install go");
-    }
+    ed.state.dirs.search_path = Some(shim_dir.path().into());
+    type_cmd(&mut ed, ":lsp-install go");
 
     let log = ed.state.message_log.format_for_display();
     assert!(
@@ -75,16 +69,13 @@ fn lsp_install_golang_missing_binary_after_install_fails_loudly() {
 
 #[test]
 fn lsp_install_golang_requires_go_on_path() {
-    let _lock = claim_env();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
 
     let empty_path_dir = tempfile::tempdir().unwrap();
-    {
-        let _path = _lock.set_var("PATH", empty_path_dir.path());
-        type_cmd(&mut ed, ":lsp-install go");
-    }
+    ed.state.dirs.search_path = Some(empty_path_dir.path().into());
+    type_cmd(&mut ed, ":lsp-install go");
 
     let log = ed.state.message_log.format_for_display();
     assert!(
@@ -97,7 +88,6 @@ fn lsp_install_golang_requires_go_on_path() {
 
 #[test]
 fn lsp_install_pypi_creates_a_venv_pip_installs_and_registers() {
-    let _lock = claim_env();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
@@ -107,10 +97,8 @@ fn lsp_install_pypi_creates_a_venv_pip_installs_and_registers() {
     let pip_args = args_tmp.path().join("pip-argv.txt");
     let shim_dir = write_fake_tool_shim("python3", &venv_args, &venv_layout(&pip_args, "ty", true));
 
-    {
-        let _path = _lock.set_var("PATH", shim_dir.path());
-        type_cmd(&mut ed, ":lsp-install python");
-    }
+    ed.state.dirs.search_path = Some(shim_dir.path().into());
+    type_cmd(&mut ed, ":lsp-install python");
 
     let server_dir = canonical_data_dir(data_tmp.path())
         .join("servers")
@@ -140,7 +128,6 @@ fn lsp_install_pypi_creates_a_venv_pip_installs_and_registers() {
 
 #[test]
 fn lsp_install_pypi_passes_extras_in_the_requirement() {
-    let _lock = claim_env();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
@@ -154,10 +141,8 @@ fn lsp_install_pypi_passes_extras_in_the_requirement() {
         &venv_layout(&pip_args, "pylsp", true),
     );
 
-    {
-        let _path = _lock.set_var("PATH", shim_dir.path());
-        type_cmd(&mut ed, ":lsp-install snakemake");
-    }
+    ed.state.dirs.search_path = Some(shim_dir.path().into());
+    type_cmd(&mut ed, ":lsp-install snakemake");
 
     let pip = read_lines(&pip_args);
     assert!(
@@ -168,7 +153,6 @@ fn lsp_install_pypi_passes_extras_in_the_requirement() {
 
 #[test]
 fn lsp_install_pypi_missing_binary_after_install_fails_loudly() {
-    let _lock = claim_env();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
@@ -179,10 +163,8 @@ fn lsp_install_pypi_missing_binary_after_install_fails_loudly() {
     let shim_dir =
         write_fake_tool_shim("python3", &venv_args, &venv_layout(&pip_args, "ty", false));
 
-    {
-        let _path = _lock.set_var("PATH", shim_dir.path());
-        type_cmd(&mut ed, ":lsp-install python");
-    }
+    ed.state.dirs.search_path = Some(shim_dir.path().into());
+    type_cmd(&mut ed, ":lsp-install python");
 
     let log = ed.state.message_log.format_for_display();
     assert!(
@@ -194,16 +176,13 @@ fn lsp_install_pypi_missing_binary_after_install_fails_loudly() {
 
 #[test]
 fn lsp_install_pypi_requires_python3_on_path() {
-    let _lock = claim_env();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
 
     let empty_path_dir = tempfile::tempdir().unwrap();
-    {
-        let _path = _lock.set_var("PATH", empty_path_dir.path());
-        type_cmd(&mut ed, ":lsp-install python");
-    }
+    ed.state.dirs.search_path = Some(empty_path_dir.path().into());
+    type_cmd(&mut ed, ":lsp-install python");
 
     let log = ed.state.message_log.format_for_display();
     assert!(
@@ -216,7 +195,6 @@ fn lsp_install_pypi_requires_python3_on_path() {
 
 #[test]
 fn lsp_install_refuses_a_server_restricted_to_other_platforms() {
-    let _lock = claim_env();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     let _runtime = load_lsp_with_sources(
@@ -234,10 +212,8 @@ fn lsp_install_refuses_a_server_restricted_to_other_platforms() {
     let venv_args = args_tmp.path().join("venv-argv.txt");
     let pip_args = args_tmp.path().join("pip-argv.txt");
     let shim_dir = write_fake_tool_shim("python3", &venv_args, &venv_layout(&pip_args, "ty", true));
-    {
-        let _path = _lock.set_var("PATH", shim_dir.path());
-        type_cmd(&mut ed, ":lsp-install python");
-    }
+    ed.state.dirs.search_path = Some(shim_dir.path().into());
+    type_cmd(&mut ed, ":lsp-install python");
 
     let log = ed.state.message_log.format_for_display();
     assert!(
@@ -252,7 +228,6 @@ fn lsp_install_refuses_a_server_restricted_to_other_platforms() {
 
 #[test]
 fn lsp_install_allows_a_server_whose_platform_list_includes_this_one() {
-    let _lock = claim_env();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     let _runtime = load_lsp_with_sources(
@@ -270,10 +245,8 @@ fn lsp_install_allows_a_server_whose_platform_list_includes_this_one() {
     let venv_args = args_tmp.path().join("venv-argv.txt");
     let pip_args = args_tmp.path().join("pip-argv.txt");
     let shim_dir = write_fake_tool_shim("python3", &venv_args, &venv_layout(&pip_args, "ty", true));
-    {
-        let _path = _lock.set_var("PATH", shim_dir.path());
-        type_cmd(&mut ed, ":lsp-install python");
-    }
+    ed.state.dirs.search_path = Some(shim_dir.path().into());
+    type_cmd(&mut ed, ":lsp-install python");
 
     assert!(
         ed.state.lsp.registered_command_for_test("ty").is_some(),
@@ -296,7 +269,6 @@ fn gem_layout(bin_name: &str) -> String {
 
 #[test]
 fn lsp_install_gem_installs_into_the_server_dir_and_registers_gem_env() {
-    let _lock = claim_env();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
@@ -305,10 +277,8 @@ fn lsp_install_gem_installs_into_the_server_dir_and_registers_gem_env() {
     let args_file = args_tmp.path().join("argv.txt");
     let shim_dir = write_fake_tool_shim("gem", &args_file, &gem_layout("ruby-lsp"));
 
-    {
-        let _path = _lock.set_var("PATH", shim_dir.path());
-        type_cmd(&mut ed, ":lsp-install ruby");
-    }
+    ed.state.dirs.search_path = Some(shim_dir.path().into());
+    type_cmd(&mut ed, ":lsp-install ruby");
 
     let server_dir = canonical_data_dir(data_tmp.path())
         .join("servers")
@@ -359,7 +329,6 @@ fn lsp_install_gem_installs_into_the_server_dir_and_registers_gem_env() {
 
 #[test]
 fn lsp_install_gem_missing_binary_after_install_fails_loudly() {
-    let _lock = claim_env();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
@@ -368,10 +337,8 @@ fn lsp_install_gem_missing_binary_after_install_fails_loudly() {
     let args_file = args_tmp.path().join("argv.txt");
     let shim_dir = write_fake_tool_shim("gem", &args_file, "");
 
-    {
-        let _path = _lock.set_var("PATH", shim_dir.path());
-        type_cmd(&mut ed, ":lsp-install ruby");
-    }
+    ed.state.dirs.search_path = Some(shim_dir.path().into());
+    type_cmd(&mut ed, ":lsp-install ruby");
 
     let log = ed.state.message_log.format_for_display();
     assert!(
@@ -388,16 +355,13 @@ fn lsp_install_gem_missing_binary_after_install_fails_loudly() {
 
 #[test]
 fn lsp_install_gem_requires_gem_on_path() {
-    let _lock = claim_env();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
 
     let empty_path_dir = tempfile::tempdir().unwrap();
-    {
-        let _path = _lock.set_var("PATH", empty_path_dir.path());
-        type_cmd(&mut ed, ":lsp-install ruby");
-    }
+    ed.state.dirs.search_path = Some(empty_path_dir.path().into());
+    type_cmd(&mut ed, ":lsp-install ruby");
 
     let log = ed.state.message_log.format_for_display();
     assert!(
@@ -421,7 +385,6 @@ fn dotnet_layout(bin_name: &str) -> String {
 
 #[test]
 fn lsp_install_nuget_installs_a_dotnet_tool_and_registers() {
-    let _lock = claim_env();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
@@ -434,10 +397,8 @@ fn lsp_install_nuget_installs_a_dotnet_tool_and_registers() {
         &dotnet_layout("roslyn-language-server"),
     );
 
-    {
-        let _path = _lock.set_var("PATH", shim_dir.path());
-        type_cmd(&mut ed, ":lsp-install c-sharp");
-    }
+    ed.state.dirs.search_path = Some(shim_dir.path().into());
+    type_cmd(&mut ed, ":lsp-install c-sharp");
 
     let server_dir = canonical_data_dir(data_tmp.path())
         .join("servers")
@@ -473,7 +434,6 @@ fn lsp_install_nuget_installs_a_dotnet_tool_and_registers() {
 
 #[test]
 fn lsp_install_nuget_missing_binary_after_install_fails_loudly() {
-    let _lock = claim_env();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
@@ -482,10 +442,8 @@ fn lsp_install_nuget_missing_binary_after_install_fails_loudly() {
     let args_file = args_tmp.path().join("argv.txt");
     let shim_dir = write_fake_tool_shim("dotnet", &args_file, "");
 
-    {
-        let _path = _lock.set_var("PATH", shim_dir.path());
-        type_cmd(&mut ed, ":lsp-install c-sharp");
-    }
+    ed.state.dirs.search_path = Some(shim_dir.path().into());
+    type_cmd(&mut ed, ":lsp-install c-sharp");
 
     let log = ed.state.message_log.format_for_display();
     assert!(
@@ -502,16 +460,13 @@ fn lsp_install_nuget_missing_binary_after_install_fails_loudly() {
 
 #[test]
 fn lsp_install_nuget_requires_dotnet_on_path() {
-    let _lock = claim_env();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
 
     let empty_path_dir = tempfile::tempdir().unwrap();
-    {
-        let _path = _lock.set_var("PATH", empty_path_dir.path());
-        type_cmd(&mut ed, ":lsp-install c-sharp");
-    }
+    ed.state.dirs.search_path = Some(empty_path_dir.path().into());
+    type_cmd(&mut ed, ":lsp-install c-sharp");
 
     let log = ed.state.message_log.format_for_display();
     assert!(

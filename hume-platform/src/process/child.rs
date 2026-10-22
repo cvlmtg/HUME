@@ -4,11 +4,10 @@
 //! and [`crate::process::job`]'s whole-output capture.
 
 use std::io::{self, Read};
-use std::path::Path;
 use std::process::{ChildStderr, ChildStdin, ChildStdout, Stdio};
 use std::thread::{self, JoinHandle};
 
-use crate::process::{ReapOnDrop, base_command, spawn_in_own_group, start_failed};
+use crate::process::{Launch, ReapOnDrop, base_command, spawn_in_own_group, start_failed};
 use crate::wake::{WakeCallback, spawn_waking};
 
 /// Cap on captured stderr bytes: enough for a useful error message. Bytes
@@ -40,10 +39,10 @@ pub(crate) const JOB_STDOUT_CAP: usize = 64 * 1024 * 1024;
 pub fn spawn_piped(
     cmd: &str,
     args: &[String],
-    cwd: &Path,
+    launch: Launch<'_>,
     env: &[(String, String)],
 ) -> io::Result<(ReapOnDrop, ChildStdin, ChildStdout, ChildStderr)> {
-    let mut command = base_command(cmd, args, cwd);
+    let mut command = base_command(cmd, args, launch);
     command
         .envs(env.iter().map(|(k, v)| (k, v)))
         .stdin(Stdio::piped())

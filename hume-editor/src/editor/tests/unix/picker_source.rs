@@ -38,8 +38,14 @@ fn open_live_picker(ed: &mut Editor) {
 /// needs before it can exercise `drain_picker_source`.
 fn attach_sh(ed: &mut Editor, script: &str, ok_exit_codes: Vec<i32>) {
     let args = vec!["-c".to_string(), script.to_string()];
-    let source = spawn_line_source("sh", &args, std::path::Path::new("."), b'\n', no_op_wake())
-        .expect("spawn sh");
+    let source = spawn_line_source(
+        "sh",
+        &args,
+        hume_platform::process::Launch::with_process_path(std::path::Path::new(".")),
+        b'\n',
+        no_op_wake(),
+    )
+    .expect("spawn sh");
     ed.state
         .input
         .picker_mut()
@@ -49,8 +55,6 @@ fn attach_sh(ed: &mut Editor, script: &str, ok_exit_codes: Vec<i32>) {
 
 #[test]
 fn end_to_end_drain_streams_lines_into_the_store() {
-    // Spawns "sh" by unqualified name. See `PathReader`'s doc.
-    let _path = path_reader();
     let mut ed = editor_from("-[a]>bc\n");
     open_bare_picker(&mut ed);
 
@@ -75,8 +79,6 @@ fn end_to_end_drain_streams_lines_into_the_store() {
 
 #[test]
 fn a_nul_inside_a_line_shows_as_a_colon_but_the_payload_keeps_it() {
-    // Spawns "sh" by unqualified name. See `PathReader`'s doc.
-    let _path = path_reader();
     let mut ed = editor_from("-[a]>bc\n");
     open_bare_picker(&mut ed);
 
@@ -101,8 +103,6 @@ fn a_nul_inside_a_line_shows_as_a_colon_but_the_payload_keeps_it() {
 
 #[test]
 fn coalesced_push_reranks_against_the_live_query() {
-    // Spawns "sh" by unqualified name. See `PathReader`'s doc.
-    let _path = path_reader();
     let mut ed = editor_from("-[a]>bc\n");
     open_bare_picker(&mut ed);
     let _ = ed.state.input.picker_mut().unwrap().insert_char('z');
@@ -124,8 +124,6 @@ fn coalesced_push_reranks_against_the_live_query() {
 
 #[test]
 fn nonzero_exit_reports_a_status_message_with_stderr() {
-    // Spawns "sh" by unqualified name. See `PathReader`'s doc.
-    let _path = path_reader();
     let mut ed = editor_from("-[a]>bc\n");
     open_bare_picker(&mut ed);
 
@@ -141,8 +139,6 @@ fn nonzero_exit_reports_a_status_message_with_stderr() {
 
 #[test]
 fn exit_code_in_the_allowlist_reports_nothing() {
-    // Spawns "sh" by unqualified name. See `PathReader`'s doc.
-    let _path = path_reader();
     let mut ed = editor_from("-[a]>bc\n");
     open_bare_picker(&mut ed);
 
@@ -161,8 +157,6 @@ fn exit_code_in_the_allowlist_reports_nothing() {
 
 #[test]
 fn exit_code_outside_the_allowlist_still_reports() {
-    // Spawns "sh" by unqualified name. See `PathReader`'s doc.
-    let _path = path_reader();
     let mut ed = editor_from("-[a]>bc\n");
     open_bare_picker(&mut ed);
 
@@ -178,8 +172,6 @@ fn exit_code_outside_the_allowlist_still_reports() {
 
 #[test]
 fn allowlist_omitting_zero_reports_a_successful_exit() {
-    // Spawns "sh" by unqualified name. See `PathReader`'s doc.
-    let _path = path_reader();
     let mut ed = editor_from("-[a]>bc\n");
     open_bare_picker(&mut ed);
 
@@ -201,8 +193,6 @@ fn allowlist_omitting_zero_reports_a_successful_exit() {
 
 #[test]
 fn a_failed_source_with_no_stderr_reports_only_its_exit() {
-    // Spawns "sh" by unqualified name. See `PathReader`'s doc.
-    let _path = path_reader();
     let mut ed = editor_from("-[a]>bc\n");
     open_bare_picker(&mut ed);
     attach_sh(&mut ed, "exit 3", vec![0]);
@@ -214,8 +204,6 @@ fn a_failed_source_with_no_stderr_reports_only_its_exit() {
 
 #[test]
 fn close_picker_kills_the_source_child() {
-    // Spawns "sleep" and "kill" by unqualified name. See `PathReader`'s doc.
-    let _path = path_reader();
     let mut ed = editor_from("-[a]>bc\n");
     open_bare_picker(&mut ed);
 
@@ -223,7 +211,7 @@ fn close_picker_kills_the_source_child() {
     let source = spawn_line_source(
         "sleep",
         &args,
-        std::path::Path::new("."),
+        hume_platform::process::Launch::with_process_path(std::path::Path::new(".")),
         b'\n',
         no_op_wake(),
     )
@@ -245,8 +233,6 @@ fn close_picker_kills_the_source_child() {
 
 #[test]
 fn replacing_the_session_kills_the_previous_source_child() {
-    // Spawns "sleep" and "kill" by unqualified name. See `PathReader`'s doc.
-    let _path = path_reader();
     let mut ed = editor_from("-[a]>bc\n");
     open_bare_picker(&mut ed);
 
@@ -254,7 +240,7 @@ fn replacing_the_session_kills_the_previous_source_child() {
     let source = spawn_line_source(
         "sleep",
         &args,
-        std::path::Path::new("."),
+        hume_platform::process::Launch::with_process_path(std::path::Path::new(".")),
         b'\n',
         no_op_wake(),
     )
@@ -280,8 +266,6 @@ fn replacing_the_session_kills_the_previous_source_child() {
 
 #[test]
 fn a_second_attach_source_kills_the_first_source_child() {
-    // Spawns "sleep" and "kill" by unqualified name. See `PathReader`'s doc.
-    let _path = path_reader();
     let mut ed = editor_from("-[a]>bc\n");
     open_bare_picker(&mut ed);
 
@@ -289,7 +273,7 @@ fn a_second_attach_source_kills_the_first_source_child() {
     let first = spawn_line_source(
         "sleep",
         &first_args,
-        std::path::Path::new("."),
+        hume_platform::process::Launch::with_process_path(std::path::Path::new(".")),
         b'\n',
         no_op_wake(),
     )
@@ -305,7 +289,7 @@ fn a_second_attach_source_kills_the_first_source_child() {
     let second = spawn_line_source(
         "sleep",
         &second_args,
-        std::path::Path::new("."),
+        hume_platform::process::Launch::with_process_path(std::path::Path::new(".")),
         b'\n',
         no_op_wake(),
     )
@@ -328,8 +312,6 @@ fn a_second_attach_source_kills_the_first_source_child() {
 
 #[test]
 fn live_session_first_batch_after_attach_replaces_the_previous_rows() {
-    // Spawns "sh" by unqualified name. See `PathReader`'s doc.
-    let _path = path_reader();
     let mut ed = editor_from("-[a]>bc\n");
     open_live_picker(&mut ed);
     {
@@ -361,8 +343,6 @@ fn live_session_first_batch_after_attach_replaces_the_previous_rows() {
 
 #[test]
 fn live_session_second_batch_from_the_same_source_appends() {
-    // Spawns "sh" by unqualified name. See `PathReader`'s doc.
-    let _path = path_reader();
     let mut ed = editor_from("-[a]>bc\n");
     open_live_picker(&mut ed);
 
@@ -403,8 +383,6 @@ fn live_session_second_batch_from_the_same_source_appends() {
 
 #[test]
 fn filter_session_attach_source_still_appends_not_replaces() {
-    // Spawns "sh" by unqualified name. See `PathReader`'s doc.
-    let _path = path_reader();
     let mut ed = editor_from("-[a]>bc\n");
     open_bare_picker(&mut ed);
     ed.state
@@ -434,8 +412,6 @@ fn filter_session_attach_source_still_appends_not_replaces() {
 
 #[test]
 fn explicit_replace_while_a_source_is_attached_consumes_supersede_so_the_next_batch_appends() {
-    // Spawns "sh" by unqualified name. See `PathReader`'s doc.
-    let _path = path_reader();
     let mut ed = editor_from("-[a]>bc\n");
     open_live_picker(&mut ed);
 

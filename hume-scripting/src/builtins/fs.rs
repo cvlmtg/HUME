@@ -17,7 +17,8 @@
 //! | `path->display` | `string → string`               | UNC-strip + `~`-collapse; no filesystem access |
 //! | `safe-path-segment?` | `any → bool`              | `#t` for a string safe as one path segment   |
 //! | `path-entries`  | `string string → list`         | What a typed path completes to, as `:e` lists it |
-//! | `path-programs` | `string list → list`           | Programs on `PATH` by name prefix            |
+//! | `path-programs` | `string list → list`           | Programs on the search path by name prefix   |
+//! | `%which`        | `string → string \| #f`        | Where a program runs from; backs the `which` shim |
 //! | `home-dir`      | `() → string \| #f`            | The user's home directory                    |
 //!
 //! `path-separator` is *not* registered here: steel-core's `steel/meta`
@@ -36,8 +37,8 @@ use super::errors::generic_err;
 
 // ── data-dir / runtime-dir ───────────────────────────────────────────────────
 
-/// Shared body for `(data-dir)`/`(runtime-dir)`: return `dir`'s display-form
-/// path as a string, or `#f` if `dir` is `None`.
+/// Shared body for the builtins returning a path: `dir`'s display-form path
+/// as a string, or `#f` if `dir` is `None`.
 fn dir_builtin(dir: Option<&Path>) -> SteelResult {
     match dir {
         Some(p) => p
@@ -101,16 +102,32 @@ pub(crate) fn path_entries(ctx: &mut SteelCtx, dir: String, prefix: String) -> S
     )))
 }
 
-/// `(path-programs prefix extensions)`: the programs on `PATH` whose names
-/// start with `prefix`; `extensions` (`".exe"`, …) are the file extensions
-/// that name a program on Windows.
-pub(crate) fn path_programs(prefix: String, extensions: SteelVal) -> SteelResult {
+/// `(path-programs prefix extensions)`: the programs on the editor's search
+/// path whose names start with `prefix`; `extensions` (`".exe"`, …) are the
+/// file extensions that name a program on Windows.
+pub(crate) fn path_programs(
+    ctx: &mut SteelCtx,
+    prefix: String,
+    extensions: SteelVal,
+) -> SteelResult {
     let extensions = list_to_strings(extensions, "path-programs")?;
     Ok(programs_on(
-        std::env::var_os("PATH").as_deref(),
+        ctx.host.buffers().search_path().as_deref(),
         &prefix,
         &extensions,
     ))
+}
+
+/// `(%which name)`, which the prelude's `which` calls: the program `name`
+/// runs as, found by steel-core's own `which` lookup but on the editor's
+/// search path, with a relative entry taken from `(cwd)`. `#f` when there is
+/// none, or no search path.
+pub(crate) fn which_program(ctx: &mut SteelCtx, name: String) -> SteelResult {
+    let buffers = ctx.host.buffers();
+    let found = buffers
+        .search_path()
+        .and_then(|path| ::which::which_in(&name, Some(path), buffers.cwd()).ok());
+    dir_builtin(found.as_deref())
 }
 
 /// Testable core of [`path_programs`]: [`hume_platform::path::executables_in`]

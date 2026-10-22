@@ -2,12 +2,14 @@
 //! buffer's document is attached to it: `attach.rs` spawns one for the first
 //! attachment and stops it when its last attachment detaches.
 
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
 use rustc_hash::FxHashMap;
 
 use hume_lsp::backend::{LspBackend, ServerId};
 use hume_lsp::client::{LspClient, ServerState};
+use hume_platform::process::Launch;
 use hume_rope::position_encoding::PositionEncoding;
 use hume_scripting::{ServerName, ServerRef};
 
@@ -62,15 +64,21 @@ impl Instances {
             .map(|(&sid, _)| sid)
     }
 
-    /// Starts `config`'s command at `root` and begins its handshake.
+    /// Starts `config`'s command at `root`, looked up on `search_path`, and
+    /// begins its handshake.
     pub(in crate::editor::lsp) fn spawn(
         &mut self,
         backend: &mut dyn LspBackend,
         name: &ServerName,
         config: &LspServerConfig,
         root: PathBuf,
+        search_path: Option<&OsStr>,
     ) -> std::io::Result<ServerId> {
-        let sid = backend.start(&config.command, &config.args, &root, &config.env)?;
+        let launch = Launch {
+            cwd: &root,
+            search_path,
+        };
+        let sid = backend.start(&config.command, &config.args, launch, &config.env)?;
         let mut client = LspClient::new(sid, root);
         client.set_init_options(config.init_options.clone());
         client.set_settings(config.settings.clone());

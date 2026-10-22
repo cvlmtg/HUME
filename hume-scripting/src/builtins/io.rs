@@ -4,12 +4,12 @@
 //! write to the real stdout, which would corrupt the alt-screen TUI. They are
 //! prelude exports, and steel-core prepends its prelude to every compiled unit
 //! including each required plugin file, so a top-level shadow doesn't reach
-//! plugins. HUME instead appends gated redefinitions (`PRINT_GATE_SHIMS` in
+//! plugins. HUME instead appends gated redefinitions (`PRELUDE_SHIMS` in
 //! `builtins/mod.rs`) to the prelude string via `Engine::set_prelude_string`.
 //!
 //! Two steel-core limitations shape the shims:
 //! - One unit can't both capture a name's value and redefine it, so
-//!   `register_all` runs BOOTSTRAP (captures originals) and `PRINT_GATE_SHIMS`
+//!   `register_all` runs BOOTSTRAP (captures originals) and `PRELUDE_SHIMS`
 //!   as two separate calls (still rejected on 0.8.3).
 //! - A required module can't call a shadowed prelude name with 2+ positional
 //!   args when the shim mixes fixed and rest parameters (seen on 0.8.2), so
@@ -38,7 +38,7 @@ fn is_inline_output_command(ctx: &mut SteelCtx) -> bool {
 }
 
 /// `(%stdout-gate!)`: called by each gated print shim (see
-/// `PRINT_GATE_SHIMS` in `builtins/mod.rs`) immediately before it would write
+/// `PRELUDE_SHIMS` in `builtins/mod.rs`) immediately before it would write
 /// to the real stdout. Returns `#f` (write must be suppressed) unless it's
 /// currently safe to write directly to the real process stdout: init (before
 /// the alt-screen TUI is up) or an `#:inline-output` command body (alt-screen

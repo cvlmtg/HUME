@@ -994,6 +994,7 @@ impl Editor {
                 views,
                 tabline_view,
                 cwd: std::env::temp_dir(),
+                dirs: process_dirs(),
                 ..EditorState::base(focus)
             },
             view: engine_view,
@@ -1060,58 +1061,6 @@ impl Editor {
     }
 }
 
-// ── process-global test lock ─────────────────────────────────────────────────
-//
-// test-global-safe: definitions below are the sanctioned owners of process
-// `PATH`. Every other mutator in the test tree routes through them.
-
-/// Tests spawning a program by bare name hold this shared (see
-/// [`PathReader`]); a test that changes `PATH` holds it exclusively (see
-/// [`EnvClaim`]).
-static PATH_USERS: parking_lot::RwLock<()> = parking_lot::RwLock::new(());
-
-thread_local! {
-    static PATH_READS: Cell<usize> = const { Cell::new(0) };
-    static ENV_CLAIMED: Cell<bool> = const { Cell::new(false) };
-}
-
-/// A shared hold on process `PATH` for a fixture's lifetime. A test that
-/// builds a `Dirs` fixture, or spawns `git`, `sh` and the like by bare name,
-/// holds one: the OS resolves the name against process `PATH` at the spawn
-/// instant, so the test is a `PATH` reader racing every [`EnvClaim`] holder.
-/// Readers do not exclude each other. Reentrant on a thread (a test may build
-/// two fixtures), never combined with an `EnvClaim` on the same thread.
-struct PathReader {
-    _guard: parking_lot::RwLockReadGuard<'static, ()>,
-    /// `PATH_READS` counts per thread, so the reader must drop where it was made.
-    _not_send: std::marker::PhantomData<*const ()>,
-}
-
-fn path_reader() -> PathReader {
-    assert!(
-        !ENV_CLAIMED.get(),
-        "test holds an `EnvClaim` and builds a `Dirs` fixture: the exclusive claim \
-         already excludes every other test, so do not nest a `PathReader` in it"
-    );
-    let guard = if PATH_READS.get() == 0 {
-        // Queues behind a waiting `EnvClaim` instead of overtaking it.
-        PATH_USERS.read()
-    } else {
-        PATH_USERS.read_recursive()
-    };
-    PATH_READS.set(PATH_READS.get() + 1);
-    PathReader {
-        _guard: guard,
-        _not_send: std::marker::PhantomData,
-    }
-}
-
-impl Drop for PathReader {
-    fn drop(&mut self) {
-        PATH_READS.set(PATH_READS.get() - 1);
-    }
-}
-
 /// Whether the focused buffer has unsaved changes, an open Insert session's
 /// included.
 pub(crate) fn focused_unsaved(ed: &Editor) -> bool {
@@ -1160,6 +1109,15 @@ fn workspace_grammar_build() -> GrammarBuild {
     let test_exe = std::env::current_exe().unwrap();
     let profile_dir = test_exe.parent().and_then(std::path::Path::parent).unwrap();
     GrammarBuild::beside(&profile_dir.join("hume"))
+}
+
+/// No directory resolved, and the test process's own `PATH`: what a session
+/// started from the test process runs programs with.
+fn process_dirs() -> Dirs {
+    Dirs {
+        search_path: std::env::var_os("PATH"),
+        ..Dirs::none()
+    }
 }
 
 /// A session whose only directory is the repo's real `runtime/`, enough for
@@ -1211,6 +1169,7 @@ fn load_with_init_in_runtime(
         runtime: Some(runtime_dir.to_path_buf()),
         tmp: None,
         grammar_build: workspace_grammar_build(),
+        search_path: ed.state.dirs.search_path.clone(),
     };
     ed.init_scripting(&mut Default::default());
     // `config_tmp` is deleted on return, so a later `:reload-config` has to
@@ -1364,78 +1323,6 @@ fn file_buffer(content: &str) -> (Buffer, tempfile::TempPath) {
     buf.set_path(Some(path));
     buf.file_meta = Some(meta);
     (buf, tmp_path)
-}
-
-/// Exclusive claim on process env vars (`PATH`), the only way to
-/// change one: [`Self::set_var`] hands out the [`EnvVarGuard`] that does it.
-struct EnvClaim {
-    _write: parking_lot::RwLockWriteGuard<'static, ()>,
-    /// `ENV_CLAIMED` is per thread, so the claim must drop where it was made.
-    _not_send: std::marker::PhantomData<*const ()>,
-}
-
-fn claim_env() -> EnvClaim {
-    assert!(
-        !ENV_CLAIMED.get(),
-        "test already holds an `EnvClaim`: a nested claim would hang on its own lock; \
-         scope the outer claim tighter instead of nesting"
-    );
-    assert!(
-        PATH_READS.get() == 0,
-        "test holds a `PathReader` and claims `PATH`: a reader cannot upgrade to the \
-         exclusive claim; claim first instead of building the fixture"
-    );
-    let write = PATH_USERS.write();
-    ENV_CLAIMED.set(true);
-    EnvClaim {
-        _write: write,
-        _not_send: std::marker::PhantomData,
-    }
-}
-
-impl Drop for EnvClaim {
-    fn drop(&mut self) {
-        ENV_CLAIMED.set(false);
-    }
-}
-
-impl EnvClaim {
-    // `set_var` mutates a process-global env var under this exclusive claim.
-    // `clippy.toml`'s `disallowed-methods` entry catches a *new* raw call
-    // elsewhere in the crate; this is the sanctioned caller.
-    #[allow(clippy::disallowed_methods)]
-    fn set_var(&self, key: &'static str, value: impl AsRef<std::ffi::OsStr>) -> EnvVarGuard<'_> {
-        let prev = std::env::var(key).ok();
-        unsafe {
-            std::env::set_var(key, value);
-        }
-        EnvVarGuard {
-            key,
-            prev,
-            _claim: self,
-        }
-    }
-}
-
-/// One env var changed through [`EnvClaim::set_var`]; restored (or removed, if
-/// it was unset before) on drop. Borrows the claim, so it cannot outlive it.
-struct EnvVarGuard<'a> {
-    key: &'static str,
-    prev: Option<String>,
-    _claim: &'a EnvClaim,
-}
-
-impl Drop for EnvVarGuard<'_> {
-    // Sanctioned caller: see `EnvClaim::set_var`.
-    #[allow(clippy::disallowed_methods)]
-    fn drop(&mut self) {
-        unsafe {
-            match &self.prev {
-                Some(v) => std::env::set_var(self.key, v),
-                None => std::env::remove_var(self.key),
-            }
-        }
-    }
 }
 
 // ── Event-loop faithful helpers ───────────────────────────────────────────────
@@ -1644,7 +1531,6 @@ mod pane_focus;
 mod pane_sync;
 mod paste;
 mod paste_text;
-mod path_lock;
 mod per_pane_jumps;
 mod picker;
 mod picker_source_steel;

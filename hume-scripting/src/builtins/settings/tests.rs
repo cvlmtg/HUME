@@ -365,6 +365,9 @@ impl crate::host::BufferHost for RecordingBufferOptionHost {
     fn cwd(&self) -> std::path::PathBuf {
         self.inner.cwd()
     }
+    fn search_path(&self) -> Option<std::ffi::OsString> {
+        self.inner.search_path()
+    }
     fn set_cwd(&mut self, path: &std::path::Path) -> Result<std::path::PathBuf, String> {
         self.inner.set_cwd(path)
     }

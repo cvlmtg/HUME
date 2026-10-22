@@ -105,7 +105,12 @@ fn scripted_initialize_round_trip_through_editor() {
 
     let backend = ed.state.lsp.backend_mut();
     let server = backend
-        .start("rust-analyzer", &[], std::path::Path::new("."), &[])
+        .start(
+            "rust-analyzer",
+            &[],
+            hume_platform::process::Launch::with_process_path(std::path::Path::new(".")),
+            &[],
+        )
         .expect("inline start never fails");
     backend.send(
         server,

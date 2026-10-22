@@ -19,8 +19,6 @@ fn spawn_async(ed: &mut Editor, cmd: &str, args: Vec<String>, callback: SteelVal
 
 #[test]
 fn end_to_end_drain_delivers_the_full_result_exactly_once() {
-    // Spawns "sh" by unqualified name; see `PathReader`'s doc.
-    let _path = path_reader();
     let mut ed = editor_from("-[a]>bc\n");
     let args = vec!["-c".to_string(), "printf 'hi'".to_string()];
     let id = spawn_async(&mut ed, "sh", args, SteelVal::BoolV(false));
@@ -50,8 +48,6 @@ fn end_to_end_drain_delivers_the_full_result_exactly_once() {
 
 #[test]
 fn nonzero_exit_and_stderr_reach_the_callback() {
-    // Spawns "sh" by unqualified name; see `PathReader`'s doc.
-    let _path = path_reader();
     let mut ed = editor_from("-[a]>bc\n");
     let args = vec!["-c".to_string(), "echo boom >&2; exit 3".to_string()];
     spawn_async(&mut ed, "sh", args, SteelVal::BoolV(false));
@@ -65,8 +61,6 @@ fn nonzero_exit_and_stderr_reach_the_callback() {
 
 #[test]
 fn a_child_killed_by_a_signal_has_no_exit_code() {
-    // Spawns "sh" by unqualified name; see `PathReader`'s doc.
-    let _path = path_reader();
     let mut ed = editor_from("-[a]>bc\n");
     let args = vec!["-c".to_string(), "kill -9 $$".to_string()];
     spawn_async(&mut ed, "sh", args, SteelVal::BoolV(false));
@@ -105,8 +99,6 @@ fn missing_binary_fires_the_callback_synchronously_with_no_exit_code() {
 
 #[test]
 fn cancel_kills_the_child_and_drops_the_callback_without_firing_it() {
-    // Spawns "sleep" and "kill" by unqualified name; see `PathReader`'s doc.
-    let _path = path_reader();
     let mut ed = editor_from("-[a]>bc\n");
     let args = vec!["30".to_string()];
     let id = spawn_async(&mut ed, "sleep", args, SteelVal::BoolV(false));

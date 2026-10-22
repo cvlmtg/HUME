@@ -240,13 +240,18 @@ macro_rules! builtins {
 // plugins' view.
 const BOOTSTRAP: &str = include_str!("bootstrap.scm");
 
-// PRINT_GATE_SHIMS is appended both to BOOTSTRAP (top level) and, verbatim,
-// to steel-core's own prelude string via set_prelude_string. Since the
-// prelude is prepended to every `(require "path.scm")` unit, this closes the
-// gap where required-module (every real plugin's) print calls would
-// otherwise resolve straight to steel-core's raw, ungated originals. See
-// io.rs's module doc for the full root-cause writeup and the rest-only
+// PRELUDE_SHIMS redefines the steel-core prelude names HUME takes over: the
+// print functions and `which`. It is appended both to BOOTSTRAP (top level)
+// and, verbatim, to steel-core's own prelude string via set_prelude_string.
+// Since the prelude is prepended to every `(require "path.scm")` unit, this
+// closes the gap where a required module's (every real plugin's) calls would
+// otherwise resolve straight to steel-core's originals. See io.rs's module
+// doc for the print gate's root-cause writeup and the rest-only
 // parameter-list requirement every shim below follows.
+//
+// `which` searches the editor's search path (`%which`) instead of the process
+// `PATH`, so the `PATH` a session's children get is also the one its
+// lookups see.
 //
 // Explicit-port forms (`(display obj port)`, …) consult `%port-safe?` on the
 // supplied port rather than forwarding unconditionally, since the caller (or
@@ -259,7 +264,7 @@ const BOOTSTRAP: &str = include_str!("bootstrap.scm");
 // redirected, so they're exactly as unsafe and need the same gate.
 // `simple-display`/`simple-displayln` always resolve `(current-output-port)`
 // themselves, so they're gated the same way.
-const PRINT_GATE_SHIMS: &str = include_str!("print_gate_shims.scm");
+const PRELUDE_SHIMS: &str = include_str!("prelude_shims.scm");
 
 // ── Registration ──────────────────────────────────────────────────────────────
 
@@ -361,7 +366,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         open "log!" crate::log::log_msg(severity: SteelVal, message: String);
 
         // %stdout-gate! is the Rust leaf behind the gated print shims (displayln,
-        // display, print, println, newline). See io.rs and PRINT_GATE_SHIMS above.
+        // display, print, println, newline). See io.rs and PRELUDE_SHIMS above.
         open "%stdout-gate!" io::stdout_gate();
 
         // Opaque pane predicate: context-free, no SteelCtx needed. Equality
@@ -550,7 +555,8 @@ pub(crate) fn register_all(steel: &mut Engine) {
         open "cwd" fs::cwd();
         cmd "set-cwd!" fs::set_cwd(path: String);
         open "path-entries" fs::path_entries(dir: String, prefix: String);
-        plain "path-programs" fs::path_programs(prefix: String, extensions: SteelVal);
+        open "path-programs" fs::path_programs(prefix: String, extensions: SteelVal);
+        open "%which" fs::which_program(name: String);
         plain "home-dir" fs::home_dir();
     }
 
@@ -580,7 +586,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         .compile_and_run_raw_program(BOOTSTRAP.to_owned())
         .expect("HUME scripting bootstrap failed: this is a bug");
 
-    // PRINT_GATE_SHIMS must compile as its OWN program, separate from
+    // PRELUDE_SHIMS must compile as its OWN program, separate from
     // BOOTSTRAP: steel-core rejects a single compiled unit that both
     // references a name (the `%raw-*` captures above) and redefines that
     // same name later in the same unit: "variable redefined within the top
@@ -591,20 +597,18 @@ pub(crate) fn register_all(steel: &mut Engine) {
     // ordinary already-bound globals, and redefining them here is a plain
     // global rebind, with no self-reference within the same unit.
     steel
-        .compile_and_run_raw_program(PRINT_GATE_SHIMS.to_owned())
-        .expect("HUME scripting print-gate shims failed: this is a bug");
+        .compile_and_run_raw_program(PRELUDE_SHIMS.to_owned())
+        .expect("HUME scripting prelude shims failed: this is a bug");
 
     // Append the same shims to steel-core's prelude string. The prelude is
     // prepended to every `(require "path.scm")` compilation unit (steel-core
-    // internals; see io.rs's module doc), so this closes the gap where a
-    // plugin's own displayln/display/print/println/newline calls would
-    // otherwise resolve to steel-core's raw, ungated originals instead of
-    // HUME's gate. Unlike the top-level case above, a required module's
+    // internals; see io.rs's module doc), so a plugin's own print and `which`
+    // calls resolve to HUME's shims instead of steel-core's originals. Unlike the top-level case above, a required module's
     // import-then-body-define compiles as one unit without conflict (the
     // shim's `define` simply overwrites the mangled slot the prelude import
     // created moments earlier), so no splitting is needed here.
     steel.set_prelude_string(Cow::Owned(format!(
-        "{}{PRINT_GATE_SHIMS}",
+        "{}{PRELUDE_SHIMS}",
         steel::compiler::modules::PRELUDE_STRING
     )));
 }

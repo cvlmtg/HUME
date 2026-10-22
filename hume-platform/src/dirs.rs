@@ -13,6 +13,7 @@
 
 use std::{
     env,
+    ffi::OsString,
     path::{Path, PathBuf},
 };
 
@@ -20,7 +21,8 @@ fn env_var(key: &str) -> Option<String> {
     env::var(key).ok()
 }
 
-/// The base directories a session works from, resolved once at startup.
+/// The base directories a session works from, and the `PATH` it runs programs
+/// from, resolved once at startup.
 ///
 /// Consumers read them from here rather than the process environment, so a
 /// test builds a `Dirs` with explicit paths and never mutates global env.
@@ -43,6 +45,10 @@ pub struct Dirs {
     /// The grammar compiler `hume-grammar-build`; see [`GrammarBuild::beside`]
     /// for where it is looked for.
     pub grammar_build: GrammarBuild,
+    /// `PATH` as the session started with it: every spawned child gets it, and
+    /// a program named without a directory is looked up on it. `None` when
+    /// `PATH` is unset, which a child then is too.
+    pub search_path: Option<OsString>,
 }
 
 /// Where the grammar compiler was found, or every path looked at for it.
@@ -90,6 +96,7 @@ impl Dirs {
             env::current_exe().ok(),
             Some(cwd.to_path_buf()),
             env::temp_dir(),
+            env::var_os("PATH"),
         )
     }
 
@@ -106,6 +113,7 @@ impl Dirs {
         exe: Option<PathBuf>,
         cwd: Option<PathBuf>,
         tmp: PathBuf,
+        search_path: Option<OsString>,
     ) -> Result<Self, DirsError> {
         let pin = |dir: PathBuf| match &cwd {
             Some(cwd) => crate::path::absolute_unresolved(&dir, cwd),
@@ -119,6 +127,7 @@ impl Dirs {
                 .map_or(GrammarBuild::ExeUnknown, GrammarBuild::beside),
             runtime: runtime_dir_with(&env, exe, cwd.clone()).map(pin),
             tmp: Some(pin(tmp)),
+            search_path,
         };
         if let (Some(runtime), Some(data)) = (&dirs.runtime, &dirs.data)
             && (runtime == data
@@ -132,8 +141,8 @@ impl Dirs {
         Ok(dirs)
     }
 
-    /// No directory resolved: scripting runs without a runtime, data, config
-    /// or temp directory.
+    /// No directory resolved and no `PATH`: scripting runs without a runtime,
+    /// data, config or temp directory.
     pub const fn none() -> Self {
         Self {
             config: None,
@@ -141,6 +150,7 @@ impl Dirs {
             runtime: None,
             tmp: None,
             grammar_build: GrammarBuild::ExeUnknown,
+            search_path: None,
         }
     }
 }

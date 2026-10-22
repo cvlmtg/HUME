@@ -79,7 +79,12 @@ fn build(ctx: &mut SteelCtx, src: &str, out: &str) -> Result<(), String> {
     }
 
     let cwd = ctx.host.buffers().cwd();
-    match hume_platform::process::grammar_build(&tool, Path::new(src), Path::new(out), &cwd) {
+    let search_path = ctx.host.buffers().search_path();
+    let launch = hume_platform::process::Launch {
+        cwd: &cwd,
+        search_path: search_path.as_deref(),
+    };
+    match hume_platform::process::grammar_build(&tool, Path::new(src), Path::new(out), launch) {
         Ok(status) if status.success() => Ok(()),
         Ok(status) => Err(hume_platform::process::failure_message(
             &format!("`{program}`"),

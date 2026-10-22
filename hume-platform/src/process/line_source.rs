@@ -19,7 +19,6 @@
 //! streaming source, not a bidirectional protocol.
 
 use std::io::{self, Read};
-use std::path::Path;
 use std::process::ExitStatus;
 use std::sync::mpsc;
 use std::time::Duration;
@@ -27,8 +26,8 @@ use std::time::Duration;
 use crate::process::child::{
     STDERR_CAPTURE_CAP, read_capped, spawn_bridge, spawn_bridge_waking, spawn_piped,
 };
-use crate::process::decode_lossy;
 use crate::process::tracked::TrackedChild;
+use crate::process::{Launch, decode_lossy};
 use crate::wake::WakeCallback;
 
 /// The longest line a [`LineSplitter`] keeps. Bytes past it, up to the next
@@ -145,11 +144,11 @@ pub struct SourceExit {
 pub fn spawn_line_source(
     cmd: &str,
     args: &[String],
-    cwd: &Path,
+    launch: Launch<'_>,
     delimiter: u8,
     wake: WakeCallback,
 ) -> io::Result<SpawnedLineSource> {
-    let (child, stdin, stdout, stderr) = spawn_piped(cmd, args, cwd, &[])?;
+    let (child, stdin, stdout, stderr) = spawn_piped(cmd, args, launch, &[])?;
     drop(stdin);
 
     let (tx, rx) = mpsc::sync_channel::<Vec<String>>(BATCH_CHANNEL_BOUND);

@@ -140,8 +140,6 @@ fn install_ok(
 /// `inline_output_enter_count` to move at all).
 #[test]
 fn plum_update_brings_an_unpinned_plugin_to_origins_latest_commit() {
-    let _path = path_reader();
-
     let origin = plugin_origin();
     let data_tmp = tempfile::tempdir().unwrap();
     let clone_dir = install_plugin_clone(origin.path(), data_tmp.path());
@@ -159,8 +157,6 @@ fn plum_update_brings_an_unpinned_plugin_to_origins_latest_commit() {
 
 #[test]
 fn plum_update_moves_a_plugin_pinned_to_a_tag_onto_that_tag() {
-    let _path = path_reader();
-
     let origin = plugin_origin();
     git(origin.path(), &["tag", "-a", "v1.0", "-m", "v1.0"]);
     commit_plugin(origin.path(), "; v2\n");
@@ -177,8 +173,6 @@ fn plum_update_moves_a_plugin_pinned_to_a_tag_onto_that_tag() {
 
 #[test]
 fn plum_update_follows_a_pinned_branch_rather_than_the_default_one() {
-    let _path = path_reader();
-
     let origin = plugin_origin();
     let data_tmp = tempfile::tempdir().unwrap();
     let clone_dir = install_plugin_clone(origin.path(), data_tmp.path());
@@ -197,8 +191,6 @@ fn plum_update_follows_a_pinned_branch_rather_than_the_default_one() {
 
 #[test]
 fn plum_update_moves_a_plugin_pinned_to_a_short_commit_id_onto_that_commit() {
-    let _path = path_reader();
-
     let origin = plugin_origin();
     let first = head_id(origin.path());
     commit_plugin(origin.path(), "; v2\n");
@@ -219,8 +211,6 @@ fn plum_update_moves_a_plugin_pinned_to_a_short_commit_id_onto_that_commit() {
 /// A clone left on a tag by an earlier pin has a detached HEAD.
 #[test]
 fn plum_update_brings_an_unpinned_plugin_off_a_tag_to_the_default_branch() {
-    let _path = path_reader();
-
     let origin = plugin_origin();
     git(origin.path(), &["tag", "-a", "v1.0", "-m", "v1.0"]);
     commit_plugin(origin.path(), "; v2\n");
@@ -235,8 +225,6 @@ fn plum_update_brings_an_unpinned_plugin_off_a_tag_to_the_default_branch() {
 
 #[test]
 fn plum_install_checks_a_pinned_commit_out() {
-    let _path = path_reader();
-
     let origin = plugin_origin();
     let first = head_id(origin.path());
     commit_plugin(origin.path(), "; v2\n");
@@ -249,8 +237,6 @@ fn plum_install_checks_a_pinned_commit_out() {
 
 #[test]
 fn plum_install_checks_a_pinned_short_commit_id_out() {
-    let _path = path_reader();
-
     let origin = plugin_origin();
     let first = head_id(origin.path());
     commit_plugin(origin.path(), "; v2\n");
@@ -267,8 +253,6 @@ fn plum_install_checks_a_pinned_short_commit_id_out() {
 
 #[test]
 fn plum_install_brings_an_unpinned_plugin_to_origins_latest_commit() {
-    let _path = path_reader();
-
     let origin = plugin_origin();
     commit_plugin(origin.path(), "; v2\n");
     let data_tmp = tempfile::tempdir().unwrap();
@@ -280,8 +264,6 @@ fn plum_install_brings_an_unpinned_plugin_to_origins_latest_commit() {
 
 #[test]
 fn plum_install_of_a_missing_ref_installs_nothing_and_can_be_retried() {
-    let _path = path_reader();
-
     let origin = plugin_origin();
     let data_tmp = tempfile::tempdir().unwrap();
 
@@ -311,8 +293,6 @@ fn plum_install_of_a_missing_ref_installs_nothing_and_can_be_retried() {
 /// cannot be looked up on the remote.
 #[test]
 fn plum_install_of_an_unreachable_short_commit_id_names_it_in_the_failure() {
-    let _path = path_reader();
-
     let origin = plugin_origin();
     commit_plugin(origin.path(), "; v2\n");
     let dangling = head_id(origin.path());
@@ -337,8 +317,6 @@ fn plum_install_of_an_unreachable_short_commit_id_names_it_in_the_failure() {
 /// reaches still installs.
 #[test]
 fn plum_install_checks_an_unreachable_full_commit_id_out() {
-    let _path = path_reader();
-
     let origin = plugin_origin();
     commit_plugin(origin.path(), "; v2\n");
     let dangling = head_id(origin.path());
@@ -352,8 +330,6 @@ fn plum_install_checks_an_unreachable_full_commit_id_out() {
 
 #[test]
 fn plum_install_over_an_existing_clone_replaces_it_only_once_the_new_one_is_ready() {
-    let _path = path_reader();
-
     let origin = plugin_origin();
     let data_tmp = tempfile::tempdir().unwrap();
     let dest = install_ok(origin.path(), data_tmp.path(), "#f");
@@ -378,8 +354,6 @@ fn plum_install_over_an_existing_clone_replaces_it_only_once_the_new_one_is_read
 
 #[test]
 fn plum_install_runs_its_build_on_the_new_clone_before_it_lands() {
-    let _path = path_reader();
-
     let origin = plugin_origin();
     let data_tmp = tempfile::tempdir().unwrap();
 
@@ -395,8 +369,6 @@ fn plum_install_runs_its_build_on_the_new_clone_before_it_lands() {
 
 #[test]
 fn plum_install_whose_build_fails_keeps_the_old_clone() {
-    let _path = path_reader();
-
     let origin = plugin_origin();
     let data_tmp = tempfile::tempdir().unwrap();
     let dest = install_ok(origin.path(), data_tmp.path(), "#f");

@@ -29,3 +29,4 @@
   (if (pair? args)
       (when (%port-safe? (car args)) (apply %raw-newline args))
       (when (%stdout-safe?) (%raw-newline))))
+(define (which . args) (apply %which args))

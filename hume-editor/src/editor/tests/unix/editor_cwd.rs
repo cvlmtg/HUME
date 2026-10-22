@@ -7,7 +7,6 @@ use crate::editor::tests::editor_cwd::{call, canonical, editor_in, relative_disp
 
 #[test]
 fn spawn_async_defaults_to_the_editor_cwd() {
-    let _path = path_reader();
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_in(tmp.path());
     run(
@@ -31,7 +30,6 @@ fn spawn_async_defaults_to_the_editor_cwd() {
 
 #[test]
 fn spawn_async_joins_a_relative_cwd_onto_the_editor_cwd() {
-    let _path = path_reader();
     let tmp = tempfile::tempdir().unwrap();
     std::fs::create_dir(tmp.path().join("sub")).unwrap();
     let mut ed = editor_in(tmp.path());
@@ -57,7 +55,6 @@ fn spawn_async_joins_a_relative_cwd_onto_the_editor_cwd() {
 
 #[test]
 fn run_capture_defaults_to_the_editor_cwd() {
-    let _path = path_reader();
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_in(tmp.path());
 
@@ -72,7 +69,6 @@ fn run_capture_defaults_to_the_editor_cwd() {
 
 #[test]
 fn run_inline_output_defaults_to_the_editor_cwd() {
-    let _path = path_reader();
     let tmp = tempfile::tempdir().unwrap();
     let record = tmp.path().join("pwd.txt");
     let mut ed = editor_in(tmp.path());
@@ -96,7 +92,6 @@ fn run_inline_output_defaults_to_the_editor_cwd() {
 
 #[test]
 fn picker_source_spawn_defaults_to_the_editor_cwd() {
-    let _path = path_reader();
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_in(tmp.path());
     run(

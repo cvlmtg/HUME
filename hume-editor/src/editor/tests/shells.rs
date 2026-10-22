@@ -442,7 +442,6 @@ fn posix_reads_back_what_it_writes() {
 #[cfg(unix)]
 #[test]
 fn sh_reads_a_written_name_as_the_name() {
-    let _path = path_reader();
     let mut host = shells_host();
     for typed in ["", "\"", "'"] {
         let written = write(&mut host, "posix", typed, NASTY_NAME, true);
@@ -554,7 +553,6 @@ fn pwsh_words_end_at_its_operators_outside_quotes() {
 
 #[test]
 fn pwsh_word_values_follow_its_escapes() {
-    let _path = path_reader();
     let none = None;
     let dq = Some('"');
     let sq = Some('\'');
@@ -622,7 +620,6 @@ fn pwsh_reads_back_what_it_writes() {
 #[cfg(windows)]
 #[test]
 fn powershell_reads_a_written_name_as_the_name() {
-    let _path = path_reader();
     let mut host = shells_host();
     for typed in ["", "\"", "'"] {
         let written = write(&mut host, "pwsh", typed, NASTY_NAME, true);
@@ -658,7 +655,6 @@ fn cmd_words_end_at_its_operators_outside_quotes() {
 
 #[test]
 fn cmd_word_values_follow_its_escapes() {
-    let _path = path_reader();
     let none = None;
     let dq = Some('"');
     let s = str::to_owned;
@@ -730,9 +726,17 @@ fn cmd_reads_back_what_it_writes() {
 #[test]
 fn a_name_after_a_variable_naming_a_directory_is_never_glued_onto_it() {
     let s = str::to_owned;
-    let env = claim_env();
-    let _dir = env.set_var("HUME_TEST_DIR", "/hume-test/dir/");
-    let mut host = shells_host();
+    let mut host = ScriptingHost::new(&repo_runtime_dirs());
+    // Defined before shells.scm loads, so its functions bind this lookup.
+    host.eval_source(
+        r#"(define (maybe-get-env-var name)
+             (if (equal? name "HUME_TEST_DIR") (Ok "/hume-test/dir/") (Err name)))"#,
+        &mut crate::testing::MockHost::new(),
+    )
+    .expect("the variable lookup is replaced");
+    let source = std::fs::read_to_string(repo_runtime_dir().join("scheme/shells.scm")).unwrap();
+    host.eval_source(&source, &mut crate::testing::MockHost::new())
+        .expect("shells.scm evaluates");
     for (dialect, typed, expected) in [
         ("posix", "$HUME_TEST_DIR", s("$HUME_TEST_DIR/foo")),
         ("posix", "$HUME_TEST_DIR/", s("$HUME_TEST_DIR/foo")),

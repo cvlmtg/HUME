@@ -513,7 +513,11 @@ impl EditorState {
             command,
             foreground: kind == PipeKind::Insert || self.macros.recording_register().is_some(),
         };
-        let batch = ShellBatch::new(&self.settings.shell, &launch.command, &self.cwd, inputs);
+        let from = hume_platform::process::Launch {
+            cwd: &self.cwd,
+            search_path: self.dirs.search_path.as_deref(),
+        };
+        let batch = ShellBatch::new(&self.settings.shell, &launch.command, from, inputs);
         let hold = self.buffers.get_mut(buffer).hold_text();
         self.pipe_runs.start(launch, hold, batch)
     }

@@ -88,21 +88,19 @@ fn source_detached(ed: &Editor) -> bool {
 /// plugin sources into it. [`Self::dirs`] points a session at it.
 struct RuntimeDirs {
     runtime: tempfile::TempDir,
-    _path: PathReader,
 }
 
 impl RuntimeDirs {
     fn new() -> Self {
         Self {
             runtime: tempfile::tempdir().unwrap(),
-            _path: path_reader(),
         }
     }
 
     fn dirs(&self) -> Dirs {
         Dirs {
             runtime: Some(self.runtime.path().to_path_buf()),
-            ..Dirs::none()
+            ..process_dirs()
         }
     }
 }
@@ -131,7 +129,6 @@ fn write_core_plugin(dirs: &RuntimeDirs, name: &str, source: &str) {
 struct RealRuntimeDirs {
     _data_tmp: tempfile::TempDir,
     dirs: Dirs,
-    _path: PathReader,
 }
 
 impl RealRuntimeDirs {
@@ -140,12 +137,11 @@ impl RealRuntimeDirs {
         let dirs = Dirs {
             data: Some(data_tmp.path().join("hume")),
             runtime: Some(repo_runtime_dir()),
-            ..Dirs::none()
+            ..process_dirs()
         };
         Self {
             _data_tmp: data_tmp,
             dirs,
-            _path: path_reader(),
         }
     }
 
@@ -166,7 +162,6 @@ struct ReloadFixture {
     _config_tmp: tempfile::TempDir,
     _data_tmp: tempfile::TempDir,
     _runtime_tmp: tempfile::TempDir,
-    _path: PathReader,
 }
 
 impl ReloadFixture {
@@ -184,7 +179,6 @@ impl ReloadFixture {
             _config_tmp: config_tmp,
             _data_tmp: data_tmp,
             _runtime_tmp: runtime_tmp,
-            _path: path_reader(),
         }
     }
 
@@ -193,7 +187,7 @@ impl ReloadFixture {
             config: Some(self.config_dir.clone()),
             data: Some(self.data_dir.clone()),
             runtime: Some(self.runtime_dir.clone()),
-            ..Dirs::none()
+            ..process_dirs()
         }
     }
 
@@ -429,7 +423,6 @@ struct StagedGrammarFixture {
     data_dir: PathBuf,
     _config_tmp: tempfile::TempDir,
     _data_tmp: tempfile::TempDir,
-    _path: PathReader,
 }
 
 impl StagedGrammarFixture {
@@ -463,7 +456,6 @@ impl StagedGrammarFixture {
             data_dir,
             _config_tmp: config_tmp,
             _data_tmp: data_tmp,
-            _path: path_reader(),
         }
     }
 
@@ -472,7 +464,7 @@ impl StagedGrammarFixture {
             config: Some(self.config_dir.clone()),
             data: Some(self.data_dir.clone()),
             runtime: Some(repo_runtime_dir()),
-            ..Dirs::none()
+            ..process_dirs()
         }
     }
 
@@ -646,6 +638,7 @@ mod scripting_effects;
 mod scripting_grammar;
 mod scripting_lsp_install;
 mod scripting_theme_install;
+mod search_path;
 mod sync_dispatch;
 mod theme_dirs;
 mod tutor;

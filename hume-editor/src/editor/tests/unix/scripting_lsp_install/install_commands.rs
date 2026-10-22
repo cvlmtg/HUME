@@ -6,7 +6,6 @@ use super::*;
 
 #[test]
 fn lsp_install_stub_kind_names_the_unsupported_kind() {
-    let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
@@ -23,7 +22,6 @@ fn lsp_install_stub_kind_names_the_unsupported_kind() {
 
 #[test]
 fn lsp_install_cargo_git_stub_kind_names_the_kind() {
-    let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
@@ -41,7 +39,6 @@ fn lsp_install_cargo_git_stub_kind_names_the_kind() {
 
 #[test]
 fn lsp_install_unknown_language_reports_an_error() {
-    let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
@@ -61,7 +58,6 @@ fn lsp_install_unknown_language_reports_an_error() {
 /// matches "ruby").
 #[test]
 fn lsp_install_tab_completes_a_seeded_language() {
-    let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
@@ -75,7 +71,6 @@ fn lsp_install_tab_completes_a_seeded_language() {
 
 #[test]
 fn lsp_install_no_language_buffer_and_no_arg_warns() {
-    let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
@@ -92,17 +87,14 @@ fn lsp_install_no_language_buffer_and_no_arg_warns() {
 
 #[test]
 fn lsp_install_tar_archive_requires_tar_on_path() {
-    let _lock = claim_env();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
 
     // ada-language-server ships only .tar.gz on every platform.
     let empty_path_dir = tempfile::tempdir().unwrap();
-    {
-        let _path = _lock.set_var("PATH", empty_path_dir.path());
-        type_cmd(&mut ed, ":lsp-install ada");
-    }
+    ed.state.dirs.search_path = Some(empty_path_dir.path().into());
+    type_cmd(&mut ed, ":lsp-install ada");
 
     let log = ed.state.message_log.format_for_display();
     assert!(
@@ -117,7 +109,6 @@ fn lsp_install_tar_archive_requires_tar_on_path() {
 /// release.
 #[test]
 fn install_lock_is_released_after_a_failed_install() {
-    let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
@@ -160,7 +151,6 @@ fn install_lock_is_released_after_a_failed_install() {
 /// download path.
 #[test]
 fn lsp_install_refuses_when_the_cross_process_lock_is_already_held() {
-    let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
     let servers_dir = canonical_data_dir(data_tmp.path()).join("servers");
     std::fs::create_dir_all(&servers_dir).unwrap();
@@ -184,7 +174,6 @@ fn lsp_install_refuses_when_the_cross_process_lock_is_already_held() {
 /// name only this test's buffer has makes the distinction unambiguous.
 #[test]
 fn lsp_install_no_arg_falls_back_to_buffer_language_not_the_count_sentinel() {
-    let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
@@ -211,7 +200,6 @@ fn lsp_install_no_arg_falls_back_to_buffer_language_not_the_count_sentinel() {
 /// up-to-date and left unregistered.
 #[test]
 fn lsp_install_up_to_date_registers_a_late_fabricated_receipt() {
-    let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
 
     let mut ed = editor_from("-[x]>\n");
@@ -258,7 +246,6 @@ fn lsp_install_up_to_date_registers_a_late_fabricated_receipt() {
 /// output without ever touching the network.
 #[test]
 fn plum_missing_plugins_excludes_declared_core_plugins() {
-    let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_with_init(

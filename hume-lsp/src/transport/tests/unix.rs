@@ -7,7 +7,14 @@ use crate::codec::RequestId;
 #[test]
 fn cat_echoes_frames_and_drop_reaps_without_hanging() {
     let root = std::env::current_dir().unwrap();
-    let handle = ServerHandle::spawn("/bin/cat", &[], &root, &[], no_op_wake()).expect("spawn cat");
+    let handle = ServerHandle::spawn(
+        "/bin/cat",
+        &[],
+        Launch::with_process_path(&root),
+        &[],
+        no_op_wake(),
+    )
+    .expect("spawn cat");
 
     let sent = Message::Request {
         id: RequestId::Int(1),
@@ -47,7 +54,8 @@ fn cat_echoes_frames_and_drop_reaps_without_hanging() {
 fn cat_echo_fires_waker() {
     let root = std::env::current_dir().unwrap();
     let (wake, rx_wake) = counting_wake();
-    let handle = ServerHandle::spawn("/bin/cat", &[], &root, &[], wake).expect("spawn cat");
+    let handle = ServerHandle::spawn("/bin/cat", &[], Launch::with_process_path(&root), &[], wake)
+        .expect("spawn cat");
 
     handle.send(Message::Notification {
         method: "ping".to_string(),
@@ -72,7 +80,7 @@ fn env_reaches_the_spawned_process() {
     let handle = ServerHandle::spawn(
         "/bin/sh",
         &["-c".to_string(), "printenv HUME_TEST_VAR 1>&2".to_string()],
-        &root,
+        Launch::with_process_path(&root),
         &[("HUME_TEST_VAR".to_string(), "steel-lsp-home".to_string())],
         no_op_wake(),
     )
@@ -98,7 +106,7 @@ fn the_server_runs_with_git_terminal_prompts_off() {
             "-c".to_string(),
             "echo \"prompt=${GIT_TERMINAL_PROMPT-unset}\" 1>&2".to_string(),
         ],
-        &root,
+        Launch::with_process_path(&root),
         &[],
         no_op_wake(),
     )
@@ -137,7 +145,7 @@ fn drop_does_not_hang_when_stderr_floods_past_the_bound() {
     let handle = ServerHandle::spawn(
         "/bin/sh",
         &["-c".to_string(), "yes flood 1>&2".to_string()],
-        &root,
+        Launch::with_process_path(&root),
         &[],
         no_op_wake(),
     )

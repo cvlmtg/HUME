@@ -3,6 +3,32 @@
 
 use super::*;
 
+// ── Launch ─────────────────────────────────────────────────────────────────
+
+/// A bare program name is looked up on the launch's search path, which need
+/// not be the process's own `PATH`.
+#[test]
+fn a_bare_program_name_is_found_on_the_launch_search_path() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let bin = tempfile::tempdir().unwrap();
+    let probe = bin.path().join("hume-launch-probe");
+    std::fs::write(&probe, "#!/bin/sh\necho found\n").unwrap();
+    std::fs::set_permissions(&probe, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    let output = run_capture(
+        "hume-launch-probe",
+        &[],
+        Launch {
+            cwd: Path::new("."),
+            search_path: Some(bin.path().as_os_str()),
+        },
+    )
+    .expect("spawn the probe");
+
+    assert_eq!(output.stdout, b"found\n");
+}
+
 // ── run_capture ────────────────────────────────────────────────────────────
 
 /// A Ctrl-c delivered to the foreground process group must not reach a
@@ -14,7 +40,7 @@ fn run_capture_child_leads_its_own_process_group() {
     let output = run_capture(
         "sh",
         &["-c".to_string(), "ps -o pgid= -p $$".to_string()],
-        Path::new("."),
+        Launch::with_process_path(Path::new(".")),
     )
     .expect("spawn sh");
     let child_pgid: i32 = String::from_utf8_lossy(&output.stdout)
@@ -37,7 +63,7 @@ fn run_capture_does_not_deadlock_on_large_stderr() {
     let out = run_capture(
         "sh",
         &["-c".to_string(), "yes | head -c 200000 1>&2".to_string()],
-        Path::new("."),
+        Launch::with_process_path(Path::new(".")),
     )
     .expect("run_capture");
     assert_eq!(out.stderr.len(), 200_000);
@@ -51,7 +77,7 @@ fn run_capture_captures_large_stdout_whole() {
     let out = run_capture(
         "sh",
         &["-c".to_string(), "yes | head -c 200000".to_string()],
-        Path::new("."),
+        Launch::with_process_path(Path::new(".")),
     )
     .expect("run_capture");
     assert_eq!(out.stdout.len(), 200_000);
@@ -68,7 +94,7 @@ fn run_capture_sets_git_terminal_prompt_to_deny_credential_prompts() {
             "-c".to_string(),
             "printf %s \"$GIT_TERMINAL_PROMPT\"".to_string(),
         ],
-        Path::new("."),
+        Launch::with_process_path(Path::new(".")),
     )
     .expect("run_capture");
     assert_eq!(String::from_utf8_lossy(&out.stdout), "0");
@@ -78,10 +104,12 @@ fn run_capture_sets_git_terminal_prompt_to_deny_credential_prompts() {
 
 #[test]
 fn run_inline_output_returns_exit_status_of_child() {
-    let status = run_inline_output("true", &[], Path::new("."), &[]).expect("spawn true");
+    let status = run_inline_output("true", &[], Launch::with_process_path(Path::new(".")), &[])
+        .expect("spawn true");
     assert!(status.success());
 
-    let status = run_inline_output("false", &[], Path::new("."), &[]).expect("spawn false");
+    let status = run_inline_output("false", &[], Launch::with_process_path(Path::new(".")), &[])
+        .expect("spawn false");
     assert!(!status.success());
 }
 
@@ -101,7 +129,7 @@ fn run_inline_output_sets_git_terminal_prompt_to_deny_credential_prompts() {
             "-c".to_string(),
             "printf %s \"$GIT_TERMINAL_PROMPT\" > out.txt".to_string(),
         ],
-        dir.path(),
+        Launch::with_process_path(dir.path()),
         &[],
     )
     .expect("spawn sh");
@@ -119,7 +147,7 @@ fn run_inline_output_applies_env() {
             "-c".to_string(),
             "printf %s \"$HUME_ENV_PROBE\" > out.txt".to_string(),
         ],
-        dir.path(),
+        Launch::with_process_path(dir.path()),
         &[("HUME_ENV_PROBE".to_string(), "probe-value".to_string())],
     )
     .expect("spawn sh");
@@ -135,7 +163,7 @@ fn run_inline_output_honors_cwd() {
     let status = run_inline_output(
         "test",
         &["-f".to_string(), "marker.txt".to_string()],
-        dir.path(),
+        Launch::with_process_path(dir.path()),
         &[],
     )
     .expect("spawn test -f");

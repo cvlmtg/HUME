@@ -33,8 +33,6 @@ fn setup_editor_with_init_files(
     files: &[(&str, &str)],
     runtime_dir: Option<&std::path::Path>,
 ) -> (Editor, Vec<tempfile::TempDir>) {
-    let _path = path_reader();
-
     let config_tmp = tempfile::tempdir().unwrap();
     let data_tmp = tempfile::tempdir().unwrap();
     let runtime_tmp = runtime_dir.is_none().then(|| tempfile::tempdir().unwrap());
@@ -54,7 +52,7 @@ fn setup_editor_with_init_files(
         config: Some(hume_config),
         data: Some(data_tmp.path().join("hume")),
         runtime: Some(runtime_path.to_path_buf()),
-        ..Dirs::none()
+        ..process_dirs()
     };
     ed.init_scripting(&mut Default::default());
 
@@ -69,8 +67,6 @@ fn setup_editor_with_init_files(
 /// `#:languages` activation entries for `"user/tp"` are actually recorded.  (Absent-path
 /// plugins early-return in `declare_plugin` and skip activation registration.)
 fn setup_lang_lint_editor(init_body: &str) -> (Editor, Vec<tempfile::TempDir>) {
-    let _path = path_reader();
-
     let config_tmp = tempfile::tempdir().unwrap();
     let runtime_tmp = tempfile::tempdir().unwrap();
     let data_tmp = tempfile::tempdir().unwrap();

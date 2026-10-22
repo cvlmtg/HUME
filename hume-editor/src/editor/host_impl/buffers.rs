@@ -85,6 +85,9 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
     fn cwd(&self) -> PathBuf {
         self.state.cwd.clone()
     }
+    fn search_path(&self) -> Option<std::ffi::OsString> {
+        self.state.dirs.search_path.clone()
+    }
     fn set_cwd(&mut self, path: &Path) -> Result<PathBuf, String> {
         self.state
             .set_cwd(path)

@@ -17,10 +17,14 @@ impl<'a> AsyncProcessHost for EditorHostImpl<'a> {
         let id = self.state.config.next_async_job_id;
         self.state.config.next_async_job_id += 1;
 
+        let launch = hume_platform::process::Launch {
+            cwd: &cwd,
+            search_path: self.state.dirs.search_path.as_deref(),
+        };
         match hume_platform::process::job::spawn_job(
             cmd,
             &args,
-            &cwd,
+            launch,
             Vec::new(),
             std::sync::Arc::clone(&self.state.wake),
         ) {

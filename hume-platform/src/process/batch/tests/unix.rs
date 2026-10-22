@@ -12,7 +12,7 @@ fn batch(command: &str, inputs: &[&str]) -> ShellBatch {
     ShellBatch::new(
         &ShellCommand::default(),
         command,
-        Path::new("."),
+        Launch::with_process_path(Path::new(".")),
         inputs.iter().map(|s| s.to_string()).collect(),
     )
 }
@@ -145,7 +145,12 @@ fn a_shell_that_cannot_start_fails_the_batch() {
         "-c".to_string(),
     ])
     .expect("a program");
-    let mut b = ShellBatch::new(&shell, "true", Path::new("."), vec!["x".to_string()]);
+    let mut b = ShellBatch::new(
+        &shell,
+        "true",
+        Launch::with_process_path(Path::new(".")),
+        vec!["x".to_string()],
+    );
     let ShellFailure(msg) = finish(&mut b, 1).expect_err("no such program");
     assert!(
         msg.contains("definitely-not-a-real-shell-xyz"),

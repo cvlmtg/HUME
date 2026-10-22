@@ -43,10 +43,14 @@ pub(super) fn spawn_source(
         return Ok(false);
     }
     let delimiter = if opts.nul { b'\0' } else { b'\n' };
+    let launch = hume_platform::process::Launch {
+        cwd: &opts.cwd,
+        search_path: state.dirs.search_path.as_deref(),
+    };
     let source = hume_platform::process::line_source::spawn_line_source(
         cmd,
         &args,
-        &opts.cwd,
+        launch,
         delimiter,
         Arc::clone(&state.wake),
     )

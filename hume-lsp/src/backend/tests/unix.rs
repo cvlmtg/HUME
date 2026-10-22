@@ -10,7 +10,7 @@ fn start_send_drain_round_trips_through_cat() {
     let root = std::env::current_dir().unwrap();
     let mut backend = ThreadedLspBackend::with_waker(no_op_wake());
     let id = backend
-        .start("/bin/cat", &[], &root, &[])
+        .start("/bin/cat", &[], Launch::with_process_path(&root), &[])
         .expect("spawn cat");
 
     backend.send(
@@ -54,7 +54,7 @@ fn start_threads_the_waker_through_to_the_spawned_server() {
     let (wake, rx_wake) = counting_wake();
     let mut backend = ThreadedLspBackend::with_waker(wake);
     let id = backend
-        .start("/bin/cat", &[], &root, &[])
+        .start("/bin/cat", &[], Launch::with_process_path(&root), &[])
         .expect("spawn cat");
 
     backend.send(

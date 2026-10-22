@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use super::*;
 use crate::codec::RequestId;
 
@@ -5,7 +7,9 @@ use crate::codec::RequestId;
 fn respond_to_delivers_on_next_drain_not_inline() {
     let mut backend = InlineLspBackend::new();
     backend.respond_to("textDocument/hover", serde_json::json!({"contents": "hi"}));
-    let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
+    let sid = backend
+        .start("x", &[], Launch::with_process_path(Path::new(".")), &[])
+        .unwrap();
 
     backend.send(
         sid,
@@ -41,7 +45,9 @@ fn respond_to_delivers_on_next_drain_not_inline() {
 fn fail_with_delivers_error_response() {
     let mut backend = InlineLspBackend::new();
     backend.fail_with("textDocument/definition", -32601, "not found");
-    let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
+    let sid = backend
+        .start("x", &[], Launch::with_process_path(Path::new(".")), &[])
+        .unwrap();
     backend.send(
         sid,
         Message::Request {
@@ -66,7 +72,9 @@ fn responses_are_fifo_per_method() {
     let mut backend = InlineLspBackend::new();
     backend.respond_to("m", serde_json::json!(1));
     backend.respond_to("m", serde_json::json!(2));
-    let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
+    let sid = backend
+        .start("x", &[], Launch::with_process_path(Path::new(".")), &[])
+        .unwrap();
 
     for i in 1..=2 {
         backend.send(
@@ -97,7 +105,9 @@ fn responses_are_fifo_per_method() {
 #[test]
 fn request_with_no_canned_response_is_recorded_but_produces_no_event() {
     let mut backend = InlineLspBackend::new();
-    let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
+    let sid = backend
+        .start("x", &[], Launch::with_process_path(Path::new(".")), &[])
+        .unwrap();
     backend.send(
         sid,
         Message::Request {
@@ -113,7 +123,9 @@ fn request_with_no_canned_response_is_recorded_but_produces_no_event() {
 #[test]
 fn push_from_server_surfaces_on_drain() {
     let mut backend = InlineLspBackend::new();
-    let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
+    let sid = backend
+        .start("x", &[], Launch::with_process_path(Path::new(".")), &[])
+        .unwrap();
     backend.push_from_server(
         sid,
         Message::Notification {
@@ -129,7 +141,9 @@ fn push_from_server_surfaces_on_drain() {
 #[test]
 fn with_default_handshake_answers_initialize() {
     let mut backend = InlineLspBackend::with_default_handshake();
-    let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
+    let sid = backend
+        .start("x", &[], Launch::with_process_path(Path::new(".")), &[])
+        .unwrap();
     backend.send(
         sid,
         Message::Request {
@@ -175,8 +189,12 @@ fn drained_results(backend: &mut InlineLspBackend) -> Vec<(ServerId, serde_json:
 #[test]
 fn respond_to_server_answers_only_that_server() {
     let mut backend = InlineLspBackend::new();
-    let first = backend.start("a", &[], Path::new("."), &[]).unwrap();
-    let second = backend.start("b", &[], Path::new("."), &[]).unwrap();
+    let first = backend
+        .start("a", &[], Launch::with_process_path(Path::new(".")), &[])
+        .unwrap();
+    let second = backend
+        .start("b", &[], Launch::with_process_path(Path::new(".")), &[])
+        .unwrap();
     backend.respond_to_server(second, "textDocument/hover", serde_json::json!("second"));
 
     backend.send(first, hover_request(1));
@@ -191,8 +209,12 @@ fn respond_to_server_answers_only_that_server() {
 #[test]
 fn method_wide_response_is_the_fallback_for_an_unscripted_server() {
     let mut backend = InlineLspBackend::new();
-    let first = backend.start("a", &[], Path::new("."), &[]).unwrap();
-    let second = backend.start("b", &[], Path::new("."), &[]).unwrap();
+    let first = backend
+        .start("a", &[], Launch::with_process_path(Path::new(".")), &[])
+        .unwrap();
+    let second = backend
+        .start("b", &[], Launch::with_process_path(Path::new(".")), &[])
+        .unwrap();
     backend.respond_to("textDocument/hover", serde_json::json!("shared"));
     backend.respond_to_server(second, "textDocument/hover", serde_json::json!("second"));
 

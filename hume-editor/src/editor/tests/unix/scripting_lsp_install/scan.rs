@@ -7,8 +7,6 @@ use super::*;
 /// anymore; that's `lsp_plugin_loads_with_real_lsp_catalogs`'s job below).
 #[test]
 fn plum_plugin_loads_cleanly() {
-    let _path = path_reader();
-
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_plum(&mut ed, data_tmp.path());
@@ -24,8 +22,6 @@ fn plum_plugin_loads_cleanly() {
 /// smoke test for both self-contained module loads.
 #[test]
 fn lsp_plugin_loads_with_real_lsp_catalogs() {
-    let _path = path_reader();
-
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
@@ -43,7 +39,6 @@ fn lsp_plugin_loads_with_real_lsp_catalogs() {
 /// core:lsp-owned end to end.
 #[test]
 fn plum_alone_does_not_register_installed_servers() {
-    let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
     fabricate_server(
         data_tmp.path(),
@@ -78,7 +73,6 @@ fn plum_alone_does_not_register_installed_servers() {
 
 #[test]
 fn scan_registers_installed_server_with_absolute_managed_path() {
-    let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
     fabricate_server(
         data_tmp.path(),
@@ -108,7 +102,6 @@ fn scan_registers_installed_server_with_absolute_managed_path() {
 /// not stop the scan.
 #[test]
 fn scan_does_not_read_the_install_requirements() {
-    let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
     fabricate_server(data_tmp.path(), "gopls", "0.20.0", "gopls");
     let runtime = runtime_with_sources(&[]);
@@ -139,7 +132,6 @@ fn scan_does_not_read_the_install_requirements() {
 /// check, so it must not share logic with the thing it verifies.
 #[test]
 fn settings_conversion_produces_correct_json_shapes_for_arrays_and_nested_objects() {
-    let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
     fabricate_server(data_tmp.path(), "svlangserver", "0.4.1", "svlangserver");
     fabricate_server(
@@ -218,7 +210,6 @@ fn settings_conversion_produces_correct_json_shapes_for_arrays_and_nested_object
 /// after it is unaffected.
 #[test]
 fn an_unparsable_receipt_is_an_interrupted_install() {
-    let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
     fabricate_server(data_tmp.path(), "gopls", "0.0.1", "gopls");
     fabricate_server(
@@ -257,7 +248,6 @@ fn an_unparsable_receipt_is_an_interrupted_install() {
 
 #[test]
 fn interrupted_install_is_warned_and_not_registered() {
-    let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
     let dir = canonical_data_dir(data_tmp.path())
         .join("servers")
@@ -283,7 +273,6 @@ fn interrupted_install_is_warned_and_not_registered() {
 
 #[test]
 fn orphan_server_is_warned_and_not_registered() {
-    let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
     fabricate_server(
         data_tmp.path(),
@@ -306,7 +295,6 @@ fn orphan_server_is_warned_and_not_registered() {
 
 #[test]
 fn install_lock_sentinel_file_is_never_scanned_as_a_server_directory() {
-    let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
     let servers_dir = canonical_data_dir(data_tmp.path()).join("servers");
     std::fs::create_dir_all(&servers_dir).unwrap();
@@ -327,7 +315,6 @@ fn install_lock_sentinel_file_is_never_scanned_as_a_server_directory() {
 
 #[test]
 fn stray_non_directory_file_under_servers_dir_is_never_scanned_as_a_server() {
-    let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
     let servers_dir = canonical_data_dir(data_tmp.path()).join("servers");
     std::fs::create_dir_all(&servers_dir).unwrap();
@@ -356,7 +343,6 @@ fn stray_non_directory_file_under_servers_dir_is_never_scanned_as_a_server() {
 /// user-manual/docs/lsp.md) on the next rescan.
 #[test]
 fn rescan_does_not_clobber_a_manual_registration_of_the_same_name() {
-    let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
 
     let mut ed = editor_from("-[x]>\n");
@@ -394,7 +380,6 @@ fn rescan_does_not_clobber_a_manual_registration_of_the_same_name() {
 /// the manual one as it was.
 #[test]
 fn rescan_registers_the_catalog_server_beside_a_manual_one_of_another_name() {
-    let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
 
     let mut ed = editor_from("-[x]>\n");
@@ -443,7 +428,6 @@ fn rescan_registers_the_catalog_server_beside_a_manual_one_of_another_name() {
 /// that eval, so it never exercises this same-eval race at all.
 #[test]
 fn register_lsp_server_after_eager_load_plugin_overrides_the_scans_own_registration() {
-    let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
     fabricate_server(
         data_tmp.path(),
@@ -476,7 +460,6 @@ fn register_lsp_server_after_eager_load_plugin_overrides_the_scans_own_registrat
 /// skips "rust-analyzer" regardless of call order.
 #[test]
 fn register_lsp_server_before_eager_load_plugin_also_survives_the_scan() {
-    let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
     fabricate_server(
         data_tmp.path(),
@@ -520,7 +503,6 @@ fn register_lsp_server_before_eager_load_plugin_also_survives_the_scan() {
 /// just the registration.
 #[test]
 fn lazy_lsp_plugin_registers_installed_servers_on_language_activation() {
-    let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
     fabricate_server(
         data_tmp.path(),
@@ -584,7 +566,6 @@ fn language_set_loads_the_registration_entry_and_leaves_the_commands_entry_lazy(
     use hume_scripting::PluginStatus;
     use hume_scripting::attribution::{EntryFile, EntryId, PluginId};
 
-    let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_with_init(
@@ -618,7 +599,6 @@ fn language_set_loads_the_registration_entry_and_leaves_the_commands_entry_lazy(
 /// loaded yet still works, no eager `(load-plugin! "core:lsp-install")` required.
 #[test]
 fn lazy_lsp_plugin_activates_on_typed_lsp_install_command() {
-    let _path = path_reader();
     let data_tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>\n");
     load_with_init(

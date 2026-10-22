@@ -58,10 +58,33 @@ mod exit_watch;
 #[cfg(windows)]
 mod job_object;
 
-/// `Command::new(cmd)` with `args`, `cwd` (via `strip_unc_prefix`, a no-op
-/// on non-Windows), and `GIT_TERMINAL_PROMPT=0` already applied: the
-/// preamble every spawn site in this crate shares. Each caller layers its
-/// own remaining stdio/process-group setup on top.
+/// Where a child starts: its working directory, and the `PATH` it gets, on
+/// which a program named without a directory is looked up
+/// ([`crate::dirs::Dirs::search_path`]; `None` starts it with `PATH` unset).
+#[derive(Clone, Copy, Debug)]
+pub struct Launch<'a> {
+    pub cwd: &'a Path,
+    pub search_path: Option<&'a OsStr>,
+}
+
+#[cfg(any(test, feature = "test-util"))]
+impl<'a> Launch<'a> {
+    /// A launch from `cwd` with the test process's own `PATH`, for a test
+    /// that runs a real program by name.
+    pub fn with_process_path(cwd: &'a Path) -> Self {
+        static PROCESS_PATH: std::sync::LazyLock<Option<std::ffi::OsString>> =
+            std::sync::LazyLock::new(|| std::env::var_os("PATH"));
+        Self {
+            cwd,
+            search_path: PROCESS_PATH.as_deref(),
+        }
+    }
+}
+
+/// `Command::new(cmd)` with `args`, `launch`'s cwd (via `strip_unc_prefix`, a
+/// no-op on non-Windows) and `PATH`, and `GIT_TERMINAL_PROMPT=0` already
+/// applied: the preamble every spawn site in this crate shares. Each caller
+/// layers its own remaining stdio/process-group setup on top.
 ///
 /// Denying git a credential prompt is a blanket policy here, not a
 /// git-specific carve-out: every spawn path in this crate has left the
@@ -73,7 +96,7 @@ mod job_object;
 /// would instead open `/dev/tty` directly and hang there. Left unset,
 /// either shape turns a private repo or an expired token into a hang
 /// instead of a fast, readable git error.
-fn base_command<I>(cmd: impl AsRef<OsStr>, args: I, cwd: &Path) -> Command
+fn base_command<I>(cmd: impl AsRef<OsStr>, args: I, launch: Launch<'_>) -> Command
 where
     I: IntoIterator,
     I::Item: AsRef<OsStr>,
@@ -82,7 +105,11 @@ where
     command
         .args(args)
         .env("GIT_TERMINAL_PROMPT", "0")
-        .current_dir(strip_unc_prefix(cwd.to_path_buf()));
+        .current_dir(strip_unc_prefix(launch.cwd.to_path_buf()));
+    match launch.search_path {
+        Some(path) => command.env("PATH", path),
+        None => command.env_remove("PATH"),
+    };
     command
 }
 
@@ -107,10 +134,10 @@ where
 pub fn run_inline_output(
     cmd: &str,
     args: &[String],
-    cwd: &Path,
+    launch: Launch<'_>,
     env: &[(String, String)],
 ) -> io::Result<ExitStatus> {
-    let mut command = base_command(cmd, args, cwd);
+    let mut command = base_command(cmd, args, launch);
     command
         .envs(env.iter().map(|(k, v)| (k, v)))
         .new_process_group()
@@ -130,8 +157,12 @@ pub fn run_inline_output(
 /// `#:inline-output` command with raw mode off, does not kill HUME with it.
 ///
 /// See `base_command`'s own doc for why `GIT_TERMINAL_PROMPT=0` is set.
-pub fn run_capture(cmd: &str, args: &[String], cwd: &Path) -> io::Result<std::process::Output> {
-    let mut command = base_command(cmd, args, cwd);
+pub fn run_capture(
+    cmd: &str,
+    args: &[String],
+    launch: Launch<'_>,
+) -> io::Result<std::process::Output> {
+    let mut command = base_command(cmd, args, launch);
     command
         .stdin(Stdio::null())
         .new_process_group()
@@ -142,14 +173,19 @@ pub fn run_capture(cmd: &str, args: &[String], cwd: &Path) -> io::Result<std::pr
 /// Compile the tree-sitter grammar at `src` to a shared library at `out`
 /// by running the grammar compiler `tool` (see [`crate::dirs::Dirs::grammar_build`]),
 /// with inherited stdio.
-pub fn grammar_build(tool: &Path, src: &Path, out: &Path, cwd: &Path) -> io::Result<ExitStatus> {
+pub fn grammar_build(
+    tool: &Path,
+    src: &Path,
+    out: &Path,
+    launch: Launch<'_>,
+) -> io::Result<ExitStatus> {
     let tool = strip_unc_prefix(tool.to_path_buf());
     let src = strip_unc_prefix(src.to_path_buf());
     let out = strip_unc_prefix(out.to_path_buf());
     let mut command = base_command(
         &tool,
         [OsStr::new("-o"), out.as_os_str(), src.as_os_str()],
-        cwd,
+        launch,
     );
     command
         .new_process_group()

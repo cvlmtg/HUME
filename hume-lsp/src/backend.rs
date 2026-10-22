@@ -4,9 +4,9 @@
 //! Transport-flavored only: no capabilities, no `generation`, no buffer
 //! knowledge. That client-level state lives above this trait.
 
-use std::path::Path;
 use std::sync::Arc;
 
+use hume_platform::process::Launch;
 use hume_platform::wake::WakeCallback;
 
 use crate::codec::Message;
@@ -21,14 +21,14 @@ use crate::transport::{InboundEvent, ServerHandle};
 pub struct ServerId(pub u32);
 
 pub trait LspBackend {
-    /// Spawn (threaded) or register (inline) a server. Handshake is the
-    /// client layer's job; this is transport-level only. `env` is applied
-    /// additively to the spawned process's inherited environment.
+    /// Spawn (threaded) or register (inline) a server from `launch`. Handshake
+    /// is the client layer's job; this is transport-level only. `env` is
+    /// applied additively to the spawned process's inherited environment.
     fn start(
         &mut self,
         cmd: &str,
         args: &[String],
-        root: &Path,
+        launch: Launch<'_>,
         env: &[(String, String)],
     ) -> std::io::Result<ServerId>;
     fn send(&mut self, server: ServerId, msg: Message);
@@ -62,10 +62,10 @@ impl LspBackend for ThreadedLspBackend {
         &mut self,
         cmd: &str,
         args: &[String],
-        root: &Path,
+        launch: Launch<'_>,
         env: &[(String, String)],
     ) -> std::io::Result<ServerId> {
-        let handle = ServerHandle::spawn(cmd, args, root, env, Arc::clone(&self.wake))?;
+        let handle = ServerHandle::spawn(cmd, args, launch, env, Arc::clone(&self.wake))?;
         let id = ServerId(self.next);
         self.next += 1;
         self.servers.insert(id, handle);
