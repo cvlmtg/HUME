@@ -291,3 +291,23 @@ fn format_status_lists_a_plugin_without_entries_on_its_own_row() {
         ]
     );
 }
+
+#[test]
+fn language_plugins_lists_the_language_then_the_wildcard_each_once() {
+    let mut reg = LazyRegistry::default();
+    let (rust, both, any) = (id_core("rust"), id_core("both"), id_core("any"));
+    reg.declare(rust.clone(), fake_path(), vec![], vec!["rust".to_string()]);
+    reg.declare(
+        both.clone(),
+        fake_path(),
+        vec![],
+        vec!["rust".to_string(), "*".to_string()],
+    );
+    reg.declare(any.clone(), fake_path(), vec![], vec!["*".to_string()]);
+
+    assert_eq!(
+        reg.language_plugins("rust"),
+        [rust, both.clone(), any.clone()]
+    );
+    assert_eq!(reg.language_plugins("go"), [both, any]);
+}

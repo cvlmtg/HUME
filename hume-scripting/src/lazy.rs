@@ -30,6 +30,32 @@ pub(crate) enum PluginState {
     Failed,
 }
 
+impl PluginState {
+    pub(crate) fn status(&self) -> PluginStatus {
+        match self {
+            Self::Declared { .. } => PluginStatus::Declared,
+            Self::Loading => PluginStatus::Loading,
+            Self::Loaded => PluginStatus::Loaded,
+            Self::Failed => PluginStatus::Failed,
+        }
+    }
+}
+
+/// A plugin's lifecycle state without its `Declared` path: the public view
+/// the editor-crate test suite asserts on without reaching into
+/// `ScriptingHost` fields.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PluginStatus {
+    /// Declared but not yet loaded.
+    Declared,
+    /// Currently being loaded (re-entrancy guard).
+    Loading,
+    /// Loaded successfully.
+    Loaded,
+    /// Load failed (will not retry until `:reload-config`).
+    Failed,
+}
+
 /// Persistent plugin state and activation maps.
 ///
 /// Borrowed into [`super::SteelCtx`] for the duration of each eval so that
@@ -101,6 +127,24 @@ impl LazyRegistry {
             .filter(|entry| entry.plugin == *plugin)
             .cloned()
             .collect()
+    }
+
+    /// Plugins to activate when `language` is set on a buffer: the entries
+    /// keyed by `language`, then those keyed by the wildcard `"*"` (a
+    /// manifest that can't enumerate every language it might support), each
+    /// once.
+    pub(crate) fn language_plugins(&self, language: &str) -> Vec<EntryId> {
+        let mut plugins = self
+            .activation_languages
+            .get(language)
+            .cloned()
+            .unwrap_or_default();
+        for id in self.activation_languages.get("*").into_iter().flatten() {
+            if !plugins.contains(id) {
+                plugins.push(id.clone());
+            }
+        }
+        plugins
     }
 
     /// Drop all activation-map entries owned by `id` (called on load or fail).

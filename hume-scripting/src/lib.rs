@@ -59,6 +59,7 @@ pub use command_procs::{CommandProc, MappableProc, TypedProc};
 pub use eval::HeldHandlers;
 pub use host::PendingCompletionSource;
 pub use keys::parse_key_stream;
+pub use lazy::PluginStatus;
 pub use log::LogLevel;
 pub use types::{
     CapabilityQuery, ConfigOrigin, DocSpan, Effect, EvalError, FeatureFilter, GrammarReg,
@@ -351,24 +352,11 @@ impl ScriptingHost {
             .unwrap_or_default()
     }
 
-    /// Plugin ids that should be activated when `language` is set on a buffer.
-    ///
-    /// Unions entries keyed by `language` with entries keyed by the wildcard
-    /// `"*"` (a manifest that can't enumerate every language it might ever
-    /// support), deduped so a plugin listed under both activates once.
+    /// Plugin ids that should be activated when `language` is set on a buffer:
+    /// those keyed by `language`, then those keyed by the wildcard `"*"`, each
+    /// once.
     pub fn activation_language_plugins(&self, language: &str) -> Vec<attribution::EntryId> {
-        let activation_languages = &self.registries.lazy_registry.activation_languages;
-        let specific = activation_languages.get(language);
-        let wildcard = activation_languages.get("*");
-        let mut plugins: Vec<attribution::EntryId> = specific.cloned().unwrap_or_default();
-        if let Some(wildcard) = wildcard {
-            for id in wildcard {
-                if !plugins.contains(id) {
-                    plugins.push(id.clone());
-                }
-            }
-        }
-        plugins
+        self.registries.lazy_registry.language_plugins(language)
     }
 
     /// Status of a plugin in the lazy registry.
@@ -377,12 +365,7 @@ impl ScriptingHost {
             .lazy_registry
             .plugins
             .get(id)
-            .map(|state| match state {
-                PluginState::Declared { .. } => PluginStatus::Declared,
-                PluginState::Loading => PluginStatus::Loading,
-                PluginState::Loaded => PluginStatus::Loaded,
-                PluginState::Failed => PluginStatus::Failed,
-            })
+            .map(PluginState::status)
     }
 
     /// Returns `true` if any plugin in the registry has transitioned to `Loaded`.
@@ -507,26 +490,6 @@ impl ScriptingHost {
         self.eval_source_with_budget(source, budget.as_millis() as u64, host)
             .map(|_| ())
     }
-}
-
-// ── Public status enum ────────────────────────────────────────────────────────
-
-/// Payload-free public view of a plugin's lifecycle state.
-///
-/// Maps from the private `PluginState` enum (which carries a `PathBuf` for
-/// `Declared`) without leaking internal details.  Used by `plugin_status()` so
-/// the editor-crate test suite can assert on states without reaching into
-/// `ScriptingHost` fields.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PluginStatus {
-    /// Declared but not yet loaded.
-    Declared,
-    /// Currently being loaded (re-entrancy guard).
-    Loading,
-    /// Loaded successfully.
-    Loaded,
-    /// Load failed (will not retry until `:reload-config`).
-    Failed,
 }
 
 /// Pins the assumption the full-trust plugin model rests on: Steel's
