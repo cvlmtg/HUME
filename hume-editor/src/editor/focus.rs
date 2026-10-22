@@ -62,9 +62,9 @@ impl Focus {
 /// `end_insert_session` is a no-op past its own guard (no `Insert` layer
 /// open) whenever nothing is open, so every caller can route through this
 /// unconditionally instead of checking first. Whatever it leaves behind,
-/// a Paste session or a `Replay`-kind `EditSession` (what `Editor::
-/// replay_dot`'s own pre-open produces before its replayed body decides
-/// what it actually needs, see `edit_session::open_or_retarget`'s doc),
+/// a Paste session or a `Replay`-kind `EditSession` (what
+/// `Editor::replay_dot`'s own pre-open produces before its replayed body
+/// decides what it needs, see `edit_session::open_or_retarget`'s doc),
 /// commits the same way through
 /// [`edit_session::commit_open_session`](super::edit_session::commit_open_session):
 /// this is the chokepoint every focus/buffer-switch path already runs before

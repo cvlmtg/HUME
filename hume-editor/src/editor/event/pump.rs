@@ -54,7 +54,7 @@ impl Editor {
     /// pass would immediately redrain. Outside the fixpoint, a re-arm is
     /// picked up on the *next* `settle()` instead, one frame later, which
     /// bounds it. `:reload-config`'s `resync_config_state` call site drains
-    /// only `drain_pending_work` for exactly this reason; see its doc.
+    /// only `drain_pending_work` for this reason; see its doc.
     pub(crate) fn settle(&mut self) {
         self.drain_async_sources();
         if self.drain_pending_work() {
@@ -77,7 +77,7 @@ impl Editor {
 
     /// Fixpoint over `state.config.pending_work` only, with no async sources.
     /// The loop body of `settle`, split out so `:reload-config`'s accounting
-    /// window (`typed_reload_config`) can drain exactly the config's own
+    /// window (`typed_reload_config`) can drain only the config's own
     /// queued hooks without an unrelated LSP/parse/timer message landing
     /// inside it and being mistaken for a reload failure.
     ///

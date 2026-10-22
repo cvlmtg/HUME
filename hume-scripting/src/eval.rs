@@ -193,16 +193,16 @@ impl ScriptingHost {
     ///   responsible for applying `EvalError::effects` and surfacing the
     ///   error.
     ///
-    /// Atomicity is **not** all-or-nothing across the whole file even for
-    /// this genuine top-level case: only deferred effects (keybinds, LSP
+    /// Atomicity is not all-or-nothing across the whole file even for a
+    /// top-level raise: only deferred effects (keybinds, LSP
     /// registration, …) roll back on error. `define-command!` and
     /// `register-hook!` write the editor's command registry / `HookRegistry`
     /// inline the instant the builtin runs (see `builtins::commands`/`builtins::hooks`),
     /// so a `define-command!` or `register-hook!` that ran before the
-    /// failing form stays live in the degraded session. This is deliberate:
-    /// a config error already surfaces to the user, and `:reload-config`
-    /// rebuilds a fresh `ScriptingHost`, so the half-applied state never
-    /// accumulates across reloads.
+    /// failing form stays live in the degraded session. A config error
+    /// already surfaces to the user, and `:reload-config` rebuilds a fresh
+    /// `ScriptingHost`, so the half-applied state never accumulates across
+    /// reloads.
     pub fn eval_init(
         &mut self,
         path: &Path,

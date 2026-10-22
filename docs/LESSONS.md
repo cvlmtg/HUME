@@ -263,7 +263,7 @@ deterministically, one keystroke removed from the actual mistake.
 `commit_changeset` applied the accept through the ungrouped path; the
 already-open insert-session group never saw it. A second, independent bug
 found during the same trace: `refilter_lsp_completion_after_edit`
-(`mappings/insert.rs`) sliced `anchor..head` with a comment claiming
+sliced `anchor..head` with a comment claiming
 `head < anchor` "can't happen" — an arrow key moving the cursor before the
 anchor without dismissing the session proved it could, and did.
 
@@ -297,10 +297,9 @@ session closed) and never drove another keystroke through it.
 
 **Files:** `hume-editor/src/editor/doc_ops.rs` (`apply_doc_edit` routing,
 undo/redo asserts), `hume-editor/src/editor/commands/mod.rs` (collapsed
-caller-side branch), `hume-editor/src/editor/mappings/insert.rs` (refilter
-guard), `hume-editor/src/editor/tests/lsp_completion_menu.rs` and
-`lsp_completion_feature.rs` (type-after-accept / type-after-arrow-key
-regression tests).
+caller-side branch), `hume-editor/src/editor/tests/completion/menu_keys.rs`
+(`typing_after_accept_composes_into_the_open_edit_group_without_panicking`,
+`left_arrow_dismisses_the_session_immediately`).
 
 ---
 

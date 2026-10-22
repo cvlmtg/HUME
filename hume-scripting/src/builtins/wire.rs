@@ -86,8 +86,7 @@ fn wire_text_edit_from_json(
 /// `TextEdit` (an unconverted element straight from a
 /// `textDocument/formatting`-shaped response), never a hand-built shape: a
 /// hand-built tuple would have no producing server to read an encoding off,
-/// and guessing one is exactly what `JsonHandle::position_encoding` refuses
-/// to do.
+/// and `JsonHandle::position_encoding` refuses to guess one.
 pub(crate) fn wire_text_edit_arg(val: SteelVal) -> Result<crate::host::WireTextEdit, SteelErr> {
     let (handle, encoding) = tagged_json_arg(&val, "apply-text-edits!")?;
     wire_text_edit_from_json(handle.value(), encoding, "apply-text-edits!")
