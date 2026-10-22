@@ -11,7 +11,6 @@ use hume_scripting::{PaneHandle, ServerRef, SteelPane};
 use steel::rvals::SteelVal;
 
 use super::Mode;
-use super::buffer::store::EditOrigin;
 
 /// Something that happened in the editor, carrying whatever payload its
 /// Steel handlers (and, for a growing subset, Rust-side reactions) need.
@@ -483,60 +482,6 @@ impl EditorEvent {
     }
 }
 
-/// One item of deferred Steel work, queued by a raise site and drained by
-/// `Editor::settle()` in FIFO order. One merged queue closes the stranded-
-/// events bug (see `tests/events.rs`'s
-/// `event_raised_from_async_work_fires_on_settle_with_no_input`): a `Call`
-/// and an `Event` queued in the same batch drain in insertion order, in one
-/// fixpoint, instead of two queues drained at two different points of the
-/// run loop.
-///
-/// Hooks always route through here rather than firing inline. This is a
-/// semantic guarantee of the hook model ("when X happens, then do Y"), not a
-/// consequence of the borrow architecture: a hook must run *after* the
-/// command that triggers it completes, never mid-command. Even if re-entrancy
-/// were fully solved mechanically, this stays queued. **Do not optimize hooks
-/// to fire inline**: this decision is locked.
-#[derive(Debug)]
-pub(in crate::editor) enum PendingWork {
-    /// A specific Steel closure already captured by the raise site: an
-    /// `lsp-request!` callback, a timer thunk, a prompt/menu/drawer/picker
-    /// callback. Delivered to exactly that closure, not to every handler for
-    /// a name.
-    ///
-    /// `anchor`: `Some` only for an `lsp-request!` callback a server
-    /// answered, carrying the same `ResponseAnchor` already checked once at
-    /// LSP drain time (`Editor::anchor_admits`), re-checked here, at dequeue,
-    /// because arbitrary other queued work (an earlier `Call` in the same
-    /// batch, a hook) can run first and change the state the drain-time
-    /// check saw. `None` for every other source (a timer thunk, a picker
-    /// callback, a request no server took, …).
-    Call {
-        proc: SteelVal,
-        args: Vec<SteelVal>,
-        anchor: Option<super::lsp::ResponseAnchor>,
-        /// An `lsp-request!` callback's hold on its `#:tracked` position,
-        /// dropped once the call has run, raised, or been dropped by its
-        /// anchor or the drain cap, which releases the position unless the
-        /// callback kept it.
-        tracked: Option<hume_scripting::host::TrackedHold>,
-        /// The ticket of the interactive input this call answers (a read,
-        /// picker, prompt or menu callback), when that input belongs to a
-        /// recorded change; see [`super::replay::AnswerTicket`]. Keeps the
-        /// change open until the call has run. `Editor::run_pending_batch`
-        /// runs such a call alone (never batched with a sibling `Call`),
-        /// inside the input's scope (`Editor::run_answered`), so only this
-        /// call's own work belongs to the change.
-        answer: Option<super::replay::AnswerTicket>,
-        /// Whose edits the call makes: the user's for a callback a key of
-        /// theirs fired, background ones otherwise.
-        origin: EditOrigin,
-    },
-    /// An editor event to fire by name at drain time. Args are built by
-    /// `into_steel_args()` only if a handler is actually registered.
-    Event(EditorEvent),
-}
-
 pub(in crate::editor) fn mode_name(m: Mode) -> &'static str {
     match m {
         Mode::Normal => "normal",
@@ -558,6 +503,11 @@ pub(crate) fn held_event_arg_count(name: &str) -> Option<usize> {
         .find(|(held, _)| *held == name)
         .map(|&(_, arg_count)| arg_count)
 }
+
+mod pump;
+mod queue;
+
+pub(in crate::editor) use queue::PendingWork;
 
 #[cfg(test)]
 mod tests;

@@ -66,17 +66,4 @@ impl Editor {
             ed.state.drain_pipe_runs();
         });
     }
-
-    /// Run `f` with the edits it makes counted as `origin`'s, then put back
-    /// the origin before it.
-    pub(super) fn with_edit_origin<R>(
-        &mut self,
-        origin: EditOrigin,
-        f: impl FnOnce(&mut Self) -> R,
-    ) -> R {
-        let outer = self.state.buffers.set_edit_origin(origin);
-        let result = f(self);
-        self.state.buffers.set_edit_origin(outer);
-        result
-    }
 }

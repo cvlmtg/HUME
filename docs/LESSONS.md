@@ -541,7 +541,7 @@ path, so they waited for the next keystroke — forever, on an idle editor.
    drained on every path.
 
 **Files:** `hume-editor/src/editor/commands/typed_buffer.rs`
-(`check_all_disk_state`), `hume-editor/src/editor/scripting_setup.rs`
+(`check_all_disk_state`), `hume-editor/src/editor/event/pump.rs`
 (`check_all_disk_state`), `hume-editor/src/editor/tests/disk_change.rs`
 (`enter_buffer_with_jump`), `hume-scripting/src/lib.rs` (`focused_buffer_id`).
 
@@ -995,8 +995,8 @@ supposed to make impossible to take.
 (`run_command_sync`'s focused-buffer check), `hume-scripting/src/host/commands.rs`,
 `hume-editor/src/editor/buffer/lifecycle.rs` (`close_buffer`'s last-buffer
 branch), `hume-editor/src/editor/lsp/mod.rs` (`ResponseAnchor`),
-`hume-editor/src/editor/scripting_setup.rs` (`run_pending_batch`'s
-per-call anchor re-check), `hume-scripting/src/builtins/lsp.rs`
+`hume-editor/src/editor/event/pump.rs` (`run_pending_batch`'s
+per-call anchor re-check), `hume-scripting/src/builtins/lsp/convert.rs`
 (`lsp-position->offset`/`lsp-range->offsets`).
 
 ---

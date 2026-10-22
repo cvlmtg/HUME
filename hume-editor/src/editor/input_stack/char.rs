@@ -249,7 +249,7 @@ impl Layer for CharLayer {
     fn tear_down(mut self: Box<Self>, state: &mut EditorState, _view: &EngineView, _why: Removal) {
         for read in self.reads.drain(..) {
             if let Resolved::Call(call) = resolve(state, read, None) {
-                state.config.pending_work.push_back(call);
+                state.push_work(call);
             }
         }
     }
@@ -314,7 +314,7 @@ fn char_input(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
     }
     let resolved = resolve(&mut ed.state, read, Some(ch));
     if let AfterRead::Call(call) = run_resolved(ed, resolved) {
-        ed.state.config.pending_work.push_back(call);
+        ed.state.push_work(call);
     }
 }
 

@@ -2805,7 +2805,7 @@ fn dot_repeat_keeps_a_pick_whose_on_select_is_lost_to_the_drain_cap() {
         "sanity: on_select is queued, not yet run"
     );
 
-    // Pad the same batch past the drain cap (1000, `scripting_setup.rs`'s
+    // Pad the same batch past the drain cap (1000, `event/pump.rs`'s
     // `MAX_EVENT_DRAIN`), so the whole thing, on_select included, is
     // dropped without ever running.
     for _ in 0..1100 {

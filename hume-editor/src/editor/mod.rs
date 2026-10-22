@@ -8,7 +8,7 @@ use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 use self::registry::CommandRegistry;
 use self::replay::{PendingRepeat, SelectionStep};
 use crate::editor::buffer::Buffer;
-use crate::editor::buffer::store::{BufferStore, EditOrigin};
+use crate::editor::buffer::store::BufferStore;
 use crate::editor::pane_state::PaneView;
 use crate::editor::settings::EditorSettings;
 use hume_editing::selection::SelectionSet;
@@ -754,83 +754,6 @@ impl EditorState {
         let completion = self.take_layer::<input_stack::BufferCompletionLayer>(view, r);
         self.close_buffer_completion_views();
         Some(completion.session)
-    }
-
-    /// Enqueue `event` to fire after the current command returns. This is the
-    /// single raise path every event goes through, reached as
-    /// `self.state.queue_event(…)` from `Editor` methods and directly, like
-    /// `settings::ops::apply_global`, from free functions that only hold
-    /// `&mut EditorState`.
-    pub(in crate::editor) fn queue_event(&mut self, event: event::EditorEvent) {
-        self.config
-            .pending_work
-            .push_back(event::PendingWork::Event(event));
-    }
-
-    /// Queue `(proc, args)`, a callback a key of the user's fired, for
-    /// [`Self::queue_call`]: a drawer, live-picker query or completion-source
-    /// callback. Background work queues through
-    /// [`Self::queue_background_call`]; an interactive input's callback is
-    /// built by `EditorState::answered_call` instead.
-    pub(in crate::editor) fn queue_steel_call(
-        &mut self,
-        proc: steel::rvals::SteelVal,
-        args: Vec<steel::rvals::SteelVal>,
-    ) {
-        self.queue_call(proc, args, None, None, EditOrigin::User);
-    }
-
-    /// [`Self::queue_steel_call`] for a callback background work fires: a
-    /// timer thunk, an async job's or process's callback. Its edits do not
-    /// count as the user's.
-    pub(in crate::editor) fn queue_background_call(
-        &mut self,
-        proc: steel::rvals::SteelVal,
-        args: Vec<steel::rvals::SteelVal>,
-    ) {
-        self.queue_call(proc, args, None, None, EditOrigin::Background);
-    }
-
-    /// [`Self::queue_background_call`]'s counterpart for an `lsp-request!`
-    /// callback: carries the delivery's `ResponseAnchor` (`None` for a
-    /// request no server took) and the request's hold on its `#:tracked`
-    /// position, dropped once the call has run or been dropped. Never
-    /// carries an answer ticket: an LSP response resolves no waiting input.
-    pub(in crate::editor) fn queue_lsp_callback(
-        &mut self,
-        proc: steel::rvals::SteelVal,
-        args: Vec<steel::rvals::SteelVal>,
-        anchor: Option<lsp::ResponseAnchor>,
-        tracked: Option<hume_scripting::host::TrackedHold>,
-    ) {
-        self.queue_call(proc, args, anchor, tracked, EditOrigin::Background);
-    }
-
-    /// Queue `(proc, args)` for evaluation at the next drain boundary, never
-    /// called inline: LSP dispatch, timer fire and minibuffer key handling
-    /// all detect their completion from inside a borrow that can't re-enter
-    /// Steel. Its edits count as `origin`'s. Lives on `EditorState` (not
-    /// `Editor`) so a drawer layer and `EditorHostImpl`, which only hold
-    /// `&mut EditorState`, can queue too, the same reason `queue_event` lives
-    /// here.
-    fn queue_call(
-        &mut self,
-        proc: steel::rvals::SteelVal,
-        args: Vec<steel::rvals::SteelVal>,
-        anchor: Option<lsp::ResponseAnchor>,
-        tracked: Option<hume_scripting::host::TrackedHold>,
-        origin: EditOrigin,
-    ) {
-        self.config
-            .pending_work
-            .push_back(event::PendingWork::Call {
-                proc,
-                args,
-                anchor,
-                tracked,
-                answer: None,
-                origin,
-            });
     }
 }
 

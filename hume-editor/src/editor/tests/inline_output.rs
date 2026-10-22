@@ -397,7 +397,7 @@ fn caught_error_inside_call_bang_still_closes_bracket_and_drains_state() {
 /// The test checks `close_inline_output_bracket`'s *other*
 /// job (queuing `OnFocusGained` because the hook ran with the real
 /// terminal), which nothing else in this scenario produces: `OnBufferSave`
-/// itself triggers no disk check (`scripting_setup.rs`'s event-name match
+/// itself triggers no disk check (`event/pump.rs`'s event-name match
 /// groups it with the events `react_to_event` does nothing extra for), and
 /// the initial `settle()` drains `editor_with_file`'s own `OnBufferEnter`
 /// disk check before the external rewrite below, so that one can't produce

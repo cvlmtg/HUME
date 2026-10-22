@@ -233,7 +233,7 @@ impl Editor {
     )> {
         // The menu anchor is ranked against one text and reads as absent
         // once the text moves, until the next settle-time
-        // `reconcile_completion` pass re-ranks (`scripting_setup.rs`). A pane
+        // `reconcile_completion` pass re-ranks (`event/pump.rs`). A pane
         // switch can leave the session on a buffer that isn't the one on
         // screen in that same window; the buffer check below covers it.
         //

@@ -348,7 +348,7 @@ impl EditorState {
     /// Rust responder (`completionItem/resolve`, a diagnostics pull), and an early drop for a
     /// Steel one, before its `(proc, args)` is even queued.
     /// `Editor::run_pending_batch`
-    /// (`scripting_setup.rs`) re-checks the same anchor for a queued Steel
+    /// (`event/pump.rs`) re-checks the same anchor for a queued Steel
     /// callback right before it actually runs: arbitrary other queued work
     /// (a hook, an earlier callback in the same batch) can execute between
     /// the two checks and change the state the first one saw, so admission

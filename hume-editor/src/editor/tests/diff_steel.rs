@@ -62,7 +62,7 @@ fn diff_buffer_lines_diffs_the_live_buffer_against_the_ref() {
 /// registered closure), before `diff_buffer_lines`'s body (and thus
 /// `DiffHost::diff_buffer_lines` itself) ever runs. Errors raised inside a
 /// `define-command!` body surface as a `Severity::Error` message-log entry
-/// prefixed `"steel call error: "` (`scripting_setup.rs`'s `run_call_batch`
+/// prefixed `"steel call error: "` (`event/pump.rs`'s `run_call_batch`
 /// → `apply_script_result`), not as a Rust panic or a silent no-op. Hence
 /// checking the log instead of a `run_probe` boolean.
 ///

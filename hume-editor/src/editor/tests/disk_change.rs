@@ -152,7 +152,7 @@ fn unactioned_change_does_not_refire_until_a_further_change_happens() {
 /// an externally-changed buffer this way must not silently show stale
 /// content with `:w` free to clobber the external edit.
 ///
-/// Without `detect_buffer_enter`'s focus diff (`scripting_setup.rs`)
+/// Without `detect_buffer_enter`'s focus diff (`event/pump.rs`)
 /// observing the pane's new buffer and queuing `OnBufferEnter`, the target
 /// buffer's disk state would stay `InSync` no matter what changed externally.
 /// This holds for any switch primitive `:bnext`/`:bprev` route through, since

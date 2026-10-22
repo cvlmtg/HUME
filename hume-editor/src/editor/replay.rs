@@ -28,7 +28,6 @@ use std::rc::{Rc, Weak};
 use steel::rvals::SteelVal;
 use termina::event::{Event as TerminalEvent, KeyEvent};
 
-use super::buffer::store::EditOrigin;
 use super::dispatch::CmdCtx;
 use super::dot_chain::{ChainBroken, DotChain};
 use super::edit_session::{self, DotCapture, EditSessionKind, InsertSession};
@@ -1023,14 +1022,7 @@ impl EditorState {
         if let Some(ticket) = &ticket {
             self.record_answer(ticket, answer);
         }
-        super::event::PendingWork::Call {
-            proc,
-            args: vec![arg],
-            anchor: None,
-            tracked: None,
-            answer: ticket,
-            origin: EditOrigin::User,
-        }
+        super::event::PendingWork::answer(proc, arg, ticket)
     }
 
     /// [`Self::answered_call`], queued: how a picker, prompt or menu fires
@@ -1043,7 +1035,7 @@ impl EditorState {
         arg: SteelVal,
     ) {
         let call = self.answered_call(ticket, answer, proc, arg);
-        self.config.pending_work.push_back(call);
+        self.push_work(call);
     }
 
     /// The check a completion trigger or accept passes before it opens.
@@ -1535,14 +1527,9 @@ impl Editor {
                     ran = commands::finish_text_operand(self, then, None, text);
                     None
                 }
-                PendingAnswer::Call { proc, arg } => Some(super::event::PendingWork::Call {
-                    proc,
-                    args: vec![arg],
-                    anchor: None,
-                    tracked: None,
-                    answer: None,
-                    origin: EditOrigin::User,
-                }),
+                PendingAnswer::Call { proc, arg } => {
+                    Some(super::event::PendingWork::answer(proc, arg, None))
+                }
             };
             if let Some(call) = call {
                 self.run_pending_batch(VecDeque::from([call]));
