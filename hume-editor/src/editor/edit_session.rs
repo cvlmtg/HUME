@@ -20,8 +20,10 @@ use hume_editing::tracked::Tracked;
 use hume_engine::pipeline::{BufferId, PaneId};
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
+use crate::editor::buffer::store::BufferStore;
 use crate::editor::dot_chain::DotChain;
 use crate::editor::error::CommandError;
+use crate::editor::pane_state::PaneEntries;
 use crate::editor::replay::SourceTicket;
 
 /// The editor's open Paste session or dot-repeat placeholder, if any.
@@ -63,7 +65,7 @@ impl EditSession {
     }
 
     /// Consumes the session, handing its [`EditGroup`] to the commit
-    /// (`doc_ops::commit_open_session`).
+    /// (`commit_open_session`).
     pub(in crate::editor) fn into_group(self) -> EditGroup {
         self.group
     }
@@ -250,6 +252,129 @@ pub(in crate::editor) fn open_or_retarget(
     Ok(())
 }
 
+/// `Err` when `open`, the open session, is on `buf_id` and was opened by
+/// some pane other than `exclude` (any pane, for `None`): the
+/// exclusivity check every buffer-mutating chokepoint in `doc_ops` runs
+/// before touching `buf_id`'s text.
+///
+/// Remote dispatch (`(call! "cmd" pane)` targeting a pane other than the
+/// focused one) means a *different* pane's own in-progress insert/paste
+/// session can otherwise be mutated out from under it: its eventual commit
+/// inverts the composed `ChangeSet` against a `snapshot` a concurrent
+/// edit from another pane would make stale, and its next grouped edit panics
+/// in `ChangeSet::compose`'s length assert. Scoped to "some *other* pane"
+/// (not any open session at all) because the focused/target pane's own open
+/// session is exactly what routes an edit into
+/// [`doc_ops::apply_doc_edit_grouped`](super::doc_ops::apply_doc_edit_grouped),
+/// a distinct, unrelated case this check must not shadow.
+///
+/// `doc_ops`'s `admit` runs this right before an edit commits;
+/// [`super::lsp::edits::apply_workspace_edit`] runs it for every file in its
+/// plan, before any file's commit, so a conflict on file *k* of a multi-file
+/// edit is caught before files `0..k` are touched rather than partway
+/// through the commit loop.
+pub(in crate::editor) fn check_no_conflicting_session(
+    open: Option<OpenSession<'_>>,
+    exclude: Option<PaneId>,
+    buf_id: BufferId,
+) -> Result<(), CommandError> {
+    if open.is_some_and(|s| Some(s.pane()) != exclude && s.buffer() == buf_id) {
+        return Err(CommandError::new(
+            "buffer has an open insert/paste session on another pane",
+        ));
+    }
+    Ok(())
+}
+
+/// Open an Insert session on `(pane_id, buf_id)`, always the focused pane,
+/// since Insert only ever opens there, for the `InsertLayer` that will own
+/// it. `insert` is the Insert session already open, if any. The session
+/// holds `recording`, its source on the change whose code opens it, if any,
+/// until it ends.
+///
+/// Snapshots the current selections as the session's `undo_sels`, what undo
+/// restores: cloned, not taken, since the pane keeps editing with them.
+///
+/// `Err` when a session is already open elsewhere, or a real `Insert`/`Paste`
+/// session is already open here; see [`open_or_retarget`]. A
+/// `Replay`-kind placeholder already open here (`Editor::replay_dot`'s own
+/// pre-open, about to be superseded by whatever the replayed body actually
+/// needs) is taken over instead of refused.
+pub(in crate::editor) fn begin_edit_group(
+    buffers: &BufferStore,
+    pane_state: &PaneEntries,
+    insert: Option<&InsertSession>,
+    active_session: &mut Option<EditSession>,
+    pane_id: PaneId,
+    buf_id: BufferId,
+    recording: Option<SourceTicket>,
+) -> Result<InsertSession, CommandError> {
+    open_insert(insert, active_session, pane_id, buf_id, recording, || {
+        let sels = pane_state.seeded(pane_id, buf_id).selections();
+        buffers
+            .get(buf_id)
+            .begin_edit_group(sels.clone(), sels.clone())
+    })
+}
+
+/// Commit the open Paste or Replay session as one undo step, read from the
+/// session's own `(pane, buffer)`, never from focus, so the commit lands
+/// correctly however focus moved in the meantime. No-op if nothing is
+/// open.
+pub(in crate::editor) fn commit_open_session(
+    buffers: &mut BufferStore,
+    pane_state: &PaneEntries,
+    active_session: &mut Option<EditSession>,
+) {
+    let Some(session) = active_session.take() else {
+        return;
+    };
+    let (pane, buffer) = (session.pane(), session.buffer());
+    commit_group(buffers, pane_state, pane, buffer, session.into_group());
+}
+
+/// Close the open Paste-kind session and record it as a single undo step.
+/// No-op if the open session (if any) isn't Paste-kind, so every caller can
+/// route through this unconditionally instead of checking first.
+pub(in crate::editor) fn commit_paste_group(
+    buffers: &mut BufferStore,
+    pane_state: &PaneEntries,
+    active_session: &mut Option<EditSession>,
+) {
+    let is_paste = active_session
+        .as_ref()
+        .is_some_and(|s| matches!(s.kind(), EditSessionKind::Paste { .. }));
+    if !is_paste {
+        return;
+    }
+    commit_open_session(buffers, pane_state, active_session);
+}
+
+/// Record the Insert session `session`, which the leaving `InsertLayer`'s
+/// teardown has closed, as one undo step.
+pub(in crate::editor) fn commit_insert(
+    buffers: &mut BufferStore,
+    pane_state: &PaneEntries,
+    session: InsertSession,
+) {
+    let (pane, buffer) = (session.pane(), session.buffer());
+    commit_group(buffers, pane_state, pane, buffer, session.into_group());
+}
+
+/// Record `group`, the edits a session on `(pane, buffer)` made, as one undo
+/// step, with the pane's selections now as the step's `post_sels`: cloned,
+/// not taken, since the pane keeps them.
+fn commit_group(
+    buffers: &mut BufferStore,
+    pane_state: &PaneEntries,
+    pane: PaneId,
+    buffer: BufferId,
+    group: EditGroup,
+) {
+    let post_sels = pane_state.seeded(pane, buffer).selections().clone();
+    buffers.get_mut(buffer).commit_edit_group(group, post_sels);
+}
+
 /// Which kind of session [`EditSession`] is.
 pub(in crate::editor) enum EditSessionKind {
     /// An open `p`/`P` + `[`/`]` ring-cycle session. `before` is the
@@ -395,7 +520,7 @@ impl InsertSession {
     }
 
     /// Consumes the session, handing its [`EditGroup`] to its commit
-    /// (`doc_ops::commit_insert`).
+    /// (`commit_insert`).
     ///
     /// A live `dot_capture` here would be dropped along with the rest of the
     /// session. `EditorState::end_insert_recording` is what must take it out

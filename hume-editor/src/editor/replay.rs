@@ -35,7 +35,7 @@ use super::input_stack::char::{AfterRead, CharRead};
 use super::keymap::CanonicalKey;
 use super::pipe_run::RunId;
 use super::registry::{Dispatchable, MappableCommand};
-use super::{Editor, EditorState, Mode, commands, doc_ops};
+use super::{Editor, EditorState, Mode, commands};
 
 // ── The recorded change ───────────────────────────────────────────────────────
 
@@ -1272,7 +1272,7 @@ impl Editor {
     /// needs present). A body that called native paste retargeted the
     /// pre-opened placeholder to `Paste`, which must stay open for a following
     /// `[`/`]`, so it's left alone. Anything else is still `Replay`-kind and
-    /// commits directly through `doc_ops::commit_open_session`.
+    /// commits directly through `edit_session::commit_open_session`.
     ///
     /// No-op if nothing is open at all: the body's own dispatch may already
     /// have closed the pane or buffer; `focus::end_focus_sessions` already
@@ -1291,7 +1291,7 @@ impl Editor {
             .as_ref()
             .is_some_and(|s| matches!(s.kind(), EditSessionKind::Paste { .. }));
         if !leave_open {
-            doc_ops::commit_open_session(
+            super::edit_session::commit_open_session(
                 &mut self.state.buffers,
                 &self.state.panes.entries,
                 &mut self.state.active_session,

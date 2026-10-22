@@ -287,7 +287,7 @@ pub(super) fn begin_insert_session_preserving_register(
     // can't replace it. `None` outside a recorded change's code (during `.`,
     // or a session a hook opens).
     let recording = state.open_scope_source();
-    let session = doc_ops::begin_edit_group(
+    let session = crate::editor::edit_session::begin_edit_group(
         &state.buffers,
         &state.panes.entries,
         state.input.insert_session(),
@@ -382,7 +382,7 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState, mut session: 
         .seeded(pid, bid)
         .view(state.buffers.get(bid).text())
         .len();
-    doc_ops::commit_insert(&mut state.buffers, &state.panes.entries, session);
+    crate::editor::edit_session::commit_insert(&mut state.buffers, &state.panes.entries, session);
     // `cmd_change` stamped `PasteStamp` right after the deletion, but every
     // keystroke since has bumped `edit_seq`. Refresh the stamp to the
     // session's final `seq` (source unchanged) so `c <text> <Esc> p` still

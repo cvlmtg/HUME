@@ -583,7 +583,7 @@ fn apply_workspace_edit_one_invalid_file_aborts_the_whole_edit() {
 
 /// A file later in the plan with another pane's open insert session must
 /// abort the whole edit *before* any earlier file's changeset is committed:
-/// `doc_ops::check_no_conflicting_session` runs in the planning loop now,
+/// `edit_session::check_no_conflicting_session` runs in the planning loop now,
 /// not only inside `commit_changeset`'s own check partway through the
 /// commit loop (which would have already mutated `ok.txt` by the time
 /// `conflict.txt` is reached). Called directly through `EditHost`, not the

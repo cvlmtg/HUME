@@ -379,7 +379,7 @@ pub(in crate::editor) fn apply_workspace_edit(
         // function's own doc for why that's the one thing a multi-file edit
         // must not do.
         let target = EditTarget::for_buffer(&view.panes, requester, bid);
-        crate::editor::doc_ops::check_no_conflicting_session(
+        crate::editor::edit_session::check_no_conflicting_session(
             state.open_session(),
             target.acting,
             bid,

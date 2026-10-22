@@ -81,11 +81,11 @@ impl EditorState {
     /// `buffer`), not live focus or `&EngineView`. A paste session only
     /// ever opens on the focused pane (`do_paste`), but focus can move again
     /// before this runs, and the session's own record is what stays correct
-    /// regardless. Thin wrapper around [`doc_ops::commit_paste_group`], the
+    /// regardless. Thin wrapper around [`edit_session::commit_paste_group`], the
     /// same commit `doc_ops::apply_doc_edit` uses to close a same-pane Paste
     /// session before an unrelated direct edit.
     pub(in crate::editor) fn commit_paste_session(&mut self) {
-        doc_ops::commit_paste_group(
+        crate::editor::edit_session::commit_paste_group(
             &mut self.buffers,
             &self.panes.entries,
             &mut self.active_session,

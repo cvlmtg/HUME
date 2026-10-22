@@ -18,7 +18,7 @@ use hume_engine::pipeline::{
     BufferId, DetachedPane, EngineView, FocusKey, FocusedLayout, PaneId, SinglePane, UnattachedPane,
 };
 
-use super::{EditorState, doc_ops};
+use super::EditorState;
 
 /// See this module's own doc.
 #[derive(Debug)]
@@ -66,12 +66,12 @@ impl Focus {
 /// replay_dot`'s own pre-open produces before its replayed body decides
 /// what it actually needs, see `edit_session::open_or_retarget`'s doc),
 /// commits the same way through
-/// [`doc_ops::commit_open_session`]: this is the chokepoint every
+/// [`edit_session::commit_open_session`](super::edit_session::commit_open_session): this is the chokepoint every
 /// focus/buffer-switch path already runs before removing the `(pane,
 /// buffer)` state a later commit would need to read.
 pub(in crate::editor) fn end_focus_sessions(state: &mut EditorState, view: &EngineView) {
     super::commands::end_insert_session(state, view);
-    doc_ops::commit_open_session(
+    super::edit_session::commit_open_session(
         &mut state.buffers,
         &state.panes.entries,
         &mut state.active_session,
