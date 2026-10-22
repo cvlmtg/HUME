@@ -28,19 +28,6 @@ pub(crate) fn tagged_json_arg(
     Ok((handle, encoding))
 }
 
-/// A non-negative JSON integer, for a field read directly off a
-/// `serde_json::Value` rather than decoded through a `SteelVal` arg (see
-/// `super::args::usize_arg`'s Steel-side counterpart).
-pub(super) fn json_usize(v: &serde_json::Value, ctx_name: &str) -> Result<usize, SteelErr> {
-    v.as_u64()
-        .and_then(|n| usize::try_from(n).ok())
-        .ok_or_else(|| {
-            generic_err(format!(
-                "{ctx_name}: expected a non-negative integer, got {v}"
-            ))
-        })
-}
-
 /// Decodes a wire `{"line" "character"}` hashmap. `what` names the calling
 /// builtin in the error message: the eventual conversion
 /// (`hume_rope::position_encoding`) clamps a column or answers `None` for a

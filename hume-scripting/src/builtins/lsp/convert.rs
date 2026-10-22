@@ -12,7 +12,7 @@ use crate::builtins::SteelResult;
 use crate::builtins::args::{char_range_value, list_items, string_arg, symbol_hash};
 use crate::builtins::errors::{generic_err, require_cap};
 use crate::builtins::ids::SteelPane;
-use crate::builtins::wire::{json_usize, tagged_json_arg, wire_position, wire_range};
+use crate::builtins::wire::{tagged_json_arg, wire_position, wire_range};
 
 /// `(lsp-position->char-offset pane position)` → `pane`'s buffer's char offset
 /// for the wire `{"line" "character"}` hashmap `position`, decoded in
@@ -95,6 +95,19 @@ pub(crate) fn lsp_label_offsets_to_text(
     let range =
         hume_rope::position_encoding::wire_offsets_to_byte_range(&label, start, end, encoding);
     Ok(SteelVal::StringV(label[range].into()))
+}
+
+/// A non-negative JSON integer, for a field read directly off a
+/// `serde_json::Value` rather than decoded through a `SteelVal` arg (see
+/// `crate::builtins::args::usize_arg`'s Steel-side counterpart).
+fn json_usize(v: &serde_json::Value, ctx_name: &str) -> Result<usize, SteelErr> {
+    v.as_u64()
+        .and_then(|n| usize::try_from(n).ok())
+        .ok_or_else(|| {
+            generic_err(format!(
+                "{ctx_name}: expected a non-negative integer, got {v}"
+            ))
+        })
 }
 
 /// Decodes `locs` (a Steel list of raw `Location`/`LocationLink` handles)
