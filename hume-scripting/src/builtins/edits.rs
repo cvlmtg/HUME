@@ -13,9 +13,10 @@ use crate::types::PaneHandle;
 use super::SteelResult;
 use super::args::{
     CHAR_OFFSET, END_CHAR, START_CHAR, hash_entry, hash_list, list_items, optional_usize_arg,
-    single_key_arg, string_arg, strings_arg, tagged_json_arg, wire_text_edit_arg,
+    single_key_arg, string_arg, strings_arg,
 };
 use super::errors::{generic_err, require_cap};
+use super::wire::{tagged_json_arg, wire_text_edit_arg};
 
 /// `(%apply-text-edits! pane edits expect-gen)`. `edits` is a list of
 /// `JsonHandle`s onto wire `TextEdit`s (unconverted response elements, e.g.

@@ -31,6 +31,7 @@ pub(crate) mod syntax;
 pub(crate) mod timers;
 pub(crate) mod ui;
 pub(crate) mod version;
+pub(crate) mod wire;
 pub(crate) mod words;
 
 use std::borrow::Cow;
@@ -418,8 +419,8 @@ pub(crate) fn register_all(steel: &mut Engine) {
         open "set-default-language-servers!" lsp::set_default_language_servers(language: SteelVal, entries: SteelVal);
         open "lsp-language-servers" lsp::lsp_language_servers(language: SteelVal);
         // Lifecycle: stop/restart a running server, or open the status view.
-        cmd "lsp-stop!" lsp::lsp_stop(target: args::LspTargetArg);
-        cmd "lsp-restart!" lsp::lsp_restart(target: args::LspTargetArg);
+        cmd "lsp-stop!" lsp::lsp_stop(target: lsp::LspTargetArg);
+        cmd "lsp-restart!" lsp::lsp_restart(target: lsp::LspTargetArg);
         cmd "lsp-show-status!" lsp::lsp_show_status(pane: args::LivePane);
         // Generic LSP bridge: any protocol method reachable from Steel.
         cmd "%lsp-request!" lsp::lsp_request(pane: args::LivePane, method: SteelVal, params: SteelVal, callback: SteelVal, feature: SteelVal, to: SteelVal, unavailable: SteelVal, allow_stale: SteelVal, supersede: SteelVal, require_focus: SteelVal, tracked: SteelVal);

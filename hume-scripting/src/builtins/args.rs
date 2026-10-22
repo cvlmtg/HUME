@@ -3,11 +3,8 @@
 //! `Usize` for a `LivePane`-sibling argument that
 //! needs the same steel-core-driven, ahead-of-the-closure-body decode;
 //! see `BuiltinArg`, the seam that runs `LivePane`'s liveness check),
-//! free-fn decoders for wire position / text-edit params (`WirePos` is a
-//! `hume-rope` type, so the orphan rule rules out `FromSteelVal for
-//! WirePos` here, so a plain function is used for its sibling
-//! `WireTextEdit` decoder too, for one calling convention across both),
 //! and the shared list/hash decoders every multi-field setter builds on.
+//! Server wire values (positions, ranges, text edits) decode in `wire`.
 //!
 //! `#f`-means-absent is decoded only by this module's `optional_*` family.
 //! Enforced by `cargo test
@@ -422,33 +419,12 @@ pub(crate) fn chars_arg(val: SteelVal, ctx_name: &str) -> Result<Vec<char>, Stee
 /// fresh. Delegating the non-handle path to `json_params` (rather than the
 /// reverse) means the handle path here never pays for a conversion it
 /// doesn't need. An argument whose positions are wire units goes through
-/// [`tagged_json_arg`] instead.
+/// [`super::wire::tagged_json_arg`] instead.
 pub(crate) fn json_arg(val: SteelVal, ctx_name: &str) -> Result<crate::json::JsonHandle, SteelErr> {
     if let Some(handle) = crate::json::downcast_json_handle(&val) {
         return Ok(handle);
     }
     Ok(crate::json::JsonHandle::new(json_params(val, ctx_name)?))
-}
-
-/// A wire-position argument: a [`JsonHandle`](crate::json::JsonHandle) onto
-/// a server response, paired with the encoding that server negotiated. A
-/// value a plugin built by hand has no producing server to have negotiated
-/// one with, so it raises rather than being decoded under a guessed encoding.
-pub(crate) fn tagged_json_arg(
-    val: &SteelVal,
-    ctx_name: &str,
-) -> Result<
-    (
-        crate::json::JsonHandle,
-        hume_rope::position_encoding::PositionEncoding,
-    ),
-    SteelErr,
-> {
-    let Some(handle) = crate::json::downcast_json_handle(val) else {
-        steel::stop!(TypeMismatch => "{}: expected a JSON handle from a server response", ctx_name);
-    };
-    let encoding = handle.position_encoding(ctx_name).map_err(generic_err)?;
-    Ok((handle, encoding))
 }
 
 /// Converts `val` to request params, so a malformed value raises at the
@@ -867,116 +843,6 @@ impl BuiltinArg for Usize {
     fn resolve(self, _ctx: &mut crate::SteelCtx, _name: &'static str) -> Result<usize, SteelErr> {
         Ok(self.0)
     }
-}
-
-/// `(lsp-stop! target)` / `(lsp-restart! target)`'s `target` argument, ahead
-/// of [`BuiltinArg::resolve`]'s liveness check on the `Buffer` case. A pane
-/// decodes like [`LivePane`] (only its buffer is used: this is a kind-C,
-/// buffer-only operation), a string or symbol names a registered server
-/// (required: there is no "focused buffer" fallback to decode `#f` into).
-#[derive(Debug)]
-pub(crate) enum LspTargetArg {
-    Buffer(LivePane),
-    Name(String),
-}
-
-impl FromSteelVal for LspTargetArg {
-    fn from_steelval(val: &SteelVal) -> Result<Self, SteelErr> {
-        if let Ok(pane) = LivePane::from_steelval(val) {
-            return Ok(LspTargetArg::Buffer(pane));
-        }
-        match val {
-            SteelVal::StringV(s) => Ok(LspTargetArg::Name(s.to_string())),
-            SteelVal::SymbolV(s) => Ok(LspTargetArg::Name(s.to_string())),
-            _ => Err(SteelErr::new(
-                ErrorKind::TypeMismatch,
-                "expected a pane or a server name".to_string(),
-            )),
-        }
-    }
-}
-
-impl BuiltinArg for LspTargetArg {
-    type Out = crate::types::LspServerTarget;
-    fn resolve(
-        self,
-        ctx: &mut crate::SteelCtx,
-        name: &'static str,
-    ) -> Result<crate::types::LspServerTarget, SteelErr> {
-        match self {
-            LspTargetArg::Buffer(pane) => Ok(crate::types::LspServerTarget::Buffer(
-                pane.resolve(ctx, name)?.buffer(),
-            )),
-            LspTargetArg::Name(server) => crate::types::ServerName::parse(&server)
-                .map(crate::types::LspServerTarget::Name)
-                .map_err(|e| super::errors::generic_err(format!("{name}: {e}"))),
-        }
-    }
-}
-
-/// Decodes a wire `{"line" "character"}` hashmap. `what` names the calling
-/// builtin in the error message: the eventual conversion
-/// (`hume_rope::position_encoding`) clamps a column or answers `None` for a
-/// line rather than erroring on a shape, so this boundary check is the
-/// only place a malformed shape gets caught instead of silently producing a
-/// plausible-looking offset.
-pub(crate) fn wire_position(
-    v: &serde_json::Value,
-    what: &str,
-) -> Result<hume_rope::position_encoding::WirePos, SteelErr> {
-    hume_lsp::position::decode_wire_pos(v).map_err(|e| generic_err(format!("{what}: {e}")))
-}
-
-/// Decodes a wire `{"start" ... "end" ...}` range into its two positions;
-/// `ctx_name` names the calling builtin in the error message.
-pub(crate) fn wire_range(
-    v: &serde_json::Value,
-    ctx_name: &str,
-) -> Result<hume_rope::offset::ExclusiveRange<hume_rope::position_encoding::WirePos>, SteelErr> {
-    hume_lsp::position::decode_wire_range(v).map_err(|e| generic_err(format!("{ctx_name}: {e}")))
-}
-
-/// Decodes a wire `{"range" {"start" ... "end" ...} "newText" ...}`
-/// `TextEdit` (a `JsonHandle`'s own resolved value, e.g. one element of a
-/// `textDocument/formatting` response handed straight to
-/// `apply-text-edits!`) into a [`WireTextEdit`](crate::host::WireTextEdit).
-/// `encoding` is the handle's own tag, passed in rather than re-read here so
-/// this stays the plain JSON-shape decoder [`wire_position`] already is.
-fn wire_text_edit_from_json(
-    v: &serde_json::Value,
-    encoding: hume_rope::position_encoding::PositionEncoding,
-    ctx_name: &str,
-) -> Result<crate::host::WireTextEdit, SteelErr> {
-    let range = v
-        .get("range")
-        .ok_or_else(|| generic_err(format!("{ctx_name}: text edit handle has no 'range' field")))
-        .and_then(|range| wire_range(range, ctx_name))?;
-    let new_text = v
-        .get("newText")
-        .and_then(serde_json::Value::as_str)
-        .ok_or_else(|| {
-            generic_err(format!(
-                "{ctx_name}: text edit handle has no string 'newText' field"
-            ))
-        })?
-        .to_string();
-    Ok(crate::host::WireTextEdit {
-        range,
-        new_text,
-        encoding,
-    })
-}
-
-/// Decodes one `apply-text-edits!` entry into a
-/// [`WireTextEdit`](crate::host::WireTextEdit): a `JsonHandle` onto a wire
-/// `TextEdit` (an unconverted element straight from a
-/// `textDocument/formatting`-shaped response), never a hand-built shape: a
-/// hand-built tuple would have no producing server to read an encoding off,
-/// and guessing one is exactly what `JsonHandle::position_encoding` refuses
-/// to do.
-pub(crate) fn wire_text_edit_arg(val: SteelVal) -> Result<crate::host::WireTextEdit, SteelErr> {
-    let (handle, encoding) = tagged_json_arg(&val, "apply-text-edits!")?;
-    wire_text_edit_from_json(handle.value(), encoding, "apply-text-edits!")
 }
 
 #[cfg(test)]
