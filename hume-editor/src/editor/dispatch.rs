@@ -168,6 +168,25 @@ impl Editor {
         }
     }
 
+    /// Resolve a named command and dispatch it through the unified pipeline.
+    ///
+    /// Delegates to [`Editor::dispatch`] which handles all bookkeeping (paste
+    /// session, jump list, dot-repeat) for both native and Steel-backed
+    /// commands.
+    pub(in crate::editor) fn execute_keymap_command(
+        &mut self,
+        name: std::borrow::Cow<'static, str>,
+        count: Option<usize>,
+        extend: bool,
+    ) {
+        let Some(reg_cmd) = self.resolve_mappable(name.as_ref()) else {
+            return;
+        };
+
+        let ctx = CmdCtx { count, extend };
+        self.dispatch(reg_cmd, ctx);
+    }
+
     /// Activates the `:` line's current target command's owning plugin, if
     /// it is still a `TypedBody::Lazy` stub. Runs before
     /// `EditorState::trigger_minibuf_completion`, so

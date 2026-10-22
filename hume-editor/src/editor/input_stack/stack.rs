@@ -12,7 +12,7 @@
 //! Every layer now has a file of its own (`Picker`'s move
 //! (`input_stack/picker/`) was the last one), so `Layer::handler` is a
 //! required method like `mode`/`tear_down`, and `dispatch_at`
-//! (`mappings/mod.rs`) is the one-line vtable call the whole split was
+//! (`walk.rs`) is the one-line vtable call the whole split was
 //! building toward: `let f = input.handler(r); f(editor, r, ev);`.
 
 use std::any::Any;

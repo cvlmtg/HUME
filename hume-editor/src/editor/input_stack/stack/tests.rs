@@ -129,7 +129,7 @@ fn is_settled_for_tolerates_its_own_type_buried_under_a_non_modal_overlay() {
 
 #[test]
 fn fall_through_after_self_truncate_reaches_the_layer_below() {
-    // `fall_through` itself lives on `Editor` (mappings/mod.rs) and
+    // `fall_through` itself lives on `Editor` (`input_stack/walk.rs`) and
     // needs a whole editor to exercise end to end. This test pins the
     // `InputStack` half of its contract: `below(r)` stays addressable
     // by depth alone even after `r` itself was just removed, since

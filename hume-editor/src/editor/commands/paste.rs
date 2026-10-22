@@ -1,7 +1,7 @@
 //! Register/kill-ring paste: `p`/`P`, smart paste, and `[`/`]` ring cycling.
 //!
 //! Distinct from terminal bracketed-paste (`Event::Paste`,
-//! `mappings/bracketed_paste.rs`), an unrelated feature that happens to
+//! `input.rs`), an unrelated feature that happens to
 //! share the word "paste".
 //!
 //! This module owns opening/closing the `EditSessionKind::Paste` variant of

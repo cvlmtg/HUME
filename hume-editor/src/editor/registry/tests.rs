@@ -797,3 +797,48 @@ fn no_command_is_both_repeatable_and_selection_tracking() {
         );
     }
 }
+
+/// Guard: every jump command has `meta().is_jump == true` in the registry.
+///
+/// The registry is the single source of truth: there is no separate
+/// `JUMP_COMMANDS` list to keep in sync.
+#[test]
+fn jump_and_visual_move_flags_are_correct() {
+    let reg = CommandRegistry::with_defaults();
+
+    let must_be_jump = [
+        "goto-first-line",
+        "goto-last-line",
+        "search-next",
+        "search-prev",
+        "page-down",
+        "page-up",
+        "select-all",
+    ];
+    for name in must_be_jump {
+        assert!(
+            reg.get_mappable(name).expect(name).meta().is_jump,
+            "'{name}' should have jump: true"
+        );
+    }
+
+    let must_be_visual_move = ["move-down", "move-up"];
+    for name in must_be_visual_move {
+        assert!(
+            reg.get_mappable(name).expect(name).meta().is_visual_move,
+            "'{name}' should have visual_move: true"
+        );
+    }
+
+    // Spot-check non-jump commands.
+    for name in ["move-left", "move-right", "delete", "undo", "insert-before"] {
+        assert!(
+            !reg.get_mappable(name).expect(name).meta().is_jump,
+            "'{name}' should have jump: false"
+        );
+        assert!(
+            !reg.get_mappable(name).expect(name).meta().is_visual_move,
+            "'{name}' should have visual_move: false"
+        );
+    }
+}

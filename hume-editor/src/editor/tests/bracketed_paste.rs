@@ -1,5 +1,5 @@
 // Terminal bracketed-paste (`TerminalEvent::Paste`) handling:
-// `handle_terminal_paste` in `mappings/bracketed_paste.rs` and each layer's
+// `handle_terminal_paste` in `input.rs` and each layer's
 // paste handler. Distinct from the register/kill-ring `p`/`P` paste commands
 // covered in `commands/paste.rs`.
 

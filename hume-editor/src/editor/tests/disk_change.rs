@@ -1614,7 +1614,7 @@ fn macro_replay_onto_an_already_warned_stale_buffer_still_warns() {
 /// A message already on screen when a macro replay starts must still shadow
 /// the disk-change warning `drain_replay_queue`'s own trailing `settle()`
 /// produces, even though every key `handle_key` dispatches clears
-/// `status_msg` at its own start (see `mappings/mod.rs`), so the sentinel
+/// `status_msg` at its own start (see `input.rs`), so the sentinel
 /// message itself is long gone from `status_msg` by the time the replayed
 /// keys finish; what must survive is the *shadowing flag*, not the message
 /// text. Without it, `report_disk_state` falls back to `Editor::report`

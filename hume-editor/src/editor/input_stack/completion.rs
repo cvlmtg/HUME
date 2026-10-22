@@ -3,7 +3,7 @@
 //! types, not one: `completion/session.rs`'s module doc explains why a
 //! `Buffer`/`Minibuf` session are different types rather than one enum,
 //! and the same split carries into their layers, so `dispatch_at`
-//! (`mappings/mod.rs`) routes by ordinary generic layer lookup
+//! (`walk.rs`) routes by ordinary generic layer lookup
 //! (`find`/`at`/`ref_of`) rather than a runtime target check. What the two
 //! layers' `Layer` impls share (`mode`, `popup_eviction`, `removal_scope`)
 //! and menu navigation stay written once, in the free functions below, and

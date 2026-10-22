@@ -112,7 +112,7 @@ impl CommandPane {
 /// [`Self::current`] reads live focus. `current` belongs only at an entry
 /// point: the place an input first arrives and "the focused pane" is the
 /// meaning of the input itself: keypress and `:` dispatch (`dispatch.rs`,
-/// `input_stack/{base,command,insert,search}.rs`, `mappings/execute.rs`),
+/// `input_stack/{base,command,insert,search}.rs`),
 /// dot-repeat replay, the `(focused-pane)` builtin, a confirm answer
 /// (`buffer/disk.rs`), an effect applied after its eval (`lsp/registry.rs`),
 /// and `Editor`'s own focused-pane readers (`mod.rs`). A command body, a

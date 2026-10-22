@@ -19,6 +19,7 @@ mod paste;
 mod placement;
 mod snapshot;
 mod stack;
+mod walk;
 
 pub(in crate::editor) mod base;
 pub(in crate::editor) mod char;

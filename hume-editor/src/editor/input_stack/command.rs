@@ -324,3 +324,6 @@ fn expand_command_arg(ed: &Editor, arg: &str) -> Result<String, CommandError> {
     }
     Ok(out)
 }
+
+#[cfg(test)]
+mod tests;

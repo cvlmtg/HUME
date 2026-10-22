@@ -155,8 +155,8 @@ fn close_paren_closes_the_popup_without_a_request() {
     });
     // Auto-pair would insert a matching ")" right after typing "(" and
     // then just skip-over (not insert) an explicitly typed ")", and
-    // `on-trigger-char` only fires on a genuine insertion (mappings/
-    // insert.rs). Disable it so this test's own ")" keystroke is a real
+    // `on-trigger-char` only fires on a genuine insertion
+    // (`commands/insert_keys.rs`). Disable it so this test's own ")" keystroke is a real
     // insertion, exercising the same code path a non-auto-paired ")"
     // (or a language without auto-pairs configured) would take.
     ed.state.settings.insert_auto_pairs = false;

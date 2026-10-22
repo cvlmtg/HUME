@@ -51,7 +51,7 @@ use hume_scripting::command_name::fold;
 /// Built once via [`CommandRegistry::with_defaults`] and stored on the editor.
 ///
 /// - **Mappable commands** are bound to keys. The keymap dispatcher
-///   (`execute_keymap_command` in `mappings/execute.rs`) resolves them via
+///   (`execute_keymap_command` in `dispatch.rs`) resolves them via
 ///   [`Self::get_mappable`].
 /// - **Typed commands** are invoked from the `:` command line. The dispatcher
 ///   (`run_command_line` in `input_stack/command.rs`) resolves them via
