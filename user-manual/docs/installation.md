@@ -113,7 +113,24 @@ HUME targets modern terminals and degrades quietly rather than refusing to start
 
 - **24-bit true color.** Colors are always emitted as RGB. Terminals without true color will show approximate or wrong colors, but HUME still runs.
 - **Synchronized output.** Sent once per frame to avoid tearing; terminals that don't recognise it ignore it harmlessly.
-- **The kitty keyboard protocol.** Detected automatically on WezTerm, kitty, ghostty, and foot. It unlocks a handful of extra key combinations. Everything else works without it, and the manual marks those keys "kitty only".
+- **The kitty keyboard protocol.** HUME asks the terminal for it at startup and uses it whenever the terminal answers. It unlocks a handful of extra key combinations. Everything else works without it, and the manual marks those keys "kitty only". While the protocol is on, the statusline shows a cat (ᓚᘏᗢ).
+
+Terminals that support the kitty keyboard protocol:
+
+- kitty, Ghostty, iTerm2, Alacritty, Rio, and Warp
+- foot, on Linux
+- Windows Terminal 1.25 or later, which includes WSL and Git Bash shells running inside it
+- WezTerm, once you turn it on (see below)
+
+In iTerm2, **Settings → Profiles → Keys → Allow application to change how keys are reported** must be checked.
+
+Terminal.app, GNOME Terminal and other terminals built on VTE, Konsole, and mintty (Git Bash's own window) don't support the protocol, and neither does tmux, even inside a terminal that does. Use Extend mode (`e`) there in place of the `Ctrl` one-shot extends.
+
+WezTerm leaves the protocol off unless you turn it on. Add this line to your `.wezterm.lua`:
+
+```lua
+config.enable_kitty_keyboard = true
+```
 
 WezTerm on macOS doesn't send `Ctrl-|` correctly, so HUME never receives it. To make it work, add this line to the `config.keys` table in your `.wezterm.lua`:
 

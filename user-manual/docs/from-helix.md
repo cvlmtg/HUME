@@ -18,14 +18,14 @@ Copy the bundled starter config to `~/.config/hume/init.scm` ([where to find it]
 
 | Edit | Helix | HUME |
 |------|-------|------|
-| Uncomment line 22 (`core:buffer-words`) | `t(` `d` | `Ctrl-t` `(` `d` |
+| Uncomment line 22 (`core:buffer-words`) | `t(` `d` | `e` `t` `(` `d` |
 | Delete lines 18 and 19 (`core:plum`, `core:git-diff`) | `:18` `x` `x` `d` | `:18` `Ctrl-x` `Ctrl-x` `d` |
 | Change `load` to `declare` on line 16, then undo it with `u` | `:16` `l` `m i w` `c` `declare` `Esc` | `:16` `l` `m m` `c` `declare` `Esc` |
 | Copy line 16 to another application | `x` `Space y` | `x` `y` |
 
 What each step shows:
 
-- **`t` only moves; `Ctrl` makes it select.** `f`, `F`, `t` and `T` move the cursor and select nothing, where Helix selects up to the target. Holding `Ctrl` turns a motion into a one-shot extend, so `Ctrl-t (` selects `;; ` and `d` deletes it. For longer selections, `e` toggles Extend mode (Helix's `v`). The `Ctrl` forms need the [kitty keyboard protocol](installation.md#terminal-compatibility).
+- **`t` only moves; Extend mode makes it select.** `f`, `F`, `t` and `T` move the cursor and select nothing, where Helix selects up to the target. `e` toggles Extend mode (Helix's `v`), where every motion grows the selection, so `t (` selects `;; ` and `d` deletes it and leaves the mode. On a terminal with the [kitty keyboard protocol](installation.md#terminal-compatibility), holding `Ctrl` does the same for one motion: `Ctrl-t (` selects `;; ` without entering Extend mode.
 - **A second `x` moves on.** Each `x` selects the next line on its own, dropping the previous one. `Ctrl-x` extends instead. See [Line selection](#line-selection-x-vs-extend-mode-e).
 - **`Esc` keeps what you typed selected.** After the change, `declare` is still selected instead of a plain cursor, ready to act on again: delete it, surround it, search for it. One consequence: `i` re-enters *before* that selection, so `a`, not `i`, is the key to keep typing after it. Disable this with the `insert-select-on-exit` option (see [Buffer options](settings.md#buffer-options)).
 - **`y` reaches the system clipboard.** It copies to the clipboard as well as HUME's own kill ring. `p` pastes your last yank or delete while you haven't edited since, and the system clipboard once you have. See [Copy & Paste](copy-and-paste.md).
@@ -115,7 +115,7 @@ Helix's `x` is **modal**: once pressed, all subsequent `x` presses extend the se
 
 HUME's `x` is **one-shot**. Each press re-anchors to the next line. To get Helix's repeat-extend behavior, enter **Extend mode** first (`e`). In Extend mode, `x` (and every other motion) extends rather than replaces. Use `Ctrl-x` for a one-shot extend without entering the mode.
 
-`X` is the backward form. In Normal mode, on a whole-line selection, it jumps to the line above. To shrink a line selection grown downward, press `Ctrl-Shift-x`, or `X` in Extend mode; each press removes one line. Helix has no key for that.
+`X` is the backward form. In Normal mode, on a whole-line selection, it jumps to the line above. To shrink a line selection grown downward, press `X` in Extend mode, or `Ctrl-Shift-x` (kitty only); each press removes one line. Helix has no key for that.
 
 ### Multiple selections
 
@@ -208,7 +208,7 @@ Several features were intentionally adopted from Helix rather than reinvented:
 - Duplicating a selection onto the line *above* (`Alt-C`); HUME only binds the downward form (`C`)
 - `*` searching the selection with automatic word-boundary anchors: HUME's `Ctrl-/` matches a selection literally (Helix's `Alt-*`), and HUME's own `*` searches the word under the cursor instead of the selection. See [Search](#multiple-selections)
 - Rainbow bracket highlighting: HUME reads the rest of a theme that defines a top-level `rainbow` array but has no feature to act on it
-- Inserting or appending a command's output (`!`, `Alt-!`), piping selections to a command and ignoring its output (`Alt-|`), and filtering selections by a command's exit status (`$`). HUME's `|` pipes each selection through a command, as Helix's does, and in Insert mode `Ctrl-|` inserts a command's output at each cursor. See [Shell commands](editing.md#shell-commands)
+- Inserting or appending a command's output (`!`, `Alt-!`), piping selections to a command and ignoring its output (`Alt-|`), and filtering selections by a command's exit status (`$`). HUME's `|` pipes each selection through a command, as Helix's does, and in Insert mode `Ctrl-|` (kitty only) inserts a command's output at each cursor. See [Shell commands](editing.md#shell-commands)
 - Merging every selection into one span across gaps (`Alt--`); HUME only merges, automatically, selections that share a character; touching selections stay separate
 - `:x` and `:o`/`:open` as command aliases; use `:wq`/`:write-quit` and `:e` instead
 
@@ -219,7 +219,7 @@ Several features were intentionally adopted from Helix rather than reinvented:
 - [Smart paste](copy-and-paste.md#smart-p-paste) with kill ring
 - [Hook system](writing-plugins.md#hooks) (on-buffer-open, on-buffer-save, etc.)
 - [One-shot extends](#growing-selections) that extend a single motion without switching to a select/extend mode
-- Backward line-selection shrinking (`Ctrl-Shift-x`, or `X` in Extend mode; see [Line selection](#line-selection-x-vs-extend-mode-e))
+- Backward line-selection shrinking (`X` in Extend mode, or `Ctrl-Shift-x` with kitty; see [Line selection](#line-selection-x-vs-extend-mode-e))
 - A structural text object and navigation kind for array/tuple/struct values ([`m i v`/`m a v`](selections.md#text-objects), [`g v`/`g V`](moving-around.md#structural-navigation))
 - Tag pair objects and navigation ([`m i x`/`m a x`](selections.md#text-objects), [`g x`/`g X`](moving-around.md#structural-navigation)) that also work in a buffer with no markup grammar
 - [Custom statusline elements](settings.md#custom-elements) written in Scheme

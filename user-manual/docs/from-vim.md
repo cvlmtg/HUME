@@ -35,13 +35,13 @@ Copy the bundled starter config to `~/.config/hume/init.scm` ([where to find it]
 
 | Edit | Vim | HUME |
 |------|-----|------|
-| Uncomment line 22 (`core:buffer-words`) | `dt(` | `Ctrl-t` `(` `d` |
+| Uncomment line 22 (`core:buffer-words`) | `dt(` | `e` `t` `(` `d` |
 | Delete lines 18 and 19 (`core:plum`, `core:git-diff`) | `:18` `2dd` | `:18` `2` `Ctrl-x` `d` |
 | Change `load` to `declare` on line 16, then undo it with `u` | `:16` `l` `ciw` `declare` `Esc` | `:16` `w` `c` `declare` `Esc` |
 
 What each step shows:
 
-- **`t` only moves; `Ctrl` makes it select.** `f`, `F`, `t` and `T` move the cursor and select nothing. Holding `Ctrl` turns a motion into a one-shot extend, so `Ctrl-t (` selects `;; ` and `d` deletes it. For longer selections, `e` toggles Extend mode, where every motion extends until you act or press `Esc`. The `Ctrl` forms need the [kitty keyboard protocol](installation.md#terminal-compatibility).
+- **`t` only moves; Extend mode makes it select.** `f`, `F`, `t` and `T` move the cursor and select nothing. `e` toggles Extend mode, Vim's Visual mode, where every motion extends until you act or press `Esc`, so `t (` selects `;; ` and `d` deletes it and leaves the mode. On a terminal with the [kitty keyboard protocol](installation.md#terminal-compatibility), holding `Ctrl` does the same for one motion: `Ctrl-t (` selects `;; ` without entering Extend mode.
 - **`x` selects a line.** It replaces Vim's `dd`/`yy`/`cc` doubling: `x d` deletes a line, `x c` rewrites its content and keeps the line. `Ctrl-x` adds the line below to the selection.
 - **`Esc` keeps what you typed selected.** After the last edit `declare` is still highlighted, rather than the cursor parking on its last character. Pressing `i` now inserts *before* it; use `a` to carry on after it. Turn this off with the `insert-select-on-exit` option (see [Buffer options](settings.md#buffer-options)).
 
@@ -119,8 +119,8 @@ These keys exist in both editors and do different things. They are the ones most
 | `m` | Set a mark | Text-object prefix | *(none)*: HUME has no marks; `Ctrl-o` / `Ctrl-i` walk the jump list |
 | `[`&nbsp;/&nbsp;`]` | Bracket-motion prefix | Cycle the kill ring after a paste | — |
 | `S` | Change whole line | Split selections on newlines | `x` then `c` |
-| `C` | Change to end of line | Copy the selection to the line below | `ctrl-g l c`, or `C` with `core:vim-keybind` |
-| `D` | Delete to end of line | *(unbound)* | `ctrl-g l d`, or `D` with `core:vim-keybind` |
+| `C` | Change to end of line | Copy the selection to the line below | `e g l c`, or `C` with `core:vim-keybind` |
+| `D` | Delete to end of line | *(unbound)* | `e g l d`, or `D` with `core:vim-keybind` |
 | `K` | Look up keyword (external `keywordprg`, e.g. `man`) | Show hover docs for the symbol under the cursor (with `core:lsp`) | *(none)*: this is the closest equivalent; no external program |
 | `gt`&nbsp;/&nbsp;`gT` | Next / previous tab | Next / previous class or type | `Ctrl-p t` / `Ctrl-p T` |
 
@@ -160,7 +160,7 @@ c          change them all at once
 new<Esc>   type the replacement
 ```
 
-That replaces Vim's `:%s/old/new/g`. To scope it to a region instead of the file, select the region first and skip the `%`. To replace only some matches, drop the ones you don't want before pressing `c`: `(` / `)` makes a selection primary and `Ctrl-,` removes the primary (kitty only), while `,` keeps only the primary.
+That replaces Vim's `:%s/old/new/g`. To scope it to a region instead of the file, select the region first and skip the `%`. To replace only some matches, drop the ones you don't want before pressing `c`: `(` / `)` makes a selection primary and `Ctrl-,` removes the primary, while `,` keeps only the primary. `Ctrl-,` needs kitty; on other terminals, bind `remove-primary-selection` to a key of your own, e.g. `(bind-key! 'normal "alt-," "remove-primary-selection")`.
 
 `m /` is the other route: search with `/pattern` first, then `m /` turns every match in the buffer into a selection.
 
@@ -224,7 +224,7 @@ Beyond the `g` keys above, `g s` goes to the first non-blank character (Vim's `^
 | Vim | HUME (native) | HUME (`core:vim-keybind`) |
 |-----|----------------|---------------------------|
 | `0` / `$` / `^` | `g h` / `g l` / `g s` | `0` / `$` / `^` |
-| `C` / `D` | `ctrl-g l c` / `ctrl-g l d` (kitty terminals only) | `C` (change to end of line on a bare cursor with no count; with a selection, or any count prefix, falls back to the default `copy-selection-on-next-line`) / `D` |
+| `C` / `D` | `e g l c` / `e g l d`, or `Ctrl-g l c` / `Ctrl-g l d` (kitty only) | `C` (change to end of line on a bare cursor with no count; with a selection, or any count prefix, falls back to the default `copy-selection-on-next-line`) / `D` |
 | `o` (visual mode) | `Ctrl-e` (flips anchor and head, any mode) | `o` (in Extend mode) |
 
 ### Tabs

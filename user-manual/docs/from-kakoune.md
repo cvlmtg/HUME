@@ -18,14 +18,14 @@ Copy the bundled starter config to `~/.config/hume/init.scm` ([where to find it]
 
 | Edit | Kakoune | HUME |
 |------|---------|------|
-| Uncomment line 22 (`core:buffer-words`) | `t(` `d` | `Ctrl-t` `(` `d` |
+| Uncomment line 22 (`core:buffer-words`) | `t(` `d` | `e` `t` `(` `d` |
 | Delete lines 18 and 19 (`core:plum`, `core:git-diff`) | `18g` `x` `x` `d` | `:18` `Ctrl-x` `Ctrl-x` `d` |
 | Change `load` to `declare` on line 16, then undo it with `u` | `16g` `l` `<a-i>w` `c` `declare` `Esc` | `:16` `l` `m m` `c` `declare` `Esc` |
 | Copy line 16 to another application | `x` `<a-\|>` + your clipboard tool | `x` `y` |
 
 What each step shows:
 
-- **`t` only moves; `Ctrl` makes it select.** `f`, `F`, `t` and `T` move the cursor and select nothing, where Kakoune selects up to the target. Holding `Ctrl` turns a motion into a one-shot extend, so `Ctrl-t (` selects `;; ` and `d` deletes it: `Ctrl` does the job Shift does in Kakoune. For longer selections, `e` toggles Extend mode. The `Ctrl` forms need the [kitty keyboard protocol](installation.md#terminal-compatibility).
+- **`t` only moves; Extend mode makes it select.** `f`, `F`, `t` and `T` move the cursor and select nothing, where Kakoune selects up to the target. `e` toggles Extend mode, where every motion grows the selection, so `t (` selects `;; ` and `d` deletes it and leaves the mode. On a terminal with the [kitty keyboard protocol](installation.md#terminal-compatibility), holding `Ctrl` extends for one motion, the job Shift does in Kakoune: `Ctrl-t (` selects `;; ` without entering Extend mode.
 - **A second `x` moves on.** Each `x` selects the next line on its own, dropping the previous one. `Ctrl-x` extends instead. See [Line selection](#line-selection).
 - **Text objects live behind `m`.** `m i w` is `<a-i>w`. To jump to a line, type its number at the `:` prompt: `:16` instead of `16g`.
 - **`Esc` keeps what you typed selected.** After the change, `declare` is still selected instead of reduced to a cursor, ready to act on again. One consequence: `i` re-enters *before* that selection, so use `a` to keep typing after it. Disable this with the `insert-select-on-exit` option (see [Buffer options](settings.md#buffer-options)).
@@ -88,7 +88,7 @@ These work the way you expect, same keys:
 
 Kakoune is built to hand text to other programs: `|` pipes selections through a command, `!` inserts a command's output, and `%sh{ … }` expansions let the config shell out for anything the editor doesn't do itself.
 
-HUME keeps `|`, with the same newline rule as Kakoune's, and inserts a command's output with `Ctrl-|` in Insert mode instead of `!` (see [Shell commands](editing.md#shell-commands)). The rest differs by design. Kakoune composes with UNIX; HUME embeds a language. Anything you would reach for `%sh{}` to do is written in Scheme instead, running inside the editor with direct access to buffers, selections and commands. That buys tighter integration and costs you the shell ecosystem.
+HUME keeps `|`, with the same newline rule as Kakoune's, and inserts a command's output with `Ctrl-|` (kitty only) in Insert mode instead of `!` (see [Shell commands](editing.md#shell-commands)). The rest differs by design. Kakoune composes with UNIX; HUME embeds a language. Anything you would reach for `%sh{}` to do is written in Scheme instead, running inside the editor with direct access to buffers, selections and commands. That buys tighter integration and costs you the shell ecosystem.
 
 ### Extending selections
 
@@ -98,9 +98,9 @@ HUME's uppercase keys are not extends. `W` and `B` are the WORD variants, the jo
 
 | Kakoune | HUME |
 |---------|------|
-| `W` (extend by word) | `Ctrl-w`, or `e` then `w` |
+| `W` (extend by word) | `e` then `w`, or `Ctrl-w` |
 | `<a-w>` (WORD motion) | `W` |
-| `H` / `J` / `K` / `L` | `Ctrl-h` / `Ctrl-j` / `Ctrl-k` / `Ctrl-l`, or Extend mode |
+| `H` / `J` / `K` / `L` | Extend mode, or `Ctrl-h` / `Ctrl-j` / `Ctrl-k` / `Ctrl-l` |
 | `<a-;>` (flip direction) | `Ctrl-e` |
 | `<a-,>` (remove main selection) | `Ctrl-,` |
 | *(no equivalent)* | `e`, a persistent Extend mode |
@@ -125,7 +125,7 @@ HUME's `x` re-anchors instead: each press selects one line and moves on, rather 
 | 2nd | Extend to next line | Jump to next line (re-anchor) | Extend to next line |
 | 3rd | Extend to next line | Jump to next line (re-anchor) | Extend to next line |
 
-`X` and `Ctrl-Shift-x` are the backward forms, so a line selection grown downward with `Ctrl-x` shrinks back up with `Ctrl-Shift-x`. There is no equivalent of `<a-x>`; `_` trims whitespace, not to line bounds.
+`X` and `Ctrl-Shift-x` are the backward forms, so a line selection grown downward with `Ctrl-x` shrinks back up with `X` in Extend mode, or `Ctrl-Shift-x` (kitty only). There is no equivalent of `<a-x>`; `_` trims whitespace, not to line bounds.
 
 ### Splitting and merging selections
 
@@ -154,7 +154,7 @@ The search keys overlap heavily in spelling and barely at all in meaning.
 | `<c-/>` | | Set pattern from the selection, verbatim |
 
 ::: warning
-Two traps: `?` opens a backward search in HUME (Vim-style), not an extend like Kakoune's. And `N` has no equivalent — use `m /` to select every match at once instead, then narrow with `(`/`)` and `Ctrl-,` (kitty only; `,` keeps only the primary).
+Two traps: `?` opens a backward search in HUME (Vim-style), not an extend like Kakoune's. And `N` has no equivalent — use `m /` to select every match at once instead, then narrow with `(`/`)` and `Ctrl-,` (`,` keeps only the primary). `Ctrl-,` needs kitty; on other terminals, bind `remove-primary-selection` to a key of your own, e.g. `(bind-key! 'normal "alt-," "remove-primary-selection")` for Kakoune's own `<a-,>`.
 :::
 
 Neither `*` moves the cursor; both just set the pattern for `n` to use. The difference is what they read: Kakoune uses whatever is selected, HUME expands to the whole word under the cursor and ignores the selection. `Ctrl-/` is the closer match to Kakoune's `*` family, and it needs kitty.
