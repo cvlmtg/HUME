@@ -33,7 +33,7 @@ fn utf8_rig(
 
 /// One wire `TextEdit` JSON object, the shape `apply-text-edits!`
 /// requires every entry to be tagged as (via a real response).
-fn wire_edit(start: (u32, u32), end: (u32, u32), new_text: &str) -> serde_json::Value {
+fn wire_edit(start: (u64, u64), end: (u64, u64), new_text: &str) -> serde_json::Value {
     serde_json::json!({
         "range": {
             "start": {"line": start.0, "character": start.1},
@@ -297,6 +297,41 @@ fn apply_text_edits_range_past_the_document_end_rejected() {
         "the error must say why: {:?}",
         error_log(&ed)
     );
+}
+
+/// A line past `u32`, the protocol's own width, is past the document end
+/// like any other line beyond it.
+#[test]
+fn apply_text_edits_line_past_u32_rejected_as_past_the_document_end() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = text_edits_editor(
+        tmp.path(),
+        "-[a]>bc\ndef\n",
+        vec![wire_edit((0, 1), (u64::from(u32::MAX) + 1, 0), "X")],
+    );
+    apply_wire_text_edits(&mut ed, tmp.path(), "");
+    assert_eq!(ed.doc().text().to_string(), "abc\ndef\n");
+    assert!(
+        error_log(&ed)
+            .iter()
+            .any(|e| e.contains("past the end of the document")),
+        "the error must say why: {:?}",
+        error_log(&ed)
+    );
+}
+
+/// A character past `u32` on a line that exists clamps to that line's end,
+/// as any character past the line's length does.
+#[test]
+fn apply_text_edits_character_past_u32_clamps_to_the_line_end() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = text_edits_editor(
+        tmp.path(),
+        "-[a]>bc\ndef\n",
+        vec![wire_edit((0, 1), (0, u64::from(u32::MAX) + 1), "X")],
+    );
+    apply_wire_text_edits(&mut ed, tmp.path(), "");
+    assert_eq!(ed.doc().text().to_string(), "aX\ndef\n");
 }
 
 #[test]
