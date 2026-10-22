@@ -5,7 +5,7 @@ edition = "2024"
 
 [[bin]]
 name = "hume"
-path = "src/main.rs"
+path = "src/bin/hume/main.rs"
 
 [dependencies]
 hume-engine = { path = "../hume-engine" }

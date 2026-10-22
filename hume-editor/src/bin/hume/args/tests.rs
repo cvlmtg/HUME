@@ -1,0 +1,370 @@
+use super::*;
+use hume_editor::cli::{ConfigSource, FileArg};
+use hume_rope::column::GraphemeCol;
+
+// ── clap layer: parse from argv strings ──────────────────────────────────
+
+#[test]
+fn parse_headless_happy_path() {
+    let cli = Cli::try_parse_from(["hume", "--keys", "dwx", "--output", "o.txt", "in.txt"])
+        .expect("valid headless invocation should parse");
+    assert_eq!(cli.keys.as_deref(), Some("dwx"));
+    assert_eq!(cli.output.as_deref(), Some(std::path::Path::new("o.txt")));
+    assert_eq!(cli.files, vec![PathBuf::from("in.txt")]);
+}
+
+#[test]
+fn parse_keys_without_output_is_rejected() {
+    let err = Cli::try_parse_from(["hume", "--keys", "dwx", "in.txt"]);
+    assert!(err.is_err(), "clap must reject --keys without --output");
+}
+
+#[test]
+fn parse_output_without_keys_is_rejected() {
+    let err = Cli::try_parse_from(["hume", "--output", "o.txt", "in.txt"]);
+    assert!(err.is_err(), "clap must reject --output without --keys");
+}
+
+#[test]
+fn parse_normal_multi_file() {
+    let cli = Cli::try_parse_from(["hume", "a.rs", "b.rs"])
+        .expect("normal multi-file invocation should parse");
+    assert_eq!(cli.keys, None);
+    assert_eq!(cli.output, None);
+    assert_eq!(
+        cli.files,
+        vec![PathBuf::from("a.rs"), PathBuf::from("b.rs")]
+    );
+}
+
+#[test]
+fn parse_no_args() {
+    let cli = Cli::try_parse_from(["hume"]).expect("bare invocation should parse");
+    assert_eq!(cli.keys, None);
+    assert!(cli.files.is_empty());
+}
+
+#[test]
+fn parse_config_flag() {
+    let cli = Cli::try_parse_from(["hume", "--config", "alt.scm", "in.txt"])
+        .expect("--config should parse");
+    assert_eq!(cli.config.as_deref(), Some(std::path::Path::new("alt.scm")));
+}
+
+// `--config` and `--keys` are orthogonal (see `Invocation`).
+#[test]
+fn parse_config_with_keys_is_accepted() {
+    let cli = Cli::try_parse_from([
+        "hume", "--keys", "dwx", "--output", "o.txt", "--config", "alt.scm", "in.txt",
+    ])
+    .expect("--config must now be valid alongside --keys");
+    assert_eq!(cli.config.as_deref(), Some(std::path::Path::new("alt.scm")));
+    assert_eq!(cli.keys.as_deref(), Some("dwx"));
+}
+
+#[test]
+fn parse_no_config_flag() {
+    let cli =
+        Cli::try_parse_from(["hume", "--no-config", "in.txt"]).expect("--no-config should parse");
+    assert!(cli.no_config);
+}
+
+#[test]
+fn parse_no_config_with_config_is_rejected() {
+    let err = Cli::try_parse_from(["hume", "--no-config", "--config", "alt.scm", "in.txt"]);
+    assert!(err.is_err(), "clap must reject --no-config with --config");
+}
+
+#[test]
+fn parse_no_config_with_keys_is_accepted() {
+    let cli = Cli::try_parse_from([
+        "hume",
+        "--keys",
+        "dwx",
+        "--output",
+        "o.txt",
+        "--no-config",
+        "in.txt",
+    ])
+    .expect("--no-config must be valid alongside --keys");
+    assert!(cli.no_config);
+}
+
+// ── resolve layer: mode + config-source classification (no clap; touches
+//    the filesystem only to validate/pin a `--config` path) ─────────────
+
+/// `resolve` against the cwd the test binary started in.
+fn resolve_here(cli: Cli) -> Result<Invocation, String> {
+    resolve(cli, &std::env::current_dir().unwrap())
+}
+
+fn make_headless(files: Vec<PathBuf>) -> Cli {
+    Cli {
+        keys: Some("dw".into()),
+        output: Some(PathBuf::from("out.txt")),
+        config: None,
+        no_config: false,
+        files,
+    }
+}
+
+fn make_normal(files: Vec<PathBuf>, config: Option<PathBuf>) -> Cli {
+    Cli {
+        keys: None,
+        output: None,
+        config,
+        no_config: false,
+        files,
+    }
+}
+
+#[test]
+fn resolve_output_relative_path_is_pinned_to_the_startup_cwd() {
+    let dir = tempfile::tempdir().unwrap();
+    let cli = make_headless(vec![PathBuf::from("in.txt")]);
+
+    let inv = resolve(cli, dir.path()).expect("headless invocation should resolve");
+
+    let Mode::Headless { output, .. } = inv.mode else {
+        panic!("expected headless mode");
+    };
+    assert_eq!(
+        output,
+        dir.path().join("out.txt"),
+        "a relative --output must be resolved against the cwd at startup, \
+         so a later `:cd` in the keys cannot move it"
+    );
+}
+
+#[test]
+fn resolve_headless_exactly_one_file_succeeds() {
+    let cli = make_headless(vec![PathBuf::from("in.txt")]);
+    let inv = resolve_here(cli).expect("one input file should succeed");
+    let Mode::Headless { input, keys, .. } = inv.mode else {
+        panic!("expected Mode::Headless");
+    };
+    assert_eq!(
+        input,
+        FileArg {
+            path: PathBuf::from("in.txt"),
+            pos: None
+        }
+    );
+    assert_eq!(keys, "dw");
+    assert_eq!(
+        inv.config,
+        ConfigSource::Default,
+        "headless mode now loads config by default, same as interactive mode"
+    );
+}
+
+#[test]
+fn resolve_headless_zero_files_errors() {
+    let err = resolve_here(make_headless(vec![]));
+    assert!(err.is_err(), "zero inputs must be rejected");
+}
+
+#[test]
+fn resolve_headless_two_files_errors() {
+    let err = resolve_here(make_headless(vec![
+        PathBuf::from("a.txt"),
+        PathBuf::from("b.txt"),
+    ]));
+    assert!(err.is_err(), "two inputs must be rejected");
+}
+
+#[test]
+fn resolve_headless_reports_the_file_count_before_a_bad_position() {
+    let err = resolve_here(make_headless(vec![
+        PathBuf::from("a.txt"),
+        PathBuf::from("b.txt:0"),
+    ]))
+    .err();
+    assert_eq!(
+        err.as_deref(),
+        Some("--keys mode requires exactly one input file")
+    );
+}
+
+#[test]
+fn resolve_normal_carries_all_files() {
+    let files = vec![PathBuf::from("x.rs"), PathBuf::from("y.rs")];
+    let inv = resolve_here(make_normal(files, None)).expect("normal mode should succeed");
+    let Mode::Normal { files: got } = inv.mode else {
+        panic!("expected Mode::Normal");
+    };
+    assert_eq!(
+        got,
+        vec![
+            FileArg {
+                path: PathBuf::from("x.rs"),
+                pos: None
+            },
+            FileArg {
+                path: PathBuf::from("y.rs"),
+                pos: None
+            },
+        ]
+    );
+}
+
+// `resolve` runs every positional file through `cli::parse_file_arg`;
+// this pins that wiring at the `resolve` layer, complementing
+// `cli::tests`' coverage of the parser itself.
+#[test]
+fn resolve_normal_splits_a_line_column_suffix() {
+    let files = vec![PathBuf::from("does-not-exist.rs:12:24")];
+    let inv = resolve_here(make_normal(files, None)).expect("normal mode should succeed");
+    let Mode::Normal { files: got } = inv.mode else {
+        panic!("expected Mode::Normal");
+    };
+    assert_eq!(
+        got,
+        vec![FileArg {
+            path: PathBuf::from("does-not-exist.rs"),
+            pos: Some(hume_editor::cli::PathPosition {
+                line: hume_rope::line::ContentLine::from_number(12).unwrap(),
+                grapheme_col: GraphemeCol::from_number(24).unwrap()
+            })
+        }]
+    );
+}
+
+// Headless mode parses its input through the same `cli::parse_file_arg`
+// as normal mode, so a position suffix splits off the same way.
+#[test]
+fn resolve_headless_splits_a_line_column_suffix() {
+    let cli = make_headless(vec![PathBuf::from("does-not-exist.rs:12:24")]);
+    let inv = resolve_here(cli).expect("one input file should succeed");
+    let Mode::Headless { input, .. } = inv.mode else {
+        panic!("expected Mode::Headless");
+    };
+    assert_eq!(
+        input,
+        FileArg {
+            path: PathBuf::from("does-not-exist.rs"),
+            pos: Some(hume_editor::cli::PathPosition {
+                line: hume_rope::line::ContentLine::from_number(12).unwrap(),
+                grapheme_col: GraphemeCol::from_number(24).unwrap()
+            })
+        }
+    );
+}
+
+#[test]
+fn resolve_normal_no_files() {
+    let inv = resolve_here(make_normal(vec![], None)).expect("no-file launch should succeed");
+    let Mode::Normal { files } = inv.mode else {
+        panic!("expected Mode::Normal");
+    };
+    assert!(files.is_empty());
+}
+
+#[test]
+fn resolve_config_pointing_at_real_file_succeeds() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("alt.scm");
+    std::fs::write(&path, "").unwrap();
+    let inv = resolve_here(make_normal(vec![], Some(path.clone()))).expect("real file should pass");
+    // Already absolute with no `.`/`..` components, so pinning to the
+    // startup cwd (see `resolve_config_relative_path_is_pinned_to_startup_cwd`)
+    // is a no-op here.
+    assert_eq!(inv.config, ConfigSource::File(path));
+}
+
+#[test]
+fn resolve_config_missing_file_errors() {
+    let err = resolve_here(make_normal(
+        vec![],
+        Some(PathBuf::from("/no/such/file/alt.scm")),
+    ));
+    assert!(err.is_err(), "a nonexistent --config path must be rejected");
+}
+
+#[test]
+fn resolve_config_pointing_at_directory_errors() {
+    let dir = tempfile::tempdir().unwrap();
+    let err = resolve_here(make_normal(vec![], Some(dir.path().to_path_buf())));
+    assert!(err.is_err(), "a directory --config path must be rejected");
+}
+
+#[test]
+fn resolve_default_config_source_when_no_flags_given() {
+    let inv = resolve_here(make_normal(vec![], None)).expect("no --config should pass");
+    assert_eq!(inv.config, ConfigSource::Default);
+}
+
+#[test]
+fn resolve_no_config_flag_skips_config() {
+    let cli = Cli {
+        no_config: true,
+        ..make_normal(vec![], None)
+    };
+    let inv = resolve_here(cli).expect("--no-config should pass");
+    assert_eq!(inv.config, ConfigSource::Skip);
+}
+
+// The `--config` validation/pinning path is shared code, exercised in
+// full above under normal mode. This pins that headless mode reaches
+// the same code, not a bypassed copy.
+#[test]
+fn resolve_headless_config_flag_validates_and_pins() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("alt.scm");
+    std::fs::write(&path, "").unwrap();
+    let cli = Cli {
+        config: Some(path.clone()),
+        ..make_headless(vec![PathBuf::from("in.txt")])
+    };
+    let inv = resolve_here(cli).expect("real --config file should pass in headless mode");
+    assert!(matches!(inv.mode, Mode::Headless { .. }));
+    assert_eq!(inv.config, ConfigSource::File(path));
+}
+
+// A relative `--config` path must be pinned to the startup cwd, not left
+// relative: the process cwd follows `:cd`, so a relative path
+// re-resolved against a later cwd at `:reload-config` time would
+// miss the file it named at startup (see `Editor::config_path`'s doc and
+// the `--config` flag's doc comment).
+#[test]
+fn resolve_config_relative_path_is_pinned_to_startup_cwd() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("alt.scm"), "").unwrap();
+
+    let inv = resolve(
+        make_normal(vec![], Some(PathBuf::from("alt.scm"))),
+        dir.path(),
+    )
+    .expect("relative real file should pass");
+
+    assert_eq!(
+        inv.config,
+        ConfigSource::File(dir.path().join("alt.scm")),
+        "a relative --config path must be resolved against the cwd at \
+         startup, not left relative for a later re-resolution to miss"
+    );
+}
+
+// `File::open` (not a bare `fs::metadata` stat) is what makes an
+// unreadable path a startup error too, not just a missing one.
+#[cfg(unix)]
+#[test]
+fn resolve_config_unreadable_file_errors() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("alt.scm");
+    std::fs::write(&path, "").unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).unwrap();
+
+    let result = resolve_here(make_normal(vec![], Some(path.clone())));
+
+    // Restore permissions before any assertion can panic and leak an
+    // unreadable file for the tempdir's own `Drop` cleanup to trip over.
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+    assert!(
+        result.is_err(),
+        "an unreadable --config path must be rejected"
+    );
+}
