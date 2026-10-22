@@ -14,20 +14,20 @@ The fuzzy finder is a plugin, not built in. Helix's `Space f` and `Space b` beco
 
 ### Editing
 
-Copy the bundled starter config to `~/.config/hume/init.scm` ([where to find it](configuration.md#example-init-scm)) and open it on line 22 with `hume ~/.config/hume/init.scm:22`. Then make the same edits you would in Helix:
+Type `:tutor` and press `Enter`. The tutor is your own copy, so edit it freely. Then make the same edits you would in Helix on its opening paragraphs, finding each line with `/` as you would there:
 
 | Edit | Helix | HUME |
 |------|-------|------|
-| Uncomment line 22 (`core:buffer-words`) | `t(` `d` | `e` `t` `(` `d` |
-| Delete lines 18 and 19 (`core:plum`, `core:git-diff`) | `:18` `x` `x` `d` | `:18` `Ctrl-x` `Ctrl-x` `d` |
-| Change `load` to `declare` on line 16, then undo it with `u` | `:16` `l` `m i w` `c` `declare` `Esc` | `:16` `l` `m m` `c` `declare` `Esc` |
-| Copy line 16 to another application | `x` `Space y` | `x` `y` |
+| Delete `Welcome. ` from `Welcome. This buffer is your practice space.` | `/Welcome` `Enter` `v` `t` `T` `d` | `/Welcome` `Enter` `e` `t` `T` `d` |
+| Change `practice` to `play` on the same line, then undo it with `u` | `/practice` `Enter` `c` `play` `Esc` | `/practice` `Enter` `c` `play` `Esc` |
+| Copy that line to another application | `x` `Space y` | `x` `y` |
+| Delete the two lines of `When you are ready, … move down.` | `/When you` `Enter` `x` `x` `d` | `/When you` `Enter` `x` `Ctrl-x` `d` |
 
 What each step shows:
 
-- **`t` only moves; Extend mode makes it select.** `f`, `F`, `t` and `T` move the cursor and select nothing, where Helix selects up to the target. `e` toggles Extend mode (Helix's `v`), where every motion grows the selection, so `t (` selects `;; ` and `d` deletes it and leaves the mode. On a terminal with the [kitty keyboard protocol](installation.md#terminal-compatibility), holding `Ctrl` does the same for one motion: `Ctrl-t (` selects `;; ` without entering Extend mode.
+- **`t` only moves; Extend mode makes it select.** `f`, `F`, `t` and `T` move the cursor and select nothing, where Helix selects up to the target. `e` toggles Extend mode (Helix's `v`), where every motion grows the selection, so `t T` grows `Welcome` to `Welcome. ` and `d` deletes it and leaves the mode. On a terminal with the [kitty keyboard protocol](installation.md#terminal-compatibility), holding `Ctrl` does the same for one motion: `Ctrl-t T` grows the selection without entering Extend mode.
 - **A second `x` moves on.** Each `x` selects the next line on its own, dropping the previous one. `Ctrl-x` extends instead. See [Line selection](#line-selection-x-vs-extend-mode-e).
-- **`Esc` keeps what you typed selected.** After the change, `declare` is still selected instead of a plain cursor, ready to act on again: delete it, surround it, search for it. One consequence: `i` re-enters *before* that selection, so `a`, not `i`, is the key to keep typing after it. Disable this with the `insert-select-on-exit` option (see [Buffer options](settings.md#buffer-options)).
+- **`Esc` keeps what you typed selected.** After the change, `play` is still selected instead of a plain cursor, ready to act on again: delete it, surround it, search for it. One consequence: `i` re-enters *before* that selection, so `a`, not `i`, is the key to keep typing after it. Disable this with the `insert-select-on-exit` option (see [Buffer options](settings.md#buffer-options)).
 - **`y` reaches the system clipboard.** It copies to the clipboard as well as HUME's own kill ring. `p` pastes your last yank or delete while you haven't edited since, and the system clipboard once you have. See [Copy & Paste](copy-and-paste.md).
 
 ### Saving and quitting
@@ -36,7 +36,7 @@ What each step shows:
 
 `:q` on the last pane closes the current buffer, not the editor. If other files are still open, you land on one of them, and HUME quits only when nothing is left. `:qa` leaves in one step. See [Quitting](files-and-buffers.md#quitting).
 
-For a hands-on tour of everything else, type `:tutor` and press `Enter`: it opens an interactive tutorial you can edit freely.
+The tutor you just started is the hands-on tour of everything else: carry on from its Introduction. To start over with a clean copy, close it with `:bd!` and run `:tutor` again.
 
 ## Bringing your config over
 

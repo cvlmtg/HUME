@@ -29,23 +29,24 @@ Lorem<span class="head">&nbsp;</span>dolor sit
 
 You see the selection `w` built (word plus its leading whitespace) before `d` ever runs, instead of composing `dw` blind and finding out what it did after the fact.
 
-#### Try it on your config
+#### Try it in the tutor
 
-Copy the bundled starter config to `~/.config/hume/init.scm` ([where to find it](configuration.md#example-init-scm)) and open it on line 22 with `hume ~/.config/hume/init.scm:22`. Then make the same three edits you would in Vim:
+Type `:tutor` and press `Enter`. The tutor is your own copy, so edit it freely. Then make the same three edits you would in Vim on its opening paragraphs, finding each line with `/`:
 
 | Edit | Vim | HUME |
 |------|-----|------|
-| Uncomment line 22 (`core:buffer-words`) | `dt(` | `e` `t` `(` `d` |
-| Delete lines 18 and 19 (`core:plum`, `core:git-diff`) | `:18` `2dd` | `:18` `2` `Ctrl-x` `d` |
-| Change `load` to `declare` on line 16, then undo it with `u` | `:16` `l` `ciw` `declare` `Esc` | `:16` `w` `c` `declare` `Esc` |
+| Delete `Welcome. ` from `Welcome. This buffer is your practice space.` | `/Welcome` `Enter` `dtT` | `/Welcome` `Enter` `e` `t` `T` `d` |
+| Change `practice` to `play` on the same line, then undo it with `u` | `/practice` `Enter` `ciw` `play` `Esc` | `/practice` `Enter` `c` `play` `Esc` |
+| Delete the two lines of `When you are ready, … move down.` | `/When you` `Enter` `2dd` | `/When you` `Enter` `x` `Ctrl-x` `d` |
 
 What each step shows:
 
-- **`t` only moves; Extend mode makes it select.** `f`, `F`, `t` and `T` move the cursor and select nothing. `e` toggles Extend mode, Vim's Visual mode, where every motion extends until you act or press `Esc`, so `t (` selects `;; ` and `d` deletes it and leaves the mode. On a terminal with the [kitty keyboard protocol](installation.md#terminal-compatibility), holding `Ctrl` does the same for one motion: `Ctrl-t (` selects `;; ` without entering Extend mode.
+- **`/` selects what it finds.** The whole match becomes the selection, so after `/Welcome` the selection already covers `Welcome`, and after `/practice` a plain `c` changes the word with no `iw`.
+- **`t` only moves; Extend mode makes it select.** `f`, `F`, `t` and `T` move the cursor and select nothing. `e` toggles Extend mode, Vim's Visual mode, where every motion extends until you act or press `Esc`, so `t T` grows `Welcome` to `Welcome. ` and `d` deletes it and leaves the mode. On a terminal with the [kitty keyboard protocol](installation.md#terminal-compatibility), holding `Ctrl` does the same for one motion: `Ctrl-t T` grows the selection without entering Extend mode.
 - **`x` selects a line.** It replaces Vim's `dd`/`yy`/`cc` doubling: `x d` deletes a line, `x c` rewrites its content and keeps the line. `Ctrl-x` adds the line below to the selection.
-- **`Esc` keeps what you typed selected.** After the last edit `declare` is still highlighted, rather than the cursor parking on its last character. Pressing `i` now inserts *before* it; use `a` to carry on after it. Turn this off with the `insert-select-on-exit` option (see [Buffer options](settings.md#buffer-options)).
+- **`Esc` keeps what you typed selected.** After the change `play` is still highlighted, rather than the cursor parking on its last character. Pressing `i` now inserts *before* it; use `a` to carry on after it. Turn this off with the `insert-select-on-exit` option (see [Buffer options](settings.md#buffer-options)).
 
-A few more keys you'll want early: `d` on its own deletes the character under the cursor (Vim's `x`), since the cursor is already a one-character selection. `g h` and `g l` go to the start and end of the line, `g g` and `g e` to the first and last line. `/`, `n` and `N` search as in Vim.
+A few more keys you'll want early: `d` on its own deletes the character under the cursor (Vim's `x`), since the cursor is already a one-character selection. `g h` and `g l` go to the start and end of the line, `g g` and `g e` to the first and last line. `/`, `n` and `N` search as in Vim, selecting each match.
 
 ### Saving and quitting
 
@@ -55,7 +56,7 @@ A few more keys you'll want early: `d` on its own deletes the character under th
 
 HUME writes no swap files, and undo history doesn't survive a restart (not yet). See [Persistence and safety](files-and-buffers.md#persistence-and-safety).
 
-For a hands-on tour of everything else, type `:tutor` and press `Enter`: it opens an interactive tutorial you can edit freely.
+The tutor you just started is the hands-on tour of everything else: carry on from its Introduction. To start over with a clean copy, close it with `:bd!` and run `:tutor` again.
 
 ## Bringing your config over
 
