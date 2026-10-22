@@ -8,12 +8,14 @@ use super::keymap::{BindMode, WalkResult};
 use super::replay::dispatch_command_line_key;
 use super::{Editor, EditorState};
 
-/// The command-line mini-buffer, active while the user is typing a command
-/// or search pattern.
+/// The one-line input on the statusline, active while the user types a
+/// command, a search or sift pattern, a shell command for `|`, or the
+/// answer to a Steel prompt.
 #[derive(Clone)]
 pub(crate) struct MiniBuffer {
     /// The text shown before the input: `:` for commands, `/`/`?` for search,
-    /// or a Steel prompt's `label` (`(prompt! label …)`), of arbitrary length.
+    /// `⫽` for sift, `|` for a shell command, or a Steel prompt's `label`
+    /// (`(prompt! label …)`), of arbitrary length.
     pub prompt: String,
     /// The text typed so far.
     pub input: String,
