@@ -415,6 +415,7 @@ mod search;
 mod smart_indent;
 mod structural;
 mod tab;
+mod target;
 mod typed_buffer;
 mod typed_file;
 mod typed_misc;
@@ -438,8 +439,8 @@ pub(super) use typed_misc::*;
 // insert_session.rs's other items are re-exported privately above (visible
 // only within `commands` and its descendants: every other `mod` in this
 // file, and the registry glob) since nothing outside `commands` calls them.
-// collect.rs, pane.rs, pipe.rs and pipeline.rs export nothing else siblings
-// need, so all four are re-exported explicitly instead of via glob. The items below
+// collect.rs, pane.rs, pipe.rs, pipeline.rs and target.rs export nothing else
+// siblings need, so all five are re-exported explicitly instead of via glob. The items below
 // ARE called directly by `dispatch.rs`, `replay/`, `input_stack/`,
 // `host_impl/`, `editor/mod.rs`, and the `editor::tests` tree; they need
 // `pub(in editor)` breadth.
@@ -459,9 +460,10 @@ pub(in crate::editor) use pipe::{apply_pipe_output, cmd_cancel_pipe, cmd_pipe, i
 pub(in crate::editor) use pane::open_pane_in_layout;
 use pipeline::MissingOperand;
 pub(in crate::editor) use pipeline::{
-    BoundCommand, CommandPane, FocusedBindError, FocusedPane, Missing, NativeBody, PendingDispatch,
-    TargetError, report_arg_error, run, run_body, step_paste_commit,
+    BoundCommand, FocusedBindError, Missing, NativeBody, PendingDispatch, report_arg_error, run,
+    run_body, step_paste_commit,
 };
+pub(in crate::editor) use target::{CommandPane, FocusedPane, TargetError};
 
 // DisplayLineMap-dependent commands live in visual_move.rs; re-export for the registry glob.
 pub(super) use super::visual_move::{
