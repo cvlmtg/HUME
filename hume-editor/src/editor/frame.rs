@@ -15,17 +15,14 @@ use hume_platform::terminal::SharedTerm;
 
 use hume_grid::{Grid, Rect};
 
-use hume_engine::builtins::sign_column::SignColumn;
-use hume_engine::layout::PaneGeometry;
 use hume_engine::pane::Pane;
 use hume_engine::pipeline::{
-    ChromeRows, EngineView, PaneId, PaneRenderSettings, PaneSize, RenderContext, ScreenLayout,
+    EngineView, PaneId, PaneRenderSettings, PaneSize, RenderContext, ScreenLayout,
 };
-use hume_engine::providers::GutterInputs;
 use hume_engine::types::EditorMode;
 
 use super::buffer::Buffer;
-use super::{BufferId, Editor, EditorState};
+use super::{Editor, EditorState};
 
 /// Project a pane's selections into its engine mirror, in the model's start
 /// order. That is also the cursor order the mirror requires: selections never
@@ -600,11 +597,8 @@ impl Editor {
             // A visible-range change arms the `OnViewportChange` debounce
             // timer; the hook fires later from the timer drain.
             let content_lines = self.state.buffers.get(buf_id).text().content_line_count();
-            let range = super::lsp::introspect::pane_visible_range(
-                &self.view.panes[pid],
-                size,
-                content_lines,
-            );
+            let range =
+                super::geometry::pane_visible_range(&self.view.panes[pid], size, content_lines);
             if self.last_visible_range.insert(pid, (buf_id, range)) != Some((buf_id, range)) {
                 self.debounce_viewport_change(pid);
             }
@@ -689,90 +683,28 @@ impl Editor {
 }
 
 impl EditorState {
-    /// The screen's layout as the models have it now: the tab bar's
-    /// visibility, the open drawer's items, a docked popup's wrapped text and
-    /// the seam setting. Every size and rect read outside the frame's own
-    /// pass comes from here, so it reflects a band opened or closed since the
-    /// last frame. Never runs Steel, so it is safe inside a Steel call.
-    #[allow(clippy::disallowed_methods)]
-    pub(in crate::editor) fn screen_layout(&self, view: &EngineView) -> ScreenLayout {
-        let area = view.terminal_area();
-        let drawer = self.input.drawer().map_or(0, |d| {
-            hume_ui::drawer::band_height(d.item_count(&self.buffers), area.height)
-        });
-        let popup = self
-            .input
-            .popup()
-            .filter(|p| matches!(p.layout, hume_ui::popup::PopupLayout::Docked))
-            .map_or(0, |p| {
-                let lines = p.docked_total_rows(area.width);
-                hume_ui::popup::band_height(lines, area.height)
-            });
-        let rows = ChromeRows {
-            tabbar: u16::from(self.tabline_visible()),
-            bands: hume_ui::Bands { drawer, popup }.in_stack_order(),
-        };
-        view.screen_layout(rows, self.settings.pane_dividers)
-    }
-
-    /// The size of pane `pid`, in the active tab or a background one, as
-    /// [`Self::screen_layout`] lays it out.
-    pub(in crate::editor) fn pane_size(&self, view: &EngineView, pid: PaneId) -> PaneSize {
-        let screen = self.screen_layout(view);
-        std::iter::once(view.focused_layout())
-            .chain(self.tabs.inactive())
-            .find_map(|layout| screen.pane_size(layout, pid))
-            .expect("every pooled pane is a leaf of one tab's layout")
-    }
-
-    /// The gutter settings pane `pid` draws by: its buffer's line-number
-    /// style, and its sign column's width from the buffer's `gutter-signs`
-    /// setting, its registered sign sources and, for `auto`, whether the
-    /// last frame placed a sign in the pane. Every gutter width, the frame's
-    /// and a between-frame reader's alike, comes from here.
-    pub(in crate::editor) fn gutter_inputs(&self, view: &EngineView, pid: PaneId) -> GutterInputs {
-        let bid = view.panes[pid].buffer_id();
-        let overrides = &self.buffers.get(bid).overrides;
-        let collapsed = overrides.gutter_signs(&self.settings).mode
-            == crate::editor::settings::SignColumnMode::Auto
-            && !self.panes.entries[pid].render.has_signs();
-        GutterInputs {
-            line_numbers: overrides.gutter_line_numbers(&self.settings),
-            sign_width: if collapsed {
-                0
-            } else {
-                SignColumn::width_for_slots(self.sign_slots(bid))
-            },
+    /// The document-mode cursor shape for the live mode: how the document's
+    /// selection heads are painted, and (outside a prompt) the real terminal
+    /// cursor's shape.
+    ///
+    /// Only Insert is configurable (`insert-cursor-shape`): a terminal has one
+    /// hardware cursor, so HUME offers no shape choice for Normal/Extend
+    /// (always `Block`, matching Helix's own default), and Command/Search/
+    /// Sift also resolve to `Block` here (their document heads render like
+    /// Normal mode while a prompt is open), but their *real* terminal cursor
+    /// never reflects this value: it lives in the minibuf, placed by a
+    /// separate branch in `Editor::run`'s `cursor_screen` that is
+    /// unconditionally a bar regardless of what this method returns. This is
+    /// the single source both that branch's sibling (the non-minibuf case)
+    /// and `resolve_pane_settings`' `cursor_is_block` read, so the real
+    /// terminal cursor and the grid's painted heads can never disagree about
+    /// which shape is in effect outside a prompt.
+    pub(in crate::editor) fn cursor_shape(&self) -> crate::editor::settings::CursorShape {
+        if self.mode() == super::Mode::Insert {
+            self.settings.insert_cursor_shape
+        } else {
+            crate::editor::settings::CursorShape::Block
         }
-    }
-
-    /// The sign slots buffer `bid` shows: its `gutter-signs` setting resolved
-    /// against its registered sign sources. A source's slot is its rank in
-    /// the buffer's registry (`DecorationStores::sign_sources`), fixed the
-    /// moment it registers, independent of what any frame places.
-    pub(in crate::editor) fn sign_slots(&self, bid: BufferId) -> u8 {
-        self.buffers
-            .get(bid)
-            .overrides
-            .gutter_signs(&self.settings)
-            .slots_for(self.config.decorations.sign_source_count(bid))
-    }
-
-    /// Pane `pid`'s gutter and content widths at `size`, by the same
-    /// computation the render pass draws it with.
-    pub(in crate::editor) fn pane_geometry(
-        &self,
-        view: &EngineView,
-        pid: PaneId,
-        size: PaneSize,
-    ) -> PaneGeometry {
-        let pane = &view.panes[pid];
-        hume_engine::layout::compute_viewport(
-            self.buffers.get(pane.buffer_id()).text().rope(),
-            size,
-            pane.providers.gutter_columns(),
-            self.gutter_inputs(view, pid),
-        )
     }
 
     /// Bring the band views (drawer, docked popup, tab bar) up to their
@@ -781,14 +713,6 @@ impl EditorState {
         self.sync_drawer_view();
         self.sync_popup_band_view(view);
         self.sync_tabline_view(view, screen);
-    }
-
-    fn tabline_visible(&self) -> bool {
-        match self.settings.tabline {
-            crate::editor::settings::TablineVisibility::Always => true,
-            crate::editor::settings::TablineVisibility::Never => false,
-            crate::editor::settings::TablineVisibility::Dynamic => self.tabs.len() > 1,
-        }
     }
 
     /// Hash of everything [`Self::sync_tabline_view`]'s rebuild depends on:
@@ -948,7 +872,7 @@ fn scroll_into_view(
     doc: &Buffer,
     pane: &mut Pane,
     cursor: hume_rope::cluster::ClusterStart,
-    layout_key: super::LayoutKey,
+    layout_key: super::geometry::LayoutKey,
     reveal: bool,
 ) -> ScrollOutcome {
     // Whatever this pass formats deciding where to scroll, the render pass

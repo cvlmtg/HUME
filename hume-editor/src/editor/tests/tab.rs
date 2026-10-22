@@ -224,7 +224,7 @@ fn hiding_the_tab_bar_resizes_a_hidden_tab_s_pane_before_the_next_frame() {
     frame(&mut ed, 80, 25);
 
     ed.state.settings.tabline = crate::editor::settings::TablineVisibility::Never;
-    let range = crate::editor::lsp::introspect::viewport_range(&ed.state, &ed.view, pid_b);
+    let range = crate::editor::geometry::viewport_range(&ed.state, &ed.view, pid_b);
 
     // Two tabs show the bar under the `dynamic` default. Without it the pane
     // keeps 25 - 1 (statusline) = 24 rows.

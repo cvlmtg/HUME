@@ -4,8 +4,7 @@
 //! because they mutate the transport). These run through `EditorHostImpl`
 //! directly since a Steel caller needs the value back inline.
 
-use hume_engine::pane::Pane;
-use hume_engine::pipeline::{BufferId, EngineView, PaneId};
+use hume_engine::pipeline::BufferId;
 use hume_lsp::backend::ServerId;
 
 use super::LspState;
@@ -423,51 +422,6 @@ pub(in crate::editor) fn location_places(
         }));
     }
     Ok(rows)
-}
-
-/// `pane`'s visible line range, end-exclusive, clamped to a buffer of
-/// `content_lines`, so the hook payload and `(viewport-range bid)` agree.
-/// Never points past the buffer's last *content* line (not ropey's phantom
-/// line past the structural trailing `\n`), even when the pane's viewport
-/// height exceeds the buffer.
-///
-/// `height.max(1)` (not `height` directly): a `height == 0` pane (no visible
-/// rows, e.g. one not yet laid out) still reports a one-line range rather
-/// than an empty one, so callers always get at least the pane's top line
-/// instead of a degenerate empty range.
-pub(in crate::editor) fn pane_visible_range(
-    pane: &Pane,
-    size: hume_engine::pipeline::PaneSize,
-    content_lines: hume_rope::line::ContentLineCount,
-) -> hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine> {
-    let first_line = pane.viewport.top().line;
-    // Terminal-row count added to a buffer-line index: under wrap one buffer
-    // line can span multiple display lines (and therefore fewer terminal
-    // rows than buffer lines), so this over-estimates how many buffer lines
-    // are visible. Safe here: the range only needs to cover every buffer
-    // line that *could* be visible, not name the true last one exactly.
-    let height_rows = usize::from(size.height().max(1));
-    let end_line = first_line
-        .advance(height_rows)
-        .min(content_lines.end_exclusive());
-    hume_rope::offset::ExclusiveRange::new(first_line, end_line)
-}
-
-/// Pane `pid`'s visible line range (end-exclusive) between frames, for
-/// `(viewport-range pane)` and the `OnViewportChange` payload.
-pub(in crate::editor) fn viewport_range(
-    state: &EditorState,
-    view: &EngineView,
-    pid: PaneId,
-) -> hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine> {
-    let size = state.pane_size(view, pid);
-    let pane = &view.panes[pid];
-    let content_lines = state
-        .buffers
-        .get(pane.buffer_id())
-        .text()
-        .content_line_count();
-    pane_visible_range(pane, size, content_lines)
 }
 
 impl crate::editor::Editor {

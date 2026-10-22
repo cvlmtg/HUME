@@ -214,7 +214,7 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
         // is still well-defined regardless of which tab is on screen; it's
         // just not guaranteed to reflect a scroll that happened elsewhere
         // while this pane was hidden.
-        Ok(crate::editor::lsp::introspect::viewport_range(
+        Ok(crate::editor::geometry::viewport_range(
             self.state,
             self.view,
             t.pid(),

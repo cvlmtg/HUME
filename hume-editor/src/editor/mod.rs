@@ -27,6 +27,7 @@ mod edit_session;
 mod error;
 mod focus;
 mod frame;
+mod geometry;
 mod host_impl;
 mod inline_output;
 mod input;
@@ -537,51 +538,6 @@ impl EditorState {
     }
 }
 
-/// Every input a pane's layout depends on: its
-/// [`FormatKey`](hume_engine::display_lines::line_store::FormatKey) plus content
-/// width, viewport height and scroll-margin, which decide where the cursor's
-/// display line falls.
-///
-/// `FormatKey` leaves out content width because formatting sees it only
-/// through the wrap mode it resolves. This key keeps it because a growing
-/// gutter narrows the wrap column just like a resize, and reveal cares.
-///
-/// `frame.rs`'s scroll step is the one comparison site: it stores this in
-/// `PaneBufferState::last_layout_key` each frame and compares it against a
-/// fresh one every frame (resize, wrap-mode change, buffer switch,
-/// decoration generation, and any content edit to the buffer, since
-/// `buffer_tag` includes `generation`). A change reveals only a pane that
-/// isn't [`PaneBufferState::parked`](pane_state::PaneBufferState::parked):
-/// a parked pane's own edit still reveals it, through `reveal_pending`
-/// instead, but a change from elsewhere (a sibling pane's edit, a
-/// decoration refresh) leaves it where it is.
-#[derive(Copy, Clone, PartialEq, Eq)]
-pub(in crate::editor) struct LayoutKey {
-    format: hume_engine::display_lines::line_store::FormatKey,
-    content_width: hume_engine::pipeline::ContentWidth,
-    size: hume_engine::pipeline::PaneSize,
-    scroll_margin: usize,
-}
-
-impl LayoutKey {
-    /// The part of `self` a `DisplayLineMap` is built from.
-    pub(in crate::editor) fn format_key(
-        &self,
-    ) -> hume_engine::display_lines::line_store::FormatKey {
-        self.format
-    }
-
-    /// The width a `DisplayLineMap` of this pane wraps against.
-    pub(in crate::editor) fn content_width(&self) -> hume_engine::pipeline::ContentWidth {
-        self.content_width
-    }
-
-    /// The pane's scroll-margin geometry, `None` for a pane with no rows.
-    pub(in crate::editor) fn geometry(&self) -> Option<hume_engine::pane::ViewGeometry> {
-        self.size.geometry(self.scroll_margin)
-    }
-}
-
 impl EditorState {
     /// Whether a signal asked the editor to terminate
     /// (`terminate_exit_code` is non-zero).
@@ -610,79 +566,6 @@ impl EditorState {
     /// `input` itself.
     pub(crate) fn minibuf(&self) -> Option<&MiniBuffer> {
         self.input.top_minibuf()
-    }
-
-    /// The document-mode cursor shape for the live mode: how the document's
-    /// selection heads are painted, and (outside a prompt) the real terminal
-    /// cursor's shape.
-    ///
-    /// Only Insert is configurable (`insert-cursor-shape`): a terminal has one
-    /// hardware cursor, so HUME offers no shape choice for Normal/Extend
-    /// (always `Block`, matching Helix's own default), and Command/Search/
-    /// Sift also resolve to `Block` here (their document heads render like
-    /// Normal mode while a prompt is open), but their *real* terminal cursor
-    /// never reflects this value: it lives in the minibuf, placed by a
-    /// separate branch in `Editor::run`'s `cursor_screen` that is
-    /// unconditionally a bar regardless of what this method returns. This is
-    /// the single source both that branch's sibling (the non-minibuf case)
-    /// and `resolve_pane_settings`' `cursor_is_block` read, so the real
-    /// terminal cursor and the grid's painted heads can never disagree about
-    /// which shape is in effect outside a prompt.
-    pub(in crate::editor) fn cursor_shape(&self) -> crate::editor::settings::CursorShape {
-        if self.mode() == Mode::Insert {
-            self.settings.insert_cursor_shape
-        } else {
-            crate::editor::settings::CursorShape::Block
-        }
-    }
-
-    /// The composition every `FormatKey` in this crate is built from: every
-    /// input `pane`'s line formats depend on besides its content width, which
-    /// reaches formatting only through the wrap mode's resolved width (see
-    /// `hume_engine::display_lines::line_store::ResolvedFormatKey`'s doc).
-    ///
-    /// The frame's scroll pass (`commands::pane_display_lines`) and its render
-    /// pass (`frame.rs`'s `resolve_pane_settings`) each call this on `pane`'s
-    /// current state, and their sharing that pane's line store depends
-    /// entirely on the two resolving a bit-identical key. One function
-    /// rather than two independently-maintained call sites is what makes
-    /// that true.
-    pub(in crate::editor) fn format_key(
-        &self,
-        pane: &hume_engine::pane::Pane,
-    ) -> hume_engine::display_lines::line_store::FormatKey {
-        let doc = self.buffers.get(pane.buffer_id());
-        hume_engine::display_lines::line_store::FormatKey {
-            buffer_tag: [
-                // Not `{:?}`-formatted: this is a value to compare, not one
-                // to show, and `as_ffi` folds the key's index and version
-                // (the two things that distinguish a reused slot from the
-                // buffer that held it before) into exactly that.
-                slotmap::Key::data(&pane.buffer_id()).as_ffi(),
-                doc.text().generation(),
-                self.config.decorations.generation(pane.buffer_id()),
-            ],
-            wrap_mode: commands::effective_wrap_mode(doc, &self.settings, pane),
-            tab_width: doc.overrides.indent_width(&self.settings),
-            whitespace: doc.overrides.whitespace(&self.settings),
-        }
-    }
-
-    /// Pane `pid`'s [`Self::format_key`] plus the content width and geometry
-    /// it formats and scrolls by at `size`, and the scroll margin. The frame's
-    /// scroll pass reveals the cursor when this changes.
-    pub(in crate::editor) fn layout_key(
-        &self,
-        view: &hume_engine::pipeline::EngineView,
-        pid: hume_engine::pipeline::PaneId,
-        size: hume_engine::pipeline::PaneSize,
-    ) -> LayoutKey {
-        LayoutKey {
-            format: self.format_key(&view.panes[pid]),
-            content_width: self.pane_geometry(view, pid, size).content_width,
-            size,
-            scroll_margin: self.settings.scroll_margin,
-        }
     }
 
     // ── Quit ──────────────────────────────────────────────────────────────────
@@ -792,7 +675,7 @@ pub(crate) struct Editor {
         rustc_hash::FxHashMap<hume_engine::pipeline::BufferId, timers::TimerId>,
     /// `(buffer_id, visible range)` as of the last frame this pane was
     /// *visible*, per pane, the range being what `OnViewportChange` carries
-    /// (`lsp::introspect::pane_visible_range`). `prepare_frame`'s scroll step
+    /// (`geometry::pane_visible_range`). `prepare_frame`'s scroll step
     /// compares against this so the hook arms only when its payload would
     /// differ. The buffer id is part of the key for the same reason
     /// `virtual_lines_synced` below carries one: a pane switching buffers at

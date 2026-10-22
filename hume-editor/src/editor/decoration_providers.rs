@@ -59,7 +59,7 @@ impl Editor {
     ///
     /// `lines`/`chars` are a one-row *superset* of the viewport (its end plus
     /// one more row): cheap over-fetch beats a wrap-aware exact bound for a
-    /// bulk store slice. Both are end-exclusive; `lsp::introspect::pane_visible_range`
+    /// bulk store slice. Both are end-exclusive; `geometry::pane_visible_range`
     /// is also end-exclusive, so the two conventions differ only in that
     /// one-row slack, not in inclusive-vs-exclusive. They still don't share
     /// an implementation, since one clamps to `content_lines` and the other

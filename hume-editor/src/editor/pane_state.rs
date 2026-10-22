@@ -15,8 +15,8 @@ use hume_engine::pipeline::{BufferId, EngineView, PaneId, PanePool, UnattachedPa
 use slotmap::SecondaryMap;
 
 use super::Editor;
-use super::LayoutKey;
 use super::commands::FocusedPane;
+use super::geometry::LayoutKey;
 use super::jump_list::JumpList;
 use super::search::SearchCursor;
 use crate::editor::buffer::Buffer;

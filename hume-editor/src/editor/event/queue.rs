@@ -192,8 +192,7 @@ impl Editor {
         if !self.view.layout().contains_leaf(pane_id) {
             return;
         }
-        let lines =
-            crate::editor::lsp::introspect::viewport_range(&self.state, &self.view, pane_id);
+        let lines = crate::editor::geometry::viewport_range(&self.state, &self.view, pane_id);
         let bid = self.view.panes[pane_id].buffer_id();
         self.state.queue_event(EditorEvent::OnViewportChange {
             target: PaneHandle::with_pane(bid, pane_id),
