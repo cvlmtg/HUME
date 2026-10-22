@@ -95,7 +95,7 @@ pub(crate) enum EvalSession {
 /// `session` × whether `plugin_stack` is currently non-empty (a plugin body
 /// is executing, possibly nested inside a command or init eval). `plugin_stack`
 /// is pushed/popped mid-eval by `begin_lazy_activation`/`finish_lazy_activation`
-/// (`builtins/plugins.rs`), so this is derived fresh via [`SteelCtx::mode`]
+/// (`builtins/plugins/activation.rs`), so this is derived fresh via [`SteelCtx::mode`]
 /// rather than stored: a single stored 3-variant enum can't distinguish the
 /// init-top-level state from the eager-plugin-load-during-init state, which
 /// have different gate outcomes (see the table below).

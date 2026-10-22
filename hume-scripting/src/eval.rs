@@ -179,7 +179,7 @@ impl ScriptingHost {
     ///   `host.register_command`. A plugin (`load-plugin!`/`declare-plugin!`)
     ///   body raising is contained here too, not a cause of `Err`: its own
     ///   activation is atomically rolled back (see
-    ///   `builtins::plugins::finish_lazy_activation`), reported by name and
+    ///   `builtins::plugins::activation::finish_lazy_activation`), reported by name and
     ///   location as an `Error`-severity pending message (drained by
     ///   `take_pending_messages`; queued from `run_steel_session`),
     ///   and the rest of the file keeps running. A broken third-party

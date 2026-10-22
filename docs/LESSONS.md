@@ -1486,7 +1486,7 @@ it: read the plugin loading code or the user manual. If it cannot be confirmed,
 leave it out of the argument.
 
 **Files:** `hume-scripting/src/read_only_host.rs` (`permit_plugin_activation`),
-`hume-scripting/src/builtins/plugins.rs`.
+`hume-scripting/src/builtins/plugins/activation.rs`.
 
 ## L40 — Changelog entries kept growing into manual text (2026-10-14)
 

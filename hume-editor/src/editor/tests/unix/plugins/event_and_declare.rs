@@ -467,7 +467,7 @@ fn plugin_calls_cross_plugin_cmd_auto_activates_dep() {
 /// The underlying nested-activation machinery is already covered against
 /// `NullHost` with single-file plugins by
 /// `nested_activation_commit_survives_enclosing_plugin_failure`
-/// (`hume-scripting/src/activation/tests.rs`). This pins the same contract
+/// (`hume-scripting/src/builtins/plugins/activation/tests.rs`). This pins the same contract
 /// through the real editor host with multi-file plugins.
 #[test]
 fn nested_activation_multi_file_via_real_editor_host() {

@@ -63,7 +63,7 @@ pub(super) fn run_steel_session<'a, R>(
     }
 
     // A plugin activation contained mid-session (see `finish_lazy_activation`/
-    // `finish_manifest_load` in `builtins/plugins.rs`) never surfaces as
+    // `finish_manifest_load` in `builtins/plugins/activation.rs`) never surfaces as
     // this session's own `Err`. It's reported here instead, once per
     // failure, through the same `pending_messages` sink every other `log!`
     // and soft-error uses, so it reaches the user via the ordinary message

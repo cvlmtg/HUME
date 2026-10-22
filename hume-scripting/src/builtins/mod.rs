@@ -313,14 +313,14 @@ pub(crate) fn register_all(steel: &mut Engine) {
 
         // Inline activation primitives, called from the %activate-plugin-inline!
         // Scheme helper to drive mid-eval plugin loading without &mut Engine.
-        open "%begin-lazy-activation!" plugins::begin_lazy_activation(plugin: String, entry: SteelVal);
-        open "%finish-lazy-activation!" plugins::finish_lazy_activation(error: SteelVal);
-        open "%entry-loaded?" plugins::entry_loaded(plugin: String, entry: SteelVal);
-        open "%lazy-command-owner" plugins::lazy_command_owner(name: String);
+        open "%begin-lazy-activation!" plugins::activation::begin_lazy_activation(plugin: String, entry: SteelVal);
+        open "%finish-lazy-activation!" plugins::activation::finish_lazy_activation(error: SteelVal);
+        open "%entry-loaded?" plugins::activation::entry_loaded(plugin: String, entry: SteelVal);
+        open "%lazy-command-owner" plugins::activation::lazy_command_owner(name: String);
 
         // Manifest evaluation: %load-plugin! returns the require string of
         // <plugin-dir>/manifest.scm, and the wrapper reports the outcome here.
-        open "%finish-manifest-load!" plugins::finish_manifest_load(name: String, error: SteelVal);
+        open "%finish-manifest-load!" plugins::activation::finish_manifest_load(name: String, error: SteelVal);
 
         // Hook registration (init-only)
         config "register-hook!" hooks::register_hook(name: SteelVal, proc: SteelVal);

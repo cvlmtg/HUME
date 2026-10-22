@@ -1,3 +1,4 @@
+use super::*;
 use hume_platform::dirs::Dirs;
 use std::io::Write as _;
 
@@ -1101,5 +1102,222 @@ fn finish_lazy_activation_bad_error_value_still_balances_stack_and_marks() {
             Some(PluginState::Failed)
         ),
         "an undecodable error value must still fail the plugin, not leave it Loading"
+    );
+}
+
+// ── Activation depth cap ──────────────────────────────────────────────────
+
+/// `%begin-lazy-activation!` refuses to start when `plugin_stack` depth is at
+/// `MAX_ACTIVATION_DEPTH`, marks the plugin `Failed`, and returns a Steel error.
+///
+/// Without that check, an activation cycle would overflow the stack instead
+/// of hard-erroring.
+#[test]
+fn begin_lazy_activation_at_depth_cap_errors_and_marks_failed() {
+    use crate::{ScriptingHost, null_host::NullHost};
+    use std::io::Write as _;
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("deep.scm");
+    std::fs::File::create(&path)
+        .unwrap()
+        .write_all(b"(define x 1)")
+        .unwrap();
+
+    let id = EntryId::main(PluginId::parse("core:deep").unwrap());
+    let mut host = ScriptingHost::new(&Dirs::none());
+    host.registries
+        .lazy_registry
+        .plugins
+        .insert(id.clone(), PluginState::Declared { path });
+    // Simulate maximum nesting depth already reached by seeding the stack.
+    let dummy = EntryId::main(PluginId::parse("core:dummy").unwrap());
+    for _ in 0..MAX_ACTIVATION_DEPTH {
+        host.push_plugin_for_test(dummy.clone());
+    }
+
+    let result = host.eval_source(
+        r#"(%begin-lazy-activation! "core:deep" "plugin.scm")"#,
+        &mut NullHost,
+    );
+
+    assert!(
+        result.is_err(),
+        "depth cap must raise a Steel error; got Ok"
+    );
+    assert!(
+        matches!(
+            host.registries.lazy_registry.plugins.get(&id),
+            Some(PluginState::Failed)
+        ),
+        "plugin must be marked Failed when depth cap exceeded"
+    );
+}
+
+/// `%begin-lazy-activation!` at depth cap − 1 succeeds (cap is exclusive).
+///
+/// Confirms the off-by-one is correct: depth 15 of 16 is still allowed.
+#[test]
+fn begin_lazy_activation_below_depth_cap_succeeds() {
+    use crate::{ScriptingHost, null_host::NullHost};
+    use std::io::Write as _;
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("ok.scm");
+    std::fs::File::create(&path)
+        .unwrap()
+        .write_all(b"(define x 1)")
+        .unwrap();
+
+    let id = EntryId::main(PluginId::parse("core:ok").unwrap());
+    let mut host = ScriptingHost::new(&Dirs::none());
+    host.registries
+        .lazy_registry
+        .plugins
+        .insert(id.clone(), PluginState::Declared { path });
+    // One below the cap: must still be allowed.
+    let dummy = EntryId::main(PluginId::parse("core:dummy").unwrap());
+    for _ in 0..MAX_ACTIVATION_DEPTH - 1 {
+        host.push_plugin_for_test(dummy.clone());
+    }
+
+    // Transition to Loading and return the require-string (not an error).
+    let result = host.eval_source(
+        r#"(%begin-lazy-activation! "core:ok" "plugin.scm")"#,
+        &mut NullHost,
+    );
+    assert!(result.is_ok(), "depth below cap must be allowed; got Err");
+    assert!(
+        matches!(
+            host.registries.lazy_registry.plugins.get(&id),
+            Some(PluginState::Loading)
+        ),
+        "plugin must be Loading after successful %begin-lazy-activation!"
+    );
+}
+
+/// `%begin-lazy-activation!` failing at the depth cap must clean up exactly
+/// like `%finish-lazy-activation!`'s failure branch does (dropping the
+/// plugin's activation-event/language entries and its `Lazy` command stub),
+/// even though the body never ran and `%finish-lazy-activation!` never fires
+/// for it.
+///
+/// The depth-cap branch gets this cleanup from `fail_plugin_activation`. A
+/// bare `plugins.insert(id, Failed)` would leave the event/language entries
+/// and the stub behind, re-triggering a no-op activation attempt on every
+/// later matching event.
+#[test]
+fn begin_lazy_activation_depth_cap_cleans_up_activation_entries_and_stub() {
+    use crate::ScriptingHost;
+    use crate::host::EditorHost;
+    use crate::null_host::CommandStoreHost;
+    use std::io::Write as _;
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("deep.scm");
+    std::fs::File::create(&path)
+        .unwrap()
+        .write_all(b"(define x 1)")
+        .unwrap();
+
+    let id = EntryId::main(PluginId::parse("core:deep").unwrap());
+    let mut host = ScriptingHost::new(&Dirs::none());
+    host.registries.lazy_registry.declare(
+        id.clone(),
+        path,
+        vec!["on-buffer-save".to_string()],
+        vec!["rust".to_string()],
+    );
+
+    let mut editor_host = CommandStoreHost::default();
+    editor_host
+        .commands()
+        .register_lazy_command("deep-cmd", &id)
+        .expect("stub claim must succeed on a fresh host");
+
+    let dummy = EntryId::main(PluginId::parse("core:dummy").unwrap());
+    for _ in 0..MAX_ACTIVATION_DEPTH {
+        host.push_plugin_for_test(dummy.clone());
+    }
+
+    let result = host.eval_source(
+        r#"(%begin-lazy-activation! "core:deep" "plugin.scm")"#,
+        &mut editor_host,
+    );
+    assert!(result.is_err(), "depth cap must raise; got Ok");
+
+    assert!(
+        host.registries
+            .lazy_registry
+            .activation_events
+            .get("on-buffer-save")
+            .map(|plugins| !plugins.contains(&id))
+            .unwrap_or(true),
+        "Failed plugin's event-activation entry must be dropped, not leaked"
+    );
+    assert!(
+        host.registries
+            .lazy_registry
+            .activation_languages
+            .get("rust")
+            .map(|plugins| !plugins.contains(&id))
+            .unwrap_or(true),
+        "Failed plugin's language-activation entry must be dropped, not leaked"
+    );
+    assert!(
+        editor_host
+            .commands()
+            .lazy_command_owner("deep-cmd")
+            .is_none(),
+        "Failed plugin's dead command stub must be unregistered, not leaked"
+    );
+}
+
+// ── Windows path escaping ────────────────────────────────────────────────
+
+/// `%begin-lazy-activation!` must escape backslashes in the plugin path so
+/// a Windows-style path (e.g. `C:\Users\x\plugin.scm`) survives embedding
+/// inside a Steel string literal without producing an invalid-escape error.
+///
+/// This test inserts a synthetic backslash-bearing path without creating a
+/// real file; it checks only the returned require-string by comparing against
+/// the hand-computed expected value via Steel's `equal?`.
+#[test]
+fn begin_lazy_activation_escapes_backslashes_in_path() {
+    use crate::{ScriptingHost, null_host::NullHost};
+    use std::path::PathBuf;
+
+    let id = EntryId::main(PluginId::parse("core:winpath").unwrap());
+    let mut host = ScriptingHost::new(&Dirs::none());
+    host.registries.lazy_registry.plugins.insert(
+        id.clone(),
+        PluginState::Declared {
+            path: PathBuf::from(r"C:\Users\x\plugin.scm"),
+        },
+    );
+
+    // Each `\` in the path is doubled, so the Steel string value held in
+    // `__result` is:
+    //   (require "C:\\Users\\x\\plugin.scm")
+    // To express that as a Steel string literal we double every `\` again:
+    //   "(require \"C:\\\\Users\\\\x\\\\plugin.scm\")"
+    // In a Rust raw string (r#"…"#) there is no further Rust escaping.
+    let program = r#"
+(define __result (%begin-lazy-activation! "core:winpath" "plugin.scm"))
+(when (not (equal? __result "(require \"C:\\\\Users\\\\x\\\\plugin.scm\")"))
+  (error (string-append "backslash escaping wrong; got: " __result)))
+"#;
+    host.eval_source(program, &mut NullHost)
+        .expect("backslashes in path must be doubled for Steel string embedding");
+
+    assert!(
+        matches!(
+            host.registries.lazy_registry.plugins.get(&id),
+            Some(PluginState::Loading)
+        ),
+        "plugin must be Loading after %begin-lazy-activation!"
     );
 }

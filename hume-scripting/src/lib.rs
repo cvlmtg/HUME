@@ -35,7 +35,6 @@ pub(crate) mod lazy;
 mod log;
 mod plugin_record;
 // ── Private implementation details ────────────────────────────────────────────
-mod activation;
 mod command_procs;
 mod context;
 mod eval;
