@@ -6,6 +6,10 @@ HUME is a curiosity-driven project. That shapes what contributions fit:
 - **Small, focused fixes** can go straight to a pull request.
 - **Plugins and configuration** are written in Steel, not Rust. If your idea can live in
   `runtime/scheme/`, that is the better place for it.
+- **AI-assisted contributions are welcome.** HUME is itself built with AI agents, so a
+  patch, pull request or bug report made with one is fine. It meets the same bar as any
+  other: the invariants, tests and code standards below apply unchanged, and you answer
+  for every line of it. Point your agent at `CLAUDE.md`, which holds the rules it needs.
 
 By contributing you agree that your work is licensed under the [MIT License](LICENSE).
 
