@@ -20,9 +20,7 @@ use hume_rope::position_encoding::{PositionEncoding, WirePos};
 /// `character` on either end exceeds `u32`, the protocol's own width.
 /// Every value this crate produces comes from a real document via
 /// `hume_rope::position_encoding`, so overflow here means a corrupt or
-/// astronomically large buffer, not a routine input to handle gracefully;
-/// callers with a genuine "not our fault" source (untrusted plugin input)
-/// turn `None` into their own error message instead of unwrapping.
+/// astronomically large buffer, not a routine input to handle gracefully.
 pub fn to_lsp_range(range: ExclusiveRange<WirePos>) -> Option<lsp_types::Range> {
     Some(lsp_types::Range {
         start: to_lsp_position(range.start)?,
@@ -124,21 +122,6 @@ pub fn lsp_range_to_chars(
     encoding: PositionEncoding,
 ) -> ExclusiveRange<CharOffset> {
     hume_rope::position_encoding::wire_range_to_char_range(rope, from_lsp_range(range), encoding)
-}
-
-/// [`lsp_range_to_chars`] for an edit: `None` when the range ends past the
-/// document end, which no clamp can honestly stand in for. See
-/// [`hume_rope::position_encoding::checked_wire_range_to_char_range`].
-pub fn checked_lsp_range_to_chars(
-    rope: &ropey::Rope,
-    range: &lsp_types::Range,
-    encoding: PositionEncoding,
-) -> Option<ExclusiveRange<CharOffset>> {
-    hume_rope::position_encoding::checked_wire_range_to_char_range(
-        rope,
-        from_lsp_range(range),
-        encoding,
-    )
 }
 
 #[cfg(test)]

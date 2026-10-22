@@ -14,11 +14,10 @@ use hume_editing::word::{CharClass, WordChars};
 use hume_rope::cluster::ClusterStart;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
-use hume_lsp::position::checked_lsp_range_to_chars;
-
 use super::super::item::CompletionItem;
 use super::super::registry::{BufferSourceId, SourceRegistry};
 use super::slots::{Invocation, ItemKey, SlotSet, SlotTokens};
+use crate::editor::lsp::edits;
 
 /// The coordinate system one invocation's answer was computed in: the rope
 /// at invoke time (an O(1) clone, since ropey is structurally shared) and every
@@ -62,7 +61,12 @@ impl BufferSpan {
             .map(|item| {
                 let te = item.text_edit.as_ref()?;
                 let encoding = item.wire_encoding(may_resolve, "").ok()?;
-                Some(checked_lsp_range_to_chars(&doc.rope, &te.range, encoding)?.start)
+                let range = hume_lsp::position::from_lsp_range(&te.range);
+                Some(
+                    edits::edit_range_to_chars(&doc.rope, range, encoding)
+                        .ok()?
+                        .start,
+                )
             })
             .collect();
         let mut distinct: Vec<CharOffset> = item_starts.iter().flatten().copied().collect();

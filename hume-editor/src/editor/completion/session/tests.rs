@@ -349,6 +349,13 @@ fn edit_over(start: (u32, u32), end: (u32, u32), new_text: &str) -> lsp_types::T
 /// the cursor) is "ba", answering `foo.bar` with an edit range that starts
 /// before it and a plain `bar`.
 fn dotted_session() -> (BufferSession, SourceRegistry, BufferText) {
+    dotted_session_with(edit_over((0, 2), (0, 8), "foo.bar"))
+}
+
+/// [`dotted_session`], with `foo.bar`'s edit as `text_edit`.
+fn dotted_session_with(
+    text_edit: lsp_types::TextEdit,
+) -> (BufferSession, SourceRegistry, BufferText) {
     let mut reg = SourceRegistry::with_defaults();
     reg.register_buffer(BufferSourceEntry {
         name: "s".into(),
@@ -369,11 +376,7 @@ fn dotted_session() -> (BufferSession, SourceRegistry, BufferText) {
         &reg,
         id,
         vec![
-            item_with_edits(
-                "foo.bar",
-                Some(edit_over((0, 2), (0, 8), "foo.bar")),
-                Vec::new()
-            ),
+            item_with_edits("foo.bar", Some(text_edit), Vec::new()),
             item("bar"),
         ],
         false,
@@ -430,6 +433,19 @@ fn an_items_edit_range_start_follows_a_change_before_it() {
     assert_eq!(
         session.menu_anchor(&text).map(ClusterStart::offset),
         Some(CharOffset::new(3))
+    );
+}
+
+/// A reversed edit range is one accepting the item refuses, so it says
+/// nothing about where the item's token starts: the menu anchors at the
+/// source's own token start.
+#[test]
+fn an_item_whose_edit_range_is_reversed_takes_no_token_start_from_it() {
+    let (mut session, reg, text) = dotted_session_with(edit_over((0, 2), (0, 0), "foo.bar"));
+    session.rank(&reg, live(&text, 8));
+    assert_eq!(
+        session.menu_anchor(&text).map(ClusterStart::offset),
+        Some(CharOffset::new(6))
     );
 }
 
