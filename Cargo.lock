@@ -2015,8 +2015,6 @@ dependencies = [
 [[package]]
 name = "steel-parser"
 version = "0.8.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "84f6650f442ea330ed5ed0955ed8b360d5bbc79e01bdf53c9791cae826a0ac28"
 dependencies = [
  "compact_str 0.8.2",
  "dashmap",

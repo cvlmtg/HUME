@@ -52,15 +52,25 @@ pub static SYNTAX_OBJECT_ID: AtomicUsize = AtomicUsize::new(0);
 pub struct SyntaxObjectId(pub u32);
 
 impl SyntaxObjectId {
+    /// Each thread reserves `ID_BLOCK` ids from `SYNTAX_OBJECT_ID` at a time and hands
+    /// them out locally, so threads compiling concurrently do not contend on one atomic.
+    /// Ids stay unique, and strictly increasing within a thread.
     #[inline]
     pub fn fresh() -> Self {
-        SyntaxObjectId(SYNTAX_OBJECT_ID.fetch_add(1, Ordering::Relaxed) as _)
-        // TODO: Revisit why we're using this here
-        // SyntaxObjectId(TL_SYNTAX_OBJECT_ID.with(|x| {
-        //     let value = x.get();
-        //     x.set(value + 1);
-        //     value
-        // }))
+        const ID_BLOCK: usize = 4096;
+        std::thread_local! {
+            static NEXT_IDS: core::cell::Cell<(usize, usize)> =
+                const { core::cell::Cell::new((0, 0)) };
+        }
+        NEXT_IDS.with(|ids| {
+            let (mut next, mut end) = ids.get();
+            if next == end {
+                next = SYNTAX_OBJECT_ID.fetch_add(ID_BLOCK, Ordering::Relaxed);
+                end = next + ID_BLOCK;
+            }
+            ids.set((next + 1, end));
+            SyntaxObjectId(next as _)
+        })
     }
 }
 
