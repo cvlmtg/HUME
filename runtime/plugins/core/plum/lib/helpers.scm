@@ -39,21 +39,16 @@
   (let ((stage (path-join (plum/staging-dir) (file-name (parent-name dest)) (file-name dest))))
     (call! "stdlib/delete-dir!" stage)
     (create-directory! stage)
-    ;; Why the raise follows the handler: README.md's "Pinned plugins".
-    (let ((failure
-            (with-handler
-              (lambda (err) (to-string err))
-              (begin
-                (plum/git! stage (list "init" "-q"))
-                (plum/git! stage (list "remote" "add" "--" "origin" url))
-                (plum/git! stage (list "config" "remote.origin.promisor" "true"))
-                (plum/git! stage (list "config" "remote.origin.partialclonefilter" "blob:none"))
-                (plum/git-sync! stage ref)
-                (when build (build stage))
-                #f))))
-      (when failure
+    (with-handler
+      (lambda (err)
         (call! "stdlib/delete-dir!" stage)
-        (error failure)))
+        (raise-error err))
+      (plum/git! stage (list "init" "-q"))
+      (plum/git! stage (list "remote" "add" "--" "origin" url))
+      (plum/git! stage (list "config" "remote.origin.promisor" "true"))
+      (plum/git! stage (list "config" "remote.origin.partialclonefilter" "blob:none"))
+      (plum/git-sync! stage ref)
+      (when build (build stage)))
     (call! "stdlib/delete-dir!" dest)
     (create-directory! (parent-name dest))
     (rename-file-or-directory! stage dest)))

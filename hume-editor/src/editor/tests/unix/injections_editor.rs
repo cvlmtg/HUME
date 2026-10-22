@@ -177,10 +177,12 @@ fn plum_install_grammar_no_arg_no_language_warns() {
     );
 }
 
-/// A fetched query that cannot be read back fails that grammar's install,
-/// removes the temp file, and leaves the VM usable for the next command.
-#[test]
-fn plum_install_grammar_unreadable_query_fails_cleanly() {
+/// Runs `:plum-install-grammar rust` with `git` and `curl` replaced by shims,
+/// `curl_body` being the shell script after the `-o` path is parsed into
+/// `$out`. Returns the editor, the data directory and the shim directory.
+fn install_rust_grammar_with_curl(
+    curl_body: &str,
+) -> (Editor, tempfile::TempDir, tempfile::TempDir) {
     use std::os::unix::fs::PermissionsExt;
 
     let shims = tempfile::tempdir().unwrap();
@@ -188,14 +190,17 @@ fn plum_install_grammar_unreadable_query_fails_cleanly() {
         (
             "git",
             "#!/bin/sh\nPATH=/usr/bin:/bin\n\
-             if [ \"$1\" = clone ]; then for a in \"$@\"; do last=\"$a\"; done; mkdir -p \"$last\"; fi\n",
+             if [ \"$1\" = clone ]; then for a in \"$@\"; do last=\"$a\"; done; mkdir -p \"$last\"; fi\n"
+                .to_owned(),
         ),
         (
             "curl",
-            "#!/bin/sh\nPATH=/usr/bin:/bin\n\
-             out=\"\"; prev=\"\"\n\
-             for a in \"$@\"; do [ \"$prev\" = \"-o\" ] && out=\"$a\"; prev=\"$a\"; done\n\
-             printf '\\377\\376' > \"$out\"\n",
+            format!(
+                "#!/bin/sh\nPATH=/usr/bin:/bin\n\
+                 out=\"\"; prev=\"\"\n\
+                 for a in \"$@\"; do [ \"$prev\" = \"-o\" ] && out=\"$a\"; prev=\"$a\"; done\n\
+                 {curl_body}"
+            ),
         ),
     ] {
         let path = shims.path().join(tool);
@@ -208,19 +213,32 @@ fn plum_install_grammar_unreadable_query_fails_cleanly() {
     load_plum(&mut ed, data_tmp.path());
     ed.state.dirs.search_path = Some(format!("{}:/usr/bin:/bin", shims.path().display()).into());
     type_cmd(&mut ed, ":plum-install-grammar rust");
+    (ed, data_tmp, shims)
+}
+
+/// The query-fetch temp files left in PLUM's staging directory.
+fn leftover_fetch_files(data_dir: &Path) -> Vec<String> {
+    let staging = canonical_data_dir(data_dir).join("plum-staging");
+    std::fs::read_dir(&staging)
+        .unwrap_or_else(|e| panic!("read {staging:?}: {e}"))
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|name| name.starts_with("_fetch_"))
+        .collect()
+}
+
+/// A fetched query that cannot be read back fails that grammar's install,
+/// removes the temp file, and leaves the VM usable for the next command.
+#[test]
+fn plum_install_grammar_unreadable_query_fails_cleanly() {
+    let (mut ed, data_tmp, _shims) =
+        install_rust_grammar_with_curl("printf '\\377\\376' > \"$out\"\n");
 
     let log = ed.state.message_log.format_for_display();
     assert!(
         log.contains("rust"),
         "the unreadable query must fail the install and name the grammar: {log}"
     );
-    let sources = canonical_data_dir(data_tmp.path())
-        .join("grammars")
-        .join("sources");
-    assert!(
-        !sources.join("_fetch_rust_highlights.scm").exists(),
-        "the temp file must be removed after a failed read"
-    );
+    assert_eq!(leftover_fetch_files(data_tmp.path()), Vec::<String>::new());
 
     type_cmd(&mut ed, ":plum-install-grammar nosuchlang");
     assert!(
@@ -231,6 +249,21 @@ fn plum_install_grammar_unreadable_query_fails_cleanly() {
         "a later command must still run: {:?}",
         ed.state.status_msg
     );
+}
+
+/// A download that fails after writing part of its output fails the install
+/// and removes the partial temp file.
+#[test]
+fn plum_install_grammar_failed_download_removes_its_temp_file() {
+    let (ed, data_tmp, _shims) =
+        install_rust_grammar_with_curl("printf 'partial' > \"$out\"\nexit 22\n");
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("curl"),
+        "the failed download must fail the install: {log}"
+    );
+    assert_eq!(leftover_fetch_files(data_tmp.path()), Vec::<String>::new());
 }
 
 /// `:plum-install-grammar nosuchlang`: a language with no bundled grammar

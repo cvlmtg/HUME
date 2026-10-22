@@ -124,10 +124,7 @@ fn core_stdlib_selection_commands() {
 ///
 /// Each wrong-type/wrong-value case is wrapped in `with-handler`, which
 /// checks the caught error's message via `string-contains?`/`to-string` and,
-/// if it doesn't name what's expected, raises a *new* `(error ...)`, never
-/// `(raise-error err)` on the caught value itself, which corrupts the VM's
-/// continuation stack when a native-builtin error crosses a second
-/// with-handler (see `hume-scripting/src/tests/unix.rs`).
+/// if it doesn't name what's expected, raises a new `(error ...)` saying so.
 #[test]
 fn core_stdlib_config_commands() {
     let (mut ed, mut host, _guard, _init_dir) = setup_stdlib_editor();

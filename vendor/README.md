@@ -8,6 +8,31 @@ so the workspace's clippy, fmt and doc gates do not run over upstream code.
 To drop a patch, delete its directory and its `[patch.crates-io]` line once an upstream
 release carries the fix.
 
+## steel-core 0.8.3
+
+Upstream: [mattwparas/steel](https://github.com/mattwparas/steel), `crates/steel-core` at
+commit `11a57adcf42c22733463c59b1f44ec49eb7043bc` (the published 0.8.3).
+
+**`Cargo.toml` allows `dead_code`, `deprecated` and `unused_imports`.** Cargo caps a registry
+crate's warnings but shows a path dependency's, and upstream's code raises those three.
+
+**`with-handler` (`src/scheme/stdlib.scm`) reinstates its own meta-continuation before
+running the handler.** `with-handler` wraps its body in a `reset`, which installs a
+meta-continuation in the `*meta-continuation*` thread-local and restores the previous one only
+when the body returns. A raise that escapes an inner `with-handler`, such as its handler
+re-raising the error, abandons the inner `reset` with its meta-continuation still installed.
+Upstream, the outer handler's `shift` then calls that stale one and jumps into a continuation
+that has left the stack, panicking with "Failed to find an open continuation on the stack".
+Each `with-handler` here saves the meta-continuation its `reset` installed and puts it back
+first thing in the handler.
+
+**The compiler prints nothing to stdout.** Upstream's `println!` in
+`LowerRestArguments::handle_plist_get_positional_arg_list` (`src/compiler/passes/analysis.rs`)
+fires on every compile of a lambda with an optional or keyword argument before a rest
+argument, and `CodeGenerator::visit_let` (`src/compiler/code_gen.rs`) prints each let-bound
+variable that is both captured and mutated. Both are deleted: stdout is the editor's terminal
+display.
+
 ## steel-parser 0.8.3
 
 Upstream: [mattwparas/steel](https://github.com/mattwparas/steel), `crates/steel-parser` at

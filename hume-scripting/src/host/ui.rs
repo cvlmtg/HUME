@@ -350,9 +350,7 @@ pub trait UiHost {
     /// non-empty seed `query` itself, undebounced, right after this
     /// returns, so a bad `#:source` raise on that seed leaves the session
     /// this call already opened in place (Esc still closes it) rather than
-    /// tearing it down. The wrapper doesn't catch-and-reraise
-    /// around it, since a call sourced from a native builtin re-raised
-    /// through a nested Steel handler corrupts the VM's continuation stack.
+    /// tearing it down.
     fn open_live_picker(
         &mut self,
         pane: PaneHandle,

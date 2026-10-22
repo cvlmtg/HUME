@@ -41,10 +41,12 @@
   (%define-typed-command! name doc proc inline-output complete))
 
 (define (%apply-command! proc name args)
-  (let* ((depth (%arm-inline-output! name))
-         (r (apply proc args)))
-    (when depth (%restore-inline-output! depth))
-    r))
+  (let ((depth (%arm-inline-output! name)))
+    (if depth
+        (dynamic-wind (lambda () #t)
+                      (lambda () (apply proc args))
+                      (lambda () (%restore-inline-output! depth)))
+        (apply proc args))))
 
 (define (%call-held-handler handler hold args)
   (apply handler (append args (list (lambda () (%held-done hold))))))
@@ -297,15 +299,12 @@
 
 (define (read-data-file path)
   (let* ((text (call-with-input-file path read-port-to-string))
-         (parsed (with-handler (lambda (err) (list 'unparsable (to-string err)))
-                               (list 'parsed (hm.read! text)))))
-    (when (equal? (car parsed) 'unparsable)
-      (error (string-append path ": " (cadr parsed))))
-    (let ((forms (cadr parsed)))
-      (unless (= (length forms) 1)
-        (error (string-append path ": expected one top-level form, found "
-                              (number->string (length forms)))))
-      (car forms))))
+         (forms (with-handler (lambda (err) (error (string-append path ": " (to-string err))))
+                              (hm.read! text))))
+    (unless (= (length forms) 1)
+      (error (string-append path ": expected one top-level form, found "
+                            (number->string (length forms)))))
+    (car forms)))
 
 (define (%language-data-names)
   (let ((dir (%language-data-dir)))

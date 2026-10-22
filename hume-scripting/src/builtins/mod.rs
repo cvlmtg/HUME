@@ -120,11 +120,6 @@ macro_rules! builtins {
 
 /// Scheme bootstrap evaluated once during Steel engine init: keyword wrappers
 /// over the Rust builtins, plugin activation, and in-VM command dispatch.
-///
-/// Hazard for every `with-handler` here: re-raising a caught native error from
-/// a handler nested inside an outer `with-handler` corrupts Steel's VM stack
-/// (`known_limitation_reraise_via_raise_error_inside_outer_tolerant_handler_corrupts_vm_stack`
-/// in `tests/unix.rs`).
 //
 // A plugin is one or more entries: files in its directory, each with its own
 // triggers, state and rollback scope. `declare-plugin! #:entry` names the file
@@ -139,7 +134,7 @@ macro_rules! builtins {
 // guard and idempotency), eval-string runs it in the live VM, and
 // %finish-lazy-activation! records the outcome. The handler hands the error to
 // %finish-lazy-activation! and returns normally, so a failing plugin never
-// aborts the enclosing eval and nothing is re-raised. The trailing
+// aborts the enclosing eval. The trailing
 // (hume/yield!) then re-checks the interrupt flag with a fresh raise: an
 // exhausted step budget must abort the whole eval, not be recorded as every
 // later plugin failing to load.
@@ -164,15 +159,15 @@ macro_rules! builtins {
 // answer (%command-callable?) covers commands, including a lazy plugin's
 // not-yet-activated ones. The fallback resolves `name` as a global in the VM,
 // which covers builtins and prelude forms; it lives in Scheme because a
-// builtin has no access to the Engine it runs in. The handler returns #f and
-// never re-raises, so the hazard above does not apply. A macro name (`call!`)
-// fails to evaluate as a value and reads as absent.
+// builtin has no access to the Engine it runs in. The handler returns #f. A
+// macro name (`call!`) fails to evaluate as a value and reads as absent.
 //
 // %apply-command!: arms the #:inline-output alt-screen bracket for call!, as
 // Editor::call_steel_command_body does for keypress and `:`. The restore
 // truncates to the armed depth instead of popping, so an unpaired descendant
-// frame is never taken for this call's own. No with-handler (hazard above): a
-// raising body skips the restore; run_steel_session truncates to zero at end.
+// frame is never taken for this call's own. dynamic-wind runs the restore
+// when the body raises too, so a caller that catches the raise goes on with
+// its own bracket state.
 //
 // %call-held-handler: starts a held event's handler that takes `done`, with
 // the event's args followed by a thunk that releases hold `hold`.
@@ -200,8 +195,8 @@ macro_rules! builtins {
 // until the new source's first batch replaces them (no blank frame per
 // keystroke); `picker-command-source` clears them when its argv function
 // returns #f. Only the timer-dispatched requery gets the clear-and-re-raise
-// handler, since it has no outer handler; the seed call for a non-empty
-// #:query runs on the caller's stack and must stay unwrapped.
+// handler; the seed call for a non-empty #:query runs on the caller's stack,
+// so its raise reaches the caller directly.
 //
 // A live session mints a new token for every query and passes it to
 // #:source. picker-push!, picker-replace! and picker-source-spawn! accept
@@ -223,8 +218,7 @@ macro_rules! builtins {
 // top-level form. It parses with hm.read!, never `read`: steel-core's `read`
 // keeps one buffer across calls, returns eof instead of raising on bad
 // syntax, and leaves the bad text for the next call. The parse error is
-// caught into a marker and a fresh error naming the file is raised after the
-// handler returns, so nothing is re-raised (hazard above).
+// raised again with the file's path in front.
 //
 // data-file: a name resolves only when `<name>.scm` is spelled exactly like an
 // entry in the directory's listing. That keeps a lookup inside the directory
@@ -246,8 +240,7 @@ const BOOTSTRAP: &str = include_str!("bootstrap.scm");
 // Since the prelude is prepended to every `(require "path.scm")` unit, this
 // closes the gap where a required module's (every real plugin's) calls would
 // otherwise resolve straight to steel-core's originals. See io.rs's module
-// doc for the print gate's root-cause writeup and the rest-only
-// parameter-list requirement every shim below follows.
+// doc for the print gate's root-cause writeup.
 //
 // `which` searches the editor's search path (`%which`) instead of the process
 // `PATH`, so the `PATH` a session's children get is also the one its

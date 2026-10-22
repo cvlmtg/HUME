@@ -859,8 +859,8 @@ fn live_picker_debounced_requery_raise_clears_stale_rows_and_unsticks_pending() 
 #[test]
 fn live_picker_debounced_requery_native_raise_clears_rows_and_reaches_the_user() {
     // The raise comes from a native builtin (`picker-source-spawn!` on a
-    // missing binary), the kind a Steel handler must not re-raise through an
-    // outer handler. The timer-dispatched requery has none.
+    // missing binary). The timer-dispatched requery has no outer handler, so
+    // its own handler's re-raise reaches the user.
     let (ed, _tmp) = requeried_over_a_stale_row(
         r#"(picker-command-source (lambda (q) (list "definitely-not-a-real-binary-xyz")))"#,
     );

@@ -166,10 +166,7 @@ the same server directory at once.
   is atomic.
 - A lock older than an hour is replaced with a warning. One whose mtime is in the future
   (clock skew) counts as live.
-- The thunk's error is never re-raised through an outer handler: re-raising a native
-  builtin error through a nested handler corrupts the Steel VM's continuation stack (see
-  the [core plugins index](../../README.md#steel-pitfalls-worth-knowing-before-you-hit-them)).
-  Every failure path ends in a plain log line. The function answers `#t` on success and
+- The thunk's error is not re-raised: every failure path ends in a plain log line. The function answers `#t` on success and
   `#f` on any failure, so a lock that could not be taken and a thunk that raised look the
   same to the caller.
 

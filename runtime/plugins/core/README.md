@@ -159,11 +159,6 @@ to the user, not by how verbose the plugin author wants to be:
 
 ## Steel pitfalls worth knowing before you hit them
 
-- **Never re-raise a native-builtin error through a nested `with-handler`.** Catching an
-  error from a native-backed call (a subprocess, a file operation) and re-raising it
-  through an outer `with-handler` corrupts Steel 0.8.3's VM continuation stack. If you
-  need to guarantee cleanup around a call that can raise, guard only the cleanup step, and
-  let the original raise propagate uncaught.
 - **JSON `null` decodes to Steel `void`, not `#f`.** Check `(void? res)` for "no results"
   from an LSP response; a bare `(not res)` check will not catch it.
 - **Lists are linked, not arrays.** Walk with `car`/`cdr`, never `list-ref` in a loop:

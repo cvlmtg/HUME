@@ -205,14 +205,7 @@ fn nested_call_bang_restores_the_outer_commands_state() {
 // ── Error unwind ─────────────────────────────────────────────────────────────
 
 /// A body that raises between `%arm-inline-output!` and
-/// `%restore-inline-output!` leaves its frame untruncated. The backstop is
-/// `run_steel_session`'s own unconditional truncate-to-zero at the tail of
-/// the session, not a Steel-side unwind (Steel has no unwind-safe hook to
-/// pair with here: nesting `with-handler` + a re-raised native error is
-/// the pinned VM-stack-corruption hazard).
-///
-/// The `ctx.host.output()...truncate_inline_output(0)` call in
-/// `run_steel_session` (`eval/session.rs`) is what closes the gate here.
+/// `%restore-inline-output!` leaves no frame open once the dispatch ends.
 #[test]
 fn raise_inside_call_bang_to_inline_output_command_does_not_leak_saved_state() {
     let ed = dispatch_backslash(
@@ -225,6 +218,28 @@ fn raise_inside_call_bang_to_inline_output_command_does_not_leak_saved_state() {
     assert!(
         !ed.state.inline_output.is_open(),
         "a raise between arm and restore must not leave a stale frame"
+    );
+}
+
+/// A plain command that catches the raise of a `call!` to an
+/// `#:inline-output` command goes on with the gate closed: the raising
+/// call's bracket ends with it.
+#[test]
+fn caught_raise_from_call_bang_to_inline_output_command_closes_its_gate() {
+    let ed = dispatch_backslash(
+        r#"(define-command! "raiser" "" (lambda () (error "boom")) #:inline-output #t)
+           (define-command! "plain-catcher" ""
+             (lambda ()
+               (with-handler (lambda (err) #f) (call! "raiser"))
+               (log! 'warn (if (%stdout-gate!) "after-catch-open" "after-catch-closed"))))"#,
+        "plain-catcher",
+        false,
+    );
+
+    assert!(
+        logged(&ed, "after-catch-closed"),
+        "messages: {:?}",
+        ed.state.message_log.entries().collect::<Vec<_>>()
     );
 }
 

@@ -184,8 +184,7 @@ pub(crate) fn define_typed_command(
 ///   and returns `#f`.
 ///
 /// A miss logs at `Error` (a plugin bug, like an unknown `:` command) but does
-/// not raise: raising from a native builtin risks the `with-handler` re-raise
-/// VM hazard.
+/// not raise.
 pub(crate) fn call_command_primitive(
     ctx: &mut SteelCtx,
     name: String,

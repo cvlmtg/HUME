@@ -400,3 +400,26 @@ fn plum_install_whose_build_fails_keeps_the_old_clone() {
         "a failed build must delete its staging clone"
     );
 }
+
+/// A failed install reports the failure's own error, not one wrapping it,
+/// and points at where it was raised.
+#[test]
+fn plum_install_whose_build_fails_reports_the_builds_own_error() {
+    let origin = plugin_origin();
+    let data_tmp = tempfile::tempdir().unwrap();
+
+    let errors = install_errors(
+        origin.path(),
+        data_tmp.path(),
+        r#"#f #:build (lambda (dir) (error "build failed"))"#,
+    );
+
+    let [report] = errors.as_slice() else {
+        panic!("expected one error: {errors:#?}");
+    };
+    assert!(report.contains("build failed"), "{report}");
+    assert!(
+        !report.contains("helpers.scm") && !report.contains("Error: Generic:"),
+        "{report}"
+    );
+}

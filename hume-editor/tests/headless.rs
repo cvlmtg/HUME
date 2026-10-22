@@ -103,6 +103,7 @@ fn a_crash_dump_next_to_the_file_is_neither_offered_nor_touched() {
 
 struct HeadlessRun {
     exit_code: Option<i32>,
+    stdout: String,
     stderr: String,
     /// `None` when the output file was never written.
     output: Option<String>,
@@ -143,6 +144,7 @@ fn run_headless(config: &str, keys: &str, position: &str) -> HeadlessRun {
 
     HeadlessRun {
         exit_code: result.status.code(),
+        stdout: String::from_utf8(result.stdout).expect("stdout is UTF-8"),
         stderr: String::from_utf8(result.stderr).expect("stderr is UTF-8"),
         output: std::fs::read_to_string(&output).ok(),
     }
@@ -179,6 +181,23 @@ fn an_error_during_the_replay_fails_the_run_and_still_writes_the_output() {
         .unwrap_or_else(|| panic!("no replay error on stderr:\n{}", run.stderr));
     assert!(report.contains("raised by the test"), "{report}");
     assert_eq!(run.output.as_deref(), Some("world\n"));
+}
+
+/// Compiling a config writes nothing to stdout, which a session's terminal
+/// display owns: here a lambda with an optional argument before a rest
+/// argument, and a captured variable a closure mutates.
+#[test]
+fn compiling_the_config_writes_nothing_to_stdout() {
+    let config = r#"
+(define (with-optional-and-rest [x 1] . rest) x)
+(define (counter)
+  (let ([n 0])
+    (lambda () (set! n (+ n 1)) n)))
+"#;
+    let run = run_headless(config, "xd", "");
+
+    assert_eq!(run.exit_code, Some(0), "stderr:\n{}", run.stderr);
+    assert_eq!(run.stdout, "");
 }
 
 #[test]

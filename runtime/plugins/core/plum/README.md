@@ -119,10 +119,7 @@ origin made a promisor remote with `partialclonefilter blob:none` (a blobless cl
 which downloads only the files of the commits it checks out), `plum/git-sync!`, then
 the caller's `#:build` on the staging clone, if any. Only then does it delete the old
 clone, if any, and rename the new one into place. A failed install deletes its staging
-clone and leaves the old clone untouched. It catches the failure in a handler that
-returns the message, then raises a fresh error with it: re-raising the caught error from
-inside the handler corrupts Steel's VM stack when a caller has a handler of its own, as
-`plum/batch-run!` and `:plum-install-grammar` do.
+clone and leaves the old clone untouched, then raises the failure's own error.
 `:plum-install-plugins` installs only missing plugins, so a changed pin reaches an
 installed plugin through `:plum-update-plugins`.
 `load-plugin!` raises for a ref `git check-ref-format` would refuse, for one starting
@@ -146,8 +143,9 @@ read once when PLUM loads), so HUME uses Helix's query files without vendoring t
 ### Query fetching
 
 `plum/fetch-raw-query` downloads one query file with `curl` into a temp file under
-`<data>/plum-staging/`, reads it, and deletes the temp file. A failed read still deletes
-the temp file and then raises a fresh error; the native read error is not re-raised.
+`<data>/plum-staging/`, reads it, and deletes the temp file. A failed download or read
+deletes the temp file too, and raises an error naming the query file and the grammar
+followed by the failure's own message.
 
 A query file can declare `; inherits: dep,dep,...` instead of writing out its own
 patterns. The directive names other query sources whose patterns are spliced in; the

@@ -1941,8 +1941,6 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 [[package]]
 name = "steel-core"
 version = "0.8.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1341b81ac9c27acc592a7f76eebeb4a4420d1099d7419f1b1ee9eb7fcca13a15"
 dependencies = [
  "arc-swap",
  "bigdecimal",

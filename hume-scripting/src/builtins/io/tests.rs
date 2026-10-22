@@ -102,6 +102,46 @@ fn required_module_displayln_call_reaches_the_gate() {
     );
 }
 
+/// Explicit-port calls from inside a required module write to that port.
+#[test]
+fn required_module_explicit_port_calls_write_to_the_port() {
+    use crate::ScriptingHost;
+    use crate::null_host::CommandStoreHost;
+
+    let tmp = tempfile::tempdir().unwrap();
+    let plugin_path = tmp.path().join("probe_port.scm");
+    std::fs::write(
+        &plugin_path,
+        r#"
+                (define-command! "probe-port"
+                  "doc"
+                  (lambda ()
+                    (log! 'info
+                      (call-with-output-string
+                        (lambda (port)
+                          (display "a" port)
+                          (write-string "b" port)
+                          (write "c" port)
+                          (newline port))))))
+            "#,
+    )
+    .unwrap();
+
+    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut store = CommandStoreHost::default();
+    let escaped_path =
+        crate::steel_path_literal(&plugin_path).expect("plugin path must not contain '\"'");
+    host.eval_source(&format!(r#"(require {escaped_path})"#), &mut store)
+        .expect("requiring the plugin file must not error");
+
+    host.call_steel_cmd_by_name("probe-port", vec![], &mut store)
+        .expect("dispatching the required-module command must not error");
+
+    let messages = host.take_pending_messages();
+    assert_eq!(messages.len(), 1, "{messages:?}");
+    assert_eq!(messages[0].1, "ab\"c\"\n");
+}
+
 /// The other four gated names (`display`, `newline`, `println`; `print`
 /// is exercised transitively via `println`) reach the gate from inside a
 /// required module too, not just `displayln`. Three implicit-port calls

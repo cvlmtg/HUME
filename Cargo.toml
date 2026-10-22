@@ -57,4 +57,5 @@ num-traits = "0.2"
 tree-sitter = "0.27"
 
 [patch.crates-io]
+steel-core = { path = "vendor/steel-core" }
 steel-parser = { path = "vendor/steel-parser" }

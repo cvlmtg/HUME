@@ -44,23 +44,13 @@ fn child_stderr_must_be_captured_before_wait() {
         .expect("spawn-process shape probe failed");
 }
 
-/// **Known steel-core 0.8.3 limitation, not a HUME bug**: re-raising a
-/// native-builtin error (via `raise-error`) from an inner `with-handler`,
-/// caught by an *outer* `with-handler`, corrupts the VM's continuation
-/// stack and panics "Failed to find an open continuation on the stack".
-/// Also reachable via `grammars.scm`'s `plum/resolve-query` (see
-/// `plum/fetch-raw-query`'s doc comment for the fix: never wrap the
-/// raising call in an inner catch-and-reraise). `#[should_panic]`
-/// regression pin. If a steel-core upgrade fixes this, revisit the
-/// `grammars.scm` workaround.
+/// A native builtin's error re-raised from an inner `with-handler` reaches
+/// the outer one, the shape of a cleanup-and-reraise wrapper called from a
+/// tolerant caller.
 #[test]
-#[should_panic(expected = "Failed to find an open continuation on the stack")]
-fn known_limitation_reraise_via_raise_error_inside_outer_tolerant_handler_corrupts_vm_stack() {
+fn native_error_reraised_from_a_handler_reaches_the_enclosing_handler() {
     let mut host = ScriptingHost::new(&Dirs::none());
     let mut null_host = NullHost;
-    // Exact shape of plum/fetch-raw-query (inner: catch, cleanup, re-raise
-    // via raise-error) nested inside plum/resolve-query's tolerant outer
-    // with-handler.
     let src = r#"
         (define (inner-fetch)
           (with-handler
@@ -68,12 +58,15 @@ fn known_limitation_reraise_via_raise_error_inside_outer_tolerant_handler_corrup
             (run-inline-output! "false" '())))
 
         (define (tolerant-outer)
-          (with-handler (lambda (err) #f) (inner-fetch)))
+          (with-handler (lambda (err) (error-object-message err)) (inner-fetch)))
 
-        (tolerant-outer)
+        (define message (tolerant-outer))
+        (if (string-contains? message "run-inline-output!: false failed")
+            (begin)
+            (error (string-append "outer handler saw: " message)))
     "#;
     host.eval_source(src, &mut null_host)
-        .expect("raise-error re-raise inside outer tolerant handler failed");
+        .expect("the outer handler must receive the re-raised native error");
 }
 
 #[test]
@@ -98,13 +91,11 @@ fn uncaught_native_error_propagates_one_hop_to_outer_tolerant_handler() {
 
 /// Characterizes the pattern `%activate-plugin-inline!` (`bootstrap.scm`)
 /// relies on for aborting on an interrupt: a *fresh* raise placed
-/// sequentially *after* a `with-handler` form returns (not a `raise-error`
-/// re-raise of the value the handler caught, which is the corrupting shape
-/// pinned above) is an ordinary uncaught raise from that point onward, and
-/// propagates one hop per nesting level even when a caught-and-returned
-/// handler sits at every level (a plugin activating a plugin activating a
-/// plugin, each checking the interrupt flag once its own body settles).
-/// No `#[should_panic]`: this shape must stay safe, not merely tolerated.
+/// sequentially *after* a `with-handler` form returns is an ordinary
+/// uncaught raise from that point onward, and propagates one hop per
+/// nesting level even when a caught-and-returned handler sits at every
+/// level (a plugin activating a plugin activating a plugin, each checking
+/// the interrupt flag once its own body settles).
 #[test]
 fn fresh_raise_after_handler_return_propagates_cleanly_through_nested_levels() {
     let mut host = ScriptingHost::new(&Dirs::none());
@@ -134,25 +125,17 @@ fn fresh_raise_after_handler_return_propagates_cleanly_through_nested_levels() {
     );
 }
 
-/// **Second known steel-core 0.8.3 limitation**: `dynamic-wind`'s
-/// `after!` thunk is not guaranteed to run when its body raises through an
-/// outer `with-handler`. Reproduces the panic-pinning test's failure,
-/// wrapped in `dynamic-wind` instead of catch-and-reraise. This would
-/// otherwise be a safe way to guarantee `declare-plugin!`'s manifest
-/// cleanup (`%finish-manifest-load!`) runs without an inner handler,
-/// but `cleanup-ran` never fires, which confirms cleanup-on-unwind stays in
-/// Rust (explicit push/pop), never Steel `dynamic-wind`. Pinned like the
-/// test above: a steel-core fix flips `cleanup-ran` to `#t` and this
-/// starts failing; revisit then.
+/// `dynamic-wind`'s after thunk runs when its body raises a native error
+/// that an outer `with-handler` catches.
 #[test]
-fn known_limitation_dynamic_wind_cleanup_does_not_run_across_an_outer_handlers_unwind() {
+fn dynamic_wind_cleanup_runs_when_an_outer_handler_catches_the_bodys_error() {
     let mut host = ScriptingHost::new(&Dirs::none());
     let mut null_host = NullHost;
     let src = r#"
         (define cleanup-ran #f)
         (define (inner-fetch)
           (dynamic-wind
-            (lambda () (void))
+            (lambda () #t)
             (lambda () (run-inline-output! "false" '()))
             (lambda () (set! cleanup-ran #t))))
 
@@ -162,14 +145,6 @@ fn known_limitation_dynamic_wind_cleanup_does_not_run_across_an_outer_handlers_u
         (tolerant-outer)
         (if cleanup-ran (begin) (error "cleanup did not run"))
     "#;
-    let result = host.eval_source(src, &mut null_host);
-    let err = result.expect_err(
-        "dynamic-wind's cleanup thunk unexpectedly ran across the outer handler's unwind; \
-         if steel-core fixed this, declare-plugin!'s manifest branch could use dynamic-wind \
-         instead of catch-and-reraise to avoid the panic pinned above",
-    );
-    assert!(
-        err.contains("cleanup did not run"),
-        "expected the cleanup-did-not-run assertion to fire, got a different error: {err}"
-    );
+    host.eval_source(src, &mut null_host)
+        .expect("dynamic-wind's after thunk must run before the outer handler returns");
 }

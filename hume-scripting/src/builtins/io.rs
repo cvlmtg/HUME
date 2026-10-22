@@ -7,14 +7,9 @@
 //! plugins. HUME instead appends gated redefinitions (`PRELUDE_SHIMS` in
 //! `builtins/mod.rs`) to the prelude string via `Engine::set_prelude_string`.
 //!
-//! Two steel-core limitations shape the shims:
-//! - One unit can't both capture a name's value and redefine it, so
-//!   `register_all` runs BOOTSTRAP (captures originals) and `PRELUDE_SHIMS`
-//!   as two separate calls (still rejected on 0.8.3).
-//! - A required module can't call a shadowed prelude name with 2+ positional
-//!   args when the shim mixes fixed and rest parameters (seen on 0.8.2), so
-//!   every shim is rest-only. An explicit-port call from inside a required
-//!   module may still hit this; no HUME code does that.
+//! One unit can't both capture a name's value and redefine it, a steel-core
+//! scoping rule, so `register_all` runs BOOTSTRAP (captures originals) and
+//! `PRELUDE_SHIMS` as two separate calls.
 //!
 //! Explicit-port calls are gated too, since the port can be the real stdout.
 //! `%port-safe?` compares the supplied port against the captured stdout, so

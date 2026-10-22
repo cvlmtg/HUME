@@ -31,12 +31,15 @@
     (error (string-append "plum/fetch-raw-query: unsafe grammar/dependency name \"" name "\"")))
   (let ((tmp (path-join (plum/staging-dir) (string-append "_fetch_" name "_" filename))))
     (create-directory! (plum/staging-dir))
-    (run-inline-output! "curl" (list "-fsSL" "-o" tmp "--" (plum/helix-query-url name filename)))
-    (let ((content (with-handler (lambda (err) #f) (plum/read-file tmp))))
-      (call! "stdlib/delete-file!" tmp)
-      (unless content
-        (error (string-append "plum/fetch-raw-query: cannot read fetched " filename " for " name)))
-      content)))
+    (with-handler
+      (lambda (err)
+        (call! "stdlib/delete-file!" tmp)
+        (error (string-append "plum/fetch-raw-query: cannot fetch " filename " for " name ": "
+                              (error-object-message err))))
+      (run-inline-output! "curl" (list "-fsSL" "-o" tmp "--" (plum/helix-query-url name filename)))
+      (let ((content (plum/read-file tmp)))
+        (call! "stdlib/delete-file!" tmp)
+        content))))
 
 ;;; Fully resolves any `; inherits:` chain into one string — see README.md.
 (define (plum/resolve-query name filename tolerant?)

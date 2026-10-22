@@ -1,6 +1,7 @@
 use crate::ScriptingHost;
 use crate::null_host::NullHost;
 use hume_platform::dirs::Dirs;
+use steel::rvals::SteelVal;
 
 #[test]
 fn process_and_fs_globals_are_available_unrequired() {
@@ -158,6 +159,34 @@ fn steel_path_literal_rejects_a_path_containing_a_quote() {
     assert!(
         crate::steel_path_literal(path).is_none(),
         "a quote in the path can't be embedded in a Steel string literal"
+    );
+}
+
+/// A handler that raises again hands the same error to the enclosing
+/// `with-handler`: its message matches the one a single handler sees.
+#[test]
+fn error_raised_from_a_handler_reaches_the_enclosing_handler() {
+    let mut host = ScriptingHost::new(&Dirs::none());
+    let value = host.eval_source_for_value(
+        r#"
+        (list
+          (with-handler (lambda (err) (error-object-message err)) (error "inner"))
+          (with-handler
+            (lambda (err) (error-object-message err))
+            (with-handler
+              (lambda (err) (raise-error err))
+              (error "inner"))))
+        "#,
+        &mut NullHost,
+    );
+    let Ok(SteelVal::ListV(messages)) = &value else {
+        panic!("got {value:?}");
+    };
+    let messages: Vec<_> = messages.iter().collect();
+    assert!(
+        matches!(messages.as_slice(), [SteelVal::StringV(once), SteelVal::StringV(reraised)]
+            if once.as_str().contains("inner") && once == reraised),
+        "got {messages:?}"
     );
 }
 
