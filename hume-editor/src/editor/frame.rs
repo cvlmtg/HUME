@@ -1,9 +1,17 @@
-//! Per-frame preparation: pane-mirror sync, scroll, and render plumbing.
+//! Producing a frame: preparing it (pane-mirror sync, scroll, render
+//! plumbing), drawing it to the terminal, and pacing how often one is drawn.
 //!
 //! `resize_terminal` (geometry) → `Editor::settle` (advance state) →
 //! `prepare_frame` (render prep) is the sequence every frame producer
 //! (`Editor::run`'s loop, `render_to_buf`) calls in that order; everything
 //! else here is a step `prepare_frame` drives or a helper those steps share.
+
+use std::io;
+use std::time::{Duration, Instant};
+
+use hume_grid::Position;
+use hume_platform::screen::Screen;
+use hume_platform::terminal::SharedTerm;
 
 use hume_grid::{Grid, Rect};
 
@@ -43,6 +51,213 @@ pub(in crate::editor::frame) fn write_pane_mirror(
                 view.primary().index(),
             ))
         }
+    }
+}
+
+/// The shortest time between two frames not drawn for input, so wakes in
+/// quick succession (processes finishing, a picker source streaming lines)
+/// draw one frame, not one each.
+pub(in crate::editor) const FRAME_GAP: Duration = Duration::from_millis(16);
+
+/// When a loop may draw: at once after input, otherwise no sooner than
+/// [`FRAME_GAP`] after the last frame.
+#[derive(Debug, Default)]
+pub(in crate::editor) struct FramePacer {
+    /// The earliest a frame not drawn for input may draw, `None` for at once.
+    next_due: Option<Instant>,
+    /// Input arrived since the last frame.
+    input: bool,
+}
+
+impl FramePacer {
+    /// A pacer whose first frame not drawn for input is due at `at`.
+    pub(in crate::editor) fn not_before(at: Instant) -> Self {
+        Self {
+            next_due: Some(at),
+            input: false,
+        }
+    }
+
+    /// Input arrived: the next frame is due at once.
+    pub(in crate::editor) fn input(&mut self) {
+        self.input = true;
+    }
+
+    /// How long until the next frame is due, `None` when it is due at `now`.
+    pub(in crate::editor) fn wait(&self, now: Instant) -> Option<Duration> {
+        if self.input {
+            return None;
+        }
+        let due = self.next_due?;
+        (due > now).then(|| due - now)
+    }
+
+    /// A frame was drawn at `now`.
+    pub(in crate::editor) fn drew(&mut self, now: Instant) {
+        self.next_due = Some(now + FRAME_GAP);
+        self.input = false;
+    }
+}
+
+/// What `Editor::run`'s loop draws frames with, kept from one frame to the
+/// next.
+pub(in crate::editor) struct FrameTarget<'a> {
+    term: &'a SharedTerm,
+    screen: &'a mut Screen,
+    /// Outside `Editor` so it can be borrowed mutably alongside the `&mut
+    /// self` that `prepare_frame`/`render_into` each take.
+    ctx: RenderContext,
+    /// Whether the terminal cursor was last set black, `None` before the
+    /// first frame.
+    cursor_black: Option<bool>,
+}
+
+impl<'a> FrameTarget<'a> {
+    pub(in crate::editor) fn new(term: &'a SharedTerm, screen: &'a mut Screen) -> Self {
+        Self {
+            term,
+            screen,
+            ctx: RenderContext::new(),
+            cursor_black: None,
+        }
+    }
+
+    pub(in crate::editor) fn screen(&mut self) -> &mut Screen {
+        self.screen
+    }
+}
+
+impl Editor {
+    /// Draw one frame into `target`: prepare it, render it, then set the
+    /// terminal cursor's shape and colour. Every caller has settled first,
+    /// or has run nothing a settle would drain since it last did.
+    pub(in crate::editor) fn draw_frame(&mut self, target: &mut FrameTarget<'_>) -> io::Result<()> {
+        let FrameTarget {
+            term,
+            screen,
+            ctx,
+            cursor_black,
+        } = target;
+        let frame_layout = self.prepare_frame(ctx);
+
+        // Compute terminal cursor position before the draw closure to avoid
+        // split-borrow conflicts: pane borrows and rope borrows must end
+        // before `&mut self.view` is captured by the closure.
+        let cursor_screen = if let Some(mb) = self.state.minibuf() {
+            // Minibuf active (Command / Search / Select): place the terminal
+            // cursor in the statusline at the minibuf edit position. Always a
+            // bar: HUME's prompt modes have no cursor-shape option of their
+            // own, unlike the document's own Insert-mode cursor below.
+            let statusline_row = frame_layout.statusline_area().y;
+            Some(Position::new(mb.statusline_cursor_x(), statusline_row))
+        } else {
+            // Reads `cursor_shape()` directly rather than through
+            // `resolve_pane_settings`: the focused pane's own
+            // `cursor_is_block` is defined as this same comparison
+            // (`frame.rs`), and resolving full pane settings
+            // (a `FormatKey` build included) just to throw away
+            // everything but this one bool would repeat, for the
+            // focused pane specifically, work `render_frame` already
+            // does for every pane this same frame.
+            if self.state.cursor_shape() == crate::editor::settings::CursorShape::Block {
+                None
+            } else {
+                // Non-block shape (only Insert can be, via
+                // `insert-cursor-shape`): place the terminal cursor at the
+                // document head, where `prepare_frame`'s scroll step already
+                // resolved it. The display-line map that decided *where to
+                // scroll* had to answer this question anyway, so re-deriving
+                // it here would walk the same display lines a second time.
+                ctx.cursor_content_pos.map(|(content_x, row)| {
+                    // The focused pane's origin in the frame's layout, so the
+                    // cursor lands inside the pane, not at the origin.
+                    let layout = self.view.focused_layout();
+                    let pane_rect = frame_layout.focused_rect(layout);
+                    let gutter_w = self
+                        .state
+                        .pane_geometry(
+                            &self.view,
+                            self.view.focused_pane(),
+                            frame_layout.focused_size(layout),
+                        )
+                        .gutter_width;
+                    let (x, y) =
+                        super::mouse::content_pos_to_screen(content_x, row, gutter_w, pane_rect);
+                    Position::new(x, y)
+                })
+            }
+        };
+
+        // Open the synchronized-output envelope so the terminal defers
+        // display until after every byte of this frame has been written.
+        // Terminals that don't support DEC 2026 ignore the
+        // sequence, hence `let _ =` rather than `?`.
+        let _ = hume_platform::terminal::begin_synchronized_update(term);
+        let area = self.view.terminal_area();
+        let grid = screen.frame(area.width, area.height);
+        self.render_into(grid, ctx, frame_layout);
+        screen.present(cursor_screen)?;
+
+        // Emitted *after* the frame so it's the last escape sequence the
+        // terminal sees before we block: the show-cursor sequence closing
+        // a frame can otherwise reset the shape on some terminals.
+        //
+        // Minibuf active forces a bar unconditionally, same as the position
+        // branch above: HUME's prompt modes have no shape option of their
+        // own. Otherwise the live mode's resolved shape
+        // (`EditorState::cursor_shape`) is the single source both this and
+        // `resolve_pane_settings`' `cursor_is_block` read, so the real
+        // terminal cursor and the grid's painted heads can never disagree
+        // about which shape is in effect.
+        //
+        // Re-asserted every frame rather than only on a change, unlike
+        // the cursor *colour* below, which is gated on one. That's the
+        // point of emitting it here: the show-cursor sequence closing a
+        // frame resets the shape on some terminals, so a shape sent once
+        // when the mode changed would be undone by the next
+        // frame. One SGR-sized write per frame is not worth tracking.
+        //
+        // The write is best-effort: a terminal that doesn't understand
+        // DECSCUSR ignores it, and a genuine I/O failure surfaces from the
+        // frame's one flush below.
+        let shape = if self.state.minibuf().is_some() {
+            crate::editor::settings::CursorShape::Bar
+        } else {
+            self.state.cursor_shape()
+        };
+        let cursor_style = match shape {
+            crate::editor::settings::CursorShape::Block => {
+                hume_platform::terminal::CursorStyle::SteadyBlock
+            }
+            crate::editor::settings::CursorShape::Bar => {
+                hume_platform::terminal::CursorStyle::SteadyBar
+            }
+            crate::editor::settings::CursorShape::Underline => {
+                hume_platform::terminal::CursorStyle::SteadyUnderline
+            }
+        };
+        let _ = hume_platform::terminal::set_cursor_shape(term, cursor_style);
+        // A minibuffer puts the cursor on the statusline's background; black
+        // keeps it visible there. Everywhere else the default colour returns.
+        let black = self.state.minibuf().is_some();
+        if *cursor_black != Some(black) {
+            let _ = hume_platform::terminal::set_cursor_color(term, black);
+            *cursor_black = Some(black);
+        }
+        // Close the synchronized-output envelope: the terminal now atomically
+        // paints the complete frame: clear + cells + cursor shape in one shot.
+        // This is the frame's only flush, so its error is the frame's.
+        hume_platform::terminal::end_synchronized_update(term)
+    }
+
+    /// [`Self::draw_frame`] after resizing to the screen's current size.
+    pub(in crate::editor) fn draw_resized_frame(
+        &mut self,
+        target: &mut FrameTarget<'_>,
+    ) -> io::Result<()> {
+        let (width, height) = target.screen.size()?;
+        self.resize_terminal(width, height);
+        self.draw_frame(target)
     }
 }
 

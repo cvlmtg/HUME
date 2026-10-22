@@ -11,7 +11,7 @@ use std::num::NonZeroUsize;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-use crate::editor::lifecycle::FRAME_GAP;
+use crate::editor::frame::FRAME_GAP;
 use crate::editor::pipe_run::{
     Detached, PipeConsole, PipeEnd, PipeKind, PipeProgress, PipeRuns, RunId, WaitEvent,
 };

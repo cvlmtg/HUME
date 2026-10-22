@@ -79,7 +79,7 @@ pub(crate) fn test_cwd() -> PathBuf {
 fn open_headless(path: Option<PathBuf>) -> Editor {
     Editor::open(
         path,
-        crate::editor::lifecycle::HEADLESS_TERMINAL,
+        crate::editor::run::HEADLESS_TERMINAL,
         no_op_wake(),
         Dirs::none(),
         test_cwd(),
@@ -963,9 +963,8 @@ impl Editor {
     /// Use the builder methods below to override specific fields.
     pub(crate) fn for_testing(doc: Buffer) -> Self {
         let theme = crate::editor::theme::fallback_theme();
-        let (mut engine_view, focus_key) =
-            EngineView::new(theme, super::lifecycle::HEADLESS_TERMINAL);
-        let (views, tabline_view) = super::lifecycle::register_chrome(&mut engine_view);
+        let (mut engine_view, focus_key) = EngineView::new(theme, super::run::HEADLESS_TERMINAL);
+        let (views, tabline_view) = super::run::register_chrome(&mut engine_view);
         let buffer_id = engine_view.buffers.insert(());
         let settings = EditorSettings::default();
         let history_capacity = settings.prompt_history_levels;

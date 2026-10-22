@@ -52,7 +52,7 @@ fn boot_with_file(file: &str, dirs: Dirs, fixture: &ReloadFixture) -> Editor {
     std::fs::write(&path, "x\n").unwrap();
     let mut ed = Editor::open(
         Some(path),
-        crate::editor::lifecycle::HEADLESS_TERMINAL,
+        crate::editor::run::HEADLESS_TERMINAL,
         no_op_wake(),
         dirs,
         test_cwd(),

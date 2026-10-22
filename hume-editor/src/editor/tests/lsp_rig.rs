@@ -131,7 +131,7 @@ impl LspRig {
         let responses = backend.response_log();
         let mut ed = Editor::open(
             None,
-            crate::editor::lifecycle::HEADLESS_TERMINAL,
+            crate::editor::run::HEADLESS_TERMINAL,
             no_op_wake(),
             spec.dirs.clone(),
             test_cwd(),

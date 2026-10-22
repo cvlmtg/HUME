@@ -249,7 +249,7 @@ fn every_default_lsp_binding_dispatches_without_error() {
     let guard = RealRuntimeDirs::new();
     let mut ed = Editor::open(
         None,
-        crate::editor::lifecycle::HEADLESS_TERMINAL,
+        crate::editor::run::HEADLESS_TERMINAL,
         no_op_wake(),
         guard.dirs(),
         test_cwd(),

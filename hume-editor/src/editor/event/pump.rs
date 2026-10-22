@@ -270,7 +270,7 @@ impl Editor {
                     // `fire_one_event`, so neither ever sees a dead id.
                     // `OnBufferClose` is exempt: it is raised
                     // for an id that's already gone by design (see
-                    // `lifecycle.rs`'s pairing check); checking it here
+                    // `buffer/lifecycle.rs`'s pairing check); checking it here
                     // would drop every `OnBufferClose` outright.
                     //
                     // A pane-carrying event (`OnBufferEnter`,

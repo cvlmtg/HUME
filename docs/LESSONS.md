@@ -208,7 +208,7 @@ correctness guarantee — B can never be forgotten because nothing depends on it
 being called promptly — without touching A's callers at all.
 
 **Files:** `hume-engine/src/theme/mod.rs` (`Theme::bake_if_stale`),
-`hume-editor/src/editor/lifecycle.rs` (`prepare_frame` call site).
+`hume-editor/src/editor/frame.rs` (`prepare_frame` call site).
 
 **Second instance, stronger remedy:** `Buffer::set_path`/`set_display_path`
 had the same convention-plus-`debug_assert!` shape (every path-setting call
@@ -1566,7 +1566,7 @@ a frame drew must draw one; check that its assertion distinguishes the
 behaviours in question, not only that it passes.
 
 **Files:** `hume-editor/src/editor/tests/mouse.rs`,
-`hume-editor/src/editor/lifecycle.rs` (`run`),
+`hume-editor/src/editor/run.rs` (`run`),
 `hume-editor/src/editor/input_stack/popup.rs` (`popup_input`).
 
 ## L45 — A no-op on an unknown name was planned without a message (2026-10-20)

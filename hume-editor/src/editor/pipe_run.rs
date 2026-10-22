@@ -20,8 +20,8 @@ use termina::event::{Event as TerminalEvent, KeyCode, KeyEvent, KeyEventKind, Mo
 
 use super::buffer::TextHold;
 use super::commands;
+use super::frame::FramePacer;
 use super::keymap::{BindMode, WalkResult};
-use super::lifecycle::FramePacer;
 use super::replay::{DeferredChange, DeferredOutcome};
 use super::{Editor, EditorState, Severity};
 
@@ -668,7 +668,7 @@ impl Editor {
     /// Poll run `id`, and the background runs with it, until `id`'s
     /// processes are done. A run still going after [`PROGRESS_GRACE`] draws
     /// its progress, redraws it when it changes, at most once per
-    /// [`FRAME_GAP`](super::lifecycle::FRAME_GAP), and redraws it at once when the terminal is
+    /// [`FRAME_GAP`](super::frame::FRAME_GAP), and redraws it at once when the terminal is
     /// resized; a quicker one draws nothing.
     fn wait_until_ended(&mut self, id: RunId, console: &mut dyn PipeConsole) -> io::Result<Waited> {
         let mut shown = false;

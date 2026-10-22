@@ -3,7 +3,7 @@
 
 use std::time::{Duration, Instant};
 
-use crate::editor::lifecycle::{FRAME_GAP, FramePacer};
+use crate::editor::frame::{FRAME_GAP, FramePacer};
 
 #[test]
 fn the_first_frame_is_due_at_once() {

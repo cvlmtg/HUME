@@ -132,7 +132,7 @@ pub struct RenderContext {
     /// every frame: a `RenderContext` outlives the frame that filled it, so
     /// a leftover value must never read as the current one. Callers that need
     /// the real screen cell add the gutter width and the pane rect's origin
-    /// (see `lifecycle.rs`/`overlay_sync.rs` in `hume-editor`).
+    /// (see `frame.rs`/`overlay_sync.rs` in `hume-editor`).
     pub cursor_content_pos: Option<(u16, u16)>,
 }
 

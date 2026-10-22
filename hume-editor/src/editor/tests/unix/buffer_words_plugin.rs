@@ -33,7 +33,7 @@ fn setup(guard: &RuntimeDirs, tmp: &Path, config_expr: Option<&str>) -> Editor {
     write_core_plugin(guard, "stdlib", STDLIB_PLUGIN);
     let mut ed = Editor::open(
         None,
-        crate::editor::lifecycle::HEADLESS_TERMINAL,
+        crate::editor::run::HEADLESS_TERMINAL,
         no_op_wake(),
         guard.dirs(),
         test_cwd(),
@@ -547,7 +547,7 @@ fn an_invalid_match_config_fails_the_load() {
 
     let mut ed = Editor::open(
         None,
-        crate::editor::lifecycle::HEADLESS_TERMINAL,
+        crate::editor::run::HEADLESS_TERMINAL,
         no_op_wake(),
         guard.dirs(),
         test_cwd(),

@@ -67,7 +67,7 @@ fn setup_with_source(
     let guard = RealRuntimeDirs::new();
     let mut ed = Editor::open(
         None,
-        crate::editor::lifecycle::HEADLESS_TERMINAL,
+        crate::editor::run::HEADLESS_TERMINAL,
         no_op_wake(),
         guard.dirs(),
         test_cwd(),

@@ -218,7 +218,7 @@ fn a_between_frame_walk_does_not_survive_a_frame() {
 /// every other render test in this crate starts cold and would stay green
 /// even if `EngineView::begin_frame` were deleted. This one drives
 /// `prepare_frame`/`render_into` across two frames on one editor instead,
-/// mirroring `run_loop`'s real reuse (`lifecycle.rs`), and asserts on the
+/// mirroring `run_loop`'s real reuse (`run.rs`), and asserts on the
 /// glyph that moves.
 #[test]
 fn a_rendered_frames_entries_do_not_survive_it() {
