@@ -18,6 +18,7 @@
 //! | `set-cwd!`      | `string → void`                | `:cd`: moves the editor's working directory  |
 //! | `delete-dir-tree!` | `string → void`             | Recursive delete, budget stopped while it runs |
 //! | `replace-dir!`  | `string string → void`         | Moves a directory into another's place, all or nothing |
+//! | `%delete-directory!` | `string → void`           | Steel's `delete-directory!`, budget stopped; backs its shim |
 //! | `try-lock-file!` | `string → bool`               | Exclusive OS lock, held until `unlock-file!` or the session ends |
 //! | `unlock-file!`  | `string → void`                | Releases a lock this session took            |
 //! | `path-join`     | `string… → string`             | OS-native join; no sandbox, no filesystem access |
@@ -147,6 +148,15 @@ pub(crate) fn replace_dir(ctx: &mut SteelCtx, src: String, dest: String) -> Stee
     })
     .map(|()| SteelVal::Void)
     .map_err(|e| generic_err(format!("replace-dir!: {src} -> {dest}: {e}")))
+}
+
+/// `(%delete-directory! dir)`, which the prelude's `delete-directory!`
+/// calls: Steel's own `delete-directory!` (a relative `dir` resolves against
+/// the process cwd, and a missing one raises), run with the session's budget
+/// stopped.
+pub(crate) fn delete_directory(ctx: &mut SteelCtx, dir: String) -> SteelResult {
+    ctx.while_waiting(|| std::fs::remove_dir_all(&dir))?;
+    Ok(SteelVal::Void)
 }
 
 fn remove_dir_tree_if_present(dir: &Path) -> std::io::Result<()> {

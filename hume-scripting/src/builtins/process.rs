@@ -174,5 +174,17 @@ pub(crate) fn run_inline_output(
     }
 }
 
+/// `(%wait child)`, which the prelude's `wait` and `process-wait` call:
+/// Steel's own `wait`, run with the session's budget stopped.
+pub(crate) fn wait(ctx: &mut SteelCtx, child: SteelVal) -> SteelResult {
+    ctx.while_waiting(|| steel::primitives::process::wait(&child))
+}
+
+/// `(%wait->stdout child)`, which the prelude's `wait->stdout` calls: Steel's
+/// own `wait->stdout`, run with the session's budget stopped.
+pub(crate) fn wait_for_stdout(ctx: &mut SteelCtx, child: SteelVal) -> SteelResult {
+    ctx.while_waiting(|| steel::primitives::process::wait_with_stdout(&child))
+}
+
 #[cfg(test)]
 mod tests;

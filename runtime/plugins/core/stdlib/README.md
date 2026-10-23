@@ -67,11 +67,9 @@ Thin wrappers over Steel's `steel/filesystem` and `steel/ports`, and HUME's own
 `delete-dir-tree!`. `core:plum` and `core:lsp-install` call them rather than each
 carrying a copy. `delete-dir!` and `delete-file!` are idempotent, unlike Steel's own
 `delete-directory!` and `delete-file!`: a missing target is not an error. `delete-dir!`
-uses `delete-dir-tree!` because removing a large tree (an npm server's `node_modules`)
-can take seconds: that builtin does not count the time against the script budget, which
-Steel's `delete-directory!` would, stopping the delete half way. `list-subdirs` returns the names of the directories
-under a path, sorted, and skips stray files that sit alongside a directory tree
-(`.install-lock`, `.DS_Store`).
+uses `delete-dir-tree!`, which already treats a missing directory that way. `list-subdirs`
+returns the names of the directories under a path, sorted, and skips stray files that sit
+alongside a directory tree (`.install-lock`, `.DS_Store`).
 
 ### Subprocess
 

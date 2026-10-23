@@ -235,8 +235,9 @@ macro_rules! builtins {
 const BOOTSTRAP: &str = include_str!("bootstrap.scm");
 
 // PRELUDE_SHIMS redefines the steel-core prelude names HUME takes over: the
-// print functions and `which`. It is appended both to BOOTSTRAP (top level)
-// and, verbatim, to steel-core's own prelude string via set_prelude_string.
+// print functions, `which`, and the Steel calls that wait on the OS. It is
+// appended both to BOOTSTRAP (top level) and, verbatim, to steel-core's own
+// prelude string via set_prelude_string.
 // Since the prelude is prepended to every `(require "path.scm")` unit, this
 // closes the gap where a required module's (every real plugin's) calls would
 // otherwise resolve straight to steel-core's originals. See io.rs's module
@@ -245,6 +246,13 @@ const BOOTSTRAP: &str = include_str!("bootstrap.scm");
 // `which` searches the editor's search path (`%which`) instead of the process
 // `PATH`, so the `PATH` a session's children get is also the one its
 // lookups see.
+//
+// `delete-directory!`, `wait`/`process-wait` and `wait->stdout` run Steel's
+// own call with the session's budget stopped (`%delete-directory!`, `%wait`,
+// `%wait->stdout`), as HUME's own waiting builtins do, so a script is not
+// stopped for the time the OS took. `time/sleep-ms` still counts: a sleep is
+// the script's own choice to hold the editor. `copy-directory-recursively!`
+// counts too, its copy helper being private to steel-core.
 //
 // Explicit-port forms (`(display obj port)`, …) consult `%port-safe?` on the
 // supplied port rather than forwarding unconditionally, since the caller (or
@@ -531,6 +539,8 @@ pub(crate) fn register_all(steel: &mut Engine) {
         // gate either, and `stdlib/run!` is a plain helper any plugin body can
         // reach, not a top-level dispatched command.
         open "%run-capture!" process::run_capture(cmd: SteelVal, args: SteelVal, cwd: SteelVal);
+        open "%wait" process::wait(child: SteelVal);
+        open "%wait->stdout" process::wait_for_stdout(child: SteelVal);
 
         cmd "diff-lines" diff::diff_lines(old: SteelVal, new: SteelVal);
         cmd "diff-buffer-lines" diff::diff_buffer_lines(pane: args::LivePane, ref_text: SteelVal);
@@ -546,6 +556,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "set-cwd!" fs::set_cwd(path: String);
         open "delete-dir-tree!" fs::delete_dir_tree(path: String);
         open "replace-dir!" fs::replace_dir(src: String, dest: String);
+        open "%delete-directory!" fs::delete_directory(dir: String);
         open "try-lock-file!" fs::try_lock_file(path: String);
         open "unlock-file!" fs::unlock_file(path: String);
         open "path-entries" fs::path_entries(dir: String, prefix: String);

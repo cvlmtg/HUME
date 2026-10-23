@@ -298,6 +298,139 @@ fn call_steel_cmd_budget_does_not_count_a_wait_on_a_child() {
     );
 }
 
+/// Steel's own `wait` on a child does not count against the budget either.
+#[test]
+fn call_steel_cmd_budget_does_not_count_a_steel_wait() {
+    let mut h = host();
+    let mut mock = MockHost::new();
+    h.eval_source(
+        r#"(require "steel/result")
+           (define-command! "wait-then-log" "doc"
+             (lambda ()
+               (wait (unwrap-ok (spawn-process (command "sleep" (list "0.3")))))
+               (log! 'info "after the wait")))"#,
+        &mut mock,
+    )
+    .unwrap();
+    mock.settings.steel_command_budget_ms = 50;
+
+    h.call_steel_cmd_by_name("wait-then-log", vec![], &mut mock)
+        .expect("a wait on a child must not use up the budget");
+    assert!(
+        logged(&mut h).iter().any(|msg| msg == "after the wait"),
+        "the command must run past its wait"
+    );
+}
+
+/// Steel's `wait->stdout` waits without counting, and still answers the
+/// child's output.
+#[test]
+fn call_steel_cmd_budget_does_not_count_a_steel_wait_for_stdout() {
+    let mut h = host();
+    let mut mock = MockHost::new();
+    h.eval_source(
+        r#"(require "steel/result")
+           (define-command! "capture" "doc"
+             (lambda ()
+               (log! 'info
+                 (unwrap-ok
+                   (wait->stdout
+                     (unwrap-ok
+                       (spawn-process
+                         (with-stdout-piped (command "sh" (list "-c" "sleep 0.3; echo out"))))))))))"#,
+        &mut mock,
+    )
+    .unwrap();
+    mock.settings.steel_command_budget_ms = 50;
+
+    h.call_steel_cmd_by_name("capture", vec![], &mut mock)
+        .expect("a wait on a child must not use up the budget");
+    assert_eq!(logged(&mut h), ["out\n"]);
+}
+
+/// A plugin file is compiled as its own module, so its `wait` resolves
+/// through the prelude rather than the top level: it does not count either.
+#[test]
+fn call_steel_cmd_budget_does_not_count_a_steel_wait_in_a_required_module() {
+    let tmp = tempfile::tempdir().unwrap();
+    let module = tmp.path().join("waits.scm");
+    std::fs::write(
+        &module,
+        r#"(require "steel/result")
+           (define-command! "wait-then-log" "doc"
+             (lambda ()
+               (wait (unwrap-ok (spawn-process (command "sleep" (list "0.3")))))
+               (log! 'info "after the wait")))"#,
+    )
+    .unwrap();
+    let mut h = host();
+    let mut mock = MockHost::new();
+    h.eval_source(
+        &format!(
+            "(require {:?})",
+            module.to_str().expect("temp paths are UTF-8")
+        ),
+        &mut mock,
+    )
+    .unwrap();
+    mock.settings.steel_command_budget_ms = 50;
+
+    h.call_steel_cmd_by_name("wait-then-log", vec![], &mut mock)
+        .expect("a wait on a child must not use up the budget");
+    assert!(
+        logged(&mut h).iter().any(|msg| msg == "after the wait"),
+        "the command must run past its wait"
+    );
+}
+
+/// Steel's `delete-directory!` on a large tree is waiting on the OS, which
+/// the budget does not count.
+#[test]
+fn steel_delete_directory_does_not_count_the_delete_against_the_budget() {
+    let tree = tempfile::tempdir().unwrap();
+    let root = tree.path().join("tree");
+    for d in 0..50 {
+        let dir = root.join(format!("d{d}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        for f in 0..100 {
+            std::fs::write(dir.join(format!("f{f}")), "x").unwrap();
+        }
+    }
+    let mut h = host();
+    let mut mock = MockHost::new();
+
+    let result = h.eval_source_watchdog(
+        &format!(
+            "(delete-directory! {:?})",
+            root.to_str().expect("temp paths are UTF-8")
+        ),
+        std::time::Duration::from_millis(10),
+        &mut mock,
+    );
+
+    assert!(result.is_ok(), "{result:?}");
+    assert!(!root.exists(), "the tree must be gone");
+}
+
+/// `delete-directory!` raises on a missing directory, as Steel's own does.
+#[test]
+fn steel_delete_directory_raises_on_a_missing_directory() {
+    let tmp = tempfile::tempdir().unwrap();
+    let missing = tmp.path().join("missing");
+    let mut h = host();
+    let mut mock = MockHost::new();
+
+    let result = h.eval_source(
+        &format!(
+            "(delete-directory! {:?})",
+            missing.to_str().expect("temp paths are UTF-8")
+        ),
+        &mut mock,
+    );
+
+    assert!(result.is_err(), "a missing directory must raise");
+}
+
 // ── try-lock-file! / unlock-file! ────────────────────────────────────────
 
 /// Whether another holder could take the lock on `path` right now.

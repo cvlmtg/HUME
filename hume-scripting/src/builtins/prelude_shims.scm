@@ -30,3 +30,7 @@
       (when (%port-safe? (car args)) (apply %raw-newline args))
       (when (%stdout-safe?) (%raw-newline))))
 (define (which . args) (apply %which args))
+(define (delete-directory! dir) (%delete-directory! dir))
+(define (wait child) (%wait child))
+(define (process-wait child) (%wait child))
+(define (wait->stdout child) (%wait->stdout child))
