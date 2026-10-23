@@ -21,8 +21,9 @@ pub(crate) fn after(ctx: &mut SteelCtx, ms: SteelVal, thunk: crate::Rooted) -> S
     }
 }
 
-/// `(cancel-timer! id)` → void. Idempotent: a no-op if `id` already fired,
-/// was already cancelled, or never existed.
+/// `(cancel-timer! id)` → void. The thunk of the `after!` timer `id` never
+/// runs, even one already due. Idempotent: a no-op once the thunk has run,
+/// after an earlier cancel, or for an id `after!` never returned.
 pub(crate) fn cancel_timer(ctx: &mut SteelCtx, id: SteelVal) -> SteelResult {
     let id = usize_arg(id, "cancel-timer!")? as u64;
     require_cap(ctx.host.timers(), "cancel-timer!")?.cancel_timer(id);

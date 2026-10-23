@@ -21,6 +21,10 @@ use super::timers::{TimerId, TimerWheel};
 /// fires).
 pub(super) enum TimerPayload {
     SteelThunk(hume_scripting::Rooted),
+    /// A Steel thunk that came due and is queued, and has not run yet. The
+    /// entry stays, off the wheel, so `cancel-timer!` can still drop the
+    /// call; the call's turn or its drop removes it.
+    QueuedThunk,
     ViewportDebounce(PaneId),
     DiagnosticPullDebounce(BufferId),
     BeforeSaveTimeout(BufferId),
@@ -52,11 +56,35 @@ impl Timers {
         id
     }
 
-    /// Idempotent: an already-fired, already-cancelled or never-scheduled
-    /// id is ignored, matching `TimerWheel::cancel`'s contract.
+    /// Cancels timer `id`: a scheduled timer never fires and a queued thunk
+    /// never runs. Idempotent: an already-fired, already-cancelled or
+    /// never-scheduled id is ignored.
     pub(in crate::editor) fn cancel(&mut self, id: TimerId) {
-        self.wheel.cancel(id);
-        self.payloads.remove(&id);
+        match self.payloads.remove(&id) {
+            Some(TimerPayload::QueuedThunk) | None => {}
+            Some(_) => self.wheel.cancel(id),
+        }
+    }
+
+    /// [`Self::cancel`] for an id a script names, which reaches only the
+    /// timers `after!` made: the editor's own timers share the id space.
+    pub(in crate::editor) fn cancel_thunk(&mut self, id: TimerId) {
+        if matches!(
+            self.payloads.get(&id),
+            Some(TimerPayload::SteelThunk(_) | TimerPayload::QueuedThunk)
+        ) {
+            self.cancel(id);
+        }
+    }
+
+    /// Whether `id` is a queued thunk not cancelled since it came due,
+    /// removing its entry: the call's turn admits it once.
+    pub(in crate::editor) fn take_queued(&mut self, id: TimerId) -> bool {
+        let queued = matches!(self.payloads.get(&id), Some(TimerPayload::QueuedThunk));
+        if queued {
+            self.payloads.remove(&id);
+        }
+        queued
     }
 
     /// Cancels every timer whose payload matches `pred`.
@@ -72,12 +100,24 @@ impl Timers {
         }
     }
 
-    /// The payloads of every timer due at `now`, in deadline order.
-    pub(in crate::editor) fn take_due(&mut self, now: Instant) -> Vec<TimerPayload> {
-        self.wheel
-            .take_due(now)
-            .into_iter()
-            .filter_map(|id| self.payloads.remove(&id))
+    /// Whether no timer is scheduled or queued.
+    #[cfg(test)]
+    pub(in crate::editor) fn is_empty(&self) -> bool {
+        self.payloads.is_empty()
+    }
+
+    /// Every timer due at `now` with its payload, in deadline order. A
+    /// Steel thunk leaves a [`TimerPayload::QueuedThunk`] entry behind.
+    pub(in crate::editor) fn take_due(&mut self, now: Instant) -> Vec<(TimerId, TimerPayload)> {
+        let due = self.wheel.take_due(now);
+        due.into_iter()
+            .filter_map(|id| {
+                let payload = self.payloads.remove(&id)?;
+                if matches!(payload, TimerPayload::SteelThunk(_)) {
+                    self.payloads.insert(id, TimerPayload::QueuedThunk);
+                }
+                Some((id, payload))
+            })
             .collect()
     }
 }
@@ -95,12 +135,13 @@ impl Editor {
     /// debounce fires `OnViewportChange` directly with the pane's *current*
     /// bounds.
     pub(super) fn drain_due_timers(&mut self) {
-        for payload in self.timers.take_due(Instant::now()) {
+        for (id, payload) in self.timers.take_due(Instant::now()) {
             match payload {
                 TimerPayload::SteelThunk(thunk) => {
                     self.state
-                        .queue_background_call(hume_scripting::SteelCall::new(thunk, Vec::new()));
+                        .queue_timer_thunk(id, hume_scripting::SteelCall::new(thunk, Vec::new()));
                 }
+                TimerPayload::QueuedThunk => unreachable!("a queued thunk is off the wheel"),
                 TimerPayload::ViewportDebounce(pane_id) => {
                     self.viewport_debounce.remove(&pane_id);
                     self.queue_viewport_change(pane_id);

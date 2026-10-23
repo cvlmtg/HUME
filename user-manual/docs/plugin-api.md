@@ -292,7 +292,7 @@ Full walkthroughs (batch vs. streaming population, truncation direction, exit-co
 | Call | Effect |
 |------|--------|
 | `(after! ms thunk)` | Call `thunk` with no args once `ms` milliseconds pass; returns a timer id |
-| `(cancel-timer! id)` | Cancel a pending timer; idempotent, a no-op if `id` already fired, was cancelled, or never existed |
+| `(cancel-timer! id)` | Cancel a timer `after!` made: its thunk never runs, even when it is already due. Idempotent: a no-op once the thunk has run, after an earlier cancel, or for an id `after!` never returned |
 | `(debounce ms proc)` | Wrap `proc` so each call reschedules it `ms` out, cancelling any still-pending call from a prior invocation |
 | `(debounce-by ms proc #:key)` | Same, but keyed per `(key . args)`: a call keyed one way never cancels a call keyed another. `#:key` defaults to the first argument itself; pass `#:key (lambda (pane . _) (buffer-key pane))` to key by buffer when different calls might carry different pane values for the same buffer |
 

@@ -10,6 +10,7 @@ use super::EditorEvent;
 use crate::editor::buffer::store::EditOrigin;
 use crate::editor::lsp::ResponseAnchor;
 use crate::editor::replay::AnswerTicket;
+use crate::editor::timers::TimerId;
 use crate::editor::{Editor, EditorState};
 
 /// One item of deferred Steel work, queued by a raise site and drained by
@@ -78,6 +79,9 @@ pub(in crate::editor) enum CallGuard {
     /// and takes the entry with it once it was the entry's last report or
     /// raised.
     Job(u64),
+    /// A timer's Steel thunk, queued once it came due. The call is dropped
+    /// when `cancel-timer!` cancelled the timer before its turn.
+    Timer(TimerId),
 }
 
 impl PendingWork {
@@ -121,8 +125,10 @@ impl EditorState {
 
     /// Queue `call`, a callback a key of the user's fired: a drawer,
     /// live-picker query or completion-source callback. Background work
-    /// queues through [`Self::queue_background_call`]; an interactive
-    /// input's callback is built by `EditorState::answered_call` instead.
+    /// queues through [`Self::queue_job_callback`],
+    /// [`Self::queue_timer_thunk`] or [`Self::queue_lsp_callback`], whose
+    /// edits do not count as the user's; an interactive input's callback is
+    /// built by `EditorState::answered_call` instead.
     ///
     /// Every queued call runs at the next drain boundary, never inline: LSP
     /// dispatch, timer fire and minibuffer key handling all detect their
@@ -134,14 +140,8 @@ impl EditorState {
         self.push_work(PendingWork::call(call, None, EditOrigin::User));
     }
 
-    /// [`Self::queue_steel_call`] for a callback background work fires,
-    /// such as a timer thunk. Its edits do not count as the user's.
-    pub(in crate::editor) fn queue_background_call(&mut self, call: SteelCall) {
-        self.push_work(PendingWork::call(call, None, EditOrigin::Background));
-    }
-
-    /// [`Self::queue_background_call`] for the callback of the
-    /// `ConfigState.async_jobs` entry `job`; see [`CallGuard::Job`].
+    /// Queue `call`, the callback of the `ConfigState.async_jobs` entry
+    /// `job`; see [`CallGuard::Job`].
     pub(in crate::editor) fn queue_job_callback(&mut self, job: u64, call: SteelCall) {
         self.push_work(PendingWork::call(
             call,
@@ -150,8 +150,17 @@ impl EditorState {
         ));
     }
 
-    /// [`Self::queue_background_call`]'s counterpart for an `lsp-request!`
-    /// callback: carries the delivery's `ResponseAnchor` (`None` for a
+    /// Queue `call`, the thunk of timer `id`, which has come due; see
+    /// [`CallGuard::Timer`].
+    pub(in crate::editor) fn queue_timer_thunk(&mut self, id: TimerId, call: SteelCall) {
+        self.push_work(PendingWork::call(
+            call,
+            Some(CallGuard::Timer(id)),
+            EditOrigin::Background,
+        ));
+    }
+
+    /// Queue `call`, an `lsp-request!` callback: carries the delivery's `ResponseAnchor` (`None` for a
     /// request no server took) and the request's hold on its `#:tracked`
     /// position; see [`CallGuard::Reply`]. Never carries an answer ticket:
     /// an LSP response resolves no waiting input.

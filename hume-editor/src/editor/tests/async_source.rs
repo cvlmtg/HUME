@@ -302,7 +302,7 @@ fn timer_wheel_end_to_end_tick_via_editor() {
         .timers
         .take_due(Instant::now() + Duration::from_millis(20));
     assert!(
-        matches!(due[..], [TimerPayload::DiagnosticPullDebounce(due_bid)] if due_bid == bid),
+        matches!(due[..], [(_, TimerPayload::DiagnosticPullDebounce(due_bid))] if due_bid == bid),
         "exactly the scheduled timer must be due"
     );
 }

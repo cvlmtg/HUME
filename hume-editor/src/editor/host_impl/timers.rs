@@ -17,7 +17,7 @@ impl<'a> TimerHost for EditorHostImpl<'a> {
 
     fn cancel_timer(&mut self, id: u64) {
         if let Some(timers) = self.timers.as_mut() {
-            timers.cancel(TimerId(id));
+            timers.cancel_thunk(TimerId(id));
         }
     }
 }

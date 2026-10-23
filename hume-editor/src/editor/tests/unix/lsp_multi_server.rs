@@ -497,6 +497,9 @@ fn hints(entries: &[(u32, u32, &str)]) -> serde_json::Value {
 }
 
 fn refresh_hints(ed: &mut Editor) {
+    // The frame's own viewport change fires at the next drain, ahead of the
+    // one queued below, so the plugin's debounce collapses the two.
+    ed.state.settings.hook_viewport_debounce_ms = 0;
     let mut ctx = RenderContext::new();
     ed.resize_terminal(80, 25);
     ed.settle();

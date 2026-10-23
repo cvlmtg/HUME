@@ -461,6 +461,11 @@ impl Editor {
                     self.state.config.async_jobs.remove(&id);
                 }
             }
+            CallGuard::Timer(id) => {
+                if self.timers.take_queued(id) {
+                    self.with_edit_origin(origin, |ed| ed.run_call_batch(vec![call]));
+                }
+            }
         }
     }
 
@@ -470,6 +475,9 @@ impl Editor {
         match guard {
             CallGuard::Reply { .. } | CallGuard::Answer(_) => {}
             CallGuard::Job(id) => self.forget_job_callback(id),
+            CallGuard::Timer(id) => {
+                self.timers.take_queued(id);
+            }
         }
     }
 

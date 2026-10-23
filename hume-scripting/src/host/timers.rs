@@ -9,7 +9,9 @@ pub trait TimerHost {
     /// queued-call drain; not during init).
     fn schedule_timer(&mut self, ms: u64, thunk: crate::Rooted) -> Option<u64>;
 
-    /// Cancels a previously scheduled timer. A no-op if `id` already fired,
-    /// was already cancelled, or this host has no timer wheel right now.
+    /// Cancels timer `id` from [`Self::schedule_timer`]: its thunk never
+    /// runs, even one already due and queued. A no-op once the thunk has
+    /// run, after an earlier cancel, for an id `schedule_timer` never
+    /// returned, or when this host has no timer wheel right now.
     fn cancel_timer(&mut self, id: u64);
 }

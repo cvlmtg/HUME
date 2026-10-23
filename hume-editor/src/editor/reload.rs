@@ -141,7 +141,8 @@ impl Editor {
         // match, not `matches!`, so a future `TimerPayload` variant forces a
         // decision here instead of silently surviving the engine drop.
         self.timers.cancel_where(|payload| match payload {
-            super::timer_bridge::TimerPayload::SteelThunk(_) => true,
+            super::timer_bridge::TimerPayload::SteelThunk(_)
+            | super::timer_bridge::TimerPayload::QueuedThunk => true,
             super::timer_bridge::TimerPayload::ViewportDebounce(_)
             | super::timer_bridge::TimerPayload::DiagnosticPullDebounce(_)
             | super::timer_bridge::TimerPayload::BeforeSaveTimeout(_) => false,

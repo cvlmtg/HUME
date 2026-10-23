@@ -98,9 +98,8 @@ line before it.
 A tick closes over the generation the walk started under (`"gen"`, bumped by every
 restart) and does nothing unless the entry's current generation still matches. This is
 the stale-async guard from the [core plugins index](../README.md#stale-async-work).
-`cancel-timer!` cannot stop a tick that has already been dequeued, and a new walk can
-start before that tick fires, so the entry still existing does not tell the earlier walk from
-the new one. The generation does.
+A restart also cancels the pending tick, which stops it even once it is due, so the
+generation is a second guard on a tick, not the only one.
 
 #### Buffer close and reindex
 

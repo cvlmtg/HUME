@@ -116,11 +116,13 @@ after the state it was scheduled against has moved on:
   A write path serving a live read (a toggle command, an explicit user action) recreates
   a missing entry; a write path serving an async callback does nothing, since recreating
   state for a buffer that's gone would leak it.
-- **`cancel-timer!`/canceling a job can't stop a callback that's already been dequeued
-  onto the run queue.** For anything more than a single in-flight timer, an entry needs
-  a generation counter, bumped every time the operation restarts; a callback closes over
-  the generation it started under and no-ops if the entry's current generation has since
-  moved on. `buffer-words`' `gen` field is the reference implementation.
+- **Cancel the work a restart replaces.** `cancel-timer!` and `cancel-async!` stop a
+  callback even once it is due, so a restart that cancels the timer or job it replaces
+  never sees the old one fire. When the code that restarts the work doesn't hold every id
+  it would have to cancel, give the entry a generation counter instead, bumped every time
+  the operation restarts; a callback closes over the generation it started under and
+  no-ops if the entry's current generation has since moved on. `buffer-words`' `gen`
+  field is an example.
 
 ### Debouncing
 

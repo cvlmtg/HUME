@@ -144,6 +144,9 @@ fn setup_two_servers(
 }
 
 fn fire_viewport_change(ed: &mut Editor) {
+    // The frame's own viewport change fires at the next drain, ahead of the
+    // one queued below, so the plugin's debounce collapses the two.
+    ed.state.settings.hook_viewport_debounce_ms = 0;
     let mut ctx = RenderContext::new();
     ed.resize_terminal(80, 25);
     ed.settle();
@@ -156,7 +159,7 @@ fn fire_viewport_change(ed: &mut Editor) {
 /// `drain_async_sources` runs once, at its top, before its fixpoint drains
 /// `pending_work`:
 /// - **Round 1** picks up the now-due debounce timer (`drain_due_timers`
-///   queues the thunk via `queue_background_call`), and the same call's fixpoint
+///   queues the thunk via `queue_timer_thunk`), and the same call's fixpoint
 ///   runs it immediately, sending the wire request. The scripted backend
 ///   auto-queues its response synchronously, but this round's
 ///   `drain_async_sources` already ran, so it isn't seen yet.
@@ -678,6 +681,9 @@ fn diagnostics_changed_for_two_buffers_in_the_same_window_both_refresh() {
         2,
     );
 
+    // The frame's own viewport change fires at the next drain, ahead of the
+    // two below, so it never refreshes buffer A a second time.
+    ed.state.settings.hook_viewport_debounce_ms = 0;
     let mut ctx = RenderContext::new();
     ed.resize_terminal(80, 25);
     ed.settle();

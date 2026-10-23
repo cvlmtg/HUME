@@ -51,8 +51,9 @@ impl TimerWheel {
         id
     }
 
-    /// Cancel a previously scheduled timer. A no-op if `id` already fired or
-    /// was already cancelled.
+    /// Cancel a timer still on the wheel. `Timers::cancel` checks that it
+    /// is: an id that already fired would stay in the cancelled set
+    /// forever, since it never reaches the heap's head again.
     pub(in crate::editor) fn cancel(&mut self, id: TimerId) {
         self.cancelled.insert(id);
     }

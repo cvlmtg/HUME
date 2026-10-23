@@ -5,6 +5,8 @@ use super::*;
 use hume_platform::dirs::Dirs;
 use hume_scripting::ScriptingHost;
 
+use crate::editor::tests::editor_cwd::call;
+
 #[test]
 fn after_fires_once_past_its_deadline() {
     let tmp = tempfile::tempdir().unwrap();
@@ -211,4 +213,111 @@ fn an_erroring_thunk_lands_in_the_message_log_and_the_wheel_survives() {
         "a-[b]>cdef\n",
         "a later, unrelated timer must still fire after an earlier one errored"
     );
+}
+
+// ── A thunk that is due but has not run ─────────────────────────────────────
+
+/// An editor whose `go` command runs `go` and whose `stop` command runs
+/// `stop`, after the Scheme `prelude`.
+fn timer_commands(prelude: &str, go: &str, stop: &str) -> Editor {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        &format!(
+            r#"{prelude}
+               (define-command! "go" "" (lambda () {go}))
+               (define-command! "stop" "" (lambda () {stop}))"#
+        ),
+    );
+    ed
+}
+
+#[test]
+fn cancel_timer_drops_a_thunk_already_queued() {
+    let mut ed = timer_commands(
+        "(define id #f)",
+        r#"(set! id (after! 0 (lambda () (log! 'info "fired"))))"#,
+        "(cancel-timer! id)",
+    );
+    call(&mut ed, "go");
+    ed.drain_async_sources();
+    assert!(
+        !ed.state.config.pending_work.is_empty(),
+        "setup: the thunk is queued"
+    );
+    call(&mut ed, "stop");
+    ed.settle();
+    assert_eq!(status(&ed), "");
+}
+
+#[test]
+fn debounce_called_again_while_its_thunk_is_queued_runs_once() {
+    let mut ed = timer_commands(
+        r#"(define count 0)
+           (define tick (debounce 0 (lambda ()
+             (set! count (+ count 1))
+             (log! 'info (number->string count)))))"#,
+        "(tick)",
+        "(tick)",
+    );
+    call(&mut ed, "go");
+    ed.drain_async_sources();
+    assert!(
+        !ed.state.config.pending_work.is_empty(),
+        "setup: the thunk is queued"
+    );
+    call(&mut ed, "stop");
+    ed.settle();
+    ed.drain_async_sources();
+    ed.settle();
+    assert_eq!(status(&ed), "1");
+}
+
+#[test]
+fn cancel_timer_leaves_a_native_timer_scheduled() {
+    let mut ed = editor_from("-[a]>bcdef\n");
+    let bid = ed.focused_buffer_id();
+    let native = ed.timers.schedule(
+        std::time::Duration::from_millis(10),
+        crate::editor::timer_bridge::TimerPayload::DiagnosticPullDebounce(bid),
+    );
+    let tmp = tempfile::tempdir().unwrap();
+    run(
+        &mut ed,
+        tmp.path(),
+        &format!(
+            r#"(define-command! "stop" "" (lambda () (cancel-timer! {})))"#,
+            native.0
+        ),
+    );
+    call(&mut ed, "stop");
+    let due = ed
+        .timers
+        .take_due(std::time::Instant::now() + std::time::Duration::from_millis(20));
+    assert_eq!(due.len(), 1);
+}
+
+#[test]
+fn a_queued_thunk_lost_to_the_drain_cap_frees_its_timer() {
+    let mut ed = timer_commands(
+        "(define id #f)",
+        r#"(set! id (after! 0 (lambda () (log! 'info "fired"))))"#,
+        "(cancel-timer! id)",
+    );
+    call(&mut ed, "go");
+    ed.drain_async_sources();
+    // Past `MAX_EVENT_DRAIN` (1000, `event/pump.rs`), so the whole batch,
+    // the queued thunk included, is dropped unrun.
+    for _ in 0..1100 {
+        ed.state
+            .config
+            .pending_work
+            .push_back(crate::editor::event::PendingWork::Event(
+                crate::editor::event::EditorEvent::OnFocusGained,
+            ));
+    }
+    assert!(!ed.drain_pending_work());
+    assert!(ed.timers.is_empty());
 }

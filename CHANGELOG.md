@@ -12,6 +12,8 @@
 - A completion item whose range a language server sent backwards no longer moves the completion menu.
 - `Tab` on the `|` prompt lists programs as it finds them, so HUME keeps responding on a slow `PATH`, like WSL's Windows directories.
 - `cancel-async!` also drops a callback that was already due but hadn't run yet.
+- `cancel-timer!` also drops a timer that was already due but hadn't run yet, so a debounced function no longer runs twice.
+- `cancel-timer!` cancels only timers made by `after!`, never one of HUME's own.
 
 ### Breaking changes
 - `(hume/yield!)` is gone: the script budget stops a script on its own, so delete any call to it.
