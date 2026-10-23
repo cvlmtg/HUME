@@ -126,16 +126,12 @@ fn install_lock_is_released_after_a_failed_install() {
     let lock_path = canonical_data_dir(data_tmp.path())
         .join("servers")
         .join(".install-lock");
-    assert!(
-        !lock_path.exists(),
-        "a failed install must release the cross-process lock, not leave it \
-         held forever: {}",
-        lock_path.display()
-    );
+    std::fs::File::open(&lock_path)
+        .unwrap()
+        .try_lock()
+        .expect("a failed install must release the cross-process lock");
 
-    // A second, unrelated install must be able to acquire the lock. Proves
-    // release actually happened, not just that the sentinel file is
-    // (coincidentally) absent.
+    // A second, unrelated install must be able to acquire the lock.
     type_cmd(&mut ed, ":lsp-install ocaml");
     let log = ed.state.message_log.format_for_display();
     assert!(
@@ -144,17 +140,17 @@ fn install_lock_is_released_after_a_failed_install() {
     );
 }
 
-/// A live `.install-lock` (as another HUME process mid-install would leave)
-/// must refuse the install loudly, before any network activity, and never
-/// interleave with a concurrent install/uninstall. `lsp-install/acquire-lock!`
-/// fails first, so this never actually reaches rust-analyzer's real
-/// download path.
+/// A lock another process holds (as another HUME mid-install would) must
+/// refuse the install loudly, before any network activity.
+/// `lsp-install/acquire-lock!` fails first, so this never reaches
+/// rust-analyzer's real download path.
 #[test]
 fn lsp_install_refuses_when_the_cross_process_lock_is_already_held() {
     let data_tmp = tempfile::tempdir().unwrap();
     let servers_dir = canonical_data_dir(data_tmp.path()).join("servers");
     std::fs::create_dir_all(&servers_dir).unwrap();
-    std::fs::write(servers_dir.join(".install-lock"), b"").unwrap();
+    let other = std::fs::File::create(servers_dir.join(".install-lock")).unwrap();
+    other.try_lock().unwrap();
 
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
@@ -164,40 +160,14 @@ fn lsp_install_refuses_when_the_cross_process_lock_is_already_held() {
     let log = ed.state.message_log.format_for_display();
     assert!(
         log.contains("already in progress"),
-        "a live cross-process lock must refuse the install loudly: {log}"
+        "a held cross-process lock must refuse the install loudly: {log}"
     );
 }
 
-/// A lock whose owning process has exited is reclaimed with a warning: an
-/// install the script budget stopped before it released the lock does not
-/// block the next one.
+/// A lock file nobody holds does not block: the file an install the budget
+/// stopped leaves behind, here naming this very process, is not a lock.
 #[test]
-fn lsp_install_reclaims_a_lock_whose_owner_has_exited() {
-    let data_tmp = tempfile::tempdir().unwrap();
-    let servers_dir = canonical_data_dir(data_tmp.path()).join("servers");
-    std::fs::create_dir_all(&servers_dir).unwrap();
-    let mut exited = std::process::Command::new("true").spawn().unwrap();
-    exited.wait().unwrap();
-    std::fs::write(servers_dir.join(".install-lock"), exited.id().to_string()).unwrap();
-
-    let mut ed = editor_from("-[x]>\n");
-    load_lsp_install(&mut ed, data_tmp.path());
-    type_cmd(&mut ed, ":lsp-install ocaml");
-
-    let log = ed.state.message_log.format_for_display();
-    assert!(
-        log.contains("has exited"),
-        "the reclaim must be reported: {log}"
-    );
-    assert!(
-        !log.contains("already in progress"),
-        "a lock whose owner has exited must not refuse the install: {log}"
-    );
-}
-
-/// A lock its running owner holds refuses the install.
-#[test]
-fn lsp_install_refuses_a_lock_its_running_owner_holds() {
+fn lsp_install_ignores_a_lock_file_nobody_holds() {
     let data_tmp = tempfile::tempdir().unwrap();
     let servers_dir = canonical_data_dir(data_tmp.path()).join("servers");
     std::fs::create_dir_all(&servers_dir).unwrap();
@@ -209,12 +179,15 @@ fn lsp_install_refuses_a_lock_its_running_owner_holds() {
 
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());
-    type_cmd(&mut ed, ":lsp-install rust");
+    // ocamllsp fails inside the lock (unsupported `opam` kind), never
+    // reaching the network.
+    type_cmd(&mut ed, ":lsp-install ocaml");
 
     let log = ed.state.message_log.format_for_display();
+    assert!(log.contains("opam"), "the install must run: {log}");
     assert!(
-        log.contains("already in progress"),
-        "a running owner's lock must refuse the install: {log}"
+        !log.contains("already in progress"),
+        "a lock file nobody holds must not refuse the install: {log}"
     );
 }
 

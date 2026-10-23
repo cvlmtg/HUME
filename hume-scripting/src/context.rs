@@ -1,3 +1,5 @@
+use std::fs::File;
+use std::path::PathBuf;
 use std::sync::{Arc, atomic::AtomicBool};
 
 use steel::gc::unsafe_erased_pointers::CustomReference;
@@ -82,6 +84,10 @@ pub(crate) struct SteelCtx<'a> {
     /// error propagate (see their own docs). Drained and reported by
     /// `run_steel_session` once the session ends, in emission order.
     pub(crate) failed_activations: Vec<(EntryId, SteelErr)>,
+    /// The file locks `try-lock-file!` took this session, by resolved path.
+    /// `run_steel_session` drops what is left when the session ends, so a
+    /// lock never outlives the session that took it.
+    pub(crate) file_locks: Vec<(PathBuf, File)>,
 }
 
 /// Which entry point started this eval session.
@@ -146,6 +152,7 @@ impl<'a> SteelCtx<'a> {
             activation_effect_marks: Vec::new(),
             manifest_resolving: None,
             failed_activations: Vec::new(),
+            file_locks: Vec::new(),
         }
     }
 
@@ -255,6 +262,7 @@ impl<'a> SteelCtx<'a> {
             activation_effect_marks: Vec::new(),
             manifest_resolving: None,
             failed_activations: Vec::new(),
+            file_locks: Vec::new(),
         }
     }
 }

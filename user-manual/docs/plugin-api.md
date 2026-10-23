@@ -302,8 +302,6 @@ Full walkthroughs (batch vs. streaming population, truncation direction, exit-co
 | `(spawn-async! cmd args callback #:cwd dir)` | Run `cmd` in the background, in `dir` (default: HUME's working directory; a relative `dir` is joined onto it); `callback` (`(lambda (stdout stderr exit-code) ...)`) fires exactly once, later. Returns a job id for `cancel-async!`. A failed spawn doesn't raise: `callback` fires with empty stdout, the error in stderr, and exit code `#f`, which a signal-killed command also gets |
 | `(cancel-async! id)` | Kill a still-running `spawn-async!` job and drop its callback; idempotent |
 | `(run-inline-output! cmd args #:cwd #:env)` | Run `cmd`, streaming output to the terminal inside an `#:inline-output` command; `#:env` is a list of `("KEY" . "VALUE")` pairs added to the environment; raises on nonzero exit |
-| `(current-process-id)` | HUME's process id, an integer: what a plugin writes into a lock file so another HUME can tell whether its owner is still running |
-| `(process-alive? pid)` | `#t` when a process with id `pid` is running; one HUME may not inspect counts as running |
 | `(run-capture! cmd args #:cwd dir)` | Run `cmd` in `dir` (default: HUME's working directory; a relative `dir` is joined onto it), blocking until it exits; returns `(hash 'stdout s 'stderr s 'exit code)`, with `'exit` `#f` when the spawn failed (stderr says why) or a signal killed the process. `core:stdlib`'s `stdlib/run!` (see [Standard Library](standard-library.md)) is this call under its usual name |
 
 Covered with examples in [Filesystem and processes](writing-plugins.md#filesystem-and-processes).
@@ -337,6 +335,8 @@ Everyday string work (trimming, splitting on a separator, case conversion, prefi
 | `(cwd)` | HUME's working directory (what `:pwd` prints) |
 | `(set-cwd! path)` | Change HUME's working directory, like `:cd`; a relative `path` is joined onto the current one; raises if `path` is not a directory |
 | `(delete-dir-tree! path)` | Delete the directory `path` (relative to the working directory) and everything under it; nothing happens when it doesn't exist. Unlike Steel's `delete-directory!`, the time it takes doesn't count against the script budget, so a large tree is never left half deleted |
+| `(try-lock-file! path)` | Take an exclusive lock on the file `path` (relative to the working directory), creating the file if needed: `#t` when taken, `#f` when another HUME or program holds it. The lock lasts until `unlock-file!`, until the command, hook or callback that took it returns or is stopped, or until HUME exits, so a lock is never left behind. Taking a lock the same command already holds raises |
+| `(unlock-file! path)` | Release a lock `try-lock-file!` took; raises when this command doesn't hold it |
 | `(path-join seg ...)` | Join path segments with the OS-native separator |
 | `(safe-path-segment? name)` | `#t` iff `name` is a string safe to use as one path component: not empty, not `.` or `..`, and free of a path separator, `:`, `"` and NUL; `#f` for anything else. Use it before joining a user-typed or downloaded name onto a path |
 | `(path-entries dir prefix)` | The names in directory `dir` (relative to the working directory) starting with `prefix` (ignoring letter case on Windows), sorted, each directory's ending in `/` (a link to a directory included), as `:e` completes them: hidden entries only when `prefix` starts with `.`. `'()` when `dir` can't be read |

@@ -1,4 +1,4 @@
-//! `define-typed-command!` and `EvalWatchdog` tests.
+//! `define-typed-command!`, `EvalWatchdog` and session file-lock tests.
 
 use super::*;
 
@@ -343,4 +343,179 @@ fn call_steel_cmd_budget_does_not_count_a_wait_on_a_child() {
             .any(|(_, msg)| msg == "after the wait"),
         "the command must run past its wait"
     );
+}
+
+// ── try-lock-file! / unlock-file! ────────────────────────────────────────
+
+/// Whether another holder could take the lock on `path` right now.
+fn lock_is_free(path: &std::path::Path) -> bool {
+    let file = std::fs::File::open(path).expect("the lock file exists");
+    match file.try_lock() {
+        Ok(()) => true,
+        Err(std::fs::TryLockError::WouldBlock) => false,
+        Err(std::fs::TryLockError::Error(e)) => panic!("try_lock failed: {e}"),
+    }
+}
+
+/// The messages `h` logged, in order, without their levels.
+fn logged(h: &mut ScriptingHost) -> Vec<String> {
+    h.take_pending_messages()
+        .into_iter()
+        .map(|(_, msg)| msg)
+        .collect()
+}
+
+/// A lock the session still holds when the budget stops it is released with
+/// the session, so nothing in this process keeps it.
+#[test]
+fn a_file_lock_is_released_when_the_budget_stops_its_session() {
+    let tmp = tempfile::tempdir().unwrap();
+    let lock = tmp.path().join("lock");
+    let mut h = host();
+    let mut mock = MockHost::new();
+    h.eval_source(
+        &format!(
+            r#"(define-command! "lock-and-spin" "doc"
+                 (lambda () (try-lock-file! {path:?}) (let loop () (loop))))"#,
+            path = lock.to_str().unwrap()
+        ),
+        &mut mock,
+    )
+    .unwrap();
+    mock.settings.steel_command_budget_ms = 50;
+
+    let err = h
+        .call_steel_cmd_by_name("lock-and-spin", vec![], &mut mock)
+        .unwrap_err();
+
+    assert!(err.message.contains("interrupted"), "{err}");
+    assert!(
+        lock_is_free(&lock),
+        "the stopped session must not keep the lock"
+    );
+}
+
+/// Defines `name` as a command running `body` with `path` bound to the
+/// string `lock`.
+fn define_lock_command(
+    h: &mut ScriptingHost,
+    mock: &mut MockHost,
+    name: &str,
+    lock: &std::path::Path,
+    body: &str,
+) {
+    h.eval_source(
+        &format!(
+            r#"(define-command! "{name}" "doc" (lambda () (let ((path {path:?})) {body})))"#,
+            path = lock.to_str().expect("temp paths are UTF-8")
+        ),
+        mock,
+    )
+    .expect("the command defines");
+}
+
+/// A lock not released by `unlock-file!` is released when its session
+/// returns.
+#[test]
+fn a_file_lock_is_released_when_its_session_returns() {
+    let tmp = tempfile::tempdir().unwrap();
+    let lock = tmp.path().join("lock");
+    let mut h = host();
+    let mut mock = MockHost::new();
+    define_lock_command(
+        &mut h,
+        &mut mock,
+        "take",
+        &lock,
+        r#"(log! 'info (if (try-lock-file! path) "taken" "held elsewhere"))"#,
+    );
+
+    h.call_steel_cmd_by_name("take", vec![], &mut mock).unwrap();
+
+    assert_eq!(logged(&mut h), ["taken"]);
+    assert!(lock_is_free(&lock), "the lock must not outlive its session");
+}
+
+/// A lock another holder has answers `#f` and leaves that holder's lock in
+/// place.
+#[test]
+fn a_file_lock_another_holder_has_answers_false() {
+    let tmp = tempfile::tempdir().unwrap();
+    let lock = tmp.path().join("lock");
+    let other = std::fs::File::create(&lock).unwrap();
+    other.try_lock().unwrap();
+    let mut h = host();
+    let mut mock = MockHost::new();
+    define_lock_command(
+        &mut h,
+        &mut mock,
+        "take",
+        &lock,
+        r#"(log! 'info (if (try-lock-file! path) "taken" "held elsewhere"))"#,
+    );
+
+    h.call_steel_cmd_by_name("take", vec![], &mut mock).unwrap();
+
+    assert_eq!(logged(&mut h), ["held elsewhere"]);
+    other.unlock().unwrap();
+}
+
+/// `unlock-file!` releases the lock at once: a fresh take in the same
+/// session gets it.
+#[test]
+fn unlock_file_releases_the_lock_within_the_session() {
+    let tmp = tempfile::tempdir().unwrap();
+    let lock = tmp.path().join("lock");
+    let mut h = host();
+    let mut mock = MockHost::new();
+    define_lock_command(
+        &mut h,
+        &mut mock,
+        "retake",
+        &lock,
+        r#"(try-lock-file! path) (unlock-file! path) (log! 'info (if (try-lock-file! path) "taken" "held elsewhere"))"#,
+    );
+
+    h.call_steel_cmd_by_name("retake", vec![], &mut mock)
+        .unwrap();
+
+    assert_eq!(logged(&mut h), ["taken"]);
+}
+
+/// Taking a lock the session already holds is an error, not a second hold.
+#[test]
+fn taking_a_held_file_lock_again_raises() {
+    let tmp = tempfile::tempdir().unwrap();
+    let lock = tmp.path().join("lock");
+    let mut h = host();
+    let mut mock = MockHost::new();
+    define_lock_command(
+        &mut h,
+        &mut mock,
+        "twice",
+        &lock,
+        "(try-lock-file! path) (try-lock-file! path)",
+    );
+
+    let err = h
+        .call_steel_cmd_by_name("twice", vec![], &mut mock)
+        .unwrap_err();
+
+    assert!(err.message.contains("already holds"), "{err}");
+}
+
+/// Releasing a lock the session does not hold is an error.
+#[test]
+fn unlocking_a_file_lock_not_held_raises() {
+    let tmp = tempfile::tempdir().unwrap();
+    let lock = tmp.path().join("lock");
+    let mut h = host();
+    let mut mock = MockHost::new();
+    define_lock_command(&mut h, &mut mock, "release", &lock, "(unlock-file! path)");
+
+    let err = h
+        .call_steel_cmd_by_name("release", vec![], &mut mock)
+        .unwrap_err();
+
+    assert!(err.message.contains("does not hold"), "{err}");
 }

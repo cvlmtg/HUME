@@ -180,19 +180,3 @@ pub(crate) fn run_inline_output(
 
 #[cfg(test)]
 mod tests;
-
-/// `(current-process-id)`: this editor's process id, as an integer: what a
-/// plugin records in a lock file so a later process can tell whether the
-/// owner is still running (`process-alive?`).
-pub(crate) fn current_process_id() -> SteelResult {
-    Ok(SteelVal::IntV(std::process::id() as isize))
-}
-
-/// `(process-alive? pid)`: whether a process with id `pid` is running. One
-/// the editor may not inspect counts as running.
-pub(crate) fn process_alive(pid: SteelVal) -> SteelResult {
-    let pid = usize_arg(pid, "process-alive? pid")?;
-    let pid = u32::try_from(pid)
-        .map_err(|_| generic_err(format!("process-alive?: {pid} is not a process id")))?;
-    Ok(SteelVal::BoolV(hume_platform::process::process_alive(pid)))
-}

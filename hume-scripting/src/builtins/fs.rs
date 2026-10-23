@@ -3,9 +3,11 @@
 //! Full-trust plugin model (see `user-manual/docs/plugins.md`'s "Filesystem
 //! and processes"): general filesystem access goes through Steel's own
 //! `steel/filesystem`/`steel/ports` stdlib, not a HUME builtin. What remains
-//! here is editor-integration info Steel can't derive on its own, plus
+//! here is editor-integration info Steel can't derive on its own,
 //! `path-join`'s Windows UNC-prefix stripping (Steel's own
-//! `canonicalize-path` leaks `\\?\`, which external tools reject).
+//! `canonicalize-path` leaks `\\?\`, which external tools reject), and what
+//! the session has to own: a tree delete the budget does not count, and file
+//! locks released when the session ends.
 //!
 //! | Steel name      | Signature                      | Notes                                        |
 //! |-----------------|--------------------------------|----------------------------------------------|
@@ -13,6 +15,9 @@
 //! | `runtime-dir`   | `() → string \| #f`            | Runtime dir, or `#f` if absent               |
 //! | `cwd`           | `() → string`                  | The editor's working directory               |
 //! | `set-cwd!`      | `string → void`                | `:cd`: moves the editor's working directory  |
+//! | `delete-dir-tree!` | `string → void`             | Recursive delete, budget stopped while it runs |
+//! | `try-lock-file!` | `string → bool`               | Exclusive OS lock, held until `unlock-file!` or the session ends |
+//! | `unlock-file!`  | `string → void`                | Releases a lock this session took            |
 //! | `path-join`     | `string… → string`             | OS-native join; no sandbox, no filesystem access |
 //! | `path->display` | `string → string`               | UNC-strip + `~`-collapse; no filesystem access |
 //! | `safe-path-segment?` | `any → bool`              | `#t` for a string safe as one path segment   |
@@ -25,6 +30,7 @@
 //! module already provides it as a bare global (`Engine::new()` baseline),
 //! and HUME registering its own would silently shadow it.
 
+use std::fs::TryLockError;
 use std::path::{Path, PathBuf};
 
 use steel::rvals::{IntoSteelVal, SteelVal};
@@ -102,6 +108,48 @@ pub(crate) fn delete_dir_tree(ctx: &mut SteelCtx, path: String) -> SteelResult {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(SteelVal::Void),
         Err(e) => Err(generic_err(format!("delete-dir-tree!: {path}: {e}"))),
     }
+}
+
+/// `(try-lock-file! path)`: takes the exclusive OS lock on the file `path`
+/// (a relative one joins onto `(cwd)`), creating the file when absent:
+/// `#t` when taken, `#f` when another holder has it. The lock lasts until
+/// `unlock-file!` or the end of the session, whichever comes first, and the
+/// OS drops it when the process exits, so no lock is ever left over. Taking
+/// a lock this session already holds raises.
+pub(crate) fn try_lock_file(ctx: &mut SteelCtx, path: String) -> SteelResult {
+    let file_path = ctx.host.buffers().cwd().join(&path);
+    if ctx.file_locks.iter().any(|(held, _)| *held == file_path) {
+        return Err(generic_err(format!(
+            "try-lock-file!: this session already holds {path}"
+        )));
+    }
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(&file_path)
+        .map_err(|e| generic_err(format!("try-lock-file!: {path}: {e}")))?;
+    match file.try_lock() {
+        Ok(()) => {
+            ctx.file_locks.push((file_path, file));
+            Ok(SteelVal::BoolV(true))
+        }
+        Err(TryLockError::WouldBlock) => Ok(SteelVal::BoolV(false)),
+        Err(TryLockError::Error(e)) => Err(generic_err(format!("try-lock-file!: {path}: {e}"))),
+    }
+}
+
+/// `(unlock-file! path)`: releases the lock `try-lock-file!` took on `path`
+/// this session. Raises when this session does not hold it.
+pub(crate) fn unlock_file(ctx: &mut SteelCtx, path: String) -> SteelResult {
+    let file_path = ctx.host.buffers().cwd().join(&path);
+    let index = ctx
+        .file_locks
+        .iter()
+        .position(|(held, _)| *held == file_path)
+        .ok_or_else(|| generic_err(format!("unlock-file!: this session does not hold {path}")))?;
+    ctx.file_locks.swap_remove(index);
+    Ok(SteelVal::Void)
 }
 
 // ── Completion listings ──────────────────────────────────────────────────────

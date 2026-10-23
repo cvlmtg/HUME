@@ -281,13 +281,13 @@ A `registrations/` record omits each default field: `command` when it equals the
   which `CreateProcess` cannot spawn directly. Rust's `std::process::Command` runs a program
   ending in `.cmd`/`.bat` through `cmd.exe` with its arguments escaped, so the server's spawn
   (`hume-platform`'s `spawn_piped`) needs no shim of its own.
-- **Cross-process install lock**: `:lsp-install`/`:lsp-uninstall` acquire
-  `<data>/servers/.install-lock` (created with `open-output-file`, which fails on an existing file — `lock.scm`)
-  before mutating `servers/`, so two HUME processes racing the same operation refuse rather
-  than interleave. A lock older than an hour is treated as abandoned (the process that held
-  it crashed or was killed) and replaced, with a warning. The sentinel file lives directly
-  under `servers/`, excluded from the startup scan so it's never misread as an interrupted
-  or orphan server install.
+- **Cross-process install lock**: `:lsp-install`/`:lsp-uninstall` take the OS lock on
+  `<data>/servers/.install-lock` (`try-lock-file!`, `lock.scm`) before mutating `servers/`,
+  so two HUME processes racing the same operation refuse rather than interleave. The OS
+  releases the lock when its process exits and the session releases it when the eval that
+  took it ends, so a crash or an install the script budget stopped never leaves it held. The
+  file itself stays, directly under `servers/`, excluded from the startup scan so it's never
+  misread as an interrupted or orphan server install.
 - **Receipt = commit point.** `receipt.scm` (pure data: name, version, bin path, and
   `env-dirs`, the environment the server needs at run time as `("KEY" . "subpath of the
   server dir")` pairs — `GEM_HOME`/`GEM_PATH` for gem-kind, empty otherwise) is written

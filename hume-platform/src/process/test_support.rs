@@ -3,9 +3,13 @@
 
 use std::path::Path;
 
+use nix::sys::signal::kill;
+use nix::unistd::Pid;
+
 /// Whether a process with this id exists. A zombie still counts.
 pub fn is_alive(pid: u32) -> bool {
-    super::process_alive(pid)
+    let pid = i32::try_from(pid).expect("pid fits i32");
+    kill(Pid::from_raw(pid), None).is_ok()
 }
 
 /// A `sh` command that logs `+` as it starts and `-` as it ends to `log`,

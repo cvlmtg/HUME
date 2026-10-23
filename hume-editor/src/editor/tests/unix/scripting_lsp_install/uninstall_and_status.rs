@@ -71,8 +71,8 @@ fn lsp_uninstall_tab_completes_an_installed_server() {
     assert_eq!(minibuf_input(&ed), "lsp-uninstall rust-analyzer");
 }
 
-/// The uninstall delete is guarded by the same cross-process lock: a live
-/// `.install-lock` at the moment the deferred `(after! 0 ...)` callback fires
+/// The uninstall delete is guarded by the same cross-process lock: a lock
+/// another process holds when the deferred `(after! 0 ...)` callback fires
 /// must refuse the delete loudly, leaving the directory intact.
 #[test]
 fn lsp_uninstall_refuses_the_delete_when_the_cross_process_lock_is_already_held() {
@@ -84,7 +84,8 @@ fn lsp_uninstall_refuses_the_delete_when_the_cross_process_lock_is_already_held(
         "rust-analyzer",
     );
     let servers_dir = canonical_data_dir(data_tmp.path()).join("servers");
-    std::fs::write(servers_dir.join(".install-lock"), b"").unwrap();
+    let other = std::fs::File::create(servers_dir.join(".install-lock")).unwrap();
+    other.try_lock().unwrap();
 
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install(&mut ed, data_tmp.path());

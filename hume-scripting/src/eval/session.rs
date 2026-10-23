@@ -55,6 +55,8 @@ pub(super) fn run_steel_session<'a, R>(
             res
         });
     watchdog.cancel();
+    // Released whether the session returned, raised or was stopped.
+    ctx.file_locks.clear();
     // An expired budget leaves the VM raising at every instruction; the next
     // session must start running.
     steel.get_thread_state_controller().resume();

@@ -162,14 +162,11 @@ A server's `config` field is delivered as both `#:init-options` and `#:settings`
 uninstall both use it, so two HUME processes, or two `:lsp-install` calls, never work on
 the same server directory at once.
 
-- The file is created with `open-output-file`, which fails on an existing file, so creation
-  is atomic. It holds the process id of the HUME that took it.
-- A lock whose process has exited is replaced with a warning. That is how a lock left by
-  an install the script budget stopped is recovered: a stopped script runs no cleanup, so
-  `with-lock!` never released it.
-- A lock with no readable process id, or whose process is still running, is replaced with a
-  warning once it is older than an hour, in case the id now belongs to an unrelated process.
-  One whose mtime is in the future (clock skew) counts as live.
+- The lock is the OS lock `try-lock-file!` takes on that file, not the file itself, which
+  stays on disk. Taking it is atomic: while one HUME holds it, another's attempt fails.
+- Nothing has to recover a lock left behind: the OS releases it when the HUME holding it
+  exits, and the eval that took it releases it when it ends. An install the script budget
+  stopped runs no cleanup, so the second rule is what frees its lock.
 - The thunk's error is not re-raised: every failure path ends in a plain log line. The function answers `#t` on success and
   `#f` on any failure, so a lock that could not be taken and a thunk that raised look the
   same to the caller.

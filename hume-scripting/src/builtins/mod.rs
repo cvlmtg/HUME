@@ -532,8 +532,6 @@ pub(crate) fn register_all(steel: &mut Engine) {
         // gate either, and `stdlib/run!` is a plain helper any plugin body can
         // reach, not a top-level dispatched command.
         open "%run-capture!" process::run_capture(cmd: SteelVal, args: SteelVal, cwd: SteelVal);
-        plain "current-process-id" process::current_process_id();
-        plain "process-alive?" process::process_alive(pid: SteelVal);
 
         cmd "diff-lines" diff::diff_lines(old: SteelVal, new: SteelVal);
         cmd "diff-buffer-lines" diff::diff_buffer_lines(pane: args::LivePane, ref_text: SteelVal);
@@ -548,6 +546,8 @@ pub(crate) fn register_all(steel: &mut Engine) {
         open "cwd" fs::cwd();
         cmd "set-cwd!" fs::set_cwd(path: String);
         open "delete-dir-tree!" fs::delete_dir_tree(path: String);
+        open "try-lock-file!" fs::try_lock_file(path: String);
+        open "unlock-file!" fs::unlock_file(path: String);
         open "path-entries" fs::path_entries(dir: String, prefix: String);
         open "path-programs" fs::path_programs(prefix: String, extensions: SteelVal);
         open "%which" fs::which_program(name: String);
