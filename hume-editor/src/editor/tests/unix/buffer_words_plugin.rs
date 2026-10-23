@@ -146,6 +146,12 @@ fn goto_line_and_edit(ed: &mut Editor, line: usize, ch: char) {
     ed.feed_key(key_esc());
 }
 
+/// A text of `count` lines, line `n` (1-based) reading `line(n)`, each ending
+/// in `\n`.
+fn numbered_text(count: usize, line: impl Fn(usize) -> String) -> String {
+    (1..=count).map(|n| line(n) + "\n").collect()
+}
+
 /// [`wait_for_word`]'s negation, for the "an edit removed this word" half of
 /// the refresh test.
 fn wait_for_word_gone(ed: &mut Editor, target: &str) {
@@ -211,15 +217,12 @@ fn lines_longer_than_the_budget_are_still_walked_to_both_ends() {
     let file_dir = tempfile::tempdir().unwrap();
     let path = file_dir.path().join("f.txt");
     let filler = "longfiller ".repeat(4);
-    let mut lines: Vec<String> = (1..=40)
-        .map(|n| match n {
-            1 => format!("first_word {filler}"),
-            40 => format!("last_word {filler}"),
-            _ => filler.clone(),
-        })
-        .collect();
-    lines.push(String::new());
-    std::fs::write(&path, lines.join("\n")).unwrap();
+    let text = numbered_text(40, |n| match n {
+        1 => format!("first_word {filler}"),
+        40 => format!("last_word {filler}"),
+        _ => filler.clone(),
+    });
+    std::fs::write(&path, text).unwrap();
     open(&mut ed, &path);
     goto_line_and_edit(&mut ed, 20, 'z');
     ed.feed_key(key('i'));
@@ -675,17 +678,10 @@ fn a_word_before_the_cursor_survives_the_forward_side_emptying_out() {
     // 60, is lines 51..59; line 57 sits at offset 6 into it. Past offset 4
     // matters: steel-core's `append` onto `'()` keeps only the first four
     // elements of its second argument.
-    let mut lines: Vec<String> = (1..=60)
-        .map(|n| {
-            if n == 57 {
-                "buried_word".to_string()
-            } else {
-                "filler".to_string()
-            }
-        })
-        .collect();
-    lines.push(String::new());
-    std::fs::write(&path, lines.join("\n")).unwrap();
+    let text = numbered_text(60, |n| {
+        if n == 57 { "buried_word" } else { "filler" }.to_string()
+    });
+    std::fs::write(&path, text).unwrap();
     open(&mut ed, &path);
     goto_line_and_edit(&mut ed, 60, 'z');
     ed.feed_key(key('i'));
@@ -753,15 +749,15 @@ fn restarting_the_walk_mid_flight_still_reaches_both_ends() {
     let mut ed = setup(&guard, tmp.path(), Some(r#"(hash "chars" 35)"#));
     let file_dir = tempfile::tempdir().unwrap();
     let path = file_dir.path().join("f.txt");
-    let mut lines: Vec<String> = (1..=160)
-        .map(|n| match n {
-            10 => "far_back".to_string(),
-            150 => "far_fwd".to_string(),
-            _ => "filler".to_string(),
-        })
-        .collect();
-    lines.push(String::new());
-    std::fs::write(&path, lines.join("\n")).unwrap();
+    let text = numbered_text(160, |n| {
+        match n {
+            10 => "far_back",
+            150 => "far_fwd",
+            _ => "filler",
+        }
+        .to_string()
+    });
+    std::fs::write(&path, text).unwrap();
     open(&mut ed, &path);
     goto_line_and_edit(&mut ed, 80, 'z');
     // Lets the debounce fire, starting the walk outward from line 80. Each

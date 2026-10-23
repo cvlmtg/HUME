@@ -23,7 +23,7 @@ ask.
 | Key | Default | Meaning |
 |---|---|---|
 | `"match"` | `'string` | `'string`: a case-sensitive prefix gate, the vim `i_CTRL-N` feel. `'fuzzy`: subsequence-scored like `core:lsp`'s own candidates, so the two compete on score rather than priority |
-| `"chars"` | `8000` | Characters fetched and scanned per side (before/after the cursor) on each background indexing tick; an integer of at least 1. A tick always takes at least one whole line. Lower trims the pause a keystroke can add near a huge buffer; raising it finishes indexing a large buffer in fewer ticks |
+| `"chars"` | `8000` | Characters fetched and scanned per side (before/after the cursor) on each background indexing tick; an integer of at least 1. Lower trims the pause a keystroke can add near a huge buffer; raising it finishes indexing a large buffer in fewer ticks |
 
 ## How it works
 
@@ -79,7 +79,7 @@ per line) block input several times longer than a tick over ordinary code.
 Each side sizes its window before fetching anything, from the offsets where lines start
 (`line->char-offset`, `char-offset->line`) and the buffer's end (`buffer-char-count`). It
 takes the whole lines that fit in the budget, so a window never exceeds it, except that
-each side takes at least one line: a line longer than the budget is a window of its own.
+each side takes at least one line.
 
 #### Anchor line
 
