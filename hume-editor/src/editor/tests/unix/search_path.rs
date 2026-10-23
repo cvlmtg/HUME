@@ -7,12 +7,14 @@ use crate::editor::tests::editor_cwd::{call, editor_in};
 
 const PROBE: &str = "hume-search-path-probe";
 
-/// A directory holding [`PROBE`], a link to the system program `target`.
+/// A directory holding [`PROBE`], a link to `/bin/sh`.
 /// Not a script written here: macOS scans a newly written executable on its
-/// first run, which takes seconds while the rest of the suite runs.
-fn probe_dir(target: &str) -> tempfile::TempDir {
+/// first run, which takes seconds while the rest of the suite runs. Not a
+/// coreutils program: a multicall coreutils (Ubuntu's uutils) picks the tool
+/// by the name it runs under, and runs none as [`PROBE`].
+fn probe_dir() -> tempfile::TempDir {
     let bin = tempfile::tempdir().unwrap();
-    std::os::unix::fs::symlink(target, bin.path().join(PROBE)).unwrap();
+    std::os::unix::fs::symlink("/bin/sh", bin.path().join(PROBE)).unwrap();
     bin
 }
 
@@ -26,7 +28,7 @@ fn editor_searching(tmp: &Path, bin: &Path) -> Editor {
 #[test]
 fn which_finds_a_program_on_the_editor_search_path() {
     let tmp = tempfile::tempdir().unwrap();
-    let bin = probe_dir("/bin/echo");
+    let bin = probe_dir();
     let mut ed = editor_searching(tmp.path(), bin.path());
 
     let found = log_probe(&mut ed, tmp.path(), &format!(r#"(which "{PROBE}")"#));
@@ -37,7 +39,7 @@ fn which_finds_a_program_on_the_editor_search_path() {
 #[test]
 fn which_in_a_required_module_finds_a_program_on_the_editor_search_path() {
     let tmp = tempfile::tempdir().unwrap();
-    let bin = probe_dir("/bin/echo");
+    let bin = probe_dir();
     let module = tmp.path().join("finder.scm");
     std::fs::write(
         &module,
@@ -77,7 +79,7 @@ fn which_finds_nothing_without_a_search_path() {
 #[test]
 fn path_programs_lists_the_programs_on_the_editor_search_path() {
     let tmp = tempfile::tempdir().unwrap();
-    let bin = probe_dir("/bin/echo");
+    let bin = probe_dir();
     let mut ed = editor_searching(tmp.path(), bin.path());
 
     let listed = log_probe(
@@ -92,14 +94,14 @@ fn path_programs_lists_the_programs_on_the_editor_search_path() {
 #[test]
 fn spawn_async_runs_a_program_on_the_editor_search_path() {
     let tmp = tempfile::tempdir().unwrap();
-    let bin = probe_dir("/bin/echo");
+    let bin = probe_dir();
     let mut ed = editor_searching(tmp.path(), bin.path());
     run(
         &mut ed,
         tmp.path(),
         &format!(
             r#"(define-command! "go" "" (lambda ()
-                 (spawn-async! "{PROBE}" '("found")
+                 (spawn-async! "{PROBE}" '("-c" "echo found")
                    (lambda (out err code) (log! 'info (trim out))))))"#
         ),
     );
@@ -113,13 +115,13 @@ fn spawn_async_runs_a_program_on_the_editor_search_path() {
 #[test]
 fn run_capture_runs_a_program_on_the_editor_search_path() {
     let tmp = tempfile::tempdir().unwrap();
-    let bin = probe_dir("/bin/echo");
+    let bin = probe_dir();
     let mut ed = editor_searching(tmp.path(), bin.path());
 
     let out = log_probe(
         &mut ed,
         tmp.path(),
-        &format!(r#"(trim (hash-ref (run-capture! "{PROBE}" '("found")) 'stdout))"#),
+        &format!(r#"(trim (hash-ref (run-capture! "{PROBE}" '("-c" "echo found")) 'stdout))"#),
     );
 
     assert_eq!(out, "found");
@@ -129,14 +131,14 @@ fn run_capture_runs_a_program_on_the_editor_search_path() {
 fn run_inline_output_runs_a_program_on_the_editor_search_path() {
     let tmp = tempfile::tempdir().unwrap();
     let record = tmp.path().join("ran.txt");
-    let bin = probe_dir("/usr/bin/touch");
+    let bin = probe_dir();
     let mut ed = editor_searching(tmp.path(), bin.path());
     run(
         &mut ed,
         tmp.path(),
         &format!(
             r#"(define-command! "go" "" (lambda ()
-                 (run-inline-output! "{PROBE}" (list {}))))"#,
+                 (run-inline-output! "{PROBE}" (list "-c" ": > \"$1\"" "{PROBE}" {}))))"#,
             steel_path(&record)
         ),
     );
@@ -149,7 +151,7 @@ fn run_inline_output_runs_a_program_on_the_editor_search_path() {
 #[test]
 fn picker_source_spawn_runs_a_program_on_the_editor_search_path() {
     let tmp = tempfile::tempdir().unwrap();
-    let bin = probe_dir("/bin/echo");
+    let bin = probe_dir();
     let mut ed = editor_searching(tmp.path(), bin.path());
     run(
         &mut ed,
@@ -160,7 +162,7 @@ fn picker_source_spawn_runs_a_program_on_the_editor_search_path() {
             (define-typed-command! "go" "" (lambda (pane)
               (set! tok (picker! pane '() (lambda (x) (void))))))
             (define-command! "spawn-it" "" (lambda ()
-              (picker-source-spawn! tok "{PROBE}" '("found"))))
+              (picker-source-spawn! tok "{PROBE}" '("-c" "echo found"))))
             "#
         ),
     );
