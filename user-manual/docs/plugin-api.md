@@ -335,6 +335,7 @@ Everyday string work (trimming, splitting on a separator, case conversion, prefi
 | `(cwd)` | HUME's working directory (what `:pwd` prints) |
 | `(set-cwd! path)` | Change HUME's working directory, like `:cd`; a relative `path` is joined onto the current one; raises if `path` is not a directory |
 | `(delete-dir-tree! path)` | Delete the directory `path` (relative to the working directory) and everything under it; nothing happens when it doesn't exist. Unlike Steel's `delete-directory!`, the time it takes doesn't count against the script budget, so a large tree is never left half deleted |
+| `(replace-dir! src dest)` | Move the directory `src` to `dest` (both relative to the working directory), replacing the directory `dest` held and creating `dest`'s parent if needed. Either `src` ends up at `dest` or the call raises and leaves `dest` as it was, even if the script budget runs out during it |
 | `(try-lock-file! path)` | Take an exclusive lock on the file `path` (relative to the working directory), creating the file if needed: `#t` when taken, `#f` when another HUME or program holds it. The lock lasts until `unlock-file!`, until the command, hook or callback that took it returns or is stopped, or until HUME exits, so a lock is never left behind. Taking a lock the same command already holds raises |
 | `(unlock-file! path)` | Release a lock `try-lock-file!` took; raises when this command doesn't hold it |
 | `(path-join seg ...)` | Join path segments with the OS-native separator |

@@ -337,3 +337,94 @@ fn home_dir_is_the_platform_home_directory() {
     };
     assert_eq!(got, expected);
 }
+
+// ── replace-dir! ─────────────────────────────────────────────────────────
+
+/// The names in `dir`, sorted.
+fn entries(dir: &Path) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(dir)
+        .expect("readable dir")
+        .map(|entry| {
+            entry
+                .expect("dir entry")
+                .file_name()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect();
+    names.sort();
+    names
+}
+
+/// A directory at `dir` holding one empty file named `file`.
+fn dir_with(dir: &Path, file: &str) {
+    std::fs::create_dir_all(dir).unwrap();
+    std::fs::write(dir.join(file), "").unwrap();
+}
+
+fn call_replace_dir(src: &Path, dest: &Path) -> SteelResult {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    replace_dir(
+        &mut ctx,
+        src.to_string_lossy().into_owned(),
+        dest.to_string_lossy().into_owned(),
+    )
+}
+
+#[test]
+fn replace_dir_puts_src_where_dest_was() {
+    let tmp = TempDir::new().unwrap();
+    let (src, parent) = (tmp.path().join("stage/repo"), tmp.path().join("plugins"));
+    let dest = parent.join("repo");
+    dir_with(&src, "new");
+    dir_with(&dest, "old");
+
+    call_replace_dir(&src, &dest).unwrap();
+
+    assert_eq!(entries(&dest), ["new"]);
+    assert_eq!(entries(&parent), ["repo"], "nothing is left beside dest");
+    assert!(!src.exists());
+}
+
+#[test]
+fn replace_dir_creates_a_missing_dest_and_its_parent() {
+    let tmp = TempDir::new().unwrap();
+    let (src, dest) = (tmp.path().join("stage/repo"), tmp.path().join("a/b/repo"));
+    dir_with(&src, "new");
+
+    call_replace_dir(&src, &dest).unwrap();
+
+    assert_eq!(entries(&dest), ["new"]);
+    assert!(!src.exists());
+}
+
+#[test]
+fn replace_dir_keeps_dest_when_src_cannot_move() {
+    let tmp = TempDir::new().unwrap();
+    let (src, parent) = (tmp.path().join("stage/missing"), tmp.path().join("plugins"));
+    let dest = parent.join("repo");
+    dir_with(&dest, "old");
+
+    call_replace_dir(&src, &dest).unwrap_err();
+
+    assert_eq!(entries(&dest), ["old"]);
+    assert_eq!(entries(&parent), ["repo"], "nothing is left beside dest");
+}
+
+/// A swap a crash interrupted leaves dest's backup behind; the next one
+/// clears it.
+#[test]
+fn replace_dir_clears_a_backup_an_earlier_swap_left() {
+    let tmp = TempDir::new().unwrap();
+    let (src, parent) = (tmp.path().join("stage/repo"), tmp.path().join("plugins"));
+    let dest = parent.join("repo");
+    dir_with(&src, "new");
+    dir_with(&dest, "old");
+    dir_with(&parent.join("repo.replaced"), "older");
+
+    call_replace_dir(&src, &dest).unwrap();
+
+    assert_eq!(entries(&dest), ["new"]);
+    assert_eq!(entries(&parent), ["repo"]);
+}

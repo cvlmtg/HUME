@@ -546,6 +546,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         open "cwd" fs::cwd();
         cmd "set-cwd!" fs::set_cwd(path: String);
         open "delete-dir-tree!" fs::delete_dir_tree(path: String);
+        open "replace-dir!" fs::replace_dir(src: String, dest: String);
         open "try-lock-file!" fs::try_lock_file(path: String);
         open "unlock-file!" fs::unlock_file(path: String);
         open "path-entries" fs::path_entries(dir: String, prefix: String);

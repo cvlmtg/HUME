@@ -117,8 +117,9 @@ made in the clone and any branch checked out there by hand.
 repo: `git init` in `<data>/plum-staging/<parent>/<name>`, `git remote add origin <url>`,
 origin made a promisor remote with `partialclonefilter blob:none` (a blobless clone,
 which downloads only the files of the commits it checks out), `plum/git-sync!`, then
-the caller's `#:build` on the staging clone, if any. Only then does it delete the old
-clone, if any, and rename the new one into place. A failed install deletes its staging
+the caller's `#:build` on the staging clone, if any. Only then does it move the new clone
+into the old one's place with `replace-dir!`, in one step the script budget cannot stop
+half way. A failed install deletes its staging
 clone and leaves the old clone untouched, then raises the failure's own error.
 `:plum-install-plugins` installs only missing plugins, so a changed pin reaches an
 installed plugin through `:plum-update-plugins`.

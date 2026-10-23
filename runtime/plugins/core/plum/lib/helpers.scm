@@ -49,9 +49,7 @@
       (plum/git! stage (list "config" "remote.origin.partialclonefilter" "blob:none"))
       (plum/git-sync! stage ref)
       (when build (build stage)))
-    (call! "stdlib/delete-dir!" dest)
-    (create-directory! (parent-name dest))
-    (rename-file-or-directory! stage dest)))
+    (replace-dir! stage dest)))
 
 ;;; Checks the clone in `dir` out at origin's `ref`, or its default branch for #f.
 ;;; See README.md's "Pinned plugins".

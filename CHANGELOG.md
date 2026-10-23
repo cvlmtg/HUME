@@ -13,7 +13,7 @@
 
 ### Plugins & scripting
 - `steel-command-budget-ms` and `steel-init-budget-ms` stop a script that runs past them, so a plugin stuck in a loop can't freeze HUME. Time spent waiting for a program or deleting a directory tree doesn't count.
-- New `delete-dir-tree!`, `try-lock-file!` and `unlock-file!`.
+- New `delete-dir-tree!`, `replace-dir!`, `try-lock-file!` and `unlock-file!`.
 - A HUME that exited, or an install the script budget stopped, can't leave `:lsp-install` locked.
 - A grammar `register-grammar!` registers from `init.scm` that can't be loaded is reported in `:messages` when a file or an embedded block first needs it, not at startup.
 

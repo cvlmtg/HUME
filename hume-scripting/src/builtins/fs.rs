@@ -6,8 +6,9 @@
 //! here is editor-integration info Steel can't derive on its own,
 //! `path-join`'s Windows UNC-prefix stripping (Steel's own
 //! `canonicalize-path` leaks `\\?\`, which external tools reject), and what
-//! the session has to own: a tree delete the budget does not count, and file
-//! locks released when the session ends.
+//! the session has to own: a tree delete the budget does not count, a
+//! directory swap the budget cannot split, and file locks released when the
+//! session ends.
 //!
 //! | Steel name      | Signature                      | Notes                                        |
 //! |-----------------|--------------------------------|----------------------------------------------|
@@ -16,6 +17,7 @@
 //! | `cwd`           | `() → string`                  | The editor's working directory               |
 //! | `set-cwd!`      | `string → void`                | `:cd`: moves the editor's working directory  |
 //! | `delete-dir-tree!` | `string → void`             | Recursive delete, budget stopped while it runs |
+//! | `replace-dir!`  | `string string → void`         | Moves a directory into another's place, all or nothing |
 //! | `try-lock-file!` | `string → bool`               | Exclusive OS lock, held until `unlock-file!` or the session ends |
 //! | `unlock-file!`  | `string → void`                | Releases a lock this session took            |
 //! | `path-join`     | `string… → string`             | OS-native join; no sandbox, no filesystem access |
@@ -107,6 +109,52 @@ pub(crate) fn delete_dir_tree(ctx: &mut SteelCtx, path: String) -> SteelResult {
         Ok(()) => Ok(SteelVal::Void),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(SteelVal::Void),
         Err(e) => Err(generic_err(format!("delete-dir-tree!: {path}: {e}"))),
+    }
+}
+
+/// `(replace-dir! src dest)`: moves the directory `src` to `dest` (relative
+/// paths join onto `(cwd)`), replacing whatever directory `dest` held and
+/// creating `dest`'s parent when absent. Either `src` ends up at `dest`, or
+/// the call raises with `dest` as it was. One builtin call runs to the end
+/// even when the budget expires during it, so a stopped script cannot leave
+/// `dest` deleted and `src` unmoved. `dest`'s old contents move aside to a
+/// sibling `<name>.replaced` and are deleted last, with the budget stopped;
+/// a backup a crash left there is cleared first.
+pub(crate) fn replace_dir(ctx: &mut SteelCtx, src: String, dest: String) -> SteelResult {
+    let cwd = ctx.host.buffers().cwd();
+    let (src_path, dest_path) = (cwd.join(&src), cwd.join(&dest));
+    let (Some(parent), Some(name)) = (dest_path.parent(), dest_path.file_name()) else {
+        return Err(generic_err(format!(
+            "replace-dir!: {dest} names no directory to replace"
+        )));
+    };
+    let mut backup_name = name.to_os_string();
+    backup_name.push(".replaced");
+    let backup = parent.join(backup_name);
+    ctx.while_waiting(|| {
+        std::fs::create_dir_all(parent)?;
+        remove_dir_tree_if_present(&backup)?;
+        let had_dest = match std::fs::rename(&dest_path, &backup) {
+            Ok(()) => true,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
+            Err(e) => return Err(e),
+        };
+        if let Err(e) = std::fs::rename(&src_path, &dest_path) {
+            if had_dest {
+                std::fs::rename(&backup, &dest_path)?;
+            }
+            return Err(e);
+        }
+        remove_dir_tree_if_present(&backup)
+    })
+    .map(|()| SteelVal::Void)
+    .map_err(|e| generic_err(format!("replace-dir!: {src} -> {dest}: {e}")))
+}
+
+fn remove_dir_tree_if_present(dir: &Path) -> std::io::Result<()> {
+    match std::fs::remove_dir_all(dir) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        result => result,
     }
 }
 

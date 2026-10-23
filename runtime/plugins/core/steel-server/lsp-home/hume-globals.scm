@@ -308,6 +308,7 @@
 (#%register-global "repeat-find-forward")
 (#%register-global "repeat-last-action")
 (#%register-global "replace")
+(#%register-global "replace-dir!")
 (#%register-global "resolve-plugin-path")
 (#%register-global "run-capture!")
 (#%register-global "run-inline-output!")
