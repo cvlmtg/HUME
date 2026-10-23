@@ -559,11 +559,11 @@ pub(crate) fn register_all(steel: &mut Engine) {
         open "runtime-dir" fs::runtime_dir();
         open "cwd" fs::cwd();
         open "set-cwd!" fs::set_cwd(path: String);
-        open "replace-dir!" fs::replace_dir(src: String, dest: String);
+        open "replace-dir!" fs::replace_dir(src: args::ScriptPath, dest: args::ScriptPath);
         open "%delete-directory!" fs::delete_directory(dir: String);
-        open "try-lock-file!" fs::try_lock_file(path: String);
-        open "unlock-file!" fs::unlock_file(path: String);
-        open "path-entries" fs::path_entries(dir: String, prefix: String);
+        open "try-lock-file!" fs::try_lock_file(path: args::ScriptPath);
+        open "unlock-file!" fs::unlock_file(path: args::ScriptPath);
+        open "path-entries" fs::path_entries(dir: args::ScriptPath, prefix: String);
         open "path-programs" fs::path_programs(prefix: String, extensions: SteelVal);
         open "%which" fs::which_program(name: String);
         plain "home-dir" fs::home_dir();

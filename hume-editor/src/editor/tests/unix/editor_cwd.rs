@@ -140,19 +140,12 @@ fn current_directory_in_a_required_module_reports_the_editor_cwd() {
     run(
         &mut ed,
         tmp.path(),
-        &format!(
-            r#"(require {})
-               (define-command! "go" "" (lambda () (log! 'info (where))))"#,
-            steel_path(&module)
-        ),
+        &format!("(require {})", steel_path(&module)),
     );
 
-    call(&mut ed, "go");
+    let out = log_probe(&mut ed, tmp.path(), "(where)");
 
-    assert_eq!(
-        ed.state.status_msg.clone().unwrap(),
-        canonical(tmp.path()).to_str().unwrap()
-    );
+    assert_eq!(out, canonical(tmp.path()).to_str().unwrap());
 }
 
 #[test]

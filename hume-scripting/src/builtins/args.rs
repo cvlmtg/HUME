@@ -180,22 +180,15 @@ pub(crate) fn optional_path_arg(
     }
 }
 
-/// `typed` resolved as `:e` resolves a typed path: a relative one joins onto
-/// `editor_cwd`, `.` and `..` collapse lexically, and links stay as typed.
-/// Every path a HUME builtin takes from a script resolves this way.
-pub(crate) fn editor_path(typed: &Path, editor_cwd: &Path) -> PathBuf {
-    hume_platform::path::absolute_unresolved(typed, editor_cwd)
-}
-
 /// A `#:cwd` argument: `#f` is `editor_cwd`, a relative path resolves
-/// against it by [`editor_path`].
+/// against it as a [`ScriptPath`] does.
 pub(crate) fn cwd_arg(
     val: SteelVal,
     editor_cwd: &Path,
     ctx_name: &str,
 ) -> Result<PathBuf, SteelErr> {
     Ok(match optional_path_arg(val, ctx_name)? {
-        Some(dir) => editor_path(&dir, editor_cwd),
+        Some(dir) => hume_platform::path::absolute_unresolved(&dir, editor_cwd),
         None => editor_cwd.to_path_buf(),
     })
 }
@@ -859,6 +852,36 @@ impl BuiltinArg for Usize {
     type Out = usize;
     fn resolve(self, _ctx: &mut crate::SteelCtx, _name: &'static str) -> Result<usize, SteelErr> {
         Ok(self.0)
+    }
+}
+
+/// A path argument, resolved as `:e` resolves a typed path: a relative one
+/// joins onto the editor's working directory, and `.` and `..` collapse
+/// lexically without following links. A builtin declares its path
+/// parameters as this type in the `builtins!` table, so none resolves one
+/// by hand.
+#[derive(Debug, Clone)]
+pub(crate) struct ScriptPath(PathBuf);
+
+impl FromSteelVal for ScriptPath {
+    fn from_steelval(val: &SteelVal) -> Result<Self, SteelErr> {
+        match val {
+            SteelVal::StringV(s) => Ok(ScriptPath(PathBuf::from(s.as_str()))),
+            _ => Err(SteelErr::new(
+                ErrorKind::TypeMismatch,
+                "expected a string path".to_string(),
+            )),
+        }
+    }
+}
+
+impl BuiltinArg for ScriptPath {
+    type Out = PathBuf;
+    fn resolve(self, ctx: &mut crate::SteelCtx, _name: &'static str) -> Result<PathBuf, SteelErr> {
+        Ok(hume_platform::path::absolute_unresolved(
+            &self.0,
+            &ctx.host.buffers().cwd(),
+        ))
     }
 }
 

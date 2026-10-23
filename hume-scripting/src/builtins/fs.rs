@@ -10,8 +10,9 @@
 //! Steel's own `delete-directory!`), a directory swap the budget cannot
 //! split, and file locks released when the session ends.
 //!
-//! A relative path these builtins take resolves through
-//! [`editor_path`], as `:e` resolves a typed one.
+//! The path arguments of `replace-dir!`, the lock pair and `path-entries`
+//! are [`ScriptPath`](super::args::ScriptPath)s, resolved as `:e` resolves
+//! a typed one.
 //!
 //! | Steel name      | Signature                      | Notes                                        |
 //! |-----------------|--------------------------------|----------------------------------------------|
@@ -43,7 +44,7 @@ use steel::rvals::{IntoSteelVal, SteelVal};
 use crate::SteelCtx;
 
 use super::SteelResult;
-use super::args::{editor_path, list_to_strings, string_list};
+use super::args::{list_to_strings, string_list};
 use super::errors::generic_err;
 
 // ── data-dir / runtime-dir ───────────────────────────────────────────────────
@@ -108,15 +109,11 @@ pub(crate) fn set_cwd(ctx: &mut SteelCtx, path: String) -> SteelResult {
 /// `dest` deleted and `src` unmoved. `dest`'s old contents move aside to a
 /// sibling `<name>.replaced` and are deleted last, with the budget stopped;
 /// a backup a crash left there is cleared first.
-pub(crate) fn replace_dir(ctx: &mut SteelCtx, src: String, dest: String) -> SteelResult {
-    let cwd = ctx.host.buffers().cwd();
-    let (src_path, dest_path) = (
-        editor_path(Path::new(&src), &cwd),
-        editor_path(Path::new(&dest), &cwd),
-    );
-    let (Some(parent), Some(name)) = (dest_path.parent(), dest_path.file_name()) else {
+pub(crate) fn replace_dir(ctx: &mut SteelCtx, src: PathBuf, dest: PathBuf) -> SteelResult {
+    let (Some(parent), Some(name)) = (dest.parent(), dest.file_name()) else {
         return Err(generic_err(format!(
-            "replace-dir!: {dest} names no directory to replace"
+            "replace-dir!: {} names no directory to replace",
+            dest.display()
         )));
     };
     let mut backup_name = name.to_os_string();
@@ -125,21 +122,27 @@ pub(crate) fn replace_dir(ctx: &mut SteelCtx, src: String, dest: String) -> Stee
     ctx.while_waiting(|| {
         std::fs::create_dir_all(parent)?;
         remove_dir_tree_if_present(&backup)?;
-        let had_dest = match std::fs::rename(&dest_path, &backup) {
+        let had_dest = match std::fs::rename(&dest, &backup) {
             Ok(()) => true,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
             Err(e) => return Err(e),
         };
-        if let Err(e) = std::fs::rename(&src_path, &dest_path) {
+        if let Err(e) = std::fs::rename(&src, &dest) {
             if had_dest {
-                std::fs::rename(&backup, &dest_path)?;
+                std::fs::rename(&backup, &dest)?;
             }
             return Err(e);
         }
         remove_dir_tree_if_present(&backup)
     })
     .map(|()| SteelVal::Void)
-    .map_err(|e| generic_err(format!("replace-dir!: {src} -> {dest}: {e}")))
+    .map_err(|e| {
+        generic_err(format!(
+            "replace-dir!: {} -> {}: {e}",
+            src.display(),
+            dest.display()
+        ))
+    })
 }
 
 /// `(%delete-directory! dir)`, which the prelude's `delete-directory!`
@@ -164,37 +167,43 @@ fn remove_dir_tree_if_present(dir: &Path) -> std::io::Result<()> {
 /// `unlock-file!` or the end of the session, whichever comes first, and the
 /// OS drops it when the process exits, so no lock is ever left over. Taking
 /// a lock this session already holds raises.
-pub(crate) fn try_lock_file(ctx: &mut SteelCtx, path: String) -> SteelResult {
-    let file_path = editor_path(Path::new(&path), &ctx.host.buffers().cwd());
-    if ctx.file_locks.contains_key(&file_path) {
+pub(crate) fn try_lock_file(ctx: &mut SteelCtx, path: PathBuf) -> SteelResult {
+    if ctx.file_locks.contains_key(&path) {
         return Err(generic_err(format!(
-            "try-lock-file!: this session already holds {path}"
+            "try-lock-file!: this session already holds {}",
+            path.display()
         )));
     }
+    let lock_err =
+        |e: std::io::Error| generic_err(format!("try-lock-file!: {}: {e}", path.display()));
     let file = std::fs::OpenOptions::new()
         .create(true)
         .truncate(false)
         .write(true)
-        .open(&file_path)
-        .map_err(|e| generic_err(format!("try-lock-file!: {path}: {e}")))?;
+        .open(&path)
+        .map_err(lock_err)?;
     match file.try_lock() {
         Ok(()) => {
-            ctx.file_locks.insert(file_path, file);
+            ctx.file_locks.insert(path, file);
             Ok(SteelVal::BoolV(true))
         }
         Err(TryLockError::WouldBlock) => Ok(SteelVal::BoolV(false)),
-        Err(TryLockError::Error(e)) => Err(generic_err(format!("try-lock-file!: {path}: {e}"))),
+        Err(TryLockError::Error(e)) => Err(lock_err(e)),
     }
 }
 
 /// `(unlock-file! path)`: releases the lock `try-lock-file!` took on `path`
 /// this session. Raises when this session does not hold it.
-pub(crate) fn unlock_file(ctx: &mut SteelCtx, path: String) -> SteelResult {
-    let file_path = editor_path(Path::new(&path), &ctx.host.buffers().cwd());
+pub(crate) fn unlock_file(ctx: &mut SteelCtx, path: PathBuf) -> SteelResult {
     ctx.file_locks
-        .remove(&file_path)
+        .remove(&path)
         .map(|_| SteelVal::Void)
-        .ok_or_else(|| generic_err(format!("unlock-file!: this session does not hold {path}")))
+        .ok_or_else(|| {
+            generic_err(format!(
+                "unlock-file!: this session does not hold {}",
+                path.display()
+            ))
+        })
 }
 
 // ── Completion listings ──────────────────────────────────────────────────────
@@ -202,8 +211,7 @@ pub(crate) fn unlock_file(ctx: &mut SteelCtx, path: String) -> SteelResult {
 /// `(path-entries dir prefix)`: the names in `dir` (relative to `(cwd)`)
 /// that a typed path ending in `prefix` completes to, as `:e` lists them:
 /// [`hume_platform::path::completion_entries`]'s rule.
-pub(crate) fn path_entries(ctx: &mut SteelCtx, dir: String, prefix: String) -> SteelResult {
-    let dir = editor_path(Path::new(&dir), &ctx.host.buffers().cwd());
+pub(crate) fn path_entries(_ctx: &mut SteelCtx, dir: PathBuf, prefix: String) -> SteelResult {
     Ok(string_list(hume_platform::path::completion_entries(
         &dir, &prefix, false,
     )))

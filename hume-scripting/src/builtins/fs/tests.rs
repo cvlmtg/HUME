@@ -365,11 +365,7 @@ fn dir_with(dir: &Path, file: &str) {
 fn call_replace_dir(src: &Path, dest: &Path) -> SteelResult {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
-    replace_dir(
-        &mut ctx,
-        src.to_string_lossy().into_owned(),
-        dest.to_string_lossy().into_owned(),
-    )
+    replace_dir(&mut ctx, src.to_path_buf(), dest.to_path_buf())
 }
 
 #[test]
