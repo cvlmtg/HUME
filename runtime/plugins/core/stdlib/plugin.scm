@@ -70,16 +70,10 @@
   (filter (lambda (name) (is-dir? (path-join dir name)))
           (sort (map file-name (read-dir dir)) string<?)))
 
-;; ── Subprocess helper ────────────────────────────────────────────────────────
-
-;;; See `hume_platform::process::run_capture`'s own doc and this plugin's
-;;; README (Subprocess) for why `stdlib/run!` is `run-capture!` directly.
-(define stdlib/run! run-capture!)
-
 ;; ── Git probes ───────────────────────────────────────────────────────────────
 
 (define (stdlib/run-stdout cmd args)
-  (let ([result (stdlib/run! cmd args)])
+  (let ([result (run-capture! cmd args)])
     (and (equal? (hash-ref result 'exit) 0) (trim (hash-ref result 'stdout)))))
 
 (define (stdlib/git-repo?)
@@ -245,10 +239,6 @@
 (define-command! "stdlib/list-subdirs"
   "Sorted basenames of the given directory's subdirectories."
   stdlib/list-subdirs)
-
-(define-command! "stdlib/run!"
-  "Spawn a command; blocks until exit. Returns (hash 'stdout s 'stderr s 'exit code), 'exit #f on spawn/wait failure."
-  stdlib/run!)
 
 (define-command! "stdlib/git-repo?"
   "#t iff the editor's cwd is inside a git work tree."

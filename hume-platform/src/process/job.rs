@@ -19,8 +19,8 @@
 //!
 //! Two capture threads, not one: reading stdout to EOF and then stderr
 //! would deadlock on a child that fills its stderr pipe while this thread
-//! is still blocked reading stdout, the same hazard the Scheme sync path
-//! documents at `runtime/plugins/core/stdlib/plugin.scm`'s `stdlib/run!`.
+//! is still blocked reading stdout, the same hazard
+//! [`run_capture`] closes for the sync path.
 //! Input is written by a third thread for the same reason: a child that
 //! fills its stdout pipe stops reading stdin until someone drains it.
 

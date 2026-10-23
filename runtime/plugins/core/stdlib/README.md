@@ -7,7 +7,7 @@ Cross-plugin access in HUME is `call!`-only: plugins never `require` each other'
 modules, since that would break the namespace isolation each plugin gets. So this plugin's
 public API is a set of `define-command!`-registered commands rather than a `provide`d
 library. A command name and a Steel binding of the same name live in separate namespaces,
-so the command `"stdlib/run!"` does not collide with the function it wraps. The prelude
+so the command `"stdlib/git-toplevel"` does not collide with the function it wraps. The prelude
 (convenience macros for `init.scm`, loaded at startup) is a separate layer and not part of
 this plugin.
 
@@ -39,7 +39,6 @@ under [How it works](#how-it-works) cover what a contributor needs beyond that.
 |---|---|
 | [Selections](#selections) | `stdlib/selection-anchor`, `-head`, `-start-char`, `-end-char`, `-primary?`, `stdlib/primary-selection`, `stdlib/all-single-char?`, `stdlib/single-selection?`, `stdlib/cursor-char-offset` |
 | [Filesystem and list search](#filesystem-and-list-search) | `stdlib/find`, `stdlib/write-file!`, `stdlib/delete-dir!`, `stdlib/delete-file!`, `stdlib/list-subdirs` |
-| [Subprocess](#subprocess) | `stdlib/run!` |
 | [Git](#git) | `stdlib/git-repo?`, `stdlib/git-toplevel` |
 | [Command arguments](#command-arguments) | `stdlib/resolve-lang-arg` |
 | [Reports](#reports) | `stdlib/report-section`, `stdlib/show-report!` |
@@ -69,23 +68,6 @@ Thin wrappers over Steel's `steel/filesystem` and `steel/ports`. `core:plum` and
 a missing target is not an error. `list-subdirs` returns the names of the directories
 under a path, sorted, and skips stray files that sit alongside a directory tree
 (`.install-lock`, `.DS_Store`).
-
-### Subprocess
-
-`stdlib/run!` is `run-capture!`, the native blocking capture
-(`hume_platform::process::run_capture`): it runs a command with direct argv, closes stdin,
-and returns `(hash 'stdout s 'stderr s 'exit code)`. Its Rust doc explains why it exists
-instead of Steel's `spawn-process`, `wait` and `child-stdout`. `GIT_TERMINAL_PROMPT=0`,
-set by `hume_platform::process::base_command`, applies to it and to `run-inline-output!`
-alike.
-
-Three ways to run a subprocess exist across the codebase; pick by shape:
-
-| Need | Use |
-|---|---|
-| An `#:inline-output` command | `run-inline-output!` (process-group isolation for Ctrl-c) |
-| Enumeration-scale streaming output | `spawn-async!` |
-| Anything else | `stdlib/run!` |
 
 ### Git
 
@@ -163,7 +145,7 @@ value for `key`, or `default` if absent.
 
 ## Design decisions
 
-- **`stdlib/run-stdout` is internal.** It returns `stdlib/run!`'s stdout, trimmed, when the
+- **`stdlib/run-stdout` is internal.** It returns `run-capture!`'s stdout, trimmed, when the
   command exits 0, and `#f` otherwise. Trimming is safe for a single-value probe like the
   git commands; a `-z`-delimited multi-entry blob such as `git status` can start with
   significant whitespace in its first entry.

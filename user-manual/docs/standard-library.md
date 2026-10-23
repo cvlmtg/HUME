@@ -38,14 +38,6 @@ See [Core Plugins](core-plugins.md#core-stdlib) for why this call should stay a 
 
 `delete-dir!` and `delete-file!` are idempotent, unlike the Steel engine's own `delete-directory!`/`delete-file!`: a missing target is not an error. `list-subdirs` skips stray non-directory entries that sit alongside a directory tree, like `.DS_Store`.
 
-## Subprocesses
-
-| Call | Effect |
-|------|--------|
-| `(call! "stdlib/run!" cmd args #:cwd dir)` | Spawn `cmd`/`args` (in `dir`, or HUME's working directory if omitted); blocks until exit |
-
-Returns `(hash 'stdout s 'stderr s 'exit code)`. `'exit` is `#f`, with the failure reason in `'stderr`, if the command couldn't even be spawned or its exit couldn't be waited on. `stdlib/run!` blocks the whole editor until the command finishes, so it fits something quick (a `git rev-parse`) rather than anything that might take a moment while the user keeps typing. See [Filesystem and processes](writing-plugins.md#filesystem-and-processes) for `run-inline-output!` and `spawn-async!`, the other two ways to run a subprocess.
-
 ## Git
 
 | Call | Effect |

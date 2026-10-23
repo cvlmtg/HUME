@@ -538,11 +538,11 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "%spawn-async!" process::spawn_async(cmd: SteelVal, args: SteelVal, cwd: SteelVal, callback: Rooted);
         cmd "cancel-async!" process::cancel_async(id: SteelVal);
 
-        // Blocking subprocess capture, no callback. Backs `stdlib/run!`.
+        // Blocking subprocess capture, no callback.
         // `open`, not `cmd`: Steel's own `spawn-process`/`wait`, which
         // `run_capture` stands in for (see its own doc), carry no legality
-        // gate either, and `stdlib/run!` is a plain helper any plugin body can
-        // reach, not a top-level dispatched command.
+        // gate either, and `run-capture!` is a plain helper any plugin body
+        // can reach, not a top-level dispatched command.
         open "%run-capture!" process::run_capture(cmd: SteelVal, args: SteelVal, cwd: SteelVal);
         open "%wait" process::wait(child: SteelVal);
         open "%wait->stdout" process::wait_for_stdout(child: SteelVal);

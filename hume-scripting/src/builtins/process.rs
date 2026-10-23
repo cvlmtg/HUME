@@ -1,6 +1,6 @@
 //! `(spawn-async! cmd args callback #:cwd dir)` / `(cancel-async! id)`: generic
 //! async subprocess execution. `run-capture!`: a blocking counterpart with
-//! no callback, backing `core:stdlib`'s `stdlib/run!`.
+//! no callback.
 //!
 //! Spawns a command off the main thread and delivers its whole
 //! stdout/stderr/exit-status to `callback` once, at completion.
@@ -69,7 +69,7 @@ pub(crate) fn cancel_async(ctx: &mut SteelCtx, id: SteelVal) -> SteelResult {
 /// `run-capture!`'s `#:cwd` keyword in `bootstrap.scm`. Runs `cmd`
 /// with `args` (direct argv, no shell) in `cwd` (`#f` = the editor's cwd, a
 /// relative path joins onto it), blocking the calling thread until it exits: the small-output,
-/// synchronous-with-the-TUI-still-up shape `stdlib/run!` is for; use
+/// synchronous-with-the-TUI-still-up shape `run-capture!` is for; use
 /// `spawn-async!` instead for anything that shouldn't stall typing.
 ///
 /// `'exit` is `#f` (never a sentinel int) for a spawn failure (`cmd`
@@ -77,8 +77,7 @@ pub(crate) fn cancel_async(ctx: &mut SteelCtx, id: SteelVal) -> SteelResult {
 /// `wait` (`ExitStatus::code()` is `None` in both shapes `run_capture`
 /// collapses into one `Err`, and in the signal-killed shape it returns
 /// `Ok`). On spawn failure `stdout` is `""` and `stderr` names `cmd` and the
-/// io error. This is `stdlib/run!`'s three-case contract, which its callers
-/// rely on.
+/// io error. Callers rely on this three-case contract.
 pub(crate) fn run_capture(
     ctx: &mut SteelCtx,
     cmd: SteelVal,

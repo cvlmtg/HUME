@@ -10,6 +10,7 @@
 
 ### Breaking changes
 - `(hume/yield!)` is gone: the script budget stops a script on its own, so delete any call to it.
+- `stdlib/run!` is gone: call `run-capture!`, the function it named.
 
 ### Plugins & scripting
 - `steel-command-budget-ms` and `steel-init-budget-ms` stop a script that runs past them, so a plugin stuck in a loop can't freeze HUME. Time spent waiting for a program or deleting a directory tree doesn't count.

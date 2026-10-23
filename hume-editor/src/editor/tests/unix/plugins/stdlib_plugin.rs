@@ -293,46 +293,6 @@ fn core_stdlib_write_file_truncates_existing_content() {
     );
 }
 
-/// `stdlib/run!` must cover all three subprocess outcomes it promises:
-/// success with captured stdout, a nonzero exit with captured stderr, and a
-/// spawn failure (nonexistent binary) reporting exit-code `#f` with the
-/// failure reason standing in for stderr.
-///
-/// Each case's expected shape is asserted directly
-/// against the real `sh`/nonexistent-binary spawn, not against any of
-/// `stdlib/run!`'s own internals.
-#[test]
-fn core_stdlib_run_covers_success_failure_and_spawn_error() {
-    let (mut ed, mut host, _guard, _init_dir) = setup_stdlib_editor();
-
-    let assertions = r#"
-(let ([r (call! "stdlib/run!" "echo" (list "hello-world"))])
-  (unless (and (string-contains? (hash-ref r 'stdout) "hello-world") (equal? (hash-ref r 'exit) 0))
-    (error (string-append "stdlib/run! success case: " (to-string r)))))
-
-(let ([r (call! "stdlib/run!" "sh" (list "-c" "echo err-msg 1>&2; exit 3"))])
-  (unless (and (string-contains? (hash-ref r 'stderr) "err-msg") (equal? (hash-ref r 'exit) 3))
-    (error (string-append "stdlib/run! nonzero-exit case: " (to-string r)))))
-
-(let ([r (call! "stdlib/run!" "hume-definitely-not-a-real-binary-xyz" '())])
-  (unless (not (hash-ref r 'exit))
-    (error (string-append "stdlib/run! spawn-failure case: " (to-string r)))))
-
-(let ([r (call! "stdlib/run!" "pwd" '() #:cwd "/")])
-  (unless (equal? (trim (hash-ref r 'stdout)) "/")
-    (error (string-append "stdlib/run! #:cwd case: " (to-string r)))))
-"#;
-
-    let result = {
-        let mut ih = init_host!(ed);
-        host.eval_source(assertions, &mut ih)
-    };
-    assert!(
-        result.is_ok(),
-        "stdlib/run! assertions must pass: {result:?}"
-    );
-}
-
 /// `stdlib/resolve-lang-arg` must resolve a typed string argument first,
 /// fall back to the current buffer's language when the argument isn't a
 /// string, and return `#f` plus a `cmd`-naming warning when neither is

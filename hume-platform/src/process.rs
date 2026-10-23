@@ -148,7 +148,7 @@ pub fn run_inline_output(
 /// Run `cmd` with `args`, both stdout and stderr fully captured, stdin
 /// closed immediately (`Stdio::null()`, so the child sees EOF on read rather
 /// than racing the editor's own key reads on the terminal). Backs the
-/// `stdlib/run!` Steel builtin (`run-capture!`).
+/// `run-capture!` Steel builtin.
 ///
 /// Built on `Command::output`, which drains both pipes concurrently rather
 /// than one after the other (see this module's doc for the deadlock that

@@ -8,10 +8,9 @@ use hume_platform::dirs::Dirs;
 /// (and by extension `child-stdin`/`child-stdout`) must be captured
 /// *before* calling `wait`: calling it after returns `#f` even though the
 /// stream was piped. Also pins the stdin-close-for-EOF pattern needed
-/// since stdin is not inherited by default. No in-tree Scheme calls
-/// `spawn-process` directly any more (`core:stdlib`'s `stdlib/run!` is now
-/// `run-capture!`, a native builtin closing the exact deadlock this shape
-/// invites; see its own doc), but the full-trust plugin model leaves
+/// since stdin is not inherited by default. In-tree Scheme runs programs
+/// through `run-capture!`, a native builtin closing the deadlock this shape
+/// invites (see its own doc), but the full-trust plugin model leaves
 /// `spawn-process` reachable from any user plugin, so the gotcha stays live
 /// and worth pinning.
 #[test]
@@ -42,6 +41,35 @@ fn child_stderr_must_be_captured_before_wait() {
     "#;
     host.eval_source(src, &mut null_host)
         .expect("spawn-process shape probe failed");
+}
+
+/// `run-capture!` covers the three outcomes it promises: success with the
+/// captured stdout, a nonzero exit with the captured stderr, and a spawn
+/// failure (a binary that does not exist) answering exit `#f`; `#:cwd` sets
+/// where the child starts.
+#[test]
+fn run_capture_covers_success_failure_and_spawn_error() {
+    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut null_host = NullHost;
+    let src = r#"
+(let ([r (run-capture! "echo" (list "hello-world"))])
+  (unless (and (string-contains? (hash-ref r 'stdout) "hello-world") (equal? (hash-ref r 'exit) 0))
+    (error (string-append "success case: " (to-string r)))))
+
+(let ([r (run-capture! "sh" (list "-c" "echo err-msg 1>&2; exit 3"))])
+  (unless (and (string-contains? (hash-ref r 'stderr) "err-msg") (equal? (hash-ref r 'exit) 3))
+    (error (string-append "nonzero-exit case: " (to-string r)))))
+
+(let ([r (run-capture! "hume-definitely-not-a-real-binary-xyz" '())])
+  (unless (not (hash-ref r 'exit))
+    (error (string-append "spawn-failure case: " (to-string r)))))
+
+(let ([r (run-capture! "pwd" '() #:cwd "/")])
+  (unless (equal? (trim (hash-ref r 'stdout)) "/")
+    (error (string-append "cwd case: " (to-string r)))))
+"#;
+    host.eval_source(src, &mut null_host)
+        .expect("run-capture! assertions must pass");
 }
 
 /// A native builtin's error re-raised from an inner `with-handler` reaches
