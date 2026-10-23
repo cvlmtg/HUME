@@ -287,7 +287,7 @@ pub(super) fn begin_insert_session_preserving_register(
     // can't replace it. `None` outside a recorded change's code (during `.`,
     // or a session a hook opens).
     let recording = state.open_scope_source();
-    let session = crate::editor::edit_session::begin_edit_group(
+    let session = crate::editor::edit_session::open_insert(
         &state.buffers,
         &state.panes.entries,
         state.input.insert_session(),

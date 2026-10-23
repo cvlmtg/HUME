@@ -40,8 +40,8 @@ fn workspace_setup(tmp: &Path, reply: serde_json::Value) -> (Editor, RealRuntime
     )
 }
 
-fn run(ed: &mut Editor, command: &'static str) {
-    ed.execute_keymap_command(command.into(), Some(1), false);
+fn call_and_pump(ed: &mut Editor, command: &'static str) {
+    call_counted(ed, command, Some(1));
     pump_lsp(ed);
 }
 
@@ -83,7 +83,7 @@ fn nested_document_symbols_list_flattened_with_their_container() {
     let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _requests) = document_setup(tmp.path(), nested_reply());
 
-    run(&mut ed, "lsp/document-symbols");
+    call_and_pump(&mut ed, "lsp/document-symbols");
 
     insta::assert_snapshot!(picker_rows(&ed).join("\n"), @r"
     main  function
@@ -97,7 +97,7 @@ fn accepting_a_nested_symbol_jumps_to_its_selection_range() {
     let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _requests) = document_setup(tmp.path(), nested_reply());
 
-    run(&mut ed, "lsp/document-symbols");
+    call_and_pump(&mut ed, "lsp/document-symbols");
     ed.feed_key(key_down());
     ed.feed_key(key_enter());
     pump_lsp(&mut ed);
@@ -118,7 +118,7 @@ fn flat_symbol_information_lists_and_jumps_by_its_own_location() {
         ]),
     );
 
-    run(&mut ed, "lsp/document-symbols");
+    call_and_pump(&mut ed, "lsp/document-symbols");
 
     insta::assert_snapshot!(picker_rows(&ed).join("\n"), @r"
     Bar  struct
@@ -144,7 +144,7 @@ fn null_optional_fields_read_as_absent() {
         ]),
     );
 
-    run(&mut ed, "lsp/document-symbols");
+    call_and_pump(&mut ed, "lsp/document-symbols");
 
     insta::assert_snapshot!(picker_rows(&ed).join("\n"), @r"
     Bar  struct
@@ -157,7 +157,7 @@ fn a_file_with_no_symbols_reports_it_and_opens_no_picker() {
     let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard, _requests) = document_setup(tmp.path(), serde_json::json!([]));
 
-    run(&mut ed, "lsp/document-symbols");
+    call_and_pump(&mut ed, "lsp/document-symbols");
 
     assert!(ed.state.input.picker().is_none());
     let msg = ed.state.status_msg.clone().unwrap_or_default();
@@ -170,7 +170,7 @@ fn document_symbols_without_a_provider_report_unsupported() {
     let (mut ed, _guard, requests) =
         setup_cursor_at_start(tmp.path(), SOURCE, serde_json::json!({}), |_, _| {});
 
-    run(&mut ed, "lsp/document-symbols");
+    call_and_pump(&mut ed, "lsp/document-symbols");
 
     assert!(ed.state.input.picker().is_none());
     assert_eq!(request_count(&requests, "textDocument/documentSymbol"), 0);
@@ -199,7 +199,7 @@ fn typing_queries_the_server_and_lists_rows_with_their_position() {
     let (mut ed, _guard, requests) =
         workspace_setup(tmp.path(), foo_and_main_reply(&rust_rig_uri(tmp.path())));
 
-    run(&mut ed, "lsp/workspace-symbols");
+    call_and_pump(&mut ed, "lsp/workspace-symbols");
     assert_eq!(picker_rows(&ed), Vec::<String>::new());
     type_query(&mut ed, "fo");
 
@@ -228,7 +228,7 @@ fn a_failed_workspace_query_settles_the_picker_with_no_rows() {
         |b, _| b.fail_with("workspace/symbol", -32603, "boom"),
     );
 
-    run(&mut ed, "lsp/workspace-symbols");
+    call_and_pump(&mut ed, "lsp/workspace-symbols");
     ed.feed_key(key('f'));
     poll_until(&mut ed, Editor::settle, |_| {
         request_count(&requests, "workspace/symbol") == 1
@@ -246,7 +246,7 @@ fn an_answer_for_a_deleted_query_does_not_fill_the_picker() {
     let (mut ed, _guard, requests) =
         workspace_setup(tmp.path(), foo_and_main_reply(&rust_rig_uri(tmp.path())));
 
-    run(&mut ed, "lsp/workspace-symbols");
+    call_and_pump(&mut ed, "lsp/workspace-symbols");
     ed.feed_key(key('f'));
     poll_until(&mut ed, Editor::settle, |_| {
         request_count(&requests, "workspace/symbol") == 1
@@ -275,7 +275,7 @@ fn workspace_symbols_outside_the_filesystem_are_left_out() {
         ]),
     );
 
-    run(&mut ed, "lsp/workspace-symbols");
+    call_and_pump(&mut ed, "lsp/workspace-symbols");
     ed.feed_key(key('f'));
     poll_until(&mut ed, pump_lsp, |ed| {
         ed.state.input.picker().is_some_and(|p| p.total_len() == 1)
@@ -297,7 +297,7 @@ fn a_workspace_symbol_without_a_range_is_left_out_and_the_picker_settles() {
         ]),
     );
 
-    run(&mut ed, "lsp/workspace-symbols");
+    call_and_pump(&mut ed, "lsp/workspace-symbols");
     ed.feed_key(key('f'));
     poll_until(&mut ed, pump_lsp, |ed| {
         ed.state.input.picker().is_some_and(|p| p.total_len() == 1)
@@ -313,7 +313,7 @@ fn accepting_a_workspace_symbol_jumps_to_it() {
     let (mut ed, _guard, _requests) =
         workspace_setup(tmp.path(), foo_and_main_reply(&rust_rig_uri(tmp.path())));
 
-    run(&mut ed, "lsp/workspace-symbols");
+    call_and_pump(&mut ed, "lsp/workspace-symbols");
     type_query(&mut ed, "fo");
     ed.feed_key(key_enter());
     pump_lsp(&mut ed);
@@ -327,7 +327,7 @@ fn workspace_symbols_without_a_provider_report_unsupported() {
     let (mut ed, _guard, _requests) =
         setup_cursor_at_start(tmp.path(), SOURCE, serde_json::json!({}), |_, _| {});
 
-    run(&mut ed, "lsp/workspace-symbols");
+    call_and_pump(&mut ed, "lsp/workspace-symbols");
 
     assert!(ed.state.input.picker().is_none());
     let msg = ed.state.status_msg.clone().unwrap_or_default();

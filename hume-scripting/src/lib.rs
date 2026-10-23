@@ -130,7 +130,7 @@ pub(crate) struct HostBundle<'a> {
     pending_messages: &'a mut Vec<(LogLevel, String)>,
     effects: &'a mut Vec<types::QueuedEffect>,
     dirs: &'a builtins::dirs::ScriptDirs,
-    budget: watchdog::BudgetClock,
+    budget: watchdog::BudgetClock<'a>,
 }
 
 /// The embedded Steel scripting host.
@@ -337,12 +337,7 @@ impl ScriptingHost {
 
     /// Plugin ids that should be activated when the event named `name` fires.
     pub fn activation_event_plugins(&self, name: &str) -> Vec<attribution::EntryId> {
-        self.registries
-            .lazy_registry
-            .activation_events
-            .get(name)
-            .cloned()
-            .unwrap_or_default()
+        self.registries.lazy_registry.event_plugins(name)
     }
 
     /// Plugin ids that should be activated when `language` is set on a buffer:

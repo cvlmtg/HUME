@@ -129,6 +129,14 @@ impl LazyRegistry {
             .collect()
     }
 
+    /// Plugins to activate when the event named `name` fires.
+    pub(crate) fn event_plugins(&self, name: &str) -> Vec<EntryId> {
+        self.activation_events
+            .get(name)
+            .cloned()
+            .unwrap_or_default()
+    }
+
     /// Plugins to activate when `language` is set on a buffer: the entries
     /// keyed by `language`, then those keyed by the wildcard `"*"` (a
     /// manifest that can't enumerate every language it might support), each

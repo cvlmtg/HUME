@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::cell::Cell;
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::time::{Duration, Instant};
 
@@ -33,7 +33,7 @@ pub struct EvalWatchdog {
     /// a violation fails at the actual call site instead of unwinding the
     /// detached watchdog thread (which would otherwise surface later as a
     /// misleading "watchdog thread alive" panic on an unrelated `send`).
-    armed: AtomicBool,
+    armed: Cell<bool>,
 }
 
 enum WatchdogMsg {
@@ -54,27 +54,27 @@ enum WatchdogMsg {
         at: Instant,
     },
     /// The host is dropping its watchdog: the thread exits. Sent rather than
-    /// signalled by disconnecting, since a `BudgetClock` keeps a sender open.
+    /// signalled by disconnecting, since `Drop` cannot close the sender
+    /// before it joins the thread.
     Shutdown,
 }
 
 /// Stops an armed budget's clock while a builtin waits on the OS (a child
 /// process, a tree delete), so the budget measures the time spent running
 /// Scheme. Ignored while nothing is armed.
-#[derive(Clone)]
-pub(crate) struct BudgetClock {
-    tx: Sender<WatchdogMsg>,
+pub(crate) struct BudgetClock<'a> {
+    tx: &'a Sender<WatchdogMsg>,
 }
 
-impl BudgetClock {
+impl BudgetClock<'_> {
     /// Runs `wait` with the clock stopped. The clock restarts when `wait`
     /// returns or unwinds.
     pub(crate) fn waiting<R>(&self, wait: impl FnOnce() -> R) -> R {
-        struct Restart<'a>(&'a BudgetClock);
+        struct Restart<'a>(&'a BudgetClock<'a>);
         impl Drop for Restart<'_> {
             fn drop(&mut self) {
-                // The watchdog thread outlives every clock its host lends
-                // out; a failed send could only mean it is gone already.
+                // Never panic in drop; a failed send means the watchdog
+                // thread is gone.
                 let _ = self.0.tx.send(WatchdogMsg::Resume { at: Instant::now() });
             }
         }
@@ -96,7 +96,7 @@ impl EvalWatchdog {
             tx,
             ack_rx,
             thread: Some(thread),
-            armed: AtomicBool::new(false),
+            armed: Cell::new(false),
         }
     }
 
@@ -104,8 +104,9 @@ impl EvalWatchdog {
     /// [`Self::cancel`] arrives first.  Each `arm` must be paired with one
     /// `cancel` after the eval returns.
     pub fn arm(&self, vm: ThreadStateController, budget: Duration) {
+        let was_armed = self.armed.replace(true);
         debug_assert!(
-            !self.armed.swap(true, Ordering::Relaxed),
+            !was_armed,
             "EvalWatchdog::arm called while already armed: missing cancel() after the previous eval"
         );
         self.send(WatchdogMsg::Arm {
@@ -119,7 +120,7 @@ impl EvalWatchdog {
     ///
     /// Always called after eval returns, on both success and error paths.
     pub fn cancel(&self) -> bool {
-        self.armed.store(false, Ordering::Relaxed);
+        self.armed.set(false);
         self.send(WatchdogMsg::Cancel);
         self.ack_rx
             .recv()
@@ -127,10 +128,8 @@ impl EvalWatchdog {
     }
 
     /// A handle a builtin stops this watchdog's clock with while it waits.
-    pub(crate) fn clock(&self) -> BudgetClock {
-        BudgetClock {
-            tx: self.tx.clone(),
-        }
+    pub(crate) fn clock(&self) -> BudgetClock<'_> {
+        BudgetClock { tx: &self.tx }
     }
 
     fn send(&self, msg: WatchdogMsg) {

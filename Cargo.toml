@@ -55,6 +55,10 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 num-traits = "0.2"
 tree-sitter = "0.27"
+# unsandboxed-kernel: macro expansion runs on a copy of the kernel image
+# Engine::new already builds, instead of building a sandboxed second one.
+# Plugins are full-trust, so the sandbox restricts nothing they can't do.
+steel-core = { version = "0.8.3", features = ["custom-hash", "unsandboxed-kernel"] }
 
 [patch.crates-io]
 steel-core = { path = "vendor/steel-core" }

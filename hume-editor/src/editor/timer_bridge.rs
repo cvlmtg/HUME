@@ -21,10 +21,6 @@ use super::timers::{TimerId, TimerWheel};
 /// fires).
 pub(super) enum TimerPayload {
     SteelThunk(hume_scripting::Rooted),
-    /// A Steel thunk that came due and is queued, and has not run yet. The
-    /// entry stays, off the wheel, so `cancel-timer!` can still drop the
-    /// call; the call's turn or its drop removes it.
-    QueuedThunk,
     ViewportDebounce(PaneId),
     DiagnosticPullDebounce(BufferId),
     BeforeSaveTimeout(BufferId),
@@ -33,9 +29,14 @@ pub(super) enum TimerPayload {
 /// Every scheduled timer with what firing it does. The wheel and the payload
 /// table change together here and nowhere else, so no timer has a deadline
 /// without a payload or a payload without a deadline.
+///
+/// A Steel thunk that came due leaves both and its id waits in `queued`
+/// until its queued call runs or is dropped, so `cancel-timer!` can still
+/// stop it.
 pub(in crate::editor) struct Timers {
     wheel: TimerWheel,
     payloads: rustc_hash::FxHashMap<TimerId, TimerPayload>,
+    queued: rustc_hash::FxHashSet<TimerId>,
 }
 
 impl Timers {
@@ -43,6 +44,7 @@ impl Timers {
         Self {
             wheel: TimerWheel::new(),
             payloads: rustc_hash::FxHashMap::default(),
+            queued: rustc_hash::FxHashSet::default(),
         }
     }
 
@@ -60,61 +62,64 @@ impl Timers {
     /// never runs. Idempotent: an already-fired, already-cancelled or
     /// never-scheduled id is ignored.
     pub(in crate::editor) fn cancel(&mut self, id: TimerId) {
-        match self.payloads.remove(&id) {
-            Some(TimerPayload::QueuedThunk) | None => {}
-            Some(_) => self.wheel.cancel(id),
+        if self.payloads.remove(&id).is_some() {
+            self.wheel.cancel(id);
+        } else {
+            self.queued.remove(&id);
         }
     }
 
     /// [`Self::cancel`] for an id a script names, which reaches only the
     /// timers `after!` made: the editor's own timers share the id space.
     pub(in crate::editor) fn cancel_thunk(&mut self, id: TimerId) {
-        if matches!(
-            self.payloads.get(&id),
-            Some(TimerPayload::SteelThunk(_) | TimerPayload::QueuedThunk)
-        ) {
-            self.cancel(id);
+        match self.payloads.get(&id) {
+            Some(TimerPayload::SteelThunk(_)) | None => self.cancel(id),
+            Some(_) => {}
         }
     }
 
     /// Whether `id` is a queued thunk not cancelled since it came due,
-    /// removing its entry: the call's turn admits it once.
+    /// removing it: the call's turn admits it once.
     pub(in crate::editor) fn take_queued(&mut self, id: TimerId) -> bool {
-        let queued = matches!(self.payloads.get(&id), Some(TimerPayload::QueuedThunk));
-        if queued {
-            self.payloads.remove(&id);
-        }
-        queued
+        self.queued.remove(&id)
     }
 
-    /// Cancels every timer whose payload matches `pred`.
-    pub(in crate::editor) fn cancel_where(&mut self, pred: impl Fn(&TimerPayload) -> bool) {
-        let ids: Vec<TimerId> = self
+    /// Cancels every Steel thunk, scheduled or queued, and leaves the
+    /// editor's own timers. The match is exhaustive so a new payload kind
+    /// has to choose.
+    pub(in crate::editor) fn cancel_steel_thunks(&mut self) {
+        let thunks: Vec<TimerId> = self
             .payloads
             .iter()
-            .filter(|(_, payload)| pred(payload))
+            .filter(|(_, payload)| match payload {
+                TimerPayload::SteelThunk(_) => true,
+                TimerPayload::ViewportDebounce(_)
+                | TimerPayload::DiagnosticPullDebounce(_)
+                | TimerPayload::BeforeSaveTimeout(_) => false,
+            })
             .map(|(&id, _)| id)
             .collect();
-        for id in ids {
+        for id in thunks {
             self.cancel(id);
         }
+        self.queued.clear();
     }
 
     /// Whether no timer is scheduled or queued.
     #[cfg(test)]
     pub(in crate::editor) fn is_empty(&self) -> bool {
-        self.payloads.is_empty()
+        self.payloads.is_empty() && self.queued.is_empty()
     }
 
     /// Every timer due at `now` with its payload, in deadline order. A
-    /// Steel thunk leaves a [`TimerPayload::QueuedThunk`] entry behind.
+    /// Steel thunk's id is held in `queued` for its call.
     pub(in crate::editor) fn take_due(&mut self, now: Instant) -> Vec<(TimerId, TimerPayload)> {
         let due = self.wheel.take_due(now);
         due.into_iter()
             .filter_map(|id| {
                 let payload = self.payloads.remove(&id)?;
                 if matches!(payload, TimerPayload::SteelThunk(_)) {
-                    self.payloads.insert(id, TimerPayload::QueuedThunk);
+                    self.queued.insert(id);
                 }
                 Some((id, payload))
             })
@@ -141,7 +146,6 @@ impl Editor {
                     self.state
                         .queue_timer_thunk(id, hume_scripting::SteelCall::new(thunk, Vec::new()));
                 }
-                TimerPayload::QueuedThunk => unreachable!("a queued thunk is off the wheel"),
                 TimerPayload::ViewportDebounce(pane_id) => {
                     self.viewport_debounce.remove(&pane_id);
                     self.queue_viewport_change(pane_id);

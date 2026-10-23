@@ -50,8 +50,8 @@ fn two_servers(
     (rig, guard)
 }
 
-fn run(ed: &mut Editor, command: &str) {
-    ed.execute_keymap_command(command.to_string().into(), Some(1), false);
+fn call_and_pump(ed: &mut Editor, command: &str) {
+    call_counted(ed, command, Some(1));
     pump_lsp(ed);
 }
 
@@ -234,7 +234,7 @@ fn format_picks_first_with_range_provider() {
     );
     select(&mut rig.ed, &[(0, 5)], 0);
 
-    run(&mut rig.ed, "lsp/format-source");
+    call_and_pump(&mut rig.ed, "lsp/format-source");
 
     assert!(
         rig.requests_to(RA, "textDocument/rangeFormatting")
@@ -258,7 +258,7 @@ fn format_uses_the_first_whole_document_formatter_for_a_partial_selection() {
         |b| b.respond_to("textDocument/formatting", serde_json::json!([])),
     );
 
-    run(&mut rig.ed, "lsp/format-source");
+    call_and_pump(&mut rig.ed, "lsp/format-source");
 
     assert!(rig.requests_to(RA, "textDocument/formatting").is_empty());
     assert_eq!(rig.requests_to(LINT, "textDocument/formatting").len(), 1);
@@ -294,11 +294,11 @@ fn code_actions_menu_merges_with_suffix_only_when_multi() {
         b.respond_to_server(LINT, "textDocument/codeAction", serde_json::json!([]));
     });
 
-    run(&mut rig.ed, "lsp/code-actions");
+    call_and_pump(&mut rig.ed, "lsp/code-actions");
     let merged = menu_rows(&rig.ed);
     rig.ed.feed_key(key_esc());
     rig.ed.settle();
-    run(&mut rig.ed, "lsp/code-actions");
+    call_and_pump(&mut rig.ed, "lsp/code-actions");
 
     assert_eq!(merged, vec!["Fix (rust-analyzer)", "Lint (ra-lint)"]);
     assert_eq!(menu_rows(&rig.ed), vec!["Fix"]);
@@ -322,7 +322,7 @@ fn code_action_context_only_own_diagnostics() {
     rig.publish(LINT, diag("from lint"));
     rig.ed.settle();
 
-    run(&mut rig.ed, "lsp/code-actions");
+    call_and_pump(&mut rig.ed, "lsp/code-actions");
 
     let messages = |sid| -> Vec<String> {
         rig.requests_to(sid, "textDocument/codeAction")[0]["context"]["diagnostics"]
@@ -354,7 +354,7 @@ fn execute_command_goes_to_producing_server() {
         b.respond_to("workspace/executeCommand", serde_json::json!(null));
     });
 
-    run(&mut rig.ed, "lsp/code-actions");
+    call_and_pump(&mut rig.ed, "lsp/code-actions");
     rig.ed.feed_key(key('j'));
     rig.ed.feed_key(key_enter());
     pump_lsp(&mut rig.ed);
@@ -386,7 +386,7 @@ fn goto_two_servers_same_location_jumps() {
         },
     );
 
-    run(&mut rig.ed, "lsp/goto-definition");
+    call_and_pump(&mut rig.ed, "lsp/goto-definition");
 
     assert!(
         rig.ed.state.views.drawer.read().is_none(),
@@ -420,7 +420,7 @@ fn references_merge_dedupe_drawer() {
         },
     );
 
-    run(&mut rig.ed, "lsp/references");
+    call_and_pump(&mut rig.ed, "lsp/references");
 
     assert_eq!(drawer_rows(&rig.ed).len(), 3);
 }
@@ -460,7 +460,7 @@ fn locations_refresh_regroups_servers() {
         },
     );
     set_cursor(&mut rig.ed, 16);
-    run(&mut rig.ed, "lsp/references");
+    call_and_pump(&mut rig.ed, "lsp/references");
     assert_eq!(drawer_rows(&rig.ed).len(), 2, "setup: one row per server");
 
     set_cursor(&mut rig.ed, 0);
@@ -706,7 +706,7 @@ fn unsupported_feature_reports_at_info() {
         |_| {},
     );
 
-    run(&mut rig.ed, "lsp/hover");
+    call_and_pump(&mut rig.ed, "lsp/hover");
 
     let status = rig.ed.state.status_msg.clone().unwrap_or_default();
     assert!(status.contains("hover is not supported"), "{status:?}");

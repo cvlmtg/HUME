@@ -771,7 +771,7 @@ fn paste_repeat_over_identical_selection_appends() {
 fn paste_after_repeat_over_backward_selection_collapses_to_end() {
     let mut ed = editor_from("-[ab]>cd\n");
     seed_ring(&mut ed, &["ab"]);
-    dispatch_command(&mut ed, "flip-selections"); // anchor/head swap; start()/end() unchanged
+    call(&mut ed, "flip-selections"); // anchor/head swap; start()/end() unchanged
     ed.feed_key(key('p'));
     assert_eq!(
         state(&ed),
@@ -785,7 +785,7 @@ fn paste_after_repeat_over_backward_selection_collapses_to_end() {
 fn paste_before_repeat_over_backward_selection_collapses_to_start() {
     let mut ed = editor_from("-[ab]>cd\n");
     seed_ring(&mut ed, &["ab"]);
-    dispatch_command(&mut ed, "flip-selections");
+    call(&mut ed, "flip-selections");
     ed.feed_key(key('P'));
     assert_eq!(
         state(&ed),
@@ -1343,10 +1343,6 @@ fn consecutive_paste_repeats_last_not_ring_head() {
 // (not a direct fn call, and unlike `:`, it doesn't itself dispatch any
 // unrelated command in between two calls).
 
-fn dispatch_command(ed: &mut Editor, name: &str) {
-    ed.execute_keymap_command(name.to_string().into(), None, false);
-}
-
 /// Bare plain paste reads the kill-ring head, not the clipboard. Unlike
 /// smart-p, it never falls through to the clipboard when there's no register
 /// prefix, and it never consults the paste stamp to decide.
@@ -1356,7 +1352,7 @@ fn plain_paste_reads_ring_not_clipboard() {
     seed_clipboard(&mut ed, "CLIP");
     seed_ring(&mut ed, &["RING"]);
 
-    dispatch_command(&mut ed, "paste-after");
+    call(&mut ed, "paste-after");
 
     let buf = ed.doc().text().to_string();
     assert!(buf.contains("RING"), "plain paste must read the ring head");
@@ -1376,7 +1372,7 @@ fn plain_paste_before_reads_ring_head() {
     let mut ed = editor_from("x-[y]>z\n");
     seed_ring(&mut ed, &["RING"]);
 
-    dispatch_command(&mut ed, "paste-before");
+    call(&mut ed, "paste-before");
 
     let buf = ed.doc().text().to_string();
     assert_eq!(
@@ -1395,8 +1391,8 @@ fn plain_paste_does_not_stack() {
     let mut ed = editor_from("-[x]>\n");
     seed_ring(&mut ed, &["RING"]);
 
-    dispatch_command(&mut ed, "paste-after");
-    dispatch_command(&mut ed, "paste-after");
+    call(&mut ed, "paste-after");
+    call(&mut ed, "paste-after");
 
     let buf = ed.doc().text().to_string();
     assert_eq!(
@@ -1413,7 +1409,7 @@ fn plain_paste_opens_ring_cycle_session() {
     let mut ed = editor_from("-[x]>\n");
     seed_ring(&mut ed, &["OLDER", "RING"]);
 
-    dispatch_command(&mut ed, "paste-after");
+    call(&mut ed, "paste-after");
     ed.feed_key(key('[')); // cycle to the older ring entry
 
     let buf = ed.doc().text().to_string();
@@ -1434,7 +1430,7 @@ fn plain_paste_honors_register_prefix() {
 
     ed.handle_key(key('"'));
     ed.handle_key(key('3'));
-    dispatch_command(&mut ed, "paste-after");
+    call(&mut ed, "paste-after");
 
     let buf = ed.doc().text().to_string();
     assert!(
@@ -1452,7 +1448,7 @@ fn plain_paste_black_hole_is_noop() {
 
     ed.handle_key(key('"'));
     ed.handle_key(key('b'));
-    dispatch_command(&mut ed, "paste-after");
+    call(&mut ed, "paste-after");
 
     assert_eq!(
         ed.doc().text().to_string(),
@@ -1518,7 +1514,7 @@ fn smart_paste_appends_after_plain_paste() {
     seed_clipboard(&mut ed, "CLIP");
     seed_ring(&mut ed, &["RING"]);
 
-    dispatch_command(&mut ed, "paste-after"); // plain: reads ring head "RING"
+    call(&mut ed, "paste-after"); // plain: reads ring head "RING"
     ed.feed_key(key('p')); // smart: stamp fresh(Ring(0)) → "RING" again → append
 
     let buf = ed.doc().text().to_string();
@@ -1536,7 +1532,7 @@ fn plain_paste_refuses_read_only_buffer() {
     seed_ring(&mut ed, &["RING"]);
     ed.doc_mut().read_only = true;
 
-    dispatch_command(&mut ed, "paste-after");
+    call(&mut ed, "paste-after");
 
     assert_eq!(
         ed.doc().text().to_string(),

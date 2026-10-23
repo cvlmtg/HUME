@@ -177,24 +177,35 @@ pub(in crate::editor) fn check_can_open(
     Ok(())
 }
 
-/// Open an Insert session on `(pane, buffer)`, holding `recording`, its
-/// source on the change whose code opens it, for the `InsertLayer` that will
-/// own it. `insert` is the Insert session already open, if any. Takes over
-/// the [`EditSessionKind::Replay`] placeholder open there, with its group;
-/// see [`open_or_retarget`] for why that costs nothing and when an open
-/// refuses. The only way to create an [`InsertSession`].
+/// Open an Insert session on `(pane, buffer)`, always the focused pane,
+/// since Insert only ever opens there, for the `InsertLayer` that will own
+/// it. `insert` is the Insert session already open, if any. The session
+/// holds `recording`, its source on the change whose code opens it, if any,
+/// until it ends.
+///
+/// A fresh session snapshots the pane's current selections as its
+/// `undo_sels`, what undo restores: cloned, not taken, since the pane keeps
+/// editing with them. A [`EditSessionKind::Replay`] placeholder already open
+/// here (`Editor::replay_dot`'s own pre-open, about to be superseded by
+/// whatever the replayed body actually needs) is taken over with its group
+/// instead; see [`open_or_retarget`] for why that costs nothing and when an
+/// open refuses. The only way to create an [`InsertSession`].
 pub(in crate::editor) fn open_insert(
+    buffers: &BufferStore,
+    pane_state: &PaneEntries,
     insert: Option<&InsertSession>,
     other: &mut Option<EditSession>,
     pane: PaneId,
     buffer: BufferId,
     recording: Option<SourceTicket>,
-    mint_group: impl FnOnce() -> EditGroup,
 ) -> Result<InsertSession, CommandError> {
     check_can_open(open_session(insert, other), pane, buffer)?;
     let group = match other.take() {
         Some(placeholder) => placeholder.group,
-        None => mint_group(),
+        None => {
+            let sels = pane_state.seeded(pane, buffer).selections().clone();
+            buffers.get(buffer).begin_edit_group(sels.clone(), sels)
+        }
     };
     Ok(InsertSession {
         pane,
@@ -284,37 +295,6 @@ pub(in crate::editor) fn check_no_conflicting_session(
         ));
     }
     Ok(())
-}
-
-/// Open an Insert session on `(pane_id, buf_id)`, always the focused pane,
-/// since Insert only ever opens there, for the `InsertLayer` that will own
-/// it. `insert` is the Insert session already open, if any. The session
-/// holds `recording`, its source on the change whose code opens it, if any,
-/// until it ends.
-///
-/// Snapshots the current selections as the session's `undo_sels`, what undo
-/// restores: cloned, not taken, since the pane keeps editing with them.
-///
-/// `Err` when a session is already open elsewhere, or a real `Insert`/`Paste`
-/// session is already open here; see [`open_or_retarget`]. A
-/// `Replay`-kind placeholder already open here (`Editor::replay_dot`'s own
-/// pre-open, about to be superseded by whatever the replayed body actually
-/// needs) is taken over instead of refused.
-pub(in crate::editor) fn begin_edit_group(
-    buffers: &BufferStore,
-    pane_state: &PaneEntries,
-    insert: Option<&InsertSession>,
-    active_session: &mut Option<EditSession>,
-    pane_id: PaneId,
-    buf_id: BufferId,
-    recording: Option<SourceTicket>,
-) -> Result<InsertSession, CommandError> {
-    open_insert(insert, active_session, pane_id, buf_id, recording, || {
-        let sels = pane_state.seeded(pane_id, buf_id).selections();
-        buffers
-            .get(buf_id)
-            .begin_edit_group(sels.clone(), sels.clone())
-    })
 }
 
 /// Commit the open Paste or Replay session as one undo step, read from the

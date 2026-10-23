@@ -72,7 +72,7 @@ fn bundle<'a>(
     pending_messages: &'a mut Vec<(LogLevel, String)>,
     effects: &'a mut Vec<QueuedEffect>,
     dirs: &'a ScriptDirs,
-    watchdog: &crate::watchdog::EvalWatchdog,
+    watchdog: &'a crate::watchdog::EvalWatchdog,
 ) -> HostBundle<'a> {
     HostBundle {
         registries,

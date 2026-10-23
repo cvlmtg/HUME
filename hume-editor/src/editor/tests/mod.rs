@@ -1313,7 +1313,12 @@ fn install_source(
 
 /// Runs the command `name`, as a key bound to it would.
 fn call(ed: &mut Editor, name: &str) {
-    ed.execute_keymap_command(name.to_string().into(), None, false);
+    call_counted(ed, name, None);
+}
+
+/// [`call`] with the count prefix `count`.
+fn call_counted(ed: &mut Editor, name: &str, count: Option<usize>) {
+    ed.execute_keymap_command(name.to_string().into(), count, false);
 }
 
 /// Evaluates `source` against the editor's `ScriptingHost`, or a fresh one

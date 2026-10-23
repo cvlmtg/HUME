@@ -27,7 +27,8 @@ pub(crate) struct SelectionStep {
 /// the body by `dispatch`.
 pub(in crate::editor) struct SteelRecipe {
     recipe: Vec<SelectionStep>,
-    touched: bool,
+    /// `selection_recipe_touched` as the enclosing command left it.
+    outer_touched: bool,
 }
 
 impl SteelRecipe {
@@ -110,7 +111,7 @@ impl EditorState {
     pub(in crate::editor) fn open_steel_recipe(&mut self) -> SteelRecipe {
         SteelRecipe {
             recipe: self.selection_recipe.clone(),
-            touched: std::mem::replace(&mut self.selection_recipe_touched, false),
+            outer_touched: std::mem::replace(&mut self.selection_recipe_touched, false),
         }
     }
 
@@ -128,7 +129,7 @@ impl EditorState {
         ran: bool,
         repeatable: bool,
     ) {
-        let touched = std::mem::replace(&mut self.selection_recipe_touched, opened.touched);
+        let touched = std::mem::replace(&mut self.selection_recipe_touched, opened.outer_touched);
         if !ran {
             self.selection_recipe = opened.recipe;
         } else if repeatable || !touched {

@@ -137,16 +137,8 @@ impl Editor {
         self.state.buffer_positions.lsp.clear_all_triggers();
         // Only the Steel `after!` thunks. Native debounce timers keep their
         // wheel entries and their back-indexes intact, since nothing about
-        // them is Steel-VM-specific. Exhaustive
-        // match, not `matches!`, so a future `TimerPayload` variant forces a
-        // decision here instead of silently surviving the engine drop.
-        self.timers.cancel_where(|payload| match payload {
-            super::timer_bridge::TimerPayload::SteelThunk(_)
-            | super::timer_bridge::TimerPayload::QueuedThunk => true,
-            super::timer_bridge::TimerPayload::ViewportDebounce(_)
-            | super::timer_bridge::TimerPayload::DiagnosticPullDebounce(_)
-            | super::timer_bridge::TimerPayload::BeforeSaveTimeout(_) => false,
-        });
+        // them is Steel-VM-specific.
+        self.timers.cancel_steel_thunks();
 
         // ── Config-owned editor state ──
         // Snapshot every buffer's own `:set buffer language=`/

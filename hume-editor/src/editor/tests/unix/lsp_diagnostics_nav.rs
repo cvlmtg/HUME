@@ -50,8 +50,8 @@ fn republish(
 /// Dispatches `lsp/goto-next-diagnostic`/`lsp/goto-prev-diagnostic` (key-bindable,
 /// not typed) through the keymap pipeline, the way their bound keys
 /// (`g n`/`g p`) would.
-fn run(ed: &mut Editor, cmd: &str) {
-    ed.execute_keymap_command(cmd.to_owned().into(), Some(1), false);
+fn call_and_settle(ed: &mut Editor, cmd: &str) {
+    call_counted(ed, cmd, Some(1));
     ed.settle();
 }
 
@@ -68,7 +68,7 @@ fn next_from_before_a_jumps_to_a() {
     } = setup(&[DIAG_A, DIAG_B]);
     set_cursor(&mut ed, 0);
 
-    run(&mut ed, "lsp/goto-next-diagnostic");
+    call_and_settle(&mut ed, "lsp/goto-next-diagnostic");
 
     assert_eq!(
         ed.current_view().primary().head().offset(),
@@ -87,7 +87,7 @@ fn next_from_as_start_of_a_jumps_to_b_not_a() {
     } = setup(&[DIAG_A, DIAG_B]);
     set_cursor(&mut ed, 3); // sitting exactly on A's start
 
-    run(&mut ed, "lsp/goto-next-diagnostic");
+    call_and_settle(&mut ed, "lsp/goto-next-diagnostic");
 
     assert_eq!(
         ed.current_view().primary().head().offset(),
@@ -106,7 +106,7 @@ fn next_from_after_b_wraps_to_a() {
     } = setup(&[DIAG_A, DIAG_B]);
     set_cursor(&mut ed, 11); // past both diagnostics
 
-    run(&mut ed, "lsp/goto-next-diagnostic");
+    call_and_settle(&mut ed, "lsp/goto-next-diagnostic");
 
     assert_eq!(
         ed.current_view().primary().head().offset(),
@@ -125,7 +125,7 @@ fn prev_from_after_b_jumps_to_b() {
     } = setup(&[DIAG_A, DIAG_B]);
     set_cursor(&mut ed, 11);
 
-    run(&mut ed, "lsp/goto-prev-diagnostic");
+    call_and_settle(&mut ed, "lsp/goto-prev-diagnostic");
 
     assert_eq!(
         ed.current_view().primary().head().offset(),
@@ -144,7 +144,7 @@ fn prev_from_before_a_wraps_to_b() {
     } = setup(&[DIAG_A, DIAG_B]);
     set_cursor(&mut ed, 0);
 
-    run(&mut ed, "lsp/goto-prev-diagnostic");
+    call_and_settle(&mut ed, "lsp/goto-prev-diagnostic");
 
     assert_eq!(
         ed.current_view().primary().head().offset(),
@@ -163,7 +163,7 @@ fn empty_buffer_reports_no_diagnostics() {
     } = setup(&[]);
     let before = state(&ed);
 
-    run(&mut ed, "lsp/goto-next-diagnostic");
+    call_and_settle(&mut ed, "lsp/goto-next-diagnostic");
 
     assert_eq!(state(&ed), before, "no diagnostics means no movement");
     let msg = ed.state.status_msg.clone().unwrap_or_default();

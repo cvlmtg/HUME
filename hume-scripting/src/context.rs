@@ -52,7 +52,7 @@ pub(crate) struct SteelCtx<'a> {
     /// against this to prevent shadowing core commands.
     pub(crate) builtin_cmd_names: crate::command_name::CommandNameSet,
     /// Stops the session's budget while a builtin waits on the OS.
-    budget: crate::watchdog::BudgetClock,
+    budget: crate::watchdog::BudgetClock<'a>,
     // ── Input state and command side-effects ─────────────────────────────────
     /// Register prefix set by `(set-register-prefix! …)` and inherited by
     /// subsequent `(call! …)` calls until changed.  Resets per invocation

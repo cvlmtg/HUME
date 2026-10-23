@@ -251,6 +251,25 @@ fn cancel_timer_drops_a_thunk_already_queued() {
 }
 
 #[test]
+fn reload_forgets_a_thunk_already_queued() {
+    let mut ed = timer_commands(
+        "(define id #f)",
+        r#"(set! id (after! 0 (lambda () (log! 'info "fired"))))"#,
+        "(cancel-timer! id)",
+    );
+    call(&mut ed, "go");
+    ed.drain_async_sources();
+    assert!(
+        !ed.state.config.pending_work.is_empty(),
+        "setup: the thunk is queued"
+    );
+
+    ed.reset_config_state();
+
+    assert!(ed.timers.is_empty());
+}
+
+#[test]
 fn debounce_called_again_while_its_thunk_is_queued_runs_once() {
     let mut ed = timer_commands(
         r#"(define count 0)

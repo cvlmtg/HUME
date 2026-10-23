@@ -940,11 +940,12 @@ impl LanguageRegistry {
         id: LanguageId,
         scope_reg: &mut ScopeRegistry,
     ) -> Option<Arc<GrammarBundle>> {
-        let source = match self.entry(id).grammar.as_ref()? {
-            GrammarSlot::Registered(source) => source.clone(),
+        let entry = self.entry(id);
+        let compiled = match entry.grammar.as_ref()? {
+            GrammarSlot::Registered(source) => compile_source(&entry.name, source, scope_reg),
             GrammarSlot::Loaded(bundle) => return Some(Arc::clone(bundle)),
         };
-        match compile_source(&self.entry(id).name, &source, scope_reg) {
+        match compiled {
             Ok((grammar, queries)) => {
                 let bundle = new_bundle(id, grammar, queries);
                 self.set_grammar(id, GrammarSlot::Loaded(Arc::clone(&bundle)));

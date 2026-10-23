@@ -70,6 +70,21 @@ fn case_insensitive_dedup() {
 // ── Activation map recording ───────────────────────────────────────────
 
 #[test]
+fn event_plugins_lists_the_entries_declared_for_that_event_only() {
+    let mut reg = LazyRegistry::default();
+    let a = id_user("a", "x");
+    reg.declare(
+        a.clone(),
+        fake_path(),
+        vec!["on-buffer-save".to_string()],
+        vec![],
+    );
+
+    assert_eq!(reg.event_plugins("on-buffer-save"), [a]);
+    assert!(reg.event_plugins("on-buffer-open").is_empty());
+}
+
+#[test]
 fn activation_events_are_one_to_many() {
     let mut reg = LazyRegistry::default();
     let a = id_user("a", "x");
