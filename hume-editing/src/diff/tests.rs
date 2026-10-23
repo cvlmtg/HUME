@@ -412,3 +412,43 @@ proptest! {
         prop_assert_eq!(new_end, new_n);
     }
 }
+
+// ── word token limit ─────────────────────────────────────────────────────
+
+#[test]
+fn tokenize_with_offsets_stops_one_token_past_the_limit() {
+    // "a b c" is five tokens: three words and two spaces.
+    let (tokens, offsets) = tokenize_with_offsets("a b c", 2);
+    assert_eq!(tokens, ["a", " ", "b"]);
+    assert_eq!(offsets, [0, 1, 2, 3]);
+}
+
+#[test]
+fn tokenize_with_offsets_keeps_every_token_within_the_limit() {
+    let (tokens, offsets) = tokenize_with_offsets("a b c", 5);
+    assert_eq!(tokens, ["a", " ", "b", " ", "c"]);
+    assert_eq!(offsets, [0, 1, 2, 3, 4, 5]);
+}
+
+#[test]
+fn word_tokens_within_a_limit_counts_both_sides_together() {
+    assert!(WordTokens::within("a", "b", 2).is_some());
+    assert!(WordTokens::within("a b c", "x", 3).is_none());
+    assert!(WordTokens::within("a", "b c", 2).is_none());
+}
+
+#[test]
+fn word_change_ranges_spends_the_tokens_it_diffed() {
+    // "a b" and "a c" are three tokens each; the changed word is the third.
+    let mut budget = 6;
+    let ranges = word_change_ranges("a b", "a c", &mut budget);
+    assert_eq!(ranges, Some((vec![2..3], vec![2..3])));
+    assert_eq!(budget, 0);
+}
+
+#[test]
+fn word_change_ranges_over_the_budget_leaves_it_untouched() {
+    let mut budget = 5;
+    assert_eq!(word_change_ranges("a b", "a c", &mut budget), None);
+    assert_eq!(budget, 5);
+}

@@ -293,16 +293,17 @@ pub(crate) type ChangedRanges = (Vec<Range<usize>>, Vec<Range<usize>>);
 /// The char ranges of `old` and of `new` that a word diff marks as changed,
 /// with no text payloads. The two sides' word tokens come off `budget`, or
 /// the result is `None` and `budget` is untouched when they outnumber it.
-/// Myers runs with no deadline: `similar`'s own work limit keeps its cost
-/// near-linear in the token count. A pure insertion or deletion contributes
-/// a zero-width range to the side it leaves untouched.
+/// Tokenizing stops at the budget, so the cost of an input far over it is
+/// the budget's. Myers runs with no deadline: `similar`'s own work limit
+/// keeps its cost near-linear in the token count. A pure insertion or
+/// deletion contributes a zero-width range to the side it leaves untouched.
 pub(crate) fn word_change_ranges(
     old: &str,
     new: &str,
     budget: &mut usize,
 ) -> Option<ChangedRanges> {
-    let tokens = WordTokens::new(old, new);
-    *budget = budget.checked_sub(tokens.old.len() + tokens.new.len())?;
+    let tokens = WordTokens::within(old, new, *budget)?;
+    *budget -= tokens.old.len() + tokens.new.len();
     Some(
         capture_diff_slices(Algorithm::Myers, &tokens.old, &tokens.new)
             .iter()
@@ -326,11 +327,12 @@ struct WordTokens<'a> {
 }
 
 impl<'a> WordTokens<'a> {
+    /// Every token of both inputs.
     fn new(old: &'a str, new: &'a str) -> Self {
         // Whitespace runs are tokens of their own, so the ops cover all of
         // both inputs.
-        let (old, old_offsets) = tokenize_with_offsets(old);
-        let (new, new_offsets) = tokenize_with_offsets(new);
+        let (old, old_offsets) = tokenize_with_offsets(old, usize::MAX);
+        let (new, new_offsets) = tokenize_with_offsets(new, usize::MAX);
         Self {
             old,
             old_offsets,
@@ -338,16 +340,34 @@ impl<'a> WordTokens<'a> {
             new_offsets,
         }
     }
+
+    /// The tokens of both inputs, or `None` when together they outnumber
+    /// `limit`.
+    fn within(old: &'a str, new: &'a str, limit: usize) -> Option<Self> {
+        let (old, old_offsets) = tokenize_with_offsets(old, limit);
+        let left = limit.checked_sub(old.len())?;
+        let (new, new_offsets) = tokenize_with_offsets(new, left);
+        if new.len() > left {
+            return None;
+        }
+        Some(Self {
+            old,
+            old_offsets,
+            new,
+            new_offsets,
+        })
+    }
 }
 
 /// Split `s` into Unicode word-boundary tokens, returning the tokens and the
 /// char offset of each token plus a trailing sentinel (`offsets.len() ==
-/// tokens.len() + 1`).
-fn tokenize_with_offsets(s: &str) -> (Vec<&str>, Vec<usize>) {
+/// tokens.len() + 1`). Stops after `limit + 1` tokens, so a result longer
+/// than `limit` means the input has more.
+fn tokenize_with_offsets(s: &str, limit: usize) -> (Vec<&str>, Vec<usize>) {
     let mut tokens = Vec::new();
     let mut offsets = Vec::new();
     let mut char_pos = 0usize;
-    for token in s.split_word_bounds() {
+    for token in s.split_word_bounds().take(limit.saturating_add(1)) {
         offsets.push(char_pos);
         char_pos += token.chars().count();
         tokens.push(token);
