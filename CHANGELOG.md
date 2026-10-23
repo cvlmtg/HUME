@@ -7,6 +7,9 @@
 
 ### Fixes
 - The Linux archive runs on glibc 2.28 and later: Ubuntu 20.04, Debian 10, RHEL 8 and newer.
+- Plugin code that runs later (debounced and timed functions, background process and language server replies, picker actions) no longer reads wrong values or crashes HUME after a while.
+- `core:git-diff`'s inline diff keeps its word highlights when the machine is busy.
+- A completion item whose range a language server sent backwards no longer moves the completion menu.
 
 ### Breaking changes
 - `(hume/yield!)` is gone: the script budget stops a script on its own, so delete any call to it.
