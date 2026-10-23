@@ -47,6 +47,10 @@ pub struct PendingCompletionSource {
     /// top of the buffer's word characters. `Buffer`-target only, like
     /// `resolve`; empty for a `'minibuf` source.
     pub token_chars: String,
+    /// `#:cancel`: called as `(cancel id)` when request `id` ends before
+    /// its final answer landed, so the source can stop work nothing will
+    /// read. Either target.
+    pub cancel: Option<Rooted>,
 }
 
 /// What a `'minibuf` source's answer says about the word it completes.

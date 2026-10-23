@@ -409,14 +409,10 @@
         (let* ((word (%shell-parse dialect input cursor))
                (write-word (lambda (name close?) (%shell-write dialect word name close?)))
                (prefix (shell-word-prefix word))
-               (built (hash))
                (item (lambda (name)
-                       (or (hash-try-get built name)
-                           (let* ((plain (hash "label" name "insertText" (write-word name #t)))
-                                  (item (if (ends-with? name "/")
-                                            (hash-insert plain "kind" %completion-kind-folder)
-                                            plain)))
-                             (set! built (hash-insert built name item))
+                       (let ((item (hash "label" name "insertText" (write-word name #t))))
+                         (if (ends-with? name "/")
+                             (hash-insert item "kind" %completion-kind-folder)
                              item))))
                (emit (lambda (names more?)
                        (completion-emit! id (map item names)
@@ -429,14 +425,25 @@
                                                                  (string-length prefix))
                                                               (write-word common #f))))))))
           (if (and (shell-word-command? word) (equal? (shell-word-dir word) ""))
-              (%shell-stream-programs prefix (hash-ref dialect 'program-extensions) emit)
+              (%shell-stream-programs id prefix (hash-ref dialect 'program-extensions) emit)
               (emit (path-entries (shell-word-dir word) prefix) #f))))))
 
-(define (%shell-stream-programs prefix extensions emit)
-  (let ((scan #f))
-    (set! scan (path-programs prefix extensions
-                              (lambda (names done?)
-                                (unless (emit names (not done?))
-                                  (cancel-async! scan)))))))
+(define *shell-scans* (hash))
 
-(register-completion-source! "shell" %shell-complete #:target 'minibuf #:match 'delegated)
+(define (%shell-stream-programs id prefix extensions emit)
+  (set! *shell-scans*
+        (hash-insert *shell-scans* id
+                     (path-programs prefix extensions
+                                    (lambda (names done?)
+                                      (when done?
+                                        (set! *shell-scans* (hash-remove *shell-scans* id)))
+                                      (emit names (not done?)))))))
+
+(define (%shell-cancel id)
+  (let ((scan (hash-try-get *shell-scans* id)))
+    (when scan
+      (set! *shell-scans* (hash-remove *shell-scans* id))
+      (cancel-async! scan))))
+
+(register-completion-source! "shell" %shell-complete #:target 'minibuf #:match 'delegated
+                             #:cancel %shell-cancel)

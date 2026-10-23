@@ -25,7 +25,7 @@ fn items(labels: &[&str]) -> Vec<CompletionItem> {
 }
 
 /// A registry with one Steel `Buffer` source per `(name, priority)`, all
-/// `MatchKind::Fuzzy`; the proc is never called here.
+/// `MatchKind::Fuzzy`, each with a `#:cancel`; no proc is called here.
 fn registry(sources: &[(&str, i64)]) -> SourceRegistry {
     let mut reg = SourceRegistry::with_defaults();
     for (name, priority) in sources {
@@ -35,6 +35,7 @@ fn registry(sources: &[(&str, i64)]) -> SourceRegistry {
             priority: *priority,
             proc: hume_scripting::Rooted::new(SteelVal::Void),
             resolve: false,
+            cancel: Some(hume_scripting::Rooted::new(SteelVal::Void)),
             token_chars: "".into(),
         });
     }
@@ -54,7 +55,10 @@ fn minibuf_registry(sources: &[(&str, i64)]) -> SourceRegistry {
             name: (*name).into(),
             match_kind: MatchKind::Fuzzy,
             priority: *priority,
-            body: MinibufBody::Steel(hume_scripting::Rooted::new(SteelVal::Void)),
+            body: MinibufBody::Steel {
+                proc: hume_scripting::Rooted::new(SteelVal::Void),
+                cancel: Some(hume_scripting::Rooted::new(SteelVal::Void)),
+            },
         });
     }
     reg
@@ -85,9 +89,21 @@ fn invoke_and_answer(
     start: usize,
     labels: &[&str],
 ) {
-    let inv = Invocation::buffer(text.rope().clone(), CharOffset::new(start));
-    let id = session.invoke(source, inv);
+    let id = buffer_invoke(session, source, text, start);
     session.contribute(reg, id, items(labels), false);
+}
+
+/// One call of `source` whose token starts at `start`, left unanswered.
+fn buffer_invoke(
+    session: &mut BufferSession,
+    source: BufferSourceId,
+    text: &BufferText,
+    start: usize,
+) -> u64 {
+    session.invoke(
+        source,
+        Invocation::buffer(text.rope().clone(), CharOffset::new(start)),
+    )
 }
 
 fn live(text: &BufferText, head: usize) -> Option<LiveDoc<'_>> {
@@ -366,6 +382,7 @@ fn dotted_session_with(
         priority: 0,
         proc: hume_scripting::Rooted::new(SteelVal::Void),
         resolve: false,
+        cancel: None,
         token_chars: "".into(),
     });
     let (mut session, text) = buffer_session("> foo.ba\n");
@@ -726,6 +743,7 @@ fn a_sources_token_chars_decide_what_typing_at_the_end_does() {
         priority: 0,
         proc: hume_scripting::Rooted::new(SteelVal::Void),
         resolve: false,
+        cancel: None,
         token_chars: "-".into(),
     });
     let (mut session, text) = buffer_session("fo\n");
@@ -839,12 +857,12 @@ fn an_answer_with_more_to_come_keeps_its_session_pending() {
 }
 
 #[test]
-fn drop_stalled_ends_a_streaming_answer_and_keeps_its_items() {
+fn drop_stalled_leaves_a_streaming_answer_pending() {
     let reg = minibuf_registry(&[("s", 0)]);
     let (mut session, id) = streaming_session(&reg);
     emit(&mut session, &reg, id, &["a", "b"], AnswerEnd::More);
-    assert!(session.drop_stalled_invocations());
-    assert!(!session.is_pending());
+    assert!(!session.drop_stalled_invocations());
+    assert!(session.is_pending());
     session.rank(&reg);
     assert_eq!(session.len(), 2);
 }
@@ -903,4 +921,91 @@ fn prefix_matches_non_ascii_boundary_does_not_panic() {
 fn prefix_matches_prefix_longer_than_haystack_does_not_panic() {
     assert!(!prefix_matches("q", "quit", false));
     assert!(!prefix_matches("q", "quit", true));
+}
+
+// ── Requests that end without their answer ──────────────────────────────────
+
+/// The request id each `#:cancel` call carries.
+fn cancelled_ids(calls: &[hume_scripting::SteelCall]) -> Vec<u64> {
+    calls
+        .iter()
+        .map(|call| match call.args()[0].value() {
+            SteelVal::IntV(id) => *id as u64,
+            other => panic!("not a request id: {other:?}"),
+        })
+        .collect()
+}
+
+#[test]
+fn re_invoking_a_source_cancels_its_call_in_flight() {
+    let reg = registry(&[("a", 0)]);
+    let (mut session, text) = buffer_session("foo\n");
+    let first = buffer_invoke(&mut session, id_of(&reg, "a"), &text, 0);
+    buffer_invoke(&mut session, id_of(&reg, "a"), &text, 0);
+    assert_eq!(cancelled_ids(&session.take_cancels(&reg)), [first]);
+    assert!(session.take_cancels(&reg).is_empty());
+}
+
+#[test]
+fn a_landed_answer_is_never_cancelled() {
+    let reg = registry(&[("a", 0)]);
+    let (mut session, text) = buffer_session("foo\n");
+    invoke_and_answer(&mut session, &reg, id_of(&reg, "a"), &text, 0, &["foo"]);
+    invoke_and_answer(&mut session, &reg, id_of(&reg, "a"), &text, 0, &["foo"]);
+    assert!(session.take_cancels(&reg).is_empty());
+    assert!(session.end_requests(&reg).is_empty());
+}
+
+#[test]
+fn re_invoking_a_streaming_source_cancels_and_ends_its_answer() {
+    let reg = minibuf_registry(&[("s", 0)]);
+    let (mut session, id) = streaming_session(&reg);
+    emit(&mut session, &reg, id, &["a"], AnswerEnd::More);
+    session.invoke(minibuf_id_of(&reg, "s"), Invocation::minibuf(0..0));
+    assert_eq!(cancelled_ids(&session.take_cancels(&reg)), [id]);
+    assert!(session.drop_stalled_invocations());
+    assert!(!session.is_pending());
+    assert!(!emit(&mut session, &reg, id, &["a", "b"], AnswerEnd::More));
+}
+
+#[test]
+fn drop_stalled_cancels_every_call_in_flight() {
+    let reg = registry(&[("a", 0), ("b", 0)]);
+    let (mut session, text) = buffer_session("foo\n");
+    let a = buffer_invoke(&mut session, id_of(&reg, "a"), &text, 0);
+    let b = buffer_invoke(&mut session, id_of(&reg, "b"), &text, 0);
+    assert!(session.drop_stalled_invocations());
+    assert_eq!(cancelled_ids(&session.take_cancels(&reg)), [a, b]);
+}
+
+#[test]
+fn ending_a_session_cancels_only_what_it_still_awaits() {
+    let reg = registry(&[("a", 0), ("b", 0)]);
+    let (mut session, text) = buffer_session("foo\n");
+    let a = buffer_invoke(&mut session, id_of(&reg, "a"), &text, 0);
+    invoke_and_answer(&mut session, &reg, id_of(&reg, "b"), &text, 0, &["foo"]);
+    assert_eq!(cancelled_ids(&session.end_requests(&reg)), [a]);
+
+    let reg = minibuf_registry(&[("s", 0)]);
+    let (mut session, id) = streaming_session(&reg);
+    emit(&mut session, &reg, id, &["a"], AnswerEnd::More);
+    assert_eq!(cancelled_ids(&session.end_requests(&reg)), [id]);
+}
+
+#[test]
+fn a_source_without_a_cancel_gets_no_call() {
+    let mut reg = SourceRegistry::with_defaults();
+    reg.register_buffer(BufferSourceEntry {
+        name: "a".into(),
+        match_kind: MatchKind::Fuzzy,
+        priority: 0,
+        proc: hume_scripting::Rooted::new(SteelVal::Void),
+        resolve: false,
+        cancel: None,
+        token_chars: "".into(),
+    });
+    let (mut session, text) = buffer_session("foo\n");
+    buffer_invoke(&mut session, id_of(&reg, "a"), &text, 0);
+    buffer_invoke(&mut session, id_of(&reg, "a"), &text, 0);
+    assert!(session.take_cancels(&reg).is_empty());
 }

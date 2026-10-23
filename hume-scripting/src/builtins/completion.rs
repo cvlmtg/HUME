@@ -14,7 +14,8 @@ use crate::{Effect, SteelCtx};
 use super::SteelResult;
 use super::args::{
     CHAR_RANGE_KEYS, bool_arg, callable_arg, chars_arg, int_arg, json_arg, list_items,
-    optional_hash_entry, optional_string_arg, server_arg, string_arg, symbol_enum_arg, usize_arg,
+    optional_callable_arg, optional_hash_entry, optional_string_arg, server_arg, string_arg,
+    symbol_enum_arg, usize_arg,
 };
 use super::errors::{generic_err, require_cap};
 use super::lsp::required_feature_arg;
@@ -129,13 +130,15 @@ fn queue_triggers(
 }
 
 /// `(%register-completion-source! name proc target match priority resolve
-/// token-chars)`:
+/// token-chars cancel)`:
 /// the `register-completion-source!` Scheme wrapper supplies `#:match`/
-/// `#:priority`/`#:resolve`'s defaults; `#:target` has none (every source
-/// states its choice explicitly). `proc` is called as `(proc id bid
-/// prefix)` for a `'buffer` source, `(proc id input cursor)` for a
-/// `'minibuf` one, and answers with `(completion-emit! id …)`. Queued as an
-/// `Effect`, not applied here; see `Effect::RegisterCompletionSource`.
+/// `#:priority`/`#:resolve`/`#:token-chars`/`#:cancel`'s defaults;
+/// `#:target` has none (every source states its choice explicitly). `proc`
+/// is called as `(proc id bid prefix)` for a `'buffer` source, `(proc id
+/// input cursor)` for a `'minibuf` one, and answers with
+/// `(completion-emit! id …)`. `cancel`, `#f` or a procedure, is called as
+/// `(cancel id)` when request `id` ends before its final answer. Queued as
+/// an `Effect`, not applied here; see `Effect::RegisterCompletionSource`.
 ///
 /// `#:resolve #t` is refused outright on a `'minibuf` source: only a
 /// `'buffer` source's items can ever be a wire `CompletionItem` from a
@@ -156,8 +159,10 @@ pub(crate) fn register_completion_source(
     priority: SteelVal,
     resolve: SteelVal,
     token_chars: SteelVal,
+    cancel: SteelVal,
 ) -> SteelResult {
     let proc = callable_arg(proc, "register-completion-source! proc")?;
+    let cancel = optional_callable_arg(cancel, "register-completion-source! #:cancel")?;
     let target = target_arg(target)?;
     let match_kind = match_kind_arg(match_kind, "register-completion-source! #:match")?;
     let priority = int_arg(priority, "register-completion-source! #:priority")?;
@@ -182,6 +187,7 @@ pub(crate) fn register_completion_source(
             priority,
             resolve,
             token_chars,
+            cancel,
         },
     ));
     Ok(SteelVal::Void)

@@ -85,6 +85,34 @@ impl EditorState {
         Some(completion.session)
     }
 
+    /// [`Self::take_buffer_completion`] for an accept, which ends the
+    /// session: each request it still awaits gets its source's `#:cancel`.
+    pub(in crate::editor) fn take_buffer_completion_to_accept(
+        &mut self,
+        view: &EngineView,
+    ) -> Option<super::BufferSession> {
+        let mut session = self.take_buffer_completion(view)?;
+        let cancels = session.end_requests(&self.config.completion_sources);
+        self.queue_steel_calls(cancels);
+        Some(session)
+    }
+
+    /// Queues the `#:cancel` calls for every request the open session has
+    /// stopped waiting on since the last call: superseded by a newer call,
+    /// or dropped with a failed call batch. A session leaving the input
+    /// stack queues its own, in its layer's `tear_down`.
+    pub(in crate::editor) fn queue_completion_cancels(&mut self) {
+        let sources = &self.config.completion_sources;
+        let mut cancels = Vec::new();
+        if let Some(session) = self.input.buffer_completion_mut() {
+            cancels.extend(session.take_cancels(sources));
+        }
+        if let Some(session) = self.input.minibuf_completion_mut() {
+            cancels.extend(session.take_cancels(sources));
+        }
+        self.queue_steel_calls(cancels);
+    }
+
     // ── Buffer target ────────────────────────────────────────────────────────
 
     /// Opens (or re-invokes into) the Insert-mode completion session on the
@@ -531,8 +559,8 @@ impl EditorState {
         }
     }
 
-    /// Queues every call `invoke_buffer_sources` returned.
-    fn queue_steel_calls(&mut self, calls: Vec<SteelCall>) {
+    /// Queues each of `calls`, as [`Self::queue_steel_call`] does one.
+    pub(in crate::editor) fn queue_steel_calls(&mut self, calls: Vec<SteelCall>) {
         for call in calls {
             self.queue_steel_call(call);
         }
@@ -620,7 +648,7 @@ fn invoke_minibuf_source(
             session.contribute(invocation_id, items, false);
             None
         }
-        MinibufBody::Steel(proc) => {
+        MinibufBody::Steel { proc, .. } => {
             let invocation_id = session.invoke(id, Invocation::minibuf(arg()));
             // Steel indexes a string by char.
             let cursor_chars = input[..cursor].chars().count();

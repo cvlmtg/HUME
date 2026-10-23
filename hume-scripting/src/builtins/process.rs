@@ -54,11 +54,11 @@ pub(crate) fn spawn_async(
     Ok(SteelVal::IntV(id as isize))
 }
 
-/// `(cancel-async! id)` → void. Kills the job's child and drops its
-/// callback without firing it. Idempotent: an already-completed,
-/// already-cancelled, or unknown id (including a spawn failure that
-/// already fired its callback) is a no-op, matching `cancel-timer!`'s
-/// contract.
+/// `(cancel-async! id)` → void. Stops the job or scan and drops its
+/// callback without firing it, even one already due
+/// ([`AsyncProcessHost::cancel_async`](crate::host::AsyncProcessHost::cancel_async)).
+/// Idempotent: an id whose last callback has run, an already-cancelled id
+/// or an unknown one is a no-op, matching `cancel-timer!`'s contract.
 pub(crate) fn cancel_async(ctx: &mut SteelCtx, id: SteelVal) -> SteelResult {
     let id = usize_arg(id, "cancel-async!")? as u64;
     require_cap(ctx.host.async_process(), "cancel-async!")?.cancel_async(id);

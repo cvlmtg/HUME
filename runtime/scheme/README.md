@@ -84,8 +84,8 @@ The file holds, in order:
   the record and each text the dialect writes (a malformed one raises, naming the dialect),
   lists programs for a word in command position whose `dir` is empty (so `"gr` lists programs
   too) and directory entries otherwise (`path-programs`, `path-entries`, matched on values),
-  answers with each `path-programs` report as one part (`#:more`) until the last, building
-  each name's item once, and stops the listing once an answer is dropped, writes each name
+  answers with each `path-programs` report as one part (`#:more`) until the last, stops the
+  listing from its `#:cancel` when the request ends without its last part, writes each name
   finished, gives a directory's item the LSP Folder kind, which the line's Enter goes into,
   and with several names writes their shared value prefix unfinished as the last part's
   `#:prefix`, so the first `Tab` inserts it, or `#f` when that prefix adds nothing to what is

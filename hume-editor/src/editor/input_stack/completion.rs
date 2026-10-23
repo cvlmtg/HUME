@@ -149,7 +149,9 @@ impl Layer for BufferCompletionLayer {
     fn removal_scope(&self) -> RemovalScope {
         RemovalScope::SelfOnly
     }
-    fn tear_down(self: Box<Self>, state: &mut EditorState, _view: &EngineView, _why: Removal) {
+    fn tear_down(mut self: Box<Self>, state: &mut EditorState, _view: &EngineView, _why: Removal) {
+        let cancels = self.session.end_requests(&state.config.completion_sources);
+        state.queue_steel_calls(cancels);
         state.close_buffer_completion_views();
     }
     fn theme_changed(
@@ -181,7 +183,9 @@ impl Layer for MinibufCompletionLayer {
     fn removal_scope(&self) -> RemovalScope {
         RemovalScope::SelfOnly
     }
-    fn tear_down(self: Box<Self>, state: &mut EditorState, _view: &EngineView, _why: Removal) {
+    fn tear_down(mut self: Box<Self>, state: &mut EditorState, _view: &EngineView, _why: Removal) {
+        let cancels = self.session.end_requests(&state.config.completion_sources);
+        state.queue_steel_calls(cancels);
         state.views.minibuf_completion.set(None);
     }
 }
@@ -562,7 +566,7 @@ fn accept_completion_selection(ed: &mut Editor, r: LayerRef) {
         .input
         .at::<BufferCompletionLayer>(r)
         .map_or(0, |l| l.session.selected());
-    let Some(session) = ed.state.take_buffer_completion(&ed.view) else {
+    let Some(session) = ed.state.take_buffer_completion_to_accept(&ed.view) else {
         return;
     };
 

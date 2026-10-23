@@ -7,10 +7,12 @@
 //! their own (cross-source dedup is `Buffer`-only, since `Minibuf` invokes
 //! exactly one source).
 
+use hume_scripting::SteelCall;
 use hume_scripting::host::AnswerEnd;
+use steel::rvals::SteelVal;
 
 use super::super::item::CompletionItem;
-use super::super::registry::{BufferSourceId, MinibufSourceId, SourceRegistry};
+use super::super::registry::{BufferSourceId, MinibufBody, MinibufSourceId, SourceRegistry};
 use super::MatchKind;
 use crate::editor::fuzzy::{FuzzyMatcher, FuzzyPattern, FuzzyProfile};
 use crate::editor::host_token;
@@ -20,8 +22,27 @@ enum InvocationState {
     Shown {
         items: Vec<CompletionItem>,
         incomplete: bool,
-        end: AnswerEnd,
+        end: ShownEnd,
     },
+}
+
+/// Whether more of a shown answer may land.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ShownEnd {
+    Final,
+    More,
+    /// It had more to follow, but its request ended first and its
+    /// source was told to stop: a later part is dropped.
+    Cancelled,
+}
+
+impl From<AnswerEnd> for ShownEnd {
+    fn from(end: AnswerEnd) -> Self {
+        match end {
+            AnswerEnd::Final => Self::Final,
+            AnswerEnd::More => Self::More,
+        }
+    }
 }
 
 /// One call of one source for one trigger: the id the source answers to,
@@ -76,10 +97,32 @@ impl<S> Invocation<S> {
         matches!(
             self.state,
             InvocationState::Shown {
-                end: AnswerEnd::More,
+                end: ShownEnd::More,
                 ..
             }
         )
+    }
+
+    fn cancelled(&self) -> bool {
+        matches!(
+            self.state,
+            InvocationState::Shown {
+                end: ShownEnd::Cancelled,
+                ..
+            }
+        )
+    }
+
+    /// Marks a streaming answer cancelled. `false`, changing nothing, for
+    /// any other: it owes no further part.
+    fn cancel_stream(&mut self) -> bool {
+        match &mut self.state {
+            InvocationState::Shown { end, .. } if *end == ShownEnd::More => {
+                *end = ShownEnd::Cancelled;
+                true
+            }
+            _ => false,
+        }
     }
 }
 
@@ -142,6 +185,9 @@ impl<Id: Copy + PartialEq, S> SourceSlot<Id, S> {
 /// need a per-target match to find the right registry half.
 pub(super) trait SourceId: Copy + PartialEq {
     fn facts(self, sources: &SourceRegistry) -> (&str, MatchKind, i64);
+
+    /// The source's `#:cancel`, if it registered one.
+    fn cancel(self, sources: &SourceRegistry) -> Option<&hume_scripting::Rooted>;
 }
 
 impl SourceId for BufferSourceId {
@@ -149,12 +195,23 @@ impl SourceId for BufferSourceId {
         let e = sources.buffer_get(self);
         (&e.name, e.match_kind, e.priority)
     }
+
+    fn cancel(self, sources: &SourceRegistry) -> Option<&hume_scripting::Rooted> {
+        sources.buffer_get(self).cancel.as_ref()
+    }
 }
 
 impl SourceId for MinibufSourceId {
     fn facts(self, sources: &SourceRegistry) -> (&str, MatchKind, i64) {
         let e = sources.minibuf_get(self);
         (&e.name, e.match_kind, e.priority)
+    }
+
+    fn cancel(self, sources: &SourceRegistry) -> Option<&hume_scripting::Rooted> {
+        match &sources.minibuf_get(self).body {
+            MinibufBody::Steel { cancel, .. } => cancel.as_ref(),
+            MinibufBody::NativeUniverse(_) | MinibufBody::NativeDelegated(_) => None,
+        }
     }
 }
 
@@ -284,6 +341,12 @@ pub(super) struct SlotSet<Id, S> {
     /// anywhere but at the one place the list itself is rebuilt would leave
     /// a window where the two disagree.
     selected: usize,
+    /// Every request that ended while its source still owed an answer,
+    /// since the last [`Self::take_cancels`]: a call in flight, or an
+    /// answer with more to follow, that a newer call superseded, a failed
+    /// call batch dropped, or the session's end abandoned. The one record
+    /// every such discard writes to.
+    ended: Vec<(Id, u64)>,
 }
 
 impl<Id, S> SlotSet<Id, S> {
@@ -293,13 +356,15 @@ impl<Id, S> SlotSet<Id, S> {
             ranked: Vec::new(),
             matcher: FuzzyMatcher::new(FuzzyProfile::Autocomplete),
             selected: 0,
+            ended: Vec::new(),
         }
     }
 }
 
 impl<Id: Copy + PartialEq, S> SlotSet<Id, S> {
-    /// Records a fresh call of `source`, superseding any still in flight
-    /// for it. Returns the id the answer must carry.
+    /// Records a fresh call of `source`, superseding the request it still
+    /// owed an answer to, if any: a call in flight, or a streaming answer,
+    /// which takes no further part. Returns the id the answer must carry.
     pub(super) fn invoke(&mut self, source: Id, invocation: Invocation<S>) -> u64 {
         let id = invocation.id;
         let slot = match self.slots.iter().position(|s| s.source == source) {
@@ -313,7 +378,14 @@ impl<Id: Copy + PartialEq, S> SlotSet<Id, S> {
                 self.slots.last_mut().expect("just pushed")
             }
         };
-        slot.inflight = Some(invocation);
+        let superseded = match slot.inflight.replace(invocation) {
+            Some(old) => Some(old.id),
+            None => slot
+                .shown
+                .as_mut()
+                .and_then(|inv| inv.cancel_stream().then_some(inv.id)),
+        };
+        self.ended.extend(superseded.map(|old| (source, old)));
         id
     }
 
@@ -335,6 +407,9 @@ impl<Id: Copy + PartialEq, S> SlotSet<Id, S> {
         let Some(slot) = self.slots.iter_mut().find(|s| s.latest_id() == Some(id)) else {
             return false;
         };
+        if slot.inflight.is_none() && slot.shown.as_ref().is_some_and(Invocation::cancelled) {
+            return false;
+        }
         let mut invocation = match slot.inflight.take() {
             Some(inv) => inv,
             None => slot
@@ -349,7 +424,7 @@ impl<Id: Copy + PartialEq, S> SlotSet<Id, S> {
         invocation.state = InvocationState::Shown {
             items,
             incomplete,
-            end,
+            end: end.into(),
         };
         slot.shown = Some(invocation);
         true
@@ -393,26 +468,54 @@ impl<Id: Copy + PartialEq, S> SlotSet<Id, S> {
         !self.is_pending() && !self.is_live()
     }
 
-    /// Clears every still-`inflight` invocation and ends every answer shown
-    /// with more to follow, keeping its items: the failed call batch may
-    /// have held the call that would have answered. Returns whether
-    /// anything changed. See `BufferSession::drop_stalled_invocations`'s own
-    /// doc for why this recovery is always safe.
+    /// Clears every still-`inflight` invocation, leaving any `shown`
+    /// answer, a streaming one included, untouched: a failed call batch
+    /// may have held the call that would have answered, but says nothing
+    /// about whoever is sending a streamed answer's parts. Returns whether
+    /// anything was cleared. See `BufferSession::drop_stalled_invocations`'s
+    /// own doc for why this recovery is always safe.
     pub(super) fn drop_stalled(&mut self) -> bool {
+        let before = self.ended.len();
+        for slot in &mut self.slots {
+            if let Some(stalled) = slot.inflight.take() {
+                self.ended.push((slot.source, stalled.id));
+            }
+        }
+        self.ended.len() > before
+    }
+
+    /// Drops every shown answer `drop` picks, recording a streaming one as
+    /// ended. Returns whether any was dropped.
+    pub(super) fn drop_shown_where(
+        &mut self,
+        mut drop: impl FnMut(Id, &Invocation<S>) -> bool,
+    ) -> bool {
         let mut any = false;
         for slot in &mut self.slots {
-            if slot.inflight.take().is_some() {
-                any = true;
-            }
-            if let Some(InvocationState::Shown { end, .. }) =
-                slot.shown.as_mut().map(|inv| &mut inv.state)
-                && *end == AnswerEnd::More
-            {
-                *end = AnswerEnd::Final;
+            if let Some(inv) = slot.shown.take_if(|inv| drop(slot.source, inv)) {
+                if inv.streaming() {
+                    self.ended.push((slot.source, inv.id));
+                }
                 any = true;
             }
         }
         any
+    }
+
+    /// Records as ended every request the session still owes an answer
+    /// to, for a session that is closing: each call in flight and each
+    /// streaming answer.
+    fn end_owed(&mut self) {
+        for slot in &mut self.slots {
+            if let Some(inv) = &slot.inflight {
+                self.ended.push((slot.source, inv.id));
+            }
+            if let Some(inv) = slot.shown.as_mut()
+                && inv.cancel_stream()
+            {
+                self.ended.push((slot.source, inv.id));
+            }
+        }
     }
 
     /// The sources to call again after an edit: those that flagged their
@@ -537,6 +640,29 @@ impl<Id: Copy + PartialEq, S> SlotSet<Id, S> {
 }
 
 impl<Id: SourceId, S> SlotSet<Id, S> {
+    /// One `(cancel id)` call per request recorded as ended since the last
+    /// call, for each source that registered a `#:cancel`, read from the
+    /// registry as it is now.
+    pub(super) fn take_cancels(&mut self, sources: &SourceRegistry) -> Vec<SteelCall> {
+        std::mem::take(&mut self.ended)
+            .into_iter()
+            .filter_map(|(source, id)| {
+                let cancel = source.cancel(sources)?;
+                Some(SteelCall::new(
+                    cancel.clone(),
+                    vec![SteelVal::IntV(id as isize)],
+                ))
+            })
+            .collect()
+    }
+
+    /// [`Self::take_cancels`] for a session that is closing, every request
+    /// it still owes an answer to included.
+    pub(super) fn end_requests(&mut self, sources: &SourceRegistry) -> Vec<SteelCall> {
+        self.end_owed();
+        self.take_cancels(sources)
+    }
+
     pub(super) fn top(&self, n: usize, sources: &SourceRegistry) -> Vec<serde_json::Value> {
         (0..n.min(self.ranked.len()))
             .filter_map(|idx| {
@@ -580,6 +706,7 @@ impl<Id: SourceId, S> SlotSet<Id, S> {
             ranked,
             matcher,
             selected,
+            ended: _,
         } = self;
         ranked.clear();
         let mut ctx = ScoreCtx {

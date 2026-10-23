@@ -14,6 +14,7 @@ fn source(name: &str) -> BufferSourceEntry {
         priority: 0,
         proc: hume_scripting::Rooted::new(SteelVal::Void),
         resolve: false,
+        cancel: None,
         token_chars: "".into(),
     }
 }

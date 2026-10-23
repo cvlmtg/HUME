@@ -34,14 +34,7 @@ fn theme_candidates_for(runtime: &TwoThemesRuntime, input: &str) -> Vec<String> 
         ed.handle_key(key(ch));
     }
     ed.handle_key(key_tab());
-    let session = ed
-        .state
-        .input
-        .minibuf_completion()
-        .expect("two themes must open a popup");
-    (0..session.len())
-        .map(|i| session.selected_item(i).unwrap().insert_text().to_owned())
-        .collect()
+    minibuf_candidates(&ed)
 }
 
 #[test]

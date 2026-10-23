@@ -13,6 +13,7 @@ use hume_editing::tracked::Tracked;
 use hume_editing::word::{CharClass, WordChars};
 use hume_rope::cluster::ClusterStart;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
+use hume_scripting::SteelCall;
 use hume_scripting::host::AnswerEnd;
 
 use super::super::item::CompletionItem;
@@ -333,6 +334,19 @@ impl BufferSession {
         self.core.drop_stalled()
     }
 
+    /// The `#:cancel` calls for every request that ended without its
+    /// answer since the last call: superseded by a newer call of its
+    /// source, or dropped by [`Self::drop_stalled_invocations`].
+    pub(in crate::editor) fn take_cancels(&mut self, sources: &SourceRegistry) -> Vec<SteelCall> {
+        self.core.take_cancels(sources)
+    }
+
+    /// [`Self::take_cancels`] for a session leaving the input stack, with
+    /// every request it still awaits.
+    pub(in crate::editor) fn end_requests(&mut self, sources: &SourceRegistry) -> Vec<SteelCall> {
+        self.core.end_requests(sources)
+    }
+
     /// The sources to call again after an edit: those that flagged their
     /// latest answer `isIncomplete`, and those still pending (their
     /// in-flight call saw an older document, so it is superseded rather
@@ -387,16 +401,10 @@ impl BufferSession {
         // Whether any slot's `shown` answer was actually dropped below:
         // the one thing that can change which items dedup compares against,
         // so `recompute_dedup` runs only then.
-        let mut dropped = false;
-        for slot in self.core.slots_mut() {
-            let token_chars = sources.buffer_get(slot.source).token_chars_over(word_chars);
-            if let Some(inv) = &slot.shown
-                && !inv.holds(text, head, WordChars::new(&token_chars))
-            {
-                slot.shown = None;
-                dropped = true;
-            }
-        }
+        let dropped = self.core.drop_shown_where(|source, inv| {
+            let token_chars = sources.buffer_get(source).token_chars_over(word_chars);
+            !inv.holds(text, head, WordChars::new(&token_chars))
+        });
         if dropped {
             self.recompute_dedup(sources);
         }

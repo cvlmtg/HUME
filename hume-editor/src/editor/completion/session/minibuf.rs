@@ -12,6 +12,7 @@ use std::borrow::Cow;
 use std::ops::Range;
 
 use hume_rope::grapheme::common_str_prefix;
+use hume_scripting::SteelCall;
 use hume_scripting::host::{AnswerEnd, EmittedWord, FirstTab};
 
 use super::super::item::{CandidateKey, CompletionItem};
@@ -207,6 +208,16 @@ impl MinibufSession {
     /// recovery, applied to this target's own slots.
     pub(in crate::editor) fn drop_stalled_invocations(&mut self) -> bool {
         self.core.drop_stalled()
+    }
+
+    /// See `BufferSession::take_cancels`.
+    pub(in crate::editor) fn take_cancels(&mut self, sources: &SourceRegistry) -> Vec<SteelCall> {
+        self.core.take_cancels(sources)
+    }
+
+    /// See `BufferSession::end_requests`.
+    pub(in crate::editor) fn end_requests(&mut self, sources: &SourceRegistry) -> Vec<SteelCall> {
+        self.core.end_requests(sources)
     }
 
     // ── Ranking ──────────────────────────────────────────────────────────────

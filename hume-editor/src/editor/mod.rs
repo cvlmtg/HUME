@@ -175,9 +175,10 @@ pub(crate) struct ConfigState {
     /// scripting host is attached.
     pub(in crate::editor) pending_language_detection: Vec<hume_engine::pipeline::BufferId>,
     /// In-flight `spawn-async!` jobs and `path-programs` scans, keyed by
-    /// the id their builtin returned to Steel. Drained by
-    /// `Editor::drain_async_jobs`; dropping this map (a `:reload-config`
-    /// wholesale rebuild) stops all of them for free; see
+    /// the id their builtin returned to Steel, each kept until its last
+    /// callback has run. Drained by `Editor::drain_async_jobs`; dropping
+    /// this map (a `:reload-config` wholesale rebuild, which drops
+    /// `pending_work` with it) stops all of them for free; see
     /// `async_job::PendingJob`'s doc.
     pub(in crate::editor) async_jobs: rustc_hash::FxHashMap<u64, async_job::PendingJob>,
     /// Monotonic counter minting the next id in `async_jobs`. Mirrors the

@@ -62,9 +62,10 @@ on failure it sets `"ref-text"` to `'unavailable` and applies `'()`, which clear
 hunks.
 
 A buffer can close, or a save can cancel the fetch, while its completion is already queued
-for the same frame. The cancel cannot help, because the job has already left the cancellable
-slot. `spawn-job!` drops such a result: the entry is gone or the slot holds another job (or
-none). See [Closed buffers](#closed-buffers).
+for the same frame. The cancel drops that completion, since `cancel-async!` stops a callback
+even once it is due. `spawn-job!` also runs a result only while its job still owns the slot,
+so a result is dropped when the entry is gone or the slot holds another job (or none). See
+[Closed buffers](#closed-buffers).
 
 #### Severity routing
 

@@ -9,13 +9,7 @@ use crate::editor::settings::CommandCompletion;
 use hume_editing::text::BufferText;
 use pretty_assertions::assert_eq;
 
-/// Every candidate's `insert_text`, in ranked order.
-fn candidates(ed: &Editor) -> Vec<String> {
-    let session = ed.state.input.minibuf_completion().expect("popup open");
-    (0..session.len())
-        .map(|i| session.selected_item(i).unwrap().insert_text().to_owned())
-        .collect()
-}
+use crate::editor::tests::editor_cwd::call;
 
 /// `:` then `input`, through `handle_key`.
 fn command_line(ed: &mut Editor, input: &str) {
@@ -86,7 +80,10 @@ fn tab_multiple_matches_opens_popup_with_first_candidate_applied() {
     ed.handle_key(key_tab());
     assert!(ed.state.input.minibuf_completion().is_some(), "popup open");
     assert_eq!(selected_row(&ed), 0);
-    assert_eq!(candidates(&ed), vec!["write", "write-all", "write-quit"]);
+    assert_eq!(
+        minibuf_candidates(&ed),
+        vec!["write", "write-all", "write-quit"]
+    );
     assert_eq!(minibuf_input(&ed), "write");
 }
 
@@ -195,7 +192,10 @@ fn tab_extends_the_token_to_the_common_prefix_and_picks_nothing() {
     command_line(&mut ed, "w");
     ed.handle_key(key_tab());
     assert_eq!(minibuf_input(&ed), "write");
-    assert_eq!(candidates(&ed), vec!["write", "write-all", "write-quit"]);
+    assert_eq!(
+        minibuf_candidates(&ed),
+        vec!["write", "write-all", "write-quit"]
+    );
     assert_eq!(picked_row(&ed), None);
 }
 
@@ -260,7 +260,7 @@ fn a_fuzzy_prefix_shorter_than_the_typed_text_is_not_applied() {
     ed.handle_key(key_tab());
     ed.settle();
     assert_eq!(minibuf_input(&ed), "greet ab");
-    assert_eq!(candidates(&ed).len(), 2);
+    assert_eq!(minibuf_candidates(&ed).len(), 2);
 }
 
 #[test]
@@ -285,29 +285,15 @@ fn the_common_prefix_never_splits_a_grapheme_cluster() {
 
 #[test]
 fn a_later_answer_drops_the_pick_and_proposes_the_common_prefix() {
-    let tmp = tempfile::tempdir().unwrap();
-    let mut ed = editor_from("-[h]>ello\n");
-    run(
-        &mut ed,
-        tmp.path(),
-        r#"(define captured-id #f)
-           (register-completion-source! "names"
-             (lambda (id input cursor) (set! captured-id id))
-             #:target 'minibuf #:match 'string)
-           (define-typed-command! "greet" "" (lambda (bid arg) (log! 'info arg)) #:complete "names")
-           (define-command! "answer-many" "" (lambda ()
-             (completion-emit! captured-id
-               (list (hash "label" "alice") (hash "label" "bob") (hash "label" "carol")))))
-           (define-command! "answer-pair" "" (lambda ()
-             (completion-emit! captured-id
-               (list (hash "label" "bobby") (hash "label" "bobcat")))))"#,
+    let mut ed = greet_answered_by(
+        "",
+        &[
+            ("answer-many", r#"(list "alice" "bob" "carol")"#, ""),
+            ("answer-pair", r#"(list "bobby" "bobcat")"#, ""),
+        ],
     );
-    ed.handle_key(key(':'));
-    type_chars(&mut ed, "greet ");
-    ed.handle_key(key_tab());
-    ed.settle();
 
-    ed.execute_keymap_command("answer-many".into(), None, false);
+    call(&mut ed, "answer-many");
     assert_eq!(minibuf_input(&ed), "greet ");
     assert_eq!(picked_row(&ed), None);
 
@@ -316,9 +302,9 @@ fn a_later_answer_drops_the_pick_and_proposes_the_common_prefix() {
     assert_eq!(picked_row(&ed), Some(1));
     assert_eq!(minibuf_input(&ed), "greet bob");
 
-    ed.execute_keymap_command("answer-pair".into(), None, false);
+    call(&mut ed, "answer-pair");
     assert_eq!(picked_row(&ed), None, "the new ranking has no pick");
-    assert_eq!(candidates(&ed).len(), 2);
+    assert_eq!(minibuf_candidates(&ed).len(), 2);
     assert_eq!(minibuf_input(&ed), "greet bob");
 }
 
@@ -438,7 +424,10 @@ fn enter_on_directory_candidate_restarts_completion_inside_it() {
     let mut ed = first_candidate_editor("-[h]>ello\n");
     command_line(&mut ed, &format!("e {}/", dir.path().display()));
     ed.handle_key(key_tab()); // "alpha/" first (alphabetical)
-    assert!(candidates(&ed)[0].ends_with('/'), "sanity: a directory");
+    assert!(
+        minibuf_candidates(&ed)[0].ends_with('/'),
+        "sanity: a directory"
+    );
 
     ed.handle_key(key_enter());
 
@@ -560,20 +549,21 @@ fn a_minibuf_source_gets_the_cursor_as_a_char_offset() {
 
 // ── A source's own span ──────────────────────────────────────────────────────
 
-/// `:greet <typed>` on an open line, completed by a `match_kind` source
-/// that answers `items` (a Scheme list) with the extra `completion-emit!`
-/// arguments `emit`.
-fn greet_line(typed: &str, match_kind: &str, items: &str, emit: &str) -> Editor {
+/// `:greet <typed>` on an open line, after the Scheme `prelude` has run,
+/// completed by the `'minibuf` source `(lambda (id input cursor) <body>)`
+/// registered with the extra keyword arguments `opts`.
+fn greet_source(typed: &str, prelude: &str, body: &str, opts: &str) -> Editor {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[h]>ello\n");
     run(
         &mut ed,
         tmp.path(),
         &format!(
-            r#"(register-completion-source! "words"
-                 (lambda (id input cursor) (completion-emit! id {items} {emit}))
-                 #:target 'minibuf #:match '{match_kind})
-               (define-typed-command! "greet" "" (lambda (bid arg) (log! 'info arg)) #:complete "words")"#
+            r#"{prelude}
+               (register-completion-source! "names"
+                 (lambda (id input cursor) {body})
+                 #:target 'minibuf {opts})
+               (define-typed-command! "greet" "" (lambda (bid arg) (log! 'info arg)) #:complete "names")"#
         ),
     );
     ed.handle_key(key(':'));
@@ -581,12 +571,28 @@ fn greet_line(typed: &str, match_kind: &str, items: &str, emit: &str) -> Editor 
     ed
 }
 
-/// [`greet_line`] with Tab pressed.
-fn greet_tab(typed: &str, match_kind: &str, items: &str, emit: &str) -> Editor {
-    let mut ed = greet_line(typed, match_kind, items, emit);
+/// Presses Tab and lets the source it calls answer.
+fn tab(mut ed: Editor) -> Editor {
     ed.handle_key(key_tab());
     ed.settle();
     ed
+}
+
+/// `:greet <typed>` on an open line, completed by a `match_kind` source
+/// that answers `items` (a Scheme list) with the extra `completion-emit!`
+/// arguments `emit`.
+fn greet_line(typed: &str, match_kind: &str, items: &str, emit: &str) -> Editor {
+    greet_source(
+        typed,
+        "",
+        &format!("(completion-emit! id {items} {emit})"),
+        &format!("#:match '{match_kind}"),
+    )
+}
+
+/// [`greet_line`] with Tab pressed.
+fn greet_tab(typed: &str, match_kind: &str, items: &str, emit: &str) -> Editor {
+    tab(greet_line(typed, match_kind, items, emit))
 }
 
 /// [`greet_tab`] on `"my no` with a source answering `"my notes"`.
@@ -774,7 +780,7 @@ fn tab_on_buffer_arg_completes_buffer_names() {
 
     command_line(&mut ed, "b alpha");
     ed.handle_key(key_tab());
-    let names = candidates(&ed);
+    let names = minibuf_candidates(&ed);
     assert!(
         names.iter().any(|n| n.ends_with("alpha-notes.rs")),
         "{names:?}"
@@ -821,7 +827,7 @@ fn tab_on_set_opens_scope_popup() {
     let mut ed = editor_from("-[h]>ello\n");
     command_line(&mut ed, "set ");
     ed.handle_key(key_tab());
-    let names = candidates(&ed);
+    let names = minibuf_candidates(&ed);
     for scope in ["global", "buffer", "pane"] {
         assert!(names.iter().any(|n| n == scope), "{names:?}");
     }
@@ -920,26 +926,14 @@ fn a_raising_minibuf_source_does_not_leave_the_popup_stuck_pending() {
 /// selection index the new, shorter list no longer has.
 #[test]
 fn a_second_answer_settles_against_a_reset_selection_not_a_stale_one() {
-    let tmp = tempfile::tempdir().unwrap();
-    let mut ed = first_candidate_editor("-[h]>ello\n");
-    run(
-        &mut ed,
-        tmp.path(),
-        r#"(define captured-id #f)
-           (register-completion-source! "names"
-             (lambda (id input cursor) (set! captured-id id))
-             #:target 'minibuf #:match 'string)
-           (define-typed-command! "greet" "" (lambda (bid arg) (log! 'info arg)) #:complete "names")
-           (define-command! "answer-many" "" (lambda ()
-             (completion-emit! captured-id
-               (list (hash "label" "alice") (hash "label" "bob") (hash "label" "carol")))))
-           (define-command! "answer-one" "" (lambda ()
-             (completion-emit! captured-id (list (hash "label" "zzz")))))"#,
+    let mut ed = greet_answered_by(
+        "",
+        &[
+            ("answer-many", r#"(list "alice" "bob" "carol")"#, ""),
+            ("answer-one", r#"(list "zzz")"#, ""),
+        ],
     );
-    ed.handle_key(key(':'));
-    type_chars(&mut ed, "greet ");
-    ed.handle_key(key_tab());
-    ed.settle();
+    ed.state.settings.command_completion = CommandCompletion::FirstCandidate;
     assert!(
         ed.state
             .input
@@ -948,8 +942,12 @@ fn a_second_answer_settles_against_a_reset_selection_not_a_stale_one() {
         "sanity: still pending"
     );
 
-    ed.execute_keymap_command("answer-many".into(), None, false);
-    assert_eq!(candidates(&ed).len(), 3, "sanity: first answer landed");
+    call(&mut ed, "answer-many");
+    assert_eq!(
+        minibuf_candidates(&ed).len(),
+        3,
+        "sanity: first answer landed"
+    );
     assert_eq!(minibuf_input(&ed), "greet alice");
 
     ed.handle_key(key_tab());
@@ -957,7 +955,7 @@ fn a_second_answer_settles_against_a_reset_selection_not_a_stale_one() {
     assert_eq!(selected_row(&ed), 2, "sanity: selection moved off row 0");
     assert_eq!(minibuf_input(&ed), "greet carol");
 
-    ed.execute_keymap_command("answer-one".into(), None, false);
+    call(&mut ed, "answer-one");
     assert_eq!(
         minibuf_input(&ed),
         "greet zzz",
@@ -973,8 +971,6 @@ fn a_second_answer_settles_against_a_reset_selection_not_a_stale_one() {
 /// answers the Tab with the Scheme list `items` and the extra
 /// `completion-emit!` arguments `emit`.
 fn greet_answered_by(typed: &str, answers: &[(&str, &str, &str)]) -> Editor {
-    let tmp = tempfile::tempdir().unwrap();
-    let mut ed = editor_from("-[h]>ello\n");
     let commands: String = answers
         .iter()
         .map(|(name, items, emit)| {
@@ -984,27 +980,12 @@ fn greet_answered_by(typed: &str, answers: &[(&str, &str, &str)]) -> Editor {
             )
         })
         .collect();
-    run(
-        &mut ed,
-        tmp.path(),
-        &format!(
-            r#"(define captured-id #f)
-               (register-completion-source! "names"
-                 (lambda (id input cursor) (set! captured-id id))
-                 #:target 'minibuf #:match 'string)
-               (define-typed-command! "greet" "" (lambda (bid arg) (log! 'info arg)) #:complete "names")
-               {commands}"#
-        ),
-    );
-    ed.handle_key(key(':'));
-    type_chars(&mut ed, &format!("greet {typed}"));
-    ed.handle_key(key_tab());
-    ed.settle();
-    ed
-}
-
-fn answer(ed: &mut Editor, name: &'static str) {
-    ed.execute_keymap_command(name.into(), None, false);
+    tab(greet_source(
+        typed,
+        &format!("(define captured-id #f) {commands}"),
+        "(set! captured-id id)",
+        "#:match 'string",
+    ))
 }
 
 #[test]
@@ -1016,11 +997,11 @@ fn an_answer_with_more_to_come_shows_its_rows_and_defers_the_eager_policy() {
             ("last", r#"(list "bobby" "bobcat" "bobsled")"#, ""),
         ],
     );
-    answer(&mut ed, "part");
-    assert_eq!(candidates(&ed), ["bobby", "bobcat"]);
+    call(&mut ed, "part");
+    assert_eq!(minibuf_candidates(&ed), ["bobby", "bobcat"]);
     assert_eq!(minibuf_input(&ed), "greet b");
-    answer(&mut ed, "last");
-    assert_eq!(candidates(&ed).len(), 3);
+    call(&mut ed, "last");
+    assert_eq!(minibuf_candidates(&ed).len(), 3);
     assert_eq!(minibuf_input(&ed), "greet bob");
 }
 
@@ -1033,10 +1014,10 @@ fn a_single_match_streamed_in_parts_is_applied_only_when_the_answer_ends() {
             ("last", r#"(list "bobby")"#, ""),
         ],
     );
-    answer(&mut ed, "part");
-    assert_eq!(candidates(&ed), ["bobby"]);
+    call(&mut ed, "part");
+    assert_eq!(minibuf_candidates(&ed), ["bobby"]);
     assert_eq!(minibuf_input(&ed), "greet b");
-    answer(&mut ed, "last");
+    call(&mut ed, "last");
     assert_eq!(minibuf_input(&ed), "greet bobby");
     assert!(ed.state.input.minibuf_completion().is_none());
 }
@@ -1044,17 +1025,74 @@ fn a_single_match_streamed_in_parts_is_applied_only_when_the_answer_ends() {
 #[test]
 fn a_streamed_answer_that_ends_empty_dismisses() {
     let mut ed = greet_answered_by("b", &[("part", "'()", "#:more #t"), ("last", "'()", "")]);
-    answer(&mut ed, "part");
+    call(&mut ed, "part");
     assert!(ed.state.input.minibuf_completion().is_some());
-    answer(&mut ed, "last");
+    call(&mut ed, "last");
     assert!(ed.state.input.minibuf_completion().is_none());
     assert_eq!(minibuf_input(&ed), "greet b");
 }
 
 #[test]
+fn a_failed_call_batch_leaves_a_streamed_answer_pending() {
+    let ed = tab(greet_source(
+        "b",
+        "",
+        r#"(completion-emit! id (list "bobby") #:more #t) (error "boom")"#,
+        "#:match 'string",
+    ));
+    assert!(status(&ed).contains("boom"), "{:?}", status(&ed));
+    assert!(
+        ed.state
+            .input
+            .minibuf_completion()
+            .is_some_and(|s| s.is_pending())
+    );
+    assert_eq!(minibuf_candidates(&ed), ["bobby"]);
+    assert_eq!(minibuf_input(&ed), "greet b");
+}
+
+/// `:greet b` with Tab pressed, completed by a `'minibuf` source whose
+/// call runs `body` with its request `id` bound, and whose `#:cancel` logs
+/// `cancelled`.
+fn greet_with_cancel(body: &str) -> Editor {
+    tab(greet_source(
+        "b",
+        "",
+        body,
+        r#"#:match 'string #:cancel (lambda (id) (log! 'info "cancelled"))"#,
+    ))
+}
+
+#[test]
+fn esc_while_an_answer_streams_cancels_its_request() {
+    let mut ed = greet_with_cancel(r#"(completion-emit! id (list "bob" "bobby") #:more #t)"#);
+    assert_eq!(minibuf_candidates(&ed), ["bob", "bobby"]);
+    ed.handle_key(key_esc());
+    ed.settle();
+    assert_eq!(status(&ed), "cancelled");
+}
+
+#[test]
+fn a_final_answer_is_never_cancelled() {
+    let mut ed = greet_with_cancel(r#"(completion-emit! id (list "bob" "bobby"))"#);
+    assert_eq!(minibuf_candidates(&ed), ["bob", "bobby"]);
+    ed.handle_key(key_esc());
+    ed.settle();
+    assert_eq!(status(&ed), "");
+}
+
+#[test]
+fn a_dropped_call_is_cancelled() {
+    let ed = greet_with_cancel(r#"(error "boom")"#);
+    assert!(has_error(&ed, "boom"));
+    assert!(ed.state.input.minibuf_completion().is_none());
+    assert_eq!(status(&ed), "cancelled");
+}
+
+#[test]
 fn tab_while_an_answer_streams_picks_a_row() {
     let mut ed = greet_answered_by("", &[("part", r#"(list "alice" "bob")"#, "#:more #t")]);
-    answer(&mut ed, "part");
+    call(&mut ed, "part");
     assert_eq!(picked_row(&ed), None);
     ed.handle_key(key_tab());
     assert_eq!(picked_row(&ed), Some(0));
@@ -1070,13 +1108,13 @@ fn a_streamed_update_keeps_the_picked_candidate_at_its_new_row() {
             ("more", r#"(list "alice" "bob" "carol")"#, "#:more #t"),
         ],
     );
-    answer(&mut ed, "part");
+    call(&mut ed, "part");
     ed.handle_key(key_tab());
     ed.handle_key(key_tab());
     assert_eq!(picked_row(&ed), Some(1));
-    answer(&mut ed, "more");
+    call(&mut ed, "more");
     assert_eq!(picked_row(&ed), Some(2));
-    assert_eq!(candidates(&ed), ["alice", "bob", "carol"]);
+    assert_eq!(minibuf_candidates(&ed), ["alice", "bob", "carol"]);
     assert_eq!(minibuf_input(&ed), "greet carol");
 }
 
@@ -1089,9 +1127,9 @@ fn the_end_of_a_streamed_answer_leaves_a_pick_alone() {
             ("last", r#"(list "bob" "bobcat")"#, ""),
         ],
     );
-    answer(&mut ed, "part");
+    call(&mut ed, "part");
     ed.handle_key(key_tab());
-    answer(&mut ed, "last");
+    call(&mut ed, "last");
     assert_eq!(picked_row(&ed), Some(0));
     assert!(ed.state.input.minibuf_completion().is_some());
     assert_eq!(minibuf_input(&ed), "greet bob");
@@ -1106,10 +1144,10 @@ fn a_picked_candidate_missing_from_a_streamed_update_drops_the_pick() {
             ("more", r#"(list "alice" "bob")"#, "#:more #t"),
         ],
     );
-    answer(&mut ed, "part");
+    call(&mut ed, "part");
     ed.handle_key(key_tab());
     ed.handle_key(key_tab());
-    answer(&mut ed, "more");
+    call(&mut ed, "more");
     assert_eq!(picked_row(&ed), None);
     assert_eq!(minibuf_input(&ed), "greet carol");
 }

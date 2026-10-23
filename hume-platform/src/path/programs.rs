@@ -22,21 +22,32 @@ use crate::wake::WakeCallback;
 /// names differing only in ASCII case are listed once. The spelling listed
 /// is the first one scanned.
 #[derive(Default)]
-pub struct ProgramNames {
-    /// Keyed by the name as the file system compares it.
-    by_key: BTreeMap<String, String>,
+struct ProgramNames {
+    /// Keyed by the name as the file system compares it, which on Unix is
+    /// the listed name itself.
+    by_key: BTreeMap<Arc<str>, Arc<str>>,
 }
 
 impl ProgramNames {
     /// Adds the programs in `dir` whose names start with `prefix` and are
     /// not listed yet. `true` when it added any. A directory that can't be
-    /// read adds nothing.
-    pub fn scan_dir(&mut self, dir: &Path, prefix: &str, extensions: &[impl AsRef<str>]) -> bool {
+    /// read adds nothing. Stops before the next entry once `live` is
+    /// `false`.
+    fn scan_dir(
+        &mut self,
+        dir: &Path,
+        prefix: &str,
+        extensions: &[impl AsRef<str>],
+        live: impl Fn() -> bool,
+    ) -> bool {
         let Ok(entries) = std::fs::read_dir(dir) else {
             return false;
         };
         let mut added = false;
         for entry in entries.flatten() {
+            if !live() {
+                break;
+            }
             let file_name = entry.file_name();
             let Some(name) = file_name.to_str() else {
                 continue;
@@ -49,13 +60,14 @@ impl ProgramNames {
             let Some(program) = program_name(&entry, name, prefix, extensions) else {
                 continue;
             };
+            let program: Arc<str> = program.into();
             let key = if cfg!(windows) {
-                program.to_ascii_lowercase()
+                program.to_ascii_lowercase().into()
             } else {
-                program.to_owned()
+                Arc::clone(&program)
             };
             if let Entry::Vacant(slot) = self.by_key.entry(key) {
-                slot.insert(program.to_owned());
+                slot.insert(program);
                 added = true;
             }
         }
@@ -63,26 +75,29 @@ impl ProgramNames {
     }
 
     /// Every name listed, sorted.
-    pub fn sorted(&self) -> Arc<[String]> {
+    fn sorted(&self) -> Arc<[Arc<str>]> {
         self.by_key.values().cloned().collect()
     }
 }
 
 /// Lists the programs on `search_path` (a `PATH` value) whose names start
 /// with `prefix`, on a background thread. The scan reports the sorted
-/// names so far after each directory that adds one, and stops early once
-/// the returned [`Snapshots`] is dropped.
+/// names so far after each directory that adds one, and once the returned
+/// [`Snapshots`] is dropped it reads no further directory.
 pub fn spawn_program_scan(
     search_path: Option<OsString>,
     prefix: String,
     extensions: Vec<String>,
     wake: WakeCallback,
-) -> io::Result<Snapshots<Arc<[String]>>> {
+) -> io::Result<Snapshots<Arc<[Arc<str>]>>> {
     spawn_snapshots("hume-program-scan", wake, move |reporter| {
         let mut names = ProgramNames::default();
         for dir in search_path.iter().flat_map(std::env::split_paths) {
-            if names.scan_dir(&dir, &prefix, &extensions) && !reporter.send(names.sorted()) {
+            if !reporter.is_live() {
                 return;
+            }
+            if names.scan_dir(&dir, &prefix, &extensions, || reporter.is_live()) {
+                reporter.send(names.sorted());
             }
         }
     })
@@ -103,12 +118,17 @@ fn program_name<'a>(
     }
     // The entry's own type is free from the listing on most filesystems,
     // and only a file or a symlink can be a program, so a directory or a
-    // device never costs a `stat`.
+    // device never costs a `stat`. A file is read through its directory
+    // entry, and only a symlink is followed by path.
     let file_type = entry.file_type().ok()?;
-    if !(file_type.is_file() || file_type.is_symlink()) {
+    let meta = if file_type.is_file() {
+        entry.metadata()
+    } else if file_type.is_symlink() {
+        std::fs::metadata(entry.path())
+    } else {
         return None;
     }
-    let meta = std::fs::metadata(entry.path()).ok()?;
+    .ok()?;
     (meta.is_file() && meta.permissions().mode() & 0o111 != 0).then_some(name)
 }
 
@@ -121,6 +141,9 @@ fn program_name<'a>(
     prefix: &str,
     extensions: &[impl AsRef<str>],
 ) -> Option<&'a str> {
+    if !name_starts_with(name, prefix) {
+        return None;
+    }
     let stem = extensions.iter().find_map(|ext| {
         let ext = ext.as_ref();
         let split = name

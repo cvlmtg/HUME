@@ -93,10 +93,10 @@ pub(in crate::editor) fn crashed_text(name: &str, error: Option<&str>) -> String
 /// land, gathered at send time so `EditorState::anchor_admits` (`drain.rs`)
 /// has one place to apply both checks.
 ///
-/// `Copy`: a queued `PendingWork::Call` carries its own copy alongside the
-/// delivery's (`Editor::run_pending_batch` re-checks it at dequeue time;
-/// see that function's doc for why one check at drain isn't enough), and
-/// the struct is a few small values, cheap to duplicate.
+/// `Copy`: a queued callback carries its own copy alongside the
+/// delivery's (`CallGuard::Reply` re-checks it at dequeue time; see that
+/// variant's doc for why one check at drain isn't enough), and the struct
+/// is a few small values, cheap to duplicate.
 #[derive(Debug, Clone, Copy)]
 pub(in crate::editor) struct ResponseAnchor {
     pub(in crate::editor) bid: BufferId,

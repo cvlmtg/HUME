@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::path::Path;
 use std::time::Duration;
 
@@ -13,9 +14,13 @@ use windows::write_probe;
 fn programs_in(dirs: &[&Path], prefix: &str, extensions: &[&str]) -> Vec<String> {
     let mut names = ProgramNames::default();
     for dir in dirs {
-        names.scan_dir(dir, prefix, extensions);
+        names.scan_dir(dir, prefix, extensions, || true);
     }
-    names.sorted().to_vec()
+    listed(&names.sorted())
+}
+
+fn listed(names: &[Arc<str>]) -> Vec<String> {
+    names.iter().map(|name| name.to_string()).collect()
 }
 
 /// `dirs` joined into one `PATH` value.
@@ -26,7 +31,7 @@ fn search_path(dirs: &[&Path]) -> std::ffi::OsString {
 /// Reads `scan` until it ends, failing the test after a second without a
 /// wake.
 fn scan_to_end(
-    mut scan: Snapshots<Arc<[String]>>,
+    mut scan: Snapshots<Arc<[Arc<str>]>>,
     woken: &std::sync::mpsc::Receiver<()>,
 ) -> Vec<String> {
     loop {
@@ -36,7 +41,7 @@ fn scan_to_end(
         if let Some(progress) = scan.try_take()
             && progress.done
         {
-            return progress.value.to_vec();
+            return listed(&progress.value);
         }
     }
 }
@@ -60,10 +65,24 @@ fn scan_dir_reports_whether_it_added_a_program() {
     write_probe(second.path(), "probe");
     write_probe(second.path(), "other");
     let mut names = ProgramNames::default();
-    assert!(names.scan_dir(first.path(), "", &[".exe"]));
-    assert!(!names.scan_dir(second.path(), "p", &[".exe"]));
-    assert!(names.scan_dir(second.path(), "", &[".exe"]));
-    assert_eq!(names.sorted().to_vec(), ["other", "probe"]);
+    assert!(names.scan_dir(first.path(), "", &[".exe"], || true));
+    assert!(!names.scan_dir(second.path(), "p", &[".exe"], || true));
+    assert!(names.scan_dir(second.path(), "", &[".exe"], || true));
+    assert_eq!(listed(&names.sorted()), ["other", "probe"]);
+}
+
+#[test]
+fn scan_dir_reads_no_further_entry_once_it_is_not_live() {
+    let bin = tempfile::tempdir().unwrap();
+    write_probe(bin.path(), "probe-one");
+    write_probe(bin.path(), "probe-two");
+    let checks = Cell::new(0);
+    let mut names = ProgramNames::default();
+    names.scan_dir(bin.path(), "", &[".exe"], || {
+        checks.set(checks.get() + 1);
+        checks.get() == 1
+    });
+    assert_eq!(names.sorted().len(), 1);
 }
 
 #[test]

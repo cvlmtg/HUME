@@ -2,7 +2,7 @@
 //! points that raise events no write site can, and running each queued
 //! event and call.
 
-use super::{EditorEvent, PendingWork};
+use super::{CallGuard, EditorEvent, PendingWork};
 use crate::editor::buffer::DiskCheckTrigger;
 use crate::editor::buffer::store::EditOrigin;
 use crate::editor::commands::CommandPane;
@@ -38,10 +38,10 @@ impl Editor {
     /// `Call` (an `lsp-request!` callback, a timer thunk, a prompt/menu/
     /// drawer/picker callback) and an `Event` (fired to every handler
     /// registered for its name) drain in the exact order they were queued,
-    /// grouped only where that's free, i.e. a contiguous run of `Call`s
-    /// shares one Steel session, matching `run_steel_calls`' existing
-    /// batching. A handler that queues more work is picked up within the
-    /// same `settle()` call, not the next frame.
+    /// grouped only where that's free, i.e. a contiguous run of unguarded
+    /// `Call`s goes to `run_steel_calls` as one batch. A handler that
+    /// queues more work is picked up within the same `settle()` call, not
+    /// the next frame.
     ///
     /// Takes no arguments, so it's callable without a terminal.
     ///
@@ -112,6 +112,7 @@ impl Editor {
             // it is reconciled on every pass, like `detect_buffer_enter`'s
             // focus check. A `Minibuf` session watches no buffer.
             self.state.reconcile_completion(&self.view);
+            self.state.queue_completion_cancels();
             self.state.request_selected_completion_doc();
             // Inside the fixpoint, not outside it like `drain_async_sources`:
             // a *synchronous* handler that reacts to its own buffer's edit
@@ -160,9 +161,14 @@ impl Editor {
                 {
                     self.state.last_entered_buffer = None;
                 }
-                // Dropped unrun: a callback's hold on its tracked position
-                // releases it, as running the callback would.
-                drop(batch);
+                for work in batch {
+                    if let PendingWork::Call {
+                        guard: Some(guard), ..
+                    } = work
+                    {
+                        self.drop_unrun(guard);
+                    }
+                }
                 return false;
             }
             self.run_pending_batch(batch);
@@ -244,13 +250,13 @@ impl Editor {
     }
 
     /// Run one snapshot of `pending_work` in queued order: event handlers
-    /// fire one event at a time, and a contiguous run of unanchored `Call`s
-    /// batches into one Steel session before the next `Event` (or end of
-    /// batch). An anchored `Call` (an `lsp-request!` callback) always runs
-    /// alone in its own session, its anchor re-checked immediately first;
-    /// see the `Call` match arm's own comment for why it can't be batched.
-    /// `.` also runs a read's or pick's callback through here, at once
-    /// (`Editor::finish_replayed_answers`).
+    /// fire one event at a time, and a contiguous run of unguarded `Call`s
+    /// of one origin goes to `run_steel_calls` as one batch before the next
+    /// `Event` (or end of batch). Each call still runs in its own Steel
+    /// session; the batch shares one host borrow and one application of
+    /// the effects. A guarded `Call` runs alone through
+    /// [`Self::run_guarded`]. `.` also runs a read's or pick's callback
+    /// through here, at once (`Editor::finish_replayed_answers`).
     pub(in crate::editor) fn run_pending_batch(
         &mut self,
         mut items: std::collections::VecDeque<PendingWork>,
@@ -301,59 +307,25 @@ impl Editor {
                 }
                 PendingWork::Call {
                     call,
-                    anchor,
-                    tracked,
-                    answer,
+                    guard: Some(guard),
+                    origin,
+                } => self.run_guarded(guard, origin, call),
+                PendingWork::Call {
+                    call,
+                    guard: None,
                     origin,
                 } => {
-                    if anchor.is_some() || tracked.is_some() {
-                        // Never grouped into a multi-item batch with a
-                        // sibling call: `anchor_admits` must run immediately
-                        // before *this* call, not before some earlier
-                        // sibling in the same batch has had a chance to run
-                        // and change the state the check depends on (a
-                        // `switch-to-buffer!`, an edit), so batching first and
-                        // checking every anchor up front would defeat the
-                        // re-check, since all the checks would still land
-                        // before any of the calls actually ran. The hold on
-                        // the tracked position drops right after this call
-                        // alone, for the same reason. One call, one session, one
-                        // check, one run; see `PendingWork::Call`'s own doc.
-                        if anchor.is_none_or(|anchor| self.state.anchor_admits(&self.view, &anchor))
-                        {
-                            self.with_edit_origin(origin, |ed| {
-                                ed.run_call_batch(vec![call]);
-                            });
-                        }
-                        drop(tracked);
-                        continue;
-                    }
-                    if let Some(ticket) = answer {
-                        // Runs alone (never batched with a sibling call), in
-                        // the scope of the input it answers; see
-                        // `PendingWork::Call`'s `answer` doc.
-                        self.with_edit_origin(origin, |ed| {
-                            ed.run_answered(Some(ticket), |ed| {
-                                ed.run_call_batch(vec![call]);
-                            });
-                        });
-                        continue;
-                    }
                     let mut calls = vec![call];
                     while matches!(
                         items.front(),
                         Some(PendingWork::Call {
-                            anchor: None,
-                            tracked: None,
-                            answer: None,
+                            guard: None,
                             origin: next,
                             ..
                         }) if *next == origin
                     ) {
                         let Some(PendingWork::Call { call, .. }) = items.pop_front() else {
-                            unreachable!(
-                                "front() just confirmed an unanchored, untracked, unclaimed Call variant"
-                            )
+                            unreachable!("front() just confirmed an unguarded Call")
                         };
                         calls.push(call);
                     }
@@ -431,15 +403,15 @@ impl Editor {
         self.apply_script_result(result, "hook error: ");
     }
 
-    /// Run one contiguous run of queued `Call` items in a single Steel
-    /// session: the per-batch body of `settle`'s `Call` arm. Preserves
-    /// `run_steel_calls`' existing "one session, first error aborts the
-    /// rest" semantics for calls that were queued back-to-back.
-    fn run_call_batch(&mut self, calls: Vec<hume_scripting::SteelCall>) {
+    /// Run one contiguous run of queued `Call` items through
+    /// `run_steel_calls`: the per-batch body of `settle`'s `Call` arm.
+    /// `false` when a call failed.
+    fn run_call_batch(&mut self, calls: Vec<hume_scripting::SteelCall>) -> bool {
         let Some((host_scr, mut impl_host)) = self.scripting_with_host() else {
-            return;
+            return true;
         };
         let result = host_scr.run_steel_calls(calls, &mut impl_host);
+        let ran = result.is_ok();
         if result.is_err() {
             // A queued completion invocation this batch was supposed to
             // answer for (via `completion-emit!`) never will now; see
@@ -449,6 +421,56 @@ impl Editor {
             self.state.settle_completion_after_call_failure(&self.view);
         }
         self.apply_script_result(result, "steel call error: ");
+        ran
+    }
+
+    /// Runs `call` alone, under `guard`. A guarded call is never grouped
+    /// with a sibling: its check must run immediately before this call, not
+    /// before an earlier sibling in the same batch has had the chance to
+    /// change the state the check reads (a `switch-to-buffer!`, an edit),
+    /// and what the guard holds is released right after this call alone.
+    fn run_guarded(
+        &mut self,
+        guard: CallGuard,
+        origin: EditOrigin,
+        call: hume_scripting::SteelCall,
+    ) {
+        match guard {
+            CallGuard::Reply { anchor, hold } => {
+                if anchor.is_none_or(|anchor| self.state.anchor_admits(&self.view, &anchor)) {
+                    self.with_edit_origin(origin, |ed| ed.run_call_batch(vec![call]));
+                }
+                drop(hold);
+            }
+            CallGuard::Answer(ticket) => {
+                self.with_edit_origin(origin, |ed| {
+                    ed.run_answered(Some(ticket), |ed| {
+                        ed.run_call_batch(vec![call]);
+                    });
+                });
+            }
+            CallGuard::Job(id) => {
+                if !self.state.config.async_jobs.contains_key(&id) {
+                    return;
+                }
+                // A callback that fails once would fail on every later
+                // report, so a raise ends the job.
+                if self.with_edit_origin(origin, |ed| ed.run_call_batch(vec![call])) {
+                    self.forget_job_callback(id);
+                } else {
+                    self.state.config.async_jobs.remove(&id);
+                }
+            }
+        }
+    }
+
+    /// Releases what `guard` holds for a call dropped unrun, as running the
+    /// call would have.
+    fn drop_unrun(&mut self, guard: CallGuard) {
+        match guard {
+            CallGuard::Reply { .. } | CallGuard::Answer(_) => {}
+            CallGuard::Job(id) => self.forget_job_callback(id),
+        }
     }
 
     /// Run `f` with the edits it makes counted as `origin`'s, then put back

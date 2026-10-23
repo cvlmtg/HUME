@@ -52,6 +52,7 @@ impl crate::editor::Editor {
                     priority: reg.priority,
                     proc: reg.proc,
                     resolve: reg.resolve,
+                    cancel: reg.cancel,
                     token_chars: reg.token_chars.into(),
                 }),
             host::CompletionSourceTarget::Minibuf => self
@@ -62,7 +63,10 @@ impl crate::editor::Editor {
                     name: name.clone().into(),
                     match_kind,
                     priority: reg.priority,
-                    body: MinibufBody::Steel(reg.proc),
+                    body: MinibufBody::Steel {
+                        proc: reg.proc,
+                        cancel: reg.cancel,
+                    },
                 }),
         };
         if outcome == RegisterOutcome::Replaced {
@@ -150,7 +154,7 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
         if self.state.input.minibuf_completion().is_some() {
             return Err("completion-accept!: not a buffer-target session".to_string());
         }
-        let Some(session) = self.state.take_buffer_completion(self.view) else {
+        let Some(session) = self.state.take_buffer_completion_to_accept(self.view) else {
             return Err("completion-accept!: no active completion session".to_string());
         };
         session.accept(self.state, self.view, idx, input)

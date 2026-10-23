@@ -410,6 +410,15 @@ fn minibuf_input(ed: &Editor) -> &str {
     ed.state.minibuf().map(|mb| mb.input.as_str()).unwrap_or("")
 }
 
+/// Every candidate's `insert_text` in the open minibuffer completion
+/// popup, in ranked order.
+fn minibuf_candidates(ed: &Editor) -> Vec<String> {
+    let session = ed.state.input.minibuf_completion().expect("popup open");
+    (0..session.len())
+        .map(|i| session.selected_item(i).unwrap().insert_text().to_owned())
+        .collect()
+}
+
 /// The last status-line message, `""` when none is set.
 fn status(ed: &Editor) -> String {
     ed.state.status_msg.clone().unwrap_or_default()

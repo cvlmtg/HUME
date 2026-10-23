@@ -58,7 +58,6 @@ pub(in crate::editor) struct CompletionItem {
 }
 
 /// What makes items from two answers of one source the same candidate.
-#[derive(Debug, PartialEq, Eq)]
 pub(super) struct CandidateKey {
     label: String,
     kind: Option<lsp_types::CompletionItemKind>,

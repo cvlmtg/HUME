@@ -507,7 +507,7 @@ pub(crate) fn held_event_arg_count(name: &str) -> Option<usize> {
 mod pump;
 mod queue;
 
-pub(in crate::editor) use queue::PendingWork;
+pub(in crate::editor) use queue::{CallGuard, PendingWork};
 
 #[cfg(test)]
 mod tests;

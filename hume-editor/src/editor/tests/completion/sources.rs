@@ -1182,3 +1182,64 @@ fn a_buffer_source_named_as_a_completer_is_ignored_with_a_trace() {
         ed.state.message_log.entries().collect::<Vec<_>>()
     );
 }
+
+// ── #:cancel ─────────────────────────────────────────────────────────────────
+
+/// A `'buffer` source that never answers, whose `#:cancel` logs whether it
+/// was handed the id of the source's first call.
+const NEVER_ANSWERS: &str = r#"(define first-id #f)
+   (register-completion-source! "never"
+     (lambda (id bid prefix) (unless first-id (set! first-id id)))
+     #:target 'buffer
+     #:cancel (lambda (id)
+                (log! 'info (if (equal? id first-id) "cancelled-first" "cancelled-other"))))"#;
+
+#[test]
+fn editing_past_a_call_in_flight_cancels_it() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    insert_with_script(&mut ed, tmp.path(), NEVER_ANSWERS);
+    assert_eq!(status(&ed), "");
+    ed.feed_key(key('x'));
+    ed.settle();
+    assert_eq!(status(&ed), "cancelled-first");
+}
+
+#[test]
+fn escape_cancels_a_call_in_flight() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    insert_with_script(&mut ed, tmp.path(), NEVER_ANSWERS);
+    ed.feed_key(key_esc());
+    ed.settle();
+    assert_eq!(status(&ed), "cancelled-first");
+}
+
+#[test]
+fn accepting_cancels_the_calls_still_in_flight() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[\n]>");
+    insert_with_script(
+        &mut ed,
+        tmp.path(),
+        &format!(
+            "{NEVER_ANSWERS}\n{}",
+            completion_source("words", r#"(list (hash "label" "foo"))"#, "")
+        ),
+    );
+    assert_eq!(labels(&ed), ["foo"]);
+    ed.feed_key(key_enter());
+    ed.settle();
+    assert_eq!(ed.doc().text().to_string(), "foo\n");
+    assert_eq!(status(&ed), "cancelled-first");
+}
+
+#[test]
+fn reloading_the_config_never_runs_a_cancel() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    insert_with_script(&mut ed, tmp.path(), NEVER_ANSWERS);
+    ed.reset_config_state();
+    ed.settle();
+    assert_eq!(status(&ed), "");
+}

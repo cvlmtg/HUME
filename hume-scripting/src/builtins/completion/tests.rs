@@ -22,7 +22,15 @@ fn register_with_resolve(
     priority: isize,
     resolve: bool,
 ) -> SteelResult {
-    register_full(ctx, target, match_kind, priority, resolve, "")
+    register_full(
+        ctx,
+        target,
+        match_kind,
+        priority,
+        resolve,
+        "",
+        SteelVal::BoolV(false),
+    )
 }
 
 fn register_full(
@@ -32,6 +40,7 @@ fn register_full(
     priority: isize,
     resolve: bool,
     token_chars: &str,
+    cancel: SteelVal,
 ) -> SteelResult {
     register_completion_source(
         ctx,
@@ -42,7 +51,13 @@ fn register_full(
         SteelVal::IntV(priority),
         SteelVal::BoolV(resolve),
         SteelVal::StringV(token_chars.into()),
+        cancel,
     )
+}
+
+/// A `'minibuf` source registered with `cancel` as its `#:cancel`.
+fn register_with_cancel(ctx: &mut SteelCtx, cancel: SteelVal) -> SteelResult {
+    register_full(ctx, "minibuf", "fuzzy", 0, false, "", cancel)
 }
 
 // ── register-completion-source! ───────────────────────────────────────────
@@ -70,6 +85,29 @@ fn register_queues_an_effect_with_the_decoded_fields() {
     );
     assert_eq!(reg.priority, 7);
     assert!(!reg.resolve, "#:resolve defaults to #f");
+    assert!(reg.cancel.is_none());
+}
+
+#[test]
+fn register_decodes_a_cancel_procedure() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx_init();
+    register_with_cancel(&mut ctx, SteelVal::FuncV(dummy_proc)).expect("valid registration");
+    drop(ctx);
+    let Effect::RegisterCompletionSource(reg) = effects(&h)[0] else {
+        panic!("expected RegisterCompletionSource");
+    };
+    assert!(reg.cancel.is_some());
+}
+
+#[test]
+fn register_rejects_a_cancel_that_is_not_callable() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx_init();
+    let err = register_with_cancel(&mut ctx, SteelVal::IntV(1))
+        .expect_err("a number is not a procedure")
+        .to_string();
+    assert!(err.contains("#:cancel"), "got: {err}");
 }
 
 /// `#:resolve #t` on a `'buffer` source decodes straight through.
@@ -138,6 +176,7 @@ fn register_rejects_a_non_callable_proc() {
         SteelVal::IntV(0),
         SteelVal::BoolV(false),
         SteelVal::StringV("".into()),
+        SteelVal::BoolV(false),
     )
     .expect_err("a string is not callable")
     .to_string();
@@ -298,7 +337,16 @@ fn emit_is_blocked_during_init() {
 fn register_decodes_token_chars_on_a_buffer_source() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx_init();
-    register_full(&mut ctx, "buffer", "fuzzy", 0, false, "-$").expect("valid registration");
+    register_full(
+        &mut ctx,
+        "buffer",
+        "fuzzy",
+        0,
+        false,
+        "-$",
+        SteelVal::BoolV(false),
+    )
+    .expect("valid registration");
     register(&mut ctx, "buffer", "fuzzy", 0).expect("valid registration");
     drop(ctx);
     let effects = effects(&h);
@@ -317,9 +365,17 @@ fn register_decodes_token_chars_on_a_buffer_source() {
 fn register_rejects_whitespace_token_chars() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx_init();
-    let err = register_full(&mut ctx, "buffer", "fuzzy", 0, false, "- ")
-        .expect_err("whitespace is not a token char")
-        .to_string();
+    let err = register_full(
+        &mut ctx,
+        "buffer",
+        "fuzzy",
+        0,
+        false,
+        "- ",
+        SteelVal::BoolV(false),
+    )
+    .expect_err("whitespace is not a token char")
+    .to_string();
     assert!(err.contains("#:token-chars"), "got: {err}");
 }
 
@@ -329,9 +385,17 @@ fn register_rejects_whitespace_token_chars() {
 fn register_rejects_token_chars_on_a_minibuf_source() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx_init();
-    let err = register_full(&mut ctx, "minibuf", "fuzzy", 0, false, "-")
-        .expect_err("token-chars is buffer-only")
-        .to_string();
+    let err = register_full(
+        &mut ctx,
+        "minibuf",
+        "fuzzy",
+        0,
+        false,
+        "-",
+        SteelVal::BoolV(false),
+    )
+    .expect_err("token-chars is buffer-only")
+    .to_string();
     assert!(err.contains("#:token-chars"), "got: {err}");
 }
 

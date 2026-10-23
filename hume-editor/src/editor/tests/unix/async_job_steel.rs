@@ -223,3 +223,121 @@ fn an_async_job_callback_edit_leaves_the_ring_stamp_fresh() {
     ed.feed_key(key('p'));
     assert_eq!(ed.doc().text().to_string(), "cab!d\n");
 }
+
+// ── A callback due when it is cancelled ─────────────────────────────────────
+
+/// Runs `start`, which binds `job-id`, lets its callback (logging `fired`)
+/// come due, then cancels it before it runs.
+fn cancel_a_due_callback(ed: &mut Editor, start: &str) {
+    let tmp = tempfile::tempdir().unwrap();
+    run(
+        ed,
+        tmp.path(),
+        &format!(
+            r#"
+            (define job-id #f)
+            (define-command! "stop" "" (lambda () (cancel-async! job-id)))
+            (define-command! "go" "" (lambda () (set! job-id {start})))
+            "#
+        ),
+    );
+    call(ed, "go");
+    drain_sources_until(ed, |ed| !ed.state.config.pending_work.is_empty());
+    call(ed, "stop");
+    ed.settle();
+}
+
+#[test]
+fn a_result_due_before_cancel_async_never_fires() {
+    let mut ed = editor_from("-[a]>bc\n");
+    cancel_a_due_callback(
+        &mut ed,
+        r#"(spawn-async! "sh" (list "-c" "printf hi")
+             (lambda (out err code) (log! 'info "fired")))"#,
+    );
+    assert_eq!(status(&ed), "");
+}
+
+#[test]
+fn a_report_due_before_cancel_async_never_fires() {
+    let bin = tempfile::tempdir().unwrap();
+    hume_platform::path::test_support::write_program(bin.path(), "hume-scan-probe", 0o755);
+    let mut ed = editor_from("-[a]>bc\n");
+    ed.state.dirs.search_path = Some(bin.path().into());
+    cancel_a_due_callback(
+        &mut ed,
+        r#"(path-programs "hume-scan" '()
+             (lambda (names done?) (log! 'info "fired")))"#,
+    );
+    assert_eq!(status(&ed), "");
+}
+
+#[test]
+fn a_failed_spawn_cancelled_at_once_never_fires() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bc\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"
+        (define-command! "go" "" (lambda ()
+          (cancel-async!
+            (spawn-async! "definitely-not-a-real-binary-xyz" '()
+              (lambda (out err code) (log! 'info "fired"))))))
+        "#,
+    );
+    call(&mut ed, "go");
+    ed.settle();
+
+    assert_eq!(status(&ed), "");
+}
+
+#[test]
+fn a_scan_whose_callback_raises_is_cancelled() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bc\n");
+    ed.state.dirs.search_path = None;
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"
+        (define-command! "go" "" (lambda ()
+          (path-programs "" '() (lambda (names done?) (error "boom")))))
+        "#,
+    );
+    call(&mut ed, "go");
+    // The scan the command started is swapped, before any drain reads it,
+    // for one that reports once and then waits, so a second report can
+    // only come from a scan still registered.
+    let (release, gate) = std::sync::mpsc::channel::<()>();
+    let gated = hume_platform::snapshots::spawn_snapshots(
+        "hume-test-scan",
+        std::sync::Arc::clone(&ed.state.wake),
+        move |reporter| {
+            reporter.send(std::sync::Arc::from([std::sync::Arc::from("first")]));
+            let _ = gate.recv();
+            reporter.send(std::sync::Arc::from([std::sync::Arc::from("second")]));
+        },
+    )
+    .expect("spawn");
+    let Some(crate::editor::async_job::PendingJob::Live { work, .. }) =
+        ed.state.config.async_jobs.values_mut().next()
+    else {
+        panic!("the scan is registered");
+    };
+    *work = crate::editor::async_job::AsyncWork::Names(gated);
+
+    drain_until(&mut ed, |ed| has_error(ed, "boom"));
+    assert!(ed.state.config.async_jobs.is_empty());
+
+    release.send(()).expect("the producer waits");
+    std::thread::sleep(Duration::from_millis(50));
+    ed.settle();
+    let booms = ed
+        .state
+        .message_log
+        .entries()
+        .filter(|e| e.text.contains("boom"))
+        .count();
+    assert_eq!(booms, 1);
+}

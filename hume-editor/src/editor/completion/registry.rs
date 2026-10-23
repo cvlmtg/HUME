@@ -44,8 +44,12 @@ pub(in crate::editor) enum MinibufBody {
     NativeUniverse(NativeUniverseFn),
     NativeDelegated(NativeDelegatedFn),
     /// Invoked via `EditorState::queue_steel_call` as `(proc id input
-    /// cursor)`, answered by `(completion-emit! id …)`.
-    Steel(hume_scripting::Rooted),
+    /// cursor)`, answered by `(completion-emit! id …)`. `cancel` is
+    /// [`BufferSourceEntry::cancel`]'s counterpart.
+    Steel {
+        proc: hume_scripting::Rooted,
+        cancel: Option<hume_scripting::Rooted>,
+    },
 }
 
 pub(in crate::editor) struct BufferSourceEntry {
@@ -64,6 +68,10 @@ pub(in crate::editor) struct BufferSourceEntry {
     /// other synthetic-item source) never has a resolve request sent for
     /// its items, however the buffer's own LSP server capabilities read.
     pub(in crate::editor) resolve: bool,
+    /// `#:cancel`: called as `(cancel id)` when request `id` ends before
+    /// its final answer landed, so the source can stop work nothing will
+    /// read (`SlotSet::take_ended`).
+    pub(in crate::editor) cancel: Option<hume_scripting::Rooted>,
     /// `#:token-chars`: characters that belong to this source's token on top
     /// of the buffer's word characters ([`Self::token_chars_over`]).
     pub(in crate::editor) token_chars: Box<str>,

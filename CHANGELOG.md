@@ -11,12 +11,13 @@
 - `core:git-diff`'s inline diff keeps its word highlights when the machine is busy.
 - A completion item whose range a language server sent backwards no longer moves the completion menu.
 - `Tab` on the `|` prompt lists programs as it finds them, so HUME keeps responding on a slow `PATH`, like WSL's Windows directories.
+- `cancel-async!` also drops a callback that was already due but hadn't run yet.
 
 ### Breaking changes
 - `(hume/yield!)` is gone: the script budget stops a script on its own, so delete any call to it.
 - `stdlib/run!` is gone: call `run-capture!`, the function it named.
 - `core:buffer-words`'s `"lines"` option is now `"chars"`, the number of characters it indexes on each side of the cursor per step: rename it in your `#:config`.
-- `path-programs` lists in the background: it takes a callback, `(lambda (names done?) ...)`, called with the names found so far, and returns an id for `cancel-async!`. Move code that used its result into the callback, and use `names` once `done?` is `#t`.
+- `path-programs` lists in the background: it takes a callback, `(lambda (names done?) ...)`, called with the names found so far, and returns an id for `cancel-async!`. Move code that used its result into the callback, and use `names` once `done?` is `#t`. Call it from a command, hook, timer or callback: it raises at the top level of `init.scm` and in a plugin body loaded at startup.
 
 ### Plugins & scripting
 - `steel-command-budget-ms` and `steel-init-budget-ms` stop a script that runs past them, so a plugin stuck in a loop can't freeze HUME. Time spent waiting for a program or deleting a directory tree doesn't count.
@@ -26,6 +27,7 @@
 - A relative path given to `replace-dir!`, `try-lock-file!`, `unlock-file!` or `path-entries` resolves like one typed to `:e`.
 - A grammar `register-grammar!` registers from `init.scm` that can't be loaded is reported in `:messages` when a file or an embedded block first needs it, not at startup.
 - `completion-emit!` takes `#:more #t` to answer a `'minibuf` request in parts.
+- `register-completion-source!` takes `#:cancel`, called with a request's id when HUME stops waiting for its answer, so a source can stop the work it started for it.
 - New `buffer-char-count` returns a buffer's length in characters.
 - `core:buffer-words` no longer stalls typing while it indexes a file with very long lines.
 

@@ -11,7 +11,17 @@ use hume_platform::path::test_support::write_program;
 use hume_scripting::host::AsyncProcessHost;
 use steel::rvals::SteelVal;
 
+use crate::editor::async_job::PendingJob;
 use crate::editor::host_impl::EditorHostImpl;
+
+/// Whether job `id` has queued its last callback, which has not run yet.
+fn awaits_last_callback(ed: &Editor, id: u64) -> bool {
+    ed.state
+        .config
+        .async_jobs
+        .get(&id)
+        .is_some_and(|pending| matches!(pending, PendingJob::Ended))
+}
 
 fn spawn_async(ed: &mut Editor, cmd: &str, args: Vec<String>, callback: SteelVal) -> u64 {
     let cwd = ed.state.cwd.clone();
@@ -31,10 +41,7 @@ fn end_to_end_drain_delivers_the_full_result_exactly_once() {
 
     drain_sources_until(&mut ed, |ed| !ed.state.config.pending_work.is_empty());
 
-    assert!(
-        !ed.state.config.async_jobs.contains_key(&id),
-        "a completed job must be removed from the registry"
-    );
+    assert!(awaits_last_callback(&ed, id));
     assert_eq!(pending_calls(&ed).len(), 1);
     let (_, call_args) = pending_calls(&ed).remove(0);
     assert_eq!(
@@ -87,9 +94,9 @@ fn missing_binary_fires_the_callback_synchronously_with_no_exit_code() {
         SteelVal::BoolV(false),
     );
 
-    // No drain needed: a spawn failure fires its callback immediately,
+    // No drain needed: a spawn failure queues its callback immediately,
     // inside `spawn_async` itself.
-    assert!(!ed.state.config.async_jobs.contains_key(&id));
+    assert!(awaits_last_callback(&ed, id));
     assert_eq!(pending_calls(&ed).len(), 1);
     let (_, call_args) = pending_calls(&ed).remove(0);
     assert_eq!(call_args[0], SteelVal::StringV("".into()));
@@ -190,11 +197,36 @@ fn a_program_scan_reports_until_done_then_leaves_the_registry() {
         scan_reports(ed).last().is_some_and(|(_, done)| *done)
     });
 
-    assert!(!ed.state.config.async_jobs.contains_key(&id));
+    assert!(awaits_last_callback(&ed, id));
     let reports = scan_reports(&ed);
     let (last, earlier) = reports.split_last().expect("a report");
     assert_eq!(last.0, ["hume-scan-alpha", "hume-scan-zeta"]);
     assert!(earlier.iter().all(|(_, done)| !done));
+
+    ed.drain_pending_work();
+    assert!(!ed.state.config.async_jobs.contains_key(&id));
+}
+
+#[test]
+fn a_last_callback_lost_to_the_drain_cap_frees_its_job() {
+    let mut ed = editor_from("-[a]>bc\n");
+    ed.state.dirs.search_path = None;
+    let id = scan_programs(&mut ed, "");
+    drain_sources_until(&mut ed, |ed| awaits_last_callback(ed, id));
+
+    // Past `MAX_EVENT_DRAIN` (1000, `event/pump.rs`), so the whole batch,
+    // the scan's last callback included, is dropped unrun.
+    for _ in 0..1100 {
+        ed.state
+            .config
+            .pending_work
+            .push_back(crate::editor::event::PendingWork::Event(
+                crate::editor::event::EditorEvent::OnFocusGained,
+            ));
+    }
+    assert!(!ed.drain_pending_work());
+
+    assert!(!ed.state.config.async_jobs.contains_key(&id));
 }
 
 #[test]

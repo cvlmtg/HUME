@@ -168,8 +168,9 @@
 (define (register-completion-source! name proc #:target target
                                                #:match [match-kind 'fuzzy] #:priority [priority 0]
                                                #:resolve [resolve #f]
-                                               #:token-chars [token-chars ""])
-  (%register-completion-source! name proc target match-kind priority resolve token-chars))
+                                               #:token-chars [token-chars ""]
+                                               #:cancel [cancel #f])
+  (%register-completion-source! name proc target match-kind priority resolve token-chars cancel))
 
 (define (completion-emit! id items #:incomplete [incomplete #f] #:more [more #f]
                                    #:span [span #f] #:prefix [prefix #t])

@@ -40,21 +40,25 @@ impl<'a> AsyncProcessHost for EditorHostImpl<'a> {
             Ok(job) => {
                 self.state.config.async_jobs.insert(
                     id,
-                    PendingJob {
+                    PendingJob::Live {
                         work: AsyncWork::Process(job),
                         callback,
                     },
                 );
             }
-            // Spawn failed before a job/callback contract could exist: fire
-            // the callback right here rather than leaving it unfired, with
-            // no output and no exit code, as for a signal-killed child.
+            // Spawn failed: the callback is queued right here, with no
+            // output and no exit code, as for a signal-killed child, and
+            // the entry waits for it like any job's last callback, so
+            // `cancel-async!` can still drop it.
             Err(e) => {
-                self.state
-                    .queue_background_call(hume_scripting::SteelCall::new(
+                self.state.config.async_jobs.insert(id, PendingJob::Ended);
+                self.state.queue_job_callback(
+                    id,
+                    hume_scripting::SteelCall::new(
                         callback,
                         async_callback_args(JobResult::failed(e.to_string())),
-                    ));
+                    ),
+                );
                 // The `Ok` arm needs no wake: the job thread wakes the loop
                 // itself on completion. This callback has no background
                 // thread behind it. `settle()`'s fixpoint does pick it up
@@ -85,7 +89,7 @@ impl<'a> AsyncProcessHost for EditorHostImpl<'a> {
         let id = self.next_async_job_id();
         self.state.config.async_jobs.insert(
             id,
-            PendingJob {
+            PendingJob::Live {
                 work: AsyncWork::Names(names),
                 callback,
             },
@@ -95,10 +99,10 @@ impl<'a> AsyncProcessHost for EditorHostImpl<'a> {
 
     fn cancel_async(&mut self, id: u64) {
         // Dropping the entry drops its work (a `SpawnedJob` kills and reaps
-        // its child, a `Snapshots` stops its producer) and its callback
-        // without ever calling it: a no-op if `id` already completed, was
-        // already cancelled, or never existed (a spawn failure that already
-        // fired its callback above).
+        // its child, a `Snapshots` stops its producer) and its callback,
+        // which a queued call then finds gone and never runs: a no-op once
+        // the last callback has run, after an earlier cancel, or for an id
+        // never issued.
         self.state.config.async_jobs.remove(&id);
     }
 }

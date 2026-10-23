@@ -8,6 +8,7 @@ fn steel_buffer_entry(name: &str) -> BufferSourceEntry {
         priority: 0,
         proc: hume_scripting::Rooted::new(SteelVal::Void),
         resolve: false,
+        cancel: None,
         token_chars: "".into(),
     }
 }
@@ -17,7 +18,10 @@ fn steel_minibuf_entry(name: &str) -> MinibufSourceEntry {
         name: name.into(),
         match_kind: MatchKind::Fuzzy,
         priority: 0,
-        body: MinibufBody::Steel(hume_scripting::Rooted::new(SteelVal::Void)),
+        body: MinibufBody::Steel {
+            proc: hume_scripting::Rooted::new(SteelVal::Void),
+            cancel: None,
+        },
     }
 }
 
@@ -44,7 +48,7 @@ fn register_minibuf_under_a_same_name_replaces_in_place() {
     );
     assert!(matches!(
         reg.minibuf_get(id_after).body,
-        MinibufBody::Steel(_)
+        MinibufBody::Steel { .. }
     ));
 }
 

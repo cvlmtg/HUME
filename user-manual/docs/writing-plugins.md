@@ -609,7 +609,7 @@ A source can also complete the argument of a `:` command. A `'minibuf` source is
   #:complete "git-branches")
 ```
 
-If the user keeps typing or closes the menu before `git` answers, the request is out of date. `completion-emit!` then drops the answer and returns `#f`.
+If the user keeps typing or closes the menu before `git` answers, the request is out of date. `completion-emit!` then drops the answer and returns `#f`. To stop `git` as well, register the source with `#:cancel`.
 
 ### Source options
 
@@ -618,6 +618,7 @@ If the user keeps typing or closes the menu before `git` answers, the request is
 - **`#:priority`** (default `0`): breaks score ties between sources, higher first.
 - **`#:token-chars`** (`'buffer` sources only, default `""`): adds characters to the token on top of the buffer's `word-chars`. With `#:token-chars "-$"`, `foo-bar` is one token: it is what `prefix` holds and what accepting an item replaces, and typing `-` keeps the menu open. It cannot contain whitespace.
 - **`#:resolve #t`** (`'buffer` sources only, default `#f`): this source's items come from the buffer's language server, so highlighting one (for its documentation) or accepting one may send `completionItem/resolve` for it. Set it only for a source that forwards that server's items, never for one that builds its own items in a buffer with a server attached.
+- **`#:cancel`** (default `#f`): `(cancel id)` is called when HUME stops waiting for request `id` before its last answer: the user typed on, closed the menu or accepted an item, the source was called again, or a script error made HUME give up on the call. Use it to stop work started for that request, such as a `spawn-async!` job, with `cancel-async!`. A request answered in full is never cancelled.
 - **Names**: `'buffer` and `'minibuf` sources have separate names. Registering `name` again under the same target replaces the earlier source; the same `name` under the other target is a second, independent source.
 - **`#:incomplete #t`** on `completion-emit!` asks for the source to be called again as the user keeps typing, instead of filtering the first answer. A server response marked incomplete does the same.
 - **`#:more #t`** on `completion-emit!` (`'minibuf` sources only): more of the answer follows. Each part replaces the one before, so send every item found so far, and send the last part without `#:more`. The menu shows each part as it arrives. What the first `Tab` inserts, and the insert of a lone item, wait for the last part. A row the user picks stays picked while more parts arrive.

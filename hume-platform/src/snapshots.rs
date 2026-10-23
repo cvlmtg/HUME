@@ -3,8 +3,8 @@
 //! latest one and misses nothing.
 
 use std::io;
-use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
+use std::sync::{Arc, Weak};
 
 use crate::wake::{WakeCallback, spawn_waking};
 
@@ -20,26 +20,33 @@ pub struct Progress<T> {
 pub struct Reporter<T> {
     tx: Sender<T>,
     wake: WakeCallback,
+    consumer: Weak<()>,
 }
 
 impl<T> Reporter<T> {
     /// Reports `value`, the whole result so far, and wakes the consumer.
-    /// `false` once the consumer is gone, when the body should stop.
-    pub fn send(&self, value: T) -> bool {
-        if self.tx.send(value).is_err() {
-            return false;
+    /// A report to a consumer that is gone is dropped.
+    pub fn send(&self, value: T) {
+        if self.tx.send(value).is_ok() {
+            (self.wake)();
         }
-        (self.wake)();
-        true
+    }
+
+    /// Whether the consumer still wants reports. The body checks it before
+    /// each piece of work and stops once it is `false`.
+    pub fn is_live(&self) -> bool {
+        self.consumer.strong_count() > 0
     }
 }
 
 /// The consumer's side of a producer [`spawn_snapshots`] started. Dropping
-/// it stops the producer at its next [`Reporter::send`].
+/// it tells the producer to stop, at its next [`Reporter::is_live`] check.
 pub struct Snapshots<T> {
     rx: Receiver<T>,
     latest: T,
     ended: bool,
+    /// The only strong reference to what each [`Reporter`] holds weakly.
+    _alive: Arc<()>,
 }
 
 impl<T: Clone> Snapshots<T> {
@@ -80,12 +87,15 @@ where
     F: FnOnce(&Reporter<T>) + Send + 'static,
 {
     let (tx, rx) = mpsc::channel();
+    let alive = Arc::new(());
+    let consumer = Arc::downgrade(&alive);
     // The reporter, and with it the sender, drops before `spawn_waking`'s
     // end-of-thread wake, so a drain woken by it sees the end.
     spawn_waking(name, wake, move |wake| {
         let reporter = Reporter {
             tx,
             wake: Arc::clone(wake),
+            consumer,
         };
         body(&reporter);
     })?;
@@ -93,6 +103,7 @@ where
         rx,
         latest: T::default(),
         ended: false,
+        _alive: alive,
     })
 }
 

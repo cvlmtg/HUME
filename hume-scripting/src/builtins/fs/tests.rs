@@ -289,23 +289,29 @@ fn path_entries_of_an_unreadable_directory_is_empty() {
     );
 }
 
-/// The error `source` raises under a host with no editor behind it.
-fn null_host_error(source: &str) -> String {
-    crate::ScriptingHost::new(&Dirs::none())
-        .eval_source_for_value(source, &mut crate::null_host::NullHost)
-        .expect_err(source)
-        .to_string()
+/// The error `path-programs` raises for `extensions` on a host with no
+/// background-work capability.
+fn path_programs_error(extensions: SteelVal) -> String {
+    let mut h = SteelCtxTestHarness::new();
+    path_programs(
+        &mut h.ctx(),
+        String::new(),
+        extensions,
+        crate::Rooted::new(SteelVal::Void),
+    )
+    .unwrap_err()
+    .to_string()
 }
 
 #[test]
 fn path_programs_reads_its_extensions_as_strings() {
-    let err = null_host_error("(path-programs \"\" '(1) (lambda (names done?) #t))");
+    let err = path_programs_error(SteelVal::ListV(vec![SteelVal::IntV(1)].into()));
     assert!(!err.contains("not supported"), "{err}");
 }
 
 #[test]
 fn path_programs_raises_without_background_work() {
-    let err = null_host_error("(path-programs \"\" '(\".exe\") (lambda (names done?) #t))");
+    let err = path_programs_error(crate::builtins::args::string_list([".exe".to_owned()]));
     assert!(err.contains("path-programs: not supported"), "{err}");
 }
 

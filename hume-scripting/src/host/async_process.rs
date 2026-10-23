@@ -35,9 +35,9 @@ pub fn async_callback_args(result: JobResult) -> Vec<SteelVal> {
 
 /// The arguments a background listing's callback receives for `progress`:
 /// `(names done?)`, every name found so far and whether the listing ended.
-pub fn names_callback_args(progress: &Progress<Arc<[String]>>) -> Vec<SteelVal> {
+pub fn names_callback_args(progress: &Progress<Arc<[Arc<str>]>>) -> Vec<SteelVal> {
     vec![
-        string_list(progress.value.iter().cloned()),
+        string_list(progress.value.iter().map(|name| name.to_string())),
         SteelVal::BoolV(progress.done),
     ]
 }
@@ -49,7 +49,7 @@ pub fn names_callback_args(progress: &Progress<Arc<[String]>>) -> Vec<SteelVal> 
 pub trait AsyncProcessHost {
     /// Spawns `cmd` with `args` (direct argv, no shell) in `cwd`, capturing its whole stdout/stderr to
     /// completion. Always returns a job id, even if the spawn itself fails;
-    /// `callback` still fires exactly once either way, with
+    /// `callback` still fires exactly once either way, unless cancelled, with
     /// [`async_callback_args`]: `exit-code` is `#f` for a signal-killed
     /// child, a status the OS never returned, or a spawn failure (missing
     /// binary, bad `cwd`).
@@ -68,9 +68,9 @@ pub trait AsyncProcessHost {
     /// with `prefix`, on a background thread, and returns the scan's id.
     /// `callback` gets [`names_callback_args`] after each search path
     /// directory that adds a name, or for several at once when the editor
-    /// falls behind, and a last time with `done?` `#t`. `extensions` names
-    /// a program on Windows, as `hume_platform::path::programs::ProgramNames`
-    /// reads it. `Err` when the thread cannot start.
+    /// falls behind, and a last time with `done?` `#t`. On Windows a
+    /// program is a file ending in one of `extensions`, named without it.
+    /// `Err` when the thread cannot start.
     fn scan_programs(
         &mut self,
         prefix: String,
@@ -79,9 +79,9 @@ pub trait AsyncProcessHost {
     ) -> Result<u64, String>;
 
     /// Stops the job or scan `id` and drops its callback without firing
-    /// it: a job's child is killed and reaped, a scan ends at its next
-    /// report. A no-op if `id` already completed, was already cancelled,
-    /// or never existed (a spawn failure that already fired its callback),
-    /// the same idempotent contract as `cancel_timer`.
+    /// it, even a callback already due: a job's child is killed and
+    /// reaped, a scan reads no further directory. A no-op once its last
+    /// callback has run, after an earlier cancel, or for an id never
+    /// issued, the same idempotent contract as `cancel_timer`.
     fn cancel_async(&mut self, id: u64);
 }

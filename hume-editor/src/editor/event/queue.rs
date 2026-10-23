@@ -31,31 +31,14 @@ pub(in crate::editor) enum PendingWork {
     /// A specific Steel closure already captured by the raise site: an
     /// `lsp-request!` callback, a timer thunk, a prompt/menu/drawer/picker
     /// callback. Delivered to exactly that closure, not to every handler for
-    /// a name.
-    ///
-    /// `anchor`: `Some` only for an `lsp-request!` callback a server
-    /// answered, carrying the same `ResponseAnchor` already checked once at
-    /// LSP drain time (`Editor::anchor_admits`), re-checked here, at dequeue,
-    /// because arbitrary other queued work (an earlier `Call` in the same
-    /// batch, a hook) can run first and change the state the drain-time
-    /// check saw. `None` for every other source (a timer thunk, a picker
-    /// callback, a request no server took, …).
+    /// a name. Built only through [`PendingWork::call`].
     Call {
         call: SteelCall,
-        anchor: Option<crate::editor::lsp::ResponseAnchor>,
-        /// An `lsp-request!` callback's hold on its `#:tracked` position,
-        /// dropped once the call has run, raised, or been dropped by its
-        /// anchor or the drain cap, which releases the position unless the
-        /// callback kept it.
-        tracked: Option<hume_scripting::host::TrackedHold>,
-        /// The ticket of the interactive input this call answers (a read,
-        /// picker, prompt or menu callback), when that input belongs to a
-        /// recorded change; see [`crate::editor::replay::AnswerTicket`]. Keeps the
-        /// change open until the call has run. `Editor::run_pending_batch`
-        /// runs such a call alone (never batched with a sibling `Call`),
-        /// inside the input's scope (`Editor::run_answered`), so only this
-        /// call's own work belongs to the change.
-        answer: Option<crate::editor::replay::AnswerTicket>,
+        /// What decides at the call's turn whether it still runs, and what
+        /// its run or drop releases. A guarded call runs alone. `None` for
+        /// a call with no such condition, which runs in one batch with the
+        /// unguarded calls of the same origin queued next to it.
+        guard: Option<CallGuard>,
         /// Whose edits the call makes: the user's for a callback a key of
         /// theirs fired, background ones otherwise.
         origin: EditOrigin,
@@ -65,21 +48,64 @@ pub(in crate::editor) enum PendingWork {
     Event(EditorEvent),
 }
 
+/// The condition a queued [`PendingWork::Call`] runs under. Each variant is
+/// checked at the call's own turn, not when it was queued, because other
+/// queued work can run first and change what the check reads. A call the
+/// drain cap drops unrun goes through `Editor::drop_unrun`, which releases
+/// what its guard holds as running it would; a `:reload-config` drops the
+/// whole queue with the state each guard names.
+#[derive(Debug)]
+pub(in crate::editor) enum CallGuard {
+    /// An `lsp-request!` callback. `anchor` is `Some` for a request a server
+    /// answered: the `ResponseAnchor` already checked once at LSP drain time
+    /// (`EditorState::anchor_admits`), checked again here. `hold` is the
+    /// request's hold on its `#:tracked` position, dropped once the call
+    /// has run, raised, or been dropped, which releases the position unless
+    /// the callback kept it. At least one of the two is `Some`.
+    Reply {
+        anchor: Option<ResponseAnchor>,
+        hold: Option<hume_scripting::host::TrackedHold>,
+    },
+    /// The ticket of the interactive input this call answers (a read,
+    /// picker, prompt or menu callback), when that input belongs to a
+    /// recorded change; see [`crate::editor::replay::AnswerTicket`]. Keeps
+    /// the change open until the call has run, inside the input's scope
+    /// (`Editor::run_answered`), so only this call's own work belongs to the
+    /// change.
+    Answer(AnswerTicket),
+    /// The `ConfigState.async_jobs` entry this call reports for. The call
+    /// is dropped when `cancel-async!` removed the entry before its turn,
+    /// and takes the entry with it once it was the entry's last report or
+    /// raised.
+    Job(u64),
+}
+
 impl PendingWork {
-    /// The `Call` an interactive input's callback queues: the user's, with
-    /// no anchor or tracked position, answering `ticket`'s input if any.
+    /// A `Call` of `call` under `guard`, its edits counted as `origin`'s.
+    pub(in crate::editor) fn call(
+        call: SteelCall,
+        guard: Option<CallGuard>,
+        origin: EditOrigin,
+    ) -> Self {
+        Self::Call {
+            call,
+            guard,
+            origin,
+        }
+    }
+
+    /// The `Call` an interactive input's callback queues: the user's,
+    /// answering `ticket`'s input if any.
     pub(in crate::editor) fn answer(
         proc: Rooted,
         arg: Rooted,
         ticket: Option<AnswerTicket>,
     ) -> Self {
-        Self::Call {
-            call: SteelCall::with_args(proc, Rc::from([arg])),
-            anchor: None,
-            tracked: None,
-            answer: ticket,
-            origin: EditOrigin::User,
-        }
+        Self::call(
+            SteelCall::with_args(proc, Rc::from([arg])),
+            ticket.map(CallGuard::Answer),
+            EditOrigin::User,
+        )
     }
 }
 
@@ -93,57 +119,51 @@ impl EditorState {
         self.push_work(PendingWork::Event(event));
     }
 
-    /// Queue `call`, a callback a key of the user's fired, for
-    /// [`Self::queue_call`]: a drawer, live-picker query or completion-source
-    /// callback. Background work queues through
-    /// [`Self::queue_background_call`]; an interactive input's callback is
-    /// built by `EditorState::answered_call` instead.
+    /// Queue `call`, a callback a key of the user's fired: a drawer,
+    /// live-picker query or completion-source callback. Background work
+    /// queues through [`Self::queue_background_call`]; an interactive
+    /// input's callback is built by `EditorState::answered_call` instead.
+    ///
+    /// Every queued call runs at the next drain boundary, never inline: LSP
+    /// dispatch, timer fire and minibuffer key handling all detect their
+    /// completion from inside a borrow that can't re-enter Steel. Lives on
+    /// `EditorState` (not `Editor`) so a drawer layer and `EditorHostImpl`,
+    /// which only hold `&mut EditorState`, can queue too, the same reason
+    /// `queue_event` lives here.
     pub(in crate::editor) fn queue_steel_call(&mut self, call: SteelCall) {
-        self.queue_call(call, None, None, EditOrigin::User);
+        self.push_work(PendingWork::call(call, None, EditOrigin::User));
     }
 
-    /// [`Self::queue_steel_call`] for a callback background work fires: a
-    /// timer thunk, an async job's or process's callback. Its edits do not
-    /// count as the user's.
+    /// [`Self::queue_steel_call`] for a callback background work fires,
+    /// such as a timer thunk. Its edits do not count as the user's.
     pub(in crate::editor) fn queue_background_call(&mut self, call: SteelCall) {
-        self.queue_call(call, None, None, EditOrigin::Background);
+        self.push_work(PendingWork::call(call, None, EditOrigin::Background));
+    }
+
+    /// [`Self::queue_background_call`] for the callback of the
+    /// `ConfigState.async_jobs` entry `job`; see [`CallGuard::Job`].
+    pub(in crate::editor) fn queue_job_callback(&mut self, job: u64, call: SteelCall) {
+        self.push_work(PendingWork::call(
+            call,
+            Some(CallGuard::Job(job)),
+            EditOrigin::Background,
+        ));
     }
 
     /// [`Self::queue_background_call`]'s counterpart for an `lsp-request!`
     /// callback: carries the delivery's `ResponseAnchor` (`None` for a
     /// request no server took) and the request's hold on its `#:tracked`
-    /// position, dropped once the call has run or been dropped. Never
-    /// carries an answer ticket: an LSP response resolves no waiting input.
+    /// position; see [`CallGuard::Reply`]. Never carries an answer ticket:
+    /// an LSP response resolves no waiting input.
     pub(in crate::editor) fn queue_lsp_callback(
         &mut self,
         call: SteelCall,
         anchor: Option<ResponseAnchor>,
-        tracked: Option<hume_scripting::host::TrackedHold>,
+        hold: Option<hume_scripting::host::TrackedHold>,
     ) {
-        self.queue_call(call, anchor, tracked, EditOrigin::Background);
-    }
-
-    /// Queue `call` for evaluation at the next drain boundary, never
-    /// called inline: LSP dispatch, timer fire and minibuffer key handling
-    /// all detect their completion from inside a borrow that can't re-enter
-    /// Steel. Its edits count as `origin`'s. Lives on `EditorState` (not
-    /// `Editor`) so a drawer layer and `EditorHostImpl`, which only hold
-    /// `&mut EditorState`, can queue too, the same reason `queue_event` lives
-    /// here.
-    fn queue_call(
-        &mut self,
-        call: SteelCall,
-        anchor: Option<ResponseAnchor>,
-        tracked: Option<hume_scripting::host::TrackedHold>,
-        origin: EditOrigin,
-    ) {
-        self.push_work(PendingWork::Call {
-            call,
-            anchor,
-            tracked,
-            answer: None,
-            origin,
-        });
+        let guard =
+            (anchor.is_some() || hold.is_some()).then_some(CallGuard::Reply { anchor, hold });
+        self.push_work(PendingWork::call(call, guard, EditOrigin::Background));
     }
 
     /// Append `work` to the queue `Editor::settle` drains: the one place an
