@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::fs::File;
 use std::path::PathBuf;
 
 use steel::gc::unsafe_erased_pointers::CustomReference;
@@ -85,7 +84,7 @@ pub(crate) struct SteelCtx<'a> {
     /// The file locks `try-lock-file!` took this session, by resolved path.
     /// `run_steel_session` drops what is left when the session ends, so a
     /// lock never outlives the session that took it.
-    pub(crate) file_locks: HashMap<PathBuf, File>,
+    pub(crate) file_locks: HashMap<PathBuf, crate::builtins::fs::HeldLock>,
 }
 
 /// Which entry point started this eval session.

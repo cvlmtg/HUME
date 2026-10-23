@@ -36,7 +36,7 @@
 //! module already provides it as a bare global (`Engine::new()` baseline),
 //! and HUME registering its own would silently shadow it.
 
-use std::fs::TryLockError;
+use std::fs::{File, TryLockError};
 use std::path::{Path, PathBuf};
 
 use steel::rvals::{IntoSteelVal, SteelVal};
@@ -184,11 +184,26 @@ pub(crate) fn try_lock_file(ctx: &mut SteelCtx, path: PathBuf) -> SteelResult {
         .map_err(lock_err)?;
     match file.try_lock() {
         Ok(()) => {
-            ctx.file_locks.insert(path, file);
+            ctx.file_locks.insert(path, HeldLock(file));
             Ok(SteelVal::BoolV(true))
         }
         Err(TryLockError::WouldBlock) => Ok(SteelVal::BoolV(false)),
         Err(TryLockError::Error(e)) => Err(lock_err(e)),
+    }
+}
+
+/// A file whose OS lock this process holds, released when dropped.
+///
+/// The lock belongs to the open file, which a child forked from any thread
+/// shares until it starts its program, so closing this handle alone could
+/// leave the lock held that long. Unlocking first releases it at once.
+pub(crate) struct HeldLock(File);
+
+impl Drop for HeldLock {
+    fn drop(&mut self) {
+        // Holding the lock means the unlock cannot fail, and the close that
+        // follows releases it anyway.
+        let _ = self.0.unlock();
     }
 }
 
