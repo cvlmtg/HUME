@@ -63,13 +63,12 @@ list is picked apart.
 
 ### Filesystem and list search
 
-Thin wrappers over Steel's `steel/filesystem` and `steel/ports`, and HUME's own
-`delete-dir-tree!`. `core:plum` and `core:lsp-install` call them rather than each
-carrying a copy. `delete-dir!` and `delete-file!` are idempotent, unlike Steel's own
-`delete-directory!` and `delete-file!`: a missing target is not an error. `delete-dir!`
-uses `delete-dir-tree!`, which already treats a missing directory that way. `list-subdirs`
-returns the names of the directories under a path, sorted, and skips stray files that sit
-alongside a directory tree (`.install-lock`, `.DS_Store`).
+Thin wrappers over Steel's `steel/filesystem` and `steel/ports`. `core:plum` and
+`core:lsp-install` call them rather than each carrying a copy. `delete-dir!` and
+`delete-file!` are idempotent, unlike Steel's own `delete-directory!` and `delete-file!`:
+a missing target is not an error. `list-subdirs` returns the names of the directories
+under a path, sorted, and skips stray files that sit alongside a directory tree
+(`.install-lock`, `.DS_Store`).
 
 ### Subprocess
 

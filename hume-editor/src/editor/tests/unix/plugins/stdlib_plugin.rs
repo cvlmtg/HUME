@@ -734,3 +734,19 @@ fn delete_dir_does_not_count_the_delete_against_the_budget() {
     assert!(result.is_ok(), "{result:?}");
     assert!(!root.exists(), "the tree must be gone");
 }
+
+/// `stdlib/delete-dir!` on a directory that does not exist does nothing.
+#[test]
+fn delete_dir_of_a_missing_directory_is_a_no_op() {
+    let (mut ed, mut host, _guard, _init_dir) = setup_stdlib_editor();
+    let tmp = tempfile::tempdir().unwrap();
+    let missing = tmp.path().join("missing");
+
+    let source = format!(r#"(call! "stdlib/delete-dir!" {})"#, steel_path(&missing));
+    let result = {
+        let mut ih = init_host!(ed);
+        host.eval_source(&source, &mut ih)
+    };
+
+    assert!(result.is_ok(), "{result:?}");
+}

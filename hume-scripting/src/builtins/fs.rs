@@ -6,9 +6,9 @@
 //! here is editor-integration info Steel can't derive on its own,
 //! `path-join`'s Windows UNC-prefix stripping (Steel's own
 //! `canonicalize-path` leaks `\\?\`, which external tools reject), and what
-//! the session has to own: a tree delete the budget does not count, a
-//! directory swap the budget cannot split, and file locks released when the
-//! session ends.
+//! the session has to own: a tree delete the budget does not count (behind
+//! Steel's own `delete-directory!`), a directory swap the budget cannot
+//! split, and file locks released when the session ends.
 //!
 //! A relative path these builtins take resolves through
 //! [`editor_path`], as `:e` resolves a typed one.
@@ -19,7 +19,6 @@
 //! | `runtime-dir`   | `() → string \| #f`            | Runtime dir, or `#f` if absent               |
 //! | `cwd`           | `() → string`                  | The editor's working directory               |
 //! | `set-cwd!`      | `string → void`                | `:cd`: moves the editor's working directory  |
-//! | `delete-dir-tree!` | `string → void`             | Recursive delete, budget stopped while it runs |
 //! | `replace-dir!`  | `string string → void`         | Moves a directory into another's place, all or nothing |
 //! | `%delete-directory!` | `string → void`           | Steel's `delete-directory!`, budget stopped; backs its shim |
 //! | `try-lock-file!` | `string → bool`               | Exclusive OS lock, held until `unlock-file!` or the session ends |
@@ -99,18 +98,6 @@ pub(crate) fn set_cwd(ctx: &mut SteelCtx, path: String) -> SteelResult {
         .set_cwd(Path::new(&path))
         .map_err(generic_err)?;
     Ok(SteelVal::Void)
-}
-
-/// `(delete-dir-tree! path)`: removes the directory `path` (a relative one
-/// joins onto `(cwd)`) and everything under it; an absent `path` is a no-op.
-/// The removal is a wait on the OS that can take seconds for a large tree,
-/// so it runs with the session's budget stopped, unlike Steel's own
-/// `delete-directory!`.
-pub(crate) fn delete_dir_tree(ctx: &mut SteelCtx, path: String) -> SteelResult {
-    let dir = ctx.host.buffers().cwd().join(&path);
-    ctx.while_waiting(|| remove_dir_tree_if_present(&dir))
-        .map(|()| SteelVal::Void)
-        .map_err(|e| generic_err(format!("delete-dir-tree!: {path}: {e}")))
 }
 
 /// `(replace-dir! src dest)`: moves the directory `src` to `dest` (relative

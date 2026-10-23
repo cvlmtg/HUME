@@ -125,7 +125,7 @@ fn plum_installed_plugins_skips_a_stray_file_in_the_plugins_dir() {
     );
 }
 
-/// `:plum-cleanup-plugins` exercises `plum/delete-dir` against a real
+/// `:plum-cleanup-plugins` exercises `stdlib/delete-dir!` against a real
 /// on-disk orphan plugin, no network. Nothing in `init.scm` declares it, so
 /// it's an orphan by definition; `:plum-cleanup-plugins` must remove its directory.
 #[test]
@@ -147,7 +147,7 @@ fn plum_cleanup_removes_orphan_plugin_directory() {
     );
     assert!(
         !orphan_dir.exists(),
-        "plum/delete-dir-backed plum-cleanup-plugins must remove the orphan plugin directory"
+        ":plum-cleanup-plugins must remove the orphan plugin directory"
     );
 }
 

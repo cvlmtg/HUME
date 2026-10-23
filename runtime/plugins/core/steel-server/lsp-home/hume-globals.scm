@@ -107,7 +107,6 @@
 (#%register-global "delete")
 (#%register-global "delete-char-backward")
 (#%register-global "delete-char-forward")
-(#%register-global "delete-dir-tree!")
 (#%register-global "delete-selection")
 (#%register-global "delete-word-backward")
 (#%register-global "detach-keymap!")
