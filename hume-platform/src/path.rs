@@ -13,6 +13,8 @@
 use std::borrow::Cow;
 use std::path::{Component, Path, PathBuf};
 
+pub mod programs;
+
 // ── Path expansion ────────────────────────────────────────────────────────────
 
 /// Platform env-var sigil: `$` on Unix, `%` on Windows.
@@ -327,99 +329,6 @@ pub fn completion_entries(dir: &Path, prefix: &str, dirs_only: bool) -> Vec<Stri
         .collect();
     names.sort_unstable();
     names
-}
-
-// ── Programs on a search path ────────────────────────────────────────────────
-
-/// The names of the programs on `search_path` (a `PATH` value) that a
-/// shell runs by name and that start with `prefix`, sorted and each listed
-/// once. A directory that can't be read lists nothing.
-///
-/// On Unix a program is a file (a symlink is followed) with any execute
-/// bit set, and `extensions` is unused. On Windows it is a file whose name
-/// ends with one of `extensions` (`.exe`, as `sh` adds to a bare name, or
-/// `PATHEXT`'s list), named by its stem. Names match `prefix` as the file
-/// system compares them, without regard to ASCII case on Windows, where
-/// names differing only in ASCII case are listed once. The spelling listed
-/// is the first one on the path.
-pub fn executables_in(
-    search_path: &std::ffi::OsStr,
-    prefix: &str,
-    extensions: &[impl AsRef<str>],
-) -> Vec<String> {
-    let mut names = std::collections::BTreeMap::new();
-    for dir in std::env::split_paths(search_path) {
-        let Ok(entries) = std::fs::read_dir(&dir) else {
-            continue;
-        };
-        for entry in entries.flatten() {
-            let file_name = entry.file_name();
-            let Some(name) = file_name.to_str() else {
-                continue;
-            };
-            // On Unix a program is keyed by its file name and the first one
-            // on the path wins, so a name already listed skips the `stat`.
-            if cfg!(unix) && names.contains_key(name) {
-                continue;
-            }
-            let Some(program) = program_name(&entry, name, prefix, extensions) else {
-                continue;
-            };
-            let key = if cfg!(windows) {
-                program.to_ascii_lowercase()
-            } else {
-                program.to_owned()
-            };
-            names.entry(key).or_insert_with(|| program.to_owned());
-        }
-    }
-    names.into_values().collect()
-}
-
-/// The name a shell runs directory entry `entry` (named `name`) by, when
-/// it is a program whose name starts with `prefix`.
-#[cfg(unix)]
-fn program_name<'a>(
-    entry: &std::fs::DirEntry,
-    name: &'a str,
-    prefix: &str,
-    _extensions: &[impl AsRef<str>],
-) -> Option<&'a str> {
-    use std::os::unix::fs::PermissionsExt;
-    if !name_starts_with(name, prefix) {
-        return None;
-    }
-    // The entry's own type is free from the listing on most filesystems,
-    // and only a file or a symlink can be a program, so a directory or a
-    // device never costs a `stat`.
-    let file_type = entry.file_type().ok()?;
-    if !(file_type.is_file() || file_type.is_symlink()) {
-        return None;
-    }
-    let meta = std::fs::metadata(entry.path()).ok()?;
-    (meta.is_file() && meta.permissions().mode() & 0o111 != 0).then_some(name)
-}
-
-/// The name a shell runs directory entry `entry` (named `name`) by, when
-/// it is a program whose name starts with `prefix`.
-#[cfg(windows)]
-fn program_name<'a>(
-    entry: &std::fs::DirEntry,
-    name: &'a str,
-    prefix: &str,
-    extensions: &[impl AsRef<str>],
-) -> Option<&'a str> {
-    let stem = extensions.iter().find_map(|ext| {
-        let ext = ext.as_ref();
-        let split = name
-            .len()
-            .checked_sub(ext.len())
-            .filter(|&split| split > 0)?;
-        let tail = name.get(split..)?;
-        tail.eq_ignore_ascii_case(ext).then(|| &name[..split])
-    })?;
-    // The entry's type comes with the listing, so this costs no file open.
-    (name_starts_with(stem, prefix) && !entry.file_type().ok()?.is_dir()).then_some(stem)
 }
 
 // ── Windows UNC prefix ───────────────────────────────────────────────────────

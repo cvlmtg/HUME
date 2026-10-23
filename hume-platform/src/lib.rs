@@ -14,12 +14,15 @@
 //!   install pipeline's platform-specific pieces (compiler selection,
 //!   hashing, archive unpacking).
 //! - [`dirs`]: XDG/platform config, data, home, and runtime directories.
-//! - [`path`]: tilde/env-var expansion and path-separator utilities.
+//! - [`path`]: tilde/env-var expansion, path-separator utilities, and the
+//!   programs on a search path.
 //! - [`version`]: the running build's version and commit, stamped by `build.rs`.
 //! - [`worker_panic`]: keeps a panic on a background thread from touching the
 //!   terminal and queues it for the editor to report.
 //! - [`wake`]: the callback a background thread wakes the main loop with, and
 //!   the thread spawn that calls it when the thread ends.
+//! - [`snapshots`]: a background thread that reports a growing result, read
+//!   by its consumer one latest snapshot at a time.
 //!
 //! All platform-conditional code (`#[cfg(unix)]`, `#[cfg(windows)]`) is
 //! hidden behind private sub-modules; every public function has a uniform
@@ -37,6 +40,7 @@ pub mod io;
 pub mod path;
 pub mod process;
 pub mod screen;
+pub mod snapshots;
 pub mod terminal;
 pub mod version;
 pub mod wake;

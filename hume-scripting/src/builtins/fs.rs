@@ -260,16 +260,18 @@ pub(crate) fn which_program(ctx: &mut SteelCtx, name: String) -> SteelResult {
     dir_builtin(found.as_deref())
 }
 
-/// Testable core of [`path_programs`]: [`hume_platform::path::executables_in`]
-/// over `search_path`, `'()` without one.
+/// Testable core of [`path_programs`]: the programs on `search_path`, `'()`
+/// without one.
 fn programs_on(
     search_path: Option<&std::ffi::OsStr>,
     prefix: &str,
     extensions: &[String],
 ) -> SteelVal {
-    string_list(search_path.map_or_else(Vec::new, |path| {
-        hume_platform::path::executables_in(path, prefix, extensions)
-    }))
+    let mut names = hume_platform::path::programs::ProgramNames::default();
+    for dir in search_path.into_iter().flat_map(std::env::split_paths) {
+        names.scan_dir(&dir, prefix, extensions);
+    }
+    string_list(names.sorted().to_vec())
 }
 
 /// `(home-dir)`: the user's home directory, or `#f` when the environment
