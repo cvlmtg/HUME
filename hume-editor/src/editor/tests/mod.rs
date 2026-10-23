@@ -21,7 +21,7 @@ use hume_editing::text::BufferText;
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 use hume_engine::types::ScopeId;
 use hume_treesitter::parse_worker::InlineParseBackend;
-use hume_treesitter::registry::{GrammarBundle, QueryFiles};
+use hume_treesitter::registry::{GrammarBundle, GrammarSource, LanguageId, QueryFiles};
 use termina::event::{
     Event as TerminalEvent, KeyCode, KeyEvent, Modifiers, MouseButton, MouseEvent, MouseEventKind,
 };
@@ -287,12 +287,71 @@ fn attach_fixture_grammar_with(
         .languages
         .attach_grammar(
             name,
-            &test_fixtures::grammar_parser_path(name),
-            symbol,
-            queries,
+            &fixture_source(name, symbol, queries),
             &mut ed.view.registry,
         )
         .unwrap_or_else(|e| panic!("attach {name} grammar: {e}"))
+}
+
+/// [`attach_fixture_grammar`] without loading the grammar, as startup
+/// registers one: it loads the first time something needs it.
+fn register_fixture_grammar(ed: &mut Editor, name: &str, symbol: &str) -> LanguageId {
+    let highlights = test_fixtures::grammar_query_path(name);
+    register_fixture_grammar_with(ed, name, symbol, &QueryFiles::new(highlights))
+}
+
+/// [`attach_fixture_grammar_with`] without loading the grammar.
+fn register_fixture_grammar_with(
+    ed: &mut Editor,
+    name: &str,
+    symbol: &str,
+    queries: &QueryFiles,
+) -> LanguageId {
+    ed.state
+        .config
+        .languages
+        .register_grammar(name, fixture_source(name, symbol, queries))
+}
+
+/// `name`'s compiled grammar fixture with `queries`.
+fn fixture_source(name: &str, symbol: &str, queries: &QueryFiles) -> GrammarSource {
+    GrammarSource {
+        path: test_fixtures::grammar_parser_path(name),
+        symbol: symbol.to_owned(),
+        queries: queries.clone(),
+    }
+}
+
+/// The markdown fixture's highlights with the pinned Helix injections query.
+fn markdown_query_files() -> QueryFiles {
+    let injections = hume_treesitter::registry::OptionalQuery::Injections;
+    QueryFiles::new(test_fixtures::grammar_query_path("markdown")).with(
+        injections,
+        test_fixtures::require_helix_query("markdown", injections.file_name()),
+    )
+}
+
+/// Whether `bid` has committed syntax layers.
+fn has_layers(ed: &Editor, bid: BufferId) -> bool {
+    ed.state
+        .buffers
+        .get(bid)
+        .syntax
+        .as_ref()
+        .and_then(|syn| syn.layers())
+        .is_some()
+}
+
+/// Whether `bid`'s committed syntax layers include one of the language `name`.
+fn has_layer_of(ed: &Editor, bid: BufferId, name: &str) -> bool {
+    let id = ed.state.config.languages.id_of(name);
+    ed.state
+        .buffers
+        .get(bid)
+        .syntax
+        .as_ref()
+        .and_then(|syn| syn.layers())
+        .is_some_and(|layers| layers.layers.iter().any(|l| Some(l.bundle.language) == id))
 }
 
 /// Serialize the editor's current buffer + selection state.

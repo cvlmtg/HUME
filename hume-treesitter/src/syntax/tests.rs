@@ -1,5 +1,5 @@
-use rustc_hash::FxHashMap;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
 use hume_editing::edit::TextChange;
@@ -8,30 +8,15 @@ use hume_engine::pipeline::BufferId;
 use hume_engine::providers::SyntaxSpans;
 use hume_rope::offset::CharOffset;
 
-use super::Syntax;
+use super::{InjectionLoader, Syntax};
 use crate::injections::InjectionSites;
-use crate::parse_worker::{ParseDone, ParseOutcome, ParsedLayers};
-use crate::registry::{GrammarBundle, OptionalQuery};
-use crate::test_support::{empty_langs, fresh_bid};
-use test_fixtures::{grammar_query_path, require_fixture_file, require_grammars};
+use crate::parse_worker::{ParseDone, ParseOutcome, ParseRequest, ParsedLayers};
+use crate::registry::{GrammarBundle, GrammarSnapshot, LanguageId};
+use crate::test_support::{empty_langs, fixture_markdown, fresh_bid};
+use test_fixtures::{grammar_query_path, require_grammars};
 
 fn make_bundle(name: &str, symbol: &str) -> Arc<GrammarBundle> {
     crate::test_support::make_bundle(name, symbol, "", &[])
-}
-
-/// Like `make_bundle`, but with a compiled injections query attached,
-/// needed to exercise the injected-layer (`depth > 0`) path in `bake`.
-fn make_bundle_with_injections(
-    name: &str,
-    symbol: &str,
-    injections_src: &str,
-) -> Arc<GrammarBundle> {
-    crate::test_support::make_bundle(
-        name,
-        symbol,
-        "",
-        &[(OptionalQuery::Injections, injections_src)],
-    )
 }
 
 /// Like `make_bundle`, but compiles the grammar's *real* `highlights.scm`
@@ -62,10 +47,12 @@ fn parse_done_for(
         bid,
         generation,
         bundle: Arc::clone(bundle),
+        snapshot_generation: empty_langs().generation(),
         outcome: ParseOutcome::Ok(ParsedLayers {
             root: tree,
             root_sites: InjectionSites::default(),
             injected: Vec::new(),
+            unloaded: Vec::new(),
         }),
     }
 }
@@ -213,6 +200,7 @@ fn frame_tick_prior_present_iff_chain_baked() {
     syn.install(
         parse_done_for(&bundle, bid, generation(&t0), "{}\n"),
         generation(&t0),
+        &empty_langs(),
     );
     assert!(syn.layers().is_some(), "install must populate layers");
 
@@ -229,6 +217,7 @@ fn frame_tick_prior_present_iff_chain_baked() {
     syn.install(
         parse_done_for(&bundle, bid, generation(&t1), "{\"a\":1}\n"),
         generation(&t1),
+        &empty_langs(),
     );
     assert!(syn.layers().is_some());
     // Force a chain break: the recorded edit starts from a text the tree
@@ -259,6 +248,7 @@ fn bake_contiguous_chain_advances_tree_gen_and_clears_pending() {
     syn.install(
         parse_done_for(&bundle, bid, generation(&t0), "{}\n"),
         generation(&t0),
+        &empty_langs(),
     );
     assert_eq!(syn.tree_gen(), Some(generation(&t0)));
 
@@ -298,6 +288,7 @@ fn bake_accepts_a_chain_whose_generations_skip_numbers() {
     syn.install(
         parse_done_for(&bundle, bid, generation(&t0), "{}\n"),
         generation(&t0),
+        &empty_langs(),
     );
 
     // A text computed and dropped uses up a generation between each pair.
@@ -328,6 +319,7 @@ fn bake_mid_chain_gap_rejected() {
     syn.install(
         parse_done_for(&bundle, bid, generation(&t0), "{}\n"),
         generation(&t0),
+        &empty_langs(),
     );
 
     // A broken link: the first edit ends at `t1` and the second starts at a
@@ -369,14 +361,12 @@ fn bake_mid_chain_gap_rejected() {
 #[test]
 fn bake_refreshes_injected_layer_ranges_after_an_edit_shifts_them() {
     require_grammars(&["markdown", "rust"]);
-    let inj_path = test_fixtures::grammar_query_path("markdown").with_file_name("injections.scm");
-    require_fixture_file(&inj_path, "markdown injections.scm");
-    let inj_src = std::fs::read_to_string(&inj_path).expect("read injections.scm");
-    let markdown = make_bundle_with_injections("markdown", "tree_sitter_markdown", &inj_src);
+    let markdown = fixture_markdown();
     let rust = make_bundle("rust", "tree_sitter_rust");
-    let mut langs_map = FxHashMap::default();
-    langs_map.insert("rust".to_owned(), Arc::clone(&rust));
-    let langs = Arc::new(langs_map);
+    let langs = Arc::new(GrammarSnapshot::from_iter([(
+        "rust".to_owned(),
+        Arc::clone(&rust),
+    )]));
 
     let bid = fresh_bid();
     let source = "```rust\nfn main() {}\n```\n";
@@ -405,6 +395,7 @@ fn bake_refreshes_injected_layer_ranges_after_an_edit_shifts_them() {
         &markdown,
         1,
         None,
+        &mut Vec::new(),
     );
     assert_eq!(injected.len(), 1, "expected one rust injection layer");
     let original_start = injected[0].ranges[0].start_byte;
@@ -414,13 +405,16 @@ fn bake_refreshes_injected_layer_ranges_after_an_edit_shifts_them() {
             bid,
             generation: generation(&t0),
             bundle: Arc::clone(&markdown),
+            snapshot_generation: langs.generation(),
             outcome: ParseOutcome::Ok(ParsedLayers {
                 root,
                 root_sites,
                 injected,
+                unloaded: Vec::new(),
             }),
         },
         generation(&t0),
+        &empty_langs(),
     );
 
     // Insert text before the fenced code block. The rust layer's byte
@@ -472,6 +466,7 @@ fn bakes_accumulate_edited_bytes_until_an_install_resets_them() {
     syn.install(
         parse_done_for(&bundle, bid, generation(&t0), "{}\n"),
         generation(&t0),
+        &empty_langs(),
     );
 
     let (t1, cs) = insert_into(&t0, 1, "\"a\":1");
@@ -489,6 +484,7 @@ fn bakes_accumulate_edited_bytes_until_an_install_resets_them() {
     syn.install(
         parse_done_for(&bundle, bid, generation(&t2), "{b\"a\":1}\n"),
         generation(&t2),
+        &empty_langs(),
     );
     assert_eq!(edited_regions(&syn), vec![]);
 }
@@ -503,6 +499,7 @@ fn a_failed_parse_keeps_the_edited_bytes() {
     syn.install(
         parse_done_for(&bundle, bid, generation(&t0), "{}\n"),
         generation(&t0),
+        &empty_langs(),
     );
 
     let (t1, cs) = insert_into(&t0, 1, "\"a\":1");
@@ -513,9 +510,11 @@ fn a_failed_parse_keeps_the_edited_bytes() {
             bid,
             generation: generation(&t1),
             bundle: Arc::clone(&bundle),
+            snapshot_generation: empty_langs().generation(),
             outcome: ParseOutcome::ParseFailed,
         },
         generation(&t1),
+        &empty_langs(),
     );
     assert_eq!(edited_regions(&syn), vec![1..=6]);
 }
@@ -534,7 +533,7 @@ fn install_stale_generation_discarded() {
         &empty_langs(),
     );
     // current_generation has moved to 5; a done for gen 0 must be discarded.
-    syn.install(parse_done_for(&bundle, bid, 0, "{}\n"), 5);
+    syn.install(parse_done_for(&bundle, bid, 0, "{}\n"), 5, &empty_langs());
     assert_eq!(
         syn.parsed_gen(),
         None,
@@ -566,7 +565,7 @@ fn install_config_gen_mismatch_discarded_without_clearing_newer_in_flight() {
 
     // A done from the OLD bundle arrives late, same generation.
     let stale_done = parse_done_for(&old_bundle, bid, 1, "{}\n");
-    syn.install(stale_done, 1);
+    syn.install(stale_done, 1, &empty_langs());
 
     assert!(
         syn.is_in_flight(),
@@ -618,6 +617,7 @@ fn install_matching_done_clears_in_flight_and_drains_pending() {
     syn.install(
         parse_done_for(&bundle, bid, generation(&t1), "{x}\n"),
         generation(&t1),
+        &empty_langs(),
     );
 
     assert!(!syn.is_in_flight(), "a matching done must clear in_flight");
@@ -645,9 +645,10 @@ fn install_parse_failed_advances_parsed_gen_only() {
         bid,
         generation: 0,
         bundle: Arc::clone(&bundle),
+        snapshot_generation: empty_langs().generation(),
         outcome: ParseOutcome::ParseFailed,
     };
-    syn.install(done, 0);
+    syn.install(done, 0, &empty_langs());
     assert_eq!(
         syn.parsed_gen(),
         Some(0),
@@ -688,15 +689,17 @@ fn install_recovers_from_a_parse_failed_for_the_same_generation() {
             bid,
             generation: 0,
             bundle: Arc::clone(&bundle),
+            snapshot_generation: empty_langs().generation(),
             outcome: ParseOutcome::ParseFailed,
         },
         0,
+        &empty_langs(),
     );
     assert_eq!(syn.parsed_gen(), Some(0));
     assert!(syn.layers().is_none());
 
     // A later result for the SAME generation succeeds and must actually land.
-    syn.install(parse_done_for(&bundle, bid, 0, "{}\n"), 0);
+    syn.install(parse_done_for(&bundle, bid, 0, "{}\n"), 0, &empty_langs());
 
     assert_eq!(
         syn.tree_gen(),
@@ -723,6 +726,7 @@ fn baked_then_failed() -> (Arc<GrammarBundle>, BufferId, Syntax, BufferText) {
     syn.install(
         parse_done_for(&bundle, bid, generation(&t0), "{}\n"),
         generation(&t0),
+        &empty_langs(),
     );
     let (t1, cs) = insert_into(&t0, 1, "\"a\":1");
     record(&mut syn, &t0, &t1, &cs);
@@ -734,9 +738,11 @@ fn baked_then_failed() -> (Arc<GrammarBundle>, BufferId, Syntax, BufferText) {
             bid,
             generation: generation(&t1),
             bundle: Arc::clone(&bundle),
+            snapshot_generation: empty_langs().generation(),
             outcome: ParseOutcome::ParseFailed,
         },
         generation(&t1),
+        &empty_langs(),
     );
     (bundle, bid, syn, t1)
 }
@@ -765,14 +771,15 @@ fn a_parse_result_installs_after_a_failed_parse_of_the_same_text() {
     syn.install(
         parse_done_for(&bundle, bid, generation(&t1), "{\"a\":1}\n"),
         generation(&t1),
+        &empty_langs(),
     );
     assert!(holds_the_pair(&syn, &t1));
 }
 
 #[test]
 fn ensure_current_parses_again_after_a_failed_parse_of_the_same_text() {
-    let (_, bid, mut syn, t1) = baked_then_failed();
-    syn.ensure_current(bid, &t1, &empty_langs());
+    let (_, _, mut syn, t1) = baked_then_failed();
+    syn.ensure_current(&t1, &empty_langs());
     assert!(holds_the_pair(&syn, &t1));
 }
 
@@ -793,6 +800,7 @@ fn is_current_is_false_when_a_failed_parse_advanced_parsed_gen_over_older_layers
     syn.install(
         parse_done_for(&bundle, bid, generation(&t0), "{}\n"),
         generation(&t0),
+        &empty_langs(),
     );
     assert!(syn.is_current(generation(&t0)), "the first text is current");
 
@@ -804,9 +812,11 @@ fn is_current_is_false_when_a_failed_parse_advanced_parsed_gen_over_older_layers
             bid,
             generation: generation(&t1),
             bundle: Arc::clone(&bundle),
+            snapshot_generation: empty_langs().generation(),
             outcome: ParseOutcome::ParseFailed,
         },
         generation(&t1),
+        &empty_langs(),
     );
 
     // `parsed_gen` alone would now claim the new text is current...
@@ -829,7 +839,7 @@ fn ensure_current_parses_a_never_parsed_attachment() {
     let text = BufferText::from("{}\n");
     let (mut syn, _req) = Syntax::attach(Arc::clone(&bundle), bid, &text, &empty_langs());
 
-    let outcome = syn.ensure_current(bid, &text, &empty_langs());
+    let outcome = syn.ensure_current(&text, &empty_langs());
     assert!(
         outcome.is_none(),
         "the first-ever parse is not a chain break"
@@ -863,6 +873,7 @@ fn ensure_current_reparses_a_stale_tree_after_a_recorded_edit() {
     syn.install(
         parse_done_for(&bundle, bid, generation(&t0), "{}\n"),
         generation(&t0),
+        &empty_langs(),
     );
 
     // Record an edit but skip frame_tick: ensure_current must bake and
@@ -870,7 +881,7 @@ fn ensure_current_reparses_a_stale_tree_after_a_recorded_edit() {
     let (new_text, cs) = insert_into(&t0, 1, "\"a\":1");
     record(&mut syn, &t0, &new_text, &cs);
 
-    let outcome = syn.ensure_current(bid, &new_text, &empty_langs());
+    let outcome = syn.ensure_current(&new_text, &empty_langs());
     assert!(outcome.is_none(), "a contiguous chain is not a break");
 
     // Computed from the new string, not the tree.
@@ -899,13 +910,14 @@ fn ensure_current_up_to_date_does_not_reparse() {
     syn.install(
         parse_done_for(&bundle, bid, generation(&t0), "{}\n"),
         generation(&t0),
+        &empty_langs(),
     );
 
     // A text of the same generation that would parse to a different tree if
     // ensure_current actually reparsed: the gen-gate short-circuits first.
     let other = BufferText::from("{\"a\":1}\n");
     assert_eq!(generation(&other), generation(&t0));
-    let outcome = syn.ensure_current(bid, &other, &empty_langs());
+    let outcome = syn.ensure_current(&other, &empty_langs());
     assert!(outcome.is_none());
     assert_eq!(
         syn.tree_gen(),
@@ -934,6 +946,7 @@ fn ensure_current_reports_a_broken_chain_and_full_reparses() {
     syn.install(
         parse_done_for(&bundle, bid, generation(&t0), "{}\n"),
         generation(&t0),
+        &empty_langs(),
     );
 
     // Record an edit that starts at a text the tree never saw.
@@ -941,7 +954,7 @@ fn ensure_current_reports_a_broken_chain_and_full_reparses() {
     let (new_text, cs) = insert_into(&unseen, 1, "x");
     record(&mut syn, &unseen, &new_text, &cs);
 
-    let outcome = syn.ensure_current(bid, &new_text, &empty_langs());
+    let outcome = syn.ensure_current(&new_text, &empty_langs());
     let brk = outcome.expect("a gapped chain must be reported");
     assert_eq!(brk.tree_gen, generation(&t0));
     assert_eq!(brk.generation, generation(&new_text));
@@ -969,17 +982,18 @@ fn install_discards_a_result_for_an_already_installed_generation() {
     syn.install(
         parse_done_for(&bundle, bid, generation(&t0), "{}\n"),
         generation(&t0),
+        &empty_langs(),
     );
     let (t1, cs) = insert_into(&t0, 1, "\"a\":1");
     record(&mut syn, &t0, &t1, &cs);
-    syn.ensure_current(bid, &t1, &empty_langs());
+    syn.ensure_current(&t1, &empty_langs());
     assert_eq!(syn.parsed_gen(), Some(generation(&t1)));
 
     // A late asynchronous result for the SAME generation, built from
     // different (shorter) text, must not overwrite what ensure_current
     // already installed.
     let late_done = parse_done_for(&bundle, bid, generation(&t1), "{}\n");
-    syn.install(late_done, generation(&t1));
+    syn.install(late_done, generation(&t1), &empty_langs());
 
     assert_eq!(
         syn.layers()
@@ -995,4 +1009,186 @@ fn install_discards_a_result_for_an_already_installed_generation() {
         !syn.is_in_flight(),
         "the redundant result must still be treated as answering any in-flight request"
     );
+}
+
+// ── grammars loaded after a parse ─────────────────────────────────────────
+
+/// Markdown with the fixture injections query, a rust bundle, a snapshot in
+/// which rust is registered but not loaded, and one in which it is loaded.
+struct LateRust {
+    markdown: Arc<GrammarBundle>,
+    rust: Arc<GrammarBundle>,
+    unloaded: Arc<GrammarSnapshot>,
+    loaded: Arc<GrammarSnapshot>,
+}
+
+fn late_rust() -> LateRust {
+    require_grammars(&["markdown", "rust"]);
+    let rust = make_bundle("rust", "tree_sitter_rust");
+    LateRust {
+        markdown: fixture_markdown(),
+        unloaded: Arc::new(GrammarSnapshot::default().with_unloaded("rust", rust.language)),
+        loaded: Arc::new(GrammarSnapshot::from_iter([(
+            "rust".to_owned(),
+            Arc::clone(&rust),
+        )])),
+        rust,
+    }
+}
+
+const FENCED_RUST: &str = "Text.\n\n```rust\nfn main() {}\n```\n";
+
+fn has_layer_of(syn: &Syntax, bundle: &Arc<GrammarBundle>) -> bool {
+    syn.layers()
+        .expect("layers installed")
+        .layers
+        .iter()
+        .any(|layer| Arc::ptr_eq(&layer.bundle, bundle))
+}
+
+/// Resolves against `g.unloaded` until it loads rust, after which it
+/// resolves against `g.loaded`. Records every `load` request.
+struct LateLoader<'a> {
+    g: &'a LateRust,
+    loads: bool,
+    loaded: bool,
+    asked: Vec<Vec<LanguageId>>,
+}
+
+impl<'a> LateLoader<'a> {
+    fn new(g: &'a LateRust, loads: bool) -> Self {
+        Self {
+            g,
+            loads,
+            loaded: false,
+            asked: Vec::new(),
+        }
+    }
+}
+
+impl InjectionLoader for LateLoader<'_> {
+    fn snapshot(&self) -> Arc<GrammarSnapshot> {
+        Arc::clone(if self.loaded {
+            &self.g.loaded
+        } else {
+            &self.g.unloaded
+        })
+    }
+
+    fn load(&mut self, ids: &[LanguageId]) -> bool {
+        self.asked.push(ids.to_vec());
+        self.loaded |= self.loads;
+        self.loads
+    }
+}
+
+/// Parse `request` on this thread and install the result for `text`.
+fn run_request(syn: &mut Syntax, request: ParseRequest, text: &BufferText) {
+    let cancel = AtomicBool::new(false);
+    let done = crate::parse_worker::do_parse(&mut tree_sitter::Parser::new(), request, &cancel);
+    syn.install(done, generation(text), &empty_langs());
+}
+
+#[test]
+fn a_loader_that_loads_nothing_is_asked_once_and_the_parse_stays_current() {
+    let g = late_rust();
+    let text = BufferText::from(FENCED_RUST);
+    let mut loader = LateLoader::new(&g, false);
+
+    let syn = Syntax::attach_sync(Arc::clone(&g.markdown), &text, &mut loader);
+
+    assert_eq!(loader.asked, vec![vec![g.rust.language]]);
+    assert!(!has_layer_of(&syn, &g.rust));
+    assert!(syn.is_current(generation(&text)));
+}
+
+#[test]
+fn an_inline_parse_adds_the_layers_of_what_its_loader_loads() {
+    let g = late_rust();
+    let text = BufferText::from(FENCED_RUST);
+    let mut loader = LateLoader::new(&g, true);
+
+    let syn = Syntax::attach_sync(Arc::clone(&g.markdown), &text, &mut loader);
+
+    assert_eq!(loader.asked, vec![vec![g.rust.language]]);
+    assert!(syn.is_current(generation(&text)));
+    assert!(has_layer_of(&syn, &g.rust));
+}
+
+#[test]
+fn installing_a_result_whose_loader_loads_resolves_injections_again() {
+    let g = late_rust();
+    let bid = fresh_bid();
+    let text = BufferText::from(FENCED_RUST);
+    let (mut syn, request) = Syntax::attach(Arc::clone(&g.markdown), bid, &text, &g.unloaded);
+    let request = request.expect("non-empty text posts a parse");
+    let cancel = AtomicBool::new(false);
+    let done = crate::parse_worker::do_parse(&mut tree_sitter::Parser::new(), request, &cancel);
+
+    assert!(syn.install(done, generation(&text), LateLoader::new(&g, true)));
+
+    assert!(!has_layer_of(&syn, &g.rust));
+    assert!(!syn.is_current(generation(&text)));
+    let next = syn.frame_tick(bid, &text, &g.loaded).request;
+    assert!(next.is_some(), "injections are resolved again");
+}
+
+#[test]
+fn reresolving_keeps_the_layers_and_reparses_against_them() {
+    let g = late_rust();
+    let text = BufferText::from(FENCED_RUST);
+    let mut syn = Syntax::attach_sync(Arc::clone(&g.markdown), &text, &g.unloaded);
+
+    syn.reresolve_injections(&g.loaded);
+
+    assert!(syn.layers().is_some(), "the committed layers stay");
+    assert!(!syn.is_current(generation(&text)));
+    let request = syn
+        .frame_tick(BufferId::default(), &text, &g.loaded)
+        .request
+        .expect("a reparse is posted");
+    assert!(
+        request.prior.is_some(),
+        "the reparse starts from the layers"
+    );
+    run_request(&mut syn, request, &text);
+    assert!(syn.is_current(generation(&text)));
+    assert!(has_layer_of(&syn, &g.rust));
+}
+
+#[test]
+fn a_result_resolved_before_a_reresolve_installs_but_is_not_current() {
+    let g = late_rust();
+    let bid = fresh_bid();
+    let text = BufferText::from(FENCED_RUST);
+    let (mut syn, request) = Syntax::attach(Arc::clone(&g.markdown), bid, &text, &g.unloaded);
+    let request = request.expect("non-empty text posts a parse");
+
+    syn.reresolve_injections(&g.loaded);
+    run_request(&mut syn, request, &text);
+
+    assert!(syn.layers().is_some());
+    assert!(!syn.is_current(generation(&text)));
+    let next = syn.frame_tick(bid, &text, &g.loaded).request;
+    assert!(next.is_some(), "injections are resolved again");
+}
+
+#[test]
+fn a_result_resolved_with_an_older_snapshot_keeps_the_layers_of_a_newer_one() {
+    let g = late_rust();
+    let bid = fresh_bid();
+    let text = BufferText::from(FENCED_RUST);
+    let (mut syn, request) = Syntax::attach(Arc::clone(&g.markdown), bid, &text, &g.unloaded);
+    let request = request.expect("non-empty text posts a parse");
+    assert!(
+        syn.ensure_current(&text, LateLoader::new(&g, true))
+            .is_none()
+    );
+    assert!(has_layer_of(&syn, &g.rust));
+
+    let newer = GrammarSnapshot::from_iter([("rust".to_owned(), Arc::clone(&g.rust))]);
+    syn.reresolve_injections(&newer);
+    run_request(&mut syn, request, &text);
+
+    assert!(has_layer_of(&syn, &g.rust));
 }

@@ -13,7 +13,7 @@ use crate::edited_bytes::EditedBytes;
 use crate::injections::{
     InjectionContext, InjectionSites, PriorInjections, SitePrior, resolve_and_parse_injections,
 };
-use crate::registry::GrammarBundle;
+use crate::registry::{GrammarBundle, GrammarSnapshot, LanguageId};
 use hume_editing::text::BufferText;
 
 // Compile-time Send assertions: tree_sitter::Tree is Send+Sync;
@@ -46,10 +46,10 @@ pub struct ParseRequest {
     /// `None` for a full parse (first parse, grammar swap, or broken edit
     /// chain).
     pub(crate) prior: Option<PriorLayers>,
-    /// Snapshot of every grammared language, for resolving an injected
-    /// language name (e.g. a fenced code block's info string) to its grammar
-    /// without touching main-thread state from the worker.
-    pub langs: Arc<FxHashMap<String, Arc<GrammarBundle>>>,
+    /// Every language with a grammar, for resolving an injected language
+    /// name (e.g. a fenced code block's info string) without touching
+    /// main-thread state from the worker.
+    pub langs: Arc<GrammarSnapshot>,
 }
 
 /// Committed layers edited to a request's text.
@@ -79,6 +79,9 @@ pub struct ParsedLayers {
     /// The root tree's injection sites.
     pub root_sites: InjectionSites,
     pub injected: Vec<ParsedInjection>,
+    /// Languages a site named whose grammar `langs` had registered but not
+    /// loaded, so no layer of theirs is among `injected`.
+    pub unloaded: Vec<LanguageId>,
 }
 
 /// One resolved and parsed injection layer.
@@ -101,6 +104,8 @@ pub struct ParseDone {
     /// on the main thread to detect grammar swaps that occurred while the
     /// request was in flight.
     pub bundle: Arc<GrammarBundle>,
+    /// The generation of the request's `langs`.
+    pub snapshot_generation: u64,
     pub outcome: ParseOutcome,
 }
 
@@ -115,12 +120,16 @@ fn coalesce_one(batch: &mut FxHashMap<BufferId, ParseRequest>, req: ParseRequest
             v.insert(req);
         }
         Entry::Occupied(mut o) => {
-            // Keep the latest generation; when generations are equal, a different
-            // config_gen means a grammar swap on a quiescent buffer, so take the
-            // new entry so the fresh grammar wins even without a text edit.
-            if req.generation > o.get().generation
-                || (req.generation == o.get().generation
-                    && req.bundle.config_gen != o.get().bundle.config_gen)
+            // Keep the latest generation. When generations are equal, a
+            // different config_gen means a grammar swap on a quiescent buffer
+            // and a newer snapshot means injections to resolve again with a
+            // grammar loaded since, so take the new entry even without a text
+            // edit.
+            let held = o.get();
+            if req.generation > held.generation
+                || (req.generation == held.generation
+                    && (req.bundle.config_gen != held.bundle.config_gen
+                        || req.langs.generation() > held.langs.generation()))
             {
                 o.insert(req);
             }
@@ -184,10 +193,10 @@ pub(crate) fn do_parse(
     cancel: &AtomicBool,
 ) -> ParseDone {
     parser.set_language(req.bundle.grammar.language()).expect(
-        "ABI verified at grammar registration time in attach_grammar; the only \
-             other failure mode, a language recovered from a tree in a different \
-             WebAssembly instance, cannot arise here: grammars are dlopen'd \
-             natively, never wasm-recovered",
+        "ABI verified when the grammar loaded, before its bundle existed; the \
+             only other failure mode, a language recovered from a tree in a \
+             different WebAssembly instance, cannot arise here: grammars are \
+             dlopen'd natively, never wasm-recovered",
     );
     parser
         .set_included_ranges(&[])
@@ -210,12 +219,21 @@ pub(crate) fn do_parse(
                 reparsed: true,
                 edited: &prior.edited,
             });
-            let (root_sites, injected) =
-                resolve_and_parse_injections(parser, &cx, &root, &req.bundle, 1, root_prior);
+            let mut unloaded = Vec::new();
+            let (root_sites, injected) = resolve_and_parse_injections(
+                parser,
+                &cx,
+                &root,
+                &req.bundle,
+                1,
+                root_prior,
+                &mut unloaded,
+            );
             ParseOutcome::Ok(ParsedLayers {
                 root,
                 root_sites,
                 injected,
+                unloaded,
             })
         }
         None => ParseOutcome::ParseFailed,
@@ -225,6 +243,7 @@ pub(crate) fn do_parse(
         bid: req.bid,
         generation: req.generation,
         bundle: req.bundle,
+        snapshot_generation: req.langs.generation(),
         outcome,
     }
 }

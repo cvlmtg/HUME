@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Syntax & language awareness
+- HUME starts faster: each installed grammar loads the first time a file or an embedded block needs it, not at startup.
+
 ### Fixes
 - The Linux archive runs on glibc 2.28 and later: Ubuntu 20.04, Debian 10, RHEL 8 and newer.
 
@@ -12,6 +15,7 @@
 - `steel-command-budget-ms` and `steel-init-budget-ms` stop a script that runs past them, so a plugin stuck in a loop can't freeze HUME. Time spent waiting for a program or deleting a directory tree doesn't count.
 - New `delete-dir-tree!`, `current-process-id` and `process-alive?`.
 - `:lsp-install` takes over the install lock of a HUME that has exited instead of waiting an hour.
+- A grammar `register-grammar!` registers from `init.scm` that can't be loaded is reported in `:messages` when a file or an embedded block first needs it, not at startup.
 
 ## [0.16.1] - 2026-10-22
 

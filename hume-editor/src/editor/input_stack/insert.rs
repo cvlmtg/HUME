@@ -193,7 +193,7 @@ fn handle_insert(ed: &mut Editor, key: KeyEvent) {
         .input
         .insert_entry()
         .expect("the Insert layer handling this key holds its session");
-    if commands::insert_default_key(&mut ed.state, &ed.view, &entry, fp, key) {
+    if commands::insert_default_key(&mut ed.state, &mut ed.view, &entry, fp, key) {
         ed.state.record_input(Input::Key(key));
     }
 }

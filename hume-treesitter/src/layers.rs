@@ -191,7 +191,7 @@ impl SyntaxLayer {
     pub(crate) fn injections_resolved_afresh(
         &self,
         rope: &ropey::Rope,
-        langs: &rustc_hash::FxHashMap<String, Arc<GrammarBundle>>,
+        langs: &crate::registry::GrammarSnapshot,
     ) -> (InjectionSites, Vec<LayerShape>) {
         let cancel = std::sync::atomic::AtomicBool::new(false);
         let cx = crate::injections::InjectionContext {
@@ -207,6 +207,7 @@ impl SyntaxLayer {
             &self.bundle,
             self.depth + 1,
             None,
+            &mut Vec::new(),
         );
         let shapes = injected
             .iter()

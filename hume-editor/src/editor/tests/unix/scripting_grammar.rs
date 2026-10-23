@@ -17,7 +17,8 @@ use std::sync::Arc;
 
 use super::super::render_snapshot::render_to_styled_string;
 use super::super::scripting_grammar::{
-    grammar_fixture, grammar_source, helix_pin, prelude_source, runtime_scheme_dir,
+    grammar_fixture, grammar_source, grammar_warnings, helix_pin, prelude_source,
+    runtime_scheme_dir,
 };
 use hume_scripting::ScriptingHost;
 use hume_treesitter::registry::GrammarBundle;
@@ -124,7 +125,8 @@ fn register_grammar_command_mode_attaches_and_sweeps() {
 /// a fresh init.scm, prefixed with the real prelude so the macro is in
 /// scope, eval it, apply its queued effect (init-mode `register-grammar!`
 /// only queues an `Effect::LanguageReg`; this is what `init_scripting`
-/// would do next), and return the resulting `json` grammar bundle.
+/// would do next), and return the resulting `json` grammar bundle. The
+/// effect registers the grammar without loading it, so this loads it.
 fn attach_json_via_init(register_grammar_call: &str) -> Arc<GrammarBundle> {
     let tmp = tempfile::tempdir().unwrap();
     let init_path = tmp.path().join("init.scm");
@@ -146,12 +148,15 @@ fn attach_json_via_init(register_grammar_call: &str) -> Arc<GrammarBundle> {
         .languages
         .id_of("json")
         .expect("json must be interned");
+    assert!(
+        ed.state.config.languages.loaded_grammar(id).is_none(),
+        "init registers a grammar without loading it"
+    );
     ed.state
         .config
         .languages
-        .grammar(id)
-        .expect("json must have an attached grammar bundle")
-        .clone()
+        .load_grammar(id, &mut ed.view.registry)
+        .expect("json loads")
 }
 
 /// A `register-grammar!` call omitting `#:injections` and passing a real
@@ -796,16 +801,16 @@ fn grammar_registration_survives_plum_absence() {
 }
 
 // ---------------------------------------------------------------------------
-// A user override in init.scm must not undo a startup grammar attachment
+// A user override in init.scm must not undo a startup grammar registration
 // ---------------------------------------------------------------------------
 
-/// `grammars.scm` attaches every already-compiled grammar before `init.scm`
+/// `grammars.scm` registers every already-compiled grammar before `init.scm`
 /// runs (`scripting/init.rs`: prelude → languages → grammars → init.scm).
 /// `languages.scm`'s own header documents overriding an entry by redefining
 /// it in `init.scm`. This exercises exactly that documented pattern for an
 /// already-grammared language and asserts highlighting survives it.
 ///
-/// If `register_identity_no_rebuild` dropped an attached grammar
+/// If `register_identity_no_rebuild` dropped a registered grammar
 /// on re-registration, `has_grammar` would go false and the buffer would
 /// render unhighlighted after `init.scm`'s `define-language!` call.
 #[test]
@@ -839,7 +844,7 @@ fn define_language_override_in_init_keeps_startup_grammar() {
 
     assert!(
         ed.state.config.languages.has_grammar("json"),
-        "grammar attached by grammars.scm must survive init.scm's identity override"
+        "grammar registered by grammars.scm must survive init.scm's identity override"
     );
     ed.reparse_stale_buffers();
     assert!(
@@ -1037,17 +1042,13 @@ fn known_grammar_missing_highlights_warns_and_is_not_registered() {
 /// platform's installed set, so `installed-grammars` must never yield its name
 /// at all: `register-grammar!` must not even be attempted for it.
 ///
-/// `has_grammar` alone can't tell them apart: `grammar-output-path` always
-/// re-derives the *platform's* extension regardless of which file the walk
-/// matched, so an attempt on this entry is doomed to fail on a missing path
-/// either way: attempted-and-failed and never-attempted both leave `json`
-/// unregistered. What differs is whether the attempt happens: a failed init-time
-/// attach logs a `Warning` (`editor/syntax/mod.rs`), so an attempt leaves a
-/// trace in the message log that a skip does not.
+/// Startup registration opens nothing, so an attempt on this entry would
+/// register `json`, with a library path `grammar-output-path` re-derives
+/// with the *platform's* extension, and `has_grammar` would report it. A
+/// skip leaves `json` with no grammar.
 ///
 /// An `installed-grammars` that matched on "has any extension" rather than the
-/// platform extension would pick this file up, attempt `register-grammar!`,
-/// and log `register-grammar! 'json': grammar library not found`.
+/// platform extension would pick this file up and register it.
 #[test]
 fn wrong_extension_grammar_is_skipped_not_registered() {
     let wrong_ext = if cfg!(target_os = "macos") {
@@ -1083,9 +1084,70 @@ fn wrong_extension_grammar_is_skipped_not_registered() {
         .collect();
     assert!(
         warnings.is_empty(),
-        "a foreign-extension file must be skipped before ever attempting register-grammar!, \
-         not attempted-and-failed: {warnings:?}"
+        "a foreign-extension file must be skipped without a warning: {warnings:?}"
     );
+}
+
+/// Startup registers an installed grammar without opening its library, so a
+/// library that cannot load costs nothing and says nothing until a buffer of
+/// its language needs it, and then says so once.
+#[test]
+fn init_registration_of_a_bogus_library_is_silent_until_a_buffer_needs_it() {
+    let ext = test_fixtures::grammar_platform_ext();
+    let (errors, mut ed, _dirs) = init_errors_with_json_data(JSON_DATA, |data| {
+        let grammars = data.join("grammars");
+        std::fs::create_dir_all(&grammars).unwrap();
+        std::fs::write(grammars.join(format!("json.{ext}")), b"not a real library").unwrap();
+        let src = grammars.join("sources").join("json");
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::write(src.join("highlights.scm"), "; empty\n").unwrap();
+    });
+    assert!(errors.is_empty(), "unexpected init errors: {errors:?}");
+    assert!(grammar_warnings(&ed, "json").is_empty());
+    assert!(ed.state.config.languages.has_grammar("json"));
+
+    let bid = ed.focused_buffer_id();
+    ed.set_buffer_language_by_name(bid, Some("json"));
+    ed.reparse_stale_buffers();
+
+    assert_eq!(grammar_warnings(&ed, "json").len(), 1);
+    assert!(!ed.state.config.languages.has_grammar("json"));
+}
+
+/// `register-grammar!` from a command loads the grammar right away, so a
+/// library that cannot load fails the command that registered it.
+#[test]
+fn runtime_register_grammar_with_a_bad_library_raises() {
+    let tmp = tempfile::tempdir().unwrap();
+    let init_path = tmp.path().join("init.scm");
+    let missing = tmp.path().join("missing");
+    let body = format!(
+        r#"(define-typed-command! "attach-json" "Attach JSON grammar" (lambda () (register-grammar! "json" "{}" "tree_sitter_json" "{}")))"#,
+        missing.join("json.so").display(),
+        missing.join("highlights.scm").display(),
+    );
+    std::fs::write(&init_path, prelude_source() + "\n" + &body).unwrap();
+    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut ed = editor_from("-[a]>b\n");
+    {
+        let mut ih = init_host!(ed);
+        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+    }
+    .expect("eval_init");
+    ed.scripting = Some(host);
+
+    type_cmd(&mut ed, ":attach-json");
+
+    assert!(
+        has_error(&ed, "register-grammar! 'json': "),
+        "messages: {:?}",
+        ed.state
+            .message_log
+            .entries()
+            .map(|e| format!("{:?}: {}", e.severity, e.text))
+            .collect::<Vec<_>>()
+    );
+    assert!(!ed.state.config.languages.has_grammar("json"));
 }
 
 /// `installed-grammars` must sort by stem, not by full filename: `"b-x.<ext>"
@@ -1128,7 +1190,7 @@ fn register_grammar_from_sources_picks_up_only_the_optional_files_present() {
     let (parser, hl) = grammar_fixture("json");
     let ext = test_fixtures::grammar_platform_ext();
 
-    let (errors, ed, _dirs) = init_errors_with_json_data(JSON_DATA, |data| {
+    let (errors, mut ed, _dirs) = init_errors_with_json_data(JSON_DATA, |data| {
         let grammars = data.join("grammars");
         let src = grammars.join("sources").join("json");
         std::fs::create_dir_all(&src).unwrap();
@@ -1149,8 +1211,8 @@ fn register_grammar_from_sources_picks_up_only_the_optional_files_present() {
         .state
         .config
         .languages
-        .grammar(id)
-        .expect("json must have an attached grammar bundle");
+        .load_grammar(id, &mut ed.view.registry)
+        .expect("json loads");
     assert!(bundle.textobjects.is_some());
     assert!(bundle.indents.is_some());
     assert!(bundle.injections.is_none());

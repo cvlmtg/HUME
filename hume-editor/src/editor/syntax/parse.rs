@@ -1,10 +1,10 @@
-use std::sync::Arc;
-
 use hume_engine::pipeline::BufferId;
+use hume_engine::theme::ScopeRegistry;
 use hume_treesitter::parse_worker::ParseDone;
 use hume_treesitter::registry::LanguageId;
 use hume_treesitter::syntax::{ChainBreak, Syntax};
 
+use super::GrammarLoads;
 use crate::editor::{Editor, EditorState, Severity};
 
 impl EditorState {
@@ -35,25 +35,31 @@ fn report_chain_break(state: &mut EditorState, bid: BufferId, brk: &ChainBreak) 
 }
 
 impl Editor {
-    /// Attach the tree-sitter highlighter for `bid`.
+    /// Attach the tree-sitter highlighter for `bid`, loading its language's
+    /// grammar first if it is registered but not loaded.
     ///
     /// Idempotent: always clears any existing syntax attachment before
-    /// attempting setup. No-ops when the buffer has no language, the language
-    /// has no grammar, or the buffer exceeds `syntax-highlight-max-bytes`.
+    /// attempting setup. No-ops when the buffer has no language, the buffer
+    /// exceeds `syntax-highlight-max-bytes`, or the language has no grammar
+    /// or its grammar fails to load. The size is checked first, so a buffer
+    /// over the cap loads no grammar.
     pub(in crate::editor::syntax) fn setup_buffer_syntax(&mut self, bid: BufferId) {
         self.state.buffers.get_mut(bid).syntax = None;
 
         let Some(lang_id) = self.state.buffers.get(bid).language else {
             return;
         };
-        let bundle = match self.state.config.languages.grammar(lang_id) {
-            Some(b) => Arc::clone(b),
-            None => return,
-        };
-
         if !self.state.syntax_size_ok(bid) {
             return;
         }
+        let Some(bundle) = self
+            .state
+            .config
+            .languages
+            .load_grammar(lang_id, &mut self.view.registry)
+        else {
+            return;
+        };
 
         let text = self.state.buffers.get(bid).text().clone();
         let langs = self.state.config.languages.grammar_snapshot();
@@ -73,14 +79,23 @@ impl Editor {
     /// `BufferId` is a generational slotmap key, so a closed-then-reopened
     /// slot has a bumped version and the stale bid fails `try_get_mut`) or
     /// when syntax was detached (language cleared) while in flight.
+    ///
+    /// Loads the grammars of the injections the parse could not resolve, and
+    /// has the buffer resolve them again when any loads: the worker has no
+    /// access to the registry it would load them into.
     fn install_parse_done(&mut self, done: ParseDone) {
         let Some(buf) = self.state.buffers.try_get_mut(done.bid) else {
             return;
         };
         let generation = buf.text().generation();
-        if let Some(syn) = buf.syntax.as_mut() {
-            syn.install(done, generation);
-        }
+        let Some(syn) = buf.syntax.as_mut() else {
+            return;
+        };
+        syn.install(
+            done,
+            generation,
+            GrammarLoads::new(&mut self.state.config.languages, &mut self.view.registry),
+        );
     }
 
     /// Install every parse result the worker has finished.
@@ -111,6 +126,9 @@ impl Editor {
             self.surface_parse_worker_disconnect();
         }
         self.load_grammar_languages();
+        // Before the key `Editor::run` dispatches next, so a grammar these
+        // results failed to load is not reported as that key's message.
+        self.state.report_failed_grammar_loads();
     }
 
     /// Read the bundled data file of every language given a grammar since the
@@ -119,7 +137,7 @@ impl Editor {
     /// Steel engine, which a command does not have, and a command's own parse
     /// (`ensure_syntax_current`) can build an injected layer: a language read
     /// only once its layer appeared would reach that command without its data.
-    /// So every attached grammar's file is read, at startup for every
+    /// So every registered grammar's file is read, at startup for every
     /// installed one.
     fn load_grammar_languages(&mut self) {
         for id in self.state.config.languages.take_bundled_pending() {
@@ -151,14 +169,18 @@ impl Editor {
     /// happens to trigger the other call site, or never, if none comes.
     pub(in crate::editor) fn reparse_stale_buffers(&mut self) {
         self.install_parse_results();
-
         // Suspend further request submission for this session once the
         // worker has exited; the warning itself is one-shot, raised by the
         // drain above.
-        if self.parse_worker.is_disconnected() {
-            return;
+        if !self.parse_worker.is_disconnected() {
+            self.post_stale_requests();
         }
+        self.state.report_failed_grammar_loads();
+    }
 
+    /// The per-buffer pass of [`Self::reparse_stale_buffers`]: detach,
+    /// re-attach or post a reparse request for each visible buffer.
+    fn post_stale_requests(&mut self) {
         // Deduplicated set of every buffer *any* pane is showing, not just
         // the active tab's. Built from the full `view.panes` pool, not
         // `Editor::active_pane_ids`: a buffer open in a background tab
@@ -184,9 +206,11 @@ impl Editor {
                 continue;
             }
 
-            // Re-attach if no syntax but buffer is under cap and language has a grammar.
-            // Covers: buffers that opened over-cap and later shrank, or that had their
-            // syntax detached by the growth branch above.
+            // Re-attach if no syntax but buffer is under cap and language has a
+            // grammar that is loaded or yet to load. Covers: buffers that opened
+            // over-cap and later shrank, or that had their syntax detached by the
+            // growth branch above. A grammar that failed to load is unavailable,
+            // so its failure is reported once rather than every frame.
             if buf.syntax.is_none() {
                 if size_ok
                     && self
@@ -194,7 +218,7 @@ impl Editor {
                         .buffers
                         .get(bid)
                         .language
-                        .is_some_and(|l| self.state.config.languages.grammar(l).is_some())
+                        .is_some_and(|l| self.state.config.languages.grammar_available(l))
                 {
                     self.setup_buffer_syntax(bid);
                 }
@@ -264,6 +288,9 @@ pub(in crate::editor) enum SyntaxUse {
 /// often during macro replay), so the committed tree can be a generation
 /// behind. `Syntax::ensure_current` closes that window.
 ///
+/// A site whose language's grammar is registered but not loaded loads it
+/// here and gets its layer, so the command reading the layers sees it.
+///
 /// No-op when the buffer has no syntax, and also when a blocking parse here
 /// cannot help:
 /// - no committed tree yet: it would be a full parse on the UI thread racing
@@ -276,8 +303,13 @@ pub(in crate::editor) enum SyntaxUse {
 /// - for [`SyntaxUse::Indent`], no layer has an indents query;
 /// - for [`SyntaxUse::InjectedLanguages`], the root grammar has no
 ///   injections query, so there is no layer but the root.
+///
+/// The last three do not apply while injections await resolving again with
+/// a grammar loaded since: the layer that grammar injects can have the
+/// query.
 pub(in crate::editor) fn ensure_syntax_current(
     state: &mut EditorState,
+    scopes: &mut ScopeRegistry,
     bid: BufferId,
     use_: SyntaxUse,
 ) {
@@ -299,30 +331,32 @@ pub(in crate::editor) fn ensure_syntax_current(
     if !size_ok {
         return;
     }
-    let can_change = match use_ {
-        SyntaxUse::TextObjects => layers
-            .layers
-            .iter()
-            .any(|layer| layer.bundle.textobjects.is_some()),
-        SyntaxUse::Indent => layers
-            .layers
-            .iter()
-            .any(|layer| layer.bundle.indents.is_some()),
-        SyntaxUse::InjectedLanguages => syn.bundle().injections.is_some(),
-    };
+    let can_change = syn.reresolve_pending()
+        || match use_ {
+            SyntaxUse::TextObjects => layers
+                .layers
+                .iter()
+                .any(|layer| layer.bundle.textobjects.is_some()),
+            SyntaxUse::Indent => layers
+                .layers
+                .iter()
+                .any(|layer| layer.bundle.indents.is_some()),
+            SyntaxUse::InjectedLanguages => syn.bundle().injections.is_some(),
+        };
     if !can_change {
         return;
     }
 
     let text = buf.text().clone();
-    let langs = state.config.languages.grammar_snapshot();
+    let loads = GrammarLoads::new(&mut state.config.languages, scopes);
     let syn = state
         .buffers
         .get_mut(bid)
         .syntax
         .as_mut()
         .expect("syntax is_some checked above");
-    if let Some(brk) = syn.ensure_current(bid, &text, &langs) {
+    let chain_break = syn.ensure_current(&text, loads);
+    if let Some(brk) = chain_break {
         report_chain_break(state, bid, &brk);
     }
 }
@@ -338,32 +372,41 @@ impl Editor {
         }
     }
 
-    /// Called when one or more grammars are attached. Re-runs
+    /// Called when one or more grammars are registered or attached. Re-runs
     /// `setup_buffer_syntax` on every open buffer whose language is in
-    /// `names`, **or** whose currently-attached root grammar has an
-    /// injections query: a newly attached grammar (e.g. rust) may complete
-    /// injection sites in an already-open buffer of a different language
-    /// (e.g. markdown fenced code blocks) without that buffer's own language
-    /// ever appearing in `names`.
+    /// `ids`, as its own grammar changed. Every other open buffer whose root
+    /// grammar has an injections query resolves its injections again, keeping
+    /// its layers: the new grammar (e.g. rust) may complete injection sites
+    /// in a buffer of a different language (e.g. markdown fenced code blocks)
+    /// without that buffer's own language ever appearing in `ids`.
     pub(in crate::editor) fn sweep_buffers_for_grammars(&mut self, ids: Vec<LanguageId>) {
         if ids.is_empty() {
             return;
         }
-        let bids: Vec<BufferId> = self
-            .state
-            .buffers
-            .iter()
-            .filter(|(_, buf)| {
-                let matches_id = buf.language.is_some_and(|lang| ids.contains(&lang));
-                let root_has_injections = buf
-                    .syntax
-                    .as_ref()
-                    .is_some_and(|syn| syn.bundle().injections.is_some());
-                matches_id || root_has_injections
-            })
-            .map(|(bid, _)| bid)
-            .collect();
-        for bid in bids {
+        let mut rebuilt = Vec::new();
+        let mut reresolved = Vec::new();
+        for (bid, buf) in self.state.buffers.iter() {
+            if buf.language.is_some_and(|lang| ids.contains(&lang)) {
+                rebuilt.push(bid);
+            } else if buf
+                .syntax
+                .as_ref()
+                .is_some_and(|syn| syn.bundle().injections.is_some())
+            {
+                reresolved.push(bid);
+            }
+        }
+        let langs = self.state.config.languages.grammar_snapshot();
+        for bid in reresolved {
+            self.state
+                .buffers
+                .get_mut(bid)
+                .syntax
+                .as_mut()
+                .expect("collected for its syntax above")
+                .reresolve_injections(&langs);
+        }
+        for bid in rebuilt {
             self.setup_buffer_syntax(bid);
         }
     }

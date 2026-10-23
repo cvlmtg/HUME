@@ -4,6 +4,7 @@
 
 use hume_editing::indent::ElectricTrigger;
 use hume_engine::pipeline::{BufferId, EngineView};
+use hume_engine::theme::ScopeRegistry;
 use hume_ops::edit::{
     LineBreak, NewLineIndent, apply_electric_plan, apply_line_break_plan, electric_candidates,
     plan_electric_dedent, plan_line_breaks,
@@ -21,14 +22,14 @@ use crate::editor::syntax::{SyntaxUse, ensure_syntax_current};
 
 /// Whether `indent-smart` is on for `bid`; when it is, brings the tree up
 /// to date with the text first.
-fn indent_tree(state: &mut EditorState, bid: BufferId) -> bool {
+fn indent_tree(state: &mut EditorState, scopes: &mut ScopeRegistry, bid: BufferId) -> bool {
     let on = state
         .buffers
         .get(bid)
         .overrides
         .indent_smart(&state.settings);
     if on {
-        ensure_syntax_current(state, bid, SyntaxUse::Indent);
+        ensure_syntax_current(state, scopes, bid, SyntaxUse::Indent);
     }
     on
 }
@@ -44,12 +45,13 @@ fn indent_tree(state: &mut EditorState, bid: BufferId) -> bool {
 /// pre-edit text before the edit borrows the buffer mutably.
 pub(super) fn break_line(
     state: &mut EditorState,
-    view: &EngineView,
+    view: &mut EngineView,
     fp: FocusedPane,
     place: LineBreak,
     allowed: &[ExclusiveRange<CharOffset>],
 ) {
-    let smart = indent_tree(state, fp.bid(view));
+    let bid = fp.bid(view);
+    let smart = indent_tree(state, &mut view.registry, bid);
     let buf = doc(state, view, fp.pane());
     let (style, tab_width) = tab_format(buf, &state.settings);
     let (pairs_enabled, pairs) = buf.overrides.auto_pairs_ref(&state.settings);
@@ -86,7 +88,7 @@ pub(super) fn break_line(
 /// indent.
 pub(super) fn electric_dedent(
     state: &mut EditorState,
-    view: &EngineView,
+    view: &mut EngineView,
     entry: &InsertEntry,
     fp: FocusedPane,
     trigger: ElectricTrigger,
@@ -96,7 +98,8 @@ pub(super) fn electric_dedent(
         let armed = autoindent_armed(state.input.entered(entry), &sels);
         electric_candidates(sels, &armed, trigger)
     };
-    if candidates.is_empty() || !indent_tree(state, fp.bid(view)) {
+    let bid = fp.bid(view);
+    if candidates.is_empty() || !indent_tree(state, &mut view.registry, bid) {
         return;
     }
     let buf = doc(state, view, fp.pane());

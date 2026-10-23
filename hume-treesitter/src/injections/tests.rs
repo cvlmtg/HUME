@@ -1,9 +1,9 @@
-use rustc_hash::FxHashMap;
 use std::sync::atomic::AtomicBool;
 
 use super::*;
-use crate::registry::{GrammarBundle, OptionalQuery};
-use test_fixtures::{grammar_query_path, require_fixture_file, require_grammars};
+use crate::registry::{GrammarBundle, GrammarSnapshot, OptionalQuery};
+use crate::test_support::fixture_markdown;
+use test_fixtures::{grammar_query_path, require_grammars};
 
 /// Load a real grammar fixture with an optional custom injections source
 /// (overriding whatever `injections.scm` the fixture ships, if any),
@@ -36,8 +36,20 @@ fn injected(
     tree: &tree_sitter::Tree,
     bundle: &GrammarBundle,
     rope: &ropey::Rope,
-    langs: &FxHashMap<String, Arc<GrammarBundle>>,
+    langs: &GrammarSnapshot,
 ) -> Vec<ParsedInjection> {
+    injected_reporting(parser, tree, bundle, rope, langs).0
+}
+
+/// [`injected`], with the languages whose sites have a registered grammar
+/// that is not loaded.
+fn injected_reporting(
+    parser: &mut tree_sitter::Parser,
+    tree: &tree_sitter::Tree,
+    bundle: &GrammarBundle,
+    rope: &ropey::Rope,
+    langs: &GrammarSnapshot,
+) -> (Vec<ParsedInjection>, Vec<LanguageId>) {
     let cancel = AtomicBool::new(false);
     let cx = InjectionContext {
         rope,
@@ -45,8 +57,10 @@ fn injected(
         prior: None,
         cancel: &cancel,
     };
-    let (_, layers) = resolve_and_parse_injections(parser, &cx, tree, bundle, 1, None);
-    layers
+    let mut unloaded = Vec::new();
+    let (_, layers) =
+        resolve_and_parse_injections(parser, &cx, tree, bundle, 1, None, &mut unloaded);
+    (layers, unloaded)
 }
 
 // ── content_ranges (pure) ─────────────────────────────────────────────────
@@ -118,8 +132,7 @@ fn static_language_override_wins_regardless_of_content() {
         ),
     );
     let rust = make_bundle("rust", "tree_sitter_rust", None);
-    let mut langs = FxHashMap::default();
-    langs.insert("rust".to_owned(), Arc::clone(&rust));
+    let langs = GrammarSnapshot::from_iter([("rust".to_owned(), Arc::clone(&rust))]);
 
     let source = "[\"hello\"]\n";
     let (mut parser, tree) = parse(&json, source);
@@ -146,11 +159,10 @@ fn unknown_injection_language_is_skipped_silently() {
     );
     // Non-empty but irrelevant: proves the lookup is by key,
     // not just "map happens to be empty".
-    let mut langs = FxHashMap::default();
-    langs.insert(
+    let langs = GrammarSnapshot::from_iter([(
         "rust".to_owned(),
         make_bundle("rust", "tree_sitter_rust", None),
-    );
+    )]);
 
     let source = "[\"hello\"]\n";
     let (mut parser, tree) = parse(&json, source);
@@ -175,8 +187,7 @@ fn combined_merges_multiple_matches_into_one_layer() {
         ),
     );
     let rust = make_bundle("rust", "tree_sitter_rust", None);
-    let mut langs = FxHashMap::default();
-    langs.insert("rust".to_owned(), rust);
+    let langs = GrammarSnapshot::from_iter([("rust".to_owned(), rust)]);
 
     // Three string literals. Without `injection.combined` these would be
     // three separate layers; with it, exactly one layer with 3 ranges.
@@ -211,8 +222,7 @@ fn depth_cap_stops_recursion_at_max_depth() {
             r#"((array) @injection.content (#set! injection.language "json") (#set! injection.include-unnamed-children))"#,
         ),
     );
-    let mut langs = FxHashMap::default();
-    langs.insert("json".to_owned(), Arc::clone(&json));
+    let langs = GrammarSnapshot::from_iter([("json".to_owned(), Arc::clone(&json))]);
 
     let source = "[1]\n";
     let (mut parser, tree) = parse(&json, source);
@@ -242,13 +252,9 @@ fn depth_cap_stops_recursion_at_max_depth() {
 #[test]
 fn dynamic_language_capture_reads_fenced_code_info_string() {
     require_grammars(&["markdown", "rust"]);
-    let inj_path = grammar_query_path("markdown").with_file_name("injections.scm");
-    require_fixture_file(&inj_path, "markdown injections.scm");
-    let inj_src = std::fs::read_to_string(inj_path).unwrap();
-    let markdown = make_bundle("markdown", "tree_sitter_markdown", Some(&inj_src));
+    let markdown = fixture_markdown();
     let rust = make_bundle("rust", "tree_sitter_rust", None);
-    let mut langs = FxHashMap::default();
-    langs.insert("rust".to_owned(), Arc::clone(&rust));
+    let langs = GrammarSnapshot::from_iter([("rust".to_owned(), Arc::clone(&rust))]);
 
     let source = "```rust\nfn main() {}\n```\n";
     let (mut parser, tree) = parse(&markdown, source);
@@ -265,11 +271,8 @@ fn dynamic_language_capture_reads_fenced_code_info_string() {
 #[test]
 fn dynamic_language_capture_unknown_info_string_no_layer() {
     require_grammars(&["markdown"]);
-    let inj_path = grammar_query_path("markdown").with_file_name("injections.scm");
-    require_fixture_file(&inj_path, "markdown injections.scm");
-    let inj_src = std::fs::read_to_string(inj_path).unwrap();
-    let markdown = make_bundle("markdown", "tree_sitter_markdown", Some(&inj_src));
-    let langs: FxHashMap<String, Arc<GrammarBundle>> = FxHashMap::default();
+    let markdown = fixture_markdown();
+    let langs = GrammarSnapshot::default();
 
     let source = "```no-such-lang\nwhatever\n```\n";
     let (mut parser, tree) = parse(&markdown, source);
@@ -293,7 +296,7 @@ fn injections_at_one_node_order_by_pattern_and_disjoint_ones_by_position() {
     let rust = make_bundle("rust", "tree_sitter_rust", None);
     // No html grammar is fetched; json stands in for it under that name.
     let html = make_bundle("json", "tree_sitter_json", None);
-    let langs = Arc::new(FxHashMap::from_iter([
+    let langs = Arc::new(GrammarSnapshot::from_iter([
         ("rust".to_owned(), Arc::clone(&rust)),
         ("html".to_owned(), Arc::clone(&html)),
     ]));
@@ -341,7 +344,7 @@ fn injections_at_one_node_order_by_pattern_and_disjoint_ones_by_position() {
 fn an_edit_before_a_fence_moves_the_sites_with_the_text() {
     require_grammars(&["markdown", "rust"]);
     let markdown = fixture_markdown();
-    let langs = Arc::new(FxHashMap::from_iter([(
+    let langs = Arc::new(GrammarSnapshot::from_iter([(
         "rust".to_owned(),
         make_bundle("rust", "tree_sitter_rust", None),
     )]));
@@ -566,13 +569,6 @@ impl Reparsed {
     }
 }
 
-fn fixture_markdown() -> Arc<GrammarBundle> {
-    let inj_path = grammar_query_path("markdown").with_file_name("injections.scm");
-    require_fixture_file(&inj_path, "markdown injections.scm");
-    let inj_src = std::fs::read_to_string(inj_path).unwrap();
-    make_bundle("markdown", "tree_sitter_markdown", Some(&inj_src))
-}
-
 #[test]
 fn without_dirty_bytes_the_prior_sites_are_kept_as_given() {
     require_grammars(&["markdown"]);
@@ -689,7 +685,7 @@ fn a_new_html_block_joins_the_carried_ones_in_one_layer() {
     let markdown = make_bundle("markdown", "tree_sitter_markdown", Some(&injections));
     let inj = markdown.injections.as_ref().expect("an injections query");
     // No html grammar is fetched; json stands in for it under that name.
-    let langs = FxHashMap::from_iter([(
+    let langs = GrammarSnapshot::from_iter([(
         "html".to_owned(),
         make_bundle("json", "tree_sitter_json", None),
     )]);
@@ -706,7 +702,7 @@ fn a_new_html_block_joins_the_carried_ones_in_one_layer() {
         .count();
     assert_eq!(html, 3, "all three blocks");
     let layers = |sites: &InjectionSites| -> Vec<Vec<tree_sitter::Range>> {
-        group_sites(inj, sites, &langs)
+        group_sites(inj, sites, &langs, &mut Vec::new())
             .into_iter()
             .map(|group| group.ranges)
             .collect()
@@ -757,4 +753,50 @@ fn a_match_lost_outside_its_captures_is_dropped() {
         reparsed.resolve(inj, &reparsed.old_sites),
         InjectionSites::default()
     );
+}
+
+#[test]
+fn an_unloaded_language_is_reported_once_and_injects_nothing() {
+    require_grammars(&["markdown", "json"]);
+    let markdown = fixture_markdown();
+    let json = make_bundle("json", "tree_sitter_json", None);
+    let rust_id = crate::test_support::test_language_id("rust");
+    let langs = GrammarSnapshot::from_iter([("json".to_owned(), Arc::clone(&json))])
+        .with_unloaded("rust", rust_id);
+    let source = "```rust\nfn a() {}\n```\n\n```json\n[1]\n```\n\n\
+                  ```rust\nfn b() {}\n```\n\n```no-such-lang\nx\n```\n";
+    let (mut parser, tree) = parse(&markdown, source);
+    let rope = ropey::Rope::from_str(source);
+
+    let (layers, unloaded) = injected_reporting(&mut parser, &tree, &markdown, &rope, &langs);
+
+    assert_eq!(unloaded, vec![rust_id]);
+    assert_eq!(layers.len(), 1, "only the json fence has a loaded grammar");
+    assert!(Arc::ptr_eq(&layers[0].bundle, &json));
+}
+
+#[test]
+fn an_unloaded_language_an_injected_layer_names_is_reported() {
+    require_grammars(&["markdown", "rust"]);
+    let injections =
+        test_fixtures::require_helix_query("markdown", OptionalQuery::Injections.file_name());
+    let injections = std::fs::read_to_string(injections).expect("read the helix injections query");
+    let markdown = make_bundle("markdown", "tree_sitter_markdown", Some(&injections));
+    let rust = make_bundle(
+        "rust",
+        "tree_sitter_rust",
+        Some(r#"((string_content) @injection.content (#set! injection.language "c"))"#),
+    );
+    let c_id = crate::test_support::test_language_id("c");
+    let langs = GrammarSnapshot::from_iter([("rust".to_owned(), Arc::clone(&rust))])
+        .with_unloaded("c", c_id);
+    let source = "```rust\nlet s = \"x\";\n```\n";
+    let (mut parser, tree) = parse(&markdown, source);
+    let rope = ropey::Rope::from_str(source);
+
+    let (layers, unloaded) = injected_reporting(&mut parser, &tree, &markdown, &rope, &langs);
+
+    assert_eq!(unloaded, vec![c_id]);
+    assert_eq!(layers.len(), 1, "the rust fence injects no c layer");
+    assert!(Arc::ptr_eq(&layers[0].bundle, &rust));
 }

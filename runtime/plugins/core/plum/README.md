@@ -188,13 +188,15 @@ reinstall leaves an installed grammar working:
    `grammar-optional-queries` lists), if any.
 6. Replace the source tree with the staging clone.
 7. Register the grammar for its language in this session with
-   `register-grammar-from-sources!`.
+   `register-grammar-from-sources!`. Called from a command, `register-grammar!` loads the
+   grammar at once, so a library that cannot load fails the install.
 
 ### Startup registration is core's job, and passive
 
 `register-installed-grammars!` (`runtime/scheme/grammars.scm`) runs once at editor startup,
 whether or not PLUM is declared, and registers every already-compiled grammar in
-`<data>/grammars/`. It lists that directory rather than asking every language for its
+`<data>/grammars/`. Registering opens nothing: each grammar loads the first time a buffer or
+an embedded block needs it. It lists that directory rather than asking every language for its
 bundled grammar, so a setup with no grammars installed pays one `path-exists?`. It starts no
 subprocess and uses no network. An orphan is skipped. A compiled grammar of a language with
 a bundled grammar but no `highlights.scm` on disk logs a `'warn` pointing at

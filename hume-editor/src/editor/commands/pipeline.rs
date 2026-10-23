@@ -533,7 +533,7 @@ pub(in crate::editor) fn run_body(
                     // key faster than tree-sitter finishes), so a stale tree
                     // would yield wrong spans (or a panic on an out-of-range
                     // byte offset).
-                    ensure_syntax_current(state, buf, SyntaxUse::TextObjects);
+                    ensure_syntax_current(state, &mut view.registry, buf, SyntaxUse::TextObjects);
                     // Collected before `apply_pane_motion`'s call below, which
                     // needs `&state.buffers` and `&mut state.panes.entries` at
                     // once. `ObjectSpans` is owned precisely so its tree borrow

@@ -1,4 +1,4 @@
-//! Tree-sitter integration: language registry, grammar attachment, the
+//! Tree-sitter integration: language registry, grammar loading, the
 //! background parse worker, embedded-language injection resolution,
 //! structural text-object/navigation queries, and indentation.
 //!

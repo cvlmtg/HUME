@@ -63,6 +63,8 @@ impl Editor {
             TerminalEvent::FocusIn => self.state.queue_event(EditorEvent::OnFocusGained),
             _ => {}
         }
+        // A grammar this dispatch failed to load is reported as its message.
+        self.state.report_failed_grammar_loads();
         self.state.message_logged_this_input = self.state.message_log.totals() != totals_before;
     }
 

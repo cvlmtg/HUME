@@ -1,6 +1,7 @@
 use rustc_hash::FxHashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
 use globset::{Glob, GlobSet, GlobSetBuilder};
 
@@ -18,6 +19,13 @@ use crate::textobjects::TextObjectsQuery;
 /// different registry instance with it is a caller bug, not a runtime error.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct LanguageId(u32);
+
+impl LanguageId {
+    /// The id of the language at `index` in `LanguageRegistry::entries`.
+    fn from_index(index: usize) -> Self {
+        Self(index as u32)
+    }
+}
 
 /// Identity of one language: its detection data (extensions, glob patterns,
 /// shebangs).
@@ -165,8 +173,8 @@ fn fill<T>(slot: &mut Option<Setting<T>>, value: T) {
 pub struct GrammarBundle {
     pub grammar: LoadedGrammar,
     /// Shared highlighter wrapping the compiled highlight query: one per
-    /// language, not one per buffer (capture names are interned once at
-    /// attach time).
+    /// language, not one per buffer (capture names are interned once, when
+    /// the grammar loads).
     pub highlighter: Arc<TreeSitterHighlighter>,
     /// Compiled `injections.scm`, if the grammar has one. `None` means this
     /// language never injects embedded languages.
@@ -177,11 +185,11 @@ pub struct GrammarBundle {
     /// Compiled `indents.scm`, if the grammar has one. `None` means new
     /// lines in this language are never indented from its syntax tree.
     pub indents: Option<IndentQuery>,
-    /// Unique per attach, issued by `LanguageRegistry::next_gen`. Grammar-swap
+    /// Unique per bundle, issued by `next_config_gen`. Grammar-swap
     /// / staleness checks compare this instead of `Arc::ptr_eq`, a plain
     /// integer identity that survives across the worker-thread boundary.
     pub config_gen: u32,
-    /// The language this grammar was attached for.
+    /// The language this grammar was loaded for.
     pub language: LanguageId,
 }
 
@@ -215,7 +223,7 @@ impl OptionalQuery {
     }
 }
 
-/// The query files `attach_grammar` may compile for a grammar. `highlights`
+/// The query files a grammar's load compiles. `highlights`
 /// is required; each `OptionalQuery` kind is independently optional.
 #[derive(Debug, Clone)]
 pub struct QueryFiles {
@@ -257,6 +265,160 @@ impl QueryFiles {
             OptionalQuery::Indents => self.indents.as_deref(),
         }
     }
+}
+
+/// Where a grammar's library and query files are. Registering one opens
+/// nothing; [`LanguageRegistry::load_grammar`] reads and compiles them.
+#[derive(Debug, Clone)]
+pub struct GrammarSource {
+    pub path: PathBuf,
+    pub symbol: String,
+    pub queries: QueryFiles,
+}
+
+#[cfg(any(test, feature = "test-util"))]
+impl GrammarSource {
+    /// A source for `name` whose library and queries do not exist, so its
+    /// load fails.
+    pub fn missing(name: &str) -> Self {
+        let dir = Path::new("/nonexistent-hume-grammar");
+        Self {
+            path: dir.join(format!("{name}.so")),
+            symbol: format!("tree_sitter_{name}"),
+            queries: QueryFiles::new(dir.join("highlights.scm")),
+        }
+    }
+}
+
+/// A language's grammar, from registration through its first load.
+enum GrammarSlot {
+    Registered(GrammarSource),
+    Loaded(Arc<GrammarBundle>),
+}
+
+/// A fresh `GrammarBundle::config_gen`. Process-wide, so bundles of two
+/// registries never share one: a config reload replaces the registry while
+/// the parse worker may still hold a request built against the outgoing one.
+pub(crate) fn next_config_gen() -> u32 {
+    static NEXT: AtomicU32 = AtomicU32::new(0);
+    NEXT.fetch_add(1, Ordering::Relaxed)
+}
+
+/// A language's grammar as an injection resolves it.
+pub(crate) enum SnapshotGrammar {
+    Loaded(Arc<GrammarBundle>),
+    /// Registered but not loaded: only the main thread can load it, so a
+    /// parse reports the id for it to load.
+    Unloaded(LanguageId),
+}
+
+/// Every language whose grammar is loaded or yet to load, by name, as of one
+/// registry state. Handed to the parse worker, which resolves an injected
+/// language name (a dynamically discovered info string) against it without
+/// touching main-thread state. A grammar whose load failed is absent.
+#[derive(Default)]
+pub struct GrammarSnapshot {
+    /// Process-wide and increasing: a later registry state, even of another
+    /// registry, has a higher one. The empty default has 0, below all of them.
+    generation: u64,
+    grammars: FxHashMap<Arc<str>, SnapshotGrammar>,
+}
+
+impl GrammarSnapshot {
+    fn new(grammars: FxHashMap<Arc<str>, SnapshotGrammar>) -> Self {
+        static NEXT: AtomicU64 = AtomicU64::new(1);
+        Self {
+            generation: NEXT.fetch_add(1, Ordering::Relaxed),
+            grammars,
+        }
+    }
+
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    pub(crate) fn get(&self, name: &str) -> Option<&SnapshotGrammar> {
+        self.grammars.get(name)
+    }
+
+    /// This snapshot plus `name` as registered but not loaded.
+    #[cfg(any(test, feature = "test-util"))]
+    pub fn with_unloaded(self, name: &str, id: LanguageId) -> Self {
+        let mut grammars = self.grammars;
+        grammars.insert(Arc::from(name), SnapshotGrammar::Unloaded(id));
+        Self::new(grammars)
+    }
+}
+
+/// A snapshot of loaded grammars, for tests that build bundles by hand.
+#[cfg(any(test, feature = "test-util"))]
+impl FromIterator<(String, Arc<GrammarBundle>)> for GrammarSnapshot {
+    fn from_iter<I: IntoIterator<Item = (String, Arc<GrammarBundle>)>>(iter: I) -> Self {
+        Self::new(
+            iter.into_iter()
+                .map(|(name, bundle)| (Arc::from(name), SnapshotGrammar::Loaded(bundle)))
+                .collect(),
+        )
+    }
+}
+
+/// Opens `source`'s library, checks its ABI, and reads and compiles its
+/// queries. `scope_reg` is touched only once everything else succeeded.
+fn compile_source(
+    name: &str,
+    source: &GrammarSource,
+    scope_reg: &mut ScopeRegistry,
+) -> Result<(LoadedGrammar, CompiledQueries), RegisterError> {
+    let grammar =
+        LoadedGrammar::open(&source.path, &source.symbol).map_err(RegisterError::GrammarLoad)?;
+    let abi = grammar.language().abi_version();
+    let supported = tree_sitter::MIN_COMPATIBLE_LANGUAGE_VERSION..=tree_sitter::LANGUAGE_VERSION;
+    if !supported.contains(&abi) {
+        return Err(RegisterError::AbiIncompatible {
+            name: name.to_owned(),
+            abi,
+            supported,
+        });
+    }
+    let queries = &source.queries;
+    let highlights_src =
+        std::fs::read_to_string(queries.highlights()).map_err(RegisterError::HighlightsRead)?;
+    let mut optional_src = Vec::new();
+    for kind in OptionalQuery::ALL {
+        if let Some(path) = queries.get(kind) {
+            let src = std::fs::read_to_string(path)
+                .map_err(|error| RegisterError::OptionalQueryRead { kind, error })?;
+            optional_src.push((kind, src));
+        }
+    }
+    let optional: Vec<(OptionalQuery, &str)> = optional_src
+        .iter()
+        .map(|(kind, src)| (*kind, src.as_str()))
+        .collect();
+    let compiled = compile_queries(grammar.language(), &highlights_src, &optional, scope_reg)?;
+    Ok((grammar, compiled))
+}
+
+fn new_bundle(
+    language: LanguageId,
+    grammar: LoadedGrammar,
+    compiled: CompiledQueries,
+) -> Arc<GrammarBundle> {
+    let CompiledQueries {
+        highlighter,
+        injections,
+        textobjects,
+        indents,
+    } = compiled;
+    Arc::new(GrammarBundle {
+        grammar,
+        highlighter,
+        injections,
+        textobjects,
+        indents,
+        config_gen: next_config_gen(),
+        language,
+    })
 }
 
 /// The compiled queries of one grammar, ready to become a `GrammarBundle`.
@@ -316,7 +478,7 @@ struct LanguageEntry {
     /// `None` = interned but no identity registered.
     identity: Option<LanguageIdentity>,
     config: LanguageConfig,
-    grammar: Option<Arc<GrammarBundle>>,
+    grammar: Option<GrammarSlot>,
 }
 
 /// Global registry of configured language identities. Lives on `Editor`.
@@ -326,7 +488,7 @@ struct LanguageEntry {
 pub struct LanguageRegistry {
     ids: FxHashMap<Arc<str>, LanguageId>,
     entries: Vec<LanguageEntry>,
-    /// Detection indices, never rebuilt on `attach_grammar`, only on
+    /// Detection indices, never rebuilt by a grammar change, only on
     /// identity (re-)registration or removal.
     by_ext: FxHashMap<String, LanguageId>,
     /// Compiled glob matcher, rebuilt whenever languages are added or removed.
@@ -337,18 +499,15 @@ pub struct LanguageRegistry {
     shebang_to_id: FxHashMap<String, LanguageId>,
     /// Registration order for glob priority: later entries win on overlap.
     lang_order: Vec<LanguageId>,
-    /// Grammared languages only, rebuilt whenever the grammar table changes.
-    /// Handed to the parse worker so it can resolve an injected language name
-    /// (a dynamically-discovered info-string) to its grammar without
-    /// touching main-thread state.
-    grammar_snapshot: Arc<FxHashMap<String, Arc<GrammarBundle>>>,
-    /// Source of `GrammarBundle::config_gen`, incremented on every grammar
-    /// attach so each attached bundle gets a unique identity.
-    next_config_gen: u32,
+    /// Rebuilt whenever a grammar changes.
+    grammar_snapshot: Arc<GrammarSnapshot>,
     /// Languages given a grammar whose bundled data file has not been read.
     /// A syntax layer exists only for a language with a grammar, so reading
     /// these before any parse means every layer's language has its data.
     bundled_pending: Vec<LanguageId>,
+    /// Grammars whose load failed since the last take, each with its error.
+    /// A failed load clears the grammar, so each failure is queued once.
+    failed_loads: Vec<(LanguageId, RegisterError)>,
 }
 
 #[derive(Debug)]
@@ -415,9 +574,9 @@ impl Default for LanguageRegistry {
             glob_lang_ids: Vec::new(),
             shebang_to_id: FxHashMap::default(),
             lang_order: Vec::new(),
-            grammar_snapshot: Arc::new(FxHashMap::default()),
-            next_config_gen: 0,
+            grammar_snapshot: Arc::new(GrammarSnapshot::default()),
             bundled_pending: Vec::new(),
+            failed_loads: Vec::new(),
         }
     }
 }
@@ -425,13 +584,6 @@ impl Default for LanguageRegistry {
 impl LanguageRegistry {
     pub fn new() -> Self {
         Self::default()
-    }
-
-    /// Issue a fresh `config_gen` for a newly attached `GrammarBundle`.
-    fn next_gen(&mut self) -> u32 {
-        let next = self.next_config_gen;
-        self.next_config_gen += 1;
-        next
     }
 
     // ── Interner ──────────────────────────────────────────────────────────────
@@ -442,7 +594,7 @@ impl LanguageRegistry {
         if let Some(&id) = self.ids.get(name) {
             return id;
         }
-        let id = LanguageId(self.entries.len() as u32);
+        let id = LanguageId::from_index(self.entries.len());
         // One allocation, shared via Arc: the entry and `ids` both need their
         // own owned key, but they can point at the same heap string instead
         // of each holding an independent copy.
@@ -564,6 +716,12 @@ impl LanguageRegistry {
         std::mem::take(&mut self.bundled_pending)
     }
 
+    /// The grammars whose load failed since the last call, for the caller to
+    /// report.
+    pub fn take_failed_loads(&mut self) -> Vec<(LanguageId, RegisterError)> {
+        std::mem::take(&mut self.failed_loads)
+    }
+
     /// Record that `id`'s bundled data file has been read, filling each field
     /// it gives a value for that is still unset.
     pub fn fill_bundled(&mut self, id: LanguageId, bundled: LanguageFields) {
@@ -615,11 +773,11 @@ impl LanguageRegistry {
     /// Intended for batch registration: call this N times then call
     /// `rebuild_glob_set` once, avoiding O(N²) NFA constructions at startup.
     ///
-    /// Replaces extensions/globs/shebangs for `name`; an already-attached
-    /// grammar and the per-language configuration are kept. Identity and grammar are independent
-    /// facts about a language, and re-registering one must not silently undo
-    /// the other. (Symmetric with `attach_grammar`, which likewise preserves an
-    /// existing identity.) A grammar only ever changes via `attach_grammar`.
+    /// Replaces extensions/globs/shebangs for `name`; a registered or loaded
+    /// grammar and the per-language configuration are kept. Identity and
+    /// grammar are independent facts about a language, and re-registering one
+    /// must not undo the other. (Symmetric with grammar registration,
+    /// which likewise preserves an existing identity.)
     pub fn register_identity_no_rebuild(
         &mut self,
         name: &str,
@@ -719,9 +877,9 @@ impl LanguageRegistry {
     }
 
     /// Remove a registered language's identity by name, returning it if
-    /// present. Also clears any attached grammar for the same id, since a removed
-    /// language has no detection and no grammar, matching `remove` deleting
-    /// the language wholesale.
+    /// present. Also clears any grammar of the same id, loaded or not, since
+    /// a removed language has no detection and no grammar, matching `remove`
+    /// deleting the language wholesale.
     #[cfg(any(test, feature = "test-util"))]
     pub fn remove(&mut self, name: &str) -> Option<LanguageIdentity> {
         let id = self.id_of(name)?;
@@ -741,116 +899,119 @@ impl LanguageRegistry {
 
     // ── Grammar ───────────────────────────────────────────────────────────────
 
-    /// Attach a tree-sitter grammar to a language.
+    /// Register `source` as `name`'s grammar without opening it: the library
+    /// and queries load on the first [`Self::load_grammar`]. Replaces any
+    /// grammar `name` had, loaded or not.
     ///
-    /// Reads and compiles the highlights query and each optional query in
-    /// `queries`, builds the shared highlighter (interning its capture names
-    /// into `scope_reg`), then installs the resulting `GrammarBundle` for
-    /// `name`'s id.
-    /// Detection indices (`by_ext`/globs/shebangs) are never touched.
+    /// Auto-registers a bare identity (no extensions/globs/shebangs) if the
+    /// language name has none yet.
+    pub fn register_grammar(&mut self, name: &str, source: GrammarSource) -> LanguageId {
+        let id = self.intern(name);
+        self.set_grammar(id, GrammarSlot::Registered(source));
+        id
+    }
+
+    /// Register `source` as `name`'s grammar and load it now.
     ///
     /// A broken optional query fails the whole attach, same as a broken
     /// `highlights.scm`: they all come from the same trusted pinned source,
     /// so there is no separate soft-degrade path. All fallible work happens
-    /// before any registry mutation, so a failed attach leaves no partial
-    /// state.
-    ///
-    /// Auto-registers a bare identity (no extensions/globs/shebangs) if the
-    /// language name has none yet.
+    /// before any registry mutation, so a failed attach leaves the registry
+    /// as it was, including any grammar `name` already had.
     pub fn attach_grammar(
         &mut self,
         name: &str,
-        grammar_path: &Path,
-        symbol: &str,
-        queries: &QueryFiles,
+        source: &GrammarSource,
         scope_reg: &mut ScopeRegistry,
     ) -> Result<Arc<GrammarBundle>, RegisterError> {
-        let grammar =
-            LoadedGrammar::open(grammar_path, symbol).map_err(RegisterError::GrammarLoad)?;
-        let abi = grammar.language().abi_version();
-        let supported =
-            tree_sitter::MIN_COMPATIBLE_LANGUAGE_VERSION..=tree_sitter::LANGUAGE_VERSION;
-        if !supported.contains(&abi) {
-            return Err(RegisterError::AbiIncompatible {
-                name: name.to_owned(),
-                abi,
-                supported,
-            });
-        }
-        let highlights_src =
-            std::fs::read_to_string(queries.highlights()).map_err(RegisterError::HighlightsRead)?;
-        let mut optional_src = Vec::new();
-        for kind in OptionalQuery::ALL {
-            if let Some(path) = queries.get(kind) {
-                let src = std::fs::read_to_string(path)
-                    .map_err(|error| RegisterError::OptionalQueryRead { kind, error })?;
-                optional_src.push((kind, src));
+        let (grammar, queries) = compile_source(name, source, scope_reg)?;
+        let id = self.intern(name);
+        let bundle = new_bundle(id, grammar, queries);
+        self.set_grammar(id, GrammarSlot::Loaded(Arc::clone(&bundle)));
+        Ok(bundle)
+    }
+
+    /// `id`'s grammar bundle, loading a registered grammar first. `None` when
+    /// `id` has no grammar or its load fails. A failed load leaves `id` with
+    /// no grammar until it is registered again and queues its error for
+    /// [`Self::take_failed_loads`].
+    pub fn load_grammar(
+        &mut self,
+        id: LanguageId,
+        scope_reg: &mut ScopeRegistry,
+    ) -> Option<Arc<GrammarBundle>> {
+        let source = match self.entry(id).grammar.as_ref()? {
+            GrammarSlot::Registered(source) => source.clone(),
+            GrammarSlot::Loaded(bundle) => return Some(Arc::clone(bundle)),
+        };
+        match compile_source(&self.entry(id).name, &source, scope_reg) {
+            Ok((grammar, queries)) => {
+                let bundle = new_bundle(id, grammar, queries);
+                self.set_grammar(id, GrammarSlot::Loaded(Arc::clone(&bundle)));
+                Some(bundle)
+            }
+            Err(error) => {
+                self.entry_mut(id).grammar = None;
+                self.rebuild_grammar_snapshot();
+                self.failed_loads.push((id, error));
+                None
             }
         }
-        let optional: Vec<(OptionalQuery, &str)> = optional_src
-            .iter()
-            .map(|(kind, src)| (*kind, src.as_str()))
-            .collect();
-        let CompiledQueries {
-            highlighter,
-            injections,
-            textobjects,
-            indents,
-        } = compile_queries(grammar.language(), &highlights_src, &optional, scope_reg)?;
+    }
 
-        let id = self.intern(name);
-        self.entry_mut(id)
-            .identity
-            .get_or_insert_with(LanguageIdentity::default);
-        let config_gen = self.next_gen();
-        let bundle = Arc::new(GrammarBundle {
-            grammar,
-            highlighter,
-            injections,
-            textobjects,
-            indents,
-            config_gen,
-            language: id,
-        });
-        self.entry_mut(id).grammar = Some(Arc::clone(&bundle));
+    /// Every grammar slot a registration or load gives a language is set
+    /// here. A language with a grammar has an identity and has its bundled
+    /// data file read, so each grammar slot implies both.
+    fn set_grammar(&mut self, id: LanguageId, slot: GrammarSlot) {
+        let entry = self.entry_mut(id);
+        entry.identity.get_or_insert_with(LanguageIdentity::default);
+        entry.grammar = Some(slot);
         self.rebuild_grammar_snapshot();
         if !self.bundled_loaded(id) && !self.bundled_pending.contains(&id) {
             self.bundled_pending.push(id);
         }
-        Ok(bundle)
     }
 
-    /// Returns `true` if `name` has an attached tree-sitter grammar.
+    /// Whether `id` has a grammar that is loaded or yet to load.
+    pub fn grammar_available(&self, id: LanguageId) -> bool {
+        self.entry(id).grammar.is_some()
+    }
+
+    /// Whether `name` has a grammar that is loaded or yet to load.
     pub fn has_grammar(&self, name: &str) -> bool {
         self.id_of(name)
-            .is_some_and(|id| self.entry(id).grammar.is_some())
+            .is_some_and(|id| self.grammar_available(id))
     }
 
-    /// The grammar bundle attached to `id`, if any.
-    pub fn grammar(&self, id: LanguageId) -> Option<&Arc<GrammarBundle>> {
-        self.entry(id).grammar.as_ref()
+    /// `id`'s grammar bundle, if it is loaded.
+    #[cfg(any(test, feature = "test-util"))]
+    pub fn loaded_grammar(&self, id: LanguageId) -> Option<&Arc<GrammarBundle>> {
+        match &self.entry(id).grammar {
+            Some(GrammarSlot::Loaded(bundle)) => Some(bundle),
+            _ => None,
+        }
     }
 
-    /// Snapshot of grammared languages, keyed by name. Handed to the parse
-    /// worker so it can resolve an injection language name (a
-    /// dynamically-discovered info string) to its grammar without touching
-    /// main-thread state.
-    pub fn grammar_snapshot(&self) -> Arc<FxHashMap<String, Arc<GrammarBundle>>> {
+    pub fn grammar_snapshot(&self) -> Arc<GrammarSnapshot> {
         Arc::clone(&self.grammar_snapshot)
     }
 
     fn rebuild_grammar_snapshot(&mut self) {
-        self.grammar_snapshot = Arc::new(
-            self.entries
-                .iter()
-                .filter_map(|entry| {
-                    entry
-                        .grammar
-                        .as_ref()
-                        .map(|b| (entry.name.to_string(), Arc::clone(b)))
-                })
-                .collect(),
-        );
+        let grammars = self
+            .entries
+            .iter()
+            .enumerate()
+            .filter_map(|(index, entry)| {
+                let grammar = match entry.grammar.as_ref()? {
+                    GrammarSlot::Loaded(bundle) => SnapshotGrammar::Loaded(Arc::clone(bundle)),
+                    GrammarSlot::Registered(_) => {
+                        SnapshotGrammar::Unloaded(LanguageId::from_index(index))
+                    }
+                };
+                Some((Arc::clone(&entry.name), grammar))
+            })
+            .collect();
+        self.grammar_snapshot = Arc::new(GrammarSnapshot::new(grammars));
     }
 
     fn build_globs(&self) -> Result<(GlobSet, Vec<LanguageId>), globset::Error> {

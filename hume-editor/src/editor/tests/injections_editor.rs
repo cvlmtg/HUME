@@ -10,22 +10,32 @@ use hume_scripting::ScriptingHost;
 use hume_treesitter::registry::{OptionalQuery, QueryFiles};
 use test_fixtures::{
     grammar_parser_path, grammar_query_path, helix_query_path, require_fixture_file,
-    require_grammars,
+    require_grammars, require_helix_query,
 };
 
-/// Attach the fixture grammar `name` (source name == attach identity, true
-/// for every real PLUM install; there is no renaming split in production).
-/// `injections` selects between the real Helix-maintained injections.scm
-/// (what PLUM actually installs) and none.
-fn attach(ed: &mut Editor, name: &str, symbol: &str, injections: bool) {
+/// Give `name` its fixture grammar (source name == attach identity, true
+/// for every real PLUM install; there is no renaming split in production),
+/// registered only when `registered` lists it and attached otherwise.
+/// `helix` lists the real Helix-maintained queries (what PLUM actually
+/// installs) it gets besides its highlights.
+fn give_grammar(
+    ed: &mut Editor,
+    name: &str,
+    symbol: &str,
+    helix: &[OptionalQuery],
+    registered: &[&str],
+) {
     let mut queries = QueryFiles::new(grammar_query_path(name));
-    if let Some(path) = injections
-        .then(|| helix_query_path(name, OptionalQuery::Injections.file_name()))
-        .flatten()
-    {
-        queries = queries.with(OptionalQuery::Injections, path);
+    for &kind in helix {
+        if let Some(path) = helix_query_path(name, kind.file_name()) {
+            queries = queries.with(kind, path);
+        }
     }
-    attach_fixture_grammar_with(ed, name, symbol, &queries);
+    if registered.contains(&name) {
+        register_fixture_grammar_with(ed, name, symbol, &queries);
+    } else {
+        attach_fixture_grammar_with(ed, name, symbol, &queries);
+    }
 }
 
 /// Require this file's grammar fixtures; see
@@ -53,6 +63,27 @@ fn markdown_editor(source: &str) -> (Editor, hume_engine::pipeline::BufferId) {
 /// [`markdown_editor`] with a scripting host over `dirs`, so a language's
 /// bundled data file is read from `dirs.runtime`.
 fn markdown_editor_with(source: &str, dirs: &Dirs) -> (Editor, hume_engine::pipeline::BufferId) {
+    markdown_editor_registering(source, dirs, &[])
+}
+
+/// [`markdown_editor_with`] where each grammar `registered` lists is
+/// registered without loading, as startup does.
+fn markdown_editor_registering(
+    source: &str,
+    dirs: &Dirs,
+    registered: &[&str],
+) -> (Editor, hume_engine::pipeline::BufferId) {
+    markdown_editor_with_rust_queries(source, dirs, registered, &[])
+}
+
+/// [`markdown_editor_registering`] where rust also gets the Helix queries
+/// `rust_helix` lists.
+fn markdown_editor_with_rust_queries(
+    source: &str,
+    dirs: &Dirs,
+    registered: &[&str],
+    rust_helix: &[OptionalQuery],
+) -> (Editor, hume_engine::pipeline::BufferId) {
     let buf = crate::editor::buffer::Buffer::at_start(hume_editing::text::BufferText::from(source));
     let mut ed = Editor::for_testing(buf);
     let bid = ed.focused_buffer_id();
@@ -62,24 +93,31 @@ fn markdown_editor_with(source: &str, dirs: &Dirs) -> (Editor, hume_engine::pipe
         .languages
         .register_identity("markdown", &["md"], &[], &[])
         .unwrap();
-    attach(&mut ed, "markdown", "tree_sitter_markdown", true);
+    give_grammar(
+        &mut ed,
+        "markdown",
+        "tree_sitter_markdown",
+        &[OptionalQuery::Injections],
+        registered,
+    );
     ed.state
         .config
         .languages
         .register_identity("markdown.inline", &[], &[], &[])
         .unwrap();
-    attach(
+    give_grammar(
         &mut ed,
         "markdown.inline",
         "tree_sitter_markdown_inline",
-        false,
+        &[],
+        registered,
     );
     ed.state
         .config
         .languages
         .register_identity("rust", &["rs"], &[], &[])
         .unwrap();
-    attach(&mut ed, "rust", "tree_sitter_rust", false);
+    give_grammar(&mut ed, "rust", "tree_sitter_rust", rust_helix, registered);
 
     ed.scripting = Some(ScriptingHost::new(dirs));
     let lang = ed.state.config.languages.intern("markdown");
@@ -286,29 +324,13 @@ fn line_comment_primary(ed: &Editor, name: &str) -> Option<String> {
         .map(|tokens| tokens.primary().to_owned())
 }
 
-fn has_rust_layer(ed: &Editor, bid: hume_engine::pipeline::BufferId) -> bool {
-    let rust = ed.state.config.languages.id_of("rust");
-    ed.state
-        .buffers
-        .get(bid)
-        .syntax
-        .as_ref()
-        .and_then(|syn| syn.layers())
-        .is_some_and(|layers| {
-            layers
-                .layers
-                .iter()
-                .any(|l| Some(l.bundle.language) == rust)
-        })
-}
-
 #[test]
 fn an_injected_layer_loads_its_languages_bundled_data() {
     require_fixtures();
     let (ed, bid) = markdown_editor_with("```rust\nfn f() {}\n```\n", &repo_runtime_dirs());
 
     assert!(
-        has_rust_layer(&ed, bid),
+        has_layer_of(&ed, bid, "rust"),
         "premise: the fence is a rust layer"
     );
     assert!(bundled_loaded(&ed, "rust"));
@@ -320,9 +342,160 @@ fn an_attached_grammar_loads_its_languages_bundled_data_before_any_layer() {
     require_fixtures();
     let (ed, bid) = markdown_editor_with("# Title\n\nprose\n", &repo_runtime_dirs());
 
-    assert!(!has_rust_layer(&ed, bid), "premise: no rust layer");
+    assert!(!has_layer_of(&ed, bid, "rust"), "premise: no rust layer");
     assert!(bundled_loaded(&ed, "rust"));
     assert_eq!(line_comment_primary(&ed, "rust").as_deref(), Some("//"));
+}
+
+#[test]
+fn a_registered_grammar_loads_its_languages_bundled_data_before_it_loads() {
+    require_fixtures();
+    let (ed, _bid) =
+        markdown_editor_registering("# Title\n\nprose\n", &repo_runtime_dirs(), &["rust"]);
+    let languages = &ed.state.config.languages;
+    let rust = languages.id_of("rust").expect("rust is registered");
+
+    assert!(
+        languages.loaded_grammar(rust).is_none(),
+        "premise: nothing needed rust"
+    );
+    assert!(bundled_loaded(&ed, "rust"));
+    assert_eq!(line_comment_primary(&ed, "rust").as_deref(), Some("//"));
+}
+
+#[test]
+fn a_fence_of_a_registered_grammar_gets_its_layer_without_rebuilding_syntax() {
+    require_fixtures();
+    let (mut ed, bid) =
+        markdown_editor_registering("# T\n\n```rust\nfn f() {}\n```\n", &Dirs::none(), &["rust"]);
+    let rust = ed
+        .state
+        .config
+        .languages
+        .id_of("rust")
+        .expect("rust is registered");
+    assert!(
+        ed.state.config.languages.loaded_grammar(rust).is_some(),
+        "the parse that met the fence loaded rust"
+    );
+    assert!(!has_layer_of(&ed, bid, "rust"));
+    assert!(
+        has_layers(&ed, bid),
+        "the markdown layers stay while the fence resolves again"
+    );
+
+    ed.reparse_stale_buffers();
+
+    assert!(has_layer_of(&ed, bid, "rust"));
+}
+
+#[test]
+fn attaching_a_grammar_resolves_an_open_buffers_fences_without_rebuilding_syntax() {
+    require_fixtures();
+    require_grammars(&["json"]);
+    let (mut ed, bid) = markdown_editor_with("# T\n\n```json\n[1]\n```\n", &Dirs::none());
+    let json = attach_fixture_grammar(&mut ed, "json", "tree_sitter_json");
+
+    ed.sweep_buffers_for_grammars(vec![json.language]);
+
+    assert!(has_layers(&ed, bid), "the markdown layers stay");
+    ed.reparse_stale_buffers(); // posts the reparse
+    ed.reparse_stale_buffers(); // installs it
+    assert!(has_layer_of(&ed, bid, "json"));
+}
+
+/// `Editor::run` installs finished parses right before it dispatches a key,
+/// so a fence grammar such a parse fails to load is reported before the key's
+/// dispatch, not as a message of that key's own.
+#[test]
+fn a_fence_grammar_failing_in_a_parse_installed_before_a_key_is_not_its_message() {
+    require_fixtures();
+    let (mut ed, _bid) = markdown_editor("# T\n\n```json\n[1]\n```\n");
+    let json = ed
+        .state
+        .config
+        .languages
+        .register_grammar("json", GrammarSource::missing("json"));
+    ed.sweep_buffers_for_grammars(vec![json]);
+    ed.reparse_stale_buffers(); // posts the reparse; its result waits
+
+    ed.install_parse_results();
+    ed.handle_input(TerminalEvent::Key(key('l')));
+
+    assert_eq!(
+        super::scripting_grammar::grammar_warnings(&ed, "json").len(),
+        1
+    );
+    assert!(!ed.state.message_logged_this_input);
+}
+
+#[test]
+fn a_fence_grammar_that_fails_to_load_warns_once_and_keeps_the_layers() {
+    require_fixtures();
+    let (mut ed, bid) = markdown_editor("# T\n\n```json\n[1]\n```\n");
+    let json = ed
+        .state
+        .config
+        .languages
+        .register_grammar("json", GrammarSource::missing("json"));
+    ed.sweep_buffers_for_grammars(vec![json]);
+    for _ in 0..3 {
+        ed.reparse_stale_buffers();
+    }
+    type_text(&mut ed, "x");
+    ed.reparse_stale_buffers(); // posts the reparse of the edit
+    ed.reparse_stale_buffers(); // installs it
+
+    assert_eq!(
+        super::scripting_grammar::grammar_warnings(&ed, "json").len(),
+        1
+    );
+    assert!(!ed.state.config.languages.has_grammar("json"));
+    assert!(has_layers(&ed, bid), "the markdown layers stay");
+    assert!(!has_layer_of(&ed, bid, "json"));
+}
+
+/// Right after the parse that loads a fence's grammar, no committed layer
+/// has a textobjects query, yet a text object in the fence finds the
+/// fence's function.
+#[test]
+fn a_text_object_in_a_fence_whose_grammar_just_loaded_finds_its_function() {
+    require_fixtures();
+    require_helix_query("rust", OptionalQuery::TextObjects.file_name());
+    let (mut ed, bid) = markdown_editor_with_rust_queries(
+        "```rust\nfn f() {\n    1\n}\n```\n",
+        &Dirs::none(),
+        &["rust"],
+        &[OptionalQuery::TextObjects],
+    );
+    let syn = ed.state.buffers.get(bid).syntax.as_ref().expect("syntax");
+    assert!(
+        syn.reresolve_pending(),
+        "premise: rust loaded, the fence not yet resolved again"
+    );
+    assert!(!has_layer_of(&ed, bid, "rust"));
+
+    ed.feed_keys([key('j'), key('j'), key('m'), key('i'), key('f')]);
+
+    assert_eq!(
+        ed.current_view().primary().slice().to_string(),
+        "{\n    1\n}"
+    );
+}
+
+#[test]
+fn a_fence_of_a_registered_grammar_typed_just_before_toggling_takes_its_comment() {
+    require_fixtures();
+    let (mut ed, bid) = markdown_editor_registering("x\n", &repo_runtime_dirs(), &["rust"]);
+    type_text(&mut ed, "~~~rust\nf\n~~~\n");
+    ed.feed_keys([key(';'), key('k')]);
+
+    ed.feed_keys([key('G'), key('G')]);
+
+    assert_eq!(
+        ed.state.buffers.get(bid).text().to_string(),
+        "~~~rust\n// f\n~~~\nx\n"
+    );
 }
 
 #[test]
@@ -398,6 +571,7 @@ fn fence_edited_editor(foreground: bool) -> (Editor, hume_engine::pipeline::Buff
     if foreground {
         crate::editor::syntax::ensure_syntax_current(
             &mut ed.state,
+            &mut ed.view.registry,
             bid,
             crate::editor::syntax::SyntaxUse::InjectedLanguages,
         );

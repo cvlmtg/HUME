@@ -106,7 +106,7 @@ pub enum Direction {
 }
 
 /// A compiled `textobjects.scm` query plus a dense `(kind, span) → capture
-/// index` table, resolved once at attach time by splitting each capture
+/// index` table, resolved once, when the grammar loads, by splitting each capture
 /// name on its last `.` (`@parameter.inside.extra` would split on the last
 /// dot, but no installed query defines such a name). Names that don't
 /// parse as `<kind>.<span>` (`@_helper`, `@function.x`) map to nothing.

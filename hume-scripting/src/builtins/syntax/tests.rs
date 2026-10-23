@@ -359,10 +359,10 @@ fn register_grammar_hash_with_textobjects_only_populates_that_kind() {
     match lang_regs(&h)[0] {
         PendingLanguageReg::Grammar(reg) => {
             assert_eq!(
-                reg.queries.get(OptionalQuery::TextObjects),
+                reg.source.queries.get(OptionalQuery::TextObjects),
                 Some(std::path::Path::new("/tmp/textobjects.scm")),
             );
-            assert_eq!(reg.queries.get(OptionalQuery::Injections), None);
+            assert_eq!(reg.source.queries.get(OptionalQuery::Injections), None);
         }
         other => panic!("expected a Grammar entry, got: {other:?}"),
     }
@@ -394,7 +394,7 @@ fn register_grammar_false_optional_queries_yield_none() {
         match reg {
             PendingLanguageReg::Grammar(reg) => {
                 for kind in OptionalQuery::ALL {
-                    assert_eq!(reg.queries.get(kind), None, "{kind:?}");
+                    assert_eq!(reg.source.queries.get(kind), None, "{kind:?}");
                 }
             }
             other => panic!("expected a Grammar entry, got: {other:?}"),
@@ -501,17 +501,17 @@ fn register_grammar_resolves_relative_paths_against_the_editor_cwd() {
     }
     match lang_regs(&h)[0] {
         PendingLanguageReg::Grammar(reg) => {
-            assert_eq!(reg.grammar_path, std::path::Path::new("rust.so"));
+            assert_eq!(reg.source.path, std::path::Path::new("rust.so"));
             assert_eq!(
-                reg.queries.highlights(),
+                reg.source.queries.highlights(),
                 std::path::Path::new("highlights.scm")
             );
             assert_eq!(
-                reg.queries.get(OptionalQuery::Injections),
+                reg.source.queries.get(OptionalQuery::Injections),
                 Some(std::path::Path::new("injections.scm"))
             );
             assert_eq!(
-                reg.queries.get(OptionalQuery::TextObjects),
+                reg.source.queries.get(OptionalQuery::TextObjects),
                 Some(std::path::Path::new("textobjects.scm"))
             );
         }

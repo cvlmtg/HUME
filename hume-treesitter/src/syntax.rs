@@ -1,4 +1,3 @@
-use rustc_hash::FxHashMap;
 use std::sync::{Arc, Mutex};
 
 use crate::highlight::layer_highlights_for_line;
@@ -11,7 +10,7 @@ use hume_rope::column::ByteCol;
 
 use crate::edits::input_edits_from_changeset;
 use crate::parse_worker::{ParseDone, ParseOutcome, ParseRequest};
-use crate::registry::GrammarBundle;
+use crate::registry::{GrammarBundle, GrammarSnapshot, LanguageId};
 
 /// Scratch for `layer_highlights_for_line`'s overlap flattener, reused
 /// across lines and frames. Behind a `Mutex` because renders reach
@@ -22,6 +21,39 @@ pub(crate) struct FlattenScratch {
     raw: Vec<(ByteCol, ByteCol, u8, ScopeId)>,
     stack: Vec<(u8, u32, ScopeId)>,
     events: Vec<(ByteCol, bool, u32, u8, ScopeId)>,
+}
+
+/// What an inline parse resolves injections against, and loads the grammars
+/// they name through: a site whose grammar is registered but not loaded gets
+/// its layer once `load` loads it.
+pub trait InjectionLoader {
+    /// The snapshot a parse resolves injections against.
+    fn snapshot(&self) -> Arc<GrammarSnapshot>;
+    /// Load `ids`, the registered languages a parse found sites for but could
+    /// not inject. Whether any of them loaded.
+    fn load(&mut self, ids: &[LanguageId]) -> bool;
+}
+
+/// A fixed snapshot, which loads nothing.
+#[cfg(any(test, feature = "test-util"))]
+impl InjectionLoader for &Arc<GrammarSnapshot> {
+    fn snapshot(&self) -> Arc<GrammarSnapshot> {
+        Arc::clone(self)
+    }
+
+    fn load(&mut self, _ids: &[LanguageId]) -> bool {
+        false
+    }
+}
+
+impl<L: InjectionLoader + ?Sized> InjectionLoader for &mut L {
+    fn snapshot(&self) -> Arc<GrammarSnapshot> {
+        (**self).snapshot()
+    }
+
+    fn load(&mut self, ids: &[LanguageId]) -> bool {
+        (**self).load(ids)
+    }
 }
 
 /// Diagnostic info for a broken pending-edit chain: the recorded edits do not
@@ -65,10 +97,20 @@ impl LayersAt {
     }
 }
 
-/// Committed parse layers and the generation they describe.
+/// Committed parse layers, the generation they describe, and the
+/// generation of the grammar snapshot their injections were resolved with.
 struct Committed {
     layers: SyntaxLayers,
     at: LayersAt,
+    snapshot_generation: u64,
+}
+
+impl Committed {
+    /// Whether these layers were parsed for `generation`, with injections
+    /// resolved against a snapshot at least as new as `min_snapshot`.
+    fn parsed_for(&self, generation: u64, min_snapshot: u64) -> bool {
+        self.at == LayersAt::Parsed(generation) && self.snapshot_generation >= min_snapshot
+    }
 }
 
 /// Result of one `Syntax::frame_tick` call.
@@ -98,7 +140,8 @@ pub struct Syntax {
     /// or failed: the last generation a parse was attempted for, which
     /// `frame_tick` does not post again. `None` until `install` has run at
     /// least once or `attach` finds empty text, which keeps the first parse
-    /// of a text at generation 0 from reading as already attempted. Whether
+    /// of a text at generation 0 from reading as already attempted, and
+    /// again after [`Self::reresolve_injections`]. Whether
     /// the layers are up to date is [`Self::is_current`]'s question, not
     /// this one's.
     parsed_gen: Option<u64>,
@@ -113,6 +156,10 @@ pub struct Syntax {
     /// `config_gen` slot is needed: `bundle` never changes within one
     /// attachment, so the posted config is always `bundle.config_gen`.
     in_flight: Option<u64>,
+    /// The oldest grammar snapshot whose injection resolution is current:
+    /// layers resolved with an older one may lack a layer for a grammar
+    /// loaded since. Raised by [`Self::reresolve_injections`].
+    min_snapshot_generation: u64,
     /// Scratch for the overlap flattener, reused across `spans_for_line`
     /// calls. Lives here (not per-frame in the engine) because it survives
     /// `install`: `SyntaxLayers` is rebuilt wholesale on every install,
@@ -130,6 +177,7 @@ impl Syntax {
             parsed_gen: None,
             pending_edits: Vec::new(),
             in_flight: None,
+            min_snapshot_generation: 0,
             span_scratch: Mutex::new(FlattenScratch::default()),
         }
     }
@@ -142,7 +190,7 @@ impl Syntax {
         bundle: Arc<GrammarBundle>,
         bid: BufferId,
         text: &BufferText,
-        langs: &Arc<FxHashMap<String, Arc<GrammarBundle>>>,
+        langs: &Arc<GrammarSnapshot>,
     ) -> (Self, Option<ParseRequest>) {
         let generation = text.generation();
         let mut syn = Self::detached(Arc::clone(&bundle));
@@ -171,14 +219,11 @@ impl Syntax {
     /// so there is nothing to incrementally reparse, and the popup already
     /// persists across frames, so a one-frame async delay would buy nothing.
     ///
-    /// `bid` in the underlying parse request is never read back (this
-    /// bypasses the normal `bid`-keyed `ParseDone` routing entirely, calling
-    /// `install` directly), so `BufferId::default()` is fine. `langs` still
-    /// resolves any fenced-code injections the content contains.
+    /// `loader` resolves any fenced-code injections the content contains.
     pub fn attach_sync(
         bundle: Arc<GrammarBundle>,
         text: &BufferText,
-        langs: &Arc<FxHashMap<String, Arc<GrammarBundle>>>,
+        loader: impl InjectionLoader,
     ) -> Self {
         let mut syn = Self::detached(Arc::clone(&bundle));
 
@@ -186,7 +231,7 @@ impl Syntax {
             return syn;
         }
 
-        syn.ensure_current(BufferId::default(), text, langs);
+        syn.ensure_current(text, loader);
         syn
     }
 
@@ -210,7 +255,7 @@ impl Syntax {
         &mut self,
         bid: BufferId,
         text: &BufferText,
-        langs: &Arc<FxHashMap<String, Arc<GrammarBundle>>>,
+        langs: &Arc<GrammarSnapshot>,
     ) -> FrameTickOutcome {
         let generation = text.generation();
         if self.parsed_gen == Some(generation) {
@@ -246,7 +291,7 @@ impl Syntax {
         bid: BufferId,
         generation: u64,
         text: &BufferText,
-        langs: &Arc<FxHashMap<String, Arc<GrammarBundle>>>,
+        langs: &Arc<GrammarSnapshot>,
     ) -> ParseRequest {
         let prior = self
             .committed
@@ -290,15 +335,17 @@ impl Syntax {
     /// injections query runs again only over the bytes where its matches
     /// can have changed.
     ///
+    /// An injection site whose grammar `loader` loads gets its layer before
+    /// this returns.
+    ///
     /// Leaves `in_flight` untouched: an asynchronous request
     /// already posted for an earlier generation is left to arrive and be
     /// discarded by `install`'s own generation guard, rather than cancelled
     /// or raced here.
     pub fn ensure_current(
         &mut self,
-        bid: BufferId,
         text: &BufferText,
-        langs: &Arc<FxHashMap<String, Arc<GrammarBundle>>>,
+        loader: impl InjectionLoader,
     ) -> Option<ChainBreak> {
         let generation = text.generation();
         // See `is_current` for why `parsed_gen` alone is the wrong gate here.
@@ -307,12 +354,36 @@ impl Syntax {
         }
 
         let chain_break = self.bake(generation);
-        let req = self.build_request(bid, generation, text, langs);
+        self.parse_now(text, loader);
+        chain_break
+    }
+
+    /// Parse `text` on the calling thread against the committed layers and
+    /// install the result, parsing again while the install loads a grammar
+    /// the parse could not inject. Each round turns a registered grammar
+    /// loaded or failed, so the loop ends.
+    fn parse_now(&mut self, text: &BufferText, mut loader: impl InjectionLoader) {
+        let generation = text.generation();
         let mut parser = tree_sitter::Parser::new();
         let cancel = std::sync::atomic::AtomicBool::new(false);
-        let done = crate::parse_worker::do_parse(&mut parser, req, &cancel);
-        self.install(done, generation);
-        chain_break
+        loop {
+            // The result is installed here, so the request's `bid` is never read.
+            let req = self.build_request(BufferId::default(), generation, text, &loader.snapshot());
+            let done = crate::parse_worker::do_parse(&mut parser, req, &cancel);
+            if !self.install(done, generation, &mut loader) {
+                break;
+            }
+        }
+    }
+
+    /// Have the next parse resolve injections again with `langs`, a
+    /// snapshot in which a grammar has loaded since the committed layers
+    /// were resolved. The committed layers stay: the renderer keeps drawing
+    /// them, and the next parse reuses every layer of theirs that is still
+    /// valid, parsing only the layers the newly loaded grammars inject.
+    pub fn reresolve_injections(&mut self, langs: &GrammarSnapshot) {
+        self.min_snapshot_generation = self.min_snapshot_generation.max(langs.generation());
+        self.parsed_gen = None;
     }
 
     /// Bake `pending_edits` into the committed `layers`. No-op (and no
@@ -378,42 +449,60 @@ impl Syntax {
     /// in flight), a stale `generation` (text moved on since submission), or a
     /// `generation` whose layers are already installed (a synchronous
     /// `ensure_current` beat an asynchronous request to the same generation:
-    /// the late arrival is redundant, not stale, so it must not re-run the
-    /// `ParseOutcome::Ok` arm a second time). The already-installed check
-    /// runs after the `in_flight` clear above: an async result superseded
-    /// this way still answered its own posted request and must still clear
-    /// it, or a later `frame_tick` would dedup against a request that will
-    /// never resolve.
+    /// the late arrival is redundant or resolved fewer injections, so it must
+    /// not replace them). The already-installed check runs after the
+    /// `in_flight` clear above: an async result superseded this way still
+    /// answered its own posted request and must still clear it, or a later
+    /// `frame_tick` would dedup against a request that will never resolve.
     ///
-    /// "Already installed" is [`Self::is_current`]: the committed layers
-    /// were parsed for `generation`. Layers only baked to it are replaced,
-    /// whether a frame posted the request for them or an earlier parse of
-    /// that generation failed.
+    /// "Already installed" means the committed layers were parsed for
+    /// `generation` with a snapshot at least as new as `done`'s, current or
+    /// not. Layers only baked to it are replaced, whether a frame posted the
+    /// request for them or an earlier parse of that generation failed.
     ///
     /// A failed parse leaves the committed layers as they were and only
     /// marks the generation attempted (`parsed_gen`).
-    pub fn install(&mut self, done: ParseDone, current_generation: u64) {
+    ///
+    /// A result resolved with a snapshot older than
+    /// [`Self::reresolve_injections`] asked for still installs, as layers that
+    /// are not current, but leaves the generation unattempted, so the next
+    /// `frame_tick` posts a request that resolves injections again.
+    ///
+    /// When the installed parse found sites whose grammars are registered but
+    /// not loaded, `loader` loads them, and if any loads, injections resolve
+    /// again as [`Self::reresolve_injections`] does. Returns whether they do.
+    pub fn install(
+        &mut self,
+        done: ParseDone,
+        current_generation: u64,
+        mut loader: impl InjectionLoader,
+    ) -> bool {
         let ParseDone {
             generation,
             bundle,
+            snapshot_generation,
             outcome,
             ..
         } = done;
 
         if bundle.config_gen != self.bundle.config_gen {
-            return; // superseded attachment: must not clear the new one's in_flight
+            return false; // superseded attachment: must not clear the new one's in_flight
         }
         if self.in_flight == Some(generation) {
             self.in_flight = None;
         }
         if generation != current_generation {
-            return;
+            return false;
         }
-        if self.is_current(generation) {
-            return;
+        if self
+            .committed
+            .as_ref()
+            .is_some_and(|committed| committed.parsed_for(generation, snapshot_generation))
+        {
+            return false;
         }
 
-        match outcome {
+        let unloaded = match outcome {
             ParseOutcome::Ok(parsed) => {
                 let mut layers = Vec::with_capacity(1 + parsed.injected.len());
                 layers.push(SyntaxLayer {
@@ -435,15 +524,24 @@ impl Syntax {
                 self.committed = Some(Committed {
                     layers: SyntaxLayers::new(layers),
                     at: LayersAt::Parsed(generation),
+                    snapshot_generation,
                 });
                 // Every recorded edit ends at or before the current
                 // generation, which this result is for.
                 self.pending_edits.clear();
+                parsed.unloaded
             }
-            ParseOutcome::ParseFailed => {}
-        }
+            ParseOutcome::ParseFailed => Vec::new(),
+        };
 
-        self.parsed_gen = Some(generation);
+        if snapshot_generation >= self.min_snapshot_generation {
+            self.parsed_gen = Some(generation);
+        }
+        let reresolve = !unloaded.is_empty() && loader.load(&unloaded);
+        if reresolve {
+            self.reresolve_injections(&loader.snapshot());
+        }
+        reresolve
     }
 
     /// Committed layers for the renderer, current or not. `None` until the
@@ -462,10 +560,10 @@ impl Syntax {
         self.parsed_gen
     }
 
-    /// Whether the committed layers were parsed for `generation`: the
-    /// freshness question every reader means, the gate
-    /// [`Self::ensure_current`] skips its reparse on, and `install`'s
-    /// "already installed" guard.
+    /// Whether the committed layers were parsed for `generation`, with
+    /// injections resolved since the last [`Self::reresolve_injections`]:
+    /// the freshness question every reader means, and the gate
+    /// [`Self::ensure_current`] skips its reparse on.
     ///
     /// `parsed_gen` is the tempting wrong answer: a failed parse advances it
     /// over layers that predate the edit, or were only baked to it, and a
@@ -474,7 +572,16 @@ impl Syntax {
     pub fn is_current(&self, generation: u64) -> bool {
         self.committed
             .as_ref()
-            .is_some_and(|committed| committed.at == LayersAt::Parsed(generation))
+            .is_some_and(|committed| committed.parsed_for(generation, self.min_snapshot_generation))
+    }
+
+    /// Whether the committed layers resolved their injections with a
+    /// snapshot older than [`Self::reresolve_injections`] asked for, so a
+    /// parse can add a layer they lack.
+    pub fn reresolve_pending(&self) -> bool {
+        self.committed
+            .as_ref()
+            .is_some_and(|committed| committed.snapshot_generation < self.min_snapshot_generation)
     }
 
     /// The committed layers when they describe `generation` (see
@@ -490,7 +597,7 @@ impl Syntax {
     pub fn injected_shapes_resolved_afresh(
         &self,
         text: &BufferText,
-        langs: &FxHashMap<String, Arc<GrammarBundle>>,
+        langs: &GrammarSnapshot,
     ) -> Vec<crate::layers::LayerShape> {
         let layers = self
             .current_layers(text.generation())

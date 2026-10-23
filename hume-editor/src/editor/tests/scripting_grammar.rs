@@ -13,6 +13,7 @@ use hume_grid::Rect;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use super::before_save::warning_texts;
 use super::render_snapshot::render_to_styled_string;
 use test_fixtures::{grammar_parser_path, grammar_query_path, require_grammars};
 
@@ -120,6 +121,93 @@ fn attach_then_set_language_attaches_syntax() {
             .is_some(),
         "engine tree must be set"
     );
+}
+
+#[test]
+fn opening_a_buffer_loads_its_registered_grammar() {
+    require_grammars(&["json"]);
+    let mut ed = editor_from("-[{]>\"x\": 1}\n");
+    let bid = ed.focused_buffer_id();
+    ed.state
+        .config
+        .languages
+        .register_identity("json", &["json"], &[], &[])
+        .unwrap();
+    let lang = register_fixture_grammar(&mut ed, "json", "tree_sitter_json");
+    assert!(
+        ed.state.config.languages.loaded_grammar(lang).is_none(),
+        "premise: registered, not loaded"
+    );
+    super::language::attach_host(&mut ed, "");
+
+    ed.set_buffer_language(bid, Some(lang));
+    ed.reparse_stale_buffers();
+
+    assert!(ed.state.config.languages.loaded_grammar(lang).is_some());
+    assert!(has_layers(&ed, bid));
+}
+
+#[test]
+fn a_buffer_over_the_size_cap_loads_no_grammar() {
+    require_grammars(&["json"]);
+    let mut ed = editor_from("-[{]>\"x\": 1}\n");
+    let bid = ed.focused_buffer_id();
+    ed.state
+        .config
+        .languages
+        .register_identity("json", &["json"], &[], &[])
+        .unwrap();
+    let lang = register_fixture_grammar(&mut ed, "json", "tree_sitter_json");
+    super::language::attach_host(&mut ed, "");
+    ed.state.settings.syntax_highlight_max_bytes = 1;
+
+    ed.set_buffer_language(bid, Some(lang));
+    ed.reparse_stale_buffers();
+
+    assert!(ed.state.config.languages.loaded_grammar(lang).is_none());
+    assert!(ed.state.buffers.get(bid).syntax.is_none());
+}
+
+/// The warnings reporting that `name`'s grammar failed to load.
+pub(super) fn grammar_warnings(ed: &Editor, name: &str) -> Vec<String> {
+    let prefix = format!("grammar '{name}': ");
+    warning_texts(ed)
+        .into_iter()
+        .filter(|text| text.starts_with(&prefix))
+        .collect()
+}
+
+#[test]
+fn a_registered_grammar_that_fails_to_load_warns_once() {
+    let mut ed = editor_from("-[{]>}\n");
+    let bid = ed.focused_buffer_id();
+    ed.state
+        .config
+        .languages
+        .register_identity("json", &["json"], &[], &[])
+        .unwrap();
+    let lang = ed
+        .state
+        .config
+        .languages
+        .register_grammar("json", GrammarSource::missing("json"));
+    super::language::attach_host(&mut ed, "");
+    assert!(
+        grammar_warnings(&ed, "json").is_empty(),
+        "registering opens nothing"
+    );
+
+    ed.set_buffer_language(bid, Some(lang));
+    for _ in 0..3 {
+        ed.reparse_stale_buffers();
+    }
+    ed.set_buffer_language(bid, None);
+    ed.set_buffer_language(bid, Some(lang));
+    ed.reparse_stale_buffers();
+
+    assert_eq!(grammar_warnings(&ed, "json").len(), 1);
+    assert!(!ed.state.config.languages.has_grammar("json"));
+    assert!(ed.state.buffers.get(bid).syntax.is_none());
 }
 
 /// `reset_config_state` (via `BufferStore::clear_languages_all`) bypasses
@@ -390,6 +478,29 @@ fn language_has_grammar_false_for_identity_only_true_after_attach() {
         ed.state.config.languages.has_grammar("json"),
         "has_grammar must be true after attach"
     );
+}
+
+#[test]
+fn language_has_grammar_is_true_once_registered_and_false_after_a_failed_load() {
+    let mut ed = editor_from("-[a]>b\n");
+    let id = ed
+        .state
+        .config
+        .languages
+        .register_grammar("json", GrammarSource::missing("json"));
+    assert!(
+        ed.state.config.languages.has_grammar("json"),
+        "a registered grammar counts before it loads"
+    );
+
+    let loaded = ed
+        .state
+        .config
+        .languages
+        .load_grammar(id, &mut ed.view.registry);
+
+    assert!(loaded.is_none());
+    assert!(!ed.state.config.languages.has_grammar("json"));
 }
 
 // ---------------------------------------------------------------------------

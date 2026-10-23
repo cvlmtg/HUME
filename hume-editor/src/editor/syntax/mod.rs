@@ -1,62 +1,26 @@
 //! Editor-side glue for the language registry: wiring buffer language changes
 //! to hooks, lazy-plugin activation, and tree-sitter syntax setup.
 //!
-//! The registry itself, grammar attachment, and language detection live in
-//! `hume_treesitter::registry`; this module only owns what's specific to a
-//! live `Editor` (message log, hooks, plugin activation).
+//! The registry itself, grammar registration and loading, and language
+//! detection live in `hume_treesitter::registry`; this module only owns what's
+//! specific to a live `Editor` (message log, hooks, plugin activation, and
+//! loading a grammar when a buffer first needs it).
 
+mod loads;
 mod parse;
 
+pub(in crate::editor) use loads::GrammarLoads;
 pub(in crate::editor) use parse::{SyntaxUse, ensure_syntax_current};
 
-use hume_engine::pipeline::{BufferId, EngineView};
-use hume_scripting::{ConfigOrigin, GrammarReg};
+use hume_engine::pipeline::BufferId;
+use hume_scripting::ConfigOrigin;
 use hume_treesitter::registry::{
     ConfigureOutcome, ConfiguredBy, LanguageFields, LanguageId, detect_language,
 };
 
 use super::Editor;
-use super::EditorState;
 use super::event::EditorEvent;
 use super::host_impl::EditorHostImpl;
-
-/// Compile and attach the grammar `reg` describes, returning the language's
-/// interned id.
-///
-/// The one implementation of `register-grammar!`. Both entry points reach it
-/// (`EditorHostImpl::attach_grammar` for a command-mode call, and
-/// `apply_pending_language_regs` for the init-mode effect), so the
-/// user-facing error prefix exists once.
-///
-/// Free function over `(&mut EditorState, &mut EngineView)` rather than an
-/// `Editor` method because `EditorHostImpl` borrows those two fields
-/// separately and never holds an `Editor`, the same constraint that shapes
-/// [`ensure_syntax_current`].
-///
-/// `Err` is the finished message, prefix included: the command path lifts it
-/// into a Steel error, the init path logs it as a warning.
-pub(in crate::editor) fn attach_grammar_from_reg(
-    state: &mut EditorState,
-    view: &mut EngineView,
-    reg: &GrammarReg,
-) -> Result<LanguageId, String> {
-    state
-        .config
-        .languages
-        .attach_grammar(
-            &reg.name,
-            &reg.grammar_path,
-            &reg.symbol,
-            &reg.queries,
-            &mut view.registry,
-        )
-        .map_err(|e| format!("register-grammar! '{}': {e}", reg.name))?;
-    Ok(state
-        .config
-        .languages
-        .id_of(&reg.name)
-        .expect("attach_grammar interns the name"))
-}
 
 impl Editor {
     /// Set the language identity for buffer `bid`, via plain detection:
@@ -150,8 +114,9 @@ impl Editor {
     }
 
     /// Read `id`'s bundled data file (`<runtime>/scheme/languages/<name>.scm`)
-    /// the first time a buffer uses the language or its grammar is attached
-    /// in this configuration, and fill each field configuration left unset.
+    /// the first time a buffer uses the language or a grammar is registered
+    /// for it in this configuration, and fill each field configuration left
+    /// unset.
     /// A missing file or runtime directory leaves the language without
     /// bundled data; a malformed file is reported and does the same. Either
     /// way the file is not read again until `:reload-config` rebuilds the
@@ -307,12 +272,12 @@ impl Editor {
                     };
                     self.configure_language(&name, fields, by);
                 }
-                PendingLanguageReg::Grammar(reg) => {
-                    match attach_grammar_from_reg(&mut self.state, &mut self.view, &reg) {
-                        Ok(id) => grammar_sweeps.push(id),
-                        Err(e) => self.state.message_log.push(super::Severity::Warning, e),
-                    }
-                }
+                PendingLanguageReg::Grammar(reg) => grammar_sweeps.push(
+                    self.state
+                        .config
+                        .languages
+                        .register_grammar(&reg.name, reg.source),
+                ),
             }
         }
         if any_identity && let Err(e) = self.state.config.languages.rebuild_glob_set() {

@@ -11,7 +11,7 @@ regeneration run order, not repeated here). The LSP server catalogs live with th
 | `prelude.scm` | hand-written: `syntax-rules` sugar over the raw builtins, and the `insert-register` command with its default keys | startup, see below |
 | `shells.scm` | hand-written: the shell dialects and the `\|` line's completion source | startup, see below |
 | `languages.scm` | generated: language detection data | startup, see below |
-| `languages/<name>.scm` | generated: one language's data file | when the language is first used or its grammar is attached |
+| `languages/<name>.scm` | generated: one language's data file | when the language is first used or a grammar is registered for it |
 | `grammars.scm` | hand-written: registers already-compiled grammars | startup, see below |
 | `helix-pin.scm` | hand-written: pinned `helix-editor/helix` commit SHA | input to `sync-grammars.py` |
 
@@ -33,7 +33,7 @@ silent no-op, not an error. Only a file that exists but fails to parse is report
 
 The files in `languages/` are never evaluated. They are parsed as data by one reader in
 `builtins/bootstrap.scm`, which also checks the record format below. The editor calls it when a
-buffer is first assigned a language or the language's grammar is attached, and the
+buffer is first assigned a language or a grammar is registered for the language, and the
 `bundled-language-grammar` and `bundled-grammar-languages` functions are built on it, so a plugin
 reads the files through those functions rather than opening them itself.
 
@@ -156,11 +156,15 @@ absent from `init.scm`.
   file per installed grammar, named after its language, and doesn't exist until something is
   installed, so a fresh setup settles the whole question with one `path-exists?`. Startup
   reads the data file of each installed language for its grammar's C symbol, and no other.
+- **Registering opens nothing.** A grammar registered here has its library loaded and its
+  queries compiled the first time a buffer of its language, or an embedded block naming it,
+  needs it, so startup pays nothing for grammars a session never uses. A library or query file
+  that fails to load is reported then, once, as a warning naming the grammar.
 - **The platform-extension filter doubles as existence proof.** `read-dir` already proves a
   file exists; matching it against the platform's shared-library extension (`.dylib`/`.dll`/
   `.so`, from `(current-os!)`, defaulting to `.so` for anything unrecognized) does the whole
   job a second `stat` would, and drops a stale cross-platform file (a leftover `.so` on macOS)
-  before it can reach `dlopen`.
+  before it is registered.
 - **Two distinct failure modes, two responses.** A compiled grammar whose language has no
   bundled grammar (dropped by a HUME update) is an orphan: silently skipped, expected. A
   language with a bundled grammar whose compiled file is missing its `highlights.scm` (e.g. the

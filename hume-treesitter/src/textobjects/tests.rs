@@ -1,12 +1,10 @@
 use std::sync::Arc;
 
-use rustc_hash::FxHashMap;
-
 use hume_editing::text::BufferText;
 use test_fixtures::{require_grammars, require_helix_query};
 
 use super::*;
-use crate::registry::{GrammarBundle, OptionalQuery};
+use crate::registry::{GrammarBundle, GrammarSnapshot, OptionalQuery};
 use crate::syntax::Syntax;
 use crate::test_support::{empty_langs, fresh_bid, make_bundle};
 use hume_editing::changeset::ChangeSetBuilder;
@@ -583,9 +581,10 @@ fn movement_capture_priority_affects_navigation_not_selection() {
 fn collect_merges_spans_across_root_and_injected_layers() {
     let markdown = markdown_bundle_with_helix_injections();
     let rust = rust_bundle_with_real_textobjects();
-    let mut langs: FxHashMap<String, Arc<GrammarBundle>> = FxHashMap::default();
-    langs.insert("rust".to_owned(), Arc::clone(&rust));
-    let langs = Arc::new(langs);
+    let langs = Arc::new(GrammarSnapshot::from_iter([(
+        "rust".to_owned(),
+        Arc::clone(&rust),
+    )]));
 
     let source = "prose here\n\n```rust\nuse std::fmt;\n\nfn foo() {\n    1\n}\n```\n";
     let text = BufferText::from(source);

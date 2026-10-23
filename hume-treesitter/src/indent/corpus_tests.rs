@@ -1,15 +1,13 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use rustc_hash::FxHashMap;
-
 use hume_editing::text::BufferText;
 use hume_rope::line::ContentLine;
 use hume_rope::offset::ExclusiveRange;
 use test_fixtures::{require_grammars, require_helix_indent_corpus, require_helix_query};
 
 use super::*;
-use crate::registry::OptionalQuery;
+use crate::registry::{GrammarSnapshot, OptionalQuery};
 use crate::syntax::Syntax;
 use crate::test_support::make_bundle;
 
@@ -121,7 +119,7 @@ fn the_indent_corpus_indents_as_written() {
             "",
             &queries,
         );
-        let langs = Arc::new(FxHashMap::from_iter([(
+        let langs = Arc::new(GrammarSnapshot::from_iter([(
             corpus.name.to_owned(),
             Arc::clone(&bundle),
         )]));

@@ -28,7 +28,7 @@ architecture and the *why* behind it, not a build log.
   - **wiring** (registry, dispatch funnel, keymap) lives in `hume-editor`.
 - Fail-soft exactly where the lexical objects already were: no grammar, no `textobjects.scm`, no
   match → the selection is left unchanged, silently. Fail-loud everywhere else: a broken
-  `textobjects.scm` fails the whole grammar attach (the policy `injections.scm` already has); a
+  `textobjects.scm` fails the whole grammar load (the policy `injections.scm` already has); a
   span that does not fit the text is a bug, not a case to paper over.
 - Helix's query files are consumed as written. HUME does not second-guess what a capture spans
   (`function.inside` is the body *including* its braces, because that is the node the query
@@ -61,8 +61,8 @@ highlighter — every per-language query a layer may need (a `textobjects.scm`, 
   `from_capture_name` pair, from one macro-driven variant↦name list per type, so a variant added to
   either enum can't drift out of sync with the array `TextObjectsQuery`'s capture table is sized
   and indexed by.
-- `TextObjectsQuery` resolves a compiled query's capture names once, at attach time, into a dense
-  `(kind, span) → capture index` table by splitting each name on its last `.`
+- `TextObjectsQuery` resolves a compiled query's capture names once, when the grammar loads, into
+  a dense `(kind, span) → capture index` table by splitting each name on its last `.`
   (`@parameter.inside`); names that don't parse (`@_helper`, `@function.x`) map to nothing.
 - A structural object is the **hull** (min start ‥ max end) of every node one match captured
   under a `<kind>.<span>` name — Helix's query files put one capture name on several nodes of a

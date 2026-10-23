@@ -8,7 +8,7 @@ use hume_platform::wake::{counting_wake, no_op_wake};
 
 use super::ParseBackend as _;
 use super::{BufferText, ParseOutcome, ParseRequest, ThreadedParseBackend, coalesce_one};
-use crate::registry::GrammarBundle;
+use crate::registry::{GrammarBundle, GrammarSnapshot};
 use crate::test_support::{empty_langs, fresh_bid};
 use test_fixtures::require_grammars;
 
@@ -241,4 +241,34 @@ fn parse_completion_fires_waker() {
     rx_wake
         .recv_timeout(Duration::from_secs(1))
         .expect("waker must fire after the worker posts a result");
+}
+
+#[test]
+fn coalesce_one_same_gen_newer_snapshot_replaces() {
+    require_grammars(&["json"]);
+    let bid = fresh_bid();
+    let bundle = make_bundle("json", "tree_sitter_json");
+    let request = |langs: Arc<GrammarSnapshot>| ParseRequest {
+        bid,
+        generation: 5,
+        bundle: Arc::clone(&bundle),
+        text: BufferText::from("{}\n"),
+        prior: None,
+        langs,
+    };
+    let snapshot = || Arc::new(GrammarSnapshot::default().with_unloaded("rust", bundle.language));
+    let older = snapshot();
+    let newer = snapshot();
+    let mut batch: FxHashMap<BufferId, ParseRequest> = FxHashMap::default();
+
+    coalesce_one(&mut batch, request(Arc::clone(&older)));
+    coalesce_one(&mut batch, request(Arc::clone(&newer)));
+    assert_eq!(batch[&bid].langs.generation(), newer.generation());
+
+    coalesce_one(&mut batch, request(older));
+    assert_eq!(
+        batch[&bid].langs.generation(),
+        newer.generation(),
+        "an older snapshot does not replace a newer one"
+    );
 }

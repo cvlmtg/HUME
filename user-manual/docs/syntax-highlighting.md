@@ -16,7 +16,8 @@ cleanup commands depend on:
 
 Once a grammar is installed, though, PLUM is no longer in the picture: HUME registers every
 already-compiled grammar itself at startup, so highlighting keeps working even if you later
-remove PLUM from `init.scm`.
+remove PLUM from `init.scm`. Each grammar loads the first time a file or an embedded block
+needs it, so installed grammars you don't use cost nothing at startup.
 
 ## Prerequisites
 
@@ -58,7 +59,7 @@ To install several grammars at once (skipping any already compiled), call it fro
 (call! "plum/ensure-grammars" '("rust" "toml" "python"))
 ```
 
-After the first install, launching HUME just loads the compiled grammars silently; there's nothing more to do.
+After the first install, there's nothing more to do: HUME loads each compiled grammar the first time a file or an embedded block needs it.
 
 ## Embedded languages
 
@@ -177,6 +178,8 @@ If it also defines how new lines are indented, pass its indents query with `#:in
 ```
 
 Omit all keywords for a language with nothing to offer there.
+
+Registered from `init.scm`, a grammar loads the first time a file or an embedded block needs it. If its library or a query file can't be loaded, `:messages` says so then. Registered from a command, it loads right away, and the command fails with the reason.
 
 ## Manage installed grammars
 

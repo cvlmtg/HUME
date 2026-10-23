@@ -284,18 +284,18 @@ impl LanguageHost for MockHost {
     // would show: that text is platform- and locale-dependent and not worth
     // faking byte-for-byte for an existence check.
     fn attach_grammar(&mut self, reg: &hume_scripting::GrammarReg) -> Result<(), String> {
-        if !reg.grammar_path.exists() {
+        if !reg.source.path.exists() {
             return Err(format!(
                 "register-grammar! '{}': grammar load failed: failed to open grammar library: {}",
                 reg.name,
-                reg.grammar_path.display()
+                reg.source.path.display()
             ));
         }
-        if !reg.queries.highlights().exists() {
+        if !reg.source.queries.highlights().exists() {
             return Err(format!(
                 "register-grammar! '{}': highlights.scm read failed: {}",
                 reg.name,
-                reg.queries.highlights().display()
+                reg.source.queries.highlights().display()
             ));
         }
         self.grammars.insert(reg.name.clone());

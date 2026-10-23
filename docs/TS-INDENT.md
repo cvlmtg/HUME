@@ -38,7 +38,7 @@ contract. The code in `hume-treesitter/src/indent.rs` and `indent/` implements i
   `PlannedLine` type, so a pre-insertion line cannot be compared with one.
 - **Fail soft to copy, fail loud on bugs.** No grammar, no `indents.scm`, a stale or failed tree,
   or a split inside a multi-line literal gives `None`, and the caller keeps the copied indent.
-  A broken `indents.scm` fails the grammar attach, as a broken `textobjects.scm` does. A tree
+  A broken `indents.scm` fails the grammar load, as a broken `textobjects.scm` does. A tree
   reaching past the text's end panics: it was not parsed from that text.
 
 ## Engine

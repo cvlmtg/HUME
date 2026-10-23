@@ -27,7 +27,7 @@ pub(in crate::editor) fn cmd_toggle_comment(
 ) -> Result<(), CommandError> {
     ensure_writable(state, view, t)?;
     let bid = t.bid(view);
-    ensure_syntax_current(state, bid, SyntaxUse::InjectedLanguages);
+    ensure_syntax_current(state, &mut view.registry, bid, SyntaxUse::InjectedLanguages);
     let buf = state.buffers.get(bid);
     let multi_line = if buf.overrides.comment_prefer_line(&state.settings) {
         MultiLineComments::Line

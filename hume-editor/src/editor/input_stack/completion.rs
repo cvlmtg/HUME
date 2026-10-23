@@ -12,9 +12,8 @@
 use termina::event::KeyCode;
 
 use hume_engine::pipeline::{BufferId, EngineView, PaneId, ScreenLayout};
-use hume_engine::theme::{ScopeRegistry, Theme};
+use hume_engine::theme::Theme;
 use hume_engine::types::EditorMode;
-use hume_treesitter::registry::LanguageRegistry;
 use hume_ui::popup::SideSlot;
 
 use super::super::completion::{
@@ -23,6 +22,7 @@ use super::super::completion::{
 use super::super::error::CommandError;
 use super::super::keymap::{BindMode, WalkResult};
 use super::super::popup_syntax::{build_markup_syntax, popup_content};
+use super::super::syntax::GrammarLoads;
 use super::super::{Editor, EditorState, Severity};
 use super::paste::PastedText;
 use super::placement::popup_placement;
@@ -93,18 +93,17 @@ impl DocView {
     fn content_for(
         &mut self,
         text: Documentation,
-        languages: &LanguageRegistry,
+        loads: &mut GrammarLoads<'_>,
         theme: &mut Theme,
-        registry: &ScopeRegistry,
     ) -> usize {
         if let Some(i) = self.built.iter().position(|(built, _)| *built == text) {
             return i;
         }
         let syntax = text
             .markdown
-            .then(|| build_markup_syntax(languages, "markdown", &text.text))
+            .then(|| build_markup_syntax(loads, "markdown", &text.text))
             .flatten();
-        let content = popup_content(&text.text, syntax.as_ref(), theme, registry);
+        let content = popup_content(&text.text, syntax.as_ref(), theme, loads.scopes());
         self.built.push((text, content));
         self.built.len() - 1
     }
@@ -284,7 +283,6 @@ impl Editor {
         &mut self,
         slot: Option<SideSlot>,
     ) -> Option<hume_ui::popup::PopupState> {
-        let languages = &self.state.config.languages;
         let (_, bid) = self.state.input.completion_owner()?;
         let BufferCompletionLayer { session, doc } =
             self.state.input.find_mut::<BufferCompletionLayer>()?;
@@ -298,10 +296,11 @@ impl Editor {
                 .buffers
                 .get(bid)
                 .language
-                .map_or("", |id| languages.name_of(id));
-            doc.current = item.doc_box_text(fence_lang).map(|text| {
-                doc.content_for(text, languages, &mut self.view.theme, &self.view.registry)
-            });
+                .map_or("", |id| self.state.config.languages.name_of(id));
+            let text = item.doc_box_text(fence_lang);
+            let mut loads =
+                GrammarLoads::new(&mut self.state.config.languages, &mut self.view.registry);
+            doc.current = text.map(|text| doc.content_for(text, &mut loads, &mut self.view.theme));
             doc.shown = shown;
             doc.scroll = 0;
         }

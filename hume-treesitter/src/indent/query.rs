@@ -78,7 +78,7 @@ impl Predicate {
     }
 }
 
-/// A compiled `indents.scm`: the query plus, resolved once at attach, the
+/// A compiled `indents.scm`: the query plus, resolved once at load, the
 /// engine role of each capture, whether each pattern sets the header scope,
 /// each pattern's engine-evaluated predicates, and the texts that could
 /// still grow into another of the grammar's tokens. Tree-sitter evaluates

@@ -41,11 +41,13 @@ fn attach_grammar_errs_for_bad_path() {
     let err = host
         .attach_grammar(&hume_scripting::GrammarReg {
             name: "rust".into(),
-            grammar_path: Path::new("/no/such/lib.dylib").to_path_buf(),
-            symbol: "rust_language".into(),
-            queries: hume_treesitter::registry::QueryFiles::new(
-                Path::new("/no/such/highlights.scm").to_path_buf(),
-            ),
+            source: hume_treesitter::registry::GrammarSource {
+                path: Path::new("/no/such/lib.dylib").to_path_buf(),
+                symbol: "rust_language".into(),
+                queries: hume_treesitter::registry::QueryFiles::new(
+                    Path::new("/no/such/highlights.scm").to_path_buf(),
+                ),
+            },
         })
         .unwrap_err();
     assert!(

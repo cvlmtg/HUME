@@ -241,3 +241,40 @@ fn markdown_flag_without_a_registered_grammar_falls_back_to_plain() {
         "plain fallback still renders the text itself"
     );
 }
+
+#[test]
+fn a_markdown_popup_loads_the_grammars_its_fences_need() {
+    require_grammars(&["markdown", "rust"]);
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    register_fixture_grammar_with(
+        &mut ed,
+        "markdown",
+        "tree_sitter_markdown",
+        &markdown_query_files(),
+    );
+    let rust = register_fixture_grammar(&mut ed, "rust", "tree_sitter_rust");
+    run(
+        &mut ed,
+        tmp.path(),
+        r##"(define-typed-command! "go" "" (lambda (pane) (show-popup! pane "```rust\nfn f() {}\n```\n" #:lang "markdown")))"##,
+    );
+
+    type_cmd(&mut ed, ":go");
+
+    let popup = ed.state.input.popup().expect("the popup shows");
+    let layers = popup
+        .syntax
+        .as_ref()
+        .expect("markdown loads for the popup")
+        .syntax
+        .layers()
+        .expect("the content is parsed");
+    assert!(
+        layers
+            .layers
+            .iter()
+            .any(|layer| layer.bundle.language == rust),
+        "the fence is parsed with rust"
+    );
+}

@@ -7,6 +7,7 @@ use crate::editor::input_stack::{
     BaseLayer, DrawerLayer, DrawerSelect, MenuLayer, PickerSession, PopupLayer,
 };
 use crate::editor::input_stack::{menu, picker, prompt};
+use crate::editor::syntax::GrammarLoads;
 use hume_scripting::PaneHandle;
 use hume_scripting::host::{
     BufferHost, DrawerItems, HostToken, LivePickerOpts, PickerFeedMode, PickerOpts,
@@ -64,12 +65,10 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         } else {
             hume_ui::popup::PopupLayout::Cursor
         };
+        let mut loads =
+            GrammarLoads::new(&mut self.state.config.languages, &mut self.view.registry);
         let syntax = lang.and_then(|lang| {
-            crate::editor::popup_syntax::build_markup_syntax(
-                &self.state.config.languages,
-                &lang,
-                &text,
-            )
+            crate::editor::popup_syntax::build_markup_syntax(&mut loads, &lang, &text)
         });
         let model = PopupLayer::new(
             text,

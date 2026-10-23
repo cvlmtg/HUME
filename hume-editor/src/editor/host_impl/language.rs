@@ -7,7 +7,11 @@ use hume_scripting::host::LanguageHost;
 
 impl<'a> LanguageHost for EditorHostImpl<'a> {
     fn attach_grammar(&mut self, reg: &GrammarReg) -> Result<(), String> {
-        crate::editor::syntax::attach_grammar_from_reg(self.state, self.view, reg)?;
+        self.state
+            .config
+            .languages
+            .attach_grammar(&reg.name, &reg.source, &mut self.view.registry)
+            .map_err(|e| format!("register-grammar! '{}': {e}", reg.name))?;
         Ok(())
     }
 

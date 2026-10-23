@@ -12,7 +12,9 @@ use tree_sitter::QueryErrorKind;
 
 use super::query::IndentCapture;
 use super::*;
-use crate::registry::{GrammarBundle, OptionalQuery, RegisterError, compile_queries};
+use crate::registry::{
+    GrammarBundle, GrammarSnapshot, OptionalQuery, RegisterError, compile_queries,
+};
 use crate::syntax::Syntax;
 use crate::test_support::{empty_langs, make_bundle, open_grammar};
 
@@ -63,7 +65,7 @@ fn width_in(
 /// [`width_in`], parsing injected layers with `langs`.
 fn width_in_with(
     bundle: &Arc<GrammarBundle>,
-    langs: &Arc<rustc_hash::FxHashMap<String, Arc<GrammarBundle>>>,
+    langs: &Arc<GrammarSnapshot>,
     text: &BufferText,
     split: ClusterStart,
     tw: u8,
@@ -82,7 +84,7 @@ fn width(bundle: &Arc<GrammarBundle>, src: &str, tw: u8) -> Option<u32> {
 /// layers with `langs`.
 fn break_indent_with(
     bundle: &Arc<GrammarBundle>,
-    langs: &Arc<rustc_hash::FxHashMap<String, Arc<GrammarBundle>>>,
+    langs: &Arc<GrammarSnapshot>,
     src: &str,
     tw: u8,
 ) -> Option<BreakIndent> {
@@ -783,12 +785,7 @@ fn a_wide_blank_baseline_is_measured_in_display_columns() {
 
 /// A markdown bundle injecting fenced code, and `langs` mapping `rust` to
 /// a rust bundle with `indents`.
-fn markdown_with_rust(
-    indents: &str,
-) -> (
-    Arc<GrammarBundle>,
-    Arc<rustc_hash::FxHashMap<String, Arc<GrammarBundle>>>,
-) {
+fn markdown_with_rust(indents: &str) -> (Arc<GrammarBundle>, Arc<GrammarSnapshot>) {
     require_grammars(&["markdown"]);
     let injections = std::fs::read_to_string(require_helix_query(
         "markdown",
@@ -801,7 +798,7 @@ fn markdown_with_rust(
         "",
         &[(OptionalQuery::Injections, &injections)],
     );
-    let langs = Arc::new(rustc_hash::FxHashMap::from_iter([(
+    let langs = Arc::new(GrammarSnapshot::from_iter([(
         "rust".to_owned(),
         bundle("rust", indents),
     )]));
@@ -811,10 +808,7 @@ fn markdown_with_rust(
 /// A rust bundle with the fixture injections and indents queries, and `langs`
 /// mapping `rust` to it, so a macro's arguments parse as a nested rust
 /// layer.
-fn rust_with_macro_layers() -> (
-    Arc<GrammarBundle>,
-    Arc<rustc_hash::FxHashMap<String, Arc<GrammarBundle>>>,
-) {
+fn rust_with_macro_layers() -> (Arc<GrammarBundle>, Arc<GrammarSnapshot>) {
     require_grammars(&["rust"]);
     let injections = std::fs::read_to_string(require_helix_query(
         "rust",
@@ -830,7 +824,7 @@ fn rust_with_macro_layers() -> (
             (OptionalQuery::Indents, &fixture_indents("rust")),
         ],
     );
-    let langs = Arc::new(rustc_hash::FxHashMap::from_iter([(
+    let langs = Arc::new(GrammarSnapshot::from_iter([(
         "rust".to_owned(),
         Arc::clone(&rust),
     )]));
@@ -889,10 +883,7 @@ fn hybrid_baselines_are_compared_in_the_merged_layer() {
 
 /// A rust bundle injecting every string body as C, and `langs` mapping
 /// `c` to a bundle with the fixture C indents query.
-fn rust_with_c_strings() -> (
-    Arc<GrammarBundle>,
-    Arc<rustc_hash::FxHashMap<String, Arc<GrammarBundle>>>,
-) {
+fn rust_with_c_strings() -> (Arc<GrammarBundle>, Arc<GrammarSnapshot>) {
     require_grammars(&["rust"]);
     let rust = make_bundle(
         "rust",
@@ -903,7 +894,7 @@ fn rust_with_c_strings() -> (
             r#"((string_content) @injection.content (#set! injection.language "c"))"#,
         )],
     );
-    let langs = Arc::new(rustc_hash::FxHashMap::from_iter([(
+    let langs = Arc::new(GrammarSnapshot::from_iter([(
         "c".to_owned(),
         fixture_bundle("c"),
     )]));
@@ -938,10 +929,7 @@ fn an_injected_range_within_one_line_has_no_base_line() {
 fn a_macro_in_a_fence_merges_into_the_fence_layer() {
     let (rust, _) = rust_with_macro_layers();
     let (markdown, _) = markdown_with_rust(BLOCK_QUERY);
-    let langs = Arc::new(rustc_hash::FxHashMap::from_iter([(
-        "rust".to_owned(),
-        rust,
-    )]));
+    let langs = Arc::new(GrammarSnapshot::from_iter([("rust".to_owned(), rust)]));
     let (text, split) =
         marked("- item\n\n  ```rust\n  fn f() {\n      foo! {\n    x‸\n      }\n  }\n  ```\n");
     let syntax = Syntax::attach_sync(Arc::clone(&markdown), &text, &langs);
@@ -974,7 +962,7 @@ fn a_layer_without_an_indents_query_leaves_the_line_to_the_layer_around_it() {
             (OptionalQuery::Indents, BLOCK_QUERY),
         ],
     );
-    let langs = Arc::new(rustc_hash::FxHashMap::from_iter([(
+    let langs = Arc::new(GrammarSnapshot::from_iter([(
         "c".to_owned(),
         make_bundle("c", "tree_sitter_c", "", &[]),
     )]));

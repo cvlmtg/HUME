@@ -12,21 +12,20 @@ use hume_engine::theme::ui_scopes;
 use hume_engine::theme::{ScopeRegistry, Theme};
 use hume_engine::types::{ResolvedStyle, Scope};
 
-use hume_treesitter::registry::LanguageRegistry;
+use crate::editor::syntax::GrammarLoads;
 
-/// Synchronously parses `text` through the grammar named `lang`, if
-/// `languages` has one, `None` otherwise (no such grammar), which leaves the
-/// popup rendering plain.
+/// Synchronously parses `text` through the grammar named `lang`, loading it
+/// and every grammar its injections need through `loads`. `None` when there
+/// is no such grammar or it fails to load, which leaves the popup rendering
+/// plain.
 pub(in crate::editor) fn build_markup_syntax(
-    languages: &LanguageRegistry,
+    loads: &mut GrammarLoads<'_>,
     lang: &str,
     text: &str,
 ) -> Option<MarkupSyntax> {
-    let lang_id = languages.id_of(lang)?;
-    let bundle = std::sync::Arc::clone(languages.grammar(lang_id)?);
+    let bundle = loads.grammar_named(lang)?;
     let text = hume_editing::text::BufferText::from(text);
-    let syntax =
-        hume_treesitter::syntax::Syntax::attach_sync(bundle, &text, &languages.grammar_snapshot());
+    let syntax = hume_treesitter::syntax::Syntax::attach_sync(bundle, &text, &mut *loads);
     Some(MarkupSyntax { syntax, text })
 }
 

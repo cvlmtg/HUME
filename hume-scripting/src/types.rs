@@ -1,5 +1,5 @@
 use hume_engine::pipeline::{BufferId, PaneId};
-use hume_treesitter::registry::{LanguageFields, QueryFiles};
+use hume_treesitter::registry::{GrammarSource, LanguageFields};
 
 use crate::command_procs::{MappableProc, TypedProc};
 
@@ -165,14 +165,13 @@ pub enum PendingLanguageReg {
 /// Everything `(register-grammar! …)` supplies, in one payload.
 ///
 /// An owned struct lets the init-mode effect and the command-mode host call
-/// reach one shared implementation instead of two adapters that must be kept
-/// identical. `SteelCmdDef` crosses the host boundary the same way.
+/// hand the language registry the same payload instead of two adapters that
+/// must be kept identical. `SteelCmdDef` crosses the host boundary the same
+/// way.
 #[derive(Debug, Clone)]
 pub struct GrammarReg {
     pub name: String,
-    pub grammar_path: std::path::PathBuf,
-    pub symbol: String,
-    pub queries: QueryFiles,
+    pub source: GrammarSource,
 }
 
 /// One `(set-virtual-lines! …)` entry, decoded from its Steel hashmap shape

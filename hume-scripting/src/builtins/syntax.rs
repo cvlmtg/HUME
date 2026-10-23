@@ -7,7 +7,9 @@ use steel::rerrs::SteelErr;
 
 use crate::context::EvalMode;
 use crate::{ConfigOrigin, Effect, GrammarReg, PendingLanguageReg, SteelCtx};
-use hume_treesitter::registry::{LanguageField, LanguageFields, OptionalQuery, QueryFiles};
+use hume_treesitter::registry::{
+    GrammarSource, LanguageField, LanguageFields, OptionalQuery, QueryFiles,
+};
 
 use super::SteelResult;
 use super::args::{
@@ -125,9 +127,12 @@ pub(crate) fn configure_language(
 /// The Scheme-side `register-grammar!` wrapper (`prelude.scm`) builds the hash
 /// from its keyword arguments.
 ///
-/// - **Init mode**: pushes an `Effect::LanguageReg(PendingLanguageReg::Grammar)`.
-/// - **Command mode**: attaches immediately via the editor host and pushes
-///   an `Effect::GrammarSweep` to sweep already-open buffers afterward.
+/// - **Init mode**: pushes an `Effect::LanguageReg(PendingLanguageReg::Grammar)`,
+///   which registers the grammar without loading it: it loads the first
+///   time a buffer or an injection needs it.
+/// - **Command mode**: registers and loads it immediately via the editor
+///   host, so a grammar that cannot load fails the call, and pushes an
+///   `Effect::GrammarSweep` to sweep already-open buffers afterward.
 pub(crate) fn register_grammar(
     ctx: &mut SteelCtx,
     name: SteelVal,
@@ -162,9 +167,11 @@ pub(crate) fn register_grammar(
     }
     let reg = GrammarReg {
         name: string_arg(name, "register-grammar! name")?,
-        grammar_path: under_cwd(path_arg(grammar_path, "register-grammar! grammar-path")?),
-        symbol: string_arg(symbol, "register-grammar! symbol")?,
-        queries,
+        source: GrammarSource {
+            path: under_cwd(path_arg(grammar_path, "register-grammar! grammar-path")?),
+            symbol: string_arg(symbol, "register-grammar! symbol")?,
+            queries,
+        },
     };
 
     if ctx.session == crate::context::EvalSession::Init {
@@ -199,7 +206,8 @@ pub(crate) fn grammar_optional_queries() -> SteelResult {
     Ok(list_of(pairs))
 }
 
-/// `(language-has-grammar? name)` returns `#t` if `name` has an attached grammar.
+/// `(language-has-grammar? name)` returns `#t` if `name` has a grammar, loaded
+/// or yet to load, and `#f` once its load has failed. It never loads one.
 pub(crate) fn language_has_grammar(ctx: &mut SteelCtx, name: SteelVal) -> SteelResult {
     let name = string_arg(name, "language-has-grammar?")?;
     Ok(SteelVal::BoolV(ctx.host.language().has_grammar(&name)))

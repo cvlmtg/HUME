@@ -57,14 +57,16 @@ mod mock_host {
     }
 
     /// A `GrammarReg` for the two paths these tests vary; `MockHost` reads
-    /// only `name`, `grammar_path` and the highlights path, so the rest is
+    /// only `name`, the library path and the highlights path, so the rest is
     /// fixed.
     fn reg(grammar_path: &std::path::Path, highlights_path: &std::path::Path) -> GrammarReg {
         GrammarReg {
             name: "rust".into(),
-            grammar_path: grammar_path.to_path_buf(),
-            symbol: "rust_language".into(),
-            queries: hume_treesitter::registry::QueryFiles::new(highlights_path.to_path_buf()),
+            source: hume_treesitter::registry::GrammarSource {
+                path: grammar_path.to_path_buf(),
+                symbol: "rust_language".into(),
+                queries: hume_treesitter::registry::QueryFiles::new(highlights_path.to_path_buf()),
+            },
         }
     }
 

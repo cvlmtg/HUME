@@ -43,7 +43,7 @@ use super::{
 /// which have none to fall back to.
 pub(in crate::editor) fn insert_default_key(
     state: &mut EditorState,
-    view: &EngineView,
+    view: &mut EngineView,
     entry: &InsertEntry,
     fp: FocusedPane,
     key: KeyEvent,

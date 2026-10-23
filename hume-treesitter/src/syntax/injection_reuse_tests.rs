@@ -33,10 +33,10 @@ use super::{ChainBreak, Syntax};
 use crate::edits::input_edits_from_changeset;
 use crate::layers::{LayerField, LayerMismatch, LayerShape, SyntaxLayer, first_layer_mismatch};
 use crate::parse_worker::{MAX_INJECTION_DEPTH, ParseDone, ParseOutcome, run_parse};
-use crate::registry::{GrammarBundle, OptionalQuery};
+use crate::registry::{GrammarBundle, GrammarSnapshot, OptionalQuery};
 use crate::test_support::{fresh_bid, make_bundle};
 
-type Langs = Arc<FxHashMap<String, Arc<GrammarBundle>>>;
+type Langs = Arc<GrammarSnapshot>;
 
 /// Markdown with the fixture injections query, and what it injects: rust
 /// with the fixture injections query (rust into macro bodies, rustdoc
@@ -44,7 +44,17 @@ type Langs = Arc<FxHashMap<String, Arc<GrammarBundle>>>;
 struct Grammars {
     markdown: Arc<GrammarBundle>,
     json: Arc<GrammarBundle>,
+    /// What `langs` resolves each injected language name to.
+    by_name: FxHashMap<String, Arc<GrammarBundle>>,
     langs: Langs,
+}
+
+impl Grammars {
+    /// Resolve `name` to `bundle` from now on.
+    fn bind(&mut self, name: &str, bundle: Arc<GrammarBundle>) {
+        self.by_name.insert(name.to_owned(), bundle);
+        self.langs = Arc::new(self.by_name.clone().into_iter().collect());
+    }
 }
 
 fn grammars() -> Grammars {
@@ -63,7 +73,7 @@ fn grammars() -> Grammars {
     };
     let markdown = injecting("markdown", "tree_sitter_markdown");
     let json = make_bundle("json", "tree_sitter_json", "", &[]);
-    let langs = Arc::new(FxHashMap::from_iter([
+    let by_name = FxHashMap::from_iter([
         ("rust".to_owned(), injecting("rust", "tree_sitter_rust")),
         ("markdown-rustdoc".to_owned(), Arc::clone(&markdown)),
         ("json".to_owned(), Arc::clone(&json)),
@@ -71,10 +81,12 @@ fn grammars() -> Grammars {
             "markdown.inline".to_owned(),
             make_bundle("markdown.inline", "tree_sitter_markdown_inline", "", &[]),
         ),
-    ]));
+    ]);
+    let langs = Arc::new(by_name.clone().into_iter().collect());
     Grammars {
         markdown,
         json,
+        by_name,
         langs,
     }
 }
@@ -260,9 +272,11 @@ impl Session {
                 bid: self.bid,
                 generation,
                 bundle: Arc::clone(&self.root),
+                snapshot_generation: self.grammars.langs.generation(),
                 outcome: ParseOutcome::ParseFailed,
             },
             generation,
+            &self.grammars.langs,
         );
     }
 
@@ -271,9 +285,7 @@ impl Session {
     /// nothing is parsed.
     fn ensure_current(&mut self) -> Option<ChainBreak> {
         let parses = !self.syntax.is_current(self.text.generation());
-        let chain_break = self
-            .syntax
-            .ensure_current(self.bid, &self.text, &self.grammars.langs);
+        let chain_break = self.syntax.ensure_current(&self.text, &self.grammars.langs);
         if parses {
             self.check_layers();
         }
@@ -391,7 +403,7 @@ impl Session {
     /// Panics unless an injected layer of every injected language had its
     /// nodes compared with a bare parser's.
     fn assert_every_language_compared(&self) {
-        for (name, bundle) in self.grammars.langs.iter() {
+        for (name, bundle) in &self.grammars.by_name {
             assert!(self.compared(bundle) > 0, "no {name} layer was compared");
         }
     }
@@ -740,7 +752,7 @@ fn the_document_injects_combined_split_and_indented_layers() {
         .map(|layer| {
             let name = session
                 .grammars
-                .langs
+                .by_name
                 .iter()
                 .find(|(_, bundle)| Arc::ptr_eq(bundle, &layer.bundle))
                 .map_or("", |(name, _)| name.as_str());
@@ -824,7 +836,7 @@ fn layers_of<'s>(
 #[test]
 fn an_edit_in_a_fence_reparses_it_against_its_baked_tree() {
     let mut session = Session::open("```rust\nfn a() {}\nfn b() {}\n```\n");
-    let rust = Arc::clone(&session.grammars.langs["rust"]);
+    let rust = Arc::clone(&session.grammars.by_name["rust"]);
     let first_item = |session: &Session| {
         let layer = layers_of(session, &rust).next().expect("a rust layer");
         let item = layer
@@ -853,7 +865,7 @@ fn an_edit_in_a_fence_reparses_it_against_its_baked_tree() {
 #[test]
 fn an_untouched_fence_keeps_its_baked_tree() {
     let mut session = Session::open("Text.\n\n```rust\nfn a() {}\n```\n");
-    let rust = Arc::clone(&session.grammars.langs["rust"]);
+    let rust = Arc::clone(&session.grammars.by_name["rust"]);
     let at = session.find("Text", 0);
     session.change(&[Replace {
         at,
@@ -876,7 +888,7 @@ fn an_untouched_fence_keeps_its_baked_tree() {
 #[test]
 fn a_combined_layer_keeps_its_tree_after_an_edit_between_its_ranges() {
     let mut session = Session::open("```rust\n/// One.\nfn f() {}\n/// Two.\nfn g() {}\n```\n");
-    let rustdoc = Arc::clone(&session.grammars.langs["markdown-rustdoc"]);
+    let rustdoc = Arc::clone(&session.grammars.by_name["markdown-rustdoc"]);
     let at = session.find("f()", 0);
     session.change(&[Replace {
         at,
@@ -898,9 +910,8 @@ fn a_combined_layer_keeps_its_tree_after_an_edit_between_its_ranges() {
 #[test]
 fn a_rebound_language_name_parses_the_fence_fresh() {
     let mut session = Session::open("```rust\nfn a() {}\n```\n\nText.\n");
-    let mut langs = (*session.grammars.langs).clone();
-    langs.insert("rust".to_owned(), Arc::clone(&session.grammars.json));
-    session.grammars.langs = Arc::new(langs);
+    let json = Arc::clone(&session.grammars.json);
+    session.grammars.bind("rust", json);
     // After the fence, so the fence's ranges stay those of its baked layer.
     let at = session.find("Text", 0);
     session.change(&[Replace {
@@ -1064,7 +1075,7 @@ fn injected_layers_hold_after_typing_after_emphasis_in_a_doc_comment() {
     for edit in &edits {
         session.random_edit(edit);
     }
-    let inline = Arc::clone(&session.grammars.langs["markdown.inline"]);
+    let inline = Arc::clone(&session.grammars.by_name["markdown.inline"]);
     let before = session.compared(&inline);
     session.ensure_current();
     assert!(

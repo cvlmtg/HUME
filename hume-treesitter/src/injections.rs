@@ -9,13 +9,13 @@ use crate::edited_bytes::{EditedBytes, push_merging};
 use crate::highlight::RopeProvider;
 
 use crate::parse_worker::{MAX_INJECTION_DEPTH, ParsedInjection, run_parse};
-use crate::registry::GrammarBundle;
+use crate::registry::{GrammarBundle, GrammarSnapshot, LanguageId, SnapshotGrammar};
 
 /// A compiled `injections.scm` query plus the per-pattern settings needed to
 /// resolve embedded-language regions at parse time (fenced code blocks,
 /// combined `markdown.inline` layers, doc-comment content, etc.).
 ///
-/// Built once per grammar attach (in `attach_grammar`) and held by the
+/// Built once, when the grammar loads, and held by the
 /// language's `GrammarBundle`, which every buffer of that language shares
 /// through an `Arc`.
 pub struct InjectionsQuery {
@@ -415,27 +415,35 @@ struct InjectionGroup {
     ranges: Vec<tree_sitter::Range>,
 }
 
-/// The layers `sites` inject with the grammars in `langs`, in the order
-/// they are installed: each non-combined site in site order, then one
+/// The layers `sites` inject with the grammars loaded in `langs`, in the
+/// order they are installed: each non-combined site in site order, then one
 /// layer per combined pattern and language, merging all of its sites, in
-/// (pattern index, language) order.
+/// (pattern index, language) order. A site whose grammar is registered but
+/// not loaded injects nothing and adds its language to `unloaded`, once.
 fn group_sites(
     inj: &InjectionsQuery,
     sites: &InjectionSites,
-    langs: &FxHashMap<String, Arc<GrammarBundle>>,
+    langs: &GrammarSnapshot,
+    unloaded: &mut Vec<LanguageId>,
 ) -> Vec<InjectionGroup> {
     let mut non_combined: Vec<InjectionGroup> = Vec::new();
     let mut combined: FxHashMap<(usize, &str), InjectionGroup> = FxHashMap::default();
     for site in &sites.0 {
-        // Unknown injection language: skip silently. No lazy install: the
-        // user opts into grammars explicitly via PLUM. Every entry in `langs`
-        // is grammared, since it's built from the grammar table.
-        // Resolved here, before `combined` insertion, so its FxHashMap only
-        // ever keys on the trusted installed-grammar names. A dynamic
-        // `@injection.language` capture is raw buffer text, and unfiltered
-        // attacker-chosen keys in an unkeyed hash invite collision DoS.
-        let Some(bundle) = langs.get(&site.language) else {
-            continue;
+        // A language with no grammar is skipped. Resolved here, before
+        // `combined` insertion, so its FxHashMap only ever keys on trusted
+        // registered-grammar names, and `unloaded` only ever holds their ids.
+        // A dynamic `@injection.language` capture is raw buffer text, and
+        // unfiltered attacker-chosen keys in an unkeyed hash invite collision
+        // DoS.
+        let bundle = match langs.get(&site.language) {
+            Some(SnapshotGrammar::Loaded(bundle)) => bundle,
+            Some(SnapshotGrammar::Unloaded(id)) => {
+                if !unloaded.contains(id) {
+                    unloaded.push(*id);
+                }
+                continue;
+            }
+            None => continue,
         };
         if inj.patterns[site.pattern_index].combined {
             combined
@@ -584,8 +592,8 @@ fn parse_group(
 /// What resolving a layer's injections reads besides the layer itself.
 pub(crate) struct InjectionContext<'a> {
     pub(crate) rope: &'a ropey::Rope,
-    /// Every grammared language, by the name an injection gives.
-    pub(crate) langs: &'a FxHashMap<String, Arc<GrammarBundle>>,
+    /// Every language with a grammar, by the name an injection gives.
+    pub(crate) langs: &'a GrammarSnapshot,
     /// The committed layers' injected layers, when they are edited to
     /// `rope`'s text, and the bytes those edits changed.
     pub(crate) prior: Option<(&'a PriorInjections, &'a EditedBytes)>,
@@ -597,6 +605,9 @@ pub(crate) struct InjectionContext<'a> {
 /// from `prior` as [`resolve_sites`] does, and every layer they inject,
 /// parsed, its own injections resolved the same way and listed right
 /// before it.
+///
+/// Every language a site names whose grammar is not loaded goes into
+/// `unloaded`, once.
 ///
 /// `depth` is the depth being resolved *into* (1 for the root's direct
 /// injections). A layer at `MAX_INJECTION_DEPTH`, or of a grammar without
@@ -612,6 +623,7 @@ pub(crate) fn resolve_and_parse_injections(
     bundle: &GrammarBundle,
     depth: u8,
     prior: Option<SitePrior<'_>>,
+    unloaded: &mut Vec<LanguageId>,
 ) -> (InjectionSites, Vec<ParsedInjection>) {
     let Some(inj) = bundle
         .injections
@@ -623,7 +635,7 @@ pub(crate) fn resolve_and_parse_injections(
     let sites = resolve_sites(inj, tree, cx.rope, prior);
 
     let mut out = Vec::new();
-    for group in group_sites(inj, &sites, cx.langs) {
+    for group in group_sites(inj, &sites, cx.langs, unloaded) {
         let reuse = cx.prior.map_or(Reuse::Fresh, |(prior, edited)| {
             prior.reuse(&group.bundle, depth, &group.ranges, edited)
         });
@@ -650,6 +662,7 @@ pub(crate) fn resolve_and_parse_injections(
             &group.bundle,
             depth + 1,
             child_prior,
+            unloaded,
         );
         out.extend(descendants);
         out.push(ParsedInjection {

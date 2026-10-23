@@ -3,10 +3,8 @@
 //! already calls `test_fixtures::require_grammars` before using these,
 //! so none of them re-check fixture existence themselves.
 
-use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
 
-use rustc_hash::FxHashMap;
 use slotmap::SlotMap;
 
 use hume_engine::pipeline::BufferId;
@@ -14,15 +12,9 @@ use hume_engine::theme::ScopeRegistry;
 
 use crate::grammar::LoadedGrammar;
 use crate::registry::{
-    CompiledQueries, GrammarBundle, LanguageId, LanguageRegistry, OptionalQuery, compile_queries,
+    CompiledQueries, GrammarBundle, GrammarSnapshot, LanguageId, LanguageRegistry, OptionalQuery,
+    compile_queries, next_config_gen,
 };
-
-/// Distinct per call, mirroring `LanguageRegistry`'s `config_gen` invariant
-/// so tests that compare bundles by gen see real identity.
-pub(crate) fn next_test_config_gen() -> u32 {
-    static NEXT_GEN: AtomicU32 = AtomicU32::new(0);
-    NEXT_GEN.fetch_add(1, Ordering::Relaxed)
-}
 
 /// The id `name` has across every test bundle, so two bundles built for one
 /// name name the same language.
@@ -66,9 +58,24 @@ pub(crate) fn make_bundle(
         injections,
         textobjects,
         indents,
-        config_gen: next_test_config_gen(),
+        config_gen: next_config_gen(),
         language: test_language_id(name),
     })
+}
+
+/// The markdown grammar fixture with its own highlights and injections
+/// queries.
+pub(crate) fn fixture_markdown() -> Arc<GrammarBundle> {
+    let highlights = test_fixtures::grammar_query_path("markdown");
+    let injections = highlights.with_file_name("injections.scm");
+    test_fixtures::require_fixture_file(&injections, "markdown injections.scm");
+    let read = |path: &std::path::Path| std::fs::read_to_string(path).expect("read markdown query");
+    make_bundle(
+        "markdown",
+        "tree_sitter_markdown",
+        &read(&highlights),
+        &[(OptionalQuery::Injections, &read(&injections))],
+    )
 }
 
 /// A fresh, never-before-seen `BufferId`.
@@ -77,9 +84,9 @@ pub(crate) fn fresh_bid() -> BufferId {
     sm.insert(())
 }
 
-/// An empty grammar-name → bundle map, for tests with no injections to resolve.
-pub(crate) fn empty_langs() -> Arc<FxHashMap<String, Arc<GrammarBundle>>> {
-    Arc::new(FxHashMap::default())
+/// A snapshot with no grammars, for tests with no injections to resolve.
+pub(crate) fn empty_langs() -> Arc<GrammarSnapshot> {
+    Arc::new(GrammarSnapshot::default())
 }
 
 /// Build a `tree_sitter::Range` from byte offsets, synthesizing single-line

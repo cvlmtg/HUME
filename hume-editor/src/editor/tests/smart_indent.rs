@@ -407,10 +407,7 @@ fn enter_in_a_fenced_block_starts_from_the_fences_indent() {
             .register_identity(name, exts, &[], &[])
             .unwrap();
         let queries = match name {
-            "markdown" => QueryFiles::new(grammar_query_path(name)).with(
-                OptionalQuery::Injections,
-                require_helix_query(name, OptionalQuery::Injections.file_name()),
-            ),
+            "markdown" => markdown_query_files(),
             "rust" => rust_indent_queries(),
             _ => QueryFiles::new(grammar_query_path(name)),
         };

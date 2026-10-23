@@ -17,6 +17,7 @@ ropey.workspace = true
 rustc-hash.workspace = true
 
 [dev-dependencies]
+hume-treesitter = { path = ".", features = ["test-util"] }
 hume-platform = { path = "../hume-platform", features = ["test-util"] }
 slotmap = "1"
 tempfile = "3"
@@ -25,9 +26,10 @@ criterion = { version = "0.8.2", default-features = false, features = ["cargo_be
 proptest = "1.11.0"
 
 [features]
-# Exposes test-only registry methods (register_identity, remove) to
-# consumers' own test code — hume-editor's tests build LanguageRegistry
-# fixtures via this crate, so #[cfg(test)] alone (crate-local) isn't enough.
+# Exposes test-only registry, snapshot and syntax helpers to code that links
+# against the lib rather than being compiled into it, where #[cfg(test)] is
+# off: hume-editor's tests, and this crate's own benches through the
+# dev-dependency on itself below.
 test-util = []
 
 [[bench]]

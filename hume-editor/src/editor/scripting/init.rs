@@ -82,8 +82,9 @@ impl Editor {
         // Then languages.scm ((define-language! …) identities) and
         // grammars.scm (registers already-compiled grammars; see its own
         // header). languages.scm runs first so identity registration owns
-        // the one glob-set rebuild (attach_grammar would otherwise create a
-        // bare default identity per grammar, ahead of languages.scm's own).
+        // the one glob-set rebuild (registering a grammar would otherwise
+        // create a bare default identity per grammar, ahead of
+        // languages.scm's own).
         // Each is a silent no-op when the runtime dir or the file itself is
         // missing (optional layers); a file that exists but fails to
         // parse/eval is an error reported separately.

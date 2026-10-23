@@ -8,13 +8,13 @@ use hume_editing::edit::TextChange;
 use hume_editing::indent::ElectricTrigger;
 use hume_editing::text::BufferText;
 use hume_editing::word::WordChars;
-use hume_engine::pipeline::BufferId;
 use hume_engine::theme::ScopeRegistry;
 use hume_rope::offset::CharOffset;
 use hume_treesitter::indent::{electric_indent, indent_for_new_line};
-use hume_treesitter::registry::{GrammarBundle, LanguageRegistry, OptionalQuery, QueryFiles};
+use hume_treesitter::registry::{
+    GrammarBundle, GrammarSnapshot, GrammarSource, LanguageRegistry, OptionalQuery, QueryFiles,
+};
 use hume_treesitter::syntax::Syntax;
-use rustc_hash::FxHashMap;
 use test_fixtures::{
     grammar_parser_path, grammar_query_path, require_grammars, require_helix_indent_corpus,
     require_helix_query,
@@ -49,9 +49,11 @@ static GRAMMARS: LazyLock<Grammars> = LazyLock::new(|| {
         registry
             .attach_grammar(
                 name,
-                &grammar_parser_path(name),
-                symbol,
-                &queries,
+                &GrammarSource {
+                    path: grammar_parser_path(name),
+                    symbol: symbol.to_owned(),
+                    queries,
+                },
                 &mut ScopeRegistry::new(),
             )
             .expect("attach the grammar")
@@ -86,10 +88,10 @@ static GRAMMARS: LazyLock<Grammars> = LazyLock::new(|| {
     }
 });
 
-type Langs = Arc<FxHashMap<String, Arc<GrammarBundle>>>;
+type Langs = Arc<GrammarSnapshot>;
 
 fn no_langs() -> Langs {
-    Arc::new(FxHashMap::default())
+    Arc::new(GrammarSnapshot::default())
 }
 
 fn rust_corpus() -> String {
@@ -144,7 +146,7 @@ fn bench_edit_reparse_hybrid(c: &mut Criterion) {
             syntax.record_edit(&TextChange::new(&text, &next, &change));
             text = next;
             padded = !padded;
-            black_box(syntax.ensure_current(BufferId::default(), &text, &langs));
+            black_box(syntax.ensure_current(&text, &langs));
             let split = text.snap(split.shift(isize::from(padded)));
             let layers = syntax.layers().expect("the text parses");
             black_box(indent_for_new_line(layers, &text, split, 4))
@@ -199,7 +201,7 @@ fn bench_keystroke(
         let next = change.apply(text).expect("a one-char edit applies");
         syntax.record_edit(&TextChange::new(text, &next, &change));
         *text = next;
-        black_box(syntax.ensure_current(BufferId::default(), text, langs));
+        black_box(syntax.ensure_current(text, langs));
     };
     let dedent = |syntax: &Syntax, text: &BufferText| {
         let line = text.char_to_line(at);
@@ -275,7 +277,7 @@ fn bench_reparse_keystroke_rust_nested(c: &mut Criterion) {
         "syntax_reparse_keystroke_rust_nested",
         Keystroke::Reparse,
         rust,
-        &Arc::new(FxHashMap::from_iter([(
+        &Arc::new(GrammarSnapshot::from_iter([(
             "rust".to_owned(),
             Arc::clone(rust),
         )])),
@@ -298,7 +300,7 @@ fn markdown_buffer() -> (BufferText, CharOffset) {
 /// The injected languages of the markdown buffer, with `rust` as the
 /// fenced blocks' grammar.
 fn markdown_langs(rust: &Arc<GrammarBundle>) -> Langs {
-    Arc::new(FxHashMap::from_iter([
+    Arc::new(GrammarSnapshot::from_iter([
         ("rust".to_owned(), Arc::clone(rust)),
         (
             "markdown.inline".to_owned(),

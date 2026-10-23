@@ -961,6 +961,7 @@ dependencies = [
  "hume-engine",
  "hume-platform",
  "hume-rope",
+ "hume-treesitter",
  "libloading",
  "proptest",
  "ropey",

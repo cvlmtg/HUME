@@ -390,9 +390,11 @@ fn structural_command_after_a_failed_parse_reparses_instead_of_reading_stale_lay
                 bid,
                 generation,
                 bundle,
+                snapshot_generation: ed.state.config.languages.grammar_snapshot().generation(),
                 outcome: ParseOutcome::ParseFailed,
             },
             generation,
+            &ed.state.config.languages.grammar_snapshot(),
         );
     let syn = ed.state.buffers.get(bid).syntax.as_ref().expect("syntax");
     assert_eq!(syn.parsed_gen(), Some(generation));

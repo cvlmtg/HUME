@@ -1195,7 +1195,7 @@ impl Editor {
                         .input
                         .insert_entry()
                         .expect("a replayed Insert key runs in the replayed Insert session");
-                    commands::insert_default_key(&mut self.state, &self.view, &entry, fp, *key);
+                    commands::insert_default_key(&mut self.state, &mut self.view, &entry, fp, *key);
                 }
                 Input::Paste(values) => {
                     if let Err(e) = self.state.apply_insert_mode_paste(&self.view, values) {

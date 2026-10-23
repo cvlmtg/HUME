@@ -245,6 +245,20 @@ from what's actually present on the filesystem, not from what's declared, and
 only reads the data file of a language it actually finds there. A fresh setup
 with nothing installed reads none of them.
 
+Registering a grammar opens nothing. HUME notes where its library and queries
+are, and loads them (opens the library, compiles the queries) the first time
+something needs the grammar: a buffer of that language, or an embedded block
+that names it. Grammars a session never uses cost nothing at startup.
+
+Only the main thread loads a grammar, because a loaded grammar joins the
+editor's shared language table. The background parse worker cannot load one
+itself. When an embedded block names a grammar that is registered but not
+loaded, the worker skips the block and reports the language back. The main
+thread loads it, and the buffer resolves its embedded blocks again: every layer
+that is still valid is kept, and only the new ones are parsed. A grammar that
+fails to load is reported once, and counts as absent until it is registered
+again.
+
 ## Why pinned revisions
 
 Grammar repositories and their highlight queries are pinned to specific
@@ -263,15 +277,16 @@ together.
 
 Grammars can arrive after buffers are already open. A user might open a Rust
 file, then install the Rust grammar (`:plum-install-grammar`) in the same
-session. HUME handles this by sweeping open buffers when a grammar is attached.
+session. HUME handles this by sweeping open buffers when a grammar is registered.
 
 After a grammar is registered, HUME walks every open buffer. Any buffer whose
-language name matches a grammar that was just attached is re-run through
-syntax setup: a parse request is queued, and once the worker responds the
-buffer renders with highlighting — no restart required. Buffers whose own
-grammar can inject other languages are swept too — installing the Rust
-grammar lights up Rust code fences in a Markdown buffer that was already open
-and highlighted.
+language name matches a grammar that was just registered is re-run through
+syntax setup: the grammar loads, a parse request is queued, and once the worker
+responds the buffer renders with highlighting, no restart required. Buffers
+whose own grammar can inject other languages resolve their embedded blocks
+again and keep the layers they already have, so installing the Rust grammar
+lights up Rust code fences in a Markdown buffer that was already open and
+highlighted.
 
 The same mechanism handles batch registration at startup: because grammar
 registration runs during initialization (potentially after some buffers have
@@ -293,8 +308,9 @@ Putting it all together, here is what happens when you open `main.rs`:
    to syntax setup, and attaches the buffer to the language servers Rust's
    list names, if any (see the LSP doc).
 
-4. **Syntax setup** — if a grammar bundle is attached to the Rust config, a
-   parse request is queued to the background parse worker. Parsing happens
+4. **Syntax setup** — if Rust has a grammar, it loads now unless an earlier
+   file or embedded block already needed it, and a parse request is queued to
+   the background parse worker. Parsing happens
    off the main thread: the worker parses the root tree, then resolves any
    injections and parses those layers too, and the finished set is installed
    on the buffer with the highlighter wired up. A size gate prevents very large
