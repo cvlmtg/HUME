@@ -53,6 +53,43 @@ fn set_cwd_builtin_moves_the_editor_cwd_like_cd() {
 }
 
 #[test]
+fn change_current_directory_moves_the_editor_cwd_like_cd() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir(tmp.path().join("sub")).unwrap();
+    let mut ed = editor_in(tmp.path());
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda () (change-current-directory! "sub")))"#,
+    );
+
+    call(&mut ed, "go");
+
+    assert_eq!(ed.state.cwd, canonical(&tmp.path().join("sub")));
+}
+
+#[test]
+fn current_directory_reports_the_editor_cwd() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_in(tmp.path());
+
+    let out = log_probe(&mut ed, tmp.path(), "(current-directory)");
+
+    assert_eq!(out, canonical(tmp.path()).to_str().unwrap());
+}
+
+#[test]
+fn set_cwd_works_from_init() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir(tmp.path().join("sub")).unwrap();
+    let mut ed = editor_in(tmp.path());
+
+    run(&mut ed, tmp.path(), r#"(set-cwd! "sub")"#);
+
+    assert_eq!(ed.state.cwd, canonical(&tmp.path().join("sub")));
+}
+
+#[test]
 fn a_lock_taken_through_a_dot_dot_path_is_released_by_its_plain_name() {
     let tmp = tempfile::tempdir().unwrap();
     std::fs::create_dir(tmp.path().join("sub")).unwrap();

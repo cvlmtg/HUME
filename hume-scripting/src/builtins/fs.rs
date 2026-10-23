@@ -83,17 +83,16 @@ pub(crate) fn runtime_dir(ctx: &mut SteelCtx) -> SteelResult {
 
 /// `(cwd)`: the editor's working directory as a string: the base `:e` and
 /// every spawned child resolve against. Display form, like `(data-dir)`.
-/// Steel's own `current-directory` reads the process cwd: `:cd` moves that
-/// too, but a plugin that moves it with `change-current-directory!` leaves
-/// the editor's cwd behind.
+/// Backs the prelude's `current-directory`.
 pub(crate) fn cwd(ctx: &mut SteelCtx) -> SteelResult {
     let cwd = hume_platform::path::strip_unc_prefix(ctx.host.buffers().cwd());
     dir_builtin(Some(&cwd))
 }
 
-/// `(set-cwd! path)`: moves the editor's working directory, like
-/// `:cd path` (a relative `path` joins onto the current one). Raises when
-/// `path` is not a directory. Never calls Steel's `change-current-directory!`.
+/// `(set-cwd! path)`: moves the editor's working directory and the process
+/// one with it, like `:cd path`: a relative `path` joins onto the current
+/// one, and the result is canonicalized. Raises when `path` is not a
+/// directory. Backs the prelude's `change-current-directory!`.
 pub(crate) fn set_cwd(ctx: &mut SteelCtx, path: String) -> SteelResult {
     ctx.host
         .buffers()

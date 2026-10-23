@@ -34,3 +34,5 @@
 (define (wait child) (%wait child))
 (define (process-wait child) (%wait child))
 (define (wait->stdout child) (%wait->stdout child))
+(define (current-directory) (cwd))
+(define (change-current-directory! path) (set-cwd! path))

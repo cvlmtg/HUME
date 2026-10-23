@@ -333,7 +333,7 @@ Everyday string work (trimming, splitting on a separator, case conversion, prefi
 | `(data-dir)` | HUME's data directory, or `#f` if unavailable |
 | `(runtime-dir)` | HUME's runtime directory, or `#f` if unavailable |
 | `(cwd)` | HUME's working directory (what `:pwd` prints) |
-| `(set-cwd! path)` | Change HUME's working directory, like `:cd`; a relative `path` is joined onto the current one; raises if `path` is not a directory |
+| `(set-cwd! path)` | Change HUME's working directory, like `:cd`; a relative `path` is joined onto the current one; raises if `path` is not a directory. Works from `init.scm` too |
 | `(delete-dir-tree! path)` | Delete the directory `path` (relative to the working directory) and everything under it; nothing happens when it doesn't exist, where Steel's `delete-directory!` raises |
 | `(replace-dir! src dest)` | Move the directory `src` to `dest` (both relative to the working directory), replacing the directory `dest` held and creating `dest`'s parent if needed. Either `src` ends up at `dest` or the call raises and leaves `dest` as it was, even if the script budget runs out during it |
 | `(try-lock-file! path)` | Take an exclusive lock on the file `path` (relative to the working directory), creating the file if needed: `#t` when taken, `#f` when another HUME or program holds it. The lock lasts until `unlock-file!`, until the command, hook or callback that took it returns or is stopped, or until HUME exits, so a lock is never left behind. Taking a lock the same command already holds raises |
@@ -350,7 +350,7 @@ Everyday string work (trimming, splitting on a separator, case conversion, prefi
 
 The pattern for reading a plugin's own files is covered in [Filesystem and processes](writing-plugins.md#filesystem-and-processes).
 
-Use `(cwd)` and `(set-cwd! path)` to read and change the working directory, not Steel's `current-directory` and `change-current-directory!`: HUME's own commands and spawned programs follow its working directory, and a plugin that moves the process directory with Steel's call leaves HUME behind. A relative path given to a HUME call resolves against the working directory the way `:e` resolves a typed one: `..` collapses and links stay as typed. Steel's own file functions resolve a relative path against the process directory, which `:cd` and `set-cwd!` move along with HUME's.
+HUME has one working directory: Steel's `current-directory` and `change-current-directory!` are `(cwd)` and `(set-cwd! path)`, and `:cd` moves it too. A relative path given to a HUME call resolves against it the way `:e` resolves a typed one: `..` collapses and links stay as typed. Steel's own file functions resolve a relative path against the same directory.
 
 ## Grammar compilation
 

@@ -235,9 +235,9 @@ macro_rules! builtins {
 const BOOTSTRAP: &str = include_str!("bootstrap.scm");
 
 // PRELUDE_SHIMS redefines the steel-core prelude names HUME takes over: the
-// print functions, `which`, and the Steel calls that wait on the OS. It is
-// appended both to BOOTSTRAP (top level) and, verbatim, to steel-core's own
-// prelude string via set_prelude_string.
+// print functions, `which`, the working-directory pair, and the Steel calls
+// that wait on the OS. It is appended both to BOOTSTRAP (top level) and,
+// verbatim, to steel-core's own prelude string via set_prelude_string.
 // Since the prelude is prepended to every `(require "path.scm")` unit, this
 // closes the gap where a required module's (every real plugin's) calls would
 // otherwise resolve straight to steel-core's originals. See io.rs's module
@@ -246,6 +246,11 @@ const BOOTSTRAP: &str = include_str!("bootstrap.scm");
 // `which` searches the editor's search path (`%which`) instead of the process
 // `PATH`, so the `PATH` a session's children get is also the one its
 // lookups see.
+//
+// `current-directory` and `change-current-directory!` are `cwd` and
+// `set-cwd!`: the process directory is the editor's, and a plugin cannot move
+// one without the other. `set-cwd!` is `open` because it touches `state.cwd`
+// alone, which exists before init.scm runs, so a config can change directory.
 //
 // `delete-directory!`, `wait`/`process-wait` and `wait->stdout` run Steel's
 // own call with the session's budget stopped (`%delete-directory!`, `%wait`,
@@ -553,7 +558,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         open "data-dir" fs::data_dir();
         open "runtime-dir" fs::runtime_dir();
         open "cwd" fs::cwd();
-        cmd "set-cwd!" fs::set_cwd(path: String);
+        open "set-cwd!" fs::set_cwd(path: String);
         open "delete-dir-tree!" fs::delete_dir_tree(path: String);
         open "replace-dir!" fs::replace_dir(src: String, dest: String);
         open "%delete-directory!" fs::delete_directory(dir: String);

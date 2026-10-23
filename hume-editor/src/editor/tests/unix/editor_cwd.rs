@@ -128,6 +128,34 @@ fn cwd_builtin_reports_the_editor_cwd() {
 }
 
 #[test]
+fn current_directory_in_a_required_module_reports_the_editor_cwd() {
+    let tmp = tempfile::tempdir().unwrap();
+    let module = tmp.path().join("where.scm");
+    std::fs::write(
+        &module,
+        r#"(provide where) (define (where) (current-directory))"#,
+    )
+    .unwrap();
+    let mut ed = editor_in(tmp.path());
+    run(
+        &mut ed,
+        tmp.path(),
+        &format!(
+            r#"(require {})
+               (define-command! "go" "" (lambda () (log! 'info (where))))"#,
+            steel_path(&module)
+        ),
+    );
+
+    call(&mut ed, "go");
+
+    assert_eq!(
+        ed.state.status_msg.clone().unwrap(),
+        canonical(tmp.path()).to_str().unwrap()
+    );
+}
+
+#[test]
 fn path_entries_resolves_dot_dot_lexically_like_e() {
     use std::os::unix::fs::symlink;
     let tmp = tempfile::tempdir().unwrap();
