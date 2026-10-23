@@ -7,7 +7,6 @@
 // escaped in Steel string literals (same constraint as tests/plugins.rs).
 
 use std::path::Path;
-use std::time::Duration;
 
 use super::*;
 use crate::editor::tests::before_save::{warning_texts, warnings};
@@ -46,16 +45,6 @@ fn setup_with(
 
 fn run_references(ed: &mut Editor) {
     ed.execute_keymap_command("lsp/references".into(), Some(1), false);
-    ed.settle();
-    ed.drain_lsp();
-    ed.settle();
-}
-
-/// Lets the refresh's debounce elapse, then delivers the answer.
-fn settle_after_refresh(ed: &mut Editor) {
-    ed.settle();
-    std::thread::sleep(Duration::from_millis(450));
-    ed.settle();
     ed.settle();
     ed.drain_lsp();
     ed.settle();
@@ -105,7 +94,7 @@ fn inserting_a_line_above_the_symbol_asks_the_server_again_at_its_new_line() {
     assert_eq!(last_reference_line(&requests), 1, "setup: asked at `foo`");
 
     insert_line_above_the_cursor_line(&mut ed);
-    settle_after_refresh(&mut ed);
+    settle_until_idle(&mut ed);
 
     assert_eq!(reference_requests(&requests), 2);
     assert_eq!(
@@ -133,7 +122,7 @@ fn a_closed_drawer_is_not_refreshed_and_releases_the_position() {
     assert_eq!(ed.state.panes.tracked.len(), 0, "the position is released");
 
     insert_line_above_the_cursor_line(&mut ed);
-    settle_after_refresh(&mut ed);
+    settle_until_idle(&mut ed);
 
     assert_eq!(reference_requests(&requests), 1);
 }
@@ -156,7 +145,7 @@ fn several_inserts_within_the_debounce_ask_once() {
         insert_line_above_the_cursor_line(&mut ed);
         ed.settle();
     }
-    settle_after_refresh(&mut ed);
+    settle_until_idle(&mut ed);
 
     assert_eq!(reference_requests(&requests), 2);
     assert_eq!(last_reference_line(&requests), 4);
@@ -176,7 +165,7 @@ fn an_edit_that_keeps_the_line_count_asks_nothing() {
     ed.handle_key(key('i'));
     ed.handle_key(key('x'));
     ed.handle_key(key_esc());
-    settle_after_refresh(&mut ed);
+    settle_until_idle(&mut ed);
 
     assert_eq!(reference_requests(&requests), 1);
 }
@@ -196,7 +185,7 @@ fn a_refresh_that_finds_nothing_closes_the_drawer_with_a_message() {
     run_references(&mut ed);
 
     insert_line_above_the_cursor_line(&mut ed);
-    settle_after_refresh(&mut ed);
+    settle_until_idle(&mut ed);
 
     assert_eq!(reference_requests(&requests), 2);
     assert!(!drawer_is_open(&ed), "nothing left to list");
@@ -219,7 +208,7 @@ fn a_refresh_that_finds_only_unopenable_places_closes_the_drawer_without_claimin
     run_references(&mut ed);
 
     insert_line_above_the_cursor_line(&mut ed);
-    settle_after_refresh(&mut ed);
+    settle_until_idle(&mut ed);
 
     assert!(!drawer_is_open(&ed), "nothing left to list");
     assert_eq!(ed.state.panes.tracked.len(), 0);
@@ -242,7 +231,7 @@ fn a_refresh_whose_places_are_all_past_their_buffers_end_closes_with_the_skip_wa
     run_references(&mut ed);
 
     insert_line_above_the_cursor_line(&mut ed);
-    settle_after_refresh(&mut ed);
+    settle_until_idle(&mut ed);
 
     assert!(!drawer_is_open(&ed), "nothing left to list");
     assert_eq!(ed.state.panes.tracked.len(), 0);
@@ -271,7 +260,7 @@ fn a_refresh_leaves_out_unopenable_places_without_warning_again() {
     );
 
     insert_line_above_the_cursor_line(&mut ed);
-    settle_after_refresh(&mut ed);
+    settle_until_idle(&mut ed);
 
     assert_eq!(reference_requests(&requests), 2);
     assert_eq!(drawer_rows(&ed).len(), 2);
@@ -302,7 +291,7 @@ fn a_drawer_replaced_by_another_list_is_not_refreshed() {
     assert_eq!(ed.state.panes.tracked.len(), 0, "the position is released");
 
     insert_line_above_the_cursor_line(&mut ed);
-    settle_after_refresh(&mut ed);
+    settle_until_idle(&mut ed);
 
     assert_eq!(reference_requests(&requests), 1);
 }
@@ -335,7 +324,7 @@ fn a_refresh_answered_with_an_error_keeps_the_rows() {
     let before = drawer_rows(&ed);
 
     insert_line_above_the_cursor_line(&mut ed);
-    settle_after_refresh(&mut ed);
+    settle_until_idle(&mut ed);
 
     assert_eq!(reference_requests(&requests), 2, "setup: the refresh asked");
     assert_eq!(drawer_rows(&ed), before);
@@ -360,7 +349,7 @@ fn a_refresh_keeps_the_selected_row() {
     assert_eq!(selected_row(&ed), 1, "setup: the second row is selected");
 
     insert_line_above_the_cursor_line(&mut ed);
-    settle_after_refresh(&mut ed);
+    settle_until_idle(&mut ed);
 
     assert!(
         drawer_rows(&ed)[1].ends_with("main.rs:3:5"),
@@ -389,7 +378,7 @@ fn a_refresh_with_fewer_rows_clamps_the_selected_row() {
     assert_eq!(selected_row(&ed), 2, "setup: the last row is selected");
 
     insert_line_above_the_cursor_line(&mut ed);
-    settle_after_refresh(&mut ed);
+    settle_until_idle(&mut ed);
 
     assert_eq!(drawer_rows(&ed).len(), 1, "setup: swapped");
     assert_eq!(selected_row(&ed), 0);
@@ -420,7 +409,7 @@ fn a_line_count_change_in_another_listed_buffer_refreshes_the_list() {
     ed.execute_typed("e", Some(other.to_str().unwrap()))
         .unwrap();
     insert_line_above_the_cursor_line(&mut ed);
-    settle_after_refresh(&mut ed);
+    settle_until_idle(&mut ed);
 
     assert_eq!(reference_requests(&requests), 2);
 }

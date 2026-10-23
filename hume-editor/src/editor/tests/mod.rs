@@ -787,6 +787,36 @@ fn render(ed: &mut Editor) {
     frame(ed, 80, 25);
 }
 
+/// Settles until no timer is scheduled or queued and no `spawn-async!` job
+/// is outstanding: every pending timer has fired and its thunk has run,
+/// including timers those thunks schedule, and every job they started has
+/// reported. A fixed sleep before `settle()` is too short under load and too
+/// long otherwise.
+///
+/// The first `settle` is what schedules a timer an earlier event queued. A
+/// scripted LSP reply lands one `settle` after the request that provoked it,
+/// so the editor must be idle after two in a row. A request left unanswered
+/// does not hold the wait, and work that never finishes fails the test after
+/// 5s.
+fn settle_until_idle(ed: &mut Editor) {
+    let idle = |ed: &Editor| ed.timers.is_empty() && ed.state.config.async_jobs.is_empty();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        ed.settle();
+        if idle(ed) {
+            ed.settle();
+            if idle(ed) {
+                return;
+            }
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "a timer or job was still pending after 5s"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+}
+
 /// A `frame` that leaves no viewport-debounce timer pending afterward, for
 /// a test that seeds baseline state, then registers a real
 /// `on-viewport-change` hook and does something slow (`eval_with_real_host`

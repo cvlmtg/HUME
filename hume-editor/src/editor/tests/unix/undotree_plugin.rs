@@ -296,7 +296,6 @@ fn render_a_child_of_an_older_revision_matches_a_fresh_layout() {
 // ── End to end: the real core:undotree plugin ───────────────────────────────
 
 use std::path::Path;
-use std::time::Duration;
 
 fn setup(tmp: &Path) -> (Editor, RealRuntimeDirs) {
     let guard = RealRuntimeDirs::new();
@@ -857,8 +856,7 @@ fn undotree_esc_ends_session() {
     assert!(!drawer_open(&ed));
 
     ed.feed_key(key('d'));
-    std::thread::sleep(Duration::from_millis(300));
-    ed.settle();
+    settle_until_idle(&mut ed);
     assert!(
         !drawer_open(&ed),
         "an edit after Esc must not reopen the drawer"

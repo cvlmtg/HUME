@@ -306,6 +306,7 @@ fn a_scan_whose_callback_raises_is_cancelled() {
     // for one that reports once and then waits, so a second report can
     // only come from a scan still registered.
     let (release, gate) = std::sync::mpsc::channel::<()>();
+    let (finished_tx, finished) = std::sync::mpsc::channel::<()>();
     let gated = hume_platform::snapshots::spawn_snapshots(
         "hume-test-scan",
         std::sync::Arc::clone(&ed.state.wake),
@@ -313,6 +314,7 @@ fn a_scan_whose_callback_raises_is_cancelled() {
             reporter.send(std::sync::Arc::from([std::sync::Arc::from("first")]));
             let _ = gate.recv();
             reporter.send(std::sync::Arc::from([std::sync::Arc::from("second")]));
+            let _ = finished_tx.send(());
         },
     )
     .expect("spawn");
@@ -327,7 +329,9 @@ fn a_scan_whose_callback_raises_is_cancelled() {
     assert!(ed.state.config.async_jobs.is_empty());
 
     release.send(()).expect("the producer waits");
-    std::thread::sleep(Duration::from_millis(50));
+    finished
+        .recv_timeout(Duration::from_secs(5))
+        .expect("the producer sends its second report");
     ed.settle();
     let booms = ed
         .state

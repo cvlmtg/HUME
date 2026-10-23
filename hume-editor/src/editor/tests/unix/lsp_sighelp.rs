@@ -7,7 +7,6 @@
 // escaped in Steel string literals (same constraint as tests/plugins.rs).
 
 use std::path::Path;
-use std::time::Duration;
 
 use super::*;
 use crate::editor::commands::open_pane_in_layout;
@@ -35,11 +34,9 @@ fn position_after_foo(ed: &mut Editor) {
 
 fn type_char_and_settle(ed: &mut Editor, ch: char) {
     ed.feed_key(key(ch));
-    ed.settle(); // on-trigger-char fires, schedules the debounce timer
-    std::thread::sleep(Duration::from_millis(250));
-    ed.drain_async_sources(); // debounce timer fires, sends the request
-    ed.drain_lsp(); // scripted response arrives
-    ed.settle(); // callback runs, shows/updates the popup
+    // on-trigger-char schedules the debounce timer; its request, the
+    // scripted response and the popup callback all land before idle.
+    settle_until_idle(ed);
 }
 
 fn popup_lines(ed: &mut Editor) -> Vec<String> {
@@ -227,10 +224,7 @@ fn rapid_trigger_chars_coalesce_to_one_request() {
     ed.feed_key(key(','));
     ed.settle();
 
-    std::thread::sleep(Duration::from_millis(250));
-    ed.drain_async_sources();
-    ed.drain_lsp();
-    ed.settle();
+    settle_until_idle(&mut ed);
 
     let sighelp_requests = requests
         .borrow()
@@ -416,9 +410,8 @@ fn stale_response_after_a_pane_switch_shows_no_popup() {
     );
     ed.state.focus.set_for_test(&mut ed.view, other_pid);
 
-    std::thread::sleep(Duration::from_millis(250));
-    ed.drain_async_sources(); // debounce fires, request sent and (dropped) delivered
-    ed.settle();
+    // The debounce fires, and the request is sent and its reply delivered.
+    settle_until_idle(&mut ed);
 
     assert_eq!(
         popup_lines(&mut ed),

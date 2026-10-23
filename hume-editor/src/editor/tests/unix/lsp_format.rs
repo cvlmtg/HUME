@@ -932,9 +932,7 @@ fn a_format_reply_after_the_timeout_formats_the_saved_buffer() {
     rig.ed.handle_key(key_esc());
 
     type_cmd(&mut rig.ed, ":w");
-    rig.ed.settle();
-    std::thread::sleep(std::time::Duration::from_millis(30));
-    rig.ed.settle();
+    settle_until_idle(&mut rig.ed);
     assert_eq!(on_disk(&rig), format!("x{THREE_LINES}"));
 
     rig.ed.drain_lsp();

@@ -72,8 +72,7 @@ fn timeout_counts_from_when_the_handlers_are_raised() {
     type_cmd(&mut ed, ":set global hook-before-save-timeout-ms=1");
 
     type_cmd(&mut ed, ":w");
-    std::thread::sleep(std::time::Duration::from_millis(30));
-    ed.settle();
+    settle_until_idle(&mut ed);
 
     assert_eq!(on_disk(&file), "b\n");
     assert_eq!(warnings(&ed), 0);
@@ -93,8 +92,7 @@ fn write_proceeds_when_a_handler_never_calls_done() {
     ed.settle();
     assert_eq!(on_disk(&file), "zz\n");
 
-    std::thread::sleep(std::time::Duration::from_millis(30));
-    ed.settle();
+    settle_until_idle(&mut ed);
 
     assert_eq!(on_disk(&file), "ab\n");
     assert!(
@@ -280,8 +278,7 @@ fn closing_the_buffer_drops_its_parked_write_without_a_warning() {
     ed.settle();
     type_cmd(&mut ed, ":bd!");
     ed.settle();
-    std::thread::sleep(std::time::Duration::from_millis(30));
-    ed.settle();
+    settle_until_idle(&mut ed);
 
     assert_eq!(on_disk(&file), "zz\n");
     assert_eq!(warnings(&ed), 0);

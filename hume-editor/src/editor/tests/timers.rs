@@ -338,3 +338,32 @@ fn a_queued_thunk_lost_to_the_drain_cap_frees_its_timer() {
     assert!(!ed.drain_pending_work());
     assert!(ed.timers.is_empty());
 }
+
+#[test]
+fn settle_until_idle_runs_a_chain_of_timers_to_the_end() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    let mut host = ScriptingHost::new(&Dirs::none());
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(define-typed-command! "start" ""
+             (lambda ()
+               (after! 20 (lambda ()
+                 (call! "move-right" (focused-pane))
+                 (after! 20 (lambda () (call! "move-right" (focused-pane))))))))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+
+    let started = std::time::Instant::now();
+    type_cmd(&mut ed, ":start");
+    settle_until_idle(&mut ed);
+
+    assert_eq!(state(&ed), "ab-[c]>def\n");
+    assert_eq!(ed.wake_timeout(), None);
+    assert!(
+        started.elapsed() >= std::time::Duration::from_millis(40),
+        "the second timer cannot fire before both delays have passed"
+    );
+}

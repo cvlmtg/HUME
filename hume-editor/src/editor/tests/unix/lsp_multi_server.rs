@@ -8,7 +8,6 @@
 // escaped in Steel string literals (same constraint as tests/plugins.rs).
 
 use std::path::Path;
-use std::time::Duration;
 
 use super::*;
 use crate::editor::tests::lsp_rig::RA_LINT;
@@ -466,9 +465,7 @@ fn locations_refresh_regroups_servers() {
     set_cursor(&mut rig.ed, 0);
     rig.ed.handle_key(key('O'));
     rig.ed.handle_key(key_esc());
-    rig.ed.settle();
-    std::thread::sleep(Duration::from_millis(400));
-    rig.ed.settle();
+    settle_until_idle(&mut rig.ed);
     pump_lsp(&mut rig.ed);
 
     for sid in [RA, LINT] {
@@ -506,10 +503,7 @@ fn refresh_hints(ed: &mut Editor) {
     ed.prepare_frame(&mut ctx);
     let pid = ed.view.focused_pane();
     ed.queue_viewport_change(pid);
-    ed.settle();
-    std::thread::sleep(Duration::from_millis(300));
-    ed.settle();
-    ed.settle();
+    settle_until_idle(ed);
 }
 
 fn hint_texts(ed: &Editor) -> Vec<String> {
@@ -568,10 +562,7 @@ fn inlay_detach_one_keeps_other_hints() {
     refresh_hints(&mut rig.ed);
 
     rig.stop("ra-lint");
-    rig.ed.settle();
-    std::thread::sleep(Duration::from_millis(300));
-    rig.ed.settle();
-    rig.ed.settle();
+    settle_until_idle(&mut rig.ed);
 
     assert_eq!(hint_texts(&rig.ed), vec![": i32"]);
 }

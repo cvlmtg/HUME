@@ -11,7 +11,6 @@
 // escaped in Steel string literals (same constraint as tests/plugins.rs).
 
 use std::path::Path;
-use std::time::Duration;
 
 use super::*;
 use crate::editor::commands::open_pane_in_layout;
@@ -155,26 +154,6 @@ fn fire_viewport_change(ed: &mut Editor) {
     ed.queue_viewport_change(pid);
 }
 
-/// Two `settle()` rounds after the sleep, not one: `settle()`'s own
-/// `drain_async_sources` runs once, at its top, before its fixpoint drains
-/// `pending_work`:
-/// - **Round 1** picks up the now-due debounce timer (`drain_due_timers`
-///   queues the thunk via `queue_timer_thunk`), and the same call's fixpoint
-///   runs it immediately, sending the wire request. The scripted backend
-///   auto-queues its response synchronously, but this round's
-///   `drain_async_sources` already ran, so it isn't seen yet.
-/// - **Round 2**'s `drain_async_sources` is what picks the response up (via
-///   `drain_lsp`), and its fixpoint runs the response callback.
-///
-/// `Editor::run`'s loop does exactly this over two real frames; a test not
-/// driving that loop needs the two `settle()` calls explicitly.
-fn settle_after_debounce(ed: &mut Editor) {
-    ed.settle();
-    std::thread::sleep(Duration::from_millis(300));
-    ed.settle();
-    ed.settle();
-}
-
 fn inlay_hint_response(entries: &[(u32, u32, serde_json::Value)]) -> serde_json::Value {
     serde_json::Value::Array(
         entries
@@ -197,7 +176,7 @@ fn viewport_change_triggers_one_debounced_request() {
     });
 
     fire_viewport_change(&mut ed);
-    settle_after_debounce(&mut ed);
+    settle_until_idle(&mut ed);
 
     assert_eq!(request_count(&requests, "textDocument/inlayHint"), 1);
 }
@@ -218,7 +197,7 @@ fn inlay_hint_request_range_matches_the_viewport() {
     });
 
     fire_viewport_change(&mut ed);
-    settle_after_debounce(&mut ed);
+    settle_until_idle(&mut ed);
 
     let log = requests.borrow();
     let (_, _, params) = log
@@ -239,7 +218,7 @@ fn hints_off_by_default_send_no_request() {
     });
 
     fire_viewport_change(&mut ed);
-    settle_after_debounce(&mut ed);
+    settle_until_idle(&mut ed);
 
     assert_eq!(request_count(&requests, "textDocument/inlayHint"), 0);
 }
@@ -258,7 +237,7 @@ fn hints_land_in_the_store_at_the_correct_char_offset() {
     let bid = ed.focused_buffer_id();
 
     fire_viewport_change(&mut ed);
-    settle_after_debounce(&mut ed);
+    settle_until_idle(&mut ed);
 
     let hints: Vec<_> = ed
         .state
@@ -293,11 +272,11 @@ fn toggle_off_clears_the_buffers_hints() {
     });
     let bid = ed.focused_buffer_id();
     fire_viewport_change(&mut ed);
-    settle_after_debounce(&mut ed);
+    settle_until_idle(&mut ed);
     assert_eq!(hint_count(&ed, bid), 1, "sanity: the hint lands while on");
 
     type_cmd(&mut ed, ":toggle-inlay-hints");
-    settle_after_debounce(&mut ed);
+    settle_until_idle(&mut ed);
 
     assert_eq!(hint_count(&ed, bid), 0);
 }
@@ -315,14 +294,9 @@ fn toggle_off_drops_a_response_already_in_flight() {
     });
     let bid = ed.focused_buffer_id();
     fire_viewport_change(&mut ed);
-    ed.settle();
-    std::thread::sleep(Duration::from_millis(300));
-    ed.settle();
-    assert_eq!(
-        request_count(&requests, "textDocument/inlayHint"),
-        1,
-        "sanity: the request is sent"
-    );
+    poll_until(&mut ed, Editor::settle, |_| {
+        request_count(&requests, "textDocument/inlayHint") == 1
+    });
     assert_eq!(
         hint_count(&ed, bid),
         0,
@@ -330,7 +304,7 @@ fn toggle_off_drops_a_response_already_in_flight() {
     );
 
     type_cmd(&mut ed, ":toggle-inlay-hints");
-    settle_after_debounce(&mut ed);
+    settle_until_idle(&mut ed);
 
     assert_eq!(hint_count(&ed, bid), 0);
 }
@@ -346,11 +320,11 @@ fn toggle_on_requests_hints_for_the_buffer() {
     });
     let bid = ed.focused_buffer_id();
     fire_viewport_change(&mut ed);
-    settle_after_debounce(&mut ed);
+    settle_until_idle(&mut ed);
     assert_eq!(hint_count(&ed, bid), 0, "sanity: off by default");
 
     type_cmd(&mut ed, ":toggle-inlay-hints");
-    settle_after_debounce(&mut ed);
+    settle_until_idle(&mut ed);
 
     assert_eq!(hint_count(&ed, bid), 1);
 }
@@ -365,11 +339,11 @@ fn toggle_leaves_other_buffers_alone() {
     let pane_a = t.ed.view.focused_pane();
 
     type_cmd(&mut t.ed, ":toggle-inlay-hints");
-    settle_after_debounce(&mut t.ed);
+    settle_until_idle(&mut t.ed);
     let baseline = request_count(&t.requests, "textDocument/inlayHint");
 
     t.ed.queue_viewport_change(pane_a);
-    settle_after_debounce(&mut t.ed);
+    settle_until_idle(&mut t.ed);
     assert_eq!(
         request_count(&t.requests, "textDocument/inlayHint"),
         baseline,
@@ -377,7 +351,7 @@ fn toggle_leaves_other_buffers_alone() {
     );
 
     t.ed.queue_viewport_change(t.pane_b);
-    settle_after_debounce(&mut t.ed);
+    settle_until_idle(&mut t.ed);
     assert_eq!(
         request_count(&t.requests, "textDocument/inlayHint"),
         baseline + 1,
@@ -402,7 +376,7 @@ fn label_parts_concatenate_and_padding_becomes_literal_spaces() {
     let bid = ed.focused_buffer_id();
 
     fire_viewport_change(&mut ed);
-    settle_after_debounce(&mut ed);
+    settle_until_idle(&mut ed);
 
     let hints: Vec<_> = ed
         .state
@@ -435,7 +409,7 @@ fn diagnostics_changed_also_refreshes_hints() {
     // Fire a real viewport-change first: the request count assertions
     // below need a known baseline (1 request from this fire, not 0 or 2).
     fire_viewport_change(&mut ed);
-    settle_after_debounce(&mut ed);
+    settle_until_idle(&mut ed);
     assert_eq!(request_count(&requests, "textDocument/inlayHint"), 1);
 
     let bid = ed.focused_buffer_id();
@@ -448,7 +422,7 @@ fn diagnostics_changed_also_refreshes_hints() {
     );
     ed.state
         .queue_event(crate::editor::event::EditorEvent::OnDiagnosticsChanged { buffer: bid });
-    settle_after_debounce(&mut ed);
+    settle_until_idle(&mut ed);
 
     assert_eq!(
         request_count(&requests, "textDocument/inlayHint"),
@@ -494,7 +468,7 @@ fn hidden_buffer_skips_diagnostics_triggered_refresh() {
     );
     ed.state
         .queue_event(crate::editor::event::EditorEvent::OnDiagnosticsChanged { buffer: bid });
-    settle_after_debounce(&mut ed);
+    settle_until_idle(&mut ed);
 
     assert_eq!(
         request_count(&requests, "textDocument/inlayHint"),
@@ -518,7 +492,7 @@ fn an_empty_response_clears_previously_stored_hints() {
     let bid = ed.focused_buffer_id();
 
     fire_viewport_change(&mut ed);
-    settle_after_debounce(&mut ed);
+    settle_until_idle(&mut ed);
     assert_eq!(
         ed.state
             .config
@@ -533,7 +507,7 @@ fn an_empty_response_clears_previously_stored_hints() {
     // the debounced refresh without moving anything.
     ed.state
         .queue_event(crate::editor::event::EditorEvent::OnDiagnosticsChanged { buffer: bid });
-    settle_after_debounce(&mut ed);
+    settle_until_idle(&mut ed);
 
     assert_eq!(
         ed.state
@@ -559,7 +533,7 @@ fn stopping_the_only_server_clears_its_hints() {
     });
     let bid = ed.focused_buffer_id();
     fire_viewport_change(&mut ed);
-    settle_after_debounce(&mut ed);
+    settle_until_idle(&mut ed);
     assert_eq!(
         ed.state
             .config
@@ -571,7 +545,7 @@ fn stopping_the_only_server_clears_its_hints() {
     );
 
     super::super::lsp_rig::stop_server(&mut ed, "rust-analyzer");
-    settle_after_debounce(&mut ed);
+    settle_until_idle(&mut ed);
 
     assert_eq!(
         ed.state
@@ -595,7 +569,7 @@ fn stopping_the_server_clears_the_hints_of_a_hidden_buffer() {
     });
     let bid = ed.focused_buffer_id();
     fire_viewport_change(&mut ed);
-    settle_after_debounce(&mut ed);
+    settle_until_idle(&mut ed);
     let other_file = rig_root(tmp.path()).join("other.rs");
     std::fs::write(&other_file, "let y = 2;\n").unwrap();
     ed.execute_typed("e", Some(other_file.to_str().unwrap()))
@@ -612,7 +586,7 @@ fn stopping_the_server_clears_the_hints_of_a_hidden_buffer() {
     );
 
     super::super::lsp_rig::stop_server(&mut ed, "rust-analyzer");
-    settle_after_debounce(&mut ed);
+    settle_until_idle(&mut ed);
 
     assert_eq!(
         ed.state
@@ -639,10 +613,10 @@ fn a_failed_response_keeps_the_stored_hints_and_reports_the_error() {
     let bid = ed.focused_buffer_id();
 
     fire_viewport_change(&mut ed);
-    settle_after_debounce(&mut ed);
+    settle_until_idle(&mut ed);
     ed.state
         .queue_event(crate::editor::event::EditorEvent::OnDiagnosticsChanged { buffer: bid });
-    settle_after_debounce(&mut ed);
+    settle_until_idle(&mut ed);
 
     assert_eq!(
         ed.state
@@ -695,7 +669,7 @@ fn diagnostics_changed_for_two_buffers_in_the_same_window_both_refresh() {
         .queue_event(crate::editor::event::EditorEvent::OnDiagnosticsChanged { buffer: bid_a });
     ed.state
         .queue_event(crate::editor::event::EditorEvent::OnDiagnosticsChanged { buffer: bid_b });
-    settle_after_debounce(&mut ed);
+    settle_until_idle(&mut ed);
 
     let sent_to = |sid: ServerId| {
         requests
@@ -736,7 +710,7 @@ fn refresh_hints_resolves_against_the_buffers_own_server_not_the_focused_buffers
     // Buffer A (focused, server A, no inlayHintProvider) never changes
     // focus. The viewport event below is for the background pane only.
     ed.queue_viewport_change(pane_b);
-    settle_after_debounce(&mut ed);
+    settle_until_idle(&mut ed);
 
     let sent_to_b = requests
         .borrow()
@@ -772,11 +746,11 @@ fn undo_also_refreshes_hints() {
     ed.feed_key(key('i'));
     ed.feed_key(key('a'));
     ed.feed_key(key_esc());
-    settle_after_debounce(&mut ed);
+    settle_until_idle(&mut ed);
     assert_eq!(request_count(&requests, "textDocument/inlayHint"), 1);
 
     ed.feed_key(key('u')); // undo
-    settle_after_debounce(&mut ed);
+    settle_until_idle(&mut ed);
 
     assert_eq!(
         request_count(&requests, "textDocument/inlayHint"),
@@ -804,12 +778,12 @@ fn a_new_refresh_cancels_the_buffers_unanswered_request() {
     rig.ed.feed_key(key('i'));
     rig.ed.feed_key(key('a'));
     rig.ed.feed_key(key_esc());
-    settle_after_debounce(&mut rig.ed);
+    settle_until_idle(&mut rig.ed);
     assert_eq!(request_count(&rig.requests, "textDocument/inlayHint"), 1);
     assert_eq!(rig.ed.state.lsp.delivery_count_for_test(), 1);
 
     rig.ed.feed_key(key('u'));
-    settle_after_debounce(&mut rig.ed);
+    settle_until_idle(&mut rig.ed);
 
     assert_eq!(request_count(&rig.requests, "textDocument/inlayHint"), 2);
     assert_eq!(rig.sent(sid, "$/cancelRequest").len(), 1);
@@ -827,11 +801,11 @@ fn a_refresh_leaves_another_buffers_request_in_flight() {
     t.ed.feed_key(key('i'));
     t.ed.feed_key(key('a'));
     t.ed.feed_key(key_esc());
-    settle_after_debounce(&mut t.ed);
+    settle_until_idle(&mut t.ed);
     assert_eq!(request_count(&t.requests, "textDocument/inlayHint"), 1);
 
     t.ed.queue_viewport_change(t.pane_b);
-    settle_after_debounce(&mut t.ed);
+    settle_until_idle(&mut t.ed);
 
     assert_eq!(request_count(&t.requests, "textDocument/inlayHint"), 2);
     assert_eq!(t.ed.state.lsp.delivery_count_for_test(), 2);

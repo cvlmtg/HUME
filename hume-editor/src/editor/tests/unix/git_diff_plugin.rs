@@ -16,7 +16,6 @@
 use super::*;
 
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 
 use super::super::render_snapshot::render_to_styled_string;
 use hume_grid::Rect;
@@ -117,22 +116,12 @@ fn open(ed: &mut Editor, path: &Path) -> BufferId {
     ed.focused_buffer_id()
 }
 
-/// Waits out a just-queued hook's 150ms `debounce-by` timer plus the
-/// subsequent async `git cat-file` round trip, for a bounded negative wait
-/// (asserting nothing/something-specific happened) where no store mutation
-/// exists to `drain_until` on.
-///
-/// The leading `settle()` matters as much as the sleep: a hook queued by
-/// `execute_typed`/`feed_key` (`on-buffer-open`, `on-text-changed`,
-/// `on-buffer-save`, …) only *runs* (and so only *starts* its debounce
-/// timer) once something drains `pending_work`. Sleeping first and
-/// settling once after, with no settle before the sleep, lets the timer's
-/// own 150ms elapse before it has even been scheduled, so the wait
-/// accomplishes nothing and the assertion after it passes vacuously.
-fn wait_for_refresh(ed: &mut Editor) {
-    ed.settle();
-    std::thread::sleep(Duration::from_millis(400));
-    ed.settle();
+/// Settles until a debounced refresh has started its background `git` job and
+/// has not yet drained its result: the moment a close is meant to race.
+fn settle_until_fetch_in_flight(ed: &mut Editor) {
+    poll_until(ed, Editor::settle, |ed| {
+        !ed.state.config.async_jobs.is_empty()
+    });
 }
 
 /// `signs_for(SOURCE, bid)`, remapped from char-offset `pos` back to a line
@@ -825,7 +814,7 @@ fn another_sources_drawing_hides_the_own_inline_diff_until_released() {
 
     type_cmd(&mut ed, ":toggle-inline-diff");
     type_cmd(&mut ed, ":toggle-inline-diff");
-    wait_for_refresh(&mut ed);
+    settle_until_idle(&mut ed);
     assert!(
         own_inline_is_empty(&ed, bid),
         "re-enabling and refreshing while hidden draws nothing"
@@ -898,7 +887,7 @@ fn open_clean_two_commit_buffer(ed: &mut Editor) -> (BufferId, tempfile::TempDir
     commit_file(repo.path(), "f.txt", "one\ntwo\nthree\n", "v1");
     commit_file(repo.path(), "f.txt", "one\nCHANGED\nthree\n", "v2");
     let bid = open(ed, &repo.path().join("f.txt"));
-    wait_for_refresh(ed);
+    settle_until_idle(ed);
     (bid, repo)
 }
 
@@ -948,7 +937,7 @@ fn show_inline_diff_turns_inline_on_against_the_given_ref() {
     assert_eq!(vlines(&ed, bid)[0].2, "two", "diffs against HEAD~1 (v1)");
 
     type_cmd(&mut ed, ":probe-show");
-    wait_for_refresh(&mut ed);
+    settle_until_idle(&mut ed);
     assert!(
         !vlines(&ed, bid).is_empty(),
         "a second show keeps inline on instead of toggling it off"
@@ -1028,7 +1017,7 @@ fn explicit_ref_toggle_sets_ref_and_re_renders_the_other_enabled_rendering() {
     // Otherwise its debounced fetch, captured with the pre-toggle ref,
     // can complete after the explicit-ref toggle below and overwrite its
     // freshly fetched HEAD~1 blob with HEAD's (empty-diff) one.
-    wait_for_refresh(&mut ed);
+    settle_until_idle(&mut ed);
 
     // Turn inline on, explicitly pointed at the older commit.
     type_cmd(&mut ed, ":toggle-inline-diff HEAD~1");
@@ -1095,7 +1084,7 @@ fn toggle_git_signs_tab_completes_a_ref() {
     let (repo, path) = commit_and_checkout("f.txt", "one\ntwo\nthree\n", "feature-x");
     git(repo.path(), &["tag", "v1.2.3"]);
     open(&mut ed, &path);
-    wait_for_refresh(&mut ed);
+    settle_until_idle(&mut ed);
 
     ed.handle_key(key(':'));
     type_chars(&mut ed, "toggle-git-signs v1.2");
@@ -1113,7 +1102,7 @@ fn toggle_inline_diff_tab_completes_a_ref() {
     let (repo, path) = commit_and_checkout("f.txt", "one\ntwo\nthree\n", "feature-x");
     git(repo.path(), &["tag", "v1.2.3"]);
     open(&mut ed, &path);
-    wait_for_refresh(&mut ed);
+    settle_until_idle(&mut ed);
 
     ed.handle_key(key(':'));
     type_chars(&mut ed, "toggle-inline-diff v1.2");
@@ -1156,10 +1145,8 @@ fn untracked_file_shows_no_diff_and_logs_nothing() {
     let status_after_open = ed.state.status_msg.clone();
 
     // No positive signal exists for "the fetch ran and found nothing":
-    // wait past the 150ms debounce plus a real `git cat-file` round trip,
-    // mirroring `lsp_sighelp.rs`'s bounded-sleep idiom for a background
-    // subprocess with no observable completion event to poll on.
-    wait_for_refresh(&mut ed);
+    // wait for the debounce and the `git cat-file` job it starts to finish.
+    settle_until_idle(&mut ed);
 
     assert!(
         signs(&ed, bid).is_empty(),
@@ -1284,7 +1271,7 @@ fn buffer_save_invalidates_cached_ref_and_refetches() {
     ed.feed_key(key('!'));
     ed.feed_key(key_esc());
     ed.feed_key(key('u'));
-    wait_for_refresh(&mut ed);
+    settle_until_idle(&mut ed);
     assert_eq!(
         vlines(&ed, bid)[0].2,
         "CHANGED",
@@ -1325,14 +1312,12 @@ fn buffer_close_after_open_leaves_no_stray_error() {
     std::fs::write(repo.path().join("f.txt"), "one\nCHANGED\nthree\n").unwrap();
     open(&mut ed, &repo.path().join("f.txt"));
 
-    // Let on-buffer-open run (starting its debounce timer), then close just
-    // past the 150ms debounce. The background `git cat-file` is plausibly still
-    // in flight at that point. on-buffer-close's remove-buffer!
+    // Close once on-buffer-open's debounce has fired and its background
+    // `git cat-file` is in flight. on-buffer-close's remove-buffer!
     // must leave no callback able to misfire against this now-closed buffer.
-    ed.settle();
-    std::thread::sleep(Duration::from_millis(160));
+    settle_until_fetch_in_flight(&mut ed);
     ed.execute_typed("bd", None).unwrap();
-    wait_for_refresh(&mut ed);
+    settle_until_idle(&mut ed);
 
     let errors = error_log(&ed);
     assert!(
@@ -1391,7 +1376,7 @@ fn git_branch_element_is_empty_outside_a_repo() {
     std::fs::write(dir.path().join("f.txt"), "one\ntwo\nthree\n").unwrap();
     open(&mut ed, &dir.path().join("f.txt"));
 
-    wait_for_refresh(&mut ed);
+    settle_until_idle(&mut ed);
     assert_eq!(custom_text(&ed, "git-branch"), "");
 }
 
@@ -1449,17 +1434,15 @@ fn closing_the_buffer_during_a_branch_fetch_leaves_no_stray_error() {
     let (_repo, path) = commit_and_checkout("f.txt", "one\ntwo\nthree\n", "feature-x");
     open(&mut ed, &path);
 
-    // Let on-buffer-enter run (starting its debounce timer), then close
-    // just past the 150ms debounce: the debounced refresh-branch! and the
-    // background `git rev-parse` callback are both plausibly still pending.
+    // Close once on-buffer-enter's debounced refresh-branch! has fired and
+    // its background `git rev-parse` callback is pending.
     // `buffer-path`/`set-statusline-text!` both hard-error on a stale bid,
     // so neither may fire against this now-closed one without first
     // checking `git-diff/buffer-entry`, which `remove-buffer!` clears
     // synchronously below, before either callback can run.
-    ed.settle();
-    std::thread::sleep(Duration::from_millis(160));
+    settle_until_fetch_in_flight(&mut ed);
     ed.execute_typed("bd", None).unwrap();
-    wait_for_refresh(&mut ed);
+    settle_until_idle(&mut ed);
 
     let errors = error_log(&ed);
     assert!(
@@ -1476,14 +1459,7 @@ fn git_branch_element_never_fetches_while_unplaced() {
 
     let (_repo, path) = commit_and_checkout("f.txt", "one\ntwo\nthree\n", "feature-x");
     let bid = open(&mut ed, &path);
-    // `wait_for_refresh` alone (400ms) isn't enough headroom for a negative
-    // assertion: a real fetch's debounce-plus-round-trip can still be
-    // in flight at that point. Match `drain_until`'s own 2s deadline so this
-    // reliably fails if the gate below is ever lost, rather than passing
-    // vacuously because the assertion ran before a real fetch would finish.
-    wait_for_refresh(&mut ed);
-    std::thread::sleep(Duration::from_millis(1600));
-    ed.settle();
+    settle_until_idle(&mut ed);
 
     // No entry at all for `bid`, not merely an empty string, which would
     // also be produced by a fetch that ran and failed. Distinguishes "no
@@ -1505,7 +1481,7 @@ fn git_branch_element_activates_when_placed_after_open() {
 
     let (_repo, path) = commit_and_checkout("f.txt", "one\ntwo\nthree\n", "feature-x");
     open(&mut ed, &path);
-    wait_for_refresh(&mut ed);
+    settle_until_idle(&mut ed);
 
     let mut host = ed.scripting.take().expect("setup() installs a host");
     eval_with_real_host(
@@ -1678,7 +1654,7 @@ fn toggling_signs_off_on_a_buffer_that_never_showed_signs_reserves_no_gutter_slo
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("plain.txt"), "hello\n").unwrap();
     let bid = open(&mut ed, &dir.path().join("plain.txt"));
-    wait_for_refresh(&mut ed);
+    settle_until_idle(&mut ed);
 
     type_cmd(&mut ed, ":toggle-git-signs");
     ed.settle();
@@ -1758,7 +1734,7 @@ fn a_ref_that_looks_like_a_git_option_is_not_run_as_one() {
     open(&mut ed, &repo.path().join("f.txt"));
 
     type_cmd(&mut ed, ":toggle-git-signs --output=out");
-    wait_for_refresh(&mut ed);
+    settle_until_idle(&mut ed);
 
     assert!(
         !repo.path().join("out:./f.txt").exists(),
