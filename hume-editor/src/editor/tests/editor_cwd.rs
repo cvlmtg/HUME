@@ -75,7 +75,12 @@ fn current_directory_reports_the_editor_cwd() {
 
     let out = log_probe(&mut ed, tmp.path(), "(current-directory)");
 
-    assert_eq!(out, canonical(tmp.path()).to_str().unwrap());
+    assert_eq!(
+        out,
+        hume_platform::path::strip_unc_prefix(canonical(tmp.path()))
+            .to_str()
+            .unwrap()
+    );
 }
 
 #[test]
