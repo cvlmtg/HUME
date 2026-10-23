@@ -28,7 +28,7 @@
 - New `replace-dir!`, `try-lock-file!` and `unlock-file!`.
 - A HUME that exited, or an install the script budget stopped, can't leave `:lsp-install` locked.
 - Steel's `current-directory` and `change-current-directory!` read and move HUME's working directory, the one `cwd`, `set-cwd!` and `:cd` use. `set-cwd!` works from `init.scm` too.
-- A relative path given to `replace-dir!`, `try-lock-file!`, `unlock-file!` or `path-entries` resolves like one typed to `:e`.
+- A relative path given to `replace-dir!`, `delete-directory!`, `try-lock-file!`, `unlock-file!` or `path-entries` resolves like one typed to `:e`.
 - A grammar `register-grammar!` registers from `init.scm` that can't be loaded is reported in `:messages` when a file or an embedded block first needs it, not at startup.
 - `completion-emit!` takes `#:more #t` to answer a request in parts.
 - `register-completion-source!` takes `#:cancel`, called with a request's id when HUME stops waiting for its answer, so a source can stop the work it started for it.

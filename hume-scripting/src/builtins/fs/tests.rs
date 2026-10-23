@@ -412,3 +412,6 @@ fn replace_dir_clears_a_backup_an_earlier_swap_left() {
     assert_eq!(entries(&dest), ["new"]);
     assert_eq!(entries(&parent), ["repo"]);
 }
+
+#[cfg(unix)]
+mod unix;

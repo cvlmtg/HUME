@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
 use std::ffi::OsString;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use super::name_starts_with;
@@ -81,21 +81,28 @@ impl ProgramNames {
 }
 
 /// Lists the programs on `search_path` (a `PATH` value) whose names start
-/// with `prefix`, on a background thread. The scan reports the sorted
-/// names so far after each directory that adds one, and once the returned
-/// [`Snapshots`] is dropped it reads no further directory.
+/// with `prefix`, on a background thread. A relative entry joins onto `cwd`,
+/// as it does when the program is run or looked up, and an empty one is
+/// skipped on Windows. The scan reports the sorted names so far after each
+/// directory that adds one, and once the returned [`Snapshots`] is dropped it
+/// reads no further directory.
 pub fn spawn_program_scan(
     search_path: Option<OsString>,
+    cwd: PathBuf,
     prefix: String,
     extensions: Vec<String>,
     wake: WakeCallback,
 ) -> io::Result<Snapshots<Arc<[Arc<str>]>>> {
     spawn_snapshots("hume-program-scan", wake, move |reporter| {
         let mut names = ProgramNames::default();
-        for dir in search_path.iter().flat_map(std::env::split_paths) {
+        for entry in search_path.iter().flat_map(std::env::split_paths) {
             if !reporter.is_live() {
                 return;
             }
+            if cfg!(windows) && entry.as_os_str().is_empty() {
+                continue;
+            }
+            let dir = super::absolute_unresolved(&entry, &cwd);
             if names.scan_dir(&dir, &prefix, &extensions, || reporter.is_live()) {
                 reporter.send(names.sorted());
             }

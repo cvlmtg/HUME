@@ -81,6 +81,7 @@ impl<'a> AsyncProcessHost for EditorHostImpl<'a> {
     ) -> Result<u64, String> {
         let names = hume_platform::path::programs::spawn_program_scan(
             self.state.dirs.search_path.clone(),
+            self.state.cwd.clone(),
             prefix,
             extensions,
             std::sync::Arc::clone(&self.state.wake),

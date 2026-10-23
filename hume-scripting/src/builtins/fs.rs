@@ -10,9 +10,9 @@
 //! Steel's own `delete-directory!`), a directory swap the budget cannot
 //! split, and file locks released when the session ends.
 //!
-//! The path arguments of `replace-dir!`, the lock pair and `path-entries`
-//! are [`ScriptPath`](super::args::ScriptPath)s, resolved as `:e` resolves
-//! a typed one.
+//! The path arguments of `replace-dir!`, `%delete-directory!`, the lock pair
+//! and `path-entries` are [`ScriptPath`](super::args::ScriptPath)s, resolved
+//! as `:e` resolves a typed one.
 //!
 //! | Steel name      | Signature                      | Notes                                        |
 //! |-----------------|--------------------------------|----------------------------------------------|
@@ -42,6 +42,7 @@ use std::path::{Path, PathBuf};
 use steel::rvals::{IntoSteelVal, SteelVal};
 
 use crate::SteelCtx;
+use crate::log::LogLevel;
 
 use super::SteelResult;
 use super::args::{list_to_strings, string_list};
@@ -108,7 +109,9 @@ pub(crate) fn set_cwd(ctx: &mut SteelCtx, path: String) -> SteelResult {
 /// even when the budget expires during it, so a stopped script cannot leave
 /// `dest` deleted and `src` unmoved. `dest`'s old contents move aside to a
 /// sibling `<name>.replaced` and are deleted last, with the budget stopped;
-/// a backup a crash left there is cleared first.
+/// a backup a crash left there is cleared first. A backup that cannot be
+/// deleted is logged as a warning and the call still succeeds, since `src`
+/// is in place by then.
 pub(crate) fn replace_dir(ctx: &mut SteelCtx, src: PathBuf, dest: PathBuf) -> SteelResult {
     let (Some(parent), Some(name)) = (dest.parent(), dest.file_name()) else {
         return Err(generic_err(format!(
@@ -121,35 +124,59 @@ pub(crate) fn replace_dir(ctx: &mut SteelCtx, src: PathBuf, dest: PathBuf) -> St
     let backup = parent.join(backup_name);
     ctx.while_waiting(|| {
         std::fs::create_dir_all(parent)?;
-        remove_dir_tree_if_present(&backup)?;
-        let had_dest = match std::fs::rename(&dest, &backup) {
-            Ok(()) => true,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
-            Err(e) => return Err(e),
-        };
-        if let Err(e) = std::fs::rename(&src, &dest) {
-            if had_dest {
-                std::fs::rename(&backup, &dest)?;
-            }
-            return Err(e);
-        }
-        remove_dir_tree_if_present(&backup)
+        swap_dir_in(&src, &dest, &backup)
     })
-    .map(|()| SteelVal::Void)
     .map_err(|e| {
         generic_err(format!(
             "replace-dir!: {} -> {}: {e}",
             src.display(),
             dest.display()
         ))
-    })
+    })?;
+    if let Err(e) = ctx.while_waiting(|| remove_dir_tree_if_present(&backup)) {
+        ctx.log(
+            LogLevel::Warning,
+            format!(
+                "replace-dir!: {} was replaced, but its old contents in {} were not deleted: {e}",
+                dest.display(),
+                backup.display()
+            ),
+        );
+    }
+    Ok(SteelVal::Void)
+}
+
+/// Moves `src` to `dest`, parking what `dest` held at `backup`, which stays
+/// there for the caller to delete. A `backup` already present is deleted
+/// first. When `src` cannot move, `dest` is put back; if that fails too, the
+/// error names both failures and where the old contents are.
+fn swap_dir_in(src: &Path, dest: &Path, backup: &Path) -> std::io::Result<()> {
+    remove_dir_tree_if_present(backup)?;
+    let had_dest = match std::fs::rename(dest, backup) {
+        Ok(()) => true,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
+        Err(e) => return Err(e),
+    };
+    let Err(e) = std::fs::rename(src, dest) else {
+        return Ok(());
+    };
+    if had_dest && let Err(restore) = std::fs::rename(backup, dest) {
+        return Err(std::io::Error::new(
+            e.kind(),
+            format!(
+                "{e}; putting {} back from {} failed too: {restore}",
+                dest.display(),
+                backup.display()
+            ),
+        ));
+    }
+    Err(e)
 }
 
 /// `(%delete-directory! dir)`, which the prelude's `delete-directory!`
-/// calls: Steel's own `delete-directory!` (a relative `dir` resolves against
-/// the process cwd, and a missing one raises), run with the session's budget
-/// stopped.
-pub(crate) fn delete_directory(ctx: &mut SteelCtx, dir: String) -> SteelResult {
+/// calls: Steel's own `delete-directory!` (a missing `dir` raises), run with
+/// the session's budget stopped. A relative `dir` joins onto `(cwd)`.
+pub(crate) fn delete_directory(ctx: &mut SteelCtx, dir: PathBuf) -> SteelResult {
     ctx.while_waiting(|| std::fs::remove_dir_all(&dir))?;
     Ok(SteelVal::Void)
 }

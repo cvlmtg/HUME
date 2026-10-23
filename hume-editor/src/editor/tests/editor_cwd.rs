@@ -106,6 +106,22 @@ fn a_lock_taken_through_a_dot_dot_path_is_released_by_its_plain_name() {
 }
 
 #[test]
+fn delete_directory_resolves_a_relative_path_against_the_editor_cwd() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir(tmp.path().join("doomed")).unwrap();
+    let mut ed = editor_in(tmp.path());
+
+    let out = log_probe(
+        &mut ed,
+        tmp.path(),
+        r#"(begin (delete-directory! "doomed") "deleted")"#,
+    );
+
+    assert_eq!(out, "deleted");
+    assert!(!tmp.path().join("doomed").exists());
+}
+
+#[test]
 fn relative_display_path_is_relative_to_the_editor_cwd() {
     let tmp = tempfile::tempdir().unwrap();
     std::fs::create_dir(tmp.path().join("sub")).unwrap();

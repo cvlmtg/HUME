@@ -1,5 +1,5 @@
 use std::cell::Cell;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use super::*;
@@ -95,6 +95,7 @@ fn a_program_scan_ends_with_every_directorys_programs_sorted() {
     let (wake, woken) = counting_wake();
     let scan = spawn_program_scan(
         Some(search_path(&[first.path(), second.path()])),
+        first.path().to_owned(),
         "probe".to_owned(),
         vec![".exe".to_owned()],
         wake,
@@ -106,8 +107,27 @@ fn a_program_scan_ends_with_every_directorys_programs_sorted() {
 #[test]
 fn a_program_scan_without_a_search_path_ends_empty() {
     let (wake, woken) = counting_wake();
-    let scan = spawn_program_scan(None, String::new(), Vec::new(), wake).expect("spawn");
+    let scan = spawn_program_scan(None, PathBuf::from("."), String::new(), Vec::new(), wake)
+        .expect("spawn");
     assert_eq!(scan_to_end(scan, &woken), Vec::<String>::new());
+}
+
+#[test]
+fn a_relative_search_path_entry_is_read_from_the_given_cwd() {
+    let cwd = tempfile::tempdir().unwrap();
+    let bin = cwd.path().join("bin");
+    std::fs::create_dir(&bin).unwrap();
+    write_probe(&bin, "probe-relative");
+    let (wake, woken) = counting_wake();
+    let scan = spawn_program_scan(
+        Some(search_path(&[Path::new("bin")])),
+        cwd.path().to_owned(),
+        "probe".to_owned(),
+        vec![".exe".to_owned()],
+        wake,
+    )
+    .expect("spawn");
+    assert_eq!(scan_to_end(scan, &woken), ["probe-relative"]);
 }
 
 #[cfg(unix)]

@@ -11,4 +11,5 @@
 // `extern crate self as hume`.
 extern crate hume_editor as hume;
 
+mod cwd;
 mod scripting;

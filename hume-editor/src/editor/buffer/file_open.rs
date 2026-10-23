@@ -42,10 +42,11 @@ impl EditorState {
     /// Moves the working directory to `path`; a relative `path` joins onto the
     /// current one. Canonicalizes and rejects non-directories.
     ///
-    /// `:cd` and `(set-cwd! …)` both land here. The process cwd is moved too,
-    /// for code that reads it (plugins, Steel's filesystem primitives); nothing
-    /// in HUME does after startup. Unit tests skip that call so they cannot
-    /// race each other over it.
+    /// `:cd` and `(set-cwd! …)` both land here. The process cwd moves too, so
+    /// Steel's filesystem primitives and spawned programs resolve a relative
+    /// path against the same directory as HUME; when it cannot move, neither
+    /// does the editor's. Unit tests skip that call so they cannot race each
+    /// other over it.
     pub(in crate::editor) fn set_cwd(&mut self, path: &std::path::Path) -> io::Result<PathBuf> {
         let canonical = std::fs::canonicalize(self.cwd.join(path))?;
         if !canonical.is_dir() {
@@ -54,14 +55,9 @@ impl EditorState {
                 "not a directory",
             ));
         }
-        self.cwd = canonical;
         #[cfg(not(test))]
-        if let Err(e) = std::env::set_current_dir(&self.cwd) {
-            self.report(
-                Severity::Warning,
-                format!("cwd: the process directory did not follow: {e}"),
-            );
-        }
+        std::env::set_current_dir(&canonical)?;
+        self.cwd = canonical;
         Ok(self.cwd.clone())
     }
 }
