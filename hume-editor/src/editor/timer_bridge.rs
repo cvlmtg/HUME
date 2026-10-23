@@ -98,7 +98,8 @@ impl Editor {
         for payload in self.timers.take_due(Instant::now()) {
             match payload {
                 TimerPayload::SteelThunk(thunk) => {
-                    self.state.queue_background_call(thunk, Vec::new());
+                    self.state
+                        .queue_background_call(hume_scripting::SteelCall::new(thunk, Vec::new()));
                 }
                 TimerPayload::ViewportDebounce(pane_id) => {
                     self.viewport_debounce.remove(&pane_id);

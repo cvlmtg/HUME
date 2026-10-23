@@ -455,7 +455,10 @@ fn queue_query_change(state: &mut EditorState, r: LayerRef, cb: Option<hume_scri
     let session = picker_mut(state, r);
     let token = session.feed_token();
     let query = session.query().to_string();
-    state.queue_steel_call(cb, vec![token.to_steel(), SteelVal::StringV(query.into())]);
+    state.queue_steel_call(hume_scripting::SteelCall::new(
+        cb,
+        vec![token.to_steel(), SteelVal::StringV(query.into())],
+    ));
 }
 
 /// The open picker session at `r`, the `Picker` layer that `picker_input`

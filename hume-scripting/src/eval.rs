@@ -3,7 +3,7 @@
 //! its eval queued.
 
 use std::path::Path;
-use std::sync::Arc;
+use std::rc::Rc;
 
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
@@ -17,7 +17,7 @@ use crate::log::LogLevel;
 use crate::read_only_host::ReadOnlyHost;
 use crate::types::{Effect, EvalError};
 use crate::watchdog::EvalWatchdog;
-use crate::{HostBundle, Rooted, ScriptingHost, attribution, builtins};
+use crate::{HostBundle, Rooted, ScriptingHost, SteelCall, attribution, builtins};
 
 mod session;
 
@@ -71,7 +71,6 @@ impl ScriptingHost {
             pending_messages,
             effects,
             dirs,
-            interrupt_flag,
             watchdog,
             ..
         } = self;
@@ -84,7 +83,6 @@ impl ScriptingHost {
                 pending_messages,
                 effects,
                 dirs: &*dirs,
-                interrupt_flag: Arc::clone(interrupt_flag),
                 budget: watchdog.clock(),
             },
         )
@@ -328,11 +326,10 @@ impl ScriptingHost {
         args: &[SteelVal],
         host: &'a mut dyn EditorHost,
     ) -> Result<Vec<Effect>, EvalError> {
-        // Every handler gets the same args: pair them up and hand the batch
-        // to run_steel_calls, which already is the general "run these
-        // (proc, args) pairs in one session, first error aborts the rest"
-        // machinery this needs.
-        let procs: Vec<Rooted> = self
+        // Every handler shares one argument list, rooted once a handler
+        // matches; run_steel_calls runs the batch.
+        let mut shared: Option<Rc<[Rooted]>> = None;
+        let calls: Vec<SteelCall> = self
             .registries
             .hooks
             .matching(name, key)
@@ -341,14 +338,14 @@ impl ScriptingHost {
                     !e.takes_done,
                     "'{name} has a handler taking `done`; raise it through fire_held_hook"
                 );
-                e.proc.clone()
+                let args =
+                    shared.get_or_insert_with(|| args.iter().cloned().map(Rooted::new).collect());
+                SteelCall::with_args(e.proc.clone(), Rc::clone(args))
             })
             .collect();
-        if procs.is_empty() {
+        if calls.is_empty() {
             return Ok(Vec::new());
         }
-        let args: Vec<Rooted> = args.iter().cloned().map(Rooted::new).collect();
-        let calls = procs.into_iter().map(|proc| (proc, args.clone())).collect();
         self.run_steel_calls(calls, host)
     }
 
@@ -398,7 +395,7 @@ impl ScriptingHost {
         };
         let helper = Rooted::new(helper);
         let args_list = Rooted::new(SteelVal::ListV(args.to_vec().into()));
-        let args: Vec<Rooted> = args.iter().cloned().map(Rooted::new).collect();
+        let args: Rc<[Rooted]> = args.iter().cloned().map(Rooted::new).collect();
         let mut holds = holds.into_iter();
         let mut held_at: Vec<Option<HostToken>> = Vec::with_capacity(handlers.handlers.len());
         let mut calls = Vec::with_capacity(handlers.handlers.len());
@@ -406,13 +403,13 @@ impl ScriptingHost {
             if takes_done {
                 let hold = holds.next().expect("counted above");
                 held_at.push(Some(hold));
-                calls.push((
+                calls.push(SteelCall::with_args(
                     helper.clone(),
-                    vec![proc, Rooted::new(hold.to_steel()), args_list.clone()],
+                    Rc::from([proc, Rooted::new(hold.to_steel()), args_list.clone()]),
                 ));
             } else {
                 held_at.push(None);
-                calls.push((proc, args.clone()));
+                calls.push(SteelCall::with_args(proc, Rc::clone(&args)));
             }
         }
         let (completed, result) = self.run_tracked_calls(calls, host);
@@ -424,7 +421,7 @@ impl ScriptingHost {
         result
     }
 
-    /// Calls each `(proc, args)` pair directly, in order: the shared
+    /// Calls each [`SteelCall`] directly, in order: the shared
     /// mechanism behind the `lsp-request!` callback, timer thunks, and the
     /// prompt callback, and (via [`fire_hook`](Self::fire_hook)) every
     /// handler registered for one event.
@@ -437,8 +434,7 @@ impl ScriptingHost {
     /// batch. A call stopped by its budget is the one exception: it means the
     /// whole batch's time is spent, not just this call's, so it still
     /// aborts the rest, distinguished by the session's own `interrupted`
-    /// flag, read off `ctx.interrupt_flag` before that session resets it,
-    /// rather than sniffing the interrupt's own fixed message text.
+    /// report rather than by sniffing the interrupt's own fixed message text.
     ///
     /// The *first* failure (interrupt or not) is returned as this function's
     /// own `Err`. Callers key cleanup on it and report it themselves. A
@@ -452,7 +448,7 @@ impl ScriptingHost {
     /// args)` and this runs at the drain boundary.
     pub fn run_steel_calls<'a>(
         &'a mut self,
-        calls: Vec<(Rooted, Vec<Rooted>)>,
+        calls: Vec<SteelCall>,
         host: &'a mut dyn EditorHost,
     ) -> Result<Vec<Effect>, EvalError> {
         self.run_tracked_calls(calls, host).1
@@ -463,7 +459,7 @@ impl ScriptingHost {
     /// interrupt kept from running at all.
     fn run_tracked_calls<'a>(
         &'a mut self,
-        calls: Vec<(Rooted, Vec<Rooted>)>,
+        calls: Vec<SteelCall>,
         host: &'a mut dyn EditorHost,
     ) -> (Vec<bool>, Result<Vec<Effect>, EvalError>) {
         let mut completed = vec![false; calls.len()];
@@ -475,13 +471,13 @@ impl ScriptingHost {
         let effects_start = self.effects.len();
         let mut first_error: Option<String> = None;
 
-        for (index, (proc, args)) in calls.into_iter().enumerate() {
+        for (index, call) in calls.into_iter().enumerate() {
             let (steel, watchdog, bundle) = self.steel_and_bundle();
             let mut steel_ctx = SteelCtx::new_command(host, bundle);
             let result = run_steel_session(steel, watchdog, &mut steel_ctx, budget_ms, |steel| {
-                let args = args.iter().map(|arg| arg.value().clone()).collect();
+                let args = call.args().iter().map(|arg| arg.value().clone()).collect();
                 steel
-                    .call_function_with_args(proc.value().clone(), args)
+                    .call_function_with_args(call.proc().value().clone(), args)
                     .map(|_| ())
             });
             match result {

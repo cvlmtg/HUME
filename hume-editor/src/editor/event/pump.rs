@@ -300,8 +300,7 @@ impl Editor {
                     self.with_edit_origin(EditOrigin::Background, |ed| ed.fire_one_event(event));
                 }
                 PendingWork::Call {
-                    proc,
-                    args,
+                    call,
                     anchor,
                     tracked,
                     answer,
@@ -323,7 +322,7 @@ impl Editor {
                         if anchor.is_none_or(|anchor| self.state.anchor_admits(&self.view, &anchor))
                         {
                             self.with_edit_origin(origin, |ed| {
-                                ed.run_call_batch(vec![(proc, args)]);
+                                ed.run_call_batch(vec![call]);
                             });
                         }
                         drop(tracked);
@@ -335,12 +334,12 @@ impl Editor {
                         // `PendingWork::Call`'s `answer` doc.
                         self.with_edit_origin(origin, |ed| {
                             ed.run_answered(Some(ticket), |ed| {
-                                ed.run_call_batch(vec![(proc, args)]);
+                                ed.run_call_batch(vec![call]);
                             });
                         });
                         continue;
                     }
-                    let mut calls = vec![(proc, args)];
+                    let mut calls = vec![call];
                     while matches!(
                         items.front(),
                         Some(PendingWork::Call {
@@ -351,12 +350,12 @@ impl Editor {
                             ..
                         }) if *next == origin
                     ) {
-                        let Some(PendingWork::Call { proc, args, .. }) = items.pop_front() else {
+                        let Some(PendingWork::Call { call, .. }) = items.pop_front() else {
                             unreachable!(
                                 "front() just confirmed an unanchored, untracked, unclaimed Call variant"
                             )
                         };
-                        calls.push((proc, args));
+                        calls.push(call);
                     }
                     self.with_edit_origin(origin, |ed| ed.run_call_batch(calls));
                 }
@@ -436,10 +435,7 @@ impl Editor {
     /// session: the per-batch body of `settle`'s `Call` arm. Preserves
     /// `run_steel_calls`' existing "one session, first error aborts the
     /// rest" semantics for calls that were queued back-to-back.
-    fn run_call_batch(
-        &mut self,
-        calls: Vec<(hume_scripting::Rooted, Vec<hume_scripting::Rooted>)>,
-    ) {
+    fn run_call_batch(&mut self, calls: Vec<hume_scripting::SteelCall>) {
         let Some((host_scr, mut impl_host)) = self.scripting_with_host() else {
             return;
         };

@@ -52,7 +52,10 @@ impl Editor {
                 .remove(&id)
                 .expect("just found by get_mut above");
             self.state
-                .queue_background_call(pending.callback, async_callback_args(result));
+                .queue_background_call(hume_scripting::SteelCall::new(
+                    pending.callback,
+                    async_callback_args(result),
+                ));
         }
     }
 }

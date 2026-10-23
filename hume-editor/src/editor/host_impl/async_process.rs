@@ -38,10 +38,11 @@ impl<'a> AsyncProcessHost for EditorHostImpl<'a> {
             // the callback right here rather than leaving it unfired, with
             // no output and no exit code, as for a signal-killed child.
             Err(e) => {
-                self.state.queue_background_call(
-                    callback,
-                    async_callback_args(JobResult::failed(e.to_string())),
-                );
+                self.state
+                    .queue_background_call(hume_scripting::SteelCall::new(
+                        callback,
+                        async_callback_args(JobResult::failed(e.to_string())),
+                    ));
                 // The `Ok` arm needs no wake: the job thread wakes the loop
                 // itself on completion. This callback has no background
                 // thread behind it. `settle()`'s fixpoint does pick it up

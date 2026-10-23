@@ -14,10 +14,6 @@ use hume_platform::dirs::Dirs;
 use hume_scripting::EvalWatchdog;
 use hume_scripting::host::BindMode;
 use hume_scripting::*;
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
-};
 
 fn host() -> ScriptingHost {
     ScriptingHost::new(&Dirs::none())

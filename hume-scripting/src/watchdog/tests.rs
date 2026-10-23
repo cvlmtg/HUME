@@ -1,7 +1,3 @@
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
-};
 use std::time::Duration;
 
 use steel::steel_vm::ThreadStateController;
@@ -15,30 +11,21 @@ fn vm() -> ThreadStateController {
 }
 
 #[test]
-fn expiry_sets_flag() {
-    let flag = Arc::new(AtomicBool::new(false));
+fn expiry_is_reported_by_cancel() {
     let dog = EvalWatchdog::new();
-    dog.arm(Arc::clone(&flag), vm(), Duration::from_millis(20));
+    dog.arm(vm(), Duration::from_millis(20));
     // Sleep 10× the budget to rule out timing races on slow CI.
     std::thread::sleep(Duration::from_millis(200));
-    assert!(
-        flag.load(Ordering::Relaxed),
-        "flag must be set after budget expires"
-    );
-    dog.cancel(); // cancel-after-expiry must ack from idle, not hang
+    // cancel-after-expiry must ack from idle, not hang
+    assert!(dog.cancel(), "the budget must have expired");
 }
 
 #[test]
-fn cancel_prevents_flag() {
-    let flag = Arc::new(AtomicBool::new(false));
+fn cancel_before_expiry_reports_no_fire() {
     let dog = EvalWatchdog::new();
     // Use a 30-second budget: the watchdog must not fire before cancel().
-    dog.arm(Arc::clone(&flag), vm(), Duration::from_secs(30));
-    dog.cancel(); // synchronous: the thread is disarmed when this returns
-    assert!(
-        !flag.load(Ordering::Relaxed),
-        "flag must remain false after cancel"
-    );
+    dog.arm(vm(), Duration::from_secs(30));
+    assert!(!dog.cancel(), "the budget must not have expired");
 }
 
 /// An unpaired second `arm` (no `cancel` in between) must be caught by the
@@ -51,104 +38,98 @@ fn cancel_prevents_flag() {
 #[should_panic(expected = "missing cancel() after the previous eval")]
 #[cfg(debug_assertions)]
 fn unpaired_arm_is_caught_on_callers_thread() {
-    let flag = Arc::new(AtomicBool::new(false));
     let dog = EvalWatchdog::new();
-    dog.arm(Arc::clone(&flag), vm(), Duration::from_secs(30));
-    dog.arm(flag, vm(), Duration::from_secs(30)); // missing cancel(): must panic here
+    dog.arm(vm(), Duration::from_secs(30));
+    dog.arm(vm(), Duration::from_secs(30)); // missing cancel(): must panic here
 }
 
 /// The persistent thread survives an arm/cancel cycle and fires on a
 /// subsequent arm.
 #[test]
 fn rearming_after_cancel_still_fires() {
-    let flag = Arc::new(AtomicBool::new(false));
     let dog = EvalWatchdog::new();
-    dog.arm(Arc::clone(&flag), vm(), Duration::from_secs(30));
-    dog.cancel();
-    assert!(!flag.load(Ordering::Relaxed));
+    dog.arm(vm(), Duration::from_secs(30));
+    assert!(!dog.cancel());
 
-    dog.arm(Arc::clone(&flag), vm(), Duration::from_millis(20));
+    dog.arm(vm(), Duration::from_millis(20));
     std::thread::sleep(Duration::from_millis(200));
-    assert!(
-        flag.load(Ordering::Relaxed),
-        "second arm must fire after its budget"
-    );
-    dog.cancel();
+    assert!(dog.cancel(), "second arm must fire after its budget");
 }
 
-/// Dropping the watchdog while armed shuts the thread down without firing.
+/// A fire is reported to the cancel that follows it, not to the next arm's.
+#[test]
+fn a_fire_is_reported_once() {
+    let dog = EvalWatchdog::new();
+    dog.arm(vm(), Duration::from_millis(20));
+    std::thread::sleep(Duration::from_millis(200));
+    assert!(dog.cancel());
+
+    dog.arm(vm(), Duration::from_secs(30));
+    assert!(!dog.cancel(), "the previous arm's fire must not carry over");
+}
+
+/// Dropping the watchdog while armed shuts the thread down without
+/// interrupting the VM.
 #[test]
 fn drop_while_armed_does_not_fire() {
-    let flag = Arc::new(AtomicBool::new(false));
+    let mut engine = Engine::new();
     {
         let dog = EvalWatchdog::new();
-        dog.arm(Arc::clone(&flag), vm(), Duration::from_secs(30));
-        // drop joins the thread; the armed wait sees Disconnected and exits
+        dog.arm(
+            engine.get_thread_state_controller(),
+            Duration::from_secs(30),
+        );
+        // drop joins the thread; the armed wait sees Shutdown and exits
     }
-    assert!(
-        !flag.load(Ordering::Relaxed),
-        "flag must remain false when dropped before the budget"
-    );
+    engine
+        .compile_and_run_raw_program("(+ 1 2)")
+        .expect("the VM must not have been interrupted");
 }
 
 /// Time spent waiting does not count: a budget that would have expired
 /// during the wait has not when the wait ends.
 #[test]
 fn a_wait_pauses_the_budget() {
-    let flag = Arc::new(AtomicBool::new(false));
     let dog = EvalWatchdog::new();
     let clock = dog.clock();
-    dog.arm(Arc::clone(&flag), vm(), Duration::from_millis(50));
+    dog.arm(vm(), Duration::from_millis(50));
     clock.waiting(|| std::thread::sleep(Duration::from_millis(200)));
-    assert!(
-        !flag.load(Ordering::Relaxed),
-        "the wait must not use up the budget"
-    );
-    dog.cancel();
+    assert!(!dog.cancel(), "the wait must not use up the budget");
 }
 
 /// The budget left when a wait began runs out after the wait ends.
 #[test]
 fn the_budget_left_runs_out_after_a_wait() {
-    let flag = Arc::new(AtomicBool::new(false));
     let dog = EvalWatchdog::new();
     let clock = dog.clock();
-    dog.arm(Arc::clone(&flag), vm(), Duration::from_millis(50));
+    dog.arm(vm(), Duration::from_millis(50));
     clock.waiting(|| std::thread::sleep(Duration::from_millis(100)));
     std::thread::sleep(Duration::from_millis(300));
-    assert!(
-        flag.load(Ordering::Relaxed),
-        "the remaining budget must expire"
-    );
-    dog.cancel();
+    assert!(dog.cancel(), "the remaining budget must expire");
 }
 
 /// Scheme time spent before a wait stays spent: the wait resumes with only
 /// what was left when it began.
 #[test]
 fn time_before_a_wait_counts() {
-    let flag = Arc::new(AtomicBool::new(false));
     let dog = EvalWatchdog::new();
     let clock = dog.clock();
-    dog.arm(Arc::clone(&flag), vm(), Duration::from_millis(200));
+    dog.arm(vm(), Duration::from_millis(200));
     std::thread::sleep(Duration::from_millis(160));
     clock.waiting(|| std::thread::sleep(Duration::from_millis(20)));
     std::thread::sleep(Duration::from_millis(120));
     assert!(
-        flag.load(Ordering::Relaxed),
+        dog.cancel(),
         "40 ms were left when the wait began, so 120 ms after it the budget is spent"
     );
-    dog.cancel();
 }
 
 /// A wait with nothing armed changes nothing for the next arm.
 #[test]
 fn a_wait_while_idle_is_ignored() {
-    let flag = Arc::new(AtomicBool::new(false));
     let dog = EvalWatchdog::new();
     dog.clock().waiting(|| {});
-    dog.arm(Arc::clone(&flag), vm(), Duration::from_millis(20));
+    dog.arm(vm(), Duration::from_millis(20));
     std::thread::sleep(Duration::from_millis(200));
-    assert!(flag.load(Ordering::Relaxed));
-    dog.cancel();
+    assert!(dog.cancel());
 }

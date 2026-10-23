@@ -9,7 +9,7 @@
 use std::rc::Rc;
 
 use steel::RootedSteelVal;
-use steel::rvals::SteelVal;
+use steel::rvals::{FromSteelVal, SteelVal};
 
 /// A Steel value that stays valid across collections for as long as Rust
 /// holds it.
@@ -72,9 +72,44 @@ fn is_atom(value: &SteelVal) -> bool {
     )
 }
 
+/// Decodes a builtin argument declared `Rooted`, so a builtin that keeps a
+/// callback receives it rooted.
+impl FromSteelVal for Rooted {
+    fn from_steelval(value: &SteelVal) -> steel::rvals::Result<Self> {
+        Ok(Self::new(value.clone()))
+    }
+}
+
 impl std::fmt::Debug for Rooted {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_tuple("Rooted").field(self.value()).finish()
+    }
+}
+
+/// A Steel procedure and the arguments a later session calls it with.
+/// Clones share one argument list, as every handler of one hook does.
+#[derive(Clone, Debug)]
+pub struct SteelCall {
+    proc: Rooted,
+    args: Rc<[Rooted]>,
+}
+
+impl SteelCall {
+    /// Roots each of `args`.
+    pub fn new(proc: Rooted, args: Vec<SteelVal>) -> Self {
+        Self::with_args(proc, args.into_iter().map(Rooted::new).collect())
+    }
+
+    pub fn with_args(proc: Rooted, args: Rc<[Rooted]>) -> Self {
+        Self { proc, args }
+    }
+
+    pub fn proc(&self) -> &Rooted {
+        &self.proc
+    }
+
+    pub fn args(&self) -> &[Rooted] {
+        &self.args
     }
 }
 

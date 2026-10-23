@@ -380,8 +380,8 @@ fn show_menu_replaces_a_menu_already_open_and_fires_its_callback() {
     assert!(
         matches!(
             ed.state.config.pending_work.front(),
-            Some(crate::editor::event::PendingWork::Call { args, .. })
-                if matches!(args.as_slice(), [arg] if matches!(arg.value(), steel::rvals::SteelVal::BoolV(false)))
+            Some(crate::editor::event::PendingWork::Call { call, .. })
+                if matches!(call.args(), [arg] if matches!(arg.value(), steel::rvals::SteelVal::BoolV(false)))
         ),
         "the outgoing menu's callback must fire with #f"
     );

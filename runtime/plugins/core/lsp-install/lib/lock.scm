@@ -22,9 +22,11 @@
             (lambda (err) (log! 'error (string-append "LSP: " (to-string err))) #f)
             (begin (lsp-install/acquire-lock!) #t))))
     (and acquired?
-         (with-handler
-           (lambda (err)
-             (lsp-install/release-lock!)
-             (log! 'error (string-append "LSP: " what " failed: " (to-string err)))
-             #f)
-           (begin (thunk) (lsp-install/release-lock!) #t)))))
+         (let ((ok?
+                 (with-handler
+                   (lambda (err)
+                     (log! 'error (string-append "LSP: " what " failed: " (to-string err)))
+                     #f)
+                   (begin (thunk) #t))))
+           (lsp-install/release-lock!)
+           ok?))))

@@ -39,7 +39,7 @@ pub(crate) fn spawn_async(
     cmd: SteelVal,
     args: SteelVal,
     cwd: SteelVal,
-    callback: SteelVal,
+    callback: crate::Rooted,
 ) -> SteelResult {
     let cmd = string_arg(cmd, "spawn-async! cmd")?;
     // No empty-cmd guard here, unlike `picker-source-spawn!`: this builtin's
@@ -49,12 +49,8 @@ pub(crate) fn spawn_async(
     let args = list_to_strings(args, "spawn-async! args")?;
     let cwd = cwd_arg(cwd, &ctx.host.buffers().cwd(), "spawn-async! cwd")?;
 
-    let id = require_cap(ctx.host.async_process(), "spawn-async!")?.spawn_async(
-        &cmd,
-        args,
-        cwd,
-        crate::Rooted::new(callback),
-    );
+    let id = require_cap(ctx.host.async_process(), "spawn-async!")?
+        .spawn_async(&cmd, args, cwd, callback);
     Ok(SteelVal::IntV(id as isize))
 }
 

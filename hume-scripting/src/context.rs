@@ -1,6 +1,6 @@
+use std::collections::HashMap;
 use std::fs::File;
 use std::path::PathBuf;
-use std::sync::{Arc, atomic::AtomicBool};
 
 use steel::gc::unsafe_erased_pointers::CustomReference;
 use steel::rerrs::SteelErr;
@@ -45,15 +45,13 @@ pub(crate) struct SteelCtx<'a> {
     /// `ScriptingHost`, borrowed here; each eval entry point drains its own
     /// contribution back out (see `types::Effect`, `push_effect`).
     pub(crate) effects: &'a mut Vec<QueuedEffect>,
-    /// Data/runtime directories (raw + display form) and the install-lock
-    /// root, computed once by `ScriptingHost::new`.
+    /// Data/runtime directories (raw + display form), computed once by
+    /// `ScriptingHost::new`.
     pub(crate) dirs: &'a crate::builtins::dirs::ScriptDirs,
     // ── Transient per-eval state (owned) ──────────────────────────────────────
     /// Built-in command names known at eval start.  `define-command!` checks
     /// against this to prevent shadowing core commands.
     pub(crate) builtin_cmd_names: crate::command_name::CommandNameSet,
-    /// Interrupt flag shared with the `EvalWatchdog`.
-    pub(crate) interrupt_flag: Arc<AtomicBool>,
     /// Stops the session's budget while a builtin waits on the OS.
     budget: crate::watchdog::BudgetClock,
     // ── Input state and command side-effects ─────────────────────────────────
@@ -87,7 +85,7 @@ pub(crate) struct SteelCtx<'a> {
     /// The file locks `try-lock-file!` took this session, by resolved path.
     /// `run_steel_session` drops what is left when the session ends, so a
     /// lock never outlives the session that took it.
-    pub(crate) file_locks: Vec<(PathBuf, File)>,
+    pub(crate) file_locks: HashMap<PathBuf, File>,
 }
 
 /// Which entry point started this eval session.
@@ -145,14 +143,13 @@ impl<'a> SteelCtx<'a> {
             effects: host_bundle.effects,
             dirs: host_bundle.dirs,
             builtin_cmd_names,
-            interrupt_flag: host_bundle.interrupt_flag,
             budget: host_bundle.budget,
             current_register_prefix: None,
             session: EvalSession::Init,
             activation_effect_marks: Vec::new(),
             manifest_resolving: None,
             failed_activations: Vec::new(),
-            file_locks: Vec::new(),
+            file_locks: HashMap::new(),
         }
     }
 
@@ -255,14 +252,13 @@ impl<'a> SteelCtx<'a> {
             effects: host_bundle.effects,
             dirs: host_bundle.dirs,
             builtin_cmd_names: crate::command_name::CommandNameSet::default(),
-            interrupt_flag: host_bundle.interrupt_flag,
             budget: host_bundle.budget,
             current_register_prefix: None,
             session: EvalSession::Runtime,
             activation_effect_marks: Vec::new(),
             manifest_resolving: None,
             failed_activations: Vec::new(),
-            file_locks: Vec::new(),
+            file_locks: HashMap::new(),
         }
     }
 }

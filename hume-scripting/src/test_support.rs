@@ -3,8 +3,6 @@
 //! Lives in the scripting crate because it needs access to private types
 //! (`SteelCtx`, `HostBundle`).
 
-use std::sync::{Arc, atomic::AtomicBool};
-
 use crate::attribution::PluginStack;
 use crate::builtins::dirs::ScriptDirs;
 use crate::context::SteelCtx;
@@ -60,7 +58,6 @@ pub(crate) struct SteelCtxTestHarness {
     pub(crate) pending_messages: Vec<(LogLevel, String)>,
     pub(crate) effects: Vec<QueuedEffect>,
     pub(crate) dirs: ScriptDirs,
-    pub(crate) interrupt_flag: Arc<AtomicBool>,
     watchdog: crate::watchdog::EvalWatchdog,
 }
 
@@ -75,7 +72,6 @@ fn bundle<'a>(
     pending_messages: &'a mut Vec<(LogLevel, String)>,
     effects: &'a mut Vec<QueuedEffect>,
     dirs: &'a ScriptDirs,
-    interrupt_flag: &Arc<AtomicBool>,
     watchdog: &crate::watchdog::EvalWatchdog,
 ) -> HostBundle<'a> {
     HostBundle {
@@ -84,7 +80,6 @@ fn bundle<'a>(
         pending_messages,
         effects,
         dirs,
-        interrupt_flag: Arc::clone(interrupt_flag),
         budget: watchdog.clock(),
     }
 }
@@ -98,7 +93,6 @@ impl SteelCtxTestHarness {
             pending_messages: Vec::new(),
             effects: Vec::new(),
             dirs: ScriptDirs::new(&hume_platform::dirs::Dirs::none()),
-            interrupt_flag: Arc::new(AtomicBool::new(false)),
             watchdog: crate::watchdog::EvalWatchdog::new(),
         }
     }
@@ -112,7 +106,6 @@ impl SteelCtxTestHarness {
             pending_messages,
             effects,
             dirs,
-            interrupt_flag,
             watchdog,
         } = self;
         SteelCtx::new_init(
@@ -123,7 +116,6 @@ impl SteelCtxTestHarness {
                 pending_messages,
                 effects,
                 dirs,
-                interrupt_flag,
                 watchdog,
             ),
             Default::default(),
@@ -143,7 +135,6 @@ impl SteelCtxTestHarness {
             pending_messages,
             effects,
             dirs,
-            interrupt_flag,
             watchdog,
             ..
         } = self;
@@ -155,7 +146,6 @@ impl SteelCtxTestHarness {
                 pending_messages,
                 effects,
                 dirs,
-                interrupt_flag,
                 watchdog,
             ),
             Default::default(),
@@ -172,7 +162,6 @@ impl SteelCtxTestHarness {
             pending_messages,
             effects,
             dirs,
-            interrupt_flag,
             watchdog,
         } = self;
         SteelCtx::new_activation(
@@ -183,7 +172,6 @@ impl SteelCtxTestHarness {
                 pending_messages,
                 effects,
                 dirs,
-                interrupt_flag,
                 watchdog,
             ),
             Default::default(),
@@ -199,7 +187,6 @@ impl SteelCtxTestHarness {
             pending_messages,
             effects,
             dirs,
-            interrupt_flag,
             watchdog,
         } = self;
         SteelCtx::new_command(
@@ -210,7 +197,6 @@ impl SteelCtxTestHarness {
                 pending_messages,
                 effects,
                 dirs,
-                interrupt_flag,
                 watchdog,
             ),
         )
@@ -229,7 +215,6 @@ impl SteelCtxTestHarness {
             pending_messages,
             effects,
             dirs,
-            interrupt_flag,
             watchdog,
             ..
         } = self;
@@ -241,7 +226,6 @@ impl SteelCtxTestHarness {
                 pending_messages,
                 effects,
                 dirs,
-                interrupt_flag,
                 watchdog,
             ),
         )

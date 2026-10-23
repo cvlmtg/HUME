@@ -1058,22 +1058,11 @@ fn a_collection_after_reload_traces_nothing_from_the_old_engine() {
         "sanity: :fill opened its picker"
     );
 
-    fixture.write_init(
-        r#"(define-typed-command! "churn" ""
-             (lambda ()
-               (#%gc-collect)
-               (let loop ((i 0)) (when (< i 200000) (box "junk") (loop (+ i 1))))))"#,
-    );
+    fixture.write_init(super::super::gc_rooting::CHURN);
     ed.execute_typed("reload-config", None)
         .expect(":reload-config runs");
     type_cmd(&mut ed, ":churn");
 
-    let errors: Vec<_> = ed
-        .state
-        .message_log
-        .entries()
-        .filter(|e| e.severity == Severity::Error)
-        .map(|e| e.text.to_string())
-        .collect();
+    let errors = error_log(&ed);
     assert!(errors.is_empty(), "{errors:?}");
 }

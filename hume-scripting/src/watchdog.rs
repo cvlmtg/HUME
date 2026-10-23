@@ -1,8 +1,5 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
-};
 use std::time::{Duration, Instant};
 
 use steel::steel_vm::ThreadStateController;
@@ -14,22 +11,21 @@ use steel::steel_vm::ThreadStateController;
 /// re-armed per eval: command dispatch runs on the keystroke hot path, so
 /// spawning and joining an OS thread per eval would be pure overhead.
 ///
-/// When an armed budget expires the interrupt flag is set to `true` and the
-/// VM is interrupted through its `ThreadStateController`: from then on every
-/// instruction it runs raises, so the script stops whatever it is doing,
-/// even inside a `with-handler` that catches everything.
+/// When an armed budget expires the VM is interrupted through its
+/// `ThreadStateController`: from then on every instruction it runs raises,
+/// so the script stops whatever it is doing, even inside a `with-handler`
+/// that catches everything.
 ///
 /// The armed wait loops on `recv_timeout`, re-checking the deadline on every
 /// wake, so an early or spurious wake can never fire the interrupt before the
 /// budget has actually elapsed.
 ///
 /// [`EvalWatchdog::cancel`] is synchronous: it blocks until the thread
-/// acknowledges it is disarmed.  The caller resets the interrupt flag right
-/// after cancelling, and the ack guarantees no late fire from the previous
-/// arm can leak into the next eval.
+/// acknowledges it is disarmed and answers whether the budget expired, so no
+/// late fire from the previous arm can leak into the next eval.
 pub struct EvalWatchdog {
     tx: Sender<WatchdogMsg>,
-    ack_rx: Receiver<()>,
+    ack_rx: Receiver<bool>,
     thread: Option<std::thread::JoinHandle<()>>,
     /// Caller-side mirror of the thread's armed/idle state, used only to
     /// `debug_assert` that `arm`/`cancel` calls stay strictly paired. Checked
@@ -43,7 +39,6 @@ pub struct EvalWatchdog {
 enum WatchdogMsg {
     Arm {
         deadline: Instant,
-        flag: Arc<AtomicBool>,
         vm: ThreadStateController,
     },
     Cancel,
@@ -105,32 +100,30 @@ impl EvalWatchdog {
         }
     }
 
-    /// Arm the budget: `flag` is set to `true` once `budget` elapses, unless
+    /// Arm the budget: `vm` is interrupted once `budget` elapses, unless
     /// [`Self::cancel`] arrives first.  Each `arm` must be paired with one
     /// `cancel` after the eval returns.
-    pub fn arm(&self, flag: Arc<AtomicBool>, vm: ThreadStateController, budget: Duration) {
+    pub fn arm(&self, vm: ThreadStateController, budget: Duration) {
         debug_assert!(
             !self.armed.swap(true, Ordering::Relaxed),
             "EvalWatchdog::arm called while already armed: missing cancel() after the previous eval"
         );
         self.send(WatchdogMsg::Arm {
             deadline: Instant::now() + budget,
-            flag,
             vm,
         });
     }
 
-    /// Defuse the current arm and wait for the thread to acknowledge.
+    /// Defuse the current arm and wait for the thread to acknowledge:
+    /// `true` when the budget expired and the VM was interrupted.
     ///
     /// Always called after eval returns, on both success and error paths.
-    /// If the budget already expired, this drains the pending state so the
-    /// next `arm` starts clean.
-    pub fn cancel(&self) {
+    pub fn cancel(&self) -> bool {
         self.armed.store(false, Ordering::Relaxed);
         self.send(WatchdogMsg::Cancel);
         self.ack_rx
             .recv()
-            .expect("watchdog thread alive while EvalWatchdog exists");
+            .expect("watchdog thread alive while EvalWatchdog exists")
     }
 
     /// A handle a builtin stops this watchdog's clock with while it waits.
@@ -164,50 +157,45 @@ impl Default for EvalWatchdog {
     }
 }
 
-fn watchdog_loop(rx: Receiver<WatchdogMsg>, ack_tx: Sender<()>) {
+fn watchdog_loop(rx: Receiver<WatchdogMsg>, ack_tx: Sender<bool>) {
+    // Whether the last arm's budget expired, answered by the next Cancel.
+    let mut fired = false;
     loop {
         match rx.recv() {
             // Idle → armed.
             Ok(WatchdogMsg::Arm {
                 mut deadline,
-                mut flag,
                 mut vm,
             }) => {
-                // Nested waits stop the clock once; the budget left when the
-                // outermost began is what the clock restarts with.
-                let mut waits = 0u32;
-                let mut left = Duration::ZERO;
+                // The budget left when the current wait began.
+                let mut paused: Option<Duration> = None;
                 loop {
                     let now = Instant::now();
-                    if waits == 0 && now >= deadline {
-                        flag.store(true, Ordering::Relaxed);
+                    if paused.is_none() && now >= deadline {
                         // Every instruction the VM runs from here on raises,
                         // until the session resumes it.
                         vm.interrupt();
-                        // Fired; back to idle.  The caller's unconditional cancel
+                        fired = true;
+                        // Back to idle.  The caller's unconditional cancel
                         // arrives later and is acknowledged from the idle arm below.
                         break;
                     }
-                    let next = if waits == 0 {
+                    let next = if paused.is_none() {
                         rx.recv_timeout(deadline - now)
                     } else {
                         rx.recv().map_err(|_| RecvTimeoutError::Disconnected)
                     };
                     match next {
                         Ok(WatchdogMsg::Pause { at }) => {
-                            if waits == 0 {
-                                left = deadline.saturating_duration_since(at);
-                            }
-                            waits += 1;
+                            paused.get_or_insert(deadline.saturating_duration_since(at));
                         }
                         Ok(WatchdogMsg::Resume { at }) => {
-                            waits = waits.saturating_sub(1);
-                            if waits == 0 {
+                            if let Some(left) = paused.take() {
                                 deadline = at + left;
                             }
                         }
                         Ok(WatchdogMsg::Cancel) => {
-                            let _ = ack_tx.send(());
+                            let _ = ack_tx.send(false);
                             break;
                         }
                         // A second Arm while armed cannot happen (arm/cancel are
@@ -218,15 +206,10 @@ fn watchdog_loop(rx: Receiver<WatchdogMsg>, ack_tx: Sender<()>) {
                         // surface at the call site; it would instead unwind this
                         // thread and turn the *next* unrelated `send` into a
                         // misleading "watchdog thread alive" panic.
-                        Ok(WatchdogMsg::Arm {
-                            deadline: d,
-                            flag: f,
-                            vm: v,
-                        }) => {
+                        Ok(WatchdogMsg::Arm { deadline: d, vm: v }) => {
                             deadline = d;
-                            flag = f;
                             vm = v;
-                            waits = 0;
+                            paused = None;
                         }
                         Ok(WatchdogMsg::Shutdown) => return,
                         // Woke early: the outer loop re-checks the deadline.
@@ -238,7 +221,7 @@ fn watchdog_loop(rx: Receiver<WatchdogMsg>, ack_tx: Sender<()>) {
             // Cancel while idle: the previous arm already fired (or there was
             // nothing armed), so acknowledge so the caller's cancel() unblocks.
             Ok(WatchdogMsg::Cancel) => {
-                let _ = ack_tx.send(());
+                let _ = ack_tx.send(std::mem::take(&mut fired));
             }
             // A wait with no budget armed, or one that outlived its budget's
             // expiry: there is no clock to stop.

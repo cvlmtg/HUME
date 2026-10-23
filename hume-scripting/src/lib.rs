@@ -62,7 +62,7 @@ pub use host::PendingCompletionSource;
 pub use keys::parse_key_stream;
 pub use lazy::PluginStatus;
 pub use log::LogLevel;
-pub use rooted::Rooted;
+pub use rooted::{Rooted, SteelCall};
 pub use types::{
     CapabilityQuery, ConfigOrigin, DocSpan, Effect, EvalError, FeatureFilter, GrammarReg,
     ListEntry, ListLayer, LspFeature, LspServerStatusEntry, LspServerTarget, PaneHandle, Params,
@@ -98,7 +98,6 @@ pub(crate) const HUME_CTX: &str = "*hume.ctx*";
 // ── Internal imports ──────────────────────────────────────────────────────────
 
 use std::path::Path;
-use std::sync::{Arc, atomic::AtomicBool};
 
 use steel::steel_vm::engine::Engine;
 
@@ -131,9 +130,6 @@ pub(crate) struct HostBundle<'a> {
     pending_messages: &'a mut Vec<(LogLevel, String)>,
     effects: &'a mut Vec<types::QueuedEffect>,
     dirs: &'a builtins::dirs::ScriptDirs,
-    /// Owned `Arc` clone: `new_init`/`new_command` consume it via move into
-    /// `SteelCtx::interrupt_flag`, avoiding a second clone at eval time.
-    interrupt_flag: Arc<AtomicBool>,
     budget: watchdog::BudgetClock,
 }
 
@@ -165,15 +161,9 @@ pub struct ScriptingHost {
     /// by a nested successful plugin activation (`QueuedEffect::committed`);
     /// see `take_eval_effects` and `types::EvalError`.
     effects: Vec<types::QueuedEffect>,
-    /// Data/runtime directories (raw + display form) and the install-lock
-    /// root, computed once at construction.
+    /// Data/runtime directories (raw + display form), computed once at
+    /// construction.
     dirs: builtins::dirs::ScriptDirs,
-    /// Shared interrupt flag.  Set to `true` by the watchdog when a session's
-    /// budget expires, beside interrupting the VM; it is how the session tells
-    /// an expired budget from an ordinary error.  Reset to `false` after
-    /// every eval (command dispatch, hook fires, and plugin activation, not
-    /// just `eval_init`).
-    interrupt_flag: Arc<AtomicBool>,
     /// Persistent budget-enforcement thread, re-armed around every eval.
     watchdog: EvalWatchdog,
 }
@@ -196,7 +186,6 @@ impl ScriptingHost {
             pending_messages: Vec::new(),
             effects: Vec::new(),
             dirs,
-            interrupt_flag: Arc::new(AtomicBool::new(false)),
             watchdog: EvalWatchdog::new(),
         }
     }
@@ -413,11 +402,6 @@ impl ScriptingHost {
         self.effects.iter().map(|e| &e.effect).collect()
     }
 
-    #[cfg(any(test, feature = "test-util"))]
-    pub fn interrupt_flag_for_test(&self) -> std::sync::Arc<std::sync::atomic::AtomicBool> {
-        std::sync::Arc::clone(&self.interrupt_flag)
-    }
-
     /// Current plugin activation nesting depth (number of bodies on the call
     /// stack).
     #[cfg(test)]
@@ -482,9 +466,8 @@ impl ScriptingHost {
     }
 
     /// Like [`eval_source`](Self::eval_source) but arms a real
-    /// [`EvalWatchdog`] with the given budget.  Used by watchdog-specific
-    /// tests that need to verify the watchdog actually fires rather than
-    /// pre-setting the interrupt flag.
+    /// [`EvalWatchdog`] with the given budget, for tests that need the
+    /// watchdog to fire.
     pub fn eval_source_watchdog(
         &mut self,
         source: &str,

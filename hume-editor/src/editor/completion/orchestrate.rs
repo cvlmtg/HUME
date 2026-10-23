@@ -16,6 +16,7 @@
 
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 use hume_rope::offset::CharOffset;
+use hume_scripting::SteelCall;
 use hume_scripting::host::EmittedWord;
 use steel::rvals::SteelVal;
 
@@ -46,11 +47,6 @@ pub(in crate::editor) enum Trigger {
     /// sets, which only feed the generic `on-trigger-char` hook.
     Sources(Vec<BufferSourceId>),
 }
-
-/// A Steel proc plus its args, minted while a session is borrowed and
-/// queued once it isn't: `queue_steel_call` needs the whole `EditorState`.
-// steel-val-transient: queued, which roots the args, before any Steel evaluation.
-type SteelCall = (hume_scripting::Rooted, Vec<SteelVal>);
 
 impl EditorState {
     /// Retires whichever completion layer is open, wherever it is on the
@@ -341,8 +337,8 @@ impl EditorState {
             cursor,
             floor,
         );
-        if let Some((proc, args)) = call {
-            self.queue_steel_call(proc, args);
+        if let Some(call) = call {
+            self.queue_steel_call(call);
         }
         let r = self.push_layer(view, MinibufCompletionLayer { session });
         self.settle_minibuf_session(view, r);
@@ -519,10 +515,10 @@ impl EditorState {
         }
     }
 
-    /// Queues every `(proc, args)` pair `invoke_buffer_sources` returned.
+    /// Queues every call `invoke_buffer_sources` returned.
     fn queue_steel_calls(&mut self, calls: Vec<SteelCall>) {
-        for (proc, args) in calls {
-            self.queue_steel_call(proc, args);
+        for call in calls {
+            self.queue_steel_call(call);
         }
     }
 }
@@ -553,7 +549,7 @@ fn invoke_buffer_sources(
             let invocation = Invocation::buffer(text.rope().clone(), start);
             let prefix = invocation.prefix(text, head);
             let invocation_id = session.invoke(id, invocation);
-            (
+            SteelCall::new(
                 entry.proc.clone(),
                 vec![
                     SteelVal::IntV(invocation_id as isize),
@@ -612,7 +608,7 @@ fn invoke_minibuf_source(
             let invocation_id = session.invoke(id, Invocation::minibuf(arg()));
             // Steel indexes a string by char.
             let cursor_chars = input[..cursor].chars().count();
-            Some((
+            Some(SteelCall::new(
                 proc.clone(),
                 vec![
                     SteelVal::IntV(invocation_id as isize),

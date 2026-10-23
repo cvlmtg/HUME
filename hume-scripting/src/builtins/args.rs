@@ -791,8 +791,7 @@ pub(crate) trait BuiltinArg {
 
 /// `BuiltinArg::resolve` for a type whose decode is already everything it
 /// needs: `Self::Out = Self`, `resolve` a no-op `Ok(self)`. One list
-/// instead of four (`SteelVal`, `String`, `bool`, `ArgPane`) hand-copying
-/// the same nine-line body.
+/// instead of a hand-copied nine-line body per type.
 macro_rules! identity_builtin_arg {
     ($($ty:ty),+ $(,)?) => {
         $(
@@ -810,7 +809,7 @@ macro_rules! identity_builtin_arg {
     };
 }
 
-identity_builtin_arg!(SteelVal, String, bool, ArgPane);
+identity_builtin_arg!(SteelVal, String, bool, ArgPane, Rooted);
 
 impl BuiltinArg for LivePane {
     type Out = PaneHandle;

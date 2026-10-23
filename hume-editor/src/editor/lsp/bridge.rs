@@ -20,7 +20,7 @@ use hume_scripting::host::TrackedHold;
 use hume_scripting::json::{WireOrigin, to_steel_handle};
 use hume_scripting::{
     DocSpan, Params, PendingLspNotify, PendingLspRequest, RequestMode, RequestParams, RouteSpec,
-    ServerRef, WhenUnavailable, symbol_hash,
+    ServerRef, SteelCall, WhenUnavailable, symbol_hash,
 };
 use steel::rvals::SteelVal;
 
@@ -510,7 +510,7 @@ impl EditorState {
                 SteelVal::ListV(Vec::<SteelVal>::new().into()),
             ],
         };
-        self.queue_lsp_callback(req.callback, args, None, req.tracked);
+        self.queue_lsp_callback(SteelCall::new(req.callback, args), None, req.tracked);
     }
 
     /// Hands `server`'s answer to `request` to the delivery waiting for it,
@@ -590,7 +590,11 @@ impl EditorState {
                 ]
             }
         };
-        self.queue_lsp_callback(callback, args, Some(delivery.anchor), tracked);
+        self.queue_lsp_callback(
+            SteelCall::new(callback, args),
+            Some(delivery.anchor),
+            tracked,
+        );
     }
 
     /// Drops the delivery in flight under supersede `key`, if any, without

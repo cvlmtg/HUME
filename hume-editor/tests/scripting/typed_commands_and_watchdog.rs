@@ -139,24 +139,19 @@ fn define_command_collides_with_existing_typed_name() {
 /// The channel-driven cancel must not block until the budget elapses.
 #[test]
 fn watchdog_cancel_wakes_thread_immediately() {
-    let flag = Arc::new(AtomicBool::new(false));
     let budget = std::time::Duration::from_secs(10);
     let vm = steel::steel_vm::engine::Engine::new().get_thread_state_controller();
     let start = std::time::Instant::now();
     let watchdog = EvalWatchdog::new();
-    watchdog.arm(Arc::clone(&flag), vm, budget);
-    watchdog.cancel();
+    watchdog.arm(vm, budget);
+    let fired = watchdog.cancel();
     // cancel() must return well within the budget; 500 ms is generous.
     assert!(
         start.elapsed() < std::time::Duration::from_millis(500),
         "cancel() took too long: {:?}",
         start.elapsed()
     );
-    // Flag must not have been set (we cancelled before it fired).
-    assert!(
-        !flag.load(Ordering::Relaxed),
-        "flag must stay false after cancel"
-    );
+    assert!(!fired, "cancelled before the budget expired");
 }
 
 /// A watchdog with a tiny budget stops a loop that would run forever.
@@ -187,48 +182,8 @@ fn eval_source_watchdog_aborts_runaway() {
         "eval took too long: {:?}",
         start.elapsed()
     );
-    // Flag must be reset after eval_source_watchdog returns.
-    assert!(
-        !h.interrupt_flag_for_test().load(Ordering::Relaxed),
-        "interrupt_flag must be false after eval returns"
-    );
-}
-
-/// call_steel_cmd watchdog fires and aborts a runaway Steel command.
-#[test]
-fn call_steel_cmd_watchdog_aborts_runaway() {
-    let mut h = host();
-    let mut mock = MockHost::new();
-
-    // Register a command whose body loops forever.
-    h.eval_source(
-        r#"(define-command! "spin" "spin forever" (lambda () (let loop () (loop))))"#,
-        &mut mock,
-    )
-    .unwrap();
-    let cmd_name = "spin".to_string();
-
-    // Use a tight command budget.
-    mock.settings.steel_command_budget_ms = 50;
-
-    let start = std::time::Instant::now();
-    let err = h
-        .call_steel_cmd_by_name(&cmd_name, vec![], &mut mock)
-        .unwrap_err();
-
-    assert!(
-        err.message.contains("interrupted"),
-        "expected 'interrupted', got: {err}"
-    );
-    assert!(
-        start.elapsed() < std::time::Duration::from_secs(1),
-        "call_steel_cmd took too long: {:?}",
-        start.elapsed()
-    );
-    assert!(
-        !h.interrupt_flag_for_test().load(Ordering::Relaxed),
-        "interrupt_flag must be false after call_steel_cmd returns"
-    );
+    h.eval_source("(+ 1 2)", &mut mock)
+        .expect("the next eval runs once the stopped one has returned");
 }
 
 /// Command bodies cannot mutate settings/keymap (`EvalMode::Command` during
@@ -338,9 +293,7 @@ fn call_steel_cmd_budget_does_not_count_a_wait_on_a_child() {
     h.call_steel_cmd_by_name("wait-then-log", vec![], &mut mock)
         .expect("a wait on a child must not use up the budget");
     assert!(
-        h.take_pending_messages()
-            .iter()
-            .any(|(_, msg)| msg == "after the wait"),
+        logged(&mut h).iter().any(|msg| msg == "after the wait"),
         "the command must run past its wait"
     );
 }
@@ -373,15 +326,13 @@ fn a_file_lock_is_released_when_the_budget_stops_its_session() {
     let lock = tmp.path().join("lock");
     let mut h = host();
     let mut mock = MockHost::new();
-    h.eval_source(
-        &format!(
-            r#"(define-command! "lock-and-spin" "doc"
-                 (lambda () (try-lock-file! {path:?}) (let loop () (loop))))"#,
-            path = lock.to_str().unwrap()
-        ),
+    define_lock_command(
+        &mut h,
         &mut mock,
-    )
-    .unwrap();
+        "lock-and-spin",
+        &lock,
+        "(try-lock-file! path) (let loop () (loop))",
+    );
     mock.settings.steel_command_budget_ms = 50;
 
     let err = h

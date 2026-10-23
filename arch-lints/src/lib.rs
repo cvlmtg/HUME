@@ -148,45 +148,55 @@ pub fn workspace_all_rs_paths(workspace_root: &std::path::Path) -> Vec<std::path
 /// truncate a call like `log_path("cache//tempfile::tempdir()")` at the
 /// string's embedded `//`, hiding the rest of the line (and any forbidden
 /// pattern in it, `tempfile::tempdir()` among them) from every lint that
-/// strips comments this way. Escaped quotes (`\"`) inside a string keep it
-/// open; char literals (`'x'`, `'\x'`) are skipped so their quote marks
-/// don't falsely open/close string tracking; a bare `'` that isn't a char
-/// literal (a lifetime) is left alone. Raw strings (`r"..."`) are not
-/// handled: none of the scanned patterns appear inside one today.
+/// strips comments this way. Literals are found by [`literal_end`].
 fn strip_line_comment(line: &str) -> &str {
-    let bytes = line.as_bytes();
-    let mut in_string = false;
-    let mut escaped = false;
     let mut i = 0;
-    while i < bytes.len() {
-        let b = bytes[i];
-        if in_string {
-            if escaped {
-                escaped = false;
-            } else if b == b'\\' {
-                escaped = true;
-            } else if b == b'"' {
-                in_string = false;
-            }
-            i += 1;
-            continue;
-        }
-        match b {
-            b'"' => {
-                in_string = true;
-                i += 1;
-            }
-            b'\'' if bytes.get(i + 1) == Some(&b'\\') && bytes.get(i + 3) == Some(&b'\'') => {
-                i += 4; // escaped char literal: '\x'
-            }
-            b'\'' if bytes.get(i + 2) == Some(&b'\'') => {
-                i += 3; // char literal: 'x'
-            }
-            b'/' if bytes.get(i + 1) == Some(&b'/') => return &line[..i],
-            _ => i += 1,
+    while let Some(c) = line[i..].chars().next() {
+        if let Some(end) = literal_end(line, i) {
+            i = end;
+        } else if line[i..].starts_with("//") {
+            return &line[..i];
+        } else {
+            i += c.len_utf8();
         }
     }
     line
+}
+
+/// The byte offset one past the string or char literal opening at byte `i`
+/// of `line` (the line's end for an unterminated string), or `None` when
+/// none opens there. Escaped quotes (`\"`) inside a string keep it open;
+/// char literals (`'x'`, `'\x'`) are literals so their quote marks don't
+/// falsely open or close a string; a bare `'` that isn't a char literal (a
+/// lifetime) opens nothing. Raw strings (`r"..."`) are not handled: none of
+/// the scanned patterns appear inside one today.
+fn literal_end(line: &str, i: usize) -> Option<usize> {
+    let mut chars = line[i..].char_indices();
+    match chars.next()?.1 {
+        '"' => {
+            let mut escaped = false;
+            for (j, c) in chars {
+                if escaped {
+                    escaped = false;
+                } else if c == '\\' {
+                    escaped = true;
+                } else if c == '"' {
+                    return Some(i + j + 1);
+                }
+            }
+            Some(line.len())
+        }
+        '\'' => {
+            let (_, first) = chars.next()?;
+            let (j, close) = if first == '\\' {
+                chars.nth(1)?
+            } else {
+                chars.next()?
+            };
+            (close == '\'').then_some(i + j + 1)
+        }
+        _ => None,
+    }
 }
 
 /// One violation found by [`scan_lines`].
@@ -290,17 +300,13 @@ pub fn scan_lines(
     marker: &str,
     mut find: impl FnMut(&str) -> usize,
 ) -> Vec<Violation> {
-    let mut violations = Vec::new();
-    for path in paths {
-        let file = display_path(path, display_root);
-        let src = read_source(path);
-        for (index, line) in eligible_lines(&src, marker) {
-            for _ in 0..find(strip_line_comment(line)) {
-                violations.push(violation(&file, index, line));
-            }
-        }
-    }
-    violations
+    scan_files(
+        paths,
+        display_root,
+        marker,
+        |_| (),
+        |(), _, line| find(strip_line_comment(line)),
+    )
 }
 
 /// Every line where `token` appears inside the declaration of a `struct`,
@@ -312,13 +318,33 @@ pub fn scan_type_bodies(
     marker: &str,
     token: &str,
 ) -> Vec<Violation> {
+    scan_files(
+        paths,
+        display_root,
+        marker,
+        |src| type_body_hits(src, token),
+        |hits, index, _| usize::from(hits.binary_search(&index).is_ok()),
+    )
+}
+
+/// Reads each of `paths` and pushes one `Violation` per match `count`
+/// reports on each line `eligible_lines` keeps, given what `per_file`
+/// computed from the file's source, the line's 0-based index and its raw
+/// text.
+fn scan_files<S>(
+    paths: &[std::path::PathBuf],
+    display_root: &std::path::Path,
+    marker: &str,
+    mut per_file: impl FnMut(&str) -> S,
+    mut count: impl FnMut(&S, usize, &str) -> usize,
+) -> Vec<Violation> {
     let mut violations = Vec::new();
     for path in paths {
         let file = display_path(path, display_root);
         let src = read_source(path);
-        let hits = type_body_hits(&src, token);
+        let state = per_file(&src);
         for (index, line) in eligible_lines(&src, marker) {
-            if hits.contains(&index) {
+            for _ in 0..count(&state, index, line) {
                 violations.push(violation(&file, index, line));
             }
         }
@@ -427,45 +453,23 @@ fn contains_word(code: &str, token: &str) -> bool {
     })
 }
 
-/// `code` with the contents of every string and char literal replaced by
-/// spaces, so a `{` or `;` inside one is not counted. Same literal rules
-/// as [`strip_line_comment`].
+/// `code` with every string and char literal [`literal_end`] finds blanked
+/// to its opening quote followed by spaces, so a `{` or `;` inside one is
+/// not counted.
 fn blank_literals(code: &str) -> String {
     let mut out = String::with_capacity(code.len());
-    let mut chars = code.chars();
-    while let Some(c) = chars.next() {
-        match c {
-            '"' => {
-                out.push('"');
-                let mut escaped = false;
-                for inner in chars.by_ref() {
-                    if escaped {
-                        escaped = false;
-                    } else if inner == '\\' {
-                        escaped = true;
-                    } else if inner == '"' {
-                        out.push('"');
-                        break;
-                    }
-                    out.push(' ');
-                }
+    let mut i = 0;
+    while let Some(c) = code[i..].chars().next() {
+        match literal_end(code, i) {
+            Some(end) => {
+                out.push(c);
+                out.extend(code[i + 1..end].chars().map(|_| ' '));
+                i = end;
             }
-            '\'' => {
-                let rest: String = chars.clone().take(3).collect();
-                let literal_len = if rest.starts_with('\\') && rest.chars().nth(2) == Some('\'') {
-                    3
-                } else if rest.chars().nth(1) == Some('\'') {
-                    2
-                } else {
-                    0
-                };
-                out.push('\'');
-                for _ in 0..literal_len {
-                    chars.next();
-                    out.push(' ');
-                }
+            None => {
+                out.push(c);
+                i += c.len_utf8();
             }
-            other => out.push(other),
         }
     }
     out

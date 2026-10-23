@@ -81,11 +81,11 @@ pub(crate) fn show_menu(
     ctx: &mut SteelCtx,
     pane: PaneHandle,
     items: SteelVal,
-    on_select: SteelVal,
+    on_select: Rooted,
 ) -> SteelResult {
     let items = list_to_strings(items, "show-menu! items")?;
     let token = require_cap(ctx.host.ui(), "show-menu!")?
-        .show_menu(pane, items, Rooted::new(on_select))
+        .show_menu(pane, items, on_select)
         .map_err(generic_err)?;
     Ok(token_or_false(token))
 }
@@ -112,14 +112,14 @@ pub(crate) fn show_drawer_list(
     ctx: &mut SteelCtx,
     pane: PaneHandle,
     items: SteelVal,
-    on_select: SteelVal,
+    on_select: Rooted,
     selected: SteelVal,
     render: SteelVal,
 ) -> SteelResult {
     let items = drawer_items(items, render, "show-drawer-list!")?;
     let selected = usize_arg(selected, "show-drawer-list! selected")?;
     let token = require_cap(ctx.host.ui(), "show-drawer-list!")?
-        .show_drawer_list(pane, items, Rooted::new(on_select), selected)
+        .show_drawer_list(pane, items, on_select, selected)
         .map_err(generic_err)?;
     Ok(token_or_false(token))
 }
@@ -145,19 +145,15 @@ pub(crate) fn update_drawer_list(
     ctx: &mut SteelCtx,
     token: SteelVal,
     items: SteelVal,
-    on_select: SteelVal,
+    on_select: Rooted,
     selected: SteelVal,
     render: SteelVal,
 ) -> SteelResult {
     let token = token_arg(token, "update-drawer-list! token")?;
     let items = drawer_items(items, render, "update-drawer-list!")?;
     let selected = usize_arg(selected, "update-drawer-list! selected")?;
-    let applied = require_cap(ctx.host.ui(), "update-drawer-list!")?.update_drawer_list(
-        token,
-        items,
-        Rooted::new(on_select),
-        selected,
-    );
+    let applied = require_cap(ctx.host.ui(), "update-drawer-list!")?
+        .update_drawer_list(token, items, on_select, selected);
     Ok(SteelVal::BoolV(applied))
 }
 
@@ -198,12 +194,12 @@ pub(crate) fn prompt(
     pane: PaneHandle,
     label: SteelVal,
     prefill: SteelVal,
-    on_confirm: SteelVal,
+    on_confirm: Rooted,
 ) -> SteelResult {
     let label = string_arg(label, "prompt! label")?;
     let prefill = string_arg(prefill, "prompt! prefill")?;
     require_cap(ctx.host.ui(), "prompt!")?
-        .prompt(pane, label, prefill, Rooted::new(on_confirm))
+        .prompt(pane, label, prefill, on_confirm)
         .map(|()| SteelVal::Void)
         .map_err(generic_err)
 }
@@ -285,7 +281,7 @@ pub(crate) fn picker(
     ctx: &mut SteelCtx,
     pane: PaneHandle,
     items: SteelVal,
-    on_select: SteelVal,
+    on_select: Rooted,
     prompt: SteelVal,
     pending: SteelVal,
     query: SteelVal,
@@ -306,7 +302,7 @@ pub(crate) fn picker(
         actions,
     };
     let token = require_cap(ctx.host.ui(), "picker!")?
-        .open_picker(pane, items, Rooted::new(on_select), opts)
+        .open_picker(pane, items, on_select, opts)
         .map_err(generic_err)?;
     Ok(token.to_steel())
 }
@@ -328,7 +324,7 @@ pub(crate) fn picker(
 pub(crate) fn live_picker(
     ctx: &mut SteelCtx,
     pane: PaneHandle,
-    on_select: SteelVal,
+    on_select: Rooted,
     prompt: SteelVal,
     query: SteelVal,
     on_query_change: SteelVal,
@@ -348,7 +344,7 @@ pub(crate) fn live_picker(
         actions,
     };
     let token = require_cap(ctx.host.ui(), "live-picker!")?
-        .open_live_picker(pane, Rooted::new(on_select), opts)
+        .open_live_picker(pane, on_select, opts)
         .map_err(generic_err)?;
     Ok(token.to_steel())
 }

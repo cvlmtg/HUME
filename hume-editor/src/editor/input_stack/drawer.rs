@@ -10,6 +10,7 @@ use termina::event::{KeyCode, Modifiers};
 
 use hume_engine::pipeline::{BufferId, EngineView};
 use hume_engine::types::EditorMode;
+use hume_scripting::SteelCall;
 use hume_scripting::host::{DrawerItems, HostToken};
 
 use crate::editor::Severity;
@@ -247,7 +248,10 @@ impl Layer for DrawerLayer {
     /// callback explicitly instead.
     fn tear_down(self: Box<Self>, state: &mut EditorState, _view: &EngineView, why: Removal) {
         if let (Removal::Incidental, DrawerSelect::Steel(callback)) = (why, &self.select) {
-            state.queue_steel_call(callback.clone(), self.call_args(SteelVal::BoolV(false)));
+            state.queue_steel_call(SteelCall::new(
+                callback.clone(),
+                self.call_args(SteelVal::BoolV(false)),
+            ));
         }
     }
     /// Non-modal: the drawer is built to be worked over (a stray key falls
@@ -371,7 +375,10 @@ impl EditorState {
 impl super::stack::FiresFalseOnReplace for DrawerLayer {
     fn close_firing_false(self: Box<Self>, state: &mut EditorState) {
         if let DrawerSelect::Steel(callback) = &self.select {
-            state.queue_steel_call(callback.clone(), self.call_args(SteelVal::BoolV(false)));
+            state.queue_steel_call(SteelCall::new(
+                callback.clone(),
+                self.call_args(SteelVal::BoolV(false)),
+            ));
         }
     }
 }
@@ -472,7 +479,7 @@ fn select_row(ed: &mut Editor, r: LayerRef) {
         DrawerSelect::Steel(callback) => {
             let args = drawer.call_args(SteelVal::IntV(drawer.selected as isize));
             let callback = callback.clone();
-            ed.state.queue_steel_call(callback, args);
+            ed.state.queue_steel_call(SteelCall::new(callback, args));
         }
         DrawerSelect::Buffers(buffers) => {
             let target = buffers[drawer.selected];

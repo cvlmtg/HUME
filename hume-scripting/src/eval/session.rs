@@ -1,9 +1,6 @@
 //! The session every eval passes through: the watchdog armed around it,
 //! `*hume.ctx*` bound for its builtins, and what it reports when it ends.
 
-use std::sync::Arc;
-use std::sync::atomic::Ordering;
-
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 use steel::steel_vm::engine::Engine;
@@ -13,8 +10,8 @@ use crate::context::SteelCtx;
 use crate::watchdog::EvalWatchdog;
 
 /// Arm the watchdog, run `body` against `steel` with `ctx` visible as
-/// `*hume.ctx*`, then cancel the watchdog, reset the interrupt flag, and
-/// truncate any unrestored inline-output frame back to zero
+/// `*hume.ctx*`, then cancel the watchdog, resume the VM, and truncate any
+/// unrestored inline-output frame back to zero
 /// (`OutputHost::truncate_inline_output`): the backstop for a `call!`-armed
 /// bracket (`bootstrap.scm`'s `%apply-command!`) whose body raised before
 /// reaching its matching restore; see that function's own comment in
@@ -22,7 +19,7 @@ use crate::watchdog::EvalWatchdog;
 /// `with-handler` instead. A no-op whenever every arm this session was
 /// already paired, the common case.
 ///
-/// Exists so the arm / eval / cancel / reset / truncate ceremony lives in
+/// Exists so the arm / eval / cancel / resume / truncate ceremony lives in
 /// one place: the one boundary every Steel entry point passes through
 /// regardless of outcome.
 pub(super) fn run_steel_session<'a, R>(
@@ -34,7 +31,6 @@ pub(super) fn run_steel_session<'a, R>(
 ) -> Result<(), SessionError> {
     let open_depth = ctx.plugin_stack.len();
     watchdog.arm(
-        Arc::clone(&ctx.interrupt_flag),
         steel.get_thread_state_controller(),
         std::time::Duration::from_millis(budget_ms),
     );
@@ -54,16 +50,12 @@ pub(super) fn run_steel_session<'a, R>(
             steel.update_value(HUME_CTX, SteelVal::Void);
             res
         });
-    watchdog.cancel();
+    let interrupted = watchdog.cancel();
     // Released whether the session returned, raised or was stopped.
     ctx.file_locks.clear();
     // An expired budget leaves the VM raising at every instruction; the next
     // session must start running.
     steel.get_thread_state_controller().resume();
-    // Read before the reset below, so a caller distinguishing an expired
-    // budget from an ordinary Steel error (see `SessionError`'s own doc)
-    // sees this session's own flag, not whatever the next session sets it to.
-    let interrupted = ctx.interrupt_flag.swap(false, Ordering::Relaxed);
     let stopped = interrupted.then(|| {
         crate::builtins::errors::generic_err(format!(
             "interrupted: ran past its {budget_ms} ms budget"
@@ -113,8 +105,8 @@ pub(super) fn run_steel_session<'a, R>(
 /// A failed [`run_steel_session`]: the reported message, plus whether the
 /// failure was the session's budget running out rather than an ordinary
 /// Steel error (a raised exception, a stale-buffer `LivePane` raise, an arity
-/// mismatch). `interrupted` is read off `ctx.interrupt_flag` before this
-/// session resets it. `run_session` reads only `.message`;
+/// mismatch), as the watchdog's `cancel` reported it. `run_session` reads
+/// only `.message`;
 /// `run_tracked_calls` reads `interrupted` to skip the calls queued after an
 /// interrupted one.
 pub(super) struct SessionError {

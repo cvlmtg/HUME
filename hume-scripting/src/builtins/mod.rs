@@ -41,6 +41,7 @@ use steel::steel_vm::engine::Engine;
 use steel::steel_vm::register_fn::RegisterFn;
 
 use super::HUME_CTX;
+use crate::Rooted;
 
 /// The return type of every ctx-taking builtin below. One definition shared
 /// by every `builtins/*.rs` submodule instead of each declaring its own
@@ -280,8 +281,6 @@ pub(crate) fn register_all(steel: &mut Engine) {
         open "get-option" settings::get_option(key: String);
         cmd  "get-buffer-option" settings::get_buffer_option(pane: args::LivePane, key: String);
 
-        // Step budget
-
         // Keymap
         open   "%bind-key!" keymap_bind::bind_key(mode: SteelVal, key_str: String, cmd_name: String, keymap: SteelVal);
         open   "%bind-key-extend!" keymap_bind::bind_key_extend(mode: SteelVal, key_str: String, cmd_name: String, keymap: SteelVal);
@@ -476,7 +475,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "selections-charwise?" buffers::selections_charwise(pane: args::LivePane);
 
         // Minibuffer prompt.
-        cmd "%prompt!" ui::prompt(pane: args::LivePane, label: SteelVal, prefill: SteelVal, on_confirm: SteelVal);
+        cmd "%prompt!" ui::prompt(pane: args::LivePane, label: SteelVal, prefill: SteelVal, on_confirm: Rooted);
         cmd "on-next-char!" ui::on_next_char(callback: SteelVal);
         cmd "symbol-under-cursor" buffers::symbol_under_cursor(pane: args::LivePane);
 
@@ -495,18 +494,18 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "close-popup!" ui::close_popup(token: SteelVal);
 
         // Selection menu widget.
-        cmd "show-menu!" ui::show_menu(pane: args::LivePane, items: SteelVal, on_select: SteelVal);
+        cmd "show-menu!" ui::show_menu(pane: args::LivePane, items: SteelVal, on_select: Rooted);
         cmd "close-menu!" ui::close_menu(token: SteelVal);
 
         // Bottom drawer.
-        cmd "%show-drawer-list!" ui::show_drawer_list(pane: args::LivePane, items: SteelVal, on_select: SteelVal, selected: SteelVal, render: SteelVal);
+        cmd "%show-drawer-list!" ui::show_drawer_list(pane: args::LivePane, items: SteelVal, on_select: Rooted, selected: SteelVal, render: SteelVal);
         cmd "close-drawer!" ui::close_drawer(token: SteelVal);
-        cmd "%update-drawer-list!" ui::update_drawer_list(token: SteelVal, items: SteelVal, on_select: SteelVal, selected: SteelVal, render: SteelVal);
+        cmd "%update-drawer-list!" ui::update_drawer_list(token: SteelVal, items: SteelVal, on_select: Rooted, selected: SteelVal, render: SteelVal);
         cmd "drawer-selected-index" ui::drawer_selected_index(token: SteelVal);
 
         // Fuzzy-picker widget.
-        cmd "%picker!" ui::picker(pane: args::LivePane, items: SteelVal, on_select: SteelVal, prompt: SteelVal, pending: SteelVal, query: SteelVal, truncate: SteelVal, actions: SteelVal);
-        cmd "%live-picker!" ui::live_picker(pane: args::LivePane, on_select: SteelVal, prompt: SteelVal, query: SteelVal, on_query_change: SteelVal, truncate: SteelVal, actions: SteelVal);
+        cmd "%picker!" ui::picker(pane: args::LivePane, items: SteelVal, on_select: Rooted, prompt: SteelVal, pending: SteelVal, query: SteelVal, truncate: SteelVal, actions: SteelVal);
+        cmd "%live-picker!" ui::live_picker(pane: args::LivePane, on_select: Rooted, prompt: SteelVal, query: SteelVal, on_query_change: SteelVal, truncate: SteelVal, actions: SteelVal);
         cmd "picker-push!" ui::picker_push(token: SteelVal, items: SteelVal);
         cmd "picker-replace!" ui::picker_replace(token: SteelVal, items: SteelVal);
         cmd "%picker-source-spawn!" ui::picker_source_spawn(token: SteelVal, cmd: SteelVal, args: SteelVal, cwd: SteelVal, nul: SteelVal, ok_exit_codes: SteelVal);
@@ -518,12 +517,12 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "%held-done" hooks::held_done(hold: SteelVal);
 
         // Timers: not LSP-specific, any plugin can schedule one.
-        cmd "after!" timers::after(ms: SteelVal, thunk: SteelVal);
+        cmd "after!" timers::after(ms: SteelVal, thunk: Rooted);
         cmd "cancel-timer!" timers::cancel_timer(id: SteelVal);
 
         // Generic async subprocess execution: one-shot capture, not a
         // streaming source (that's `picker-source-spawn!`'s shape).
-        cmd "%spawn-async!" process::spawn_async(cmd: SteelVal, args: SteelVal, cwd: SteelVal, callback: SteelVal);
+        cmd "%spawn-async!" process::spawn_async(cmd: SteelVal, args: SteelVal, cwd: SteelVal, callback: Rooted);
         cmd "cancel-async!" process::cancel_async(id: SteelVal);
 
         // Blocking subprocess capture, no callback. Backs `stdlib/run!`.

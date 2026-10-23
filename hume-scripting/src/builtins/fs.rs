@@ -105,11 +105,9 @@ pub(crate) fn set_cwd(ctx: &mut SteelCtx, path: String) -> SteelResult {
 /// `delete-directory!`.
 pub(crate) fn delete_dir_tree(ctx: &mut SteelCtx, path: String) -> SteelResult {
     let dir = ctx.host.buffers().cwd().join(&path);
-    match ctx.while_waiting(|| std::fs::remove_dir_all(&dir)) {
-        Ok(()) => Ok(SteelVal::Void),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(SteelVal::Void),
-        Err(e) => Err(generic_err(format!("delete-dir-tree!: {path}: {e}"))),
-    }
+    ctx.while_waiting(|| remove_dir_tree_if_present(&dir))
+        .map(|()| SteelVal::Void)
+        .map_err(|e| generic_err(format!("delete-dir-tree!: {path}: {e}")))
 }
 
 /// `(replace-dir! src dest)`: moves the directory `src` to `dest` (relative
@@ -166,7 +164,7 @@ fn remove_dir_tree_if_present(dir: &Path) -> std::io::Result<()> {
 /// a lock this session already holds raises.
 pub(crate) fn try_lock_file(ctx: &mut SteelCtx, path: String) -> SteelResult {
     let file_path = ctx.host.buffers().cwd().join(&path);
-    if ctx.file_locks.iter().any(|(held, _)| *held == file_path) {
+    if ctx.file_locks.contains_key(&file_path) {
         return Err(generic_err(format!(
             "try-lock-file!: this session already holds {path}"
         )));
@@ -179,7 +177,7 @@ pub(crate) fn try_lock_file(ctx: &mut SteelCtx, path: String) -> SteelResult {
         .map_err(|e| generic_err(format!("try-lock-file!: {path}: {e}")))?;
     match file.try_lock() {
         Ok(()) => {
-            ctx.file_locks.push((file_path, file));
+            ctx.file_locks.insert(file_path, file);
             Ok(SteelVal::BoolV(true))
         }
         Err(TryLockError::WouldBlock) => Ok(SteelVal::BoolV(false)),
@@ -191,13 +189,10 @@ pub(crate) fn try_lock_file(ctx: &mut SteelCtx, path: String) -> SteelResult {
 /// this session. Raises when this session does not hold it.
 pub(crate) fn unlock_file(ctx: &mut SteelCtx, path: String) -> SteelResult {
     let file_path = ctx.host.buffers().cwd().join(&path);
-    let index = ctx
-        .file_locks
-        .iter()
-        .position(|(held, _)| *held == file_path)
-        .ok_or_else(|| generic_err(format!("unlock-file!: this session does not hold {path}")))?;
-    ctx.file_locks.swap_remove(index);
-    Ok(SteelVal::Void)
+    ctx.file_locks
+        .remove(&file_path)
+        .map(|_| SteelVal::Void)
+        .ok_or_else(|| generic_err(format!("unlock-file!: this session does not hold {path}")))
 }
 
 // ── Completion listings ──────────────────────────────────────────────────────

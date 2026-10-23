@@ -7,7 +7,7 @@ use super::*;
 /// freed, so a cell nothing roots is overwritten with `"junk"`. Forcing
 /// compaction instead would take ten collections and a heap of millions of
 /// slots.
-const CHURN: &str = r#"
+pub(super) const CHURN: &str = r#"
     (define (churn!)
       (#%gc-collect)
       (let loop ((i 0)) (when (< i 200000) (box "junk") (loop (+ i 1)))))
