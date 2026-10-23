@@ -105,8 +105,8 @@ fn spawn_process_round_trip_with_fs_ops_and_piped_stdout() {
         .expect("spawn-process round trip with fs ops and piped stdout failed");
 }
 
-/// Pins the file read/write port round trip `plum/read-file`/`plum/write-file`
-/// depend on.
+/// Pins the file read/write port round trip `stdlib/write-file!` and the
+/// `call-with-input-file` readers depend on.
 #[test]
 fn file_write_read_port_round_trip() {
     let dir = tempfile::tempdir().unwrap();

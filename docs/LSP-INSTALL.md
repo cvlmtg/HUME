@@ -446,9 +446,10 @@ buffers after registration; `lsp-server-registered?` (registry query for the sca
 manual-wins filter) and `lsp-language-servers` (registry query for the discovery hint); `(plugin-dir)` (a plugin reading its own catalogs); `run-capture!`
 and `run-inline-output!` (subprocesses — the latter process-group-isolated, needed because
 `#:inline-output` commands run with terminal raw mode off and Steel's `spawn-process` has
-no `setpgid`; `run-capture!` is isolated the same way). Everything else is Steel's own
-stdlib: `which`, `open-output-file` for the atomic lock create, `read-dir-iter` for the
-symlink-safe tree walk, the time and metadata functions for lock staleness,
+no `setpgid`; `run-capture!` is isolated the same way); `try-lock-file!`/`unlock-file!`
+(the install lock, an OS lock the session releases); `which`, which searches the `PATH`
+HUME started with. Everything else is Steel's own stdlib: `read-dir-iter` for the
+symlink-safe tree walk,
 `current-os!`/`target-arch!` for the Mason target. No install-specific Rust remains.
 
 ### Required external tools

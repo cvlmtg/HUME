@@ -37,7 +37,7 @@
         (error (string-append "plum/fetch-raw-query: cannot fetch " filename " for " name ": "
                               (error-object-message err))))
       (run-inline-output! "curl" (list "-fsSL" "-o" tmp "--" (plum/helix-query-url name filename)))
-      (let ((content (plum/read-file tmp)))
+      (let ((content (call-with-input-file tmp read-port-to-string)))
         (call! "stdlib/delete-file!" tmp)
         content))))
 

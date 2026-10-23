@@ -1,6 +1,6 @@
 ;;; core:plum/lib/helpers.scm
 
-(provide plum/require-stdlib! plum/batch-run! plum/read-file plum/two-level-repos
+(provide plum/require-stdlib! plum/batch-run! plum/two-level-repos
          plum/staging-dir plum/github-url plum/install-repo! plum/git-sync!)
 
 (define (plum/require-stdlib!)
@@ -90,16 +90,6 @@
         (n (string-length ref)))
     (and (>= n min) (<= n 40)
          (null? (filter (lambda (c) (not (member c hex))) (string->list ref))))))
-
-;; ── Filesystem helpers ────────────────────────────────────────────────────────
-;; Thin wrappers over Steel's `steel/filesystem`/`steel/ports`.
-
-;;; Full contents of the file at `path`, as a string.
-(define (plum/read-file path)
-  (let ([port (open-input-file path)])
-    (let ([content (read-port-to-string port)])
-      (close-input-port port)
-      content)))
 
 ;; ── Batch runner ──────────────────────────────────────────────────────────────
 

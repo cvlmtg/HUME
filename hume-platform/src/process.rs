@@ -3,10 +3,12 @@
 //! Every `std::process::Command` that needs process-group isolation or
 //! force-exit reaping goes through this module, either directly for
 //! short-lived children or via [`spawn_piped`] +
-//! [`tracked::TrackedChild`] for long-lived ones. Plugins spawn processes
-//! through Steel's `steel/process` stdlib, except [`run_capture`] (backing
-//! `run-capture!`): Steel reads stdout to EOF before stderr, so a child that
-//! fills its stderr pipe deadlocks, while `Command::output` drains both.
+//! [`tracked::TrackedChild`] for long-lived ones. Plugins run programs
+//! through the builtins this module backs (`run-capture!`,
+//! `run-inline-output!`, `spawn-async!`, `picker-source-spawn!`) rather than
+//! Steel's `steel/process`, which reads stdout to EOF before stderr, so a
+//! child that fills its stderr pipe deadlocks; [`run_capture`]'s
+//! `Command::output` drains both.
 //!
 //! Stdio is captured ([`run_capture`]) or inherited so the user sees live
 //! progress (`run_inline_output`, `grammar_build`).

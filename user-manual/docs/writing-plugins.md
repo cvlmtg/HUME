@@ -43,7 +43,7 @@ An editor command's lambda receives the leading arguments its declared arity ask
 
 For commands that stream subprocess output to the terminal (installers, git operations), add the `#:inline-output #t` keyword, accepted by both verbs. The alt-screen opens on the command's first real output (not eagerly at the start), so a run that produces no output (an already-up-to-date check, a validation error) never flashes an empty screen or waits on an unneeded keypress. Once something is printed, HUME waits for a keypress before returning to the editor, so the output stays on screen until you've read it. This applies no matter how the command is reached (a key binding, `:`, or `call!` from another command's body, a hook, or a timer), and a command `call!`'d from inside another `#:inline-output` command shares its already-open screen and single keypress prompt rather than opening a second one.
 
-Plugins run with the same privileges as HUME itself, so any Scheme process/filesystem function is available; there's no separate "shell builtin" layer. The one exception: inside an `#:inline-output` command, spawn subprocesses whose output should reach the terminal via `run-inline-output!` rather than a raw `spawn-process`/`command` call. It isolates the child into its own process group so a Ctrl-c meant to interrupt the subprocess doesn't kill HUME too, and it's the trigger that opens the alt-screen:
+Inside an `#:inline-output` command, run a program whose output should reach the terminal with `run-inline-output!`. It isolates the child into its own process group so a Ctrl-c meant to interrupt the subprocess doesn't kill HUME too, and it's the trigger that opens the alt-screen. [Filesystem and processes](#filesystem-and-processes) covers the other ways to run a program:
 
 ```scheme
 (define-command! "fetch-config"
@@ -348,7 +348,7 @@ Document the keys your plugin understands so users know what to pass.
 
 ## Filesystem and processes
 
-Plugins are trusted code: they can read and write any file, and spawn any process, just like any other Scheme program. There's no separate sandboxed subset of the filesystem. Use Scheme's own functions directly (`open-input-file`, `create-directory!`, `delete-file!`, `read-dir`, `path-exists?`, and so on) for file access, and `command`/`spawn-process`/`wait` for running external tools.
+Plugins are trusted code: they can read and write any file, and spawn any process, just like any other Scheme program. There's no separate sandboxed subset of the filesystem. Use Scheme's own functions directly (`open-input-file`, `create-directory!`, `delete-file!`, `read-dir`, `path-exists?`, and so on) for file access.
 
 Before hand-rolling one of these, check [Standard Library](standard-library.md): its filesystem and git commands cover the shapes plugins need most often (idempotent delete, sorted subdirectory listing, git work-tree detection and repo-root resolution).
 
@@ -361,9 +361,20 @@ A few extra functions cover things Scheme has no way to know on its own:
 | `(path-join seg…)` | Join path segments with the OS-native separator |
 | `(json-parse str)` | Decode a JSON string: an object/array becomes a JSON handle (read with `json-ref`/`json-contains?`/`json-list`), a scalar crosses natively; errors on malformed input |
 
+To run a program, pick the call by what you need from it:
+
+| Need | Call |
+|------|------|
+| Its output right away, from something quick (`git rev-parse`) | `(run-capture! cmd args)`: blocks until it exits and returns `(hash 'stdout s 'stderr s 'exit code)` |
+| Output the user watches, inside an `#:inline-output` command (an installer, a `git clone`) | `(run-inline-output! cmd args)` |
+| Its result later, without making the user wait | `(spawn-async! cmd args callback)` |
+| Lines that fill a picker as the program prints them | `picker-source-spawn!`, or `picker-command-source` for a picker that reruns it on every query (see [Custom pickers](#custom-pickers)) |
+
+All four start the program in HUME's working directory unless given `#:cwd`, look it up on the `PATH` HUME started with, and deny git a credential prompt, so a private repository fails instead of hanging HUME. Steel's own `command`/`spawn-process`/`wait` stay available for what these don't cover, such as writing to a program's input. They block the editor too, and their wait doesn't count against the script budget, but a program they start looks up the process `PATH`, can stop to ask git for credentials, and isn't shielded from a Ctrl-c inside an `#:inline-output` command.
+
 `run-inline-output!` also takes a `#:cwd` keyword to set the working directory and an `#:env` keyword, a list of `("KEY" . "VALUE")` pairs added to the child's environment, and raises an error if the command exits non-zero; wrap it in a handler if a failure is expected.
 
-`command`/`spawn-process`/`wait` all block the whole editor until the command finishes. That's fine for something instant (`git rev-parse`), but not for anything that might take a moment while the user keeps typing. For that, run it in the background instead:
+`run-capture!` blocks the whole editor until the command finishes. That's fine for something instant (`git rev-parse`), but not for anything that might take a moment while the user keeps typing. For that, run it in the background instead:
 
 ```scheme
 (spawn-async! "git" (list "show" (string-append ref ":" path))

@@ -16,6 +16,8 @@
 - `steel-command-budget-ms` and `steel-init-budget-ms` stop a script that runs past them, so a plugin stuck in a loop can't freeze HUME. Time spent waiting for a program or deleting a directory tree doesn't count.
 - New `replace-dir!`, `try-lock-file!` and `unlock-file!`.
 - A HUME that exited, or an install the script budget stopped, can't leave `:lsp-install` locked.
+- Steel's `current-directory` and `change-current-directory!` read and move HUME's working directory, the one `cwd`, `set-cwd!` and `:cd` use. `set-cwd!` works from `init.scm` too.
+- A relative path given to `replace-dir!`, `try-lock-file!`, `unlock-file!` or `path-entries` resolves like one typed to `:e`.
 - A grammar `register-grammar!` registers from `init.scm` that can't be loaded is reported in `:messages` when a file or an embedded block first needs it, not at startup.
 
 ## [0.16.1] - 2026-10-22

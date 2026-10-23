@@ -72,7 +72,9 @@
                                        "name from " (string-join shadowed ", ")))))
         (call! "stdlib/write-file!"
                (path-join (plum/themes-dir) (string-append name ".toml"))
-               (plum/read-file (path-join (plum/theme-src-dir slug) "themes" (string-append name ".toml")))))
+               (call-with-input-file
+                 (path-join (plum/theme-src-dir slug) "themes" (string-append name ".toml"))
+                 read-port-to-string)))
       names)
     names))
 
