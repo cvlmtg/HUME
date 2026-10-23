@@ -234,6 +234,18 @@ pub(crate) fn buffer_line_count(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelRe
     Ok(SteelVal::IntV(count as isize))
 }
 
+/// `(buffer-char-count pane)` → int: `pane`'s buffer's length in chars,
+/// structural trailing `\n` included. O(1), with no `buffer-text` copy.
+pub(crate) fn buffer_char_count(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
+    let bid = pane.buffer();
+    let count = ctx
+        .host
+        .buffers()
+        .buffer_char_count(bid)
+        .ok_or_else(|| not_live_err("buffer-char-count", bid))?;
+    Ok(SteelVal::IntV(count as isize))
+}
+
 /// `(%buffer-lines pane range)`: Rust half of the bootstrap-wrapped
 /// `(buffer-lines pane #:range ..)`. `range` is a line range value (see
 /// [`line_range_value`]) or `#f` for every content line. Content lines in

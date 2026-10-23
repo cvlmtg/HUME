@@ -141,6 +141,7 @@ A value naming a closed buffer raises for almost every call: the reads that need
 | `(buffer-text pane)` | Full live content as a string |
 | `(buffer-lines pane #:range)` | Content as a list of lines, each with its ending stripped; `#:range` is `(hash 'start-line s 'end-line e)`, 0-based and end-exclusive, the shape `viewport-range` returns |
 | `(buffer-line-count pane)` | Content line count, cheaper than `(length (buffer-lines pane))` |
+| `(buffer-char-count pane)` | Length in characters, the final line break included, cheaper than `(string-length (buffer-text pane))` |
 | `(buffer-cursor-line pane)` | 0-based line of the primary cursor in `pane`'s own pane; never the empty line after the final line break |
 | `(buffer-selections pane)` | List of opaque selections, one per selection in `pane`'s own pane; read each through the [`stdlib/selection-*` accessors](standard-library.md#selections). Anchor and head are each the start of a character (a letter with its combining marks counts as one), and start..end (exclusive) is what the selection covers |
 | `(char-offset->line pane idx)` | 0-based line containing 0-based char offset `idx` in the buffer's text; the offset at the end of the text is on the last line. Raises when `idx` is past the end of the text |
@@ -157,7 +158,7 @@ A value naming a closed buffer raises for almost every call: the reads that need
 | `(symbol-under-cursor pane)` | The identifier under the primary cursor in `pane`'s own pane, as a string; `""` when the cursor is not on a word character |
 | `(pane? v)` | `#t` if `v` is an opaque pane value |
 
-`buffer-text`, `buffer-lines`, `buffer-line-count`, `buffer-selections`, `char-offset->line`, `line->char-offset`, and `viewport-range` are covered with examples in [Reading selections](writing-plugins.md#reading-selections) and [Reading buffer text](writing-plugins.md#reading-buffer-text). Every `pane` argument here is an opaque value from one of these functions, or the one a command receives as its own leading parameter (see [Defining commands](writing-plugins.md#defining-commands)); there's no "current buffer" shortcut baked into any builtin itself. Compare two pane values with plain `equal?`; there's no dedicated equality builtin.
+`buffer-text`, `buffer-lines`, `buffer-line-count`, `buffer-char-count`, `buffer-selections`, `char-offset->line`, `line->char-offset`, and `viewport-range` are covered with examples in [Reading selections](writing-plugins.md#reading-selections) and [Reading buffer text](writing-plugins.md#reading-buffer-text). Every `pane` argument here is an opaque value from one of these functions, or the one a command receives as its own leading parameter (see [Defining commands](writing-plugins.md#defining-commands)); there's no "current buffer" shortcut baked into any builtin itself. Compare two pane values with plain `equal?`; there's no dedicated equality builtin.
 
 ## Editing & navigation
 

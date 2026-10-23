@@ -153,6 +153,11 @@ pub trait BufferHost {
     /// statusline and `:w` report. `None` if `id` is unknown.
     fn buffer_line_count(&self, id: BufferId) -> Option<usize>;
 
+    /// `(buffer-char-count bid)`: length of `id`'s live text in chars, the
+    /// structural trailing `\n` included, so the largest offset
+    /// `char-offset->line` accepts. `None` if `id` is unknown.
+    fn buffer_char_count(&self, id: BufferId) -> Option<usize>;
+
     /// Content lines `range` of `id`'s live text, each with its trailing line
     /// break stripped. `range` is caller-validated against
     /// [`buffer_line_count`](Self::buffer_line_count) before this is called;

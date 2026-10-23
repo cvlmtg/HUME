@@ -214,6 +214,9 @@ impl BufferHost for MockHost {
     fn buffer_line_count(&self, _id: BufferId) -> Option<usize> {
         None
     }
+    fn buffer_char_count(&self, _id: BufferId) -> Option<usize> {
+        None
+    }
     fn buffer_lines(
         &self,
         _id: BufferId,

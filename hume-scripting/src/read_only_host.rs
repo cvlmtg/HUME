@@ -272,6 +272,9 @@ impl BufferHost for ReadOnlyHost<'_> {
     fn buffer_line_count(&self, id: BufferId) -> Option<usize> {
         self.inner.borrow_mut().buffers().buffer_line_count(id)
     }
+    fn buffer_char_count(&self, id: BufferId) -> Option<usize> {
+        self.inner.borrow_mut().buffers().buffer_char_count(id)
+    }
     fn buffer_lines(
         &self,
         id: BufferId,

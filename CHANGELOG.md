@@ -26,6 +26,7 @@
 - A relative path given to `replace-dir!`, `try-lock-file!`, `unlock-file!` or `path-entries` resolves like one typed to `:e`.
 - A grammar `register-grammar!` registers from `init.scm` that can't be loaded is reported in `:messages` when a file or an embedded block first needs it, not at startup.
 - `completion-emit!` takes `#:more #t` to answer a `'minibuf` request in parts.
+- New `buffer-char-count` returns a buffer's length in characters.
 - `core:buffer-words` no longer stalls typing while it indexes a file with very long lines.
 
 ## [0.16.1] - 2026-10-22

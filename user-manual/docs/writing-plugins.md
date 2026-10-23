@@ -427,6 +427,12 @@ If you're about to diff a buffer's content against another text, reach for `(dif
 Returns the buffer's content line count as an integer, same count `buffer-lines` returns lines for. If all you need is the count, reach for this instead of `(length (buffer-lines pane))`. That idiom builds and throws away a full list of line strings just to measure it.
 
 ```scheme
+(buffer-char-count pane)
+```
+
+Returns the buffer's length in characters, the final line break included: the largest offset `char-offset->line` accepts. With `line->char-offset`, it measures a run of lines without fetching them, the length of the last line included.
+
+```scheme
 (line->char-offset pane line)
 ```
 

@@ -75,12 +75,11 @@ longer in wall-clock time, and nothing waits on it.
 A tick's cost grows with the characters it scans, so the budget counts characters. A line
 count would let a tick over a file of very long lines (a markdown file with one paragraph
 per line) block input several times longer than a tick over ordinary code.
-Each side sizes its window from line starts alone (`line->char-offset`,
-`char-offset->line`), before fetching anything. The forward side takes lines from its
-start line up to the line holding the budget's last character, excluding that line. The
-backward side counts back from the start of the last line it takes, so it can run one
-line over budget; it never reads the start of the line past its window, which a buffer
-that shrank mid-walk may lack. Either side takes at least one line, however long.
+
+Each side sizes its window before fetching anything, from the offsets where lines start
+(`line->char-offset`, `char-offset->line`) and the buffer's end (`buffer-char-count`). It
+takes the whole lines that fit in the budget, so a window never exceeds it, except that
+each side takes at least one line: a line longer than the budget is a window of its own.
 
 #### Anchor line
 

@@ -404,6 +404,9 @@ impl crate::host::BufferHost for RecordingBufferOptionHost {
     fn buffer_line_count(&self, id: BufferId) -> Option<usize> {
         self.inner.buffer_line_count(id)
     }
+    fn buffer_char_count(&self, id: BufferId) -> Option<usize> {
+        self.inner.buffer_char_count(id)
+    }
     fn buffer_lines(
         &self,
         id: BufferId,

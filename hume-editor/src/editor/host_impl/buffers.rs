@@ -179,6 +179,10 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
         Some(self.buffer(id)?.text().content_line_count().get())
     }
 
+    fn buffer_char_count(&self, id: BufferId) -> Option<usize> {
+        Some(self.buffer(id)?.text().len_chars())
+    }
+
     fn buffer_lines(
         &self,
         id: BufferId,

@@ -1,5 +1,6 @@
 // End-to-end Steel coverage for `buffer-text` / `buffer-lines` /
-// `buffer-line-count` / `selections-linewise?` / `selections-charwise?`.
+// `buffer-line-count` / `buffer-char-count` / `selections-linewise?` /
+// `selections-charwise?`.
 
 use super::*;
 use crate::editor::commands::open_pane_in_layout;
@@ -89,6 +90,25 @@ fn buffer_line_count_agrees_with_buffer_lines_length() {
     assert!(
         fired,
         "buffer-line-count and (length (buffer-lines bid)) must agree"
+    );
+}
+
+/// `buffer-char-count` counts chars, not bytes, structural trailing `\n`
+/// included: `"a\nbé\n"` is 5 chars and 6 bytes.
+#[test]
+fn buffer_char_count_counts_chars_including_the_final_line_break() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>\nb\u{e9}\n");
+
+    let fired = run_probe(
+        &mut ed,
+        ScriptingHost::new(&Dirs::none()),
+        tmp.path(),
+        r#"(= (buffer-char-count bid) 5)"#,
+    );
+    assert!(
+        fired,
+        "buffer-char-count must return the buffer's length in chars"
     );
 }
 
@@ -353,6 +373,12 @@ fn buffer_lines_on_a_stale_bid_raises_invalid_buffer_id() {
 #[test]
 fn buffer_line_count_on_a_stale_bid_raises_invalid_buffer_id() {
     assert_stale_bid_raises("buffer-line-count", "buffer-line-count");
+}
+
+/// Same pattern as `buffer-line-count`'s stale-bid test.
+#[test]
+fn buffer_char_count_on_a_stale_bid_raises_invalid_buffer_id() {
+    assert_stale_bid_raises("buffer-char-count", "buffer-char-count");
 }
 
 /// `line->char-offset` returns the char offset where each content line starts.

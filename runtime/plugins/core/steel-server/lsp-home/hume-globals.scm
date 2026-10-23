@@ -42,6 +42,7 @@
 (#%register-global "bind-keys!")
 (#%register-global "bind-keys-extend!")
 (#%register-global "bottom-view-on-cursor")
+(#%register-global "buffer-char-count")
 (#%register-global "buffer-cursor-line")
 (#%register-global "buffer-dirty?")
 (#%register-global "buffer-display-path")

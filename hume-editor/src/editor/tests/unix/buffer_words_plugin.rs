@@ -181,11 +181,9 @@ fn ctrl_space_offers_identifiers_from_the_buffer() {
 
 /// A word far from the cursor, on a buffer many times longer than one
 /// tick's `"chars"` budget, is still found: the actual case a background
-/// walk exists for. A whole-buffer read would also find this word, so the
-/// test mainly checks `bw/walk!`'s per-tick window arithmetic: an
-/// off-by-one in `bw/forward-end` would skip the line this fixture puts the
-/// target word on, rather than merely being masked by overlap with an
-/// already-covered line.
+/// walk exists for. The word lies about 15 windows past the cursor, so the
+/// walk has to keep rescheduling itself until the forward side reaches the
+/// buffer's end.
 #[test]
 fn a_word_many_lines_past_the_cursor_is_offered() {
     let tmp = tempfile::tempdir().unwrap();
@@ -674,8 +672,9 @@ fn a_word_before_the_cursor_survives_the_forward_side_emptying_out() {
     let file_dir = tempfile::tempdir().unwrap();
     let path = file_dir.path().join("f.txt");
     // 60 lines, 1-based. The first tick's backward window, anchored at line
-    // 60, is lines 50..59; line 57 sits at offset 7 into it, well away from
-    // either end of the window.
+    // 60, is lines 51..59; line 57 sits at offset 6 into it. Past offset 4
+    // matters: steel-core's `append` onto `'()` keeps only the first four
+    // elements of its second argument.
     let mut lines: Vec<String> = (1..=60)
         .map(|n| {
             if n == 57 {
@@ -767,8 +766,8 @@ fn restarting_the_walk_mid_flight_still_reaches_both_ends() {
     goto_line_and_edit(&mut ed, 80, 'z');
     // Lets the debounce fire, starting the walk outward from line 80. Each
     // tick covers 5 `filler` lines in both directions, so the walk is about
-    // 16 ticks,
-    // and the words reach the candidate list only once all of them have run.
+    // 16 ticks, and the words reach the candidate list only once all of them
+    // have run.
     // Ticks run only when the editor settles, so none run during the sleep.
     std::thread::sleep(Duration::from_millis(200));
     ed.settle();

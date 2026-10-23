@@ -399,6 +399,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "buffer-dirty?" buffers::buffer_dirty(pane: args::LivePane);
         cmd "buffer-text" buffers::buffer_text(pane: args::LivePane);
         cmd "buffer-line-count" buffers::buffer_line_count(pane: args::LivePane);
+        cmd "buffer-char-count" buffers::buffer_char_count(pane: args::LivePane);
         cmd "%buffer-lines" buffers::buffer_lines(pane: args::LivePane, range: SteelVal);
         // Live cursor read: reflects synchronous edits in the same eval.
         cmd "buffer-cursor-line" buffers::buffer_cursor_line(pane: args::LivePane);
