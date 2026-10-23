@@ -288,7 +288,11 @@ fn a_later_answer_drops_the_pick_and_proposes_the_common_prefix() {
     let mut ed = greet_answered_by(
         "",
         &[
-            ("answer-many", r#"(list "alice" "bob" "carol")"#, ""),
+            (
+                "answer-many",
+                r#"(list "alice" "bob" "carol")"#,
+                "#:more #t",
+            ),
             ("answer-pair", r#"(list "bobby" "bobcat")"#, ""),
         ],
     );
@@ -881,11 +885,10 @@ fn completion_accept_on_a_minibuffer_session_errors_instead_of_aborting() {
 }
 
 /// A `Minibuf` source that raises instead of ever calling `completion-emit!`
-/// must not leave the popup stuck pending forever. `drop_stalled_
-/// invocations` clears the slot once the failed call batch is reported, so
-/// `settle_minibuf_session` runs its ordinary "nothing landed" policy
-/// (dismiss) instead of `is_pending()` staying `true` with no source left
-/// that will ever answer.
+/// must not leave the popup stuck pending forever. Its call's own raise
+/// ends its request, so `settle_minibuf_session` runs its ordinary
+/// "nothing landed" policy (dismiss) instead of `is_pending()` staying
+/// `true` with no source left that will ever answer.
 #[test]
 fn a_raising_minibuf_source_does_not_leave_the_popup_stuck_pending() {
     let tmp = tempfile::tempdir().unwrap();
@@ -916,20 +919,23 @@ fn a_raising_minibuf_source_does_not_leave_the_popup_stuck_pending() {
 
 // ── A streaming source re-ranking under a moved selection ──────────────────
 
-/// A `Minibuf` source may answer more than once for the same invocation
-/// (the async streaming case `docs/COMPLETION-PICKER.md` documents): once
-/// with a wide answer, again later (via a separate command here, standing
-/// in for a real async callback) with a narrower one. Between the two, the
-/// user Tabs the selection off row 0. `settle_minibuf_session`'s own
-/// re-rank must reset that selection the same way `rerank_open_session`
-/// does for a `Buffer` session, or the splice on the second answer reads a
-/// selection index the new, shorter list no longer has.
+/// A `Minibuf` source answering in parts (the async streaming case
+/// `docs/COMPLETION-PICKER.md` documents): a wide first part, then later
+/// (via a separate command here, standing in for a real async callback) a
+/// narrower last one. Between the two, the user Tabs the selection off row
+/// 0. `settle_minibuf_session`'s own re-rank must reset that selection, or
+/// the splice on the last part reads a selection index the new, shorter
+/// list no longer has.
 #[test]
-fn a_second_answer_settles_against_a_reset_selection_not_a_stale_one() {
+fn a_last_part_settles_against_a_reset_selection_not_a_stale_one() {
     let mut ed = greet_answered_by(
         "",
         &[
-            ("answer-many", r#"(list "alice" "bob" "carol")"#, ""),
+            (
+                "answer-many",
+                r#"(list "alice" "bob" "carol")"#,
+                "#:more #t",
+            ),
             ("answer-one", r#"(list "zzz")"#, ""),
         ],
     );
@@ -948,8 +954,9 @@ fn a_second_answer_settles_against_a_reset_selection_not_a_stale_one() {
         3,
         "sanity: first answer landed"
     );
-    assert_eq!(minibuf_input(&ed), "greet alice");
+    assert_eq!(minibuf_input(&ed), "greet ", "the eager policy waits");
 
+    ed.handle_key(key_tab());
     ed.handle_key(key_tab());
     ed.handle_key(key_tab());
     assert_eq!(selected_row(&ed), 2, "sanity: selection moved off row 0");
@@ -959,7 +966,7 @@ fn a_second_answer_settles_against_a_reset_selection_not_a_stale_one() {
     assert_eq!(
         minibuf_input(&ed),
         "greet zzz",
-        "the second, shorter answer must settle against a reset selection, \
+        "the last, shorter part must settle against a reset selection, \
          not silently fail to splice under the stale row-2 index"
     );
 }
@@ -1032,25 +1039,6 @@ fn a_streamed_answer_that_ends_empty_dismisses() {
     assert_eq!(minibuf_input(&ed), "greet b");
 }
 
-#[test]
-fn a_failed_call_batch_leaves_a_streamed_answer_pending() {
-    let ed = tab(greet_source(
-        "b",
-        "",
-        r#"(completion-emit! id (list "bobby") #:more #t) (error "boom")"#,
-        "#:match 'string",
-    ));
-    assert!(status(&ed).contains("boom"), "{:?}", status(&ed));
-    assert!(
-        ed.state
-            .input
-            .minibuf_completion()
-            .is_some_and(|s| s.is_pending())
-    );
-    assert_eq!(minibuf_candidates(&ed), ["bobby"]);
-    assert_eq!(minibuf_input(&ed), "greet b");
-}
-
 /// `:greet b` with Tab pressed, completed by a `'minibuf` source whose
 /// call runs `body` with its request `id` bound, and whose `#:cancel` logs
 /// `cancelled`.
@@ -1061,6 +1049,61 @@ fn greet_with_cancel(body: &str) -> Editor {
         body,
         r#"#:match 'string #:cancel (lambda (id) (log! 'info "cancelled"))"#,
     ))
+}
+
+#[test]
+fn a_source_that_raises_after_a_part_ends_its_answer_there() {
+    let ed = greet_with_cancel(r#"(completion-emit! id (list "bobby") #:more #t) (error "boom")"#);
+    assert!(has_error(&ed, "boom"));
+    assert_eq!(status(&ed), "cancelled");
+    assert_eq!(minibuf_input(&ed), "greet bobby");
+    assert!(ed.state.input.minibuf_completion().is_none());
+}
+
+#[test]
+fn an_unrelated_error_leaves_a_request_waiting() {
+    let mut ed = tab(greet_source(
+        "b",
+        r#"(define captured-id #f)
+           (define-command! "late" "" (lambda () (completion-emit! captured-id (list "bob"))))"#,
+        r#"(set! captured-id id) (after! 0 (lambda () (error "boom")))"#,
+        r#"#:match 'string #:cancel (lambda (id) (log! 'info "cancelled"))"#,
+    ));
+    ed.drain_async_sources();
+    ed.settle();
+    assert!(has_error(&ed, "boom"));
+    assert!(
+        ed.state
+            .input
+            .minibuf_completion()
+            .is_some_and(|s| s.is_pending())
+    );
+    assert_ne!(status(&ed), "cancelled");
+    call(&mut ed, "late");
+    assert_eq!(minibuf_input(&ed), "greet bob");
+}
+
+#[test]
+fn a_source_call_the_drain_cap_drops_ends_its_request() {
+    let mut ed = greet_source(
+        "b",
+        "",
+        r#"(completion-emit! id (list "bob" "bobby"))"#,
+        "#:match 'string",
+    );
+    ed.handle_key(key_tab());
+    // Past `MAX_EVENT_DRAIN` (1000, `event/pump.rs`), so the whole batch,
+    // the source's call included, is dropped unrun.
+    for _ in 0..1100 {
+        ed.state
+            .config
+            .pending_work
+            .push_back(crate::editor::event::PendingWork::Event(
+                crate::editor::event::EditorEvent::OnFocusGained,
+            ));
+    }
+    assert!(!ed.drain_pending_work());
+    assert!(ed.state.input.minibuf_completion().is_none());
 }
 
 #[test]

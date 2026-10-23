@@ -70,13 +70,15 @@ pub struct EmittedWord {
 
 /// Whether an answer is a source's whole answer to its invocation, or one
 /// part of it with more to follow (`#:more`). Each part replaces the one
-/// before it, so a part holds every item so far.
+/// before it, so a part holds every item so far. A `Final` answer closes
+/// the request: a later answer to it is dropped.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum AnswerEnd {
     #[default]
     Final,
-    /// More follows: the menu shows this part, and what the minibuffer
-    /// does once a source has answered waits for the final part.
+    /// More follows: the menu shows this part and its session stays
+    /// pending, so what the minibuffer does once a source has answered,
+    /// and an Insert-mode report of nothing found, wait for the final part.
     More,
 }
 
@@ -124,15 +126,15 @@ pub trait CompletionHost {
     /// `incomplete` (the caller's `#:incomplete`) is set or any
     /// `CompletionList` part says so.
     ///
-    /// Returns whether the answer applied: `false` when `id` is no longer
-    /// the latest call of any source in the open session (superseded by a
-    /// later keystroke, or the session was replaced or dismissed):
-    /// expected-normal for a late async source, never an error. `Err` for a
+    /// Returns whether the answer applied: `false` when no source in the
+    /// open session still owes an answer to `id` (superseded by a later
+    /// keystroke, already answered with an `end` of [`AnswerEnd::Final`],
+    /// or the session was replaced or dismissed): expected-normal for a
+    /// late async source, never an error. `Err` for a
     /// part that is neither an item nor a response, a caller error, not
     /// dropped.
     ///
-    /// `word`, and an `end` of [`AnswerEnd::More`], are for a `'minibuf`
-    /// source only, `Err` from a `'buffer` one.
+    /// `word` is for a `'minibuf` source only, `Err` from a `'buffer` one.
     fn completion_emit(
         &mut self,
         id: u64,

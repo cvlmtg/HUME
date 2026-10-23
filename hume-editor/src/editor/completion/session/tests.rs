@@ -90,7 +90,7 @@ fn invoke_and_answer(
     labels: &[&str],
 ) {
     let id = buffer_invoke(session, source, text, start);
-    session.contribute(reg, id, items(labels), false);
+    session.contribute(reg, id, items(labels), false, AnswerEnd::Final);
 }
 
 /// One call of `source` whose token starts at `start`, left unanswered.
@@ -303,6 +303,7 @@ fn an_item_with_edits_is_never_hidden_as_a_duplicate() {
             vec![some_edit("import dup;\n")],
         )],
         false,
+        AnswerEnd::Final,
     ));
     invoke_and_answer(&mut session, &reg, id_of(&reg, "hi"), &text, 0, &["dup"]);
     session.rank(&reg, live(&text, 0));
@@ -398,6 +399,7 @@ fn dotted_session_with(
             item("bar"),
         ],
         false,
+        AnswerEnd::Final,
     ));
     (session, reg, text)
 }
@@ -434,7 +436,7 @@ fn an_item_whose_edit_range_starts_after_the_cursor_is_not_shown() {
         id_of(&reg, "s"),
         Invocation::buffer(text.rope().clone(), CharOffset::new(0)),
     );
-    assert!(session.contribute(&reg, id, items, false));
+    assert!(session.contribute(&reg, id, items, false, AnswerEnd::Final));
     session.rank(&reg, live(&text, 0));
     assert_eq!(ranked_labels(&session, &reg), vec!["bar"]);
 }
@@ -523,6 +525,7 @@ fn an_item_with_a_text_edit_is_kept_even_if_its_insert_text_matches() {
         id,
         vec![item_with_edits("cat", Some(some_edit("cat")), Vec::new())],
         false,
+        AnswerEnd::Final,
     ));
     session.rank(&reg, live(&text, 3));
     assert_eq!(
@@ -547,6 +550,7 @@ fn an_item_with_additional_text_edits_is_kept_even_if_its_insert_text_matches() 
             vec![some_edit("use std::cat;\n")],
         )],
         false,
+        AnswerEnd::Final,
     ));
     session.rank(&reg, live(&text, 3));
     assert_eq!(
@@ -566,21 +570,21 @@ fn an_answer_to_a_superseded_invocation_is_dropped() {
     let head = CharOffset::new(0);
     let first = session.invoke(src, Invocation::buffer(text.rope().clone(), head));
     let second = session.invoke(src, Invocation::buffer(text.rope().clone(), head));
-    assert!(!session.contribute(&reg, first, items(&["stale"]), false));
-    assert!(session.contribute(&reg, second, items(&["fresh"]), false));
+    assert!(!session.contribute(&reg, first, items(&["stale"]), false, AnswerEnd::Final));
+    assert!(session.contribute(&reg, second, items(&["fresh"]), false, AnswerEnd::Final));
     session.rank(&reg, live(&text, 0));
     assert_eq!(ranked_labels(&session, &reg), vec!["fresh"]);
 }
 
 #[test]
-fn a_repeated_answer_for_the_latest_invocation_replaces_it() {
+fn a_part_with_more_to_follow_is_replaced_by_the_next() {
     let reg = registry(&[("s", 0)]);
     let (mut session, text) = buffer_session("\n");
     let src = id_of(&reg, "s");
     let head = CharOffset::new(0);
     let id = session.invoke(src, Invocation::buffer(text.rope().clone(), head));
-    assert!(session.contribute(&reg, id, items(&["x", "y"]), false));
-    assert!(session.contribute(&reg, id, items(&["x", "z"]), false));
+    assert!(session.contribute(&reg, id, items(&["x", "y"]), false, AnswerEnd::More));
+    assert!(session.contribute(&reg, id, items(&["x", "z"]), false, AnswerEnd::Final));
     session.rank(&reg, live(&text, 0));
     assert_eq!(ranked_labels(&session, &reg), vec!["x", "z"]);
 }
@@ -595,7 +599,7 @@ fn pending_and_live_track_each_slots_latest_call() {
     assert!(!session.has_live_sources());
     let id = session.invoke(src, Invocation::buffer(text.rope().clone(), head));
     assert!(session.is_pending());
-    assert!(session.contribute(&reg, id, items(&["x"]), true));
+    assert!(session.contribute(&reg, id, items(&["x"]), true, AnswerEnd::Final));
     assert!(!session.is_pending());
     assert!(session.has_live_sources());
     assert_eq!(
@@ -603,7 +607,8 @@ fn pending_and_live_track_each_slots_latest_call() {
         vec![src],
         "flagged incomplete"
     );
-    assert!(session.contribute(&reg, id, items(&[]), false));
+    let id = session.invoke(src, Invocation::buffer(text.rope().clone(), head));
+    assert!(session.contribute(&reg, id, items(&[]), false, AnswerEnd::Final));
     assert!(!session.has_live_sources(), "an empty answer is not live");
     assert!(session.sources_to_reinvoke().is_empty());
 }
@@ -857,14 +862,22 @@ fn an_answer_with_more_to_come_keeps_its_session_pending() {
 }
 
 #[test]
-fn drop_stalled_leaves_a_streaming_answer_pending() {
+fn ending_a_streamed_request_closes_it_at_the_part_shown() {
     let reg = minibuf_registry(&[("s", 0)]);
     let (mut session, id) = streaming_session(&reg);
     emit(&mut session, &reg, id, &["a", "b"], AnswerEnd::More);
-    assert!(!session.drop_stalled_invocations());
-    assert!(session.is_pending());
+    assert!(session.end_request(id));
+    assert!(!session.is_pending());
     session.rank(&reg);
     assert_eq!(session.len(), 2);
+    assert!(!emit(
+        &mut session,
+        &reg,
+        id,
+        &["a", "b", "c"],
+        AnswerEnd::Final
+    ));
+    assert_eq!(cancelled_ids(&session.take_cancels(&reg)), [id]);
 }
 
 #[test]
@@ -882,15 +895,19 @@ fn a_streamed_update_keeps_the_picked_candidate() {
 }
 
 #[test]
-fn a_final_re_answer_after_a_final_answer_drops_the_pick() {
+fn a_final_answer_refuses_a_further_part() {
     let reg = minibuf_registry(&[("s", 0)]);
     let (mut session, id) = streaming_session(&reg);
-    emit(&mut session, &reg, id, &["b", "c"], AnswerEnd::Final);
+    assert!(emit(&mut session, &reg, id, &["b", "c"], AnswerEnd::Final));
+    assert!(!emit(
+        &mut session,
+        &reg,
+        id,
+        &["a", "b", "c"],
+        AnswerEnd::Final
+    ));
     session.rank(&reg);
-    session.step_selection(true);
-    emit(&mut session, &reg, id, &["a", "b", "c"], AnswerEnd::Final);
-    session.rank(&reg);
-    assert_eq!(session.selected(), None);
+    assert_eq!(session.len(), 2);
 }
 
 // ── prefix_matches ───────────────────────────────────────────────────────────
@@ -961,21 +978,24 @@ fn re_invoking_a_streaming_source_cancels_and_ends_its_answer() {
     let reg = minibuf_registry(&[("s", 0)]);
     let (mut session, id) = streaming_session(&reg);
     emit(&mut session, &reg, id, &["a"], AnswerEnd::More);
-    session.invoke(minibuf_id_of(&reg, "s"), Invocation::minibuf(0..0));
+    let fresh = session.invoke(minibuf_id_of(&reg, "s"), Invocation::minibuf(0..0));
     assert_eq!(cancelled_ids(&session.take_cancels(&reg)), [id]);
-    assert!(session.drop_stalled_invocations());
+    assert!(session.end_request(fresh));
     assert!(!session.is_pending());
     assert!(!emit(&mut session, &reg, id, &["a", "b"], AnswerEnd::More));
 }
 
 #[test]
-fn drop_stalled_cancels_every_call_in_flight() {
+fn ending_one_request_leaves_the_others_in_flight() {
     let reg = registry(&[("a", 0), ("b", 0)]);
     let (mut session, text) = buffer_session("foo\n");
     let a = buffer_invoke(&mut session, id_of(&reg, "a"), &text, 0);
     let b = buffer_invoke(&mut session, id_of(&reg, "b"), &text, 0);
-    assert!(session.drop_stalled_invocations());
-    assert_eq!(cancelled_ids(&session.take_cancels(&reg)), [a, b]);
+    assert!(session.end_request(a));
+    assert!(!session.end_request(a));
+    assert_eq!(cancelled_ids(&session.take_cancels(&reg)), [a]);
+    assert!(session.is_pending());
+    assert!(session.contribute(&reg, b, items(&["foo"]), false, AnswerEnd::Final));
 }
 
 #[test]
@@ -1008,4 +1028,22 @@ fn a_source_without_a_cancel_gets_no_call() {
     buffer_invoke(&mut session, id_of(&reg, "a"), &text, 0);
     buffer_invoke(&mut session, id_of(&reg, "a"), &text, 0);
     assert!(session.take_cancels(&reg).is_empty());
+}
+
+#[test]
+fn a_resolve_reply_for_a_replaced_part_lands_on_no_item() {
+    let reg = registry(&[("s", 0)]);
+    let (mut session, text) = buffer_session("\n");
+    let id = buffer_invoke(&mut session, id_of(&reg, "s"), &text, 0);
+    assert!(session.contribute(&reg, id, items(&["a", "b"]), false, AnswerEnd::More));
+    session.rank(&reg, live(&text, 0));
+    let (stale, _) = session.selected_keyed().expect("a row");
+    assert!(session.contribute(&reg, id, items(&["c", "d"]), false, AnswerEnd::Final));
+    session.rank(&reg, live(&text, 0));
+    session.finish_doc_request(stale, text.version(), serde_json::json!({"label": "a"}));
+    for _ in 0..session.len() {
+        let (_, item) = session.selected_keyed().expect("a row");
+        assert!(!item.docs_known(), "{} took the reply", item.label);
+        session.step_selection(true);
+    }
 }

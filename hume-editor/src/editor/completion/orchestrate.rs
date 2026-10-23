@@ -8,7 +8,7 @@
 //! reachable from `EditorHostImpl` (`completion-emit!`) and from the key
 //! handlers alike, and never from inside a Steel eval's own borrow.
 //!
-//! Steel sources are only ever *queued* (`queue_steel_call`), never called
+//! Steel sources are only ever *queued* (`queue_source_calls`), never called
 //! inline, same as the picker's live source and every other Rust→Steel
 //! callback. A trigger is user-intent frequency, so the per-keystroke work
 //! (`rank`) stays here in Rust and only a source flagged `isIncomplete` is
@@ -21,7 +21,9 @@ use hume_scripting::host::{AnswerEnd, EmittedWord};
 use steel::rvals::SteelVal;
 
 use super::registry::{BufferSourceId, MinibufBody, MinibufSourceId, SourceRegistry};
-use super::session::{BufferSession, Invocation, LiveDoc, MinibufSession, Reconciled};
+use super::session::{
+    BufferSession, EndingSession, Invocation, LiveDoc, MinibufSession, Reconciled,
+};
 use super::{CompletionCtx, CompletionItem, arg_span};
 use crate::editor::buffer::store::BufferStore;
 use crate::editor::input_stack::{BufferCompletionLayer, LayerRef, MinibufCompletionLayer};
@@ -92,14 +94,22 @@ impl EditorState {
         view: &EngineView,
     ) -> Option<super::BufferSession> {
         let mut session = self.take_buffer_completion(view)?;
+        self.end_completion_session(&mut session);
+        Some(session)
+    }
+
+    /// Queues the `#:cancel` calls of `session`, which is ending: for every
+    /// request it still owes an answer to, and those that ended before.
+    /// Every path that ends a session calls this: each completion layer's
+    /// `tear_down`, and an accept.
+    pub(in crate::editor) fn end_completion_session(&mut self, session: &mut impl EndingSession) {
         let cancels = session.end_requests(&self.config.completion_sources);
         self.queue_steel_calls(cancels);
-        Some(session)
     }
 
     /// Queues the `#:cancel` calls for every request the open session has
     /// stopped waiting on since the last call: superseded by a newer call,
-    /// or dropped with a failed call batch. A session leaving the input
+    /// left by the cursor, or ended by a failed source call. A session leaving the input
     /// stack queues its own, in its layer's `tear_down`.
     pub(in crate::editor) fn queue_completion_cancels(&mut self) {
         let sources = &self.config.completion_sources;
@@ -171,7 +181,7 @@ impl EditorState {
             (pid, bid),
             head.offset(),
         );
-        self.queue_steel_calls(calls);
+        self.queue_source_calls(calls);
         session.rank(
             &self.config.completion_sources,
             Some(LiveDoc {
@@ -234,7 +244,7 @@ impl EditorState {
                         (pid, bid),
                         head,
                     );
-                    self.queue_steel_calls(calls);
+                    self.queue_source_calls(calls);
                 }
                 // Typed out of every token, and nothing on its way: silent,
                 // since the user left, nothing "failed".
@@ -365,9 +375,7 @@ impl EditorState {
             cursor,
             floor,
         );
-        if let Some(call) = call {
-            self.queue_steel_call(call);
-        }
+        self.queue_source_calls(call);
         let r = self.push_layer(view, MinibufCompletionLayer { session });
         self.settle_minibuf_session(view, r);
     }
@@ -429,16 +437,15 @@ impl EditorState {
 
     // ── Answers ──────────────────────────────────────────────────────────────
 
-    /// A source's answer to invocation `id`: `completion-emit!`. `false`
-    /// when no open session has that invocation as a slot's latest call
-    /// (superseded, replaced, or dismissed since: expected-normal for a late
-    /// async source). The session is untouched, so it is settled only on
+    /// A source's answer, or part of one (`end`), to invocation `id`:
+    /// `completion-emit!`. `false` when no source in an open session still
+    /// owes an answer to `id` (superseded, answered in full, replaced, or
+    /// dismissed since: expected-normal for a late async source). The session is untouched, so it is settled only on
     /// `true`: a dropped answer changed nothing, and settling anyway would
     /// still reset the menu's selection out from under a user who has since
     /// Tabbed to a row an unrelated, superseded call has no bearing on.
-    /// `word`, and an `end` of [`AnswerEnd::More`], are for a minibuffer
-    /// session only: `Err` when a buffer session awaits `id`, or when
-    /// [`MinibufSession::emit`] refuses it.
+    /// `word` is for a minibuffer session only: `Err` when a buffer session
+    /// awaits `id`, or when [`MinibufSession::emit`] refuses it.
     pub(in crate::editor) fn contribute(
         &mut self,
         view: &EngineView,
@@ -460,14 +467,8 @@ impl EditorState {
                         .to_string(),
                 );
             }
-            if end == AnswerEnd::More && session.awaits(id) {
-                return Err(
-                    "completion-emit!: #:more is for a 'minibuf source; a 'buffer source answers \
-                     in one part"
-                        .to_string(),
-                );
-            }
-            let landed = session.contribute(&self.config.completion_sources, id, items, incomplete);
+            let landed =
+                session.contribute(&self.config.completion_sources, id, items, incomplete, end);
             if landed {
                 // Silent for a trigger-char session the user never
                 // explicitly asked for completion on, same discipline as
@@ -499,14 +500,14 @@ impl EditorState {
         Ok(landed)
     }
 
-    /// Recovery for a Steel call batch that failed: drops every completion
-    /// invocation still `Pending`, since nothing will ever call
-    /// `completion-emit!` for it now; see `SlotSet::drop_stalled`'s own
-    /// doc for why this is always safe. A no-op with no completion session
-    /// open, or when nothing was actually pending.
-    pub(in crate::editor) fn settle_completion_after_call_failure(&mut self, view: &EngineView) {
+    /// Ends completion request `id`, whose source call raised or was
+    /// dropped unrun (`CallGuard::Invocation`), and settles the session
+    /// that owed it, without its "no completions" report: the user asked,
+    /// but the source failed. A no-op when no open session owes an answer
+    /// to `id`.
+    pub(in crate::editor) fn end_completion_request(&mut self, view: &EngineView, id: u64) {
         if let Some(session) = self.input.buffer_completion_mut() {
-            if session.drop_stalled_invocations() {
+            if session.end_request(id) {
                 self.settle_buffer_completion(view, false);
             }
             return;
@@ -518,17 +519,17 @@ impl EditorState {
             .input
             .minibuf_completion_mut()
             .expect("ref_of found the layer");
-        if session.drop_stalled_invocations() {
+        if session.end_request(id) {
             self.settle_minibuf_session(view, r);
         }
     }
 
     /// Re-ranks the open `Buffer` session and dismisses it if it's now
     /// spent. Every path that lands new information into it (`contribute`,
-    /// `reconcile_completion`, a failed call batch) ends here.
+    /// `reconcile_completion`, `end_completion_request`) ends here.
     /// `report_empty`: report "no completions" if the session dismisses as
     /// spent and was ever explicitly triggered. Only `contribute` wants
-    /// this: a raw edit narrowing to nothing, or a call-batch failure,
+    /// this: a raw edit narrowing to nothing, or a failed source call,
     /// isn't the user "asking and getting nothing".
     fn settle_buffer_completion(&mut self, view: &EngineView, report_empty: bool) {
         let explicit = self
@@ -568,7 +569,7 @@ impl EditorState {
 }
 
 /// Mints one invocation per source in `ids` into `session` and returns the
-/// Steel calls to queue. Each source's token is the run before the cursor
+/// Steel calls to queue, each with its request id. Each source's token is the run before the cursor
 /// of its own token characters (`BufferSourceEntry::token_chars_over`). Every `Buffer` source is Steel, by design (see
 /// `registry.rs`'s module doc). Takes the fields it needs rather than
 /// `&mut EditorState` so a caller can hand it a session still borrowed
@@ -581,7 +582,7 @@ fn invoke_buffer_sources(
     ids: &[BufferSourceId],
     (pid, bid): (PaneId, BufferId),
     head: CharOffset,
-) -> Vec<SteelCall> {
+) -> Vec<(u64, SteelCall)> {
     let buf = buffers.get(bid);
     let text = buf.text();
     let word_chars = buf.overrides.word_chars(settings);
@@ -593,20 +594,22 @@ fn invoke_buffer_sources(
             let invocation = Invocation::buffer(text.rope().clone(), start);
             let prefix = invocation.prefix(text, head);
             let invocation_id = session.invoke(id, invocation);
-            SteelCall::new(
+            let call = SteelCall::new(
                 entry.proc.clone(),
                 vec![
                     SteelVal::IntV(invocation_id as isize),
                     hume_scripting::SteelPane::new(pane).into_steel_val(),
                     SteelVal::StringV(prefix.into()),
                 ],
-            )
+            );
+            (invocation_id, call)
         })
         .collect()
 }
 
 /// Mints an invocation of `id` into `session` and runs it: a native source
-/// answers inline, a Steel one returns the call to queue.
+/// answers inline, a Steel one returns the call to queue with its request
+/// id.
 ///
 /// `NativeDelegated`'s own span comes from calling its function first: the
 /// only body variant whose span isn't the generic `'arg` one, since its
@@ -630,7 +633,7 @@ fn invoke_minibuf_source(
     input: &str,
     cursor: usize,
     floor: usize,
-) -> Option<SteelCall> {
+) -> Option<(u64, SteelCall)> {
     let entry = sources.minibuf_get(id);
     let arg = || {
         let span = arg_span(input, cursor, ' ', &[' ']);
@@ -652,14 +655,15 @@ fn invoke_minibuf_source(
             let invocation_id = session.invoke(id, Invocation::minibuf(arg()));
             // Steel indexes a string by char.
             let cursor_chars = input[..cursor].chars().count();
-            Some(SteelCall::new(
+            let call = SteelCall::new(
                 proc.clone(),
                 vec![
                     SteelVal::IntV(invocation_id as isize),
                     SteelVal::StringV(input.into()),
                     SteelVal::IntV(cursor_chars as isize),
                 ],
-            ))
+            );
+            Some((invocation_id, call))
         }
     }
 }

@@ -178,6 +178,11 @@
                     (hashset->list words)
                     '())))))))
 
+;;; Whether a walk over `pane`'s buffer is in progress — see README.md's "Pushing a finished index to an open menu".
+(define (bw/building? pane)
+  (let ([entry (bw/entry pane)])
+    (and entry (hash-ref entry "building") #t)))
+
 ;;; Stashes `id` for `bw/push-finished-answer!` — see README.md's "Pushing a finished index to an open menu".
 (define (bw/set-live-id! pane id)
   (let ([entry (bw/entry pane)])
@@ -186,6 +191,7 @@
 
 (register-completion-source! "buffer-words"
   (lambda (id pane prefix)
-    (bw/set-live-id! pane id)
-    (completion-emit! id (bw/items pane)))
+    (let ([building? (bw/building? pane)])
+      (bw/set-live-id! pane (and building? id))
+      (completion-emit! id (bw/items pane) #:more building?)))
   #:target 'buffer #:match bw/match)

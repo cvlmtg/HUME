@@ -116,8 +116,8 @@ impl MinibufSession {
     /// puts over it. A [`FirstTab::Named`] text has a syntax the session
     /// cannot read, so it is applied as given: the typed text and the
     /// prefix need not share a display form (`dir/a` and `'dir/a b` read as
-    /// the same path start in PowerShell). `Ok(false)` when no slot's latest
-    /// call is `id`. `Err` for a word from a source the editor matches for
+    /// the same path start in PowerShell). `Ok(false)` when no slot still
+    /// owes an answer to `id`. `Err` for a word from a source the editor matches for
     /// (it filters that source's items, so the set a prefix describes is
     /// not the source's), and for a span that does not hold the cursor
     /// within the line. `end` says whether more of the answer follows.
@@ -131,9 +131,8 @@ impl MinibufSession {
         word: EmittedWord,
     ) -> Result<bool, String> {
         let kept = self.streamed_pick(id);
-        let landed = if word == EmittedWord::default() {
-            self.core
-                .contribute(id, items, incomplete, end, |_, _, _| {})
+        let named = if word == EmittedWord::default() {
+            None
         } else {
             let Some(source) = self.core.source_of(id) else {
                 return Ok(false);
@@ -146,15 +145,21 @@ impl MinibufSession {
                 );
             }
             let EmittedWord { span, prefix } = word;
-            let bytes = span.map(|chars| self.span_bytes(chars)).transpose()?;
-            self.core
-                .contribute(id, items, incomplete, end, |_, minted, _| {
+            Some((
+                span.map(|chars| self.span_bytes(chars)).transpose()?,
+                prefix,
+            ))
+        };
+        let landed = self
+            .core
+            .contribute(id, items, incomplete, end, |_, minted, _| {
+                if let Some((bytes, prefix)) = named {
                     if let Some(bytes) = bytes {
                         minted.bytes = bytes;
                     }
                     minted.prefix = prefix;
-                })
-        };
+                }
+            });
         if landed {
             self.kept_pick = kept;
         }
@@ -204,20 +209,14 @@ impl MinibufSession {
         self.core.is_pending()
     }
 
-    /// See `BufferSession::drop_stalled_invocations`'s own doc; identical
-    /// recovery, applied to this target's own slots.
-    pub(in crate::editor) fn drop_stalled_invocations(&mut self) -> bool {
-        self.core.drop_stalled()
+    /// See `BufferSession::end_request`.
+    pub(in crate::editor) fn end_request(&mut self, id: u64) -> bool {
+        self.core.end_request(id)
     }
 
     /// See `BufferSession::take_cancels`.
     pub(in crate::editor) fn take_cancels(&mut self, sources: &SourceRegistry) -> Vec<SteelCall> {
         self.core.take_cancels(sources)
-    }
-
-    /// See `BufferSession::end_requests`.
-    pub(in crate::editor) fn end_requests(&mut self, sources: &SourceRegistry) -> Vec<SteelCall> {
-        self.core.end_requests(sources)
     }
 
     // ── Ranking ──────────────────────────────────────────────────────────────
@@ -326,5 +325,11 @@ impl MinibufSession {
                 extends.then_some((span, Cow::Borrowed(prefix)))
             }
         }
+    }
+}
+
+impl super::EndingSession for MinibufSession {
+    fn end_requests(&mut self, sources: &SourceRegistry) -> Vec<SteelCall> {
+        self.core.end_requests(sources)
     }
 }

@@ -82,6 +82,11 @@ pub(in crate::editor) enum CallGuard {
     /// A timer's Steel thunk, queued once it came due. The call is dropped
     /// when `cancel-timer!` cancelled the timer before its turn.
     Timer(TimerId),
+    /// A completion source's call for request `id`. When the call raises,
+    /// or is dropped unrun, the request ends: nothing will answer it
+    /// further, and its source gets its `#:cancel`. Every other request is
+    /// left waiting.
+    Invocation(u64),
 }
 
 impl PendingWork {
@@ -138,6 +143,21 @@ impl EditorState {
     /// `queue_event` lives here.
     pub(in crate::editor) fn queue_steel_call(&mut self, call: SteelCall) {
         self.push_work(PendingWork::call(call, None, EditOrigin::User));
+    }
+
+    /// Queue each `(id, call)`, a completion source's call for request
+    /// `id`; see [`CallGuard::Invocation`].
+    pub(in crate::editor) fn queue_source_calls(
+        &mut self,
+        calls: impl IntoIterator<Item = (u64, SteelCall)>,
+    ) {
+        for (id, call) in calls {
+            self.push_work(PendingWork::call(
+                call,
+                Some(CallGuard::Invocation(id)),
+                EditOrigin::User,
+            ));
+        }
     }
 
     /// Queue `call`, the callback of the `ConfigState.async_jobs` entry

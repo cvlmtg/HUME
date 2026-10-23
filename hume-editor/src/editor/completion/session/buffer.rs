@@ -259,26 +259,25 @@ impl BufferSession {
         self.core.invoke(source, invocation)
     }
 
-    /// Lands an answer for invocation `id`, grouping its items by their own
-    /// edit-range start. Then, if it landed, rebuilds [`Self::dedup_hidden`]
-    /// against the item set as it now stands.
+    /// Lands an answer, or part of one (`end`), for invocation `id`,
+    /// grouping its items by their own edit-range start. Then, if it
+    /// landed, rebuilds [`Self::dedup_hidden`] against the item set as it
+    /// now stands. A part's ranges decode against the document as the
+    /// invocation saw it, like a whole answer's.
     pub(in crate::editor) fn contribute(
         &mut self,
         sources: &SourceRegistry,
         id: u64,
         items: Vec<CompletionItem>,
         incomplete: bool,
+        end: AnswerEnd,
     ) -> bool {
-        let landed = self.core.contribute(
-            id,
-            items,
-            incomplete,
-            AnswerEnd::Final,
-            |source, span, items| {
+        let landed = self
+            .core
+            .contribute(id, items, incomplete, end, |source, span, items| {
                 let may_resolve = sources.buffer_get(source).resolve;
                 span.assign_token_groups(items, may_resolve);
-            },
-        );
+            });
         if landed {
             self.recompute_dedup(sources);
         }
@@ -313,38 +312,20 @@ impl BufferSession {
         self.core.is_spent()
     }
 
-    /// Clears every still-`inflight` invocation, leaving any existing
-    /// `shown` answer untouched. Returns whether anything was actually
-    /// cleared.
-    ///
-    /// The recovery path for a Steel call batch that failed before any of
-    /// its queued sources could reach `completion-emit!`: without this, a
-    /// source that raises (or one that simply never answers) leaves its
-    /// slot permanently pending, since nothing else ever tells this session
-    /// the call didn't happen. `sources_to_reinvoke` calls it again on
-    /// every subsequent edit, so a broken source would otherwise error on
-    /// every keystroke instead of just once.
-    ///
-    /// Safe regardless of *why* the batch failed, or whether it even
-    /// touched completion at all: a source that was merely slow gets asked
-    /// again through the ordinary edit-driven reinvocation path, or a
-    /// fresh trigger; one that's broken simply stops being asked
-    /// until then, rather than erroring forever.
-    pub(in crate::editor) fn drop_stalled_invocations(&mut self) -> bool {
-        self.core.drop_stalled()
+    /// Ends request `id`, whose source call raised or was dropped unrun,
+    /// so nothing will answer it further: a call in flight is dropped, a
+    /// streaming answer closes at the part shown. `false` when this session
+    /// owes no answer to `id`. A source that is merely slow is asked again
+    /// by the next edit or trigger.
+    pub(in crate::editor) fn end_request(&mut self, id: u64) -> bool {
+        self.core.end_request(id)
     }
 
     /// The `#:cancel` calls for every request that ended without its
     /// answer since the last call: superseded by a newer call of its
-    /// source, or dropped by [`Self::drop_stalled_invocations`].
+    /// source, left by the cursor, or ended by [`Self::end_request`].
     pub(in crate::editor) fn take_cancels(&mut self, sources: &SourceRegistry) -> Vec<SteelCall> {
         self.core.take_cancels(sources)
-    }
-
-    /// [`Self::take_cancels`] for a session leaving the input stack, with
-    /// every request it still awaits.
-    pub(in crate::editor) fn end_requests(&mut self, sources: &SourceRegistry) -> Vec<SteelCall> {
-        self.core.end_requests(sources)
     }
 
     /// The sources to call again after an edit: those that flagged their
@@ -605,4 +586,10 @@ impl BufferSession {
 /// `start <= head` before calling this.
 fn token_text(text: &BufferText, start: CharOffset, head: CharOffset) -> String {
     text.slice(ExclusiveRange::new(start, head)).to_string()
+}
+
+impl super::EndingSession for BufferSession {
+    fn end_requests(&mut self, sources: &SourceRegistry) -> Vec<SteelCall> {
+        self.core.end_requests(sources)
+    }
 }

@@ -150,8 +150,7 @@ impl Layer for BufferCompletionLayer {
         RemovalScope::SelfOnly
     }
     fn tear_down(mut self: Box<Self>, state: &mut EditorState, _view: &EngineView, _why: Removal) {
-        let cancels = self.session.end_requests(&state.config.completion_sources);
-        state.queue_steel_calls(cancels);
+        state.end_completion_session(&mut self.session);
         state.close_buffer_completion_views();
     }
     fn theme_changed(
@@ -184,8 +183,7 @@ impl Layer for MinibufCompletionLayer {
         RemovalScope::SelfOnly
     }
     fn tear_down(mut self: Box<Self>, state: &mut EditorState, _view: &EngineView, _why: Removal) {
-        let cancels = self.session.end_requests(&state.config.completion_sources);
-        state.queue_steel_calls(cancels);
+        state.end_completion_session(&mut self.session);
         state.views.minibuf_completion.set(None);
     }
 }

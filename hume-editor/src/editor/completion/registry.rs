@@ -43,7 +43,7 @@ pub(in crate::editor) type NativeDelegatedFn =
 pub(in crate::editor) enum MinibufBody {
     NativeUniverse(NativeUniverseFn),
     NativeDelegated(NativeDelegatedFn),
-    /// Invoked via `EditorState::queue_steel_call` as `(proc id input
+    /// Invoked via `EditorState::queue_source_calls` as `(proc id input
     /// cursor)`, answered by `(completion-emit! id …)`. `cancel` is
     /// [`BufferSourceEntry::cancel`]'s counterpart.
     Steel {
@@ -56,7 +56,7 @@ pub(in crate::editor) struct BufferSourceEntry {
     pub(in crate::editor) name: Box<str>,
     pub(in crate::editor) match_kind: MatchKind,
     pub(in crate::editor) priority: i64,
-    /// Invoked via `EditorState::queue_steel_call` as `(proc id bid
+    /// Invoked via `EditorState::queue_source_calls` as `(proc id bid
     /// prefix)`, answered by `(completion-emit! id …)`.
     pub(in crate::editor) proc: hume_scripting::Rooted,
     /// `#:resolve`: this source's own claim that its items are wire

@@ -351,10 +351,41 @@ fn a_landing_answer_resets_the_selection_to_row_zero() {
     );
 }
 
-/// A second answer for the *same* still-latest invocation replaces the
-/// first: a source may stream.
+/// An error in a callback that is not the source's own leaves the
+/// source's request waiting for its answer.
 #[test]
-fn a_repeated_answer_for_a_live_invocation_replaces_the_first() {
+fn an_unrelated_error_leaves_a_buffer_request_waiting() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    insert_with_script(
+        &mut ed,
+        tmp.path(),
+        r#"(define saved #f)
+           (register-completion-source! "test"
+             (lambda (id bid prefix)
+               (set! saved id)
+               (after! 0 (lambda () (error "boom"))))
+             #:target 'buffer)
+           (define-command! "late" "" (lambda ()
+             (completion-emit! saved (list "late"))))"#,
+    );
+    ed.drain_async_sources();
+    ed.settle();
+    assert!(
+        ed.state
+            .message_log
+            .entries()
+            .any(|e| e.severity == Severity::Error && e.text.contains("boom")),
+        "sanity: the timer raised"
+    );
+    ed.execute_keymap_command("late".into(), None, false);
+    assert_eq!(labels(&ed), vec!["late"]);
+}
+
+/// A final answer closes its request: a second one for the same id is
+/// dropped.
+#[test]
+fn a_second_final_answer_to_a_request_is_dropped() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     insert_with_script(
@@ -367,10 +398,11 @@ fn a_repeated_answer_for_a_live_invocation_replaces_the_first() {
                (completion-emit! id (list (hash "label" "x") (hash "label" "y"))))
              #:target 'buffer)
            (define-command! "again" "" (lambda ()
-             (completion-emit! saved (list (hash "label" "x") (hash "label" "z")))))"#,
+             (log! 'info (if (completion-emit! saved (list (hash "label" "z"))) "landed" "dropped"))))"#,
     );
     ed.execute_keymap_command("again".into(), None, false);
-    assert_eq!(labels(&ed), vec!["x", "z"], "replaced, not appended");
+    assert_eq!(status(&ed), "dropped");
+    assert_eq!(labels(&ed), vec!["x", "y"]);
 }
 
 #[test]
@@ -482,12 +514,11 @@ fn a_complete_source_is_not_reinvoked_on_typing() {
 }
 
 /// A source that raises instead of ever calling `completion-emit!` must not
-/// be retried on every subsequent keystroke. `drop_stalled_invocations`
-/// clears its slot once the failed batch is reported, so it drops out of
-/// `sources_to_reinvoke` until a fresh explicit trigger, instead of erroring
-/// again on every edit. A second, working source registered alongside it
-/// stays open and unaffected: `drop_stalled_invocations` only clears a
-/// still-`inflight` slot, never a `shown` one.
+/// be retried on every subsequent keystroke. Its call's own raise ends its
+/// request, so it drops out of `sources_to_reinvoke` until a fresh explicit
+/// trigger, instead of erroring again on every edit. A second, working
+/// source registered alongside it stays open and unaffected: the raise
+/// ends only the raising source's request.
 #[test]
 fn a_raising_source_is_not_retried_on_every_keystroke() {
     let tmp = tempfile::tempdir().unwrap();
@@ -683,27 +714,35 @@ fn a_span_from_a_buffer_source_is_refused() {
     );
 }
 
-/// A buffer session re-ranks on every keystroke, so a buffer source
-/// answers in one part.
+/// Each part replaces the one before it, and the session waits for the
+/// last.
 #[test]
-fn more_from_a_buffer_source_is_refused() {
+fn a_buffer_source_may_answer_in_parts() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     insert_with_script(
         &mut ed,
         tmp.path(),
-        r#"(register-completion-source! "test"
-             (lambda (id bid prefix) (completion-emit! id (list "plain") #:more #t))
-             #:target 'buffer)"#,
+        r#"(define saved #f)
+           (register-completion-source! "test"
+             (lambda (id bid prefix)
+               (set! saved id)
+               (completion-emit! id (list "plain") #:more #t))
+             #:target 'buffer)
+           (define-command! "last" "" (lambda ()
+             (completion-emit! saved (list "plain" "plainer"))))"#,
     );
-    assert!(labels(&ed).is_empty());
-    assert!(
+    assert_eq!(labels(&ed), vec!["plain"]);
+    let pending = |ed: &Editor| {
         ed.state
-            .message_log
-            .entries()
-            .any(|e| e.severity == Severity::Error && e.text.contains("#:more")),
-        "expected a raised #:more error in the message log"
-    );
+            .input
+            .buffer_completion()
+            .is_some_and(|s| s.is_pending())
+    };
+    assert!(pending(&ed));
+    ed.execute_keymap_command("last".into(), None, false);
+    assert_eq!(labels(&ed), vec!["plain", "plainer"]);
+    assert!(!pending(&ed));
 }
 
 /// A buffer source's insert texts are plain words, so it has no first-Tab

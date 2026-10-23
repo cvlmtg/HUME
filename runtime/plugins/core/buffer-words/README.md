@@ -170,20 +170,21 @@ events. The editor's own re-ranking follows the live cursor on every keystroke w
 from this plugin. The background walk finishing is different: if `Ctrl-Space` lands on a
 large buffer whose walk is still partial, the open menu would stay at that partial answer.
 
-The completion source stashes the invocation id it was last called with, one per buffer.
-When a walk promotes its in-progress set, it calls `completion-emit!` on that id with the
-finished list, as an unsolicited second answer. `completion-emit!` accepts it the way it
-accepts an LSP source streaming a second answer for an open call: the id must still be the
-latest one for this source's slot. A stale id, from a menu that was dismissed or replaced by
-a later trigger, is dropped without effect, and the plugin is not told which.
+While a walk is in progress, the completion source answers with `#:more #t`, which keeps the
+request open, and stashes the request id, one per buffer. When the walk promotes its
+in-progress set, it calls `completion-emit!` on that id with the finished list, without
+`#:more`, which closes the request. A request made once the walk has finished gets its whole
+answer at once, and no id is stashed for it, so a later reindex leaves that menu alone. A
+stale id, from a menu that was dismissed or replaced by a later trigger, is dropped without
+effect, and the plugin is not told which.
 
 ### Matching
 
 The completion framework re-filters this source's items against what is typed on every
 keystroke, without calling the source again: `#:match 'string`'s prefix gate and
 `#:match 'fuzzy`'s subsequence score both run in Rust. The plugin therefore emits its whole
-cached set once per trigger and does not pre-filter in Steel. The one extra answer is the
-push described above.
+cached set once per trigger and does not pre-filter in Steel. The one later part is the push
+described above.
 
 The scan includes the word under the cursor like any other word. The editor's ranking drops
 any item equal to the live token before scoring, for every source. It derives that from the

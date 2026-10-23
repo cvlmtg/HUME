@@ -22,9 +22,21 @@ mod slots;
 
 use std::ops::Range;
 
+use hume_scripting::SteelCall;
+
 pub(in crate::editor) use buffer::{BufferSession, LiveDoc, Reconciled};
 pub(in crate::editor) use minibuf::MinibufSession;
 pub(in crate::editor) use slots::{Invocation, ItemKey};
+
+use super::registry::SourceRegistry;
+
+/// A completion session as it ends, of either target.
+pub(in crate::editor) trait EndingSession {
+    /// The `#:cancel` calls for every request ended since the last
+    /// `take_cancels`, and for every request the session still owes an
+    /// answer to, which ends here.
+    fn end_requests(&mut self, sources: &SourceRegistry) -> Vec<SteelCall>;
+}
 
 /// How a source's items are matched against its token's typed text. Declared
 /// per source (`registry.rs`), since one session mixes sources.

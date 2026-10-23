@@ -412,14 +412,6 @@ impl Editor {
         };
         let result = host_scr.run_steel_calls(calls, &mut impl_host);
         let ran = result.is_ok();
-        if result.is_err() {
-            // A queued completion invocation this batch was supposed to
-            // answer for (via `completion-emit!`) never will now; see
-            // `EditorState::settle_completion_after_call_failure`'s own
-            // doc. Runs before `apply_script_result` reports the error, but
-            // the ordering doesn't matter to either side.
-            self.state.settle_completion_after_call_failure(&self.view);
-        }
         self.apply_script_result(result, "steel call error: ");
         ran
     }
@@ -466,6 +458,11 @@ impl Editor {
                     self.with_edit_origin(origin, |ed| ed.run_call_batch(vec![call]));
                 }
             }
+            CallGuard::Invocation(id) => {
+                if !self.with_edit_origin(origin, |ed| ed.run_call_batch(vec![call])) {
+                    self.state.end_completion_request(&self.view, id);
+                }
+            }
         }
     }
 
@@ -478,6 +475,7 @@ impl Editor {
             CallGuard::Timer(id) => {
                 self.timers.take_queued(id);
             }
+            CallGuard::Invocation(id) => self.state.end_completion_request(&self.view, id),
         }
     }
 

@@ -314,17 +314,13 @@ fn an_edit_refreshes_the_index() {
     wait_for_word_gone(&mut ed, "newword");
 }
 
-/// A background walk finishing while the menu is already open must not
-/// reset the user's navigation *twice* under one still-live invocation:
-/// `bw/push-finished-answer!` clears `"live-id"` once used, so a *second*
-/// walk completing with no fresh trigger in between is a no-op instead of
-/// re-emitting under the same id and resetting the selection again. The
+/// A request the walk had already finished for is answered in full, so a
+/// reindex finishing while its menu is open leaves the menu alone. The
 /// global `word-chars` option change is the trigger: `'on-option-change`
 /// reindexes every open buffer without touching this buffer's own text or
-/// cursor, so it can't also disturb the session's tokens. The one thing
-/// under test here is `bw/push-finished-answer!` itself.
+/// cursor, so it can't also disturb the session's tokens.
 #[test]
-fn a_second_background_finish_does_not_reset_the_menu_selection() {
+fn a_reindex_after_a_complete_answer_leaves_the_selection_alone() {
     let tmp = tempfile::tempdir().unwrap();
     let guard = RuntimeDirs::new();
     let mut ed = setup(&guard, tmp.path(), None);
@@ -341,30 +337,12 @@ fn a_second_background_finish_does_not_reset_the_menu_selection() {
         labels(&ed)
     );
 
-    // A fresh reindex now legitimately re-emits under the trigger's still-
-    // live id and resets the selection once: expected, not the bug under
-    // test. `reindex_and_wait` drives one full cycle.
-    reindex_via_option_change(&mut ed);
-    assert_eq!(
-        ed.state.input.completion_selected(),
-        Some(0),
-        "sanity: the first finish under a fresh id does reset the selection"
-    );
-
     ed.feed_key(key_down());
     let moved = ed.state.input.completion_selected();
     assert_ne!(moved, Some(0), "sanity: selection moved off row 0");
 
-    // A *second* reindex, no fresh trigger in between: `"live-id"` was
-    // already consumed and cleared by the push above, so this one must be
-    // a silent no-op.
     reindex_via_option_change(&mut ed);
-    assert_eq!(
-        ed.state.input.completion_selected(),
-        moved,
-        "a second background reindex finishing under the same already-\
-         consumed id must not silently reset the user's navigation"
-    );
+    assert_eq!(ed.state.input.completion_selected(), moved);
 }
 
 /// Fires `'on-option-change` for `"word-chars"` (reindexing every open
@@ -824,6 +802,13 @@ fn a_menu_opened_before_the_walk_finishes_catches_up_once_it_does() {
     ed.feed_key(key_ctrl(' '));
     ed.settle();
     assert!(!labels(&ed).contains(&"late_word".to_string()));
+    assert!(
+        ed.state
+            .input
+            .buffer_completion()
+            .is_some_and(|session| session.is_pending()),
+        "a partial answer leaves the request open"
+    );
 
     // No further keystroke: the walk's own push is what has to surface
     // `late_word`, once it finishes on its own timer chain.

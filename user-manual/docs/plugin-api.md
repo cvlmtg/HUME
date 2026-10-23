@@ -248,7 +248,7 @@ Full walkthrough (a static source, richer items, trigger characters, an asynchro
 | Call | Effect |
 |------|--------|
 | `(register-completion-source! name proc #:target #:match #:priority #:resolve #:token-chars #:cancel)` | Register `proc` as completion source `name` (see [Source options](writing-plugins.md#source-options)) |
-| `(completion-emit! id items #:incomplete #:more #:span #:prefix)` | Answer request `id` with `items`, or with a part of the answer when `#:more` is `#t`; `#f` if the answer was dropped as out of date |
+| `(completion-emit! id items #:incomplete #:more #:span #:prefix)` | Answer request `id` with `items`, or with a part of the answer when `#:more` is `#t`; `#f` if the answer was dropped, because it was out of date or the request was already answered without `#:more` |
 | `(register-shell-dialect! name #:programs #:program-extensions #:parse #:write)` | How `Tab` on the `\|` prompt reads and writes a word for the shells `#:programs` names (see [Shell dialects](writing-plugins.md#shell-dialects)) |
 | `(set-completion-triggers! source language chars)` | Characters that invoke `'buffer` source `source` when typed in a `language` buffer; replaces the previous set, and `'()` removes it. An unknown `source` is reported in the message log |
 | `(set-hook-triggers! source language chars)` | Characters that fire the `on-trigger-char` hook, tagged `source`, when typed in a `language` buffer; replaces the previous set, and `'()` removes it. For features other than completion, such as signature help |

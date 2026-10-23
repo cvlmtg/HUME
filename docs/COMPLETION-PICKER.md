@@ -128,30 +128,37 @@ as unvalidated surface.
 
 A trigger mints one `Invocation` per source (`host_token::next()` for its
 id), its span already resolved (above) — a native source answers inline; a
-Steel one is *queued* via `EditorState::queue_steel_call` — `(proc id pane
+Steel one is *queued* via `EditorState::queue_source_calls` — `(proc id pane
 prefix)` for a buffer source, `(proc id input cursor)` for a `:`-line one —
 and answers with `(completion-emit! id items #:incomplete)`, sync or from
-any later callback, once, or in parts: `#:more #t` (a `'minibuf` source only)
-marks a part with more to follow. An empty list is "nothing from this
+any later callback, once, or in parts: `#:more #t` marks a part with more to
+follow. An empty list is "nothing from this
 source".
 
-**An answer applies only to the latest call of its slot.** Re-invoking a
+**An answer applies only to the request its slot still owes.** Re-invoking a
 source (a later keystroke while its last answer was `isIncomplete`, a second
 Ctrl-Space, a trigger char) supersedes the earlier call: its id goes stale,
-and an answer carrying it is dropped (`completion-emit!` returns `#f`). A
-repeated answer for a still-latest id replaces the earlier one, so a source
-may stream. A shown part marked `#:more` keeps its slot pending: the
-minibuffer's eager policy waits for the final part, and a candidate picked
-while parts arrive is picked again in each later one (`MinibufSession`'s
-`kept_pick`). A failed call batch drops a pending call but leaves such a
-part pending: only the source's final part ends it. A request that ends
-while its source still owes an answer (a call in flight, or a part marked
-`#:more`) gets the source's `#:cancel`, `(cancel id)`: superseded by a newer
-call, dropped with a failed batch, or abandoned when the session closes.
+and an answer carrying it is dropped (`completion-emit!` returns `#f`). So is
+a second answer to a request already answered without `#:more`: an answer
+without it is the last. A part marked `#:more` replaces the one before it and
+keeps its slot pending: an Insert-mode menu shows each part and reports
+nothing found only after the last, the minibuffer's eager policy waits for
+the final part, and a candidate picked while parts arrive is picked again in
+each later one (`MinibufSession`'s `kept_pick`). An edit does not re-ask a
+streaming source: its shown part is refiltered locally like any answer, and
+each part decodes its `textEdit` ranges against the request's own snapshot.
+A source's call is queued under its request's id (`CallGuard::Invocation`),
+so when that call raises, or the drain cap drops it unrun, its request alone
+ends: a call in flight is dropped, a streamed answer closes at the part
+shown, and every other request keeps waiting. A raise in any other callback
+ends no request. A request that ends while its source still owes an answer
+(a call in flight, or a part marked `#:more`) gets the source's `#:cancel`,
+`(cancel id)`: superseded by a newer call, ended by its source call's
+failure, or abandoned when the session closes.
 `SlotSet.ended` is the one record of these; the drain queues its calls after
 `reconcile_completion`, and a completion layer's `tear_down`, or an accept,
-queues those of the session it ends. A superseded streaming answer takes no
-further part. This is the entire stale-async story — there is no session
+queues those of the session it ends. A superseded streaming answer closes at
+the part shown. This is the entire stale-async story — there is no session
 token, no `async_opener_stale` gate, and no way for a slow LSP response to
 overwrite a newer one. The old answer stays ranked (against the new token
 text) until the new one lands, so the menu never blinks empty.
@@ -196,7 +203,7 @@ reuses the open session). It:
    part of the same call — every path that rebuilds the ranked list gets
    this for free rather than having to remember a separate reset step; and
 5. dismisses the session, silently, once no slot has an answer with items
-   and nothing is in flight.
+   and no source owes an answer.
 
 An edit that does not touch a token (a script's edit elsewhere, an
 auto-format) leaves the session open with its tokens shifted. Auto-pair
@@ -318,7 +325,7 @@ theme change drops it.
 | Builtin | Notes |
 |---|---|
 | `(register-completion-source! name proc #:target #:match ['fuzzy] #:priority [0] #:resolve [#f] #:token-chars [""] #:cancel [#f])` | config-time; crosses as `Effect::RegisterCompletionSource`, so a failed activation's registration is never applied (the `Effect::BindKey` rationale); `#:target` picks one of two separate namespaces (`'buffer`, `'minibuf`) — re-registering a name replaces it, natives included, *within that namespace*; the same name in the other namespace is a second, unrelated source, since there is no shared id space between them to collide in. `#:resolve #t` (`'buffer` only) claims this source's items are wire items from the buffer's attached server, licensing `completionItem/resolve` on selection and on accept. `#:cancel` is called as `(cancel id)` when request `id` ends before its final answer |
-| `(completion-emit! id items #:incomplete [#f] #:more [#f] #:span [#f] #:prefix)` | the one way items enter a session; `#f` once `id` is stale. `#:more #t` makes the answer a part with more to follow, for a `'minibuf` source only, raising from a `'buffer` one. `#:span` and `#:prefix` are for a `'minibuf` source registered `'delegated`, raising from any other: `#:span` (`(hash 'start-char s 'end-char e)`, end exclusive, holding the cursor) is the word the answer completes, and `#:prefix` is what the first Tab puts over it with several candidates: left out, the common prefix of their insert texts; a string (never empty), that text, applied only with the cursor at the word's end, since the source read nothing after it; `#f`, nothing. A source whose insert texts have a syntax of their own (the `shell` source's quoted words) names it, since only the source can tell what extends the typed word; the editor parses no source's syntax. `items` is a list whose entries are an LSP `CompletionItem` hashmap, a bare string (`"foo"` decodes the same as `(hash "label" "foo")`, for a source with nothing but a label, e.g. `core:buffer-words`'s word list), or a whole `textDocument/completion` response handle (a `CompletionItem[]` or a `CompletionList`) whose items join the rest, decoded in Rust rather than per item, so several servers' answers become one. The answer is incomplete when `#:incomplete` is set or any `CompletionList` says so; any other entry shape errors |
+| `(completion-emit! id items #:incomplete [#f] #:more [#f] #:span [#f] #:prefix)` | the one way items enter a session; `#f` once `id` is stale or answered in full. `#:more #t` makes the answer a part with more to follow; an answer without it closes the request. `#:span` and `#:prefix` are for a `'minibuf` source registered `'delegated`, raising from any other: `#:span` (`(hash 'start-char s 'end-char e)`, end exclusive, holding the cursor) is the word the answer completes, and `#:prefix` is what the first Tab puts over it with several candidates: left out, the common prefix of their insert texts; a string (never empty), that text, applied only with the cursor at the word's end, since the source read nothing after it; `#f`, nothing. A source whose insert texts have a syntax of their own (the `shell` source's quoted words) names it, since only the source can tell what extends the typed word; the editor parses no source's syntax. `items` is a list whose entries are an LSP `CompletionItem` hashmap, a bare string (`"foo"` decodes the same as `(hash "label" "foo")`, for a source with nothing but a label, e.g. `core:buffer-words`'s word list), or a whole `textDocument/completion` response handle (a `CompletionItem[]` or a `CompletionList`) whose items join the rest, decoded in Rust rather than per item, so several servers' answers become one. The answer is incomplete when `#:incomplete` is set or any `CompletionList` says so; any other entry shape errors |
 | `(completion-top n)`, `(completion-accept! idx)`, `(completion-dismiss!)` | unchanged |
 | `(set-hook-triggers! source language chars)` + `on-trigger-char` | shared, listener-agnostic table (signature help uses it) — *not* how a `'buffer` completion source's own trigger chars are joined. `(set-attachment-hook-triggers! source pane server feature chars)` keys the same table to one buffer's attachment to a server, gone when it detaches |
 | `(set-completion-triggers! source language chars)`, `(set-attachment-completion-triggers! source pane server feature chars)` | a `'buffer` completion source's own trigger chars for a language, or for one buffer's attachment to a server, replacing that pair's previous set; the editor invokes `source` directly when one lands, no hook round trip. Crosses as `Effect::SetTriggers` (a `register-completion-source!` queued earlier in the same eval may still be the one supplying `source`); `source` naming no registered `'buffer` source at apply time is reported as a log message, not raised back to the caller |
@@ -362,9 +369,9 @@ empty answer when the buffer's server has no `completionProvider`;
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
 | Source registry | **One, in Rust, on `ConfigState`, holding native and Steel sources** | The minibuffer's native sources must work with `hume --no-config`, so a Rust registry exists regardless; a second, Steel-only registry for Insert mode meant two registries and two source contracts. The frequency-cut rule is about what runs when, not where the list of sources lives — invocation is user-intent frequency either way. |
-| Orchestration | **Rust, `impl EditorState`** | One driver for both targets, reachable from `EditorHostImpl` (`completion-emit!`) and key handlers alike; Steel sources are only ever queued (`queue_steel_call`), the picker's live-source precedent. |
+| Orchestration | **Rust, `impl EditorState`** | One driver for both targets, reachable from `EditorHostImpl` (`completion-emit!`) and key handlers alike; Steel sources are only ever queued (`queue_source_calls`), the picker's live-source precedent. |
 | Token boundary | **One rule per target (buffer: the word before the cursor; minibuf: the whitespace-delimited argument), resolved by Rust before the source runs; a delegated minibuffer source names its own** | Deterministic, identical on every re-invocation, known while the source is pending. A delegated minibuffer source's candidates are the live input, and only it knows where its word ends (a shell word's quotes), so it names the span: a native one returns it, a Steel one sends `#:span` with its answer (and `#:prefix`, the first Tab's text or `#f` for none, since the common prefix of quoted words is not itself a word), safe because a minibuffer session invokes its source once and closes on any other key. A `'cursor`/`'custom` per-source choice for every source existed once; no shipping source used either, so both were removed rather than carried as unvalidated surface. |
-| Async identity | **Per-invocation id; an answer applies only to its slot's latest call** | Strictly stronger than a session token plus replace-per-source: a superseded call's late answer can never land at all. |
+| Async identity | **Per-invocation id; an answer applies only to the request its slot still owes** | Strictly stronger than a session token plus replace-per-source: a superseded call's late answer can never land at all. |
 | Snapshots | **Per invocation, never session-wide** | An `isIncomplete` re-request is computed against a later document than the first answer; each decodes its own `textEdit` ranges against its own snapshot. |
 | Filter text | **Derived per slot from its live span, never set** | Removes `completion-update-filter!` and the accept-time extension it forced. |
 | `:` line cycle-apply | **Restore the invoke-time input, then splice over the slot's span** | Idempotent in invoke-time coordinates; two sources with different spans coexist, since every span is in those same coordinates. |

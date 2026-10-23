@@ -20,29 +20,15 @@ use crate::editor::host_token;
 enum InvocationState {
     Pending,
     Shown {
+        /// This part's own id, fresh for each answer or part that lands,
+        /// so an [`ItemKey`] from a replaced part names nothing.
+        answer: u64,
         items: Vec<CompletionItem>,
         incomplete: bool,
-        end: ShownEnd,
+        /// Whether more of the answer may land: a `Final` answer closes its
+        /// request.
+        end: AnswerEnd,
     },
-}
-
-/// Whether more of a shown answer may land.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum ShownEnd {
-    Final,
-    More,
-    /// It had more to follow, but its request ended first and its
-    /// source was told to stop: a later part is dropped.
-    Cancelled,
-}
-
-impl From<AnswerEnd> for ShownEnd {
-    fn from(end: AnswerEnd) -> Self {
-        match end {
-            AnswerEnd::Final => Self::Final,
-            AnswerEnd::More => Self::More,
-        }
-    }
 }
 
 /// One call of one source for one trigger: the id the source answers to,
@@ -75,6 +61,13 @@ impl<S> Invocation<S> {
         }
     }
 
+    fn answer(&self) -> Option<u64> {
+        match &self.state {
+            InvocationState::Shown { answer, .. } => Some(*answer),
+            InvocationState::Pending => None,
+        }
+    }
+
     fn items_mut(&mut self) -> Option<&mut [CompletionItem]> {
         match &mut self.state {
             InvocationState::Shown { items, .. } => Some(items),
@@ -97,28 +90,18 @@ impl<S> Invocation<S> {
         matches!(
             self.state,
             InvocationState::Shown {
-                end: ShownEnd::More,
+                end: AnswerEnd::More,
                 ..
             }
         )
     }
 
-    fn cancelled(&self) -> bool {
-        matches!(
-            self.state,
-            InvocationState::Shown {
-                end: ShownEnd::Cancelled,
-                ..
-            }
-        )
-    }
-
-    /// Marks a streaming answer cancelled. `false`, changing nothing, for
-    /// any other: it owes no further part.
-    fn cancel_stream(&mut self) -> bool {
+    /// Closes a streaming answer at the part shown, so no further part
+    /// lands. `false`, changing nothing, for any other: it owes none.
+    fn close_stream(&mut self) -> bool {
         match &mut self.state {
-            InvocationState::Shown { end, .. } if *end == ShownEnd::More => {
-                *end = ShownEnd::Cancelled;
+            InvocationState::Shown { end, .. } if *end == AnswerEnd::More => {
+                *end = AnswerEnd::Final;
                 true
             }
             _ => false,
@@ -128,18 +111,22 @@ impl<S> Invocation<S> {
 
 /// Names one item of one source's answer. A ranked index moves on every
 /// re-rank; this stays put while that answer is shown, and names nothing
-/// once it is replaced, since every invocation id is unique.
+/// once it is replaced, by a newer answer or a later part of the same one,
+/// since every part's id is unique.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(in crate::editor) struct ItemKey {
-    invocation: u64,
+    answer: u64,
     item: u32,
 }
 
 /// One participating source: the answer currently ranked (`shown`) and, if
 /// the source was re-invoked since, the newer call whose answer hasn't
-/// landed yet (`inflight`). An emission applies only to the *latest* of the
-/// two ids. A late answer to a superseded call is dropped, so a slow LSP
-/// response can never overwrite a newer one. Generic over the id type
+/// landed yet (`inflight`). An answer lands only on the request the source
+/// still owes ([`Self::owed`]). A late answer to a superseded call is
+/// dropped, so a slow LSP response can never overwrite a newer one, and so
+/// is a second answer to a request already answered in full. A slot never
+/// holds a call in flight beside a streaming answer: a fresh call closes
+/// the stream. Generic over the id type
 /// (`BufferSourceId`/`MinibufSourceId`) and span shape, both fixed by
 /// whichever session type's `SlotSet` holds this.
 pub(super) struct SourceSlot<Id, S> {
@@ -149,17 +136,27 @@ pub(super) struct SourceSlot<Id, S> {
 }
 
 impl<Id: Copy + PartialEq, S> SourceSlot<Id, S> {
-    fn latest_id(&self) -> Option<u64> {
-        self.inflight
-            .as_ref()
-            .or(self.shown.as_ref())
-            .map(|inv| inv.id)
+    /// The request the source still owes an answer to: its call in flight,
+    /// else a shown answer with more to follow.
+    fn owed(&self) -> Option<u64> {
+        match &self.inflight {
+            Some(inv) => Some(inv.id),
+            None => self
+                .shown
+                .as_ref()
+                .filter(|inv| inv.streaming())
+                .map(|inv| inv.id),
+        }
     }
 
-    /// Whether the source still owes an answer: a call in flight, or a
-    /// shown answer with more to follow.
-    fn awaits_answer(&self) -> bool {
-        self.inflight.is_some() || self.shown.as_ref().is_some_and(Invocation::streaming)
+    /// Ends the request [`Self::owed`] names, returning its id: a call in
+    /// flight is dropped, a streaming answer closes at the part shown.
+    fn take_owed(&mut self) -> Option<u64> {
+        if let Some(inv) = self.inflight.take() {
+            return Some(inv.id);
+        }
+        let inv = self.shown.as_mut()?;
+        inv.close_stream().then_some(inv.id)
     }
 
     /// Whether the source has answered with at least one item. A slot
@@ -343,8 +340,10 @@ pub(super) struct SlotSet<Id, S> {
     selected: usize,
     /// Every request that ended while its source still owed an answer,
     /// since the last [`Self::take_cancels`]: a call in flight, or an
-    /// answer with more to follow, that a newer call superseded, a failed
-    /// call batch dropped, or the session's end abandoned. The one record
+    /// answer with more to follow, that a newer call superseded
+    /// ([`Self::invoke`]), whose source call failed ([`Self::end_request`]),
+    /// whose token the cursor left ([`Self::drop_shown_where`]), or that
+    /// the session's end abandoned ([`Self::end_requests`]). The one record
     /// every such discard writes to.
     ended: Vec<(Id, u64)>,
 }
@@ -378,24 +377,19 @@ impl<Id: Copy + PartialEq, S> SlotSet<Id, S> {
                 self.slots.last_mut().expect("just pushed")
             }
         };
-        let superseded = match slot.inflight.replace(invocation) {
-            Some(old) => Some(old.id),
-            None => slot
-                .shown
-                .as_mut()
-                .and_then(|inv| inv.cancel_stream().then_some(inv.id)),
-        };
-        self.ended.extend(superseded.map(|old| (source, old)));
+        self.ended.extend(slot.take_owed().map(|old| (source, old)));
+        slot.inflight = Some(invocation);
         id
     }
 
-    /// Lands an answer for invocation `id`. `false` when `id` isn't the
-    /// latest call of any slot here: a superseded or already-replaced
-    /// invocation, expected-normal for a late async source, never an
-    /// error.
+    /// Lands an answer for invocation `id`. `false` when no slot here
+    /// still owes an answer to `id`: a superseded invocation, or one
+    /// already answered in full, expected-normal for a late async source,
+    /// never an error. `end` says whether more of the answer follows.
     /// `prepare` sees the answering source, the invocation's span and the
     /// items before they are stored. The items keep the resolutions of the
-    /// candidates they repeat from the shown answer they replace.
+    /// candidates they repeat from the answer they replace: the source's
+    /// earlier answer, or the earlier part of this one.
     pub(super) fn contribute(
         &mut self,
         id: u64,
@@ -404,27 +398,29 @@ impl<Id: Copy + PartialEq, S> SlotSet<Id, S> {
         end: AnswerEnd,
         prepare: impl FnOnce(Id, &mut S, &mut [CompletionItem]),
     ) -> bool {
-        let Some(slot) = self.slots.iter_mut().find(|s| s.latest_id() == Some(id)) else {
+        let Some(slot) = self.slots.iter_mut().find(|s| s.owed() == Some(id)) else {
             return false;
         };
-        if slot.inflight.is_none() && slot.shown.as_ref().is_some_and(Invocation::cancelled) {
-            return false;
-        }
-        let mut invocation = match slot.inflight.take() {
-            Some(inv) => inv,
-            None => slot
-                .shown
-                .take()
-                .expect("latest_id came from one of the two"),
+        let (mut invocation, mut replaced) = match slot.inflight.take() {
+            Some(inv) => (inv, slot.shown.take()),
+            None => (
+                slot.shown.take().expect("owed came from one of the two"),
+                None,
+            ),
         };
         prepare(slot.source, &mut invocation.span, &mut items);
-        if let Some(previous) = slot.shown.as_mut().and_then(Invocation::items_mut) {
+        let previous = match replaced.as_mut() {
+            Some(answer) => answer.items_mut(),
+            None => invocation.items_mut(),
+        };
+        if let Some(previous) = previous {
             CompletionItem::carry_resolutions(previous, &mut items);
         }
         invocation.state = InvocationState::Shown {
+            answer: host_token::next(),
             items,
             incomplete,
-            end: end.into(),
+            end,
         };
         slot.shown = Some(invocation);
         true
@@ -433,27 +429,25 @@ impl<Id: Copy + PartialEq, S> SlotSet<Id, S> {
     /// Whether any source still owes an answer, a whole one or the rest of
     /// one it is giving in parts.
     pub(super) fn is_pending(&self) -> bool {
-        self.slots.iter().any(SourceSlot::awaits_answer)
+        self.slots.iter().any(|s| s.owed().is_some())
     }
 
     /// Whether an answer to invocation `id` is a further part of the answer
-    /// shown: no newer call supersedes it, and that answer has more to
-    /// follow.
+    /// shown, which has more to follow.
     pub(super) fn continues_stream(&self, id: u64) -> bool {
         self.slots.iter().any(|s| {
-            s.inflight.is_none()
-                && s.shown
-                    .as_ref()
-                    .is_some_and(|inv| inv.id == id && inv.streaming())
+            s.shown
+                .as_ref()
+                .is_some_and(|inv| inv.id == id && inv.streaming())
         })
     }
 
-    /// The source whose latest call is invocation `id`: the one an answer
-    /// to `id` would land on.
+    /// The source that still owes an answer to invocation `id`: the one an
+    /// answer to `id` would land on.
     pub(super) fn source_of(&self, id: u64) -> Option<Id> {
         self.slots
             .iter()
-            .find(|s| s.latest_id() == Some(id))
+            .find(|s| s.owed() == Some(id))
             .map(|s| s.source)
     }
 
@@ -468,20 +462,17 @@ impl<Id: Copy + PartialEq, S> SlotSet<Id, S> {
         !self.is_pending() && !self.is_live()
     }
 
-    /// Clears every still-`inflight` invocation, leaving any `shown`
-    /// answer, a streaming one included, untouched: a failed call batch
-    /// may have held the call that would have answered, but says nothing
-    /// about whoever is sending a streamed answer's parts. Returns whether
-    /// anything was cleared. See `BufferSession::drop_stalled_invocations`'s
-    /// own doc for why this recovery is always safe.
-    pub(super) fn drop_stalled(&mut self) -> bool {
-        let before = self.ended.len();
-        for slot in &mut self.slots {
-            if let Some(stalled) = slot.inflight.take() {
-                self.ended.push((slot.source, stalled.id));
-            }
-        }
-        self.ended.len() > before
+    /// Ends request `id`, which its source will answer no further: a call
+    /// in flight is dropped, a streaming answer closes at the part shown,
+    /// and either is recorded as ended. `false` when no slot owes an answer
+    /// to `id`.
+    pub(super) fn end_request(&mut self, id: u64) -> bool {
+        let Some(slot) = self.slots.iter_mut().find(|s| s.owed() == Some(id)) else {
+            return false;
+        };
+        slot.take_owed();
+        self.ended.push((slot.source, id));
+        true
     }
 
     /// Drops every shown answer `drop` picks, recording a streaming one as
@@ -500,22 +491,6 @@ impl<Id: Copy + PartialEq, S> SlotSet<Id, S> {
             }
         }
         any
-    }
-
-    /// Records as ended every request the session still owes an answer
-    /// to, for a session that is closing: each call in flight and each
-    /// streaming answer.
-    fn end_owed(&mut self) {
-        for slot in &mut self.slots {
-            if let Some(inv) = &slot.inflight {
-                self.ended.push((slot.source, inv.id));
-            }
-            if let Some(inv) = slot.shown.as_mut()
-                && inv.cancel_stream()
-            {
-                self.ended.push((slot.source, inv.id));
-            }
-        }
     }
 
     /// The sources to call again after an edit: those that flagged their
@@ -567,7 +542,7 @@ impl<Id: Copy + PartialEq, S> SlotSet<Id, S> {
         let slot = &self.slots[s as usize];
         let inv = slot.shown.as_ref()?;
         let key = ItemKey {
-            invocation: inv.id,
+            answer: inv.answer()?,
             item: i,
         };
         Some((slot.source, key, &inv.items()[i as usize]))
@@ -578,7 +553,7 @@ impl<Id: Copy + PartialEq, S> SlotSet<Id, S> {
         self.slots
             .iter_mut()
             .filter_map(|slot| slot.shown.as_mut())
-            .find(|inv| inv.id == key.invocation)?
+            .find(|inv| inv.answer() == Some(key.answer))?
             .items_mut()?
             .get_mut(key.item as usize)
     }
@@ -659,7 +634,11 @@ impl<Id: SourceId, S> SlotSet<Id, S> {
     /// [`Self::take_cancels`] for a session that is closing, every request
     /// it still owes an answer to included.
     pub(super) fn end_requests(&mut self, sources: &SourceRegistry) -> Vec<SteelCall> {
-        self.end_owed();
+        for slot in &mut self.slots {
+            if let Some(id) = slot.take_owed() {
+                self.ended.push((slot.source, id));
+            }
+        }
         self.take_cancels(sources)
     }
 
