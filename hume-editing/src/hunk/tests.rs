@@ -341,7 +341,30 @@ fn text_hunks_past_the_word_budget_have_no_spans() {
     let hunks = text_hunks_with_budget(
         &BufferText::from("let x = 1;\n"),
         &BufferText::from("let y = 1;\n"),
-        std::time::Duration::ZERO,
+        0,
     );
     assert_eq!(hunks, vec![hunk(0, 0, &["let x = 1;"], &["let y = 1;"])]);
+}
+
+/// A hunk with more word tokens than the budget has left gets no spans and
+/// spends none of it, so a later hunk that fits still gets its spans. The
+/// first hunk's sides are 7 tokens each, the second's 3 each.
+#[test]
+fn text_hunks_skip_the_spans_of_a_hunk_larger_than_the_budget_left() {
+    let hunks = text_hunks_with_budget(
+        &BufferText::from("p q r s\nkeep\nm n\n"),
+        &BufferText::from("p Q r s\nkeep\nm o\n"),
+        6,
+    );
+    assert_eq!(
+        hunks,
+        vec![
+            hunk(0, 0, &["p q r s"], &["p Q r s"]),
+            with_words(
+                hunk(2, 2, &["m n"], &["m o"]),
+                vec![span(2, 2, 3)],
+                vec![chars(15, 16)],
+            ),
+        ]
+    );
 }

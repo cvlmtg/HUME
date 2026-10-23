@@ -3,7 +3,6 @@
 //! [`text_hunks`] from a line diff.
 
 use std::ops::Range;
-use std::time::{Duration, Instant};
 
 use ropey::RopeSlice;
 
@@ -16,11 +15,15 @@ use crate::changeset::{ChangeSet, EditedRegion};
 use crate::diff::{LineHunk, LineHunkKind, diff_lines, word_change_ranges};
 use crate::text::BufferText;
 
-/// Time [`text_hunks`] spends word-diffing all its hunks together. The call
-/// runs on the main thread after each debounced edit, and spans are only a
-/// highlight, so the budget is one 60 Hz frame. Hunks left when it runs out
-/// get no spans.
-const HUNK_WORDS_BUDGET: Duration = Duration::from_millis(16);
+/// Word tokens [`text_hunks`] word-diffs across all its hunks together,
+/// both sides counted. The call runs on the main thread after each debounced
+/// edit, and spans are only a highlight, so the budget keeps the worst case
+/// near one 60 Hz frame: a word diff costs about 1.2 µs a token on
+/// adversarial input in a release build. A hunk with more tokens than are
+/// left gets no spans, and a later hunk that fits still gets its own. A
+/// token count rather than a clock, so a busy machine never changes the
+/// spans a text gets.
+const HUNK_WORDS_BUDGET: usize = 10_000;
 
 /// One run of changed lines between two texts, with 0-based starts. Lines
 /// carry no line break, and `Equal` runs are never represented. A side with
@@ -202,10 +205,10 @@ pub fn text_hunks(old: &BufferText, new: &BufferText) -> Vec<ChangeHunk> {
     text_hunks_with_budget(old, new, HUNK_WORDS_BUDGET)
 }
 
-fn text_hunks_with_budget(old: &BufferText, new: &BufferText, budget: Duration) -> Vec<ChangeHunk> {
+fn text_hunks_with_budget(old: &BufferText, new: &BufferText, budget: usize) -> Vec<ChangeHunk> {
     let old_tokens: Vec<RopeSlice<'_>> = old.line_tokens().collect();
     let new_tokens: Vec<RopeSlice<'_>> = new.line_tokens().collect();
-    let deadline = Instant::now() + budget;
+    let mut left = budget;
     diff_lines(&old_tokens, &new_tokens)
         .hunks
         .into_iter()
@@ -230,7 +233,7 @@ fn text_hunks_with_budget(old: &BufferText, new: &BufferText, budget: Duration) 
                         new,
                         (old_start, &old_lines),
                         (new_start, &new_lines),
-                        deadline,
+                        &mut left,
                     ),
                     old_lines,
                     new_lines,
@@ -249,21 +252,21 @@ fn token_lines(tokens: &[RopeSlice<'_>], range: Range<usize>) -> Vec<String> {
         .collect()
 }
 
-/// Empty when a side has no lines or `deadline` passes first. Each side is
-/// its first line in its text and its lines; `new_text` is the text the new
-/// side's lines are from.
+/// Empty when a side has no lines or its tokens outnumber what is left of
+/// `budget`, which they otherwise come off. Each side is its first line in
+/// its text and its lines; `new_text` is the text the new side's lines are
+/// from.
 fn text_hunk_words(
     new_text: &BufferText,
     (old_start, old_lines): (ContentLine, &[String]),
     (new_start, new_lines): (ContentLine, &[String]),
-    deadline: Instant,
+    budget: &mut usize,
 ) -> WordSpans {
-    let left = deadline.saturating_duration_since(Instant::now());
-    if old_lines.is_empty() || new_lines.is_empty() || left.is_zero() {
+    if old_lines.is_empty() || new_lines.is_empty() {
         return WordSpans::default();
     }
     let Some((old_ranges, new_ranges)) =
-        word_change_ranges(&old_lines.join("\n"), &new_lines.join("\n"), left)
+        word_change_ranges(&old_lines.join("\n"), &new_lines.join("\n"), budget)
     else {
         return WordSpans::default();
     };
