@@ -635,7 +635,7 @@ fn last_writer_per_line<T>(
 /// Resolves a stored line-anchored decoration's position to its current
 /// line, or `None` if a remap drifted it onto the buffer's trailing phantom
 /// line, always empty (every buffer ends with a structural `\n`,
-/// `text.last_ropey_line()`), the same line `host_impl.rs`'s
+/// `text.last_ropey_line()`), the same line `host_impl/decorations.rs`'s
 /// `line_start_offset` refuses to hand out a position on in the first place.
 /// A fresh `set-*!` call can never produce this; a `remap_points` result can,
 /// when an edit deletes everything after the entry's anchor up to

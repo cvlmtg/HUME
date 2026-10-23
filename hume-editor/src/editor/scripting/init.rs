@@ -118,11 +118,11 @@ impl Editor {
                 let init_budget = self.state.settings.steel_init_budget_ms as u64;
                 // A missing default `init.scm` is normal (`eval_init` treats
                 // `NotFound` as a silent no-op), but a `--config` override
-                // (`required`) is an assertion (see `resolve` in `main.rs`),
-                // and that assertion is only checked once, at process start.
-                // A path valid at startup can go missing by the time
-                // `:reload-config` re-evaluates it (moved, deleted, or,
-                // before the startup-time absolutize in `main.rs`, a
+                // (`required`) is an assertion (see `resolve` in
+                // `bin/hume/args.rs`), and that assertion is only checked
+                // once, at process start. A path valid at startup can go
+                // missing by the time `:reload-config` re-evaluates it
+                // (moved, deleted, or, before `resolve` absolutized it, a
                 // relative path outrun by an intervening `:cd`), so re-check
                 // it here rather than let it fall through `eval_init`'s
                 // silent-skip path and read as a successful, empty reload.

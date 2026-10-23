@@ -611,7 +611,7 @@ pub(in crate::editor) fn diagnostics_for_buffer(
             // report a diagnostic anchored at end-of-file, and `len_chars()`
             // itself resolves to the buffer's trailing phantom empty line
             // (every buffer ends with a structural `\n`; see
-            // `hume-editor/src/editor/host_impl.rs`'s `line_start_offset`).
+            // `host_impl/decorations.rs`'s `line_start_offset`).
             // Landing there instead of the last content line would hand
             // plugins a `line` that later fails the fail-fast bound check
             // every decoration setter enforces. The final `\n` is a valid

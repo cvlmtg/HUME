@@ -32,7 +32,7 @@ fn resolve_decoration_line_returns_the_line_for_a_content_position() {
 fn resolve_decoration_line_drops_a_position_on_the_trailing_phantom_line() {
     // "aaa\nbbb\nccc\n" is 12 chars; char offset 12 is `len_chars()`, which
     // resolves to the buffer's trailing phantom line (line 3, always empty,
-    // see `host_impl.rs`'s `line_start_offset`). A fresh `set-*!` call can
+    // see `host_impl/decorations.rs`'s `line_start_offset`). A fresh `set-*!` call can
     // never store this position (the host boundary now rejects it), but a
     // remap can produce it transiently when an edit deletes everything
     // after an anchor up to end-of-buffer. The entry must disappear, not

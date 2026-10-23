@@ -21,8 +21,8 @@ use crate::text::BufferText;
 /// near one 60 Hz frame: a word diff costs about 1.2 µs a token on
 /// adversarial input in a release build. A hunk with more tokens than are
 /// left gets no spans, and a later hunk that fits still gets its own. A
-/// token count rather than a clock, so a busy machine never changes the
-/// spans a text gets.
+/// token count rather than a clock, so a busy machine never changes which
+/// hunks get word spans.
 const HUNK_WORDS_BUDGET: usize = 10_000;
 
 /// One run of changed lines between two texts, with 0-based starts. Lines

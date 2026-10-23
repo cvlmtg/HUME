@@ -448,7 +448,7 @@ impl Editor {
             self.settle();
             // Observed here, downstream of `settle()`, not right after
             // dispatch. `should_quit` is also checked after dispatch below
-            // (`:508`, `continue` rather than `break`), which keeps the loop
+            // (`continue` rather than `break`), which keeps the loop
             // going for exactly one more iteration so it reaches `settle()`
             // here before this check breaks it. That's what makes `:wq`
             // correct: it queues `OnBufferSave` and sets `should_quit` in the
