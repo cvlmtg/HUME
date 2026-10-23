@@ -22,6 +22,7 @@
 - Steel's `current-directory` and `change-current-directory!` read and move HUME's working directory, the one `cwd`, `set-cwd!` and `:cd` use. `set-cwd!` works from `init.scm` too.
 - A relative path given to `replace-dir!`, `try-lock-file!`, `unlock-file!` or `path-entries` resolves like one typed to `:e`.
 - A grammar `register-grammar!` registers from `init.scm` that can't be loaded is reported in `:messages` when a file or an embedded block first needs it, not at startup.
+- `completion-emit!` takes `#:more #t` to answer a `'minibuf` request in parts.
 
 ## [0.16.1] - 2026-10-22
 

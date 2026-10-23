@@ -1,7 +1,9 @@
 //! The minibuffer completion session (the `:` and `|` lines):
 //! [`MinibufSession`]. Tab and Shift-Tab pick a row and immediately splice
 //! that candidate into the minibuffer, with no separate accept step; before
-//! any row is picked, Tab splices the candidates' common prefix instead.
+//! any row is picked, Tab splices the candidates' common prefix instead. A
+//! source may answer in parts (`#:more`): each part replaces the last, and
+//! a picked candidate stays picked across them.
 //! The popup's own key handler (`input_stack/completion.rs`) dismisses on
 //! any other key, unlike [`super::BufferSession`], which refilters in place
 //! as the user types.
@@ -10,9 +12,9 @@ use std::borrow::Cow;
 use std::ops::Range;
 
 use hume_rope::grapheme::common_str_prefix;
-use hume_scripting::host::{EmittedWord, FirstTab};
+use hume_scripting::host::{AnswerEnd, EmittedWord, FirstTab};
 
-use super::super::item::CompletionItem;
+use super::super::item::{CandidateKey, CompletionItem};
 use super::super::registry::{MinibufSourceId, SourceRegistry};
 use super::MatchKind;
 use super::slots::{Invocation, SlotSet, SlotTokens};
@@ -61,6 +63,10 @@ pub(in crate::editor) struct MinibufSession {
     /// last [`Self::rank`]. Until then nothing is highlighted and Tab
     /// proposes the candidates' common prefix instead of a candidate.
     picked: bool,
+    /// The picked candidate, when a further part of the answer it was
+    /// picked from has landed since the last [`Self::rank`], which picks it
+    /// again wherever it ranks.
+    kept_pick: Option<CandidateKey>,
     core: SlotSet<MinibufSourceId, MinibufSpan>,
 }
 
@@ -72,6 +78,7 @@ impl MinibufSession {
             cursor,
             menu_anchor: None,
             picked: false,
+            kept_pick: None,
             core: SlotSet::new(),
         }
     }
@@ -98,7 +105,8 @@ impl MinibufSession {
         items: Vec<CompletionItem>,
         incomplete: bool,
     ) -> bool {
-        self.core.contribute(id, items, incomplete, |_, _, _| {})
+        self.core
+            .contribute(id, items, incomplete, AnswerEnd::Final, |_, _, _| {})
     }
 
     /// Lands a Steel source's answer for invocation `id`, completing the
@@ -111,36 +119,58 @@ impl MinibufSession {
     /// call is `id`. `Err` for a word from a source the editor matches for
     /// (it filters that source's items, so the set a prefix describes is
     /// not the source's), and for a span that does not hold the cursor
-    /// within the line.
+    /// within the line. `end` says whether more of the answer follows.
     pub(in crate::editor) fn emit(
         &mut self,
         registry: &SourceRegistry,
         id: u64,
         items: Vec<CompletionItem>,
         incomplete: bool,
+        end: AnswerEnd,
         word: EmittedWord,
     ) -> Result<bool, String> {
-        if word == EmittedWord::default() {
-            return Ok(self.contribute(id, items, incomplete));
-        }
-        let Some(source) = self.core.source_of(id) else {
-            return Ok(false);
-        };
-        if registry.minibuf_get(source).match_kind != MatchKind::Delegated {
-            return Err(
-                "completion-emit!: #:span and #:prefix need a source registered with #:match \
-                 'delegated"
-                    .to_string(),
-            );
-        }
-        let EmittedWord { span, prefix } = word;
-        let bytes = span.map(|chars| self.span_bytes(chars)).transpose()?;
-        Ok(self.core.contribute(id, items, incomplete, |_, minted, _| {
-            if let Some(bytes) = bytes {
-                minted.bytes = bytes;
+        let kept = self.streamed_pick(id);
+        let landed = if word == EmittedWord::default() {
+            self.core
+                .contribute(id, items, incomplete, end, |_, _, _| {})
+        } else {
+            let Some(source) = self.core.source_of(id) else {
+                return Ok(false);
+            };
+            if registry.minibuf_get(source).match_kind != MatchKind::Delegated {
+                return Err(
+                    "completion-emit!: #:span and #:prefix need a source registered with \
+                     #:match 'delegated"
+                        .to_string(),
+                );
             }
-            minted.prefix = prefix;
-        }))
+            let EmittedWord { span, prefix } = word;
+            let bytes = span.map(|chars| self.span_bytes(chars)).transpose()?;
+            self.core
+                .contribute(id, items, incomplete, end, |_, minted, _| {
+                    if let Some(bytes) = bytes {
+                        minted.bytes = bytes;
+                    }
+                    minted.prefix = prefix;
+                })
+        };
+        if landed {
+            self.kept_pick = kept;
+        }
+        Ok(landed)
+    }
+
+    /// The picked candidate, when an answer to `id` continues the answer it
+    /// was picked from.
+    fn streamed_pick(&self, id: u64) -> Option<CandidateKey> {
+        if !self.picked || !self.core.continues_stream(id) {
+            return None;
+        }
+        Some(
+            self.core
+                .selected_item(self.core.selected())?
+                .candidate_key(),
+        )
     }
 
     /// Char range `chars` of [`Self::input`] as bytes, `Err` unless it
@@ -183,20 +213,24 @@ impl MinibufSession {
 
     /// Re-scores every shown item against `input[start..cursor]`; see
     /// `SlotSet::rank_with`'s own doc for the shared rank key. No `dedup`
-    /// argument: this target has none.
+    /// argument: this target has none. Nothing is picked afterwards except
+    /// a pick kept across the parts of an answer whose candidate still ranks.
     pub(in crate::editor) fn rank(&mut self, sources: &SourceRegistry) {
         let Self {
             input,
             cursor,
             menu_anchor,
             picked,
+            kept_pick,
             core,
         } = self;
-        *picked = false;
         *menu_anchor = core.rank_with(sources, None, |inv| {
             let start = inv.span.bytes.start;
             Some(SlotTokens::single(input[start..*cursor].to_owned(), start))
         });
+        *picked = kept_pick
+            .take()
+            .is_some_and(|key| core.select_where(|item| key.matches(item)));
     }
 
     // ── Reads ────────────────────────────────────────────────────────────────

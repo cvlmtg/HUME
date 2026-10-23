@@ -4,7 +4,9 @@
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
-use crate::host::{CompletionSourceTarget, EmittedWord, FirstTab, MatchKind, NamedPrefix};
+use crate::host::{
+    AnswerEnd, CompletionSourceTarget, EmittedWord, FirstTab, MatchKind, NamedPrefix,
+};
 use crate::json::json_to_steel;
 use crate::types::{PaneHandle, TriggerKind, TriggerScope};
 use crate::{Effect, SteelCtx};
@@ -185,9 +187,10 @@ pub(crate) fn register_completion_source(
     Ok(SteelVal::Void)
 }
 
-/// `(%completion-emit! id items incomplete span prefix)`: the
+/// `(%completion-emit! id items incomplete more span prefix)`: the
 /// `completion-emit!` Scheme wrapper supplies the defaults of
-/// `#:incomplete` and of [`EmittedWord`]'s `#:span` (a char range hash,
+/// `#:incomplete`, of `#:more` ([`AnswerEnd::More`] when `#t`) and of
+/// [`EmittedWord`]'s `#:span` (a char range hash,
 /// or `#f`) and `#:prefix` (`#t` when left out, which is
 /// [`FirstTab::Common`]; `#f` is [`FirstTab::Nothing`] and a non-empty
 /// string [`FirstTab::Named`]). `items` is a list
@@ -202,11 +205,17 @@ pub(crate) fn completion_emit(
     id: SteelVal,
     items: SteelVal,
     incomplete: SteelVal,
+    more: SteelVal,
     span: SteelVal,
     prefix: SteelVal,
 ) -> SteelResult {
     let id = usize_arg(id, "completion-emit! id")? as u64;
     let incomplete = bool_arg(incomplete, "completion-emit! #:incomplete")?;
+    let end = if bool_arg(more, "completion-emit! #:more")? {
+        AnswerEnd::More
+    } else {
+        AnswerEnd::Final
+    };
     let span = optional_hash_entry(span, "completion-emit! #:span", CHAR_RANGE_KEYS)?
         .map(|range| range.char_range())
         .transpose()?
@@ -228,7 +237,7 @@ pub(crate) fn completion_emit(
         .map(|item| json_arg(item, "completion-emit! items"))
         .collect::<Result<Vec<_>, _>>()?;
     let applied = require_cap(ctx.host.completions(), "completion-emit!")?
-        .completion_emit(id, parts, incomplete, EmittedWord { span, prefix })
+        .completion_emit(id, parts, incomplete, end, EmittedWord { span, prefix })
         .map_err(generic_err)?;
     Ok(SteelVal::BoolV(applied))
 }

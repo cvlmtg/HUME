@@ -7,6 +7,8 @@
 //! their own (cross-source dedup is `Buffer`-only, since `Minibuf` invokes
 //! exactly one source).
 
+use hume_scripting::host::AnswerEnd;
+
 use super::super::item::CompletionItem;
 use super::super::registry::{BufferSourceId, MinibufSourceId, SourceRegistry};
 use super::MatchKind;
@@ -18,6 +20,7 @@ enum InvocationState {
     Shown {
         items: Vec<CompletionItem>,
         incomplete: bool,
+        end: AnswerEnd,
     },
 }
 
@@ -67,6 +70,17 @@ impl<S> Invocation<S> {
             }
         )
     }
+
+    /// Whether this answer is a part with more to follow.
+    fn streaming(&self) -> bool {
+        matches!(
+            self.state,
+            InvocationState::Shown {
+                end: AnswerEnd::More,
+                ..
+            }
+        )
+    }
 }
 
 /// Names one item of one source's answer. A ranked index moves on every
@@ -97,6 +111,12 @@ impl<Id: Copy + PartialEq, S> SourceSlot<Id, S> {
             .as_ref()
             .or(self.shown.as_ref())
             .map(|inv| inv.id)
+    }
+
+    /// Whether the source still owes an answer: a call in flight, or a
+    /// shown answer with more to follow.
+    fn awaits_answer(&self) -> bool {
+        self.inflight.is_some() || self.shown.as_ref().is_some_and(Invocation::streaming)
     }
 
     /// Whether the source has answered with at least one item. A slot
@@ -309,6 +329,7 @@ impl<Id: Copy + PartialEq, S> SlotSet<Id, S> {
         id: u64,
         mut items: Vec<CompletionItem>,
         incomplete: bool,
+        end: AnswerEnd,
         prepare: impl FnOnce(Id, &mut S, &mut [CompletionItem]),
     ) -> bool {
         let Some(slot) = self.slots.iter_mut().find(|s| s.latest_id() == Some(id)) else {
@@ -325,13 +346,31 @@ impl<Id: Copy + PartialEq, S> SlotSet<Id, S> {
         if let Some(previous) = slot.shown.as_mut().and_then(Invocation::items_mut) {
             CompletionItem::carry_resolutions(previous, &mut items);
         }
-        invocation.state = InvocationState::Shown { items, incomplete };
+        invocation.state = InvocationState::Shown {
+            items,
+            incomplete,
+            end,
+        };
         slot.shown = Some(invocation);
         true
     }
 
+    /// Whether any source still owes an answer, a whole one or the rest of
+    /// one it is giving in parts.
     pub(super) fn is_pending(&self) -> bool {
-        self.slots.iter().any(|s| s.inflight.is_some())
+        self.slots.iter().any(SourceSlot::awaits_answer)
+    }
+
+    /// Whether an answer to invocation `id` is a further part of the answer
+    /// shown: no newer call supersedes it, and that answer has more to
+    /// follow.
+    pub(super) fn continues_stream(&self, id: u64) -> bool {
+        self.slots.iter().any(|s| {
+            s.inflight.is_none()
+                && s.shown
+                    .as_ref()
+                    .is_some_and(|inv| inv.id == id && inv.streaming())
+        })
     }
 
     /// The source whose latest call is invocation `id`: the one an answer
@@ -354,14 +393,22 @@ impl<Id: Copy + PartialEq, S> SlotSet<Id, S> {
         !self.is_pending() && !self.is_live()
     }
 
-    /// Clears every still-`inflight` invocation, leaving any existing
-    /// `shown` answer untouched. Returns whether anything was actually
-    /// cleared. See `BufferSession::drop_stalled_invocations`'s own doc for
-    /// why this recovery is always safe.
+    /// Clears every still-`inflight` invocation and ends every answer shown
+    /// with more to follow, keeping its items: the failed call batch may
+    /// have held the call that would have answered. Returns whether
+    /// anything changed. See `BufferSession::drop_stalled_invocations`'s own
+    /// doc for why this recovery is always safe.
     pub(super) fn drop_stalled(&mut self) -> bool {
         let mut any = false;
         for slot in &mut self.slots {
             if slot.inflight.take().is_some() {
+                any = true;
+            }
+            if let Some(InvocationState::Shown { end, .. }) =
+                slot.shown.as_mut().map(|inv| &mut inv.state)
+                && *end == AnswerEnd::More
+            {
+                *end = AnswerEnd::Final;
                 any = true;
             }
         }
@@ -459,6 +506,17 @@ impl<Id: Copy + PartialEq, S> SlotSet<Id, S> {
 
     pub(super) fn selected(&self) -> usize {
         self.selected
+    }
+
+    /// Selects the first ranked row whose item `wanted` accepts. `false`,
+    /// leaving the selection as it was, when none does.
+    pub(super) fn select_where(&mut self, wanted: impl Fn(&CompletionItem) -> bool) -> bool {
+        let found =
+            (0..self.ranked.len()).find(|&idx| self.selected_item(idx).is_some_and(&wanted));
+        if let Some(idx) = found {
+            self.selected = idx;
+        }
+        found.is_some()
     }
 
     /// Moves the menu selection by one row, wrapping at either end. `false`

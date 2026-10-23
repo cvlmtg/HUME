@@ -17,7 +17,7 @@
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 use hume_rope::offset::CharOffset;
 use hume_scripting::SteelCall;
-use hume_scripting::host::EmittedWord;
+use hume_scripting::host::{AnswerEnd, EmittedWord};
 use steel::rvals::SteelVal;
 
 use super::registry::{BufferSourceId, MinibufBody, MinibufSourceId, SourceRegistry};
@@ -344,24 +344,24 @@ impl EditorState {
         self.settle_minibuf_session(view, r);
     }
 
-    /// The minibuffer's eager policy, once every source has answered: nothing
-    /// → the popup never shows; one candidate → applied silently, popup
-    /// gone; two or more → under `CommonPrefix` the candidates' common
-    /// prefix is applied and nothing is picked, under `FirstCandidate` the
-    /// first is picked and applied. The popup stays for Tab to cycle. Runs
-    /// at open (native sources answer inline) and again when a pending Steel
-    /// source's answer lands, including a second answer to a
-    /// still-streaming source, so the re-rank (which resets the selection
-    /// itself, per `SlotSet::rank_with`'s own contract) always runs first:
-    /// the previous selection index has no guaranteed meaning against the
-    /// new order, and may point past a narrower list's end entirely.
+    /// The minibuffer's eager policy, once every source has answered in
+    /// full: nothing → the popup never shows; one candidate → applied,
+    /// popup gone; two or more → under `CommonPrefix` the
+    /// candidates' common prefix is applied and nothing is picked, under
+    /// `FirstCandidate` the first is picked and applied. The popup stays for
+    /// Tab to cycle. Runs at open (native sources answer inline) and again
+    /// when a pending Steel source's answer or part of one lands, so the
+    /// re-rank always runs first: a previous selection index has no meaning
+    /// against the new order. While a source still owes an answer the popup
+    /// shows what has landed. A pick kept across the parts of an answer
+    /// skips the policy: the line already holds that candidate.
     fn settle_minibuf_session(&mut self, view: &EngineView, r: LayerRef) {
         let first_candidate = self.settings.command_completion == CommandCompletion::FirstCandidate;
         let Some(layer) = self.input.at_mut::<MinibufCompletionLayer>(r) else {
             return;
         };
         layer.session.rank(&self.config.completion_sources);
-        if layer.session.is_pending() {
+        if layer.session.is_pending() || layer.session.selected().is_some() {
             return;
         }
         match layer.session.len() {
@@ -408,14 +408,16 @@ impl EditorState {
     /// `true`: a dropped answer changed nothing, and settling anyway would
     /// still reset the menu's selection out from under a user who has since
     /// Tabbed to a row an unrelated, superseded call has no bearing on.
-    /// `word` is for a minibuffer session only: `Err` when a buffer session
-    /// awaits `id`, or when [`MinibufSession::emit`] refuses it.
+    /// `word`, and an `end` of [`AnswerEnd::More`], are for a minibuffer
+    /// session only: `Err` when a buffer session awaits `id`, or when
+    /// [`MinibufSession::emit`] refuses it.
     pub(in crate::editor) fn contribute(
         &mut self,
         view: &EngineView,
         id: u64,
         items: Vec<CompletionItem>,
         incomplete: bool,
+        end: AnswerEnd,
         word: EmittedWord,
     ) -> Result<bool, String> {
         if self.input.ref_of::<BufferCompletionLayer>().is_some() {
@@ -427,6 +429,13 @@ impl EditorState {
                 return Err(
                     "completion-emit!: #:span and #:prefix are for a 'minibuf source; a 'buffer \
                      source's token is the word before the cursor"
+                        .to_string(),
+                );
+            }
+            if end == AnswerEnd::More && session.awaits(id) {
+                return Err(
+                    "completion-emit!: #:more is for a 'minibuf source; a 'buffer source answers \
+                     in one part"
                         .to_string(),
                 );
             }
@@ -448,7 +457,14 @@ impl EditorState {
             .input
             .minibuf_completion_mut()
             .expect("ref_of found the layer");
-        let landed = session.emit(&self.config.completion_sources, id, items, incomplete, word)?;
+        let landed = session.emit(
+            &self.config.completion_sources,
+            id,
+            items,
+            incomplete,
+            end,
+            word,
+        )?;
         if landed {
             self.settle_minibuf_session(view, r);
         }

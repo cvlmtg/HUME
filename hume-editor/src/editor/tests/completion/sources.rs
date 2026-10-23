@@ -683,6 +683,29 @@ fn a_span_from_a_buffer_source_is_refused() {
     );
 }
 
+/// A buffer session re-ranks on every keystroke, so a buffer source
+/// answers in one part.
+#[test]
+fn more_from_a_buffer_source_is_refused() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    insert_with_script(
+        &mut ed,
+        tmp.path(),
+        r#"(register-completion-source! "test"
+             (lambda (id bid prefix) (completion-emit! id (list "plain") #:more #t))
+             #:target 'buffer)"#,
+    );
+    assert!(labels(&ed).is_empty());
+    assert!(
+        ed.state
+            .message_log
+            .entries()
+            .any(|e| e.severity == Severity::Error && e.text.contains("#:more")),
+        "expected a raised #:more error in the message log"
+    );
+}
+
 /// A buffer source's insert texts are plain words, so it has no first-Tab
 /// prefix of its own to name.
 #[test]

@@ -533,7 +533,7 @@ diff back.
 
 ## Completion sources
 
-A plugin can feed the completion menu by registering a *source*. A source is a procedure the editor calls with a request `id`. It answers by calling `completion-emit!` with that `id` exactly once, either right away or later from a callback. The smallest useful source offers a fixed list of words in Insert mode:
+A plugin can feed the completion menu by registering a *source*. A source is a procedure the editor calls with a request `id`. It answers by calling `completion-emit!` with that `id` once, either right away or later from a callback, or in parts with `#:more`. The smallest useful source offers a fixed list of words in Insert mode:
 
 ```scheme
 (register-completion-source! "todo-markers"
@@ -614,6 +614,7 @@ If the user keeps typing or closes the menu before `git` answers, the request is
 - **`#:resolve #t`** (`'buffer` sources only, default `#f`): this source's items come from the buffer's language server, so highlighting one (for its documentation) or accepting one may send `completionItem/resolve` for it. Set it only for a source that forwards that server's items, never for one that builds its own items in a buffer with a server attached.
 - **Names**: `'buffer` and `'minibuf` sources have separate names. Registering `name` again under the same target replaces the earlier source; the same `name` under the other target is a second, independent source.
 - **`#:incomplete #t`** on `completion-emit!` asks for the source to be called again as the user keeps typing, instead of filtering the first answer. A server response marked incomplete does the same.
+- **`#:more #t`** on `completion-emit!` (`'minibuf` sources only): more of the answer follows. Each part replaces the one before, so send every item found so far, and send the last part without `#:more`. The menu shows each part as it arrives. What the first `Tab` inserts, and the insert of a lone item, wait for the last part. A row the user picks stays picked while more parts arrive.
 - **`#:span (hash 'start-char s 'end-char e)`** on `completion-emit!` (`'minibuf` sources registered with `#:match 'delegated` only): the part of the line the answer completes, in characters, in place of the argument the cursor is in. It must hold the cursor. Use it when a word can contain spaces, like a quoted shell word.
 - **`#:prefix`** on `completion-emit!` (`'minibuf` sources registered with `#:match 'delegated` only): what the first `Tab` inserts over the token when the answer has several items. Without it, `Tab` inserts what the items' insert texts all start with, when that extends what is typed. A string is inserted as given, and only when the cursor is at the end of the token, since the text after the cursor is not something the source read; it cannot be empty. `#f` inserts nothing, and the first `Tab` only opens the menu. Name the text, or send `#f`, when the insert texts have a syntax of their own, like quoted shell words, whose shared start is not something to put on the line.
 - `completion-emit!` also takes a server's whole `textDocument/completion` response, as [`lsp-request!` or `lsp-request-all!`](lsp-api.md#language-servers) delivered it, in its `items` list; its items join the others. Any entry that is not a string, a hashmap with a `label`, or such a response is an error.

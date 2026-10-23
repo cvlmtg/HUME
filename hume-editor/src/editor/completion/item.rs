@@ -57,6 +57,19 @@ pub(in crate::editor) struct CompletionItem {
     pub(super) raw: Option<JsonHandle>,
 }
 
+/// What makes items from two answers of one source the same candidate.
+#[derive(Debug, PartialEq, Eq)]
+pub(super) struct CandidateKey {
+    label: String,
+    kind: Option<lsp_types::CompletionItemKind>,
+}
+
+impl CandidateKey {
+    pub(super) fn matches(&self, item: &CompletionItem) -> bool {
+        item.label == self.label && item.kind == self.kind
+    }
+}
+
 impl CompletionItem {
     /// Builds a non-LSP item: every minibuffer completer's constructor.
     /// `filter_text`/`sort_text` are both always `label`: `filter_text`
@@ -187,11 +200,20 @@ impl CompletionItem {
     /// resolved item, which are few, since only a selected item is resolved.
     pub(super) fn carry_resolutions(previous: &mut [Self], items: &mut [Self]) {
         for old in previous.iter_mut().filter(|i| i.resolution.is_some()) {
-            if let Some(new) = items.iter_mut().find(|new| {
-                new.resolution.is_none() && new.label == old.label && new.kind == old.kind
-            }) {
+            let key = old.candidate_key();
+            if let Some(new) = items
+                .iter_mut()
+                .find(|new| new.resolution.is_none() && key.matches(new))
+            {
                 new.resolution = old.resolution.take();
             }
+        }
+    }
+
+    pub(super) fn candidate_key(&self) -> CandidateKey {
+        CandidateKey {
+            label: self.label.clone(),
+            kind: self.kind,
         }
     }
 

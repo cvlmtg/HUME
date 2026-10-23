@@ -965,3 +965,151 @@ fn a_second_answer_settles_against_a_reset_selection_not_a_stale_one() {
          not silently fail to splice under the stale row-2 index"
     );
 }
+
+// ── An answer in parts ───────────────────────────────────────────────────────
+
+/// `:greet <typed>` with Tab pressed, completed by a `'string` source that
+/// answers later: each `(name, items, emit)` defines a command `name` that
+/// answers the Tab with the Scheme list `items` and the extra
+/// `completion-emit!` arguments `emit`.
+fn greet_answered_by(typed: &str, answers: &[(&str, &str, &str)]) -> Editor {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[h]>ello\n");
+    let commands: String = answers
+        .iter()
+        .map(|(name, items, emit)| {
+            format!(
+                r#"(define-command! "{name}" "" (lambda ()
+                     (completion-emit! captured-id {items} {emit})))"#
+            )
+        })
+        .collect();
+    run(
+        &mut ed,
+        tmp.path(),
+        &format!(
+            r#"(define captured-id #f)
+               (register-completion-source! "names"
+                 (lambda (id input cursor) (set! captured-id id))
+                 #:target 'minibuf #:match 'string)
+               (define-typed-command! "greet" "" (lambda (bid arg) (log! 'info arg)) #:complete "names")
+               {commands}"#
+        ),
+    );
+    ed.handle_key(key(':'));
+    type_chars(&mut ed, &format!("greet {typed}"));
+    ed.handle_key(key_tab());
+    ed.settle();
+    ed
+}
+
+fn answer(ed: &mut Editor, name: &'static str) {
+    ed.execute_keymap_command(name.into(), None, false);
+}
+
+#[test]
+fn an_answer_with_more_to_come_shows_its_rows_and_defers_the_eager_policy() {
+    let mut ed = greet_answered_by(
+        "b",
+        &[
+            ("part", r#"(list "bobby" "bobcat")"#, "#:more #t"),
+            ("last", r#"(list "bobby" "bobcat" "bobsled")"#, ""),
+        ],
+    );
+    answer(&mut ed, "part");
+    assert_eq!(candidates(&ed), ["bobby", "bobcat"]);
+    assert_eq!(minibuf_input(&ed), "greet b");
+    answer(&mut ed, "last");
+    assert_eq!(candidates(&ed).len(), 3);
+    assert_eq!(minibuf_input(&ed), "greet bob");
+}
+
+#[test]
+fn a_single_match_streamed_in_parts_is_applied_only_when_the_answer_ends() {
+    let mut ed = greet_answered_by(
+        "b",
+        &[
+            ("part", r#"(list "bobby")"#, "#:more #t"),
+            ("last", r#"(list "bobby")"#, ""),
+        ],
+    );
+    answer(&mut ed, "part");
+    assert_eq!(candidates(&ed), ["bobby"]);
+    assert_eq!(minibuf_input(&ed), "greet b");
+    answer(&mut ed, "last");
+    assert_eq!(minibuf_input(&ed), "greet bobby");
+    assert!(ed.state.input.minibuf_completion().is_none());
+}
+
+#[test]
+fn a_streamed_answer_that_ends_empty_dismisses() {
+    let mut ed = greet_answered_by("b", &[("part", "'()", "#:more #t"), ("last", "'()", "")]);
+    answer(&mut ed, "part");
+    assert!(ed.state.input.minibuf_completion().is_some());
+    answer(&mut ed, "last");
+    assert!(ed.state.input.minibuf_completion().is_none());
+    assert_eq!(minibuf_input(&ed), "greet b");
+}
+
+#[test]
+fn tab_while_an_answer_streams_picks_a_row() {
+    let mut ed = greet_answered_by("", &[("part", r#"(list "alice" "bob")"#, "#:more #t")]);
+    answer(&mut ed, "part");
+    assert_eq!(picked_row(&ed), None);
+    ed.handle_key(key_tab());
+    assert_eq!(picked_row(&ed), Some(0));
+    assert_eq!(minibuf_input(&ed), "greet alice");
+}
+
+#[test]
+fn a_streamed_update_keeps_the_picked_candidate_at_its_new_row() {
+    let mut ed = greet_answered_by(
+        "",
+        &[
+            ("part", r#"(list "bob" "carol")"#, "#:more #t"),
+            ("more", r#"(list "alice" "bob" "carol")"#, "#:more #t"),
+        ],
+    );
+    answer(&mut ed, "part");
+    ed.handle_key(key_tab());
+    ed.handle_key(key_tab());
+    assert_eq!(picked_row(&ed), Some(1));
+    answer(&mut ed, "more");
+    assert_eq!(picked_row(&ed), Some(2));
+    assert_eq!(candidates(&ed), ["alice", "bob", "carol"]);
+    assert_eq!(minibuf_input(&ed), "greet carol");
+}
+
+#[test]
+fn the_end_of_a_streamed_answer_leaves_a_pick_alone() {
+    let mut ed = greet_answered_by(
+        "",
+        &[
+            ("part", r#"(list "bob" "bobcat")"#, "#:more #t"),
+            ("last", r#"(list "bob" "bobcat")"#, ""),
+        ],
+    );
+    answer(&mut ed, "part");
+    ed.handle_key(key_tab());
+    answer(&mut ed, "last");
+    assert_eq!(picked_row(&ed), Some(0));
+    assert!(ed.state.input.minibuf_completion().is_some());
+    assert_eq!(minibuf_input(&ed), "greet bob");
+}
+
+#[test]
+fn a_picked_candidate_missing_from_a_streamed_update_drops_the_pick() {
+    let mut ed = greet_answered_by(
+        "",
+        &[
+            ("part", r#"(list "bob" "carol")"#, "#:more #t"),
+            ("more", r#"(list "alice" "bob")"#, "#:more #t"),
+        ],
+    );
+    answer(&mut ed, "part");
+    ed.handle_key(key_tab());
+    ed.handle_key(key_tab());
+    answer(&mut ed, "more");
+    assert_eq!(picked_row(&ed), None);
+    assert_eq!(minibuf_input(&ed), "greet carol");
+}

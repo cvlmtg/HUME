@@ -64,6 +64,18 @@ pub struct EmittedWord {
     pub prefix: FirstTab,
 }
 
+/// Whether an answer is a source's whole answer to its invocation, or one
+/// part of it with more to follow (`#:more`). Each part replaces the one
+/// before it, so a part holds every item so far.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum AnswerEnd {
+    #[default]
+    Final,
+    /// More follows: the menu shows this part, and what the minibuffer
+    /// does once a source has answered waits for the final part.
+    More,
+}
+
 /// What the first Tab puts over a minibuffer word while no row is picked.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub enum FirstTab {
@@ -96,7 +108,7 @@ impl NamedPrefix {
 /// Completion session orchestration, accessed through
 /// [`EditorHost::completions`](super::EditorHost::completions).
 pub trait CompletionHost {
-    /// `(completion-emit! id items #:incomplete f)`: a source's answer to
+    /// `(completion-emit! id items #:incomplete f #:more m)`: a source's answer to
     /// invocation `id`. `parts` is `items`, each element funneled through
     /// `json_arg` (`builtins/completion.rs`), so a response handle crosses
     /// as-is and a hashmap or string becomes a fresh handle. Each part is
@@ -115,12 +127,14 @@ pub trait CompletionHost {
     /// part that is neither an item nor a response, a caller error, not
     /// dropped.
     ///
-    /// `word` is for a `'minibuf` source only, `Err` from a `'buffer` one.
+    /// `word`, and an `end` of [`AnswerEnd::More`], are for a `'minibuf`
+    /// source only, `Err` from a `'buffer` one.
     fn completion_emit(
         &mut self,
         id: u64,
         parts: Vec<crate::json::JsonHandle>,
         incomplete: bool,
+        end: AnswerEnd,
         word: EmittedWord,
     ) -> Result<bool, String>;
 

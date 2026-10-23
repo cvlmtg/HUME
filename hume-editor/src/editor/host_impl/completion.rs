@@ -7,7 +7,7 @@ use crate::editor::completion::{
 };
 
 use super::EditorHostImpl;
-use hume_scripting::host::{self, CompletionHost, EmittedWord};
+use hume_scripting::host::{self, AnswerEnd, CompletionHost, EmittedWord};
 
 /// `hume-scripting`'s `MatchKind` is the Steel/host-trait boundary's own
 /// mirror (see its doc), converted here into the editor's richer internal
@@ -80,6 +80,7 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
         id: u64,
         parts: Vec<hume_scripting::json::JsonHandle>,
         incomplete: bool,
+        end: AnswerEnd,
         word: EmittedWord,
     ) -> Result<bool, String> {
         // `hume-scripting` hands each part over as an opaque `JsonHandle`;
@@ -120,7 +121,7 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
             }
         }
         self.state
-            .contribute(self.view, id, parsed, incomplete, word)
+            .contribute(self.view, id, parsed, incomplete, end, word)
     }
 
     fn completion_top(&self, n: usize) -> Vec<serde_json::Value> {

@@ -171,9 +171,9 @@
                                                #:token-chars [token-chars ""])
   (%register-completion-source! name proc target match-kind priority resolve token-chars))
 
-(define (completion-emit! id items #:incomplete [incomplete #f] #:span [span #f]
-                                   #:prefix [prefix #t])
-  (%completion-emit! id items incomplete span prefix))
+(define (completion-emit! id items #:incomplete [incomplete #f] #:more [more #f]
+                                   #:span [span #f] #:prefix [prefix #t])
+  (%completion-emit! id items incomplete more span prefix))
 
 (define (spawn-async! cmd args callback #:cwd [cwd #f])
   (%spawn-async! cmd args cwd callback))

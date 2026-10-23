@@ -13,6 +13,7 @@ use hume_editing::tracked::Tracked;
 use hume_editing::word::{CharClass, WordChars};
 use hume_rope::cluster::ClusterStart;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
+use hume_scripting::host::AnswerEnd;
 
 use super::super::item::CompletionItem;
 use super::super::registry::{BufferSourceId, SourceRegistry};
@@ -267,12 +268,16 @@ impl BufferSession {
         items: Vec<CompletionItem>,
         incomplete: bool,
     ) -> bool {
-        let landed = self
-            .core
-            .contribute(id, items, incomplete, |source, span, items| {
+        let landed = self.core.contribute(
+            id,
+            items,
+            incomplete,
+            AnswerEnd::Final,
+            |source, span, items| {
                 let may_resolve = sources.buffer_get(source).resolve;
                 span.assign_token_groups(items, may_resolve);
-            });
+            },
+        );
         if landed {
             self.recompute_dedup(sources);
         }

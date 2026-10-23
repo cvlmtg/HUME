@@ -131,7 +131,8 @@ id), its span already resolved (above) — a native source answers inline; a
 Steel one is *queued* via `EditorState::queue_steel_call` — `(proc id pane
 prefix)` for a buffer source, `(proc id input cursor)` for a `:`-line one —
 and answers with `(completion-emit! id items #:incomplete)`, sync or from
-any later callback, exactly once. An empty list is "nothing from this
+any later callback, once, or in parts: `#:more #t` (a `'minibuf` source only)
+marks a part with more to follow. An empty list is "nothing from this
 source".
 
 **An answer applies only to the latest call of its slot.** Re-invoking a
@@ -139,7 +140,11 @@ source (a later keystroke while its last answer was `isIncomplete`, a second
 Ctrl-Space, a trigger char) supersedes the earlier call: its id goes stale,
 and an answer carrying it is dropped (`completion-emit!` returns `#f`). A
 repeated answer for a still-latest id replaces the earlier one, so a source
-may stream. This is the entire stale-async story — there is no session
+may stream. A shown part marked `#:more` keeps its slot pending: the
+minibuffer's eager policy waits for the final part, and a candidate picked
+while parts arrive is picked again in each later one (`MinibufSession`'s
+`kept_pick`). A failed call batch ends such a part, as it drops a pending
+call. This is the entire stale-async story — there is no session
 token, no `async_opener_stale` gate, and no way for a slow LSP response to
 overwrite a newer one. The old answer stays ranked (against the new token
 text) until the new one lands, so the menu never blinks empty.
@@ -306,7 +311,7 @@ theme change drops it.
 | Builtin | Notes |
 |---|---|
 | `(register-completion-source! name proc #:target #:match ['fuzzy] #:priority [0] #:resolve [#f])` | config-time; crosses as `Effect::RegisterCompletionSource`, so a failed activation's registration is never applied (the `Effect::BindKey` rationale); `#:target` picks one of two separate namespaces (`'buffer`, `'minibuf`) — re-registering a name replaces it, natives included, *within that namespace*; the same name in the other namespace is a second, unrelated source, since there is no shared id space between them to collide in. `#:resolve #t` (`'buffer` only) claims this source's items are wire items from the buffer's attached server, licensing `completionItem/resolve` on selection and on accept |
-| `(completion-emit! id items #:incomplete [#f] #:span [#f] #:prefix)` | the one way items enter a session; `#f` once `id` is stale. `#:span` and `#:prefix` are for a `'minibuf` source registered `'delegated`, raising from any other: `#:span` (`(hash 'start-char s 'end-char e)`, end exclusive, holding the cursor) is the word the answer completes, and `#:prefix` is what the first Tab puts over it with several candidates: left out, the common prefix of their insert texts; a string (never empty), that text, applied only with the cursor at the word's end, since the source read nothing after it; `#f`, nothing. A source whose insert texts have a syntax of their own (the `shell` source's quoted words) names it, since only the source can tell what extends the typed word; the editor parses no source's syntax. `items` is a list whose entries are an LSP `CompletionItem` hashmap, a bare string (`"foo"` decodes the same as `(hash "label" "foo")`, for a source with nothing but a label, e.g. `core:buffer-words`'s word list), or a whole `textDocument/completion` response handle (a `CompletionItem[]` or a `CompletionList`) whose items join the rest, decoded in Rust rather than per item, so several servers' answers become one. The answer is incomplete when `#:incomplete` is set or any `CompletionList` says so; any other entry shape errors |
+| `(completion-emit! id items #:incomplete [#f] #:more [#f] #:span [#f] #:prefix)` | the one way items enter a session; `#f` once `id` is stale. `#:more #t` makes the answer a part with more to follow, for a `'minibuf` source only, raising from a `'buffer` one. `#:span` and `#:prefix` are for a `'minibuf` source registered `'delegated`, raising from any other: `#:span` (`(hash 'start-char s 'end-char e)`, end exclusive, holding the cursor) is the word the answer completes, and `#:prefix` is what the first Tab puts over it with several candidates: left out, the common prefix of their insert texts; a string (never empty), that text, applied only with the cursor at the word's end, since the source read nothing after it; `#f`, nothing. A source whose insert texts have a syntax of their own (the `shell` source's quoted words) names it, since only the source can tell what extends the typed word; the editor parses no source's syntax. `items` is a list whose entries are an LSP `CompletionItem` hashmap, a bare string (`"foo"` decodes the same as `(hash "label" "foo")`, for a source with nothing but a label, e.g. `core:buffer-words`'s word list), or a whole `textDocument/completion` response handle (a `CompletionItem[]` or a `CompletionList`) whose items join the rest, decoded in Rust rather than per item, so several servers' answers become one. The answer is incomplete when `#:incomplete` is set or any `CompletionList` says so; any other entry shape errors |
 | `(completion-top n)`, `(completion-accept! idx)`, `(completion-dismiss!)` | unchanged |
 | `(set-hook-triggers! source language chars)` + `on-trigger-char` | shared, listener-agnostic table (signature help uses it) — *not* how a `'buffer` completion source's own trigger chars are joined. `(set-attachment-hook-triggers! source pane server feature chars)` keys the same table to one buffer's attachment to a server, gone when it detaches |
 | `(set-completion-triggers! source language chars)`, `(set-attachment-completion-triggers! source pane server feature chars)` | a `'buffer` completion source's own trigger chars for a language, or for one buffer's attachment to a server, replacing that pair's previous set; the editor invokes `source` directly when one lands, no hook round trip. Crosses as `Effect::SetTriggers` (a `register-completion-source!` queued earlier in the same eval may still be the one supplying `source`); `source` naming no registered `'buffer` source at apply time is reported as a log message, not raised back to the caller |

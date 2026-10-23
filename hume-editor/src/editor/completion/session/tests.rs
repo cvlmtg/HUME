@@ -13,6 +13,7 @@ use hume_editing::edit::TextChange;
 use hume_editing::text::BufferText;
 use hume_rope::cluster::ClusterStart;
 use hume_rope::offset::CharOffset;
+use hume_scripting::host::{AnswerEnd, EmittedWord};
 use steel::rvals::SteelVal;
 
 fn item(label: &str) -> CompletionItem {
@@ -788,6 +789,90 @@ fn step_selection_wraps_at_either_end() {
     assert_eq!(session.selected(), Some(0), "wraps forward");
     assert!(session.step_selection(false));
     assert_eq!(session.selected(), Some(1), "wraps backward");
+}
+
+// ── An answer in parts ───────────────────────────────────────────────────────
+
+/// A `Minibuf` session over an empty line, invoked once; returns the
+/// invocation id.
+fn streaming_session(reg: &SourceRegistry) -> (MinibufSession, u64) {
+    let mut session = MinibufSession::open(String::new(), 0);
+    let id = session.invoke(minibuf_id_of(reg, "s"), Invocation::minibuf(0..0));
+    (session, id)
+}
+
+fn emit(
+    session: &mut MinibufSession,
+    reg: &SourceRegistry,
+    id: u64,
+    labels: &[&str],
+    end: AnswerEnd,
+) -> bool {
+    session
+        .emit(reg, id, items(labels), false, end, EmittedWord::default())
+        .expect("a plain answer")
+}
+
+fn picked_label(session: &MinibufSession) -> Option<String> {
+    let row = session.selected()?;
+    Some(session.selected_item(row)?.label.clone())
+}
+
+#[test]
+fn an_answer_with_more_to_come_keeps_its_session_pending() {
+    let reg = minibuf_registry(&[("s", 0)]);
+    let (mut session, id) = streaming_session(&reg);
+    assert!(emit(&mut session, &reg, id, &["a", "b"], AnswerEnd::More));
+    session.rank(&reg);
+    assert!(session.is_pending());
+    assert_eq!(session.len(), 2);
+    assert!(emit(
+        &mut session,
+        &reg,
+        id,
+        &["a", "b", "c"],
+        AnswerEnd::Final
+    ));
+    session.rank(&reg);
+    assert!(!session.is_pending());
+    assert_eq!(session.len(), 3);
+}
+
+#[test]
+fn drop_stalled_ends_a_streaming_answer_and_keeps_its_items() {
+    let reg = minibuf_registry(&[("s", 0)]);
+    let (mut session, id) = streaming_session(&reg);
+    emit(&mut session, &reg, id, &["a", "b"], AnswerEnd::More);
+    assert!(session.drop_stalled_invocations());
+    assert!(!session.is_pending());
+    session.rank(&reg);
+    assert_eq!(session.len(), 2);
+}
+
+#[test]
+fn a_streamed_update_keeps_the_picked_candidate() {
+    let reg = minibuf_registry(&[("s", 0)]);
+    let (mut session, id) = streaming_session(&reg);
+    emit(&mut session, &reg, id, &["b", "c"], AnswerEnd::More);
+    session.rank(&reg);
+    session.step_selection(true);
+    session.step_selection(true);
+    assert_eq!(picked_label(&session).as_deref(), Some("c"));
+    emit(&mut session, &reg, id, &["a", "b", "c"], AnswerEnd::More);
+    session.rank(&reg);
+    assert_eq!(picked_label(&session).as_deref(), Some("c"));
+}
+
+#[test]
+fn a_final_re_answer_after_a_final_answer_drops_the_pick() {
+    let reg = minibuf_registry(&[("s", 0)]);
+    let (mut session, id) = streaming_session(&reg);
+    emit(&mut session, &reg, id, &["b", "c"], AnswerEnd::Final);
+    session.rank(&reg);
+    session.step_selection(true);
+    emit(&mut session, &reg, id, &["a", "b", "c"], AnswerEnd::Final);
+    session.rank(&reg);
+    assert_eq!(session.selected(), None);
 }
 
 // ── prefix_matches ───────────────────────────────────────────────────────────
