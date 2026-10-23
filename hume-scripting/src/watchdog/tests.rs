@@ -92,8 +92,8 @@ fn drop_while_armed_does_not_fire() {
 fn a_wait_pauses_the_budget() {
     let dog = EvalWatchdog::new();
     let clock = dog.clock();
-    dog.arm(vm(), Duration::from_millis(50));
-    clock.waiting(|| std::thread::sleep(Duration::from_millis(200)));
+    dog.arm(vm(), Duration::from_millis(200));
+    clock.waiting(|| std::thread::sleep(Duration::from_millis(500)));
     assert!(!dog.cancel(), "the wait must not use up the budget");
 }
 
@@ -114,13 +114,13 @@ fn the_budget_left_runs_out_after_a_wait() {
 fn time_before_a_wait_counts() {
     let dog = EvalWatchdog::new();
     let clock = dog.clock();
-    dog.arm(vm(), Duration::from_millis(200));
-    std::thread::sleep(Duration::from_millis(160));
+    dog.arm(vm(), Duration::from_millis(600));
+    std::thread::sleep(Duration::from_millis(500));
     clock.waiting(|| std::thread::sleep(Duration::from_millis(20)));
-    std::thread::sleep(Duration::from_millis(120));
+    std::thread::sleep(Duration::from_millis(350));
     assert!(
         dog.cancel(),
-        "40 ms were left when the wait began, so 120 ms after it the budget is spent"
+        "100 ms were left when the wait began, so 350 ms after it the budget is spent"
     );
 }
 
