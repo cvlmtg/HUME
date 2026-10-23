@@ -15,7 +15,10 @@ hume-ops = { path = "../hume-ops" }
 hume-platform = { path = "../hume-platform" }
 hume-rope = { path = "../hume-rope" }
 hume-treesitter = { path = "../hume-treesitter" }
-steel-core = { version = "0.8.3", features = ["custom-hash"] }
+# unsandboxed-kernel: macro expansion runs on a copy of the kernel image
+# Engine::new already builds, instead of building a sandboxed second one.
+# Plugins are full-trust, so the sandbox restricts nothing they can't do.
+steel-core = { version = "0.8.3", features = ["custom-hash", "unsandboxed-kernel"] }
 termina = "0.4.0"
 slotmap = "1"
 serde_json.workspace = true
