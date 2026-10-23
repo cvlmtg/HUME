@@ -7,7 +7,7 @@
 
 (define bw/cfg (plugin-config))
 (define bw/match (call! "stdlib/config-enum" "core:buffer-words" bw/cfg "match" 'string '(string fuzzy)))
-(define bw/lines-per-tick (call! "stdlib/config-integer" "core:buffer-words" bw/cfg "lines" 100 1))
+(define bw/chars-per-tick (call! "stdlib/config-integer" "core:buffer-words" bw/cfg "chars" 8000 1))
 
 ;;; Not 0 — see README.md's "Cursor-outward, line-windowed indexing".
 (define bw/tick-delay-ms 16)
@@ -89,15 +89,29 @@
       (completion-emit! id (hash-ref entry "words"))
       (bw/install! pane (hash-insert entry "live-id" #f)))))
 
+;;; End line (exclusive) of the forward window from `line` (< `total`) — see README.md's "Character budget".
+(define (bw/forward-end pane line total)
+  (let ([target (+ (line->char-offset pane line) bw/chars-per-tick)])
+    (if (> target (line->char-offset pane (- total 1)))
+        total
+        (max (+ line 1) (char-offset->line pane target)))))
+
+;;; Start line of the backward window ending before `hi` (> 0) — see README.md's "Character budget".
+(define (bw/backward-start pane hi)
+  (let ([target (- (line->char-offset pane (- hi 1)) bw/chars-per-tick)])
+    (if (<= target 0)
+        0
+        (min (- hi 1) (+ (char-offset->line pane target) 1)))))
+
 ;;; One reindex tick — see README.md's "Cursor-outward, line-windowed indexing".
 (define (bw/walk! pane gen fwd-line bwd-line)
   (let ([entry (bw/entry pane)])
     (when (and entry (= (hash-ref entry "gen") gen))
       (let* ([total (buffer-line-count pane)]
-             [fwd-hi (min total (+ fwd-line bw/lines-per-tick))]
+             [fwd-hi (if (< fwd-line total) (bw/forward-end pane fwd-line total) total)]
              [fwd-lines (if (< fwd-line fwd-hi) (buffer-lines pane #:range (hash 'start-line fwd-line 'end-line fwd-hi)) '())]
              [bwd-hi (min bwd-line total)]
-             [bwd-lo (max 0 (- bwd-hi bw/lines-per-tick))]
+             [bwd-lo (if (> bwd-hi 0) (bw/backward-start pane bwd-hi) 0)]
              [bwd-lines (if (< bwd-lo bwd-hi) (buffer-lines pane #:range (hash 'start-line bwd-lo 'end-line bwd-hi)) '())]
              [building (bw/add-lines (bw/add-lines (or (hash-ref entry "building") (hashset))
                                                    pane fwd-lines)

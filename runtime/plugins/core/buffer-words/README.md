@@ -8,7 +8,7 @@ ask.
 
 ```scheme
 (load-plugin! "core:stdlib")
-(load-plugin! "core:buffer-words" #:config (hash "match" 'string "lines" 100))
+(load-plugin! "core:buffer-words" #:config (hash "match" 'string "chars" 8000))
 ```
 
 - **Depends on:** `core:stdlib`: config validation calls `stdlib/config-enum`/
@@ -23,7 +23,7 @@ ask.
 | Key | Default | Meaning |
 |---|---|---|
 | `"match"` | `'string` | `'string`: a case-sensitive prefix gate, the vim `i_CTRL-N` feel. `'fuzzy`: subsequence-scored like `core:lsp`'s own candidates, so the two compete on score rather than priority |
-| `"lines"` | `100` | Lines fetched and scanned per side (before/after the cursor) on each background indexing tick; an integer of at least 1. Lower trims the pause a keystroke can add near a huge buffer; raising it finishes indexing a large buffer in fewer ticks |
+| `"chars"` | `8000` | Characters fetched and scanned per side (before/after the cursor) on each background indexing tick; an integer of at least 1. A tick always takes at least one whole line. Lower trims the pause a keystroke can add near a huge buffer; raising it finishes indexing a large buffer in fewer ticks |
 
 ## How it works
 
@@ -36,21 +36,22 @@ that walk has indexed so far.
 cursor line
      │
      ▼
-  ◀── N lines ── │ ── N lines ──▶                 one tick
-  ◀──── N lines ──── │ ──── N lines ────▶        next tick
+  ◀── N chars ── │ ── N chars ──▶                 one tick
+  ◀──── N chars ──── │ ──── N chars ────▶        next tick
         …outward in both directions until both hit a buffer edge…
 ```
 
-`N` is `"lines"`.
+`N` is `"chars"`, rounded to whole lines.
 
 ### Cursor-outward, line-windowed indexing
 
 The cache is rebuilt on `on-buffer-open` and, debounced 150ms, on `on-text-changed`, the
 same shape `core:git-diff` uses for its own per-buffer state (see the
 [core plugins index](../README.md#per-buffer-state)). Each rebuild walks outward from the
-cursor's line in both directions, one batch of `"lines"` lines per direction per tick,
-fetched with `(buffer-lines pane #:range …)` and scanned to completion in the same
-tick. A word cannot span two lines, so nothing carries across a tick boundary.
+cursor's line in both directions, one batch of lines per direction per tick, sized by
+the character budget below, fetched with `(buffer-lines pane #:range …)` and scanned to
+completion in the same tick. A word cannot span two lines, so nothing carries across a
+tick boundary.
 
 Nothing blocks however large the buffer is, and the words nearest the cursor are indexed
 first. An edit that interrupts a walk restarts it from the new cursor position, so the
@@ -60,7 +61,7 @@ The walk fetches by line. `buffer-lines` seeks into the buffer's rope by line in
 fetching a window of lines costs the same wherever the window is. Re-slicing a string at a
 character offset would cost time proportional to the offset on every call. Each tick
 converts only the lines it is about to scan, so memory during a walk is bounded by
-`"lines"`, not by buffer size. A single line is read and scanned whole, with no cap; see
+`"chars"`, not by buffer size. A single line is read and scanned whole, with no cap; see
 [Known limitations](#known-limitations).
 
 Each tick reschedules itself after a 16ms delay. A zero-delay timer is due the instant it
@@ -68,6 +69,18 @@ is scheduled, which pins the event loop's wake timeout at zero for the whole wal
 loop never blocks on input and repaints an unchanged frame once per tick until the walk
 finishes. The short delay lets the loop block between ticks. The walk takes proportionally
 longer in wall-clock time, and nothing waits on it.
+
+#### Character budget
+
+A tick's cost grows with the characters it scans, so the budget counts characters. A line
+count would let a tick over a file of very long lines (a markdown file with one paragraph
+per line) block input several times longer than a tick over ordinary code.
+Each side sizes its window from line starts alone (`line->char-offset`,
+`char-offset->line`), before fetching anything. The forward side takes lines from its
+start line up to the line holding the budget's last character, excluding that line. The
+backward side counts back from the start of the last line it takes, so it can run one
+line over budget; it never reads the start of the line past its window, which a buffer
+that shrank mid-walk may lack. Either side takes at least one line, however long.
 
 #### Anchor line
 

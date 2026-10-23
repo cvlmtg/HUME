@@ -232,13 +232,13 @@ Configure with `#:config`:
 
 ```scheme
 (load-plugin! "core:buffer-words"
-  #:config (hash "match" 'string "lines" 100))
+  #:config (hash "match" 'string "chars" 8000))
 ```
 
 | Key | Type | Default | Effect |
 |---|---|---|---|
 | `"match"` | `'string` \| `'fuzzy` | `'string` | `'string` narrows by prefix as you type (the vim `i_CTRL-N` feel); `'fuzzy` scores subsequence matches like `core:lsp`'s own candidates |
-| `"lines"` | integer (≥ 1) | `100` | Lines fetched and scanned per side of the cursor on each background indexing tick. Lower to trim a pause on a huge buffer, raise to index a large buffer in fewer ticks |
+| `"chars"` | integer (≥ 1) | `8000` | Characters scanned per side of the cursor on each background indexing step, rounded to whole lines and always at least one line. Lower to trim a pause on a huge buffer, raise to index a large buffer in fewer steps |
 
 ## core:vim-keybind
 

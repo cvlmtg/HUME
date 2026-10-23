@@ -179,18 +179,19 @@ fn ctrl_space_offers_identifiers_from_the_buffer() {
     assert!(got.contains(&"beta".to_string()), "{got:?}");
 }
 
-/// A word far from the cursor, on a buffer with many more lines than one
-/// tick's `"lines"` budget, is still found: the actual case a background
+/// A word far from the cursor, on a buffer many times longer than one
+/// tick's `"chars"` budget, is still found: the actual case a background
 /// walk exists for. A whole-buffer read would also find this word, so the
-/// test mainly checks `bw/walk!`'s per-tick fetch arithmetic: an off-by-one
-/// in `fwd-hi`/`bwd-lo` would skip the line this fixture puts the target
-/// word on, rather than merely being masked by overlap with an
+/// test mainly checks `bw/walk!`'s per-tick window arithmetic: an
+/// off-by-one in `bw/forward-end` would skip the line this fixture puts the
+/// target word on, rather than merely being masked by overlap with an
 /// already-covered line.
 #[test]
 fn a_word_many_lines_past_the_cursor_is_offered() {
     let tmp = tempfile::tempdir().unwrap();
     let guard = RuntimeDirs::new();
-    let mut ed = setup(&guard, tmp.path(), Some(r#"(hash "lines" 20)"#));
+    // 20 `filler` lines per tick.
+    let mut ed = setup(&guard, tmp.path(), Some(r#"(hash "chars" 140)"#));
     let file_dir = tempfile::tempdir().unwrap();
     let path = file_dir.path().join("f.txt");
     let mut content = "filler\n".repeat(300);
@@ -199,6 +200,33 @@ fn a_word_many_lines_past_the_cursor_is_offered() {
     open(&mut ed, &path);
     ed.feed_key(key('i'));
     wait_for_word(&mut ed, "target_word");
+}
+
+/// A budget smaller than one line still advances one whole line per tick on
+/// each side, so a walk from the middle reaches the words on the first and
+/// last lines.
+#[test]
+fn lines_longer_than_the_budget_are_still_walked_to_both_ends() {
+    let tmp = tempfile::tempdir().unwrap();
+    let guard = RuntimeDirs::new();
+    let mut ed = setup(&guard, tmp.path(), Some(r#"(hash "chars" 10)"#));
+    let file_dir = tempfile::tempdir().unwrap();
+    let path = file_dir.path().join("f.txt");
+    let filler = "longfiller ".repeat(4);
+    let mut lines: Vec<String> = (1..=40)
+        .map(|n| match n {
+            1 => format!("first_word {filler}"),
+            40 => format!("last_word {filler}"),
+            _ => filler.clone(),
+        })
+        .collect();
+    lines.push(String::new());
+    std::fs::write(&path, lines.join("\n")).unwrap();
+    open(&mut ed, &path);
+    goto_line_and_edit(&mut ed, 20, 'z');
+    ed.feed_key(key('i'));
+    wait_for_word(&mut ed, "first_word");
+    wait_for_word(&mut ed, "last_word");
 }
 
 #[test]
@@ -376,11 +404,11 @@ fn reindex_via_option_change(ed: &mut Editor) {
 fn a_reindex_that_interrupts_a_running_walk_does_not_resurrect_a_removed_word() {
     let tmp = tempfile::tempdir().unwrap();
     let guard = RuntimeDirs::new();
-    // A small per-tick budget over many lines: the first tick (anchored at
-    // line 0, where "targetword" lives) picks the word up almost
-    // immediately, while the walk as a whole takes many further ticks,
-    // wide enough a window to land the edit below before it finishes.
-    let mut ed = setup(&guard, tmp.path(), Some(r#"(hash "lines" 5)"#));
+    // A small per-tick budget (5 `filler` lines) over many lines: the first
+    // tick (anchored at line 0, where "targetword" lives) picks the word up
+    // almost immediately, while the walk as a whole takes many further
+    // ticks, wide enough a window to land the edit below before it finishes.
+    let mut ed = setup(&guard, tmp.path(), Some(r#"(hash "chars" 35)"#));
     let file_dir = tempfile::tempdir().unwrap();
     let path = file_dir.path().join("f.txt");
     let mut content = "targetword\n".to_string();
@@ -530,6 +558,18 @@ fn a_combining_mark_stays_attached_to_its_word() {
 
 #[test]
 fn an_invalid_match_config_fails_the_load() {
+    assert_config_fails_the_load(r#"(hash "match" 'regex)"#, "must be one of");
+}
+
+#[test]
+fn a_chars_budget_below_one_fails_the_load() {
+    assert_config_fails_the_load(r#"(hash "chars" 0)"#, "must be an integer >= 1");
+}
+
+/// Loads `core:buffer-words` with `config_expr` through `eval_init` and
+/// asserts the load is contained as a `Failed` plugin whose error names the
+/// plugin and contains `expected`.
+fn assert_config_fails_the_load(config_expr: &str, expected: &str) {
     use hume_scripting::PluginStatus;
     use hume_scripting::attribution::PluginId;
 
@@ -541,7 +581,9 @@ fn an_invalid_match_config_fails_the_load() {
     let init_path = tmp.path().join("init.scm");
     std::fs::write(
         &init_path,
-        "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:buffer-words\" #:config (hash \"match\" 'regex))",
+        format!(
+            "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:buffer-words\" #:config {config_expr})"
+        ),
     )
     .unwrap();
 
@@ -568,7 +610,7 @@ fn an_invalid_match_config_fails_the_load() {
         host.peek_pending_messages().iter().any(|(level, msg)| {
             matches!(level, hume_scripting::LogLevel::Error)
                 && msg.contains("core:buffer-words")
-                && msg.contains("must be one of")
+                && msg.contains(expected)
         }),
         "error must carry the plugin's own prefixed message; got {:?}",
         host.peek_pending_messages()
@@ -602,7 +644,7 @@ fn an_invalid_match_config_fails_the_load() {
 fn closing_a_buffer_drops_its_index() {
     let tmp = tempfile::tempdir().unwrap();
     let guard = RuntimeDirs::new();
-    let mut ed = setup(&guard, tmp.path(), Some(r#"(hash "lines" 1)"#));
+    let mut ed = setup(&guard, tmp.path(), Some(r#"(hash "chars" 1)"#));
     let file_dir = tempfile::tempdir().unwrap();
     let path = file_dir.path().join("f.txt");
     let content = "filler\n".repeat(20);
@@ -622,19 +664,18 @@ fn closing_a_buffer_drops_its_index() {
 /// `a_word_many_lines_past_the_cursor_is_offered` doesn't exercise this: it
 /// anchors at line 0, where the forward side never empties out. This test
 /// anchors at the buffer's *last* line instead (the forward side exhausts
-/// on tick 1) and places the target word inside one of the backward
-/// ticks' own windows (`"lines" 10`), at a fixed, predictable offset.
+/// on tick 1) and places the target word inside a backward tick's window
+/// (`"chars" 70`), at a fixed, predictable offset.
 #[test]
 fn a_word_before_the_cursor_survives_the_forward_side_emptying_out() {
     let tmp = tempfile::tempdir().unwrap();
     let guard = RuntimeDirs::new();
-    let mut ed = setup(&guard, tmp.path(), Some(r#"(hash "lines" 10)"#));
+    let mut ed = setup(&guard, tmp.path(), Some(r#"(hash "chars" 70)"#));
     let file_dir = tempfile::tempdir().unwrap();
     let path = file_dir.path().join("f.txt");
-    // 60 lines, 1-based. Line 57 sits inside the backward window
-    // (47..57) a tick fetches once the walk has stepped back to anchor 59:
-    // offset 5 into that 10-line window, past the 4-element survivor cap
-    // the bug leaves behind.
+    // 60 lines, 1-based. The first tick's backward window, anchored at line
+    // 60, is lines 50..59; line 57 sits at offset 7 into it, well away from
+    // either end of the window.
     let mut lines: Vec<String> = (1..=60)
         .map(|n| {
             if n == 57 {
@@ -710,7 +751,7 @@ fn typing_in_the_replacement_scratch_after_closing_the_last_buffer_is_indexed() 
 fn restarting_the_walk_mid_flight_still_reaches_both_ends() {
     let tmp = tempfile::tempdir().unwrap();
     let guard = RuntimeDirs::new();
-    let mut ed = setup(&guard, tmp.path(), Some(r#"(hash "lines" 5)"#));
+    let mut ed = setup(&guard, tmp.path(), Some(r#"(hash "chars" 35)"#));
     let file_dir = tempfile::tempdir().unwrap();
     let path = file_dir.path().join("f.txt");
     let mut lines: Vec<String> = (1..=160)
@@ -725,7 +766,8 @@ fn restarting_the_walk_mid_flight_still_reaches_both_ends() {
     open(&mut ed, &path);
     goto_line_and_edit(&mut ed, 80, 'z');
     // Lets the debounce fire, starting the walk outward from line 80. Each
-    // tick covers 5 lines in both directions, so the walk is about 16 ticks,
+    // tick covers 5 `filler` lines in both directions, so the walk is about
+    // 16 ticks,
     // and the words reach the candidate list only once all of them have run.
     // Ticks run only when the editor settles, so none run during the sleep.
     std::thread::sleep(Duration::from_millis(200));
@@ -753,7 +795,7 @@ fn restarting_the_walk_mid_flight_still_reaches_both_ends() {
 fn the_index_recovers_when_the_buffer_shrinks_mid_walk() {
     let tmp = tempfile::tempdir().unwrap();
     let guard = RuntimeDirs::new();
-    let mut ed = setup(&guard, tmp.path(), Some(r#"(hash "lines" 5)"#));
+    let mut ed = setup(&guard, tmp.path(), Some(r#"(hash "chars" 35)"#));
     let file_dir = tempfile::tempdir().unwrap();
     let path = file_dir.path().join("f.txt");
     let big_content = "filler\n".repeat(500);
@@ -761,7 +803,7 @@ fn the_index_recovers_when_the_buffer_shrinks_mid_walk() {
     open(&mut ed, &path);
     goto_line_and_edit(&mut ed, 250, 'z');
     // The walk starts (debounce) and makes real progress outward from line
-    // 250 in both directions, but 500 lines at "lines" 5 is far from done.
+    // 250 in both directions, but 500 lines at 5 per tick is far from done.
     std::thread::sleep(Duration::from_millis(200));
     ed.settle();
 
@@ -824,7 +866,7 @@ fn the_exact_token_exclusion_tracks_further_typing() {
 fn a_menu_opened_before_the_walk_finishes_catches_up_once_it_does() {
     let tmp = tempfile::tempdir().unwrap();
     let guard = RuntimeDirs::new();
-    let mut ed = setup(&guard, tmp.path(), Some(r#"(hash "lines" 20)"#));
+    let mut ed = setup(&guard, tmp.path(), Some(r#"(hash "chars" 140)"#));
     let file_dir = tempfile::tempdir().unwrap();
     let path = file_dir.path().join("f.txt");
     let mut content = "filler\n".repeat(300);
@@ -833,7 +875,7 @@ fn a_menu_opened_before_the_walk_finishes_catches_up_once_it_does() {
     open(&mut ed, &path);
     ed.feed_key(key('i'));
     // One trigger, up front, before the background walk can possibly have
-    // reached `late_word` (300 lines at "lines" 20 needs multiple ticks).
+    // reached `late_word` (300 lines at 20 per tick needs multiple ticks).
     ed.feed_key(key_ctrl(' '));
     ed.settle();
     assert!(!labels(&ed).contains(&"late_word".to_string()));

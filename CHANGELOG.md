@@ -15,6 +15,7 @@
 ### Breaking changes
 - `(hume/yield!)` is gone: the script budget stops a script on its own, so delete any call to it.
 - `stdlib/run!` is gone: call `run-capture!`, the function it named.
+- `core:buffer-words`'s `"lines"` option is now `"chars"`, the number of characters it indexes on each side of the cursor per step: rename it in your `#:config`.
 - `path-programs` lists in the background: it takes a callback, `(lambda (names done?) ...)`, called with the names found so far, and returns an id for `cancel-async!`. Move code that used its result into the callback, and use `names` once `done?` is `#t`.
 
 ### Plugins & scripting
@@ -25,6 +26,7 @@
 - A relative path given to `replace-dir!`, `try-lock-file!`, `unlock-file!` or `path-entries` resolves like one typed to `:e`.
 - A grammar `register-grammar!` registers from `init.scm` that can't be loaded is reported in `:messages` when a file or an embedded block first needs it, not at startup.
 - `completion-emit!` takes `#:more #t` to answer a `'minibuf` request in parts.
+- `core:buffer-words` no longer stalls typing while it indexes a file with very long lines.
 
 ## [0.16.1] - 2026-10-22
 
