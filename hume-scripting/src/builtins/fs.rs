@@ -1,7 +1,7 @@
 //! Editor-integration filesystem builtins for HUME's Steel scripting engine.
 //!
-//! Full-trust plugin model (see `user-manual/docs/plugins.md`'s "Filesystem
-//! and processes"): general filesystem access goes through Steel's own
+//! Full-trust plugin model (see `user-manual/docs/writing-plugins.md`'s
+//! "Filesystem and processes"): general filesystem access goes through Steel's own
 //! `steel/filesystem`/`steel/ports` stdlib, not a HUME builtin. What remains
 //! here is editor-integration info Steel can't derive on its own,
 //! `path-join`'s Windows UNC-prefix stripping (Steel's own
@@ -9,6 +9,9 @@
 //! the session has to own: a tree delete the budget does not count, a
 //! directory swap the budget cannot split, and file locks released when the
 //! session ends.
+//!
+//! A relative path these builtins take resolves through
+//! [`editor_path`], as `:e` resolves a typed one.
 //!
 //! | Steel name      | Signature                      | Notes                                        |
 //! |-----------------|--------------------------------|----------------------------------------------|
@@ -41,7 +44,7 @@ use steel::rvals::{IntoSteelVal, SteelVal};
 use crate::SteelCtx;
 
 use super::SteelResult;
-use super::args::{list_to_strings, string_list};
+use super::args::{editor_path, list_to_strings, string_list};
 use super::errors::generic_err;
 
 // ── data-dir / runtime-dir ───────────────────────────────────────────────────
@@ -121,7 +124,10 @@ pub(crate) fn delete_dir_tree(ctx: &mut SteelCtx, path: String) -> SteelResult {
 /// a backup a crash left there is cleared first.
 pub(crate) fn replace_dir(ctx: &mut SteelCtx, src: String, dest: String) -> SteelResult {
     let cwd = ctx.host.buffers().cwd();
-    let (src_path, dest_path) = (cwd.join(&src), cwd.join(&dest));
+    let (src_path, dest_path) = (
+        editor_path(Path::new(&src), &cwd),
+        editor_path(Path::new(&dest), &cwd),
+    );
     let (Some(parent), Some(name)) = (dest_path.parent(), dest_path.file_name()) else {
         return Err(generic_err(format!(
             "replace-dir!: {dest} names no directory to replace"
@@ -173,7 +179,7 @@ fn remove_dir_tree_if_present(dir: &Path) -> std::io::Result<()> {
 /// OS drops it when the process exits, so no lock is ever left over. Taking
 /// a lock this session already holds raises.
 pub(crate) fn try_lock_file(ctx: &mut SteelCtx, path: String) -> SteelResult {
-    let file_path = ctx.host.buffers().cwd().join(&path);
+    let file_path = editor_path(Path::new(&path), &ctx.host.buffers().cwd());
     if ctx.file_locks.contains_key(&file_path) {
         return Err(generic_err(format!(
             "try-lock-file!: this session already holds {path}"
@@ -198,7 +204,7 @@ pub(crate) fn try_lock_file(ctx: &mut SteelCtx, path: String) -> SteelResult {
 /// `(unlock-file! path)`: releases the lock `try-lock-file!` took on `path`
 /// this session. Raises when this session does not hold it.
 pub(crate) fn unlock_file(ctx: &mut SteelCtx, path: String) -> SteelResult {
-    let file_path = ctx.host.buffers().cwd().join(&path);
+    let file_path = editor_path(Path::new(&path), &ctx.host.buffers().cwd());
     ctx.file_locks
         .remove(&file_path)
         .map(|_| SteelVal::Void)
@@ -211,7 +217,7 @@ pub(crate) fn unlock_file(ctx: &mut SteelCtx, path: String) -> SteelResult {
 /// that a typed path ending in `prefix` completes to, as `:e` lists them:
 /// [`hume_platform::path::completion_entries`]'s rule.
 pub(crate) fn path_entries(ctx: &mut SteelCtx, dir: String, prefix: String) -> SteelResult {
-    let dir = ctx.host.buffers().cwd().join(dir);
+    let dir = editor_path(Path::new(&dir), &ctx.host.buffers().cwd());
     Ok(string_list(hume_platform::path::completion_entries(
         &dir, &prefix, false,
     )))

@@ -126,7 +126,7 @@ pub(crate) fn run_capture(
 /// with terminal raw mode off (see `run_inline_output`'s doc comment in
 /// `hume-platform::process`), so an unisolated child would be killed by the
 /// same Ctrl-c that's meant to interrupt only it. No sandbox checks: plugins
-/// are trusted code (see `user-manual/docs/plugins.md`'s "Filesystem and processes").
+/// are trusted code (see `user-manual/docs/writing-plugins.md`'s "Filesystem and processes").
 ///
 /// # Errors
 /// The binary can't be spawned (e.g. not found on `PATH`), or it exited

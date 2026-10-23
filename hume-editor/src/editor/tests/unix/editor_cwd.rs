@@ -128,6 +128,24 @@ fn cwd_builtin_reports_the_editor_cwd() {
 }
 
 #[test]
+fn path_entries_resolves_dot_dot_lexically_like_e() {
+    use std::os::unix::fs::symlink;
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir(tmp.path().join("a")).unwrap();
+    std::fs::create_dir(tmp.path().join("b")).unwrap();
+    symlink(tmp.path().join("b"), tmp.path().join("a").join("link")).unwrap();
+    let mut ed = editor_in(tmp.path());
+
+    let out = log_probe(
+        &mut ed,
+        tmp.path(),
+        r#"(string-join (path-entries "a/link/.." "") ",")"#,
+    );
+
+    assert_eq!(out, "link/");
+}
+
+#[test]
 fn relative_display_path_keeps_a_symlinked_directory_as_typed() {
     use std::os::unix::fs::symlink;
     let tmp = tempfile::tempdir().unwrap();

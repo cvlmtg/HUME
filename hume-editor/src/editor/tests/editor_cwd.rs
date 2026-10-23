@@ -53,6 +53,21 @@ fn set_cwd_builtin_moves_the_editor_cwd_like_cd() {
 }
 
 #[test]
+fn a_lock_taken_through_a_dot_dot_path_is_released_by_its_plain_name() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir(tmp.path().join("sub")).unwrap();
+    let mut ed = editor_in(tmp.path());
+
+    let out = log_probe(
+        &mut ed,
+        tmp.path(),
+        r#"(begin (try-lock-file! "sub/../lock") (unlock-file! "lock") "released")"#,
+    );
+
+    assert_eq!(out, "released");
+}
+
+#[test]
 fn relative_display_path_is_relative_to_the_editor_cwd() {
     let tmp = tempfile::tempdir().unwrap();
     std::fs::create_dir(tmp.path().join("sub")).unwrap();

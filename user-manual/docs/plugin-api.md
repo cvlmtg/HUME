@@ -350,7 +350,7 @@ Everyday string work (trimming, splitting on a separator, case conversion, prefi
 
 The pattern for reading a plugin's own files is covered in [Filesystem and processes](writing-plugins.md#filesystem-and-processes).
 
-Use `(cwd)` and `(set-cwd! path)` to read and change the working directory, not Steel's `current-directory` and `change-current-directory!`: HUME's own commands and spawned programs follow its working directory, and a plugin that moves the process directory with Steel's call leaves HUME behind. To pass a relative path to a program or to Steel's file functions, join it onto `(cwd)` first: `(path-join (cwd) "src")`. HUME's own calls (`spawn-async!`, `run-capture!`, `run-inline-output!`, `picker-source-spawn!`, `compile-grammar!`, `register-grammar!`, `open-buffer!`) join a relative path onto the working directory for you.
+Use `(cwd)` and `(set-cwd! path)` to read and change the working directory, not Steel's `current-directory` and `change-current-directory!`: HUME's own commands and spawned programs follow its working directory, and a plugin that moves the process directory with Steel's call leaves HUME behind. A relative path given to a HUME call resolves against the working directory the way `:e` resolves a typed one: `..` collapses and links stay as typed. Steel's own file functions resolve a relative path against the process directory, which `:cd` and `set-cwd!` move along with HUME's.
 
 ## Grammar compilation
 

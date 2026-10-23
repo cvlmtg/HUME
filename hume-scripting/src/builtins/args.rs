@@ -180,15 +180,22 @@ pub(crate) fn optional_path_arg(
     }
 }
 
+/// `typed` resolved as `:e` resolves a typed path: a relative one joins onto
+/// `editor_cwd`, `.` and `..` collapse lexically, and links stay as typed.
+/// Every path a HUME builtin takes from a script resolves this way.
+pub(crate) fn editor_path(typed: &Path, editor_cwd: &Path) -> PathBuf {
+    hume_platform::path::absolute_unresolved(typed, editor_cwd)
+}
+
 /// A `#:cwd` argument: `#f` is `editor_cwd`, a relative path resolves
-/// lexically against it, as `:e` resolves a typed path.
+/// against it by [`editor_path`].
 pub(crate) fn cwd_arg(
     val: SteelVal,
     editor_cwd: &Path,
     ctx_name: &str,
 ) -> Result<PathBuf, SteelErr> {
     Ok(match optional_path_arg(val, ctx_name)? {
-        Some(dir) => hume_platform::path::absolute_unresolved(&dir, editor_cwd),
+        Some(dir) => editor_path(&dir, editor_cwd),
         None => editor_cwd.to_path_buf(),
     })
 }
