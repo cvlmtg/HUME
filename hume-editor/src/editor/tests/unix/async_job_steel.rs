@@ -176,7 +176,7 @@ fn cancel_async_prevents_the_callback_and_kills_the_child() {
         .values()
         .next()
         .expect("job registered")
-        .job
+        .process()
         .pid();
 
     let started = Instant::now();

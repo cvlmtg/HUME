@@ -1,24 +1,47 @@
-//! Per-frame drain for in-flight `spawn-async!` jobs. Arrival-driven, like
-//! the picker's spawned line source (`picker_source.rs`), with no `AsyncSource`
+//! Per-frame drain for in-flight background work with a Steel callback:
+//! `spawn-async!` jobs and `path-programs` scans. Arrival-driven, like the
+//! picker's spawned line source (`picker_source.rs`), with no `AsyncSource`
 //! entry, only a drain call from `drain_async_sources` (see
 //! `async_source.rs`'s module doc).
 
+use std::sync::Arc;
+
+use hume_platform::process::job::SpawnedJob;
+use hume_platform::snapshots::Snapshots;
 use hume_scripting::Rooted;
-use hume_scripting::host::async_callback_args;
+use hume_scripting::host::{async_callback_args, names_callback_args};
 
 use super::Editor;
 
-/// An in-flight `spawn-async!` job: the process handle plus the Steel
-/// callback to fire once it completes. Held in `ConfigState.async_jobs` so
-/// an abandoned job is killed for free on `:reload-config`: `ConfigState`'s
-/// wholesale rebuild drops the map, and `SpawnedJob::drop` kills the child.
-/// That teardown is mandatory, not incidental: `callback` belongs to the
-/// outgoing Steel engine and must never be invoked after it's gone, the
-/// same hazard `LspState::reset_config_state` documents for its own
-/// callback map.
+/// In-flight background work plus the Steel callback it reports to. Held
+/// in `ConfigState.async_jobs` so abandoned work stops for free on
+/// `:reload-config`: `ConfigState`'s wholesale rebuild drops the map,
+/// `SpawnedJob::drop` kills a child, and a dropped `Snapshots` stops its
+/// producer. That teardown is mandatory, not incidental: `callback`
+/// belongs to the outgoing Steel engine and must never be invoked after
+/// it's gone, the same hazard `LspState::reset_config_state` documents for
+/// its own callback map.
 pub(in crate::editor) struct PendingJob {
-    pub(in crate::editor) job: hume_platform::process::job::SpawnedJob,
+    pub(in crate::editor) work: AsyncWork,
     pub(in crate::editor) callback: Rooted,
+}
+
+pub(in crate::editor) enum AsyncWork {
+    /// A `spawn-async!` child, reported once, when it exits.
+    Process(SpawnedJob),
+    /// A background listing of names, reported as it grows: `(names
+    /// done?)`, with every name so far.
+    Names(Snapshots<Arc<[String]>>),
+}
+
+#[cfg(test)]
+impl PendingJob {
+    pub(in crate::editor) fn process(&self) -> &SpawnedJob {
+        match &self.work {
+            AsyncWork::Process(job) => job,
+            AsyncWork::Names(_) => panic!("not a process"),
+        }
+    }
 }
 
 impl Editor {
@@ -26,7 +49,9 @@ impl Editor {
     /// frame: `(stdout stderr exit-code)`, `exit-code` `#f` for a
     /// signal-killed child, a status the OS never returned, or a stdout
     /// read that failed or exceeded `JOB_STDOUT_CAP` (`stderr` then names
-    /// the failure instead of carrying the child's own diagnostics).
+    /// the failure instead of carrying the child's own diagnostics). A
+    /// listing's callback fires once per drain with news, with its latest
+    /// names, and the listing leaves the map once it reports `done?`.
     /// Queued via
     /// `queue_background_call`, never invoked inline: this runs from
     /// `drain_async_sources`, the same per-frame chokepoint the LSP/timer
@@ -42,20 +67,22 @@ impl Editor {
             let Some(pending) = self.state.config.async_jobs.get_mut(&id) else {
                 continue;
             };
-            let Some(result) = pending.job.try_take_result() else {
-                continue;
+            let (args, ended) = match &mut pending.work {
+                AsyncWork::Process(job) => match job.try_take_result() {
+                    Some(result) => (async_callback_args(result), true),
+                    None => continue,
+                },
+                AsyncWork::Names(names) => match names.try_take() {
+                    Some(progress) => (names_callback_args(&progress), progress.done),
+                    None => continue,
+                },
             };
-            let pending = self
-                .state
-                .config
-                .async_jobs
-                .remove(&id)
-                .expect("just found by get_mut above");
+            let callback = pending.callback.clone();
+            if ended {
+                self.state.config.async_jobs.remove(&id);
+            }
             self.state
-                .queue_background_call(hume_scripting::SteelCall::new(
-                    pending.callback,
-                    async_callback_args(result),
-                ));
+                .queue_background_call(hume_scripting::SteelCall::new(callback, args));
         }
     }
 }

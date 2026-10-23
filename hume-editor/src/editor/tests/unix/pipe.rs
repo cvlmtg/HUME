@@ -883,20 +883,37 @@ fn probe_path_dir() -> tempfile::TempDir {
     dir
 }
 
-#[test]
-fn tab_completes_a_program_name_from_path() {
-    let bin = probe_path_dir();
+/// An editor whose search path is `search_path`, with the shipped runtime.
+fn editor_searching(search_path: std::ffi::OsString) -> Editor {
     let mut ed = editor_from("-[abc]>\n");
     ed.state.dirs = Dirs {
-        search_path: Some(bin.path().into()),
+        search_path: Some(search_path),
         ..repo_runtime_dirs()
     };
     ed.init_scripting(&mut Default::default());
+    ed
+}
+
+/// Presses Tab and waits until the line's completion holds its whole
+/// answer, or has closed.
+fn tab_and_wait(ed: &mut Editor) {
+    ed.handle_key(key_tab());
+    drain_until(ed, |ed| {
+        ed.state
+            .input
+            .minibuf_completion()
+            .is_none_or(|session| !session.is_pending())
+    });
+}
+
+#[test]
+fn tab_completes_a_program_name_from_path() {
+    let bin = probe_path_dir();
+    let mut ed = editor_searching(bin.path().into());
     for line in ["hume-probe", "ls | hume-probe"] {
         ed.handle_key(key('|'));
         keys(&mut ed, line);
-        ed.handle_key(key_tab());
-        ed.settle();
+        tab_and_wait(&mut ed);
         assert_eq!(minibuf_input(&ed), format!("{line}-tool"));
         assert!(ed.state.input.minibuf_completion().is_none());
         ed.handle_key(key_esc());
@@ -907,16 +924,28 @@ fn tab_completes_a_program_name_from_path() {
 fn tab_completes_a_quoted_program_name_from_path() {
     let bin = probe_path_dir();
     let cwd = tempfile::tempdir().unwrap();
-    let mut ed = editor_from("-[abc]>\n");
-    ed.state.dirs = Dirs {
-        search_path: Some(bin.path().into()),
-        ..repo_runtime_dirs()
-    };
-    ed.init_scripting(&mut Default::default());
+    let mut ed = editor_searching(bin.path().into());
     ed.state.cwd = cwd.path().to_path_buf();
     ed.handle_key(key('|'));
     keys(&mut ed, "\"hume-probe");
-    ed.handle_key(key_tab());
-    ed.settle();
+    tab_and_wait(&mut ed);
     assert_eq!(minibuf_input(&ed), "\"hume-probe-tool\"");
+}
+
+#[test]
+fn tab_lists_the_programs_of_every_search_path_directory() {
+    let first = tempfile::tempdir().unwrap();
+    let second = tempfile::tempdir().unwrap();
+    write_program(first.path(), "hume-probe-alpine", 0o755);
+    write_program(second.path(), "hume-probe-alpha", 0o755);
+    let mut ed = editor_searching(std::env::join_paths([first.path(), second.path()]).unwrap());
+    ed.handle_key(key('|'));
+    keys(&mut ed, "hume-probe-al");
+    tab_and_wait(&mut ed);
+    assert_eq!(minibuf_input(&ed), "hume-probe-alp");
+    let session = ed.state.input.minibuf_completion().expect("popup open");
+    let names: Vec<&str> = (0..session.len())
+        .map(|row| session.selected_item(row).unwrap().insert_text())
+        .collect();
+    assert_eq!(names, ["hume-probe-alpha", "hume-probe-alpine"]);
 }

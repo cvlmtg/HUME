@@ -300,7 +300,7 @@ Full walkthroughs (batch vs. streaming population, truncation direction, exit-co
 | Call | Effect |
 |------|--------|
 | `(spawn-async! cmd args callback #:cwd dir)` | Run `cmd` in the background, in `dir` (default: HUME's working directory; a relative `dir` is joined onto it); `callback` (`(lambda (stdout stderr exit-code) ...)`) fires exactly once, later. Returns a job id for `cancel-async!`. A failed spawn doesn't raise: `callback` fires with empty stdout, the error in stderr, and exit code `#f`, which a signal-killed command also gets |
-| `(cancel-async! id)` | Kill a still-running `spawn-async!` job and drop its callback; idempotent |
+| `(cancel-async! id)` | Kill a still-running `spawn-async!` job, or stop a `path-programs` listing, and drop its callback; idempotent |
 | `(run-inline-output! cmd args #:cwd #:env)` | Run `cmd`, streaming output to the terminal inside an `#:inline-output` command; `#:env` is a list of `("KEY" . "VALUE")` pairs added to the environment; raises on nonzero exit |
 | `(run-capture! cmd args #:cwd dir)` | Run `cmd` in `dir` (default: HUME's working directory; a relative `dir` is joined onto it), blocking until it exits; returns `(hash 'stdout s 'stderr s 'exit code)`, with `'exit` `#f` when the spawn failed (stderr says why) or a signal killed the process |
 
@@ -340,7 +340,7 @@ Everyday string work (trimming, splitting on a separator, case conversion, prefi
 | `(path-join seg ...)` | Join path segments with the OS-native separator |
 | `(safe-path-segment? name)` | `#t` iff `name` is a string safe to use as one path component: not empty, not `.` or `..`, and free of a path separator, `:`, `"` and NUL; `#f` for anything else. Use it before joining a user-typed or downloaded name onto a path |
 | `(path-entries dir prefix)` | The names in directory `dir` (relative to the working directory) starting with `prefix` (ignoring letter case on Windows), sorted, each directory's ending in `/` (a link to a directory included), as `:e` completes them: hidden entries only when `prefix` starts with `.`. `'()` when `dir` can't be read |
-| `(path-programs prefix extensions)` | The programs on `PATH` whose names start with `prefix`, sorted. On Windows a program is a file ending in one of `extensions` (`'(".exe")`), named without it |
+| `(path-programs prefix extensions callback)` | List the programs on `PATH` whose names start with `prefix` in the background. `callback` (`(lambda (names done?) ...)`) is called as `PATH` is read, with every name found so far, sorted, and a last time with `done?` `#t`. Returns an id for `cancel-async!`. On Windows a program is a file ending in one of `extensions` (`'(".exe")`), named without it |
 | `(home-dir)` | The user's home directory, or `#f` when the environment names none |
 | `(path->display path)` | Run an absolute `path` string through HUME's display-form pipeline (Windows `\\?\` stripping, `~`-collapse); no filesystem access |
 | `(read-data-file path)` | The one Scheme value written in the file at `path`; `;` comments are allowed around it. Raises an error naming the file when its text doesn't parse or holds more than one value. Use it instead of Steel's `read` for data files: `read` returns end-of-file instead of raising on bad syntax, and leaves the bad text for the next `read` |

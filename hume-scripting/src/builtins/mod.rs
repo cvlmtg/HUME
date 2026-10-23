@@ -533,10 +533,12 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "after!" timers::after(ms: SteelVal, thunk: Rooted);
         cmd "cancel-timer!" timers::cancel_timer(id: SteelVal);
 
-        // Generic async subprocess execution: one-shot capture, not a
-        // streaming source (that's `picker-source-spawn!`'s shape).
+        // Background work with a callback, stopped by `cancel-async!`: a
+        // subprocess's one-shot capture (a streaming picker source is
+        // `picker-source-spawn!`'s shape) and a program scan's reports.
         cmd "%spawn-async!" process::spawn_async(cmd: SteelVal, args: SteelVal, cwd: SteelVal, callback: Rooted);
         cmd "cancel-async!" process::cancel_async(id: SteelVal);
+        cmd "path-programs" fs::path_programs(prefix: String, extensions: SteelVal, on_names: Rooted);
 
         // Blocking subprocess capture, no callback.
         // `open`, not `cmd`: Steel's own `spawn-process`/`wait`, which
@@ -564,7 +566,6 @@ pub(crate) fn register_all(steel: &mut Engine) {
         open "try-lock-file!" fs::try_lock_file(path: args::ScriptPath);
         open "unlock-file!" fs::unlock_file(path: args::ScriptPath);
         open "path-entries" fs::path_entries(dir: args::ScriptPath, prefix: String);
-        open "path-programs" fs::path_programs(prefix: String, extensions: SteelVal);
         open "%which" fs::which_program(name: String);
         plain "home-dir" fs::home_dir();
     }

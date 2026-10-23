@@ -84,10 +84,12 @@ The file holds, in order:
   the record and each text the dialect writes (a malformed one raises, naming the dialect),
   lists programs for a word in command position whose `dir` is empty (so `"gr` lists programs
   too) and directory entries otherwise (`path-programs`, `path-entries`, matched on values),
-  writes each name finished, gives a directory's item the LSP Folder kind, which the line's
-  Enter goes into, and with several names writes
-  their shared value prefix unfinished as `#:prefix`, so the first `Tab` inserts it, or `#f`
-  when that prefix adds nothing to what is typed, so no escaped text is cut. With no
+  answers with each `path-programs` report as one part (`#:more`) until the last, building
+  each name's item once, and stops the listing once an answer is dropped, writes each name
+  finished, gives a directory's item the LSP Folder kind, which the line's Enter goes into,
+  and with several names writes their shared value prefix unfinished as the last part's
+  `#:prefix`, so the first `Tab` inserts it, or `#f` when that prefix adds nothing to what is
+  typed, so no escaped text is cut. With no
   dialect for the shell it answers nothing, which closes the menu, and logs a warning the first
   time per `shell` program until the file is evaluated again: completing by another shell's
   rules could insert text this shell reads differently.

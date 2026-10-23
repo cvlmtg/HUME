@@ -81,14 +81,19 @@ fn path_programs_lists_the_programs_on_the_editor_search_path() {
     let tmp = tempfile::tempdir().unwrap();
     let bin = probe_dir();
     let mut ed = editor_searching(tmp.path(), bin.path());
-
-    let listed = log_probe(
+    run(
         &mut ed,
         tmp.path(),
-        r#"(apply string-append (path-programs "hume-search" '()))"#,
+        r#"(define-command! "go" "" (lambda ()
+             (path-programs "hume-search" '()
+               (lambda (names done?)
+                 (when done? (log! 'info (apply string-append names)))))))"#,
     );
 
-    assert_eq!(listed, PROBE);
+    call(&mut ed, "go");
+    drain_until(&mut ed, |ed| ed.state.status_msg.is_some());
+
+    assert_eq!(ed.state.status_msg.clone().unwrap(), PROBE);
 }
 
 #[test]

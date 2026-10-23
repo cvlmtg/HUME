@@ -289,42 +289,24 @@ fn path_entries_of_an_unreadable_directory_is_empty() {
     );
 }
 
-#[test]
-fn path_programs_with_no_search_path_is_empty() {
-    assert_eq!(
-        strings(programs_on(None, "", &[".exe".to_owned()])),
-        Vec::<String>::new()
-    );
-}
-
-#[cfg(unix)]
-#[test]
-fn path_programs_lists_the_programs_on_the_search_path() {
-    let bin = tempfile::tempdir().unwrap();
-    for (name, mode) in [
-        ("probe-run", 0o755),
-        ("probe-data", 0o644),
-        ("other", 0o755),
-    ] {
-        hume_platform::path::test_support::write_program(bin.path(), name, mode);
-    }
-    assert_eq!(
-        strings(programs_on(Some(bin.path().as_os_str()), "probe", &[])),
-        ["probe-run"]
-    );
+/// The error `source` raises under a host with no editor behind it.
+fn null_host_error(source: &str) -> String {
+    crate::ScriptingHost::new(&Dirs::none())
+        .eval_source_for_value(source, &mut crate::null_host::NullHost)
+        .expect_err(source)
+        .to_string()
 }
 
 #[test]
 fn path_programs_reads_its_extensions_as_strings() {
-    assert!(
-        crate::ScriptingHost::new(&Dirs::none())
-            .eval_source_for_value("(path-programs \"\" '(1))", &mut crate::null_host::NullHost)
-            .is_err()
-    );
-    assert!(matches!(
-        eval_value("(path-programs \"hume-no-such-program-\" '(\".exe\"))"),
-        SteelVal::ListV(l) if l.is_empty()
-    ));
+    let err = null_host_error("(path-programs \"\" '(1) (lambda (names done?) #t))");
+    assert!(!err.contains("not supported"), "{err}");
+}
+
+#[test]
+fn path_programs_raises_without_background_work() {
+    let err = null_host_error("(path-programs \"\" '(\".exe\") (lambda (names done?) #t))");
+    assert!(err.contains("path-programs: not supported"), "{err}");
 }
 
 #[test]

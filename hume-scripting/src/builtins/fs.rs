@@ -28,7 +28,7 @@
 //! | `path->display` | `string → string`               | UNC-strip + `~`-collapse; no filesystem access |
 //! | `safe-path-segment?` | `any → bool`              | `#t` for a string safe as one path segment   |
 //! | `path-entries`  | `string string → list`         | What a typed path completes to, as `:e` lists it |
-//! | `path-programs` | `string list → list`           | Programs on the search path by name prefix   |
+//! | `path-programs` | `string list proc → int`       | Lists the search path's programs by name prefix in the background |
 //! | `%which`        | `string → string \| #f`        | Where a program runs from; backs the `which` shim |
 //! | `home-dir`      | `() → string \| #f`            | The user's home directory                    |
 //!
@@ -45,7 +45,7 @@ use crate::SteelCtx;
 
 use super::SteelResult;
 use super::args::{list_to_strings, string_list};
-use super::errors::generic_err;
+use super::errors::{generic_err, require_cap};
 
 // ── data-dir / runtime-dir ───────────────────────────────────────────────────
 
@@ -232,20 +232,23 @@ pub(crate) fn path_entries(_ctx: &mut SteelCtx, dir: PathBuf, prefix: String) ->
     )))
 }
 
-/// `(path-programs prefix extensions)`: the programs on the editor's search
-/// path whose names start with `prefix`; `extensions` (`".exe"`, …) are the
-/// file extensions that name a program on Windows.
+/// `(path-programs prefix extensions on-names)`: lists the programs on the
+/// editor's search path whose names start with `prefix` in the background,
+/// calling `(on-names names done?)` as they are found
+/// ([`AsyncProcessHost::scan_programs`](crate::host::AsyncProcessHost::scan_programs)),
+/// and returns the id `cancel-async!` stops it by. `extensions` (`".exe"`,
+/// …) are the file extensions that name a program on Windows.
 pub(crate) fn path_programs(
     ctx: &mut SteelCtx,
     prefix: String,
     extensions: SteelVal,
+    on_names: crate::Rooted,
 ) -> SteelResult {
     let extensions = list_to_strings(extensions, "path-programs")?;
-    Ok(programs_on(
-        ctx.host.buffers().search_path().as_deref(),
-        &prefix,
-        &extensions,
-    ))
+    let id = require_cap(ctx.host.async_process(), "path-programs")?
+        .scan_programs(prefix, extensions, on_names)
+        .map_err(generic_err)?;
+    Ok(SteelVal::IntV(id as isize))
 }
 
 /// `(%which name)`, which the prelude's `which` calls: the program `name`
@@ -258,20 +261,6 @@ pub(crate) fn which_program(ctx: &mut SteelCtx, name: String) -> SteelResult {
         .search_path()
         .and_then(|path| ::which::which_in(&name, Some(path), buffers.cwd()).ok());
     dir_builtin(found.as_deref())
-}
-
-/// Testable core of [`path_programs`]: the programs on `search_path`, `'()`
-/// without one.
-fn programs_on(
-    search_path: Option<&std::ffi::OsStr>,
-    prefix: &str,
-    extensions: &[String],
-) -> SteelVal {
-    let mut names = hume_platform::path::programs::ProgramNames::default();
-    for dir in search_path.into_iter().flat_map(std::env::split_paths) {
-        names.scan_dir(&dir, prefix, extensions);
-    }
-    string_list(names.sorted().to_vec())
 }
 
 /// `(home-dir)`: the user's home directory, or `#f` when the environment

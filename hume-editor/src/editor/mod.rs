@@ -174,13 +174,14 @@ pub(crate) struct ConfigState {
     /// it at the tail of `apply_script_effects`. Nothing drains it while no
     /// scripting host is attached.
     pub(in crate::editor) pending_language_detection: Vec<hume_engine::pipeline::BufferId>,
-    /// In-flight `spawn-async!` jobs, keyed by the id `spawn-async!`
-    /// returned to Steel. Drained by `Editor::drain_async_jobs`; dropping
-    /// this map (a `:reload-config` wholesale rebuild) kills every
-    /// in-flight child for free; see `async_job::PendingJob`'s doc.
+    /// In-flight `spawn-async!` jobs and `path-programs` scans, keyed by
+    /// the id their builtin returned to Steel. Drained by
+    /// `Editor::drain_async_jobs`; dropping this map (a `:reload-config`
+    /// wholesale rebuild) stops all of them for free; see
+    /// `async_job::PendingJob`'s doc.
     pub(in crate::editor) async_jobs: rustc_hash::FxHashMap<u64, async_job::PendingJob>,
-    /// Monotonic counter minting the next `spawn-async!` job id. Mirrors
-    /// the picker's `token`/timer's `TimerId` shape, but lives here (rather
+    /// Monotonic counter minting the next id in `async_jobs`. Mirrors the
+    /// picker's `token`/timer's `TimerId` shape, but lives here (rather
     /// than reusing either) since a job id is neither.
     pub(in crate::editor) next_async_job_id: u64,
 }

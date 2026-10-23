@@ -10,10 +10,12 @@
 - Plugin code that runs later (debounced and timed functions, background process and language server replies, picker actions) no longer reads wrong values or crashes HUME after a while.
 - `core:git-diff`'s inline diff keeps its word highlights when the machine is busy.
 - A completion item whose range a language server sent backwards no longer moves the completion menu.
+- `Tab` on the `|` prompt lists programs as it finds them, so HUME keeps responding on a slow `PATH`, like WSL's Windows directories.
 
 ### Breaking changes
 - `(hume/yield!)` is gone: the script budget stops a script on its own, so delete any call to it.
 - `stdlib/run!` is gone: call `run-capture!`, the function it named.
+- `path-programs` lists in the background: it takes a callback, `(lambda (names done?) ...)`, called with the names found so far, and returns an id for `cancel-async!`. Move code that used its result into the callback, and use `names` once `done?` is `#t`.
 
 ### Plugins & scripting
 - `steel-command-budget-ms` and `steel-init-budget-ms` stop a script that runs past them, so a plugin stuck in a loop can't freeze HUME. Time spent waiting for a program or deleting a directory tree doesn't count.

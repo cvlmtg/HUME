@@ -1,10 +1,20 @@
-//! `EditorHostImpl`'s async subprocess execution (`spawn-async!`/`cancel-async!`).
+//! `EditorHostImpl`'s background work with a Steel callback
+//! (`spawn-async!`, `path-programs`, `cancel-async!`).
 
 use std::path::PathBuf;
 
 use super::EditorHostImpl;
+use crate::editor::async_job::{AsyncWork, PendingJob};
 use hume_platform::process::job::JobResult;
 use hume_scripting::host::{AsyncProcessHost, async_callback_args};
+
+impl EditorHostImpl<'_> {
+    fn next_async_job_id(&mut self) -> u64 {
+        let id = self.state.config.next_async_job_id;
+        self.state.config.next_async_job_id += 1;
+        id
+    }
+}
 
 impl<'a> AsyncProcessHost for EditorHostImpl<'a> {
     fn spawn_async(
@@ -14,8 +24,7 @@ impl<'a> AsyncProcessHost for EditorHostImpl<'a> {
         cwd: PathBuf,
         callback: hume_scripting::Rooted,
     ) -> u64 {
-        let id = self.state.config.next_async_job_id;
-        self.state.config.next_async_job_id += 1;
+        let id = self.next_async_job_id();
 
         let launch = hume_platform::process::Launch {
             cwd: &cwd,
@@ -29,10 +38,13 @@ impl<'a> AsyncProcessHost for EditorHostImpl<'a> {
             std::sync::Arc::clone(&self.state.wake),
         ) {
             Ok(job) => {
-                self.state
-                    .config
-                    .async_jobs
-                    .insert(id, crate::editor::async_job::PendingJob { job, callback });
+                self.state.config.async_jobs.insert(
+                    id,
+                    PendingJob {
+                        work: AsyncWork::Process(job),
+                        callback,
+                    },
+                );
             }
             // Spawn failed before a job/callback contract could exist: fire
             // the callback right here rather than leaving it unfired, with
@@ -57,11 +69,36 @@ impl<'a> AsyncProcessHost for EditorHostImpl<'a> {
         id
     }
 
+    fn scan_programs(
+        &mut self,
+        prefix: String,
+        extensions: Vec<String>,
+        callback: hume_scripting::Rooted,
+    ) -> Result<u64, String> {
+        let names = hume_platform::path::programs::spawn_program_scan(
+            self.state.dirs.search_path.clone(),
+            prefix,
+            extensions,
+            std::sync::Arc::clone(&self.state.wake),
+        )
+        .map_err(|e| format!("path-programs: the scan could not start: {e}"))?;
+        let id = self.next_async_job_id();
+        self.state.config.async_jobs.insert(
+            id,
+            PendingJob {
+                work: AsyncWork::Names(names),
+                callback,
+            },
+        );
+        Ok(id)
+    }
+
     fn cancel_async(&mut self, id: u64) {
-        // Dropping the entry drops its `SpawnedJob` (kills + reaps the
-        // child) and its callback without ever calling it: a
-        // no-op if `id` already completed, was already cancelled, or never
-        // existed (a spawn failure that already fired its callback above).
+        // Dropping the entry drops its work (a `SpawnedJob` kills and reaps
+        // its child, a `Snapshots` stops its producer) and its callback
+        // without ever calling it: a no-op if `id` already completed, was
+        // already cancelled, or never existed (a spawn failure that already
+        // fired its callback above).
         self.state.config.async_jobs.remove(&id);
     }
 }

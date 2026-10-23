@@ -7,6 +7,7 @@ use super::*;
 
 use std::time::{Duration, Instant};
 
+use hume_platform::path::test_support::write_program;
 use hume_scripting::host::AsyncProcessHost;
 use steel::rvals::SteelVal;
 
@@ -114,7 +115,7 @@ fn cancel_kills_the_child_and_drops_the_callback_without_firing_it() {
         .async_jobs
         .get(&id)
         .expect("job registered")
-        .job
+        .process()
         .pid();
 
     let started = Instant::now();
@@ -141,4 +142,72 @@ fn cancel_on_an_unknown_id_is_a_silent_no_op() {
     let mut ed = editor_from("-[a]>bc\n");
     EditorHostImpl::new(&mut ed.state, &mut ed.view).cancel_async(999);
     assert!(ed.state.config.pending_work.is_empty());
+}
+
+// ── Program scans ────────────────────────────────────────────────────────────
+
+fn scan_programs(ed: &mut Editor, prefix: &str) -> u64 {
+    EditorHostImpl::new(&mut ed.state, &mut ed.view)
+        .scan_programs(
+            prefix.to_owned(),
+            Vec::new(),
+            hume_scripting::Rooted::new(SteelVal::BoolV(false)),
+        )
+        .expect("scan started")
+}
+
+/// The `(names done?)` of every queued callback, in order.
+fn scan_reports(ed: &Editor) -> Vec<(Vec<String>, bool)> {
+    pending_calls(ed)
+        .into_iter()
+        .map(|(_, args)| match args.as_slice() {
+            [SteelVal::ListV(names), SteelVal::BoolV(done)] => (
+                names
+                    .iter()
+                    .map(|name| match name {
+                        SteelVal::StringV(s) => s.to_string(),
+                        other => panic!("not a name: {other:?}"),
+                    })
+                    .collect(),
+                *done,
+            ),
+            other => panic!("not a scan report: {other:?}"),
+        })
+        .collect()
+}
+
+#[test]
+fn a_program_scan_reports_until_done_then_leaves_the_registry() {
+    let first = tempfile::tempdir().unwrap();
+    let second = tempfile::tempdir().unwrap();
+    write_program(first.path(), "hume-scan-zeta", 0o755);
+    write_program(second.path(), "hume-scan-alpha", 0o755);
+    let mut ed = editor_from("-[a]>bc\n");
+    ed.state.dirs.search_path = Some(std::env::join_paths([first.path(), second.path()]).unwrap());
+    let id = scan_programs(&mut ed, "hume-scan");
+
+    drain_sources_until(&mut ed, |ed| {
+        scan_reports(ed).last().is_some_and(|(_, done)| *done)
+    });
+
+    assert!(!ed.state.config.async_jobs.contains_key(&id));
+    let reports = scan_reports(&ed);
+    let (last, earlier) = reports.split_last().expect("a report");
+    assert_eq!(last.0, ["hume-scan-alpha", "hume-scan-zeta"]);
+    assert!(earlier.iter().all(|(_, done)| !done));
+}
+
+#[test]
+fn cancel_async_stops_a_program_scan() {
+    let bin = tempfile::tempdir().unwrap();
+    write_program(bin.path(), "hume-scan-probe", 0o755);
+    let mut ed = editor_from("-[a]>bc\n");
+    ed.state.dirs.search_path = Some(bin.path().into());
+    let id = scan_programs(&mut ed, "hume-scan");
+
+    EditorHostImpl::new(&mut ed.state, &mut ed.view).cancel_async(id);
+    ed.drain_async_sources();
+
+    assert!(!ed.state.config.async_jobs.contains_key(&id));
+    assert!(pending_calls(&ed).is_empty());
 }
