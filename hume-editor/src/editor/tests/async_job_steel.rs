@@ -6,10 +6,6 @@
 
 use super::*;
 
-fn call(ed: &mut Editor, name: &str) {
-    ed.execute_keymap_command(name.to_string().into(), None, false);
-}
-
 #[test]
 fn cancel_async_on_an_unknown_id_is_a_silent_no_op() {
     let tmp = tempfile::tempdir().unwrap();

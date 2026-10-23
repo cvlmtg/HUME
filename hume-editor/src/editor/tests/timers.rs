@@ -5,8 +5,6 @@ use super::*;
 use hume_platform::dirs::Dirs;
 use hume_scripting::ScriptingHost;
 
-use crate::editor::tests::editor_cwd::call;
-
 #[test]
 fn after_fires_once_past_its_deadline() {
     let tmp = tempfile::tempdir().unwrap();

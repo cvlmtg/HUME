@@ -9,8 +9,6 @@ use crate::editor::settings::CommandCompletion;
 use hume_editing::text::BufferText;
 use pretty_assertions::assert_eq;
 
-use crate::editor::tests::editor_cwd::call;
-
 /// `:` then `input`, through `handle_key`.
 fn command_line(ed: &mut Editor, input: &str) {
     ed.handle_key(key(':'));

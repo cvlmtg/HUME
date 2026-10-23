@@ -9,10 +9,6 @@ use std::time::{Duration, Instant};
 use super::*;
 use hume_engine::pipeline::RenderContext;
 
-fn call(ed: &mut Editor, name: &str) {
-    ed.execute_keymap_command(name.to_string().into(), None, false);
-}
-
 fn editor_with(source: &str) -> (Editor, tempfile::TempDir) {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bc\n");

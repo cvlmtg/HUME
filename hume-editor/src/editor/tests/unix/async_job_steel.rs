@@ -10,10 +10,6 @@ use hume_platform::wake::counting_wake;
 
 use super::*;
 
-fn call(ed: &mut Editor, name: &str) {
-    ed.execute_keymap_command(name.to_string().into(), None, false);
-}
-
 #[test]
 fn happy_path_delivers_stdout_stderr_and_exit_code() {
     let tmp = tempfile::tempdir().unwrap();

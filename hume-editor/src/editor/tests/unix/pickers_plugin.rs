@@ -27,10 +27,6 @@ const PICKERS_PLUGIN: &str = include_str!(concat!(
     "/../runtime/plugins/core/pickers/plugin.scm"
 ));
 
-fn call(ed: &mut Editor, name: &str) {
-    ed.execute_keymap_command(name.to_string().into(), None, false);
-}
-
 /// Load the real `core:pickers` plugin, plus `extra_source` appended to the
 /// same init.scm (evaluated after the plugin, so `call!`-dispatchable
 /// commands the plugin registered are reachable by name (see the module

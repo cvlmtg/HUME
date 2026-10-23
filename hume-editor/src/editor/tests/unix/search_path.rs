@@ -3,7 +3,7 @@
 // the editor's search path names.
 
 use super::*;
-use crate::editor::tests::editor_cwd::{call, editor_in};
+use crate::editor::tests::editor_cwd::editor_in;
 
 const PROBE: &str = "hume-search-path-probe";
 

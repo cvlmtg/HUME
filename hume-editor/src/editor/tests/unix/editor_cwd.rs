@@ -3,7 +3,7 @@
 // `state.cwd` directly and the two directories differ.
 
 use super::*;
-use crate::editor::tests::editor_cwd::{call, canonical, editor_in, relative_display_path};
+use crate::editor::tests::editor_cwd::{canonical, editor_in, relative_display_path};
 
 #[test]
 fn spawn_async_defaults_to_the_editor_cwd() {

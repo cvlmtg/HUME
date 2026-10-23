@@ -1311,6 +1311,11 @@ fn install_source(
     ed.detect_pending_languages();
 }
 
+/// Runs the command `name`, as a key bound to it would.
+fn call(ed: &mut Editor, name: &str) {
+    ed.execute_keymap_command(name.to_string().into(), None, false);
+}
+
 /// Evaluates `source` against the editor's `ScriptingHost`, or a fresh one
 /// installed on `ed` when it has none, for a test that only needs a
 /// command/plugin defined, not a probe wrapped around one. An editor keeps
