@@ -674,28 +674,11 @@ fn git_modified_picker_invalid_untracked_config_fails_load() {
     let guard = RuntimeDirs::new();
     write_core_plugin(&guard, "pickers", PICKERS_PLUGIN);
     write_core_plugin(&guard, "stdlib", STDLIB_PLUGIN);
-    let tmp = tempfile::tempdir().unwrap();
-    let init_path = tmp.path().join("init.scm");
-    std::fs::write(
-        &init_path,
+    assert_core_plugin_load_fails(
+        guard.dirs(),
         "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:pickers\" #:config (hash \"untracked\" 'bogus))",
-    )
-    .unwrap();
-
-    let mut ed = editor_from("-[h]>ello\n");
-    ed.state.dirs = guard.dirs();
-    let mut host = ScriptingHost::new(&ed.state.dirs);
-    let result = {
-        let mut ih = init_host!(ed);
-        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
-    };
-    result.expect("a failed plugin load must be contained, not abort eval_init");
-    assert!(
-        host.peek_pending_messages().iter().any(|(level, msg)| {
-            matches!(level, hume_scripting::LogLevel::Error) && msg.contains("untracked")
-        }),
-        "error must name the offending config key, not just fail generically; got: {:?}",
-        host.peek_pending_messages()
+        "pickers",
+        &["untracked"],
     );
 }
 
@@ -708,24 +691,11 @@ fn missing_stdlib_errors_at_load() {
     let guard = RuntimeDirs::new();
     write_core_plugin(&guard, "pickers", PICKERS_PLUGIN);
     // No `write_core_plugin(&guard, "stdlib", ...)`: the test covers its absence.
-    let tmp = tempfile::tempdir().unwrap();
-    let init_path = tmp.path().join("init.scm");
-    std::fs::write(&init_path, "(load-plugin! \"core:pickers\")").unwrap();
-
-    let mut ed = editor_from("-[h]>ello\n");
-    ed.state.dirs = guard.dirs();
-    let mut host = ScriptingHost::new(&ed.state.dirs);
-    let result = {
-        let mut ih = init_host!(ed);
-        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
-    };
-    result.expect("a failed plugin load must be contained, not abort eval_init");
-    assert!(
-        host.peek_pending_messages().iter().any(|(level, msg)| {
-            matches!(level, hume_scripting::LogLevel::Error) && msg.contains("core:stdlib")
-        }),
-        "error must name the missing dependency; got: {:?}",
-        host.peek_pending_messages()
+    assert_core_plugin_load_fails(
+        guard.dirs(),
+        "(load-plugin! \"core:pickers\")",
+        "pickers",
+        &["core:stdlib"],
     );
 }
 

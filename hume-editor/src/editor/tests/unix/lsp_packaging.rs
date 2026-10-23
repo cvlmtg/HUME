@@ -325,28 +325,10 @@ fn every_default_lsp_binding_dispatches_without_error() {
 #[test]
 fn missing_stdlib_errors_at_load() {
     let guard = RealRuntimeDirs::new();
-    let tmp = tempfile::tempdir().unwrap();
-    let init_path = tmp.path().join("init.scm");
-    std::fs::write(
-        &init_path,
+    assert_core_plugin_load_fails(
+        guard.dirs(),
         r#"(load-plugin! "core:lsp") (%activate-plugin-inline! "core:lsp" #f)"#,
-    )
-    .unwrap();
-
-    let mut ed = editor_from("-[h]>ello\n");
-    ed.state.dirs = guard.dirs();
-    let mut host = ScriptingHost::new(&ed.state.dirs);
-    let result = {
-        let mut ih = init_host!(ed);
-        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
-    };
-    result.expect("a failed plugin load must be contained, not abort eval_init");
-    assert!(
-        host.peek_pending_messages().iter().any(|(level, msg)| {
-            matches!(level, hume_scripting::LogLevel::Error) && msg.contains("core:stdlib")
-        }),
-        "error must name the missing dependency; got: {:?}",
-        host.peek_pending_messages()
+        "lsp",
+        &["core:stdlib"],
     );
-    drop(guard);
 }

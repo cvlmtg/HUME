@@ -1369,36 +1369,15 @@ fn git_branch_element_uses_the_icon_style_when_configured() {
 
 #[test]
 fn bad_branch_style_fails_plugin_load_with_prefixed_error() {
-    let tmp = tempfile::tempdir().unwrap();
-    let _guard = RealRuntimeDirs::new();
-    let init_path = tmp.path().join("init.scm");
-    std::fs::write(
-        &init_path,
-        format!(
+    let guard = RealRuntimeDirs::new();
+    assert_core_plugin_load_fails(
+        guard.dirs(),
+        &format!(
             "(load-plugin! \"core:stdlib\")\n{}",
             hume_scripting::eager_load_scm("core:git-diff", Some("(hash \"branch-style\" 'bogus)"))
         ),
-    )
-    .unwrap();
-
-    let mut ed = editor_from("-[a]>b\n");
-    ed.state.dirs = _guard.dirs();
-    let mut host = ScriptingHost::new(&ed.state.dirs);
-    {
-        let mut ih = init_host!(ed);
-        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
-    }
-    .expect("a failed plugin load must be contained, not abort eval_init");
-
-    assert!(
-        host.peek_pending_messages().iter().any(|(level, msg)| {
-            matches!(level, hume_scripting::LogLevel::Error)
-                && msg.contains("core:git-diff")
-                && msg.contains("branch-style")
-                && msg.contains("must be one of 'parens, 'icon")
-        }),
-        "got {:?}",
-        host.peek_pending_messages()
+        "git-diff",
+        &["branch-style", "must be one of 'parens, 'icon"],
     );
 }
 
@@ -1575,57 +1554,15 @@ fn config_flips_default_signs_and_inline() {
 
 #[test]
 fn bad_config_value_fails_plugin_load_with_prefixed_error() {
-    use hume_scripting::PluginStatus;
-    use hume_scripting::attribution::PluginId;
-
-    let tmp = tempfile::tempdir().unwrap();
-    let _guard = RealRuntimeDirs::new();
-    let init_path = tmp.path().join("init.scm");
-    std::fs::write(
-        &init_path,
-        format!(
+    let guard = RealRuntimeDirs::new();
+    assert_core_plugin_load_fails(
+        guard.dirs(),
+        &format!(
             "(load-plugin! \"core:stdlib\")\n{}",
             hume_scripting::eager_load_scm("core:git-diff", Some("(hash \"signs\" \"yes\")"))
         ),
-    )
-    .unwrap();
-
-    let mut ed = editor_from("-[a]>b\n");
-    ed.state.dirs = _guard.dirs();
-    let mut host = ScriptingHost::new(&ed.state.dirs);
-    let effects = {
-        let mut ih = init_host!(ed);
-        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
-    }
-    .expect("a failed plugin load must be contained, not abort eval_init");
-
-    // eval_init queues log messages on the host (ctx.log) rather than
-    // writing ed.state.message_log directly. Only Editor::init_scripting's
-    // tail code flushes that queue, which this test bypasses by calling
-    // eval_init directly, so check the host's queue itself.
-    assert!(
-        host.peek_pending_messages().iter().any(|(level, msg)| {
-            matches!(level, hume_scripting::LogLevel::Error)
-                && msg.contains("core:git-diff")
-                && msg.contains("must be #t or #f")
-        }),
-        "error must carry the plugin's own prefixed message; got {:?}",
-        host.peek_pending_messages()
-    );
-
-    ed.apply_script_effects(effects);
-    ed.scripting = Some(host);
-
-    let id = PluginId::Core("git-diff".to_string());
-    assert!(
-        matches!(
-            ed.scripting
-                .as_ref()
-                .unwrap()
-                .plugin_status(&hume_scripting::attribution::EntryId::main(id.clone())),
-            Some(PluginStatus::Failed)
-        ),
-        "core:git-diff must be marked Failed after its body raises"
+        "git-diff",
+        &["must be #t or #f"],
     );
 }
 
@@ -1635,30 +1572,13 @@ fn bad_config_value_fails_plugin_load_with_prefixed_error() {
 /// before any of its config reads ever reach `call!`.
 #[test]
 fn missing_stdlib_errors_at_load() {
-    let tmp = tempfile::tempdir().unwrap();
-    let _guard = RealRuntimeDirs::new();
-    let init_path = tmp.path().join("init.scm");
+    let guard = RealRuntimeDirs::new();
     // No `(load-plugin! "core:stdlib")`: the test covers its absence.
-    std::fs::write(
-        &init_path,
+    assert_core_plugin_load_fails(
+        guard.dirs(),
         r#"(load-plugin! "core:git-diff") (%activate-plugin-inline! "core:git-diff" #f)"#,
-    )
-    .unwrap();
-
-    let mut ed = editor_from("-[a]>b\n");
-    ed.state.dirs = _guard.dirs();
-    let mut host = ScriptingHost::new(&ed.state.dirs);
-    {
-        let mut ih = init_host!(ed);
-        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
-    }
-    .expect("a failed plugin load must be contained, not abort eval_init");
-    assert!(
-        host.peek_pending_messages().iter().any(|(level, msg)| {
-            matches!(level, hume_scripting::LogLevel::Error) && msg.contains("core:stdlib")
-        }),
-        "error must name the missing dependency; got: {:?}",
-        host.peek_pending_messages()
+        "git-diff",
+        &["core:stdlib"],
     );
 }
 

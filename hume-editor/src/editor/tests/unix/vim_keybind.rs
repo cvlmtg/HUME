@@ -434,98 +434,42 @@ fn smart_change_to_eol_without_stdlib_errors_at_load() {
     let guard = RuntimeDirs::new();
     write_core_plugin(&guard, "vim-keybind", VIM_KEYBIND_PLUGIN);
     // No `write_core_plugin(&guard, "stdlib", ...)`: the test covers its absence.
-
-    let init_dir = tempfile::tempdir().unwrap();
-    let init_path = init_dir.path().join("init.scm");
-    std::fs::write(&init_path, r#"(load-plugin! "core:vim-keybind")"#).unwrap();
-
-    let mut ed = editor_from("-[h]>ello\n");
-    ed.state.dirs = guard.dirs();
-    let mut host = ScriptingHost::new(&ed.state.dirs);
-    {
-        let mut ih = init_host!(ed);
-        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
-    }
-    .expect("a failed plugin load must be contained, not abort eval_init");
-    assert!(
-        host.peek_pending_messages().iter().any(|(level, msg)| {
-            matches!(level, hume_scripting::LogLevel::Error) && msg.contains("core:stdlib")
-        }),
-        "error must name the missing dependency; got: {:?}",
-        host.peek_pending_messages()
+    assert_core_plugin_load_fails(
+        guard.dirs(),
+        r#"(load-plugin! "core:vim-keybind")"#,
+        "vim-keybind",
+        &["core:stdlib"],
     );
 }
 
 /// `core:vim-keybind`'s `core:stdlib` guard is unconditional (its config
 /// read always calls `stdlib/config-enum`, whatever `change-to-eol` resolves
-/// to). `'off` fails to load without `core:stdlib` too, naming it. Replaces
-/// the former `change_to_eol_off_does_not_require_stdlib`, which pinned the
-/// opposite contract from when only `'smart` depended on `core:stdlib`.
+/// to). `'off` fails to load without `core:stdlib` too, naming it.
 #[test]
 fn change_to_eol_off_also_requires_stdlib() {
     let guard = RuntimeDirs::new();
     write_core_plugin(&guard, "vim-keybind", VIM_KEYBIND_PLUGIN);
     // No `write_core_plugin(&guard, "stdlib", ...)`: the test covers its absence.
-
-    let init_dir = tempfile::tempdir().unwrap();
-    let init_path = init_dir.path().join("init.scm");
-    std::fs::write(
-        &init_path,
+    assert_core_plugin_load_fails(
+        guard.dirs(),
         r#"(load-plugin! "core:vim-keybind" #:config (hash "change-to-eol" 'off))"#,
-    )
-    .unwrap();
-
-    let mut ed = editor_from("-[h]>ello\n");
-    ed.state.dirs = guard.dirs();
-    let mut host = ScriptingHost::new(&ed.state.dirs);
-    {
-        let mut ih = init_host!(ed);
-        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
-    }
-    .expect("a failed plugin load must be contained, not abort eval_init");
-    assert!(
-        host.peek_pending_messages().iter().any(|(level, msg)| {
-            matches!(level, hume_scripting::LogLevel::Error) && msg.contains("core:stdlib")
-        }),
-        "error must name the missing dependency; got: {:?}",
-        host.peek_pending_messages()
+        "vim-keybind",
+        &["core:stdlib"],
     );
 }
 
-/// A `change-to-eol` value outside `'on`/`'smart`/`'off` must fail the load
-/// with `stdlib/config-enum`'s message (naming the plugin, the key, and the
-/// offending value) rather than the dispatch `cond`'s old `else` arm (now
-/// dead: `config-enum` has already rejected anything not in the allowed set).
+/// A `change-to-eol` value outside `'on`/`'smart`/`'off` fails the load with
+/// `stdlib/config-enum`'s message, naming the plugin, the key, and the
+/// offending value.
 #[test]
 fn change_to_eol_bogus_value_fails_load_with_enum_message() {
     let guard = RuntimeDirs::new();
     write_core_plugin(&guard, "vim-keybind", VIM_KEYBIND_PLUGIN);
     write_core_plugin(&guard, "stdlib", STDLIB_PLUGIN);
-
-    let init_dir = tempfile::tempdir().unwrap();
-    let init_path = init_dir.path().join("init.scm");
-    std::fs::write(
-        &init_path,
+    assert_core_plugin_load_fails(
+        guard.dirs(),
         "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:vim-keybind\" #:config (hash \"change-to-eol\" 'bogus))",
-    )
-    .unwrap();
-
-    let mut ed = editor_from("-[h]>ello\n");
-    ed.state.dirs = guard.dirs();
-    let mut host = ScriptingHost::new(&ed.state.dirs);
-    {
-        let mut ih = init_host!(ed);
-        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
-    }
-    .expect("a failed plugin load must be contained, not abort eval_init");
-    assert!(
-        host.peek_pending_messages().iter().any(|(level, msg)| {
-            matches!(level, hume_scripting::LogLevel::Error)
-                && msg.contains("core:vim-keybind")
-                && msg.contains("change-to-eol")
-                && msg.contains("bogus")
-        }),
-        "error must name the plugin, the key, and the offending value; got: {:?}",
-        host.peek_pending_messages()
+        "vim-keybind",
+        &["change-to-eol", "bogus"],
     );
 }

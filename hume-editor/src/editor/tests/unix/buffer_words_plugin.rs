@@ -559,77 +559,27 @@ fn a_combining_mark_stays_attached_to_its_word() {
 
 #[test]
 fn an_invalid_match_config_fails_the_load() {
-    assert_config_fails_the_load(r#"(hash "match" 'regex)"#, "must be one of");
+    let guard = RuntimeDirs::new();
+    write_core_plugin(&guard, "buffer-words", BUFFER_WORDS_PLUGIN);
+    write_core_plugin(&guard, "stdlib", STDLIB_PLUGIN);
+    assert_core_plugin_load_fails(
+        guard.dirs(),
+        r#"(load-plugin! "core:stdlib") (load-plugin! "core:buffer-words" #:config (hash "match" 'regex))"#,
+        "buffer-words",
+        &["must be one of"],
+    );
 }
 
 #[test]
 fn a_chars_budget_below_one_fails_the_load() {
-    assert_config_fails_the_load(r#"(hash "chars" 0)"#, "must be an integer >= 1");
-}
-
-/// Loads `core:buffer-words` with `config_expr` through `eval_init` and
-/// asserts the load is contained as a `Failed` plugin whose error names the
-/// plugin and contains `expected`.
-fn assert_config_fails_the_load(config_expr: &str, expected: &str) {
-    use hume_scripting::PluginStatus;
-    use hume_scripting::attribution::PluginId;
-
-    let tmp = tempfile::tempdir().unwrap();
     let guard = RuntimeDirs::new();
     write_core_plugin(&guard, "buffer-words", BUFFER_WORDS_PLUGIN);
     write_core_plugin(&guard, "stdlib", STDLIB_PLUGIN);
-
-    let init_path = tmp.path().join("init.scm");
-    std::fs::write(
-        &init_path,
-        format!(
-            "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:buffer-words\" #:config {config_expr})"
-        ),
-    )
-    .unwrap();
-
-    let mut ed = Editor::open(
-        None,
-        crate::editor::run::HEADLESS_TERMINAL,
-        no_op_wake(),
+    assert_core_plugin_load_fails(
         guard.dirs(),
-        test_cwd(),
-    )
-    .unwrap();
-    let mut host = ScriptingHost::new(&ed.state.dirs);
-    let effects = {
-        let mut ih = init_host!(ed);
-        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
-    }
-    .expect("a failed plugin load must be contained, not abort eval_init");
-
-    // eval_init queues log messages on the host (ctx.log) rather than
-    // writing ed.state.message_log directly. Only Editor::init_scripting's
-    // tail code flushes that queue, which this test bypasses by calling
-    // eval_init directly, so check the host's queue itself.
-    assert!(
-        host.peek_pending_messages().iter().any(|(level, msg)| {
-            matches!(level, hume_scripting::LogLevel::Error)
-                && msg.contains("core:buffer-words")
-                && msg.contains(expected)
-        }),
-        "error must carry the plugin's own prefixed message; got {:?}",
-        host.peek_pending_messages()
-    );
-
-    ed.apply_script_effects(effects);
-    ed.scripting = Some(host);
-
-    let id = PluginId::Core("buffer-words".to_string());
-    assert!(
-        matches!(
-            ed.scripting
-                .as_ref()
-                .unwrap()
-                .plugin_status(&hume_scripting::attribution::EntryId::main(id.clone())),
-            Some(PluginStatus::Failed)
-        ),
-        "core:buffer-words must be marked Failed after its body raises"
+        r#"(load-plugin! "core:stdlib") (load-plugin! "core:buffer-words" #:config (hash "chars" 0))"#,
+        "buffer-words",
+        &["must be an integer >= 1"],
     );
 }
 

@@ -121,6 +121,45 @@ fn write_core_plugin(dirs: &RuntimeDirs, name: &str, source: &str) {
     std::fs::write(plugin_dir.join("plugin.scm"), source).unwrap();
 }
 
+/// Evaluates `init` as an `init.scm` under `dirs` and asserts the load of
+/// `core:<plugin>` is contained: `eval_init` returns `Ok`, the plugin is
+/// `Failed`, and an `Error` message names it and contains each of `expected`.
+/// `eval_init` queues messages on the host and only `Editor::init_scripting`
+/// flushes them, so the host's queue is what this reads.
+fn assert_core_plugin_load_fails(dirs: Dirs, init: &str, plugin: &str, expected: &[&str]) {
+    use hume_scripting::PluginStatus;
+    use hume_scripting::attribution::{EntryId, PluginId};
+
+    let tmp = tempfile::tempdir().unwrap();
+    let init_path = tmp.path().join("init.scm");
+    std::fs::write(&init_path, init).unwrap();
+
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.state.dirs = dirs;
+    let mut host = ScriptingHost::new(&ed.state.dirs);
+    {
+        let mut ih = init_host!(ed);
+        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+    }
+    .expect("a failed plugin load must be contained, not abort eval_init");
+
+    let name = format!("core:{plugin}");
+    assert!(
+        host.peek_pending_messages().iter().any(|(level, msg)| {
+            matches!(level, hume_scripting::LogLevel::Error)
+                && msg.contains(&name)
+                && expected.iter().all(|e| msg.contains(e))
+        }),
+        "an error must name {name} and contain {expected:?}; got {:?}",
+        host.peek_pending_messages()
+    );
+    assert_eq!(
+        host.plugin_status(&EntryId::main(PluginId::Core(plugin.to_string()))),
+        Some(PluginStatus::Failed),
+        "{name} must be marked Failed"
+    );
+}
+
 /// The real on-disk `runtime/` directory, so multi-file core plugins
 /// (`core:lsp`) are tested against the shipped files instead of hand-copied
 /// ones, plus a data directory of its own: loading `core:lsp` scans
