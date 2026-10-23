@@ -42,6 +42,19 @@ distinct names, and it was the compiler's largest hotspot at startup. `visit_ato
 finds the same bindings. With the walk replaced by that lookup, a release startup with core
 plugins loaded takes about 35 ms less.
 
+**Constant evaluation stops once a pass changes nothing.** Upstream's
+`apply_const_evaluation` (`src/compiler/compiler.rs`) runs `ConstantEvaluatorManager::run`
+three times, and `run` (`src/steel_vm/const_evaluation.rs`) visits each top-level form at
+least twice, because four rewrites never set `changed`: replacing an identifier with its
+constant value, folding an `if` on a constant test, reducing a call of a no-argument lambda
+with a constant body to that body, and dropping some of a `let`'s unused bindings. With those
+reporting the change, `run` visits a form again only after a visit changed it, and the
+manager stops after its second run when that run changed nothing; the second run always
+happens, since the first binds the constants a form defined later can fold into an earlier
+one. The folded output is the same as upstream's three runs for every compile in HUME's
+startup and the `hume-scripting` test suite, and a release startup with core plugins loaded
+spends about 30 ms less in the pass.
+
 ## steel-parser 0.8.3
 
 Upstream: [mattwparas/steel](https://github.com/mattwparas/steel), `crates/steel-parser` at

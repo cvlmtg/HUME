@@ -213,22 +213,18 @@ impl<'a> ConstantEvaluatorManager<'a> {
             let mut output = eval.visit(expr)?;
             self.changed = self.changed || eval.changed;
 
-            eval.changed = false;
-
+            // A visit that changes nothing leaves the next visit nothing to fold.
             for _ in 0..10 {
-                output = eval.visit(output)?;
                 if !eval.changed {
                     break;
                 }
 
                 eval.changed = false;
+                output = eval.visit(output)?;
             }
 
             results.push(output)
         }
-
-        // Only run this on an expr by expr basis
-        self.changed = false;
 
         Ok(results)
 
@@ -560,6 +556,7 @@ impl<'a> ConsumingVisitor for ConstantEvaluator<'a> {
 
         if self.opt_level == OptLevel::Three {
             if self.is_constant(&test_expr) {
+                self.changed = true;
                 if self.is_truthy_constant(&test_expr) {
                     return self.visit(f.then_expr);
                 } else {
@@ -670,6 +667,7 @@ impl<'a> ConsumingVisitor for ConstantEvaluator<'a> {
                     .get(s)
                     .and_then(|x| steelval_to_atom(&x))
                 {
+                    self.changed = true;
                     Ok(ExprKind::Atom(Atom::new(SyntaxObject::new(
                         new_token, a.syn.span,
                     ))))
@@ -715,6 +713,7 @@ impl<'a> ConsumingVisitor for ConstantEvaluator<'a> {
                         // If the body is constant we can safely remove the application
                         // Otherwise we can't eliminate the additional scope depth
                         if self.is_constant(&f.body) {
+                            self.changed = true;
                             // Avoid the clone
                             if let ExprKind::LambdaFunction(f) = func {
                                 return Ok(f.body);
@@ -1134,6 +1133,10 @@ impl<'a> ConsumingVisitor for ConstantEvaluator<'a> {
         drop(actually_used_arguments);
         drop(actually_used_variables);
         drop(non_constant_arguments);
+
+        if indices_to_retain.len() < bindings.len() {
+            self.changed = true;
+        }
 
         l.bindings = bindings
             .into_iter()
