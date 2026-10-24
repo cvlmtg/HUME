@@ -134,12 +134,10 @@ fn force_exit(term: &terminal::SharedTerm, code: i32) -> ! {
 }
 
 /// Exit code for a bare terminal hangup with no signal delivered at all.
-/// Conventionally the same value as `SIGINT`'s (`128 + 2`, see
-/// `unix::CONVENTIONAL_EXIT_CODE`), but a hangup is not a signal and has no
-/// `signo` of its own to derive one from. Kept as its own constant rather
-/// than reused across modules, following this file's existing convention
-/// (see `WINDOWS_SIGNAL_EXIT_CODE`) that an incidentally-equal exit code
-/// with a different rationale is not the same constant.
+/// Conventionally `SIGINT`'s `128 + 2`, but a hangup is not a signal and has
+/// no `signo` of its own to derive one from. Equal to
+/// `WINDOWS_SIGNAL_EXIT_CODE` with a different rationale, so not the same
+/// constant.
 const HANGUP_EXIT_CODE: i32 = 130;
 
 /// `Some(HANGUP_EXIT_CODE)` when `err` means the controlling terminal
@@ -197,9 +195,11 @@ pub fn hangup_exit_code(err: &std::io::Error) -> Option<i32> {
 /// no signal at all does not go through this function at all; see
 /// [`hangup_exit_code`]'s doc.
 ///
-/// In raw mode the kernel does not deliver SIGINT for Ctrl-c (ISIG is
-/// cleared), so on Unix this primarily covers `kill <pid>`. SIGINT stays
-/// registered for the rare case something re-enables ISIG.
+/// In raw mode Ctrl-c reaches HUME as a key, not as SIGINT or a console
+/// event. Inside the inline-output frame (`terminal::enter_inline_output` to
+/// `terminal::leave_inline_output`) the cooked terminal sends Ctrl-c to the
+/// running child as well, and this watcher drops it: on Unix SIGINT and
+/// SIGQUIT, on Windows every console event.
 pub fn spawn_terminator(
     term: terminal::SharedTerm,
     request_quit: impl Fn(i32) + Send + 'static,
@@ -215,6 +215,9 @@ pub fn spawn_terminator(
             // (Ctrl-c, Ctrl-Break, console close, logoff, shutdown) without
             // telling us which one, so every trigger uses the same
             // conventional "killed by signal" code.
+            if term.in_inline_output() {
+                return;
+            }
             request_quit(WINDOWS_SIGNAL_EXIT_CODE);
             // A repeat control event during this sleep changes nothing, the
             // same as Unix's `wait_out_grace`.

@@ -43,7 +43,7 @@ An editor command's lambda receives the leading arguments its declared arity ask
 
 For commands that stream subprocess output to the terminal (installers, git operations), add the `#:inline-output #t` keyword, accepted by both verbs. The alt-screen opens on the command's first real output (not eagerly at the start), so a run that produces no output (an already-up-to-date check, a validation error) never flashes an empty screen or waits on an unneeded keypress. Once something is printed, HUME waits for a keypress before returning to the editor, so the output stays on screen until you've read it. This applies no matter how the command is reached (a key binding, `:`, or `call!` from another command's body, a hook, or a timer), and a command `call!`'d from inside another `#:inline-output` command shares its already-open screen and single keypress prompt rather than opening a second one.
 
-Inside an `#:inline-output` command, run a program whose output should reach the terminal with `run-inline-output!`. It isolates the child into its own process group so a Ctrl-c meant to interrupt the subprocess doesn't kill HUME too, and it's the trigger that opens the alt-screen. [Filesystem and processes](#filesystem-and-processes) covers the other ways to run a program:
+Inside an `#:inline-output` command, run a program whose output should reach the terminal with `run-inline-output!`. It's the trigger that opens the alt-screen. While the command's output is on screen, Ctrl-c interrupts the program it is running and never quits HUME. [Filesystem and processes](#filesystem-and-processes) covers the other ways to run a program:
 
 ```scheme
 (define-command! "fetch-config"
@@ -370,7 +370,7 @@ To run a program, pick the call by what you need from it:
 | Its result later, without making the user wait | `(spawn-async! cmd args callback)` |
 | Lines that fill a picker as the program prints them | `picker-source-spawn!`, or `picker-command-source` for a picker that reruns it on every query (see [Custom pickers](#custom-pickers)) |
 
-All four start the program in HUME's working directory unless given `#:cwd`, look it up on the `PATH` HUME started with, and deny git a credential prompt, so a private repository fails instead of hanging HUME. Steel's own `command`/`spawn-process`/`wait` stay available for what these don't cover, such as writing to a program's input. They block the editor too. `wait` and `wait->stdout` don't count against the script budget, but reading a program's output from its port does, and a program they start looks up the process `PATH`, can stop to ask git for credentials, and isn't shielded from a Ctrl-c inside an `#:inline-output` command.
+All four start the program in HUME's working directory unless given `#:cwd`, look it up on the `PATH` HUME started with, and deny git a credential prompt, so a private repository fails instead of hanging HUME. Steel's own `command`/`spawn-process`/`wait` stay available for what these don't cover, such as writing to a program's input. They block the editor too. `wait` and `wait->stdout` don't count against the script budget, but reading a program's output from its port does, and a program they start looks up the process `PATH` and can stop to ask git for credentials.
 
 `run-inline-output!` also takes a `#:cwd` keyword to set the working directory and an `#:env` keyword, a list of `("KEY" . "VALUE")` pairs added to the child's environment, and raises an error if the command exits non-zero; wrap it in a handler if a failure is expected.
 

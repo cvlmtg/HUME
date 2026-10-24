@@ -2,6 +2,7 @@
 //! in the parent.
 
 use super::*;
+use crate::path::test_support::write_script;
 
 // ── Launch ─────────────────────────────────────────────────────────────────
 
@@ -9,12 +10,8 @@ use super::*;
 /// not be the process's own `PATH`.
 #[test]
 fn a_bare_program_name_is_found_on_the_launch_search_path() {
-    use std::os::unix::fs::PermissionsExt;
-
     let bin = tempfile::tempdir().unwrap();
-    let probe = bin.path().join("hume-launch-probe");
-    std::fs::write(&probe, "#!/bin/sh\necho found\n").unwrap();
-    std::fs::set_permissions(&probe, std::fs::Permissions::from_mode(0o755)).unwrap();
+    write_script(bin.path(), "hume-launch-probe", "echo found\n", 0o755);
 
     let output = run_capture(
         "hume-launch-probe",
@@ -29,29 +26,30 @@ fn a_bare_program_name_is_found_on_the_launch_search_path() {
     assert_eq!(output.stdout, b"found\n");
 }
 
+/// Asserts that `printed`, a child's `ps -o pgid=` output, names this
+/// process's own group.
+fn assert_in_callers_group(printed: &[u8]) {
+    let pgid: i32 = String::from_utf8_lossy(printed)
+        .trim()
+        .parse()
+        .expect("ps prints the child's pgid");
+    assert_eq!(pgid, nix::unistd::getpgrp().as_raw());
+}
+
 // ── run_capture ────────────────────────────────────────────────────────────
 
-/// A Ctrl-c delivered to the foreground process group must not reach a
-/// `run_capture` child: it has to lead a group of its own.
+/// A terminal Ctrl-c during an `#:inline-output` command reaches the
+/// foreground process group, so the child must be in the caller's group to
+/// be interrupted by it.
 #[test]
-fn run_capture_child_leads_its_own_process_group() {
-    use nix::unistd::getpgrp;
-
+fn run_capture_child_shares_the_callers_process_group() {
     let output = run_capture(
         "sh",
         &["-c".to_string(), "ps -o pgid= -p $$".to_string()],
         Launch::with_process_path(Path::new(".")),
     )
     .expect("spawn sh");
-    let child_pgid: i32 = String::from_utf8_lossy(&output.stdout)
-        .trim()
-        .parse()
-        .expect("ps prints the child's pgid");
-    assert_ne!(
-        child_pgid,
-        getpgrp().as_raw(),
-        "the child must not share HUME's process group"
-    );
+    assert_in_callers_group(&output.stdout);
 }
 
 /// Guards the deadlock `run_capture`'s own doc comment documents: reading
@@ -113,11 +111,8 @@ fn run_inline_output_returns_exit_status_of_child() {
     assert!(!status.success());
 }
 
-/// `run_inline_output` puts the child in its own *background* process
-/// group (for Ctrl-c safety; see the test below), not the terminal's
-/// foreground one, so a credential prompt it wrote would be followed by a
-/// read that hangs on `SIGTTIN` rather than an answerable question. Must
-/// deny the prompt outright, the same as `run_capture`.
+/// A git credential prompt is denied for every spawn in this crate, the same
+/// as for `run_capture`.
 #[test]
 fn run_inline_output_sets_git_terminal_prompt_to_deny_credential_prompts() {
     // Inherited stdio means the child's stdout is this test process's own, so
@@ -170,48 +165,49 @@ fn run_inline_output_honors_cwd() {
     assert!(status.success(), "marker.txt must be found via cwd");
 }
 
-/// Verify that Ctrl-c (SIGINT to the child's process group) kills the
-/// child but not HUME.
-///
-/// Behavioral guarantee: after `process_group(0)` the child is its own
-/// process group leader, so `killpg(child_pid, SIGINT)` targets only that
-/// group.  If the test process survives past the assert the guarantee holds.
-///
-/// `nix::killpg` is used instead of spawning `kill -INT -<pgid>` because
-/// BSD `kill` and util-linux `kill` disagree on negative-pgid argument
-/// parsing: the Linux version returned exit 0 without signalling, causing
-/// `sleep` to run to completion and the test to fail.
+/// The child must be in the caller's foreground group, where a terminal
+/// Ctrl-c during the inline-output frame reaches it.
 #[test]
-fn sigint_to_child_group_does_not_kill_hume() {
-    use nix::sys::signal::{Signal, killpg};
-    use nix::unistd::{Pid, setpgid};
-    use std::process::Command;
+fn run_inline_output_child_shares_the_callers_process_group() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let status = run_inline_output(
+        "sh",
+        &["-c".to_string(), "ps -o pgid= -p $$ > out.txt".to_string()],
+        Launch::with_process_path(dir.path()),
+        &[],
+    )
+    .expect("spawn sh");
+    assert!(status.success());
+    let printed = std::fs::read(dir.path().join("out.txt")).expect("read out.txt");
+    assert_in_callers_group(&printed);
+}
 
-    // Spawn a long-lived child so we can signal it before it exits.
-    let child = Command::new("sleep")
-        .arg("30")
-        .new_process_group()
-        .spawn()
-        .expect("spawn sleep");
-    let pid = Pid::from_raw(i32::try_from(child.id()).expect("pid fits i32"));
+// ── grammar_build ─────────────────────────────────────────────────────────
 
-    // `process_group(0)` calls setpgid(0,0) in the child's pre-exec hook,
-    // which races with the parent.  Calling setpgid(child, child) from the
-    // parent is idempotent and closes the race: if the child hasn't run its
-    // hook yet we set it; if it already exec'd we get EACCES (the child set
-    // it first). Either way the group is correct.
-    let _ = setpgid(pid, pid);
-
-    killpg(pid, Signal::SIGINT).expect("killpg");
-
-    // Wait for the child, which must have been killed by the signal.
-    let exit = child.wait_with_output().expect("wait").status;
-    assert!(
-        !exit.success(),
-        "child should have been killed by SIGINT, got: {exit:?}"
+/// `compile-grammar!` runs the compiler inside the inline-output frame, so it
+/// must be interruptible by a terminal Ctrl-c the same way.
+#[test]
+fn grammar_build_child_shares_the_callers_process_group() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    // Called as `tool -o OUT SRC`: writes its pgid to OUT.
+    let tool = write_script(
+        dir.path(),
+        "fake-grammar-build",
+        "ps -o pgid= -p $$ > \"$2\"\n",
+        0o755,
     );
+    let out = dir.path().join("out.txt");
 
-    // Reaching here means HUME survived: the guarantee holds.
+    let status = grammar_build(
+        &tool,
+        dir.path(),
+        &out,
+        Launch::with_process_path(dir.path()),
+    )
+    .expect("spawn the tool");
+    assert!(status.success());
+    let printed = std::fs::read(&out).expect("read out.txt");
+    assert_in_callers_group(&printed);
 }
 
 // ── spawn_in_own_group ──────────────────────────────────────────────────────

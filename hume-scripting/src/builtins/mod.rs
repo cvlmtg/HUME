@@ -205,7 +205,7 @@ macro_rules! builtins {
 // live-picker! returned.
 //
 // run-inline-output!: %run-inline-output! raises unless the command exits 0,
-// and spawns it in an isolated process group (see
+// and spawns it in the editor's process group so a Ctrl-c reaches it (see
 // hume-platform::process::run_inline_output).
 //
 // %port-safe?: a port is safe unless it is the real stdout, where the gate

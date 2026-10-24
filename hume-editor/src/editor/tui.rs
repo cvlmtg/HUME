@@ -19,9 +19,8 @@ use hume_platform::terminal::SharedTerm;
 /// one by value: `EditorHostImpl::new` has no `Editor` to borrow `tui` from
 /// at all (it builds a host for callers with no terminal/`OutputHost` need),
 /// so a `&'a Tui` field would need a file-scope `static Tui::Off` to point
-/// at instead. Cloning costs two `Arc` bumps (`SharedTerm` is `Arc` +
-/// `EventReader`, both cheap to clone; see its own doc in
-/// `hume_platform::terminal`) against that alternative's global state.
+/// at instead. Cloning a `SharedTerm` only bumps reference counts, against
+/// that alternative's global state.
 #[derive(Clone)]
 pub(in crate::editor) enum Tui {
     /// [`Editor::run`](super::Editor::run) does not own the terminal: before

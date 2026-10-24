@@ -38,6 +38,7 @@
 - `cancel-timer!` also drops a timer that was already due but hadn't run yet, so a debounced function no longer runs twice.
 - `cancel-timer!` cancels only timers made by `after!`, never one of HUME's own.
 - An error in a timer, a background reply or another plugin's callback no longer empties a completion menu that is still waiting on a source.
+- `Ctrl-c` during a command that shows a program's output, such as a grammar install, stops that program instead of quitting HUME.
 
 ## [0.16.1] - 2026-10-22
 

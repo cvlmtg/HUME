@@ -1,14 +1,12 @@
 //! Process-spawning helpers.
 //!
-//! Every `std::process::Command` that needs process-group isolation or
-//! force-exit reaping goes through this module, either directly for
-//! short-lived children or via [`spawn_piped`] +
-//! [`tracked::TrackedChild`] for long-lived ones. Plugins run programs
-//! through the builtins this module backs (`run-capture!`,
-//! `run-inline-output!`, `spawn-async!`, `picker-source-spawn!`) rather than
-//! Steel's `steel/process`, which reads stdout to EOF before stderr, so a
-//! child that fills its stderr pipe deadlocks; [`run_capture`]'s
-//! `Command::output` drains both.
+//! Every `std::process::Command` that needs a process group of its own or
+//! force-exit reaping goes through this module, via [`spawn_piped`] +
+//! [`tracked::TrackedChild`]. Plugins run programs through the builtins this
+//! module backs (`run-capture!`, `run-inline-output!`, `spawn-async!`,
+//! `picker-source-spawn!`) rather than Steel's `steel/process`, which reads
+//! stdout to EOF before stderr, so a child that fills its stderr pipe
+//! deadlocks; [`run_capture`]'s `Command::output` drains both.
 //!
 //! Stdio is captured ([`run_capture`]) or inherited so the user sees live
 //! progress (`run_inline_output`, `grammar_build`).
@@ -89,15 +87,10 @@ impl<'a> Launch<'a> {
 /// layers its own remaining stdio/process-group setup on top.
 ///
 /// Denying git a credential prompt is a blanket policy here, not a
-/// git-specific carve-out: every spawn path in this crate has left the
-/// child with no *answerable* terminal, by one of two routes.
-/// [`run_inline_output`] backgrounds it into its own process group while
-/// inheriting the terminal, so a prompt it wrote would be followed by a
-/// read that takes `SIGTTIN` and stops the child cold; [`run_capture`] and
-/// [`child::spawn_piped`] close the child's stdin (after any input), so a prompt
-/// would instead open `/dev/tty` directly and hang there. Left unset,
-/// either shape turns a private repo or an expired token into a hang
-/// instead of a fast, readable git error.
+/// git-specific carve-out, so a private repo or an expired token fails with a
+/// readable git error instead of waiting for input. [`run_capture`] and
+/// [`child::spawn_piped`] close the child's stdin (after any input), so a
+/// prompt there would open `/dev/tty` directly and hang behind the editor.
 fn base_command<I>(cmd: impl AsRef<OsStr>, args: I, launch: Launch<'_>) -> Command
 where
     I: IntoIterator,
@@ -115,24 +108,12 @@ where
     command
 }
 
-/// Run `cmd` with `args`, inherited stdio, in its own process group. `env`
-/// entries are added to the inherited environment.
+/// Run `cmd` with `args` and inherited stdio, in the caller's process group.
+/// `env` entries are added to the inherited environment.
 ///
-/// Used for `#:inline-output` Steel commands. Terminal raw mode is
-/// temporarily disabled there (`hume_platform::terminal::enter_inline_output`
-/// calls `disable_raw_mode()`), so a terminal-generated Ctrl-c (SIGINT)
-/// targets the whole foreground process group. Without `process_group(0)`
-/// that would kill HUME itself alongside the child. Steel's own
-/// `spawn-process` has no such capability (no `setpgid`/`pre_exec` anywhere
-/// in steel-core, verified against 0.8.3), so plugin code that needs this
-/// safety property calls the `run-inline-output!` builtin (backed by this
-/// function) instead of Steel's stdlib directly.
-///
-/// See `base_command`'s own doc for why `GIT_TERMINAL_PROMPT=0` is set. An
-/// interactive child (an editor, a pager) still can't be run this
-/// way regardless: it would hit the same background-process-group
-/// `SIGTTIN`/`SIGTTOU` wall on its own reads/writes the moment it touched
-/// the terminal.
+/// Used for `#:inline-output` Steel commands, while
+/// [`crate::terminal::enter_inline_output`] has the terminal in cooked mode,
+/// so a Ctrl-c reaches the child through the foreground process group.
 pub fn run_inline_output(
     cmd: &str,
     args: &[String],
@@ -142,7 +123,6 @@ pub fn run_inline_output(
     let mut command = base_command(cmd, args, launch);
     command
         .envs(env.iter().map(|(k, v)| (k, v)))
-        .new_process_group()
         .status()
         .map_err(|e| spawn_failed(&command, e))
 }
@@ -154,11 +134,9 @@ pub fn run_inline_output(
 ///
 /// Built on `Command::output`, which drains both pipes concurrently rather
 /// than one after the other (see this module's doc for the deadlock that
-/// closes). The child runs in its own process group so a Ctrl-c aimed at the
-/// foreground group, which reaches a caller running during an
-/// `#:inline-output` command with raw mode off, does not kill HUME with it.
-///
-/// See `base_command`'s own doc for why `GIT_TERMINAL_PROMPT=0` is set.
+/// closes). The child stays in the caller's process group, so a Ctrl-c
+/// during an `#:inline-output` command interrupts it as it does a
+/// [`run_inline_output`] child.
 pub fn run_capture(
     cmd: &str,
     args: &[String],
@@ -167,14 +145,15 @@ pub fn run_capture(
     let mut command = base_command(cmd, args, launch);
     command
         .stdin(Stdio::null())
-        .new_process_group()
         .output()
         .map_err(|e| spawn_failed(&command, e))
 }
 
 /// Compile the tree-sitter grammar at `src` to a shared library at `out`
 /// by running the grammar compiler `tool` (see [`crate::dirs::Dirs::grammar_build`]),
-/// with inherited stdio.
+/// with inherited stdio. `compile-grammar!` runs it inside the inline-output
+/// frame, so it stays in the caller's process group for the same Ctrl-c as
+/// [`run_inline_output`].
 pub fn grammar_build(
     tool: &Path,
     src: &Path,
@@ -189,10 +168,7 @@ pub fn grammar_build(
         [OsStr::new("-o"), out.as_os_str(), src.as_os_str()],
         launch,
     );
-    command
-        .new_process_group()
-        .status()
-        .map_err(|e| spawn_failed(&command, e))
+    command.status().map_err(|e| spawn_failed(&command, e))
 }
 
 /// `e`, from any step of starting `program` (the spawn itself or a thread
@@ -271,28 +247,24 @@ impl GroupedChild {
 /// group lets `tracked::kill_tracked_children` reach the child's own
 /// children (rust-analyzer's `proc-macro-srv`, build scripts, the command
 /// under a `sh -c` or `cmd /C`, ...) instead of leaving them orphaned.
-/// `NewProcessGroup`'s other use (Ctrl-c isolation for
-/// `run_inline_output`'s short-lived children) doesn't need this wrapper,
-/// just the trait: a plain `.status()` call has nothing to track.
 ///
 /// Trade-off on Unix: leaving the foreground process group costs these
 /// children the kernel's SIGHUP on pty teardown (only the foreground group
 /// gets one), covered instead by the LSP `processId` convention and stdin
-/// EOF for everything else.
+/// EOF for everything else. Outside it, they also never get a Ctrl-c meant
+/// for an inline-output child.
 ///
 /// `process_group(0)` runs `setpgid(0, 0)` from the child's own pre-exec
 /// hook, racing the parent: this function hasn't returned when that hook
 /// runs, so a caller that registers/signals the returned child right away
 /// could still be racing a child that hasn't exec'd. The parent-side
 /// `setpgid(pid, pid)` below closes that race. It's idempotent, and `EACCES`
-/// here just means the child's own call won first (see
-/// `sigint_to_child_group_does_not_kill_hume`).
+/// here just means the child's own call won first.
 #[cfg(not(windows))]
 pub(crate) fn spawn_in_own_group(command: &mut Command) -> io::Result<GroupedChild> {
-    let child = command
-        .new_process_group()
-        .spawn()
-        .map_err(|e| spawn_failed(command, e))?;
+    #[cfg(unix)]
+    command.process_group(0);
+    let child = command.spawn().map_err(|e| spawn_failed(command, e))?;
     #[cfg(unix)]
     {
         use nix::unistd::{Pid, setpgid};
@@ -352,26 +324,6 @@ impl Drop for ReapOnDrop {
             let _ = grouped.child.kill();
             let _ = grouped.child.wait();
         }
-    }
-}
-
-// ── Internal helpers ──────────────────────────────────────────────────────────
-
-/// Extension trait to set the child as its own process group leader on Unix.
-///
-/// On Unix: calls `setpgid(0, 0)` via `CommandExt::process_group(0)` so
-/// Ctrl-c (SIGINT to the terminal's foreground process group) reaches only
-/// the child, not HUME. On other platforms this is a no-op. [`spawn_in_own_group`]
-/// builds on this for children that also need [`tracked`] force-exit reaping.
-trait NewProcessGroup {
-    fn new_process_group(&mut self) -> &mut Self;
-}
-
-impl NewProcessGroup for Command {
-    fn new_process_group(&mut self) -> &mut Self {
-        #[cfg(unix)]
-        self.process_group(0);
-        self
     }
 }
 

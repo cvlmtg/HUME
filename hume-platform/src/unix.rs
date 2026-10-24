@@ -3,7 +3,7 @@ use std::io::{self, Read, Write};
 use std::os::fd::{AsFd, BorrowedFd};
 use std::os::unix::net::UnixStream;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use nix::errno::Errno;
@@ -11,7 +11,7 @@ use nix::sys::select::{FdSet, select};
 use nix::sys::signal::{SigSet, Signal};
 use nix::sys::time::{TimeVal, TimeValLike};
 use signal_hook::consts::signal::{SIGHUP, SIGINT, SIGQUIT, SIGTERM};
-use signal_hook::flag::{register_conditional_shutdown, register_usize};
+use signal_hook::flag::{register as register_flag, register_conditional_shutdown};
 use signal_hook::low_level::pipe::register;
 
 /// Probe for kitty keyboard protocol support on Unix.
@@ -58,9 +58,10 @@ impl super::ProbeChannel for TtyChannel {
 // SIGINT/SIGTERM/SIGHUP/SIGQUIT arrive through a `signal_hook` self-pipe that
 // this thread `select`s on. `request_quit` asks the main loop to quit, then
 // the thread waits `QUIT_GRACE` before force-exiting; a second signal in the
-// window is ignored. A pty teardown may not send
-// SIGHUP; termina's reader then returns `UnexpectedEof` and the main loop
-// exits on its own (see `hume_platform::hangup_exit_code`).
+// window is ignored. Inside the inline-output frame the terminal's own
+// interrupts are dropped instead (`terminating_signal`). A pty teardown may
+// not send SIGHUP; termina's reader then returns `UnexpectedEof` and the main
+// loop exits on its own (see `hume_platform::hangup_exit_code`).
 //
 // A replaced signal disposition must exist only while something drains it:
 // `signal_hook` cannot restore `SIG_DFL` once replaced. So the draining
@@ -72,20 +73,21 @@ impl super::ProbeChannel for TtyChannel {
 /// trading away the default core dump; nothing here relies on one.
 const SIGNALS: [i32; 4] = [SIGINT, SIGTERM, SIGHUP, SIGQUIT];
 
-/// Fallback exit code when there's no real signal number to derive one
-/// from: the zero/unknown-signal case in [`exit_code_for_signal`]. 130 is
-/// `SIGINT`'s own `128 + signo`.
-const CONVENTIONAL_EXIT_CODE: i32 = 130;
-
 /// Maps a signal number to the conventional "killed by signal" exit code
-/// (`128 + signo`). `0` (no signal recorded yet on `signal_flag`) falls
-/// back to [`CONVENTIONAL_EXIT_CODE`].
-fn exit_code_for_signal(signo: usize) -> i32 {
-    if signo == 0 {
-        CONVENTIONAL_EXIT_CODE
-    } else {
-        128 + signo as i32
-    }
+/// (`128 + signo`).
+fn exit_code_for_signal(signal: i32) -> i32 {
+    128 + signal
+}
+
+/// The first of `arrived` that ends the process, or `None` when every one is
+/// dropped. Inside the inline-output frame the terminal is in cooked mode, so
+/// Ctrl-c and Ctrl-\ send SIGINT and SIGQUIT to the whole foreground group:
+/// they are meant for the child running there, which shares HUME's group,
+/// and HUME drops them as `system(3)` does. SIGTERM and SIGHUP always end it.
+fn terminating_signal(arrived: impl IntoIterator<Item = i32>, inline_output: bool) -> Option<i32> {
+    arrived
+        .into_iter()
+        .find(|&signal| !(inline_output && (signal == SIGINT || signal == SIGQUIT)))
 }
 
 /// Arms the `register_conditional_shutdown` fallback the instant the
@@ -119,9 +121,8 @@ impl Drop for OrphanGuard {
 /// See the module-level comment for why this is the best available fallback
 /// under `signal_hook`'s no-`unsafe` API.
 ///
-/// In raw mode the kernel does not deliver SIGINT for Ctrl-c (ISIG is
-/// cleared), so this primarily covers `kill <pid>`. SIGINT stays registered
-/// for the rare case something re-enables ISIG.
+/// In raw mode the kernel sends no SIGINT for Ctrl-c (ISIG is cleared), so
+/// outside the inline-output frame this covers `kill <pid>`.
 pub(super) fn spawn_terminator(
     term: crate::terminal::SharedTerm,
     request_quit: impl Fn(i32) + Send + 'static,
@@ -135,12 +136,11 @@ pub(super) fn spawn_terminator(
     let (sig_read, sig_write) = UnixStream::pair()?;
     sig_read.set_nonblocking(true)?;
 
-    // Sees whichever of `SIGNALS` last ran its flag-set action. Read after
-    // draining the pipe to turn "a signal happened" into "which one", for
-    // `exit_code_for_signal`. Shared across all four registrations: if two
-    // land close together this only tells us the most recent, which is fine:
-    // it's read for the process's exit status, not to attribute causality.
-    let signal_flag = Arc::new(AtomicUsize::new(0));
+    // One pending flag per entry of `SIGNALS`, taken after draining the pipe
+    // to turn "a signal happened" into "which ones", so a dropped interrupt
+    // can never hide a termination request beside it.
+    let pending: [Arc<AtomicBool>; SIGNALS.len()] =
+        SIGNALS.map(|_| Arc::new(AtomicBool::new(false)));
     // Set by `OrphanGuard` once this thread can no longer drain the pipe;
     // read by every signal's `register_conditional_shutdown` fallback below.
     let orphaned = Arc::new(AtomicBool::new(false));
@@ -152,7 +152,7 @@ pub(super) fn spawn_terminator(
     std::thread::Builder::new()
         .name("hume-terminator".into())
         .spawn({
-            let signal_flag = Arc::clone(&signal_flag);
+            let pending = pending.clone();
             let orphaned = Arc::clone(&orphaned);
             move || {
                 // A handler that's installed but masked never runs: the same
@@ -169,25 +169,27 @@ pub(super) fn spawn_terminator(
                 let _ = mask.thread_unblock();
 
                 let _guard = OrphanGuard(orphaned);
-                match watch(sig_read.as_fd(), None) {
-                    Ok(Watched::Signal) => {
-                        let code = exit_code_for_signal(signal_flag.load(Ordering::Acquire));
+                // On an I/O failure the thread exits and `OrphanGuard`'s
+                // fallback covers future signals instead.
+                while let Ok(Watched::Signal) = watch(sig_read.as_fd(), None) {
+                    // A byte whose flag an earlier pass already took finds
+                    // nothing here, and the loop keeps watching.
+                    let arrived = SIGNALS
+                        .iter()
+                        .zip(&pending)
+                        .filter(|(_, flag)| flag.swap(false, Ordering::AcqRel))
+                        .map(|(&signal, _)| signal);
+                    if let Some(signal) = terminating_signal(arrived, term.in_inline_output()) {
+                        let code = exit_code_for_signal(signal);
                         request_quit(code);
                         wait_out_grace(sig_read.as_fd(), crate::QUIT_GRACE);
                         crate::force_exit(&term, code);
                     }
-                    // An unbounded watch has no deadline to end on, so `Ended`
-                    // is unreachable here (see `watch`'s own doc). Folded into
-                    // the same arm as a real I/O failure: either way,
-                    // termination coverage is lost; exit this thread quietly
-                    // and let `OrphanGuard`'s fallback cover future signals
-                    // instead.
-                    Ok(Watched::Ended) | Err(_) => {}
                 }
             }
         })?;
 
-    for &signal in &SIGNALS {
+    for (&signal, flag) in SIGNALS.iter().zip(&pending) {
         // The conditional-shutdown fallback is registered first so it
         // short-circuits ahead of the flag/pipe actions below once
         // `orphaned` is set: signal-hook-registry runs a signal's actions
@@ -198,16 +200,12 @@ pub(super) fn spawn_terminator(
         // `SIG_DFL`) is the wrong tool here: it would restore SIGQUIT's
         // core dump, which `SIGNALS`' own doc comment trades
         // away.
-        register_conditional_shutdown(
-            signal,
-            exit_code_for_signal(signal as usize),
-            Arc::clone(&orphaned),
-        )?;
+        register_conditional_shutdown(signal, exit_code_for_signal(signal), Arc::clone(&orphaned))?;
         // Registration order matters within one signal's own action list:
         // the flag must be set before the pipe byte is written, so a reader
         // woken by the pipe never observes a stale flag (signal-hook's
         // documented self-pipe ordering rule).
-        register_usize(signal, Arc::clone(&signal_flag), signal as usize)?;
+        register_flag(signal, Arc::clone(flag))?;
         // `register` takes ownership of the fd it's given (closing it on
         // deregistration), so each signal needs its own dup. Handing the
         // same fd to multiple registrations would leave `sig_write`'s `Drop`
@@ -274,19 +272,12 @@ enum Watched {
 /// `deadline: None` this never returns [`Watched::Ended`], since an
 /// unbounded wait has no deadline to end on.
 ///
-/// `deadline: None` blocks indefinitely. A permanently closed `sig_fd` is a
-/// hard failure only when `deadline` is `None` (matched by this module's own
-/// `terminator_exits_instead_of_spinning_when_the_pipe_closes` test); with a
-/// deadline, the caller has already committed to acting once it elapses
-/// regardless, so this sleeps out the rest of the window instead of
-/// returning early on that same closure
-/// (`wait_out_grace_waits_out_the_window_on_a_closed_pipe` covers the
-/// `Drained::Closed` case of this). A `wait_readable` `Err` gets the same
-/// treatment when a deadline is given: the predecessor this function replaced
-/// (`wait_for_second_signal`) returned `None` immediately on that same
-/// `select` fault instead; sleeping it out here trades a faster force-exit
-/// for never cutting the main thread's graceful LSP shutdown short on a
-/// transient error.
+/// `deadline: None` blocks indefinitely, and a permanently closed `sig_fd` or
+/// a `wait_readable` fault is an `Err`. With a deadline, the caller has
+/// already committed to acting once it elapses, so either one sleeps out the
+/// rest of the window instead of returning early. That trades a faster
+/// force-exit for never cutting the main thread's graceful LSP shutdown
+/// short on a transient error.
 fn watch(sig_fd: BorrowedFd<'_>, deadline: Option<Instant>) -> io::Result<Watched> {
     loop {
         let remaining = match deadline {
@@ -552,16 +543,41 @@ mod terminator_tests {
     }
 
     #[test]
-    fn exit_code_for_signal_maps_128_plus_signo_with_zero_fallback() {
-        assert_eq!(exit_code_for_signal(SIGINT as usize), 130);
-        assert_eq!(exit_code_for_signal(SIGTERM as usize), 143);
-        assert_eq!(exit_code_for_signal(SIGHUP as usize), 129);
-        assert_eq!(exit_code_for_signal(SIGQUIT as usize), 131);
+    fn exit_code_for_signal_maps_128_plus_signo() {
+        assert_eq!(exit_code_for_signal(SIGINT), 130);
+        assert_eq!(exit_code_for_signal(SIGTERM), 143);
+        assert_eq!(exit_code_for_signal(SIGHUP), 129);
+        assert_eq!(exit_code_for_signal(SIGQUIT), 131);
+    }
+
+    #[test]
+    fn every_signal_terminates_outside_the_inline_output_frame() {
+        for signal in SIGNALS {
+            assert_eq!(terminating_signal([signal], false), Some(signal));
+        }
+    }
+
+    #[test]
+    fn terminal_interrupts_are_dropped_inside_the_inline_output_frame() {
+        assert_eq!(terminating_signal([SIGINT], true), None);
+        assert_eq!(terminating_signal([SIGQUIT], true), None);
+        assert_eq!(terminating_signal([SIGINT, SIGQUIT], true), None);
+    }
+
+    #[test]
+    fn termination_requests_still_terminate_inside_the_inline_output_frame() {
+        assert_eq!(terminating_signal([SIGTERM], true), Some(SIGTERM));
+        assert_eq!(terminating_signal([SIGHUP], true), Some(SIGHUP));
         assert_eq!(
-            exit_code_for_signal(0),
-            130,
-            "no signal recorded yet falls back to SIGINT's code"
+            terminating_signal([SIGINT, SIGTERM], true),
+            Some(SIGTERM),
+            "a dropped interrupt must not hide a termination request drained with it"
         );
+    }
+
+    #[test]
+    fn nothing_arrived_terminates_nothing() {
+        assert_eq!(terminating_signal([], false), None);
     }
 
     #[test]

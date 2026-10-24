@@ -21,6 +21,7 @@
 
 use std::io::{self, Write};
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
@@ -55,11 +56,19 @@ pub struct SharedTerm {
     /// OSC 7 URL of the directory the shell started HUME in. Teardown reports
     /// it again, because the shell will not re-send it.
     launch_cwd_url: Option<Arc<str>>,
+    /// Set while [`enter_inline_output`] has the terminal in cooked mode, up
+    /// to [`leave_inline_output`]. Read by the terminator, which drops the
+    /// terminal's own interrupts then.
+    inline_output: Arc<AtomicBool>,
 }
 
 impl SharedTerm {
     fn lock(&self) -> MutexGuard<'_, PlatformTerminal> {
         self.inner.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    pub(crate) fn in_inline_output(&self) -> bool {
+        self.inline_output.load(Ordering::Acquire)
     }
 
     /// A cloneable reader for blocking or non-blocking event reads.
@@ -136,6 +145,7 @@ pub fn create(launch_cwd: &Path) -> io::Result<SharedTerm> {
         inner: Arc::new(Mutex::new(inner)),
         reader,
         launch_cwd_url: working_directory_url(launch_cwd).map(Arc::from),
+        inline_output: Arc::new(AtomicBool::new(false)),
     })
 }
 
@@ -510,6 +520,10 @@ pub fn end_synchronized_update(term: &SharedTerm) -> io::Result<()> {
 /// the current kitty and mouse state so [`leave_inline_output`] can re-apply it.
 /// Also disables focus tracking for the duration: a subprocess reading raw
 /// terminal input shouldn't see stray `CSI I`/`CSI O` bytes.
+///
+/// Until [`leave_inline_output`], Ctrl-c and Ctrl-\ interrupt the child in
+/// the foreground process group and never quit HUME (see
+/// [`crate::spawn_terminator`]).
 pub fn enter_inline_output(
     term: &SharedTerm,
     kitty_enabled: bool,
@@ -526,7 +540,13 @@ pub fn enter_inline_output(
     if mouse_enabled {
         write_mouse_disable(&mut term)?;
     }
-    term.enter_cooked_mode()?;
+    // Set before the switch, so no Ctrl-c the cooked terminal turns into a
+    // signal can reach the terminator ahead of it.
+    term.inline_output.store(true, Ordering::Release);
+    if let Err(e) = term.enter_cooked_mode() {
+        term.inline_output.store(false, Ordering::Release);
+        return Err(e);
+    }
     write_leave_alt_screen(&mut term)
 }
 
@@ -543,6 +563,9 @@ pub fn leave_inline_output(
 ) -> io::Result<()> {
     let mut term = term.clone();
     term.enter_raw_mode()?;
+    // Cleared only once raw mode is back. It always follows the return
+    // prompt's keypress, so a Ctrl-c from the frame has long been drained.
+    term.inline_output.store(false, Ordering::Release);
     write_enter_alt_screen(&mut term)?;
     write_focus_enable(&mut term)?;
     write_paste_enable(&mut term)?;

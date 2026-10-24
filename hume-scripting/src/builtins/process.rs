@@ -115,17 +115,16 @@ pub(crate) fn run_capture(
 }
 
 /// `(%run-inline-output! cmd args cwd env)`: spawn `cmd` with `args` (a list of
-/// strings), inherited stdio, in its own process group; blocks until exit and
-/// raises unless it exited 0. `cwd` is a string or `#f` (the editor's
-/// cwd; a relative path joins onto it); `env` is a list
-/// of `("KEY" . "VALUE")` pairs added to the inherited environment.
+/// strings) and inherited stdio; blocks until exit and raises unless it
+/// exited 0. `cwd` is a string or `#f` (the editor's cwd; a relative path
+/// joins onto it); `env` is a list of `("KEY" . "VALUE")` pairs added to the
+/// inherited environment.
 ///
-/// The process-group isolation is the entire reason this is a Rust builtin
-/// rather than Steel's own `spawn-process`: `#:inline-output` commands run
-/// with terminal raw mode off (see `run_inline_output`'s doc comment in
-/// `hume-platform::process`), so an unisolated child would be killed by the
-/// same Ctrl-c that's meant to interrupt only it. No sandbox checks: plugins
-/// are trusted code (see `user-manual/docs/writing-plugins.md`'s "Filesystem and processes").
+/// A Rust builtin rather than Steel's own `spawn-process` because it opens
+/// the inline-output screen before the child writes, and starts the child on
+/// the editor's search path with git's credential prompt denied. No sandbox
+/// checks: plugins are trusted code (see `user-manual/docs/writing-plugins.md`'s
+/// "Filesystem and processes").
 ///
 /// # Errors
 /// The binary can't be spawned (e.g. not found on `PATH`), or it exited
