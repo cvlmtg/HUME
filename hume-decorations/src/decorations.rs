@@ -164,18 +164,6 @@ impl Anchored for LineBgEntry {
     }
 }
 
-/// A kind anchored on one character: inlay hints. Drives
-/// `SourceStore::remap_points`.
-pub trait PointAnchored: Anchored<Anchor = CharOffset> {
-    fn set_pos(&mut self, pos: CharOffset);
-}
-
-impl PointAnchored for InlayHintEntry {
-    fn set_pos(&mut self, pos: CharOffset) {
-        self.pos = pos;
-    }
-}
-
 /// A kind anchored on a whole line: signs, virtual lines, EOL text and line
 /// backgrounds. Drives `SourceStore::remap_lines`.
 pub trait LineAnchored: Anchored<Anchor = ContentLine> {
@@ -387,18 +375,22 @@ impl<K: Ord, T: Anchored> SourceStore<K, T> {
     }
 }
 
-impl<K, T: PointAnchored> SourceStore<K, T> {
-    /// Remaps every point-anchored entry for `bid` through `cs`, one
-    /// `PosMapCursor` pass per source. An insertion at the anchor char stays
-    /// after the entry (`Assoc::Before`): the entry sticks to the char it
-    /// annotates rather than swallowing newly typed text. Drops an entry
-    /// whose anchor character a deletion consumed (same policy `remap_ranges`
-    /// already applies to a range a deletion collapses) rather than parking
-    /// the decoration on whatever text moved into the gap (a deleted line's inlay
-    /// hint would reappear, re-anchored to the deletion point). Returns whether `bid` had any entry to remap
-    /// so callers can skip a dirty-tracking stamp bump when `bid` had
-    /// nothing for this kind.
-    fn remap_points(&mut self, bid: BufferId, cs: &ChangeSet) -> bool {
+impl<K, T> SourceStore<K, T> {
+    /// Remaps every entry for `bid` through `cs` by the char `anchor_char`
+    /// names, one `PosMapCursor` pass per source, handing each surviving
+    /// entry to `land` with that char's new offset. An insertion at the char
+    /// stays after it (`Assoc::Before`). Drops an entry whose char a deletion
+    /// consumed (the policy `remap_ranges` applies to a range a deletion
+    /// collapses) rather than parking it on whatever text moved into the
+    /// gap. Returns whether `bid` had any entry to remap, so callers can skip
+    /// a dirty-tracking stamp bump when `bid` had nothing for this kind.
+    fn remap_by_char(
+        &mut self,
+        bid: BufferId,
+        cs: &ChangeSet,
+        anchor_char: impl Fn(&T) -> CharOffset,
+        land: impl Fn(&mut T, CharOffset),
+    ) -> bool {
         let mut touched = false;
         for entries in self.sources_mut(bid) {
             if entries.is_empty() {
@@ -407,15 +399,25 @@ impl<K, T: PointAnchored> SourceStore<K, T> {
             touched = true;
             let mut cursor = PosMapCursor::new(cs.ops());
             entries.retain_mut(|entry| {
-                let mapped = cursor.map_anchor(entry.anchor(), Assoc::Before);
+                let mapped = cursor.map_anchor(anchor_char(entry), Assoc::Before);
                 if mapped.anchor_deleted {
                     return false;
                 }
-                entry.set_pos(mapped.pos);
+                land(entry, mapped.pos);
                 true
             });
         }
         touched
+    }
+}
+
+impl<K> SourceStore<K, InlayHintEntry> {
+    /// Remaps every inlay hint for `bid` through `cs`. A hint sticks to the
+    /// char it annotates rather than swallowing newly typed text, and a
+    /// deleted line's hint is dropped instead of reappearing at the deletion
+    /// point.
+    fn remap_points(&mut self, bid: BufferId, cs: &ChangeSet) -> bool {
+        self.remap_by_char(bid, cs, |hint| hint.pos, |hint, pos| hint.pos = pos)
     }
 }
 
@@ -425,29 +427,15 @@ impl<K, T: LineAnchored> SourceStore<K, T> {
     /// its line's break and is dropped only when a deletion consumes it.
     /// Any edit inside the line keeps the entry; joining a line with the
     /// next drops this line's entries and keeps the next one's, on the
-    /// joined line. Text inserted at the break stays after it
-    /// (`Assoc::Before`), so typing at the line's end or opening a line
-    /// below leaves the entry on its line. Returns whether `bid` had any
-    /// entry to remap, as `remap_points` does.
+    /// joined line. Text inserted at the break stays after it, so typing at
+    /// the line's end or opening a line below leaves the entry on its line.
     fn remap_lines(&mut self, bid: BufferId, change: &TextChange) -> bool {
-        let mut touched = false;
-        for entries in self.sources_mut(bid) {
-            if entries.is_empty() {
-                continue;
-            }
-            touched = true;
-            let mut cursor = PosMapCursor::new(change.changes().ops());
-            entries.retain_mut(|entry| {
-                let brk = change.before().lines().newline(entry.anchor());
-                let mapped = cursor.map_anchor(brk.offset(), Assoc::Before);
-                if mapped.anchor_deleted {
-                    return false;
-                }
-                entry.set_line(change.after().char_to_line(mapped.pos));
-                true
-            });
-        }
-        touched
+        self.remap_by_char(
+            bid,
+            change.changes(),
+            |entry| change.before().lines().newline(entry.anchor()).offset(),
+            |entry, pos| entry.set_line(change.after().char_to_line(pos)),
+        )
     }
 }
 
