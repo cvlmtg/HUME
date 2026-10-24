@@ -66,7 +66,7 @@ pub(in crate::editor) fn open_menu(
                 let index = choice
                     .map(|choice| {
                         choice
-                            .find(items.as_slice(), String::as_str)
+                            .find(&items, String::as_str)
                             .ok_or_else(|| choice.missing(WHAT))
                     })
                     .transpose()?;
@@ -125,7 +125,7 @@ impl MenuLayer {
     /// answer ticket, if it has one. Every way a menu closes with a callback ends
     /// here.
     fn fire(&mut self, state: &mut EditorState, choice: Option<usize>) {
-        let picked = choice.map(|i| Choice::of(self.rows.as_slice(), i, |row| &row.main));
+        let picked = choice.map(|i| Choice::of(&self.rows, i, |row| &row.main));
         state.queue_answered_call(
             self.input.take_answer(),
             Answer::Menu(picked),
@@ -137,10 +137,9 @@ impl MenuLayer {
     /// A menu pushed directly, for a test of the stack's own behavior.
     #[cfg(test)]
     pub(in crate::editor) fn for_test(
-        items: Vec<String>,
+        items: NonEmpty<String>,
         callback: hume_scripting::Rooted,
     ) -> Self {
-        let items = NonEmpty::new(items).expect("a test menu has items");
         Self::new(WaitingInput::for_test(), items, callback)
     }
 
@@ -247,12 +246,12 @@ impl Editor {
         let resolved = placement.and_then(|placement| {
             let model = self.state.input.menu()?;
             let window = hume_ui::popup::menu_window(
-                model.rows.as_slice().len(),
+                model.rows.len(),
                 Some(model.selected),
                 placement.pane_rect,
             );
             Some(hume_ui::popup::resolve_menu(
-                &model.rows.as_slice()[window.range.clone()],
+                &model.rows[window.range.clone()],
                 window,
                 placement,
                 border,
@@ -312,7 +311,7 @@ pub(in crate::editor) fn menu_input(ed: &mut Editor, r: LayerRef, ev: InputEvent
                 .input
                 .at_mut::<MenuLayer>(r)
                 .expect("dispatch_at already checked kind(r) == MenuLayer");
-            if menu.selected + 1 < menu.rows.as_slice().len() {
+            if menu.selected + 1 < menu.rows.len() {
                 menu.selected += 1;
             }
         }

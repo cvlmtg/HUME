@@ -26,16 +26,21 @@ impl<T> NonEmpty<T> {
         (!items.is_empty()).then_some(Self(items))
     }
 
-    pub fn as_slice(&self) -> &[T] {
-        &self.0
-    }
-
     pub fn into_vec(self) -> Vec<T> {
         self.0
     }
 
     pub fn map<U>(self, f: impl FnMut(T) -> U) -> NonEmpty<U> {
         NonEmpty(self.0.into_iter().map(f).collect())
+    }
+}
+
+/// Read-only: no `DerefMut`, so nothing can empty the list.
+impl<T> std::ops::Deref for NonEmpty<T> {
+    type Target = [T];
+
+    fn deref(&self) -> &[T] {
+        &self.0
     }
 }
 

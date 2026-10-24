@@ -275,7 +275,7 @@ fn menu_paste_is_swallowed_but_clears_the_status_message() {
     ed.state.push_layer(
         &ed.view,
         MenuLayer::for_test(
-            vec!["m0".into()],
+            crate::editor::tests::non_empty_strings(&["m0"]),
             hume_scripting::Rooted::new(marker("menu-cb")),
         ),
     );

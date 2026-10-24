@@ -992,7 +992,7 @@ fn click_with_menu_open_cancels_it_and_falls_through() {
     ed.state.push_layer(
         &ed.view,
         MenuLayer::for_test(
-            vec!["m0".into()],
+            crate::editor::tests::non_empty_strings(&["m0"]),
             hume_scripting::Rooted::new(marker("menu-cb")),
         ),
     );

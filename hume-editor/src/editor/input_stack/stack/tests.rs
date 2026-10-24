@@ -9,7 +9,7 @@ use steel::rvals::SteelVal;
 
 fn menu(label: &str) -> MenuLayer {
     MenuLayer::for_test(
-        vec![label.to_string()],
+        crate::editor::tests::non_empty_strings(&[label]),
         hume_scripting::Rooted::new(SteelVal::BoolV(false)),
     )
 }

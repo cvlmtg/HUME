@@ -617,7 +617,7 @@ fn picker_opens_over_a_live_menu_and_the_menu_resumes_once_it_closes() {
     ed.state.push_layer(
         &ed.view,
         crate::editor::input_stack::MenuLayer::for_test(
-            vec!["m0".into(), "m1".into()],
+            crate::editor::tests::non_empty_strings(&["m0", "m1"]),
             hume_scripting::Rooted::new(marker("menu-cb")),
         ),
     );

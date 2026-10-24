@@ -74,9 +74,8 @@ impl DrawerLayer {
     }
 
     /// Selects row `selected`, or the last row when it is past the end.
-    /// There is a last row: the rows are built from a [`NonEmpty`] list.
     fn select_clamped(&mut self, selected: usize) {
-        self.selected = selected.min(self.rows.len() - 1);
+        self.selected = selected.min(self.rows.last_index());
     }
 
     /// The drawer `:ls` opens, on the row of `current`.
@@ -172,7 +171,7 @@ impl DrawerRows {
                 lazy: None,
             },
             DrawerItems::Keys { keys, render } => Self {
-                text: Arc::new(vec![None; keys.as_slice().len()]),
+                text: Arc::new(vec![None; keys.len()]),
                 lazy: Some((keys.into_vec(), render)),
             },
         }
@@ -180,6 +179,12 @@ impl DrawerRows {
 
     pub(in crate::editor) fn len(&self) -> usize {
         self.text.len()
+    }
+
+    /// The last row's index. There is one: [`Self::new`] takes a
+    /// [`NonEmpty`] list.
+    fn last_index(&self) -> usize {
+        self.text.len() - 1
     }
 
     pub(in crate::editor) fn text(&self) -> &Arc<Vec<Option<String>>> {
@@ -508,14 +513,7 @@ impl EditorState {
             return;
         };
         let list = self.buffer_list(current);
-        if *listed == list.buffers
-            && drawer
-                .rows
-                .text()
-                .iter()
-                .flatten()
-                .eq(list.rows.as_slice().iter())
-        {
+        if *listed == list.buffers && drawer.rows.text().iter().flatten().eq(list.rows.iter()) {
             return;
         }
         self.input
@@ -580,7 +578,7 @@ fn move_drawer_selection(ed: &mut Editor, r: LayerRef, delta: isize) {
         .input
         .at_mut::<DrawerLayer>(r)
         .expect("dispatch_at already checked kind(r) == DrawerLayer");
-    let last = drawer.rows.len() - 1;
+    let last = drawer.rows.last_index();
     let new = (drawer.selected as isize + delta).clamp(0, last as isize);
     drawer.selected = new as usize;
     clamp_drawer_scroll(ed, r);
