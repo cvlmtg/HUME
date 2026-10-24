@@ -438,6 +438,7 @@ fn word_tokens_within_a_limit_counts_both_sides_together() {
 }
 
 #[test]
+#[allow(clippy::single_range_in_vec_init)] // each side's list holds one changed range
 fn word_change_ranges_spends_the_tokens_it_diffed() {
     // "a b" and "a c" are three tokens each; the changed word is the third.
     let mut budget = 6;
