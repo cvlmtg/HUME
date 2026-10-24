@@ -2,38 +2,42 @@
 
 ## Unreleased
 
+### Breaking changes
+- `(hume/yield!)` is gone: the script budget stops a script on its own, so delete any call to it.
+- `stdlib/run!` is gone: call `run-capture!`, the function it named.
+- `core:buffer-words`'s `"lines"` option is now `"chars"`, counted in characters (default 8000), not lines: replace it in your `#:config`, or drop it.
+- `path-programs` lists in the background: it takes a callback, `(lambda (names done?) ...)`, and returns an id for `cancel-async!`. Move code that used its result into the callback, and call it from a command, hook, timer or callback, not from the top level of `init.scm` or of a plugin loaded at startup.
+- `completion-emit!` for a request already answered without `#:more` is dropped and returns `#f`: to update an open menu, answer with `#:more #t` until the last part.
+
 ### Syntax & language awareness
 - HUME starts faster: each installed grammar loads the first time a file or an embedded block needs it, not at startup.
+
+### Plugins & scripting
+- `steel-command-budget-ms` and `steel-init-budget-ms` stop a script that runs past them, so a plugin stuck in a loop can't freeze HUME.
+- `init.scm` and plugins compile faster, so HUME starts sooner.
+- New `replace-dir!`, `try-lock-file!` and `unlock-file!`.
+- New `buffer-char-count` returns a buffer's length in characters.
+- `completion-emit!` takes `#:more #t` to answer a request in parts.
+- `register-completion-source!` takes `#:cancel`, so a source can stop the work it started for a request HUME no longer waits on.
+- Steel's `current-directory` and `change-current-directory!` read and move HUME's working directory, the one `cwd`, `set-cwd!` and `:cd` use. `set-cwd!` works from `init.scm` too.
+- A grammar `register-grammar!` registers from `init.scm` that can't be loaded is reported in `:messages` when a file or an embedded block first needs it, not at startup.
 
 ### Fixes
 - The Linux archive runs on glibc 2.28 and later: Ubuntu 20.04, Debian 10, RHEL 8 and newer.
 - Plugin code that runs later (debounced and timed functions, background process and language server replies, picker actions) no longer reads wrong values or crashes HUME after a while.
+- A plugin error that passes through nested `with-handler`s no longer crashes HUME.
+- Loading some plugin code no longer prints stray text over the screen.
 - `core:git-diff`'s inline diff keeps its word highlights when the machine is busy.
 - A completion item whose range a language server sent backwards no longer moves the completion menu.
 - `Tab` on the `|` prompt lists programs as it finds them, so HUME keeps responding on a slow `PATH`, like WSL's Windows directories.
+- `core:buffer-words` no longer stalls typing while it indexes a file with very long lines.
+- `core:buffer-words` no longer resets the highlighted item of an open completion menu while it indexes.
+- A HUME that exited, or an install the script budget stopped, can't leave `:lsp-install` locked.
+- `path-entries` and Steel's `delete-directory!` resolve `..` in a relative path the way `:e` does.
 - `cancel-async!` also drops a callback that was already due but hadn't run yet.
 - `cancel-timer!` also drops a timer that was already due but hadn't run yet, so a debounced function no longer runs twice.
 - `cancel-timer!` cancels only timers made by `after!`, never one of HUME's own.
 - An error in a timer, a background reply or another plugin's callback no longer empties a completion menu that is still waiting on a source.
-
-### Breaking changes
-- `(hume/yield!)` is gone: the script budget stops a script on its own, so delete any call to it.
-- `stdlib/run!` is gone: call `run-capture!`, the function it named.
-- `core:buffer-words`'s `"lines"` option is now `"chars"`, the number of characters it indexes on each side of the cursor per step: rename it in your `#:config`.
-- `path-programs` lists in the background: it takes a callback, `(lambda (names done?) ...)`, called with the names found so far, and returns an id for `cancel-async!`. Move code that used its result into the callback, and use `names` once `done?` is `#t`. Call it from a command, hook, timer or callback: it raises at the top level of `init.scm` and in a plugin body loaded at startup.
-- `completion-emit!` for a request already answered without `#:more` is dropped and returns `#f`: to update an open menu, answer with `#:more #t` until the last part.
-
-### Plugins & scripting
-- `steel-command-budget-ms` and `steel-init-budget-ms` stop a script that runs past them, so a plugin stuck in a loop can't freeze HUME. Time spent waiting for a program or deleting a directory tree doesn't count.
-- New `replace-dir!`, `try-lock-file!` and `unlock-file!`.
-- A HUME that exited, or an install the script budget stopped, can't leave `:lsp-install` locked.
-- Steel's `current-directory` and `change-current-directory!` read and move HUME's working directory, the one `cwd`, `set-cwd!` and `:cd` use. `set-cwd!` works from `init.scm` too.
-- A relative path given to `replace-dir!`, `delete-directory!`, `try-lock-file!`, `unlock-file!` or `path-entries` resolves like one typed to `:e`.
-- A grammar `register-grammar!` registers from `init.scm` that can't be loaded is reported in `:messages` when a file or an embedded block first needs it, not at startup.
-- `completion-emit!` takes `#:more #t` to answer a request in parts.
-- `register-completion-source!` takes `#:cancel`, called with a request's id when HUME stops waiting for its answer, so a source can stop the work it started for it.
-- New `buffer-char-count` returns a buffer's length in characters.
-- `core:buffer-words` no longer stalls typing while it indexes a file with very long lines.
 
 ## [0.16.1] - 2026-10-22
 
