@@ -193,6 +193,70 @@ fn cancel_async_prevents_the_callback_and_kills_the_child() {
     );
 }
 
+#[test]
+fn cancel_async_raises_for_a_timer_and_leaves_the_job_running() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bc\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"
+        (define timer #f)
+        (define-command! "go" "" (lambda ()
+          (spawn-async! "sleep" (list "30") (lambda (out err code) (void)))
+          (set! timer (after! 100000 (lambda () (void))))))
+        (define-command! "cancel-it" "" (lambda () (cancel-async! timer)))
+        "#,
+    );
+    call(&mut ed, "go");
+    let pid = ed
+        .state
+        .config
+        .async_jobs
+        .values()
+        .next()
+        .expect("job registered")
+        .process()
+        .pid();
+
+    call(&mut ed, "cancel-it");
+
+    assert!(
+        has_error(&ed, "cancel-async!: expected a job"),
+        "errors: {:?}",
+        error_log(&ed)
+    );
+    assert!(is_alive(pid), "a timer handle must not stop a job");
+}
+
+#[test]
+fn cancel_timer_raises_for_a_job_and_leaves_the_timer_scheduled() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bc\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"
+        (define job #f)
+        (define-command! "go" "" (lambda ()
+          (set! job (spawn-async! "sleep" (list "30") (lambda (out err code) (void))))
+          (after! 0 (lambda () (log! 'info "fired")))))
+        (define-command! "cancel-it" "" (lambda () (cancel-timer! job)))
+        "#,
+    );
+    call(&mut ed, "go");
+    call(&mut ed, "cancel-it");
+
+    assert!(
+        has_error(&ed, "cancel-timer!: expected a timer"),
+        "errors: {:?}",
+        error_log(&ed)
+    );
+    ed.drain_async_sources();
+    ed.settle();
+    assert_eq!(status(&ed), "fired", "a job handle must not cancel a timer");
+}
+
 /// An edit a job's callback makes is background work's, not the user's: a
 /// bare `p` after it still pastes the kill-ring head.
 #[test]

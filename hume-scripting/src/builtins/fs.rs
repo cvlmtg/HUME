@@ -28,7 +28,7 @@
 //! | `path->display` | `string → string`               | UNC-strip + `~`-collapse; no filesystem access |
 //! | `safe-path-segment?` | `any → bool`              | `#t` for a string safe as one path segment   |
 //! | `path-entries`  | `string string → list`         | What a typed path completes to, as `:e` lists it |
-//! | `path-programs` | `string list proc → int`       | Lists the search path's programs by name prefix in the background |
+//! | `path-programs` | `string list proc → job`       | Lists the search path's programs by name prefix in the background |
 //! | `%which`        | `string → string \| #f`        | Where a program runs from; backs the `which` shim |
 //! | `home-dir`      | `() → string \| #f`            | The user's home directory                    |
 //!
@@ -263,7 +263,7 @@ pub(crate) fn path_entries(_ctx: &mut SteelCtx, dir: PathBuf, prefix: String) ->
 /// editor's search path whose names start with `prefix` in the background,
 /// calling `(on-names names done?)` as they are found
 /// ([`AsyncProcessHost::scan_programs`](crate::host::AsyncProcessHost::scan_programs)),
-/// and returns the id `cancel-async!` stops it by. `extensions` (`".exe"`,
+/// and returns the job `cancel-async!` stops it by. `extensions` (`".exe"`,
 /// …) are the file extensions that name a program on Windows.
 pub(crate) fn path_programs(
     ctx: &mut SteelCtx,
@@ -272,10 +272,10 @@ pub(crate) fn path_programs(
     on_names: crate::Rooted,
 ) -> SteelResult {
     let extensions = list_to_strings(extensions, "path-programs")?;
-    let id = require_cap(ctx.host.async_process(), "path-programs")?
+    let job = require_cap(ctx.host.async_process(), "path-programs")?
         .scan_programs(prefix, extensions, on_names)
         .map_err(generic_err)?;
-    Ok(SteelVal::IntV(id as isize))
+    Ok(job.into_steel_val())
 }
 
 /// `(%which name)`, which the prelude's `which` calls: the program `name`

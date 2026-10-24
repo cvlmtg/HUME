@@ -118,8 +118,8 @@ after the state it was scheduled against has moved on:
   state for a buffer that's gone would leak it.
 - **Cancel the work a restart replaces.** `cancel-timer!` and `cancel-async!` stop a
   callback even once it is due, so a restart that cancels the timer or job it replaces
-  never sees the old one fire. When the code that restarts the work doesn't hold every id
-  it would have to cancel, give the entry a generation counter instead, bumped every time
+  never sees the old one fire. When the code that restarts the work doesn't hold every
+  timer or job it would have to cancel, give the entry a generation counter instead, bumped every time
   the operation restarts; a callback closes over the generation it started under and
   no-ops if the entry's current generation has since moved on. `buffer-words`' `gen`
   field is an example.

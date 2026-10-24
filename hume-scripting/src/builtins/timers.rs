@@ -7,26 +7,26 @@ use steel::rvals::SteelVal;
 use crate::SteelCtx;
 
 use super::SteelResult;
-use super::args::usize_arg;
+use super::args::{timer_arg, usize_arg};
 use super::errors::require_cap;
 
-/// `(after! ms thunk)` → timer id (int). `thunk` is called with no args at
+/// `(after! ms thunk)` → a timer for `cancel-timer!`. `thunk` is called with no args at
 /// the drain boundary once `ms` milliseconds have passed (never inline;
 /// same queued-Steel-call delivery as the LSP callbacks).
 pub(crate) fn after(ctx: &mut SteelCtx, ms: SteelVal, thunk: crate::Rooted) -> SteelResult {
     let ms = usize_arg(ms, "after!")? as u64;
     match require_cap(ctx.host.timers(), "after!")?.schedule_timer(ms, thunk) {
-        Some(id) => Ok(SteelVal::IntV(id as isize)),
+        Some(timer) => Ok(timer.into_steel_val()),
         None => steel::stop!(Generic => "after!: no timer wheel in this context"),
     }
 }
 
-/// `(cancel-timer! id)` → void. The thunk of the `after!` timer `id` never
-/// runs, even one already due. Idempotent: a no-op once the thunk has run,
-/// after an earlier cancel, or for an id `after!` never returned.
-pub(crate) fn cancel_timer(ctx: &mut SteelCtx, id: SteelVal) -> SteelResult {
-    let id = usize_arg(id, "cancel-timer!")? as u64;
-    require_cap(ctx.host.timers(), "cancel-timer!")?.cancel_timer(id);
+/// `(cancel-timer! timer)` → void. The thunk of the `after!` timer never
+/// runs, even one already due. Idempotent: a no-op once the thunk has run
+/// or after an earlier cancel. Raises for anything but a timer.
+pub(crate) fn cancel_timer(ctx: &mut SteelCtx, timer: SteelVal) -> SteelResult {
+    let timer = timer_arg(&timer, "cancel-timer!")?;
+    require_cap(ctx.host.timers(), "cancel-timer!")?.cancel_timer(timer);
     Ok(SteelVal::Void)
 }
 

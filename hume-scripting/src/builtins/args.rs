@@ -20,7 +20,7 @@ use termina::event::KeyEvent;
 use hume_engine::pipeline::BufferId;
 
 use crate::Rooted;
-use crate::host::HostToken;
+use crate::host::{HostToken, JobHandle, TimerHandle};
 use crate::keys::parse_key_sequence;
 use crate::types::{PaneHandle, Params};
 
@@ -193,8 +193,8 @@ pub(crate) fn cwd_arg(
     })
 }
 
-/// A non-negative integer, as `usize`. Callers needing `u64` (timer ids,
-/// millisecond durations) cast at the call site.
+/// A non-negative integer, as `usize`. Callers needing `u64` (millisecond
+/// durations) cast at the call site.
 pub(crate) fn usize_arg(val: SteelVal, ctx_name: &str) -> Result<usize, SteelErr> {
     match val {
         SteelVal::IntV(n) if n >= 0 => Ok(n as usize),
@@ -244,6 +244,21 @@ pub(crate) fn command_shape(proc: &SteelVal) -> (u16, bool) {
 pub(crate) fn server_arg(val: &SteelVal, ctx_name: &str) -> Result<crate::ServerRef, SteelErr> {
     crate::ServerRef::from_steel_val(val)
         .ok_or_else(|| generic_err(format!("{ctx_name}: expected a server value")))
+}
+
+/// A timer, as `after!` hands it out.
+pub(crate) fn timer_arg(val: &SteelVal, ctx_name: &str) -> Result<TimerHandle, SteelErr> {
+    super::ids::downcast(val)
+        .ok_or_else(|| generic_err(format!("{ctx_name}: expected a timer (from after!)")))
+}
+
+/// A job, as `spawn-async!` and `path-programs` hand it out.
+pub(crate) fn job_arg(val: &SteelVal, ctx_name: &str) -> Result<JobHandle, SteelErr> {
+    super::ids::downcast(val).ok_or_else(|| {
+        generic_err(format!(
+            "{ctx_name}: expected a job (from spawn-async! or path-programs)"
+        ))
+    })
 }
 
 /// A server value that may be `#f` (absent).

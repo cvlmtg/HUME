@@ -1,4 +1,4 @@
-//! `(spawn-async! cmd args callback #:cwd dir)` / `(cancel-async! id)`: generic
+//! `(spawn-async! cmd args callback #:cwd dir)` / `(cancel-async! job)`: generic
 //! async subprocess execution. `run-capture!`: a blocking counterpart with
 //! no callback.
 //!
@@ -17,8 +17,8 @@ use crate::log::LogLevel;
 
 use super::SteelResult;
 use super::args::{
-    ENV_PAIR_SHAPE, cwd_arg, list_to_string_pairs, list_to_strings, string_arg, symbol_hash,
-    usize_arg,
+    ENV_PAIR_SHAPE, cwd_arg, job_arg, list_to_string_pairs, list_to_strings, string_arg,
+    symbol_hash,
 };
 use super::errors::{generic_err, require_cap};
 
@@ -32,7 +32,7 @@ use super::errors::{generic_err, require_cap};
 /// `cwd`) does not raise: `callback` still fires, with empty stdout, a
 /// message naming `cmd` in stderr, and `exit-code` `#f`: the same
 /// "callback always fires, exactly once" contract as `lsp-request!`, so a
-/// plugin never has to handle failure in two places. Returns a job id for
+/// plugin never has to handle failure in two places. Returns a job for
 /// `cancel-async!`.
 pub(crate) fn spawn_async(
     ctx: &mut SteelCtx,
@@ -49,19 +49,20 @@ pub(crate) fn spawn_async(
     let args = list_to_strings(args, "spawn-async! args")?;
     let cwd = cwd_arg(cwd, &ctx.host.buffers().cwd(), "spawn-async! cwd")?;
 
-    let id = require_cap(ctx.host.async_process(), "spawn-async!")?
+    let job = require_cap(ctx.host.async_process(), "spawn-async!")?
         .spawn_async(&cmd, args, cwd, callback);
-    Ok(SteelVal::IntV(id as isize))
+    Ok(job.into_steel_val())
 }
 
-/// `(cancel-async! id)` → void. Stops the job or scan and drops its
+/// `(cancel-async! job)` → void. Stops the job or scan and drops its
 /// callback without firing it, even one already due
 /// ([`AsyncProcessHost::cancel_async`](crate::host::AsyncProcessHost::cancel_async)).
-/// Idempotent: an id whose last callback has run, an already-cancelled id
-/// or an unknown one is a no-op, matching `cancel-timer!`'s contract.
-pub(crate) fn cancel_async(ctx: &mut SteelCtx, id: SteelVal) -> SteelResult {
-    let id = usize_arg(id, "cancel-async!")? as u64;
-    require_cap(ctx.host.async_process(), "cancel-async!")?.cancel_async(id);
+/// Idempotent: a job whose last callback has run or one already cancelled
+/// is a no-op, matching `cancel-timer!`'s contract. Raises for anything but
+/// a job.
+pub(crate) fn cancel_async(ctx: &mut SteelCtx, job: SteelVal) -> SteelResult {
+    let job = job_arg(&job, "cancel-async!")?;
+    require_cap(ctx.host.async_process(), "cancel-async!")?.cancel_async(job);
     Ok(SteelVal::Void)
 }
 

@@ -293,23 +293,14 @@ fn debounce_called_again_while_its_thunk_is_queued_runs_once() {
 }
 
 #[test]
-fn cancel_timer_leaves_a_native_timer_scheduled() {
+fn cancelling_a_thunk_leaves_a_native_timer_scheduled() {
     let mut ed = editor_from("-[a]>bcdef\n");
     let bid = ed.focused_buffer_id();
     let native = ed.timers.schedule(
         std::time::Duration::from_millis(10),
         crate::editor::timer_bridge::TimerPayload::DiagnosticPullDebounce(bid),
     );
-    let tmp = tempfile::tempdir().unwrap();
-    run(
-        &mut ed,
-        tmp.path(),
-        &format!(
-            r#"(define-command! "stop" "" (lambda () (cancel-timer! {})))"#,
-            native.0
-        ),
-    );
-    call(&mut ed, "stop");
+    ed.timers.cancel_thunk(native);
     let due = ed
         .timers
         .take_due(std::time::Instant::now() + std::time::Duration::from_millis(20));

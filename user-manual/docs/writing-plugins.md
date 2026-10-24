@@ -392,8 +392,8 @@ strings, `exit-code` is its exit code (`#f` if it was killed by a signal, or if 
 command couldn't even be started, like a missing binary, so compare it with `equal?`
 rather than `=`). A command that fails to
 start or exits non-zero still calls `callback` rather than raising an error, so there's
-only one place to handle the outcome. `spawn-async!` returns an id; call
-`(cancel-async! id)` to kill the command and discard its callback before it fires,
+only one place to handle the outcome. `spawn-async!` returns a job; call
+`(cancel-async! job)` to kill the command and discard its callback before it fires,
 useful when a debounced action (a hook firing on every keystroke, say) ends up
 superseded by a newer one before the older command has finished.
 

@@ -52,9 +52,12 @@ mod unix;
 fn cancel_async_without_async_process_host_errors() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
-    let msg = cancel_async(&mut ctx, SteelVal::IntV(1))
-        .unwrap_err()
-        .to_string();
+    let msg = cancel_async(
+        &mut ctx,
+        crate::host::JobHandle::from_raw(1).into_steel_val(),
+    )
+    .unwrap_err()
+    .to_string();
     assert!(
         msg.contains("cancel-async!: not supported by this host"),
         "got: {msg}"

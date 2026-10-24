@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use hume_platform::process::job::SpawnedJob;
 use hume_platform::snapshots::Snapshots;
-use hume_scripting::host::{async_callback_args, names_callback_args};
+use hume_scripting::host::{JobHandle, async_callback_args, names_callback_args};
 use hume_scripting::{Rooted, SteelCall};
 
 use super::Editor;
@@ -94,7 +94,7 @@ impl Editor {
         // Snapshot ids before polling: queuing a callback needs `&mut
         // self.state`, which a borrow of the map held across the loop would
         // block. Mirrors `drain_lsp`'s `let server_ids: Vec<_> = ...collect();`.
-        let ids: Vec<u64> = self.state.config.async_jobs.keys().copied().collect();
+        let ids: Vec<JobHandle> = self.state.config.async_jobs.keys().copied().collect();
         for id in ids {
             if let Some(call) = self
                 .state
@@ -111,7 +111,7 @@ impl Editor {
     /// Removes job `id` when its last callback was the one just run or
     /// dropped. A dropped earlier report needs nothing: the next one
     /// carries every name it did.
-    pub(in crate::editor) fn forget_job_callback(&mut self, id: u64) {
+    pub(in crate::editor) fn forget_job_callback(&mut self, id: JobHandle) {
         let jobs = &mut self.state.config.async_jobs;
         if jobs
             .get(&id)

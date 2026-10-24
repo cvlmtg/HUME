@@ -25,7 +25,7 @@ mod token;
 mod ui;
 
 pub(crate) use async_process::exit_code_value;
-pub use async_process::{AsyncProcessHost, async_callback_args, names_callback_args};
+pub use async_process::{AsyncProcessHost, JobHandle, async_callback_args, names_callback_args};
 pub use buffers::{BufferHost, DisplayPathForm, UndoNode};
 pub use commands::{CommandArg, CommandHost, MAX_COUNT, NativeCall};
 pub use completion::{
@@ -44,7 +44,7 @@ pub use registers::RegisterHost;
 pub use settings::{
     BufferIntrinsicOption, OptionInput, OptionValue, SettingsHost, language_option_value,
 };
-pub use timers::TimerHost;
+pub use timers::{TimerHandle, TimerHost};
 pub use token::{HostToken, TrackedFate, TrackedHold};
 pub use ui::{
     DrawerItems, LivePickerOpts, NonEmpty, PickerFeedMode, PickerOpts, PickerSourceOpts, PopupKind,

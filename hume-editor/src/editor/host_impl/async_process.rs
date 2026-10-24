@@ -6,13 +6,13 @@ use std::path::PathBuf;
 use super::EditorHostImpl;
 use crate::editor::async_job::{AsyncWork, PendingJob};
 use hume_platform::process::job::JobResult;
-use hume_scripting::host::{AsyncProcessHost, async_callback_args};
+use hume_scripting::host::{AsyncProcessHost, JobHandle, async_callback_args};
 
 impl EditorHostImpl<'_> {
-    fn next_async_job_id(&mut self) -> u64 {
+    fn next_async_job(&mut self) -> JobHandle {
         let id = self.state.config.next_async_job_id;
         self.state.config.next_async_job_id += 1;
-        id
+        JobHandle::from_raw(id)
     }
 }
 
@@ -23,8 +23,8 @@ impl<'a> AsyncProcessHost for EditorHostImpl<'a> {
         args: Vec<String>,
         cwd: PathBuf,
         callback: hume_scripting::Rooted,
-    ) -> u64 {
-        let id = self.next_async_job_id();
+    ) -> JobHandle {
+        let id = self.next_async_job();
 
         let launch = hume_platform::process::Launch {
             cwd: &cwd,
@@ -78,7 +78,7 @@ impl<'a> AsyncProcessHost for EditorHostImpl<'a> {
         prefix: String,
         extensions: Vec<String>,
         callback: hume_scripting::Rooted,
-    ) -> Result<u64, String> {
+    ) -> Result<JobHandle, String> {
         let names = hume_platform::path::programs::spawn_program_scan(
             self.state.dirs.search_path.clone(),
             self.state.cwd.clone(),
@@ -87,7 +87,7 @@ impl<'a> AsyncProcessHost for EditorHostImpl<'a> {
             std::sync::Arc::clone(&self.state.wake),
         )
         .map_err(|e| format!("path-programs: the scan could not start: {e}"))?;
-        let id = self.next_async_job_id();
+        let id = self.next_async_job();
         self.state.config.async_jobs.insert(
             id,
             PendingJob::Live {
@@ -98,12 +98,11 @@ impl<'a> AsyncProcessHost for EditorHostImpl<'a> {
         Ok(id)
     }
 
-    fn cancel_async(&mut self, id: u64) {
+    fn cancel_async(&mut self, job: JobHandle) {
         // Dropping the entry drops its work (a `SpawnedJob` kills and reaps
         // its child, a `Snapshots` stops its producer) and its callback,
         // which a queued call then finds gone and never runs: a no-op once
-        // the last callback has run, after an earlier cancel, or for an id
-        // never issued.
-        self.state.config.async_jobs.remove(&id);
+        // the last callback has run or after an earlier cancel.
+        self.state.config.async_jobs.remove(&job);
     }
 }

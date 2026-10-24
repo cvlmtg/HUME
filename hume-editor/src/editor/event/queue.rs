@@ -4,6 +4,7 @@
 use std::rc::Rc;
 
 use hume_engine::pipeline::BufferId;
+use hume_scripting::host::JobHandle;
 use hume_scripting::{PaneHandle, Rooted, SteelCall};
 
 use super::EditorEvent;
@@ -78,7 +79,7 @@ pub(in crate::editor) enum CallGuard {
     /// is dropped when `cancel-async!` removed the entry before its turn,
     /// and takes the entry with it once it was the entry's last report or
     /// raised.
-    Job(u64),
+    Job(JobHandle),
     /// A timer's Steel thunk, queued once it came due. The call is dropped
     /// when `cancel-timer!` cancelled the timer before its turn.
     Timer(TimerId),
@@ -162,7 +163,7 @@ impl EditorState {
 
     /// Queue `call`, the callback of the `ConfigState.async_jobs` entry
     /// `job`; see [`CallGuard::Job`].
-    pub(in crate::editor) fn queue_job_callback(&mut self, job: u64, call: SteelCall) {
+    pub(in crate::editor) fn queue_job_callback(&mut self, job: JobHandle, call: SteelCall) {
         self.push_work(PendingWork::call(
             call,
             Some(CallGuard::Job(job)),

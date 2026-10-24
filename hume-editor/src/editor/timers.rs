@@ -13,9 +13,9 @@ use rustc_hash::FxHashSet;
 use super::async_source::AsyncSource;
 
 /// Opaque handle to a scheduled timer. The inner `u64` is `pub(in crate::editor)` (not
-/// exposed via a method) so the host can convert to/from the plain
-/// integer Steel's `(after! ms thunk)` returns. This module itself stays
-/// Steel-agnostic (see the module doc).
+/// exposed via a method) so the host can convert to/from the
+/// `TimerHandle` Steel's `(after! ms thunk)` returns. This module itself
+/// stays Steel-agnostic (see the module doc).
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub(in crate::editor) struct TimerId(pub(in crate::editor) u64);
 

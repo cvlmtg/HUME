@@ -39,9 +39,12 @@ fn after_rejects_a_negative_ms_argument() {
 fn cancel_timer_errors_when_the_host_has_no_timer_support() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
-    let msg = cancel_timer(&mut ctx, 0i64.into_steelval().unwrap())
-        .unwrap_err()
-        .to_string();
+    let msg = cancel_timer(
+        &mut ctx,
+        crate::host::TimerHandle::from_raw(0).into_steel_val(),
+    )
+    .unwrap_err()
+    .to_string();
     assert!(
         msg.contains("cancel-timer!: not supported by this host"),
         "got: {msg}"

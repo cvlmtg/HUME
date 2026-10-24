@@ -127,3 +127,59 @@ fn buffer_key_display() {
     let s = key.fmt().unwrap().unwrap();
     assert!(s.starts_with("#<buffer-key "), "got: {s}");
 }
+
+/// `(list (equal? a b) (equal? a c) (hash-ref (hash-insert (hash) a 42) b))`
+/// for `a` and `b` holding one handle and `c` another, through a real Steel
+/// eval.
+fn handle_equality_and_hashing(a: SteelVal, b: SteelVal, c: SteelVal) -> Vec<SteelVal> {
+    let mut steel = steel::steel_vm::engine::Engine::new();
+    crate::builtins::register_all(&mut steel);
+    steel.register_value("a", a);
+    steel.register_value("b", b);
+    steel.register_value("c", c);
+    let results = steel
+        .compile_and_run_raw_program(
+            "(list (equal? a b) (equal? a c) (hash-ref (hash-insert (hash) a 42) b))",
+        )
+        .expect("eval must succeed");
+    let SteelVal::ListV(items) = results.into_iter().next().unwrap() else {
+        panic!("expected a list result");
+    };
+    items.into_iter().collect()
+}
+
+#[test]
+fn timer_handles_compare_and_hash_by_their_timer() {
+    let timer = |raw| TimerHandle::from_raw(raw).into_steel_val();
+    assert_eq!(
+        handle_equality_and_hashing(timer(3), timer(3), timer(4)),
+        vec![
+            SteelVal::BoolV(true),
+            SteelVal::BoolV(false),
+            SteelVal::IntV(42)
+        ]
+    );
+}
+
+#[test]
+fn job_handles_compare_and_hash_by_their_job() {
+    let job = |raw| JobHandle::from_raw(raw).into_steel_val();
+    assert_eq!(
+        handle_equality_and_hashing(job(3), job(3), job(4)),
+        vec![
+            SteelVal::BoolV(true),
+            SteelVal::BoolV(false),
+            SteelVal::IntV(42)
+        ]
+    );
+}
+
+#[test]
+fn a_timer_and_a_job_with_one_id_are_not_equal() {
+    let timer = TimerHandle::from_raw(0).into_steel_val();
+    let job = JobHandle::from_raw(0).into_steel_val();
+    assert_eq!(
+        handle_equality_and_hashing(timer.clone(), timer, job)[1],
+        SteelVal::BoolV(false)
+    );
+}

@@ -42,13 +42,32 @@ pub fn names_callback_args(progress: &Progress<Arc<[Arc<str>]>>) -> Vec<SteelVal
     ]
 }
 
+/// A `spawn-async!` job or `path-programs` scan, as Steel holds it: an
+/// opaque value only `cancel-async!` accepts, so a timer's handle can never
+/// name a job.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct JobHandle(u64);
+
+impl JobHandle {
+    /// Wraps an id the host minted.
+    pub fn from_raw(raw: u64) -> Self {
+        Self(raw)
+    }
+
+    /// The id the host minted.
+    pub fn raw(self) -> u64 {
+        self.0
+    }
+}
+
 /// Background work with a Steel callback, accessed through
 /// [`EditorHost::async_process`](super::EditorHost::async_process). Backs
 /// `(spawn-async! cmd args callback #:cwd dir)`, `(path-programs prefix
-/// extensions callback)` and `(cancel-async! id)`, which share one id space.
+/// extensions callback)` and `(cancel-async! job)`, which share one kind of
+/// handle.
 pub trait AsyncProcessHost {
     /// Spawns `cmd` with `args` (direct argv, no shell) in `cwd`, capturing its whole stdout/stderr to
-    /// completion. Always returns a job id, even if the spawn itself fails;
+    /// completion. Always returns a job, even if the spawn itself fails;
     /// `callback` still fires exactly once either way, unless cancelled, with
     /// [`async_callback_args`]: `exit-code` is `#f` for a signal-killed
     /// child, a status the OS never returned, or a spawn failure (missing
@@ -62,10 +81,10 @@ pub trait AsyncProcessHost {
         args: Vec<String>,
         cwd: PathBuf,
         callback: crate::Rooted,
-    ) -> u64;
+    ) -> JobHandle;
 
     /// Lists the programs on the editor's search path whose names start
-    /// with `prefix`, on a background thread, and returns the scan's id.
+    /// with `prefix`, on a background thread, and returns the scan.
     /// `callback` gets [`names_callback_args`] after each search path
     /// directory that adds a name, or for several at once when the editor
     /// falls behind, and a last time with `done?` `#t`. On Windows a
@@ -76,12 +95,12 @@ pub trait AsyncProcessHost {
         prefix: String,
         extensions: Vec<String>,
         callback: crate::Rooted,
-    ) -> Result<u64, String>;
+    ) -> Result<JobHandle, String>;
 
-    /// Stops the job or scan `id` and drops its callback without firing
-    /// it, even a callback already due: a job's child is killed and
-    /// reaped, a scan reads no further directory. A no-op once its last
-    /// callback has run, after an earlier cancel, or for an id never
-    /// issued, the same idempotent contract as `cancel_timer`.
-    fn cancel_async(&mut self, id: u64);
+    /// Stops `job` and drops its callback without firing it, even a
+    /// callback already due: a job's child is killed and reaped, a scan
+    /// reads no further directory. A no-op once its last callback has run
+    /// or after an earlier cancel, the same idempotent contract as
+    /// `cancel_timer`.
+    fn cancel_async(&mut self, job: JobHandle);
 }

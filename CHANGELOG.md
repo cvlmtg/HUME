@@ -9,6 +9,7 @@
 - `path-programs` lists in the background: it takes a callback, `(lambda (names done?) ...)`, and returns an id for `cancel-async!`. Move code that used its result into the callback, and call it from a command, hook, timer or callback, not from the top level of `init.scm` or of a plugin loaded at startup.
 - `completion-emit!` for a request already answered without `#:more` is dropped and returns `#f`: to update an open menu, answer with `#:more #t` until the last part.
 - `update-drawer-list!` raises on an empty list instead of returning `#f`: close the drawer instead.
+- `after!`, `spawn-async!` and `path-programs` return an opaque timer or job, not an integer: compare two with `equal?`. `cancel-timer!` raises for anything but a timer, and `cancel-async!` for anything but a job, so one kind can no longer cancel the other.
 
 ### Syntax & language awareness
 - HUME starts faster: each installed grammar loads the first time a file or an embedded block needs it, not at startup.

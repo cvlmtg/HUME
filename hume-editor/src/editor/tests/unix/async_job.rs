@@ -8,14 +8,14 @@ use super::*;
 use std::time::{Duration, Instant};
 
 use hume_platform::path::test_support::write_program;
-use hume_scripting::host::AsyncProcessHost;
+use hume_scripting::host::{AsyncProcessHost, JobHandle};
 use steel::rvals::SteelVal;
 
 use crate::editor::async_job::PendingJob;
 use crate::editor::host_impl::EditorHostImpl;
 
 /// Whether job `id` has queued its last callback, which has not run yet.
-fn awaits_last_callback(ed: &Editor, id: u64) -> bool {
+fn awaits_last_callback(ed: &Editor, id: JobHandle) -> bool {
     ed.state
         .config
         .async_jobs
@@ -23,7 +23,7 @@ fn awaits_last_callback(ed: &Editor, id: u64) -> bool {
         .is_some_and(|pending| matches!(pending, PendingJob::Ended))
 }
 
-fn spawn_async(ed: &mut Editor, cmd: &str, args: Vec<String>, callback: SteelVal) -> u64 {
+fn spawn_async(ed: &mut Editor, cmd: &str, args: Vec<String>, callback: SteelVal) -> JobHandle {
     let cwd = ed.state.cwd.clone();
     EditorHostImpl::new(&mut ed.state, &mut ed.view).spawn_async(
         cmd,
@@ -145,15 +145,15 @@ fn cancel_kills_the_child_and_drops_the_callback_without_firing_it() {
 }
 
 #[test]
-fn cancel_on_an_unknown_id_is_a_silent_no_op() {
+fn cancel_on_a_handle_no_job_holds_is_a_silent_no_op() {
     let mut ed = editor_from("-[a]>bc\n");
-    EditorHostImpl::new(&mut ed.state, &mut ed.view).cancel_async(999);
+    EditorHostImpl::new(&mut ed.state, &mut ed.view).cancel_async(JobHandle::from_raw(999));
     assert!(ed.state.config.pending_work.is_empty());
 }
 
 // ── Program scans ────────────────────────────────────────────────────────────
 
-fn scan_programs(ed: &mut Editor, prefix: &str) -> u64 {
+fn scan_programs(ed: &mut Editor, prefix: &str) -> JobHandle {
     EditorHostImpl::new(&mut ed.state, &mut ed.view)
         .scan_programs(
             prefix.to_owned(),

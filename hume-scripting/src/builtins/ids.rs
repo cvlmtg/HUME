@@ -28,6 +28,7 @@ use steel::{
 use hume_lsp::backend::ServerId;
 use hume_rope::offset::CharOffset;
 
+use crate::host::{JobHandle, TimerHandle};
 use crate::types::{PaneHandle, ServerName};
 
 // ── Wrapper types ─────────────────────────────────────────────────────────────
@@ -132,6 +133,50 @@ impl std::hash::Hash for ServerRef {
 impl Custom for ServerRef {
     fn fmt(&self) -> Option<Result<String, std::fmt::Error>> {
         Some(Ok(format!("#<lsp-server {}>", self.name)))
+    }
+
+    fn equality_hint(&self, other: &dyn steel::rvals::CustomType) -> bool {
+        as_underlying_type::<Self>(other).is_some_and(|o| o == self)
+    }
+
+    fn try_as_dyn_hash(&self) -> Option<&dyn steel::rvals::DynHash> {
+        Some(self)
+    }
+}
+
+impl TimerHandle {
+    /// Convert to a `SteelVal` without returning `Result`; see
+    /// [`SteelPane::into_steel_val`].
+    pub(crate) fn into_steel_val(self) -> SteelVal {
+        self.into_steelval().expect("TimerHandle into_steelval")
+    }
+}
+
+impl Custom for TimerHandle {
+    fn fmt(&self) -> Option<Result<String, std::fmt::Error>> {
+        Some(Ok(format!("#<timer {}>", self.raw())))
+    }
+
+    fn equality_hint(&self, other: &dyn steel::rvals::CustomType) -> bool {
+        as_underlying_type::<Self>(other).is_some_and(|o| o == self)
+    }
+
+    fn try_as_dyn_hash(&self) -> Option<&dyn steel::rvals::DynHash> {
+        Some(self)
+    }
+}
+
+impl JobHandle {
+    /// Convert to a `SteelVal` without returning `Result`; see
+    /// [`SteelPane::into_steel_val`].
+    pub(crate) fn into_steel_val(self) -> SteelVal {
+        self.into_steelval().expect("JobHandle into_steelval")
+    }
+}
+
+impl Custom for JobHandle {
+    fn fmt(&self) -> Option<Result<String, std::fmt::Error>> {
+        Some(Ok(format!("#<job {}>", self.raw())))
     }
 
     fn equality_hint(&self, other: &dyn steel::rvals::CustomType) -> bool {
