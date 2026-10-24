@@ -1,7 +1,9 @@
 //! `EditorHostImpl`'s terminal-safety state around `#:inline-output`
 //! commands.
 
+use crate::editor::inline_output::Entered;
 use crate::editor::registry::{MappableCommand, SteelCommand};
+use crate::editor::tui::ActiveTui;
 
 use super::EditorHostImpl;
 use hume_scripting::host::OutputHost;
@@ -20,19 +22,22 @@ impl<'a> OutputHost for EditorHostImpl<'a> {
         let Some((name, tui, kitty)) = self.state.inline_output.needs_enter() else {
             return Ok(());
         };
-        let name = name.to_string();
-        let tui = tui.clone();
-        let mouse = self.state.settings.mouse;
-        let mouse_select = self.state.settings.mouse_select;
-        // `None` only for the test-only headless shape.
-        if let Some(term) = tui.terminal() {
-            hume_platform::terminal::enter_inline_output(term, kitty, mouse)
+        let entered = match tui {
+            ActiveTui::On(term) => {
+                let screen = hume_platform::terminal::enter_inline_output(
+                    term,
+                    kitty,
+                    self.state.settings.mouse,
+                    self.state.settings.mouse_select,
+                )
                 .map_err(|e| format!("inline-output enter failed: {e}"))?;
-            hume_platform::terminal::print_running_banner(&name);
-        }
-        self.state
-            .inline_output
-            .mark_entered(kitty, mouse, mouse_select, tui);
+                hume_platform::terminal::print_running_banner(name);
+                Entered::Screen(screen)
+            }
+            #[cfg(test)]
+            ActiveTui::Headless => Entered::Headless { kitty },
+        };
+        self.state.inline_output.mark_entered(entered);
         Ok(())
     }
 

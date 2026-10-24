@@ -13,6 +13,8 @@
 //!   Survives frame pops like `entered`, so the post-subprocess disk-change
 //!   sweep fires even for a command that never printed.
 
+use hume_platform::terminal::InlineOutputScreen;
+
 use super::Editor;
 use super::event::EditorEvent;
 use super::tui::ActiveTui;
@@ -40,19 +42,19 @@ struct Frame {
     kitty: bool,
 }
 
-/// Terminal state captured when the alt-screen was actually left, so
-/// `Editor::close_inline_output_bracket` restores exactly what it saw rather
-/// than re-reading `Editor`/`EditorSettings` fields that may have changed
-/// mid-command (`:set global mouse=…` inside the very body that's
-/// running, say).
-pub(in crate::editor) struct Entered {
-    pub(in crate::editor) kitty: bool,
-    pub(in crate::editor) mouse: bool,
-    pub(in crate::editor) mouse_select: bool,
-    /// The same `ActiveTui` [`InlineOutput::needs_enter`] returned for this
-    /// bracket, so the close reads what was actually entered instead of a
-    /// fresh (and possibly different-host's) `Tui`.
-    pub(in crate::editor) tui: ActiveTui,
+/// The alt-screen was actually left. The screen carries the terminal state
+/// captured at that moment, so `Editor::close_inline_output_bracket`
+/// restores what it saw rather than re-reading `Editor`/
+/// `EditorSettings` fields that may have changed mid-command (`:set global
+/// mouse=…` inside the very body that's running, say).
+pub(in crate::editor) enum Entered {
+    Screen(InlineOutputScreen),
+    /// Test-only twin of [`ActiveTui::Headless`], keeping the kitty state the
+    /// frame entered under for tests to read.
+    #[cfg(test)]
+    Headless {
+        kitty: bool,
+    },
 }
 
 /// See the module doc for the two facts this tracks and why they're separate
@@ -130,21 +132,10 @@ impl InlineOutput {
         Some((frame.name.as_str(), frame.tui.as_ref()?, frame.kitty))
     }
 
-    /// Record that the alt-screen was actually left, for this session, with
-    /// the same `tui` [`Self::needs_enter`] returned for it.
-    pub(in crate::editor) fn mark_entered(
-        &mut self,
-        kitty: bool,
-        mouse: bool,
-        mouse_select: bool,
-        tui: ActiveTui,
-    ) {
-        self.entered = Some(Entered {
-            kitty,
-            mouse,
-            mouse_select,
-            tui,
-        });
+    /// Record that the alt-screen was actually left, for this session, on
+    /// the `tui` [`Self::needs_enter`] returned for it.
+    pub(in crate::editor) fn mark_entered(&mut self, entered: Entered) {
+        self.entered = Some(entered);
         #[cfg(test)]
         {
             self.enters += 1;
@@ -203,19 +194,15 @@ impl Editor {
         self.state.inline_output.truncate(0);
         let ran = self.state.inline_output.take_ran();
         if let Some(entered) = self.state.inline_output.take_entered() {
-            // `entered.tui` is the same `ActiveTui` `ensure_inline_output_screen`
-            // captured on entry. Read here, not `self.tui` again, so this
-            // always restores the terminal it actually left. `None` only
-            // for the test-only headless shape.
-            if let Some(term) = entered.tui.terminal() {
-                hume_platform::terminal::print_return_prompt();
-                hume_platform::terminal::wait_for_keypress(term);
-                let _ = hume_platform::terminal::leave_inline_output(
-                    term,
-                    entered.kitty,
-                    entered.mouse,
-                    entered.mouse_select,
-                );
+            // The screen holds the terminal `ensure_inline_output_screen`
+            // entered, not `self.tui`, so this always restores the terminal
+            // it actually left.
+            match entered {
+                Entered::Screen(screen) => {
+                    let _ = screen.close();
+                }
+                #[cfg(test)]
+                Entered::Headless { .. } => {}
             }
             self.state.force_full_redraw = true;
         }

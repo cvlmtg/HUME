@@ -355,7 +355,7 @@ fn inline_output_command_does_not_enter_terminal_bracket_off_event_loop() {
 /// succeed without ever entering the alt-screen.
 ///
 /// Without the `needs_enter`/`tui` guard, `ensure_inline_output_screen` would
-/// always enter, and this test would hang on `wait_for_keypress` against a
+/// always enter, and this test would hang waiting for a keypress against a
 /// real TTY or panic against a non-TTY stdin in CI.
 #[test]
 fn inline_output_command_with_real_output_still_skips_bracket_off_event_loop() {

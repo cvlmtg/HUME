@@ -65,28 +65,17 @@ impl Tui {
 
 /// A [`Tui`] known, at the point this was captured, to have been active:
 /// `Tui` minus `Off`. `InlineOutput::Frame` captures one via
-/// [`Tui::as_active`] at push time and `Entered` captures the same value
-/// again at `mark_entered`, so `ensure_inline_output_screen`/
-/// `close_inline_output_bracket` read what was true when the bracket was
-/// armed/entered, never a fresh `Editor`/`EditorHostImpl::tui` that may
-/// belong to a different host than the one that pushed the frame.
+/// [`Tui::as_active`] at push time, and the screen `ensure_inline_output_screen`
+/// enters on it is what `close_inline_output_bracket` restores, so both read
+/// what was true when the bracket was armed, never a fresh
+/// `Editor`/`EditorHostImpl::tui` that may belong to a different host than
+/// the one that pushed the frame.
 #[derive(Clone)]
 pub(in crate::editor) enum ActiveTui {
     On(SharedTerm),
     /// Test-only twin of [`Tui::OnHeadless`]; see that variant's doc.
     #[cfg(test)]
     Headless,
-}
-
-impl ActiveTui {
-    /// The terminal handle; `None` only for the test-only headless shape.
-    pub(in crate::editor) fn terminal(&self) -> Option<&SharedTerm> {
-        match self {
-            ActiveTui::On(term) => Some(term),
-            #[cfg(test)]
-            ActiveTui::Headless => None,
-        }
-    }
 }
 
 #[cfg(test)]

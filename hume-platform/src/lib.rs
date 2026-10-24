@@ -196,10 +196,9 @@ pub fn hangup_exit_code(err: &std::io::Error) -> Option<i32> {
 /// [`hangup_exit_code`]'s doc.
 ///
 /// In raw mode Ctrl-c reaches HUME as a key, not as SIGINT or a console
-/// event. Inside the inline-output frame (`terminal::enter_inline_output` to
-/// `terminal::leave_inline_output`) the cooked terminal sends Ctrl-c to the
-/// running child as well, and this watcher drops it: on Unix SIGINT and
-/// SIGQUIT, on Windows every console event.
+/// event. While a `terminal::InlineOutputScreen` lives, the cooked terminal
+/// sends Ctrl-c to the running child as well, and this watcher drops it: on
+/// Unix SIGINT and SIGQUIT, on Windows every console event.
 pub fn spawn_terminator(
     term: terminal::SharedTerm,
     request_quit: impl Fn(i32) + Send + 'static,

@@ -42,7 +42,7 @@ fn needs_enter_fires_once_per_session_regardless_of_nesting() {
     let mut io = InlineOutput::default();
     io.push("outer", Some(ActiveTui::Headless), false);
     assert_eq!(io.needs_enter().map(|(name, _, _)| name), Some("outer"));
-    io.mark_entered(false, false, false, ActiveTui::Headless);
+    io.mark_entered(Entered::Headless { kitty: false });
     assert!(io.needs_enter().is_none());
     // A nested call! after the outer already entered must not re-enter.
     io.push("inner", Some(ActiveTui::Headless), false);
@@ -72,7 +72,7 @@ fn needs_enter_returns_the_frame_s_own_captured_kitty() {
 fn truncate_to_zero_preserves_entered_and_ran() {
     let mut io = InlineOutput::default();
     io.push("cmd", Some(ActiveTui::Headless), false);
-    io.mark_entered(true, true, false, ActiveTui::Headless);
+    io.mark_entered(Entered::Headless { kitty: true });
     io.truncate(0);
     assert!(!io.is_open());
     assert!(io.take_ran(), "ran must survive a full truncate");
@@ -86,7 +86,7 @@ fn truncate_to_zero_preserves_entered_and_ran() {
 fn take_entered_and_take_ran_clear_after_reading() {
     let mut io = InlineOutput::default();
     io.push("cmd", Some(ActiveTui::Headless), false);
-    io.mark_entered(false, false, false, ActiveTui::Headless);
+    io.mark_entered(Entered::Headless { kitty: false });
     assert!(io.take_entered().is_some());
     assert!(io.take_ran());
     assert!(io.take_entered().is_none(), "must not report entered twice");

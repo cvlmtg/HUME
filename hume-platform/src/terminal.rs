@@ -11,7 +11,7 @@
 //!
 //! Also provides cursor shape/colour control, DEC 2026 synchronized-update
 //! framing, and the inline-subprocess-output flow
-//! ([`enter_inline_output`]/[`leave_inline_output`]).
+//! ([`enter_inline_output`]/[`InlineOutputScreen::close`]).
 //!
 //! [`SharedTerm`] is a cheap-to-clone handle: every caller that needs to read
 //! or write the terminal (the render loop, the signal handler, the inline-
@@ -56,9 +56,9 @@ pub struct SharedTerm {
     /// OSC 7 URL of the directory the shell started HUME in. Teardown reports
     /// it again, because the shell will not re-send it.
     launch_cwd_url: Option<Arc<str>>,
-    /// Set while [`enter_inline_output`] has the terminal in cooked mode, up
-    /// to [`leave_inline_output`]. Read by the terminator, which drops the
-    /// terminal's own interrupts then.
+    /// Raised for the lifetime of the [`InlineOutputScreen`] that
+    /// [`enter_inline_output`] returns. Read by the terminator, which drops
+    /// the terminal's own interrupts then.
     inline_output: Arc<AtomicBool>,
 }
 
@@ -512,23 +512,81 @@ pub fn end_synchronized_update(term: &SharedTerm) -> io::Result<()> {
     write_sync_reset(&mut term)
 }
 
+/// Holds a flag raised for its own lifetime.
+struct FrameFlag(Arc<AtomicBool>);
+
+impl FrameFlag {
+    fn raise(flag: &Arc<AtomicBool>) -> Self {
+        flag.store(true, Ordering::Release);
+        Self(Arc::clone(flag))
+    }
+}
+
+impl Drop for FrameFlag {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::Release);
+    }
+}
+
+/// The inline-output frame: the terminal in cooked mode on the normal
+/// screen, from [`enter_inline_output`] until [`Self::close`] or drop.
+///
+/// While it lives, Ctrl-c and Ctrl-\ interrupt the child in the foreground
+/// process group and never quit HUME (see [`crate::spawn_terminator`]).
+/// Dropping it without `close` restores nothing on screen but gives Ctrl-c
+/// back to HUME.
+#[must_use = "dropping the screen hands Ctrl-c back to HUME without restoring the editor"]
+pub struct InlineOutputScreen {
+    term: SharedTerm,
+    kitty_enabled: bool,
+    mouse_enabled: bool,
+    mouse_select: bool,
+    _interrupts_to_child: FrameFlag,
+}
+
+impl InlineOutputScreen {
+    /// Print the return prompt, wait for a key, then re-enter raw mode and
+    /// the alt-screen with kitty and mouse as they were before
+    /// [`enter_inline_output`]. Ctrl-c quits HUME again afterwards, whether
+    /// or not the restore succeeded.
+    pub fn close(mut self) -> io::Result<()> {
+        print_return_prompt();
+        wait_for_keypress(&self.term);
+        self.restore_editor()
+    }
+
+    fn restore_editor(&mut self) -> io::Result<()> {
+        let term = &mut self.term;
+        term.enter_raw_mode()?;
+        write_enter_alt_screen(term)?;
+        write_focus_enable(term)?;
+        write_paste_enable(term)?;
+        if self.kitty_enabled {
+            write_kitty_push(term)?;
+        }
+        if self.mouse_enabled {
+            write_mouse_enable(term, self.mouse_select)?;
+        }
+        Ok(())
+    }
+}
+
 /// Leave the alt-screen and raw mode so subprocess output streams to the user's
 /// terminal live. Call before spawning blocking processes (git clone, formatters)
 /// that would otherwise be invisible inside the TUI.
 ///
-/// Must be paired with [`leave_inline_output`] to restore the editor. Passes
-/// the current kitty and mouse state so [`leave_inline_output`] can re-apply it.
-/// Also disables focus tracking for the duration: a subprocess reading raw
+/// `kitty_enabled`, `mouse_enabled` and `mouse_select` are the editor's
+/// current state, which [`InlineOutputScreen::close`] re-applies. Also
+/// disables focus tracking for the duration: a subprocess reading raw
 /// terminal input shouldn't see stray `CSI I`/`CSI O` bytes.
 ///
-/// Until [`leave_inline_output`], Ctrl-c and Ctrl-\ interrupt the child in
-/// the foreground process group and never quit HUME (see
-/// [`crate::spawn_terminator`]).
+/// A failure once the frame has begun unwinds it before `Err` is returned.
 pub fn enter_inline_output(
     term: &SharedTerm,
     kitty_enabled: bool,
     mouse_enabled: bool,
-) -> io::Result<()> {
+    mouse_select: bool,
+) -> io::Result<InlineOutputScreen> {
     let mut term = term.clone();
     // Close any open synchronized-output envelope (harmless if none is open).
     let _ = write_sync_reset(&mut term);
@@ -540,42 +598,25 @@ pub fn enter_inline_output(
     if mouse_enabled {
         write_mouse_disable(&mut term)?;
     }
-    // Set before the switch, so no Ctrl-c the cooked terminal turns into a
-    // signal can reach the terminator ahead of it.
-    term.inline_output.store(true, Ordering::Release);
-    if let Err(e) = term.enter_cooked_mode() {
-        term.inline_output.store(false, Ordering::Release);
+    // Raised before the switch, so no Ctrl-c the cooked terminal turns into
+    // a signal can reach the terminator ahead of it.
+    let mut screen = InlineOutputScreen {
+        _interrupts_to_child: FrameFlag::raise(&term.inline_output),
+        term,
+        kitty_enabled,
+        mouse_enabled,
+        mouse_select,
+    };
+    let entered = screen
+        .term
+        .enter_cooked_mode()
+        .and_then(|()| write_leave_alt_screen(&mut screen.term));
+    if let Err(e) = entered {
+        // Every disable above landed, so restoring the editor reverses them.
+        let _ = screen.restore_editor();
         return Err(e);
     }
-    write_leave_alt_screen(&mut term)
-}
-
-/// Re-enter raw mode and the alt-screen after [`enter_inline_output`].
-///
-/// Call after all subprocess output has been written and the user has had a
-/// chance to read it (typically after a "press any key" prompt). Restores
-/// kitty and mouse to the state that was active before `enter_inline_output`.
-pub fn leave_inline_output(
-    term: &SharedTerm,
-    kitty_enabled: bool,
-    mouse_enabled: bool,
-    mouse_select: bool,
-) -> io::Result<()> {
-    let mut term = term.clone();
-    term.enter_raw_mode()?;
-    // Cleared only once raw mode is back. It always follows the return
-    // prompt's keypress, so a Ctrl-c from the frame has long been drained.
-    term.inline_output.store(false, Ordering::Release);
-    write_enter_alt_screen(&mut term)?;
-    write_focus_enable(&mut term)?;
-    write_paste_enable(&mut term)?;
-    if kitty_enabled {
-        write_kitty_push(&mut term)?;
-    }
-    if mouse_enabled {
-        write_mouse_enable(&mut term, mouse_select)?;
-    }
-    Ok(())
+    Ok(screen)
 }
 
 /// Reapply the mouse-tracking mode to match `mouse_enabled`/`mouse_select`.
@@ -607,22 +648,19 @@ pub fn print_running_banner(name: &str) {
 }
 
 /// Print the `--- press any key to return ---` dim prompt and flush stdout.
-///
-/// Call before [`wait_for_keypress`] so the user knows how to dismiss the
-/// subprocess output and return to the TUI.
-pub fn print_return_prompt() {
+fn print_return_prompt() {
     print!("\r\n\x1b[2m--- press any key to return to editor ---\x1b[0m\r\n");
     let _ = std::io::Write::flush(&mut std::io::stdout());
 }
 
 /// Block until the user presses a key, ignoring resize, mouse, and key-release
 /// events. Holds subprocess output on screen until the user is ready to return
-/// to the TUI.
+/// to the TUI. Leaves the terminal in raw mode.
 ///
 /// Verified by structure only, not by a unit test: the `Interrupted`-resumes
 /// behavior below needs a live `SharedTerm` with a real `PlatformWaker` to
 /// exercise, which this crate's test suite has no fixture for.
-pub fn wait_for_keypress(term: &SharedTerm) {
+fn wait_for_keypress(term: &SharedTerm) {
     let mut term = term.clone();
     let _ = term.enter_raw_mode();
     let reader = term.event_reader();
@@ -639,7 +677,6 @@ pub fn wait_for_keypress(term: &SharedTerm) {
             Err(_) => break,
         }
     }
-    let _ = term.enter_cooked_mode();
 }
 
 #[cfg(test)]

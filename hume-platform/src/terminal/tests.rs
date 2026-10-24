@@ -1,9 +1,11 @@
 use super::{
-    write_cwd_report, write_focus_disable, write_focus_enable, write_kitty_pop, write_kitty_push,
-    write_mouse_disable, write_mouse_enable, write_paste_disable, write_paste_enable,
-    write_unwind_escapes,
+    FrameFlag, write_cwd_report, write_focus_disable, write_focus_enable, write_kitty_pop,
+    write_kitty_push, write_mouse_disable, write_mouse_enable, write_paste_disable,
+    write_paste_enable, write_unwind_escapes,
 };
 use std::io;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 // Regression pins against termina's escape-sequence encoding: a version
 // bump that silently changes these bytes would otherwise only surface as
@@ -133,4 +135,13 @@ fn write_unwind_escapes_reports_the_launch_directory() {
         bytes.contains("\x1b]7;file://box/tmp\x1b\\"),
         "teardown must report the launch directory, got {bytes:?}"
     );
+}
+
+#[test]
+fn frame_flag_is_raised_for_its_own_lifetime() {
+    let flag = Arc::new(AtomicBool::new(false));
+    let raised = FrameFlag::raise(&flag);
+    assert!(flag.load(Ordering::Acquire));
+    drop(raised);
+    assert!(!flag.load(Ordering::Acquire));
 }

@@ -590,7 +590,7 @@ fn new_host_has_no_inline_output_authority() {
 ///
 /// Gating `ensure_inline_output_screen` on `self.tui` would leave
 /// `enter_count` at `0`. Reading `self.kitty_enabled` there would make
-/// `Entered::kitty` report the completing host's `false` instead of the
+/// the entered `kitty` report the completing host's `false` instead of the
 /// arming host's `true`.
 #[test]
 fn a_later_host_with_no_authority_still_completes_a_frame_armed_by_an_earlier_one() {
@@ -639,11 +639,10 @@ fn a_later_host_with_no_authority_still_completes_a_frame_armed_by_an_earlier_on
          host asks"
     );
     assert!(
-        ed.state
-            .inline_output
-            .take_entered()
-            .expect("entered")
-            .kitty,
+        matches!(
+            ed.state.inline_output.take_entered(),
+            Some(crate::editor::inline_output::Entered::Headless { kitty: true })
+        ),
         "the frame's own captured kitty must drive entry, not the \
          completing host's own (possibly stale) kitty_enabled"
     );
