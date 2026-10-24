@@ -11,14 +11,21 @@ use std::sync::atomic::{AtomicBool, Ordering};
 // bump that silently changes these bytes would otherwise only surface as
 // a terminal that stops responding to kitty/mouse/paste input.
 
+const ENTER_ALT_SCREEN: &[u8] = b"\x1b[?1049h";
+// DISAMBIGUATE_ESCAPE_CODES(1) | REPORT_EVENT_TYPES(2)
+// | REPORT_ALTERNATE_KEYS(4) = 7. Spec:
+// https://sw.kovidgoyal.net/kitty/keyboard-protocol/#progressive-enhancement
+const KITTY_PUSH: &[u8] = b"\x1b[>7u";
+const MOUSE_ENABLE: &[u8] = b"\x1b[?1000h\x1b[?1006h";
+const FOCUS_DISABLE: &[u8] = b"\x1b[?1004l";
+const FOCUS_ENABLE: &[u8] = b"\x1b[?1004h";
+const PASTE_ENABLE: &[u8] = b"\x1b[?2004h";
+
 #[test]
 fn kitty_push_emits_expected_csi() {
     let mut buf = Vec::new();
     write_kitty_push(&mut buf).unwrap();
-    // DISAMBIGUATE_ESCAPE_CODES(1) | REPORT_EVENT_TYPES(2)
-    // | REPORT_ALTERNATE_KEYS(4) = 7. Spec:
-    // https://sw.kovidgoyal.net/kitty/keyboard-protocol/#progressive-enhancement
-    assert_eq!(buf, b"\x1b[>7u");
+    assert_eq!(buf, KITTY_PUSH);
 }
 
 #[test]
@@ -32,7 +39,7 @@ fn kitty_pop_emits_expected_csi() {
 fn paste_enable_emits_expected_csi() {
     let mut buf = Vec::new();
     write_paste_enable(&mut buf).unwrap();
-    assert_eq!(buf, b"\x1b[?2004h");
+    assert_eq!(buf, PASTE_ENABLE);
 }
 
 #[test]
@@ -46,21 +53,21 @@ fn paste_disable_emits_expected_csi() {
 fn focus_enable_emits_expected_csi() {
     let mut buf = Vec::new();
     write_focus_enable(&mut buf).unwrap();
-    assert_eq!(buf, b"\x1b[?1004h");
+    assert_eq!(buf, FOCUS_ENABLE);
 }
 
 #[test]
 fn focus_disable_emits_expected_csi() {
     let mut buf = Vec::new();
     write_focus_disable(&mut buf).unwrap();
-    assert_eq!(buf, b"\x1b[?1004l");
+    assert_eq!(buf, FOCUS_DISABLE);
 }
 
 #[test]
 fn mouse_enable_without_select_emits_1000_and_1006_only() {
     let mut buf = Vec::new();
     write_mouse_enable(&mut buf, false).unwrap();
-    assert_eq!(buf, b"\x1b[?1000h\x1b[?1006h");
+    assert_eq!(buf, MOUSE_ENABLE);
 }
 
 #[test]
@@ -77,39 +84,16 @@ fn mouse_disable_emits_1002_1000_1006_in_that_order() {
     assert_eq!(buf, b"\x1b[?1002l\x1b[?1000l\x1b[?1006l");
 }
 
-/// Fails the first write, then succeeds. Counts writes that reach past
-/// the injected failure, to prove teardown keeps going after one step
-/// errors rather than short-circuiting on the first `?`.
-struct FailingWriter {
-    failed_once: bool,
-    writes_after_failure: usize,
-}
-
-impl io::Write for FailingWriter {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        if !self.failed_once {
-            self.failed_once = true;
-            return Err(io::Error::other("injected failure"));
-        }
-        self.writes_after_failure += 1;
-        Ok(buf.len())
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
-    }
-}
-
 #[test]
 fn write_unwind_escapes_keeps_going_after_one_step_fails() {
-    let mut out = FailingWriter {
-        failed_once: false,
-        writes_after_failure: 0,
+    let mut term = FakeTerm {
+        failing_writes: 1,
+        ..FakeTerm::default()
     };
-    let result = write_unwind_escapes(&mut out, None);
+    let result = write_unwind_escapes(&mut term, None);
     assert!(result.is_err(), "first error must still be reported");
     assert!(
-        out.writes_after_failure > 0,
+        !term.out.is_empty(),
         "remaining unwind steps must still run after an earlier one fails"
     );
 }
@@ -206,16 +190,13 @@ fn open_frame(term: &mut FakeTerm) -> io::Result<Frame<&mut FakeTerm>> {
     Frame::open(term, &flag, true, true, false)
 }
 
-fn contains(haystack: &[u8], needle: &[u8]) -> bool {
-    haystack.windows(needle.len()).any(|w| w == needle)
+fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    haystack.windows(needle.len()).position(|w| w == needle)
 }
 
-const ENTER_ALT_SCREEN: &[u8] = b"\x1b[?1049h";
-const KITTY_PUSH: &[u8] = b"\x1b[>7u";
-const MOUSE_ENABLE: &[u8] = b"\x1b[?1000h\x1b[?1006h";
-const FOCUS_DISABLE: &[u8] = b"\x1b[?1004l";
-const FOCUS_ENABLE: &[u8] = b"\x1b[?1004h";
-const PASTE_ENABLE: &[u8] = b"\x1b[?2004h";
+fn contains(haystack: &[u8], needle: &[u8]) -> bool {
+    find(haystack, needle).is_some()
+}
 
 #[test]
 fn failed_cooked_switch_turns_back_on_every_mode_but_the_alt_screen() {
@@ -241,11 +222,7 @@ fn failed_frame_open_turns_back_on_only_what_it_turned_off() {
     assert!(open_frame(&mut term).is_err());
     assert!(!term.flag.load(Ordering::Acquire));
     assert_eq!(term.flag_at_raw, None, "the cooked switch was never tried");
-    let failure = term
-        .out
-        .windows(FOCUS_DISABLE.len())
-        .position(|w| w == FOCUS_DISABLE)
-        .expect("the focus disable is written");
+    let failure = find(&term.out, FOCUS_DISABLE).expect("the focus disable is written");
     let after = &term.out[failure + FOCUS_DISABLE.len()..];
     for enable in [FOCUS_ENABLE, PASTE_ENABLE] {
         assert!(contains(after, enable), "{enable:?} in {after:?}");

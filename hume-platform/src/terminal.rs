@@ -380,27 +380,9 @@ pub fn init(
         let _ = write_unwind_escapes(handle, launch_cwd_url.as_deref());
     });
 
-    let enter = (|| -> io::Result<()> {
-        term.enter_raw_mode()?;
-
-        // Enter alternate screen before pushing kitty flags. Some terminals
-        // (WezTerm, kitty) maintain a per-screen keyboard stack; the push
-        // must land on the alternate screen's stack so that key reads
-        // (which consult the active screen) pick up the enhanced encoding.
-        write_enter_alt_screen(&mut term)?;
-        write_focus_enable(&mut term)?;
-        write_paste_enable(&mut term)?;
-
-        if kitty_enabled {
-            write_kitty_push(&mut term)?;
-        }
-
-        if mouse_enabled {
-            write_mouse_enable(&mut term, mouse_select)?;
-        }
-
-        Ok(())
-    })();
+    let enter = editor_modes(kitty_enabled, mouse_enabled, mouse_select)
+        .rev()
+        .try_for_each(|mode| mode.reenter(&mut term));
 
     if let Err(e) = enter {
         // A partial enable must not leak: the caller propagates this error
@@ -530,8 +512,8 @@ impl Drop for FrameFlag {
     }
 }
 
-/// The line-discipline switches the inline-output frame makes besides its
-/// escape writes. Named apart from `termina::Terminal`'s own methods so both
+/// The line-discipline switches an [`EditorMode`] makes besides its escape
+/// writes. Named apart from `termina::Terminal`'s own methods so both
 /// traits can be in scope for a `SharedTerm`.
 trait ModeSwitch: io::Write {
     fn raw_mode(&mut self) -> io::Result<()>;
@@ -548,7 +530,8 @@ impl ModeSwitch for SharedTerm {
     }
 }
 
-/// An editor terminal mode the inline-output frame turns off, then back on.
+/// An editor terminal mode [`init`] turns on and the inline-output frame
+/// turns off, then back on.
 #[derive(Clone, Copy)]
 enum EditorMode {
     Focus,
@@ -583,6 +566,29 @@ impl EditorMode {
     }
 }
 
+/// The editor's modes in the order the inline-output frame turns them off.
+/// Turning them on walks this in reverse, which puts the alt-screen enter
+/// ahead of the kitty push: some terminals (WezTerm, kitty) keep a keyboard
+/// stack per screen, and key reads consult the active screen's.
+fn editor_modes(
+    kitty_enabled: bool,
+    mouse_enabled: bool,
+    mouse_select: bool,
+) -> impl DoubleEndedIterator<Item = EditorMode> {
+    [
+        Some(EditorMode::Focus),
+        Some(EditorMode::Paste),
+        kitty_enabled.then_some(EditorMode::Kitty),
+        mouse_enabled.then_some(EditorMode::Mouse {
+            select: mouse_select,
+        }),
+        Some(EditorMode::Raw),
+        Some(EditorMode::AltScreen),
+    ]
+    .into_iter()
+    .flatten()
+}
+
 /// The inline-output frame's terminal work, apart from the banners and the
 /// keypress wait that need a real terminal.
 struct Frame<T> {
@@ -615,35 +621,19 @@ impl<T: ModeSwitch> Frame<T> {
         };
         // Close any open synchronized-output envelope (harmless if none is open).
         let _ = write_sync_reset(&mut frame.term);
-        let modes = [
-            Some(EditorMode::Focus),
-            Some(EditorMode::Paste),
-            kitty_enabled.then_some(EditorMode::Kitty),
-            mouse_enabled.then_some(EditorMode::Mouse {
-                select: mouse_select,
-            }),
-            Some(EditorMode::Raw),
-            Some(EditorMode::AltScreen),
-        ];
-        for mode in modes.into_iter().flatten() {
+        for mode in editor_modes(kitty_enabled, mouse_enabled, mouse_select) {
             frame.left.push(mode);
             if let Err(e) = mode.leave(&mut frame.term) {
-                let _ = frame.restore_editor();
+                let _ = frame.close();
                 return Err(e);
             }
         }
         Ok(frame)
     }
 
-    /// Restore the editor, then lower the flag.
+    /// Turn back on every mode in `left`, last first (see [`editor_modes`]).
+    /// The flag lowers when the frame drops, after the last step.
     fn close(mut self) -> io::Result<()> {
-        self.restore_editor()
-    }
-
-    /// Turn back on every mode in `left`, last first. That order puts the
-    /// alt-screen enter ahead of the kitty push, which must land on the alt
-    /// screen's own keyboard stack (see [`init`]).
-    fn restore_editor(&mut self) -> io::Result<()> {
         let term = &mut self.term;
         run_all(self.left.iter().rev().map(|mode| mode.reenter(term)))
     }

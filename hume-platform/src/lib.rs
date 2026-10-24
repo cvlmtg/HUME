@@ -210,13 +210,13 @@ pub fn spawn_terminator(
     #[cfg(windows)]
     {
         ctrlc::set_handler(move || {
+            if term.in_inline_output() {
+                return;
+            }
             // ctrlc fires this handler for every console control event
             // (Ctrl-c, Ctrl-Break, console close, logoff, shutdown) without
             // telling us which one, so every trigger uses the same
             // conventional "killed by signal" code.
-            if term.in_inline_output() {
-                return;
-            }
             request_quit(WINDOWS_SIGNAL_EXIT_CODE);
             // A repeat control event during this sleep changes nothing, the
             // same as Unix's `wait_out_grace`.
