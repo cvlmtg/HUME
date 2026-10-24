@@ -19,6 +19,27 @@ fn arm_three_items(ed: &mut Editor, tmp: &Path) {
     type_cmd(ed, ":go");
 }
 
+#[test]
+fn show_menu_with_empty_items_raises_and_opens_nothing() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "go" "" (lambda (pane)
+             (show-menu! pane (list) (lambda (idx) (void)))))"#,
+    );
+    type_cmd(&mut ed, ":go");
+    ed.settle();
+
+    assert!(
+        has_error(&ed, "show-menu! items: must not be empty"),
+        "errors: {:?}",
+        error_log(&ed)
+    );
+    assert!(ed.state.input.menu().is_none());
+}
+
 // ── Selection + confirm/cancel ────────────────────────────────────────────────
 
 #[test]
@@ -145,7 +166,7 @@ fn close_menu_drops_the_callback_without_invoking_it() {
     let token = host
         .show_menu(
             pane,
-            vec!["a".to_string(), "b".to_string()],
+            non_empty_strings(&["a", "b"]),
             hume_scripting::Rooted::new(steel::rvals::SteelVal::Void),
         )
         .unwrap()
@@ -197,7 +218,7 @@ fn show_menu_from_insert_warns_instead_of_opening() {
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     let result = host.show_menu(
         pane,
-        vec!["a".to_string()],
+        non_empty_strings(&["a"]),
         hume_scripting::Rooted::new(steel::rvals::SteelVal::Void),
     );
     assert!(
@@ -236,7 +257,7 @@ fn show_menu_accepted_in_normal_mode() {
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     let result = host.show_menu(
         pane,
-        vec!["a".to_string()],
+        non_empty_strings(&["a"]),
         hume_scripting::Rooted::new(steel::rvals::SteelVal::Void),
     );
     assert!(result.is_ok());
@@ -274,7 +295,7 @@ fn show_menu_drops_silently_when_a_picker_is_open() {
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     let result = host.show_menu(
         pane,
-        vec!["a".to_string()],
+        non_empty_strings(&["a"]),
         hume_scripting::Rooted::new(steel::rvals::SteelVal::Void),
     );
     assert!(
@@ -325,7 +346,7 @@ fn show_menu_opens_over_an_open_drawer() {
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     let result = host.show_menu(
         pane,
-        vec!["a".to_string()],
+        non_empty_strings(&["a"]),
         hume_scripting::Rooted::new(steel::rvals::SteelVal::Void),
     );
 
@@ -357,7 +378,7 @@ fn show_menu_replaces_a_menu_already_open_and_fires_its_callback() {
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.show_menu(
         pane,
-        vec!["old".to_string()],
+        non_empty_strings(&["old"]),
         hume_scripting::Rooted::new(steel::rvals::SteelVal::Void),
     )
     .unwrap();
@@ -367,13 +388,13 @@ fn show_menu_replaces_a_menu_already_open_and_fires_its_callback() {
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     let result = host.show_menu(
         pane,
-        vec!["new-a".to_string(), "new-b".to_string()],
+        non_empty_strings(&["new-a", "new-b"]),
         hume_scripting::Rooted::new(steel::rvals::SteelVal::Void),
     );
 
     assert!(result.is_ok());
     assert_eq!(
-        ed.state.input.menu().unwrap().rows.len(),
+        ed.state.input.menu().unwrap().rows.as_slice().len(),
         2,
         "the fresh item list must have replaced the old one"
     );

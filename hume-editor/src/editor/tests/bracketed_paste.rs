@@ -294,7 +294,7 @@ fn drawer_paste_is_swallowed_but_clears_the_status_message() {
     ed.state.push_layer(
         &ed.view,
         DrawerLayer::new(
-            hume_scripting::host::DrawerItems::Rows(vec!["d0".to_string()]),
+            drawer_items(&["d0"]),
             DrawerSelect::Steel(hume_scripting::Rooted::new(marker("drawer-cb"))),
             0,
         ),

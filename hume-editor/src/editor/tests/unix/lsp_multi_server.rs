@@ -75,7 +75,13 @@ fn menu_rows(ed: &Editor) -> Vec<String> {
     ed.state
         .input
         .menu()
-        .map(|m| m.rows.iter().map(|r| r.main.to_string()).collect())
+        .map(|m| {
+            m.rows
+                .as_slice()
+                .iter()
+                .map(|r| r.main.to_string())
+                .collect()
+        })
         .unwrap_or_default()
 }
 

@@ -107,7 +107,7 @@ fn show_drawer_list_over_a_live_popup_clears_it() {
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.show_drawer_list(
         pane,
-        hume_scripting::host::DrawerItems::Rows(vec!["one".to_string()]),
+        drawer_items(&["one"]),
         hume_scripting::Rooted::new(steel::rvals::SteelVal::BoolV(false)),
         0,
     )
@@ -151,7 +151,7 @@ fn show_drawer_list_drops_silently_when_a_picker_is_open() {
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     let result = host.show_drawer_list(
         pane,
-        hume_scripting::host::DrawerItems::Rows(vec!["a".to_string()]),
+        drawer_items(&["a"]),
         hume_scripting::Rooted::new(steel::rvals::SteelVal::Void),
         0,
     );
@@ -243,7 +243,7 @@ fn show_drawer_list_from_insert_warns_instead_of_opening() {
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     let result = host.show_drawer_list(
         pane,
-        hume_scripting::host::DrawerItems::Rows(vec!["a".to_string()]),
+        drawer_items(&["a"]),
         hume_scripting::Rooted::new(steel::rvals::SteelVal::Void),
         0,
     );
@@ -426,7 +426,7 @@ fn update_drawer_list_with_a_mismatched_token_is_a_noop_false() {
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     let applied = host.update_drawer_list(
         crate::editor::host_token::mint(),
-        hume_scripting::host::DrawerItems::Rows(vec!["x".to_string()]),
+        drawer_items(&["x"]),
         hume_scripting::Rooted::new(steel::rvals::SteelVal::Void),
         0,
     );
@@ -760,43 +760,30 @@ fn update_and_selected_index_with_none_open_report_false() {
     assert_eq!(ed.state.status_msg.clone().unwrap(), "#false");
 }
 
-/// An empty `show-drawer-list!` is rejected: a 0-row drawer would leave
-/// `Enter` firing `0` with no row behind it.
 #[test]
-fn show_with_empty_items_errors_and_opens_nothing() {
-    use crate::editor::host_impl::EditorHostImpl;
-    use hume_scripting::host::UiHost;
-
+fn show_with_empty_items_raises_and_opens_nothing() {
+    let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
-    let pane = focused_pane(&ed);
-    let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    let result = host.show_drawer_list(
-        pane,
-        hume_scripting::host::DrawerItems::Rows(Vec::new()),
-        hume_scripting::Rooted::new(steel::rvals::SteelVal::BoolV(false)),
-        0,
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "go" "" (lambda (pane)
+             (show-drawer-list! pane (list) (lambda (idx tok) (void)))))"#,
     );
+    type_cmd(&mut ed, ":go");
+    ed.settle();
+
     assert!(
-        result.is_err(),
-        "empty show must fail fast instead of opening a 0-row drawer"
+        has_error(&ed, "show-drawer-list! items: must not be empty"),
+        "errors: {:?}",
+        error_log(&ed)
     );
-    assert!(
-        ed.state.input.drawer().is_none(),
-        "a rejected open must leave no drawer behind"
-    );
-    assert!(
-        ed.state.views.drawer.read().is_none(),
-        "the view must stay empty too"
-    );
+    assert!(ed.state.input.drawer().is_none());
+    assert!(ed.state.views.drawer.read().is_none());
 }
 
-/// An empty `update-drawer-list!` is a no-op `#f`. Callers close instead
-/// of clearing through an update.
-///
-/// Applying the update would wipe the rows and leave a 0-row drawer where
-/// `Enter` fires `0`.
 #[test]
-fn update_with_empty_items_is_a_noop_false() {
+fn update_with_empty_items_raises_and_keeps_the_rows() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     run(
@@ -806,8 +793,7 @@ fn update_with_empty_items_is_a_noop_false() {
            (define-typed-command! "go" "" (lambda (pane)
              (set! *tok* (show-drawer-list! pane (list "a" "b") (lambda (idx tok) (void))))))
            (define-typed-command! "upd" "" (lambda ()
-             (log! 'info (to-string (update-drawer-list! *tok* (list)
-               (lambda (idx tok) (void)) 0)))))"#,
+             (update-drawer-list! *tok* (list) (lambda (idx tok) (void)) 0)))"#,
     );
     type_cmd(&mut ed, ":go");
     ed.settle();
@@ -815,7 +801,11 @@ fn update_with_empty_items_is_a_noop_false() {
 
     type_cmd(&mut ed, ":upd");
     ed.settle();
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "#false");
+    assert!(
+        has_error(&ed, "update-drawer-list! items: must not be empty"),
+        "errors: {:?}",
+        error_log(&ed)
+    );
     let drawer = ed.state.input.drawer().unwrap();
     assert_eq!(
         **drawer.rows.text(),

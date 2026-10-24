@@ -47,7 +47,8 @@ pub use settings::{
 pub use timers::TimerHost;
 pub use token::{HostToken, TrackedFate, TrackedHold};
 pub use ui::{
-    DrawerItems, LivePickerOpts, PickerFeedMode, PickerOpts, PickerSourceOpts, PopupKind, UiHost,
+    DrawerItems, LivePickerOpts, NonEmpty, PickerFeedMode, PickerOpts, PickerSourceOpts, PopupKind,
+    UiHost,
 };
 
 /// Key-binding mode, as recognised by `bind-key!`/`unbind-key!`.

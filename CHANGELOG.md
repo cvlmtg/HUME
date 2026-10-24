@@ -8,6 +8,7 @@
 - `core:buffer-words`'s `"lines"` option is now `"chars"`, counted in characters (default 8000), not lines: replace it in your `#:config`, or drop it.
 - `path-programs` lists in the background: it takes a callback, `(lambda (names done?) ...)`, and returns an id for `cancel-async!`. Move code that used its result into the callback, and call it from a command, hook, timer or callback, not from the top level of `init.scm` or of a plugin loaded at startup.
 - `completion-emit!` for a request already answered without `#:more` is dropped and returns `#f`: to update an open menu, answer with `#:more #t` until the last part.
+- `update-drawer-list!` raises on an empty list instead of returning `#f`: close the drawer instead.
 
 ### Syntax & language awareness
 - HUME starts faster: each installed grammar loads the first time a file or an embedded block needs it, not at startup.
@@ -28,6 +29,7 @@
 - A plugin error that passes through nested `with-handler`s no longer crashes HUME.
 - Loading some plugin code no longer prints stray text over the screen.
 - `core:git-diff`'s inline diff keeps its word highlights when the machine is busy.
+- `show-menu!` raises on an empty list instead of opening a menu that crashed HUME on Enter.
 - A completion item whose range a language server sent backwards no longer moves the completion menu.
 - `Tab` on the `|` prompt lists programs as it finds them, so HUME keeps responding on a slow `PATH`, like WSL's Windows directories.
 - `core:buffer-words` no longer stalls typing while it indexes a file with very long lines.

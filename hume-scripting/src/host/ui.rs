@@ -15,28 +15,43 @@ use hume_engine::types::TruncateEnd;
 use super::token::HostToken;
 use crate::types::PaneHandle;
 
+/// A list with at least one item: what a menu or drawer is built from, so
+/// a selection index always names a row.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NonEmpty<T>(Vec<T>);
+
+impl<T> NonEmpty<T> {
+    /// `items`, or `None` when it is empty.
+    pub fn new(items: Vec<T>) -> Option<Self> {
+        (!items.is_empty()).then_some(Self(items))
+    }
+
+    pub fn as_slice(&self) -> &[T] {
+        &self.0
+    }
+
+    pub fn into_vec(self) -> Vec<T> {
+        self.0
+    }
+
+    pub fn map<U>(self, f: impl FnMut(T) -> U) -> NonEmpty<U> {
+        NonEmpty(self.0.into_iter().map(f).collect())
+    }
+}
+
 /// A drawer's rows, as `show-drawer-list!`/`update-drawer-list!` received
 /// them.
 #[derive(Debug)]
 pub enum DrawerItems {
     /// Rows already rendered.
-    Rows(Vec<String>),
+    Rows(NonEmpty<String>),
     /// One opaque key per row. Before a frame shows rows not rendered yet,
     /// the editor calls `(render start keys)` with those rows' keys, which
     /// must return one string per key.
     Keys {
-        keys: Vec<crate::Rooted>,
+        keys: NonEmpty<crate::Rooted>,
         render: crate::Rooted,
     },
-}
-
-impl DrawerItems {
-    pub fn is_empty(&self) -> bool {
-        match self {
-            Self::Rows(rows) => rows.is_empty(),
-            Self::Keys { keys, .. } => keys.is_empty(),
-        }
-    }
 }
 
 /// How an open popup reacts to key and mouse input: `show-popup!`'s
@@ -224,7 +239,7 @@ pub trait UiHost {
     fn show_menu(
         &mut self,
         pane: PaneHandle,
-        items: Vec<String>,
+        items: NonEmpty<String>,
         callback: crate::Rooted,
     ) -> Result<Option<HostToken>, String>;
 
@@ -244,9 +259,7 @@ pub trait UiHost {
     /// one-shot callback, may fire more than once: the drawer stays open
     /// across `Enter` (Helix-style browse) until `Esc` or `close-drawer!`.
     /// `selected` names the row to open on, clamped into `items`.
-    /// Replaces any drawer already open (no stacking). Errors on empty
-    /// `items`: a 0-row drawer would leave `Enter` firing `0` with no row
-    /// behind it, so callers close (or never open) instead.
+    /// Replaces any drawer already open (no stacking).
     ///
     /// Returns a token scoping [`Self::close_drawer`]/
     /// [`Self::update_drawer_list`]/[`Self::drawer_selected_index`] to *this*
@@ -281,12 +294,11 @@ pub trait UiHost {
     /// scroll) instead of resetting it the way a second `show-drawer-list!`
     /// would. `selected` names the row to select, clamped into the new
     /// list. Returns whether the update applied: `#f` when no drawer is
-    /// open, `token` doesn't match the open drawer's own (an expected-normal
-    /// race: the caller's drawer was closed or replaced, by `Esc` or by a
-    /// second `show-drawer-list!`, either of which the caller learns of via
-    /// its callback's `#f`, the same shape as `show-menu!`'s own
-    /// self-replace), or `items` is empty. Never an error. An empty `items`
-    /// callers close instead of clearing through an update.
+    /// open or `token` doesn't match the open drawer's own (an
+    /// expected-normal race: the caller's drawer was closed or replaced, by
+    /// `Esc` or by a second `show-drawer-list!`, either of which the caller
+    /// learns of via its callback's `#f`, the same shape as `show-menu!`'s
+    /// own self-replace). Never an error.
     fn update_drawer_list(
         &mut self,
         token: HostToken,

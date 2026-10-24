@@ -11,7 +11,7 @@ use termina::event::{KeyCode, Modifiers};
 use hume_engine::pipeline::{BufferId, EngineView};
 use hume_engine::types::EditorMode;
 use hume_scripting::SteelCall;
-use hume_scripting::host::{DrawerItems, HostToken};
+use hume_scripting::host::{DrawerItems, HostToken, NonEmpty};
 
 use crate::editor::Severity;
 use crate::editor::host_impl::EditorHostImpl;
@@ -74,7 +74,7 @@ impl DrawerLayer {
     }
 
     /// Selects row `selected`, or the last row when it is past the end.
-    /// `items` must be non-empty.
+    /// There is a last row: the rows are built from a [`NonEmpty`] list.
     fn select_clamped(&mut self, selected: usize) {
         self.selected = selected.min(self.rows.len() - 1);
     }
@@ -168,12 +168,12 @@ impl DrawerRows {
     fn new(items: DrawerItems) -> Self {
         match items {
             DrawerItems::Rows(rows) => Self {
-                text: Arc::new(rows.into_iter().map(Some).collect()),
+                text: Arc::new(rows.into_vec().into_iter().map(Some).collect()),
                 lazy: None,
             },
             DrawerItems::Keys { keys, render } => Self {
-                text: Arc::new(vec![None; keys.len()]),
-                lazy: Some((keys, render)),
+                text: Arc::new(vec![None; keys.as_slice().len()]),
+                lazy: Some((keys.into_vec(), render)),
             },
         }
     }
@@ -317,11 +317,9 @@ impl EditorState {
     /// leaving it pointing past the end is
     /// [`Self::clamp_drawer_scroll_to_terminal`]'s job, not this one's; see
     /// that method's own doc for why the two are split. Returns whether the
-    /// update applied (`false` when no drawer is open, `token` doesn't match
-    /// the open drawer's own (an expected-normal race, never an error, in
-    /// either case) or when `items` is empty, so a 0-row drawer with an
-    /// `Enter` that would fire `0` can never be built from either entry
-    /// point; callers close instead).
+    /// update applied (`false` when no drawer is open or `token` doesn't
+    /// match the open drawer's own, an expected-normal race, never an
+    /// error).
     pub(in crate::editor) fn set_drawer_items(
         &mut self,
         token: HostToken,
@@ -329,9 +327,6 @@ impl EditorState {
         callback: hume_scripting::Rooted,
         selected: usize,
     ) -> bool {
-        if items.is_empty() {
-            return false;
-        }
         let Some(r) = self.input.drawer_ref_with_token(token) else {
             return false;
         };
@@ -496,7 +491,7 @@ fn select_row(ed: &mut Editor, r: LayerRef) {
 
 /// The rows of a buffer-list drawer and the buffers they name, in row order.
 struct BufferList {
-    rows: Vec<String>,
+    rows: NonEmpty<String>,
     buffers: Vec<BufferId>,
 }
 
@@ -513,7 +508,14 @@ impl EditorState {
             return;
         };
         let list = self.buffer_list(current);
-        if *listed == list.buffers && drawer.rows.text().iter().flatten().eq(list.rows.iter()) {
+        if *listed == list.buffers
+            && drawer
+                .rows
+                .text()
+                .iter()
+                .flatten()
+                .eq(list.rows.as_slice().iter())
+        {
             return;
         }
         self.input
@@ -554,7 +556,10 @@ impl EditorState {
                 (row, id)
             })
             .unzip();
-        BufferList { rows, buffers }
+        BufferList {
+            rows: NonEmpty::new(rows).expect("the store always holds a buffer"),
+            buffers,
+        }
     }
 }
 
@@ -575,11 +580,9 @@ fn move_drawer_selection(ed: &mut Editor, r: LayerRef, delta: isize) {
         .input
         .at_mut::<DrawerLayer>(r)
         .expect("dispatch_at already checked kind(r) == DrawerLayer");
-    let len = drawer.rows.len();
-    if len > 0 {
-        let new = (drawer.selected as isize + delta).clamp(0, len as isize - 1);
-        drawer.selected = new as usize;
-    }
+    let last = drawer.rows.len() - 1;
+    let new = (drawer.selected as isize + delta).clamp(0, last as isize);
+    drawer.selected = new as usize;
     clamp_drawer_scroll(ed, r);
 }
 

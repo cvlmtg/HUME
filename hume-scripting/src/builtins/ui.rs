@@ -13,7 +13,7 @@ use termina::event::KeyEvent;
 use hume_engine::types::TruncateEnd;
 
 use crate::host::{
-    DrawerItems, LivePickerOpts, PickerFeedMode, PickerOpts, PickerSourceOpts, PopupKind,
+    DrawerItems, LivePickerOpts, NonEmpty, PickerFeedMode, PickerOpts, PickerSourceOpts, PopupKind,
 };
 use crate::types::PaneHandle;
 use crate::{Rooted, SteelCtx};
@@ -83,7 +83,10 @@ pub(crate) fn show_menu(
     items: SteelVal,
     on_select: Rooted,
 ) -> SteelResult {
-    let items = list_to_strings(items, "show-menu! items")?;
+    let items = non_empty(
+        list_to_strings(items, "show-menu! items")?,
+        "show-menu! items",
+    )?;
     let token = require_cap(ctx.host.ui(), "show-menu!")?
         .show_menu(pane, items, on_select)
         .map_err(generic_err)?;
@@ -101,8 +104,8 @@ pub(crate) fn close_menu(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
 
 /// `(%show-drawer-list! pane items on-select selected render)`, behind
 /// `show-drawer-list!`'s `#:selected`/`#:render` keyword wrapper (see
-/// [`drawer_items`] for `render`). `selected` is clamped into `items`. Errors on empty `items`; callers close (or never open)
-/// instead. Returns a token scoping
+/// [`drawer_items`] for `render`). `selected` is clamped into `items`.
+/// Returns a token scoping
 /// `close-drawer!`/`update-drawer-list!`/`drawer-selected-index` to this
 /// drawer, same shape as `picker!`'s own return, or `#f` when the request
 /// was dropped as stale (the stack moved before it could open; see
@@ -139,8 +142,7 @@ pub(crate) fn close_drawer(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
 /// place, keeping the browse session; `selected` is clamped into the new
 /// list. Returns whether the update applied: `#f` when no drawer is open
 /// or `token` doesn't match the open drawer's own (an expected-normal race,
-/// never an error, same contract as `picker-replace!`'s stale token) or when
-/// `items` is empty (callers close instead).
+/// never an error, same contract as `picker-replace!`'s stale token).
 pub(crate) fn update_drawer_list(
     ctx: &mut SteelCtx,
     token: SteelVal,
@@ -163,16 +165,31 @@ fn drawer_items(items: SteelVal, render: SteelVal, builtin: &str) -> Result<Draw
     let items_name = format!("{builtin} items");
     Ok(
         match optional_callable_arg(render, &format!("{builtin} render"))? {
-            None => DrawerItems::Rows(list_to_strings(items, &items_name)?),
+            None => DrawerItems::Rows(non_empty(
+                list_to_strings(items, &items_name)?,
+                &items_name,
+            )?),
             Some(render) => DrawerItems::Keys {
-                keys: list_items(items, &items_name)?
-                    .into_iter()
-                    .map(Rooted::new)
-                    .collect(),
+                keys: non_empty(
+                    list_items(items, &items_name)?
+                        .into_iter()
+                        .map(Rooted::new)
+                        .collect(),
+                    &items_name,
+                )?,
                 render,
             },
         },
     )
+}
+
+/// `items` as a [`NonEmpty`]: a menu or drawer with no row has no item for
+/// its selection to name.
+fn non_empty<T>(items: Vec<T>, ctx_name: &str) -> Result<NonEmpty<T>, SteelErr> {
+    match NonEmpty::new(items) {
+        Some(items) => Ok(items),
+        None => steel::stop!(Generic => "{}: must not be empty", ctx_name),
+    }
 }
 
 /// `(drawer-selected-index token)`: the open drawer's selected row, or

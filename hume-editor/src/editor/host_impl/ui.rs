@@ -10,7 +10,7 @@ use crate::editor::input_stack::{menu, picker, prompt};
 use crate::editor::syntax::GrammarLoads;
 use hume_scripting::PaneHandle;
 use hume_scripting::host::{
-    BufferHost, DrawerItems, HostToken, LivePickerOpts, PickerFeedMode, PickerOpts,
+    BufferHost, DrawerItems, HostToken, LivePickerOpts, NonEmpty, PickerFeedMode, PickerOpts,
     PickerSourceOpts, PopupKind, UiHost,
 };
 
@@ -131,7 +131,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
     fn show_menu(
         &mut self,
         pane: PaneHandle,
-        items: Vec<String>,
+        items: NonEmpty<String>,
         callback: hume_scripting::Rooted,
     ) -> Result<Option<HostToken>, String> {
         self.require_focused_pane(pane)?;
@@ -160,12 +160,6 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         selected: usize,
     ) -> Result<Option<HostToken>, String> {
         self.require_focused_pane(pane)?;
-        // Fail fast on empty: a 0-row drawer leaves `selected` at 0 with no
-        // row behind it, so `Enter` would fire `0` to a callback that can't
-        // index anything. Callers close (or never open) instead.
-        if items.is_empty() {
-            return Err("show-drawer-list!: items must not be empty".to_string());
-        }
         // Async staleness; see `EditorState::async_opener_stale`'s own doc.
         // `top` `Drawer` is the self-replace exception below: a second
         // `show-drawer-list!` call while the first is still open (a

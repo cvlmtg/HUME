@@ -4,7 +4,7 @@ use termina::event::KeyCode;
 
 use hume_engine::pipeline::{EngineView, ScreenLayout};
 use hume_engine::types::EditorMode;
-use hume_scripting::host::HostToken;
+use hume_scripting::host::{HostToken, NonEmpty};
 
 use super::super::mouse::is_fresh_gesture;
 use super::super::replay::{Answer, Choice, InputOpener, PendingAnswer, WaitingInput};
@@ -28,7 +28,7 @@ use super::stack::{
 /// stays open. Measuring is `resolve_menu`'s own job, done fresh each call
 /// from that slice alone.
 pub(in crate::editor) struct MenuLayer {
-    pub(in crate::editor) rows: Vec<hume_ui::popup::MenuRow>,
+    pub(in crate::editor) rows: NonEmpty<hume_ui::popup::MenuRow>,
     pub(in crate::editor) selected: usize,
     pub(in crate::editor) callback: hume_scripting::Rooted,
     /// Identifies which `show-menu!` call opened this menu; see
@@ -51,7 +51,7 @@ pub(in crate::editor) struct MenuLayer {
 pub(in crate::editor) fn open_menu(
     state: &mut EditorState,
     view: &EngineView,
-    items: Vec<String>,
+    items: NonEmpty<String>,
     callback: hume_scripting::Rooted,
 ) -> Result<Option<HostToken>, String> {
     const WHAT: &str = "show-menu!";
@@ -66,7 +66,7 @@ pub(in crate::editor) fn open_menu(
                 let index = choice
                     .map(|choice| {
                         choice
-                            .find(&items, String::as_str)
+                            .find(items.as_slice(), String::as_str)
                             .ok_or_else(|| choice.missing(WHAT))
                     })
                     .transpose()?;
@@ -110,12 +110,9 @@ impl MenuLayer {
     /// A fresh menu over single-column `items`, selection at row 0, with a
     /// freshly minted token (the only minting site, same as
     /// `DrawerLayer::new`).
-    fn new(input: WaitingInput, items: Vec<String>, callback: hume_scripting::Rooted) -> Self {
+    fn new(input: WaitingInput, items: NonEmpty<String>, callback: hume_scripting::Rooted) -> Self {
         Self {
-            rows: items
-                .into_iter()
-                .map(hume_ui::popup::MenuRow::plain)
-                .collect(),
+            rows: items.map(hume_ui::popup::MenuRow::plain),
             selected: 0,
             callback,
             token: host_token::mint(),
@@ -128,7 +125,7 @@ impl MenuLayer {
     /// answer ticket, if it has one. Every way a menu closes with a callback ends
     /// here.
     fn fire(&mut self, state: &mut EditorState, choice: Option<usize>) {
-        let picked = choice.map(|i| Choice::of(&self.rows, i, |row| &row.main));
+        let picked = choice.map(|i| Choice::of(self.rows.as_slice(), i, |row| &row.main));
         state.queue_answered_call(
             self.input.take_answer(),
             Answer::Menu(picked),
@@ -143,6 +140,7 @@ impl MenuLayer {
         items: Vec<String>,
         callback: hume_scripting::Rooted,
     ) -> Self {
+        let items = NonEmpty::new(items).expect("a test menu has items");
         Self::new(WaitingInput::for_test(), items, callback)
     }
 
@@ -249,12 +247,12 @@ impl Editor {
         let resolved = placement.and_then(|placement| {
             let model = self.state.input.menu()?;
             let window = hume_ui::popup::menu_window(
-                model.rows.len(),
+                model.rows.as_slice().len(),
                 Some(model.selected),
                 placement.pane_rect,
             );
             Some(hume_ui::popup::resolve_menu(
-                &model.rows[window.range.clone()],
+                &model.rows.as_slice()[window.range.clone()],
                 window,
                 placement,
                 border,
@@ -314,7 +312,7 @@ pub(in crate::editor) fn menu_input(ed: &mut Editor, r: LayerRef, ev: InputEvent
                 .input
                 .at_mut::<MenuLayer>(r)
                 .expect("dispatch_at already checked kind(r) == MenuLayer");
-            if menu.selected + 1 < menu.rows.len() {
+            if menu.selected + 1 < menu.rows.as_slice().len() {
                 menu.selected += 1;
             }
         }

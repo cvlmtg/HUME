@@ -1026,7 +1026,7 @@ fn click_under_drawer_falls_through_leaving_it_open() {
     ed.state.push_layer(
         &ed.view,
         DrawerLayer::new(
-            hume_scripting::host::DrawerItems::Rows(vec!["d0".to_string()]),
+            drawer_items(&["d0"]),
             DrawerSelect::Steel(hume_scripting::Rooted::new(marker("drawer-cb"))),
             0,
         ),
@@ -1055,7 +1055,7 @@ fn wheel_under_drawer_scrolls_the_pane_leaving_it_open() {
     ed.state.push_layer(
         &ed.view,
         DrawerLayer::new(
-            hume_scripting::host::DrawerItems::Rows(vec!["d0".to_string()]),
+            drawer_items(&["d0"]),
             DrawerSelect::Steel(hume_scripting::Rooted::new(marker("drawer-cb"))),
             0,
         ),

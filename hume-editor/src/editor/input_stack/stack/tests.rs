@@ -123,7 +123,7 @@ fn is_settled_for_tolerates_its_own_type_buried_under_a_non_modal_overlay() {
     let mut stack = InputStack::new();
     stack.push(menu("m"));
     stack.push(DrawerLayer::new(
-        hume_scripting::host::DrawerItems::Rows(vec!["d".to_string()]),
+        crate::editor::tests::drawer_items(&["d"]),
         DrawerSelect::Steel(hume_scripting::Rooted::new(SteelVal::BoolV(false))),
         0,
     ));

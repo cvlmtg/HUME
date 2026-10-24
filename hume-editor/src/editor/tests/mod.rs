@@ -483,6 +483,19 @@ fn params_of(msg: hume_lsp::codec::Message) -> lsp_types::PublishDiagnosticsPara
     }
 }
 
+/// `items` as the non-empty list a menu or drawer is built from.
+pub(in crate::editor) fn non_empty_strings(
+    items: &[&str],
+) -> hume_scripting::host::NonEmpty<String> {
+    let items = items.iter().map(|s| s.to_string()).collect();
+    hume_scripting::host::NonEmpty::new(items).expect("a test list has items")
+}
+
+/// Drawer rows `items`, already rendered.
+pub(in crate::editor) fn drawer_items(items: &[&str]) -> hume_scripting::host::DrawerItems {
+    hume_scripting::host::DrawerItems::Rows(non_empty_strings(items))
+}
+
 /// Opens a drawer with `items` through `EditorHostImpl`'s `UiHost` impl
 /// directly (bypassing Steel), for tests exercising the host seam's own
 /// token contract. Returns the live token; panics if `show-drawer-list!` refused the
@@ -496,7 +509,7 @@ fn open_drawer_via_host(ed: &mut Editor, items: &[&str]) -> hume_scripting::host
     EditorHostImpl::new(&mut ed.state, &mut ed.view)
         .show_drawer_list(
             pane,
-            hume_scripting::host::DrawerItems::Rows(items.iter().map(|s| s.to_string()).collect()),
+            drawer_items(items),
             hume_scripting::Rooted::new(steel::rvals::SteelVal::Void),
             0,
         )
