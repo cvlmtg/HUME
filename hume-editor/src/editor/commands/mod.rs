@@ -23,6 +23,7 @@ use hume_engine::display_lines::{DisplayColTarget, DisplayLineMap};
 use hume_engine::pane::{Pane, Viewport};
 use hume_engine::pipeline::{BufferId, ContentWidth, EngineView, PaneId};
 
+use super::buffer::lifecycle::CloseBufferRefused;
 use super::buffer::{Buffer, TextRefusal};
 use super::doc_ops;
 use super::jump_list::{JumpRule, with_jump};
@@ -198,6 +199,24 @@ pub(in crate::editor::commands) fn pipe_running_refusal(
     } else {
         format!("{busy}. Use {way_out}")
     })
+}
+
+/// The refusal of a buffer close, naming `way_out`, the typed command that
+/// goes ahead.
+pub(in crate::editor::commands) fn close_refusal(
+    state: &EditorState,
+    view: &EngineView,
+    refused: CloseBufferRefused,
+    way_out: &str,
+) -> CommandError {
+    match refused {
+        CloseBufferRefused::Unsaved(unsaved) => {
+            CommandError::transient(unsaved.message(state, way_out))
+        }
+        CloseBufferRefused::PipeRunning(running) => {
+            pipe_running_refusal(state, view, running, way_out)
+        }
+    }
 }
 
 /// `error`, with the register prefix the refused command consumed cleared.

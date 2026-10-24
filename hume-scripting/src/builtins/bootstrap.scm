@@ -154,6 +154,9 @@
 (define (buffer-display-path pane #:relative [relative #f])
   (%buffer-display-path pane relative))
 
+(define (close-buffer! pane #:discard-unsaved [discard-unsaved #f])
+  (%close-buffer! pane discard-unsaved))
+
 (define (apply-text-edits! pane edits #:expect-generation [gen #f])
   (%apply-text-edits! pane edits gen))
 

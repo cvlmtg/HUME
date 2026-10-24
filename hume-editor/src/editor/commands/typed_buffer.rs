@@ -4,7 +4,7 @@ use super::super::Editor;
 use super::super::Severity;
 use super::jump::goto_buffer_in_order;
 use super::{FocusedPane, jump_pane_to};
-use crate::editor::buffer::{DiskCheckTrigger, ReloadError, lifecycle};
+use crate::editor::buffer::{DiskCheckTrigger, OnUnsaved, ReloadError, lifecycle};
 use crate::editor::error::CommandError;
 use crate::editor::jump_list::{JumpRule, with_jump};
 
@@ -112,13 +112,12 @@ pub(in crate::editor) fn typed_edit(
             );
             return Ok(());
         }
-        if ed.state.has_unsaved_changes(fp.bid(&ed.view)) && !force {
-            return Err(CommandError::transient(
-                "unsaved changes (use :e! to force)",
-            ));
-        }
-        ed.run_stopping_pipes(force, |ed| ed.reload_from_path(fp, &path))
+        let on_unsaved = OnUnsaved::from_force(force);
+        ed.run_stopping_pipes(force, |ed| ed.reload_from_path(fp, &path, on_unsaved))
             .map_err(|error| match error {
+                ReloadError::Unsaved(unsaved) => {
+                    CommandError::transient(unsaved.message(&ed.state, ":e!"))
+                }
                 ReloadError::PipeRunning(running) => {
                     super::pipe_running_refusal(&ed.state, &ed.view, running, ":e!")
                 }
@@ -202,15 +201,11 @@ pub(in crate::editor) fn typed_buffer_delete(
     force: bool,
 ) -> Result<(), CommandError> {
     let id = fp.bid(&ed.view);
-    if ed.state.has_unsaved_changes(id) && !force {
-        return Err(CommandError::transient(
-            "unsaved changes (use :bd! to force)",
-        ));
-    }
+    let on_unsaved = OnUnsaved::from_force(force);
     ed.run_stopping_pipes(force, |ed| {
-        lifecycle::close_buffer_and_notify(&mut ed.view, &mut ed.state, id)
+        lifecycle::close_buffer_and_notify(&mut ed.view, &mut ed.state, id, on_unsaved)
     })
-    .map_err(|running| super::pipe_running_refusal(&ed.state, &ed.view, running, ":bd!"))
+    .map_err(|refused| super::close_refusal(&ed.state, &ed.view, refused, ":bd!"))
 }
 
 /// `:b` / `:buffer`: switch to an open buffer by name, prefix, index, or full path.

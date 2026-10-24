@@ -17,13 +17,13 @@ use hume_rope::line::ContentLine;
 
 use crate::editor::EditorState;
 use crate::editor::buffer::store::BufferStore;
-use crate::editor::buffer::{Buffer, ViewLabel};
+use crate::editor::buffer::{Buffer, OnUnsaved, Unsaved, ViewLabel};
 use crate::editor::commands::CommandPane;
 use crate::editor::event::EditorEvent;
 use crate::editor::focus::switch_pane_to_buffer;
 use crate::editor::jump_list::{JumpRule, with_jump};
 use crate::editor::pane_state;
-use crate::editor::pipe_run::PipeRunning;
+use crate::editor::pipe_run::{PipeRefusal, PipeRunning};
 
 // ── open_or_dedup / open_buffer ───────────────────────────────────────────────
 
@@ -240,16 +240,21 @@ fn close_buffer(state: &mut EditorState, ev: &mut EngineView, id: BufferId) -> O
 /// (e.g. within one Steel eval) never announced its open, so it must not
 /// announce a close either.
 ///
-/// Refused, with nothing changed, while a pipe runs in `id`: closing it
-/// would stop the run. A caller that means to stop it calls
+/// Refused, with nothing changed, when `id` has unsaved changes and
+/// `on_unsaved` does not consent to dropping them, and while a pipe runs in
+/// `id`: closing it would stop the run. A caller that means to stop it calls
 /// `EditorState::cancel_pipe_run` first.
 pub(in crate::editor) fn close_buffer_and_notify(
     ev: &mut EngineView,
     state: &mut EditorState,
     id: BufferId,
-) -> Result<(), PipeRunning> {
+    on_unsaved: OnUnsaved,
+) -> Result<(), CloseBufferRefused> {
+    state
+        .refuse_unsaved(id, on_unsaved)
+        .map_err(CloseBufferRefused::Unsaved)?;
     if state.buffers.get(id).is_busy() {
-        return Err(PipeRunning(id));
+        return Err(CloseBufferRefused::PipeRunning(PipeRunning(id)));
     }
     // Must run before the slot is freed below: `didClose` names the
     // buffer's URI.
@@ -268,6 +273,22 @@ pub(in crate::editor) fn close_buffer_and_notify(
         state.queue_event(EditorEvent::OnBufferClose { buffer: id });
     }
     Ok(())
+}
+
+/// Why [`close_buffer_and_notify`] closed nothing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::editor) enum CloseBufferRefused {
+    Unsaved(Unsaved),
+    PipeRunning(PipeRunning),
+}
+
+impl PipeRefusal for CloseBufferRefused {
+    fn pipe_running(&self) -> Option<PipeRunning> {
+        match self {
+            Self::PipeRunning(running) => Some(*running),
+            Self::Unsaved(_) => None,
+        }
+    }
 }
 
 /// Drop every pane's saved scroll *and* wrap-mode pin for `id`, once they no

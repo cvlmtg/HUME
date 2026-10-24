@@ -21,8 +21,8 @@ use hume_rope::line::ContentLine;
 use hume_scripting::PaneHandle;
 use hume_scripting::command_name::fold;
 use hume_scripting::host::{
-    BufferHost, CommandHost, CursorHost, DisplayPathForm, EditorHost, EventHost, LanguageHost,
-    NativeCall, OptionInput, OptionValue, SelectionInfo, SettingsHost,
+    BufferHost, CommandHost, CursorHost, DiscardUnsaved, DisplayPathForm, EditorHost, EventHost,
+    LanguageHost, NativeCall, OptionInput, OptionValue, SelectionInfo, SettingsHost,
 };
 
 /// One recorded `run_command_sync` call: `(name, pane, call)`; see
@@ -188,7 +188,7 @@ impl BufferHost for MockHost {
     fn open_buffer(&mut self, _path: &std::path::Path) -> Result<BufferId, String> {
         Err("MockHost: open_buffer not available".into())
     }
-    fn close_buffer(&mut self, _id: BufferId) -> Result<(), String> {
+    fn close_buffer(&mut self, _id: BufferId, _discard: DiscardUnsaved) -> Result<(), String> {
         Err("MockHost: close_buffer not available".into())
     }
     fn switch_to_buffer(&mut self, _pane: PaneHandle, _target: BufferId) -> Result<(), String> {

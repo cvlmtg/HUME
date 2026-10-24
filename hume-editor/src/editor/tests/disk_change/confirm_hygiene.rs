@@ -26,7 +26,8 @@ fn closing_a_buffer_retires_its_open_reload_confirm() {
         "setup: confirm must be open"
     );
 
-    ed.close_buffer(bid).expect("the buffer runs no pipe");
+    ed.close_buffer(bid, crate::editor::buffer::OnUnsaved::Refuse)
+        .expect("the buffer has no unsaved changes and runs no pipe");
 
     assert!(
         ed.state.input.confirm().is_none(),
@@ -358,7 +359,7 @@ fn message_logged_before_a_macro_replay_survives_its_trailing_settle() {
 /// The `message_logged_this_input` guard in `confirm_permit` (set by
 /// `Editor::handle_input` for the duration of its post-dispatch
 /// focus-change check) stops `check_buffer_disk_state` from opening a reload
-/// confirm over the "Unsaved changes" error after the focus diff
+/// confirm over the "has unsaved changes" error after the focus diff
 /// `typed_quit_all` produces. `open_disk_change_confirm` never writes
 /// `status_msg`, so the first assertion doesn't distinguish the two cases;
 /// it documents the desired behaviour, not this guard specifically. See
@@ -390,7 +391,7 @@ fn quit_all_error_is_not_shadowed_by_a_disk_confirm() {
         ed.state
             .status_msg
             .as_deref()
-            .is_some_and(|m| m.contains("Unsaved changes")),
+            .is_some_and(|m| m.contains("has unsaved changes")),
         "the :qa error must stay on screen, got: {:?}",
         ed.state.status_msg
     );
@@ -438,7 +439,7 @@ fn quit_all_focus_move_still_logs_the_disk_change_without_shadowing_the_error() 
         ed.state
             .status_msg
             .as_deref()
-            .is_some_and(|m| m.contains("Unsaved changes")),
+            .is_some_and(|m| m.contains("has unsaved changes")),
         "status_msg must still be :qa's own error, not the disk warning"
     );
 }

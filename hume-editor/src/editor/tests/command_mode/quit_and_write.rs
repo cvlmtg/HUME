@@ -49,10 +49,22 @@ fn colon_q_on_dirty_buffer_refuses() {
     }
     ed.handle_key(key_enter());
     assert!(!ed.state.should_quit);
-    assert_eq!(
-        ed.state.status_msg.as_deref(),
-        Some("Unsaved changes (add ! to override)")
-    );
+    let name = ed.state.buffers.get(ed.focused_buffer_id()).display_name();
+    assert_eq!(status(&ed), format!("{name} has unsaved changes. Use :q!"));
+}
+
+#[test]
+fn colon_e_on_a_dirty_file_buffer_refuses_and_names_it() {
+    let (mut ed, _tmp) = editor_with_file("-[h]>ello\n", "hello\n");
+    ed.handle_key(key('i'));
+    ed.handle_key(key('x'));
+    ed.handle_key(key_esc());
+
+    type_cmd(&mut ed, ":e");
+
+    let name = ed.state.buffers.get(ed.focused_buffer_id()).display_name();
+    assert_eq!(status(&ed), format!("{name} has unsaved changes. Use :e!"));
+    assert!(focused_unsaved(&ed), "a refused reload keeps the edits");
 }
 
 #[test]
@@ -302,11 +314,8 @@ fn colon_qa_refused_when_a_background_buffer_is_dirty() {
         bg_buf,
         ":qa must switch focus to the first unsaved buffer"
     );
-    let msg = ed.state.status_msg.as_deref().unwrap_or("");
-    assert!(
-        msg.starts_with("Unsaved changes in ") && msg.ends_with(" (add ! to override)"),
-        "status message must name the unsaved buffer, got: {msg:?}"
-    );
+    let name = ed.state.buffers.get(bg_buf).display_name();
+    assert_eq!(status(&ed), format!("{name} has unsaved changes. Use :qa!"));
 }
 
 #[test]

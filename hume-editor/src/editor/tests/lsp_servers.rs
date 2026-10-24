@@ -182,8 +182,8 @@ fn closing_the_last_buffer_of_a_server_stops_it_at_once() {
     let mut rig = two_servers(&tmp);
 
     rig.ed
-        .close_buffer(rig.bid)
-        .expect("the buffer runs no pipe");
+        .close_buffer(rig.bid, crate::editor::buffer::OnUnsaved::Refuse)
+        .expect("the buffer has no unsaved changes and runs no pipe");
 
     assert_eq!(rig.ed.state.lsp.instance_count_for_test(), 0);
 }
@@ -205,8 +205,8 @@ fn a_crashed_server_without_buffers_is_stopped_by_its_last_detach() {
     );
 
     rig.ed
-        .close_buffer(rig.bid)
-        .expect("the buffer runs no pipe");
+        .close_buffer(rig.bid, crate::editor::buffer::OnUnsaved::Refuse)
+        .expect("the buffer has no unsaved changes and runs no pipe");
 
     assert_eq!(rig.ed.state.lsp.instance_count_for_test(), 0);
 }

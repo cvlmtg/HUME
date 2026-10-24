@@ -113,7 +113,8 @@ fn buffer_scoped_event_is_skipped_once_its_buffer_has_closed() {
     // here, a direct close between queueing and the drain, rather than a
     // timer thunk queued ahead of the event; the observable failure mode
     // (the batch reaches a dead bid) is identical either way.
-    ed.close_buffer(bid).expect("the buffer runs no pipe");
+    ed.close_buffer(bid, crate::editor::buffer::OnUnsaved::Refuse)
+        .expect("the buffer has no unsaved changes and runs no pipe");
     ed.settle();
 
     let log = ed.state.message_log.format_for_display();

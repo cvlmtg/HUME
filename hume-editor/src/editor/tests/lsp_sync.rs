@@ -288,7 +288,8 @@ fn did_save_and_did_close_each_fire_once() {
     let (mut ed, bid, log) = attached_editor(&tmp);
 
     ed.execute_typed("w", None).unwrap();
-    ed.close_buffer(bid).expect("the buffer runs no pipe");
+    ed.close_buffer(bid, crate::editor::buffer::OnUnsaved::Refuse)
+        .expect("the buffer has no unsaved changes and runs no pipe");
 
     let methods: Vec<&str> = log
         .borrow()

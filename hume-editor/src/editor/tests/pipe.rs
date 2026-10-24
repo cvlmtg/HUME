@@ -715,7 +715,10 @@ fn closing_a_busy_buffer_is_refused_and_keeps_its_run() {
     let mut ed = editor_from("-[a]>\n");
     let bid = ed.focused_buffer_id();
     start_sort(&mut ed);
-    assert_eq!(ed.close_buffer(bid), Err(PipeRunning(bid)));
+    assert_eq!(
+        ed.close_buffer(bid, crate::editor::buffer::OnUnsaved::Refuse),
+        Err(crate::editor::buffer::lifecycle::CloseBufferRefused::PipeRunning(PipeRunning(bid)))
+    );
     assert!(ed.state.buffers.try_get(bid).is_some());
     assert!(busy(&ed, bid));
 }

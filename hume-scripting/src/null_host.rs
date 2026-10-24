@@ -23,9 +23,9 @@ use crate::attribution::EntryId;
 use crate::command_name::fold;
 use crate::command_procs::CommandProc;
 use crate::host::{
-    BufferHost, CommandHost, CursorHost, DisplayPathForm, EditorHost, EventHost, HostToken,
-    LanguageHost, LocationPlace, LspHost, OptionInput, OptionValue, OutputHost, PositionParams,
-    RangeParams, RangesParams, SelectionInfo, SettingsHost, TrackedHold,
+    BufferHost, CommandHost, CursorHost, DiscardUnsaved, DisplayPathForm, EditorHost, EventHost,
+    HostToken, LanguageHost, LocationPlace, LspHost, OptionInput, OptionValue, OutputHost,
+    PositionParams, RangeParams, RangesParams, SelectionInfo, SettingsHost, TrackedHold,
 };
 use crate::types::{GrammarReg, PaneHandle, SteelCmdDef, SteelTypedCmdDef};
 
@@ -139,7 +139,7 @@ impl BufferHost for NullHost {
     fn open_buffer(&mut self, _path: &Path) -> Result<BufferId, String> {
         Err("NullHost: open_buffer not available".into())
     }
-    fn close_buffer(&mut self, _id: BufferId) -> Result<(), String> {
+    fn close_buffer(&mut self, _id: BufferId, _discard: DiscardUnsaved) -> Result<(), String> {
         Err("NullHost: close_buffer not available".into())
     }
     fn switch_to_buffer(&mut self, _pane: PaneHandle, _target: BufferId) -> Result<(), String> {

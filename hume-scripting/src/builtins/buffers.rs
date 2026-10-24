@@ -16,7 +16,7 @@ use super::args::{
 use super::errors::generic_err;
 use super::ids::{SteelBufferKey, SteelPane};
 use crate::SteelCtx;
-use crate::host::DisplayPathForm;
+use crate::host::{DiscardUnsaved, DisplayPathForm};
 use crate::types::PaneHandle;
 
 // ── Focus builtins ─────────────────────────────────────────────────────────────
@@ -315,17 +315,28 @@ pub(crate) fn open_buffer(ctx: &mut SteelCtx, path: String) -> SteelResult {
         .map_err(generic_err)
 }
 
-/// `(close-buffer! pane)` → void.
+/// `(%close-buffer! pane discard-unsaved)` → void, behind `close-buffer!`'s
+/// `#:discard-unsaved` keyword wrapper.
 ///
 /// Closes `pane`'s buffer. Raises a Steel error for an invalid or unknown
-/// buffer, or one a pipe is running in.
-pub(crate) fn close_buffer(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
+/// buffer, one with unsaved changes unless `discard-unsaved` is `#t`, or
+/// one a pipe is running in.
+pub(crate) fn close_buffer(
+    ctx: &mut SteelCtx,
+    pane: PaneHandle,
+    discard_unsaved: SteelVal,
+) -> SteelResult {
+    let discard = if bool_arg(discard_unsaved, "close-buffer! #:discard-unsaved")? {
+        DiscardUnsaved::Yes
+    } else {
+        DiscardUnsaved::No
+    };
     // The host applies the close (and its focus fallout) synchronously, not
     // as a deferred effect: `focused-pane`/`switch-to-buffer!`'s own
     // `focused_pane()` read already sees it on their very next call.
     ctx.host
         .buffers()
-        .close_buffer(pane.buffer())
+        .close_buffer(pane.buffer(), discard)
         .map_err(generic_err)?;
     Ok(SteelVal::Void)
 }

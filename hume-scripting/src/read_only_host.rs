@@ -12,8 +12,8 @@ use hume_rope::offset::ExclusiveRange;
 use crate::attribution::EntryId;
 use crate::command_procs::CommandProc;
 use crate::host::{
-    BufferHost, CommandHost, CursorHost, DisplayPathForm, EditorHost, EventHost, HostToken,
-    LanguageHost, OptionInput, OptionValue, SelectionInfo, SettingsHost, UndoNode,
+    BufferHost, CommandHost, CursorHost, DiscardUnsaved, DisplayPathForm, EditorHost, EventHost,
+    HostToken, LanguageHost, OptionInput, OptionValue, SelectionInfo, SettingsHost, UndoNode,
 };
 use crate::types::{GrammarReg, PaneHandle, SteelCmdDef, SteelTypedCmdDef};
 
@@ -246,7 +246,7 @@ impl BufferHost for ReadOnlyHost<'_> {
     fn open_buffer(&mut self, _path: &Path) -> Result<BufferId, String> {
         Err(self.refuse("open_buffer"))
     }
-    fn close_buffer(&mut self, _id: BufferId) -> Result<(), String> {
+    fn close_buffer(&mut self, _id: BufferId, _discard: DiscardUnsaved) -> Result<(), String> {
         Err(self.refuse("close_buffer"))
     }
     fn switch_to_buffer(&mut self, _pane: PaneHandle, _target: BufferId) -> Result<(), String> {

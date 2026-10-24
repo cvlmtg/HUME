@@ -156,3 +156,47 @@ impl EditorState {
                 .is_some_and(|s| s.buffer() == bid && s.has_edits())
     }
 }
+
+/// A close, reload or quit refused because it would drop `bid`'s unsaved
+/// changes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::editor) struct Unsaved(pub(in crate::editor) BufferId);
+
+impl Unsaved {
+    /// The refusal's message, naming `way_out`, the consent that goes
+    /// ahead.
+    pub(in crate::editor) fn message(self, state: &EditorState, way_out: &str) -> String {
+        let name = state.buffers.get(self.0).display_name();
+        format!("{name} has unsaved changes. Use {way_out}")
+    }
+}
+
+/// Whether a close, reload or quit may drop unsaved changes: the consent of
+/// the user (a `!`, a confirm answer) or of a script.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::editor) enum OnUnsaved {
+    Refuse,
+    Discard,
+}
+
+impl OnUnsaved {
+    /// What a typed command's `!` consents to.
+    pub(in crate::editor) fn from_force(force: bool) -> Self {
+        if force { Self::Discard } else { Self::Refuse }
+    }
+}
+
+impl EditorState {
+    /// The guard every action that drops `bid`'s text runs first: refused
+    /// when `bid` has unsaved changes and `on_unsaved` does not consent.
+    pub(in crate::editor) fn refuse_unsaved(
+        &self,
+        bid: BufferId,
+        on_unsaved: OnUnsaved,
+    ) -> Result<(), Unsaved> {
+        match on_unsaved {
+            OnUnsaved::Refuse if self.has_unsaved_changes(bid) => Err(Unsaved(bid)),
+            _ => Ok(()),
+        }
+    }
+}

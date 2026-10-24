@@ -9,10 +9,11 @@ use hume_rope::lines::line_token_content;
 use hume_rope::offset::ExclusiveRange;
 
 use super::EditorHostImpl;
-use crate::editor::buffer::{TextRefusal, ViewLabel};
+use crate::editor::buffer::lifecycle::CloseBufferRefused;
+use crate::editor::buffer::{OnUnsaved, TextRefusal, ViewLabel};
 use crate::editor::commands::FocusedPane;
 use hume_scripting::PaneHandle;
-use hume_scripting::host::{BufferHost, DisplayPathForm};
+use hume_scripting::host::{BufferHost, DiscardUnsaved, DisplayPathForm};
 
 impl<'a> BufferHost for EditorHostImpl<'a> {
     // ── Enumeration ──────────────────────────────────────────────────────────
@@ -108,17 +109,27 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
         .map_err(|e| format!("open-buffer!: {}: {e}", resolved.display()))?;
         Ok(bid)
     }
-    fn close_buffer(&mut self, id: BufferId) -> Result<(), String> {
+    fn close_buffer(&mut self, id: BufferId, discard: DiscardUnsaved) -> Result<(), String> {
         if self.state.buffers.try_get(id).is_none() {
             return Err(format!("close-buffer!: buffer {id:?} does not exist"));
         }
-        crate::editor::buffer::lifecycle::close_buffer_and_notify(self.view, self.state, id)
-            .map_err(|_| {
-                format!(
-                    r#"close-buffer!: {}. Stop it first with (call! "cancel-pipe" pane)"#,
-                    TextRefusal::Busy.message(self.state.buffers.get(id))
-                )
-            })
+        let on_unsaved = match discard {
+            DiscardUnsaved::No => OnUnsaved::Refuse,
+            DiscardUnsaved::Yes => OnUnsaved::Discard,
+        };
+        crate::editor::buffer::lifecycle::close_buffer_and_notify(
+            self.view, self.state, id, on_unsaved,
+        )
+        .map_err(|refused| match refused {
+            CloseBufferRefused::Unsaved(unsaved) => format!(
+                "close-buffer!: {}",
+                unsaved.message(self.state, "#:discard-unsaved #t")
+            ),
+            CloseBufferRefused::PipeRunning(_) => format!(
+                r#"close-buffer!: {}. Stop it first with (call! "cancel-pipe" pane)"#,
+                TextRefusal::Busy.message(self.state.buffers.get(id))
+            ),
+        })
     }
     fn switch_to_buffer(&mut self, pane: PaneHandle, target: BufferId) -> Result<(), String> {
         let t = self.command_pane(pane)?;

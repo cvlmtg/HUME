@@ -36,6 +36,7 @@ pub(in crate::editor) use disk::{DiskCheckTrigger, ReloadError};
 pub(in crate::editor) use dump::dump_path_for;
 pub(crate) use dump::{print_worker_panics, report_dumps};
 pub(in crate::editor) use file_open::ReplaceSource;
+pub(in crate::editor) use history::{OnUnsaved, Unsaved};
 mod file_open;
 mod history;
 pub(in crate::editor) mod lifecycle;

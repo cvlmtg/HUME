@@ -15,7 +15,7 @@ use crate::editor::input_stack::{ConfirmAction, ConfirmLayer, ConfirmPermit};
 use crate::editor::pipe_run::{PipeRefusal, PipeRunning};
 use crate::editor::{Editor, Severity};
 
-use super::{Buffer, ReplaceSource, TextRefusal};
+use super::{Buffer, OnUnsaved, ReplaceSource, TextRefusal, Unsaved};
 
 /// Result of comparing a buffer's stored file signature against a fresh stat.
 /// `Changed` carries the freshly-read signature so the caller can store it
@@ -357,12 +357,17 @@ impl Editor {
         else {
             return;
         };
-        if let Err(error) = self.reload_from_path(fp, &path) {
+        // Answering `[r]eload` is the consent: the prompt says unsaved
+        // edits will be replaced.
+        if let Err(error) = self.reload_from_path(fp, &path, OnUnsaved::Discard) {
             let message = match error {
                 ReloadError::PipeRunning(PipeRunning(bid)) => {
                     TextRefusal::Busy.message(self.state.buffers.get(bid))
                 }
                 ReloadError::Read(e) => e.message().to_string(),
+                ReloadError::Unsaved(_) => {
+                    unreachable!("a reload that discards unsaved changes is not refused for them")
+                }
             };
             self.report(Severity::Warning, message);
         }
@@ -397,14 +402,19 @@ impl Editor {
     /// background reload has no caller to propagate an `Err` to). Callers
     /// choose their own error severity/propagation; this only owns the
     /// read-swap-report-success sequence, not the failure path. A read
-    /// failure names the buffer's display path. A buffer a pipe runs in is
-    /// refused before the file is read.
+    /// failure names the buffer's display path. A buffer with unsaved
+    /// changes `on_unsaved` does not consent to dropping, and one a pipe
+    /// runs in, are refused before the file is read.
     pub(in crate::editor) fn reload_from_path(
         &mut self,
         fp: crate::editor::commands::FocusedPane,
         path: &std::path::Path,
+        on_unsaved: OnUnsaved,
     ) -> Result<(), ReloadError> {
         let bid = fp.bid(&self.view);
+        self.state
+            .refuse_unsaved(bid, on_unsaved)
+            .map_err(ReloadError::Unsaved)?;
         if self.state.buffers.get(bid).is_busy() {
             return Err(ReloadError::PipeRunning(PipeRunning(bid)));
         }
@@ -427,6 +437,8 @@ impl Editor {
 /// Why [`Editor::reload_from_path`] changed nothing.
 #[derive(Debug)]
 pub(in crate::editor) enum ReloadError {
+    /// The buffer has unsaved changes the caller did not consent to drop.
+    Unsaved(Unsaved),
     /// A pipe runs in the buffer.
     PipeRunning(PipeRunning),
     /// The file could not be read.
@@ -437,7 +449,7 @@ impl PipeRefusal for ReloadError {
     fn pipe_running(&self) -> Option<PipeRunning> {
         match self {
             Self::PipeRunning(running) => Some(*running),
-            Self::Read(_) => None,
+            Self::Unsaved(_) | Self::Read(_) => None,
         }
     }
 }

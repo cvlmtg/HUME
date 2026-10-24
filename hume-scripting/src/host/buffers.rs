@@ -38,6 +38,14 @@ pub enum DisplayPathForm {
     CwdRelative,
 }
 
+/// Whether `close-buffer!` may drop the buffer's unsaved changes: its
+/// `#:discard-unsaved` keyword.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiscardUnsaved {
+    No,
+    Yes,
+}
+
 /// Buffer/pane enumeration, reads, lifecycle, and viewport geometry,
 /// accessed through [`EditorHost::buffers`](super::EditorHost::buffers).
 pub trait BufferHost {
@@ -111,9 +119,10 @@ pub trait BufferHost {
     /// Open a file at `path`, deduplicating if already open.
     /// Returns the `BufferId` (new or existing).
     fn open_buffer(&mut self, path: &Path) -> Result<BufferId, String>;
-    /// Close `id`. `Err` when `id` does not name an open buffer, or while a
+    /// Close `id`. `Err` when `id` does not name an open buffer, when it has
+    /// unsaved changes and `discard` is [`DiscardUnsaved::No`], or while a
     /// pipe runs in it.
-    fn close_buffer(&mut self, id: BufferId) -> Result<(), String>;
+    fn close_buffer(&mut self, id: BufferId, discard: DiscardUnsaved) -> Result<(), String>;
     /// Switch the focused pane to `target`, recording a jump entry.
     /// Redirect `pane`'s own pane to `target`, recording a jump entry.
     /// Kind-B: raises if `pane` carries no pane, a closed one, or one that

@@ -42,7 +42,8 @@ fn p6_close_buffer_redirects_to_mru() {
     ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid_beta);
     assert_eq!(ed.focused_buffer_id(), bid_beta);
     // Close beta: should redirect focused pane back to alpha.
-    ed.close_buffer(bid_beta).expect("the buffer runs no pipe");
+    ed.close_buffer(bid_beta, crate::editor::buffer::OnUnsaved::Refuse)
+        .expect("the buffer has no unsaved changes and runs no pipe");
     assert_eq!(
         ed.focused_buffer_id(),
         bid_alpha,
@@ -61,7 +62,8 @@ fn p6_close_buffer_redirects_to_mru() {
 fn p6_close_last_buffer_becomes_scratch() {
     let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("only\n")));
     let bid = ed.focused_buffer_id();
-    ed.close_buffer(bid).expect("the buffer runs no pipe");
+    ed.close_buffer(bid, crate::editor::buffer::OnUnsaved::Refuse)
+        .expect("the buffer has no unsaved changes and runs no pipe");
     assert!(
         ed.state.buffers.try_get(bid).is_none(),
         "the closed buffer's own slot must be freed, not reused"
@@ -132,7 +134,8 @@ fn p6_close_last_buffer_reseeds_selections() {
             st.with_selections(vec![cursor], 0)
         },
     );
-    ed.close_buffer(bid).expect("the buffer runs no pipe");
+    ed.close_buffer(bid, crate::editor::buffer::OnUnsaved::Refuse)
+        .expect("the buffer has no unsaved changes and runs no pipe");
     // Selections should be reset to initial (cursor at 0).
     let sels = ed.current_view();
     assert_eq!(
@@ -293,6 +296,70 @@ fn p6_bd_force_closes_dirty_buffer() {
     assert_eq!(ed.focused_buffer_id(), bid_clean);
 }
 
+#[test]
+fn bd_on_a_dirty_buffer_names_it_and_the_way_out() {
+    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("clean\n")));
+    let bid = ed.open_buffer(Buffer::at_start(BufferText::from("dirty\n")));
+    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid);
+    keys(&mut ed, "ix");
+    ed.handle_key(key_esc());
+
+    type_cmd(&mut ed, ":bd");
+
+    let name = ed.state.buffers.get(bid).display_name();
+    assert_eq!(status(&ed), format!("{name} has unsaved changes. Use :bd!"));
+    assert!(ed.state.buffers.try_get(bid).is_some());
+}
+
+#[test]
+fn close_buffer_from_steel_refuses_unsaved_changes() {
+    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("clean\n")));
+    let bid = ed.open_buffer(Buffer::at_start(BufferText::from("dirty\n")));
+    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid);
+    keys(&mut ed, "ix");
+    ed.handle_key(key_esc());
+    let tmp = tempfile::tempdir().unwrap();
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "close" "" (lambda (pane) (close-buffer! pane)))"#,
+    );
+
+    type_cmd(&mut ed, ":close");
+
+    let name = ed.state.buffers.get(bid).display_name();
+    assert!(
+        has_error(
+            &ed,
+            &format!("close-buffer!: {name} has unsaved changes. Use #:discard-unsaved #t")
+        ),
+        "errors: {:?}",
+        error_log(&ed)
+    );
+    assert!(ed.state.buffers.try_get(bid).is_some());
+}
+
+#[test]
+fn close_buffer_from_steel_discards_unsaved_changes_when_asked() {
+    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("clean\n")));
+    let bid = ed.open_buffer(Buffer::at_start(BufferText::from("dirty\n")));
+    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid);
+    keys(&mut ed, "ix");
+    ed.handle_key(key_esc());
+    let tmp = tempfile::tempdir().unwrap();
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "close" "" (lambda (pane)
+             (close-buffer! pane #:discard-unsaved #t)))"#,
+    );
+
+    type_cmd(&mut ed, ":close");
+
+    assert_eq!(error_log(&ed), Vec::<String>::new());
+    assert!(ed.state.buffers.try_get(bid).is_none());
+}
+
 /// `close_buffer` redirects ALL panes viewing the closed buffer to the MRU alternative.
 ///
 /// The `:bd` tests verify the single-pane path. This test targets the multi-pane
@@ -325,7 +392,8 @@ fn p6_close_buffer_redirects_all_panes_to_mru() {
     );
 
     // Close A; mru_excluding(A) == B (B was opened last, so it's at the MRU tail).
-    ed.close_buffer(bid_a).expect("the buffer runs no pipe");
+    ed.close_buffer(bid_a, crate::editor::buffer::OnUnsaved::Refuse)
+        .expect("the buffer has no unsaved changes and runs no pipe");
 
     assert_eq!(
         ed.view.panes[pid_1].buffer_id(),

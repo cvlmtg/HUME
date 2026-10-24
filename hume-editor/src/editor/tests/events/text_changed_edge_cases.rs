@@ -210,7 +210,8 @@ fn last_buffer_close_opens_a_fresh_scratch_buffer_not_a_content_swap() {
     ed.scripting = Some(host);
     ed.settle();
 
-    ed.close_buffer(bid).expect("the buffer runs no pipe");
+    ed.close_buffer(bid, crate::editor::buffer::OnUnsaved::Refuse)
+        .expect("the buffer has no unsaved changes and runs no pipe");
     ed.settle();
 
     let new_bid = ed.focused_buffer_id();
@@ -573,7 +574,7 @@ fn on_text_changed_skips_a_buffer_closed_earlier_in_the_batch() {
         &mut host,
         r#"(register-hook! 'on-text-changed (lambda (bid) (log! 'trace "changed")))
            (define-typed-command! "start" ""
-             (lambda (bid) (after! 0 (lambda () (close-buffer! bid)))))"#,
+             (lambda (bid) (after! 0 (lambda () (close-buffer! bid #:discard-unsaved #t)))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);

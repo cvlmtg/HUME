@@ -15,7 +15,12 @@ fn close_buffer_errs_when_id_unknown() {
     ));
     let mut host = init_host!(ed);
     // BufferId::default() is a zeroed key, not present in any live store.
-    let err = host.close_buffer(BufferId::default()).unwrap_err();
+    let err = host
+        .close_buffer(
+            BufferId::default(),
+            hume_scripting::host::DiscardUnsaved::No,
+        )
+        .unwrap_err();
     assert!(!err.is_empty(), "expected an error message");
 }
 

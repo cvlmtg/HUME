@@ -409,7 +409,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
 
         // Multi-buffer mutating builtins
         cmd "open-buffer!" buffers::open_buffer(path: String);
-        cmd "close-buffer!" buffers::close_buffer(pane: args::LivePane);
+        cmd "%close-buffer!" buffers::close_buffer(pane: args::LivePane, discard_unsaved: SteelVal);
         cmd "switch-to-buffer!" buffers::switch_to_buffer(pane: args::LivePane, target: args::LivePane);
         cmd "show-read-only-buffer!" buffers::show_read_only_buffer(pane: args::LivePane, name: String, text: String);
 
