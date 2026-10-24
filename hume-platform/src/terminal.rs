@@ -56,7 +56,7 @@ pub struct SharedTerm {
     /// OSC 7 URL of the directory the shell started HUME in. Teardown reports
     /// it again, because the shell will not re-send it.
     launch_cwd_url: Option<Arc<str>>,
-    /// Raised for the lifetime of the [`InlineOutputScreen`] that
+    /// Raised for the lifetime of the one [`InlineOutputScreen`] that
     /// [`enter_inline_output`] returns. Read by the terminator, which drops
     /// the terminal's own interrupts then.
     inline_output: Arc<AtomicBool>,
@@ -516,15 +516,136 @@ pub fn end_synchronized_update(term: &SharedTerm) -> io::Result<()> {
 struct FrameFlag(Arc<AtomicBool>);
 
 impl FrameFlag {
-    fn raise(flag: &Arc<AtomicBool>) -> Self {
-        flag.store(true, Ordering::Release);
-        Self(Arc::clone(flag))
+    /// `None` while another `FrameFlag` holds `flag` raised.
+    fn try_raise(flag: &Arc<AtomicBool>) -> Option<Self> {
+        flag.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .ok()?;
+        Some(Self(Arc::clone(flag)))
     }
 }
 
 impl Drop for FrameFlag {
     fn drop(&mut self) {
         self.0.store(false, Ordering::Release);
+    }
+}
+
+/// The line-discipline switches the inline-output frame makes besides its
+/// escape writes. Named apart from `termina::Terminal`'s own methods so both
+/// traits can be in scope for a `SharedTerm`.
+trait ModeSwitch: io::Write {
+    fn raw_mode(&mut self) -> io::Result<()>;
+    fn cooked_mode(&mut self) -> io::Result<()>;
+}
+
+impl ModeSwitch for SharedTerm {
+    fn raw_mode(&mut self) -> io::Result<()> {
+        self.enter_raw_mode()
+    }
+
+    fn cooked_mode(&mut self) -> io::Result<()> {
+        self.enter_cooked_mode()
+    }
+}
+
+/// An editor terminal mode the inline-output frame turns off, then back on.
+#[derive(Clone, Copy)]
+enum EditorMode {
+    Focus,
+    Paste,
+    Kitty,
+    Mouse { select: bool },
+    Raw,
+    AltScreen,
+}
+
+impl EditorMode {
+    fn leave(self, term: &mut impl ModeSwitch) -> io::Result<()> {
+        match self {
+            Self::Focus => write_focus_disable(term),
+            Self::Paste => write_paste_disable(term),
+            Self::Kitty => write_kitty_pop(term),
+            Self::Mouse { .. } => write_mouse_disable(term),
+            Self::Raw => term.cooked_mode(),
+            Self::AltScreen => write_leave_alt_screen(term),
+        }
+    }
+
+    fn reenter(self, term: &mut impl ModeSwitch) -> io::Result<()> {
+        match self {
+            Self::Focus => write_focus_enable(term),
+            Self::Paste => write_paste_enable(term),
+            Self::Kitty => write_kitty_push(term),
+            Self::Mouse { select } => write_mouse_enable(term, select),
+            Self::Raw => term.raw_mode(),
+            Self::AltScreen => write_enter_alt_screen(term),
+        }
+    }
+}
+
+/// The inline-output frame's terminal work, apart from the banners and the
+/// keypress wait that need a real terminal.
+struct Frame<T> {
+    term: T,
+    /// Every mode [`Self::open`] tried to turn off, in order. A failed write
+    /// may still have reached the terminal, so a tried mode counts as off.
+    /// For kitty, a push the pop did not need beats a missing one, which
+    /// would break key encoding for the rest of the session.
+    left: Vec<EditorMode>,
+    _interrupts_to_child: FrameFlag,
+}
+
+impl<T: ModeSwitch> Frame<T> {
+    fn open(
+        term: T,
+        flag: &Arc<AtomicBool>,
+        kitty_enabled: bool,
+        mouse_enabled: bool,
+        mouse_select: bool,
+    ) -> io::Result<Self> {
+        // Raised first, so a refused open writes nothing, and before the
+        // switch, so no Ctrl-c the cooked terminal turns into a signal can
+        // reach the terminator ahead of it.
+        let interrupts_to_child = FrameFlag::try_raise(flag)
+            .ok_or_else(|| io::Error::other("an inline-output screen is already open"))?;
+        let mut frame = Self {
+            term,
+            left: Vec::new(),
+            _interrupts_to_child: interrupts_to_child,
+        };
+        // Close any open synchronized-output envelope (harmless if none is open).
+        let _ = write_sync_reset(&mut frame.term);
+        let modes = [
+            Some(EditorMode::Focus),
+            Some(EditorMode::Paste),
+            kitty_enabled.then_some(EditorMode::Kitty),
+            mouse_enabled.then_some(EditorMode::Mouse {
+                select: mouse_select,
+            }),
+            Some(EditorMode::Raw),
+            Some(EditorMode::AltScreen),
+        ];
+        for mode in modes.into_iter().flatten() {
+            frame.left.push(mode);
+            if let Err(e) = mode.leave(&mut frame.term) {
+                let _ = frame.restore_editor();
+                return Err(e);
+            }
+        }
+        Ok(frame)
+    }
+
+    /// Restore the editor, then lower the flag.
+    fn close(mut self) -> io::Result<()> {
+        self.restore_editor()
+    }
+
+    /// Turn back on every mode in `left`, last first. That order puts the
+    /// alt-screen enter ahead of the kitty push, which must land on the alt
+    /// screen's own keyboard stack (see [`init`]).
+    fn restore_editor(&mut self) -> io::Result<()> {
+        let term = &mut self.term;
+        run_all(self.left.iter().rev().map(|mode| mode.reenter(term)))
     }
 }
 
@@ -536,44 +657,24 @@ impl Drop for FrameFlag {
 /// Dropping it without `close` restores nothing on screen but gives Ctrl-c
 /// back to HUME.
 #[must_use = "dropping the screen hands Ctrl-c back to HUME without restoring the editor"]
-pub struct InlineOutputScreen {
-    term: SharedTerm,
-    kitty_enabled: bool,
-    mouse_enabled: bool,
-    mouse_select: bool,
-    _interrupts_to_child: FrameFlag,
-}
+pub struct InlineOutputScreen(Frame<SharedTerm>);
 
 impl InlineOutputScreen {
     /// Print the return prompt, wait for a key, then re-enter raw mode and
     /// the alt-screen with kitty and mouse as they were before
     /// [`enter_inline_output`]. Ctrl-c quits HUME again afterwards, whether
     /// or not the restore succeeded.
-    pub fn close(mut self) -> io::Result<()> {
+    pub fn close(self) -> io::Result<()> {
         print_return_prompt();
-        wait_for_keypress(&self.term);
-        self.restore_editor()
-    }
-
-    fn restore_editor(&mut self) -> io::Result<()> {
-        let term = &mut self.term;
-        term.enter_raw_mode()?;
-        write_enter_alt_screen(term)?;
-        write_focus_enable(term)?;
-        write_paste_enable(term)?;
-        if self.kitty_enabled {
-            write_kitty_push(term)?;
-        }
-        if self.mouse_enabled {
-            write_mouse_enable(term, self.mouse_select)?;
-        }
-        Ok(())
+        wait_for_keypress(&self.0.term);
+        self.0.close()
     }
 }
 
 /// Leave the alt-screen and raw mode so subprocess output streams to the user's
-/// terminal live. Call before spawning blocking processes (git clone, formatters)
-/// that would otherwise be invisible inside the TUI.
+/// terminal live, under a `--- running NAME ---` banner. Call before spawning
+/// blocking processes (git clone, formatters) that would otherwise be
+/// invisible inside the TUI.
 ///
 /// `kitty_enabled`, `mouse_enabled` and `mouse_select` are the editor's
 /// current state, which [`InlineOutputScreen::close`] re-applies. Also
@@ -581,42 +682,24 @@ impl InlineOutputScreen {
 /// terminal input shouldn't see stray `CSI I`/`CSI O` bytes.
 ///
 /// A failure once the frame has begun unwinds it before `Err` is returned.
+/// At most one screen is open per terminal: while one lives, this returns
+/// `Err` without touching the terminal.
 pub fn enter_inline_output(
     term: &SharedTerm,
+    name: &str,
     kitty_enabled: bool,
     mouse_enabled: bool,
     mouse_select: bool,
 ) -> io::Result<InlineOutputScreen> {
-    let mut term = term.clone();
-    // Close any open synchronized-output envelope (harmless if none is open).
-    let _ = write_sync_reset(&mut term);
-    write_focus_disable(&mut term)?;
-    write_paste_disable(&mut term)?;
-    if kitty_enabled {
-        write_kitty_pop(&mut term)?;
-    }
-    if mouse_enabled {
-        write_mouse_disable(&mut term)?;
-    }
-    // Raised before the switch, so no Ctrl-c the cooked terminal turns into
-    // a signal can reach the terminator ahead of it.
-    let mut screen = InlineOutputScreen {
-        _interrupts_to_child: FrameFlag::raise(&term.inline_output),
-        term,
+    let frame = Frame::open(
+        term.clone(),
+        &term.inline_output,
         kitty_enabled,
         mouse_enabled,
         mouse_select,
-    };
-    let entered = screen
-        .term
-        .enter_cooked_mode()
-        .and_then(|()| write_leave_alt_screen(&mut screen.term));
-    if let Err(e) = entered {
-        // Every disable above landed, so restoring the editor reverses them.
-        let _ = screen.restore_editor();
-        return Err(e);
-    }
-    Ok(screen)
+    )?;
+    print_running_banner(name);
+    Ok(InlineOutputScreen(frame))
 }
 
 /// Reapply the mouse-tracking mode to match `mouse_enabled`/`mouse_select`.
@@ -639,10 +722,7 @@ pub fn set_mouse_mode(
 }
 
 /// Print the `--- running NAME ---` bold banner and flush stdout.
-///
-/// Call just after [`enter_inline_output`] so the user sees a clear separator
-/// between the TUI and subprocess output.
-pub fn print_running_banner(name: &str) {
+fn print_running_banner(name: &str) {
     print!("\r\n\x1b[1m--- running {name} ---\x1b[0m\r\n\r\n");
     let _ = std::io::Write::flush(&mut std::io::stdout());
 }
@@ -656,10 +736,6 @@ fn print_return_prompt() {
 /// Block until the user presses a key, ignoring resize, mouse, and key-release
 /// events. Holds subprocess output on screen until the user is ready to return
 /// to the TUI. Leaves the terminal in raw mode.
-///
-/// Verified by structure only, not by a unit test: the `Interrupted`-resumes
-/// behavior below needs a live `SharedTerm` with a real `PlatformWaker` to
-/// exercise, which this crate's test suite has no fixture for.
 fn wait_for_keypress(term: &SharedTerm) {
     let mut term = term.clone();
     let _ = term.enter_raw_mode();

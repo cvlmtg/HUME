@@ -15,9 +15,9 @@
 
 use hume_platform::terminal::InlineOutputScreen;
 
-use super::Editor;
 use super::event::EditorEvent;
 use super::tui::ActiveTui;
+use super::{Editor, Severity};
 
 /// One `#:inline-output` command currently on the Steel call stack.
 struct Frame {
@@ -132,8 +132,8 @@ impl InlineOutput {
         Some((frame.name.as_str(), frame.tui.as_ref()?, frame.kitty))
     }
 
-    /// Record that the alt-screen was actually left, for this session, on
-    /// the `tui` [`Self::needs_enter`] returned for it.
+    /// Record the screen entered for this session, which
+    /// [`Self::take_entered`] hands back.
     pub(in crate::editor) fn mark_entered(&mut self, entered: Entered) {
         self.entered = Some(entered);
         #[cfg(test)]
@@ -199,7 +199,12 @@ impl Editor {
             // it actually left.
             match entered {
                 Entered::Screen(screen) => {
-                    let _ = screen.close();
+                    if let Err(e) = screen.close() {
+                        self.report(
+                            Severity::Error,
+                            format!("inline-output restore failed: {e}"),
+                        );
+                    }
                 }
                 #[cfg(test)]
                 Entered::Headless { .. } => {}

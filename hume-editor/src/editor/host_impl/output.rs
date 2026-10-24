@@ -26,12 +26,17 @@ impl<'a> OutputHost for EditorHostImpl<'a> {
             ActiveTui::On(term) => {
                 let screen = hume_platform::terminal::enter_inline_output(
                     term,
+                    name,
                     kitty,
                     self.state.settings.mouse,
                     self.state.settings.mouse_select,
                 )
-                .map_err(|e| format!("inline-output enter failed: {e}"))?;
-                hume_platform::terminal::print_running_banner(name);
+                .map_err(|e| {
+                    // A failed enter may have left and re-entered the alt
+                    // screen, which clears it.
+                    self.state.force_full_redraw = true;
+                    format!("inline-output enter failed: {e}")
+                })?;
                 Entered::Screen(screen)
             }
             #[cfg(test)]
