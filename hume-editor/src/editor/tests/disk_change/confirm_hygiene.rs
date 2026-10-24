@@ -26,7 +26,7 @@ fn closing_a_buffer_retires_its_open_reload_confirm() {
         "setup: confirm must be open"
     );
 
-    ed.close_buffer(bid, crate::editor::buffer::OnUnsaved::Refuse)
+    ed.close_buffer(bid)
         .expect("the buffer has no unsaved changes and runs no pipe");
 
     assert!(

@@ -210,7 +210,7 @@ fn last_buffer_close_opens_a_fresh_scratch_buffer_not_a_content_swap() {
     ed.scripting = Some(host);
     ed.settle();
 
-    ed.close_buffer(bid, crate::editor::buffer::OnUnsaved::Refuse)
+    ed.close_buffer(bid)
         .expect("the buffer has no unsaved changes and runs no pipe");
     ed.settle();
 

@@ -345,7 +345,7 @@ fn closing_a_buffer_forgets_its_keymaps() {
     let bid = ed.focused_buffer_id();
     assert_eq!(ed.state.config.local_keymaps.attached(bid), ["test-keys"]);
 
-    ed.close_buffer(bid, crate::editor::buffer::OnUnsaved::Refuse)
+    ed.close_buffer(bid)
         .expect("the buffer has no unsaved changes and runs no pipe");
     assert!(ed.state.config.local_keymaps.attached(bid).is_empty());
 }

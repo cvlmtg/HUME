@@ -244,7 +244,10 @@ fn a_deliberate_quit_is_not_dumped_even_if_a_signal_follows() {
     let dir = tempfile::tempdir().unwrap();
     let mut ed = dirty_file_editor(&dir, "hello\n");
     ed.attach_terminate_flag(signalled(143));
-    ed.state.request_quit();
+    let focused = ed.focused_buffer_id();
+    ed.state
+        .quit(focused, true)
+        .expect("a forced quit is never refused");
 
     let outcomes = ed.dump_if_abnormal_exit(&Err(io::ErrorKind::BrokenPipe.into()), None);
 

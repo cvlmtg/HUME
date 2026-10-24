@@ -189,14 +189,19 @@ impl Editor {
     }
 
     /// Tests' entry point to [`lifecycle::close_buffer_and_notify`], the
-    /// production close chokepoint, with its refusals.
+    /// production close chokepoint, refusing unsaved changes and a running
+    /// pipe.
     #[cfg(test)]
     pub(in crate::editor) fn close_buffer(
         &mut self,
         id: BufferId,
-        on_unsaved: super::OnUnsaved,
     ) -> Result<(), lifecycle::CloseBufferRefused> {
-        lifecycle::close_buffer_and_notify(&mut self.view, &mut self.state, id, on_unsaved)
+        lifecycle::close_buffer_and_notify(
+            &mut self.view,
+            &mut self.state,
+            id,
+            super::OnUnsaved::Refuse,
+        )
     }
 
     /// Replace `fp`'s buffer text with `source`'s in place, preserving the

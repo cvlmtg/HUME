@@ -420,7 +420,7 @@ fn startup_buffer_close_before_any_drain_fires_no_on_buffer_close() {
     // Closed before any `detect_pending_languages` drain: no scripting host
     // is even attached yet, matching a real early-exit (e.g. `:q` before the
     // first frame).
-    ed.close_buffer(bid, crate::editor::buffer::OnUnsaved::Refuse)
+    ed.close_buffer(bid)
         .expect("the buffer has no unsaved changes and runs no pipe");
 
     let queued_close = ed.state.config.pending_work.iter().any(|w| {

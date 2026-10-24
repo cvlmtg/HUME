@@ -101,7 +101,7 @@ fn two_servers_both_receive_did_open_change_save_close() {
     rig.ed.drain_lsp();
     rig.ed.execute_typed("w", None).unwrap();
     rig.ed
-        .close_buffer(rig.bid, crate::editor::buffer::OnUnsaved::Refuse)
+        .close_buffer(rig.bid)
         .expect("the buffer has no unsaved changes and runs no pipe");
 
     for sid in [ra, lint] {

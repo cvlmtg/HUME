@@ -648,7 +648,7 @@ fn closing_a_buffer_drops_its_wrap_override() {
     ed.execute_typed("wrap", None).unwrap(); // off, pins bid_first
     let bid_second = open_other_buffer(&mut ed, "other buffer\n");
 
-    ed.close_buffer(bid_first, crate::editor::buffer::OnUnsaved::Refuse)
+    ed.close_buffer(bid_first)
         .expect("the buffer has no unsaved changes and runs no pipe");
     assert_eq!(
         ed.focused_buffer_id(),

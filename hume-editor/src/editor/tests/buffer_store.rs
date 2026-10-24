@@ -42,7 +42,7 @@ fn p6_close_buffer_redirects_to_mru() {
     ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid_beta);
     assert_eq!(ed.focused_buffer_id(), bid_beta);
     // Close beta: should redirect focused pane back to alpha.
-    ed.close_buffer(bid_beta, crate::editor::buffer::OnUnsaved::Refuse)
+    ed.close_buffer(bid_beta)
         .expect("the buffer has no unsaved changes and runs no pipe");
     assert_eq!(
         ed.focused_buffer_id(),
@@ -62,7 +62,7 @@ fn p6_close_buffer_redirects_to_mru() {
 fn p6_close_last_buffer_becomes_scratch() {
     let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("only\n")));
     let bid = ed.focused_buffer_id();
-    ed.close_buffer(bid, crate::editor::buffer::OnUnsaved::Refuse)
+    ed.close_buffer(bid)
         .expect("the buffer has no unsaved changes and runs no pipe");
     assert!(
         ed.state.buffers.try_get(bid).is_none(),
@@ -134,7 +134,7 @@ fn p6_close_last_buffer_reseeds_selections() {
             st.with_selections(vec![cursor], 0)
         },
     );
-    ed.close_buffer(bid, crate::editor::buffer::OnUnsaved::Refuse)
+    ed.close_buffer(bid)
         .expect("the buffer has no unsaved changes and runs no pipe");
     // Selections should be reset to initial (cursor at 0).
     let sels = ed.current_view();
@@ -296,13 +296,19 @@ fn p6_bd_force_closes_dirty_buffer() {
     assert_eq!(ed.focused_buffer_id(), bid_clean);
 }
 
-#[test]
-fn bd_on_a_dirty_buffer_names_it_and_the_way_out() {
+/// An editor focused on its second buffer, which has unsaved changes.
+fn editor_on_a_dirty_second_buffer() -> (Editor, BufferId) {
     let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("clean\n")));
     let bid = ed.open_buffer(Buffer::at_start(BufferText::from("dirty\n")));
     ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid);
     keys(&mut ed, "ix");
     ed.handle_key(key_esc());
+    (ed, bid)
+}
+
+#[test]
+fn bd_on_a_dirty_buffer_names_it_and_the_way_out() {
+    let (mut ed, bid) = editor_on_a_dirty_second_buffer();
 
     type_cmd(&mut ed, ":bd");
 
@@ -313,11 +319,7 @@ fn bd_on_a_dirty_buffer_names_it_and_the_way_out() {
 
 #[test]
 fn close_buffer_from_steel_refuses_unsaved_changes() {
-    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("clean\n")));
-    let bid = ed.open_buffer(Buffer::at_start(BufferText::from("dirty\n")));
-    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid);
-    keys(&mut ed, "ix");
-    ed.handle_key(key_esc());
+    let (mut ed, bid) = editor_on_a_dirty_second_buffer();
     let tmp = tempfile::tempdir().unwrap();
     run(
         &mut ed,
@@ -341,11 +343,7 @@ fn close_buffer_from_steel_refuses_unsaved_changes() {
 
 #[test]
 fn close_buffer_from_steel_discards_unsaved_changes_when_asked() {
-    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("clean\n")));
-    let bid = ed.open_buffer(Buffer::at_start(BufferText::from("dirty\n")));
-    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid);
-    keys(&mut ed, "ix");
-    ed.handle_key(key_esc());
+    let (mut ed, bid) = editor_on_a_dirty_second_buffer();
     let tmp = tempfile::tempdir().unwrap();
     run(
         &mut ed,
@@ -392,7 +390,7 @@ fn p6_close_buffer_redirects_all_panes_to_mru() {
     );
 
     // Close A; mru_excluding(A) == B (B was opened last, so it's at the MRU tail).
-    ed.close_buffer(bid_a, crate::editor::buffer::OnUnsaved::Refuse)
+    ed.close_buffer(bid_a)
         .expect("the buffer has no unsaved changes and runs no pipe");
 
     assert_eq!(

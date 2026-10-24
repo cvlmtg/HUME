@@ -6,9 +6,9 @@ use super::super::Editor;
 use super::super::Severity;
 use super::super::before_save::{AfterWrite, SAVE_IN_PROGRESS};
 use super::{CloseRefused, FocusedPane};
-use crate::editor::buffer::{Buffer, OnUnsaved, Unsaved, lifecycle};
+use crate::editor::buffer::lifecycle::{self, CloseBufferRefused};
+use crate::editor::buffer::{Buffer, OnUnsaved};
 use crate::editor::error::CommandError;
-use crate::editor::pipe_run::PipeRunning;
 use crate::editor::settings::ops as settings_ops;
 use crate::editor::settings::{WRAP_MODE_KEY, parse_setting_text};
 
@@ -104,43 +104,15 @@ pub(in crate::editor) fn typed_quit(
         .any(|(id, buf)| {
             (buf.path().is_some() && !buf.is_read_only()) || ed.state.has_unsaved_changes(id)
         });
-    if !stays {
-        return quit_editor(ed, fp, force).map_err(|refused| match refused {
-            QuitRefused::Unsaved(unsaved) => {
-                CommandError::transient(unsaved.message(&ed.state, ":q!"))
-            }
-            QuitRefused::PipeRunning(running) => {
-                super::pipe_running_refusal(&ed.state, &ed.view, running, ":q!")
-            }
-        });
-    }
-    let on_unsaved = OnUnsaved::from_force(force);
-    ed.run_stopping_pipes(force, |ed| {
-        lifecycle::close_buffer_and_notify(&mut ed.view, &mut ed.state, current, on_unsaved)
-    })
-    .map_err(|refused| super::close_refusal(&ed.state, &ed.view, refused, ":q!"))
-}
-
-/// Why [`quit_editor`] did not quit.
-enum QuitRefused {
-    Unsaved(Unsaved),
-    PipeRunning(PipeRunning),
-}
-
-/// Quit HUME, refused without `force` while a buffer has unsaved changes,
-/// `fp`'s named first, or while a pipe runs: exiting drops every buffer and
-/// stops every run, with the process.
-fn quit_editor(ed: &mut Editor, fp: FocusedPane, force: bool) -> Result<(), QuitRefused> {
-    let on_unsaved = OnUnsaved::from_force(force);
-    std::iter::once(fp.bid(&ed.view))
-        .chain(ed.state.buffers.iter().map(|(id, _)| id))
-        .try_for_each(|bid| ed.state.refuse_unsaved(bid, on_unsaved))
-        .map_err(QuitRefused::Unsaved)?;
-    if !force && let Some(busy) = ed.state.buffers.first_busy() {
-        return Err(QuitRefused::PipeRunning(PipeRunning(busy)));
-    }
-    ed.state.request_quit();
-    Ok(())
+    let closed = if stays {
+        let on_unsaved = OnUnsaved::from_force(force);
+        ed.run_stopping_pipes(force, |ed| {
+            lifecycle::close_buffer_and_notify(&mut ed.view, &mut ed.state, current, on_unsaved)
+        })
+    } else {
+        ed.state.quit(current, force)
+    };
+    closed.map_err(|refused| super::close_refusal(&ed.state, &ed.view, refused, ":q!"))
 }
 
 pub(in crate::editor) fn typed_quit_all(
@@ -149,27 +121,29 @@ pub(in crate::editor) fn typed_quit_all(
     _arg: Option<&str>,
     force: bool,
 ) -> Result<(), CommandError> {
-    quit_editor(ed, fp, force).map_err(|refused| match refused {
-        QuitRefused::Unsaved(unsaved) => {
-            // The focused buffer is named first, so this jumps only when it
-            // is clean: a user already on an unsaved buffer stays there, and
-            // a save + :qa cycle walks through dirty buffers one at a time.
-            if unsaved.0 != fp.bid(&ed.view) {
-                ed.switch_to_buffer_with_jump(fp, unsaved.0);
+    ed.state
+        .quit(fp.bid(&ed.view), force)
+        .map_err(|refused| match refused {
+            CloseBufferRefused::Unsaved(unsaved) => {
+                // The focused buffer is named first, so this jumps only when it
+                // is clean: a user already on an unsaved buffer stays there, and
+                // a save + :qa cycle walks through dirty buffers one at a time.
+                if unsaved.0 != fp.bid(&ed.view) {
+                    ed.switch_to_buffer_with_jump(fp, unsaved.0);
+                }
+                // Stays Error, not transient: `EditorState::message_logged_this_input`
+                // (input.rs) keys off `message_log.totals()` moving, and
+                // `Editor::confirm_permit` (input_stack/confirm.rs) reads that flag to refuse a
+                // disk-change reload confirm from popping over this exact message
+                // right after :qa's focus-move names the dirty buffer; a
+                // transient report wouldn't move totals() and would let the
+                // confirm steal the next keystroke.
+                CommandError::new(unsaved.message(&ed.state, ":qa!"))
             }
-            // Stays Error, not transient: `EditorState::message_logged_this_input`
-            // (input.rs) keys off `message_log.totals()` moving, and
-            // `Editor::confirm_permit` (input_stack/confirm.rs) reads that flag to refuse a
-            // disk-change reload confirm from popping over this exact message
-            // right after :qa's focus-move names the dirty buffer; a
-            // transient report wouldn't move totals() and would let the
-            // confirm steal the next keystroke.
-            CommandError::new(unsaved.message(&ed.state, ":qa!"))
-        }
-        QuitRefused::PipeRunning(running) => {
-            super::pipe_running_refusal(&ed.state, &ed.view, running, ":qa!")
-        }
-    })
+            CloseBufferRefused::PipeRunning(running) => {
+                super::pipe_running_refusal(&ed.state, &ed.view, running, ":qa!")
+            }
+        })
 }
 
 pub(in crate::editor) fn typed_write(

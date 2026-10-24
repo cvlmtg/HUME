@@ -7,9 +7,11 @@ use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 
 use self::registry::CommandRegistry;
 use self::replay::{PendingRepeat, SelectionStep};
-use crate::editor::buffer::Buffer;
+use crate::editor::buffer::lifecycle::CloseBufferRefused;
 use crate::editor::buffer::store::BufferStore;
+use crate::editor::buffer::{Buffer, OnUnsaved};
 use crate::editor::pane_state::PaneView;
+use crate::editor::pipe_run::PipeRunning;
 use crate::editor::settings::EditorSettings;
 use hume_editing::selection::SelectionSet;
 use hume_ops::register::{KillRing, RegisterSet};
@@ -559,9 +561,24 @@ impl EditorState {
 
     // ── Quit ──────────────────────────────────────────────────────────────────
 
-    /// Unconditional quit-the-whole-editor: quit all, no confirmation.
-    pub(in crate::editor) fn request_quit(&mut self) {
+    /// Quit HUME, refused without `force` while a buffer has unsaved changes,
+    /// `first`'s named first, or while a pipe runs: exiting drops every
+    /// buffer and stops every run, with the process.
+    pub(in crate::editor) fn quit(
+        &mut self,
+        first: BufferId,
+        force: bool,
+    ) -> Result<(), CloseBufferRefused> {
+        let on_unsaved = OnUnsaved::from_force(force);
+        std::iter::once(first)
+            .chain(self.buffers.iter().map(|(id, _)| id))
+            .try_for_each(|bid| self.refuse_unsaved(bid, on_unsaved))
+            .map_err(CloseBufferRefused::Unsaved)?;
+        if !force && let Some(busy) = self.buffers.first_busy() {
+            return Err(CloseBufferRefused::PipeRunning(PipeRunning(busy)));
+        }
         self.should_quit = true;
+        Ok(())
     }
 }
 

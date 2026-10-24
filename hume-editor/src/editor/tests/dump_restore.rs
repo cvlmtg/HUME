@@ -44,7 +44,7 @@ fn offering_a_dump_for_a_closed_buffer_does_nothing() {
     let (_dir, path) = file_with_dump(Some("disk\n"), Some("crashed\n"));
     let mut ed = editor_that_opened(&path);
     let bid = ed.focused_buffer_id();
-    ed.close_buffer(bid, crate::editor::buffer::OnUnsaved::Refuse)
+    ed.close_buffer(bid)
         .expect("the buffer has no unsaved changes and runs no pipe");
 
     ed.offer_dump_restore(bid);

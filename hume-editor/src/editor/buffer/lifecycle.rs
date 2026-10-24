@@ -275,7 +275,7 @@ pub(in crate::editor) fn close_buffer_and_notify(
     Ok(())
 }
 
-/// Why [`close_buffer_and_notify`] closed nothing.
+/// Why [`close_buffer_and_notify`] or `EditorState::quit` closed nothing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(in crate::editor) enum CloseBufferRefused {
     Unsaved(Unsaved),

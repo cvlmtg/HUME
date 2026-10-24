@@ -505,7 +505,7 @@ fn close_buffer_prunes_stored_diagnostics_and_decorations() {
     let ed = &mut rig.ed;
     seed_diagnostic_and_hint(ed, sid, bid, &uri);
 
-    ed.close_buffer(bid, crate::editor::buffer::OnUnsaved::Refuse)
+    ed.close_buffer(bid)
         .expect("the buffer has no unsaved changes and runs no pipe");
 
     assert_eq!(

@@ -126,7 +126,7 @@ fn p7_close_buffer_prunes_pane_jumps() {
 
     // Close file1. Its jump entries should be pruned from pane_jumps.
     let pid = ed.view.focused_pane();
-    ed.close_buffer(buf1, crate::editor::buffer::OnUnsaved::Refuse)
+    ed.close_buffer(buf1)
         .expect("the buffer has no unsaved changes and runs no pipe");
     // The jump list for this pane must not contain any file1 entries.
     let has_buf1_entry = ed.state.panes.entries[pid].jumps.entries_for_buffer(buf1);
