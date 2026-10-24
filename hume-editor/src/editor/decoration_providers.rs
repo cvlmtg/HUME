@@ -54,13 +54,11 @@ impl Editor {
     /// that straddle a property of *where* each is taken, not something each
     /// of the six bridges has to individually get right.
     ///
-    /// `lines`/`chars` are a one-row *superset* of the viewport (its end plus
-    /// one more row): cheap over-fetch beats a wrap-aware exact bound for a
-    /// bulk store slice. Both are end-exclusive; `geometry::pane_visible_range`
-    /// is also end-exclusive, so the two conventions differ only in that
-    /// one-row slack, not in inclusive-vs-exclusive. They still don't share
-    /// an implementation, since one clamps to `content_lines` and the other
-    /// to the ropey-domain line count.
+    /// `lines` is a one-row *superset* of the viewport (its end plus one more
+    /// row), and `chars` spans the same lines: cheap over-fetch beats a
+    /// wrap-aware exact bound for a bulk store slice. Both are end-exclusive,
+    /// like `geometry::pane_visible_range`, which differs in that one-row
+    /// slack and in leaving the top line unclamped.
     ///
     /// Scoped to `active` (the active tab's panes, each with its size in the
     /// frame's layout; see `EngineView::active_pane_ids`) rather than the
@@ -76,11 +74,14 @@ impl Editor {
                 let vp = &pane.viewport;
                 let height = size.height();
                 let text = self.state.buffers.get(bid).text();
-                let top_line =
-                    hume_rope::line::RopeyLine::from(vp.top().line).min(text.last_ropey_line());
-                let bottom_line =
-                    hume_rope::line::RopeyLine::from(vp.top().line).advance(usize::from(height));
                 let content_end = text.content_line_count().end_exclusive();
+                let lines = ExclusiveRange::new(
+                    vp.top().line.min(content_end),
+                    vp.top()
+                        .line
+                        .advance(usize::from(height) + 1)
+                        .min(content_end),
+                );
                 let insert_line = self.state.input.inserting_into(pid, bid).then(|| {
                     self.state
                         .panes
@@ -94,16 +95,10 @@ impl Editor {
                     pid,
                     bid,
                     insert_line,
-                    lines: ExclusiveRange::new(
-                        vp.top().line.min(content_end),
-                        vp.top()
-                            .line
-                            .advance(usize::from(height) + 1)
-                            .min(content_end),
-                    ),
+                    lines,
                     chars: ExclusiveRange::new(
-                        text.line_to_char(top_line),
-                        text.lines().next_start(bottom_line),
+                        text.line_to_char(lines.start.into()),
+                        text.line_to_char(lines.end.into()),
                     ),
                 }
             })
