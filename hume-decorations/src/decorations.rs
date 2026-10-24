@@ -165,7 +165,7 @@ impl Anchored for LineBgEntry {
 }
 
 /// A kind anchored on one character: inlay hints. Drives
-/// [`SourceStore::remap_points`].
+/// `SourceStore::remap_points`.
 pub trait PointAnchored: Anchored<Anchor = CharOffset> {
     fn set_pos(&mut self, pos: CharOffset);
 }
@@ -177,7 +177,7 @@ impl PointAnchored for InlayHintEntry {
 }
 
 /// A kind anchored on a whole line: signs, virtual lines, EOL text and line
-/// backgrounds. Drives [`SourceStore::remap_lines`].
+/// backgrounds. Drives `SourceStore::remap_lines`.
 pub trait LineAnchored: Anchored<Anchor = ContentLine> {
     fn set_line(&mut self, line: ContentLine);
 }
