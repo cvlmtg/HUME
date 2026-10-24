@@ -589,7 +589,7 @@ fn virtual_line_and_eol_text_remap_through_a_line_inserted_above_them() {
     );
 }
 
-/// An "open line above" edit (a newline inserted exactly at the decorated
+/// An "open line above" edit (a newline inserted at the decorated
 /// line's start) must leave the decoration on the original line's content,
 /// now one line further down, not stranded on the newly inserted blank
 /// line.

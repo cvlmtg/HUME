@@ -421,7 +421,7 @@ impl<K, T: PointAnchored> SourceStore<K, T> {
 
 impl<K, T: LineAnchored> SourceStore<K, T> {
     /// Remaps every line-anchored entry for `bid` through `change`. A line is
-    /// its `\n`: each content line owns exactly one, so an entry follows
+    /// its `\n`: each content line owns one, so an entry follows
     /// its line's break and is dropped only when a deletion consumes it.
     /// Any edit inside the line keeps the entry; joining a line with the
     /// next drops this line's entries and keeps the next one's, on the
