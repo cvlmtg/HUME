@@ -149,8 +149,8 @@ pub enum ConfigOrigin {
 pub enum PendingLanguageReg {
     Identity {
         name: String,
-        extensions: Vec<String>,
-        globs: Vec<String>,
+        extensions: Vec<hume_treesitter::registry::FileExtension>,
+        globs: Vec<hume_treesitter::registry::FileGlob>,
         shebangs: Vec<String>,
     },
     /// Per-language values; `None` leaves a field as it is.

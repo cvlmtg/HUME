@@ -596,12 +596,8 @@ fn show_read_only_buffer_text_gets_no_language_but_announces_its_open() {
     ed.state
         .config
         .languages
-        .register_identity_no_rebuild("python", &["py"], &[], &["python"]);
-    ed.state
-        .config
-        .languages
-        .rebuild_glob_set()
-        .expect("rebuild ok");
+        .register_identity("python", &["py"], &[], &["python"])
+        .expect("a test identity registers");
     let tmp = tempfile::tempdir().unwrap();
     run(
         &mut ed,

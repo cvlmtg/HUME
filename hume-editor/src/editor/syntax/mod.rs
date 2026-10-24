@@ -15,7 +15,7 @@ pub(in crate::editor) use parse::{SyntaxUse, ensure_syntax_current};
 use hume_engine::pipeline::BufferId;
 use hume_scripting::ConfigOrigin;
 use hume_treesitter::registry::{
-    ConfigureOutcome, ConfiguredBy, LanguageFields, LanguageId, detect_language,
+    ConfigureOutcome, ConfiguredBy, DetectPaths, LanguageFields, LanguageId, detect_language,
 };
 
 use super::Editor;
@@ -150,13 +150,14 @@ impl Editor {
         }
         let detected = {
             let buf = self.state.buffers.get(bid);
-            let path = buf.path().map(|p| p.to_path_buf());
+            let paths = buf.path().map(|resolved| DetectPaths {
+                as_opened: buf
+                    .typed_path()
+                    .expect("a buffer with a path has a typed path (Buffer::set_path)"),
+                resolved,
+            });
             let first_line = buf.first_line();
-            detect_language(
-                path.as_deref(),
-                first_line.as_deref(),
-                &self.state.config.languages,
-            )
+            detect_language(paths, first_line.as_deref(), &self.state.config.languages)
         };
         self.set_buffer_language(bid, detected);
     }
@@ -223,7 +224,7 @@ impl Editor {
 
     /// Register languages from a maximal run of consecutive
     /// `Effect::LanguageReg` entries (`Editor::apply_script_effects` groups
-    /// them so a large run (e.g. `languages.scm`'s ~700 `define-language!`
+    /// them so a large run (e.g. `languages.scm`'s 342 `define-language!`
     /// calls) rebuilds the glob matcher once, not once per entry).
     /// Fail-soft: glob-set build failures are logged as warnings, editor continues.
     pub(super) fn apply_pending_language_regs(
@@ -241,22 +242,11 @@ impl Editor {
                     globs,
                     shebangs,
                 } => {
-                    let exts: Vec<&str> = extensions.iter().map(String::as_str).collect();
                     let shebangs_ref: Vec<&str> = shebangs.iter().map(String::as_str).collect();
-                    let mut valid_globs: Vec<globset::Glob> = Vec::with_capacity(globs.len());
-                    for g in &globs {
-                        match globset::Glob::new(g) {
-                            Ok(glob) => valid_globs.push(glob),
-                            Err(e) => self.state.message_log.push(
-                                super::Severity::Warning,
-                                format!("define-language! '{}': invalid glob '{}': {}", name, g, e),
-                            ),
-                        }
-                    }
                     self.state.config.languages.register_identity_no_rebuild(
                         &name,
-                        &exts,
-                        &valid_globs,
+                        &extensions,
+                        &globs,
                         &shebangs_ref,
                     );
                     any_identity = true;

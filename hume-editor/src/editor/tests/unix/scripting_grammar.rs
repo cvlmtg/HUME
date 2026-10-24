@@ -543,7 +543,7 @@ fn setup_editor_with_languages_scm(
     ed.state
         .buffers
         .get_mut(bid)
-        .set_path(Some(PathBuf::from(file_name)));
+        .set_path(Some(PathBuf::from("/tmp").join(file_name)));
 
     ed.state.dirs = Dirs {
         config: Some(hume_config),
@@ -764,7 +764,7 @@ fn grammar_registration_survives_plum_absence() {
     ed.state
         .buffers
         .get_mut(bid)
-        .set_path(Some(PathBuf::from("test.json")));
+        .set_path(Some(PathBuf::from("/tmp/test.json")));
     ed.init_scripting(&mut Default::default());
     drop(fixture);
 
@@ -832,7 +832,7 @@ fn define_language_override_in_init_keeps_startup_grammar() {
     ed.state
         .buffers
         .get_mut(bid)
-        .set_path(Some(PathBuf::from("test.jsonc")));
+        .set_path(Some(PathBuf::from("/tmp/test.jsonc")));
     ed.init_scripting(&mut Default::default());
     drop(fixture);
 

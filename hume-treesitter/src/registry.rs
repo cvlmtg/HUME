@@ -27,6 +27,66 @@ impl LanguageId {
     }
 }
 
+/// A glob of a language's detection data, matched against a file's whole
+/// absolute path as Helix matches the `languages.toml` data it
+/// comes from: a glob that starts with neither `/` nor `*/` gets `*/` in
+/// front, so it matches the path's last components (`.git/config`,
+/// `Makefile`), and `*` crosses `/`.
+#[derive(Debug, Clone)]
+pub struct FileGlob(Glob);
+
+impl FileGlob {
+    pub fn new(pattern: &str) -> Result<Self, globset::Error> {
+        let glob = if pattern.starts_with('/') || pattern.starts_with("*/") {
+            Glob::new(pattern)
+        } else {
+            Glob::new(&format!("*/{pattern}"))
+        };
+        glob.map(Self)
+    }
+}
+
+/// A file extension of a language's detection data: one or more
+/// dot-separated names (`rs`, `js.map`), each non-empty and free of path
+/// separators. It matches a file name that ends with a dot and the
+/// extension, the dot not being the name's first character.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileExtension(String);
+
+impl FileExtension {
+    pub fn new(extension: &str) -> Result<Self, InvalidExtension> {
+        let names_a_file = extension
+            .split('.')
+            .all(|name| !name.is_empty() && !name.contains(['/', '\\']));
+        if names_a_file {
+            Ok(Self(extension.to_owned()))
+        } else {
+            Err(InvalidExtension(extension.to_owned()))
+        }
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+/// An extension [`FileExtension::new`] refuses.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InvalidExtension(String);
+
+impl std::fmt::Display for InvalidExtension {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "invalid extension {:?}: expected dot-separated names, such as \"rs\" or \"js.map\", \
+             with no leading or trailing dot and no path separator",
+            self.0
+        )
+    }
+}
+
+impl std::error::Error for InvalidExtension {}
+
 /// Identity of one language: its detection data (extensions, glob patterns,
 /// shebangs).
 ///
@@ -35,12 +95,10 @@ impl LanguageId {
 /// not stored here: it lives once, in the registry's interner (SSOT).
 #[derive(Debug, Default)]
 pub struct LanguageIdentity {
-    pub extensions: Vec<String>,
-    /// Parsed glob patterns (e.g. `"Makefile"`, `"*.{ts,tsx}"`), validated at
-    /// registration, so an uncompilable pattern can never reach here. Source
-    /// text is recoverable via `Glob::glob()`. The combined matcher across all
-    /// languages lives on `LanguageRegistry` (`compiled_globs`).
-    pub globs: Vec<Glob>,
+    pub extensions: Vec<FileExtension>,
+    /// The combined matcher across all languages lives on
+    /// `LanguageRegistry` (`compiled_globs`).
+    pub globs: Vec<FileGlob>,
     /// Shebang substrings to match (e.g. `"python"`, `"node"`).
     pub shebangs: Vec<String>,
 }
@@ -755,15 +813,24 @@ impl LanguageRegistry {
     /// globset's NFA size limit.
     ///
     /// For batch registration use `register_identity_no_rebuild` + `rebuild_glob_set`.
+    /// Takes the detection data as text, which must be valid.
     #[cfg(any(test, feature = "test-util"))]
     pub fn register_identity(
         &mut self,
         name: &str,
         extensions: &[&str],
-        globs: &[Glob],
+        globs: &[&str],
         shebangs: &[&str],
     ) -> Result<LanguageId, RegisterError> {
-        let id = self.register_identity_no_rebuild(name, extensions, globs, shebangs);
+        let extensions: Vec<FileExtension> = extensions
+            .iter()
+            .map(|e| FileExtension::new(e).expect("a test extension is valid"))
+            .collect();
+        let globs: Vec<FileGlob> = globs
+            .iter()
+            .map(|g| FileGlob::new(g).expect("a test glob is valid"))
+            .collect();
+        let id = self.register_identity_no_rebuild(name, &extensions, &globs, shebangs);
         self.rebuild_glob_set()?;
         Ok(id)
     }
@@ -781,8 +848,8 @@ impl LanguageRegistry {
     pub fn register_identity_no_rebuild(
         &mut self,
         name: &str,
-        extensions: &[&str],
-        globs: &[Glob],
+        extensions: &[FileExtension],
+        globs: &[FileGlob],
         shebangs: &[&str],
     ) -> LanguageId {
         let id = self.intern(name);
@@ -790,12 +857,12 @@ impl LanguageRegistry {
             self.deindex(id, &old);
         }
         let new_identity = LanguageIdentity {
-            extensions: extensions.iter().map(|s| s.to_string()).collect(),
+            extensions: extensions.to_vec(),
             globs: globs.to_vec(),
             shebangs: shebangs.iter().map(|s| s.to_string()).collect(),
         };
         for ext in &new_identity.extensions {
-            self.by_ext.insert(ext.clone(), id);
+            self.by_ext.insert(ext.as_str().to_owned(), id);
         }
         for shebang in &new_identity.shebangs {
             self.shebang_to_id.insert(shebang.clone(), id);
@@ -838,9 +905,13 @@ impl LanguageRegistry {
         Ok(())
     }
 
-    /// Look up a language by file extension (e.g. `"rs"`, `"C"`).
-    pub fn by_extension(&self, ext: &str) -> Option<LanguageId> {
-        self.by_ext.get(ext).copied()
+    /// The language whose [`FileExtension`] `file_name` ends with, the
+    /// longest one first: `app.js.map` tries `js.map`, then `map`.
+    pub fn by_file_name(&self, file_name: &str) -> Option<LanguageId> {
+        file_name
+            .char_indices()
+            .filter(|&(i, c)| c == '.' && i > 0)
+            .find_map(|(i, _)| self.by_ext.get(&file_name[i + 1..]).copied())
     }
 
     /// The id of `name` when it has a registered identity (e.g. `"rust"`
@@ -1021,7 +1092,7 @@ impl LanguageRegistry {
         for &lang_id in &self.lang_order {
             if let Some(identity) = &self.entry(lang_id).identity {
                 for glob in &identity.globs {
-                    builder.add(glob.clone());
+                    builder.add(glob.0.clone());
                     ids.push(lang_id);
                 }
             }
@@ -1032,43 +1103,52 @@ impl LanguageRegistry {
 
 // ── Language detection ────────────────────────────────────────────────────────
 
-/// Detect the language for a buffer given its path and first line.
+/// The two absolute paths a file is detected by: the path as it was opened,
+/// symlinks kept, and the path with symlinks resolved. They differ for a
+/// file opened through a symlink, such as a config file linked from a
+/// dotfiles repository.
+#[derive(Clone, Copy, Debug)]
+pub struct DetectPaths<'a> {
+    pub as_opened: &'a Path,
+    pub resolved: &'a Path,
+}
+
+/// Detect the language for a buffer given its paths and first line.
 ///
-/// Priority: glob match (most-specific / last-registered) → file extension →
-/// shebang. Returns the language id, or `None` if unrecognised.
+/// Priority: the path as opened, then the resolved path, each by glob
+/// (last-registered wins) and then by file extension; then the shebang.
+/// Returns the language id, or `None` if unrecognised.
 pub fn detect_language(
-    path: Option<&std::path::Path>,
+    paths: Option<DetectPaths>,
     first_line: Option<&str>,
     registry: &LanguageRegistry,
 ) -> Option<LanguageId> {
-    if let Some(path) = path {
-        let file_name = path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .map(std::path::Path::new);
-        if let Some(name_path) = file_name {
-            let matches = registry.compiled_globs().matches(name_path);
-            if let Some(&last_idx) = matches.last()
-                && let Some(id) = registry.glob_lang_id(last_idx)
-            {
-                return Some(id);
-            }
-        }
+    paths
+        .and_then(|paths| {
+            detect_path(paths.as_opened, registry).or_else(|| {
+                (paths.resolved != paths.as_opened)
+                    .then(|| detect_path(paths.resolved, registry))
+                    .flatten()
+            })
+        })
+        .or_else(|| first_line.and_then(|line| detect_shebang(line, registry)))
+}
 
-        if let Some(ext) = path.extension().and_then(|e| e.to_str())
-            && let Some(id) = registry.by_extension(ext)
-        {
-            return Some(id);
-        }
-    }
-
-    if let Some(line) = first_line
-        && let Some(id) = detect_shebang(line, registry)
-    {
-        return Some(id);
-    }
-
-    None
+/// `path`'s language by glob, then by file extension.
+fn detect_path(path: &Path, registry: &LanguageRegistry) -> Option<LanguageId> {
+    debug_assert!(
+        path.is_absolute(),
+        "detection takes an absolute path, got {path:?}"
+    );
+    registry
+        .compiled_globs()
+        .matches(path)
+        .last()
+        .and_then(|&i| registry.glob_lang_id(i))
+        .or_else(|| {
+            let name = path.file_name()?.to_str()?;
+            registry.by_file_name(name)
+        })
 }
 
 fn detect_shebang(line: &str, registry: &LanguageRegistry) -> Option<LanguageId> {

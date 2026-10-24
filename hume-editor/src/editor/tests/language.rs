@@ -21,12 +21,8 @@ fn register_rust(ed: &mut Editor, name: &str, exts: &[&str]) {
     ed.state
         .config
         .languages
-        .register_identity_no_rebuild(name, exts, &[], &[]);
-    ed.state
-        .config
-        .languages
-        .rebuild_glob_set()
-        .expect("rebuild ok");
+        .register_identity(name, exts, &[], &[])
+        .expect("a test identity registers");
 }
 
 // ── Buffer.language round-trip ────────────────────────────────────────────────
@@ -98,7 +94,10 @@ fn detect_and_set_language_matches_extension() {
     attach_host(&mut ed, "");
     let bid = ed.focused_buffer_id();
     // Give the buffer a .rs path so detection can match it.
-    ed.state.buffers.get_mut(bid).path = Some(std::path::PathBuf::from("/tmp/foo.rs"));
+    ed.state
+        .buffers
+        .get_mut(bid)
+        .set_path(Some(std::path::PathBuf::from("/tmp/foo.rs")));
     register_rust(&mut ed, "rust", &["rs"]);
     ed.detect_and_set_language(bid);
     assert_eq!(
@@ -119,7 +118,10 @@ fn settle_detects_and_announces_a_queued_buffer() {
         r#"(register-hook! 'on-buffer-open (lambda (bid) (call! "move-right" (focused-pane))))"#,
     );
     let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).path = Some(std::path::PathBuf::from("/tmp/foo.rs"));
+    ed.state
+        .buffers
+        .get_mut(bid)
+        .set_path(Some(std::path::PathBuf::from("/tmp/foo.rs")));
     register_rust(&mut ed, "rust", &["rs"]);
     let before = state(&ed);
 
@@ -159,12 +161,8 @@ fn open_buffer_then_set_buffer_language_in_one_eval_keeps_the_explicit_value() {
     ed.state
         .config
         .languages
-        .register_identity_no_rebuild("notes", &[], &[], &[]);
-    ed.state
-        .config
-        .languages
-        .rebuild_glob_set()
-        .expect("rebuild ok");
+        .register_identity("notes", &[], &[], &[])
+        .expect("a test identity registers");
 
     let file_tmp = tempfile::tempdir().unwrap();
     let file = file_tmp.path().join("main.rs");

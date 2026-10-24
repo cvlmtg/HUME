@@ -624,7 +624,7 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
     ed.state
         .buffers
         .get_mut(bid)
-        .set_path(Some(std::path::PathBuf::from("data.json")));
+        .set_path(Some(std::path::PathBuf::from("/tmp/data.json")));
 
     ed.state
         .config
@@ -660,7 +660,7 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
     let new_text = "[1, 2, 3]\n";
     let new_byte_len = new_text.len();
     let mut replacement = Buffer::at_start(BufferText::from(new_text));
-    replacement.set_path(Some(std::path::PathBuf::from("data.json")));
+    replacement.set_path(Some(std::path::PathBuf::from("/tmp/data.json")));
     ed.reload_buffer_in_place(
         FocusedPane::current(&ed.view),
         ReplaceSource::disk(replacement),
@@ -708,7 +708,7 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
     // `forward.is_identity()` branch returns `false` (no mutation) without
     // touching the text version, and the tree installed above stays.
     let mut identical = Buffer::at_start(BufferText::from(new_text));
-    identical.set_path(Some(std::path::PathBuf::from("data.json")));
+    identical.set_path(Some(std::path::PathBuf::from("/tmp/data.json")));
     ed.reload_buffer_in_place(
         FocusedPane::current(&ed.view),
         ReplaceSource::disk(identical),

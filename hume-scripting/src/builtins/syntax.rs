@@ -8,7 +8,8 @@ use steel::rerrs::SteelErr;
 use crate::context::EvalMode;
 use crate::{ConfigOrigin, Effect, GrammarReg, PendingLanguageReg, SteelCtx};
 use hume_treesitter::registry::{
-    GrammarSource, LanguageField, LanguageFields, OptionalQuery, QueryFiles,
+    FileExtension, FileGlob, GrammarSource, LanguageField, LanguageFields, OptionalQuery,
+    QueryFiles,
 };
 
 use super::SteelResult;
@@ -21,7 +22,9 @@ use super::errors::generic_err;
 
 /// `(%define-language! name extensions globs shebangs)`: init-only.
 ///
-/// `extensions`, `globs` and `shebangs` must be lists of strings. Pushes an
+/// `extensions`, `globs` and `shebangs` must be lists of strings, each
+/// extension a valid [`FileExtension`] and each glob a valid [`FileGlob`],
+/// or the call raises. Pushes an
 /// `Effect::LanguageReg(PendingLanguageReg::Identity)`;
 /// `Editor::apply_pending_language_regs` applies it as part of
 /// `Editor::apply_script_effects`.
@@ -33,8 +36,21 @@ pub(crate) fn define_language(
     shebangs_val: SteelVal,
 ) -> SteelResult {
     let name = string_arg(name, "%define-language! name")?;
-    let extensions = list_to_strings(exts_val, "%define-language! extensions")?;
-    let globs = list_to_strings(globs_val, "%define-language! globs")?;
+    let extensions = list_to_strings(exts_val, "%define-language! extensions")?
+        .iter()
+        .map(|ext| FileExtension::new(ext))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| generic_err(format!("define-language! {name:?}: {e}")))?;
+    let globs = list_to_strings(globs_val, "%define-language! globs")?
+        .iter()
+        .map(|glob| {
+            FileGlob::new(glob).map_err(|e| {
+                generic_err(format!(
+                    "define-language! {name:?}: invalid glob {glob:?}: {e}"
+                ))
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
     let shebangs = list_to_strings(shebangs_val, "%define-language! shebangs")?;
     ctx.push_effect(Effect::LanguageReg(PendingLanguageReg::Identity {
         name,

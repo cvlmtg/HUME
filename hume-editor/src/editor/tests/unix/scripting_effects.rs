@@ -326,12 +326,8 @@ fn steel_open_buffer_detects_language() {
     ed.state
         .config
         .languages
-        .register_identity_no_rebuild("rust", &["rs"], &[], &[]);
-    ed.state
-        .config
-        .languages
-        .rebuild_glob_set()
-        .expect("rebuild ok");
+        .register_identity("rust", &["rs"], &[], &[])
+        .expect("a test identity registers");
 
     let mut host = ScriptingHost::new(&Dirs::none());
     {

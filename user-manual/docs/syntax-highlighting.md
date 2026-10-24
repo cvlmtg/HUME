@@ -87,8 +87,8 @@ Add it to your `init.scm`:
 
 The arguments, in order, are:
 - the language name
-- a list of file extensions, written **without** a leading dot (`"myl"`, not `".myl"`, since an extension with a dot never matches)
-- a list of glob patterns
+- a list of file extensions, written **without** a leading dot (`"myl"`, not `".myl"`). An extension can have several parts, such as `"js.map"`; when several match, the longest wins. A leading or trailing dot, or a `/`, raises an error
+- a list of glob patterns, matched against the end of the file's path: `"Makefile"` matches a file with that name in any directory, and `".github/workflows/*.yaml"` matches a file in such a directory. A pattern that starts with `/` matches the whole path. A file opened through a symbolic link is matched by the path you opened, then by the path the link leads to
 - a list of shebang lines.
 
 Trailing arguments you don't need can be dropped: `(define-language! "my-lang" '("myl"))` is fine.

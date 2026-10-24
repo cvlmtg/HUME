@@ -88,6 +88,39 @@ fn define_language_queues_pending_reg() {
     );
 }
 
+/// The error `%define-language!` raises for `extensions` and `globs`.
+fn define_language_error(extensions: &[&str], globs: &[&str]) -> String {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx_init();
+    let strings = |items: &[&str]| string_list(items.iter().map(|s| s.to_string()));
+    define_language(
+        &mut ctx,
+        str_val("x"),
+        strings(extensions),
+        strings(globs),
+        empty_list(),
+    )
+    .unwrap_err()
+    .to_string()
+}
+
+#[test]
+fn define_language_raises_for_an_extension_that_cannot_name_a_file() {
+    for ext in [".rs", "rs.", "", "a/b", "a..b"] {
+        let err = define_language_error(&[ext], &[]);
+        assert!(
+            err.contains(&format!("invalid extension {ext:?}")),
+            "{ext:?}: {err}"
+        );
+    }
+}
+
+#[test]
+fn define_language_raises_for_an_invalid_glob() {
+    let err = define_language_error(&[], &["[a"]);
+    assert!(err.contains("invalid glob \"[a\""), "{err}");
+}
+
 /// `%define-language!` accepts a symbol as the language name.
 #[test]
 fn define_language_accepts_symbol_name() {

@@ -6,10 +6,11 @@
 - `(hume/yield!)` is gone: the script budget stops a script on its own, so delete any call to it.
 - `stdlib/run!` is gone: call `run-capture!`, the function it named.
 - `core:buffer-words`'s `"lines"` option is now `"chars"`, counted in characters (default 8000), not lines: replace it in your `#:config`, or drop it.
-- `path-programs` lists in the background: it takes a callback, `(lambda (names done?) ...)`, and returns an id for `cancel-async!`. Move code that used its result into the callback, and call it from a command, hook, timer or callback, not from the top level of `init.scm` or of a plugin loaded at startup.
+- `path-programs` lists in the background: it takes a callback, `(lambda (names done?) ...)`, and returns a job for `cancel-async!`. Move code that used its result into the callback, and call it from a command, hook, timer or callback, not from the top level of `init.scm` or of a plugin loaded at startup.
 - `completion-emit!` for a request already answered without `#:more` is dropped and returns `#f`: to update an open menu, answer with `#:more #t` until the last part.
 - `update-drawer-list!` raises on an empty list instead of returning `#f`: close the drawer instead.
 - `close-buffer!` raises for a buffer with unsaved changes instead of dropping them: pass `#:discard-unsaved #t` to close it anyway.
+- `define-language!` raises for an invalid glob, or for an extension with a leading or trailing dot or a `/`, instead of skipping it: fix or drop the entry.
 - `after!`, `spawn-async!` and `path-programs` return an opaque timer or job, not an integer: compare two with `equal?`. `cancel-timer!` raises for anything but a timer, and `cancel-async!` for anything but a job, so one kind can no longer cancel the other.
 
 ### Syntax & language awareness
@@ -32,6 +33,7 @@
 - Loading some plugin code no longer prints stray text over the screen.
 - `core:git-diff`'s inline diff keeps its word highlights when the machine is busy.
 - `show-menu!` raises on an empty list instead of opening a menu that crashed HUME on Enter.
+- Built-in languages are detected by file patterns that name a directory, such as GitHub workflow files and `.vscode/*.json`, and by extensions with several parts, such as `.js.map`.
 - Signs, virtual lines, end-of-line text and line backgrounds no longer disappear when you delete the first character of their line, or its whole indent.
 - A completion item whose range a language server sent backwards no longer moves the completion menu.
 - `Tab` on the `|` prompt lists programs as it finds them, so HUME keeps responding on a slow `PATH`, like WSL's Windows directories.

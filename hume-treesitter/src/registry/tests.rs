@@ -1,10 +1,8 @@
 use std::path::Path;
 
-use globset::Glob;
-
 use super::{
-    ConfigureOutcome, ConfiguredBy, GrammarSource, LanguageField, LanguageFields, LanguageId,
-    LanguageRegistry, OptionalQuery, QueryFiles, detect_language,
+    ConfigureOutcome, ConfiguredBy, DetectPaths, GrammarSource, LanguageField, LanguageFields,
+    LanguageId, LanguageRegistry, OptionalQuery, QueryFiles, detect_language,
 };
 use hume_editing::comment::{BlockCommentTokens, LineCommentTokens};
 use hume_engine::theme::ScopeRegistry;
@@ -21,13 +19,12 @@ fn write_temp_scm(filename: &str, src: &str) -> (tempfile::TempDir, std::path::P
     (dir, path)
 }
 
-/// Parse each pattern into a `Glob`, panicking on a malformed test fixture:
-/// `register_identity` takes pre-parsed globs, so invalid syntax is now a
-/// caller bug, not a runtime error to test for.
-fn globs(pats: &[&str]) -> Vec<Glob> {
-    pats.iter()
-        .map(|p| Glob::new(p).expect("test glob must compile"))
-        .collect()
+/// `path` as both the opened and the resolved path of a file.
+fn at(path: &str) -> DetectPaths<'_> {
+    DetectPaths {
+        as_opened: Path::new(path),
+        resolved: Path::new(path),
+    }
 }
 
 /// The rust fixture grammar with `queries`.
@@ -285,7 +282,7 @@ fn attach_grammar_with_missing_injections_file_fails_with_read_error() {
 #[test]
 fn language_registry_by_ext_lookup_empty() {
     let reg = LanguageRegistry::new();
-    assert!(reg.by_extension("rs").is_none());
+    assert!(reg.by_file_name("f.rs").is_none());
 }
 
 #[test]
@@ -303,11 +300,11 @@ fn register_identity_then_defined_id_returns_its_id() {
         .expect("identity should be registered");
     assert_eq!(reg.name_of(id), "toml");
     assert!(
-        reg.by_extension("toml").is_some(),
+        reg.by_file_name("f.toml").is_some(),
         "extension lookup must work after identity reg"
     );
     // Unknown ext should not match.
-    assert!(reg.by_extension("yaml").is_none());
+    assert!(reg.by_file_name("f.yaml").is_none());
 }
 
 fn strings(items: &[&str]) -> Vec<String> {
@@ -317,7 +314,7 @@ fn strings(items: &[&str]) -> Vec<String> {
 #[test]
 fn roots_of_returns_the_configured_markers() {
     let mut reg = LanguageRegistry::new();
-    let id = reg.register_identity_no_rebuild("go", &["go"], &[], &[]);
+    let id = reg.register_identity("go", &["go"], &[], &[]).unwrap();
     assert_eq!(
         set_roots(&mut reg, id, &["go.work", "go.mod"], ConfiguredBy::User),
         ConfigureOutcome::Applied
@@ -340,7 +337,7 @@ fn reregistering_an_identity_keeps_its_configured_roots() {
         set_roots(&mut reg, id, &["go.mod"], ConfiguredBy::User),
         ConfigureOutcome::Applied
     );
-    reg.register_identity_no_rebuild("go", &["go"], &[], &[]);
+    reg.register_identity("go", &["go"], &[], &[]).unwrap();
     assert_eq!(reg.roots_of(id), ["go.mod"]);
 }
 
@@ -749,16 +746,16 @@ fn an_attached_bundle_names_its_language() {
 #[test]
 fn register_identity_with_globs_lookup() {
     let mut reg = LanguageRegistry::new();
-    reg.register_identity("makefile", &[], &globs(&["Makefile", "GNUmakefile"]), &[])
+    reg.register_identity("makefile", &[], &["Makefile", "GNUmakefile"], &[])
         .unwrap();
-    let matches = reg.compiled_globs().matches(Path::new("Makefile"));
+    let matches = reg.compiled_globs().matches(Path::new("/x/Makefile"));
     assert!(!matches.is_empty(), "Makefile should match registered glob");
     let name = reg.glob_lang_id(matches[0]).map(|id| reg.name_of(id));
     assert_eq!(name, Some("makefile"));
     // A path the globs don't cover yields no match.
     assert!(
         reg.compiled_globs()
-            .matches(Path::new("Cargo.toml"))
+            .matches(Path::new("/x/Cargo.toml"))
             .is_empty()
     );
 }
@@ -766,17 +763,25 @@ fn register_identity_with_globs_lookup() {
 #[test]
 fn remove_clears_glob_and_shebang_entries() {
     let mut reg = LanguageRegistry::new();
-    reg.register_identity("python", &["py"], &globs(&["*.py"]), &["python"])
+    reg.register_identity("python", &["py"], &["*.py"], &["python"])
         .unwrap();
-    assert!(reg.by_extension("py").is_some());
+    assert!(reg.by_file_name("f.py").is_some());
     assert!(reg.by_shebang("python").is_some());
-    assert!(!reg.compiled_globs().matches(Path::new("foo.py")).is_empty());
+    assert!(
+        !reg.compiled_globs()
+            .matches(Path::new("/x/foo.py"))
+            .is_empty()
+    );
 
     reg.remove("python");
 
-    assert!(reg.by_extension("py").is_none());
+    assert!(reg.by_file_name("f.py").is_none());
     assert!(reg.by_shebang("python").is_none());
-    assert!(reg.compiled_globs().matches(Path::new("foo.py")).is_empty());
+    assert!(
+        reg.compiled_globs()
+            .matches(Path::new("/x/foo.py"))
+            .is_empty()
+    );
 }
 
 /// `deindex` must only remove an index entry it still owns.
@@ -790,7 +795,7 @@ fn deindex_does_not_clobber_another_languages_shared_extension() {
     reg.register_identity("cpp", &["cpp", "h"], &[], &[])
         .unwrap();
     assert_eq!(
-        reg.by_extension("h"),
+        reg.by_file_name("f.h"),
         reg.id_of("cpp"),
         "cpp must win the shared .h extension (last-registered-wins)"
     );
@@ -799,11 +804,11 @@ fn deindex_does_not_clobber_another_languages_shared_extension() {
     reg.register_identity("c", &["c"], &[], &[]).unwrap();
 
     assert_eq!(
-        reg.by_extension("h"),
+        reg.by_file_name("f.h"),
         reg.id_of("cpp"),
         "re-registering c must not clobber cpp's still-current .h mapping"
     );
-    assert_eq!(reg.by_extension("c"), reg.id_of("c"));
+    assert_eq!(reg.by_file_name("f.c"), reg.id_of("c"));
 }
 
 /// A `define-language!` override in `init.scm` (e.g. adding an extension to
@@ -850,7 +855,7 @@ fn attached_grammar_survives_identity_re_registration() {
     );
 
     // The identity replacement itself must still have taken effect.
-    let detected = detect_language(Some(Path::new("foo.mylang")), None, &reg);
+    let detected = detect_language(Some(at("/x/foo.mylang")), None, &reg);
     assert_eq!(detected, reg.id_of("rust"));
 }
 
@@ -900,22 +905,125 @@ fn identity_re_registration_keeps_the_configured_lsp_language_id() {
 fn detect_language_by_extension() {
     let mut reg = LanguageRegistry::new();
     reg.register_identity("rust", &["rs"], &[], &[]).unwrap();
-    let id = detect_language(Some(Path::new("foo.rs")), None, &reg);
+    let id = detect_language(Some(at("/x/foo.rs")), None, &reg);
     assert_eq!(id, reg.id_of("rust"));
     // A different extension must not detect.
-    let no_match = detect_language(Some(Path::new("foo.py")), None, &reg);
+    let no_match = detect_language(Some(at("/x/foo.py")), None, &reg);
     assert!(no_match.is_none());
 }
 
 #[test]
 fn detect_language_by_glob() {
     let mut reg = LanguageRegistry::new();
-    reg.register_identity("makefile", &[], &globs(&["Makefile", "GNUmakefile"]), &[])
+    reg.register_identity("makefile", &[], &["Makefile", "GNUmakefile"], &[])
         .unwrap();
-    let id = detect_language(Some(Path::new("/project/Makefile")), None, &reg);
+    let id = detect_language(Some(at("/project/Makefile")), None, &reg);
     assert_eq!(id, reg.id_of("makefile"));
-    let no_match = detect_language(Some(Path::new("/project/other")), None, &reg);
+    let no_match = detect_language(Some(at("/project/other")), None, &reg);
     assert!(no_match.is_none());
+}
+
+#[test]
+fn a_glob_with_a_directory_matches_the_end_of_the_path() {
+    let mut reg = LanguageRegistry::new();
+    reg.register_identity("yaml", &["yaml"], &[], &[]).unwrap();
+    reg.register_identity("gha", &[], &[".github/workflows/*.yaml"], &[])
+        .unwrap();
+    assert_eq!(
+        detect_language(Some(at("/repo/.github/workflows/ci.yaml")), None, &reg),
+        reg.id_of("gha")
+    );
+    assert_eq!(
+        detect_language(Some(at("/repo/ci.yaml")), None, &reg),
+        reg.id_of("yaml")
+    );
+}
+
+#[test]
+fn an_absolute_glob_matches_the_whole_path_only() {
+    let mut reg = LanguageRegistry::new();
+    reg.register_identity("ini", &[], &["/etc/buckconfig"], &[])
+        .unwrap();
+    assert_eq!(
+        detect_language(Some(at("/etc/buckconfig")), None, &reg),
+        reg.id_of("ini")
+    );
+    assert_eq!(
+        detect_language(Some(at("/home/etc/buckconfig")), None, &reg),
+        None
+    );
+}
+
+#[test]
+fn a_glob_matches_whole_path_components_only() {
+    let mut reg = LanguageRegistry::new();
+    reg.register_identity("git-config", &[], &[".git/config"], &[])
+        .unwrap();
+    assert_eq!(
+        detect_language(Some(at("/repo/.git/config")), None, &reg),
+        reg.id_of("git-config")
+    );
+    assert_eq!(
+        detect_language(Some(at("/repo/x.git/config")), None, &reg),
+        None
+    );
+}
+
+/// A file opened through a symlink is detected by the path it was opened
+/// as, then by the path the link resolves to.
+#[test]
+fn a_symlinked_file_is_detected_by_either_path() {
+    let mut reg = LanguageRegistry::new();
+    reg.register_identity("git-config", &[], &[".config/git/config"], &[])
+        .unwrap();
+    reg.register_identity("toml", &["toml"], &[], &[]).unwrap();
+    let linked = |as_opened, resolved| DetectPaths {
+        as_opened: Path::new(as_opened),
+        resolved: Path::new(resolved),
+    };
+    assert_eq!(
+        detect_language(
+            Some(linked("/h/.config/git/config", "/h/dotfiles/git/config")),
+            None,
+            &reg
+        ),
+        reg.id_of("git-config")
+    );
+    assert_eq!(
+        detect_language(Some(linked("/h/current", "/h/release.toml")), None, &reg),
+        reg.id_of("toml")
+    );
+}
+
+#[test]
+fn a_dotted_extension_matches_before_the_last_one() {
+    let mut reg = LanguageRegistry::new();
+    reg.register_identity("map", &["map"], &[], &[]).unwrap();
+    reg.register_identity("json", &["json", "js.map"], &[], &[])
+        .unwrap();
+    assert_eq!(
+        detect_language(Some(at("/x/app.js.map")), None, &reg),
+        reg.id_of("json")
+    );
+    assert_eq!(
+        detect_language(Some(at("/x/app.css.map")), None, &reg),
+        reg.id_of("map")
+    );
+}
+
+#[test]
+fn a_dotfiles_leading_dot_does_not_start_an_extension() {
+    let mut reg = LanguageRegistry::new();
+    reg.register_identity("bash", &["bashrc"], &[], &[])
+        .unwrap();
+    assert_eq!(
+        detect_language(Some(at("/home/u/.bashrc")), None, &reg),
+        None
+    );
+    assert_eq!(
+        detect_language(Some(at("/home/u/x.bashrc")), None, &reg),
+        reg.id_of("bash")
+    );
 }
 
 #[test]
@@ -923,40 +1031,35 @@ fn detect_language_glob_beats_extension() {
     let mut reg = LanguageRegistry::new();
     reg.register_identity("typescript", &["ts"], &[], &[])
         .unwrap();
-    reg.register_identity(
-        "tsconfig",
-        &[],
-        &globs(&["tsconfig.json", "*.config.json"]),
-        &[],
-    )
-    .unwrap();
+    reg.register_identity("tsconfig", &[], &["tsconfig.json", "*.config.json"], &[])
+        .unwrap();
     reg.register_identity("json", &["json"], &[], &[]).unwrap();
-    let id = detect_language(Some(Path::new("tsconfig.json")), None, &reg);
+    let id = detect_language(Some(at("/x/tsconfig.json")), None, &reg);
     assert_eq!(id, reg.id_of("tsconfig"));
     // A plain .json that no glob covers still detects as json.
-    let plain = detect_language(Some(Path::new("other.json")), None, &reg);
+    let plain = detect_language(Some(at("/x/other.json")), None, &reg);
     assert_eq!(plain, reg.id_of("json"));
 }
 
 #[test]
 fn detect_language_glob_tiebreak_last_registered_wins() {
     let mut reg = LanguageRegistry::new();
-    reg.register_identity("generic-json", &[], &globs(&["*.json"]), &[])
+    reg.register_identity("generic-json", &[], &["*.json"], &[])
         .unwrap();
-    reg.register_identity("strict-json", &[], &globs(&["*.json"]), &[])
+    reg.register_identity("strict-json", &[], &["*.json"], &[])
         .unwrap();
     assert_eq!(
-        detect_language(Some(Path::new("config.json")), None, &reg),
+        detect_language(Some(at("/x/config.json")), None, &reg),
         reg.id_of("strict-json"),
     );
 
     let mut reg2 = LanguageRegistry::new();
-    reg2.register_identity("strict-json", &[], &globs(&["*.json"]), &[])
+    reg2.register_identity("strict-json", &[], &["*.json"], &[])
         .unwrap();
-    reg2.register_identity("generic-json", &[], &globs(&["*.json"]), &[])
+    reg2.register_identity("generic-json", &[], &["*.json"], &[])
         .unwrap();
     assert_eq!(
-        detect_language(Some(Path::new("config.json")), None, &reg2),
+        detect_language(Some(at("/x/config.json")), None, &reg2),
         reg2.id_of("generic-json"),
     );
 }
@@ -966,14 +1069,10 @@ fn detect_language_by_shebang() {
     let mut reg = LanguageRegistry::new();
     reg.register_identity("python", &["py"], &[], &["python3", "python"])
         .unwrap();
-    let id = detect_language(
-        Some(Path::new("script")),
-        Some("#!/usr/bin/env python3"),
-        &reg,
-    );
+    let id = detect_language(Some(at("/x/script")), Some("#!/usr/bin/env python3"), &reg);
     assert_eq!(id, reg.id_of("python"));
     // Some other shebang must not match.
-    let no_match = detect_language(Some(Path::new("script")), Some("#!/bin/bash"), &reg);
+    let no_match = detect_language(Some(at("/x/script")), Some("#!/bin/bash"), &reg);
     assert!(no_match.is_none());
 }
 
@@ -983,17 +1082,17 @@ fn detect_language_shebang_direct_path() {
     reg.register_identity("bash", &["sh"], &[], &["bash"])
         .unwrap();
     // Extension wins over shebang.
-    let id = detect_language(Some(Path::new("run.sh")), Some("#!/bin/bash"), &reg);
+    let id = detect_language(Some(at("/x/run.sh")), Some("#!/bin/bash"), &reg);
     assert_eq!(id, reg.id_of("bash"));
     // Without extension, shebang is used.
-    let id2 = detect_language(Some(Path::new("run")), Some("#!/bin/bash"), &reg);
+    let id2 = detect_language(Some(at("/x/run")), Some("#!/bin/bash"), &reg);
     assert_eq!(id2, reg.id_of("bash"));
 }
 
 #[test]
 fn detect_language_no_match() {
     let reg = LanguageRegistry::new();
-    assert!(detect_language(Some(Path::new("foo.xyz")), None, &reg).is_none());
+    assert!(detect_language(Some(at("/x/foo.xyz")), None, &reg).is_none());
     assert!(detect_language(None, None, &reg).is_none());
 }
 
@@ -1008,15 +1107,15 @@ fn extension_matching_is_case_sensitive() {
     reg.register_identity("c", &["c"], &[], &[]).unwrap();
     reg.register_identity("cpp", &["C"], &[], &[]).unwrap();
     assert_eq!(
-        detect_language(Some(Path::new("foo.c")), None, &reg),
+        detect_language(Some(at("/x/foo.c")), None, &reg),
         reg.id_of("c"),
     );
     assert_eq!(
-        detect_language(Some(Path::new("foo.C")), None, &reg),
+        detect_language(Some(at("/x/foo.C")), None, &reg),
         reg.id_of("cpp"),
     );
     // Sanity: unrelated extension is still None.
-    assert!(detect_language(Some(Path::new("foo.rs")), None, &reg).is_none());
+    assert!(detect_language(Some(at("/x/foo.rs")), None, &reg).is_none());
 }
 
 #[test]

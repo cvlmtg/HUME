@@ -647,7 +647,6 @@ mod editor_cwd;
 mod file_io;
 mod git_diff_plugin;
 mod injections_editor;
-mod language;
 mod language_config;
 mod lsp_actions;
 mod lsp_bridge;

@@ -304,12 +304,8 @@ fn on_buffer_open_queued_after_on_language_set() {
     ed.state
         .config
         .languages
-        .register_identity_no_rebuild("rust", &["rs"], &[], &[]);
-    ed.state
-        .config
-        .languages
-        .rebuild_glob_set()
-        .expect("rebuild ok");
+        .register_identity("rust", &["rs"], &[], &[])
+        .expect("a test identity registers");
 
     let mut doc = Buffer::scratch();
     doc.set_path(Some(std::path::PathBuf::from("/tmp/foo.rs")));
@@ -374,12 +370,8 @@ fn startup_buffer_announces_on_buffer_open_after_on_language_set() {
     ed.state
         .config
         .languages
-        .register_identity_no_rebuild("rust", &["rs"], &[], &[]);
-    ed.state
-        .config
-        .languages
-        .rebuild_glob_set()
-        .expect("rebuild ok");
+        .register_identity("rust", &["rs"], &[], &[])
+        .expect("a test identity registers");
 
     // Stands in for the drain `init_scripting` runs once it attaches its
     // host, inspecting the queue before `settle()` drains it, same as the
