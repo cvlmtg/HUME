@@ -105,17 +105,13 @@ fn a_virtual_line_block_above_the_cursor_replaces_the_caret_even_when_the_cursor
     // display row down by 5, past the 10-row viewport's settled bottom
     // margin (scroll-margin 3, target row 6) if the viewport doesn't re-scroll
     // to follow it.
-    let pos = hume_rope::lines::line_start_char(
-        ed.doc().text().rope(),
-        hume_rope::line::RopeyLine::new(20),
-    );
     let scope = ed.view.registry.intern("diagnostic.warning");
     ed.state.config.decorations.set_virtual_lines(
         "linter".to_string(),
         bid,
         (0..5)
             .map(|_| hume_decorations::VirtualLineEntry {
-                pos,
+                line: hume_rope::line::ContentLine::new(20),
                 text: "V".to_string(),
                 before: true,
                 scope,
@@ -251,7 +247,7 @@ fn an_inlay_hint_that_wraps_an_earlier_line_replaces_the_caret_even_when_the_cur
 /// `EditorState::layout_key` inlay hints and virtual-line blocks change.
 #[test]
 fn eol_text_that_wraps_an_earlier_line_replaces_the_caret_even_when_the_cursor_has_not_moved() {
-    let (mut ed, bid, line19_start) = wrap_earlier_line_fixture();
+    let (mut ed, bid, _) = wrap_earlier_line_fixture();
 
     assert!(
         frame(&mut ed, 40, 10).cursor_content_pos.is_some(),
@@ -263,7 +259,7 @@ fn eol_text_that_wraps_an_earlier_line_replaces_the_caret_even_when_the_cursor_h
         "test".to_string(),
         bid,
         vec![hume_decorations::EolTextEntry {
-            pos: line19_start,
+            line: hume_rope::line::ContentLine::new(19),
             text: "XY".to_string(),
             scope,
             hide_on_insert_line: false,

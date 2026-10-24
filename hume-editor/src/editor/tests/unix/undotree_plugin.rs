@@ -513,7 +513,6 @@ type DiffVline = (usize, bool, String, Vec<(usize, usize)>);
 
 /// The undotree source's virtual lines on `bid`.
 fn diff_vlines(ed: &Editor, bid: BufferId) -> Vec<DiffVline> {
-    let text = ed.state.buffers.get(bid).text();
     ed.state
         .config
         .decorations
@@ -521,7 +520,7 @@ fn diff_vlines(ed: &Editor, bid: BufferId) -> Vec<DiffVline> {
         .iter()
         .map(|e| {
             (
-                text.char_to_line(e.pos).index(),
+                e.line.index(),
                 e.before,
                 e.text.clone(),
                 e.segments

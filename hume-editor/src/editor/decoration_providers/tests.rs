@@ -1,52 +1,21 @@
-//! Direct unit tests for the pure per-line helpers `decoration_providers.rs`
-//! shares across its render bridges: `last_writer_per_line` (the
-//! per-line collapse policy) and `resolve_decoration_line` (the position
-//! contract fix). Full-`Editor` integration coverage for the bridges that
-//! call these lives in `tests/lsp_decorations.rs`, `tests/lsp_inlay_hints.rs`,
+//! Direct unit tests for the pure per-line helper `decoration_providers.rs`
+//! shares across its render bridges: `last_writer_per_line` (the per-line
+//! collapse policy). Full-`Editor` integration coverage for the bridges that
+//! call it lives in `tests/lsp_decorations.rs`, `tests/lsp_inlay_hints.rs`,
 //! and `tests/lsp_signs.rs`; these tests isolate the shared logic itself so a
 //! future kind reusing it inherits the same guarantees without redoing the
 //! bridge-level plumbing.
 
 use hume_rope::line::ContentLine;
-use hume_rope::offset::CharOffset;
 
-use super::{last_writer_per_line, resolve_decoration_line};
-
-fn co(n: usize) -> CharOffset {
-    CharOffset::new(n)
-}
-
-// ── `resolve_decoration_line` ───────────────────────────────────────────────
-
-#[test]
-fn resolve_decoration_line_returns_the_line_for_a_content_position() {
-    let text = hume_editing::text::BufferText::from("aaa\nbbb\nccc\n");
-    // Line 2 ("ccc") starts at char offset 8.
-    assert_eq!(
-        resolve_decoration_line(&text, co(8)),
-        Some(ContentLine::new(2))
-    );
-}
-
-#[test]
-fn resolve_decoration_line_drops_a_position_on_the_trailing_phantom_line() {
-    // "aaa\nbbb\nccc\n" is 12 chars; char offset 12 is `len_chars()`, which
-    // resolves to the buffer's trailing phantom line (line 3, always empty,
-    // see `host_impl/decorations.rs`'s `line_start_offset`). A fresh `set-*!` call can
-    // never store this position (the host boundary now rejects it), but a
-    // remap can produce it transiently when an edit deletes everything
-    // after an anchor up to end-of-buffer. The entry must disappear, not
-    // get relocated onto the preceding line.
-    let text = hume_editing::text::BufferText::from("aaa\nbbb\nccc\n");
-    assert_eq!(resolve_decoration_line(&text, co(12)), None);
-}
+use super::last_writer_per_line;
 
 // ── `last_writer_per_line` ──────────────────────────────────────────────────
 
 #[test]
 fn last_writer_per_line_keeps_the_later_entry_within_one_source() {
-    // Two entries from the same source collapsed onto line 4 by a remap:
-    // within one source, the last entry wins.
+    // Two entries from the same source on line 4: within one source, the
+    // last entry wins.
     let entries = vec![
         ("diagnostics", ContentLine::new(4), "first"),
         ("diagnostics", ContentLine::new(4), "second"),

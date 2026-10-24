@@ -19,8 +19,10 @@
 use rustc_hash::FxHashMap;
 
 use hume_editing::changeset::{Assoc, ChangeSet, PosMapCursor};
+use hume_editing::edit::TextChange;
 use hume_engine::pipeline::BufferId;
 use hume_engine::types::ScopeId;
+use hume_rope::line::ContentLine;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 /// One `(set-inlay-hints! …)` entry: `text` rendered `before` or after the
@@ -31,12 +33,8 @@ pub struct InlayHintEntry {
     pub before: bool,
 }
 
-/// One `(set-signs! …)` entry: a gutter marker on the line `pos` starts.
-/// `pos` is that line's line-start char offset, not the Steel-facing line
-/// number. The host boundary (`hume-editor`'s `host_impl.rs`'s `line_start_offset`)
-/// converts at set time, so this remaps through edits with everything else;
-/// the render side derives the current line back via `char_to_line` at
-/// rebuild. No `priority` field: a sign's slot is its *source*'s rank
+/// One `(set-signs! …)` entry: a gutter marker on `line`, which remaps
+/// through edits as a [`LineAnchored`] kind. No `priority` field: a sign's slot is its *source*'s rank
 /// among `DecorationStores::sign_sources`, not a per-entry value; the
 /// `source` key `SourceStore` already carries is the entry's whole channel
 /// identity. `scope` is interned by `hume-editor`'s `host_impl.rs`'s `set_signs` at the
@@ -46,18 +44,14 @@ pub struct InlayHintEntry {
 /// `Arc<str>`) for every visible line, every frame, a refcount bump
 /// instead of a fresh allocation per sign per frame.
 pub struct SignEntry {
-    pub pos: CharOffset,
+    pub line: ContentLine,
     pub text: std::sync::Arc<str>,
     pub scope: ScopeId,
 }
 
 /// One `(set-virtual-lines! …)` entry: a synthetic line of text anchored to
-/// the line `pos` starts (rendered after it, or before when `before` is
-/// set). `pos` is that line's line-start char offset, not the Steel-facing
-/// line number. The host boundary (`hume-editor`'s `host_impl.rs`'s `line_start_offset`)
-/// converts at set time, so this remaps through edits like every other kind;
-/// the render side derives the current line back via `char_to_line` at
-/// rebuild. `scope` styles bytes `segments` doesn't cover. `hume-editor`'s `host_impl.rs`'s
+/// `line` (rendered after it, or before when `before` is set), which remaps
+/// through edits as a [`LineAnchored`] kind. `scope` styles bytes `segments` doesn't cover. `hume-editor`'s `host_impl.rs`'s
 /// `set_virtual_lines` resolves the `ui.virtual` fallback itself when the
 /// Steel call passes no scope, so this field is never optional; `segments`
 /// are `(byte_start, byte_end, ScopeId)` ranges into `text`, already
@@ -70,7 +64,7 @@ pub struct SignEntry {
 /// are validated byte offsets naming already-interned `ScopeId`s:
 /// different shapes, not merely a field rename.
 pub struct VirtualLineEntry {
-    pub pos: CharOffset,
+    pub line: ContentLine,
     pub text: String,
     pub before: bool,
     pub scope: ScopeId,
@@ -81,18 +75,15 @@ pub struct VirtualLineEntry {
     )>,
 }
 
-/// One `(set-eol-text! …)` entry: `text` appended at the end of the line
-/// `pos` starts. `pos` is that line's line-start char offset, not the
-/// Steel-facing line number. The host boundary (`hume-editor`'s `host_impl.rs`'s
-/// `line_start_offset`) converts at set time, so this remaps through edits
-/// like every other kind; the render side derives the current line back via
-/// `char_to_line` at rebuild. The diagnostics plugin's
+/// One `(set-eol-text! …)` entry: `text` appended at the end of `line`,
+/// which remaps through edits as a [`LineAnchored`] kind. The diagnostics
+/// plugin's
 /// per-line summary (`"[n] <message>"` or a bare message) is this kind's
 /// first client, not its owner, same as every other kind here is to LSP.
 /// `scope` is interned by `hume-editor`'s `host_impl.rs`'s `set_eol_text` at the
 /// `set-eol-text!` boundary.
 pub struct EolTextEntry {
-    pub pos: CharOffset,
+    pub line: ContentLine,
     pub text: String,
     pub scope: ScopeId,
     /// The render side drops this entry on the line holding the primary
@@ -109,125 +100,116 @@ pub struct ExtraHighlightEntry {
     pub scope: ScopeId,
 }
 
-/// One `(set-line-backgrounds! …)` entry: a full-row background tint on the
-/// line `pos` starts. `pos` is that line's line-start char offset, not the
-/// Steel-facing line number. The host boundary (`hume-editor`'s `host_impl.rs`'s
-/// `line_start_offset`) converts at set time, so this remaps through edits
-/// like every other line-anchored kind; the render side derives the current
-/// line back via `char_to_line` at rebuild. No `priority` field, same as
+/// One `(set-line-backgrounds! …)` entry: a full-row background tint on
+/// `line`, which remaps through edits as a [`LineAnchored`] kind. No
+/// `priority` field, same as
 /// `SignEntry` now: row tints have no per-line slot contention at all, so
 /// same-line entries from different sources simply break ties by source
 /// name, never claim a reserved column the way a registered sign source does.
 /// `scope` is interned by `hume-editor`'s `host_impl.rs`'s `set_line_backgrounds` at the
 /// `set-line-backgrounds!` boundary.
 pub struct LineBgEntry {
-    pub pos: CharOffset,
+    pub line: ContentLine,
     pub scope: ScopeId,
 }
 
-/// Sort key every entry kind provides. [`SourceStore::set`] sorts by this
-/// so the remap chokepoint's batch position/range mapping
-/// (`ChangeSet::map_positions`/`map_ranges`) can rely on ascending input,
-/// its documented precondition.
-pub trait Positioned {
-    fn pos(&self) -> CharOffset;
+/// What every entry kind is sorted and searched by: a char offset for a
+/// decoration on characters, a line for one on a whole line.
+/// [`SourceStore::set`] sorts by it so the remap chokepoint can map a
+/// source's entries in one monotone pass.
+pub trait Anchored {
+    type Anchor: Ord + Copy;
+    fn anchor(&self) -> Self::Anchor;
 }
 
-impl Positioned for InlayHintEntry {
-    fn pos(&self) -> CharOffset {
+impl Anchored for InlayHintEntry {
+    type Anchor = CharOffset;
+    fn anchor(&self) -> CharOffset {
         self.pos
     }
 }
 
-impl Positioned for SignEntry {
-    fn pos(&self) -> CharOffset {
-        self.pos
+impl Anchored for SignEntry {
+    type Anchor = ContentLine;
+    fn anchor(&self) -> ContentLine {
+        self.line
     }
 }
 
-impl Positioned for VirtualLineEntry {
-    fn pos(&self) -> CharOffset {
-        self.pos
+impl Anchored for VirtualLineEntry {
+    type Anchor = ContentLine;
+    fn anchor(&self) -> ContentLine {
+        self.line
     }
 }
 
-impl Positioned for EolTextEntry {
-    fn pos(&self) -> CharOffset {
-        self.pos
+impl Anchored for EolTextEntry {
+    type Anchor = ContentLine;
+    fn anchor(&self) -> ContentLine {
+        self.line
     }
 }
 
-impl Positioned for ExtraHighlightEntry {
-    fn pos(&self) -> CharOffset {
+impl Anchored for ExtraHighlightEntry {
+    type Anchor = CharOffset;
+    fn anchor(&self) -> CharOffset {
         self.start
     }
 }
 
-impl Positioned for LineBgEntry {
-    fn pos(&self) -> CharOffset {
-        self.pos
+impl Anchored for LineBgEntry {
+    type Anchor = ContentLine;
+    fn anchor(&self) -> ContentLine {
+        self.line
     }
 }
 
-/// The five point-anchored kinds (every kind but `ExtraHighlightEntry`,
-/// which remaps as a range instead via `RangeAnchored`; see
-/// [`SourceStore::remap_ranges`]). Drives `SourceStore::remap_points`'s batch
-/// `ChangeSet::map_positions` call.
-pub trait PointAnchored: Positioned {
-    /// Sticky side for an edit landing exactly at this kind's position.
-    /// See `ChangeSet::Assoc`'s doc and each impl below for the reasoning.
-    const ASSOC: Assoc;
+/// A kind anchored on one character: inlay hints. Drives
+/// [`SourceStore::remap_points`].
+pub trait PointAnchored: Anchored<Anchor = CharOffset> {
     fn set_pos(&mut self, pos: CharOffset);
 }
 
-/// `Assoc::Before`: an insertion at the hint's char stays glued to the char
-/// it annotates, sticking to what was already there rather than swallowing
-/// newly typed text into "before the hint".
 impl PointAnchored for InlayHintEntry {
-    const ASSOC: Assoc = Assoc::Before;
     fn set_pos(&mut self, pos: CharOffset) {
         self.pos = pos;
     }
 }
 
-/// `Assoc::After` for every line-anchored kind below: an
-/// insertion containing a newline landing exactly at a line-start anchor
-/// (`o`, open line above) must keep the decoration on the *original* line
-/// content; `Assoc::Before` would strand it on the newly inserted blank
-/// line instead.
-impl PointAnchored for SignEntry {
-    const ASSOC: Assoc = Assoc::After;
-    fn set_pos(&mut self, pos: CharOffset) {
-        self.pos = pos;
+/// A kind anchored on a whole line: signs, virtual lines, EOL text and line
+/// backgrounds. Drives [`SourceStore::remap_lines`].
+pub trait LineAnchored: Anchored<Anchor = ContentLine> {
+    fn set_line(&mut self, line: ContentLine);
+}
+
+impl LineAnchored for SignEntry {
+    fn set_line(&mut self, line: ContentLine) {
+        self.line = line;
     }
 }
 
-impl PointAnchored for VirtualLineEntry {
-    const ASSOC: Assoc = Assoc::After;
-    fn set_pos(&mut self, pos: CharOffset) {
-        self.pos = pos;
+impl LineAnchored for VirtualLineEntry {
+    fn set_line(&mut self, line: ContentLine) {
+        self.line = line;
     }
 }
 
-impl PointAnchored for EolTextEntry {
-    const ASSOC: Assoc = Assoc::After;
-    fn set_pos(&mut self, pos: CharOffset) {
-        self.pos = pos;
+impl LineAnchored for EolTextEntry {
+    fn set_line(&mut self, line: ContentLine) {
+        self.line = line;
     }
 }
 
-impl PointAnchored for LineBgEntry {
-    const ASSOC: Assoc = Assoc::After;
-    fn set_pos(&mut self, pos: CharOffset) {
-        self.pos = pos;
+impl LineAnchored for LineBgEntry {
+    fn set_line(&mut self, line: ContentLine) {
+        self.line = line;
     }
 }
 
-/// The one kind remapped as a range rather than a point (see
-/// `PointAnchored`'s doc). Drives [`SourceStore::remap_ranges`]' batch
-/// `ChangeSet::map_ranges` call. `Positioned::pos()` supplies the range's
-/// start; this supplies the end.
-pub trait RangeAnchored: Positioned {
+/// A kind anchored on a char range: extra highlights, and `hume-editor`'s
+/// diagnostics. [`Anchored::anchor`] supplies the range's start; this
+/// supplies the end. Drives [`SourceStore::remap_ranges`].
+pub trait RangeAnchored: Anchored<Anchor = CharOffset> {
     fn end(&self) -> CharOffset;
     fn set_range(&mut self, range: ExclusiveRange<CharOffset>);
 }
@@ -347,34 +329,34 @@ impl<K, T> SourceStore<K, T> {
     }
 }
 
-impl<K, T: Positioned> SourceStore<K, T> {
-    /// Every source's entries for `bid` whose `pos` falls in `range`,
-    /// grouped (not flattened): the point-anchored counterpart to
+impl<K, T: Anchored> SourceStore<K, T> {
+    /// Every source's entries for `bid` whose anchor falls in `range`,
+    /// grouped (not flattened): the anchored counterpart to
     /// [`Self::groups_for_buffer`], and [`Self::in_range`]'s primitive.
     /// [`DecorationStores::signs_in_range`] builds directly on this instead
     /// of `in_range`: it needs each source's *name* once per group (to
     /// resolve that source's registered slot), not once per entry.
     ///
-    /// Each source's slice is `pos`-sorted (`set`), so both bounds come from
-    /// a binary search, so a caller filtering a viewport out of a buffer-wide
-    /// store pays for the entries it keeps, not for every entry the servers
-    /// published. Point semantics only: bounds both ends by `pos()`, so a
+    /// Each source's slice is anchor-sorted (`set`), so both bounds come
+    /// from a binary search, so a caller filtering a viewport out of a
+    /// buffer-wide store pays for the entries it keeps, not for every entry
+    /// the servers published. Bounds both ends by the anchor, so a
     /// range-anchored kind whose span can start before `range` (extra
     /// highlights; `DiagnosticsStore::for_range_unsorted`, which prunes only
     /// the upper bound for exactly this reason) must not build on this.
     pub(in crate::decorations) fn groups_in_range(
         &self,
         bid: BufferId,
-        range: ExclusiveRange<CharOffset>,
+        range: ExclusiveRange<T::Anchor>,
     ) -> impl Iterator<Item = (&K, &[T])> {
         self.groups_for_buffer(bid).map(move |(source, es)| {
-            let lo = es.partition_point(|e| e.pos() < range.start);
-            let hi = es.partition_point(|e| e.pos() < range.end);
+            let lo = es.partition_point(|e| e.anchor() < range.start);
+            let hi = es.partition_point(|e| e.anchor() < range.end);
             (source, &es[lo..hi])
         })
     }
 
-    /// Every source's entries for `bid` whose `pos` falls in `range`,
+    /// Every source's entries for `bid` whose anchor falls in `range`,
     /// flattened, source discarded. [`Self::groups_in_range`] is the one to
     /// build on instead when a caller needs the source name (e.g.
     /// [`DecorationStores::signs_in_range`], to resolve a group's registered
@@ -382,21 +364,21 @@ impl<K, T: Positioned> SourceStore<K, T> {
     pub(in crate::decorations) fn in_range(
         &self,
         bid: BufferId,
-        range: ExclusiveRange<CharOffset>,
+        range: ExclusiveRange<T::Anchor>,
     ) -> impl Iterator<Item = &T> {
         self.groups_in_range(bid, range)
             .flat_map(|(_, es)| es.iter())
     }
 }
 
-impl<K: Ord, T: Positioned> SourceStore<K, T> {
-    /// Replaces `source`'s entries for `bid` wholesale, sorted by `pos` (see
-    /// `Positioned`'s doc). `slot` itself stays sorted ascending by `source`
+impl<K: Ord, T: Anchored> SourceStore<K, T> {
+    /// Replaces `source`'s entries for `bid` wholesale, sorted by anchor (see
+    /// `Anchored`'s doc). `slot` itself stays sorted ascending by `source`
     /// (a binary-search insert rather than find-or-push), so
     /// `for_buffer`'s iteration order is deterministic
     /// instead of "whichever source called `set` first this session".
     pub fn set(&mut self, source: K, bid: BufferId, mut entries: Vec<T>) {
-        entries.sort_by_key(Positioned::pos);
+        entries.sort_by_key(Anchored::anchor);
         let slot = self.by_buffer.entry(bid).or_default();
         match slot.binary_search_by(|(s, _)| s.cmp(&source)) {
             Ok(idx) => slot[idx].1 = entries,
@@ -407,8 +389,10 @@ impl<K: Ord, T: Positioned> SourceStore<K, T> {
 
 impl<K, T: PointAnchored> SourceStore<K, T> {
     /// Remaps every point-anchored entry for `bid` through `cs`, one
-    /// `PosMapCursor` pass per source, using `T::ASSOC`. Drops an entry whose
-    /// anchor character a deletion consumed (same policy `remap_ranges`
+    /// `PosMapCursor` pass per source. An insertion at the anchor char stays
+    /// after the entry (`Assoc::Before`): the entry sticks to the char it
+    /// annotates rather than swallowing newly typed text. Drops an entry
+    /// whose anchor character a deletion consumed (same policy `remap_ranges`
     /// already applies to a range a deletion collapses) rather than parking
     /// the decoration on whatever text moved into the gap (a deleted line's inlay
     /// hint would reappear, re-anchored to the deletion point). Returns whether `bid` had any entry to remap
@@ -423,11 +407,43 @@ impl<K, T: PointAnchored> SourceStore<K, T> {
             touched = true;
             let mut cursor = PosMapCursor::new(cs.ops());
             entries.retain_mut(|entry| {
-                let mapped = cursor.map_anchor(entry.pos(), T::ASSOC);
+                let mapped = cursor.map_anchor(entry.anchor(), Assoc::Before);
                 if mapped.anchor_deleted {
                     return false;
                 }
                 entry.set_pos(mapped.pos);
+                true
+            });
+        }
+        touched
+    }
+}
+
+impl<K, T: LineAnchored> SourceStore<K, T> {
+    /// Remaps every line-anchored entry for `bid` through `change`. A line is
+    /// its `\n`: each content line owns exactly one, so an entry follows
+    /// its line's break and is dropped only when a deletion consumes it.
+    /// Any edit inside the line keeps the entry; joining a line with the
+    /// next drops this line's entries and keeps the next one's, on the
+    /// joined line. Text inserted at the break stays after it
+    /// (`Assoc::Before`), so typing at the line's end or opening a line
+    /// below leaves the entry on its line. Returns whether `bid` had any
+    /// entry to remap, as `remap_points` does.
+    fn remap_lines(&mut self, bid: BufferId, change: &TextChange) -> bool {
+        let mut touched = false;
+        for entries in self.sources_mut(bid) {
+            if entries.is_empty() {
+                continue;
+            }
+            touched = true;
+            let mut cursor = PosMapCursor::new(change.changes().ops());
+            entries.retain_mut(|entry| {
+                let brk = change.before().lines().newline(entry.anchor());
+                let mapped = cursor.map_anchor(brk.offset(), Assoc::Before);
+                if mapped.anchor_deleted {
+                    return false;
+                }
+                entry.set_line(change.after().char_to_line(mapped.pos));
                 true
             });
         }
@@ -452,7 +468,7 @@ impl<K, T: RangeAnchored> SourceStore<K, T> {
             touched = true;
             let mut ranges: Vec<ExclusiveRange<CharOffset>> = spans
                 .iter()
-                .map(|s| ExclusiveRange::new(s.pos(), s.end()))
+                .map(|s| ExclusiveRange::new(s.anchor(), s.end()))
                 .collect();
             cs.map_ranges(&mut ranges);
             debug_assert!(
@@ -606,7 +622,7 @@ impl DecorationStores {
         self.signs.entries_for(source, bid)
     }
 
-    /// Signs for `bid` anchored inside `range`, paired with their source's
+    /// Signs for `bid` on a line in `lines`, paired with their source's
     /// resolved gutter slot: the sign bridge's view, which only ever wants
     /// the viewport's worth and never needs the source name itself (unlike
     /// EOL text/line backgrounds, signs never contend for one line's cell
@@ -621,10 +637,10 @@ impl DecorationStores {
     pub fn signs_in_range(
         &self,
         bid: BufferId,
-        range: ExclusiveRange<CharOffset>,
+        lines: ExclusiveRange<ContentLine>,
     ) -> impl Iterator<Item = (usize, &SignEntry)> {
         self.signs
-            .groups_in_range(bid, range)
+            .groups_in_range(bid, lines)
             .filter(|(_, es)| !es.is_empty())
             .flat_map(move |(source, es)| {
                 let slot = self
@@ -722,17 +738,17 @@ impl DecorationStores {
         self.eol_text.for_buffer(bid).map(|(s, e)| (s.as_str(), e))
     }
 
-    /// EOL text entries for `bid` anchored inside `range`, paired with their
+    /// EOL text entries for `bid` on a line in `lines`, paired with their
     /// source name, sources in ascending name order. The render write side
     /// needs the name for a deterministic tie-break when a remap collapses
     /// two sources' entries onto the same line.
     pub fn eol_text_in_range(
         &self,
         bid: BufferId,
-        range: ExclusiveRange<CharOffset>,
+        lines: ExclusiveRange<ContentLine>,
     ) -> impl Iterator<Item = (&str, &EolTextEntry)> {
         self.eol_text
-            .groups_in_range(bid, range)
+            .groups_in_range(bid, lines)
             .flat_map(|(s, es)| es.iter().map(move |e| (s.as_str(), e)))
     }
 
@@ -752,17 +768,17 @@ impl DecorationStores {
         self.line_backgrounds.entries_for(source, bid)
     }
 
-    /// Line-background entries for `bid` anchored inside `range`, paired
+    /// Line-background entries for `bid` on a line in `lines`, paired
     /// with their source name, sources in ascending name order. The render
     /// write side needs the name for a deterministic tie-break when two
     /// sources tint the same line.
     pub fn line_backgrounds_in_range(
         &self,
         bid: BufferId,
-        range: ExclusiveRange<CharOffset>,
+        lines: ExclusiveRange<ContentLine>,
     ) -> impl Iterator<Item = (&str, &LineBgEntry)> {
         self.line_backgrounds
-            .groups_in_range(bid, range)
+            .groups_in_range(bid, lines)
             .flat_map(|(s, es)| es.iter().map(move |e| (s.as_str(), e)))
     }
 
@@ -875,7 +891,7 @@ impl DecorationStores {
         self.touch(bid);
     }
 
-    /// Remaps `bid`'s decorations, of every kind, through `cs`, from the same
+    /// Remaps `bid`'s decorations, of every kind, through `change`, from the same
     /// chokepoint as the diagnostics remap (`hume-editor`'s
     /// `PositionStores::carry`), so decoration positions never drift out of
     /// sync with the diagnostics they're often paired with. Touches `bid`'s
@@ -891,7 +907,7 @@ impl DecorationStores {
     /// Exhaustive destructuring, no `..`: a new decoration kind fails to
     /// compile here until it is listed, so a kind can never silently skip
     /// the remap chokepoint and drift out of sync with its buffer's edits.
-    pub fn remap_through(&mut self, bid: BufferId, cs: &ChangeSet) {
+    pub fn remap_through(&mut self, bid: BufferId, change: &TextChange) {
         let Self {
             inlay_hints,
             signs,
@@ -907,12 +923,13 @@ impl DecorationStores {
         // stamp is conditional. The array literal's eager evaluation (not
         // the iterator adapters below) is what guarantees none of these six
         // calls get short-circuited away.
+        let cs = change.changes();
         let touched = [
             inlay_hints.remap_points(bid, cs),
-            signs.remap_points(bid, cs),
-            virtual_lines.remap_points(bid, cs),
-            eol_text.remap_points(bid, cs),
-            line_backgrounds.remap_points(bid, cs),
+            signs.remap_lines(bid, change),
+            virtual_lines.remap_lines(bid, change),
+            eol_text.remap_lines(bid, change),
+            line_backgrounds.remap_lines(bid, change),
             extra_highlights.remap_ranges(bid, cs),
         ]
         .into_iter()

@@ -239,6 +239,8 @@ Not LSP-specific (any plugin can populate these), but LSP diagnostics and inlay 
 
 `diagnostics-for-buffer` and the hook that feeds it are shown in [Hooks](writing-plugins.md#hooks). A sign source's gutter slot is reserved the first time it registers for a buffer, even before placing any sign, which is what keeps the gutter's width stable as signs come and go; there's no `unregister-sign-source!`, and re-registering the same `name` for the same buffer just replaces its priority. Line backgrounds have no priority: same-line entries from different sources break ties by source name instead.
 
+Signs, virtual lines, end-of-line text and line backgrounds stay on their line while you edit it, and move with it when lines are added or removed above. They go away when their line is deleted, or when it is joined onto the line above or below: then only the decorations of the line whose end survives stay, on the joined line.
+
 ## Completion
 
 A plugin registers a completion *source*; the editor drives it. `Ctrl-Space` in Insert mode (the built-in `completion-trigger` command) asks every source registered for the buffer, a registered trigger character asks the source registered under its name, the first `Tab` on a `:` command line asks the source that command declared, and the first `Tab` on the `|` prompt asks the source for the shell the `shell` option runs. Each answer is ranked with every other source's, in one menu, against that source's own token; no source renders its own UI.

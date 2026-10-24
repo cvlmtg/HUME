@@ -163,7 +163,7 @@ impl<'a> PositionStores<'a> {
             snapshot.carry(buffer, change);
         }
         self.buffers.carry(buffer, change);
-        self.decorations.remap_through(buffer, change.changes());
+        self.decorations.remap_through(buffer, change);
     }
 
     /// Reset every position stored for `buffer`, whose text was replaced

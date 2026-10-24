@@ -27,10 +27,10 @@ mod virtual_lines;
 // types are this crate's most-referenced surface (`DecorationStores` alone
 // has ~20 external call sites), so a caller shouldn't have to know the
 // `decorations` submodule exists to spell them. `decorations` itself stays
-// `pub` (not folded away) since `PointAnchored`/`SourceStore`'s `K`/`T`
+// `pub` (not folded away) since `Anchored`/`SourceStore`'s `K`/`T`
 // bounds and a few internal helpers are easiest to browse in place.
 pub use decorations::{
-    DecorationStores, EolTextEntry, ExtraHighlightEntry, InlayHintEntry, LineBgEntry, Positioned,
+    Anchored, DecorationStores, EolTextEntry, ExtraHighlightEntry, InlayHintEntry, LineBgEntry,
     RangeAnchored, SignEntry, SourceStore, VirtualLineEntry,
 };
 

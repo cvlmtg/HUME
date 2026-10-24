@@ -30,7 +30,7 @@ fn full_message_reaches_the_render_provider_untruncated() {
         "lsp".to_string(),
         bid,
         vec![EolTextEntry {
-            pos: co(0),
+            line: hume_rope::line::ContentLine::new(0),
             text: message.to_string(),
             scope,
             hide_on_insert_line: false,
@@ -74,13 +74,13 @@ fn two_entries_from_one_source_on_the_same_line_collapse_to_the_last_one() {
         bid,
         vec![
             EolTextEntry {
-                pos: co(0),
+                line: hume_rope::line::ContentLine::new(0),
                 text: "first".to_string(),
                 scope: error_scope,
                 hide_on_insert_line: false,
             },
             EolTextEntry {
-                pos: co(0),
+                line: hume_rope::line::ContentLine::new(0),
                 text: "second".to_string(),
                 scope: warning_scope,
                 hide_on_insert_line: false,
@@ -126,7 +126,7 @@ fn two_sources_on_the_same_line_break_ties_alphabetically_first() {
         "z-plugin".to_string(),
         bid,
         vec![EolTextEntry {
-            pos: co(0),
+            line: hume_rope::line::ContentLine::new(0),
             text: "from-z".to_string(),
             scope,
             hide_on_insert_line: false,
@@ -136,7 +136,7 @@ fn two_sources_on_the_same_line_break_ties_alphabetically_first() {
         "a-plugin".to_string(),
         bid,
         vec![EolTextEntry {
-            pos: co(0),
+            line: hume_rope::line::ContentLine::new(0),
             text: "from-a".to_string(),
             scope,
             hide_on_insert_line: false,
@@ -174,12 +174,12 @@ fn two_line_editor_with_eol(
     ed.feed_key(key('g'));
     let bid = ed.focused_buffer_id();
     let scope = ed.view.registry.intern("diagnostic.error");
-    for &(source, pos, text, hide) in entries {
+    for &(source, line, text, hide) in entries {
         ed.state.config.decorations.set_eol_text(
             source.to_string(),
             bid,
             vec![EolTextEntry {
-                pos: co(pos),
+                line: hume_rope::line::ContentLine::new(line),
                 text: text.to_string(),
                 scope,
                 hide_on_insert_line: hide,
@@ -205,7 +205,7 @@ fn eol_lines(ed: &mut Editor, pid: hume_engine::pipeline::PaneId) -> Vec<usize> 
 #[test]
 fn flagged_eol_text_is_dropped_on_the_insert_cursor_line_only() {
     let (mut ed, pid) =
-        two_line_editor_with_eol(&[("lsp", 0, "e0", true), ("lsp2", 4, "e1", true)]);
+        two_line_editor_with_eol(&[("lsp", 0, "e0", true), ("lsp2", 1, "e1", true)]);
     assert_eq!(
         eol_lines(&mut ed, pid),
         vec![0, 1],

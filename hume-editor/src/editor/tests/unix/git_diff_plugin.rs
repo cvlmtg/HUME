@@ -124,11 +124,9 @@ fn settle_until_fetch_in_flight(ed: &mut Editor) {
     });
 }
 
-/// `signs_for(SOURCE, bid)`, remapped from char-offset `pos` back to a line
-/// number and sorted by line: the shape a fixture's hand-derived
+/// `signs_for(SOURCE, bid)` as line numbers, sorted by line: the shape a fixture's hand-derived
 /// expectation can be written against directly.
 fn signs(ed: &Editor, bid: BufferId) -> Vec<(usize, String, String)> {
-    let text = ed.state.buffers.get(bid).text();
     let mut v: Vec<_> = ed
         .state
         .config
@@ -137,7 +135,7 @@ fn signs(ed: &Editor, bid: BufferId) -> Vec<(usize, String, String)> {
         .iter()
         .map(|e| {
             (
-                text.char_to_line(e.pos).index(),
+                e.line.index(),
                 e.text.to_string(),
                 scope_name(ed, e.scope).to_string(),
             )
@@ -153,19 +151,13 @@ fn line_bgs(ed: &Editor, bid: BufferId) -> Vec<(usize, String)> {
 }
 
 fn line_bgs_in(ed: &Editor, bid: BufferId, source: &str) -> Vec<(usize, String)> {
-    let text = ed.state.buffers.get(bid).text();
     let mut v: Vec<_> = ed
         .state
         .config
         .decorations
         .line_backgrounds_for(source, bid)
         .iter()
-        .map(|e| {
-            (
-                text.char_to_line(e.pos).index(),
-                scope_name(ed, e.scope).to_string(),
-            )
-        })
+        .map(|e| (e.line.index(), scope_name(ed, e.scope).to_string()))
         .collect();
     v.sort_by_key(|(line, _)| *line);
     v
@@ -191,7 +183,6 @@ fn vlines(ed: &Editor, bid: BufferId) -> Vec<VLine> {
 }
 
 fn vlines_in(ed: &Editor, bid: BufferId, source: &str) -> Vec<VLine> {
-    let text = ed.state.buffers.get(bid).text();
     let mut v: Vec<_> = ed
         .state
         .config
@@ -200,7 +191,7 @@ fn vlines_in(ed: &Editor, bid: BufferId, source: &str) -> Vec<VLine> {
         .iter()
         .map(|e| {
             (
-                text.char_to_line(e.pos).index(),
+                e.line.index(),
                 e.before,
                 e.text.clone(),
                 Some(scope_name(ed, e.scope).to_string()),

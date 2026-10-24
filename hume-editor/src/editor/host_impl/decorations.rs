@@ -79,7 +79,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
             .into_iter()
             .map(|(line, sign_text, scope)| {
                 Ok(hume_decorations::SignEntry {
-                    pos: line_start_offset(text, line, "set-signs!")?,
+                    line: content_line(text, line, "set-signs!")?,
                     text: sign_text.into(),
                     scope: self.view.registry.intern_runtime(&scope),
                 })
@@ -102,7 +102,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         let entries = lines
             .into_iter()
             .map(|spec| {
-                let pos = line_start_offset(text, spec.line, "set-virtual-lines!")?;
+                let line = content_line(text, spec.line, "set-virtual-lines!")?;
                 let scope = match spec.scope.as_deref() {
                     Some(name) => self.view.registry.intern_runtime(name),
                     None => self
@@ -121,7 +121,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
                     })
                     .collect();
                 Ok(hume_decorations::VirtualLineEntry {
-                    pos,
+                    line,
                     text: spec.text,
                     before: spec.before,
                     scope,
@@ -180,7 +180,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
             .into_iter()
             .map(|(line, eol_text, scope)| {
                 Ok(hume_decorations::EolTextEntry {
-                    pos: line_start_offset(text, line, "set-eol-text!")?,
+                    line: content_line(text, line, "set-eol-text!")?,
                     text: eol_text,
                     scope: self.view.registry.intern_runtime(&scope),
                     hide_on_insert_line,
@@ -205,7 +205,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
             .into_iter()
             .map(|(line, scope)| {
                 Ok(hume_decorations::LineBgEntry {
-                    pos: line_start_offset(text, line, "set-line-backgrounds!")?,
+                    line: content_line(text, line, "set-line-backgrounds!")?,
                     scope: self.view.registry.intern_runtime(&scope),
                 })
             })
@@ -338,29 +338,26 @@ fn buffer_text<'s>(
         .ok_or_else(|| format!("{builtin}: unknown buffer"))
 }
 
-/// `line`'s line-start char offset, or `Err` naming `builtin` if `line` is
-/// out of range. Signs/virtual-lines/EOL-text/line-backgrounds keep their
-/// Steel-facing `line` unit. This is the one place (already holding the
-/// rope) where that converts to the internal char-offset position model.
+/// `line` as a content line of `text`, or `Err` naming `builtin` if it is
+/// out of range: the one place a line-anchored decoration's Steel-facing
+/// line number becomes the line it is stored on.
 ///
 /// Rejects the buffer's last *ropey* line, not just any out-of-range line:
 /// the buffer invariant (every buffer ends with a structural `\n`) means
 /// that last line is always the empty phantom line the trailing `\n`
-/// produces: zero-width, at `pos == len_chars()`, nothing to decorate.
-/// `DisplayLineMap::last_line()` never lays it out, so admitting it would hand a
-/// caller a position no render pass can resolve to a real line.
-pub(super) fn line_start_offset(
+/// produces: zero-width, nothing to decorate, and no `\n` of its own to
+/// follow through edits. `DisplayLineMap::last_line()` never lays it out.
+pub(super) fn content_line(
     text: &hume_editing::text::BufferText,
     line: usize,
     builtin: &str,
-) -> Result<CharOffset, String> {
-    let Some(line) = hume_rope::line::ContentLine::checked(text.rope(), line) else {
-        return Err(format!(
+) -> Result<hume_rope::line::ContentLine, String> {
+    hume_rope::line::ContentLine::checked(text.rope(), line).ok_or_else(|| {
+        format!(
             "{builtin}: line {line} is out of range (buffer has {} content lines)",
             text.content_line_count().get()
-        ));
-    };
-    Ok(text.line_to_char(line.into()))
+        )
+    })
 }
 
 /// `pos` must address a real char in `text` (`<` its length), `Err` naming
@@ -375,7 +372,7 @@ pub(super) fn line_start_offset(
 /// (`decoration_providers.rs`'s `update_inlay_hint_providers`) anchors an
 /// 'after' hint at `pos + 1`, so a hint on the buffer's last content char
 /// (its trailing structural `\n`) would resolve to the trailing phantom
-/// line, the same unresolvable position `line_start_offset` already refuses
+/// line, the same unresolvable position `content_line` already refuses
 /// for the line-anchored kinds, but reachable here through a char offset
 /// instead of a line number, so that check alone doesn't catch it.
 pub(super) fn validate_offset(

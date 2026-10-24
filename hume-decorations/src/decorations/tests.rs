@@ -1,10 +1,49 @@
 use super::*;
+use hume_editing::changeset::ChangeSetBuilder;
+use hume_editing::text::BufferText;
 use hume_engine::pipeline::EngineView;
 use hume_engine::theme::Theme;
 use hume_rope::offset::CharOffset;
 
 fn co(n: usize) -> CharOffset {
     CharOffset::new(n)
+}
+
+fn cl(n: usize) -> ContentLine {
+    ContentLine::new(n)
+}
+
+fn lines(start: usize, end: usize) -> ExclusiveRange<ContentLine> {
+    ExclusiveRange::new(cl(start), cl(end))
+}
+
+/// Remaps `bid`'s decorations in `store` through the change `build` records
+/// against `before`.
+fn remap(
+    store: &mut DecorationStores,
+    bid: BufferId,
+    before: &str,
+    build: impl FnOnce(&mut ChangeSetBuilder),
+) {
+    let before = BufferText::from(before);
+    let mut b = ChangeSetBuilder::new(co(before.len_chars()));
+    build(&mut b);
+    let cs = b.finish();
+    let after = cs.apply(&before).expect("the change starts from `before`");
+    store.remap_through(bid, &TextChange::new(&before, &after, &cs));
+}
+
+/// The lines `source`'s signs sit on in `bid`, with their text.
+fn sign_lines<'a>(
+    store: &'a DecorationStores,
+    source: &str,
+    bid: BufferId,
+) -> Vec<(usize, &'a str)> {
+    store
+        .signs_for(source, bid)
+        .iter()
+        .map(|s| (s.line.index(), &*s.text))
+        .collect()
 }
 
 /// Two guaranteed-distinct `BufferId`s. See the identical helper in
@@ -17,11 +56,11 @@ fn make_two_bids() -> (BufferId, BufferId) {
 }
 
 /// None of these tests assert on an entry's resolved scope, only on its
-/// text/position/source, so a bare `ScopeId` (no registry needed) stands
+/// text/line/source, so a bare `ScopeId` (no registry needed) stands
 /// in for whatever `host_impl.rs` would have interned.
-fn sign(pos: usize, text: &str) -> SignEntry {
+fn sign(line: usize, text: &str) -> SignEntry {
     SignEntry {
-        pos: co(pos),
+        line: cl(line),
         text: text.into(),
         scope: ScopeId(0),
     }
@@ -31,9 +70,9 @@ fn sign(pos: usize, text: &str) -> SignEntry {
 /// (`SourceStore::for_buffer`'s ordering guarantee only needs one production
 /// `*_for_buffer` reader to exercise it), so those two tests go through
 /// `eol_text_for_buffer` instead.
-fn eol(pos: usize, text: &str) -> EolTextEntry {
+fn eol(line: usize, text: &str) -> EolTextEntry {
     EolTextEntry {
-        pos: co(pos),
+        line: cl(line),
         text: text.into(),
         scope: ScopeId(0),
         hide_on_insert_line: false,
@@ -224,8 +263,8 @@ fn remove_buffer_clears_its_sign_source_registrations() {
 }
 
 /// `signs_in_range` resolves each entry's source to its registered slot
-/// itself, once per source group, and prunes to the given char range the
-/// same way `in_range` does.
+/// itself, once per source group, and prunes to the given lines the same
+/// way `in_range` does.
 #[test]
 fn signs_in_range_yields_each_entrys_resolved_slot_filtered_to_the_range() {
     let mut store = DecorationStores::default();
@@ -236,7 +275,7 @@ fn signs_in_range_yields_each_entrys_resolved_slot_filtered_to_the_range() {
     store.set_signs("linter".to_string(), a, vec![sign(0, "!")]);
 
     let mut got: Vec<_> = store
-        .signs_in_range(a, hume_rope::offset::ExclusiveRange::new(co(0), co(10)))
+        .signs_in_range(a, lines(0, 10))
         .map(|(slot, e)| (slot, &*e.text))
         .collect();
     got.sort();
@@ -244,13 +283,13 @@ fn signs_in_range_yields_each_entrys_resolved_slot_filtered_to_the_range() {
         got,
         vec![(0, "+"), (1, "!")],
         "vcs (priority 9) resolves to slot 0, linter (priority 3) to slot 1, \
-         and vcs's out-of-range entry at pos 20 must not appear"
+         and vcs's out-of-range entry on line 20 must not appear"
     );
 }
 
-fn virtual_line(pos: usize) -> VirtualLineEntry {
+fn virtual_line(line: usize) -> VirtualLineEntry {
     VirtualLineEntry {
-        pos: co(pos),
+        line: cl(line),
         text: "x".to_string(),
         before: false,
         scope: ScopeId(0),
@@ -301,20 +340,16 @@ fn remove_buffer_bumps_generation() {
 /// with nothing to invalidate.
 #[test]
 fn remap_through_only_touches_a_buffer_that_has_decorations() {
-    use hume_editing::changeset::ChangeSetBuilder;
-
     let mut store = DecorationStores::default();
     let (a, b) = make_two_bids(); // a: has a sign; b: has nothing at all.
     store.set_signs("linter".to_string(), a, vec![sign(0, "x")]);
     let a_generation_after_set = store.generation(a);
     let b_generation_before = store.generation(b);
 
-    // An identity changeset: its content doesn't matter to this test, only
+    // An identity change: its content doesn't matter to this test, only
     // that `remap_through` is called with *something* to remap through.
-    let cs = { ChangeSetBuilder::new(co(5)).finish() };
-
-    store.remap_through(a, &cs);
-    store.remap_through(b, &cs);
+    remap(&mut store, a, "abcd\n", |_| {});
+    remap(&mut store, b, "abcd\n", |_| {});
 
     assert_ne!(
         store.generation(a),
@@ -339,50 +374,103 @@ fn inlay(pos: usize, text: &str, before: bool) -> InlayHintEntry {
     }
 }
 
-/// A deletion that swallows a point-anchored entry's whole anchor character
-/// must drop the entry, not park it on whatever text moved into the gap.
-/// Example: `x` selects a line including its `\n` and `d` deletes it; the
-/// line's inlay hint must go with it. A survivor past the deletion still
-/// shifts.
+/// Deleting a whole line drops what is anchored on it: an inlay hint inside
+/// it and its sign. A sign on a later line follows that line up.
 #[test]
-fn remap_points_drops_an_entry_whose_anchor_was_deleted() {
-    use hume_editing::changeset::ChangeSetBuilder;
-
+fn deleting_a_line_drops_its_decorations_and_shifts_the_later_ones() {
     let mut store = DecorationStores::default();
     let (a, _b) = make_two_bids();
-    // "foo\nbar\nbaz\n" (12 chars): a hint anchored inside "bar\n" (deleted
-    // below) and a sign at the start of "baz" (pos 8), which must survive
-    // and shift left by 4 once "bar\n" is gone.
     store.set_inlay_hints(
         "lsp-inlay-hints".to_string(),
         a,
         vec![inlay(5, ": i32", false)],
     );
-    store.set_signs("linter".to_string(), a, vec![sign(8, "!")]);
+    store.set_signs("linter".to_string(), a, vec![sign(1, "b"), sign(2, "c")]);
 
-    // Retain(4) "foo\n", Delete(4) "bar\n", Retain(4) "baz\n".
-    let mut b = ChangeSetBuilder::new(co(12));
-    b.retain_to(CharOffset::new(4));
-    b.delete_to(CharOffset::new(8));
-    let cs = b.finish();
+    // "foo\nbar\nbaz\n": delete "bar\n".
+    remap(&mut store, a, "foo\nbar\nbaz\n", |b| {
+        b.retain_to(co(4)).delete_to(co(8));
+    });
 
-    store.remap_through(a, &cs);
+    assert!(store.inlay_hints_for_buffer(a).next().is_none());
+    assert_eq!(sign_lines(&store, "linter", a), vec![(1, "c")]);
+}
 
-    assert!(
-        store.inlay_hints_for_buffer(a).next().is_none(),
-        "a hint anchored inside the deleted line must be dropped, not \
-         re-anchored to whatever text now sits at the deletion point"
-    );
-    let signs: Vec<_> = store
-        .signs_for("linter", a)
-        .iter()
-        .map(|s| (s.pos, &*s.text))
-        .collect();
-    assert_eq!(
-        signs,
-        vec![(co(4), "!")],
-        "a sign past the deletion still remaps, just shifted"
-    );
+#[test]
+fn deleting_a_lines_first_char_keeps_its_sign() {
+    let mut store = DecorationStores::default();
+    let (a, _b) = make_two_bids();
+    store.set_signs("linter".to_string(), a, vec![sign(1, "!")]);
+
+    // "foo\nbar\n": delete the "b".
+    remap(&mut store, a, "foo\nbar\n", |b| {
+        b.retain_to(co(4)).delete_to(co(5));
+    });
+
+    assert_eq!(sign_lines(&store, "linter", a), vec![(1, "!")]);
+}
+
+#[test]
+fn removing_a_lines_whole_indent_keeps_its_sign() {
+    let mut store = DecorationStores::default();
+    let (a, _b) = make_two_bids();
+    store.set_signs("linter".to_string(), a, vec![sign(1, "!")]);
+
+    // "foo\n  bar\n": delete the two-space indent.
+    remap(&mut store, a, "foo\n  bar\n", |b| {
+        b.retain_to(co(4)).delete_to(co(6));
+    });
+
+    assert_eq!(sign_lines(&store, "linter", a), vec![(1, "!")]);
+}
+
+/// Joining two lines consumes the first one's `\n`: its sign goes, and the
+/// second one's sign stays on the joined line.
+#[test]
+fn joining_two_lines_keeps_only_the_second_lines_sign() {
+    let mut store = DecorationStores::default();
+    let (a, _b) = make_two_bids();
+    store.set_signs("linter".to_string(), a, vec![sign(0, "a"), sign(1, "b")]);
+
+    // "foo\nbar\n": replace the first "\n" with a space.
+    remap(&mut store, a, "foo\nbar\n", |b| {
+        b.retain_to(co(3)).delete_to(co(4)).insert(" ");
+    });
+
+    assert_eq!(sign_lines(&store, "linter", a), vec![(0, "b")]);
+}
+
+/// Text inserted at a line's `\n`, here a new line opened below it, stays
+/// after the line: its sign keeps its line, and the next line's sign moves
+/// down with it.
+#[test]
+fn opening_a_line_below_keeps_the_sign_on_its_line() {
+    let mut store = DecorationStores::default();
+    let (a, _b) = make_two_bids();
+    store.set_signs("linter".to_string(), a, vec![sign(0, "a"), sign(1, "b")]);
+
+    // "foo\nbar\n": insert "\nnew" at the first "\n".
+    remap(&mut store, a, "foo\nbar\n", |b| {
+        b.retain_to(co(3)).insert("\nnew");
+    });
+
+    assert_eq!(sign_lines(&store, "linter", a), vec![(0, "a"), (2, "b")]);
+}
+
+/// A line opened above moves the decorated line's `\n`, so its sign follows
+/// the content down rather than staying on the new line.
+#[test]
+fn opening_a_line_above_moves_the_sign_with_its_line() {
+    let mut store = DecorationStores::default();
+    let (a, _b) = make_two_bids();
+    store.set_signs("linter".to_string(), a, vec![sign(1, "b")]);
+
+    // "foo\nbar\n": insert "\n" at the start of "bar".
+    remap(&mut store, a, "foo\nbar\n", |b| {
+        b.retain_to(co(4)).insert("\n");
+    });
+
+    assert_eq!(sign_lines(&store, "linter", a), vec![(2, "b")]);
 }
 
 #[test]
@@ -415,9 +503,9 @@ fn removing_a_buffers_last_source_forgets_the_buffer() {
     assert_eq!(store.buffers().count(), 0);
 }
 
-fn line_bg(pos: usize) -> LineBgEntry {
+fn line_bg(line: usize) -> LineBgEntry {
     LineBgEntry {
-        pos: co(pos),
+        line: cl(line),
         scope: ScopeId(0),
     }
 }
@@ -443,7 +531,7 @@ fn eol_text_in_range_keeps_in_range_entries_in_source_order() {
     store.set_eol_text("alpha".to_string(), b, vec![eol(4, "b4")]);
 
     let got: Vec<(&str, &str)> = store
-        .eol_text_in_range(a, hume_rope::offset::ExclusiveRange::new(co(4), co(10)))
+        .eol_text_in_range(a, lines(4, 10))
         .map(|(s, e)| (s, e.text.as_str()))
         .collect();
     assert_eq!(got, vec![("alpha", "a8"), ("zeta", "z4")]);
@@ -458,8 +546,8 @@ fn line_backgrounds_in_range_keeps_in_range_entries_in_source_order() {
     store.set_line_backgrounds("alpha".to_string(), b, vec![line_bg(4)]);
 
     let got: Vec<(&str, usize)> = store
-        .line_backgrounds_in_range(a, hume_rope::offset::ExclusiveRange::new(co(4), co(10)))
-        .map(|(s, e)| (s, e.pos.index()))
+        .line_backgrounds_in_range(a, lines(4, 10))
+        .map(|(s, e)| (s, e.line.index()))
         .collect();
     assert_eq!(got, vec![("alpha", 8), ("zeta", 4)]);
 }

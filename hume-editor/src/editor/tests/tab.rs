@@ -161,7 +161,7 @@ fn a_hidden_tab_s_pane_keeps_its_decoration_state_until_its_tab_is_focused() {
         "test".to_string(),
         bid,
         vec![hume_decorations::VirtualLineEntry {
-            pos: co(0),
+            line: hume_rope::line::ContentLine::new(0),
             text: "x".to_string(),
             before: false,
             scope,

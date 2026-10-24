@@ -609,20 +609,19 @@ fn lsp_stop_keeps_a_sign_where_a_preceding_edit_moved_it() {
     let (mut rig, _sid, bid, _uri) = plain_rig(&tmp, "aa\nbb\ncc\n");
     let ed = &mut rig.ed;
 
-    // "cc"'s line-start char offset in "aa\nbb\ncc\n" is 6.
     let scope = ed.view.registry.intern_runtime("x");
     ed.state.config.decorations.set_signs(
         "test".to_string(),
         bid,
         vec![hume_decorations::SignEntry {
-            pos: co(6),
+            line: hume_rope::line::ContentLine::new(2),
             text: "!".into(),
             scope,
         }],
     );
 
-    // Insert a new first line, shifting "cc" one line down, to a line-start
-    // char offset of 8. No drain: the change is still queued for the server
+    // Insert a new first line, shifting "cc" one line down, to line 3. No
+    // drain: the change is still queued for the server
     // when the stop runs.
     ed.feed_key(key('i'));
     ed.feed_key(key('X'));
@@ -639,8 +638,8 @@ fn lsp_stop_keeps_a_sign_where_a_preceding_edit_moved_it() {
     let signs = ed.state.config.decorations.signs_for("test", bid);
     assert_eq!(signs.len(), 1);
     assert_eq!(
-        signs[0].pos,
-        co(8),
+        signs[0].line,
+        hume_rope::line::ContentLine::new(3),
         "the sign must follow the edit through the stop, not stay anchored \
          at its pre-edit position"
     );

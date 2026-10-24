@@ -504,10 +504,7 @@ fn sign_remaps_through_a_line_inserted_above_it() {
     ed.scripting = Some(host);
     type_cmd(&mut ed, ":arm");
 
-    let sign_line = |ed: &Editor| {
-        let pos = ed.state.config.decorations.signs_for("linter", bid)[0].pos;
-        ed.state.buffers.get(bid).text().char_to_line(pos)
-    };
+    let sign_line = |ed: &Editor| ed.state.config.decorations.signs_for("linter", bid)[0].line;
     assert_eq!(
         sign_line(&ed),
         hume_rope::line::ContentLine::new(1),
@@ -548,25 +545,21 @@ fn virtual_line_and_eol_text_remap_through_a_line_inserted_above_them() {
     type_cmd(&mut ed, ":arm");
 
     let vline_line = |ed: &Editor| {
-        let pos = ed
-            .state
+        ed.state
             .config
             .decorations
             .virtual_lines_for("git-diff", bid)[0]
-            .pos;
-        ed.state.buffers.get(bid).text().char_to_line(pos)
+            .line
     };
     let eol_line = |ed: &Editor| {
-        let pos = ed
-            .state
+        ed.state
             .config
             .decorations
             .eol_text_for_buffer(bid)
             .next()
             .unwrap()
             .1
-            .pos;
-        ed.state.buffers.get(bid).text().char_to_line(pos)
+            .line
     };
     assert_eq!(
         vline_line(&ed),
@@ -596,11 +589,10 @@ fn virtual_line_and_eol_text_remap_through_a_line_inserted_above_them() {
     );
 }
 
-/// Line-anchored kinds remap with `Assoc::After`, not
-/// `Assoc::Before`. An "open line above" edit (a newline inserted exactly
-/// at the decorated line's line-start offset) must leave the decoration on
-/// the original line's content, now one line further down, not stranded on
-/// the newly inserted blank line.
+/// An "open line above" edit (a newline inserted exactly at the decorated
+/// line's start) must leave the decoration on the original line's content,
+/// now one line further down, not stranded on the newly inserted blank
+/// line.
 #[test]
 fn line_anchored_decoration_follows_its_content_past_an_open_line_above_it() {
     let tmp = tempfile::tempdir().unwrap();
@@ -620,9 +612,9 @@ fn line_anchored_decoration_follows_its_content_past_an_open_line_above_it() {
     ed.scripting = Some(host);
     type_cmd(&mut ed, ":arm");
     assert_eq!(
-        ed.state.config.decorations.signs_for("linter", bid)[0].pos,
-        co(6),
-        "sanity: line 1's line-start char offset is 6"
+        ed.state.config.decorations.signs_for("linter", bid)[0].line,
+        hume_rope::line::ContentLine::new(1),
+        "sanity: the sign starts on line 1"
     );
 
     // Move the cursor onto "bbbb"'s first char (char 6) and open a blank
@@ -634,20 +626,43 @@ fn line_anchored_decoration_follows_its_content_past_an_open_line_above_it() {
     ed.feed_key(key_esc());
     ed.drain_lsp();
 
-    let pos = ed.state.config.decorations.signs_for("linter", bid)[0].pos;
-    let text = ed.state.buffers.get(bid).text();
     assert_eq!(
-        pos,
-        co(7),
-        "Assoc::After must land the sign just past the inserted newline, at \
-         \"bbbb\"'s new position; Assoc::Before would leave it at 6, on the \
-         new blank line instead"
-    );
-    assert_eq!(
-        text.char_to_line(pos),
+        ed.state.config.decorations.signs_for("linter", bid)[0].line,
         hume_rope::line::ContentLine::new(2),
         "the sign must render on line 2, where \"bbbb\" now is, not line 1's new blank line"
     );
+}
+
+#[test]
+fn deleting_a_lines_first_char_keeps_its_line_decorations() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>aaa\nbbbb\ncccc\n");
+    let bid = ed.focused_buffer_id();
+    let mut host = ScriptingHost::new(&Dirs::none());
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(define-typed-command! "arm" "" (lambda (bid)
+             (register-sign-source! "linter" bid 10)
+             (set-signs! "linter" bid (list (hash 'line 1 'text "!" 'scope "error")))
+             (set-virtual-lines! "linter" bid (list (hash 'line 1 'text "note")))
+             (set-eol-text! "linter" bid (list (hash 'line 1 'text "msg" 'scope "error")))
+             (set-line-backgrounds! "linter" bid (list (hash 'line 1 'scope "error")))))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+    type_cmd(&mut ed, ":arm");
+
+    select(&mut ed, &[(5, 5)], 0);
+    ed.feed_key(key('d'));
+    ed.drain_lsp();
+
+    assert_eq!(state(&ed), "aaaa\n-[b]>bb\ncccc\n");
+    let decorations = &ed.state.config.decorations;
+    assert_eq!(decorations.signs_for("linter", bid).len(), 1);
+    assert_eq!(decorations.virtual_lines_for("linter", bid).len(), 1);
+    assert_eq!(decorations.eol_text_for_buffer(bid).count(), 1);
+    assert_eq!(decorations.line_backgrounds_for("linter", bid).len(), 1);
 }
 
 #[test]
@@ -677,12 +692,11 @@ fn set_signs_virtual_lines_and_extra_highlights_round_trip_and_replace_per_sourc
     assert_eq!(linter_signs.len(), 1);
     assert_eq!(
         (
-            linter_signs[0].pos,
+            linter_signs[0].line,
             &*linter_signs[0].text,
             scope_name(&ed, linter_signs[0].scope),
         ),
-        (co(0), "!", "error"),
-        "line 0's line-start char offset is 0 on this fixture"
+        (hume_rope::line::ContentLine::new(0), "!", "error"),
     );
 
     let vcs_signs = ed.state.config.decorations.signs_for("vcs", bid);
@@ -772,10 +786,7 @@ fn every_setter_interns_its_scope_at_the_set_call_not_at_first_render() {
 #[test]
 fn set_virtual_lines_anchor_scope_and_segments_round_trip_into_the_store() {
     let tmp = tempfile::tempdir().unwrap();
-    // `-[x]>` puts the 1-char cursor marker "x" at the very start, so line 0
-    // is "xaaaa\n" (6 chars) and lines 1-3 are 5 chars each ("bbbb\n" etc.):
-    // line 3 (0-indexed) is in range, its line-start char offset is
-    // 6 + 5 + 5 = 16.
+    // Four content lines: line 3 (0-indexed) is in range.
     let mut ed = editor_from("-[x]>aaaa\nbbbb\ncccc\ndddd\n");
     let bid = ed.focused_buffer_id();
     let mut host = ScriptingHost::new(&Dirs::none());
@@ -797,11 +808,7 @@ fn set_virtual_lines_anchor_scope_and_segments_round_trip_into_the_store() {
         .decorations
         .virtual_lines_for("git-diff", bid);
     assert_eq!(vlines.len(), 1);
-    assert_eq!(
-        vlines[0].pos,
-        co(16),
-        "'line 3's line-start char offset on this fixture"
-    );
+    assert_eq!(vlines[0].line, hume_rope::line::ContentLine::new(3));
     assert_eq!(vlines[0].text, "- let x = 5");
     assert!(vlines[0].before, "'anchor 'before must set before: true");
     assert_eq!(scope_name(&ed, vlines[0].scope), "diff.minus");
@@ -843,11 +850,7 @@ fn set_eol_text_round_trips_and_replaces_per_source() {
         .eol_text_for_buffer(bid)
         .collect();
     assert_eq!(entries.len(), 1);
-    assert_eq!(
-        entries[0].1.pos,
-        co(0),
-        "line 0's line-start char offset is 0"
-    );
+    assert_eq!(entries[0].1.line, hume_rope::line::ContentLine::new(0));
     assert_eq!(entries[0].1.text, "[2] first problem");
     assert_eq!(scope_name(&ed, entries[0].1.scope), "diagnostic.error");
 
@@ -864,11 +867,7 @@ fn set_eol_text_round_trips_and_replaces_per_source() {
         1,
         "the second set-eol-text! must replace, not append"
     );
-    assert_eq!(
-        entries[0].1.pos,
-        co(8),
-        "line 1's line-start char offset on this fixture (\"xabcdef\\n\" is 8 chars)"
-    );
+    assert_eq!(entries[0].1.line, hume_rope::line::ContentLine::new(1));
     assert_eq!(entries[0].1.text, "second problem");
     assert_eq!(scope_name(&ed, entries[0].1.scope), "diagnostic.warning");
 }
@@ -923,11 +922,7 @@ fn set_line_backgrounds_round_trips_and_replaces_per_source() {
         .decorations
         .line_backgrounds_for("git-diff", bid);
     assert_eq!(entries.len(), 1);
-    assert_eq!(
-        entries[0].pos,
-        co(0),
-        "line 0's line-start char offset is 0"
-    );
+    assert_eq!(entries[0].line, hume_rope::line::ContentLine::new(0));
     assert_eq!(scope_name(&ed, entries[0].scope), "diff.plus");
 
     // A second call for the same source must replace wholesale, not append.
@@ -942,17 +937,13 @@ fn set_line_backgrounds_round_trips_and_replaces_per_source() {
         1,
         "the second set-line-backgrounds! must replace, not append"
     );
-    assert_eq!(
-        entries[0].pos,
-        co(8),
-        "line 1's line-start char offset on this fixture (\"xabcdef\\n\" is 8 chars)"
-    );
+    assert_eq!(entries[0].line, hume_rope::line::ContentLine::new(1));
     assert_eq!(scope_name(&ed, entries[0].scope), "diff.minus");
 }
 
 /// Same drift regression as `sign_remaps_through_a_line_inserted_above_it`,
 /// for line backgrounds: remap coverage applies to every
-/// line-anchored kind (all four implement `PointAnchored`), not just signs.
+/// line-anchored kind (all four implement `LineAnchored`), not just signs.
 #[test]
 fn line_background_remaps_through_a_line_inserted_above_it() {
     let tmp = tempfile::tempdir().unwrap();
@@ -971,13 +962,11 @@ fn line_background_remaps_through_a_line_inserted_above_it() {
     type_cmd(&mut ed, ":arm");
 
     let tint_line = |ed: &Editor| {
-        let pos = ed
-            .state
+        ed.state
             .config
             .decorations
             .line_backgrounds_for("git-diff", bid)[0]
-            .pos;
-        ed.state.buffers.get(bid).text().char_to_line(pos)
+            .line
     };
     assert_eq!(
         tint_line(&ed),

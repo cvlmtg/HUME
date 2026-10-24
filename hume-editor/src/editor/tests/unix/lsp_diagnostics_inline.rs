@@ -35,11 +35,7 @@ fn single_diagnostic_on_a_line_shows_a_bare_message() {
         .eol_text_for_buffer(bid)
         .collect();
     assert_eq!(entries.len(), 1);
-    assert_eq!(
-        entries[0].1.pos,
-        co(3),
-        "line 1's line-start char offset is 3"
-    );
+    assert_eq!(entries[0].1.line, hume_rope::line::ContentLine::new(1));
     assert_eq!(
         entries[0].1.text, " problem A",
         "a single diagnostic must not get a '[1]' count prefix, but keeps \
@@ -70,11 +66,7 @@ fn two_diagnostics_on_the_same_line_show_count_and_leftmost_message() {
         .eol_text_for_buffer(bid)
         .collect();
     assert_eq!(entries.len(), 1, "both diagnostics collapse into one entry");
-    assert_eq!(
-        entries[0].1.pos,
-        co(3),
-        "line 1's line-start char offset is 3"
-    );
+    assert_eq!(entries[0].1.line, hume_rope::line::ContentLine::new(1));
     assert_eq!(
         entries[0].1.text, " [2] warn near start",
         "count prefix plus the leftmost (D1) diagnostic's message, with the \
@@ -180,20 +172,19 @@ fn diagnostics_on_different_lines_get_independent_entries() {
         .config
         .decorations
         .eol_text_for_buffer(bid)
-        .map(|(_, e)| (e.pos, e.text.clone(), scope_name(&ed, e.scope).to_string()))
+        .map(|(_, e)| (e.line, e.text.clone(), scope_name(&ed, e.scope).to_string()))
         .collect();
-    entries.sort_by_key(|(pos, _, _)| *pos);
-    // Line-start char offsets on this fixture: line 1 -> 3, line 3 -> 9.
+    entries.sort_by_key(|(line, _, _)| *line);
     assert_eq!(
         entries,
         vec![
             (
-                co(3),
+                hume_rope::line::ContentLine::new(1),
                 " problem A".to_string(),
                 "error.diagnostic.inline".to_string()
             ),
             (
-                co(9),
+                hume_rope::line::ContentLine::new(3),
                 " problem B".to_string(),
                 "warning.diagnostic.inline".to_string()
             ),

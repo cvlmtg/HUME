@@ -344,7 +344,7 @@ fn switching_a_panes_buffer_rebuilds_its_virtual_lines() {
         "test".to_string(),
         bid_a,
         vec![VirtualLineEntry {
-            pos: co(0),
+            line: hume_rope::line::ContentLine::new(0),
             text: "deleted".to_string(),
             before: false,
             scope,

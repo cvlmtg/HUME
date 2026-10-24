@@ -20,14 +20,11 @@ use hume_rope::offset::{CharOffset, ExclusiveRange};
 pub(super) struct DecoratedPane {
     pub(super) pid: PaneId,
     pub(super) bid: BufferId,
-    /// Line range, end-exclusive, used by line-indexed stores (gutter
-    /// signs, EOL text, line backgrounds) instead of `chars`. Ropey-domain,
-    /// matching how it's built below (clamped to `ropey_line_count`); every
-    /// consumer compares a `ContentLine` against it, converted up via
-    /// `RopeyLine::from` rather than the two domains being compared through
-    /// `.index()`, which is over-permissive by exactly the phantom trailing line,
-    /// which no consumer can produce a `ContentLine` for in the first place.
-    pub(super) lines: ExclusiveRange<hume_rope::line::RopeyLine>,
+    /// Line range, end-exclusive, used by line-anchored stores (gutter
+    /// signs, EOL text, line backgrounds) and search highlights instead of
+    /// `chars`. Content-domain, clamped to `bid`'s content lines: no
+    /// decoration or match starts on the phantom trailing line.
+    pub(super) lines: ExclusiveRange<hume_rope::line::ContentLine>,
     /// Char range of `bid`'s content currently visible in `pid`, shared by
     /// every per-frame write side that pulls a bounded slice from a
     /// Rust-side store (diagnostics, decorations) instead of the whole
@@ -83,7 +80,7 @@ impl Editor {
                     hume_rope::line::RopeyLine::from(vp.top().line).min(text.last_ropey_line());
                 let bottom_line =
                     hume_rope::line::RopeyLine::from(vp.top().line).advance(usize::from(height));
-                let past_end = hume_rope::line::RopeyLine::new(text.ropey_line_count().get());
+                let content_end = text.content_line_count().end_exclusive();
                 let insert_line = self.state.input.inserting_into(pid, bid).then(|| {
                     self.state
                         .panes
@@ -97,7 +94,13 @@ impl Editor {
                     pid,
                     bid,
                     insert_line,
-                    lines: ExclusiveRange::new(top_line, bottom_line.advance(1).min(past_end)),
+                    lines: ExclusiveRange::new(
+                        vp.top().line.min(content_end),
+                        vp.top()
+                            .line
+                            .advance(usize::from(height) + 1)
+                            .min(content_end),
+                    ),
                     chars: ExclusiveRange::new(
                         text.line_to_char(top_line),
                         text.lines().next_start(bottom_line),
@@ -144,13 +147,13 @@ impl Editor {
 
             // Matches are sorted by document order. Binary-search to the first
             // match that starts at or after this pane's `top_line`.
-            let top_char = text.line_to_char(visible.start);
+            let top_char = text.line_to_char(visible.start.into());
             let matches = buf.search_matches.matches(text);
             let first = matches.partition_point(|span| span.start().offset() < top_char);
             let mut spans = Vec::new();
             for &span in &matches[first..] {
                 let start_line = text.char_to_line(span.start().offset());
-                if hume_rope::line::RopeyLine::from(start_line) >= visible.end {
+                if start_line >= visible.end {
                     break;
                 }
                 push_match_highlight_lines(text, span.chars(), search_scope, &mut spans);
@@ -302,44 +305,27 @@ impl Editor {
 
         for p in panes {
             let (pid, bid) = (p.pid, p.bid);
-            let visible = p.chars;
-            let visible_lines = p.lines;
-
             let slots = self.state.sign_slots(bid);
 
-            // Plugin signs store their line's line-start char offset
-            // (`SignEntry::pos`, remapped through edits like every other
-            // decoration kind); this is what turns it back into a line.
-            let text = self.state.buffers.get(bid).text();
-
-            // `signs_in_range` pre-filters by char range so this pass never
-            // touches a sign the viewport can't show, and already resolves
-            // each entry's source to its registered slot
+            // `signs_in_range` filters to the visible lines so this pass
+            // never touches a sign the viewport can't show, and already
+            // resolves each entry's source to its registered slot
             // (`DecorationStores::signs_in_range`). This loop places, it
-            // never looks a source up. `visible_line_anchored` still does
-            // the precise per-line check (a char range can straddle a line
-            // the viewport itself excludes).
-            let anchored = visible_line_anchored(
-                text,
-                visible_lines,
-                self.state.config.decorations.signs_in_range(bid, visible),
-                |e| e.pos,
-            );
-
+            // never looks a source up.
             let mut by_line: rustc_hash::FxHashMap<hume_rope::line::ContentLine, Vec<Sign>> =
                 rustc_hash::FxHashMap::default();
-            for (slot, line, e) in anchored {
+            for (slot, e) in self.state.config.decorations.signs_in_range(bid, p.lines) {
                 if slot >= slots as usize {
                     continue;
                 }
                 let slot = slot as u8;
-                let entries = by_line.entry(line).or_default();
+                let entries = by_line.entry(e.line).or_default();
                 // Two *different* sources can never contend for one slot
                 // now: a slot is a source's fixed registry rank. This
                 // guards only a same-source duplicate on one line (a source
                 // bug: nothing stops one `set-signs!` call from listing two
                 // entries for the same line): `Err` is the insertion point,
-                // `Ok` means this source's own earlier (pos-sorted) entry
+                // `Ok` means this source's own earlier (line-sorted) entry
                 // for the line already claimed the slot.
                 if let Err(i) = entries.binary_search_by_key(&slot, |s| s.slot) {
                     entries.insert(
@@ -439,22 +425,15 @@ impl Editor {
 
         for p in panes {
             let (pid, bid) = (p.pid, p.bid);
-            // Each entry's `pos` is its line's line-start char offset
-            // (`EolTextEntry::pos`); resolved to its *current* line here.
-            let visible_lines = p.lines;
             let text = self.state.buffers.get(bid).text();
-            let per_line: Vec<(&str, hume_rope::line::ContentLine, InlineInsert)> =
-                visible_line_anchored(
-                    text,
-                    visible_lines,
-                    self.state
-                        .config
-                        .decorations
-                        .eol_text_in_range(bid, p.chars),
-                    |e| e.pos,
-                )
-                .filter(|&(_, line, e)| !(e.hide_on_insert_line && Some(line) == p.insert_line))
-                .map(|(source, line, e)| {
+            let per_line: Vec<(&str, hume_rope::line::ContentLine, InlineInsert)> = self
+                .state
+                .config
+                .decorations
+                .eol_text_in_range(bid, p.lines)
+                .filter(|&(_, e)| !(e.hide_on_insert_line && Some(e.line) == p.insert_line))
+                .map(|(source, e)| {
+                    let line = e.line;
                     // End-of-line placement: the line's own trailing '\n'
                     // char resolves to a byte offset within `line` (never
                     // the next line; see `char_to_line_byte`'s doc comment
@@ -524,15 +503,10 @@ impl Editor {
                 continue;
             }
 
-            let text = self.state.buffers.get(bid).text();
             let mut by_line: rustc_hash::FxHashMap<hume_rope::line::ContentLine, Vec<VirtualLine>> =
                 rustc_hash::FxHashMap::default();
             for entry in self.state.config.decorations.virtual_lines_for_buffer(bid) {
-                // `entry.pos` is the anchor line's line-start char offset
-                // (`VirtualLineEntry::pos`).
-                let Some(line) = resolve_decoration_line(text, entry.pos) else {
-                    continue;
-                };
+                let line = entry.line;
                 let anchor = if entry.before {
                     VirtualLineAnchor::Before(line)
                 } else {
@@ -582,23 +556,17 @@ impl Editor {
 
             // Like the sign path above (`update_sign_providers`): a tinted
             // line scrolled out of view costs nothing but the filter check.
-            let visible_lines = p.lines;
-            let text = self.state.buffers.get(bid).text();
             let per_line: Vec<(
                 &str,
                 hume_rope::line::ContentLine,
                 hume_engine::types::ScopeId,
-            )> = visible_line_anchored(
-                text,
-                visible_lines,
-                self.state
-                    .config
-                    .decorations
-                    .line_backgrounds_in_range(bid, p.chars),
-                |e| e.pos,
-            )
-            .map(|(source, line, e)| (source, line, e.scope))
-            .collect();
+            )> = self
+                .state
+                .config
+                .decorations
+                .line_backgrounds_in_range(bid, p.lines)
+                .map(|(source, e)| (source, e.line, e.scope))
+                .collect();
             let by_line = last_writer_per_line(per_line);
 
             self.state.panes.entries[pid]
@@ -609,10 +577,9 @@ impl Editor {
 }
 
 /// Folds per-source, line-anchored decoration entries into one winner per
-/// line: within one source, a later entry beats an earlier
-/// one that a remap collapsed onto the same line (ties resolve by store
-/// order: `SourceStore::set` sorts by position, so "later" means, before the remap,
-/// further along the buffer); across sources, tie-break by source name:
+/// line: within one source, a later entry beats an earlier one on the same
+/// line (store order: `SourceStore::set` sorts by line, stably, so "later"
+/// means listed later by the source); across sources, tie-break by source name:
 /// the alphabetically first source wins, same convention `SourceStore::set`
 /// itself keeps sources ascending by name. Signs use a different mechanism:
 /// each registered source has its own fixed gutter slot, so two sign
@@ -630,51 +597,6 @@ fn last_writer_per_line<T>(
 ) -> rustc_hash::FxHashMap<hume_rope::line::ContentLine, T> {
     entries.sort_by(|a, b| b.0.cmp(a.0));
     entries.into_iter().map(|(_, line, v)| (line, v)).collect()
-}
-
-/// Resolves a stored line-anchored decoration's position to its current
-/// line, or `None` if a remap drifted it onto the buffer's trailing phantom
-/// line, always empty (every buffer ends with a structural `\n`,
-/// `text.last_ropey_line()`), the same line `host_impl/decorations.rs`'s
-/// `line_start_offset` refuses to hand out a position on in the first place.
-/// A fresh `set-*!` call can never produce this; a `remap_points` result can,
-/// when an edit deletes everything after the entry's anchor up to
-/// end-of-buffer. The entry disappears rather than getting relocated onto
-/// whatever line precedes it.
-fn resolve_decoration_line(
-    text: &hume_editing::text::BufferText,
-    pos: CharOffset,
-) -> Option<hume_rope::line::ContentLine> {
-    text.ropey_char_to_line(pos).to_content(text.rope())
-}
-
-/// Filters `entries`' `(tag, entry)` pairs to `visible_lines`, resolving
-/// each entry's anchor position (via `pos_of`) to its current line, shared
-/// by every per-line-anchored render bridge (signs, EOL text, line
-/// backgrounds), whose bodies are otherwise identical up to this filter
-/// step: resolve line → drop if scrolled out of view or drifted onto the
-/// phantom trailing line (`resolve_decoration_line`) → keep. `tag` is
-/// whatever a caller needs alongside the resolved line, generic because
-/// each caller's `entries` iterator already decided its shape upstream: a
-/// resolved gutter slot for signs (`DecorationStores::signs_in_range`
-/// resolves it once per source, before this function ever sees an entry), a
-/// source name for EOL text/line backgrounds' cross-source tie-break
-/// (`last_writer_per_line`). This function only threads it through,
-/// borrowed the whole way: every field on every decoration entry is already
-/// either `Copy` or an already-interned `ScopeId`, so no caller needs an
-/// owned clone to escape this iterator's borrow.
-fn visible_line_anchored<'a, K, E: 'a>(
-    text: &'a hume_editing::text::BufferText,
-    visible_lines: ExclusiveRange<hume_rope::line::RopeyLine>,
-    entries: impl Iterator<Item = (K, &'a E)>,
-    pos_of: impl Fn(&E) -> CharOffset,
-) -> impl Iterator<Item = (K, hume_rope::line::ContentLine, &'a E)> {
-    entries.filter_map(move |(tag, e)| {
-        let line = resolve_decoration_line(text, pos_of(e))?;
-        visible_lines
-            .contains(hume_rope::line::RopeyLine::from(line))
-            .then_some((tag, line, e))
-    })
 }
 
 /// Push one `(line, byte_start, byte_end, scope)` quadruple per line `range`

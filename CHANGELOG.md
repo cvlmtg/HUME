@@ -32,6 +32,7 @@
 - Loading some plugin code no longer prints stray text over the screen.
 - `core:git-diff`'s inline diff keeps its word highlights when the machine is busy.
 - `show-menu!` raises on an empty list instead of opening a menu that crashed HUME on Enter.
+- Signs, virtual lines, end-of-line text and line backgrounds no longer disappear when you delete the first character of their line, or its whole indent.
 - A completion item whose range a language server sent backwards no longer moves the completion menu.
 - `Tab` on the `|` prompt lists programs as it finds them, so HUME keeps responding on a slow `PATH`, like WSL's Windows directories.
 - `core:buffer-words` no longer stalls typing while it indexes a file with very long lines.

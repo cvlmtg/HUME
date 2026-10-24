@@ -19,7 +19,7 @@ use rustc_hash::FxHashMap;
 use crate::editor::message_log::Severity;
 use crate::editor::settings::SettingText as _;
 use crate::editor::{Editor, EditorState};
-use hume_decorations::{Positioned, RangeAnchored, SourceStore};
+use hume_decorations::{Anchored, RangeAnchored, SourceStore};
 
 /// Ordered least-to-most-lenient so `severity <= floor` means "at least as
 /// severe as floor": e.g. `floor = Warning` keeps `Error` and `Warning`,
@@ -59,8 +59,9 @@ pub(in crate::editor) struct StoredDiag {
     pub(in crate::editor) encoding: hume_rope::position_encoding::PositionEncoding,
 }
 
-impl Positioned for StoredDiag {
-    fn pos(&self) -> CharOffset {
+impl Anchored for StoredDiag {
+    type Anchor = CharOffset;
+    fn anchor(&self) -> CharOffset {
         self.start
     }
 }
@@ -90,7 +91,7 @@ impl DiagnosticsStore {
     /// Replaces one server's diagnostics for `bid` (already coalesced:
     /// the caller keeps only the last `publishDiagnostics` per (server,
     /// uri) within a drain batch). `SourceStore::set` sorts by `start`
-    /// (`StoredDiag`'s `Positioned` impl), so callers need not pre-sort
+    /// (`StoredDiag`'s `Anchored` impl), so callers need not pre-sort
     /// themselves.
     pub(in crate::editor) fn replace(
         &mut self,
@@ -611,7 +612,7 @@ pub(in crate::editor) fn diagnostics_for_buffer(
             // report a diagnostic anchored at end-of-file, and `len_chars()`
             // itself resolves to the buffer's trailing phantom empty line
             // (every buffer ends with a structural `\n`; see
-            // `host_impl/decorations.rs`'s `line_start_offset`).
+            // `host_impl/decorations.rs`'s `content_line`).
             // Landing there instead of the last content line would hand
             // plugins a `line` that later fails the fail-fast bound check
             // every decoration setter enforces. The final `\n` is a valid
