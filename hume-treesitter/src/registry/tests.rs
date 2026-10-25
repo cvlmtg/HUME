@@ -20,15 +20,28 @@ fn write_temp_scm(filename: &str, src: &str) -> (tempfile::TempDir, std::path::P
     (dir, path)
 }
 
+/// The language `reg` detects for a file opened at `as_opened` that resolves
+/// to `resolved`, both root-anchored literals, with `first_line` as its first
+/// line.
+fn detect_linked(
+    as_opened: &str,
+    resolved: &str,
+    first_line: Option<&str>,
+    reg: &LanguageRegistry,
+) -> Option<LanguageId> {
+    let as_opened = AbsolutePath::rooted(as_opened);
+    let resolved = AbsolutePath::rooted(resolved);
+    let paths = DetectPaths {
+        as_opened: &as_opened,
+        resolved: &resolved,
+    };
+    detect_language(Some(paths), first_line, reg)
+}
+
 /// The language `reg` detects for a file opened at `path`, a root-anchored
 /// literal that is also its resolved path, with `first_line` as its first line.
 fn detect_at(path: &str, first_line: Option<&str>, reg: &LanguageRegistry) -> Option<LanguageId> {
-    let path = AbsolutePath::rooted(path);
-    let paths = DetectPaths {
-        as_opened: &path,
-        resolved: &path,
-    };
-    detect_language(Some(paths), first_line, reg)
+    detect_linked(path, path, first_line, reg)
 }
 
 /// The rust fixture grammar with `queries`.
@@ -960,20 +973,19 @@ fn a_symlinked_file_is_detected_by_either_path() {
     reg.register_identity("git-config", &[], &[".config/git/config"], &[])
         .unwrap();
     reg.register_identity("toml", &["toml"], &[], &[]).unwrap();
-    let linked = |as_opened, resolved| {
-        let as_opened = AbsolutePath::rooted(as_opened);
-        let resolved = AbsolutePath::rooted(resolved);
-        let paths = DetectPaths {
-            as_opened: &as_opened,
-            resolved: &resolved,
-        };
-        detect_language(Some(paths), None, &reg)
-    };
     assert_eq!(
-        linked("/h/.config/git/config", "/h/dotfiles/git/config"),
+        detect_linked(
+            "/h/.config/git/config",
+            "/h/dotfiles/git/config",
+            None,
+            &reg
+        ),
         reg.id_of("git-config")
     );
-    assert_eq!(linked("/h/current", "/h/release.toml"), reg.id_of("toml"));
+    assert_eq!(
+        detect_linked("/h/current", "/h/release.toml", None, &reg),
+        reg.id_of("toml")
+    );
 }
 
 #[test]
