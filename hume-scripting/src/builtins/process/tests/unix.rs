@@ -6,8 +6,9 @@ use hume_platform::dirs::Dirs;
 
 #[test]
 fn run_inline_output_succeeds_on_exit_zero_and_raises_naming_any_other_exit() {
+    let mut host = RecordingInlineOutputHost::default();
     let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx();
+    let mut ctx = h.ctx_with_host(&mut host);
     let result = run_inline_output(
         &mut ctx,
         "true".to_string(),
@@ -43,8 +44,9 @@ fn run_inline_output_succeeds_on_exit_zero_and_raises_naming_any_other_exit() {
 fn run_inline_output_honors_cwd_arg() {
     let tmp = TempDir::new().unwrap();
     fs::write(tmp.path().join("marker.txt"), b"hi").unwrap();
+    let mut host = RecordingInlineOutputHost::default();
     let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx();
+    let mut ctx = h.ctx_with_host(&mut host);
     let result = run_inline_output(
         &mut ctx,
         "test".to_string(),
@@ -62,16 +64,15 @@ fn run_inline_output_scheme_wrapper_raises_on_nonzero_exit() {
     // (the #:cwd keyword sugar + raise-on-nonzero contract), not just the
     // raw `%run-inline-output!`.
     use crate::ScriptingHost;
-    use crate::null_host::NullHost;
 
     let mut host = ScriptingHost::new(&Dirs::none());
-    let mut null_host = NullHost;
+    let mut inline_host = RecordingInlineOutputHost::default();
     let ok_src = r#"(run-inline-output! "true" '())"#;
-    host.eval_source(ok_src, &mut null_host)
+    host.eval_source(ok_src, &mut inline_host)
         .expect("run-inline-output! success path must not raise");
 
     let mut host2 = ScriptingHost::new(&Dirs::none());
-    let mut null_host2 = NullHost;
+    let mut inline_host2 = RecordingInlineOutputHost::default();
     let fail_src = r#"
         (with-handler
           (lambda (err)
@@ -83,14 +84,13 @@ fn run_inline_output_scheme_wrapper_raises_on_nonzero_exit() {
             (error "expected run-inline-output! to raise on nonzero exit")))
     "#;
     host2
-        .eval_source(fail_src, &mut null_host2)
+        .eval_source(fail_src, &mut inline_host2)
         .expect("run-inline-output! failure-path assertion failed");
 }
 
 #[test]
 fn run_inline_output_scheme_wrapper_passes_env() {
     use crate::ScriptingHost;
-    use crate::null_host::NullHost;
 
     let tmp = TempDir::new().unwrap();
     let out = tmp.path().join("out.txt");
@@ -101,8 +101,8 @@ fn run_inline_output_scheme_wrapper_passes_env() {
         out.display()
     );
     let mut host = ScriptingHost::new(&Dirs::none());
-    let mut null_host = NullHost;
-    host.eval_source(&src, &mut null_host)
+    let mut inline_host = RecordingInlineOutputHost::default();
+    host.eval_source(&src, &mut inline_host)
         .expect("run-inline-output! with #:env must not raise");
     assert_eq!(fs::read_to_string(out).unwrap(), "probe-value");
 }

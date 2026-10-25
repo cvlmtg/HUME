@@ -6,19 +6,18 @@ use crate::editor::registry::{MappableCommand, SteelCommand};
 use crate::editor::tui::ActiveTui;
 
 use super::EditorHostImpl;
-use hume_scripting::host::OutputHost;
+use hume_scripting::host::{ClaimRefused, OutputHost};
 
 impl<'a> OutputHost for EditorHostImpl<'a> {
-    fn is_inline_output_command(&self) -> bool {
-        self.state.inline_output.is_open()
-    }
-
-    fn ensure_inline_output_screen(&mut self) -> Result<(), String> {
-        // Reads the frame's own captured `tui`/`kitty`, not `self.tui`/
-        // `self.kitty_enabled`: this must work correctly even on a host
-        // with no inline-output authority (`EditorHostImpl::new`) completing
-        // a bracket a *different*, real host armed; see `ActiveTui`'s own
-        // doc.
+    fn claim_terminal(&mut self) -> Result<(), ClaimRefused> {
+        // Whichever host armed the open frame. Entry reads the frame's own
+        // captured `tui`/`kitty`, not `self.tui`/`self.kitty_enabled`: this
+        // must work correctly even on a host with no inline-output authority
+        // (`EditorHostImpl::new`) completing a bracket a *different*, real
+        // host armed; see `ActiveTui`'s own doc.
+        if !self.state.inline_output.is_open() {
+            return Err(ClaimRefused::NoFrame);
+        }
         let Some((name, tui, kitty)) = self.state.inline_output.needs_enter() else {
             return Ok(());
         };
@@ -35,7 +34,7 @@ impl<'a> OutputHost for EditorHostImpl<'a> {
                     // A failed enter may have left and re-entered the alt
                     // screen, which clears it.
                     self.state.force_full_redraw = true;
-                    format!("inline-output enter failed: {e}")
+                    ClaimRefused::Enter(format!("inline-output enter failed: {e}"))
                 })?;
                 Entered::Screen(screen)
             }

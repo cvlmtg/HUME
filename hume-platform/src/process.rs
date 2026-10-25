@@ -8,8 +8,8 @@
 //! stdout to EOF before stderr, so a child that fills its stderr pipe
 //! deadlocks; [`run_capture`]'s `Command::output` drains both.
 //!
-//! Stdio is captured ([`run_capture`]) or inherited so the user sees live
-//! progress (`run_inline_output`, `grammar_build`).
+//! Stdio is captured ([`run_capture`], `grammar_build`) or inherited so the
+//! user sees live progress (`run_inline_output`).
 //!
 //! External tools reject Windows' `\\?\` prefix, so every path handed to a
 //! `Command` here goes through `strip_unc_prefix` first.
@@ -142,33 +142,38 @@ pub fn run_capture(
     args: &[String],
     launch: Launch<'_>,
 ) -> io::Result<std::process::Output> {
-    let mut command = base_command(cmd, args, launch);
-    command
-        .stdin(Stdio::null())
-        .output()
-        .map_err(|e| spawn_failed(&command, e))
+    capture(base_command(cmd, args, launch))
 }
 
 /// Compile the tree-sitter grammar at `src` to a shared library at `out`
 /// by running the grammar compiler `tool` (see [`crate::dirs::Dirs::grammar_build`]),
-/// with inherited stdio. `compile-grammar!` runs it inside the inline-output
-/// frame, so it stays in the caller's process group for the same Ctrl-c as
-/// [`run_inline_output`].
+/// its output captured and stdin closed, as [`run_capture`] runs a program:
+/// the compiler writes only errors, which the caller reports. It stays in
+/// the caller's process group, so a Ctrl-c during an `#:inline-output`
+/// command interrupts it as it does a [`run_inline_output`] child.
 pub fn grammar_build(
     tool: &Path,
     src: &Path,
     out: &Path,
     launch: Launch<'_>,
-) -> io::Result<ExitStatus> {
+) -> io::Result<std::process::Output> {
     let tool = strip_unc_prefix(tool.to_path_buf());
     let src = strip_unc_prefix(src.to_path_buf());
     let out = strip_unc_prefix(out.to_path_buf());
-    let mut command = base_command(
+    capture(base_command(
         &tool,
         [OsStr::new("-o"), out.as_os_str(), src.as_os_str()],
         launch,
-    );
-    command.status().map_err(|e| spawn_failed(&command, e))
+    ))
+}
+
+/// `command`'s output, stdout and stderr captured and stdin closed, for
+/// [`run_capture`] and [`grammar_build`].
+fn capture(mut command: Command) -> io::Result<std::process::Output> {
+    command
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|e| spawn_failed(&command, e))
 }
 
 /// `e`, from any step of starting `program` (the spawn itself or a thread

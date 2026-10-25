@@ -1,66 +1,52 @@
-//! `%stdout-gate!`: the Rust half of HUME's gated print builtins.
+//! Who may write to the terminal, and `print!`, HUME's way to write a line
+//! there.
 //!
-//! steel-core's ten print names (`display`, `displayln`, `write-string`, ...)
-//! write to the real stdout, which would corrupt the alt-screen TUI. They are
-//! prelude exports, and steel-core prepends its prelude to every compiled unit
-//! including each required plugin file, so a top-level shadow doesn't reach
-//! plugins. HUME instead appends gated redefinitions (`PRELUDE_SHIMS` in
-//! `builtins/mod.rs`) to the prelude string via `Engine::set_prelude_string`.
-//!
-//! One unit can't both capture a name's value and redefine it, a steel-core
-//! scoping rule, so `register_all` runs BOOTSTRAP (captures originals) and
-//! `PRELUDE_SHIMS` as two separate calls.
-//!
-//! Explicit-port calls are gated too, since the port can be the real stdout.
-//! `%port-safe?` compares the supplied port against the captured stdout, so
-//! string ports and pipes pass through ungated.
+//! Steel's own print functions write wherever their port points, the
+//! editor's screen included. A plugin reports
+//! through `log!`, and writes to the terminal with `print!` or a program
+//! run by `run-inline-output!`, both only inside an `#:inline-output`
+//! command.
 
+use std::io::Write;
+
+use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
+use crate::host::ClaimRefused;
 
 use super::SteelResult;
 use super::errors::generic_err;
 
-/// Whether the host reports an inline-output bracket currently live,
-/// read fresh from `ctx.host` on every call rather than a value cached at
-/// session start, so a bracket a `call!`-armed nested command opens mid-body
-/// (`OutputHost::arm_inline_output`) is visible to the very next print.
-fn is_inline_output_command(ctx: &mut SteelCtx) -> bool {
-    ctx.host
+/// Claims the terminal for `builtin`, which writes to it: only an
+/// `#:inline-output` command may, its screen left first. One rule whether
+/// or not a screen is up, so a call cannot work at startup and then raise
+/// on `:reload-config`. A host with no terminal state refuses.
+pub(crate) fn claim_terminal_for(ctx: &mut SteelCtx, builtin: &str) -> Result<(), SteelErr> {
+    let claim = ctx
+        .host
         .output()
-        .is_some_and(|output| output.is_inline_output_command())
+        .map_or(Err(ClaimRefused::NoFrame), |output| output.claim_terminal());
+    claim.map_err(|refused| match refused {
+        ClaimRefused::NoFrame => generic_err(format!(
+            "{builtin}: runs only inside an #:inline-output command"
+        )),
+        ClaimRefused::Enter(e) => generic_err(format!("{builtin}: {e}")),
+    })
 }
 
-/// `(%stdout-gate!)`: called by each gated print shim (see
-/// `PRELUDE_SHIMS` in `builtins/mod.rs`) immediately before it would write
-/// to the real stdout. Returns `#f` (write must be suppressed) unless it's
-/// currently safe to write directly to the real process stdout: init (before
-/// the alt-screen TUI is up) or an `#:inline-output` command body (alt-screen
-/// temporarily left). When safe via [`is_inline_output_command`] specifically
-/// (not the init session, which prints pre-terminal with no bracket to open),
-/// lazily enters the alt-screen bracket on this, the first real write of the
-/// command body.
+/// `(print! text)`: writes `text` and a line break to the terminal, inside
+/// an `#:inline-output` command.
 ///
-/// `inline` is read once and reused for both checks below (safe-at-all, then
-/// whether to enter the alt-screen) rather than re-read, since each read is a
-/// non-devirtualizable hop through `ctx.host`.
-///
-/// The two safe reasons are joined by `||`. Each is pinned on its own by
-/// `stdout_gate_returns_true_and_skips_ensure_when_open_via_init_session_only`
-/// and `stdout_gate_returns_true_and_calls_ensure_when_open_via_inline_output_command`
-/// below, so a guard of `session != Init || !inline` fails one of them.
-pub(crate) fn stdout_gate(ctx: &mut SteelCtx) -> SteelResult {
-    let inline = is_inline_output_command(ctx);
-    if ctx.session != crate::context::EvalSession::Init && !inline {
-        return Ok(SteelVal::BoolV(false));
-    }
-    if inline && let Some(output) = ctx.host.output() {
-        output
-            .ensure_inline_output_screen()
-            .map_err(|e| generic_err(format!("print: {e}")))?;
-    }
-    Ok(SteelVal::BoolV(true))
+/// # Errors
+/// Called outside an `#:inline-output` command, or the write failed.
+pub(crate) fn print(ctx: &mut SteelCtx, text: String) -> SteelResult {
+    claim_terminal_for(ctx, "print!")?;
+    let mut stdout = std::io::stdout().lock();
+    writeln!(stdout, "{text}")
+        .and_then(|()| stdout.flush())
+        .map_err(|e| generic_err(format!("print!: {e}")))?;
+    Ok(SteelVal::Void)
 }
 
 #[cfg(test)]

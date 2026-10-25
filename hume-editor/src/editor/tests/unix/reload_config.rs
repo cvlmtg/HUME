@@ -1067,3 +1067,34 @@ fn a_collection_after_reload_traces_nothing_from_the_old_engine() {
     let errors = error_log(&ed);
     assert!(errors.is_empty(), "{errors:?}");
 }
+
+/// `:reload-config` runs `init.scm` while the editor's screen is up: a
+/// top-level `run-inline-output!` raises instead of running its program
+/// over the screen.
+#[test]
+fn reload_config_keeps_init_scm_programs_off_the_live_screen() {
+    let fixture = ReloadFixture::new("");
+    let mut ed = editor_from("-[a]>b\n");
+    ed.state.dirs = fixture.dirs();
+    ed.init_scripting(&mut Default::default());
+    ed.tui = crate::editor::tui::Tui::OnHeadless;
+
+    let record = fixture.config_dir.join("ran.txt");
+    fixture.write_init(&format!(
+        r#"(set-option! "scroll-margin" 9)
+           (run-inline-output! "sh" (list "-c" ": > \"$1\"" "sh" {}))"#,
+        steel_path(&record)
+    ));
+    type_cmd(&mut ed, ":reload-config");
+
+    assert!(has_error(
+        &ed,
+        "run-inline-output!: runs only inside an #:inline-output command"
+    ));
+    assert!(!record.exists(), "the program must not run");
+    assert_eq!(ed.inline_output_enter_count(), 0);
+    assert_eq!(
+        ed.state.settings.scroll_margin, 9,
+        "the forms before it apply"
+    );
+}

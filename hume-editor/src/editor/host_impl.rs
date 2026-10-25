@@ -52,8 +52,8 @@ pub(in crate::editor) struct EditorHostImpl<'a> {
     /// host legitimately running outside `Editor::run`'s loop, still
     /// expected to drive the frame stack's state machine correctly). `Some`
     /// is a clone of `Editor::tui`, not a borrow; see [`Tui`]'s own doc for
-    /// why. Read only by `arm_inline_output`, to decide what a *new* frame
-    /// captures. [`OutputHost::ensure_inline_output_screen`] never reads
+    /// why. Read by `arm_inline_output`, to decide what a *new* frame
+    /// captures. [`OutputHost::claim_terminal`] never reads
     /// this field; it reads the already-armed frame's own captured
     /// [`super::tui::ActiveTui`] instead (see that type's doc), so it works
     /// correctly even on a host built after the frame it's completing was
@@ -61,7 +61,7 @@ pub(in crate::editor) struct EditorHostImpl<'a> {
     tui: Option<Tui>,
     /// Whether the kitty keyboard protocol is active, read by
     /// `arm_inline_output`, alongside `tui`, to decide what a *new* frame
-    /// captures. Like `tui`, [`OutputHost::ensure_inline_output_screen`]
+    /// captures. Like `tui`, [`OutputHost::claim_terminal`]
     /// never reads this field directly; it reads the already-armed frame's
     /// own captured kitty state instead, for the same cross-host reason.
     kitty_enabled: bool,

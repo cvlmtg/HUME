@@ -36,7 +36,7 @@ See [Core Plugins](core-plugins.md#core-stdlib) for why this call should stay a 
 | `(call! "stdlib/delete-file!" path)` | Delete `path`; idempotent |
 | `(call! "stdlib/list-subdirs" dir)` | Sorted basenames of `dir`'s subdirectories |
 
-`delete-dir!` and `delete-file!` are idempotent, unlike the Steel engine's own `delete-directory!`/`delete-file!`: a missing target is not an error. `list-subdirs` skips stray non-directory entries that sit alongside a directory tree, like `.DS_Store`.
+`delete-dir!` and `delete-file!` are idempotent, unlike `remove-dir!` and the Steel engine's own `delete-file!`: a missing target is not an error. `list-subdirs` skips stray non-directory entries that sit alongside a directory tree, like `.DS_Store`.
 
 ## Git
 

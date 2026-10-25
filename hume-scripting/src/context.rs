@@ -90,7 +90,9 @@ pub(crate) struct SteelCtx<'a> {
 /// Which entry point started this eval session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum EvalSession {
-    /// `eval_source_raw`: init.scm, before the TUI is up.
+    /// `eval_source_raw`: init.scm and the plugins it loads, at startup or
+    /// on `:reload-config`. Whether a write may reach the terminal is
+    /// `OutputHost::claim_terminal`'s question, not this one.
     Init,
     /// `call_steel_cmd` / `fire_hook` / `run_steel_calls` / `activate_plugin_inline`.
     Runtime,

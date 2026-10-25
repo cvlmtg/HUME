@@ -47,7 +47,7 @@ two pins, why receipts) is in `docs/LSP-INSTALL.md` in the repository.
 | `lib/blocker.scm` | This platform's requirements row for a server, and the check for what blocks installing it |
 | `lib/install.scm` | The installers, and the per-kind choice between them |
 | `lib/discovery.scm` | The discovery hint |
-| `commands.scm` | `:lsp-install`, `:lsp-uninstall`, `:lsp-catalog`, completion source |
+| `commands.scm` | `:lsp-install`, `:lsp-uninstall`, `:lsp-catalog`, the `lsp-install/install-server` command a reinstall defers to, completion source |
 | `lib/lock.scm` | Cross-process install lock |
 | `lib/sha256.scm`, `lib/unpack.scm` | Hashing, unpacking and chmod through system tools |
 | `lib/platform.scm` | This platform's Mason target name, and whether it is Windows |

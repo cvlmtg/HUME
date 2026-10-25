@@ -163,6 +163,6 @@
         (lsp-install/write-receipt! name (lsp-install/ref source 'version)
                                     bin-rel (cdr installed))
         (let ((cmd (lsp-install/ref-or (lsp-install/registration name) 'command name)))
-          (when (which cmd)
+          (when (find-program cmd)
             (log! 'info (string-append "LSP: " cmd " is also on $PATH — the managed install at "
                                        (path-join dir bin-rel) " takes precedence"))))))))

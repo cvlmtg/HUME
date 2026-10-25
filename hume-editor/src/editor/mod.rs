@@ -320,9 +320,9 @@ pub(crate) struct EditorState {
     /// State of the `#:inline-output` bracket for the Steel command(s)
     /// currently on the call stack. Pushed/truncated by `OutputHost::
     /// arm_inline_output`/`truncate_inline_output`, read and driven by
-    /// `EditorHostImpl::ensure_inline_output_screen`/`is_inline_output_command`
-    /// so `SteelCtx` (and the gated print shims) know it's safe to write to
-    /// the real stdout, and so the screen is only entered lazily, on the
+    /// `EditorHostImpl::claim_terminal` so
+    /// `SteelCtx` (`print!`, `run-inline-output!`) knows it's safe to write
+    /// to the real stdout, and so the screen is only entered lazily, on the
     /// first byte of actual output. See [`InlineOutput`].
     pub(in crate::editor) inline_output: InlineOutput,
     /// Reusable sticky-column buffer for vertical motion, shared by both

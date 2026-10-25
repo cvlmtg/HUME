@@ -20,7 +20,7 @@
                   (lsp-install/ref fields 'targets))))))
 
 (define (lsp-install/missing-tool row)
-  (call! "stdlib/find" (lambda (tool) (not (which tool))) (lsp-install/row-tools row)))
+  (call! "stdlib/find" (lambda (tool) (not (find-program tool))) (lsp-install/row-tools row)))
 
 (define (lsp-install/row-blocker name row)
   (let ((fields (lsp-install/requirement name)))

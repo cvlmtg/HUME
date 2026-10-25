@@ -12,8 +12,8 @@
 
 ;;; The fd binary to use, or `#f` — Debian packages it as `fdfind`.
 (define (pickers/fd-binary)
-  (cond [(which "fd") "fd"]
-        [(which "fdfind") "fdfind"]
+  (cond [(find-program "fd") "fd"]
+        [(find-program "fdfind") "fdfind"]
         [else #f]))
 
 ;; ── Files picker ──────────────────────────────────────────────────────────────

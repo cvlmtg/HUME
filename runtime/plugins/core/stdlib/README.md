@@ -64,7 +64,7 @@ list is picked apart.
 
 Thin wrappers over Steel's `steel/filesystem` and `steel/ports`. `core:plum` and
 `core:lsp-install` call them rather than each carrying a copy. `delete-dir!` and
-`delete-file!` are idempotent, unlike Steel's own `delete-directory!` and `delete-file!`:
+`delete-file!` are idempotent, unlike `remove-dir!` and Steel's own `delete-file!`:
 a missing target is not an error. `list-subdirs` returns the names of the directories
 under a path, sorted, and skips stray files that sit alongside a directory tree
 (`.install-lock`, `.DS_Store`).

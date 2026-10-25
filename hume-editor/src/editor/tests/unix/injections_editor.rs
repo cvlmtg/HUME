@@ -323,9 +323,9 @@ fn plum_install_grammar_arg_overrides_buffer_language() {
 /// exactly what stalled the suite before the TUI-ownership check was
 /// introduced.
 ///
-/// This particular command errors out via `log!` only (no `displayln`), so
+/// This particular command errors out via `log!` only (no `print!`), so
 /// under the lazy-entry design it never even reaches
-/// `ensure_inline_output_screen`. See
+/// `claim_terminal`. See
 /// `inline_output_command_with_real_output_still_skips_bracket_off_event_loop`
 /// below for the case that does.
 #[test]
@@ -349,12 +349,12 @@ fn inline_output_command_does_not_enter_terminal_bracket_off_event_loop() {
     );
 }
 
-/// An `#:inline-output` command that *does* print via `displayln` must,
-/// off the event loop, still reach `EditorHostImpl::ensure_inline_output_screen`'s
+/// An `#:inline-output` command that *does* print via `print!` must,
+/// off the event loop, still reach `EditorHostImpl::claim_terminal`'s
 /// no-terminal early return rather than the real terminal: printing must
 /// succeed without ever entering the alt-screen.
 ///
-/// Without the `needs_enter`/`tui` guard, `ensure_inline_output_screen` would
+/// Without the `needs_enter`/`tui` guard, `claim_terminal` would
 /// always enter, and this test would hang waiting for a keypress against a
 /// real TTY or panic against a non-TTY stdin in CI.
 #[test]
@@ -365,7 +365,7 @@ fn inline_output_command_with_real_output_still_skips_bracket_off_event_loop() {
         &mut ed,
         tmp.path(),
         r#"(define-typed-command! "printer" ""
-             (lambda () (displayln "one line") (log! 'info "printed"))
+             (lambda () (print! "one line") (log! 'info "printed"))
              #:inline-output #t)"#,
     );
 
@@ -374,7 +374,7 @@ fn inline_output_command_with_real_output_still_skips_bracket_off_event_loop() {
     assert_eq!(
         ed.inline_output_enter_count(),
         0,
-        "displayln output off the event loop must not enter the real terminal bracket"
+        "print! output off the event loop must not enter the real terminal bracket"
     );
     assert_eq!(
         ed.state.status_msg.as_deref(),

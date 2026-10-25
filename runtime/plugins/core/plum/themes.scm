@@ -108,7 +108,8 @@
             (lambda (slug)
               (let ((old-names (plum/repo-theme-names slug)))
                 (plum/git-sync! (plum/theme-src-dir slug) #f)
-                (plum/sync-theme-files! slug old-names)))))))
+                (plum/sync-theme-files! slug old-names)))
+            #:progress print!))))
   #:inline-output #t)
 
 (define-typed-command! "plum-list-themes"

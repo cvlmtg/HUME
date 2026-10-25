@@ -94,7 +94,7 @@
 ;; ── Batch runner ──────────────────────────────────────────────────────────────
 
 ;;; Runs `thunk` on each of `names`, collecting errors rather than aborting.
-(define (plum/batch-run! verb names thunk)
+(define (plum/batch-run! verb names thunk #:progress [progress #f])
   (let loop ((names names) (ok 0) (errs '()))
     (cond
       ((null? names)
@@ -107,8 +107,8 @@
        ok)
       (else
        (let ((name (car names)))
-         ;; `displayln`, not `log!` — see README.md's "Output model".
-         (displayln (string-append "PLUM: " verb " " name))
+         ;; See README.md's "Output model".
+         (when progress (progress (string-append "PLUM: " verb " " name)))
          (with-handler
            (lambda (err)
              (loop (cdr names) ok

@@ -37,7 +37,8 @@
           (let ((n (plum/batch-run! "installed" missing
                      (lambda (name)
                        (plum/install-repo! (plum/github-url name) (plum/plugin-dir name)
-                                           (declared-plugin-ref name))))))
+                                           (declared-plugin-ref name)))
+                     #:progress print!)))
             (when (> n 0)
               (log! 'info "PLUM: run :reload-config to activate the newly installed plugins"))))))
   #:inline-output #t)
@@ -59,7 +60,8 @@
           (log! 'info "PLUM: no installed plugins to update")
           (let ((n (plum/batch-run! "updated" installed
                      (lambda (name)
-                       (plum/git-sync! (plum/plugin-dir name) (declared-plugin-ref name))))))
+                       (plum/git-sync! (plum/plugin-dir name) (declared-plugin-ref name)))
+                     #:progress print!)))
             (when (> n 0)
               (log! 'info "PLUM: run :reload-config to pick up the updated plugins"))))))
   #:inline-output #t)

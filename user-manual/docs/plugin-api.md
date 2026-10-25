@@ -63,7 +63,7 @@ See [Key bindings](configuration.md#key-bindings) for the key-string grammar and
 | `(command-plugin name)` | The id string of the plugin that registered command `name`: `"user"` for a top-level `init.scm` definition, `"hume"` for a built-in or a name that isn't a command |
 | `(command-exists? name)` | `#t` if `name` is something your plugin can use: a command reachable with `call!` (built-in, Scheme-defined, or a not-yet-loaded plugin's), or any procedure bound at the top level (a builtin, a Steel library function, or your own `define`). `#f` otherwise, including for macros such as `call!` |
 
-`define-command!`, `define-typed-command!`, `call!`, and `on-next-char!` are covered with examples in [Defining commands](writing-plugins.md#defining-commands), [Calling other commands](writing-plugins.md#calling-other-commands), and [Reading characters](writing-plugins.md#reading-characters). A script that runs past `steel-init-budget-ms`/`steel-command-budget-ms` (see [Global options](settings.md#global-options)) is stopped where it is, and none of its error handlers run. Time spent waiting on the operating system doesn't count: running a program and waiting for it (Steel's `wait` and `wait->stdout` included), compiling a grammar, or deleting a directory tree (Steel's `delete-directory!` included). `time/sleep-ms` does count.
+`define-command!`, `define-typed-command!`, `call!`, and `on-next-char!` are covered with examples in [Defining commands](writing-plugins.md#defining-commands), [Calling other commands](writing-plugins.md#calling-other-commands), and [Reading characters](writing-plugins.md#reading-characters). A script that runs past `steel-init-budget-ms`/`steel-command-budget-ms` (see [Global options](settings.md#global-options)) is stopped where it is, and none of its error handlers run. Time spent waiting on the operating system doesn't count: running a program and waiting for it, compiling a grammar, or deleting a directory tree with `remove-dir!`. `time/sleep-ms` does count, and so does waiting in Steel's own calls, such as its `wait`.
 
 ## Supporting several HUME versions
 
@@ -112,10 +112,11 @@ See [Hooks](writing-plugins.md#hooks) for the full table of hook names and their
 | Call | Effect |
 |------|--------|
 | `(log! severity message)` | Report `message` at `severity`: in the statusline, in `:messages`, or both (see below) |
+| `(print! text)` | Write `text` and a line break to the terminal, inside an `#:inline-output` command; raises outside one |
 
 `severity` is one of `'trace`, `'info`, `'warn`, `'error`; anything else raises. Where a message ends up depends on severity: `'info` only flashes in the statusline (never kept in `:messages`); `'warn` and `'error` do both; `'trace` goes to `:messages` only, never the statusline.
 
-Steel's own print functions (`display`, `displayln`, `print`, `println`, `write`, `write-string`, `write-char`, `newline`, `simple-display`, `simple-displayln`) print nothing once the editor is running, except inside an `#:inline-output` command. They work while `init.scm` loads, and always when given an explicit port. Use `log!` to report from a command.
+Report from a plugin with `log!`, and write output the user watches with `print!`. Steel's own print functions (`display`, `displayln`, `newline`, …) write straight to the terminal and draw over the editor's screen; HUME does not stop them.
 
 ## Buffers, panes & selections
 
@@ -304,7 +305,7 @@ Full walkthroughs (batch vs. streaming population, truncation direction, exit-co
 |------|--------|
 | `(spawn-async! cmd args callback #:cwd dir)` | Run `cmd` in the background, in `dir` (default: HUME's working directory; a relative `dir` is joined onto it); `callback` (`(lambda (stdout stderr exit-code) ...)`) fires exactly once, later. Returns a job for `cancel-async!`, an opaque value: compare two with `equal?`. A failed spawn doesn't raise: `callback` fires with empty stdout, the error in stderr, and exit code `#f`, which a signal-killed command also gets |
 | `(cancel-async! job)` | Kill a still-running `spawn-async!` job, or stop a `path-programs` listing, and drop its callback, even one already due; idempotent. Raises for anything but a job, a timer included |
-| `(run-inline-output! cmd args #:cwd #:env)` | Run `cmd`, streaming output to the terminal inside an `#:inline-output` command; `#:env` is a list of `("KEY" . "VALUE")` pairs added to the environment; raises on nonzero exit |
+| `(run-inline-output! cmd args #:cwd #:env)` | Run `cmd`, streaming output to the terminal inside an `#:inline-output` command; `#:env` is a list of `("KEY" . "VALUE")` pairs added to the environment; raises outside an `#:inline-output` command and on nonzero exit |
 | `(run-capture! cmd args #:cwd dir)` | Run `cmd` in `dir` (default: HUME's working directory; a relative `dir` is joined onto it), blocking until it exits; returns `(hash 'stdout s 'stderr s 'exit code)`, with `'exit` `#f` when the spawn failed (stderr says why) or a signal killed the process |
 
 Covered with examples in [Filesystem and processes](writing-plugins.md#filesystem-and-processes).
@@ -342,6 +343,8 @@ Everyday string work (trimming, splitting on a separator, case conversion, prefi
 | `(unlock-file! path)` | Release a lock `try-lock-file!` took; raises when this command doesn't hold it |
 | `(path-join seg ...)` | Join path segments with the OS-native separator |
 | `(safe-path-segment? name)` | `#t` iff `name` is a string safe to use as one path component: not empty, not `.` or `..`, and free of a path separator, `:`, `"` and NUL; `#f` for anything else. Use it before joining a user-typed or downloaded name onto a path |
+| `(remove-dir! dir)` | Delete the directory `dir` (relative to the working directory) and everything in it; raises when `dir` doesn't exist |
+| `(find-program name)` | The path of the program `name` runs as, looked up on the `PATH` HUME started with, the one every program it starts gets; `#f` when there is none |
 | `(path-entries dir prefix)` | The names in directory `dir` (relative to the working directory) starting with `prefix` (ignoring letter case on Windows), sorted, each directory's ending in `/` (a link to a directory included), as `:e` completes them: hidden entries only when `prefix` starts with `.`. `'()` when `dir` can't be read |
 | `(path-programs prefix extensions callback)` | List the programs on `PATH` whose names start with `prefix` in the background. `callback` (`(lambda (names done?) ...)`) is called as `PATH` is read, with every name found so far, sorted, and a last time with `done?` `#t`. A `callback` that raises stops the listing. Returns a job for `cancel-async!`. On Windows a program is a file ending in one of `extensions` (`'(".exe")`), named without it |
 | `(home-dir)` | The user's home directory, or `#f` when the environment names none |
@@ -352,10 +355,10 @@ Everyday string work (trimming, splitting on a separator, case conversion, prefi
 
 The pattern for reading a plugin's own files is covered in [Filesystem and processes](writing-plugins.md#filesystem-and-processes).
 
-HUME has one working directory: Steel's `current-directory` and `change-current-directory!` are `(cwd)` and `(set-cwd! path)`, and `:cd` moves it too. A path given to a HUME call is taken as written: a relative one joins onto that directory, `~` and variables like `$HOME` are not expanded, and `..` is resolved the way the operating system resolves it: after a symlink it leaves the link's target, and after a directory that doesn't exist it raises. Other links stay as typed. Steel's own file functions resolve a relative path against the same directory.
+HUME has one working directory: `(cwd)` reads it, and `(set-cwd! path)` and `:cd` move it. A path given to a HUME call is taken as written: a relative one joins onto that directory, `~` and variables like `$HOME` are not expanded, and `..` is resolved the way the operating system resolves it: after a symlink it leaves the link's target, and after a directory that doesn't exist it raises. Other links stay as typed. Steel's own file functions resolve a relative path against the same directory. Steel's `change-current-directory!` moves only the directory those functions use, not HUME's: move both with `set-cwd!`.
 
 ## Grammar compilation
 
 | Call | Effect |
 |------|--------|
-| `(compile-grammar! src out)` | Compile the tree-sitter grammar source at `src` to `out`. Raises on failure, except while `init.scm` loads, where it logs a warning instead |
+| `(compile-grammar! src out)` | Compile the tree-sitter grammar source at `src` to `out`. Raises on failure with the compiler's error output, except while `init.scm` loads, where it logs a warning instead. The compiler writes nothing to the screen |

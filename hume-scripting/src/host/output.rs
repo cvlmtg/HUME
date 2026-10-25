@@ -1,21 +1,27 @@
 //! Terminal-safety state around `#:inline-output` commands.
 
+/// Why [`OutputHost::claim_terminal`] refused the terminal.
+#[derive(Debug, PartialEq, Eq)]
+pub enum ClaimRefused {
+    /// No `#:inline-output` command's frame is open.
+    NoFrame,
+    /// Leaving the editor's screen failed, with this reason.
+    Enter(String),
+}
+
 /// Terminal-safety state around `#:inline-output` commands, accessed
 /// through [`EditorHost::output`](super::EditorHost::output).
 pub trait OutputHost {
-    /// True while the command currently being dispatched is `#:inline-output`
-    /// (raw stdout writes are safe: either the alt-screen has been left for
-    /// the duration of its body, or there is no TUI to protect at all).
-    fn is_inline_output_command(&self) -> bool;
-
-    /// Called by a builtin just before it writes its first byte of terminal
-    /// output (`displayln`, a subprocess with inherited stdio, …). Enters the
-    /// inline-output alt-screen bracket lazily (on the first real output,
-    /// not eagerly at dispatch), so a command whose body only logs never
-    /// flashes an empty screen or blocks on an unnecessary keypress. Safe to
-    /// call more than once per command body: only the first call (per
-    /// dispatch) does anything.
-    fn ensure_inline_output_screen(&mut self) -> Result<(), String>;
+    /// Claims the terminal for a builtin about to write to it (`print!`, a
+    /// subprocess with inherited stdio). Refused with
+    /// [`ClaimRefused::NoFrame`] unless an `#:inline-output` command's frame
+    /// is open, the one state in which a script may write to the terminal.
+    /// Asked on every write, not once per session: a `call!` can open a
+    /// frame mid-body. The first claim in a dispatch enters the inline-output
+    /// alt-screen bracket, so the screen is entered lazily, on the first real
+    /// output: a command whose body only logs never flashes an empty screen
+    /// or blocks on an unnecessary keypress.
+    fn claim_terminal(&mut self) -> Result<(), ClaimRefused>;
 
     /// Arms the bracket for a `(call! name …)`-dispatched command if `name`
     /// is a Steel command declared `#:inline-output #t`. Returns the depth

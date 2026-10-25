@@ -257,11 +257,12 @@ Every command that reaches the network (`plum-install-plugins`, `plum-update-plu
 so `git`'s progress prints as it happens, and returns to the editor on a keypress once
 the run finishes.
 
-`plum/batch-run!` paints each item's progress line with `displayln`, because `log!`
-buffers until the command returns and then collapses into one status-line slot, which would
-lose every per-item line but the last while the batch runs. `displayln` is gated shut for a
-command that is not `#:inline-output` (`plum-cleanup-plugins`, `plum-cleanup-grammars`);
-those finish at once and keep their summary `log!` line.
+`plum/batch-run!` paints each item's progress line with the `#:progress` reporter its
+caller passes, `print!` for the commands above, because `log!` buffers until the command
+returns and then collapses into one status-line slot, which would lose every per-item line
+but the last while the batch runs. `print!` writes only inside an `#:inline-output`
+command, so `plum-cleanup-plugins` and `plum-cleanup-grammars`, which finish at once, pass
+none and keep their summary `log!` line.
 
 The list commands (`plum-list-plugins`, `plum-list-grammars`, `plum-list-themes`) build
 their report with `core:stdlib`'s [report commands](../stdlib/README.md#reports), in a

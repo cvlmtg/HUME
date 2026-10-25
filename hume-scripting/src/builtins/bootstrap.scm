@@ -256,23 +256,6 @@
       (with-handler (lambda (e) #f)
         (procedure? (eval (string->symbol name))))))
 
-(define %raw-displayln displayln)
-(define %raw-display display)
-(define %raw-print print)
-(define %raw-println println)
-(define %raw-newline newline)
-(define %raw-write write)
-(define %raw-write-string write-string)
-(define %raw-write-char write-char)
-(define %raw-simple-display simple-display)
-(define %raw-simple-displayln simple-displayln)
-(define %stdout-port (current-output-port))
-(define (%port-safe? port)
-  (if (eq? port %stdout-port)
-      (%stdout-gate!)
-      #t))
-(define (%stdout-safe?) (%port-safe? (current-output-port)))
-
 (define (%language-data-all? ok? items)
   (or (null? items) (and (ok? (car items)) (%language-data-all? ok? (cdr items)))))
 

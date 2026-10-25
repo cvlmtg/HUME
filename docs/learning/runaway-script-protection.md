@@ -61,7 +61,7 @@ plugin that clones a git repository, downloads a language server, or deletes
 a large directory spends most of its time waiting on the operating system,
 and none of that is the script misbehaving. The calls that wait this way
 (running a program and waiting for it, compiling a grammar, deleting a
-directory tree, whether the editor's own or Steel's) tell the watchdog when a
+directory tree) tell the watchdog when a
 wait starts and ends; the watchdog stops its clock in between and resumes it
 with whatever budget was left. A one-second command budget therefore stops a
 runaway loop after one second of looping, but lets an install that waits two

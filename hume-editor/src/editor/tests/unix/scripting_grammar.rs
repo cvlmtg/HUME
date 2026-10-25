@@ -428,14 +428,14 @@ fn install_real_json_grammar_e2e() {
         GrammarBuild::Found(tool) => tool,
         missing => panic!("build hume-grammar-build first (cargo build --workspace): {missing:?}"),
     };
-    let status = hume_platform::process::grammar_build(
+    let output = hume_platform::process::grammar_build(
         &tool,
         &src_dir,
         &out_path,
         hume_platform::process::Launch::with_process_path(&src_dir),
     )
     .expect("grammar_build must not fail to spawn");
-    assert!(status.success(), "grammar compiler failed");
+    assert!(output.status.success(), "grammar compiler failed");
     assert!(out_path.exists(), "compiled grammar must exist after build");
 
     let hl_path = src_dir.join("highlights.scm");

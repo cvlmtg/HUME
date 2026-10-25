@@ -6,11 +6,11 @@
 //! here is editor-integration info Steel can't derive on its own,
 //! `path-join`'s Windows UNC-prefix stripping (Steel's own
 //! `canonicalize-path` leaks `\\?\`, which external tools reject), and what
-//! the session has to own: a tree delete the budget does not count (behind
-//! Steel's own `delete-directory!`), a directory swap the budget cannot
-//! split, and file locks released when the session ends.
+//! the session has to own: a tree delete the budget does not count, a
+//! directory swap the budget cannot split, file locks released when the
+//! session ends, and a program lookup on the editor's search path.
 //!
-//! The path arguments of `set-cwd!`, `replace-dir!`, `%delete-directory!`,
+//! The path arguments of `set-cwd!`, `replace-dir!`, `remove-dir!`,
 //! the lock pair and `path-entries` are
 //! [`ScriptPath`](super::args::ScriptPath)s.
 //!
@@ -21,7 +21,7 @@
 //! | `cwd`           | `() → string`                  | The editor's working directory               |
 //! | `set-cwd!`      | `string → void`                | `:cd`: moves the editor's working directory  |
 //! | `replace-dir!`  | `string string → void`         | Moves a directory into another's place, all or nothing |
-//! | `%delete-directory!` | `string → void`           | Steel's `delete-directory!`, budget stopped; backs its shim |
+//! | `remove-dir!`   | `string → void`                | Deletes a directory tree, budget stopped     |
 //! | `try-lock-file!` | `string → bool`               | Exclusive OS lock, held until `unlock-file!` or the session ends |
 //! | `unlock-file!`  | `string → void`                | Releases a lock this session took            |
 //! | `path-join`     | `string… → string`             | OS-native join; no sandbox, no filesystem access |
@@ -29,7 +29,7 @@
 //! | `safe-path-segment?` | `any → bool`              | `#t` for a string safe as one path segment   |
 //! | `path-entries`  | `string string → list`         | What a typed path completes to, as `:e` lists it |
 //! | `path-programs` | `string list proc → job`       | Lists the search path's programs by name prefix in the background |
-//! | `%which`        | `string → string \| #f`        | Where a program runs from; backs the `which` shim |
+//! | `find-program`  | `string → string \| #f`        | Where a program runs from, on the search path |
 //! | `home-dir`      | `() → string \| #f`            | The user's home directory                    |
 //!
 //! `path-separator` is *not* registered here: steel-core's `steel/meta`
@@ -86,7 +86,6 @@ pub(crate) fn runtime_dir(ctx: &mut SteelCtx) -> SteelResult {
 
 /// `(cwd)`: the editor's working directory as a string: the base `:e` and
 /// every spawned child resolve against. Display form, like `(data-dir)`.
-/// Backs the prelude's `current-directory`.
 pub(crate) fn cwd(ctx: &mut SteelCtx) -> SteelResult {
     dir_builtin(Some(ctx.host.buffers().cwd().as_path()))
 }
@@ -94,7 +93,7 @@ pub(crate) fn cwd(ctx: &mut SteelCtx) -> SteelResult {
 /// `(set-cwd! path)`: moves the editor's working directory and the process
 /// one with it, like `:cd path`: a relative `path` joins onto the current
 /// one, and the result is canonicalized. Raises when `path` is not a
-/// directory. Backs the prelude's `change-current-directory!`.
+/// directory.
 pub(crate) fn set_cwd(ctx: &mut SteelCtx, path: AbsolutePath) -> SteelResult {
     ctx.host.buffers().set_cwd(&path).map_err(generic_err)?;
     Ok(SteelVal::Void)
@@ -175,10 +174,10 @@ fn swap_dir_in(src: &Path, dest: &Path, backup: &Path) -> std::io::Result<()> {
     Err(e)
 }
 
-/// `(%delete-directory! dir)`, which the prelude's `delete-directory!`
-/// calls: Steel's own `delete-directory!` (a missing `dir` raises), run with
-/// the session's budget stopped. A relative `dir` joins onto `(cwd)`.
-pub(crate) fn delete_directory(ctx: &mut SteelCtx, dir: AbsolutePath) -> SteelResult {
+/// `(remove-dir! dir)`: deletes the directory `dir` and everything in it
+/// (a missing `dir` raises), with the session's budget stopped while the OS
+/// works. A relative `dir` joins onto `(cwd)`.
+pub(crate) fn remove_dir(ctx: &mut SteelCtx, dir: AbsolutePath) -> SteelResult {
     ctx.while_waiting(|| std::fs::remove_dir_all(&dir))?;
     Ok(SteelVal::Void)
 }
@@ -280,11 +279,11 @@ pub(crate) fn path_programs(
     Ok(job.into_steel_val())
 }
 
-/// `(%which name)`, which the prelude's `which` calls: the program `name`
-/// runs as, found by steel-core's own `which` lookup but on the editor's
-/// search path, with a relative entry taken from `(cwd)`. `#f` when there is
-/// none, or no search path.
-pub(crate) fn which_program(ctx: &mut SteelCtx, name: String) -> SteelResult {
+/// `(find-program name)`: the path of the program `name` runs as, looked up
+/// on the editor's search path (the `PATH` HUME started with, which every
+/// program HUME starts gets), a relative entry taken from `(cwd)`. `#f` when
+/// there is none, or no search path.
+pub(crate) fn find_program(ctx: &mut SteelCtx, name: String) -> SteelResult {
     let buffers = ctx.host.buffers();
     let found = buffers
         .search_path()

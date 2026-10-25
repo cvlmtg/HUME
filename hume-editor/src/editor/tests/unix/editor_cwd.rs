@@ -77,7 +77,8 @@ fn run_inline_output_defaults_to_the_editor_cwd() {
         tmp.path(),
         &format!(
             r#"(define-command! "go" "" (lambda ()
-                 (run-inline-output! "sh" (list "-c" "pwd > \"$1\"" "sh" {}))))"#,
+                 (run-inline-output! "sh" (list "-c" "pwd > \"$1\"" "sh" {})))
+                 #:inline-output #t)"#,
             steel_path(&record)
         ),
     );
@@ -123,27 +124,6 @@ fn cwd_builtin_reports_the_editor_cwd() {
     let mut ed = editor_in(tmp.path());
 
     let out = log_probe(&mut ed, tmp.path(), "(cwd)");
-
-    assert_eq!(out, canonical(tmp.path()).to_str().unwrap());
-}
-
-#[test]
-fn current_directory_in_a_required_module_reports_the_editor_cwd() {
-    let tmp = tempfile::tempdir().unwrap();
-    let module = tmp.path().join("where.scm");
-    std::fs::write(
-        &module,
-        r#"(provide where) (define (where) (current-directory))"#,
-    )
-    .unwrap();
-    let mut ed = editor_in(tmp.path());
-    run(
-        &mut ed,
-        tmp.path(),
-        &format!("(require {})", steel_path(&module)),
-    );
-
-    let out = log_probe(&mut ed, tmp.path(), "(where)");
 
     assert_eq!(out, canonical(tmp.path()).to_str().unwrap());
 }

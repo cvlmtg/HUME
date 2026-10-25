@@ -55,17 +55,17 @@ fn compile_grammar_raises_in_command_mode() {
     );
 }
 
-/// The compiler inherits stdio, so the bracket must open before the spawn
-/// attempt in command mode, even when the build itself then fails.
+/// The compiler writes nothing to the terminal, so a compile never leaves
+/// the editor's screen, even inside an `#:inline-output` command.
 #[test]
-fn compile_grammar_calls_ensure_before_build_in_command_mode() {
+fn compile_grammar_never_opens_the_inline_output_screen() {
     let tmp = TempDir::new().unwrap();
     let (mut h, src, out) = failing_compile(&tmp);
     let mut host = RecordingInlineOutputHost::default();
     let mut ctx = h.ctx_with_host(&mut host);
     assert!(compile_grammar(&mut ctx, src, out).is_err());
     drop(ctx);
-    assert_eq!(host.ensure_calls, 1);
+    assert_eq!(host.claims, 0);
 }
 
 /// The error raised when no grammar compiler was found at startup.
@@ -110,14 +110,5 @@ fn compile_grammar_without_an_executable_path_says_so() {
     );
 }
 
-/// Init-time compiles run pre-terminal, so the bracket must never open.
-#[test]
-fn compile_grammar_does_not_call_ensure_in_init_mode() {
-    let tmp = TempDir::new().unwrap();
-    let (mut h, src, out) = failing_compile(&tmp);
-    let mut host = RecordingInlineOutputHost::default();
-    let mut ctx = h.ctx_init_with_host(&mut host);
-    assert!(compile_grammar(&mut ctx, src, out).is_ok());
-    drop(ctx);
-    assert_eq!(host.ensure_calls, 0);
-}
+#[cfg(unix)]
+mod unix;

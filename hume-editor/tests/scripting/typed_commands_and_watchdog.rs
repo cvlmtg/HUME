@@ -275,27 +275,6 @@ fn call_steel_cmd_budget_stops_a_loop_that_calls_nothing() {
         .expect("the next command runs once the stopped one has returned");
 }
 
-/// A command `"wait-then-log"` that waits on Steel's own `wait` for a child
-/// sleeping well past a 50 ms budget, then logs `"after the wait"`.
-const STEEL_WAIT_THEN_LOG: &str = r#"(require "steel/result")
-(define-command! "wait-then-log" "doc"
-  (lambda ()
-    (wait (unwrap-ok (spawn-process (command "sleep" (list "0.3")))))
-    (log! 'info "after the wait")))"#;
-
-/// Runs `"wait-then-log"` under a 50 ms budget and asserts it ran past its
-/// wait.
-fn assert_wait_then_log_outlives_the_budget(h: &mut ScriptingHost, mock: &mut MockHost) {
-    mock.settings.steel_command_budget_ms = 50;
-
-    h.call_steel_cmd_by_name("wait-then-log", vec![], mock)
-        .expect("a wait on a child must not use up the budget");
-    assert!(
-        logged(h).iter().any(|msg| msg == "after the wait"),
-        "the command must run past its wait"
-    );
-}
-
 /// Time spent waiting on a child process does not count against the budget.
 #[test]
 fn call_steel_cmd_budget_does_not_count_a_wait_on_a_child() {
@@ -309,68 +288,20 @@ fn call_steel_cmd_budget_does_not_count_a_wait_on_a_child() {
         &mut mock,
     )
     .unwrap();
-
-    assert_wait_then_log_outlives_the_budget(&mut h, &mut mock);
-}
-
-/// Steel's own `wait` on a child does not count against the budget either.
-#[test]
-fn call_steel_cmd_budget_does_not_count_a_steel_wait() {
-    let mut h = host();
-    let mut mock = MockHost::new();
-    h.eval_source(STEEL_WAIT_THEN_LOG, &mut mock).unwrap();
-
-    assert_wait_then_log_outlives_the_budget(&mut h, &mut mock);
-}
-
-/// Steel's `wait->stdout` waits without counting, and still answers the
-/// child's output.
-#[test]
-fn call_steel_cmd_budget_does_not_count_a_steel_wait_for_stdout() {
-    let mut h = host();
-    let mut mock = MockHost::new();
-    h.eval_source(
-        r#"(require "steel/result")
-           (define-command! "capture" "doc"
-             (lambda ()
-               (log! 'info
-                 (unwrap-ok
-                   (wait->stdout
-                     (unwrap-ok
-                       (spawn-process
-                         (with-stdout-piped (command "sh" (list "-c" "sleep 0.3; echo out"))))))))))"#,
-        &mut mock,
-    )
-    .unwrap();
     mock.settings.steel_command_budget_ms = 50;
 
-    h.call_steel_cmd_by_name("capture", vec![], &mut mock)
+    h.call_steel_cmd_by_name("wait-then-log", vec![], &mut mock)
         .expect("a wait on a child must not use up the budget");
-    assert_eq!(logged(&mut h), ["out\n"]);
+    assert!(
+        logged(&mut h).iter().any(|msg| msg == "after the wait"),
+        "the command must run past its wait"
+    );
 }
 
-/// A plugin file is compiled as its own module, so its `wait` resolves
-/// through the prelude rather than the top level: it does not count either.
+/// `remove-dir!` on a large tree is waiting on the OS, which the budget
+/// does not count.
 #[test]
-fn call_steel_cmd_budget_does_not_count_a_steel_wait_in_a_required_module() {
-    let tmp = tempfile::tempdir().unwrap();
-    let module = tmp.path().join("waits.scm");
-    std::fs::write(&module, STEEL_WAIT_THEN_LOG).unwrap();
-    let mut h = host();
-    let mut mock = MockHost::new();
-    h.eval_source(
-        &format!("(require {})", steel_path_literal(&module).unwrap()),
-        &mut mock,
-    )
-    .unwrap();
-
-    assert_wait_then_log_outlives_the_budget(&mut h, &mut mock);
-}
-
-/// Steel's `delete-directory!` on a large tree is waiting on the OS, which
-/// the budget does not count.
-#[test]
-fn steel_delete_directory_does_not_count_the_delete_against_the_budget() {
+fn remove_dir_does_not_count_the_delete_against_the_budget() {
     let tree = tempfile::tempdir().unwrap();
     let root = tree.path().join("tree");
     for d in 0..50 {
@@ -384,7 +315,7 @@ fn steel_delete_directory_does_not_count_the_delete_against_the_budget() {
     let mut mock = MockHost::new();
 
     let result = h.eval_source_watchdog(
-        &format!("(delete-directory! {})", steel_path_literal(&root).unwrap()),
+        &format!("(remove-dir! {})", steel_path_literal(&root).unwrap()),
         std::time::Duration::from_millis(10),
         &mut mock,
     );
@@ -393,19 +324,16 @@ fn steel_delete_directory_does_not_count_the_delete_against_the_budget() {
     assert!(!root.exists(), "the tree must be gone");
 }
 
-/// `delete-directory!` raises on a missing directory, as Steel's own does.
+/// `remove-dir!` raises on a missing directory.
 #[test]
-fn steel_delete_directory_raises_on_a_missing_directory() {
+fn remove_dir_raises_on_a_missing_directory() {
     let tmp = tempfile::tempdir().unwrap();
     let missing = tmp.path().join("missing");
     let mut h = host();
     let mut mock = MockHost::new();
 
     let result = h.eval_source(
-        &format!(
-            "(delete-directory! {})",
-            steel_path_literal(&missing).unwrap()
-        ),
+        &format!("(remove-dir! {})", steel_path_literal(&missing).unwrap()),
         &mut mock,
     );
 

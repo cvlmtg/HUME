@@ -65,7 +65,7 @@ impl Tui {
 
 /// A [`Tui`] known, at the point this was captured, to have been active:
 /// `Tui` minus `Off`. `InlineOutput::Frame` captures one via
-/// [`Tui::as_active`] at push time, and the screen `ensure_inline_output_screen`
+/// [`Tui::as_active`] at push time, and the screen `claim_terminal`
 /// enters on it is what `close_inline_output_bracket` restores, so both read
 /// what was true when the bracket was armed, never a fresh
 /// `Editor`/`EditorHostImpl::tui` that may belong to a different host than

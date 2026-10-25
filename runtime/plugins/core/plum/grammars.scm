@@ -122,7 +122,7 @@
       #:build
       (lambda (dir)
         (plum/fetch-query! name "highlights.scm" (path-join dir "highlights.scm"))
-        (displayln (string-append "Compiling grammar for " name "..."))
+        (print! (string-append "Compiling grammar for " name "..."))
         (compile-grammar! (if (equal? subpath "") dir (path-join dir subpath)) out-path)
         (for-each
           (lambda (kind) (plum/try-fetch-query! name (cdr kind) dir))
@@ -161,7 +161,7 @@
     (let ((missing (filter plum/not-installed? grammars)))
       (if (null? missing)
           (log! 'info "PLUM: all requested grammars are installed")
-          (plum/batch-run! "installed grammar" missing plum/install-grammar))))
+          (plum/batch-run! "installed grammar" missing plum/install-grammar #:progress print!))))
   #:inline-output #t)
 
 (define-typed-command! "plum-list-grammars"

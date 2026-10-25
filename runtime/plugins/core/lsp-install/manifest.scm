@@ -3,4 +3,5 @@
   #:languages '("*"))
 (declare-plugin! "core:lsp-install"
   #:entry "commands.scm"
+  #:commands '("lsp-install/install-server")
   #:typed-commands '("lsp-install" "lsp-uninstall" "lsp-catalog"))

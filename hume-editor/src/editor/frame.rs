@@ -651,7 +651,7 @@ impl Editor {
         &self.view.panes[self.view.focused_pane()].viewport
     }
 
-    /// How many times `ensure_inline_output_screen` has actually entered the
+    /// How many times `claim_terminal` has actually entered the
     /// inline-output terminal bracket (alt-screen toggle + "press any key")
     /// on this `Editor`. Off the event loop this must stay `0` for every
     /// `#:inline-output #t` command dispatched, output or not; see `tui` on

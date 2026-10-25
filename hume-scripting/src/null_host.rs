@@ -9,7 +9,7 @@
 //! mutations (set-option!, attach-grammar!, …) must use `MockHost` in the editor
 //! crate.
 //!
-//! [`InlineOutputHost`], [`RecordingInlineOutputHost`], [`CommandStoreHost`]
+//! [`RecordingInlineOutputHost`], [`CommandStoreHost`]
 //! and [`EmptyLspHost`] each embed a real `NullHost` and delegate every
 //! capability accessor to it, overriding only the one or two
 //! accessors/methods that make them distinct.
@@ -22,9 +22,10 @@ use crate::attribution::EntryId;
 use crate::command_name::fold;
 use crate::command_procs::CommandProc;
 use crate::host::{
-    BufferHost, CommandHost, CursorHost, DiscardUnsaved, DisplayPathForm, EditorHost, EventHost,
-    HostToken, LanguageHost, LocationPlace, LspHost, OptionInput, OptionValue, OutputHost,
-    PositionParams, RangeParams, RangesParams, SelectionInfo, SettingsHost, TrackedHold,
+    BufferHost, ClaimRefused, CommandHost, CursorHost, DiscardUnsaved, DisplayPathForm, EditorHost,
+    EventHost, HostToken, LanguageHost, LocationPlace, LspHost, OptionInput, OptionValue,
+    OutputHost, PositionParams, RangeParams, RangesParams, SelectionInfo, SettingsHost,
+    TrackedHold,
 };
 use crate::types::{GrammarReg, PaneHandle, SteelCmdDef, SteelTypedCmdDef};
 
@@ -293,30 +294,33 @@ impl CursorHost for NullHost {
     }
 }
 
-/// Like [`NullHost`] but reports `is_inline_output_command() == true`, and
-/// counts calls to `ensure_inline_output_screen`. Lets a test assert a
-/// builtin opens the inline-output bracket exactly when (and only when) it
-/// has real terminal output to produce, without a real terminal. Exercises
-/// the `SteelCtx::new_command` wiring that reads the flag off the host
-/// without pulling in the editor crate's real `EditorHostImpl`.
+/// Like [`NullHost`] but reports a chosen inline-output frame state, and counts
+/// the terminal claims it grants. Lets a test assert a builtin
+/// opens the inline-output bracket when, and only when, it has real
+/// terminal output to produce, without a real terminal and without pulling
+/// in the editor crate's real `EditorHostImpl`.
 pub(crate) struct RecordingInlineOutputHost {
     inner: NullHost,
-    /// Backs `is_inline_output_command`. Defaults to `true` (see the manual
-    /// `Default` impl below: `#[derive(Default)]` would default this `false`
-    /// and silently close the gate every other test using this host relies
-    /// on being open). Set to `false` explicitly by the one test that needs
-    /// it isolated from `EvalSession::Init`'s own, independent safety reason.
-    pub(crate) inline_output: bool,
-    pub(crate) ensure_calls: usize,
+    /// Whether `claim_terminal` is granted. Defaults to `true`, the state in
+    /// which every write proceeds.
+    frame_open: bool,
+    pub(crate) claims: usize,
+}
+
+impl RecordingInlineOutputHost {
+    /// A host whose inline-output frame is open when `frame_open`.
+    pub(crate) fn with_frame_open(frame_open: bool) -> Self {
+        Self {
+            inner: NullHost,
+            frame_open,
+            claims: 0,
+        }
+    }
 }
 
 impl Default for RecordingInlineOutputHost {
     fn default() -> Self {
-        Self {
-            inner: NullHost,
-            inline_output: true,
-            ensure_calls: 0,
-        }
+        Self::with_frame_open(true)
     }
 }
 
@@ -348,16 +352,16 @@ impl EditorHost for RecordingInlineOutputHost {
 }
 
 impl OutputHost for RecordingInlineOutputHost {
-    fn is_inline_output_command(&self) -> bool {
-        self.inline_output
-    }
-    fn ensure_inline_output_screen(&mut self) -> Result<(), String> {
-        self.ensure_calls += 1;
+    fn claim_terminal(&mut self) -> Result<(), ClaimRefused> {
+        if !self.frame_open {
+            return Err(ClaimRefused::NoFrame);
+        }
+        self.claims += 1;
         Ok(())
     }
     // This host has no command registry to consult (unlike
-    // `is_inline_output_command` above, which is a fixed stance for gate
-    // tests, not a per-command decision). The `call!`-nesting behavior
+    // `claim_terminal` above, which is a fixed stance for frame tests, not a
+    // per-command decision). The `call!`-nesting behavior
     // these two back is exercised against the real `EditorHostImpl`
     // instead (`hume-editor`'s inline-output dispatch tests).
     fn arm_inline_output(&mut self, _name: &str) -> Option<usize> {

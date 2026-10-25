@@ -198,14 +198,14 @@ fn grammar_build_child_shares_the_callers_process_group() {
     );
     let out = dir.path().join("out.txt");
 
-    let status = grammar_build(
+    let output = grammar_build(
         &tool,
         dir.path(),
         &out,
         Launch::with_process_path(dir.path()),
     )
     .expect("spawn the tool");
-    assert!(status.success());
+    assert!(output.status.success());
     let printed = std::fs::read(&out).expect("read out.txt");
     assert_in_callers_group(&printed);
 }

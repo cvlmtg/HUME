@@ -78,7 +78,7 @@ fn run_capture_covers_success_failure_and_spawn_error() {
 #[test]
 fn native_error_reraised_from_a_handler_reaches_the_enclosing_handler() {
     let mut host = ScriptingHost::new(&Dirs::none());
-    let mut null_host = NullHost;
+    let mut inline_host = crate::null_host::RecordingInlineOutputHost::default();
     let src = r#"
         (define (inner-fetch)
           (with-handler
@@ -93,7 +93,7 @@ fn native_error_reraised_from_a_handler_reaches_the_enclosing_handler() {
             (begin)
             (error (string-append "outer handler saw: " message)))
     "#;
-    host.eval_source(src, &mut null_host)
+    host.eval_source(src, &mut inline_host)
         .expect("the outer handler must receive the re-raised native error");
 }
 
@@ -103,7 +103,7 @@ fn uncaught_native_error_propagates_one_hop_to_outer_tolerant_handler() {
     // wrapped by an inner with-handler at all; it propagates in one hop
     // straight to the outer tolerant handler.
     let mut host = ScriptingHost::new(&Dirs::none());
-    let mut null_host = NullHost;
+    let mut inline_host = crate::null_host::RecordingInlineOutputHost::default();
     let src = r#"
         (define (inner-fetch)
           (run-inline-output! "false" '()))
@@ -113,7 +113,7 @@ fn uncaught_native_error_propagates_one_hop_to_outer_tolerant_handler() {
 
         (tolerant-outer)
     "#;
-    host.eval_source(src, &mut null_host)
+    host.eval_source(src, &mut inline_host)
         .expect("uncaught native error one-hop propagation to outer handler failed");
 }
 
@@ -122,7 +122,7 @@ fn uncaught_native_error_propagates_one_hop_to_outer_tolerant_handler() {
 #[test]
 fn dynamic_wind_cleanup_runs_when_an_outer_handler_catches_the_bodys_error() {
     let mut host = ScriptingHost::new(&Dirs::none());
-    let mut null_host = NullHost;
+    let mut inline_host = crate::null_host::RecordingInlineOutputHost::default();
     let src = r#"
         (define cleanup-ran #f)
         (define (inner-fetch)
@@ -137,6 +137,6 @@ fn dynamic_wind_cleanup_runs_when_an_outer_handler_catches_the_bodys_error() {
         (tolerant-outer)
         (if cleanup-ran (begin) (error "cleanup did not run"))
     "#;
-    host.eval_source(src, &mut null_host)
+    host.eval_source(src, &mut inline_host)
         .expect("dynamic-wind's after thunk must run before the outer handler returns");
 }

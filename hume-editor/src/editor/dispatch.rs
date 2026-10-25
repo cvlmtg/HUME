@@ -336,15 +336,15 @@ impl Editor {
         // Alt-screen bracketing for inline-output commands is lazy: entering
         // the alt-screen and printing the running banner happens on the
         // command body's *first actual output* (see
-        // `EditorHostImpl::ensure_inline_output_screen`), not eagerly here,
+        // `EditorHostImpl::claim_terminal`), not eagerly here,
         // so a body that only logs (`log!`) never flashes an empty screen or
         // blocks on a keypress nobody needed to answer. Pushing a frame just
-        // primes the state SteelCtx reads through `is_inline_output_command`;
-        // the same `push` a nested `call!` uses (`EditorHostImpl::
-        // arm_inline_output`), so top-level dispatch and `call!` share one
-        // arming implementation. A command not declared `#:inline-output`
-        // pushes nothing: `is_inline_output_command` must read closed for it
-        // even if its own body later `call!`s into a declared one. Pushed
+        // primes the state `claim_terminal` reads; the same
+        // `push` a nested `call!` uses (`EditorHostImpl::arm_inline_output`),
+        // so top-level dispatch and `call!` share one arming implementation.
+        // A command not declared `#:inline-output` pushes nothing:
+        // `claim_terminal` must not grant the terminal to it even if its own
+        // body later `call!`s into a declared one. Pushed
         // only after the no-scripting-host early return above, since only a
         // host can run the session that drains the frame. Pushing before that
         // return would leak the frame.

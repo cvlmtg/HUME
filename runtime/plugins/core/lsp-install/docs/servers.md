@@ -40,7 +40,10 @@ repair and upgrade path too, and it covers reinstalling over a running client:
 1. Run the blocker check, which includes the required tools.
 2. Unregister the server, which shuts down any running client. When an install
    already exists, the command unregisters first and runs steps 3 to 6 on the next tick, so
-   the client has stopped before its files are touched.
+   the client has stopped before its files are touched. That tick runs them through
+   `call!` to `lsp-install/install-server`, an `#:inline-output` command: a timer
+   runs outside `:lsp-install`'s own output screen, where running an installer
+   would raise.
 3. Purge any existing install; the receipt goes with it.
 4. Download, verify and unpack (`github`, `generic`), or run the kind's package manager
    (`npm`, `cargo`, `go`, `pip` in a venv, `gem`, `dotnet tool`).
@@ -74,7 +77,7 @@ A generic row is `(target asset url sha bin)`.
 - **Required tools.** `npm`, `cargo`, `golang`, `pypi`, `gem` and `nuget` kinds need
   `npm`, `cargo`, `go`, `python3` (`python` on Windows), `gem` and `dotnet` on `$PATH`.
   A download needs `curl` plus the unpack tools for its format. Each is checked with
-  `which` before anything is downloaded, so a missing tool fails naming it.
+  `find-program` before anything is downloaded, so a missing tool fails naming it.
 
 ### Verifying and unpacking
 

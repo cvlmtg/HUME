@@ -39,7 +39,7 @@ pub use edits::{CharTextEdit, EditHost, WireTextEdit};
 pub use events::EventHost;
 pub use language::LanguageHost;
 pub use lsp::{LocationPlace, LspHost, Place, PositionParams, RangeParams, RangesParams};
-pub use output::OutputHost;
+pub use output::{ClaimRefused, OutputHost};
 pub use registers::RegisterHost;
 pub use settings::{
     BufferIntrinsicOption, OptionInput, OptionValue, SettingsHost, language_option_value,
@@ -150,8 +150,8 @@ pub trait EditorHost {
         None
     }
     /// Terminal-safety state around `#:inline-output` commands, or `None` for
-    /// hosts with no live TUI to protect (test stubs): `is_inline_output_command`
-    /// reads false and `ensure_inline_output_screen` is a no-op success.
+    /// hosts with no terminal state (test stubs). A script on such a host
+    /// cannot claim the terminal.
     fn output(&mut self) -> Option<&mut dyn OutputHost> {
         None
     }

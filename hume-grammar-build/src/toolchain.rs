@@ -65,10 +65,16 @@ impl Compiler {
         self.flavor
     }
 
-    /// Run the driver with `args` after its own, in `cwd`, inheriting stdio.
+    /// Run the driver with `args` after its own, in `cwd`, its stdout sent
+    /// to this program's stderr: MSVC's `cl` writes its diagnostics to
+    /// stdout, and a caller reads a failed build's errors from stderr.
     pub(crate) fn run(&self, args: &[OsString], cwd: &Path) -> Result<(), Error> {
         let mut command = Command::new(&self.program);
-        command.args(&self.args).args(args).current_dir(cwd);
+        command
+            .args(&self.args)
+            .args(args)
+            .current_dir(cwd)
+            .stdout(std::io::stderr());
         for (key, value) in &self.env {
             match value {
                 Some(value) => command.env(key, value),

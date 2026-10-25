@@ -121,15 +121,17 @@ pub(crate) fn run_capture(
 /// joins onto it); `env` is a list of `("KEY" . "VALUE")` pairs added to the
 /// inherited environment.
 ///
-/// A Rust builtin rather than Steel's own `spawn-process` because it opens
-/// the inline-output screen before the child writes, and starts the child on
-/// the editor's search path with git's credential prompt denied. No sandbox
+/// A Rust builtin rather than Steel's own `spawn-process` because it runs
+/// only inside an `#:inline-output` command and leaves the editor's screen
+/// before the child writes, and starts the child on the editor's search
+/// path with git's credential prompt denied. No sandbox
 /// checks: plugins are trusted code (see `user-manual/docs/writing-plugins.md`'s
 /// "Filesystem and processes").
 ///
 /// # Errors
-/// The binary can't be spawned (e.g. not found on `PATH`), or it exited
-/// non-zero or was killed by a signal.
+/// Called outside an `#:inline-output` command, the binary can't be spawned
+/// (e.g. not found on `PATH`), or it exited non-zero or was killed by a
+/// signal.
 pub(crate) fn run_inline_output(
     ctx: &mut SteelCtx,
     cmd: String,
@@ -146,13 +148,8 @@ pub(crate) fn run_inline_output(
     let env = list_to_string_pairs(env_val, "%run-inline-output! env", ENV_PAIR_SHAPE)?;
     let search_path = ctx.host.buffers().search_path();
 
-    // The child inherits stdio, so this is a real terminal write: open the
-    // bracket before spawning it.
-    if let Some(output) = ctx.host.output() {
-        output
-            .ensure_inline_output_screen()
-            .map_err(|e| generic_err(format!("run-inline-output!: {e}")))?;
-    }
+    // The child inherits stdio, so it writes to the terminal.
+    super::io::claim_terminal_for(ctx, "run-inline-output!")?;
 
     let launch = Launch {
         cwd: &cwd,
@@ -171,18 +168,6 @@ pub(crate) fn run_inline_output(
             "",
         )))
     }
-}
-
-/// `(%wait child)`, which the prelude's `wait` and `process-wait` call:
-/// Steel's own `wait`, run with the session's budget stopped.
-pub(crate) fn wait(ctx: &mut SteelCtx, child: SteelVal) -> SteelResult {
-    ctx.while_waiting(|| steel::primitives::process::wait(&child))
-}
-
-/// `(%wait->stdout child)`, which the prelude's `wait->stdout` calls: Steel's
-/// own `wait->stdout`, run with the session's budget stopped.
-pub(crate) fn wait_for_stdout(ctx: &mut SteelCtx, child: SteelVal) -> SteelResult {
-    ctx.while_waiting(|| steel::primitives::process::wait_with_stdout(&child))
 }
 
 #[cfg(test)]

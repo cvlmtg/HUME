@@ -7,8 +7,9 @@
 //! No sandbox checks: full-trust plugin model (see
 //! `user-manual/docs/plugins.md`'s "Filesystem and processes"). This is a Rust
 //! builtin because the compiler is found beside the HUME executable, which
-//! only the scripting host knows, and because its inherited output needs the
-//! inline-output screen opened first. `grammar-output-path` (path
+//! only the scripting host knows. The compiler's output is captured, never
+//! written to the terminal, so a compile runs anywhere a script does.
+//! `grammar-output-path` (path
 //! construction, no filesystem access) lives in Scheme
 //! (`runtime/scheme/grammars.scm`).
 
@@ -67,17 +68,6 @@ fn build(ctx: &mut SteelCtx, src: &str, out: &str) -> Result<(), String> {
         format!("compile-grammar!: `{program} -o {out} {src}`"),
     );
 
-    // The compiler inherits stdio, so this is a real terminal write, so open
-    // the bracket first. Init-time compiles run pre-terminal (no screen to
-    // enter, and no `#:inline-output` frame is ever armed there anyway).
-    if ctx.session == crate::context::EvalSession::Runtime
-        && let Some(output) = ctx.host.output()
-    {
-        output
-            .ensure_inline_output_screen()
-            .map_err(|e| e.to_string())?;
-    }
-
     let cwd = ctx.host.buffers().cwd();
     let search_path = ctx.host.buffers().search_path();
     let launch = hume_platform::process::Launch {
@@ -88,11 +78,11 @@ fn build(ctx: &mut SteelCtx, src: &str, out: &str) -> Result<(), String> {
         hume_platform::process::grammar_build(&tool, Path::new(src), Path::new(out), launch)
     });
     match built {
-        Ok(status) if status.success() => Ok(()),
-        Ok(status) => Err(hume_platform::process::failure_message(
+        Ok(output) if output.status.success() => Ok(()),
+        Ok(output) => Err(hume_platform::process::failure_message(
             &format!("`{program}`"),
-            Some(status),
-            "",
+            Some(output.status),
+            &hume_platform::process::decode_lossy(output.stderr),
         )),
         Err(e) => Err(e.to_string()),
     }

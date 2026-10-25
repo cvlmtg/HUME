@@ -6,10 +6,10 @@
 //! (`disk_change/`) and the `unix::injections_editor` bracket tests cover
 //! that side.
 //!
-//! Every probe here calls `(%stdout-gate!)` directly and logs which branch it
-//! took: the same builtin every gated print shim (`displayln`, …) calls
-//! before writing, so a probe result is exactly what a real print would have
-//! done, without needing a real terminal.
+//! Every probe here is `(print-probe tag)` ([`PRINT_PROBE`]): it calls
+//! `(print! "")`, which writes, leaving the editor's screen first, inside an
+//! `#:inline-output` command's frame, and raises outside one, and logs
+//! `tag-open` or `tag-closed` for the branch it took.
 
 use super::*;
 use crate::editor::keymap::BindMode;
@@ -26,6 +26,12 @@ fn bind_backslash(ed: &mut Editor, cmd: &str) {
     );
 }
 
+/// Defines `(print-probe tag)`, which logs `tag-open` when `print!` writes
+/// and `tag-closed` when it raises.
+const PRINT_PROBE: &str = r#"(define (print-probe tag)
+  (log! 'warn (with-handler (lambda (_) (string-append tag "-closed"))
+                (begin (print! "") (string-append tag "-open")))))"#;
+
 fn logged(ed: &Editor, needle: &str) -> bool {
     ed.state
         .message_log
@@ -33,20 +39,16 @@ fn logged(ed: &Editor, needle: &str) -> bool {
         .any(|e| e.text.contains(needle))
 }
 
-/// Build an editor over `"-[a]>bcdef\n"`, define `source`'s commands, bind
-/// `cmd` to `\` in Normal mode, and dispatch it: the setup+dispatch shape
-/// every `call!`-nesting test below needs, differing only in `source`/`cmd`,
-/// whether the dispatch runs with a live TUI, and what each asserts
-/// afterward.
-fn dispatch_backslash(source: &str, cmd: &str, with_live_tui: bool) -> Editor {
+/// Build an editor over `"-[a]>bcdef\n"` with its screen up, define
+/// [`PRINT_PROBE`] and `source`'s commands, bind `cmd` to `\` in Normal
+/// mode, and dispatch it: the setup+dispatch shape every `call!`-nesting
+/// test below needs, differing only in `source`/`cmd` and what each asserts
+/// afterward. The screen is up, the shape a key dispatch has.
+fn dispatch_backslash(source: &str, cmd: &str) -> Editor {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
-    ed.tui = if with_live_tui {
-        Tui::OnHeadless
-    } else {
-        Tui::Off
-    };
-    run(&mut ed, tmp.path(), source);
+    ed.tui = Tui::OnHeadless;
+    run(&mut ed, tmp.path(), &format!("{PRINT_PROBE}\n{source}"));
     bind_backslash(&mut ed, cmd);
     ed.feed_event(key('\\'));
     ed
@@ -55,17 +57,16 @@ fn dispatch_backslash(source: &str, cmd: &str, with_live_tui: bool) -> Editor {
 // ── call! reaches a declared command ────────────────────────────────────────
 
 /// A plain (non-`#:inline-output`) editor command's own body can `call!` an
-/// `#:inline-output` command and have *that* command's prints reach the
-/// gate: the runtime gap `%dispatch-command!`'s in-VM `(apply proc args)`
-/// otherwise left open (only keypress/`:` dispatch armed the bracket before
-/// this).
+/// `#:inline-output` command and have *that* command's prints write: the
+/// runtime gap `%dispatch-command!`'s in-VM `(apply proc args)` otherwise
+/// left open (only keypress/`:` dispatch armed the bracket before this).
 ///
 /// Without `(%arm-inline-output! name)` in `%apply-command!`
-/// (`bootstrap.scm`), the probe would log `"gate-closed"`.
+/// (`bootstrap.scm`), the probe would log `"inner-closed"`.
 ///
 /// Also covers the depth-`0` restore: `trigger` itself is not declared
 /// `#:inline-output`, so `%arm-inline-output!` returns `#f` for it and its
-/// own gate reads closed both before and after the nested `call!`: the
+/// own body has no frame open both before and after the nested `call!`: the
 /// common case, distinct from `nested_call_bang_restores_the_outer_commands_state`
 /// below, where the *outer* command is itself declared and restores to depth
 /// `1`. `%apply-command!` discriminates "no restore" from "restore to this
@@ -76,27 +77,24 @@ fn dispatch_backslash(source: &str, cmd: &str, with_live_tui: bool) -> Editor {
 /// Reading a `depth` of `0` as falsy and skipping the restore would log
 /// `"trigger-after-open"` instead of `"trigger-after-closed"`.
 #[test]
-fn call_bang_to_inline_output_editor_command_opens_the_gate() {
+fn call_bang_to_inline_output_editor_command_opens_a_frame() {
     let ed = dispatch_backslash(
-        r#"(define-command! "inner-probe" ""
-             (lambda () (log! 'warn (if (%stdout-gate!) "gate-open" "gate-closed")))
-             #:inline-output #t)
+        r#"(define-command! "inner-probe" "" (lambda () (print-probe "inner")) #:inline-output #t)
            (define-command! "trigger" ""
              (lambda ()
                (call! "inner-probe")
-               (log! 'warn (if (%stdout-gate!) "trigger-after-open" "trigger-after-closed"))))"#,
+               (print-probe "trigger-after")))"#,
         "trigger",
-        false,
     );
 
     assert!(
-        logged(&ed, "gate-open"),
-        "call! to an #:inline-output command must open the print gate; messages: {:?}",
+        logged(&ed, "inner-open"),
+        "call! to an #:inline-output command must let print! write; messages: {:?}",
         ed.state.message_log.entries().collect::<Vec<_>>()
     );
     assert!(
         logged(&ed, "trigger-after-closed"),
-        "trigger's own gate must be closed again once inner-probe's call! returns; \
+        "trigger must have no frame open once inner-probe's call! returns; \
          messages: {:?}",
         ed.state.message_log.entries().collect::<Vec<_>>()
     );
@@ -116,7 +114,6 @@ fn call_bang_to_inline_output_typed_command_is_unreachable() {
              #:inline-output #t)
            (define-command! "trigger" "" (lambda () (call! "inner-typed-probe")))"#,
         "trigger",
-        false,
     );
 
     assert!(
@@ -143,20 +140,18 @@ fn call_bang_to_inline_output_typed_command_is_unreachable() {
 /// live TUI.
 ///
 /// The declared-flag check in `EditorHostImpl::arm_inline_output` is what
-/// keeps `plain-inner` from seeing an open gate it never declared.
+/// keeps `plain-inner` from seeing an open frame it never declared.
 #[test]
 fn call_bang_to_a_non_declared_command_never_arms() {
     let ed = dispatch_backslash(
-        r#"(define-command! "plain-inner" ""
-             (lambda () (log! 'warn (if (%stdout-gate!) "plain-inner-open" "plain-inner-closed"))))
+        r#"(define-command! "plain-inner" "" (lambda () (print-probe "plain-inner")))
            (define-command! "trigger" "" (lambda () (call! "plain-inner")))"#,
         "trigger",
-        false,
     );
 
     assert!(
         logged(&ed, "plain-inner-closed"),
-        "a call! to a non-declared command must never open the gate"
+        "a call! to a non-declared command must never open a frame"
     );
     assert!(!logged(&ed, "plain-inner-open"));
 }
@@ -166,7 +161,7 @@ fn call_bang_to_a_non_declared_command_never_arms() {
 /// An `#:inline-output` command already dispatched (and already past its
 /// first print, so the alt-screen has already been entered) that `call!`s a
 /// *second* `#:inline-output` command mid-body must have its own remaining
-/// prints still reach the gate once the nested call returns. The nested
+/// prints still write once the nested call returns. The nested
 /// arm must truncate back to its own saved depth, not wipe the whole stack.
 ///
 /// If `%restore-inline-output!` always truncated to `0` rather than to the
@@ -178,12 +173,11 @@ fn nested_call_bang_restores_the_outer_commands_state() {
         r#"(define-command! "nested-inner" "" (lambda () (log! 'warn "inner-ran")) #:inline-output #t)
            (define-command! "nested-outer" ""
              (lambda ()
-               (log! 'warn (if (%stdout-gate!) "outer-before-open" "outer-before-closed"))
+               (print-probe "outer-before")
                (call! "nested-inner")
-               (log! 'warn (if (%stdout-gate!) "outer-after-open" "outer-after-closed")))
+               (print-probe "outer-after"))
              #:inline-output #t)"#,
         "nested-outer",
-        false,
     );
 
     assert!(
@@ -212,7 +206,6 @@ fn raise_inside_call_bang_to_inline_output_command_does_not_leak_saved_state() {
         r#"(define-command! "raiser" "" (lambda () (error "boom")) #:inline-output #t)
            (define-command! "outer-raises" "" (lambda () (call! "raiser")) #:inline-output #t)"#,
         "outer-raises",
-        false,
     );
 
     assert!(
@@ -222,18 +215,17 @@ fn raise_inside_call_bang_to_inline_output_command_does_not_leak_saved_state() {
 }
 
 /// A plain command that catches the raise of a `call!` to an
-/// `#:inline-output` command goes on with the gate closed: the raising
+/// `#:inline-output` command goes on with no frame open: the raising
 /// call's bracket ends with it.
 #[test]
-fn caught_raise_from_call_bang_to_inline_output_command_closes_its_gate() {
+fn caught_raise_from_call_bang_to_inline_output_command_closes_its_frame() {
     let ed = dispatch_backslash(
         r#"(define-command! "raiser" "" (lambda () (error "boom")) #:inline-output #t)
            (define-command! "plain-catcher" ""
              (lambda ()
                (with-handler (lambda (err) #f) (call! "raiser"))
-               (log! 'warn (if (%stdout-gate!) "after-catch-open" "after-catch-closed"))))"#,
+               (print-probe "after-catch")))"#,
         "plain-catcher",
-        false,
     );
 
     assert!(
@@ -246,26 +238,27 @@ fn caught_raise_from_call_bang_to_inline_output_command_closes_its_gate() {
 // ── Hook / timer paths ────────────────────────────────────────────────────────
 
 /// A timer thunk's own `call!` to an `#:inline-output` command must reach
-/// the gate too, and leave the bracket closed once the queued-call batch
+/// a frame too, and leave the bracket closed once the queued-call batch
 /// finishes: `run_call_batch`'s own `apply_script_result` call closes it the
 /// same way `call_steel_command_body` does for direct dispatch (see
 /// `apply_script_result`'s own doc).
 ///
-/// The gate opens whether or not `apply_script_result` (`scripting/effects.rs`)
+/// The frame opens whether or not `apply_script_result` (`scripting/effects.rs`)
 /// calls `self.close_inline_output_bracket()`. A missing close would leave a
 /// stuck bracket for the next dispatch, so the test also asserts the reset
 /// right after the batch that armed it.
 #[test]
-fn timer_call_bang_to_inline_output_command_opens_the_gate() {
+fn timer_call_bang_to_inline_output_command_opens_a_frame() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "inner-probe" ""
-             (lambda () (log! 'warn (if (%stdout-gate!) "gate-open" "gate-closed")))
-             #:inline-output #t)
-           (define-typed-command! "start" "" (lambda () (after! 0 (lambda () (call! "inner-probe")))))"#,
+        &format!(
+            r#"{PRINT_PROBE}
+           (define-command! "inner-probe" "" (lambda () (print-probe "inner")) #:inline-output #t)
+           (define-typed-command! "start" "" (lambda () (after! 0 (lambda () (call! "inner-probe")))))"#
+        ),
     );
 
     type_cmd(&mut ed, ":start");
@@ -273,8 +266,8 @@ fn timer_call_bang_to_inline_output_command_opens_the_gate() {
     ed.settle();
 
     assert!(
-        logged(&ed, "gate-open"),
-        "a timer thunk's call! to an #:inline-output command must reach the print gate"
+        logged(&ed, "inner-open"),
+        "a timer thunk's call! to an #:inline-output command must let print! write"
     );
     assert!(!ed.state.inline_output.is_open());
 }
@@ -297,15 +290,14 @@ fn timer_call_bang_to_inline_output_command_opens_the_gate() {
 #[test]
 fn nested_call_bang_after_entered_does_not_reenter_the_alt_screen() {
     let ed = dispatch_backslash(
-        r#"(define-command! "reenter-inner" "" (lambda () (%stdout-gate!)) #:inline-output #t)
+        r#"(define-command! "reenter-inner" "" (lambda () (print! "")) #:inline-output #t)
            (define-command! "reenter-outer" ""
              (lambda ()
-               (%stdout-gate!)
+               (print! "")
                (call! "reenter-inner")
-               (%stdout-gate!))
+               (print! ""))
              #:inline-output #t)"#,
         "reenter-outer",
-        true,
     );
 
     assert_eq!(
@@ -329,14 +321,13 @@ fn nested_call_bang_after_entered_does_not_reenter_the_alt_screen() {
 #[test]
 fn nested_call_bang_before_outer_prints_does_not_reenter_the_alt_screen() {
     let ed = dispatch_backslash(
-        r#"(define-command! "reenter-inner2" "" (lambda () (%stdout-gate!)) #:inline-output #t)
+        r#"(define-command! "reenter-inner2" "" (lambda () (print! "")) #:inline-output #t)
            (define-command! "reenter-outer2" ""
              (lambda ()
                (call! "reenter-inner2")
-               (%stdout-gate!))
+               (print! ""))
              #:inline-output #t)"#,
         "reenter-outer2",
-        true,
     );
 
     assert_eq!(ed.inline_output_enter_count(), 1);
@@ -354,7 +345,7 @@ fn nested_call_bang_before_outer_prints_does_not_reenter_the_alt_screen() {
 ///
 /// Without the `ctx.host.output()...truncate_inline_output(0)` call in
 /// `run_steel_session` (`eval/session.rs`), the next dispatch's `SteelCtx`
-/// would inherit an already-open gate it never armed.
+/// would inherit an already-open frame it never armed.
 #[test]
 fn caught_error_inside_call_bang_still_closes_bracket_and_drains_state() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -431,7 +422,7 @@ fn hook_call_bang_to_inline_output_command_closes_the_bracket() {
     run(
         &mut ed,
         scm_dir.path(),
-        r#"(define-command! "hook-inner-probe" "" (lambda () (%stdout-gate!)) #:inline-output #t)
+        r#"(define-command! "hook-inner-probe" "" (lambda () (print! "")) #:inline-output #t)
            (register-hook! 'on-buffer-save (lambda (bid) (call! "hook-inner-probe")))"#,
     );
 
@@ -477,12 +468,12 @@ fn editor_host_impl_init_threads_live_tui_into_arm() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "init-host-probe" "" (lambda () (%stdout-gate!)) #:inline-output #t)"#,
+        r#"(define-command! "init-host-probe" "" (lambda () (print! "")) #:inline-output #t)"#,
     );
 
     // Off the event loop (`Tui::Off`), the shape `init_scripting`'s own two
-    // evals always run in, arms a frame the gate opens for, but
-    // `ensure_inline_output_screen` must never enter the (nonexistent)
+    // evals always run in, arms a frame, but
+    // `claim_terminal` must never enter the (nonexistent)
     // alt-screen for it.
     {
         let mut host = crate::editor::host_impl::EditorHostImpl::init(
@@ -498,7 +489,7 @@ fn editor_host_impl_init_threads_live_tui_into_arm() {
             .arm_inline_output("init-host-probe")
             .expect("declared #:inline-output");
         output
-            .ensure_inline_output_screen()
+            .claim_terminal()
             .expect("no real terminal to fail against");
         output.truncate_inline_output(depth);
     }
@@ -525,7 +516,7 @@ fn editor_host_impl_init_threads_live_tui_into_arm() {
             .arm_inline_output("init-host-probe")
             .expect("declared #:inline-output");
         output
-            .ensure_inline_output_screen()
+            .claim_terminal()
             .expect("Tui::OnHeadless skips the real I/O");
         output.truncate_inline_output(depth);
     }
@@ -533,6 +524,74 @@ fn editor_host_impl_init_threads_live_tui_into_arm() {
         ed.inline_output_enter_count(),
         1,
         "an active Tui must enter the alt-screen exactly once"
+    );
+}
+
+// ── Open frame ───────────────────────────────────────────────────────────────
+
+/// Whether `ed` has an open `#:inline-output` frame before and after the
+/// host built by `host` arms one (`None` when it cannot arm).
+fn frame_open_before_and_after_arming(
+    ed: &mut Editor,
+    host: impl for<'a> Fn(
+        &'a mut EditorState,
+        &'a mut EngineView,
+    ) -> crate::editor::host_impl::EditorHostImpl<'a>,
+) -> (bool, Option<bool>) {
+    use hume_scripting::host::EditorHost;
+
+    let before = ed.state.inline_output.is_open();
+    let depth = host(&mut ed.state, &mut ed.view)
+        .output()
+        .expect("EditorHostImpl always implements OutputHost")
+        .arm_inline_output("frame-probe");
+    let after = depth.map(|depth| {
+        let open = ed.state.inline_output.is_open();
+        host(&mut ed.state, &mut ed.view)
+            .output()
+            .expect("EditorHostImpl always implements OutputHost")
+            .truncate_inline_output(depth);
+        open
+    });
+    (before, after)
+}
+
+#[test]
+fn an_armed_frame_is_open_whether_or_not_a_screen_is_up() {
+    use crate::editor::host_impl::EditorHostImpl;
+
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "frame-probe" "" (lambda () #t) #:inline-output #t)"#,
+    );
+
+    assert_eq!(
+        frame_open_before_and_after_arming(&mut ed, |state, view| EditorHostImpl::init(
+            state,
+            view,
+            Tui::Off,
+            false
+        )),
+        (false, Some(true)),
+        "no screen up"
+    );
+    assert_eq!(
+        frame_open_before_and_after_arming(&mut ed, |state, view| EditorHostImpl::init(
+            state,
+            view,
+            Tui::OnHeadless,
+            false
+        )),
+        (false, Some(true)),
+        "the editor's screen up"
+    );
+    assert_eq!(
+        frame_open_before_and_after_arming(&mut ed, |state, view| EditorHostImpl::new(state, view)),
+        (false, None),
+        "a host with no say over the terminal"
     );
 }
 
@@ -549,14 +608,14 @@ fn editor_host_impl_init_threads_live_tui_into_arm() {
 /// match and `arm_inline_output` would return `Some(0)`.
 #[test]
 fn new_host_has_no_inline_output_authority() {
-    use hume_scripting::host::EditorHost;
+    use hume_scripting::host::{ClaimRefused, EditorHost};
 
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "new-host-probe" "" (lambda () (%stdout-gate!)) #:inline-output #t)"#,
+        r#"(define-command! "new-host-probe" "" (lambda () (print! "")) #:inline-output #t)"#,
     );
 
     let mut host = crate::editor::host_impl::EditorHostImpl::new(&mut ed.state, &mut ed.view);
@@ -567,9 +626,11 @@ fn new_host_has_no_inline_output_authority() {
         output.arm_inline_output("new-host-probe").is_none(),
         "a `new` host has no tui to arm a frame against"
     );
-    output
-        .ensure_inline_output_screen()
-        .expect("nothing to enter without an armed frame");
+    assert_eq!(
+        output.claim_terminal(),
+        Err(ClaimRefused::NoFrame),
+        "nothing to enter without an armed frame"
+    );
     assert_eq!(
         ed.inline_output_enter_count(),
         0,
@@ -588,7 +649,7 @@ fn new_host_has_no_inline_output_authority() {
 /// frame that really is active, or enter it under the wrong kitty state.
 /// This pins the deeper, correct behavior instead.
 ///
-/// Gating `ensure_inline_output_screen` on `self.tui` would leave
+/// Gating `claim_terminal` on `self.tui` would leave
 /// `enter_count` at `0`. Reading `self.kitty_enabled` there would make
 /// the entered `kitty` report the completing host's `false` instead of the
 /// arming host's `true`.
@@ -601,7 +662,7 @@ fn a_later_host_with_no_authority_still_completes_a_frame_armed_by_an_earlier_on
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "relay-probe" "" (lambda () (%stdout-gate!)) #:inline-output #t)"#,
+        r#"(define-command! "relay-probe" "" (lambda () (print! "")) #:inline-output #t)"#,
     );
 
     // A real host, with kitty active, arms the frame: the same shape a
@@ -629,7 +690,7 @@ fn a_later_host_with_no_authority_still_completes_a_frame_armed_by_an_earlier_on
         let mut host = crate::editor::host_impl::EditorHostImpl::new(&mut ed.state, &mut ed.view);
         host.output()
             .expect("EditorHostImpl always implements OutputHost")
-            .ensure_inline_output_screen()
+            .claim_terminal()
             .expect("ActiveTui::Headless skips the real I/O");
     }
     assert_eq!(
@@ -659,8 +720,8 @@ fn a_later_host_with_no_authority_still_completes_a_frame_armed_by_an_earlier_on
 /// `run_steel_session` (whose tail truncate-to-zero is what drains every
 /// *other* early-exit path) and without calling
 /// `close_inline_output_bracket` either. No frame may be pushed on that
-/// early return: a later dispatch's `%stdout-gate!` must not inherit a
-/// gate this command never actually opened.
+/// early return: a later dispatch's `print!` must not inherit a
+/// frame this command never actually opened.
 #[test]
 fn no_scripting_host_does_not_leak_a_pushed_frame() {
     let tmp = tempfile::tempdir().unwrap();

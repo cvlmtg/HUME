@@ -33,8 +33,6 @@ pub(crate) mod version;
 pub(crate) mod wire;
 pub(crate) mod words;
 
-use std::borrow::Cow;
-
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 use steel::steel_vm::engine::Engine;
@@ -204,12 +202,10 @@ macro_rules! builtins {
 // editor. picker-close! and picker-source-stop! also accept the token
 // live-picker! returned.
 //
-// run-inline-output!: %run-inline-output! raises unless the command exits 0,
-// and spawns it in the editor's process group so a Ctrl-c reaches it (see
+// run-inline-output!: %run-inline-output! raises outside an #:inline-output
+// command and unless the command exits 0, and spawns it in the editor's
+// process group so a Ctrl-c reaches it (see
 // hume-platform::process::run_inline_output).
-//
-// %port-safe?: a port is safe unless it is the real stdout, where the gate
-// decides. Every print shim's explicit-port branch uses it (io.rs module doc).
 //
 // stems-with-suffix: sorts after stripping the suffix, since sorting full
 // file names would put "a-b.x" ahead of "a.x" ('-' < '.').
@@ -233,44 +229,6 @@ macro_rules! builtins {
 // checks. bundled-language-grammar and bundled-grammar-languages are the
 // plugins' view.
 const BOOTSTRAP: &str = include_str!("bootstrap.scm");
-
-// PRELUDE_SHIMS redefines the steel-core prelude names HUME takes over: the
-// print functions, `which`, the working-directory pair, and the Steel calls
-// that wait on the OS. It is appended both to BOOTSTRAP (top level) and,
-// verbatim, to steel-core's own prelude string via set_prelude_string.
-// Since the prelude is prepended to every `(require "path.scm")` unit, this
-// closes the gap where a required module's (every real plugin's) calls would
-// otherwise resolve straight to steel-core's originals. See io.rs's module
-// doc for the print gate's root-cause writeup.
-//
-// `which` searches the editor's search path (`%which`) instead of the process
-// `PATH`, so the `PATH` a session's children get is also the one its
-// lookups see.
-//
-// `current-directory` and `change-current-directory!` are `cwd` and
-// `set-cwd!`: the process directory is the editor's, and a plugin cannot move
-// one without the other. `set-cwd!` is `open` because it touches `state.cwd`
-// alone, which exists before init.scm runs, so a config can change directory.
-//
-// `delete-directory!`, `wait`/`process-wait` and `wait->stdout` run Steel's
-// own call with the session's budget stopped (`%delete-directory!`, `%wait`,
-// `%wait->stdout`), as HUME's own waiting builtins do, so a script is not
-// stopped for the time the OS took. `time/sleep-ms` still counts: a sleep is
-// the script's own choice to hold the editor. `copy-directory-recursively!`
-// counts too, its copy helper being private to steel-core.
-//
-// Explicit-port forms (`(display obj port)`, …) consult `%port-safe?` on the
-// supplied port rather than forwarding unconditionally, since the caller (or
-// steel-core's own error printer) can pass `(current-output-port)` itself.
-// Accepted side effect: an explicit call to the real stdout port while the
-// gate is closed now silently suppresses instead of raising an arity error.
-//
-// `write-string`/`write-char` are shimmed for the same reason as `display`:
-// their implicit-arg case still defaults straight to real stdout unless
-// redirected, so they're exactly as unsafe and need the same gate.
-// `simple-display`/`simple-displayln` always resolve `(current-output-port)`
-// themselves, so they're gated the same way.
-const PRELUDE_SHIMS: &str = include_str!("prelude_shims.scm");
 
 // ── Registration ──────────────────────────────────────────────────────────────
 
@@ -368,9 +326,8 @@ pub(crate) fn register_all(steel: &mut Engine) {
         // Logging: push messages to the editor message log
         open "log!" crate::log::log_msg(severity: SteelVal, message: String);
 
-        // %stdout-gate! is the Rust leaf behind the gated print shims (displayln,
-        // display, print, println, newline). See io.rs and PRELUDE_SHIMS above.
-        open "%stdout-gate!" io::stdout_gate();
+        // print!: a line to the terminal, inside an #:inline-output command.
+        open "print!" io::print(text: String);
 
         // Opaque pane predicate: context-free, no SteelCtx needed. Equality
         // is `equal?` (Custom::equality_hint), not a dedicated builtin.
@@ -547,8 +504,6 @@ pub(crate) fn register_all(steel: &mut Engine) {
         // gate either, and `run-capture!` is a plain helper any plugin body
         // can reach, not a top-level dispatched command.
         open "%run-capture!" process::run_capture(cmd: SteelVal, args: SteelVal, cwd: SteelVal);
-        open "%wait" process::wait(child: SteelVal);
-        open "%wait->stdout" process::wait_for_stdout(child: SteelVal);
 
         cmd "diff-lines" diff::diff_lines(old: SteelVal, new: SteelVal);
         cmd "diff-buffer-lines" diff::diff_buffer_lines(pane: args::LivePane, ref_text: SteelVal);
@@ -561,13 +516,15 @@ pub(crate) fn register_all(steel: &mut Engine) {
         open "data-dir" fs::data_dir();
         open "runtime-dir" fs::runtime_dir();
         open "cwd" fs::cwd();
+        // `open`: it touches `state.cwd` alone, which exists before init.scm
+        // runs, so a config can change directory.
         open "set-cwd!" fs::set_cwd(path: args::ScriptPath);
         open "replace-dir!" fs::replace_dir(src: args::ScriptPath, dest: args::ScriptPath);
-        open "%delete-directory!" fs::delete_directory(dir: args::ScriptPath);
+        open "remove-dir!" fs::remove_dir(dir: args::ScriptPath);
         open "try-lock-file!" fs::try_lock_file(path: args::ScriptPath);
         open "unlock-file!" fs::unlock_file(path: args::ScriptPath);
         open "path-entries" fs::path_entries(dir: args::ScriptPath, prefix: String);
-        open "%which" fs::which_program(name: String);
+        open "find-program" fs::find_program(name: String);
         plain "home-dir" fs::home_dir();
     }
 
@@ -588,40 +545,13 @@ pub(crate) fn register_all(steel: &mut Engine) {
     steel.register_value("json-contains?", SteelVal::FuncV(json::json_contains));
     steel.register_value("json-ref-or", SteelVal::FuncV(json::json_ref_or));
 
-    // Evaluate the Scheme bootstrap (defines `load-plugin!`, and, at its
-    // tail, captures steel-core's original print functions/port before
-    // anything shadows them). Runs before any user init.scm; HUME_CTX is not
+    // Evaluate the Scheme bootstrap (defines `load-plugin!` and the rest of
+    // HUME's Scheme-side API). Runs before any user init.scm; HUME_CTX is not
     // yet set but the bootstrap only uses `define`, so no builtins are
     // called at this point.
     steel
         .compile_and_run_raw_program(BOOTSTRAP.to_owned())
         .expect("HUME scripting bootstrap failed: this is a bug");
-
-    // PRELUDE_SHIMS must compile as its OWN program, separate from
-    // BOOTSTRAP: steel-core rejects a single compiled unit that both
-    // references a name (the `%raw-*` captures above) and redefines that
-    // same name later in the same unit: "variable redefined within the top
-    // level definition" / "cannot reference an identifier before its
-    // definition" (verified empirically against steel-core 0.8.3; see
-    // io.rs's module doc). Splitting into two sequential top-level programs
-    // sidesteps this: by the time this call compiles, `displayln` etc. are
-    // ordinary already-bound globals, and redefining them here is a plain
-    // global rebind, with no self-reference within the same unit.
-    steel
-        .compile_and_run_raw_program(PRELUDE_SHIMS.to_owned())
-        .expect("HUME scripting prelude shims failed: this is a bug");
-
-    // Append the same shims to steel-core's prelude string. The prelude is
-    // prepended to every `(require "path.scm")` compilation unit (steel-core
-    // internals; see io.rs's module doc), so a plugin's own print and `which`
-    // calls resolve to HUME's shims instead of steel-core's originals. Unlike the top-level case above, a required module's
-    // import-then-body-define compiles as one unit without conflict (the
-    // shim's `define` simply overwrites the mangled slot the prelude import
-    // created moments earlier), so no splitting is needed here.
-    steel.set_prelude_string(Cow::Owned(format!(
-        "{}{PRELUDE_SHIMS}",
-        steel::compiler::modules::PRELUDE_STRING
-    )));
 }
 
 #[cfg(test)]

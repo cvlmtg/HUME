@@ -26,52 +26,27 @@ fn editor_searching(tmp: &Path, bin: &Path) -> Editor {
 }
 
 #[test]
-fn which_finds_a_program_on_the_editor_search_path() {
+fn find_program_finds_a_program_on_the_editor_search_path() {
     let tmp = tempfile::tempdir().unwrap();
     let bin = probe_dir();
     let mut ed = editor_searching(tmp.path(), bin.path());
 
-    let found = log_probe(&mut ed, tmp.path(), &format!(r#"(which "{PROBE}")"#));
+    let found = log_probe(&mut ed, tmp.path(), &format!(r#"(find-program "{PROBE}")"#));
 
     assert_eq!(found, bin.path().join(PROBE).to_str().unwrap());
 }
 
 #[test]
-fn which_in_a_required_module_finds_a_program_on_the_editor_search_path() {
-    let tmp = tempfile::tempdir().unwrap();
-    let bin = probe_dir();
-    let module = tmp.path().join("finder.scm");
-    std::fs::write(
-        &module,
-        format!(r#"(provide find-probe) (define (find-probe) (which "{PROBE}"))"#),
-    )
-    .unwrap();
-    let mut ed = editor_searching(tmp.path(), bin.path());
-    run(
-        &mut ed,
-        tmp.path(),
-        &format!(
-            r#"(require {})
-               (define-command! "go" "" (lambda () (log! 'info (find-probe))))"#,
-            steel_path(&module)
-        ),
-    );
-
-    call(&mut ed, "go");
-
-    assert_eq!(
-        ed.state.status_msg.clone().unwrap(),
-        bin.path().join(PROBE).to_str().unwrap()
-    );
-}
-
-#[test]
-fn which_finds_nothing_without_a_search_path() {
+fn find_program_finds_nothing_without_a_search_path() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_in(tmp.path());
     ed.state.dirs.search_path = None;
 
-    let found = log_probe(&mut ed, tmp.path(), r#"(if (which "sh") "found" "none")"#);
+    let found = log_probe(
+        &mut ed,
+        tmp.path(),
+        r#"(if (find-program "sh") "found" "none")"#,
+    );
 
     assert_eq!(found, "none");
 }
@@ -132,25 +107,55 @@ fn run_capture_runs_a_program_on_the_editor_search_path() {
     assert_eq!(out, "found");
 }
 
+/// Defines `go`, which runs the probe program through `run-inline-output!`
+/// to create `record`, declared `#:inline-output` when `inline_output`.
+fn define_inline_go(
+    ed: &mut Editor,
+    tmp: &std::path::Path,
+    record: &std::path::Path,
+    inline_output: bool,
+) {
+    run(
+        ed,
+        tmp,
+        &format!(
+            r#"(define-command! "go" "" (lambda ()
+                 (run-inline-output! "{PROBE}" (list "-c" ": > \"$1\"" "{PROBE}" {})))
+                 #:inline-output {})"#,
+            steel_path(record),
+            if inline_output { "#t" } else { "#f" }
+        ),
+    );
+}
+
 #[test]
 fn run_inline_output_runs_a_program_on_the_editor_search_path() {
     let tmp = tempfile::tempdir().unwrap();
     let record = tmp.path().join("ran.txt");
     let bin = probe_dir();
     let mut ed = editor_searching(tmp.path(), bin.path());
-    run(
-        &mut ed,
-        tmp.path(),
-        &format!(
-            r#"(define-command! "go" "" (lambda ()
-                 (run-inline-output! "{PROBE}" (list "-c" ": > \"$1\"" "{PROBE}" {}))))"#,
-            steel_path(&record)
-        ),
-    );
+    define_inline_go(&mut ed, tmp.path(), &record, true);
 
     call(&mut ed, "go");
 
     assert!(record.exists());
+}
+
+#[test]
+fn run_inline_output_raises_in_a_command_not_declared_inline_output() {
+    let tmp = tempfile::tempdir().unwrap();
+    let record = tmp.path().join("ran.txt");
+    let bin = probe_dir();
+    let mut ed = editor_searching(tmp.path(), bin.path());
+    define_inline_go(&mut ed, tmp.path(), &record, false);
+
+    call(&mut ed, "go");
+
+    assert!(!record.exists());
+    assert!(has_error(
+        &ed,
+        "run-inline-output!: runs only inside an #:inline-output command"
+    ));
 }
 
 #[test]

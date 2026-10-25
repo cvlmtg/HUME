@@ -2,6 +2,7 @@ use super::*;
 use crate::null_host::RecordingInlineOutputHost;
 use crate::test_support::SteelCtxTestHarness;
 use std::fs;
+use steel::rerrs::SteelErr;
 use tempfile::TempDir;
 
 // ── run_inline_output (%run-inline-output!) ─────────────────────────────
@@ -10,29 +11,13 @@ fn list_val(items: &[&str]) -> SteelVal {
     crate::builtins::args::string_list(items.iter().map(|s| s.to_string()))
 }
 
-#[test]
-fn run_inline_output_missing_binary_raises() {
-    let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx();
-    let err = run_inline_output(
-        &mut ctx,
-        "definitely-not-a-real-binary-xyz".to_string(),
-        list_val(&[]),
-        SteelVal::BoolV(false),
-        list_val(&[]),
-    )
-    .unwrap_err();
-    assert!(err.to_string().contains("definitely-not-a-real-binary-xyz"));
-}
-
-/// The spawned process inherits stdio, so the bracket must open before the
-/// spawn attempt, even when the spawn itself then fails.
-#[test]
-fn run_inline_output_calls_ensure_before_spawn() {
-    let mut host = RecordingInlineOutputHost::default();
+/// `run_inline_output` on a host whose inline-output frame is open when
+/// `frame_open`, for a program that does not exist.
+fn run_missing_program(frame_open: bool) -> (Result<SteelVal, SteelErr>, usize) {
+    let mut host = RecordingInlineOutputHost::with_frame_open(frame_open);
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx_with_host(&mut host);
-    let _ = run_inline_output(
+    let result = run_inline_output(
         &mut ctx,
         "definitely-not-a-real-binary-xyz".to_string(),
         list_val(&[]),
@@ -40,7 +25,39 @@ fn run_inline_output_calls_ensure_before_spawn() {
         list_val(&[]),
     );
     drop(ctx);
-    assert_eq!(host.ensure_calls, 1);
+    (result, host.claims)
+}
+
+#[test]
+fn run_inline_output_missing_binary_raises() {
+    let (result, _) = run_missing_program(true);
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("definitely-not-a-real-binary-xyz")
+    );
+}
+
+/// The spawned process inherits stdio, so the bracket must open before the
+/// spawn attempt, even when the spawn itself then fails.
+#[test]
+fn run_inline_output_claims_the_terminal_before_spawn() {
+    let (_, claims) = run_missing_program(true);
+    assert_eq!(claims, 1);
+}
+
+/// Outside an `#:inline-output` command the call raises before it spawns
+/// anything.
+#[test]
+fn run_inline_output_raises_outside_an_inline_output_command() {
+    let (result, claims) = run_missing_program(false);
+    let err = result.unwrap_err().to_string();
+    assert!(
+        err.contains("run-inline-output!: runs only inside an #:inline-output command"),
+        "{err}"
+    );
+    assert_eq!(claims, 0);
 }
 
 #[cfg(unix)]

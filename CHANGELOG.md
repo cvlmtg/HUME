@@ -14,6 +14,8 @@
 - `define-language!` raises for a shebang entry with a space or a `/`: give the interpreter's name alone, such as `"python"`.
 - A path given to a HUME call resolves `..` the way the operating system does, and a `..` after a directory that doesn't exist raises: write the path without it.
 - `paste-text!` raises for a read-only buffer instead of doing nothing.
+- Steel's own print functions (`display`, `displayln`, `newline`, …) write as Steel defines them, over the editor's screen too: report with `log!`, and write a line inside an `#:inline-output` command with the new `print!`.
+- `run-inline-output!` raises outside an `#:inline-output` command, the top level of `init.scm` included: move the call into one, or use `run-capture!`.
 - `after!`, `spawn-async!` and `path-programs` return an opaque timer or job, not an integer: compare two with `equal?`. `cancel-timer!` raises for anything but a timer, and `cancel-async!` for anything but a job, so one kind can no longer cancel the other.
 
 ### Syntax & language awareness
@@ -26,7 +28,8 @@
 - New `buffer-char-count` returns a buffer's length in characters.
 - `completion-emit!` takes `#:more #t` to answer a request in parts.
 - `register-completion-source!` takes `#:cancel`, so a source can stop the work it started for a request HUME no longer waits on.
-- Steel's `current-directory` and `change-current-directory!` read and move HUME's working directory, the one `cwd`, `set-cwd!` and `:cd` use. `set-cwd!` works from `init.scm` too.
+- `set-cwd!` works from `init.scm` too.
+- New `find-program` looks a program up on the `PATH` HUME started with, and `remove-dir!` deletes a directory tree without the time it takes counting against the script budget.
 - A grammar `register-grammar!` registers from `init.scm` that can't be loaded is reported in `:messages` when a file or an embedded block first needs it, not at startup.
 
 ### Fixes
@@ -43,7 +46,7 @@
 - `core:buffer-words` no longer stalls typing while it indexes a file with very long lines.
 - `core:buffer-words` no longer resets the highlighted item of an open completion menu while it indexes.
 - A HUME that exited, or an install the script budget stopped, can't leave `:lsp-install` locked.
-- `path-entries` and Steel's `delete-directory!` resolve `..` in a relative path the way `:e` does.
+- `path-entries` resolves `..` in a relative path the way `:e` does.
 - `cancel-async!` also drops a callback that was already due but hadn't run yet.
 - `cancel-timer!` also drops a timer that was already due but hadn't run yet, so a debounced function no longer runs twice.
 - `cancel-timer!` cancels only timers made by `after!`, never one of HUME's own.
@@ -57,6 +60,8 @@
 - A plugin's gutter signs keep working after `:e!` reloads a changed file, without the plugin registering its sign source again.
 - `r`, `J`, `&`, `>`, `<`, surround, case changes and a terminal paste on a read-only buffer say so instead of doing nothing, and every read-only refusal names the buffer.
 - Macros record and replay in a read-only buffer such as `:messages`, and an edit a macro replays there is refused out loud.
+- `:reload-config` keeps the programs `init.scm` runs off the screen.
+- A failed `compile-grammar!` includes the compiler's error output, and the compiler never writes over the screen.
 - Scripts whose first line runs a versioned interpreter, such as `#!/usr/bin/env python3` or `#!/usr/bin/lua5.4`, get their language, and so do V scripts.
 
 ## [0.16.1] - 2026-10-22

@@ -27,8 +27,8 @@ struct Frame {
     /// time. `None` means there is no alt-screen to leave for this frame
     /// (tests, headless `run_keys`, or an `EditorHostImpl::new` host, which
     /// has no `Tui` to capture at all and never reaches `push` in the first
-    /// place; see `arm_inline_output`'s own doc). The stdout gate still
-    /// opens (raw writes are safe with no TUI to protect), but
+    /// place; see `arm_inline_output`'s own doc). The frame still owns the
+    /// terminal (a write is safe with no screen to protect), but
     /// [`InlineOutput::needs_enter`] never fires for it. Captured rather
     /// than re-read later so a caller other than the one that pushed this
     /// frame (a different `Editor`/`EditorHostImpl`'s current `tui` may
@@ -113,8 +113,8 @@ impl InlineOutput {
     }
 
     /// Whether a declared `#:inline-output` command is anywhere on the
-    /// current call stack. The stdout gate opens whenever this is true,
-    /// with or without a live alt-screen to protect.
+    /// current call stack. It owns the terminal whenever this is true, with
+    /// or without a live alt-screen to protect.
     pub(in crate::editor) fn is_open(&self) -> bool {
         !self.frames.is_empty()
     }
@@ -194,7 +194,7 @@ impl Editor {
         self.state.inline_output.truncate(0);
         let ran = self.state.inline_output.take_ran();
         if let Some(entered) = self.state.inline_output.take_entered() {
-            // The screen holds the terminal `ensure_inline_output_screen`
+            // The screen holds the terminal `claim_terminal`
             // entered, not `self.tui`, so this always restores the terminal
             // it actually left.
             match entered {

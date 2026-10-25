@@ -1,392 +1,58 @@
 use super::*;
 use crate::null_host::RecordingInlineOutputHost;
 use crate::test_support::SteelCtxTestHarness;
-use hume_platform::dirs::Dirs;
 
-// ── stdout_gate: behavior around the gate ──────────────────────────────────
-//
-// The three tests below between them pin the `||` semantics of the safety
-// check inside `stdout_gate`, as described in that function's doc comment.
-
-/// Gate closed: returns `#f`, no bracket entry.
-#[test]
-fn stdout_gate_returns_false_when_closed() {
+/// `print!`'s result on a host whose inline-output frame is open when
+/// `frame_open`, and how many times it left the editor's screen.
+fn print_with_frame_open(frame_open: bool) -> (Result<SteelVal, String>, usize) {
+    let mut host = RecordingInlineOutputHost::with_frame_open(frame_open);
     let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx(); // gate closed
-    let result = stdout_gate(&mut ctx);
-    assert_eq!(result.unwrap(), SteelVal::BoolV(false));
-}
-
-/// Gate open via the init session alone: returns `#t`, no bracket entry
-/// (there is no alt-screen to leave before the terminal exists).
-///
-/// `inline_output: false` isolates this from the *other* safety reason:
-/// without it, `RecordingInlineOutputHost`'s own default (`true`) would make
-/// this pass for the wrong reason, since `stdout_is_safe` reads the host
-/// live regardless of session.
-#[test]
-fn stdout_gate_returns_true_and_skips_ensure_when_open_via_init_session_only() {
-    let mut host = RecordingInlineOutputHost::default();
-    host.inline_output = false;
-    let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx_init_with_host(&mut host); // EvalSession::Init, host reports inline_output=false
-    let result = stdout_gate(&mut ctx);
-    assert_eq!(result.unwrap(), SteelVal::BoolV(true));
+    let mut ctx = h.ctx_with_host(&mut host);
+    let result = print(&mut ctx, String::new()).map_err(|e| e.to_string());
     drop(ctx);
-    assert_eq!(host.ensure_calls, 0);
+    (result, host.claims)
 }
 
-/// Gate open via the host's inline-output flag: returns `#t` and opens the
-/// bracket exactly once per call.
 #[test]
-fn stdout_gate_returns_true_and_calls_ensure_when_open_via_inline_output_command() {
-    let mut host = RecordingInlineOutputHost::default();
-    let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx_with_host(&mut host); // EvalSession::Runtime, host reports inline_output=true
-    let result = stdout_gate(&mut ctx);
-    assert_eq!(result.unwrap(), SteelVal::BoolV(true));
-    drop(ctx);
-    assert_eq!(host.ensure_calls, 1);
+fn print_leaves_the_editors_screen_inside_an_inline_output_command() {
+    assert_eq!(print_with_frame_open(true), (Ok(SteelVal::Void), 1));
 }
 
-// ── End-to-end: gated print shims via the real ScriptingHost ───────────────
-
-/// Guards the require-module hazard documented in this
-/// module's doc comment: a plugin file loaded via `(require "path.scm")`
-/// is a separately-compiled module, exactly the shape of every real
-/// `#:inline-output` plugin command (core:plum's `lib/plugins.scm`'s
-/// `plum-install-plugins`, core:plum's `grammars.scm`'s grammar-compile
-/// line).
-///
-/// Defines a command inside a required module (mirroring how every real
-/// plugin command is defined) and dispatches it via `call_steel_cmd` (the
-/// same path `Editor::run_steel_command` uses) with a host reporting
-/// `is_inline_output_command() == true`. If the required module's
-/// `displayln` call resolved to steel-core's raw prelude version instead
-/// of the gated shim, `ensure_calls` stays 0 despite the dispatch
-/// succeeding, the exact silent-bypass shape this test guards against.
+/// Outside an `#:inline-output` command `print!` raises before it writes.
 #[test]
-fn required_module_displayln_call_reaches_the_gate() {
+fn print_raises_outside_an_inline_output_command() {
+    let (result, claims) = print_with_frame_open(false);
+    let err = result.expect_err("print! outside an #:inline-output command");
+    assert!(
+        err.contains("print!: runs only inside an #:inline-output command"),
+        "{err}"
+    );
+    assert_eq!(claims, 0);
+}
+
+/// `print!` is reachable from a required module, the shape of every plugin
+/// command.
+#[test]
+fn print_reaches_the_terminal_from_a_required_module() {
     use crate::ScriptingHost;
-    use crate::null_host::{CommandStoreHost, RecordingInlineOutputHost};
+    use crate::null_host::CommandStoreHost;
+    use hume_platform::dirs::Dirs;
 
     let tmp = tempfile::tempdir().unwrap();
     let plugin_path = tmp.path().join("probe.scm");
     std::fs::write(
         &plugin_path,
-        r#"
-                (define-command! "probe-print"
-                  "doc"
-                  (lambda ()
-                    (displayln "hi-from-required-module"))
-                  #:inline-output #t)
-            "#,
+        r#"(define-command! "probe" "doc" (lambda () (print! "")) #:inline-output #t)"#,
     )
     .unwrap();
-
-    let mut host = ScriptingHost::new(&Dirs::none());
-    let mut store = CommandStoreHost::default();
-    let escaped_path =
-        crate::steel_path_literal(&plugin_path).expect("plugin path must not contain '\"'");
-    let src = format!(r#"(require {escaped_path})"#);
-    host.eval_source(&src, &mut store)
-        .expect("requiring the plugin file must not error");
-
-    let mut recording_host = RecordingInlineOutputHost::default();
-    host.call_steel_cmd(store.proc("probe-print"), vec![], &mut recording_host)
-        .expect("dispatching the required-module command must not error");
-
-    assert_eq!(
-        recording_host.ensure_calls, 1,
-        "required-module displayln call must reach the gate"
-    );
-}
-
-/// Explicit-port calls from inside a required module write to that port.
-#[test]
-fn required_module_explicit_port_calls_write_to_the_port() {
-    use crate::ScriptingHost;
-    use crate::null_host::CommandStoreHost;
-
-    let tmp = tempfile::tempdir().unwrap();
-    let plugin_path = tmp.path().join("probe_port.scm");
-    std::fs::write(
-        &plugin_path,
-        r#"
-                (define-command! "probe-port"
-                  "doc"
-                  (lambda ()
-                    (log! 'info
-                      (call-with-output-string
-                        (lambda (port)
-                          (display "a" port)
-                          (write-string "b" port)
-                          (write "c" port)
-                          (newline port))))))
-            "#,
-    )
-    .unwrap();
-
     let mut host = ScriptingHost::new(&Dirs::none());
     let mut store = CommandStoreHost::default();
     let escaped_path =
         crate::steel_path_literal(&plugin_path).expect("plugin path must not contain '\"'");
     host.eval_source(&format!(r#"(require {escaped_path})"#), &mut store)
         .expect("requiring the plugin file must not error");
-
-    host.call_steel_cmd_by_name("probe-port", vec![], &mut store)
-        .expect("dispatching the required-module command must not error");
-
-    let messages = host.take_pending_messages();
-    assert_eq!(messages.len(), 1, "{messages:?}");
-    assert_eq!(messages[0].1, "ab\"c\"\n");
-}
-
-/// The other four gated names (`display`, `newline`, `println`; `print`
-/// is exercised transitively via `println`) reach the gate from inside a
-/// required module too, not just `displayln`. Three implicit-port calls
-/// in one command body must open the bracket three times (once per
-/// gated call), since `RecordingInlineOutputHost` counts every
-/// `ensure_inline_output_screen` invocation unconditionally (unlike the
-/// real editor host, which only acts on the first).
-#[test]
-fn required_module_other_print_fns_reach_the_gate() {
-    use crate::ScriptingHost;
-    use crate::null_host::{CommandStoreHost, RecordingInlineOutputHost};
-
-    let tmp = tempfile::tempdir().unwrap();
-    let plugin_path = tmp.path().join("probe_multi.scm");
-    std::fs::write(
-        &plugin_path,
-        r#"
-                (define-command! "probe-print-multi"
-                  "doc"
-                  (lambda ()
-                    (display "a")
-                    (newline)
-                    (println "b"))
-                  #:inline-output #t)
-            "#,
-    )
-    .unwrap();
-
-    let mut host = ScriptingHost::new(&Dirs::none());
-    let mut store = CommandStoreHost::default();
-    let escaped_path =
-        crate::steel_path_literal(&plugin_path).expect("plugin path must not contain '\"'");
-    let src = format!(r#"(require {escaped_path})"#);
-    host.eval_source(&src, &mut store)
-        .expect("requiring the plugin file must not error");
-
     let mut recording_host = RecordingInlineOutputHost::default();
-    host.call_steel_cmd(store.proc("probe-print-multi"), vec![], &mut recording_host)
-        .expect("dispatching the required-module command must not error");
-
-    assert_eq!(
-        recording_host.ensure_calls, 3,
-        "display, newline, and println must each reach the gate"
-    );
-}
-
-/// The write-family names (`write`, `write-string`, `write-char`,
-/// `simple-display`, `simple-displayln`) reach the gate from inside a
-/// required module too: an unshimmed member of this family would be an
-/// ungated path to the real stdout.
-#[test]
-fn required_module_write_family_reaches_the_gate() {
-    use crate::ScriptingHost;
-    use crate::null_host::{CommandStoreHost, RecordingInlineOutputHost};
-
-    let tmp = tempfile::tempdir().unwrap();
-    let plugin_path = tmp.path().join("probe_write.scm");
-    std::fs::write(
-        &plugin_path,
-        r#"
-                (define-command! "probe-write-multi"
-                  "doc"
-                  (lambda ()
-                    (write 1)
-                    (write-string "a")
-                    (write-char #\c)
-                    (simple-display "d")
-                    (simple-displayln "e"))
-                  #:inline-output #t)
-            "#,
-    )
-    .unwrap();
-
-    let mut host = ScriptingHost::new(&Dirs::none());
-    let mut store = CommandStoreHost::default();
-    let escaped_path =
-        crate::steel_path_literal(&plugin_path).expect("plugin path must not contain '\"'");
-    let src = format!(r#"(require {escaped_path})"#);
-    host.eval_source(&src, &mut store)
-        .expect("requiring the plugin file must not error");
-
-    let mut recording_host = RecordingInlineOutputHost::default();
-    host.call_steel_cmd(store.proc("probe-write-multi"), vec![], &mut recording_host)
-        .expect("dispatching the required-module command must not error");
-
-    assert_eq!(
-        recording_host.ensure_calls, 5,
-        "write, write-string, write-char, simple-display, and simple-displayln must each reach the gate"
-    );
-}
-
-/// A `displayln` call at the top level (no `(require …)` involved) must
-/// also reach the gate. This path reaches it only through the BOOTSTRAP
-/// shim, since steel never re-imports the print names into top-level programs.
-#[test]
-fn top_level_displayln_call_reaches_the_gate() {
-    use crate::ScriptingHost;
-    use crate::null_host::{CommandStoreHost, RecordingInlineOutputHost};
-
-    let mut host = ScriptingHost::new(&Dirs::none());
-    let mut store = CommandStoreHost::default();
-    host.eval_source(
-        r#"
-                (define-command! "probe-print-top"
-                  "doc"
-                  (lambda ()
-                    (displayln "hi-from-top-level"))
-                  #:inline-output #t)
-            "#,
-        &mut store,
-    )
-    .expect("defining the top-level command must not error");
-
-    let mut recording_host = RecordingInlineOutputHost::default();
-    host.call_steel_cmd(store.proc("probe-print-top"), vec![], &mut recording_host)
-        .expect("dispatching the top-level command must not error");
-
-    assert_eq!(recording_host.ensure_calls, 1);
-}
-
-/// Writes to an explicit custom port (`with-output-to-string`) pass
-/// through untouched even when the gate is closed: `%stdout-safe?`'s
-/// `eq?` check against the real stdout port fails inside the
-/// parameterized dynamic extent, so the write is never suppressed.
-#[test]
-fn custom_port_write_bypasses_gate_when_closed() {
-    use crate::ScriptingHost;
-    use crate::null_host::CommandStoreHost;
-
-    let mut host = ScriptingHost::new(&Dirs::none());
-    let mut store = CommandStoreHost::default();
-    host.eval_source(
-        r#"
-                (define-command! "probe-custom-port"
-                  "doc"
-                  (lambda ()
-                    (log! 'info (with-output-to-string (lambda () (display "x") (newline))))))
-            "#,
-        &mut store,
-    )
-    .expect("defining the command must not error");
-
-    // CommandStoreHost, like NullHost, defaults is_inline_output_command() to false → gate closed.
-    host.call_steel_cmd_by_name("probe-custom-port", vec![], &mut store)
-        .expect("dispatching the command must not error");
-
-    let messages = host.take_pending_messages();
-    assert_eq!(messages.len(), 1);
-    assert_eq!(messages[0].1, "x\n");
-}
-
-/// The explicit-port branch forwards straight to the original case-lambda
-/// rather than reimplementing arity checking. For a non-stdout port
-/// (`%port-safe?` is `#t` unconditionally), an extra positional argument
-/// still raises an arity error.
-#[test]
-fn explicit_port_form_still_enforces_arity() {
-    use crate::ScriptingHost;
-    use crate::null_host::CommandStoreHost;
-
-    let mut host = ScriptingHost::new(&Dirs::none());
-    let mut store = CommandStoreHost::default();
-    host.eval_source(
-        r#"
-                (define-command! "probe-bad-arity"
-                  "doc"
-                  (lambda ()
-                    (call-with-output-string
-                      (lambda (port) (display "a" port "extra")))))
-            "#,
-        &mut store,
-    )
-    .expect("defining the command must not error");
-
-    let result = host.call_steel_cmd_by_name("probe-bad-arity", vec![], &mut store);
-    assert!(result.is_err(), "extra positional arg must still error");
-}
-
-/// An explicit-port call where the supplied port IS the real
-/// stdout port (`(display obj (current-output-port))`, unparameterized)
-/// must still reach the gate. A shim that forwards every 2+-arg call
-/// unconditionally would let this exact call bypass the gate and write raw
-/// bytes onto the alt-screen.
-#[test]
-fn explicit_stdout_port_call_reaches_the_gate() {
-    use crate::ScriptingHost;
-    use crate::null_host::{CommandStoreHost, RecordingInlineOutputHost};
-
-    let mut host = ScriptingHost::new(&Dirs::none());
-    let mut store = CommandStoreHost::default();
-    host.eval_source(
-        r#"
-                (define-command! "probe-explicit-stdout-port"
-                  "doc"
-                  (lambda ()
-                    (display "x" (current-output-port)))
-                  #:inline-output #t)
-            "#,
-        &mut store,
-    )
-    .expect("defining the command must not error");
-
-    let mut recording_host = RecordingInlineOutputHost::default();
-    host.call_steel_cmd(
-        store.proc("probe-explicit-stdout-port"),
-        vec![],
-        &mut recording_host,
-    )
-    .expect("dispatching the command must not error");
-
-    assert_eq!(
-        recording_host.ensure_calls, 1,
-        "an explicit (current-output-port) argument that resolves to real \
-             stdout must still open the bracket, not bypass the gate"
-    );
-}
-
-/// `write-string`'s implicit 1-arg form must honor a redirected
-/// `(current-output-port)` (e.g. inside `with-output-to-string`) rather
-/// than falling through to steel-core's raw native, which ignores the
-/// parameter and always targets real stdout.
-#[test]
-fn write_string_implicit_form_honors_output_redirect() {
-    use crate::ScriptingHost;
-    use crate::null_host::CommandStoreHost;
-
-    let mut host = ScriptingHost::new(&Dirs::none());
-    let mut store = CommandStoreHost::default();
-    host.eval_source(
-        r#"
-                (define-command! "probe-write-string-redirect"
-                  "doc"
-                  (lambda ()
-                    (log! 'info (with-output-to-string (lambda () (write-string "x"))))))
-            "#,
-        &mut store,
-    )
-    .expect("defining the command must not error");
-
-    // CommandStoreHost, like NullHost, defaults is_inline_output_command() to false → gate closed;
-    // pins that a captured, non-stdout port is never suppressed regardless.
-    host.call_steel_cmd_by_name("probe-write-string-redirect", vec![], &mut store)
-        .expect("dispatching the command must not error");
-
-    let messages = host.take_pending_messages();
-    assert_eq!(messages.len(), 1);
-    assert_eq!(messages[0].1, "x");
+    host.call_steel_cmd(store.proc("probe"), vec![], &mut recording_host)
+        .unwrap_or_else(|e| panic!("{}", e.message));
+    assert_eq!(recording_host.claims, 1);
 }

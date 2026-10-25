@@ -447,8 +447,8 @@ manual-wins filter) and `lsp-language-servers` (registry query for the discovery
 and `run-inline-output!` (subprocesses — the latter process-group-isolated, needed because
 `#:inline-output` commands run with terminal raw mode off and Steel's `spawn-process` has
 no `setpgid`; `run-capture!` is isolated the same way); `try-lock-file!`/`unlock-file!`
-(the install lock, an OS lock the session releases); `which`, which searches the `PATH`
-HUME started with. Everything else is Steel's own stdlib: `read-dir-iter` for the
+(the install lock, an OS lock the session releases); `find-program`, which searches the
+`PATH` HUME started with. Everything else is Steel's own stdlib: `read-dir-iter` for the
 symlink-safe tree walk,
 `current-os!`/`target-arch!` for the Mason target. No install-specific Rust remains.
 
@@ -476,7 +476,7 @@ choice (see below), traded for a hard runtime dependency on these being present:
 Linux and `gzip` on Windows as the only new hard requirements for github/npm-kind
 installs. cargo-kind installs are opt-in per server and add a Rust toolchain requirement
 only for those. `:lsp-install` checks
-the specific tool an install needs (via Steel's `which`)
+the specific tool an install needs (via `find-program`)
 before downloading anything, so a missing tool fails loudly naming it rather than
 partway through an install. `:lsp-catalog` and the discovery hint run the same check.
 

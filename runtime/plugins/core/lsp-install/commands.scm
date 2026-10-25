@@ -10,30 +10,34 @@
 
 (lsp-install/require-stdlib!)
 
+(define (lsp-install/install! name had-dir?)
+  (if (lsp-install/with-lock! (string-append "install " name)
+        (lambda ()
+          (log! 'info (string-append "LSP: installing " name "..."))
+          (lsp-install/install-server! name)))
+      (lsp-install/register-installed-servers!)
+      (when had-dir?
+        (log! 'info "LSP: if the server was running it has now been shut down — run :lsp-install again"))))
+
+;;; See docs/servers.md's "Installing a server", step 2.
+(define-command! "lsp-install/install-server"
+  "Install the server `name` over its existing install, once its client has stopped."
+  (lambda (name) (lsp-install/install! name #t))
+  #:inline-output #t)
+
 (define (lsp-install/install-or-report! name)
   (let* ((receipt (lsp-install/read-receipt name))
          (source  (lsp-install/source name)))
-    (if (and receipt source
-             (equal? (lsp-install/receipt-version receipt) (lsp-install/ref source 'version)))
-        (begin
-          (log! 'info (string-append "LSP: " name " already installed (v"
-                                     (lsp-install/receipt-version receipt) ") — up to date"))
-          (lsp-install/register-installed-servers!))
-        (let* ((had-dir? (path-exists? (lsp-install/server-dir name)))
-               (install!
-                 (lambda ()
-                   (if (lsp-install/with-lock! (string-append "install " name)
-                         (lambda ()
-                           (log! 'info (string-append "LSP: installing " name "..."))
-                           (lsp-install/install-server! name)))
-                       (lsp-install/register-installed-servers!)
-                       (when had-dir?
-                         (log! 'info "LSP: if the server was running it has now been shut down — run :lsp-install again"))))))
-          (if had-dir?
-              (begin
-                (unregister-lsp-server! name)
-                (after! 0 install!))
-              (install!))))))
+    (cond
+      ((and receipt source
+            (equal? (lsp-install/receipt-version receipt) (lsp-install/ref source 'version)))
+       (log! 'info (string-append "LSP: " name " already installed (v"
+                                  (lsp-install/receipt-version receipt) ") — up to date"))
+       (lsp-install/register-installed-servers!))
+      ((path-exists? (lsp-install/server-dir name))
+       (unregister-lsp-server! name)
+       (after! 0 (lambda () (call! "lsp-install/install-server" name))))
+      (else (lsp-install/install! name #f)))))
 
 (register-completion-source! "lsp:install-targets"
   (lambda (id input cursor)

@@ -55,10 +55,10 @@
     (write-string content port)
     (close-output-port port)))
 
-;;; Idempotent, unlike Steel's own `delete-directory!` — see README.md's "Filesystem and list search".
+;;; Idempotent, unlike `remove-dir!` — see README.md's "Filesystem and list search".
 (define (stdlib/delete-dir! dir)
   (when (path-exists? dir)
-    (delete-directory! dir)))
+    (remove-dir! dir)))
 
 ;;; Idempotent, unlike Steel's own `delete-file!` — see README.md's "Filesystem and list search".
 (define (stdlib/delete-file! path)
@@ -77,11 +77,11 @@
     (and (equal? (hash-ref result 'exit) 0) (trim (hash-ref result 'stdout)))))
 
 (define (stdlib/git-repo?)
-  (and (which "git")
+  (and (find-program "git")
        (equal? "true" (stdlib/run-stdout "git" '("rev-parse" "--is-inside-work-tree")))))
 
 (define (stdlib/git-toplevel)
-  (and (which "git")
+  (and (find-program "git")
        (stdlib/run-stdout "git" '("rev-parse" "--show-toplevel"))))
 
 ;; ── Picker buffer-placement actions ──────────────────────────────────────────
