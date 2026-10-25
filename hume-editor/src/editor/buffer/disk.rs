@@ -15,7 +15,7 @@ use crate::editor::input_stack::{ConfirmAction, ConfirmLayer, ConfirmPermit};
 use crate::editor::pipe_run::{PipeRefusal, PipeRunning};
 use crate::editor::{Editor, Severity};
 
-use super::{BufferFile, OnUnsaved, ReplaceSource, TextRefusal, Unsaved};
+use super::{Buffer, BufferFile, OnUnsaved, ReplaceSource, TextRefusal, Unsaved};
 
 /// Result of comparing a buffer's stored file signature against a fresh stat.
 /// `Changed` carries the freshly-read signature so the caller can store it
@@ -59,8 +59,8 @@ pub(in crate::editor) enum DiskState {
     Changed(hume_platform::io::FileSignature),
     /// Changed externally, and the user explicitly answered the reload
     /// confirm with "keep". Carries the signature that was declined. Still
-    /// stale (`changed_on_disk`, not this state, is what `:w` actually
-    /// re-checks, so it keeps refusing until reload or `!` regardless), and
+    /// stale (`:w` re-reads the file rather than this state, so it keeps
+    /// refusing until reload or `!` regardless), and
     /// never re-prompts or re-warns for *this* signature on `Ambient`/
     /// `BufferEnter`, but a direct `:checktime` (`DiskCheckTrigger::
     /// Explicit`) still warns, since a decline silences the automatic
@@ -98,21 +98,27 @@ pub(in crate::editor) enum DiskCheckTrigger {
 }
 
 impl Editor {
-    /// Stat `bid`'s backing file and compare against its stored signature.
-    /// Buffers with no backing file (scratch, synthetic views) always read
-    /// `Indeterminate`. A stat error other than `NotFound` (a momentary
-    /// permission hiccup, say) reads `Indeterminate` too: nothing to act on
-    /// now, and the next trigger gets another chance.
+    /// Read the metadata of the file at `bid`'s path now and compare it with
+    /// the file the buffer last read or wrote (see
+    /// [`BufferFile::describes`]): another file there, as behind a retargeted
+    /// symlink, is a change too. Buffers with no file on disk (scratch,
+    /// synthetic views, a new file) always read `Indeterminate`. An error
+    /// other than `NotFound` (a momentary permission hiccup, say) reads
+    /// `Indeterminate` too: nothing to act on now, and the next trigger gets
+    /// another chance.
     fn disk_change_for(&self, bid: BufferId) -> DiskChange {
-        let Some(buf) = self.state.buffers.try_get(bid) else {
+        let Some(file) = self
+            .state
+            .buffers
+            .try_get(bid)
+            .and_then(Buffer::file)
+            .filter(|file| file.file_meta().is_some())
+        else {
             return DiskChange::Indeterminate;
         };
-        let Some(meta) = buf.file().and_then(BufferFile::file_meta) else {
-            return DiskChange::Indeterminate;
-        };
-        match hume_platform::io::read_signature(meta.resolved_path()) {
-            Ok(sig) if sig == meta.signature() => DiskChange::Unchanged,
-            Ok(sig) => DiskChange::Changed(sig),
+        match hume_platform::io::read_file_meta(file.typed()) {
+            Ok(fresh) if file.describes(&fresh) => DiskChange::Unchanged,
+            Ok(fresh) => DiskChange::Changed(fresh.signature()),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => DiskChange::Vanished,
             Err(_) => DiskChange::Indeterminate,
         }
@@ -394,8 +400,9 @@ impl Editor {
     /// background reload has no caller to propagate an `Err` to). Callers
     /// choose their own error severity/propagation; this only owns the
     /// read-swap-report-success sequence, not the failure path. The read
-    /// goes through the resolved path, and the buffer's file becomes the one
-    /// that read resolved; a read failure names the display path. A buffer
+    /// goes through the buffer's typed path, so a symlink retargeted since
+    /// the last read is followed, and the buffer's file becomes the one that
+    /// read resolved; a read failure names the display path. A buffer
     /// with no file is refused first; one with unsaved changes `on_unsaved`
     /// does not consent to dropping, and one a pipe runs in, are refused
     /// before the file is read.
@@ -409,7 +416,6 @@ impl Editor {
             return Err(ReloadError::NoFile);
         };
         let typed = file.typed().clone();
-        let resolved = file.resolved().clone();
         let display = file.display().to_owned();
         self.state
             .refuse_unsaved(bid, on_unsaved)
@@ -418,7 +424,7 @@ impl Editor {
             return Err(ReloadError::PipeRunning(PipeRunning(bid)));
         }
         let read_error = |e| ReloadError::Read(CommandError::new(format!("{display}: {e}")));
-        let (text, file) = BufferFile::read(typed, &resolved).map_err(read_error)?;
+        let (text, file) = BufferFile::read(typed).map_err(read_error)?;
         let source = ReplaceSource::Disk { text, file };
         self.reload_buffer_in_place(fp, source)
             .map_err(ReloadError::PipeRunning)?;

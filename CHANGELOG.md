@@ -48,6 +48,7 @@
 - An error in a timer, a background reply or another plugin's callback no longer empties a completion menu that is still waiting on a source.
 - `Ctrl-c` during a command that shows a program's output, such as a grammar install, stops that program instead of quitting HUME.
 - A file opened through a symlink is named after the link you opened, not its target, in the statusline, tab labels, `:ls` and `:b`.
+- When the symlink you opened a file through starts pointing at another file, `:w` refuses to overwrite that file (`:w!` writes it), `:checktime` reports the change, and `:e!` reads the new file.
 - `..` in a path you type to `:e`, `:w`, `:cd` or path completion leaves the directory it follows the way your shell does: after a symlink, it goes to the link target's parent.
 
 ## [0.16.1] - 2026-10-22

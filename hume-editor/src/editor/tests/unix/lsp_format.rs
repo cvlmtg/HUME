@@ -439,7 +439,7 @@ fn buffer_with_no_path_reports_and_sends_nothing() {
             serde_json::json!([text_edit(0, 0, 3, 0, "WRONG_WHOLE_BUFFER_PATH\n")]),
         );
     });
-    ed.doc_mut().set_file(None);
+    ed.doc_mut().forget_file();
     let before = ed.doc().text().to_string();
 
     run_fmt(&mut ed);

@@ -145,9 +145,7 @@ fn tutor_after_save_as_opens_fresh() {
     std::fs::write(&elsewhere, STUB).unwrap();
     let elsewhere_canonical = std::fs::canonicalize(&elsewhere).unwrap();
     ed.doc_mut()
-        .set_file(Some(crate::editor::buffer::BufferFile::at(
-            elsewhere_canonical,
-        )));
+        .set_file(crate::editor::buffer::BufferFile::at(elsewhere_canonical));
 
     // :tutor should now find nothing at the canonical tmp path and open a new buffer.
     ed.execute_typed("tutor", None).unwrap();

@@ -623,9 +623,7 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
     ed.state
         .buffers
         .get_mut(bid)
-        .set_file(Some(crate::editor::buffer::BufferFile::at(
-            "/tmp/data.json",
-        )));
+        .set_file(crate::editor::buffer::BufferFile::at("/tmp/data.json"));
 
     ed.state
         .config

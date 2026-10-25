@@ -880,17 +880,8 @@ fn yank_paste_undo() {
 #[test]
 fn set_file_names_the_buffer_after_its_file() {
     let mut b = Buffer::at_start(BufferText::empty());
-    b.set_file(Some(BufferFile::at("/tmp/file.txt")));
+    b.set_file(BufferFile::at("/tmp/file.txt"));
     assert_eq!(b.display_name(), "file.txt");
-}
-
-#[test]
-fn set_file_none_clears_the_file() {
-    let mut b = Buffer::at_start(BufferText::empty());
-    b.set_file(Some(BufferFile::at("/tmp/file.txt")));
-    b.set_file(None);
-    assert!(b.file().is_none());
-    assert_eq!(b.display_name(), Buffer::SCRATCH_BUFFER_NAME);
 }
 
 #[test]
@@ -899,23 +890,13 @@ fn display_path_is_the_typed_path_display_form() {
     assert!(b.display_path().is_none());
     let resolved = AbsolutePath::rooted("/real/file.txt");
     let typed = AbsolutePath::rooted("/link/file.txt");
-    b.set_file(Some(
-        BufferFile::new_file(resolved.clone(), typed.clone()).unwrap(),
-    ));
+    b.set_file(BufferFile::new_file(resolved.clone(), typed.clone()).unwrap());
     assert_eq!(b.path(), Some(&resolved));
     assert_eq!(b.file().map(BufferFile::typed), Some(&typed));
     assert_eq!(
         b.display_path(),
         Some(hume_platform::path::display_form(&typed).as_str())
     );
-}
-
-#[test]
-fn set_file_none_clears_display_path() {
-    let mut b = Buffer::at_start(BufferText::empty());
-    b.set_file(Some(BufferFile::at("/tmp/file.txt")));
-    b.set_file(None);
-    assert!(b.display_path().is_none());
 }
 
 #[test]

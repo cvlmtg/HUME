@@ -63,7 +63,7 @@ impl Editor {
     pub(in crate::editor) fn set_buffer_file(&mut self, bid: BufferId, file: BufferFile) {
         let buf = self.state.buffers.get_mut(bid);
         let changed = buf.path() != Some(file.resolved());
-        buf.set_file(Some(file));
+        buf.set_file(file);
         if changed {
             self.state.lsp_reconcile_buffer(&self.view, bid);
         }

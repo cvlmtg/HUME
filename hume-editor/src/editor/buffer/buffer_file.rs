@@ -7,11 +7,13 @@ use hume_platform::io::FileMeta;
 use hume_platform::path::AbsolutePath;
 
 /// The file behind a file-backed buffer: the path the user named it by and
-/// the state of the file on disk. The resolved path, with every symlink
-/// resolved, is the buffer's identity and the file its writes reach; it is
-/// stored once, in [`Backing`]. The typed path keeps its symlinks: language
-/// detection reads it first, and the buffer's name and display form are
-/// derived from it.
+/// the state of the file on disk as of its last read or write. The typed
+/// path keeps its symlinks: every read and write goes through it, so a
+/// symlink retargeted since reaches its new target, language detection reads
+/// it first, and the buffer's name and display form are derived from it. The
+/// resolved path, with every symlink resolved as of that read or write, is
+/// the buffer's identity, stored once, in [`Backing`]. A `BufferFile` never
+/// changes: a write or reload builds a new one.
 pub(in crate::editor) struct BufferFile {
     typed: AbsolutePath,
     /// `typed`'s file name.
@@ -30,13 +32,6 @@ enum Backing {
     OnDisk(FileMeta),
 }
 
-/// What a write of the buffer's own file works from: the path to create a
-/// new file at, or the metadata of the file to replace.
-pub(in crate::editor) enum SaveTarget<'a> {
-    New(&'a AbsolutePath),
-    OnDisk(&'a mut FileMeta),
-}
-
 impl BufferFile {
     /// A file not on disk yet, to be created at `resolved`.
     pub(in crate::editor) fn new_file(
@@ -51,13 +46,9 @@ impl BufferFile {
         Self::build(typed, Backing::OnDisk(meta))
     }
 
-    /// Reads the file at `path`, named by the user as `typed`: its text, and
-    /// the file the read resolved.
-    pub(in crate::editor) fn read(
-        typed: AbsolutePath,
-        path: &AbsolutePath,
-    ) -> io::Result<(BufferText, Self)> {
-        let (content, meta) = hume_platform::io::read_file(path)?;
+    /// Reads the file at `typed`: its text, and the file the read resolved.
+    pub(in crate::editor) fn read(typed: AbsolutePath) -> io::Result<(BufferText, Self)> {
+        let (content, meta) = hume_platform::io::read_file(&typed)?;
         Ok((
             BufferText::from(content.as_str()),
             Self::on_disk(meta, typed)?,
@@ -117,13 +108,13 @@ impl BufferFile {
         }
     }
 
-    /// The only mutable access: a write refreshes the metadata of the file
-    /// it replaces, which cannot change the resolved path.
-    pub(in crate::editor) fn save_target(&mut self) -> SaveTarget<'_> {
-        match &mut self.backing {
-            Backing::New { resolved } => SaveTarget::New(resolved),
-            Backing::OnDisk(meta) => SaveTarget::OnDisk(meta),
-        }
+    /// Whether `fresh`, the file now at the typed path, is the file this
+    /// describes, unchanged: the same resolved path and signature as at the
+    /// last read or write. Never for a file not on disk yet, which has none.
+    pub(in crate::editor) fn describes(&self, fresh: &FileMeta) -> bool {
+        self.file_meta().is_some_and(|meta| {
+            meta.resolved_path() == fresh.resolved_path() && meta.signature() == fresh.signature()
+        })
     }
 }
 

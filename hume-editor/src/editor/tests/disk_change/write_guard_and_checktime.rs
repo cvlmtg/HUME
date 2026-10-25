@@ -66,12 +66,6 @@ fn write_recreates_a_vanished_file() {
 /// `:w %` (a save-as whose path resolves to the buffer's own file) must
 /// refuse the same way a plain `:w` would: this is `:w` in disguise, not a
 /// genuine save-as, so the stale-write guard still applies.
-///
-/// Opens the file via `:e` (not `editor_with_file`) so `ed.doc().path()` is
-/// the same `fs::canonicalize`-d path `write_file` freshly reads back:
-/// `editor_with_file` sets the buffer's path to the raw, uncanonicalized
-/// tempfile path, which would make `targets_own_file` false on macOS
-/// (`/var` → `/private/var`) and silently defeat this test.
 #[test]
 fn write_percent_refuses_on_externally_changed_own_file() {
     let (tmp, _tmp_guard) = temp_file("hello\n");
@@ -94,8 +88,8 @@ fn write_percent_refuses_on_externally_changed_own_file() {
 }
 
 /// A genuine save-as to a path this buffer never read from must succeed even
-/// though the buffer's *own* file changed on disk. `targets_own_file` is
-/// false, so there is nothing to guard against on the new path.
+/// though the buffer's *own* file changed on disk. The path names another
+/// file, so there is nothing to guard against on it.
 ///
 /// A guard that only asked whether the buffer's own baseline changed, and
 /// ignored which path is being written, would refuse this save-as too.
@@ -239,7 +233,9 @@ fn unchanged_check_resets_disk_state_to_in_sync() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
     let bid = ed.focused_buffer_id();
 
-    let injected_sig = hume_platform::io::read_signature(&tmp).unwrap();
+    let injected_sig = hume_platform::io::read_file_meta(&AbsolutePath::rooted(&tmp))
+        .unwrap()
+        .signature();
     ed.state.buffers.get_mut(bid).disk_state = DiskState::Changed(injected_sig);
     assert!(
         ed.doc().is_disk_stale(),

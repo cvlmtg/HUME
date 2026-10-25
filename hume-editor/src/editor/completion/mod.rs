@@ -216,7 +216,7 @@ mod testing {
 
     pub(in crate::editor::completion) fn buf_with_path(path: &str) -> Buffer {
         let mut b = make_buf();
-        b.set_file(Some(crate::editor::buffer::BufferFile::at(path)));
+        b.set_file(crate::editor::buffer::BufferFile::at(path));
         b
     }
 }

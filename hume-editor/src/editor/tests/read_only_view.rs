@@ -67,7 +67,7 @@ fn messages_reuses_existing_view_buffer() {
         .state
         .buffers
         .iter()
-        .find(|(_, buf)| buf.label.is_none() && buf.path().is_none())
+        .find(|(_, buf)| buf.label().is_none() && buf.path().is_none())
         .map(|(id, _)| id)
         .expect("scratch buffer must exist");
     ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.view), scratch_id);
@@ -531,7 +531,7 @@ fn labelled_count(ed: &Editor, label: &str) -> usize {
     ed.state
         .buffers
         .iter()
-        .filter(|(_, buf)| buf.label.as_ref().map(ViewLabel::as_str) == Some(label))
+        .filter(|(_, buf)| buf.label().map(ViewLabel::as_str) == Some(label))
         .count()
 }
 

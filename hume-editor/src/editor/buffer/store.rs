@@ -115,11 +115,11 @@ impl BufferStore {
 
     /// Find a read-only view buffer by its label.
     ///
-    /// Returns the first `BufferId` whose `buffer.label == Some(label)`.
+    /// Returns the first `BufferId` whose `buffer.label() == Some(label)`.
     pub(in crate::editor) fn find_by_label(&self, label: &ViewLabel) -> Option<BufferId> {
         self.buffers
             .iter()
-            .find_map(|(id, buf)| (buf.label.as_ref() == Some(label)).then_some(id))
+            .find_map(|(id, buf)| (buf.label() == Some(label)).then_some(id))
     }
 
     /// Infallible getter. Panics if `id` was never seeded: that is a caller bug.

@@ -40,11 +40,9 @@ impl FileSignature {
     }
 }
 
-/// Read a file's current [`FileSignature`] without touching its content.
-///
-/// No `canonicalize`: callers already hold the resolved path (from an
-/// earlier `read_file_meta`/`read_file`).
-pub fn read_signature(path: &Path) -> io::Result<FileSignature> {
+/// Read the current [`FileSignature`] of the file at `path`, already
+/// resolved, without touching its content.
+fn read_signature(path: &Path) -> io::Result<FileSignature> {
     Ok(FileSignature::from_metadata(&fs::metadata(path)?))
 }
 
@@ -77,7 +75,7 @@ pub struct FileMeta {
     gid: u32,
 
     /// The file's fingerprint as of the last read or write through this
-    /// `FileMeta`. Compared against a fresh [`read_signature`] to detect
+    /// `FileMeta`. Compared against a fresh [`read_file_meta`]'s to detect
     /// external changes; refreshed by [`write_file_atomic`] after a
     /// successful write so the editor's own saves never look external.
     signature: FileSignature,

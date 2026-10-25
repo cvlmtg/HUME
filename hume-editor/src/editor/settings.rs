@@ -809,8 +809,8 @@ define_settings! {
         // resync needed. `true`: an external change to the focused buffer
         // opens a reload confirm. `false`: detection still runs and warns,
         // but reload stays manual via `:e!`/`:checktime`. Independent of
-        // `:w`'s write guard, which stats the file itself at write time
-        // regardless of this setting. See `changed_on_disk`.
+        // `:w`'s write guard, which reads the file itself at write time
+        // regardless of this setting.
         "file-reload-prompt" => file_reload_prompt: bool = true,
             scope: [Scope::Global, Scope::Buffer],
             parser: bool;

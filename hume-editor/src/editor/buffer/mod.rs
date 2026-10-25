@@ -29,7 +29,7 @@ mod dump;
 // entirely, passing a trigger to `check_buffer_disk_state` directly or
 // injecting a `DiskState` value to test the state machine without depending
 // on filesystem mtime precision) needs it outside `buffer` itself.
-pub(in crate::editor) use buffer_file::{BufferFile, FileTarget, SaveTarget};
+pub(in crate::editor) use buffer_file::{BufferFile, FileTarget};
 #[cfg(test)]
 pub(in crate::editor) use disk::DiskState;
 pub(in crate::editor) use disk::{DiskCheckTrigger, ReloadError};
@@ -135,6 +135,16 @@ impl HistoryMark {
     }
 }
 
+/// What a buffer's text belongs to.
+enum Origin {
+    /// Nothing: `*scratch*`.
+    Scratch,
+    File(BufferFile),
+    /// A read-only view of text the editor or a plugin built, such as
+    /// `[messages]`, named by its label in the statusline and `:ls`.
+    View(ViewLabel),
+}
+
 /// Content-only document: text, undo history, search state, and per-buffer overrides.
 ///
 /// `Buffer` is the SSOT for everything intrinsic to an open file and shared
@@ -166,8 +176,8 @@ pub(crate) struct Buffer {
     /// The line ending at the last save (or first open). A line-ending change
     /// records no revision, so unsaved-ness compares this against the text's.
     saved_line_ending: LineEnding,
-    /// The backing file. `None` for scratch and synthetic buffers.
-    file: Option<BufferFile>,
+    /// The file or view the text belongs to, if any.
+    origin: Origin,
     /// Active search pattern shared by all panes viewing this buffer.
     /// `None` when no search is active. A present `SearchPattern` is always
     /// fully-valid. Invalid regexes leave this as `None`.
@@ -212,9 +222,6 @@ pub(crate) struct Buffer {
     pub(in crate::editor) read_only: bool,
     /// The [`TextHold`] keeping the text as it is, if one is alive.
     hold: Weak<()>,
-    /// Display name used for synthetic, path-less view buffers (e.g. `"[messages]"`).
-    /// Shown in the statusline and `:ls` instead of `*scratch*`.
-    pub(in crate::editor) label: Option<ViewLabel>,
     /// True from chokepoint open (`lifecycle::open_buffer_and_notify`, or
     /// `lifecycle::close_buffer_and_notify`'s own `queue_open_announcement`
     /// call for the fresh scratch buffer a last-buffer close allocates)
@@ -301,7 +308,7 @@ impl Buffer {
             history,
             saved_revision,
             saved_line_ending,
-            file: None,
+            origin: Origin::Scratch,
             search_pattern: None,
             search_matches: SearchMatches::default(),
             #[cfg(test)]
@@ -314,7 +321,6 @@ impl Buffer {
             syntax: None,
             read_only: false,
             hold: Weak::new(),
-            label: None,
             open_hook_pending: false,
             disk_state: disk::DiskState::InSync,
             pending_dump: None,
@@ -326,9 +332,9 @@ impl Buffer {
     /// `search_pattern` and `search_matches` are left at their defaults (no
     /// active search).
     pub(in crate::editor::buffer) fn from_file(typed: &AbsolutePath) -> io::Result<Self> {
-        let (text, file) = BufferFile::read(typed.clone(), typed)?;
+        let (text, file) = BufferFile::read(typed.clone())?;
         let mut buf = Self::at_start(text);
-        buf.file = Some(file);
+        buf.origin = Origin::File(file);
         Ok(buf)
     }
 
@@ -338,16 +344,14 @@ impl Buffer {
     /// `find_by_path` dedup and displays its intended name.
     pub(in crate::editor::buffer) fn new_file(file: BufferFile) -> Self {
         let mut buf = Self::at_start(BufferText::empty());
-        buf.file = Some(file);
+        buf.origin = Origin::File(file);
         buf
     }
 
     /// `true` for a buffer bound to a file not on disk yet, opened via
     /// [`Self::new_file`] and not yet written.
     pub(in crate::editor) fn is_new_file(&self) -> bool {
-        self.file
-            .as_ref()
-            .is_some_and(|file| file.file_meta().is_none())
+        self.file().is_some_and(|file| file.file_meta().is_none())
     }
 
     /// Load the file `target` names, or open an empty [`Self::new_file`]
@@ -387,7 +391,7 @@ impl Buffer {
     pub(in crate::editor) fn read_only_view(text: BufferText, label: ViewLabel) -> Self {
         let mut buf = Self::at_start(text);
         buf.read_only = true;
-        buf.label = Some(label);
+        buf.origin = Origin::View(label);
         buf
     }
 
@@ -449,12 +453,8 @@ impl Buffer {
     }
 
     /// `true` for in-memory view buffers (e.g. `[messages]`, `[plugin-status]`).
-    ///
-    /// Synthetic buffers have no backing file (`path = None`) but carry a
-    /// display label. Scratch buffers are path-less too, but have no label;
-    /// that distinction is what this predicate captures.
     pub(in crate::editor) fn is_synthetic(&self) -> bool {
-        self.file.is_none() && self.label.is_some()
+        matches!(self.origin, Origin::View(_))
     }
 
     /// Replace the buffer text and carry every stored position with it:
@@ -497,31 +497,46 @@ impl Buffer {
         }
     }
 
-    /// Bind the buffer to a file, or with `None` to no file.
-    pub(in crate::editor) fn set_file(&mut self, file: Option<BufferFile>) {
-        self.file = file;
+    /// Bind the buffer to `file`. A view buffer is never bound to one: a
+    /// write of it is an export (see `WriteKind::classify`).
+    pub(in crate::editor) fn set_file(&mut self, file: BufferFile) {
+        debug_assert!(!self.is_synthetic(), "a view buffer is bound to a file");
+        self.origin = Origin::File(file);
+    }
+
+    /// Unbinds the buffer from its file or label and keeps the rest of its
+    /// state, for a test that needs a pathless buffer in a state only a file
+    /// buffer reaches.
+    #[cfg(test)]
+    pub(in crate::editor) fn forget_file(&mut self) {
+        self.origin = Origin::Scratch;
     }
 
     /// The backing file, or `None` for scratch/synthetic buffers.
     pub(in crate::editor) fn file(&self) -> Option<&BufferFile> {
-        self.file.as_ref()
+        match &self.origin {
+            Origin::File(file) => Some(file),
+            Origin::Scratch | Origin::View(_) => None,
+        }
     }
 
-    /// The backing file for a write of it, or `None` for scratch/synthetic
-    /// buffers.
-    pub(in crate::editor) fn file_mut(&mut self) -> Option<&mut BufferFile> {
-        self.file.as_mut()
+    /// The label of a view buffer, or `None` for any other.
+    pub(in crate::editor) fn label(&self) -> Option<&ViewLabel> {
+        match &self.origin {
+            Origin::View(label) => Some(label),
+            Origin::Scratch | Origin::File(_) => None,
+        }
     }
 
     /// Canonical backing-file path, or `None` for scratch buffers.
     pub(in crate::editor) fn path(&self) -> Option<&AbsolutePath> {
-        self.file.as_ref().map(BufferFile::resolved)
+        self.file().map(BufferFile::resolved)
     }
 
     /// The fully display-ready path string, or `None` for scratch/synthetic
     /// buffers. Print verbatim, no further transforms needed.
     pub(crate) fn display_path(&self) -> Option<&str> {
-        self.file.as_ref().map(BufferFile::display)
+        self.file().map(BufferFile::display)
     }
 
     /// First line of buffer content, capped at 64 bytes, stopping at the
@@ -552,13 +567,11 @@ impl Buffer {
     /// The name shown in the UI: label for view buffers, basename for named
     /// buffers, `*scratch*` for unnamed ones.
     pub(crate) fn display_name(&self) -> String {
-        if let Some(ref label) = self.label {
-            return label.as_str().to_owned();
+        match &self.origin {
+            Origin::Scratch => Self::SCRATCH_BUFFER_NAME.to_owned(),
+            Origin::File(file) => file.file_name().to_string_lossy().into_owned(),
+            Origin::View(label) => label.as_str().to_owned(),
         }
-        self.file
-            .as_ref()
-            .map(|file| file.file_name().to_string_lossy().into_owned())
-            .unwrap_or_else(|| Self::SCRATCH_BUFFER_NAME.to_owned())
     }
 
     /// Replace `self.text` with `new_text`, recording the swap as a single
@@ -684,8 +697,8 @@ impl Buffer {
 
     /// `true` if the last disk-state check found the backing file changed or
     /// vanished and the user has not yet acted on it (reloaded or written).
-    /// Test-only: `:w`'s write guard stats the file fresh instead of trusting
-    /// this (see `changed_on_disk`). This remains for tests that assert
+    /// Test-only: `:w`'s write guard reads the file fresh instead of trusting
+    /// this. This remains for tests that assert
     /// on the reported/warned state itself, not on write behavior.
     #[cfg(test)]
     pub(in crate::editor) fn is_disk_stale(&self) -> bool {

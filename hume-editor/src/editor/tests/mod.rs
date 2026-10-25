@@ -243,7 +243,7 @@ pub(crate) fn editor_with_path(content: &str, path: &std::path::Path) -> Editor 
     let sels = sels_at(&text, &[(0, 0)], 0);
     let mut ed = Editor::for_testing_with(test_fixtures::testing::state(text, sels));
     ed.doc_mut()
-        .set_file(Some(crate::editor::buffer::BufferFile::at(path)));
+        .set_file(crate::editor::buffer::BufferFile::at(path));
     ed
 }
 
@@ -947,7 +947,7 @@ fn editor_with_file(initial_state: &str, file_content: &str) -> (Editor, tempfil
     let (path, tmp_path) = temp_file(file_content);
     let mut ed = editor_from(initial_state);
     ed.doc_mut()
-        .set_file(Some(crate::editor::buffer::BufferFile::on_disk_at(path)));
+        .set_file(crate::editor::buffer::BufferFile::on_disk_at(path));
     (ed, tmp_path)
 }
 
@@ -1461,7 +1461,7 @@ fn popup_lines(n: usize) -> String {
 fn file_buffer(content: &str) -> (Buffer, tempfile::TempPath) {
     let (path, tmp_path) = temp_file(content);
     let mut buf = Buffer::at_start(BufferText::from(content));
-    buf.set_file(Some(crate::editor::buffer::BufferFile::on_disk_at(path)));
+    buf.set_file(crate::editor::buffer::BufferFile::on_disk_at(path));
     (buf, tmp_path)
 }
 

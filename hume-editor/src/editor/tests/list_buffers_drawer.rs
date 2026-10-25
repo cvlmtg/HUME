@@ -106,9 +106,13 @@ fn rows_mark_current_alternate_and_dirty() {
 #[test]
 fn a_buffers_label_shows_in_the_name_column() {
     let mut ed = editor_from("-[h]>ello\n");
-    ed.doc_mut().label = Some(view_label("custom"));
+    let fp = FocusedPane::current(&ed.view);
+    ed.open_read_only_view(fp, &view_label("custom"), "text\n", None);
     ed.execute_typed("ls", None).unwrap();
-    insta::assert_snapshot!(rows(&ed).join("\n"), @"   1  %   [custom]");
+    insta::assert_snapshot!(rows(&ed).join("\n"), @"
+       1  #   *scratch*
+       2  %   [custom]
+    ");
 }
 
 #[test]

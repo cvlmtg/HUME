@@ -97,7 +97,7 @@ fn detect_and_set_language_matches_extension() {
     ed.state
         .buffers
         .get_mut(bid)
-        .set_file(Some(crate::editor::buffer::BufferFile::at("/tmp/foo.rs")));
+        .set_file(crate::editor::buffer::BufferFile::at("/tmp/foo.rs"));
     register_rust(&mut ed, "rust", &["rs"]);
     ed.detect_and_set_language(bid);
     assert_eq!(
@@ -121,7 +121,7 @@ fn settle_detects_and_announces_a_queued_buffer() {
     ed.state
         .buffers
         .get_mut(bid)
-        .set_file(Some(crate::editor::buffer::BufferFile::at("/tmp/foo.rs")));
+        .set_file(crate::editor::buffer::BufferFile::at("/tmp/foo.rs"));
     register_rust(&mut ed, "rust", &["rs"]);
     let before = state(&ed);
 

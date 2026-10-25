@@ -551,9 +551,7 @@ fn find_by_path_matches_verbatim_prefixed_stored_path_against_a_plain_query() {
     ed.state
         .buffers
         .get_mut(bid)
-        .set_file(Some(crate::editor::buffer::BufferFile::at(
-            r"\\?\C:\tmp\foo.txt",
-        )));
+        .set_file(crate::editor::buffer::BufferFile::at(r"\\?\C:\tmp\foo.txt"));
 
     let found = ed
         .state
@@ -577,9 +575,9 @@ fn find_by_path_leaves_verbatim_unc_paths_alone() {
     ed.state
         .buffers
         .get_mut(bid)
-        .set_file(Some(crate::editor::buffer::BufferFile::at(
+        .set_file(crate::editor::buffer::BufferFile::at(
             r"\\?\UNC\server\share\foo.txt",
-        )));
+        ));
 
     let found = ed
         .state

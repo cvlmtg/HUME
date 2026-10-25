@@ -888,7 +888,7 @@ fn wa_saves_all_dirty_buffers() {
     let (mut ed, _tmp1) = editor_with_file("-[h]>ello\n", "hello\n");
     let bid1 = ed.focused_buffer_id();
     ed.doc_mut()
-        .set_file(Some(crate::editor::buffer::BufferFile::on_disk_at(&_tmp1)));
+        .set_file(crate::editor::buffer::BufferFile::on_disk_at(&_tmp1));
     dirty_focused(&mut ed);
     assert!(focused_unsaved(&ed));
 
@@ -916,7 +916,7 @@ fn wa_saves_new_file_buffers() {
     let (mut ed, _tmp1) = editor_with_file("-[h]>ello\n", "hello\n");
     let bid1 = ed.focused_buffer_id();
     ed.doc_mut()
-        .set_file(Some(crate::editor::buffer::BufferFile::on_disk_at(&_tmp1)));
+        .set_file(crate::editor::buffer::BufferFile::on_disk_at(&_tmp1));
     dirty_focused(&mut ed);
 
     ed.execute_typed("e", Some(new_path.to_str().unwrap()))
@@ -943,7 +943,7 @@ fn wa_skips_clean_buffers() {
     let (mut ed, _tmp1) = editor_with_file("-[h]>ello\n", "hello\n");
     let bid1 = ed.focused_buffer_id();
     ed.doc_mut()
-        .set_file(Some(crate::editor::buffer::BufferFile::on_disk_at(&_tmp1)));
+        .set_file(crate::editor::buffer::BufferFile::on_disk_at(&_tmp1));
     // bid1 stays clean.
 
     let (tmp2_path, bid2) = open_file_buffer(&mut ed, "two\n");
@@ -972,7 +972,7 @@ fn wa_skips_pathless_buffers() {
     let (mut ed, _tmp1) = editor_with_file("-[h]>ello\n", "hello\n");
     let bid1 = ed.focused_buffer_id();
     ed.doc_mut()
-        .set_file(Some(crate::editor::buffer::BufferFile::on_disk_at(&_tmp1)));
+        .set_file(crate::editor::buffer::BufferFile::on_disk_at(&_tmp1));
     dirty_focused(&mut ed);
 
     // Only one file buffer: scratch shouldn't add to the count.
@@ -998,7 +998,7 @@ fn wa_skips_pathless_buffers() {
 fn wa_is_noop_if_nothing_dirty() {
     let (mut ed, _tmp1) = editor_with_file("-[h]>ello\n", "hello\n");
     ed.doc_mut()
-        .set_file(Some(crate::editor::buffer::BufferFile::on_disk_at(&_tmp1)));
+        .set_file(crate::editor::buffer::BufferFile::on_disk_at(&_tmp1));
 
     ed.execute_typed("wa", None).unwrap();
     let msg = ed.state.status_msg.as_deref().unwrap_or("");
@@ -1013,7 +1013,7 @@ fn wa_does_not_change_focus() {
     let (mut ed, _tmp1) = editor_with_file("-[h]>ello\n", "hello\n");
     let bid1 = ed.focused_buffer_id();
     ed.doc_mut()
-        .set_file(Some(crate::editor::buffer::BufferFile::on_disk_at(&_tmp1)));
+        .set_file(crate::editor::buffer::BufferFile::on_disk_at(&_tmp1));
     dirty_focused(&mut ed);
 
     let (_tmp2, bid2) = open_file_buffer(&mut ed, "two\n");
@@ -1031,7 +1031,7 @@ fn wa_preserves_focus_on_single_buffer() {
     let (mut ed, _tmp1) = editor_with_file("-[h]>ello\n", "hello\n");
     let bid1 = ed.focused_buffer_id();
     ed.doc_mut()
-        .set_file(Some(crate::editor::buffer::BufferFile::on_disk_at(&_tmp1)));
+        .set_file(crate::editor::buffer::BufferFile::on_disk_at(&_tmp1));
     dirty_focused(&mut ed);
 
     let before = ed.focused_buffer_id();
@@ -1227,7 +1227,7 @@ fn write_preserves_permissions() {
     std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o644)).unwrap();
     // Re-read metadata so the buffer's file captures the new permissions.
     ed.doc_mut()
-        .set_file(Some(crate::editor::buffer::BufferFile::on_disk_at(&tmp)));
+        .set_file(crate::editor::buffer::BufferFile::on_disk_at(&tmp));
 
     for ch in ":w".chars() {
         ed.handle_key(key(ch));
@@ -1268,9 +1268,9 @@ fn write_follows_symlink() {
     );
 
     let mut ed = editor_from("-[h]>ello\n");
-    ed.doc_mut().set_file(Some(
+    ed.doc_mut().set_file(
         crate::editor::buffer::BufferFile::on_disk(meta, AbsolutePath::rooted(&link_path)).unwrap(),
-    ));
+    );
 
     for ch in ":w".chars() {
         ed.handle_key(key(ch));
@@ -1401,6 +1401,130 @@ fn reload_of_a_file_replaced_by_a_symlink_reopens_it_under_the_new_uri() {
 
     rig.ed.execute_typed("e!", None).unwrap();
 
+    let new_uri = rig.uri();
+    assert_ne!(old_uri, new_uri);
+    let closed = rig.sent(sid, "textDocument/didClose");
+    assert_eq!(closed.len(), 1);
+    assert_eq!(closed[0]["textDocument"]["uri"], old_uri.as_str());
+    let opened: Vec<_> = rig
+        .sent(sid, "textDocument/didOpen")
+        .iter()
+        .map(|p| p["textDocument"]["uri"].clone())
+        .collect();
+    assert_eq!(opened, vec![old_uri.as_str(), new_uri.as_str()]);
+}
+
+/// A buffer opened through `dir/link`, a symlink to `dir/a.txt` ("a"), whose
+/// link then names `dir/b.txt` ("b") instead.
+fn editor_on_a_retargeted_link() -> (Editor, tempfile::TempDir) {
+    use std::os::unix::fs::symlink;
+
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("a.txt"), "a\n").unwrap();
+    std::fs::write(dir.path().join("b.txt"), "b\n").unwrap();
+    let link = dir.path().join("link");
+    symlink(dir.path().join("a.txt"), &link).unwrap();
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.execute_typed("e", Some(link.to_str().unwrap())).unwrap();
+    std::fs::remove_file(&link).unwrap();
+    symlink(dir.path().join("b.txt"), &link).unwrap();
+    (ed, dir)
+}
+
+/// `:w` refuses once the buffer's link names another file, which the buffer
+/// never read.
+#[test]
+fn write_refuses_after_the_link_is_retargeted() {
+    let (mut ed, dir) = editor_on_a_retargeted_link();
+    ed.handle_key(key('i'));
+    ed.handle_key(key('x'));
+    ed.handle_key(key_esc());
+
+    let err = ed.execute_typed("w", None).unwrap_err();
+
+    assert!(
+        err.message().contains("changed on disk"),
+        "got: {}",
+        err.message()
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("a.txt")).unwrap(),
+        "a\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("b.txt")).unwrap(),
+        "b\n"
+    );
+}
+
+/// `:w!` writes the file the link names now, and the buffer becomes it.
+#[test]
+fn forced_write_after_the_link_is_retargeted_writes_its_new_target() {
+    let (mut ed, dir) = editor_on_a_retargeted_link();
+    ed.handle_key(key('i'));
+    ed.handle_key(key('x'));
+    ed.handle_key(key_esc());
+
+    ed.execute_typed("w!", None).unwrap();
+
+    let b = dir.path().join("b.txt");
+    assert_eq!(std::fs::read_to_string(&b).unwrap(), "xa\n");
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("a.txt")).unwrap(),
+        "a\n"
+    );
+    assert_eq!(
+        ed.doc().path(),
+        Some(&AbsolutePath::canonicalize(&b).unwrap())
+    );
+}
+
+/// `:checktime` asks about a buffer whose link names another file.
+#[test]
+fn checktime_asks_about_a_retargeted_link() {
+    let (mut ed, _dir) = editor_on_a_retargeted_link();
+
+    ed.execute_typed("checktime", None).unwrap();
+
+    assert!(ed.state.input.confirm().is_some());
+}
+
+/// `:e!` reads the file the buffer's link names now.
+#[test]
+fn reload_reads_the_new_target_of_a_retargeted_link() {
+    let (mut ed, dir) = editor_on_a_retargeted_link();
+
+    ed.execute_typed("e!", None).unwrap();
+
+    assert_eq!(ed.doc().text().to_string(), "b\n");
+    assert_eq!(
+        ed.doc().path(),
+        Some(&AbsolutePath::canonicalize(&dir.path().join("b.txt")).unwrap())
+    );
+}
+
+/// A forced write that gives the buffer a new identity is a rename to its
+/// language servers: the old URI is closed and the new one opened.
+#[test]
+fn forced_write_through_a_file_replaced_by_a_symlink_reopens_it_under_the_new_uri() {
+    use std::os::unix::fs::symlink;
+
+    let tmp = tempfile::tempdir().unwrap();
+    let mut rig = crate::editor::tests::lsp_rig::LspRig::rust(
+        tmp.path(),
+        "-[f]>n main() {}\n",
+        serde_json::json!({ "capabilities": {} }),
+    );
+    let sid = rig.sid("rust-analyzer");
+    let old_uri = rig.uri();
+    let main = rig.root.join("src/main.rs");
+    let real = rig.root.join("src/real.rs");
+    std::fs::rename(&main, &real).unwrap();
+    symlink(&real, &main).unwrap();
+
+    rig.ed.execute_typed("w!", None).unwrap();
+
+    assert!(std::fs::symlink_metadata(&main).unwrap().is_symlink());
     let new_uri = rig.uri();
     assert_ne!(old_uri, new_uri);
     let closed = rig.sent(sid, "textDocument/didClose");
@@ -1550,7 +1674,7 @@ fn colon_w_bang_on_readonly_file_preserves_perms() {
     // Make the target readonly and update the buffer's file metadata to match.
     std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o444)).unwrap();
     ed.doc_mut()
-        .set_file(Some(crate::editor::buffer::BufferFile::on_disk_at(&tmp)));
+        .set_file(crate::editor::buffer::BufferFile::on_disk_at(&tmp));
 
     for ch in ":w!".chars() {
         ed.handle_key(key(ch));

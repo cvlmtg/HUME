@@ -77,7 +77,7 @@ fn find_by_path_dedup() {
     let (mut store, mut ev) = store_with_engine();
     let id = make_id(&mut ev);
     let mut buf = make_buf();
-    buf.set_file(Some(crate::editor::buffer::BufferFile::at("/tmp/foo.txt")));
+    buf.set_file(crate::editor::buffer::BufferFile::at("/tmp/foo.txt"));
     store.open(id, buf);
     assert_eq!(
         store.find_by_path(&AbsolutePath::rooted("/tmp/foo.txt")),

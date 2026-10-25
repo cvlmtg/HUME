@@ -308,7 +308,7 @@ fn on_buffer_open_queued_after_on_language_set() {
         .expect("a test identity registers");
 
     let mut doc = Buffer::scratch();
-    doc.set_file(Some(crate::editor::buffer::BufferFile::at("/tmp/foo.rs")));
+    doc.set_file(crate::editor::buffer::BufferFile::at("/tmp/foo.rs"));
     ed.open_buffer(doc);
     ed.detect_pending_languages();
 

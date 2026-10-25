@@ -529,7 +529,7 @@ fn lazy_lsp_plugin_registers_installed_servers_on_language_activation() {
     // every already-open buffer and would otherwise activate core:lsp-install early,
     // before this test's own explicit `set_buffer_language` call below).
     ed.doc_mut()
-        .set_file(Some(crate::editor::buffer::BufferFile::at(file)));
+        .set_file(crate::editor::buffer::BufferFile::at(file));
 
     let bid = ed.focused_buffer_id();
     assert!(

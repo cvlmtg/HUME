@@ -8,7 +8,7 @@ use super::super::Severity;
 use super::super::before_save::{AfterWrite, SAVE_IN_PROGRESS};
 use super::{CloseRefused, FocusedPane};
 use crate::editor::buffer::lifecycle::{self, CloseBufferRefused};
-use crate::editor::buffer::{Buffer, BufferFile, OnUnsaved, SaveTarget};
+use crate::editor::buffer::{Buffer, BufferFile, OnUnsaved};
 use crate::editor::error::CommandError;
 use crate::editor::settings::ops as settings_ops;
 use crate::editor::settings::{WRAP_MODE_KEY, parse_setting_text};
@@ -40,24 +40,6 @@ impl From<WriteError> for CommandError {
             WriteError::Failed(e) => e,
         }
     }
-}
-
-/// Whether a non-forced write to `meta`'s file must be refused.
-/// Stats the file fresh right now rather than trusting the buffer's cached
-/// disk state, which only reflects whatever some earlier trigger (terminal
-/// focus, buffer-enter, `:checktime`) happened to notice. Nothing runs a
-/// check at write time otherwise, so a change made without any of those
-/// firing would otherwise go undetected and get silently overwritten.
-///
-/// A vanished file is *not* blocked: `write_file_atomic` simply recreates
-/// it, which is recovering the user's own work, not clobbering someone
-/// else's: the same reasoning that lets `disk_change_for` treat any other
-/// stat error as nothing-to-act-on-now.
-fn changed_on_disk(meta: &FileMeta) -> bool {
-    matches!(
-        hume_platform::io::read_signature(meta.resolved_path()),
-        Ok(sig) if sig != meta.signature()
-    )
 }
 
 // ── Typed file commands ───────────────────────────────────────────────────────
@@ -348,65 +330,45 @@ fn mark_written_and_synced(
     ed.state.lsp_repull_diagnostics_all(bid);
 }
 
-/// Write `content` to a [`WriteKind::Save`]'s own file. Returns whether the
-/// write was retried, and for a file not on disk until now, the
-/// `BufferFile` the buffer becomes.
+/// Writes `content` to the file at `target`, as it resolves now, creating it
+/// when it does not exist. Returns the written file's metadata and whether
+/// the write was retried (see [`hume_platform::io::write_file_atomic`]).
 ///
-/// A file not on disk yet (`Buffer::new_file`, `:e` on a missing path)
-/// takes the create branch below instead of `write_file_atomic`, which
-/// needs the metadata of an existing file to replace.
-fn save_own_file(
-    file: &mut BufferFile,
+/// Unless `force`, an existing file must be the one `baseline` describes,
+/// unchanged (see [`BufferFile::describes`]): a fresh read at write time, not
+/// a cached flag, since nothing else checks the disk right before a write. A
+/// file that vanished is recreated whatever `baseline` says: that writes back
+/// the user's own work and clobbers nobody's.
+fn write_to(
+    target: &AbsolutePath,
     content: &str,
+    baseline: Option<&BufferFile>,
     force: bool,
-) -> Result<(bool, Option<BufferFile>), WriteError> {
-    match file.save_target() {
-        SaveTarget::New(path) => {
-            // Stat fresh rather than assuming the path is still missing: a
-            // new file carries no metadata to compare against, so a file
-            // that appeared since `:e` would otherwise be clobbered by
-            // `write_file_new` unannounced. Same stat-at-write-time reasoning as
-            // `changed_on_disk`, just discovered via existence instead of a
-            // signature mismatch.
-            let (meta, retried) = match hume_platform::io::read_file_meta(path) {
-                Ok(_) if !force => return Err(WriteError::Stale),
-                // Forced: write through `write_file_atomic`, not
-                // `write_file_new`: the file now exists, so its
-                // permissions/ownership/symlink target should be preserved
-                // like any other overwrite, not replaced with new-file defaults.
-                Ok(mut meta) => hume_platform::io::write_file_atomic(content, &mut meta, force)
-                    .map(|retried| (meta, retried)),
-                Err(_) => {
-                    hume_platform::io::write_file_new(content, path).map(|meta| (meta, false))
-                }
-            }
-            .map_err(|e| CommandError::new(e.to_string()))?;
-            // The new file's resolved path was resolved at `:e` time.
-            // `meta.resolved_path()` is resolved after the write, which differs
-            // when a symlink appeared on the way since, and becomes the
-            // buffer's identity so `find_by_path` dedup keeps working. The
-            // typed path stays as it was.
-            let created = BufferFile::on_disk(meta, file.typed().clone())
-                .map_err(|e| CommandError::new(e.to_string()))?;
-            Ok((retried, Some(created)))
-        }
-        SaveTarget::OnDisk(meta) => {
-            if !force && changed_on_disk(meta) {
+) -> Result<(FileMeta, bool), WriteError> {
+    let failed = |e: std::io::Error| WriteError::Failed(CommandError::new(e.to_string()));
+    match hume_platform::io::read_file_meta(target) {
+        Ok(mut fresh) => {
+            if !force && baseline.is_some_and(|file| !file.describes(&fresh)) {
                 return Err(WriteError::Stale);
             }
-            let retried = hume_platform::io::write_file_atomic(content, meta, force)
-                .map_err(|e| CommandError::new(e.to_string()))?;
-            Ok((retried, None))
+            let retried =
+                hume_platform::io::write_file_atomic(content, &mut fresh, force).map_err(failed)?;
+            Ok((fresh, retried))
         }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            hume_platform::io::write_file_new(content, target)
+                .map(|meta| (meta, false))
+                .map_err(failed)
+        }
+        Err(e) => Err(failed(e)),
     }
 }
 
-/// What a write command does with a buffer. `F` is how a `Save` holds the
-/// buffer's file: shared to decide, exclusive to write.
-pub(in crate::editor) enum WriteKind<'a, F> {
+/// What a write command does with a buffer.
+pub(in crate::editor) enum WriteKind<'a> {
     /// `:w`: the buffer's own file, created when it is not on disk yet. A
     /// read-only buffer or one with no file is `Refused` instead.
-    Save(F),
+    Save(&'a BufferFile),
     /// `:w <path>` on a writable buffer: it becomes the file at the path.
     SaveAs(&'a str),
     /// `:w <path>` on a read-only or synthetic buffer (e.g. `[messages]`): the
@@ -417,20 +379,14 @@ pub(in crate::editor) enum WriteKind<'a, F> {
     Refused(&'static str),
 }
 
-impl<'a, F> WriteKind<'a, F> {
-    /// The one rule both classifications apply, given the buffer's flags and
-    /// its file.
-    fn classify_with(
-        read_only: bool,
-        synthetic: bool,
-        file: Option<F>,
-        arg: Option<&'a str>,
-    ) -> Self {
+impl<'a> WriteKind<'a> {
+    pub(in crate::editor) fn classify(buf: &'a Buffer, arg: Option<&'a str>) -> Self {
+        let read_only = buf.is_read_only();
         match arg {
-            Some(path) if read_only || synthetic => Self::Export(path),
+            Some(path) if read_only || buf.is_synthetic() => Self::Export(path),
             Some(path) => Self::SaveAs(path),
             None if read_only => Self::Refused("Buffer is read-only"),
-            None => file.map_or(Self::Refused("no file name"), Self::Save),
+            None => buf.file().map_or(Self::Refused("no file name"), Self::Save),
         }
     }
 
@@ -440,107 +396,54 @@ impl<'a, F> WriteKind<'a, F> {
     }
 }
 
-impl<'a, 'b> WriteKind<'a, &'b BufferFile> {
-    pub(in crate::editor) fn classify(buf: &'b Buffer, arg: Option<&'a str>) -> Self {
-        Self::classify_with(buf.is_read_only(), buf.is_synthetic(), buf.file(), arg)
-    }
-}
-
-impl<'a, 'b> WriteKind<'a, &'b mut BufferFile> {
-    fn classify_mut(buf: &'b mut Buffer, arg: Option<&'a str>) -> Self {
-        let (read_only, synthetic) = (buf.is_read_only(), buf.is_synthetic());
-        Self::classify_with(read_only, synthetic, buf.file_mut(), arg)
-    }
-}
-
 /// Serialize the buffer and write it to disk.
 ///
 /// What the write does is `arg` classified against the buffer now (see
-/// [`WriteKind`]): a save-as makes the written file the buffer's file so that
-/// a later `:w` targets the same path, an export leaves the buffer untouched,
-/// and a refusal is the error.
+/// [`WriteKind`]): a save or save-as makes the written file the buffer's
+/// file, so that a later `:w` targets the same path, an export leaves the
+/// buffer untouched, and a refusal is the error. A save, and a save-as or
+/// export whose path names the buffer's own file, refuses a file changed on
+/// disk unless `force` (see [`write_to`]).
 ///
 /// When `force` is `true`, a `PermissionDenied` rename error triggers a
 /// chmod-retry: the target is made writable, the rename is retried, and the
 /// status message includes "(forced)".
-///
-/// On success (save-as case), marks `bid` saved and sets a status message.
-/// Returns `Ok(())` on success, `Err(CommandError)` on any error.
 fn write_file(
     ed: &mut Editor,
     bid: BufferId,
     arg: Option<&str>,
     force: bool,
 ) -> Result<(), WriteError> {
-    let buf = ed.state.buffers.get_mut(bid);
+    let buf = ed.state.buffers.get(bid);
     let (content, line_count) = (buf.serialized(), buf.text().content_line_count());
-    let (path_str, save_as) = match WriteKind::classify_mut(buf, arg) {
+    let (target, baseline, becomes_file) = match WriteKind::classify(buf, arg) {
         WriteKind::Refused(msg) => return Err(CommandError::transient(msg).into()),
-        WriteKind::Save(file) => {
-            let (retried, created) = save_own_file(file, &content, force)?;
-            if let Some(file) = created {
-                ed.set_buffer_file(bid, file);
-            }
-            mark_written_and_synced(ed, bid, line_count, retried);
-            return Ok(());
-        }
-        WriteKind::SaveAs(path) => (path, true),
-        WriteKind::Export(path) => (path, false),
-    };
-    let expanded = hume_platform::path::expand(path_str);
-    // A relative path resolves against editor.cwd, not the process cwd, so
-    // `:w relpath` is stable regardless of how the process cwd drifts, and
-    // the way `:e` resolves it, so the file written is the one `:e` opens.
-    let target = AbsolutePath::from_typed(std::path::Path::new(expanded.as_ref()), &ed.state.cwd)
-        .map_err(|e| CommandError::new(e.to_string()))?;
-    // Try to preserve existing file's permissions; if the file doesn't
-    // exist yet, write_file_new creates it with default permissions.
-    let result = match hume_platform::io::read_file_meta(&target) {
-        Ok(mut meta) => {
-            // The stale-write guard only applies when `target` resolves to
-            // the buffer's own current file, i.e. this `:w <path>` is
-            // really a plain `:w` in disguise. A genuine save-as targets
-            // a path this buffer never read from, so there's no staleness
-            // to guard against. `meta` was just freshly stat'd above by
-            // `read_file_meta`, so comparing its signature against the
-            // buffer's own baseline is already a stat-at-write-time
-            // check: no cached flag, no second syscall needed.
-            let own = ed.state.buffers.get(bid);
-            let targets_own_file = own.path() == Some(meta.resolved_path());
-            // A file not on disk yet has no baseline at all. If this
-            // write targets its own path and a file now exists there,
-            // that content was never read by this buffer, so it counts
-            // as "differs" the same as a genuine signature mismatch
-            // would.
-            let own_baseline_differs = match own.file().and_then(BufferFile::file_meta) {
-                Some(own) => own.signature() != meta.signature(),
-                None => true,
-            };
-            if targets_own_file && !force && own_baseline_differs {
-                return Err(WriteError::Stale);
-            }
-            hume_platform::io::write_file_atomic(&content, &mut meta, force)
-                .map(|retried| (meta, retried))
-        }
-        Err(_) => hume_platform::io::write_file_new(&content, &target).map(|meta| (meta, false)),
-    };
-    match result {
-        Ok((meta, retried)) => {
-            if save_as {
-                // The buffer becomes the file just written: its identity
-                // is the write's resolved path, even when the user
-                // supplied a relative or symlink path.
-                let file = BufferFile::on_disk(meta, target)
+        WriteKind::Save(file) => (file.typed().clone(), Some(file), true),
+        kind @ (WriteKind::SaveAs(path) | WriteKind::Export(path)) => {
+            let expanded = hume_platform::path::expand(path);
+            // A relative path resolves against editor.cwd, not the process
+            // cwd, so `:w relpath` is stable regardless of how the process
+            // cwd drifts, and the way `:e` resolves it, so the file written
+            // is the one `:e` opens.
+            let target =
+                AbsolutePath::from_typed(std::path::Path::new(expanded.as_ref()), &ed.state.cwd)
                     .map_err(|e| CommandError::new(e.to_string()))?;
-                ed.set_buffer_file(bid, file);
-                mark_written_and_synced(ed, bid, line_count, retried);
-            } else {
-                ed.report(write_severity(retried), write_msg(line_count, retried));
-            }
-            Ok(())
+            let baseline = buf
+                .file()
+                .filter(|own| target.resolve().is_ok_and(|named| named == *own.resolved()));
+            (target, baseline, kind.reaches_own_file())
         }
-        Err(e) => Err(CommandError::new(e.to_string()).into()),
+    };
+    let (meta, retried) = write_to(&target, &content, baseline, force)?;
+    if becomes_file {
+        let file =
+            BufferFile::on_disk(meta, target).map_err(|e| CommandError::new(e.to_string()))?;
+        ed.set_buffer_file(bid, file);
+        mark_written_and_synced(ed, bid, line_count, retried);
+    } else {
+        ed.report(write_severity(retried), write_msg(line_count, retried));
     }
+    Ok(())
 }
 
 pub(in crate::editor) fn typed_write_all(
