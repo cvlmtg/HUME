@@ -699,16 +699,16 @@ fn statusline_display_path_synthetic_buffer_shows_label() {
 fn statusline_display_path_real_file_still_shows_path() {
     // The label fallback must not shadow a real path.
     //
-    // Expectation is hand-built, not `display_form(path)`, since that would be
-    // circular with `BufferFile::new`, which derives the display path by
-    // calling the very same function. `/some/absolute/path/file.rs` has no
-    // `$HOME` prefix and no Windows verbatim prefix, so `display_form` is a
-    // no-op on it and it must come back byte-identical.
-    let path = std::path::Path::new("/some/absolute/path/file.rs");
-    let ed = crate::editor::tests::editor_with_path("hello\n", path);
+    // Expectation is the path's own text, not `display_form(path)`, since that
+    // would be circular with `BufferFile::new`, which derives the display path
+    // by calling the very same function. The path has no `$HOME` prefix and no
+    // Windows verbatim prefix, so `display_form` is a no-op on it and it must
+    // come back byte-identical.
+    let path = hume_platform::path::AbsolutePath::rooted("/some/absolute/path/file.rs");
+    let ed = crate::editor::tests::editor_with_path("hello\n", &path);
     assert_eq!(
         statusline_display_path(&ed.statusline()),
-        "/some/absolute/path/file.rs"
+        path.display().to_string()
     );
 }
 

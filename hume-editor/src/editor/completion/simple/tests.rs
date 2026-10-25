@@ -91,9 +91,10 @@ fn buffer_name_completer_lists_open_buffers_by_basename_full_path_insert_text() 
     let cwd = AbsolutePath::rooted(dir.path());
     let ctx = ctx(&reg, &store, &cwd);
     let items = complete_buffer_name(&ctx);
+    let path = AbsolutePath::rooted("/tmp/foo.txt").display().to_string();
     let item = items
         .iter()
-        .find(|c| c.insert_text == "/tmp/foo.txt")
+        .find(|c| c.insert_text == path)
         .expect("foo.txt must appear");
     assert_eq!(&*item.label, "foo.txt");
 }
@@ -150,7 +151,11 @@ fn buffer_name_completer_duplicate_basename_adds_parent_suffix() {
     );
 
     // Insert text is always the full path.
-    assert!(items.iter().any(|c| c.insert_text == "/a/foo.txt"));
-    assert!(items.iter().any(|c| c.insert_text == "/b/foo.txt"));
-    assert!(items.iter().any(|c| c.insert_text == "/tmp/bar.txt"));
+    for path in ["/a/foo.txt", "/b/foo.txt", "/tmp/bar.txt"] {
+        let path = AbsolutePath::rooted(path).display().to_string();
+        assert!(
+            items.iter().any(|c| c.insert_text == path),
+            "{path} must be an insert text"
+        );
+    }
 }

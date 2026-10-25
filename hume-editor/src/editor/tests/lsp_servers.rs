@@ -585,5 +585,8 @@ fn a_servers_root_comes_from_its_languages_roots() {
 
     let sid = rig.sid("rust-analyzer");
     let root = rig.root.clone();
-    assert_eq!(rig.ed.state.lsp.client_for_test(sid).unwrap().root(), root);
+    assert_eq!(
+        rig.ed.state.lsp.client_for_test(sid).unwrap().root(),
+        root.as_path()
+    );
 }

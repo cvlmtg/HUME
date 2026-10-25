@@ -5,8 +5,9 @@
 
 use super::test_cwd;
 use hume_platform::dirs::Dirs;
+use hume_platform::path::AbsolutePath;
 use hume_platform::wake::no_op_wake;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use hume_engine::pipeline::BufferId;
 use hume_lsp::backend::ServerId;
@@ -97,7 +98,7 @@ impl<'a> RigSpec<'a> {
 pub(in crate::editor) struct LspRig {
     pub(in crate::editor) ed: Editor,
     pub(in crate::editor) bid: BufferId,
-    pub(in crate::editor) root: PathBuf,
+    pub(in crate::editor) root: AbsolutePath,
     pub(in crate::editor) notifications: ServerNotificationLog,
     pub(in crate::editor) requests: RequestLog,
     pub(in crate::editor) responses: ResponseLog,
@@ -115,7 +116,7 @@ impl LspRig {
         spec: RigSpec<'_>,
         backend: RecordingLspBackend,
     ) -> Self {
-        let root = std::fs::canonicalize(tmp).expect("tempdir canonicalizes");
+        let root = AbsolutePath::canonicalize(tmp).expect("tempdir canonicalizes");
         for marker in spec.markers {
             std::fs::write(root.join(marker), b"").expect("write root marker");
         }

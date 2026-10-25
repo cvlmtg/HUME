@@ -417,7 +417,7 @@ struct DiagSetup {
     file: std::path::PathBuf,
     /// The rig root, where a later `run`/`eval_with_real_host` writes its
     /// init.
-    tmp: std::path::PathBuf,
+    tmp: hume_platform::path::AbsolutePath,
     /// The one server attached to `file`, the publisher of `diags`.
     sid: ServerId,
     _guard: RealRuntimeDirs,

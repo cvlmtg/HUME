@@ -156,7 +156,7 @@ fn lsp_server_status_lists_the_running_server() {
                       (equal? (hash-ref entry 'root) {:?})
                       (equal? (hash-ref entry 'state) 'running)
                       (equal? (hash-ref entry 'pending) 0)))"#,
-            hume_platform::path::strip_unc_prefix_cow(&rig.root)
+            rig.root.as_path()
         ),
     );
     assert!(
