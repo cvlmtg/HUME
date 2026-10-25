@@ -5,8 +5,8 @@ use super::AbsolutePath;
 #[test]
 fn from_typed_joins_a_relative_path_onto_cwd_and_collapses_dots() {
     let cwd = AbsolutePath::rooted("/home/u");
-    let typed = AbsolutePath::from_typed(Path::new("./a/../b.txt"), &cwd).unwrap();
-    assert_eq!(typed, AbsolutePath::rooted("/home/u/b.txt"));
+    let typed = AbsolutePath::from_typed(Path::new("./a/./b.txt"), &cwd).unwrap();
+    assert_eq!(typed, AbsolutePath::rooted("/home/u/a/b.txt"));
 }
 
 #[test]
@@ -33,34 +33,42 @@ fn current_dir_is_the_process_working_directory() {
 }
 
 #[test]
-fn resolve_existing_canonicalizes_an_existing_file() {
+fn resolve_canonicalizes_an_existing_file() {
     let dir = tempfile::tempdir().unwrap();
     let file = dir.path().join("f.txt");
     std::fs::write(&file, "x").unwrap();
     let typed = AbsolutePath::rooted(&file);
     assert_eq!(
-        typed.resolve_existing().as_path(),
-        std::fs::canonicalize(&file).unwrap()
+        typed.resolve().unwrap(),
+        AbsolutePath::canonicalize(&file).unwrap()
     );
 }
 
 #[test]
-fn resolve_existing_joins_a_missing_file_onto_its_canonical_parent() {
+fn resolve_joins_a_missing_file_onto_its_canonical_parent() {
     let dir = tempfile::tempdir().unwrap();
     let typed = AbsolutePath::rooted(dir.path().join("new.txt"));
     assert_eq!(
-        typed.resolve_existing().as_path(),
-        std::fs::canonicalize(dir.path()).unwrap().join("new.txt")
+        typed.resolve().unwrap().as_path(),
+        AbsolutePath::canonicalize(dir.path())
+            .unwrap()
+            .join("new.txt")
     );
 }
 
 #[test]
-fn resolve_existing_keeps_a_path_whose_parent_is_missing() {
+fn resolve_joins_missing_directories_onto_the_canonical_existing_ancestor() {
     let dir = tempfile::tempdir().unwrap();
-    let missing = dir.path().join("no-dir").join("new.txt");
-    let typed = AbsolutePath::rooted(&missing);
-    assert_eq!(typed.resolve_existing(), typed);
+    let typed = AbsolutePath::rooted(dir.path().join("no-dir").join("new.txt"));
+    let canonical = AbsolutePath::canonicalize(dir.path()).unwrap();
+    assert_eq!(
+        typed.resolve().unwrap().as_path(),
+        canonical.join("no-dir").join("new.txt")
+    );
 }
+
+#[cfg(unix)]
+mod unix;
 
 #[cfg(windows)]
 #[test]

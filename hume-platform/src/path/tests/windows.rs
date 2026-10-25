@@ -107,11 +107,17 @@ fn display_form_with_verbatim_unc_passthrough() {
 fn relative_to_ignores_a_verbatim_prefix_on_either_side() {
     let expected = Some(PathBuf::from(r"sub\f.rs"));
     assert_eq!(
-        relative_to(Path::new(r"\\?\C:\a\sub\f.rs"), Path::new(r"C:\a")),
+        relative_to(
+            &AbsolutePath::rooted(r"\\?\C:\a\sub\f.rs"),
+            &AbsolutePath::rooted(r"C:\a")
+        ),
         expected
     );
     assert_eq!(
-        relative_to(Path::new(r"C:\a\sub\f.rs"), Path::new(r"\\?\C:\a")),
+        relative_to(
+            &AbsolutePath::rooted(r"C:\a\sub\f.rs"),
+            &AbsolutePath::rooted(r"\\?\C:\a")
+        ),
         expected
     );
 }
@@ -123,4 +129,20 @@ fn completion_entries_matches_the_prefix_in_any_case() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("probe.txt"), b"").unwrap();
     assert_eq!(completion_entries(dir.path(), "PRO", false), ["probe.txt"]);
+}
+
+// ── absolute ──────────────────────────────────────────────────────────────
+
+#[test]
+fn absolute_rejects_a_drive_relative_path() {
+    let err = absolute(Path::new("D:b.txt"), Path::new(r"C:\home\u")).unwrap_err();
+    assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+}
+
+/// Windows resolves `..` by name, without reading the disk, so a `..` after
+/// a missing directory still names a path.
+#[test]
+fn absolute_resolves_dot_dot_by_name() {
+    let got = absolute(Path::new(r"missing\..\f.txt"), Path::new(r"C:\home\u")).unwrap();
+    assert_eq!(got, Path::new(r"C:\home\u\f.txt"));
 }

@@ -71,8 +71,9 @@ pub enum ConfigSource {
 /// (matching `:goto`'s own contract) or `GRAPHEME_COL_NUMBERS_START_AT_1`.
 ///
 /// `cwd` resolves a relative `raw` the same way `Editor::open`'s own startup
-/// path handling does (`absolute_unresolved`), so the disambiguation probe
-/// agrees with where the file will actually be read from.
+/// path handling does ([`hume_platform::path::absolute()`]), so the
+/// disambiguation probe agrees with where the file will actually be read
+/// from.
 pub fn parse_file_arg(raw: &Path, cwd: &Path) -> Result<FileArg, String> {
     // A non-UTF-8 path can't hold a parseable `:<digits>` suffix in any
     // sense this parser understands.
@@ -102,8 +103,8 @@ pub fn parse_file_arg(raw: &Path, cwd: &Path) -> Result<FileArg, String> {
 /// rather than lying about a check that already passed.
 pub(crate) fn literal_path_on_disk(candidate: &str, cwd: &Path) -> bool {
     let expanded = hume_platform::path::expand(candidate);
-    let absolute = hume_platform::path::absolute_unresolved(Path::new(expanded.as_ref()), cwd);
-    std::fs::symlink_metadata(absolute).is_ok()
+    hume_platform::path::absolute(Path::new(expanded.as_ref()), cwd)
+        .is_ok_and(|absolute| std::fs::symlink_metadata(absolute).is_ok())
 }
 
 /// Splits `s` into a path and an optional trailing `:line[:col]` position.

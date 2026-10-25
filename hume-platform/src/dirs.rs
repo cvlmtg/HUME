@@ -69,6 +69,12 @@ pub enum DirsError {
     /// The runtime dir is the data dir, so the bundled `plugins/core/` and
     /// `themes/` would read as user-installed ones.
     RuntimeIsDataDir(PathBuf),
+    /// A directory could not be made absolute against the startup working
+    /// directory (see [`crate::path::absolute()`]).
+    Unresolvable {
+        dir: PathBuf,
+        kind: std::io::ErrorKind,
+    },
 }
 
 impl std::fmt::Display for DirsError {
@@ -80,6 +86,7 @@ impl std::fmt::Display for DirsError {
                  set HUME_RUNTIME to a separate copy of runtime/",
                 dir.display()
             ),
+            Self::Unresolvable { dir, kind } => write!(f, "{}: {kind}", dir.display()),
         }
     }
 }
@@ -101,8 +108,8 @@ impl Dirs {
     }
 
     /// The pure form of [`Self::from_env`]. A relative directory (a relative
-    /// `XDG_DATA_HOME`, `HUME_RUNTIME=runtime`, a relative `TMPDIR`) is joined
-    /// onto `cwd` here, once, so it keeps naming the same place after the
+    /// `XDG_DATA_HOME`, `HUME_RUNTIME=runtime`, a relative `TMPDIR`) is made
+    /// absolute against `cwd` here, once, so it keeps naming the same place after the
     /// working directory moves. Without a `cwd` there is nothing to join onto
     /// and values stay as given.
     ///
@@ -116,17 +123,22 @@ impl Dirs {
         search_path: Option<OsString>,
     ) -> Result<Self, DirsError> {
         let pin = |dir: PathBuf| match &cwd {
-            Some(cwd) => crate::path::absolute_unresolved(&dir, cwd),
-            None => dir,
+            Some(cwd) => crate::path::absolute(&dir, cwd).map_err(|e| DirsError::Unresolvable {
+                dir,
+                kind: e.kind(),
+            }),
+            None => Ok(dir),
         };
         let dirs = Self {
-            config: config_dir_with(&env).map(pin),
-            data: data_dir_with(&env).map(pin),
+            config: config_dir_with(&env).map(pin).transpose()?,
+            data: data_dir_with(&env).map(pin).transpose()?,
             grammar_build: exe
                 .as_deref()
                 .map_or(GrammarBuild::ExeUnknown, GrammarBuild::beside),
-            runtime: runtime_dir_with(&env, exe, cwd.clone()).map(pin),
-            tmp: Some(pin(tmp)),
+            runtime: runtime_dir_with(&env, exe, cwd.clone())
+                .map(pin)
+                .transpose()?,
+            tmp: Some(pin(tmp)?),
             search_path,
         };
         if let (Some(runtime), Some(data)) = (&dirs.runtime, &dirs.data)

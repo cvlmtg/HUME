@@ -184,3 +184,56 @@ fn completion_entries_matches_the_prefix_in_its_own_case() {
     assert_eq!(completion_entries(dir.path(), "pro", false), ["probe.txt"]);
     assert!(completion_entries(dir.path(), "PRO", false).is_empty());
 }
+
+// ── absolute ──────────────────────────────────────────────────────────────
+
+#[test]
+fn absolute_joins_a_relative_path_onto_cwd() {
+    let got = absolute(Path::new("foo/bar.txt"), Path::new("/home/user")).unwrap();
+    assert_eq!(got, Path::new("/home/user/foo/bar.txt"));
+}
+
+#[test]
+fn absolute_keeps_an_absolute_path() {
+    let got = absolute(Path::new("/tmp/foo.txt"), Path::new("/home/user")).unwrap();
+    assert_eq!(got, Path::new("/tmp/foo.txt"));
+}
+
+#[test]
+fn absolute_collapses_dot_and_repeated_and_trailing_separators() {
+    let got = absolute(Path::new(".//foo/./bar/"), Path::new("/home/user")).unwrap();
+    assert_eq!(got.as_os_str(), "/home/user/foo/bar");
+}
+
+/// `a/link` points at `b/c`, so `a/link/..` is `b`, as the OS reads it.
+#[test]
+fn absolute_steps_out_of_a_symlink_target_on_dot_dot() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("a")).unwrap();
+    std::fs::create_dir_all(dir.path().join("b/c")).unwrap();
+    std::os::unix::fs::symlink(dir.path().join("b/c"), dir.path().join("a/link")).unwrap();
+
+    let got = absolute(Path::new("a/link/../f.txt"), dir.path()).unwrap();
+
+    let b = std::fs::canonicalize(dir.path().join("b")).unwrap();
+    assert_eq!(got, b.join("f.txt"));
+}
+
+#[test]
+fn absolute_keeps_a_symlink_after_the_last_dot_dot() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("a/real")).unwrap();
+    std::os::unix::fs::symlink(dir.path().join("a/real"), dir.path().join("a/link")).unwrap();
+
+    let got = absolute(Path::new("a/../a/link/f.txt"), dir.path()).unwrap();
+
+    let a = std::fs::canonicalize(dir.path().join("a")).unwrap();
+    assert_eq!(got, a.join("link/f.txt"));
+}
+
+#[test]
+fn absolute_fails_for_a_dot_dot_after_a_missing_directory() {
+    let dir = tempfile::tempdir().unwrap();
+    let err = absolute(Path::new("missing/../f.txt"), dir.path()).unwrap_err();
+    assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
+}

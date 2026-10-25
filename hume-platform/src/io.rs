@@ -8,7 +8,7 @@
 
 use std::fs;
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::SystemTime;
 
 use crate::path::AbsolutePath;
@@ -59,9 +59,9 @@ pub struct FileMeta {
     /// Writes always target this path so the symlink itself is preserved:
     /// `rename(2)` replaces inodes, not symlink targets.
     ///
-    /// Private: always produced by `canonicalize` inside `read_file_meta` /
-    /// `read_file`. Constructing a `FileMeta` with an unresolved path would
-    /// silently break the atomic-write-to-symlink-target guarantee.
+    /// Private: always produced by [`AbsolutePath::resolve`] inside
+    /// `read_file_meta`. A `FileMeta` with an unresolved path would replace
+    /// a symlink with a regular file on the next atomic write.
     resolved_path: AbsolutePath,
 
     /// Original permission bits. Restored on the temp file before the rename
@@ -102,8 +102,8 @@ impl FileMeta {
 ///
 /// Used when saving over an existing file: we need the permissions and
 /// ownership to preserve them, but not the content itself.
-pub fn read_file_meta(path: &Path) -> io::Result<FileMeta> {
-    let resolved = AbsolutePath::canonicalize(path)?;
+pub fn read_file_meta(path: &AbsolutePath) -> io::Result<FileMeta> {
+    let resolved = path.resolve()?;
     let metadata = fs::metadata(&resolved)?;
     let signature = FileSignature::from_metadata(&metadata);
 
@@ -141,7 +141,7 @@ pub fn read_file_meta(path: &Path) -> io::Result<FileMeta> {
 /// signature means a later disk-change check reports a change instead of
 /// silently missing one: biased toward a spurious check, never toward a
 /// miss.
-pub fn read_file(path: &Path) -> io::Result<(String, FileMeta)> {
+pub fn read_file(path: &AbsolutePath) -> io::Result<(String, FileMeta)> {
     let meta = read_file_meta(path)?;
     let content = fs::read_to_string(&meta.resolved_path)?;
     Ok((content, meta))
@@ -227,53 +227,22 @@ pub fn write_file_atomic(content: &str, meta: &mut FileMeta, force: bool) -> io:
 
 // ── write_file_new ────────────────────────────────────────────────────────────
 
-/// Follows a chain of symlinks lexically until reaching a path with nothing
-/// backing it: the write target for [`write_file_new`].
-///
-/// Not `canonicalize`: that requires every component (including the final
-/// one) to exist, which is exactly false for a dangling symlink's target.
-/// A `path` that isn't a symlink at all resolves in one `symlink_metadata`
-/// call. Bounded to `SYMLOOP_MAX` (Linux's own limit) hops so a symlink cycle
-/// errors instead of looping forever.
-fn resolve_symlink_target(path: &Path) -> io::Result<PathBuf> {
-    const MAX_HOPS: u32 = 40;
-    let mut current = path.to_path_buf();
-    for _ in 0..MAX_HOPS {
-        match fs::symlink_metadata(&current) {
-            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(current),
-            Err(e) => return Err(e),
-            Ok(meta) if !meta.is_symlink() => return Ok(current),
-            Ok(_) => {
-                let link_target = fs::read_link(&current)?;
-                current = if link_target.is_absolute() {
-                    link_target
-                } else {
-                    current.parent().unwrap_or(Path::new(".")).join(link_target)
-                };
-            }
-        }
-    }
-    Err(io::Error::other("too many levels of symbolic links"))
-}
-
 /// Write `content` to a **new** file at `path`, creating it with default
 /// permissions (0o644 on Unix, inherited from the temp file on Windows).
 ///
 /// Uses the same temp-file + rename strategy as [`write_file_atomic`] so the
 /// file is never partially visible even for a new path.
 ///
-/// If `path` is a dangling symlink, writes through it to the link's target
-/// instead of replacing the link itself with a regular file, matching
-/// [`FileMeta::resolved_path`]'s guarantee for the existing-file case (see
-/// its doc). `path` may also point through a chain of missing intermediate
-/// directories in the *target's* path; that still surfaces as the same I/O
-/// error `tempfile::NamedTempFile::new_in` would give for a plain missing
-/// parent.
+/// The file is created at [`AbsolutePath::resolve`]'s form of `path`, so a
+/// dangling symlink is written through to the file it names instead of
+/// being replaced, as [`write_file_atomic`] does for an existing file. A
+/// missing directory on the way fails as `tempfile::NamedTempFile::new_in`
+/// fails for it.
 ///
 /// Returns the `FileMeta` for the newly created file, suitable for storing on
 /// the `Editor` so that subsequent `:w` (no argument) targets the same path.
-pub fn write_file_new(content: &str, path: &Path) -> io::Result<FileMeta> {
-    let target = resolve_symlink_target(path)?;
+pub fn write_file_new(content: &str, path: &AbsolutePath) -> io::Result<FileMeta> {
+    let target = path.resolve()?;
     let dir = target.parent().unwrap_or(Path::new("."));
 
     let mut tmp = tempfile::NamedTempFile::new_in(dir)?;

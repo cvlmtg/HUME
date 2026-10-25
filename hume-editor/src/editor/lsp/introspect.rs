@@ -6,11 +6,11 @@
 
 use hume_engine::pipeline::BufferId;
 use hume_lsp::backend::ServerId;
-use hume_platform::path::AbsolutePath;
 
 use super::LspState;
 use super::features::provider;
 use crate::editor::EditorState;
+use crate::editor::buffer::FileTarget;
 use hume_scripting::{CapabilityQuery, ListEntry, LspFeature, ServerName};
 
 /// The feature a standard request `method` belongs to.
@@ -294,11 +294,11 @@ pub(in crate::editor) fn location_places(
             Err(e) => return Err(cannot_open(e)),
         };
         let display_path = hume_lsp::uri::uri_to_display_string(&wl.uri).map_err(cannot_open)?;
-        // A Windows drive-relative path cannot be made absolute and names no buffer.
+        // A path that cannot be resolved names no buffer.
         let open_bid = *open_buffer_cache.entry(path).or_insert_with_key(|path| {
-            AbsolutePath::from_typed(path, &state.cwd)
+            FileTarget::from_typed(path, &state.cwd)
                 .ok()
-                .and_then(|typed| state.buffers.find_by_path(&typed.resolve_existing()))
+                .and_then(|target| state.buffers.find_by_path(target.resolved()))
         });
 
         let grapheme_col_or_wire = match open_bid {

@@ -72,7 +72,8 @@ pub(super) fn resolve(cli: Cli, cwd: &Path) -> Result<Invocation, String> {
         // against wherever `:cd` last left the process, miss the file, and
         // reset to compiled-in defaults instead of erroring (see
         // `Editor::config_path`).
-        let pinned = hume_platform::path::absolute_unresolved(&path, cwd);
+        let pinned = hume_platform::path::absolute(&path, cwd)
+            .map_err(|e| format!("--config: {}: {e}", path.display()))?;
         let file = std::fs::File::open(&pinned)
             .map_err(|e| format!("--config: {}: {e}", path.display()))?;
         let is_file = file
@@ -100,7 +101,8 @@ pub(super) fn resolve(cli: Cli, cwd: &Path) -> Result<Invocation, String> {
                 input: hume_editor::cli::parse_file_arg(&input, cwd)?,
                 keys,
                 // Written after the replay, so a `:cd` in `keys` must not move it.
-                output: hume_platform::path::absolute_unresolved(&output, cwd),
+                output: hume_platform::path::absolute(&output, cwd)
+                    .map_err(|e| format!("--output: {}: {e}", output.display()))?,
             }
         }
         None => Mode::Normal {

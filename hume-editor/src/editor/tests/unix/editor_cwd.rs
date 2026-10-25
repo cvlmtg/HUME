@@ -149,12 +149,9 @@ fn current_directory_in_a_required_module_reports_the_editor_cwd() {
 }
 
 #[test]
-fn path_entries_resolves_dot_dot_lexically_like_e() {
-    use std::os::unix::fs::symlink;
-    let tmp = tempfile::tempdir().unwrap();
-    std::fs::create_dir(tmp.path().join("a")).unwrap();
-    std::fs::create_dir(tmp.path().join("b")).unwrap();
-    symlink(tmp.path().join("b"), tmp.path().join("a").join("link")).unwrap();
+fn path_entries_steps_out_of_a_symlink_target_on_dot_dot_like_e() {
+    let tmp = dir_with_a_link_into_a_sibling();
+    std::fs::write(tmp.path().join("b/in_b.txt"), b"").unwrap();
     let mut ed = editor_in(tmp.path());
 
     let out = log_probe(
@@ -163,7 +160,7 @@ fn path_entries_resolves_dot_dot_lexically_like_e() {
         r#"(string-join (path-entries "a/link/.." "") ",")"#,
     );
 
-    assert_eq!(out, "link/");
+    assert_eq!(out, "c/,in_b.txt");
 }
 
 #[test]

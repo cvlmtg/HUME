@@ -11,6 +11,7 @@
 //! `$VAR` / `${VAR}` on Unix, `%VAR%` on Windows.
 
 use std::borrow::Cow;
+use std::io;
 use std::path::{Component, Path, PathBuf};
 
 mod absolute;
@@ -251,13 +252,8 @@ fn display_form_with(
 }
 
 /// `path` relative to `base`, or `None` when `path` isn't inside `base`.
-/// A Windows `\\?\` prefix on either side is ignored: a canonicalized path
-/// carries one and a working directory from `current_dir` doesn't.
-pub fn relative_to(path: &Path, base: &Path) -> Option<PathBuf> {
-    strip_unc_prefix_cow(path)
-        .strip_prefix(strip_unc_prefix_cow(base))
-        .ok()
-        .map(Path::to_path_buf)
+pub fn relative_to(path: &AbsolutePath, base: &AbsolutePath) -> Option<PathBuf> {
+    path.strip_prefix(base).ok().map(Path::to_path_buf)
 }
 
 // ── Separator utilities ───────────────────────────────────────────────────────
@@ -399,39 +395,32 @@ pub fn strip_unc_prefix_cow(p: &Path) -> Cow<'_, Path> {
 
 // ── Path safety helpers ───────────────────────────────────────────────────────
 
-/// Make `typed` absolute by joining it against `cwd` when relative, then
-/// normalize `.` and `..` lexically without touching the filesystem.
+/// `typed` joined onto `cwd` when relative and made absolute the way the OS
+/// resolves it: `.` and repeated or trailing separators collapse, and `..`
+/// leaves the directory it follows, which after a symlink is the link
+/// target's parent. Symlinks after the last `..` are kept. Windows resolves
+/// `..` by name.
 ///
-/// Symlinks are intentionally **not** resolved: this is for display purposes
-/// where the user expects to see the path as they typed it (e.g. inside a
-/// symlinked project root).
-pub fn absolute_unresolved(typed: &Path, cwd: &Path) -> PathBuf {
-    let joined = if typed.is_relative() {
-        cwd.join(typed)
-    } else {
-        typed.to_owned()
-    };
-    normalize_lexical(&joined)
-}
-
-/// Normalize a path lexically (without filesystem access) by collapsing `.`
-/// and `..` components.
-///
-/// **Not a security substitute for `canonicalize`** (symlinks are not
-/// resolved).  Safe to use only when combined with an explicit rejection of
-/// `..` (`Component::ParentDir`) components in the untrusted input.
-pub fn normalize_lexical(path: &Path) -> PathBuf {
-    let mut out = PathBuf::new();
-    for component in path.components() {
-        match component {
-            Component::CurDir => {}
-            Component::ParentDir => {
-                out.pop();
-            }
-            other => out.push(other),
-        }
+/// Fails with `InvalidInput` for a Windows drive-relative path (`D:foo`),
+/// which joined onto `cwd` stays relative, and with the filesystem's error
+/// when a `..` follows a directory that cannot be resolved.
+pub fn absolute(typed: &Path, cwd: &Path) -> io::Result<PathBuf> {
+    let joined = cwd.join(typed);
+    if !joined.is_absolute() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("{}: not an absolute path", joined.display()),
+        ));
     }
-    out
+    let absolute = std::path::absolute(&joined)?;
+    let components: Vec<Component> = absolute.components().collect();
+    let Some(last_parent) = components.iter().rposition(|c| *c == Component::ParentDir) else {
+        return Ok(components.iter().collect());
+    };
+    let (through_parent, rest) = components.split_at(last_parent + 1);
+    let mut resolved = std::fs::canonicalize(through_parent.iter().collect::<PathBuf>())?;
+    resolved.extend(rest);
+    Ok(resolved)
 }
 
 /// Returns `true` if `s` is a valid, safe filesystem path segment.

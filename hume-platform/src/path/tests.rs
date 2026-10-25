@@ -105,36 +105,6 @@ fn is_path_sep_regular_chars() {
     assert!(!is_path_sep(' '));
 }
 
-// ── normalize_lexical ─────────────────────────────────────────────────────
-
-#[test]
-fn normalize_lexical_removes_cur_dir() {
-    assert_eq!(normalize_lexical(Path::new("a/./b")), PathBuf::from("a/b"));
-}
-
-#[test]
-fn normalize_lexical_pops_parent_dir() {
-    assert_eq!(
-        normalize_lexical(Path::new("a/b/../c")),
-        PathBuf::from("a/c")
-    );
-}
-
-#[test]
-fn normalize_lexical_pop_on_empty_is_safe() {
-    // Leading ".." when the output is empty: pop() on an empty PathBuf is a
-    // no-op, so the ".." is silently discarded and only "a" survives.
-    assert_eq!(normalize_lexical(Path::new("../a")), PathBuf::from("a"));
-}
-
-#[test]
-fn normalize_lexical_normal_path_unchanged() {
-    assert_eq!(
-        normalize_lexical(Path::new("a/b/c")),
-        PathBuf::from("a/b/c")
-    );
-}
-
 // ── is_safe_segment ───────────────────────────────────────────────────────
 
 #[test]
@@ -191,61 +161,35 @@ fn is_safe_segment_plain_name_is_valid() {
     assert!(is_safe_segment("helix-surround"));
 }
 
-// ── absolute_unresolved ───────────────────────────────────────────────────
-
-#[test]
-fn absolute_unresolved_relative_joins_cwd() {
-    let cwd = PathBuf::from("/home/user/projects");
-    let result = absolute_unresolved(std::path::Path::new("foo/bar.txt"), &cwd);
-    assert_eq!(result, PathBuf::from("/home/user/projects/foo/bar.txt"));
-}
-
-#[test]
-fn absolute_unresolved_absolute_is_unchanged() {
-    let cwd = PathBuf::from("/home/user/projects");
-    let result = absolute_unresolved(std::path::Path::new("/tmp/foo.txt"), &cwd);
-    assert_eq!(result, PathBuf::from("/tmp/foo.txt"));
-}
-
-#[test]
-fn absolute_unresolved_collapses_dots() {
-    let cwd = PathBuf::from("/home/user");
-    // `./foo/../bar` → `/home/user/bar`
-    let result = absolute_unresolved(std::path::Path::new("./foo/../bar.txt"), &cwd);
-    assert_eq!(result, PathBuf::from("/home/user/bar.txt"));
-}
-
-#[test]
-fn absolute_unresolved_does_not_canonicalize_symlinks() {
-    // We can't make a symlink in a pure unit test, but we can verify that
-    // a directory name that looks like it could be a symlink (e.g. "link")
-    // is passed through unchanged; no fs access occurs.
-    let cwd = PathBuf::from("/real/path");
-    let result = absolute_unresolved(std::path::Path::new("../symlink-dir/file.txt"), &cwd);
-    // `../` from `/real/path` → `/real` (lexical pop), then `symlink-dir/file.txt`
-    assert_eq!(result, PathBuf::from("/real/symlink-dir/file.txt"));
-}
-
 // ── relative_to ───────────────────────────────────────────────────────────
 
 #[test]
 fn relative_to_strips_the_base() {
-    let path = Path::new("/a/b").join("sub").join("f.rs");
+    let path = AbsolutePath::rooted(Path::new("/a/b").join("sub").join("f.rs"));
     assert_eq!(
-        relative_to(&path, Path::new("/a/b")),
+        relative_to(&path, &AbsolutePath::rooted("/a/b")),
         Some(Path::new("sub").join("f.rs"))
     );
 }
 
 #[test]
 fn relative_to_is_none_outside_the_base() {
-    assert_eq!(relative_to(Path::new("/x/f.rs"), Path::new("/a/b")), None);
+    assert_eq!(
+        relative_to(
+            &AbsolutePath::rooted("/x/f.rs"),
+            &AbsolutePath::rooted("/a/b")
+        ),
+        None
+    );
 }
 
 #[test]
 fn relative_to_matches_whole_components_only() {
     assert_eq!(
-        relative_to(Path::new("/a/bc/f.rs"), Path::new("/a/b")),
+        relative_to(
+            &AbsolutePath::rooted("/a/bc/f.rs"),
+            &AbsolutePath::rooted("/a/b")
+        ),
         None
     );
 }
@@ -253,7 +197,7 @@ fn relative_to_matches_whole_components_only() {
 #[test]
 fn relative_to_the_base_itself_is_empty() {
     assert_eq!(
-        relative_to(Path::new("/a/b"), Path::new("/a/b")),
+        relative_to(&AbsolutePath::rooted("/a/b"), &AbsolutePath::rooted("/a/b")),
         Some(PathBuf::new())
     );
 }

@@ -187,10 +187,17 @@ pub(crate) fn cwd_arg(
     editor_cwd: &Path,
     ctx_name: &str,
 ) -> Result<PathBuf, SteelErr> {
-    Ok(match optional_path_arg(val, ctx_name)? {
-        Some(dir) => hume_platform::path::absolute_unresolved(&dir, editor_cwd),
-        None => editor_cwd.to_path_buf(),
-    })
+    match optional_path_arg(val, ctx_name)? {
+        Some(dir) => under_cwd(&dir, editor_cwd, ctx_name),
+        None => Ok(editor_cwd.to_path_buf()),
+    }
+}
+
+/// `path` made absolute against `cwd` as [`hume_platform::path::absolute()`]
+/// makes it, its error naming `ctx_name`.
+pub(crate) fn under_cwd(path: &Path, cwd: &Path, ctx_name: &str) -> Result<PathBuf, SteelErr> {
+    hume_platform::path::absolute(path, cwd)
+        .map_err(|e| generic_err(format!("{ctx_name}: {}: {e}", path.display())))
 }
 
 /// A non-negative integer, as `usize`. Callers needing `u64` (millisecond
@@ -870,9 +877,9 @@ impl BuiltinArg for Usize {
     }
 }
 
-/// A path argument, resolved as `:e` resolves a typed path: a relative one
-/// joins onto the editor's working directory, and `.` and `..` collapse
-/// lexically without following links. A builtin declares its path
+/// A path argument, resolved as `:e` resolves a typed path (see
+/// [`under_cwd`]): a relative one joins onto the editor's working directory.
+/// A builtin declares its path
 /// parameters as this type in the `builtins!` table, so none resolves one
 /// by hand.
 #[derive(Debug, Clone)]
@@ -892,11 +899,8 @@ impl FromSteelVal for ScriptPath {
 
 impl BuiltinArg for ScriptPath {
     type Out = PathBuf;
-    fn resolve(self, ctx: &mut crate::SteelCtx, _name: &'static str) -> Result<PathBuf, SteelErr> {
-        Ok(hume_platform::path::absolute_unresolved(
-            &self.0,
-            &ctx.host.buffers().cwd(),
-        ))
+    fn resolve(self, ctx: &mut crate::SteelCtx, name: &'static str) -> Result<PathBuf, SteelErr> {
+        under_cwd(&self.0, &ctx.host.buffers().cwd(), name)
     }
 }
 

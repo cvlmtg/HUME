@@ -1,11 +1,10 @@
 use hume_engine::pipeline::{BufferId, Cycle};
-use hume_platform::path::AbsolutePath;
 
 use super::super::Editor;
 use super::super::Severity;
 use super::jump::goto_buffer_in_order;
 use super::{FocusedPane, jump_pane_to};
-use crate::editor::buffer::{DiskCheckTrigger, OnUnsaved, ReloadError, lifecycle};
+use crate::editor::buffer::{DiskCheckTrigger, FileTarget, OnUnsaved, ReloadError, lifecycle};
 use crate::editor::error::CommandError;
 use crate::editor::jump_list::{JumpRule, with_jump};
 
@@ -26,8 +25,8 @@ use crate::editor::jump_list::{JumpRule, with_jump};
 ///   jump entry (`Ctrl-o` returns) and centers the viewport, same as
 ///   `:goto`/`goto-location!`.
 ///
-/// Dedup uses `find_by_path` (canonical path comparison, or best-effort for a
-/// not-yet-existing path; see `AbsolutePath::resolve_existing`). `force` (`!`
+/// Dedup uses `find_by_path` on the file the path names (see
+/// [`AbsolutePath::resolve`](hume_platform::path::AbsolutePath::resolve)), which a not-yet-existing path has too. `force` (`!`
 /// suffix) only takes effect in the no-arg reload branch: it discards unsaved
 /// changes, stops a pipe running in the buffer, and re-reads the file from
 /// disk. When a path is given, `force` is unused.
@@ -229,29 +228,14 @@ pub(in crate::editor) fn typed_buffer(
 /// Find an open buffer matching a path argument.
 ///
 /// Uses the same resolution `resolve_open_path` uses to open one
-/// (`AbsolutePath::resolve_existing`), so a path that doesn't yet exist on
-/// disk still matches an already-open new-file buffer instead of opening a
+/// ([`FileTarget::from_typed`]), so a path that doesn't yet exist on disk
+/// still matches an already-open new-file buffer instead of opening a
 /// duplicate, and a path whose backing file has since been deleted still
-/// matches the buffer that was reading it. A Windows drive-relative path
-/// (`D:foo`) cannot be made absolute and matches none.
-///
-/// Falls back to the plain lexical-absolute form (no `canonicalize` at all)
-/// when that first lookup misses: a new-file buffer opened while an
-/// intermediate directory in its path was missing is keyed by
-/// `resolve_existing`'s fully-lexical fallback at that time (see its doc);
-/// once the directory appears, re-resolving the same typed string
-/// canonicalizes further and no longer matches the stored key. Skipped when
-/// the two forms already agree, since the common case needs no second lookup.
+/// matches the buffer that was reading it. A path that cannot be resolved
+/// matches none.
 fn find_buffer_by_path_arg(ed: &Editor, arg: &str) -> Option<BufferId> {
-    let lexical = AbsolutePath::from_typed(std::path::Path::new(arg), &ed.state.cwd).ok()?;
-    let resolved = lexical.resolve_existing();
-    if let Some(bid) = ed.state.buffers.find_by_path(&resolved) {
-        return Some(bid);
-    }
-    if lexical != resolved {
-        return ed.state.buffers.find_by_path(&lexical);
-    }
-    None
+    let target = FileTarget::from_typed(std::path::Path::new(arg), &ed.state.cwd).ok()?;
+    ed.state.buffers.find_by_path(target.resolved())
 }
 
 /// Resolve a `:b` argument to a `BufferId`.  See [`typed_buffer`] for the
@@ -294,8 +278,8 @@ fn resolve_buffer_arg(ed: &Editor, arg: &str) -> Result<BufferId, CommandError> 
             .ok_or_else(|| CommandError::transient(format!("no buffer at index {n}")));
     }
 
-    // 2. Absolute path: match an open buffer by canonical OR lexical path.
-    //    Lexical fallback keeps buffers reachable after their file is deleted.
+    // 2. Absolute path: match the open buffer for the file it names, which a
+    //    buffer whose file was deleted still is.
     //    `~`/env-var expansion first, matching :e's handling (typed_edit):
     //    an ambiguity message's label can be a `~`-collapsed display_path, so
     //    retyping it verbatim must resolve the same way :e would.

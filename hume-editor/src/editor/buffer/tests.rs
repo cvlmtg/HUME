@@ -1188,11 +1188,17 @@ fn serialized_restores_crlf_line_endings() {
 
 // ── pending_dump ──────────────────────────────────────────────────────────
 
+/// The file an open of `path`, an absolute path, names.
+fn opened(path: &Path) -> FileTarget {
+    let cwd = AbsolutePath::rooted(path.parent().expect("a test file has a parent"));
+    FileTarget::from_typed(path, &cwd).expect("a test path resolves")
+}
+
 #[test]
 fn opening_a_file_with_a_dump_records_the_pending_dump() {
     let (_dir, path) = crate::editor::tests::file_with_dump(Some("disk\n"), Some("crashed\n"));
 
-    let buf = Buffer::from_file_or_new(FileTarget::new(AbsolutePath::rooted(&path))).unwrap();
+    let buf = Buffer::from_file_or_new(opened(&path)).unwrap();
 
     assert_eq!(
         buf.pending_dump.as_deref().and_then(Path::file_name),
@@ -1204,7 +1210,7 @@ fn opening_a_file_with_a_dump_records_the_pending_dump() {
 fn opening_a_file_without_a_dump_has_no_pending_dump() {
     let (_dir, path) = crate::editor::tests::file_with_dump(Some("disk\n"), None);
 
-    let buf = Buffer::from_file_or_new(FileTarget::new(AbsolutePath::rooted(&path))).unwrap();
+    let buf = Buffer::from_file_or_new(opened(&path)).unwrap();
 
     assert_eq!(buf.pending_dump, None);
 }
@@ -1215,7 +1221,7 @@ fn opening_a_missing_file_with_a_dump_records_the_pending_dump() {
     let path = dir.path().join("gone.txt");
     std::fs::write(dir.path().join("gone.txt.dump"), "crashed\n").unwrap();
 
-    let buf = Buffer::from_file_or_new(FileTarget::new(AbsolutePath::rooted(&path))).unwrap();
+    let buf = Buffer::from_file_or_new(opened(&path)).unwrap();
 
     assert!(buf.is_new_file());
     assert_eq!(

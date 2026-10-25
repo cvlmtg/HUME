@@ -24,8 +24,7 @@ use hume_platform::wake::no_op_wake;
 // single drain call. A background thread's result can land on any frame,
 // so CI scheduling jitter would flake a "drain once and assert" test.
 
-/// `dir/a/link`, a symlink to `dir/b/c`: `a/link/..` names `dir/a` read
-/// lexically, the way `:e` reads it, and `dir/b` resolved by the OS.
+/// `dir/a/link`, a symlink to `dir/b/c`, so `a/link/..` names `dir/b`.
 fn dir_with_a_link_into_a_sibling() -> tempfile::TempDir {
     use std::os::unix::fs::symlink;
 

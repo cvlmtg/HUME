@@ -56,7 +56,7 @@ fn vsplit_path_opens_that_buffer() {
 #[test]
 fn split_missing_file_opens_new_file_with_raw_typed_display_path() {
     let home = hume_platform::dirs::home_dir().expect("HOME must be set for this test");
-    // `AbsolutePath::resolve_existing` canonicalizes the *parent* dir when the file
+    // `AbsolutePath::resolve` canonicalizes the *parent* dir when the file
     // itself doesn't exist, so canonicalize `home` here too, or this
     // assertion can fail on a platform/CI layout where $HOME is itself a
     // symlink.
@@ -109,7 +109,7 @@ fn split_directory_path_still_errors_with_raw_typed_path() {
 fn vsplit_missing_file_opens_new_file_with_raw_typed_display_path() {
     let home = hume_platform::dirs::home_dir().expect("HOME must be set for this test");
     // See `split_missing_file_opens_new_file_with_raw_typed_display_path`'s
-    // comment: `AbsolutePath::resolve_existing` canonicalizes the parent dir.
+    // comment: `AbsolutePath::resolve` canonicalizes the parent dir.
     let canonical_home = std::fs::canonicalize(&home).unwrap();
     let mut ed = editor_from("-[h]>ello\n");
     let bid_a = ed.focused_buffer_id();

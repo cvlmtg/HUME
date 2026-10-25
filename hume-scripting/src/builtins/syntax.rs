@@ -16,7 +16,7 @@ use super::SteelResult;
 use super::args::{
     HashEntry, cons_pair, hash_entry, list_of, list_to_strings, optional_hash_entry,
     optional_list_to_string_pairs, optional_list_to_strings, optional_path_arg,
-    optional_string_arg, path_arg, string_arg,
+    optional_string_arg, path_arg, string_arg, under_cwd,
 };
 use super::errors::generic_err;
 
@@ -158,11 +158,12 @@ pub(crate) fn register_grammar(
     optional_queries: SteelVal,
 ) -> SteelResult {
     let cwd = ctx.host.buffers().cwd();
-    let under_cwd = |p: std::path::PathBuf| hume_platform::path::absolute_unresolved(&p, &cwd);
-    let mut queries = QueryFiles::new(under_cwd(path_arg(
+    let resolve =
+        |val: SteelVal, ctx_name: &str| under_cwd(&path_arg(val, ctx_name)?, &cwd, ctx_name);
+    let mut queries = QueryFiles::new(resolve(
         highlights_path,
         "register-grammar! highlights-path",
-    )?));
+    )?);
     let keys = OptionalQuery::ALL.map(OptionalQuery::key);
     if let Some(entry) = optional_hash_entry(
         optional_queries,
@@ -177,14 +178,14 @@ pub(crate) fn register_grammar(
                 .transpose()?
                 .flatten();
             if let Some(path) = path {
-                queries = queries.with(kind, under_cwd(path));
+                queries = queries.with(kind, under_cwd(&path, &cwd, &entry.label(key))?);
             }
         }
     }
     let reg = GrammarReg {
         name: string_arg(name, "register-grammar! name")?,
         source: GrammarSource {
-            path: under_cwd(path_arg(grammar_path, "register-grammar! grammar-path")?),
+            path: resolve(grammar_path, "register-grammar! grammar-path")?,
             symbol: string_arg(symbol, "register-grammar! symbol")?,
             queries,
         },

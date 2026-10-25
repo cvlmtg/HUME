@@ -139,9 +139,9 @@ impl Editor {
             // empty buffer bound to the path instead of exiting, same
             // `:w`-creates-it semantics as `:e` on a missing file (see
             // `Buffer::from_file_or_new`, `lifecycle::open_or_dedup_and_notify`).
-            Some(ref path) => Buffer::from_file_or_new(crate::editor::buffer::FileTarget::new(
-                hume_platform::path::AbsolutePath::from_typed(path, &startup_cwd)?,
-            ))?,
+            Some(ref path) => Buffer::from_file_or_new(
+                crate::editor::buffer::FileTarget::from_typed(path, &startup_cwd)?,
+            )?,
             None => Buffer::at_start(BufferText::empty()),
         };
 

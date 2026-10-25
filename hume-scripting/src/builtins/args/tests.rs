@@ -383,13 +383,23 @@ fn cwd_arg_false_is_the_editor_cwd() {
 }
 
 #[test]
-fn cwd_arg_resolves_a_relative_path_lexically_against_the_editor_cwd() {
-    let got = cwd_arg(SteelVal::StringV("sub/../x".into()), Path::new("/ed"), "f").unwrap();
-    assert_eq!(got, Path::new("/ed/x"));
+fn cwd_arg_resolves_a_relative_path_against_the_editor_cwd() {
+    let ed = tempfile::tempdir().unwrap();
+    let got = cwd_arg(SteelVal::StringV("sub/x".into()), ed.path(), "f").unwrap();
+    assert_eq!(got, ed.path().join("sub").join("x"));
 }
 
 #[test]
 fn cwd_arg_keeps_an_absolute_path() {
-    let got = cwd_arg(SteelVal::StringV("/other".into()), Path::new("/ed"), "f").unwrap();
-    assert_eq!(got, Path::new("/other"));
+    let (ed, other) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let arg = SteelVal::StringV(other.path().to_str().unwrap().into());
+    let got = cwd_arg(arg, ed.path(), "f").unwrap();
+    assert_eq!(got, other.path());
+}
+
+#[test]
+fn cwd_arg_fails_for_a_path_that_cannot_be_made_absolute() {
+    let ed = tempfile::tempdir().unwrap();
+    let arg = SteelVal::StringV(if cfg!(windows) { "Q:x" } else { "missing/../x" }.into());
+    assert!(cwd_arg(arg, ed.path(), "f").is_err());
 }

@@ -365,8 +365,8 @@ impl Editor {
     ///
     /// A URI path that is already an open buffer's own path names that
     /// buffer, with no filesystem call. Any other path is resolved the way a
-    /// typed path keys its buffer ([`AbsolutePath::resolve_existing`]), so a
-    /// file not on disk yet is found through a symlinked directory too.
+    /// typed path keys its buffer ([`AbsolutePath::resolve`]), so a file not
+    /// on disk yet is found through a symlinked directory too.
     /// `canonicalize_budget` meters those resolutions across a drain: each
     /// costs one unit, and the publish is deferred when none is left.
     pub(in crate::editor) fn ingest_publish_diagnostics(
@@ -392,7 +392,19 @@ impl Editor {
             return Ingest::Deferred(published);
         }
         *canonicalize_budget -= 1;
-        let resolved = path.resolve_existing();
+        let resolved = match path.resolve() {
+            Ok(resolved) => resolved,
+            Err(e) => {
+                self.report(
+                    Severity::Trace,
+                    format!(
+                        "lsp: publishDiagnostics for an unresolvable path: {}: {e}",
+                        path.display()
+                    ),
+                );
+                return Ingest::Done(None);
+            }
+        };
         let Some(bid) = self.state.buffers.find_by_path(&resolved) else {
             self.report(
                 Severity::Trace,

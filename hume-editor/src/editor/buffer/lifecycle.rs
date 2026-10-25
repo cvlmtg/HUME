@@ -12,7 +12,6 @@
 
 use hume_editing::text::BufferText;
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
-use hume_platform::path::AbsolutePath;
 use hume_rope::column::GraphemeCol;
 use hume_rope::line::ContentLine;
 
@@ -98,7 +97,7 @@ pub(in crate::editor) fn open_or_dedup_and_notify(
     state: &mut EditorState,
     path: &std::path::Path,
 ) -> std::io::Result<(BufferId, bool)> {
-    let target = FileTarget::new(AbsolutePath::from_typed(path, &state.cwd)?);
+    let target = FileTarget::from_typed(path, &state.cwd)?;
     if let Some(existing) = state.buffers.find_by_path(target.resolved()) {
         return Ok((existing, false));
     }

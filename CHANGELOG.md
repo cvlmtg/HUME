@@ -11,6 +11,7 @@
 - `update-drawer-list!` raises on an empty list instead of returning `#f`: close the drawer instead.
 - `close-buffer!` raises for a buffer with unsaved changes instead of dropping them: pass `#:discard-unsaved #t` to close it anyway.
 - `define-language!` raises for an invalid glob, or for an extension with a leading or trailing dot or a `/`, instead of skipping it: fix or drop the entry.
+- A path given to a HUME call resolves `..` the way the operating system does, and a `..` after a directory that doesn't exist raises: write the path without it.
 - `after!`, `spawn-async!` and `path-programs` return an opaque timer or job, not an integer: compare two with `equal?`. `cancel-timer!` raises for anything but a timer, and `cancel-async!` for anything but a job, so one kind can no longer cancel the other.
 
 ### Syntax & language awareness
@@ -47,7 +48,7 @@
 - An error in a timer, a background reply or another plugin's callback no longer empties a completion menu that is still waiting on a source.
 - `Ctrl-c` during a command that shows a program's output, such as a grammar install, stops that program instead of quitting HUME.
 - A file opened through a symlink is named after the link you opened, not its target, in the statusline, tab labels, `:ls` and `:b`.
-- `:w <path>`, `:cd` and path completion resolve `..` in a relative path the way `:e` does, so `:w` writes the file `:e` would open.
+- `..` in a path you type to `:e`, `:w`, `:cd` or path completion leaves the directory it follows the way your shell does: after a symlink, it goes to the link target's parent.
 
 ## [0.16.1] - 2026-10-22
 

@@ -137,9 +137,9 @@ fn path_completer_dirs_only_mode() {
 }
 
 /// A `..` after a symlink completes the directory `:e` would open from:
-/// read lexically, not the symlink target's parent.
+/// the symlink target's parent.
 #[test]
-fn path_completer_resolves_dot_dot_after_a_symlink_lexically() {
+fn path_completer_steps_out_of_a_symlink_target_on_dot_dot() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::create_dir_all(dir.path().join("a")).unwrap();
     std::fs::create_dir_all(dir.path().join("b/c")).unwrap();
@@ -154,6 +154,6 @@ fn path_completer_resolves_dot_dot_after_a_symlink_lexically() {
     let (_, candidates) = complete_path(input, input.len(), &ctx);
 
     let names: Vec<&str> = candidates.iter().map(|c| c.label.as_ref()).collect();
-    assert!(names.contains(&"in_a.txt"), "{names:?}");
-    assert!(!names.contains(&"in_b.txt"), "{names:?}");
+    assert!(names.contains(&"in_b.txt"), "{names:?}");
+    assert!(!names.contains(&"in_a.txt"), "{names:?}");
 }

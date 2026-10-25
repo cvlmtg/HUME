@@ -321,10 +321,8 @@ fn write_new_file_buffer_refuses_when_file_appeared_externally() {
     assert!(!ed.doc().is_new_file());
 }
 
-/// A new-file buffer opened via `AbsolutePath::resolve_existing`'s lexical fallback
-/// (parent didn't exist at `:e` time) must have its `path` re-keyed to the
-/// fully resolved path once `:w` actually creates the file. Otherwise
-/// `find_by_path` dedup breaks the moment the file exists.
+/// A new-file buffer keeps the resolved path of the file `:w` creates, so
+/// `find_by_path` still finds it once the file exists.
 #[test]
 fn write_new_file_buffer_rekeys_path_to_resolved_target() {
     let dir = tempfile::tempdir().unwrap();
@@ -382,7 +380,6 @@ fn edit_directory_path_still_errors() {
 #[test]
 fn edit_relative_path_matches_existing_buffer() {
     // Open a file by absolute path, then :e its basename from the same dir.
-    // The lexical-absolute fallback in find_buffer_by_path_arg must match.
     let cwd = Sandbox::new();
     let canonical_dir = cwd.path();
     let path = canonical_dir.join("relpath_test.txt");
@@ -633,13 +630,10 @@ fn edit_position_suffix_column_past_line_end_clamps() {
 }
 
 /// A new-file buffer opened while an intermediate directory was missing is
-/// keyed by `AbsolutePath::resolve_existing`'s fully-lexical fallback (parent couldn't
-/// be canonicalized either). Once that directory appears, re-resolving the
-/// same typed string canonicalizes further and would miss a plain
-/// `find_by_path` lookup. `:b` (via `find_buffer_by_path_arg`'s lexical
-/// fallback) and `:e`'s dedup must still find it, not treat it as unopened.
+/// still the buffer for that path once the directory appears, for `:b`,
+/// `:e` and every other open.
 #[test]
-fn buffer_by_path_finds_lexically_keyed_buffer_after_parent_dir_appears() {
+fn a_new_file_under_a_missing_directory_keeps_its_buffer_once_it_appears() {
     let dir = tempfile::tempdir().unwrap();
     let sub = dir.path().join("sub");
     let path = sub.join("f.txt"); // `sub` does not exist yet
@@ -657,8 +651,9 @@ fn buffer_by_path_finds_lexically_keyed_buffer_after_parent_dir_appears() {
     assert_eq!(
         ed.focused_buffer_id(),
         bid,
-        ":b must find the lexically-keyed buffer now that `sub` exists"
+        ":b must find the buffer once `sub` exists"
     );
+    assert_eq!(ed.open_extra_file(&path), Some(bid));
 
     ed.execute_typed("b", Some("*scratch*")).unwrap();
     ed.execute_typed("e", Some(path.to_str().unwrap())).unwrap();
@@ -1147,7 +1142,7 @@ fn open_extra_file_new_file_shows_untransformed_display_path() {
     std::fs::write(f1.path(), "hello\n").unwrap();
     let canonical = std::fs::canonicalize(f1.path()).unwrap();
     let home = hume_platform::dirs::home_dir().expect("HOME must be set for this test");
-    // `AbsolutePath::resolve_existing` canonicalizes the *parent* dir when the file
+    // `AbsolutePath::resolve` canonicalizes the *parent* dir when the file
     // itself doesn't exist. Canonicalize `home` here too, or this lookup
     // can miss on a platform/CI layout where $HOME is itself a symlink.
     let canonical_home = std::fs::canonicalize(&home).unwrap();
@@ -1266,7 +1261,7 @@ fn write_follows_symlink() {
     symlink(real.path(), &link_path).unwrap();
 
     // Open via the symlink: io::read_file should resolve it.
-    let (_, meta) = hume_platform::io::read_file(&link_path).unwrap();
+    let (_, meta) = hume_platform::io::read_file(&AbsolutePath::rooted(&link_path)).unwrap();
     assert_eq!(
         meta.resolved_path().to_path_buf(),
         std::fs::canonicalize(real.path()).unwrap()
@@ -1419,11 +1414,45 @@ fn reload_of_a_file_replaced_by_a_symlink_reopens_it_under_the_new_uri() {
     assert_eq!(opened, vec![old_uri.as_str(), new_uri.as_str()]);
 }
 
+/// A dangling symlink names the file a write through it creates, so it and
+/// that file share one buffer.
+#[test]
+fn a_dangling_symlink_and_its_target_open_one_buffer() {
+    let dir = tempfile::tempdir().unwrap();
+    let target = dir.path().join("target.txt");
+    let link = dir.path().join("link");
+    std::os::unix::fs::symlink(&target, &link).unwrap();
+
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.execute_typed("e", Some(link.to_str().unwrap())).unwrap();
+    let bid = ed.focused_buffer_id();
+
+    ed.execute_typed("e", Some(target.to_str().unwrap()))
+        .unwrap();
+    assert_eq!(ed.focused_buffer_id(), bid);
+    assert_eq!(ed.open_extra_file(&target), Some(bid));
+}
+
+/// `:e` steps out of a symlink's target on `..`, as the OS does.
+#[test]
+fn open_steps_out_of_a_symlink_target_on_dot_dot() {
+    let dir = dir_with_a_link_into_a_sibling();
+    std::fs::write(dir.path().join("a/f.txt"), "in a\n").unwrap();
+    std::fs::write(dir.path().join("b/f.txt"), "in b\n").unwrap();
+
+    let mut ed = editor_from("-[h]>ello\n");
+    let typed = dir.path().join("a/link/../f.txt");
+    ed.execute_typed("e", Some(typed.to_str().unwrap()))
+        .unwrap();
+
+    assert_eq!(ed.doc().text().to_string(), "in b\n");
+}
+
 /// `:w <path>` writes the file `:e <path>` would open: a `..` after a
-/// symlink collapses lexically, so the buffer's name and the file its
+/// symlink steps out of its target, so the buffer's name and the file its
 /// writes reach agree.
 #[test]
-fn save_as_resolves_dot_dot_after_a_symlink_lexically() {
+fn save_as_steps_out_of_a_symlink_target_on_dot_dot() {
     let dir = dir_with_a_link_into_a_sibling();
     let typed = dir.path().join("a/link/../f.txt");
 
@@ -1431,18 +1460,18 @@ fn save_as_resolves_dot_dot_after_a_symlink_lexically() {
     ed.execute_typed("w", Some(typed.to_str().unwrap()))
         .unwrap();
 
-    let lexical = dir.path().join("a/f.txt");
-    assert_eq!(std::fs::read_to_string(&lexical).unwrap(), "hello\n");
-    assert!(!dir.path().join("b/f.txt").exists());
+    let written = dir.path().join("b/f.txt");
+    assert_eq!(std::fs::read_to_string(&written).unwrap(), "hello\n");
+    assert!(!dir.path().join("a/f.txt").exists());
     assert_eq!(
         ed.doc().path(),
-        Some(&AbsolutePath::canonicalize(&lexical).unwrap())
+        Some(&AbsolutePath::canonicalize(&written).unwrap())
     );
 }
 
 /// An export resolves its path the way a save-as does.
 #[test]
-fn export_resolves_dot_dot_after_a_symlink_lexically() {
+fn export_steps_out_of_a_symlink_target_on_dot_dot() {
     let dir = dir_with_a_link_into_a_sibling();
     let typed = dir.path().join("a/link/../g.txt");
 
@@ -1452,10 +1481,10 @@ fn export_resolves_dot_dot_after_a_symlink_lexically() {
         .unwrap();
 
     assert_eq!(
-        std::fs::read_to_string(dir.path().join("a/g.txt")).unwrap(),
+        std::fs::read_to_string(dir.path().join("b/g.txt")).unwrap(),
         "hello\n"
     );
-    assert!(!dir.path().join("b/g.txt").exists());
+    assert!(!dir.path().join("a/g.txt").exists());
 }
 
 /// `:w <path>` through a symlinked directory gives the buffer the resolved
@@ -1499,7 +1528,7 @@ fn save_as_through_a_symlinked_directory_rekeys_both_paths() {
 fn write_file_atomic_returns_false_on_plain_write() {
     let tmp = tempfile::NamedTempFile::new().unwrap();
     std::fs::write(tmp.path(), "initial\n").unwrap();
-    let mut meta = hume_platform::io::read_file_meta(tmp.path()).unwrap();
+    let mut meta = hume_platform::io::read_file_meta(&AbsolutePath::rooted(tmp.path())).unwrap();
 
     let retried = hume_platform::io::write_file_atomic("updated\n", &mut meta, false).unwrap();
     assert!(!retried, "plain write should not trigger chmod-retry");

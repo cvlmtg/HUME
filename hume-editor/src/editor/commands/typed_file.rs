@@ -381,12 +381,11 @@ fn save_own_file(
                 }
             }
             .map_err(|e| CommandError::new(e.to_string()))?;
-            // The new file's resolved path was `AbsolutePath::resolve_existing`'s
-            // best-effort form (parent canonicalized, or fully lexical when even
-            // the parent didn't exist yet). `meta.resolved_path()` is the fully
-            // resolved post-write truth, which can differ, and becomes the
-            // buffer's identity so `find_by_path` dedup keeps working. The typed
-            // path stays as it was.
+            // The new file's resolved path was resolved at `:e` time.
+            // `meta.resolved_path()` is resolved after the write, which differs
+            // when a symlink appeared on the way since, and becomes the
+            // buffer's identity so `find_by_path` dedup keeps working. The
+            // typed path stays as it was.
             let created = BufferFile::on_disk(meta, file.typed().clone())
                 .map_err(|e| CommandError::new(e.to_string()))?;
             Ok((retried, Some(created)))

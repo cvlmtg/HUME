@@ -226,9 +226,10 @@ fn typed_pwd_long_alias_works() {
     assert_eq!(msg, expected, "long alias must match :pwd output");
 }
 
-/// `:cd` resolves a `..` after a symlink the way `:e` does: lexically.
+/// `:cd` resolves a `..` after a symlink the way `:e` does: out of the
+/// symlink's target.
 #[test]
-fn cd_resolves_dot_dot_after_a_symlink_lexically() {
+fn cd_steps_out_of_a_symlink_target_on_dot_dot() {
     let dir = dir_with_a_link_into_a_sibling();
     let mut ed = editor_from("-[h]>ello\n");
 
@@ -237,6 +238,6 @@ fn cd_resolves_dot_dot_after_a_symlink_lexically() {
 
     assert_eq!(
         ed.state.cwd,
-        AbsolutePath::canonicalize(&dir.path().join("a")).unwrap()
+        AbsolutePath::canonicalize(&dir.path().join("b")).unwrap()
     );
 }

@@ -24,8 +24,7 @@ pub(in crate::editor) struct BufferFile {
 /// Whether the file has been read or written yet.
 enum Backing {
     /// Not on disk yet (`:e` on a missing path): a write creates it.
-    /// `resolved` is [`AbsolutePath::resolve_existing`]'s form of the typed
-    /// path.
+    /// `resolved` is [`AbsolutePath::resolve`]'s form of the typed path.
     New { resolved: AbsolutePath },
     /// Read or written; the metadata's resolved path is the identity.
     OnDisk(FileMeta),
@@ -56,7 +55,7 @@ impl BufferFile {
     /// the file the read resolved.
     pub(in crate::editor) fn read(
         typed: AbsolutePath,
-        path: &Path,
+        path: &AbsolutePath,
     ) -> io::Result<(BufferText, Self)> {
         let (content, meta) = hume_platform::io::read_file(path)?;
         Ok((
@@ -129,17 +128,20 @@ impl BufferFile {
 }
 
 /// A file the user named: the typed path and the path that keys its buffer
-/// ([`AbsolutePath::resolve_existing`]), resolved once for both the dedup
-/// lookup and a missing file's new buffer.
+/// ([`AbsolutePath::resolve`]), resolved once for both the dedup lookup and
+/// a missing file's new buffer.
 pub(in crate::editor) struct FileTarget {
     typed: AbsolutePath,
     resolved: AbsolutePath,
 }
 
 impl FileTarget {
-    pub(in crate::editor) fn new(typed: AbsolutePath) -> Self {
-        let resolved = typed.resolve_existing();
-        Self { typed, resolved }
+    /// `path` as typed against `cwd` (see [`AbsolutePath::from_typed`]), and
+    /// the file it names. Fails as either step fails.
+    pub(in crate::editor) fn from_typed(path: &Path, cwd: &AbsolutePath) -> io::Result<Self> {
+        let typed = AbsolutePath::from_typed(path, cwd)?;
+        let resolved = typed.resolve()?;
+        Ok(Self { typed, resolved })
     }
 
     pub(in crate::editor) fn typed(&self) -> &AbsolutePath {
@@ -177,7 +179,8 @@ impl BufferFile {
     /// The existing file at `path`, typed as `path` (see
     /// `AbsolutePath::rooted`).
     pub(in crate::editor) fn on_disk_at(path: impl AsRef<std::path::Path>) -> Self {
-        let meta = hume_platform::io::read_file_meta(path.as_ref()).expect("the test file exists");
-        Self::on_disk(meta, AbsolutePath::rooted(path)).expect("a test path names a file")
+        let typed = AbsolutePath::rooted(path);
+        let meta = hume_platform::io::read_file_meta(&typed).expect("the test file exists");
+        Self::on_disk(meta, typed).expect("a test path names a file")
     }
 }

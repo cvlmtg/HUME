@@ -96,7 +96,7 @@ pub trait BufferHost {
     fn buffer_exists(&self, id: BufferId) -> bool;
     fn buffer_path(&self, id: BufferId) -> Option<AbsolutePath>;
     /// Fully display-ready path string in `form` (UNC-stripped; absolute,
-    /// lexically normalized and `~`-collapsed unless relative): print
+    /// `..`-free and `~`-collapsed unless relative): print
     /// verbatim. `None` for scratch/synthetic buffers, same as `buffer_path`.
     fn buffer_display_path(&self, id: BufferId, form: DisplayPathForm) -> Option<String>;
     fn buffer_display_name(&self, id: BufferId) -> Option<String>;

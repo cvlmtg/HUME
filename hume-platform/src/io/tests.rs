@@ -43,7 +43,7 @@ fn read_signature_reflects_write_file_new() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("f.txt");
 
-    let meta = write_file_new("hello\n", &path).unwrap();
+    let meta = write_file_new("hello\n", &AbsolutePath::rooted(&path)).unwrap();
     let on_disk = read_signature(&path).unwrap();
     assert_eq!(meta.signature(), on_disk);
 }
@@ -54,7 +54,7 @@ fn write_file_atomic_refreshes_signature_so_self_write_is_not_a_change() {
     let path = dir.path().join("f.txt");
     std::fs::write(&path, "initial\n").unwrap();
 
-    let mut meta = read_file_meta(&path).unwrap();
+    let mut meta = read_file_meta(&AbsolutePath::rooted(&path)).unwrap();
     write_file_atomic("updated\n", &mut meta, false).unwrap();
 
     // The rename swaps in a fresh inode, which always changes mtime. If
@@ -74,7 +74,7 @@ fn write_file_new_through_dangling_symlink_creates_target_leaves_link() {
     let link = dir.path().join("link.txt");
     symlink(&target, &link).unwrap(); // target does not exist yet, so it's dangling
 
-    let meta = write_file_new("hello\n", &link).unwrap();
+    let meta = write_file_new("hello\n", &AbsolutePath::rooted(&link)).unwrap();
 
     assert!(
         !target.is_symlink() && target.exists(),
@@ -109,7 +109,7 @@ fn write_file_new_through_symlink_chain_follows_to_final_target() {
     symlink(&target, &middle).unwrap();
     symlink(&middle, &link).unwrap();
 
-    write_file_new("chain\n", &link).unwrap();
+    write_file_new("chain\n", &AbsolutePath::rooted(&link)).unwrap();
 
     assert_eq!(std::fs::read_to_string(&target).unwrap(), "chain\n");
     assert!(std::fs::symlink_metadata(&middle).unwrap().is_symlink());
@@ -127,7 +127,7 @@ fn write_file_new_symlink_cycle_errors_instead_of_looping() {
     symlink(&b, &a).unwrap();
     symlink(&a, &b).unwrap();
 
-    let Err(err) = write_file_new("x\n", &a) else {
+    let Err(err) = write_file_new("x\n", &AbsolutePath::rooted(&a)) else {
         panic!("a symlink cycle must error, not succeed");
     };
     assert!(
@@ -141,7 +141,7 @@ fn write_file_new_on_plain_missing_path_is_unaffected() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("plain.txt");
 
-    let meta = write_file_new("hi\n", &path).unwrap();
+    let meta = write_file_new("hi\n", &AbsolutePath::rooted(&path)).unwrap();
 
     assert_eq!(std::fs::read_to_string(&path).unwrap(), "hi\n");
     assert_eq!(

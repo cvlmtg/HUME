@@ -512,8 +512,8 @@ fn language_has_grammar_wrong_type_errors() {
     assert!(result.is_err());
 }
 
-/// Relative grammar paths resolve lexically against the editor cwd, the same
-/// way `open-buffer!` and `#:cwd` resolve theirs.
+/// Relative grammar paths resolve against the editor cwd, the same way
+/// `open-buffer!` and `#:cwd` resolve theirs.
 #[test]
 fn register_grammar_resolves_relative_paths_against_the_editor_cwd() {
     let mut h = SteelCtxTestHarness::new();
@@ -522,12 +522,12 @@ fn register_grammar_resolves_relative_paths_against_the_editor_cwd() {
         let result = register_grammar(
             &mut ctx,
             str_val("rust"),
-            str_val("g/../rust.so"),
+            str_val("g/rust.so"),
             str_val("tree_sitter_rust"),
-            str_val("g/../highlights.scm"),
+            str_val("g/highlights.scm"),
             symbol_hash([
-                ("injections", str_val("g/../injections.scm")),
-                ("textobjects", str_val("g/../textobjects.scm")),
+                ("injections", str_val("g/injections.scm")),
+                ("textobjects", str_val("g/textobjects.scm")),
             ]),
         );
         assert!(result.is_ok());
@@ -535,15 +535,18 @@ fn register_grammar_resolves_relative_paths_against_the_editor_cwd() {
     let cwd = std::env::current_dir().unwrap();
     match lang_regs(&h)[0] {
         PendingLanguageReg::Grammar(reg) => {
-            assert_eq!(reg.source.path, cwd.join("rust.so"));
-            assert_eq!(reg.source.queries.highlights(), cwd.join("highlights.scm"));
+            assert_eq!(reg.source.path, cwd.join("g").join("rust.so"));
+            assert_eq!(
+                reg.source.queries.highlights(),
+                cwd.join("g").join("highlights.scm")
+            );
             assert_eq!(
                 reg.source.queries.get(OptionalQuery::Injections),
-                Some(cwd.join("injections.scm").as_path())
+                Some(cwd.join("g").join("injections.scm").as_path())
             );
             assert_eq!(
                 reg.source.queries.get(OptionalQuery::TextObjects),
-                Some(cwd.join("textobjects.scm").as_path())
+                Some(cwd.join("g").join("textobjects.scm").as_path())
             );
         }
         other => panic!("expected a Grammar entry, got: {other:?}"),

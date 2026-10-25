@@ -15,25 +15,15 @@ use std::path::{Path, PathBuf};
 pub struct AbsolutePath(PathBuf);
 
 impl AbsolutePath {
-    /// `typed` joined onto `cwd` when relative and normalized lexically,
-    /// symlinks kept (see [`super::absolute_unresolved`]).
-    ///
-    /// Fails with `InvalidInput` when `typed` is a Windows drive-relative path
-    /// (`D:foo`): joined onto `cwd` it replaces it and stays relative.
+    /// `typed` made absolute against `cwd` as [`super::absolute()`] does, and
+    /// failing as it does.
     pub fn from_typed(typed: &Path, cwd: &AbsolutePath) -> io::Result<Self> {
-        let path = super::absolute_unresolved(typed, cwd);
-        if path.is_absolute() {
-            Ok(Self::stripped(path))
-        } else {
-            Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                format!("{}: not an absolute path", path.display()),
-            ))
-        }
+        super::absolute(typed, cwd).map(Self::stripped)
     }
 
     /// The process working directory, as [`std::env::current_dir`] returns
-    /// it, symlinks kept. Fails with `InvalidData` if that is not absolute.
+    /// it (on Unix with every symlink resolved, as `getcwd` reports it).
+    /// Fails with `InvalidData` if that is not absolute.
     pub fn current_dir() -> io::Result<Self> {
         let cwd = std::env::current_dir()?;
         if cwd.is_absolute() {
@@ -52,20 +42,40 @@ impl AbsolutePath {
         std::fs::canonicalize(path).map(Self::stripped)
     }
 
-    /// The canonical form of this path when it exists. When it does not, its
-    /// canonical parent joined with its file name, which still resolves the
-    /// symlinks in the parent chain (`/tmp` to `/private/tmp` on macOS), so a
-    /// missing file keys the same as the file a later write creates there.
-    /// When the parent does not exist either, the path itself.
-    pub fn resolve_existing(&self) -> Self {
-        if let Ok(canonical) = Self::canonicalize(&self.0) {
-            return canonical;
+    /// The file this path names, with every symlink resolved: its canonical
+    /// form when it exists. A dangling symlink is followed to the missing
+    /// path it names, and a missing path is its longest existing ancestor,
+    /// canonicalized, joined with the missing components, so a file not on
+    /// disk yet resolves to the path a write through it creates.
+    ///
+    /// Fails with `NotFound` when a `..` follows a missing directory, and with
+    /// the filesystem's error for anything else that stops the walk: a symlink
+    /// cycle, a permission error, a file where a directory should be.
+    pub fn resolve(&self) -> io::Result<Self> {
+        match Self::canonicalize(&self.0) {
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+            resolved => return resolved,
         }
-        match (self.0.parent(), self.0.file_name()) {
-            (Some(parent), Some(name)) => Self::canonicalize(parent)
-                .map(|parent| Self(parent.0.join(name)))
-                .unwrap_or_else(|_| self.clone()),
-            _ => self.clone(),
+        let target = dangling_target(&self.0)?;
+        let mut missing = Vec::new();
+        let mut path = target.as_path();
+        loop {
+            let (Some(parent), Some(name)) = (path.parent(), path.file_name()) else {
+                return Err(io::Error::new(
+                    io::ErrorKind::NotFound,
+                    format!("{}: no such directory", path.display()),
+                ));
+            };
+            missing.push(name);
+            match Self::canonicalize(parent) {
+                Ok(ancestor) => {
+                    let mut resolved = ancestor.0;
+                    resolved.extend(missing.iter().rev());
+                    return Ok(Self(resolved));
+                }
+                Err(e) if e.kind() == io::ErrorKind::NotFound => path = parent,
+                Err(e) => return Err(e),
+            }
         }
     }
 
@@ -77,6 +87,31 @@ impl AbsolutePath {
     fn stripped(path: PathBuf) -> Self {
         Self(super::strip_unc_prefix(path))
     }
+}
+
+/// The path at the end of the chain of symlinks `path` starts, read without
+/// resolving anything else: `path` itself when it is not a symlink.
+fn dangling_target(path: &Path) -> io::Result<PathBuf> {
+    const MAX_HOPS: u32 = 40;
+    let mut current = path.to_path_buf();
+    for _ in 0..MAX_HOPS {
+        match std::fs::symlink_metadata(&current) {
+            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(current),
+            Err(e) => return Err(e),
+            Ok(meta) if !meta.is_symlink() => return Ok(current),
+            Ok(_) => {
+                let link = std::fs::read_link(&current)?;
+                current = match current.parent() {
+                    Some(parent) => parent.join(link),
+                    None => link,
+                };
+            }
+        }
+    }
+    Err(io::Error::other(format!(
+        "{}: too many levels of symbolic links",
+        path.display()
+    )))
 }
 
 #[cfg(any(test, feature = "test-util"))]

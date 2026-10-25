@@ -82,8 +82,8 @@ impl ProgramNames {
 
 /// Lists the programs on `search_path` (a `PATH` value) whose names start
 /// with `prefix`, on a background thread. A relative entry joins onto `cwd`,
-/// as it does when the program is run or looked up, and an empty one is
-/// skipped on Windows. The scan reports the sorted names so far after each
+/// as it does when the program is run or looked up, an empty one is skipped
+/// on Windows, and one that cannot be made absolute is skipped. The scan reports the sorted names so far after each
 /// directory that adds one, and once the returned [`Snapshots`] is dropped it
 /// reads no further directory.
 pub fn spawn_program_scan(
@@ -102,7 +102,9 @@ pub fn spawn_program_scan(
             if cfg!(windows) && entry.as_os_str().is_empty() {
                 continue;
             }
-            let dir = super::absolute_unresolved(&entry, &cwd);
+            let Ok(dir) = super::absolute(&entry, &cwd) else {
+                continue;
+            };
             if names.scan_dir(&dir, &prefix, &extensions, || reporter.is_live()) {
                 reporter.send(names.sorted());
             }

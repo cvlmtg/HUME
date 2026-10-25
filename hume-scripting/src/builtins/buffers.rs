@@ -103,7 +103,7 @@ pub(crate) fn buffer_path(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
 }
 
 /// `(buffer-display-path pane #:relative)` → fully display-ready path string
-/// (absolutized, lexically normalized, UNC-stripped, `~`-collapsed) to print
+/// (absolutized, `..`-free, UNC-stripped, `~`-collapsed) to print
 /// verbatim, or `#f` for unsaved buffers. With `relative`, the path relative
 /// to the editor's working directory when the file is inside it. Unlike
 /// `buffer-path`, never suitable for filesystem ops.
