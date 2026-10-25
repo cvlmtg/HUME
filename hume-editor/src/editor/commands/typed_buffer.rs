@@ -38,45 +38,29 @@ pub(in crate::editor) fn typed_edit(
     force: bool,
 ) -> Result<(), CommandError> {
     if let Some(raw_arg) = arg {
-        // `literal_exists` is only ever probed with `raw_arg` itself (see
-        // `split_path_position`), so this lookup covers both that probe and
-        // the "already open, reuse it" check below without repeating it. An
-        // unsaved new-file buffer literally named `notes:12` must stay
-        // reachable the same way a file on disk does, so this checks open
-        // buffers first, on top of `cli::literal_path_on_disk`'s disk check.
-        let literal_bid = AbsolutePath::from_typed(raw_arg, &ed.state.cwd)
-            .ok()
-            .and_then(|typed| find_buffer_named(ed, &typed));
+        // An unsaved new-file buffer literally named `notes:12` must stay
+        // reachable the same way a file on disk does, so the probe counts
+        // open buffers too, on top of `cli::literal_path_on_disk`'s disk check.
         let literal_exists = |candidate: &str| {
-            literal_bid.is_some()
-                || AbsolutePath::from_typed(candidate, &ed.state.cwd)
-                    .is_ok_and(|typed| crate::cli::literal_path_on_disk(&typed))
+            AbsolutePath::from_typed(candidate, &ed.state.cwd).is_ok_and(|typed| {
+                find_buffer_named(ed, &typed).is_some() || crate::cli::literal_path_on_disk(&typed)
+            })
         };
         let (path_str, pos) = crate::cli::split_path_position(raw_arg, literal_exists)
             .map_err(CommandError::transient)?;
 
-        let typed = AbsolutePath::from_typed(path_str, &ed.state.cwd)
-            .map_err(|e| CommandError::new(format!("{path_str}: {e}")))?;
-        // If a buffer is already open for this path, reuse it without re-reading.
-        // Matches Vim semantics and covers the deleted-from-disk case.
-        let existing = if path_str == raw_arg {
-            literal_bid
-        } else {
-            find_buffer_named(ed, &typed)
-        };
-        let (bid, opened_msg) = if let Some(bid) = existing {
-            (bid, None)
-        } else {
-            let (bid, is_new) =
+        // A buffer already open for the file, one whose file was deleted
+        // included, is reused without re-reading.
+        let (bid, is_new) = AbsolutePath::from_typed(path_str, &ed.state.cwd)
+            .and_then(|typed| {
                 lifecycle::open_or_dedup_and_notify(&mut ed.view, &mut ed.state, typed)
-                    .map_err(|e| CommandError::new(format!("{path_str}: {e}")))?;
-            let msg = is_new.then(|| {
-                let buf = ed.state.buffers.get(bid);
-                Editor::new_file_open_msg(buf)
-                    .unwrap_or_else(|| format!("Opened {}", buf.display_name()))
-            });
-            (bid, msg)
-        };
+            })
+            .map_err(|e| CommandError::new(format!("{path_str}: {e}")))?;
+        let opened_msg = is_new.then(|| {
+            let buf = ed.state.buffers.get(bid);
+            Editor::new_file_open_msg(buf)
+                .unwrap_or_else(|| format!("Opened {}", buf.display_name()))
+        });
 
         // `jump_pane_to` does the only switch when a position is given; see
         // its caller contract.
