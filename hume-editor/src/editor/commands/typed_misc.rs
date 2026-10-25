@@ -153,11 +153,16 @@ fn split_focused_pane(
 }
 
 /// Resolve a `:split`/`:vsplit` path argument to a `BufferId`, opening the
-/// file if it isn't already open. Thin wrapper over the shared
-/// resolve-dedup-open sequence in [`Editor::resolve_open_path`].
+/// file if it isn't already open.
 fn open_path_arg(ed: &mut Editor, path_str: &str) -> Result<BufferId, CommandError> {
-    let (bid, _) = ed
-        .resolve_open_path(path_str)
+    let (bid, _) = AbsolutePath::from_typed(path_str, &ed.state.cwd)
+        .and_then(|typed| {
+            crate::editor::buffer::lifecycle::open_or_dedup_and_notify(
+                &mut ed.view,
+                &mut ed.state,
+                typed,
+            )
+        })
         .map_err(|e| CommandError::new(format!("{path_str}: {e}")))?;
     Ok(bid)
 }
@@ -428,7 +433,7 @@ pub(in crate::editor) fn typed_tutor(
     std::fs::create_dir_all(&tmp_dir)
         .map_err(|e| CommandError::new(format!("could not create tutor tmp dir: {e}")))?;
     let canonical_tmp = AbsolutePath::canonicalize(&tmp_dir)
-        .and_then(|dir| AbsolutePath::from_typed(std::path::Path::new("tutor.rst"), &dir))
+        .and_then(|dir| AbsolutePath::from_path(std::path::Path::new("tutor.rst"), &dir))
         .map_err(|e| CommandError::new(format!("could not canonicalize tutor tmp dir: {e}")))?;
 
     // If a buffer is already open at the tmp path, switch. No re-copy, so that
@@ -445,7 +450,7 @@ pub(in crate::editor) fn typed_tutor(
     let (bid, _) = crate::editor::buffer::lifecycle::open_or_dedup_and_notify(
         &mut ed.view,
         &mut ed.state,
-        &canonical_tmp,
+        canonical_tmp,
     )
     .map_err(|e| CommandError::new(format!("could not open tutor copy: {e}")))?;
     ed.switch_to_buffer_with_jump(fp, bid);

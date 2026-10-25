@@ -42,7 +42,7 @@ fn vsplit_path_opens_that_buffer() {
 }
 
 /// `:split <missing-path>` opens a new-file buffer bound to the path (same
-/// `:e`-on-a-missing-file semantics as `Editor::resolve_open_path`) in the new
+/// `:e`-on-a-missing-file semantics as `lifecycle::open_or_dedup_and_notify`) in the new
 /// pane, with the display path exactly as the user typed it, not its
 /// tilde-expanded form. A symlinked or relative path resolved to an
 /// unrecognizable absolute path would otherwise be more confusing, not less.

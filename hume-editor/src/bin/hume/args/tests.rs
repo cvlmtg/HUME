@@ -95,7 +95,7 @@ fn parse_no_config_with_keys_is_accepted() {
 
 /// `resolve` against the cwd the test binary started in.
 fn resolve_here(cli: Cli) -> Result<Invocation, String> {
-    resolve(cli, &std::env::current_dir().unwrap())
+    resolve(cli, &AbsolutePath::current_dir().unwrap())
 }
 
 fn make_headless(files: Vec<PathBuf>) -> Cli {
@@ -123,7 +123,8 @@ fn resolve_output_relative_path_is_pinned_to_the_startup_cwd() {
     let dir = tempfile::tempdir().unwrap();
     let cli = make_headless(vec![PathBuf::from("in.txt")]);
 
-    let inv = resolve(cli, dir.path()).expect("headless invocation should resolve");
+    let inv = resolve(cli, &AbsolutePath::rooted(dir.path()))
+        .expect("headless invocation should resolve");
 
     let Mode::Headless { output, .. } = inv.mode else {
         panic!("expected headless mode");
@@ -136,6 +137,26 @@ fn resolve_output_relative_path_is_pinned_to_the_startup_cwd() {
     );
 }
 
+#[cfg(unix)]
+#[test]
+fn resolve_output_expands_a_variable() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = hume_platform::dirs::home_dir().expect("HOME must be set for this test");
+    let mut cli = make_headless(vec![PathBuf::from("in.txt")]);
+    cli.output = Some(PathBuf::from("$HOME/out.txt"));
+
+    let inv = resolve(
+        cli,
+        &hume_platform::path::AbsolutePath::canonicalize(dir.path()).unwrap(),
+    )
+    .expect("headless invocation should resolve");
+
+    let Mode::Headless { output, .. } = inv.mode else {
+        panic!("expected headless mode");
+    };
+    assert_eq!(output, home.join("out.txt"));
+}
+
 #[test]
 fn resolve_headless_exactly_one_file_succeeds() {
     let cli = make_headless(vec![PathBuf::from("in.txt")]);
@@ -146,7 +167,7 @@ fn resolve_headless_exactly_one_file_succeeds() {
     assert_eq!(
         input,
         FileArg {
-            path: PathBuf::from("in.txt"),
+            path: AbsolutePath::rooted(AbsolutePath::current_dir().unwrap().join("in.txt")),
             pos: None
         }
     );
@@ -197,11 +218,11 @@ fn resolve_normal_carries_all_files() {
         got,
         vec![
             FileArg {
-                path: PathBuf::from("x.rs"),
+                path: AbsolutePath::rooted(AbsolutePath::current_dir().unwrap().join("x.rs")),
                 pos: None
             },
             FileArg {
-                path: PathBuf::from("y.rs"),
+                path: AbsolutePath::rooted(AbsolutePath::current_dir().unwrap().join("y.rs")),
                 pos: None
             },
         ]
@@ -221,7 +242,11 @@ fn resolve_normal_splits_a_line_column_suffix() {
     assert_eq!(
         got,
         vec![FileArg {
-            path: PathBuf::from("does-not-exist.rs"),
+            path: AbsolutePath::rooted(
+                AbsolutePath::current_dir()
+                    .unwrap()
+                    .join("does-not-exist.rs")
+            ),
             pos: Some(hume_editor::cli::PathPosition {
                 line: hume_rope::line::ContentLine::from_number(12).unwrap(),
                 grapheme_col: GraphemeCol::from_number(24).unwrap()
@@ -242,7 +267,11 @@ fn resolve_headless_splits_a_line_column_suffix() {
     assert_eq!(
         input,
         FileArg {
-            path: PathBuf::from("does-not-exist.rs"),
+            path: AbsolutePath::rooted(
+                AbsolutePath::current_dir()
+                    .unwrap()
+                    .join("does-not-exist.rs")
+            ),
             pos: Some(hume_editor::cli::PathPosition {
                 line: hume_rope::line::ContentLine::from_number(12).unwrap(),
                 grapheme_col: GraphemeCol::from_number(24).unwrap()
@@ -333,7 +362,7 @@ fn resolve_config_relative_path_is_pinned_to_startup_cwd() {
 
     let inv = resolve(
         make_normal(vec![], Some(PathBuf::from("alt.scm"))),
-        dir.path(),
+        &AbsolutePath::rooted(dir.path()),
     )
     .expect("relative real file should pass");
 

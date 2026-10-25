@@ -25,20 +25,16 @@ pub(in crate::editor) enum ReplaceSource {
 }
 
 impl EditorState {
-    /// Moves the working directory to `path`; a relative `path` resolves
-    /// against the current one the way `:e` resolves it. Canonicalizes and
-    /// rejects non-directories.
+    /// Moves the working directory to `path`. Canonicalizes and rejects
+    /// non-directories.
     ///
     /// `:cd` and `(set-cwd! …)` both land here. The process cwd moves too, so
     /// Steel's filesystem primitives and spawned programs resolve a relative
     /// path against the same directory as HUME; when it cannot move, neither
     /// does the editor's. Unit tests skip that call so they cannot race each
     /// other over it.
-    pub(in crate::editor) fn set_cwd(
-        &mut self,
-        path: &std::path::Path,
-    ) -> io::Result<AbsolutePath> {
-        let canonical = AbsolutePath::canonicalize(&AbsolutePath::from_typed(path, &self.cwd)?)?;
+    pub(in crate::editor) fn set_cwd(&mut self, path: &AbsolutePath) -> io::Result<AbsolutePath> {
+        let canonical = AbsolutePath::canonicalize(path)?;
         if !canonical.is_dir() {
             return Err(io::Error::new(
                 io::ErrorKind::NotADirectory,
@@ -78,15 +74,12 @@ impl Editor {
 
     /// Open an additional file without switching focus; an error is logged
     /// as a warning and yields `None`. A path that doesn't exist opens a
-    /// new-file buffer instead of erroring (see `resolve_open_path`) and
+    /// new-file buffer instead of erroring (see `Buffer::from_file_or_new`) and
     /// reports Info `[new file]`, matching `:e`. Otherwise a mistyped
     /// trailing CLI argument would silently open an empty buffer with no
     /// feedback at all.
-    pub(in crate::editor) fn open_extra_file(
-        &mut self,
-        path: &std::path::Path,
-    ) -> Option<BufferId> {
-        match self.try_open_extra(path) {
+    pub(in crate::editor) fn open_extra_file(&mut self, typed: &AbsolutePath) -> Option<BufferId> {
+        match lifecycle::open_or_dedup_and_notify(&mut self.view, &mut self.state, typed.clone()) {
             Ok((bid, is_new)) => {
                 if is_new && let Some(msg) = Self::new_file_open_msg(self.state.buffers.get(bid)) {
                     self.report(Severity::Info, msg);
@@ -96,34 +89,14 @@ impl Editor {
             Err(e) => {
                 self.report(
                     Severity::Warning,
-                    format!("Failed to open {}: {e}", path.display()),
+                    format!(
+                        "Failed to open {}: {e}",
+                        hume_platform::path::display_form(typed)
+                    ),
                 );
                 None
             }
         }
-    }
-
-    /// Resolve a path argument to an open buffer, opening the file if it isn't
-    /// already open: reading it if it exists, or opening an empty
-    /// [`Buffer::new_file`] bound to the path if it doesn't. The argument is
-    /// `expand`ed, then opened through [`lifecycle::open_or_dedup_and_notify`].
-    /// Errors propagate as raw
-    /// `io::Error`; callers format with whichever path string suits their
-    /// reporting.
-    pub(in crate::editor) fn resolve_open_path(
-        &mut self,
-        path_str: &str,
-    ) -> io::Result<(BufferId, bool)> {
-        let expanded = hume_platform::path::expand(path_str);
-        lifecycle::open_or_dedup_and_notify(
-            &mut self.view,
-            &mut self.state,
-            std::path::Path::new(expanded.as_ref()),
-        )
-    }
-
-    fn try_open_extra(&mut self, path: &std::path::Path) -> io::Result<(BufferId, bool)> {
-        self.resolve_open_path(&path.to_string_lossy())
     }
 
     /// Tests' entry point to [`lifecycle::open_buffer_and_notify`], the

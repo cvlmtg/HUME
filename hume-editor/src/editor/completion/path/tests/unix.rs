@@ -1,12 +1,12 @@
 //! Unix-only tests, gated once at the `mod unix;` declaration
 //! in the parent.
 
+use std::path::Path;
+
 use super::*;
 
 #[test]
 fn path_completer_tilde_expands_for_lookup_keeps_literal_replacement() {
-    use std::borrow::Cow;
-
     let home_dir = tempfile::tempdir().unwrap();
     std::fs::write(home_dir.path().join("notes.md"), b"").unwrap();
     std::fs::create_dir(home_dir.path().join("code")).unwrap();
@@ -24,13 +24,14 @@ fn path_completer_tilde_expands_for_lookup_keeps_literal_replacement() {
 
     let home = home_dir.path().to_path_buf();
     let input = "e ~/";
-    let (_, candidates) = complete_path_with_expand(input, input.len(), &ctx, false, |s: &str| {
-        if let Some(tail) = s.strip_prefix('~')
-            && (tail.is_empty() || tail.starts_with('/'))
-        {
-            return Cow::Owned(format!("{}{tail}", home.display()));
-        }
-        Cow::Borrowed(s)
+    let (_, candidates) = complete_path_with(input, input.len(), &ctx, false, |s, cwd| {
+        let expanded = match s.strip_prefix('~') {
+            Some(tail) if tail.is_empty() || tail.starts_with('/') => {
+                format!("{}{tail}", home.display())
+            }
+            _ => s.to_owned(),
+        };
+        AbsolutePath::from_path(Path::new(&expanded), cwd)
     });
 
     // Candidates must be present (the temp home has files).
@@ -53,8 +54,6 @@ fn path_completer_tilde_expands_for_lookup_keeps_literal_replacement() {
 
 #[test]
 fn path_completer_dollar_var_expands_for_lookup() {
-    use std::borrow::Cow;
-
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("main.rs"), b"").unwrap();
 
@@ -71,12 +70,12 @@ fn path_completer_dollar_var_expands_for_lookup() {
 
     let expanded = dir.path().to_string_lossy().into_owned();
     let input = "e $MYDIR/";
-    let (_, candidates) = complete_path_with_expand(input, input.len(), &ctx, false, |s: &str| {
-        if let Some(rest) = s.strip_prefix("$MYDIR") {
-            Cow::Owned(format!("{expanded}{rest}"))
-        } else {
-            Cow::Borrowed(s)
-        }
+    let (_, candidates) = complete_path_with(input, input.len(), &ctx, false, |s, cwd| {
+        let replaced = match s.strip_prefix("$MYDIR") {
+            Some(rest) => format!("{expanded}{rest}"),
+            None => s.to_owned(),
+        };
+        AbsolutePath::from_path(Path::new(&replaced), cwd)
     });
 
     assert!(

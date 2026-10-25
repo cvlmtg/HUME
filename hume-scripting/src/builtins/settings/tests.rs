@@ -370,11 +370,14 @@ impl crate::host::BufferHost for RecordingBufferOptionHost {
     }
     fn set_cwd(
         &mut self,
-        path: &std::path::Path,
+        path: &hume_platform::path::AbsolutePath,
     ) -> Result<hume_platform::path::AbsolutePath, String> {
         self.inner.set_cwd(path)
     }
-    fn open_buffer(&mut self, path: &std::path::Path) -> Result<BufferId, String> {
+    fn open_buffer(
+        &mut self,
+        path: &hume_platform::path::AbsolutePath,
+    ) -> Result<BufferId, String> {
         self.inner.open_buffer(path)
     }
     fn close_buffer(

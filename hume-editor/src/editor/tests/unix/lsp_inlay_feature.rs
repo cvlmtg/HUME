@@ -101,7 +101,7 @@ fn setup_two_servers(
     std::fs::write(&file_b, "x = 1\n").unwrap();
     let bid_b = rig
         .ed
-        .open_extra_file(&file_b)
+        .open_extra_file(&hume_platform::path::AbsolutePath::rooted(&file_b))
         .expect("main.py opens as a buffer");
     // Both buffers must be *shown*: `lsp/refresh-hints` skips a hidden bid.
     let pane_b = open_pane_in_layout(

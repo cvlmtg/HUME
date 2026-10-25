@@ -79,10 +79,23 @@ pub(crate) fn test_cwd() -> AbsolutePath {
     AbsolutePath::current_dir().expect("current_dir")
 }
 
-/// `Editor::open(path, ..)` with no-op wakeup and no resolved directories.
+/// Opens `path`, an absolute path, through the open funnel `:e` uses, and
+/// returns its buffer.
+pub(in crate::editor) fn open_path(ed: &mut Editor, path: impl AsRef<std::path::Path>) -> BufferId {
+    crate::editor::buffer::lifecycle::open_or_dedup_and_notify(
+        &mut ed.view,
+        &mut ed.state,
+        AbsolutePath::rooted(path),
+    )
+    .expect("the test file opens")
+    .0
+}
+
+/// `Editor::open(path, ..)` with no-op wakeup and no resolved directories,
+/// a relative `path` joined onto [`test_cwd`].
 fn open_headless(path: Option<PathBuf>) -> Editor {
     Editor::open(
-        path,
+        path.map(|path| AbsolutePath::from_path(&path, &test_cwd()).expect("a usable test path")),
         crate::editor::run::HEADLESS_TERMINAL,
         no_op_wake(),
         Dirs::none(),

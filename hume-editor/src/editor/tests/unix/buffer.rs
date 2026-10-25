@@ -141,7 +141,7 @@ fn buffer_prefix_ambiguous_errors() {
 }
 
 /// Creates `$HOME/<name>` for a `~`-expansion test, removing it on drop.
-/// `hume_platform::path::expand`'s `~` resolves against the real `$HOME` (no
+/// `AbsolutePath::from_typed`'s `~` resolves against the real `$HOME` (no
 /// injection point at this level), so exercising it means touching the real
 /// one; each caller picks a distinct name, so parallel tests never collide,
 /// and cleanup is guaranteed even if the test panics.
@@ -189,8 +189,8 @@ fn buffer_tilde_path_switches() {
 /// `display_path`, which `~`-collapses paths under `$HOME`. Retyping the
 /// exact label shown must resolve, not error again with "no buffer matching".
 ///
-/// `resolve_buffer_arg`'s absolute-path branch needs its
-/// `hume_platform::path::expand` call: `Path::is_absolute()` on a literal
+/// `resolve_buffer_arg`'s absolute-path branch needs
+/// `hume_platform::path::is_absolute_typed`: `Path::is_absolute()` on a literal
 /// `~/...` string is `false`, so the retype would fall through to the
 /// basename/prefix branches (which compare against the bare basename, not
 /// the full label) and error with "no buffer matching".

@@ -37,7 +37,12 @@ fn replace_dir_succeeds_when_the_old_contents_cannot_be_deleted() {
 
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
-    replace_dir(&mut ctx, src.clone(), dest.clone()).unwrap();
+    replace_dir(
+        &mut ctx,
+        AbsolutePath::rooted(&src),
+        AbsolutePath::rooted(&dest),
+    )
+    .unwrap();
     drop(ctx);
 
     assert_eq!(entries(&dest), ["new"]);

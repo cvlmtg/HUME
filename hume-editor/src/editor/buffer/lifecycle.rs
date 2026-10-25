@@ -12,6 +12,7 @@
 
 use hume_editing::text::BufferText;
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
+use hume_platform::path::AbsolutePath;
 use hume_rope::column::GraphemeCol;
 use hume_rope::line::ContentLine;
 
@@ -82,22 +83,21 @@ pub(in crate::editor::buffer) fn open_buffer_and_notify(
     bid
 }
 
-/// Dedup-open the file the caller named `path`, joined onto `state.cwd`
-/// when relative: if a buffer already has its resolved path, returns
-/// `(existing_id, false)`; otherwise reads the file (or opens an empty
-/// new-file buffer if it doesn't exist yet; see `Buffer::from_file_or_new`)
-/// and allocates via [`open_buffer_and_notify`] (which seeds the
-/// `undo-levels` cap from `state.settings`), returning `(new_id, true)`.
-/// The new buffer's typed path is `path` as given, symlinks kept.
+/// Dedup-open the file `typed` names: if a buffer already has its resolved
+/// path, returns `(existing_id, false)`; otherwise reads the file (or opens
+/// an empty new-file buffer if it doesn't exist yet; see
+/// `Buffer::from_file_or_new`) and allocates via [`open_buffer_and_notify`]
+/// (which seeds the `undo-levels` cap from `state.settings`), returning
+/// `(new_id, true)`. The new buffer's typed path is `typed`, symlinks kept.
 /// Dedup-opening an already-open path enqueues no hook and detects no
 /// language. The caller is responsible for any other post-open work (pane
 /// switching).
 pub(in crate::editor) fn open_or_dedup_and_notify(
     ev: &mut EngineView,
     state: &mut EditorState,
-    path: &std::path::Path,
+    typed: AbsolutePath,
 ) -> std::io::Result<(BufferId, bool)> {
-    let target = FileTarget::from_typed(path, &state.cwd)?;
+    let target = FileTarget::new(typed)?;
     if let Some(existing) = state.buffers.find_by_path(target.resolved()) {
         return Ok((existing, false));
     }

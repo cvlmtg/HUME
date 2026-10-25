@@ -45,7 +45,7 @@ fn set_cwd_into_a_directory_the_process_cannot_enter_raises_and_moves_nothing() 
 
     hume::run_keys(
         FileArg {
-            path: input,
+            path: hume_platform::path::AbsolutePath::rooted(&input),
             pos: None,
         },
         "Z",

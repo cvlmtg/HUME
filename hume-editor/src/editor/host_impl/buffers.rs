@@ -1,8 +1,6 @@
 //! `EditorHostImpl`'s buffer/pane enumeration, reads, lifecycle, and
 //! viewport geometry.
 
-use std::path::Path;
-
 use hume_engine::pipeline::BufferId;
 use hume_platform::path::AbsolutePath;
 use hume_rope::line::ContentLine;
@@ -88,21 +86,24 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
     fn search_path(&self) -> Option<std::ffi::OsString> {
         self.state.dirs.search_path.clone()
     }
-    fn set_cwd(&mut self, path: &Path) -> Result<AbsolutePath, String> {
+    fn set_cwd(&mut self, path: &AbsolutePath) -> Result<AbsolutePath, String> {
         self.state
             .set_cwd(path)
             .map_err(|e| format!("set-cwd!: {}: {e}", path.display()))
     }
 
     // ── Buffer lifecycle ─────────────────────────────────────────────────────
-    fn open_buffer(&mut self, path: &Path) -> Result<BufferId, String> {
+    fn open_buffer(&mut self, path: &AbsolutePath) -> Result<BufferId, String> {
         // A missing path is openable here as `:e` opens one; see
         // `Buffer::from_file_or_new`. Language detection is not done here;
         // see `Effect::DetectBufferLanguage`'s doc; the `open-buffer!`
         // builtin queues it once this returns.
-        let (bid, _is_new) =
-            crate::editor::buffer::lifecycle::open_or_dedup_and_notify(self.view, self.state, path)
-                .map_err(|e| format!("open-buffer!: {}: {e}", path.display()))?;
+        let (bid, _is_new) = crate::editor::buffer::lifecycle::open_or_dedup_and_notify(
+            self.view,
+            self.state,
+            path.clone(),
+        )
+        .map_err(|e| format!("open-buffer!: {}: {e}", path.display()))?;
         Ok(bid)
     }
     fn close_buffer(&mut self, id: BufferId, discard: DiscardUnsaved) -> Result<(), String> {

@@ -1,7 +1,6 @@
 //! Buffer/pane enumeration, reads, lifecycle, and viewport geometry.
 
 use std::ffi::OsString;
-use std::path::Path;
 
 use hume_engine::pipeline::BufferId;
 use hume_platform::path::AbsolutePath;
@@ -111,16 +110,15 @@ pub trait BufferHost {
     /// The `PATH` every spawned child gets and `which` searches
     /// (`Dirs::search_path`); `None` when unset.
     fn search_path(&self) -> Option<OsString>;
-    /// Moves the editor's working directory to `path` (a relative `path`
-    /// resolves against the current one the way `:e` resolves it) and
-    /// returns the new directory. The same operation as `:cd`. `Err` when
-    /// `path` is not a directory.
-    fn set_cwd(&mut self, path: &Path) -> Result<AbsolutePath, String>;
+    /// Moves the editor's working directory to `path` and returns the new
+    /// directory. The same operation as `:cd`. `Err` when `path` is not a
+    /// directory.
+    fn set_cwd(&mut self, path: &AbsolutePath) -> Result<AbsolutePath, String>;
 
     // ── Buffer lifecycle ─────────────────────────────────────────────────────
     /// Open a file at `path`, deduplicating if already open.
     /// Returns the `BufferId` (new or existing).
-    fn open_buffer(&mut self, path: &Path) -> Result<BufferId, String>;
+    fn open_buffer(&mut self, path: &AbsolutePath) -> Result<BufferId, String>;
     /// Close `id`. `Err` when `id` does not name an open buffer, when it has
     /// unsaved changes and `discard` is [`DiscardUnsaved::No`], or while a
     /// pipe runs in it.

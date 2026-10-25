@@ -121,7 +121,7 @@ fn edit_deleted_file_with_no_buffer_reopens_as_new_file() {
 
 /// `:e <missing-path>` opens a buffer whose display path is exactly the path
 /// the user typed, `~`-collapsed, not its tilde-expanded `$HOME` form.
-/// Matches `:split`/`:vsplit`, which both share `Editor::resolve_open_path`.
+/// Matches `:split`/`:vsplit`, which open through the same funnel.
 ///
 /// Uses a `~`-prefixed path rather than a plain relative one: `expand()` is a
 /// no-op on inputs with no `~`/env-var sigil, so a plain relative path can't
@@ -541,7 +541,7 @@ fn edit_an_open_buffer_literally_named_with_a_colon_number_switches_without_spli
 
     let mut ed = editor_from("-[h]>ello\n");
     let bid = ed
-        .open_extra_file(&path)
+        .open_extra_file(&hume_platform::path::AbsolutePath::rooted(&path))
         .expect("open_extra_file must open the new-file buffer");
     assert_eq!(ed.state.buffers.len(), 2, "sanity: scratch + notes:12 only");
 
@@ -653,7 +653,10 @@ fn a_new_file_under_a_missing_directory_keeps_its_buffer_once_it_appears() {
         bid,
         ":b must find the buffer once `sub` exists"
     );
-    assert_eq!(ed.open_extra_file(&path), Some(bid));
+    assert_eq!(
+        ed.open_extra_file(&hume_platform::path::AbsolutePath::rooted(&path)),
+        Some(bid)
+    );
 
     ed.execute_typed("b", Some("*scratch*")).unwrap();
     ed.execute_typed("e", Some(path.to_str().unwrap())).unwrap();
@@ -678,7 +681,7 @@ fn open_extra_file_opens_the_path() {
     let mut ed = open_headless(Some(canonical1.clone()));
     let first_id = ed.focused_buffer_id();
 
-    ed.open_extra_file(&canonical2);
+    ed.open_extra_file(&hume_platform::path::AbsolutePath::rooted(&canonical2));
 
     assert_eq!(ed.state.buffers.len(), 2, "both files must be open");
     assert_eq!(
@@ -790,7 +793,9 @@ fn settle_parks_a_startup_position_on_a_non_focused_buffer_without_switching_foc
 
     let mut ed = open_headless(Some(canonical1));
     let focused_bid = ed.focused_buffer_id();
-    let extra_bid = ed.open_extra_file(&canonical2).unwrap();
+    let extra_bid = ed
+        .open_extra_file(&hume_platform::path::AbsolutePath::rooted(&canonical2))
+        .unwrap();
 
     ed.resize_terminal(80, 24);
     ed.queue_startup_position(extra_bid, startup_pos(3, 2));
@@ -873,8 +878,8 @@ fn open_extra_file_deduplicates() {
 
     let mut ed = open_headless(Some(canonical.clone()));
     // Open the same path twice: must still result in exactly one buffer.
-    ed.open_extra_file(&canonical);
-    ed.open_extra_file(&canonical);
+    ed.open_extra_file(&hume_platform::path::AbsolutePath::rooted(&canonical));
+    ed.open_extra_file(&hume_platform::path::AbsolutePath::rooted(&canonical));
 
     assert_eq!(
         ed.state.buffers.len(),
@@ -1096,7 +1101,7 @@ fn open_extra_file_nonexistent_opens_new_file_buffer() {
     let nonexistent = dir.path().join("hume_test_nonexistent_xyz_404.txt");
     let canonical_dir = std::fs::canonicalize(dir.path()).unwrap();
 
-    ed.open_extra_file(&nonexistent);
+    ed.open_extra_file(&hume_platform::path::AbsolutePath::rooted(&nonexistent));
 
     assert_eq!(
         ed.state.buffers.len(),
@@ -1127,32 +1132,94 @@ fn open_extra_file_nonexistent_opens_new_file_buffer() {
     );
 }
 
-/// The new-file buffer's display path must be the `PathBuf` `open_extra_file`
-/// was given, not anything derived from the internal `expand()`/canonicalize
-/// sequence `resolve_open_path` runs.
-///
-/// A tilde-literal input is required to prove this: `expand()` is a no-op on
-/// inputs with no `~`/env-var sigil, so a plain absolute path (as in
-/// `open_extra_file_nonexistent_opens_new_file_buffer` above) can't tell
-/// "typed-derived display form" apart from "expanded-but-unresolved path";
-/// both would render identically for such input.
+/// The editor `hume <args>` starts in `cwd`, with no config.
+fn started_with(args: &[&std::ffi::OsStr], cwd: &AbsolutePath) -> Editor {
+    let files: Vec<crate::cli::FileArg> = args
+        .iter()
+        .map(|arg| crate::cli::parse_file_arg(std::path::Path::new(arg), cwd).unwrap())
+        .collect();
+    Editor::start(
+        &files,
+        crate::editor::Driver::Headless,
+        hume_platform::dirs::Dirs::none(),
+        crate::cli::ConfigSource::Skip,
+        cwd.clone(),
+    )
+    .unwrap()
+}
+
 #[test]
-fn open_extra_file_new_file_shows_untransformed_display_path() {
-    let f1 = tempfile::NamedTempFile::new().unwrap();
-    std::fs::write(f1.path(), "hello\n").unwrap();
-    let canonical = std::fs::canonicalize(f1.path()).unwrap();
+fn the_first_command_line_file_expands_a_leading_tilde() {
+    let cwd = tempfile::tempdir().unwrap();
     let home = hume_platform::dirs::home_dir().expect("HOME must be set for this test");
-    // `AbsolutePath::resolve` canonicalizes the *parent* dir when the file
-    // itself doesn't exist. Canonicalize `home` here too, or this lookup
-    // can miss on a platform/CI layout where $HOME is itself a symlink.
+
+    let ed = started_with(
+        &["~/hume-test-no-such-file-xyz.txt".as_ref()],
+        &AbsolutePath::canonicalize(cwd.path()).unwrap(),
+    );
+
+    assert_eq!(
+        ed.doc().path().map(AbsolutePath::as_path),
+        Some(home.join("hume-test-no-such-file-xyz.txt").as_path())
+    );
+}
+
+#[test]
+fn the_first_command_line_file_expands_a_variable() {
+    let cwd = tempfile::tempdir().unwrap();
+    let home = hume_platform::dirs::home_dir().expect("HOME must be set for this test");
+
+    let ed = started_with(
+        &["$HOME/hume-test-no-such-file-xyz.txt".as_ref()],
+        &AbsolutePath::canonicalize(cwd.path()).unwrap(),
+    );
+
+    assert_eq!(
+        ed.doc().path().map(AbsolutePath::as_path),
+        Some(home.join("hume-test-no-such-file-xyz.txt").as_path())
+    );
+}
+
+#[test]
+fn a_command_line_file_with_a_non_utf8_name_keeps_that_name() {
+    use std::os::unix::ffi::OsStrExt;
+
+    let dir = tempfile::tempdir().unwrap();
+    let cwd = AbsolutePath::canonicalize(dir.path()).unwrap();
+    std::fs::write(cwd.join("first.txt"), "first\n").unwrap();
+    let name = std::ffi::OsStr::from_bytes(b"caf\xe9.txt");
+
+    let ed = started_with(&["first.txt".as_ref(), name], &cwd);
+
+    let named = cwd.join(name);
+    assert!(
+        ed.state
+            .buffers
+            .find_by_path(&AbsolutePath::rooted(&named))
+            .is_some(),
+        "no buffer for {named:?}"
+    );
+}
+
+/// A missing file under `~` opens a new-file buffer shown under `~`, as
+/// `:e` shows it.
+#[test]
+fn a_command_line_file_under_a_tilde_shows_its_tilde_form() {
+    let dir = tempfile::tempdir().unwrap();
+    let cwd = AbsolutePath::canonicalize(dir.path()).unwrap();
+    std::fs::write(cwd.join("first.txt"), "first\n").unwrap();
+    let home = hume_platform::dirs::home_dir().expect("HOME must be set for this test");
+    // A missing file resolves through its canonical parent, so the lookup
+    // canonicalizes `home` too, for a layout where $HOME is a symlink.
     let canonical_home = std::fs::canonicalize(&home).unwrap();
 
-    let mut ed = open_headless(Some(canonical));
-    // Bypass shell tilde expansion by constructing the PathBuf directly:
-    // exercises callers (e.g. Steel scripting) that may pass a literal `~`.
-    let tilde_path = std::path::PathBuf::from("~/hume-test-no-such-file-xyz.txt");
-
-    ed.open_extra_file(&tilde_path);
+    let ed = started_with(
+        &[
+            "first.txt".as_ref(),
+            "~/hume-test-no-such-file-xyz.txt".as_ref(),
+        ],
+        &cwd,
+    );
 
     assert_eq!(ed.state.buffers.len(), 2);
     let display = ed
@@ -1162,56 +1229,36 @@ fn open_extra_file_new_file_shows_untransformed_display_path() {
             canonical_home.join("hume-test-no-such-file-xyz.txt"),
         ))
         .map(|bid| ed.state.buffers.get(bid).display_path().unwrap().to_owned());
-    assert_eq!(
-        display.as_deref(),
-        Some("~/hume-test-no-such-file-xyz.txt"),
-        "display path must be the raw typed (collapsed) form, not the expanded $HOME one"
-    );
+    assert_eq!(display.as_deref(), Some("~/hume-test-no-such-file-xyz.txt"));
 }
 
-/// `open_extra_file`'s warning must echo the `PathBuf` it was given verbatim
-/// (`path.display()` in `open_extra_file`, not anything derived from the
-/// internal `expand()`/canonicalize sequence `resolve_open_path` runs).
-///
-/// A tilde-literal input is required to prove this: `expand()` is a no-op on
-/// inputs with no `~`/env-var sigil, so a plain absolute path can't tell
-/// "warns with the raw arg" apart from "warns with an internally-expanded/
-/// resolved path"; both would render identically for such input. Targets
-/// `~` (home dir) itself, not a missing filename under it: a missing path
-/// now opens a new-file buffer instead of warning (see
-/// `open_extra_file_nonexistent_opens_new_file_buffer`). A directory is
-/// still a genuine open failure, so it's the only case left that still
-/// warns.
+/// A command-line file that cannot open is reported under `~` when it lies
+/// there, not under the expanded home directory.
 #[test]
-fn open_extra_file_warns_with_untransformed_path() {
-    let f1 = tempfile::NamedTempFile::new().unwrap();
-    std::fs::write(f1.path(), "hello\n").unwrap();
-    let canonical = std::fs::canonicalize(f1.path()).unwrap();
+fn a_command_line_file_that_cannot_open_is_reported_in_its_tilde_form() {
+    let dir = tempfile::tempdir().unwrap();
+    let cwd = AbsolutePath::canonicalize(dir.path()).unwrap();
+    std::fs::write(cwd.join("first.txt"), "first\n").unwrap();
     let home = hume_platform::dirs::home_dir().expect("HOME must be set for this test");
 
-    let mut ed = open_headless(Some(canonical));
-    let tilde_path = std::path::PathBuf::from("~");
+    let ed = started_with(&["first.txt".as_ref(), "~".as_ref()], &cwd);
 
-    ed.open_extra_file(&tilde_path);
-
+    let warnings: Vec<String> = ed
+        .state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Warning)
+        .map(|e| e.text.clone())
+        .collect();
     assert!(
-        ed.state
-            .message_log
-            .entries()
-            .any(|e| e.severity == Severity::Warning && e.text.starts_with("Failed to open ~: ")),
-        "warning must echo the raw tilde path, not its expanded $HOME form, got: {:?}",
-        ed.state
-            .message_log
-            .entries()
-            .map(|e| e.text.clone())
-            .collect::<Vec<_>>()
+        warnings.iter().any(|w| w.starts_with("Failed to open ~: ")),
+        "got: {warnings:?}"
     );
     assert!(
-        !ed.state
-            .message_log
-            .entries()
-            .any(|e| e.text.contains(&home.to_string_lossy().to_string())),
-        "warning must not leak the expanded $HOME path"
+        !warnings
+            .iter()
+            .any(|w| w.contains(&home.to_string_lossy().to_string())),
+        "got: {warnings:?}"
     );
 }
 
@@ -1554,7 +1601,10 @@ fn a_dangling_symlink_and_its_target_open_one_buffer() {
     ed.execute_typed("e", Some(target.to_str().unwrap()))
         .unwrap();
     assert_eq!(ed.focused_buffer_id(), bid);
-    assert_eq!(ed.open_extra_file(&target), Some(bid));
+    assert_eq!(
+        ed.open_extra_file(&hume_platform::path::AbsolutePath::rooted(&target)),
+        Some(bid)
+    );
 }
 
 /// `:e` steps out of a symlink's target on `..`, as the OS does.

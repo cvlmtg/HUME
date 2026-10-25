@@ -2,6 +2,7 @@
 //! go-to-location, `insert-key!`, `paste-text!` and `edit-text!`.
 
 use hume_engine::pipeline::BufferId;
+use hume_platform::path::AbsolutePath;
 use hume_rope::column::CharCol;
 use termina::event::KeyEvent;
 
@@ -97,7 +98,7 @@ impl<'a> EditHost for EditorHostImpl<'a> {
     fn goto_location_path(
         &mut self,
         pane: PaneHandle,
-        path: String,
+        path: AbsolutePath,
         line: usize,
         char_col: usize,
     ) -> Result<bool, String> {

@@ -410,7 +410,11 @@ fn core_stdlib_git_probes_inside_a_work_tree() {
     let sandbox = Sandbox::new();
     git_init(sandbox.raw());
     std::fs::create_dir_all(sandbox.raw().join("sub")).unwrap();
-    ed.state.set_cwd(&sandbox.path().join("sub")).unwrap();
+    ed.state
+        .set_cwd(&hume_platform::path::AbsolutePath::rooted(
+            &sandbox.path().join("sub"),
+        ))
+        .unwrap();
 
     let root = steel_path(&sandbox.path());
     let assertions = format!(
@@ -442,7 +446,9 @@ fn core_stdlib_git_probes_inside_a_work_tree() {
 fn core_stdlib_git_probes_outside_a_work_tree() {
     let (mut ed, mut host, _guard, _init_dir) = setup_stdlib_editor();
     let sandbox = Sandbox::new();
-    ed.state.set_cwd(&sandbox.path()).unwrap();
+    ed.state
+        .set_cwd(&hume_platform::path::AbsolutePath::rooted(&sandbox.path()))
+        .unwrap();
 
     let assertions = r#"
 (unless (equal? (call! "stdlib/git-repo?") #f)

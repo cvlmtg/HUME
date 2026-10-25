@@ -1,10 +1,11 @@
 use hume_engine::pipeline::{BufferId, Cycle};
+use hume_platform::path::AbsolutePath;
 
 use super::super::Editor;
 use super::super::Severity;
 use super::jump::goto_buffer_in_order;
 use super::{FocusedPane, jump_pane_to};
-use crate::editor::buffer::{DiskCheckTrigger, FileTarget, OnUnsaved, ReloadError, lifecycle};
+use crate::editor::buffer::{DiskCheckTrigger, OnUnsaved, ReloadError, lifecycle};
 use crate::editor::error::CommandError;
 use crate::editor::jump_list::{JumpRule, with_jump};
 
@@ -43,27 +44,32 @@ pub(in crate::editor) fn typed_edit(
         // unsaved new-file buffer literally named `notes:12` must stay
         // reachable the same way a file on disk does, so this checks open
         // buffers first, on top of `cli::literal_path_on_disk`'s disk check.
-        let raw_expanded = hume_platform::path::expand(raw_arg);
-        let literal_bid = find_buffer_by_path_arg(ed, raw_expanded.as_ref());
+        let literal_bid = AbsolutePath::from_typed(raw_arg, &ed.state.cwd)
+            .ok()
+            .and_then(|typed| find_buffer_named(ed, &typed));
         let literal_exists = |candidate: &str| {
-            literal_bid.is_some() || crate::cli::literal_path_on_disk(candidate, &ed.state.cwd)
+            literal_bid.is_some()
+                || AbsolutePath::from_typed(candidate, &ed.state.cwd)
+                    .is_ok_and(|typed| crate::cli::literal_path_on_disk(&typed))
         };
         let (path_str, pos) = crate::cli::split_path_position(raw_arg, literal_exists)
             .map_err(CommandError::transient)?;
 
+        let typed = AbsolutePath::from_typed(path_str, &ed.state.cwd)
+            .map_err(|e| CommandError::new(format!("{path_str}: {e}")))?;
         // If a buffer is already open for this path, reuse it without re-reading.
         // Matches Vim semantics and covers the deleted-from-disk case.
         let existing = if path_str == raw_arg {
             literal_bid
         } else {
-            find_buffer_by_path_arg(ed, hume_platform::path::expand(path_str).as_ref())
+            find_buffer_named(ed, &typed)
         };
         let (bid, opened_msg) = if let Some(bid) = existing {
             (bid, None)
         } else {
-            let (bid, is_new) = ed
-                .resolve_open_path(path_str)
-                .map_err(|e| CommandError::new(format!("{path_str}: {e}")))?;
+            let (bid, is_new) =
+                lifecycle::open_or_dedup_and_notify(&mut ed.view, &mut ed.state, typed)
+                    .map_err(|e| CommandError::new(format!("{path_str}: {e}")))?;
             let msg = is_new.then(|| {
                 let buf = ed.state.buffers.get(bid);
                 Editor::new_file_open_msg(buf)
@@ -150,18 +156,21 @@ pub(in crate::editor) fn typed_cd(
     arg: Option<&str>,
     _force: bool,
 ) -> Result<(), CommandError> {
-    let target = match arg.map(str::trim).filter(|s| !s.is_empty()) {
-        Some(s) => {
-            let expanded = hume_platform::path::expand(s);
-            std::path::PathBuf::from(expanded.as_ref())
+    let (label, target) = match arg.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(s) => (s.to_owned(), AbsolutePath::from_typed(s, &ed.state.cwd)),
+        None => {
+            let home =
+                hume_platform::dirs::home_dir().ok_or_else(|| CommandError::new("HOME not set"))?;
+            (
+                home.display().to_string(),
+                AbsolutePath::from_path(&home, &ed.state.cwd),
+            )
         }
-        None => hume_platform::dirs::home_dir().ok_or_else(|| CommandError::new("HOME not set"))?,
     };
 
-    let resolved = ed
-        .state
-        .set_cwd(&target)
-        .map_err(|e| CommandError::new(format!("{}: {e}", target.display())))?;
+    let resolved = target
+        .and_then(|target| ed.state.set_cwd(&target))
+        .map_err(|e| CommandError::new(format!("{label}: {e}")))?;
     ed.report(
         Severity::Info,
         format!("cwd: {}", hume_platform::path::display_form(&resolved)),
@@ -225,24 +234,21 @@ pub(in crate::editor) fn typed_buffer(
     Ok(())
 }
 
-/// Find an open buffer matching a path argument.
+/// The open buffer for the file `typed` names.
 ///
-/// Uses the same resolution `resolve_open_path` uses to open one
-/// ([`FileTarget::from_typed`]), so a path that doesn't yet exist on disk
-/// still matches an already-open new-file buffer instead of opening a
-/// duplicate, and a path whose backing file has since been deleted still
-/// matches the buffer that was reading it. A path that cannot be resolved
-/// matches none.
-fn find_buffer_by_path_arg(ed: &Editor, arg: &str) -> Option<BufferId> {
-    let target = FileTarget::from_typed(std::path::Path::new(arg), &ed.state.cwd).ok()?;
-    ed.state.buffers.find_by_path(target.resolved())
+/// Resolves `typed` as an open does ([`AbsolutePath::resolve`]), so a path
+/// that doesn't yet exist on disk still matches an already-open new-file
+/// buffer instead of opening a duplicate, and a path whose backing file has
+/// since been deleted still matches the buffer that was reading it. A path
+/// that cannot be resolved matches none.
+fn find_buffer_named(ed: &Editor, typed: &AbsolutePath) -> Option<BufferId> {
+    ed.state.buffers.find_by_path(&typed.resolve().ok()?)
 }
 
 /// Resolve a `:b` argument to a `BufferId`.  See [`typed_buffer`] for the
 /// four-step resolution order.
 fn resolve_buffer_arg(ed: &Editor, arg: &str) -> Result<BufferId, CommandError> {
     use crate::editor::buffer::Buffer;
-    use std::path::Path;
 
     // Label used in ambiguity messages: full path when available, literal
     // `*scratch*` otherwise. Unambiguous regardless of whether the collision
@@ -283,9 +289,10 @@ fn resolve_buffer_arg(ed: &Editor, arg: &str) -> Result<BufferId, CommandError> 
     //    `~`/env-var expansion first, matching :e's handling (typed_edit):
     //    an ambiguity message's label can be a `~`-collapsed display_path, so
     //    retyping it verbatim must resolve the same way :e would.
-    let expanded = hume_platform::path::expand(arg);
-    if Path::new(expanded.as_ref()).is_absolute() {
-        return find_buffer_by_path_arg(ed, expanded.as_ref())
+    if hume_platform::path::is_absolute_typed(arg) {
+        return AbsolutePath::from_typed(arg, &ed.state.cwd)
+            .ok()
+            .and_then(|typed| find_buffer_named(ed, &typed))
             .ok_or_else(|| CommandError::transient(format!("{arg}: not an open buffer")));
     }
 

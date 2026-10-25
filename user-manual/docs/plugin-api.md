@@ -352,7 +352,7 @@ Everyday string work (trimming, splitting on a separator, case conversion, prefi
 
 The pattern for reading a plugin's own files is covered in [Filesystem and processes](writing-plugins.md#filesystem-and-processes).
 
-HUME has one working directory: Steel's `current-directory` and `change-current-directory!` are `(cwd)` and `(set-cwd! path)`, and `:cd` moves it too. A relative path given to a HUME call resolves against it the way `:e` resolves a typed one, and `..` is resolved the way the operating system resolves it: after a symlink it leaves the link's target, and after a directory that doesn't exist it raises. Other links stay as typed. Steel's own file functions resolve a relative path against the same directory.
+HUME has one working directory: Steel's `current-directory` and `change-current-directory!` are `(cwd)` and `(set-cwd! path)`, and `:cd` moves it too. A path given to a HUME call is taken as written: a relative one joins onto that directory, `~` and variables like `$HOME` are not expanded, and `..` is resolved the way the operating system resolves it: after a symlink it leaves the link's target, and after a directory that doesn't exist it raises. Other links stay as typed. Steel's own file functions resolve a relative path against the same directory.
 
 ## Grammar compilation
 

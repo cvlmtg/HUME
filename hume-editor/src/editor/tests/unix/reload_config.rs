@@ -405,7 +405,7 @@ fn reload_config_reapplies_on_language_set_buffer_overrides() {
     std::fs::write(&file, "fn main() {}\n").unwrap();
 
     let mut ed = Editor::open(
-        Some(file),
+        Some(hume_platform::path::AbsolutePath::rooted(file)),
         crate::editor::run::HEADLESS_TERMINAL,
         no_op_wake(),
         fixture.dirs(),
@@ -498,7 +498,7 @@ fn reload_config_does_not_double_fire_buffer_open_for_a_plugin_opened_buffer() {
     std::fs::write(&file, "fn main() {}\n").unwrap();
 
     let mut ed = Editor::open(
-        Some(file),
+        Some(hume_platform::path::AbsolutePath::rooted(file)),
         crate::editor::run::HEADLESS_TERMINAL,
         no_op_wake(),
         fixture.dirs(),
@@ -587,7 +587,7 @@ fn reload_config_restores_an_explicit_buffer_language_detection_cannot_recover()
     std::fs::write(&file, "hello\n").unwrap();
 
     let mut ed = Editor::open(
-        Some(file),
+        Some(hume_platform::path::AbsolutePath::rooted(file)),
         crate::editor::run::HEADLESS_TERMINAL,
         no_op_wake(),
         fixture.dirs(),
@@ -667,7 +667,7 @@ fn reload_config_keeps_a_startup_grammar_registered() {
     std::fs::write(&file, "{\"x\": 1}\n").unwrap();
 
     let mut ed = Editor::open(
-        Some(file),
+        Some(hume_platform::path::AbsolutePath::rooted(file)),
         crate::editor::run::HEADLESS_TERMINAL,
         no_op_wake(),
         fixture.dirs(),
@@ -847,7 +847,7 @@ fn reload_config_explicit_language_restore_skips_a_bid_that_closed_after_the_sna
     std::fs::write(&file, "hello\n").unwrap();
 
     let mut ed = Editor::open(
-        Some(file),
+        Some(hume_platform::path::AbsolutePath::rooted(file)),
         crate::editor::run::HEADLESS_TERMINAL,
         no_op_wake(),
         fixture.dirs(),

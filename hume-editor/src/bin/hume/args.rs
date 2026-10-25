@@ -1,5 +1,6 @@
 use clap::Parser;
-use std::path::{Path, PathBuf};
+use hume_platform::path::AbsolutePath;
+use std::path::PathBuf;
 
 /// HUME: a modal text editor.
 #[derive(Parser)]
@@ -56,7 +57,7 @@ pub(super) struct Invocation {
 // `conflicts_with`. The
 // constraints clap can't express (exactly one input file in headless mode,
 // `config` naming a real file) are checked here.
-pub(super) fn resolve(cli: Cli, cwd: &Path) -> Result<Invocation, String> {
+pub(super) fn resolve(cli: Cli, cwd: &AbsolutePath) -> Result<Invocation, String> {
     // A missing default `init.scm` is normal and silently skipped (see
     // `Editor::init_scripting`), but a path the user named explicitly is an
     // assertion: a typo here should fail loudly before the terminal even
@@ -72,7 +73,7 @@ pub(super) fn resolve(cli: Cli, cwd: &Path) -> Result<Invocation, String> {
         // against wherever `:cd` last left the process, miss the file, and
         // reset to compiled-in defaults instead of erroring (see
         // `Editor::config_path`).
-        let pinned = hume_platform::path::absolute(&path, cwd)
+        let pinned = hume_editor::cli::path_arg(&path, cwd)
             .map_err(|e| format!("--config: {}: {e}", path.display()))?;
         let file = std::fs::File::open(&pinned)
             .map_err(|e| format!("--config: {}: {e}", path.display()))?;
@@ -83,7 +84,7 @@ pub(super) fn resolve(cli: Cli, cwd: &Path) -> Result<Invocation, String> {
         if !is_file {
             return Err(format!("--config: not a file: {}", path.display()));
         }
-        hume_editor::cli::ConfigSource::File(pinned)
+        hume_editor::cli::ConfigSource::File(pinned.to_path_buf())
     } else {
         hume_editor::cli::ConfigSource::Default
     };
@@ -101,8 +102,9 @@ pub(super) fn resolve(cli: Cli, cwd: &Path) -> Result<Invocation, String> {
                 input: hume_editor::cli::parse_file_arg(&input, cwd)?,
                 keys,
                 // Written after the replay, so a `:cd` in `keys` must not move it.
-                output: hume_platform::path::absolute(&output, cwd)
-                    .map_err(|e| format!("--output: {}: {e}", output.display()))?,
+                output: hume_editor::cli::path_arg(&output, cwd)
+                    .map_err(|e| format!("--output: {}: {e}", output.display()))?
+                    .to_path_buf(),
             }
         }
         None => Mode::Normal {

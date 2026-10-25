@@ -28,7 +28,7 @@ fn picker_accept_onto_an_externally_changed_buffer_opens_the_reload_confirm() {
     // buffer without re-reading, matching a buffer-switcher picker (not a
     // file-opener, which would read the post-change content fresh and never
     // see a mismatch).
-    let bid = ed.resolve_open_path(&path).unwrap().0;
+    let bid = crate::editor::tests::open_path(&mut ed, &path);
     ed.settle();
 
     // File changes on disk while the buffer stays open in the background.
@@ -86,7 +86,7 @@ fn non_interactive_switch_to_buffer_onto_a_stale_buffer_opens_the_reload_confirm
     let bid_a = ed.focused_buffer_id();
 
     let (tmp_b, _tmp_b_guard) = temp_file("world\n");
-    let bid_b = ed.resolve_open_path(tmp_b.to_str().unwrap()).unwrap().0;
+    let bid_b = crate::editor::tests::open_path(&mut ed, &tmp_b);
     ed.settle();
     assert_ne!(bid_a, bid_b, "setup: two distinct buffers, A still focused");
 

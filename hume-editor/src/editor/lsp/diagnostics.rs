@@ -377,7 +377,7 @@ impl Editor {
     ) -> Ingest {
         let Some(path) = hume_lsp::uri::uri_to_path(&published.uri)
             .ok()
-            .and_then(|path| AbsolutePath::from_typed(&path, &self.state.cwd).ok())
+            .and_then(|path| AbsolutePath::from_path(&path, &self.state.cwd).ok())
         else {
             self.report(
                 Severity::Trace,

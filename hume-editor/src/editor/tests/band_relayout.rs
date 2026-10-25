@@ -289,8 +289,10 @@ fn centring_after_buffers_open_under_ls_counts_its_new_rows() {
     frame(&mut ed, 80, 24);
 
     for f in &extra {
-        ed.open_extra_file(&std::fs::canonicalize(f.path()).unwrap())
-            .expect("the extra file opens");
+        ed.open_extra_file(&hume_platform::path::AbsolutePath::rooted(
+            &std::fs::canonicalize(f.path()).unwrap(),
+        ))
+        .expect("the extra file opens");
     }
     ed.feed_key(key('z'));
     ed.feed_key(key('z'));

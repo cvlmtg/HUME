@@ -6,8 +6,10 @@
 //! [`ConfigSource`], the crate-wide-reachable type `run`/`run_keys` take for
 //! where a session's Steel config comes from.
 
+use std::io;
 use std::path::{Path, PathBuf};
 
+use hume_platform::path::AbsolutePath;
 use hume_rope::column::GraphemeCol;
 use hume_rope::line::ContentLine;
 
@@ -41,7 +43,7 @@ pub struct PathPosition {
 /// the optional trailing position to place the cursor at once it's open.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FileArg {
-    pub path: PathBuf,
+    pub path: AbsolutePath,
     pub pos: Option<PathPosition>,
 }
 
@@ -70,41 +72,49 @@ pub enum ConfigSource {
 /// argument and which number was rejected: `LINE_NUMBERS_START_AT_1`
 /// (matching `:goto`'s own contract) or `GRAPHEME_COL_NUMBERS_START_AT_1`.
 ///
-/// `cwd` resolves a relative `raw` the same way `Editor::open`'s own startup
-/// path handling does ([`hume_platform::path::absolute()`]), so the
-/// disambiguation probe agrees with where the file will actually be read
-/// from.
-pub fn parse_file_arg(raw: &Path, cwd: &Path) -> Result<FileArg, String> {
+/// The path is made absolute against `cwd` as [`path_arg`] makes it, and
+/// the disambiguation probe makes each candidate absolute the same way, so
+/// it agrees with where the file will be read from. A path that cannot be
+/// made absolute is an error naming it.
+pub fn parse_file_arg(raw: &Path, cwd: &AbsolutePath) -> Result<FileArg, String> {
+    let unusable = |shown: &dyn std::fmt::Display, e: io::Error| format!("{shown}: {e}");
     // A non-UTF-8 path can't hold a parseable `:<digits>` suffix in any
     // sense this parser understands.
     let Some(s) = raw.to_str() else {
         return Ok(FileArg {
-            path: raw.to_path_buf(),
+            path: AbsolutePath::from_path(raw, cwd).map_err(|e| unusable(&raw.display(), e))?,
             pos: None,
         });
     };
 
-    let (path_str, pos) = split_path_position(s, |candidate| literal_path_on_disk(candidate, cwd))?;
+    let (path_str, pos) = split_path_position(s, |candidate| {
+        AbsolutePath::from_typed(candidate, cwd).is_ok_and(|typed| literal_path_on_disk(&typed))
+    })?;
     Ok(FileArg {
-        path: PathBuf::from(path_str),
+        path: AbsolutePath::from_typed(path_str, cwd).map_err(|e| unusable(&path_str, e))?,
         pos,
     })
 }
 
-/// Does `candidate` name a real file or symlink, exactly as typed (modulo
-/// `~` expansion and joining against `cwd`)? The disk half of the "literal
+/// A path given on the command line, made absolute against `cwd` as typed
+/// text is ([`AbsolutePath::from_typed`]), `~` and variables expanded. A
+/// non-UTF-8 argument is taken as given, since expansion reads text.
+pub fn path_arg(raw: &Path, cwd: &AbsolutePath) -> io::Result<AbsolutePath> {
+    match raw.to_str() {
+        Some(text) => AbsolutePath::from_typed(text, cwd),
+        None => AbsolutePath::from_path(raw, cwd),
+    }
+}
+
+/// Does `typed` name a real file or symlink? The disk half of the "literal
 /// path wins over splitting" rule.
 ///
-/// Probes the *expanded* form (`~/weird:12` → `$HOME/weird:12`) so a quoted
-/// tilde path is disambiguated the same way it will actually be opened.
 /// `symlink_metadata`, not `.exists()`: this is a disambiguation probe, not
 /// a pre-open gate, so a broken symlink still counts as "the user meant this
 /// path", and a later TOCTOU race just falls through to the other reading
 /// rather than lying about a check that already passed.
-pub(crate) fn literal_path_on_disk(candidate: &str, cwd: &Path) -> bool {
-    let expanded = hume_platform::path::expand(candidate);
-    hume_platform::path::absolute(Path::new(expanded.as_ref()), cwd)
-        .is_ok_and(|absolute| std::fs::symlink_metadata(absolute).is_ok())
+pub(crate) fn literal_path_on_disk(typed: &AbsolutePath) -> bool {
+    std::fs::symlink_metadata(typed).is_ok()
 }
 
 /// Splits `s` into a path and an optional trailing `:line[:col]` position.

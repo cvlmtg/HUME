@@ -408,7 +408,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "line->char-offset" buffers::line_to_char_offset(pane: args::LivePane, line: args::Usize);
 
         // Multi-buffer mutating builtins
-        cmd "open-buffer!" buffers::open_buffer(path: String);
+        cmd "open-buffer!" buffers::open_buffer(path: args::ScriptPath);
         cmd "%close-buffer!" buffers::close_buffer(pane: args::LivePane, discard_unsaved: SteelVal);
         cmd "switch-to-buffer!" buffers::switch_to_buffer(pane: args::LivePane, target: args::LivePane);
         cmd "show-read-only-buffer!" buffers::show_read_only_buffer(pane: args::LivePane, name: String, text: String);
@@ -561,7 +561,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         open "data-dir" fs::data_dir();
         open "runtime-dir" fs::runtime_dir();
         open "cwd" fs::cwd();
-        open "set-cwd!" fs::set_cwd(path: String);
+        open "set-cwd!" fs::set_cwd(path: args::ScriptPath);
         open "replace-dir!" fs::replace_dir(src: args::ScriptPath, dest: args::ScriptPath);
         open "%delete-directory!" fs::delete_directory(dir: args::ScriptPath);
         open "try-lock-file!" fs::try_lock_file(path: args::ScriptPath);

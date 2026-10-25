@@ -18,6 +18,7 @@ use steel::rvals::{FromSteelVal, SteelVal};
 use termina::event::KeyEvent;
 
 use hume_engine::pipeline::BufferId;
+use hume_platform::path::AbsolutePath;
 
 use crate::Rooted;
 use crate::host::{HostToken, JobHandle, TimerHandle};
@@ -184,19 +185,23 @@ pub(crate) fn optional_path_arg(
 /// against it as a [`ScriptPath`] does.
 pub(crate) fn cwd_arg(
     val: SteelVal,
-    editor_cwd: &Path,
+    editor_cwd: &AbsolutePath,
     ctx_name: &str,
 ) -> Result<PathBuf, SteelErr> {
     match optional_path_arg(val, ctx_name)? {
-        Some(dir) => under_cwd(&dir, editor_cwd, ctx_name),
+        Some(dir) => under_cwd(&dir, editor_cwd, ctx_name).map(|dir| dir.to_path_buf()),
         None => Ok(editor_cwd.to_path_buf()),
     }
 }
 
-/// `path` made absolute against `cwd` as [`hume_platform::path::absolute()`]
-/// makes it, its error naming `ctx_name`.
-pub(crate) fn under_cwd(path: &Path, cwd: &Path, ctx_name: &str) -> Result<PathBuf, SteelErr> {
-    hume_platform::path::absolute(path, cwd)
+/// `path`, taken as written, made absolute against `cwd` as
+/// [`AbsolutePath::from_path`] makes it, its error naming `ctx_name`.
+pub(crate) fn under_cwd(
+    path: &Path,
+    cwd: &AbsolutePath,
+    ctx_name: &str,
+) -> Result<AbsolutePath, SteelErr> {
+    AbsolutePath::from_path(path, cwd)
         .map_err(|e| generic_err(format!("{ctx_name}: {}: {e}", path.display())))
 }
 
@@ -877,11 +882,10 @@ impl BuiltinArg for Usize {
     }
 }
 
-/// A path argument, resolved as `:e` resolves a typed path (see
-/// [`under_cwd`]): a relative one joins onto the editor's working directory.
-/// A builtin declares its path
-/// parameters as this type in the `builtins!` table, so none resolves one
-/// by hand.
+/// A path argument, taken as written and made absolute by [`under_cwd`]: a
+/// relative one joins onto the editor's working directory, and `~` and
+/// variables are not expanded. A builtin declares its path parameters as
+/// this type in the `builtins!` table, so none resolves one by hand.
 #[derive(Debug, Clone)]
 pub(crate) struct ScriptPath(PathBuf);
 
@@ -898,8 +902,12 @@ impl FromSteelVal for ScriptPath {
 }
 
 impl BuiltinArg for ScriptPath {
-    type Out = PathBuf;
-    fn resolve(self, ctx: &mut crate::SteelCtx, name: &'static str) -> Result<PathBuf, SteelErr> {
+    type Out = AbsolutePath;
+    fn resolve(
+        self,
+        ctx: &mut crate::SteelCtx,
+        name: &'static str,
+    ) -> Result<AbsolutePath, SteelErr> {
         under_cwd(&self.0, &ctx.host.buffers().cwd(), name)
     }
 }

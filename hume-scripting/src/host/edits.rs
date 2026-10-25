@@ -7,6 +7,7 @@
 //! duplicate that gate.
 
 use hume_engine::pipeline::BufferId;
+use hume_platform::path::AbsolutePath;
 use hume_rope::position_encoding::PositionEncoding;
 use termina::event::KeyEvent;
 
@@ -102,7 +103,8 @@ pub trait EditHost {
     ) -> Result<bool, String>;
 
     /// `(goto-location! pane target)`, `(hash 'target 'line 'char-col)` shape
-    /// with a path string target, already char-indexed. `line` and `char_col`
+    /// with a path target, made absolute against the editor's working
+    /// directory as written, already char-indexed. `line` and `char_col`
     /// are bare `usize`: the file may not be open, so no rope exists to check
     /// `line` against before the host opens one, and the host mints it with
     /// `ContentLine::checked` against that text. `Ok(false)` when `line` is
@@ -113,7 +115,7 @@ pub trait EditHost {
     fn goto_location_path(
         &mut self,
         pane: PaneHandle,
-        path: String,
+        path: AbsolutePath,
         line: usize,
         char_col: usize,
     ) -> Result<bool, String>;

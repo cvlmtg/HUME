@@ -121,7 +121,7 @@ impl Editor {
     /// `cwd` its startup working directory; the editor never reads either from
     /// the process.
     pub(in crate::editor) fn open(
-        file_path: Option<std::path::PathBuf>,
+        file_path: Option<hume_platform::path::AbsolutePath>,
         terminal: Rect,
         wake: WakeCallback,
         dirs: hume_platform::dirs::Dirs,
@@ -139,9 +139,7 @@ impl Editor {
             // empty buffer bound to the path instead of exiting, same
             // `:w`-creates-it semantics as `:e` on a missing file (see
             // `Buffer::from_file_or_new`, `lifecycle::open_or_dedup_and_notify`).
-            Some(ref path) => Buffer::from_file_or_new(
-                crate::editor::buffer::FileTarget::from_typed(path, &startup_cwd)?,
-            )?,
+            Some(path) => Buffer::from_file_or_new(crate::editor::buffer::FileTarget::new(path)?)?,
             None => Buffer::at_start(BufferText::empty()),
         };
 

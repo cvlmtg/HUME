@@ -76,7 +76,9 @@ fn files_picker_in_git_repo_uses_git_index_and_opens_selection() {
 
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
-    ed.state.set_cwd(&sandbox.path()).unwrap();
+    ed.state
+        .set_cwd(&hume_platform::path::AbsolutePath::rooted(&sandbox.path()))
+        .unwrap();
 
     ed.feed_key(key('z'));
     ed.feed_key(key('f'));
@@ -122,7 +124,9 @@ fn files_picker_ctrl_t_opens_selection_in_a_new_tab() {
 
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
-    ed.state.set_cwd(&sandbox.path()).unwrap();
+    ed.state
+        .set_cwd(&hume_platform::path::AbsolutePath::rooted(&sandbox.path()))
+        .unwrap();
     let source_bid = ed.focused_buffer_id();
     let tabs_before = ed.state.tabs.len();
 
@@ -176,7 +180,9 @@ fn files_picker_ctrl_t_on_no_match_does_not_open_a_tab() {
 
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
-    ed.state.set_cwd(&sandbox.path()).unwrap();
+    ed.state
+        .set_cwd(&hume_platform::path::AbsolutePath::rooted(&sandbox.path()))
+        .unwrap();
     let tabs_before = ed.state.tabs.len();
 
     ed.feed_key(key('z'));
@@ -213,7 +219,9 @@ fn files_picker_ctrl_v_in_a_too_narrow_pane_does_nothing() {
 
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
-    ed.state.set_cwd(&sandbox.path()).unwrap();
+    ed.state
+        .set_cwd(&hume_platform::path::AbsolutePath::rooted(&sandbox.path()))
+        .unwrap();
     let source_bid = ed.focused_buffer_id();
     let panes_before = ed.view.panes.len();
 
@@ -264,7 +272,9 @@ fn files_picker_ctrl_v_opens_selection_in_a_new_pane() {
 
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
-    ed.state.set_cwd(&sandbox.path()).unwrap();
+    ed.state
+        .set_cwd(&hume_platform::path::AbsolutePath::rooted(&sandbox.path()))
+        .unwrap();
     let source_bid = ed.focused_buffer_id();
     let panes_before = ed.view.panes.len();
 
@@ -317,7 +327,9 @@ fn files_picker_esc_dismisses_cleanly() {
 
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
-    ed.state.set_cwd(&sandbox.path()).unwrap();
+    ed.state
+        .set_cwd(&hume_platform::path::AbsolutePath::rooted(&sandbox.path()))
+        .unwrap();
     let starting_bid = ed.focused_buffer_id();
 
     ed.feed_key(key('z'));
@@ -368,7 +380,9 @@ fn files_picker_fd_branch_spawns_given_binary() {
         fake_fd.display()
     );
     let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", &extra);
-    ed.state.set_cwd(&sandbox.path()).unwrap();
+    ed.state
+        .set_cwd(&hume_platform::path::AbsolutePath::rooted(&sandbox.path()))
+        .unwrap();
 
     call(&mut ed, "test-fd-branch");
     drain_until_picker_total(&mut ed, 2);
@@ -425,7 +439,9 @@ fn git_modified_picker_lists_changed_files_with_status_codes() {
 
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
-    ed.state.set_cwd(&sandbox.path()).unwrap();
+    ed.state
+        .set_cwd(&hume_platform::path::AbsolutePath::rooted(&sandbox.path()))
+        .unwrap();
 
     ed.feed_key(key('z'));
     ed.feed_key(key('m'));
@@ -464,7 +480,9 @@ fn git_modified_picker_is_pending_until_git_status_returns() {
 
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
-    ed.state.set_cwd(&sandbox.path()).unwrap();
+    ed.state
+        .set_cwd(&hume_platform::path::AbsolutePath::rooted(&sandbox.path()))
+        .unwrap();
 
     ed.feed_key(key('z'));
     ed.feed_key(key('m'));
@@ -505,7 +523,11 @@ fn git_modified_picker_accept_resolves_relative_to_repo_root_from_subdirectory()
     // :pwd is a subdirectory, not the repo root: git prints the entry as
     // "root.txt" (repo-root-relative); accept must not open it relative to
     // :pwd (which has no such file).
-    ed.state.set_cwd(&sandbox.path().join("sub")).unwrap();
+    ed.state
+        .set_cwd(&hume_platform::path::AbsolutePath::rooted(
+            &sandbox.path().join("sub"),
+        ))
+        .unwrap();
 
     ed.feed_key(key('z'));
     ed.feed_key(key('m'));
@@ -538,7 +560,9 @@ fn git_modified_picker_row_and_accept_handle_path_with_space() {
 
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
-    ed.state.set_cwd(&sandbox.path()).unwrap();
+    ed.state
+        .set_cwd(&hume_platform::path::AbsolutePath::rooted(&sandbox.path()))
+        .unwrap();
 
     ed.feed_key(key('z'));
     ed.feed_key(key('m'));
@@ -582,7 +606,9 @@ fn git_modified_picker_accept_resolves_nested_relative_path() {
     // `git_modified_picker_accept_resolves_relative_to_repo_root_from_subdirectory`
     // above; this test isolates `path-join`'s handling of a multi-segment
     // relative path instead.
-    ed.state.set_cwd(&sandbox.path()).unwrap();
+    ed.state
+        .set_cwd(&hume_platform::path::AbsolutePath::rooted(&sandbox.path()))
+        .unwrap();
 
     ed.feed_key(key('z'));
     ed.feed_key(key('m'));
@@ -621,7 +647,9 @@ fn git_modified_picker_untracked_false_config_hides_untracked_files() {
         Some("(hash \"untracked\" #f)"),
         "",
     );
-    ed.state.set_cwd(&sandbox.path()).unwrap();
+    ed.state
+        .set_cwd(&hume_platform::path::AbsolutePath::rooted(&sandbox.path()))
+        .unwrap();
 
     ed.feed_key(key('z'));
     ed.feed_key(key('m'));
@@ -646,7 +674,9 @@ fn git_modified_picker_untracked_default_lists_files_inside_untracked_directory(
 
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
-    ed.state.set_cwd(&sandbox.path()).unwrap();
+    ed.state
+        .set_cwd(&hume_platform::path::AbsolutePath::rooted(&sandbox.path()))
+        .unwrap();
     ed.feed_key(key('z'));
     ed.feed_key(key('m'));
     drain_until_picker_total(&mut ed, 1);
@@ -706,7 +736,9 @@ fn git_modified_picker_clean_tree_opens_empty_picker() {
 
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
-    ed.state.set_cwd(&sandbox.path()).unwrap();
+    ed.state
+        .set_cwd(&hume_platform::path::AbsolutePath::rooted(&sandbox.path()))
+        .unwrap();
 
     ed.feed_key(key('z'));
     ed.feed_key(key('m'));
@@ -758,7 +790,9 @@ fn git_modified_picker_git_status_failure_does_not_say_clean() {
     let extra = r#"(define-command! "test-git-status-fails" "" (lambda (pane)
                      (call! "pickers/git-picker-with" pane "/nonexistent-root")))"#;
     let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", extra);
-    ed.state.set_cwd(&sandbox.path()).unwrap();
+    ed.state
+        .set_cwd(&hume_platform::path::AbsolutePath::rooted(&sandbox.path()))
+        .unwrap();
 
     ed.state.status_msg = None;
     call(&mut ed, "test-git-status-fails");
@@ -790,7 +824,9 @@ fn git_modified_picker_esc_dismisses_cleanly() {
 
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
-    ed.state.set_cwd(&sandbox.path()).unwrap();
+    ed.state
+        .set_cwd(&hume_platform::path::AbsolutePath::rooted(&sandbox.path()))
+        .unwrap();
     let starting_bid = ed.focused_buffer_id();
 
     ed.feed_key(key('z'));
@@ -846,7 +882,9 @@ fn buffers_picker_lists_switches_and_disambiguates() {
 
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
-    ed.state.set_cwd(&sandbox.path()).unwrap();
+    ed.state
+        .set_cwd(&hume_platform::path::AbsolutePath::rooted(&sandbox.path()))
+        .unwrap();
     type_cmd(&mut ed, ":e a/mod.rs");
     type_cmd(&mut ed, ":e b/mod.rs");
 

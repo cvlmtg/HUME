@@ -612,7 +612,7 @@ fn viewport_range_raises_for_a_paneless_buffer_handle() {
     // switching any pane to show it, so it stays paneless.
     let extra = tmp.path().join("hidden.rs");
     std::fs::write(&extra, "fn hidden() {}\n").unwrap();
-    ed.open_extra_file(&extra);
+    ed.open_extra_file(&hume_platform::path::AbsolutePath::rooted(&extra));
     let hidden_bid = ed
         .state
         .buffers
@@ -750,7 +750,8 @@ fn lsp_position_params_raises_for_a_paneless_buffer_handle() {
 
     let extra = tmp.path().join("other.rs");
     std::fs::write(&extra, "fn other() {}\n").unwrap();
-    rig.ed.open_extra_file(&extra);
+    rig.ed
+        .open_extra_file(&hume_platform::path::AbsolutePath::rooted(&extra));
     let other_bid = rig
         .ed
         .state
@@ -801,7 +802,8 @@ fn lsp_position_params_resolves_a_buffer_shown_in_a_non_focused_pane() {
 
     let extra = tmp.path().join("other.rs");
     std::fs::write(&extra, "fn other() {}\n").unwrap();
-    rig.ed.open_extra_file(&extra);
+    rig.ed
+        .open_extra_file(&hume_platform::path::AbsolutePath::rooted(&extra));
     let other_bid = rig
         .ed
         .state
@@ -999,7 +1001,8 @@ fn lsp_position_to_char_offset_decodes_via_the_tag_even_after_the_server_detache
     );
     let other = rig.root.join("src/other.rs");
     std::fs::write(&other, "fn other() {}\n").unwrap();
-    rig.ed.open_extra_file(&other);
+    rig.ed
+        .open_extra_file(&hume_platform::path::AbsolutePath::rooted(&other));
     let before = state(&rig.ed);
     type_cmd(&mut rig.ed, ":probe");
     // The request is already in flight; detaching now proves the later

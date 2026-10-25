@@ -50,6 +50,8 @@
 - A file opened through a symlink is named after the link you opened, not its target, in the statusline, tab labels, `:ls` and `:b`.
 - When the symlink you opened a file through starts pointing at another file, `:w` refuses to overwrite that file (`:w!` writes it), `:checktime` reports the change, and `:e!` reads the new file.
 - `..` in a path you type to `:e`, `:w`, `:cd` or path completion leaves the directory it follows the way your shell does: after a symlink, it goes to the link target's parent.
+- `goto-location!` takes a path as written, like every other path a plugin passes: a `$` or `~` in a file name no longer opens some other file.
+- Every file named on the command line expands `~` and variables like `$HOME`, the first one included, and so do `--config` and `--output`.
 
 ## [0.16.1] - 2026-10-22
 

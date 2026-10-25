@@ -420,14 +420,12 @@ fn write_file(
         WriteKind::Refused(msg) => return Err(CommandError::transient(msg).into()),
         WriteKind::Save(file) => (file.typed().clone(), Some(file), true),
         kind @ (WriteKind::SaveAs(path) | WriteKind::Export(path)) => {
-            let expanded = hume_platform::path::expand(path);
             // A relative path resolves against editor.cwd, not the process
             // cwd, so `:w relpath` is stable regardless of how the process
             // cwd drifts, and the way `:e` resolves it, so the file written
             // is the one `:e` opens.
-            let target =
-                AbsolutePath::from_typed(std::path::Path::new(expanded.as_ref()), &ed.state.cwd)
-                    .map_err(|e| CommandError::new(e.to_string()))?;
+            let target = AbsolutePath::from_typed(path, &ed.state.cwd)
+                .map_err(|e| CommandError::new(e.to_string()))?;
             let baseline = buf
                 .file()
                 .filter(|own| target.resolve().is_ok_and(|named| named == *own.resolved()));

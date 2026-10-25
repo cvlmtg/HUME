@@ -14,8 +14,6 @@
 //! capability accessor to it, overriding only the one or two
 //! accessors/methods that make them distinct.
 
-use std::path::Path;
-
 use hume_engine::pipeline::BufferId;
 use hume_platform::path::AbsolutePath;
 use hume_rope::line::ContentLine;
@@ -134,10 +132,10 @@ impl BufferHost for NullHost {
     fn search_path(&self) -> Option<std::ffi::OsString> {
         None
     }
-    fn set_cwd(&mut self, _path: &Path) -> Result<AbsolutePath, String> {
+    fn set_cwd(&mut self, _path: &AbsolutePath) -> Result<AbsolutePath, String> {
         Err("NullHost: set_cwd not available".into())
     }
-    fn open_buffer(&mut self, _path: &Path) -> Result<BufferId, String> {
+    fn open_buffer(&mut self, _path: &AbsolutePath) -> Result<BufferId, String> {
         Err("NullHost: open_buffer not available".into())
     }
     fn close_buffer(&mut self, _id: BufferId, _discard: DiscardUnsaved) -> Result<(), String> {

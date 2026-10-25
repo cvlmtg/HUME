@@ -552,7 +552,8 @@ fn apply_workspace_edit_mixed_open_and_unopened_files() {
     );
     // Opened without focusing it: the request goes out from the attached
     // buffer.
-    ed.open_extra_file(&opened_path).expect("opened.txt opens");
+    ed.open_extra_file(&hume_platform::path::AbsolutePath::rooted(&opened_path))
+        .expect("opened.txt opens");
     assert!(ed.state.buffers.find_by_path(&unopened_canonical).is_none());
 
     apply_wire_workspace_edit(&mut ed, tmp.path());
@@ -1193,7 +1194,7 @@ fn goto_location_wire_shape_past_the_last_line_answers_false() {
 
 /// `(goto-location! bid (hash 'target path 'line line 'char-col char-col))` on a path that doesn't exist yet
 /// must open a new-file buffer and jump to it, the same tolerance `:e` has:
-/// `resolve_goto_target` shares `Editor::resolve_open_path`'s
+/// both go through `lifecycle::open_or_dedup_and_notify` and its
 /// `Buffer::from_file_or_new` chokepoint.
 #[test]
 fn goto_missing_path_opens_new_file_buffer() {
@@ -1219,6 +1220,29 @@ fn goto_missing_path_opens_new_file_buffer() {
         "goto must have switched to the new-file buffer"
     );
     assert!(ed.doc().is_new_file());
+}
+
+/// A script's path is a file name, not shell input: a `$HOME` in it names
+/// the file called `$HOME`.
+#[test]
+fn goto_path_takes_a_variable_sigil_literally() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    let target = tmp.path().join("$HOME");
+    std::fs::write(&target, "found\n").unwrap();
+    let target_str = steel_path(&target);
+    run(
+        &mut ed,
+        tmp.path(),
+        &format!(
+            r#"(define-typed-command! "go" "" (lambda (bid)
+             (goto-location! bid (hash 'target {target_str} 'line 0 'char-col 0))))"#
+        ),
+    );
+
+    type_cmd(&mut ed, ":go");
+
+    assert_eq!(ed.doc().text().to_string(), "found\n");
 }
 
 // ── workspace/applyEdit server-request swap ──────────────────────────────────

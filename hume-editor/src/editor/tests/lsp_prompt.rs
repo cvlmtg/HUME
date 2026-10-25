@@ -410,7 +410,9 @@ fn symbol_under_cursor_finds_a_word_in_a_non_focused_pane() {
     // stays open (with its "bar" cursor) in the now-unfocused first pane.
     let extra = tmp.path().join("other.rs");
     std::fs::write(&extra, "fn other() {}\n").unwrap();
-    let other_bid = ed.open_extra_file(&extra).expect("extra file must open");
+    let other_bid = ed
+        .open_extra_file(&hume_platform::path::AbsolutePath::rooted(&extra))
+        .expect("extra file must open");
     let other_pid = open_pane_in_layout(
         &mut ed.state,
         &mut ed.view,
@@ -447,7 +449,9 @@ fn symbol_under_cursor_raises_once_no_pane_shows_the_buffer() {
     // at it, so no pane currently shows it.
     let extra = tmp.path().join("other.rs");
     std::fs::write(&extra, "fn other() {}\n").unwrap();
-    let other_bid = ed.open_extra_file(&extra).expect("extra file must open");
+    let other_bid = ed
+        .open_extra_file(&hume_platform::path::AbsolutePath::rooted(&extra))
+        .expect("extra file must open");
     ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), other_bid);
 
     let mut host = ScriptingHost::new(&Dirs::none());

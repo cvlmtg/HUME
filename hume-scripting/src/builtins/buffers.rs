@@ -18,6 +18,7 @@ use super::ids::{SteelBufferKey, SteelPane};
 use crate::SteelCtx;
 use crate::host::{DiscardUnsaved, DisplayPathForm};
 use crate::types::PaneHandle;
+use hume_platform::path::AbsolutePath;
 
 // ── Focus builtins ─────────────────────────────────────────────────────────────
 
@@ -304,12 +305,8 @@ pub(crate) fn buffer_lines(ctx: &mut SteelCtx, pane: PaneHandle, range: SteelVal
 /// (`buffer::lifecycle::open_buffer_and_notify`) queues it onto
 /// `EditorState.pending_language_detection` instead; `Editor::
 /// apply_script_effects` drains it once this eval returns.
-pub(crate) fn open_buffer(ctx: &mut SteelCtx, path: String) -> SteelResult {
-    let bid = ctx
-        .host
-        .buffers()
-        .open_buffer(std::path::Path::new(&path))
-        .map_err(generic_err)?;
+pub(crate) fn open_buffer(ctx: &mut SteelCtx, path: AbsolutePath) -> SteelResult {
+    let bid = ctx.host.buffers().open_buffer(&path).map_err(generic_err)?;
     SteelPane(PaneHandle::buffer_only(bid))
         .into_steelval()
         .map_err(generic_err)

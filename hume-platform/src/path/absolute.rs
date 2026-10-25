@@ -4,9 +4,10 @@ use std::io;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
 
-/// A path that is absolute on this platform. Minted only from a typed path
-/// made absolute against a working directory, from a canonicalized path,
-/// from the process working directory, or from another `AbsolutePath`.
+/// A path that is absolute on this platform. Minted only from a typed or
+/// given path made absolute against a working directory, from a
+/// canonicalized path, from the process working directory, or from another
+/// `AbsolutePath`.
 ///
 /// It never carries a Windows verbatim drive prefix (`\\?\C:\`), which
 /// `canonicalize` adds and many consumers mishandle; the standard library
@@ -15,10 +16,18 @@ use std::path::{Path, PathBuf};
 pub struct AbsolutePath(PathBuf);
 
 impl AbsolutePath {
-    /// `typed` made absolute against `cwd` as [`super::absolute()`] does, and
-    /// failing as it does.
-    pub fn from_typed(typed: &Path, cwd: &AbsolutePath) -> io::Result<Self> {
-        super::absolute(typed, cwd).map(Self::stripped)
+    /// `text` a person typed, with a leading `~` and environment variables
+    /// expanded as a shell expands them (`$VAR` on Unix, `%VAR%` on Windows;
+    /// an unknown variable stays as written), then made absolute as
+    /// [`Self::from_path`] makes it.
+    pub fn from_typed(text: &str, cwd: &AbsolutePath) -> io::Result<Self> {
+        Self::from_path(Path::new(super::expand(text).as_ref()), cwd)
+    }
+
+    /// `path`, taken as given, made absolute against `cwd` as
+    /// [`super::absolute()`] makes it, and failing as it does.
+    pub fn from_path(path: &Path, cwd: &AbsolutePath) -> io::Result<Self> {
+        super::absolute(path, cwd).map(Self::stripped)
     }
 
     /// The process working directory, as [`std::env::current_dir`] returns

@@ -1171,8 +1171,7 @@ fn serialized_restores_crlf_line_endings() {
 
 /// The file an open of `path`, an absolute path, names.
 fn opened(path: &Path) -> FileTarget {
-    let cwd = AbsolutePath::rooted(path.parent().expect("a test file has a parent"));
-    FileTarget::from_typed(path, &cwd).expect("a test path resolves")
+    FileTarget::new(AbsolutePath::rooted(path)).expect("a test path resolves")
 }
 
 #[test]

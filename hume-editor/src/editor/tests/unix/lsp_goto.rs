@@ -588,7 +588,7 @@ fn goto_target_is_directory_errors_without_moving_the_cursor() {
 
 /// A target whose file doesn't exist yet (but whose path is otherwise valid)
 /// must open a new-file buffer and jump to it: the same `:e newfile.txt`
-/// tolerance `resolve_or_open` shares with `Editor::resolve_open_path` via
+/// tolerance `resolve_or_open` shares with `:e` through
 /// `Buffer::from_file_or_new`, not an error. Covers a server-driven
 /// definition/rename that points at a file it expects the client to create.
 #[test]

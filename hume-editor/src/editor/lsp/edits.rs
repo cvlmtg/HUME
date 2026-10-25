@@ -14,6 +14,7 @@ use hume_editing::edit::apply_keeping_final_break;
 use hume_editing::text::BufferText;
 use hume_engine::pipeline::{BufferId, EngineView, PaneId, PanePool};
 use hume_lsp::codec::ResponseError;
+use hume_platform::path::AbsolutePath;
 use hume_rope::cluster::ClusterStart;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 use hume_rope::position_encoding::{PositionEncoding, WirePos};
@@ -299,8 +300,9 @@ pub(in crate::editor) struct WorkspaceEditSummary {
     pub(in crate::editor) buffers_modified: usize,
 }
 
-/// Opens `path` in a buffer, or finds the one already showing it. The flag
-/// is whether this call opened it.
+/// Opens `path`, a URI's path made absolute against the editor cwd as
+/// given, in a buffer, or finds the one already showing it. The flag is
+/// whether this call opened it.
 fn resolve_or_open(
     state: &mut EditorState,
     view: &mut EngineView,
@@ -309,7 +311,10 @@ fn resolve_or_open(
     // A server-driven rename or workspace edit may target a file that
     // doesn't exist yet, openable here as `:e` opens a missing path
     // (see `Buffer::from_file_or_new`).
-    crate::editor::buffer::lifecycle::open_or_dedup_and_notify(view, state, path)
+    AbsolutePath::from_path(path, &state.cwd)
+        .and_then(|typed| {
+            crate::editor::buffer::lifecycle::open_or_dedup_and_notify(view, state, typed)
+        })
         .map_err(|e| format!("{}: {e}", path.display()))
 }
 
@@ -438,7 +443,7 @@ pub(in crate::editor) enum GotoTarget {
         encoding: PositionEncoding,
     },
     Path {
-        path: String,
+        path: AbsolutePath,
         line: usize,
         char_col: hume_rope::column::CharCol,
     },
@@ -510,9 +515,12 @@ fn resolve_goto_target(
             line,
             char_col,
         } => {
-            let expanded = hume_platform::path::expand(&path);
-            let (bid, opened) =
-                resolve_or_open(state, view, std::path::Path::new(expanded.as_ref()))?;
+            let (bid, opened) = crate::editor::buffer::lifecycle::open_or_dedup_and_notify(
+                view,
+                state,
+                path.clone(),
+            )
+            .map_err(|e| format!("{}: {e}", path.display()))?;
             let landed = char_indexed_to_cluster(state, bid, line, char_col);
             Ok(settle_opened(state, view, bid, opened, landed))
         }

@@ -24,7 +24,7 @@ fn config_binding_takes_effect_in_headless_replay() {
 
     hume::run_keys(
         FileArg {
-            path: input,
+            path: hume_platform::path::AbsolutePath::rooted(&input),
             pos: None,
         },
         "Z",
@@ -52,7 +52,7 @@ fn write_failure_still_returns_err() {
 
     let result = hume::run_keys(
         FileArg {
-            path: input,
+            path: hume_platform::path::AbsolutePath::rooted(&input),
             pos: None,
         },
         "Z",
@@ -81,7 +81,7 @@ fn a_crash_dump_next_to_the_file_is_neither_offered_nor_touched() {
         }
         hume::run_keys(
             FileArg {
-                path: input,
+                path: hume_platform::path::AbsolutePath::rooted(&input),
                 pos: None,
             },
             "xd",

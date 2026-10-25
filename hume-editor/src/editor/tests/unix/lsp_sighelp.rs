@@ -400,7 +400,7 @@ fn stale_response_after_a_pane_switch_shows_no_popup() {
     let extra = rig_root(tmp.path()).join("other.rs");
     std::fs::write(&extra, "fn other() {}\n").unwrap();
     let other_bid = ed
-        .open_extra_file(&extra)
+        .open_extra_file(&hume_platform::path::AbsolutePath::rooted(&extra))
         .expect("extra file must open as a buffer");
     let other_pid = open_pane_in_layout(
         &mut ed.state,

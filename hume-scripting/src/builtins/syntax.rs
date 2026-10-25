@@ -158,8 +158,9 @@ pub(crate) fn register_grammar(
     optional_queries: SteelVal,
 ) -> SteelResult {
     let cwd = ctx.host.buffers().cwd();
-    let resolve =
-        |val: SteelVal, ctx_name: &str| under_cwd(&path_arg(val, ctx_name)?, &cwd, ctx_name);
+    let resolve = |val: SteelVal, ctx_name: &str| {
+        under_cwd(&path_arg(val, ctx_name)?, &cwd, ctx_name).map(|path| path.to_path_buf())
+    };
     let mut queries = QueryFiles::new(resolve(
         highlights_path,
         "register-grammar! highlights-path",
@@ -178,7 +179,10 @@ pub(crate) fn register_grammar(
                 .transpose()?
                 .flatten();
             if let Some(path) = path {
-                queries = queries.with(kind, under_cwd(&path, &cwd, &entry.label(key))?);
+                queries = queries.with(
+                    kind,
+                    under_cwd(&path, &cwd, &entry.label(key))?.to_path_buf(),
+                );
             }
         }
     }

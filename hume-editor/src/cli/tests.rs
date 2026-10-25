@@ -23,8 +23,8 @@ fn literal_probe_is_skipped_without_a_suffix() {
 fn line_only_suffix() {
     let tmp = tempfile::tempdir().unwrap();
     let arg = tmp.path().join("foo.rs:12");
-    let parsed = parse_file_arg(&arg, tmp.path()).unwrap();
-    assert_eq!(parsed.path, tmp.path().join("foo.rs"));
+    let parsed = parse_file_arg(&arg, &AbsolutePath::rooted(tmp.path())).unwrap();
+    assert_eq!(parsed.path, AbsolutePath::rooted(tmp.path().join("foo.rs")));
     assert_eq!(
         parsed.pos,
         Some(PathPosition {
@@ -38,8 +38,8 @@ fn line_only_suffix() {
 fn line_and_column_suffix() {
     let tmp = tempfile::tempdir().unwrap();
     let arg = tmp.path().join("foo.rs:12:24");
-    let parsed = parse_file_arg(&arg, tmp.path()).unwrap();
-    assert_eq!(parsed.path, tmp.path().join("foo.rs"));
+    let parsed = parse_file_arg(&arg, &AbsolutePath::rooted(tmp.path())).unwrap();
+    assert_eq!(parsed.path, AbsolutePath::rooted(tmp.path().join("foo.rs")));
     assert_eq!(
         parsed.pos,
         Some(PathPosition {
@@ -53,8 +53,8 @@ fn line_and_column_suffix() {
 fn trailing_colon_is_tolerated() {
     let tmp = tempfile::tempdir().unwrap();
     let arg = tmp.path().join("foo.rs:12:");
-    let parsed = parse_file_arg(&arg, tmp.path()).unwrap();
-    assert_eq!(parsed.path, tmp.path().join("foo.rs"));
+    let parsed = parse_file_arg(&arg, &AbsolutePath::rooted(tmp.path())).unwrap();
+    assert_eq!(parsed.path, AbsolutePath::rooted(tmp.path().join("foo.rs")));
     assert_eq!(
         parsed.pos,
         Some(PathPosition {
@@ -68,8 +68,8 @@ fn trailing_colon_is_tolerated() {
 fn no_suffix_is_a_plain_path() {
     let tmp = tempfile::tempdir().unwrap();
     let arg = tmp.path().join("foo.rs");
-    let parsed = parse_file_arg(&arg, tmp.path()).unwrap();
-    assert_eq!(parsed.path, arg);
+    let parsed = parse_file_arg(&arg, &AbsolutePath::rooted(tmp.path())).unwrap();
+    assert_eq!(parsed.path, AbsolutePath::rooted(&arg));
     assert_eq!(parsed.pos, None);
 }
 
@@ -77,8 +77,8 @@ fn no_suffix_is_a_plain_path() {
 fn non_digit_suffix_is_a_literal_path() {
     let tmp = tempfile::tempdir().unwrap();
     let arg = tmp.path().join("foo.rs:abc");
-    let parsed = parse_file_arg(&arg, tmp.path()).unwrap();
-    assert_eq!(parsed.path, arg);
+    let parsed = parse_file_arg(&arg, &AbsolutePath::rooted(tmp.path())).unwrap();
+    assert_eq!(parsed.path, AbsolutePath::rooted(&arg));
     assert_eq!(parsed.pos, None);
 }
 
@@ -92,8 +92,8 @@ fn bare_colon_number_with_no_path_is_literal() {
     // separator-terminated) exercises the check's other arm; see
     // `relative_bare_colon_number_is_literal` below.
     let arg = tmp.path().join(":12");
-    let parsed = parse_file_arg(&arg, tmp.path()).unwrap();
-    assert_eq!(parsed.path, arg);
+    let parsed = parse_file_arg(&arg, &AbsolutePath::rooted(tmp.path())).unwrap();
+    assert_eq!(parsed.path, AbsolutePath::rooted(&arg));
     assert_eq!(parsed.pos, None);
 }
 
@@ -104,8 +104,11 @@ fn relative_bare_colon_number_is_literal() {
     // `split_trailing_number`'s `rsplit_once(':')` remainder empty,
     // exercising `rest.is_empty()` rather than `rest.ends_with(is_separator)`.
     let arg = PathBuf::from(":12");
-    let parsed = parse_file_arg(&arg, &std::env::temp_dir()).unwrap();
-    assert_eq!(parsed.path, arg);
+    let parsed = parse_file_arg(&arg, &AbsolutePath::rooted(std::env::temp_dir())).unwrap();
+    assert_eq!(
+        parsed.path,
+        AbsolutePath::rooted(std::env::temp_dir().join(&arg))
+    );
     assert_eq!(parsed.pos, None);
 }
 
@@ -113,7 +116,7 @@ fn relative_bare_colon_number_is_literal() {
 fn line_zero_is_rejected() {
     let tmp = tempfile::tempdir().unwrap();
     let arg = tmp.path().join("foo.rs:0");
-    let err = parse_file_arg(&arg, tmp.path()).unwrap_err();
+    let err = parse_file_arg(&arg, &AbsolutePath::rooted(tmp.path())).unwrap_err();
     assert!(err.contains(LINE_NUMBERS_START_AT_1), "got: {err}");
     assert!(
         err.contains(&arg.display().to_string()),
@@ -125,7 +128,7 @@ fn line_zero_is_rejected() {
 fn column_zero_is_rejected() {
     let tmp = tempfile::tempdir().unwrap();
     let arg = tmp.path().join("foo.rs:12:0");
-    let err = parse_file_arg(&arg, tmp.path()).unwrap_err();
+    let err = parse_file_arg(&arg, &AbsolutePath::rooted(tmp.path())).unwrap_err();
     // A valid line paired with a bad column must not blame the line: the
     // two 1-based contracts get distinct error text.
     assert!(err.contains(GRAPHEME_COL_NUMBERS_START_AT_1), "got: {err}");
@@ -145,8 +148,8 @@ fn a_real_file_named_with_a_colon_opens_literally() {
     let tmp = tempfile::tempdir().unwrap();
     let path = tmp.path().join("weird:12");
     std::fs::write(&path, "hello\n").unwrap();
-    let parsed = parse_file_arg(&path, tmp.path()).unwrap();
-    assert_eq!(parsed.path, path);
+    let parsed = parse_file_arg(&path, &AbsolutePath::rooted(tmp.path())).unwrap();
+    assert_eq!(parsed.path, AbsolutePath::rooted(&path));
     assert_eq!(
         parsed.pos, None,
         "an existing literal path must never be split"
@@ -163,8 +166,8 @@ fn a_broken_symlink_named_with_a_colon_opens_literally() {
     let tmp = tempfile::tempdir().unwrap();
     let path = tmp.path().join("weird:12");
     std::os::unix::fs::symlink(tmp.path().join("does-not-exist-target"), &path).unwrap();
-    let parsed = parse_file_arg(&path, tmp.path()).unwrap();
-    assert_eq!(parsed.path, path);
+    let parsed = parse_file_arg(&path, &AbsolutePath::rooted(tmp.path())).unwrap();
+    assert_eq!(parsed.path, AbsolutePath::rooted(&path));
     assert_eq!(
         parsed.pos, None,
         "a broken symlink still counts as the user's chosen path: must never be split"
@@ -179,26 +182,30 @@ fn non_utf8_path_is_always_literal() {
 
     let raw = OsStr::from_bytes(b"weird-\xff-path:12");
     let path = PathBuf::from(raw);
-    let parsed = parse_file_arg(&path, &std::env::temp_dir()).unwrap();
-    assert_eq!(parsed.path, path);
+    let parsed = parse_file_arg(&path, &AbsolutePath::rooted(std::env::temp_dir())).unwrap();
+    assert_eq!(
+        parsed.path,
+        AbsolutePath::rooted(std::env::temp_dir().join(&path))
+    );
     assert_eq!(parsed.pos, None);
 }
 
 #[cfg(windows)]
 #[test]
 fn bare_drive_letter_is_not_split_as_a_position() {
+    // Split, `C` would be an ordinary file name; unsplit, `C:12` is
+    // drive-relative and cannot be made absolute.
     let arg = PathBuf::from("C:12");
-    let parsed = parse_file_arg(&arg, &std::env::temp_dir()).unwrap();
-    assert_eq!(parsed.path, arg);
-    assert_eq!(parsed.pos, None);
+    let err = parse_file_arg(&arg, &AbsolutePath::rooted(std::env::temp_dir())).unwrap_err();
+    assert!(err.starts_with("C:12: "), "got: {err}");
 }
 
 #[cfg(windows)]
 #[test]
 fn drive_absolute_path_with_line_suffix_splits_normally() {
     let arg = PathBuf::from(r"C:\src\a.rs:12");
-    let parsed = parse_file_arg(&arg, &std::env::temp_dir()).unwrap();
-    assert_eq!(parsed.path, PathBuf::from(r"C:\src\a.rs"));
+    let parsed = parse_file_arg(&arg, &AbsolutePath::rooted(std::env::temp_dir())).unwrap();
+    assert_eq!(parsed.path, AbsolutePath::rooted(r"C:\src\a.rs"));
     assert_eq!(
         parsed.pos,
         Some(PathPosition {

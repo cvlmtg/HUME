@@ -1,5 +1,4 @@
 use std::ops::Range;
-use std::path::Path;
 
 use hume_platform::path::AbsolutePath;
 
@@ -23,7 +22,7 @@ pub(super) fn complete_path(
     cursor: usize,
     ctx: &CompletionCtx<'_>,
 ) -> (Range<usize>, Vec<CompletionItem>) {
-    complete_path_with_expand(input, cursor, ctx, false, hume_platform::path::expand)
+    complete_path_with(input, cursor, ctx, false, AbsolutePath::from_typed)
 }
 
 /// `:cd`'s variant: non-directory entries are filtered out.
@@ -32,32 +31,32 @@ pub(super) fn complete_path_dirs_only(
     cursor: usize,
     ctx: &CompletionCtx<'_>,
 ) -> (Range<usize>, Vec<CompletionItem>) {
-    complete_path_with_expand(input, cursor, ctx, true, hume_platform::path::expand)
+    complete_path_with(input, cursor, ctx, true, AbsolutePath::from_typed)
 }
 
 /// Testable core of [`complete_path`]/[`complete_path_dirs_only`]: the
 /// argument is everything after the command name, split into a directory
 /// prefix and a filename prefix, inserted as typed.
 ///
-/// `expand_fn` mirrors `hume_platform::path::expand`: given a raw path
-/// string it returns the tilde/env-var expanded form.  Tests pass a stub
-/// closure; production calls this with the real `expand`.
-fn complete_path_with_expand<F>(
+/// `resolve_dir` makes the typed directory prefix absolute against the cwd:
+/// production passes [`AbsolutePath::from_typed`], tests a stub that expands
+/// a fake `~` or variable.
+fn complete_path_with<F>(
     input: &str,
     cursor: usize,
     ctx: &CompletionCtx<'_>,
     dirs_only: bool,
-    expand_fn: F,
+    resolve_dir: F,
 ) -> (Range<usize>, Vec<CompletionItem>)
 where
-    F: for<'a> Fn(&'a str) -> std::borrow::Cow<'a, str>,
+    F: Fn(&str, &AbsolutePath) -> std::io::Result<AbsolutePath>,
 {
     let (arg_start, prefix) = arg_prefix(input, cursor);
     let arg_end = token_end_at(input, cursor, &[' ']);
     let (dir_str, file_prefix) = hume_platform::path::split_path_at_sep(prefix);
     // Resolved the way `:e` resolves the path it completes; a Windows
     // drive-relative directory cannot be, and lists nothing.
-    let Ok(dir) = AbsolutePath::from_typed(Path::new(&*expand_fn(dir_str)), ctx.cwd) else {
+    let Ok(dir) = resolve_dir(dir_str, ctx.cwd) else {
         return (arg_start..arg_end, Vec::new());
     };
     let items = hume_platform::path::completion_entries(&dir, file_prefix, dirs_only)

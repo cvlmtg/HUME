@@ -1,6 +1,5 @@
 use std::ffi::{OsStr, OsString};
 use std::io;
-use std::path::Path;
 
 use hume_editing::text::BufferText;
 use hume_platform::io::FileMeta;
@@ -127,10 +126,9 @@ pub(in crate::editor) struct FileTarget {
 }
 
 impl FileTarget {
-    /// `path` as typed against `cwd` (see [`AbsolutePath::from_typed`]), and
-    /// the file it names. Fails as either step fails.
-    pub(in crate::editor) fn from_typed(path: &Path, cwd: &AbsolutePath) -> io::Result<Self> {
-        let typed = AbsolutePath::from_typed(path, cwd)?;
+    /// `typed` and the file it names. Fails as [`AbsolutePath::resolve`]
+    /// fails.
+    pub(in crate::editor) fn new(typed: AbsolutePath) -> io::Result<Self> {
         let resolved = typed.resolve()?;
         Ok(Self { typed, resolved })
     }

@@ -10,7 +10,9 @@ fn set_cwd_updates_editor_cwd() {
     let canonical = cwd.path();
     let mut ed = editor_from("-[h]>ello\n");
 
-    ed.state.set_cwd(&canonical).unwrap();
+    ed.state
+        .set_cwd(&hume_platform::path::AbsolutePath::rooted(&canonical))
+        .unwrap();
 
     assert_eq!(
         ed.state.cwd.as_path(),
@@ -26,7 +28,10 @@ fn set_cwd_rejects_non_directory() {
     let mut ed = editor_from("-[h]>ello\n");
     let before_editor = ed.state.cwd.clone();
 
-    let err = ed.state.set_cwd(&canonical).unwrap_err();
+    let err = ed
+        .state
+        .set_cwd(&hume_platform::path::AbsolutePath::rooted(&canonical))
+        .unwrap_err();
     assert_eq!(err.kind(), std::io::ErrorKind::NotADirectory);
     // cwd must be unchanged on failure
     assert_eq!(
@@ -41,7 +46,9 @@ fn set_cwd_rejects_nonexistent_path() {
 
     let err = ed
         .state
-        .set_cwd(std::path::Path::new("/definitely/not/a/real/path/xyz123"))
+        .set_cwd(&hume_platform::path::AbsolutePath::rooted(
+            "/definitely/not/a/real/path/xyz123",
+        ))
         .unwrap_err();
     assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
 }
@@ -71,7 +78,11 @@ fn typed_cd_relative_path() {
 
     let mut ed = editor_from("-[h]>ello\n");
     // Set the editor cwd to the parent first.
-    ed.state.set_cwd(&canonical_parent).unwrap();
+    ed.state
+        .set_cwd(&hume_platform::path::AbsolutePath::rooted(
+            &canonical_parent,
+        ))
+        .unwrap();
 
     // Now :cd to the relative name "subdir".
     ed.execute_typed("cd", Some("subdir")).unwrap();
@@ -195,7 +206,9 @@ fn typed_pwd_reports_current_directory() {
     let cwd = Sandbox::new();
     let canonical = cwd.path();
     let mut ed = editor_from("-[h]>ello\n");
-    ed.state.set_cwd(&canonical).unwrap();
+    ed.state
+        .set_cwd(&hume_platform::path::AbsolutePath::rooted(&canonical))
+        .unwrap();
 
     ed.execute_typed("pwd", None).unwrap();
 
@@ -213,7 +226,9 @@ fn typed_pwd_long_alias_works() {
     let cwd = Sandbox::new();
     let canonical = cwd.path();
     let mut ed = editor_from("-[h]>ello\n");
-    ed.state.set_cwd(&canonical).unwrap();
+    ed.state
+        .set_cwd(&hume_platform::path::AbsolutePath::rooted(&canonical))
+        .unwrap();
 
     ed.execute_typed("print-working-directory", None).unwrap();
 

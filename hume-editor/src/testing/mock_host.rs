@@ -185,11 +185,14 @@ impl BufferHost for MockHost {
     }
     fn set_cwd(
         &mut self,
-        _path: &std::path::Path,
+        _path: &hume_platform::path::AbsolutePath,
     ) -> Result<hume_platform::path::AbsolutePath, String> {
         Err("MockHost: set_cwd not available".into())
     }
-    fn open_buffer(&mut self, _path: &std::path::Path) -> Result<BufferId, String> {
+    fn open_buffer(
+        &mut self,
+        _path: &hume_platform::path::AbsolutePath,
+    ) -> Result<BufferId, String> {
         Err("MockHost: open_buffer not available".into())
     }
     fn close_buffer(&mut self, _id: BufferId, _discard: DiscardUnsaved) -> Result<(), String> {

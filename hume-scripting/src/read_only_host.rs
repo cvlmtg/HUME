@@ -3,7 +3,6 @@
 //! frame it renders into).
 
 use std::cell::{Cell, RefCell};
-use std::path::Path;
 
 use hume_engine::pipeline::BufferId;
 use hume_platform::path::AbsolutePath;
@@ -241,10 +240,10 @@ impl BufferHost for ReadOnlyHost<'_> {
     fn search_path(&self) -> Option<std::ffi::OsString> {
         self.inner.borrow_mut().buffers().search_path()
     }
-    fn set_cwd(&mut self, _path: &Path) -> Result<AbsolutePath, String> {
+    fn set_cwd(&mut self, _path: &AbsolutePath) -> Result<AbsolutePath, String> {
         Err(self.refuse("set_cwd"))
     }
-    fn open_buffer(&mut self, _path: &Path) -> Result<BufferId, String> {
+    fn open_buffer(&mut self, _path: &AbsolutePath) -> Result<BufferId, String> {
         Err(self.refuse("open_buffer"))
     }
     fn close_buffer(&mut self, _id: BufferId, _discard: DiscardUnsaved) -> Result<(), String> {

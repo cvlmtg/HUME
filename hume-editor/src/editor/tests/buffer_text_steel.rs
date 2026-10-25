@@ -684,7 +684,7 @@ fn selections_linewise_true_for_a_buffer_shown_in_a_non_focused_pane() {
 
     let extra = tmp.path().join("other.rs");
     std::fs::write(&extra, "fn other() {}\n").unwrap();
-    ed.open_extra_file(&extra);
+    ed.open_extra_file(&hume_platform::path::AbsolutePath::rooted(&extra));
     let other_bid = ed
         .state
         .buffers

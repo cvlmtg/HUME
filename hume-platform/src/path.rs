@@ -5,10 +5,10 @@
 //! emit `/` in completion replacements (Windows file APIs accept forward
 //! slashes, and it keeps the rest of the completion logic uniform).
 //!
-//! This module also provides `expand`, which applies shell-style tilde and
-//! environment-variable expansion to user-supplied path strings before they
-//! are resolved by the filesystem.  Env-var syntax is native per platform:
-//! `$VAR` / `${VAR}` on Unix, `%VAR%` on Windows.
+//! Text a person typed becomes a path only through
+//! [`AbsolutePath::from_typed`], which applies shell-style tilde and
+//! environment-variable expansion (`expand`) first.  Env-var syntax is native
+//! per platform: `$VAR` / `${VAR}` on Unix, `%VAR%` on Windows.
 
 use std::borrow::Cow;
 use std::io;
@@ -42,8 +42,14 @@ const ENV_SIGIL: char = '%';
 ///
 /// Returns `Cow::Borrowed(s)` unchanged when no expansion is needed, avoiding
 /// allocation for the common case of plain absolute or relative paths.
-pub fn expand(s: &str) -> Cow<'_, str> {
+fn expand(s: &str) -> Cow<'_, str> {
     expand_with(s, |k| std::env::var(k), crate::dirs::home_dir)
+}
+
+/// Whether `text` a person typed names an absolute path once expanded as
+/// [`AbsolutePath::from_typed`] expands it.
+pub fn is_absolute_typed(text: &str) -> bool {
+    Path::new(expand(text).as_ref()).is_absolute()
 }
 
 /// Testable core of [`expand`].

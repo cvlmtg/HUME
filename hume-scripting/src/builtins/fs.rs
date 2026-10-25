@@ -10,9 +10,9 @@
 //! Steel's own `delete-directory!`), a directory swap the budget cannot
 //! split, and file locks released when the session ends.
 //!
-//! The path arguments of `replace-dir!`, `%delete-directory!`, the lock pair
-//! and `path-entries` are [`ScriptPath`](super::args::ScriptPath)s, resolved
-//! as `:e` resolves a typed one.
+//! The path arguments of `set-cwd!`, `replace-dir!`, `%delete-directory!`,
+//! the lock pair and `path-entries` are
+//! [`ScriptPath`](super::args::ScriptPath)s.
 //!
 //! | Steel name      | Signature                      | Notes                                        |
 //! |-----------------|--------------------------------|----------------------------------------------|
@@ -38,6 +38,8 @@
 
 use std::fs::{File, TryLockError};
 use std::path::{Path, PathBuf};
+
+use hume_platform::path::AbsolutePath;
 
 use steel::rvals::{IntoSteelVal, SteelVal};
 
@@ -93,11 +95,8 @@ pub(crate) fn cwd(ctx: &mut SteelCtx) -> SteelResult {
 /// one with it, like `:cd path`: a relative `path` joins onto the current
 /// one, and the result is canonicalized. Raises when `path` is not a
 /// directory. Backs the prelude's `change-current-directory!`.
-pub(crate) fn set_cwd(ctx: &mut SteelCtx, path: String) -> SteelResult {
-    ctx.host
-        .buffers()
-        .set_cwd(Path::new(&path))
-        .map_err(generic_err)?;
+pub(crate) fn set_cwd(ctx: &mut SteelCtx, path: AbsolutePath) -> SteelResult {
+    ctx.host.buffers().set_cwd(&path).map_err(generic_err)?;
     Ok(SteelVal::Void)
 }
 
@@ -111,7 +110,11 @@ pub(crate) fn set_cwd(ctx: &mut SteelCtx, path: String) -> SteelResult {
 /// a backup a crash left there is cleared first. A backup that cannot be
 /// deleted is logged as a warning and the call still succeeds, since `src`
 /// is in place by then.
-pub(crate) fn replace_dir(ctx: &mut SteelCtx, src: PathBuf, dest: PathBuf) -> SteelResult {
+pub(crate) fn replace_dir(
+    ctx: &mut SteelCtx,
+    src: AbsolutePath,
+    dest: AbsolutePath,
+) -> SteelResult {
     let (Some(parent), Some(name)) = (dest.parent(), dest.file_name()) else {
         return Err(generic_err(format!(
             "replace-dir!: {} names no directory to replace",
@@ -175,7 +178,7 @@ fn swap_dir_in(src: &Path, dest: &Path, backup: &Path) -> std::io::Result<()> {
 /// `(%delete-directory! dir)`, which the prelude's `delete-directory!`
 /// calls: Steel's own `delete-directory!` (a missing `dir` raises), run with
 /// the session's budget stopped. A relative `dir` joins onto `(cwd)`.
-pub(crate) fn delete_directory(ctx: &mut SteelCtx, dir: PathBuf) -> SteelResult {
+pub(crate) fn delete_directory(ctx: &mut SteelCtx, dir: AbsolutePath) -> SteelResult {
     ctx.while_waiting(|| std::fs::remove_dir_all(&dir))?;
     Ok(SteelVal::Void)
 }
@@ -193,8 +196,8 @@ fn remove_dir_tree_if_present(dir: &Path) -> std::io::Result<()> {
 /// `unlock-file!` or the end of the session, whichever comes first, and the
 /// OS drops it when the process exits, so no lock is ever left over. Taking
 /// a lock this session already holds raises.
-pub(crate) fn try_lock_file(ctx: &mut SteelCtx, path: PathBuf) -> SteelResult {
-    if ctx.file_locks.contains_key(&path) {
+pub(crate) fn try_lock_file(ctx: &mut SteelCtx, path: AbsolutePath) -> SteelResult {
+    if ctx.file_locks.contains_key(path.as_path()) {
         return Err(generic_err(format!(
             "try-lock-file!: this session already holds {}",
             path.display()
@@ -210,7 +213,7 @@ pub(crate) fn try_lock_file(ctx: &mut SteelCtx, path: PathBuf) -> SteelResult {
         .map_err(lock_err)?;
     match file.try_lock() {
         Ok(()) => {
-            ctx.file_locks.insert(path, HeldLock(file));
+            ctx.file_locks.insert(path.to_path_buf(), HeldLock(file));
             Ok(SteelVal::BoolV(true))
         }
         Err(TryLockError::WouldBlock) => Ok(SteelVal::BoolV(false)),
@@ -235,9 +238,9 @@ impl Drop for HeldLock {
 
 /// `(unlock-file! path)`: releases the lock `try-lock-file!` took on `path`
 /// this session. Raises when this session does not hold it.
-pub(crate) fn unlock_file(ctx: &mut SteelCtx, path: PathBuf) -> SteelResult {
+pub(crate) fn unlock_file(ctx: &mut SteelCtx, path: AbsolutePath) -> SteelResult {
     ctx.file_locks
-        .remove(&path)
+        .remove(path.as_path())
         .map(|_| SteelVal::Void)
         .ok_or_else(|| {
             generic_err(format!(
@@ -252,7 +255,7 @@ pub(crate) fn unlock_file(ctx: &mut SteelCtx, path: PathBuf) -> SteelResult {
 /// `(path-entries dir prefix)`: the names in `dir` (relative to `(cwd)`)
 /// that a typed path ending in `prefix` completes to, as `:e` lists them:
 /// [`hume_platform::path::completion_entries`]'s rule.
-pub(crate) fn path_entries(_ctx: &mut SteelCtx, dir: PathBuf, prefix: String) -> SteelResult {
+pub(crate) fn path_entries(_ctx: &mut SteelCtx, dir: AbsolutePath, prefix: String) -> SteelResult {
     Ok(string_list(hume_platform::path::completion_entries(
         &dir, &prefix, false,
     )))

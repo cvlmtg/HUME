@@ -3,24 +3,39 @@ use std::path::Path;
 use super::AbsolutePath;
 
 #[test]
-fn from_typed_joins_a_relative_path_onto_cwd_and_collapses_dots() {
+fn from_path_joins_a_relative_path_onto_cwd_and_collapses_dots() {
     let cwd = AbsolutePath::rooted("/home/u");
-    let typed = AbsolutePath::from_typed(Path::new("./a/./b.txt"), &cwd).unwrap();
+    let typed = AbsolutePath::from_path(Path::new("./a/./b.txt"), &cwd).unwrap();
     assert_eq!(typed, AbsolutePath::rooted("/home/u/a/b.txt"));
 }
 
 #[test]
-fn from_typed_keeps_an_absolute_path() {
+fn from_path_keeps_an_absolute_path() {
     let path = AbsolutePath::rooted("/srv/data/f.txt");
-    let typed = AbsolutePath::from_typed(&path, &AbsolutePath::rooted("/home/u")).unwrap();
+    let typed = AbsolutePath::from_path(&path, &AbsolutePath::rooted("/home/u")).unwrap();
     assert_eq!(typed, path);
+}
+
+#[test]
+fn from_typed_expands_a_leading_tilde() {
+    let home = crate::dirs::home_dir().expect("a home directory");
+    let cwd = AbsolutePath::rooted("/elsewhere");
+    let typed = AbsolutePath::from_typed("~/notes.md", &cwd).unwrap();
+    assert_eq!(typed.as_path(), home.join("notes.md"));
+}
+
+#[test]
+fn from_path_keeps_a_leading_tilde() {
+    let cwd = AbsolutePath::rooted("/elsewhere");
+    let given = AbsolutePath::from_path(Path::new("~/notes.md"), &cwd).unwrap();
+    assert_eq!(given, AbsolutePath::rooted("/elsewhere/~/notes.md"));
 }
 
 #[cfg(windows)]
 #[test]
-fn from_typed_rejects_a_drive_relative_path() {
+fn from_path_rejects_a_drive_relative_path() {
     let cwd = AbsolutePath::rooted(r"C:\home\u");
-    let err = AbsolutePath::from_typed(Path::new("D:b.txt"), &cwd).unwrap_err();
+    let err = AbsolutePath::from_path(Path::new("D:b.txt"), &cwd).unwrap_err();
     assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
 }
 

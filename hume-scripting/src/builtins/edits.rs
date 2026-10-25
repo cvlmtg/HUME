@@ -13,7 +13,7 @@ use crate::types::PaneHandle;
 use super::SteelResult;
 use super::args::{
     CHAR_OFFSET, END_CHAR, START_CHAR, hash_entry, hash_list, list_items, optional_usize_arg,
-    single_key_arg, string_arg, strings_arg,
+    single_key_arg, string_arg, strings_arg, under_cwd,
 };
 use super::errors::{generic_err, require_cap};
 use super::wire::{tagged_json_arg, wire_text_edit_arg};
@@ -123,6 +123,11 @@ pub(crate) fn goto_location(ctx: &mut SteelCtx, pane: PaneHandle, loc: SteelVal)
                     steel::stop!(Generic =>
                         "goto-location!: target must be a pane or a path, not the URI {}", path);
                 }
+                let path = under_cwd(
+                    std::path::Path::new(&path),
+                    &ctx.host.buffers().cwd(),
+                    "goto-location! target",
+                )?;
                 let line = fields.usize("line")?;
                 let char_col = fields.usize("char-col")?;
                 require_cap(ctx.host.edits(), "goto-location!")?

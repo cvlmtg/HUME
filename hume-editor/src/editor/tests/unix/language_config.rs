@@ -51,7 +51,7 @@ fn boot_with_file(file: &str, dirs: Dirs, fixture: &ReloadFixture) -> Editor {
     std::fs::create_dir_all(&fixture.data_dir).unwrap();
     std::fs::write(&path, "x\n").unwrap();
     let mut ed = Editor::open(
-        Some(path),
+        Some(AbsolutePath::rooted(path)),
         crate::editor::run::HEADLESS_TERMINAL,
         no_op_wake(),
         dirs,
