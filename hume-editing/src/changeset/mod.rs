@@ -179,18 +179,15 @@ fn advance_op(
 /// instead of O(ops × n) for `n` fresh `map_pos` calls. Same amortized-cursor
 /// shape as `IntervalCursor` in `hume_engine::style::highlight`.
 pub struct PosMapCursor<'a> {
-    ops: &'a [Operation],
-    idx: usize,
-    old: usize,
+    walk: OpWalk<'a>,
+    /// The new-doc char offset matching `walk.old`.
     new: usize,
 }
 
 impl<'a> PosMapCursor<'a> {
     pub fn new(ops: &'a [Operation]) -> Self {
         Self {
-            ops,
-            idx: 0,
-            old: 0,
+            walk: OpWalk::new(ops),
             new: 0,
         }
     }
@@ -218,14 +215,17 @@ impl<'a> PosMapCursor<'a> {
     pub fn map_anchor(&mut self, pos: CharOffset, assoc: Assoc) -> MappedPos {
         let pos = pos.index();
         debug_assert!(
-            pos >= self.old,
+            pos >= self.walk.old,
             "PosMapCursor: queries must be non-decreasing"
         );
-        let hit = self.seek(&mut CharProbe(pos));
+        let hit = self.walk.seek(&mut CharProbe {
+            pos,
+            new: &mut self.new,
+        });
         // Bare usize: `old`/`new` are running cursors advanced by op
         // *lengths*, arithmetic `CharOffset` has no `Add`/`Sub` for.
         let (mapped, anchor_deleted) = match hit {
-            Hit::Retained => (self.new + (pos - self.old), false),
+            Hit::Retained => (self.new + (pos - self.walk.old), false),
             Hit::Deleted => (self.new, true),
             Hit::InsertPoint(_) if assoc == Assoc::Before => (self.new, false),
             Hit::InsertPoint(s) => (self.new + s.chars().count(), false),
@@ -233,6 +233,24 @@ impl<'a> PosMapCursor<'a> {
         MappedPos {
             pos: CharOffset::new(mapped),
             anchor_deleted,
+        }
+    }
+}
+
+/// The op walk both cursors share: the op the previous query stopped at and
+/// the old-doc char offset it starts at.
+struct OpWalk<'a> {
+    ops: &'a [Operation],
+    idx: usize,
+    old: usize,
+}
+
+impl<'a> OpWalk<'a> {
+    fn new(ops: &'a [Operation]) -> Self {
+        Self {
+            ops,
+            idx: 0,
+            old: 0,
         }
     }
 
@@ -252,7 +270,6 @@ impl<'a> PosMapCursor<'a> {
                     }
                     probe.passed(op, self.old);
                     self.old += n;
-                    self.new += n;
                 }
                 Operation::Delete(n) => {
                     if probe.lies_before(self.old + n) {
@@ -266,7 +283,6 @@ impl<'a> PosMapCursor<'a> {
                         return Hit::InsertPoint(s);
                     }
                     probe.passed(op, self.old);
-                    self.new += s.chars().count();
                 }
             }
             self.idx += 1;
@@ -275,18 +291,17 @@ impl<'a> PosMapCursor<'a> {
     }
 }
 
-/// The position a [`PosMapCursor`] query asks about, in whatever unit the
-/// query counts in.
+/// The position an [`OpWalk`] query asks about, in whatever unit the query
+/// counts in.
 trait Probe {
     /// Whether the position lies before old-doc char offset `old`.
     fn lies_before(&mut self, old: usize) -> bool;
 
-    /// Sees each op the cursor walks past, with the old-doc offset it
-    /// starts at.
+    /// Sees each op the walk passes, with the old-doc offset it starts at.
     fn passed(&mut self, op: &Operation, old: usize);
 }
 
-/// Where a [`PosMapCursor`] query landed: inside a `Retain` (or past every
+/// Where an [`OpWalk`] query landed: inside a `Retain` (or past every
 /// op, which maps the same way), inside a `Delete`, or at the point an
 /// `Insert` adds its text.
 enum Hit<'a> {
@@ -295,15 +310,25 @@ enum Hit<'a> {
     InsertPoint(&'a str),
 }
 
-/// A query for an old-doc char offset.
-struct CharProbe(usize);
+/// A query for old-doc char offset `pos`, advancing `new` past the text
+/// each op it passes leaves in the new doc.
+struct CharProbe<'n> {
+    pos: usize,
+    new: &'n mut usize,
+}
 
-impl Probe for CharProbe {
+impl Probe for CharProbe<'_> {
     fn lies_before(&mut self, old: usize) -> bool {
-        self.0 < old
+        self.pos < old
     }
 
-    fn passed(&mut self, _: &Operation, _: usize) {}
+    fn passed(&mut self, op: &Operation, _: usize) {
+        match op {
+            Operation::Retain(n) => *self.new += n,
+            Operation::Delete(_) => {}
+            Operation::Insert(s) => *self.new += s.chars().count(),
+        }
+    }
 }
 
 /// Maps content lines of the text before a change into the text after it.
@@ -312,19 +337,19 @@ impl Probe for CharProbe {
 /// it, joining the line's end, and the line maps to where that text starts.
 ///
 /// The answer is the line of the line's `\n` mapped through a
-/// [`PosMapCursor`] with [`Assoc::Before`]: it is that cursor's walk, asked
-/// in line units. Line `L`'s `\n` lies before offset `x` when `L` is below
+/// [`PosMapCursor`] with [`Assoc::Before`]: it is the same op walk, asked in
+/// line units. Line `L`'s `\n` lies before offset `x` when `L` is below
 /// the count of `\n`s before `x`, a count read from the rope once per op, so
 /// a batch of lines costs one lookup per op walked, none per line.
 pub struct LineMapCursor<'a> {
-    cursor: PosMapCursor<'a>,
+    walk: OpWalk<'a>,
     probe: LineProbe<'a>,
 }
 
 impl<'a> LineMapCursor<'a> {
     pub(crate) fn new(before: &'a BufferText, changes: &'a ChangeSet) -> Self {
         Self {
-            cursor: PosMapCursor::new(&changes.ops),
+            walk: OpWalk::new(&changes.ops),
             probe: LineProbe {
                 text: before,
                 line: 0,
@@ -351,7 +376,7 @@ impl<'a> LineMapCursor<'a> {
             "map_line: lines must be non-decreasing"
         );
         self.probe.line = line.index();
-        match self.cursor.seek(&mut self.probe) {
+        match self.walk.seek(&mut self.probe) {
             Hit::Deleted => None,
             Hit::Retained | Hit::InsertPoint(_) => {
                 let probe = &self.probe;
