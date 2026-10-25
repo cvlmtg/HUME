@@ -193,7 +193,7 @@ Macros record and replay sequences of keys and are stored in registers. Register
 | `q <0-9>` | Replay a numbered register |
 | `<count> q q` | Replay register `q` `<count>` times |
 
-Recording is ignored in read-only buffers, and while a macro is already recording or replaying, so a macro can't record itself or nest.
+Recording and replay are ignored while a macro is already replaying, and replay while one is recording, so a macro can't record itself or nest. In a read-only buffer a macro still moves the selections, and each edit it makes is refused.
 
 While a macro is recording, the default statusline shows `[recording @q]`, with the register being recorded into, on its right. It is the `"MacroRecording"` element; see [Statusline](settings.md#statusline) to place it in a custom layout.
 

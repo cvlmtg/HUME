@@ -227,13 +227,10 @@ pub(super) fn begin_typed_run(
 
 /// Enter Insert mode as a repeatable insert action.
 ///
-/// Refused if the focused buffer is read-only. Clears any
-/// pending `"<reg>` prefix: `i`/`a`/`o` aren't operators, so a register spec
-/// typed just before one names nothing to write into (unlike `d`/`c`/`p`,
-/// which `ensure_writable` clears it for on the assumption the command
-/// consumed it). It's cleared unconditionally so a read-only refusal and a
-/// normal session agree: a register spec applies only to the command
-/// immediately after `"`.
+/// Refused if the focused buffer is read-only. Clears any pending `"<reg>`
+/// prefix: `i`/`a`/`o` write no register, and a register spec applies only
+/// to the command immediately after `"`. The clear is unconditional, so a
+/// read-only refusal and a normal session agree.
 ///
 /// `cmd_change` (`c`) is the one caller for which this would be wrong: it's
 /// itself a genuine register-consuming operator that delegates its mode

@@ -156,7 +156,7 @@ fn a_read_only_buffer_refuses_before_anything_runs() {
     keys(&mut ed, "sort");
     ed.handle_key(key_enter());
     assert!(!ed.doc().is_busy());
-    assert_eq!(status(&ed), "Buffer is read-only");
+    assert_eq!(status(&ed), read_only_refusal(&ed));
 }
 
 #[test]

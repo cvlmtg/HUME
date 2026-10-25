@@ -5,9 +5,7 @@ use hume_scripting::host::NativeCall;
 use pretty_assertions::assert_eq;
 
 /// One `undo_n(1)` walk through the history funnel, on the focused pane.
-fn undo_through_funnel(
-    ed: &mut Editor,
-) -> Result<doc_ops::HistoryWalk, crate::editor::error::CommandError> {
+fn undo_through_funnel(ed: &mut Editor) -> Result<usize, crate::editor::error::CommandError> {
     let pane = ed.view.focused_pane();
     let buffer = ed.focused_buffer_id();
     let (buffers, mut stores) = ed.state.edit_parts();
@@ -37,7 +35,7 @@ fn history_walk_commits_own_paste_session_first() {
 
     let walk = undo_through_funnel(&mut ed).expect("an own paste session is not a conflict");
 
-    assert_eq!(walk, doc_ops::HistoryWalk::Took(1));
+    assert_eq!(walk, 1);
     assert_eq!(
         ed.doc().text().to_string(),
         "hello\n",
@@ -73,10 +71,7 @@ fn history_walk_refuses_own_insert_session() {
 // ── goto_revision ─────────────────────────────────────────────────────────────
 
 /// `commands::edit::goto_revision` on the focused pane.
-fn goto(
-    ed: &mut Editor,
-    revision: usize,
-) -> Result<doc_ops::HistoryWalk, crate::editor::error::CommandError> {
+fn goto(ed: &mut Editor, revision: usize) -> Result<usize, crate::editor::error::CommandError> {
     let pane = crate::editor::commands::CommandPane::existing(&ed.view, ed.view.focused_pane())
         .expect("the focused pane exists");
     crate::editor::commands::goto_revision(&mut ed.state, &ed.view, pane, revision)
@@ -110,11 +105,7 @@ fn goto_revision_jumps_across_branches_through_the_funnel() {
     assert_ne!(br.a.0, br.b.0, "setup: the branches differ");
 
     let walk = goto(&mut ed, br.a.1).expect("revision a is live");
-    assert_eq!(
-        walk,
-        doc_ops::HistoryWalk::Took(2),
-        "up to the root, down to a"
-    );
+    assert_eq!(walk, 2, "up to the root, down to a");
     assert_eq!(state(&ed), br.a.0);
     assert_eq!(ed.doc().revision_id().index(), br.a.1);
 
@@ -135,7 +126,7 @@ fn goto_revision_to_current_is_a_zero_step_walk() {
 
     let walk = goto(&mut ed, br.b.1).expect("the current revision is live");
 
-    assert_eq!(walk, doc_ops::HistoryWalk::Took(0));
+    assert_eq!(walk, 0);
     assert_eq!(state(&ed), br.b.0);
     assert_eq!(ed.doc().text().generation(), generation);
 }
@@ -157,9 +148,9 @@ fn goto_revision_on_read_only_buffer_is_refused() {
     let br = two_branches(&mut ed);
     ed.doc_mut().read_only = true;
 
-    let walk = goto(&mut ed, br.a.1).expect("a refusal is not an error");
+    let refusal = goto(&mut ed, br.a.1).expect_err("a read-only buffer refuses the walk");
 
-    assert_eq!(walk, doc_ops::HistoryWalk::RefusedReadOnly);
+    assert_eq!(refusal.message(), read_only_refusal(&ed));
     assert_eq!(state(&ed), br.b.0);
     assert_eq!(ed.doc().revision_id().index(), br.b.1);
 }
@@ -318,9 +309,9 @@ fn goto_revision_on_read_only_buffer_refuses_before_resolving_the_id() {
     two_branches(&mut ed);
     ed.doc_mut().read_only = true;
 
-    let walk = goto(&mut ed, 999).expect("a refusal is not an error");
+    let refusal = goto(&mut ed, 999).expect_err("a read-only buffer refuses the walk");
 
-    assert_eq!(walk, doc_ops::HistoryWalk::RefusedReadOnly);
+    assert_eq!(refusal.message(), read_only_refusal(&ed));
 }
 
 #[test]

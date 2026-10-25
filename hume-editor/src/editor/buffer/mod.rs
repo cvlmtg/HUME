@@ -264,12 +264,12 @@ pub(in crate::editor) enum TextRefusal {
 }
 
 impl TextRefusal {
-    /// What refusing a change to `buffer`'s text reports. A busy buffer is
+    /// What refusing a change to `buffer`'s text reports. The buffer is
     /// named: the change can come from a script, a timer or a language
     /// server, for a buffer not in view.
     pub(in crate::editor) fn message(self, buffer: &Buffer) -> String {
         match self {
-            Self::ReadOnly => "Buffer is read-only".to_string(),
+            Self::ReadOnly => format!("{} is read-only", buffer.display_name()),
             Self::Busy => format!("{} is busy: a pipe is running", buffer.display_name()),
         }
     }
@@ -434,6 +434,13 @@ impl Buffer {
         } else {
             None
         }
+    }
+
+    /// `Err` with [`Self::text_refusal`]'s message when the text may not
+    /// change now.
+    pub(in crate::editor) fn check_text_change(&self) -> Result<(), String> {
+        self.text_refusal()
+            .map_or(Ok(()), |refusal| Err(refusal.message(self)))
     }
 
     /// Hold the text as it is until the returned hold drops.
@@ -649,14 +656,12 @@ impl Buffer {
 
     /// Set the line ending a save writes. Not an edit: no revision is
     /// recorded, so undo does not revert it. Refused while the text may not
-    /// change ([`Self::text_refusal`]).
+    /// change ([`Self::check_text_change`]).
     pub(in crate::editor) fn set_line_ending(
         &mut self,
         line_ending: LineEnding,
     ) -> Result<(), String> {
-        if let Some(refusal) = self.text_refusal() {
-            return Err(refusal.message(self));
-        }
+        self.check_text_change()?;
         self.adopt_line_ending(line_ending);
         Ok(())
     }

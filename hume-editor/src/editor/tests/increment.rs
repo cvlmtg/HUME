@@ -117,7 +117,7 @@ fn a_read_only_buffer_refuses_the_increment() {
     call_counted(&mut ed, "increment", None);
 
     assert_eq!(ed.doc().text().to_string(), before);
-    assert_eq!(ed.state.status_msg.as_deref(), Some("Buffer is read-only"));
+    assert_eq!(status(&ed), read_only_refusal(&ed));
 }
 
 #[test]

@@ -136,8 +136,8 @@ fn earlier_and_later_agree_with_undo_and_redo_on_a_read_only_buffer() {
         ":earlier must not undo on a read-only buffer"
     );
     assert_eq!(
-        ed.state.status_msg.as_deref(),
-        Some("Buffer is read-only"),
+        status(&ed),
+        read_only_refusal(&ed),
         ":earlier must report the same refusal as u"
     );
     ed.state.status_msg = None;
@@ -149,8 +149,8 @@ fn earlier_and_later_agree_with_undo_and_redo_on_a_read_only_buffer() {
         ":later must not redo on a read-only buffer"
     );
     assert_eq!(
-        ed.state.status_msg.as_deref(),
-        Some("Buffer is read-only"),
+        status(&ed),
+        read_only_refusal(&ed),
         ":later must report the same refusal as Ctrl-r"
     );
 }

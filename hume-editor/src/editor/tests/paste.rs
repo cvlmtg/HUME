@@ -1539,7 +1539,7 @@ fn plain_paste_refuses_read_only_buffer() {
         "x\n",
         "read-only buffer must refuse the paste"
     );
-    assert_eq!(ed.state.status_msg.as_deref(), Some("Buffer is read-only"));
+    assert_eq!(status(&ed), read_only_refusal(&ed));
 }
 
 /// A paste reaching the focused pane while its Insert session is still open

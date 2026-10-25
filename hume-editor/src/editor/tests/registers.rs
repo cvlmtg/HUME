@@ -46,18 +46,9 @@ fn register_prefix_clears_after_one_operation() {
     assert_eq!(reg(&ed, '5'), &["hell"], "register '5' unchanged");
 }
 
-/// `i` (and `a`/`o`) don't consume a `"<reg>` prefix the way an operator
-/// like `d`/`c`/`p` does, matching Vim, where a register spec applies to
-/// the operator immediately after it, not to entering Insert mode.
-/// `begin_insert_session` clears the prefix itself, unconditionally, so a
-/// subsequent operator after Insert exits never silently redirects into a
-/// register the user armed before an insert they didn't mean it for, and
-/// so a writable buffer agrees with a read-only one, which already cleared
-/// it via `ensure_writable`.
-///
-/// Without the unconditional clear at the top of `begin_insert_session`,
-/// only `ensure_writable` would clear the register, and only on a
-/// read-only buffer. This test's `d` would then land in register `3`.
+/// `i` (and `a`/`o`) write no register, so they clear a pending `"<reg>`
+/// prefix: an operator after Insert exits must not write into a register
+/// armed before the insert.
 #[test]
 fn insert_session_clears_register_prefix_on_a_writable_buffer() {
     let mut ed = editor_from("-[hell]>o\n");

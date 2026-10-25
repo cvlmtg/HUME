@@ -2,7 +2,7 @@
 // apply-workspace-edit!, goto-location!, and the workspace/applyEdit
 // server-request swap.
 
-use super::lsp_rig::{LspRig, RigSpec};
+use super::lsp_rig::{LspRig, RigSpec, file_uri};
 use super::*;
 use crate::editor::buffer::Buffer;
 use crate::editor::lsp::edits::apply_edit_request_response;
@@ -617,14 +617,11 @@ fn apply_workspace_edit_one_invalid_file_aborts_the_whole_edit() {
     );
 }
 
-/// A file later in the plan with another pane's open insert session must
-/// abort the whole edit *before* any earlier file's changeset is committed:
-/// `edit_session::check_no_conflicting_session` runs in the planning loop now,
-/// not only inside `commit_changeset`'s own check partway through the
-/// commit loop (which would have already mutated `ok.txt` by the time
-/// `conflict.txt` is reached). Called directly through `EditHost`, not the
-/// `apply_wire_workspace_edit`/`lsp-request!` round trip. This needs no LSP
-/// server, only a second pane to issue the edit from.
+/// A file later in the plan with another pane's open insert session aborts
+/// the whole edit before any earlier file's changeset is committed. Called
+/// directly through `EditHost`, not the `apply_wire_workspace_edit`/
+/// `lsp-request!` round trip: this needs no LSP server, only a second pane
+/// to issue the edit from.
 #[test]
 fn apply_workspace_edit_conflicting_session_on_another_pane_leaves_earlier_files_untouched() {
     use crate::editor::commands::open_pane_in_layout;
@@ -708,6 +705,57 @@ fn apply_workspace_edit_conflicting_session_on_another_pane_leaves_earlier_files
         "Zghijkl\n",
         "conflict.txt keeps only its own still-open session's own edit, not the workspace edit"
     );
+}
+
+/// A read-only file later in the plan aborts the whole edit before any
+/// earlier file's changeset is committed.
+#[test]
+fn apply_workspace_edit_read_only_file_leaves_earlier_files_untouched() {
+    use hume_scripting::PaneHandle;
+    use hume_scripting::host::EditHost;
+
+    let tmp = tempfile::tempdir().unwrap();
+    let ok_path = tmp.path().join("ok.txt");
+    std::fs::write(&ok_path, "abcdef\n").unwrap();
+    let ok_canonical = AbsolutePath::canonicalize(&ok_path).unwrap();
+    let ok_uri = file_uri(&ok_canonical);
+
+    let ro_path = tmp.path().join("ro.txt");
+    std::fs::write(&ro_path, "ghijkl\n").unwrap();
+    let ro_canonical = AbsolutePath::canonicalize(&ro_path).unwrap();
+    let ro_uri = file_uri(&ro_canonical);
+
+    let mut ed = editor_from("-[x]>\n");
+    ed.execute_typed("e", Some(ro_path.to_str().unwrap()))
+        .unwrap();
+    let ro_bid = ed.focused_buffer_id();
+    ed.state.buffers.get_mut(ro_bid).read_only = true;
+
+    let wsedit = serde_json::json!({"documentChanges": [
+        {"textDocument": {"uri": ok_uri, "version": null},
+         "edits": [wire_edit((0, 0), (0, 1), "Z")]},
+        {"textDocument": {"uri": ro_uri, "version": null},
+         "edits": [wire_edit((0, 0), (0, 1), "Z")]},
+    ]});
+
+    let pane = PaneHandle::with_pane(ro_bid, ed.view.focused_pane());
+    let err = live_host!(ed)
+        .apply_workspace_edit(
+            pane,
+            &wsedit,
+            hume_rope::position_encoding::PositionEncoding::Utf16,
+            None,
+        )
+        .expect_err("ro.txt is read-only");
+    assert!(err.contains("read-only"), "{err}");
+
+    let ok_bid = ed
+        .state
+        .buffers
+        .find_by_path(&ok_canonical)
+        .expect("planning opens ok.txt");
+    assert_eq!(ed.state.buffers.get(ok_bid).text().to_string(), "abcdef\n");
+    assert_eq!(ed.state.buffers.get(ro_bid).text().to_string(), "ghijkl\n");
 }
 
 /// Two `documentChanges` entries for the same file (the spec

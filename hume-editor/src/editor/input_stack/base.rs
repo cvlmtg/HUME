@@ -212,16 +212,15 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
     // ── `Q` / `q` / `"` intercepts (bare key, at trie root, no modifiers) ──
     // `Q` toggles recording; `q` triggers replay. Recording uses uppercase
     // because you do it once; replay uses lowercase because you do it often.
-    // Both are suppressed while a replay is in progress to prevent nesting.
+    // Both are ignored while a replay is in progress, and `q` while recording,
+    // so a macro cannot nest.
     // `"` triggers the register-prefix: the next char names the target register.
     if ed.state.pending.keys().is_empty() && key.modifiers == Modifiers::NONE {
         match key.code {
             KeyCode::Char('Q') => {
                 if let Some((reg, keys)) = ed.state.macros.stop_recording() {
-                    // Always allow stopping an in-progress recording, even if
-                    // the user has navigated to a read-only buffer since starting.
                     ed.state.registers.write_macro(reg, keys);
-                } else if !ed.state.macros.is_replaying() && !ed.focused_buffer_read_only() {
+                } else if !ed.state.macros.is_replaying() {
                     // A count before `Q<reg>` has no meaning for recording,
                     // and would otherwise reach the first recorded key.
                     ed.state.count = None;
@@ -231,13 +230,10 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
                         CharRead::macro_register(MacroRead::Record),
                     );
                 }
-                // During replay, or on a read-only buffer: silently ignore.
                 return;
             }
             KeyCode::Char('q') => {
-                if !ed.state.macros.is_replaying()
-                    && ed.state.macros.recording_register().is_none()
-                    && !ed.focused_buffer_read_only()
+                if !ed.state.macros.is_replaying() && ed.state.macros.recording_register().is_none()
                 {
                     let count = ed.state.count.take().unwrap_or(1);
                     read_char(
@@ -246,7 +242,6 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
                         CharRead::macro_register(MacroRead::Replay { count }),
                     );
                 }
-                // During recording, replay, or on a read-only buffer: silently ignore.
                 return;
             }
             KeyCode::Char('"') => {

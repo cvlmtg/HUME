@@ -146,10 +146,14 @@ pub(in crate::editor) fn apply_focused_edit_grouped(
     }
 }
 
-/// `Err` for an edit-mode command on a read-only buffer, so the caller bails
-/// out with `?` and the dispatch funnel reports the refusal.
+/// [`doc_ops::text_gate`] for `t`'s buffer, for a command that must refuse
+/// before a side effect the edit itself would come too late to prevent
+/// (taking a register, entering Insert, spawning a pipe), or before a
+/// refusal of its own planning that would otherwise be reported instead
+/// (nothing to increment, nothing to sort), so the caller bails out with
+/// `?` and the dispatch funnel reports the refusal.
 ///
-/// Clearing `register_prefix` is part of the refusal: for `d`/`c`/`p`, the
+/// Clearing `register_prefix` is part of the refusal: for `c`/`p`, the
 /// command consumed the `"<reg>` keystrokes, so leaving the prefix armed
 /// would redirect the *next* yank/kill into that register. (Insert session
 /// entry clears the prefix itself before ever reaching here, for a
@@ -160,26 +164,7 @@ pub(in crate::editor::commands) fn ensure_writable(
     view: &EngineView,
     t: CommandPane,
 ) -> Result<(), CommandError> {
-    let buffer = doc(state, view, t);
-    match buffer.text_refusal() {
-        Some(refusal) => {
-            let error = doc_ops::refusal_error(refusal, buffer);
-            Err(refuse_text_change(state, error))
-        }
-        None => Ok(()),
-    }
-}
-
-/// The refusal [`ensure_writable`] returns for `t`'s read-only buffer, for a
-/// caller that learned the buffer is read-only from somewhere else
-/// (`history_step`, from the walk's own result).
-pub(in crate::editor::commands) fn read_only_refusal(
-    state: &mut EditorState,
-    view: &EngineView,
-    t: CommandPane,
-) -> CommandError {
-    let error = doc_ops::refusal_error(TextRefusal::ReadOnly, doc(state, view, t));
-    refuse_text_change(state, error)
+    doc_ops::text_gate(&state.buffers, t.bid(view)).inspect_err(|_| state.register_prefix = None)
 }
 
 /// The refusal of a close that would stop `running`, naming `way_out`, the
@@ -217,12 +202,6 @@ pub(in crate::editor::commands) fn close_refusal(
             pipe_running_refusal(state, view, running, way_out)
         }
     }
-}
-
-/// `error`, with the register prefix the refused command consumed cleared.
-fn refuse_text_change(state: &mut EditorState, error: CommandError) -> CommandError {
-    state.register_prefix = None;
-    error
 }
 
 /// `t`'s pane's selections for `t`'s buffer.

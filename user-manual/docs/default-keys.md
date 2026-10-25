@@ -150,7 +150,7 @@ Text objects (use the `m` prefix):
 | `q <0-9>` | — |  | Replay a numbered register |
 | `<count> q q` | — |  | Replay `q` `<count>` times |
 
-Numbered registers are shared between macros and yanked text: last write wins. Recording is ignored in read-only buffers and during replay.
+Numbered registers are shared between macros and yanked text: last write wins. Recording is ignored during replay.
 
 See [Register prefix](copy-and-paste.md#register-prefix) for the full register list.
 

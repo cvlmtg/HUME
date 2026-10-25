@@ -1049,7 +1049,7 @@ fn wa_preserves_focus_on_single_buffer() {
 /// still save the remaining writable dirty buffers, no mid-batch abort.
 ///
 /// The `&& !buf.is_read_only()` filter in typed_write_all matters: otherwise
-/// write_buffer_by_id returns Err("Buffer is read-only"), the loop propagates
+/// write_buffer_by_id returns the read-only refusal, the loop propagates
 /// it via `?`, and bid2 stays unsaved.
 #[test]
 fn wa_skips_read_only_dirty_buffer() {

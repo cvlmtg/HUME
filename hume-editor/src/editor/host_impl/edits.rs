@@ -9,7 +9,6 @@ use termina::event::KeyEvent;
 use super::EditorHostImpl;
 use crate::editor::buffer::offsets::{checked_char_range, widened_to_clusters};
 use crate::editor::commands::{self, FocusedPane};
-use crate::editor::doc_ops::HistoryWalk;
 use crate::editor::input_stack::PastedText;
 use hume_scripting::PaneHandle;
 use hume_scripting::host::{CharTextEdit, EditHost};
@@ -127,12 +126,9 @@ impl<'a> EditHost for EditorHostImpl<'a> {
 
     fn goto_revision(&mut self, pane: PaneHandle, revision: usize) -> Result<(), String> {
         let t = self.command_pane(pane)?;
-        match commands::goto_revision(self.state, self.view, t, revision)
-            .map_err(|e| e.message().to_string())?
-        {
-            HistoryWalk::Took(_) => Ok(()),
-            HistoryWalk::RefusedReadOnly => Err("goto-revision!: buffer is read-only".to_string()),
-        }
+        commands::goto_revision(self.state, self.view, t, revision)
+            .map(|_| ())
+            .map_err(|e| format!("goto-revision!: {}", e.message()))
     }
 
     fn insert_key(&mut self, pane: PaneHandle, key: KeyEvent) -> Result<(), String> {
@@ -165,7 +161,10 @@ impl<'a> EditHost for EditorHostImpl<'a> {
     fn paste_text(&mut self, pane: PaneHandle, values: Vec<String>) -> Result<(), String> {
         FocusedPane::resolve(self.state, self.view, pane).map_err(|e| e.to_string())?;
         match PastedText::new(values) {
-            Some(text) => self.state.paste(self.view, text).map_err(|e| e.to_string()),
+            Some(text) => self
+                .state
+                .paste(self.view, text)
+                .map_err(|e| format!("paste-text!: {}", e.message())),
             None => Ok(()),
         }
     }

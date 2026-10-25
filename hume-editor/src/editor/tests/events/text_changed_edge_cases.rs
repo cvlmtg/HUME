@@ -34,12 +34,9 @@ fn e_bang_reload_fires_on_text_changed() {
     assert_eq!(fires, 1, ":e! reload must fire on-text-changed");
 }
 
-/// An edit refused by the read-only guard (`doc_ops::apply_doc_edit`'s early
-/// `return` before `cmd` ever runs) never changes the text version, so it must not
-/// fire `on-text-changed`.
-///
-/// Without the read-only guard, or with this raise moved upstream of it,
-/// `insert_char` would run, the text version would bump, and the hook would fire.
+/// An edit refused by the read-only guard (`doc_ops::apply_doc_edit`'s
+/// refusal before `cmd` ever runs) never changes the text version, so it
+/// must not fire `on-text-changed`.
 #[test]
 fn read_only_refused_edit_fires_no_on_text_changed() {
     use crate::editor::doc_ops;
@@ -63,10 +60,11 @@ fn read_only_refused_edit_fires_no_on_text_changed() {
     let focused = ed.view.focused_pane();
     let before_gen = ed.state.buffers.get(bid).text().generation();
     let (buffers, mut stores) = ed.state.edit_parts();
-    doc_ops::apply_doc_edit(buffers, &mut stores, focused, bid, |sels| {
+    let refusal = doc_ops::apply_doc_edit(buffers, &mut stores, focused, bid, |sels| {
         hume_ops::edit::insert_char(sels, 'z')
     })
-    .unwrap();
+    .expect_err("a read-only buffer refuses the edit");
+    assert_eq!(refusal.message(), read_only_refusal(&ed));
     ed.settle();
 
     assert_eq!(

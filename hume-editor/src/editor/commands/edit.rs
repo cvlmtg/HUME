@@ -38,7 +38,6 @@ pub(in crate::editor) fn cmd_delete(
     _count: Count,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    super::ensure_writable(state, view, t)?;
     let mut yanked = Vec::new();
     let edited = apply_pane_edit(state, view, t, |s| {
         let removal = delete_selection(s);
@@ -194,7 +193,7 @@ fn walk_history(
         &mut PositionStores<'_>,
         PaneId,
     ) -> Result<HistoryWalkResult, CommandError>,
-) -> Result<doc_ops::HistoryWalk, CommandError> {
+) -> Result<usize, CommandError> {
     let buf = t.bid(view);
     let (buffers, mut stores) = state.edit_parts();
     doc_ops::apply_doc_history_walk(buffers, &mut stores, t.pid(), buf, walk)
@@ -211,32 +210,25 @@ fn history_step(
     walk: fn(&mut Buffer, BufferId, &mut PositionStores<'_>, PaneId, usize) -> HistoryWalkResult,
     exhausted_msg: &str,
 ) -> Result<(), CommandError> {
-    let result = walk_history(state, view, t, |b, id, stores, pane| {
+    let taken = walk_history(state, view, t, |b, id, stores, pane| {
         Ok(walk(b, id, stores, pane, count))
     })?;
-    match result {
-        doc_ops::HistoryWalk::RefusedReadOnly => {
-            return Err(super::read_only_refusal(state, view, t));
-        }
-        doc_ops::HistoryWalk::Took(taken) if taken < count => {
-            state.report(Severity::Info, exhausted_msg.to_string());
-        }
-        doc_ops::HistoryWalk::Took(_) => {}
+    if taken < count {
+        state.report(Severity::Info, exhausted_msg.to_string());
     }
     Ok(())
 }
 
 /// Jump `t`'s buffer to revision `n` of its undo history, across branches,
-/// as one composed transform. `Err` when the buffer has no revision `n` once
-/// the walk's session handling has run; otherwise the walk's own result, so a
-/// caller can tell a read-only refusal from a jump to the revision it is
-/// already on (`Took(0)`).
+/// as one composed transform, returning the steps taken (`0` for the
+/// revision it is already on). `Err` when the walk is refused, or when the
+/// buffer has no revision `n` once the walk's session handling has run.
 pub(in crate::editor) fn goto_revision(
     state: &mut EditorState,
     view: &EngineView,
     t: CommandPane,
     n: usize,
-) -> Result<doc_ops::HistoryWalk, CommandError> {
+) -> Result<usize, CommandError> {
     walk_history(state, view, t, |b, id, stores, pane| {
         let target = b.revision(n).ok_or_else(|| {
             CommandError::transient(format!("no revision {n} in this buffer's undo history"))

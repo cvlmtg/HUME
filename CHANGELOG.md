@@ -13,6 +13,7 @@
 - `define-language!` raises for an invalid glob, or for an extension with a leading or trailing dot or a `/`, instead of skipping it: fix or drop the entry.
 - `define-language!` raises for a shebang entry with a space or a `/`: give the interpreter's name alone, such as `"python"`.
 - A path given to a HUME call resolves `..` the way the operating system does, and a `..` after a directory that doesn't exist raises: write the path without it.
+- `paste-text!` raises for a read-only buffer instead of doing nothing.
 - `after!`, `spawn-async!` and `path-programs` return an opaque timer or job, not an integer: compare two with `equal?`. `cancel-timer!` raises for anything but a timer, and `cancel-async!` for anything but a job, so one kind can no longer cancel the other.
 
 ### Syntax & language awareness
@@ -54,6 +55,8 @@
 - `goto-location!` takes a path as written, like every other path a plugin passes: a `$` or `~` in a file name no longer opens some other file.
 - Every file named on the command line expands `~` and variables like `$HOME`, the first one included, and so do `--config` and `--output`.
 - A plugin's gutter signs keep working after `:e!` reloads a changed file, without the plugin registering its sign source again.
+- `r`, `J`, `&`, `>`, `<`, surround, case changes and a terminal paste on a read-only buffer say so instead of doing nothing, and every read-only refusal names the buffer.
+- Macros record and replay in a read-only buffer such as `:messages`, and an edit a macro replays there is refused out loud.
 - Scripts whose first line runs a versioned interpreter, such as `#!/usr/bin/env python3` or `#!/usr/bin/lua5.4`, get their language, and so do V scripts.
 
 ## [0.16.1] - 2026-10-22

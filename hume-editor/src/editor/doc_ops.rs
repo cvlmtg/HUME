@@ -10,7 +10,7 @@
 use hume_engine::pipeline::{BufferId, PaneId};
 
 use crate::editor::buffer::store::BufferStore;
-use crate::editor::buffer::{Buffer, HistoryWalkResult, TextRefusal};
+use crate::editor::buffer::{Buffer, HistoryWalkResult};
 use crate::editor::edit_session::{
     EditSession, EditSessionKind, check_no_conflicting_session, commit_paste_group,
 };
@@ -22,21 +22,6 @@ use hume_editing::edit::{Edited, TextChange};
 use hume_editing::selection::SelectionSet;
 use hume_editing::state::EditState;
 use hume_rope::offset::CharOffset;
-
-/// [`apply_doc_history_walk`]'s result: keeps a read-only refusal
-/// distinguishable from genuine root/leaf exhaustion, so each caller reports
-/// it in its own way (`history_step` as a refused command, `goto-revision!` as
-/// an error). Collapsing both to `0` would report "Already at oldest change"
-/// for a read-only buffer, sending the user to look for missing history that
-/// was never there to find.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(in crate::editor) enum HistoryWalk {
-    /// The buffer is read-only; nothing was attempted.
-    RefusedReadOnly,
-    /// The walk ran and took this many steps, short of the requested count
-    /// at the root/leaf.
-    Took(usize),
-}
 
 /// Shared post-mutation bookkeeping for every text-mutating path: write
 /// `new_sels` back to the acting pane, if there is one, and bump the edit
@@ -76,21 +61,18 @@ fn finish_edit(
     buffers.bump_edit_seq();
 }
 
-/// The error a change to `buffer`'s text refused for `refusal` reports.
-pub(in crate::editor) fn refusal_error(refusal: TextRefusal, buffer: &Buffer) -> CommandError {
-    CommandError::transient(refusal.message(buffer))
-}
-
-/// `Ok(false)` when `buf_id` is read-only and the edit must do nothing;
-/// `Err` when its text is held ([`TextRefusal::Busy`]). The check every
-/// buffer-mutating chokepoint below runs before touching the text.
-fn text_gate(buffers: &BufferStore, buf_id: BufferId) -> Result<bool, CommandError> {
-    let buffer = buffers.get(buf_id);
-    match buffer.text_refusal() {
-        Some(TextRefusal::ReadOnly) => Ok(false),
-        Some(TextRefusal::Busy) => Err(refusal_error(TextRefusal::Busy, buffer)),
-        None => Ok(true),
-    }
+/// `Err` when `buf_id`'s text may not change
+/// ([`Buffer::check_text_change`]). The check
+/// every buffer-mutating chokepoint below runs before touching the text,
+/// and the one a command runs to refuse before an earlier side effect.
+pub(in crate::editor) fn text_gate(
+    buffers: &BufferStore,
+    buf_id: BufferId,
+) -> Result<(), CommandError> {
+    buffers
+        .get(buf_id)
+        .check_text_change()
+        .map_err(CommandError::transient)
 }
 
 /// [`text_gate`], then `Err` when [`check_no_conflicting_session`] refuses
@@ -100,12 +82,9 @@ fn admit(
     stores: &PositionStores<'_>,
     acting: Option<PaneId>,
     buf_id: BufferId,
-) -> Result<bool, CommandError> {
-    if !text_gate(buffers, buf_id)? {
-        return Ok(false);
-    }
-    check_no_conflicting_session(stores.open_session(), acting, buf_id)?;
-    Ok(true)
+) -> Result<(), CommandError> {
+    text_gate(buffers, buf_id)?;
+    check_no_conflicting_session(stores.open_session(), acting, buf_id)
 }
 
 /// Apply an edit to `buf_id` through `pane_id`; the buffer carries every
@@ -121,8 +100,8 @@ fn admit(
 ///   next `[`/`]` re-paste discards this edit. Callers that bypass key
 ///   dispatch (and so `step_paste_commit`) rely on this.
 ///
-/// `Err` when [`check_no_conflicting_session`] finds another pane's session on
-/// this buffer.
+/// `Err` when the buffer's text may not change ([`text_gate`]), or when
+/// [`check_no_conflicting_session`] finds another pane's session on it.
 pub(in crate::editor) fn apply_doc_edit(
     buffers: &mut BufferStore,
     stores: &mut PositionStores<'_>,
@@ -146,9 +125,7 @@ pub(in crate::editor) fn apply_doc_edit_on(
     sels: SelectionSet,
     cmd: impl FnOnce(EditState) -> Edited,
 ) -> Result<(), CommandError> {
-    if !admit(buffers, stores, Some(pane_id), buf_id)? {
-        return Ok(());
-    }
+    admit(buffers, stores, Some(pane_id), buf_id)?;
     if stores.insert_at_mut(pane_id, buf_id).is_some() {
         apply_grouped_from(buffers, stores, pane_id, buf_id, sels, cmd);
         return Ok(());
@@ -200,9 +177,7 @@ pub(in crate::editor) fn apply_changes(
     if let Some(pane_id) = acting {
         return apply_doc_edit(buffers, stores, pane_id, buf_id, edit_from_changes(cs));
     }
-    if !admit(buffers, stores, None, buf_id)? {
-        return Ok(());
-    }
+    admit(buffers, stores, None, buf_id)?;
     let text = buffers.get(buf_id).text();
     let first_change = cs
         .edited_regions()
@@ -224,7 +199,7 @@ pub(in crate::editor) fn apply_changes(
 ///
 /// Returns the applied `ChangeSet`: completion accept maps positions a
 /// later resolve response computed against the pre-accept text through it.
-/// An identity one on a read-only buffer; `Err` when the text is held.
+/// `Err` when the text may not change ([`text_gate`]).
 ///
 /// An Insert session must be open on `(pane_id, buf_id)`, a caller
 /// contract. Panics otherwise.
@@ -235,12 +210,7 @@ pub(in crate::editor) fn apply_doc_edit_grouped(
     buf_id: BufferId,
     cmd: impl FnOnce(EditState) -> Edited,
 ) -> Result<ChangeSet, CommandError> {
-    // Identity changeset: a read-only buffer means nothing happened, so a
-    // caller remapping other state through the result must see a no-op,
-    // not a stale/mismatched-length one.
-    if !text_gate(buffers, buf_id)? {
-        return Ok(ChangeSet::identity(buffers.get(buf_id).text().len_chars()));
-    }
+    text_gate(buffers, buf_id)?;
     let sels = stores.panes.seeded(pane_id, buf_id).selections().clone();
     Ok(apply_grouped_from(
         buffers, stores, pane_id, buf_id, sels, cmd,
@@ -286,7 +256,7 @@ fn apply_grouped_from(
 /// panes. `stores.session` must hold a Paste-kind session on
 /// `(pane_id, buf_id)`. The caller must have opened it via
 /// `commands::paste`'s `do_paste` first. Panics otherwise. `Err` when the
-/// text is held.
+/// text may not change ([`text_gate`]).
 pub(in crate::editor) fn apply_doc_edit_regrouped(
     buffers: &mut BufferStore,
     stores: &mut PositionStores<'_>,
@@ -294,9 +264,7 @@ pub(in crate::editor) fn apply_doc_edit_regrouped(
     buf_id: BufferId,
     cmd: impl FnOnce(EditState) -> Edited,
 ) -> Result<(), CommandError> {
-    if !text_gate(buffers, buf_id)? {
-        return Ok(());
-    }
+    text_gate(buffers, buf_id)?;
     let group = stores
         .session
         .as_ref()
@@ -352,10 +320,10 @@ fn session_refuses_walk() -> CommandError {
 /// open there is an `Err`: its group is mid-composition, and a walk underneath
 /// it would desync the group from the text.
 ///
-/// Returns [`HistoryWalk::Took`] with the steps actually taken (fewer than
-/// requested at the root/leaf) or [`HistoryWalk::RefusedReadOnly`]. `Err`
-/// when [`check_no_conflicting_session`] finds another pane's session on this
-/// buffer, or this pane has an Insert or Replay session open on it.
+/// Returns the steps actually taken, fewer than requested at the root/leaf.
+/// `Err` when the text may not change ([`text_gate`]), when
+/// [`check_no_conflicting_session`] finds another pane's session on this
+/// buffer, or when this pane has an Insert or Replay session open on it.
 pub(in crate::editor) fn apply_doc_history_walk(
     buffers: &mut BufferStore,
     stores: &mut PositionStores<'_>,
@@ -367,10 +335,8 @@ pub(in crate::editor) fn apply_doc_history_walk(
         &mut PositionStores<'_>,
         PaneId,
     ) -> Result<HistoryWalkResult, CommandError>,
-) -> Result<HistoryWalk, CommandError> {
-    if !admit(buffers, stores, Some(pane_id), buf_id)? {
-        return Ok(HistoryWalk::RefusedReadOnly);
-    }
+) -> Result<usize, CommandError> {
+    admit(buffers, stores, Some(pane_id), buf_id)?;
     if stores.insert_at_mut(pane_id, buf_id).is_some() {
         return Err(session_refuses_walk());
     }
@@ -388,7 +354,7 @@ pub(in crate::editor) fn apply_doc_history_walk(
     }
     let Some((new_sels, cs, steps)) = walk(buffers.get_mut(buf_id), buf_id, stores, pane_id)?
     else {
-        return Ok(HistoryWalk::Took(0));
+        return Ok(0);
     };
     finish_edit(buffers, stores.panes, Some(pane_id), buf_id, new_sels, &cs);
     // `finish_edit` skips `bump_edit_seq` for an identity `cs` (correctly:
@@ -401,7 +367,7 @@ pub(in crate::editor) fn apply_doc_history_walk(
     if cs.is_identity() {
         buffers.bump_edit_seq();
     }
-    Ok(HistoryWalk::Took(steps))
+    Ok(steps)
 }
 
 /// Apply a motion function and store the resulting selection in `pane_state`.

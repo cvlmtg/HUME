@@ -311,7 +311,7 @@ fn sort_on_read_only_buffer_is_blocked() {
     let err = ed
         .execute_typed("sort", None)
         .expect_err("a read-only buffer must refuse :sort");
-    assert_eq!(err.message(), "Buffer is read-only");
+    assert_eq!(err.message(), read_only_refusal(&ed));
     assert_eq!(
         state(&ed),
         before,

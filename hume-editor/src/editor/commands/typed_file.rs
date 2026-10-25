@@ -8,7 +8,7 @@ use super::super::Severity;
 use super::super::before_save::{AfterWrite, SAVE_IN_PROGRESS};
 use super::{CloseRefused, FocusedPane};
 use crate::editor::buffer::lifecycle::{self, CloseBufferRefused};
-use crate::editor::buffer::{Buffer, BufferFile, OnUnsaved};
+use crate::editor::buffer::{Buffer, BufferFile, OnUnsaved, TextRefusal};
 use crate::editor::error::CommandError;
 use crate::editor::settings::ops as settings_ops;
 use crate::editor::settings::{WRAP_MODE_KEY, parse_setting_text};
@@ -376,7 +376,7 @@ pub(in crate::editor) enum WriteKind<'a> {
     /// are left alone, since it did not become that file.
     Export(&'a str),
     /// No write happens; the message says why.
-    Refused(&'static str),
+    Refused(String),
 }
 
 impl<'a> WriteKind<'a> {
@@ -385,8 +385,10 @@ impl<'a> WriteKind<'a> {
         match arg {
             Some(path) if read_only || buf.is_synthetic() => Self::Export(path),
             Some(path) => Self::SaveAs(path),
-            None if read_only => Self::Refused("Buffer is read-only"),
-            None => buf.file().map_or(Self::Refused("no file name"), Self::Save),
+            None if read_only => Self::Refused(TextRefusal::ReadOnly.message(buf)),
+            None => buf
+                .file()
+                .map_or_else(|| Self::Refused("no file name".to_string()), Self::Save),
         }
     }
 

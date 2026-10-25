@@ -704,11 +704,6 @@ impl Editor {
         self.state.buffers.get_mut(bid)
     }
 
-    /// `true` when the focused buffer rejects user edits.
-    pub(in crate::editor) fn focused_buffer_read_only(&self) -> bool {
-        self.doc().is_read_only()
-    }
-
     /// The focused pane's selections for the current buffer.
     pub(super) fn current_selections(&self) -> &SelectionSet {
         let t = commands::FocusedPane::current(&self.view).pane();

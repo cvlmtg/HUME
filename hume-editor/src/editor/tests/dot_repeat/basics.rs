@@ -43,14 +43,13 @@ fn dot_repeats_change_with_insert() {
     assert_eq!(ed.doc().text().to_string(), "hihi\n");
 }
 
-/// A repeatable command refused by `ensure_writable` must not clobber
+/// A repeatable command refused on a read-only buffer must not clobber
 /// the recorded change: it changed nothing, so there is nothing new to
 /// repeat.
 ///
-/// `cmd_delete` refuses via `ensure_writable`'s `Err` without touching the
+/// `cmd_delete`'s edit is refused with an `Err` before it touches the
 /// buffer, and the pipeline discards a refused dispatch's fresh
 /// recording (`EditorState::end_change`), so the user's earlier `change` stays in the slot.
-/// Without that gate, the final assert would see `command == "delete"`.
 #[test]
 fn read_only_refusal_does_not_clobber_dot_repeat() {
     let mut ed = editor_from("-[foo]> bar\n");
@@ -77,7 +76,7 @@ fn read_only_refusal_does_not_clobber_dot_repeat() {
     // Stage a selection, then attempt a repeatable edit. Refused, no text
     // changes, but the pipeline still runs the AFTER stage unconditionally.
     ed.feed_key(key('x')); // select-line (motion-only; not blocked on read-only)
-    ed.feed_key(key('d')); // delete, refused by ensure_writable
+    ed.feed_key(key('d')); // delete, refused: the buffer is read-only
 
     assert_eq!(
         ed.state.last_action().unwrap().command.as_ref(),

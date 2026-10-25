@@ -163,7 +163,8 @@ pub trait EditHost {
     /// through the same path a terminal paste takes, so it does whatever a
     /// paste would do there. Several values are placed at the selections as
     /// `p` places a register's. `Err` when `pane` isn't the focused pane,
-    /// or when the paste was refused (its buffer is busy with a pipe).
+    /// or when the paste was refused (its buffer is read-only, or busy with
+    /// a pipe).
     fn paste_text(&mut self, pane: PaneHandle, values: Vec<String>) -> Result<(), String>;
 
     /// `(edit-text! pane edits)`: applies `edits`, all positioned against the

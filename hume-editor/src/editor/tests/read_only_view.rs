@@ -81,21 +81,21 @@ fn messages_reuses_existing_view_buffer() {
     );
 }
 
-/// Editing commands on a read-only view buffer must be silently blocked.
+/// An edit on a read-only view buffer is refused and reported.
 #[test]
-fn view_buffer_blocks_edits() {
+fn view_buffer_refuses_edits() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.report(Severity::Warning, "test".to_string());
     ed.execute_typed("messages", None).unwrap();
     let content_before = ed.doc().text().to_string();
 
-    // Try to delete the focused character: should be a no-op.
-    ed.handle_key(key('x'));
+    ed.handle_key(key('J'));
     assert_eq!(
         ed.doc().text().to_string(),
         content_before,
-        "x (delete) must not mutate a read-only buffer"
+        "J must not mutate a read-only buffer"
     );
+    assert_eq!(status(&ed), read_only_refusal(&ed));
 }
 
 /// Entering Insert mode on a read-only buffer must be refused.
@@ -133,7 +133,7 @@ fn insert_entry_on_a_read_only_buffer_leaves_the_selection_in_place() {
 
         assert_eq!(state(&ed), before, "{cmd}");
         assert_ne!(ed.state.mode(), Mode::Insert, "{cmd}");
-        assert_eq!(status(&ed), "Buffer is read-only", "{cmd}");
+        assert_eq!(status(&ed), read_only_refusal(&ed), "{cmd}");
     }
 }
 
@@ -196,8 +196,8 @@ fn read_only_buffer_blocks_undo_and_redo() {
         "u must not undo on a read-only buffer"
     );
     assert_eq!(
-        ed.state.status_msg.as_deref(),
-        Some("Buffer is read-only"),
+        status(&ed),
+        read_only_refusal(&ed),
         "u must report the refusal, same as :earlier does"
     );
     let pane = focused_pane(&ed);
@@ -220,16 +220,17 @@ fn read_only_buffer_blocks_undo_and_redo() {
         "Ctrl-r must not redo on a read-only buffer"
     );
     assert_eq!(
-        ed.state.status_msg.as_deref(),
-        Some("Buffer is read-only"),
+        status(&ed),
+        read_only_refusal(&ed),
         "Ctrl-r must report the refusal, same as :later does"
     );
 }
 
-/// `apply_doc_history_walk`'s own read-only refusal must be distinguishable
-/// from genuine root/leaf exhaustion. See `HistoryWalk`'s own doc for why.
+/// `apply_doc_history_walk` refuses a read-only buffer with real undo
+/// history: the refusal is an `Err`, not the `0` steps a walk at the root
+/// takes.
 #[test]
-fn apply_doc_history_walk_distinguishes_refusal_from_exhaustion() {
+fn apply_doc_history_walk_refuses_a_read_only_buffer() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key('d')); // creates one undo step, not exhausted
     ed.doc_mut().read_only = true;
@@ -237,20 +238,15 @@ fn apply_doc_history_walk_distinguishes_refusal_from_exhaustion() {
     let focused = ed.view.focused_pane();
     let bid = ed.focused_buffer_id();
     let (buffers, mut stores) = ed.state.edit_parts();
-    let result = doc_ops::apply_doc_history_walk(
+    let refusal = doc_ops::apply_doc_history_walk(
         buffers,
         &mut stores,
         focused,
         bid,
         |b, id, stores, pane| Ok(b.undo_n(id, stores, pane, 1)),
     )
-    .unwrap();
-    assert_eq!(
-        result,
-        doc_ops::HistoryWalk::RefusedReadOnly,
-        "a read-only buffer with real undo history available must report \
-         refusal, not the `Took(0)` a genuinely exhausted walk would also report"
-    );
+    .expect_err("a read-only buffer refuses the walk");
+    assert_eq!(refusal.message(), read_only_refusal(&ed));
 }
 
 /// `p` and `P` (paste) on a read-only view buffer must report "Buffer is
@@ -280,9 +276,9 @@ fn view_buffer_blocks_paste() {
         "p must not mutate a read-only buffer"
     );
     assert_eq!(
-        ed.state.status_msg.as_deref(),
-        Some("Buffer is read-only"),
-        "p must report 'Buffer is read-only'"
+        status(&ed),
+        read_only_refusal(&ed),
+        "p must report the read-only refusal"
     );
 
     // P (paste before)
@@ -293,19 +289,15 @@ fn view_buffer_blocks_paste() {
         "P must not mutate a read-only buffer"
     );
     assert_eq!(
-        ed.state.status_msg.as_deref(),
-        Some("Buffer is read-only"),
-        "P must report 'Buffer is read-only'"
+        status(&ed),
+        read_only_refusal(&ed),
+        "P must report the read-only refusal"
     );
 }
 
-/// `d` on a read-only view buffer must report "Buffer is read-only", leave
+/// `d` on a read-only view buffer must report the read-only refusal, leave
 /// the buffer content unchanged, and must not push anything onto the kill
-/// ring.
-///
-/// Validity: drop the `ensure_writable()` guard from `cmd_delete` and this
-/// test fails: the ring head becomes the (refused) delete's yank instead of
-/// the pre-existing one.
+/// ring: the refused edit yanks nothing.
 #[test]
 fn read_only_buffer_blocks_delete_kill() {
     let mut ed = editor_from("-[hell]>o\n");
@@ -332,9 +324,9 @@ fn read_only_buffer_blocks_delete_kill() {
         "d must not mutate a read-only buffer"
     );
     assert_eq!(
-        ed.state.status_msg.as_deref(),
-        Some("Buffer is read-only"),
-        "d must report 'Buffer is read-only'"
+        status(&ed),
+        read_only_refusal(&ed),
+        "d must report the read-only refusal"
     );
     assert_eq!(
         ed.state
@@ -351,7 +343,7 @@ fn read_only_buffer_blocks_delete_kill() {
     );
 }
 
-/// `c` on a read-only view buffer must report "Buffer is read-only", leave
+/// `c` on a read-only view buffer must report the read-only refusal, leave
 /// the buffer content and mode unchanged, and must not push anything onto
 /// the kill ring or touch the paste stamp.
 ///
@@ -383,9 +375,9 @@ fn read_only_buffer_blocks_change_kill() {
         "c must not mutate a read-only buffer"
     );
     assert_eq!(
-        ed.state.status_msg.as_deref(),
-        Some("Buffer is read-only"),
-        "c must report 'Buffer is read-only'"
+        status(&ed),
+        read_only_refusal(&ed),
+        "c must report the read-only refusal"
     );
     assert_eq!(
         ed.state.mode(),
@@ -413,11 +405,8 @@ fn read_only_buffer_blocks_change_kill() {
 /// (`is_valid_register_name` accepts only `0`–`9`, `k`, `c`, `b`), so
 /// `input_stack/base.rs` would already have dropped the prefix on `"a` alone,
 /// and a register that never armed can't tell this test whether the refusal
-/// itself cleared anything.
-///
-/// Validity: drop the `state.register_prefix = None` line from
-/// `read_only_refusal()` and this test fails: the prefix survives and
-/// silently redirects the next yank/kill into register `3`.
+/// itself cleared anything. A prefix left armed would redirect the next
+/// yank or kill into register `3`.
 #[test]
 fn read_only_refusal_clears_register_prefix_on_delete() {
     let mut ed = editor_from("-[hell]>o\n");
@@ -443,9 +432,6 @@ fn read_only_refusal_clears_register_prefix_on_delete() {
 /// A refused `"3` + `p` on a read-only buffer must not leave the `"<reg>`
 /// prefix armed for the next command. `3`, not `a`: see the comment on
 /// `read_only_refusal_clears_register_prefix_on_delete`.
-///
-/// Validity: drop the `state.register_prefix = None` line from
-/// `read_only_refusal()` and this test fails: the prefix survives.
 #[test]
 fn read_only_refusal_clears_register_prefix_on_paste() {
     let mut ed = editor_from("-[hell]>o\n");
@@ -465,7 +451,7 @@ fn read_only_refusal_clears_register_prefix_on_paste() {
 }
 
 /// `:w` on a read-only view buffer ([messages]) must error with
-/// "Buffer is read-only", not "no file name".
+/// the read-only refusal, not "no file name".
 ///
 /// Validity: remove the `is_read_only()` guard from `write_file` and this
 /// test fails: the status_msg will contain "no file name" instead.
@@ -479,9 +465,9 @@ fn view_buffer_blocks_write() {
 
     ed.execute_typed("w", None).unwrap_err();
     assert_eq!(
-        ed.state.status_msg.as_deref(),
-        Some("Buffer is read-only"),
-        ":w on a read-only view must report 'Buffer is read-only'"
+        status(&ed),
+        read_only_refusal(&ed),
+        ":w on a read-only view must report the read-only refusal"
     );
 }
 

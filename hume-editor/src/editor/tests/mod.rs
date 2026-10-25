@@ -439,6 +439,11 @@ fn status(ed: &Editor) -> String {
     ed.state.status_msg.clone().unwrap_or_default()
 }
 
+/// The refusal of a change to `ed`'s focused buffer while it is read-only.
+fn read_only_refusal(ed: &Editor) -> String {
+    format!("{} is read-only", ed.doc().display_name())
+}
+
 /// Whether the message log holds an error containing `needle`.
 fn has_error(ed: &Editor, needle: &str) -> bool {
     ed.state
@@ -1693,6 +1698,7 @@ mod pipe;
 mod plugins;
 mod plum_git;
 mod position_stores;
+mod read_only_buffer;
 mod read_only_view;
 mod registers;
 mod registers_steel;
