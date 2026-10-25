@@ -53,6 +53,7 @@
 - `..` in a path you type to `:e`, `:w`, `:cd` or path completion leaves the directory it follows the way your shell does: after a symlink, it goes to the link target's parent.
 - `goto-location!` takes a path as written, like every other path a plugin passes: a `$` or `~` in a file name no longer opens some other file.
 - Every file named on the command line expands `~` and variables like `$HOME`, the first one included, and so do `--config` and `--output`.
+- A plugin's gutter signs keep working after `:e!` reloads a changed file, without the plugin registering its sign source again.
 - Scripts whose first line runs a versioned interpreter, such as `#!/usr/bin/env python3` or `#!/usr/bin/lua5.4`, get their language, and so do V scripts.
 
 ## [0.16.1] - 2026-10-22

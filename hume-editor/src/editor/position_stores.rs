@@ -169,7 +169,9 @@ impl<'a> PositionStores<'a> {
     /// Reset every position stored for `buffer`, whose text was replaced
     /// with no change to carry them through: each pane that holds state for
     /// it starts over from `fresh`, and every other position stored for it
-    /// is dropped (an open completion session on it is marked dead).
+    /// is dropped (an open completion session on it is marked dead), its
+    /// decorations with it. Its sign-source registrations hold no position
+    /// and stay.
     pub(in crate::editor) fn reset(
         &mut self,
         buffer: BufferId,
@@ -181,19 +183,22 @@ impl<'a> PositionStores<'a> {
             }
         }
         self.drop_shared(buffer);
+        self.decorations.clear_entries(buffer);
     }
 
     /// Forget every position stored for `buffer`, which was closed:
     /// each pane's state for it is removed, and what `reset` drops beyond the
-    /// panes goes with it.
+    /// panes goes with it, its sign-source registrations included.
     pub(in crate::editor) fn forget_buffer(&mut self, buffer: BufferId) {
         for entry in self.panes.values_mut() {
             entry.forget_buffer(buffer);
         }
         self.drop_shared(buffer);
+        self.decorations.remove_buffer(buffer);
     }
 
-    /// The stores that are not a pane's own state for `buffer`. A buffer
+    /// The stores that are not a pane's own state for `buffer`, decorations
+    /// aside: `reset` and `forget_buffer` each drop those their own way. A buffer
     /// with language-server attachments reaches here only after
     /// `EditorState::lsp_buffer_closing` detached it, so its servers have
     /// seen `didClose`.
@@ -214,9 +219,26 @@ impl<'a> PositionStores<'a> {
         {
             session.forget();
         }
-        self.buffers.diagnostics.remove_buffer(buffer);
-        self.decorations.remove_buffer(buffer);
+        self.forget_diagnostics(buffer);
         self.buffers.last_inserts.remove(buffer);
+    }
+
+    /// Drop what describes `buffer`'s text rather than pointing into it:
+    /// its diagnostics, what each server was last told in a diagnostics
+    /// pull, and its decorations. Its sign-source registrations hold no
+    /// position and stay. `true` when it had diagnostics.
+    pub(in crate::editor) fn forget_content(&mut self, buffer: BufferId) -> bool {
+        let had_diagnostics = self.forget_diagnostics(buffer);
+        self.decorations.clear_entries(buffer);
+        had_diagnostics
+    }
+
+    /// Drop `buffer`'s diagnostics and what each server was last told in a
+    /// diagnostics pull. `true` when it had diagnostics.
+    fn forget_diagnostics(&mut self, buffer: BufferId) -> bool {
+        let had_diagnostics = self.buffers.diagnostics.remove_buffer(buffer);
+        self.buffers.lsp.forget_pulls(buffer);
+        had_diagnostics
     }
 }
 

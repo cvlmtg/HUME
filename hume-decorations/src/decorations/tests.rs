@@ -237,12 +237,10 @@ fn sign_source_registration_does_not_cross_buffers() {
     assert_eq!(store.sign_source_count(b), 1);
 }
 
-/// `remove_buffer` clears a buffer's sign-source registry along with its
-/// decoration entries: a source re-registering for that `bid` afterward
-/// starts a fresh ranking, unaffected by whatever the buffer held before
-/// (e.g. a buffer reload keeping the same `BufferId`).
+/// `remove_buffer`, for a closed buffer, drops its sign-source registry
+/// along with its decoration entries.
 #[test]
-fn remove_buffer_clears_its_sign_source_registrations() {
+fn remove_buffer_drops_its_sign_source_registrations() {
     let mut store = DecorationStores::default();
     let (a, b) = make_two_bids();
     store.register_sign_source("linter".to_string(), a, 5);
@@ -305,38 +303,56 @@ fn virtual_line(line: usize) -> VirtualLineEntry {
     }
 }
 
+/// `clear_entries`, for a buffer whose text was replaced, drops its entries
+/// and keeps its sign-source registry, which holds no position.
 #[test]
-fn remove_buffer_bumps_generation() {
+fn clear_entries_keeps_sign_source_registrations() {
+    let mut store = DecorationStores::default();
+    let (a, b) = make_two_bids();
+    store.register_sign_source("linter".to_string(), a, 5);
+    store.register_sign_source("vcs".to_string(), a, 1);
+    store.set_signs("linter".to_string(), a, vec![sign(0, "!")]);
+
+    store.clear_entries(a);
+
+    assert_eq!(store.signs_in_range(a, lines(0, 10)).count(), 0);
+    assert_eq!(store.sign_slot(a, "linter"), Some(0));
+    assert_eq!(store.sign_slot(a, "vcs"), Some(1));
+    assert_eq!(store.sign_slot(b, "linter"), None);
+}
+
+#[test]
+fn clear_entries_bumps_generation() {
     // A pane's `virtual_lines_synced` cache keys on
     // `(BufferId, generation(BufferId))` (`decoration_providers.rs`).
-    // `remove_buffer` mutates the `virtual_lines` store without going
+    // `clear_entries` mutates the `virtual_lines` store without going
     // through `set_virtual_lines`, so if it didn't also touch `a`'s stamp, a
     // pane reloading the same buffer would see an unchanged cache key and
-    // keep mirroring the just-removed (pre-reload) virtual lines forever.
+    // keep mirroring the cleared (pre-reload) virtual lines.
     let mut store = DecorationStores::default();
     let (a, b) = make_two_bids();
     store.set_virtual_lines("git-diff".to_string(), a, vec![virtual_line(0)]);
     let a_generation_after_set = store.generation(a);
     let b_generation_before = store.generation(b);
 
-    store.remove_buffer(a);
+    store.clear_entries(a);
 
     assert_ne!(
         store.generation(a),
         a_generation_after_set,
-        "remove_buffer must bump bid's stamp so panes mirroring \
+        "clear_entries must bump bid's stamp so panes mirroring \
          the cleared buffer resync instead of keeping stale entries"
     );
     assert_eq!(
         store.generation(b),
         b_generation_before,
-        "remove_buffer(a) must not touch an unrelated buffer's stamp: the \
+        "clear_entries(a) must not touch an unrelated buffer's stamp: the \
          per-buffer generation exists precisely so unrelated buffers don't \
          resync each other's panes"
     );
     assert!(
         store.virtual_lines_for("git-diff", a).is_empty(),
-        "remove_buffer must still clear the entries themselves"
+        "clear_entries must still clear the entries themselves"
     );
 }
 

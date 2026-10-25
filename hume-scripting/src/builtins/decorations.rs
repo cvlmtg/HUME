@@ -59,7 +59,8 @@ pub(crate) fn set_inlay_hints(
 /// This is what keeps the gutter width stable as signs come and go,
 /// instead of tracking whichever priorities happen to be live right now.
 /// There is no `unregister-sign-source!`: a source holds its slot in a
-/// buffer for that buffer's life. Re-registering `name` for the same buffer
+/// buffer for that buffer's life, across a reload or a replaced text, until
+/// the buffer closes. Re-registering `name` for the same buffer
 /// replaces its priority and re-sorts it, same as `register-lsp-server!`'s
 /// last-wins semantics.
 pub(crate) fn register_sign_source(

@@ -406,3 +406,78 @@ fn a_source_ranked_past_the_resolved_slot_count_is_hidden_not_miscast_into_slot_
          not wrapped into slot 0"
     );
 }
+
+// ── Registration across a text reset ──────────────────────────────────────────
+
+/// Defines `:claim`, which registers the `"linter"` sign source for its
+/// buffer once, and `:place`, which sets one sign on line 0 without
+/// registering again.
+fn define_claim_and_place(ed: &mut Editor, tmp: &std::path::Path, extra: &str) {
+    run(
+        ed,
+        tmp,
+        &format!(
+            r#"(define-typed-command! "claim" "" (lambda (pane)
+                 (register-sign-source! "linter" pane 1)))
+               (define-typed-command! "place" "" (lambda (pane)
+                 (set-signs! "linter" pane (list (hash 'line 0 'text "!" 'scope "sc")))))
+               {extra}"#
+        ),
+    );
+}
+
+/// The sign `:place` set on line 0 shows, and nothing was logged.
+fn assert_placed(ed: &mut Editor) {
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.is_empty(),
+        "placing a registered source's signs: {log:?}"
+    );
+    let pid = ed.view.focused_pane();
+    render(ed);
+    let signs = pane_signs(ed, pid);
+    assert_eq!(
+        signs[&hume_rope::line::ContentLine::new(0)]
+            .iter()
+            .map(|sign| &*sign.text)
+            .collect::<Vec<_>>(),
+        ["!"]
+    );
+}
+
+#[test]
+fn a_sign_source_registered_once_survives_a_reload_that_changes_the_text() {
+    let tmp = tempfile::tempdir().unwrap();
+    let file = tmp.path().join("notes.txt");
+    std::fs::write(&file, "one\n").unwrap();
+    let mut ed = open_headless(Some(file.clone()));
+    define_claim_and_place(&mut ed, tmp.path(), "");
+    type_cmd(&mut ed, ":claim");
+
+    std::fs::write(&file, "two\n").unwrap();
+    ed.execute_typed("e!", None).unwrap();
+    ed.settle();
+    assert_eq!(ed.doc().text().to_string(), "two\n");
+
+    type_cmd(&mut ed, ":place");
+    assert_placed(&mut ed);
+}
+
+#[test]
+fn a_sign_source_registered_once_survives_a_view_replacing_its_text() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = open_headless(None);
+    define_claim_and_place(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "report" "" (lambda (pane text)
+             (show-read-only-buffer! pane "report" text)))"#,
+    );
+    type_cmd(&mut ed, ":report first");
+    type_cmd(&mut ed, ":claim");
+    type_cmd(&mut ed, ":report second");
+    assert_eq!(ed.doc().text().to_string(), "second\n");
+
+    type_cmd(&mut ed, ":place");
+    assert_placed(&mut ed);
+}

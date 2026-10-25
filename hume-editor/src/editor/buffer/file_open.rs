@@ -141,8 +141,9 @@ impl Editor {
     ///
     /// Survives the replacement: per-buffer search state (match cache
     /// rebuilds lazily) and the syntax tree, which the edit shifts like any
-    /// other. Dropped as stale: in-progress edit groups/paste sessions and
-    /// saved scrolls.
+    /// other. Dropped as stale: in-progress edit groups/paste sessions,
+    /// saved scrolls and, when the text changed, what describes its content
+    /// (`PositionStores::forget_content`).
     ///
     /// `Err`, with nothing changed, while a pipe runs in the buffer.
     pub(in crate::editor) fn reload_buffer_in_place(
@@ -178,24 +179,15 @@ impl Editor {
             self.set_buffer_file(id, file);
         }
         // The replacement went through `install` as a line-diff change, so
-        // the buffer's servers get it as an ordinary queued `didChange`.
-        // Everything below discards state computed against the replaced
-        // text. A no-op replacement (`mutated == false`) keeps the content
-        // and the text generation, so that state is still valid against the
-        // unchanged content and is kept. It does adopt the new text's line
-        // ending.
-        if mutated {
-            // Diagnostics and LSP-sourced decorations describe the replaced
-            // content, so they are dropped, and so is what each server was
-            // last told in a diagnostics pull. The servers report again
-            // after seeing the change; nothing republishes decorations on
-            // its own, so they stay cleared until a plugin sets them again.
-            if self.state.buffer_positions.diagnostics.remove_buffer(id) {
-                self.state
-                    .queue_event(EditorEvent::OnDiagnosticsChanged { buffer: id });
-            }
-            self.state.buffer_positions.lsp.forget_pulls(id);
-            self.state.config.decorations.remove_buffer(id);
+        // the buffer's servers get it as an ordinary queued `didChange`. A
+        // no-op replacement (`mutated == false`) keeps the content and the
+        // text generation, so what describes the content stays valid and is
+        // kept; it does adopt the new text's line ending. Otherwise the
+        // servers report diagnostics again after seeing the change, and
+        // decorations stay cleared until a plugin sets them again.
+        if mutated && self.state.edit_parts().1.forget_content(id) {
+            self.state
+                .queue_event(EditorEvent::OnDiagnosticsChanged { buffer: id });
         }
         // `detect_and_set_language` handles a genuine language change
         // (shebang/extension) regardless of `mutated`, re-running setup via

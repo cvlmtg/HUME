@@ -150,11 +150,10 @@ pub(crate) struct ConfigState {
     /// `(BufferId, Box<str>)` has no borrowed-key form, so flat would force an
     /// allocation per element per frame just to look one up.
     ///
-    /// Cleared per-buffer at `close_buffer_and_notify`, alongside
-    /// `decorations.remove_buffer`, but *not* at the other
-    /// `decorations.remove_buffer` call site, `:e!`'s reload path: that one
-    /// clears decorations because their char offsets are invalidated by the
-    /// reload, and pushed statusline text carries no offsets to invalidate.
+    /// Cleared per-buffer when the buffer closes, alongside
+    /// `decorations.remove_buffer`. A text reset (`:e!` of a changed file, a
+    /// view's new text) keeps it, as it keeps sign-source registrations:
+    /// pushed statusline text carries no offsets to invalidate.
     pub(crate) statusline_text:
         rustc_hash::FxHashMap<BufferId, rustc_hash::FxHashMap<Box<str>, Box<str>>>,
     /// Deferred Steel work: events enqueued during command dispatch

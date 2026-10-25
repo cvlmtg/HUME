@@ -507,7 +507,7 @@ pub struct DecorationStores {
     /// `generation` bump is the right one when it changes.
     sign_sources: FxHashMap<BufferId, Vec<(String, i64)>>,
     /// Per-buffer dirty-tracking stamp, touched by every `set_*` and
-    /// `remove_buffer` for that buffer, and by `remap_through` when a remap
+    /// `clear_entries` for that buffer, and by `remap_through` when a remap
     /// actually moved one of that buffer's entries. The virtual-lines
     /// render write side mirrors `virtual_lines` into a per-pane Arc only
     /// when *its buffer's* stamp changed since its last sync, rather than
@@ -554,7 +554,7 @@ impl DecorationStores {
     }
 
     /// Stamps `bid` with a fresh value off the shared clock: the one
-    /// mutation primitive every `set_*`, `remove_buffer`, and a touched
+    /// mutation primitive every `set_*`, `clear_entries`, and a touched
     /// `remap_through` funnel through, so `generation`/`clock` can never
     /// drift out of sync with each other.
     fn touch(&mut self, bid: BufferId) {
@@ -571,7 +571,7 @@ impl DecorationStores {
 
     /// `bid`'s current stamp: `0` if `bid` has never been touched by this
     /// store (a fresh buffer, or one this store was reset since; see
-    /// `reset`). Bumped by every `set_*` call and `remove_buffer` for `bid`,
+    /// `reset`). Bumped by every `set_*` call and `clear_entries` for `bid`,
     /// and by `remap_through` when a remap actually moved one of `bid`'s
     /// entries.
     pub fn generation(&self, bid: BufferId) -> u64 {
@@ -843,24 +843,21 @@ impl DecorationStores {
             || !extra_highlights.is_empty_for(bid)
     }
 
-    /// Drops every entry for `bid`, across every source and every kind, and
-    /// `bid`'s registered sign sources. Called when the buffer is closed,
-    /// or reloaded from disk while keeping the same `BufferId`. `BufferId`
-    /// is a versioned slotmap key, so a future slot reuse can never alias
-    /// with the closed buffer's stale entries, but a *reload* keeps the
-    /// same key, so clearing `virtual_lines` without touching `bid`'s stamp
-    /// would leave a pane's `virtual_lines_synced` entry looking
-    /// still-current: it would keep mirroring the pre-reload virtual lines
-    /// at now-meaningless line anchors. Touching unconditionally (not just
-    /// when a kind had entries) forces every pane on `bid` to resync. A
-    /// source that re-registers for `bid` after a reload starts a fresh
-    /// ranking, unaffected by whatever the buffer's registry held before,
-    /// same reasoning as clearing the six decoration stores themselves.
+    /// Drops every entry for `bid`, across every source and every kind,
+    /// for a buffer whose text was replaced with no change to remap them
+    /// through (`:e!` of a changed file, a view's new text). `bid`'s sign
+    /// sources stay registered: a registration holds no position.
+    ///
+    /// The buffer keeps its `BufferId`, so clearing `virtual_lines` without
+    /// touching `bid`'s stamp would leave a pane's `virtual_lines_synced`
+    /// entry looking current, mirroring the replaced text's virtual lines.
+    /// Touching unconditionally, not only when a kind had entries, forces
+    /// every pane on `bid` to resync.
     ///
     /// Exhaustive destructuring, no `..`: a new decoration kind fails to
-    /// compile here until it is listed, so closing or reloading a buffer can
-    /// never leave a stale kind behind.
-    pub fn remove_buffer(&mut self, bid: BufferId) {
+    /// compile here until it is listed, so a text reset can never leave a
+    /// stale kind behind.
+    pub fn clear_entries(&mut self, bid: BufferId) {
         let Self {
             inlay_hints,
             signs,
@@ -868,7 +865,7 @@ impl DecorationStores {
             eol_text,
             line_backgrounds,
             extra_highlights,
-            sign_sources,
+            sign_sources: _,
             generation: _,
             clock: _,
         } = self;
@@ -878,8 +875,14 @@ impl DecorationStores {
         eol_text.remove_buffer(bid);
         line_backgrounds.remove_buffer(bid);
         extra_highlights.remove_buffer(bid);
-        sign_sources.remove(&bid);
         self.touch(bid);
+    }
+
+    /// Drops everything held for `bid`, a closed buffer: its entries, as
+    /// [`Self::clear_entries`] does, and its registered sign sources.
+    pub fn remove_buffer(&mut self, bid: BufferId) {
+        self.clear_entries(bid);
+        self.sign_sources.remove(&bid);
     }
 
     /// Remaps `bid`'s decorations, of every kind, through `change`, from the same

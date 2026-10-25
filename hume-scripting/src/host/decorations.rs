@@ -30,7 +30,8 @@ pub trait DecorationHost {
     /// source registered for that same buffer, not a property of any one
     /// `set_signs` call, and not shared with any other buffer. A source
     /// claims its slot the first time it becomes relevant to a given
-    /// buffer and holds it for that buffer's life; there is no withdrawal.
+    /// buffer and holds it for that buffer's life, across a reload or a
+    /// replaced text, until the buffer closes; there is no withdrawal.
     fn register_sign_source(
         &mut self,
         name: String,
