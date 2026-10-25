@@ -46,6 +46,14 @@ fn sign_lines<'a>(
         .collect()
 }
 
+/// [`sign_lines`], owning each text.
+fn owned_sign_lines(store: &DecorationStores, source: &str, bid: BufferId) -> Vec<(usize, String)> {
+    sign_lines(store, source, bid)
+        .into_iter()
+        .map(|(line, text)| (line, text.to_string()))
+        .collect()
+}
+
 /// Two guaranteed-distinct `BufferId`s. See the identical helper in
 /// `lsp/diagnostics.rs` for why a single `EngineView` is required.
 fn make_two_bids() -> (BufferId, BufferId) {
@@ -484,20 +492,19 @@ fn numbered_signs(lines: &[usize]) -> Vec<SignEntry> {
     lines.iter().map(|&k| sign(k, &k.to_string())).collect()
 }
 
-/// Remaps signs on `lines` of a seven-line `numbered_lines` text through
-/// the change `build` records, returning where each surviving label lands.
+/// Remaps signs on `lines` of a `line_count`-line `numbered_lines` text
+/// through the change `build` records, returning where each surviving label
+/// lands.
 fn remap_numbered(
+    line_count: usize,
     lines: &[usize],
     build: impl FnOnce(&mut ChangeSetBuilder),
 ) -> Vec<(usize, String)> {
     let mut store = DecorationStores::default();
     let (a, _b) = make_two_bids();
     store.set_signs("linter".to_string(), a, numbered_signs(lines));
-    remap(&mut store, a, &numbered_lines(7), build);
-    sign_lines(&store, "linter", a)
-        .into_iter()
-        .map(|(line, text)| (line, text.to_string()))
-        .collect()
+    remap(&mut store, a, &numbered_lines(line_count), build);
+    owned_sign_lines(&store, "linter", a)
 }
 
 fn labelled(pairs: &[(usize, usize)]) -> Vec<(usize, String)> {
@@ -511,7 +518,7 @@ fn labelled(pairs: &[(usize, usize)]) -> Vec<(usize, String)> {
 /// above line 3, and line 5 joined with line 6.
 #[test]
 fn several_edited_regions_in_one_change_each_move_their_own_lines() {
-    let got = remap_numbered(&[0, 1, 2, 3, 4, 5, 6], |b| {
+    let got = remap_numbered(7, &[0, 1, 2, 3, 4, 5, 6], |b| {
         b.retain_to(co(3)).insert("x");
         b.retain_to(co(9)).insert("\n");
         b.retain_to(co(17)).delete_to(co(18));
@@ -524,7 +531,7 @@ fn several_edited_regions_in_one_change_each_move_their_own_lines() {
 
 #[test]
 fn newlines_inserted_before_between_and_after_entries_shift_the_later_ones() {
-    let got = remap_numbered(&[2, 4], |b| {
+    let got = remap_numbered(7, &[2, 4], |b| {
         b.insert("\n");
         b.retain_to(co(9)).insert("\n");
         b.retain_to(co(18)).insert("\n");
@@ -534,7 +541,7 @@ fn newlines_inserted_before_between_and_after_entries_shift_the_later_ones() {
 
 #[test]
 fn newlines_deleted_before_between_and_after_entries_shift_the_later_ones() {
-    let got = remap_numbered(&[2, 4], |b| {
+    let got = remap_numbered(7, &[2, 4], |b| {
         b.retain_to(co(2)).delete_to(co(3));
         b.retain_to(co(11)).delete_to(co(12));
         b.retain_to(co(17)).delete_to(co(18));
@@ -546,7 +553,7 @@ fn newlines_deleted_before_between_and_after_entries_shift_the_later_ones() {
 /// lines 1 to 3: their signs go, and line 4's lands on the joined line.
 #[test]
 fn a_deletion_across_several_decorated_lines_keeps_only_the_last_lines_sign() {
-    let got = remap_numbered(&[0, 1, 2, 3, 4, 5, 6], |b| {
+    let got = remap_numbered(7, &[0, 1, 2, 3, 4, 5, 6], |b| {
         b.retain_to(co(4)).delete_to(co(13));
     });
     assert_eq!(got, labelled(&[(0, 0), (1, 4), (2, 5), (3, 6)]));
@@ -599,15 +606,11 @@ fn edits_at_the_buffer_end_keep_the_last_lines_sign_unless_its_break_goes() {
         ),
     ];
     for (case, build, expected) in cases {
-        let mut store = DecorationStores::default();
-        let (a, _b) = make_two_bids();
-        store.set_signs("linter".to_string(), a, numbered_signs(&[0, 1]));
-        remap(&mut store, a, &numbered_lines(2), build);
-        let got: Vec<(usize, String)> = sign_lines(&store, "linter", a)
-            .into_iter()
-            .map(|(line, text)| (line, text.to_string()))
-            .collect();
-        assert_eq!(got, labelled(expected), "{case}");
+        assert_eq!(
+            remap_numbered(2, &[0, 1], build),
+            labelled(expected),
+            "{case}"
+        );
     }
 }
 
@@ -823,11 +826,7 @@ mod remap_lines_matches_the_per_entry_rule {
                     .zip(reference_remap_lines(lines, &change))
                     .filter_map(|(&label, line)| line.map(|line| (line, label.to_string())))
                     .collect();
-                let got: Vec<(usize, String)> = sign_lines(&store, source, a)
-                    .into_iter()
-                    .map(|(line, text)| (line, text.to_string()))
-                    .collect();
-                prop_assert_eq!(got, expected, "source {}", source);
+                prop_assert_eq!(owned_sign_lines(&store, source, a), expected, "source {}", source);
             }
         }
     }
