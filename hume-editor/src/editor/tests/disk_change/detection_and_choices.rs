@@ -63,8 +63,9 @@ fn deleted_file_warns_and_never_prompts() {
 /// stay silent, the same "don't nag again for the same thing" rule `Changed`
 /// follows, just with no signature to compare (there's only one "vanished").
 ///
-/// If the `Vanished` arm never recorded that it had already reported, every
-/// later ambient trigger (each terminal focus regain) would warn again.
+/// The `Vanished` arm records `DiskState::Vanished` when it warns, so every
+/// later ambient trigger (each terminal focus regain) finds it already
+/// reported.
 #[test]
 fn vanished_file_does_not_refire_on_every_trigger() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -104,9 +105,8 @@ fn pathless_buffers_are_never_flagged() {
 /// buffer-enter) for a condition the user already saw once would be pure
 /// noise. A *further*, distinct external change must still fire.
 ///
-/// If `check_buffer_disk_state` left the buffer's stored signature untouched
-/// after reporting, the second check would compare against the same stale
-/// signature and warn again.
+/// `check_buffer_disk_state` stores the reported signature in `disk_state`,
+/// so the second check finds that signature already reported.
 #[test]
 fn unactioned_change_does_not_refire_until_a_further_change_happens() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -135,15 +135,13 @@ fn unactioned_change_does_not_refire_until_a_further_change_happens() {
 }
 
 /// `:bn`/`:bp` run the same buffer-enter disk check as `:e`/`:b`. Landing on
-/// an externally-changed buffer this way must not silently show stale
-/// content with `:w` free to clobber the external edit.
+/// an externally-changed buffer this way must not show stale content
+/// unannounced, with `:w` free to clobber the external edit.
 ///
-/// Without `detect_buffer_enter`'s focus diff (`event/pump.rs`)
-/// observing the pane's new buffer and queuing `OnBufferEnter`, the target
-/// buffer's disk state would stay `InSync` no matter what changed externally.
-/// This holds for any switch primitive `:bnext`/`:bprev` route through, since
-/// the diff is keyed on the focused (pane, buffer) pair, not on the call
-/// site. Driven via `type_cmd_event`, not `type_cmd`: the check is
+/// `detect_buffer_enter`'s focus diff (`event/pump.rs`) observes the pane's
+/// new buffer and queues `OnBufferEnter`. This holds for any switch
+/// primitive `:bnext`/`:bprev` route through, since the diff is keyed on the
+/// focused (pane, buffer) pair, not on the call site. Driven via `type_cmd_event`, not `type_cmd`: the check is
 /// `OnBufferEnter`'s Rust reaction, observed only once `Editor::settle()`
 /// runs its focus diff: `type_cmd_event` settles after the command,
 /// `type_cmd` does not.
@@ -174,9 +172,8 @@ fn bnext_and_bprev_run_the_buffer_enter_disk_check() {
 /// confirm, even though nothing has changed on disk since the warning: this
 /// is the documented "asked about on its own next buffer-enter" promise.
 ///
-/// If `BufferEnter` deduped an already-reported `Changed` state the way
-/// `Ambient` does, `:b #` landing on the buffer would find nothing new to
-/// report and stay silent, breaking that promise.
+/// `BufferEnter` opens the confirm even for an already-reported `Changed`
+/// state, the one `Ambient` dedupes.
 /// The final `:b #` is driven via `type_cmd_event`: the disk check is
 /// `OnBufferEnter`'s Rust reaction, observed only once `Editor::settle()`
 /// runs its focus diff after the switch.
@@ -256,9 +253,9 @@ fn change_detected_mid_insert_warns_instead_of_prompting() {
 // ── Writing the buffer must not look like an external change ─────────────────
 
 /// The editor's own `:w` renames a fresh inode into place, which always
-/// bumps mtime. Without `write_file_atomic` refreshing the stored
-/// signature after a successful write, the very next check would
-/// misreport the editor's own save as an external change.
+/// bumps mtime. `write_file_atomic` refreshes the stored signature after a
+/// successful write, so the next check does not misreport the editor's own
+/// save as an external change.
 #[test]
 fn writing_the_buffer_does_not_flag_it_as_externally_changed() {
     let (mut ed, _tmp) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -343,8 +340,7 @@ fn confirm_esc_dismisses_without_answering() {
 
 /// A stray key that isn't `r`/`k`/`Esc` dismisses the confirm the same way,
 /// but, unlike `Esc`, is not swallowed: it still runs its own binding in
-/// the same dispatch. `/` opens the search line; a bug that ate the
-/// keystroke would leave the mode at `Normal` with the search line unopened.
+/// the same dispatch. `/` opens the search line.
 #[test]
 fn confirm_stray_key_dismisses_and_still_runs_its_binding() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -367,9 +363,8 @@ fn confirm_stray_key_dismisses_and_still_runs_its_binding() {
 /// A choice key held with a modifier (`Ctrl-k`, the kitty one-shot extend
 /// for `move-up`) must not answer the prompt. Only a bare `r`/`k` does.
 ///
-/// The choice match has to look at `key.modifiers`. Matching on
-/// `key.code == KeyCode::Char('k')` alone would make `Ctrl-k` decline
-/// (`DiskState::Declined`) and never reach `move-up`.
+/// The choice match looks at `key.modifiers`, so `Ctrl-k` reaches `move-up`
+/// instead of declining (`DiskState::Declined`).
 #[test]
 fn confirm_choice_key_with_ctrl_does_not_answer_the_prompt() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -391,10 +386,9 @@ fn confirm_choice_key_with_ctrl_does_not_answer_the_prompt() {
 /// not through input dispatch, which the `Confirm` layer would otherwise see
 /// first) must not reload, and must not panic.
 ///
-/// Without the focus guard, `reload_buffer_from_disk` would call
-/// `reload_buffer_in_place(bid_a, ..)` while focus is on B, and its
-/// `.expect("focused pane must view the reloaded buffer")` would panic,
-/// since the now-focused pane holds no state for A's post-heads.
+/// `reload_buffer_from_disk`'s focus guard refuses the answer while focus is
+/// on B: `reload_buffer_in_place(bid_a, ..)` expects the focused pane to
+/// view the reloaded buffer, and B's pane holds no state for A's post-heads.
 #[test]
 fn reload_confirm_accept_after_focus_moved_away_does_not_panic() {
     let (mut ed, tmp_a) = editor_with_file("-[h]>ello\n", "hello\n");

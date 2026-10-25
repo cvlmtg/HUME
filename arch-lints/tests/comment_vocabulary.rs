@@ -1,7 +1,7 @@
 //! # Comment vocabulary
 //!
 //! Comments describe the code as it is. Notes about how a test was
-//! validated ("Fail oracle:", "Flip:", "red run"), how a bug was fixed
+//! validated ("Fail oracle:", "Flip:", "Validity:", "red run"), how a bug was fixed
 //! ("before the fix"), or which internal lesson a rule came from belong in
 //! commit messages, where they stay attached to the change that made them
 //! true. Emphasis words ("deliberately", "load-bearing") add no fact a
@@ -19,6 +19,7 @@ const FORBIDDEN: &[&str] = &[
     "Independent oracle",
     "Flip:",
     "Verification:",
+    "Validity:",
     " red run",
     "before the fix",
     "Before the fix",

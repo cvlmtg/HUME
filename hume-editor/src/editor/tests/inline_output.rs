@@ -57,12 +57,10 @@ fn dispatch_backslash(source: &str, cmd: &str) -> Editor {
 // ── call! reaches a declared command ────────────────────────────────────────
 
 /// A plain (non-`#:inline-output`) editor command's own body can `call!` an
-/// `#:inline-output` command and have *that* command's prints write: the
-/// runtime gap `%dispatch-command!`'s in-VM `(apply proc args)` otherwise
-/// left open (only keypress/`:` dispatch armed the bracket before this).
-///
-/// Without `(%arm-inline-output! name)` in `%apply-command!`
-/// (`bootstrap.scm`), the probe would log `"inner-closed"`.
+/// `#:inline-output` command and have *that* command's prints write:
+/// `%apply-command!` (`bootstrap.scm`) arms the bracket with
+/// `(%arm-inline-output! name)` around `%dispatch-command!`'s in-VM
+/// `(apply proc args)`, the way keypress/`:` dispatch arms it.
 ///
 /// Also covers the depth-`0` restore: `trigger` itself is not declared
 /// `#:inline-output`, so `%arm-inline-output!` returns `#f` for it and its
@@ -70,12 +68,9 @@ fn dispatch_backslash(source: &str, cmd: &str) -> Editor {
 /// common case, distinct from `nested_call_bang_restores_the_outer_commands_state`
 /// below, where the *outer* command is itself declared and restores to depth
 /// `1`. `%apply-command!` discriminates "no restore" from "restore to this
-/// depth" with `(when depth …)`, which only works because Steel's `is_truthy`
-/// treats `(IntV 0)` as true. Pinning the after-open/after-closed pair here
-/// exercises that depth-`0` branch instead of assuming it.
-///
-/// Reading a `depth` of `0` as falsy and skipping the restore would log
-/// `"trigger-after-open"` instead of `"trigger-after-closed"`.
+/// depth" with `(if depth …)`, which only works because Steel's `is_truthy`
+/// treats `(IntV 0)` as true. The after-open/after-closed pair here
+/// exercises that depth-`0` branch.
 #[test]
 fn call_bang_to_inline_output_editor_command_opens_a_frame() {
     let ed = dispatch_backslash(
@@ -103,9 +98,7 @@ fn call_bang_to_inline_output_editor_command_opens_a_frame() {
 
 /// A typed command is never reachable through `call!`. `%dispatch-command!`
 /// only ever resolves mappable procs, never a typed one, so declaring one
-/// `#:inline-output` gives it no `call!` path to arm through. Pins the
-/// separation rather than assuming it: if it ever broke, `inner-typed-probe`'s
-/// body would start running from a `call!` site nothing should reach it from.
+/// `#:inline-output` gives it no `call!` path to arm through.
 #[test]
 fn call_bang_to_inline_output_typed_command_is_unreachable() {
     let ed = dispatch_backslash(
@@ -163,10 +156,6 @@ fn call_bang_to_a_non_declared_command_never_arms() {
 /// *second* `#:inline-output` command mid-body must have its own remaining
 /// prints still write once the nested call returns. The nested
 /// arm must truncate back to its own saved depth, not wipe the whole stack.
-///
-/// If `%restore-inline-output!` always truncated to `0` rather than to the
-/// depth `%arm-inline-output!` returned, the log would read
-/// `"outer-after-closed"` instead of `"outer-after-open"`.
 #[test]
 fn nested_call_bang_restores_the_outer_commands_state() {
     let ed = dispatch_backslash(
@@ -243,10 +232,10 @@ fn caught_raise_from_call_bang_to_inline_output_command_closes_its_frame() {
 /// same way `call_steel_command_body` does for direct dispatch (see
 /// `apply_script_result`'s own doc).
 ///
-/// The frame opens whether or not `apply_script_result` (`scripting/effects.rs`)
-/// calls `self.close_inline_output_bracket()`. A missing close would leave a
-/// stuck bracket for the next dispatch, so the test also asserts the reset
-/// right after the batch that armed it.
+/// The frame's opening does not depend on `apply_script_result`
+/// (`scripting/effects.rs`) calling `self.close_inline_output_bracket()`, so
+/// the test also asserts the bracket is reset right after the batch that
+/// armed it, leaving nothing open for the next dispatch.
 #[test]
 fn timer_call_bang_to_inline_output_command_opens_a_frame() {
     let tmp = tempfile::tempdir().unwrap();
@@ -343,9 +332,9 @@ fn nested_call_bang_before_outer_prints_does_not_reenter_the_alt_screen() {
 /// dispatch returns. The `run_steel_session` tail truncate is the backstop
 /// either way, not just for an uncaught raise.
 ///
-/// Without the `ctx.host.output()...truncate_inline_output(0)` call in
-/// `run_steel_session` (`eval/session.rs`), the next dispatch's `SteelCtx`
-/// would inherit an already-open frame it never armed.
+/// The `ctx.host.output()...truncate_inline_output(0)` call in
+/// `run_steel_session` (`eval/session.rs`) keeps the next dispatch's
+/// `SteelCtx` from inheriting an already-open frame it never armed.
 #[test]
 fn caught_error_inside_call_bang_still_closes_bracket_and_drains_state() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -456,9 +445,6 @@ fn hook_call_bang_to_inline_output_command_closes_the_bracket() {
 /// declare/activate plugin ceremony, which is orthogonal to this) with `Tui`
 /// both `Off` and active, asserting the alt-screen enters only in the latter
 /// case.
-///
-/// If `EditorHostImpl::init` ignored its `tui` parameter and used
-/// `Tui::Off`, `enter_count` would stay `0` after the active block too.
 #[test]
 fn editor_host_impl_init_threads_live_tui_into_arm() {
     use hume_scripting::host::EditorHost;
@@ -603,9 +589,6 @@ fn an_armed_frame_is_open_whether_or_not_a_screen_is_up() {
 /// the terminal either way: a frame it can't push is a frame it can't
 /// mistakenly enter later against whatever `tui` the *next* host it's rebuilt
 /// with happens to carry.
-///
-/// With `Some(Tui::Off)` in `new` instead of `None`, `declared` would still
-/// match and `arm_inline_output` would return `Some(0)`.
 #[test]
 fn new_host_has_no_inline_output_authority() {
     use hume_scripting::host::{ClaimRefused, EditorHost};
@@ -642,17 +625,10 @@ fn new_host_has_no_inline_output_authority() {
 /// host that reaches it (including one with no inline-output authority of
 /// its own, `EditorHostImpl::new`), because entry is a property of what the
 /// frame itself captured (`Tui::as_active`'s result, and `kitty_enabled`, both
-/// at push time), not of whichever host happens to be asking. A guard that
-/// instead checks the *asking* host's own `tui`/`kitty_enabled` (as
-/// `EditorHostImpl::new`'s lack of authority, and its hardcoded
-/// `kitty_enabled: false`, might tempt one to write) would incorrectly skip a
-/// frame that really is active, or enter it under the wrong kitty state.
-/// This pins the deeper, correct behavior instead.
-///
-/// Gating `claim_terminal` on `self.tui` would leave
-/// `enter_count` at `0`. Reading `self.kitty_enabled` there would make
-/// the entered `kitty` report the completing host's `false` instead of the
-/// arming host's `true`.
+/// at push time), not of whichever host happens to be asking.
+/// `claim_terminal` reads both from the frame, never from the
+/// completing host's own `tui`/`kitty_enabled`, which on an
+/// `EditorHostImpl::new` host are absent and a hardcoded `false`.
 #[test]
 fn a_later_host_with_no_authority_still_completes_a_frame_armed_by_an_earlier_one() {
     use hume_scripting::host::EditorHost;

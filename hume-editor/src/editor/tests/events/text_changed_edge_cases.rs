@@ -182,10 +182,6 @@ fn text_changed_feedback_loop_is_cut_off_by_drain_cap() {
 /// changed` must never fire for it (no surviving buffer's content changed);
 /// the new scratch buffer instead announces its own `on-buffer-open`, like
 /// any other freshly opened buffer.
-///
-/// A content swap under the closed id would leave `focused_buffer_id()`
-/// equal to the closed `bid` and fire `on-text-changed` where
-/// `on-buffer-open` belongs.
 #[test]
 fn last_buffer_close_opens_a_fresh_scratch_buffer_not_a_content_swap() {
     use crate::testing::MockHost;
@@ -246,10 +242,6 @@ fn last_buffer_close_opens_a_fresh_scratch_buffer_not_a_content_swap() {
 /// fire `on-text-changed`: the documented trigger `store/tests.rs`'s
 /// coverage never exercised end-to-end (it calls `set_view_content`
 /// directly, bypassing `open_read_only_view`'s reuse path).
-///
-/// If `open_read_only_view`'s reuse branch closed and reopened the view
-/// buffer, the second open would start from a fresh baseline too and the
-/// hook would never fire.
 #[test]
 fn read_only_view_refresh_fires_on_text_changed() {
     use crate::testing::MockHost;
@@ -420,11 +412,6 @@ fn identity_edit_records_no_undo_revision() {
 /// `on-text-changed` correctly fires once for it, coalesced). The guard's
 /// job is narrower: making sure nothing lands on the undo stack for `u` to
 /// later replay as a *second*, phantom mutation.
-///
-/// Without `commit_edit_group`'s `cs.is_identity()` guard, the no-op
-/// revision would be recorded, `is_dirty()`/`can_undo()` would both read
-/// `true` right after `<Esc>`, and `u` would fire a second `on-text-changed`
-/// for a byte-identical buffer.
 #[test]
 fn insert_then_backspace_records_no_revision() {
     use crate::testing::MockHost;
@@ -500,9 +487,8 @@ fn insert_then_backspace_records_no_revision() {
 /// A byte-identical `:e!` reload (`replace_text_recorded`'s `forward.is_identity()`
 /// case) must not bump the text version, so it must not fire `on-text-changed`.
 ///
-/// The identity guard sits above `install`. Below it, the text version would
-/// already have bumped by the time the guard returned, and the hook would
-/// fire.
+/// The identity guard sits above `install`, so it returns before the text
+/// version moves.
 #[test]
 fn identity_reload_fires_no_on_text_changed() {
     use crate::testing::MockHost;
@@ -546,9 +532,8 @@ fn identity_reload_fires_no_on_text_changed() {
 /// that closes the edited buffer before its own `on-text-changed` fires must
 /// not hand a dead `BufferId` to any handler.
 ///
-/// Without `fire_one_event`'s liveness check, the handler would receive the
-/// closed buffer's dead id, and its first buffer builtin on it would log a
-/// `Severity::Error`.
+/// `run_pending_batch` checks that the event's buffer is still live before
+/// `fire_one_event` runs, so no handler receives the closed buffer's dead id.
 #[test]
 fn on_text_changed_skips_a_buffer_closed_earlier_in_the_batch() {
     let tmp = tempfile::tempdir().unwrap();

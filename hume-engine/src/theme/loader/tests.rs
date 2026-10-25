@@ -20,10 +20,10 @@ fn paths(dir: &Path) -> Vec<PathBuf> {
 /// for tests that assert on the inner variant regardless of which file it came
 /// from.
 ///
-/// Not recursive: attribution must happen exactly once, or the
-/// message prints two paths for one error and the outer (less specific) one
-/// wins the reader's eye. Every test that reaches for the inner variant
-/// therefore also guards against a double wrap.
+/// Not recursive: a file-sourced error is attributed once, since a second
+/// wrap prints two paths for one error and the outer (less specific) one
+/// wins the reader's eye. `inner` panics on a double wrap, in every test that
+/// reaches for the inner variant.
 fn inner(err: &ThemeError) -> &ThemeError {
     match err {
         ThemeError::InFile { error, .. } => {
@@ -83,9 +83,8 @@ fn assert_resolves_to_default_style(loaded: &LoadedTheme, key: &'static str) {
 /// Assert `loaded`'s one `BadStyleField` warning has this payload, and that
 /// `key` resolves to `expected_style`: the fields that parsed cleanly
 /// alongside the bad one, per `parse_style_table`'s partial-style behavior.
-/// The payload check alone can't tell strict-type rejections apart. Every
-/// one produces the same variant, and only `field`/`expected` say which
-/// fired, so a mislabelled arm would otherwise pass.
+/// Every strict-type rejection produces the same variant, and only
+/// `field`/`expected` say which arm fired.
 fn assert_bad_style_field(
     loaded: &LoadedTheme,
     key: &'static str,
@@ -231,8 +230,7 @@ fn ansi_color_name_resolves_with_no_warning() {
 #[test]
 fn every_ansi_color_name_resolves() {
     // Expected values are xterm's own default palette, not a read-back of
-    // the loader's own table. Catches a typo'd name or transposed value
-    // that a self-referential check would miss. Each color is used as its
+    // the loader's own table. Each color is used as its
     // own scope key (an arbitrary string as far as the loader is concerned),
     // so one theme document exercises the whole table in a single load.
     let names_and_values = [
@@ -597,9 +595,7 @@ fn max_depth_is_detected() {
     );
 }
 
-/// The other side of the limit: a chain that reaches exactly `MAX_DEPTH` must
-/// load. Without this, the `depth > MAX_DEPTH` comparison could be off by one
-/// in the permissive direction and `max_depth_is_detected` would still pass.
+/// The other side of the limit: a chain as deep as `MAX_DEPTH` must load.
 #[test]
 fn chain_at_exactly_max_depth_loads() {
     let dir = TempDir::new().unwrap();
@@ -932,8 +928,8 @@ fn nul_embedded_segment_is_rejected() {
 
 /// A NUL in the name must be refused by the name check rather than by the
 /// filesystem: `read_to_string` reports it as `InvalidInput`, which is not the
-/// `NotFound` kind the search loop skips on, so it would otherwise surface as
-/// a confusing `ThemeError::Io` instead of "no such theme".
+/// `NotFound` kind the search loop skips on, and the search loop surfaces that
+/// kind as a confusing `ThemeError::Io` instead of "no such theme".
 #[test]
 fn nul_embedded_name_reports_not_found_not_io() {
     let dir = TempDir::new().unwrap();
@@ -1159,9 +1155,9 @@ text = "#d0d0d0"
     assert_eq!(text.fg, Some(Rgb(0xd0, 0xd0, 0xd0)));
     assert_eq!(theme.default.fg, Some(Rgb(0xd0, 0xd0, 0xd0)));
 
-    // A container-only "ui" table must emit nothing for itself. Otherwise
-    // it poisons the dot-fallback chain and every unset ui.* scope resolves
-    // to an empty style instead of falling through to `default`.
+    // A container-only "ui" table emits nothing for itself, so it stays out of
+    // the dot-fallback chain and an unset ui.* scope falls through to
+    // `default` rather than to an empty style.
     let other = theme.resolve_by_name(crate::types::Scope("ui.other"));
     assert_eq!(other, theme.default);
 }
@@ -1637,9 +1633,8 @@ fn non_string_underline_color_becomes_a_warning() {
     );
 }
 
-/// A bad *colour* under `underline` names the field, so it can't be mistaken
-/// for a bad `fg`/`bg` on the same scope, since the two would otherwise produce the
-/// same sentence.
+/// A bad *colour* under `underline` names the field, so its sentence differs
+/// from a bad `fg`/`bg`'s on the same scope.
 #[test]
 fn bad_underline_color_names_the_field_it_came_from() {
     let dir = TempDir::new().unwrap();

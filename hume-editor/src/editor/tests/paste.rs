@@ -189,8 +189,6 @@ fn register_prefix_consumed_by_paste() {
 
     // The prefix must be gone: the next 'd' must NOT route to register 5.
     ed.feed_key(key('d')); // delete; should push to kill ring, not register 5
-    // Register 5 must still hold "REG5". If the prefix leaked into 'd', it
-    // would be overwritten with the deleted char.
     let reg5 = ed
         .state
         .registers
@@ -231,10 +229,6 @@ fn smart_p_dp_reads_ring() {
 /// would otherwise strand the stamp `c`'s own `route_kill` wrote; the
 /// insert session is marked kill-opened (`InsertSession::kill_opened_session`)
 /// so `end_insert_session` refreshes the stamp's `seq` once typing stops.
-///
-/// Without the `kill_opened_session` refresh in `end_insert_session`, the
-/// stamp would keep the pre-typing `edit_seq` and `p` would treat it as stale
-/// and paste the clipboard ("CLIP") instead of 'a'.
 #[test]
 fn smart_p_after_change_reads_ring() {
     let mut ed = editor_from("-[a]>b\n");
@@ -258,13 +252,8 @@ fn smart_p_after_change_reads_ring() {
 /// explicit-register `"5c` <text> `Esc` must NOT resurrect an existing
 /// stamp. `cmd_change` only sets `kill_opened_session` when `route_kill`
 /// reports it actually captured to the ring (`route_kill` returns `false`
-/// for an explicit register). Without that gate, `end_insert_session`
-/// would refresh whatever stale stamp happens to exist, making a later bare
-/// `p` wrongly read `"aaa"` again instead of falling to the clipboard.
-///
-/// Setting `kill_opened_session` without the `if state.route_kill(yanked)`
-/// gate in `cmd_change` would let the `"5c` session refresh the stale "aaa"
-/// stamp, and `p` would paste "aaa" instead of "CLIP".
+/// for an explicit register), so `end_insert_session` leaves the stale stamp
+/// alone and a later bare `p` falls to the clipboard.
 #[test]
 fn explicit_register_change_does_not_resurrect_stale_stamp() {
     let mut ed = editor_from("-[aaa]> bbb\n");
@@ -423,8 +412,7 @@ fn xdp_pastes_ring_head_not_clipboard() {
 /// The idle replay-queue drain that runs after every `feed_key` must not
 /// disturb the paste stamp: a bare `p` after `x d` still reads the ring
 /// head. (`feed_key`/`feed_keys` exercise the same per-key ordering as the
-/// real event loop, including this drain, so every test above already
-/// checks this incidentally; this test pins it explicitly.)
+/// real event loop, including this drain, so every test above runs it too.)
 #[test]
 fn smart_p_survives_idle_replay_drain() {
     let mut ed = editor_from("-[A]>\nB\n");
@@ -510,10 +498,9 @@ fn redo_after_undo_keeps_ring_stamp_stale() {
 /// A composed undo whose net `ChangeSet` is identity (insert 'x', delete 'x')
 /// still moves the revision and the selections: `apply_doc_history_walk`
 /// must bump `edit_seq` for it same as any other walk, even though
-/// `Buffer::apply_edit*` skips `install` for an identity CS. Without that bump, a
-/// stamp taken right before the walk would stay "fresh" across it, and a
-/// bare `p` right after would incorrectly cycle the ring instead of falling
-/// back to the clipboard.
+/// `Buffer::apply_edit*` skips `install` for an identity CS. The bump stales a
+/// stamp taken right before the walk, so a bare `p` right after falls back to
+/// the clipboard.
 #[test]
 fn net_identity_undo_still_bumps_edit_seq_and_ends_paste_session() {
     let mut ed = editor_from("-[h]>ello\n");
@@ -998,7 +985,7 @@ fn paste_ring_older_empty_ring_is_noop() {
     assert_eq!(state(&ed), before, "[ on empty ring is a no-op");
     assert_eq!(status(&ed), "no paste to cycle");
     // Capture fresh snapshot so ] is verified against actual post-[ state,
-    // not the original. If [ accidentally mutated state, this catches both.
+    // not the original.
     let after_open = state(&ed);
     ed.feed_key(key(']'));
     assert_eq!(state(&ed), after_open, "] on empty ring is a no-op");
@@ -1279,8 +1266,8 @@ fn paste_after_cycle_appends_cycled_entry() {
 #[test]
 fn consecutive_paste_appends_copies() {
     let mut ed = editor_from("-[ab]>\n");
-    // Seed clipboard with "CLIP" (distinct from ring) to falsify the assertion:
-    // if the second p reads clipboard instead of the ring, "CLIP" would appear.
+    // Seed clipboard with "CLIP", distinct from the ring entry, so the text
+    // shows which source each p read.
     seed_clipboard(&mut ed, "CLIP");
     ed.feed_key(key('d')); // delete "ab" → ring = ["ab"], stamp fresh
     ed.feed_key(key('p')); // smart-p reads ring head "ab"
@@ -1365,8 +1352,7 @@ fn plain_paste_reads_ring_not_clipboard() {
 /// `paste-before` (plain) reads the ring head and inserts before the
 /// selection: the same source rule as `paste-after`, opposite side. Every
 /// other plain-paste test in this file dispatches `paste-after`; this one
-/// exercises `cmd_paste_before` directly so a bug isolated to the `before`
-/// path (e.g. `do_paste`'s `before` flag) isn't masked by the `after` tests.
+/// covers the `before` path (`do_paste`'s `before` flag).
 #[test]
 fn plain_paste_before_reads_ring_head() {
     let mut ed = editor_from("x-[y]>z\n");
@@ -1625,13 +1611,11 @@ fn paste_during_an_empty_open_insert_session_is_refused_and_leaves_the_session_i
 /// must not leave that edit invisible to a following `[`. `doc_ops::
 /// apply_doc_edit` commits the open Paste session first, so `[` (which
 /// requires a *still-open* Paste session to do anything at all) finds none
-/// and no-ops instead of re-pasting from a now-stale snapshot.
-///
-/// Without that commit, the open session's `snapshot` would still be
-/// the pre-bracketed-paste text. `[` would then re-derive the whole buffer
-/// from that stale snapshot (`apply_edit_regrouped`'s own contract: "every
-/// cycle cleanly discards the previous paste output") and call `install`
-/// with the result, silently discarding the bracketed paste along with it.
+/// and no-ops. The open session's `snapshot` holds the pre-bracketed-paste
+/// text, and a cycle re-derives the whole buffer from it
+/// (`apply_edit_regrouped`'s contract: "every cycle cleanly discards the
+/// previous paste output"), so cycling that session would discard the
+/// bracketed paste too.
 #[test]
 fn direct_edit_during_open_paste_session_commits_it_first() {
     let mut ed = editor_from("-[c]>d\n"); // cursor on 'c' at index 0

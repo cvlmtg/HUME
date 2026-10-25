@@ -770,10 +770,9 @@ fn a_read_only_buffer_still_adopts_the_disk_line_ending_on_reload() {
 
 #[test]
 fn promotion_remaps_saved_revision_to_root() {
-    // The saved revision is exactly the one `undo-levels` trimming promotes
-    // into the root. Undoing past the next edit must still read as saved.
-    // Without the saved_revision remap in record_revision, is_dirty() would
-    // stay true forever after the promotion.
+    // The saved revision is the one `undo-levels` trimming promotes into the
+    // root. `record_revision` remaps `saved_revision` to that root, so
+    // undoing past the next edit still reads as saved.
     let mut d = doc("-[h]>ello\n");
     d.apply_edit(|s| insert_char(s, 'x'));
     let saved_state = state(&d);

@@ -249,12 +249,8 @@ fn apply_doc_history_walk_refuses_a_read_only_buffer() {
     assert_eq!(refusal.message(), read_only_refusal(&ed));
 }
 
-/// `p` and `P` (paste) on a read-only view buffer must report "Buffer is
-/// read-only" and leave the buffer content unchanged.
-/// Validity: remove the `ensure_writable()` guard from
-/// `do_smart_paste` (p/P dispatch through it) and this test fails
-/// (status_msg will not contain the expected message, and the paste would
-/// silently diverge from the read-only contract).
+/// `p` and `P` (paste) on a read-only view buffer must report the read-only
+/// refusal and leave the buffer content unchanged.
 #[test]
 fn view_buffer_blocks_paste() {
     let mut ed = editor_from("-[h]>ello\n");
@@ -346,10 +342,6 @@ fn read_only_buffer_blocks_delete_kill() {
 /// `c` on a read-only view buffer must report the read-only refusal, leave
 /// the buffer content and mode unchanged, and must not push anything onto
 /// the kill ring or touch the paste stamp.
-///
-/// Validity: drop the `ensure_writable()` guard from `cmd_change` and this
-/// test fails: the ring head becomes the (refused) change's yank and the
-/// editor drops into Insert mode.
 #[test]
 fn read_only_buffer_blocks_change_kill() {
     let mut ed = editor_from("-[hell]>o\n");
@@ -452,9 +444,6 @@ fn read_only_refusal_clears_register_prefix_on_paste() {
 
 /// `:w` on a read-only view buffer ([messages]) must error with
 /// the read-only refusal, not "no file name".
-///
-/// Validity: remove the `is_read_only()` guard from `write_file` and this
-/// test fails: the status_msg will contain "no file name" instead.
 #[test]
 fn view_buffer_blocks_write() {
     let mut ed = editor_from("-[h]>ello\n");
@@ -473,9 +462,6 @@ fn view_buffer_blocks_write() {
 
 /// `:e!` on a synthetic buffer (path-less, labeled) must error with
 /// "no file name": there is no source to reload from, force or not.
-///
-/// Validity: restore the force-branch that replaces with scratch and this
-/// test fails: the buffer becomes a scratch buffer instead of erroring.
 #[test]
 fn synthetic_buffer_e_bang_errors() {
     let mut ed = editor_from("-[h]>ello\n");

@@ -6,8 +6,6 @@ use pretty_assertions::assert_eq;
 // ── :goto / bare :N line-jump ─────────────────────────────────────────────────
 
 /// `:goto N` places the cursor at the start of line N (1-based).
-/// Validity: assert line index 2. If the handler is a no-op the head stays on
-/// line 0, which fails the assertion.
 #[test]
 fn colon_goto_moves_to_line() {
     let mut ed = jump_editor(0);
@@ -22,7 +20,6 @@ fn colon_goto_moves_to_line() {
 }
 
 /// Bare `:3` is accepted as shorthand for `:goto 3`.
-/// Validity: same as above: no-op leaves head on line 0, failing index-2 check.
 #[test]
 fn colon_bare_number_moves_to_line() {
     let mut ed = jump_editor(0);
@@ -38,8 +35,6 @@ fn colon_bare_number_moves_to_line() {
 
 /// Past-EOF numbers clamp to the last content line.
 /// 20-line buffer → last content index is 19.
-/// Validity: remove the `.min(last)` clamp and line_to_char panics or returns
-/// the ghost-line position, which fails the index-19 check.
 #[test]
 fn colon_goto_clamps_past_eof() {
     let mut ed = jump_editor(0);
@@ -68,8 +63,6 @@ fn colon_bare_number_clamps_past_eof() {
 }
 
 /// `:goto 0` is an error: line numbers start at 1.
-/// Validity: remove `checked_sub(1)` and 0 maps to index -1 (wraps to usize::MAX),
-/// which would clamp to last line, a bogus move rather than an error.
 #[test]
 fn colon_goto_zero_is_error() {
     let mut ed = jump_editor(5);
@@ -83,7 +76,6 @@ fn colon_goto_zero_is_error() {
 }
 
 /// Non-numeric argument reports an error and leaves the cursor unmoved.
-/// Validity: replace the parse error with Ok(1) and state() would change.
 #[test]
 fn colon_goto_invalid_arg_is_error() {
     let mut ed = jump_editor(5);
@@ -119,8 +111,6 @@ fn colon_goto_no_arg_is_error() {
 }
 
 /// `:goto` records the pre-jump position so `Ctrl-o` returns to it.
-/// Validity: remove the jump-push block and Ctrl-o leaves the cursor at line 14
-/// instead of restoring to before.
 #[test]
 fn colon_goto_records_jump() {
     let mut ed = jump_editor(5);
@@ -267,9 +257,9 @@ fn sort_unknown_flag_reports_an_error() {
 
 #[test]
 fn sort_unknown_long_flag_reports_a_flag_error_not_an_argument_error() {
-    // Validity: an unrecognized `--`-prefixed token is still a flag mistake,
-    // not a positional argument, so it must not fall through to the generic
-    // "unknown argument" phrasing that genuine positionals get.
+    // An unrecognized `--`-prefixed token is a flag mistake, not a
+    // positional argument, so it gets the flag error rather than the
+    // "unknown argument" one positionals get.
     let mut ed = editor_from("-{b}>\n-[a]>\n");
     let before = state(&ed);
     let err = ed
@@ -285,9 +275,8 @@ fn sort_unknown_long_flag_reports_a_flag_error_not_an_argument_error() {
 
 #[test]
 fn sort_bang_is_rejected() {
-    // Validity: `!` means "force" everywhere else in HUME; `:sort` has no
-    // force behavior, so it points the user at `-r` instead of silently
-    // ignoring the `!`.
+    // `!` means "force" everywhere else in HUME; `:sort` has no force
+    // behavior, so it points the user at `-r` instead of ignoring the `!`.
     let mut ed = editor_from("-{b}>\n-[a]>\n");
     let before = state(&ed);
     let err = ed
@@ -337,10 +326,8 @@ fn sort_undo_restores_text_and_selections_in_one_step() {
 
 #[test]
 fn sort_on_already_sorted_input_leaves_buffer_clean() {
-    // Validity: this is the test that pins `sort_lines` returning a
-    // `SortRefusal` instead of a successful identity edit. Replace step 4's
-    // refusal with an always-successful edit and `is_dirty()` starts
-    // reporting `true` here.
+    // `sort_lines` refuses already-ordered input instead of making an
+    // identity edit, which would mark the buffer dirty.
     let mut ed = editor_from("-{a}>\n-[b]>\n");
     assert!(!focused_unsaved(&ed));
     submit(&mut ed, "sort");

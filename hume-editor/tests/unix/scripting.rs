@@ -110,13 +110,9 @@ fn file_module_relative_require_resolves_from_module_dir() {
     );
 }
 
-/// De-risk test for the prelude concept: a `define-syntax` macro defined in
-/// a global eval (as the prelude does) must be visible inside a subsequently
-/// `(require)`d module.
-///
-/// If this test fails the prelude cannot serve plugin modules, only `init.scm`.
-/// That would require documenting the limitation and NOT silently changing the
-/// loader (HARD STOP per plan).
+/// A `define-syntax` macro defined in a global eval (as the prelude does) must
+/// be visible inside a subsequently `(require)`d module: that is how the
+/// prelude serves plugin modules as well as `init.scm`.
 #[test]
 fn global_define_syntax_is_visible_inside_required_module() {
     use steel::rvals::SteelVal;
@@ -533,9 +529,6 @@ fn activate_plugin_drops_command_trigger_on_loaded() {
 
 /// `(declare-plugin! "user/tp" #:languages '("rust"))` → plugin stays lazy,
 /// `activation_languages["rust"]` contains the plugin, body not evaluated.
-///
-/// If `%declare-plugin!` dropped the `#:languages` list, the plugin would still be
-/// Declared but its activation_languages map would be empty.
 #[test]
 fn on_language_trigger_populates_registry_body_not_evaluated() {
     let (dir, init_path) = plugin_fixture(
@@ -570,8 +563,8 @@ fn on_language_trigger_populates_registry_body_not_evaluated() {
 
 /// `activate_plugin` on a language-matched plugin drops the activation entry on success.
 ///
-/// The `activation_languages.retain` in the Ok branch does the removal; if it were
-/// skipped, the entry would look pending on every later language set.
+/// The success branch's `drop_activations_for` does the removal, so the entry
+/// does not look pending on every later language set.
 #[test]
 fn activate_plugin_drops_language_activation_on_loaded() {
     let (dir, init_path) = plugin_fixture(
@@ -650,9 +643,8 @@ fn declare_then_load_keeps_the_plugin_lazy() {
 /// `(load-plugin! "foo")` then `(declare-plugin! "foo" …)`: load runs first,
 /// plugin is `Loaded`; the declare is ignored with a soft error.
 ///
-/// That error comes from the load-then-declare guard in `declare_plugin`. Without
-/// it the declare would fall through to the first-wins guard and no-op with
-/// nothing logged.
+/// That error comes from the load-then-declare guard in `declare_plugin`, which
+/// runs ahead of the first-wins guard, a no-op that logs nothing.
 #[test]
 fn load_then_declare_ignored_with_soft_error() {
     use hume_scripting::host::CommandHost;
@@ -768,8 +760,8 @@ fn declare_then_load_of_an_absent_plugin_reports_it_once() {
 /// error like any other), so `eval_init` still succeeds; `pb` itself ends up
 /// `Failed`.
 ///
-/// Were `ensure_top_level` to accept `EvalMode::PluginLoad` too, the eager
-/// in-body call would succeed.
+/// An eager plugin body runs in `EvalMode::PluginLoad`, and `ensure_top_level`
+/// accepts only `EvalMode::Init`.
 #[test]
 fn load_plugin_in_plugin_body_rejected() {
     // Plugin pb calls (load-plugin! "user/dep") in its body; dep IS present on
@@ -886,7 +878,7 @@ fn declare_plugin_without_triggers_hard_error_scripting_level() {
 /// The Rust `%declare-plugin!` primitive hard-errors on its own when called
 /// directly with no activation entries, bypassing the Scheme wrapper.
 ///
-/// Without the zero-entry guard in `declare_plugin`, eval_source would succeed.
+/// The error is `declare_plugin`'s own zero-entry check.
 #[test]
 fn declare_plugin_bang_no_triggers_hard_error_scripting_level() {
     let dir = tempfile::tempdir().unwrap();
@@ -918,8 +910,8 @@ fn declare_plugin_bang_no_triggers_hard_error_scripting_level() {
 /// `#:commands` names that ALL collide with builtins leave zero effective
 /// activation entries → hard error (the post-filter zero-entry check fires).
 ///
-/// The emptiness check has to run after collision filtering. Checked before it,
-/// the list still holds one name and the declare would wrongly succeed.
+/// `declare_plugin`'s second emptiness check runs after collision filtering;
+/// the first, before it, still sees the colliding name.
 #[test]
 fn declare_plugin_all_commands_collide_is_hard_error() {
     let dir = tempfile::tempdir().unwrap();

@@ -144,9 +144,6 @@ fn a_keymap_named_by_a_string_is_rejected() {
 // ── Mode validation ───────────────────────────────────────────────────────
 
 /// `bind-key!` rejects an unknown mode name.
-///
-/// Without `mode_from_symbol` validation, 'visual would fall into an
-/// arbitrary match arm and insert into the wrong trie.
 #[test]
 fn bind_key_invalid_mode_errors() {
     let mut h = SteelCtxTestHarness::new();
@@ -208,9 +205,6 @@ fn bind_key_string_mode_errors() {
 // ── Key-sequence parsing ──────────────────────────────────────────────────
 
 /// `bind-key!` rejects an invalid key-sequence string.
-///
-/// Parsing that returned `Ok([])` on bad input would insert the binding
-/// under an empty key, where no keypress can reach it.
 #[test]
 fn bind_key_invalid_key_sequence_errors() {
     let mut h = SteelCtxTestHarness::new();

@@ -129,8 +129,6 @@ fn colon_q_view_buffer_with_real_buffer_switches_not_quits() {
 fn colon_q_real_buffer_with_clean_scratch_quits() {
     // An empty scratch buffer is disposable: :q on the last file buffer should
     // exit rather than parking on the scratch.
-    // Validity: revert the predicate to `|| !is_read_only()` and this test fails
-    // (should_quit stays false).
     let (mut ed, _tmp) = editor_with_file("-[h]>ello\n", "hello\n");
     let file_buf = ed.focused_buffer_id();
     ed.open_buffer(crate::editor::buffer::Buffer::scratch());
@@ -148,8 +146,6 @@ fn colon_q_real_buffer_with_clean_scratch_quits() {
 fn colon_q_with_dirty_scratch_remaining_stays() {
     // A scratch buffer with unsaved edits is worth preserving: :q on the file
     // buffer must switch to the dirty scratch rather than discard it.
-    // Validity: drop the `|| ed.state.has_unsaved_changes(id)` clause and this test fails
-    // (should_quit becomes true, silently discarding the scratch content).
     let (mut ed, _tmp) = editor_with_file("-[h]>ello\n", "hello\n");
     let file_buf = ed.focused_buffer_id();
     let scratch_id = ed.open_buffer(crate::editor::buffer::Buffer::scratch());
@@ -227,8 +223,6 @@ fn colon_q_real_buffer_with_only_view_buffer_remaining_quits() {
 fn colon_q_bang_on_dirty_buffer_with_other_real_buffer_closes_not_quits() {
     // :q! on a dirty file buffer must discard changes and close the buffer,
     // not quit, when another real (file-backed) buffer is open.
-    // Validity: remove the `any_other_real` branch from typed_quit and this
-    // test fails (should_quit becomes true).
     let (mut ed, _tmp) = editor_with_file("-[h]>ello\n", "hello\n");
     let dirty_buf = ed.focused_buffer_id();
 
@@ -268,7 +262,6 @@ fn colon_qa_quits_single_clean_buffer() {
 #[test]
 fn colon_qa_quits_with_multiple_clean_buffers() {
     // :qa must exit even when :q would only close the focused buffer.
-    // Validity: replace `should_quit = true` with `close_buffer` and this fails.
     let (mut ed, _tmp) = editor_with_file("-[h]>ello\n", "hello\n");
     let _scratch = ed.open_buffer(Buffer::scratch());
     ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.view), ed.focused_buffer_id()); // stay on file buf
@@ -285,8 +278,6 @@ fn colon_qa_quits_with_multiple_clean_buffers() {
 fn colon_qa_refused_when_a_background_buffer_is_dirty() {
     // :qa must check ALL buffers, not just the focused one, and it must switch
     // focus to the first unsaved buffer so the user knows where to look.
-    // Validity: swap `ed.state.buffers.iter().any(...)` for `focused_unsaved(&ed)` and
-    // this test fails: the dirty background buffer would be silently ignored.
     let (mut ed, _tmp1) = editor_with_file("-[h]>ello\n", "hello\n");
     let file_buf = ed.focused_buffer_id();
 
@@ -336,8 +327,6 @@ fn colon_qa_bang_quits_despite_dirty_buffers() {
 fn colon_qa_stays_on_focused_dirty_buffer() {
     // When the focused buffer is already dirty, :qa must stay on it (not jump
     // to another buffer) and still refuse to quit.
-    // Validity: remove the `!focused_unsaved(&ed)` guard and the editor would
-    // jump away from the already-unsaved focused buffer.
     let (mut ed, _tmp) = editor_with_file("-[h]>ello\n", "hello\n");
     let dirty_buf = ed.focused_buffer_id();
 
@@ -364,7 +353,6 @@ fn colon_qa_stays_on_focused_dirty_buffer() {
 fn colon_qa_lands_on_first_dirty_buffer_in_open_order() {
     // With multiple dirty buffers and a clean focused buffer, :qa must land on
     // the first dirty buffer in open-order, not just any dirty buffer.
-    // Validity: change find → find last and this test fails.
     let (mut ed, _tmp1) = editor_with_file("-[h]>ello\n", "hello\n");
     let clean_buf = ed.focused_buffer_id();
 

@@ -8,9 +8,8 @@ use hume_scripting::ScriptingHost;
 
 /// `diff-lines` returns 0-based hunk hashes, oldest side first.
 ///
-/// This is the one test that pins the shape registered at the Steel
-/// boundary. Any change to a key name, the base, or the list encoding
-/// stops the probe from firing.
+/// This is the one test of the whole shape registered at the Steel
+/// boundary.
 #[test]
 fn diff_lines_returns_zero_based_hunk_hashes() {
     let tmp = tempfile::tempdir().unwrap();
@@ -29,13 +28,10 @@ fn diff_lines_returns_zero_based_hunk_hashes() {
 }
 
 /// `diff-buffer-lines` diffs `ref-text` (old) against the live buffer (new).
-/// This pins the argument order: `old-lines` is the ref's line,
-/// `new-lines` is the buffer's.
+/// `old-lines` is the ref's line, `new-lines` is the buffer's.
 ///
-/// Swapping ref and buffer inside `DiffHost::diff_buffer_lines` would invert
-/// the hunk's old/new sides and stop the probe from firing. Both builtins
-/// build their hunks with `text_hunks`, so this one case stands in for a
-/// `diff-buffer-lines` ≡ `diff-lines` matrix.
+/// Both builtins build their hunks with `text_hunks`, so this one case
+/// stands in for a `diff-buffer-lines` ≡ `diff-lines` matrix.
 #[test]
 fn diff_buffer_lines_diffs_the_live_buffer_against_the_ref() {
     let tmp = tempfile::tempdir().unwrap();
@@ -65,10 +61,6 @@ fn diff_buffer_lines_diffs_the_live_buffer_against_the_ref() {
 /// prefixed `"steel call error: "` (`event/pump.rs`'s `run_call_batch`
 /// → `apply_script_result`), not as a Rust panic or a silent no-op. Hence
 /// checking the log instead of a `run_probe` boolean.
-///
-/// If `diff-buffer-lines`'s `builtins!` table entry took `args::ArgPane`
-/// instead of `args::LivePane`, only this test would fail. No other test in
-/// this file passes a stale bid.
 #[test]
 fn diff_buffer_lines_on_a_stale_bid_raises_invalid_buffer_id() {
     let tmp = tempfile::tempdir().unwrap();
@@ -181,11 +173,10 @@ fn buffer_revision_diff_on_an_unknown_revision_raises() {
 /// `diff-words` returns `(hash 'hunks … 'deadline-hit …)`, each hunk a hash of
 /// char offsets and texts.
 ///
-/// This is the one test that pins the shape registered at the Steel
-/// boundary. Any change to a key name, the offset base, or the outer
-/// shape stops the probe from firing. Offsets
-/// worked out by hand from `split_word_bounds()`'s tokenization of "foo bar"
-/// (`"foo"`, `" "`, `"bar"`/`"baz"`: offsets `0,3,4,7`).
+/// This is the one test of the whole shape registered at the Steel
+/// boundary. Offsets worked out by hand from `split_word_bounds()`'s
+/// tokenization of "foo bar" (`"foo"`, `" "`, `"bar"`/`"baz"`: offsets
+/// `0,3,4,7`).
 #[test]
 fn diff_words_returns_a_hunks_and_deadline_hit_hash() {
     let tmp = tempfile::tempdir().unwrap();
@@ -225,8 +216,8 @@ fn diff_lines_words_follow_the_edit_across_uneven_sides() {
 
 /// Old-side spans name their line in the old text and their columns in it;
 /// new-side spans are char offsets into the new text, ready for
-/// `set-extra-highlights!`. Both hunks start on line 1, so a hunk-relative
-/// line or column would read differently.
+/// `set-extra-highlights!`. Both hunks start on line 1, where an absolute
+/// line or column differs from a hunk-relative one.
 #[test]
 fn diff_buffer_lines_words_are_absolute_lines_and_new_text_offsets() {
     let tmp = tempfile::tempdir().unwrap();

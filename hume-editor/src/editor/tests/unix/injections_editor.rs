@@ -102,8 +102,8 @@ fn plum_list_plugins_shows_each_list() {
 /// were a "user" directory would call `Path::read_dir` on a non-directory,
 /// and that error would propagate uncaught out of `:plum-list-plugins`.
 ///
-/// `stdlib/list-subdirs` must filter by `is-dir?`, or a real `.DS_Store` next
-/// to an installed plugin raises the same error.
+/// `stdlib/list-subdirs` filters by `is-dir?`, so a real `.DS_Store` next to
+/// an installed plugin is skipped the same way.
 #[test]
 fn plum_installed_plugins_skips_a_stray_file_in_the_plugins_dir() {
     // `load_plum` makes `<data_tmp>/hume/` the editor's data dir, so the
@@ -290,10 +290,6 @@ fn plum_install_grammar_unknown_name_warns() {
 }
 
 /// A typed argument wins over the current buffer's language.
-///
-/// An arity-0 `plum-install-grammar` lambda would have the minibuffer drop
-/// `nosuchlang` silently and run a real install of `rust` (the buffer's
-/// language), so the message would never mention `nosuchlang`.
 #[test]
 fn plum_install_grammar_arg_overrides_buffer_language() {
     let data_tmp = tempfile::tempdir().unwrap();
@@ -354,9 +350,9 @@ fn inline_output_command_does_not_enter_terminal_bracket_off_event_loop() {
 /// no-terminal early return rather than the real terminal: printing must
 /// succeed without ever entering the alt-screen.
 ///
-/// Without the `needs_enter`/`tui` guard, `claim_terminal` would
-/// always enter, and this test would hang waiting for a keypress against a
-/// real TTY or panic against a non-TTY stdin in CI.
+/// The `needs_enter`/`tui` guard keeps `claim_terminal` from
+/// entering here, where entering waits for a keypress against a real TTY or
+/// panics against a non-TTY stdin in CI.
 #[test]
 fn inline_output_command_with_real_output_still_skips_bracket_off_event_loop() {
     let tmp = tempfile::tempdir().unwrap();
@@ -437,10 +433,6 @@ fn plum_install_grammar_recovers_from_stale_source_dir_on_first_try() {
 /// curl fetches of its `highlights.scm` and its `ecma`/`_typescript`/`_jsx`
 /// query dependencies); requires `git` and `curl` on `PATH`, and a
 /// workspace-built grammar compiler (see `workspace_grammar_build`).
-///
-/// Plain `curl-fetch` in place of `plum/fetch-query!` would leave
-/// `highlights.scm` as the raw `; inherits: …` stub, a comment-only file with
-/// no `@capture` in it.
 #[test]
 fn plum_install_grammar_resolves_helix_inherits_chain() {
     let data_tmp = tempfile::tempdir().unwrap();

@@ -761,9 +761,8 @@ fn macro_q1_replay_after_undo() {
 }
 
 /// Regression: a macro containing two consecutive `p` commands must not panic
-/// or corrupt undo. `commit_paste_session` must run during replay too, or
-/// the second `p` hits `begin_edit_group` on an already-open `paste_group`
-/// and trips a `debug_assert`.
+/// or corrupt undo. `commit_paste_session` runs during replay too, closing the
+/// first `p`'s paste session before the second `p` opens its own.
 #[test]
 fn macro_with_two_pastes_does_not_panic() {
     let mut ed = editor_from("-[AB]>CD\n");
@@ -794,10 +793,6 @@ fn macro_with_two_pastes_does_not_panic() {
 /// Macro `['d', '.']`: the inner `d` records the change inside the loop, then
 /// `.` reads it and fires `replay_dot` at the tail of the inner `handle_key`
 /// call, within `drain_replay_queue`'s loop, not after.
-///
-/// If `replay_dot` ran only after the replay loop, the `.` would set
-/// `pending_repeat` on the last iteration without draining it, leaving the
-/// buffer with only one `d` applied.
 #[test]
 fn dot_inside_macro_replay_fires_drain() {
     // Four chars so deletes leave visible residue.
@@ -879,11 +874,8 @@ fn macro_replay_resolves_non_conformant_shift_delivery_like_clean_press() {
 /// override that the very next key, `<tab>`, reads. `recorded` replays the
 /// macro in one shot; `direct` uses `feed_event` to mirror `Editor::run`'s
 /// loop (dispatch, then settle, per key), as the reference for what "typed
-/// by hand" produces.
-///
-/// If `drain_replay_queue` settled only once at the end of the loop,
-/// `recorded`'s `<tab>` would run while `indent-style` is still the compiled-in
-/// `Hard` and insert a literal `\t` where `direct` inserts spaces.
+/// by hand" produces. The compiled-in `indent-style` is `Hard`, so a `<tab>`
+/// that runs before the hook inserts a literal `\t`.
 #[test]
 fn macro_replay_runs_a_replayed_keys_own_hook_before_the_next_replayed_key() {
     use crate::editor::tests::language::attach_host;

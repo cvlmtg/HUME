@@ -61,9 +61,8 @@ fn round_trips_u64_range_integers_exactly_via_bignum() {
         matches!(steel, SteelVal::BigNum(_)),
         "expected BigNum for a u64-range integer, got {steel:?}"
     );
-    // An f64 fallback would round u64::MAX to 18446744073709551616.0, since
-    // f64 can't represent every u64 exactly. The round trip must land on the
-    // exact original value.
+    // f64 can't represent every u64: as an f64, u64::MAX rounds to
+    // 18446744073709551616.0.
     assert_eq!(
         steel_to_json(&steel).unwrap(),
         json!(huge),
@@ -120,8 +119,7 @@ fn reverse_rejects_closures_naming_the_type() {
 }
 
 #[test]
-fn flip_check_object_keys_would_fail_if_symbols_leaked() {
-    // If the impl regressed to SymbolV keys, this assertion catches it.
+fn object_keys_are_not_symbols() {
     let steel = json_to_steel(&json!({"foo": 1}));
     match steel {
         SteelVal::HashMapV(hm) => {
@@ -157,10 +155,9 @@ fn downcast_json_handle_rejects_an_unrelated_value() {
 }
 
 /// Real `equal?` dispatch through the Steel VM, not just Rust-level
-/// `PartialEq` on `serde_json::Value`. Without `equality_hint`/
-/// `try_as_dyn_hash`, steel-core's default `equality_hint` returns `true`
-/// for any two `Custom` values of the same type regardless of contents,
-/// which is exactly the bug this test would catch.
+/// `PartialEq` on `serde_json::Value`. steel-core's default `equality_hint`
+/// returns `true` for any two `Custom` values of the same type regardless of
+/// contents, so `JsonHandle`'s own `equality_hint` compares the resolved values.
 #[test]
 fn equal_compares_by_resolved_value_through_a_real_steel_eval() {
     let mut steel = steel::steel_vm::engine::Engine::new();

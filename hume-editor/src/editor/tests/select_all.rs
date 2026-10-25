@@ -117,9 +117,6 @@ fn star_on_multiword_selection_uses_word_under_head() {
 }
 
 /// `*` on a `\n` cursor is a noop: no word to search for.
-///
-/// Without the `CharClass::Eol` guard, `inner_word_impl` would expand the
-/// cursor to the adjacent newline run and set a useless newline regex.
 #[test]
 fn star_on_trailing_newline_is_noop() {
     let mut ed = editor_from("hello\n-[\n]>");
@@ -127,16 +124,10 @@ fn star_on_trailing_newline_is_noop() {
     ed.handle_key(key('*'));
     assert_eq!(ed.state.mode(), Mode::Normal);
     assert_eq!(state(&ed), before);
-    // The cursor/selection check above already catches a regressed guard (it would
-    // move the selection), but pin the register too: a noop must not set a search regex.
     assert!(reg(&ed, 's').is_empty());
 }
 
 /// `*` with the head on whitespace is a no-op: no word to search for.
-///
-/// Regression: without the `CharClass::Space` guard, `inner_word_impl` would
-/// expand the cursor to the adjacent whitespace run and set a bare-space
-/// search pattern, which matches every run of whitespace in the buffer.
 #[test]
 fn star_on_whitespace_is_noop() {
     // "a b c\n", cursor on the space between 'a' and 'b'.
@@ -303,11 +294,6 @@ fn search_selection_on_collapsed_cursor_searches_char() {
 }
 
 /// `Ctrl-/` on a collapsed cursor sitting on a structural `\n` is a no-op.
-///
-/// Regression: without this guard, the 1-char selection "\n" becomes the
-/// search pattern: a raw-newline regex that matches every line end,
-/// clobbering the search register with something useless (the same
-/// degenerate case `*` avoids via its `CharClass::Eol` guard).
 #[test]
 fn search_selection_on_newline_is_noop() {
     let mut ed = editor_from("hello\n-[\n]>");

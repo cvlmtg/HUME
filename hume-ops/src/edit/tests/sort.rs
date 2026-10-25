@@ -80,8 +80,7 @@ fn sort_groups_are_independent_across_a_gap() {
 
 #[test]
 fn sort_single_line_group_is_refused() {
-    // Validity: a single-line group can't be permuted. Flip this to a
-    // 2-adjacent-line selection and the refusal disappears.
+    // A single-line group has nothing to permute.
     let (text, sels) = test_fixtures::testing::parse_state("-{a}>\nx\n-[b]>\n");
     assert_eq!(
         sort_lines(
@@ -95,9 +94,9 @@ fn sort_single_line_group_is_refused() {
 
 #[test]
 fn sort_already_ordered_input_is_refused() {
-    // Validity: an identity edit would still push an undo revision and mark
-    // a clean buffer dirty (`History::record` has no identity guard); this
-    // refusal is what lets the caller skip applying anything.
+    // An identity edit would still push an undo revision and mark a clean
+    // buffer dirty (`History::record` has no identity guard), so the
+    // refusal lets the caller apply nothing.
     let (text, sels) = test_fixtures::testing::parse_state("-{a}>\n-[b]>\n");
     assert_eq!(
         sort_lines(

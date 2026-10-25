@@ -517,9 +517,8 @@ fn picker_accept_switching_to_shorter_buffer_mid_frame_does_not_panic() {
     ed.feed_key(key_enter());
 
     // The next prepare_frame drains the callback (switching the pane to the
-    // 3-char buffer) then renders. An engine selection mirror still holding
-    // buffer A's stale head (499) against buffer B's 3-char rope would panic
-    // in ropey's char_to_line.
+    // 3-char buffer) then renders, with the engine selection mirror taken
+    // from buffer B: A's head (499) lies past the end of B's 3-char rope.
     let _ = ed.render_to_buf(rect);
 
     let bid = ed.focused_buffer_id();
@@ -926,9 +925,8 @@ fn live_picker_backspace_to_empty_cancels_a_pending_nonempty_spawn() {
     ed.feed_key(key_backspace());
     // Two settles, as above: the first drains the two queued wrapped-
     // callback calls (arming, then re-arming, the 0ms timer); the second
-    // lets the surviving timer actually fire. Without it, this test would
-    // pass even if backspace failed to cancel the "a" timer, since neither
-    // would have fired yet either way.
+    // lets the surviving timer fire, so a timer backspace failed to cancel
+    // would fire too.
     ed.settle();
     ed.settle();
 

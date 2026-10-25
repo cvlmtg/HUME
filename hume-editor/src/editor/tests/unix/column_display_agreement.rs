@@ -58,8 +58,8 @@ fn write_fixture_file_content(dir: &Path, name: &str, content: &str) -> (PathBuf
 
 // ── `:diagnostics` ───────────────────────────────────────────────────────
 
-/// A `:diagnostics` row in `diagnostics.scm` that read `"char-col"` would
-/// show `1:4` (the char column) instead of the grapheme column `1:3`.
+/// A `:diagnostics` row shows the grapheme column `1:3`, not the char
+/// column `1:4`.
 #[test]
 fn diagnostics_drawer_shows_grapheme_column() {
     let diag: DiagFixture = ((0, 4), (0, 5), 1, "astral column check");
@@ -118,7 +118,7 @@ fn run_references(ed: &mut Editor) {
 /// no place to jump to), an unopened target whose URI needs percent-decoding,
 /// and an unopened all-ASCII file.
 ///
-/// The central pin is rows 0 vs 1: the *same* wire location (`character: 4`
+/// The central case is rows 0 vs 1: the *same* wire location (`character: 4`
 /// on the fixture's non-ASCII line) renders `1:3` from the open buffer
 /// (measured grapheme column) and `1:5` from the unopened one (the raw wire
 /// `character`, 1-based): the divergence the wire-column exception accepts.
@@ -127,9 +127,6 @@ fn run_references(ed: &mut Editor) {
 /// because a byte offset, a UTF-16 code-unit count, and a grapheme count
 /// coincide once nothing non-ASCII precedes the target, the reason the
 /// exception is tolerable in practice.
-///
-/// If the unopened branch read the file and measured a grapheme column on
-/// it, row 1 would read `1:3`, identical to row 0.
 #[test]
 fn references_drawer_measures_open_buffers_and_echoes_wire_columns_for_unopened_targets() {
     let tmp = tempfile::tempdir().unwrap();
@@ -217,11 +214,9 @@ fn references_drawer_measures_open_buffers_and_echoes_wire_columns_for_unopened_
             .any(|row| row.contains("main.rs:6") || row.contains("main.rs:2")),
         "an open buffer's lines past its content must be left out, got {rows:?}"
     );
-    // The row's path and its wire column must come from the same URI parse.
-    // When Scheme rendered the path by stripping "file://" itself, it had no
-    // percent-decoding: the row read "a%20name.rs" while the column beside
-    // it had been read out of "a name.rs": one row naming a file it did
-    // not measure.
+    // The row's path and its wire column must come from the same URI parse,
+    // so the row names the decoded "a name.rs" its column was read from, not
+    // "a%20name.rs".
     assert!(
         rows[4].ends_with("a name.rs:1:5"),
         "a percent-encoded uri must render its decoded path alongside the \
@@ -268,9 +263,6 @@ fn a_column_past_the_line_end_shows_where_goto_lands() {
 /// could jump to either, so `lsp-locations->merged-places` must abort the
 /// whole batch rather than render an unselectable row for it. See
 /// `hume_lsp::location::decode_location`'s doc.
-///
-/// If `decode_location` tolerated a missing `range` (say, by defaulting to
-/// line 0), the drawer would open with four rows instead of erroring.
 #[test]
 fn a_malformed_location_aborts_the_batch_instead_of_a_degraded_row() {
     let tmp = tempfile::tempdir().unwrap();

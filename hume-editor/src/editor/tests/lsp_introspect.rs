@@ -436,7 +436,7 @@ fn lsp_linewise_ranges_params_is_empty_for_a_lone_collapsed_blank_line_selection
 /// one among a mixed set shows up in `ranges`. `:format-source` itself treats a
 /// mixed set as ambiguous and warns instead of formatting (see
 /// `mixed_linewise_and_sub_line_selections_warn_and_format_nothing` in
-/// `tests/unix/lsp_format.rs`); this test pins the introspection builtin's
+/// `tests/unix/lsp_format.rs`); this test covers the introspection builtin's
 /// own, narrower contract.
 #[test]
 fn lsp_linewise_ranges_params_skips_non_linewise_selections() {
@@ -489,9 +489,9 @@ fn lsp_linewise_ranges_params_is_empty_when_nothing_is_linewise() {
 }
 
 /// The wire range's `end` must land after a full grapheme
-/// cluster, never mid-cluster. `char_to_wire(rope, end_c + 1, ..)` (a raw
-/// `+ 1`) would split `é` (`e` + U+0301, two chars, one cluster) if the
-/// selection's inclusive `head` sits on the cluster's first char.
+/// cluster, never mid-cluster. The selection's inclusive `head` sits on the
+/// first char of `é` (`e` + U+0301, two chars, one cluster), so one char
+/// past the head is mid-cluster.
 #[test]
 fn lsp_primary_range_params_end_lands_on_a_grapheme_boundary_not_mid_cluster() {
     let tmp = tempfile::tempdir().unwrap();
@@ -553,12 +553,9 @@ fn viewport_range_matches_the_on_viewport_change_hooks_own_computation() {
 }
 
 /// `viewport-range`'s `end` names one past the buffer's last *content* line,
-/// never ropey's phantom line past the structural trailing `\n`: the bug
-/// that made the manual's documented recipe (`user-manual/docs/plugins.md`)
-/// overshoot `buffer-lines`' bounds check whenever the viewport reaches EOF.
-///
-/// Clamping to `ropey_line_count()` rather than `content_line_count()` would
-/// report an `'end` one higher than this asserts.
+/// never ropey's phantom line past the structural trailing `\n`, so the
+/// manual's documented recipe (`user-manual/docs/plugins.md`) stays within
+/// `buffer-lines`' bounds check when the viewport reaches EOF.
 #[test]
 fn viewport_range_end_is_one_past_the_last_content_line_at_eof() {
     let tmp = tempfile::tempdir().unwrap();
@@ -581,9 +578,6 @@ fn viewport_range_end_is_one_past_the_last_content_line_at_eof() {
 /// called directly (not through the `on-viewport-change` hook or a Steel
 /// probe) so the pane's height is what the terminal leaves it, not
 /// whatever a dispatched command might have touched.
-///
-/// `first_line + height + 1` would report 4 for a 3-row pane at the top of a
-/// 6-line buffer, naming a row past what's on screen.
 #[test]
 fn viewport_range_end_is_one_past_the_last_visible_row() {
     let mut ed = editor_from("-[a]>\nb\nc\nd\ne\nf\n");
@@ -943,8 +937,8 @@ fn lsp_position_to_char_offset_uses_the_responses_tagged_utf8_encoding() {
 /// encoding: an untagged handle (a `json-parse` result) must error, not
 /// resolve via `bid`'s currently attached server.
 ///
-/// Without `JsonHandle::position_encoding`'s `Err`, this would silently
-/// decode against the running UTF-16 server.
+/// `JsonHandle::position_encoding` returns `Err` for an untagged handle, so
+/// it never decodes against the running UTF-16 server.
 #[test]
 fn lsp_position_to_char_offset_untagged_handle_errors() {
     let tmp = tempfile::tempdir().unwrap();

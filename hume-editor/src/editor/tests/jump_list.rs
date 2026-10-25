@@ -269,9 +269,9 @@ fn ctrl_i_works_when_current_is_same_line_as_last_jump() {
 }
 
 /// `%` (select-all) records a jump so Ctrl-o returns to the pre-`%` position.
-/// `select-all` needs a jump flag on its `Selection` command registration.
-/// Without it, the dispatch path never captures a pre-command snapshot and
-/// Ctrl-o lands at whatever stale entry was already in the list.
+/// `select-all`'s `Selection` command registration carries the `jump` flag,
+/// so the dispatch path captures a pre-command snapshot for Ctrl-o to return
+/// to.
 #[test]
 fn select_all_records_jump() {
     // Start on line 5 of a 20-line buffer.
@@ -301,9 +301,9 @@ fn select_all_records_jump() {
 }
 
 /// `%` (select-all) from the buffer's own last char must still record a
-/// jump. The head doesn't move (it was already `%`'s own landing spot), so
-/// a `moved` check that compares heads alone sees no movement and drops the
-/// entry, even though the anchor moved and the selection is now different.
+/// jump. The head doesn't move (it was already `%`'s own landing spot), but
+/// the anchor does, and `with_jump`'s `moved` check compares the whole
+/// selection, not just its head.
 #[test]
 fn select_all_from_last_char_still_records_jump() {
     let text = BufferText::from("foo\nbar\n");
@@ -410,11 +410,9 @@ fn goto_prev_paragraph_records_jump_even_for_a_short_hop() {
 /// A no-op `}` (no paragraph below) must not truncate forward jump-list
 /// history, the same failure mode as
 /// `goto_matching_pair_noop_does_not_clobber_forward_history` above.
-/// Asserting the pre/post state is unchanged (as the previous version of
-/// this test did) can't catch a wrongly-pushed entry: a no-op's own jump
-/// restores right back to where it already was, so that assertion passes
-/// whether or not the entry was pushed. Forward history is the only
-/// observable that distinguishes the two.
+/// Forward history is the observable: a no-op's own jump restores right back
+/// to where it already was, so the pre/post state reads the same whether or
+/// not an entry was pushed.
 #[test]
 fn goto_next_paragraph_noop_does_not_clobber_forward_history() {
     let mut ed = jump_editor(10); // single paragraph, nothing below to select

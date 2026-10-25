@@ -125,12 +125,9 @@ fn mouse_click_in_insert_fires_on_mode_change() {
 // ── Hook cascade cap ──────────────────────────────────────────────────────────
 
 /// A handler feedback loop (an `on-language-set` handler that always flips the
-/// language between two values) must be cut off by the drain cap instead of
-/// livelocking the editor.  The watchdog only bounds each individual eval,
-/// not the re-drain loop.
-///
-/// Without the `MAX_EVENT_DRAIN` cap in `settle`, this test would never
-/// return.
+/// language between two values) must be cut off by `settle`'s
+/// `MAX_EVENT_DRAIN` cap instead of livelocking the editor.  The watchdog
+/// only bounds each individual eval, not the re-drain loop.
 #[test]
 fn hook_feedback_loop_is_cut_off_by_drain_cap() {
     use crate::testing::MockHost;
@@ -171,8 +168,8 @@ fn hook_feedback_loop_is_cut_off_by_drain_cap() {
 
 /// An *amplifying* handler feedback loop (one that enqueues more hooks than
 /// it received) doubles the pending batch every pass (1, 2, 4, 8, …). A cap
-/// on pass *count* lets total work explode geometrically (2^100 evals at the
-/// old 100-pass limit, never finishing); the cap must instead bound total
+/// on pass *count* lets total work explode geometrically (2^100 evals for a
+/// 100-pass limit, never finishing); the cap must instead bound total
 /// hooks processed so this terminates quickly regardless of growth shape.
 ///
 /// Each handler invocation sets the buffer's language to `"a"` then `"b"`;
@@ -283,8 +280,7 @@ fn queued_hooks_require_explicit_settle() {
 ///
 /// `detect_pending_languages` runs `detect_and_set_language` before it fires
 /// `OnBufferOpen`, and `open_buffer_and_notify` does not push `OnBufferOpen`
-/// at open time. Breaking either one flips `hook_order` to
-/// `[OnBufferOpen, OnLanguageSet]`.
+/// at open time.
 #[test]
 fn on_buffer_open_queued_after_on_language_set() {
     use crate::editor::buffer::Buffer;
@@ -340,12 +336,12 @@ fn on_buffer_open_queued_after_on_language_set() {
 /// Asserting the full two-element order (not just "did it fire") also
 /// covers a double-fire: the post-init sweep (`scripting/init.rs`) that
 /// re-detects every open buffer's language calls `detect_and_set_language`
-/// a second time for this buffer, which would append a spurious third entry
-/// if `set_buffer_language_impl`'s unchanged-value early return ever broke.
+/// a second time for this buffer, and `set_buffer_language_impl`'s
+/// unchanged-value early return keeps that call from appending a third entry.
 ///
-/// Without the `open_hook_pending`/`pending_language_detection` bookkeeping
-/// in `Editor::open`, `hook_order` would be `["on-language-set"]` (or empty,
-/// if language detection also finds nothing to change).
+/// `Editor::open` calls `queue_open_announcement` for the startup buffer,
+/// which sets the `open_hook_pending`/`pending_language_detection`
+/// bookkeeping that `detect_pending_languages` announces from.
 #[test]
 fn startup_buffer_announces_on_buffer_open_after_on_language_set() {
     use crate::testing::MockHost;
@@ -402,8 +398,8 @@ fn startup_buffer_announces_on_buffer_open_after_on_language_set() {
 /// `unix::scripting_effects::buffer_opened_and_closed_in_one_eval_fires_neither_hook`
 /// already asserts for a buffer opened mid-eval. The startup buffer never
 /// goes through `open_buffer_and_notify`, so `Editor::open` sets its
-/// `open_hook_pending` itself. Left at `false`, closing the buffer would
-/// fire an unpaired `on-buffer-close` though `on-buffer-open` never fired.
+/// `open_hook_pending` itself, and closing the buffer before the
+/// `detect_pending_languages` drain fires no unpaired `on-buffer-close`.
 #[test]
 fn startup_buffer_close_before_any_drain_fires_no_on_buffer_close() {
     let dir = tempfile::tempdir().unwrap();

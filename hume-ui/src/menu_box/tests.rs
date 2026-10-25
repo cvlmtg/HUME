@@ -409,9 +409,9 @@ fn widest_of_an_empty_run_is_zero() {
 /// A terminal whose band ceiling, 35% of its height, is 20 rows.
 const HEIGHT_WITH_CEILING_20: u16 = 58;
 
-/// `content_rows as u16 + chrome_rows` overflows at exactly `u16::MAX` rows
-/// and truncates silently above it. Either would wrap to a near-zero `u16`,
-/// so `band_capacity` must clamp both cases to the ceiling.
+/// `band_capacity` adds in `usize`, saturating, and clamps to the ceiling
+/// before narrowing to `u16`, so a row count at or past `u16::MAX` cannot
+/// wrap to a near-zero `u16`.
 #[test]
 fn band_capacity_clamps_instead_of_overflowing_u16() {
     assert_eq!(band_capacity(65_535, 1, HEIGHT_WITH_CEILING_20), 20);
@@ -504,10 +504,8 @@ fn scrollbar_thumb_flush_bottom_at_max_scroll() {
     );
 }
 
-/// Without the `scroll > 0` nudge, floor division alone would leave the
-/// thumb pinned at the same start as `scroll == 0` here, indistinguishable
-/// from "haven't scrolled at all". This is the test that would catch
-/// reverting to plain `scroll * slack / max_scroll`.
+/// The `scroll > 0` nudge keeps floor division from leaving the thumb at the
+/// same start as `scroll == 0` here, which reads as "haven't scrolled at all".
 #[test]
 fn scrollbar_thumb_moves_off_the_top_after_one_line_of_scroll() {
     let (start_at_zero, _) = scrollbar_thumb(3, 100, 0).expect("overflowing");
@@ -525,13 +523,11 @@ fn scrollbar_thumb_length_is_proportional_and_leaves_track_visible() {
     );
 }
 
-/// The `(view*view).div_ceil(total)` proportional term, not just the
-/// `(view-1).max(1)` clamp, must actually drive the thumb length. The test
-/// above (`view=3,total=4`) only exercises the clamp: the ratio term there
-/// (`ceil(9/4)=3`) gets clamped down to 2 regardless, so deleting that term
-/// entirely and hardcoding `view-1` would still pass it. Hand-computed
-/// expected lengths here land below the clamp ceiling,
-/// so only the real ratio term can produce them.
+/// The `(view*view).div_ceil(total)` proportional term drives the thumb
+/// length below the `(view-1).max(1)` clamp. The test above
+/// (`view=3,total=4`) reaches only the clamp: its ratio term (`ceil(9/4)=3`)
+/// clamps down to 2. The hand-computed lengths here land below the clamp
+/// ceiling.
 #[test]
 fn scrollbar_thumb_length_scales_with_visible_fraction_not_just_the_clamp() {
     let (_, len_10_of_100) = scrollbar_thumb(10, 100, 0).expect("overflowing");

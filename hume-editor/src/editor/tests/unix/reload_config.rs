@@ -111,9 +111,10 @@ fn reload_config_command_resets_state_from_a_real_init_scm() {
 /// hook `core:git-diff`'s `steel:git-branch` element (and this test's own
 /// stand-in) refreshes from) was never in the resync replay.
 ///
-/// `ed.settle()` runs once before the reload for the same reason
-/// `resync_refires_buffer_enter_for_the_focused_buffer` needs it; see that
-/// test's doc for why skipping it would prove nothing.
+/// `ed.settle()` runs once before the reload to set the buffer-enter diff's
+/// baseline (`EditorState::last_entered_buffer`, which `editor_from` starts
+/// `None`) to the focused buffer, so on reload the hook fires only through the
+/// resync replay.
 #[test]
 fn reload_config_repopulates_statusline_text_pushed_from_on_buffer_enter() {
     // This test reloads the same `init.scm` unchanged, unlike every other
@@ -642,20 +643,15 @@ fn reload_config_restores_an_explicit_buffer_language_detection_cannot_recover()
 /// `init_scripting`'s unconditional `scheme/grammars.scm` eval is the only
 /// place a grammar gets registered, and `:reload-config` re-enters it after
 /// `reset_config_state` tears down the previous `LanguageRegistry`
-/// (`clear_languages_all`). Regression coverage: `clear_languages_all`
-/// once left `Buffer.syntax` pointed at an
-/// `Arc<GrammarBundle>` from the discarded registry when a buffer's
-/// language failed to re-detect after reload.
+/// (`clear_languages_all`). `clear_languages_all` clears `Buffer.syntax` too,
+/// so a buffer whose language fails to re-detect after reload holds no
+/// `Arc<GrammarBundle>` from the discarded registry.
 ///
 /// Uses a real compiled JSON grammar staged under `StagedGrammarFixture`
 /// (real runtime directory, so the real language data and
 /// `grammars.scm` registrar run both times) with no `core:plum` in
-/// `init.scm` at all, proving the survival is core's doing, not a reload
+/// `init.scm` at all, so the survival is core's doing, not a reload
 /// re-running an install command.
-///
-/// Without `buf.syntax = None` in `clear_languages_all`, the buffer would keep
-/// reparsing against a registry that no longer exists and the final
-/// `syntax.is_some()` assertion would fail.
 #[test]
 fn reload_config_keeps_a_startup_grammar_registered() {
     test_fixtures::require_grammars(&["json"]);
@@ -718,11 +714,11 @@ fn reload_config_keeps_a_startup_grammar_registered() {
 // :reload-config with no resolvable config directory fails fast
 // ---------------------------------------------------------------------------
 
-/// `typed_reload_config` checks `config_path()` *before* touching anything.
-/// A `None` config dir found only after `reset_config_state` had wiped
-/// languages/keymap/theme/highlighting would hit `init_scripting`'s own
-/// `None`-directory early return and leave the editor permanently degraded,
-/// with `scripting` left `None`. This asserts nothing was touched at all:
+/// `typed_reload_config` checks `config_path()` *before* touching anything:
+/// past `reset_config_state`, which wipes languages/keymap/theme/highlighting,
+/// `init_scripting`'s own `None`-directory early return leaves the editor
+/// permanently degraded, with `scripting` left `None`. This asserts nothing
+/// was touched at all:
 /// the error is reported, and a live config override (a bound key) survives
 /// untouched.
 #[test]
@@ -777,11 +773,9 @@ fn reload_config_with_no_config_dir_fails_fast_and_resets_nothing() {
 // ---------------------------------------------------------------------------
 
 /// Two reloads back to back must both fully apply the (changing) config on
-/// disk: regression coverage for state that's `mem::take`n exactly once
-/// per reload (`ReloadSnapshot::take_explicit_languages`) or recomputed
-/// fresh each call (`pre_reload_bids`/`buffer_stamps`): either forgetting to
-/// reset between calls, or a snapshot silently going stale on the second
-/// pass, would surface here.
+/// disk. Each reload captures its own `ReloadSnapshot` (`pre_reload_bids`, and
+/// the explicit languages `take_explicit_languages` empties once), so the
+/// second reload reads nothing the first one left behind.
 #[test]
 fn reload_config_twice_in_a_row_both_apply_cleanly() {
     let fixture = ReloadFixture::new(r#"(set-option! "scroll-margin" 3)"#);

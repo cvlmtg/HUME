@@ -10,11 +10,6 @@ use pretty_assertions::assert_eq;
 /// Buffer "(foo) (bar) baz": cursor on the first 'o' of "foo", `ms(` selects
 /// the two parens, `d` deletes them → "foo (bar) baz". Collapse to one cursor,
 /// move to "bar", `.` must replay `ms(` + `d` on "(bar)" → "foo bar baz".
-///
-/// If `ms(` is not recorded in the selection recipe (e.g.
-/// `surround-paren`'s `selection_tracking` were `Untracked`), the recipe is
-/// empty and `.` deletes only the current "bar" selection, leaving
-/// "foo () baz" instead of "foo bar baz".
 #[test]
 fn dot_repeat_of_match_surround_deletes_both_parens() {
     let mut ed = editor_from("(-[f]>oo) (bar) baz\n");
@@ -135,12 +130,6 @@ fn dot_repeat_of_select_all_matches_deletes_content() {
 /// `,` keeps only the first (primary), `d` deletes it. `.` must replay
 /// `m/` + `,` + `d`, re-selecting all remaining "foo" matches, keeping the
 /// (new) primary, and deleting it too.
-///
-/// If `keep-primary-selection` reset the recipe instead of
-/// composing, `.` would replay `[,, d]` from whatever selection happens to
-/// remain after the first delete. `,` on a single selection is a no-op, so
-/// `d` would just delete that leftover selection instead of re-running the
-/// search-driven `m/`.
 #[test]
 fn dot_repeat_of_keep_primary_selection_composes_onto_the_prior_recipe() {
     let mut ed = editor_from("-[f]>oo bar foo bar foo bar\n").with_search_regex("foo");
@@ -191,11 +180,6 @@ fn dot_repeat_of_keep_primary_selection_composes_onto_the_prior_recipe() {
 /// newline (so "bbb\n" is removed whole). Net effect: one line disappears:
 /// "\nccc\nddd\n". `.` must replay `x` + `Ctrl-x` + `S` + `d` on the next two
 /// lines too, removing another: "\n\n".
-///
-/// If `split-selection-on-newlines` reset the recipe instead of
-/// composing, `.` would replay `[S, d]` from whatever selection happens to
-/// remain. `S` on a single-line (already-collapsed) selection is a no-op,
-/// so `d` would delete only that leftover selection.
 #[test]
 fn dot_repeat_of_split_selection_on_newlines_composes_onto_the_prior_recipe() {
     let mut ed = editor_from("-[a]>aa\nbbb\nccc\nddd\n");
@@ -244,11 +228,6 @@ fn dot_repeat_of_split_selection_on_newlines_composes_onto_the_prior_recipe() {
 /// insert places "ab" again at the selection's start → "ab" + "ab" + "x" =
 /// "ababx". The buffer only grows (no delete ever happens), which is the
 /// signal that `.` ran the insert and nothing resembling "mii + d".
-///
-/// If `mii` corrupted the recorded change (e.g. by being
-/// misclassified as repeatable) or leaked into its frozen recipe, `.` would
-/// replay some other action (or reselect "ab" again as an operator target)
-/// instead of inserting, and the buffer would not end up "ababx".
 #[test]
 fn dot_repeat_after_select_last_insertion_still_repeats_the_insert() {
     let mut ed = editor_from("-[x]>\n");
@@ -257,8 +236,7 @@ fn dot_repeat_after_select_last_insertion_still_repeats_the_insert() {
     assert_eq!(ed.doc().text().to_string(), "abx\n");
 
     // Move off "ab" first: `insert-select-on-exit` (default on) already left
-    // it selected, so pressing `mii` right away would be a no-op and the
-    // assertion below would hold whether or not `mii` actually did anything.
+    // it selected, so `mii` right away would change nothing.
     set_cursor(&mut ed, 2); // onto 'x'
     ed.feed_key(key('m'));
     ed.feed_key(key('i'));
@@ -289,9 +267,6 @@ fn dot_repeat_after_select_last_insertion_still_repeats_the_insert() {
 /// 'b'. `.` must replay select-word-nearest-on-line + d from there too,
 /// re-selecting the whole word "bar" rather than deleting just that 1-char
 /// cursor.
-///
-/// If the command were `Untracked`, the recipe would stay empty and `.` would
-/// delete only the 1-char cursor left behind, leaving "ar\n".
 #[test]
 fn dot_repeat_of_select_word_nearest_on_line_deletes_the_word() {
     let mut ed = editor_from("-[f]>oo bar\n");
@@ -323,10 +298,8 @@ fn dot_repeat_of_select_word_nearest_on_line_deletes_the_word() {
 /// leaving "bbb\nccc\n". Move to "ccc"; `.` must replay `select-line` + `d`
 /// there too, leaving "bbb\n".
 ///
-/// Without the "selection unchanged" gate, `m/`'s failed run would still
-/// reset the recipe to `[select-all-matches]`. `.` replays that
-/// (another no-op) then `delete`, which acts on the current 1-char cursor
-/// instead of the whole line, leaving "bb\n" instead of "bbb\n".
+/// `update_recipe`'s `selection_changed` gate leaves the recipe at
+/// `[select-line]` after `m/`'s failed run.
 #[test]
 fn dot_repeat_of_failed_select_all_matches_preserves_prior_recipe() {
     let mut ed = editor_from("-[a]>aa\nbbb\nccc\n").with_search_regex("zzz");
@@ -418,10 +391,8 @@ fn dot_repeat_whose_recipe_step_has_no_search_pattern_leaves_text_unchanged() {
 /// `ms(` on it would no-op); `d` deletes it, leaving "bbb\nccc\n". Move to
 /// "ccc"; `.` must replay `select-line` + `d` there too, leaving "bbb\n".
 ///
-/// Without the "selection unchanged" gate, the no-op `ms(` would still
-/// reset the recipe to `[surround-paren]`. `.` replays that (another
-/// no-op, cursor unchanged) then `delete`, which acts on the current 1-char
-/// cursor instead of the whole line, leaving "bb\n" instead of "bbb\n".
+/// `update_recipe`'s `selection_changed` gate leaves the recipe at
+/// `[select-line]` after the no-op `ms(`.
 #[test]
 fn dot_repeat_of_noop_surround_preserves_prior_recipe() {
     let mut ed = editor_from("-[a]>aa\nbbb\nccc\n");
@@ -460,12 +431,6 @@ fn dot_repeat_of_noop_surround_preserves_prior_recipe() {
 ///
 /// `KillRing::cycle_position()` is the ring's own cursor,
 /// read directly rather than inferred from which text ended up pasted.
-///
-/// Without `repeat-last-action`'s `.defers_paste_commit()` (and
-/// the matching commit/defer decision in `replay_dot`), the paste session is
-/// closed before the replay runs; `do_paste_cycle` sees no open Paste-kind
-/// `active_session` and returns before ever calling `cycle_older()`, so
-/// `cycle_position()` stays at `Some(1)` instead of advancing to `Some(2)`.
 #[test]
 fn dot_repeat_of_paste_ring_cycle_advances_the_ring() {
     let mut ed = editor_from("-[aaa]> bbb ccc\n");

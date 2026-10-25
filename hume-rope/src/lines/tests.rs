@@ -54,11 +54,10 @@ fn content_line_count_asserts_the_trailing_newline_invariant() {
 
 #[test]
 fn line_breaks_matches_the_workspace_ropey_feature_pin() {
-    // Pins the workspace's ropey feature set (Cargo.toml: neither `cr_lines`
-    // nor `unicode_lines`) to what it actually makes `Rope::lines()` split
-    // on. Cargo feature unification is additive: a future dependency pulling
-    // in ropey's defaults would silently widen the break set with no diff to
-    // Cargo.toml, and only this test would notice.
+    // The workspace's ropey feature set (Cargo.toml: neither `cr_lines` nor
+    // `unicode_lines`) decides what `Rope::lines()` splits on. Cargo feature
+    // unification is additive, so a dependency that pulls in ropey's defaults
+    // widens the break set with no diff to Cargo.toml.
     assert_eq!(
         Rope::from_str("a\nb").len_lines(),
         2,
@@ -186,12 +185,11 @@ fn line_break_empty_buffer() {
 #[test]
 #[should_panic(expected = "is not a real content line")]
 fn line_break_asserts_against_the_phantom_trailing_line() {
-    // "a\n" has one content line (0); line 1 is the phantom trailing line, where
-    // next_line_start(1) - 1 would silently return line 0's own '\n'
-    // instead of failing, so this must be caught instead of mis-answered.
-    // `ContentLine::new` doesn't itself validate against a rope: the whole
-    // point of this test is that the runtime assert still catches a value
-    // minted for a line the type says is content but isn't, for this buffer.
+    // "a\n" has one content line (0); line 1 is the phantom trailing line,
+    // whose next_line_start(1) - 1 is line 0's own '\n', so `line_break`
+    // asserts instead of answering. `ContentLine::new` doesn't itself validate
+    // against a rope, so the runtime assert is what catches a value minted for
+    // a line the type says is content but isn't, for this buffer.
     let buf = rope("a\n");
     line_break(&buf, ContentLine::new(1));
 }
@@ -594,11 +592,11 @@ fn place_char_column_within_line() {
 #[test]
 fn place_char_column_is_monotonic_across_the_line_end_boundary() {
     // "abc\ndef\n": line 0 holds 'a','b','c' at chars 0,1,2 with its '\n' at
-    // char 3. A char col of exactly 3 is one past the last character, i.e.
-    // the newline's own offset, and must clamp back to 'c' like every larger
-    // column does. Clamping against `next_line_start` (which counts the
-    // '\n') instead put col 3 on the newline while col 4 clamped to 'c':
-    // moving further right moved the cursor left.
+    // char 3. A char col of 3 is one past the last character, i.e. the
+    // newline's own offset, and must clamp back to 'c' like every larger
+    // column does. The clamp is against the line's content end, not
+    // `next_line_start` (which counts the '\n'), so moving further right never
+    // moves the cursor left.
     let buf = rope("abc\ndef\n");
     let placed: Vec<usize> = (0..6)
         .map(|col| {

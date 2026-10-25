@@ -306,10 +306,6 @@ fn short_popup_falls_through_ctrl_d_instead_of_swallowing_it() {
 /// 24-row pane can't tell the two formulas apart (`⌊24/3⌋ == ⌊25/3⌋ == 8`,
 /// see `tall_content_docks_instead_of_using_the_drawer` below); a 23-row
 /// pane can (`⌊23/3⌋ == 7`, `⌊24/3⌋ == 8`).
-///
-/// Computing one more than the range's width in `helpers.scm`'s
-/// `lsp/visible-lines` would report 24 visible lines instead of 23 and raise
-/// the threshold to 8, so 8 content lines would float instead of dock.
 #[test]
 fn visible_lines_threshold_has_no_off_by_one_from_the_old_inclusive_range() {
     let tmp = tempfile::tempdir().unwrap();
@@ -400,11 +396,9 @@ fn tall_content_docks_instead_of_using_the_drawer() {
 
 #[test]
 fn capability_gate_skips_the_request_when_hover_unsupported() {
-    // No response scripted for "textDocument/hover". If the capability
-    // gate failed open (called the request thunk anyway), the request
-    // would go unanswered and `status_msg` would stay unset, not mention
-    // "not supported". That is enough to tell, without inspecting the
-    // (trait-erased, post-boxing unreachable) sent log.
+    // No response scripted for "textDocument/hover", so only the capability
+    // gate's own "not supported" message sets `status_msg`. Reading it avoids
+    // inspecting the (trait-erased, post-boxing unreachable) sent log.
     let tmp = tempfile::tempdir().unwrap();
     // No hoverProvider in the advertised capabilities.
     let (mut ed, _guard, _sid) = setup(
@@ -449,11 +443,8 @@ fn capability_gate_skips_the_request_when_the_provider_field_is_null() {
 /// than showing nothing: `lsp/hover` sends its request with
 /// `#:require-focus #t`, which drops the callback (never even reaching
 /// `hover.scm`'s own body) once the focused buffer no longer matches the
-/// buffer that sent the request.
-///
-/// Without `#:require-focus` on `hover.scm`'s `lsp-request!`, the popup would
-/// show regardless of which buffer answered, since a queued callback's
-/// `(focused-pane)` is live focus at drain time.
+/// buffer that sent the request. A queued callback's `(focused-pane)` is
+/// live focus at drain time, so the callback alone cannot tell.
 #[test]
 fn stale_response_after_a_buffer_switch_shows_no_popup() {
     let tmp = tempfile::tempdir().unwrap();
@@ -509,8 +500,8 @@ fn allow_stale_is_honored_despite_an_intervening_edit() {
 
     ed.execute_keymap_command("lsp/hover".into(), Some(1), false);
 
-    // Bump the buffer's generation between send and drain. Without
-    // #:allow-stale this response would be dropped. No settle() call until
+    // Bump the buffer's generation between send and drain; #:allow-stale
+    // keeps the response from being dropped. No settle() call until
     // after the edit: settle() unconditionally drains LSP too;
     // draining any earlier would deliver the
     // response (and run lsp/hover's close-on-mode-change dismiss) before

@@ -63,14 +63,12 @@ fn curl_fetch_for_test(
 // ---------------------------------------------------------------------------
 
 /// End-to-end: register-grammar! in command mode attaches the grammar immediately
-/// and the execute path auto-sweeps open buffers of that language.
+/// (init mode only queues it) and the execute path auto-sweeps open buffers of
+/// that language.
 ///
 /// Exercises: register_grammar command branch → attach_grammar → theme.bake →
 /// Effect::GrammarSweep → apply_script_effects → sweep_buffers_for_grammars
 /// → setup_buffer_syntax → Buffer.syntax (Syntax::attach).
-///
-/// Were the command body to run in init mode (queuing instead of attaching),
-/// no sweep would fire and syntax would stay `None`.
 #[test]
 fn register_grammar_command_mode_attaches_and_sweeps() {
     require_grammars(&["json"]);
@@ -163,11 +161,6 @@ fn attach_json_via_init(register_grammar_call: &str) -> Arc<GrammarBundle> {
 /// path for `#:textobjects` (the motivating shape: a language with
 /// structural objects but nothing embedded) populates the bundle's
 /// `textobjects` and leaves `injections` `None`.
-///
-/// If the Steel wrapper dropped or swapped the `#:injections`/
-/// `#:textobjects` keyword argument it forwards to `%register-grammar!`,
-/// this would see `injections` populated instead (or `textobjects` still
-/// `None`).
 #[test]
 fn register_grammar_textobjects_only_populates_textobjects_not_injections() {
     require_grammars(&["json"]);
@@ -256,8 +249,7 @@ fn register_grammar_injections_only_populates_injections() {
 /// separately, so the risk (if any remains) is scoped to calls within a
 /// single file, exactly what this test constructs.
 ///
-/// A miscompile here would make `eval_init` return `Err` with a
-/// `FreeIdentifier` message instead of registering the grammar.
+/// That miscompile surfaces as a `FreeIdentifier` error from `eval_init`.
 #[test]
 fn register_grammar_two_differently_shaped_keyword_calls_in_one_file_compiles() {
     require_grammars(&["json"]);
@@ -294,10 +286,6 @@ fn register_grammar_two_differently_shaped_keyword_calls_in_one_file_compiles() 
 /// pending language regs.  A `(call! "unknown-cmd")` in
 /// the same init logs a warning but does not abort: unknown commands are
 /// soft failures during init (buffer access unavailable; command not native).
-///
-/// If passive load crashed, `eval_init` would return `Err`.  If the
-/// unknown `(call!)` aborted the eval, the grammar registration that preceded
-/// it would not show up in `pending_language_regs`.
 #[test]
 fn passive_load_registers_grammar_and_unknown_call_logs_warning() {
     require_grammars(&["json"]);
@@ -623,16 +611,12 @@ fn configure_language_roots_keyword_round_trips_through_real_prelude() {
     assert_eq!(registry.roots_of(rooted), ["proj.toml", "proj.lock"]);
 }
 
-/// The actual bug report this whole feature exists for: opening a `.tsx`
-/// file made `typescript-language-server` log "Invalid languageId \"tsx\"
-/// ... Correcting to \"typescriptreact\"", because the bundled
-/// language data sent HUME's own language name as the wire `languageId`.
+/// The shipped language data gives `tsx` the wire `languageId`
+/// `"typescriptreact"`: sent HUME's own language name, `typescript-language-server`
+/// logs "Invalid languageId \"tsx\" ... Correcting to \"typescriptreact\"".
 /// Boots against the real, shipped `runtime/` dir (not a hand-written
-/// fixture) so this fails if a future `scripts/sync-grammars.py` run ever
-/// drops the `language-id` overrides again.
-///
-/// Without `language-id` in the shipped `languages/tsx.scm`, or with
-/// `lsp_language_id_of` falling back to `name_of`, the id would be `"tsx"`.
+/// fixture), so it reads the `language-id` overrides `scripts/sync-grammars.py`
+/// writes into `languages/*.scm`.
 #[test]
 fn tsx_bundled_language_id_is_typescriptreact() {
     let config_tmp = tempfile::tempdir().unwrap();
@@ -672,9 +656,6 @@ fn tsx_bundled_language_id_is_typescriptreact() {
 ///
 /// The detection + parse-post happens via the end-of-init
 /// `detect_and_set_language` loop in `scripting/init.rs`.
-///
-/// Without that loop, `syntax` would still be `None` when `init_scripting`
-/// returns.
 #[test]
 fn initial_buffer_parse_is_in_flight_by_end_of_init_scripting() {
     require_grammars(&["json"]);
@@ -750,9 +731,6 @@ fn initial_buffer_parse_is_in_flight_by_end_of_init_scripting() {
 /// runtime dir at the repo's real `runtime/` dir (so the real
 /// language data and `grammars.scm` registrar run), and runs
 /// `init_scripting` against an `init.scm` that never mentions PLUM.
-///
-/// If grammar registration depended on PLUM, `has_grammar` would stay false
-/// and the buffer would render unhighlighted.
 #[test]
 fn grammar_registration_survives_plum_absence() {
     require_grammars(&["json"]);
@@ -812,9 +790,8 @@ fn grammar_registration_survives_plum_absence() {
 /// it in `init.scm`. This exercises exactly that documented pattern for an
 /// already-grammared language and asserts highlighting survives it.
 ///
-/// If `register_identity_no_rebuild` dropped a registered grammar
-/// on re-registration, `has_grammar` would go false and the buffer would
-/// render unhighlighted after `init.scm`'s `define-language!` call.
+/// `register_identity_no_rebuild` replaces only the identity on
+/// re-registration and keeps the language's registered grammar.
 #[test]
 fn define_language_override_in_init_keeps_startup_grammar() {
     require_grammars(&["json"]);
@@ -963,8 +940,9 @@ fn startup_reads_only_installed_languages_data_files() {
 /// install directory reaches it anyway, so registration must skip it rather
 /// than raise.
 ///
-/// Without the `bundled-language-grammar` check in
-/// `register-installed-grammars!`, `(list-ref #f 2)` would raise.
+/// `register-installed-grammars!`'s `(when source …)` skips a name
+/// `bundled-language-grammar` returns `#f` for, before `grammar-symbol`'s
+/// `(list-ref #f 2)` can raise.
 #[test]
 fn orphan_compiled_grammar_is_skipped_not_registered() {
     let ext = test_fixtures::grammar_platform_ext();
@@ -977,8 +955,8 @@ fn orphan_compiled_grammar_is_skipped_not_registered() {
             b"not a real library",
         )
         .unwrap();
-        // A highlights query too: without it the `when` short-circuits before
-        // the symbol lookup and the guard under test never runs.
+        // A highlights query too, so only the `bundled-language-grammar`
+        // check stands between this name and the symbol lookup.
         let src = grammars.join("sources").join("no-longer-in-catalog");
         std::fs::create_dir_all(&src).unwrap();
         std::fs::write(src.join("highlights.scm"), "; empty\n").unwrap();
@@ -1044,13 +1022,10 @@ fn known_grammar_missing_highlights_warns_and_is_not_registered() {
 /// platform's installed set, so `installed-grammars` must never yield its name
 /// at all: `register-grammar!` must not even be attempted for it.
 ///
-/// Startup registration opens nothing, so an attempt on this entry would
-/// register `json`, with a library path `grammar-output-path` re-derives
-/// with the *platform's* extension, and `has_grammar` would report it. A
-/// skip leaves `json` with no grammar.
-///
-/// An `installed-grammars` that matched on "has any extension" rather than the
-/// platform extension would pick this file up and register it.
+/// Startup registration opens nothing, so `has_grammar` reports a
+/// registration attempt even for a file that is not a real library
+/// (`grammar-output-path` re-derives its path with the *platform's*
+/// extension). A skip leaves `json` with no grammar.
 #[test]
 fn wrong_extension_grammar_is_skipped_not_registered() {
     let wrong_ext = if cfg!(target_os = "macos") {
@@ -1153,8 +1128,8 @@ fn runtime_register_grammar_with_a_bad_library_raises() {
 }
 
 /// `installed-grammars` must sort by stem, not by full filename: `"b-x.<ext>"
-/// < "b.<ext>"` (`-` sorts before `.`), so sorting before stripping the
-/// extension would put `b-x` ahead of `b`. Neither name has a bundled grammar, so
+/// < "b.<ext>"` (`-` sorts before `.`), but stem order puts `b` ahead of
+/// `b-x`. Neither name has a bundled grammar, so
 /// `register-installed-grammars!` skips both silently. Only the list order
 /// is under test.
 #[test]

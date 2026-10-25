@@ -10,9 +10,6 @@ use pretty_assertions::assert_eq;
 ///
 /// Three-line buffer: the first `x d` leaves two lines and the second leaves
 /// one.
-///
-/// Without the recipe replay, `.` would delete only the char
-/// the cursor happened to be on (collapsed selection), not the whole line.
 #[test]
 fn dot_repeats_select_line_delete() {
     // Three lines; cursor on 'a'.
@@ -73,11 +70,10 @@ fn dot_repeats_extend_select_delete() {
 ///
 /// Four-line buffer; `j x d` deletes line 1 ("bbb\n"),
 /// leaving "aaa\nccc\nddd\n". `.` must re-select line 1 ("ccc\n") and delete
-/// it, giving "aaa\nddd\n". If `j` were in the recipe, `.` would instead move
-/// down from "ccc" to "ddd" first, deleting "ddd\n" and leaving "aaa\nccc\n".
+/// it, giving "aaa\nddd\n".
 ///
-/// The `is_collapsed()` guard is what keeps `j` (a Motion in Move mode) out of
-/// the recipe.
+/// The `!ctx.extend` check in `update_recipe`'s `SelectionTracking::Extends`
+/// arm keeps `j` (a Motion in Move mode) out of the recipe.
 #[test]
 fn dot_repeat_navigation_not_in_recipe() {
     // Four lines so that the last-line structural-'\n' protection does not
@@ -97,8 +93,6 @@ fn dot_repeat_navigation_not_in_recipe() {
     );
 
     // `.` replays x (selects current line "ccc\n") + d (deletes it).
-    // If j were in the recipe, `.` would move down to "ddd\n" first and delete
-    // that, leaving "aaa\nccc\n". The assertion below tells the two cases apart.
     ed.feed_key(key('.'));
     assert_eq!(
         ed.doc().text().to_string(),
@@ -138,8 +132,7 @@ fn dot_repeat_collapsed_cursor_empty_recipe() {
 ///
 /// Three-line buffer; `x c z Esc` on line 0 replaces "aaa" with 'z' and keeps
 /// the line's '\n' → "z\nbbb\nccc\n". Then `.` on line 1 re-selects "bbb\n"
-/// via the recipe, runs change, and inserts 'z' → "z\nz\nccc\n". Without the
-/// recipe, `.` would change only the 1-char cursor on 'b' → "z\nzbb\nccc\n".
+/// via the recipe, runs change, and inserts 'z' → "z\nz\nccc\n".
 #[test]
 fn dot_repeats_change_reselects_line() {
     // Three lines; `c` after select-line removes the content but keeps the `\n`.
@@ -171,7 +164,7 @@ fn dot_repeats_change_reselects_line() {
     ed.feed_key(key('.')); // re-select "bbb\n" via recipe, change, retype 'z'
 
     // Recipe re-selects "bbb\n", change deletes "bbb" (keeps '\n'),
-    // inserts 'z' → "z\nz\nccc\n". Without recipe, only 'b' would be deleted → "z\nzbb\nccc\n".
+    // inserts 'z' → "z\nz\nccc\n".
     assert_eq!(
         ed.doc().text().to_string(),
         "z\nz\nccc\n",
@@ -210,14 +203,12 @@ fn undo_clears_selection_recipe() {
 /// not reset it to a single `[C]` step.
 ///
 /// `copy-selection-on-next-line` duplicates whatever selection is already
-/// there: it establishes nothing on its own, so recording it as a reset
-/// (`SelectionTracking::Establishes`) would replay `.` as "duplicate a bare
-/// cursor," silently dropping the `x` that built the real extent (see
+/// there: it establishes nothing on its own. It is registered with
+/// `.composes_selection()` (`SelectionTracking::Composes`) because it
+/// transforms the staged extent, so the `x` that built that extent stays in
+/// the recipe (see `registry/defaults/selections.rs`, and
 /// `dot_repeat_of_copy_selection_replays_the_whole_recipe` below for the
-/// end-to-end failure this would cause). Registered with
-/// `.composes_selection()` (`SelectionTracking::Composes`) precisely because
-/// it transforms the staged extent instead of establishing one (see
-/// `registry/defaults/selections.rs`).
+/// end-to-end replay).
 #[test]
 fn copy_selection_on_next_line_appends_to_the_selection_recipe() {
     let mut ed = editor_from("-[a]>aa\nbbb\n");
@@ -259,13 +250,6 @@ fn copy_selection_on_next_line_appends_to_the_selection_recipe() {
 /// deletes both: each line's own newline survives, leaving
 /// `"\n\nfoo\nbar\n"`. Move down two buffer lines to the second "foo\nbar\n"
 /// pair; `.` must replay `mm` + `C` + `d` there too, leaving `"\n\n\n\n"`.
-///
-/// If `copy-selection-on-next-line` reset the recipe instead of
-/// composing (`SelectionTracking::Establishes` instead of `Composes`), `.`
-/// would replay `[C, d]` from a bare cursor instead of `[mm, C, d]`. `C` on
-/// a collapsed cursor duplicates one cursor onto the next line, and `d`
-/// deletes two *characters*, leaving `"\n\nf\nar\n"`-shaped text instead of
-/// `"\n\n\n\n"`.
 #[test]
 fn dot_repeat_of_copy_selection_replays_the_whole_recipe() {
     let mut ed = editor_from("-[f]>oo\nbar\nfoo\nbar\n");
@@ -327,8 +311,7 @@ fn dot_repeat_of_delete_leaves_ring_fresh_for_paste() {
     let text = state(&ed);
     // "bar" is independently known from the scenario itself (the `.` replays
     // a delete on the word we navigated to with `w`), not read back from
-    // `kill_ring.head()`, so a `.` that fails to push to the ring at all
-    // can't make this pass by accident.
+    // `kill_ring.head()`.
     assert!(
         text.contains("bar"),
         "p after dot-repeat delete must paste the ring head \"bar\"; buf={text:?}"
@@ -342,11 +325,10 @@ fn dot_repeat_of_delete_leaves_ring_fresh_for_paste() {
 /// `w d` (word motion select then delete) must record an empty selection
 /// recipe. A bare `.` then deletes the *current* selection, NOT the next word.
 ///
-/// If `w` pushed an establish step, `.` would re-run `select-next-word` from
-/// the new cursor position and advance past the intended word, deleting the
-/// one after it. The `!ctx.extend` exclusion in `update_recipe`'s
+/// The `!ctx.extend` exclusion in `update_recipe`'s
 /// `SelectionTracking::Extends` arm keeps `w` (a `Motion`, always `Extends`)
-/// out of the recipe.
+/// out of the recipe, so `.` never re-runs `select-next-word` past the
+/// intended word.
 ///
 /// Buffer "a  foo bar baz\n". `w` selects "foo", `d` deletes it →
 /// "a   bar baz\n". Then `w` selects "bar". `.` must delete "bar" (current

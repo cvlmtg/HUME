@@ -512,9 +512,9 @@ fn markdown_documentation_is_highlighted_below_a_fenced_detail() {
 //
 // `popup_placement` takes a fast path when its anchor is the focused
 // cursor: it reuses `ctx.cursor_content_pos` from `scroll_into_view` instead
-// of re-walking the display-line list. Pins that the reused cell agrees
-// with a full, independent walk, in wrap mode, where a wrong cache would
-// show up as a silently-misplaced popup, not a panic.
+// of re-walking the display-line list. The test compares the reused cell
+// with a full, independent walk in wrap mode, since a wrong cached cell
+// misplaces the popup without panicking.
 
 #[test]
 fn completion_popup_anchor_matches_an_independent_content_pos_walk_when_wrapped() {
@@ -524,9 +524,9 @@ fn completion_popup_anchor_matches_an_independent_content_pos_walk_when_wrapped(
 
     ed.feed_key(key('i'));
     type_chars(&mut ed, "abcdefghijklmnopqrstuvwxyz0123456789");
-    // A non-word char right before triggering: the word token is empty,
-    // exactly at the cursor. The fast path this test pins is only taken
-    // when the anchor and the cursor agree. Still many display lines into
+    // A non-word char right before triggering: the word token is empty and
+    // starts at the cursor, so the anchor and the cursor agree and
+    // `popup_placement` takes its fast path. Still many display lines into
     // the wrapped text.
     ed.feed_key(key(';'));
     open_completion_session(&mut ed, &["candidate"]);

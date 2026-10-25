@@ -215,10 +215,6 @@ fn drawer_lists_severity_glyph_and_message_and_enter_jumps() {
 /// The drawer stays open across a buffer switch (browse-while-editing), so
 /// selecting a row must jump into the buffer the drawer was opened for, not
 /// whatever buffer happens to be focused when Enter is pressed.
-///
-/// If `lsp/diag-jump-to!` resolved against `(focused-pane)` instead of its
-/// explicit `bid`, focus would stay on `other_bid` and the selection would
-/// land clamped inside `other.rs`'s two short lines.
 #[test]
 fn enter_jumps_into_the_drawer_s_buffer_even_after_switching_away() {
     let DiagSetup {
@@ -272,8 +268,8 @@ fn enter_jumps_into_the_drawer_s_buffer_even_after_switching_away() {
 
 const DIAG_C: DiagFixture = ((2, 0), (2, 2), 1, "problem C");
 
-/// The reported bug: fixing an error updated the statusline count but left
-/// the open drawer showing the stale list.
+/// Fixing an error updates the open drawer's list, not only the statusline
+/// count.
 #[test]
 fn drawer_refreshes_rows_when_a_diagnostic_is_fixed() {
     let DiagSetup {
@@ -427,11 +423,6 @@ fn drawer_refreshes_rows_when_the_severity_floor_changes() {
 /// new index; a selection of `0` would already zero the scroll through the
 /// ordinary "selected < scroll" arm regardless of the `len` cap this test
 /// targets.
-///
-/// Without `clamp_drawer_scroll_to_terminal`, `scroll` would stay at `1`
-/// (the ordinary arm's answer, `selected` itself) and
-/// `DrawerWidget::render`'s `.skip(scroll).take(visible)` would paint a
-/// blank row above the two surviving diagnostics on a band sized to show both.
 #[test]
 fn drawer_scroll_is_reclamped_when_the_severity_floor_shrinks_the_list() {
     use crate::editor::input_stack::DrawerLayer;

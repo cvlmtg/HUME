@@ -2,17 +2,12 @@
 
 use super::*;
 
-/// **Exactly one `OnBufferEnter` per focus-changing action.** Pane-focus
-/// cycling and a mouse click into another pane both move focus with no
-/// write to `pane.buffer_id` at all: the focused pane is the only thing
-/// that changes. Counting fires (not just checking a confirm opened, which
-/// a duplicate fire would still satisfy) pins that `settle()`'s diff raises
-/// exactly one event per action, not once per write site it happens to
-/// coalesce.
-///
-/// A second raise site parallel to `detect_buffer_enter`, or
-/// `detect_buffer_enter` re-firing on a pass where focus did not change
-/// again, would push either count above 1.
+/// **One `OnBufferEnter` per focus-changing action.** Pane-focus cycling
+/// and a mouse click into another pane both move focus with no write to
+/// `pane.buffer_id` at all: the focused pane is the only thing that changes.
+/// The test counts fires rather than checking that a confirm opened, which a
+/// duplicate fire also does: `settle()`'s diff raises one event per action,
+/// not once per write site it happens to coalesce.
 #[test]
 fn pane_focus_cycling_and_mouse_click_each_raise_exactly_one_on_buffer_enter() {
     use hume_scripting::ScriptingHost;
@@ -83,10 +78,9 @@ fn pane_focus_cycling_and_mouse_click_each_raise_exactly_one_on_buffer_enter() {
 /// first closed the buffer this event was about", the same race an
 /// intervening timer thunk or async callback in the same batch would cause.
 ///
-/// Without `EditorEvent::buffer()`'s generalized check, `fire_one_event`
-/// would run the handler against a dead bid. Depending on what the
-/// handler's body reads, that could also hit a `LiveBid` raise and log a
-/// spurious hook error.
+/// `run_pending_batch` checks every event's `EditorEvent::handle()` before
+/// `fire_one_event` runs, so no handler runs against a dead bid and logs a
+/// spurious `LiveBid` hook error.
 #[test]
 fn buffer_scoped_event_is_skipped_once_its_buffer_has_closed() {
     use crate::testing::MockHost;
@@ -134,9 +128,9 @@ fn buffer_scoped_event_is_skipped_once_its_buffer_has_closed() {
 /// close it before this event's own turn, even though the buffer itself
 /// stays open elsewhere.
 ///
-/// Without the pane half of `run_pending_batch`'s filter, the handler would
-/// run against a closed pane, and `viewport-range` (which needs a live pane)
-/// would raise and log a hook error.
+/// The pane half of `run_pending_batch`'s filter keeps the handler off the
+/// closed pane, where `viewport-range` (which needs a live pane) raises and
+/// logs a hook error.
 #[test]
 fn pane_scoped_event_is_skipped_once_its_pane_has_closed() {
     use crate::testing::MockHost;
@@ -187,12 +181,11 @@ fn pane_scoped_event_is_skipped_once_its_pane_has_closed() {
 
 /// Two handlers registered for the same event, in a
 /// batch where the first raises, must both run. A plugin bug in one
-/// handler must not silently drop every handler registered after it for
-/// the same event.
+/// handler must not drop every handler registered after it for the same
+/// event.
 ///
-/// Without `run_steel_calls`'s per-call isolation, the first handler's raise
-/// would abort the whole `with_mut_reference` session and "second-fired"
-/// would never reach the message log.
+/// `run_steel_calls` runs each call in its own Steel session, so the first
+/// handler's raise leaves the second one to run.
 #[test]
 fn a_raising_hook_handler_does_not_drop_the_next_handler_for_the_same_event() {
     use crate::testing::MockHost;

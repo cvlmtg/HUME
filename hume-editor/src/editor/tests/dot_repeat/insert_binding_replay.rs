@@ -115,13 +115,12 @@ fn dot_stops_before_an_insert_key_that_opened_the_command_line() {
 /// A native command bound directly to an Insert key must not overwrite
 /// the recorded change if it's itself repeatable. That slot belongs to
 /// whichever command opened the Insert session; the key is recorded into
-/// that change's transcript instead (proven by
-/// `dot_repeats_ctrl_w_inside_insert`'s same mechanism).
+/// that change's transcript instead, the same mechanism
+/// `dot_repeats_ctrl_w_inside_insert` covers.
 ///
-/// Without the `repeat_slot_owned` gate on beginning a fresh change,
-/// the recorded change's command would read `"delete"` (stamped by
-/// `Ctrl-x`'s own dispatch through `commands::run`) instead of the command
-/// that opened the session.
+/// The `repeat_slot_owned` gate on beginning a fresh change keeps `Ctrl-x`'s
+/// own dispatch through `commands::run` from stamping `"delete"` over the
+/// command that opened the session.
 #[test]
 fn native_command_bound_mid_insert_does_not_hijack_the_recorded_change() {
     let tmp = tempfile::tempdir().unwrap();
@@ -231,10 +230,6 @@ fn insert_key_binding_exiting_insert_mid_body_stays_off_the_repeat_slot() {
 ///
 /// In Insert mode `goto-line-end` lands on the line break, so the semicolon
 /// is appended to each line.
-///
-/// Without the motion being replayed, the fallback
-/// would insert right where `insert-at-selection-start` left the cursor,
-/// before "e", giving "d;ef" instead.
 #[test]
 fn insert_key_binding_motion_via_call_is_replayed_before_the_fallback() {
     let tmp = tempfile::tempdir().unwrap();

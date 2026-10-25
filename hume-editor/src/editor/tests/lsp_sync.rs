@@ -127,8 +127,8 @@ fn did_open_carries_full_text_and_language_id() {
 }
 
 /// `didOpen`'s `languageId` is the language's registered `lsp_language_id`
-/// override, not HUME's own language name. The actual bug this test guards:
-/// a bare `typescript-language-server` rejects `"tsx"` and logs "Invalid
+/// override, not HUME's own language name: a bare
+/// `typescript-language-server` rejects `"tsx"` and logs "Invalid
 /// languageId", correcting it to `"typescriptreact"` itself. The expected
 /// string here is a hardcoded literal, never derived from `name_of` /
 /// `lsp_language_id_of`.
@@ -249,8 +249,7 @@ fn version_sync_invariant_across_insert_delete_paste_undo_redo() {
 
 /// The case that exercises the composed walk: a counted `u` that
 /// crosses several revisions must reach an INCREMENTAL-sync server as one
-/// `didChange` for the net change, not one per revision it walked. Queuing
-/// one change per revision would make this count 3.
+/// `didChange` for the net change, not one per revision it walked.
 #[test]
 fn counted_undo_on_an_incremental_server_sends_one_didchange_for_the_whole_walk() {
     let tmp = tempfile::tempdir().unwrap();

@@ -25,15 +25,13 @@ fn eval_set_option(ed: &mut Editor, source: &str) -> Result<(), String> {
     host.eval_source(source, &mut init_host).map(|_| ())
 }
 
-// ── set-option! resyncs derived state (the gap this closes) ────────────────
+// ── set-option! resyncs derived state ───────────────────────────────────────
 
 #[test]
 fn set_option_applies_history_capacity() {
-    // If set_global_option called crate::editor::settings::write_global
-    // directly, skipping settings::ops::apply_global's resync step,
-    // settings.history_capacity would still update. Only the post-push
-    // assertion at the bottom checks that state.history's real capacity
-    // was resynced.
+    // The setting itself updates on any write path. The post-push assertion
+    // at the bottom checks that settings::ops::apply_global's resync step
+    // reached state.history's real capacity.
     let mut ed = editor_from("-[h]>ello\n");
     for cmd in ["a", "b", "c"] {
         ed.state
@@ -70,9 +68,8 @@ fn set_option_applies_history_capacity() {
 
 #[test]
 fn set_option_applies_jump_list_capacity() {
-    // As above: settings.jump_list_capacity would update even without
-    // settings::ops::apply_global's resync step. The post-push assertion at
-    // the bottom is the one that checks the live jump list's capacity.
+    // As above: the post-push assertion at the bottom checks the live jump
+    // list's capacity.
     let mut ed = editor_from("-[h]>ello\n");
     let pid = ed.view.focused_pane();
     let bid = ed.focused_buffer_id();
@@ -134,10 +131,6 @@ fn set_option_applies_jump_list_capacity() {
 /// can do headless. The `if let Some(term)` write is a one-line guard
 /// around the same comparison, exercised whenever a real terminal is
 /// attached.
-///
-/// Without the `self.resync_mouse_mode()` call in `prepare_frame`,
-/// `applied_mouse_mode` would keep its constructor default `(true, false)`
-/// after this `:set`.
 #[test]
 fn set_global_mouse_resyncs_applied_mode_next_frame() {
     let mut ed = editor_from("-[h]>ello\n");
@@ -173,15 +166,13 @@ fn set_global_mouse_resyncs_applied_mode_next_frame() {
 #[test]
 fn set_option_statusline_mode_colors_gates_whole_row_tint() {
     // `HumeStatusline::render` checks `statusline_mode_colors` before
-    // resolving the real mode. Without that check the row would still tint
-    // cyan in Insert mode with colors off.
+    // resolving the real mode.
     //
     // The fixture theme gives `ui.statusline` and `ui.statusline.normal`
-    // *different* backgrounds. Every bundled theme makes them equal, which
-    // would let the off-state assertion pass whether the opt-out reads the
-    // base scope (correct) or silently substitutes `EditorMode::Normal`
-    // (an imported theme with a distinct Normal-mode accent, e.g. Helix's
-    // old pill idiom, would then still tint the row).
+    // *different* backgrounds, so the off-state assertion tells the base
+    // scope apart from the `EditorMode::Normal` one. Every bundled theme
+    // makes them equal; an imported theme with a distinct Normal-mode accent
+    // (e.g. Helix's pill idiom) does not.
     use hume_engine::types::{ResolvedStyle, Scope};
 
     let mut ed = editor_from("-[h]>ello\n");
@@ -255,8 +246,8 @@ fn set_option_statusline_mode_colors_gates_whole_row_tint() {
 
 #[test]
 fn set_option_applies_undo_levels() {
-    // Same idea for the undo-levels arm: without the inline resync, the
-    // second edit below would stay undoable.
+    // Same idea for the undo-levels arm: the inline resync applies the cap to
+    // the open buffer, so only one of the two edits below stays undoable.
     let mut ed = editor_from("-[h]>ello\n");
     let result = eval_set_option(&mut ed, r#"(set-option! "undo-levels" 1)"#);
     assert!(result.is_ok(), "eval must succeed: {result:?}");
@@ -287,8 +278,7 @@ fn set_option_theme_failure_does_not_persist() {
     let result = eval_set_option(&mut ed, r#"(set-option! "theme" "no_such_theme_xyz")"#);
     // apply_global surfaces a failed theme load as an Err (rather than
     // Ok(()) with only a message-log entry) so a plugin's own
-    // (with-handler ...) around set-option! actually fires. An Ok here
-    // would hide the failure from Steel callers.
+    // (with-handler ...) around set-option! actually fires.
     assert!(
         result.is_err(),
         "a failed theme load must surface as a Steel error: {result:?}"
@@ -309,9 +299,9 @@ fn set_option_theme_failure_does_not_persist() {
 
 #[test]
 fn typed_set_theme_failure_does_not_persist() {
-    // Same rollback, via `:set global` instead of Steel. Without it,
-    // `:set global theme=bad` would persist "bad" (store-then-load) while
-    // `:theme bad` would not (load-then-store).
+    // Same rollback, via `:set global` instead of Steel, so
+    // `:set global theme=bad` (store-then-load) leaves settings.theme as
+    // `:theme bad` (load-then-store) does.
     let mut ed = editor_from("-[h]>ello\n");
     let fp = FocusedPane::current(&ed.view);
     let result = crate::editor::commands::typed_set(
@@ -342,8 +332,7 @@ fn typed_theme_bad_name_leaves_setting() {
     // through the typed_theme entry point instead of calling the loader
     // directly.
     // :theme shares settings::ops::apply's rollback with the theme tests
-    // above, so without it settings.theme would end up "no_such_theme_xyz"
-    // here too.
+    // above.
     let mut ed = editor_from("-[h]>ello\n");
     let fp = FocusedPane::current(&ed.view);
     let result =
@@ -362,8 +351,6 @@ fn typed_theme_bad_name_leaves_setting() {
 
 #[test]
 fn typed_theme_sets_setting_on_success() {
-    // A typo in the key string typed_theme delegates with (e.g. "themes")
-    // would make write_global return Err("unknown setting").
     let mut ed = editor_from("-[h]>ello\n");
     ed.state.dirs = repo_runtime_dirs();
     let fp = FocusedPane::current(&ed.view);
@@ -445,9 +432,6 @@ fn get_buffer_option_round_trips_word_chars() {
 /// (never explicitly `:wrap`'d or `:set pane`'d) picks up the change
 /// immediately: resolution is lazy (pane → buffer → global), not a seed
 /// applied only to panes opened afterward.
-///
-/// A global-only `wrap-mode` would make `set-buffer-option!` error before
-/// either assertion below is reached.
 #[test]
 fn set_buffer_option_wrap_mode_from_hook_changes_the_open_pane() {
     let mut ed = editor_from("-[a]>b\n");
@@ -565,9 +549,6 @@ fn get_buffer_option_closed_bid_errors() {
 
 /// A global-only key rejected by `write_buffer`'s global-only arm is
 /// reported as a hook error and leaves the global setting unchanged.
-///
-/// Without the scope check in `write_buffer`, `scroll-margin` would silently end
-/// up in the buffer's override slot.
 #[test]
 fn set_buffer_option_global_only_key_errors_from_hook() {
     let mut ed = editor_from("-[a]>b\n");

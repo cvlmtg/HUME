@@ -10,9 +10,6 @@ use steel::rvals::IntoSteelVal as _;
 /// chokepoint (`editor::settings::ops::apply_global`) regardless of caller.
 /// Reaches the host from ordinary command-mode context, same as
 /// `set-buffer-option!`/`get-option`.
-///
-/// Registering it `config` would turn this call into a gate error, and
-/// `NullHost` would never be reached.
 #[test]
 fn set_option_reaches_host_from_command_mode() {
     let mut h = SteelCtxTestHarness::new();
@@ -28,9 +25,6 @@ fn set_option_reaches_host_from_command_mode() {
 
 /// `set-option!` rejects value types that are not string, symbol, bool,
 /// integer, or list of strings.
-///
-/// Without the type check, a void would be stringified via `{:?}` and
-/// applied as a setting value.
 #[test]
 fn set_option_invalid_value_type_errors() {
     let mut h = SteelCtxTestHarness::new();
@@ -133,8 +127,6 @@ fn set_option_accepts_string_bool_int_values() {
 /// `get-option` is registered `open`, so it is readable during init eval too,
 /// mirroring `set-option!`. `get-buffer-option` is `cmd`-gated instead,
 /// mirroring `set-buffer-option!` (see that test below).
-///
-/// With a `cmd` table entry, this call would hit a gate error during init.
 #[test]
 fn get_option_reaches_host_during_init_eval() {
     let mut h = SteelCtxTestHarness::new();
@@ -465,9 +457,6 @@ impl crate::host::SettingsHost for RecordingBufferOptionHost {
 
 /// With valid args and a bid the host recognizes, `set-buffer-option!`
 /// reaches the host and forwards exactly the coerced `(key, value, bid)`.
-///
-/// Forwarding live focus in place of the explicit `bid` would show up as a
-/// wrong entry in `calls`.
 #[test]
 fn set_buffer_option_reaches_host() {
     let mut h = SteelCtxTestHarness::new();

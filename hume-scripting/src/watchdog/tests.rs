@@ -31,9 +31,6 @@ fn cancel_before_expiry_reports_no_fire() {
 /// An unpaired second `arm` (no `cancel` in between) must be caught by the
 /// caller-side `debug_assert` in `arm` itself, on the test's own thread,
 /// rather than silently recovering inside the detached watchdog thread.
-///
-/// If the assert lived in `watchdog_loop`, it would run on the detached
-/// thread and this test's `#[should_panic]` would never fire.
 #[test]
 #[should_panic(expected = "missing cancel() after the previous eval")]
 #[cfg(debug_assertions)]

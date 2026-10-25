@@ -105,9 +105,7 @@ fn syntax_error_transitions_to_failed() {
 /// exact file, line, and column of the failing reference, not just
 /// `init.scm`, the file that happened to `load-plugin!` it.
 /// `describe_steel_error` resolves the error's span against the engine's own
-/// `Sources`. Without that, the message would read bare
-/// `init.scm: Error: FreeIdentifier: …` with no way to tell which plugin,
-/// file, or line was at fault.
+/// `Sources`.
 #[test]
 fn failed_activation_message_names_plugin_and_location() {
     let dir = TempDir::new().unwrap();
@@ -515,8 +513,8 @@ fn partial_define_before_failure_is_rolled_back() {
 /// registration and then errors: both must be rolled back from the
 /// effect log, not left for some later unrelated drain to silently apply.
 ///
-/// Without `SteelCtx::pop_effect_marks` truncating on failure,
-/// `effects_for_test()` would come back non-empty.
+/// On failure, `SteelCtx::pop_effect_marks` drops every effect queued since
+/// the activation's mark that no nested activation committed.
 #[test]
 fn queued_effects_before_failure_are_rolled_back() {
     let dir = TempDir::new().unwrap();
@@ -551,14 +549,14 @@ fn queued_effects_before_failure_are_rolled_back() {
 /// A command dispatched via `call_steel_cmd` `call!`s a lazy command owned
 /// by plugin B; B activates inline mid-body and finishes successfully
 /// (queuing `register-lsp-server!` and committing `Loaded`), then the
-/// outer command errors afterward. B's committed effect must survive:
-/// discarding it while B stays permanently `Loaded` would mean its LSP
-/// server never registers (activation is one-shot). Effects the outer
+/// outer command errors afterward. B's committed effect must survive: B
+/// stays `Loaded` and activation is one-shot, so a dropped effect is never
+/// queued again and B's LSP server never registers. Effects the outer
 /// command itself queued, before and after the nested activation, must
 /// NOT survive.
 ///
-/// A flat `self.effects.truncate(effects_start)` in `take_eval_effects`'s
-/// `Err` arm would leave `e.effects` empty even though B is `Loaded`.
+/// `take_eval_effects`'s `Err` arm keeps the committed effects of the
+/// discarded tail, so `e.effects` carries B's.
 #[test]
 fn committed_activation_effects_survive_failed_outer_command() {
     use crate::host::EditorHost;
@@ -842,8 +840,7 @@ fn nested_activation_hook_survives_enclosing_plugin_failure() {
 /// `unregister_lazy_stubs_of` *after* the body completes in
 /// `finish_lazy_activation`).
 ///
-/// The `is_self` exemption in `define_command` allows this. Without it the
-/// call would be rejected and activation would return Err.
+/// The `is_self` exemption in `define_command` allows this.
 #[test]
 fn lazy_plugin_can_define_its_own_activation_command() {
     use crate::host::EditorHost;
@@ -957,8 +954,7 @@ fn budget_stopping_a_body_fails_its_activation_and_closes_it() {
 /// needs to know that, not receive a value indistinguishable from success.
 ///
 /// The `%lazy-command-owner` check after a failed inline activation is what
-/// turns this into an error. Without it the call would return `Ok` and log
-/// a native-command miss.
+/// turns this into an error.
 #[test]
 fn call_of_command_owned_by_newly_failed_plugin_errors() {
     use crate::host::EditorHost;
@@ -1006,9 +1002,9 @@ fn manifest_declare_self_declared_then_failed_rolls_back_to_failed() {
     let plugin_dir = dir.path().join("plugins").join("user").join("selfdecl");
     std::fs::create_dir_all(&plugin_dir).unwrap();
     // `declare-plugin!` inside manifest.scm only
-    // registers `Declared` state once `plugin.scm` resolves on disk. Absent,
-    // it soft-logs and no-ops, which would make this test pass for the wrong
-    // reason (never-declared, not rolled-back-after-declared).
+    // registers `Declared` state once `plugin.scm` resolves on disk (absent,
+    // it soft-logs and no-ops), so the file exists for the plugin to be
+    // declared before the rollback.
     std::fs::write(plugin_dir.join("plugin.scm"), b"").unwrap();
     std::fs::write(
         plugin_dir.join("manifest.scm"),
@@ -1060,8 +1056,7 @@ fn manifest_declare_self_declared_then_failed_rolls_back_to_failed() {
 /// every `SteelCtx`), only observable by whether its own effect survives.
 ///
 /// Decoding `error` must not short-circuit ahead of `plugin_stack.pop()` and
-/// `pop_effect_marks`. If it did, the stack would stay at depth 1 and the
-/// queued `register-lsp-server!` effect would never be rolled back.
+/// `pop_effect_marks`.
 #[test]
 fn finish_lazy_activation_bad_error_value_still_balances_stack_and_marks() {
     let dir = TempDir::new().unwrap();
@@ -1105,8 +1100,8 @@ fn finish_lazy_activation_bad_error_value_still_balances_stack_and_marks() {
 /// `%begin-lazy-activation!` refuses to start when `plugin_stack` depth is at
 /// `MAX_ACTIVATION_DEPTH`, marks the plugin `Failed`, and returns a Steel error.
 ///
-/// Without that check, an activation cycle would overflow the stack instead
-/// of hard-erroring.
+/// The cap turns an activation cycle into a hard error instead of a stack
+/// overflow.
 #[test]
 fn begin_lazy_activation_at_depth_cap_errors_and_marks_failed() {
     use crate::{ScriptingHost, null_host::NullHost};
@@ -1194,10 +1189,9 @@ fn begin_lazy_activation_below_depth_cap_succeeds() {
 /// even though the body never ran and `%finish-lazy-activation!` never fires
 /// for it.
 ///
-/// The depth-cap branch gets this cleanup from `fail_plugin_activation`. A
-/// bare `plugins.insert(id, Failed)` would leave the event/language entries
-/// and the stub behind, re-triggering a no-op activation attempt on every
-/// later matching event.
+/// The depth-cap branch gets this cleanup from `fail_plugin_activation`, so
+/// no leftover event/language entry or stub re-triggers a no-op activation
+/// attempt on every later matching event.
 #[test]
 fn begin_lazy_activation_depth_cap_cleans_up_activation_entries_and_stub() {
     use crate::ScriptingHost;

@@ -10,9 +10,9 @@ use hume_scripting::PluginStatus;
 /// fixture) resolves and evaluates via `(load-plugin! "core:lsp")`, through the full production `init_scripting` path against the
 /// repo's actual `runtime/` tree.
 ///
-/// A syntax error, a wrong plugin name, or a stale command list in the real
-/// `runtime/plugins/core/lsp/manifest.scm` would fail this test even while
-/// every synthetic-fixture test elsewhere in this file still passes.
+/// The synthetic-fixture tests in this file cannot see a syntax error, a wrong
+/// plugin name, or a stale command list in the real
+/// `runtime/plugins/core/lsp/manifest.scm`; this one can.
 #[test]
 fn core_lsp_real_manifest_scm_resolves_via_load_plugin() {
     use hume_scripting::attribution::PluginId;
@@ -204,11 +204,9 @@ fn core_stdlib_real_manifest_scm_resolves_via_load_plugin() {
 /// (`hume-scripting/src/builtins/bootstrap.scm`) inline-activates
 /// `core:stdlib` to `Loaded` before the config read runs.
 ///
-/// A dependency guard that checked `(loaded-plugins)` would reject this, since
-/// `core:stdlib` is still `Declared` when `core:pickers`'s guard runs, and
-/// `init_scripting` would log an error naming `core:stdlib` before
-/// `core:pickers`'s config read ever ran. The guard checks
-/// `(declared-plugins)` for that reason.
+/// `core:stdlib` is still `Declared` when `core:pickers`'s dependency guard
+/// runs, so the guard checks `(declared-plugins)` rather than
+/// `(loaded-plugins)`.
 #[test]
 fn declared_core_stdlib_serves_dependent_body_time_call() {
     use hume_scripting::attribution::PluginId;
@@ -255,9 +253,9 @@ fn declared_core_stdlib_serves_dependent_body_time_call() {
 /// `(load-plugin! "core:plum")`, through the full production `init_scripting`
 /// path against the repo's actual `runtime/` tree.
 ///
-/// Only this test would notice a syntax error, a wrong plugin name, or a stale
-/// command/language list in the real `runtime/plugins/core/plum/manifest.scm`;
-/// the other tests here use synthetic fixtures.
+/// The synthetic-fixture tests in this file cannot see a syntax error, a wrong
+/// plugin name, or a stale command/language list in the real
+/// `runtime/plugins/core/plum/manifest.scm`; this one can.
 #[test]
 fn core_plum_real_manifest_scm_resolves_via_load_plugin() {
     use hume_scripting::attribution::PluginId;
@@ -320,11 +318,9 @@ fn core_plum_real_manifest_scm_resolves_via_load_plugin() {
 /// The scenario plugin-activation containment exists for: a third-party
 /// `load-plugin!` fails, and `core:plum` (the user's only in-editor path to
 /// update and fix a broken plugin) is declared afterward, on a later line of
-/// the same `init.scm`. If the failed load re-raised and aborted `init.scm`,
-/// `core:plum` and everything after the failing line would never be declared,
-/// leaving no `:plum-update-plugins` to reach for short of hand-editing the
-/// plugin on disk. The `with-handler` in `bootstrap.scm` does not re-raise,
-/// which is what keeps `plum-update-plugins` registered here.
+/// the same `init.scm`. The `with-handler` in `bootstrap.scm` does not
+/// re-raise, so the rest of `init.scm` still runs and `core:plum` still
+/// registers `plum-update-plugins`.
 #[test]
 fn failed_third_party_load_does_not_block_plum_declared_afterward() {
     let config_tmp = tempfile::tempdir().unwrap();
@@ -398,9 +394,9 @@ fn failed_third_party_load_does_not_block_plum_declared_afterward() {
 /// `(load-plugin! "core:git-diff")`, through the full production
 /// `init_scripting` path against the repo's actual `runtime/` tree.
 ///
-/// It guards the real `runtime/plugins/core/git-diff/manifest.scm` against a
-/// syntax error, a wrong plugin name, or a stale command/event list, none of
-/// which the synthetic-fixture tests in this file would catch.
+/// The synthetic-fixture tests in this file cannot see a syntax error, a wrong
+/// plugin name, or a stale command/event list in the real
+/// `runtime/plugins/core/git-diff/manifest.scm`; this one can.
 #[test]
 fn core_git_diff_real_manifest_scm_resolves_via_load_plugin() {
     use hume_scripting::attribution::PluginId;

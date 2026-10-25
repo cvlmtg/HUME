@@ -962,10 +962,9 @@ fn click_with_confirm_open_dismisses_it_without_answering() {
 /// The release half of the click that *opens* the confirm (click-to-focus
 /// → `OnBufferEnter` → the disk check at the next `settle()`) must not
 /// dismiss it. Only a fresh press or wheel notch counts as stray input.
-/// Without this split the confirm would be unreachable by its most common
-/// trigger: the press that focuses the other pane arrives before the
-/// confirm exists, and the matching release lands one loop iteration after
-/// `settle()` has already opened it.
+/// The split keeps the confirm reachable by its most common trigger: the
+/// press that focuses the other pane arrives before the confirm exists, and
+/// the matching release lands one loop iteration after `settle()` opens it.
 #[test]
 fn mouse_release_with_confirm_open_leaves_it_open() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");

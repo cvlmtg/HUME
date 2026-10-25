@@ -157,8 +157,7 @@ fn load_plugin_in_runtime_plugin_body_fails_fast() {
 /// `define-command!` with a built-in name is rejected first-wins.
 ///
 /// Defining "move-right" in init.scm must leave the built-in intact and log
-/// Severity::Error.  Without this check the Steel definition would silently
-/// replace the built-in.
+/// Severity::Error.
 #[test]
 fn define_command_collision_with_builtin_keeps_builtin() {
     use crate::editor::Severity;
@@ -200,10 +199,6 @@ fn define_command_collision_with_builtin_keeps_builtin() {
 /// have that command executed when the plugin is activated at runtime (command
 /// activation).  `activate_plugin_inline` runs with `session = EvalSession::Runtime`
 /// so `%call-native!` dispatches synchronously via `run_command_sync`.
-///
-/// With `new_init` in place of `new_activation` in `activate_plugin_inline`, the
-/// session would be `EvalSession::Init`, so `%call-native!` would warn and skip
-/// and the cursor would stay put.
 #[test]
 fn lazy_plugin_call_bang_at_body_top_level_is_drained_on_runtime_activation() {
     // Plugin defines "trigger-me" (the command stub key) + calls move-right at
@@ -253,9 +248,8 @@ fn language_activation_lint_warns_on_unknown_language() {
 /// Language-activation lint is silent when the declared language was registered via
 /// `define-language!` earlier in the same init.scm.
 ///
-/// The lint has to run after the second language flush. Run any earlier, it
-/// would warn here, since `define-language!` would not yet have reached
-/// `state.config.languages`.
+/// The lint runs after the second language flush, once `define-language!` has
+/// reached `state.config.languages`.
 #[test]
 fn language_trigger_lint_silent_for_known_language() {
     use crate::editor::Severity;
@@ -313,10 +307,6 @@ fn language_trigger_lint_silent_for_forward_defined_language() {
 
 /// Language-activation lint never warns about `"*"`: it's the any-language
 /// wildcard, not a language identity to look up in the registry.
-///
-/// Without the `lang != "*"` guard, the lint would look "*" up in
-/// `state.config.languages`, never find it, and warn on every startup for any
-/// manifest.scm using the wildcard.
 #[test]
 fn language_activation_lint_silent_for_wildcard() {
     use crate::editor::Severity;

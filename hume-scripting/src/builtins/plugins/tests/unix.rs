@@ -535,8 +535,8 @@ fn manifest_whose_declare_has_no_triggers_errors_and_is_contained() {
 }
 
 /// A manifest.scm that evaluates without error but never calls `declare-plugin!`
-/// must still be rejected. Otherwise the outer declare silently no-ops with no
-/// plugin ever registered.
+/// must still be rejected, not leave the plugin unregistered with nothing
+/// reported.
 ///
 /// The post-eval check in `%finish-manifest-load!` catches this case.
 #[test]
@@ -574,8 +574,8 @@ fn manifest_that_never_declares_errors() {
 /// A second `load-plugin!` of an already-declared plugin is a silent no-op:
 /// `manifest.scm` is not re-evaluated.
 ///
-/// Without the declared-entry check in `load_plugin`, the manifest would run
-/// twice and register its activation entries twice.
+/// The declared-entry check in `load_plugin` returns before reaching
+/// `manifest.scm`, so the manifest's activation entries register once.
 #[test]
 fn load_plugin_second_call_is_silent_noop() {
     use crate::{ScriptingHost, null_host::NullHost};

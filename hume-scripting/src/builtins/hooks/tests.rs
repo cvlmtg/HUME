@@ -7,8 +7,8 @@ fn noop_proc(_args: &[SteelVal]) -> SteelResult {
 
 /// `register-hook!` is blocked in plain command mode (init/plugin-load only).
 ///
-/// An `open` table entry would let a command body silently register hooks,
-/// changing global behaviour at runtime.
+/// The gate keeps a command body from registering hooks and changing global
+/// behaviour at runtime.
 #[test]
 fn register_hook_blocked_in_command_mode() {
     let mut h = SteelCtxTestHarness::new();
@@ -22,9 +22,6 @@ fn register_hook_blocked_in_command_mode() {
 }
 
 /// `register-hook!` errors when the first argument is not a symbol.
-///
-/// Without the symbol check, strings or integers would be accepted and the
-/// hook name lookup would fail silently.
 #[test]
 fn register_hook_non_symbol_arg_errors() {
     let mut h = SteelCtxTestHarness::new();
@@ -57,8 +54,8 @@ fn register_hook_non_callable_proc_errors() {
 
 /// `register-hook!` errors for an unknown hook name.
 ///
-/// Without the `known_event_names()` guard, a typo would register a hook
-/// that never fires.
+/// The `known_event_names()` guard keeps a typo from registering a hook that
+/// never fires.
 #[test]
 fn register_hook_unknown_hook_name_errors() {
     let mut h = SteelCtxTestHarness::new();

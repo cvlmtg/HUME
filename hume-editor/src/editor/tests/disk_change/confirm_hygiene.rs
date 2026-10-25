@@ -5,16 +5,14 @@ use pretty_assertions::assert_eq;
 
 // ── Confirm hygiene: a closed buffer's confirm, and one confirm at a time ────
 
-/// Closing a buffer that an open confirm targets must retire the confirm.
-/// Otherwise the prompt outlives its subject and answering `[r]eload` would
-/// silently no-op via `reload_buffer_from_disk`'s `try_get` bail. Mirrors a
-/// non-interactive close (Steel's `close-buffer!`), which never routes
-/// through input dispatch, so the `Confirm` layer never gets a chance to
-/// dismiss it for us.
+/// Closing a buffer that an open confirm targets must retire the confirm:
+/// `reload_buffer_from_disk`'s `try_get` bail turns a `[r]eload` answer for
+/// a closed buffer into a no-op. Mirrors a non-interactive close (Steel's
+/// `close-buffer!`), which never routes through input dispatch, so the
+/// `Confirm` layer never gets a chance to dismiss it for us.
 ///
-/// `close_buffer_and_notify` retires any confirm that `targets_buffer(id)`.
-/// A stale confirm left behind would also block every later prompt through
-/// the `confirm.is_none()` guard, until some stray key dismissed it.
+/// `forget_closed_buffer` retires any confirm that `targets_buffer(id)`,
+/// which also frees the `confirm.is_none()` guard for every later prompt.
 #[test]
 fn closing_a_buffer_retires_its_open_reload_confirm() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -41,12 +39,12 @@ fn closing_a_buffer_retires_its_open_reload_confirm() {
 /// same way (`push_mode_layer` only truncates the outgoing *mode* layer,
 /// never an overlay sitting on `Base`); `Search` is used here because its
 /// `tear_down` has an easily observed effect (restores selections, clears
-/// the live pattern) if it incorrectly ran, unlike `Prompt`'s (a
-/// history-nav reset with no externally visible signal).
+/// the live pattern), unlike `Prompt`'s (a history-nav reset with no
+/// externally visible signal).
 ///
-/// `truncate_layers` at the confirm's own ref would also remove every layer
-/// above it. Search's `tear_down` would then run, clearing the live pattern
-/// and restoring the pre-search selection the user is still editing.
+/// `retire_stale_confirm` removes the confirm alone with `excise_layer`
+/// rather than truncating the stack at its ref, so Search's `tear_down`
+/// never runs on the pattern and selection the user is still editing.
 #[test]
 fn enter_buffer_disk_check_leaves_a_layer_stacked_above_the_confirm_untouched() {
     let (mut ed, tmp_a) = editor_with_file("-[h]>ello world\n", "hello world\n");
@@ -158,12 +156,12 @@ fn a_second_confirm_never_replaces_a_live_one() {
 }
 
 /// A change hit mid macro-replay must never open a confirm: a `Confirm`
-/// layer on top would consume the next replayed key, silently truncating
-/// the macro. Blocked during replay, deferred prompt still honoured afterward.
+/// layer on top would consume the next replayed key, truncating the macro.
+/// Blocked during replay, deferred prompt still honoured afterward.
 ///
-/// Without the replay check in `confirm_permit`, the confirm
-/// would open partway through `drain_replay_queue` and could eat the macro's
-/// remaining keys before focus reached B.
+/// `confirm_permit`'s replay check holds the confirm back for the whole of
+/// `drain_replay_queue`, so none of the macro's remaining keys are eaten
+/// before focus reaches B.
 #[test]
 fn confirm_does_not_open_during_macro_replay() {
     let (mut ed, _tmp_a) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -290,17 +288,12 @@ fn macro_replay_onto_an_already_warned_stale_buffer_still_warns() {
 /// `status_msg` at its own start (see `input.rs`), so the sentinel
 /// message itself is long gone from `status_msg` by the time the replayed
 /// keys finish; what must survive is the *shadowing flag*, not the message
-/// text. Without it, `report_disk_state` falls back to `Editor::report`
-/// (loud, sets `status_msg`) instead of a silent `message_log` push,
-/// clobbering whatever the last replayed key left in `status_msg` with the
-/// disk warning's own text. No built-in mapping both logs a message and
-/// enqueues a replay in the same dispatch today, so this drives
+/// text. `drain_replay_queue` saves the flag and ORs it back after every
+/// replayed key, so `report_disk_state` pushes to `message_log` alone rather
+/// than calling `Editor::report`, which writes the disk warning over whatever
+/// the last replayed key left in `status_msg`. No built-in mapping both logs
+/// a message and enqueues a replay in the same dispatch, so this drives
 /// `EditorState` directly rather than through a real key.
-///
-/// Without the `message_already_logged` save/restore in
-/// `drain_replay_queue`, `status_msg` would read `"world: file has changed
-/// on disk"`. It should stay `None`, which is what `:b #`'s own `Enter`
-/// dispatch leaves behind, since a successful `:b` reports nothing.
 #[test]
 fn message_logged_before_a_macro_replay_survives_its_trailing_settle() {
     let (mut ed, _tmp_a) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -409,9 +402,7 @@ fn quit_all_error_is_not_shadowed_by_a_disk_confirm() {
 ///
 /// While `message_logged_this_input` is set, `report_disk_state` uses the
 /// log-only `message_log.push` in place of `Editor::report`, which also
-/// writes `status_msg`. Using `Editor::report` would clobber `status_msg`
-/// and break the sibling test. Suppressing the warning outright would leave
-/// the warning total unchanged.
+/// writes `status_msg`.
 #[test]
 fn quit_all_focus_move_still_logs_the_disk_change_without_shadowing_the_error() {
     let (mut ed, tmp_a) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -446,11 +437,11 @@ fn quit_all_focus_move_still_logs_the_disk_change_without_shadowing_the_error() 
 
 /// Declining a reload confirm (`[k]eep`) must not reopen the identical
 /// question on a later, unrelated focus change. Only a further external
-/// change (a new signature) should ask again. See `DiskState::Declined`.
+/// change (a new signature) should ask again.
 ///
-/// If the decline were not recorded, cycling away and back would still find
-/// `disk_state` at `Changed` for the same signature, and the `BufferEnter`
-/// re-prompt rule would reopen the confirm.
+/// `[k]eep` records `DiskState::Declined` for the signature, so cycling away
+/// and back finds no `Changed` state for the `BufferEnter` re-prompt rule to
+/// reopen.
 #[test]
 fn declined_confirm_does_not_reopen_on_later_focus_change() {
     let (mut ed, tmp_a, _tmp_b_guard, bid_a, bid_b) = two_panes_with_b_focused();
@@ -503,9 +494,8 @@ fn declined_confirm_does_not_reopen_on_later_focus_change() {
 /// out of sync with disk indefinitely, with only `:w`'s bare refusal (no
 /// explanation) as a clue.
 ///
-/// Without the `DiskCheckTrigger::Explicit` branch in the `Changed` arm's
-/// `Declined` early-return, `:checktime` would find `declined` true and
-/// return before reporting anything.
+/// The `Changed` arm's `Declined` early-return still reports for
+/// `DiskCheckTrigger::Explicit` before it returns.
 #[test]
 fn declined_change_still_warns_on_explicit_checktime() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -541,8 +531,8 @@ fn declined_change_still_warns_on_explicit_checktime() {
 /// report: it must not swallow an unrelated later `Vanished` warning for
 /// the same buffer.
 ///
-/// The `Declined` short-circuit lives inside the `Changed` arm. Placed above
-/// the match on `DiskChange`, it would suppress the `Vanished` warning too.
+/// The `Declined` short-circuit lives inside the `Changed` arm, so the
+/// `Vanished` arm's warning never passes through it.
 #[test]
 fn declined_change_then_vanished_file_still_warns() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -572,9 +562,8 @@ fn declined_change_then_vanished_file_still_warns() {
 /// deferred prompt, not be blocked by the stale one.
 ///
 /// `enter_buffer_disk_check` (`OnBufferEnter`'s Rust reaction) retires a
-/// confirm that no longer targets the newly focused buffer. Left in place,
-/// B's confirm would block A's own prompt via `confirm_permit`'s
-/// `confirm.is_none()` gate.
+/// confirm targeting a buffer other than the newly focused one, which clears
+/// `confirm_permit`'s `confirm.is_none()` gate for A's own prompt.
 #[test]
 fn mouse_click_into_another_pane_retires_a_stale_confirm() {
     let (mut ed, tmp_a, tmp_b_guard, bid_a, bid_b) = two_panes_with_b_focused();

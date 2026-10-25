@@ -234,9 +234,8 @@ fn lsp_install_up_to_date_registers_a_late_fabricated_receipt() {
          registered nothing"
     );
     // Fabricate the receipt only now, after the load-time scan already ran
-    // against an empty data dir, so the final assertion below can only pass
-    // if :lsp-install's own up-to-date rescan registers it, not the
-    // load-time scan.
+    // against an empty data dir, so only :lsp-install's own up-to-date rescan
+    // can register it.
     fabricate_server(
         data_tmp.path(),
         "rust-analyzer",

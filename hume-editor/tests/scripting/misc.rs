@@ -61,9 +61,6 @@ fn arity1_list_command_accepts_list_arg() {
 
 /// `(load-plugin! …)` raises a Steel error when called from a command body
 /// (`EvalMode::Command`): the `ensure_top_level` gate rejects it.
-///
-/// Without that gate the call would return `Ok` and queue a load request that
-/// nothing ever drains.
 #[test]
 fn load_plugin_runtime_guard_fires() {
     // (load-plugin! ...) from a command body (EvalMode::Command) must be rejected.

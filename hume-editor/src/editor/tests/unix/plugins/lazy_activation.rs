@@ -121,10 +121,6 @@ fn a_lazy_typed_commands_completer_works_under_a_differently_cased_name() {
 /// reachable, so a typed-only lazy stub must not be activatable through
 /// `call!`: activating a plugin for a lookup that will miss again right after
 /// is a permanent side effect for a call that could never succeed.
-///
-/// If `%lazy-command-owner` were not mappable-only, `(call! "bar")` would
-/// see the typed `Lazy` stub as an activatable owner, load the plugin, miss
-/// again on the mappable procs, and leave the plugin `Loaded` anyway.
 #[test]
 fn call_bang_does_not_activate_a_typed_only_lazy_stub() {
     use hume_scripting::attribution::PluginId;
@@ -232,8 +228,8 @@ fn a_drawer_render_cannot_activate_a_plugin_and_leaves_it_declared() {
 }
 
 /// A `#:typed-commands` stub names its plugin before activation. The real
-/// registry tells the two stub kinds apart, unlike `MockHost`, so this is the
-/// host that would catch `command-plugin` reading a mappable-only owner.
+/// registry tells the two stub kinds apart, unlike `MockHost`, so the test
+/// checks `command-plugin` on a typed stub against it.
 #[test]
 fn command_plugin_names_a_typed_stubs_plugin_before_activation() {
     let (ed, _dir) = setup_lazy_editor(
@@ -400,9 +396,6 @@ fn lazy_plugin_defined_language_is_registered_on_activation() {
 /// returns) must win. The outer `set_buffer_language` call must detect the
 /// buffer no longer holds the value it's about to fire `OnLanguageSet` for,
 /// and bail out rather than enqueue a second, stale hook.
-///
-/// Without the re-entrancy guard, `pending_work` would hold two
-/// `OnLanguageSet` entries (python, then a stale rust) instead of one.
 #[test]
 fn set_buffer_language_reentrant_activation_uses_final_value() {
     let (mut ed, _dir) = setup_lazy_editor(
@@ -489,9 +482,6 @@ fn body_error_removes_stub_and_marks_failed() {
 
 /// `:bar arg` on a lazy command: the arg is correctly passed to a
 /// `(bid arg)`-arity command on first call (after activation).
-///
-/// A dropped arg would reach the Steel command as `#f` instead of the string,
-/// and the test string would be missing from the output.
 #[test]
 fn lazy_cmd_arg_passed_on_first_call() {
     use hume_scripting::attribution::PluginId;
@@ -504,7 +494,6 @@ fn lazy_cmd_arg_passed_on_first_call() {
         r#"(define-typed-command! "bar" "doc" (lambda (bid x) (+ 1 0)))"#,
     );
 
-    // Dispatch ":bar hello": would fail at arity check if arg were dropped.
     type_cmd(&mut ed, ":bar hello");
 
     let id = PluginId::User {
@@ -576,10 +565,6 @@ fn key_press_activates_lazy_plugin_via_keymap() {
 /// `declare-plugin!` time, directly against the editor's live registry: the
 /// declaration fails with "no activation entries", the eager SteelBacked
 /// command survives, and no `Lazy` stub is ever registered for "foo".
-///
-/// Without the eager-command check in `declare_plugin`'s filter loop, the
-/// declaration would succeed and register "foo" as a `Lazy` stub shadowing the
-/// eager command.
 #[test]
 fn lazy_stub_rejected_when_name_taken_by_eager_plugin() {
     let dir = tempfile::tempdir().unwrap();
@@ -650,11 +635,6 @@ fn lazy_stub_rejected_when_name_taken_by_eager_plugin() {
 /// `MockHost`: collision detection is `CommandRegistry`'s decision, and a
 /// `MockHost` copy of the same rules would risk silently drifting from the
 /// real behavior it's meant to prove.
-///
-/// Without the collision check in `register_lazy_command`, "bar" would
-/// register twice, the second `Lazy { plugin: pb, .. }` silently overwriting
-/// the first in the registry, so pa's real ownership would be lost with no
-/// error logged.
 #[test]
 fn lazy_stub_collision_lazy_vs_lazy_first_writer_wins() {
     let dir = tempfile::tempdir().unwrap();

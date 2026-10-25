@@ -19,9 +19,6 @@ use crate::editor::registry::{MappableCommand, TypedBody};
 /// inner command's, so a 3-way keypress/`:`/`call!` identity claim would be
 /// asserting behavior the system does not have.
 ///
-/// If lazy activation's AFTER-stage bookkeeping (jump/paste/dot-repeat)
-/// diverged between the two entry points, for example by skipping the
-/// repeatable-action stamp in one, the two snapshots would differ.
 /// A lazy *mappable* command's first dispatch via keypress activates its
 /// plugin and runs the real body, the same invariant the typed path exercises
 /// in `lazy_typed_command_first_dispatch_via_command_line` below, covering
@@ -49,14 +46,10 @@ fn lazy_command_first_dispatch_via_keypress() {
 }
 
 /// `:cmd arg` on a lazy *typed* command's very first dispatch must forward
-/// `arg` to the lambda. Pins the ordering `Editor::run_typed_steel_command`
-/// depends on: activation (which replaces the typed `Lazy` stub with
+/// `arg` to the lambda. `Editor::run_typed_steel_command` depends on an
+/// ordering: activation (which replaces the typed `Lazy` stub with
 /// `TypedBody::Steel`) must complete before arg marshalling reads the
 /// resolved arity.
-///
-/// If activation ran after arg marshalling, the stub's unresolved `Lazy`
-/// arity would be used instead of the real lambda's, and the forwarded arg
-/// would never reach `call!`.
 #[test]
 fn lazy_typed_command_first_dispatch_via_command_line() {
     let (mut ed, _dir) = setup_lazy_editor(
@@ -93,9 +86,6 @@ fn lazy_typed_command_first_dispatch_via_command_line() {
 /// not just the one that triggered the activation. Extends
 /// `body_error_removes_stub_and_marks_failed` (single-command case) to a
 /// plugin declaring two commands, only one of which is dispatched.
-///
-/// Unregistering only the dispatched stub would leave `stub-b` as `Lazy`
-/// after `stub-a`'s activation fails.
 #[test]
 fn failed_activation_removes_all_of_the_plugins_stubs_not_just_the_dispatched_one() {
     let (mut ed, _dir) = setup_lazy_editor(
@@ -139,12 +129,9 @@ fn failed_activation_removes_all_of_the_plugins_stubs_not_just_the_dispatched_on
 }
 
 /// `:plugin-status` reports a `Declared` plugin's pending `cmd:` activation
-/// entries sourced from the editor's live `Lazy` stubs: the plumbing
-/// `lazy_status_string`/`format_status` now require since this crate no
-/// longer tracks pending command activations itself.
-///
-/// If `typed_plugin_status` did not pass `registry.lazy_stubs()` through,
-/// `:plugin-status` would show no `cmd:` entries for any `Declared` plugin.
+/// entries sourced from the editor's live `Lazy` stubs, which
+/// `typed_plugin_status` passes to `lazy_status_string`/`format_status`:
+/// `hume-scripting` does not track pending command activations itself.
 #[test]
 fn plugin_status_shows_pending_command_from_live_registry_stubs() {
     let (mut ed, _dir) = setup_lazy_editor(
@@ -170,10 +157,6 @@ fn plugin_status_shows_pending_command_from_live_registry_stubs() {
 /// must display as `:cmd:` (`:`-only, never key-bindable), not the bare
 /// `cmd:` a mappable entry gets, so the user knows which reachability a
 /// still-`Declared` plugin's pending name will have.
-///
-/// Without the kind split, this would show `cmd:bar` instead, the
-/// same string `plugin_status_shows_pending_command_from_live_registry_stubs`
-/// asserts for a *mappable* pending entry.
 #[test]
 fn plugin_status_shows_pending_typed_command_with_kind_tag() {
     let (mut ed, _dir) = setup_lazy_editor(
@@ -202,9 +185,8 @@ const INIT_SCM_EXAMPLE_PATH: &str =
     concat!(env!("CARGO_MANIFEST_DIR"), "/../runtime/init.scm.example");
 
 /// The real, shipped `runtime/init.scm.example` evaluates cleanly end to end
-/// against the real runtime; a removed builtin or a renamed keyword arg
-/// (exactly this commit's kind of change) fails here, not first when a user
-/// copies the example and starts HUME.
+/// against the real runtime, so a removed builtin or a renamed keyword arg
+/// shows up here before a user copies the example and starts HUME.
 #[test]
 fn init_scm_example_is_valid_source() {
     let example =

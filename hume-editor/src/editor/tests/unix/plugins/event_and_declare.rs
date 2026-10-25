@@ -10,9 +10,6 @@ use hume_scripting::PluginStatus;
 
 /// `#:events` plugin activates on first matching hook fire; its handler
 /// runs in the same fire that caused activation.
-///
-/// Without `activate_lazy_event_plugins` at the top of `queue_event`, the
-/// plugin would stay `Declared` and the cursor would never move.
 #[test]
 fn event_trigger_activates_on_first_fire() {
     use hume_scripting::attribution::PluginId;
@@ -77,9 +74,9 @@ fn event_trigger_activates_on_first_fire() {
 
 /// Second fire: handler still runs (plugin already `Loaded`); no re-activation.
 ///
-/// Even if `activation_events` kept its entry after load, `activate_plugin`'s
-/// `Loaded` guard would make the second fire harmless. This test pins the fast
-/// path instead, with no spurious activation attempt.
+/// `activate_plugin`'s `Loaded` guard makes a repeat activation harmless
+/// anyway; this test covers the fast path, where the second fire makes no
+/// activation attempt at all.
 #[test]
 fn event_trigger_idempotent_on_second_fire() {
     use hume_scripting::attribution::PluginId;
@@ -211,9 +208,6 @@ fn event_trigger_one_to_many_activates_all() {
 
 /// Body error: plugin raises at load time → `Failed`, error reported, activation
 /// entry cleared, with no retry on a second fire.
-///
-/// Without the `activation_events` drop in `drop_activations_for`'s failure
-/// path, the same plugin would retry activation on every fire.
 #[test]
 fn event_plugin_failure_marks_failed_no_retry() {
     use hume_scripting::attribution::PluginId;
@@ -346,10 +340,6 @@ fn load_plugin_absent_top_level_silently_skips() {
 /// A lazy plugin B can call another lazy plugin A's command via `(call! "a-cmd")`.
 /// The inline lazy-miss retry in `%dispatch-command!` activates A on the fly and
 /// runs the command, with no `(load-plugin!)` needed.
-///
-/// Without the lazy-miss retry in `%dispatch-command!`, `(call! "a-cmd")` would
-/// fall through to `%call-native!`, which does not know `a-cmd`, so it would log
-/// a warning and the cursor would stay put.
 #[test]
 fn plugin_calls_cross_plugin_cmd_auto_activates_dep() {
     use hume_scripting::attribution::PluginId;
@@ -476,9 +466,8 @@ fn nested_activation_multi_file_via_real_editor_host() {
     let dir = tempfile::tempdir().unwrap();
 
     // Each plugin's top-level body checks its own helper.scm binding twice
-    // (once right after `require`, once after the nested call!), so a stack
-    // mis-scoping that corrupts either plugin's module bindings fails loudly
-    // as an eval_init error, not silently.
+    // (once right after `require`, once after the nested call!) and raises on
+    // a wrong value, which surfaces as an eval_init error.
     let dir_a = dir.path().join("plugins").join("user").join("tpa");
     std::fs::create_dir_all(&dir_a).unwrap();
     std::fs::write(
@@ -570,10 +559,6 @@ fn nested_activation_multi_file_via_real_editor_host() {
 /// resolves off the top of `plugin_stack`
 /// (`hume-scripting/src/builtins/plugins.rs`), which `%finish-lazy-activation!`
 /// pops back to the enclosing plugin once the nested activation completes.
-///
-/// If the stack were left unpopped (or popped twice) after A's nested
-/// activation, B's `(plugin-config)` read below would see A's hash, and the
-/// `hash-ref`/`equal?` check inside B's body would raise.
 #[test]
 fn plugin_config_scoped_correctly_after_nested_activation() {
     let dir = tempfile::tempdir().unwrap();
@@ -682,11 +667,8 @@ fn native_command_survives_failed_shadowing_plugin() {
 /// entries, and `take_eval_effects` hands the dispatcher's `Err` arm only the
 /// *committed* ones. `Q` never reaches the keymap.
 ///
-/// The bind would reach `apply_script_effects` only if both layers failed at
-/// once: `pop_effect_marks`'s failure branch keeping every entry and
-/// `take_eval_effects` salvaging uncommitted ones on `Err`. Either layer alone
-/// is enough, so a bind is never applied unless the body that queued it
-/// committed.
+/// Either layer alone keeps the bind out of `apply_script_effects`, so a bind
+/// is never applied unless the body that queued it committed.
 #[test]
 fn plugin_keybinding_rolled_back_on_failed_activation() {
     use crate::editor::keymap::BindMode;
@@ -727,9 +709,6 @@ fn plugin_keybinding_rolled_back_on_failed_activation() {
 /// A lazy plugin activated via `call!` whose body registers a hook and then
 /// errors: the hook must not survive, since a `Failed` plugin's hooks must stop
 /// firing.
-///
-/// Without `hooks.remove_owned_by` in `finish_lazy_activation`,
-/// `has_hook_handlers` would still report `true` after the failure.
 #[test]
 fn plugin_hook_rolled_back_on_failed_activation() {
     use hume_scripting::attribution::PluginId;

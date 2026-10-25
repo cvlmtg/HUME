@@ -89,8 +89,8 @@ pub(super) fn grammar_fixture(name: &str) -> (PathBuf, PathBuf) {
 // Direct-attach tests (Rust API only; no Steel dispatch)
 // ---------------------------------------------------------------------------
 
-/// Without `attach_grammar` the grammar field would be `None`, so
-/// `setup_buffer_syntax` would return early and leave `syntax` unset.
+/// `setup_buffer_syntax` returns early and leaves `syntax` unset when the
+/// language has no grammar to load, so the grammar is attached first.
 #[test]
 fn attach_then_set_language_attaches_syntax() {
     require_grammars(&["json"]);
@@ -212,12 +212,11 @@ fn a_registered_grammar_that_fails_to_load_warns_once() {
 
 /// `reset_config_state` (via `BufferStore::clear_languages_all`) bypasses
 /// `set_buffer_language` entirely: it writes `buf.language = None` directly,
-/// which is the bug `clear_language_detaches_syntax_keeps_identity` above
-/// doesn't cover: that test clears through `set_buffer_language`, the normal
-/// path that also tears down `buf.syntax` via `setup_buffer_syntax`. If
-/// `clear_languages_all` left `syntax` in place, it would still
-/// be `Some` after `reset_config_state`, holding an `Arc<GrammarBundle>`
-/// from the registry the reset is about to replace.
+/// a path `clear_language_detaches_syntax_keeps_identity` above doesn't
+/// cover: that test clears through `set_buffer_language`, the normal path
+/// that also tears down `buf.syntax` via `setup_buffer_syntax`.
+/// `clear_languages_all` drops `syntax` too, since it holds an
+/// `Arc<GrammarBundle>` from the registry the reset is about to replace.
 #[test]
 fn reset_config_state_clears_buffer_syntax_not_just_language() {
     require_grammars(&["json"]);
@@ -341,7 +340,7 @@ fn sweep_no_op_for_nonmatching_language() {
     );
 }
 
-/// Without `reparse_stale_buffers`, `parsed_gen` would stay at gen0 after the edit.
+/// `reparse_stale_buffers` advances `parsed_gen` to the text's generation after an edit.
 #[test]
 fn reparse_advances_parsed_gen_after_edit() {
     require_grammars(&["json"]);
@@ -556,8 +555,7 @@ fn closing_the_last_buffer_clears_engine_syntax_state() {
 // ---------------------------------------------------------------------------
 
 /// Once a buffer's syntax is detached (via the max_bytes growth branch),
-/// reparse_stale_buffers must re-attach it on shrink below cap. Without the re-attach
-/// branch, the second `reparse_stale_buffers` call leaves parser=None.
+/// reparse_stale_buffers must re-attach it on shrink below cap.
 #[test]
 fn reparse_reattaches_after_shrink_under_cap() {
     require_grammars(&["json"]);
@@ -605,10 +603,6 @@ fn reparse_reattaches_after_shrink_under_cap() {
 /// reload's line diff is recorded as a pending edit. `reparse_stale_buffers`
 /// sees the gen mismatch, bakes the edit into the tree and posts an
 /// incremental parse; the second tick drains and installs the new tree.
-///
-/// The `end_byte()` assertion catches the reparse loop failing to post or
-/// install a request against the new content.  `state.syntax.is_some()` would
-/// fail if `detect_and_set_language` incorrectly cleared the language on reload.
 #[test]
 fn reload_buffer_in_place_keeps_syntax_highlighting() {
     use hume_editing::text::BufferText;
@@ -654,8 +648,8 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
 
     // Reload with different-length content: language stays "json" (path unchanged).
     // `{"x": 1}\n` (original, 9 bytes) → `[1, 2, 3]\n` (replacement, 10 bytes).
-    // The byte-length difference makes the tree-alignment check below definitive:
-    // a stale tree (not rebuilt) would report end_byte() == 9, not 10.
+    // The lengths differ, so the tree's end_byte() below tells the rebuilt tree
+    // (10) from the original one (9).
     let new_text = "[1, 2, 3]\n";
     let new_byte_len = new_text.len();
     ed.reload_buffer_in_place(
@@ -791,14 +785,10 @@ fn parse_worker_result_is_async_then_installed() {
     );
 }
 
-/// Verify that sweeping with a new grammar after one is already in flight does not
-/// leave a stale `InFlight` entry that silences the follow-up request.
-///
-/// If `sweep_buffers_for_grammars` did not clear `in_flight[bid]`, the
-/// next `reparse_stale_buffers` call would see in_flight.generation == generation and
-/// skip posting, leaving parsed_gen permanently stale.
+/// Switching a parsed buffer to another language's grammar leaves it parsed with
+/// the new grammar, with a tree.
 #[test]
-fn grammar_swap_clears_stale_in_flight() {
+fn grammar_swap_parses_with_the_new_grammar() {
     require_grammars(&["json", "rust"]);
     let mut ed = editor_from("-[f]>n main() {}\n");
     let bid = ed.focused_buffer_id();
@@ -820,7 +810,7 @@ fn grammar_swap_clears_stale_in_flight() {
     ed.set_buffer_language(bid, Some(lang));
     ed.reparse_stale_buffers(); // drain json parse result
 
-    // Attach rust grammar and sweep. This should clear any json in-flight and post fresh.
+    // Attach the rust grammar and switch the buffer to rust.
     let rust_bundle = attach_fixture_grammar(&mut ed, "rust", "tree_sitter_rust");
     let lang = ed.state.config.languages.intern("rust");
     ed.set_buffer_language(bid, Some(lang));
@@ -873,14 +863,10 @@ fn shipped_data_reading_extracts_json_pins() {
 
 /// Attach the pre-built Rust grammar fixture and snapshot the styled render output.
 ///
-/// Locks down that token colours actually reach the screen, not just that
-/// highlight spans are emitted.  The cursor sits on the trailing `\n` so no
-/// content cell is reverse-video.
+/// Token colours reach the screen, not only the emitted highlight spans.
+/// The cursor sits on the trailing `\n` so no content cell is reverse-video.
 ///
 /// Requires `scripts/fetch-test-grammars.sh` (handled by `grammar_fixture`).
-///
-/// Without `theme.bake` every scope would resolve to the default style and the
-/// snapshot would change.
 #[test]
 fn rust_function_highlight_snapshot() {
     use hume_treesitter::highlight::layer_highlights_for_line;
@@ -908,8 +894,8 @@ fn rust_function_highlight_snapshot() {
     ed.reparse_stale_buffers();
 
     // Sanity: line 1 ("fn main() {") must emit at least one `keyword` span.
-    // Runs the highlight pipeline directly so the test fails even if the snapshot
-    // renderer masks absent colours behind cursor/selection background.
+    // Runs the highlight pipeline directly, apart from the snapshot renderer,
+    // whose cursor/selection background can hide absent colours.
     {
         let syn = ed.state.buffers.get(bid).syntax.as_ref().unwrap();
         let layers = syn
