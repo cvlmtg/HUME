@@ -412,7 +412,7 @@ fn core_stdlib_git_probes_inside_a_work_tree() {
     std::fs::create_dir_all(sandbox.raw().join("sub")).unwrap();
     ed.state
         .set_cwd(&hume_platform::path::AbsolutePath::rooted(
-            &sandbox.path().join("sub"),
+            sandbox.path().join("sub"),
         ))
         .unwrap();
 
@@ -447,7 +447,7 @@ fn core_stdlib_git_probes_outside_a_work_tree() {
     let (mut ed, mut host, _guard, _init_dir) = setup_stdlib_editor();
     let sandbox = Sandbox::new();
     ed.state
-        .set_cwd(&hume_platform::path::AbsolutePath::rooted(&sandbox.path()))
+        .set_cwd(&hume_platform::path::AbsolutePath::rooted(sandbox.path()))
         .unwrap();
 
     let assertions = r#"

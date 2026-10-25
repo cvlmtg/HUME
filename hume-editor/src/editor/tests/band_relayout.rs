@@ -290,7 +290,7 @@ fn centring_after_buffers_open_under_ls_counts_its_new_rows() {
 
     for f in &extra {
         ed.open_extra_file(&hume_platform::path::AbsolutePath::rooted(
-            &std::fs::canonicalize(f.path()).unwrap(),
+            std::fs::canonicalize(f.path()).unwrap(),
         ))
         .expect("the extra file opens");
     }
