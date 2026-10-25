@@ -552,9 +552,16 @@ fn a_deletion_across_several_decorated_lines_keeps_only_the_last_lines_sign() {
     assert_eq!(got, labelled(&[(0, 0), (1, 4), (2, 5), (3, 6)]));
 }
 
+/// A named edit and the `(line, label)` pairs of the signs it leaves.
+type EditCase = (
+    &'static str,
+    fn(&mut ChangeSetBuilder),
+    &'static [(usize, usize)],
+);
+
 #[test]
 fn edits_at_the_buffer_end_keep_the_last_lines_sign_unless_its_break_goes() {
-    let cases: [(&str, fn(&mut ChangeSetBuilder), &[(usize, usize)]); 5] = [
+    let cases: [EditCase; 5] = [
         (
             "typing at the end of the last line",
             |b| {
