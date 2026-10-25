@@ -9,6 +9,10 @@ hume-engine = { path = "../hume-engine" }
 hume-rope = { path = "../hume-rope" }
 rustc-hash.workspace = true
 
+[dev-dependencies]
+criterion = { version = "0.8.2", default-features = false, features = ["cargo_bench_support"] }
+proptest = "1.11.0"
+
 [features]
 # Exposes DecorationStores' test-only accessors (signs_for,
 # virtual_lines_for, line_backgrounds_for, extra_highlights_for,
@@ -16,3 +20,7 @@ rustc-hash.workspace = true
 # what a plugin published rather than what a viewport shows. Mirrors the
 # hume-lsp/hume-treesitter/hume-scripting precedent.
 test-util = []
+
+[[bench]]
+name = "remap_lines"
+harness = false

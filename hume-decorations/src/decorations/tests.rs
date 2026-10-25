@@ -473,6 +473,137 @@ fn opening_a_line_above_moves_the_sign_with_its_line() {
     assert_eq!(sign_lines(&store, "linter", a), vec![(2, "b")]);
 }
 
+/// `"l0\nl1\n…"` up to `l{n-1}`: line `k` starts at `3k`, its `\n` is at
+/// `3k + 2`.
+fn numbered_lines(n: usize) -> String {
+    (0..n).map(|k| format!("l{k}\n")).collect()
+}
+
+/// A sign on each of `lines`, labelled with its line number.
+fn numbered_signs(lines: &[usize]) -> Vec<SignEntry> {
+    lines.iter().map(|&k| sign(k, &k.to_string())).collect()
+}
+
+/// Remaps signs on `lines` of a seven-line `numbered_lines` text through
+/// the change `build` records, returning where each surviving label lands.
+fn remap_numbered(
+    lines: &[usize],
+    build: impl FnOnce(&mut ChangeSetBuilder),
+) -> Vec<(usize, String)> {
+    let mut store = DecorationStores::default();
+    let (a, _b) = make_two_bids();
+    store.set_signs("linter".to_string(), a, numbered_signs(lines));
+    remap(&mut store, a, &numbered_lines(7), build);
+    sign_lines(&store, "linter", a)
+        .into_iter()
+        .map(|(line, text)| (line, text.to_string()))
+        .collect()
+}
+
+fn labelled(pairs: &[(usize, usize)]) -> Vec<(usize, String)> {
+    pairs
+        .iter()
+        .map(|&(line, label)| (line, label.to_string()))
+        .collect()
+}
+
+/// Three cursors in one change: a char typed on line 1, a line opened
+/// above line 3, and line 5 joined with line 6.
+#[test]
+fn several_edited_regions_in_one_change_each_move_their_own_lines() {
+    let got = remap_numbered(&[0, 1, 2, 3, 4, 5, 6], |b| {
+        b.retain_to(co(3)).insert("x");
+        b.retain_to(co(9)).insert("\n");
+        b.retain_to(co(17)).delete_to(co(18));
+    });
+    assert_eq!(
+        got,
+        labelled(&[(0, 0), (1, 1), (2, 2), (4, 3), (5, 4), (6, 6)])
+    );
+}
+
+#[test]
+fn newlines_inserted_before_between_and_after_entries_shift_the_later_ones() {
+    let got = remap_numbered(&[2, 4], |b| {
+        b.insert("\n");
+        b.retain_to(co(9)).insert("\n");
+        b.retain_to(co(18)).insert("\n");
+    });
+    assert_eq!(got, labelled(&[(3, 2), (6, 4)]));
+}
+
+#[test]
+fn newlines_deleted_before_between_and_after_entries_shift_the_later_ones() {
+    let got = remap_numbered(&[2, 4], |b| {
+        b.retain_to(co(2)).delete_to(co(3));
+        b.retain_to(co(11)).delete_to(co(12));
+        b.retain_to(co(17)).delete_to(co(18));
+    });
+    assert_eq!(got, labelled(&[(1, 2), (2, 4)]));
+}
+
+/// Deleting from inside line 1 to inside line 4 consumes the breaks of
+/// lines 1 to 3: their signs go, and line 4's lands on the joined line.
+#[test]
+fn a_deletion_across_several_decorated_lines_keeps_only_the_last_lines_sign() {
+    let got = remap_numbered(&[0, 1, 2, 3, 4, 5, 6], |b| {
+        b.retain_to(co(4)).delete_to(co(13));
+    });
+    assert_eq!(got, labelled(&[(0, 0), (1, 4), (2, 5), (3, 6)]));
+}
+
+#[test]
+fn edits_at_the_buffer_end_keep_the_last_lines_sign_unless_its_break_goes() {
+    let cases: [(&str, fn(&mut ChangeSetBuilder), &[(usize, usize)]); 5] = [
+        (
+            "typing at the end of the last line",
+            |b| {
+                b.retain_to(co(5)).insert("x");
+            },
+            &[(0, 0), (1, 1)],
+        ),
+        (
+            "opening a line below the last one",
+            |b| {
+                b.retain_to(co(5)).insert("\nnew");
+            },
+            &[(0, 0), (1, 1)],
+        ),
+        (
+            "appending after the structural newline",
+            |b| {
+                b.retain_to(co(6)).insert("l2\n");
+            },
+            &[(0, 0), (1, 1)],
+        ),
+        (
+            "deleting the last line's content",
+            |b| {
+                b.retain_to(co(3)).delete_to(co(5));
+            },
+            &[(0, 0), (1, 1)],
+        ),
+        (
+            "joining the last line up",
+            |b| {
+                b.retain_to(co(2)).delete_to(co(5));
+            },
+            &[(0, 1)],
+        ),
+    ];
+    for (case, build, expected) in cases {
+        let mut store = DecorationStores::default();
+        let (a, _b) = make_two_bids();
+        store.set_signs("linter".to_string(), a, numbered_signs(&[0, 1]));
+        remap(&mut store, a, &numbered_lines(2), build);
+        let got: Vec<(usize, String)> = sign_lines(&store, "linter", a)
+            .into_iter()
+            .map(|(line, text)| (line, text.to_string()))
+            .collect();
+        assert_eq!(got, labelled(expected), "{case}");
+    }
+}
+
 #[test]
 fn remove_source_for_buffer_drops_only_that_pair() {
     let (a, b) = make_two_bids();
@@ -565,4 +696,132 @@ fn extra_highlights_starting_before_keeps_spans_that_start_before_the_end() {
         .map(|e| (e.start.index(), e.end.index()))
         .collect();
     assert_eq!(got, vec![(2, 30), (0, 3)]);
+}
+
+/// The line-anchored remap rule stated per entry: find the line's `\n`,
+/// map it with `Assoc::Before`, drop the entry if a deletion consumed it,
+/// else read the line of the mapped offset. `None` for a dropped entry.
+fn reference_remap_lines(lines: &[usize], change: &TextChange) -> Vec<Option<usize>> {
+    let mut cursor = hume_editing::changeset::PosMapCursor::new(change.changes().ops());
+    lines
+        .iter()
+        .map(|&line| {
+            let newline = change.before().lines().newline(cl(line)).offset();
+            let mapped = cursor.map_anchor(newline, hume_editing::changeset::Assoc::Before);
+            (!mapped.anchor_deleted).then(|| change.after().char_to_line(mapped.pos).index())
+        })
+        .collect()
+}
+
+mod remap_lines_matches_the_per_entry_rule {
+    use super::*;
+    use proptest::prelude::*;
+
+    /// Texts made of line breaks, ASCII, a precomposed char and a
+    /// combining sequence.
+    fn arb_text() -> impl Strategy<Value = String> {
+        proptest::collection::vec(
+            proptest::sample::select(vec!["a", "\n", "é", "e\u{301}"]),
+            0..24,
+        )
+        .prop_map(|pieces| pieces.concat())
+    }
+
+    /// One op of a change: retain or delete up to `len` chars, or insert
+    /// `text`.
+    #[derive(Debug, Clone)]
+    enum Step {
+        Retain(usize),
+        Delete(usize),
+        Insert(String),
+    }
+
+    fn arb_steps() -> impl Strategy<Value = Vec<Step>> {
+        let step = prop_oneof![
+            (1..6usize).prop_map(Step::Retain),
+            (1..6usize).prop_map(Step::Delete),
+            arb_text().prop_map(Step::Insert),
+        ];
+        proptest::collection::vec(step, 0..8)
+    }
+
+    /// Lines in `0..64`, folded into the text's content lines by the test.
+    fn arb_lines() -> impl Strategy<Value = Vec<usize>> {
+        proptest::collection::vec(0..64usize, 0..12)
+    }
+
+    proptest! {
+        #[test]
+        fn on_random_texts_and_changes(
+            text in arb_text(),
+            steps in arb_steps(),
+            first in arb_lines(),
+            second in arb_lines(),
+        ) {
+            let before = BufferText::from(text.as_str());
+            let len = before.len_chars();
+            // `terminated` appends a `\n`, as an edit that deletes the
+            // structural one has its result terminated.
+            let build = |terminated: bool| {
+                let mut b = ChangeSetBuilder::new(co(len));
+                let mut old = 0;
+                for step in &steps {
+                    match step {
+                        Step::Retain(n) => {
+                            old = (old + n).min(len);
+                            b.retain_to(co(old));
+                        }
+                        Step::Delete(n) => {
+                            old = (old + n).min(len);
+                            b.delete_to(co(old));
+                        }
+                        Step::Insert(s) => {
+                            b.insert(s);
+                        }
+                    }
+                }
+                if terminated {
+                    b.retain_to(co(len)).insert("\n");
+                }
+                b.finish()
+            };
+            let mut cs = build(false);
+            let after = match cs.apply(&before) {
+                Ok(after) => after,
+                Err(_) => {
+                    cs = build(true);
+                    cs.apply(&before).expect("the result ends with a line break")
+                }
+            };
+            let change = TextChange::new(&before, &after, &cs);
+
+            let count = before.content_line_count().get();
+            let fold = |lines: Vec<usize>| -> Vec<usize> {
+                let mut lines: Vec<usize> = lines.into_iter().map(|l| l % count).collect();
+                lines.sort_unstable();
+                lines
+            };
+            let sources = [("first", fold(first)), ("second", fold(second))];
+
+            let mut store = DecorationStores::default();
+            let (a, _b) = make_two_bids();
+            for (source, lines) in &sources {
+                store.set_signs(source.to_string(), a, numbered_signs(lines));
+            }
+            store.remap_through(a, &change);
+
+            for (source, lines) in &sources {
+                let expected: Vec<(usize, String)> = lines
+                    .iter()
+                    .zip(reference_remap_lines(lines, &change))
+                    .filter_map(|(&label, line)| line.map(|line| (line, label.to_string())))
+                    .collect();
+                let got: Vec<(usize, String)> = sign_lines(&store, source, a)
+                    .into_iter()
+                    .map(|(line, text)| (line, text.to_string()))
+                    .collect();
+                prop_assert_eq!(got, expected, "source {}", source);
+            }
+        }
+    }
 }

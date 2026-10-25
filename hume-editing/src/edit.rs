@@ -9,7 +9,7 @@ use std::cell::OnceCell;
 
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
-use crate::changeset::ChangeSet;
+use crate::changeset::{ChangeSet, LineMapCursor};
 use crate::error::ApplyError;
 use crate::state::EditState;
 use crate::text::{BufferText, TextVersion};
@@ -183,6 +183,11 @@ impl<'a> TextChange<'a> {
 
     pub fn changes(&self) -> &'a ChangeSet {
         self.changes
+    }
+
+    /// A cursor mapping content lines of `before` into `after`.
+    pub fn line_cursor(&self) -> LineMapCursor<'a> {
+        LineMapCursor::new(self.before, self.changes)
     }
 
     /// The changeset's edited old ranges, computed on first use and shared by

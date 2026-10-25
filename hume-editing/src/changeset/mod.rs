@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 
+use hume_rope::line::ContentLine;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 use ropey::Rope;
@@ -212,61 +213,193 @@ impl<'a> PosMapCursor<'a> {
     /// naming a specific character (a decoration anchor, not a cursor) use
     /// this to tell "moved" from "its character is gone" apart.
     ///
-    /// Walks forward from `(idx, old, new)`, wherever the previous call left
-    /// off, rather than restarting at op 0, since ops fully behind a past
-    /// query can never matter again for a non-decreasing sequence of queries.
     /// `ChangeSet::map_pos` is a one-shot convenience built on top of this:
     /// it opens a fresh cursor and delegates a single query to it.
     pub fn map_anchor(&mut self, pos: CharOffset, assoc: Assoc) -> MappedPos {
-        // Bare usize from here down: `old`/`new` are running cursors advanced
-        // by op *lengths* (`self.old += n`, `self.new + len`), arithmetic
-        // `CharOffset` has no `Add`/`Sub` for. This is that
-        // type's own no-arithmetic design forcing an escape, not a
-        // performance carve-out (`CharOffset` is a zero-cost `Copy` newtype).
         let pos = pos.index();
-        while self.idx < self.ops.len() {
-            match &self.ops[self.idx] {
+        let hit = self.seek(&mut CharProbe(pos));
+        // Bare usize: `old`/`new` are running cursors advanced by op
+        // *lengths*, arithmetic `CharOffset` has no `Add`/`Sub` for.
+        let (mapped, anchor_deleted) = match hit {
+            Hit::Retained | Hit::End => (self.new + (pos - self.old), false),
+            Hit::Deleted => (self.new, true),
+            Hit::InsertPoint(_) if assoc == Assoc::Before => (self.new, false),
+            Hit::InsertPoint(s) => (self.new + s.chars().count(), false),
+        };
+        MappedPos {
+            pos: CharOffset::new(mapped),
+            anchor_deleted,
+        }
+    }
+
+    /// Walks forward from wherever the previous query left off to the op
+    /// holding the position `probe` asks about, handing `probe` each op it
+    /// walks past. Ops fully behind a past query never matter again for a
+    /// non-decreasing sequence of queries, so the walk never restarts.
+    ///
+    /// The position is at an `Insert` when it lies before `old + 1`: the
+    /// queries are monotone, so it never lies before `old` itself.
+    fn seek(&mut self, probe: &mut impl Probe) -> Hit<'a> {
+        debug_assert!(
+            !probe.lies_before(self.old),
+            "PosMapCursor: queries must be non-decreasing"
+        );
+        while let Some(op) = self.ops.get(self.idx) {
+            match op {
                 Operation::Retain(n) => {
-                    if pos < self.old + n {
-                        return MappedPos {
-                            pos: CharOffset::new(self.new + (pos - self.old)),
-                            anchor_deleted: false,
-                        };
+                    if probe.lies_before(self.old + n) {
+                        return Hit::Retained;
                     }
+                    probe.passed(op, self.old);
                     self.old += n;
                     self.new += n;
-                    self.idx += 1;
                 }
                 Operation::Delete(n) => {
-                    if pos < self.old + n {
-                        return MappedPos {
-                            pos: CharOffset::new(self.new),
-                            anchor_deleted: true,
-                        };
+                    if probe.lies_before(self.old + n) {
+                        return Hit::Deleted;
                     }
+                    probe.passed(op, self.old);
                     self.old += n;
-                    self.idx += 1;
                 }
                 Operation::Insert(s) => {
-                    let len = s.chars().count();
-                    if pos == self.old {
-                        let mapped = match assoc {
-                            Assoc::Before => self.new,
-                            Assoc::After => self.new + len,
-                        };
-                        return MappedPos {
-                            pos: CharOffset::new(mapped),
-                            anchor_deleted: false,
-                        };
+                    if probe.lies_before(self.old + 1) {
+                        return Hit::InsertPoint(s);
                     }
-                    self.new += len;
-                    self.idx += 1;
+                    probe.passed(op, self.old);
+                    self.new += s.chars().count();
                 }
             }
+            self.idx += 1;
         }
-        MappedPos {
-            pos: CharOffset::new(self.new + (pos - self.old)),
-            anchor_deleted: false,
+        Hit::End
+    }
+}
+
+/// The position a [`PosMapCursor`] query asks about, in whatever unit the
+/// query counts in.
+trait Probe {
+    /// Whether the position lies before old-doc char offset `old`.
+    fn lies_before(&mut self, old: usize) -> bool;
+
+    /// Sees each op the cursor walks past, with the old-doc offset it
+    /// starts at.
+    fn passed(&mut self, op: &Operation, old: usize);
+}
+
+/// Where a [`PosMapCursor`] query landed: inside a `Retain`, inside a
+/// `Delete`, at the point an `Insert` adds its text, or past every op.
+enum Hit<'a> {
+    Retained,
+    Deleted,
+    InsertPoint(&'a str),
+    End,
+}
+
+/// A query for an old-doc char offset.
+struct CharProbe(usize);
+
+impl Probe for CharProbe {
+    fn lies_before(&mut self, old: usize) -> bool {
+        self.0 < old
+    }
+
+    fn passed(&mut self, _: &Operation, _: usize) {}
+}
+
+/// Maps content lines of the text before a change into the text after it.
+/// A line is its `\n`: it maps to the line its `\n` lands on, and to `None`
+/// once a deletion consumed that `\n`. Text inserted at the `\n` goes before
+/// it, joining the line's end, and the line maps to where that text starts.
+///
+/// The answer is the line of the line's `\n` mapped through a
+/// [`PosMapCursor`] with [`Assoc::Before`]: it is that cursor's walk, asked
+/// in line units. Line `L`'s `\n` lies before offset `x` when `L` is below
+/// the count of `\n`s before `x`, a count read from the rope once per op, so
+/// a batch of lines costs one lookup per op walked, none per line.
+pub struct LineMapCursor<'a> {
+    cursor: PosMapCursor<'a>,
+    probe: LineProbe<'a>,
+}
+
+impl<'a> LineMapCursor<'a> {
+    pub(crate) fn new(before: &'a BufferText, changes: &'a ChangeSet) -> Self {
+        Self {
+            cursor: PosMapCursor::new(&changes.ops),
+            probe: LineProbe {
+                text: before,
+                line: 0,
+                memo: (0, 0),
+                breaks_before_old: 0,
+                breaks_before_new: 0,
+            },
+        }
+    }
+
+    /// Where `line` lands, `None` when a deletion consumed its `\n`. `line`
+    /// must be `>=` every line passed to a prior call on this cursor.
+    ///
+    /// # Panics
+    /// Panics if `line` is not a content line of the text before the change.
+    pub fn map_line(&mut self, line: ContentLine) -> Option<ContentLine> {
+        assert!(
+            line.index() < self.probe.text.content_line_count().get(),
+            "map_line: line {} is not a content line of the text before the change",
+            line.index()
+        );
+        self.probe.line = line.index();
+        match self.cursor.seek(&mut self.probe) {
+            Hit::Deleted => None,
+            Hit::Retained | Hit::InsertPoint(_) | Hit::End => {
+                let probe = &self.probe;
+                Some(ContentLine::new(
+                    probe.breaks_before_new + (probe.line - probe.breaks_before_old),
+                ))
+            }
+        }
+    }
+}
+
+/// A query for content line `line`'s `\n`, carrying the `\n` counts of the
+/// walk so far: before the cursor's old-doc offset, and in the new text
+/// the walked-past ops produced.
+struct LineProbe<'a> {
+    text: &'a BufferText,
+    line: usize,
+    /// The last `(offset, \n count before it)` read from the rope: every
+    /// query that stops at an op asks about the same offset, and the op's
+    /// `passed` asks about it again.
+    memo: (usize, usize),
+    breaks_before_old: usize,
+    breaks_before_new: usize,
+}
+
+impl LineProbe<'_> {
+    /// The number of `\n`s before old-doc offset `old`.
+    fn breaks_before(&mut self, old: usize) -> usize {
+        if self.memo.0 != old {
+            let breaks = self.text.ropey_char_to_line(CharOffset::new(old)).index();
+            self.memo = (old, breaks);
+        }
+        self.memo.1
+    }
+}
+
+impl Probe for LineProbe<'_> {
+    fn lies_before(&mut self, old: usize) -> bool {
+        self.line < self.breaks_before(old)
+    }
+
+    fn passed(&mut self, op: &Operation, old: usize) {
+        match op {
+            Operation::Retain(n) => {
+                let end = self.breaks_before(old + n);
+                self.breaks_before_new += end - self.breaks_before_old;
+                self.breaks_before_old = end;
+            }
+            Operation::Delete(n) => self.breaks_before_old = self.breaks_before(old + n),
+            Operation::Insert(s) => {
+                self.breaks_before_new += s.bytes().filter(|&b| b == b'\n').count();
+            }
         }
     }
 }
