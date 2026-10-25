@@ -217,11 +217,15 @@ impl<'a> PosMapCursor<'a> {
     /// it opens a fresh cursor and delegates a single query to it.
     pub fn map_anchor(&mut self, pos: CharOffset, assoc: Assoc) -> MappedPos {
         let pos = pos.index();
+        debug_assert!(
+            pos >= self.old,
+            "PosMapCursor: queries must be non-decreasing"
+        );
         let hit = self.seek(&mut CharProbe(pos));
         // Bare usize: `old`/`new` are running cursors advanced by op
         // *lengths*, arithmetic `CharOffset` has no `Add`/`Sub` for.
         let (mapped, anchor_deleted) = match hit {
-            Hit::Retained | Hit::End => (self.new + (pos - self.old), false),
+            Hit::Retained => (self.new + (pos - self.old), false),
             Hit::Deleted => (self.new, true),
             Hit::InsertPoint(_) if assoc == Assoc::Before => (self.new, false),
             Hit::InsertPoint(s) => (self.new + s.chars().count(), false),
@@ -240,10 +244,6 @@ impl<'a> PosMapCursor<'a> {
     /// The position is at an `Insert` when it lies before `old + 1`: the
     /// queries are monotone, so it never lies before `old` itself.
     fn seek(&mut self, probe: &mut impl Probe) -> Hit<'a> {
-        debug_assert!(
-            !probe.lies_before(self.old),
-            "PosMapCursor: queries must be non-decreasing"
-        );
         while let Some(op) = self.ops.get(self.idx) {
             match op {
                 Operation::Retain(n) => {
@@ -271,7 +271,7 @@ impl<'a> PosMapCursor<'a> {
             }
             self.idx += 1;
         }
-        Hit::End
+        Hit::Retained
     }
 }
 
@@ -286,13 +286,13 @@ trait Probe {
     fn passed(&mut self, op: &Operation, old: usize);
 }
 
-/// Where a [`PosMapCursor`] query landed: inside a `Retain`, inside a
-/// `Delete`, at the point an `Insert` adds its text, or past every op.
+/// Where a [`PosMapCursor`] query landed: inside a `Retain` (or past every
+/// op, which maps the same way), inside a `Delete`, or at the point an
+/// `Insert` adds its text.
 enum Hit<'a> {
     Retained,
     Deleted,
     InsertPoint(&'a str),
-    End,
 }
 
 /// A query for an old-doc char offset.
@@ -346,10 +346,14 @@ impl<'a> LineMapCursor<'a> {
             "map_line: line {} is not a content line of the text before the change",
             line.index()
         );
+        debug_assert!(
+            line.index() >= self.probe.line,
+            "map_line: lines must be non-decreasing"
+        );
         self.probe.line = line.index();
         match self.cursor.seek(&mut self.probe) {
             Hit::Deleted => None,
-            Hit::Retained | Hit::InsertPoint(_) | Hit::End => {
+            Hit::Retained | Hit::InsertPoint(_) => {
                 let probe = &self.probe;
                 Some(ContentLine::new(
                     probe.breaks_before_new + (probe.line - probe.breaks_before_old),
