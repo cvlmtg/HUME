@@ -539,25 +539,6 @@ impl Buffer {
         self.file().map(BufferFile::display)
     }
 
-    /// First line of buffer content, capped at 64 bytes, stopping at the
-    /// line's `\n`.
-    /// Returns `None` when the first line is empty. Used for shebang detection.
-    /// Iterates codepoints, not grapheme clusters: safe because shebang lines are ASCII-only.
-    pub(in crate::editor) fn first_line(&self) -> Option<String> {
-        const CAP: usize = 64;
-        let mut out = String::with_capacity(CAP);
-        for ch in self.text.rope().chars() {
-            if ch == '\n' {
-                break;
-            }
-            if out.len() + ch.len_utf8() > CAP {
-                break;
-            }
-            out.push(ch);
-        }
-        if out.is_empty() { None } else { Some(out) }
-    }
-
     /// The selections a pane starts with when it first views this buffer: a
     /// cursor on the first cluster.
     pub(in crate::editor) fn initial_sels(&self) -> SelectionSet {

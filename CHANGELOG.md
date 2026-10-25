@@ -11,6 +11,7 @@
 - `update-drawer-list!` raises on an empty list instead of returning `#f`: close the drawer instead.
 - `close-buffer!` raises for a buffer with unsaved changes instead of dropping them: pass `#:discard-unsaved #t` to close it anyway.
 - `define-language!` raises for an invalid glob, or for an extension with a leading or trailing dot or a `/`, instead of skipping it: fix or drop the entry.
+- `define-language!` raises for a shebang entry with a space or a `/`: give the interpreter's name alone, such as `"python"`.
 - A path given to a HUME call resolves `..` the way the operating system does, and a `..` after a directory that doesn't exist raises: write the path without it.
 - `after!`, `spawn-async!` and `path-programs` return an opaque timer or job, not an integer: compare two with `equal?`. `cancel-timer!` raises for anything but a timer, and `cancel-async!` for anything but a job, so one kind can no longer cancel the other.
 
@@ -52,6 +53,7 @@
 - `..` in a path you type to `:e`, `:w`, `:cd` or path completion leaves the directory it follows the way your shell does: after a symlink, it goes to the link target's parent.
 - `goto-location!` takes a path as written, like every other path a plugin passes: a `$` or `~` in a file name no longer opens some other file.
 - Every file named on the command line expands `~` and variables like `$HOME`, the first one included, and so do `--config` and `--output`.
+- Scripts whose first line runs a versioned interpreter, such as `#!/usr/bin/env python3` or `#!/usr/bin/lua5.4`, get their language, and so do V scripts.
 
 ## [0.16.1] - 2026-10-22
 

@@ -234,9 +234,6 @@ fn steel_server_plugin_registers_its_server_with_generated_globals_env() {
     );
 }
 
-/// `core:steel-server` redefines `scheme` with the `cog.scm` root and gives
-/// it its server list: once the server is registered, scheme buffers
-/// resolve to it, and the language keeps the bundled extensions.
 /// The bundled language data loads (every glob and extension in it is
 /// valid, or `languages.scm` raises) and detects by directory globs and
 /// dotted extensions.
@@ -252,7 +249,7 @@ fn bundled_language_data_detects_by_path_and_dotted_extension() {
             as_opened: &path,
             resolved: &path,
         };
-        detect_language(Some(paths), None, languages).map(|id| languages.name_of(id))
+        detect_language(Some(paths), &ropey::Rope::new(), languages).map(|id| languages.name_of(id))
     };
     assert_eq!(
         detect("/repo/.github/workflows/ci.yaml"),
@@ -262,6 +259,26 @@ fn bundled_language_data_detects_by_path_and_dotted_extension() {
     assert_eq!(detect("/repo/.vscode/settings.json"), Some("jsonc"));
 }
 
+/// Every shebang in the bundled language data names an interpreter, and a
+/// version after the name does not stop detection.
+#[test]
+fn bundled_language_data_detects_versioned_interpreters() {
+    use hume_treesitter::registry::detect_language;
+
+    let (_host, ed, _) = host_and_editor_after_runtime_layers();
+    let languages = &ed.state.config.languages;
+    let detect = |line: &str| {
+        detect_language(None, &ropey::Rope::from_str(line), languages)
+            .map(|id| languages.name_of(id))
+    };
+    assert_eq!(detect("#!/usr/bin/env python3"), Some("python"));
+    assert_eq!(detect("#!/usr/bin/lua5.4"), Some("lua"));
+    assert_eq!(detect("#!/usr/bin/env v run"), Some("v"));
+}
+
+/// `core:steel-server` redefines `scheme` with the `cog.scm` root and gives
+/// it its server list: once the server is registered, scheme buffers
+/// resolve to it, and the language keeps the bundled extensions.
 #[test]
 fn steel_server_plugin_gives_scheme_its_root_and_server_list() {
     let (mut host, mut ed, builtin_names) = host_and_editor_after_runtime_layers();

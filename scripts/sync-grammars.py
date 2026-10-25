@@ -183,20 +183,49 @@ BLOCK_COMMENT_EXCLUSIONS: dict[str, set[tuple[str, str]]] = {
 }
 
 
+def fail_on_stale(name: str, what: str, stale: set) -> None:
+    """Fatal when `stale`, the entries of language `name`'s correction
+    table for `what` that its upstream data lacks, is not empty, so the
+    table does not outlive the upstream data it corrects."""
+    if stale:
+        sys.exit(f"error: language '{name}': {what} {sorted(stale)!r} not in languages.toml")
+
+
 def kept_block_comment_tokens(entry: dict) -> list[tuple[str, str]]:
     """`block_comment_tokens(entry)` without the language's excluded pairs.
-    Fatal when an excluded pair is missing from them, so the table does
-    not outlive the upstream data it corrects."""
+    Fatal when an excluded pair is missing from them (`fail_on_stale`)."""
     name = entry["name"]
     pairs = block_comment_tokens(entry)
     excluded = BLOCK_COMMENT_EXCLUSIONS.get(name, set())
-    stale = excluded - set(pairs)
-    if stale:
-        sys.exit(
-            f"error: language '{name}': excluded block-comment-tokens "
-            f"{sorted(stale)!r} not in languages.toml"
-        )
+    fail_on_stale(name, "excluded block-comment-tokens", excluded - set(pairs))
     return [p for p in pairs if p not in excluded]
+
+
+# Helix shebangs replaced before emission, by language. HUME matches a
+# shebang against the one program a `#!` line runs, so V's `v run` names
+# the `v` interpreter.
+SHEBANG_CORRECTIONS: dict[str, dict[str, str]] = {
+    "v": {"v run": "v"},
+}
+
+
+def checked_shebangs(entry: dict) -> list[str]:
+    """`entry`'s shebangs with the language's corrections applied. Fatal
+    when a corrected shebang is missing from them (`fail_on_stale`), and
+    when a shebang is not one interpreter name, which `define-language!`
+    refuses (`ShebangInterpreter::new`)."""
+    name = entry["name"]
+    shebangs = entry.get("shebangs", [])
+    corrections = SHEBANG_CORRECTIONS.get(name, {})
+    fail_on_stale(name, "corrected shebangs", set(corrections) - set(shebangs))
+    corrected = [corrections.get(s, s) for s in shebangs]
+    for shebang in corrected:
+        if not shebang or any(c.isspace() or c in "/\\" for c in shebang):
+            sys.exit(
+                f"error: language '{name}': shebang {shebang!r} is not one interpreter "
+                f"name; add it to SHEBANG_CORRECTIONS"
+            )
+    return corrected
 
 
 def parse_languages(doc: dict, grammars: dict[str, dict]) -> list[dict]:
@@ -227,7 +256,7 @@ def parse_languages(doc: dict, grammars: dict[str, dict]) -> list[dict]:
                         f"  skip file-type entry in '{name}': unknown keys {keys}",
                         file=sys.stderr,
                     )
-        shebangs = entry.get("shebangs", [])
+        shebangs = checked_shebangs(entry)
         grammar_name = entry.get("grammar", name)
         if grammar_name != name:
             overrides.append(f"{name} -> {grammar_name}")

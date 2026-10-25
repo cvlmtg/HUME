@@ -317,7 +317,7 @@
 (define-language! "ungrammar" '("ungram" "ungrammar"))
 (define-language! "unison" '("u"))
 (define-language! "uxntal" '("tal"))
-(define-language! "v" '("v" "vv" "vsh") '() '("v run"))
+(define-language! "v" '("v" "vv" "vsh") '() '("v"))
 (define-language! "vala" '("vala" "vapi"))
 (define-language! "varlink" '("varlink"))
 (define-language! "vento" '("vto"))

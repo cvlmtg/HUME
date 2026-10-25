@@ -154,8 +154,7 @@ impl Editor {
                 as_opened: file.typed(),
                 resolved: file.resolved(),
             });
-            let first_line = buf.first_line();
-            detect_language(paths, first_line.as_deref(), &self.state.config.languages)
+            detect_language(paths, buf.text().rope(), &self.state.config.languages)
         };
         self.set_buffer_language(bid, detected);
     }
@@ -240,12 +239,11 @@ impl Editor {
                     globs,
                     shebangs,
                 } => {
-                    let shebangs_ref: Vec<&str> = shebangs.iter().map(String::as_str).collect();
                     self.state.config.languages.register_identity_no_rebuild(
                         &name,
                         &extensions,
                         &globs,
-                        &shebangs_ref,
+                        &shebangs,
                     );
                     any_identity = true;
                 }

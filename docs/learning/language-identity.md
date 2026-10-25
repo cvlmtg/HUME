@@ -43,7 +43,9 @@ detection logic tries three strategies in order, stopping at the first match:
 3. **Shebangs** — if the file has no extension (or the extension doesn't
    match), the first line is checked for a shebang (`#!/usr/bin/env python3`,
    `#!/bin/bash`). This covers extensionless scripts like `build` or
-   `configure`.
+   `configure`. A language lists interpreter names, and a version after the
+   name (`python3`, `lua5.4`) still finds the language listing `python` or
+   `lua`, unless some language lists that exact version.
 
 If none of the three tiers match, the buffer is left without a language. That
 is a valid state: plain text files, scratch buffers, and binary files are all

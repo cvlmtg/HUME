@@ -2,11 +2,12 @@ use std::path::Path;
 
 use super::{
     ConfigureOutcome, ConfiguredBy, DetectPaths, GrammarSource, LanguageField, LanguageFields,
-    LanguageId, LanguageRegistry, OptionalQuery, QueryFiles, detect_language,
+    LanguageId, LanguageRegistry, OptionalQuery, QueryFiles, ShebangInterpreter, detect_language,
 };
 use hume_editing::comment::{BlockCommentTokens, LineCommentTokens};
 use hume_engine::theme::ScopeRegistry;
 use hume_platform::path::AbsolutePath;
+use ropey::Rope;
 use test_fixtures::{
     grammar_parser_path, grammar_query_path, require_grammars, require_helix_query,
 };
@@ -35,7 +36,11 @@ fn detect_linked(
         as_opened: &as_opened,
         resolved: &resolved,
     };
-    detect_language(Some(paths), first_line, reg)
+    detect_language(
+        Some(paths),
+        &Rope::from_str(first_line.unwrap_or_default()),
+        reg,
+    )
 }
 
 /// The language `reg` detects for a file opened at `path`, a root-anchored
@@ -783,7 +788,7 @@ fn remove_clears_glob_and_shebang_entries() {
     reg.register_identity("python", &["py"], &["*.py"], &["python"])
         .unwrap();
     assert!(reg.by_file_name("f.py").is_some());
-    assert!(reg.by_shebang("python").is_some());
+    assert!(reg.by_interpreter("python").is_some());
     assert!(
         !reg.compiled_globs()
             .matches(Path::new("/x/foo.py"))
@@ -793,7 +798,7 @@ fn remove_clears_glob_and_shebang_entries() {
     reg.remove("python");
 
     assert!(reg.by_file_name("f.py").is_none());
-    assert!(reg.by_shebang("python").is_none());
+    assert!(reg.by_interpreter("python").is_none());
     assert!(
         reg.compiled_globs()
             .matches(Path::new("/x/foo.py"))
@@ -1048,7 +1053,7 @@ fn detect_language_glob_tiebreak_last_registered_wins() {
 #[test]
 fn detect_language_by_shebang() {
     let mut reg = LanguageRegistry::new();
-    reg.register_identity("python", &["py"], &[], &["python3", "python"])
+    reg.register_identity("python", &["py"], &[], &["python"])
         .unwrap();
     let id = detect_at("/x/script", Some("#!/usr/bin/env python3"), &reg);
     assert_eq!(id, reg.id_of("python"));
@@ -1070,11 +1075,150 @@ fn detect_language_shebang_direct_path() {
     assert_eq!(id2, reg.id_of("bash"));
 }
 
+/// Only the first line is read for a shebang, and a long interpreter path
+/// stays whole.
+#[test]
+fn the_shebang_is_read_from_the_whole_first_line() {
+    let reg = interpreters();
+    let shebang = "#!/nix/store/0123456789abcdfghijklmnpqrsvwxyz-python3-3.12.4/bin/python3";
+    let paths = DetectPaths {
+        as_opened: &AbsolutePath::rooted("/x/run"),
+        resolved: &AbsolutePath::rooted("/x/run"),
+    };
+    let text = Rope::from_str(&format!("{shebang}\n#!/usr/bin/lua\n"));
+    assert_eq!(
+        detect_language(Some(paths), &text, &reg),
+        reg.id_of("python")
+    );
+}
+
+/// `python` and `lua` registered, as the bundled data names them.
+fn interpreters() -> LanguageRegistry {
+    let mut reg = LanguageRegistry::new();
+    reg.register_identity("python", &[], &[], &["python"])
+        .unwrap();
+    reg.register_identity("lua", &[], &[], &["lua"]).unwrap();
+    reg
+}
+
+#[test]
+fn a_version_after_the_interpreter_name_is_ignored() {
+    let reg = interpreters();
+    for line in [
+        "#!/usr/bin/python3.12",
+        "#!/usr/bin/env python3",
+        "#! /usr/bin/python3",
+    ] {
+        assert_eq!(
+            detect_at("/x/run", Some(line), &reg),
+            reg.id_of("python"),
+            "{line}"
+        );
+    }
+    assert_eq!(
+        detect_at("/x/run", Some("#!/usr/bin/lua5.4"), &reg),
+        reg.id_of("lua")
+    );
+}
+
+#[test]
+fn env_options_and_assignments_before_the_command_are_skipped() {
+    let reg = interpreters();
+    for line in [
+        "#!/usr/bin/env -S python3 -u",
+        "#!/usr/bin/env PYTHONDONTWRITEBYTECODE=1 python3",
+        "#!/usr/bin/env -u PYTHONPATH python3",
+        "#!/usr/bin/env --chdir /tmp python3",
+        "#!/usr/bin/env -i -- python3",
+        "#!/usr/bin/env /usr/local/bin/python3",
+        "#!/usr/bin/env -L root python3",
+        "#!/usr/bin/env -U root/daemon python3",
+    ] {
+        assert_eq!(
+            detect_at("/x/run", Some(line), &reg),
+            reg.id_of("python"),
+            "{line}"
+        );
+    }
+}
+
+#[test]
+fn an_interpreter_named_with_its_version_beats_the_unversioned_name() {
+    let mut reg = interpreters();
+    reg.register_identity("python2", &[], &[], &["python2"])
+        .unwrap();
+    assert_eq!(
+        detect_at("/x/run", Some("#!/usr/bin/python2"), &reg),
+        reg.id_of("python2")
+    );
+    assert_eq!(
+        detect_at("/x/run", Some("#!/usr/bin/python3"), &reg),
+        reg.id_of("python")
+    );
+}
+
+#[test]
+fn a_minor_version_falls_back_to_a_major_versioned_name_first() {
+    let mut reg = interpreters();
+    reg.register_identity("python3", &[], &[], &["python3"])
+        .unwrap();
+    reg.register_identity("perl5", &[], &[], &["perl5"])
+        .unwrap();
+    for line in ["#!/usr/bin/python3.12", "#!/usr/bin/env python3.12"] {
+        assert_eq!(
+            detect_at("/x/run", Some(line), &reg),
+            reg.id_of("python3"),
+            "{line}"
+        );
+    }
+    assert_eq!(
+        detect_at("/x/run", Some("#!/usr/bin/perl5.36.0"), &reg),
+        reg.id_of("perl5")
+    );
+    assert_eq!(
+        detect_at("/x/run", Some("#!/usr/bin/lua5.4"), &reg),
+        reg.id_of("lua")
+    );
+}
+
+#[test]
+fn a_backslash_separated_interpreter_path_detects_by_its_last_name() {
+    let reg = interpreters();
+    assert_eq!(
+        detect_at("/x/run", Some(r"#!C:\Python312\python"), &reg),
+        reg.id_of("python")
+    );
+}
+
+#[test]
+fn a_bare_version_is_no_interpreter_name() {
+    let mut reg = LanguageRegistry::new();
+    reg.register_identity("python", &[], &[], &["python"])
+        .unwrap();
+    assert_eq!(detect_at("/x/run", Some("#!/usr/bin/3.12"), &reg), None);
+}
+
+#[test]
+fn a_shebang_interpreter_is_one_name_with_no_space_or_separator() {
+    for invalid in ["", "v run", "bin/python", r"bin\python", " python"] {
+        assert!(
+            ShebangInterpreter::new(invalid.to_owned()).is_err(),
+            "{invalid:?}"
+        );
+    }
+    for valid in ["python", "python3.12", "octave-cli", "R"] {
+        assert_eq!(
+            ShebangInterpreter::new(valid.to_owned()).map(|i| i.as_str().to_owned()),
+            Ok(valid.to_owned())
+        );
+    }
+}
+
 #[test]
 fn detect_language_no_match() {
     let reg = LanguageRegistry::new();
     assert!(detect_at("/x/foo.xyz", None, &reg).is_none());
-    assert!(detect_language(None, None, &reg).is_none());
+    assert!(detect_language(None, &Rope::new(), &reg).is_none());
 }
 
 /// Extensions are matched case-sensitively, so `"c"` and `"C"` map to

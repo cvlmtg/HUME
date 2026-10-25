@@ -9,7 +9,7 @@ use crate::context::EvalMode;
 use crate::{ConfigOrigin, Effect, GrammarReg, PendingLanguageReg, SteelCtx};
 use hume_treesitter::registry::{
     FileExtension, FileGlob, GrammarSource, LanguageField, LanguageFields, OptionalQuery,
-    QueryFiles,
+    QueryFiles, ShebangInterpreter,
 };
 
 use super::SteelResult;
@@ -23,8 +23,8 @@ use super::errors::generic_err;
 /// `(%define-language! name extensions globs shebangs)`: init-only.
 ///
 /// `extensions`, `globs` and `shebangs` must be lists of strings, each
-/// extension a valid [`FileExtension`] and each glob a valid [`FileGlob`],
-/// or the call raises. Pushes an
+/// extension a valid [`FileExtension`], each glob a valid [`FileGlob`] and
+/// each shebang a valid [`ShebangInterpreter`], or the call raises. Pushes an
 /// `Effect::LanguageReg(PendingLanguageReg::Identity)`;
 /// `Editor::apply_pending_language_regs` applies it as part of
 /// `Editor::apply_script_effects`.
@@ -37,8 +37,8 @@ pub(crate) fn define_language(
 ) -> SteelResult {
     let name = string_arg(name, "%define-language! name")?;
     let extensions = list_to_strings(exts_val, "%define-language! extensions")?
-        .iter()
-        .map(|ext| FileExtension::new(ext))
+        .into_iter()
+        .map(FileExtension::new)
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| generic_err(format!("define-language! {name:?}: {e}")))?;
     let globs = list_to_strings(globs_val, "%define-language! globs")?
@@ -51,7 +51,11 @@ pub(crate) fn define_language(
             })
         })
         .collect::<Result<Vec<_>, _>>()?;
-    let shebangs = list_to_strings(shebangs_val, "%define-language! shebangs")?;
+    let shebangs = list_to_strings(shebangs_val, "%define-language! shebangs")?
+        .into_iter()
+        .map(ShebangInterpreter::new)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| generic_err(format!("define-language! {name:?}: {e}")))?;
     ctx.push_effect(Effect::LanguageReg(PendingLanguageReg::Identity {
         name,
         extensions,

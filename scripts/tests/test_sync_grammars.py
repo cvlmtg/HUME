@@ -288,6 +288,31 @@ class CommentTokens(unittest.TestCase):
             parse_langs([{"name": "graphql", "comment-token": "#"}])
 
 
+class Shebangs(unittest.TestCase):
+    def shebangs(self, name, shebangs):
+        (lang,) = parse_langs([{"name": name, "shebangs": shebangs}])
+        return lang["shebangs"]
+
+    def test_interpreter_names_keep_their_order(self):
+        self.assertEqual(self.shebangs("x", ["python", "uv"]), ["python", "uv"])
+
+    def test_vs_v_run_becomes_the_v_interpreter(self):
+        self.assertEqual(self.shebangs("v", ["v run"]), ["v"])
+
+    def test_a_shebang_with_a_space_is_fatal(self):
+        with self.assertRaises(SystemExit):
+            self.shebangs("x", ["python -u"])
+
+    def test_a_shebang_with_a_path_separator_is_fatal(self):
+        for shebang in ["/usr/bin/python", "bin\\python", ""]:
+            with self.subTest(shebang=shebang), self.assertRaises(SystemExit):
+                self.shebangs("x", [shebang])
+
+    def test_a_correction_its_language_no_longer_has_is_fatal(self):
+        with self.assertRaises(SystemExit):
+            self.shebangs("v", ["v"])
+
+
 class LanguageGrammar(unittest.TestCase):
     GRAMMARS = {
         "javascript": {"url": "https://js", "rev": "r1", "subpath": ""},

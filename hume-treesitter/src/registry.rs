@@ -5,6 +5,7 @@ use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use hume_platform::path::AbsolutePath;
+use ropey::Rope;
 
 use crate::grammar::LoadedGrammar;
 use crate::highlight::TreeSitterHighlighter;
@@ -55,14 +56,14 @@ impl FileGlob {
 pub struct FileExtension(String);
 
 impl FileExtension {
-    pub fn new(extension: &str) -> Result<Self, InvalidExtension> {
+    pub fn new(extension: String) -> Result<Self, InvalidExtension> {
         let names_a_file = extension
             .split('.')
             .all(|name| !name.is_empty() && !name.contains(['/', '\\']));
         if names_a_file {
-            Ok(Self(extension.to_owned()))
+            Ok(Self(extension))
         } else {
-            Err(InvalidExtension(extension.to_owned()))
+            Err(InvalidExtension(extension))
         }
     }
 
@@ -88,6 +89,53 @@ impl std::fmt::Display for InvalidExtension {
 
 impl std::error::Error for InvalidExtension {}
 
+/// An interpreter name of a language's detection data (`python`, `node`),
+/// matched against the program a file's `#!` line runs. Non-empty, with no
+/// whitespace and no path separator, since a line's interpreter is one
+/// path's last component.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ShebangInterpreter(String);
+
+impl ShebangInterpreter {
+    pub fn new(name: String) -> Result<Self, InvalidShebangInterpreter> {
+        let names_a_program = !name.is_empty()
+            && !name.contains(|c: char| c.is_whitespace() || c == '/' || c == '\\');
+        if names_a_program {
+            Ok(Self(name))
+        } else {
+            Err(InvalidShebangInterpreter(name))
+        }
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+/// `shebang_to_id` is looked up by a `&str` read from a file's first line.
+impl std::borrow::Borrow<str> for ShebangInterpreter {
+    fn borrow(&self) -> &str {
+        &self.0
+    }
+}
+
+/// An interpreter name [`ShebangInterpreter::new`] refuses.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InvalidShebangInterpreter(String);
+
+impl std::fmt::Display for InvalidShebangInterpreter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "invalid shebang {:?}: expected an interpreter name, such as \"python\" or \"node\", \
+             with no space and no path separator",
+            self.0
+        )
+    }
+}
+
+impl std::error::Error for InvalidShebangInterpreter {}
+
 /// Identity of one language: its detection data (extensions, glob patterns,
 /// shebangs).
 ///
@@ -100,8 +148,8 @@ pub struct LanguageIdentity {
     /// The combined matcher across all languages lives on
     /// `LanguageRegistry` (`compiled_globs`).
     pub globs: Vec<FileGlob>,
-    /// Shebang substrings to match (e.g. `"python"`, `"node"`).
-    pub shebangs: Vec<String>,
+    /// The interpreters whose `#!` lines name this language.
+    pub shebangs: Vec<ShebangInterpreter>,
 }
 
 /// Who configured a per-language value. A user value (`init.scm`) beats a
@@ -555,7 +603,7 @@ pub struct LanguageRegistry {
     compiled_globs: GlobSet,
     /// Language id for each glob pattern at the corresponding GlobSet index.
     glob_lang_ids: Vec<LanguageId>,
-    shebang_to_id: FxHashMap<String, LanguageId>,
+    shebang_to_id: FxHashMap<ShebangInterpreter, LanguageId>,
     /// Registration order for glob priority: later entries win on overlap.
     lang_order: Vec<LanguageId>,
     /// Rebuilt whenever a grammar changes.
@@ -825,13 +873,17 @@ impl LanguageRegistry {
     ) -> Result<LanguageId, RegisterError> {
         let extensions: Vec<FileExtension> = extensions
             .iter()
-            .map(|e| FileExtension::new(e).expect("a test extension is valid"))
+            .map(|&e| FileExtension::new(e.to_owned()).expect("a test extension is valid"))
             .collect();
         let globs: Vec<FileGlob> = globs
             .iter()
             .map(|g| FileGlob::new(g).expect("a test glob is valid"))
             .collect();
-        let id = self.register_identity_no_rebuild(name, &extensions, &globs, shebangs);
+        let shebangs: Vec<ShebangInterpreter> = shebangs
+            .iter()
+            .map(|&s| ShebangInterpreter::new(s.to_owned()).expect("a test shebang is valid"))
+            .collect();
+        let id = self.register_identity_no_rebuild(name, &extensions, &globs, &shebangs);
         self.rebuild_glob_set()?;
         Ok(id)
     }
@@ -851,7 +903,7 @@ impl LanguageRegistry {
         name: &str,
         extensions: &[FileExtension],
         globs: &[FileGlob],
-        shebangs: &[&str],
+        shebangs: &[ShebangInterpreter],
     ) -> LanguageId {
         let id = self.intern(name);
         if let Some(old) = self.entry_mut(id).identity.take() {
@@ -860,7 +912,7 @@ impl LanguageRegistry {
         let new_identity = LanguageIdentity {
             extensions: extensions.to_vec(),
             globs: globs.to_vec(),
-            shebangs: shebangs.iter().map(|s| s.to_string()).collect(),
+            shebangs: shebangs.to_vec(),
         };
         for ext in &new_identity.extensions {
             self.by_ext.insert(ext.as_str().to_owned(), id);
@@ -943,9 +995,23 @@ impl LanguageRegistry {
         self.glob_lang_ids.get(i).copied()
     }
 
-    /// Look up a language by shebang substring (e.g. `"python"`).
-    pub fn by_shebang(&self, token: &str) -> Option<LanguageId> {
-        self.shebang_to_id.get(token).copied()
+    /// The language whose [`ShebangInterpreter`] is `program`, the program
+    /// a `#!` line runs, then one named by `program` with less of its
+    /// trailing version: each `.N` part dropped in turn, then the digits
+    /// left. `python3.12` tries `python3.12`, `python3`, then `python`. The
+    /// most specific name first, as [`Self::by_file_name`] tries the longest
+    /// extension first.
+    pub fn by_interpreter(&self, program: &str) -> Option<LanguageId> {
+        let dotted = std::iter::successors(Some(program), |name| {
+            name.rsplit_once('.')
+                .filter(|(_, minor)| !minor.is_empty() && minor.bytes().all(|b| b.is_ascii_digit()))
+                .map(|(major, _)| major)
+        });
+        let base = dotted.clone().fold(program, |_, name| name);
+        let unversioned = base.trim_end_matches(|c: char| c.is_ascii_digit());
+        dotted
+            .chain((unversioned != base).then_some(unversioned))
+            .find_map(|name| self.shebang_to_id.get(name).copied())
     }
 
     /// Remove a registered language's identity by name, returning it if
@@ -1114,14 +1180,15 @@ pub struct DetectPaths<'a> {
     pub resolved: &'a AbsolutePath,
 }
 
-/// Detect the language for a buffer given its paths and first line.
+/// Detect the language for a buffer given its paths and its text.
 ///
 /// Priority: the path as opened, then the resolved path, each by glob
-/// (last-registered wins) and then by file extension; then the shebang.
-/// Returns the language id, or `None` if unrecognised.
+/// (last-registered wins) and then by file extension; then the shebang on
+/// the text's first line. Returns the language id, or `None` if
+/// unrecognised.
 pub fn detect_language(
     paths: Option<DetectPaths>,
-    first_line: Option<&str>,
+    text: &Rope,
     registry: &LanguageRegistry,
 ) -> Option<LanguageId> {
     paths
@@ -1132,7 +1199,7 @@ pub fn detect_language(
                     .flatten()
             })
         })
-        .or_else(|| first_line.and_then(|line| detect_shebang(line, registry)))
+        .or_else(|| detect_shebang(&shebang_line(text)?, registry))
 }
 
 /// `path`'s language by glob, then by file extension.
@@ -1148,20 +1215,56 @@ fn detect_path(path: &AbsolutePath, registry: &LanguageRegistry) -> Option<Langu
         })
 }
 
+/// The longest `#!` line Linux reads, in bytes.
+const SHEBANG_LINE_MAX_BYTES: usize = 256;
+
+/// `text`'s first line, up to its `\n` or the last whole char within
+/// [`SHEBANG_LINE_MAX_BYTES`]. `None` when it is empty.
+fn shebang_line(text: &Rope) -> Option<String> {
+    let mut line = String::new();
+    for ch in text.chars() {
+        if ch == '\n' || line.len() + ch.len_utf8() > SHEBANG_LINE_MAX_BYTES {
+            break;
+        }
+        line.push(ch);
+    }
+    (!line.is_empty()).then_some(line)
+}
+
 fn detect_shebang(line: &str, registry: &LanguageRegistry) -> Option<LanguageId> {
-    let after_bang = line.strip_prefix("#!")?;
-    let mut tokens = after_bang.split_whitespace();
-    let interpreter_path = tokens.next()?;
+    registry.by_interpreter(shebang_program(line)?)
+}
 
-    let interpreter = if interpreter_path.ends_with("/env") || interpreter_path == "env" {
-        tokens.find(|t| !t.starts_with('-'))?
-    } else {
-        std::path::Path::new(interpreter_path)
-            .file_name()?
-            .to_str()?
-    };
+/// The env(1) options, GNU and BSD, whose operand is the next word.
+const ENV_OPTIONS_WITH_OPERAND: &[&str] = &[
+    "-u", "--unset", "-C", "--chdir", "-a", "--argv0", "-P", "-L", "-U",
+];
 
-    registry.by_shebang(interpreter)
+/// The name of the program a `#!` line runs: the last component of its
+/// interpreter's path or, for `env`, of the command `env` runs, past env's
+/// options and `NAME=value` assignments. `-S` takes no operand of its own,
+/// since its words are the command line.
+fn shebang_program(line: &str) -> Option<&str> {
+    let mut words = line.strip_prefix("#!")?.split_whitespace();
+    let mut program = last_component(words.next()?);
+    if program == "env" {
+        let mut skip_operand = false;
+        let command = words.find(|word| {
+            if std::mem::take(&mut skip_operand) {
+                return false;
+            }
+            skip_operand = ENV_OPTIONS_WITH_OPERAND.contains(word);
+            !word.starts_with('-') && !word.contains('=')
+        })?;
+        program = last_component(command);
+    }
+    Some(program)
+}
+
+/// `path`'s last component, split on both separators: a `#!` line is text
+/// in a file, not a path on this host.
+fn last_component(path: &str) -> &str {
+    path.rsplit_once(['/', '\\']).map_or(path, |(_, name)| name)
 }
 
 #[cfg(test)]

@@ -151,7 +151,7 @@ pub enum PendingLanguageReg {
         name: String,
         extensions: Vec<hume_treesitter::registry::FileExtension>,
         globs: Vec<hume_treesitter::registry::FileGlob>,
-        shebangs: Vec<String>,
+        shebangs: Vec<hume_treesitter::registry::ShebangInterpreter>,
     },
     /// Per-language values; `None` leaves a field as it is.
     Configure {
