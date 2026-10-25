@@ -3,9 +3,10 @@
 //! frame it renders into).
 
 use std::cell::{Cell, RefCell};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use hume_engine::pipeline::BufferId;
+use hume_platform::path::AbsolutePath;
 use hume_rope::line::ContentLine;
 use hume_rope::offset::ExclusiveRange;
 
@@ -216,7 +217,7 @@ impl BufferHost for ReadOnlyHost<'_> {
     fn buffer_exists(&self, id: BufferId) -> bool {
         self.inner.borrow_mut().buffers().buffer_exists(id)
     }
-    fn buffer_path(&self, id: BufferId) -> Option<PathBuf> {
+    fn buffer_path(&self, id: BufferId) -> Option<AbsolutePath> {
         self.inner.borrow_mut().buffers().buffer_path(id)
     }
     fn buffer_display_path(&self, id: BufferId, form: DisplayPathForm) -> Option<String> {
@@ -234,13 +235,13 @@ impl BufferHost for ReadOnlyHost<'_> {
     fn buffer_stored_language(&self, id: BufferId) -> Option<String> {
         self.inner.borrow_mut().buffers().buffer_stored_language(id)
     }
-    fn cwd(&self) -> PathBuf {
+    fn cwd(&self) -> AbsolutePath {
         self.inner.borrow_mut().buffers().cwd()
     }
     fn search_path(&self) -> Option<std::ffi::OsString> {
         self.inner.borrow_mut().buffers().search_path()
     }
-    fn set_cwd(&mut self, _path: &Path) -> Result<PathBuf, String> {
+    fn set_cwd(&mut self, _path: &Path) -> Result<AbsolutePath, String> {
         Err(self.refuse("set_cwd"))
     }
     fn open_buffer(&mut self, _path: &Path) -> Result<BufferId, String> {

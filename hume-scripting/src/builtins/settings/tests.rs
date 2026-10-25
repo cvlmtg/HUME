@@ -343,7 +343,7 @@ impl crate::host::BufferHost for RecordingBufferOptionHost {
     fn buffer_exists(&self, _id: BufferId) -> bool {
         true
     }
-    fn buffer_path(&self, id: BufferId) -> Option<std::path::PathBuf> {
+    fn buffer_path(&self, id: BufferId) -> Option<hume_platform::path::AbsolutePath> {
         self.inner.buffer_path(id)
     }
     fn buffer_display_path(
@@ -362,13 +362,16 @@ impl crate::host::BufferHost for RecordingBufferOptionHost {
     fn buffer_stored_language(&self, id: BufferId) -> Option<String> {
         self.inner.buffer_stored_language(id)
     }
-    fn cwd(&self) -> std::path::PathBuf {
+    fn cwd(&self) -> hume_platform::path::AbsolutePath {
         self.inner.cwd()
     }
     fn search_path(&self) -> Option<std::ffi::OsString> {
         self.inner.search_path()
     }
-    fn set_cwd(&mut self, path: &std::path::Path) -> Result<std::path::PathBuf, String> {
+    fn set_cwd(
+        &mut self,
+        path: &std::path::Path,
+    ) -> Result<hume_platform::path::AbsolutePath, String> {
         self.inner.set_cwd(path)
     }
     fn open_buffer(&mut self, path: &std::path::Path) -> Result<BufferId, String> {

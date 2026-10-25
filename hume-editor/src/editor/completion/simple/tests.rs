@@ -1,5 +1,6 @@
 use super::super::testing::*;
 use super::*;
+use hume_platform::path::AbsolutePath;
 
 // ── complete_command ────────────────────────────────────────────────────
 //
@@ -13,7 +14,8 @@ use super::*;
 #[test]
 fn command_completer_returns_every_canonical_name() {
     let (reg, store, dir) = make_ctx_parts();
-    let ctx = ctx(&reg, &store, dir.path());
+    let cwd = AbsolutePath::rooted(dir.path());
+    let ctx = ctx(&reg, &store, &cwd);
     let items = complete_command(&ctx);
     assert!(!items.is_empty());
     let names: Vec<&str> = items.iter().map(|c| c.insert_text.as_str()).collect();
@@ -27,7 +29,8 @@ fn command_completer_returns_every_canonical_name() {
 #[test]
 fn command_completer_excludes_editor_commands() {
     let (reg, store, dir) = make_ctx_parts();
-    let ctx = ctx(&reg, &store, dir.path());
+    let cwd = AbsolutePath::rooted(dir.path());
+    let ctx = ctx(&reg, &store, &cwd);
     let items = complete_command(&ctx);
     let names: Vec<&str> = items.iter().map(|c| c.insert_text.as_str()).collect();
     for editor_cmd in ["select-next-word", "move-left", "clear-search"] {
@@ -41,7 +44,8 @@ fn command_completer_excludes_editor_commands() {
 #[test]
 fn command_completer_sorted_ascending_and_deduped() {
     let (reg, store, dir) = make_ctx_parts();
-    let ctx = ctx(&reg, &store, dir.path());
+    let cwd = AbsolutePath::rooted(dir.path());
+    let ctx = ctx(&reg, &store, &cwd);
     let items = complete_command(&ctx);
     let names: Vec<&str> = items.iter().map(|c| c.insert_text.as_str()).collect();
     let mut sorted = names.clone();
@@ -53,7 +57,8 @@ fn command_completer_sorted_ascending_and_deduped() {
 #[test]
 fn command_completer_excludes_aliases() {
     let (reg, store, dir) = make_ctx_parts();
-    let ctx = ctx(&reg, &store, dir.path());
+    let cwd = AbsolutePath::rooted(dir.path());
+    let ctx = ctx(&reg, &store, &cwd);
     let items = complete_command(&ctx);
     let names: Vec<&str> = items.iter().map(|c| c.insert_text.as_str()).collect();
     assert!(names.contains(&"write"), "canonical 'write' should appear");
@@ -83,7 +88,8 @@ fn buffer_name_completer_lists_open_buffers_by_basename_full_path_insert_text() 
     let (reg, mut store, dir) = make_ctx_parts();
     let id = make_id(&mut ev);
     store.open(id, buf_with_path("/tmp/foo.txt"));
-    let ctx = ctx(&reg, &store, dir.path());
+    let cwd = AbsolutePath::rooted(dir.path());
+    let ctx = ctx(&reg, &store, &cwd);
     let items = complete_buffer_name(&ctx);
     let item = items
         .iter()
@@ -98,7 +104,8 @@ fn buffer_name_completer_scratch_buffer() {
     let (reg, mut store, dir) = make_ctx_parts();
     let id = make_id(&mut ev);
     store.open(id, make_buf()); // no path → scratch
-    let ctx = ctx(&reg, &store, dir.path());
+    let cwd = AbsolutePath::rooted(dir.path());
+    let ctx = ctx(&reg, &store, &cwd);
     let items = complete_buffer_name(&ctx);
     assert!(items.iter().any(|c| c.insert_text == "*scratch*"));
 }
@@ -113,7 +120,8 @@ fn buffer_name_completer_duplicate_basename_adds_parent_suffix() {
     store.open(id1, buf_with_path("/a/foo.txt"));
     store.open(id2, buf_with_path("/b/foo.txt"));
     store.open(id3, buf_with_path("/tmp/bar.txt"));
-    let ctx = ctx(&reg, &store, dir.path());
+    let cwd = AbsolutePath::rooted(dir.path());
+    let ctx = ctx(&reg, &store, &cwd);
 
     let items = complete_buffer_name(&ctx);
     assert_eq!(items.len(), 3);

@@ -247,15 +247,15 @@ fn dump_one(
         hume_platform::io::write_dump(&content, &dest)?;
         Ok(dest)
     };
-    let Some(path) = buf.path() else {
+    let Some(file) = buf.file() else {
         return in_scratch_dir("scratch");
     };
-    let beside = dump_path_for(path);
+    let beside = dump_path_for(file.resolved());
     let beside_err = match hume_platform::io::write_dump(&content, &beside) {
         Ok(()) => return Ok(beside),
         Err(e) => e,
     };
-    let stem = path.file_name().unwrap_or_default().to_string_lossy();
+    let stem = file.file_name().to_string_lossy();
     in_scratch_dir(&stem).map_err(|_| beside_err)
 }
 

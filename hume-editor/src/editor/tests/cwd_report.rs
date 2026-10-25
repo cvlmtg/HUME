@@ -8,7 +8,7 @@ fn prepare_frame_records_the_reported_cwd_without_a_terminal() {
     let mut ed = editor_from("-[a]>bc\n");
     assert_eq!(ed.applied_cwd, None);
 
-    ed.state.cwd = tmp.path().to_path_buf();
+    ed.state.cwd = AbsolutePath::rooted(tmp.path());
     let mut ctx = RenderContext::new();
     ed.resize_terminal(40, 8);
     ed.settle();

@@ -435,10 +435,9 @@ fn p6_reload_preserves_cursor_same_content() {
     );
 
     // Reload with identical content.
-    let replacement = Buffer::at_start(BufferText::from(content));
     ed.reload_buffer_in_place(
         FocusedPane::current(&ed.view),
-        ReplaceSource::disk(replacement),
+        ReplaceSource::Dump(BufferText::from(content)),
     )
     .expect("the buffer is not held");
 
@@ -472,10 +471,9 @@ fn p6_reload_clamps_cursor_to_last_line() {
     );
 
     // Reload with a 1-line file.
-    let replacement = Buffer::at_start(BufferText::from("short\n"));
     ed.reload_buffer_in_place(
         FocusedPane::current(&ed.view),
-        ReplaceSource::disk(replacement),
+        ReplaceSource::Dump(BufferText::from("short\n")),
     )
     .expect("the buffer is not held");
 
@@ -494,10 +492,9 @@ fn p6_reload_cursor_follows_its_line_when_a_line_is_added_above() {
     let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("abc\ndef\n")));
     set_cursor(&mut ed, 5);
 
-    let replacement = Buffer::at_start(BufferText::from("new\nabc\ndef\n"));
     ed.reload_buffer_in_place(
         FocusedPane::current(&ed.view),
-        ReplaceSource::disk(replacement),
+        ReplaceSource::Dump(BufferText::from("new\nabc\ndef\n")),
     )
     .expect("the buffer is not held");
 
@@ -510,10 +507,9 @@ fn p6_reload_cursor_on_a_rewritten_line_lands_at_its_start() {
     let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("abc\nhello world\n")));
     set_cursor(&mut ed, 14);
 
-    let replacement = Buffer::at_start(BufferText::from("abc\nhi\n"));
     ed.reload_buffer_in_place(
         FocusedPane::current(&ed.view),
-        ReplaceSource::disk(replacement),
+        ReplaceSource::Dump(BufferText::from("abc\nhi\n")),
     )
     .expect("the buffer is not held");
 
@@ -526,10 +522,9 @@ fn p6_reload_keeps_every_selection() {
     let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("line0\nline1\nline2\n")));
     select(&mut ed, &[(6, 6), (12, 12)], 0);
 
-    let replacement = Buffer::at_start(BufferText::from("top\nline0\nline1\nline2\n"));
     ed.reload_buffer_in_place(
         FocusedPane::current(&ed.view),
-        ReplaceSource::disk(replacement),
+        ReplaceSource::Dump(BufferText::from("top\nline0\nline1\nline2\n")),
     )
     .expect("the buffer is not held");
 
@@ -544,11 +539,9 @@ fn p6_reload_keeps_every_selection() {
 
 // ── find_by_path — Windows `\\?\` verbatim-prefix normalization ───────────────
 //
-// Stored buffer paths are always `fs::canonicalize` output: `\\?\C:\…` on
-// Windows. Most lookups also canonicalize and match as-is, but the `:b <name>`
-// fallback for a deleted backing file (`typed_buffer.rs`) uses
-// `std::path::absolute`, which never carries the verbatim prefix. Without
-// normalizing both sides, that lookup dedup-misses an already-open buffer.
+// A buffer path is an `AbsolutePath`, which drops a verbatim drive prefix
+// (`\\?\C:\…`), so a lookup by the plain form finds the buffer. A verbatim
+// UNC path keeps its prefix.
 
 #[cfg(windows)]
 #[test]
@@ -558,12 +551,14 @@ fn find_by_path_matches_verbatim_prefixed_stored_path_against_a_plain_query() {
     ed.state
         .buffers
         .get_mut(bid)
-        .set_path(Some(std::path::PathBuf::from(r"\\?\C:\tmp\foo.txt")));
+        .set_file(Some(crate::editor::buffer::BufferFile::at(
+            r"\\?\C:\tmp\foo.txt",
+        )));
 
     let found = ed
         .state
         .buffers
-        .find_by_path(std::path::Path::new(r"C:\tmp\foo.txt"));
+        .find_by_path(&AbsolutePath::rooted(r"C:\tmp\foo.txt"));
     assert_eq!(
         found,
         Some(bid),
@@ -574,22 +569,22 @@ fn find_by_path_matches_verbatim_prefixed_stored_path_against_a_plain_query() {
 #[cfg(windows)]
 #[test]
 fn find_by_path_leaves_verbatim_unc_paths_alone() {
-    // `\\?\UNC\…` (verbatim network share) must NOT be treated as equivalent
-    // to a plain `\\server\share\…` form; strip_unc_prefix
-    // leaves it untouched, so these two remain distinct buffers.
+    // `\\?\UNC\…` (verbatim network share) is not equivalent to a plain
+    // `\\server\share\…` form: `AbsolutePath` keeps its prefix, so these
+    // two remain distinct buffers.
     let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("hello\n")));
     let bid = ed.focused_buffer_id();
     ed.state
         .buffers
         .get_mut(bid)
-        .set_path(Some(std::path::PathBuf::from(
+        .set_file(Some(crate::editor::buffer::BufferFile::at(
             r"\\?\UNC\server\share\foo.txt",
         )));
 
     let found = ed
         .state
         .buffers
-        .find_by_path(std::path::Path::new(r"\\server\share\foo.txt"));
+        .find_by_path(&AbsolutePath::rooted(r"\\server\share\foo.txt"));
     assert_eq!(
         found, None,
         "a verbatim UNC path must not match its plain-UNC form"

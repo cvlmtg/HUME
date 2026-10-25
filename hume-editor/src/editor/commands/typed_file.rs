@@ -1,5 +1,6 @@
 use hume_engine::pipeline::BufferId;
 use hume_platform::io::FileMeta;
+use hume_platform::path::AbsolutePath;
 use hume_scripting::host::OptionInput;
 
 use super::super::Editor;
@@ -7,7 +8,7 @@ use super::super::Severity;
 use super::super::before_save::{AfterWrite, SAVE_IN_PROGRESS};
 use super::{CloseRefused, FocusedPane};
 use crate::editor::buffer::lifecycle::{self, CloseBufferRefused};
-use crate::editor::buffer::{Buffer, OnUnsaved};
+use crate::editor::buffer::{Buffer, BufferFile, OnUnsaved, SaveTarget};
 use crate::editor::error::CommandError;
 use crate::editor::settings::ops as settings_ops;
 use crate::editor::settings::{WRAP_MODE_KEY, parse_setting_text};
@@ -170,11 +171,11 @@ pub(in crate::editor) fn typed_write_quit(
 pub(in crate::editor) fn write_and_continue(
     ed: &mut Editor,
     bid: BufferId,
-    kind: WriteKind<'_>,
+    arg: Option<&str>,
     force: bool,
     after: AfterWrite,
 ) -> Result<(), CommandError> {
-    let written = write_file(ed, bid, kind, force);
+    let written = write_file(ed, bid, arg, force);
     conclude_write(ed, bid, written, force, after)
 }
 
@@ -327,12 +328,6 @@ pub(in crate::editor) fn typed_set(
     }
 }
 
-/// Extract content and line count from a buffer by ID.
-fn serialize_buffer(ed: &Editor, bid: BufferId) -> (String, hume_rope::line::ContentLineCount) {
-    let buf = ed.state.buffers.get(bid);
-    (buf.serialized(), buf.text().content_line_count())
-}
-
 /// Post-write side effects for a buffer that just had its own content
 /// written to its own file: mark it saved, report the result, and sync LSP.
 fn mark_written_and_synced(
@@ -353,145 +348,118 @@ fn mark_written_and_synced(
     ed.state.lsp_repull_diagnostics_all(bid);
 }
 
-impl Editor {
-    /// Gives `bid` the path a write resolved to. A buffer whose path
-    /// changes is a different document to its language servers: the
-    /// reconcile closes it under the old URI and reopens it under the new
-    /// one, keeping each instance, so `didSave` afterwards names a document
-    /// every attached server has open.
-    fn rekey_buffer_path(
-        &mut self,
-        bid: BufferId,
-        meta: hume_platform::io::FileMeta,
-        typed_path: Option<std::path::PathBuf>,
-    ) {
-        let changed = self.state.buffers.get(bid).path() != Some(meta.resolved_path());
-        let buf = self.state.buffers.get_mut(bid);
-        buf.set_path(Some(meta.resolved_path().to_path_buf()));
-        buf.set_typed_path(typed_path);
-        buf.file_meta = Some(meta);
-        if changed {
-            self.state.lsp_reconcile_buffer(&self.view, bid);
-        }
-    }
-}
-
-/// Write a specific buffer to its file path. No save-as: only writes to the
-/// buffer's own path. The buffer is a [`WriteKind::Save`]: writable, with a
-/// path.
+/// Write `content` to a [`WriteKind::Save`]'s own file. Returns whether the
+/// write was retried, and for a file not on disk until now, the
+/// `BufferFile` the buffer becomes.
 ///
-/// `file_meta` (not `path`) is the SSOT for "has this buffer ever touched
-/// disk" (see `Buffer::is_new_file`): a buffer with a `path` but no
-/// `file_meta` is a `Buffer::new_file` (`:e` on a path that didn't exist yet)
-/// and takes the create branch below instead of `write_file_atomic`, which
-/// needs an existing baseline to atomically replace.
-fn write_buffer_by_id(
-    ed: &mut Editor,
-    bid: BufferId,
-    content: String,
-    line_count: hume_rope::line::ContentLineCount,
+/// A file not on disk yet (`Buffer::new_file`, `:e` on a missing path)
+/// takes the create branch below instead of `write_file_atomic`, which
+/// needs the metadata of an existing file to replace.
+fn save_own_file(
+    file: &mut BufferFile,
+    content: &str,
     force: bool,
-) -> Result<(), WriteError> {
-    let buf = ed.state.buffers.get_mut(bid);
-    if buf.file_meta.is_none() {
-        let path = buf
-            .path()
-            .map(std::path::Path::to_path_buf)
-            .expect("a Save has a path");
-        // Stat fresh rather than assuming the path is still missing: a
-        // new-file buffer carries no baseline to compare against
-        // (`changed_on_disk` needs a `FileMeta`, which this buffer has
-        // none of), so a file that appeared since `:e` would otherwise be
-        // silently clobbered by `write_file_new`. Same
-        // stat-at-write-time reasoning as `changed_on_disk`, just
-        // discovered via existence instead of a signature mismatch.
-        let write_result = match hume_platform::io::read_file_meta(&path) {
-            Ok(_) if !force => return Err(WriteError::Stale),
-            // Forced: write through `write_file_atomic`, not
-            // `write_file_new`: the file now exists, so its
-            // permissions/ownership/symlink target should be preserved
-            // like any other overwrite, not replaced with new-file defaults.
-            Ok(mut meta) => hume_platform::io::write_file_atomic(&content, &mut meta, force)
-                .map(|retried| (meta, retried)),
-            Err(_) => hume_platform::io::write_file_new(&content, &path).map(|meta| (meta, false)),
-        };
-        return match write_result {
-            Ok((meta, retried)) => {
-                // Re-key: `path` was `resolve_buffer_path`'s best-effort form
-                // (parent canonicalized, or fully lexical when even the
-                // parent didn't exist yet). `meta.resolved_path()` is the
-                // fully resolved post-write truth, which can differ, and
-                // must become the buffer's identity so `find_by_path` dedup
-                // keeps working. The typed path is preserved across the
-                // `set_path` re-derivation, matching the save-as branch below.
-                let typed_path = ed
-                    .state
-                    .buffers
-                    .get(bid)
-                    .typed_path()
-                    .map(std::path::Path::to_path_buf);
-                ed.rekey_buffer_path(bid, meta, typed_path);
-                mark_written_and_synced(ed, bid, line_count, retried);
-                Ok(())
+) -> Result<(bool, Option<BufferFile>), WriteError> {
+    match file.save_target() {
+        SaveTarget::New(path) => {
+            // Stat fresh rather than assuming the path is still missing: a
+            // new file carries no metadata to compare against, so a file
+            // that appeared since `:e` would otherwise be clobbered by
+            // `write_file_new` unannounced. Same stat-at-write-time reasoning as
+            // `changed_on_disk`, just discovered via existence instead of a
+            // signature mismatch.
+            let (meta, retried) = match hume_platform::io::read_file_meta(path) {
+                Ok(_) if !force => return Err(WriteError::Stale),
+                // Forced: write through `write_file_atomic`, not
+                // `write_file_new`: the file now exists, so its
+                // permissions/ownership/symlink target should be preserved
+                // like any other overwrite, not replaced with new-file defaults.
+                Ok(mut meta) => hume_platform::io::write_file_atomic(content, &mut meta, force)
+                    .map(|retried| (meta, retried)),
+                Err(_) => {
+                    hume_platform::io::write_file_new(content, path).map(|meta| (meta, false))
+                }
             }
-            Err(e) => Err(CommandError::new(e.to_string()).into()),
-        };
-    }
-    let meta = buf
-        .file_meta
-        .as_mut()
-        .expect("checked file_meta.is_none() above");
-    if !force && changed_on_disk(meta) {
-        return Err(WriteError::Stale);
-    }
-    match hume_platform::io::write_file_atomic(&content, meta, force) {
-        Ok(retried) => {
-            mark_written_and_synced(ed, bid, line_count, retried);
-            Ok(())
+            .map_err(|e| CommandError::new(e.to_string()))?;
+            // The new file's resolved path was `AbsolutePath::resolve_existing`'s
+            // best-effort form (parent canonicalized, or fully lexical when even
+            // the parent didn't exist yet). `meta.resolved_path()` is the fully
+            // resolved post-write truth, which can differ, and becomes the
+            // buffer's identity so `find_by_path` dedup keeps working. The typed
+            // path stays as it was.
+            let created = BufferFile::on_disk(meta, file.typed().clone())
+                .map_err(|e| CommandError::new(e.to_string()))?;
+            Ok((retried, Some(created)))
         }
-        Err(e) => Err(CommandError::new(e.to_string()).into()),
+        SaveTarget::OnDisk(meta) => {
+            if !force && changed_on_disk(meta) {
+                return Err(WriteError::Stale);
+            }
+            let retried = hume_platform::io::write_file_atomic(content, meta, force)
+                .map_err(|e| CommandError::new(e.to_string()))?;
+            Ok((retried, None))
+        }
     }
 }
 
-/// What a write command does with a buffer.
-#[derive(Clone, Copy)]
-pub(in crate::editor) enum WriteKind<'a> {
-    /// `:w`: the buffer's own file. A new-file buffer (a path, no
-    /// `file_meta`) is created. A read-only buffer or one with no path is
-    /// `Refused` instead.
-    Save,
+/// What a write command does with a buffer. `F` is how a `Save` holds the
+/// buffer's file: shared to decide, exclusive to write.
+pub(in crate::editor) enum WriteKind<'a, F> {
+    /// `:w`: the buffer's own file, created when it is not on disk yet. A
+    /// read-only buffer or one with no file is `Refused` instead.
+    Save(F),
     /// `:w <path>` on a writable buffer: it becomes the file at the path.
     SaveAs(&'a str),
     /// `:w <path>` on a read-only or synthetic buffer (e.g. `[messages]`): the
-    /// content is written to the path, but the buffer's path, `file_meta` and
-    /// dirty state are left alone, since it did not become that file.
+    /// content is written to the path, but the buffer's file and dirty state
+    /// are left alone, since it did not become that file.
     Export(&'a str),
     /// No write happens; the message says why.
     Refused(&'static str),
 }
 
-impl<'a> WriteKind<'a> {
-    pub(in crate::editor) fn classify(buf: &Buffer, arg: Option<&'a str>) -> Self {
+impl<'a, F> WriteKind<'a, F> {
+    /// The one rule both classifications apply, given the buffer's flags and
+    /// its file.
+    fn classify_with(
+        read_only: bool,
+        synthetic: bool,
+        file: Option<F>,
+        arg: Option<&'a str>,
+    ) -> Self {
         match arg {
-            Some(path) if buf.is_read_only() || buf.is_synthetic() => Self::Export(path),
+            Some(path) if read_only || synthetic => Self::Export(path),
             Some(path) => Self::SaveAs(path),
-            None if buf.is_read_only() => Self::Refused("Buffer is read-only"),
-            None if buf.path().is_none() => Self::Refused("no file name"),
-            None => Self::Save,
+            None if read_only => Self::Refused("Buffer is read-only"),
+            None => file.map_or(Self::Refused("no file name"), Self::Save),
         }
     }
 
     /// Whether the write lands in the buffer's own file, once it is written.
-    pub(in crate::editor) fn reaches_own_file(self) -> bool {
-        matches!(self, Self::Save | Self::SaveAs(_))
+    pub(in crate::editor) fn reaches_own_file(&self) -> bool {
+        matches!(self, Self::Save(_) | Self::SaveAs(_))
+    }
+}
+
+impl<'a, 'b> WriteKind<'a, &'b BufferFile> {
+    pub(in crate::editor) fn classify(buf: &'b Buffer, arg: Option<&'a str>) -> Self {
+        Self::classify_with(buf.is_read_only(), buf.is_synthetic(), buf.file(), arg)
+    }
+}
+
+impl<'a, 'b> WriteKind<'a, &'b mut BufferFile> {
+    fn classify_mut(buf: &'b mut Buffer, arg: Option<&'a str>) -> Self {
+        let (read_only, synthetic) = (buf.is_read_only(), buf.is_synthetic());
+        Self::classify_with(read_only, synthetic, buf.file_mut(), arg)
     }
 }
 
 /// Serialize the buffer and write it to disk.
 ///
-/// What the write does is `kind`, from [`WriteKind::classify`]: a save-as updates
-/// the buffer's path and `file_meta` so that a later `:w` targets the same
-/// path, an export leaves the buffer untouched, and a refusal is the error.
+/// What the write does is `arg` classified against the buffer now (see
+/// [`WriteKind`]): a save-as makes the written file the buffer's file so that
+/// a later `:w` targets the same path, an export leaves the buffer untouched,
+/// and a refusal is the error.
 ///
 /// When `force` is `true`, a `PermissionDenied` rename error triggers a
 /// chmod-retry: the target is made writable, the rename is retried, and the
@@ -502,79 +470,77 @@ impl<'a> WriteKind<'a> {
 fn write_file(
     ed: &mut Editor,
     bid: BufferId,
-    kind: WriteKind<'_>,
+    arg: Option<&str>,
     force: bool,
 ) -> Result<(), WriteError> {
-    if let WriteKind::Refused(msg) = kind {
-        return Err(CommandError::transient(msg).into());
-    }
-    let (content, line_count) = serialize_buffer(ed, bid);
-
-    if let WriteKind::SaveAs(path_str) | WriteKind::Export(path_str) = kind {
-        let expanded = hume_platform::path::expand(path_str);
-        let path: std::path::PathBuf = {
-            let p = std::path::Path::new(expanded.as_ref());
-            // Resolve relative paths against editor.cwd, not the process cwd,
-            // so `:w relpath` is stable regardless of how the process cwd drifts.
-            if p.is_relative() {
-                ed.state.cwd.join(p)
-            } else {
-                p.to_owned()
+    let buf = ed.state.buffers.get_mut(bid);
+    let (content, line_count) = (buf.serialized(), buf.text().content_line_count());
+    let (path_str, save_as) = match WriteKind::classify_mut(buf, arg) {
+        WriteKind::Refused(msg) => return Err(CommandError::transient(msg).into()),
+        WriteKind::Save(file) => {
+            let (retried, created) = save_own_file(file, &content, force)?;
+            if let Some(file) = created {
+                ed.set_buffer_file(bid, file);
             }
-        };
-        // The user-typed path (not the canonicalized one), recorded for
-        // user-facing display. `normalize_lexical` is used here (rather than
-        // `absolute_unresolved`) because `path` was already made absolute
-        // above (via cwd.join or identity).
-        let typed_path = hume_platform::path::normalize_lexical(&path);
-        // Try to preserve existing file's permissions; if the file doesn't
-        // exist yet, write_file_new creates it with default permissions.
-        let result = match hume_platform::io::read_file_meta(&path) {
-            Ok(mut meta) => {
-                // The stale-write guard only applies when `path` resolves to
-                // the buffer's own current file, i.e. this `:w <path>` is
-                // really a plain `:w` in disguise. A genuine save-as targets
-                // a path this buffer never read from, so there's no staleness
-                // to guard against. `meta` was just freshly stat'd above by
-                // `read_file_meta`, so comparing its signature against the
-                // buffer's own baseline is already a stat-at-write-time
-                // check: no cached flag, no second syscall needed.
-                let own = ed.state.buffers.get(bid);
-                let targets_own_file = own.path() == Some(meta.resolved_path());
-                // A new-file buffer (`file_meta: None`) has no baseline at
-                // all. If this write targets its own path and a file now
-                // exists there, that content was never read by this buffer,
-                // so it counts as "differs" the same as a genuine signature
-                // mismatch would.
-                let own_baseline_differs = match own.file_meta.as_ref() {
-                    Some(own) => own.signature() != meta.signature(),
-                    None => true,
-                };
-                if targets_own_file && !force && own_baseline_differs {
-                    return Err(WriteError::Stale);
-                }
-                hume_platform::io::write_file_atomic(&content, &mut meta, force)
-                    .map(|retried| (meta, retried))
-            }
-            Err(_) => hume_platform::io::write_file_new(&content, &path).map(|meta| (meta, false)),
-        };
-        match result {
-            Ok((meta, retried)) => {
-                if matches!(kind, WriteKind::SaveAs(_)) {
-                    // Store the canonicalized path so path and
-                    // file_meta.resolved_path always agree, even when the
-                    // user supplied a relative or symlink path.
-                    ed.rekey_buffer_path(bid, meta, Some(typed_path));
-                    mark_written_and_synced(ed, bid, line_count, retried);
-                } else {
-                    ed.report(write_severity(retried), write_msg(line_count, retried));
-                }
-                Ok(())
-            }
-            Err(e) => Err(CommandError::new(e.to_string()).into()),
+            mark_written_and_synced(ed, bid, line_count, retried);
+            return Ok(());
         }
-    } else {
-        write_buffer_by_id(ed, bid, content, line_count, force)
+        WriteKind::SaveAs(path) => (path, true),
+        WriteKind::Export(path) => (path, false),
+    };
+    let expanded = hume_platform::path::expand(path_str);
+    // A relative path resolves against editor.cwd, not the process cwd, so
+    // `:w relpath` is stable regardless of how the process cwd drifts, and
+    // the way `:e` resolves it, so the file written is the one `:e` opens.
+    let target = AbsolutePath::from_typed(std::path::Path::new(expanded.as_ref()), &ed.state.cwd)
+        .map_err(|e| CommandError::new(e.to_string()))?;
+    // Try to preserve existing file's permissions; if the file doesn't
+    // exist yet, write_file_new creates it with default permissions.
+    let result = match hume_platform::io::read_file_meta(&target) {
+        Ok(mut meta) => {
+            // The stale-write guard only applies when `target` resolves to
+            // the buffer's own current file, i.e. this `:w <path>` is
+            // really a plain `:w` in disguise. A genuine save-as targets
+            // a path this buffer never read from, so there's no staleness
+            // to guard against. `meta` was just freshly stat'd above by
+            // `read_file_meta`, so comparing its signature against the
+            // buffer's own baseline is already a stat-at-write-time
+            // check: no cached flag, no second syscall needed.
+            let own = ed.state.buffers.get(bid);
+            let targets_own_file = own.path() == Some(meta.resolved_path());
+            // A file not on disk yet has no baseline at all. If this
+            // write targets its own path and a file now exists there,
+            // that content was never read by this buffer, so it counts
+            // as "differs" the same as a genuine signature mismatch
+            // would.
+            let own_baseline_differs = match own.file().and_then(BufferFile::file_meta) {
+                Some(own) => own.signature() != meta.signature(),
+                None => true,
+            };
+            if targets_own_file && !force && own_baseline_differs {
+                return Err(WriteError::Stale);
+            }
+            hume_platform::io::write_file_atomic(&content, &mut meta, force)
+                .map(|retried| (meta, retried))
+        }
+        Err(_) => hume_platform::io::write_file_new(&content, &target).map(|meta| (meta, false)),
+    };
+    match result {
+        Ok((meta, retried)) => {
+            if save_as {
+                // The buffer becomes the file just written: its identity
+                // is the write's resolved path, even when the user
+                // supplied a relative or symlink path.
+                let file = BufferFile::on_disk(meta, target)
+                    .map_err(|e| CommandError::new(e.to_string()))?;
+                ed.set_buffer_file(bid, file);
+                mark_written_and_synced(ed, bid, line_count, retried);
+            } else {
+                ed.report(write_severity(retried), write_msg(line_count, retried));
+            }
+            Ok(())
+        }
+        Err(e) => Err(CommandError::new(e.to_string()).into()),
     }
 }
 
@@ -592,7 +558,7 @@ pub(in crate::editor) fn typed_write_all(
         // batch after partial saves.
         .filter(|(id, buf)| {
             ed.state.has_unsaved_changes(*id)
-                && matches!(WriteKind::classify(buf, None), WriteKind::Save)
+                && matches!(WriteKind::classify(buf, None), WriteKind::Save(_))
         })
         .map(|(id, _)| id)
         .collect();

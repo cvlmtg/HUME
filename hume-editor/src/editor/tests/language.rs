@@ -97,7 +97,7 @@ fn detect_and_set_language_matches_extension() {
     ed.state
         .buffers
         .get_mut(bid)
-        .set_path(Some(std::path::PathBuf::from("/tmp/foo.rs")));
+        .set_file(Some(crate::editor::buffer::BufferFile::at("/tmp/foo.rs")));
     register_rust(&mut ed, "rust", &["rs"]);
     ed.detect_and_set_language(bid);
     assert_eq!(
@@ -121,7 +121,7 @@ fn settle_detects_and_announces_a_queued_buffer() {
     ed.state
         .buffers
         .get_mut(bid)
-        .set_path(Some(std::path::PathBuf::from("/tmp/foo.rs")));
+        .set_file(Some(crate::editor::buffer::BufferFile::at("/tmp/foo.rs")));
     register_rust(&mut ed, "rust", &["rs"]);
     let before = state(&ed);
 
@@ -186,7 +186,7 @@ fn open_buffer_then_set_buffer_language_in_one_eval_keeps_the_explicit_value() {
     let bid = ed
         .state
         .buffers
-        .find_by_path(&file.canonicalize().unwrap())
+        .find_by_path(&AbsolutePath::canonicalize(&file).unwrap())
         .expect("the opened buffer must be findable by path");
     assert_eq!(
         ed.state

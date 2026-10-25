@@ -46,6 +46,8 @@
 - `cancel-timer!` cancels only timers made by `after!`, never one of HUME's own.
 - An error in a timer, a background reply or another plugin's callback no longer empties a completion menu that is still waiting on a source.
 - `Ctrl-c` during a command that shows a program's output, such as a grammar install, stops that program instead of quitting HUME.
+- A file opened through a symlink is named after the link you opened, not its target, in the statusline, tab labels, `:ls` and `:b`.
+- `:w <path>`, `:cd` and path completion resolve `..` in a relative path the way `:e` does, so `:w` writes the file `:e` would open.
 
 ## [0.16.1] - 2026-10-22
 

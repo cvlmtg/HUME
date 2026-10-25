@@ -14,9 +14,10 @@
 //! capability accessor to it, overriding only the one or two
 //! accessors/methods that make them distinct.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use hume_engine::pipeline::BufferId;
+use hume_platform::path::AbsolutePath;
 use hume_rope::line::ContentLine;
 
 use crate::attribution::EntryId;
@@ -112,7 +113,7 @@ impl BufferHost for NullHost {
     fn buffer_exists(&self, _id: BufferId) -> bool {
         false
     }
-    fn buffer_path(&self, _id: BufferId) -> Option<PathBuf> {
+    fn buffer_path(&self, _id: BufferId) -> Option<AbsolutePath> {
         None
     }
     fn buffer_display_path(&self, _id: BufferId, _form: DisplayPathForm) -> Option<String> {
@@ -127,13 +128,13 @@ impl BufferHost for NullHost {
     fn buffer_stored_language(&self, _id: BufferId) -> Option<String> {
         None
     }
-    fn cwd(&self) -> PathBuf {
-        PathBuf::from(".")
+    fn cwd(&self) -> AbsolutePath {
+        AbsolutePath::current_dir().expect("the test process has a working directory")
     }
     fn search_path(&self) -> Option<std::ffi::OsString> {
         None
     }
-    fn set_cwd(&mut self, _path: &Path) -> Result<PathBuf, String> {
+    fn set_cwd(&mut self, _path: &Path) -> Result<AbsolutePath, String> {
         Err("NullHost: set_cwd not available".into())
     }
     fn open_buffer(&mut self, _path: &Path) -> Result<BufferId, String> {

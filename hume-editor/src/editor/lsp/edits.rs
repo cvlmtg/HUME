@@ -19,7 +19,6 @@ use hume_rope::offset::{CharOffset, ExclusiveRange};
 use hume_rope::position_encoding::{PositionEncoding, WirePos};
 
 use super::introspect;
-use crate::editor::Editor;
 use crate::editor::EditorState;
 use crate::editor::buffer::Buffer;
 use crate::editor::doc_ops;
@@ -307,19 +306,11 @@ fn resolve_or_open(
     view: &mut EngineView,
     path: &std::path::Path,
 ) -> Result<(BufferId, bool), String> {
-    // `resolve_buffer_path`, not a hard `canonicalize`: a server-driven
-    // rename or workspace edit may target a file that doesn't exist yet,
-    // openable here exactly like `:e` on a missing path (see
-    // `Buffer::from_file_or_new`).
-    let resolved = Editor::resolve_buffer_path(path, &state.cwd);
-    let (bid, is_new) =
-        crate::editor::buffer::lifecycle::open_or_dedup_and_notify(view, state, &resolved)
-            .map_err(|e| format!("{}: {e}", resolved.display()))?;
-    if is_new {
-        let typed = hume_platform::path::absolute_unresolved(path, &state.cwd);
-        state.buffers.get_mut(bid).set_typed_path(Some(typed));
-    }
-    Ok((bid, is_new))
+    // A server-driven rename or workspace edit may target a file that
+    // doesn't exist yet, openable here as `:e` opens a missing path
+    // (see `Buffer::from_file_or_new`).
+    crate::editor::buffer::lifecycle::open_or_dedup_and_notify(view, state, path)
+        .map_err(|e| format!("{}: {e}", path.display()))
 }
 
 /// `(apply-workspace-edit! edit)`: validates and builds every file's

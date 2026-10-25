@@ -10,6 +10,7 @@ use hume_engine::pipeline::BufferId;
 use hume_lsp::backend::ServerId;
 use hume_lsp::diagnostic::{PublishedDiagnostics, WireDiagnostic};
 use hume_lsp::sync::wire_version;
+use hume_platform::path::AbsolutePath;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 #[cfg(test)]
 use lsp_types::PublishDiagnosticsParams;
@@ -363,17 +364,21 @@ impl Editor {
     /// caller can fire `OnDiagnosticsChanged` once per touched buffer.
     ///
     /// A URI path that is already an open buffer's own path names that
-    /// buffer, with no filesystem call; a buffer whose file is not on disk
-    /// yet is found this way. Any other path is resolved with a
-    /// `canonicalize()`, which `canonicalize_budget` meters across a drain:
-    /// each costs one unit, and the publish is deferred when none is left.
+    /// buffer, with no filesystem call. Any other path is resolved the way a
+    /// typed path keys its buffer ([`AbsolutePath::resolve_existing`]), so a
+    /// file not on disk yet is found through a symlinked directory too.
+    /// `canonicalize_budget` meters those resolutions across a drain: each
+    /// costs one unit, and the publish is deferred when none is left.
     pub(in crate::editor) fn ingest_publish_diagnostics(
         &mut self,
         server_id: ServerId,
         published: PublishedDiagnostics,
         canonicalize_budget: &mut usize,
     ) -> Ingest {
-        let Ok(path) = hume_lsp::uri::uri_to_path(&published.uri) else {
+        let Some(path) = hume_lsp::uri::uri_to_path(&published.uri)
+            .ok()
+            .and_then(|path| AbsolutePath::from_typed(&path, &self.state.cwd).ok())
+        else {
             self.report(
                 Severity::Trace,
                 "lsp: publishDiagnostics with an unresolvable URI".to_string(),
@@ -387,22 +392,13 @@ impl Editor {
             return Ingest::Deferred(published);
         }
         *canonicalize_budget -= 1;
-        let Ok(canonical) = path.canonicalize() else {
-            self.report(
-                Severity::Trace,
-                format!(
-                    "lsp: publishDiagnostics for an unknown file: {}",
-                    path.display()
-                ),
-            );
-            return Ingest::Done(None);
-        };
-        let Some(bid) = self.state.buffers.find_by_path(&canonical) else {
+        let resolved = path.resolve_existing();
+        let Some(bid) = self.state.buffers.find_by_path(&resolved) else {
             self.report(
                 Severity::Trace,
                 format!(
                     "lsp: publishDiagnostics for an unopened buffer: {}",
-                    canonical.display()
+                    resolved.display()
                 ),
             );
             return Ingest::Done(None);

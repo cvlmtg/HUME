@@ -1,5 +1,5 @@
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::rc::{Rc, Weak};
 
 use super::search::{SearchMatches, SearchPattern};
@@ -14,7 +14,7 @@ use hume_editing::state::EditState;
 use hume_editing::text::{BufferText, LineEnding};
 use hume_editing::transaction::Transaction;
 use hume_engine::pipeline::{BufferId, PaneId};
-use hume_platform::io::FileMeta;
+use hume_platform::path::AbsolutePath;
 
 mod disk;
 mod dump;
@@ -29,6 +29,7 @@ mod dump;
 // entirely, passing a trigger to `check_buffer_disk_state` directly or
 // injecting a `DiskState` value to test the state machine without depending
 // on filesystem mtime precision) needs it outside `buffer` itself.
+pub(in crate::editor) use buffer_file::{BufferFile, FileTarget, SaveTarget};
 #[cfg(test)]
 pub(in crate::editor) use disk::DiskState;
 pub(in crate::editor) use disk::{DiskCheckTrigger, ReloadError};
@@ -37,6 +38,7 @@ pub(in crate::editor) use dump::dump_path_for;
 pub(crate) use dump::{print_worker_panics, report_dumps};
 pub(in crate::editor) use file_open::ReplaceSource;
 pub(in crate::editor) use history::{OnUnsaved, Unsaved};
+mod buffer_file;
 mod file_open;
 mod history;
 pub(in crate::editor) mod lifecycle;
@@ -164,22 +166,8 @@ pub(crate) struct Buffer {
     /// The line ending at the last save (or first open). A line-ending change
     /// records no revision, so unsaved-ness compares this against the text's.
     saved_line_ending: LineEnding,
-    /// Canonical file path (after symlink resolution). `None` for scratch buffers.
-    pub(super) path: Option<PathBuf>,
-    /// The path as the user named it: absolute and lexically normalized,
-    /// symlinks unresolved. Always `Some` when `path` is `Some`: `set_path`
-    /// defaults it to `path`, and callers that resolved a user-typed path
-    /// overwrite it afterwards with `set_typed_path`. `None` for
-    /// scratch/synthetic buffers.
-    pub(super) typed_path: Option<PathBuf>,
-    /// `typed_path`'s display form (UNC-stripped, `~`-collapsed), derived
-    /// whenever `typed_path` is set. Consumers print it verbatim; the
-    /// statusline may shorten it to fit, and `buffer-display-path
-    /// #:relative` derives a cwd-relative form from `typed_path` instead.
-    pub(super) display_path: Option<String>,
-    /// File metadata captured at open/save time (permissions, uid/gid).
-    /// `None` for scratch buffers; populated after a successful save.
-    pub(in crate::editor) file_meta: Option<FileMeta>,
+    /// The backing file. `None` for scratch and synthetic buffers.
+    file: Option<BufferFile>,
     /// Active search pattern shared by all panes viewing this buffer.
     /// `None` when no search is active. A present `SearchPattern` is always
     /// fully-valid. Invalid regexes leave this as `None`.
@@ -313,10 +301,7 @@ impl Buffer {
             history,
             saved_revision,
             saved_line_ending,
-            path: None,
-            typed_path: None,
-            display_path: None,
-            file_meta: None,
+            file: None,
             search_pattern: None,
             search_matches: SearchMatches::default(),
             #[cfg(test)]
@@ -336,68 +321,53 @@ impl Buffer {
         }
     }
 
-    /// Load a file from disk, returning a ready-to-use `Buffer`.
-    ///
-    /// Sets `path` and `file_meta` from the resolved filesystem metadata;
-    /// `set_path` defaults `typed_path` to the canonical path. Callers that
-    /// resolved a user-typed path (`resolve_open_path`, save-as, ...)
-    /// overwrite it afterwards, via `set_typed_path`; this default only
-    /// surfaces for opens with no typed path (Steel `open-buffer!`, `:tutor`,
-    /// LSP goto). `search_pattern` and `search_matches` are left at their
-    /// defaults (no active search).
-    pub(in crate::editor::buffer) fn from_file(path: &Path) -> io::Result<Self> {
-        let (content, meta) = hume_platform::io::read_file(path)?;
-        let text = BufferText::from(content.as_str());
+    /// Load the file the user named `typed` from disk, returning a
+    /// ready-to-use `Buffer` whose file is the one the read resolved.
+    /// `search_pattern` and `search_matches` are left at their defaults (no
+    /// active search).
+    pub(in crate::editor::buffer) fn from_file(typed: &AbsolutePath) -> io::Result<Self> {
+        let (text, file) = BufferFile::read(typed.clone(), typed)?;
         let mut buf = Self::at_start(text);
-        buf.set_path(Some(meta.resolved_path().to_path_buf()));
-        buf.file_meta = Some(meta);
+        buf.file = Some(file);
         Ok(buf)
     }
 
-    /// Empty buffer bound to a path that doesn't exist on disk yet: `:e` on
+    /// Empty buffer bound to a file that doesn't exist on disk yet: `:e` on
     /// a missing file, matching Vim's `:e newfile` semantics: `:w` creates it
-    /// (see `is_new_file`, `write_buffer_by_id`'s `file_meta.is_none()`
-    /// branch). `file_meta` stays `None` until that first write; `path` is
-    /// set so the buffer participates in `find_by_path` dedup and displays
-    /// its intended name.
-    pub(in crate::editor::buffer) fn new_file(path: PathBuf) -> Self {
+    /// (see `is_new_file`). The file is set so the buffer participates in
+    /// `find_by_path` dedup and displays its intended name.
+    pub(in crate::editor::buffer) fn new_file(file: BufferFile) -> Self {
         let mut buf = Self::at_start(BufferText::empty());
-        buf.set_path(Some(path));
+        buf.file = Some(file);
         buf
     }
 
-    /// `true` for a buffer bound to a path with no backing file yet, opened
-    /// via [`Self::new_file`], not yet written. `path.is_some()` alone isn't
-    /// enough (a normal file has that too); `file_meta` is the SSOT for
-    /// "has this buffer ever touched disk". See the field doc.
+    /// `true` for a buffer bound to a file not on disk yet, opened via
+    /// [`Self::new_file`] and not yet written.
     pub(in crate::editor) fn is_new_file(&self) -> bool {
-        self.path.is_some() && self.file_meta.is_none()
+        self.file
+            .as_ref()
+            .is_some_and(|file| file.file_meta().is_none())
     }
 
-    /// Load a file from disk, or open an empty [`Self::new_file`] buffer
-    /// bound to `path` if it doesn't exist yet (Vim's `:e newfile`
-    /// semantics: `:w` creates it). `cwd` feeds `Editor::resolve_buffer_path`
-    /// on the missing-file branch, so the buffer's identity matches whatever
-    /// form the caller resolved `path` to.
+    /// Load the file `target` names, or open an empty [`Self::new_file`]
+    /// buffer bound to it if it doesn't exist yet (Vim's `:e newfile`
+    /// semantics: `:w` creates it). A missing file's resolved path is the
+    /// target's, the form `find_by_path` dedup looks it up by.
     ///
     /// The single decision point for "is a missing path openable", shared by
-    /// every open chokepoint, so they can't diverge on tolerance.
-    ///
-    /// A path with no basename (`/`, `..`) still errors: `Buffer::set_path`
-    /// would panic on it in debug.
-    pub(in crate::editor) fn from_file_or_new(path: &Path, cwd: &Path) -> io::Result<Self> {
-        let mut buf = match Self::from_file(path) {
+    /// every open chokepoint, so they can't diverge on tolerance. A path with
+    /// no file name (`/`) errors (see [`BufferFile::new_file`]).
+    pub(in crate::editor) fn from_file_or_new(target: FileTarget) -> io::Result<Self> {
+        let mut buf = match Self::from_file(target.typed()) {
             Err(e) if e.kind() == io::ErrorKind::NotFound => {
-                let resolved = crate::editor::Editor::resolve_buffer_path(path, cwd);
-                if resolved.file_name().is_none() {
-                    return Err(e);
-                }
-                Self::new_file(resolved)
+                Self::new_file(target.into_new_file()?)
             }
             other => other?,
         };
         buf.pending_dump = buf
             .path()
+            .map(AbsolutePath::as_path)
             .map(dump::dump_path_for)
             .filter(|dump| std::fs::symlink_metadata(dump).is_ok());
         Ok(buf)
@@ -484,7 +454,7 @@ impl Buffer {
     /// display label. Scratch buffers are path-less too, but have no label;
     /// that distinction is what this predicate captures.
     pub(in crate::editor) fn is_synthetic(&self) -> bool {
-        self.path.is_none() && self.label.is_some()
+        self.file.is_none() && self.label.is_some()
     }
 
     /// Replace the buffer text and carry every stored position with it:
@@ -527,52 +497,31 @@ impl Buffer {
         }
     }
 
-    /// Set the buffer's file path, enforcing the "path has a basename"
-    /// invariant, and default `typed_path` and `display_path` from it so they
-    /// can never drift out of pairing. Pass `None` to clear all three
-    /// (scratch buffer).
-    ///
-    /// Why: `display_name()` falls back to `*scratch*` when `path.file_name()`
-    /// is `None`, so pathological paths like `/` or `..` would collide with a
-    /// real scratch buffer in `:ls` and make `:b *scratch*` ambiguous. Rejecting
-    /// at the boundary keeps the collision truly unreachable.
-    ///
-    /// The derived `typed_path` is only a default: callers with a
-    /// user-typed path overwrite it afterwards via `set_typed_path` (see
-    /// `Buffer::from_file`).
-    pub(in crate::editor) fn set_path(&mut self, path: Option<PathBuf>) {
-        if let Some(ref p) = path {
-            debug_assert!(
-                p.file_name().is_some(),
-                "Buffer::set_path: path must have a basename, got {}",
-                p.display()
-            );
-        }
-        self.set_typed_path(path.clone());
-        self.path = path;
+    /// Bind the buffer to a file, or with `None` to no file.
+    pub(in crate::editor) fn set_file(&mut self, file: Option<BufferFile>) {
+        self.file = file;
+    }
+
+    /// The backing file, or `None` for scratch/synthetic buffers.
+    pub(in crate::editor) fn file(&self) -> Option<&BufferFile> {
+        self.file.as_ref()
+    }
+
+    /// The backing file for a write of it, or `None` for scratch/synthetic
+    /// buffers.
+    pub(in crate::editor) fn file_mut(&mut self) -> Option<&mut BufferFile> {
+        self.file.as_mut()
     }
 
     /// Canonical backing-file path, or `None` for scratch buffers.
-    pub(in crate::editor) fn path(&self) -> Option<&Path> {
-        self.path.as_deref()
-    }
-
-    /// Set the user-typed path (see field doc) and derive `display_path`
-    /// from it. Pass `None` to clear both.
-    pub(in crate::editor) fn set_typed_path(&mut self, typed: Option<PathBuf>) {
-        self.display_path = typed.as_deref().map(hume_platform::path::display_form);
-        self.typed_path = typed;
-    }
-
-    /// The user-typed path, or `None` for scratch/synthetic buffers.
-    pub(in crate::editor) fn typed_path(&self) -> Option<&Path> {
-        self.typed_path.as_deref()
+    pub(in crate::editor) fn path(&self) -> Option<&AbsolutePath> {
+        self.file.as_ref().map(BufferFile::resolved)
     }
 
     /// The fully display-ready path string, or `None` for scratch/synthetic
     /// buffers. Print verbatim, no further transforms needed.
     pub(crate) fn display_path(&self) -> Option<&str> {
-        self.display_path.as_deref()
+        self.file.as_ref().map(BufferFile::display)
     }
 
     /// First line of buffer content, capped at 64 bytes, stopping at the
@@ -606,9 +555,9 @@ impl Buffer {
         if let Some(ref label) = self.label {
             return label.as_str().to_owned();
         }
-        self.path()
-            .and_then(|p| p.file_name())
-            .map(|n| n.to_string_lossy().into_owned())
+        self.file
+            .as_ref()
+            .map(|file| file.file_name().to_string_lossy().into_owned())
             .unwrap_or_else(|| Self::SCRATCH_BUFFER_NAME.to_owned())
     }
 

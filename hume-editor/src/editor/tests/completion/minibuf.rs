@@ -776,7 +776,7 @@ fn tab_on_buffer_arg_completes_buffer_names() {
     let mut ed = editor_from("-[h]>ello\n");
     for path in [path_a, path_b] {
         let mut buf = Buffer::at_start(BufferText::from("a\n"));
-        buf.set_path(Some(path));
+        buf.set_file(Some(crate::editor::buffer::BufferFile::at(path)));
         ed.open_buffer(buf);
     }
 
@@ -806,7 +806,7 @@ fn tab_mid_alias_with_no_space_completes_the_declared_arg_not_the_command_name()
 
     let mut ed = editor_from("-[h]>ello\n");
     let mut buf = Buffer::at_start(BufferText::from("a\n"));
-    buf.set_path(Some(path));
+    buf.set_file(Some(crate::editor::buffer::BufferFile::at(path)));
     ed.open_buffer(buf);
 
     command_line(&mut ed, "b1");

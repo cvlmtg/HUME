@@ -13,7 +13,8 @@ fn set_cwd_updates_editor_cwd() {
     ed.state.set_cwd(&canonical).unwrap();
 
     assert_eq!(
-        ed.state.cwd, canonical,
+        ed.state.cwd.as_path(),
+        canonical,
         "editor.cwd must match the target dir"
     );
 }
@@ -56,7 +57,7 @@ fn typed_cd_absolute_path() {
     ed.execute_typed("cd", Some(canonical.to_str().unwrap()))
         .unwrap();
 
-    assert_eq!(ed.state.cwd, canonical);
+    assert_eq!(ed.state.cwd.as_path(), canonical);
 }
 
 #[test]
@@ -76,7 +77,8 @@ fn typed_cd_relative_path() {
     ed.execute_typed("cd", Some("subdir")).unwrap();
 
     assert_eq!(
-        ed.state.cwd, canonical_child,
+        ed.state.cwd.as_path(),
+        canonical_child,
         "relative :cd must resolve against editor.cwd"
     );
 }
@@ -90,7 +92,8 @@ fn typed_cd_no_arg_goes_home() {
     ed.execute_typed("cd", None).unwrap();
 
     assert_eq!(
-        ed.state.cwd, canonical_home,
+        ed.state.cwd.as_path(),
+        canonical_home,
         ":cd with no arg must go to $HOME"
     );
 }
@@ -103,7 +106,11 @@ fn typed_cd_tilde_expands_to_home() {
 
     ed.execute_typed("cd", Some("~")).unwrap();
 
-    assert_eq!(ed.state.cwd, canonical_home, ":cd ~ must expand to $HOME");
+    assert_eq!(
+        ed.state.cwd.as_path(),
+        canonical_home,
+        ":cd ~ must expand to $HOME"
+    );
 }
 
 #[test]
@@ -153,7 +160,7 @@ fn typed_cd_alias_works() {
     // Both the canonical name and the `cd` alias must work.
     ed.execute_typed("change-directory", Some(canonical.to_str().unwrap()))
         .unwrap();
-    assert_eq!(ed.state.cwd, canonical);
+    assert_eq!(ed.state.cwd.as_path(), canonical);
 }
 
 // ── :cd then :e uses new cwd ──────────────────────────────────────────────────
@@ -175,7 +182,7 @@ fn cd_then_edit_resolves_relative_to_new_cwd() {
 
     let open_path = ed.doc().path().expect("opened file must have a path");
     assert_eq!(
-        open_path,
+        open_path.as_path(),
         canonical_file.as_path(),
         ":e after :cd must open the file in the new cwd"
     );
@@ -217,4 +224,19 @@ fn typed_pwd_long_alias_works() {
         .expect(":print-working-directory must report a message");
     let expected = hume_platform::path::display_form(&canonical);
     assert_eq!(msg, expected, "long alias must match :pwd output");
+}
+
+/// `:cd` resolves a `..` after a symlink the way `:e` does: lexically.
+#[test]
+fn cd_resolves_dot_dot_after_a_symlink_lexically() {
+    let dir = dir_with_a_link_into_a_sibling();
+    let mut ed = editor_from("-[h]>ello\n");
+
+    ed.execute_typed("cd", Some(dir.path().join("a/link/..").to_str().unwrap()))
+        .unwrap();
+
+    assert_eq!(
+        ed.state.cwd,
+        AbsolutePath::canonicalize(&dir.path().join("a")).unwrap()
+    );
 }

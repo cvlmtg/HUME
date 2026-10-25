@@ -30,7 +30,7 @@ fn config_binding_takes_effect_in_headless_replay() {
         "Z",
         output.clone(),
         ConfigSource::File(config),
-        std::env::current_dir().unwrap(),
+        hume_platform::path::AbsolutePath::current_dir().unwrap(),
     )
     .unwrap();
 
@@ -58,7 +58,7 @@ fn write_failure_still_returns_err() {
         "Z",
         output,
         ConfigSource::Skip,
-        std::env::current_dir().unwrap(),
+        hume_platform::path::AbsolutePath::current_dir().unwrap(),
     );
 
     assert!(
@@ -87,7 +87,7 @@ fn a_crash_dump_next_to_the_file_is_neither_offered_nor_touched() {
             "xd",
             output.clone(),
             ConfigSource::Skip,
-            std::env::current_dir().unwrap(),
+            hume_platform::path::AbsolutePath::current_dir().unwrap(),
         )
         .unwrap();
         let dump_after = std::fs::read_to_string(&dump).ok();

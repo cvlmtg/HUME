@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use hume_engine::pipeline::{BufferId, Cycle, Direction, EngineView};
 use hume_grid::Rgb;
+use hume_platform::path::AbsolutePath;
 use hume_scripting::host::DecorationHost;
 
 use super::super::Editor;
@@ -426,9 +427,9 @@ pub(in crate::editor) fn typed_tutor(
     let tmp_dir = tmp_base.join(format!("hume-{}", std::process::id()));
     std::fs::create_dir_all(&tmp_dir)
         .map_err(|e| CommandError::new(format!("could not create tutor tmp dir: {e}")))?;
-    let canonical_tmp = std::fs::canonicalize(&tmp_dir)
-        .map_err(|e| CommandError::new(format!("could not canonicalize tutor tmp dir: {e}")))?
-        .join("tutor.rst");
+    let canonical_tmp = AbsolutePath::canonicalize(&tmp_dir)
+        .and_then(|dir| AbsolutePath::from_typed(std::path::Path::new("tutor.rst"), &dir))
+        .map_err(|e| CommandError::new(format!("could not canonicalize tutor tmp dir: {e}")))?;
 
     // If a buffer is already open at the tmp path, switch. No re-copy, so that
     // unsaved in-memory edits are preserved.
@@ -441,9 +442,12 @@ pub(in crate::editor) fn typed_tutor(
     // file from a prior `:bd!`), then open the copy.
     std::fs::copy(&source, &canonical_tmp)
         .map_err(|e| CommandError::new(format!("could not copy tutor.rst to tmp: {e}")))?;
-    let (bid, _) = ed
-        .open_or_dedup(&canonical_tmp)
-        .map_err(|e| CommandError::new(format!("could not open tutor copy: {e}")))?;
+    let (bid, _) = crate::editor::buffer::lifecycle::open_or_dedup_and_notify(
+        &mut ed.view,
+        &mut ed.state,
+        &canonical_tmp,
+    )
+    .map_err(|e| CommandError::new(format!("could not open tutor copy: {e}")))?;
     ed.switch_to_buffer_with_jump(fp, bid);
     Ok(())
 }

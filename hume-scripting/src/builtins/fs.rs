@@ -86,8 +86,7 @@ pub(crate) fn runtime_dir(ctx: &mut SteelCtx) -> SteelResult {
 /// every spawned child resolve against. Display form, like `(data-dir)`.
 /// Backs the prelude's `current-directory`.
 pub(crate) fn cwd(ctx: &mut SteelCtx) -> SteelResult {
-    let cwd = hume_platform::path::strip_unc_prefix(ctx.host.buffers().cwd());
-    dir_builtin(Some(&cwd))
+    dir_builtin(Some(ctx.host.buffers().cwd().as_path()))
 }
 
 /// `(set-cwd! path)`: moves the editor's working directory and the process

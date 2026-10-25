@@ -1,8 +1,6 @@
 use hume_engine::types::ResolvedStyle;
+use hume_platform::path::{AbsolutePath, display_form};
 use std::borrow::Cow;
-use std::path::PathBuf;
-
-use hume_platform::path::display_form;
 
 use super::StatuslineElement;
 use crate::statusline::HumeStatusline;
@@ -11,7 +9,7 @@ use crate::statusline::colors::EditorColors;
 pub(in crate::statusline) struct CwdElement;
 
 impl StatuslineElement for CwdElement {
-    type Data = PathBuf;
+    type Data = AbsolutePath;
 
     fn read(editor: &HumeStatusline<'_>) -> Self::Data {
         editor.state.cwd.clone()

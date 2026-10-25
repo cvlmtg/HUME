@@ -1,4 +1,7 @@
 use std::ops::Range;
+use std::path::Path;
+
+use hume_platform::path::AbsolutePath;
 
 use super::{CompletionCtx, CompletionItem, arg_prefix, token_end_at};
 
@@ -52,8 +55,11 @@ where
     let (arg_start, prefix) = arg_prefix(input, cursor);
     let arg_end = token_end_at(input, cursor, &[' ']);
     let (dir_str, file_prefix) = hume_platform::path::split_path_at_sep(prefix);
-    // `join` keeps an absolute expanded directory as it is.
-    let dir = ctx.cwd.join(&*expand_fn(dir_str));
+    // Resolved the way `:e` resolves the path it completes; a Windows
+    // drive-relative directory cannot be, and lists nothing.
+    let Ok(dir) = AbsolutePath::from_typed(Path::new(&*expand_fn(dir_str)), ctx.cwd) else {
+        return (arg_start..arg_end, Vec::new());
+    };
     let items = hume_platform::path::completion_entries(&dir, file_prefix, dirs_only)
         .into_iter()
         .map(|label| {

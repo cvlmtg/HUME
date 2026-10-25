@@ -161,7 +161,7 @@ impl BufferHost for MockHost {
     fn buffer_exists(&self, id: BufferId) -> bool {
         self.live_buffer_ids.contains(&id)
     }
-    fn buffer_path(&self, _id: BufferId) -> Option<std::path::PathBuf> {
+    fn buffer_path(&self, _id: BufferId) -> Option<hume_platform::path::AbsolutePath> {
         None
     }
     fn buffer_display_path(&self, _id: BufferId, _form: DisplayPathForm) -> Option<String> {
@@ -176,13 +176,17 @@ impl BufferHost for MockHost {
     fn buffer_stored_language(&self, _id: BufferId) -> Option<String> {
         None
     }
-    fn cwd(&self) -> std::path::PathBuf {
-        std::path::PathBuf::from(".")
+    fn cwd(&self) -> hume_platform::path::AbsolutePath {
+        hume_platform::path::AbsolutePath::current_dir()
+            .expect("the test process has a working directory")
     }
     fn search_path(&self) -> Option<std::ffi::OsString> {
         None
     }
-    fn set_cwd(&mut self, _path: &std::path::Path) -> Result<std::path::PathBuf, String> {
+    fn set_cwd(
+        &mut self,
+        _path: &std::path::Path,
+    ) -> Result<hume_platform::path::AbsolutePath, String> {
         Err("MockHost: set_cwd not available".into())
     }
     fn open_buffer(&mut self, _path: &std::path::Path) -> Result<BufferId, String> {

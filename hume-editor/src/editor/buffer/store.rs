@@ -6,12 +6,10 @@
 //! always go through the `Editor::open_buffer` /
 //! `lifecycle::close_buffer_and_notify` choke-points.
 
-use std::path::Path;
-
 use slotmap::SecondaryMap;
 
 use hume_engine::pipeline::{BufferId, Cycle};
-use hume_platform::path::strip_unc_prefix_cow;
+use hume_platform::path::AbsolutePath;
 
 use crate::editor::buffer::{Buffer, ViewLabel};
 
@@ -107,21 +105,12 @@ impl BufferStore {
         self.mru.insert(0, id);
     }
 
-    /// Find a buffer by its canonical resolved path.
-    ///
-    /// Returns the first `BufferId` whose `buffer.path()` matches `path` once
-    /// both sides are stripped of a Windows `\\?\` verbatim prefix (a no-op
-    /// off Windows). Most callers reach here via `fs::canonicalize`
-    /// (`\\?\C:\…` on Windows) and match as-is, but the `:b <name>` fallback
-    /// for a deleted backing file uses `std::path::absolute` (no prefix),
-    /// which would otherwise dedup-miss against an already-open buffer.
-    pub(in crate::editor) fn find_by_path(&self, path: &Path) -> Option<BufferId> {
-        let needle = strip_unc_prefix_cow(path);
-        self.buffers.iter().find_map(|(id, buf)| {
-            buf.path()
-                .filter(|p| strip_unc_prefix_cow(p) == needle)
-                .map(|_| id)
-        })
+    /// Find a buffer by its resolved path: the first `BufferId` whose
+    /// `buffer.path()` is `path`.
+    pub(in crate::editor) fn find_by_path(&self, path: &AbsolutePath) -> Option<BufferId> {
+        self.buffers
+            .iter()
+            .find_map(|(id, buf)| (buf.path() == Some(path)).then_some(id))
     }
 
     /// Find a read-only view buffer by its label.

@@ -67,17 +67,14 @@ fn opening_a_file_without_a_dump_opens_no_prompt() {
 fn restore_loads_the_dump_as_a_dirty_undoable_edit_and_removes_it() {
     let (dir, path) = file_with_dump(Some("disk\n"), Some("crashed\n"));
     let mut ed = editor_that_opened(&path);
-    let path_before = ed.doc().path().map(std::path::Path::to_path_buf);
+    let path_before = ed.doc().path().cloned();
 
     ed.handle_key(key('r'));
 
     assert!(ed.state.input.confirm().is_none());
     assert_eq!(ed.doc().text().to_string(), "crashed\n");
     assert!(focused_unsaved(&ed));
-    assert_eq!(
-        ed.doc().path().map(std::path::Path::to_path_buf),
-        path_before
-    );
+    assert_eq!(ed.doc().path().cloned(), path_before);
     assert!(!ed.doc().is_new_file());
     assert!(!dump_file(&dir).exists());
     assert_eq!(std::fs::read_to_string(&path).unwrap(), "disk\n");

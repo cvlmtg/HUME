@@ -108,14 +108,13 @@ fn save_as_to_unrelated_path_succeeds_despite_own_file_changing() {
     type_cmd(&mut ed, &format!(":w {}", other.display()));
 
     assert_eq!(std::fs::read_to_string(&other).unwrap(), "hello\n");
-    // Stored buffer paths are always `fs::canonicalize` output (see
-    // `buffer_store.rs`'s note on this), so canonicalize the tempfile's own
+    // Stored buffer paths are canonical, so canonicalize the tempfile's own
     // path too so the comparison isn't tripped up by a macOS symlinked temp
     // dir (`/var` → `/private/var`).
-    let other_canonical = std::fs::canonicalize(&other).unwrap();
+    let other_canonical = AbsolutePath::canonicalize(&other).unwrap();
     assert_eq!(
         ed.doc().path(),
-        Some(other_canonical.as_path()),
+        Some(&other_canonical),
         "save-as retargets the buffer"
     );
 }
@@ -262,7 +261,7 @@ fn unchanged_check_resets_disk_state_to_in_sync() {
 /// test (a transient stat error isn't reproducible portably).
 #[test]
 fn indeterminate_check_never_touches_disk_state() {
-    let mut ed = editor_from("-[h]>ello\n"); // scratch buffer, no file_meta
+    let mut ed = editor_from("-[h]>ello\n"); // scratch buffer, no file
     let bid = ed.focused_buffer_id();
     ed.state.buffers.get_mut(bid).disk_state = DiskState::Vanished;
 

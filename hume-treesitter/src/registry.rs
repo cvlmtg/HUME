@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
 use globset::{Glob, GlobSet, GlobSetBuilder};
+use hume_platform::path::AbsolutePath;
 
 use crate::grammar::LoadedGrammar;
 use crate::highlight::TreeSitterHighlighter;
@@ -1109,8 +1110,8 @@ impl LanguageRegistry {
 /// dotfiles repository.
 #[derive(Clone, Copy, Debug)]
 pub struct DetectPaths<'a> {
-    pub as_opened: &'a Path,
-    pub resolved: &'a Path,
+    pub as_opened: &'a AbsolutePath,
+    pub resolved: &'a AbsolutePath,
 }
 
 /// Detect the language for a buffer given its paths and first line.
@@ -1135,11 +1136,7 @@ pub fn detect_language(
 }
 
 /// `path`'s language by glob, then by file extension.
-fn detect_path(path: &Path, registry: &LanguageRegistry) -> Option<LanguageId> {
-    debug_assert!(
-        path.is_absolute(),
-        "detection takes an absolute path, got {path:?}"
-    );
+fn detect_path(path: &AbsolutePath, registry: &LanguageRegistry) -> Option<LanguageId> {
     registry
         .compiled_globs()
         .matches(path)

@@ -247,10 +247,10 @@ fn bundled_language_data_detects_by_path_and_dotted_extension() {
     let (_host, ed, _) = host_and_editor_after_runtime_layers();
     let languages = &ed.state.config.languages;
     let detect = |path: &str| {
-        let path = std::path::Path::new(path);
+        let path = hume_platform::path::AbsolutePath::rooted(path);
         let paths = DetectPaths {
-            as_opened: path,
-            resolved: path,
+            as_opened: &path,
+            resolved: &path,
         };
         detect_language(Some(paths), None, languages).map(|id| languages.name_of(id))
     };

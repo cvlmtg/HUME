@@ -17,23 +17,31 @@ fn colon_b_hash_switches_to_alternate() {
     // focused=scratch, alternate=None
     ed.execute_typed("e", Some(c1.to_str().unwrap())).unwrap();
     // focused=f1, alternate=scratch
-    assert_eq!(ed.doc().path(), Some(c1.as_path()));
+    assert_eq!(
+        ed.doc().path().map(AbsolutePath::as_path),
+        Some(c1.as_path())
+    );
 
     // :messages opens the pathless [messages] view buffer; alternate is now f1.
     ed.report(Severity::Warning, "test message".to_string());
     submit(&mut ed, "messages");
     assert_eq!(ed.doc().display_name(), "[messages]");
     assert_eq!(
-        ed.state
+        ed.state.buffers.second_most_recent().and_then(|id| ed
+            .state
             .buffers
-            .second_most_recent()
-            .and_then(|id| ed.state.buffers.get(id).path()),
+            .get(id)
+            .path()
+            .map(AbsolutePath::as_path)),
         Some(c1.as_path()),
     );
 
     // :b# returns to f1 (alternate has a path; this already worked).
     submit(&mut ed, "b#");
-    assert_eq!(ed.doc().path(), Some(c1.as_path()));
+    assert_eq!(
+        ed.doc().path().map(AbsolutePath::as_path),
+        Some(c1.as_path())
+    );
     // The alternate is now the pathless [messages] view: the bug case.
     assert_eq!(
         ed.state.buffers.second_most_recent().map(|id| ed
@@ -57,7 +65,7 @@ fn colon_b_hash_switches_to_alternate() {
     // Ping-pong back to f1 via the full `:buffer#` alias: same path, must work.
     submit(&mut ed, "buffer#");
     assert_eq!(
-        ed.doc().path(),
+        ed.doc().path().map(AbsolutePath::as_path),
         Some(c1.as_path()),
         ":buffer# must switch to the alternate buffer too",
     );
@@ -88,7 +96,7 @@ fn colon_edit_bang_path_parses() {
     let cmd = format!("e!{}", canonical.display());
     submit(&mut ed, &cmd);
     assert_eq!(
-        ed.doc().path(),
+        ed.doc().path().map(AbsolutePath::as_path),
         Some(canonical.as_path()),
         ":e!<path> (no space) must parse as cmd=e force=true arg=<path>"
     );

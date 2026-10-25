@@ -10,6 +10,7 @@
 use std::path::PathBuf;
 
 use hume_platform::dirs::{Dirs, GrammarBuild};
+use hume_platform::path::AbsolutePath;
 
 // ── Directory state ──────────────────────────────────────────────────────────
 
@@ -25,7 +26,7 @@ pub(crate) struct ScriptDirs {
     /// the plain drive-letter form instead (e.g. `C:\Users\…\hume`).
     pub(crate) data_dir_display: Option<PathBuf>,
     /// `<runtime>/` as a display path (same UNC reasoning).
-    pub(crate) runtime_dir_display: Option<PathBuf>,
+    pub(crate) runtime_dir_display: Option<AbsolutePath>,
     /// The directory holding the user's `init.scm`; a local plugin's
     /// `./file.scm` resolves against it. `None` until `eval_init` sets it, so
     /// it stays unset under `--no-config`.
@@ -40,19 +41,16 @@ impl ScriptDirs {
     pub(crate) fn new(dirs: &Dirs) -> Self {
         let data_dir = dirs.data.clone();
         let runtime_dir = dirs.runtime.clone();
-        // Canonicalize data_dir for the display form; fall back to raw path
-        // when the directory doesn't exist (e.g. sandboxed FS test environments).
-        let canonical_data = data_dir
+        // The display forms are canonical `AbsolutePath`s, free of a `\\?\`
+        // prefix, so Scheme can concatenate `/`-separated segments on Windows.
+        // A data dir that doesn't exist (e.g. sandboxed FS test environments)
+        // displays as given.
+        let data_dir_display = data_dir
             .clone()
-            .map(|d| std::fs::canonicalize(&d).unwrap_or(d));
-        // Display form strips `\\?\` so Scheme can safely concatenate `/`-separated
-        // segments on Windows without producing malformed extended-length paths.
-        let data_dir_display = canonical_data.map(hume_platform::path::strip_unc_prefix);
-
-        let canonical_runtime = runtime_dir
-            .clone()
-            .and_then(|rt| std::fs::canonicalize(&rt).ok());
-        let runtime_dir_display = canonical_runtime.map(hume_platform::path::strip_unc_prefix);
+            .map(|d| AbsolutePath::canonicalize(&d).map_or(d, |canonical| canonical.to_path_buf()));
+        let runtime_dir_display = runtime_dir
+            .as_deref()
+            .and_then(|rt| AbsolutePath::canonicalize(rt).ok());
 
         Self {
             data_dir,

@@ -269,7 +269,12 @@ fn a_goto_to_a_line_past_an_unopened_files_end_warns_and_stays() {
     let warnings = warning_texts(&ed);
     assert_eq!(warnings.len(), 1, "{warnings:?}");
     assert!(warnings[0].contains("no longer exists"), "{warnings:?}");
-    assert!(ed.state.buffers.find_by_path(&other_canonical).is_none());
+    assert!(
+        ed.state
+            .buffers
+            .find_by_path(&AbsolutePath::rooted(&other_canonical))
+            .is_none()
+    );
 }
 
 /// When every target is skipped the warning is the whole report, not
@@ -425,7 +430,7 @@ fn jump_back_returns_to_the_origin_after_a_jump() {
 /// `apply_script_effects` once this eval (`run_goto`'s `lsp/goto-definition`
 /// dispatch) returns.
 ///
-/// If `resolve_or_open` called the bare `lifecycle::open_or_dedup`, the
+/// If `resolve_or_open` called the bare `lifecycle::open_or_dedup_and_notify`, the
 /// newly-opened buffer would never get a `language`.
 #[test]
 fn goto_to_an_unopened_file_detects_its_language() {
@@ -446,7 +451,7 @@ fn goto_to_an_unopened_file_detects_its_language() {
     let bid = ed
         .state
         .buffers
-        .find_by_path(&other_canonical)
+        .find_by_path(&AbsolutePath::rooted(&other_canonical))
         .expect("goto-location! must have opened the target file");
     assert_eq!(
         ed.state.buffers.get(bid).language,
@@ -712,7 +717,7 @@ fn goto_into_another_file_raises_exactly_one_on_buffer_enter() {
     let bid = ed
         .state
         .buffers
-        .find_by_path(&other_canonical)
+        .find_by_path(&AbsolutePath::rooted(&other_canonical))
         .expect("goto-location! must have opened and switched to the target file");
     assert_eq!(
         ed.focused_buffer_id(),
@@ -826,7 +831,7 @@ fn buffer_with_no_path_reports_and_tracks_nothing() {
             serde_json::json!([loc(&uri, 0, 0)]),
         );
     });
-    ed.doc_mut().set_path(None);
+    ed.doc_mut().set_file(None);
 
     run_goto(&mut ed, "lsp/goto-definition");
 

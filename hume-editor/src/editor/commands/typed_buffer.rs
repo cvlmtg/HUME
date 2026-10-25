@@ -1,4 +1,5 @@
 use hume_engine::pipeline::{BufferId, Cycle};
+use hume_platform::path::AbsolutePath;
 
 use super::super::Editor;
 use super::super::Severity;
@@ -26,7 +27,7 @@ use crate::editor::jump_list::{JumpRule, with_jump};
 ///   `:goto`/`goto-location!`.
 ///
 /// Dedup uses `find_by_path` (canonical path comparison, or best-effort for a
-/// not-yet-existing path; see `Editor::resolve_buffer_path`). `force` (`!`
+/// not-yet-existing path; see `AbsolutePath::resolve_existing`). `force` (`!`
 /// suffix) only takes effect in the no-arg reload branch: it discards unsaved
 /// changes, stops a pipe running in the buffer, and re-reads the file from
 /// disk. When a path is given, `force` is unused.
@@ -36,8 +37,6 @@ pub(in crate::editor) fn typed_edit(
     arg: Option<&str>,
     force: bool,
 ) -> Result<(), CommandError> {
-    use std::path::Path;
-
     if let Some(raw_arg) = arg {
         // `literal_exists` is only ever probed with `raw_arg` itself (see
         // `split_path_position`), so this lookup covers both that probe and
@@ -93,13 +92,8 @@ pub(in crate::editor) fn typed_edit(
         Ok(())
     } else {
         // Reload current file. The history-preserving reload keeps the existing
-        // Buffer (only its text + file_meta are swapped), so `path` and
-        // `display_path` are retained as-is, with no need to re-seed them onto the
-        // freshly read doc.
+        // Buffer: its text is swapped, and its file follows the fresh read.
         let doc = super::doc(&ed.state, &ed.view, fp.pane());
-        let Some(path) = doc.path().map(Path::to_path_buf) else {
-            return Err(CommandError::transient("no file name"));
-        };
         // Nothing on disk to reload from yet: a reload here would just be a
         // no-op, so short-circuit before the dirty check rather than making
         // the user add `!` to force a reload that would discard edits for no
@@ -113,8 +107,9 @@ pub(in crate::editor) fn typed_edit(
             return Ok(());
         }
         let on_unsaved = OnUnsaved::from_force(force);
-        ed.run_stopping_pipes(force, |ed| ed.reload_from_path(fp, &path, on_unsaved))
+        ed.run_stopping_pipes(force, |ed| ed.reload_from_file(fp, on_unsaved))
             .map_err(|error| match error {
+                ReloadError::NoFile => CommandError::transient("no file name"),
                 ReloadError::Unsaved(unsaved) => {
                     CommandError::transient(unsaved.message(&ed.state, ":e!"))
                 }
@@ -234,25 +229,25 @@ pub(in crate::editor) fn typed_buffer(
 /// Find an open buffer matching a path argument.
 ///
 /// Uses the same resolution `resolve_open_path` uses to open one
-/// (`Editor::resolve_buffer_path`), so a path that doesn't yet exist on disk
-/// still matches an already-open new-file buffer instead of opening a
+/// (`AbsolutePath::resolve_existing`), so a path that doesn't yet exist on
+/// disk still matches an already-open new-file buffer instead of opening a
 /// duplicate, and a path whose backing file has since been deleted still
-/// matches the buffer that was reading it.
+/// matches the buffer that was reading it. A Windows drive-relative path
+/// (`D:foo`) cannot be made absolute and matches none.
 ///
 /// Falls back to the plain lexical-absolute form (no `canonicalize` at all)
 /// when that first lookup misses: a new-file buffer opened while an
 /// intermediate directory in its path was missing is keyed by
-/// `resolve_buffer_path`'s fully-lexical fallback at that time (see its
-/// doc); once the directory appears, re-resolving the same typed string
+/// `resolve_existing`'s fully-lexical fallback at that time (see its doc);
+/// once the directory appears, re-resolving the same typed string
 /// canonicalizes further and no longer matches the stored key. Skipped when
 /// the two forms already agree, since the common case needs no second lookup.
 fn find_buffer_by_path_arg(ed: &Editor, arg: &str) -> Option<BufferId> {
-    let arg_path = std::path::Path::new(arg);
-    let resolved = Editor::resolve_buffer_path(arg_path, &ed.state.cwd);
+    let lexical = AbsolutePath::from_typed(std::path::Path::new(arg), &ed.state.cwd).ok()?;
+    let resolved = lexical.resolve_existing();
     if let Some(bid) = ed.state.buffers.find_by_path(&resolved) {
         return Some(bid);
     }
-    let lexical = hume_platform::path::absolute_unresolved(arg_path, &ed.state.cwd);
     if lexical != resolved {
         return ed.state.buffers.find_by_path(&lexical);
     }

@@ -164,7 +164,7 @@ fn buffer_with_no_path_reports_and_tracks_nothing() {
             serde_json::json!([loc(&uri, 0, 0)]),
         );
     });
-    ed.doc_mut().set_path(None);
+    ed.doc_mut().set_file(None);
 
     run_references(&mut ed);
 

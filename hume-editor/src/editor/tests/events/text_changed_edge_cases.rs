@@ -10,7 +10,7 @@ fn e_bang_reload_fires_on_text_changed() {
     use crate::testing::MockHost;
     use hume_scripting::ScriptingHost;
 
-    let mut ed = editor_from("-[a]>b\n");
+    let (mut ed, path) = editor_with_file("-[a]>b\n", "ab\n");
     let mut host = ScriptingHost::new(&Dirs::none());
     let mut mock = MockHost::new();
     host.eval_source(
@@ -21,12 +21,8 @@ fn e_bang_reload_fires_on_text_changed() {
     ed.scripting = Some(host);
     ed.settle();
 
-    let replacement = Buffer::at_start(BufferText::from("reloaded\n"));
-    ed.reload_buffer_in_place(
-        FocusedPane::current(&ed.view),
-        ReplaceSource::disk(replacement),
-    )
-    .expect("the buffer is not held");
+    std::fs::write(&path, "reloaded\n").unwrap();
+    ed.execute_typed("e!", None).unwrap();
     ed.settle();
 
     let fires = ed
@@ -514,9 +510,8 @@ fn identity_reload_fires_no_on_text_changed() {
     use crate::testing::MockHost;
     use hume_scripting::ScriptingHost;
 
-    let mut ed = editor_from("-[a]>b\n");
+    let (mut ed, _path) = editor_with_file("-[a]>b\n", "ab\n");
     let bid = ed.focused_buffer_id();
-    let text_before = ed.state.buffers.get(bid).text().clone();
     let mut host = ScriptingHost::new(&Dirs::none());
     let mut mock = MockHost::new();
     host.eval_source(
@@ -528,12 +523,7 @@ fn identity_reload_fires_no_on_text_changed() {
     ed.settle();
 
     let before_gen = ed.state.buffers.get(bid).text().generation();
-    let replacement = Buffer::at_start(text_before);
-    ed.reload_buffer_in_place(
-        FocusedPane::current(&ed.view),
-        ReplaceSource::disk(replacement),
-    )
-    .expect("the buffer is not held");
+    ed.execute_typed("e!", None).unwrap();
     ed.settle();
 
     assert_eq!(

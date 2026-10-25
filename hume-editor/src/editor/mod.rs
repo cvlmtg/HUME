@@ -1,5 +1,4 @@
 use std::collections::VecDeque;
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::AtomicI32;
 
@@ -15,6 +14,7 @@ use crate::editor::pipe_run::PipeRunning;
 use crate::editor::settings::EditorSettings;
 use hume_editing::selection::SelectionSet;
 use hume_ops::register::{KillRing, RegisterSet};
+use hume_platform::path::AbsolutePath;
 use hume_platform::wake::WakeCallback;
 use hume_treesitter::parse_worker::ParseBackend;
 use hume_treesitter::registry::LanguageRegistry;
@@ -422,7 +422,7 @@ pub(crate) struct EditorState {
     /// drag's anchor is that pane's primary selection anchor, read live.
     pub(super) mouse_drag: Option<PaneId>,
     /// Current working directory. Set at startup; updated by `:cd`.
-    pub(super) cwd: PathBuf,
+    pub(super) cwd: AbsolutePath,
     /// Every overlay view shared between the per-frame write side and the
     /// engine's render side:
     /// minibuf-completion, popup (cursor + docked), menu, completion menu,
@@ -456,7 +456,8 @@ pub(crate) struct EditorState {
 
 impl EditorState {
     /// The trivial-field baseline both `EditorState` constructors build on,
-    /// around the `focus` they seeded with the first pane.
+    /// around the `focus` they seeded with the first pane and their working
+    /// directory `cwd`, which has no inert form.
     ///
     /// Not a usable editor on its own: no buffers, an OSC 52 clipboard, and
     /// a no-op waker. It exists so the fields that are identical at both
@@ -467,7 +468,7 @@ impl EditorState {
     /// production value is inherited by accident. A field added later whose
     /// production value must differ from its baseline needs the same
     /// treatment; the compiler will not ask for it.
-    pub(in crate::editor) fn base(focus: focus::Focus) -> Self {
+    pub(in crate::editor) fn base(focus: focus::Focus, cwd: AbsolutePath) -> Self {
         let settings = EditorSettings::default();
         let history_capacity = settings.prompt_history_levels;
         Self {
@@ -520,7 +521,7 @@ impl EditorState {
             pending_writes: before_save::PendingWrites::default(),
             last_observed_mode: Mode::Normal,
             mouse_drag: None,
-            cwd: PathBuf::new(),
+            cwd,
             views: hume_ui::OverlayViews::default(),
             tabline_view: hume_engine::lock::SharedSlot::default(),
             last_tabline_signature: None,
@@ -664,7 +665,7 @@ pub(crate) struct Editor {
     /// `prepare_frame` compares it against `state.cwd` every frame, so `:cd`
     /// and `(set-cwd! …)` need no hook of their own. `None` until the first
     /// frame, so that frame reports.
-    applied_cwd: Option<PathBuf>,
+    applied_cwd: Option<AbsolutePath>,
     /// Startup cursor placements, one per CLI `path:line[:col]` argument,
     /// queued by `Editor::start` and drained by `apply_startup_positions`.
     startup_positions: Vec<(BufferId, crate::cli::PathPosition)>,

@@ -22,7 +22,7 @@ fn edit_existing_buffer_switches_without_reread() {
     ed.execute_typed("e", Some(canonical.to_str().unwrap()))
         .unwrap();
     assert_eq!(
-        ed.doc().path(),
+        ed.doc().path().map(AbsolutePath::as_path),
         Some(canonical.as_path()),
         ":e same-path must stay on the buffer"
     );
@@ -59,7 +59,7 @@ fn edit_deleted_file_on_already_focused_buffer_is_silent_until_a_real_buffer_ent
     ed.execute_typed("e", Some(canonical.to_str().unwrap()))
         .unwrap();
     assert_eq!(
-        ed.doc().path(),
+        ed.doc().path().map(AbsolutePath::as_path),
         Some(canonical.as_path()),
         ":e <deleted-path> must switch to the open buffer"
     );
@@ -76,7 +76,7 @@ fn edit_deleted_file_on_already_focused_buffer_is_silent_until_a_real_buffer_ent
     let bid = ed
         .state
         .buffers
-        .find_by_path(&canonical)
+        .find_by_path(&AbsolutePath::rooted(&canonical))
         .expect("deleted file's buffer stays open");
     ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.view), bid);
     ed.settle();
@@ -100,7 +100,7 @@ fn edit_deleted_file_with_no_buffer_reopens_as_new_file() {
 
     let canonical_dir = std::fs::canonicalize(dir.path()).unwrap();
     assert_eq!(
-        ed.doc().path(),
+        ed.doc().path().map(AbsolutePath::as_path),
         Some(canonical_dir.join("never_opened.txt").as_path()),
         ":e <missing-path> must open a buffer bound to the path"
     );
@@ -183,7 +183,7 @@ fn edit_missing_file_then_write_creates_it() {
 
 /// `:e` with no argument on a new-file buffer has nothing on disk to reload
 /// from: it must be a no-op (reported, not silent), not the ENOENT error
-/// `reload_from_path` would otherwise raise.
+/// `reload_from_file` would otherwise raise.
 #[test]
 fn edit_no_arg_on_new_file_buffer_is_noop() {
     let dir = tempfile::tempdir().unwrap();
@@ -321,10 +321,10 @@ fn write_new_file_buffer_refuses_when_file_appeared_externally() {
     assert!(!ed.doc().is_new_file());
 }
 
-/// A new-file buffer opened via `resolve_buffer_path`'s lexical fallback
+/// A new-file buffer opened via `AbsolutePath::resolve_existing`'s lexical fallback
 /// (parent didn't exist at `:e` time) must have its `path` re-keyed to the
-/// fully resolved `FileMeta::resolved_path` once `:w` actually creates the
-/// file. Otherwise `find_by_path` dedup breaks the moment the file exists.
+/// fully resolved path once `:w` actually creates the file. Otherwise
+/// `find_by_path` dedup breaks the moment the file exists.
 #[test]
 fn write_new_file_buffer_rekeys_path_to_resolved_target() {
     let dir = tempfile::tempdir().unwrap();
@@ -337,21 +337,14 @@ fn write_new_file_buffer_rekeys_path_to_resolved_target() {
     ed.handle_key(key_esc());
     ed.execute_typed("w", None).unwrap();
 
-    let meta = ed
-        .doc()
-        .file_meta
-        .as_ref()
-        .expect("file_meta must be set after a successful create");
-    assert_eq!(
-        ed.doc().path(),
-        Some(meta.resolved_path()),
-        "buf.path() and file_meta.resolved_path() must agree post-write"
-    );
     assert!(
-        ed.state
-            .buffers
-            .find_by_path(meta.resolved_path())
-            .is_some(),
+        !ed.doc().is_new_file(),
+        "a successful create puts the file on disk"
+    );
+    let resolved = AbsolutePath::canonicalize(&path).unwrap();
+    assert_eq!(ed.doc().path(), Some(&resolved));
+    assert!(
+        ed.state.buffers.find_by_path(&resolved).is_some(),
         "buffer must be findable by its resolved path"
     );
 }
@@ -407,7 +400,7 @@ fn edit_relative_path_matches_existing_buffer() {
     // :e with just the basename must switch to the already-open buffer.
     ed.execute_typed("e", Some("relpath_test.txt")).unwrap();
     assert_eq!(
-        ed.doc().path(),
+        ed.doc().path().map(AbsolutePath::as_path),
         Some(path.as_path()),
         ":e <relative> must switch to the already-open buffer"
     );
@@ -434,7 +427,10 @@ fn edit_position_suffix_on_an_unopened_file_places_the_cursor() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.execute_typed("e", Some(&arg)).unwrap();
 
-    assert_eq!(ed.doc().path(), Some(canonical.as_path()));
+    assert_eq!(
+        ed.doc().path().map(AbsolutePath::as_path),
+        Some(canonical.as_path())
+    );
     assert_eq!(ed.current_view().primary().head().offset(), co(14));
 }
 
@@ -449,7 +445,7 @@ fn edit_position_suffix_on_an_open_non_focused_buffer_switches_and_places_cursor
     ed.execute_typed("e", Some(canonical2.to_str().unwrap()))
         .unwrap();
     assert_eq!(
-        ed.doc().path(),
+        ed.doc().path().map(AbsolutePath::as_path),
         Some(canonical2.as_path()),
         "sanity: focus is on the second file"
     );
@@ -458,7 +454,10 @@ fn edit_position_suffix_on_an_open_non_focused_buffer_switches_and_places_cursor
     let arg = format!("{}:3", canonical1.display());
     ed.execute_typed("e", Some(&arg)).unwrap();
 
-    assert_eq!(ed.doc().path(), Some(canonical1.as_path()));
+    assert_eq!(
+        ed.doc().path().map(AbsolutePath::as_path),
+        Some(canonical1.as_path())
+    );
     assert_eq!(ed.current_view().primary().head().offset(), co(18));
 }
 
@@ -499,14 +498,14 @@ fn edit_position_suffix_on_another_file_ctrl_o_returns_in_one_step() {
     let arg = format!("{}:3", canonical2.display());
     ed.execute_typed("e", Some(&arg)).unwrap();
     assert_eq!(
-        ed.doc().path(),
+        ed.doc().path().map(AbsolutePath::as_path),
         Some(canonical2.as_path()),
         "sanity: switched to the second file"
     );
 
     ed.handle_key(key_ctrl('o'));
     assert_eq!(
-        ed.doc().path(),
+        ed.doc().path().map(AbsolutePath::as_path),
         Some(canonical1.as_path()),
         "one Ctrl-o must return to the first file, not stop on the second file's own start"
     );
@@ -608,7 +607,10 @@ fn edit_position_suffix_tolerates_a_trailing_colon() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.execute_typed("e", Some(&arg)).unwrap();
 
-    assert_eq!(ed.doc().path(), Some(canonical.as_path()));
+    assert_eq!(
+        ed.doc().path().map(AbsolutePath::as_path),
+        Some(canonical.as_path())
+    );
     assert_eq!(ed.current_view().primary().head().offset(), co(18));
 }
 
@@ -623,12 +625,15 @@ fn edit_position_suffix_column_past_line_end_clamps() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.execute_typed("e", Some(&arg)).unwrap();
 
-    assert_eq!(ed.doc().path(), Some(canonical.as_path()));
+    assert_eq!(
+        ed.doc().path().map(AbsolutePath::as_path),
+        Some(canonical.as_path())
+    );
     assert_eq!(ed.current_view().primary().head().offset(), co(16));
 }
 
 /// A new-file buffer opened while an intermediate directory was missing is
-/// keyed by `resolve_buffer_path`'s fully-lexical fallback (parent couldn't
+/// keyed by `AbsolutePath::resolve_existing`'s fully-lexical fallback (parent couldn't
 /// be canonicalized either). Once that directory appears, re-resolving the
 /// same typed string canonicalizes further and would miss a plain
 /// `find_by_path` lookup. `:b` (via `find_buffer_by_path_arg`'s lexical
@@ -687,12 +692,15 @@ fn open_extra_file_opens_the_path() {
         "focus must stay on the first file"
     );
     assert_eq!(
-        ed.doc().path(),
+        ed.doc().path().map(AbsolutePath::as_path),
         Some(canonical1.as_path()),
         "current buffer must still be the first file"
     );
     assert!(
-        ed.state.buffers.find_by_path(&canonical2).is_some(),
+        ed.state
+            .buffers
+            .find_by_path(&AbsolutePath::rooted(&canonical2))
+            .is_some(),
         "second file must be present in the buffer store"
     );
 }
@@ -857,7 +865,7 @@ fn startup_with_missing_first_file_opens_new_file_buffer() {
     assert!(ed.doc().is_new_file());
     let canonical_dir = std::fs::canonicalize(dir.path()).unwrap();
     assert_eq!(
-        ed.doc().path(),
+        ed.doc().path().map(AbsolutePath::as_path),
         Some(canonical_dir.join("startup_new.txt").as_path())
     );
 }
@@ -884,8 +892,8 @@ fn open_extra_file_deduplicates() {
 fn wa_saves_all_dirty_buffers() {
     let (mut ed, _tmp1) = editor_with_file("-[h]>ello\n", "hello\n");
     let bid1 = ed.focused_buffer_id();
-    let (_, meta) = hume_platform::io::read_file(&_tmp1).unwrap();
-    ed.doc_mut().file_meta = Some(meta);
+    ed.doc_mut()
+        .set_file(Some(crate::editor::buffer::BufferFile::on_disk_at(&_tmp1)));
     dirty_focused(&mut ed);
     assert!(focused_unsaved(&ed));
 
@@ -904,7 +912,7 @@ fn wa_saves_all_dirty_buffers() {
 
 /// A new-file buffer (`:e` on a missing path, not yet written) must be
 /// written by `:wa` like any other dirty buffer, not silently skipped for
-/// lacking a `file_meta` baseline.
+/// lacking file metadata to compare against.
 #[test]
 fn wa_saves_new_file_buffers() {
     let dir = tempfile::tempdir().unwrap();
@@ -912,8 +920,8 @@ fn wa_saves_new_file_buffers() {
 
     let (mut ed, _tmp1) = editor_with_file("-[h]>ello\n", "hello\n");
     let bid1 = ed.focused_buffer_id();
-    let (_, meta) = hume_platform::io::read_file(&_tmp1).unwrap();
-    ed.doc_mut().file_meta = Some(meta);
+    ed.doc_mut()
+        .set_file(Some(crate::editor::buffer::BufferFile::on_disk_at(&_tmp1)));
     dirty_focused(&mut ed);
 
     ed.execute_typed("e", Some(new_path.to_str().unwrap()))
@@ -939,8 +947,8 @@ fn wa_saves_new_file_buffers() {
 fn wa_skips_clean_buffers() {
     let (mut ed, _tmp1) = editor_with_file("-[h]>ello\n", "hello\n");
     let bid1 = ed.focused_buffer_id();
-    let (_, meta) = hume_platform::io::read_file(&_tmp1).unwrap();
-    ed.doc_mut().file_meta = Some(meta);
+    ed.doc_mut()
+        .set_file(Some(crate::editor::buffer::BufferFile::on_disk_at(&_tmp1)));
     // bid1 stays clean.
 
     let (tmp2_path, bid2) = open_file_buffer(&mut ed, "two\n");
@@ -968,8 +976,8 @@ fn wa_skips_clean_buffers() {
 fn wa_skips_pathless_buffers() {
     let (mut ed, _tmp1) = editor_with_file("-[h]>ello\n", "hello\n");
     let bid1 = ed.focused_buffer_id();
-    let (_, meta) = hume_platform::io::read_file(&_tmp1).unwrap();
-    ed.doc_mut().file_meta = Some(meta);
+    ed.doc_mut()
+        .set_file(Some(crate::editor::buffer::BufferFile::on_disk_at(&_tmp1)));
     dirty_focused(&mut ed);
 
     // Only one file buffer: scratch shouldn't add to the count.
@@ -994,8 +1002,8 @@ fn wa_skips_pathless_buffers() {
 #[test]
 fn wa_is_noop_if_nothing_dirty() {
     let (mut ed, _tmp1) = editor_with_file("-[h]>ello\n", "hello\n");
-    let (_, meta) = hume_platform::io::read_file(&_tmp1).unwrap();
-    ed.doc_mut().file_meta = Some(meta);
+    ed.doc_mut()
+        .set_file(Some(crate::editor::buffer::BufferFile::on_disk_at(&_tmp1)));
 
     ed.execute_typed("wa", None).unwrap();
     let msg = ed.state.status_msg.as_deref().unwrap_or("");
@@ -1009,8 +1017,8 @@ fn wa_is_noop_if_nothing_dirty() {
 fn wa_does_not_change_focus() {
     let (mut ed, _tmp1) = editor_with_file("-[h]>ello\n", "hello\n");
     let bid1 = ed.focused_buffer_id();
-    let (_, meta) = hume_platform::io::read_file(&_tmp1).unwrap();
-    ed.doc_mut().file_meta = Some(meta);
+    ed.doc_mut()
+        .set_file(Some(crate::editor::buffer::BufferFile::on_disk_at(&_tmp1)));
     dirty_focused(&mut ed);
 
     let (_tmp2, bid2) = open_file_buffer(&mut ed, "two\n");
@@ -1027,8 +1035,8 @@ fn wa_does_not_change_focus() {
 fn wa_preserves_focus_on_single_buffer() {
     let (mut ed, _tmp1) = editor_with_file("-[h]>ello\n", "hello\n");
     let bid1 = ed.focused_buffer_id();
-    let (_, meta) = hume_platform::io::read_file(&_tmp1).unwrap();
-    ed.doc_mut().file_meta = Some(meta);
+    ed.doc_mut()
+        .set_file(Some(crate::editor::buffer::BufferFile::on_disk_at(&_tmp1)));
     dirty_focused(&mut ed);
 
     let before = ed.focused_buffer_id();
@@ -1103,7 +1111,9 @@ fn open_extra_file_nonexistent_opens_new_file_buffer() {
     let bid = ed
         .state
         .buffers
-        .find_by_path(&canonical_dir.join("hume_test_nonexistent_xyz_404.txt"))
+        .find_by_path(&AbsolutePath::rooted(
+            canonical_dir.join("hume_test_nonexistent_xyz_404.txt"),
+        ))
         .expect("new-file buffer must be findable by its resolved path");
     assert!(ed.state.buffers.get(bid).is_new_file());
     assert!(
@@ -1137,7 +1147,7 @@ fn open_extra_file_new_file_shows_untransformed_display_path() {
     std::fs::write(f1.path(), "hello\n").unwrap();
     let canonical = std::fs::canonicalize(f1.path()).unwrap();
     let home = hume_platform::dirs::home_dir().expect("HOME must be set for this test");
-    // `resolve_buffer_path` canonicalizes the *parent* dir when the file
+    // `AbsolutePath::resolve_existing` canonicalizes the *parent* dir when the file
     // itself doesn't exist. Canonicalize `home` here too, or this lookup
     // can miss on a platform/CI layout where $HOME is itself a symlink.
     let canonical_home = std::fs::canonicalize(&home).unwrap();
@@ -1153,7 +1163,9 @@ fn open_extra_file_new_file_shows_untransformed_display_path() {
     let display = ed
         .state
         .buffers
-        .find_by_path(&canonical_home.join("hume-test-no-such-file-xyz.txt"))
+        .find_by_path(&AbsolutePath::rooted(
+            canonical_home.join("hume-test-no-such-file-xyz.txt"),
+        ))
         .map(|bid| ed.state.buffers.get(bid).display_path().unwrap().to_owned());
     assert_eq!(
         display.as_deref(),
@@ -1218,9 +1230,9 @@ fn write_preserves_permissions() {
 
     // Set a non-default permission that differs from the tempfile default (0600).
     std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o644)).unwrap();
-    // Re-read metadata so file_meta captures the new permissions.
-    let (_, meta) = hume_platform::io::read_file(&tmp).unwrap();
-    ed.doc_mut().file_meta = Some(meta);
+    // Re-read metadata so the buffer's file captures the new permissions.
+    ed.doc_mut()
+        .set_file(Some(crate::editor::buffer::BufferFile::on_disk_at(&tmp)));
 
     for ch in ":w".chars() {
         ed.handle_key(key(ch));
@@ -1261,8 +1273,9 @@ fn write_follows_symlink() {
     );
 
     let mut ed = editor_from("-[h]>ello\n");
-    ed.doc_mut().set_path(Some(link_path.clone()));
-    ed.doc_mut().file_meta = Some(meta);
+    ed.doc_mut().set_file(Some(
+        crate::editor::buffer::BufferFile::on_disk(meta, AbsolutePath::rooted(&link_path)).unwrap(),
+    ));
 
     for ch in ":w".chars() {
         ed.handle_key(key(ch));
@@ -1286,6 +1299,196 @@ fn write_follows_symlink() {
     );
     // Content was written to the real file.
     assert_eq!(std::fs::read_to_string(real.path()).unwrap(), "hello\n");
+}
+
+/// A file opened through a symlink is detected by the name it was opened
+/// as, while its identity is the file the link resolves to.
+#[test]
+fn edit_through_a_symlink_detects_the_language_by_the_typed_name() {
+    use std::os::unix::fs::symlink;
+
+    let dir = tempfile::tempdir().unwrap();
+    let target = dir.path().join("target");
+    std::fs::write(&target, "fn main() {}\n").unwrap();
+    let link = dir.path().join("link.rs");
+    symlink(&target, &link).unwrap();
+
+    let mut ed = editor_from("-[h]>ello\n");
+    crate::editor::tests::language::attach_host(&mut ed, "");
+    ed.state
+        .config
+        .languages
+        .register_identity("rust", &["rs"], &[], &[])
+        .expect("a test identity registers");
+    ed.execute_typed("e", Some(link.to_str().unwrap())).unwrap();
+    ed.settle();
+
+    let canonical = target.canonicalize().unwrap();
+    assert_eq!(
+        ed.doc().path().map(AbsolutePath::as_path),
+        Some(canonical.as_path())
+    );
+    assert_eq!(
+        ed.doc().file().map(|paths| paths.typed().as_path()),
+        Some(link.as_path())
+    );
+    assert_eq!(ed.doc().language, ed.state.config.languages.id_of("rust"));
+}
+
+/// A file opened through a symlink is named by the path it was opened as,
+/// so `:b` finds it by that name.
+#[test]
+fn a_symlinked_file_is_named_by_its_typed_path() {
+    use std::os::unix::fs::symlink;
+
+    let dir = tempfile::tempdir().unwrap();
+    let target = dir.path().join("bar.txt");
+    std::fs::write(&target, "bar\n").unwrap();
+    let link = dir.path().join("foo.txt");
+    symlink(&target, &link).unwrap();
+    let other = dir.path().join("other.txt");
+    std::fs::write(&other, "other\n").unwrap();
+
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.execute_typed("e", Some(link.to_str().unwrap())).unwrap();
+    let linked = ed.focused_buffer_id();
+    assert_eq!(ed.doc().display_name(), "foo.txt");
+
+    ed.execute_typed("e", Some(other.to_str().unwrap()))
+        .unwrap();
+    ed.execute_typed("b", Some("foo.txt")).unwrap();
+    assert_eq!(ed.focused_buffer_id(), linked);
+}
+
+/// A reload reads the file the buffer's path resolves to now: once that
+/// file is a symlink, the buffer's identity is the link's target.
+#[test]
+fn reload_follows_a_file_replaced_by_a_symlink() {
+    use std::os::unix::fs::symlink;
+
+    let dir = tempfile::tempdir().unwrap();
+    let a = dir.path().join("a.txt");
+    let b = dir.path().join("b.txt");
+    std::fs::write(&a, "one\n").unwrap();
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.execute_typed("e", Some(a.to_str().unwrap())).unwrap();
+
+    std::fs::rename(&a, &b).unwrap();
+    symlink(&b, &a).unwrap();
+    std::fs::write(&b, "two\n").unwrap();
+    ed.execute_typed("e!", None).unwrap();
+
+    assert_eq!(ed.doc().text().to_string(), "two\n");
+    assert_eq!(
+        ed.doc().path(),
+        Some(&AbsolutePath::canonicalize(&b).unwrap())
+    );
+}
+
+/// A reload that gives the buffer a new identity is a rename to its
+/// language servers: the old URI is closed and the new one opened.
+#[test]
+fn reload_of_a_file_replaced_by_a_symlink_reopens_it_under_the_new_uri() {
+    use std::os::unix::fs::symlink;
+
+    let tmp = tempfile::tempdir().unwrap();
+    let mut rig = crate::editor::tests::lsp_rig::LspRig::rust(
+        tmp.path(),
+        "-[f]>n main() {}\n",
+        serde_json::json!({ "capabilities": {} }),
+    );
+    let sid = rig.sid("rust-analyzer");
+    let old_uri = rig.uri();
+    let main = rig.root.join("src/main.rs");
+    let real = rig.root.join("src/real.rs");
+    std::fs::rename(&main, &real).unwrap();
+    symlink(&real, &main).unwrap();
+
+    rig.ed.execute_typed("e!", None).unwrap();
+
+    let new_uri = rig.uri();
+    assert_ne!(old_uri, new_uri);
+    let closed = rig.sent(sid, "textDocument/didClose");
+    assert_eq!(closed.len(), 1);
+    assert_eq!(closed[0]["textDocument"]["uri"], old_uri.as_str());
+    let opened: Vec<_> = rig
+        .sent(sid, "textDocument/didOpen")
+        .iter()
+        .map(|p| p["textDocument"]["uri"].clone())
+        .collect();
+    assert_eq!(opened, vec![old_uri.as_str(), new_uri.as_str()]);
+}
+
+/// `:w <path>` writes the file `:e <path>` would open: a `..` after a
+/// symlink collapses lexically, so the buffer's name and the file its
+/// writes reach agree.
+#[test]
+fn save_as_resolves_dot_dot_after_a_symlink_lexically() {
+    let dir = dir_with_a_link_into_a_sibling();
+    let typed = dir.path().join("a/link/../f.txt");
+
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.execute_typed("w", Some(typed.to_str().unwrap()))
+        .unwrap();
+
+    let lexical = dir.path().join("a/f.txt");
+    assert_eq!(std::fs::read_to_string(&lexical).unwrap(), "hello\n");
+    assert!(!dir.path().join("b/f.txt").exists());
+    assert_eq!(
+        ed.doc().path(),
+        Some(&AbsolutePath::canonicalize(&lexical).unwrap())
+    );
+}
+
+/// An export resolves its path the way a save-as does.
+#[test]
+fn export_resolves_dot_dot_after_a_symlink_lexically() {
+    let dir = dir_with_a_link_into_a_sibling();
+    let typed = dir.path().join("a/link/../g.txt");
+
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.doc_mut().read_only = true;
+    ed.execute_typed("w", Some(typed.to_str().unwrap()))
+        .unwrap();
+
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("a/g.txt")).unwrap(),
+        "hello\n"
+    );
+    assert!(!dir.path().join("b/g.txt").exists());
+}
+
+/// `:w <path>` through a symlinked directory gives the buffer the resolved
+/// file as its identity and the typed path as its name, together.
+#[test]
+fn save_as_through_a_symlinked_directory_rekeys_both_paths() {
+    use std::os::unix::fs::symlink;
+
+    let dir = tempfile::tempdir().unwrap();
+    let real = dir.path().join("real");
+    std::fs::create_dir(&real).unwrap();
+    symlink(&real, dir.path().join("linkdir")).unwrap();
+    let typed = dir.path().join("linkdir").join("new.rs");
+
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.execute_typed("w", Some(typed.to_str().unwrap()))
+        .unwrap();
+
+    let resolved = real.canonicalize().unwrap().join("new.rs");
+    let buf = ed.doc();
+    assert_eq!(
+        buf.path().map(AbsolutePath::as_path),
+        Some(resolved.as_path())
+    );
+    assert!(!buf.is_new_file());
+    assert_eq!(
+        buf.file().map(|paths| paths.typed().as_path()),
+        Some(typed.as_path())
+    );
+    assert_eq!(
+        buf.display_path(),
+        Some(hume_platform::path::display_form(&typed).as_str())
+    );
 }
 
 // ── :w! force-write ───────────────────────────────────────────────────────────
@@ -1315,10 +1518,10 @@ fn colon_w_bang_on_readonly_file_preserves_perms() {
 
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
 
-    // Make the target readonly and update the buffer's file_meta to match.
+    // Make the target readonly and update the buffer's file metadata to match.
     std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o444)).unwrap();
-    let (_, meta) = hume_platform::io::read_file(&tmp).unwrap();
-    ed.doc_mut().file_meta = Some(meta);
+    ed.doc_mut()
+        .set_file(Some(crate::editor::buffer::BufferFile::on_disk_at(&tmp)));
 
     for ch in ":w!".chars() {
         ed.handle_key(key(ch));

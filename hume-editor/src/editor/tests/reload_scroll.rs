@@ -16,7 +16,10 @@ use super::*;
 /// assertion runs; `render_to_buf` is that pass either way.
 #[test]
 fn reload_shrinking_the_document_leaves_the_next_frames_top_inside_it() {
-    let mut ed = editor_from("-[a]>\nb\nc\nd\ne\nf\ng\nh\ni\nj\n"); // 10 lines
+    let (mut ed, path) = editor_with_file(
+        "-[a]>\nb\nc\nd\ne\nf\ng\nh\ni\nj\n", // 10 lines
+        "a\nb\nc\nd\ne\nf\ng\nh\ni\nj\n",
+    );
     let pid = ed.view.focused_pane();
 
     // Scroll down near the 10-line original's end: line 8 is valid there,
@@ -28,12 +31,8 @@ fn reload_shrinking_the_document_leaves_the_next_frames_top_inside_it() {
             0,
         ));
 
-    let replacement = Buffer::at_start(BufferText::from("x\ny\n"));
-    ed.reload_buffer_in_place(
-        FocusedPane::current(&ed.view),
-        ReplaceSource::disk(replacement),
-    )
-    .expect("the buffer is not held");
+    std::fs::write(&path, "x\ny\n").unwrap();
+    ed.execute_typed("e!", None).unwrap();
 
     // Whatever pass resolves the top next (the render/scroll pipeline here),
     // it must land inside the shrunken 2-line document, not past its end.

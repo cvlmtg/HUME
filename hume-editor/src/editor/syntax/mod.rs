@@ -150,11 +150,9 @@ impl Editor {
         }
         let detected = {
             let buf = self.state.buffers.get(bid);
-            let paths = buf.path().map(|resolved| DetectPaths {
-                as_opened: buf
-                    .typed_path()
-                    .expect("a buffer with a path has a typed path (Buffer::set_path)"),
-                resolved,
+            let paths = buf.file().map(|file| DetectPaths {
+                as_opened: file.typed(),
+                resolved: file.resolved(),
             });
             let first_line = buf.first_line();
             detect_language(paths, first_line.as_deref(), &self.state.config.languages)

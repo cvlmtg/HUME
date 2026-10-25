@@ -88,7 +88,7 @@ fn vanished_file_does_not_refire_on_every_trigger() {
 /// checking it must never warn or mark the buffer stale.
 #[test]
 fn pathless_buffers_are_never_flagged() {
-    let mut ed = editor_from("-[h]>ello\n"); // scratch buffer, no file_meta
+    let mut ed = editor_from("-[h]>ello\n"); // scratch buffer, no file
     let bid = ed.focused_buffer_id();
     let (_, warnings_before) = ed.state.message_log.totals();
 

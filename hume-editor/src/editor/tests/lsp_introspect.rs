@@ -616,7 +616,7 @@ fn viewport_range_raises_for_a_paneless_buffer_handle() {
     let hidden_bid = ed
         .state
         .buffers
-        .find_by_path(&std::fs::canonicalize(&extra).unwrap())
+        .find_by_path(&AbsolutePath::canonicalize(&extra).unwrap())
         .expect("extra file must be open in the buffer list");
     assert_ne!(
         hidden_bid,
@@ -755,7 +755,7 @@ fn lsp_position_params_raises_for_a_paneless_buffer_handle() {
         .ed
         .state
         .buffers
-        .find_by_path(&std::fs::canonicalize(&extra).unwrap())
+        .find_by_path(&AbsolutePath::canonicalize(&extra).unwrap())
         .expect("extra file must be open in the buffer list");
     rig.ed
         .switch_to_buffer_with_jump(FocusedPane::current(&rig.ed.view), other_bid);
@@ -806,7 +806,7 @@ fn lsp_position_params_resolves_a_buffer_shown_in_a_non_focused_pane() {
         .ed
         .state
         .buffers
-        .find_by_path(&std::fs::canonicalize(&extra).unwrap())
+        .find_by_path(&AbsolutePath::canonicalize(&extra).unwrap())
         .expect("extra file must be open in the buffer list");
     let other_pid = open_pane_in_layout(
         &mut rig.ed.state,

@@ -246,7 +246,7 @@ fn rename_reply_after_the_pane_switches_buffers_still_applies() {
 /// `apply_script_effects` once this eval (reached via `settle`'s `Call` arm,
 /// the rename response callback) returns.
 ///
-/// If `resolve_or_open` called the bare `lifecycle::open_or_dedup`,
+/// If `resolve_or_open` called the bare `lifecycle::open_or_dedup_and_notify`,
 /// `lib.rs`'s buffer would never get a `language`.
 #[test]
 fn multi_file_workspace_edit_detects_language_of_the_newly_opened_file() {
@@ -283,7 +283,7 @@ fn multi_file_workspace_edit_detects_language_of_the_newly_opened_file() {
     let bid = ed
         .state
         .buffers
-        .find_by_path(&other_canonical)
+        .find_by_path(&AbsolutePath::rooted(&other_canonical))
         .expect("workspace edit must have opened lib.rs as a buffer");
     assert_eq!(
         ed.state.buffers.get(bid).language,

@@ -519,7 +519,7 @@ fn git_modified_picker_accept_resolves_relative_to_repo_root_from_subdirectory()
     let bid = ed.focused_buffer_id();
     let path = ed.state.buffers.get(bid).path().expect("buffer has a path");
     assert_eq!(
-        path,
+        path.as_path(),
         sandbox.path().join("root.txt"),
         "accept must resolve the repo-root-relative path against the repo root, \
          not against :pwd (a subdirectory)"
@@ -559,7 +559,7 @@ fn git_modified_picker_row_and_accept_handle_path_with_space() {
     let bid = ed.focused_buffer_id();
     let path = ed.state.buffers.get(bid).path().expect("buffer has a path");
     assert_eq!(
-        path,
+        path.as_path(),
         sandbox.path().join("has space.txt"),
         "accept must open the exact path parsed from the -z entry"
     );
@@ -596,7 +596,7 @@ fn git_modified_picker_accept_resolves_nested_relative_path() {
     let bid = ed.focused_buffer_id();
     let path = ed.state.buffers.get(bid).path().expect("buffer has a path");
     assert_eq!(
-        path,
+        path.as_path(),
         sandbox.path().join("sub/file.txt"),
         "accept must join a multi-segment repo-relative path against the root correctly"
     );

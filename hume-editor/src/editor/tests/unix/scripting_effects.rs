@@ -343,7 +343,7 @@ fn steel_open_buffer_detects_language() {
     let bid = ed
         .state
         .buffers
-        .find_by_path(&canonical)
+        .find_by_path(&AbsolutePath::rooted(&canonical))
         .expect("open-buffer! must have opened the file");
     assert_eq!(
         ed.state.buffers.get(bid).language,
@@ -352,11 +352,58 @@ fn steel_open_buffer_detects_language() {
     );
 }
 
+/// `(open-buffer! path)` on a symlink records the path as given, so the
+/// file is detected by the link's name.
+#[test]
+fn steel_open_buffer_detects_a_symlinked_file_by_its_typed_name() {
+    let dir = tempfile::tempdir().unwrap();
+    let target = dir.path().join("target");
+    std::fs::write(&target, "fn main() {}\n").unwrap();
+    let link = dir.path().join("link.rs");
+    std::os::unix::fs::symlink(&target, &link).unwrap();
+    let init_path = dir.path().join("init.scm");
+    std::fs::write(
+        &init_path,
+        format!(
+            r#"(define-typed-command! "go" "" (lambda () (open-buffer! "{}")))"#,
+            link.display()
+        ),
+    )
+    .unwrap();
+
+    let mut ed = editor_from("-[a]>bcdef\n");
+    ed.state
+        .config
+        .languages
+        .register_identity("rust", &["rs"], &[], &[])
+        .expect("a test identity registers");
+    let mut host = ScriptingHost::new(&Dirs::none());
+    {
+        let mut ih = init_host!(ed);
+        host.eval_init(&init_path, 10_000, &mut ih, Default::default())
+    }
+    .expect("eval_init must succeed");
+    ed.scripting = Some(host);
+
+    type_cmd(&mut ed, ":go");
+
+    let bid = ed
+        .state
+        .buffers
+        .find_by_path(&AbsolutePath::canonicalize(&target).unwrap())
+        .expect("open-buffer! must have opened the link's target");
+    let buf = ed.state.buffers.get(bid);
+    assert_eq!(
+        buf.file().map(|paths| paths.typed().as_path()),
+        Some(link.as_path())
+    );
+    assert_eq!(buf.language, ed.state.config.languages.id_of("rust"));
+}
+
 /// `(open-buffer! path)` on a path that doesn't exist yet must open an empty
 /// new-file buffer, the same tolerance `:e` has (`host_impl::open_buffer`
-/// shares `Editor::resolve_buffer_path` / `Buffer::from_file_or_new` with
-/// `:e` for exactly this reason), not error out the way a hard
-/// `std::fs::canonicalize` would.
+/// shares `lifecycle::open_or_dedup_and_notify` with `:e` for this reason),
+/// not error out the way a hard `std::fs::canonicalize` would.
 #[test]
 fn steel_open_buffer_missing_path_opens_new_file() {
     let dir = tempfile::tempdir().unwrap();
@@ -393,7 +440,9 @@ fn steel_open_buffer_missing_path_opens_new_file() {
     let bid = ed
         .state
         .buffers
-        .find_by_path(&canonical_dir.join("not-yet-created.txt"))
+        .find_by_path(&AbsolutePath::rooted(
+            canonical_dir.join("not-yet-created.txt"),
+        ))
         .expect("open-buffer! must have opened a new-file buffer");
     assert!(ed.state.buffers.get(bid).is_new_file());
 }
@@ -443,7 +492,10 @@ fn buffer_opened_and_closed_in_one_eval_fires_neither_hook() {
 
     let canonical = target.canonicalize().unwrap();
     assert!(
-        ed.state.buffers.find_by_path(&canonical).is_none(),
+        ed.state
+            .buffers
+            .find_by_path(&AbsolutePath::rooted(&canonical))
+            .is_none(),
         "close-buffer! must have closed the just-opened buffer"
     );
 

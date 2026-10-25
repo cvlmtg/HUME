@@ -486,13 +486,18 @@ fn colon_w_path_updates_file_path_for_subsequent_writes() {
     let new_path = tmp_dir.path().join("subsequent.txt");
 
     let mut ed = editor_from("-[h]>ello\n");
-    // First :w with path: sets file_path and file_meta.
+    // First :w with path: the written file becomes the buffer's file.
     let cmd = format!(":w {}", new_path.display());
     for ch in cmd.chars() {
         ed.handle_key(key(ch));
     }
     ed.handle_key(key_enter());
-    assert!(ed.doc_mut().file_meta.is_some());
+    assert!(
+        ed.doc()
+            .file()
+            .and_then(crate::editor::buffer::BufferFile::file_meta)
+            .is_some()
+    );
 
     // Make dirty again and write without a path; should use the new path.
     ed.handle_key(key('i'));
@@ -516,12 +521,12 @@ fn colon_w_path_updates_file_path_for_subsequent_writes() {
 fn colon_w_path_on_read_only_buffer_exports_without_mutating_source() {
     // :w <path> on a read-only buffer is an export: the content lands on
     // disk at the new path, but the source buffer must not be touched:
-    // no mark_saved, no path/file_meta repoint, dirty state unchanged.
+    // no mark_saved, no file repoint, dirty state unchanged.
     // Without the `is_save_as` guard in write_file's save-as branch, every
     // :w <path> would go through mark_written_and_synced. is_dirty() below
     // would then be false and original_path would be replaced by new_path.
-    let (mut ed, original_path) = editor_with_file("-[h]>ello\n", "hello\n");
-    let original_path_buf = original_path.to_path_buf();
+    let (mut ed, _original_path) = editor_with_file("-[h]>ello\n", "hello\n");
+    let path_before = ed.doc().path().cloned();
     ed.handle_key(key('i'));
     ed.handle_key(key('x'));
     ed.handle_key(key_esc());
@@ -543,8 +548,8 @@ fn colon_w_path_on_read_only_buffer_exports_without_mutating_source() {
         "export must not mark the read-only source buffer saved"
     );
     assert_eq!(
-        ed.doc().path(),
-        Some(original_path_buf.as_path()),
+        ed.doc().path().cloned(),
+        path_before,
         "export must not repoint the source buffer's path"
     );
 }

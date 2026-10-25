@@ -24,7 +24,7 @@ fn awaits_last_callback(ed: &Editor, id: JobHandle) -> bool {
 }
 
 fn spawn_async(ed: &mut Editor, cmd: &str, args: Vec<String>, callback: SteelVal) -> JobHandle {
-    let cwd = ed.state.cwd.clone();
+    let cwd = ed.state.cwd.to_path_buf();
     EditorHostImpl::new(&mut ed.state, &mut ed.view).spawn_async(
         cmd,
         args,

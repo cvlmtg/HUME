@@ -12,7 +12,7 @@ fn path_completer_tilde_expands_for_lookup_keeps_literal_replacement() {
     std::fs::create_dir(home_dir.path().join("code")).unwrap();
 
     let (reg, store) = (CommandRegistry::with_defaults(), BufferStore::new());
-    let cwd = Path::new("/tmp");
+    let cwd = &AbsolutePath::rooted("/tmp");
     let langs = LanguageRegistry::new();
     let ctx = CompletionCtx {
         registry: &reg,
@@ -59,7 +59,7 @@ fn path_completer_dollar_var_expands_for_lookup() {
     std::fs::write(dir.path().join("main.rs"), b"").unwrap();
 
     let (reg, store) = (CommandRegistry::with_defaults(), BufferStore::new());
-    let cwd = Path::new("/tmp");
+    let cwd = &AbsolutePath::rooted("/tmp");
     let langs = LanguageRegistry::new();
     let ctx = CompletionCtx {
         registry: &reg,
@@ -100,7 +100,7 @@ fn path_completer_dirs_only_mode() {
     std::fs::create_dir(&subdir).unwrap();
     std::fs::write(&file, "x\n").unwrap();
 
-    let canonical = std::fs::canonicalize(dir.path()).unwrap();
+    let canonical = AbsolutePath::canonicalize(dir.path()).unwrap();
     let (reg, store) = (CommandRegistry::with_defaults(), BufferStore::new());
     let langs = LanguageRegistry::new();
     let ctx = CompletionCtx {
@@ -134,4 +134,26 @@ fn path_completer_dirs_only_mode() {
         all_names.contains(&"myfile.txt"),
         "complete_path must include files"
     );
+}
+
+/// A `..` after a symlink completes the directory `:e` would open from:
+/// read lexically, not the symlink target's parent.
+#[test]
+fn path_completer_resolves_dot_dot_after_a_symlink_lexically() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("a")).unwrap();
+    std::fs::create_dir_all(dir.path().join("b/c")).unwrap();
+    std::fs::write(dir.path().join("a/in_a.txt"), b"").unwrap();
+    std::fs::write(dir.path().join("b/in_b.txt"), b"").unwrap();
+    std::os::unix::fs::symlink(dir.path().join("b/c"), dir.path().join("a/link")).unwrap();
+
+    let (reg, store) = (CommandRegistry::with_defaults(), BufferStore::new());
+    let cwd = AbsolutePath::rooted(dir.path());
+    let ctx = ctx(&reg, &store, &cwd);
+    let input = "e a/link/../";
+    let (_, candidates) = complete_path(input, input.len(), &ctx);
+
+    let names: Vec<&str> = candidates.iter().map(|c| c.label.as_ref()).collect();
+    assert!(names.contains(&"in_a.txt"), "{names:?}");
+    assert!(!names.contains(&"in_b.txt"), "{names:?}");
 }

@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use super::*;
 use crate::editor::position_stores::DetachedStores;
 use crate::editor::tests::co;
@@ -873,55 +875,65 @@ fn yank_paste_undo() {
     assert_eq!(state(&d), "-[hell]>o\n");
 }
 
-// ── set_path invariant ────────────────────────────────────────────────────
+// ── file ────────────────────────────────────────────────────────────────
 
 #[test]
-fn set_path_accepts_paths_with_basename() {
+fn set_file_names_the_buffer_after_its_file() {
     let mut b = Buffer::at_start(BufferText::empty());
-    b.set_path(Some(PathBuf::from("/tmp/file.txt")));
+    b.set_file(Some(BufferFile::at("/tmp/file.txt")));
     assert_eq!(b.display_name(), "file.txt");
 }
 
 #[test]
-fn set_path_none_clears_path() {
+fn set_file_none_clears_the_file() {
     let mut b = Buffer::at_start(BufferText::empty());
-    b.set_path(Some(PathBuf::from("/tmp/file.txt")));
-    b.set_path(None);
-    assert!(b.path().is_none());
+    b.set_file(Some(BufferFile::at("/tmp/file.txt")));
+    b.set_file(None);
+    assert!(b.file().is_none());
     assert_eq!(b.display_name(), Buffer::SCRATCH_BUFFER_NAME);
 }
 
 #[test]
-fn set_path_derives_display_path() {
+fn display_path_is_the_typed_path_display_form() {
     let mut b = Buffer::at_start(BufferText::empty());
     assert!(b.display_path().is_none());
-    b.set_path(Some(PathBuf::from("/tmp/file.txt")));
+    let resolved = AbsolutePath::rooted("/real/file.txt");
+    let typed = AbsolutePath::rooted("/link/file.txt");
+    b.set_file(Some(
+        BufferFile::new_file(resolved.clone(), typed.clone()).unwrap(),
+    ));
+    assert_eq!(b.path(), Some(&resolved));
+    assert_eq!(b.file().map(BufferFile::typed), Some(&typed));
     assert_eq!(
         b.display_path(),
-        Some(hume_platform::path::display_form(Path::new("/tmp/file.txt")).as_str())
+        Some(hume_platform::path::display_form(&typed).as_str())
     );
 }
 
 #[test]
-fn set_path_none_clears_display_path() {
+fn set_file_none_clears_display_path() {
     let mut b = Buffer::at_start(BufferText::empty());
-    b.set_path(Some(PathBuf::from("/tmp/file.txt")));
-    b.set_path(None);
+    b.set_file(Some(BufferFile::at("/tmp/file.txt")));
+    b.set_file(None);
     assert!(b.display_path().is_none());
 }
 
 #[test]
-#[should_panic(expected = "path must have a basename")]
-fn set_path_rejects_root() {
-    let mut b = Buffer::at_start(BufferText::empty());
-    b.set_path(Some(PathBuf::from("/")));
+fn buffer_file_rejects_a_resolved_path_with_no_file_name() {
+    let Err(err) = BufferFile::new_file(AbsolutePath::rooted("/"), AbsolutePath::rooted("/a.txt"))
+    else {
+        panic!("a nameless resolved path is rejected");
+    };
+    assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
 }
 
 #[test]
-#[should_panic(expected = "path must have a basename")]
-fn set_path_rejects_dotdot() {
-    let mut b = Buffer::at_start(BufferText::empty());
-    b.set_path(Some(PathBuf::from("..")));
+fn buffer_file_rejects_a_typed_path_with_no_file_name() {
+    let Err(err) = BufferFile::new_file(AbsolutePath::rooted("/a.txt"), AbsolutePath::rooted("/"))
+    else {
+        panic!("a nameless typed path is rejected");
+    };
+    assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
 }
 
 // ── generation ──────────────────────────────────────────────────────────────
@@ -1178,9 +1190,9 @@ fn serialized_restores_crlf_line_endings() {
 
 #[test]
 fn opening_a_file_with_a_dump_records_the_pending_dump() {
-    let (dir, path) = crate::editor::tests::file_with_dump(Some("disk\n"), Some("crashed\n"));
+    let (_dir, path) = crate::editor::tests::file_with_dump(Some("disk\n"), Some("crashed\n"));
 
-    let buf = Buffer::from_file_or_new(&path, dir.path()).unwrap();
+    let buf = Buffer::from_file_or_new(FileTarget::new(AbsolutePath::rooted(&path))).unwrap();
 
     assert_eq!(
         buf.pending_dump.as_deref().and_then(Path::file_name),
@@ -1190,9 +1202,9 @@ fn opening_a_file_with_a_dump_records_the_pending_dump() {
 
 #[test]
 fn opening_a_file_without_a_dump_has_no_pending_dump() {
-    let (dir, path) = crate::editor::tests::file_with_dump(Some("disk\n"), None);
+    let (_dir, path) = crate::editor::tests::file_with_dump(Some("disk\n"), None);
 
-    let buf = Buffer::from_file_or_new(&path, dir.path()).unwrap();
+    let buf = Buffer::from_file_or_new(FileTarget::new(AbsolutePath::rooted(&path))).unwrap();
 
     assert_eq!(buf.pending_dump, None);
 }
@@ -1203,7 +1215,7 @@ fn opening_a_missing_file_with_a_dump_records_the_pending_dump() {
     let path = dir.path().join("gone.txt");
     std::fs::write(dir.path().join("gone.txt.dump"), "crashed\n").unwrap();
 
-    let buf = Buffer::from_file_or_new(&path, dir.path()).unwrap();
+    let buf = Buffer::from_file_or_new(FileTarget::new(AbsolutePath::rooted(&path))).unwrap();
 
     assert!(buf.is_new_file());
     assert_eq!(
@@ -1216,7 +1228,7 @@ fn opening_a_missing_file_with_a_dump_records_the_pending_dump() {
 fn rereading_a_file_has_no_pending_dump() {
     let (_dir, path) = crate::editor::tests::file_with_dump(Some("disk\n"), Some("crashed\n"));
 
-    let buf = Buffer::from_file(&path).unwrap();
+    let buf = Buffer::from_file(&AbsolutePath::rooted(&path)).unwrap();
 
     assert_eq!(buf.pending_dump, None);
 }

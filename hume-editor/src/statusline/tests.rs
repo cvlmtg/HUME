@@ -700,7 +700,7 @@ fn statusline_display_path_real_file_still_shows_path() {
     // The label fallback must not shadow a real path.
     //
     // Expectation is hand-built, not `display_form(path)`, since that would be
-    // circular with `Buffer::set_path`, which derives `display_path` by
+    // circular with `BufferFile::new`, which derives the display path by
     // calling the very same function. `/some/absolute/path/file.rs` has no
     // `$HOME` prefix and no Windows verbatim prefix, so `display_form` is a
     // no-op on it and it must come back byte-identical.

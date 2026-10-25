@@ -247,18 +247,15 @@ fn reload_config_ends_insert_session_on_focused_pane() {
 /// `.expect()`.
 #[test]
 fn reload_buffer_in_place_ends_insert_session_on_focused_pane() {
-    let mut ed = editor_from("-[a]>bc\n");
+    let (mut ed, path) = editor_with_file("-[a]>bc\n", "abc\n");
     let bid = ed.focused_buffer_id();
 
     ed.feed_key(key('i'));
     type_chars(&mut ed, "Q");
     assert_eq!(ed.state.mode(), Mode::Insert, "sanity: Insert is open");
 
-    ed.reload_buffer_in_place(
-        FocusedPane::current(&ed.view),
-        ReplaceSource::disk(Buffer::at_start(BufferText::from("xyz\n"))),
-    )
-    .expect("the buffer is not held");
+    std::fs::write(&path, "xyz\n").unwrap();
+    ed.execute_typed("e!", None).unwrap();
 
     assert_eq!(
         ed.state.mode(),

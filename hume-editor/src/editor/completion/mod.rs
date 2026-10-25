@@ -12,7 +12,7 @@
 //! - `item.rs`: the item type both targets share; `simple.rs`/`path.rs`/
 //!   `set.rs`: the native minibuffer sources.
 
-use std::path::Path;
+use hume_platform::path::AbsolutePath;
 
 use crate::editor::buffer::store::BufferStore;
 use crate::editor::registry::CommandRegistry;
@@ -48,7 +48,7 @@ pub(in crate::editor) use simple::{BUFFER_NAME_SOURCE, COMMAND_SOURCE, THEME_SOU
 pub(in crate::editor) struct CompletionCtx<'a> {
     pub registry: &'a CommandRegistry,
     pub buffers: &'a BufferStore,
-    pub cwd: &'a Path,
+    pub cwd: &'a AbsolutePath,
     pub languages: &'a LanguageRegistry,
     pub dirs: &'a hume_platform::dirs::Dirs,
 }
@@ -160,7 +160,6 @@ mod testing {
     use hume_editing::text::BufferText;
     use hume_engine::pipeline::{BufferId, EngineView};
     use hume_engine::theme::Theme;
-    use std::path::PathBuf;
 
     pub(in crate::editor::completion) fn make_ctx_parts() -> (CommandRegistry, BufferStore, TempDir)
     {
@@ -173,7 +172,7 @@ mod testing {
     pub(in crate::editor::completion) fn ctx<'a>(
         registry: &'a CommandRegistry,
         buffers: &'a BufferStore,
-        cwd: &'a Path,
+        cwd: &'a AbsolutePath,
     ) -> CompletionCtx<'a> {
         ctx_with(registry, buffers, cwd, empty_langs())
     }
@@ -181,7 +180,7 @@ mod testing {
     pub(in crate::editor::completion) fn ctx_with<'a>(
         registry: &'a CommandRegistry,
         buffers: &'a BufferStore,
-        cwd: &'a Path,
+        cwd: &'a AbsolutePath,
         languages: &'a LanguageRegistry,
     ) -> CompletionCtx<'a> {
         static NO_DIRS: hume_platform::dirs::Dirs = hume_platform::dirs::Dirs::none();
@@ -217,7 +216,7 @@ mod testing {
 
     pub(in crate::editor::completion) fn buf_with_path(path: &str) -> Buffer {
         let mut b = make_buf();
-        b.set_path(Some(PathBuf::from(path)));
+        b.set_file(Some(crate::editor::buffer::BufferFile::at(path)));
         b
     }
 }

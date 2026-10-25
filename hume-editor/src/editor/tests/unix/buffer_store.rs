@@ -10,7 +10,7 @@ fn p6_edit_opens_new_buffer() {
 
     let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("scratch\n")));
     let initial_bid = ed.focused_buffer_id();
-    let canonical = std::fs::canonicalize(&path).unwrap();
+    let canonical = AbsolutePath::canonicalize(&path).unwrap();
     let result = ed.execute_typed("e", Some(path.to_str().unwrap()));
     assert!(result.is_ok(), ":e should succeed for readable file");
     assert_ne!(
@@ -20,7 +20,7 @@ fn p6_edit_opens_new_buffer() {
     );
     assert_eq!(ed.doc().text().to_string(), "file content\n");
     // Path stored correctly.
-    assert_eq!(ed.doc().path(), Some(canonical.as_path()));
+    assert_eq!(ed.doc().path(), Some(&canonical));
 }
 
 /// `:e path` deduplicates: switching to an already-open file doesn't create a new buffer.

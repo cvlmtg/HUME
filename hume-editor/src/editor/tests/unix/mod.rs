@@ -24,6 +24,18 @@ use hume_platform::wake::no_op_wake;
 // single drain call. A background thread's result can land on any frame,
 // so CI scheduling jitter would flake a "drain once and assert" test.
 
+/// `dir/a/link`, a symlink to `dir/b/c`: `a/link/..` names `dir/a` read
+/// lexically, the way `:e` reads it, and `dir/b` resolved by the OS.
+fn dir_with_a_link_into_a_sibling() -> tempfile::TempDir {
+    use std::os::unix::fs::symlink;
+
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("a")).unwrap();
+    std::fs::create_dir_all(dir.path().join("b/c")).unwrap();
+    symlink(dir.path().join("b/c"), dir.path().join("a/link")).unwrap();
+    dir
+}
+
 /// Runs `step` in a bounded loop until `until` returns true.
 fn poll_until(
     ed: &mut Editor,
@@ -652,6 +664,7 @@ mod lsp_actions;
 mod lsp_bridge;
 mod lsp_completion_feature;
 mod lsp_diagnostic_signs;
+mod lsp_diagnostics_ingest;
 mod lsp_diagnostics_inline;
 mod lsp_diagnostics_nav;
 mod lsp_format;

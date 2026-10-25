@@ -511,7 +511,7 @@ fn reload_config_does_not_double_fire_buffer_open_for_a_plugin_opened_buffer() {
     let companion_bid = ed
         .state
         .buffers
-        .find_by_path(&companion.canonicalize().unwrap())
+        .find_by_path(&AbsolutePath::canonicalize(&companion).unwrap())
         .expect("the plugin-opened buffer must be open");
     assert_eq!(
         ed.state.buffers.get(companion_bid).overrides.indent_width,

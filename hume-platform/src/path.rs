@@ -13,7 +13,10 @@
 use std::borrow::Cow;
 use std::path::{Component, Path, PathBuf};
 
+mod absolute;
 pub mod programs;
+
+pub use absolute::AbsolutePath;
 
 // ── Path expansion ────────────────────────────────────────────────────────────
 

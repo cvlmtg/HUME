@@ -1,9 +1,10 @@
 //! Buffer/pane enumeration, reads, lifecycle, and viewport geometry.
 
 use std::ffi::OsString;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use hume_engine::pipeline::BufferId;
+use hume_platform::path::AbsolutePath;
 
 use crate::types::PaneHandle;
 
@@ -93,7 +94,7 @@ pub trait BufferHost {
 
     // ── Buffer reads (None ⇒ unknown/stale id) ──────────────────────────────
     fn buffer_exists(&self, id: BufferId) -> bool;
-    fn buffer_path(&self, id: BufferId) -> Option<PathBuf>;
+    fn buffer_path(&self, id: BufferId) -> Option<AbsolutePath>;
     /// Fully display-ready path string in `form` (UNC-stripped; absolute,
     /// lexically normalized and `~`-collapsed unless relative): print
     /// verbatim. `None` for scratch/synthetic buffers, same as `buffer_path`.
@@ -106,14 +107,15 @@ pub trait BufferHost {
     // ── Working directory and search path ───────────────────────────────────
     /// The editor's working directory: the base for relative paths and the
     /// default cwd of every spawned child. Backs `(cwd)`.
-    fn cwd(&self) -> PathBuf;
+    fn cwd(&self) -> AbsolutePath;
     /// The `PATH` every spawned child gets and `which` searches
     /// (`Dirs::search_path`); `None` when unset.
     fn search_path(&self) -> Option<OsString>;
-    /// Moves the editor's working directory to `path` (a relative `path` joins
-    /// onto the current one) and returns the new directory. The same
-    /// operation as `:cd`. `Err` when `path` is not a directory.
-    fn set_cwd(&mut self, path: &Path) -> Result<PathBuf, String>;
+    /// Moves the editor's working directory to `path` (a relative `path`
+    /// resolves against the current one the way `:e` resolves it) and
+    /// returns the new directory. The same operation as `:cd`. `Err` when
+    /// `path` is not a directory.
+    fn set_cwd(&mut self, path: &Path) -> Result<AbsolutePath, String>;
 
     // ── Buffer lifecycle ─────────────────────────────────────────────────────
     /// Open a file at `path`, deduplicating if already open.

@@ -82,8 +82,8 @@ fn write_file_new_through_dangling_symlink_creates_target_leaves_link() {
     );
     assert_eq!(std::fs::read_to_string(&target).unwrap(), "hello\n");
     assert_eq!(
-        meta.resolved_path(),
-        std::fs::canonicalize(&target).unwrap(),
+        meta.resolved_path().as_path(),
+        crate::path::strip_unc_prefix(std::fs::canonicalize(&target).unwrap()),
         "FileMeta must key on the resolved target, not the link"
     );
     assert!(
@@ -144,7 +144,10 @@ fn write_file_new_on_plain_missing_path_is_unaffected() {
     let meta = write_file_new("hi\n", &path).unwrap();
 
     assert_eq!(std::fs::read_to_string(&path).unwrap(), "hi\n");
-    assert_eq!(meta.resolved_path(), std::fs::canonicalize(&path).unwrap());
+    assert_eq!(
+        meta.resolved_path().as_path(),
+        crate::path::strip_unc_prefix(std::fs::canonicalize(&path).unwrap())
+    );
 }
 
 #[test]

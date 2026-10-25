@@ -787,7 +787,7 @@ fn tab_on_pipe_line(
     ));
     let mut ed = editor_from("-[abc]>\n");
     load_with_init_in_runtime(&mut ed, runtime.path(), data.path(), &init);
-    ed.state.cwd = dir.to_path_buf();
+    ed.state.cwd = AbsolutePath::rooted(dir);
     ed.handle_key(key('|'));
     for ch in typed.chars() {
         ed.handle_key(key(ch));

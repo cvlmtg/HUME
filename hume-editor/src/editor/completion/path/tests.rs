@@ -1,5 +1,3 @@
-use std::path::Path;
-
 use super::super::testing::*;
 use super::*;
 use crate::editor::buffer::store::BufferStore;
@@ -14,7 +12,8 @@ fn path_completer_lists_directory() {
     std::fs::create_dir(dir.path().join("gamma")).unwrap();
 
     let (reg, store) = (CommandRegistry::with_defaults(), BufferStore::new());
-    let ctx = ctx(&reg, &store, dir.path());
+    let cwd = AbsolutePath::rooted(dir.path());
+    let ctx = ctx(&reg, &store, &cwd);
     let input = "e ";
     let (span, candidates) = complete_path(input, input.len(), &ctx);
 
@@ -32,7 +31,8 @@ fn path_completer_tags_directories_with_folder_kind_files_with_none() {
     std::fs::create_dir(dir.path().join("subdir")).unwrap();
 
     let (reg, store) = (CommandRegistry::with_defaults(), BufferStore::new());
-    let ctx = ctx(&reg, &store, dir.path());
+    let cwd = AbsolutePath::rooted(dir.path());
+    let ctx = ctx(&reg, &store, &cwd);
     let input = "e ";
     let (_, candidates) = complete_path(input, input.len(), &ctx);
 
@@ -55,7 +55,8 @@ fn path_completer_filters_by_prefix() {
     std::fs::write(dir.path().join("bar.txt"), b"").unwrap();
 
     let (reg, store) = (CommandRegistry::with_defaults(), BufferStore::new());
-    let ctx = ctx(&reg, &store, dir.path());
+    let cwd = AbsolutePath::rooted(dir.path());
+    let ctx = ctx(&reg, &store, &cwd);
     let input = "e foo";
     let (_, candidates) = complete_path(input, input.len(), &ctx);
 
@@ -70,7 +71,8 @@ fn path_completer_excludes_hidden_unless_dot_prefix() {
     std::fs::write(dir.path().join("visible"), b"").unwrap();
 
     let (reg, store) = (CommandRegistry::with_defaults(), BufferStore::new());
-    let ctx = ctx(&reg, &store, dir.path());
+    let cwd = AbsolutePath::rooted(dir.path());
+    let ctx = ctx(&reg, &store, &cwd);
 
     // Without dot prefix: hidden excluded.
     let (_, candidates) = complete_path("e ", 2, &ctx);
@@ -91,7 +93,8 @@ fn path_completer_multi_segment() {
     std::fs::write(sub.join("file.rs"), b"").unwrap();
 
     let (reg, store) = (CommandRegistry::with_defaults(), BufferStore::new());
-    let ctx = ctx(&reg, &store, dir.path());
+    let cwd = AbsolutePath::rooted(dir.path());
+    let ctx = ctx(&reg, &store, &cwd);
 
     // Completing "sub/f": should find "sub/file.rs".
     let input = "e sub/f";
@@ -103,7 +106,7 @@ fn path_completer_multi_segment() {
 #[test]
 fn path_completer_missing_dir_returns_empty() {
     let (reg, store) = (CommandRegistry::with_defaults(), BufferStore::new());
-    let cwd = Path::new("/nonexistent/path/that/does/not/exist");
+    let cwd = &AbsolutePath::rooted("/nonexistent/path/that/does/not/exist");
     let langs = LanguageRegistry::new();
     let ctx = CompletionCtx {
         registry: &reg,
@@ -123,7 +126,8 @@ fn path_completer_sorted_ascending() {
         std::fs::write(dir.path().join(name), b"").unwrap();
     }
     let (reg, store) = (CommandRegistry::with_defaults(), BufferStore::new());
-    let ctx = ctx(&reg, &store, dir.path());
+    let cwd = AbsolutePath::rooted(dir.path());
+    let ctx = ctx(&reg, &store, &cwd);
     let (_, candidates) = complete_path("e ", 2, &ctx);
     let names: Vec<&str> = candidates.iter().map(|c| c.label.as_ref()).collect();
     let mut sorted = names.clone();

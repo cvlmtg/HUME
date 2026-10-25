@@ -21,7 +21,7 @@ use hume_engine::pipeline::{
 };
 use hume_engine::types::EditorMode;
 
-use super::buffer::Buffer;
+use super::buffer::{Buffer, BufferFile};
 use super::{Editor, EditorState};
 
 /// Project a pane's selections into its engine mirror, in the model's start
@@ -716,10 +716,10 @@ impl EditorState {
 
     /// Hash of everything [`Self::sync_tabline_view`]'s rebuild depends on:
     /// whether the tab bar is shown at all, and (while it is) the tab
-    /// count/order, each tab's `(id, pane, buffer, dirty, path)`, and the
-    /// bar's own geometry (a resize must still trigger a rebuild even when
-    /// the tab list itself is unchanged, since `scroll` depends on width
-    /// too). `buf.path()` is hashed rather than `buf.display_name()`:
+    /// count/order, each tab's `(id, pane, buffer, dirty, file name)`, and
+    /// the bar's own geometry (a resize must still trigger a rebuild even
+    /// when the tab list itself is unchanged, since `scroll` depends on
+    /// width too). The file name is hashed rather than `buf.display_name()`:
     /// `display_name()` allocates a `String`, defeating the point of a
     /// cheap signature, and the two agree on every rename/attach that
     /// actually changes what's drawn (a buffer's dirty marker is covered
@@ -743,7 +743,7 @@ impl EditorState {
                 bid.hash(&mut hasher);
                 let buf = self.buffers.get(bid);
                 self.has_unsaved_changes(bid).hash(&mut hasher);
-                buf.path().hash(&mut hasher);
+                buf.file().map(BufferFile::file_name).hash(&mut hasher);
             }
         }
         hasher.finish()

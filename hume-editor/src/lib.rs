@@ -56,7 +56,7 @@ pub fn run_keys(
     keys: &str,
     output: std::path::PathBuf,
     config: cli::ConfigSource,
-    cwd: std::path::PathBuf,
+    cwd: hume_platform::path::AbsolutePath,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let parsed =
         hume_scripting::parse_key_stream(keys).map_err(|e| format!("invalid key stream: {e}"))?;
@@ -140,7 +140,7 @@ pub fn run_keys(
 pub fn run(
     files: Vec<cli::FileArg>,
     config: cli::ConfigSource,
-    cwd: std::path::PathBuf,
+    cwd: hume_platform::path::AbsolutePath,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let shared = hume_platform::terminal::create(&cwd)?;
 

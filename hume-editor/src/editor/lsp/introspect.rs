@@ -6,10 +6,10 @@
 
 use hume_engine::pipeline::BufferId;
 use hume_lsp::backend::ServerId;
+use hume_platform::path::AbsolutePath;
 
 use super::LspState;
 use super::features::provider;
-use crate::editor::Editor;
 use crate::editor::EditorState;
 use hume_scripting::{CapabilityQuery, ListEntry, LspFeature, ServerName};
 
@@ -246,8 +246,8 @@ pub(crate) fn spinner_frame(state: &EditorState) -> usize {
 /// Each location is decoded once through [`hume_lsp::location::decode_location`],
 /// the same decoder `goto-location!` jumps with, so path, line, and column all
 /// describe one position. A malformed location aborts the whole batch. The
-/// path shown is the URI's own, not [`Editor::resolve_buffer_path`]'s
-/// canonical form: the row echoes what the server sent. Each handle comes
+/// path shown is the URI's own, not its canonical form: the row echoes what
+/// the server sent. Each handle comes
 /// paired with its producing server's encoding, so a batch mixing responses
 /// decodes correctly.
 ///
@@ -294,9 +294,11 @@ pub(in crate::editor) fn location_places(
             Err(e) => return Err(cannot_open(e)),
         };
         let display_path = hume_lsp::uri::uri_to_display_string(&wl.uri).map_err(cannot_open)?;
+        // A Windows drive-relative path cannot be made absolute and names no buffer.
         let open_bid = *open_buffer_cache.entry(path).or_insert_with_key(|path| {
-            let resolved = Editor::resolve_buffer_path(path, &state.cwd);
-            state.buffers.find_by_path(&resolved)
+            AbsolutePath::from_typed(path, &state.cwd)
+                .ok()
+                .and_then(|typed| state.buffers.find_by_path(&typed.resolve_existing()))
         });
 
         let grapheme_col_or_wire = match open_bid {

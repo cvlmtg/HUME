@@ -611,7 +611,6 @@ fn reparse_reattaches_after_shrink_under_cap() {
 /// fail if `detect_and_set_language` incorrectly cleared the language on reload.
 #[test]
 fn reload_buffer_in_place_keeps_syntax_highlighting() {
-    use crate::editor::buffer::Buffer;
     use hume_editing::text::BufferText;
 
     require_grammars(&["json"]);
@@ -624,7 +623,9 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
     ed.state
         .buffers
         .get_mut(bid)
-        .set_path(Some(std::path::PathBuf::from("/tmp/data.json")));
+        .set_file(Some(crate::editor::buffer::BufferFile::at(
+            "/tmp/data.json",
+        )));
 
     ed.state
         .config
@@ -659,11 +660,9 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
     // a stale tree (not rebuilt) would report end_byte() == 9, not 10.
     let new_text = "[1, 2, 3]\n";
     let new_byte_len = new_text.len();
-    let mut replacement = Buffer::at_start(BufferText::from(new_text));
-    replacement.set_path(Some(std::path::PathBuf::from("/tmp/data.json")));
     ed.reload_buffer_in_place(
         FocusedPane::current(&ed.view),
-        ReplaceSource::disk(replacement),
+        ReplaceSource::Dump(BufferText::from(new_text)),
     )
     .expect("the buffer is not held");
     assert!(
@@ -707,11 +706,9 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
     // A second reload with byte-identical content: `replace_text_recorded`'s
     // `forward.is_identity()` branch returns `false` (no mutation) without
     // touching the text version, and the tree installed above stays.
-    let mut identical = Buffer::at_start(BufferText::from(new_text));
-    identical.set_path(Some(std::path::PathBuf::from("/tmp/data.json")));
     ed.reload_buffer_in_place(
         FocusedPane::current(&ed.view),
-        ReplaceSource::disk(identical),
+        ReplaceSource::Dump(BufferText::from(new_text)),
     )
     .expect("the buffer is not held");
     ed.reparse_stale_buffers();
@@ -894,7 +891,6 @@ fn rust_function_highlight_snapshot() {
     // Cursor on the trailing `\n` so no token cell is reverse-video in the snapshot.
     let mut ed = editor_from("// hi\nfn main() {\n    let x: u32 = 1;\n}-[\n]>");
     ed.view.theme = crate::testing::build_snapshot_theme();
-    ed.doc_mut().set_path(Some(PathBuf::from("test.rs")));
 
     let bid = ed.focused_buffer_id();
     ed.state

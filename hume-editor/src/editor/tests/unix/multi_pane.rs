@@ -28,7 +28,9 @@ fn vsplit_path_opens_that_buffer() {
     // canonicalize before comparing against the stored buffer path.
     let canonical = std::fs::canonicalize(&path).unwrap();
     assert_eq!(
-        ed.state.buffers.find_by_path(&canonical),
+        ed.state
+            .buffers
+            .find_by_path(&AbsolutePath::rooted(&canonical)),
         Some(bid_b),
         "new pane's buffer resolves to the opened file"
     );
@@ -54,7 +56,7 @@ fn vsplit_path_opens_that_buffer() {
 #[test]
 fn split_missing_file_opens_new_file_with_raw_typed_display_path() {
     let home = hume_platform::dirs::home_dir().expect("HOME must be set for this test");
-    // `resolve_buffer_path` canonicalizes the *parent* dir when the file
+    // `AbsolutePath::resolve_existing` canonicalizes the *parent* dir when the file
     // itself doesn't exist, so canonicalize `home` here too, or this
     // assertion can fail on a platform/CI layout where $HOME is itself a
     // symlink.
@@ -75,7 +77,7 @@ fn split_missing_file_opens_new_file_with_raw_typed_display_path() {
         "display path must be the raw typed (collapsed) form"
     );
     assert_eq!(
-        buf.path(),
+        buf.path().map(AbsolutePath::as_path),
         Some(canonical_home.join("no-such-file-xyz.txt").as_path()),
         "path must resolve against the expanded $HOME, even though display doesn't show it"
     );
@@ -107,7 +109,7 @@ fn split_directory_path_still_errors_with_raw_typed_path() {
 fn vsplit_missing_file_opens_new_file_with_raw_typed_display_path() {
     let home = hume_platform::dirs::home_dir().expect("HOME must be set for this test");
     // See `split_missing_file_opens_new_file_with_raw_typed_display_path`'s
-    // comment: `resolve_buffer_path` canonicalizes the parent dir.
+    // comment: `AbsolutePath::resolve_existing` canonicalizes the parent dir.
     let canonical_home = std::fs::canonicalize(&home).unwrap();
     let mut ed = editor_from("-[h]>ello\n");
     let bid_a = ed.focused_buffer_id();
@@ -125,7 +127,7 @@ fn vsplit_missing_file_opens_new_file_with_raw_typed_display_path() {
         "display path must be the raw typed (collapsed) form"
     );
     assert_eq!(
-        buf.path(),
+        buf.path().map(AbsolutePath::as_path),
         Some(canonical_home.join("no-such-file-xyz.txt").as_path()),
         "path must resolve against the expanded $HOME, even though display doesn't show it"
     );

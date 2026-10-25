@@ -114,7 +114,7 @@ fn ctrl_space_in_a_buffer_with_no_file_sends_no_request() {
         setup_cursor_at_start(tmp.path(), FOO, full_completion_caps(), |backend, _sid| {
             backend.respond_to("textDocument/completion", serde_json::json!([]));
         });
-    ed.doc_mut().set_path(None);
+    ed.doc_mut().set_file(None);
 
     ed.feed_key(key('i'));
     ed.settle();

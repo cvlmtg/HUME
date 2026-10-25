@@ -1,11 +1,10 @@
 use std::io;
-use std::path::PathBuf;
 
 use hume_editing::text::BufferText;
 use hume_engine::pipeline::BufferId;
-use hume_platform::io::FileMeta;
+use hume_platform::path::AbsolutePath;
 
-use crate::editor::buffer::{Buffer, ViewLabel};
+use crate::editor::buffer::{Buffer, BufferFile, ViewLabel};
 use crate::editor::commands::FocusedPane;
 use crate::editor::event::EditorEvent;
 use crate::editor::pipe_run::PipeRunning;
@@ -17,38 +16,29 @@ use crate::editor::{Editor, EditorState, Severity};
 /// [`Editor::reload_buffer_in_place`].
 pub(in crate::editor) enum ReplaceSource {
     /// A fresh read of the buffer's file. The buffer matches disk afterwards
-    /// and takes the read's file metadata, so save-time permission and
-    /// ownership checks see the current on-disk values.
-    Disk {
-        text: BufferText,
-        file_meta: Option<FileMeta>,
-    },
+    /// and takes `file`, the file the read resolved, so save-time permission
+    /// and ownership checks see the current on-disk values.
+    Disk { text: BufferText, file: BufferFile },
     /// The text of a crash dump. The buffer keeps its file metadata and disk
     /// state and reads as dirty.
     Dump(BufferText),
 }
 
-impl ReplaceSource {
-    /// The text and file metadata of `read`, a buffer freshly read from disk.
-    pub(in crate::editor) fn disk(mut read: Buffer) -> Self {
-        Self::Disk {
-            text: read.text().clone(),
-            file_meta: read.file_meta.take(),
-        }
-    }
-}
-
 impl EditorState {
-    /// Moves the working directory to `path`; a relative `path` joins onto the
-    /// current one. Canonicalizes and rejects non-directories.
+    /// Moves the working directory to `path`; a relative `path` resolves
+    /// against the current one the way `:e` resolves it. Canonicalizes and
+    /// rejects non-directories.
     ///
     /// `:cd` and `(set-cwd! …)` both land here. The process cwd moves too, so
     /// Steel's filesystem primitives and spawned programs resolve a relative
     /// path against the same directory as HUME; when it cannot move, neither
     /// does the editor's. Unit tests skip that call so they cannot race each
     /// other over it.
-    pub(in crate::editor) fn set_cwd(&mut self, path: &std::path::Path) -> io::Result<PathBuf> {
-        let canonical = std::fs::canonicalize(self.cwd.join(path))?;
+    pub(in crate::editor) fn set_cwd(
+        &mut self,
+        path: &std::path::Path,
+    ) -> io::Result<AbsolutePath> {
+        let canonical = AbsolutePath::canonicalize(&AbsolutePath::from_typed(path, &self.cwd)?)?;
         if !canonical.is_dir() {
             return Err(io::Error::new(
                 io::ErrorKind::NotADirectory,
@@ -65,56 +55,18 @@ impl EditorState {
 impl Editor {
     // ── Buffer choke-points ───────────────────────────────────────────────────
 
-    /// Resolve a typed path to the canonical form used as buffer identity
-    /// (`BufferStore::find_by_path`) and, on save, as `FileMeta::resolved_path`.
-    ///
-    /// Canonicalizing the whole path requires the file to exist. When it
-    /// doesn't, canonicalize the parent instead and re-append the basename:
-    /// this still resolves symlinks in the parent chain (e.g. `/tmp` →
-    /// `/private/tmp` on macOS), so a new-file buffer opened via
-    /// `/tmp/x.txt` keys identically to one opened via its canonical form,
-    /// and to the `FileMeta` `:w` produces once the file is written. Falls
-    /// back to the lexically-normalized path only when the parent doesn't
-    /// exist either (nested missing directories); `open_or_dedup`'s
-    /// `NotFound` branch still opens the buffer; only identity across
-    /// re-typed forms is imprecise in that case.
-    ///
-    /// An associated function, not a `&self` method: `Editor::open` needs it
-    /// during construction, before `self` exists, passing its local
-    /// `startup_cwd` instead of `self.state.cwd`.
-    pub(in crate::editor) fn resolve_buffer_path(
-        typed: &std::path::Path,
-        cwd: &std::path::Path,
-    ) -> PathBuf {
-        let lexical = hume_platform::path::absolute_unresolved(typed, cwd);
-        if let Ok(canonical) = std::fs::canonicalize(&lexical) {
-            return canonical;
+    /// Binds `bid` to `file`. A buffer whose resolved path changes is a
+    /// different document to its language servers: the reconcile closes it
+    /// under the old URI and reopens it under the new one, keeping each
+    /// instance, so `didSave` afterwards names a document every attached
+    /// server has open.
+    pub(in crate::editor) fn set_buffer_file(&mut self, bid: BufferId, file: BufferFile) {
+        let buf = self.state.buffers.get_mut(bid);
+        let changed = buf.path() != Some(file.resolved());
+        buf.set_file(Some(file));
+        if changed {
+            self.state.lsp_reconcile_buffer(&self.view, bid);
         }
-        match (lexical.parent(), lexical.file_name()) {
-            (Some(parent), Some(name)) => std::fs::canonicalize(parent)
-                .map(|p| p.join(name))
-                .unwrap_or(lexical),
-            _ => lexical,
-        }
-    }
-
-    /// Dedup-open a resolved path: returns `(id, false)` if already open,
-    /// `(id, true)` if newly opened and queued for its open announcement.
-    ///
-    /// `resolved` is canonical when the file exists, or the best-effort form
-    /// [`Self::resolve_buffer_path`] produces when it doesn't (parent canonicalized,
-    /// basename appended lexically). `find_by_path` compares whichever form
-    /// was stored, so dedup still works once the file is later created and
-    /// reopened via its now-canonicalizable path.
-    ///
-    /// Thin wrapper over [`lifecycle::open_or_dedup_and_notify`], where the
-    /// dedup-and-missing-file logic lives so Steel's `open-buffer!` and LSP
-    /// goto/workspace-edit share it too.
-    pub(in crate::editor) fn open_or_dedup(
-        &mut self,
-        resolved: &std::path::Path,
-    ) -> std::io::Result<(BufferId, bool)> {
-        lifecycle::open_or_dedup_and_notify(&mut self.view, &mut self.state, resolved)
     }
 
     /// `{name} [new file]`, the message reported when a newly opened `buf`
@@ -153,26 +105,21 @@ impl Editor {
 
     /// Resolve a path argument to an open buffer, opening the file if it isn't
     /// already open: reading it if it exists, or opening an empty
-    /// [`Buffer::new_file`] bound to the path if it doesn't (see
-    /// `resolve_buffer_path`). Shared sequence: `expand` →
-    /// `absolute_unresolved` (typed path) → `resolve_buffer_path` →
-    /// `open_or_dedup` → `set_typed_path` if new (overwriting
-    /// `Buffer::from_file`'s canonical default with the typed form).
-    /// Errors propagate as raw `io::Error`; callers format with whichever path
-    /// string suits their reporting.
+    /// [`Buffer::new_file`] bound to the path if it doesn't. The argument is
+    /// `expand`ed, then opened through [`lifecycle::open_or_dedup_and_notify`].
+    /// Errors propagate as raw
+    /// `io::Error`; callers format with whichever path string suits their
+    /// reporting.
     pub(in crate::editor) fn resolve_open_path(
         &mut self,
         path_str: &str,
     ) -> io::Result<(BufferId, bool)> {
         let expanded = hume_platform::path::expand(path_str);
-        let path = std::path::Path::new(expanded.as_ref());
-        let typed = hume_platform::path::absolute_unresolved(path, &self.state.cwd);
-        let resolved = Self::resolve_buffer_path(path, &self.state.cwd);
-        let (bid, is_new) = self.open_or_dedup(&resolved)?;
-        if is_new {
-            self.state.buffers.get_mut(bid).set_typed_path(Some(typed));
-        }
-        Ok((bid, is_new))
+        lifecycle::open_or_dedup_and_notify(
+            &mut self.view,
+            &mut self.state,
+            std::path::Path::new(expanded.as_ref()),
+        )
     }
 
     fn try_open_extra(&mut self, path: &std::path::Path) -> io::Result<(BufferId, bool)> {
@@ -243,15 +190,20 @@ impl Editor {
 
         let (buffers, mut stores) = self.state.edit_parts();
         let buf = buffers.get_mut(id);
-        let mutated = match source {
-            ReplaceSource::Disk { text, file_meta } => {
+        let (mutated, read_file) = match source {
+            ReplaceSource::Disk { text, file } => {
                 let mutated = buf.replace_text_recorded(id, &mut stores, text, fp.pid());
                 buf.mark_saved();
-                buf.file_meta = file_meta;
-                mutated
+                (mutated, Some(file))
             }
-            ReplaceSource::Dump(text) => buf.replace_text_recorded(id, &mut stores, text, fp.pid()),
+            ReplaceSource::Dump(text) => (
+                buf.replace_text_recorded(id, &mut stores, text, fp.pid()),
+                None,
+            ),
         };
+        if let Some(file) = read_file {
+            self.set_buffer_file(id, file);
+        }
         // The replacement went through `install` as a line-diff change, so
         // the buffer's servers get it as an ordinary queued `didChange`.
         // Everything below discards state computed against the replaced

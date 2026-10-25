@@ -6,6 +6,7 @@ use super::{
 };
 use hume_editing::comment::{BlockCommentTokens, LineCommentTokens};
 use hume_engine::theme::ScopeRegistry;
+use hume_platform::path::AbsolutePath;
 use test_fixtures::{
     grammar_parser_path, grammar_query_path, require_grammars, require_helix_query,
 };
@@ -19,12 +20,15 @@ fn write_temp_scm(filename: &str, src: &str) -> (tempfile::TempDir, std::path::P
     (dir, path)
 }
 
-/// `path` as both the opened and the resolved path of a file.
-fn at(path: &str) -> DetectPaths<'_> {
-    DetectPaths {
-        as_opened: Path::new(path),
-        resolved: Path::new(path),
-    }
+/// The language `reg` detects for a file opened at `path`, a root-anchored
+/// literal that is also its resolved path, with `first_line` as its first line.
+fn detect_at(path: &str, first_line: Option<&str>, reg: &LanguageRegistry) -> Option<LanguageId> {
+    let path = AbsolutePath::rooted(path);
+    let paths = DetectPaths {
+        as_opened: &path,
+        resolved: &path,
+    };
+    detect_language(Some(paths), first_line, reg)
 }
 
 /// The rust fixture grammar with `queries`.
@@ -855,7 +859,7 @@ fn attached_grammar_survives_identity_re_registration() {
     );
 
     // The identity replacement itself must still have taken effect.
-    let detected = detect_language(Some(at("/x/foo.mylang")), None, &reg);
+    let detected = detect_at("/x/foo.mylang", None, &reg);
     assert_eq!(detected, reg.id_of("rust"));
 }
 
@@ -905,10 +909,10 @@ fn identity_re_registration_keeps_the_configured_lsp_language_id() {
 fn detect_language_by_extension() {
     let mut reg = LanguageRegistry::new();
     reg.register_identity("rust", &["rs"], &[], &[]).unwrap();
-    let id = detect_language(Some(at("/x/foo.rs")), None, &reg);
+    let id = detect_at("/x/foo.rs", None, &reg);
     assert_eq!(id, reg.id_of("rust"));
     // A different extension must not detect.
-    let no_match = detect_language(Some(at("/x/foo.py")), None, &reg);
+    let no_match = detect_at("/x/foo.py", None, &reg);
     assert!(no_match.is_none());
 }
 
@@ -917,9 +921,9 @@ fn detect_language_by_glob() {
     let mut reg = LanguageRegistry::new();
     reg.register_identity("makefile", &[], &["Makefile", "GNUmakefile"], &[])
         .unwrap();
-    let id = detect_language(Some(at("/project/Makefile")), None, &reg);
+    let id = detect_at("/project/Makefile", None, &reg);
     assert_eq!(id, reg.id_of("makefile"));
-    let no_match = detect_language(Some(at("/project/other")), None, &reg);
+    let no_match = detect_at("/project/other", None, &reg);
     assert!(no_match.is_none());
 }
 
@@ -930,28 +934,10 @@ fn a_glob_with_a_directory_matches_the_end_of_the_path() {
     reg.register_identity("gha", &[], &[".github/workflows/*.yaml"], &[])
         .unwrap();
     assert_eq!(
-        detect_language(Some(at("/repo/.github/workflows/ci.yaml")), None, &reg),
+        detect_at("/repo/.github/workflows/ci.yaml", None, &reg),
         reg.id_of("gha")
     );
-    assert_eq!(
-        detect_language(Some(at("/repo/ci.yaml")), None, &reg),
-        reg.id_of("yaml")
-    );
-}
-
-#[test]
-fn an_absolute_glob_matches_the_whole_path_only() {
-    let mut reg = LanguageRegistry::new();
-    reg.register_identity("ini", &[], &["/etc/buckconfig"], &[])
-        .unwrap();
-    assert_eq!(
-        detect_language(Some(at("/etc/buckconfig")), None, &reg),
-        reg.id_of("ini")
-    );
-    assert_eq!(
-        detect_language(Some(at("/home/etc/buckconfig")), None, &reg),
-        None
-    );
+    assert_eq!(detect_at("/repo/ci.yaml", None, &reg), reg.id_of("yaml"));
 }
 
 #[test]
@@ -960,13 +946,10 @@ fn a_glob_matches_whole_path_components_only() {
     reg.register_identity("git-config", &[], &[".git/config"], &[])
         .unwrap();
     assert_eq!(
-        detect_language(Some(at("/repo/.git/config")), None, &reg),
+        detect_at("/repo/.git/config", None, &reg),
         reg.id_of("git-config")
     );
-    assert_eq!(
-        detect_language(Some(at("/repo/x.git/config")), None, &reg),
-        None
-    );
+    assert_eq!(detect_at("/repo/x.git/config", None, &reg), None);
 }
 
 /// A file opened through a symlink is detected by the path it was opened
@@ -977,22 +960,20 @@ fn a_symlinked_file_is_detected_by_either_path() {
     reg.register_identity("git-config", &[], &[".config/git/config"], &[])
         .unwrap();
     reg.register_identity("toml", &["toml"], &[], &[]).unwrap();
-    let linked = |as_opened, resolved| DetectPaths {
-        as_opened: Path::new(as_opened),
-        resolved: Path::new(resolved),
+    let linked = |as_opened, resolved| {
+        let as_opened = AbsolutePath::rooted(as_opened);
+        let resolved = AbsolutePath::rooted(resolved);
+        let paths = DetectPaths {
+            as_opened: &as_opened,
+            resolved: &resolved,
+        };
+        detect_language(Some(paths), None, &reg)
     };
     assert_eq!(
-        detect_language(
-            Some(linked("/h/.config/git/config", "/h/dotfiles/git/config")),
-            None,
-            &reg
-        ),
+        linked("/h/.config/git/config", "/h/dotfiles/git/config"),
         reg.id_of("git-config")
     );
-    assert_eq!(
-        detect_language(Some(linked("/h/current", "/h/release.toml")), None, &reg),
-        reg.id_of("toml")
-    );
+    assert_eq!(linked("/h/current", "/h/release.toml"), reg.id_of("toml"));
 }
 
 #[test]
@@ -1001,14 +982,8 @@ fn a_dotted_extension_matches_before_the_last_one() {
     reg.register_identity("map", &["map"], &[], &[]).unwrap();
     reg.register_identity("json", &["json", "js.map"], &[], &[])
         .unwrap();
-    assert_eq!(
-        detect_language(Some(at("/x/app.js.map")), None, &reg),
-        reg.id_of("json")
-    );
-    assert_eq!(
-        detect_language(Some(at("/x/app.css.map")), None, &reg),
-        reg.id_of("map")
-    );
+    assert_eq!(detect_at("/x/app.js.map", None, &reg), reg.id_of("json"));
+    assert_eq!(detect_at("/x/app.css.map", None, &reg), reg.id_of("map"));
 }
 
 #[test]
@@ -1016,14 +991,8 @@ fn a_dotfiles_leading_dot_does_not_start_an_extension() {
     let mut reg = LanguageRegistry::new();
     reg.register_identity("bash", &["bashrc"], &[], &[])
         .unwrap();
-    assert_eq!(
-        detect_language(Some(at("/home/u/.bashrc")), None, &reg),
-        None
-    );
-    assert_eq!(
-        detect_language(Some(at("/home/u/x.bashrc")), None, &reg),
-        reg.id_of("bash")
-    );
+    assert_eq!(detect_at("/home/u/.bashrc", None, &reg), None);
+    assert_eq!(detect_at("/home/u/x.bashrc", None, &reg), reg.id_of("bash"));
 }
 
 #[test]
@@ -1034,10 +1003,10 @@ fn detect_language_glob_beats_extension() {
     reg.register_identity("tsconfig", &[], &["tsconfig.json", "*.config.json"], &[])
         .unwrap();
     reg.register_identity("json", &["json"], &[], &[]).unwrap();
-    let id = detect_language(Some(at("/x/tsconfig.json")), None, &reg);
+    let id = detect_at("/x/tsconfig.json", None, &reg);
     assert_eq!(id, reg.id_of("tsconfig"));
     // A plain .json that no glob covers still detects as json.
-    let plain = detect_language(Some(at("/x/other.json")), None, &reg);
+    let plain = detect_at("/x/other.json", None, &reg);
     assert_eq!(plain, reg.id_of("json"));
 }
 
@@ -1049,7 +1018,7 @@ fn detect_language_glob_tiebreak_last_registered_wins() {
     reg.register_identity("strict-json", &[], &["*.json"], &[])
         .unwrap();
     assert_eq!(
-        detect_language(Some(at("/x/config.json")), None, &reg),
+        detect_at("/x/config.json", None, &reg),
         reg.id_of("strict-json"),
     );
 
@@ -1059,7 +1028,7 @@ fn detect_language_glob_tiebreak_last_registered_wins() {
     reg2.register_identity("generic-json", &[], &["*.json"], &[])
         .unwrap();
     assert_eq!(
-        detect_language(Some(at("/x/config.json")), None, &reg2),
+        detect_at("/x/config.json", None, &reg2),
         reg2.id_of("generic-json"),
     );
 }
@@ -1069,10 +1038,10 @@ fn detect_language_by_shebang() {
     let mut reg = LanguageRegistry::new();
     reg.register_identity("python", &["py"], &[], &["python3", "python"])
         .unwrap();
-    let id = detect_language(Some(at("/x/script")), Some("#!/usr/bin/env python3"), &reg);
+    let id = detect_at("/x/script", Some("#!/usr/bin/env python3"), &reg);
     assert_eq!(id, reg.id_of("python"));
     // Some other shebang must not match.
-    let no_match = detect_language(Some(at("/x/script")), Some("#!/bin/bash"), &reg);
+    let no_match = detect_at("/x/script", Some("#!/bin/bash"), &reg);
     assert!(no_match.is_none());
 }
 
@@ -1082,17 +1051,17 @@ fn detect_language_shebang_direct_path() {
     reg.register_identity("bash", &["sh"], &[], &["bash"])
         .unwrap();
     // Extension wins over shebang.
-    let id = detect_language(Some(at("/x/run.sh")), Some("#!/bin/bash"), &reg);
+    let id = detect_at("/x/run.sh", Some("#!/bin/bash"), &reg);
     assert_eq!(id, reg.id_of("bash"));
     // Without extension, shebang is used.
-    let id2 = detect_language(Some(at("/x/run")), Some("#!/bin/bash"), &reg);
+    let id2 = detect_at("/x/run", Some("#!/bin/bash"), &reg);
     assert_eq!(id2, reg.id_of("bash"));
 }
 
 #[test]
 fn detect_language_no_match() {
     let reg = LanguageRegistry::new();
-    assert!(detect_language(Some(at("/x/foo.xyz")), None, &reg).is_none());
+    assert!(detect_at("/x/foo.xyz", None, &reg).is_none());
     assert!(detect_language(None, None, &reg).is_none());
 }
 
@@ -1106,16 +1075,10 @@ fn extension_matching_is_case_sensitive() {
     let mut reg = LanguageRegistry::new();
     reg.register_identity("c", &["c"], &[], &[]).unwrap();
     reg.register_identity("cpp", &["C"], &[], &[]).unwrap();
-    assert_eq!(
-        detect_language(Some(at("/x/foo.c")), None, &reg),
-        reg.id_of("c"),
-    );
-    assert_eq!(
-        detect_language(Some(at("/x/foo.C")), None, &reg),
-        reg.id_of("cpp"),
-    );
+    assert_eq!(detect_at("/x/foo.c", None, &reg), reg.id_of("c"),);
+    assert_eq!(detect_at("/x/foo.C", None, &reg), reg.id_of("cpp"),);
     // Sanity: unrelated extension is still None.
-    assert!(detect_language(Some(at("/x/foo.rs")), None, &reg).is_none());
+    assert!(detect_at("/x/foo.rs", None, &reg).is_none());
 }
 
 #[test]
@@ -1230,3 +1193,6 @@ fn config_gen_is_unique_across_registries() {
 
     assert_ne!(first.config_gen, second.config_gen);
 }
+
+#[cfg(unix)]
+mod unix;

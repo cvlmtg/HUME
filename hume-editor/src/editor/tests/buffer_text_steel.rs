@@ -688,7 +688,7 @@ fn selections_linewise_true_for_a_buffer_shown_in_a_non_focused_pane() {
     let other_bid = ed
         .state
         .buffers
-        .find_by_path(&std::fs::canonicalize(&extra).unwrap())
+        .find_by_path(&AbsolutePath::canonicalize(&extra).unwrap())
         .expect("extra file must be open in the buffer list");
     let other_pid = open_pane_in_layout(
         &mut ed.state,

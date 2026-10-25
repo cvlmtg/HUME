@@ -1,9 +1,10 @@
 //! `EditorHostImpl`'s buffer/pane enumeration, reads, lifecycle, and
 //! viewport geometry.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use hume_engine::pipeline::BufferId;
+use hume_platform::path::AbsolutePath;
 use hume_rope::line::ContentLine;
 use hume_rope::lines::line_token_content;
 use hume_rope::offset::ExclusiveRange;
@@ -54,22 +55,20 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
     fn buffer_exists(&self, id: BufferId) -> bool {
         self.buffer(id).is_some()
     }
-    fn buffer_path(&self, id: BufferId) -> Option<PathBuf> {
-        self.buffer(id)?.path().map(Path::to_path_buf)
+    fn buffer_path(&self, id: BufferId) -> Option<AbsolutePath> {
+        self.buffer(id)?.path().cloned()
     }
     fn buffer_display_path(&self, id: BufferId, form: DisplayPathForm) -> Option<String> {
-        let buf = self.buffer(id)?;
-        let absolute = buf.display_path()?;
+        let file = self.buffer(id)?.file()?;
         let relative = match form {
             DisplayPathForm::Absolute => None,
             // The canonical path catches a file typed through a symlink to
             // the working directory, which is canonical.
-            DisplayPathForm::CwdRelative => [buf.typed_path(), buf.path()]
+            DisplayPathForm::CwdRelative => [file.typed(), file.resolved()]
                 .into_iter()
-                .flatten()
                 .find_map(|path| hume_platform::path::relative_to(path, &self.state.cwd)),
         };
-        Some(relative.map_or_else(|| absolute.to_owned(), |p| p.display().to_string()))
+        Some(relative.map_or_else(|| file.display().to_owned(), |p| p.display().to_string()))
     }
     fn buffer_display_name(&self, id: BufferId) -> Option<String> {
         self.buffer(id).map(|buf| buf.display_name())
@@ -83,13 +82,13 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
     }
 
     // ── Working directory ────────────────────────────────────────────────────
-    fn cwd(&self) -> PathBuf {
+    fn cwd(&self) -> AbsolutePath {
         self.state.cwd.clone()
     }
     fn search_path(&self) -> Option<std::ffi::OsString> {
         self.state.dirs.search_path.clone()
     }
-    fn set_cwd(&mut self, path: &Path) -> Result<PathBuf, String> {
+    fn set_cwd(&mut self, path: &Path) -> Result<AbsolutePath, String> {
         self.state
             .set_cwd(path)
             .map_err(|e| format!("set-cwd!: {}: {e}", path.display()))
@@ -97,16 +96,13 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
 
     // ── Buffer lifecycle ─────────────────────────────────────────────────────
     fn open_buffer(&mut self, path: &Path) -> Result<BufferId, String> {
-        // `resolve_buffer_path`, not a hard `canonicalize`: a missing path is
-        // openable here exactly like `:e` on one; see `Buffer::from_file_or_new`.
-        let resolved = crate::editor::Editor::resolve_buffer_path(path, &self.state.cwd);
-        // Language detection is not done here; see
-        // `Effect::DetectBufferLanguage`'s doc; the `open-buffer!` builtin
-        // queues it once this returns.
-        let (bid, _is_new) = crate::editor::buffer::lifecycle::open_or_dedup_and_notify(
-            self.view, self.state, &resolved,
-        )
-        .map_err(|e| format!("open-buffer!: {}: {e}", resolved.display()))?;
+        // A missing path is openable here as `:e` opens one; see
+        // `Buffer::from_file_or_new`. Language detection is not done here;
+        // see `Effect::DetectBufferLanguage`'s doc; the `open-buffer!`
+        // builtin queues it once this returns.
+        let (bid, _is_new) =
+            crate::editor::buffer::lifecycle::open_or_dedup_and_notify(self.view, self.state, path)
+                .map_err(|e| format!("open-buffer!: {}: {e}", path.display()))?;
         Ok(bid)
     }
     fn close_buffer(&mut self, id: BufferId, discard: DiscardUnsaved) -> Result<(), String> {

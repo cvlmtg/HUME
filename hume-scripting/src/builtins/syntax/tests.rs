@@ -532,20 +532,18 @@ fn register_grammar_resolves_relative_paths_against_the_editor_cwd() {
         );
         assert!(result.is_ok());
     }
+    let cwd = std::env::current_dir().unwrap();
     match lang_regs(&h)[0] {
         PendingLanguageReg::Grammar(reg) => {
-            assert_eq!(reg.source.path, std::path::Path::new("rust.so"));
-            assert_eq!(
-                reg.source.queries.highlights(),
-                std::path::Path::new("highlights.scm")
-            );
+            assert_eq!(reg.source.path, cwd.join("rust.so"));
+            assert_eq!(reg.source.queries.highlights(), cwd.join("highlights.scm"));
             assert_eq!(
                 reg.source.queries.get(OptionalQuery::Injections),
-                Some(std::path::Path::new("injections.scm"))
+                Some(cwd.join("injections.scm").as_path())
             );
             assert_eq!(
                 reg.source.queries.get(OptionalQuery::TextObjects),
-                Some(std::path::Path::new("textobjects.scm"))
+                Some(cwd.join("textobjects.scm").as_path())
             );
         }
         other => panic!("expected a Grammar entry, got: {other:?}"),

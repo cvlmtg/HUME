@@ -198,7 +198,7 @@ pub(super) fn pipe_line_in(dir: &Path, typed: &str) -> Editor {
     let mut ed = editor_from("-[abc]>\n");
     ed.state.dirs = repo_runtime_dirs();
     ed.init_scripting(&mut Default::default());
-    ed.state.cwd = dir.to_path_buf();
+    ed.state.cwd = AbsolutePath::rooted(dir);
     ed.handle_key(key('|'));
     keys(&mut ed, typed);
     ed

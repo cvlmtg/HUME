@@ -268,9 +268,10 @@ impl Editor {
         force: bool,
         after: AfterWrite,
     ) -> Result<(), CommandError> {
-        let kind = WriteKind::classify(self.state.buffers.get(bid), arg);
-        if !(kind.reaches_own_file() && self.has_event_handlers(BEFORE_BUFFER_SAVE, None)) {
-            return write_and_continue(self, bid, kind, force, after);
+        let reaches_own_file =
+            WriteKind::classify(self.state.buffers.get(bid), arg).reaches_own_file();
+        if !(reaches_own_file && self.has_event_handlers(BEFORE_BUFFER_SAVE, None)) {
+            return write_and_continue(self, bid, arg, force, after);
         }
         if self.state.pending_writes.contains(bid) {
             return conclude_write(self, bid, Err(WriteError::InProgress), force, after);
@@ -423,8 +424,13 @@ impl Editor {
         if let Some(timeout) = pending.timeout() {
             self.timers.cancel(timeout);
         }
-        let kind = WriteKind::classify(self.state.buffers.get(bid), pending.arg.as_deref());
-        if let Err(e) = write_and_continue(self, bid, kind, pending.force, pending.after) {
+        if let Err(e) = write_and_continue(
+            self,
+            bid,
+            pending.arg.as_deref(),
+            pending.force,
+            pending.after,
+        ) {
             self.report_error(&e);
         }
     }

@@ -548,7 +548,7 @@ fn buffer_with_no_path_reports_and_sends_nothing() {
             );
         },
     );
-    ed.doc_mut().set_path(None);
+    ed.doc_mut().set_file(None);
 
     run_hover(&mut ed);
 

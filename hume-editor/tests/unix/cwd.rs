@@ -41,7 +41,7 @@ fn set_cwd_into_a_directory_the_process_cannot_enter_raises_and_moves_nothing() 
         ),
     )
     .unwrap();
-    let start = std::env::current_dir().unwrap();
+    let start = hume_platform::path::AbsolutePath::current_dir().unwrap();
 
     hume::run_keys(
         FileArg {

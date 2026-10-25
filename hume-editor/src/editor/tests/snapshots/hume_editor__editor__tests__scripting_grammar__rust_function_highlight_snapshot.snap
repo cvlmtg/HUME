@@ -9,4 +9,4 @@ expression: "render_to_styled_string(&mut ed, rect)"
 <fg=#928374,bg=#282828>~</>
 <fg=#928374,bg=#282828>~</>
 <fg=#928374,bg=#282828>~</>
-<fg=#3c3836,bg=#bdae93,bold>     4:2 test.rs [rust] </><fg=#665c54,bg=#bdae93>│</><fg=#3c3836,bg=#bdae93,bold> NOR</>
+<fg=#3c3836,bg=#bdae93,bold>     4:2 *scratc… [rust]</><fg=#665c54,bg=#bdae93>│</><fg=#3c3836,bg=#bdae93,bold> NOR</>

@@ -5,8 +5,8 @@ use std::path::Path;
 
 use super::*;
 
-pub(in crate::editor::tests) fn canonical(dir: &Path) -> PathBuf {
-    std::fs::canonicalize(dir).unwrap()
+pub(in crate::editor::tests) fn canonical(dir: &Path) -> AbsolutePath {
+    AbsolutePath::canonicalize(dir).unwrap()
 }
 
 /// An editor whose `state.cwd` is `dir` while the process cwd stays where the
@@ -71,12 +71,7 @@ fn current_directory_reports_the_editor_cwd() {
 
     let out = log_probe(&mut ed, tmp.path(), "(current-directory)");
 
-    assert_eq!(
-        out,
-        hume_platform::path::strip_unc_prefix(canonical(tmp.path()))
-            .to_str()
-            .unwrap()
-    );
+    assert_eq!(out, canonical(tmp.path()).to_str().unwrap());
 }
 
 #[test]

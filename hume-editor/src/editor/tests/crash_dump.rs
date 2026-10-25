@@ -185,7 +185,7 @@ fn one_failed_dump_does_not_skip_the_other_buffers() {
     dirty_focused(&mut ed);
 
     let mut second = Buffer::at_start(BufferText::from("two\n"));
-    second.set_path(Some(good.clone()));
+    second.set_file(Some(crate::editor::buffer::BufferFile::at(&good)));
     let second = ed.open_buffer(second);
     let fp = crate::editor::commands::FocusedPane::current(&ed.view);
     ed.switch_to_buffer_without_jump(fp, second);

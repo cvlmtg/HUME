@@ -125,7 +125,7 @@ impl Editor {
         terminal: Rect,
         wake: WakeCallback,
         dirs: hume_platform::dirs::Dirs,
-        startup_cwd: std::path::PathBuf,
+        startup_cwd: hume_platform::path::AbsolutePath,
     ) -> io::Result<Self> {
         use super::clipboard;
         use crate::editor::buffer::Buffer;
@@ -134,22 +134,16 @@ impl Editor {
         use crate::editor::settings::EditorSettings;
         use hume_editing::text::BufferText;
 
-        let mut doc = match file_path {
+        let doc = match file_path {
             // Missing file, valid basename: `hume newfile.txt` opens an
             // empty buffer bound to the path instead of exiting, same
             // `:w`-creates-it semantics as `:e` on a missing file (see
-            // `Buffer::from_file_or_new`, `Editor::open_or_dedup`).
-            Some(ref path) => Buffer::from_file_or_new(path, &startup_cwd)?,
+            // `Buffer::from_file_or_new`, `lifecycle::open_or_dedup_and_notify`).
+            Some(ref path) => Buffer::from_file_or_new(crate::editor::buffer::FileTarget::new(
+                hume_platform::path::AbsolutePath::from_typed(path, &startup_cwd)?,
+            ))?,
             None => Buffer::at_start(BufferText::empty()),
         };
-        // Record the user-typed path (symlinks unresolved) for user-facing display,
-        // overwriting `Buffer::from_file`'s canonical-derived default.
-        if let Some(ref path) = file_path {
-            doc.set_typed_path(Some(hume_platform::path::absolute_unresolved(
-                path,
-                &startup_cwd,
-            )));
-        }
 
         // ── Engine view setup ─────────────────────────────────────────────────
         let theme = crate::editor::theme::fallback_theme();
@@ -186,11 +180,10 @@ impl Editor {
                 settings,
                 panes,
                 history: super::minibuf::history::HistoryStore::new(history_capacity),
-                cwd: startup_cwd,
                 views,
                 tabline_view,
                 wake: Arc::clone(&wake),
-                ..super::EditorState::base(focus)
+                ..super::EditorState::base(focus, startup_cwd)
             },
             view: engine_view,
             kitty_enabled: false,
@@ -239,7 +232,7 @@ impl Editor {
         driver: Driver,
         dirs: hume_platform::dirs::Dirs,
         config: ConfigSource,
-        startup_cwd: std::path::PathBuf,
+        startup_cwd: hume_platform::path::AbsolutePath,
     ) -> io::Result<Self> {
         let (first, rest) = files
             .split_first()

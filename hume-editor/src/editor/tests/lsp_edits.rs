@@ -445,7 +445,7 @@ fn apply_workspace_edit_changes_shape() {
     let tmp = tempfile::tempdir().unwrap();
     let file = tmp.path().join("a.txt");
     std::fs::write(&file, "abcdef\n").unwrap();
-    let canonical = std::fs::canonicalize(&file).unwrap();
+    let canonical = AbsolutePath::canonicalize(&file).unwrap();
     let uri = hume_lsp::uri::path_to_uri(&canonical).unwrap();
 
     let mut ed = workspace_edit_editor(
@@ -474,7 +474,7 @@ fn apply_workspace_edit_document_changes_shape() {
     let tmp = tempfile::tempdir().unwrap();
     let file = tmp.path().join("a.txt");
     std::fs::write(&file, "abcdef\n").unwrap();
-    let canonical = std::fs::canonicalize(&file).unwrap();
+    let canonical = AbsolutePath::canonicalize(&file).unwrap();
     let uri = hume_lsp::uri::path_to_uri(&canonical).unwrap();
 
     let mut ed = workspace_edit_editor(
@@ -501,7 +501,7 @@ fn apply_workspace_edit_into_unopened_file_uses_the_responses_encoding() {
     let tmp = tempfile::tempdir().unwrap();
     let file = tmp.path().join("new.txt");
     std::fs::write(&file, "aébcdef\n").unwrap();
-    let canonical = std::fs::canonicalize(&file).unwrap();
+    let canonical = AbsolutePath::canonicalize(&file).unwrap();
     let uri = hume_lsp::uri::path_to_uri(&canonical).unwrap();
 
     let mut ed = workspace_edit_editor(
@@ -532,8 +532,8 @@ fn apply_workspace_edit_mixed_open_and_unopened_files() {
     let unopened_path = tmp.path().join("unopened.txt");
     std::fs::write(&opened_path, "hello\n").unwrap();
     std::fs::write(&unopened_path, "world\n").unwrap();
-    let opened_canonical = std::fs::canonicalize(&opened_path).unwrap();
-    let unopened_canonical = std::fs::canonicalize(&unopened_path).unwrap();
+    let opened_canonical = AbsolutePath::canonicalize(&opened_path).unwrap();
+    let unopened_canonical = AbsolutePath::canonicalize(&unopened_path).unwrap();
     let opened_uri = hume_lsp::uri::path_to_uri(&opened_canonical).unwrap();
     let unopened_uri = hume_lsp::uri::path_to_uri(&unopened_canonical).unwrap();
 
@@ -582,7 +582,7 @@ fn apply_workspace_edit_one_invalid_file_aborts_the_whole_edit() {
     let tmp = tempfile::tempdir().unwrap();
     let ok_path = tmp.path().join("ok.txt");
     std::fs::write(&ok_path, "abcdef\n").unwrap();
-    let ok_canonical = std::fs::canonicalize(&ok_path).unwrap();
+    let ok_canonical = AbsolutePath::canonicalize(&ok_path).unwrap();
     let ok_uri = hume_lsp::uri::path_to_uri(&ok_canonical).unwrap();
     let invalid_dir = tmp.path().join("a_directory");
     std::fs::create_dir(&invalid_dir).unwrap();
@@ -635,12 +635,12 @@ fn apply_workspace_edit_conflicting_session_on_another_pane_leaves_earlier_files
     let tmp = tempfile::tempdir().unwrap();
     let ok_path = tmp.path().join("ok.txt");
     std::fs::write(&ok_path, "abcdef\n").unwrap();
-    let ok_canonical = std::fs::canonicalize(&ok_path).unwrap();
+    let ok_canonical = AbsolutePath::canonicalize(&ok_path).unwrap();
     let ok_uri = hume_lsp::uri::path_to_uri(&ok_canonical).unwrap();
 
     let conflict_path = tmp.path().join("conflict.txt");
     std::fs::write(&conflict_path, "ghijkl\n").unwrap();
-    let conflict_canonical = std::fs::canonicalize(&conflict_path).unwrap();
+    let conflict_canonical = AbsolutePath::canonicalize(&conflict_path).unwrap();
     let conflict_uri = hume_lsp::uri::path_to_uri(&conflict_canonical).unwrap();
 
     let mut ed = editor_from("-[x]>\n");
@@ -718,7 +718,7 @@ fn apply_workspace_edit_duplicate_entry_for_the_same_file_is_rejected_not_a_pani
     let tmp = tempfile::tempdir().unwrap();
     let file = tmp.path().join("a.txt");
     std::fs::write(&file, "abcdef\n").unwrap();
-    let canonical = std::fs::canonicalize(&file).unwrap();
+    let canonical = AbsolutePath::canonicalize(&file).unwrap();
     let uri = hume_lsp::uri::path_to_uri(&canonical).unwrap();
 
     let mut ed = workspace_edit_editor(
@@ -815,7 +815,7 @@ fn goto_location_other_open_buffer_by_path_string() {
     let tmp = tempfile::tempdir().unwrap();
     let file = tmp.path().join("other.txt");
     std::fs::write(&file, "xyz\n").unwrap();
-    let canonical = std::fs::canonicalize(&file).unwrap();
+    let canonical = AbsolutePath::canonicalize(&file).unwrap();
 
     let mut ed = editor_from("-[a]>bcdef\n");
     ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
@@ -941,7 +941,7 @@ fn goto_location_path_target_past_the_last_line_answers_false() {
     let tmp = tempfile::tempdir().unwrap();
     let file = tmp.path().join("short.txt");
     std::fs::write(&file, "one\ntwo\n").unwrap();
-    let canonical = std::fs::canonicalize(&file).unwrap();
+    let canonical = AbsolutePath::canonicalize(&file).unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     let target = steel_path(&file);
     let answer = log_probe(
@@ -964,7 +964,7 @@ fn goto_location_answers_true_after_a_jump_and_keeps_an_open_buffer_on_false() {
     let tmp = tempfile::tempdir().unwrap();
     let file = tmp.path().join("other.txt");
     std::fs::write(&file, "one\ntwo\n").unwrap();
-    let canonical = std::fs::canonicalize(&file).unwrap();
+    let canonical = AbsolutePath::canonicalize(&file).unwrap();
     let mut ed = editor_from("-[a]>bcdef\n");
     ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
     let other = ed.state.buffers.find_by_path(&canonical).unwrap();
@@ -1083,7 +1083,7 @@ fn goto_location_wire_shape_decodes_with_the_responses_encoding() {
     let tmp = tempfile::tempdir().unwrap();
     let file = tmp.path().join("target.txt");
     std::fs::write(&file, "aébcdef\n").unwrap();
-    let canonical = std::fs::canonicalize(&file).unwrap();
+    let canonical = AbsolutePath::canonicalize(&file).unwrap();
     let uri = hume_lsp::uri::path_to_uri(&canonical).unwrap();
 
     let mut ed = utf8_rig(tmp.path(), "-[a]>bcdef\n", |backend| {
@@ -1162,7 +1162,7 @@ fn goto_location_wire_shape_past_the_last_line_answers_false() {
     let tmp = tempfile::tempdir().unwrap();
     let file = tmp.path().join("target.txt");
     std::fs::write(&file, "one\ntwo\n").unwrap();
-    let canonical = std::fs::canonicalize(&file).unwrap();
+    let canonical = AbsolutePath::canonicalize(&file).unwrap();
     let uri = hume_lsp::uri::path_to_uri(&canonical).unwrap();
 
     let mut ed = utf8_rig(tmp.path(), "-[a]>bcdef\n", |backend| {
@@ -1238,7 +1238,7 @@ fn server_initiated_apply_edit_into_unopened_file_uses_the_requesting_servers_en
     let tmp = tempfile::tempdir().unwrap();
     let file = tmp.path().join("new.txt");
     std::fs::write(&file, "aébcdef\n").unwrap();
-    let canonical = std::fs::canonicalize(&file).unwrap();
+    let canonical = AbsolutePath::canonicalize(&file).unwrap();
     let uri = hume_lsp::uri::path_to_uri(&canonical).unwrap();
 
     let rig = utf8_rig(tmp.path(), "-[x]>\n", |_| {});
@@ -1274,7 +1274,7 @@ fn server_initiated_apply_edit_actually_applies_and_answers_true() {
     let tmp = tempfile::tempdir().unwrap();
     let file = tmp.path().join("srv.txt");
     std::fs::write(&file, "abcdef\n").unwrap();
-    let canonical = std::fs::canonicalize(&file).unwrap();
+    let canonical = AbsolutePath::canonicalize(&file).unwrap();
     let uri = hume_lsp::uri::path_to_uri(&canonical).unwrap();
 
     let rig = utf8_rig(tmp.path(), "-[x]>\n", |_| {});
@@ -1313,7 +1313,7 @@ fn server_initiated_apply_edit_detects_language_of_newly_opened_file() {
     let tmp = tempfile::tempdir().unwrap();
     let file = tmp.path().join("new.rs");
     std::fs::write(&file, "fn helper() {}\n").unwrap();
-    let canonical = std::fs::canonicalize(&file).unwrap();
+    let canonical = AbsolutePath::canonicalize(&file).unwrap();
     let uri = hume_lsp::uri::path_to_uri(&canonical).unwrap();
 
     let rig = utf8_rig(tmp.path(), "-[x]>\n", |_| {});
@@ -1459,7 +1459,7 @@ fn switch_pane_before_reply(ed: &mut Editor) -> BufferId {
 }
 
 fn workspace_edit_of(file: &std::path::Path, new_text: &str) -> serde_json::Value {
-    let canonical = std::fs::canonicalize(file).unwrap();
+    let canonical = AbsolutePath::canonicalize(file).unwrap();
     let uri = hume_lsp::uri::path_to_uri(&canonical).unwrap();
     serde_json::json!({"changes": {uri.as_str(): [
         {"range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 3}},
@@ -1484,7 +1484,7 @@ fn apply_workspace_edit_after_the_pane_switches_buffers_applies() {
 
     switch_pane_before_reply(&mut ed);
 
-    let canonical = std::fs::canonicalize(&file).unwrap();
+    let canonical = AbsolutePath::canonicalize(&file).unwrap();
     let bid = ed.state.buffers.find_by_path(&canonical).unwrap();
     assert_eq!(ed.state.buffers.get(bid).text().to_string(), "XYZdef\n");
     assert_eq!(error_log(&ed), Vec::<String>::new());
@@ -1498,7 +1498,7 @@ fn workspace_edit_to_a_file_the_pane_does_not_show_seeds_no_pane_state() {
     let mut ed = workspace_edit_editor(tmp.path(), workspace_edit_of(&file, "XYZ"));
     apply_wire_workspace_edit(&mut ed, tmp.path());
 
-    let canonical = std::fs::canonicalize(&file).unwrap();
+    let canonical = AbsolutePath::canonicalize(&file).unwrap();
     let bid = ed.state.buffers.find_by_path(&canonical).unwrap();
     let pid = ed.view.focused_pane();
     assert_eq!(ed.state.buffers.get(bid).text().to_string(), "XYZdef\n");

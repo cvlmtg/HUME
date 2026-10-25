@@ -11,6 +11,8 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
+use crate::path::AbsolutePath;
+
 /// A cheap fingerprint of a file's on-disk state, used to detect external
 /// changes without reading or hashing content.
 ///
@@ -60,7 +62,7 @@ pub struct FileMeta {
     /// Private: always produced by `canonicalize` inside `read_file_meta` /
     /// `read_file`. Constructing a `FileMeta` with an unresolved path would
     /// silently break the atomic-write-to-symlink-target guarantee.
-    resolved_path: PathBuf,
+    resolved_path: AbsolutePath,
 
     /// Original permission bits. Restored on the temp file before the rename
     /// so the file is never transiently exposed with wrong permissions.
@@ -86,7 +88,7 @@ impl FileMeta {
     ///
     /// This is the target for atomic writes. Using it ensures the symlink
     /// itself is preserved while the content behind it is updated.
-    pub fn resolved_path(&self) -> &Path {
+    pub fn resolved_path(&self) -> &AbsolutePath {
         &self.resolved_path
     }
 
@@ -101,7 +103,7 @@ impl FileMeta {
 /// Used when saving over an existing file: we need the permissions and
 /// ownership to preserve them, but not the content itself.
 pub fn read_file_meta(path: &Path) -> io::Result<FileMeta> {
-    let resolved = fs::canonicalize(path)?;
+    let resolved = AbsolutePath::canonicalize(path)?;
     let metadata = fs::metadata(&resolved)?;
     let signature = FileSignature::from_metadata(&metadata);
 

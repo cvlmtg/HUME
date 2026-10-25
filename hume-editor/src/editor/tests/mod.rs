@@ -2,6 +2,7 @@
 // Each submodule does `use super::*;` to access these.
 
 use hume_platform::dirs::{Dirs, GrammarBuild};
+use hume_platform::path::AbsolutePath;
 use hume_platform::wake::no_op_wake;
 use hume_scripting::host::NativeCall;
 use std::cell::Cell;
@@ -74,8 +75,8 @@ fn reading_char(ed: &Editor) -> bool {
 }
 
 /// The working directory a test editor starts in: the test binary's own.
-pub(crate) fn test_cwd() -> PathBuf {
-    std::env::current_dir().expect("current_dir")
+pub(crate) fn test_cwd() -> AbsolutePath {
+    AbsolutePath::current_dir().expect("current_dir")
 }
 
 /// `Editor::open(path, ..)` with no-op wakeup and no resolved directories.
@@ -236,12 +237,13 @@ pub(crate) fn editor_with_read_only_view(content: &str, name: &str) -> Editor {
 }
 
 /// `statusline::tests`' third cross-boundary shape: a buffer with an
-/// explicit path, without handing that suite `Buffer::set_path` itself.
+/// explicit path, without handing that suite `Buffer::set_file` itself.
 pub(crate) fn editor_with_path(content: &str, path: &std::path::Path) -> Editor {
     let text = BufferText::from(content);
     let sels = sels_at(&text, &[(0, 0)], 0);
     let mut ed = Editor::for_testing_with(test_fixtures::testing::state(text, sels));
-    ed.doc_mut().set_path(Some(path.to_owned()));
+    ed.doc_mut()
+        .set_file(Some(crate::editor::buffer::BufferFile::at(path)));
     ed
 }
 
@@ -939,15 +941,13 @@ fn jump_editor(cursor_line: usize) -> Editor {
 
 /// Write `file_content` to a temp file, return an editor pointing at it.
 ///
-/// `set_path` derives `display_path` from `path` (see `Buffer::set_path`).
-/// This fixture doesn't call a resolve-typed-path helper, so the two stay
-/// paired on the raw (non-canonical) tempfile path, same as `path()` itself.
+/// The buffer's typed path is the raw tempfile path, its resolved path the
+/// canonical one.
 fn editor_with_file(initial_state: &str, file_content: &str) -> (Editor, tempfile::TempPath) {
     let (path, tmp_path) = temp_file(file_content);
-    let (_, meta) = hume_platform::io::read_file(&path).unwrap();
     let mut ed = editor_from(initial_state);
-    ed.doc_mut().set_path(Some(path));
-    ed.doc_mut().file_meta = Some(meta);
+    ed.doc_mut()
+        .set_file(Some(crate::editor::buffer::BufferFile::on_disk_at(path)));
     (ed, tmp_path)
 }
 
@@ -1110,9 +1110,8 @@ impl Editor {
                 history: super::minibuf::history::HistoryStore::new(history_capacity),
                 views,
                 tabline_view,
-                cwd: std::env::temp_dir(),
                 dirs: process_dirs(),
-                ..EditorState::base(focus)
+                ..EditorState::base(focus, AbsolutePath::rooted(std::env::temp_dir()))
             },
             view: engine_view,
             kitty_enabled: false,
@@ -1457,14 +1456,12 @@ fn popup_lines(n: usize) -> String {
 }
 
 /// Build a fresh file-backed `Buffer` from `content`, written to a temp file.
-/// `set_path` derives `display_path` from the raw tempfile path (see
-/// `Buffer::set_path`): the same default `Buffer::from_file` produces.
+/// Its typed path is the raw tempfile path, its resolved path the canonical
+/// one.
 fn file_buffer(content: &str) -> (Buffer, tempfile::TempPath) {
     let (path, tmp_path) = temp_file(content);
-    let (_, meta) = hume_platform::io::read_file(&path).unwrap();
     let mut buf = Buffer::at_start(BufferText::from(content));
-    buf.set_path(Some(path));
-    buf.file_meta = Some(meta);
+    buf.set_file(Some(crate::editor::buffer::BufferFile::on_disk_at(path)));
     (buf, tmp_path)
 }
 

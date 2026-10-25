@@ -3,7 +3,6 @@
 //! mode changes, and out-of-band buffer changes.
 
 use super::*;
-use crate::editor::buffer::Buffer;
 use crate::editor::host_impl::EditorHostImpl;
 use hume_editing::text::BufferText;
 use hume_scripting::host::{PopupKind, UiHost};
@@ -611,10 +610,9 @@ fn a_stale_session_after_a_buffer_reload_is_dismissed_at_settle() {
         "sanity: the token is deep in the buffer"
     );
 
-    let replacement = Buffer::at_start(BufferText::from("hi\n"));
     ed.reload_buffer_in_place(
         FocusedPane::current(&ed.view),
-        ReplaceSource::disk(replacement),
+        ReplaceSource::Dump(BufferText::from("hi\n")),
     )
     .expect("the buffer is not held");
 

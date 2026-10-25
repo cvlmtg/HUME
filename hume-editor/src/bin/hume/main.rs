@@ -5,7 +5,7 @@ use clap::Parser;
 use std::process;
 
 fn main() {
-    let cwd = match std::env::current_dir() {
+    let cwd = match hume_platform::path::AbsolutePath::current_dir() {
         Ok(cwd) => cwd,
         Err(e) => {
             eprintln!("hume: resolving current directory: {e}");
