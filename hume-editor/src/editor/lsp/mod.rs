@@ -39,7 +39,7 @@ use hume_scripting::ServerName;
 use super::Editor;
 use super::async_source::AsyncSource;
 use bridge::Deliveries;
-pub(in crate::editor) use bridge::{RustDelivery, RustResponder};
+pub(in crate::editor) use bridge::{DeliveryKey, EditorDeliveryKey, RustDelivery, RustResponder};
 use instances::Instances;
 use progress::SpinnerClock;
 use registry::Registry;
@@ -188,6 +188,11 @@ impl LspState {
         self.stopped.clear();
         self.deliveries.clear();
         self.reconcile = ReconcilePhase::Suspended;
+    }
+
+    /// A `#:supersede` key no earlier call returned.
+    pub(in crate::editor) fn new_supersede_key(&mut self) -> hume_scripting::host::SupersedeKey {
+        self.deliveries.new_supersede_key()
     }
 
     /// Drops the stop of every root of `name`, so the next reconcile may

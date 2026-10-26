@@ -42,7 +42,7 @@ keeps the server's position encoding. No symbol at all logs "No symbols found".
 
 `lsp/workspace-symbols` opens an empty `live-picker!`. Each query, once the debounce
 window passes, sends `workspace/symbol` to every server offering the feature with
-`#:supersede "lsp-workspace-symbols"`, so a newer query replaces one still in flight. Every
+one `#:supersede` key, so a newer query replaces one still in flight. Every
 answer replaces the rows with every server's symbols, and an error or an answer with nothing
 in it replaces them with none, so the picker stops refreshing whatever the outcome. An
 answer that arrives after the user typed on is dropped, since its token is for the earlier
@@ -90,8 +90,8 @@ trigger characters, with no hook round trip), and again after each keystroke whi
 last answer was incomplete.
 
 The source answers with an empty list when no server of the buffer offers completion.
-Otherwise it asks every server that does with `lsp-request-all!` and `#:supersede
-"completion"`, so a newer request replaces an older one still in flight, and passes every
+Otherwise it asks every server that does with `lsp-request-all!` under one `#:supersede`
+key, so a newer request replaces an older one still in flight, and passes every
 non-null response to `completion-emit!` as one entry each, so their items merge into one
 menu. A server's error is reported; the others' items still show. A server's own trigger
 characters invoke the source in the buffers attached to that server.
@@ -187,15 +187,15 @@ it goes to whichever server supports it when the name is accepted.
 | `lsp/references`, every server | `'goto-reference` | yes | | |
 | Signature help | `'signature-help` | yes | | |
 | `lsp/document-symbols`, every server | `'document-symbols` | yes | | |
-| `lsp/workspace-symbols`, every server | `'workspace-symbols` | | yes | `"lsp-workspace-symbols"` |
+| `lsp/workspace-symbols`, every server | `'workspace-symbols` | | yes | one key |
 | Code actions (menu request), every server | `'code-action` | yes | | |
 | `codeAction/resolve`, `workspace/executeCommand` | `#:to` the server that offered the action | | yes | |
-| Completion, every server | `'completion` | | | `"completion"` |
+| Completion, every server | `'completion` | | | one key |
 | Whole-buffer formatting | `'format` and `documentFormattingProvider` | | yes | |
 | Range formatting (both shapes) | `#:to` the first range-formatting server | | yes | |
 | Rename | `'rename-symbol` | | yes | |
-| Inlay hints, every server | `'inlay-hints` | | | `"lsp-inlay-hints-"` plus the buffer's key |
-| Locations drawer refresh | the drawer's own feature | | yes | `"lsp-locations"` |
+| Inlay hints, every server | `'inlay-hints` | | | one key per buffer |
+| Locations drawer refresh | the drawer's own feature | | yes | one key |
 
 "Routed by" is what picks the server among a buffer's servers when the request is sent:
 a feature name sends it to the first running server whose list entry admits that feature
@@ -208,5 +208,6 @@ is a popup or menu anchored to that pane. `#:allow-stale` runs the callback even
 buffer has changed since the request was sent. It fits requests whose result is checked
 another way: edits carry `#:expect-generation`, and the locations refresh re-requests at
 the tracked position. The goto commands use neither, so a navigation the user asked for
-completes even if they looked elsewhere while waiting. `#:supersede` cancels the caller's
-own previous pending request under the same key.
+completes even if they looked elsewhere while waiting. `#:supersede` cancels the
+pending request under the same key. Each key comes from `lsp-supersede-key` at the
+plugin's top level, so no other caller can cancel these requests.

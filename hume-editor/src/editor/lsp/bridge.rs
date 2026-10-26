@@ -16,7 +16,7 @@ use hume_lsp::client::{Outcome, RequestMeta};
 use hume_lsp::codec::RequestId;
 use hume_rope::offset::ExclusiveRange;
 use hume_rope::position_encoding::{PositionEncoding, char_range_to_wire_range, char_to_wire};
-use hume_scripting::host::TrackedHold;
+use hume_scripting::host::{SupersedeKey, TrackedHold};
 use hume_scripting::json::{WireOrigin, to_steel_handle};
 use hume_scripting::{
     DocSpan, Params, PendingLspNotify, PendingLspRequest, RequestMode, RequestParams, RouteSpec,
@@ -147,7 +147,22 @@ pub(in crate::editor) struct RustDelivery {
     pub(in crate::editor) allow_stale: bool,
     /// A later request under the same key cancels this one, whose
     /// responder is then never called.
-    pub(in crate::editor) supersede: Option<&'static str>,
+    pub(in crate::editor) supersede: Option<EditorDeliveryKey>,
+}
+
+/// A supersede key of the editor's own requests. No script can name one,
+/// so a script request never cancels the editor's, nor the reverse.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::editor) enum EditorDeliveryKey {
+    /// The selected completion candidate's documentation request.
+    CompletionDoc,
+}
+
+/// The key a delivery is filed under for supersede-cancel.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::editor) enum DeliveryKey {
+    Script(SupersedeKey),
+    Editor(EditorDeliveryKey),
 }
 
 /// What a delivery needs beyond its members, whoever asked for it.
@@ -155,7 +170,7 @@ struct DeliverySpec {
     anchor: ResponseAnchor,
     method: String,
     mode: RequestMode,
-    supersede: Option<String>,
+    supersede: Option<DeliveryKey>,
     responder: Responder,
 }
 
@@ -165,7 +180,7 @@ struct Delivery {
     anchor: ResponseAnchor,
     responder: Responder,
     mode: RequestMode,
-    supersede: Option<String>,
+    supersede: Option<DeliveryKey>,
     slots: Vec<Slot>,
 }
 
@@ -175,6 +190,9 @@ struct Delivery {
 pub(in crate::editor) struct Deliveries {
     map: FxHashMap<DeliveryId, Delivery>,
     next: u64,
+    /// The last `SupersedeKey` minted. [`Deliveries::clear`] keeps it, so a
+    /// key a script still holds after a reload never names a new key.
+    supersede_keys: u64,
 }
 
 /// What a server's answer did to the delivery waiting for it.
@@ -236,12 +254,18 @@ impl Deliveries {
         self.map.clear();
     }
 
+    /// A key no earlier call returned.
+    pub(in crate::editor) fn new_supersede_key(&mut self) -> SupersedeKey {
+        self.supersede_keys += 1;
+        SupersedeKey::from_raw(self.supersede_keys)
+    }
+
     /// The delivery still in flight under `key`. A new request under the
     /// same key cancels it first, so at most one delivery holds a key.
-    fn in_flight_under(&self, key: &str) -> Option<DeliveryId> {
+    fn in_flight_under(&self, key: DeliveryKey) -> Option<DeliveryId> {
         self.map
             .iter()
-            .find(|(_, delivery)| delivery.supersede.as_deref() == Some(key))
+            .find(|(_, delivery)| delivery.supersede == Some(key))
             .map(|(&did, _)| did)
     }
 
@@ -271,8 +295,8 @@ impl EditorState {
         req: PendingLspRequest,
     ) {
         self.lsp_flush_pending();
-        if let Some(key) = &req.supersede {
-            self.cancel_superseded(key);
+        if let Some(key) = req.supersede {
+            self.cancel_superseded(DeliveryKey::Script(key));
         }
         let members = match self.request_members(&req) {
             Ok(members) => members,
@@ -290,7 +314,7 @@ impl EditorState {
             },
             method: req.method,
             mode: req.mode,
-            supersede: req.supersede,
+            supersede: req.supersede.map(DeliveryKey::Script),
             responder: Responder::Steel {
                 callback: req.callback,
                 tracked: req.tracked,
@@ -327,7 +351,7 @@ impl EditorState {
         };
         self.lsp_flush_pending();
         if let Some(key) = delivery.supersede {
-            self.cancel_superseded(key);
+            self.cancel_superseded(DeliveryKey::Editor(key));
         }
         let spec = DeliverySpec {
             anchor: ResponseAnchor {
@@ -338,7 +362,7 @@ impl EditorState {
             },
             method: method.to_string(),
             mode: RequestMode::Single,
-            supersede: delivery.supersede.map(str::to_string),
+            supersede: delivery.supersede.map(DeliveryKey::Editor),
             responder: Responder::Rust(responder),
         };
         let members = vec![Member::Send(routed.remove(0), params)];
@@ -599,7 +623,7 @@ impl EditorState {
 
     /// Drops the delivery in flight under supersede `key`, if any, without
     /// calling it back.
-    pub(in crate::editor) fn cancel_superseded(&mut self, key: &str) {
+    pub(in crate::editor) fn cancel_superseded(&mut self, key: DeliveryKey) {
         if let Some(did) = self.lsp.deliveries.in_flight_under(key) {
             self.cancel_delivery(did);
         }

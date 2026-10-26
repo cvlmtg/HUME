@@ -183,3 +183,16 @@ fn a_timer_and_a_job_with_one_id_are_not_equal() {
         SteelVal::BoolV(false)
     );
 }
+
+#[test]
+fn supersede_keys_compare_and_hash_by_their_key() {
+    let key = |raw| SupersedeKey::from_raw(raw).into_steel_val();
+    assert_eq!(
+        handle_equality_and_hashing(key(3), key(3), key(4)),
+        vec![
+            SteelVal::BoolV(true),
+            SteelVal::BoolV(false),
+            SteelVal::IntV(42)
+        ]
+    );
+}

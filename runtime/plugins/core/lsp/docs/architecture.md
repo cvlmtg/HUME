@@ -116,7 +116,7 @@ reads a location's wire fields.
   session never keeps them across a line-count change. An `on-text-changed` hook compares
   each listed buffer's line count with the stored one. On a change, a 300 ms debounced
   refresh repeats the request at `tracked-position-params` with
-  `#:allow-stale #t #:supersede "lsp-locations"` and swaps the rows, keeping the selected
+  `#:allow-stale #t` under the drawer's one `#:supersede` key and swaps the rows, keeping the selected
   index clamped into the new list. An empty answer closes the drawer with the original
   request's "nothing found" message, an error keeps the rows, and a closed or replaced
   drawer ends the session. Edits that keep the line count are ignored, so a row can sit a

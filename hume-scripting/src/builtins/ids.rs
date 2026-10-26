@@ -28,7 +28,7 @@ use steel::{
 use hume_lsp::backend::ServerId;
 use hume_rope::offset::CharOffset;
 
-use crate::host::{JobHandle, TimerHandle};
+use crate::host::{JobHandle, SupersedeKey, TimerHandle};
 use crate::types::{PaneHandle, ServerName};
 
 // ── Wrapper types ─────────────────────────────────────────────────────────────
@@ -177,6 +177,28 @@ impl JobHandle {
 impl Custom for JobHandle {
     fn fmt(&self) -> Option<Result<String, std::fmt::Error>> {
         Some(Ok(format!("#<job {}>", self.raw())))
+    }
+
+    fn equality_hint(&self, other: &dyn steel::rvals::CustomType) -> bool {
+        as_underlying_type::<Self>(other).is_some_and(|o| o == self)
+    }
+
+    fn try_as_dyn_hash(&self) -> Option<&dyn steel::rvals::DynHash> {
+        Some(self)
+    }
+}
+
+impl SupersedeKey {
+    /// Convert to a `SteelVal` without returning `Result`; see
+    /// [`SteelPane::into_steel_val`].
+    pub(crate) fn into_steel_val(self) -> SteelVal {
+        self.into_steelval().expect("SupersedeKey into_steelval")
+    }
+}
+
+impl Custom for SupersedeKey {
+    fn fmt(&self) -> Option<Result<String, std::fmt::Error>> {
+        Some(Ok(format!("#<supersede-key {}>", self.raw())))
     }
 
     fn equality_hint(&self, other: &dyn steel::rvals::CustomType) -> bool {

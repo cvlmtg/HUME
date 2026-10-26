@@ -419,7 +419,7 @@ pub struct PendingLspRequest {
     /// previous one still in flight under it, on every server it went to.
     /// An explicit opt-in, so two features issuing the same method never
     /// cancel each other.
-    pub supersede: Option<String>,
+    pub supersede: Option<crate::host::SupersedeKey>,
     /// `#:require-focus`: the pane the request was made from, if the
     /// callback should fire only while that pane is still focused when the
     /// answers arrive. `None` for a background request (formatting, rename,

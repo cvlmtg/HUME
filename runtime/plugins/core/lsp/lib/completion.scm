@@ -4,6 +4,8 @@
 
 ;; ── The source ───────────────────────────────────────────────────────────────
 
+(define lsp/completion-key (lsp-supersede-key))
+
 (register-completion-source! "lsp"
   (lambda (id pane prefix)
     (let ((params (lsp-position-params pane)))
@@ -14,7 +16,7 @@
               (lsp/report-answer-errors! "completion" results)
               (completion-emit! id (lsp/answers results)))
             #:unavailable 'empty
-            #:supersede "completion")
+            #:supersede lsp/completion-key)
           (completion-emit! id '()))))
   #:target 'buffer #:priority 10 #:resolve #t)
 

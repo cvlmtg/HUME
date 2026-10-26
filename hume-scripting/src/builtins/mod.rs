@@ -200,8 +200,8 @@ macro_rules! builtins {
 // (hash 'kind 'message ['code]).
 // lsp-request-all!: callback is (lambda (err results)), results one hash per
 // server. the method, #:feature and #:to choose the servers when the request is
-// sent. #:supersede <key> cancels the caller's own pending request under the
-// same key. #:require-focus drops the callback unless pane is still focused
+// sent. #:supersede <key>, a key from lsp-supersede-key, cancels the pending
+// request under the same key. #:require-focus drops the callback unless pane is still focused
 // when the answers arrive.
 //
 // debounce / debounce-by: trailing-edge; debounce-by keeps one timer per
@@ -424,6 +424,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         plain "lsp-server-name" lsp::lsp_server_name(server: SteelVal);
         cmd  "lsp-server-status" lsp::lsp_server_status();
         open "lsp-server-registered?" lsp::lsp_server_registered(name: SteelVal);
+        open "lsp-supersede-key" lsp::lsp_supersede_key();
         cmd "lsp-document-params" lsp::lsp_document_params(pane: args::LivePane);
         cmd "lsp-position-params" lsp::lsp_position_params(pane: args::LivePane);
         cmd "track-position!" lsp::track_position(pane: args::LivePane);

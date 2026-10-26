@@ -3,7 +3,7 @@ use hume_platform::dirs::Dirs;
 
 use super::super::lsp_bridge::{OrderedLogBackend, bridge_initialize_result};
 
-/// Two `#:supersede "k"` requests queued in the same command dispatch (so
+/// Two requests under one `#:supersede` key queued in the same command dispatch (so
 /// both flush in one batch, the first still pending when the second sends):
 /// the second must cancel the first: exactly one `$/cancelRequest` on the
 /// wire, the first callback never fires, the second does, and neither the
@@ -23,13 +23,14 @@ fn supersede_cancels_the_prior_request_under_the_same_key() {
     );
     let mut rig = LspRig::drained(tmp.path(), RigSpec::rust("-[a]>bcdef\n"), b);
     rig.eval(
-        r#"(define-typed-command! "test-cmd" "" (lambda (bid)
+        r#"(define key (lsp-supersede-key))
+           (define-typed-command! "test-cmd" "" (lambda (bid)
              (lsp-request! bid "textDocument/completion" (hash)
                (lambda (err result) (log! 'trace (string-append "marker-" (json-ref result "marker"))))
-               #:supersede "k")
+               #:supersede key)
              (lsp-request! bid "textDocument/completion" (hash)
                (lambda (err result) (log! 'trace (string-append "marker-" (json-ref result "marker"))))
-               #:supersede "k")))"#,
+               #:supersede key)))"#,
     );
     let sid = rig.sid("rust-analyzer");
     let ed = &mut rig.ed;

@@ -21,7 +21,7 @@ use hume_engine::pipeline::BufferId;
 use hume_platform::path::AbsolutePath;
 
 use crate::Rooted;
-use crate::host::{HostToken, JobHandle, TimerHandle};
+use crate::host::{HostToken, JobHandle, SupersedeKey, TimerHandle};
 use crate::keys::parse_key_sequence;
 use crate::types::{PaneHandle, Params};
 
@@ -270,6 +270,18 @@ pub(crate) fn job_arg(val: &SteelVal, ctx_name: &str) -> Result<JobHandle, Steel
         generic_err(format!(
             "{ctx_name}: expected a job (from spawn-async! or path-programs)"
         ))
+    })
+}
+
+/// A `#:supersede` key that may be `#f` (absent), as `lsp-supersede-key`
+/// hands it out.
+pub(crate) fn optional_supersede_key_arg(
+    val: SteelVal,
+    ctx_name: &str,
+) -> Result<Option<SupersedeKey>, SteelErr> {
+    optional(val, ctx_name, |v, ctx| {
+        super::ids::downcast(&v)
+            .ok_or_else(|| generic_err(format!("{ctx}: expected a key from lsp-supersede-key")))
     })
 }
 

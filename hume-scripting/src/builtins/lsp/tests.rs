@@ -697,19 +697,56 @@ fn server(id: u32, name: &str) -> SteelVal {
 
 #[test]
 fn lsp_request_queues_the_supersede_key() {
+    let key = crate::host::SupersedeKey::from_raw(7);
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
     request(
         &mut ctx,
         RequestArgs {
-            supersede: "completion".into_steelval().unwrap(),
+            supersede: key.into_steel_val(),
             ..RequestArgs::default()
         },
     )
     .expect("a well-formed request queues");
     let requests = lsp_requests(&ctx);
     assert_eq!(requests.len(), 1);
-    assert_eq!(requests[0].supersede, Some("completion".to_string()));
+    assert_eq!(requests[0].supersede, Some(key));
+}
+
+/// A key is a value `lsp-supersede-key` minted: a string names no key.
+#[test]
+fn lsp_request_refuses_a_string_supersede_key() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let err = request(
+        &mut ctx,
+        RequestArgs {
+            supersede: "completion".into_steelval().unwrap(),
+            ..RequestArgs::default()
+        },
+    )
+    .expect_err("a string key is refused");
+    assert!(
+        err.to_string()
+            .contains("#:supersede: expected a key from lsp-supersede-key"),
+        "got: {err}"
+    );
+    assert!(lsp_requests(&ctx).is_empty());
+}
+
+/// Each call mints a key no earlier call returned.
+#[test]
+fn lsp_supersede_key_mints_a_new_key_per_call() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut host = EmptyLspHost::default();
+    let mut ctx = h.ctx_with_host(&mut host);
+    let mut mint = || {
+        let key = lsp_supersede_key(&mut ctx).expect("a host with LSP mints");
+        crate::builtins::ids::downcast::<crate::host::SupersedeKey>(&key)
+            .expect("the value is a supersede key")
+    };
+    let first = mint();
+    assert_ne!(first, mint());
 }
 
 /// `#:tracked` takes a token or `#f`. The hold on the position comes from

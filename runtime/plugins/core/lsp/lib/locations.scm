@@ -114,6 +114,8 @@
                  (lsp/report-not-found! locations (hash-ref session 'not-found)))
                (lsp/swap-locations! session places))))))))
 
+(define lsp/locations-key (lsp-supersede-key))
+
 (define (lsp/refresh-locations!)
   (when lsp/*locations*
     (let* ((session lsp/*locations*)
@@ -127,7 +129,7 @@
             (lsp-request-all! (hash-ref session 'pane) (hash-ref session 'method)
                           ((hash-ref session 'shape) params)
                           (lambda (err results) (lsp/apply-locations! drawer seq err results))
-                          #:allow-stale #t #:supersede "lsp-locations"))))))
+                          #:allow-stale #t #:supersede lsp/locations-key))))))
 
 (define lsp/refresh-locations (debounce 300 lsp/refresh-locations!))
 

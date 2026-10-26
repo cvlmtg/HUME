@@ -38,7 +38,9 @@ pub use diff::DiffHost;
 pub use edits::{CharTextEdit, EditHost, WireTextEdit};
 pub use events::EventHost;
 pub use language::LanguageHost;
-pub use lsp::{LocationPlace, LspHost, Place, PositionParams, RangeParams, RangesParams};
+pub use lsp::{
+    LocationPlace, LspHost, Place, PositionParams, RangeParams, RangesParams, SupersedeKey,
+};
 pub use output::{ClaimRefused, OutputHost};
 pub use registers::RegisterHost;
 pub use settings::{

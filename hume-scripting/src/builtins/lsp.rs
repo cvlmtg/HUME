@@ -16,8 +16,8 @@ use crate::types::{
 use super::SteelResult;
 use super::args::{
     bool_arg, callable_arg, checked_params, list_of, optional_server_arg, optional_string_arg,
-    optional_symbol_arg, optional_token_arg, pair_fields, server_arg, string_arg, string_list,
-    strings_arg, symbol_enum_arg, symbol_hash,
+    optional_supersede_key_arg, optional_symbol_arg, optional_token_arg, pair_fields, server_arg,
+    string_arg, string_list, strings_arg, symbol_enum_arg, symbol_hash,
 };
 use super::errors::{generic_err, require_cap};
 use super::hooks::{known_event, register_entry};
@@ -109,7 +109,7 @@ fn queue_request(
         .transpose()?
         .unwrap_or_default();
     let allow_stale = bool_arg(allow_stale, "#:allow-stale")?;
-    let supersede = optional_string_arg(supersede, "#:supersede")?;
+    let supersede = optional_supersede_key_arg(supersede, "#:supersede")?;
     let require_focus = bool_arg(require_focus, "#:require-focus")?
         .then(|| {
             pane.pane()
@@ -418,6 +418,14 @@ pub(crate) fn lsp_server_status(ctx: &mut SteelCtx) -> SteelResult {
         })
         .collect();
     Ok(SteelVal::ListV(entries.into()))
+}
+
+/// `(lsp-supersede-key)`: a new `#:supersede` key, equal only to itself.
+/// `open` kind, so a plugin mints its keys once at its top level.
+pub(crate) fn lsp_supersede_key(ctx: &mut SteelCtx) -> SteelResult {
+    Ok(require_cap(ctx.host.lsp())?
+        .new_supersede_key()
+        .into_steel_val())
 }
 
 /// `(lsp-server-registered? name)` → bool. Reads through the

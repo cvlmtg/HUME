@@ -583,8 +583,9 @@ fn all_supersede_cancels_all_members() {
     );
 
     rig.probe(&format!(
-        r#"(lsp-request-all! pane "custom/ping" (hash) {LOG_ALL} #:supersede "ping")
-           (lsp-request-all! pane "custom/ping" (hash) {LOG_ALL} #:supersede "ping")"#
+        r#"(let ((key (lsp-supersede-key)))
+             (lsp-request-all! pane "custom/ping" (hash) {LOG_ALL} #:supersede key)
+             (lsp-request-all! pane "custom/ping" (hash) {LOG_ALL} #:supersede key))"#
     ));
 
     assert_eq!(
@@ -594,6 +595,36 @@ fn all_supersede_cancels_all_members() {
     for sid in [RA, LINT] {
         assert_eq!(rig.sent(sid, "$/cancelRequest").len(), 1, "{sid:?}");
     }
+    assert_eq!(rig.ed.state.lsp.delivery_count_for_test(), 0);
+}
+
+/// Two minted keys name two keys: a request under one never cancels the
+/// request under the other.
+#[test]
+fn requests_under_two_keys_do_not_cancel_each_other() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut rig = two_servers(
+        &tmp,
+        backend(
+            initialize("utf-16", serde_json::json!({})),
+            initialize("utf-16", serde_json::json!({})),
+            |b| {
+                b.respond_to("custom/ping", serde_json::json!("first"));
+                b.respond_to("custom/ping", serde_json::json!("second"));
+            },
+        ),
+    );
+
+    rig.probe(&format!(
+        r#"(lsp-request! pane "custom/ping" (hash) {LOG_ONE} #:supersede (lsp-supersede-key))
+           (lsp-request! pane "custom/ping" (hash) {LOG_ONE} #:supersede (lsp-supersede-key))"#
+    ));
+
+    assert_eq!(
+        rig.warnings(),
+        vec!["ok:first".to_string(), "ok:second".to_string()]
+    );
+    assert!(rig.sent(RA, "$/cancelRequest").is_empty());
     assert_eq!(rig.ed.state.lsp.delivery_count_for_test(), 0);
 }
 
@@ -611,7 +642,7 @@ fn delivery_count_leak_check_after_stop() {
 
     rig.eval(&format!(
         r#"(define-typed-command! "send" "" (lambda (pane)
-             (lsp-request-all! pane "custom/ping" (hash) {LOG_ALL} #:supersede "ping")))"#
+             (lsp-request-all! pane "custom/ping" (hash) {LOG_ALL} #:supersede (lsp-supersede-key))))"#
     ));
     type_cmd(&mut rig.ed, ":send");
     rig.stop("rust-analyzer");
@@ -1200,8 +1231,9 @@ fn a_superseding_request_that_reaches_no_server_still_cancels_the_one_in_flight(
     );
 
     rig.probe(&format!(
-        r#"(lsp-request! pane "custom/ping" (hash) {LOG_ONE} #:supersede "k")
-           (lsp-request! pane "textDocument/hover" (lsp-position-params pane) {LOG_ONE} #:supersede "k")"#
+        r#"(let ((key (lsp-supersede-key)))
+             (lsp-request! pane "custom/ping" (hash) {LOG_ONE} #:supersede key)
+             (lsp-request! pane "textDocument/hover" (lsp-position-params pane) {LOG_ONE} #:supersede key))"#
     ));
 
     assert_eq!(

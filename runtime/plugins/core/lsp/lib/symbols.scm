@@ -93,6 +93,8 @@
                               (hash-ref place 'location))))
                  placed places))))
 
+(define lsp/workspace-symbols-key (lsp-supersede-key))
+
 (define (lsp/workspace-symbol-source pane)
   (lambda (token query)
     (if (equal? query "")
@@ -107,7 +109,7 @@
                 (lsp/report-answer-errors! "workspace symbols" results)
                 (lsp/workspace-rows (lsp/answer-items results))))))
           #:allow-stale #t
-          #:supersede "lsp-workspace-symbols"))))
+          #:supersede lsp/workspace-symbols-key))))
 
 (define-command! "lsp/workspace-symbols" "Search the symbols of the workspace and jump to one."
   (lambda (pane)

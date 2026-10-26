@@ -8,6 +8,18 @@
 ;;; Buffers toggled away from `lsp/inlay-default`, keyed by `(buffer-key pane)`.
 (define lsp/*inlay-overrides* (box (hash)))
 
+;;; Each buffer's supersede key, keyed by `(buffer-key pane)`.
+(define lsp/*inlay-keys* (box (hash)))
+
+(define (lsp/inlay-key pane)
+  (let* ((keys (unbox lsp/*inlay-keys*))
+         (bkey (buffer-key pane)))
+    (if (hash-contains? keys bkey)
+        (hash-ref keys bkey)
+        (let ((key (lsp-supersede-key)))
+          (set-box! lsp/*inlay-keys* (hash-insert keys bkey key))
+          key))))
+
 (define (lsp/inlay-on? pane)
   (let ((overrides (unbox lsp/*inlay-overrides*))
         (key (buffer-key pane)))
@@ -58,7 +70,7 @@
                               (map (lambda (h) (lsp/hint->store-entry pane h))
                                    (lsp/answer-items results))))))
                 #:unavailable 'empty
-                #:supersede (string-append "lsp-inlay-hints-" (to-string (buffer-key pane)))))))))
+                #:supersede (lsp/inlay-key pane)))))))
     #:key (lambda (p . _) (buffer-key p))))
 
 ;;; `pane` need not itself be live — see docs/decorations.md's "Inlay hints".
@@ -82,7 +94,9 @@
 (register-hook! 'on-buffer-close
   (lambda (pane)
     (set-box! lsp/*inlay-overrides*
-              (hash-remove (unbox lsp/*inlay-overrides*) (buffer-key pane)))))
+              (hash-remove (unbox lsp/*inlay-overrides*) (buffer-key pane)))
+    (set-box! lsp/*inlay-keys*
+              (hash-remove (unbox lsp/*inlay-keys*) (buffer-key pane)))))
 
 (define-typed-command! "toggle-inlay-hints"
   "Toggle LSP inlay hints for the current buffer."

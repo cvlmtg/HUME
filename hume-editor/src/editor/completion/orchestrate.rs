@@ -27,15 +27,12 @@ use super::session::{
 use super::{CompletionCtx, CompletionItem, arg_span};
 use crate::editor::buffer::store::BufferStore;
 use crate::editor::input_stack::{BufferCompletionLayer, LayerRef, MinibufCompletionLayer};
-use crate::editor::lsp::{RustDelivery, RustResponder};
+use crate::editor::lsp::{DeliveryKey, EditorDeliveryKey, RustDelivery, RustResponder};
 use crate::editor::minibuf::PromptCompletion;
 use crate::editor::registry::CommandRegistry;
 use crate::editor::replay::Interactive;
 use crate::editor::settings::{CommandCompletion, EditorSettings};
 use crate::editor::{EditorState, Severity};
-
-/// The supersede key of the selected candidate's documentation request.
-const COMPLETION_DOC_SUPERSEDE: &str = "completion-doc";
 
 /// What set an Insert-mode trigger in motion, and so which sources it
 /// invokes.
@@ -259,7 +256,7 @@ impl EditorState {
     pub(in crate::editor) fn close_buffer_completion_views(&mut self) {
         self.views.completion_menu.set(None);
         self.views.completion_doc.set(None);
-        self.cancel_superseded(COMPLETION_DOC_SUPERSEDE);
+        self.cancel_superseded(DeliveryKey::Editor(EditorDeliveryKey::CompletionDoc));
     }
 
     /// Asks the selected candidate's server for its documentation, through
@@ -306,7 +303,7 @@ impl EditorState {
             request.params,
             RustDelivery {
                 allow_stale: true,
-                supersede: Some(COMPLETION_DOC_SUPERSEDE),
+                supersede: Some(EditorDeliveryKey::CompletionDoc),
             },
             respond,
         );

@@ -514,6 +514,7 @@ impl CommandHost for CommandStoreHost {
 #[derive(Default)]
 pub(crate) struct EmptyLspHost {
     inner: NullHost,
+    supersede_keys: u64,
 }
 
 impl EditorHost for EmptyLspHost {
@@ -573,6 +574,10 @@ impl LspHost for EmptyLspHost {
     }
     fn lsp_server_registered(&self, _name: &crate::types::ServerName) -> bool {
         false
+    }
+    fn new_supersede_key(&mut self) -> crate::host::SupersedeKey {
+        self.supersede_keys += 1;
+        crate::host::SupersedeKey::from_raw(self.supersede_keys)
     }
     fn lsp_language_servers(&self, _language: &str) -> Vec<crate::types::ListEntry> {
         Vec::new()

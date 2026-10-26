@@ -45,6 +45,10 @@ impl<'a> LspHost for EditorHostImpl<'a> {
         crate::editor::lsp::introspect::server_registered(&self.state.lsp, name)
     }
 
+    fn new_supersede_key(&mut self) -> hume_scripting::host::SupersedeKey {
+        self.state.lsp.new_supersede_key()
+    }
+
     fn lsp_language_servers(&self, language: &str) -> Vec<hume_scripting::ListEntry> {
         crate::editor::lsp::introspect::language_servers(&self.state.lsp, language)
     }

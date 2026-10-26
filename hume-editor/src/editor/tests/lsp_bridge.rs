@@ -120,7 +120,7 @@ fn lsp_stop_completes_a_superseding_delivery() {
         r#"(define-typed-command! "test-cmd" "" (lambda (bid)
              (lsp-request! bid "textDocument/completion" (hash)
                (lambda (err result) (log! 'trace "fired"))
-               #:supersede "k")))"#,
+               #:supersede (lsp-supersede-key))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);

@@ -33,6 +33,24 @@ pub struct RangesParams {
     pub ranges: Vec<DocRange>,
 }
 
+/// A `#:supersede` key, as Steel holds it: an opaque value only
+/// `lsp-supersede-key` mints, so two callers never share a key unless one
+/// hands its key to the other.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct SupersedeKey(u64);
+
+impl SupersedeKey {
+    /// Wraps an id the host minted.
+    pub fn from_raw(raw: u64) -> Self {
+        Self(raw)
+    }
+
+    /// The id the host minted.
+    pub fn raw(self) -> u64 {
+        self.0
+    }
+}
+
 /// LSP server introspection, accessed through [`EditorHost::lsp`](super::EditorHost::lsp).
 pub trait LspHost {
     /// `server`'s wire `ServerCapabilities`, or `None` if it is no longer
@@ -74,6 +92,9 @@ pub trait LspHost {
     /// as of the last applied effect: the `lsp-server-registered?` builtin
     /// overlays the ops queued in its own eval before falling back here.
     fn lsp_server_registered(&self, name: &crate::types::ServerName) -> bool;
+
+    /// A key no other call has returned, for `lsp-supersede-key`.
+    fn new_supersede_key(&mut self) -> SupersedeKey;
 
     /// The servers `language`'s buffers attach to, in order, each with the
     /// feature filter its list entry gives it.

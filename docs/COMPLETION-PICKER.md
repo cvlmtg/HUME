@@ -250,7 +250,8 @@ counts its positions in a text accept cannot read them against.
 
 A second resolve runs on selection, for documentation. Each settle pass,
 after `reconcile_completion`, asks the session for the selected item's
-`DocRequest`, sent under one supersede key. Accepting takes the session
+`DocRequest`, sent under one supersede key of the editor's own
+(`EditorDeliveryKey::CompletionDoc`), which no script can name. Accepting takes the session
 out without one, and dismissing or accepting cancels the one in flight,
 since nothing would read its reply. The request is skipped for an
 item whose docs are known (its `detail` and `documentation` both came with
@@ -334,7 +335,7 @@ theme change drops it.
 
 `core:lsp/lib/completion.scm` is the reference source: `register-completion-
 source! "lsp"` with `#:priority 10 #:resolve #t`, whose proc sends
-`textDocument/completion` with `#:supersede "completion"` (it never reads a
+`textDocument/completion` under one `#:supersede` key (it never reads a
 field of the response itself, so the handle every `lsp-request!` response
 crosses as goes straight to `completion-emit!` unopened) and declines with an
 empty answer when the buffer's server has no `completionProvider`;

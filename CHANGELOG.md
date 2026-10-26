@@ -17,6 +17,7 @@
 - Steel's own print functions (`display`, `displayln`, `newline`, …) write as Steel defines them, over the editor's screen too: report with `log!`, and write a line inside an `#:inline-output` command with the new `print!`.
 - `run-inline-output!` raises outside an `#:inline-output` command, the top level of `init.scm` included: move the call into one, or use `run-capture!`.
 - `after!`, `spawn-async!` and `path-programs` return an opaque timer or job, not an integer: compare two with `equal?`. `cancel-timer!` raises for anything but a timer, and `cancel-async!` for anything but a job, so one kind can no longer cancel the other.
+- `#:supersede` takes a key from the new `lsp-supersede-key`, not a string, so a plugin can no longer cancel another plugin's request, or HUME's own, by reusing its key's name: make one key at your plugin's top level, `(define my-key (lsp-supersede-key))`, and pass it to each request that replaces the last.
 - An option's named value is a string both ways: `set-option!` and `set-buffer-option!` raise for a symbol, and `get-option`, `get-buffer-option` and the `on-option-change` hook give a string. Write `"soft"` for `'soft`, and compare a read value with a string. `wrap-mode` reads back as written: `"word"`, not `"word:0"`.
 
 ### Syntax & language awareness

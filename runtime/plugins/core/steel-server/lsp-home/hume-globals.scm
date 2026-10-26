@@ -243,6 +243,7 @@
 (#%register-global "lsp-servers")
 (#%register-global "lsp-show-status!")
 (#%register-global "lsp-stop!")
+(#%register-global "lsp-supersede-key")
 (#%register-global "make-text-capitalized")
 (#%register-global "make-text-lowercase")
 (#%register-global "make-text-uppercase")
