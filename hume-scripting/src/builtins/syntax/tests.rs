@@ -367,11 +367,15 @@ fn register_grammar_hash_with_textobjects_only_populates_that_kind() {
         );
         assert!(result.is_ok());
     }
+    // On Windows a root-anchored path lands on the working directory's drive.
+    let textobjects = std::env::current_dir()
+        .unwrap()
+        .join("/tmp/textobjects.scm");
     match lang_regs(&h)[0] {
         PendingLanguageReg::Grammar(reg) => {
             assert_eq!(
                 reg.source.queries.get(OptionalQuery::TextObjects),
-                Some(std::path::Path::new("/tmp/textobjects.scm")),
+                Some(textobjects.as_path()),
             );
             assert_eq!(reg.source.queries.get(OptionalQuery::Injections), None);
         }
