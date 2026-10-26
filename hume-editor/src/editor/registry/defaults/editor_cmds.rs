@@ -11,7 +11,7 @@ impl CommandRegistry {
         ecmd_focused(
             "insert-before",
             "Enter insert mode; collapse each selection to its start.",
-            cmd_insert_before,
+            cmd_insert_at_selection_start,
         )
         .repeatable()
         .reg(self);

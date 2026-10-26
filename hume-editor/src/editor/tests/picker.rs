@@ -437,7 +437,7 @@ fn open_from_insert_mode_allowed_and_clears_completion() {
 /// `tear_down`, leaving `active_session` set and the edit group open.
 #[test]
 fn close_picker_tears_down_an_insert_session_stacked_above_it() {
-    use crate::editor::commands::{FocusedPane, cmd_insert_before};
+    use crate::editor::commands::{FocusedPane, cmd_insert_at_selection_start};
     use hume_ops::MotionMode;
 
     let mut ed = editor_from("-[a]>bc\n");
@@ -446,7 +446,7 @@ fn close_picker_tears_down_an_insert_session_stacked_above_it() {
 
     // Lands above the picker the same ungated way a timer would.
     let fp = FocusedPane::current(&ed.view);
-    cmd_insert_before(
+    cmd_insert_at_selection_start(
         &mut ed.state,
         &mut ed.view,
         fp,

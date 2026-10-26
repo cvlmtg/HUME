@@ -36,18 +36,6 @@ fn enter_insert(
     Ok(())
 }
 
-pub(in crate::editor) fn cmd_insert_before(
-    state: &mut EditorState,
-    view: &mut EngineView,
-    fp: FocusedPane,
-    _count: Count,
-    _mode: MotionMode,
-) -> Result<(), CommandError> {
-    enter_insert(state, view, fp, ExitCursor::StayPut, |st| {
-        st.map(|s| Selection::cursor(s.start()))
-    })
-}
-
 pub(in crate::editor) fn cmd_insert_after(
     state: &mut EditorState,
     view: &mut EngineView,
