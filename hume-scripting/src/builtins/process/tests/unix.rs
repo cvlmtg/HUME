@@ -27,7 +27,7 @@ fn run_inline_output_succeeds_on_exit_zero_and_raises_naming_any_other_exit() {
         list_val(&[]),
     )
     .unwrap_err();
-    insta::assert_snapshot!(err, @"Error: Generic: run-inline-output!: false failed (exit code 1)");
+    insta::assert_snapshot!(err, @"Error: Generic: false failed (exit code 1)");
 
     let err = run_inline_output(
         &mut ctx,
@@ -37,7 +37,7 @@ fn run_inline_output_succeeds_on_exit_zero_and_raises_naming_any_other_exit() {
         list_val(&[]),
     )
     .unwrap_err();
-    insta::assert_snapshot!(err, @"Error: Generic: run-inline-output!: sh failed (killed by signal)");
+    insta::assert_snapshot!(err, @"Error: Generic: sh failed (killed by signal)");
 }
 
 #[test]

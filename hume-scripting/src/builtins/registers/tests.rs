@@ -7,7 +7,7 @@ use hume_platform::dirs::Dirs;
 fn register_arg_rejects_multi_char_name() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
-    let err = register_arg(&mut ctx, "12", "read-register").unwrap_err();
+    let err = register_arg(&mut ctx, "12").unwrap_err();
     assert!(
         err.to_string()
             .contains("expected a single-character register name"),
@@ -19,7 +19,7 @@ fn register_arg_rejects_multi_char_name() {
 fn register_arg_rejects_empty_name() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
-    let err = register_arg(&mut ctx, "", "read-register").unwrap_err();
+    let err = register_arg(&mut ctx, "").unwrap_err();
     assert!(
         err.to_string()
             .contains("expected a single-character register name"),
@@ -37,7 +37,7 @@ fn register_arg_rejects_whatever_the_host_calls_invalid() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
     for name in ["3", "k", "c", "b", "q", "s", "a"] {
-        let err = register_arg(&mut ctx, name, "read-register").unwrap_err();
+        let err = register_arg(&mut ctx, name).unwrap_err();
         assert!(
             err.to_string().contains("invalid register"),
             "name {name:?} got: {err}"
@@ -52,7 +52,7 @@ fn register_arg_accepts_digit_and_special_names() {
     let mut ctx = h.ctx_with_host(&mut host);
     for name in ["0", "9", "k", "c", "b"] {
         assert_eq!(
-            register_arg(&mut ctx, name, "read-register").unwrap(),
+            register_arg(&mut ctx, name).unwrap(),
             name.chars().next().unwrap()
         );
     }
@@ -64,11 +64,9 @@ fn register_arg_rejects_macro_and_search_even_with_real_validation() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx_with_host(&mut host);
     for name in ["q", "s"] {
-        let err = register_arg(&mut ctx, name, "read-register")
-            .unwrap_err()
-            .to_string();
+        let err = register_arg(&mut ctx, name).unwrap_err().to_string();
         assert!(
-            err.contains(&format!("read-register: invalid register '{name}'")),
+            err.contains(&format!("invalid register '{name}'")),
             "got: {err}"
         );
     }
@@ -79,11 +77,9 @@ fn register_arg_message_lists_the_valid_registers() {
     let mut host = RegisterCapableHost::default();
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx_with_host(&mut host);
-    let err = register_arg(&mut ctx, "x", "read-register")
-        .unwrap_err()
-        .to_string();
+    let err = register_arg(&mut ctx, "x").unwrap_err().to_string();
     assert!(
-        err.contains("read-register: invalid register 'x'; valid: 0-9, k, c, b"),
+        err.contains("invalid register 'x'; valid: 0-9, k, c, b"),
         "got: {err}"
     );
 }
@@ -96,12 +92,12 @@ fn register_name_answers_true_only_for_names_read_register_takes() {
     for name in ["0", "9", "k", "c", "b"] {
         let answer = register_name(&mut ctx, name.to_string()).unwrap();
         assert!(matches!(answer, SteelVal::BoolV(true)), "{name:?}");
-        assert!(register_arg(&mut ctx, name, "read-register").is_ok());
+        assert!(register_arg(&mut ctx, name).is_ok());
     }
     for name in ["q", "s", "f", "p", "ab", ""] {
         let answer = register_name(&mut ctx, name.to_string()).unwrap();
         assert!(matches!(answer, SteelVal::BoolV(false)), "{name:?}");
-        assert!(register_arg(&mut ctx, name, "read-register").is_err());
+        assert!(register_arg(&mut ctx, name).is_err());
     }
 }
 

@@ -173,7 +173,7 @@ fn minibuf_does_not_resolve_a_prompt_buried_under_a_picker() {
         hume_scripting::host::PickerOpts::default(),
         Vec::new(),
     );
-    crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session, "picker!")
+    crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session)
         .expect("no `.` is in progress");
 
     assert!(

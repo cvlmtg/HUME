@@ -450,7 +450,7 @@ fn a_stale_answer_never_lands_in_a_later_bindings_entry() {
     fn open_input(ed: &mut Editor, scope: RecordingScope) -> AnswerTicket {
         with_recording_scope(&mut ed.state, Some(scope), |state| {
             state
-                .waiting_input("ask", InputOpener::Code)
+                .waiting_input(InputOpener::Code)
                 .expect("not during `.`")
                 .take_answer()
         })

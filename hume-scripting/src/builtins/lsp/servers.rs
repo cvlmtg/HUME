@@ -53,12 +53,12 @@ pub(crate) fn register_lsp_server(
     settings: SteelVal,
     env_val: SteelVal,
 ) -> SteelResult {
-    let name = server_name_arg(name, "register-lsp-server! name")?;
-    let command = string_arg(command, "register-lsp-server! command")?;
-    let args = list_to_strings(args_val, "register-lsp-server! args")?;
-    let init_options = optional_json_arg(init_options, "register-lsp-server! init-options")?;
-    let settings = optional_json_arg(settings, "register-lsp-server! settings")?;
-    let env = list_to_string_pairs(env_val, "register-lsp-server! env", ENV_PAIR_SHAPE)?;
+    let name = server_name_arg(name, "name")?;
+    let command = string_arg(command, "command")?;
+    let args = list_to_strings(args_val, "args")?;
+    let init_options = optional_json_arg(init_options, "init-options")?;
+    let settings = optional_json_arg(settings, "settings")?;
+    let env = list_to_string_pairs(env_val, "env", ENV_PAIR_SHAPE)?;
 
     ctx.push_effect(Effect::LspServerOp(PendingLspServerOp::Register(
         PendingLspServerReg {
@@ -92,7 +92,7 @@ pub(crate) fn register_lsp_server(
 /// `(after! 0 …)`), which runs strictly after this eval's drain reaps the
 /// process.
 pub(crate) fn unregister_lsp_server(ctx: &mut SteelCtx, name: SteelVal) -> SteelResult {
-    let name = server_name_arg(name, "unregister-lsp-server! name")?;
+    let name = server_name_arg(name, "name")?;
     ctx.push_effect(Effect::LspServerOp(PendingLspServerOp::Unregister { name }));
     Ok(SteelVal::Void)
 }
@@ -150,17 +150,16 @@ fn queue_language_servers(
     language: SteelVal,
     entries: SteelVal,
     layer: ListLayer,
-    ctx_name: &str,
 ) -> SteelResult {
-    let language = string_arg(language, ctx_name)?;
-    let entries = optional_list_items(entries, ctx_name)?
+    let language = string_arg(language, "language")?;
+    let entries = optional_list_items(entries, "entries")?
         .map(|items| {
             let mut decoded: Vec<ListEntry> = Vec::with_capacity(items.len());
             for item in items {
-                let entry = list_entry_arg(item, ctx_name)?;
+                let entry = list_entry_arg(item, "entries")?;
                 if decoded.iter().any(|e| e.name == entry.name) {
                     return Err(generic_err(format!(
-                        "{ctx_name}: '{}' is listed twice",
+                        "entries: '{}' is listed twice",
                         entry.name
                     )));
                 }
@@ -186,13 +185,7 @@ pub(crate) fn set_language_servers(
     language: SteelVal,
     entries: SteelVal,
 ) -> SteelResult {
-    queue_language_servers(
-        ctx,
-        language,
-        entries,
-        ListLayer::User,
-        "set-language-servers!",
-    )
+    queue_language_servers(ctx, language, entries, ListLayer::User)
 }
 
 /// `(set-default-language-servers! language entries)`: the list a plugin
@@ -202,13 +195,7 @@ pub(crate) fn set_default_language_servers(
     language: SteelVal,
     entries: SteelVal,
 ) -> SteelResult {
-    queue_language_servers(
-        ctx,
-        language,
-        entries,
-        ListLayer::Default,
-        "set-default-language-servers!",
-    )
+    queue_language_servers(ctx, language, entries, ListLayer::Default)
 }
 
 /// `(lsp-language-servers language)` → the servers `language`'s buffers
@@ -216,9 +203,8 @@ pub(crate) fn set_default_language_servers(
 /// `'only-features` or `'except-features` (a list of feature symbols) when
 /// its list entry filters it.
 pub(crate) fn lsp_language_servers(ctx: &mut SteelCtx, language: SteelVal) -> SteelResult {
-    let language = string_arg(language, "lsp-language-servers language")?;
-    let entries =
-        require_cap(ctx.host.lsp(), "lsp-language-servers")?.lsp_language_servers(&language);
+    let language = string_arg(language, "language")?;
+    let entries = require_cap(ctx.host.lsp())?.lsp_language_servers(&language);
     let features =
         |set: LspFeatureSet| list_of(set.iter().map(|f| SteelVal::SymbolV(f.name().into())));
     Ok(list_of(entries.into_iter().map(|entry| {
@@ -292,15 +278,15 @@ impl BuiltinArg for LspTargetArg {
     fn resolve(
         self,
         ctx: &mut crate::SteelCtx,
-        name: &'static str,
+        arg: &'static str,
     ) -> Result<crate::types::LspServerTarget, SteelErr> {
         match self {
             LspTargetArg::Buffer(pane) => Ok(crate::types::LspServerTarget::Buffer(
-                pane.resolve(ctx, name)?.buffer(),
+                pane.resolve(ctx, arg)?.buffer(),
             )),
             LspTargetArg::Name(server) => crate::types::ServerName::parse(&server)
                 .map(crate::types::LspServerTarget::Name)
-                .map_err(|e| generic_err(format!("{name}: {e}"))),
+                .map_err(|e| generic_err(format!("{arg}: {e}"))),
         }
     }
 }

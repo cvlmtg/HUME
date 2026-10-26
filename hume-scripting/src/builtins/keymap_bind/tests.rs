@@ -477,6 +477,9 @@ fn attach_keymap_takes_a_symbol_name() {
         )
     };
     let msg = result.expect_err("a string name must raise").to_string();
-    assert!(msg.contains("attach-keymap!"), "got: {msg}");
+    assert!(
+        msg.contains("name: expected a keymap name symbol"),
+        "got: {msg}"
+    );
     assert!(effects(&h).is_empty());
 }

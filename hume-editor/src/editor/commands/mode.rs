@@ -180,8 +180,8 @@ pub(in crate::editor) fn cmd_command_mode(
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     let input = state
-        .waiting_input("command-mode", InputOpener::Code)
-        .map_err(CommandError::new)?;
+        .waiting_input(InputOpener::Code)
+        .map_err(|refusal| CommandError::new(format!("command-mode: {refusal}")))?;
     state.history.begin_session_all();
     state.push_mode_layer(view, CommandLayer::new(input));
     Ok(())
@@ -215,8 +215,8 @@ pub(in crate::editor) fn cmd_completion_trigger(
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     let input = state
-        .interactive_input("completion-trigger")
-        .map_err(CommandError::new)?;
+        .interactive_input()
+        .map_err(|refusal| CommandError::new(format!("completion-trigger: {refusal}")))?;
     state.trigger_buffer_completion(view, super::super::completion::Trigger::Explicit(input));
     Ok(())
 }

@@ -205,8 +205,7 @@ fn open_filter_test_picker(ed: &mut Editor, items: &[&str]) {
             })
             .collect(),
     );
-    picker::open_picker(&mut ed.state, &ed.view, session, "picker!")
-        .expect("no `.` is in progress");
+    picker::open_picker(&mut ed.state, &ed.view, session).expect("no `.` is in progress");
 }
 
 pub(super) fn open_live_test_picker(ed: &mut Editor) {
@@ -220,8 +219,7 @@ pub(super) fn open_live_test_picker(ed: &mut Editor) {
             actions: Vec::new(),
         },
     );
-    picker::open_picker(&mut ed.state, &ed.view, session, "picker!")
-        .expect("no `.` is in progress");
+    picker::open_picker(&mut ed.state, &ed.view, session).expect("no `.` is in progress");
 }
 
 #[test]

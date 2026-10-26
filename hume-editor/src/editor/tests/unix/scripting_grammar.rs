@@ -1116,7 +1116,7 @@ fn runtime_register_grammar_with_a_bad_library_raises() {
     type_cmd(&mut ed, ":attach-json");
 
     assert!(
-        has_error(&ed, "register-grammar! 'json': "),
+        has_error(&ed, "register-grammar!: 'json': "),
         "messages: {:?}",
         ed.state
             .message_log

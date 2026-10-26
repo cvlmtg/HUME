@@ -35,27 +35,24 @@ pub(crate) fn define_language(
     globs_val: SteelVal,
     shebangs_val: SteelVal,
 ) -> SteelResult {
-    let name = string_arg(name, "%define-language! name")?;
-    let extensions = list_to_strings(exts_val, "%define-language! extensions")?
+    let name = string_arg(name, "name")?;
+    let extensions = list_to_strings(exts_val, "extensions")?
         .into_iter()
         .map(FileExtension::new)
         .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| generic_err(format!("define-language! {name:?}: {e}")))?;
-    let globs = list_to_strings(globs_val, "%define-language! globs")?
+        .map_err(|e| generic_err(format!("{name:?}: {e}")))?;
+    let globs = list_to_strings(globs_val, "globs")?
         .iter()
         .map(|glob| {
-            FileGlob::new(glob).map_err(|e| {
-                generic_err(format!(
-                    "define-language! {name:?}: invalid glob {glob:?}: {e}"
-                ))
-            })
+            FileGlob::new(glob)
+                .map_err(|e| generic_err(format!("{name:?}: invalid glob {glob:?}: {e}")))
         })
         .collect::<Result<Vec<_>, _>>()?;
-    let shebangs = list_to_strings(shebangs_val, "%define-language! shebangs")?
+    let shebangs = list_to_strings(shebangs_val, "shebangs")?
         .into_iter()
         .map(ShebangInterpreter::new)
         .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| generic_err(format!("define-language! {name:?}: {e}")))?;
+        .map_err(|e| generic_err(format!("{name:?}: {e}")))?;
     ctx.push_effect(Effect::LanguageReg(PendingLanguageReg::Identity {
         name,
         extensions,
@@ -126,8 +123,8 @@ pub(crate) fn configure_language(
     name: SteelVal,
     fields_val: SteelVal,
 ) -> SteelResult {
-    let name = string_arg(name, "%configure-language! name")?;
-    let fields = language_fields(fields_val, "%configure-language!")?;
+    let name = string_arg(name, "name")?;
+    let fields = language_fields(fields_val, "fields")?;
     let origin = if ctx.mode() == EvalMode::Init {
         ConfigOrigin::User
     } else {
@@ -165,16 +162,9 @@ pub(crate) fn register_grammar(
     let resolve = |val: SteelVal, ctx_name: &str| {
         under_cwd(&path_arg(val, ctx_name)?, &cwd, ctx_name).map(|path| path.to_path_buf())
     };
-    let mut queries = QueryFiles::new(resolve(
-        highlights_path,
-        "register-grammar! highlights-path",
-    )?);
+    let mut queries = QueryFiles::new(resolve(highlights_path, "highlights-path")?);
     let keys = OptionalQuery::ALL.map(OptionalQuery::key);
-    if let Some(entry) = optional_hash_entry(
-        optional_queries,
-        "register-grammar! optional-queries",
-        &keys,
-    )? {
+    if let Some(entry) = optional_hash_entry(optional_queries, "optional-queries", &keys)? {
         for kind in OptionalQuery::ALL {
             let key = kind.key();
             let path = entry
@@ -191,10 +181,10 @@ pub(crate) fn register_grammar(
         }
     }
     let reg = GrammarReg {
-        name: string_arg(name, "register-grammar! name")?,
+        name: string_arg(name, "name")?,
         source: GrammarSource {
-            path: resolve(grammar_path, "register-grammar! grammar-path")?,
-            symbol: string_arg(symbol, "register-grammar! symbol")?,
+            path: resolve(grammar_path, "grammar-path")?,
+            symbol: string_arg(symbol, "symbol")?,
             queries,
         },
     };
@@ -205,8 +195,7 @@ pub(crate) fn register_grammar(
     }
 
     // Command mode: attach immediately via host and trigger a buffer sweep.
-    // The host (`EditorHostImpl::attach_grammar`) owns the `register-grammar! '<name>':`
-    // prefix; just lift its String error into a SteelErr without re-prefixing.
+    // The host's error names the grammar.
     ctx.host
         .language()
         .attach_grammar(&reg)
@@ -234,7 +223,7 @@ pub(crate) fn grammar_optional_queries() -> SteelResult {
 /// `(language-has-grammar? name)` returns `#t` if `name` has a grammar, loaded
 /// or yet to load, and `#f` once its load has failed. It never loads one.
 pub(crate) fn language_has_grammar(ctx: &mut SteelCtx, name: SteelVal) -> SteelResult {
-    let name = string_arg(name, "language-has-grammar?")?;
+    let name = string_arg(name, "name")?;
     Ok(SteelVal::BoolV(ctx.host.language().has_grammar(&name)))
 }
 

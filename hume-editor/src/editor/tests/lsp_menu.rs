@@ -33,7 +33,7 @@ fn show_menu_with_empty_items_raises_and_opens_nothing() {
     ed.settle();
 
     assert!(
-        has_error(&ed, "show-menu! items: must not be empty"),
+        has_error(&ed, "show-menu!: items: must not be empty"),
         "errors: {:?}",
         error_log(&ed)
     );
@@ -281,7 +281,7 @@ fn show_menu_drops_silently_when_a_picker_is_open() {
         PickerOpts::default(),
         Vec::new(),
     );
-    crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session, "picker!")
+    crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session)
         .expect("no `.` is in progress");
 
     let traces_before = ed

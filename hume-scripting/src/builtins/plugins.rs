@@ -60,7 +60,7 @@ fn absent_plugin(
         ),
         PluginId::Local(_) => {
             return Err(generic_err(format!(
-                "{verb}: local file '{name}' not found beside init.scm"
+                "local file '{name}' not found beside init.scm"
             )));
         }
     }
@@ -109,15 +109,14 @@ fn already_declared(ctx: &mut SteelCtx, entry: &EntryId, name: &str) -> bool {
 /// [`crate::context::EvalMode::Init`]. A plugin can never load or declare
 /// another plugin: dependency declarations are the user's / plugin-manager's
 /// responsibility, not a plugin's.
-fn ensure_top_level(ctx: &SteelCtx, verb: &str) -> Result<(), SteelErr> {
+fn ensure_top_level(ctx: &SteelCtx) -> Result<(), SteelErr> {
     match ctx.mode() {
         crate::context::EvalMode::Init => Ok(()),
         crate::context::EvalMode::PluginLoad
         | crate::context::EvalMode::PluginActivation
         | crate::context::EvalMode::Command => {
             steel::stop!(Generic =>
-                "{}: can only be called at the top level of init.scm, not from a plugin body",
-                verb);
+                "can only be called at the top level of init.scm, not from a plugin body");
         }
     }
 }
@@ -129,8 +128,8 @@ fn ensure_top_level(ctx: &SteelCtx, verb: &str) -> Result<(), SteelErr> {
 /// will otherwise imply, so name it, and the plugin, explicitly.
 fn declare_arg_label(ctx: &SteelCtx, keyword: &str) -> String {
     match &ctx.manifest_resolving {
-        Some(id) => format!("declare-plugin! {keyword} in manifest.scm for '{id}'"),
-        None => format!("declare-plugin! {keyword}"),
+        Some(id) => format!("{keyword} in manifest.scm for '{id}'"),
+        None => keyword.to_owned(),
     }
 }
 
@@ -199,12 +198,12 @@ pub(crate) fn declare_plugin(
     events: SteelVal,
     languages: SteelVal,
 ) -> SteelResult {
-    ensure_top_level(ctx, "declare-plugin!")?;
+    ensure_top_level(ctx)?;
     let plugin_id = PluginId::parse(&name).map_err(generic_err)?;
     let entry_file = entry_file_arg(entry)?;
     if plugin_id.is_local() && entry_file.is_some() {
         return Err(generic_err(format!(
-            "declare-plugin!: '{name}' is a single file; #:entry applies to installed plugins"
+            "'{name}' is a single file; #:entry applies to installed plugins"
         )));
     }
     let entry_id = EntryId::new(
@@ -219,7 +218,7 @@ pub(crate) fn declare_plugin(
         && *expected != plugin_id
     {
         return Err(generic_err(format!(
-            "declare-plugin!: manifest.scm for '{expected}' must declare '{expected}', not '{name}'"
+            "manifest.scm for '{expected}' must declare '{expected}', not '{name}'"
         )));
     }
 
@@ -269,7 +268,7 @@ pub(crate) fn declare_plugin(
                 .map(|cmd| crate::command_name::check_typed(cmd)),
         )
         .collect::<Result<(), _>>()
-        .map_err(|reason| generic_err(format!("declare-plugin!: {reason}")))?;
+        .map_err(generic_err)?;
 
     // Hard error: nothing declared at all. Checked against the raw (unfiltered)
     // lists, before path resolution: collision filtering only happens once the
@@ -278,7 +277,7 @@ pub(crate) fn declare_plugin(
     // filtering later drops.
     if !has_trigger(&cmd_list, &typed_cmd_list, &evt_list, &lang_list) {
         return Err(generic_err(format!(
-            "declare-plugin!: '{name}' declares no activation entries; it could never be activated. \
+            "'{name}' declares no activation entries; it could never be activated. \
              Add #:commands/#:typed-commands/#:events/#:languages."
         )));
     }
@@ -296,7 +295,7 @@ pub(crate) fn declare_plugin(
             .is_some()
     {
         return Err(generic_err(format!(
-            "declare-plugin!: '{name}' has no entry file '{}'",
+            "'{name}' has no entry file '{}'",
             entry_id.file.as_str()
         )));
     }
@@ -337,7 +336,7 @@ pub(crate) fn declare_plugin(
     // the message always names the collision, never "none were supplied".
     if !has_trigger(&cmd_list, &typed_cmd_list, &evt_list, &lang_list) {
         return Err(generic_err(format!(
-            "declare-plugin!: '{name}' declares no activation entries; \
+            "'{name}' declares no activation entries; \
              all #:commands/#:typed-commands entries conflicted with existing commands. \
              Fix the collision."
         )));
@@ -385,10 +384,10 @@ pub(crate) fn load_plugin(
     config: SteelVal,
     git_ref: SteelVal,
 ) -> SteelResult {
-    ensure_top_level(ctx, "load-plugin!")?;
+    ensure_top_level(ctx)?;
     if ctx.manifest_resolving.is_some() {
         steel::stop!(Generic =>
-            "load-plugin!: cannot be called from a manifest.scm; a manifest declares its own \
+            "cannot be called from a manifest.scm; a manifest declares its own \
              plugin with declare-plugin!");
     }
     let plugin_id = PluginId::parse_installed(&name).map_err(generic_err)?;
@@ -435,22 +434,22 @@ pub(crate) fn load_plugin(
         return Ok(SteelVal::BoolV(true));
     }
     Err(generic_err(format!(
-        "load-plugin!: '{name}' has neither manifest.scm nor plugin.scm in {}",
+        "'{name}' has neither manifest.scm nor plugin.scm in {}",
         dir.display()
     )))
 }
 
 /// `load-plugin!`'s `#:ref`: `#f`, or the tag, branch or commit PLUM checks out.
 fn git_ref_arg(plugin_id: &PluginId, git_ref: SteelVal) -> Result<Option<GitRef>, SteelErr> {
-    let Some(name) = optional_string_arg(git_ref, "load-plugin!: #:ref")? else {
+    let Some(name) = optional_string_arg(git_ref, "#:ref")? else {
         return Ok(None);
     };
     let Some(git_ref) = GitRef::parse(name.clone()) else {
-        steel::stop!(Generic => "load-plugin!: #:ref \"{}\" is not a tag, branch or commit", name);
+        steel::stop!(Generic => "#:ref \"{}\" is not a tag, branch or commit", name);
     };
     if matches!(plugin_id, PluginId::Core(_)) {
         steel::stop!(Generic =>
-            "load-plugin!: #:ref is for an installed plugin; '{}' is bundled with HUME", plugin_id);
+            "#:ref is for an installed plugin; '{}' is bundled with HUME", plugin_id);
     }
     Ok(Some(git_ref))
 }

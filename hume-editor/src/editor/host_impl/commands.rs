@@ -45,10 +45,7 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
             None => self.state.config.registry.contains(&def.name),
         };
         if claimed_by_other {
-            return Err(format!(
-                "define-command!: '{}' conflicts with existing command",
-                def.name
-            ));
+            return Err(format!("'{}' conflicts with existing command", def.name));
         }
         self.state
             .config
@@ -58,7 +55,7 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
                 doc: def.doc.into(),
                 body: def.body,
             }))
-            .map_err(|reason| format!("define-command!: {reason}"))
+            .map_err(|reason| reason.to_string())
     }
 
     fn register_typed_command(
@@ -70,10 +67,7 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
             None => self.state.config.registry.contains(&def.name),
         };
         if claimed_by_other {
-            return Err(format!(
-                "define-typed-command!: '{}' conflicts with existing command",
-                def.name
-            ));
+            return Err(format!("'{}' conflicts with existing command", def.name));
         }
         self.state
             .config
@@ -86,7 +80,7 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
                 completer: def.completer.map(std::borrow::Cow::Owned),
                 arg_expansion: ArgExpansion::Paths,
             })
-            .map_err(|reason| format!("define-typed-command!: {reason}"))
+            .map_err(|reason| reason.to_string())
     }
 
     fn defined_command(&self, name: &str) -> Option<hume_scripting::CommandProc> {

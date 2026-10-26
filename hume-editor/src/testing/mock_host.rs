@@ -264,13 +264,13 @@ impl SettingsHost for MockHost {
     }
     fn get_global_option(&self, key: &str) -> Result<OptionValue, String> {
         hume::editor::settings::setting_value(key, &self.settings, None)
-            .ok_or_else(|| format!("get-option: unknown setting '{key}'"))
+            .ok_or_else(|| format!("unknown setting '{key}'"))
     }
     fn get_buffer_option(&self, key: &str, _bid: BufferId) -> Result<OptionValue, String> {
         // MockHost models no buffers, so there is no per-buffer override to
         // resolve: every key reads its global value.
         hume::editor::settings::setting_value(key, &self.settings, None)
-            .ok_or_else(|| format!("get-buffer-option: unknown setting '{key}'"))
+            .ok_or_else(|| format!("unknown setting '{key}'"))
     }
     fn steel_command_budget_ms(&self) -> u64 {
         self.settings.steel_command_budget_ms as u64
@@ -296,14 +296,14 @@ impl LanguageHost for MockHost {
     fn attach_grammar(&mut self, reg: &hume_scripting::GrammarReg) -> Result<(), String> {
         if !reg.source.path.exists() {
             return Err(format!(
-                "register-grammar! '{}': grammar load failed: failed to open grammar library: {}",
+                "'{}': grammar load failed: failed to open grammar library: {}",
                 reg.name,
                 reg.source.path.display()
             ));
         }
         if !reg.source.queries.highlights().exists() {
             return Err(format!(
-                "register-grammar! '{}': highlights.scm read failed: {}",
+                "'{}': highlights.scm read failed: {}",
                 reg.name,
                 reg.source.queries.highlights().display()
             ));
@@ -348,10 +348,7 @@ impl CommandHost for MockHost {
         // `CommandRegistry::register` allows overwriting (`Some(Lazy) | None
         // => Ok`), so clear it here too.
         if self.is_registered(&def.name) {
-            return Err(format!(
-                "define-command!: '{}' conflicts with existing command",
-                def.name
-            ));
+            return Err(format!("'{}' conflicts with existing command", def.name));
         }
         self.lazy_cmds.remove(fold(&def.name).as_ref());
         self.registered_cmds.push(def);
@@ -365,10 +362,7 @@ impl CommandHost for MockHost {
         // one namespace in the real registry, so the collision check covers
         // both vectors (see `is_registered`).
         if self.is_registered(&def.name) {
-            return Err(format!(
-                "define-typed-command!: '{}' conflicts with existing command",
-                def.name
-            ));
+            return Err(format!("'{}' conflicts with existing command", def.name));
         }
         self.lazy_cmds.remove(fold(&def.name).as_ref());
         self.registered_typed_cmds.push(def);

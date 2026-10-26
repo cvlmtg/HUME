@@ -63,7 +63,7 @@ fn invalid_segments() {
 fn declare_plugin_bad_commands_names_the_builtin() {
     let err = eval_err(r#"(declare-plugin! "user/tp" #:commands '(1))"#);
     assert!(
-        err.contains("declare-plugin! #:commands"),
+        err.contains("declare-plugin!: #:commands"),
         "error must name the builtin; got: {err}"
     );
 }
@@ -75,7 +75,7 @@ fn declare_plugin_bad_commands_names_the_builtin() {
 fn declare_plugin_bad_typed_commands_names_the_builtin() {
     let err = eval_err(r#"(declare-plugin! "user/tp" #:typed-commands '(1))"#);
     assert!(
-        err.contains("declare-plugin! #:typed-commands"),
+        err.contains("declare-plugin!: #:typed-commands"),
         "error must name the builtin; got: {err}"
     );
 }
@@ -86,7 +86,7 @@ fn declare_plugin_unknown_hook_names_the_builtin() {
     let err =
         eval_err(r#"(declare-plugin! "user/tp" #:commands '("c") #:events '(not-a-real-hook))"#);
     assert!(
-        err.contains("declare-plugin! #:events"),
+        err.contains("declare-plugin!: #:events"),
         "error must name the builtin; got: {err}"
     );
 }

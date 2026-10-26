@@ -32,12 +32,11 @@ use super::errors::generic_err;
 ///   grammar that fails to build should not abort the editor on startup.
 /// - **Command mode**: raises a Steel error on failure so the user sees it.
 pub(crate) fn compile_grammar(ctx: &mut SteelCtx, src: String, out: String) -> SteelResult {
-    let msg = match build(ctx, &src, &out) {
-        Ok(()) => return Ok(SteelVal::Void),
-        Err(msg) => format!("compile-grammar!: {msg}"),
+    let Err(msg) = build(ctx, &src, &out) else {
+        return Ok(SteelVal::Void);
     };
     if ctx.session == crate::context::EvalSession::Init {
-        ctx.log(LogLevel::Warning, msg);
+        ctx.log(LogLevel::Warning, format!("compile-grammar!: {msg}"));
         Ok(SteelVal::Void)
     } else {
         Err(generic_err(msg))

@@ -34,7 +34,7 @@ pub(crate) mod wire;
 pub(crate) mod words;
 
 use steel::rerrs::SteelErr;
-use steel::rvals::SteelVal;
+use steel::rvals::{FromSteelVal, IntoSteelVal, SteelVal};
 use steel::steel_vm::engine::Engine;
 use steel::steel_vm::register_fn::RegisterFn;
 
@@ -50,67 +50,92 @@ pub(crate) type SteelResult = Result<SteelVal, SteelErr>;
 // ── Declarative registration table ───────────────────────────────────────────
 
 /// Declarative builtin-registration table. Each entry is
-/// `<kind> "<steel-name>" <rust-path>(<arg>: <Type>, …);` where `<kind>` is:
+/// `<kind> "<steel-name>" [=> "<name>"] <rust-path>(<arg>: <Type>, …);`
+/// where `<kind>` is:
 /// - `cmd`: ctx-taking, gated by [`errors::require_cmd`] (buffer/pane/editor-state builtins)
 /// - `config`: ctx-taking, gated by [`errors::require_config`] (init/plugin-load-only verbs)
 /// - `open`: ctx-taking, ungated (no legality gate, or a bespoke one the fn checks itself)
 /// - `plain`: no `&mut SteelCtx` param at all (context-free predicates)
+/// - `rest`: no `&mut SteelCtx`, the raw `&[SteelVal]` of a variadic builtin
+///   (`path-join`, `json-ref`), declared with no argument list
+///
+/// Every error a builtin raises starts with its name ([`errors::named`]),
+/// the only place that name enters a message. A `%` internal declares after
+/// `=>` the name a plugin calls to reach it; one reached through more than
+/// one public function names itself. An entry without `=>` must not be a
+/// `%` internal, which a compile-time assertion checks.
 ///
 /// The declared arg types are compiler-checked, not documentation: each entry
-/// expands to a closure with exactly that parameter list, so a mismatch
-/// against the real function's signature is a compile error, a
-/// compile-time link between a builtin's registered name and its gate.
+/// decodes its arguments into those types and passes them on, so a
+/// mismatch against the real function's signature is a compile error.
+/// Decoding runs inside the funnel, so a type error names the builtin too.
 ///
-/// Every ctx-taking kind (`cmd`/`config`/`open`) runs each decoded argument
-/// through `args::BuiltinArg::resolve` right after the gate, shadowing
-/// `$arg` with its `Out` type: the seam `args::LivePane` (raises on a
-/// closed buffer, resolving to a plain `PaneHandle`) hooks into; every
-/// other declared type resolves to itself. `plain` (no ctx) never runs this
-/// step, so it can't declare a `LivePane` argument.
+/// Every ctx-taking kind (`cmd`/`config`/`open`) runs its gate, then
+/// decodes every argument, then runs each argument through
+/// `args::BuiltinArg::resolve`, shadowing `$arg` with its `Out` type: the
+/// seam `args::LivePane` (raises on a closed buffer, resolving to a plain
+/// `PaneHandle`) hooks into; every other declared type resolves to itself.
+/// Every argument decodes before any resolves, so a malformed argument is
+/// reported ahead of a closed buffer. `plain` (no ctx) never runs the
+/// resolve step, so it can't declare a `LivePane` argument.
 macro_rules! builtins {
-    (@one cmd, $steel:expr, $name:literal, $($modpath:ident)::+, ($($arg:ident : $ty:ty),*)) => {
+    (@display $name:literal) => {{
+        const _: () = assert!(
+            $name.as_bytes()[0] != b'%',
+            concat!($name, " is internal: declare the name a plugin calls after `=>`")
+        );
+        $name
+    }};
+    (@display $name:literal, $display:literal) => {
+        $display
+    };
+    (@ctx $gate:ident, $steel:expr, $name:literal, $display:expr, $($modpath:ident)::+, ($($arg:ident : $ty:ty),*)) => {
         $steel.register_fn_with_ctx(
             HUME_CTX,
             $name,
-            move |ctx: &mut crate::context::SteelCtx $(, $arg: $ty)*| {
-                crate::builtins::errors::require_cmd(ctx, $name)?;
-                $(let $arg = crate::builtins::args::BuiltinArg::resolve($arg, ctx, $name)?;)*
-                $($modpath)::+(ctx $(, $arg)*)
+            move |ctx: &mut crate::context::SteelCtx $(, $arg: SteelVal)*| {
+                errors::named($display, || {
+                    builtins!(@gate $gate, ctx);
+                    $(let $arg = <$ty as FromSteelVal>::from_steelval(&$arg)?;)*
+                    $(let $arg = args::BuiltinArg::resolve($arg, ctx, stringify!($arg))?;)*
+                    $($modpath)::+(ctx $(, $arg)*).into_steelval()
+                })
             },
         );
     };
-    (@one config, $steel:expr, $name:literal, $($modpath:ident)::+, ($($arg:ident : $ty:ty),*)) => {
-        $steel.register_fn_with_ctx(
-            HUME_CTX,
-            $name,
-            move |ctx: &mut crate::context::SteelCtx $(, $arg: $ty)*| {
-                crate::builtins::errors::require_config(ctx, $name)?;
-                $(let $arg = crate::builtins::args::BuiltinArg::resolve($arg, ctx, $name)?;)*
-                $($modpath)::+(ctx $(, $arg)*)
-            },
-        );
-    };
-    (@one open, $steel:expr, $name:literal, $($modpath:ident)::+, ($($arg:ident : $ty:ty),*)) => {
-        $steel.register_fn_with_ctx(
-            HUME_CTX,
-            $name,
-            move |ctx: &mut crate::context::SteelCtx $(, $arg: $ty)*| {
-                $(let $arg = crate::builtins::args::BuiltinArg::resolve($arg, ctx, $name)?;)*
-                $($modpath)::+(ctx $(, $arg)*)
-            },
-        );
-    };
-    (@one plain, $steel:expr, $name:literal, $($modpath:ident)::+, ($($arg:ident : $ty:ty),*)) => {
+    (@gate cmd, $ctx:ident) => { errors::require_cmd($ctx)? };
+    (@gate config, $ctx:ident) => { errors::require_config($ctx)? };
+    (@gate open, $ctx:ident) => {};
+    (@one cmd, $($rest:tt)*) => { builtins!(@ctx cmd, $($rest)*) };
+    (@one config, $($rest:tt)*) => { builtins!(@ctx config, $($rest)*) };
+    (@one open, $($rest:tt)*) => { builtins!(@ctx open, $($rest)*) };
+    (@one plain, $steel:expr, $name:literal, $display:expr, $($modpath:ident)::+, ($($arg:ident : $ty:ty),*)) => {
         $steel.register_fn(
             $name,
-            move |$($arg: $ty),*| {
-                $($modpath)::+($($arg),*)
+            move |$($arg: SteelVal),*| {
+                errors::named($display, || {
+                    $(let $arg = <$ty as FromSteelVal>::from_steelval(&$arg)?;)*
+                    $($modpath)::+($($arg),*).into_steelval()
+                })
             },
         );
     };
-    ($steel:expr, $($kind:ident $name:literal $($modpath:ident)::+ ( $($arg:ident : $ty:ty),* $(,)? ) ;)*) => {
+    (@one rest, $steel:expr, $name:literal, $display:expr, $($modpath:ident)::+, ()) => {{
+        fn named_rest(args: &[SteelVal]) -> SteelResult {
+            errors::named($display, || $($modpath)::+(args))
+        }
+        $steel.register_value($name, SteelVal::FuncV(named_rest));
+    }};
+    ($steel:expr, $($kind:ident $name:literal $(=> $display:literal)? $($modpath:ident)::+ $(( $($arg:ident : $ty:ty),* $(,)? ))? ;)*) => {
         $(
-            builtins!(@one $kind, $steel, $name, $($modpath)::+, ($($arg : $ty),*));
+            builtins!(
+                @one $kind,
+                $steel,
+                $name,
+                builtins!(@display $name $(, $display)?),
+                $($modpath)::+,
+                ($($($arg : $ty),*)?)
+            );
         )*
     };
 }
@@ -253,9 +278,9 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd  "get-buffer-option" settings::get_buffer_option(pane: args::LivePane, key: String);
 
         // Keymap
-        open   "%bind-key!" keymap_bind::bind_key(mode: SteelVal, key_str: String, cmd_name: String, keymap: SteelVal);
-        open   "%bind-key-extend!" keymap_bind::bind_key_extend(mode: SteelVal, key_str: String, cmd_name: String, keymap: SteelVal);
-        open   "%unbind-key!" keymap_bind::unbind_key(mode: SteelVal, key_str: String, keymap: SteelVal);
+        open   "%bind-key!" => "bind-key!" keymap_bind::bind_key(mode: SteelVal, key_str: String, cmd_name: String, keymap: SteelVal);
+        open   "%bind-key-extend!" => "bind-key-extend!" keymap_bind::bind_key_extend(mode: SteelVal, key_str: String, cmd_name: String, keymap: SteelVal);
+        open   "%unbind-key!" => "unbind-key!" keymap_bind::unbind_key(mode: SteelVal, key_str: String, keymap: SteelVal);
         cmd    "attach-keymap!" keymap_bind::attach_keymap(pane: args::LivePane, name: SteelVal);
         cmd    "detach-keymap!" keymap_bind::detach_keymap(pane: args::LivePane, name: SteelVal);
         cmd    "set-register-prefix!" commands::set_register_prefix(name: String);
@@ -267,7 +292,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         open "register-name?" registers::register_name(name: String);
 
         // Plugin lifecycle
-        open "%declare-plugin!" plugins::declare_plugin(name: String, entry: SteelVal, commands: SteelVal, typed_commands: SteelVal, events: SteelVal, languages: SteelVal);
+        open "%declare-plugin!" => "declare-plugin!" plugins::declare_plugin(name: String, entry: SteelVal, commands: SteelVal, typed_commands: SteelVal, events: SteelVal, languages: SteelVal);
         open "resolve-plugin-path" plugins::resolve_plugin_path(name: String);
 
         // Plugin introspection and explicit activation
@@ -276,18 +301,18 @@ pub(crate) fn register_all(steel: &mut Engine) {
         open "declared-plugin-ref" plugins::declared_plugin_ref(name: String);
         open "plugin-config" plugins::plugin_config();
         open "plugin-dir" plugins::plugin_dir();
-        open "%load-plugin!" plugins::load_plugin(name: String, config: SteelVal, git_ref: SteelVal);
+        open "%load-plugin!" => "load-plugin!" plugins::load_plugin(name: String, config: SteelVal, git_ref: SteelVal);
 
         // Inline activation primitives, called from the %activate-plugin-inline!
         // Scheme helper to drive mid-eval plugin loading without &mut Engine.
-        open "%begin-lazy-activation!" plugins::activation::begin_lazy_activation(plugin: String, entry: SteelVal);
-        open "%finish-lazy-activation!" plugins::activation::finish_lazy_activation(error: SteelVal);
-        open "%entry-loaded?" plugins::activation::entry_loaded(plugin: String, entry: SteelVal);
-        open "%lazy-command-owner" plugins::activation::lazy_command_owner(name: String);
+        open "%begin-lazy-activation!" => "%begin-lazy-activation!" plugins::activation::begin_lazy_activation(plugin: String, entry: SteelVal);
+        open "%finish-lazy-activation!" => "%finish-lazy-activation!" plugins::activation::finish_lazy_activation(error: SteelVal);
+        open "%entry-loaded?" => "call!" plugins::activation::entry_loaded(plugin: String, entry: SteelVal);
+        open "%lazy-command-owner" => "call!" plugins::activation::lazy_command_owner(name: String);
 
         // Manifest evaluation: %load-plugin! returns the require string of
         // <plugin-dir>/manifest.scm, and the wrapper reports the outcome here.
-        open "%finish-manifest-load!" plugins::activation::finish_manifest_load(name: String, error: SteelVal);
+        open "%finish-manifest-load!" => "load-plugin!" plugins::activation::finish_manifest_load(name: String, error: SteelVal);
 
         // Hook registration (init-only)
         config "register-hook!" hooks::register_hook(name: SteelVal, proc: SteelVal);
@@ -295,24 +320,24 @@ pub(crate) fn register_all(steel: &mut Engine) {
         // Steel command definition. %define-command! is the native primitive;
         // the (define-command! …) Steel wrapper in BOOTSTRAP exposes keyword
         // args (#:repeatable, #:inline-output).
-        config "%define-command!" commands::define_command(name: String, doc: String, proc: SteelVal, repeatable: bool, inline_output: bool);
+        config "%define-command!" => "define-command!" commands::define_command(name: String, doc: String, proc: SteelVal, repeatable: bool, inline_output: bool);
         // Typed (`:` command line) counterpart. See the module-doc paragraph
         // above BOOTSTRAP. No #:repeatable keyword arg.
-        config "%define-typed-command!" commands::define_typed_command(name: String, doc: String, proc: SteelVal, inline_output: bool, completer: SteelVal);
+        config "%define-typed-command!" => "define-typed-command!" commands::define_typed_command(name: String, doc: String, proc: SteelVal, inline_output: bool, completer: SteelVal);
         // %call-native! is the Rust leaf for native/unknown dispatch; the variadic
         // (call! name args…) macro desugars to (%dispatch-command! …) which routes
         // activated plugin commands inline in Steel and falls back here for everything else.
-        open "%call-native!" commands::call_command_primitive(name: String, args: SteelVal);
+        open "%call-native!" => "call!" commands::call_command_primitive(name: String, args: SteelVal);
         // %lookup-plugin-proc: returns the Steel closure for an activated plugin command,
         // or #f. Called by %dispatch-command! in Steel to decide inline-apply vs. %call-native!.
-        open "%lookup-plugin-proc" commands::lookup_plugin_proc(name: String);
+        open "%lookup-plugin-proc" => "call!" commands::lookup_plugin_proc(name: String);
         // %arm-inline-output!/%restore-inline-output!: the call!-path counterpart
         // of dispatch.rs's own inline-output arm/close, wrapping %dispatch-command!'s
         // in-VM apply. See the BOOTSTRAP comment block above for the full picture.
-        open "%arm-inline-output!" commands::arm_inline_output(name: String);
-        open "%restore-inline-output!" commands::restore_inline_output(depth: SteelVal);
+        open "%arm-inline-output!" => "call!" commands::arm_inline_output(name: String);
+        open "%restore-inline-output!" => "call!" commands::restore_inline_output(depth: SteelVal);
         open "command-plugin" commands::command_plugin(name: String);
-        open "%command-callable?" commands::command_callable(name: String);
+        open "%command-callable?" => "command-exists?" commands::command_callable(name: String);
 
         // Grammar compilation: sandbox-free, full-trust plugin model. A Rust
         // builtin for the reasons in grammar.rs's module doc;
@@ -321,7 +346,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
 
         // Inline-output subprocess: process-group-isolated spawn for
         // `#:inline-output` commands, sandbox-free like Steel's own stdlib.
-        open  "%run-inline-output!" process::run_inline_output(cmd: String, args_val: SteelVal, cwd_val: SteelVal, env_val: SteelVal);
+        open  "%run-inline-output!" => "run-inline-output!" process::run_inline_output(cmd: String, args_val: SteelVal, cwd_val: SteelVal, env_val: SteelVal);
 
         // Logging: push messages to the editor message log
         open "log!" crate::log::log_msg(severity: SteelVal, message: String);
@@ -333,10 +358,9 @@ pub(crate) fn register_all(steel: &mut Engine) {
         // is `equal?` (Custom::equality_hint), not a dedicated builtin.
         plain "pane?" ids::is_pane(val: SteelVal);
         plain "json-parse" json::json_parse(s: SteelVal);
-        // json-list and the two predicates are fixed-arity, registered
-        // directly here; json-ref/json-contains?/json-ref-or take a
-        // variadic path and are registered as raw FuncVs below instead
-        // (see that registration's own comment).
+        // json-list and the two predicates are fixed-arity; json-ref,
+        // json-contains? and json-ref-or take a variadic path and are
+        // `rest` entries below.
         plain "json-list" json::json_list(handle: SteelVal);
         plain "json-array?" json::is_json_array(val: SteelVal);
         plain "json-object?" json::is_json_object(val: SteelVal);
@@ -351,13 +375,13 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "buffer-panes" buffers::buffer_panes(pane: args::LivePane);
         cmd "buffer-key" buffers::buffer_key(pane: args::ArgPane);
         cmd "buffer-path" buffers::buffer_path(pane: args::LivePane);
-        cmd "%buffer-display-path" buffers::buffer_display_path(pane: args::LivePane, relative: SteelVal);
+        cmd "%buffer-display-path" => "buffer-display-path" buffers::buffer_display_path(pane: args::LivePane, relative: SteelVal);
         cmd "buffer-name" buffers::buffer_name(pane: args::LivePane);
         cmd "buffer-dirty?" buffers::buffer_dirty(pane: args::LivePane);
         cmd "buffer-text" buffers::buffer_text(pane: args::LivePane);
         cmd "buffer-line-count" buffers::buffer_line_count(pane: args::LivePane);
         cmd "buffer-char-count" buffers::buffer_char_count(pane: args::LivePane);
-        cmd "%buffer-lines" buffers::buffer_lines(pane: args::LivePane, range: SteelVal);
+        cmd "%buffer-lines" => "buffer-lines" buffers::buffer_lines(pane: args::LivePane, range: SteelVal);
         // Live cursor read: reflects synchronous edits in the same eval.
         cmd "buffer-cursor-line" buffers::buffer_cursor_line(pane: args::LivePane);
         cmd "buffer-selections" buffers::buffer_selections(pane: args::LivePane);
@@ -366,20 +390,20 @@ pub(crate) fn register_all(steel: &mut Engine) {
 
         // Multi-buffer mutating builtins
         cmd "open-buffer!" buffers::open_buffer(path: args::ScriptPath);
-        cmd "%close-buffer!" buffers::close_buffer(pane: args::LivePane, discard_unsaved: SteelVal);
+        cmd "%close-buffer!" => "close-buffer!" buffers::close_buffer(pane: args::LivePane, discard_unsaved: SteelVal);
         cmd "switch-to-buffer!" buffers::switch_to_buffer(pane: args::LivePane, target: args::LivePane);
         cmd "show-read-only-buffer!" buffers::show_read_only_buffer(pane: args::LivePane, name: String, text: String);
 
         // Language identity and grammar builtins
-        config "%define-language!" syntax::define_language(name: SteelVal, exts_val: SteelVal, globs_val: SteelVal, shebangs_val: SteelVal);
-        config "%configure-language!" syntax::configure_language(name: SteelVal, fields_val: SteelVal);
-        open   "%register-grammar!" syntax::register_grammar(name: SteelVal, grammar_path: SteelVal, symbol: SteelVal, highlights_path: SteelVal, optional_queries: SteelVal);
+        config "%define-language!" => "define-language!" syntax::define_language(name: SteelVal, exts_val: SteelVal, globs_val: SteelVal, shebangs_val: SteelVal);
+        config "%configure-language!" => "configure-language!" syntax::configure_language(name: SteelVal, fields_val: SteelVal);
+        open   "%register-grammar!" => "register-grammar!" syntax::register_grammar(name: SteelVal, grammar_path: SteelVal, symbol: SteelVal, highlights_path: SteelVal, optional_queries: SteelVal);
         plain  "grammar-optional-queries" syntax::grammar_optional_queries();
 
         // LSP server registration: last-wins, queued (like language regs) and
         // applied at the end of the current eval, from init, plugin activation,
         // or a command/hook body.
-        open "%register-lsp-server!" lsp::register_lsp_server(name: SteelVal, command: SteelVal, args_val: SteelVal, init_options: SteelVal, settings: SteelVal, env_val: SteelVal);
+        open "%register-lsp-server!" => "register-lsp-server!" lsp::register_lsp_server(name: SteelVal, command: SteelVal, args_val: SteelVal, init_options: SteelVal, settings: SteelVal, env_val: SteelVal);
         open "unregister-lsp-server!" lsp::unregister_lsp_server(name: SteelVal);
         open "set-language-servers!" lsp::set_language_servers(language: SteelVal, entries: SteelVal);
         open "set-default-language-servers!" lsp::set_default_language_servers(language: SteelVal, entries: SteelVal);
@@ -389,14 +413,14 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "lsp-restart!" lsp::lsp_restart(target: lsp::LspTargetArg);
         cmd "lsp-show-status!" lsp::lsp_show_status(pane: args::LivePane);
         // Generic LSP bridge: any protocol method reachable from Steel.
-        cmd "%lsp-request!" lsp::lsp_request(pane: args::LivePane, method: SteelVal, params: SteelVal, callback: SteelVal, feature: SteelVal, to: SteelVal, unavailable: SteelVal, allow_stale: SteelVal, supersede: SteelVal, require_focus: SteelVal, tracked: SteelVal);
-        cmd "%lsp-request-all!" lsp::lsp_request_all(pane: args::LivePane, method: SteelVal, params: SteelVal, callback: SteelVal, feature: SteelVal, unavailable: SteelVal, allow_stale: SteelVal, supersede: SteelVal, require_focus: SteelVal, tracked: SteelVal);
-        cmd "%lsp-notify!" lsp::lsp_notify(pane: args::LivePane, method: SteelVal, params: SteelVal, feature: SteelVal, to: SteelVal);
+        cmd "%lsp-request!" => "lsp-request!" lsp::lsp_request(pane: args::LivePane, method: SteelVal, params: SteelVal, callback: SteelVal, feature: SteelVal, to: SteelVal, unavailable: SteelVal, allow_stale: SteelVal, supersede: SteelVal, require_focus: SteelVal, tracked: SteelVal);
+        cmd "%lsp-request-all!" => "lsp-request-all!" lsp::lsp_request_all(pane: args::LivePane, method: SteelVal, params: SteelVal, callback: SteelVal, feature: SteelVal, unavailable: SteelVal, allow_stale: SteelVal, supersede: SteelVal, require_focus: SteelVal, tracked: SteelVal);
+        cmd "%lsp-notify!" => "lsp-notify!" lsp::lsp_notify(pane: args::LivePane, method: SteelVal, params: SteelVal, feature: SteelVal, to: SteelVal);
         config "register-lsp-notification-hook!" lsp::register_lsp_notification_hook(methods: SteelVal, proc: SteelVal);
         // Introspection
         cmd  "lsp-capabilities" lsp::lsp_capabilities(server: SteelVal);
-        cmd  "%lsp-capability" lsp::lsp_capability(server: SteelVal, feature: SteelVal, method: SteelVal);
-        cmd  "%lsp-servers" lsp::lsp_servers(pane: args::LivePane, feature: SteelVal, method: SteelVal);
+        cmd  "%lsp-capability" => "lsp-capability" lsp::lsp_capability(server: SteelVal, feature: SteelVal, method: SteelVal);
+        cmd  "%lsp-servers" => "lsp-servers" lsp::lsp_servers(pane: args::LivePane, feature: SteelVal, method: SteelVal);
         plain "lsp-server-name" lsp::lsp_server_name(server: SteelVal);
         cmd  "lsp-server-status" lsp::lsp_server_status();
         open "lsp-server-registered?" lsp::lsp_server_registered(name: SteelVal);
@@ -427,16 +451,16 @@ pub(crate) fn register_all(steel: &mut Engine) {
         open "register-sign-source!" decorations::register_sign_source(name: SteelVal, pane: args::LivePane, priority: SteelVal);
         cmd "set-signs!" decorations::set_signs(source: SteelVal, pane: args::LivePane, signs: SteelVal);
         cmd "set-virtual-lines!" decorations::set_virtual_lines(source: SteelVal, pane: args::LivePane, lines: SteelVal);
-        cmd "%set-eol-text!" decorations::set_eol_text(source: SteelVal, pane: args::LivePane, lines: SteelVal, hide_on_insert_line: SteelVal);
+        cmd "%set-eol-text!" => "set-eol-text!" decorations::set_eol_text(source: SteelVal, pane: args::LivePane, lines: SteelVal, hide_on_insert_line: SteelVal);
         cmd "set-extra-highlights!" decorations::set_extra_highlights(source: SteelVal, pane: args::LivePane, spans: SteelVal);
         cmd "set-line-backgrounds!" decorations::set_line_backgrounds(source: SteelVal, pane: args::LivePane, entries: SteelVal);
         cmd "set-statusline-text!" decorations::set_statusline_text(source: SteelVal, pane: args::LivePane, text: SteelVal);
-        cmd "%diagnostics-for-buffer" decorations::diagnostics_for_buffer(pane: args::ArgPane, severity: SteelVal, range: SteelVal);
+        cmd "%diagnostics-for-buffer" => "diagnostics-for-buffer" decorations::diagnostics_for_buffer(pane: args::ArgPane, severity: SteelVal, range: SteelVal);
         cmd "diagnostic-counts" decorations::diagnostic_counts(pane: args::ArgPane);
 
         // Edit + navigation primitives.
-        cmd "%apply-text-edits!" edits::apply_text_edits(pane: args::LivePane, edits: SteelVal, expect_gen: SteelVal);
-        cmd "%apply-workspace-edit!" edits::apply_workspace_edit(pane: args::LivePane, wsedit: SteelVal, expect_gen: SteelVal);
+        cmd "%apply-text-edits!" => "apply-text-edits!" edits::apply_text_edits(pane: args::LivePane, edits: SteelVal, expect_gen: SteelVal);
+        cmd "%apply-workspace-edit!" => "apply-workspace-edit!" edits::apply_workspace_edit(pane: args::LivePane, wsedit: SteelVal, expect_gen: SteelVal);
         cmd "goto-location!" edits::goto_location(pane: args::LivePane, loc: SteelVal);
         cmd "goto-revision!" edits::goto_revision(pane: args::LivePane, revision: args::Usize);
         cmd "insert-key!" edits::insert_key(pane: args::LivePane, key: SteelVal);
@@ -446,14 +470,14 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "selections-charwise?" buffers::selections_charwise(pane: args::LivePane);
 
         // Minibuffer prompt.
-        cmd "%prompt!" ui::prompt(pane: args::LivePane, label: SteelVal, prefill: SteelVal, on_confirm: Rooted);
+        cmd "%prompt!" => "prompt!" ui::prompt(pane: args::LivePane, label: SteelVal, prefill: SteelVal, on_confirm: Rooted);
         cmd "on-next-char!" ui::on_next_char(callback: SteelVal);
         cmd "symbol-under-cursor" buffers::symbol_under_cursor(pane: args::LivePane);
 
         // Completion: sources register at config time; answers, the ranked
         // view, and accept/dismiss are command-time.
-        config "%register-completion-source!" completion::register_completion_source(name: String, proc: SteelVal, target: SteelVal, match_kind: SteelVal, priority: SteelVal, resolve: SteelVal, token_chars: SteelVal, cancel: SteelVal);
-        cmd "%completion-emit!" completion::completion_emit(id: SteelVal, items: SteelVal, incomplete: SteelVal, more: SteelVal, span: SteelVal, prefix: SteelVal);
+        config "%register-completion-source!" => "register-completion-source!" completion::register_completion_source(name: String, proc: SteelVal, target: SteelVal, match_kind: SteelVal, priority: SteelVal, resolve: SteelVal, token_chars: SteelVal, cancel: SteelVal);
+        cmd "%completion-emit!" => "completion-emit!" completion::completion_emit(id: SteelVal, items: SteelVal, incomplete: SteelVal, more: SteelVal, span: SteelVal, prefix: SteelVal);
         cmd "completion-top" completion::completion_top(n: SteelVal);
         cmd "completion-accept!" completion::completion_accept(idx: SteelVal);
         cmd "completion-dismiss!" completion::completion_dismiss();
@@ -461,7 +485,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         open "set-attachment-completion-triggers!" completion::set_attachment_completion_triggers(source: SteelVal, pane: args::LivePane, server: SteelVal, feature: SteelVal, chars: SteelVal);
 
         // Cursor-anchored popup widget.
-        cmd "%show-popup!" ui::show_popup(pane: args::LivePane, text: SteelVal, anchor: SteelVal, kind: SteelVal, lang: SteelVal);
+        cmd "%show-popup!" => "show-popup!" ui::show_popup(pane: args::LivePane, text: SteelVal, anchor: SteelVal, kind: SteelVal, lang: SteelVal);
         cmd "close-popup!" ui::close_popup(token: SteelVal);
 
         // Selection menu widget.
@@ -469,23 +493,23 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "close-menu!" ui::close_menu(token: SteelVal);
 
         // Bottom drawer.
-        cmd "%show-drawer-list!" ui::show_drawer_list(pane: args::LivePane, items: SteelVal, on_select: Rooted, selected: SteelVal, render: SteelVal);
+        cmd "%show-drawer-list!" => "show-drawer-list!" ui::show_drawer_list(pane: args::LivePane, items: SteelVal, on_select: Rooted, selected: SteelVal, render: SteelVal);
         cmd "close-drawer!" ui::close_drawer(token: SteelVal);
-        cmd "%update-drawer-list!" ui::update_drawer_list(token: SteelVal, items: SteelVal, on_select: Rooted, selected: SteelVal, render: SteelVal);
+        cmd "%update-drawer-list!" => "update-drawer-list!" ui::update_drawer_list(token: SteelVal, items: SteelVal, on_select: Rooted, selected: SteelVal, render: SteelVal);
         cmd "drawer-selected-index" ui::drawer_selected_index(token: SteelVal);
 
         // Fuzzy-picker widget.
-        cmd "%picker!" ui::picker(pane: args::LivePane, items: SteelVal, on_select: Rooted, prompt: SteelVal, pending: SteelVal, query: SteelVal, truncate: SteelVal, actions: SteelVal);
-        cmd "%live-picker!" ui::live_picker(pane: args::LivePane, on_select: Rooted, prompt: SteelVal, query: SteelVal, on_query_change: SteelVal, truncate: SteelVal, actions: SteelVal);
+        cmd "%picker!" => "picker!" ui::picker(pane: args::LivePane, items: SteelVal, on_select: Rooted, prompt: SteelVal, pending: SteelVal, query: SteelVal, truncate: SteelVal, actions: SteelVal);
+        cmd "%live-picker!" => "live-picker!" ui::live_picker(pane: args::LivePane, on_select: Rooted, prompt: SteelVal, query: SteelVal, on_query_change: SteelVal, truncate: SteelVal, actions: SteelVal);
         cmd "picker-push!" ui::picker_push(token: SteelVal, items: SteelVal);
         cmd "picker-replace!" ui::picker_replace(token: SteelVal, items: SteelVal);
-        cmd "%picker-source-spawn!" ui::picker_source_spawn(token: SteelVal, cmd: SteelVal, args: SteelVal, cwd: SteelVal, nul: SteelVal, ok_exit_codes: SteelVal);
+        cmd "%picker-source-spawn!" => "picker-source-spawn!" ui::picker_source_spawn(token: SteelVal, cmd: SteelVal, args: SteelVal, cwd: SteelVal, nul: SteelVal, ok_exit_codes: SteelVal);
         cmd "picker-source-stop!" ui::picker_source_stop(token: SteelVal);
         cmd "picker-close!" ui::picker_close(token: SteelVal);
         // Backs the #:source and argv-for checks only. See args::is_callable's doc.
-        plain "%callable?" args::is_callable(val: SteelVal);
+        plain "%callable?" => "%callable?" args::is_callable(val: SteelVal);
 
-        cmd "%held-done" hooks::held_done(hold: SteelVal);
+        cmd "%held-done" => "done" hooks::held_done(hold: SteelVal);
 
         // Timers: not LSP-specific, any plugin can schedule one.
         cmd "after!" timers::after(ms: SteelVal, thunk: Rooted);
@@ -494,7 +518,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         // Background work with a callback, stopped by `cancel-async!`: a
         // subprocess's one-shot capture (a streaming picker source is
         // `picker-source-spawn!`'s shape) and a program scan's reports.
-        cmd "%spawn-async!" process::spawn_async(cmd: SteelVal, args: SteelVal, cwd: SteelVal, callback: Rooted);
+        cmd "%spawn-async!" => "spawn-async!" process::spawn_async(cmd: SteelVal, args: SteelVal, cwd: SteelVal, callback: Rooted);
         cmd "cancel-async!" process::cancel_async(id: SteelVal);
         cmd "path-programs" fs::path_programs(prefix: String, extensions: SteelVal, on_names: Rooted);
 
@@ -503,7 +527,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         // `run_capture` stands in for (see its own doc), carry no legality
         // gate either, and `run-capture!` is a plain helper any plugin body
         // can reach, not a top-level dispatched command.
-        open "%run-capture!" process::run_capture(cmd: SteelVal, args: SteelVal, cwd: SteelVal);
+        open "%run-capture!" => "run-capture!" process::run_capture(cmd: SteelVal, args: SteelVal, cwd: SteelVal);
 
         cmd "diff-lines" diff::diff_lines(old: SteelVal, new: SteelVal);
         cmd "diff-buffer-lines" diff::diff_buffer_lines(pane: args::LivePane, ref_text: SteelVal);
@@ -526,24 +550,19 @@ pub(crate) fn register_all(steel: &mut Engine) {
         open "path-entries" fs::path_entries(dir: args::ScriptPath, prefix: String);
         open "find-program" fs::find_program(name: String);
         plain "home-dir" fs::home_dir();
-    }
 
-    // Context-free builtins that don't fit the typed-arity table above: raw
-    // `&[SteelVal]` FuncV, no SteelCtx. `path-join` is a pure string helper;
-    // `hume-version` reads build info, not directory state; `json-ref`/
-    // `json-contains?`/`json-ref-or` take a variadic path (`j seg ...`),
-    // which the typed-arity table's fixed parameter list can't express.
-    steel.register_value("hume-version", SteelVal::FuncV(version::hume_version));
-    steel.register_value(
-        "hume-version>=?",
-        SteelVal::FuncV(version::hume_version_at_least),
-    );
-    steel.register_value("path-join", SteelVal::FuncV(fs::path_join));
-    steel.register_value("path->display", SteelVal::FuncV(fs::path_to_display));
-    steel.register_value("safe-path-segment?", SteelVal::FuncV(fs::safe_path_segment));
-    steel.register_value("json-ref", SteelVal::FuncV(json::json_ref));
-    steel.register_value("json-contains?", SteelVal::FuncV(json::json_contains));
-    steel.register_value("json-ref-or", SteelVal::FuncV(json::json_ref_or));
+        // Variadic, context-free: `path-join` is a pure string helper;
+        // `hume-version` reads build info, not directory state; `json-ref`/
+        // `json-contains?`/`json-ref-or` take a variadic path (`j seg ...`).
+        rest "hume-version" version::hume_version;
+        rest "hume-version>=?" version::hume_version_at_least;
+        rest "path-join" fs::path_join;
+        rest "path->display" fs::path_to_display;
+        rest "safe-path-segment?" fs::safe_path_segment;
+        rest "json-ref" json::json_ref;
+        rest "json-contains?" json::json_contains;
+        rest "json-ref-or" json::json_ref_or;
+    }
 
     // Evaluate the Scheme bootstrap (defines `load-plugin!` and the rest of
     // HUME's Scheme-side API). Runs before any user init.scm; HUME_CTX is not

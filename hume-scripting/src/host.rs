@@ -74,12 +74,6 @@ pub enum KeymapTarget {
     Named(String),
 }
 
-/// "X: not supported by this host": the single source for capability-absence
-/// errors.
-pub(crate) fn unsupported(builtin: &str) -> String {
-    format!("{builtin}: not supported by this host")
-}
-
 /// The editor interface exposed to scripting builtins during a Steel eval.
 ///
 /// A capability directory: domain methods live on the capability traits in

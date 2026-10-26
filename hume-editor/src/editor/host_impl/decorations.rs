@@ -24,11 +24,11 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         bid: BufferId,
         hints: Vec<(usize, String, bool)>,
     ) -> Result<(), String> {
-        let text = buffer_text(self.state, bid, "set-inlay-hints!")?;
+        let text = buffer_text(self.state, bid)?;
         let entries = hints
             .into_iter()
             .map(|(pos, hint_text, before)| {
-                let pos = validate_offset(text, pos, before, "set-inlay-hints!")?;
+                let pos = validate_offset(text, pos, before)?;
                 Ok(hume_decorations::InlayHintEntry {
                     pos,
                     text: hint_text,
@@ -70,16 +70,16 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
             .is_none()
         {
             return Err(format!(
-                "set-signs!: unregistered sign source {source:?}, call \
+                "unregistered sign source {source:?}, call \
                  (register-sign-source! …) first"
             ));
         }
-        let text = buffer_text(self.state, bid, "set-signs!")?;
+        let text = buffer_text(self.state, bid)?;
         let entries = signs
             .into_iter()
             .map(|(line, sign_text, scope)| {
                 Ok(hume_decorations::SignEntry {
-                    line: content_line(text, line, "set-signs!")?,
+                    line: content_line(text, line)?,
                     text: sign_text.into(),
                     scope: self.view.registry.intern_runtime(&scope),
                 })
@@ -98,11 +98,11 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         bid: BufferId,
         lines: Vec<hume_scripting::VirtualLineSpec>,
     ) -> Result<(), String> {
-        let text = buffer_text(self.state, bid, "set-virtual-lines!")?;
+        let text = buffer_text(self.state, bid)?;
         let entries = lines
             .into_iter()
             .map(|spec| {
-                let line = content_line(text, spec.line, "set-virtual-lines!")?;
+                let line = content_line(text, spec.line)?;
                 let scope = match spec.scope.as_deref() {
                     Some(name) => self.view.registry.intern_runtime(name),
                     None => self
@@ -142,11 +142,11 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         bid: BufferId,
         spans: Vec<(usize, usize, String)>,
     ) -> Result<(), String> {
-        let text = buffer_text(self.state, bid, "set-extra-highlights!")?;
+        let text = buffer_text(self.state, bid)?;
         let entries = spans
             .into_iter()
             .map(|(start, end, scope)| {
-                let fail = |e: String| format!("set-extra-highlights!: range {e}");
+                let fail = |e: String| format!("range {e}");
                 let range = crate::editor::buffer::offsets::checked_char_range(text, start, end)
                     .map_err(fail)?;
                 if range.is_empty() {
@@ -175,12 +175,12 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         lines: Vec<(usize, String, String)>,
         hide_on_insert_line: bool,
     ) -> Result<(), String> {
-        let text = buffer_text(self.state, bid, "set-eol-text!")?;
+        let text = buffer_text(self.state, bid)?;
         let entries = lines
             .into_iter()
             .map(|(line, eol_text, scope)| {
                 Ok(hume_decorations::EolTextEntry {
-                    line: content_line(text, line, "set-eol-text!")?,
+                    line: content_line(text, line)?,
                     text: eol_text,
                     scope: self.view.registry.intern_runtime(&scope),
                     hide_on_insert_line,
@@ -200,12 +200,12 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         bid: BufferId,
         entries: Vec<(usize, String)>,
     ) -> Result<(), String> {
-        let text = buffer_text(self.state, bid, "set-line-backgrounds!")?;
+        let text = buffer_text(self.state, bid)?;
         let entries = entries
             .into_iter()
             .map(|(line, scope)| {
                 Ok(hume_decorations::LineBgEntry {
-                    line: content_line(text, line, "set-line-backgrounds!")?,
+                    line: content_line(text, line)?,
                     scope: self.view.registry.intern_runtime(&scope),
                 })
             })
@@ -225,11 +225,11 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
     ) -> Result<(), String> {
         // Return value discarded: called purely to reuse the SSOT "unknown
         // buffer" wording every sibling setter raises for a stale `bid`.
-        buffer_text(self.state, bid, "set-statusline-text!")?;
+        buffer_text(self.state, bid)?;
         // A name `StatusElement::from_str` would reject can never be placed,
         // so reject it here too, or the push silently stores an entry no
         // `steel:<name>` element can ever render.
-        StatusElement::custom(&source).map_err(|e| format!("set-statusline-text!: {e}"))?;
+        StatusElement::custom(&source).map_err(|e| e.to_string())?;
         // Wholesale replace, same as every sibling decoration setter
         // (`SourceStore::set`): an empty `text` is stored as-is rather than
         // pruned; `render_element`'s `Custom` arm and `render_section` both
@@ -289,12 +289,12 @@ pub(super) fn virtual_line_segments_to_bytes(
     for (start, end, scope) in segments {
         if start >= end {
             return Err(format!(
-                "set-virtual-lines! segments: segment ({start}, {end}) must have start < end"
+                "segments: segment ({start}, {end}) must have start < end"
             ));
         }
         if end > char_count {
             return Err(format!(
-                "set-virtual-lines! segments: segment end {end} is past text's char length {char_count}"
+                "segments: segment end {end} is past text's char length {char_count}"
             ));
         }
         // Trusted mint: `start < end <= char_count` is checked above.
@@ -308,7 +308,7 @@ pub(super) fn virtual_line_segments_to_bytes(
         let end_byte = slice.char_to_byte(chars.end.index());
         if start_byte < prev_end {
             return Err(format!(
-                "set-virtual-lines! segments: segments must not overlap (segment ({start}, \
+                "segments: segments must not overlap (segment ({start}, \
                  {end}) shares a character with the previous one)"
             ));
         }
@@ -319,26 +319,25 @@ pub(super) fn virtual_line_segments_to_bytes(
     Ok(out)
 }
 
-/// The live text for `bid`, or `Err` naming `builtin` if `bid` doesn't name
+/// The live text for `bid`, or `Err` if `bid` doesn't name
 /// an open buffer. Every decoration setter needs this to validate/convert
 /// its Steel-facing positions. `bid`'s liveness is already checked before
 /// any of these setters' bodies run (`args::LivePane`'s `BuiltinArg::resolve`
 /// in the `builtins!`-registered closure), so the `Err` arm here is a
 /// defensive fallback, not the primary check. It is kept because `try_get` could
 /// in principle diverge from the liveness check's own `buffer_exists`.
-fn buffer_text<'s>(
-    state: &'s EditorState,
+fn buffer_text(
+    state: &EditorState,
     bid: BufferId,
-    builtin: &str,
-) -> Result<&'s hume_editing::text::BufferText, String> {
+) -> Result<&hume_editing::text::BufferText, String> {
     state
         .buffers
         .try_get(bid)
         .map(|b| b.text())
-        .ok_or_else(|| format!("{builtin}: unknown buffer"))
+        .ok_or_else(|| "unknown buffer".to_owned())
 }
 
-/// `line` as a content line of `text`, or `Err` naming `builtin` if it is
+/// `line` as a content line of `text`, or `Err` if it is
 /// out of range: the one place a line-anchored decoration's Steel-facing
 /// line number becomes the line it is stored on.
 ///
@@ -350,18 +349,17 @@ fn buffer_text<'s>(
 pub(super) fn content_line(
     text: &hume_editing::text::BufferText,
     line: usize,
-    builtin: &str,
 ) -> Result<hume_rope::line::ContentLine, String> {
     hume_rope::line::ContentLine::checked(text.rope(), line).ok_or_else(|| {
         format!(
-            "{builtin}: line {line} is out of range (buffer has {} content lines)",
+            "line {line} is out of range (buffer has {} content lines)",
             text.content_line_count().get()
         )
     })
 }
 
-/// `pos` must address a real char in `text` (`<` its length), `Err` naming
-/// `builtin` otherwise. A `pos` inside a grapheme cluster snaps to it: a
+/// `pos` must address a real char in `text` (`<` its length), `Err`
+/// otherwise. A `pos` inside a grapheme cluster snaps to it: a
 /// `'before` hint (`before == true`) to the cluster's first char, an `'after`
 /// one to its last, so the hint sits before or after the whole character.
 /// `pos == len_chars()` is refused: `visible_char_range` is half-open, so
@@ -379,11 +377,10 @@ pub(super) fn validate_offset(
     text: &hume_editing::text::BufferText,
     pos: usize,
     before: bool,
-    builtin: &str,
 ) -> Result<CharOffset, String> {
     if pos >= text.len_chars() {
         return Err(format!(
-            "{builtin}: offset {pos} is out of range (buffer has {} chars)",
+            "offset {pos} is out of range (buffer has {} chars)",
             text.len_chars()
         ));
     }
@@ -405,7 +402,7 @@ pub(super) fn validate_offset(
         let landing_line = text.ropey_char_to_line(pos.shift(1));
         if landing_line.to_content(text.rope()).is_none() {
             return Err(format!(
-                "{builtin}: offset {} anchored 'after would land on the buffer's trailing \
+                "offset {} anchored 'after would land on the buffer's trailing \
                  empty line",
                 pos.index()
             ));

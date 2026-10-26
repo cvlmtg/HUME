@@ -98,17 +98,10 @@ impl Choice {
             .map(|(i, _)| i)
     }
 
-    /// The refusal `what` raises during `.` when the re-run list has no item
-    /// this choice names.
-    pub(in crate::editor) fn missing(&self, what: &str) -> String {
-        let label = &self.label;
-        match self.nth {
-            0 => format!("{what}: `.` found no item \"{label}\" to pick"),
-            nth => format!(
-                "{what}: `.` found no item \"{label}\" number {} among those with that text",
-                nth + 1
-            ),
-        }
+    /// The refusal of `.` when the re-run list has no item this choice
+    /// names.
+    pub(in crate::editor) fn missing(&self) -> super::ReplayRefusal {
+        super::ReplayRefusal::MissingItem(self.clone())
     }
 }
 

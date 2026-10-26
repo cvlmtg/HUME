@@ -257,7 +257,7 @@ fn lsp_servers_rejects_an_unknown_feature() {
 
     assert!(rig.warnings().is_empty());
     let log = rig.ed.state.message_log.format_for_display();
-    assert!(log.contains("lsp-servers #:feature"), "{log}");
+    assert!(log.contains("lsp-servers: #:feature"), "{log}");
 }
 
 #[test]

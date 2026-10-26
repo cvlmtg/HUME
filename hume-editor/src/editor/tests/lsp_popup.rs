@@ -163,7 +163,7 @@ fn show_popup_scrollable_does_not_land_above_an_open_picker() {
         hume_scripting::host::PickerOpts::default(),
         Vec::new(),
     );
-    crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session, "picker!")
+    crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session)
         .expect("no `.` is in progress");
 
     // Direct host call, not a real `:` keystroke: the picker is

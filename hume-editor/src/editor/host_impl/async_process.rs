@@ -86,7 +86,7 @@ impl<'a> AsyncProcessHost for EditorHostImpl<'a> {
             extensions,
             std::sync::Arc::clone(&self.state.wake),
         )
-        .map_err(|e| format!("path-programs: the scan could not start: {e}"))?;
+        .map_err(|e| format!("the scan could not start: {e}"))?;
         let id = self.next_async_job();
         self.state.config.async_jobs.insert(
             id,

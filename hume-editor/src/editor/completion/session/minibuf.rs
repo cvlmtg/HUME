@@ -138,11 +138,9 @@ impl MinibufSession {
                 return Ok(false);
             };
             if registry.minibuf_get(source).match_kind != MatchKind::Delegated {
-                return Err(
-                    "completion-emit!: #:span and #:prefix need a source registered with \
+                return Err("#:span and #:prefix need a source registered with \
                      #:match 'delegated"
-                        .to_string(),
-                );
+                    .to_string());
             }
             let EmittedWord { span, prefix } = word;
             Some((
@@ -196,7 +194,7 @@ impl MinibufSession {
                 Ok(start..end)
             }
             _ => Err(format!(
-                "completion-emit!: #:span from char {} to {} must hold the cursor ({cursor}) \
+                "#:span from char {} to {} must hold the cursor ({cursor}) \
                  within the line's {} chars",
                 chars.start,
                 chars.end,

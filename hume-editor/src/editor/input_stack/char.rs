@@ -24,7 +24,7 @@ use termina::event::{KeyCode, Modifiers, MouseEventKind};
 use super::super::commands::{self, PendingDispatch};
 use super::super::error::CommandError;
 use super::super::event::PendingWork;
-use super::super::replay::{Answer, AnswerTicket, InputOpener, PendingAnswer};
+use super::super::replay::{Answer, AnswerTicket, InputOpener, PendingAnswer, ReplayRefusal};
 use super::super::{Editor, EditorState};
 use super::paste::PastedText;
 use super::stack::{
@@ -92,8 +92,9 @@ pub(in crate::editor) fn read_command_char(
     pending: PendingDispatch,
     opener: InputOpener,
 ) -> Result<(), String> {
-    let what = pending.cmd.name().clone();
-    read_interactive(state, view, CharThen::Dispatch(pending), &what, opener)
+    let name = pending.cmd.name().clone();
+    read_interactive(state, view, CharThen::Dispatch(pending), opener)
+        .map_err(|refusal| format!("{name}: {refusal}"))
 }
 
 /// `on-next-char!`: calls `callback` with the next character, or with `#f`.
@@ -102,13 +103,8 @@ pub(in crate::editor) fn read_steel_char(
     view: &EngineView,
     callback: hume_scripting::Rooted,
 ) -> Result<(), String> {
-    read_interactive(
-        state,
-        view,
-        CharThen::Steel(callback),
-        "on-next-char!",
-        InputOpener::Code,
-    )
+    read_interactive(state, view, CharThen::Steel(callback), InputOpener::Code)
+        .map_err(|refusal| refusal.to_string())
 }
 
 /// The one funnel a command's or a callback's read starts through. During
@@ -118,12 +114,10 @@ fn read_interactive(
     state: &mut EditorState,
     view: &EngineView,
     then: CharThen,
-    what: &str,
     opener: InputOpener,
-) -> Result<(), String> {
+) -> Result<(), ReplayRefusal> {
     if let Some(replay) = state.dot_replay.as_mut() {
         return replay.answer_call(
-            what,
             |a| match a {
                 Answer::Char(c) => Some(*c),
                 _ => None,
@@ -131,7 +125,7 @@ fn read_interactive(
             |answer| Ok(PendingAnswer::Read(CharRead { then, source: None }, answer)),
         );
     }
-    let source = state.waiting_input(what, opener)?.take_answer();
+    let source = state.waiting_input(opener)?.take_answer();
     let read = CharRead { then, source };
     read_char(state, view, read);
     Ok(())

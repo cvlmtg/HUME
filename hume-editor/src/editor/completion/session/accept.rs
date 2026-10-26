@@ -122,16 +122,14 @@ impl BufferSession {
     ) -> Result<AcceptPlan<'a>, String> {
         let (source, invocation, item) = self
             .ranked(idx)
-            .ok_or_else(|| "completion-accept!: index out of range".to_string())?;
+            .ok_or_else(|| "index out of range".to_string())?;
         let BufferSpan { doc, start, .. } = &invocation.span;
         let may_resolve = state.config.completion_sources.buffer_get(source).resolve;
         let buf = edits::checked_buffer(state, bid, None)?;
         if buf.text().version() != self.version {
-            return Err(
-                "completion-accept!: buffer changed since the completion was computed".to_string(),
-            );
+            return Err("buffer changed since the completion was computed".to_string());
         }
-        let encoding = item.wire_encoding(may_resolve, "completion-accept!")?;
+        let encoding = item.wire_encoding(may_resolve, "item")?;
 
         let (head_now, heads_now) = {
             let pbs = state.panes.entries.seeded(pid, bid);
@@ -142,7 +140,7 @@ impl BufferSession {
             // real selection set.
             let sels = pbs.view(state.buffers.get(bid).text());
             if !sels.all_cursors() {
-                return Err("completion-accept!: selections must be collapsed".to_string());
+                return Err("selections must be collapsed".to_string());
             }
             // Every cursor's own head, not just the primary's: the overlap
             // check below (span is uniform, but each cursor's own live head
@@ -210,9 +208,7 @@ impl BufferSession {
         // point. This also keeps the `chars_since` calls below from
         // tripping their inversion assert.
         if !contains_cursor(&(start_now..end_now), head_now.offset()) {
-            return Err(format!(
-                "completion-accept!: {what} does not contain the cursor"
-            ));
+            return Err(format!("{what} does not contain the cursor"));
         }
         let (back, forward) = (
             head_now.offset().chars_since(start_now),
@@ -295,9 +291,7 @@ impl BufferSession {
                 })
             });
         if overlaps {
-            return Err(
-                "completion-accept!: replacement span overlaps additionalTextEdits".to_string(),
-            );
+            return Err("replacement span overlaps additionalTextEdits".to_string());
         }
 
         Ok(AcceptPlan {

@@ -14,10 +14,10 @@ use super::errors::require_cap;
 /// the drain boundary once `ms` milliseconds have passed (never inline;
 /// same queued-Steel-call delivery as the LSP callbacks).
 pub(crate) fn after(ctx: &mut SteelCtx, ms: SteelVal, thunk: crate::Rooted) -> SteelResult {
-    let ms = usize_arg(ms, "after!")? as u64;
-    match require_cap(ctx.host.timers(), "after!")?.schedule_timer(ms, thunk) {
+    let ms = usize_arg(ms, "ms")? as u64;
+    match require_cap(ctx.host.timers())?.schedule_timer(ms, thunk) {
         Some(timer) => Ok(timer.into_steel_val()),
-        None => steel::stop!(Generic => "after!: no timer wheel in this context"),
+        None => steel::stop!(Generic => "no timer wheel in this context"),
     }
 }
 
@@ -25,8 +25,8 @@ pub(crate) fn after(ctx: &mut SteelCtx, ms: SteelVal, thunk: crate::Rooted) -> S
 /// runs, even one already due. Idempotent: a no-op once the thunk has run
 /// or after an earlier cancel. Raises for anything but a timer.
 pub(crate) fn cancel_timer(ctx: &mut SteelCtx, timer: SteelVal) -> SteelResult {
-    let timer = timer_arg(&timer, "cancel-timer!")?;
-    require_cap(ctx.host.timers(), "cancel-timer!")?.cancel_timer(timer);
+    let timer = timer_arg(&timer, "timer")?;
+    require_cap(ctx.host.timers())?.cancel_timer(timer);
     Ok(SteelVal::Void)
 }
 

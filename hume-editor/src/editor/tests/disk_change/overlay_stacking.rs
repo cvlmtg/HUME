@@ -22,7 +22,7 @@ fn confirm_does_not_open_over_a_live_picker_but_defers_to_next_buffer_enter() {
         hume_scripting::host::PickerOpts::default(),
         Vec::new(),
     );
-    crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session, "picker!")
+    crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session)
         .expect("no `.` is in progress");
 
     let (_, warnings_before) = ed.state.message_log.totals();
@@ -174,7 +174,7 @@ fn picker_opens_over_a_live_confirm_and_the_confirm_resumes_once_it_closes() {
         hume_scripting::host::PickerOpts::default(),
         Vec::new(),
     );
-    crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session, "picker!")
+    crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session)
         .expect("no `.` is in progress");
 
     assert!(ed.state.input.picker().is_some(), "the picker opened");
@@ -238,7 +238,7 @@ fn picker_above_a_retired_confirm_survives_untouched() {
         hume_scripting::host::PickerOpts::default(),
         Vec::new(),
     );
-    crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session, "picker!")
+    crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session)
         .expect("no `.` is in progress");
     assert!(
         ed.state

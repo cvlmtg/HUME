@@ -116,7 +116,7 @@ pub(crate) fn replace_dir(
 ) -> SteelResult {
     let (Some(parent), Some(name)) = (dest.parent(), dest.file_name()) else {
         return Err(generic_err(format!(
-            "replace-dir!: {} names no directory to replace",
+            "{} names no directory to replace",
             dest.display()
         )));
     };
@@ -127,13 +127,7 @@ pub(crate) fn replace_dir(
         std::fs::create_dir_all(parent)?;
         swap_dir_in(&src, &dest, &backup)
     })
-    .map_err(|e| {
-        generic_err(format!(
-            "replace-dir!: {} -> {}: {e}",
-            src.display(),
-            dest.display()
-        ))
-    })?;
+    .map_err(|e| generic_err(format!("{} -> {}: {e}", src.display(), dest.display())))?;
     if let Err(e) = ctx.while_waiting(|| remove_dir_tree_if_present(&backup)) {
         ctx.log(
             LogLevel::Warning,
@@ -198,12 +192,11 @@ fn remove_dir_tree_if_present(dir: &Path) -> std::io::Result<()> {
 pub(crate) fn try_lock_file(ctx: &mut SteelCtx, path: AbsolutePath) -> SteelResult {
     if ctx.file_locks.contains_key(path.as_path()) {
         return Err(generic_err(format!(
-            "try-lock-file!: this session already holds {}",
+            "this session already holds {}",
             path.display()
         )));
     }
-    let lock_err =
-        |e: std::io::Error| generic_err(format!("try-lock-file!: {}: {e}", path.display()));
+    let lock_err = |e: std::io::Error| generic_err(format!("{}: {e}", path.display()));
     let file = std::fs::OpenOptions::new()
         .create(true)
         .truncate(false)
@@ -241,12 +234,7 @@ pub(crate) fn unlock_file(ctx: &mut SteelCtx, path: AbsolutePath) -> SteelResult
     ctx.file_locks
         .remove(path.as_path())
         .map(|_| SteelVal::Void)
-        .ok_or_else(|| {
-            generic_err(format!(
-                "unlock-file!: this session does not hold {}",
-                path.display()
-            ))
-        })
+        .ok_or_else(|| generic_err(format!("this session does not hold {}", path.display())))
 }
 
 // ── Completion listings ──────────────────────────────────────────────────────
@@ -272,8 +260,8 @@ pub(crate) fn path_programs(
     extensions: SteelVal,
     on_names: crate::Rooted,
 ) -> SteelResult {
-    let extensions = list_to_strings(extensions, "path-programs")?;
-    let job = require_cap(ctx.host.async_process(), "path-programs")?
+    let extensions = list_to_strings(extensions, "extensions")?;
+    let job = require_cap(ctx.host.async_process())?
         .scan_programs(prefix, extensions, on_names)
         .map_err(generic_err)?;
     Ok(job.into_steel_val())
@@ -310,14 +298,14 @@ pub(crate) fn home_dir() -> SteelResult {
 /// access the filesystem.
 pub(crate) fn path_join(args: &[SteelVal]) -> SteelResult {
     if args.is_empty() {
-        steel::stop!(ArityMismatch => "path-join expects at least 1 arg, got 0");
+        steel::stop!(ArityMismatch => "expects at least 1 arg, got 0");
     }
     let mut result = PathBuf::new();
     for (i, arg) in args.iter().enumerate() {
         match arg {
             SteelVal::StringV(s) => result.push(s.as_str()),
             _ => steel::stop!(TypeMismatch =>
-                "path-join: arg {} must be a string, got {:?}", i, arg),
+                "arg {} must be a string, got {:?}", i, arg),
         }
     }
     result
@@ -339,7 +327,7 @@ pub(crate) fn path_join(args: &[SteelVal]) -> SteelResult {
 pub(crate) fn safe_path_segment(args: &[SteelVal]) -> SteelResult {
     let [name] = args else {
         steel::stop!(ArityMismatch =>
-            "safe-path-segment? expects 1 arg, got {}", args.len());
+            "expects 1 arg, got {}", args.len());
     };
     Ok(SteelVal::BoolV(
         matches!(name, SteelVal::StringV(s) if hume_platform::path::is_safe_segment(s.as_str())),
@@ -357,10 +345,10 @@ pub(crate) fn safe_path_segment(args: &[SteelVal]) -> SteelResult {
 /// input).
 pub(crate) fn path_to_display(args: &[SteelVal]) -> SteelResult {
     if args.len() != 1 {
-        steel::stop!(ArityMismatch => "path->display expects exactly 1 arg, got {}", args.len());
+        steel::stop!(ArityMismatch => "expects exactly 1 arg, got {}", args.len());
     }
     let SteelVal::StringV(s) = &args[0] else {
-        steel::stop!(TypeMismatch => "path->display: arg must be a string, got {:?}", args[0]);
+        steel::stop!(TypeMismatch => "arg must be a string, got {:?}", args[0]);
     };
     hume_platform::path::display_form(Path::new(s.as_str()))
         .into_steelval()

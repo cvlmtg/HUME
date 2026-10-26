@@ -461,11 +461,9 @@ impl EditorState {
                 .buffer_completion_mut()
                 .expect("ref_of found the layer");
             if word != EmittedWord::default() && session.awaits(id) {
-                return Err(
-                    "completion-emit!: #:span and #:prefix are for a 'minibuf source; a 'buffer \
+                return Err("#:span and #:prefix are for a 'minibuf source; a 'buffer \
                      source's token is the word before the cursor"
-                        .to_string(),
-                );
+                    .to_string());
             }
             let landed =
                 session.contribute(&self.config.completion_sources, id, items, incomplete, end);

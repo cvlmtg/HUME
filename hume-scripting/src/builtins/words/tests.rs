@@ -58,14 +58,17 @@ fn empty_line_returns_no_words() {
 #[test]
 fn raises_on_non_string_line_argument() {
     let err = split_words(SteelVal::IntV(1), "".into_steelval().unwrap()).unwrap_err();
-    assert!(err.to_string().contains("split-words line"), "got: {err}");
+    assert!(
+        err.to_string().contains("line: expected a string"),
+        "got: {err}"
+    );
 }
 
 #[test]
 fn raises_on_non_string_word_chars_argument() {
     let err = split_words("foo".into_steelval().unwrap(), SteelVal::IntV(1)).unwrap_err();
     assert!(
-        err.to_string().contains("split-words word-chars"),
+        err.to_string().contains("word-chars: expected a string"),
         "got: {err}"
     );
 }
@@ -84,7 +87,8 @@ fn raises_on_word_chars_containing_a_stray_whitespace_char() {
     )
     .unwrap_err();
     assert!(
-        err.to_string().contains("split-words word-chars"),
+        err.to_string()
+            .contains("word-chars: cannot contain whitespace"),
         "got: {err}"
     );
 }
@@ -128,7 +132,7 @@ fn common_prefix_raises_on_a_non_string_element() {
         .unwrap();
     let err = string_common_prefix(list).unwrap_err();
     assert!(
-        err.to_string().contains("string-common-prefix"),
+        err.to_string().contains("strings: expected a string"),
         "got: {err}"
     );
 }

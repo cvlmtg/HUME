@@ -30,15 +30,13 @@ impl<'a> EditHost for EditorHostImpl<'a> {
             match encoding {
                 None => encoding = Some(edit.encoding),
                 Some(enc) if enc != edit.encoding => {
-                    return Err(
-                        "apply-text-edits!: edits use inconsistent server encodings".to_string()
-                    );
+                    return Err("edits use inconsistent server encodings".to_string());
                 }
                 _ => {}
             }
         }
         let Some(encoding) = encoding else {
-            return Err("apply-text-edits!: no edits given".to_string());
+            return Err("no edits given".to_string());
         };
         crate::editor::lsp::edits::apply_text_edits(
             self.state,
@@ -128,7 +126,7 @@ impl<'a> EditHost for EditorHostImpl<'a> {
         let t = self.command_pane(pane)?;
         commands::goto_revision(self.state, self.view, t, revision)
             .map(|_| ())
-            .map_err(|e| format!("goto-revision!: {}", e.message()))
+            .map_err(|e| e.message().to_owned())
     }
 
     fn insert_key(&mut self, pane: PaneHandle, key: KeyEvent) -> Result<(), String> {
@@ -137,13 +135,13 @@ impl<'a> EditHost for EditorHostImpl<'a> {
             .state
             .input
             .insert_entry()
-            .ok_or("insert-key!: only in Insert mode")?;
+            .ok_or("only in Insert mode")?;
         // An Insert key's own keymap binding dispatching is the one context
         // `.` can replay this call in (by re-running that same binding), so
         // this must refuse anywhere else (a hook, a timer): the buffer edit
         // would otherwise land untracked for dot-repeat.
         if !self.state.recording_scope.insert_key() {
-            return Err("insert-key!: only from a command bound to an Insert-mode key".to_string());
+            return Err("only from a command bound to an Insert-mode key".to_string());
         }
         // Not recorded here: `.` replays the *binding* that called this
         // (recorded once, at the keymap dispatch that's invoking it;
@@ -151,7 +149,7 @@ impl<'a> EditHost for EditorHostImpl<'a> {
         // replay. Recording it a second time here would double it.
         if !commands::insert_default_key(self.state, self.view, &entry, fp, key) {
             return Err(format!(
-                "insert-key!: {:?} has no default Insert-mode behaviour",
+                "{:?} has no default Insert-mode behaviour",
                 key.code
             ));
         }
@@ -164,21 +162,20 @@ impl<'a> EditHost for EditorHostImpl<'a> {
             Some(text) => self
                 .state
                 .paste(self.view, text)
-                .map_err(|e| format!("paste-text!: {}", e.message())),
+                .map_err(|e| e.message().to_owned()),
             None => Ok(()),
         }
     }
 
     fn edit_text(&mut self, pane: PaneHandle, edits: Vec<CharTextEdit>) -> Result<(), String> {
-        let fail = |e: String| format!("edit-text!: {e}");
-        let target = self.command_pane(pane).map_err(fail)?;
+        let target = self.command_pane(pane)?;
         let (pid, bid) = (target.pid(), target.bid(self.view));
         let text = self.state.buffers.get(bid).text();
         let char_edits = edits
             .iter()
             .map(|e| {
                 let range = checked_char_range(text, e.start, e.end)
-                    .map_err(|err| fail(format!("range {err}")))?;
+                    .map_err(|err| format!("range {err}"))?;
                 Ok((widened_to_clusters(text, range), e.text.as_str()))
             })
             .collect::<Result<Vec<_>, String>>()?;
@@ -190,6 +187,5 @@ impl<'a> EditHost for EditorHostImpl<'a> {
             char_edits,
         )
         .map(|_| ())
-        .map_err(fail)
     }
 }

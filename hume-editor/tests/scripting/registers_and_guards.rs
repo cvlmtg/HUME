@@ -181,15 +181,9 @@ fn set_register_prefix_at_init_errors() {
 
 // ── init-mode guards for buffer lifecycle builtins ────────────────────────
 
-/// `(close-buffer! …)` called from init.scm with a malformed `bid` must
-/// raise a Steel error rather than crashing. `bid` is a typed `LiveBid`
-/// param, so steel-core decodes it (type only; liveness is a separate,
-/// later check) before the registration wrapper's `cmd`-gate closure runs.
-/// A call that is both wrong-mode and wrong-typed (as here: init.scm has no
-/// way to construct a real pane, cmd-gated builtins like `focused-pane`
-/// included) reports the type error, not the gate error.
-/// The gate itself is covered directly in `hume-scripting`'s
-/// `buffers::tests::close_buffer_blocked_in_init_mode`.
+/// `(close-buffer! …)` called from init.scm with a malformed `pane` raises
+/// the init gate's error, not a type error: the gate runs before any
+/// argument decodes.
 #[test]
 fn close_buffer_errors_in_init_mode() {
     let mut h = host();
@@ -198,15 +192,12 @@ fn close_buffer_errors_in_init_mode() {
         .eval_source("(close-buffer! (quote ()))", &mut mock)
         .unwrap_err();
     assert!(
-        err.contains("expected pane"),
-        "close-buffer! must raise a pane type error, got: {err}",
+        err.contains("close-buffer!: not available during init evaluation"),
+        "got: {err}",
     );
 }
 
-/// `(switch-to-buffer! …)` called from init.scm with a malformed `bid` must
-/// raise a Steel error rather than crashing.  Mirrors
-/// `close_buffer_errors_in_init_mode`. See its doc for why this asserts
-/// the type error, not the gate error.
+/// `(switch-to-buffer! …)` from init.scm, as `close_buffer_errors_in_init_mode`.
 #[test]
 fn switch_to_buffer_errors_in_init_mode() {
     let mut h = host();
@@ -215,8 +206,8 @@ fn switch_to_buffer_errors_in_init_mode() {
         .eval_source("(switch-to-buffer! (quote ()) (quote ()))", &mut mock)
         .unwrap_err();
     assert!(
-        err.contains("expected pane"),
-        "switch-to-buffer! must raise a pane type error, got: {err}",
+        err.contains("switch-to-buffer!: not available during init evaluation"),
+        "got: {err}",
     );
 }
 
@@ -242,7 +233,8 @@ fn language_builtins_error_on_stale_buffer_id() {
         .call_steel_cmd_by_name("q-lang", vec![bid.clone()], &mut mock)
         .unwrap_err();
     assert!(
-        err.message.contains("get-buffer-option: invalid buffer id"),
+        err.message
+            .contains("get-buffer-option: pane: invalid buffer id"),
         "get-buffer-option must reject a stale id; got: {err}"
     );
 
@@ -251,7 +243,7 @@ fn language_builtins_error_on_stale_buffer_id() {
         .unwrap_err();
     assert!(
         err.message
-            .contains("set-buffer-option!: invalid buffer id"),
+            .contains("set-buffer-option!: pane: invalid buffer id"),
         "set-buffer-option! must reject a stale id; got: {err}"
     );
 }

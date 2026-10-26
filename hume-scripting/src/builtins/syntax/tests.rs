@@ -23,28 +23,6 @@ fn lang_regs(h: &SteelCtxTestHarness) -> Vec<&PendingLanguageReg> {
 
 // ── %define-language! ────────────────────────────────────────────────────
 
-/// `%define-language!` is blocked in plain command mode, gated at
-/// registration time (`config` kind in `builtins!`'s table), not in the
-/// body, so this tests the gate primitive directly rather than calling
-/// `define_language` (its body has no guard to hit).
-///
-/// An `open` table entry would let language identity be defined at runtime,
-/// corrupting the language registry.
-#[test]
-fn define_language_blocked_in_command_mode() {
-    let mut h = SteelCtxTestHarness::new();
-    let result = super::super::errors::require_config(&h.ctx(), "%define-language!");
-    assert!(
-        result.is_err(),
-        "%define-language! must error in command mode"
-    );
-    let msg = result.unwrap_err().to_string();
-    assert!(
-        msg.contains("init"),
-        "error must mention 'init'; got: {msg}"
-    );
-}
-
 /// `%define-language!` rejects a non-string/symbol `name`.
 #[test]
 fn define_language_non_string_name_errors() {
@@ -316,18 +294,6 @@ fn configure_language_rejects_an_unknown_key() {
     .expect_err("an unknown key must be rejected")
     .to_string();
     assert!(err.contains("grammar"), "{err}");
-}
-
-/// `%configure-language!` is gated to config evaluation, like
-/// `%define-language!`.
-#[test]
-fn configure_language_blocked_in_command_mode() {
-    let mut h = SteelCtxTestHarness::new();
-    let result = super::super::errors::require_config(&h.ctx(), "%configure-language!");
-    assert!(
-        result.is_err(),
-        "%configure-language! must error in command mode"
-    );
 }
 
 // ── register-grammar! ────────────────────────────────────────────────────

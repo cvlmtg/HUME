@@ -11,7 +11,7 @@ impl<'a> LanguageHost for EditorHostImpl<'a> {
             .config
             .languages
             .attach_grammar(&reg.name, &reg.source, &mut self.view.registry)
-            .map_err(|e| format!("register-grammar! '{}': {e}", reg.name))?;
+            .map_err(|e| format!("'{}': {e}", reg.name))?;
         Ok(())
     }
 

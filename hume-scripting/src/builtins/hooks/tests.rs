@@ -5,22 +5,6 @@ fn noop_proc(_args: &[SteelVal]) -> SteelResult {
     Ok(SteelVal::Void)
 }
 
-/// `register-hook!` is blocked in plain command mode (init/plugin-load only).
-///
-/// The gate keeps a command body from registering hooks and changing global
-/// behaviour at runtime.
-#[test]
-fn register_hook_blocked_in_command_mode() {
-    let mut h = SteelCtxTestHarness::new();
-    let result = super::super::errors::require_config(&h.ctx(), "register-hook!"); // EvalMode::Command
-    assert!(result.is_err(), "register-hook! must error in command mode");
-    let msg = result.unwrap_err().to_string();
-    assert!(
-        msg.contains("init"),
-        "error must mention 'init'; got: {msg}"
-    );
-}
-
 /// `register-hook!` errors when the first argument is not a symbol.
 #[test]
 fn register_hook_non_symbol_arg_errors() {

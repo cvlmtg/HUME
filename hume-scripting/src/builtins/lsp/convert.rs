@@ -29,11 +29,10 @@ pub(crate) fn lsp_position_to_char_offset(
     pane: PaneHandle,
     position: SteelVal,
 ) -> SteelResult {
-    const NAME: &str = "lsp-position->char-offset";
     let bid = pane.buffer();
-    let (handle, encoding) = tagged_json_arg(&position, NAME)?;
-    let pos = wire_position(handle.value(), NAME)?;
-    let offset = require_cap(ctx.host.lsp(), NAME)?.lsp_wire_point_to_char(bid, pos, encoding);
+    let (handle, encoding) = tagged_json_arg(&position, "position")?;
+    let pos = wire_position(handle.value())?;
+    let offset = require_cap(ctx.host.lsp())?.lsp_wire_point_to_char(bid, pos, encoding);
     Ok(offset.map_or(SteelVal::BoolV(false), |offset| {
         SteelVal::IntV(offset as isize)
     }))
@@ -51,11 +50,10 @@ pub(crate) fn lsp_range_to_char_range(
     pane: PaneHandle,
     range: SteelVal,
 ) -> SteelResult {
-    const NAME: &str = "lsp-range->char-range";
     let bid = pane.buffer();
-    let (handle, encoding) = tagged_json_arg(&range, NAME)?;
-    let range = wire_range(handle.value(), NAME)?;
-    let range = require_cap(ctx.host.lsp(), NAME)?.lsp_wire_range_to_chars(bid, range, encoding);
+    let (handle, encoding) = tagged_json_arg(&range, "range")?;
+    let range = wire_range(handle.value())?;
+    let range = require_cap(ctx.host.lsp())?.lsp_wire_range_to_chars(bid, range, encoding);
     Ok(range.map_or(SteelVal::BoolV(false), |(start, end)| {
         char_range_value(start, end)
     }))
@@ -78,20 +76,21 @@ pub(crate) fn lsp_label_offsets_to_text(
     label: SteelVal,
     offsets: SteelVal,
 ) -> SteelResult {
-    let label = string_arg(label, "lsp-label-offsets->text label")?;
-    let (handle, encoding) = tagged_json_arg(&offsets, "lsp-label-offsets->text")?;
-    let arr = handle.value().as_array().ok_or_else(|| {
-        generic_err("lsp-label-offsets->text: offsets must be a two-element (start end) array")
-    })?;
+    let label = string_arg(label, "label")?;
+    let (handle, encoding) = tagged_json_arg(&offsets, "offsets")?;
+    let arr = handle
+        .value()
+        .as_array()
+        .ok_or_else(|| generic_err("offsets must be a two-element (start end) array"))?;
     let [start, end] = arr.as_slice() else {
         return Err(generic_err(format!(
-            "lsp-label-offsets->text: offsets must be a two-element (start end) array, got {} element(s)",
+            "offsets must be a two-element (start end) array, got {} element(s)",
             arr.len()
         )));
     };
-    let start = json_usize(start, "lsp-label-offsets->text offsets")?;
-    let end = json_usize(end, "lsp-label-offsets->text offsets")?;
-    require_cap(ctx.host.lsp(), "lsp-label-offsets->text")?;
+    let start = json_usize(start, "offsets")?;
+    let end = json_usize(end, "offsets")?;
+    require_cap(ctx.host.lsp())?;
     let range =
         hume_rope::position_encoding::wire_offsets_to_byte_range(&label, start, end, encoding);
     Ok(SteelVal::StringV(label[range].into()))
@@ -111,21 +110,15 @@ fn json_usize(v: &serde_json::Value, ctx_name: &str) -> Result<usize, SteelErr> 
 }
 
 /// Decodes `locs` (a Steel list of raw `Location`/`LocationLink` handles)
-/// through the host, one row per location. `builtin` names the caller in the
-/// errors raised here.
-fn decode_places(
-    ctx: &mut SteelCtx,
-    locs: SteelVal,
-    builtin: &str,
-) -> Result<Vec<LocationPlace>, SteelErr> {
-    let arg_name = format!("{builtin} locs");
-    let handles = list_items(locs, &arg_name)?
+/// through the host, one row per location.
+fn decode_places(ctx: &mut SteelCtx, locs: SteelVal) -> Result<Vec<LocationPlace>, SteelErr> {
+    let handles = list_items(locs, "locs")?
         .iter()
-        .map(|entry| tagged_json_arg(entry, &arg_name))
+        .map(|entry| tagged_json_arg(entry, "locs"))
         .collect::<Result<Vec<_>, _>>()?;
-    require_cap(ctx.host.lsp(), builtin)?
+    require_cap(ctx.host.lsp())?
         .lsp_location_places(&handles)
-        .map_err(|e| generic_err(format!("{builtin}: {e}")))
+        .map_err(generic_err)
 }
 
 fn place_hash(place: Place) -> SteelVal {
@@ -169,7 +162,7 @@ fn place_hash(place: Place) -> SteelVal {
 /// tagged) at all aborts the whole call rather than producing a degraded
 /// entry.
 pub(crate) fn lsp_locations_to_places(ctx: &mut SteelCtx, locs: SteelVal) -> SteelResult {
-    let rows = decode_places(ctx, locs, "lsp-locations->places")?;
+    let rows = decode_places(ctx, locs)?;
     let entries: Vec<SteelVal> = rows
         .into_iter()
         .map(|row| match row {
@@ -189,7 +182,7 @@ pub(crate) fn lsp_locations_to_places(ctx: &mut SteelCtx, locs: SteelVal) -> Ste
 /// servers counting one unopened non-ASCII position in different encodings
 /// still show twice, since the column of an unopened target is the wire one.
 pub(crate) fn lsp_locations_to_merged_places(ctx: &mut SteelCtx, locs: SteelVal) -> SteelResult {
-    let rows = decode_places(ctx, locs, "lsp-locations->merged-places")?;
+    let rows = decode_places(ctx, locs)?;
     let mut seen = rustc_hash::FxHashSet::default();
     let mut places = Vec::new();
     let mut skipped = 0;

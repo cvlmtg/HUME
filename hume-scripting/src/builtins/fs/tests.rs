@@ -312,7 +312,7 @@ fn path_programs_reads_its_extensions_as_strings() {
 #[test]
 fn path_programs_raises_without_background_work() {
     let err = path_programs_error(crate::builtins::args::string_list([".exe".to_owned()]));
-    assert!(err.contains("path-programs: not supported"), "{err}");
+    assert!(err.contains("not supported by this host"), "{err}");
 }
 
 #[test]

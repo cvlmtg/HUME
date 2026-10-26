@@ -89,7 +89,7 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
     fn set_cwd(&mut self, path: &AbsolutePath) -> Result<AbsolutePath, String> {
         self.state
             .set_cwd(path)
-            .map_err(|e| format!("set-cwd!: {}: {e}", path.display()))
+            .map_err(|e| format!("{}: {e}", path.display()))
     }
 
     // ── Buffer lifecycle ─────────────────────────────────────────────────────
@@ -103,12 +103,12 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
             self.state,
             path.clone(),
         )
-        .map_err(|e| format!("open-buffer!: {}: {e}", path.display()))?;
+        .map_err(|e| format!("{}: {e}", path.display()))?;
         Ok(bid)
     }
     fn close_buffer(&mut self, id: BufferId, discard: DiscardUnsaved) -> Result<(), String> {
         if self.state.buffers.try_get(id).is_none() {
-            return Err(format!("close-buffer!: buffer {id:?} does not exist"));
+            return Err(format!("buffer {id:?} does not exist"));
         }
         let on_unsaved = match discard {
             DiscardUnsaved::No => OnUnsaved::Refuse,
@@ -118,12 +118,11 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
             self.view, self.state, id, on_unsaved,
         )
         .map_err(|refused| match refused {
-            CloseBufferRefused::Unsaved(unsaved) => format!(
-                "close-buffer!: {}",
+            CloseBufferRefused::Unsaved(unsaved) => {
                 unsaved.message(self.state, "#:discard-unsaved #t")
-            ),
+            }
             CloseBufferRefused::PipeRunning(_) => format!(
-                r#"close-buffer!: {}. Stop it first with (call! "cancel-pipe" pane)"#,
+                r#"{}. Stop it first with (call! "cancel-pipe" pane)"#,
                 TextRefusal::Busy.message(self.state.buffers.get(id))
             ),
         })
@@ -145,7 +144,7 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
         text: &str,
     ) -> Result<(), String> {
         let t = self.command_pane(pane)?;
-        let label = ViewLabel::named(name).map_err(|e| format!("show-read-only-buffer!: {e}"))?;
+        let label = ViewLabel::named(name).map_err(|e| e.to_string())?;
         crate::editor::buffer::lifecycle::show_read_only_view(
             self.state,
             self.view,

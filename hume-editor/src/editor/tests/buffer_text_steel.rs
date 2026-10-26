@@ -151,7 +151,7 @@ fn buffer_lines_range_missing_an_end_raises() {
     let entries: Vec<_> = ed.state.message_log.entries().cloned().collect();
     assert!(
         entries.iter().any(|e| e.severity == Severity::Error
-            && e.text.contains("buffer-lines #:range")
+            && e.text.contains("buffer-lines: #:range")
             && e.text.contains("missing 'end-line")),
         "a range without 'end-line must raise naming it, got: {entries:?}"
     );

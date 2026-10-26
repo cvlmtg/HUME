@@ -183,20 +183,6 @@ fn register_rejects_a_non_callable_proc() {
     assert!(err.contains("callable"), "got: {err}");
 }
 
-/// `register-completion-source!` is `config`-gated in `builtins!`'s
-/// registration table. The gate lives in the registration wrapper, so
-/// this tests the gate primitive directly, same as `bind-key!`'s tests.
-#[test]
-fn register_is_blocked_in_command_mode() {
-    let mut h = SteelCtxTestHarness::new();
-    let result = super::super::errors::require_config(&h.ctx(), "%register-completion-source!");
-    let msg = result.expect_err("must error in command mode").to_string();
-    assert!(
-        msg.contains("register-completion-source!") && !msg.contains('%'),
-        "names the friendly wrapper, not the primitive; got: {msg}"
-    );
-}
-
 // ── set-completion-triggers! ─────────────────────────────────────────
 
 /// Queues an `Effect::SetTriggers` with the decoded fields,
@@ -321,16 +307,6 @@ fn an_attachment_feature_that_is_not_a_feature_raises() {
 
 // ── completion-emit! ──────────────────────────────────────────────────────
 
-/// `completion-emit!` is `cmd`-gated: an answer can't land from an
-/// init-time eval, where there is no session to answer.
-#[test]
-fn emit_is_blocked_during_init() {
-    let mut h = SteelCtxTestHarness::new();
-    let result = super::super::errors::require_cmd(&h.ctx_init(), "%completion-emit!");
-    let msg = result.expect_err("must error during init").to_string();
-    assert!(msg.contains("completion-emit!"), "got: {msg}");
-}
-
 /// `#:token-chars` decodes straight through on a `'buffer` source and
 /// defaults to empty.
 #[test]
@@ -439,8 +415,5 @@ fn completion_top_without_completion_host_errors() {
     let msg = completion_top(&mut ctx, SteelVal::IntV(5))
         .unwrap_err()
         .to_string();
-    assert!(
-        msg.contains("completion-top: not supported by this host"),
-        "got: {msg}"
-    );
+    assert!(msg.contains("not supported by this host"), "got: {msg}");
 }

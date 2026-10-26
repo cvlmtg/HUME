@@ -1,39 +1,80 @@
 use hume_platform::dirs::Dirs;
 
-// The tests below exercise table entries' gates through a real
-// `ScriptingHost` (register_all → Steel dispatch → the wrapper closure's
-// gate call) rather than calling `errors::require_cmd`/`require_config`
-// directly, proving the registration table's kind tags actually wire a
-// builtin to its gate, which the per-builtin unit tests (calling the gate
-// primitive with the builtin's name as a string) can't catch on their own:
-// a `cmd` entry mistyped as `open` would stop gating without failing any of
-// those.
+// The tests below exercise table entries through a real `ScriptingHost`
+// (register_all → Steel dispatch → the wrapper closure) rather than calling
+// `errors::require_cmd`/`require_config` directly: only that shows the
+// table's kind tags wire a builtin to its gate, and its name to its errors.
+// A `cmd` entry mistyped as `open` stops gating, which a call to the gate
+// function itself cannot show.
 
-/// A `cmd`-gated builtin (`focused-pane`) called from init.scm (where
-/// `register_all`'s wrapper closure is the only place the gate lives)
-/// must still raise "not available during init".
+/// Every `cmd` builtin below refuses to run during init.scm, naming itself
+/// by the name a plugin calls. The gate runs before any argument decodes,
+/// so `#f` stands in for each argument.
 #[test]
-fn cmd_gated_builtin_rejected_from_init_through_real_registration() {
-    let mut host = crate::ScriptingHost::new(&Dirs::none());
-    let mut null_host = crate::null_host::NullHost;
-    let err = host
-        .eval_source("(focused-pane)", &mut null_host)
-        .expect_err("focused-pane must be rejected during init.scm eval");
-    assert!(err.contains("not available during init"), "got: {err}");
+fn cmd_builtins_are_refused_during_init_through_real_registration() {
+    const PROBES: &[(&str, &str)] = &[
+        ("focused-pane", "(focused-pane)"),
+        ("buffers", "(buffers)"),
+        ("panes", "(panes)"),
+        ("buffer-path", "(buffer-path #f)"),
+        ("buffer-display-path", "(buffer-display-path #f)"),
+        ("buffer-name", "(buffer-name #f)"),
+        ("buffer-dirty?", "(buffer-dirty? #f)"),
+        ("close-buffer!", "(close-buffer! #f)"),
+        ("switch-to-buffer!", "(switch-to-buffer! #f #f)"),
+        ("buffer-cursor-line", "(buffer-cursor-line #f)"),
+        ("buffer-selections", "(buffer-selections #f)"),
+        ("char-offset->line", "(char-offset->line #f #f)"),
+        ("buffer-text", "(buffer-text #f)"),
+        ("buffer-lines", "(buffer-lines #f)"),
+        ("buffer-line-count", "(buffer-line-count #f)"),
+        ("line->char-offset", "(line->char-offset #f #f)"),
+        ("get-buffer-option", "(get-buffer-option #f #f)"),
+        ("set-buffer-option!", "(set-buffer-option! #f #f #f)"),
+        ("completion-emit!", "(completion-emit! #f #f)"),
+        ("after!", "(after! #f #f)"),
+        ("diff-lines", "(diff-lines #f #f)"),
+        ("diff-buffer-lines", "(diff-buffer-lines #f #f)"),
+        ("diff-words", "(diff-words #f #f)"),
+        ("lsp-stop!", "(lsp-stop! #f)"),
+        ("lsp-restart!", "(lsp-restart! #f)"),
+        ("lsp-show-status!", "(lsp-show-status! #f)"),
+    ];
+    for (name, expr) in PROBES {
+        let mut host = crate::ScriptingHost::new(&Dirs::none());
+        let err = host
+            .eval_source(expr, &mut crate::null_host::NullHost)
+            .expect_err(expr);
+        assert!(
+            err.contains(&format!("{name}: not available during init evaluation")),
+            "{expr}: {err}"
+        );
+    }
 }
 
-/// A `config`-gated builtin (`register-hook!`) called from inside a command
-/// body (`EvalMode::Command`, dispatched via the real `call_steel_cmd` path)
-/// must still raise "not from a Steel command body".
-///
-/// `set-option!` is `open` (callable from any context; see
-/// `builtins/settings.rs`'s docs), so it can't exercise this rejection path;
-/// `register-hook!` is `config`-gated.
+/// Every `config` builtin below refuses to run from a command body, naming
+/// itself by the name a plugin calls.
 #[test]
-fn config_gated_builtin_rejected_from_command_body_through_real_registration() {
-    let err = call_probe("(register-hook! 'on-buffer-open (lambda (pane) (begin)))")
-        .expect_err("register-hook! must be rejected from a command body");
-    assert!(err.message.contains("command body"), "got: {err:?}");
+fn config_builtins_are_refused_in_a_command_body_through_real_registration() {
+    const PROBES: &[(&str, &str)] = &[
+        ("register-hook!", "(register-hook! #f #f)"),
+        (
+            "register-completion-source!",
+            "(register-completion-source! #f #f #:target #f)",
+        ),
+        ("define-language!", "(%define-language! #f #f #f #f)"),
+        ("configure-language!", "(%configure-language! #f #f)"),
+    ];
+    for (name, expr) in PROBES {
+        let err = call_probe(expr).expect_err(expr);
+        assert!(
+            err.message.contains(&format!(
+                "{name}: only valid during init.scm or plugin load, not from a Steel command body"
+            )),
+            "{expr}: {}",
+            err.message
+        );
+    }
 }
 
 /// `bind-key!` without `#:keymap` changes the global keymap, which only init
@@ -59,6 +100,41 @@ fn named_bind_key_allowed_from_command_body_through_real_registration() {
         ),
         "got: {effects:?}"
     );
+}
+
+/// Each kind of builtin names itself once, in front of its error, by the
+/// name a plugin calls: `cmd`, `open`, `plain`, a variadic one, a `%`
+/// internal behind its wrapper, a decode failure, a closed buffer, and a
+/// missing host capability.
+#[test]
+fn a_builtin_error_names_the_builtin_a_plugin_calls() {
+    let cases = [
+        ("(buffer-path 5)", "buffer-path", "expected pane"),
+        ("(close-buffer! 5)", "close-buffer!", "expected pane"),
+        ("(set-cwd! 5)", "set-cwd!", "expected a string path"),
+        (
+            "(json-list 5)",
+            "json-list",
+            "expected a JSON handle, got 5",
+        ),
+        ("(path-join)", "path-join", "expects at least 1 arg, got 0"),
+        ("(call! 5)", "call!", "Expected string, found: 5"),
+        (
+            "(apply-text-edits! (focused-pane) (list))",
+            "apply-text-edits!",
+            "pane: invalid buffer id",
+        ),
+        (
+            "(after! 1 (lambda () 1))",
+            "after!",
+            "not supported by this host",
+        ),
+    ];
+    for (body, name, message) in cases {
+        let err = call_probe(body).expect_err(body).message;
+        assert!(err.contains(&format!("{name}: {message}")), "{body}: {err}");
+        assert!(!err.contains(&format!("{name}: {name}")), "{body}: {err}");
+    }
 }
 
 /// Define a command whose body is `body`, then call it as a command.

@@ -4,7 +4,7 @@
 //! can call `show-popup!`. `hume-editor`'s `EditorHostImpl` is the only
 //! implementation that actually renders anything; other hosts (tests,
 //! `MockHost`) have no `UiHost`, so `ctx.host.ui()` returns `None` and each
-//! builtin surfaces `unsupported(...)` instead.
+//! builtin surfaces `require_cap`'s "not supported by this host" instead.
 
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
@@ -41,24 +41,20 @@ pub(crate) fn show_popup(
     kind: SteelVal,
     lang: SteelVal,
 ) -> SteelResult {
-    let text = string_arg(text, "show-popup! text")?;
-    let anchor = string_arg(anchor, "show-popup! #:anchor")?;
-    let docked = symbol_enum_arg(
-        &anchor,
-        "show-popup! #:anchor",
-        &[("cursor", false), ("bottom", true)],
-    )?;
-    let kind = string_arg(kind, "show-popup! #:kind")?;
+    let text = string_arg(text, "text")?;
+    let anchor = string_arg(anchor, "#:anchor")?;
+    let docked = symbol_enum_arg(&anchor, "#:anchor", &[("cursor", false), ("bottom", true)])?;
+    let kind = string_arg(kind, "#:kind")?;
     let kind = symbol_enum_arg(
         &kind,
-        "show-popup! #:kind",
+        "#:kind",
         &[
             ("sticky", PopupKind::Sticky),
             ("scrollable", PopupKind::Scrollable),
         ],
     )?;
-    let lang = optional_string_arg(lang, "show-popup! #:lang")?;
-    let token = require_cap(ctx.host.ui(), "show-popup!")?
+    let lang = optional_string_arg(lang, "#:lang")?;
+    let token = require_cap(ctx.host.ui())?
         .show_popup(pane, text, kind, docked, lang)
         .map_err(generic_err)?;
     Ok(token_or_false(token))
@@ -67,8 +63,8 @@ pub(crate) fn show_popup(
 /// `(close-popup! token)`. A `#f` token (the opener returned `#f`, or the
 /// popup has since closed) is a no-op, same as any other stale token.
 pub(crate) fn close_popup(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
-    let token = token_arg(token, "close-popup! token")?;
-    require_cap(ctx.host.ui(), "close-popup!")?
+    let token = token_arg(token, "token")?;
+    require_cap(ctx.host.ui())?
         .close_popup(token)
         .map(|()| SteelVal::Void)
         .map_err(generic_err)
@@ -83,11 +79,8 @@ pub(crate) fn show_menu(
     items: SteelVal,
     on_select: Rooted,
 ) -> SteelResult {
-    let items = non_empty(
-        list_to_strings(items, "show-menu! items")?,
-        "show-menu! items",
-    )?;
-    let token = require_cap(ctx.host.ui(), "show-menu!")?
+    let items = non_empty(list_to_strings(items, "items")?, "items")?;
+    let token = require_cap(ctx.host.ui())?
         .show_menu(pane, items, on_select)
         .map_err(generic_err)?;
     Ok(token_or_false(token))
@@ -95,8 +88,8 @@ pub(crate) fn show_menu(
 
 /// `(close-menu! token)`. A `#f` token is a no-op, same as `close-popup!`.
 pub(crate) fn close_menu(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
-    let token = token_arg(token, "close-menu! token")?;
-    require_cap(ctx.host.ui(), "close-menu!")?
+    let token = token_arg(token, "token")?;
+    require_cap(ctx.host.ui())?
         .close_menu(token)
         .map(|()| SteelVal::Void)
         .map_err(generic_err)
@@ -119,9 +112,9 @@ pub(crate) fn show_drawer_list(
     selected: SteelVal,
     render: SteelVal,
 ) -> SteelResult {
-    let items = drawer_items(items, render, "show-drawer-list!")?;
-    let selected = usize_arg(selected, "show-drawer-list! selected")?;
-    let token = require_cap(ctx.host.ui(), "show-drawer-list!")?
+    let items = drawer_items(items, render)?;
+    let selected = usize_arg(selected, "selected")?;
+    let token = require_cap(ctx.host.ui())?
         .show_drawer_list(pane, items, on_select, selected)
         .map_err(generic_err)?;
     Ok(token_or_false(token))
@@ -129,8 +122,8 @@ pub(crate) fn show_drawer_list(
 
 /// `(close-drawer! token)`. A `#f` token is a no-op, same as `close-popup!`.
 pub(crate) fn close_drawer(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
-    let token = token_arg(token, "close-drawer! token")?;
-    require_cap(ctx.host.ui(), "close-drawer!")?
+    let token = token_arg(token, "token")?;
+    require_cap(ctx.host.ui())?
         .close_drawer(token)
         .map(|()| SteelVal::Void)
         .map_err(generic_err)
@@ -151,36 +144,29 @@ pub(crate) fn update_drawer_list(
     selected: SteelVal,
     render: SteelVal,
 ) -> SteelResult {
-    let token = token_arg(token, "update-drawer-list! token")?;
-    let items = drawer_items(items, render, "update-drawer-list!")?;
-    let selected = usize_arg(selected, "update-drawer-list! selected")?;
-    let applied = require_cap(ctx.host.ui(), "update-drawer-list!")?
-        .update_drawer_list(token, items, on_select, selected);
+    let token = token_arg(token, "token")?;
+    let items = drawer_items(items, render)?;
+    let selected = usize_arg(selected, "selected")?;
+    let applied = require_cap(ctx.host.ui())?.update_drawer_list(token, items, on_select, selected);
     Ok(SteelVal::BoolV(applied))
 }
 
 /// A drawer's `items`: strings when `render` is `#f`, otherwise opaque keys
 /// rendered on demand by the `render` proc.
-fn drawer_items(items: SteelVal, render: SteelVal, builtin: &str) -> Result<DrawerItems, SteelErr> {
-    let items_name = format!("{builtin} items");
-    Ok(
-        match optional_callable_arg(render, &format!("{builtin} render"))? {
-            None => DrawerItems::Rows(non_empty(
-                list_to_strings(items, &items_name)?,
-                &items_name,
-            )?),
-            Some(render) => DrawerItems::Keys {
-                keys: non_empty(
-                    list_items(items, &items_name)?
-                        .into_iter()
-                        .map(Rooted::new)
-                        .collect(),
-                    &items_name,
-                )?,
-                render,
-            },
+fn drawer_items(items: SteelVal, render: SteelVal) -> Result<DrawerItems, SteelErr> {
+    Ok(match optional_callable_arg(render, "#:render")? {
+        None => DrawerItems::Rows(non_empty(list_to_strings(items, "items")?, "items")?),
+        Some(render) => DrawerItems::Keys {
+            keys: non_empty(
+                list_items(items, "items")?
+                    .into_iter()
+                    .map(Rooted::new)
+                    .collect(),
+                "items",
+            )?,
+            render,
         },
-    )
+    })
 }
 
 /// `items` as a [`NonEmpty`]: a menu or drawer with no row has no item for
@@ -196,8 +182,8 @@ fn non_empty<T>(items: Vec<T>, ctx_name: &str) -> Result<NonEmpty<T>, SteelErr> 
 /// `#f` when no drawer is open, `token` doesn't match its own, or `token`
 /// itself is `#f` (the opener that produced it returned `#f`).
 pub(crate) fn drawer_selected_index(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
-    let token = token_arg(token, "drawer-selected-index token")?;
-    match require_cap(ctx.host.ui(), "drawer-selected-index")?.drawer_selected_index(token) {
+    let token = token_arg(token, "token")?;
+    match require_cap(ctx.host.ui())?.drawer_selected_index(token) {
         Some(idx) => Ok(SteelVal::IntV(idx as isize)),
         None => Ok(SteelVal::BoolV(false)),
     }
@@ -213,9 +199,9 @@ pub(crate) fn prompt(
     prefill: SteelVal,
     on_confirm: Rooted,
 ) -> SteelResult {
-    let label = string_arg(label, "prompt! label")?;
-    let prefill = string_arg(prefill, "prompt! prefill")?;
-    require_cap(ctx.host.ui(), "prompt!")?
+    let label = string_arg(label, "label")?;
+    let prefill = string_arg(prefill, "prefill")?;
+    require_cap(ctx.host.ui())?
         .prompt(pane, label, prefill, on_confirm)
         .map(|()| SteelVal::Void)
         .map_err(generic_err)
@@ -229,8 +215,8 @@ pub(crate) fn prompt(
 /// gets the character the repeated command read, at once, and the call
 /// raises when the repeated command read fewer.
 pub(crate) fn on_next_char(ctx: &mut SteelCtx, callback: SteelVal) -> SteelResult {
-    let callback = callable_arg(callback, "on-next-char!")?;
-    require_cap(ctx.host.ui(), "on-next-char!")?
+    let callback = callable_arg(callback, "callback")?;
+    require_cap(ctx.host.ui())?
         .on_next_char(callback)
         .map(|()| SteelVal::Void)
         .map_err(generic_err)
@@ -305,12 +291,12 @@ pub(crate) fn picker(
     truncate: SteelVal,
     actions: SteelVal,
 ) -> SteelResult {
-    let items = picker_items(items, "picker! items")?;
-    let prompt = string_arg(prompt, "picker! #:prompt")?;
-    let pending = bool_arg(pending, "picker! #:pending")?;
-    let query = string_arg(query, "picker! #:query")?;
-    let truncate = truncate_end_arg(truncate, "picker! #:truncate")?;
-    let actions = picker_actions(actions, "picker! #:actions")?;
+    let items = picker_items(items, "items")?;
+    let prompt = string_arg(prompt, "#:prompt")?;
+    let pending = bool_arg(pending, "#:pending")?;
+    let query = string_arg(query, "#:query")?;
+    let truncate = truncate_end_arg(truncate, "#:truncate")?;
+    let actions = picker_actions(actions, "#:actions")?;
     let opts = PickerOpts {
         prompt,
         pending,
@@ -318,7 +304,7 @@ pub(crate) fn picker(
         truncate,
         actions,
     };
-    let token = require_cap(ctx.host.ui(), "picker!")?
+    let token = require_cap(ctx.host.ui())?
         .open_picker(pane, items, on_select, opts)
         .map_err(generic_err)?;
     Ok(token.to_steel())
@@ -348,11 +334,11 @@ pub(crate) fn live_picker(
     truncate: SteelVal,
     actions: SteelVal,
 ) -> SteelResult {
-    let prompt = string_arg(prompt, "live-picker! #:prompt")?;
-    let query = string_arg(query, "live-picker! #:query")?;
-    let on_query_change = callable_arg(on_query_change, "live-picker! on-query-change")?;
-    let truncate = truncate_end_arg(truncate, "live-picker! #:truncate")?;
-    let actions = picker_actions(actions, "live-picker! #:actions")?;
+    let prompt = string_arg(prompt, "#:prompt")?;
+    let query = string_arg(query, "#:query")?;
+    let on_query_change = callable_arg(on_query_change, "on-query-change")?;
+    let truncate = truncate_end_arg(truncate, "#:truncate")?;
+    let actions = picker_actions(actions, "#:actions")?;
     let opts = LivePickerOpts {
         prompt,
         query,
@@ -360,7 +346,7 @@ pub(crate) fn live_picker(
         truncate,
         actions,
     };
-    let token = require_cap(ctx.host.ui(), "live-picker!")?
+    let token = require_cap(ctx.host.ui())?
         .open_live_picker(pane, on_select, opts)
         .map_err(generic_err)?;
     Ok(token.to_steel())
@@ -373,12 +359,11 @@ fn picker_feed_builtin(
     ctx: &mut SteelCtx,
     token: SteelVal,
     items: SteelVal,
-    name: &str,
     mode: PickerFeedMode,
 ) -> SteelResult {
-    let token = token_arg(token, &format!("{name} token"))?;
-    let items = picker_items(items, &format!("{name} items"))?;
-    let applied = require_cap(ctx.host.ui(), name)?.picker_feed(token, items, mode);
+    let token = token_arg(token, "token")?;
+    let items = picker_items(items, "items")?;
+    let applied = require_cap(ctx.host.ui())?.picker_feed(token, items, mode);
     Ok(SteelVal::BoolV(applied))
 }
 
@@ -386,20 +371,14 @@ fn picker_feed_builtin(
 /// directly. Returns whether the push was applied (`#f` for a stale token
 /// or no open picker; never an error, both are expected-normal races).
 pub(crate) fn picker_push(ctx: &mut SteelCtx, token: SteelVal, items: SteelVal) -> SteelResult {
-    picker_feed_builtin(ctx, token, items, "picker-push!", PickerFeedMode::Append)
+    picker_feed_builtin(ctx, token, items, PickerFeedMode::Append)
 }
 
 /// `(picker-replace! token items)`: no keyword defaults, so this registers
 /// directly, same shape as `picker-push!` but replacing the item list
 /// instead of appending to it. Returns whether the replace was applied.
 pub(crate) fn picker_replace(ctx: &mut SteelCtx, token: SteelVal, items: SteelVal) -> SteelResult {
-    picker_feed_builtin(
-        ctx,
-        token,
-        items,
-        "picker-replace!",
-        PickerFeedMode::Replace,
-    )
+    picker_feed_builtin(ctx, token, items, PickerFeedMode::Replace)
 }
 
 /// `(%picker-source-spawn! token cmd args cwd nul ok-exit-codes)`: the
@@ -417,24 +396,24 @@ pub(crate) fn picker_source_spawn(
     nul: SteelVal,
     ok_exit_codes: SteelVal,
 ) -> SteelResult {
-    let token = token_arg(token, "picker-source-spawn! token")?;
-    let cmd = string_arg(cmd, "picker-source-spawn! cmd")?;
+    let token = token_arg(token, "token")?;
+    let cmd = string_arg(cmd, "cmd")?;
     if cmd.trim().is_empty() {
-        steel::stop!(Generic => "picker-source-spawn!: cmd must not be empty");
+        steel::stop!(Generic => "cmd must not be empty");
     }
-    let args = list_to_strings(args, "picker-source-spawn! args")?;
-    let cwd = cwd_arg(cwd, &ctx.host.buffers().cwd(), "picker-source-spawn! #:cwd")?;
-    let nul = bool_arg(nul, "picker-source-spawn! #:nul")?;
-    let ok_exit_codes = list_to_i32s(ok_exit_codes, "picker-source-spawn! #:ok-exit-codes")?;
+    let args = list_to_strings(args, "args")?;
+    let cwd = cwd_arg(cwd, &ctx.host.buffers().cwd(), "#:cwd")?;
+    let nul = bool_arg(nul, "#:nul")?;
+    let ok_exit_codes = list_to_i32s(ok_exit_codes, "#:ok-exit-codes")?;
     let opts = PickerSourceOpts {
         cwd,
         nul,
         ok_exit_codes,
     };
 
-    let applied = require_cap(ctx.host.ui(), "picker-source-spawn!")?
+    let applied = require_cap(ctx.host.ui())?
         .picker_source_spawn(token, &cmd, args, opts)
-        .map_err(|e| generic_err(format!("picker-source-spawn!: {e}")))?;
+        .map_err(generic_err)?;
     Ok(SteelVal::BoolV(applied))
 }
 
@@ -444,8 +423,8 @@ pub(crate) fn picker_source_spawn(
 /// contract as `picker-push!`), regardless of whether a source was actually
 /// attached.
 pub(crate) fn picker_source_stop(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
-    let token = token_arg(token, "picker-source-stop! token")?;
-    let applied = require_cap(ctx.host.ui(), "picker-source-stop!")?.picker_source_stop(token);
+    let token = token_arg(token, "token")?;
+    let applied = require_cap(ctx.host.ui())?.picker_source_stop(token);
     Ok(SteelVal::BoolV(applied))
 }
 
@@ -453,7 +432,7 @@ pub(crate) fn picker_source_stop(ctx: &mut SteelCtx, token: SteelVal) -> SteelRe
 /// directly, same shape as `picker-source-stop!`. A `#f` token is a no-op,
 /// same as `close-popup!`.
 pub(crate) fn picker_close(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
-    let token = token_arg(token, "picker-close! token")?;
-    require_cap(ctx.host.ui(), "picker-close!")?.picker_close(token);
+    let token = token_arg(token, "token")?;
+    require_cap(ctx.host.ui())?.picker_close(token);
     Ok(SteelVal::Void)
 }

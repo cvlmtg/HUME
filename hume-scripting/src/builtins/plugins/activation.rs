@@ -97,7 +97,7 @@ pub(crate) fn begin_lazy_activation(
     if ctx.plugin_stack.len() >= MAX_ACTIVATION_DEPTH {
         fail_plugin_activation(ctx, &id);
         steel::stop!(Generic =>
-            "%begin-lazy-activation!: activation depth limit ({}) exceeded \
+            "activation depth limit ({}) exceeded \
              (check for circular load-plugin! chains); '{}' marked Failed",
             MAX_ACTIVATION_DEPTH, id);
     }
@@ -143,7 +143,7 @@ pub(crate) fn finish_lazy_activation(ctx: &mut SteelCtx, error: SteelVal) -> Ste
     // as neither `#f` nor a caught error value becomes the failure reason,
     // same shape as a body's own raised error.
     let Some(id) = ctx.plugin_stack.pop() else {
-        steel::stop!(Generic => "%finish-lazy-activation!: no plugin activation in progress");
+        steel::stop!(Generic => "no plugin activation in progress");
     };
     let error = optional_steel_error_arg(error, "%finish-lazy-activation!").unwrap_or_else(Some);
     ctx.pop_effect_marks(error.is_none());
@@ -261,18 +261,15 @@ pub(crate) fn finish_manifest_load(
     let error = error.or_else(|| {
         (!declared).then(|| {
             generic_err(format!(
-                "load-plugin!: manifest.scm for '{name}' did not declare '{name}': a \
+                "manifest.scm for '{name}' did not declare '{name}': a \
                  manifest.scm must call (declare-plugin! \"{name}\" …) with at least one \
                  activation entry"
             ))
         })
     });
     ctx.pop_effect_marks(error.is_none());
-    let id = resolving.ok_or_else(|| {
-        generic_err(format!(
-            "%finish-manifest-load!: no manifest is being resolved for '{name}'"
-        ))
-    })?;
+    let id = resolving
+        .ok_or_else(|| generic_err(format!("no manifest is being resolved for '{name}'")))?;
 
     if let Some(err) = error {
         fail_manifest_load(ctx, id, err)?;

@@ -36,7 +36,7 @@ fn cancel_async_raises_for_an_integer() {
     call(&mut ed, "try-cancel");
 
     assert!(
-        has_error(&ed, "cancel-async!: expected a job"),
+        has_error(&ed, "cancel-async!: job: expected a job"),
         "errors: {:?}",
         error_log(&ed)
     );

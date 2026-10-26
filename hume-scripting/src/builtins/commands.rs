@@ -29,22 +29,20 @@ use crate::types::{SteelCmdBody, SteelCmdDef, SteelTypedCmdBody, SteelTypedCmdDe
 
 /// Shared guards behind `define-command!` and `define-typed-command!`: name
 /// syntax, built-in shadowing, true re-definition, and lazy-stub self-
-/// ownership. `builtin_name` only changes the error text: a mappable and a
-/// typed command share one Steel-side proc namespace just as they share one
-/// namespace in the editor's `CommandRegistry`.
-fn check_definable(ctx: &mut SteelCtx, builtin_name: &str, name: &str) -> Result<(), SteelErr> {
-    crate::command_name::check_quotable(name)
-        .map_err(|reason| generic_err(format!("{builtin_name}: {reason}")))?;
+/// ownership. A mappable and a typed command share one Steel-side proc
+/// namespace just as they share one namespace in the editor's
+/// `CommandRegistry`.
+fn check_definable(ctx: &mut SteelCtx, name: &str) -> Result<(), SteelErr> {
+    crate::command_name::check_quotable(name).map_err(generic_err)?;
     if ctx.builtin_cmd_names.contains(name) {
         steel::stop!(Generic =>
-            "{}: '{}' conflicts with a built-in command and cannot be redefined",
-            builtin_name, name);
+            "'{}' conflicts with a built-in command and cannot be redefined", name);
     }
     // Guard against true re-definition, mappable or typed. A lazy stub has no
     // proc, so a plugin defining its own activation command passes here.
     if let Some(defined) = ctx.host.commands().defined_command(name) {
         steel::stop!(Generic =>
-            "{}: command '{}' is already defined by '{}'", builtin_name, name, defined.owner());
+            "command '{}' is already defined by '{}'", name, defined.owner());
     }
     // Guard against stealing a lazy plugin's activation command. A lazy plugin
     // can still define its own activation command during its own body (the
@@ -57,8 +55,8 @@ fn check_definable(ctx: &mut SteelCtx, builtin_name: &str, name: &str) -> Result
         );
         if !is_self {
             steel::stop!(Generic =>
-                "{}: command '{}' is already claimed as an activation command by lazy plugin '{}'",
-                builtin_name, name, claimant);
+                "command '{}' is already claimed as an activation command by lazy plugin '{}'",
+                name, claimant);
         }
     }
     Ok(())
@@ -99,11 +97,11 @@ pub(crate) fn define_command(
 ) -> SteelResult {
     if repeatable && inline_output {
         steel::stop!(Generic =>
-            "define-command!: '#:repeatable #t' and '#:inline-output #t' are mutually exclusive: \
+            "'#:repeatable #t' and '#:inline-output #t' are mutually exclusive: \
              shell-out commands must not participate in dot-repeat");
     }
-    check_definable(ctx, "define-command!", &name)?;
-    let proc = super::args::callable_arg(proc, "define-command! third arg (proc)")?;
+    check_definable(ctx, &name)?;
+    let proc = super::args::callable_arg(proc, "third arg (proc)")?;
     let (arity, is_variadic) = super::args::command_shape(proc.value());
     let proc = MappableProc::new(proc, ctx.plugin_stack.current_owner());
     ctx.host
@@ -150,10 +148,9 @@ pub(crate) fn define_typed_command(
     inline_output: bool,
     completer: SteelVal,
 ) -> SteelResult {
-    check_definable(ctx, "define-typed-command!", &name)?;
-    let proc = super::args::callable_arg(proc, "define-typed-command! third arg (proc)")?;
-    let completer =
-        super::args::optional_string_arg(completer, "define-typed-command! #:complete")?;
+    check_definable(ctx, &name)?;
+    let proc = super::args::callable_arg(proc, "third arg (proc)")?;
+    let completer = super::args::optional_string_arg(completer, "#:complete")?;
     let (arity, is_variadic) = super::args::command_shape(proc.value());
     let proc = TypedProc::new(proc, ctx.plugin_stack.current_owner());
     ctx.host
@@ -203,14 +200,12 @@ pub(crate) fn call_command_primitive(
             }
             let (pane, rest) = args_vec.split_first().ok_or_else(|| {
                 generic_err(format!(
-                    "%call-native!: '{name}' needs a pane: (call! \"{name}\" pane [count [extend]] [arg])"
+                    "'{name}' needs a pane: (call! \"{name}\" pane [count [extend]] [arg])"
                 ))
             })?;
-            let pane = super::ids::downcast_pane(pane).ok_or_else(|| {
-                generic_err(format!("%call-native!: '{name}': first arg must be a pane"))
-            })?;
-            let (count, extend, arg) =
-                parse_native_args(rest).map_err(|e| generic_err(format!("%call-native!: {e}")))?;
+            let pane = super::ids::downcast_pane(pane)
+                .ok_or_else(|| generic_err(format!("'{name}': first arg must be a pane")))?;
+            let (count, extend, arg) = parse_native_args(rest).map_err(generic_err)?;
             ctx.host
                 .commands()
                 .run_command_sync(
@@ -224,7 +219,7 @@ pub(crate) fn call_command_primitive(
                     },
                 )
                 .map(SteelVal::BoolV)
-                .map_err(|e| generic_err(format!("%call-native!: {e}")))
+                .map_err(generic_err)
         }
         Ok(false) => {
             ctx.log(LogLevel::Error, format!("'{name}' is not a native command"));
@@ -262,7 +257,7 @@ pub(crate) fn arm_inline_output(ctx: &mut SteelCtx, name: String) -> SteelResult
 /// `%apply-command!` in `bootstrap.scm`'s BOOTSTRAP comment (`builtins/mod.rs`)
 /// for what happens when a body raises before reaching it.
 pub(crate) fn restore_inline_output(ctx: &mut SteelCtx, depth: SteelVal) -> SteelResult {
-    let depth = super::args::usize_arg(depth, "%restore-inline-output!")?;
+    let depth = super::args::usize_arg(depth, "depth")?;
     if let Some(output) = ctx.host.output() {
         output.truncate_inline_output(depth);
     }
@@ -334,7 +329,7 @@ fn steel_list_to_vec(val: SteelVal) -> Result<Vec<SteelVal>, SteelErr> {
     match val {
         SteelVal::ListV(list) => Ok(list.into_iter().collect()),
         other => steel::stop!(TypeMismatch =>
-            "%call-native!: second arg must be a list, got {:?}", other),
+            "second arg must be a list, got {:?}", other),
     }
 }
 
@@ -384,7 +379,7 @@ pub(crate) fn command_callable(ctx: &mut SteelCtx, name: String) -> SteelResult 
 ///
 /// Only valid inside a `SteelBacked` command or hook invocation.
 pub(crate) fn set_register_prefix(ctx: &mut SteelCtx, name: String) -> SteelResult {
-    let reg = super::registers::register_arg(ctx, &name, "set-register-prefix!")?;
+    let reg = super::registers::register_arg(ctx, &name)?;
     ctx.current_register_prefix = Some(reg);
     Ok(SteelVal::Void)
 }

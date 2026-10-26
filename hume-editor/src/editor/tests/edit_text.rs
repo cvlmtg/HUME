@@ -294,6 +294,6 @@ fn a_closed_pane_raises() {
             }],
         )
         .unwrap_err();
-    assert!(err.contains("edit-text!"), "got: {err}");
+    assert!(err.contains("pane has been closed"), "got: {err}");
     assert_eq!(state(&ed), "-[a]>bc\n");
 }

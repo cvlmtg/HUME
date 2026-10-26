@@ -16,7 +16,7 @@ use super::errors::generic_err;
 
 /// Coerce a Steel string/symbol/bool/int/list-of-strings settings value to
 /// what the settings layer takes: the text `:set` would carry, or a list's
-/// words. `ctx_name` names the calling builtin in the error.
+/// words. `ctx_name` names the argument in the error.
 fn coerce_option_value(value: &SteelVal, ctx_name: &str) -> Result<OptionInput, SteelErr> {
     match value {
         SteelVal::StringV(s) => Ok(OptionInput::Text(s.to_string())),
@@ -40,7 +40,7 @@ fn coerce_option_value(value: &SteelVal, ctx_name: &str) -> Result<OptionInput, 
 /// `(set-buffer-option! pane key value)` from a script, to override a setting
 /// for a specific buffer instead.
 pub(crate) fn set_option(ctx: &mut SteelCtx, key: String, value: SteelVal) -> SteelResult {
-    let value = coerce_option_value(&value, "set-option!")?;
+    let value = coerce_option_value(&value, "value")?;
 
     ctx.host
         .settings()
@@ -77,7 +77,7 @@ pub(crate) fn set_buffer_option(
     if key == BufferIntrinsicOption::Language.key() {
         let SteelVal::StringV(language) = value else {
             steel::stop!(TypeMismatch =>
-                "set-buffer-option!: \"language\" must be a string, got {:?}", value);
+                "\"language\" must be a string, got {:?}", value);
         };
         let language = language_option_value(&language).map(str::to_string);
         if effective_language(ctx, bid) != language {
@@ -88,7 +88,7 @@ pub(crate) fn set_buffer_option(
         }
         return Ok(SteelVal::Void);
     }
-    let value = coerce_option_value(&value, "set-buffer-option!")?;
+    let value = coerce_option_value(&value, "value")?;
 
     ctx.host
         .settings()

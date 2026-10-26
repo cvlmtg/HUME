@@ -107,12 +107,10 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
                     Some((items, Some(own))) => (items, own, Some("items")),
                     Some((items, None)) => (items, false, None),
                     None => {
-                        return Err(
-                            "completion-emit!: an item must be a label string or an object with \
+                        return Err("an item must be a label string or an object with \
                              a label, or a textDocument/completion response (a CompletionItem[] \
                              array or a CompletionList object)"
-                                .to_string(),
-                        );
+                            .to_string());
                     }
                 };
             incomplete |= own_incomplete;
@@ -144,7 +142,10 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
     }
 
     fn completion_accept(&mut self, idx: usize) -> Result<(), String> {
-        let input = self.state.interactive_input("completion-accept!")?;
+        let input = self
+            .state
+            .interactive_input()
+            .map_err(|refusal| refusal.to_string())?;
         // Checked *before* `take_buffer_completion`: that call is
         // destructive (truncates the layer off the stack, per its own doc),
         // so erroring here first leaves a `Minibuf` session (and its own
@@ -152,10 +153,10 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
         // see `take_buffer_completion`'s doc) fully intact instead of torn
         // down on a call that was never going to succeed anyway.
         if self.state.input.minibuf_completion().is_some() {
-            return Err("completion-accept!: not a buffer-target session".to_string());
+            return Err("not a buffer-target session".to_string());
         }
         let Some(session) = self.state.take_buffer_completion_to_accept(self.view) else {
-            return Err("completion-accept!: no active completion session".to_string());
+            return Err("no active completion session".to_string());
         };
         session.accept(self.state, self.view, idx, input)
     }

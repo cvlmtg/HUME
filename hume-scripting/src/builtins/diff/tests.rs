@@ -9,32 +9,6 @@ use crate::test_support::SteelCtxTestHarness;
 // body, so these test the gate primitive directly rather than calling the
 // builtin (its body has no guard to hit).
 
-/// `diff-lines` is blocked in init mode.
-///
-/// An `open` table entry would make it callable from `init.scm`, where there
-/// is no meaningful live state to diff against.
-#[test]
-fn diff_lines_blocked_in_init_mode() {
-    let mut h = SteelCtxTestHarness::new();
-    let result = super::super::errors::require_cmd(&h.ctx_init(), "diff-lines");
-    assert!(result.is_err(), "diff-lines must error in init mode");
-    assert!(result.unwrap_err().to_string().contains("init"));
-}
-
-/// `diff-buffer-lines` is blocked in init mode.
-#[test]
-fn diff_buffer_lines_blocked_in_init_mode() {
-    let mut h = SteelCtxTestHarness::new();
-    assert!(super::super::errors::require_cmd(&h.ctx_init(), "diff-buffer-lines").is_err());
-}
-
-/// `diff-words` is blocked in init mode.
-#[test]
-fn diff_words_blocked_in_init_mode() {
-    let mut h = SteelCtxTestHarness::new();
-    assert!(super::super::errors::require_cmd(&h.ctx_init(), "diff-words").is_err());
-}
-
 // ── Type errors ────────────────────────────────────────────────────────────
 
 /// `diff-lines` rejects a non-string argument.
@@ -226,8 +200,7 @@ fn diff_words_drops_equal_runs() {
     );
 }
 
-/// `diff-buffer-lines` on a host with no `DiffHost` capability raises an
-/// error naming the builtin. The pane's liveness is checked at decode time
+/// `diff-buffer-lines` on a host with no `DiffHost` capability raises. The pane's liveness is checked at decode time
 /// (`LivePane`, in the `builtins!`-registered closure, unreachable from this
 /// direct call), so `require_cap` is the first gate this call reaches.
 #[test]

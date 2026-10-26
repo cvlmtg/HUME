@@ -32,19 +32,14 @@ pub(crate) fn set_inlay_hints(
     hints: SteelVal,
 ) -> SteelResult {
     let bid = pane.buffer();
-    let source = string_arg(source, "set-inlay-hints! source")?;
-    let parsed = hash_list(
-        hints,
-        "set-inlay-hints!",
-        &[CHAR_OFFSET, "text", "side"],
-        |entry| {
-            let pos = entry.usize(CHAR_OFFSET)?;
-            let text = entry.string("text")?;
-            let before = side_arg(entry.required("side")?, &entry.label("side"))?;
-            Ok((pos, text, before))
-        },
-    )?;
-    require_cap(ctx.host.decorations(), "set-inlay-hints!")?
+    let source = string_arg(source, "source")?;
+    let parsed = hash_list(hints, "hints", &[CHAR_OFFSET, "text", "side"], |entry| {
+        let pos = entry.usize(CHAR_OFFSET)?;
+        let text = entry.string("text")?;
+        let before = side_arg(entry.required("side")?, &entry.label("side"))?;
+        Ok((pos, text, before))
+    })?;
+    require_cap(ctx.host.decorations())?
         .set_inlay_hints(source, bid, parsed)
         .map_err(generic_err)?;
     Ok(SteelVal::Void)
@@ -70,12 +65,12 @@ pub(crate) fn register_sign_source(
     priority: SteelVal,
 ) -> SteelResult {
     let bid = pane.buffer();
-    let name = string_arg(name, "register-sign-source! name")?;
+    let name = string_arg(name, "name")?;
     if name.trim().is_empty() {
-        steel::stop!(Generic => "register-sign-source!: name must not be empty");
+        steel::stop!(Generic => "name must not be empty");
     }
-    let priority = int_arg(priority, "register-sign-source! priority")?;
-    require_cap(ctx.host.decorations(), "register-sign-source!")?
+    let priority = int_arg(priority, "priority")?;
+    require_cap(ctx.host.decorations())?
         .register_sign_source(name, bid, priority)
         .map_err(generic_err)?;
     Ok(SteelVal::Void)
@@ -92,8 +87,8 @@ pub(crate) fn set_signs(
     signs: SteelVal,
 ) -> SteelResult {
     let bid = pane.buffer();
-    let source = string_arg(source, "set-signs! source")?;
-    let parsed = hash_list(signs, "set-signs!", LINE_TEXT_SCOPE, |entry| {
+    let source = string_arg(source, "source")?;
+    let parsed = hash_list(signs, "signs", LINE_TEXT_SCOPE, |entry| {
         let text = entry.string("text")?;
         // A sign is a glyph in a fixed-width gutter lane: no control
         // character has a meaning there, and one would misalign the lane
@@ -106,11 +101,11 @@ pub(crate) fn set_signs(
         // lining up with the text.
         if text.contains(char::is_control) {
             steel::stop!(Generic =>
-                "set-signs!: 'text must not contain a control character, got {:?}", text);
+                "'text must not contain a control character, got {:?}", text);
         }
         Ok((entry.usize("line")?, text, entry.string("scope")?))
     })?;
-    require_cap(ctx.host.decorations(), "set-signs!")?
+    require_cap(ctx.host.decorations())?
         .set_signs(source, bid, parsed)
         .map_err(generic_err)?;
     Ok(SteelVal::Void)
@@ -130,9 +125,9 @@ pub(crate) fn set_virtual_lines(
     lines: SteelVal,
 ) -> SteelResult {
     let bid = pane.buffer();
-    let source = string_arg(source, "set-virtual-lines! source")?;
+    let source = string_arg(source, "source")?;
     let parsed = virtual_line_specs(lines)?;
-    require_cap(ctx.host.decorations(), "set-virtual-lines!")?
+    require_cap(ctx.host.decorations())?
         .set_virtual_lines(source, bid, parsed)
         .map_err(generic_err)?;
     Ok(SteelVal::Void)
@@ -145,7 +140,7 @@ pub(crate) fn set_virtual_lines(
 fn virtual_line_specs(lines: SteelVal) -> Result<Vec<VirtualLineSpec>, SteelErr> {
     hash_list(
         lines,
-        "set-virtual-lines!",
+        "lines",
         &["line", "text", "anchor", "scope", "segments"],
         virtual_line_spec,
     )
@@ -156,7 +151,7 @@ fn virtual_line_spec(entry: &HashEntry) -> Result<VirtualLineSpec, SteelErr> {
     let text = entry.string("text")?;
     if text.contains(['\n', '\r']) {
         steel::stop!(Generic =>
-            "set-virtual-lines!: 'text must not contain a newline (virtual lines render as a \
+            "'text must not contain a newline (virtual lines render as a \
              single line)");
     }
     // A tab renders like a real buffer line's tab: the engine expands it to
@@ -199,7 +194,7 @@ fn virtual_line_spec(entry: &HashEntry) -> Result<VirtualLineSpec, SteelErr> {
 fn virtual_line_segments(segments: SteelVal) -> Result<Vec<(usize, usize, String)>, SteelErr> {
     hash_list(
         segments,
-        "set-virtual-lines! 'segments",
+        "'segments",
         START_END_CHAR_SCOPE,
         char_range_scope,
     )
@@ -238,16 +233,16 @@ pub(crate) fn set_eol_text(
     hide_on_insert_line: SteelVal,
 ) -> SteelResult {
     let bid = pane.buffer();
-    let source = string_arg(source, "set-eol-text! source")?;
-    let parsed = hash_list(lines, "set-eol-text!", LINE_TEXT_SCOPE, |entry| {
+    let source = string_arg(source, "source")?;
+    let parsed = hash_list(lines, "lines", LINE_TEXT_SCOPE, |entry| {
         Ok((
             entry.usize("line")?,
             entry.string("text")?,
             entry.string("scope")?,
         ))
     })?;
-    let hide_on_insert_line = bool_arg(hide_on_insert_line, "set-eol-text! #:hide-on-insert-line")?;
-    require_cap(ctx.host.decorations(), "set-eol-text!")?
+    let hide_on_insert_line = bool_arg(hide_on_insert_line, "#:hide-on-insert-line")?;
+    require_cap(ctx.host.decorations())?
         .set_eol_text(source, bid, parsed, hide_on_insert_line)
         .map_err(generic_err)?;
     Ok(SteelVal::Void)
@@ -262,14 +257,9 @@ pub(crate) fn set_extra_highlights(
     spans: SteelVal,
 ) -> SteelResult {
     let bid = pane.buffer();
-    let source = string_arg(source, "set-extra-highlights! source")?;
-    let parsed = hash_list(
-        spans,
-        "set-extra-highlights!",
-        START_END_CHAR_SCOPE,
-        char_range_scope,
-    )?;
-    require_cap(ctx.host.decorations(), "set-extra-highlights!")?
+    let source = string_arg(source, "source")?;
+    let parsed = hash_list(spans, "spans", START_END_CHAR_SCOPE, char_range_scope)?;
+    require_cap(ctx.host.decorations())?
         .set_extra_highlights(source, bid, parsed)
         .map_err(generic_err)?;
     Ok(SteelVal::Void)
@@ -286,14 +276,11 @@ pub(crate) fn set_line_backgrounds(
     entries: SteelVal,
 ) -> SteelResult {
     let bid = pane.buffer();
-    let source = string_arg(source, "set-line-backgrounds! source")?;
-    let parsed = hash_list(
-        entries,
-        "set-line-backgrounds!",
-        &["line", "scope"],
-        |entry| Ok((entry.usize("line")?, entry.string("scope")?)),
-    )?;
-    require_cap(ctx.host.decorations(), "set-line-backgrounds!")?
+    let source = string_arg(source, "source")?;
+    let parsed = hash_list(entries, "entries", &["line", "scope"], |entry| {
+        Ok((entry.usize("line")?, entry.string("scope")?))
+    })?;
+    require_cap(ctx.host.decorations())?
         .set_line_backgrounds(source, bid, parsed)
         .map_err(generic_err)?;
     Ok(SteelVal::Void)
@@ -310,9 +297,9 @@ pub(crate) fn set_statusline_text(
     text: SteelVal,
 ) -> SteelResult {
     let bid = pane.buffer();
-    let source = string_arg(source, "set-statusline-text! source")?;
-    let text = string_arg(text, "set-statusline-text! text")?;
-    require_cap(ctx.host.decorations(), "set-statusline-text!")?
+    let source = string_arg(source, "source")?;
+    let text = string_arg(text, "text")?;
+    require_cap(ctx.host.decorations())?
         .set_statusline_text(source, bid, text)
         .map_err(generic_err)?;
     Ok(SteelVal::Void)
@@ -328,13 +315,13 @@ pub(crate) fn diagnostics_for_buffer(
     range: SteelVal,
 ) -> SteelResult {
     let id = pane.0.buffer();
-    let floor = optional_symbol_arg(severity, "diagnostics-for-buffer #:severity")?;
-    let range = optional_hash_entry(range, "diagnostics-for-buffer #:range", CHAR_RANGE_KEYS)?
+    let floor = optional_symbol_arg(severity, "#:severity")?;
+    let range = optional_hash_entry(range, "#:range", CHAR_RANGE_KEYS)?
         .map(|range| range.char_range())
         .transpose()?;
-    let entries = require_cap(ctx.host.decorations(), "diagnostics-for-buffer")?
+    let entries = require_cap(ctx.host.decorations())?
         .diagnostics_for_buffer(id, floor.as_deref(), range)
-        .map_err(|e| generic_err(format!("diagnostics-for-buffer: {e}")))?;
+        .map_err(generic_err)?;
     let list: Vec<SteelVal> = entries.into_iter().map(diagnostic_entry_to_steel).collect();
     Ok(SteelVal::ListV(list.into()))
 }
@@ -380,8 +367,7 @@ fn diagnostic_entry_to_steel(entry: DiagnosticEntry) -> SteelVal {
 /// `(diagnostic-counts pane)` → `(hash 'errors n 'warnings n)`.
 pub(crate) fn diagnostic_counts(ctx: &mut SteelCtx, pane: ArgPane) -> SteelResult {
     let id = pane.0.buffer();
-    let (errors, warnings) =
-        require_cap(ctx.host.decorations(), "diagnostic-counts")?.diagnostic_counts(id);
+    let (errors, warnings) = require_cap(ctx.host.decorations())?.diagnostic_counts(id);
     Ok(symbol_hash([
         ("errors", SteelVal::IntV(errors as isize)),
         ("warnings", SteelVal::IntV(warnings as isize)),

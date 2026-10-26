@@ -54,37 +54,39 @@ pub(in crate::editor) fn open_menu(
     items: NonEmpty<String>,
     callback: hume_scripting::Rooted,
 ) -> Result<Option<HostToken>, String> {
-    const WHAT: &str = "show-menu!";
     if let Some(replay) = state.dot_replay.as_mut() {
-        replay.answer_call(
-            WHAT,
-            |a| match a {
-                Answer::Menu(choice) => Some(choice.clone()),
-                _ => None,
-            },
-            |choice| {
-                let index = choice
-                    .map(|choice| {
-                        choice
-                            .find(&items, String::as_str)
-                            .ok_or_else(|| choice.missing(WHAT))
+        replay
+            .answer_call(
+                |a| match a {
+                    Answer::Menu(choice) => Some(choice.clone()),
+                    _ => None,
+                },
+                |choice| {
+                    let index = choice
+                        .map(|choice| {
+                            choice
+                                .find(&items, String::as_str)
+                                .ok_or_else(|| choice.missing())
+                        })
+                        .transpose()?;
+                    Ok(PendingAnswer::Call {
+                        proc: callback,
+                        arg: hume_scripting::Rooted::new(menu_arg(index)),
                     })
-                    .transpose()?;
-                Ok(PendingAnswer::Call {
-                    proc: callback,
-                    arg: hume_scripting::Rooted::new(menu_arg(index)),
-                })
-            },
-        )?;
+                },
+            )
+            .map_err(|refusal| refusal.to_string())?;
         return Ok(None);
     }
     // A `Menu` on top is the self-replace exception: a second
     // `lsp-code-action` response while the first menu is still open
     // replaces it rather than being read as stale.
-    if state.async_opener_stale::<BaseLayer, MenuLayer>(WHAT) {
+    if state.async_opener_stale::<BaseLayer, MenuLayer>("show-menu!") {
         return Ok(None);
     }
-    let input = state.waiting_input(WHAT, InputOpener::Code)?;
+    let input = state
+        .waiting_input(InputOpener::Code)
+        .map_err(|refusal| refusal.to_string())?;
     // Retires a prior `Menu` on the self-replace path, firing its callback
     // with `#f` explicitly (`take_firing_false`, shared with the drawer):
     // only this path, a genuine refresh, should fire one. Any open popup is

@@ -621,7 +621,7 @@ fn reset_tears_down_an_open_picker_session_without_firing_its_callback() {
         display: "one".to_string(),
         payload: hume_scripting::Rooted::new(steel::rvals::SteelVal::StringV("one".into())),
     }]);
-    crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session, "picker!")
+    crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session)
         .expect("no `.` is in progress");
     assert!(
         ed.state.input.picker().is_some(),

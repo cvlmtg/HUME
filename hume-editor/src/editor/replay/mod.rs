@@ -550,16 +550,15 @@ impl DotReplay {
     /// menu) from the recording instead of opening it: `kind` takes its
     /// answer out of the next recorded one, and `then` turns it into what to
     /// run after the re-run body, or the refusal naming why it has no fit (a
-    /// missing item, an unbound action, a forgotten payload). Refuses with [`dot_refusal`]
-    /// when the next answer is of another kind, and queues nothing for an
-    /// input that never resolved live.
+    /// missing item, an unbound action, a forgotten payload). Refuses with
+    /// [`ReplayRefusal::Diverged`] when the next answer is of another kind,
+    /// and queues nothing for an input that never resolved live.
     pub(in crate::editor) fn answer_call<T>(
         &mut self,
-        what: &str,
         kind: impl FnOnce(&Answer) -> Option<T>,
-        then: impl FnOnce(T) -> Result<PendingAnswer, String>,
-    ) -> Result<(), String> {
-        if let Replayed::Answered(answer) = self.next(kind).ok_or_else(|| dot_refusal(what))? {
+        then: impl FnOnce(T) -> Result<PendingAnswer, ReplayRefusal>,
+    ) -> Result<(), ReplayRefusal> {
+        if let Replayed::Answered(answer) = self.next(kind).ok_or(ReplayRefusal::Diverged)? {
             self.pending.push_back(then(answer)?);
         }
         Ok(())
@@ -853,12 +852,9 @@ impl EditorState {
     /// error beats opening a widget mid-repeat. Otherwise marks the capture
     /// armed for the Insert-key binding running now, if any, interactive, so
     /// its net edit replaces its entry.
-    pub(in crate::editor) fn interactive_input(
-        &mut self,
-        what: &str,
-    ) -> Result<Interactive, String> {
+    pub(in crate::editor) fn interactive_input(&mut self) -> Result<Interactive, ReplayRefusal> {
         if self.dot_replay.is_some() {
-            return Err(dot_refusal(what));
+            return Err(ReplayRefusal::Diverged);
         }
         if let Some(cap) = self
             .input
@@ -888,11 +884,10 @@ impl EditorState {
     /// change.
     pub(in crate::editor) fn waiting_input(
         &mut self,
-        what: &str,
         opener: InputOpener,
-    ) -> Result<WaitingInput, String> {
+    ) -> Result<WaitingInput, ReplayRefusal> {
         if self.dot_replay.is_some() {
-            return Err(dot_refusal(what));
+            return Err(ReplayRefusal::Diverged);
         }
         let Some(scope) = self.recording_scope.running() else {
             if !matches!(opener, InputOpener::RepeatableOperand) {
@@ -1297,7 +1292,41 @@ fn session_feed<'a>(
     recording.as_mut().filter(|rec| rec.feeds(ticket))
 }
 
-/// The error an interactive input reached during `.` raises.
-fn dot_refusal(what: &str) -> String {
-    format!("{what}: reached during `.`, but the recorded input took a different branch this time")
+/// Why `.` could not answer an input a re-run change opened. It names no
+/// input: whoever opened one adds that, and a builtin's error gets its name
+/// from the builtin.
+#[derive(Debug)]
+pub(in crate::editor) enum ReplayRefusal {
+    /// The re-run code opened an input the recording has no answer for.
+    Diverged,
+    /// The re-run list has no item the recorded choice names.
+    MissingItem(Choice),
+    /// The recorded pick's key is not one of the re-run picker's actions.
+    UnboundAction,
+    /// A config reload forgot the value the recorded pick carried.
+    ForgottenPayload,
+}
+
+impl std::fmt::Display for ReplayRefusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Diverged => f.write_str(
+                "reached during `.`, but the recorded input took a different branch this time",
+            ),
+            Self::MissingItem(Choice { label, nth: 0 }) => {
+                write!(f, "`.` found no item \"{label}\" to pick")
+            }
+            Self::MissingItem(Choice { label, nth }) => write!(
+                f,
+                "`.` found no item \"{label}\" number {} among those with that text",
+                nth + 1
+            ),
+            Self::UnboundAction => f.write_str(
+                "`.` can't repeat this pick: its key is not one of this picker's actions",
+            ),
+            Self::ForgottenPayload => {
+                f.write_str("`.` can't repeat this pick: a config reload forgot the picked value")
+            }
+        }
+    }
 }

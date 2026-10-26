@@ -36,21 +36,21 @@ pub(in crate::editor) fn open_prompt(
     prefill: String,
     callback: hume_scripting::Rooted,
 ) -> Result<(), String> {
-    const WHAT: &str = "prompt!";
     if let Some(replay) = state.dot_replay.as_mut() {
-        return replay.answer_call(
-            WHAT,
-            |a| match a {
-                Answer::Prompt(text) => Some(text.clone()),
-                _ => None,
-            },
-            |text| {
-                Ok(PendingAnswer::Call {
-                    proc: callback,
-                    arg: hume_scripting::Rooted::new(prompt_arg(text)),
-                })
-            },
-        );
+        return replay
+            .answer_call(
+                |a| match a {
+                    Answer::Prompt(text) => Some(text.clone()),
+                    _ => None,
+                },
+                |text| {
+                    Ok(PendingAnswer::Call {
+                        proc: callback,
+                        arg: hume_scripting::Rooted::new(prompt_arg(text)),
+                    })
+                },
+            )
+            .map_err(|refusal| refusal.to_string());
     }
     // Not "a Command-mode minibuffer is open": a `prompt!` called from a
     // `:command`'s body runs while that command line's own `Command` layer
@@ -58,9 +58,11 @@ pub(in crate::editor) fn open_prompt(
     // returns). Only a `Prompt` layer already on top means a prior
     // `prompt!` call has taken over the session.
     if state.input.is::<PromptLayer>(state.input.mode_layer()) {
-        return Err("prompt!: a minibuffer session is already open".to_string());
+        return Err("a minibuffer session is already open".to_string());
     }
-    let input = state.waiting_input(WHAT, InputOpener::Code)?;
+    let input = state
+        .waiting_input(InputOpener::Code)
+        .map_err(|refusal| refusal.to_string())?;
     state.history.begin_session_all();
     state.push_mode_layer(
         view,

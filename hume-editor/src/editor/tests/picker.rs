@@ -28,8 +28,7 @@ fn open_test_session(ed: &mut Editor, items: &[&str], callback: SteelVal, opts: 
         })
         .collect();
     session.push(picker_items);
-    picker::open_picker(&mut ed.state, &ed.view, session, "picker!")
-        .expect("no `.` is in progress");
+    picker::open_picker(&mut ed.state, &ed.view, session).expect("no `.` is in progress");
 }
 
 fn open_test_picker(ed: &mut Editor, items: &[&str]) {
@@ -631,8 +630,7 @@ fn picker_opens_over_a_live_menu_and_the_menu_resumes_once_it_closes() {
         display: "a".to_string(),
         payload: hume_scripting::Rooted::new(SteelVal::StringV("a".into())),
     }]);
-    picker::open_picker(&mut ed.state, &ed.view, session, "picker!")
-        .expect("no `.` is in progress");
+    picker::open_picker(&mut ed.state, &ed.view, session).expect("no `.` is in progress");
 
     assert!(ed.state.input.picker().is_some(), "the picker opened");
     assert!(

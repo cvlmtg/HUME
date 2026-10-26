@@ -18,8 +18,7 @@ fn open_bare_picker(ed: &mut Editor) {
         PickerOpts::default(),
         Vec::new(),
     );
-    picker::open_picker(&mut ed.state, &ed.view, session, "picker!")
-        .expect("no `.` is in progress");
+    picker::open_picker(&mut ed.state, &ed.view, session).expect("no `.` is in progress");
 }
 
 fn open_live_picker(ed: &mut Editor) {
@@ -33,8 +32,7 @@ fn open_live_picker(ed: &mut Editor) {
             actions: Vec::new(),
         },
     );
-    picker::open_picker(&mut ed.state, &ed.view, session, "picker!")
-        .expect("no `.` is in progress");
+    picker::open_picker(&mut ed.state, &ed.view, session).expect("no `.` is in progress");
 }
 
 /// Spawns `sh -c script` and attaches it to the already-open picker with
@@ -265,8 +263,7 @@ fn replacing_the_session_kills_the_previous_source_child() {
         PickerOpts::default(),
         Vec::new(),
     );
-    picker::open_picker(&mut ed.state, &ed.view, replacement, "picker!")
-        .expect("no `.` is in progress");
+    picker::open_picker(&mut ed.state, &ed.view, replacement).expect("no `.` is in progress");
 
     assert!(
         !is_alive(pid),

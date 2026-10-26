@@ -32,13 +32,19 @@ fn parses_top_level_null_as_void() {
 #[test]
 fn raises_on_malformed_json() {
     let err = json_parse("not json".into_steelval().unwrap()).unwrap_err();
-    assert!(err.to_string().contains("json-parse"), "got: {err}");
+    assert!(
+        err.to_string().contains("expected ident at line 1"),
+        "got: {err}"
+    );
 }
 
 #[test]
 fn raises_on_non_string_argument() {
     let err = json_parse(SteelVal::IntV(1)).unwrap_err();
-    assert!(err.to_string().contains("json-parse"), "got: {err}");
+    assert!(
+        err.to_string().contains("s: expected a string"),
+        "got: {err}"
+    );
 }
 
 // ── JsonHandle accessors ──────────────────────────────────────────────────────
@@ -132,13 +138,20 @@ fn json_ref_raises_on_wrong_container_kind() {
 fn json_ref_rejects_a_non_handle() {
     let args = call_args(SteelVal::IntV(1), vec![SteelVal::StringV("a".into())]);
     let err = json_ref(&args).unwrap_err();
-    assert!(err.to_string().contains("json-ref"));
+    assert!(
+        err.to_string().contains("expected a JSON handle, got 1"),
+        "{err}"
+    );
 }
 
 #[test]
 fn json_ref_raises_on_no_path_segments() {
     let err = json_ref(&[handle(json!({"a": 1}))]).unwrap_err();
-    assert!(err.to_string().contains("json-ref"));
+    assert!(
+        err.to_string()
+            .contains("expected at least one path segment"),
+        "{err}"
+    );
 }
 
 #[test]
@@ -206,7 +219,10 @@ fn json_ref_or_rejects_a_non_handle() {
         vec![SteelVal::BoolV(false), SteelVal::StringV("a".into())],
     );
     let err = json_ref_or(&args).unwrap_err();
-    assert!(err.to_string().contains("json-ref-or"));
+    assert!(
+        err.to_string().contains("expected a JSON handle, got 1"),
+        "{err}"
+    );
 }
 
 #[test]

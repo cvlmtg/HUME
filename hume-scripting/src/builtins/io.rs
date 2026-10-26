@@ -18,20 +18,18 @@ use crate::host::ClaimRefused;
 use super::SteelResult;
 use super::errors::generic_err;
 
-/// Claims the terminal for `builtin`, which writes to it: only an
+/// Claims the terminal for a builtin that writes to it: only an
 /// `#:inline-output` command may, its screen left first. One rule whether
 /// or not a screen is up, so a call cannot work at startup and then raise
 /// on `:reload-config`. A host with no terminal state refuses.
-pub(crate) fn claim_terminal_for(ctx: &mut SteelCtx, builtin: &str) -> Result<(), SteelErr> {
+pub(crate) fn claim_terminal(ctx: &mut SteelCtx) -> Result<(), SteelErr> {
     let claim = ctx
         .host
         .output()
         .map_or(Err(ClaimRefused::NoFrame), |output| output.claim_terminal());
     claim.map_err(|refused| match refused {
-        ClaimRefused::NoFrame => generic_err(format!(
-            "{builtin}: runs only inside an #:inline-output command"
-        )),
-        ClaimRefused::Enter(e) => generic_err(format!("{builtin}: {e}")),
+        ClaimRefused::NoFrame => generic_err("runs only inside an #:inline-output command"),
+        ClaimRefused::Enter(e) => generic_err(e),
     })
 }
 
@@ -41,11 +39,11 @@ pub(crate) fn claim_terminal_for(ctx: &mut SteelCtx, builtin: &str) -> Result<()
 /// # Errors
 /// Called outside an `#:inline-output` command, or the write failed.
 pub(crate) fn print(ctx: &mut SteelCtx, text: String) -> SteelResult {
-    claim_terminal_for(ctx, "print!")?;
+    claim_terminal(ctx)?;
     let mut stdout = std::io::stdout().lock();
     writeln!(stdout, "{text}")
         .and_then(|()| stdout.flush())
-        .map_err(|e| generic_err(format!("print!: {e}")))?;
+        .map_err(generic_err)?;
     Ok(SteelVal::Void)
 }
 

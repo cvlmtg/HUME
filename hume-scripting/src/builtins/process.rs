@@ -41,16 +41,15 @@ pub(crate) fn spawn_async(
     cwd: SteelVal,
     callback: crate::Rooted,
 ) -> SteelResult {
-    let cmd = string_arg(cmd, "spawn-async! cmd")?;
+    let cmd = string_arg(cmd, "cmd")?;
     // No empty-cmd guard here, unlike `picker-source-spawn!`: this builtin's
     // contract is "callback always fires, never raises" (see the doc
     // above), and `Command::new("")` already fails with ENOENT, producing
     // exactly the documented failure triple without a special case.
-    let args = list_to_strings(args, "spawn-async! args")?;
-    let cwd = cwd_arg(cwd, &ctx.host.buffers().cwd(), "spawn-async! cwd")?;
+    let args = list_to_strings(args, "args")?;
+    let cwd = cwd_arg(cwd, &ctx.host.buffers().cwd(), "cwd")?;
 
-    let job = require_cap(ctx.host.async_process(), "spawn-async!")?
-        .spawn_async(&cmd, args, cwd, callback);
+    let job = require_cap(ctx.host.async_process())?.spawn_async(&cmd, args, cwd, callback);
     Ok(job.into_steel_val())
 }
 
@@ -61,8 +60,8 @@ pub(crate) fn spawn_async(
 /// is a no-op, matching `cancel-timer!`'s contract. Raises for anything but
 /// a job.
 pub(crate) fn cancel_async(ctx: &mut SteelCtx, job: SteelVal) -> SteelResult {
-    let job = job_arg(&job, "cancel-async!")?;
-    require_cap(ctx.host.async_process(), "cancel-async!")?.cancel_async(job);
+    let job = job_arg(&job, "job")?;
+    require_cap(ctx.host.async_process())?.cancel_async(job);
     Ok(SteelVal::Void)
 }
 
@@ -85,9 +84,9 @@ pub(crate) fn run_capture(
     args: SteelVal,
     cwd: SteelVal,
 ) -> SteelResult {
-    let cmd = string_arg(cmd, "run-capture! cmd")?;
-    let args = list_to_strings(args, "run-capture! args")?;
-    let cwd = cwd_arg(cwd, &ctx.host.buffers().cwd(), "run-capture! cwd")?;
+    let cmd = string_arg(cmd, "cmd")?;
+    let args = list_to_strings(args, "args")?;
+    let cwd = cwd_arg(cwd, &ctx.host.buffers().cwd(), "cwd")?;
     let search_path = ctx.host.buffers().search_path();
 
     ctx.log(
@@ -139,17 +138,13 @@ pub(crate) fn run_inline_output(
     cwd_val: SteelVal,
     env_val: SteelVal,
 ) -> SteelResult {
-    let args = list_to_strings(args_val, "%run-inline-output! args")?;
-    let cwd = cwd_arg(
-        cwd_val,
-        &ctx.host.buffers().cwd(),
-        "%run-inline-output! cwd",
-    )?;
-    let env = list_to_string_pairs(env_val, "%run-inline-output! env", ENV_PAIR_SHAPE)?;
+    let args = list_to_strings(args_val, "args")?;
+    let cwd = cwd_arg(cwd_val, &ctx.host.buffers().cwd(), "cwd")?;
+    let env = list_to_string_pairs(env_val, "env", ENV_PAIR_SHAPE)?;
     let search_path = ctx.host.buffers().search_path();
 
     // The child inherits stdio, so it writes to the terminal.
-    super::io::claim_terminal_for(ctx, "run-inline-output!")?;
+    super::io::claim_terminal(ctx)?;
 
     let launch = Launch {
         cwd: &cwd,
@@ -157,13 +152,13 @@ pub(crate) fn run_inline_output(
     };
     let status = ctx
         .while_waiting(|| hume_platform::process::run_inline_output(&cmd, &args, launch, &env))
-        .map_err(|e| generic_err(format!("run-inline-output!: {e}")))?;
+        .map_err(generic_err)?;
 
     if status.success() {
         Ok(SteelVal::Void)
     } else {
         Err(generic_err(hume_platform::process::failure_message(
-            &format!("run-inline-output!: {cmd}"),
+            &cmd,
             Some(status),
             "",
         )))

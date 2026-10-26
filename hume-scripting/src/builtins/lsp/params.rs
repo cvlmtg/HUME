@@ -54,7 +54,7 @@ fn params_result<T>(result: Result<Option<T>, String>, to_steel: fn(T) -> SteelV
 /// `pane` names, or `#f` for a buffer with no path. Reads only the buffer, so
 /// a value with no pane works.
 pub(crate) fn lsp_document_params(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
-    Ok(require_cap(ctx.host.lsp(), "lsp-document-params")?
+    Ok(require_cap(ctx.host.lsp())?
         .lsp_document_uri(pane.buffer())
         .map_or(SteelVal::BoolV(false), |uri| {
             string_hash([("textDocument", text_document(uri))])
@@ -68,7 +68,7 @@ pub(crate) fn lsp_document_params(ctx: &mut SteelCtx, pane: PaneHandle) -> Steel
 /// one, or one that no longer shows its buffer.
 pub(crate) fn lsp_position_params(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
     params_result(
-        require_cap(ctx.host.lsp(), "lsp-position-params")?.lsp_position_params(pane),
+        require_cap(ctx.host.lsp())?.lsp_position_params(pane),
         position_params_value,
     )
 }
@@ -78,7 +78,7 @@ pub(crate) fn lsp_position_params(ctx: &mut SteelCtx, pane: PaneHandle) -> Steel
 /// when `pane` carries no pane, a closed one, or one that no longer shows its
 /// buffer.
 pub(crate) fn track_position(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
-    let token = require_cap(ctx.host.lsp(), "track-position!")?
+    let token = require_cap(ctx.host.lsp())?
         .track_position(pane)
         .map_err(generic_err)?;
     Ok(token.to_steel())
@@ -89,8 +89,8 @@ pub(crate) fn track_position(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResul
 /// token, a closed or replaced buffer, or a buffer with no path. A `#f`
 /// token is that same stale case; only a non-integer raises.
 pub(crate) fn tracked_position_params(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
-    let token = token_arg(token, "tracked-position-params token")?;
-    Ok(require_cap(ctx.host.lsp(), "tracked-position-params")?
+    let token = token_arg(token, "token")?;
+    Ok(require_cap(ctx.host.lsp())?
         .tracked_position_params(token)
         .map_or(SteelVal::BoolV(false), position_params_value))
 }
@@ -99,16 +99,16 @@ pub(crate) fn tracked_position_params(ctx: &mut SteelCtx, token: SteelVal) -> St
 /// holds through `#:tracked` past its callback; the caller releases it with
 /// `untrack-position!`. A `#f`, released or unknown token is a no-op.
 pub(crate) fn keep_tracked_position(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
-    let token = token_arg(token, "keep-tracked-position! token")?;
-    require_cap(ctx.host.lsp(), "keep-tracked-position!")?.keep_tracked_position(token);
+    let token = token_arg(token, "token")?;
+    require_cap(ctx.host.lsp())?.keep_tracked_position(token);
     Ok(SteelVal::Void)
 }
 
 /// `(untrack-position! token)`: releases the position. A `#f`, released or
 /// unknown token is a no-op.
 pub(crate) fn untrack_position(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
-    let token = token_arg(token, "untrack-position! token")?;
-    require_cap(ctx.host.lsp(), "untrack-position!")?.untrack_position(token);
+    let token = token_arg(token, "token")?;
+    require_cap(ctx.host.lsp())?.untrack_position(token);
     Ok(SteelVal::Void)
 }
 
@@ -116,7 +116,7 @@ pub(crate) fn untrack_position(ctx: &mut SteelCtx, token: SteelVal) -> SteelResu
 /// primary selection alone, an opaque range value.
 pub(crate) fn lsp_primary_range_params(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
     params_result(
-        require_cap(ctx.host.lsp(), "lsp-primary-range-params")?.lsp_primary_range_params(pane),
+        require_cap(ctx.host.lsp())?.lsp_primary_range_params(pane),
         range_params_value,
     )
 }
@@ -131,7 +131,7 @@ pub(crate) fn lsp_primary_range_params(ctx: &mut SteelCtx, pane: PaneHandle) -> 
 /// would break that (see `CursorHost::selections_linewise`'s doc comment).
 pub(crate) fn lsp_linewise_ranges_params(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
     params_result(
-        require_cap(ctx.host.lsp(), "lsp-linewise-ranges-params")?.lsp_linewise_ranges_params(pane),
+        require_cap(ctx.host.lsp())?.lsp_linewise_ranges_params(pane),
         ranges_params_value,
     )
 }

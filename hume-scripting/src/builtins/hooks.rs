@@ -4,6 +4,7 @@ use steel::rvals::SteelVal;
 
 use super::SteelResult;
 use super::args::{callable_arg, closure_shape, symbol_arg, token_arg};
+use super::errors::generic_err;
 use crate::SteelCtx;
 
 /// Decode a Steel event name: a symbol, validated against the host's
@@ -24,29 +25,24 @@ use crate::SteelCtx;
 pub(crate) fn event_name_arg(
     ctx: &mut SteelCtx,
     val: &SteelVal,
-    verb: &str,
+    ctx_name: &str,
 ) -> Result<String, steel::rerrs::SteelErr> {
-    let name_str = symbol_arg(val, verb, "an event-name symbol like 'on-buffer-save")?;
-    require_known_event(ctx, name_str, verb)?;
+    let name_str = symbol_arg(val, ctx_name, "an event-name symbol like 'on-buffer-save")?;
+    known_event(ctx, name_str).map_err(|e| generic_err(format!("{ctx_name}: {e}")))?;
     Ok(name_str.to_owned())
 }
 
 /// Errors unless the host knows the event `name`.
-pub(crate) fn require_known_event(
-    ctx: &mut SteelCtx,
-    name: &str,
-    verb: &str,
-) -> Result<(), steel::rerrs::SteelErr> {
+pub(crate) fn known_event(ctx: &mut SteelCtx, name: &str) -> Result<(), String> {
     let known = ctx.host.events().known_event_names();
-    if !known.contains(&name) {
-        steel::stop!(
-            Generic =>
-            "{verb}: unknown event '{}'; known events: {}",
-            name,
+    if known.contains(&name) {
+        Ok(())
+    } else {
+        Err(format!(
+            "unknown event '{name}'; known events: {}",
             known.join(", ")
-        );
+        ))
     }
-    Ok(())
 }
 
 /// `(register-hook! 'name proc)`: register `proc` as a handler for the
@@ -59,8 +55,8 @@ pub(crate) fn require_known_event(
 /// first matching transition; the body then calls `(register-hook! 'on-language-set …)`
 /// to install a *hook* that reacts on every subsequent transition.
 pub(crate) fn register_hook(ctx: &mut SteelCtx, name: SteelVal, proc: SteelVal) -> SteelResult {
-    let name_str = event_name_arg(ctx, &name, "register-hook!")?;
-    let proc = callable_arg(proc, "register-hook! proc")?;
+    let name_str = event_name_arg(ctx, &name, "name")?;
+    let proc = callable_arg(proc, "proc")?;
     register_entry(ctx, &name_str, proc, None)?;
     Ok(SteelVal::Void)
 }
@@ -79,7 +75,7 @@ fn held_handler_takes_done(
         Some((count, false)) if count == event_args + 1 => Ok(true),
         _ => steel::stop!(
             TypeMismatch =>
-            "register-hook!: a '{} handler is a lambda of {} parameters, or {} to take `done`",
+            "a '{} handler is a lambda of {} parameters, or {} to take `done`",
             name,
             event_args,
             event_args + 1

@@ -348,11 +348,9 @@ pub(in crate::editor) fn apply_workspace_edit(
             .text()
             .generation();
         if current_gen != expect_gen {
-            return Err(
-                "apply-workspace-edit!: buffer has changed since the request that produced \
+            return Err("buffer has changed since the request that produced \
                  this edit"
-                    .to_string(),
-            );
+                .to_string());
         }
     }
     let entries = hume_lsp::workspace_edit::file_edits(we)?;

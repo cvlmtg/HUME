@@ -54,7 +54,7 @@ fn run_inline_output_raises_outside_an_inline_output_command() {
     let (result, claims) = run_missing_program(false);
     let err = result.unwrap_err().to_string();
     assert!(
-        err.contains("run-inline-output!: runs only inside an #:inline-output command"),
+        err.contains("runs only inside an #:inline-output command"),
         "{err}"
     );
     assert_eq!(claims, 0);
@@ -75,8 +75,5 @@ fn cancel_async_without_async_process_host_errors() {
     )
     .unwrap_err()
     .to_string();
-    assert!(
-        msg.contains("cancel-async!: not supported by this host"),
-        "got: {msg}"
-    );
+    assert!(msg.contains("not supported by this host"), "got: {msg}");
 }

@@ -232,7 +232,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
     ) -> Result<HostToken, String> {
         self.require_focused_pane(pane)?;
         let session = PickerSession::new(on_select, opts, picker::picker_items(items));
-        picker::open_picker(self.state, self.view, session, "picker!")
+        picker::open_picker(self.state, self.view, session)
     }
 
     fn open_live_picker(
@@ -243,7 +243,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
     ) -> Result<HostToken, String> {
         self.require_focused_pane(pane)?;
         let session = PickerSession::new_live(on_select, opts);
-        picker::open_picker(self.state, self.view, session, "live-picker!")
+        picker::open_picker(self.state, self.view, session)
     }
 
     fn picker_feed(

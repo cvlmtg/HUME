@@ -15,10 +15,7 @@ fn after_errors_when_the_host_has_no_timer_support() {
     )
     .unwrap_err()
     .to_string();
-    assert!(
-        msg.contains("after!: not supported by this host"),
-        "got: {msg}"
-    );
+    assert!(msg.contains("not supported by this host"), "got: {msg}");
 }
 
 #[test]
@@ -45,15 +42,5 @@ fn cancel_timer_errors_when_the_host_has_no_timer_support() {
     )
     .unwrap_err()
     .to_string();
-    assert!(
-        msg.contains("cancel-timer!: not supported by this host"),
-        "got: {msg}"
-    );
-}
-
-#[test]
-fn after_blocked_in_init_mode() {
-    let mut h = SteelCtxTestHarness::new();
-    let result = super::super::errors::require_cmd(&h.ctx_init(), "after!");
-    assert!(result.is_err());
+    assert!(msg.contains("not supported by this host"), "got: {msg}");
 }

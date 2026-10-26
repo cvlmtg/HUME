@@ -330,18 +330,6 @@ fn lsp_stop_queues_a_stop_op_with_the_given_buffer() {
 }
 
 #[test]
-fn lsp_stop_rejects_init_context() {
-    let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx();
-    ctx.session = crate::context::EvalSession::Init;
-    let err = super::super::errors::require_cmd(&ctx, "lsp-stop!").unwrap_err();
-    assert!(
-        err.to_string().contains("not available during init"),
-        "got: {err}"
-    );
-}
-
-#[test]
 fn lsp_restart_queues_a_restart_op_with_the_given_name() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
@@ -362,18 +350,6 @@ fn lsp_restart_queues_a_restart_op_with_the_given_name() {
 }
 
 #[test]
-fn lsp_restart_rejects_init_context() {
-    let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx();
-    ctx.session = crate::context::EvalSession::Init;
-    let err = super::super::errors::require_cmd(&ctx, "lsp-restart!").unwrap_err();
-    assert!(
-        err.to_string().contains("not available during init"),
-        "got: {err}"
-    );
-}
-
-#[test]
 fn lsp_show_status_queues_a_show_status_op() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
@@ -383,18 +359,6 @@ fn lsp_show_status_queues_a_show_status_op() {
     let ops = lsp_server_ops(&h);
     assert_eq!(ops.len(), 1);
     assert!(matches!(ops[0], PendingLspServerOp::ShowStatus));
-}
-
-#[test]
-fn lsp_show_status_rejects_init_context() {
-    let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx();
-    ctx.session = crate::context::EvalSession::Init;
-    let err = super::super::errors::require_cmd(&ctx, "lsp-show-status!").unwrap_err();
-    assert!(
-        err.to_string().contains("not available during init"),
-        "got: {err}"
-    );
 }
 
 /// Unlike the buffer/pane-touching LSP builtins above,
@@ -468,8 +432,7 @@ fn lsp_server_registered_raises_without_an_lsp_capability_even_with_a_queued_op(
     let err =
         lsp_server_registered(&mut ctx, "rust-analyzer".into_steelval().unwrap()).unwrap_err();
     assert!(
-        err.to_string()
-            .contains("lsp-server-registered?: not supported by this host"),
+        err.to_string().contains("not supported by this host"),
         "{err}"
     );
 }
@@ -903,7 +866,11 @@ fn lsp_request_rejects_params_that_cannot_become_json() {
         },
     )
     .unwrap_err();
-    assert!(err.to_string().contains("lsp-request! params"), "{err}");
+    assert!(
+        err.to_string()
+            .contains("params: cannot convert function to JSON"),
+        "{err}"
+    );
 }
 
 #[test]
@@ -1101,7 +1068,7 @@ fn lsp_reads_without_lsp_host_error() {
         let mut ctx = h.ctx();
         let msg = call(&mut ctx).unwrap_err().to_string();
         assert!(
-            msg.contains(&format!("{name}: not supported by this host")),
+            msg.contains("not supported by this host"),
             "{name}: got: {msg}"
         );
     }
@@ -1122,10 +1089,7 @@ fn lsp_request_with_a_feature_without_lsp_host_errors() {
     )
     .unwrap_err()
     .to_string();
-    assert!(
-        msg.contains("lsp-request!: not supported by this host"),
-        "got: {msg}"
-    );
+    assert!(msg.contains("not supported by this host"), "got: {msg}");
 }
 
 /// Given a *tagged* handle, so the encoding check passes, a harness with no
@@ -1142,10 +1106,7 @@ fn lsp_position_to_char_offset_without_lsp_host_errors() {
     let msg = lsp_position_to_char_offset(&mut ctx, default_pane(), position)
         .unwrap_err()
         .to_string();
-    assert!(
-        msg.contains("lsp-position->char-offset: not supported by this host"),
-        "got: {msg}"
-    );
+    assert!(msg.contains("not supported by this host"), "got: {msg}");
 }
 
 #[test]
@@ -1157,7 +1118,10 @@ fn lsp_position_to_char_offset_errors_on_missing_character() {
             .into_steel_val();
     let result = lsp_position_to_char_offset(&mut ctx, default_pane(), position);
     let msg = result.unwrap_err().to_string();
-    assert!(msg.contains("lsp-position->char-offset"), "got: {msg}");
+    assert!(
+        msg.contains("position must be an object with numeric 'line' and 'character' fields"),
+        "got: {msg}"
+    );
 }
 
 #[test]
@@ -1171,7 +1135,10 @@ fn lsp_position_to_char_offset_errors_on_non_numeric_line() {
     .into_steel_val();
     let result = lsp_position_to_char_offset(&mut ctx, default_pane(), position);
     let msg = result.unwrap_err().to_string();
-    assert!(msg.contains("lsp-position->char-offset"), "got: {msg}");
+    assert!(
+        msg.contains("position must be an object with numeric 'line' and 'character' fields"),
+        "got: {msg}"
+    );
 }
 
 #[test]
@@ -1180,7 +1147,10 @@ fn lsp_position_to_char_offset_errors_on_non_hashmap_arg() {
     let mut ctx = h.ctx();
     let result = lsp_position_to_char_offset(&mut ctx, default_pane(), SteelVal::IntV(5));
     let msg = result.unwrap_err().to_string();
-    assert!(msg.contains("lsp-position->char-offset"), "got: {msg}");
+    assert!(
+        msg.contains("position: expected a JSON handle from a server response"),
+        "got: {msg}"
+    );
 }
 
 /// [`lsp_position_to_char_offset_untagged_handle_errors`]'s `lsp-range->char-range`
@@ -1220,10 +1190,7 @@ fn lsp_range_to_char_range_without_lsp_host_errors() {
     let msg = lsp_range_to_char_range(&mut ctx, default_pane(), range)
         .unwrap_err()
         .to_string();
-    assert!(
-        msg.contains("lsp-range->char-range: not supported by this host"),
-        "got: {msg}"
-    );
+    assert!(msg.contains("not supported by this host"), "got: {msg}");
 }
 
 #[test]
@@ -1237,7 +1204,7 @@ fn lsp_range_to_char_range_errors_on_missing_end() {
     .into_steel_val();
     let result = lsp_range_to_char_range(&mut ctx, default_pane(), range);
     let msg = result.unwrap_err().to_string();
-    assert!(msg.contains("lsp-range->char-range"), "got: {msg}");
+    assert!(msg.contains("range has no 'end' field"), "got: {msg}");
 }
 
 #[test]
@@ -1251,7 +1218,10 @@ fn lsp_range_to_char_range_errors_on_malformed_start() {
     .into_steel_val();
     let result = lsp_range_to_char_range(&mut ctx, default_pane(), range);
     let msg = result.unwrap_err().to_string();
-    assert!(msg.contains("lsp-range->char-range"), "got: {msg}");
+    assert!(
+        msg.contains("range start: position must be an object"),
+        "got: {msg}"
+    );
 }
 
 /// The raw `[start, end]` shape a `ParameterInformation.label` arrives in,
@@ -1281,10 +1251,7 @@ fn lsp_label_offsets_to_text_without_lsp_host_errors() {
     )
     .unwrap_err()
     .to_string();
-    assert!(
-        msg.contains("lsp-label-offsets->text: not supported by this host"),
-        "got: {msg}"
-    );
+    assert!(msg.contains("not supported by this host"), "got: {msg}");
 }
 
 #[test]
@@ -1298,7 +1265,10 @@ fn lsp_label_offsets_to_text_errors_on_a_wrong_length_offset_list() {
             offsets,
         );
         let msg = result.unwrap_err().to_string();
-        assert!(msg.contains("lsp-label-offsets->text"), "got: {msg}");
+        assert!(
+            msg.contains("offsets must be a two-element (start end) array"),
+            "got: {msg}"
+        );
     }
 }
 
@@ -1312,7 +1282,10 @@ fn lsp_label_offsets_to_text_errors_on_a_negative_offset() {
         offset_pair(&[-1, 13]),
     );
     let msg = result.unwrap_err().to_string();
-    assert!(msg.contains("lsp-label-offsets->text"), "got: {msg}");
+    assert!(
+        msg.contains("offsets: expected a non-negative integer, got -1"),
+        "got: {msg}"
+    );
 }
 
 #[test]
@@ -1321,7 +1294,7 @@ fn lsp_label_offsets_to_text_errors_on_a_non_string_label() {
     let mut ctx = h.ctx();
     let result = lsp_label_offsets_to_text(&mut ctx, SteelVal::IntV(5), offset_pair(&[7, 13]));
     let msg = result.unwrap_err().to_string();
-    assert!(msg.contains("lsp-label-offsets->text"), "got: {msg}");
+    assert!(msg.contains("label: expected a string"), "got: {msg}");
 }
 
 /// A hand-built list is not a handle onto a server response, so it is
@@ -1388,7 +1361,7 @@ fn lsp_label_offsets_to_text_accepts_a_json_array_handle() {
     .unwrap_err()
     .to_string();
     assert!(
-        msg.contains("lsp-label-offsets->text: not supported by this host"),
+        msg.contains("not supported by this host"),
         "the offsets must decode before the capability check; got: {msg}"
     );
 }
@@ -1421,7 +1394,10 @@ fn lsp_label_offsets_to_text_errors_on_a_wrong_length_array_handle() {
         offsets,
     );
     let msg = result.unwrap_err().to_string();
-    assert!(msg.contains("lsp-label-offsets->text"), "got: {msg}");
+    assert!(
+        msg.contains("offsets must be a two-element (start end) array"),
+        "got: {msg}"
+    );
 }
 
 #[test]
@@ -1443,10 +1419,7 @@ fn lsp_locations_to_places_accepts_a_list_of_json_handles() {
     let msg = lsp_locations_to_places(&mut ctx, locs)
         .unwrap_err()
         .to_string();
-    assert!(
-        msg.contains("lsp-locations->places: not supported by this host"),
-        "got: {msg}"
-    );
+    assert!(msg.contains("not supported by this host"), "got: {msg}");
 }
 
 // ── register-lsp-notification-hook! ──────────────────────────────────────────
@@ -1573,7 +1546,8 @@ fn a_token_argument_that_is_not_an_integer_raises() {
     let err = untrack_position(&mut ctx, "not-a-token".into_steelval().unwrap())
         .expect_err("a string is no token");
     assert!(
-        err.to_string().contains("untrack-position! token"),
+        err.to_string()
+            .contains("token: expected a non-negative integer"),
         "got: {err}"
     );
 }
@@ -1620,5 +1594,5 @@ fn lsp_location_rejects_a_non_string_uri() {
         .unwrap_err()
         .to_string();
 
-    assert!(msg.contains("lsp-location uri"), "got: {msg}");
+    assert!(msg.contains("uri: expected a string"), "got: {msg}");
 }

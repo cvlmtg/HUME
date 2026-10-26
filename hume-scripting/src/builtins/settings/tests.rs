@@ -140,15 +140,6 @@ fn get_option_reaches_host_during_init_eval() {
     );
 }
 
-/// `get-buffer-option` is blocked in init mode, mirroring
-/// `set-buffer-option!`: there is no meaningful buffer to resolve against
-/// yet.
-#[test]
-fn get_buffer_option_blocked_in_init_mode() {
-    let mut h = SteelCtxTestHarness::new();
-    assert!(super::super::errors::require_cmd(&h.ctx_init(), "get-buffer-option").is_err());
-}
-
 /// In command mode, `get-buffer-option` reaches the host (`NullHost` → Err,
 /// proving the host was called) with an explicit bid decoded from a real
 /// `SteelVal`.
@@ -166,26 +157,6 @@ fn get_buffer_option_command_mode_calls_host_with_explicit_bid() {
 }
 
 // ── set-buffer-option! ──────────────────────────────────────────────────────
-
-/// `set-buffer-option!` is blocked in init mode (`cmd` kind), gated at
-/// registration time, tested via the gate primitive directly.
-///
-/// `init.scm` has no meaningful buffer to target, so the entry must stay
-/// `cmd`.
-#[test]
-fn set_buffer_option_blocked_in_init_mode() {
-    let mut h = SteelCtxTestHarness::new();
-    let result = super::super::errors::require_cmd(&h.ctx_init(), "set-buffer-option!");
-    assert!(
-        result.is_err(),
-        "set-buffer-option! must error in init mode"
-    );
-    let msg = result.unwrap_err().to_string();
-    assert!(
-        msg.contains("init"),
-        "error must mention 'init'; got: {msg}"
-    );
-}
 
 /// `set-buffer-option!` rejects value types that are not string, bool, or
 /// integer, before ever consulting the host.

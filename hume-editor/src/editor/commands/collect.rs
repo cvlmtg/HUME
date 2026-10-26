@@ -77,17 +77,20 @@ fn open_text_prompt(
         _ => {}
     }
     if let Some(replay) = state.dot_replay.as_mut() {
-        let what = then.cmd.name().clone();
-        return replay.answer_call(
-            &what,
-            |a| match a {
-                Answer::Prompt(text) => Some(text.clone()),
-                _ => None,
-            },
-            |text| Ok(PendingAnswer::Text(then, text)),
-        );
+        let name = then.cmd.name().clone();
+        return replay
+            .answer_call(
+                |a| match a {
+                    Answer::Prompt(text) => Some(text.clone()),
+                    _ => None,
+                },
+                |text| Ok(PendingAnswer::Text(then, text)),
+            )
+            .map_err(|refusal| format!("{name}: {refusal}"));
     }
-    let input = state.waiting_input(then.cmd.name(), opener)?;
+    let input = state
+        .waiting_input(opener)
+        .map_err(|refusal| format!("{}: {refusal}", then.cmd.name()))?;
     match prompt {
         TextPrompt::Search(direction) => {
             open_search_prompt(state, view, fp, direction, then, input);

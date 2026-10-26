@@ -31,6 +31,7 @@
 - `set-cwd!` works from `init.scm` too.
 - New `find-program` looks a program up on the `PATH` HUME started with, and `remove-dir!` deletes a directory tree without the time it takes counting against the script budget.
 - A grammar `register-grammar!` registers from `init.scm` that can't be loaded is reported in `:messages` when a file or an embedded block first needs it, not at startup.
+- An error from a HUME function starts with the name you called it by, once, and names the argument at fault.
 
 ### Fixes
 - The Linux archive runs on glibc 2.28 and later: Ubuntu 20.04, Debian 10, RHEL 8 and newer.

@@ -113,7 +113,7 @@ pub(crate) fn buffer_display_path(
     pane: PaneHandle,
     relative: SteelVal,
 ) -> SteelResult {
-    let form = if bool_arg(relative, "buffer-display-path #:relative")? {
+    let form = if bool_arg(relative, "#:relative")? {
         DisplayPathForm::CwdRelative
     } else {
         DisplayPathForm::Absolute
@@ -134,7 +134,7 @@ pub(crate) fn buffer_name(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
     ctx.host
         .buffers()
         .buffer_display_name(bid)
-        .ok_or_else(|| not_live_err("buffer-name", bid))?
+        .ok_or_else(|| not_live_err("pane", bid))?
         .into_steelval()
         .map_err(generic_err)
 }
@@ -166,7 +166,7 @@ pub(crate) fn buffer_dirty(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult 
         .host
         .buffers()
         .buffer_is_dirty(bid)
-        .ok_or_else(|| not_live_err("buffer-dirty?", bid))?;
+        .ok_or_else(|| not_live_err("pane", bid))?;
     Ok(SteelVal::BoolV(dirty))
 }
 
@@ -179,7 +179,7 @@ pub(crate) fn buffer_generation(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelRe
         .host
         .buffers()
         .buffer_generation(bid)
-        .ok_or_else(|| not_live_err("buffer-generation", bid))?;
+        .ok_or_else(|| not_live_err("pane", bid))?;
     Ok(SteelVal::IntV(generation as isize))
 }
 
@@ -193,7 +193,7 @@ pub(crate) fn buffer_undo_tree(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelRes
         .host
         .buffers()
         .buffer_undo_tree(bid)
-        .ok_or_else(|| not_live_err("buffer-undo-tree", bid))?;
+        .ok_or_else(|| not_live_err("pane", bid))?;
     Ok(list_of(nodes.into_iter().map(|node| {
         symbol_hash([
             ("id", SteelVal::IntV(node.id as isize)),
@@ -216,7 +216,7 @@ pub(crate) fn buffer_text(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
     ctx.host
         .buffers()
         .buffer_text(bid)
-        .ok_or_else(|| not_live_err("buffer-text", bid))?
+        .ok_or_else(|| not_live_err("pane", bid))?
         .into_steelval()
         .map_err(generic_err)
 }
@@ -231,7 +231,7 @@ pub(crate) fn buffer_line_count(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelRe
         .host
         .buffers()
         .buffer_line_count(bid)
-        .ok_or_else(|| not_live_err("buffer-line-count", bid))?;
+        .ok_or_else(|| not_live_err("pane", bid))?;
     Ok(SteelVal::IntV(count as isize))
 }
 
@@ -243,7 +243,7 @@ pub(crate) fn buffer_char_count(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelRe
         .host
         .buffers()
         .buffer_char_count(bid)
-        .ok_or_else(|| not_live_err("buffer-char-count", bid))?;
+        .ok_or_else(|| not_live_err("pane", bid))?;
     Ok(SteelVal::IntV(count as isize))
 }
 
@@ -257,13 +257,13 @@ pub(crate) fn buffer_char_count(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelRe
 /// end-line`, or `end-line` past the line count.
 pub(crate) fn buffer_lines(ctx: &mut SteelCtx, pane: PaneHandle, range: SteelVal) -> SteelResult {
     let bid = pane.buffer();
-    let range = optional_hash_entry(range, "buffer-lines #:range", LINE_RANGE_KEYS)?
+    let range = optional_hash_entry(range, "#:range", LINE_RANGE_KEYS)?
         .map(|range| range.line_range())
         .transpose()?;
     // One error message for both lookups below: the second is unreachable
     // in practice (nothing can close `bid` between two synchronous host
     // calls) but the trait returns `Option`, so it's handled, not assumed.
-    let invalid_id = || not_live_err("buffer-lines", bid);
+    let invalid_id = || not_live_err("pane", bid);
     let line_count = ctx
         .host
         .buffers()
@@ -272,7 +272,7 @@ pub(crate) fn buffer_lines(ctx: &mut SteelCtx, pane: PaneHandle, range: SteelVal
     let (start, end) = range.unwrap_or((0, line_count));
     if start > end || end > line_count {
         return Err(generic_err(format!(
-            "buffer-lines: range {start}..{end} out of bounds for a {line_count}-line buffer"
+            "range {start}..{end} out of bounds for a {line_count}-line buffer"
         )));
     }
     // Trusted mint: the check above is what licenses ContentLine::new here.
@@ -323,7 +323,7 @@ pub(crate) fn close_buffer(
     pane: PaneHandle,
     discard_unsaved: SteelVal,
 ) -> SteelResult {
-    let discard = if bool_arg(discard_unsaved, "close-buffer! #:discard-unsaved")? {
+    let discard = if bool_arg(discard_unsaved, "#:discard-unsaved")? {
         DiscardUnsaved::Yes
     } else {
         DiscardUnsaved::No
@@ -438,7 +438,7 @@ pub(crate) fn char_offset_to_line(ctx: &mut SteelCtx, pane: PaneHandle, idx: usi
         .host
         .cursor()
         .char_offset_to_line(pane.buffer(), idx)
-        .map_err(|e| generic_err(format!("char-offset->line: {e}")))?;
+        .map_err(generic_err)?;
     Ok(SteelVal::IntV(line.index() as isize))
 }
 
@@ -456,7 +456,7 @@ pub(crate) fn line_to_char_offset(
     line: usize,
 ) -> SteelResult {
     let bid = pane.buffer();
-    let invalid_id = || not_live_err("line->char-offset", bid);
+    let invalid_id = || not_live_err("pane", bid);
     let line_count = ctx
         .host
         .buffers()
@@ -464,7 +464,7 @@ pub(crate) fn line_to_char_offset(
         .ok_or_else(invalid_id)?;
     if line >= line_count {
         return Err(generic_err(format!(
-            "line->char-offset: line {line} is out of range (buffer has {line_count} content lines)"
+            "line {line} is out of range (buffer has {line_count} content lines)"
         )));
     }
     // Trusted mint: the check above is what licenses ContentLine::new here.

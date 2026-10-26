@@ -8,17 +8,17 @@ use crate::test_support::SteelCtxTestHarness;
 #[test]
 fn require_cmd_gates_by_mode() {
     let mut h = SteelCtxTestHarness::new();
-    assert!(require_cmd(&h.ctx_init(), "x").is_err(), "Init must reject");
-    assert!(require_cmd(&h.ctx(), "x").is_ok(), "Command must pass");
+    assert!(require_cmd(&h.ctx_init()).is_err(), "Init must reject");
+    assert!(require_cmd(&h.ctx()).is_ok(), "Command must pass");
 
     h.plugin_stack
         .push(EntryId::main(PluginId::parse("core:test-plugin").unwrap()));
     assert!(
-        require_cmd(&h.ctx_init(), "x").is_err(),
+        require_cmd(&h.ctx_init()).is_err(),
         "PluginLoad must reject"
     );
     assert!(
-        require_cmd(&h.ctx_activation(), "x").is_ok(),
+        require_cmd(&h.ctx_activation()).is_ok(),
         "PluginActivation must pass"
     );
 }
@@ -27,56 +27,42 @@ fn require_cmd_gates_by_mode() {
 #[test]
 fn require_config_gates_by_mode() {
     let mut h = SteelCtxTestHarness::new();
-    assert!(require_config(&h.ctx_init(), "x").is_ok(), "Init must pass");
-    assert!(
-        require_config(&h.ctx(), "x").is_err(),
-        "Command must reject"
-    );
+    assert!(require_config(&h.ctx_init()).is_ok(), "Init must pass");
+    assert!(require_config(&h.ctx()).is_err(), "Command must reject");
 
     h.plugin_stack
         .push(EntryId::main(PluginId::parse("core:test-plugin").unwrap()));
     assert!(
-        require_config(&h.ctx_init(), "x").is_ok(),
+        require_config(&h.ctx_init()).is_ok(),
         "PluginLoad must pass"
     );
     assert!(
-        require_config(&h.ctx_activation(), "x").is_ok(),
+        require_config(&h.ctx_activation()).is_ok(),
         "PluginActivation must pass"
     );
 }
 
-/// `require_cmd`'s error message names the builtin and mentions "init".
+/// `named` puts the builtin's name in front of an error and keeps its kind.
 #[test]
-fn require_cmd_error_names_builtin() {
-    let mut h = SteelCtxTestHarness::new();
-    let err = require_cmd(&h.ctx_init(), "close-buffer!").unwrap_err();
-    let msg = err.to_string();
-    assert!(msg.contains("close-buffer!"), "got: {msg}");
-    assert!(msg.contains("not available during init"), "got: {msg}");
+fn named_starts_the_error_with_the_builtin() {
+    let err = named::<()>("buffer-path", || Err(generic_err("no such buffer"))).unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "Error: Generic: buffer-path: no such buffer"
+    );
 }
 
-/// `require_config`'s error message names the builtin and mentions
-/// "command body".
+/// A message that names its own builtin is a bug the funnel refuses.
 #[test]
-fn require_config_error_names_builtin() {
-    let mut h = SteelCtxTestHarness::new();
-    let err = require_config(&h.ctx(), "set-option!").unwrap_err();
-    let msg = err.to_string();
-    assert!(msg.contains("set-option!"), "got: {msg}");
-    assert!(msg.contains("command body"), "got: {msg}");
-}
-
-/// A `%`-prefixed registration name (a Rust primitive wrapped by a
-/// BOOTSTRAP Scheme function) surfaces in the gate message WITHOUT the
-/// `%`: the message must name the wrapper a plugin author actually
-/// calls, not the internal primitive.
-#[test]
-fn gate_strips_leading_percent_from_registered_name() {
-    let mut h = SteelCtxTestHarness::new();
-    let err = require_cmd(&h.ctx_init(), "%apply-text-edits!").unwrap_err();
-    let msg = err.to_string();
-    assert!(msg.contains("apply-text-edits!"), "got: {msg}");
-    assert!(!msg.contains("%apply-text-edits!"), "got: {msg}");
+#[cfg(debug_assertions)]
+#[should_panic(expected = "buffer-path named itself in its error")]
+fn named_refuses_a_message_that_names_its_builtin() {
+    assert!(
+        named::<()>("buffer-path", || Err(generic_err(
+            "buffer-path: no such buffer"
+        )))
+        .is_err()
+    );
 }
 
 /// `generic_err` preserves the source message verbatim and constructs a

@@ -68,8 +68,7 @@ pub trait DecorationHost {
 
     /// `(set-extra-highlights! source pane spans)`: replaces `source`'s
     /// extra highlights for `bid` wholesale. Each entry is `(start, end,
-    /// scope)`, char offsets. `Err`, naming the builtin, if the range is
-    /// empty or out of bounds.
+    /// scope)`, char offsets. `Err` if the range is empty or out of bounds.
     fn set_extra_highlights(
         &mut self,
         source: String,
@@ -80,8 +79,8 @@ pub trait DecorationHost {
     /// `(set-eol-text! source pane lines)`: replaces `source`'s EOL text for
     /// `bid` wholesale. Each entry is `(line, text, scope)`; `text` is
     /// spliced in at the end of `line`, which converts to that line's
-    /// line-start char offset at this boundary. `Err`, naming the builtin,
-    /// if `line` is out of range. `hide_on_insert_line` marks every entry
+    /// line-start char offset at this boundary. `Err` if `line` is out of
+    /// range. `hide_on_insert_line` marks every entry
     /// to be hidden on the primary cursor's line while the pane types in
     /// Insert mode. Not diagnostics-specific: the diagnostics plugin is its
     /// first client, not its owner.
@@ -96,7 +95,7 @@ pub trait DecorationHost {
     /// `(set-line-backgrounds! source pane entries)`: replaces `source`'s
     /// line backgrounds for `bid` wholesale. Each entry is `(line, scope)`;
     /// `line` converts to that line's line-start char offset at this
-    /// boundary. `Err`, naming the builtin, if `line` is out of range.
+    /// boundary. `Err` if `line` is out of range.
     fn set_line_backgrounds(
         &mut self,
         source: String,

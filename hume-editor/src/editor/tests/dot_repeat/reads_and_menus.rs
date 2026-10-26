@@ -429,6 +429,37 @@ fn a_drawer_pick_is_no_part_of_the_commands_change() {
     assert!(action.answers.is_empty(), "got: {:?}", action.answers);
 }
 
+/// `.` refuses a menu choice missing from the re-run menu, and the refusal
+/// names the builtin once.
+#[test]
+fn dot_refuses_a_menu_choice_missing_from_the_rerun_menu() {
+    let mut ed = editor_with_steel(
+        "-[h]>ello\nworld\n",
+        r#"(define items (list "one" "two"))
+           (define-command! "rd" ""
+             (lambda (pane)
+               (show-menu! pane items
+                 (lambda (i) (when i (call! "replace" pane #\t))))
+               (set! items (list "three")))
+             #:repeatable #t)"#,
+    );
+    ed.execute_keymap_command("rd".into(), Some(1), false);
+    ed.settle();
+    ed.feed_key(key('j'));
+    ed.feed_key(key_enter());
+    ed.settle();
+    assert_eq!(ed.doc().text().to_string(), "tello\nworld\n");
+    select_marked(&mut ed, "tello\n-[w]>orld\n");
+    ed.feed_key(key('.'));
+    ed.settle();
+    assert_eq!(ed.doc().text().to_string(), "tello\nworld\n");
+    assert!(
+        status(&ed).contains("show-menu!: `.` found no item \"two\" to pick"),
+        "got: {}",
+        status(&ed)
+    );
+}
+
 /// Of two menu items with the same text, `.` repeats the one picked.
 #[test]
 fn dot_repeats_the_second_of_two_menu_items_with_the_same_text() {

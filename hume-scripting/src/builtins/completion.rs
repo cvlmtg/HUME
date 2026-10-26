@@ -45,7 +45,7 @@ fn match_kind_arg(val: SteelVal, ctx_name: &str) -> Result<MatchKind, SteelErr> 
 /// token rule (see `CompletionSourceTarget`'s doc), so there is no separate
 /// `#:token` to decode.
 fn target_arg(target: SteelVal) -> Result<CompletionSourceTarget, SteelErr> {
-    let ctx_name = "register-completion-source! #:target";
+    let ctx_name = "#:target";
     symbol_enum_arg(
         string_arg(target, ctx_name)?.as_str(),
         ctx_name,
@@ -67,9 +67,8 @@ pub(crate) fn set_hook_triggers(
     language: SteelVal,
     chars: SteelVal,
 ) -> SteelResult {
-    let name = "set-hook-triggers!";
-    let scope = TriggerScope::Language(string_arg(language, &format!("{name} language"))?);
-    queue_triggers(ctx, name, TriggerKind::Hook, source, scope, chars)
+    let scope = TriggerScope::Language(string_arg(language, "language")?);
+    queue_triggers(ctx, TriggerKind::Hook, source, scope, chars)
 }
 
 /// `(set-attachment-hook-triggers! source pane server feature chars)`: the
@@ -89,21 +88,19 @@ pub(crate) fn set_attachment_hook_triggers(
     feature: SteelVal,
     chars: SteelVal,
 ) -> SteelResult {
-    let name = "set-attachment-hook-triggers!";
-    let scope = attachment_scope(pane, server, feature, name)?;
-    queue_triggers(ctx, name, TriggerKind::Hook, source, scope, chars)
+    let scope = attachment_scope(pane, server, feature)?;
+    queue_triggers(ctx, TriggerKind::Hook, source, scope, chars)
 }
 
 fn attachment_scope(
     pane: PaneHandle,
     server: SteelVal,
     feature: SteelVal,
-    name: &str,
 ) -> Result<TriggerScope, SteelErr> {
     Ok(TriggerScope::Attachment {
         buffer: pane.buffer(),
-        server: server_arg(&server, &format!("{name} server"))?.id,
-        feature: required_feature_arg(feature, &format!("{name} feature"))?,
+        server: server_arg(&server, "server")?.id,
+        feature: required_feature_arg(feature, "feature")?,
     })
 }
 
@@ -112,14 +109,13 @@ fn attachment_scope(
 /// (a well-formed `chars` list) fails synchronously here.
 fn queue_triggers(
     ctx: &mut SteelCtx,
-    name: &str,
     kind: TriggerKind,
     source: SteelVal,
     scope: TriggerScope,
     chars: SteelVal,
 ) -> SteelResult {
-    let source = string_arg(source, &format!("{name} source"))?;
-    let chars = chars_arg(chars, &format!("{name} chars"))?;
+    let source = string_arg(source, "source")?;
+    let chars = chars_arg(chars, "chars")?;
     ctx.push_effect(Effect::SetTriggers {
         kind,
         source,
@@ -161,23 +157,23 @@ pub(crate) fn register_completion_source(
     token_chars: SteelVal,
     cancel: SteelVal,
 ) -> SteelResult {
-    let proc = callable_arg(proc, "register-completion-source! proc")?;
-    let cancel = optional_callable_arg(cancel, "register-completion-source! #:cancel")?;
+    let proc = callable_arg(proc, "proc")?;
+    let cancel = optional_callable_arg(cancel, "#:cancel")?;
     let target = target_arg(target)?;
-    let match_kind = match_kind_arg(match_kind, "register-completion-source! #:match")?;
-    let priority = int_arg(priority, "register-completion-source! #:priority")?;
-    let resolve = bool_arg(resolve, "register-completion-source! #:resolve")?;
+    let match_kind = match_kind_arg(match_kind, "#:match")?;
+    let priority = int_arg(priority, "#:priority")?;
+    let resolve = bool_arg(resolve, "#:resolve")?;
     if resolve && target != CompletionSourceTarget::Buffer {
         steel::stop!(Generic =>
-            "register-completion-source! #:resolve: only a 'buffer source can set this");
+            "#:resolve: only a 'buffer source can set this");
     }
-    let token_chars = string_arg(token_chars, "register-completion-source! #:token-chars")?;
+    let token_chars = string_arg(token_chars, "#:token-chars")?;
     if !token_chars.is_empty() && target != CompletionSourceTarget::Buffer {
         steel::stop!(Generic =>
-            "register-completion-source! #:token-chars: only a 'buffer source can set this");
+            "#:token-chars: only a 'buffer source can set this");
     }
     hume_editing::word::WordChars::validate(&token_chars)
-        .map_err(|e| generic_err(format!("register-completion-source! #:token-chars: {e}")))?;
+        .map_err(|e| generic_err(format!("#:token-chars: {e}")))?;
     ctx.push_effect(Effect::RegisterCompletionSource(
         crate::host::PendingCompletionSource {
             name,
@@ -215,34 +211,34 @@ pub(crate) fn completion_emit(
     span: SteelVal,
     prefix: SteelVal,
 ) -> SteelResult {
-    let id = usize_arg(id, "completion-emit! id")? as u64;
-    let incomplete = bool_arg(incomplete, "completion-emit! #:incomplete")?;
-    let end = if bool_arg(more, "completion-emit! #:more")? {
+    let id = usize_arg(id, "id")? as u64;
+    let incomplete = bool_arg(incomplete, "#:incomplete")?;
+    let end = if bool_arg(more, "#:more")? {
         AnswerEnd::More
     } else {
         AnswerEnd::Final
     };
-    let span = optional_hash_entry(span, "completion-emit! #:span", CHAR_RANGE_KEYS)?
+    let span = optional_hash_entry(span, "#:span", CHAR_RANGE_KEYS)?
         .map(|range| range.char_range())
         .transpose()?
         .map(|(start, end)| start..end);
     let prefix = match prefix {
         SteelVal::BoolV(true) => FirstTab::Common,
-        other => match optional_string_arg(other, "completion-emit! #:prefix")? {
+        other => match optional_string_arg(other, "#:prefix")? {
             None => FirstTab::Nothing,
             Some(text) => FirstTab::Named(NamedPrefix::new(text).ok_or_else(|| {
                 generic_err(
-                    "completion-emit!: #:prefix would blank the word; send #f to propose \
+                    "#:prefix would blank the word; send #f to propose \
                      nothing, or leave #:prefix out to let the editor propose one",
                 )
             })?),
         },
     };
-    let parts = list_items(items, "completion-emit! items")?
+    let parts = list_items(items, "items")?
         .into_iter()
-        .map(|item| json_arg(item, "completion-emit! items"))
+        .map(|item| json_arg(item, "items"))
         .collect::<Result<Vec<_>, _>>()?;
-    let applied = require_cap(ctx.host.completions(), "completion-emit!")?
+    let applied = require_cap(ctx.host.completions())?
         .completion_emit(id, parts, incomplete, end, EmittedWord { span, prefix })
         .map_err(generic_err)?;
     Ok(SteelVal::BoolV(applied))
@@ -250,8 +246,8 @@ pub(crate) fn completion_emit(
 
 /// `(completion-top n)`.
 pub(crate) fn completion_top(ctx: &mut SteelCtx, n: SteelVal) -> SteelResult {
-    let n = usize_arg(n, "completion-top")?;
-    let items = require_cap(ctx.host.completions(), "completion-top")?.completion_top(n);
+    let n = usize_arg(n, "n")?;
+    let items = require_cap(ctx.host.completions())?.completion_top(n);
     let list: Vec<SteelVal> = items.iter().map(json_to_steel).collect();
     Ok(SteelVal::ListV(list.into()))
 }
@@ -259,8 +255,8 @@ pub(crate) fn completion_top(ctx: &mut SteelCtx, n: SteelVal) -> SteelResult {
 /// `(completion-accept! idx)`: `idx` indexes the ranked/filtered list
 /// (`completion-top`'s order), not the raw response order.
 pub(crate) fn completion_accept(ctx: &mut SteelCtx, idx: SteelVal) -> SteelResult {
-    let idx = usize_arg(idx, "completion-accept!")?;
-    require_cap(ctx.host.completions(), "completion-accept!")?
+    let idx = usize_arg(idx, "idx")?;
+    require_cap(ctx.host.completions())?
         .completion_accept(idx)
         .map(|()| SteelVal::Void)
         .map_err(generic_err)
@@ -268,7 +264,7 @@ pub(crate) fn completion_accept(ctx: &mut SteelCtx, idx: SteelVal) -> SteelResul
 
 /// `(completion-dismiss!)`.
 pub(crate) fn completion_dismiss(ctx: &mut SteelCtx) -> SteelResult {
-    require_cap(ctx.host.completions(), "completion-dismiss!")?
+    require_cap(ctx.host.completions())?
         .completion_dismiss()
         .map(|()| SteelVal::Void)
         .map_err(generic_err)
@@ -290,9 +286,8 @@ pub(crate) fn set_completion_triggers(
     language: SteelVal,
     chars: SteelVal,
 ) -> SteelResult {
-    let name = "set-completion-triggers!";
-    let scope = TriggerScope::Language(string_arg(language, &format!("{name} language"))?);
-    queue_triggers(ctx, name, TriggerKind::Completion, source, scope, chars)
+    let scope = TriggerScope::Language(string_arg(language, "language")?);
+    queue_triggers(ctx, TriggerKind::Completion, source, scope, chars)
 }
 
 /// `(set-attachment-completion-triggers! source pane server feature chars)`:
@@ -306,9 +301,8 @@ pub(crate) fn set_attachment_completion_triggers(
     feature: SteelVal,
     chars: SteelVal,
 ) -> SteelResult {
-    let name = "set-attachment-completion-triggers!";
-    let scope = attachment_scope(pane, server, feature, name)?;
-    queue_triggers(ctx, name, TriggerKind::Completion, source, scope, chars)
+    let scope = attachment_scope(pane, server, feature)?;
+    queue_triggers(ctx, TriggerKind::Completion, source, scope, chars)
 }
 
 #[cfg(test)]

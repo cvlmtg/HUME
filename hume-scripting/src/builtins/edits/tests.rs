@@ -11,20 +11,19 @@ use steel::rvals::IntoSteelVal as _;
 /// (a bad spec would fail before ever reaching `require_cap`, with a
 /// different message; see the next test).
 #[test]
-fn insert_key_without_edit_host_names_the_builtin() {
+fn insert_key_without_edit_host_is_unsupported() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
     let key: SteelVal = "tab".to_string().into_steelval().unwrap();
     let err = insert_key(&mut ctx, default_pane(), key).unwrap_err();
     let msg = err.to_string();
     assert!(msg.contains("not supported by this host"), "got: {msg}");
-    assert!(msg.contains("insert-key!"), "got: {msg}");
 }
 
 /// `paste_text` on a host with no `EditHost` capability surfaces
-/// `require_cap`'s canonical message, naming the builtin.
+/// `require_cap`'s message.
 #[test]
-fn paste_text_without_edit_host_names_the_builtin() {
+fn paste_text_without_edit_host_is_unsupported() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
     let text: SteelVal = "x".to_string().into_steelval().unwrap();
@@ -32,7 +31,6 @@ fn paste_text_without_edit_host_names_the_builtin() {
         .unwrap_err()
         .to_string();
     assert!(msg.contains("not supported by this host"), "got: {msg}");
-    assert!(msg.contains("paste-text!"), "got: {msg}");
 }
 
 #[test]
@@ -43,7 +41,7 @@ fn paste_text_rejects_a_value_that_is_neither_text_nor_a_list() {
         .unwrap_err()
         .to_string();
     assert!(
-        msg.contains("paste-text!: expected a string or a list of strings"),
+        msg.contains("text: expected a string or a list of strings"),
         "got: {msg}"
     );
 }
@@ -62,11 +60,9 @@ fn insert_key_rejects_a_multi_key_spec() {
 }
 
 /// `apply_text_edits` on a host with no `EditHost` capability (`NullHost`,
-/// the harness default) surfaces `require_cap`'s canonical message,
-/// naming the builtin. Locks the message contract `require_cap`
-/// centralizes across `edits.rs`/`completion.rs`/`ui.rs`.
+/// the harness default) surfaces `require_cap`'s message.
 #[test]
-fn apply_text_edits_without_edit_host_names_the_builtin() {
+fn apply_text_edits_without_edit_host_is_unsupported() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
     let empty_edits: SteelVal = Vec::<SteelVal>::new().into_steelval().unwrap();
@@ -79,7 +75,6 @@ fn apply_text_edits_without_edit_host_names_the_builtin() {
     .unwrap_err();
     let msg = err.to_string();
     assert!(msg.contains("not supported by this host"), "got: {msg}");
-    assert!(msg.contains("apply-text-edits!"), "got: {msg}");
 }
 
 /// A server-tagged `JsonHandle` argument must reach `require_cap`'s "no
@@ -97,7 +92,6 @@ fn apply_workspace_edit_accepts_a_tagged_json_handle() {
         .unwrap_err()
         .to_string();
     assert!(msg.contains("not supported by this host"), "got: {msg}");
-    assert!(msg.contains("apply-workspace-edit!"), "got: {msg}");
 }
 
 /// A hand-built hashmap is not a handle onto a server response, so it is
@@ -146,7 +140,6 @@ fn goto_location_accepts_a_tagged_json_handle() {
         .unwrap_err()
         .to_string();
     assert!(msg.contains("not supported by this host"), "got: {msg}");
-    assert!(msg.contains("goto-location!"), "got: {msg}");
 }
 
 /// Neither shape (hashmap/handle vs. list) is silently accepted as the
@@ -318,20 +311,19 @@ fn edit_text_error(edits: SteelVal) -> String {
 /// A well-formed edit decodes and reaches the host, which this harness
 /// doesn't have.
 #[test]
-fn edit_text_without_edit_host_names_the_builtin() {
+fn edit_text_without_edit_host_is_unsupported() {
     let msg = edit_text_error(edit_entry(vec![
         ("start-char", SteelVal::IntV(0)),
         ("end-char", SteelVal::IntV(2)),
         ("text", str_val("ab")),
     ]));
     assert!(msg.contains("not supported by this host"), "got: {msg}");
-    assert!(msg.contains("edit-text!"), "got: {msg}");
 }
 
 #[test]
 fn edit_text_rejects_a_value_that_is_not_a_list() {
     let msg = edit_text_error(SteelVal::IntV(5));
-    assert!(msg.contains("edit-text!"), "got: {msg}");
+    assert!(msg.contains("edits: expected a list"), "got: {msg}");
     assert!(!msg.contains("not supported by this host"), "got: {msg}");
 }
 
@@ -341,7 +333,7 @@ fn edit_text_rejects_an_entry_without_text() {
         ("start-char", SteelVal::IntV(0)),
         ("end-char", SteelVal::IntV(0)),
     ]));
-    assert!(msg.contains("edit-text!: missing 'text"), "got: {msg}");
+    assert!(msg.contains("edits: missing 'text"), "got: {msg}");
 }
 
 #[test]
@@ -351,8 +343,7 @@ fn edit_text_rejects_an_unknown_key() {
         ("end", SteelVal::IntV(0)),
         ("text", str_val("")),
     ]));
-    assert!(msg.contains("edit-text!"), "got: {msg}");
-    assert!(msg.contains("end"), "got: {msg}");
+    assert!(msg.contains("edits: unknown key 'end"), "got: {msg}");
     assert!(!msg.contains("not supported by this host"), "got: {msg}");
 }
 
@@ -363,7 +354,10 @@ fn edit_text_rejects_a_negative_offset() {
         ("end-char", SteelVal::IntV(0)),
         ("text", str_val("")),
     ]));
-    assert!(msg.contains("edit-text! 'start-char"), "got: {msg}");
+    assert!(
+        msg.contains("edits 'start-char: expected a non-negative integer"),
+        "got: {msg}"
+    );
 }
 
 #[test]
@@ -373,5 +367,5 @@ fn edit_text_rejects_text_that_is_not_a_string() {
         ("end-char", SteelVal::IntV(0)),
         ("text", SteelVal::IntV(1)),
     ]));
-    assert!(msg.contains("edit-text! 'text"), "got: {msg}");
+    assert!(msg.contains("edits 'text: expected a string"), "got: {msg}");
 }

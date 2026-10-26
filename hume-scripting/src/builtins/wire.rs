@@ -28,26 +28,22 @@ pub(crate) fn tagged_json_arg(
     Ok((handle, encoding))
 }
 
-/// Decodes a wire `{"line" "character"}` hashmap. `what` names the calling
-/// builtin in the error message: the eventual conversion
+/// Decodes a wire `{"line" "character"}` hashmap. The eventual conversion
 /// (`hume_rope::position_encoding`) clamps a column or answers `None` for a
 /// line rather than erroring on a shape, so this boundary check is the
 /// only place a malformed shape gets caught instead of silently producing a
 /// plausible-looking offset.
 pub(crate) fn wire_position(
     v: &serde_json::Value,
-    what: &str,
 ) -> Result<hume_rope::position_encoding::WirePos, SteelErr> {
-    hume_lsp::position::decode_wire_pos(v).map_err(|e| generic_err(format!("{what}: {e}")))
+    hume_lsp::position::decode_wire_pos(v).map_err(generic_err)
 }
 
-/// Decodes a wire `{"start" ... "end" ...}` range into its two positions;
-/// `ctx_name` names the calling builtin in the error message.
+/// Decodes a wire `{"start" ... "end" ...}` range into its two positions.
 pub(crate) fn wire_range(
     v: &serde_json::Value,
-    ctx_name: &str,
 ) -> Result<hume_rope::offset::ExclusiveRange<hume_rope::position_encoding::WirePos>, SteelErr> {
-    hume_lsp::position::decode_wire_range(v).map_err(|e| generic_err(format!("{ctx_name}: {e}")))
+    hume_lsp::position::decode_wire_range(v).map_err(generic_err)
 }
 
 /// Decodes a wire `{"range" {"start" ... "end" ...} "newText" ...}`
@@ -64,7 +60,7 @@ fn wire_text_edit_from_json(
     let range = v
         .get("range")
         .ok_or_else(|| generic_err(format!("{ctx_name}: text edit handle has no 'range' field")))
-        .and_then(|range| wire_range(range, ctx_name))?;
+        .and_then(wire_range)?;
     let new_text = v
         .get("newText")
         .and_then(serde_json::Value::as_str)
@@ -88,8 +84,8 @@ fn wire_text_edit_from_json(
 /// hand-built tuple would have no producing server to read an encoding off,
 /// and `JsonHandle::position_encoding` refuses to guess one.
 pub(crate) fn wire_text_edit_arg(val: SteelVal) -> Result<crate::host::WireTextEdit, SteelErr> {
-    let (handle, encoding) = tagged_json_arg(&val, "apply-text-edits!")?;
-    wire_text_edit_from_json(handle.value(), encoding, "apply-text-edits!")
+    let (handle, encoding) = tagged_json_arg(&val, "edits")?;
+    wire_text_edit_from_json(handle.value(), encoding, "edits")
 }
 
 #[cfg(test)]

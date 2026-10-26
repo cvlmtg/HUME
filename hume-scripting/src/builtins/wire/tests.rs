@@ -35,7 +35,10 @@ fn wire_text_edit_arg_rejects_a_malformed_handle() {
     )
     .into_steel_val();
     let err = wire_text_edit_arg(val).unwrap_err();
-    assert!(err.to_string().contains("apply-text-edits!"), "got: {err}");
+    assert!(
+        err.to_string().contains("range has no 'start' field"),
+        "got: {err}"
+    );
 }
 
 /// Not a `JsonHandle` at all (the removed hand-built tuple shape, or any

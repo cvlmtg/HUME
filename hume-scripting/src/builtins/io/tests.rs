@@ -24,7 +24,7 @@ fn print_raises_outside_an_inline_output_command() {
     let (result, claims) = print_with_frame_open(false);
     let err = result.expect_err("print! outside an #:inline-output command");
     assert!(
-        err.contains("print!: runs only inside an #:inline-output command"),
+        err.contains("runs only inside an #:inline-output command"),
         "{err}"
     );
     assert_eq!(claims, 0);

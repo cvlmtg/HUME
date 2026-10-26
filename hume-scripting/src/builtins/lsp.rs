@@ -20,7 +20,7 @@ use super::args::{
     strings_arg, symbol_enum_arg, symbol_hash,
 };
 use super::errors::{generic_err, require_cap};
-use super::hooks::{register_entry, require_known_event};
+use super::hooks::{known_event, register_entry};
 use super::ids::ServerRef;
 use super::wire::tagged_json_arg;
 
@@ -57,10 +57,10 @@ pub(super) fn required_feature_arg(val: SteelVal, ctx_name: &str) -> Result<LspF
 
 /// The routing keywords every request and notification shares. `to` is
 /// `#f` for `lsp-request-all!`, which takes no `#:to`.
-fn route_arg(feature: SteelVal, to: SteelVal, verb: &str) -> Result<RouteSpec, SteelErr> {
+fn route_arg(feature: SteelVal, to: SteelVal) -> Result<RouteSpec, SteelErr> {
     Ok(RouteSpec {
-        feature: feature_arg(feature, &format!("{verb} #:feature"))?,
-        to: optional_server_arg(to, &format!("{verb} #:to"))?,
+        feature: feature_arg(feature, "#:feature")?,
+        to: optional_server_arg(to, "#:to")?,
     })
 }
 
@@ -70,14 +70,13 @@ fn reject_feature_on_standard_method(
     ctx: &mut SteelCtx,
     route: &RouteSpec,
     method: &str,
-    verb: &str,
 ) -> Result<(), SteelErr> {
     if route.feature.is_none() {
         return Ok(());
     }
-    match require_cap(ctx.host.lsp(), verb)?.lsp_method_feature(method) {
+    match require_cap(ctx.host.lsp())?.lsp_method_feature(method) {
         Some(feature) => Err(generic_err(format!(
-            "{verb}: {method} is a standard method of the '{} feature; #:feature is for other methods",
+            "{method} is a standard method of the '{} feature; #:feature is for other methods",
             feature.name()
         ))),
         None => Ok(()),
@@ -102,28 +101,23 @@ fn queue_request(
     require_focus: SteelVal,
     tracked: SteelVal,
 ) -> SteelResult {
-    let verb = mode.verb();
-    let method = string_arg(method, &format!("{verb} method"))?;
-    reject_feature_on_standard_method(ctx, &route, &method, verb)?;
-    let callback = callable_arg(callback, &format!("{verb} callback"))?;
-    let ctx_name = format!("{verb} #:unavailable");
-    let when_unavailable = optional_symbol_arg(unavailable, &ctx_name)?
-        .map(|name| symbol_enum_arg(&name, &ctx_name, &WhenUnavailable::NAMED))
+    let method = string_arg(method, "method")?;
+    reject_feature_on_standard_method(ctx, &route, &method)?;
+    let callback = callable_arg(callback, "callback")?;
+    let when_unavailable = optional_symbol_arg(unavailable, "#:unavailable")?
+        .map(|name| symbol_enum_arg(&name, "#:unavailable", &WhenUnavailable::NAMED))
         .transpose()?
         .unwrap_or_default();
-    let allow_stale = bool_arg(allow_stale, &format!("{verb} #:allow-stale"))?;
-    let supersede = optional_string_arg(supersede, &format!("{verb} #:supersede"))?;
-    let require_focus = bool_arg(require_focus, &format!("{verb} #:require-focus"))?
+    let allow_stale = bool_arg(allow_stale, "#:allow-stale")?;
+    let supersede = optional_string_arg(supersede, "#:supersede")?;
+    let require_focus = bool_arg(require_focus, "#:require-focus")?
         .then(|| {
-            pane.pane().ok_or_else(|| {
-                generic_err(format!(
-                    "{verb}: #:require-focus needs a pane, but was given none"
-                ))
-            })
+            pane.pane()
+                .ok_or_else(|| generic_err("#:require-focus needs a pane, but was given none"))
         })
         .transpose()?;
-    let tracked = match optional_token_arg(tracked, &format!("{verb} #:tracked"))? {
-        Some(token) => require_cap(ctx.host.lsp(), verb)?.hold_tracked_position(token),
+    let tracked = match optional_token_arg(tracked, "#:tracked")? {
+        Some(token) => require_cap(ctx.host.lsp())?.hold_tracked_position(token),
         None => None,
     };
     ctx.push_effect(Effect::LspRequest(PendingLspRequest {
@@ -177,8 +171,8 @@ pub(crate) fn lsp_request(
     require_focus: SteelVal,
     tracked: SteelVal,
 ) -> SteelResult {
-    let route = route_arg(feature, to, RequestMode::Single.verb())?;
-    let params = RequestParams::Shared(checked_params(params, "lsp-request! params")?);
+    let route = route_arg(feature, to)?;
+    let params = RequestParams::Shared(checked_params(params, "params")?);
     queue_request(
         ctx,
         pane,
@@ -219,8 +213,8 @@ pub(crate) fn lsp_request_all(
     require_focus: SteelVal,
     tracked: SteelVal,
 ) -> SteelResult {
-    const CTX: &str = "lsp-request-all! params";
-    let route = route_arg(feature, SteelVal::BoolV(false), RequestMode::All.verb())?;
+    const CTX: &str = "params";
+    let route = route_arg(feature, SteelVal::BoolV(false))?;
     let params = match params {
         SteelVal::ListV(items) => {
             let mut pairs: Vec<(crate::ServerRef, Params)> = Vec::new();
@@ -274,11 +268,10 @@ pub(crate) fn lsp_notify(
     feature: SteelVal,
     to: SteelVal,
 ) -> SteelResult {
-    const VERB: &str = "lsp-notify!";
-    let method = string_arg(method, "lsp-notify! method")?;
-    let params = checked_params(params, "lsp-notify! params")?;
-    let route = route_arg(feature, to, VERB)?;
-    reject_feature_on_standard_method(ctx, &route, &method, VERB)?;
+    let method = string_arg(method, "method")?;
+    let params = checked_params(params, "params")?;
+    let route = route_arg(feature, to)?;
+    reject_feature_on_standard_method(ctx, &route, &method)?;
     ctx.push_effect(Effect::LspNotify(PendingLspNotify {
         bid: pane.buffer(),
         method,
@@ -298,9 +291,9 @@ pub(crate) fn lsp_servers(
     feature: SteelVal,
     method: SteelVal,
 ) -> SteelResult {
-    let feature = feature_arg(feature, "lsp-servers #:feature")?;
-    let method = optional_string_arg(method, "lsp-servers #:method")?;
-    let servers = require_cap(ctx.host.lsp(), "lsp-servers")?
+    let feature = feature_arg(feature, "#:feature")?;
+    let method = optional_string_arg(method, "#:method")?;
+    let servers = require_cap(ctx.host.lsp())?
         .lsp_servers(pane.buffer(), feature, method.as_deref())
         .map_err(generic_err)?;
     Ok(list_of(servers.into_iter().map(ServerRef::into_steel_val)))
@@ -308,7 +301,7 @@ pub(crate) fn lsp_servers(
 
 /// `(lsp-server-name server)` → the name `server` was registered under.
 pub(crate) fn lsp_server_name(server: SteelVal) -> SteelResult {
-    let server = server_arg(&server, "lsp-server-name")?;
+    let server = server_arg(&server, "server")?;
     Ok(SteelVal::StringV(server.name.as_str().into()))
 }
 
@@ -318,8 +311,8 @@ pub(crate) fn lsp_server_name(server: SteelVal) -> SteelResult {
 /// it with the encoding of the server that sent the range. A hand-built range
 /// has no encoding to carry and raises.
 pub(crate) fn lsp_location(uri: SteelVal, range: SteelVal) -> SteelResult {
-    let uri = string_arg(uri, "lsp-location uri")?;
-    let (range, _) = tagged_json_arg(&range, "lsp-location range")?;
+    let uri = string_arg(uri, "uri")?;
+    let (range, _) = tagged_json_arg(&range, "range")?;
     let location = serde_json::json!({"uri": uri, "range": range.value()});
     Ok(crate::json::to_steel_handle(
         std::sync::Arc::new(location),
@@ -344,13 +337,12 @@ pub(crate) fn register_lsp_notification_hook(
     methods: SteelVal,
     proc: SteelVal,
 ) -> SteelResult {
-    const VERB: &str = "register-lsp-notification-hook!";
-    let methods = strings_arg(methods, &format!("{VERB} methods"))?;
+    let methods = strings_arg(methods, "methods")?;
     if methods.is_empty() {
-        steel::stop!(Generic => "{VERB}: methods must not be empty");
+        steel::stop!(Generic => "methods must not be empty");
     }
-    let proc = callable_arg(proc, &format!("{VERB} proc"))?;
-    require_known_event(ctx, LSP_NOTIFICATION_EVENT, VERB)?;
+    let proc = callable_arg(proc, "proc")?;
+    known_event(ctx, LSP_NOTIFICATION_EVENT).map_err(generic_err)?;
     register_entry(
         ctx,
         LSP_NOTIFICATION_EVENT,
@@ -364,8 +356,8 @@ pub(crate) fn register_lsp_notification_hook(
 /// wire `ServerCapabilities`, or `#f` once it has stopped. Read it with
 /// `json-ref`/`json-contains?`.
 pub(crate) fn lsp_capabilities(ctx: &mut SteelCtx, server: SteelVal) -> SteelResult {
-    let server = server_arg(&server, "lsp-capabilities")?;
-    Ok(require_cap(ctx.host.lsp(), "lsp-capabilities")?
+    let server = server_arg(&server, "server")?;
+    Ok(require_cap(ctx.host.lsp())?
         .lsp_capabilities(server.id)
         .map_or(SteelVal::BoolV(false), |v| {
             crate::json::to_steel_handle(v, crate::json::WireOrigin::Local)
@@ -383,19 +375,19 @@ pub(crate) fn lsp_capability(
     feature: SteelVal,
     method: SteelVal,
 ) -> SteelResult {
-    let server = server_arg(&server, "lsp-capability")?;
-    let feature = feature_arg(feature, "lsp-capability #:feature")?;
-    let method = optional_string_arg(method, "lsp-capability #:method")?;
+    let server = server_arg(&server, "server")?;
+    let feature = feature_arg(feature, "#:feature")?;
+    let method = optional_string_arg(method, "#:method")?;
     let query = match (feature, method.as_deref()) {
         (Some(feature), None) => CapabilityQuery::Feature(feature),
         (None, Some(method)) => CapabilityQuery::Method(method),
         _ => {
             return Err(generic_err(
-                "lsp-capability: give exactly one of #:feature and #:method".to_string(),
+                "give exactly one of #:feature and #:method".to_string(),
             ));
         }
     };
-    Ok(require_cap(ctx.host.lsp(), "lsp-capability")?
+    Ok(require_cap(ctx.host.lsp())?
         .lsp_capability(server.id, query)
         .map_or(SteelVal::BoolV(false), |v| {
             crate::json::to_steel_handle(v, crate::json::WireOrigin::Local)
@@ -404,7 +396,7 @@ pub(crate) fn lsp_capability(
 
 /// `(lsp-server-status)` → list of `(hash 'name 'languages 'root 'state 'pending)`.
 pub(crate) fn lsp_server_status(ctx: &mut SteelCtx) -> SteelResult {
-    let entries: Vec<SteelVal> = require_cap(ctx.host.lsp(), "lsp-server-status")?
+    let entries: Vec<SteelVal> = require_cap(ctx.host.lsp())?
         .lsp_server_status()
         .into_iter()
         .map(|e| {
@@ -439,8 +431,8 @@ pub(crate) fn lsp_server_status(ctx: &mut SteelCtx) -> SteelResult {
 /// init/plugin load too, which lets `core:lsp-install`'s load-time scan skip
 /// names already registered.
 pub(crate) fn lsp_server_registered(ctx: &mut SteelCtx, name: SteelVal) -> SteelResult {
-    let name = server_name_arg(name, "lsp-server-registered? name")?;
-    let lsp = require_cap(ctx.host.lsp(), "lsp-server-registered?")?;
+    let name = server_name_arg(name, "name")?;
+    let lsp = require_cap(ctx.host.lsp())?;
     let queued = ctx
         .effects
         .iter()

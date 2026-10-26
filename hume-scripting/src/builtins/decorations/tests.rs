@@ -38,16 +38,13 @@ fn sign(line: isize, text: &str, scope: &str) -> SteelVal {
 }
 
 /// Every decoration setter on a host with no `DecorationHost` capability
-/// (`NullHost`, the harness default) surfaces `require_cap`'s canonical
-/// message, naming the builtin. Locks the message contract `require_cap`
-/// centralizes across `decorations.rs`/`edits.rs`/`completion.rs`/`ui.rs`.
+/// (`NullHost`, the harness default) surfaces `require_cap`'s one message.
 ///
 /// A setter written as `if let Some(decorations) = ... { ... } Ok(Void)`
 /// would silently no-op, and `.unwrap_err()` would panic on its `Ok`.
-fn assert_names_builtin(result: SteelResult, builtin: &str) {
+fn assert_unsupported(result: SteelResult) {
     let msg = result.unwrap_err().to_string();
     assert!(msg.contains("not supported by this host"), "got: {msg}");
-    assert!(msg.contains(builtin), "got: {msg}");
 }
 
 /// The diagnostic reads raise on a host with no decorations capability (a
@@ -57,19 +54,13 @@ fn assert_names_builtin(result: SteelResult, builtin: &str) {
 fn diagnostic_reads_without_decoration_host_error() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
-    assert_names_builtin(
-        diagnostics_for_buffer(
-            &mut ctx,
-            ArgPane(default_pane()),
-            SteelVal::BoolV(false),
-            SteelVal::BoolV(false),
-        ),
-        "diagnostics-for-buffer",
-    );
-    assert_names_builtin(
-        diagnostic_counts(&mut ctx, ArgPane(default_pane())),
-        "diagnostic-counts",
-    );
+    assert_unsupported(diagnostics_for_buffer(
+        &mut ctx,
+        ArgPane(default_pane()),
+        SteelVal::BoolV(false),
+        SteelVal::BoolV(false),
+    ));
+    assert_unsupported(diagnostic_counts(&mut ctx, ArgPane(default_pane())));
 }
 
 #[test]
@@ -83,7 +74,7 @@ fn set_inlay_hints_without_decoration_host_errors() {
         default_pane(),
         empty,
     );
-    assert_names_builtin(result, "set-inlay-hints!");
+    assert_unsupported(result);
 }
 
 #[test]
@@ -96,7 +87,7 @@ fn register_sign_source_without_decoration_host_errors() {
         default_pane(),
         SteelVal::IntV(10),
     );
-    assert_names_builtin(result, "register-sign-source!");
+    assert_unsupported(result);
 }
 
 #[test]
@@ -124,7 +115,7 @@ fn set_signs_without_decoration_host_errors() {
         default_pane(),
         empty,
     );
-    assert_names_builtin(result, "set-signs!");
+    assert_unsupported(result);
 }
 
 #[test]
@@ -145,10 +136,9 @@ fn set_signs_rejects_a_control_character_in_the_glyph() {
     );
     let msg = result.unwrap_err().to_string();
     assert!(
-        msg.contains("must not contain a control character"),
+        msg.contains("'text must not contain a control character"),
         "got: {msg}"
     );
-    assert!(msg.contains("set-signs!"), "got: {msg}");
 }
 
 #[test]
@@ -165,7 +155,7 @@ fn set_signs_accepts_a_multi_codepoint_glyph() {
     );
     // The harness has no decoration host, so validation passing means the
     // call gets as far as the host lookup and fails *there*.
-    assert_names_builtin(result, "set-signs!");
+    assert_unsupported(result);
 }
 
 #[test]
@@ -185,8 +175,7 @@ fn set_signs_rejects_a_positional_list_entry() {
     )
     .unwrap_err()
     .to_string();
-    assert!(msg.contains("hashmap"), "got: {msg}");
-    assert!(msg.contains("set-signs!"), "got: {msg}");
+    assert!(msg.contains("signs: expected a hashmap"), "got: {msg}");
 }
 
 #[test]
@@ -219,7 +208,7 @@ fn set_virtual_lines_without_decoration_host_errors() {
         default_pane(),
         empty,
     );
-    assert_names_builtin(result, "set-virtual-lines!");
+    assert_unsupported(result);
 }
 
 #[test]
@@ -234,7 +223,7 @@ fn set_eol_text_without_decoration_host_errors() {
         empty,
         SteelVal::BoolV(false),
     );
-    assert_names_builtin(result, "set-eol-text!");
+    assert_unsupported(result);
 }
 
 #[test]
@@ -264,7 +253,7 @@ fn set_extra_highlights_without_decoration_host_errors() {
         default_pane(),
         empty,
     );
-    assert_names_builtin(result, "set-extra-highlights!");
+    assert_unsupported(result);
 }
 
 #[test]
@@ -277,7 +266,7 @@ fn set_statusline_text_without_decoration_host_errors() {
         default_pane(),
         SteelVal::StringV("main".into()),
     );
-    assert_names_builtin(result, "set-statusline-text!");
+    assert_unsupported(result);
 }
 
 // ── `virtual_line_specs` decoder ─────────────────────────────────────────────

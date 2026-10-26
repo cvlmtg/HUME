@@ -248,7 +248,7 @@ fn navigating_a_container_shares_the_root_arc() {
     ))
     .expect("an object roots as a JsonHandle");
     let sub = handle
-        .resolve(&[Seg::Key("a".into())], "test")
+        .resolve(&[Seg::Key("a".into())])
         .expect("path resolves");
     let SteelVal::Custom(_) = &sub else {
         panic!("expected a sub-handle for a container field");
@@ -265,7 +265,7 @@ fn navigating_a_container_shares_the_root_arc() {
 fn resolving_a_scalar_field_returns_a_native_value() {
     let handle = JsonHandle::new(json!({"a": 5}));
     let result = handle
-        .resolve(&[Seg::Key("a".into())], "test")
+        .resolve(&[Seg::Key("a".into())])
         .expect("path resolves");
     assert_eq!(result, SteelVal::IntV(5));
 }
@@ -275,7 +275,7 @@ fn resolving_a_scalar_field_returns_a_native_value() {
 fn resolve_error_names_the_path() {
     let handle = JsonHandle::new(json!({"a": {}}));
     let err = handle
-        .resolve(&[Seg::Key("a".into()), Seg::Key("missing".into())], "test")
+        .resolve(&[Seg::Key("a".into()), Seg::Key("missing".into())])
         .unwrap_err();
     assert!(err.contains("$.a"), "got: {err}");
     assert!(err.contains("missing"), "got: {err}");
@@ -316,7 +316,7 @@ fn server_for_test_reports_its_tagged_encoding() {
 fn resolve_inherits_the_parent_tag() {
     let handle = JsonHandle::server_for_test(json!({"a": {"b": 1}}), PositionEncoding::Utf16);
     let resolved = handle
-        .resolve(&[Seg::Key("a".into())], "test")
+        .resolve(&[Seg::Key("a".into())])
         .expect("path resolves");
     let child = downcast_json_handle(&resolved).expect("a container field resolves to a handle");
     assert_eq!(child.position_encoding("test"), Ok(PositionEncoding::Utf16));
@@ -341,7 +341,7 @@ fn lookup_inherits_the_parent_tag() {
 #[test]
 fn list_items_inherit_the_parent_tag() {
     let handle = JsonHandle::server_for_test(json!([{"a": 1}, {"b": 2}]), PositionEncoding::Utf16);
-    for item in handle.list_items("test").expect("array") {
+    for item in handle.list_items().expect("array") {
         let child = downcast_json_handle(&item).unwrap();
         assert_eq!(child.position_encoding("test"), Ok(PositionEncoding::Utf16));
     }

@@ -24,8 +24,8 @@ use super::errors::{generic_err, require_cap};
 /// as buffer content (see [`text_hunks`]). The end lines are derived here
 /// from the line lists, since [`ChangeHunk`] stores no end.
 pub(crate) fn diff_lines(_ctx: &mut SteelCtx, old: SteelVal, new: SteelVal) -> SteelResult {
-    let old = string_arg(old, "diff-lines old-text")?;
-    let new = string_arg(new, "diff-lines new-text")?;
+    let old = string_arg(old, "old-text")?;
+    let new = string_arg(new, "new-text")?;
     Ok(hunks_to_steel(text_hunks(
         &BufferText::from(old.as_str()),
         &BufferText::from(new.as_str()),
@@ -41,11 +41,11 @@ pub(crate) fn diff_buffer_lines(
     ref_text: SteelVal,
 ) -> SteelResult {
     let bid = pane.buffer();
-    let ref_text = string_arg(ref_text, "diff-buffer-lines ref-text")?;
+    let ref_text = string_arg(ref_text, "ref-text")?;
     // `LivePane` already checked liveness; `None` would be a host disagreeing with itself.
-    let hunks = require_cap(ctx.host.diff(), "diff-buffer-lines")?
+    let hunks = require_cap(ctx.host.diff())?
         .diff_buffer_lines(bid, &ref_text)
-        .ok_or_else(|| not_live_err("diff-buffer-lines", bid))?;
+        .ok_or_else(|| not_live_err("pane", bid))?;
     Ok(hunks_to_steel(hunks))
 }
 
@@ -59,7 +59,7 @@ pub(crate) fn buffer_revision_diff(
     pane: PaneHandle,
     revision: usize,
 ) -> SteelResult {
-    let hunks = require_cap(ctx.host.diff(), "buffer-revision-diff")?
+    let hunks = require_cap(ctx.host.diff())?
         .revision_diff(pane.buffer(), revision)
         .map_err(generic_err)?;
     Ok(hunks_to_steel(hunks))
@@ -130,8 +130,8 @@ fn line_span_to_steel(span: LineSpan) -> SteelVal {
 /// when Myers timed out and returned a coarse result, which a caller should
 /// treat as a fallback rather than a precise diff.
 pub(crate) fn diff_words(_ctx: &mut SteelCtx, old: SteelVal, new: SteelVal) -> SteelResult {
-    let old = string_arg(old, "diff-words old-text")?;
-    let new = string_arg(new, "diff-words new-text")?;
+    let old = string_arg(old, "old-text")?;
+    let new = string_arg(new, "new-text")?;
     let diff = hume_editing::diff::diff_words(&old, &new);
     let deadline_hit = diff.deadline_hit();
     let hunks = list_of(diff.hunks.into_iter().filter_map(word_hunk_to_steel));

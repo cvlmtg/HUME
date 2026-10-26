@@ -32,9 +32,9 @@ use super::errors::generic_err;
 /// own decode-time check, [`LspTargetArg::Buffer`](super::lsp::LspTargetArg::Buffer)'s, and every
 /// `buffers.rs`/`diff.rs` builtin whose host call already does the liveness
 /// lookup (so a second `buffer_exists` check would be redundant) but still
-/// needs this message.
-pub(crate) fn not_live_err(name: &str, bid: BufferId) -> SteelErr {
-    generic_err(format!("{name}: invalid buffer id {bid:?}"))
+/// needs this message. `arg` names the argument that carried the pane.
+pub(crate) fn not_live_err(arg: &str, bid: BufferId) -> SteelErr {
+    generic_err(format!("{arg}: invalid buffer id {bid:?}"))
 }
 
 // ── Plain decoders ──────────────────────────────────────────────────────────
@@ -759,10 +759,9 @@ pub(crate) fn cons_pair(mut a: SteelVal, mut b: SteelVal) -> Result<SteelVal, St
 
 // ── FromSteelVal newtypes ────────────────────────────────────────────────────
 //
-// Used as typed params in builtin signatures. steel-core's
-// `register_fn_with_ctx` wrapper prepends the registered builtin name to any
-// `from_steelval` failure automatically, so these messages carry no
-// `ctx_name` of their own.
+// Used as typed params in builtin signatures. The `builtins!` table decodes
+// them inside `errors::named`, which puts the builtin's name in front of a
+// failure, so these messages carry no `ctx_name` of their own.
 
 /// A decoded [`PaneHandle`] argument, tolerant of a since-closed buffer,
 /// for a builtin whose own contract is "answer `#f`/empty for a `pane`
@@ -808,12 +807,10 @@ impl FromSteelVal for LivePane {
 /// liveness check hooks into without every builtin body repeating
 /// `ctx.host.buffers().buffer_exists(...)` by hand. Every other declared
 /// arg type is `Self`-identity here: decode is already everything they
-/// need. `name` is the registered Steel name (the same `$name` the gate
-/// gets), so a `LivePane` failure's message names the builtin without the
-/// function body supplying it.
+/// need. `arg` is the argument's name in the table, which a failure names.
 pub(crate) trait BuiltinArg {
     type Out;
-    fn resolve(self, ctx: &mut crate::SteelCtx, name: &'static str) -> Result<Self::Out, SteelErr>;
+    fn resolve(self, ctx: &mut crate::SteelCtx, arg: &'static str) -> Result<Self::Out, SteelErr>;
 }
 
 /// `BuiltinArg::resolve` for a type whose decode is already everything it
@@ -827,7 +824,7 @@ macro_rules! identity_builtin_arg {
                 fn resolve(
                     self,
                     _ctx: &mut crate::SteelCtx,
-                    _name: &'static str,
+                    _arg: &'static str,
                 ) -> Result<Self::Out, SteelErr> {
                     Ok(self)
                 }
@@ -840,22 +837,18 @@ identity_builtin_arg!(SteelVal, String, bool, ArgPane, Rooted);
 
 impl BuiltinArg for LivePane {
     type Out = PaneHandle;
-    fn resolve(
-        self,
-        ctx: &mut crate::SteelCtx,
-        name: &'static str,
-    ) -> Result<PaneHandle, SteelErr> {
+    fn resolve(self, ctx: &mut crate::SteelCtx, arg: &'static str) -> Result<PaneHandle, SteelErr> {
         if ctx.host.buffers().buffer_exists(self.0.buffer()) {
             Ok(self.0)
         } else {
-            Err(not_live_err(name, self.0.buffer()))
+            Err(not_live_err(arg, self.0.buffer()))
         }
     }
 }
 
 /// [`usize_arg`]'s `FromSteelVal` counterpart, for a `LivePane`-sibling
-/// argument that must decode (via steel-core's own per-argument
-/// `FromSteelVal` pass, left to right, ahead of every builtin body) before
+/// argument that must decode (the `builtins!` table decodes every argument,
+/// left to right, ahead of every resolve) before
 /// `LivePane`'s liveness check ever runs, so a malformed sibling argument
 /// isn't masked behind a stale-buffer error. `usize_arg`'s plain-function
 /// form stays the one every other (no-`LivePane`) builtin decodes its own
@@ -877,7 +870,7 @@ impl FromSteelVal for Usize {
 
 impl BuiltinArg for Usize {
     type Out = usize;
-    fn resolve(self, _ctx: &mut crate::SteelCtx, _name: &'static str) -> Result<usize, SteelErr> {
+    fn resolve(self, _ctx: &mut crate::SteelCtx, _arg: &'static str) -> Result<usize, SteelErr> {
         Ok(self.0)
     }
 }
@@ -906,9 +899,9 @@ impl BuiltinArg for ScriptPath {
     fn resolve(
         self,
         ctx: &mut crate::SteelCtx,
-        name: &'static str,
+        arg: &'static str,
     ) -> Result<AbsolutePath, SteelErr> {
-        under_cwd(&self.0, &ctx.host.buffers().cwd(), name)
+        under_cwd(&self.0, &ctx.host.buffers().cwd(), arg)
     }
 }
 

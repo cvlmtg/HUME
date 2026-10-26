@@ -17,7 +17,9 @@ use steel::rvals::SteelVal;
 use super::super::commands::half_page;
 use super::super::error::CommandError;
 use super::super::keymap::CanonicalKey;
-use super::super::replay::{Answer, InputOpener, PendingAnswer, Pick, Picked, WaitingInput};
+use super::super::replay::{
+    Answer, InputOpener, PendingAnswer, Pick, Picked, ReplayRefusal, WaitingInput,
+};
 use super::super::{Editor, EditorState};
 use super::paste::PastedText;
 use super::popup::half_page_key;
@@ -186,8 +188,8 @@ pub(in crate::editor) fn session_for_feed(
         .filter(|session| session.feed_token() == token)
 }
 
-/// Single open chokepoint for the picker, `picker!` and `live-picker!` alike
-/// (`what` names the builtin in a refusal). Entry policy (dismiss-completion,
+/// Single open chokepoint for the picker, `picker!` and `live-picker!`
+/// alike. Entry policy (dismiss-completion,
 /// replace-a-live-picker, clear-popups) lives on [`PickerLayer::setup`],
 /// run by [`EditorState::push_layer`]. This function is the named door to
 /// it, plus the one place the picker passes `EditorState::waiting_input`,
@@ -210,46 +212,43 @@ pub(in crate::editor) fn open_picker(
     state: &mut super::super::EditorState,
     view: &EngineView,
     session: PickerSession,
-    what: &str,
 ) -> Result<HostToken, String> {
     let token = session.token();
     if let Some(replay) = state.dot_replay.as_mut() {
-        replay.answer_call(
-            what,
-            |a| match a {
-                Answer::Pick(pick) => Some(pick.clone()),
-                _ => None,
-            },
-            |pick: Pick| {
-            let proc = match pick.action {
-                None => session.on_select().clone(),
-                Some(key) => session
-                    .action_for(key)
-                    .ok_or_else(|| {
-                        format!(
-                            "{what}: `.` can't repeat this pick: its key is not one of this picker's actions"
-                        )
-                    })?
-                    .clone(),
-            };
-            let arg = match pick.picked {
-                None => hume_scripting::Rooted::new(SteelVal::BoolV(false)),
-                Some(Picked::Choice(choice)) => session
-                    .payload_for(&choice)
-                    .ok_or_else(|| choice.missing(what))?
-                    .clone(),
-                Some(Picked::Payload(payload)) => payload,
-                Some(Picked::PayloadForgotten) => {
-                    return Err(format!(
-                        "{what}: `.` can't repeat this pick: a config reload forgot the picked value"
-                    ));
-                }
-            };
-            Ok(PendingAnswer::Call { proc, arg })
-        })?;
+        replay
+            .answer_call(
+                |a| match a {
+                    Answer::Pick(pick) => Some(pick.clone()),
+                    _ => None,
+                },
+                |pick: Pick| {
+                    let proc = match pick.action {
+                        None => session.on_select().clone(),
+                        Some(key) => session
+                            .action_for(key)
+                            .ok_or(ReplayRefusal::UnboundAction)?
+                            .clone(),
+                    };
+                    let arg = match pick.picked {
+                        None => hume_scripting::Rooted::new(SteelVal::BoolV(false)),
+                        Some(Picked::Choice(choice)) => session
+                            .payload_for(&choice)
+                            .ok_or_else(|| choice.missing())?
+                            .clone(),
+                        Some(Picked::Payload(payload)) => payload,
+                        Some(Picked::PayloadForgotten) => {
+                            return Err(ReplayRefusal::ForgottenPayload);
+                        }
+                    };
+                    Ok(PendingAnswer::Call { proc, arg })
+                },
+            )
+            .map_err(|refusal| refusal.to_string())?;
         return Ok(token);
     }
-    let input = state.waiting_input(what, InputOpener::Code)?;
+    let input = state
+        .waiting_input(InputOpener::Code)
+        .map_err(|refusal| refusal.to_string())?;
     state.push_layer(view, PickerLayer { session, input });
     Ok(token)
 }

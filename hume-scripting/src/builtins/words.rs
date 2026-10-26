@@ -34,10 +34,9 @@ use super::errors::generic_err;
 /// character other than the four `classify_char` recognizes) raises here
 /// instead of misclassifying.
 pub(crate) fn split_words(line: SteelVal, word_chars: SteelVal) -> SteelResult {
-    let line = string_arg(line, "split-words line")?;
-    let word_chars = string_arg(word_chars, "split-words word-chars")?;
-    WordChars::validate(&word_chars)
-        .map_err(|e| generic_err(format!("split-words word-chars: {e}")))?;
+    let line = string_arg(line, "line")?;
+    let word_chars = string_arg(word_chars, "word-chars")?;
+    WordChars::validate(&word_chars).map_err(|e| generic_err(format!("word-chars: {e}")))?;
     let text = BufferText::from(line.as_str());
     let chars = WordChars::new(&word_chars);
     let words = word_runs(&text, chars)
@@ -50,7 +49,7 @@ pub(crate) fn split_words(line: SteelVal, word_chars: SteelVal) -> SteelResult {
 /// clusters every string in `strings` starts with, `""` for `'()`. Steel
 /// strings index by char, so a Scheme loop would cut a combining sequence.
 pub(crate) fn string_common_prefix(strings: SteelVal) -> SteelResult {
-    let strings = list_to_strings(strings, "string-common-prefix")?;
+    let strings = list_to_strings(strings, "strings")?;
     let mut rest = strings.iter();
     let common = rest.next().map_or("", |first| {
         rest.fold(first.as_str(), |prefix, s| {

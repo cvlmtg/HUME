@@ -222,7 +222,7 @@ fn cancel_async_raises_for_a_timer_and_leaves_the_job_running() {
     call(&mut ed, "cancel-it");
 
     assert!(
-        has_error(&ed, "cancel-async!: expected a job"),
+        has_error(&ed, "cancel-async!: job: expected a job"),
         "errors: {:?}",
         error_log(&ed)
     );
@@ -248,7 +248,7 @@ fn cancel_timer_raises_for_a_job_and_leaves_the_timer_scheduled() {
     call(&mut ed, "cancel-it");
 
     assert!(
-        has_error(&ed, "cancel-timer!: expected a timer"),
+        has_error(&ed, "cancel-timer!: timer: expected a timer"),
         "errors: {:?}",
         error_log(&ed)
     );

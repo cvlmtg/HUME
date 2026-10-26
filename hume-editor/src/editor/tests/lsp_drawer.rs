@@ -137,7 +137,7 @@ fn show_drawer_list_drops_silently_when_a_picker_is_open() {
         PickerOpts::default(),
         Vec::new(),
     );
-    crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session, "picker!")
+    crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session)
         .expect("no `.` is in progress");
 
     let traces_before = ed
@@ -774,7 +774,7 @@ fn show_with_empty_items_raises_and_opens_nothing() {
     ed.settle();
 
     assert!(
-        has_error(&ed, "show-drawer-list! items: must not be empty"),
+        has_error(&ed, "show-drawer-list!: items: must not be empty"),
         "errors: {:?}",
         error_log(&ed)
     );
@@ -802,7 +802,7 @@ fn update_with_empty_items_raises_and_keeps_the_rows() {
     type_cmd(&mut ed, ":upd");
     ed.settle();
     assert!(
-        has_error(&ed, "update-drawer-list! items: must not be empty"),
+        has_error(&ed, "update-drawer-list!: items: must not be empty"),
         "errors: {:?}",
         error_log(&ed)
     );

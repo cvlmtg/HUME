@@ -246,26 +246,26 @@ fn walk<'v, 's>(
 /// value a failed step started from, the segment that failed, and the path
 /// so far. Re-matches `(current, seg)` to classify *why* [`step`] returned
 /// `None`, using the same four shapes `step` itself distinguishes.
-fn miss_reason(current: &serde_json::Value, seg: &Seg, so_far: &[Seg], ctx_name: &str) -> String {
+fn miss_reason(current: &serde_json::Value, seg: &Seg, so_far: &[Seg]) -> String {
     match (current, seg) {
         (serde_json::Value::Object(_), Seg::Key(k)) => {
-            format!("{ctx_name}: no key {k:?} at {}", path_repr(so_far))
+            format!("no key {k:?} at {}", path_repr(so_far))
         }
         (serde_json::Value::Array(arr), Seg::Index(i)) => format!(
-            "{ctx_name}: index {i} out of range (length {}) at {}",
+            "index {i} out of range (length {}) at {}",
             arr.len(),
             path_repr(so_far)
         ),
         (serde_json::Value::Object(_), Seg::Index(i)) => format!(
-            "{ctx_name}: expected an array to index {i} at {}, found an object",
+            "expected an array to index {i} at {}, found an object",
             path_repr(so_far)
         ),
         (serde_json::Value::Array(_), Seg::Key(k)) => format!(
-            "{ctx_name}: expected an object to look up {k:?} at {}, found an array",
+            "expected an object to look up {k:?} at {}, found an array",
             path_repr(so_far)
         ),
         (_, seg) => format!(
-            "{ctx_name}: cannot look up {} at {}: not an object or array",
+            "cannot look up {} at {}: not an object or array",
             seg_repr(seg),
             path_repr(so_far)
         ),
@@ -415,14 +415,14 @@ impl JsonHandle {
     /// and the reason: a missing key, an out-of-range index, or indexing
     /// into the wrong container kind (or a scalar). [`walk`]'s `Err` arm
     /// already carries everything [`miss_reason`] needs, no second walk.
-    pub(crate) fn resolve(&self, path: &[Seg], ctx_name: &str) -> Result<SteelVal, String> {
+    pub(crate) fn resolve(&self, path: &[Seg]) -> Result<SteelVal, String> {
         match walk(self.value(), path) {
             Ok(current) => Ok(scalar_or_child(current, &self.root, self.origin, || {
                 self.path.iter().chain(path).cloned().collect()
             })),
             Err((current, seg, so_far)) => {
                 let so_far: Vec<Seg> = self.path.iter().chain(so_far).cloned().collect();
-                Err(miss_reason(current, seg, &so_far, ctx_name))
+                Err(miss_reason(current, seg, &so_far))
             }
         }
     }
@@ -438,7 +438,7 @@ impl JsonHandle {
 
     /// `(json-list j)`'s implementation. `Err` if this handle isn't an
     /// array.
-    pub(crate) fn list_items(&self, ctx_name: &str) -> Result<Vec<SteelVal>, String> {
+    pub(crate) fn list_items(&self) -> Result<Vec<SteelVal>, String> {
         match self.value() {
             serde_json::Value::Array(arr) => Ok(arr
                 .iter()
@@ -453,7 +453,7 @@ impl JsonHandle {
                     })
                 })
                 .collect()),
-            _ => Err(format!("{ctx_name}: expected a JSON array")),
+            _ => Err("expected a JSON array".to_owned()),
         }
     }
 

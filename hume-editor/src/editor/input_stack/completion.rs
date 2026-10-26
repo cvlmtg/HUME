@@ -571,8 +571,10 @@ fn accept_completion_selection(ed: &mut Editor, r: LayerRef) {
     ed.with_dot_capture(None, |ed| {
         let accepted = ed
             .state
-            .interactive_input("completion accept")
-            .and_then(|input| session.accept(&mut ed.state, &ed.view, selected, input));
+            .interactive_input()
+            .map_err(|refusal| refusal.to_string())
+            .and_then(|input| session.accept(&mut ed.state, &ed.view, selected, input))
+            .map_err(|e| format!("completion accept: {e}"));
         if let Err(msg) = accepted {
             ed.report(Severity::Error, msg);
         }

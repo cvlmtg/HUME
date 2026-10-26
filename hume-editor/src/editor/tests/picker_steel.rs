@@ -458,7 +458,7 @@ fn picker_bang_rejects_proper_list_items_naming_the_arg() {
     );
     let msg = ed.state.status_msg.clone().unwrap_or_default();
     assert!(
-        msg.contains("picker! items"),
+        msg.contains("picker!: items"),
         "error should name the offending argument, got {msg:?}"
     );
 }
