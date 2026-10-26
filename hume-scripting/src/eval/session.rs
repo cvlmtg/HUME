@@ -29,7 +29,7 @@ pub(super) fn run_steel_session<'a, R>(
     budget_ms: u64,
     body: impl FnOnce(&mut Engine) -> Result<R, SteelErr>,
 ) -> Result<(), SessionError> {
-    let open_depth = ctx.plugin_stack.len();
+    let open_depth = ctx.attribution.len();
     watchdog.arm(
         steel.get_thread_state_controller(),
         std::time::Duration::from_millis(budget_ms),
@@ -67,7 +67,7 @@ pub(super) fn run_steel_session<'a, R>(
 
     // An activation or manifest load still open lost its Scheme handler to
     // the budget (or to an error raised inside that handler).
-    if ctx.plugin_stack.len() > open_depth || ctx.manifest_resolving.is_some() {
+    if ctx.attribution.len() > open_depth || ctx.manifest_resolving.is_some() {
         let reason = stopped
             .clone()
             .or_else(|| raw_result.as_ref().err().cloned())

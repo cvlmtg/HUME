@@ -47,8 +47,8 @@ pub(in crate::editor) enum MinibufBody {
     /// cursor)`, answered by `(completion-emit! id …)`. `cancel` is
     /// [`BufferSourceEntry::cancel`]'s counterpart.
     Steel {
-        proc: hume_scripting::Rooted,
-        cancel: Option<hume_scripting::Rooted>,
+        proc: hume_scripting::Callback,
+        cancel: Option<hume_scripting::Callback>,
     },
 }
 
@@ -58,7 +58,7 @@ pub(in crate::editor) struct BufferSourceEntry {
     pub(in crate::editor) priority: i64,
     /// Invoked via `EditorState::queue_source_calls` as `(proc id bid
     /// prefix)`, answered by `(completion-emit! id …)`.
-    pub(in crate::editor) proc: hume_scripting::Rooted,
+    pub(in crate::editor) proc: hume_scripting::Callback,
     /// `#:resolve`: this source's own claim that its items are wire
     /// `CompletionItem`s from the buffer's attached LSP server, so
     /// `completionItem/resolve` may be sent for a selected or accepted one
@@ -71,7 +71,7 @@ pub(in crate::editor) struct BufferSourceEntry {
     /// `#:cancel`: called as `(cancel id)` when request `id` ends before
     /// its final answer landed, so the source can stop work nothing will
     /// read (`SlotSet::take_ended`).
-    pub(in crate::editor) cancel: Option<hume_scripting::Rooted>,
+    pub(in crate::editor) cancel: Option<hume_scripting::Callback>,
     /// `#:token-chars`: characters that belong to this source's token on top
     /// of the buffer's word characters ([`Self::token_chars_over`]).
     pub(in crate::editor) token_chars: Box<str>,

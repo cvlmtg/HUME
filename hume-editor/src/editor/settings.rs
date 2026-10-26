@@ -3,7 +3,9 @@
 //! [`EditorSettings`] holds a concrete value for every setting.
 //! [`BufferOverrides`] lives on each `Buffer` with an `Option<T>` per
 //! overridable setting (`None` inherits the global), resolved at call time by
-//! its accessors; no merged copy is kept.
+//! its accessors; no merged copy is kept. Each also records which
+//! `ConfigOrigin` wrote each value it holds, and a write ranks against that
+//! record ([`SettingOrigins`]).
 //!
 //! ## Adding a setting
 //!
@@ -27,8 +29,11 @@ use std::str::FromStr;
 use hume_editing::tab_style::TabStyle;
 use hume_engine::builtins::line_number::LineNumberStyle;
 use hume_engine::pane::{WhitespaceConfig, WhitespaceRender, WrapMode};
+use hume_origin::Tie;
 use hume_platform::process::batch::ShellCommand;
+use hume_scripting::ConfigOrigin;
 use hume_scripting::host::OptionInput;
+use rustc_hash::FxHashMap;
 
 use crate::statusline::{StatusElement, StatusLineConfig};
 use hume_ops::auto_pairs::Pair;
@@ -49,7 +54,7 @@ fn or_list(values: &[&str]) -> String {
 /// The text form of a `:set` value: the names `:set <key>=<Tab>` completes,
 /// the parser that reads a value, and the printer that writes it back.
 ///
-/// Every value type behind a `from_str` or `enum_str` setting implements it,
+/// Every value type behind a `from_str` setting implements it,
 /// whichever crate defines the type. A trait local to this crate is the only
 /// way to give a foreign type that surface, which is why the text forms of
 /// the option enums live here and not next to the enums.
@@ -61,6 +66,43 @@ pub(in crate::editor) trait SettingText: Sized {
 
     /// The text [`SettingText::parse`] reads back as `self`.
     fn to_text(&self) -> String;
+}
+
+/// The origin of the write behind each value a settings store holds, by
+/// key. A key with none holds its compiled-in default (global) or no
+/// override (buffer). Within one scope a write from an origin below the
+/// recorded one is shadowed, and one from the same or a higher origin
+/// replaces it ([`Tie::LaterWins`]).
+#[derive(Clone, Debug, Default)]
+pub(in crate::editor::settings) struct SettingOrigins(FxHashMap<&'static str, ConfigOrigin>);
+
+impl SettingOrigins {
+    /// Whether `by` may write `key`; recorded as its writer when it may.
+    fn claim(&mut self, key: &'static str, by: ConfigOrigin) -> bool {
+        let applies = by.rank(self.held(key), Tie::LaterWins).is_applied();
+        if applies {
+            self.0.insert(key, by);
+        }
+        applies
+    }
+
+    /// The origin that wrote `key`, `None` when nothing has.
+    pub(in crate::editor::settings) fn held(&self, key: &str) -> Option<ConfigOrigin> {
+        self.0.get(key).copied()
+    }
+
+    /// Put back what [`Self::held`] read for `key` before a write that is
+    /// being undone.
+    pub(in crate::editor::settings) fn restore(
+        &mut self,
+        key: &'static str,
+        held: Option<ConfigOrigin>,
+    ) {
+        match held {
+            Some(by) => self.0.insert(key, by),
+            None => self.0.remove(key),
+        };
+    }
 }
 
 /// Name the setting `key` in a parse error. Every `:set` value parse goes
@@ -227,9 +269,6 @@ macro_rules! parse_setting {
     (@raw $value:expr, from_str) => {
         SettingText::parse($value)
     };
-    (@raw $value:expr, enum_str) => {
-        parse_setting!(@raw $value, from_str)
-    };
     (@raw $value:expr, string) => {
         Ok::<String, String>(($value).to_owned())
     };
@@ -262,7 +301,7 @@ macro_rules! parse_setting {
 /// `bool` fields read back as `Bool`, integer-ish fields (`usize`,
 /// `usize_nonzero`, `tab_width`) as `Int`, and every named value as `Str`
 /// in the text its own parser takes back: [`SettingText::to_text`] for
-/// `from_str` and `enum_str` types, [`format_show_newline`] (the inverse of
+/// `from_str` types, [`format_show_newline`] (the inverse of
 /// [`parse_show_newline`]) for `show_newline`. `shell_command` reads back as
 /// `List`, one string per word.
 macro_rules! option_value {
@@ -279,9 +318,6 @@ macro_rules! option_value {
         hume_scripting::host::OptionValue::Int($value as i64)
     };
     ($value:expr, from_str) => {
-        hume_scripting::host::OptionValue::Str($value.to_text())
-    };
-    ($value:expr, enum_str) => {
         hume_scripting::host::OptionValue::Str($value.to_text())
     };
     ($value:expr, string) => {
@@ -353,7 +389,6 @@ macro_rules! buffer_accessor {
 /// | `usize_nonzero` | `parse_usize_nonzero(value)` |
 /// | `tab_width` | `parse_tab_width(value)` |
 /// | `from_str` | `SettingText::parse` (type inferred from field) |
-/// | `enum_str` | `SettingText::parse`, for a closed set of names |
 /// | `string` | `value.to_owned()` |
 /// | `show_newline` | `parse_show_newline(value)` (`none`/`all` wire format) |
 /// | `word_chars` | `parse_word_chars(value)` (validated, unlike `string`) |
@@ -400,6 +435,7 @@ macro_rules! define_settings {
             /// this crate (a raw assignment from anywhere else is a compile
             /// error instead of a bug). Read through [`EditorSettings::statusline`].
             statusline: StatusLineConfig,
+            origins: SettingOrigins,
         }
 
         impl Default for EditorSettings {
@@ -410,6 +446,7 @@ macro_rules! define_settings {
                     $( $egname: $egdefault, )*
                     $( $ebname: $ebdefault, )*
                     statusline: StatusLineConfig::default(),
+                    origins: SettingOrigins::default(),
                 }
             }
         }
@@ -432,6 +469,7 @@ macro_rules! define_settings {
             $( pub $bname: Option<$btype>, )*
             $( pub $ebname: Option<$ebtype>, )*
             $( pub $sfield: Option<$stype>, )*
+            origins: SettingOrigins,
         }
 
         impl BufferOverrides {
@@ -440,9 +478,12 @@ macro_rules! define_settings {
 
         // ── write_global / write_buffer ───────────────────────────────────────
 
-        /// Write a global setting's raw value, with no derived-state resync.
+        /// Write a global setting's raw value from `by`, with no
+        /// derived-state resync.
         ///
-        /// Returns `Err(message)` on unknown key or invalid value.
+        /// Returns `Err(message)` on unknown key or invalid value, checked
+        /// before the rank, and `Ok(false)`, writing nothing, when a higher
+        /// origin wrote the value ([`SettingOrigins`]).
         ///
         /// This is the raw field write only. Some settings have derived
         /// state that must be resynced after a successful write (declared
@@ -462,17 +503,34 @@ macro_rules! define_settings {
             key: &str,
             value: &OptionInput,
             settings: &mut EditorSettings,
-        ) -> Result<(), String> {
+            by: ConfigOrigin,
+        ) -> Result<bool, String> {
             match key {
-                $( $gkey => { settings.$gname = parse_setting!(value, key, $gparser)?; } )*
-                $( $bkey => { settings.$bname = parse_setting!(value, key, $bparser)?; } )*
-                $( $skey => { settings.$sglobal.$ssub = parse_setting!(value, key, $sparser)?; } )*
+                $( $gkey => {
+                    let parsed = parse_setting!(value, key, $gparser)?;
+                    if !settings.origins.claim($gkey, by) { return Ok(false); }
+                    settings.$gname = parsed;
+                } )*
+                $( $bkey => {
+                    let parsed = parse_setting!(value, key, $bparser)?;
+                    if !settings.origins.claim($bkey, by) { return Ok(false); }
+                    settings.$bname = parsed;
+                } )*
+                $( $skey => {
+                    let parsed = parse_setting!(value, key, $sparser)?;
+                    if !settings.origins.claim($skey, by) { return Ok(false); }
+                    settings.$sglobal.$ssub = parsed;
+                } )*
                 // Statusline config, global-only; three sections separated by `|`,
                 // each a comma-separated list of StatusElement names (may be empty).
-                "statusline" => { settings.statusline = for_key(key, single_value(value).and_then(parse_statusline))?; }
+                "statusline" => {
+                    let parsed = for_key(key, single_value(value).and_then(parse_statusline))?;
+                    if !settings.origins.claim("statusline", by) { return Ok(false); }
+                    settings.statusline = parsed;
+                }
                 _ => return Err(format!("unknown setting '{key}'")),
             }
-            Ok(())
+            Ok(true)
         }
 
         /// Write a buffer-scoped setting's raw override, with no derived-state
@@ -480,16 +538,30 @@ macro_rules! define_settings {
         /// doc for the mechanism global-only keys use).
         ///
         /// Returns `Err(message)` on unknown key, a global-only key, or an
-        /// invalid value.
+        /// invalid value, and `Ok(false)`, writing nothing, when a higher
+        /// origin wrote the override ([`SettingOrigins`]).
         ///
         /// `pub(in crate::editor::settings)`: [`ops::apply_buffer`] is the
         /// only caller. `testing::MockHost` models no buffers, so it has no
         /// per-buffer override to write and needs no forwarding shim here
         /// (contrast [`write_global`]'s `write_global_for_test`).
-        pub(in crate::editor::settings) fn write_buffer(key: &str, value: &OptionInput, overrides: &mut BufferOverrides) -> Result<(), String> {
+        pub(in crate::editor::settings) fn write_buffer(
+            key: &str,
+            value: &OptionInput,
+            overrides: &mut BufferOverrides,
+            by: ConfigOrigin,
+        ) -> Result<bool, String> {
             match key {
-                $( $bkey => { overrides.$bname = Some(parse_setting!(value, key, $bparser)?); } )*
-                $( $skey => { overrides.$sfield = Some(parse_setting!(value, key, $sparser)?); } )*
+                $( $bkey => {
+                    let parsed = parse_setting!(value, key, $bparser)?;
+                    if !overrides.origins.claim($bkey, by) { return Ok(false); }
+                    overrides.$bname = Some(parsed);
+                } )*
+                $( $skey => {
+                    let parsed = parse_setting!(value, key, $sparser)?;
+                    if !overrides.origins.claim($skey, by) { return Ok(false); }
+                    overrides.$sfield = Some(parsed);
+                } )*
                 "statusline" => {
                     return Err("'statusline' is a global-only setting; use :set global statusline=…".to_string());
                 }
@@ -500,7 +572,7 @@ macro_rules! define_settings {
                 } )*
                 _ => return Err(format!("unknown setting '{key}'")),
             }
-            Ok(())
+            Ok(true)
         }
 
         /// Decode `key` into its [`ResyncKey`] variant, or `None` if it
@@ -609,10 +681,10 @@ define_settings! {
             parser: usize;
         "scroll-jump-align" => scroll_jump_align: ObjectJumpAlign = ObjectJumpAlign::default(),
             scope: [Scope::Global],
-            parser: enum_str;
+            parser: from_str;
         "insert-cursor-shape" => insert_cursor_shape: CursorShape = CursorShape::default(),
             scope: [Scope::Global],
-            parser: enum_str;
+            parser: from_str;
         "mouse-scroll-lines" => mouse_scroll_lines: usize = 3,
             scope: [Scope::Global],
             parser: usize;
@@ -662,7 +734,7 @@ define_settings! {
             parser: usize_nonzero;
         "command-completion" => command_completion: CommandCompletion = CommandCompletion::default(),
             scope: [Scope::Global],
-            parser: enum_str;
+            parser: from_str;
         "popup-border" => popup_border: bool = true,
             scope: [Scope::Global],
             parser: bool;
@@ -683,7 +755,7 @@ define_settings! {
         // `sync_tabline_view` every frame.
         "tabline" => tabline: TablineVisibility = TablineVisibility::default(),
             scope: [Scope::Global],
-            parser: enum_str;
+            parser: from_str;
         // Loads and applies the named theme immediately, rolling back to the
         // theme on screen on failure; empty selects the compiled-in fallback.
         // See `editor::settings::ops::resync_derived_state`.
@@ -717,7 +789,7 @@ define_settings! {
         // underline/extra-highlight and gutter-sign render write sides.
         "lsp-diagnostics-min-severity" => lsp_diagnostics_min_severity: crate::editor::lsp::diagnostics::DiagSeverity = crate::editor::lsp::diagnostics::DiagSeverity::Hint,
             scope: [Scope::Global],
-            parser: enum_str;
+            parser: from_str;
         // Off hides the diagnostic underline and end-of-line summary on the
         // primary cursor's line while typing in Insert mode. The summary is
         // hidden by `core:lsp` passing the negation to `set-eol-text!`.
@@ -746,10 +818,10 @@ define_settings! {
             parser: bool;
         "indent-style" => indent_style: TabStyle = TabStyle::default(),
             scope: [Scope::Global, Scope::Buffer],
-            parser: enum_str;
+            parser: from_str;
         "gutter-line-numbers" => gutter_line_numbers: LineNumberStyle = LineNumberStyle::default(),
             scope: [Scope::Global, Scope::Buffer],
-            parser: enum_str;
+            parser: from_str;
         "insert-auto-pairs" => insert_auto_pairs: bool = true,
             scope: [Scope::Global, Scope::Buffer],
             parser: bool;
@@ -778,7 +850,7 @@ define_settings! {
         // `SelectionBody::Word` arm, which resolves it.
         "word-selects-whitespace" => word_selects_whitespace: WordSelectsWhitespace = WordSelectsWhitespace::default(),
             scope: [Scope::Global, Scope::Buffer],
-            parser: enum_str;
+            parser: from_str;
         // Extra characters this buffer counts as part of a word, on top of
         // the built-in alphanumeric-plus-`_` rule (Vim's `iskeyword`, minus
         // the range syntax), e.g. `-` makes `foo-bar` one word in CSS.
@@ -826,10 +898,10 @@ define_settings! {
         // values for the others. Resolution in `BufferOverrides::whitespace`.
         "whitespace-space" => whitespace.space / whitespace_space : WhitespaceRender,
             scope: [Scope::Global, Scope::Buffer],
-            parser: enum_str;
+            parser: from_str;
         "whitespace-tab" => whitespace.tab / whitespace_tab : WhitespaceRender,
             scope: [Scope::Global, Scope::Buffer],
-            parser: enum_str;
+            parser: from_str;
         "whitespace-newline" => whitespace.newline / whitespace_newline : bool,
             scope: [Scope::Global, Scope::Buffer],
             parser: show_newline;

@@ -30,7 +30,7 @@ use super::stack::{
 pub(in crate::editor) struct MenuLayer {
     pub(in crate::editor) rows: NonEmpty<hume_ui::popup::MenuRow>,
     pub(in crate::editor) selected: usize,
-    pub(in crate::editor) callback: hume_scripting::Rooted,
+    pub(in crate::editor) callback: hume_scripting::Callback,
     /// Identifies which `show-menu!` call opened this menu; see
     /// [`Self::token`]'s doc.
     token: HostToken,
@@ -52,7 +52,7 @@ pub(in crate::editor) fn open_menu(
     state: &mut EditorState,
     view: &EngineView,
     items: NonEmpty<String>,
-    callback: hume_scripting::Rooted,
+    callback: hume_scripting::Callback,
 ) -> Result<Option<HostToken>, String> {
     if let Some(replay) = state.dot_replay.as_mut() {
         replay
@@ -112,7 +112,11 @@ impl MenuLayer {
     /// A fresh menu over single-column `items`, selection at row 0, with a
     /// freshly minted token (the only minting site, same as
     /// `DrawerLayer::new`).
-    fn new(input: WaitingInput, items: NonEmpty<String>, callback: hume_scripting::Rooted) -> Self {
+    fn new(
+        input: WaitingInput,
+        items: NonEmpty<String>,
+        callback: hume_scripting::Callback,
+    ) -> Self {
         Self {
             rows: items.map(hume_ui::popup::MenuRow::plain),
             selected: 0,
@@ -140,7 +144,7 @@ impl MenuLayer {
     #[cfg(test)]
     pub(in crate::editor) fn for_test(
         items: NonEmpty<String>,
-        callback: hume_scripting::Rooted,
+        callback: hume_scripting::Callback,
     ) -> Self {
         Self::new(WaitingInput::for_test(), items, callback)
     }

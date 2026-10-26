@@ -365,8 +365,8 @@ fn define_typed_command_rejects_name_claimed_by_lazy_plugin() {
 /// `(plugin-config)` called outside any plugin body (top-level init.scm) must
 /// return an empty hash, not error.
 ///
-/// A `plugin_stack.current()` that kept returning the last pushed id after
-/// its pop would hand back a stale plugin's config here.
+/// An attribution frame that outlived its pop would hand back a stale
+/// plugin's config here.
 #[test]
 fn plugin_config_outside_plugin_body_is_empty() {
     use crate::{ScriptingHost, null_host::NullHost};

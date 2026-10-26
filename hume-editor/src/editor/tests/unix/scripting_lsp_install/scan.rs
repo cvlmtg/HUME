@@ -421,7 +421,7 @@ fn rescan_registers_the_catalog_server_beside_a_manual_one_of_another_name() {
 /// eager `(load-plugin! "core:lsp-install")` queues a Register op for it from its own
 /// startup scan, in the very same eval as anything that follows. The user's
 /// own `register-lsp-server!` queued *after* that `load-plugin!` line must
-/// win: `register-lsp-server!` is last-wins over queue order. Differs from
+/// win: the user's registration ranks above the scan's. Differs from
 /// `rescan_does_not_clobber_a_manual_registration_of_the_same_name` above:
 /// there, the receipt is fabricated *after* init.scm's eval, so
 /// `load-plugin!`'s own scan queues nothing competing for "rust-analyzer" in

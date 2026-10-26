@@ -39,7 +39,7 @@ pub(crate) fn spawn_async(
     cmd: SteelVal,
     args: SteelVal,
     cwd: SteelVal,
-    callback: crate::Rooted,
+    callback: crate::Callback,
 ) -> SteelResult {
     let cmd = string_arg(cmd, "cmd")?;
     // No empty-cmd guard here, unlike `picker-source-spawn!`: this builtin's

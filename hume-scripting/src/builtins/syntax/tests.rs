@@ -227,8 +227,8 @@ fn configure_language_records_its_origin() {
     let mut h = SteelCtxTestHarness::new();
     configure(&mut h.ctx_init(), "go", vec![("language-id", str_val("a"))])
         .expect("init top level must decode");
-    h.plugin_stack
-        .push(EntryId::main(PluginId::parse("core:test-plugin").unwrap()));
+    h.attribution
+        .push_body(EntryId::main(PluginId::parse("core:test-plugin").unwrap()));
     configure(&mut h.ctx_init(), "go", vec![("language-id", str_val("b"))])
         .expect("eager plugin load must decode");
     configure(
@@ -322,6 +322,39 @@ fn register_grammar_init_mode_queues_pending_reg() {
     );
 }
 
+/// A queued `register-grammar!` records who called it: init.scm's top level
+/// is the user, a plugin body loaded from it is a plugin.
+#[test]
+fn register_grammar_records_its_origin() {
+    use crate::attribution::{EntryId, PluginId};
+
+    let register = |ctx: &mut SteelCtx| {
+        register_grammar(
+            ctx,
+            str_val("rust"),
+            str_val("/tmp/rust.so"),
+            str_val("tree_sitter_rust"),
+            str_val("/tmp/highlights.scm"),
+            SteelVal::BoolV(false),
+        )
+        .expect("an init-session registration decodes and queues")
+    };
+    let mut h = SteelCtxTestHarness::new();
+    register(&mut h.ctx_init());
+    h.attribution
+        .push_body(EntryId::main(PluginId::parse("core:test-plugin").unwrap()));
+    register(&mut h.ctx_init());
+
+    let origins: Vec<ConfigOrigin> = lang_regs(&h)
+        .into_iter()
+        .map(|reg| match reg {
+            PendingLanguageReg::Grammar(reg) => reg.origin,
+            other => panic!("expected a Grammar registration, got {other:?}"),
+        })
+        .collect();
+    assert_eq!(origins, [ConfigOrigin::User, ConfigOrigin::Plugin]);
+}
+
 /// In command mode, `register-grammar!` calls the host immediately.
 /// NullHost returns Err, proving the call reached the host.
 #[test]
@@ -368,6 +401,7 @@ fn register_grammar_hash_with_textobjects_only_populates_that_kind() {
         assert!(result.is_ok());
     }
     // On Windows a root-anchored path lands on the working directory's drive.
+    #[expect(clippy::join_absolute_paths)]
     let textobjects = std::env::current_dir()
         .unwrap()
         .join("/tmp/textobjects.scm");

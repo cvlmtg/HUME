@@ -811,6 +811,7 @@ dependencies = [
  "hume-grid",
  "hume-lsp",
  "hume-ops",
+ "hume-origin",
  "hume-platform",
  "hume-rope",
  "hume-scripting",
@@ -905,6 +906,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "hume-origin"
+version = "0.17.0"
+
+[[package]]
 name = "hume-platform"
 version = "0.17.0"
 dependencies = [
@@ -939,6 +944,7 @@ dependencies = [
  "hume-engine",
  "hume-lsp",
  "hume-ops",
+ "hume-origin",
  "hume-platform",
  "hume-rope",
  "hume-treesitter",
@@ -961,6 +967,7 @@ dependencies = [
  "globset",
  "hume-editing",
  "hume-engine",
+ "hume-origin",
  "hume-platform",
  "hume-rope",
  "hume-treesitter",

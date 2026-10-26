@@ -86,6 +86,20 @@ fn set_buffer_language_no_op_when_unchanged() {
     );
 }
 
+#[test]
+fn a_reload_from_disk_keeps_an_asserted_language() {
+    let (mut ed, _file) = editor_with_file("-[a]>b\n", "ab\n");
+    attach_host(&mut ed, "");
+    register_rust(&mut ed, "notes", &[]);
+    type_cmd(&mut ed, ":set buffer language=notes");
+
+    type_cmd(&mut ed, ":e!");
+
+    let buf = ed.state.buffers.get(ed.focused_buffer_id());
+    assert_eq!(buf.language, ed.state.config.languages.id_of("notes"));
+    assert_eq!(buf.language_by, Some(hume_scripting::ConfigOrigin::User));
+}
+
 // ── detect_and_set_language ───────────────────────────────────────────────────
 
 #[test]
@@ -199,7 +213,7 @@ fn open_buffer_then_set_buffer_language_in_one_eval_keeps_the_explicit_value() {
          detection would have found from the .rs extension"
     );
     assert!(
-        ed.state.buffers.get(bid).language_explicit,
+        ed.state.buffers.get(bid).language_by.is_some(),
         "the buffer must be marked explicit, not left looking auto-detected"
     );
 }

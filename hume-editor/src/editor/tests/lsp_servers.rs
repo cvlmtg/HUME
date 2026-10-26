@@ -381,7 +381,8 @@ fn a_language_change_reopens_the_document_on_the_same_instance() {
     let mut rig = LspRig::drained(tmp.path(), spec, answering(1));
     let sid = rig.sid("tsls");
 
-    rig.ed.set_buffer_language_by_name(rig.bid, Some("tsx"));
+    rig.ed
+        .set_buffer_language_by_name(rig.bid, Some("tsx"), hume_scripting::ConfigOrigin::User);
 
     assert_eq!(rig.sid("tsls"), sid);
     assert_eq!(rig.attached(), vec![sid]);

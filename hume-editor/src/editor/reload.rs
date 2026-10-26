@@ -29,13 +29,20 @@ pub(crate) struct ReloadSnapshot {
     /// set plus current liveness is sufficient identity; no generation stamp
     /// is needed to rule out a same-key content swap.
     pre_reload_bids: rustc_hash::FxHashSet<BufferId>,
-    /// `(bid, explicit-language-name)` for every buffer whose language was
-    /// an explicit assertion (`:set buffer language=`/`set-buffer-option!`'s `"language"`)
-    /// rather than detection. `None` means the user explicitly cleared the
-    /// language; that must survive the reload too, not be silently
-    /// repopulated by re-detection. Consumed (via `take_explicit_languages`)
-    /// exactly once, by `init_scripting`'s post-reload sweep.
-    explicit_languages: Vec<(BufferId, Option<String>)>,
+    /// Every buffer whose language was an explicit assertion
+    /// (`:set buffer language=`/`set-buffer-option!`'s `"language"`) rather
+    /// than detection. Consumed (via `take_explicit_languages`) once,
+    /// by `init_scripting`'s post-reload sweep.
+    explicit_languages: Vec<(BufferId, ExplicitLanguage)>,
+}
+
+/// A buffer's explicitly asserted language, kept across a reload.
+pub(super) struct ExplicitLanguage {
+    /// `None` when the assertion cleared the language; that must survive the
+    /// reload too, not be repopulated by re-detection.
+    pub(super) name: Option<String>,
+    /// The origin that asserted it, which still ranks the next write.
+    pub(super) by: hume_scripting::ConfigOrigin,
 }
 
 impl ReloadSnapshot {
@@ -56,7 +63,7 @@ impl ReloadSnapshot {
     /// instance's copy empty. `mem::take`n rather than borrowed so
     /// `init_scripting`'s sweep can consume each entry by value without a
     /// second `self` borrow.
-    pub(super) fn take_explicit_languages(&mut self) -> Vec<(BufferId, Option<String>)> {
+    pub(super) fn take_explicit_languages(&mut self) -> Vec<(BufferId, ExplicitLanguage)> {
         std::mem::take(&mut self.explicit_languages)
     }
 
@@ -153,12 +160,12 @@ impl Editor {
             .state
             .buffers
             .iter()
-            .filter(|(_, buf)| buf.language_explicit)
-            .map(|(bid, buf)| {
+            .filter_map(|(bid, buf)| {
+                let by = buf.language_by?;
                 let name = buf
                     .language
                     .map(|id| self.state.config.languages.name_of(id).to_owned());
-                (bid, name)
+                Some((bid, ExplicitLanguage { name, by }))
             })
             .collect();
         // Every buffer's `LanguageId` is an index into `state.config.languages`:

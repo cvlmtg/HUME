@@ -728,11 +728,12 @@ fn reload_config_with_no_config_dir_fails_fast_and_resets_nothing() {
     // `Editor::open`'s caller never resolved a config dir either. Still has
     // a live keymap override from `Editor::open`'s own `ConfigState::new`,
     // which the failed reload must leave untouched.
-    ed.state.config.keymap.bind_user_with_extend(
+    ed.state.config.keymap.bind(
         BindMode::Normal,
         &[key('Q')],
         "move-down".into(),
         false,
+        hume_scripting::ConfigOrigin::User,
     );
     assert_eq!(
         ed.state

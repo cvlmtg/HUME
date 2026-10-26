@@ -30,7 +30,7 @@ use super::stack::{
 /// What `Enter` on a drawer row does.
 pub(in crate::editor) enum DrawerSelect {
     /// Calls a Steel `on-select` with the row index and the drawer's token.
-    Steel(hume_scripting::Rooted),
+    Steel(hume_scripting::Callback),
     /// Row `i` names `buffers[i]`: switches the focused pane to it.
     Buffers(Vec<BufferId>),
 }
@@ -160,7 +160,7 @@ pub(in crate::editor) struct DrawerRows {
     /// references batch can carry thousands of rows.
     text: Arc<Vec<Option<String>>>,
     /// For lazy rows: one key per entry of `text`, and the render proc.
-    lazy: Option<(Vec<hume_scripting::Rooted>, hume_scripting::Rooted)>,
+    lazy: Option<(Vec<hume_scripting::Rooted>, hume_scripting::Callback)>,
 }
 
 impl DrawerRows {
@@ -194,13 +194,16 @@ impl DrawerRows {
     /// The render call `window` still needs: the first unrendered row in
     /// it, the keys from there through its last unrendered row, and the
     /// render proc. `None` when every row in `window` has its text.
-    fn pending(&self, window: Range<usize>) -> Option<(usize, Vec<SteelVal>, SteelVal)> {
+    fn pending(
+        &self,
+        window: Range<usize>,
+    ) -> Option<(usize, Vec<SteelVal>, hume_scripting::Callback)> {
         let (keys, render) = self.lazy.as_ref()?;
         let window = window.start.min(self.len())..window.end.min(self.len());
         let first = window.clone().find(|&i| self.text[i].is_none())?;
         let last = window.rev().find(|&i| self.text[i].is_none())?;
         let keys = keys[first..=last].iter().map(|key| key.value().clone());
-        Some((first, keys.collect(), render.value().clone()))
+        Some((first, keys.collect(), render.clone()))
     }
 
     /// Stores `rendered` as the text of the rows from `start` on.
@@ -329,7 +332,7 @@ impl EditorState {
         &mut self,
         token: HostToken,
         items: DrawerItems,
-        callback: hume_scripting::Rooted,
+        callback: hume_scripting::Callback,
         selected: usize,
     ) -> bool {
         let Some(r) = self.input.drawer_ref_with_token(token) else {
@@ -623,7 +626,7 @@ impl Editor {
             .and_then(|keys| {
                 let mut host = EditorHostImpl::new(&mut self.state, &mut self.view);
                 scripting.call_for_value(
-                    render,
+                    &render,
                     vec![SteelVal::IntV(start as isize), keys],
                     &mut host,
                 )

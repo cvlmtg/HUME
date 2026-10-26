@@ -11,8 +11,8 @@ fn require_cmd_gates_by_mode() {
     assert!(require_cmd(&h.ctx_init()).is_err(), "Init must reject");
     assert!(require_cmd(&h.ctx()).is_ok(), "Command must pass");
 
-    h.plugin_stack
-        .push(EntryId::main(PluginId::parse("core:test-plugin").unwrap()));
+    h.attribution
+        .push_body(EntryId::main(PluginId::parse("core:test-plugin").unwrap()));
     assert!(
         require_cmd(&h.ctx_init()).is_err(),
         "PluginLoad must reject"
@@ -30,8 +30,8 @@ fn require_config_gates_by_mode() {
     assert!(require_config(&h.ctx_init()).is_ok(), "Init must pass");
     assert!(require_config(&h.ctx()).is_err(), "Command must reject");
 
-    h.plugin_stack
-        .push(EntryId::main(PluginId::parse("core:test-plugin").unwrap()));
+    h.attribution
+        .push_body(EntryId::main(PluginId::parse("core:test-plugin").unwrap()));
     assert!(
         require_config(&h.ctx_init()).is_ok(),
         "PluginLoad must pass"

@@ -1,12 +1,13 @@
-//! Plugin attribution types: `PluginId`, `Owner`, and `PluginStack`.
+//! Plugin attribution types: `PluginId`, `Owner`, and `AttributionStack`.
 //!
-//! `PluginStack` tracks which plugin is currently executing; `current_owner()`
-//! returns the owner to record at command-registration time. The result is
-//! stored beside the command's proc and exposed to Steel via
-//! `(command-plugin …)`.
+//! `AttributionStack` tracks whose code is running; `SteelCtx::owner` reads
+//! it. The owner is recorded with every proc a script hands HUME (a
+//! command, a hook handler, a callback), so the proc runs as the code that
+//! defined it, and is exposed to Steel via `(command-plugin …)`.
 
 use std::fmt;
 use std::hash::{Hash, Hasher};
+use std::rc::Rc;
 
 /// A validated plugin identity: case-preserving for display and disk paths,
 /// case-insensitive for equality and hashing.
@@ -246,12 +247,14 @@ impl fmt::Display for EntryId {
     }
 }
 
-/// The entity credited with a command registration.
+/// Whose code a Steel evaluation is running: what a command, a hook
+/// handler or a callback is credited to, and what a registration from it
+/// ranks as.
 ///
-/// - Stack empty → [`Owner::User`] (top-level `init.scm`)
-/// - `stack.last()` → [`Owner::Plugin`] (inside a `(load-plugin! …)` / plugin body)
-/// - [`Owner::Core`] is the fallback returned by `(command-plugin …)` for
-///   built-in Rust commands that were never registered through Steel.
+/// - [`Owner::Core`]: HUME's own runtime files, and built-in Rust commands
+///   (`(command-plugin …)`'s answer for a command no script defined).
+/// - [`Owner::User`]: `init.scm`, and the procs it defines.
+/// - [`Owner::Plugin`]: a plugin's entry file, and the procs it defines.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Owner {
     Core,
@@ -259,53 +262,143 @@ pub(crate) enum Owner {
     Plugin(EntryId),
 }
 
-/// The `CURRENT_PLUGIN` attribution stack.
-///
-/// Every Steel mutation is attributed to `stack.last()`: `Some(id)` means a
-/// plugin body is executing; `None` means top-level `init.scm` (→ [`Owner::User`]).
-/// Core state is never mutated through the scripting layer. [`Owner::Core`] is
-/// only ever a *prior*, never the active attribution.
-#[derive(Debug, Default, Clone)]
-pub(crate) struct PluginStack {
-    stack: Vec<EntryId>,
+/// Who a piece of Steel code is credited to: `owner`, its author, and
+/// `behalf`, whoever it runs for, which a registration it makes ranks as.
+/// They differ for a command the user runs by hand, which runs on the
+/// user's behalf whoever wrote it, and for what that command schedules.
+#[derive(Debug, Clone)]
+pub(crate) struct Provenance {
+    pub(crate) owner: Rc<Owner>,
+    pub(crate) behalf: crate::ConfigOrigin,
 }
 
-impl PluginStack {
-    /// Push `id` onto the stack when entering a plugin body (via `begin_lazy_activation`).
-    pub(crate) fn push(&mut self, id: EntryId) {
-        self.stack.push(id);
-    }
-
-    /// Pop the top attribution when leaving a plugin body, returning the entry
-    /// whose body just ended, or `None` when no plugin body is executing.
-    pub(crate) fn pop(&mut self) -> Option<EntryId> {
-        self.stack.pop()
-    }
-
-    /// Returns `true` if no plugin is currently executing.
-    pub(crate) fn is_empty(&self) -> bool {
-        self.stack.is_empty()
-    }
-
-    /// Current nesting depth: number of plugin bodies on the call stack.
-    pub(crate) fn len(&self) -> usize {
-        self.stack.len()
-    }
-
-    /// The [`Owner`] to attribute to the next mutation.
-    pub(crate) fn current_owner(&self) -> Owner {
-        match self.stack.last() {
-            Some(id) => Owner::Plugin(id.clone()),
-            None => Owner::User,
+impl Provenance {
+    /// `owner`'s own code, run on its own behalf: a file it wrote, or
+    /// something it set up to run without anyone asking.
+    pub(crate) fn own(owner: Owner) -> Self {
+        let behalf = match owner {
+            Owner::Core => crate::ConfigOrigin::Bundled,
+            Owner::User => crate::ConfigOrigin::User,
+            Owner::Plugin(_) => crate::ConfigOrigin::Plugin,
+        };
+        Self {
+            owner: Rc::new(owner),
+            behalf,
         }
     }
 
-    /// The [`EntryId`] whose body is currently executing, if any.
-    ///
-    /// Valid during both eager (`load-plugin!`) and lazy (`declare-plugin!`,
-    /// activated later) bodies, since both push here for the duration of the eval.
-    pub(crate) fn current(&self) -> Option<&EntryId> {
-        self.stack.last()
+    /// The code of the command `owner` wrote, run because the user asked:
+    /// a key, a `:` command, or a replay of one.
+    pub(crate) fn invoked_by_user(owner: Rc<Owner>) -> Self {
+        Self {
+            owner,
+            behalf: crate::ConfigOrigin::User,
+        }
+    }
+}
+
+/// One running piece of attributed code, innermost last.
+#[derive(Debug)]
+enum Frame {
+    /// A plugin body, from `%begin-lazy-activation!` to
+    /// `%finish-lazy-activation!`. `owner` is `entry` as an
+    /// [`Owner::Plugin`], built once so reading it costs no allocation.
+    Body {
+        entry: Rc<EntryId>,
+        owner: Rc<Owner>,
+    },
+    /// A command `call!` applies inside the VM, running as its definer.
+    Call(Rc<Owner>),
+}
+
+/// The frames of attributed code currently running, persistent on
+/// `ScriptingHost` and empty between sessions. A session's own owner, the
+/// owner of whatever Rust started it, is `SteelCtx`'s and sits below every
+/// frame the session pushes.
+#[derive(Debug, Default)]
+pub(crate) struct AttributionStack {
+    frames: Vec<Frame>,
+}
+
+impl AttributionStack {
+    /// Enter `id`'s body (via `begin_lazy_activation`).
+    pub(crate) fn push_body(&mut self, id: EntryId) {
+        let owner = Rc::new(Owner::Plugin(id.clone()));
+        self.frames.push(Frame::Body {
+            entry: Rc::new(id),
+            owner,
+        });
+    }
+
+    /// Leave the innermost frame when it is a plugin body, returning the
+    /// entry whose body just ended; `None` when the innermost frame is not
+    /// a body.
+    pub(crate) fn pop_body(&mut self) -> Option<EntryId> {
+        let Some(Frame::Body { entry, .. }) = self
+            .frames
+            .pop_if(|frame| matches!(frame, Frame::Body { .. }))
+        else {
+            return None;
+        };
+        Some(Rc::unwrap_or_clone(entry))
+    }
+
+    /// Enter a command `call!` applies, run as `owner`, returning the depth
+    /// [`Self::drain_above`] restores.
+    pub(crate) fn enter_call(&mut self, owner: Rc<Owner>) -> usize {
+        let depth = self.frames.len();
+        self.frames.push(Frame::Call(owner));
+        depth
+    }
+
+    /// Leave every frame above `depth`, returning the plugin bodies among
+    /// them innermost first. For a session's end, which drops what its
+    /// Scheme never closed, and for leaving the `call!` frame
+    /// [`Self::enter_call`] returned `depth` for, with any frame inside it
+    /// a raise left open.
+    pub(crate) fn drain_above(&mut self, depth: usize) -> Vec<EntryId> {
+        self.frames
+            .drain(depth.min(self.frames.len())..)
+            .rev()
+            .filter_map(|frame| match frame {
+                Frame::Body { entry, .. } => Some(Rc::unwrap_or_clone(entry)),
+                Frame::Call(_) => None,
+            })
+            .collect()
+    }
+
+    /// Whether a plugin body is executing, at any depth.
+    pub(crate) fn in_body(&self) -> bool {
+        self.innermost_body().is_some()
+    }
+
+    /// The entry of the innermost plugin body executing, below any `call!`
+    /// frame inside it: the activation a registration made now belongs to.
+    pub(crate) fn innermost_body(&self) -> Option<&Rc<EntryId>> {
+        self.frames.iter().rev().find_map(|frame| match frame {
+            Frame::Body { entry, .. } => Some(entry),
+            Frame::Call(_) => None,
+        })
+    }
+
+    /// How many plugin bodies are executing, nested.
+    pub(crate) fn body_depth(&self) -> usize {
+        self.frames
+            .iter()
+            .filter(|frame| matches!(frame, Frame::Body { .. }))
+            .count()
+    }
+
+    /// Number of frames.
+    pub(crate) fn len(&self) -> usize {
+        self.frames.len()
+    }
+
+    /// The owner of the innermost frame, if any.
+    pub(crate) fn top_owner(&self) -> Option<&Rc<Owner>> {
+        self.frames.last().map(|frame| match frame {
+            Frame::Body { owner, .. } | Frame::Call(owner) => owner,
+        })
     }
 }
 

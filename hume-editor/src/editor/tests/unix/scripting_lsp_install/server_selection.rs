@@ -150,6 +150,32 @@ fn install_by_server_name_runs_the_same_pipeline() {
     assert_eq!(effective(&ed, "python"), ["ruff"]);
 }
 
+/// `:lsp-install` writes its default lists again on the user's behalf, and
+/// they still rank below the user's own list.
+#[test]
+fn an_install_command_keeps_the_users_list() {
+    let data_tmp = tempfile::tempdir().unwrap();
+    let version = seeded_version("ruff");
+    fabricate_server(data_tmp.path(), "ruff", &version, "ruff");
+    fabricate_server(data_tmp.path(), "ty", "0.0.1", "ty");
+    let mut ed = editor_from("-[x]>\n");
+    load_with_init(
+        &mut ed,
+        data_tmp.path(),
+        "(load-plugin! \"core:stdlib\")\n\
+         (load-plugin! \"core:lsp-install\") (%activate-plugin-inline! \"core:lsp-install\" #f)\n\
+         (set-language-servers! \"python\" '(\"ty\"))",
+    );
+
+    type_cmd(&mut ed, ":lsp-install ruff");
+
+    assert_eq!(
+        ed.state.status_msg.as_deref(),
+        Some(format!("LSP: ruff already installed (v{version}) — up to date").as_str())
+    );
+    assert_eq!(effective(&ed, "python"), ["ty"]);
+}
+
 #[test]
 fn install_rejects_a_name_that_is_neither_language_nor_server() {
     let data_tmp = tempfile::tempdir().unwrap();

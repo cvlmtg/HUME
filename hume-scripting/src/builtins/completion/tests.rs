@@ -45,7 +45,7 @@ fn register_full(
     register_completion_source(
         ctx,
         "src".into(),
-        SteelVal::FuncV(dummy_proc),
+        crate::Callback::for_test(SteelVal::FuncV(dummy_proc)),
         sym(target),
         sym(match_kind),
         SteelVal::IntV(priority),
@@ -165,22 +165,18 @@ fn register_rejects_an_unknown_target() {
 
 #[test]
 fn register_rejects_a_non_callable_proc() {
-    let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx_init();
-    let err = register_completion_source(
-        &mut ctx,
-        "src".into(),
-        SteelVal::StringV("not a proc".into()),
-        sym("buffer"),
-        sym("fuzzy"),
-        SteelVal::IntV(0),
-        SteelVal::BoolV(false),
-        SteelVal::StringV("".into()),
-        SteelVal::BoolV(false),
-    )
-    .expect_err("a string is not callable")
-    .to_string();
-    assert!(err.contains("callable"), "got: {err}");
+    let mut host = crate::ScriptingHost::new(&hume_platform::dirs::Dirs::none());
+    let mut store = crate::null_host::CommandStoreHost::default();
+    let err = host
+        .eval_source(
+            r#"(register-completion-source! "src" "not a proc" #:target 'buffer)"#,
+            &mut store,
+        )
+        .expect_err("a string is not callable");
+    assert!(
+        err.contains("register-completion-source!: expected a callable"),
+        "got: {err}"
+    );
 }
 
 // ── set-completion-triggers! ─────────────────────────────────────────

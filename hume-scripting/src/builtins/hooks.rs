@@ -91,9 +91,9 @@ pub(crate) fn held_done(ctx: &mut SteelCtx, hold: SteelVal) -> SteelResult {
 }
 
 /// The one registration path behind `register-hook!` and
-/// `register-lsp-notification-hook!`: attributes the entry to the plugin
-/// whose body is running, so rollback removes it with that plugin. A
-/// handler of a held event is checked for whether it takes `done`.
+/// `register-lsp-notification-hook!`: the handler runs as the code that
+/// registered it, and leaves with the plugin body running then if that body
+/// fails. A handler of a held event is checked for whether it takes `done`.
 pub(crate) fn register_entry(
     ctx: &mut SteelCtx,
     name: &str,
@@ -104,10 +104,11 @@ pub(crate) fn register_entry(
         Some(event_args) => held_handler_takes_done(name, event_args, proc.value())?,
         None => false,
     };
-    let owner = ctx.plugin_stack.current().cloned();
+    let handler = crate::Callback::capture(ctx, proc);
+    let activation = ctx.activation();
     ctx.registries
         .hooks
-        .register(name, owner, proc, keys, takes_done);
+        .register(name, handler, activation, keys, takes_done);
     Ok(())
 }
 

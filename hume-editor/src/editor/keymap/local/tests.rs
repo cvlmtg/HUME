@@ -1,4 +1,5 @@
 use super::*;
+use hume_scripting::ConfigOrigin;
 use termina::event::{KeyCode, KeyEvent, Modifiers};
 
 fn buffers() -> (BufferId, BufferId) {
@@ -8,7 +9,13 @@ fn buffers() -> (BufferId, BufferId) {
 
 fn global_with(mode: BindMode, keys: &[KeyEvent], command: &'static str) -> Keymap {
     let mut global = Keymap::empty();
-    global.bind_user_with_extend(mode, keys, Cow::Borrowed(command), false);
+    global.bind(
+        mode,
+        keys,
+        Cow::Borrowed(command),
+        false,
+        ConfigOrigin::User,
+    );
     global
 }
 
@@ -19,7 +26,14 @@ fn bind(
     keys: &[KeyEvent],
     command: &'static str,
 ) {
-    local.bind(name.into(), mode, keys, Cow::Borrowed(command), false);
+    local.bind(
+        name.into(),
+        mode,
+        keys,
+        Cow::Borrowed(command),
+        false,
+        ConfigOrigin::User,
+    );
 }
 
 /// `LocalKeymaps` with one binding in the keymap "k", attached to `buffer`.
@@ -205,8 +219,39 @@ fn detaching_a_keymap_that_is_not_attached_is_fine() {
 fn unbinding_never_creates_a_keymap() {
     let (buf, _) = buffers();
     let mut local = LocalKeymaps::default();
-    local.unbind("k", BindMode::Normal, &[key!('z')]);
+    local.unbind("k", BindMode::Normal, &[key!('z')], ConfigOrigin::User);
     assert_eq!(local.attach(buf, "k"), Err(UnknownKeymap));
+}
+
+#[test]
+fn a_plugins_bind_into_a_named_keymap_stays_below_the_users() {
+    let (buf, _) = buffers();
+    let global = Keymap::empty();
+    let mut local = attached_with(buf, BindMode::Normal, &[key!('z')], "user-z");
+    local.bind(
+        "k".into(),
+        BindMode::Normal,
+        &[key!('z')],
+        Cow::Borrowed("plugin-z"),
+        false,
+        ConfigOrigin::Plugin,
+    );
+    assert_eq!(
+        resolved(&local, &global, buf, BindMode::Normal, &[key!('z')]),
+        "user-z"
+    );
+}
+
+#[test]
+fn unbinding_in_a_named_keymap_lets_the_global_binding_apply() {
+    let (buf, _) = buffers();
+    let global = global_with(BindMode::Normal, &[key!('z')], "global-z");
+    let mut local = attached_with(buf, BindMode::Normal, &[key!('z')], "local-z");
+    local.unbind("k", BindMode::Normal, &[key!('z')], ConfigOrigin::User);
+    assert_eq!(
+        resolved(&local, &global, buf, BindMode::Normal, &[key!('z')]),
+        "global-z"
+    );
 }
 
 #[test]

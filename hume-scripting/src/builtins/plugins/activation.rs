@@ -73,7 +73,7 @@ fn entry_id_from_args(plugin: &str, entry: SteelVal) -> Result<EntryId, SteelErr
 ///
 /// Called from the BOOTSTRAP `%activate-plugin-inline!` helper immediately before
 /// `(hm.eval-string require-string)`.  If the plugin is `Declared`, transitions
-/// to `Loading`, pushes `plugin_stack`, and returns the `(require "<abs>")` string.
+/// to `Loading`, pushes its body onto `attribution`, and returns the `(require "<abs>")` string.
 /// Returns `#f` for the cycle/idempotency guard (Loading/Loaded/Failed/absent) so
 /// `%activate-plugin-inline!` becomes a no-op without error.
 pub(crate) fn begin_lazy_activation(
@@ -94,7 +94,7 @@ pub(crate) fn begin_lazy_activation(
         .permit_plugin_activation(&id)
         .map_err(generic_err)?;
 
-    if ctx.plugin_stack.len() >= MAX_ACTIVATION_DEPTH {
+    if ctx.attribution.body_depth() >= MAX_ACTIVATION_DEPTH {
         fail_plugin_activation(ctx, &id);
         steel::stop!(Generic =>
             "activation depth limit ({}) exceeded \
@@ -110,7 +110,7 @@ pub(crate) fn begin_lazy_activation(
         .lazy_registry
         .plugins
         .insert(id.clone(), PluginState::Loading);
-    ctx.plugin_stack.push(id);
+    ctx.attribution.push_body(id);
     ctx.mark_effects();
 
     Ok(SteelVal::StringV(require_program.into()))
@@ -119,18 +119,19 @@ pub(crate) fn begin_lazy_activation(
 /// `(%finish-lazy-activation! error)`: called by `%activate-plugin-inline!`
 /// after the plugin body's `eval-string`. `error` is `#f` on success or the
 /// caught exception value. Pops the entry `%begin-lazy-activation!` pushed
-/// onto `plugin_stack` and moves it to `Loaded` or `Failed`. Raises when no
+/// onto `attribution` and moves it to `Loaded` or `Failed`. Raises when no
 /// activation is in progress.
 ///
 /// A failure is recorded in `ctx.failed_activations` rather than returned, so
 /// a failing plugin never aborts the enclosing eval; `run_steel_session`
 /// reports it when the session ends.
 ///
-/// On failure the body's footprint is rolled back: its commands leave the
-/// `CommandRegistry` by owner; its hooks are removed by owner; and
-/// `ctx.pop_effect_marks` drops its queued effects (key binds, LSP servers,
-/// languages), except those already committed by a nested activation.
-/// Hooks are removed by owner identity instead of queued as effects because
+/// On failure the body's footprint is rolled back: the commands and hooks
+/// registered while it ran (whoever wrote the code registering them) leave
+/// their registries; and `ctx.pop_effect_marks` drops its queued effects
+/// (key binds, LSP servers, languages), except those already committed by a
+/// nested activation. Hooks are removed by the body they were registered
+/// in instead of queued as effects because
 /// `register-hook!` must mutate the registry immediately: during startup
 /// `Editor::init_scripting` still holds the host in a local, so a queued hook
 /// effect would be dropped.
@@ -142,7 +143,7 @@ pub(crate) fn finish_lazy_activation(ctx: &mut SteelCtx, error: SteelVal) -> Ste
     // queued effects and leave the entry `Loading`. An `error` that decodes
     // as neither `#f` nor a caught error value becomes the failure reason,
     // same shape as a body's own raised error.
-    let Some(id) = ctx.plugin_stack.pop() else {
+    let Some(id) = ctx.attribution.pop_body() else {
         steel::stop!(Generic => "no plugin activation in progress");
     };
     let error = optional_steel_error_arg(error, "%finish-lazy-activation!").unwrap_or_else(Some);
@@ -169,24 +170,28 @@ pub(crate) fn finish_lazy_activation(ctx: &mut SteelCtx, error: SteelVal) -> Ste
 /// and hooks it registered are removed.
 fn fail_activation_body(ctx: &mut SteelCtx, id: EntryId, err: SteelErr) {
     fail_plugin_activation(ctx, &id);
-    ctx.host.commands().unregister_commands_defined_by(&id);
-    ctx.registries.hooks.remove_owned_by(&id);
+    ctx.host.commands().unregister_commands_registered_in(&id);
+    ctx.registries.hooks.remove_registered_in(&id);
     ctx.failed_activations.push((id, err));
+}
+
+/// Fails `bodies`, innermost first, with `reason`: the state a caught error
+/// in each leaves through `%finish-lazy-activation!`.
+pub(crate) fn fail_open_bodies(ctx: &mut SteelCtx, bodies: Vec<EntryId>, reason: &SteelErr) {
+    for id in bodies {
+        ctx.pop_effect_marks(false);
+        fail_activation_body(ctx, id, reason.clone());
+    }
 }
 
 /// Fails every activation and manifest load still open above `depth` when a
 /// session ends, innermost first, with `reason`: the state a caught error
 /// leaves through `%finish-lazy-activation!`/`%finish-manifest-load!`. Their
-/// handlers are Scheme, which a session stopped by its budget never runs.
+/// handlers are Scheme, which a session stopped by its budget never runs;
+/// the same holds for a `call!` frame's restore, which is dropped here too.
 pub(crate) fn abandon_open_activations(ctx: &mut SteelCtx, depth: usize, reason: &SteelErr) {
-    while ctx.plugin_stack.len() > depth {
-        let id = ctx
-            .plugin_stack
-            .pop()
-            .expect("the stack is deeper than depth");
-        ctx.pop_effect_marks(false);
-        fail_activation_body(ctx, id, reason.clone());
-    }
+    let bodies = ctx.attribution.drain_above(depth);
+    fail_open_bodies(ctx, bodies, reason);
     if let Some(id) = ctx.manifest_resolving.take() {
         ctx.pop_effect_marks(false);
         if let Err(e) = fail_manifest_load(ctx, id, reason.clone()) {

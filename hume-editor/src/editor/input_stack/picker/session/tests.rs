@@ -8,12 +8,16 @@ fn items(displays: &[&str]) -> Vec<PickerItem> {
     displays.iter().map(|d| item(d)).collect()
 }
 
-fn dummy_on_select() -> Rooted {
-    Rooted::new(SteelVal::BoolV(false))
+fn dummy_on_select() -> SteelVal {
+    SteelVal::BoolV(false)
 }
 
 fn open() -> PickerSession {
-    PickerSession::new(dummy_on_select(), PickerOpts::default(), Vec::new())
+    PickerSession::new(
+        hume_scripting::Callback::for_test(dummy_on_select()),
+        PickerOpts::default(),
+        Vec::new(),
+    )
 }
 
 fn open_pending() -> PickerSession {
@@ -22,7 +26,7 @@ fn open_pending() -> PickerSession {
 
 fn open_pending_with(items: Vec<PickerItem>) -> PickerSession {
     PickerSession::new(
-        dummy_on_select(),
+        hume_scripting::Callback::for_test(dummy_on_select()),
         PickerOpts {
             pending: true,
             ..Default::default()
@@ -33,11 +37,11 @@ fn open_pending_with(items: Vec<PickerItem>) -> PickerSession {
 
 fn open_live() -> PickerSession {
     PickerSession::new_live(
-        dummy_on_select(),
+        hume_scripting::Callback::for_test(dummy_on_select()),
         LivePickerOpts {
             prompt: String::new(),
             query: String::new(),
-            on_query_change: dummy_on_select(),
+            on_query_change: hume_scripting::Callback::for_test(dummy_on_select()),
             truncate: TruncateEnd::Head,
             actions: Vec::new(),
         },
@@ -71,7 +75,7 @@ fn new_session_is_empty() {
 #[test]
 fn prompt_is_stored_verbatim() {
     let s = PickerSession::new(
-        dummy_on_select(),
+        hume_scripting::Callback::for_test(dummy_on_select()),
         PickerOpts {
             prompt: "files: ".to_string(),
             ..Default::default()
@@ -169,7 +173,7 @@ fn set_query_filters_non_matches() {
 #[test]
 fn query_prefill_is_visible_and_applied_at_construction() {
     let mut s = PickerSession::new(
-        dummy_on_select(),
+        hume_scripting::Callback::for_test(dummy_on_select()),
         PickerOpts {
             query: "f".to_string(),
             ..Default::default()

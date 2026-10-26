@@ -29,7 +29,7 @@ fn spawn_async(ed: &mut Editor, cmd: &str, args: Vec<String>, callback: SteelVal
         cmd,
         args,
         cwd,
-        hume_scripting::Rooted::new(callback),
+        hume_scripting::Callback::for_test(callback),
     )
 }
 
@@ -158,7 +158,7 @@ fn scan_programs(ed: &mut Editor, prefix: &str) -> JobHandle {
         .scan_programs(
             prefix.to_owned(),
             Vec::new(),
-            hume_scripting::Rooted::new(SteelVal::BoolV(false)),
+            hume_scripting::Callback::for_test(SteelVal::BoolV(false)),
         )
         .expect("scan started")
 }

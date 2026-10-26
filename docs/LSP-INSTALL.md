@@ -328,11 +328,13 @@ A `registrations/` record omits each default field: `command` when it equals the
   loaded. A trigger set keyed only on `#:events '(on-lsp-attach)` can never activate, since
   nothing is registered yet for that event to fire on; the shipped manifest uses a language
   trigger instead.
-- **Last-wins registration.** `register-lsp-server!` uses *replace* semantics per name,
-  matching `define-language!`. `init.scm` reads naturally: `load-plugin!` → scan
-  auto-registers → a later user `register-lsp-server!` under the same name overrides. The
-  scan skips a name that is already registered (`lsp-server-registered?`), which is how a
-  user registration survives a rescan. A user registration under a different name serves
+- **Ranked registration.** `register-lsp-server!` uses *replace* semantics per name within
+  one rank, and a registration made on the user's behalf beats a plugin's own in either
+  order (`docs/LSP.md`, "Registration identity"). `init.scm` reads naturally: `load-plugin!`
+  → scan auto-registers → a later user `register-lsp-server!` under the same name overrides.
+  The scan skips a name that is already registered (`lsp-server-registered?`), so a user
+  registration made before the scan stays too. `:lsp-install` runs on the user's behalf, so
+  its registration replaces the user's own for the session. A user registration under a different name serves
   a language only when that language's list names it (`set-language-servers!`). At init time replacement never races
   a running client — nothing has spawned yet. `register-lsp-server!` also works from
   command context (queued, flushed end-of-eval) — not init-only — which is what
@@ -414,9 +416,10 @@ lists) stays in the plugin — Rust never reads them.
   installs any seeded server by name. The scan registers each installed server once and
   sets that list, filters included, as the default list of every catalog language
   (`set-default-language-servers!`), whether or not any server in it is installed. An
-  entry naming a server that is not registered serves nothing. A user's own
-  `set-language-servers!` wins over that default, and may name any registered server for
-  any language. The expected setup is one plugin writing defaults plus the user's
+  entry naming a server that is not registered serves nothing. A default applies only
+  while no `set-language-servers!` list is set, even when `:lsp-install` writes it on the
+  user's behalf, so a user's own `set-language-servers!` wins over it, and may name any
+  registered server for any language. The expected setup is one plugin writing defaults plus the user's
   overrides in `init.scm`; where several plugins write a language's default, the last
   write wins.
 - **One server, many languages** is fully supported and cheap: one registration of
@@ -438,7 +441,7 @@ Marshalling gotcha: the minibuffer passes the integer `1` to an arity-1 Steel co
 invoked with no argument — the `lsp-install` no-arg branch must test "argument is a
 string", not absence.
 
-**Primitives the plugin relies on**: last-wins `register-lsp-server!` semantics plus a
+**Primitives the plugin relies on**: ranked, last-wins-within-a-rank `register-lsp-server!` semantics plus a
 runtime registration path (registrations are queued and flushed once per eval, not just at
 init); unregister path + client shutdown (for `:lsp-uninstall` and
 reinstall-while-running; by registration name, one call per server); attach already-open

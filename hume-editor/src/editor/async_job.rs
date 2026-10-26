@@ -8,8 +8,8 @@ use std::sync::Arc;
 
 use hume_platform::process::job::SpawnedJob;
 use hume_platform::snapshots::Snapshots;
+use hume_scripting::SteelCall;
 use hume_scripting::host::{JobHandle, async_callback_args, names_callback_args};
-use hume_scripting::{Rooted, SteelCall};
 
 use super::Editor;
 
@@ -22,7 +22,10 @@ use super::Editor;
 /// documents for its own callback map.
 pub(in crate::editor) enum PendingJob {
     /// In-flight work plus the Steel callback it reports to.
-    Live { work: AsyncWork, callback: Rooted },
+    Live {
+        work: AsyncWork,
+        callback: hume_scripting::Callback,
+    },
     /// Work whose last callback is queued and has not run yet. The entry
     /// stays so `cancel-async!` can still drop that callback.
     Ended,

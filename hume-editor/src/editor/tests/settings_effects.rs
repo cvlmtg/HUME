@@ -322,6 +322,35 @@ fn typed_set_theme_failure_does_not_persist() {
     );
 }
 
+/// A failed theme load puts back the origin of the theme it replaced along
+/// with its name, so a user's failed `:theme` leaves a plugin free to set
+/// one: the plugin's write is attempted, and fails to load in turn.
+#[test]
+fn a_failed_theme_load_restores_the_previous_origin() {
+    use crate::editor::settings::{THEME_KEY, ops};
+    use hume_scripting::ConfigOrigin;
+    use hume_scripting::host::OptionInput;
+
+    let mut ed = editor_from("-[h]>ello\n");
+    let set = |ed: &mut Editor, name: &str, by| {
+        ops::apply_global(
+            &mut ed.state,
+            &mut ed.view,
+            THEME_KEY,
+            &OptionInput::Text(name.to_string()),
+            by,
+        )
+    };
+    assert!(set(&mut ed, "no_such_theme_xyz", ConfigOrigin::User).is_err());
+
+    let plugins = set(&mut ed, "no_such_theme_abc", ConfigOrigin::Plugin);
+
+    assert!(
+        plugins.is_err(),
+        "the plugin's theme must be tried, not shadowed: {plugins:?}"
+    );
+}
+
 // ── :theme delegates to the chokepoint ──────────────────────────────────────
 
 #[test]
@@ -631,6 +660,7 @@ fn host_set_buffer_option_invalid_bid_errors() {
         "indent-width",
         hume_scripting::host::OptionInput::Text("8".to_string()),
         BufferId::default(),
+        hume_scripting::ConfigOrigin::User,
     );
     assert!(result.is_err(), "a stale bid must be rejected, not panic");
     let msg = result.unwrap_err();

@@ -25,7 +25,7 @@ use crate::host::{
     BufferHost, ClaimRefused, CommandHost, CursorHost, DiscardUnsaved, DisplayPathForm, EditorHost,
     EventHost, HostToken, LanguageHost, LocationPlace, LspHost, OptionInput, OptionValue,
     OutputHost, PositionParams, RangeParams, RangesParams, SelectionInfo, SettingsHost,
-    TrackedHold,
+    StoredLanguage, TrackedHold,
 };
 use crate::types::{GrammarReg, PaneHandle, SteelCmdDef, SteelTypedCmdDef};
 
@@ -124,8 +124,8 @@ impl BufferHost for NullHost {
     fn buffer_is_dirty(&self, _id: BufferId) -> Option<bool> {
         None
     }
-    fn buffer_stored_language(&self, _id: BufferId) -> Option<String> {
-        None
+    fn buffer_stored_language(&self, _id: BufferId) -> StoredLanguage {
+        StoredLanguage::default()
     }
     fn cwd(&self) -> AbsolutePath {
         AbsolutePath::current_dir().expect("the test process has a working directory")
@@ -191,7 +191,12 @@ impl BufferHost for NullHost {
 }
 
 impl SettingsHost for NullHost {
-    fn set_global_option(&mut self, _key: &str, _value: OptionInput) -> Result<(), String> {
+    fn set_global_option(
+        &mut self,
+        _key: &str,
+        _value: OptionInput,
+        _origin: crate::ConfigOrigin,
+    ) -> Result<(), String> {
         Err("NullHost: set_global_option not available".into())
     }
     fn set_buffer_option(
@@ -199,6 +204,7 @@ impl SettingsHost for NullHost {
         _key: &str,
         _value: OptionInput,
         _bid: BufferId,
+        _origin: crate::ConfigOrigin,
     ) -> Result<(), String> {
         Err("NullHost: set_buffer_option not available".into())
     }
@@ -214,7 +220,7 @@ impl SettingsHost for NullHost {
 }
 
 impl LanguageHost for NullHost {
-    fn attach_grammar(&mut self, _reg: &GrammarReg) -> Result<(), String> {
+    fn attach_grammar(&mut self, _reg: &GrammarReg) -> Result<bool, String> {
         Err("NullHost: attach_grammar not available".into())
     }
     fn has_grammar(&self, _language: &str) -> bool {
@@ -253,7 +259,7 @@ impl CommandHost for NullHost {
     fn defined_command(&self, _name: &str) -> Option<CommandProc> {
         None
     }
-    fn unregister_commands_defined_by(&mut self, _plugin: &EntryId) {}
+    fn unregister_commands_registered_in(&mut self, _activation: &EntryId) {}
     fn register_lazy_command(&mut self, _name: &str, _plugin: &EntryId) -> Result<(), String> {
         Ok(())
     }
@@ -480,8 +486,9 @@ impl CommandHost for CommandStoreHost {
     fn defined_command(&self, name: &str) -> Option<CommandProc> {
         self.defined.get(fold(name).as_ref()).cloned()
     }
-    fn unregister_commands_defined_by(&mut self, plugin: &EntryId) {
-        self.defined.retain(|_, proc| !proc.defined_by(plugin));
+    fn unregister_commands_registered_in(&mut self, activation: &EntryId) {
+        self.defined
+            .retain(|_, proc| !proc.registered_in(activation));
     }
     fn register_lazy_command(&mut self, name: &str, plugin: &EntryId) -> Result<(), String> {
         self.register_lazy(name, plugin)
@@ -514,7 +521,7 @@ impl CommandHost for CommandStoreHost {
 #[derive(Default)]
 pub(crate) struct EmptyLspHost {
     inner: NullHost,
-    supersede_keys: u64,
+    supersede_keys: crate::host::SupersedeKeys,
 }
 
 impl EditorHost for EmptyLspHost {
@@ -572,12 +579,11 @@ impl LspHost for EmptyLspHost {
     fn lsp_server_status(&self) -> Vec<crate::types::LspServerStatusEntry> {
         Vec::new()
     }
-    fn lsp_server_registered(&self, _name: &crate::types::ServerName) -> bool {
-        false
+    fn lsp_server_origin(&self, _name: &crate::types::ServerName) -> Option<crate::ConfigOrigin> {
+        None
     }
     fn new_supersede_key(&mut self) -> crate::host::SupersedeKey {
-        self.supersede_keys += 1;
-        crate::host::SupersedeKey::from_raw(self.supersede_keys)
+        self.supersede_keys.mint()
     }
     fn lsp_language_servers(&self, _language: &str) -> Vec<crate::types::ListEntry> {
         Vec::new()

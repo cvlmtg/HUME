@@ -263,7 +263,7 @@ Available hooks and their lambda signatures. Every `pane` argument below is the 
 
 For lazy plugins, declare the events that should trigger activation via `#:events` in your `manifest.scm` instead (see [How plugins are loaded](plugins.md#how-plugins-are-loaded)). LSP-related hooks like `on-lsp-attach` work fine with `register-hook!`, but can't be used as an `#:events` activation entry: a plugin gated only on `on-lsp-attach` never activates, since nothing attaches to a server until the plugin has already loaded and registered it. The same caveat applies to `on-text-changed`: gating a lazy plugin on it activates on the first edit in *any* buffer, not a buffer the plugin specifically cares about.
 
-`set-option!` works from a hook or command handler too, not just at the top level of your plugin. It changes the *global* default, so use it there when that's really what you want.
+`set-option!` works from a hook or command handler too, not just at the top level of your plugin. It changes the *global* default, so use it there when that's really what you want. A value the user set wins over your plugin's, whichever comes first, so a plugin's `set-option!` is a default the user can always override. `set-buffer-option!` ranks the same way against the buffer's own overrides; a buffer override from your plugin still beats the user's global value.
 
 For a per-buffer override, `(set-buffer-option! pane "option" value)` sets an option just on `pane`'s buffer, which also works from hook and command bodies (see [Buffer options](settings.md#buffer-options) for the list of settable options). Pass the value the hook itself hands you rather than assuming the buffer you're editing: a hook can fire for a buffer other than the one you're currently focused on. Setting `language` changes the buffer's language; `""` clears it. To read a specific buffer's options back the same way, see [Reading options from Scheme](#reading-options-from-scheme) below.
 
@@ -333,7 +333,7 @@ The user's `#:config` belongs to the plugin as a whole, and `(plugin-config)` re
 
 ## Configuring a plugin
 
-A plugin can read the `#:config` value its user passed to `load-plugin!` with `(plugin-config)`. It returns whatever was passed (typically a hash) or an empty hash if nothing was passed. Rather than picking it apart with raw `hash-contains?`/`hash-ref` and hand-rolling a type check, go through `core:stdlib`'s config helpers, which default a missing key and raise an error naming your plugin and the offending key if the resolved value is the wrong type:
+A plugin can read the `#:config` value its user passed to `load-plugin!` with `(plugin-config)`, in its body or later, from a command, hook or callback it defined. It returns whatever was passed (typically a hash) or an empty hash if nothing was passed. Rather than picking it apart with raw `hash-contains?`/`hash-ref` and hand-rolling a type check, go through `core:stdlib`'s config helpers, which default a missing key and raise an error naming your plugin and the offending key if the resolved value is the wrong type:
 
 ```scheme
 (unless (call! "stdlib/config-boolean" "my-plugin" (plugin-config) "disable-binding" #f)

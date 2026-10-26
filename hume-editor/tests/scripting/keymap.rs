@@ -64,13 +64,13 @@ fn unbind_key_queues_unbind_effect() {
         .unwrap();
 
     // Whether 'h' was bound is `Keymap`'s business, not the builtin's;
-    // `remove_sequence_nonexistent_is_noop` (editor/keymap/mod.rs) owns that.
+    // `unbind_sequence_single_key_hides_it` (editor/keymap/tests.rs) owns that.
     use termina::event::{KeyCode, KeyEvent, Modifiers};
     let h_key = KeyEvent::new(KeyCode::Char('h'), Modifiers::NONE);
     assert!(
         matches!(
             effects.as_slice(),
-            [Effect::UnbindKey { mode: BindMode::Normal, keys, keymap: hume_scripting::host::KeymapTarget::Global }] if keys.as_slice() == [h_key]
+            [Effect::UnbindKey { mode: BindMode::Normal, keys, keymap: hume_scripting::host::KeymapTarget::Global, .. }] if keys.as_slice() == [h_key]
         ),
         "expected one Effect::UnbindKey for 'h'; got: {effects:?}"
     );

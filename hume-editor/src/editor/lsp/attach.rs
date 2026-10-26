@@ -13,12 +13,14 @@ use rustc_hash::FxHashSet;
 
 use hume_engine::pipeline::{BufferId, EngineView};
 use hume_lsp::backend::ServerId;
-use hume_scripting::{FeatureFilter, LspFeature, LspServerTarget, PendingLspServerOp, ServerName};
+use hume_scripting::{
+    FeatureFilter, ListTier, LspFeature, LspServerTarget, PendingLspServerOp, ServerName,
+};
 
 use super::LspState;
 use super::ReconcilePhase;
 use super::document::{Attachment, OpenedAs};
-use super::registry::{LspServerConfig, RootCache};
+use super::registry::{LspServerConfig, RegistryWrite, RootCache};
 use crate::editor::buffer::{EditorView, ViewLabel};
 use crate::editor::event::EditorEvent;
 use crate::editor::{Editor, EditorState, Severity};
@@ -509,8 +511,7 @@ impl Editor {
         match op {
             PendingLspServerOp::Register(reg) => {
                 let name = reg.name.clone();
-                self.state.lsp.forget_stopped(&name);
-                let replaced = self.state.lsp.registry.register(
+                let write = self.state.lsp.registry.register(
                     reg.name,
                     LspServerConfig {
                         command: reg.command,
@@ -519,26 +520,56 @@ impl Editor {
                         settings: reg.settings,
                         env: reg.env,
                     },
+                    reg.origin,
                 );
-                if replaced {
-                    self.report(
+                match write {
+                    RegistryWrite::Shadowed => {
+                        self.state.report_shadowed(
+                            "register-lsp-server!",
+                            format_args!("'{name}' registration"),
+                        );
+                        return;
+                    }
+                    RegistryWrite::Replaced => self.report(
                         Severity::Trace,
                         format!("register-lsp-server!: replaced registration for '{name}'"),
-                    );
+                    ),
+                    RegistryWrite::Unregistered => {}
                 }
+                self.state.lsp.forget_stopped(&name);
             }
-            PendingLspServerOp::Unregister { name } => {
+            PendingLspServerOp::Unregister { name, origin } => {
+                if self.state.lsp.registry.unregister(&name, origin) == RegistryWrite::Shadowed {
+                    self.state.report_shadowed(
+                        "unregister-lsp-server!",
+                        format_args!("'{name}' registration"),
+                    );
+                    return;
+                }
                 self.state
                     .lsp_stop_targets(&self.view, &LspServerTarget::Name(name.clone()));
-                self.state.lsp.registry.unregister(&name);
                 self.state.lsp.forget_stopped(&name);
             }
             PendingLspServerOp::SetLanguageServers {
                 language,
-                layer,
+                tier,
+                origin,
                 entries,
             } => {
-                self.state.lsp.registry.set_list(language, layer, entries);
+                let sets = entries.is_some();
+                let op = match tier {
+                    ListTier::Explicit => "set-language-servers!",
+                    ListTier::Default => "set-default-language-servers!",
+                };
+                let hidden =
+                    self.state
+                        .lsp
+                        .registry
+                        .set_list(language.clone(), tier, origin, entries);
+                if sets && hidden {
+                    self.state
+                        .report_shadowed(op, format_args!("'{language}' server list"));
+                }
             }
             PendingLspServerOp::Stop { target } => {
                 self.stop_servers(&target, ServerOp::Stop);

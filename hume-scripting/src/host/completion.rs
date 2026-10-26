@@ -3,7 +3,7 @@
 //! `Effect::RegisterCompletionSource` (see `crate::Effect`), so a failed
 //! plugin activation's registration is never applied.
 
-use crate::Rooted;
+use crate::Callback;
 
 /// How a source's items are matched against its token's typed text,
 /// decoded from `register-completion-source!`'s `#:match` symbol
@@ -32,7 +32,7 @@ pub enum CompletionSourceTarget {
 #[derive(Debug)]
 pub struct PendingCompletionSource {
     pub name: String,
-    pub proc: Rooted,
+    pub proc: Callback,
     pub target: CompletionSourceTarget,
     pub match_kind: MatchKind,
     pub priority: i64,
@@ -50,7 +50,7 @@ pub struct PendingCompletionSource {
     /// `#:cancel`: called as `(cancel id)` when request `id` ends before
     /// its final answer landed, so the source can stop work nothing will
     /// read. Either target.
-    pub cancel: Option<Rooted>,
+    pub cancel: Option<Callback>,
 }
 
 /// What a `'minibuf` source's answer says about the word it completes.

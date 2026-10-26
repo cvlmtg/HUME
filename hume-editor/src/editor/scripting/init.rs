@@ -8,7 +8,7 @@ use hume_engine::pipeline::BufferId;
 use hume_scripting::Effect;
 
 use crate::cli::ConfigSource;
-use crate::editor::reload::ReloadSnapshot;
+use crate::editor::reload::{ExplicitLanguage, ReloadSnapshot};
 use crate::editor::{Editor, Severity, host_impl::EditorHostImpl};
 
 use super::ConfigPath;
@@ -81,10 +81,7 @@ impl Editor {
         // and shells.scm so init.scm can add or replace a shell dialect.
         // Then languages.scm ((define-language! …) identities) and
         // grammars.scm (registers already-compiled grammars; see its own
-        // header). languages.scm runs first so identity registration owns
-        // the one glob-set rebuild (registering a grammar would otherwise
-        // create a bare default identity per grammar, ahead of
-        // languages.scm's own).
+        // header).
         // Each is a silent no-op when the runtime dir or the file itself is
         // missing (optional layers); a file that exists but fails to
         // parse/eval is an error reported separately.
@@ -178,8 +175,8 @@ impl Editor {
         // Post-init lint: warn on #:languages activation entries whose language name
         // is not in the final LanguageRegistry.  Runs after the message flush above
         // so both languages.scm and init.scm's own define-language! calls are visible.
-        // Uses defined_id() (identity registered), not has_grammar() (grammar attached):
-        // an activation entry is valid for any known language identity even without a
+        // Uses defined_id() (identity or grammar registered), not has_grammar() (grammar
+        // attached): an activation entry is valid for any defined language even without a
         // grammar.  Not a hard error: inert but harmless, and language sets are
         // open/dynamic (a future define-language! + reload may make the name valid).
         for (lang, plugins) in &lang_activations {
@@ -203,15 +200,13 @@ impl Editor {
         // language again, which changes nothing).
         // A buffer with an explicit assertion, restored from `snapshot`
         // (this is a `:reload-config`) or made by a lazy plugin that the
-        // drain above or an earlier iteration activated, skips detection
-        // entirely: `set_buffer_language_impl` stamps `language_explicit`
-        // unconditionally, so a later detection pass would otherwise
-        // overwrite that assertion with whatever plain detection finds. Restoring the
+        // drain above or an earlier iteration activated, keeps it:
+        // detection leaves an asserted language as it is. Restoring the
         // snapshot *inside* this loop, rather than as a second
-        // detect-then-correct pass afterward, also avoids firing language
+        // detect-then-correct pass afterward, avoids firing language
         // hooks for the buffer's *detected* language before its real,
         // explicit one goes back.
-        let explicit_restore: rustc_hash::FxHashMap<BufferId, Option<String>> =
+        let explicit_restore: rustc_hash::FxHashMap<BufferId, ExplicitLanguage> =
             snapshot.take_explicit_languages().into_iter().collect();
         let open_bids: Vec<_> = self.state.buffers.iter().map(|(id, _)| id).collect();
         for bid in open_bids {
@@ -226,14 +221,16 @@ impl Editor {
             if self.state.buffers.try_get(bid).is_none() {
                 continue;
             }
-            if let Some(name) = explicit_restore.get(&bid) {
+            if let Some(ExplicitLanguage { name, by }) = explicit_restore.get(&bid) {
                 // Redundant with the `try_get` skip above in production (no
                 // Steel eval runs between the two), but `survives` also
                 // checks `bid` predates this reload; see its own doc.
                 if snapshot.survives(bid, &self.state.buffers) {
                     match name {
                         Some(name) => match self.state.config.languages.id_of(name) {
-                            Some(lang_id) => self.set_buffer_language_explicit(bid, Some(lang_id)),
+                            Some(lang_id) => {
+                                self.set_buffer_language_explicit(bid, Some(lang_id), *by)
+                            }
                             None => {
                                 self.report(
                                     Severity::Warning,
@@ -246,16 +243,10 @@ impl Editor {
                                 self.detect_and_set_language(bid);
                             }
                         },
-                        None => self.set_buffer_language_explicit(bid, None),
+                        None => self.set_buffer_language_explicit(bid, None, *by),
                     }
                     continue;
                 }
-            } else if self.state.buffers.get(bid).language_explicit {
-                // Asserted by a lazy plugin activated since the host was
-                // attached (`init.scm` itself cannot set a buffer option), so
-                // detection must not clobber it either; see
-                // `set_buffer_language_impl`'s doc.
-                continue;
             }
             self.detect_and_set_language(bid);
         }

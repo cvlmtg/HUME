@@ -18,7 +18,7 @@ fn confirm_does_not_open_over_a_live_picker_but_defers_to_next_buffer_enter() {
     rewrite_externally(&tmp, "hello, externally changed!\n");
 
     let session = crate::editor::input_stack::picker::PickerSession::new(
-        hume_scripting::Rooted::new(steel::rvals::SteelVal::BoolV(false)),
+        hume_scripting::Callback::for_test(steel::rvals::SteelVal::BoolV(false)),
         hume_scripting::host::PickerOpts::default(),
         Vec::new(),
     );
@@ -82,7 +82,7 @@ fn stale_confirm_retirement_does_not_take_a_prompt_above_it_with_it() {
         pane,
         "Name: ".to_string(),
         String::new(),
-        hume_scripting::Rooted::new(steel::rvals::SteelVal::Void),
+        hume_scripting::Callback::for_test(steel::rvals::SteelVal::Void),
     )
     .unwrap();
     assert!(ed.state.minibuf().is_some(), "sanity: prompt open above it");
@@ -170,7 +170,7 @@ fn picker_opens_over_a_live_confirm_and_the_confirm_resumes_once_it_closes() {
     assert!(ed.state.input.confirm().is_some(), "sanity: confirm open");
 
     let session = crate::editor::input_stack::picker::PickerSession::new(
-        hume_scripting::Rooted::new(steel::rvals::SteelVal::BoolV(false)),
+        hume_scripting::Callback::for_test(steel::rvals::SteelVal::BoolV(false)),
         hume_scripting::host::PickerOpts::default(),
         Vec::new(),
     );
@@ -234,7 +234,7 @@ fn picker_above_a_retired_confirm_survives_untouched() {
     );
 
     let session = crate::editor::input_stack::picker::PickerSession::new(
-        hume_scripting::Rooted::new(steel::rvals::SteelVal::StringV("cb".into())),
+        hume_scripting::Callback::for_test(steel::rvals::SteelVal::StringV("cb".into())),
         hume_scripting::host::PickerOpts::default(),
         Vec::new(),
     );

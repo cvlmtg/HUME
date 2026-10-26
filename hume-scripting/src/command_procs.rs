@@ -1,5 +1,6 @@
 //! The Steel procs behind `define-command!` and `define-typed-command!`,
-//! each carrying the owner it was defined under.
+//! each carrying the owner it was defined under and the plugin body it was
+//! defined in.
 //!
 //! The editor's `CommandRegistry` stores them on the entry that names the
 //! command, so a command's name, kind, proc and owner live in one place.
@@ -15,20 +16,33 @@ use steel::steel_vm::engine::Engine;
 use crate::Rooted;
 use crate::attribution::{EntryId, Owner};
 
-/// `owner` is shared so that cloning a proc on every dispatch copies no
-/// strings.
+/// `owner` and `activation` are shared so that cloning a proc on every
+/// dispatch copies no strings. A command has an author but no requester:
+/// whoever invokes it is. `activation` is the plugin body that was running
+/// when it was defined (`None`: none was), whose failure unregisters it.
 #[derive(Clone, Debug)]
 struct Defined {
     proc: Rooted,
     owner: Rc<Owner>,
+    activation: Option<Rc<EntryId>>,
 }
 
 impl Defined {
-    fn new(proc: Rooted, owner: Owner) -> Self {
+    fn new(proc: Rooted, owner: Rc<Owner>, activation: Option<Rc<EntryId>>) -> Self {
         Self {
             proc,
-            owner: Rc::new(owner),
+            owner,
+            activation,
         }
+    }
+
+    #[cfg(any(test, feature = "test-util"))]
+    fn placeholder_in(plugin: EntryId) -> Self {
+        Self::new(
+            Rooted::new(SteelVal::Void),
+            Rc::new(Owner::Plugin(plugin.clone())),
+            Some(Rc::new(plugin)),
+        )
     }
 }
 
@@ -37,21 +51,21 @@ impl Defined {
 pub struct MappableProc(Defined);
 
 impl MappableProc {
-    pub(crate) fn new(proc: Rooted, owner: Owner) -> Self {
-        Self(Defined::new(proc, owner))
+    pub(crate) fn new(proc: Rooted, owner: Rc<Owner>, activation: Option<Rc<EntryId>>) -> Self {
+        Self(Defined::new(proc, owner, activation))
     }
 
     /// A placeholder proc owned by the user, for a test that builds a
     /// registry entry it never calls.
     #[cfg(any(test, feature = "test-util"))]
     pub fn for_test() -> Self {
-        Self::new(Rooted::new(SteelVal::Void), Owner::User)
+        Self::new(Rooted::new(SteelVal::Void), Rc::new(Owner::User), None)
     }
 
-    /// A placeholder proc that `plugin`'s entry file defined.
+    /// A placeholder proc that `plugin`'s entry file defined in its body.
     #[cfg(any(test, feature = "test-util"))]
-    pub fn for_test_defined_by(plugin: EntryId) -> Self {
-        Self::new(Rooted::new(SteelVal::Void), Owner::Plugin(plugin))
+    pub fn for_test_registered_in(plugin: EntryId) -> Self {
+        Self(Defined::placeholder_in(plugin))
     }
 
     /// The proc as a value `%dispatch-command!` applies inside the VM.
@@ -68,21 +82,21 @@ impl MappableProc {
 pub struct TypedProc(Defined);
 
 impl TypedProc {
-    pub(crate) fn new(proc: Rooted, owner: Owner) -> Self {
-        Self(Defined::new(proc, owner))
+    pub(crate) fn new(proc: Rooted, owner: Rc<Owner>, activation: Option<Rc<EntryId>>) -> Self {
+        Self(Defined::new(proc, owner, activation))
     }
 
     /// A placeholder proc owned by the user, for a test that builds a
     /// registry entry it never calls.
     #[cfg(any(test, feature = "test-util"))]
     pub fn for_test() -> Self {
-        Self::new(Rooted::new(SteelVal::Void), Owner::User)
+        Self::new(Rooted::new(SteelVal::Void), Rc::new(Owner::User), None)
     }
 
-    /// A placeholder proc that `plugin`'s entry file defined.
+    /// A placeholder proc that `plugin`'s entry file defined in its body.
     #[cfg(any(test, feature = "test-util"))]
-    pub fn for_test_defined_by(plugin: EntryId) -> Self {
-        Self::new(Rooted::new(SteelVal::Void), Owner::Plugin(plugin))
+    pub fn for_test_registered_in(plugin: EntryId) -> Self {
+        Self(Defined::placeholder_in(plugin))
     }
 }
 
@@ -108,13 +122,13 @@ impl CommandProc {
         steel.call_function_with_args(self.defined().proc.value().clone(), args)
     }
 
-    pub(crate) fn owner(&self) -> &Owner {
+    pub(crate) fn owner(&self) -> &Rc<Owner> {
         &self.defined().owner
     }
 
-    /// Whether `plugin`'s entry file defined this command, the filter a
-    /// failed activation's rollback removes by.
-    pub fn defined_by(&self, plugin: &EntryId) -> bool {
-        matches!(&*self.defined().owner, Owner::Plugin(id) if id == plugin)
+    /// Whether this command was defined while `activation`'s body ran, the
+    /// filter a failed activation's rollback removes by.
+    pub fn registered_in(&self, activation: &EntryId) -> bool {
+        self.defined().activation.as_deref() == Some(activation)
     }
 }

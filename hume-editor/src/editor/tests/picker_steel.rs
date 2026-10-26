@@ -630,7 +630,7 @@ fn direct_host_impl_open_push_and_close_with_no_lsp_borrow() {
                 "one".to_string(),
                 hume_scripting::Rooted::new(SteelVal::StringV("p1".into())),
             )],
-            hume_scripting::Rooted::new(SteelVal::Void),
+            hume_scripting::Callback::for_test(SteelVal::Void),
             PickerOpts::default(),
         )
         .unwrap();
@@ -677,7 +677,7 @@ fn direct_host_impl_picker_close_with_a_stale_token_is_a_no_op() {
                 "one".to_string(),
                 hume_scripting::Rooted::new(SteelVal::StringV("p1".into())),
             )],
-            hume_scripting::Rooted::new(SteelVal::Void),
+            hume_scripting::Callback::for_test(SteelVal::Void),
             PickerOpts::default(),
         )
         .unwrap();

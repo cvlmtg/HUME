@@ -17,6 +17,10 @@
 - Steel's own print functions (`display`, `displayln`, `newline`, …) write as Steel defines them, over the editor's screen too: report with `log!`, and write a line inside an `#:inline-output` command with the new `print!`.
 - `run-inline-output!` raises outside an `#:inline-output` command, the top level of `init.scm` included: move the call into one, or use `run-capture!`.
 - `after!`, `spawn-async!` and `path-programs` return an opaque timer or job, not an integer: compare two with `equal?`. `cancel-timer!` raises for anything but a timer, and `cancel-async!` for anything but a job, so one kind can no longer cancel the other.
+- A plugin's own `define-language!`, `register-grammar!`, `register-lsp-server!` and `unregister-lsp-server!` no longer replace or remove what your `init.scm` set, even when the plugin loads later. A command you run (such as `:lsp-install`) still replaces it for the session. A second `define-language!` for one language in your `init.scm` is now ignored with a warning: merge the two.
+- A plugin's `set-language-servers!` no longer replaces the server list your `init.scm` set, even when the plugin loads later.
+- A plugin's `bind-key!` and `unbind-key!` no longer replace or remove a binding your `init.scm` made, even when the plugin loads later, as `core:lsp` does for `K` and `g d`. Keys you unbind stay unbound.
+- A plugin's `set-option!` and `set-buffer-option!` no longer replace a value you set, in your `init.scm`, a hook it registered or with `:set`, even when the plugin runs later. This includes a buffer's `language` and `line-ending`.
 - `#:supersede` takes a key from the new `lsp-supersede-key`, not a string, so a plugin can no longer cancel another plugin's request, or HUME's own, by reusing its key's name: make one key at your plugin's top level, `(define my-key (lsp-supersede-key))`, and pass it to each request that replaces the last.
 - An option's named value is a string both ways: `set-option!` and `set-buffer-option!` raise for a symbol, and `get-option`, `get-buffer-option` and the `on-option-change` hook give a string. Write `"soft"` for `'soft`, and compare a read value with a string. `wrap-mode` reads back as written: `"word"`, not `"word:0"`.
 
@@ -28,6 +32,7 @@
 - `init.scm` and plugins compile faster, so HUME starts sooner.
 - New `replace-dir!`, `try-lock-file!` and `unlock-file!`.
 - New `buffer-char-count` returns a buffer's length in characters.
+- `plugin-config` and `plugin-dir` work in a plugin's commands, hooks and callbacks, not only in its body.
 - `completion-emit!` takes `#:more #t` to answer a request in parts.
 - `register-completion-source!` takes `#:cancel`, so a source can stop the work it started for a request HUME no longer waits on.
 - `set-cwd!` works from `init.scm` too.
@@ -45,6 +50,7 @@
 - Built-in languages are detected by file patterns that name a directory, such as GitHub workflow files and `.vscode/*.json`, and by extensions with several parts, such as `.js.map`.
 - Signs, virtual lines, end-of-line text and line backgrounds no longer disappear when you delete the first character of their line, or its whole indent.
 - A completion item whose range a language server sent backwards no longer moves the completion menu.
+- `:e!`, and reloading a file that changed on disk, keep a language you set with `:set buffer language=` or `set-buffer-option!`.
 - `Tab` on the `|` prompt lists programs as it finds them, so HUME keeps responding on a slow `PATH`, like WSL's Windows directories.
 - `core:buffer-words` no longer stalls typing while it indexes a file with very long lines.
 - `core:buffer-words` no longer resets the highlighted item of an open completion menu while it indexes.

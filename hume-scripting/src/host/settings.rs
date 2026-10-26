@@ -91,19 +91,29 @@ pub trait SettingsHost {
     /// eval-mode gate (`open` kind): callable from `init.scm`, plugin load,
     /// plugin activation, or a plain command/hook body. The write already
     /// goes through the editor's validating chokepoint regardless of caller.
-    fn set_global_option(&mut self, key: &str, value: OptionInput) -> Result<(), String>;
+    /// It ranks as `origin`: a value a higher origin set stays, and the
+    /// write is reported at Trace instead.
+    fn set_global_option(
+        &mut self,
+        key: &str,
+        value: OptionInput,
+        origin: crate::ConfigOrigin,
+    ) -> Result<(), String>;
 
     /// `(set-buffer-option! pane key value)`: writes `key`'s per-buffer
     /// override on `pane`'s buffer. Command/hook context (`cmd` kind),
     /// unlike `set_global_option`. `Err` for a stale buffer, a global-only
     /// key, or a bad value. Kind-C: only the buffer matters, `pane`'s own
     /// pane (if any) is ignored: the builtin layer narrows the decoded
-    /// `PaneHandle` to a plain `bid` before this is called.
+    /// `PaneHandle` to a plain `bid` before this is called. It ranks as
+    /// `origin` against the buffer's override, as `set_global_option` does
+    /// against the global value.
     fn set_buffer_option(
         &mut self,
         key: &str,
         value: OptionInput,
         bid: BufferId,
+        origin: crate::ConfigOrigin,
     ) -> Result<(), String>;
 
     /// `(get-option key)`: `key`'s global value, ignoring any buffer

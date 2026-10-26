@@ -128,7 +128,7 @@ fn close_drawer_leaves_a_buried_prompt_open_and_unfired() {
         pane,
         "Name: ".to_string(),
         String::new(),
-        hume_scripting::Rooted::new(steel::rvals::SteelVal::Void),
+        hume_scripting::Callback::for_test(steel::rvals::SteelVal::Void),
     )
     .unwrap();
     assert!(ed.state.input.drawer().is_some(), "sanity: drawer open");
@@ -169,7 +169,7 @@ fn minibuf_does_not_resolve_a_prompt_buried_under_a_picker() {
     assert!(ed.state.minibuf().is_some(), "sanity: prompt owns the row");
 
     let session = crate::editor::input_stack::picker::PickerSession::new(
-        hume_scripting::Rooted::new(steel::rvals::SteelVal::BoolV(false)),
+        hume_scripting::Callback::for_test(steel::rvals::SteelVal::BoolV(false)),
         hume_scripting::host::PickerOpts::default(),
         Vec::new(),
     );

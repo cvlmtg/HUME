@@ -16,12 +16,12 @@ use crate::host::{
     DrawerItems, LivePickerOpts, NonEmpty, PickerFeedMode, PickerOpts, PickerSourceOpts, PopupKind,
 };
 use crate::types::PaneHandle;
-use crate::{Rooted, SteelCtx};
+use crate::{Callback, Rooted, SteelCtx};
 
 use super::SteelResult;
 use super::args::{
-    bool_arg, callable_arg, cwd_arg, list_items, list_to_i32s, list_to_strings,
-    optional_callable_arg, optional_string_arg, pair_fields, single_key_arg, string_arg,
+    bool_arg, callback_arg, cwd_arg, list_items, list_to_i32s, list_to_strings,
+    optional_callback_arg, optional_string_arg, pair_fields, single_key_arg, string_arg,
     symbol_enum_arg, token_arg, token_or_false, usize_arg,
 };
 use super::errors::{generic_err, require_cap};
@@ -77,7 +77,7 @@ pub(crate) fn show_menu(
     ctx: &mut SteelCtx,
     pane: PaneHandle,
     items: SteelVal,
-    on_select: Rooted,
+    on_select: Callback,
 ) -> SteelResult {
     let items = non_empty(list_to_strings(items, "items")?, "items")?;
     let token = require_cap(ctx.host.ui())?
@@ -108,11 +108,11 @@ pub(crate) fn show_drawer_list(
     ctx: &mut SteelCtx,
     pane: PaneHandle,
     items: SteelVal,
-    on_select: Rooted,
+    on_select: Callback,
     selected: SteelVal,
     render: SteelVal,
 ) -> SteelResult {
-    let items = drawer_items(items, render)?;
+    let items = drawer_items(ctx, items, render)?;
     let selected = usize_arg(selected, "selected")?;
     let token = require_cap(ctx.host.ui())?
         .show_drawer_list(pane, items, on_select, selected)
@@ -140,12 +140,12 @@ pub(crate) fn update_drawer_list(
     ctx: &mut SteelCtx,
     token: SteelVal,
     items: SteelVal,
-    on_select: Rooted,
+    on_select: Callback,
     selected: SteelVal,
     render: SteelVal,
 ) -> SteelResult {
     let token = token_arg(token, "token")?;
-    let items = drawer_items(items, render)?;
+    let items = drawer_items(ctx, items, render)?;
     let selected = usize_arg(selected, "selected")?;
     let applied = require_cap(ctx.host.ui())?.update_drawer_list(token, items, on_select, selected);
     Ok(SteelVal::BoolV(applied))
@@ -153,8 +153,12 @@ pub(crate) fn update_drawer_list(
 
 /// A drawer's `items`: strings when `render` is `#f`, otherwise opaque keys
 /// rendered on demand by the `render` proc.
-fn drawer_items(items: SteelVal, render: SteelVal) -> Result<DrawerItems, SteelErr> {
-    Ok(match optional_callable_arg(render, "#:render")? {
+fn drawer_items(
+    ctx: &SteelCtx,
+    items: SteelVal,
+    render: SteelVal,
+) -> Result<DrawerItems, SteelErr> {
+    Ok(match optional_callback_arg(ctx, render, "#:render")? {
         None => DrawerItems::Rows(non_empty(list_to_strings(items, "items")?, "items")?),
         Some(render) => DrawerItems::Keys {
             keys: non_empty(
@@ -197,7 +201,7 @@ pub(crate) fn prompt(
     pane: PaneHandle,
     label: SteelVal,
     prefill: SteelVal,
-    on_confirm: Rooted,
+    on_confirm: Callback,
 ) -> SteelResult {
     let label = string_arg(label, "label")?;
     let prefill = string_arg(prefill, "prefill")?;
@@ -214,8 +218,7 @@ pub(crate) fn prompt(
 /// `on-next-char!` again reads one more character. During `.` the callback
 /// gets the character the repeated command read, at once, and the call
 /// raises when the repeated command read fewer.
-pub(crate) fn on_next_char(ctx: &mut SteelCtx, callback: SteelVal) -> SteelResult {
-    let callback = callable_arg(callback, "callback")?;
+pub(crate) fn on_next_char(ctx: &mut SteelCtx, callback: Callback) -> SteelResult {
     require_cap(ctx.host.ui())?
         .on_next_char(callback)
         .map(|()| SteelVal::Void)
@@ -249,13 +252,17 @@ fn picker_items(items: SteelVal, ctx_name: &str) -> Result<Vec<(String, Rooted)>
 /// [`single_key_arg`]) to exactly one `KeyEvent`. The picker dispatches
 /// one chord at a time, so a multi-key spec like `"z f"` silently binding
 /// only its first key would be a trap rather than a useful feature.
-fn picker_actions(actions: SteelVal, ctx_name: &str) -> Result<Vec<(KeyEvent, Rooted)>, SteelErr> {
+fn picker_actions(
+    ctx: &SteelCtx,
+    actions: SteelVal,
+    ctx_name: &str,
+) -> Result<Vec<(KeyEvent, Callback)>, SteelErr> {
     list_items(actions, ctx_name)?
         .into_iter()
         .map(|entry| {
             let (spec, proc) = pair_fields(entry, ctx_name, "(key-spec . proc)")?;
             let key = single_key_arg(spec, ctx_name)?;
-            let proc = callable_arg(proc, ctx_name)?;
+            let proc = callback_arg(ctx, proc, ctx_name)?;
             Ok((key, proc))
         })
         .collect()
@@ -284,7 +291,7 @@ pub(crate) fn picker(
     ctx: &mut SteelCtx,
     pane: PaneHandle,
     items: SteelVal,
-    on_select: Rooted,
+    on_select: Callback,
     prompt: SteelVal,
     pending: SteelVal,
     query: SteelVal,
@@ -296,7 +303,7 @@ pub(crate) fn picker(
     let pending = bool_arg(pending, "#:pending")?;
     let query = string_arg(query, "#:query")?;
     let truncate = truncate_end_arg(truncate, "#:truncate")?;
-    let actions = picker_actions(actions, "#:actions")?;
+    let actions = picker_actions(ctx, actions, "#:actions")?;
     let opts = PickerOpts {
         prompt,
         pending,
@@ -314,10 +321,7 @@ pub(crate) fn picker(
 /// `live-picker!` Scheme wrapper supplies the keyword defaults and composes
 /// `on-query-change` itself (stop-then-debounce around the
 /// caller's `#:source`); this layer only decodes it as a required
-/// callable, checked here unlike `on-select`: a bad `on-select` only ever
-/// errors at accept/dismiss time, but a live session has no other use for
-/// this argument, so a bad value is a definition-time mistake, not a
-/// runtime one.
+/// callable.
 // Same shape as `picker`'s own allow, just above: each param is a
 // positional/keyword arg the `builtins!` table maps 1:1 from `live-picker!`'s
 // own Steel signature. Bundling them into a struct would break that direct
@@ -327,7 +331,7 @@ pub(crate) fn picker(
 pub(crate) fn live_picker(
     ctx: &mut SteelCtx,
     pane: PaneHandle,
-    on_select: Rooted,
+    on_select: Callback,
     prompt: SteelVal,
     query: SteelVal,
     on_query_change: SteelVal,
@@ -336,9 +340,9 @@ pub(crate) fn live_picker(
 ) -> SteelResult {
     let prompt = string_arg(prompt, "#:prompt")?;
     let query = string_arg(query, "#:query")?;
-    let on_query_change = callable_arg(on_query_change, "on-query-change")?;
+    let on_query_change = callback_arg(ctx, on_query_change, "on-query-change")?;
     let truncate = truncate_end_arg(truncate, "#:truncate")?;
-    let actions = picker_actions(actions, "#:actions")?;
+    let actions = picker_actions(ctx, actions, "#:actions")?;
     let opts = LivePickerOpts {
         prompt,
         query,

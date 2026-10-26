@@ -107,7 +107,7 @@ impl PendingWork {
     /// The `Call` an interactive input's callback queues: the user's,
     /// answering `ticket`'s input if any.
     pub(in crate::editor) fn answer(
-        proc: Rooted,
+        proc: hume_scripting::Callback,
         arg: Rooted,
         ticket: Option<AnswerTicket>,
     ) -> Self {

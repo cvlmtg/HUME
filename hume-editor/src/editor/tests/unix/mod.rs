@@ -683,6 +683,7 @@ mod picker_source_steel;
 mod pickers_plugin;
 mod pipe;
 mod plugins;
+mod ranked_writes;
 mod reload_config;
 mod scripting_effects;
 mod scripting_grammar;

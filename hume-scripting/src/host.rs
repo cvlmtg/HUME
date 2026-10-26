@@ -26,7 +26,7 @@ mod ui;
 
 pub(crate) use async_process::exit_code_value;
 pub use async_process::{AsyncProcessHost, JobHandle, async_callback_args, names_callback_args};
-pub use buffers::{BufferHost, DiscardUnsaved, DisplayPathForm, UndoNode};
+pub use buffers::{BufferHost, DiscardUnsaved, DisplayPathForm, StoredLanguage, UndoNode};
 pub use commands::{CommandArg, CommandHost, MAX_COUNT, NativeCall};
 pub use completion::{
     AnswerEnd, CompletionHost, CompletionSourceTarget, EmittedWord, FirstTab, MatchKind,
@@ -40,6 +40,7 @@ pub use events::EventHost;
 pub use language::LanguageHost;
 pub use lsp::{
     LocationPlace, LspHost, Place, PositionParams, RangeParams, RangesParams, SupersedeKey,
+    SupersedeKeys,
 };
 pub use output::{ClaimRefused, OutputHost};
 pub use registers::RegisterHost;

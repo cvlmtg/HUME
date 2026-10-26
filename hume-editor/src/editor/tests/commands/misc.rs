@@ -525,20 +525,22 @@ fn extend_trie_character_command_sequence_clears_pending_keys() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.state.input.set_extend(true);
 
-    ed.state.config.keymap.bind_user_with_extend(
+    ed.state.config.keymap.bind(
         BindMode::Extend,
         &[key('g'), key('r')],
         "find-forward".into(),
         false,
+        hume_scripting::ConfigOrigin::User,
     );
     // A plain leaf on `x`, distinct from the `g`-prefixed sequence, so a
     // leftover `g` prefix would make this unreachable (NoMatch) instead of
     // executing it.
-    ed.state.config.keymap.bind_user_with_extend(
+    ed.state.config.keymap.bind(
         BindMode::Extend,
         &[key('x')],
         "delete-char-forward".into(),
         false,
+        hume_scripting::ConfigOrigin::User,
     );
 
     ed.handle_key(key('g'));

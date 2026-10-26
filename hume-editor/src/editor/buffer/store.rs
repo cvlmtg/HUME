@@ -229,7 +229,7 @@ impl BufferStore {
     /// Clear every open buffer's language identity and syntax attachment,
     /// called by `:reload-config`'s reset immediately before `state.config.languages`
     /// is replaced with a fresh `LanguageRegistry`. `reset_config_state` reads
-    /// `language_explicit` on every buffer *before* calling this, so a
+    /// `language_by` on every buffer *before* calling this, so a
     /// `:set buffer language=`/`set-buffer-option!`'s `"language"` assertion can be
     /// restored after the post-reload re-detect sweep rather than being
     /// silently overwritten by whatever plain detection finds.
@@ -253,7 +253,7 @@ impl BufferStore {
     pub(in crate::editor) fn clear_languages_all(&mut self) {
         for buf in self.buffers.values_mut() {
             buf.language = None;
-            buf.language_explicit = false;
+            buf.language_by = None;
             buf.syntax = None;
         }
     }

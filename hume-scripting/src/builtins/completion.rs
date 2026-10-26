@@ -9,13 +9,12 @@ use crate::host::{
 };
 use crate::json::json_to_steel;
 use crate::types::{PaneHandle, TriggerKind, TriggerScope};
-use crate::{Effect, SteelCtx};
+use crate::{Callback, Effect, SteelCtx};
 
 use super::SteelResult;
 use super::args::{
-    CHAR_RANGE_KEYS, bool_arg, callable_arg, chars_arg, int_arg, json_arg, list_items,
-    optional_callable_arg, optional_hash_entry, optional_string_arg, server_arg, string_arg,
-    symbol_enum_arg, usize_arg,
+    CHAR_RANGE_KEYS, bool_arg, chars_arg, int_arg, json_arg, list_items, optional_callback_arg,
+    optional_hash_entry, optional_string_arg, server_arg, string_arg, symbol_enum_arg, usize_arg,
 };
 use super::errors::{generic_err, require_cap};
 use super::lsp::required_feature_arg;
@@ -149,7 +148,7 @@ fn queue_triggers(
 pub(crate) fn register_completion_source(
     ctx: &mut SteelCtx,
     name: String,
-    proc: SteelVal,
+    proc: Callback,
     target: SteelVal,
     match_kind: SteelVal,
     priority: SteelVal,
@@ -157,8 +156,7 @@ pub(crate) fn register_completion_source(
     token_chars: SteelVal,
     cancel: SteelVal,
 ) -> SteelResult {
-    let proc = callable_arg(proc, "proc")?;
-    let cancel = optional_callable_arg(cancel, "#:cancel")?;
+    let cancel = optional_callback_arg(ctx, cancel, "#:cancel")?;
     let target = target_arg(target)?;
     let match_kind = match_kind_arg(match_kind, "#:match")?;
     let priority = int_arg(priority, "#:priority")?;

@@ -312,10 +312,14 @@ fn core_stdlib_write_file_truncates_existing_content() {
 fn core_stdlib_resolve_lang_arg_falls_back_then_warns() {
     let (mut ed, mut host, _guard, _init_dir) = setup_stdlib_editor();
 
-    ed.state
-        .config
-        .languages
-        .register_identity_no_rebuild("python", &[], &[], &[]);
+    let (_, outcome) = ed.state.config.languages.register_identity_no_rebuild(
+        "python",
+        &[],
+        &[],
+        &[],
+        hume_origin::ConfigOrigin::User,
+    );
+    assert_eq!(outcome, hume_origin::WriteOutcome::Applied);
 
     let define_probe = r#"
 (define-typed-command! "probe-resolve-lang-arg" ""

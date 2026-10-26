@@ -163,10 +163,13 @@ fn a_read_only_buffer_refuses_before_anything_runs() {
 fn the_prompt_does_not_open_over_another_minibuffer() {
     let mut ed = editor_from("-[abc]>\n");
     let f2 = KeyEvent::new(KeyCode::Function(2), Modifiers::NONE);
-    ed.state
-        .config
-        .keymap
-        .bind_user_with_extend(BindMode::Command, &[f2], "pipe".into(), false);
+    ed.state.config.keymap.bind(
+        BindMode::Command,
+        &[f2],
+        "pipe".into(),
+        false,
+        hume_scripting::ConfigOrigin::User,
+    );
     ed.handle_key(key(':'));
     ed.handle_key(f2);
     assert_eq!(prompt_label(&ed).as_deref(), Some(":"));
@@ -181,10 +184,13 @@ fn call_refuses_pipe() {
         r#"(define-command! "f2-body" "" (lambda (pane) (call! "pipe" pane "sort")))"#,
     );
     let f2 = KeyEvent::new(KeyCode::Function(2), Modifiers::NONE);
-    ed.state
-        .config
-        .keymap
-        .bind_user_with_extend(BindMode::Normal, &[f2], "f2-body".into(), false);
+    ed.state.config.keymap.bind(
+        BindMode::Normal,
+        &[f2],
+        "f2-body".into(),
+        false,
+        hume_scripting::ConfigOrigin::User,
+    );
     ed.handle_key(f2);
     assert!(has_error(&ed, "'pipe': runs only from a key"));
     assert!(!ed.doc().is_busy());
@@ -968,10 +974,11 @@ fn qa_bang_quits() {
 fn a_refusal_names_ctrl_c_only_while_it_runs_cancel_pipe() {
     let mut ed = editor_from("-[a]>\n");
     let bid = ed.focused_buffer_id();
-    ed.state
-        .config
-        .keymap
-        .unbind_user(BindMode::Normal, &[key_ctrl('c')]);
+    ed.state.config.keymap.unbind(
+        BindMode::Normal,
+        &[key_ctrl('c')],
+        hume_scripting::ConfigOrigin::User,
+    );
     start_sort(&mut ed);
     type_cmd(&mut ed, ":bd");
     assert_eq!(status(&ed), pipe_running_elsewhere(&ed, bid, ":bd!"));

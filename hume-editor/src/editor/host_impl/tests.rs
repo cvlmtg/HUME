@@ -53,6 +53,7 @@ fn attach_grammar_errs_for_bad_path() {
                     Path::new("/no/such/highlights.scm").to_path_buf(),
                 ),
             },
+            origin: hume_scripting::ConfigOrigin::User,
         })
         .unwrap_err();
     assert!(

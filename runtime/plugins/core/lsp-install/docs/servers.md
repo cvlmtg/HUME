@@ -150,8 +150,9 @@ After the registrations, the scan sets every language's default server list. For
 language in `language-servers.scm` it calls `set-default-language-servers!` with its
 whole list, filters included, whether or not any server in it is installed: a name that is
 not registered matches nothing until it registers, and the Rust side attaches every
-already-open buffer of the language when it does. The default applies only while the user
-has set no list of their own for the language. A server the user registered by hand serves
+already-open buffer of the language when it does. A default applies only while no
+`set-language-servers!` list is set, even when the scan runs from `:lsp-install` on the
+user's behalf, so a list the user set beats it. A server the user registered by hand serves
 a language only when a list names it. The last write to a language's default list wins, so
 only one plugin should write defaults for a language.
 

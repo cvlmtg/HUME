@@ -11,6 +11,7 @@ use hume_ops::edit::{
     paste_before,
 };
 use hume_ops::register::Piece;
+use hume_scripting::ConfigOrigin;
 use pretty_assertions::assert_eq;
 use test_fixtures::testing::{parse_state, serialize_state};
 
@@ -681,7 +682,7 @@ fn undo_past_saved_revision_is_dirty() {
 fn changing_line_ending_marks_buffer_changed_without_a_revision() {
     let mut d = doc("-[h]>ello\n");
     d.buf
-        .set_line_ending(LineEnding::CrLf)
+        .set_line_ending(LineEnding::CrLf, ConfigOrigin::User)
         .expect("writable buffer");
     assert!(d.buf.line_ending_changed());
     assert!(!d.revision_dirty());
@@ -693,10 +694,10 @@ fn changing_line_ending_marks_buffer_changed_without_a_revision() {
 fn restoring_the_saved_line_ending_reads_unchanged() {
     let mut d = doc("-[h]>ello\n");
     d.buf
-        .set_line_ending(LineEnding::CrLf)
+        .set_line_ending(LineEnding::CrLf, ConfigOrigin::User)
         .expect("writable buffer");
     d.buf
-        .set_line_ending(LineEnding::Lf)
+        .set_line_ending(LineEnding::Lf, ConfigOrigin::User)
         .expect("writable buffer");
     assert!(!d.buf.line_ending_changed());
 }
@@ -706,7 +707,7 @@ fn undo_leaves_the_line_ending_alone() {
     let mut d = doc("-[h]>ello\n");
     d.apply_edit(|s| insert_char(s, 'x'));
     d.buf
-        .set_line_ending(LineEnding::CrLf)
+        .set_line_ending(LineEnding::CrLf, ConfigOrigin::User)
         .expect("writable buffer");
     d.undo();
     assert_eq!(d.text().line_ending(), LineEnding::CrLf);
@@ -717,12 +718,12 @@ fn undo_leaves_the_line_ending_alone() {
 fn mark_saved_records_the_line_ending() {
     let mut d = doc("-[h]>ello\n");
     d.buf
-        .set_line_ending(LineEnding::CrLf)
+        .set_line_ending(LineEnding::CrLf, ConfigOrigin::User)
         .expect("writable buffer");
     d.mark_saved();
     assert!(!d.buf.line_ending_changed());
     d.buf
-        .set_line_ending(LineEnding::Lf)
+        .set_line_ending(LineEnding::Lf, ConfigOrigin::User)
         .expect("writable buffer");
     assert!(d.buf.line_ending_changed());
 }
@@ -731,7 +732,7 @@ fn mark_saved_records_the_line_ending() {
 fn identical_content_reload_adopts_the_disk_line_ending() {
     let mut d = doc("-[h]>ello\n");
     d.buf
-        .set_line_ending(LineEnding::CrLf)
+        .set_line_ending(LineEnding::CrLf, ConfigOrigin::User)
         .expect("writable buffer");
     let (mut stores, pane, id) = DetachedStores::with_pane(&d.buf, d.sels.clone());
     let mutated =
@@ -743,10 +744,45 @@ fn identical_content_reload_adopts_the_disk_line_ending() {
 }
 
 #[test]
+fn a_line_ending_ranks_by_its_writers_origin() {
+    let mut d = doc("-[h]>ello\n");
+    assert_eq!(
+        d.buf.set_line_ending(LineEnding::CrLf, ConfigOrigin::User),
+        Ok(true)
+    );
+    assert_eq!(
+        d.buf.set_line_ending(LineEnding::Lf, ConfigOrigin::Plugin),
+        Ok(false)
+    );
+    assert_eq!(d.text().line_ending(), LineEnding::CrLf);
+}
+
+#[test]
+fn replacing_the_text_lets_any_origin_set_the_line_ending_again() {
+    let mut d = doc("-[h]>ello\n");
+    d.buf
+        .set_line_ending(LineEnding::CrLf, ConfigOrigin::User)
+        .expect("writable buffer");
+    let (mut stores, pane, id) = DetachedStores::with_pane(&d.buf, d.sels.clone());
+    d.buf
+        .replace_text_recorded(id, &mut stores.stores(), BufferText::from("hello\n"), pane);
+
+    assert_eq!(
+        d.buf
+            .set_line_ending(LineEnding::CrLf, ConfigOrigin::Plugin),
+        Ok(true)
+    );
+}
+
+#[test]
 fn a_read_only_buffer_refuses_a_line_ending_change() {
     let mut d = doc("-[h]>ello\n");
     d.buf.read_only = true;
-    assert!(d.buf.set_line_ending(LineEnding::CrLf).is_err());
+    assert!(
+        d.buf
+            .set_line_ending(LineEnding::CrLf, ConfigOrigin::User)
+            .is_err()
+    );
     assert_eq!(d.text().line_ending(), LineEnding::Lf);
     assert!(!d.buf.line_ending_changed());
 }
@@ -1241,7 +1277,7 @@ fn a_held_buffer_refuses_a_line_ending_change() {
     let mut d = doc("-[a]>\n");
     let _hold = d.buf.hold_text();
     assert_eq!(
-        d.buf.set_line_ending(LineEnding::CrLf),
+        d.buf.set_line_ending(LineEnding::CrLf, ConfigOrigin::User),
         Err(format!(
             "{} is busy: a pipe is running",
             d.buf.display_name()

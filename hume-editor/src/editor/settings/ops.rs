@@ -20,28 +20,38 @@
 //! `settings::tests`, rather than from every file under `crate::editor`.
 
 use hume_engine::pipeline::{BufferId, EngineView};
+use hume_scripting::ConfigOrigin;
 use hume_scripting::host::{BufferIntrinsicOption, OptionInput};
 
 use super::{ResyncKey, THEME_KEY, parse_setting_text, resync_key};
 use crate::editor::EditorState;
 use crate::editor::theme;
 
-/// Write a global setting and resync every piece of derived state that
-/// depends on it.
+/// Write a global setting from `by` and resync every piece of derived
+/// state that depends on it. A write a higher origin's value shadows
+/// changes nothing and is reported at Trace.
 pub(in crate::editor) fn apply_global(
     state: &mut EditorState,
     view: &mut EngineView,
     key: &str,
     value: &OptionInput,
+    by: ConfigOrigin,
 ) -> Result<(), String> {
-    super::write_global(key, value, &mut state.settings)?;
+    // Read before the write, for the theme rollback below.
+    let held_theme = state.settings.origins.held(THEME_KEY);
+    if !super::write_global(key, value, &mut state.settings, by)? {
+        state.report_shadowed("option", format_args!("'{key}' value"));
+        return Ok(());
+    }
 
     let resynced = resync_key(key).is_none_or(|rk| resync_derived_state(state, view, rk));
     if !resynced && key == THEME_KEY {
         // Theme is the only effect that can fail after a successful write.
-        // The setting goes back to the theme still on screen.
+        // The setting goes back to the theme still on screen, and to the
+        // origin that set it.
         let shown = state.shown_theme.clone();
         let failed_theme = std::mem::replace(&mut state.settings.theme, shown);
+        state.settings.origins.restore(THEME_KEY, held_theme);
         return Err(format!(
             "theme '{failed_theme}' failed to load (see :messages)"
         ));
@@ -81,8 +91,9 @@ pub(crate) fn write_global_for_test(
     key: &str,
     value: &OptionInput,
     settings: &mut crate::editor::settings::EditorSettings,
-) -> Result<(), String> {
-    super::write_global(key, value, settings)
+    by: ConfigOrigin,
+) -> Result<bool, String> {
+    super::write_global(key, value, settings, by)
 }
 
 /// Reset every global setting to its compiled-in default and rerun every
@@ -135,9 +146,10 @@ pub(in crate::editor) fn apply_pending_theme(state: &mut EditorState, view: &mut
     state.settings.theme.clone_from(&state.shown_theme);
 }
 
-/// Write a buffer-scoped setting override. No buffer-scoped key has a
-/// derived-state effect today (see [`super::write_buffer`]'s doc), so unlike
-/// [`apply_global`] there is nothing to resync here.
+/// Write a buffer-scoped setting override from `by`. No buffer-scoped key
+/// has a derived-state effect today (see [`super::write_buffer`]'s doc), so
+/// unlike [`apply_global`] there is nothing to resync here. A write a higher
+/// origin's override shadows changes nothing and is reported at Trace.
 ///
 /// `line-ending` is not an override: it sets the buffer text's line ending,
 /// which changes whether the buffer reads as unsaved, and is refused on a
@@ -147,21 +159,40 @@ pub(in crate::editor) fn apply_buffer(
     bid: BufferId,
     key: &str,
     value: &OptionInput,
+    by: ConfigOrigin,
 ) -> Result<(), String> {
     if key == BufferIntrinsicOption::LineEnding.key() {
-        return set_line_ending(state, bid, super::for_key(key, super::single_value(value))?);
+        return set_line_ending(
+            state,
+            bid,
+            super::for_key(key, super::single_value(value))?,
+            by,
+        );
     }
-    super::write_buffer(key, value, &mut state.buffers.get_mut(bid).overrides)
+    if !super::write_buffer(key, value, &mut state.buffers.get_mut(bid).overrides, by)? {
+        state.report_shadowed("option", format_args!("'{key}' value"));
+    }
+    Ok(())
 }
 
-/// Parse `value` as a line ending and set it on `bid`'s text.
+/// Parse `value` as a line ending and set it on `bid`'s text from `by`. A
+/// write a higher origin's line ending shadows is reported at Trace.
 pub(in crate::editor) fn set_line_ending(
     state: &mut EditorState,
     bid: BufferId,
     value: &str,
+    by: ConfigOrigin,
 ) -> Result<(), String> {
-    let line_ending = parse_setting_text(BufferIntrinsicOption::LineEnding.key(), value)?;
-    state.buffers.get_mut(bid).set_line_ending(line_ending)
+    let key = BufferIntrinsicOption::LineEnding.key();
+    let line_ending = parse_setting_text(key, value)?;
+    if !state
+        .buffers
+        .get_mut(bid)
+        .set_line_ending(line_ending, by)?
+    {
+        state.report_shadowed("option", format_args!("'{key}' value"));
+    }
+    Ok(())
 }
 
 /// Resync derived state after a successful [`super::write_global`]

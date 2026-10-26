@@ -457,7 +457,7 @@ fn reset_reload_drawer_view_self_heals_on_the_next_frame() {
     host.show_drawer_list(
         pane,
         drawer_items(&["one", "two"]),
-        hume_scripting::Rooted::new(steel::rvals::SteelVal::Void),
+        hume_scripting::Callback::for_test(steel::rvals::SteelVal::Void),
         0,
     )
     .unwrap();
@@ -613,7 +613,7 @@ fn reset_clears_extend_and_does_not_fire_a_phantom_mode_change() {
 fn reset_tears_down_an_open_picker_session_without_firing_its_callback() {
     let mut ed = editor_from("-[a]>b\n");
     let mut session = crate::editor::input_stack::picker::PickerSession::new(
-        hume_scripting::Rooted::new(steel::rvals::SteelVal::StringV("cb".into())),
+        hume_scripting::Callback::for_test(steel::rvals::SteelVal::StringV("cb".into())),
         hume_scripting::host::PickerOpts::default(),
         Vec::new(),
     );

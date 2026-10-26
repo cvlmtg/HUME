@@ -10,8 +10,9 @@ pub trait LanguageHost {
     /// Init mode takes the other route: the identical payload, queued as
     /// `Effect::LanguageReg(PendingLanguageReg::Grammar(..))`, registers the
     /// grammar without loading it. Both reach the language registry's one
-    /// registration path.
-    fn attach_grammar(&mut self, reg: &GrammarReg) -> Result<(), String>;
+    /// registration path. `false`, opening nothing, when a higher origin's
+    /// grammar holds the name.
+    fn attach_grammar(&mut self, reg: &GrammarReg) -> Result<bool, String>;
 
     /// Whether `language` has a grammar, loaded or yet to load. A grammar
     /// whose load failed does not count.

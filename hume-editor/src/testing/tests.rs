@@ -67,6 +67,7 @@ mod mock_host {
                 symbol: "rust_language".into(),
                 queries: hume_treesitter::registry::QueryFiles::new(highlights_path.to_path_buf()),
             },
+            origin: hume_scripting::ConfigOrigin::User,
         }
     }
 

@@ -1,8 +1,9 @@
 use std::path::Path;
 
 use super::{
-    ConfigureOutcome, ConfiguredBy, DetectPaths, GrammarSource, LanguageField, LanguageFields,
-    LanguageId, LanguageRegistry, OptionalQuery, QueryFiles, ShebangInterpreter, detect_language,
+    ConfigOrigin, DetectPaths, FileExtension, GrammarSource, LanguageField, LanguageFields,
+    LanguageId, LanguageRegistry, OptionalQuery, QueryFiles, ShebangInterpreter, WriteOutcome,
+    detect_language,
 };
 use hume_editing::comment::{BlockCommentTokens, LineCommentTokens};
 use hume_engine::theme::ScopeRegistry;
@@ -75,9 +76,11 @@ fn attach_grammar_with_valid_injections_populates_bundle() {
             &rust_source(
                 QueryFiles::new(hl_path.clone()).with(OptionalQuery::Injections, inj_path.clone()),
             ),
+            ConfigOrigin::User,
             &mut scope_reg,
         )
-        .expect("attach with valid injections must succeed");
+        .expect("attach with valid injections must succeed")
+        .expect("no higher origin holds the grammar");
 
     let injections = bundle
         .injections
@@ -106,9 +109,11 @@ fn attach_grammar_without_injections_file_leaves_injections_none() {
         .attach_grammar(
             "rust",
             &rust_source(QueryFiles::new(hl_path.clone())),
+            ConfigOrigin::User,
             &mut scope_reg,
         )
-        .expect("attach without injections must succeed");
+        .expect("attach without injections must succeed")
+        .expect("no higher origin holds the grammar");
 
     assert!(
         bundle.injections.is_none(),
@@ -137,6 +142,7 @@ fn attach_grammar_with_broken_injections_fails_whole_attach() {
         &rust_source(
             QueryFiles::new(hl_path.clone()).with(OptionalQuery::Injections, inj_path.clone()),
         ),
+        ConfigOrigin::User,
         &mut scope_reg,
     );
     let Err(err) = result else {
@@ -177,9 +183,11 @@ fn attach_grammar_with_valid_textobjects_populates_bundle() {
             &rust_source(
                 QueryFiles::new(hl_path.clone()).with(OptionalQuery::TextObjects, to_path.clone()),
             ),
+            ConfigOrigin::User,
             &mut scope_reg,
         )
-        .expect("attach with valid textobjects must succeed");
+        .expect("attach with valid textobjects must succeed")
+        .expect("no higher origin holds the grammar");
 
     let textobjects = bundle
         .textobjects
@@ -205,9 +213,11 @@ fn attach_grammar_without_textobjects_file_leaves_textobjects_none() {
         .attach_grammar(
             "rust",
             &rust_source(QueryFiles::new(hl_path.clone())),
+            ConfigOrigin::User,
             &mut scope_reg,
         )
-        .expect("attach without textobjects must succeed");
+        .expect("attach without textobjects must succeed")
+        .expect("no higher origin holds the grammar");
 
     assert!(
         bundle.textobjects.is_none(),
@@ -233,6 +243,7 @@ fn attach_grammar_with_broken_textobjects_fails_whole_attach() {
         &rust_source(
             QueryFiles::new(hl_path.clone()).with(OptionalQuery::TextObjects, to_path.clone()),
         ),
+        ConfigOrigin::User,
         &mut scope_reg,
     );
     let Err(err) = result else {
@@ -284,6 +295,7 @@ fn attach_grammar_with_missing_injections_file_fails_with_read_error() {
     let result = reg.attach_grammar(
         "rust",
         &rust_source(QueryFiles::new(hl_path).with(OptionalQuery::Injections, missing)),
+        ConfigOrigin::User,
         &mut scope_reg,
     );
     let Err(err) = result else {
@@ -310,7 +322,7 @@ fn language_registry_by_ext_lookup_empty() {
 #[test]
 fn language_registry_remove_is_idempotent() {
     let mut reg = LanguageRegistry::new();
-    assert!(reg.remove("rust").is_none());
+    assert!(!reg.remove("rust"));
 }
 
 #[test]
@@ -338,8 +350,8 @@ fn roots_of_returns_the_configured_markers() {
     let mut reg = LanguageRegistry::new();
     let id = reg.register_identity("go", &["go"], &[], &[]).unwrap();
     assert_eq!(
-        set_roots(&mut reg, id, &["go.work", "go.mod"], ConfiguredBy::User),
-        ConfigureOutcome::Applied
+        set_roots(&mut reg, id, &["go.work", "go.mod"], ConfigOrigin::User),
+        WriteOutcome::Applied
     );
     assert_eq!(reg.roots_of(id), ["go.work", "go.mod"]);
 }
@@ -354,18 +366,25 @@ fn roots_of_an_interned_language_without_identity_is_empty() {
 #[test]
 fn reregistering_an_identity_keeps_its_configured_roots() {
     let mut reg = LanguageRegistry::new();
-    let id = reg.register_identity_no_rebuild("go", &[], &[], &[]);
+    let id = reg
+        .register_identity_no_rebuild("go", &[], &[], &[], ConfigOrigin::Bundled)
+        .0;
     assert_eq!(
-        set_roots(&mut reg, id, &["go.mod"], ConfiguredBy::User),
-        ConfigureOutcome::Applied
+        set_roots(&mut reg, id, &["go.mod"], ConfigOrigin::User),
+        WriteOutcome::Applied
     );
-    reg.register_identity("go", &["go"], &[], &[]).unwrap();
+    let (_, outcome) = reg
+        .register_identity_by("go", &["go"], &[], &[], ConfigOrigin::User)
+        .expect("the test detection data is valid");
+    assert_eq!(outcome, WriteOutcome::Applied);
     assert_eq!(reg.roots_of(id), ["go.mod"]);
 }
 
 fn tsx() -> (LanguageRegistry, LanguageId) {
     let mut reg = LanguageRegistry::new();
-    let id = reg.register_identity_no_rebuild("tsx", &[], &[], &[]);
+    let id = reg
+        .register_identity_no_rebuild("tsx", &[], &[], &[], ConfigOrigin::Bundled)
+        .0;
     (reg, id)
 }
 
@@ -373,8 +392,8 @@ fn set_roots(
     reg: &mut LanguageRegistry,
     id: LanguageId,
     roots: &[&str],
-    by: ConfiguredBy,
-) -> ConfigureOutcome {
+    by: ConfigOrigin,
+) -> WriteOutcome {
     let fields = LanguageFields {
         roots: Some(strings(roots)),
         ..LanguageFields::default()
@@ -386,8 +405,8 @@ fn set_id(
     reg: &mut LanguageRegistry,
     id: LanguageId,
     lsp_language_id: &str,
-    by: ConfiguredBy,
-) -> ConfigureOutcome {
+    by: ConfigOrigin,
+) -> WriteOutcome {
     let fields = LanguageFields {
         lsp_language_id: Some(lsp_language_id.to_string()),
         ..LanguageFields::default()
@@ -400,8 +419,8 @@ fn configure_one(
     reg: &mut LanguageRegistry,
     id: LanguageId,
     fields: LanguageFields,
-    by: ConfiguredBy,
-) -> ConfigureOutcome {
+    by: ConfigOrigin,
+) -> WriteOutcome {
     match reg.configure_fields(id, fields, by).as_slice() {
         [(_, outcome)] => *outcome,
         outcomes => panic!("one field given, outcomes {outcomes:?}"),
@@ -420,15 +439,15 @@ fn configure_fields_reports_each_given_field_in_order() {
     let tagged = |outcome| LanguageField::ALL.map(|field| (field, outcome)).to_vec();
 
     assert_eq!(
-        reg.configure_fields(id, all(), ConfiguredBy::User),
-        tagged(ConfigureOutcome::Applied)
+        reg.configure_fields(id, all(), ConfigOrigin::User),
+        tagged(WriteOutcome::Applied)
     );
     assert_eq!(
-        reg.configure_fields(id, all(), ConfiguredBy::User),
-        tagged(ConfigureOutcome::Ignored)
+        reg.configure_fields(id, all(), ConfigOrigin::User),
+        tagged(WriteOutcome::Ignored)
     );
     assert_eq!(
-        reg.configure_fields(id, LanguageFields::default(), ConfiguredBy::User),
+        reg.configure_fields(id, LanguageFields::default(), ConfigOrigin::User),
         []
     );
 }
@@ -459,14 +478,14 @@ fn bundled_values_fill_a_language_with_none_configured() {
 #[test]
 fn bundled_values_never_replace_configured_ones() {
     let (mut reg, id) = tsx();
-    let user = ConfiguredBy::User;
+    let user = ConfigOrigin::User;
     assert_eq!(
         set_roots(&mut reg, id, &["deno.json"], user),
-        ConfigureOutcome::Applied
+        WriteOutcome::Applied
     );
     assert_eq!(
         set_id(&mut reg, id, "tsx-custom", user),
-        ConfigureOutcome::Applied
+        WriteOutcome::Applied
     );
 
     fill_tsx_bundled(&mut reg, id);
@@ -479,8 +498,8 @@ fn bundled_values_never_replace_configured_ones() {
 fn bundled_values_fill_only_the_fields_left_unset() {
     let (mut reg, id) = tsx();
     assert_eq!(
-        set_roots(&mut reg, id, &["deno.json"], ConfiguredBy::User),
-        ConfigureOutcome::Applied
+        set_roots(&mut reg, id, &["deno.json"], ConfigOrigin::User),
+        WriteOutcome::Applied
     );
 
     fill_tsx_bundled(&mut reg, id);
@@ -492,16 +511,16 @@ fn bundled_values_fill_only_the_fields_left_unset() {
 #[test]
 fn a_configured_value_replaces_a_bundled_one() {
     let (mut reg, id) = tsx();
-    let user = ConfiguredBy::User;
+    let user = ConfigOrigin::User;
     fill_tsx_bundled(&mut reg, id);
 
     assert_eq!(
         set_roots(&mut reg, id, &["deno.json"], user),
-        ConfigureOutcome::Applied
+        WriteOutcome::Applied
     );
     assert_eq!(
         set_id(&mut reg, id, "tsx-custom", user),
-        ConfigureOutcome::Applied
+        WriteOutcome::Applied
     );
 
     assert_eq!(reg.roots_of(id), ["deno.json"]);
@@ -511,24 +530,18 @@ fn a_configured_value_replaces_a_bundled_one() {
 #[test]
 fn a_second_configured_value_is_ignored() {
     let (mut reg, id) = tsx();
-    let user = ConfiguredBy::User;
+    let user = ConfigOrigin::User;
     assert_eq!(
         set_roots(&mut reg, id, &["deno.json"], user),
-        ConfigureOutcome::Applied
+        WriteOutcome::Applied
     );
-    assert_eq!(
-        set_id(&mut reg, id, "first", user),
-        ConfigureOutcome::Applied
-    );
+    assert_eq!(set_id(&mut reg, id, "first", user), WriteOutcome::Applied);
 
     assert_eq!(
         set_roots(&mut reg, id, &["package.json"], user),
-        ConfigureOutcome::Ignored
+        WriteOutcome::Ignored
     );
-    assert_eq!(
-        set_id(&mut reg, id, "second", user),
-        ConfigureOutcome::Ignored
-    );
+    assert_eq!(set_id(&mut reg, id, "second", user), WriteOutcome::Ignored);
 
     assert_eq!(reg.roots_of(id), ["deno.json"]);
     assert_eq!(reg.lsp_language_id_of(id), "first");
@@ -537,15 +550,15 @@ fn a_second_configured_value_is_ignored() {
 #[test]
 fn a_second_plugin_value_is_ignored() {
     let (mut reg, id) = tsx();
-    let plugin = ConfiguredBy::Plugin;
+    let plugin = ConfigOrigin::Plugin;
     assert_eq!(
         set_roots(&mut reg, id, &["deno.json"], plugin),
-        ConfigureOutcome::Applied
+        WriteOutcome::Applied
     );
 
     assert_eq!(
         set_roots(&mut reg, id, &["package.json"], plugin),
-        ConfigureOutcome::Ignored
+        WriteOutcome::Ignored
     );
 
     assert_eq!(reg.roots_of(id), ["deno.json"]);
@@ -554,24 +567,21 @@ fn a_second_plugin_value_is_ignored() {
 #[test]
 fn a_user_value_replaces_a_plugin_value() {
     let (mut reg, id) = tsx();
-    let (user, plugin) = (ConfiguredBy::User, ConfiguredBy::Plugin);
+    let (user, plugin) = (ConfigOrigin::User, ConfigOrigin::Plugin);
     assert_eq!(
         set_roots(&mut reg, id, &["deno.json"], plugin),
-        ConfigureOutcome::Applied
+        WriteOutcome::Applied
     );
     assert_eq!(
         set_id(&mut reg, id, "plugin", plugin),
-        ConfigureOutcome::Applied
+        WriteOutcome::Applied
     );
 
     assert_eq!(
         set_roots(&mut reg, id, &["package.json"], user),
-        ConfigureOutcome::Applied
+        WriteOutcome::Applied
     );
-    assert_eq!(
-        set_id(&mut reg, id, "user", user),
-        ConfigureOutcome::Applied
-    );
+    assert_eq!(set_id(&mut reg, id, "user", user), WriteOutcome::Applied);
 
     assert_eq!(reg.roots_of(id), ["package.json"]);
     assert_eq!(reg.lsp_language_id_of(id), "user");
@@ -580,23 +590,20 @@ fn a_user_value_replaces_a_plugin_value() {
 #[test]
 fn a_plugin_value_after_a_user_value_is_shadowed() {
     let (mut reg, id) = tsx();
-    let (user, plugin) = (ConfiguredBy::User, ConfiguredBy::Plugin);
+    let (user, plugin) = (ConfigOrigin::User, ConfigOrigin::Plugin);
     assert_eq!(
         set_roots(&mut reg, id, &["package.json"], user),
-        ConfigureOutcome::Applied
+        WriteOutcome::Applied
     );
-    assert_eq!(
-        set_id(&mut reg, id, "user", user),
-        ConfigureOutcome::Applied
-    );
+    assert_eq!(set_id(&mut reg, id, "user", user), WriteOutcome::Applied);
 
     assert_eq!(
         set_roots(&mut reg, id, &["deno.json"], plugin),
-        ConfigureOutcome::Shadowed
+        WriteOutcome::Shadowed
     );
     assert_eq!(
         set_id(&mut reg, id, "plugin", plugin),
-        ConfigureOutcome::Shadowed
+        WriteOutcome::Shadowed
     );
 
     assert_eq!(reg.roots_of(id), ["package.json"]);
@@ -606,7 +613,9 @@ fn a_plugin_value_after_a_user_value_is_shadowed() {
 #[test]
 fn an_empty_bundled_fill_still_marks_the_language_loaded() {
     let mut reg = LanguageRegistry::new();
-    let id = reg.register_identity_no_rebuild("plain", &[], &[], &[]);
+    let id = reg
+        .register_identity_no_rebuild("plain", &[], &[], &[], ConfigOrigin::Bundled)
+        .0;
 
     reg.fill_bundled(id, LanguageFields::default());
 
@@ -619,8 +628,8 @@ fn set_line(
     reg: &mut LanguageRegistry,
     id: LanguageId,
     tokens: &[&str],
-    by: ConfiguredBy,
-) -> ConfigureOutcome {
+    by: ConfigOrigin,
+) -> WriteOutcome {
     let fields = LanguageFields {
         comment_tokens: Some(LineCommentTokens::from_strs(tokens)),
         ..LanguageFields::default()
@@ -632,8 +641,8 @@ fn set_block(
     reg: &mut LanguageRegistry,
     id: LanguageId,
     pairs: &[(&str, &str)],
-    by: ConfiguredBy,
-) -> ConfigureOutcome {
+    by: ConfigOrigin,
+) -> WriteOutcome {
     let fields = LanguageFields {
         block_comment_tokens: Some(BlockCommentTokens::from_pairs(pairs)),
         ..LanguageFields::default()
@@ -676,8 +685,8 @@ fn bundled_comment_tokens_fill_both_kinds() {
 fn configured_line_tokens_keep_the_bundled_block_tokens() {
     let (mut reg, id) = tsx();
     assert_eq!(
-        set_line(&mut reg, id, &["#"], ConfiguredBy::User),
-        ConfigureOutcome::Applied
+        set_line(&mut reg, id, &["#"], ConfigOrigin::User),
+        WriteOutcome::Applied
     );
 
     fill_comment_tokens(&mut reg, id);
@@ -693,16 +702,13 @@ fn configured_line_tokens_keep_the_bundled_block_tokens() {
 #[test]
 fn configured_comment_tokens_replace_bundled_ones() {
     let (mut reg, id) = tsx();
-    let user = ConfiguredBy::User;
+    let user = ConfigOrigin::User;
     fill_comment_tokens(&mut reg, id);
 
-    assert_eq!(
-        set_line(&mut reg, id, &["#"], user),
-        ConfigureOutcome::Applied
-    );
+    assert_eq!(set_line(&mut reg, id, &["#"], user), WriteOutcome::Applied);
     assert_eq!(
         set_block(&mut reg, id, &[("<!--", "-->")], user),
-        ConfigureOutcome::Applied
+        WriteOutcome::Applied
     );
 
     let tokens = reg.comment_tokens_of(id).expect("comment tokens");
@@ -716,26 +722,26 @@ fn configured_comment_tokens_replace_bundled_ones() {
 #[test]
 fn comment_tokens_follow_the_configurer_tiers() {
     let (mut reg, id) = tsx();
-    let (user, plugin) = (ConfiguredBy::User, ConfiguredBy::Plugin);
+    let (user, plugin) = (ConfigOrigin::User, ConfigOrigin::Plugin);
     assert_eq!(
         set_block(&mut reg, id, &[("/*", "*/")], user),
-        ConfigureOutcome::Applied
+        WriteOutcome::Applied
     );
     assert_eq!(
         set_block(&mut reg, id, &[("(*", "*)")], user),
-        ConfigureOutcome::Ignored
+        WriteOutcome::Ignored
     );
     assert_eq!(
         set_block(&mut reg, id, &[("{-", "-}")], plugin),
-        ConfigureOutcome::Shadowed
+        WriteOutcome::Shadowed
     );
     assert_eq!(
         set_line(&mut reg, id, &["--"], plugin),
-        ConfigureOutcome::Applied
+        WriteOutcome::Applied
     );
     assert_eq!(
         set_line(&mut reg, id, &[";"], plugin),
-        ConfigureOutcome::Ignored
+        WriteOutcome::Ignored
     );
 
     let tokens = reg.comment_tokens_of(id).expect("comment tokens");
@@ -758,9 +764,11 @@ fn an_attached_bundle_names_its_language() {
         .attach_grammar(
             "rust",
             &rust_source(QueryFiles::new(hl_path.clone())),
+            ConfigOrigin::User,
             &mut scope_reg,
         )
-        .expect("attach rust");
+        .expect("attach rust")
+        .expect("no higher origin holds the grammar");
 
     assert_eq!(Some(bundle.language), reg.id_of("rust"));
 }
@@ -823,7 +831,10 @@ fn deindex_does_not_clobber_another_languages_shared_extension() {
     );
 
     // Re-register c, dropping .h from its own extension list.
-    reg.register_identity("c", &["c"], &[], &[]).unwrap();
+    let (_, outcome) = reg
+        .register_identity_by("c", &["c"], &[], &[], ConfigOrigin::User)
+        .expect("the test detection data is valid");
+    assert_eq!(outcome, WriteOutcome::Applied);
 
     assert_eq!(
         reg.by_file_name("f.h"),
@@ -849,15 +860,19 @@ fn attached_grammar_survives_identity_re_registration() {
     reg.attach_grammar(
         "rust",
         &rust_source(QueryFiles::new(hl_path.clone())),
+        ConfigOrigin::User,
         &mut scope_reg,
     )
-    .expect("attach must succeed");
+    .expect("attach must succeed")
+    .expect("no higher origin holds the grammar");
     assert!(reg.has_grammar("rust"), "sanity: grammar attached");
 
     // Re-register identity, as `define-language!` would from init.scm to add
     // an extra extension.
-    reg.register_identity("rust", &["rs", "mylang"], &[], &[])
-        .expect("re-registering identity must succeed");
+    let (_, outcome) = reg
+        .register_identity_by("rust", &["rs", "mylang"], &[], &[], ConfigOrigin::User)
+        .expect("the test detection data is valid");
+    assert_eq!(outcome, WriteOutcome::Applied);
 
     assert!(
         reg.has_grammar("rust"),
@@ -899,8 +914,8 @@ fn lsp_language_id_of_returns_the_configured_override() {
     reg.register_identity("tsx", &["tsx"], &[], &[]).unwrap();
     let id = reg.id_of("tsx").unwrap();
     assert_eq!(
-        set_id(&mut reg, id, "typescriptreact", ConfiguredBy::User),
-        ConfigureOutcome::Applied
+        set_id(&mut reg, id, "typescriptreact", ConfigOrigin::User),
+        WriteOutcome::Applied
     );
     assert_eq!(reg.lsp_language_id_of(id), "typescriptreact");
 }
@@ -913,12 +928,14 @@ fn identity_re_registration_keeps_the_configured_lsp_language_id() {
     reg.register_identity("tsx", &["tsx"], &[], &[]).unwrap();
     let id = reg.id_of("tsx").unwrap();
     assert_eq!(
-        set_id(&mut reg, id, "typescriptreact", ConfiguredBy::User),
-        ConfigureOutcome::Applied
+        set_id(&mut reg, id, "typescriptreact", ConfigOrigin::User),
+        WriteOutcome::Applied
     );
 
-    reg.register_identity("tsx", &["tsx", "mytsx"], &[], &[])
-        .unwrap();
+    let (_, outcome) = reg
+        .register_identity_by("tsx", &["tsx", "mytsx"], &[], &[], ConfigOrigin::User)
+        .expect("the test detection data is valid");
+    assert_eq!(outcome, WriteOutcome::Applied);
 
     assert_eq!(reg.lsp_language_id_of(id), "typescriptreact");
 }
@@ -1241,7 +1258,13 @@ fn extension_matching_is_case_sensitive() {
 fn register_grammar_opens_nothing() {
     let mut reg = LanguageRegistry::new();
 
-    let id = reg.register_grammar("missing", GrammarSource::missing("missing"));
+    let id = reg
+        .register_grammar(
+            "missing",
+            GrammarSource::missing("missing"),
+            ConfigOrigin::User,
+        )
+        .expect("an empty slot takes a grammar");
 
     assert!(reg.has_grammar("missing"));
     assert!(reg.grammar_available(id));
@@ -1255,10 +1278,13 @@ fn load_grammar_compiles_once() {
     require_grammars(&["rust"]);
     let mut reg = LanguageRegistry::new();
     let mut scope_reg = ScopeRegistry::new();
-    let id = reg.register_grammar(
-        "rust",
-        rust_source(QueryFiles::new(grammar_query_path("rust"))),
-    );
+    let id = reg
+        .register_grammar(
+            "rust",
+            rust_source(QueryFiles::new(grammar_query_path("rust"))),
+            ConfigOrigin::User,
+        )
+        .expect("an empty slot takes a grammar");
 
     let first = reg.load_grammar(id, &mut scope_reg).expect("rust loads");
     let second = reg
@@ -1276,7 +1302,13 @@ fn load_grammar_compiles_once() {
 fn a_failed_load_is_queued_once_then_is_unavailable() {
     let mut reg = LanguageRegistry::new();
     let mut scope_reg = ScopeRegistry::new();
-    let id = reg.register_grammar("missing", GrammarSource::missing("missing"));
+    let id = reg
+        .register_grammar(
+            "missing",
+            GrammarSource::missing("missing"),
+            ConfigOrigin::User,
+        )
+        .expect("an empty slot takes a grammar");
 
     assert!(reg.load_grammar(id, &mut scope_reg).is_none());
     assert!(reg.load_grammar(id, &mut scope_reg).is_none());
@@ -1295,12 +1327,15 @@ fn re_registering_a_failed_grammar_makes_it_available_again() {
     require_grammars(&["rust"]);
     let mut reg = LanguageRegistry::new();
     let mut scope_reg = ScopeRegistry::new();
-    let id = reg.register_grammar("rust", GrammarSource::missing("rust"));
+    let id = reg
+        .register_grammar("rust", GrammarSource::missing("rust"), ConfigOrigin::User)
+        .expect("an empty slot takes a grammar");
     assert!(reg.load_grammar(id, &mut scope_reg).is_none());
 
     reg.register_grammar(
         "rust",
         rust_source(QueryFiles::new(grammar_query_path("rust"))),
+        ConfigOrigin::User,
     );
 
     assert!(reg.has_grammar("rust"));
@@ -1317,11 +1352,18 @@ fn a_failed_attach_keeps_the_prior_bundle() {
         .attach_grammar(
             "rust",
             &rust_source(QueryFiles::new(grammar_query_path("rust"))),
+            ConfigOrigin::User,
             &mut scope_reg,
         )
-        .expect("rust attaches");
+        .expect("rust attaches")
+        .expect("no higher origin holds the grammar");
 
-    let result = reg.attach_grammar("rust", &GrammarSource::missing("rust"), &mut scope_reg);
+    let result = reg.attach_grammar(
+        "rust",
+        &GrammarSource::missing("rust"),
+        ConfigOrigin::User,
+        &mut scope_reg,
+    );
 
     assert!(result.is_err());
     let id = reg.id_of("rust").expect("rust is interned");
@@ -1339,9 +1381,11 @@ fn config_gen_is_unique_across_registries() {
             .attach_grammar(
                 "rust",
                 &rust_source(QueryFiles::new(grammar_query_path("rust"))),
+                ConfigOrigin::User,
                 &mut ScopeRegistry::new(),
             )
             .expect("rust attaches")
+            .expect("no higher origin holds the grammar")
     };
 
     let first = attach();
@@ -1352,3 +1396,181 @@ fn config_gen_is_unique_across_registries() {
 
 #[cfg(unix)]
 mod unix;
+
+// ── Origin ranking ───────────────────────────────────────────────────────
+
+// ── Grammar ranking ──────────────────────────────────────────────────────
+
+/// The rust fixture grammar with its highlights query.
+fn rust_grammar() -> GrammarSource {
+    rust_source(QueryFiles::new(grammar_query_path("rust")))
+}
+
+/// Whether `name`'s held grammar is the rust fixture: it loads, where a
+/// [`GrammarSource::missing`] one fails.
+fn holds_rust(reg: &mut LanguageRegistry, name: &str) -> bool {
+    let id = reg.id_of(name).expect("the name is interned");
+    reg.load_grammar(id, &mut ScopeRegistry::new()).is_some()
+}
+
+#[test]
+fn a_plugins_grammar_does_not_replace_the_users() {
+    require_grammars(&["rust"]);
+    let mut reg = LanguageRegistry::new();
+    reg.register_grammar("rust", rust_grammar(), ConfigOrigin::User);
+
+    let shadowed =
+        reg.register_grammar("rust", GrammarSource::missing("rust"), ConfigOrigin::Plugin);
+
+    assert_eq!(shadowed, None);
+    assert!(holds_rust(&mut reg, "rust"));
+}
+
+#[test]
+fn a_users_grammar_replaces_a_plugins_and_a_plugins_replaces_a_bundled_one() {
+    require_grammars(&["rust"]);
+    let mut reg = LanguageRegistry::new();
+    reg.register_grammar("rust", rust_grammar(), ConfigOrigin::Plugin);
+    let replaced = reg.register_grammar("rust", GrammarSource::missing("rust"), ConfigOrigin::User);
+    assert_eq!(replaced, reg.id_of("rust"));
+    assert!(!holds_rust(&mut reg, "rust"));
+
+    reg.register_grammar("go", rust_grammar(), ConfigOrigin::Bundled);
+    reg.register_grammar("go", GrammarSource::missing("go"), ConfigOrigin::Plugin);
+    assert!(!holds_rust(&mut reg, "go"));
+}
+
+#[test]
+fn a_second_grammar_from_one_origin_replaces_the_first() {
+    require_grammars(&["rust"]);
+    let mut reg = LanguageRegistry::new();
+    reg.register_grammar("rust", rust_grammar(), ConfigOrigin::User);
+
+    let replaced = reg.register_grammar("rust", GrammarSource::missing("rust"), ConfigOrigin::User);
+
+    assert_eq!(replaced, reg.id_of("rust"));
+    assert!(!holds_rust(&mut reg, "rust"));
+}
+
+#[test]
+fn a_loaded_grammar_keeps_the_origin_that_registered_it() {
+    require_grammars(&["rust"]);
+    let mut reg = LanguageRegistry::new();
+    reg.register_grammar("rust", rust_grammar(), ConfigOrigin::User);
+    assert!(holds_rust(&mut reg, "rust"));
+
+    let shadowed =
+        reg.register_grammar("rust", GrammarSource::missing("rust"), ConfigOrigin::Plugin);
+
+    assert_eq!(shadowed, None);
+    let id = reg.id_of("rust").expect("rust is interned");
+    assert!(reg.loaded_grammar(id).is_some(), "the loaded bundle stays");
+}
+
+#[test]
+fn a_shadowed_attach_compiles_nothing() {
+    require_grammars(&["rust"]);
+    let mut reg = LanguageRegistry::new();
+    reg.register_grammar("rust", rust_grammar(), ConfigOrigin::User);
+
+    let attached = reg
+        .attach_grammar(
+            "rust",
+            &GrammarSource::missing("rust"),
+            ConfigOrigin::Plugin,
+            &mut ScopeRegistry::new(),
+        )
+        .expect("a shadowed attach opens no library, so it cannot fail");
+
+    assert!(attached.is_none());
+    assert!(holds_rust(&mut reg, "rust"));
+}
+
+// ── Identity ranking ─────────────────────────────────────────────────────
+
+/// `name`'s detection data, as `define-language!` from `by` would set it,
+/// with one extension.
+fn define(
+    reg: &mut LanguageRegistry,
+    name: &str,
+    extension: &str,
+    by: ConfigOrigin,
+) -> WriteOutcome {
+    let extension = FileExtension::new(extension.to_owned()).unwrap();
+    reg.register_identity_no_rebuild(name, &[extension], &[], &[], by)
+        .1
+}
+
+#[test]
+fn a_user_definition_replaces_the_bundled_one_and_a_plugins_does_not_replace_it() {
+    let mut reg = LanguageRegistry::new();
+    assert_eq!(
+        define(&mut reg, "tsx", "tsx", ConfigOrigin::Bundled),
+        WriteOutcome::Applied
+    );
+    assert_eq!(
+        define(&mut reg, "tsx", "utsx", ConfigOrigin::User),
+        WriteOutcome::Applied
+    );
+    assert_eq!(
+        define(&mut reg, "tsx", "ptsx", ConfigOrigin::Plugin),
+        WriteOutcome::Shadowed
+    );
+    let tsx = reg.id_of("tsx");
+    assert_eq!(reg.by_file_name("a.utsx"), tsx);
+    assert_eq!(reg.by_file_name("a.tsx"), None);
+    assert_eq!(reg.by_file_name("a.ptsx"), None);
+}
+
+#[test]
+fn a_second_definition_from_one_tier_is_ignored() {
+    let mut reg = LanguageRegistry::new();
+    assert_eq!(
+        define(&mut reg, "tsx", "first", ConfigOrigin::Plugin),
+        WriteOutcome::Applied
+    );
+    assert_eq!(
+        define(&mut reg, "tsx", "second", ConfigOrigin::Plugin),
+        WriteOutcome::Ignored
+    );
+    assert_eq!(reg.by_file_name("a.first"), reg.id_of("tsx"));
+    assert_eq!(reg.by_file_name("a.second"), None);
+}
+
+/// A grammar defines the language it names with no detection data, which
+/// a later definition from any tier then gives it.
+#[test]
+fn a_grammar_defines_its_language_and_leaves_its_detection_to_a_definition() {
+    let mut reg = LanguageRegistry::new();
+    reg.register_grammar(
+        "zlang",
+        rust_source(QueryFiles::new("unused.scm".into())),
+        ConfigOrigin::User,
+    );
+    let zlang = reg.defined_id("zlang");
+    assert!(zlang.is_some(), "a grammar defines its language");
+    assert!(reg.iter_names().any(|name| name == "zlang"));
+
+    assert_eq!(
+        define(&mut reg, "zlang", "zl", ConfigOrigin::Bundled),
+        WriteOutcome::Applied
+    );
+    assert_eq!(reg.by_file_name("a.zl"), zlang);
+}
+
+/// Removing a language its grammar alone defined leaves it undefined, with
+/// no grammar.
+#[test]
+fn remove_takes_away_a_language_only_its_grammar_defined() {
+    let mut reg = LanguageRegistry::new();
+    reg.register_grammar(
+        "zlang",
+        rust_source(QueryFiles::new("unused.scm".into())),
+        ConfigOrigin::User,
+    );
+
+    reg.remove("zlang");
+
+    assert_eq!(reg.defined_id("zlang"), None);
+    assert!(!reg.has_grammar("zlang"));
+}

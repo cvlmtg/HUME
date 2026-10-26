@@ -258,7 +258,7 @@ pub(crate) fn path_programs(
     ctx: &mut SteelCtx,
     prefix: String,
     extensions: SteelVal,
-    on_names: crate::Rooted,
+    on_names: crate::Callback,
 ) -> SteelResult {
     let extensions = list_to_strings(extensions, "extensions")?;
     let job = require_cap(ctx.host.async_process())?

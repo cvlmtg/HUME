@@ -13,7 +13,7 @@ use steel::rvals::{IntoSteelVal, SteelVal};
 
 use crate::{
     Rooted, SteelCtx,
-    attribution::{EntryFile, EntryId, PluginId},
+    attribution::{EntryFile, EntryId, Owner, PluginId},
     lazy::PluginState,
     plugin_record::{GitRef, LoadCall, Resolution},
 };
@@ -509,31 +509,35 @@ fn empty_config() -> SteelResult {
         .map_err(generic_err)
 }
 
+/// The plugin whose code is running: its body, or a command, hook handler
+/// or callback it defined (`SteelCtx::owner`).
+fn calling_plugin<'c>(ctx: &'c SteelCtx) -> Option<&'c PluginId> {
+    match &**ctx.owner() {
+        Owner::Plugin(id) => Some(&id.plugin),
+        Owner::Core | Owner::User => None,
+    }
+}
+
 /// `(plugin-config)`: return the calling plugin's `#:config` value, or an
-/// empty hash if none was passed (or if called outside a plugin body).
+/// empty hash if none was passed (or if no plugin's code is running).
 ///
-/// Resolved via the top of `plugin_stack`, which is non-empty for the whole
-/// duration of a plugin body's evaluation, pushed in `begin_lazy_activation`
-/// before either `load-plugin!` (eager) or a deferred lazy activation runs the
-/// `(require …)`. Both paths therefore read config identically.
+/// Its body, eager (`load-plugin!`) or lazy, and every proc it defined read
+/// the same config.
 pub(crate) fn plugin_config(ctx: &mut SteelCtx) -> SteelResult {
-    let Some(id) = ctx.plugin_stack.current() else {
+    let Some(plugin) = calling_plugin(ctx) else {
         return empty_config();
     };
-    match ctx.registries.plugin_records.config(&id.plugin) {
+    match ctx.registries.plugin_records.config(plugin) {
         Some(cfg) => Ok(cfg.clone()),
         None => empty_config(),
     }
 }
 
 /// `(plugin-dir)`: the directory holding the calling plugin's own files, or
-/// `#f` outside a plugin body (or when the root for that plugin's kind is
-/// unset). Resolved from the top of `plugin_stack` like `(plugin-config)`.
+/// `#f` when no plugin's code is running (or when the root for that
+/// plugin's kind is unset). The calling plugin is `(plugin-config)`'s.
 pub(crate) fn plugin_dir(ctx: &mut SteelCtx) -> SteelResult {
-    let dir = ctx
-        .plugin_stack
-        .current()
-        .and_then(|id| plugin_dir_for_id(&id.plugin, ctx.dirs));
+    let dir = calling_plugin(ctx).and_then(|plugin| plugin_dir_for_id(plugin, ctx.dirs));
     Ok(match dir {
         Some(d) => SteelVal::StringV(d.to_string_lossy().into_owned().into()),
         None => SteelVal::BoolV(false),
@@ -541,7 +545,7 @@ pub(crate) fn plugin_dir(ctx: &mut SteelCtx) -> SteelResult {
 }
 
 pub(super) mod activation;
-pub(crate) use activation::abandon_open_activations;
+pub(crate) use activation::{abandon_open_activations, fail_open_bodies};
 pub(crate) mod paths;
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

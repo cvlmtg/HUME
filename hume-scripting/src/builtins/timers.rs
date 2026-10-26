@@ -13,7 +13,7 @@ use super::errors::require_cap;
 /// `(after! ms thunk)` → a timer for `cancel-timer!`. `thunk` is called with no args at
 /// the drain boundary once `ms` milliseconds have passed (never inline;
 /// same queued-Steel-call delivery as the LSP callbacks).
-pub(crate) fn after(ctx: &mut SteelCtx, ms: SteelVal, thunk: crate::Rooted) -> SteelResult {
+pub(crate) fn after(ctx: &mut SteelCtx, ms: SteelVal, thunk: crate::Callback) -> SteelResult {
     let ms = usize_arg(ms, "ms")? as u64;
     match require_cap(ctx.host.timers())?.schedule_timer(ms, thunk) {
         Some(timer) => Ok(timer.into_steel_val()),

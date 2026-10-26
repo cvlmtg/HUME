@@ -14,8 +14,7 @@
 (define (lsp/inlay-key pane)
   (let* ((keys (unbox lsp/*inlay-keys*))
          (bkey (buffer-key pane)))
-    (if (hash-contains? keys bkey)
-        (hash-ref keys bkey)
+    (or (hash-try-get keys bkey)
         (let ((key (lsp-supersede-key)))
           (set-box! lsp/*inlay-keys* (hash-insert keys bkey key))
           key))))
@@ -93,10 +92,11 @@
 
 (register-hook! 'on-buffer-close
   (lambda (pane)
-    (set-box! lsp/*inlay-overrides*
-              (hash-remove (unbox lsp/*inlay-overrides*) (buffer-key pane)))
-    (set-box! lsp/*inlay-keys*
-              (hash-remove (unbox lsp/*inlay-keys*) (buffer-key pane)))))
+    (let ((bkey (buffer-key pane)))
+      (set-box! lsp/*inlay-overrides*
+                (hash-remove (unbox lsp/*inlay-overrides*) bkey))
+      (set-box! lsp/*inlay-keys*
+                (hash-remove (unbox lsp/*inlay-keys*) bkey)))))
 
 (define-typed-command! "toggle-inlay-hints"
   "Toggle LSP inlay hints for the current buffer."

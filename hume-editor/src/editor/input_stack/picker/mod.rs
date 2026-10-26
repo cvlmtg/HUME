@@ -259,7 +259,7 @@ pub(in crate::editor) enum PickerCallback {
     /// The `#:actions` `proc` bound to `key`.
     Action {
         key: CanonicalKey,
-        proc: hume_scripting::Rooted,
+        proc: hume_scripting::Callback,
     },
 }
 
@@ -447,7 +447,7 @@ fn picker_paste(
 /// `debounce_viewport_change`'s fire site (`timer_bridge.rs`), which is
 /// every scroll step of every frame and so earns its own Rust-side
 /// coalescer.
-fn queue_query_change(state: &mut EditorState, r: LayerRef, cb: Option<hume_scripting::Rooted>) {
+fn queue_query_change(state: &mut EditorState, r: LayerRef, cb: Option<hume_scripting::Callback>) {
     let Some(cb) = cb else {
         return;
     };

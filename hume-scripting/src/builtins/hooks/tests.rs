@@ -82,22 +82,24 @@ fn register_hook_valid_in_init_mode() {
         1,
         "one handler must be registered for on-buffer-save"
     );
-    assert!(
-        h.registries.hooks.handlers_for("on-buffer-save")[0]
-            .owner
-            .is_none(),
-        "a top-level (non-plugin) registration must have no owner"
+    assert_eq!(
+        *h.registries.hooks.handlers_for("on-buffer-save")[0]
+            .handler
+            .provenance()
+            .owner,
+        crate::attribution::Owner::User,
+        "a top-level (non-plugin) registration is the user's"
     );
 }
 
-/// `register-hook!` is also valid during plugin activation (plugin_stack non-empty).
+/// `register-hook!` is also valid during plugin activation (a plugin body running).
 #[test]
 fn register_hook_valid_during_plugin_load() {
     use crate::attribution::{EntryId, PluginId};
     let mut h = SteelCtxTestHarness::new();
     // Simulate being inside a plugin body.
-    h.plugin_stack
-        .push(EntryId::main(PluginId::parse("core:myplugin").unwrap()));
+    h.attribution
+        .push_body(EntryId::main(PluginId::parse("core:myplugin").unwrap()));
     {
         let mut ctx = h.ctx(); // EvalMode::PluginActivation → allowed
         let result = register_hook(
@@ -112,9 +114,20 @@ fn register_hook_valid_during_plugin_load() {
     }
     assert!(h.registries.hooks.has_match("on-buffer-open", None));
     assert_eq!(
-        h.registries.hooks.handlers_for("on-buffer-open")[0].owner,
-        Some(EntryId::main(PluginId::parse("core:myplugin").unwrap())),
+        *h.registries.hooks.handlers_for("on-buffer-open")[0]
+            .handler
+            .provenance()
+            .owner,
+        crate::attribution::Owner::Plugin(EntryId::main(PluginId::parse("core:myplugin").unwrap())),
         "a plugin-body registration must be attributed to the currently-executing plugin"
+    );
+    assert_eq!(
+        h.registries.hooks.handlers_for("on-buffer-open")[0]
+            .handler
+            .provenance()
+            .behalf,
+        crate::ConfigOrigin::Plugin,
+        "a plugin's hook runs on the plugin's behalf, as nobody asked for it"
     );
 }
 

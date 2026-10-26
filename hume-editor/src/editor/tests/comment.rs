@@ -4,7 +4,8 @@
 use super::*;
 
 use hume_editing::comment::{BlockCommentTokens, LineCommentTokens};
-use hume_treesitter::registry::{ConfigureOutcome, ConfiguredBy, LanguageFields};
+use hume_origin::{ConfigOrigin, WriteOutcome};
+use hume_treesitter::registry::LanguageFields;
 
 /// An editor over `src` whose buffer is a language named `name`, with
 /// `line` and `block` configured as its comment tokens.
@@ -12,17 +13,17 @@ fn editor_in(src: &str, name: &str, line: &[&str], block: &[(&str, &str)]) -> Ed
     let mut ed = editor_from(src);
     super::language::attach_host(&mut ed, "");
     let languages = &mut ed.state.config.languages;
-    let id = languages.register_identity_no_rebuild(name, &[], &[], &[]);
+    let (id, _) = languages.register_identity_no_rebuild(name, &[], &[], &[], ConfigOrigin::User);
     let fields = LanguageFields {
         comment_tokens: (!line.is_empty()).then(|| LineCommentTokens::from_strs(line)),
         block_comment_tokens: (!block.is_empty()).then(|| BlockCommentTokens::from_pairs(block)),
         ..LanguageFields::default()
     };
-    let outcomes = languages.configure_fields(id, fields, ConfiguredBy::User);
+    let outcomes = languages.configure_fields(id, fields, ConfigOrigin::User);
     assert!(
         outcomes
             .iter()
-            .all(|&(_, outcome)| outcome == ConfigureOutcome::Applied),
+            .all(|&(_, outcome)| outcome == WriteOutcome::Applied),
         "{outcomes:?}"
     );
     let bid = ed.focused_buffer_id();

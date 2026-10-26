@@ -39,7 +39,6 @@ use steel::steel_vm::engine::Engine;
 use steel::steel_vm::register_fn::RegisterFn;
 
 use super::HUME_CTX;
-use crate::Rooted;
 
 /// The return type of every ctx-taking builtin below. One definition shared
 /// by every `builtins/*.rs` submodule instead of each declaring its own
@@ -185,12 +184,15 @@ macro_rules! builtins {
 // builtin has no access to the Engine it runs in. The handler returns #f. A
 // macro name (`call!`) fails to evaluate as a value and reads as absent.
 //
-// %apply-command!: arms the #:inline-output alt-screen bracket for call!, as
-// Editor::call_steel_command_body does for keypress and `:`. The restore
-// truncates to the armed depth instead of popping, so an unpaired descendant
-// frame is never taken for this call's own. dynamic-wind runs the restore
-// when the body raises too, so a caller that catches the raise goes on with
-// its own bracket state.
+// %apply-command!: applies the proc %enter-command! returned inside the call!
+// frame it entered, so the command runs as the code that defined it, and arms
+// the #:inline-output alt-screen bracket for call!, as call_steel_cmd and
+// Editor::call_steel_command_body do for keypress and `:`. Each restore
+// truncates to its own depth instead of popping, so an unpaired descendant
+// frame is never taken for this call's own. dynamic-wind runs the restores
+// when the body raises too, so a caller that catches the raise goes on as
+// itself and with its own bracket state. A session stopped by its budget
+// runs neither; the session's end drops both.
 //
 // %call-held-handler: starts a held event's handler that takes `done`, with
 // the event's args followed by a thunk that releases hold `hold`.
@@ -328,9 +330,13 @@ pub(crate) fn register_all(steel: &mut Engine) {
         // (call! name args…) macro desugars to (%dispatch-command! …) which routes
         // activated plugin commands inline in Steel and falls back here for everything else.
         open "%call-native!" => "call!" commands::call_command_primitive(name: String, args: SteelVal);
-        // %lookup-plugin-proc: returns the Steel closure for an activated plugin command,
-        // or #f. Called by %dispatch-command! in Steel to decide inline-apply vs. %call-native!.
-        open "%lookup-plugin-proc" => "call!" commands::lookup_plugin_proc(name: String);
+        // %enter-command!/%leave-command!: %enter-command! enters a defined Steel
+        // command's call! frame and returns (proc depth), or #f, which
+        // %dispatch-command! reads to decide inline-apply vs. %call-native!; the
+        // pair is the call!-path counterpart of call_steel_cmd running a command
+        // as its definer.
+        open "%enter-command!" => "call!" commands::enter_command(name: String);
+        open "%leave-command!" => "call!" commands::leave_command(depth: SteelVal);
         // %arm-inline-output!/%restore-inline-output!: the call!-path counterpart
         // of dispatch.rs's own inline-output arm/close, wrapping %dispatch-command!'s
         // in-VM apply. See the BOOTSTRAP comment block above for the full picture.
@@ -400,9 +406,9 @@ pub(crate) fn register_all(steel: &mut Engine) {
         open   "%register-grammar!" => "register-grammar!" syntax::register_grammar(name: SteelVal, grammar_path: SteelVal, symbol: SteelVal, highlights_path: SteelVal, optional_queries: SteelVal);
         plain  "grammar-optional-queries" syntax::grammar_optional_queries();
 
-        // LSP server registration: last-wins, queued (like language regs) and
-        // applied at the end of the current eval, from init, plugin activation,
-        // or a command/hook body.
+        // LSP server registration: ranked by whose behalf it is made, last-wins
+        // within a rank, queued (like language regs) and applied at the end of
+        // the current eval, from init, plugin activation, or a command/hook body.
         open "%register-lsp-server!" => "register-lsp-server!" lsp::register_lsp_server(name: SteelVal, command: SteelVal, args_val: SteelVal, init_options: SteelVal, settings: SteelVal, env_val: SteelVal);
         open "unregister-lsp-server!" lsp::unregister_lsp_server(name: SteelVal);
         open "set-language-servers!" lsp::set_language_servers(language: SteelVal, entries: SteelVal);
@@ -413,8 +419,8 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "lsp-restart!" lsp::lsp_restart(target: lsp::LspTargetArg);
         cmd "lsp-show-status!" lsp::lsp_show_status(pane: args::LivePane);
         // Generic LSP bridge: any protocol method reachable from Steel.
-        cmd "%lsp-request!" => "lsp-request!" lsp::lsp_request(pane: args::LivePane, method: SteelVal, params: SteelVal, callback: SteelVal, feature: SteelVal, to: SteelVal, unavailable: SteelVal, allow_stale: SteelVal, supersede: SteelVal, require_focus: SteelVal, tracked: SteelVal);
-        cmd "%lsp-request-all!" => "lsp-request-all!" lsp::lsp_request_all(pane: args::LivePane, method: SteelVal, params: SteelVal, callback: SteelVal, feature: SteelVal, unavailable: SteelVal, allow_stale: SteelVal, supersede: SteelVal, require_focus: SteelVal, tracked: SteelVal);
+        cmd "%lsp-request!" => "lsp-request!" lsp::lsp_request(pane: args::LivePane, method: SteelVal, params: SteelVal, callback: args::ScriptProc, feature: SteelVal, to: SteelVal, unavailable: SteelVal, allow_stale: SteelVal, supersede: SteelVal, require_focus: SteelVal, tracked: SteelVal);
+        cmd "%lsp-request-all!" => "lsp-request-all!" lsp::lsp_request_all(pane: args::LivePane, method: SteelVal, params: SteelVal, callback: args::ScriptProc, feature: SteelVal, unavailable: SteelVal, allow_stale: SteelVal, supersede: SteelVal, require_focus: SteelVal, tracked: SteelVal);
         cmd "%lsp-notify!" => "lsp-notify!" lsp::lsp_notify(pane: args::LivePane, method: SteelVal, params: SteelVal, feature: SteelVal, to: SteelVal);
         config "register-lsp-notification-hook!" lsp::register_lsp_notification_hook(methods: SteelVal, proc: SteelVal);
         // Introspection
@@ -471,13 +477,13 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "selections-charwise?" buffers::selections_charwise(pane: args::LivePane);
 
         // Minibuffer prompt.
-        cmd "%prompt!" => "prompt!" ui::prompt(pane: args::LivePane, label: SteelVal, prefill: SteelVal, on_confirm: Rooted);
-        cmd "on-next-char!" ui::on_next_char(callback: SteelVal);
+        cmd "%prompt!" => "prompt!" ui::prompt(pane: args::LivePane, label: SteelVal, prefill: SteelVal, on_confirm: args::ScriptProc);
+        cmd "on-next-char!" ui::on_next_char(callback: args::ScriptProc);
         cmd "symbol-under-cursor" buffers::symbol_under_cursor(pane: args::LivePane);
 
         // Completion: sources register at config time; answers, the ranked
         // view, and accept/dismiss are command-time.
-        config "%register-completion-source!" => "register-completion-source!" completion::register_completion_source(name: String, proc: SteelVal, target: SteelVal, match_kind: SteelVal, priority: SteelVal, resolve: SteelVal, token_chars: SteelVal, cancel: SteelVal);
+        config "%register-completion-source!" => "register-completion-source!" completion::register_completion_source(name: String, proc: args::ScriptProc, target: SteelVal, match_kind: SteelVal, priority: SteelVal, resolve: SteelVal, token_chars: SteelVal, cancel: SteelVal);
         cmd "%completion-emit!" => "completion-emit!" completion::completion_emit(id: SteelVal, items: SteelVal, incomplete: SteelVal, more: SteelVal, span: SteelVal, prefix: SteelVal);
         cmd "completion-top" completion::completion_top(n: SteelVal);
         cmd "completion-accept!" completion::completion_accept(idx: SteelVal);
@@ -490,18 +496,18 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "close-popup!" ui::close_popup(token: SteelVal);
 
         // Selection menu widget.
-        cmd "show-menu!" ui::show_menu(pane: args::LivePane, items: SteelVal, on_select: Rooted);
+        cmd "show-menu!" ui::show_menu(pane: args::LivePane, items: SteelVal, on_select: args::ScriptProc);
         cmd "close-menu!" ui::close_menu(token: SteelVal);
 
         // Bottom drawer.
-        cmd "%show-drawer-list!" => "show-drawer-list!" ui::show_drawer_list(pane: args::LivePane, items: SteelVal, on_select: Rooted, selected: SteelVal, render: SteelVal);
+        cmd "%show-drawer-list!" => "show-drawer-list!" ui::show_drawer_list(pane: args::LivePane, items: SteelVal, on_select: args::ScriptProc, selected: SteelVal, render: SteelVal);
         cmd "close-drawer!" ui::close_drawer(token: SteelVal);
-        cmd "%update-drawer-list!" => "update-drawer-list!" ui::update_drawer_list(token: SteelVal, items: SteelVal, on_select: Rooted, selected: SteelVal, render: SteelVal);
+        cmd "%update-drawer-list!" => "update-drawer-list!" ui::update_drawer_list(token: SteelVal, items: SteelVal, on_select: args::ScriptProc, selected: SteelVal, render: SteelVal);
         cmd "drawer-selected-index" ui::drawer_selected_index(token: SteelVal);
 
         // Fuzzy-picker widget.
-        cmd "%picker!" => "picker!" ui::picker(pane: args::LivePane, items: SteelVal, on_select: Rooted, prompt: SteelVal, pending: SteelVal, query: SteelVal, truncate: SteelVal, actions: SteelVal);
-        cmd "%live-picker!" => "live-picker!" ui::live_picker(pane: args::LivePane, on_select: Rooted, prompt: SteelVal, query: SteelVal, on_query_change: SteelVal, truncate: SteelVal, actions: SteelVal);
+        cmd "%picker!" => "picker!" ui::picker(pane: args::LivePane, items: SteelVal, on_select: args::ScriptProc, prompt: SteelVal, pending: SteelVal, query: SteelVal, truncate: SteelVal, actions: SteelVal);
+        cmd "%live-picker!" => "live-picker!" ui::live_picker(pane: args::LivePane, on_select: args::ScriptProc, prompt: SteelVal, query: SteelVal, on_query_change: SteelVal, truncate: SteelVal, actions: SteelVal);
         cmd "picker-push!" ui::picker_push(token: SteelVal, items: SteelVal);
         cmd "picker-replace!" ui::picker_replace(token: SteelVal, items: SteelVal);
         cmd "%picker-source-spawn!" => "picker-source-spawn!" ui::picker_source_spawn(token: SteelVal, cmd: SteelVal, args: SteelVal, cwd: SteelVal, nul: SteelVal, ok_exit_codes: SteelVal);
@@ -513,15 +519,15 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "%held-done" => "done" hooks::held_done(hold: SteelVal);
 
         // Timers: not LSP-specific, any plugin can schedule one.
-        cmd "after!" timers::after(ms: SteelVal, thunk: Rooted);
+        cmd "after!" timers::after(ms: SteelVal, thunk: args::ScriptProc);
         cmd "cancel-timer!" timers::cancel_timer(id: SteelVal);
 
         // Background work with a callback, stopped by `cancel-async!`: a
         // subprocess's one-shot capture (a streaming picker source is
         // `picker-source-spawn!`'s shape) and a program scan's reports.
-        cmd "%spawn-async!" => "spawn-async!" process::spawn_async(cmd: SteelVal, args: SteelVal, cwd: SteelVal, callback: Rooted);
+        cmd "%spawn-async!" => "spawn-async!" process::spawn_async(cmd: SteelVal, args: SteelVal, cwd: SteelVal, callback: args::ScriptProc);
         cmd "cancel-async!" process::cancel_async(id: SteelVal);
-        cmd "path-programs" fs::path_programs(prefix: String, extensions: SteelVal, on_names: Rooted);
+        cmd "path-programs" fs::path_programs(prefix: String, extensions: SteelVal, on_names: args::ScriptProc);
 
         // Blocking subprocess capture, no callback.
         // `open`, not `cmd`: Steel's own `spawn-process`/`wait`, which

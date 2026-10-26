@@ -87,8 +87,14 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
         self.state.config.registry.steel_proc(name)
     }
 
-    fn unregister_commands_defined_by(&mut self, plugin: &hume_scripting::attribution::EntryId) {
-        self.state.config.registry.unregister_defined_by(plugin);
+    fn unregister_commands_registered_in(
+        &mut self,
+        activation: &hume_scripting::attribution::EntryId,
+    ) {
+        self.state
+            .config
+            .registry
+            .unregister_registered_in(activation);
     }
 
     fn register_lazy_command(

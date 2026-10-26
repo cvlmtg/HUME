@@ -527,7 +527,7 @@ pub(in crate::editor) enum PendingAnswer {
     Text(commands::PendingDispatch, Option<String>),
     /// A picker, prompt or menu callback and the argument its answer gives.
     Call {
-        proc: hume_scripting::Rooted,
+        proc: hume_scripting::Callback,
         arg: hume_scripting::Rooted,
     },
 }
@@ -822,7 +822,7 @@ impl EditorState {
         &mut self,
         ticket: Option<AnswerTicket>,
         answer: Answer,
-        proc: hume_scripting::Rooted,
+        proc: hume_scripting::Callback,
         arg: hume_scripting::Rooted,
     ) -> super::event::PendingWork {
         if let Some(ticket) = &ticket {
@@ -837,7 +837,7 @@ impl EditorState {
         &mut self,
         ticket: Option<AnswerTicket>,
         answer: Answer,
-        proc: hume_scripting::Rooted,
+        proc: hume_scripting::Callback,
         arg: hume_scripting::Rooted,
     ) {
         let call = self.answered_call(ticket, answer, proc, arg);

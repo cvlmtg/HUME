@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 
+use hume_scripting::ConfigOrigin;
 use termina::event::{KeyCode, KeyEvent, Modifiers};
 
 use super::{KeyTrie, KeyTrieNode, Keymap, KeymapCommand};
@@ -102,8 +103,8 @@ fn build_text_object_trie() -> KeyTrie {
         (&['p'],             "inner-paragraph",      "around-paragraph"),
     ];
 
-    let mut inner_trie = KeyTrie::new();
-    let mut around_trie = KeyTrie::new();
+    let mut inner_trie = KeyTrie::default();
+    let mut around_trie = KeyTrie::default();
 
     for (chars, inner_name, around_name) in objects {
         for &ch in *chars {
@@ -143,7 +144,7 @@ fn build_text_object_trie() -> KeyTrie {
         (&['`'],      "surround-backtick"),
     ];
 
-    let mut surround_trie = KeyTrie::new();
+    let mut surround_trie = KeyTrie::default();
     for (chars, name) in surround_objects {
         for &ch in *chars {
             let k = KeyEvent::new(KeyCode::Char(ch), Modifiers::NONE);
@@ -151,7 +152,7 @@ fn build_text_object_trie() -> KeyTrie {
         }
     }
 
-    let mut match_trie = KeyTrie::new();
+    let mut match_trie = KeyTrie::default();
     match_trie.bind(key!('i'), KeyTrieNode::Node(inner_trie));
     match_trie.bind(key!('a'), KeyTrieNode::Node(around_trie));
     match_trie.bind(key!('s'), KeyTrieNode::Node(surround_trie));
@@ -167,7 +168,7 @@ fn build_text_object_trie() -> KeyTrie {
 /// uppercase WORD without opening the full text-object trie.  This keeps `m`
 /// and `M` as separate roots: `mM` and `Mm` are no-ops.
 fn build_uppercase_match_trie() -> KeyTrie {
-    let mut t = KeyTrie::new();
+    let mut t = KeyTrie::default();
     t.bind_leaf(key!('M'), cmd!("select-uppercase-word"));
     t
 }
@@ -185,7 +186,7 @@ fn build_uppercase_match_trie() -> KeyTrie {
 ///    └─ <STRUCTURAL_OBJECTS' key/KEY>  → goto-next-<kind> / goto-prev-<kind>
 /// ```
 fn build_goto_trie() -> KeyTrie {
-    let mut t = KeyTrie::new();
+    let mut t = KeyTrie::default();
     t.bind_leaf(key!('g'), cmd!("goto-first-line"));
     t.bind_leaf(key!('e'), cmd!("goto-last-line"));
     t.bind_leaf(key!('h'), cmd!("goto-line-start"));
@@ -222,7 +223,7 @@ fn build_goto_trie() -> KeyTrie {
 /// (`grn`) is no more a goto than a case transform is. `g` stays reserved
 /// for commands that name a destination.
 fn build_transform_trie() -> KeyTrie {
-    let mut t = KeyTrie::new();
+    let mut t = KeyTrie::default();
     t.bind_leaf(key!('L'), cmd!("make-text-lowercase"));
     t.bind_leaf(key!('U'), cmd!("make-text-uppercase"));
     t.bind_leaf(key!('C'), cmd!("make-text-capitalized"));
@@ -235,7 +236,7 @@ fn build_transform_trie() -> KeyTrie {
 // ── Pane (Ctrl-p) sub-trie ───────────────────────────────────────────────────
 
 fn build_pane_trie() -> KeyTrie {
-    let mut t = KeyTrie::new();
+    let mut t = KeyTrie::default();
     t.bind_leaf(key!('p'), cmd!("pane-focus-next"));
     t.bind_leaf(key!('P'), cmd!("pane-focus-prev"));
     t.bind_leaf(key!('h'), cmd!("pane-focus-left"));
@@ -266,7 +267,7 @@ fn build_pane_trie() -> KeyTrie {
 // `t` and `b` stay free under `z` for plugins (`core:pickers` claims `z b`).
 
 fn build_view_trie() -> KeyTrie {
-    let mut t = KeyTrie::new();
+    let mut t = KeyTrie::default();
     t.bind_leaf(key!('z'), cmd!("center-view-on-cursor"));
     t.bind_leaf(key!('k'), cmd!("top-view-on-cursor"));
     t.bind_leaf(key!('j'), cmd!("bottom-view-on-cursor"));
@@ -276,7 +277,7 @@ fn build_view_trie() -> KeyTrie {
 // ── Default Normal keymap ─────────────────────────────────────────────────────
 
 pub(super) fn default_normal_keymap() -> KeyTrie {
-    let mut t = KeyTrie::new();
+    let mut t = KeyTrie::default();
 
     // ── Basic motion ─────────────────────────────────────────────────────────
     // The keymap stores only the base command name. Extend-variant pairing
@@ -441,8 +442,8 @@ pub(super) fn default_normal_keymap() -> KeyTrie {
 
     // ── `G` prefix ────────────────────────────────────────────────────────────
     // `G` → second key. Must stay a Node: `bind`/`bind_leaf` is a plain map
-    // insert, so binding bare `G` to anything drops this whole subtree (and
-    // `core:lsp`'s `G R` with it). See `build_transform_trie` for what `G` means.
+    // insert, so binding bare `G` here drops this whole subtree. See
+    // `build_transform_trie` for what `G` means.
     t.bind(key!('G'), KeyTrieNode::Node(build_transform_trie()));
 
     // ── View prefix ───────────────────────────────────────────────────────────
@@ -482,13 +483,13 @@ pub(super) fn default_normal_keymap() -> KeyTrie {
 /// Extend mode (see `default_normal_keymap`), so no Extend-only override is
 /// needed. Plugins (e.g. `core:vim-keybind`'s vim-style `o`) may add entries.
 pub(super) fn default_extend_keymap() -> KeyTrie {
-    KeyTrie::new()
+    KeyTrie::default()
 }
 
 // ── Default Insert keymap ─────────────────────────────────────────────────────
 
 pub(super) fn default_insert_keymap() -> KeyTrie {
-    let mut t = KeyTrie::new();
+    let mut t = KeyTrie::default();
 
     // Return to Normal mode.
     t.bind_leaf(key!(Escape), cmd!("exit-insert"));
@@ -533,9 +534,11 @@ impl Keymap {
         // Ctrl-; mirrors `;` but collapses to the anchor (the word's first char for
         // forward selections).
         self.normal
+            .layer_mut(ConfigOrigin::Bundled)
             .bind_leaf(key!(Ctrl + ';'), cmd!("collapse-to-anchor-and-exit-extend"));
         // Ctrl-, removes primary.
         self.normal
+            .layer_mut(ConfigOrigin::Bundled)
             .bind_leaf(key!(Ctrl + ','), cmd!("remove-primary-selection"));
         // Tab and Shift-Tab cycle panes. Disambiguating Ctrl-i from Tab (both
         // 0x09 on legacy terminals) is precisely what the kitty protocol
@@ -543,11 +546,16 @@ impl Keymap {
         // stays reachable via Ctrl-i (see the base keymap's jump-list binds).
         // Shift-Tab arrives as BackTab with SHIFT, which `canonical` adds to
         // every BackTab, so `key!(BackTab)` matches it.
-        self.normal.bind_leaf(key!(Tab), cmd!("pane-focus-next"));
         self.normal
+            .layer_mut(ConfigOrigin::Bundled)
+            .bind_leaf(key!(Tab), cmd!("pane-focus-next"));
+        self.normal
+            .layer_mut(ConfigOrigin::Bundled)
             .bind_leaf(key!(BackTab), cmd!("pane-focus-prev"));
         // Ctrl-| runs a shell command and inserts its output.
-        self.insert.bind_leaf(key!(Ctrl + '|'), cmd!("pipe"));
+        self.insert
+            .layer_mut(ConfigOrigin::Bundled)
+            .bind_leaf(key!(Ctrl + '|'), cmd!("pipe"));
     }
 }
 

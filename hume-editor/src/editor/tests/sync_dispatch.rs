@@ -338,10 +338,13 @@ fn bind_f2_after_a_delete(ed: &mut Editor, body: &str) -> termina::event::KeyEve
         &format!(r#"(define-command! "f2-body" "" (lambda (pane) {body}))"#),
     );
     let f2 = termina::event::KeyEvent::new(KeyCode::Function(2), termina::event::Modifiers::NONE);
-    ed.state
-        .config
-        .keymap
-        .bind_user_with_extend(BindMode::Normal, &[f2], "f2-body".into(), false);
+    ed.state.config.keymap.bind(
+        BindMode::Normal,
+        &[f2],
+        "f2-body".into(),
+        false,
+        hume_scripting::ConfigOrigin::User,
+    );
     ed.feed_key(key('d'));
     assert!(
         ed.state.last_action().is_some(),
@@ -1253,7 +1256,7 @@ fn plugin_calls_plugin_cursor_read_is_live() {
 /// `define-command!` stores each proc on the host inline during eval, owned
 /// by the user at init's top level.
 ///
-/// That proc is what `%lookup-plugin-proc` reads to decide whether to apply
+/// That proc is what `%enter-command!` reads to decide whether to apply
 /// a command inline in Steel, so this is the precondition for all in-Steel
 /// dispatch tests.
 #[test]
@@ -1363,11 +1366,12 @@ fn setup_steel_f2(ed: &mut Editor, snippet: &str, cmd_name: &str) -> termina::ev
     attach_steel(ed, snippet);
 
     let f2 = termina::event::KeyEvent::new(KeyCode::Function(2), termina::event::Modifiers::NONE);
-    ed.state.config.keymap.bind_user_with_extend(
+    ed.state.config.keymap.bind(
         BindMode::Normal,
         &[f2],
         std::borrow::Cow::Owned(cmd_name.to_owned()),
         false,
+        hume_scripting::ConfigOrigin::User,
     );
     f2
 }

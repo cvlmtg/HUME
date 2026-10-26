@@ -9,6 +9,7 @@ use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 use steel::steel_vm::engine::Engine;
 
+use crate::attribution::{Owner, Provenance};
 use crate::command_name::CommandNameSet;
 use crate::command_procs::CommandProc;
 use crate::context::SteelCtx;
@@ -17,7 +18,7 @@ use crate::log::LogLevel;
 use crate::read_only_host::ReadOnlyHost;
 use crate::types::{Effect, EvalError};
 use crate::watchdog::EvalWatchdog;
-use crate::{HostBundle, Rooted, ScriptingHost, SteelCall, attribution, builtins};
+use crate::{Callback, HostBundle, Rooted, ScriptingHost, SteelCall, attribution, builtins};
 
 mod session;
 
@@ -26,7 +27,7 @@ use session::{SessionError, run_steel_session};
 /// The handlers of a held event at the moment it is raised, so the raiser
 /// can open one hold per handler that takes `done` before any of them runs.
 pub struct HeldHandlers {
-    handlers: Vec<(Rooted, bool)>,
+    handlers: Vec<(Callback, bool)>,
 }
 
 impl HeldHandlers {
@@ -40,19 +41,20 @@ impl HeldHandlers {
     }
 }
 
-/// Which [`SteelCtx`] constructor a session's context comes from.
+/// Which [`SteelCtx`] constructor a session's context comes from, with who
+/// the code it runs is credited to.
 enum CtxKind {
-    Init(CommandNameSet),
+    Init(CommandNameSet, Owner),
     Activation(CommandNameSet),
-    Command,
+    Command(Provenance),
 }
 
 impl CtxKind {
     fn build<'a>(self, host: &'a mut dyn EditorHost, bundle: HostBundle<'a>) -> SteelCtx<'a> {
         match self {
-            Self::Init(names) => SteelCtx::new_init(host, bundle, names),
+            Self::Init(names, owner) => SteelCtx::new_init(host, bundle, names, owner),
             Self::Activation(names) => SteelCtx::new_activation(host, bundle, names),
-            Self::Command => SteelCtx::new_command(host, bundle),
+            Self::Command(base) => SteelCtx::new_command(host, bundle, base),
         }
     }
 }
@@ -67,7 +69,7 @@ impl ScriptingHost {
         let Self {
             steel,
             registries,
-            plugin_stack,
+            attribution,
             pending_messages,
             effects,
             dirs,
@@ -79,7 +81,7 @@ impl ScriptingHost {
             watchdog,
             HostBundle {
                 registries,
-                plugin_stack,
+                attribution,
                 pending_messages,
                 effects,
                 dirs: &*dirs,
@@ -117,15 +119,18 @@ impl ScriptingHost {
     ///
     /// Returns the effects this eval queued (atomically on success; on error,
     /// only effects committed by a nested successful plugin activation; see
-    /// `ScriptingHost::take_eval_effects`).
+    /// `ScriptingHost::take_eval_effects`). `owner` is whose file `source`
+    /// is: the user's `init.scm`, or HUME's own runtime file.
     pub(crate) fn eval_source_raw(
         &mut self,
         source: String,
+        owner: Owner,
         builtin_names: crate::command_name::CommandNameSet,
         budget_ms: u64,
         host: &mut dyn EditorHost,
     ) -> Result<Vec<Effect>, EvalError> {
-        self.run_session(host, CtxKind::Init(builtin_names), budget_ms, |steel| {
+        let kind = CtxKind::Init(builtin_names, owner);
+        self.run_session(host, kind, budget_ms, |steel| {
             steel.compile_and_run_raw_program(source).map(|_| ())
         })
     }
@@ -210,16 +215,30 @@ impl ScriptingHost {
         builtin_names: crate::command_name::CommandNameSet,
     ) -> Result<Vec<Effect>, EvalError> {
         self.dirs.init_dir = path.parent().map(Path::to_path_buf);
-        self.eval_runtime(path, budget_ms, host, builtin_names)
+        self.eval_file(path, Owner::User, budget_ms, host, builtin_names)
     }
 
     /// Evaluate a bundled runtime Scheme file at `path` with `eval_init`'s
-    /// contract, except that it does not set the local-plugin directory: only
-    /// `eval_init` does, so a host resolves `./file.scm` plugins only after
-    /// the user's `init.scm` has been evaluated on it.
+    /// contract, as HUME's own code, except that it does not set the
+    /// local-plugin directory: only `eval_init` does, so a host resolves
+    /// `./file.scm` plugins only after the user's `init.scm` has been
+    /// evaluated on it.
     pub fn eval_runtime(
         &mut self,
         path: &Path,
+        budget_ms: u64,
+        host: &mut dyn EditorHost,
+        builtin_names: crate::command_name::CommandNameSet,
+    ) -> Result<Vec<Effect>, EvalError> {
+        self.eval_file(path, Owner::Core, budget_ms, host, builtin_names)
+    }
+
+    /// The file `eval_init` and `eval_runtime` read, evaluated as `owner`'s;
+    /// a missing file evaluates to nothing.
+    fn eval_file(
+        &mut self,
+        path: &Path,
+        owner: Owner,
         budget_ms: u64,
         host: &mut dyn EditorHost,
         builtin_names: crate::command_name::CommandNameSet,
@@ -229,7 +248,7 @@ impl ScriptingHost {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
             Err(e) => return Err(format!("reading {}: {e}", path.display()).into()),
         };
-        self.eval_source_raw(source, builtin_names, budget_ms, host)
+        self.eval_source_raw(source, owner, builtin_names, budget_ms, host)
     }
 
     /// Shared tail for every eval entry point's atomicity contract: on
@@ -282,7 +301,8 @@ impl ScriptingHost {
         host: &'a mut dyn EditorHost,
     ) -> Result<Vec<Effect>, EvalError> {
         let budget_ms = host.settings().steel_command_budget_ms();
-        self.run_session(host, CtxKind::Command, budget_ms, |steel| {
+        let kind = CtxKind::Command(Provenance::invoked_by_user(Rc::clone(proc.owner())));
+        self.run_session(host, kind, budget_ms, |steel| {
             proc.call(steel, args)?;
             Ok(())
         })
@@ -340,7 +360,7 @@ impl ScriptingHost {
                 );
                 let args =
                     shared.get_or_insert_with(|| args.iter().cloned().map(Rooted::new).collect());
-                SteelCall::with_args(e.proc.clone(), Rc::clone(args))
+                SteelCall::with_args(e.handler.clone(), Rc::clone(args))
             })
             .collect();
         if calls.is_empty() {
@@ -357,7 +377,7 @@ impl ScriptingHost {
                 .registries
                 .hooks
                 .matching(name, None)
-                .map(|e| (e.proc.clone(), e.takes_done))
+                .map(|e| (e.handler.clone(), e.takes_done))
                 .collect(),
         }
     }
@@ -399,17 +419,21 @@ impl ScriptingHost {
         let mut holds = holds.into_iter();
         let mut held_at: Vec<Option<HostToken>> = Vec::with_capacity(handlers.handlers.len());
         let mut calls = Vec::with_capacity(handlers.handlers.len());
-        for (proc, takes_done) in handlers.handlers {
+        for (handler, takes_done) in handlers.handlers {
             if takes_done {
                 let hold = holds.next().expect("counted above");
                 held_at.push(Some(hold));
                 calls.push(SteelCall::with_args(
-                    helper.clone(),
-                    Rc::from([proc, Rooted::new(hold.to_steel()), args_list.clone()]),
+                    handler.wrapped_by(helper.clone()),
+                    Rc::from([
+                        handler.proc().clone(),
+                        Rooted::new(hold.to_steel()),
+                        args_list.clone(),
+                    ]),
                 ));
             } else {
                 held_at.push(None);
-                calls.push(SteelCall::with_args(proc, Rc::clone(&args)));
+                calls.push(SteelCall::with_args(handler, Rc::clone(&args)));
             }
         }
         let (completed, result) = self.run_tracked_calls(calls, host);
@@ -473,7 +497,7 @@ impl ScriptingHost {
 
         for (index, call) in calls.into_iter().enumerate() {
             let (steel, watchdog, bundle) = self.steel_and_bundle();
-            let mut steel_ctx = SteelCtx::new_command(host, bundle);
+            let mut steel_ctx = SteelCtx::new_command(host, bundle, call.provenance().clone());
             let result = run_steel_session(steel, watchdog, &mut steel_ctx, budget_ms, |steel| {
                 let args = call.args().iter().map(|arg| arg.value().clone()).collect();
                 steel
@@ -502,9 +526,9 @@ impl ScriptingHost {
         (completed, effects)
     }
 
-    /// Calls `proc` with `args` and returns its value: the one entry point
-    /// for a proc whose result the editor uses, such as a drawer's row
-    /// renderer. The proc sees `host` through `ReadOnlyHost`: it may read
+    /// Calls `callback` with `args`, as its owner, and returns its value:
+    /// the one entry point for a proc whose result the editor uses, such as
+    /// a drawer's row renderer. The proc sees `host` through `ReadOnlyHost`: it may read
     /// the editor but not change it, queue commands with `call!`, or start a
     /// declared plugin's activation. Any such attempt fails the call, even
     /// when the proc caught the error it raised, and whatever it queued is
@@ -512,11 +536,14 @@ impl ScriptingHost {
     /// same watchdog budget as a command.
     pub fn call_for_value(
         &mut self,
-        proc: SteelVal,
+        callback: &Callback,
         args: Vec<SteelVal>,
         host: &mut dyn EditorHost,
     ) -> Result<SteelVal, String> {
-        self.read_only_call(host, |steel| steel.call_function_with_args(proc, args))
+        let proc = callback.proc().value().clone();
+        self.read_only_call(host, callback.provenance().clone(), |steel| {
+            steel.call_function_with_args(proc, args)
+        })
     }
 
     /// `name`'s bundled data, read by `bootstrap.scm`'s
@@ -529,27 +556,28 @@ impl ScriptingHost {
         host: &mut dyn EditorHost,
     ) -> Result<Option<hume_treesitter::registry::LanguageFields>, String> {
         const CONFIG: &str = "%bundled-language-config";
-        let config = self.read_only_call(host, |steel| {
+        let config = self.read_only_call(host, Provenance::own(Owner::Core), |steel| {
             steel.call_function_by_name_with_args(CONFIG, vec![SteelVal::StringV(name.into())])
         })?;
         builtins::syntax::optional_language_fields(config, CONFIG)
             .map_err(|e| format!("{name}.scm: {e}"))
     }
 
-    /// Runs `call` in a session whose host is read-only and whose queued
-    /// commands fail the call; the shared body of
+    /// Runs `call`, credited as `base`, in a session whose host is read-only and
+    /// whose queued commands fail the call; the shared body of
     /// [`call_for_value`](Self::call_for_value) and
     /// [`bundled_language`](Self::bundled_language).
     pub(crate) fn read_only_call(
         &mut self,
         host: &mut dyn EditorHost,
+        base: Provenance,
         call: impl FnOnce(&mut Engine) -> Result<SteelVal, steel::rerrs::SteelErr>,
     ) -> Result<SteelVal, String> {
         let budget_ms = host.settings().steel_command_budget_ms();
         let mut read_only = ReadOnlyHost::new(host);
         let mut value = None;
         let queued = self
-            .run_session(&mut read_only, CtxKind::Command, budget_ms, |steel| {
+            .run_session(&mut read_only, CtxKind::Command(base), budget_ms, |steel| {
                 value = Some(call(steel)?);
                 Ok(())
             })

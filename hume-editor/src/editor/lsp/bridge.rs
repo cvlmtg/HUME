@@ -16,7 +16,7 @@ use hume_lsp::client::{Outcome, RequestMeta};
 use hume_lsp::codec::RequestId;
 use hume_rope::offset::ExclusiveRange;
 use hume_rope::position_encoding::{PositionEncoding, char_range_to_wire_range, char_to_wire};
-use hume_scripting::host::{SupersedeKey, TrackedHold};
+use hume_scripting::host::{SupersedeKey, SupersedeKeys, TrackedHold};
 use hume_scripting::json::{WireOrigin, to_steel_handle};
 use hume_scripting::{
     DocSpan, Params, PendingLspNotify, PendingLspRequest, RequestMode, RequestParams, RouteSpec,
@@ -127,7 +127,7 @@ enum Responder {
     /// and the request's hold on its `#:tracked` position, dropped once the
     /// callback has run or will never run.
     Steel {
-        callback: hume_scripting::Rooted,
+        callback: hume_scripting::Callback,
         tracked: Option<TrackedHold>,
     },
     /// A Rust closure, given the one server's answer or why it has none.
@@ -190,9 +190,9 @@ struct Delivery {
 pub(in crate::editor) struct Deliveries {
     map: FxHashMap<DeliveryId, Delivery>,
     next: u64,
-    /// The last `SupersedeKey` minted. [`Deliveries::clear`] keeps it, so a
-    /// key a script still holds after a reload never names a new key.
-    supersede_keys: u64,
+    /// [`Deliveries::clear`] keeps it, so a key a script still holds after
+    /// a reload never names a new key.
+    supersede_keys: SupersedeKeys,
 }
 
 /// What a server's answer did to the delivery waiting for it.
@@ -256,8 +256,7 @@ impl Deliveries {
 
     /// A key no earlier call returned.
     pub(in crate::editor) fn new_supersede_key(&mut self) -> SupersedeKey {
-        self.supersede_keys += 1;
-        SupersedeKey::from_raw(self.supersede_keys)
+        self.supersede_keys.mint()
     }
 
     /// The delivery still in flight under `key`. A new request under the

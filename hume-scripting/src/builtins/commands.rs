@@ -47,12 +47,9 @@ fn check_definable(ctx: &mut SteelCtx, name: &str) -> Result<(), SteelErr> {
     // Guard against stealing a lazy plugin's activation command. A lazy plugin
     // can still define its own activation command during its own body (the
     // stub stays registered until unregister_lazy_stubs_of runs at the end of
-    // finish_lazy_activation), so we exempt the self-ownership case.
+    // finish_lazy_activation), so a definition made inside that body passes.
     if let Some(claimant) = ctx.host.commands().lazy_command_owner(name) {
-        let is_self = matches!(
-            ctx.plugin_stack.current_owner(),
-            Owner::Plugin(ref cur) if *cur == claimant
-        );
+        let is_self = ctx.activation().as_deref() == Some(&claimant);
         if !is_self {
             steel::stop!(Generic =>
                 "command '{}' is already claimed as an activation command by lazy plugin '{}'",
@@ -103,7 +100,7 @@ pub(crate) fn define_command(
     check_definable(ctx, &name)?;
     let proc = super::args::callable_arg(proc, "third arg (proc)")?;
     let (arity, is_variadic) = super::args::command_shape(proc.value());
-    let proc = MappableProc::new(proc, ctx.plugin_stack.current_owner());
+    let proc = MappableProc::new(proc, std::rc::Rc::clone(ctx.owner()), ctx.activation());
     ctx.host
         .commands()
         .register_command(SteelCmdDef {
@@ -152,7 +149,7 @@ pub(crate) fn define_typed_command(
     let proc = super::args::callable_arg(proc, "third arg (proc)")?;
     let completer = super::args::optional_string_arg(completer, "#:complete")?;
     let (arity, is_variadic) = super::args::command_shape(proc.value());
-    let proc = TypedProc::new(proc, ctx.plugin_stack.current_owner());
+    let proc = TypedProc::new(proc, std::rc::Rc::clone(ctx.owner()), ctx.activation());
     ctx.host
         .commands()
         .register_typed_command(SteelTypedCmdDef {
@@ -264,17 +261,44 @@ pub(crate) fn restore_inline_output(ctx: &mut SteelCtx, depth: SteelVal) -> Stee
     Ok(SteelVal::Void)
 }
 
-/// `%lookup-plugin-proc`: return the Steel closure for an activated plugin
-/// command, or `#f` if no mappable proc is defined under the name.
+/// `(%enter-command! name)`: see `%dispatch-command!` and `%apply-command!`
+/// in `bootstrap.scm`. `#f` when no mappable Steel command is defined as
+/// `name`. Otherwise enters the `call!` frame that runs it as the code that
+/// defined it, and returns `(proc depth)`: the proc to apply, and the depth
+/// the matching `%leave-command!` restores.
 ///
-/// Works in both init and command mode: during init, `define-command!` records
-/// the proc inline, so `(call! "cmd")` that follows a `(load-plugin! …)`
-/// in the same init.scm body finds the closure immediately.
-pub(crate) fn lookup_plugin_proc(ctx: &mut SteelCtx, name: String) -> SteelResult {
-    Ok(match ctx.host.commands().defined_command(&name) {
-        Some(CommandProc::Mappable(proc)) => proc.steel_val(),
-        Some(CommandProc::Typed(_)) | None => SteelVal::BoolV(false),
-    })
+/// Works in both init and command mode: during init, `define-command!`
+/// records the proc inline, so `(call! "cmd")` that follows a
+/// `(load-plugin! …)` in the same init.scm body finds it immediately.
+pub(crate) fn enter_command(ctx: &mut SteelCtx, name: String) -> SteelResult {
+    let Some(command) = ctx.host.commands().defined_command(&name) else {
+        return Ok(SteelVal::BoolV(false));
+    };
+    let CommandProc::Mappable(proc) = &command else {
+        return Ok(SteelVal::BoolV(false));
+    };
+    let proc = proc.steel_val();
+    let depth = ctx
+        .attribution
+        .enter_call(std::rc::Rc::clone(command.owner()));
+    Ok(SteelVal::ListV(
+        vec![proc, SteelVal::IntV(depth as isize)].into(),
+    ))
+}
+
+/// `(%leave-command! depth)`: ends the `call!` frame
+/// `%enter-command!` returned `depth` for. A plugin body the call
+/// opened closes before it, so one still open above `depth` has lost its
+/// handler, and fails as a session's end fails it.
+pub(crate) fn leave_command(ctx: &mut SteelCtx, depth: SteelVal) -> SteelResult {
+    let depth = super::args::usize_arg(depth, "depth")?;
+    let open = ctx.attribution.drain_above(depth);
+    if !open.is_empty() {
+        let reason =
+            generic_err("the plugin body was still running when the call! that started it ended");
+        super::plugins::fail_open_bodies(ctx, open, &reason);
+    }
+    Ok(SteelVal::Void)
 }
 
 /// Parse count, extend, and the optional operand from a native command's
@@ -346,7 +370,7 @@ fn steel_list_to_vec(val: SteelVal) -> Result<Vec<SteelVal>, SteelErr> {
 /// proc nor a lazy stub (unknown commands are implicitly built-in).
 pub(crate) fn command_plugin(ctx: &mut SteelCtx, name: String) -> SteelResult {
     let owner = match ctx.host.commands().defined_command(&name) {
-        Some(defined) => defined.owner().clone(),
+        Some(defined) => (**defined.owner()).clone(),
         None => ctx
             .host
             .commands()

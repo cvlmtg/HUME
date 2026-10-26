@@ -33,9 +33,9 @@ fn registry(sources: &[(&str, i64)]) -> SourceRegistry {
             name: (*name).into(),
             match_kind: MatchKind::Fuzzy,
             priority: *priority,
-            proc: hume_scripting::Rooted::new(SteelVal::Void),
+            proc: hume_scripting::Callback::for_test(SteelVal::Void),
             resolve: false,
-            cancel: Some(hume_scripting::Rooted::new(SteelVal::Void)),
+            cancel: Some(hume_scripting::Callback::for_test(SteelVal::Void)),
             token_chars: "".into(),
         });
     }
@@ -56,8 +56,8 @@ fn minibuf_registry(sources: &[(&str, i64)]) -> SourceRegistry {
             match_kind: MatchKind::Fuzzy,
             priority: *priority,
             body: MinibufBody::Steel {
-                proc: hume_scripting::Rooted::new(SteelVal::Void),
-                cancel: Some(hume_scripting::Rooted::new(SteelVal::Void)),
+                proc: hume_scripting::Callback::for_test(SteelVal::Void),
+                cancel: Some(hume_scripting::Callback::for_test(SteelVal::Void)),
             },
         });
     }
@@ -381,7 +381,7 @@ fn dotted_session_with(
             case_sensitive: true,
         },
         priority: 0,
-        proc: hume_scripting::Rooted::new(SteelVal::Void),
+        proc: hume_scripting::Callback::for_test(SteelVal::Void),
         resolve: false,
         cancel: None,
         token_chars: "".into(),
@@ -746,7 +746,7 @@ fn a_sources_token_chars_decide_what_typing_at_the_end_does() {
         name: "dashed".into(),
         match_kind: MatchKind::Fuzzy,
         priority: 0,
-        proc: hume_scripting::Rooted::new(SteelVal::Void),
+        proc: hume_scripting::Callback::for_test(SteelVal::Void),
         resolve: false,
         cancel: None,
         token_chars: "-".into(),
@@ -1019,7 +1019,7 @@ fn a_source_without_a_cancel_gets_no_call() {
         name: "a".into(),
         match_kind: MatchKind::Fuzzy,
         priority: 0,
-        proc: hume_scripting::Rooted::new(SteelVal::Void),
+        proc: hume_scripting::Callback::for_test(SteelVal::Void),
         resolve: false,
         cancel: None,
         token_chars: "".into(),

@@ -302,14 +302,16 @@ impl CommandRegistry {
         steel_proc_of(self.entry(name)?)
     }
 
-    /// Remove every Steel command (mappable or typed) that `plugin`'s entry
-    /// file defined. Native commands and `Lazy` stubs are never matched.
-    pub(in crate::editor) fn unregister_defined_by(
+    /// Remove every Steel command (mappable or typed) defined while
+    /// `activation`'s body ran. Native commands and `Lazy` stubs are never
+    /// matched.
+    pub(in crate::editor) fn unregister_registered_in(
         &mut self,
-        plugin: &hume_scripting::attribution::EntryId,
+        activation: &hume_scripting::attribution::EntryId,
     ) {
-        self.commands
-            .retain(|_, cmd| !steel_proc_of(cmd).is_some_and(|proc| proc.defined_by(plugin)));
+        self.commands.retain(|_, cmd| {
+            !steel_proc_of(cmd).is_some_and(|proc| proc.registered_in(activation))
+        });
     }
 
     /// Remove every remaining `Lazy` stub owned by `plugin`, mappable and

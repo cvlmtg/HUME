@@ -79,6 +79,7 @@ fn declare_plugin_all_on_command_collided_message_mentions_conflict() {
     let result = host
         .eval_source_raw(
             r#"(declare-plugin! "user/test-collision" #:commands '("insert-mode"))"#.to_owned(),
+            crate::attribution::Owner::User,
             builtin_names,
             10_000,
             &mut NullHost,
@@ -107,6 +108,7 @@ fn declare_plugin_all_on_command_collided_records_nothing() {
 
     host.eval_source_raw(
         r#"(declare-plugin! "user/collided" #:commands '("insert-mode"))"#.to_owned(),
+        crate::attribution::Owner::User,
         builtin_names,
         10_000,
         &mut NullHost,
@@ -149,7 +151,8 @@ fn declare_plugin_drops_sole_command_conflicting_with_eager() {
         "my-eager-cmd",
         CommandProc::Mappable(MappableProc::new(
             crate::Rooted::new(SteelVal::BoolV(false)),
-            Owner::User,
+            std::rc::Rc::new(Owner::User),
+            None,
         )),
     );
 
@@ -240,7 +243,7 @@ fn declare_plugin_typed_commands_drops_colliding_entry_but_keeps_the_rest() {
 ///
 /// This depends on `load_plugin` storing `config` in the plugin's record
 /// and on `plugin_config` resolving the right `PluginId` from
-/// `plugin_stack`.
+/// `attribution`.
 #[test]
 fn plugin_config_survives_lazy_declare_to_activation() {
     use crate::{ScriptingHost, null_host::NullHost};

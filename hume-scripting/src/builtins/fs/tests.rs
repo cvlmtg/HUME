@@ -297,7 +297,7 @@ fn path_programs_error(extensions: SteelVal) -> String {
         &mut h.ctx(),
         String::new(),
         extensions,
-        crate::Rooted::new(SteelVal::Void),
+        crate::Callback::for_test(SteelVal::Void),
     )
     .unwrap_err()
     .to_string()

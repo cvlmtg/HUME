@@ -11,7 +11,7 @@ fn after_errors_when_the_host_has_no_timer_support() {
     let msg = after(
         &mut ctx,
         100i64.into_steelval().unwrap(),
-        crate::Rooted::new(SteelVal::BoolV(true)),
+        crate::Callback::for_test(SteelVal::BoolV(true)),
     )
     .unwrap_err()
     .to_string();
@@ -25,7 +25,7 @@ fn after_rejects_a_negative_ms_argument() {
     let result = after(
         &mut ctx,
         (-1i64).into_steelval().unwrap(),
-        crate::Rooted::new(SteelVal::BoolV(true)),
+        crate::Callback::for_test(SteelVal::BoolV(true)),
     );
     assert!(result.is_err());
 }

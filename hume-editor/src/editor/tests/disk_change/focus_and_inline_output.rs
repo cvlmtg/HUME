@@ -221,11 +221,12 @@ fn inline_output_commands_own_warning_does_not_shadow_its_own_reload_confirm() {
         .expect("eval failed");
     }
     ed.scripting = Some(host);
-    ed.state.config.keymap.bind_user_with_extend(
+    ed.state.config.keymap.bind(
         BindMode::Normal,
         &[key('\\')],
         "lint-and-fix".into(),
         false,
+        hume_scripting::ConfigOrigin::User,
     );
 
     // The command's own subprocess rewrote the focused file while it ran.

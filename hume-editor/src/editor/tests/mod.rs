@@ -21,6 +21,7 @@ use hume_editing::selection::{EditView, SelectionSet};
 use hume_editing::text::BufferText;
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 use hume_engine::types::ScopeId;
+use hume_origin::ConfigOrigin;
 use hume_treesitter::parse_worker::InlineParseBackend;
 use hume_treesitter::registry::{GrammarBundle, GrammarSource, LanguageId, QueryFiles};
 use termina::event::{
@@ -289,8 +290,8 @@ fn attach_fixture_grammar(ed: &mut Editor, name: &str, symbol: &str) -> Arc<Gram
 }
 
 /// [`attach_fixture_grammar`] for a grammar that also needs an injections or
-/// textobjects query. Both return the attached bundle, for the tests that
-/// compare identity across a re-attach.
+/// textobjects query. Both attach it as the user's and return the attached
+/// bundle, for the tests that compare identity across a re-attach.
 fn attach_fixture_grammar_with(
     ed: &mut Editor,
     name: &str,
@@ -303,9 +304,11 @@ fn attach_fixture_grammar_with(
         .attach_grammar(
             name,
             &fixture_source(name, symbol, queries),
+            ConfigOrigin::User,
             &mut ed.view.registry,
         )
         .unwrap_or_else(|e| panic!("attach {name} grammar: {e}"))
+        .expect("a user grammar replaces any other")
 }
 
 /// [`attach_fixture_grammar`] without loading the grammar, as startup
@@ -325,7 +328,12 @@ fn register_fixture_grammar_with(
     ed.state
         .config
         .languages
-        .register_grammar(name, fixture_source(name, symbol, queries))
+        .register_grammar(
+            name,
+            fixture_source(name, symbol, queries),
+            ConfigOrigin::User,
+        )
+        .expect("a user grammar replaces any other")
 }
 
 /// `name`'s compiled grammar fixture with `queries`.
@@ -530,7 +538,7 @@ fn open_drawer_via_host(ed: &mut Editor, items: &[&str]) -> hume_scripting::host
         .show_drawer_list(
             pane,
             drawer_items(items),
-            hume_scripting::Rooted::new(steel::rvals::SteelVal::Void),
+            hume_scripting::Callback::for_test(steel::rvals::SteelVal::Void),
             0,
         )
         .unwrap()

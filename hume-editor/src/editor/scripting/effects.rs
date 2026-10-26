@@ -46,16 +46,20 @@ impl Editor {
                     });
                     self.apply_lsp_server_ops(batch);
                 }
-                Effect::SetBufferLanguage { buffer, language } => {
+                Effect::SetBufferLanguage {
+                    buffer,
+                    language,
+                    origin,
+                } => {
                     // `buffer` may have closed between the Steel call that
                     // queued this effect and this drain (e.g. `(set-buffer-
                     // option! bid "language" "rust") (close-buffer! bid)` in
                     // one eval), the same shape as `LspRequest`/`LspNotify`'s own
-                    // `try_get` guard in `bridge.rs`. `set_buffer_language_
-                    // explicit` uses the panicking `get_mut`, so this must
-                    // check first rather than let it panic.
+                    // `try_get` guard in `bridge.rs`. The language write uses
+                    // the panicking `get_mut`, so this must check first rather
+                    // than let it panic.
                     if !self.effect_buffer_gone("set-buffer-option!", buffer) {
-                        self.set_buffer_language_by_name(buffer, language.as_deref())
+                        self.set_buffer_language_by_name(buffer, language.as_deref(), origin)
                     }
                 }
                 Effect::GrammarSweep(name) => {
@@ -72,16 +76,17 @@ impl Editor {
                     cmd,
                     force_extend,
                     keymap,
+                    origin,
                 } => {
                     let mode = to_editor_bind_mode(mode);
                     let cmd = std::borrow::Cow::Owned(cmd);
-                    match keymap {
-                        KeymapTarget::Global => self.state.config.keymap.bind_user_with_extend(
-                            mode,
-                            &keys,
-                            cmd,
-                            force_extend,
-                        ),
+                    let hidden = match keymap {
+                        KeymapTarget::Global => {
+                            self.state
+                                .config
+                                .keymap
+                                .bind(mode, &keys, cmd, force_extend, origin)
+                        }
                         // Bound after init too, so checked here rather than by
                         // the post-init lint, which covers the global keymap.
                         KeymapTarget::Named(name) => {
@@ -94,17 +99,39 @@ impl Editor {
                                 &keys,
                                 cmd,
                                 force_extend,
-                            );
+                                origin,
+                            )
                         }
+                    };
+                    if hidden {
+                        self.state.report_shadowed(
+                            "bind-key!",
+                            format_args!("{mode:?} binding of these keys"),
+                        );
                     }
                 }
-                Effect::UnbindKey { mode, keys, keymap } => {
+                Effect::UnbindKey {
+                    mode,
+                    keys,
+                    keymap,
+                    origin,
+                } => {
                     let mode = to_editor_bind_mode(mode);
-                    match keymap {
-                        KeymapTarget::Global => self.state.config.keymap.unbind_user(mode, &keys),
-                        KeymapTarget::Named(name) => {
-                            self.state.config.local_keymaps.unbind(&name, mode, &keys)
+                    let hidden = match keymap {
+                        KeymapTarget::Global => {
+                            self.state.config.keymap.unbind(mode, &keys, origin)
                         }
+                        KeymapTarget::Named(name) => self
+                            .state
+                            .config
+                            .local_keymaps
+                            .unbind(&name, mode, &keys, origin),
+                    };
+                    if hidden {
+                        self.state.report_shadowed(
+                            "unbind-key!",
+                            format_args!("{mode:?} binding of these keys"),
+                        );
                     }
                 }
                 Effect::AttachKeymap { buffer, name } => {

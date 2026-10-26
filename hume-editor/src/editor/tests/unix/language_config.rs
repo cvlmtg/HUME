@@ -4,14 +4,16 @@
 
 use super::*;
 
-use super::super::scripting_grammar::{prelude_source, shipped_grammar};
+use super::super::scripting_grammar::{
+    grammar_fixture, grammar_warnings, prelude_source, shipped_grammar,
+};
 use hume_editing::comment::{BlockCommentTokens, CommentTokens, LineCommentTokens};
 use hume_treesitter::registry::LanguageId;
 
 /// A session over a [`ReloadFixture`] whose runtime holds the real
 /// `prelude.scm`, a caller-supplied `languages.scm` and one bundled data file
 /// per `(name, body)`; `plugin` becomes the user plugin `user/tp`.
-fn boot(
+pub(super) fn boot(
     languages_scm: &str,
     bundled: &[(&str, &str)],
     init: &str,
@@ -97,6 +99,12 @@ fn messages(ed: &Editor, severity: Severity) -> Vec<String> {
         .collect()
 }
 
+/// `text` was reported at Trace.
+fn assert_traced(ed: &Editor, text: &str) {
+    let traced = messages(ed, Severity::Trace);
+    assert!(traced.iter().any(|m| m == text), "{text:?} in {traced:?}");
+}
+
 fn assert_no_errors(ed: &Editor) {
     assert_eq!(messages(ed, Severity::Error), Vec::<String>::new());
 }
@@ -113,7 +121,7 @@ fn tsx(ed: &Editor) -> LanguageId {
 /// bundled data and activates `#:languages` plugins.
 fn open_as_tsx(ed: &mut Editor) {
     let bid = ed.focused_buffer_id();
-    ed.set_buffer_language_by_name(bid, Some("tsx"));
+    ed.set_buffer_language_by_name(bid, Some("tsx"), hume_scripting::ConfigOrigin::User);
 }
 
 fn roots(ed: &Editor) -> Vec<String> {
@@ -467,4 +475,416 @@ fn reload_config_leaves_a_read_only_view_without_a_language() {
     assert_no_errors(&ed);
     assert_eq!(ed.doc().display_name(), "[report]");
     assert_eq!(ed.doc().language, None);
+}
+
+// ── Detection and server registrations, ranked by origin ─────────────────
+
+fn detected(ed: &Editor, file_name: &str) -> Option<LanguageId> {
+    ed.state.config.languages.by_file_name(file_name)
+}
+
+#[test]
+fn init_detection_beats_a_plugin_activated_later() {
+    let (mut ed, _fixture) = boot_tsx(
+        &format!("{DECLARE_TSX_PLUGIN}\n(define-language! \"tsx\" '(\"tsx\" \"utsx\"))"),
+        r#"(define-language! "tsx" '("ptsx"))"#,
+    );
+
+    open_as_tsx(&mut ed);
+
+    assert_no_errors(&ed);
+    assert_eq!(detected(&ed, "a.utsx"), Some(tsx(&ed)));
+    assert_eq!(detected(&ed, "a.ptsx"), None);
+    assert_eq!(tsx_warnings(&ed), Vec::<String>::new());
+    assert_traced(&ed, SHADOWED_TSX_DEFINITION);
+}
+
+#[test]
+fn a_plugin_definition_replaces_the_bundled_one() {
+    let (mut ed, _fixture) = boot_tsx(DECLARE_TSX_PLUGIN, r#"(define-language! "tsx" '("ptsx"))"#);
+
+    open_as_tsx(&mut ed);
+
+    assert_no_errors(&ed);
+    assert_eq!(detected(&ed, "a.ptsx"), Some(tsx(&ed)));
+    assert_eq!(detected(&ed, "a.tsx"), None);
+}
+
+#[test]
+fn a_second_init_definition_is_ignored_with_a_warning() {
+    let (ed, _fixture) = boot_tsx(
+        "(define-language! \"tsx\" '(\"first\"))\n(define-language! \"tsx\" '(\"second\"))",
+        "",
+    );
+
+    assert_eq!(detected(&ed, "a.first"), Some(tsx(&ed)));
+    assert_eq!(detected(&ed, "a.second"), None);
+    let warnings = tsx_warnings(&ed);
+    assert!(
+        warnings.iter().any(|w| w.contains("define-language!")),
+        "the ignored definition must be reported; warnings: {warnings:?}"
+    );
+}
+
+#[test]
+fn a_value_configured_in_a_bundled_file_ranks_below_init() {
+    let (mut ed, _fixture) = boot(
+        &format!("{TSX_LANGUAGES}\n(configure-language! \"tsx\" #:roots '(\"bundled.json\"))"),
+        &[TSX_BUNDLED],
+        r#"(configure-language! "tsx" #:roots '("user.json"))"#,
+        "",
+    );
+
+    open_as_tsx(&mut ed);
+
+    assert_eq!(roots(&ed), ["user.json"]);
+    assert_eq!(tsx_warnings(&ed), Vec::<String>::new());
+}
+
+/// `(register-grammar! "tsx" …)` over the json fixture grammar, which loads.
+fn register_json_as_tsx() -> String {
+    let (library, highlights) = grammar_fixture("json");
+    format!(
+        "(register-grammar! \"tsx\" {:?} \"tree_sitter_json\" {:?})",
+        library.display().to_string(),
+        highlights.display().to_string()
+    )
+}
+
+const SHADOWED_TSX_GRAMMAR: &str = "register-grammar!: a higher origin's 'tsx' grammar applies";
+
+const SHADOWED_TSX_DEFINITION: &str =
+    "define-language!: a higher origin's 'tsx' definition applies";
+
+const REGISTER_BOGUS_TSX: &str = r#"(register-grammar! "tsx" "/nonexistent/tsx.so" "tree_sitter_tsx" "/nonexistent/highlights.scm")"#;
+
+/// The focused buffer, opened as `tsx`, has the json fixture grammar loaded
+/// and nothing reported a grammar failure.
+fn assert_tsx_has_the_users_grammar(ed: &Editor) {
+    assert_no_errors(ed);
+    assert_eq!(grammar_warnings(ed, "tsx"), Vec::<String>::new());
+    assert!(
+        ed.state.config.languages.loaded_grammar(tsx(ed)).is_some(),
+        "the user's grammar loaded"
+    );
+}
+
+#[test]
+fn init_grammar_beats_a_plugin_activated_later() {
+    test_fixtures::require_grammars(&["json"]);
+    let (mut ed, _fixture) = boot_tsx(
+        &format!("{DECLARE_TSX_PLUGIN}\n{}", register_json_as_tsx()),
+        REGISTER_BOGUS_TSX,
+    );
+
+    open_as_tsx(&mut ed);
+
+    assert_tsx_has_the_users_grammar(&ed);
+    assert_traced(&ed, SHADOWED_TSX_GRAMMAR);
+}
+
+#[test]
+fn init_grammar_beats_a_plugin_loaded_after_it() {
+    test_fixtures::require_grammars(&["json"]);
+    let (mut ed, _fixture) = boot_tsx(
+        &format!("{}\n(load-plugin! \"user/tp\")", register_json_as_tsx()),
+        REGISTER_BOGUS_TSX,
+    );
+
+    open_as_tsx(&mut ed);
+
+    assert_tsx_has_the_users_grammar(&ed);
+    assert_traced(&ed, SHADOWED_TSX_GRAMMAR);
+}
+
+/// The command `K` runs in Normal mode.
+fn k_command(ed: &Editor) -> Option<String> {
+    ed.state
+        .config
+        .keymap
+        .lookup_command(crate::editor::keymap::BindMode::Normal, &[key('K')])
+        .map(|(name, _)| name)
+}
+
+#[test]
+fn init_binding_beats_a_plugin_activated_later() {
+    let (mut ed, _fixture) = boot_tsx(
+        &format!("{DECLARE_TSX_PLUGIN}\n(bind-key! 'normal \"K\" \"move-right\")"),
+        r#"(bind-key! 'normal "K" "move-left")"#,
+    );
+
+    open_as_tsx(&mut ed);
+
+    assert_no_errors(&ed);
+    assert_eq!(k_command(&ed).as_deref(), Some("move-right"));
+}
+
+#[test]
+fn a_plugins_unbind_leaves_the_users_binding() {
+    let (mut ed, _fixture) = boot_tsx(
+        &format!("{DECLARE_TSX_PLUGIN}\n(bind-key! 'normal \"K\" \"move-right\")"),
+        r#"(unbind-key! 'normal "K")"#,
+    );
+
+    open_as_tsx(&mut ed);
+
+    assert_no_errors(&ed);
+    assert_eq!(k_command(&ed).as_deref(), Some("move-right"));
+}
+
+/// The focused buffer's `indent-width` override, `None` when it has none.
+fn indent_override(ed: &Editor) -> Option<u8> {
+    ed.state
+        .buffers
+        .get(ed.focused_buffer_id())
+        .overrides
+        .indent_width
+}
+
+#[test]
+fn init_option_beats_a_plugin_activated_later_and_fires_no_change() {
+    let (mut ed, _fixture) = boot_tsx(
+        &format!(
+            "{DECLARE_TSX_PLUGIN}\n\
+             (set-option! \"indent-width\" 2)\n\
+             (register-hook! 'on-option-change\n\
+               (lambda (key value) (log! 'warn (string-append \"changed:\" key))))"
+        ),
+        r#"(set-option! "indent-width" 8)"#,
+    );
+
+    open_as_tsx(&mut ed);
+    ed.settle();
+
+    assert_no_errors(&ed);
+    assert_eq!(ed.state.settings.indent_width, 2);
+    let changes = messages(&ed, Severity::Warning)
+        .into_iter()
+        .filter(|m| m == "changed:indent-width")
+        .count();
+    assert_eq!(changes, 1, "only the user's own write fires the hook");
+}
+
+#[test]
+fn a_set_command_replaces_a_plugins_option() {
+    let (mut ed, _fixture) = boot_tsx(DECLARE_TSX_PLUGIN, r#"(set-option! "indent-width" 8)"#);
+    open_as_tsx(&mut ed);
+    assert_eq!(ed.state.settings.indent_width, 8);
+
+    type_cmd(&mut ed, ":set global indent-width=3");
+
+    assert_eq!(ed.state.settings.indent_width, 3);
+}
+
+#[test]
+fn a_plugin_command_the_user_runs_replaces_the_users_option() {
+    let (mut ed, _fixture) = boot_tsx(
+        &format!("{DECLARE_TSX_PLUGIN}\n(set-option! \"indent-width\" 2)"),
+        r#"(set-option! "indent-width" 8)
+           (define-typed-command! "tp-indent" ""
+             (lambda () (set-option! "indent-width" 3)))"#,
+    );
+    open_as_tsx(&mut ed);
+    assert_eq!(ed.state.settings.indent_width, 2);
+
+    type_cmd(&mut ed, ":tp-indent");
+
+    assert_no_errors(&ed);
+    assert_eq!(ed.state.settings.indent_width, 3);
+}
+
+#[test]
+fn a_users_buffer_override_beats_a_plugin_hook_that_runs_later() {
+    let (mut ed, _fixture) = boot_tsx(
+        "(register-hook! 'on-language-set\n\
+           (lambda (pane lang) (set-buffer-option! pane \"indent-width\" 2)))\n\
+         (load-plugin! \"user/tp\")",
+        r#"(register-hook! 'on-language-set
+             (lambda (pane lang) (set-buffer-option! pane "indent-width" 8)))"#,
+    );
+
+    open_as_tsx(&mut ed);
+    ed.settle();
+
+    assert_no_errors(&ed);
+    assert_eq!(indent_override(&ed), Some(2));
+}
+
+#[test]
+fn a_plugins_buffer_override_beats_the_users_global_value() {
+    let (mut ed, _fixture) = boot_tsx(
+        "(set-option! \"indent-width\" 2)\n(load-plugin! \"user/tp\")",
+        r#"(register-hook! 'on-language-set
+             (lambda (pane lang) (set-buffer-option! pane "indent-width" 8)))"#,
+    );
+
+    open_as_tsx(&mut ed);
+    ed.settle();
+
+    assert_no_errors(&ed);
+    assert_eq!(ed.state.settings.indent_width, 2);
+    assert_eq!(indent_override(&ed), Some(8));
+}
+
+const ALPHA_BETA_LANGUAGES: &str = r#"(define-language! "tsx" '("tsx"))
+(define-language! "alpha" '("alpha"))
+(define-language! "beta" '("beta"))"#;
+
+/// An `on-language-set` hook that sets `key` to `value` on a buffer that
+/// becomes `tsx`.
+fn on_tsx(key: &str, value: &str) -> String {
+    format!(
+        "(register-hook! 'on-language-set\n\
+           (lambda (pane lang)\n\
+             (when (equal? lang \"tsx\") (set-buffer-option! pane {key:?} {value:?}))))"
+    )
+}
+
+/// The focused buffer's language name.
+fn language(ed: &Editor) -> Option<String> {
+    let buf = ed.state.buffers.get(ed.focused_buffer_id());
+    buf.language
+        .map(|id| ed.state.config.languages.name_of(id).to_owned())
+}
+
+/// Detect the focused buffer as `tsx`, as opening a `.tsx` file does.
+fn detect_as_tsx(ed: &mut Editor) {
+    let bid = ed.focused_buffer_id();
+    let tsx = tsx(ed);
+    ed.set_buffer_language(bid, Some(tsx));
+    ed.settle();
+}
+
+#[test]
+fn a_users_language_beats_a_plugin_hook_that_runs_later() {
+    let (mut ed, _fixture) = boot(
+        ALPHA_BETA_LANGUAGES,
+        &[],
+        &format!(
+            "{}\n(load-plugin! \"user/tp\")",
+            on_tsx("language", "alpha")
+        ),
+        &on_tsx("language", "beta"),
+    );
+
+    detect_as_tsx(&mut ed);
+
+    assert_no_errors(&ed);
+    assert_eq!(language(&ed).as_deref(), Some("alpha"));
+}
+
+#[test]
+fn a_set_command_replaces_a_plugins_language() {
+    let (mut ed, _fixture) = boot(
+        ALPHA_BETA_LANGUAGES,
+        &[],
+        "(load-plugin! \"user/tp\")",
+        &on_tsx("language", "beta"),
+    );
+    detect_as_tsx(&mut ed);
+    assert_eq!(language(&ed).as_deref(), Some("beta"));
+
+    type_cmd(&mut ed, ":set buffer language=alpha");
+
+    assert_eq!(language(&ed).as_deref(), Some("alpha"));
+}
+
+#[test]
+fn a_users_line_ending_beats_a_plugin_hook_that_runs_later() {
+    let (mut ed, _fixture) = boot(
+        ALPHA_BETA_LANGUAGES,
+        &[],
+        &format!(
+            "{}\n(load-plugin! \"user/tp\")",
+            on_tsx("line-ending", "crlf")
+        ),
+        &on_tsx("line-ending", "lf"),
+    );
+
+    detect_as_tsx(&mut ed);
+
+    assert_no_errors(&ed);
+    let buf = ed.state.buffers.get(ed.focused_buffer_id());
+    assert_eq!(
+        buf.text().line_ending(),
+        hume_editing::text::LineEnding::CrLf
+    );
+}
+
+#[test]
+fn a_reload_keeps_the_origin_of_an_asserted_language() {
+    let (mut ed, _fixture) = boot(ALPHA_BETA_LANGUAGES, &[], "", "");
+    type_cmd(&mut ed, ":set buffer language=alpha");
+
+    type_cmd(&mut ed, ":reload-config");
+
+    assert_eq!(language(&ed).as_deref(), Some("alpha"));
+    assert_eq!(
+        ed.state.buffers.get(ed.focused_buffer_id()).language_by,
+        Some(hume_scripting::ConfigOrigin::User)
+    );
+}
+
+#[test]
+fn init_server_registration_beats_a_plugin_activated_later() {
+    let (mut ed, _fixture) = boot_tsx(
+        &format!("{DECLARE_TSX_PLUGIN}\n(register-lsp-server! \"tsls\" #:command \"user-tsls\")"),
+        r#"(register-lsp-server! "tsls" #:command "plugin-tsls")
+           (unregister-lsp-server! "tsls")
+           (register-lsp-server! "tsls" #:command "plugin-tsls")"#,
+    );
+
+    open_as_tsx(&mut ed);
+
+    assert_no_errors(&ed);
+    assert_eq!(
+        ed.state.lsp.registered_command_for_test("tsls").as_deref(),
+        Some("user-tsls")
+    );
+}
+
+#[test]
+fn init_server_list_beats_a_plugin_activated_later() {
+    let (mut ed, _fixture) = boot_tsx(
+        &format!(
+            "{DECLARE_TSX_PLUGIN}\n\
+             (register-lsp-server! \"tsls\" #:command \"tsls\")\n\
+             (register-lsp-server! \"eslint\" #:command \"eslint\")\n\
+             (set-language-servers! \"tsx\" '(\"tsls\"))"
+        ),
+        r#"(set-language-servers! "tsx" '("eslint"))
+           (set-language-servers! "tsx" #f)
+           (set-language-servers! "tsx" '("eslint"))"#,
+    );
+
+    open_as_tsx(&mut ed);
+
+    assert_no_errors(&ed);
+    let servers: Vec<String> =
+        crate::editor::lsp::introspect::language_servers(&ed.state.lsp, "tsx")
+            .into_iter()
+            .map(|entry| entry.name.to_string())
+            .collect();
+    assert_eq!(servers, ["tsls"]);
+}
+
+#[test]
+fn a_plugins_unregister_leaves_the_users_registration_and_the_probe_agrees() {
+    let (mut ed, _fixture) = boot_tsx(
+        &format!("{DECLARE_TSX_PLUGIN}\n(register-lsp-server! \"tsls\" #:command \"user-tsls\")"),
+        r#"(unregister-lsp-server! "tsls")
+           (log! 'warn (if (lsp-server-registered? "tsls") "probe:registered" "probe:gone"))"#,
+    );
+
+    open_as_tsx(&mut ed);
+
+    assert_eq!(
+        ed.state.lsp.registered_command_for_test("tsls").as_deref(),
+        Some("user-tsls")
+    );
+    assert!(
+        messages(&ed, Severity::Warning).contains(&"probe:registered".to_string()),
+        "{:?}",
+        messages(&ed, Severity::Warning)
+    );
 }

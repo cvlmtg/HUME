@@ -5,7 +5,7 @@ use steel::rerrs::{ErrorKind, SteelErr};
 use steel::rvals::{FromSteelVal, SteelVal};
 
 use crate::types::{
-    Effect, FeatureFilter, ListEntry, ListLayer, LspFeature, LspFeatureSet, LspServerTarget,
+    Effect, FeatureFilter, ListEntry, ListTier, LspFeature, LspFeatureSet, LspServerTarget,
     PaneHandle, PendingLspServerOp, ServerName,
 };
 use crate::{PendingLspServerReg, SteelCtx};
@@ -29,9 +29,10 @@ pub(super) fn server_name_arg(val: SteelVal, ctx_name: &str) -> Result<ServerNam
 ///
 /// Callable from init.scm, plugin activation, or a command/hook body,
 /// unlike `%define-language!`, this is not gated to init/activation-only.
-/// Queues a last-wins registration keyed by `name`: applied at the end of
-/// the *current* eval (see `Editor::apply_lsp_server_ops`), replacing any
-/// existing registration of `name` and attaching already-open matching
+/// Queues a registration keyed by `name`: applied at the end of the
+/// *current* eval (see `Editor::apply_lsp_server_ops`), replacing an
+/// existing registration of `name` from the same or a lower origin
+/// (`ConfigOrigin::rank`) and attaching already-open matching
 /// buffers. `lsp-server-registered?` reads through the effect log, so it
 /// reports this registration as live immediately, within the same eval.
 ///
@@ -59,6 +60,7 @@ pub(crate) fn register_lsp_server(
     let init_options = optional_json_arg(init_options, "init-options")?;
     let settings = optional_json_arg(settings, "settings")?;
     let env = list_to_string_pairs(env_val, "env", ENV_PAIR_SHAPE)?;
+    let origin = ctx.registration_origin();
 
     ctx.push_effect(Effect::LspServerOp(PendingLspServerOp::Register(
         PendingLspServerReg {
@@ -68,6 +70,7 @@ pub(crate) fn register_lsp_server(
             init_options,
             settings,
             env,
+            origin,
         },
     )));
     Ok(SteelVal::Void)
@@ -81,6 +84,9 @@ pub(crate) fn register_lsp_server(
 /// `register-lsp-server!` of the same name after it, in the same eval, spawns
 /// a fresh server.
 ///
+/// A registration a higher origin made stays (`ConfigOrigin::rank`):
+/// a plugin cannot remove the user's.
+///
 /// Idempotent: unregistering a name with no registration and/or no
 /// running instance is not an error: `:lsp-uninstall` of an already-removed
 /// or never-installed server must succeed silently.
@@ -93,7 +99,11 @@ pub(crate) fn register_lsp_server(
 /// process.
 pub(crate) fn unregister_lsp_server(ctx: &mut SteelCtx, name: SteelVal) -> SteelResult {
     let name = server_name_arg(name, "name")?;
-    ctx.push_effect(Effect::LspServerOp(PendingLspServerOp::Unregister { name }));
+    let origin = ctx.registration_origin();
+    ctx.push_effect(Effect::LspServerOp(PendingLspServerOp::Unregister {
+        name,
+        origin,
+    }));
     Ok(SteelVal::Void)
 }
 
@@ -143,14 +153,16 @@ fn feature_set_arg(val: SteelVal, key: &str, ctx_name: &str) -> Result<LspFeatur
 }
 
 /// The one implementation behind `set-language-servers!` and
-/// `set-default-language-servers!`: they differ only in `layer`. `entries`
-/// is a list of server names/hashes, or `#f` to clear the layer.
+/// `set-default-language-servers!`: they differ only in the tier the list
+/// sets. `entries` is a list of server names/hashes, or `#f` to clear the
+/// list from the calling code's origin.
 fn queue_language_servers(
     ctx: &mut SteelCtx,
     language: SteelVal,
     entries: SteelVal,
-    layer: ListLayer,
+    tier: ListTier,
 ) -> SteelResult {
+    let origin = ctx.registration_origin();
     let language = string_arg(language, "language")?;
     let entries = optional_list_items(entries, "entries")?
         .map(|items| {
@@ -171,31 +183,34 @@ fn queue_language_servers(
     ctx.push_effect(Effect::LspServerOp(
         PendingLspServerOp::SetLanguageServers {
             language,
-            layer,
+            tier,
+            origin,
             entries,
         },
     ));
     Ok(SteelVal::Void)
 }
 
-/// `(set-language-servers! language entries)`: the user's own ordered server
-/// list for `language`, which beats any default list whatever the call order.
+/// `(set-language-servers! language entries)`: `language`'s ordered server
+/// list, ranked as `SteelCtx::registration_origin`: the user's beats a
+/// plugin's whatever the call order.
 pub(crate) fn set_language_servers(
     ctx: &mut SteelCtx,
     language: SteelVal,
     entries: SteelVal,
 ) -> SteelResult {
-    queue_language_servers(ctx, language, entries, ListLayer::User)
+    queue_language_servers(ctx, language, entries, ListTier::Explicit)
 }
 
-/// `(set-default-language-servers! language entries)`: the list a plugin
-/// ships for `language`, used only while the user has set none.
+/// `(set-default-language-servers! language entries)`: a default list for
+/// `language`, which applies only while no explicit list is set, whichever
+/// origins wrote them. Among defaults the highest origin's applies.
 pub(crate) fn set_default_language_servers(
     ctx: &mut SteelCtx,
     language: SteelVal,
     entries: SteelVal,
 ) -> SteelResult {
-    queue_language_servers(ctx, language, entries, ListLayer::Default)
+    queue_language_servers(ctx, language, entries, ListTier::Default)
 }
 
 /// `(lsp-language-servers language)` → the servers `language`'s buffers

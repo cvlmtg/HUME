@@ -3,12 +3,19 @@ use hume_treesitter::registry::{GrammarSource, LanguageFields};
 
 use crate::command_procs::{MappableProc, TypedProc};
 
+pub use hume_origin::ConfigOrigin;
+use hume_origin::Tie;
+
+/// A buffer's language: a later write from one origin replaces the earlier,
+/// whether the editor applies it or a script reads it back before then.
+pub const BUFFER_LANGUAGE_TIE: Tie = Tie::LaterWins;
+
 mod lsp;
 pub use lsp::{
-    CapabilityQuery, DocSpan, FeatureFilter, ListEntry, ListLayer, LspFeature, LspFeatureSet,
+    CapabilityQuery, DocSpan, FeatureFilter, ListEntry, ListTier, LspFeature, LspFeatureSet,
     LspServerStatusEntry, LspServerTarget, Params, PendingLspNotify, PendingLspRequest,
-    PendingLspServerOp, PendingLspServerReg, RequestMode, RequestParams, RouteSpec, ServerName,
-    TriggerKind, TriggerScope, WhenUnavailable,
+    PendingLspServerOp, PendingLspServerReg, RequestMode, RequestParams, RouteSpec,
+    SERVER_REGISTRATION_TIE, ServerName, TriggerKind, TriggerScope, WhenUnavailable,
 };
 
 /// A buffer paired with the pane it was invoked/observed through, if any:
@@ -134,13 +141,6 @@ pub struct SteelTypedCmdBody {
     pub proc: TypedProc,
 }
 
-/// Who called `configure-language!`: `init.scm`'s top level or a plugin body.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ConfigOrigin {
-    User,
-    Plugin,
-}
-
 /// Language registration queued by `(define-language! …)`,
 /// `(configure-language! …)` or `(register-grammar! …)`, applied in queue
 /// order via `Editor::apply_pending_language_regs` as part of
@@ -152,6 +152,7 @@ pub enum PendingLanguageReg {
         extensions: Vec<hume_treesitter::registry::FileExtension>,
         globs: Vec<hume_treesitter::registry::FileGlob>,
         shebangs: Vec<hume_treesitter::registry::ShebangInterpreter>,
+        origin: ConfigOrigin,
     },
     /// Per-language values; `None` leaves a field as it is.
     Configure {
@@ -172,6 +173,9 @@ pub enum PendingLanguageReg {
 pub struct GrammarReg {
     pub name: String,
     pub source: GrammarSource,
+    /// Whose code registered it: it never replaces a grammar a higher
+    /// origin registered ([`ConfigOrigin::rank`]).
+    pub origin: ConfigOrigin,
 }
 
 /// One `(set-virtual-lines! …)` entry, decoded from its Steel hashmap shape
@@ -215,10 +219,12 @@ pub enum Effect {
     LanguageReg(PendingLanguageReg),
     LspServerOp(PendingLspServerOp),
     /// `(set-buffer-option! pane "language" name)`: `None` clears the
-    /// language. The editor resolves the name when the effect applies.
+    /// language. The editor resolves the name when the effect applies, and
+    /// drops it when a higher origin asserted the buffer's language.
     SetBufferLanguage {
         buffer: BufferId,
         language: Option<String>,
+        origin: ConfigOrigin,
     },
     /// A language name for which `(register-grammar! …)` just attached a
     /// grammar in command mode; the executor sweeps open buffers of that
@@ -243,14 +249,19 @@ pub enum Effect {
         cmd: String,
         force_extend: bool,
         keymap: crate::host::KeymapTarget,
+        /// Whose code bound it: a higher origin's binding of the sequence
+        /// stays in force.
+        origin: ConfigOrigin,
     },
-    /// `(unbind-key! …)`: removes a binding from the keymap `keymap` names.
-    /// Queued like the two binders above so a same-eval bind-then-unbind on
-    /// one key applies in Steel's emission order.
+    /// `(unbind-key! …)`: unbinds a sequence in the keymap `keymap` names,
+    /// for `origin` and every lower origin. Queued like the two binders
+    /// above so a same-eval bind-then-unbind on one key applies in Steel's
+    /// emission order.
     UnbindKey {
         mode: crate::host::BindMode,
         keys: Vec<termina::event::KeyEvent>,
         keymap: crate::host::KeymapTarget,
+        origin: ConfigOrigin,
     },
     /// `(attach-keymap! pane name)`: the named keymap applies in `buffer`.
     /// Queued like the binds so a same-eval bind-then-attach applies in order.

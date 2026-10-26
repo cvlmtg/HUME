@@ -47,7 +47,9 @@ The `lsp-` options configure HUME's built-in language-server support, which `cor
 
 These options have a global default that every buffer without its own override resolves to (including buffers already open when you change it, not just ones opened afterward) and a per-buffer override that takes precedence when present. Set the global default with `:set global <option>=<value>` or `(set-option! "option" value)`; override the current buffer with `:set buffer <option>=<value>`, or from a script with `(set-buffer-option! pane "option" value)`. See [From `init.scm`](configuration.md#from-init-scm) for setting per-language overrides from the `on-language-set` hook.
 
-`language` and `line-ending` are exceptions, they have no global default. `language` is auto-detected per buffer, and setting it overrides the detection for that buffer. `:set buffer language=` with nothing after the `=` (or `""` from a script) clears it. `line-ending` is read from the file when it opens (new buffers use `lf`) and can only be set per buffer.
+`language` and `line-ending` are exceptions, they have no global default. `language` is auto-detected per buffer, and setting it overrides the detection for that buffer. `:set buffer language=` with nothing after the `=` (or `""` from a script) clears it. `line-ending` is read from the file when it opens (new buffers use `lf`) and can only be set per buffer; reloading the file from disk takes its line ending again.
+
+A buffer option you set, with `:set buffer` or from a hook in your `init.scm`, beats a value a plugin sets for the same buffer, whichever comes first. `language` and `line-ending` rank the same way.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|

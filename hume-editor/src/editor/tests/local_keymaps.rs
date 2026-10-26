@@ -11,7 +11,14 @@ use std::borrow::Cow;
 fn bind_here(ed: &mut Editor, mode: BindMode, keys: &[KeyEvent], command: &'static str) {
     let bid = ed.focused_buffer_id();
     let local = &mut ed.state.config.local_keymaps;
-    local.bind("test".into(), mode, keys, Cow::Borrowed(command), false);
+    local.bind(
+        "test".into(),
+        mode,
+        keys,
+        Cow::Borrowed(command),
+        false,
+        hume_scripting::ConfigOrigin::User,
+    );
     local.attach(bid, "test").expect("bound above");
 }
 

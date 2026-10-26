@@ -111,8 +111,8 @@ into it. PowerShell (on Windows) and `cmd` end a directory with `\`.
 ## `languages.scm`
 
 Detection data only: each language's extensions, globs and shebangs. Override any entry in
-your own `init.scm`. `define-language!` replaces the prior detection data for that name and
-keeps any grammar and per-language configuration already attached to it. The user-facing
+your own `init.scm`, or from a plugin: a definition from either replaces this file's for
+that name, and keeps any grammar and per-language configuration already attached to it. The user-facing
 override examples are in `user-manual/docs/syntax-highlighting.md`.
 
 ## `languages/<name>.scm`

@@ -12,7 +12,7 @@ use crate::editor::buffer::lifecycle::CloseBufferRefused;
 use crate::editor::buffer::{OnUnsaved, TextRefusal, ViewLabel};
 use crate::editor::commands::FocusedPane;
 use hume_scripting::PaneHandle;
-use hume_scripting::host::{BufferHost, DiscardUnsaved, DisplayPathForm};
+use hume_scripting::host::{BufferHost, DiscardUnsaved, DisplayPathForm, StoredLanguage};
 
 impl<'a> BufferHost for EditorHostImpl<'a> {
     // ── Enumeration ──────────────────────────────────────────────────────────
@@ -74,9 +74,16 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
     fn buffer_is_dirty(&self, id: BufferId) -> Option<bool> {
         self.buffer(id).map(|_| self.state.has_unsaved_changes(id))
     }
-    fn buffer_stored_language(&self, id: BufferId) -> Option<String> {
-        let lang_id = self.buffer(id)?.language?;
-        Some(self.state.config.languages.name_of(lang_id).to_owned())
+    fn buffer_stored_language(&self, id: BufferId) -> StoredLanguage {
+        let Some(buffer) = self.buffer(id) else {
+            return StoredLanguage::default();
+        };
+        StoredLanguage {
+            name: buffer
+                .language
+                .map(|lang_id| self.state.config.languages.name_of(lang_id).to_owned()),
+            by: buffer.language_by,
+        }
     }
 
     // ── Working directory ────────────────────────────────────────────────────

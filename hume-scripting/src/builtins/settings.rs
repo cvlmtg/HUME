@@ -6,9 +6,9 @@ use steel::rvals::SteelVal;
 
 use hume_engine::pipeline::BufferId;
 
-use crate::SteelCtx;
 use crate::host::{BufferIntrinsicOption, OptionInput, language_option_value};
 use crate::types::{Effect, PaneHandle, QueuedEffect};
+use crate::{BUFFER_LANGUAGE_TIE, SteelCtx};
 
 use super::SteelResult;
 use super::args::list_to_strings;
@@ -42,9 +42,10 @@ fn coerce_option_value(value: &SteelVal, ctx_name: &str) -> Result<OptionInput, 
 pub(crate) fn set_option(ctx: &mut SteelCtx, key: String, value: SteelVal) -> SteelResult {
     let value = coerce_option_value(&value, "value")?;
 
+    let origin = ctx.registration_origin();
     ctx.host
         .settings()
-        .set_global_option(&key, value)
+        .set_global_option(&key, value, origin)
         .map_err(generic_err)?;
 
     Ok(SteelVal::Void)
@@ -79,19 +80,20 @@ pub(crate) fn set_buffer_option(
                 "\"language\" must be a string, got {:?}", value);
         };
         let language = language_option_value(&language).map(str::to_string);
-        if effective_language(ctx, bid) != language {
-            ctx.push_effect(Effect::SetBufferLanguage {
-                buffer: bid,
-                language,
-            });
-        }
+        let origin = ctx.registration_origin();
+        ctx.push_effect(Effect::SetBufferLanguage {
+            buffer: bid,
+            language,
+            origin,
+        });
         return Ok(SteelVal::Void);
     }
     let value = coerce_option_value(&value, "value")?;
 
+    let origin = ctx.registration_origin();
     ctx.host
         .settings()
-        .set_buffer_option(&key, value, bid)
+        .set_buffer_option(&key, value, bid, origin)
         .map_err(generic_err)?;
 
     Ok(SteelVal::Void)
@@ -135,20 +137,26 @@ pub(crate) fn get_buffer_option(ctx: &mut SteelCtx, pane: PaneHandle, key: Strin
         .map_err(generic_err)
 }
 
-/// `bid`'s language as a script sees it: the last `"language"` write queued
-/// so far this eval, else the buffer's stored language, `None` for none.
+/// `bid`'s language as a script sees it: the buffer's stored language with
+/// every `"language"` write queued so far this eval ranked onto it as the
+/// editor will apply them, `None` for none.
 fn effective_language(ctx: &mut SteelCtx, bid: BufferId) -> Option<String> {
-    let queued = ctx
-        .effects
-        .iter()
-        .rev()
-        .find_map(|QueuedEffect { effect, .. }| match effect {
-            Effect::SetBufferLanguage { buffer, language } if *buffer == bid => {
-                Some(language.clone())
-            }
-            _ => None,
-        });
-    queued.unwrap_or_else(|| ctx.host.buffers().buffer_stored_language(bid))
+    let mut language = ctx.host.buffers().buffer_stored_language(bid);
+    for QueuedEffect { effect, .. } in ctx.effects.iter() {
+        if let Effect::SetBufferLanguage {
+            buffer,
+            language: written,
+            origin,
+        } = effect
+            && *buffer == bid
+            && origin
+                .claim(&mut language.by, BUFFER_LANGUAGE_TIE)
+                .is_applied()
+        {
+            language.name.clone_from(written);
+        }
+    }
+    language.name
 }
 
 #[cfg(test)]

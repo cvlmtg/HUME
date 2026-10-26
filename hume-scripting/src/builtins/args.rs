@@ -845,7 +845,7 @@ macro_rules! identity_builtin_arg {
     };
 }
 
-identity_builtin_arg!(SteelVal, String, bool, ArgPane, Rooted);
+identity_builtin_arg!(SteelVal, String, bool, ArgPane);
 
 impl BuiltinArg for LivePane {
     type Out = PaneHandle;
@@ -917,6 +917,55 @@ impl BuiltinArg for ScriptPath {
     ) -> Result<AbsolutePath, SteelErr> {
         under_cwd(&self.0, &ctx.host.buffers().cwd(), arg)
     }
+}
+
+/// A proc a script hands HUME to call later, made a [`crate::Callback`]
+/// run as the code that handed it over. A builtin declares its callback
+/// parameters as this type in the `builtins!` table. Decoding checks it is
+/// callable, as [`callback_arg`] does, so a bad one raises at the call
+/// rather than when it is first run. Decoding has no parameter name, so the
+/// error names only the builtin; a builtin taking two callbacks decodes the
+/// second with [`callback_arg`].
+#[derive(Debug, Clone)]
+pub(crate) struct ScriptProc(Rooted);
+
+impl FromSteelVal for ScriptProc {
+    fn from_steelval(val: &SteelVal) -> Result<Self, SteelErr> {
+        if !is_callable_value(val) {
+            steel::stop!(TypeMismatch => "expected a callable, got {:?}", val);
+        }
+        Ok(ScriptProc(Rooted::new(val.clone())))
+    }
+}
+
+impl BuiltinArg for ScriptProc {
+    type Out = crate::Callback;
+    fn resolve(
+        self,
+        ctx: &mut crate::SteelCtx,
+        _arg: &'static str,
+    ) -> Result<crate::Callback, SteelErr> {
+        Ok(crate::Callback::capture(ctx, self.0))
+    }
+}
+
+/// A callable argument, made a [`crate::Callback`] run as the code `ctx`
+/// is running.
+pub(crate) fn callback_arg(
+    ctx: &crate::SteelCtx,
+    val: SteelVal,
+    ctx_name: &str,
+) -> Result<crate::Callback, SteelErr> {
+    Ok(crate::Callback::capture(ctx, callable_arg(val, ctx_name)?))
+}
+
+/// A callable argument that may be `#f` (absent), as [`callback_arg`].
+pub(crate) fn optional_callback_arg(
+    ctx: &crate::SteelCtx,
+    val: SteelVal,
+    ctx_name: &str,
+) -> Result<Option<crate::Callback>, SteelErr> {
+    Ok(optional_callable_arg(val, ctx_name)?.map(|proc| crate::Callback::capture(ctx, proc)))
 }
 
 #[cfg(test)]

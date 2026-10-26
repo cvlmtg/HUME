@@ -531,11 +531,12 @@ fn key_press_activates_lazy_plugin_via_keymap() {
     );
     // setup_lazy_editor passes a throwaway Keymap to eval_init; bind here so
     // the key lands in the editor's actual keymap.
-    ed.state.config.keymap.bind_user_with_extend(
+    ed.state.config.keymap.bind(
         BindMode::Normal,
         &[key('z')],
         "bar".into(),
         false,
+        hume_scripting::ConfigOrigin::User,
     );
     let before = state(&ed);
 

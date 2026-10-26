@@ -85,7 +85,8 @@ HUME downloads the pinned release, verifies its checksum, unpacks it, and regist
 already-open buffers of that language attach immediately, no restart needed. Running
 `:lsp-install` again for a server that's already at the version HUME pins never
 re-downloads. A download or build replaces a server you've registered by hand under the
-same name; to keep your own, register it under a name of its own.
+same name until the next start, when your own registration applies again; to keep both,
+register yours under a name of its own.
 
 `:lsp-install` installs the first server HUME knows for a language. Some languages have
 more than one (Python: ty, ruff, jedi, pylsp, zuban; TOML: taplo, tombi). To install
@@ -265,10 +266,10 @@ not both), using these feature names: `format`, `goto-declaration`, `goto-defini
 A server limited this way contributes only those features: with `'(format diagnostics)`,
 ruff's diagnostics are shown and its other answers are not used.
 
-Plugins can ship a list of their own with `set-default-language-servers!`, which takes the
-same arguments. It applies only while you haven't set a list for that language. With
-`set-language-servers!`, passing `#f` instead of a list clears what you set; with
-`set-default-language-servers!`, it clears the plugin's default.
+A list you set, in your `init.scm` or from a command you run, beats one a plugin sets,
+whichever comes first. Plugins ship their own with `set-default-language-servers!`, which
+takes the same arguments and applies only while no `set-language-servers!` list is set.
+Passing `#f` instead of a list clears what you set, and the plugin's list applies again.
 
 ### Server configuration (`#:init-options` and `#:settings`)
 

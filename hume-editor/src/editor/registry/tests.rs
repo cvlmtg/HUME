@@ -563,11 +563,11 @@ fn steel_backed_names_filters_by_variant() {
 }
 
 /// A failed entry's rollback removes the Steel commands, mappable and typed,
-/// that this entry defined. It leaves alone the commands of another entry of
+/// defined while this entry's body ran. It leaves alone the commands of another entry of
 /// the same plugin, of another plugin and of the user, and also the entry's
 /// own `Lazy` stub and native commands.
 #[test]
-fn unregister_defined_by_removes_only_the_entrys_steel_commands() {
+fn unregister_registered_in_removes_only_the_entrys_steel_commands() {
     use hume_scripting::attribution::{EntryFile, EntryId, PluginId};
     use hume_scripting::{MappableProc, SteelCmdBody, SteelTypedCmdBody, TypedProc};
 
@@ -610,12 +610,12 @@ fn unregister_defined_by_removes_only_the_entrys_steel_commands() {
     let mut reg = CommandRegistry::with_defaults();
     reg.register(mappable(
         "failed-map",
-        MappableProc::for_test_defined_by(failed.clone()),
+        MappableProc::for_test_registered_in(failed.clone()),
     ))
     .expect("a lowercase editor command name");
     reg.register_typed(typed(
         "failed-typed",
-        TypedProc::for_test_defined_by(failed.clone()),
+        TypedProc::for_test_registered_in(failed.clone()),
     ))
     .expect("a valid typed command name");
     reg.register(MappableCommand::Lazy {
@@ -625,16 +625,19 @@ fn unregister_defined_by_removes_only_the_entrys_steel_commands() {
     .expect("a lowercase editor command name");
     reg.register(mappable(
         "sibling-map",
-        MappableProc::for_test_defined_by(sibling),
+        MappableProc::for_test_registered_in(sibling),
     ))
     .expect("a lowercase editor command name");
-    reg.register_typed(typed("other-typed", TypedProc::for_test_defined_by(other)))
-        .expect("a valid typed command name");
+    reg.register_typed(typed(
+        "other-typed",
+        TypedProc::for_test_registered_in(other),
+    ))
+    .expect("a valid typed command name");
     reg.register(mappable("user-map", MappableProc::for_test()))
         .expect("a lowercase editor command name");
     let before = reg.len();
 
-    reg.unregister_defined_by(&failed);
+    reg.unregister_registered_in(&failed);
 
     assert!(!reg.contains("failed-map"));
     assert!(!reg.contains("failed-typed"));

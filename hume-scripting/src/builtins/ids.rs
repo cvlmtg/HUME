@@ -144,71 +144,42 @@ impl Custom for ServerRef {
     }
 }
 
-impl TimerHandle {
-    /// Convert to a `SteelVal` without returning `Result`; see
-    /// [`SteelPane::into_steel_val`].
-    pub(crate) fn into_steel_val(self) -> SteelVal {
-        self.into_steelval().expect("TimerHandle into_steelval")
-    }
+/// The Steel surface of each opaque `u64` handle the host mints: a value
+/// that compares and hashes by its id and prints as `#<label id>`.
+macro_rules! opaque_handle {
+    ($($ty:ident => $label:literal),+ $(,)?) => {
+        $(
+            impl $ty {
+                /// Convert to a `SteelVal` without returning `Result`; see
+                /// [`SteelPane::into_steel_val`].
+                pub(crate) fn into_steel_val(self) -> SteelVal {
+                    self.into_steelval()
+                        .expect(concat!(stringify!($ty), " into_steelval"))
+                }
+            }
+
+            impl Custom for $ty {
+                fn fmt(&self) -> Option<Result<String, std::fmt::Error>> {
+                    Some(Ok(format!(concat!("#<", $label, " {}>"), self.raw())))
+                }
+
+                fn equality_hint(&self, other: &dyn steel::rvals::CustomType) -> bool {
+                    as_underlying_type::<Self>(other).is_some_and(|o| o == self)
+                }
+
+                fn try_as_dyn_hash(&self) -> Option<&dyn steel::rvals::DynHash> {
+                    Some(self)
+                }
+            }
+        )+
+    };
 }
 
-impl Custom for TimerHandle {
-    fn fmt(&self) -> Option<Result<String, std::fmt::Error>> {
-        Some(Ok(format!("#<timer {}>", self.raw())))
-    }
-
-    fn equality_hint(&self, other: &dyn steel::rvals::CustomType) -> bool {
-        as_underlying_type::<Self>(other).is_some_and(|o| o == self)
-    }
-
-    fn try_as_dyn_hash(&self) -> Option<&dyn steel::rvals::DynHash> {
-        Some(self)
-    }
-}
-
-impl JobHandle {
-    /// Convert to a `SteelVal` without returning `Result`; see
-    /// [`SteelPane::into_steel_val`].
-    pub(crate) fn into_steel_val(self) -> SteelVal {
-        self.into_steelval().expect("JobHandle into_steelval")
-    }
-}
-
-impl Custom for JobHandle {
-    fn fmt(&self) -> Option<Result<String, std::fmt::Error>> {
-        Some(Ok(format!("#<job {}>", self.raw())))
-    }
-
-    fn equality_hint(&self, other: &dyn steel::rvals::CustomType) -> bool {
-        as_underlying_type::<Self>(other).is_some_and(|o| o == self)
-    }
-
-    fn try_as_dyn_hash(&self) -> Option<&dyn steel::rvals::DynHash> {
-        Some(self)
-    }
-}
-
-impl SupersedeKey {
-    /// Convert to a `SteelVal` without returning `Result`; see
-    /// [`SteelPane::into_steel_val`].
-    pub(crate) fn into_steel_val(self) -> SteelVal {
-        self.into_steelval().expect("SupersedeKey into_steelval")
-    }
-}
-
-impl Custom for SupersedeKey {
-    fn fmt(&self) -> Option<Result<String, std::fmt::Error>> {
-        Some(Ok(format!("#<supersede-key {}>", self.raw())))
-    }
-
-    fn equality_hint(&self, other: &dyn steel::rvals::CustomType) -> bool {
-        as_underlying_type::<Self>(other).is_some_and(|o| o == self)
-    }
-
-    fn try_as_dyn_hash(&self) -> Option<&dyn steel::rvals::DynHash> {
-        Some(self)
-    }
-}
+opaque_handle!(
+    TimerHandle => "timer",
+    JobHandle => "job",
+    SupersedeKey => "supersede-key",
+);
 
 /// A buffer position in a request's params, encoded as a wire `Position`
 /// only when the request is serialized for a server, in that server's

@@ -1,10 +1,11 @@
 use super::params::position_params_value;
 use super::*;
+use crate::ConfigOrigin;
 use crate::json::JsonHandle;
 use crate::null_host::EmptyLspHost;
 use crate::test_support::{SteelCtxTestHarness, default_bid, default_pane, default_pane_with_pane};
 use crate::types::{
-    FeatureFilter, ListEntry, ListLayer, LspServerTarget, RequestMode, RequestParams, RouteSpec,
+    FeatureFilter, ListEntry, ListTier, LspServerTarget, RequestMode, RequestParams, RouteSpec,
     ServerName, WhenUnavailable,
 };
 use hume_platform::dirs::Dirs;
@@ -184,7 +185,7 @@ fn queues_a_pending_registration_from_command_mode() {
 fn allowed_during_plugin_activation_even_though_is_init_is_false() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx_activation();
-    ctx.plugin_stack.push(crate::attribution::EntryId::main(
+    ctx.attribution.push_body(crate::attribution::EntryId::main(
         crate::attribution::PluginId::Core("lsp".to_string()),
     ));
     let result = register_lsp_server(
@@ -227,7 +228,10 @@ fn unregister_queues_an_unregister_op() {
     let ops = lsp_server_ops(&h);
     assert_eq!(ops.len(), 1);
     match ops[0] {
-        PendingLspServerOp::Unregister { name } => assert_eq!(name.as_str(), "rust-analyzer"),
+        PendingLspServerOp::Unregister { name, origin } => {
+            assert_eq!(name.as_str(), "rust-analyzer");
+            assert_eq!(*origin, crate::ConfigOrigin::User);
+        }
         other => panic!("expected Unregister, got {other:?}"),
     }
 }
@@ -280,7 +284,7 @@ fn register_unregister_register_ordering_is_preserved() {
     ));
     assert!(matches!(
         ops[1],
-        PendingLspServerOp::Unregister { name } if name.as_str() == "rust-analyzer"
+        PendingLspServerOp::Unregister { name, .. } if name.as_str() == "rust-analyzer"
     ));
     assert!(matches!(
         ops[2],
@@ -382,6 +386,10 @@ fn lsp_server_registered_is_callable_during_init() {
 }
 
 fn pending_register(name: &str) -> Effect {
+    pending_register_by(name, crate::ConfigOrigin::User)
+}
+
+fn pending_register_by(name: &str, origin: crate::ConfigOrigin) -> Effect {
     Effect::LspServerOp(PendingLspServerOp::Register(crate::PendingLspServerReg {
         name: server_name(name),
         command: "rust-analyzer".to_string(),
@@ -389,12 +397,18 @@ fn pending_register(name: &str) -> Effect {
         init_options: None,
         settings: None,
         env: Vec::new(),
+        origin,
     }))
 }
 
 fn pending_unregister(name: &str) -> Effect {
+    pending_unregister_by(name, crate::ConfigOrigin::User)
+}
+
+fn pending_unregister_by(name: &str, origin: crate::ConfigOrigin) -> Effect {
     Effect::LspServerOp(PendingLspServerOp::Unregister {
         name: server_name(name),
+        origin,
     })
 }
 
@@ -403,9 +417,9 @@ fn registered(ctx: &mut SteelCtx, name: &str) -> SteelVal {
 }
 
 /// `lsp-server-registered?` reads through the `Effect::LspServerOp`
-/// entries queued this eval before falling back to the host, in queue
-/// order: the last `Register`/`Unregister` of the name wins, matching
-/// `Editor::apply_lsp_server_ops`'s own application order.
+/// entries queued this eval on top of the host's registration, in queue
+/// order: within one origin the last `Register`/`Unregister` of the name
+/// wins, matching `Editor::apply_lsp_server_ops`'s own application order.
 #[test]
 fn lsp_server_registered_reads_through_queued_ops() {
     let mut h = SteelCtxTestHarness::new();
@@ -420,6 +434,24 @@ fn lsp_server_registered_reads_through_queued_ops() {
     );
     ctx.push_effect(pending_register("rust-analyzer"));
     assert_eq!(registered(&mut ctx, "rust-analyzer"), SteelVal::BoolV(true));
+}
+
+/// A queued op from a lower origin than the registration it would change
+/// does not apply, so the probe does not count it.
+#[test]
+fn lsp_server_registered_skips_an_op_a_higher_origin_shadows() {
+    use crate::ConfigOrigin::{Plugin, User};
+    let mut h = SteelCtxTestHarness::new();
+    let mut host = EmptyLspHost::default();
+    let mut ctx = h.ctx_with_host(&mut host);
+    ctx.push_effect(pending_register_by("rust-analyzer", User));
+    ctx.push_effect(pending_unregister_by("rust-analyzer", Plugin));
+    assert_eq!(registered(&mut ctx, "rust-analyzer"), SteelVal::BoolV(true));
+    ctx.push_effect(pending_unregister_by("rust-analyzer", User));
+    assert_eq!(
+        registered(&mut ctx, "rust-analyzer"),
+        SteelVal::BoolV(false)
+    );
 }
 
 /// A host with no LSP capability raises whether or not an op for the name is
@@ -515,17 +547,18 @@ fn set_list(ctx: &mut SteelCtx, entries: SteelVal) -> SteelResult {
     set_language_servers(ctx, "python".into_steelval().unwrap(), entries)
 }
 
-fn queued_lists(h: &SteelCtxTestHarness) -> Vec<(ListLayer, Option<Vec<ListEntry>>)> {
+fn queued_lists(h: &SteelCtxTestHarness) -> Vec<(ListTier, ConfigOrigin, Option<Vec<ListEntry>>)> {
     lsp_server_ops(h)
         .into_iter()
         .map(|op| match op {
             PendingLspServerOp::SetLanguageServers {
                 language,
-                layer,
+                tier,
+                origin,
                 entries,
             } => {
                 assert_eq!(language, "python");
-                (*layer, entries.clone())
+                (*tier, *origin, entries.clone())
             }
             other => panic!("expected SetLanguageServers, got {other:?}"),
         })
@@ -559,7 +592,8 @@ fn set_language_servers_queues_names_and_filters() {
         queued_lists(&h),
         vec![
             (
-                ListLayer::User,
+                ListTier::Explicit,
+                ConfigOrigin::User,
                 Some(vec![
                     ListEntry {
                         name: server_name("ty"),
@@ -576,7 +610,8 @@ fn set_language_servers_queues_names_and_filters() {
                 ])
             ),
             (
-                ListLayer::Default,
+                ListTier::Default,
+                ConfigOrigin::User,
                 Some(vec![ListEntry {
                     name: server_name("jedi"),
                     filter: FeatureFilter::All,
@@ -587,12 +622,46 @@ fn set_language_servers_queues_names_and_filters() {
 }
 
 #[test]
-fn set_language_servers_false_clears_the_layer() {
+fn set_language_servers_false_clears_the_callers_list() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
     set_list(&mut ctx, SteelVal::BoolV(false)).unwrap();
     drop(ctx);
-    assert_eq!(queued_lists(&h), vec![(ListLayer::User, None)]);
+    assert_eq!(
+        queued_lists(&h),
+        vec![(ListTier::Explicit, ConfigOrigin::User, None)]
+    );
+}
+
+/// A plugin body's list and default both rank as the plugin's, in their own
+/// tiers.
+#[test]
+fn a_plugin_bodys_lists_rank_as_the_plugins() {
+    use crate::attribution::{EntryId, PluginId};
+
+    let mut h = SteelCtxTestHarness::new();
+    h.attribution
+        .push_body(EntryId::main(PluginId::parse("core:test-plugin").unwrap()));
+    let mut ctx = h.ctx_activation();
+    set_list(&mut ctx, list_of(&["ty"])).unwrap();
+    set_default_language_servers(
+        &mut ctx,
+        "python".into_steelval().unwrap(),
+        list_of(&["ty"]),
+    )
+    .unwrap();
+    drop(ctx);
+    let queued: Vec<(ListTier, ConfigOrigin)> = queued_lists(&h)
+        .into_iter()
+        .map(|(tier, origin, _)| (tier, origin))
+        .collect();
+    assert_eq!(
+        queued,
+        [
+            (ListTier::Explicit, ConfigOrigin::Plugin),
+            (ListTier::Default, ConfigOrigin::Plugin)
+        ]
+    );
 }
 
 #[test]
@@ -660,7 +729,7 @@ fn request(ctx: &mut SteelCtx, args: RequestArgs) -> SteelResult {
         args.pane,
         "textDocument/hover".into_steelval().unwrap(),
         args.params,
-        SteelVal::FuncV(noop_proc),
+        crate::Callback::for_test(SteelVal::FuncV(noop_proc)),
         args.feature,
         args.to,
         args.unavailable,
@@ -677,7 +746,7 @@ fn request_all(ctx: &mut SteelCtx, params: SteelVal) -> SteelResult {
         default_pane(),
         "textDocument/codeAction".into_steelval().unwrap(),
         params,
-        SteelVal::FuncV(noop_proc),
+        crate::Callback::for_test(SteelVal::FuncV(noop_proc)),
         SteelVal::BoolV(false),
         SteelVal::SymbolV("error".into()),
         SteelVal::BoolV(false),
@@ -1542,7 +1611,7 @@ fn register_lsp_notification_hook_attributes_the_running_plugin() {
     use crate::attribution::{EntryId, PluginId};
     let mut h = SteelCtxTestHarness::new();
     let id = PluginId::parse("core:myplugin").unwrap();
-    h.plugin_stack.push(EntryId::main(id.clone()));
+    h.attribution.push_body(EntryId::main(id.clone()));
     register_lsp_notification_hook(
         &mut h.ctx(),
         SteelVal::StringV("a/b".into()),
@@ -1550,8 +1619,11 @@ fn register_lsp_notification_hook_attributes_the_running_plugin() {
     )
     .expect("registration during plugin load must succeed");
     assert_eq!(
-        h.registries.hooks.handlers_for("on-lsp-notification")[0].owner,
-        Some(EntryId::main(id))
+        *h.registries.hooks.handlers_for("on-lsp-notification")[0]
+            .handler
+            .provenance()
+            .owner,
+        crate::attribution::Owner::Plugin(EntryId::main(id))
     );
 }
 

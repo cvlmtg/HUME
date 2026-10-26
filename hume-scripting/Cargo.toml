@@ -11,6 +11,7 @@ test-util = []
 hume-editing = { path = "../hume-editing" }
 hume-engine = { path = "../hume-engine" }
 hume-lsp = { path = "../hume-lsp" }
+hume-origin = { path = "../hume-origin" }
 hume-ops = { path = "../hume-ops" }
 hume-platform = { path = "../hume-platform" }
 hume-rope = { path = "../hume-rope" }

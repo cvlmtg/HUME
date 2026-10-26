@@ -80,7 +80,7 @@ pub trait AsyncProcessHost {
         cmd: &str,
         args: Vec<String>,
         cwd: PathBuf,
-        callback: crate::Rooted,
+        callback: crate::Callback,
     ) -> JobHandle;
 
     /// Lists the programs on the editor's search path whose names start
@@ -94,7 +94,7 @@ pub trait AsyncProcessHost {
         &mut self,
         prefix: String,
         extensions: Vec<String>,
-        callback: crate::Rooted,
+        callback: crate::Callback,
     ) -> Result<JobHandle, String>;
 
     /// Stops `job` and drops its callback without firing it, even a

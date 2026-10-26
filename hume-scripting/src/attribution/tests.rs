@@ -88,50 +88,91 @@ fn plugin_id_equal_ids_have_equal_hashes() {
     assert_eq!(hash_of(&pid("core:PLUM")), hash_of(&pid("core:plum")));
 }
 
-// ── PluginStack ──────────────────────────────────────────────────────────
+// ── AttributionStack ─────────────────────────────────────────────────────
 
-#[test]
-fn plugin_stack_empty_is_user() {
-    let stack = PluginStack::default();
-    assert_eq!(stack.current_owner(), Owner::User);
+fn top(stack: &AttributionStack) -> Option<Owner> {
+    stack.top_owner().map(|owner| Owner::clone(owner))
 }
 
 #[test]
-fn plugin_stack_push_makes_plugin_owner() {
-    let mut stack = PluginStack::default();
+fn an_empty_stack_names_no_owner() {
+    assert_eq!(top(&AttributionStack::default()), None);
+}
+
+#[test]
+fn a_body_runs_as_its_plugin() {
+    let mut stack = AttributionStack::default();
     let x = pid("user/x");
-    stack.push(EntryId::main(x.clone()));
-    assert_eq!(stack.current_owner(), Owner::Plugin(EntryId::main(x)));
+    stack.push_body(EntryId::main(x.clone()));
+    assert_eq!(top(&stack), Some(Owner::Plugin(EntryId::main(x))));
+    assert!(stack.in_body());
 }
 
 #[test]
-fn plugin_stack_pop_returns_to_user() {
-    let mut stack = PluginStack::default();
-    stack.push(EntryId::main(pid("user/x")));
-    assert_eq!(stack.pop(), Some(EntryId::main(pid("user/x"))));
-    assert_eq!(stack.current_owner(), Owner::User);
+fn popping_a_body_returns_its_entry() {
+    let mut stack = AttributionStack::default();
+    stack.push_body(EntryId::main(pid("user/x")));
+    assert_eq!(stack.pop_body(), Some(EntryId::main(pid("user/x"))));
+    assert_eq!(top(&stack), None);
+    assert!(!stack.in_body());
 }
 
 #[test]
-fn plugin_stack_nested_plugins() {
-    let mut stack = PluginStack::default();
-    let x = pid("user/x");
-    let y = pid("user/y");
-    stack.push(EntryId::main(x));
-    stack.push(EntryId::main(y.clone()));
-    assert_eq!(stack.current_owner(), Owner::Plugin(EntryId::main(y)));
-    stack.pop();
+fn nested_bodies_run_innermost_first() {
+    let mut stack = AttributionStack::default();
+    stack.push_body(EntryId::main(pid("user/x")));
+    stack.push_body(EntryId::main(pid("user/y")));
     assert_eq!(
-        stack.current_owner(),
-        Owner::Plugin(EntryId::main(pid("user/x")))
+        top(&stack),
+        Some(Owner::Plugin(EntryId::main(pid("user/y"))))
+    );
+    assert_eq!(stack.body_depth(), 2);
+    stack.pop_body();
+    assert_eq!(
+        top(&stack),
+        Some(Owner::Plugin(EntryId::main(pid("user/x"))))
     );
 }
 
 #[test]
-fn plugin_stack_pop_on_empty_returns_none() {
-    let mut stack = PluginStack::default();
-    assert_eq!(stack.pop(), None);
-    assert_eq!(stack.current_owner(), Owner::User);
+fn pop_body_on_empty_returns_none() {
+    assert_eq!(AttributionStack::default().pop_body(), None);
+}
+
+/// A `call!` frame runs as the command's definer, and is not a body: it
+/// neither opens a plugin body's gates nor counts toward the body depth.
+#[test]
+fn a_call_frame_runs_as_its_owner_and_is_not_a_body() {
+    let mut stack = AttributionStack::default();
+    stack.push_body(EntryId::main(pid("user/x")));
+    let depth = stack.enter_call(std::rc::Rc::new(Owner::User));
+    assert_eq!(top(&stack), Some(Owner::User));
+    assert_eq!(stack.body_depth(), 1);
+    assert_eq!(stack.pop_body(), None, "the innermost frame is the call");
+    assert_eq!(
+        stack.innermost_body().map(|entry| &**entry),
+        Some(&EntryId::main(pid("user/x")))
+    );
+    assert!(stack.drain_above(depth).is_empty());
+    assert_eq!(
+        top(&stack),
+        Some(Owner::Plugin(EntryId::main(pid("user/x"))))
+    );
+}
+
+/// A session's end drops its call frames and hands back its bodies,
+/// innermost first.
+#[test]
+fn drain_above_returns_the_bodies_innermost_first() {
+    let mut stack = AttributionStack::default();
+    stack.push_body(EntryId::main(pid("user/x")));
+    stack.enter_call(std::rc::Rc::new(Owner::User));
+    stack.push_body(EntryId::main(pid("user/y")));
+    assert_eq!(
+        stack.drain_above(0),
+        vec![EntryId::main(pid("user/y")), EntryId::main(pid("user/x"))]
+    );
+    assert_eq!(stack.len(), 0);
 }
 
 // ── EntryFile / EntryId ───────────────────────────────────────────────────
@@ -236,4 +277,44 @@ fn parse_installed_rejects_local_ids() {
     assert!(PluginId::parse_installed("./a.scm").is_err());
     assert!(PluginId::parse_installed("core:a").is_ok());
     assert!(PluginId::parse_installed("alice/bar").is_ok());
+}
+
+/// HUME's own runtime files are HUME's: a command one defines is owned by
+/// `hume`, while one `init.scm` defines is the user's.
+#[test]
+fn a_bundled_runtime_file_attributes_to_hume() {
+    use crate::{ScriptingHost, null_host::CommandStoreHost};
+    use hume_platform::dirs::Dirs;
+    use steel::rvals::SteelVal;
+    let dir = tempfile::tempdir().unwrap();
+    let bundled = dir.path().join("bundled.scm");
+    std::fs::write(
+        &bundled,
+        r#"(define-command! "bundled-cmd" "" (lambda () #t))"#,
+    )
+    .unwrap();
+    let init = dir.path().join("init.scm");
+    std::fs::write(&init, r#"(define-command! "init-cmd" "" (lambda () #t))"#).unwrap();
+
+    let mut host = ScriptingHost::new(&Dirs::none());
+    let mut editor_host = CommandStoreHost::default();
+    host.eval_runtime(&bundled, 10_000, &mut editor_host, Default::default())
+        .expect("the bundled file evaluates");
+    host.eval_init(&init, 10_000, &mut editor_host, Default::default())
+        .expect("init.scm evaluates");
+
+    let owners = host.eval_source_for_value(
+        r#"(list (command-plugin "bundled-cmd") (command-plugin "init-cmd"))"#,
+        &mut editor_host,
+    );
+    assert_eq!(
+        owners,
+        Ok(SteelVal::ListV(
+            vec![
+                SteelVal::StringV("hume".into()),
+                SteelVal::StringV("user".into())
+            ]
+            .into()
+        ))
+    );
 }

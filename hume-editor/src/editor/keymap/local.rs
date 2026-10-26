@@ -3,6 +3,7 @@
 use std::borrow::Cow;
 
 use hume_engine::pipeline::BufferId;
+use hume_scripting::ConfigOrigin;
 use rustc_hash::FxHashMap;
 use termina::event::KeyEvent;
 
@@ -30,7 +31,9 @@ pub(in crate::editor) struct Resolved {
 }
 
 impl LocalKeymaps {
-    /// Bind `keys` in the keymap `name`, creating the keymap if needed.
+    /// Bind `keys` in the keymap `name` from `by`, creating the keymap if
+    /// needed. Returns whether a higher origin hides the binding there
+    /// ([`Keymap::bind`]).
     pub(in crate::editor) fn bind(
         &mut self,
         name: String,
@@ -38,18 +41,28 @@ impl LocalKeymaps {
         keys: &[KeyEvent],
         command: Cow<'static, str>,
         force_extend: bool,
-    ) {
+        by: ConfigOrigin,
+    ) -> bool {
         self.maps
             .entry(name.into_boxed_str())
             .or_insert_with(Keymap::empty)
-            .bind_user_with_extend(mode, keys, command, force_extend);
+            .bind(mode, keys, command, force_extend, by)
     }
 
-    /// Remove a binding from the keymap `name`, which is never created here.
-    pub(in crate::editor) fn unbind(&mut self, name: &str, mode: BindMode, keys: &[KeyEvent]) {
-        if let Some(keymap) = self.maps.get_mut(name) {
-            keymap.unbind_user(mode, keys);
-        }
+    /// Unbind `keys` in the keymap `name` from `by`, which never creates the
+    /// keymap. An unbinding hides the keymap's lower-origin bindings, and
+    /// the keymaps below it, the global one included, still apply. Returns
+    /// whether a higher origin decides the sequence there anyway.
+    pub(in crate::editor) fn unbind(
+        &mut self,
+        name: &str,
+        mode: BindMode,
+        keys: &[KeyEvent],
+        by: ConfigOrigin,
+    ) -> bool {
+        self.maps
+            .get_mut(name)
+            .is_some_and(|keymap| keymap.unbind(mode, keys, by))
     }
 
     /// Attach the keymap `name` to `buffer` as its newest keymap. Attaching

@@ -2,8 +2,13 @@
 //! features, server registrations, request routing and params, and
 //! trigger-char sets.
 
-use crate::Rooted;
 use hume_engine::pipeline::{BufferId, PaneId};
+use hume_origin::Tie;
+
+/// A server registration: a later write from one origin replaces the
+/// earlier, whether the editor applies it or a script reads it back before
+/// then.
+pub const SERVER_REGISTRATION_TIE: Tie = Tie::LaterWins;
 
 /// A language server's registration name: non-empty, no whitespace, so it
 /// reads unambiguously as a `:lsp-stop`/`:lsp-restart` argument.
@@ -155,11 +160,11 @@ pub struct ListEntry {
     pub filter: FeatureFilter,
 }
 
-/// Which of a language's two server lists a call writes. A `User` list
-/// always wins over a `Default` one, whichever was set first.
+/// Which of a language's server lists a write sets. A default list ranks
+/// below every explicit list, whatever the origins of the two.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ListLayer {
-    User,
+pub enum ListTier {
+    Explicit,
     Default,
 }
 
@@ -179,6 +184,9 @@ pub struct PendingLspServerReg {
     /// `#:env`: extra environment variables applied additively (never
     /// clearing the inherited environment) when the server process spawns.
     pub env: Vec<(String, String)>,
+    /// Whose code registered it: a registration never replaces one from a
+    /// higher origin ([`crate::ConfigOrigin::rank`]).
+    pub origin: crate::ConfigOrigin,
 }
 
 /// `(lsp-stop! target)` / `(lsp-restart! target)`'s target: every server
@@ -204,13 +212,18 @@ pub enum LspServerTarget {
 #[derive(Debug)]
 pub enum PendingLspServerOp {
     Register(PendingLspServerReg),
+    /// Removes `name`'s registration, unless a higher origin made it.
     Unregister {
         name: ServerName,
+        origin: crate::ConfigOrigin,
     },
-    /// Sets (`Some`) or clears (`None`) one of `language`'s server lists.
+    /// Sets (`Some`) or clears (`None`) `language`'s `tier` server list from
+    /// `origin`. The list from the highest origin that set one in the
+    /// highest tier that has one applies.
     SetLanguageServers {
         language: String,
-        layer: ListLayer,
+        tier: ListTier,
+        origin: crate::ConfigOrigin,
         entries: Option<Vec<ListEntry>>,
     },
     Stop {
@@ -413,7 +426,7 @@ pub struct PendingLspRequest {
     pub mode: RequestMode,
     pub route: RouteSpec,
     pub when_unavailable: WhenUnavailable,
-    pub callback: Rooted,
+    pub callback: crate::Callback,
     pub allow_stale: bool,
     /// `#:supersede`: a new request under the same key cancels the
     /// previous one still in flight under it, on every server it went to.

@@ -267,8 +267,14 @@ pub(in crate::editor) fn typed_theme(
         return Ok(());
     };
     let name = hume_scripting::host::OptionInput::Text(name.to_string());
-    crate::editor::settings::ops::apply_global(&mut ed.state, &mut ed.view, THEME_KEY, &name)
-        .map_err(CommandError::new)
+    crate::editor::settings::ops::apply_global(
+        &mut ed.state,
+        &mut ed.view,
+        THEME_KEY,
+        &name,
+        hume_scripting::ConfigOrigin::User,
+    )
+    .map_err(CommandError::new)
 }
 
 /// `:theme-debug`: print what the active theme resolves for key UI surfaces.

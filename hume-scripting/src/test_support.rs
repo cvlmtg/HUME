@@ -3,7 +3,7 @@
 //! Lives in the scripting crate because it needs access to private types
 //! (`SteelCtx`, `HostBundle`).
 
-use crate::attribution::PluginStack;
+use crate::attribution::AttributionStack;
 use crate::builtins::dirs::ScriptDirs;
 use crate::context::SteelCtx;
 use crate::log::LogLevel;
@@ -53,7 +53,7 @@ pub(crate) fn str_val(s: &str) -> steel::rvals::SteelVal {
 /// etc.) fire correctly, without real editor state.
 pub(crate) struct SteelCtxTestHarness {
     pub(crate) host: NullHost,
-    pub(crate) plugin_stack: PluginStack,
+    pub(crate) attribution: AttributionStack,
     pub(crate) registries: ScriptingRegistries,
     pub(crate) pending_messages: Vec<(LogLevel, String)>,
     pub(crate) effects: Vec<QueuedEffect>,
@@ -68,7 +68,7 @@ pub(crate) struct SteelCtxTestHarness {
 /// `ScriptingHost::steel_and_bundle`.
 fn bundle<'a>(
     registries: &'a mut ScriptingRegistries,
-    plugin_stack: &'a mut PluginStack,
+    attribution: &'a mut AttributionStack,
     pending_messages: &'a mut Vec<(LogLevel, String)>,
     effects: &'a mut Vec<QueuedEffect>,
     dirs: &'a ScriptDirs,
@@ -76,7 +76,7 @@ fn bundle<'a>(
 ) -> HostBundle<'a> {
     HostBundle {
         registries,
-        plugin_stack,
+        attribution,
         pending_messages,
         effects,
         dirs,
@@ -88,7 +88,7 @@ impl SteelCtxTestHarness {
     pub(crate) fn new() -> Self {
         Self {
             host: NullHost,
-            plugin_stack: PluginStack::default(),
+            attribution: AttributionStack::default(),
             registries: ScriptingRegistries::default(),
             pending_messages: Vec::new(),
             effects: Vec::new(),
@@ -97,11 +97,12 @@ impl SteelCtxTestHarness {
         }
     }
 
-    /// Build a `SteelCtx` in init mode (`session = EvalSession::Init`).
+    /// Build a `SteelCtx` in init mode (`session = EvalSession::Init`), as
+    /// `init.scm`.
     pub(crate) fn ctx_init(&mut self) -> SteelCtx<'_> {
         let Self {
             host,
-            plugin_stack,
+            attribution,
             registries,
             pending_messages,
             effects,
@@ -112,13 +113,14 @@ impl SteelCtxTestHarness {
             host,
             bundle(
                 registries,
-                plugin_stack,
+                attribution,
                 pending_messages,
                 effects,
                 dirs,
                 watchdog,
             ),
             Default::default(),
+            crate::attribution::Owner::User,
         )
     }
 
@@ -130,7 +132,7 @@ impl SteelCtxTestHarness {
         host: &'a mut dyn crate::host::EditorHost,
     ) -> SteelCtx<'a> {
         let Self {
-            plugin_stack,
+            attribution,
             registries,
             pending_messages,
             effects,
@@ -142,13 +144,14 @@ impl SteelCtxTestHarness {
             host,
             bundle(
                 registries,
-                plugin_stack,
+                attribution,
                 pending_messages,
                 effects,
                 dirs,
                 watchdog,
             ),
             Default::default(),
+            crate::attribution::Owner::User,
         )
     }
 
@@ -157,7 +160,7 @@ impl SteelCtxTestHarness {
     pub(crate) fn ctx_activation(&mut self) -> SteelCtx<'_> {
         let Self {
             host,
-            plugin_stack,
+            attribution,
             registries,
             pending_messages,
             effects,
@@ -168,7 +171,7 @@ impl SteelCtxTestHarness {
             host,
             bundle(
                 registries,
-                plugin_stack,
+                attribution,
                 pending_messages,
                 effects,
                 dirs,
@@ -178,11 +181,17 @@ impl SteelCtxTestHarness {
         )
     }
 
-    /// Build a `SteelCtx` in command mode (`session = EvalSession::Runtime`).
+    /// Build a `SteelCtx` in command mode (`session = EvalSession::Runtime`),
+    /// running a proc `init.scm` defined.
     pub(crate) fn ctx(&mut self) -> SteelCtx<'_> {
+        self.ctx_as(user())
+    }
+
+    /// Build a command-mode `SteelCtx` running a proc credited as `base`.
+    pub(crate) fn ctx_as(&mut self, base: crate::attribution::Provenance) -> SteelCtx<'_> {
         let Self {
             host,
-            plugin_stack,
+            attribution,
             registries,
             pending_messages,
             effects,
@@ -193,12 +202,13 @@ impl SteelCtxTestHarness {
             host,
             bundle(
                 registries,
-                plugin_stack,
+                attribution,
                 pending_messages,
                 effects,
                 dirs,
                 watchdog,
             ),
+            base,
         )
     }
 
@@ -210,7 +220,7 @@ impl SteelCtxTestHarness {
         host: &'a mut dyn crate::host::EditorHost,
     ) -> SteelCtx<'a> {
         let Self {
-            plugin_stack,
+            attribution,
             registries,
             pending_messages,
             effects,
@@ -222,12 +232,18 @@ impl SteelCtxTestHarness {
             host,
             bundle(
                 registries,
-                plugin_stack,
+                attribution,
                 pending_messages,
                 effects,
                 dirs,
                 watchdog,
             ),
+            user(),
         )
     }
+}
+
+/// Who a harness session is credited to: the user's own code.
+fn user() -> crate::attribution::Provenance {
+    crate::attribution::Provenance::own(crate::attribution::Owner::User)
 }

@@ -62,14 +62,14 @@ pub use host::PendingCompletionSource;
 pub use keys::parse_key_stream;
 pub use lazy::PluginStatus;
 pub use log::LogLevel;
-pub use rooted::{Rooted, SteelCall};
+pub use rooted::{Callback, Rooted, SteelCall};
 pub use types::{
-    CapabilityQuery, ConfigOrigin, DocSpan, Effect, EvalError, FeatureFilter, GrammarReg,
-    ListEntry, ListLayer, LspFeature, LspServerStatusEntry, LspServerTarget, PaneHandle, Params,
-    PendingLanguageReg, PendingLspNotify, PendingLspRequest, PendingLspServerOp,
-    PendingLspServerReg, RequestMode, RequestParams, RouteSpec, ServerName, SteelCmdBody,
-    SteelCmdDef, SteelTypedCmdBody, SteelTypedCmdDef, TriggerKind, TriggerScope, VirtualLineSpec,
-    WhenUnavailable,
+    BUFFER_LANGUAGE_TIE, CapabilityQuery, ConfigOrigin, DocSpan, Effect, EvalError, FeatureFilter,
+    GrammarReg, ListEntry, ListTier, LspFeature, LspServerStatusEntry, LspServerTarget, PaneHandle,
+    Params, PendingLanguageReg, PendingLspNotify, PendingLspRequest, PendingLspServerOp,
+    PendingLspServerReg, RequestMode, RequestParams, RouteSpec, SERVER_REGISTRATION_TIE,
+    ServerName, SteelCmdBody, SteelCmdDef, SteelTypedCmdBody, SteelTypedCmdDef, TriggerKind,
+    TriggerScope, VirtualLineSpec, WhenUnavailable,
 };
 // Test-only external visibility: the editor's own test suite arms/cancels a
 // real watchdog directly (hume-editor/tests/scripting.rs) rather than
@@ -101,7 +101,7 @@ use std::path::Path;
 
 use steel::steel_vm::engine::Engine;
 
-use attribution::PluginStack;
+use attribution::AttributionStack;
 use hooks::HookRegistry;
 use lazy::{LazyRegistry, PluginState};
 
@@ -126,7 +126,7 @@ pub(crate) struct ScriptingRegistries {
 /// [`SteelCtx::new_init`] or [`SteelCtx::new_command`]. Private to this module.
 pub(crate) struct HostBundle<'a> {
     pub(crate) registries: &'a mut ScriptingRegistries,
-    plugin_stack: &'a mut PluginStack,
+    attribution: &'a mut AttributionStack,
     pending_messages: &'a mut Vec<(LogLevel, String)>,
     effects: &'a mut Vec<types::QueuedEffect>,
     dirs: &'a builtins::dirs::ScriptDirs,
@@ -148,9 +148,9 @@ pub struct ScriptingHost {
     /// from `steel` so the VM and command/hook state can be borrowed
     /// simultaneously (NLL field-split).
     pub(crate) registries: ScriptingRegistries,
-    /// Attribution stack: `stack.last()` is the plugin currently executing.
-    /// Empty → top-level `init.scm` → `Owner::User`.
-    plugin_stack: PluginStack,
+    /// The frames of attributed code running: plugin bodies and `call!`ed
+    /// commands. Empty between sessions.
+    attribution: AttributionStack,
     /// Log messages accumulated by `(log! …)` since the last drain.
     /// Drained by the editor via `take_pending_messages()`.
     pending_messages: Vec<(LogLevel, String)>,
@@ -182,7 +182,7 @@ impl ScriptingHost {
         Self {
             steel,
             registries: ScriptingRegistries::default(),
-            plugin_stack: PluginStack::default(),
+            attribution: AttributionStack::default(),
             pending_messages: Vec::new(),
             effects: Vec::new(),
             dirs,
@@ -397,17 +397,16 @@ impl ScriptingHost {
         self.effects.iter().map(|e| &e.effect).collect()
     }
 
-    /// Current plugin activation nesting depth (number of bodies on the call
-    /// stack).
+    /// How many attribution frames are open: bodies and `call!` frames.
     #[cfg(test)]
-    pub(crate) fn plugin_stack_depth_for_test(&self) -> usize {
-        self.plugin_stack.len()
+    pub(crate) fn attribution_depth_for_test(&self) -> usize {
+        self.attribution.len()
     }
 
-    /// Push a fake plugin id onto the attribution stack.
+    /// Push a fake plugin body onto the attribution stack.
     #[cfg(test)]
     pub(crate) fn push_plugin_for_test(&mut self, id: attribution::EntryId) {
-        self.plugin_stack.push(id);
+        self.attribution.push_body(id);
     }
 }
 
@@ -424,8 +423,14 @@ impl ScriptingHost {
         budget_ms: u64,
         host: &mut dyn host::EditorHost,
     ) -> Result<Vec<Effect>, String> {
-        self.eval_source_raw(source.to_owned(), Default::default(), budget_ms, host)
-            .map_err(|e| e.message)
+        self.eval_source_raw(
+            source.to_owned(),
+            attribution::Owner::User,
+            Default::default(),
+            budget_ms,
+            host,
+        )
+        .map_err(|e| e.message)
     }
 
     /// Evaluate a Steel source string directly, without a file.
@@ -452,7 +457,8 @@ impl ScriptingHost {
         host: &mut dyn host::EditorHost,
     ) -> Result<steel::rvals::SteelVal, String> {
         let source = source.to_owned();
-        self.read_only_call(host, |steel| {
+        let base = attribution::Provenance::own(attribution::Owner::User);
+        self.read_only_call(host, base, |steel| {
             steel
                 .compile_and_run_raw_program(source)?
                 .pop()

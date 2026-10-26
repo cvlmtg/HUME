@@ -5,8 +5,7 @@ use steel::rvals::SteelVal;
 use hume_editing::comment::{BlockCommentTokens, LineCommentTokens};
 use steel::rerrs::SteelErr;
 
-use crate::context::EvalMode;
-use crate::{ConfigOrigin, Effect, GrammarReg, PendingLanguageReg, SteelCtx};
+use crate::{Effect, GrammarReg, PendingLanguageReg, SteelCtx};
 use hume_treesitter::registry::{
     FileExtension, FileGlob, GrammarSource, LanguageField, LanguageFields, OptionalQuery,
     QueryFiles, ShebangInterpreter,
@@ -25,9 +24,9 @@ use super::errors::generic_err;
 /// `extensions`, `globs` and `shebangs` must be lists of strings, each
 /// extension a valid [`FileExtension`], each glob a valid [`FileGlob`] and
 /// each shebang a valid [`ShebangInterpreter`], or the call raises. Pushes an
-/// `Effect::LanguageReg(PendingLanguageReg::Identity)`;
-/// `Editor::apply_pending_language_regs` applies it as part of
-/// `Editor::apply_script_effects`.
+/// `Effect::LanguageReg(PendingLanguageReg::Identity)`, ranked by the origin
+/// of the code that made it; `Editor::apply_pending_language_regs` applies
+/// it as part of `Editor::apply_script_effects`.
 pub(crate) fn define_language(
     ctx: &mut SteelCtx,
     name: SteelVal,
@@ -53,11 +52,13 @@ pub(crate) fn define_language(
         .map(ShebangInterpreter::new)
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| generic_err(format!("{name:?}: {e}")))?;
+    let origin = ctx.registration_origin();
     ctx.push_effect(Effect::LanguageReg(PendingLanguageReg::Identity {
         name,
         extensions,
         globs,
         shebangs,
+        origin,
     }));
     Ok(SteelVal::Void)
 }
@@ -116,8 +117,8 @@ fn fields_of(entry: &HashEntry) -> Result<LanguageFields, SteelErr> {
 /// `(%configure-language! name fields)`: init-only, like `%define-language!`.
 /// `fields` is the hash [`language_fields`] decodes; a field it leaves `None`
 /// stays as it is. Pushes an `Effect::LanguageReg(PendingLanguageReg::Configure)`,
-/// applied in queue order after any `%define-language!` queued before it. A
-/// call inside a plugin body is a plugin's, any other is the user's.
+/// applied in queue order after any `%define-language!` queued before it,
+/// ranked by the origin of the code that made it.
 pub(crate) fn configure_language(
     ctx: &mut SteelCtx,
     name: SteelVal,
@@ -125,11 +126,7 @@ pub(crate) fn configure_language(
 ) -> SteelResult {
     let name = string_arg(name, "name")?;
     let fields = language_fields(fields_val, "fields")?;
-    let origin = if ctx.mode() == EvalMode::Init {
-        ConfigOrigin::User
-    } else {
-        ConfigOrigin::Plugin
-    };
+    let origin = ctx.registration_origin();
     ctx.push_effect(Effect::LanguageReg(PendingLanguageReg::Configure {
         name,
         fields,
@@ -150,6 +147,9 @@ pub(crate) fn configure_language(
 /// - **Command mode**: registers and loads it immediately via the editor
 ///   host, so a grammar that cannot load fails the call, and pushes an
 ///   `Effect::GrammarSweep` to sweep already-open buffers afterward.
+///
+/// Either way it ranks as `SteelCtx::registration_origin`: a grammar a
+/// higher origin registered stays.
 pub(crate) fn register_grammar(
     ctx: &mut SteelCtx,
     name: SteelVal,
@@ -187,6 +187,7 @@ pub(crate) fn register_grammar(
             symbol: string_arg(symbol, "symbol")?,
             queries,
         },
+        origin: ctx.registration_origin(),
     };
 
     if ctx.session == crate::context::EvalSession::Init {
@@ -196,11 +197,14 @@ pub(crate) fn register_grammar(
 
     // Command mode: attach immediately via host and trigger a buffer sweep.
     // The host's error names the grammar.
-    ctx.host
+    let attached = ctx
+        .host
         .language()
         .attach_grammar(&reg)
         .map_err(generic_err)?;
-    ctx.push_effect(Effect::GrammarSweep(reg.name));
+    if attached {
+        ctx.push_effect(Effect::GrammarSweep(reg.name));
+    }
     Ok(SteelVal::Void)
 }
 

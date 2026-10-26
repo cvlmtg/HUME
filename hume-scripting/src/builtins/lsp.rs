@@ -7,11 +7,11 @@
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
-use crate::SteelCtx;
 use crate::types::{
     CapabilityQuery, Effect, LspFeature, PaneHandle, Params, PendingLspNotify, PendingLspRequest,
     PendingLspServerOp, RequestMode, RequestParams, RouteSpec, WhenUnavailable,
 };
+use crate::{Callback, SERVER_REGISTRATION_TIE, SteelCtx};
 
 use super::SteelResult;
 use super::args::{
@@ -94,7 +94,7 @@ fn queue_request(
     params: RequestParams,
     mode: RequestMode,
     route: RouteSpec,
-    callback: SteelVal,
+    callback: Callback,
     unavailable: SteelVal,
     allow_stale: SteelVal,
     supersede: SteelVal,
@@ -103,7 +103,6 @@ fn queue_request(
 ) -> SteelResult {
     let method = string_arg(method, "method")?;
     reject_feature_on_standard_method(ctx, &route, &method)?;
-    let callback = callable_arg(callback, "callback")?;
     let when_unavailable = optional_symbol_arg(unavailable, "#:unavailable")?
         .map(|name| symbol_enum_arg(&name, "#:unavailable", &WhenUnavailable::NAMED))
         .transpose()?
@@ -162,7 +161,7 @@ pub(crate) fn lsp_request(
     pane: PaneHandle,
     method: SteelVal,
     params: SteelVal,
-    callback: SteelVal,
+    callback: Callback,
     feature: SteelVal,
     to: SteelVal,
     unavailable: SteelVal,
@@ -205,7 +204,7 @@ pub(crate) fn lsp_request_all(
     pane: PaneHandle,
     method: SteelVal,
     params: SteelVal,
-    callback: SteelVal,
+    callback: Callback,
     feature: SteelVal,
     unavailable: SteelVal,
     allow_stale: SteelVal,
@@ -429,36 +428,37 @@ pub(crate) fn lsp_supersede_key(ctx: &mut SteelCtx) -> SteelResult {
 }
 
 /// `(lsp-server-registered? name)` → bool. Reads through the
-/// `Effect::LspServerOp` entries queued this eval, in emission order, before
-/// falling back to the live registry: the last queued `Register`/
-/// `Unregister` of `name` wins, matching `Editor::apply_lsp_server_ops`'s own
-/// last-wins semantics, so a same-eval registration is visible at once. A host
-/// with no LSP capability raises whether or not an op is queued.
+/// `Effect::LspServerOp` entries queued this eval, in emission order, from
+/// the live registry's registration, by the rule
+/// `Editor::apply_lsp_server_ops` applies them by
+/// (`ConfigOrigin::rank` with [`SERVER_REGISTRATION_TIE`]), so a same-eval
+/// registration is visible at once and an op that will not apply is not. A host with no LSP capability
+/// raises whether or not an op is queued.
 ///
 /// A pure registry read, so its table entry is `open` kind: callable during
 /// init/plugin load too, which lets `core:lsp-install`'s load-time scan skip
 /// names already registered.
 pub(crate) fn lsp_server_registered(ctx: &mut SteelCtx, name: SteelVal) -> SteelResult {
     let name = server_name_arg(name, "name")?;
-    let lsp = require_cap(ctx.host.lsp())?;
-    let queued = ctx
+    let held = require_cap(ctx.host.lsp())?.lsp_server_origin(&name);
+    let held = ctx
         .effects
         .iter()
-        .rev()
-        .find_map(|queued| match &queued.effect {
-            Effect::LspServerOp(PendingLspServerOp::Register(reg)) if reg.name == name => {
-                Some(true)
+        .fold(held, |held, queued| match &queued.effect {
+            Effect::LspServerOp(PendingLspServerOp::Register(reg))
+                if reg.name == name
+                    && reg.origin.rank(held, SERVER_REGISTRATION_TIE).is_applied() =>
+            {
+                Some(reg.origin)
             }
-            Effect::LspServerOp(PendingLspServerOp::Unregister { name: n }) if *n == name => {
-                Some(false)
+            Effect::LspServerOp(PendingLspServerOp::Unregister { name: n, origin })
+                if *n == name && origin.rank(held, SERVER_REGISTRATION_TIE).is_applied() =>
+            {
+                None
             }
-            _ => None,
+            _ => held,
         });
-    let registered = match queued {
-        Some(v) => v,
-        None => lsp.lsp_server_registered(&name),
-    };
-    Ok(SteelVal::BoolV(registered))
+    Ok(SteelVal::BoolV(held.is_some()))
 }
 
 #[cfg(test)]

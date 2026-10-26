@@ -184,7 +184,7 @@ pub(super) trait SourceId: Copy + PartialEq {
     fn facts(self, sources: &SourceRegistry) -> (&str, MatchKind, i64);
 
     /// The source's `#:cancel`, if it registered one.
-    fn cancel(self, sources: &SourceRegistry) -> Option<&hume_scripting::Rooted>;
+    fn cancel(self, sources: &SourceRegistry) -> Option<&hume_scripting::Callback>;
 }
 
 impl SourceId for BufferSourceId {
@@ -193,7 +193,7 @@ impl SourceId for BufferSourceId {
         (&e.name, e.match_kind, e.priority)
     }
 
-    fn cancel(self, sources: &SourceRegistry) -> Option<&hume_scripting::Rooted> {
+    fn cancel(self, sources: &SourceRegistry) -> Option<&hume_scripting::Callback> {
         sources.buffer_get(self).cancel.as_ref()
     }
 }
@@ -204,7 +204,7 @@ impl SourceId for MinibufSourceId {
         (&e.name, e.match_kind, e.priority)
     }
 
-    fn cancel(self, sources: &SourceRegistry) -> Option<&hume_scripting::Rooted> {
+    fn cancel(self, sources: &SourceRegistry) -> Option<&hume_scripting::Callback> {
         match &sources.minibuf_get(self).body {
             MinibufBody::Steel { cancel, .. } => cancel.as_ref(),
             MinibufBody::NativeUniverse(_) | MinibufBody::NativeDelegated(_) => None,

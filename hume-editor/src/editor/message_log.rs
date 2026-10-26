@@ -300,6 +300,15 @@ impl EditorState {
         self.report(e.severity(), e.message().to_owned());
     }
 
+    /// Trace a write from `op` that a higher origin's `subject` left without
+    /// effect.
+    pub(in crate::editor) fn report_shadowed(&mut self, op: &str, subject: impl std::fmt::Display) {
+        self.report(
+            Severity::Trace,
+            format!("{op}: a higher origin's {subject} applies"),
+        );
+    }
+
     /// Report a message, routing it based on severity:
     ///
     /// - `Info`    → set `status_msg` only (ephemeral, not logged)

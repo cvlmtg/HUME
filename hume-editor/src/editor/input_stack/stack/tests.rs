@@ -10,7 +10,7 @@ use steel::rvals::SteelVal;
 fn menu(label: &str) -> MenuLayer {
     MenuLayer::for_test(
         crate::editor::tests::non_empty_strings(&[label]),
-        hume_scripting::Rooted::new(SteelVal::BoolV(false)),
+        hume_scripting::Callback::for_test(SteelVal::BoolV(false)),
     )
 }
 
@@ -124,7 +124,7 @@ fn is_settled_for_tolerates_its_own_type_buried_under_a_non_modal_overlay() {
     stack.push(menu("m"));
     stack.push(DrawerLayer::new(
         crate::editor::tests::drawer_items(&["d"]),
-        DrawerSelect::Steel(hume_scripting::Rooted::new(SteelVal::BoolV(false))),
+        DrawerSelect::Steel(hume_scripting::Callback::for_test(SteelVal::BoolV(false))),
         0,
     ));
     assert!(stack.is_settled_for::<MenuLayer>());

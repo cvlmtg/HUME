@@ -1,5 +1,6 @@
 use super::*;
-use crate::host::{OptionInput, OptionValue};
+use crate::ConfigOrigin;
+use crate::host::{OptionInput, OptionValue, StoredLanguage};
 use crate::test_support::{SteelCtxTestHarness, default_pane};
 use hume_engine::pipeline::BufferId;
 use steel::rvals::IntoSteelVal as _;
@@ -175,11 +176,11 @@ fn set_buffer_option_invalid_value_type_errors() {
     assert!(msg.contains("must be"), "type error expected, got: {msg}");
 }
 
-/// `set-buffer-option!`'s `"language"` queues its value as an effect instead
-/// of writing through the host, and a second write of the same value in
-/// the same eval queues nothing.
+/// `set-buffer-option!`'s `"language"` queues each write as an effect
+/// instead of writing through the host, a repeat of the same value
+/// included: the editor ranks every write and records the origin of each.
 #[test]
-fn set_buffer_option_language_queues_one_effect_per_change() {
+fn set_buffer_option_language_queues_every_write_with_its_origin() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
     for _ in 0..2 {
@@ -192,15 +193,23 @@ fn set_buffer_option_language_queues_one_effect_per_change() {
         .expect("a string language is accepted");
     }
     drop(ctx);
-    let languages: Vec<&str> = h
+    let writes: Vec<(Option<&str>, crate::ConfigOrigin)> = h
         .effects
         .iter()
         .filter_map(|q| match &q.effect {
-            crate::types::Effect::SetBufferLanguage { language, .. } => language.as_deref(),
+            crate::types::Effect::SetBufferLanguage {
+                language, origin, ..
+            } => Some((language.as_deref(), *origin)),
             _ => None,
         })
         .collect();
-    assert_eq!(languages, vec!["rust"]);
+    assert_eq!(
+        writes,
+        vec![
+            (Some("rust"), crate::ConfigOrigin::User),
+            (Some("rust"), crate::ConfigOrigin::User)
+        ]
+    );
 }
 
 #[test]
@@ -257,6 +266,8 @@ fn set_buffer_option_accepts_string_bool_int_values() {
 struct RecordingBufferOptionHost {
     inner: crate::null_host::NullHost,
     pub(crate) calls: Vec<(String, OptionInput, BufferId)>,
+    /// The origin each global or buffer write arrived with, in order.
+    pub(crate) origins: Vec<ConfigOrigin>,
 }
 
 impl crate::host::EditorHost for RecordingBufferOptionHost {
@@ -324,7 +335,7 @@ impl crate::host::BufferHost for RecordingBufferOptionHost {
     fn buffer_is_dirty(&self, id: BufferId) -> Option<bool> {
         self.inner.buffer_is_dirty(id)
     }
-    fn buffer_stored_language(&self, id: BufferId) -> Option<String> {
+    fn buffer_stored_language(&self, id: BufferId) -> StoredLanguage {
         self.inner.buffer_stored_language(id)
     }
     fn cwd(&self) -> hume_platform::path::AbsolutePath {
@@ -405,16 +416,24 @@ impl crate::host::BufferHost for RecordingBufferOptionHost {
 }
 
 impl crate::host::SettingsHost for RecordingBufferOptionHost {
-    fn set_global_option(&mut self, key: &str, value: OptionInput) -> Result<(), String> {
-        crate::host::SettingsHost::set_global_option(&mut self.inner, key, value)
+    fn set_global_option(
+        &mut self,
+        _key: &str,
+        _value: OptionInput,
+        origin: ConfigOrigin,
+    ) -> Result<(), String> {
+        self.origins.push(origin);
+        Ok(())
     }
     fn set_buffer_option(
         &mut self,
         key: &str,
         value: OptionInput,
         bid: BufferId,
+        origin: ConfigOrigin,
     ) -> Result<(), String> {
         self.calls.push((key.to_string(), value, bid));
+        self.origins.push(origin);
         Ok(())
     }
     fn get_global_option(&self, key: &str) -> Result<OptionValue, String> {
@@ -490,5 +509,35 @@ fn a_named_option_value_reads_back_as_a_string() {
     assert_eq!(
         SteelVal::from(OptionValue::Str("soft".to_string())),
         SteelVal::StringV("soft".into())
+    );
+}
+
+/// An option write reaches the host as the calling code's origin: a command
+/// the user runs is the user's, a plugin body is the plugin's.
+#[test]
+fn option_writes_carry_the_callers_origin() {
+    use crate::attribution::{EntryId, PluginId};
+
+    let mut h = SteelCtxTestHarness::new();
+    let mut host = RecordingBufferOptionHost::default();
+    let pane = crate::types::PaneHandle::buffer_only(BufferId::default());
+    let write = |ctx: &mut SteelCtx| {
+        set_option(ctx, "indent-width".into(), SteelVal::IntV(2)).expect("global write");
+        set_buffer_option(ctx, pane, "indent-width".into(), SteelVal::IntV(2))
+            .expect("buffer write");
+    };
+    write(&mut h.ctx_with_host(&mut host));
+    h.attribution
+        .push_body(EntryId::main(PluginId::parse("core:test-plugin").unwrap()));
+    write(&mut h.ctx_with_host(&mut host));
+
+    assert_eq!(
+        host.origins,
+        [
+            ConfigOrigin::User,
+            ConfigOrigin::User,
+            ConfigOrigin::Plugin,
+            ConfigOrigin::Plugin
+        ]
     );
 }

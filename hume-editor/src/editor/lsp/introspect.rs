@@ -115,9 +115,12 @@ fn sorted_instances(lsp: &LspState) -> Vec<&super::instances::Instance> {
     instances
 }
 
-/// Whether `name` is registered.
-pub(in crate::editor) fn server_registered(lsp: &LspState, name: &ServerName) -> bool {
-    lsp.registry.contains(name)
+/// The origin of `name`'s registration, `None` when it is not registered.
+pub(in crate::editor) fn server_origin(
+    lsp: &LspState,
+    name: &ServerName,
+) -> Option<hume_scripting::ConfigOrigin> {
+    lsp.registry.origin(name)
 }
 
 /// The servers `language`'s buffers attach to, in order, with their filters.

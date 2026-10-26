@@ -192,7 +192,7 @@ fn marker(name: &str) -> SteelVal {
 
 fn open_filter_test_picker(ed: &mut Editor, items: &[&str]) {
     let mut session = PickerSession::new(
-        hume_scripting::Rooted::new(marker("on-select")),
+        hume_scripting::Callback::for_test(marker("on-select")),
         PickerOpts::default(),
         Vec::new(),
     );
@@ -210,11 +210,11 @@ fn open_filter_test_picker(ed: &mut Editor, items: &[&str]) {
 
 pub(super) fn open_live_test_picker(ed: &mut Editor) {
     let session = PickerSession::new_live(
-        hume_scripting::Rooted::new(marker("on-select")),
+        hume_scripting::Callback::for_test(marker("on-select")),
         LivePickerOpts {
             prompt: String::new(),
             query: String::new(),
-            on_query_change: hume_scripting::Rooted::new(marker("on-query-change")),
+            on_query_change: hume_scripting::Callback::for_test(marker("on-query-change")),
             truncate: TruncateEnd::Head,
             actions: Vec::new(),
         },
@@ -274,7 +274,7 @@ fn menu_paste_is_swallowed_but_clears_the_status_message() {
         &ed.view,
         MenuLayer::for_test(
             crate::editor::tests::non_empty_strings(&["m0"]),
-            hume_scripting::Rooted::new(marker("menu-cb")),
+            hume_scripting::Callback::for_test(marker("menu-cb")),
         ),
     );
 
@@ -293,7 +293,7 @@ fn drawer_paste_is_swallowed_but_clears_the_status_message() {
         &ed.view,
         DrawerLayer::new(
             drawer_items(&["d0"]),
-            DrawerSelect::Steel(hume_scripting::Rooted::new(marker("drawer-cb"))),
+            DrawerSelect::Steel(hume_scripting::Callback::for_test(marker("drawer-cb"))),
             0,
         ),
     );

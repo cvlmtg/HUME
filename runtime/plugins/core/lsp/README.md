@@ -85,8 +85,9 @@ live under `z`, the view prefix, the same shape `core:pickers`' finders use.
 
 None of these collide with a binding in HUME's default keymap, and the `z` keys beside
 them belong to `core:pickers`. Every binding is a two-key sequence or a fresh top-level
-key. A single-key bind over an existing prefix is a plain map insert and drops the whole
-subtree under it (see `core:vim-keybind`'s README).
+key. A single-key bind over an existing prefix hides the whole subtree under it (see
+`core:vim-keybind`'s README). A user's own binding of any of these keys beats this
+plugin's, even though the plugin binds them when it activates, after `init.scm`.
 
 ## Documentation
 

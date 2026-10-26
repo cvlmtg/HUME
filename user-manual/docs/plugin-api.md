@@ -29,8 +29,8 @@ Editor commands and builtins are different things. A command, such as `completio
 
 | Call | Effect |
 |------|--------|
-| `(set-option! key value)` | Set a global option |
-| `(set-buffer-option! pane key value)` | Set an option on `pane`'s buffer only |
+| `(set-option! key value)` | Set a global option. A value from `init.scm`, a hook it registered, or `:set` beats a plugin's in either order; of two from the same place, the later wins |
+| `(set-buffer-option! pane key value)` | Set an option on `pane`'s buffer only, ranked against the buffer's own overrides as `set-option!` is against the global value |
 | `(get-option key)` | Read an option's global value, ignoring any buffer override |
 | `(get-buffer-option pane key)` | Read `pane`'s buffer's effective value: its own override if set, else the global default (`language` and `line-ending` are per-buffer and have no global default) |
 | `(configure-statusline! left center right)` | Configure the three statusline sections, each a list of element name strings |
@@ -42,9 +42,9 @@ See [Reading options from Scheme](writing-plugins.md#reading-options-from-scheme
 
 | Call | Effect |
 |------|--------|
-| `(bind-key! mode key-string cmd-name [#:keymap name])` | Bind a key in `'normal`, `'insert`, `'extend`, or `'command` mode; an `'insert` or `'command` binding is a single key. With `#:keymap`, the binding goes in the keymap `name`, created by its first binding |
+| `(bind-key! mode key-string cmd-name [#:keymap name])` | Bind a key in `'normal`, `'insert`, `'extend`, or `'command` mode; an `'insert` or `'command` binding is a single key. With `#:keymap`, the binding goes in the keymap `name`, created by its first binding. A binding from `init.scm` beats a plugin's of the same keys in either order, and a plugin's beats HUME's own; of two from the same place, the later wins |
 | `(bind-key-extend! mode key-string cmd-name [#:keymap name])` | Same, but the binding always extends the selection; `'normal` only |
-| `(unbind-key! mode key-string [#:keymap name])` | Remove a binding |
+| `(unbind-key! mode key-string [#:keymap name])` | Unbind the keys for the calling code and everything ranked below it: a plugin's unbind removes HUME's binding but leaves the user's, and the user's keeps any plugin from binding them again |
 | `(bind-keys! mode [#:keymap name] (key cmd) ...)`, `(bind-keys-extend! mode [#:keymap name] (key cmd) ...)`, `(unbind-keys! mode [#:keymap name] key ...)` | Batched forms of the three above |
 | `(attach-keymap! pane name)` | Turn on the keymap `name` in `pane`'s buffer, ahead of the keymaps attached before it (one already attached keeps its place); a name nothing has been bound into logs a warning and does nothing |
 | `(detach-keymap! pane name)` | Turn off the keymap `name` in `pane`'s buffer; a name nothing has been bound into logs a warning |
@@ -94,8 +94,8 @@ To use something newer that has not shipped in a release, check for it directly 
 | `(loaded-plugins)` | List of plugin names whose `plugin.scm` has finished loading, local files included; a plugin with only another `#:entry` file loaded is not listed |
 | `(declared-plugins)` | List of plugin names named by `load-plugin!` or `declare-plugin!`, `core:*` included, whether or not they are installed; local `./file.scm` entries are not listed |
 | `(declared-plugin-ref name)` | The `#:ref` the last `load-plugin!` of `name` passed, or `#f` |
-| `(plugin-config)` | The `#:config` value the user passed to `load-plugin!`, or an empty hash |
-| `(plugin-dir)` | The directory holding the calling plugin's own files, or `#f` outside a plugin body |
+| `(plugin-config)` | The `#:config` value the user passed to `load-plugin!`, or an empty hash. Works in the plugin's body and in every command, hook and callback it defines |
+| `(plugin-dir)` | The directory holding the calling plugin's own files, or `#f` outside a plugin's code. Works where `(plugin-config)` does |
 
 Full picture (load timing, `#:config` semantics, dependency checks) in [Plugins](plugins.md), particularly [How plugins are loaded](plugins.md#how-plugins-are-loaded) and [Depending on another plugin](writing-plugins.md#depending-on-another-plugin).
 
@@ -212,12 +212,12 @@ Both ends speak the same list shape. A string a script writes pastes as whole li
 
 | Call | Effect |
 |------|--------|
-| `(define-language! name exts globs shebangs)` | Define a language, or replace how an existing one is detected. `exts`, `globs`, and `shebangs` default to `'()` |
+| `(define-language! name exts globs shebangs)` | Define a language, or replace how an existing one is detected. `exts`, `globs`, and `shebangs` default to `'()`. A definition from `init.scm` beats a plugin's in either order; of two from `init.scm`, or two from plugins, the first wins and the later one is ignored with a warning |
 | `(configure-language! name #:roots #:language-id #:comment-tokens #:block-comment-tokens)` | Set a defined language's project root markers (a list of file names), the identifier language servers know it by when that differs from `name`, its line comment tokens (a list of strings) and its block comment pairs (a list of `(start . end)` string pairs). Each keyword left out leaves that setting as it is. A value from `init.scm` beats a plugin's in either order; of two values from `init.scm`, or two from plugins, the first wins and the later one is ignored with a warning |
 | `(bundled-language-grammar name)` | The grammar HUME ships for language `name`, as `(url rev symbol subpath)`, or `#f` when it ships none |
 | `(bundled-grammar-languages)` | Every language HUME ships a grammar for, sorted |
 | `(grammar-url g)`, `(grammar-rev g)`, `(grammar-symbol g)`, `(grammar-subpath g)` | One field of a grammar `bundled-language-grammar` returns |
-| `(register-grammar! name grammar-path symbol highlights-path #:injections #:textobjects #:indents)` | Register an already-compiled tree-sitter grammar. From `init.scm` it loads the first time a file or an embedded block needs it; from a command it loads at once and raises if it can't |
+| `(register-grammar! name grammar-path symbol highlights-path #:injections #:textobjects #:indents)` | Register an already-compiled tree-sitter grammar. From `init.scm` it loads the first time a file or an embedded block needs it; from a command it loads at once and raises if it can't. A grammar from `init.scm` or a command the user runs beats a plugin's in either order; of two from the same place, the later replaces the earlier |
 | `(language-has-grammar? name)` | `#t` if `name` has a registered grammar that hasn't failed to load |
 
 `define-language!`/`configure-language!`/`register-grammar!` are covered with examples in [Teach HUME a new language](syntax-highlighting.md#teach-hume-a-new-language).

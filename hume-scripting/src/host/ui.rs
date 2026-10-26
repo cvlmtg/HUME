@@ -55,7 +55,7 @@ pub enum DrawerItems {
     /// must return one string per key.
     Keys {
         keys: NonEmpty<crate::Rooted>,
-        render: crate::Rooted,
+        render: crate::Callback,
     },
 }
 
@@ -105,7 +105,7 @@ pub struct PickerOpts {
     /// input). See [`UiHost::open_picker`]'s doc. Empty by default: a
     /// picker whose payload isn't a placeable buffer target simply omits
     /// `#:actions` rather than opting out of a flag.
-    pub actions: Vec<(KeyEvent, crate::Rooted)>,
+    pub actions: Vec<(KeyEvent, crate::Callback)>,
 }
 
 /// Grouped `live-picker!` open-time keyword options: the live counterpart
@@ -131,11 +131,11 @@ pub struct LivePickerOpts {
     /// it. Always `live-picker!`'s own stop-then-debounce
     /// wrapper around the caller's `#:source`, never the source
     /// itself.
-    pub on_query_change: crate::Rooted,
+    pub on_query_change: crate::Callback,
     /// `#:truncate`: see [`TruncateEnd`].
     pub truncate: TruncateEnd,
     /// `#:actions`: see [`PickerOpts::actions`].
-    pub actions: Vec<(KeyEvent, crate::Rooted)>,
+    pub actions: Vec<(KeyEvent, crate::Callback)>,
 }
 
 /// Grouped `picker-source-spawn!` keyword options, the same split
@@ -181,7 +181,7 @@ pub trait UiHost {
         pane: PaneHandle,
         label: String,
         prefill: String,
-        callback: crate::Rooted,
+        callback: crate::Callback,
     ) -> Result<(), String>;
 
     /// `(on-next-char! callback)` hands the next key typed to `callback`: its
@@ -189,7 +189,7 @@ pub trait UiHost {
     /// Fires once, queued like [`Self::prompt`]'s callback. During `.` it
     /// answers with the next character the repeated command read, and errs
     /// when none is left.
-    fn on_next_char(&mut self, callback: crate::Rooted) -> Result<(), String>;
+    fn on_next_char(&mut self, callback: crate::Callback) -> Result<(), String>;
 
     /// `(show-popup! text #:anchor 'cursor #:kind 'sticky #:lang #f)` shows
     /// `text` in a popup panel. Geometry (wrap width, flip/clamp position, or
@@ -245,7 +245,7 @@ pub trait UiHost {
         &mut self,
         pane: PaneHandle,
         items: NonEmpty<String>,
-        callback: crate::Rooted,
+        callback: crate::Callback,
     ) -> Result<Option<HostToken>, String>;
 
     /// `(close-menu! token)` dismisses the menu `token` names *without*
@@ -279,7 +279,7 @@ pub trait UiHost {
         &mut self,
         pane: PaneHandle,
         items: DrawerItems,
-        callback: crate::Rooted,
+        callback: crate::Callback,
         selected: usize,
     ) -> Result<Option<HostToken>, String>;
 
@@ -308,7 +308,7 @@ pub trait UiHost {
         &mut self,
         token: HostToken,
         items: DrawerItems,
-        callback: crate::Rooted,
+        callback: crate::Callback,
         selected: usize,
     ) -> bool;
 
@@ -347,7 +347,7 @@ pub trait UiHost {
         &mut self,
         pane: PaneHandle,
         items: Vec<(String, crate::Rooted)>,
-        on_select: crate::Rooted,
+        on_select: crate::Callback,
         opts: PickerOpts,
     ) -> Result<HostToken, String>;
 
@@ -371,7 +371,7 @@ pub trait UiHost {
     fn open_live_picker(
         &mut self,
         pane: PaneHandle,
-        on_select: crate::Rooted,
+        on_select: crate::Callback,
         opts: LivePickerOpts,
     ) -> Result<HostToken, String>;
 

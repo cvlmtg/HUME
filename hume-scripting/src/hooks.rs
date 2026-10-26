@@ -10,16 +10,20 @@
 //! only through `EditorHost::events().known_event_names()` for validation.
 //! See `builtins::hooks::register_hook` and `builtins::plugins::declare_plugin`.
 
+use std::rc::Rc;
+
 use rustc_hash::FxHashMap;
 
-use crate::Rooted;
+use crate::Callback;
 use crate::attribution::EntryId;
 
 // ── HookRegistry ──────────────────────────────────────────────────────────────
 
-/// A single hook handler plus the plugin whose body registered it (`None`:
-/// top-level `init.scm`/user config, never rolled back). The owner drives
-/// per-plugin rollback when a plugin activation fails; see `remove_owned_by`.
+/// A single hook handler, run as the code that registered it.
+///
+/// `activation` is the plugin body that was running when it was registered
+/// (`None`: none was), which removes it if that body fails; see
+/// `remove_registered_in`.
 ///
 /// `keys` narrows the entry to events carrying one of those keys (the
 /// editor decides what an event's key is: an LSP notification's method).
@@ -31,8 +35,8 @@ use crate::attribution::EntryId;
 /// event has args: it takes `done` last.
 #[derive(Debug)]
 pub(crate) struct HookEntry {
-    pub(crate) owner: Option<EntryId>,
-    pub(crate) proc: Rooted,
+    pub(crate) handler: Callback,
+    pub(crate) activation: Option<Rc<EntryId>>,
     pub(crate) keys: Option<Box<[String]>>,
     pub(crate) takes_done: bool,
 }
@@ -53,13 +57,13 @@ pub(crate) struct HookRegistry {
 }
 
 impl HookRegistry {
-    /// Append `proc` (attributed to `owner`, narrowed to `keys`) to the
-    /// handler list for `name`.
+    /// Append `handler` (narrowed to `keys`, registered while
+    /// `activation`'s body ran) to the handler list for `name`.
     pub(crate) fn register(
         &mut self,
         name: &str,
-        owner: Option<EntryId>,
-        proc: Rooted,
+        handler: Callback,
+        activation: Option<Rc<EntryId>>,
         keys: Option<Box<[String]>>,
         takes_done: bool,
     ) {
@@ -67,8 +71,8 @@ impl HookRegistry {
             .entry(name.to_string())
             .or_default()
             .push(HookEntry {
-                owner,
-                proc,
+                handler,
+                activation,
                 keys,
                 takes_done,
             });
@@ -99,13 +103,12 @@ impl HookRegistry {
         self.matching(name, key).next().is_some()
     }
 
-    /// Remove every handler owned by `owner`, across all hook names. Called
-    /// by `finish_lazy_activation` on activation failure so a `Failed`
-    /// plugin's hooks stop firing. Entries with `owner: None` (top-level) are
-    /// never matched.
-    pub(crate) fn remove_owned_by(&mut self, owner: &EntryId) {
+    /// Remove every handler registered while `activation`'s body ran,
+    /// across all hook names. Called when that body fails, so a `Failed`
+    /// plugin's hooks stop firing.
+    pub(crate) fn remove_registered_in(&mut self, activation: &EntryId) {
         for entries in self.handlers.values_mut() {
-            entries.retain(|e| e.owner.as_ref() != Some(owner));
+            entries.retain(|e| e.activation.as_deref() != Some(activation));
         }
     }
 }

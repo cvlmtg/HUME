@@ -129,6 +129,7 @@ fn a_builtin_error_names_the_builtin_a_plugin_calls() {
             "after!",
             "not supported by this host",
         ),
+        ("(after! 1 42)", "after!", "expected a callable, got 42"),
     ];
     for (body, name, message) in cases {
         let err = call_probe(body).expect_err(body).message;

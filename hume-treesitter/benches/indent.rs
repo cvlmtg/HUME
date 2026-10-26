@@ -54,9 +54,11 @@ static GRAMMARS: LazyLock<Grammars> = LazyLock::new(|| {
                     symbol: symbol.to_owned(),
                     queries,
                 },
+                hume_origin::ConfigOrigin::User,
                 &mut ScopeRegistry::new(),
             )
             .expect("attach the grammar")
+            .expect("no higher origin holds the grammar")
     };
     let rust_queries = QueryFiles::new(grammar_query_path("rust")).with(
         OptionalQuery::Indents,

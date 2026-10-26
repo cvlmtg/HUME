@@ -237,6 +237,8 @@ pub(in crate::editor) fn typed_set(
         return Err(CommandError::transient("Expected key=value"));
     };
     let bid = fp.bid(&ed.view);
+    // Only the user runs a typed command: no script reaches `:set`.
+    let by = hume_scripting::ConfigOrigin::User;
 
     // Buffer-intrinsic options live on the buffer, not in `EditorSettings`/
     // `BufferOverrides`, so they have no `scope:` entry in
@@ -250,11 +252,12 @@ pub(in crate::editor) fn typed_set(
         }
         return match opt {
             BufferIntrinsicOption::Language => {
-                ed.set_buffer_language_by_name(bid, language_option_value(value));
+                ed.set_buffer_language_by_name(bid, language_option_value(value), by);
                 Ok(())
             }
             BufferIntrinsicOption::LineEnding => {
-                settings_ops::set_line_ending(&mut ed.state, bid, value).map_err(CommandError::new)
+                settings_ops::set_line_ending(&mut ed.state, bid, value, by)
+                    .map_err(CommandError::new)
             }
         };
     }
@@ -286,11 +289,10 @@ pub(in crate::editor) fn typed_set(
 
     let input = OptionInput::Text(value.to_string());
     match scope {
-        Scope::Global => settings_ops::apply_global(&mut ed.state, &mut ed.view, key, &input)
+        Scope::Global => settings_ops::apply_global(&mut ed.state, &mut ed.view, key, &input, by)
             .map_err(CommandError::new),
-        Scope::Buffer => {
-            settings_ops::apply_buffer(&mut ed.state, bid, key, &input).map_err(CommandError::new)
-        }
+        Scope::Buffer => settings_ops::apply_buffer(&mut ed.state, bid, key, &input, by)
+            .map_err(CommandError::new),
         Scope::Pane => {
             // Only pane-scoped setting today: `scopes.contains(&scope)` above
             // already proved `key == "wrap-mode"` (it's the only line whose

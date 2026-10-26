@@ -556,7 +556,7 @@ fn nested_activation_multi_file_via_real_editor_host() {
 
 /// A plugin body's `(plugin-config)` read must resolve to its own `#:config`
 /// even after nested-activating a dependency in between: `plugin-config`
-/// resolves off the top of `plugin_stack`
+/// resolves off the innermost frame of the attribution stack
 /// (`hume-scripting/src/builtins/plugins.rs`), which `%finish-lazy-activation!`
 /// pops back to the enclosing plugin once the nested activation completes.
 #[test]
@@ -602,6 +602,65 @@ fn plugin_config_scoped_correctly_after_nested_activation() {
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
     .expect("eval_init must succeed: B must see its own #:config after nested-activating A");
+}
+
+/// A plugin's command lambda, and a timer callback that lambda schedules,
+/// run as that plugin: `(plugin-config)` reads its `#:config` in both.
+#[test]
+fn a_plugins_command_and_its_callbacks_read_its_own_config() {
+    let (mut ed, _dir) = setup_lazy_editor(
+        r#"(load-plugin! "user/tp" #:config (hash "k" "v"))"#,
+        r#"(define (tp/key)
+             (let ((config (plugin-config)))
+               (if (hash-contains? config "k") (hash-ref config "k") "none")))
+           (define-typed-command! "cfg-cmd" "doc" (lambda ()
+             (log! 'warn (string-append "cmd:" (tp/key)))
+             (after! 0 (lambda () (log! 'warn (string-append "cb:" (tp/key)))))))"#,
+    );
+
+    type_cmd(&mut ed, ":cfg-cmd");
+    ed.drain_async_sources();
+    ed.settle();
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("cmd:v"),
+        "the command reads its config: {log:?}"
+    );
+    assert!(
+        log.contains("cb:v"),
+        "the callback reads its config: {log:?}"
+    );
+}
+
+/// A plugin's command reached by `call!` from the user's own command runs as
+/// the plugin: `(plugin-config)` reads its `#:config`, and the user's
+/// command reads none once the call returns.
+#[test]
+fn a_plugins_command_called_from_the_users_runs_as_the_plugin() {
+    let (mut ed, _dir) = setup_lazy_editor(
+        r#"(load-plugin! "user/tp" #:config (hash "k" "v"))
+           (define-typed-command! "user-cmd" "doc" (lambda ()
+             (call! "tp-cmd")
+             (log! 'warn (if (hash-empty? (plugin-config)) "user:none" "user:some"))))"#,
+        r#"(define-command! "tp-cmd" "doc" (lambda ()
+             (let ((config (plugin-config)))
+               (log! 'warn (string-append "plugin:"
+                 (if (hash-contains? config "k") (hash-ref config "k") "none"))))))"#,
+    );
+
+    type_cmd(&mut ed, ":user-cmd");
+    ed.settle();
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("plugin:v"),
+        "the plugin's command reads its config: {log:?}"
+    );
+    assert!(
+        log.contains("user:none"),
+        "the user's command reads none: {log:?}"
+    );
 }
 
 /// A lazy plugin activated via the in-Steel `call!` path whose body tries to

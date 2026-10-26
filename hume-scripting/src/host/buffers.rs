@@ -26,6 +26,14 @@ pub struct UndoNode {
     pub saved: bool,
 }
 
+/// A buffer's language as the editor stores it, and the origin of the write
+/// that asserted it (`None` when detection chose it or there is none).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct StoredLanguage {
+    pub name: Option<String>,
+    pub by: Option<crate::ConfigOrigin>,
+}
+
 /// Which form of a buffer's display path [`BufferHost::buffer_display_path`]
 /// returns.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -101,7 +109,8 @@ pub trait BufferHost {
     fn buffer_display_name(&self, id: BufferId) -> Option<String>;
     fn buffer_is_dirty(&self, id: BufferId) -> Option<bool>;
     /// Language stored on the buffer (not accounting for pending `set-buffer-option!`'s `"language"`).
-    fn buffer_stored_language(&self, id: BufferId) -> Option<String>;
+    /// The default for an unknown id.
+    fn buffer_stored_language(&self, id: BufferId) -> StoredLanguage;
 
     // ── Working directory and search path ───────────────────────────────────
     /// The editor's working directory: the base for relative paths and the

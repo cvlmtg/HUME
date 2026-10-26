@@ -119,7 +119,7 @@ A language with no roots uses the directory HUME was started in.
   #:block-comment-tokens '(("{-" . "-}")))
 ```
 
-Built-in languages already come with the roots, identifiers and comments their language servers and `G G` expect; `configure-language!` replaces them. A setting from your `init.scm` beats one from a plugin, whichever runs first. Setting the same thing twice in your `init.scm` keeps the first value and notes the second in `:messages`. Redefining a language with `define-language!` replaces only its extensions, globs and shebangs; its settings stay.
+Built-in languages already come with the roots, identifiers and comments their language servers and `G G` expect; `configure-language!` replaces them. A setting from your `init.scm` beats one from a plugin, whichever runs first. Setting the same thing twice in your `init.scm` keeps the first value and notes the second in `:messages`. Redefining a language with `define-language!` replaces only its extensions, globs and shebangs; its settings stay. A definition follows the same order as a setting: yours beats a plugin's, whichever runs first, and a second one in your `init.scm` is ignored with a note in `:messages`.
 
 Now `my-lang` is detected like any built-in. `:plum-install-grammar` installs grammars only for the languages HUME ships with, so for your own language, or a private or experimental tree-sitter grammar, point HUME at the compiled library and a highlight query file by hand:
 
@@ -180,6 +180,8 @@ If it also defines how new lines are indented, pass its indents query with `#:in
 Omit all keywords for a language with nothing to offer there.
 
 Registered from `init.scm`, a grammar loads the first time a file or an embedded block needs it. If its library or a query file can't be loaded, `:messages` says so then. Registered from a command, it loads right away, and the command fails with the reason.
+
+A grammar you register, from your `init.scm` or from a command you run, beats one a plugin registers, whichever runs first. Registering a language's grammar again from the same place replaces the first one.
 
 ## Manage installed grammars
 

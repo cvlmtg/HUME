@@ -41,8 +41,11 @@ impl<'a> LspHost for EditorHostImpl<'a> {
         crate::editor::lsp::introspect::server_status(&self.state.lsp)
     }
 
-    fn lsp_server_registered(&self, name: &hume_scripting::ServerName) -> bool {
-        crate::editor::lsp::introspect::server_registered(&self.state.lsp, name)
+    fn lsp_server_origin(
+        &self,
+        name: &hume_scripting::ServerName,
+    ) -> Option<hume_scripting::ConfigOrigin> {
+        crate::editor::lsp::introspect::server_origin(&self.state.lsp, name)
     }
 
     fn new_supersede_key(&mut self) -> hume_scripting::host::SupersedeKey {

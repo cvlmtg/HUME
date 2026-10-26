@@ -218,7 +218,8 @@ fn command_plugin_known_returns_owner() {
     let mut h = SteelCtxTestHarness::new();
     let mut host = plum_defined(CommandProc::Mappable(MappableProc::new(
         crate::Rooted::new(SteelVal::BoolV(false)),
-        Owner::Plugin(plum_entry()),
+        std::rc::Rc::new(Owner::Plugin(plum_entry())),
+        None,
     )));
     let mut ctx = h.ctx_init_with_host(&mut host);
     let result = command_plugin(&mut ctx, "my-cmd".to_string()).unwrap();
@@ -384,7 +385,8 @@ fn define_command_dup_names_error_names_existing_owner() {
     let mut h = SteelCtxTestHarness::new();
     let mut host = plum_defined(CommandProc::Mappable(MappableProc::new(
         crate::Rooted::new(SteelVal::BoolV(false)),
-        Owner::Plugin(plum_entry()),
+        std::rc::Rc::new(Owner::Plugin(plum_entry())),
+        None,
     )));
     let mut ctx = h.ctx_init_with_host(&mut host);
     let err = define_command(
@@ -419,7 +421,8 @@ fn define_typed_command_dup_names_error_names_existing_owner() {
     let mut h = SteelCtxTestHarness::new();
     let mut host = plum_defined(CommandProc::Typed(TypedProc::new(
         crate::Rooted::new(SteelVal::BoolV(false)),
-        Owner::Plugin(plum_entry()),
+        std::rc::Rc::new(Owner::Plugin(plum_entry())),
+        None,
     )));
     let mut ctx = h.ctx_init_with_host(&mut host);
     // A real callable proc: check_definable must reject before ever reaching

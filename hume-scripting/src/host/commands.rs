@@ -131,10 +131,10 @@ pub trait CommandHost {
     /// stub, or an unknown name.
     fn defined_command(&self, name: &str) -> Option<CommandProc>;
 
-    /// Remove every Steel command (mappable or typed) that `plugin`'s entry
-    /// file defined. The rollback of a failed activation. Native commands and
-    /// `Lazy` stubs are never removed.
-    fn unregister_commands_defined_by(&mut self, plugin: &EntryId);
+    /// Remove every Steel command (mappable or typed) defined while
+    /// `activation`'s body ran. The rollback of a failed activation. Native
+    /// commands and `Lazy` stubs are never removed.
+    fn unregister_commands_registered_in(&mut self, activation: &EntryId);
 
     /// Whether `ch` names a valid register (`0`–`9`, `k`, `c`, `b`).
     fn is_valid_register_name(&self, ch: char) -> bool;

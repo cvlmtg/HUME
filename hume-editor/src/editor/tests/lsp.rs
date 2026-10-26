@@ -395,9 +395,9 @@ fn rig_without_servers(tmp: &tempfile::TempDir) -> LspRig {
 
 #[test]
 fn second_registration_replaces_first() {
-    // Last-wins per name: a second register-lsp-server! for an
-    // already-registered name replaces the config rather than being
-    // rejected, matching define-language!'s semantics. No error is logged.
+    // Last-wins per name within one rank: a second register-lsp-server! for
+    // an already-registered name replaces the config rather than being
+    // rejected. No error is logged.
     let tmp = tempfile::tempdir().unwrap();
     let mut rig = rig_without_servers(&tmp);
 

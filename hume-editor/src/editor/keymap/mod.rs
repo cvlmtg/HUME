@@ -2,12 +2,14 @@
 //!
 //! Each mode has a [`KeyTrie`] mapping [`KeyEvent`] sequences to
 //! [`KeymapCommand`]s: single keys and multi-key sequences (`m i <char>`,
-//! `g <key>`). The global [`Keymap`] holds the default and user bindings, and
-//! [`LocalKeymaps`] the named keymaps attached to buffers. Key handlers look
-//! keys up through `Editor::resolve_keys`; the Normal-mode handler in
-//! `input_stack/base.rs` accumulates a count prefix and runs commands through
-//! [`crate::editor::registry::CommandRegistry`]. A command that takes a
-//! character (f/t/F/T/r) reads it from the next key itself.
+//! `g <key>`). Every keymap holds one layer of bindings per `ConfigOrigin`,
+//! the compiled defaults in the bundled one, and the highest layer that knows
+//! a sequence decides it. The global [`Keymap`] holds the editor-wide
+//! bindings, and [`LocalKeymaps`] the named keymaps attached to buffers. Key
+//! handlers look keys up through `Editor::resolve_keys`; the Normal-mode
+//! handler in `input_stack/base.rs` accumulates a count prefix and runs
+//! commands through [`crate::editor::registry::CommandRegistry`]. A command
+//! that takes a character (f/t/F/T/r) reads it from the next key itself.
 //!
 //! Only base command names are stored; Extend mode is a `MotionMode` parameter
 //! chosen at dispatch time. Each keymap's sparse `extend` trie holds overrides
@@ -24,6 +26,8 @@ use defaults::{default_extend_keymap, default_insert_keymap, default_normal_keym
 pub(in crate::editor) use canonical::CanonicalKey;
 pub(in crate::editor) use local::{LocalKeymaps, Resolved, UnknownKeymap};
 
+use hume_origin::ByOrigin;
+use hume_scripting::ConfigOrigin;
 use rustc_hash::FxHashMap;
 use std::borrow::Cow;
 
@@ -50,23 +54,31 @@ pub(in crate::editor) struct KeymapCommand {
     pub force_extend: bool,
 }
 
-/// The outcome of walking a key sequence through a [`KeyTrie`].
+/// The outcome of walking a key sequence through a keymap's layers, or
+/// through one layer's [`KeyTrie`]: a layer answers `None` when it knows
+/// nothing of the sequence, and [`WalkResult::NoMatch`] when it hides it.
 pub(super) enum WalkResult {
     /// The sequence matches a leaf command: execute it.
     Leaf(KeymapCommand),
     /// At an interior trie node: more keys are needed.
     Interior,
-    /// The sequence has no match in this trie.
+    /// The sequence has no match. From one layer: it unbound the sequence or
+    /// a prefix of it, or bound a shorter one as a leaf, so no lower layer's
+    /// binding applies.
     NoMatch,
 }
 
 /// A single level of the keymap trie.
 ///
-/// Maps [`KeyEvent`] values to either a sub-trie (interior node) or a leaf
-/// command.
-#[derive(Clone)]
+/// Maps [`KeyEvent`] values to a sub-trie (interior node), a leaf command,
+/// or an unbinding.
+#[derive(Clone, Default)]
 pub(super) struct KeyTrie {
     map: FxHashMap<CanonicalKey, KeyTrieNode>,
+    /// Built where this layer had unbound the prefix: a sequence under it
+    /// that this layer does not bind stays unbound instead of reaching a
+    /// lower layer.
+    hides_lower: bool,
 }
 
 #[derive(Clone)]
@@ -75,15 +87,12 @@ enum KeyTrieNode {
     Leaf(KeymapCommand),
     /// Interior node: more keys needed.
     Node(KeyTrie),
+    /// `unbind-key!` from this layer: the sequence and everything under it
+    /// is unbound here and below.
+    Unbound,
 }
 
 impl KeyTrie {
-    fn new() -> Self {
-        Self {
-            map: FxHashMap::default(),
-        }
-    }
-
     fn bind(&mut self, key: KeyEvent, node: KeyTrieNode) {
         self.map.insert(CanonicalKey::from(key), node);
     }
@@ -99,72 +108,75 @@ impl KeyTrie {
         keys: &[KeyEvent],
         cmd: KeymapCommand,
     ) {
+        self.set_sequence(keys, KeyTrieNode::Leaf(cmd));
+    }
+
+    /// Unbind a key sequence in this trie, creating interior nodes as needed,
+    /// so a lower layer's binding of it does not apply. Unbinding a
+    /// prefix unbinds everything under it.
+    pub(in crate::editor::keymap) fn unbind_sequence(&mut self, keys: &[KeyEvent]) {
+        self.set_sequence(keys, KeyTrieNode::Unbound);
+    }
+
+    /// Put `node` at `keys`, turning a leaf or unbinding on the way into an
+    /// interior node and replacing whatever `keys` held. An unbinding turned
+    /// into an interior node keeps hiding the lower layers' sequences under
+    /// it.
+    fn set_sequence(&mut self, keys: &[KeyEvent], node: KeyTrieNode) {
         debug_assert!(!keys.is_empty());
-        if keys.len() == 1 {
-            self.bind_leaf(keys[0], cmd);
+        let [first, rest @ ..] = keys else {
+            return;
+        };
+        if rest.is_empty() {
+            self.bind(*first, node);
             return;
         }
         let entry = self
             .map
-            .entry(CanonicalKey::from(keys[0]))
-            .or_insert_with(|| KeyTrieNode::Node(KeyTrie::new()));
-        // If the slot already holds a Leaf, replace with a Node
-        // so the prefix can be extended. This may shadow an existing binding.
+            .entry(CanonicalKey::from(*first))
+            .or_insert_with(|| KeyTrieNode::Node(KeyTrie::default()));
         if !matches!(entry, KeyTrieNode::Node(_)) {
-            *entry = KeyTrieNode::Node(KeyTrie::new());
+            let hides_lower = matches!(entry, KeyTrieNode::Unbound);
+            *entry = KeyTrieNode::Node(KeyTrie {
+                hides_lower,
+                ..KeyTrie::default()
+            });
         }
         if let KeyTrieNode::Node(sub) = entry {
-            sub.bind_sequence(&keys[1..], cmd);
+            sub.set_sequence(rest, node);
         }
     }
 
-    /// Remove the binding for a key sequence. Leaves interior nodes in place.
-    ///
-    /// No-op if the sequence is not bound or any intermediate node is absent.
-    pub(in crate::editor::keymap) fn remove_sequence(&mut self, keys: &[KeyEvent]) {
-        match keys {
-            [] => {}
-            [only] => {
-                self.map.remove(&CanonicalKey::from(*only));
-            }
-            [first, rest @ ..] => {
-                if let Some(KeyTrieNode::Node(sub)) = self.map.get_mut(&CanonicalKey::from(*first))
-                {
-                    sub.remove_sequence(rest);
-                }
-            }
-        }
-    }
-
-    /// Walk a key sequence through the trie, returning the result after all keys.
-    fn walk(&self, keys: &[KeyEvent]) -> WalkResult {
-        debug_assert!(!keys.is_empty(), "walk called with empty key sequence");
+    /// Walk a key sequence through the trie, returning the result after all
+    /// keys. `None` when the trie knows nothing of the sequence, so a lower
+    /// layer may.
+    fn walk(&self, keys: &[KeyEvent]) -> Option<WalkResult> {
+        let (last, prefix) = keys
+            .split_last()
+            .expect("walk called with empty key sequence");
 
         let mut current = self;
-        let last = keys.len() - 1;
-
-        for (i, key) in keys.iter().enumerate() {
+        let mut hiding = self.hides_lower;
+        for key in prefix {
             match current.map.get(&CanonicalKey::from(*key)) {
-                None => return WalkResult::NoMatch,
-                Some(KeyTrieNode::Leaf(cmd)) if i == last => {
-                    return WalkResult::Leaf(cmd.clone());
-                }
-                Some(KeyTrieNode::Leaf(_)) => {
-                    // A leaf was reached before consuming all keys: the extra
-                    // keys have no match.
-                    return WalkResult::NoMatch;
-                }
-                Some(KeyTrieNode::Node(_)) if i == last => {
-                    return WalkResult::Interior;
-                }
                 Some(KeyTrieNode::Node(subtrie)) => {
                     current = subtrie;
+                    hiding |= subtrie.hides_lower;
                 }
+                Some(KeyTrieNode::Leaf(_) | KeyTrieNode::Unbound) => {
+                    return Some(WalkResult::NoMatch);
+                }
+                None if hiding => return Some(WalkResult::NoMatch),
+                None => return None,
             }
         }
-
-        // Unreachable: the loop above always returns before the iterator exhausts.
-        WalkResult::NoMatch
+        match current.map.get(&CanonicalKey::from(*last)) {
+            Some(KeyTrieNode::Leaf(cmd)) => Some(WalkResult::Leaf(cmd.clone())),
+            Some(KeyTrieNode::Node(_)) => Some(WalkResult::Interior),
+            Some(KeyTrieNode::Unbound) => Some(WalkResult::NoMatch),
+            None if hiding => Some(WalkResult::NoMatch),
+            None => None,
+        }
     }
 
     /// The command name of every binding under this trie.
@@ -173,7 +185,46 @@ impl KeyTrie {
             match node {
                 KeyTrieNode::Leaf(cmd) => out.push(cmd.name.to_string()),
                 KeyTrieNode::Node(sub) => sub.collect_command_names(out),
+                KeyTrieNode::Unbound => {}
             }
+        }
+    }
+}
+
+/// One mode's bindings: a trie per [`ConfigOrigin`]. The highest layer that
+/// knows a sequence, as a binding, a prefix or an unbinding, decides it, so a
+/// layer's bindings apply wherever no higher layer has its own.
+#[derive(Clone, Default)]
+struct Bindings(ByOrigin<KeyTrie>);
+
+impl Bindings {
+    /// `bundled` as the bundled layer, with no plugin or user bindings.
+    fn bundled(bundled: KeyTrie) -> Self {
+        let mut layers = ByOrigin::default();
+        *layers.get_mut(ConfigOrigin::Bundled) = bundled;
+        Self(layers)
+    }
+
+    fn layer_mut(&mut self, by: ConfigOrigin) -> &mut KeyTrie {
+        self.0.get_mut(by)
+    }
+
+    fn walk(&self, keys: &[KeyEvent]) -> WalkResult {
+        self.0
+            .iter()
+            .find_map(|(_, layer)| layer.walk(keys))
+            .unwrap_or(WalkResult::NoMatch)
+    }
+
+    /// Whether a layer above `by` knows `keys`, so a write to `by`'s layer
+    /// does not apply there.
+    fn hidden_above(&self, by: ConfigOrigin, keys: &[KeyEvent]) -> bool {
+        self.0.above(by).any(|layer| layer.walk(keys).is_some())
+    }
+
+    fn collect_command_names(&self, out: &mut Vec<String>) {
+        for (_, layer) in self.0.iter() {
+            layer.collect_command_names(out);
         }
     }
 }
@@ -194,7 +245,7 @@ pub(in crate::editor) enum BindMode {
 /// keymap in [`LocalKeymaps`].
 #[derive(Clone)]
 pub(in crate::editor) struct Keymap {
-    normal: KeyTrie,
+    normal: Bindings,
     /// Sparse extend-mode overrides. Empty by default; plugins populate it
     /// (e.g. `core:vim-keybind`'s `o → flip-selections`).
     ///
@@ -202,20 +253,20 @@ pub(in crate::editor) struct Keymap {
     /// mode. A match dispatches directly with `extend = false`: these are
     /// different commands, not extend variants of normal commands.
     /// A miss falls through to the normal trie with `extend = true`.
-    extend: KeyTrie,
-    insert: KeyTrie,
+    extend: Bindings,
+    insert: Bindings,
     /// Keys bound in the command mode prompt, walked one key at a time
     /// before the prompt's own keys. Empty by default.
-    command: KeyTrie,
+    command: Bindings,
 }
 
 impl Default for Keymap {
     fn default() -> Self {
         Self {
-            normal: default_normal_keymap(),
-            extend: default_extend_keymap(),
-            insert: default_insert_keymap(),
-            command: KeyTrie::new(),
+            normal: Bindings::bundled(default_normal_keymap()),
+            extend: Bindings::bundled(default_extend_keymap()),
+            insert: Bindings::bundled(default_insert_keymap()),
+            command: Bindings::default(),
         }
     }
 }
@@ -225,10 +276,10 @@ impl Keymap {
     /// the default bindings.
     pub(in crate::editor) fn empty() -> Self {
         Self {
-            normal: KeyTrie::new(),
-            extend: KeyTrie::new(),
-            insert: KeyTrie::new(),
-            command: KeyTrie::new(),
+            normal: Bindings::default(),
+            extend: Bindings::default(),
+            insert: Bindings::default(),
+            command: Bindings::default(),
         }
     }
 
@@ -245,49 +296,54 @@ impl Keymap {
             BindMode::Extend => {
                 found(self.extend.walk(keys), true).or_else(|| found(self.normal.walk(keys), false))
             }
-            mode => found(self.trie(mode).walk(keys), false),
+            mode => found(self.bindings(mode).walk(keys), false),
         }
     }
 
-    /// Bind a key sequence to a command name in the given mode.
+    /// Bind a key sequence to a command name in the given mode, in `by`'s
+    /// layer, replacing that layer's binding of the same sequence.
+    /// Single-key sequences are inserted as a `Leaf`; multi-key sequences
+    /// create interior nodes as needed. Pass `force_extend = true` for
+    /// bindings that should always extend (see `cmd_extend!`).
     ///
-    /// Overwrites any existing binding for the same sequence. Single-key
-    /// sequences are inserted as a `Leaf`; multi-key sequences create
-    /// interior nodes as needed. Pass `force_extend = true` for bindings
-    /// that should always extend (see `cmd_extend!`).
-    ///
-    /// `keys` must not be empty.
-    pub(in crate::editor) fn bind_user_with_extend(
+    /// Returns whether a higher origin's binding, prefix or unbinding hides
+    /// this one. `keys` must not be empty.
+    pub(in crate::editor) fn bind(
         &mut self,
         mode: BindMode,
         keys: &[KeyEvent],
         command: Cow<'static, str>,
         force_extend: bool,
-    ) {
-        debug_assert!(
-            !keys.is_empty(),
-            "bind_user_with_extend called with empty key sequence"
-        );
-        let trie = self.trie_mut(mode);
-        trie.bind_sequence(
+        by: ConfigOrigin,
+    ) -> bool {
+        debug_assert!(!keys.is_empty(), "bind called with empty key sequence");
+        let bindings = self.bindings_mut(mode);
+        bindings.layer_mut(by).bind_sequence(
             keys,
             KeymapCommand {
                 name: command,
                 force_extend,
             },
         );
+        bindings.hidden_above(by, keys)
     }
 
-    /// Remove a binding for a key sequence in the given mode.
-    ///
-    /// No-op if the sequence is not bound or any intermediate node is missing.
-    pub(in crate::editor) fn unbind_user(&mut self, mode: BindMode, keys: &[KeyEvent]) {
-        let trie = self.trie_mut(mode);
-        trie.remove_sequence(keys);
+    /// Unbind a key sequence in the given mode, in `by`'s layer: no lower
+    /// origin's binding of it applies. Returns whether a higher origin's
+    /// layer decides the sequence anyway.
+    pub(in crate::editor) fn unbind(
+        &mut self,
+        mode: BindMode,
+        keys: &[KeyEvent],
+        by: ConfigOrigin,
+    ) -> bool {
+        let bindings = self.bindings_mut(mode);
+        bindings.layer_mut(by).unbind_sequence(keys);
+        bindings.hidden_above(by, keys)
     }
 
-    /// The trie for `mode`, mutably.
-    fn trie_mut(&mut self, mode: BindMode) -> &mut KeyTrie {
+    /// The bindings for `mode`, mutably.
+    fn bindings_mut(&mut self, mode: BindMode) -> &mut Bindings {
         match mode {
             BindMode::Normal => &mut self.normal,
             BindMode::Extend => &mut self.extend,
@@ -296,8 +352,8 @@ impl Keymap {
         }
     }
 
-    /// The trie for `mode`.
-    fn trie(&self, mode: BindMode) -> &KeyTrie {
+    /// The bindings for `mode`.
+    fn bindings(&self, mode: BindMode) -> &Bindings {
         match mode {
             BindMode::Normal => &self.normal,
             BindMode::Extend => &self.extend,
@@ -314,8 +370,7 @@ impl Keymap {
         mode: BindMode,
         keys: &[KeyEvent],
     ) -> Option<(String, bool)> {
-        let trie = self.trie(mode);
-        match trie.walk(keys) {
+        match self.bindings(mode).walk(keys) {
             WalkResult::Leaf(cmd) => Some((cmd.name.into_owned(), cmd.force_extend)),
             _ => None,
         }

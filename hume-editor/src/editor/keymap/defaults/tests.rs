@@ -6,16 +6,13 @@ use termina::event::{KeyCode, KeyEvent, Modifiers};
 fn no_match() {
     let trie = default_normal_keymap();
     // `~` is not bound.
-    assert!(matches!(trie.walk(&[key!('~')]), WalkResult::NoMatch));
+    assert!(trie.walk(&[key!('~')]).is_none());
     // `m` + `z` is not a valid text object sequence.
-    assert!(matches!(
-        trie.walk(&[key!('m'), key!('z')]),
-        WalkResult::NoMatch
-    ));
-    // Too many keys for a leaf binding.
+    assert!(trie.walk(&[key!('m'), key!('z')]).is_none());
+    // A leaf binding hides every longer sequence under it.
     assert!(matches!(
         trie.walk(&[key!('h'), key!('j')]),
-        WalkResult::NoMatch
+        Some(WalkResult::NoMatch)
     ));
 }
 
@@ -26,49 +23,49 @@ fn insert_char_is_no_match() {
     // Regular characters are NOT in the insert trie; they fall through
     // to the char-insertion handler in the dispatcher.
     let trie = default_insert_keymap();
-    assert!(matches!(trie.walk(&[key!('a')]), WalkResult::NoMatch));
-    assert!(matches!(trie.walk(&[key!('z')]), WalkResult::NoMatch));
+    assert!(trie.walk(&[key!('a')]).is_none());
+    assert!(trie.walk(&[key!('z')]).is_none());
 }
 
 #[test]
 fn ctrl_bindings_in_normal_keymap() {
     let trie = default_normal_keymap();
     assert!(
-        matches!(trie.walk(&[key!(Ctrl + 'c')]), WalkResult::Leaf(ref cmd) if cmd.name == "cancel-pipe"),
+        matches!(trie.walk(&[key!(Ctrl + 'c')]), Some(WalkResult::Leaf(ref cmd)) if cmd.name == "cancel-pipe"),
         "Ctrl-c should map to cancel-pipe"
     );
     assert!(
-        matches!(trie.walk(&[key!(Ctrl + 'r')]), WalkResult::Leaf(ref cmd) if cmd.name == "redo"),
+        matches!(trie.walk(&[key!(Ctrl + 'r')]), Some(WalkResult::Leaf(ref cmd)) if cmd.name == "redo"),
         "Ctrl-r should map to redo"
     );
     assert!(
-        matches!(trie.walk(&[key!(Ctrl + 'x')]), WalkResult::Leaf(ref cmd) if cmd.name == "select-line"),
+        matches!(trie.walk(&[key!(Ctrl + 'x')]), Some(WalkResult::Leaf(ref cmd)) if cmd.name == "select-line"),
         "Ctrl-x should map to select-line"
     );
     // Ctrl-e flips anchor↔head and works on legacy terminals (0x05 control byte).
     assert!(
-        matches!(trie.walk(&[key!(Ctrl + 'e')]), WalkResult::Leaf(ref cmd) if cmd.name == "flip-selections"),
+        matches!(trie.walk(&[key!(Ctrl + 'e')]), Some(WalkResult::Leaf(ref cmd)) if cmd.name == "flip-selections"),
         "Ctrl-e should map to flip-selections"
     );
     // Ctrl-w is unbound (kitty one-shot extend via strip-CONTROL).
     assert!(
-        matches!(trie.walk(&[key!(Ctrl + 'w')]), WalkResult::NoMatch),
+        trie.walk(&[key!(Ctrl + 'w')]).is_none(),
         "Ctrl-w must be unbound: pane prefix is Ctrl-p"
     );
     // Ctrl-p is the pane prefix (Interior node).
     assert!(
-        matches!(trie.walk(&[key!(Ctrl + 'p')]), WalkResult::Interior),
+        matches!(trie.walk(&[key!(Ctrl + 'p')]), Some(WalkResult::Interior)),
         "Ctrl-p must be the pane prefix Interior node"
     );
     // Ctrl-/ → search-selection (kitty-only).
     assert!(
-        matches!(trie.walk(&[key!(Ctrl + '/')]), WalkResult::Leaf(ref cmd) if cmd.name == "search-selection"),
+        matches!(trie.walk(&[key!(Ctrl + '/')]), Some(WalkResult::Leaf(ref cmd)) if cmd.name == "search-selection"),
         "Ctrl-/ should map to search-selection"
     );
     // Legacy terminals encode Ctrl-/ as Ctrl-'7' (control byte 0x1F), which must
     // stay unbound rather than accidentally aliasing to search-selection.
     assert!(
-        matches!(trie.walk(&[key!(Ctrl + '7')]), WalkResult::NoMatch),
+        trie.walk(&[key!(Ctrl + '7')]).is_none(),
         "Ctrl-7 must be unbound: Ctrl-/ is kitty-only, no legacy alias"
     );
 }
@@ -78,7 +75,7 @@ fn ctrl_bindings_in_normal_keymap() {
 fn force_extend_flags_are_correct() {
     let trie = default_normal_keymap();
 
-    let WalkResult::Leaf(cx) = trie.walk(&[key!(Ctrl + 'x')]) else {
+    let Some(WalkResult::Leaf(cx)) = trie.walk(&[key!(Ctrl + 'x')]) else {
         panic!()
     };
     assert!(
@@ -86,7 +83,7 @@ fn force_extend_flags_are_correct() {
         "Ctrl-x (select-line) must have force_extend=true"
     );
 
-    let WalkResult::Leaf(cx_upper) = trie.walk(&[key!(Ctrl + 'X')]) else {
+    let Some(WalkResult::Leaf(cx_upper)) = trie.walk(&[key!(Ctrl + 'X')]) else {
         panic!()
     };
     assert!(
@@ -94,7 +91,7 @@ fn force_extend_flags_are_correct() {
         "Ctrl-X (select-line-backward) must have force_extend=true"
     );
 
-    let WalkResult::Leaf(cd) = trie.walk(&[key!(Ctrl + 'd')]) else {
+    let Some(WalkResult::Leaf(cd)) = trie.walk(&[key!(Ctrl + 'd')]) else {
         panic!()
     };
     assert!(
@@ -102,7 +99,7 @@ fn force_extend_flags_are_correct() {
         "Ctrl-d (half-page-down) must have force_extend=false"
     );
 
-    let WalkResult::Leaf(cu) = trie.walk(&[key!(Ctrl + 'u')]) else {
+    let Some(WalkResult::Leaf(cu)) = trie.walk(&[key!(Ctrl + 'u')]) else {
         panic!()
     };
     assert!(
@@ -110,7 +107,7 @@ fn force_extend_flags_are_correct() {
         "Ctrl-u (half-page-up) must have force_extend=false"
     );
 
-    let WalkResult::Leaf(co) = trie.walk(&[key!(Ctrl + 'o')]) else {
+    let Some(WalkResult::Leaf(co)) = trie.walk(&[key!(Ctrl + 'o')]) else {
         panic!()
     };
     assert!(
@@ -162,7 +159,7 @@ fn essential_keys_are_bound() {
     ];
     for k in must_be_bound {
         assert!(
-            !matches!(trie.walk(&[k]), WalkResult::NoMatch),
+            !trie.walk(&[k]).is_none(),
             "key {:?} unexpectedly unbound in normal keymap",
             k
         );
@@ -225,7 +222,7 @@ fn goto_trie_holds_real_gotos_and_structural_navigation() {
     ];
     for (k, name) in must_resolve {
         match trie.walk(&[key!('g'), *k]) {
-            WalkResult::Leaf(ref cmd) => {
+            Some(WalkResult::Leaf(ref cmd)) => {
                 assert_eq!(cmd.name, *name, "g + {:?} should map to {:?}", k, name)
             }
             _ => panic!("g + {:?} should be a leaf bound to {:?}", k, name),
@@ -234,7 +231,7 @@ fn goto_trie_holds_real_gotos_and_structural_navigation() {
     // Reserved for core:pickers (`z f`/`z b`/`z m`) and core:lsp (`G R`).
     for reserved in [key!('b'), key!('m'), key!('r')] {
         assert!(
-            matches!(trie.walk(&[key!('g'), reserved]), WalkResult::NoMatch),
+            trie.walk(&[key!('g'), reserved]).is_none(),
             "g + {:?} must be unbound in the native trie: it's a plugin key",
             reserved
         );
@@ -247,17 +244,17 @@ fn goto_trie_holds_real_gotos_and_structural_navigation() {
 fn view_trie_is_directional_and_frees_vims_initials() {
     let trie = default_normal_keymap();
     assert!(
-        matches!(trie.walk(&[key!('z'), key!('z')]), WalkResult::Leaf(ref c) if c.name == "center-view-on-cursor")
+        matches!(trie.walk(&[key!('z'), key!('z')]), Some(WalkResult::Leaf(ref c)) if c.name == "center-view-on-cursor")
     );
     assert!(
-        matches!(trie.walk(&[key!('z'), key!('k')]), WalkResult::Leaf(ref c) if c.name == "top-view-on-cursor")
+        matches!(trie.walk(&[key!('z'), key!('k')]), Some(WalkResult::Leaf(ref c)) if c.name == "top-view-on-cursor")
     );
     assert!(
-        matches!(trie.walk(&[key!('z'), key!('j')]), WalkResult::Leaf(ref c) if c.name == "bottom-view-on-cursor")
+        matches!(trie.walk(&[key!('z'), key!('j')]), Some(WalkResult::Leaf(ref c)) if c.name == "bottom-view-on-cursor")
     );
     for freed in [key!('t'), key!('b')] {
         assert!(
-            matches!(trie.walk(&[key!('z'), freed]), WalkResult::NoMatch),
+            trie.walk(&[key!('z'), freed]).is_none(),
             "z + {:?} must be unbound in the native trie",
             freed
         );
@@ -289,9 +286,9 @@ fn apply_kitty_defaults_binds_kitty_only_keys() {
 #[test]
 fn pane_focus_prev_is_ctrl_p_shift_p_and_shift_tab_needs_kitty() {
     let trie = default_normal_keymap();
-    let WalkResult::Leaf(c) = trie.walk(&[key!(Ctrl + 'p'), key!('P')]) else {
+    let Some(WalkResult::Leaf(c)) = trie.walk(&[key!(Ctrl + 'p'), key!('P')]) else {
         panic!("Ctrl-p P should bind to pane-focus-prev");
     };
     assert_eq!(c.name, "pane-focus-prev");
-    assert!(matches!(trie.walk(&[key!(BackTab)]), WalkResult::NoMatch));
+    assert!(trie.walk(&[key!(BackTab)]).is_none());
 }

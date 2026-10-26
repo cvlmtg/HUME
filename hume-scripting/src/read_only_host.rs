@@ -13,7 +13,8 @@ use crate::attribution::EntryId;
 use crate::command_procs::CommandProc;
 use crate::host::{
     BufferHost, CommandHost, CursorHost, DiscardUnsaved, DisplayPathForm, EditorHost, EventHost,
-    HostToken, LanguageHost, OptionInput, OptionValue, SelectionInfo, SettingsHost, UndoNode,
+    HostToken, LanguageHost, OptionInput, OptionValue, SelectionInfo, SettingsHost, StoredLanguage,
+    UndoNode,
 };
 use crate::types::{GrammarReg, PaneHandle, SteelCmdDef, SteelTypedCmdDef};
 
@@ -126,8 +127,8 @@ impl CommandHost for ReadOnlyHost<'_> {
     fn defined_command(&self, name: &str) -> Option<CommandProc> {
         self.inner.borrow_mut().commands().defined_command(name)
     }
-    fn unregister_commands_defined_by(&mut self, _plugin: &EntryId) {
-        self.refuse("unregister_commands_defined_by");
+    fn unregister_commands_registered_in(&mut self, _activation: &EntryId) {
+        self.refuse("unregister_commands_registered_in");
     }
     fn is_valid_register_name(&self, ch: char) -> bool {
         self.inner
@@ -160,7 +161,7 @@ impl CommandHost for ReadOnlyHost<'_> {
 }
 
 impl LanguageHost for ReadOnlyHost<'_> {
-    fn attach_grammar(&mut self, _reg: &GrammarReg) -> Result<(), String> {
+    fn attach_grammar(&mut self, _reg: &GrammarReg) -> Result<bool, String> {
         Err(self.refuse("attach_grammar"))
     }
     fn has_grammar(&self, language: &str) -> bool {
@@ -169,7 +170,12 @@ impl LanguageHost for ReadOnlyHost<'_> {
 }
 
 impl SettingsHost for ReadOnlyHost<'_> {
-    fn set_global_option(&mut self, _key: &str, _value: OptionInput) -> Result<(), String> {
+    fn set_global_option(
+        &mut self,
+        _key: &str,
+        _value: OptionInput,
+        _origin: crate::ConfigOrigin,
+    ) -> Result<(), String> {
         Err(self.refuse("set_global_option"))
     }
     fn set_buffer_option(
@@ -177,6 +183,7 @@ impl SettingsHost for ReadOnlyHost<'_> {
         _key: &str,
         _value: OptionInput,
         _bid: BufferId,
+        _origin: crate::ConfigOrigin,
     ) -> Result<(), String> {
         Err(self.refuse("set_buffer_option"))
     }
@@ -231,7 +238,7 @@ impl BufferHost for ReadOnlyHost<'_> {
     fn buffer_is_dirty(&self, id: BufferId) -> Option<bool> {
         self.inner.borrow_mut().buffers().buffer_is_dirty(id)
     }
-    fn buffer_stored_language(&self, id: BufferId) -> Option<String> {
+    fn buffer_stored_language(&self, id: BufferId) -> StoredLanguage {
         self.inner.borrow_mut().buffers().buffer_stored_language(id)
     }
     fn cwd(&self) -> AbsolutePath {

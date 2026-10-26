@@ -4,7 +4,9 @@ use std::path::PathBuf;
 use steel::gc::unsafe_erased_pointers::CustomReference;
 use steel::rerrs::SteelErr;
 
-use super::attribution::{EntryId, PluginId, PluginStack};
+use std::rc::Rc;
+
+use super::attribution::{AttributionStack, EntryId, Owner, PluginId, Provenance};
 use super::host::EditorHost;
 use super::log::LogLevel;
 use super::types::{Effect, QueuedEffect};
@@ -32,8 +34,9 @@ pub(crate) struct SteelCtx<'a> {
     /// init-only method (`host.settings().set_global_option`) is always safe.
     pub(crate) host: &'a mut dyn EditorHost,
     // ── Persistent state borrowed from ScriptingHost ──────────────────────────
-    /// Plugin attribution stack; identifies whose mutation is being recorded.
-    pub(crate) plugin_stack: &'a mut PluginStack,
+    /// The frames of attributed code running: plugin bodies and `call!`ed
+    /// commands. See [`Self::owner`].
+    pub(crate) attribution: &'a mut AttributionStack,
     /// The persistent registries (`hooks`, `lazy_registry`, `plugin_records`).
     /// Borrowed as a unit, disjoint from `steel`.
     pub(crate) registries: &'a mut ScriptingRegistries,
@@ -61,11 +64,16 @@ pub(crate) struct SteelCtx<'a> {
     // ── Mode discriminant ────────────────────────────────────────────────────
     /// Which entry point started this eval session. Set once at construction;
     /// see [`EvalMode`] for the effective legality context builtins gate on,
-    /// which also depends on the live `plugin_stack`.
+    /// which also depends on whether a plugin body is running.
     pub(crate) session: EvalSession,
+    /// Who the code this session was started to run is credited to: a
+    /// file, a command, a hook handler or a callback. [`Self::owner`] and
+    /// [`Self::registration_origin`] answer from it while no frame this
+    /// session pushed overrides it.
+    base: Provenance,
     /// Effect-log length snapshots, one per currently-nested plugin body
     /// (`begin_lazy_activation` pushes, `finish_lazy_activation` pops; LIFO,
-    /// matching `plugin_stack`). Lets a failed body's own queued effects be
+    /// matching the bodies on `attribution`). Lets a failed body's own queued effects be
     /// rolled back (while keeping any entries a nested successful activation
     /// already committed) without touching whatever the enclosing eval
     /// queued before this activation began. See `pop_effect_marks`.
@@ -99,9 +107,9 @@ pub(crate) enum EvalSession {
 }
 
 /// Effective legality context that builtins gate on, derived per call from
-/// `session` × whether `plugin_stack` is currently non-empty (a plugin body
-/// is executing, possibly nested inside a command or init eval). `plugin_stack`
-/// is pushed/popped mid-eval by `begin_lazy_activation`/`finish_lazy_activation`
+/// `session` × whether a plugin body is executing (possibly nested inside a
+/// command or init eval). Bodies are pushed/popped onto `attribution`
+/// mid-eval by `begin_lazy_activation`/`finish_lazy_activation`
 /// (`builtins/plugins/activation.rs`), so this is derived fresh via [`SteelCtx::mode`]
 /// rather than stored: a single stored 3-variant enum can't distinguish the
 /// init-top-level state from the eager-plugin-load-during-init state, which
@@ -115,15 +123,15 @@ pub(crate) enum EvalSession {
 /// | `Command` (plain command/hook body) | ✓ | ✗ | ✗ |
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum EvalMode {
-    /// init.scm top level: `EvalSession::Init`, `plugin_stack` empty.
+    /// init.scm top level: `EvalSession::Init`, no plugin body running.
     Init,
     /// Inside an eager `load-plugin!` body during init: `EvalSession::Init`,
-    /// `plugin_stack` non-empty.
+    /// a plugin body running.
     PluginLoad,
     /// Inside a lazily-activated plugin body at runtime: `EvalSession::Runtime`,
-    /// `plugin_stack` non-empty.
+    /// a plugin body running.
     PluginActivation,
-    /// Plain command / hook body: `EvalSession::Runtime`, `plugin_stack` empty.
+    /// Plain command / hook body: `EvalSession::Runtime`, no plugin body running.
     Command,
 }
 
@@ -131,14 +139,18 @@ impl CustomReference for SteelCtx<'_> {}
 steel::custom_reference!(SteelCtx<'a>);
 
 impl<'a> SteelCtx<'a> {
+    /// For a file's evaluation, run as `owner` on its own behalf:
+    /// `init.scm` the user's, or one of HUME's own runtime files.
     pub(super) fn new_init(
         host: &'a mut dyn EditorHost,
         host_bundle: HostBundle<'a>,
         builtin_cmd_names: crate::command_name::CommandNameSet,
+        owner: Owner,
     ) -> Self {
         Self {
             host,
-            plugin_stack: host_bundle.plugin_stack,
+            base: Provenance::own(owner),
+            attribution: host_bundle.attribution,
             registries: host_bundle.registries,
             pending_messages: host_bundle.pending_messages,
             effects: host_bundle.effects,
@@ -160,7 +172,8 @@ impl<'a> SteelCtx<'a> {
     /// `(call! …)` calls inside the plugin body are allowed (they run synchronously
     /// via `run_command_sync`), while `(load-plugin! …)` and `(declare-plugin! …)` are
     /// rejected (registration verbs are init.scm top-level only; a plugin can never
-    /// load another plugin).
+    /// load another plugin). The session's own code is HUME's activation
+    /// wrapper; the body it runs is the plugin's.
     pub(super) fn new_activation(
         host: &'a mut dyn EditorHost,
         host_bundle: HostBundle<'a>,
@@ -168,17 +181,51 @@ impl<'a> SteelCtx<'a> {
     ) -> Self {
         Self {
             session: EvalSession::Runtime,
-            ..Self::new_init(host, host_bundle, builtin_cmd_names)
+            ..Self::new_init(host, host_bundle, builtin_cmd_names, Owner::Core)
         }
     }
 
     /// The effective legality context builtins gate on. See [`EvalMode`].
     pub(crate) fn mode(&self) -> EvalMode {
-        match (self.session, self.plugin_stack.is_empty()) {
-            (EvalSession::Init, true) => EvalMode::Init,
-            (EvalSession::Init, false) => EvalMode::PluginLoad,
-            (EvalSession::Runtime, false) => EvalMode::PluginActivation,
-            (EvalSession::Runtime, true) => EvalMode::Command,
+        match (self.session, self.attribution.in_body()) {
+            (EvalSession::Init, false) => EvalMode::Init,
+            (EvalSession::Init, true) => EvalMode::PluginLoad,
+            (EvalSession::Runtime, true) => EvalMode::PluginActivation,
+            (EvalSession::Runtime, false) => EvalMode::Command,
+        }
+    }
+
+    /// How a registration the running code makes ranks: a plugin body's as
+    /// its plugin's, whoever made it run, since a body sets its plugin up;
+    /// otherwise as made on the session's behalf. A `call!`ed command runs
+    /// on its caller's.
+    pub(crate) fn registration_origin(&self) -> crate::ConfigOrigin {
+        if self.attribution.in_body() {
+            crate::ConfigOrigin::Plugin
+        } else {
+            self.base.behalf
+        }
+    }
+
+    /// Whose code is running: the innermost plugin body or `call!`ed
+    /// command this session entered, else the code the session was started
+    /// for.
+    pub(crate) fn owner(&self) -> &Rc<Owner> {
+        self.attribution.top_owner().unwrap_or(&self.base.owner)
+    }
+
+    /// The plugin body a registration made now belongs to: rolled back with
+    /// it if that body fails, whoever wrote the code making it.
+    pub(crate) fn activation(&self) -> Option<Rc<EntryId>> {
+        self.attribution.innermost_body().cloned()
+    }
+
+    /// The running code's [`Provenance`]: what a proc it hands over is
+    /// credited as.
+    pub(crate) fn provenance(&self) -> Provenance {
+        Provenance {
+            owner: Rc::clone(self.owner()),
+            behalf: self.registration_origin(),
         }
     }
 
@@ -198,8 +245,9 @@ impl<'a> SteelCtx<'a> {
     }
 
     /// Snapshot the effect log's current length and push it. Called by
-    /// `begin_lazy_activation` right after it pushes `plugin_stack`, so the
-    /// two stacks stay in lockstep (LIFO, one mark per currently-nested body).
+    /// `begin_lazy_activation` right after it pushes the body onto
+    /// `attribution`, so the marks stay in lockstep with the bodies (LIFO,
+    /// one mark per currently-nested body).
     pub(crate) fn mark_effects(&mut self) {
         self.activation_effect_marks.push(self.effects.len());
     }
@@ -219,7 +267,8 @@ impl<'a> SteelCtx<'a> {
     /// touch `[mark..]`, so outer marks and any `effects_start` snapshot
     /// taken before this activation began stay valid indices.
     ///
-    /// Called by `finish_lazy_activation` right after it pops `plugin_stack`.
+    /// Called by `finish_lazy_activation` right after it pops the body off
+    /// `attribution`.
     /// `pending_messages` is untouched: a failed plugin's `log!` output stays
     /// visible for debugging.
     pub(crate) fn pop_effect_marks(&mut self, success: bool) {
@@ -244,10 +293,17 @@ impl<'a> SteelCtx<'a> {
         self.budget.waiting(wait)
     }
 
-    pub(crate) fn new_command(host: &'a mut dyn EditorHost, host_bundle: HostBundle<'a>) -> Self {
+    /// For a session that runs one proc a script handed over (a command, a
+    /// hook handler, a callback), credited as `base`.
+    pub(crate) fn new_command(
+        host: &'a mut dyn EditorHost,
+        host_bundle: HostBundle<'a>,
+        base: Provenance,
+    ) -> Self {
         Self {
             host,
-            plugin_stack: host_bundle.plugin_stack,
+            base,
+            attribution: host_bundle.attribution,
             registries: host_bundle.registries,
             pending_messages: host_bundle.pending_messages,
             effects: host_bundle.effects,

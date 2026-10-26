@@ -415,7 +415,12 @@ fn a_fence_grammar_failing_in_a_parse_installed_before_a_key_is_not_its_message(
         .state
         .config
         .languages
-        .register_grammar("json", GrammarSource::missing("json"));
+        .register_grammar(
+            "json",
+            GrammarSource::missing("json"),
+            hume_origin::ConfigOrigin::User,
+        )
+        .expect("a user grammar replaces any other");
     ed.sweep_buffers_for_grammars(vec![json]);
     ed.reparse_stale_buffers(); // posts the reparse; its result waits
 
@@ -437,7 +442,12 @@ fn a_fence_grammar_that_fails_to_load_warns_once_and_keeps_the_layers() {
         .state
         .config
         .languages
-        .register_grammar("json", GrammarSource::missing("json"));
+        .register_grammar(
+            "json",
+            GrammarSource::missing("json"),
+            hume_origin::ConfigOrigin::User,
+        )
+        .expect("a user grammar replaces any other");
     ed.sweep_buffers_for_grammars(vec![json]);
     for _ in 0..3 {
         ed.reparse_stale_buffers();

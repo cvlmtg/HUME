@@ -16,6 +16,14 @@
 ## Description
 Rope-domain primitives: line and column counting, grapheme-cluster boundaries, typed buffer positions, display width, and LSP wire-position conversion.
 
+# hume-origin
+### Used by
+- hume-treesitter
+- hume-scripting
+- hume-editor
+## Description
+Whose code made a registration (`ConfigOrigin`) and the one rule that ranks two writes to a slot, shared by every store that keeps a value per key.
+
 # hume-grid
 ### Depends on
 - hume-rope
@@ -94,6 +102,7 @@ LSP transport, JSON-RPC codec, client lifecycle state, and protocol-level wire d
 - hume-engine
 - hume-lsp
 - hume-ops
+- hume-origin
 - hume-platform
 - hume-rope
 - hume-treesitter
@@ -106,6 +115,7 @@ Steel (Scheme) scripting host: runs plugins and configuration, and exposes edito
 ### Depends on
 - hume-editing
 - hume-engine
+- hume-origin
 - hume-platform
 - hume-rope
 - test-fixtures *(dev-only)*
@@ -156,6 +166,7 @@ Stores for the gutter signs, inlay hints, virtual lines, and highlights that scr
 - hume-scripting
 - hume-editing
 - hume-rope
+- hume-origin
 - hume-ops
 - hume-treesitter
 - hume-lsp

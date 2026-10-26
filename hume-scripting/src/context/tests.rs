@@ -45,20 +45,64 @@ fn new_activation_has_runtime_session() {
 }
 
 /// `mode()` derives the correct `EvalMode` for all four `(session,
-/// plugin_stack)` states. The expected variants come from the truth table in
+/// attribution)` states. The expected variants come from the truth table in
 /// `EvalMode`'s doc.
 #[test]
-fn mode_derives_from_session_and_plugin_stack() {
+fn mode_derives_from_session_and_attribution() {
     use crate::attribution::PluginId;
 
     let mut h = SteelCtxTestHarness::new();
     assert_eq!(h.ctx_init().mode(), EvalMode::Init);
     assert_eq!(h.ctx().mode(), EvalMode::Command);
 
-    h.plugin_stack
-        .push(EntryId::main(PluginId::parse("core:test-plugin").unwrap()));
+    h.attribution
+        .push_body(EntryId::main(PluginId::parse("core:test-plugin").unwrap()));
     assert_eq!(h.ctx_init().mode(), EvalMode::PluginLoad);
     assert_eq!(h.ctx_activation().mode(), EvalMode::PluginActivation);
+}
+
+/// A registration ranks as the plugin's inside a plugin body, whoever made
+/// the body run, and otherwise as made on the session's behalf, inside a
+/// `call!`ed command too.
+#[test]
+fn registration_origin_follows_the_body_or_the_sessions_behalf() {
+    use crate::ConfigOrigin;
+    use crate::attribution::{Owner, PluginId, Provenance};
+
+    let plugin = EntryId::main(PluginId::parse("core:test-plugin").unwrap());
+    let plugin_owner = || Rc::new(Owner::Plugin(plugin.clone()));
+    let mut h = SteelCtxTestHarness::new();
+
+    assert_eq!(h.ctx_init().registration_origin(), ConfigOrigin::User);
+    assert_eq!(
+        h.ctx_as(Provenance::own(Owner::Core)).registration_origin(),
+        ConfigOrigin::Bundled
+    );
+    assert_eq!(
+        h.ctx_as(Provenance::own(Owner::Plugin(plugin.clone())))
+            .registration_origin(),
+        ConfigOrigin::Plugin
+    );
+    assert_eq!(
+        h.ctx_as(Provenance::invoked_by_user(plugin_owner()))
+            .registration_origin(),
+        ConfigOrigin::User
+    );
+
+    h.attribution.enter_call(plugin_owner());
+    assert_eq!(
+        h.ctx_as(Provenance::invoked_by_user(plugin_owner()))
+            .registration_origin(),
+        ConfigOrigin::User
+    );
+
+    h.attribution.push_body(plugin.clone());
+    h.attribution.enter_call(Rc::new(Owner::User));
+    assert_eq!(
+        h.ctx_as(Provenance::invoked_by_user(plugin_owner()))
+            .registration_origin(),
+        ConfigOrigin::Plugin
+    );
 }
 
 // ── log helper ────────────────────────────────────────────────────────────

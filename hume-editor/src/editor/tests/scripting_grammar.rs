@@ -190,7 +190,12 @@ fn a_registered_grammar_that_fails_to_load_warns_once() {
         .state
         .config
         .languages
-        .register_grammar("json", GrammarSource::missing("json"));
+        .register_grammar(
+            "json",
+            GrammarSource::missing("json"),
+            hume_origin::ConfigOrigin::User,
+        )
+        .expect("a user grammar replaces any other");
     super::language::attach_host(&mut ed, "");
     assert!(
         grammar_warnings(&ed, "json").is_empty(),
@@ -486,7 +491,12 @@ fn language_has_grammar_is_true_once_registered_and_false_after_a_failed_load() 
         .state
         .config
         .languages
-        .register_grammar("json", GrammarSource::missing("json"));
+        .register_grammar(
+            "json",
+            GrammarSource::missing("json"),
+            hume_origin::ConfigOrigin::User,
+        )
+        .expect("a user grammar replaces any other");
     assert!(
         ed.state.config.languages.has_grammar("json"),
         "a registered grammar counts before it loads"

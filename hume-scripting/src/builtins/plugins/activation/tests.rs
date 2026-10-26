@@ -290,7 +290,7 @@ fn eval_string_nested_defines_command() {
 }
 
 /// `%begin-lazy-activation!` on a `Declared` plugin transitions to `Loading`,
-/// pushes onto `plugin_stack`, and returns the require-string.
+/// pushes onto `attribution`, and returns the require-string.
 #[test]
 fn begin_lazy_activation_declared_returns_require_string() {
     let dir = TempDir::new().unwrap();
@@ -323,7 +323,7 @@ fn begin_lazy_activation_declared_returns_require_string() {
         ),
         "Declared plugin must be Loading after %begin-lazy-activation!"
     );
-    assert_eq!(h.plugin_stack.len(), 1, "begin pushed the id");
+    assert_eq!(h.attribution.len(), 1, "begin pushed the id");
 }
 
 /// `%begin-lazy-activation!` on a `Loading` plugin returns `#f` (cycle guard).
@@ -377,13 +377,13 @@ fn finish_lazy_activation_success_transitions_to_loaded() {
         "plugin must be Loaded after successful finish"
     );
     assert_eq!(
-        host.plugin_stack_depth_for_test(),
+        host.attribution_depth_for_test(),
         0,
-        "plugin_stack must be empty after finish"
+        "attribution must be empty after finish"
     );
 }
 
-/// `%finish-lazy-activation!` finishes the entry on top of `plugin_stack`:
+/// `%finish-lazy-activation!` finishes the innermost body on `attribution`:
 /// with two nested activations, only the inner one moves to `Loaded`.
 #[test]
 fn finish_lazy_activation_finishes_the_innermost_entry() {
@@ -409,7 +409,7 @@ fn finish_lazy_activation_finishes_the_innermost_entry() {
         host.registries.lazy_registry.plugins.get(&outer),
         Some(PluginState::Loading)
     ));
-    assert_eq!(host.plugin_stack_depth_for_test(), 1);
+    assert_eq!(host.attribution_depth_for_test(), 1);
 }
 
 /// `%finish-lazy-activation!` without a matching `%begin-lazy-activation!`
@@ -427,7 +427,7 @@ fn finish_lazy_activation_with_no_activation_in_progress_errors() {
 
     assert!(
         result.is_err(),
-        "finish with an empty plugin_stack must raise"
+        "finish with an empty attribution must raise"
     );
     assert!(matches!(
         host.registries.lazy_registry.plugins.get(&id),
@@ -731,7 +731,7 @@ fn nested_activation_commit_survives_enclosing_plugin_failure() {
 /// survive: a `Failed` plugin's hooks must stop firing.
 ///
 /// `finish_lazy_activation` drops the hook through
-/// `HookRegistry::remove_owned_by`.
+/// `HookRegistry::remove_registered_in`.
 #[test]
 fn hook_registered_before_failure_is_rolled_back() {
     let dir = TempDir::new().unwrap();
@@ -769,8 +769,8 @@ fn hook_registered_before_failure_is_rolled_back() {
 
 /// One level deeper: plugin C registers a hook and activates successfully
 /// inside plugin B's body, and B then fails afterward. C's hook must
-/// survive B's rollback. Rollback is by owner identity, not by eval-scoped
-/// position, so B's failure can never touch C's entries.
+/// survive B's rollback. Rollback is by the innermost body running at
+/// registration, which is C's, so B's failure can never touch C's entries.
 #[test]
 fn nested_activation_hook_survives_enclosing_plugin_failure() {
     use crate::host::EditorHost;
@@ -830,6 +830,151 @@ fn nested_activation_hook_survives_enclosing_plugin_failure() {
         host.has_hook_handlers("on-buffer-save", None),
         "C's hook must survive B's failure: rollback is scoped to B's own id"
     );
+}
+
+/// Plugin A's command, `call!`ed from plugin B's body, registers a hook and
+/// a command. Both run as A's code, yet were made while B's body ran, so
+/// B's failure rolls them back with the rest of B's footprint.
+#[test]
+fn registrations_a_called_command_makes_in_a_failing_body_are_rolled_back() {
+    use crate::host::EditorHost;
+
+    let dir = TempDir::new().unwrap();
+    let path_a = write_plugin(
+        &dir,
+        "setup_a.scm",
+        r#"(define-command! "a-setup" "doc"
+             (lambda ()
+               (register-hook! 'on-buffer-save (lambda (bid) 0))
+               (define-command! "a-made" "doc" (lambda () 0))))"#,
+    );
+    let path_b = write_plugin(
+        &dir,
+        "setup_b.scm",
+        r#"(call! "a-setup")
+           (error "b fails")"#,
+    );
+    let id_a = plugin_id("core:sa");
+    let id_b = plugin_id("core:sb");
+    let mut host = ScriptingHost::new(&Dirs::none());
+    host.registries
+        .lazy_registry
+        .plugins
+        .insert(id_a.clone(), PluginState::Declared { path: path_a });
+    host.registries
+        .lazy_registry
+        .plugins
+        .insert(id_b.clone(), PluginState::Declared { path: path_b });
+    let mut editor_host = CommandStoreHost::default();
+    host.activate_plugin_inline(&id_a, 10_000, &mut editor_host, &no_builtins())
+        .unwrap();
+
+    host.activate_plugin_inline(&id_b, 10_000, &mut editor_host, &no_builtins())
+        .unwrap();
+
+    assert!(
+        matches!(
+            host.registries.lazy_registry.plugins.get(&id_b),
+            Some(PluginState::Failed)
+        ),
+        "B must be Failed"
+    );
+    assert!(
+        !host.has_hook_handlers("on-buffer-save", None),
+        "the hook a-setup registered inside B's body must leave with B"
+    );
+    assert!(
+        editor_host.commands().defined_command("a-made").is_none(),
+        "the command a-setup defined inside B's body must leave with B"
+    );
+    assert!(
+        editor_host.commands().defined_command("a-setup").is_some(),
+        "A's own command stays: A is Loaded"
+    );
+}
+
+/// A lazy plugin's activation command, defined by another plugin's command
+/// that the lazy plugin's body `call!`s, is defined inside that body, so the
+/// claim the lazy plugin holds on the name does not refuse it.
+#[test]
+fn a_called_command_may_define_the_running_bodys_activation_command() {
+    use crate::host::EditorHost;
+
+    let dir = TempDir::new().unwrap();
+    let path_a = write_plugin(
+        &dir,
+        "definer_a.scm",
+        r#"(define-command! "a-define-b" "doc"
+             (lambda () (define-command! "b-act" "doc" (lambda () 0))))"#,
+    );
+    let path_b = write_plugin(&dir, "lazy_b.scm", r#"(call! "a-define-b")"#);
+    let id_a = plugin_id("core:da");
+    let id_b = plugin_id("core:db");
+    let mut host = ScriptingHost::new(&Dirs::none());
+    host.registries
+        .lazy_registry
+        .plugins
+        .insert(id_a.clone(), PluginState::Declared { path: path_a });
+    host.registries
+        .lazy_registry
+        .plugins
+        .insert(id_b.clone(), PluginState::Declared { path: path_b });
+    let mut editor_host = CommandStoreHost::default();
+    editor_host
+        .commands()
+        .register_lazy_command("b-act", &id_b)
+        .expect("stub claim must succeed on a fresh host");
+    host.activate_plugin_inline(&id_a, 10_000, &mut editor_host, &no_builtins())
+        .unwrap();
+
+    host.activate_plugin_inline(&id_b, 10_000, &mut editor_host, &no_builtins())
+        .unwrap();
+
+    assert!(
+        matches!(
+            host.registries.lazy_registry.plugins.get(&id_b),
+            Some(PluginState::Loaded)
+        ),
+        "B must be Loaded; messages: {:?}",
+        host.peek_pending_messages()
+    );
+    assert!(
+        matches!(
+            editor_host.commands().defined_command("b-act"),
+            Some(CommandProc::Mappable(_))
+        ),
+        "b-act must be defined"
+    );
+}
+
+/// A plugin body still open when the `call!` frame below it is left fails
+/// that plugin, as a session's end does, and the stack returns to the
+/// call's depth.
+#[test]
+fn leaving_a_call_with_a_body_open_above_it_fails_that_body() {
+    let id = plugin_id("core:open");
+    let mut h = crate::test_support::SteelCtxTestHarness::new();
+    h.registries
+        .lazy_registry
+        .plugins
+        .insert(id.clone(), PluginState::Loading);
+    let mut ctx = h.ctx();
+    let depth = ctx
+        .attribution
+        .enter_call(std::rc::Rc::new(crate::attribution::Owner::User));
+    ctx.attribution.push_body(id.clone());
+    ctx.mark_effects();
+
+    crate::builtins::commands::leave_command(&mut ctx, SteelVal::IntV(depth as isize)).unwrap();
+
+    assert_eq!(ctx.attribution.len(), depth);
+    let failed: Vec<&EntryId> = ctx.failed_activations.iter().map(|(id, _)| id).collect();
+    assert_eq!(failed, [&id]);
+    drop(ctx);
+    assert!(matches!(
+        h.registries.lazy_registry.plugins.get(&id),
+        Some(PluginState::Failed)
+    ));
 }
 
 // ── Self-ownership exemption ────────────────────────────────────────────────
@@ -942,7 +1087,7 @@ fn budget_stopping_a_body_fails_its_activation_and_closes_it() {
         ),
         "B is never reached"
     );
-    assert!(host.plugin_stack.is_empty(), "no activation is left open");
+    assert_eq!(host.attribution.len(), 0, "no activation is left open");
 }
 
 // ── `call!` of a command owned by a Failed plugin ──────────────────────────
@@ -1055,7 +1200,7 @@ fn manifest_declare_self_declared_then_failed_rolls_back_to_failed() {
 /// `activation_effect_marks` is per-eval transient state (rebuilt fresh in
 /// every `SteelCtx`), only observable by whether its own effect survives.
 ///
-/// Decoding `error` must not short-circuit ahead of `plugin_stack.pop()` and
+/// Decoding `error` must not short-circuit ahead of `attribution.pop_body()` and
 /// `pop_effect_marks`.
 #[test]
 fn finish_lazy_activation_bad_error_value_still_balances_stack_and_marks() {
@@ -1077,9 +1222,9 @@ fn finish_lazy_activation_bad_error_value_still_balances_stack_and_marks() {
         .expect("a bad error value must be folded into the failure, not raised");
 
     assert_eq!(
-        host.plugin_stack_depth_for_test(),
+        host.attribution_depth_for_test(),
         0,
-        "plugin_stack must be popped even when the error value fails to decode"
+        "attribution must be popped even when the error value fails to decode"
     );
     assert!(
         host.effects_for_test().is_empty(),
@@ -1097,7 +1242,7 @@ fn finish_lazy_activation_bad_error_value_still_balances_stack_and_marks() {
 
 // ── Activation depth cap ──────────────────────────────────────────────────
 
-/// `%begin-lazy-activation!` refuses to start when `plugin_stack` depth is at
+/// `%begin-lazy-activation!` refuses to start when the body depth on `attribution` is at
 /// `MAX_ACTIVATION_DEPTH`, marks the plugin `Failed`, and returns a Steel error.
 ///
 /// The cap turns an activation cycle into a hard error instead of a stack
@@ -1161,7 +1306,7 @@ fn begin_lazy_activation_below_depth_cap_succeeds() {
     // One below the cap: must still be allowed.
     let dummy = plugin_id("core:dummy");
     for _ in 0..MAX_ACTIVATION_DEPTH - 1 {
-        h.plugin_stack.push(dummy.clone());
+        h.attribution.push_body(dummy.clone());
     }
 
     let result = begin_lazy_activation(

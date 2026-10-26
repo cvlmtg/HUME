@@ -35,7 +35,7 @@ fn marker(name: &str) -> SteelVal {
 
 fn open_test_picker(ed: &mut Editor, items: &[&str]) {
     let mut session = PickerSession::new(
-        hume_scripting::Rooted::new(marker("on-select")),
+        hume_scripting::Callback::for_test(marker("on-select")),
         PickerOpts::default(),
         Vec::new(),
     );
@@ -991,7 +991,7 @@ fn click_with_menu_open_cancels_it_and_falls_through() {
         &ed.view,
         MenuLayer::for_test(
             crate::editor::tests::non_empty_strings(&["m0"]),
-            hume_scripting::Rooted::new(marker("menu-cb")),
+            hume_scripting::Callback::for_test(marker("menu-cb")),
         ),
     );
 
@@ -1025,7 +1025,7 @@ fn click_under_drawer_falls_through_leaving_it_open() {
         &ed.view,
         DrawerLayer::new(
             drawer_items(&["d0"]),
-            DrawerSelect::Steel(hume_scripting::Rooted::new(marker("drawer-cb"))),
+            DrawerSelect::Steel(hume_scripting::Callback::for_test(marker("drawer-cb"))),
             0,
         ),
     );
@@ -1054,7 +1054,7 @@ fn wheel_under_drawer_scrolls_the_pane_leaving_it_open() {
         &ed.view,
         DrawerLayer::new(
             drawer_items(&["d0"]),
-            DrawerSelect::Steel(hume_scripting::Rooted::new(marker("drawer-cb"))),
+            DrawerSelect::Steel(hume_scripting::Callback::for_test(marker("drawer-cb"))),
             0,
         ),
     );

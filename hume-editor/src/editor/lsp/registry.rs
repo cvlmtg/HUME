@@ -5,7 +5,10 @@
 
 use std::path::{Path, PathBuf};
 
-use hume_scripting::{FeatureFilter, ListEntry, ListLayer, ServerName};
+use hume_origin::{ByOrigin, Ranked};
+use hume_scripting::{
+    ConfigOrigin, FeatureFilter, ListEntry, ListTier, SERVER_REGISTRATION_TIE, ServerName,
+};
 use rustc_hash::FxHashMap;
 
 /// The process a `register-lsp-server!` call spawns and configures.
@@ -45,13 +48,34 @@ pub(in crate::editor::lsp::registry) fn resolve_root(
     cwd.to_path_buf()
 }
 
-/// A language's two ordered server lists. A `user` list, when set, is the
-/// whole answer; `default` is a plugin's preferred order, used only while
-/// there is no user list.
+/// One tier of a language's server lists: the list each origin set, if any.
+/// The highest origin's is the whole answer, whichever was set first, and
+/// clearing it lets the next lower one apply.
+type ListLayers = ByOrigin<Option<Vec<ListEntry>>>;
+
+/// A language's server lists. A default list applies only while no explicit
+/// list is set, whatever the origins of the two.
 #[derive(Debug, Default)]
 struct LanguageLists {
-    user: Option<Vec<ListEntry>>,
-    default: Option<Vec<ListEntry>>,
+    explicit: ListLayers,
+    defaults: ListLayers,
+}
+
+impl LanguageLists {
+    fn layers_mut(&mut self, tier: ListTier) -> &mut ListLayers {
+        match tier {
+            ListTier::Explicit => &mut self.explicit,
+            ListTier::Default => &mut self.defaults,
+        }
+    }
+
+    /// The list that decides the language's servers.
+    fn deciding(&self) -> Option<&[ListEntry]> {
+        self.explicit
+            .iter()
+            .chain(self.defaults.iter())
+            .find_map(|(_, list)| list.as_deref())
+    }
 }
 
 /// Every server registration and per-language list: pure policy, no
@@ -59,7 +83,7 @@ struct LanguageLists {
 /// a language's buffers attach to, in what order, with what filter.
 #[derive(Debug, Default)]
 pub(in crate::editor::lsp) struct Registry {
-    registrations: FxHashMap<ServerName, LspServerConfig>,
+    registrations: FxHashMap<ServerName, Ranked<LspServerConfig>>,
     lists: FxHashMap<String, LanguageLists>,
 }
 
@@ -69,36 +93,88 @@ pub(in crate::editor::lsp) struct Planned<'a> {
     pub(in crate::editor::lsp) filter: FeatureFilter,
 }
 
+/// What a registration or unregistration from one origin found under its
+/// name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::editor::lsp) enum RegistryWrite {
+    /// No registration: the write applied to an unregistered name.
+    Unregistered,
+    /// A registration the write replaced or removed.
+    Replaced,
+    /// A registration a higher origin made, which stays
+    /// ([`SERVER_REGISTRATION_TIE`]).
+    Shadowed,
+}
+
 impl Registry {
-    /// Registers `name`, replacing an earlier registration of the same name.
-    /// `true` when it replaced one.
+    /// What a write from `origin` to `name` finds there.
+    fn rank(&self, name: &ServerName, origin: ConfigOrigin) -> RegistryWrite {
+        let held = self.origin(name);
+        if !origin.rank(held, SERVER_REGISTRATION_TIE).is_applied() {
+            RegistryWrite::Shadowed
+        } else if held.is_some() {
+            RegistryWrite::Replaced
+        } else {
+            RegistryWrite::Unregistered
+        }
+    }
+
+    /// Registers `name` as `origin`'s, replacing an earlier registration of
+    /// the same name unless a higher origin made it.
     pub(in crate::editor::lsp) fn register(
         &mut self,
         name: ServerName,
         config: LspServerConfig,
-    ) -> bool {
-        self.registrations.insert(name, config).is_some()
+        origin: ConfigOrigin,
+    ) -> RegistryWrite {
+        let write = self.rank(&name, origin);
+        if write != RegistryWrite::Shadowed {
+            self.registrations.insert(
+                name,
+                Ranked {
+                    value: config,
+                    by: origin,
+                },
+            );
+        }
+        write
     }
 
-    /// Removes `name`'s registration. Lists that name it keep the entry,
-    /// which applies again if the name registers again. `false` when it
-    /// was not registered.
-    pub(in crate::editor::lsp) fn unregister(&mut self, name: &ServerName) -> bool {
-        self.registrations.remove(name).is_some()
+    /// Removes `name`'s registration unless a higher origin than `origin`
+    /// made it. Lists that name it keep the entry, which applies again if
+    /// the name registers again.
+    pub(in crate::editor::lsp) fn unregister(
+        &mut self,
+        name: &ServerName,
+        origin: ConfigOrigin,
+    ) -> RegistryWrite {
+        let write = self.rank(name, origin);
+        if write != RegistryWrite::Shadowed {
+            self.registrations.remove(name);
+        }
+        write
     }
 
-    /// Sets (`Some`) or clears (`None`) one of `language`'s lists.
+    /// Sets (`Some`) or clears (`None`) `language`'s `tier` list from
+    /// `origin`, leaving the lists other origins set. Returns whether a
+    /// higher origin's list in the same tier hides it.
     pub(in crate::editor::lsp) fn set_list(
         &mut self,
         language: String,
-        layer: ListLayer,
+        tier: ListTier,
+        origin: ConfigOrigin,
         entries: Option<Vec<ListEntry>>,
-    ) {
-        let lists = self.lists.entry(language).or_default();
-        match layer {
-            ListLayer::User => lists.user = entries,
-            ListLayer::Default => lists.default = entries,
-        }
+    ) -> bool {
+        let lists = match entries {
+            Some(_) => self.lists.entry(language).or_default(),
+            None => match self.lists.get_mut(&language) {
+                Some(lists) => lists,
+                None => return false,
+            },
+        };
+        let layers = lists.layers_mut(tier);
+        *layers.get_mut(origin) = entries;
+        layers.above(origin).any(Option::is_some)
     }
 
     pub(in crate::editor::lsp) fn contains(&self, name: &ServerName) -> bool {
@@ -106,7 +182,12 @@ impl Registry {
     }
 
     pub(in crate::editor::lsp) fn get(&self, name: &ServerName) -> Option<&LspServerConfig> {
-        self.registrations.get(name)
+        self.registrations.get(name).map(|reg| &reg.value)
+    }
+
+    /// The origin of `name`'s registration, `None` when it has none.
+    pub(in crate::editor::lsp) fn origin(&self, name: &ServerName) -> Option<ConfigOrigin> {
+        self.registrations.get(name).map(|reg| reg.by)
     }
 
     /// The languages whose servers include `name`, sorted.
@@ -122,14 +203,12 @@ impl Registry {
     }
 
     /// The servers `language`'s buffers attach to, in order: the entries of
-    /// its user list, or of its default list while it has no user list,
-    /// that name a registered server. An entry naming an unregistered
-    /// server is skipped; a registered server no list names serves nothing.
+    /// the explicit list the highest origin set, or of the default list while
+    /// no explicit one is set, that name a registered server. An entry naming
+    /// an unregistered server is skipped; a registered server no list names
+    /// serves nothing.
     pub(in crate::editor::lsp) fn plan(&self, language: &str) -> Vec<Planned<'_>> {
-        let Some(lists) = self.lists.get(language) else {
-            return Vec::new();
-        };
-        let Some(entries) = lists.user.as_deref().or(lists.default.as_deref()) else {
+        let Some(entries) = self.lists.get(language).and_then(LanguageLists::deciding) else {
             return Vec::new();
         };
         entries

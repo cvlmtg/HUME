@@ -22,7 +22,7 @@ impl<'a> AsyncProcessHost for EditorHostImpl<'a> {
         cmd: &str,
         args: Vec<String>,
         cwd: PathBuf,
-        callback: hume_scripting::Rooted,
+        callback: hume_scripting::Callback,
     ) -> JobHandle {
         let id = self.next_async_job();
 
@@ -77,7 +77,7 @@ impl<'a> AsyncProcessHost for EditorHostImpl<'a> {
         &mut self,
         prefix: String,
         extensions: Vec<String>,
-        callback: hume_scripting::Rooted,
+        callback: hume_scripting::Callback,
     ) -> Result<JobHandle, String> {
         let names = hume_platform::path::programs::spawn_program_scan(
             self.state.dirs.search_path.clone(),

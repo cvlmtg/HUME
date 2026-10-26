@@ -19,7 +19,7 @@ fn bind_key_queues_bind_effect() {
     assert!(
         matches!(
             effects.as_slice(),
-            [Effect::BindKey { mode: BindMode::Normal, keys, cmd, force_extend: false, keymap: hume_scripting::host::KeymapTarget::Global }]
+            [Effect::BindKey { mode: BindMode::Normal, keys, cmd, force_extend: false, keymap: hume_scripting::host::KeymapTarget::Global, .. }]
                 if keys.as_slice() == [z_key] && cmd == "move-right"
         ),
         "expected one Effect::BindKey for 'z' → move-right; got: {effects:?}"

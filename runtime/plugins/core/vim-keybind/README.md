@@ -82,5 +82,5 @@ terminals emit `0x1E`, which HUME does not surface as this binding.
 ## Design decisions
 
 `G` is not bound. Vim's `G` (last line) is the kind of key this plugin restores, but `G` is
-a prefix in HUME's own keymap that groups edit commands, and binding a bare key replaces
-the whole trie node it lands on. `g e` reaches the last line.
+a prefix in HUME's own keymap that groups edit commands, and binding a bare key hides
+every binding under it. `g e` reaches the last line.

@@ -11,6 +11,7 @@ use crate::grammar::LoadedGrammar;
 use crate::highlight::TreeSitterHighlighter;
 use hume_editing::comment::{BlockCommentTokens, CommentTokens, LineCommentTokens};
 use hume_engine::theme::ScopeRegistry;
+use hume_origin::{ConfigOrigin, Ranked, Tie, WriteOutcome};
 
 use crate::indent::IndentQuery;
 use crate::injections::InjectionsQuery;
@@ -152,27 +153,12 @@ pub struct LanguageIdentity {
     pub shebangs: Vec<ShebangInterpreter>,
 }
 
-/// Who configured a per-language value. A user value (`init.scm`) beats a
-/// plugin's, whichever arrives first.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum ConfiguredBy {
-    Plugin,
-    User,
-}
+/// A per-language value keeps the first write from one origin, so a bundled
+/// data file read after a plugin's configuration never replaces it.
+const LANGUAGE_TIE: Tie = Tie::FirstWins;
 
-/// Where a per-language value came from. A configured value always beats a
-/// bundled one, whichever arrives first.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum SettingSource {
-    Configured(ConfiguredBy),
-    Bundled,
-}
-
-#[derive(Debug)]
-struct Setting<T> {
-    value: T,
-    source: SettingSource,
-}
+/// A grammar registration from one origin replaces the earlier one.
+const GRAMMAR_TIE: Tie = Tie::LaterWins;
 
 /// Per-language values outside the identity: set by configuration, or filled
 /// from the language's bundled data file the first time a buffer uses it.
@@ -181,12 +167,12 @@ struct Setting<T> {
 struct LanguageConfig {
     /// Override for the wire `languageId` sent to language servers, when it
     /// differs from the name (e.g. `"tsx"` needs `"typescriptreact"`).
-    lsp_language_id: Option<Setting<String>>,
+    lsp_language_id: Option<Ranked<String>>,
     /// File or directory names that make a directory this language's
     /// workspace root (e.g. `"Cargo.toml"`, `".git"`).
-    roots: Option<Setting<Vec<String>>>,
-    line_comment_tokens: Option<Setting<LineCommentTokens>>,
-    block_comment_tokens: Option<Setting<BlockCommentTokens>>,
+    roots: Option<Ranked<Vec<String>>>,
+    line_comment_tokens: Option<Ranked<LineCommentTokens>>,
+    block_comment_tokens: Option<Ranked<BlockCommentTokens>>,
     /// Whether the bundled data file has been read, found or not.
     bundled_loaded: bool,
 }
@@ -229,49 +215,6 @@ impl LanguageField {
             Self::CommentTokens => "comment-tokens",
             Self::BlockCommentTokens => "block-comment-tokens",
         }
-    }
-}
-
-/// Result of a configured write.
-#[must_use]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ConfigureOutcome {
-    Applied,
-    /// The field already holds a value from the same configurer; the first
-    /// one stays.
-    Ignored,
-    /// The field already holds a user value and this write came from a plugin.
-    Shadowed,
-}
-
-/// Store `value` from `by` unless the slot holds a value configured by the
-/// same or a higher tier.
-fn configure<T>(slot: &mut Option<Setting<T>>, value: T, by: ConfiguredBy) -> ConfigureOutcome {
-    if let Some(Setting {
-        source: SettingSource::Configured(held),
-        ..
-    }) = slot
-    {
-        match (*held).cmp(&by) {
-            std::cmp::Ordering::Equal => return ConfigureOutcome::Ignored,
-            std::cmp::Ordering::Greater => return ConfigureOutcome::Shadowed,
-            std::cmp::Ordering::Less => {}
-        }
-    }
-    *slot = Some(Setting {
-        value,
-        source: SettingSource::Configured(by),
-    });
-    ConfigureOutcome::Applied
-}
-
-/// Store a bundled `value` only into an empty slot.
-fn fill<T>(slot: &mut Option<Setting<T>>, value: T) {
-    if slot.is_none() {
-        *slot = Some(Setting {
-            value,
-            source: SettingSource::Bundled,
-        });
     }
 }
 
@@ -582,10 +525,18 @@ pub(crate) fn compile_queries(
 /// Everything the registry holds for one interned language.
 struct LanguageEntry {
     name: Arc<str>,
-    /// `None` = interned but no identity registered.
-    identity: Option<LanguageIdentity>,
+    /// `None` = no `define-language!` for it yet.
+    identity: Option<Ranked<LanguageIdentity>>,
     config: LanguageConfig,
-    grammar: Option<GrammarSlot>,
+    grammar: Option<Ranked<GrammarSlot>>,
+}
+
+impl LanguageEntry {
+    /// Whether the language is defined: given detection data, or a grammar
+    /// (`register-grammar!` defines a language it names).
+    fn is_defined(&self) -> bool {
+        self.identity.is_some() || self.grammar.is_some()
+    }
 }
 
 /// Global registry of configured language identities. Lives on `Editor`.
@@ -775,8 +726,8 @@ impl LanguageRegistry {
         &mut self,
         id: LanguageId,
         fields: LanguageFields,
-        by: ConfiguredBy,
-    ) -> Vec<(LanguageField, ConfigureOutcome)> {
+        by: ConfigOrigin,
+    ) -> Vec<(LanguageField, WriteOutcome)> {
         let LanguageFields {
             roots,
             lsp_language_id,
@@ -788,25 +739,30 @@ impl LanguageRegistry {
         if let Some(roots) = roots {
             outcomes.push((
                 LanguageField::Roots,
-                configure(&mut config.roots, roots, by),
+                Ranked::write(&mut config.roots, roots, by, LANGUAGE_TIE),
             ));
         }
         if let Some(lsp_language_id) = lsp_language_id {
             outcomes.push((
                 LanguageField::LanguageId,
-                configure(&mut config.lsp_language_id, lsp_language_id, by),
+                Ranked::write(
+                    &mut config.lsp_language_id,
+                    lsp_language_id,
+                    by,
+                    LANGUAGE_TIE,
+                ),
             ));
         }
         if let Some(tokens) = comment_tokens {
             outcomes.push((
                 LanguageField::CommentTokens,
-                configure(&mut config.line_comment_tokens, tokens, by),
+                Ranked::write(&mut config.line_comment_tokens, tokens, by, LANGUAGE_TIE),
             ));
         }
         if let Some(tokens) = block_comment_tokens {
             outcomes.push((
                 LanguageField::BlockCommentTokens,
-                configure(&mut config.block_comment_tokens, tokens, by),
+                Ranked::write(&mut config.block_comment_tokens, tokens, by, LANGUAGE_TIE),
             ));
         }
         outcomes
@@ -832,37 +788,19 @@ impl LanguageRegistry {
     /// Record that `id`'s bundled data file has been read, filling each field
     /// it gives a value for that is still unset.
     pub fn fill_bundled(&mut self, id: LanguageId, bundled: LanguageFields) {
-        let LanguageFields {
-            roots,
-            lsp_language_id,
-            comment_tokens,
-            block_comment_tokens,
-        } = bundled;
-        let config = &mut self.entry_mut(id).config;
-        config.bundled_loaded = true;
-        if let Some(roots) = roots {
-            fill(&mut config.roots, roots);
-        }
-        if let Some(lsp_language_id) = lsp_language_id {
-            fill(&mut config.lsp_language_id, lsp_language_id);
-        }
-        if let Some(tokens) = comment_tokens {
-            fill(&mut config.line_comment_tokens, tokens);
-        }
-        if let Some(tokens) = block_comment_tokens {
-            fill(&mut config.block_comment_tokens, tokens);
-        }
+        self.entry_mut(id).config.bundled_loaded = true;
+        // Bundled data ranks lowest and is read at first use, after any
+        // value a script set, so a field that keeps its value is expected.
+        let _ = self.configure_fields(id, bundled, ConfigOrigin::Bundled);
     }
 
     // ── Identity ──────────────────────────────────────────────────────────────
 
-    /// Register a language identity: name, extensions, glob patterns, shebangs.
+    /// Register a language identity from its detection data as text, which
+    /// must be valid, as HUME's bundled data, and rebuild the glob set.
     ///
     /// Returns `Err(RegisterError::GlobBuild)` if the combined glob set would exceed
     /// globset's NFA size limit.
-    ///
-    /// For batch registration use `register_identity_no_rebuild` + `rebuild_glob_set`.
-    /// Takes the detection data as text, which must be valid.
     #[cfg(any(test, feature = "test-util"))]
     pub fn register_identity(
         &mut self,
@@ -871,6 +809,21 @@ impl LanguageRegistry {
         globs: &[&str],
         shebangs: &[&str],
     ) -> Result<LanguageId, RegisterError> {
+        self.register_identity_by(name, extensions, globs, shebangs, ConfigOrigin::Bundled)
+            .map(|(id, _)| id)
+    }
+
+    /// [`Self::register_identity`] as made by `by`, with the outcome of its
+    /// ranking.
+    #[cfg(any(test, feature = "test-util"))]
+    pub fn register_identity_by(
+        &mut self,
+        name: &str,
+        extensions: &[&str],
+        globs: &[&str],
+        shebangs: &[&str],
+        by: ConfigOrigin,
+    ) -> Result<(LanguageId, WriteOutcome), RegisterError> {
         let extensions: Vec<FileExtension> = extensions
             .iter()
             .map(|&e| FileExtension::new(e.to_owned()).expect("a test extension is valid"))
@@ -883,9 +836,10 @@ impl LanguageRegistry {
             .iter()
             .map(|&s| ShebangInterpreter::new(s.to_owned()).expect("a test shebang is valid"))
             .collect();
-        let id = self.register_identity_no_rebuild(name, &extensions, &globs, &shebangs);
+        let registered =
+            self.register_identity_no_rebuild(name, &extensions, &globs, &shebangs, by);
         self.rebuild_glob_set()?;
-        Ok(id)
+        Ok(registered)
     }
 
     /// Insert identity data without rebuilding the compiled glob set.
@@ -893,21 +847,31 @@ impl LanguageRegistry {
     /// Intended for batch registration: call this N times then call
     /// `rebuild_glob_set` once, avoiding O(N²) NFA constructions at startup.
     ///
-    /// Replaces extensions/globs/shebangs for `name`; a registered or loaded
-    /// grammar and the per-language configuration are kept. Identity and
-    /// grammar are independent facts about a language, and re-registering one
-    /// must not undo the other. (Symmetric with grammar registration,
-    /// which likewise preserves an existing identity.)
+    /// Sets extensions/globs/shebangs for `name` from `by`, ranked as every
+    /// per-language value is: detection data from the same or a higher tier
+    /// stays, and the outcome says so. A registered or loaded grammar and
+    /// the per-language configuration are kept. Identity and grammar are
+    /// independent facts about a language, and re-registering one must not
+    /// undo the other. (Symmetric with grammar registration, which likewise
+    /// preserves an existing identity.)
     pub fn register_identity_no_rebuild(
         &mut self,
         name: &str,
         extensions: &[FileExtension],
         globs: &[FileGlob],
         shebangs: &[ShebangInterpreter],
-    ) -> LanguageId {
+        by: ConfigOrigin,
+    ) -> (LanguageId, WriteOutcome) {
         let id = self.intern(name);
+        let outcome = by.rank(
+            self.entry(id).identity.as_ref().map(|held| held.by),
+            LANGUAGE_TIE,
+        );
+        if !outcome.is_applied() {
+            return (id, outcome);
+        }
         if let Some(old) = self.entry_mut(id).identity.take() {
-            self.deindex(id, &old);
+            self.deindex(id, &old.value);
         }
         let new_identity = LanguageIdentity {
             extensions: extensions.to_vec(),
@@ -920,10 +884,13 @@ impl LanguageRegistry {
         for shebang in &new_identity.shebangs {
             self.shebang_to_id.insert(shebang.clone(), id);
         }
-        self.entry_mut(id).identity = Some(new_identity);
+        self.entry_mut(id).identity = Some(Ranked {
+            value: new_identity,
+            by,
+        });
         self.lang_order.retain(|&i| i != id);
         self.lang_order.push(id);
-        id
+        (id, outcome)
     }
 
     /// Remove `identity`'s entries from the `by_ext`/`shebang_to_id` secondary
@@ -932,8 +899,9 @@ impl LanguageRegistry {
     /// reassigned to a different language since `identity` was registered, and
     /// deindexing unconditionally would evict that newer owner's mapping.
     /// Note: this does not resurrect an older claimant if `id` was
-    /// indeed still the owner; the extension simply becomes unclaimed, which
-    /// matches the last-registered-wins model elsewhere in this registry.
+    /// indeed still the owner; the extension simply becomes unclaimed, as
+    /// between two languages the one whose definition applied last claims a
+    /// shared extension.
     fn deindex(&mut self, id: LanguageId, identity: &LanguageIdentity) {
         for ext in &identity.extensions {
             if self.by_ext.get(ext.as_str()) == Some(&id) {
@@ -967,20 +935,19 @@ impl LanguageRegistry {
             .find_map(|(i, _)| self.by_ext.get(&file_name[i + 1..]).copied())
     }
 
-    /// The id of `name` when it has a registered identity (e.g. `"rust"`
-    /// after its `define-language!`), unlike [`Self::id_of`], which answers
-    /// for any interned name.
+    /// The id of `name` when it is defined (e.g. `"rust"` after its
+    /// `define-language!` or `register-grammar!`), unlike [`Self::id_of`],
+    /// which answers for any interned name.
     pub fn defined_id(&self, name: &str) -> Option<LanguageId> {
         let id = self.id_of(name)?;
-        self.entry(id).identity.is_some().then_some(id)
+        self.entry(id).is_defined().then_some(id)
     }
 
-    /// Iterator over registered language names (those with an identity), in
-    /// arbitrary order.
+    /// Iterator over defined language names, in arbitrary order.
     pub fn iter_names(&self) -> impl Iterator<Item = &str> {
         self.entries
             .iter()
-            .filter(|entry| entry.identity.is_some())
+            .filter(|entry| entry.is_defined())
             .map(|entry| &*entry.name)
     }
 
@@ -1014,15 +981,16 @@ impl LanguageRegistry {
             .find_map(|name| self.shebang_to_id.get(name).copied())
     }
 
-    /// Remove a registered language's identity by name, returning it if
-    /// present. Also clears any grammar of the same id, loaded or not, since
-    /// a removed language has no detection and no grammar, matching `remove`
-    /// deleting the language wholesale.
+    /// Remove a defined language wholesale: its identity, if it has one,
+    /// and its grammar, loaded or not. Returns whether `name` was defined.
     #[cfg(any(test, feature = "test-util"))]
-    pub fn remove(&mut self, name: &str) -> Option<LanguageIdentity> {
-        let id = self.id_of(name)?;
-        let identity = self.entry_mut(id).identity.take()?;
-        self.deindex(id, &identity);
+    pub fn remove(&mut self, name: &str) -> bool {
+        let Some(id) = self.defined_id(name) else {
+            return false;
+        };
+        if let Some(identity) = self.entry_mut(id).identity.take() {
+            self.deindex(id, &identity.value);
+        }
         self.entry_mut(id).grammar = None;
         self.lang_order.retain(|&i| i != id);
         // Only reachable if the set already failed to compile before this remove:
@@ -1032,24 +1000,34 @@ impl LanguageRegistry {
         self.rebuild_glob_set()
             .expect("glob rebuild after remove: glob set was already over the NFA limit");
         self.rebuild_grammar_snapshot();
-        Some(identity)
+        true
     }
 
     // ── Grammar ───────────────────────────────────────────────────────────────
 
-    /// Register `source` as `name`'s grammar without opening it: the library
-    /// and queries load on the first [`Self::load_grammar`]. Replaces any
-    /// grammar `name` had, loaded or not.
+    /// Register `source` from `by` as `name`'s grammar without opening it:
+    /// the library and queries load on the first [`Self::load_grammar`].
+    /// Replaces any grammar `name` had, loaded or not, unless a higher
+    /// origin registered it ([`ConfigOrigin::rank`]); `None` then.
     ///
-    /// Auto-registers a bare identity (no extensions/globs/shebangs) if the
-    /// language name has none yet.
-    pub fn register_grammar(&mut self, name: &str, source: GrammarSource) -> LanguageId {
+    /// Defines the language if it is not yet, with no detection data.
+    pub fn register_grammar(
+        &mut self,
+        name: &str,
+        source: GrammarSource,
+        by: ConfigOrigin,
+    ) -> Option<LanguageId> {
+        if !by.rank(self.grammar_origin(name), GRAMMAR_TIE).is_applied() {
+            return None;
+        }
         let id = self.intern(name);
-        self.set_grammar(id, GrammarSlot::Registered(source));
-        id
+        self.set_grammar(id, GrammarSlot::Registered(source), by);
+        Some(id)
     }
 
-    /// Register `source` as `name`'s grammar and load it now.
+    /// Register `source` from `by` as `name`'s grammar and load it now.
+    /// `Ok(None)`, opening nothing, when a higher origin registered `name`'s
+    /// grammar, as [`Self::register_grammar`] ranks it.
     ///
     /// A broken optional query fails the whole attach, same as a broken
     /// `highlights.scm`: they all come from the same trusted pinned source,
@@ -1060,13 +1038,25 @@ impl LanguageRegistry {
         &mut self,
         name: &str,
         source: &GrammarSource,
+        by: ConfigOrigin,
         scope_reg: &mut ScopeRegistry,
-    ) -> Result<Arc<GrammarBundle>, RegisterError> {
+    ) -> Result<Option<Arc<GrammarBundle>>, RegisterError> {
+        if !by.rank(self.grammar_origin(name), GRAMMAR_TIE).is_applied() {
+            return Ok(None);
+        }
         let (grammar, queries) = compile_source(name, source, scope_reg)?;
         let id = self.intern(name);
         let bundle = new_bundle(id, grammar, queries);
-        self.set_grammar(id, GrammarSlot::Loaded(Arc::clone(&bundle)));
-        Ok(bundle)
+        self.set_grammar(id, GrammarSlot::Loaded(Arc::clone(&bundle)), by);
+        Ok(Some(bundle))
+    }
+
+    /// The origin that registered `name`'s grammar, `None` when it has none.
+    fn grammar_origin(&self, name: &str) -> Option<ConfigOrigin> {
+        self.entry(self.id_of(name)?)
+            .grammar
+            .as_ref()
+            .map(|slot| slot.by)
     }
 
     /// `id`'s grammar bundle, loading a registered grammar first. `None` when
@@ -1079,14 +1069,16 @@ impl LanguageRegistry {
         scope_reg: &mut ScopeRegistry,
     ) -> Option<Arc<GrammarBundle>> {
         let entry = self.entry(id);
-        let compiled = match entry.grammar.as_ref()? {
+        let slot = entry.grammar.as_ref()?;
+        let by = slot.by;
+        let compiled = match &slot.value {
             GrammarSlot::Registered(source) => compile_source(&entry.name, source, scope_reg),
             GrammarSlot::Loaded(bundle) => return Some(Arc::clone(bundle)),
         };
         match compiled {
             Ok((grammar, queries)) => {
                 let bundle = new_bundle(id, grammar, queries);
-                self.set_grammar(id, GrammarSlot::Loaded(Arc::clone(&bundle)));
+                self.set_grammar(id, GrammarSlot::Loaded(Arc::clone(&bundle)), by);
                 Some(bundle)
             }
             Err(error) => {
@@ -1099,12 +1091,14 @@ impl LanguageRegistry {
     }
 
     /// Every grammar slot a registration or load gives a language is set
-    /// here. A language with a grammar has an identity and has its bundled
-    /// data file read, so each grammar slot implies both.
-    fn set_grammar(&mut self, id: LanguageId, slot: GrammarSlot) {
-        let entry = self.entry_mut(id);
-        entry.identity.get_or_insert_with(LanguageIdentity::default);
-        entry.grammar = Some(slot);
+    /// here. A language with a grammar is defined and has its bundled data
+    /// file read, so each grammar slot implies both.
+    fn set_grammar(&mut self, id: LanguageId, slot: GrammarSlot, by: ConfigOrigin) {
+        let outcome = Ranked::write(&mut self.entry_mut(id).grammar, slot, by, GRAMMAR_TIE);
+        assert!(
+            outcome.is_applied(),
+            "a grammar slot is set only after its origin was ranked"
+        );
         self.rebuild_grammar_snapshot();
         if !self.bundled_loaded(id) && !self.bundled_pending.contains(&id) {
             self.bundled_pending.push(id);
@@ -1125,7 +1119,7 @@ impl LanguageRegistry {
     /// `id`'s grammar bundle, if it is loaded.
     #[cfg(any(test, feature = "test-util"))]
     pub fn loaded_grammar(&self, id: LanguageId) -> Option<&Arc<GrammarBundle>> {
-        match &self.entry(id).grammar {
+        match self.entry(id).grammar.as_ref().map(|slot| &slot.value) {
             Some(GrammarSlot::Loaded(bundle)) => Some(bundle),
             _ => None,
         }
@@ -1141,7 +1135,7 @@ impl LanguageRegistry {
             .iter()
             .enumerate()
             .filter_map(|(index, entry)| {
-                let grammar = match entry.grammar.as_ref()? {
+                let grammar = match &entry.grammar.as_ref()?.value {
                     GrammarSlot::Loaded(bundle) => SnapshotGrammar::Loaded(Arc::clone(bundle)),
                     GrammarSlot::Registered(_) => {
                         SnapshotGrammar::Unloaded(LanguageId::from_index(index))
@@ -1158,7 +1152,7 @@ impl LanguageRegistry {
         let mut ids = Vec::new();
         for &lang_id in &self.lang_order {
             if let Some(identity) = &self.entry(lang_id).identity {
-                for glob in &identity.globs {
+                for glob in &identity.value.globs {
                     builder.add(glob.0.clone());
                     ids.push(lang_id);
                 }

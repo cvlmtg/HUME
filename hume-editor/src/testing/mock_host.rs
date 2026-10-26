@@ -23,6 +23,7 @@ use hume_scripting::command_name::fold;
 use hume_scripting::host::{
     BufferHost, CommandHost, CursorHost, DiscardUnsaved, DisplayPathForm, EditorHost, EventHost,
     LanguageHost, NativeCall, OptionInput, OptionValue, SelectionInfo, SettingsHost,
+    StoredLanguage,
 };
 
 /// One recorded `run_command_sync` call: `(name, pane, call)`; see
@@ -173,8 +174,8 @@ impl BufferHost for MockHost {
     fn buffer_is_dirty(&self, _id: BufferId) -> Option<bool> {
         None
     }
-    fn buffer_stored_language(&self, _id: BufferId) -> Option<String> {
-        None
+    fn buffer_stored_language(&self, _id: BufferId) -> StoredLanguage {
+        StoredLanguage::default()
     }
     fn cwd(&self) -> hume_platform::path::AbsolutePath {
         hume_platform::path::AbsolutePath::current_dir()
@@ -247,17 +248,24 @@ impl BufferHost for MockHost {
 }
 
 impl SettingsHost for MockHost {
-    fn set_global_option(&mut self, key: &str, value: OptionInput) -> Result<(), String> {
+    fn set_global_option(
+        &mut self,
+        key: &str,
+        value: OptionInput,
+        origin: hume_scripting::ConfigOrigin,
+    ) -> Result<(), String> {
         // MockHost models no editor state to resync derived state against
         // (no history rings, no buffers, no view). write_global is the
         // effect-free raw writer, and it's the only one that fits here.
-        hume::editor::settings::ops::write_global_for_test(key, &value, &mut self.settings)
+        hume::editor::settings::ops::write_global_for_test(key, &value, &mut self.settings, origin)
+            .map(|_| ())
     }
     fn set_buffer_option(
         &mut self,
         _key: &str,
         _value: OptionInput,
         _bid: BufferId,
+        _origin: hume_scripting::ConfigOrigin,
     ) -> Result<(), String> {
         // MockHost models no buffers, so no per-buffer override to write to.
         Err("MockHost: set_buffer_option not available".into())
@@ -293,7 +301,7 @@ impl LanguageHost for MockHost {
     // reproduction of the OS-specific `io::Error`/dlopen text the real host
     // would show: that text is platform- and locale-dependent and not worth
     // faking byte-for-byte for an existence check.
-    fn attach_grammar(&mut self, reg: &hume_scripting::GrammarReg) -> Result<(), String> {
+    fn attach_grammar(&mut self, reg: &hume_scripting::GrammarReg) -> Result<bool, String> {
         if !reg.source.path.exists() {
             return Err(format!(
                 "'{}': grammar load failed: failed to open grammar library: {}",
@@ -309,7 +317,7 @@ impl LanguageHost for MockHost {
             ));
         }
         self.grammars.insert(reg.name.clone());
-        Ok(())
+        Ok(true)
     }
     fn has_grammar(&self, language: &str) -> bool {
         self.grammars.contains(language)
@@ -381,12 +389,15 @@ impl CommandHost for MockHost {
             .map(|d| hume_scripting::CommandProc::Mappable(d.body.proc.clone()))
             .or_else(|| typed.map(|d| hume_scripting::CommandProc::Typed(d.body.proc.clone())))
     }
-    fn unregister_commands_defined_by(&mut self, plugin: &hume_scripting::attribution::EntryId) {
+    fn unregister_commands_registered_in(
+        &mut self,
+        activation: &hume_scripting::attribution::EntryId,
+    ) {
         use hume_scripting::CommandProc;
         self.registered_cmds
-            .retain(|d| !CommandProc::Mappable(d.body.proc.clone()).defined_by(plugin));
+            .retain(|d| !CommandProc::Mappable(d.body.proc.clone()).registered_in(activation));
         self.registered_typed_cmds
-            .retain(|d| !CommandProc::Typed(d.body.proc.clone()).defined_by(plugin));
+            .retain(|d| !CommandProc::Typed(d.body.proc.clone()).registered_in(activation));
     }
     fn register_lazy_command(
         &mut self,

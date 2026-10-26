@@ -268,7 +268,7 @@ fn bind_key_init_mode_queues_bind_effect() {
     assert!(
         matches!(
             effects(&h).as_slice(),
-            [Effect::BindKey { mode: BindMode::Normal, keys, cmd, force_extend: false, keymap: KeymapTarget::Global }]
+            [Effect::BindKey { mode: BindMode::Normal, keys, cmd, force_extend: false, keymap: KeymapTarget::Global, .. }]
                 if keys.len() == 1 && cmd == "move-right"
         ),
         "expected one Effect::BindKey for 'z' → move-right; got: {:?}",
@@ -320,7 +320,7 @@ fn bind_key_command_mode_queues_bind_effect() {
     assert!(
         matches!(
             effects(&h).as_slice(),
-            [Effect::BindKey { mode: BindMode::Command, keys, cmd, force_extend: false, keymap: KeymapTarget::Global }]
+            [Effect::BindKey { mode: BindMode::Command, keys, cmd, force_extend: false, keymap: KeymapTarget::Global, .. }]
                 if keys.len() == 1 && cmd == "my-cmd"
         ),
         "expected one Effect::BindKey in command mode; got: {:?}",
@@ -388,23 +388,23 @@ fn unbind_key_queues_unbind_effect() {
     assert!(
         matches!(
             effects(&h).as_slice(),
-            [Effect::UnbindKey { mode: BindMode::Normal, keys, keymap: KeymapTarget::Global }] if keys.len() == 1
+            [Effect::UnbindKey { mode: BindMode::Normal, keys, keymap: KeymapTarget::Global, .. }] if keys.len() == 1
         ),
         "expected Effect::UnbindKey; got: {:?}",
         effects(&h)
     );
 }
 
-// ── Plugin-load context (plugin_stack non-empty) ──────────────────────────
+// ── Plugin-load context (a plugin body running) ──────────────────────────
 
-/// When `plugin_stack` is non-empty (inside a plugin body), all four bind
+/// Inside a plugin body, all four bind
 /// builtins are permitted even in `EvalMode::PluginActivation`.
 #[test]
 fn bind_key_permitted_during_plugin_load() {
     use crate::attribution::{EntryId, PluginId};
     let mut h = SteelCtxTestHarness::new();
-    h.plugin_stack
-        .push(EntryId::main(PluginId::parse("core:myplugin").unwrap()));
+    h.attribution
+        .push_body(EntryId::main(PluginId::parse("core:myplugin").unwrap()));
     {
         let mut ctx = h.ctx(); // EvalMode::PluginActivation → allowed
         let result = bind_key(
@@ -482,4 +482,41 @@ fn attach_keymap_takes_a_symbol_name() {
         "got: {msg}"
     );
     assert!(effects(&h).is_empty());
+}
+
+/// A bind and an unbind record who made them: init.scm's top level is the
+/// user, a plugin body is a plugin.
+#[test]
+fn binds_and_unbinds_record_their_origin() {
+    use crate::ConfigOrigin;
+    use crate::attribution::{EntryId, PluginId};
+
+    let mut h = SteelCtxTestHarness::new();
+    let queue = |ctx: &mut SteelCtx| {
+        bind_key(ctx, sym("normal"), "z".into(), "cmd".into(), no_keymap())
+            .expect("a global bind queues during init");
+        unbind_key(ctx, sym("normal"), "z".into(), no_keymap())
+            .expect("a global unbind queues during init");
+    };
+    queue(&mut h.ctx_init());
+    h.attribution
+        .push_body(EntryId::main(PluginId::parse("core:myplugin").unwrap()));
+    queue(&mut h.ctx_init());
+
+    let origins: Vec<ConfigOrigin> = effects(&h)
+        .into_iter()
+        .map(|effect| match effect {
+            Effect::BindKey { origin, .. } | Effect::UnbindKey { origin, .. } => *origin,
+            other => panic!("expected a bind or an unbind, got {other:?}"),
+        })
+        .collect();
+    assert_eq!(
+        origins,
+        [
+            ConfigOrigin::User,
+            ConfigOrigin::User,
+            ConfigOrigin::Plugin,
+            ConfigOrigin::Plugin
+        ]
+    );
 }

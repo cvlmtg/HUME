@@ -44,6 +44,8 @@ mod history;
 pub(in crate::editor) mod lifecycle;
 pub(in crate::editor) mod offsets;
 pub(in crate::editor) mod store;
+use hume_origin::Tie;
+use hume_scripting::ConfigOrigin;
 use hume_treesitter::layers::SyntaxLayers;
 use hume_treesitter::registry::LanguageId;
 use hume_treesitter::syntax::Syntax;
@@ -195,12 +197,16 @@ pub(crate) struct Buffer {
     /// Detected or explicitly set language identity (e.g. `rust`, `json`).
     /// `None` for unrecognised filetypes and scratch buffers.
     pub(crate) language: Option<LanguageId>,
-    /// `true` when `language` was written by `:set buffer language=` or Steel's
-    /// `set-buffer-option!`'s `"language"`, rather than by detection. `:reload-config`'s
-    /// reset reads this (before clearing it) to restore the user's own
-    /// assertion across the reload instead of letting re-detection silently
-    /// pick something else. See `clear_languages_all`.
-    pub(in crate::editor) language_explicit: bool,
+    /// The origin of the `:set buffer language=` or `set-buffer-option!`
+    /// `"language"` write that set `language`, `None` when detection did. A
+    /// later write from a lower origin leaves it, and detection never
+    /// replaces it. `:reload-config`'s reset reads this (before clearing it)
+    /// to restore the assertion, with its origin, across the reload instead
+    /// of letting re-detection pick something else. See `clear_languages_all`.
+    pub(in crate::editor) language_by: Option<ConfigOrigin>,
+    /// The origin of the `line-ending` write that set the text's line
+    /// ending, `None` when the text it came with decided it.
+    line_ending_by: Option<ConfigOrigin>,
     /// The text generation most recently announced as an `on-text-changed`
     /// event. `Buffer` cannot reach the event queue (it holds no
     /// `EditorState`), so the hook is raised by diffing this against the
@@ -315,7 +321,8 @@ impl Buffer {
             search_scans: 0,
             overrides: BufferOverrides::default(),
             language: None,
-            language_explicit: false,
+            language_by: None,
+            line_ending_by: None,
             announced_generation,
             announced_history,
             syntax: None,
@@ -579,7 +586,8 @@ impl Buffer {
     ///
     /// Returns whether the content changed (`install` ran, the version moved),
     /// `false` when `new_text` has the same content. The line ending is
-    /// adopted from `new_text` either way.
+    /// adopted from `new_text` either way, which then decides it: any origin
+    /// may set it again.
     pub(in crate::editor::buffer) fn replace_text_recorded(
         &mut self,
         id: BufferId,
@@ -596,6 +604,7 @@ impl Buffer {
         // `install` entirely rather than change the version (and fire
         // `on-text-changed` plus a spurious tree-sitter reparse) for a no-op.
         // Nothing is recorded, as there is nothing to undo to.
+        self.line_ending_by = None;
         if forward.is_identity() {
             self.adopt_line_ending(new_text.line_ending());
             return false;
@@ -654,16 +663,24 @@ impl Buffer {
         self.disk_state = disk::DiskState::InSync;
     }
 
-    /// Set the line ending a save writes. Not an edit: no revision is
-    /// recorded, so undo does not revert it. Refused while the text may not
-    /// change ([`Self::check_text_change`]).
+    /// Set the line ending a save writes, from `by`. Not an edit: no
+    /// revision is recorded, so undo does not revert it. Refused while the
+    /// text may not change ([`Self::check_text_change`]), and `Ok(false)`,
+    /// changing nothing, when a higher origin set it.
     pub(in crate::editor) fn set_line_ending(
         &mut self,
         line_ending: LineEnding,
-    ) -> Result<(), String> {
+        by: ConfigOrigin,
+    ) -> Result<bool, String> {
         self.check_text_change()?;
+        if !by
+            .claim(&mut self.line_ending_by, Tie::LaterWins)
+            .is_applied()
+        {
+            return Ok(false);
+        }
         self.adopt_line_ending(line_ending);
-        Ok(())
+        Ok(true)
     }
 
     /// Take the line ending of text read from disk, which a read-only buffer

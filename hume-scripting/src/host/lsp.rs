@@ -40,14 +40,26 @@ pub struct RangesParams {
 pub struct SupersedeKey(u64);
 
 impl SupersedeKey {
-    /// Wraps an id the host minted.
-    pub fn from_raw(raw: u64) -> Self {
+    /// A key with id `raw`, for a test that needs a known one.
+    #[cfg(test)]
+    pub(crate) fn from_raw(raw: u64) -> Self {
         Self(raw)
     }
 
-    /// The id the host minted.
+    /// The id its [`SupersedeKeys`] minted.
     pub fn raw(self) -> u64 {
         self.0
+    }
+}
+
+/// Mints [`SupersedeKey`]s for a host: each one no earlier call returned.
+#[derive(Debug, Default)]
+pub struct SupersedeKeys(u64);
+
+impl SupersedeKeys {
+    pub fn mint(&mut self) -> SupersedeKey {
+        self.0 += 1;
+        SupersedeKey(self.0)
     }
 }
 
@@ -88,10 +100,11 @@ pub trait LspHost {
     /// One entry per running server instance.
     fn lsp_server_status(&self) -> Vec<crate::types::LspServerStatusEntry>;
 
-    /// Whether `name` is registered (not necessarily attached or running),
-    /// as of the last applied effect: the `lsp-server-registered?` builtin
-    /// overlays the ops queued in its own eval before falling back here.
-    fn lsp_server_registered(&self, name: &crate::types::ServerName) -> bool;
+    /// The origin of `name`'s registration (not necessarily attached or
+    /// running), `None` when it is not registered, as of the last applied
+    /// effect: the `lsp-server-registered?` builtin applies the ops queued
+    /// in its own eval on top of it.
+    fn lsp_server_origin(&self, name: &crate::types::ServerName) -> Option<crate::ConfigOrigin>;
 
     /// A key no other call has returned, for `lsp-supersede-key`.
     fn new_supersede_key(&mut self) -> SupersedeKey;

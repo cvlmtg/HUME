@@ -38,28 +38,28 @@
                                #:complete [complete #f])
   (%define-typed-command! name doc proc inline-output complete))
 
-(define (%apply-command! proc name args)
+(define (%apply-command! entered name args)
   (let ((depth (%arm-inline-output! name)))
-    (if depth
-        (dynamic-wind (lambda () #t)
-                      (lambda () (apply proc args))
-                      (lambda () (%restore-inline-output! depth)))
-        (apply proc args))))
+    (dynamic-wind (lambda () #t)
+                  (lambda () (apply (car entered) args))
+                  (lambda ()
+                    (when depth (%restore-inline-output! depth))
+                    (%leave-command! (cadr entered))))))
 
 (define (%call-held-handler handler hold args)
   (apply handler (append args (list (lambda () (%held-done hold))))))
 
 (define (%dispatch-command! name args)
-  (let ((proc (%lookup-plugin-proc name)))
-    (if proc
-        (%apply-command! proc name args)
+  (let ((entered (%enter-command! name)))
+    (if entered
+        (%apply-command! entered name args)
         (let ((owner (%lazy-command-owner name)))
           (if owner
               (let ((plugin (car owner)) (entry (cadr owner)) (label (caddr owner)))
                 (%activate-plugin-inline! plugin entry)
-                (let ((proc2 (%lookup-plugin-proc name)))
+                (let ((entered2 (%enter-command! name)))
                   (cond
-                    (proc2 (%apply-command! proc2 name args))
+                    (entered2 (%apply-command! entered2 name args))
                     ((%entry-loaded? plugin entry)
                      (error (string-append "'" name "': plugin '" label
                                            "' loaded but did not define it")))

@@ -13,10 +13,10 @@ pub(in crate::editor) use loads::GrammarLoads;
 pub(in crate::editor) use parse::{SyntaxUse, ensure_syntax_current};
 
 use hume_engine::pipeline::BufferId;
-use hume_scripting::ConfigOrigin;
-use hume_treesitter::registry::{
-    ConfigureOutcome, ConfiguredBy, DetectPaths, LanguageFields, LanguageId, detect_language,
-};
+use hume_origin::WriteOutcome;
+use hume_scripting::host::BufferIntrinsicOption;
+use hume_scripting::{BUFFER_LANGUAGE_TIE, ConfigOrigin};
+use hume_treesitter::registry::{DetectPaths, LanguageFields, LanguageId, detect_language};
 
 use super::Editor;
 use super::event::EditorEvent;
@@ -24,18 +24,31 @@ use super::host_impl::EditorHostImpl;
 
 impl Editor {
     /// Set the language identity for buffer `bid`, via plain detection:
-    /// does not mark `language_explicit` (see `set_buffer_language_explicit`
+    /// records no origin. A buffer whose language a user or script asserted
+    /// (`language_by`) never gets here (see `set_buffer_language_explicit`
     /// for the user/script write paths).
     pub(super) fn set_buffer_language(&mut self, bid: BufferId, new_lang: Option<LanguageId>) {
-        self.set_buffer_language_impl(bid, new_lang, false);
+        debug_assert!(
+            self.state.buffers.get(bid).language_by.is_none(),
+            "detection must leave an asserted language alone"
+        );
+        self.set_buffer_language_impl(bid, new_lang);
     }
 
-    /// A user or script `language` option value: `None` clears the language,
-    /// and a name no `define-language!` registered is reported but still
-    /// applied (a grammar or plugin may register it later). The one parser
-    /// `:set buffer language=` and `(set-buffer-option! pane "language" …)`
-    /// share.
-    pub(super) fn set_buffer_language_by_name(&mut self, bid: BufferId, name: Option<&str>) {
+    /// A user or script `language` option value from `by`: `None` clears the
+    /// language, and a name no `define-language!` registered is reported but
+    /// still applied (a grammar or plugin may register it later). The one
+    /// parser `:set buffer language=` and `(set-buffer-option! pane
+    /// "language" …)` share.
+    pub(super) fn set_buffer_language_by_name(
+        &mut self,
+        bid: BufferId,
+        name: Option<&str>,
+        by: ConfigOrigin,
+    ) {
+        if !self.claim_language(bid, by) {
+            return;
+        }
         let new_lang = name.map(|name| {
             if self.state.config.languages.defined_id(name).is_none() {
                 self.report(
@@ -45,34 +58,48 @@ impl Editor {
             }
             self.state.config.languages.intern(name)
         });
-        self.set_buffer_language_explicit(bid, new_lang);
+        self.set_buffer_language_impl(bid, new_lang);
     }
 
     /// Set the language identity for buffer `bid` from a user or script
     /// assertion (`:set buffer language=`, `set-buffer-option!`'s `"language"`)
-    /// rather than detection. Stamps `language_explicit` so
-    /// `:reload-config`'s reset can restore the assertion across the reload
-    /// instead of letting its post-reload re-detect sweep silently pick
-    /// something else (see `clear_languages_all`).
+    /// rather than detection, unless a higher origin asserted the current
+    /// one. Stamps `language_by` so `:reload-config`'s reset can restore the
+    /// assertion across the reload instead of letting its post-reload
+    /// re-detect sweep pick something else (see `clear_languages_all`).
     pub(super) fn set_buffer_language_explicit(
         &mut self,
         bid: BufferId,
         new_lang: Option<LanguageId>,
+        by: ConfigOrigin,
     ) {
-        self.set_buffer_language_impl(bid, new_lang, true);
+        if self.claim_language(bid, by) {
+            self.set_buffer_language_impl(bid, new_lang);
+        }
     }
 
-    /// No-op when the value is unchanged (avoids spurious hook fires), but
-    /// `language_explicit` is still stamped either way, since it records how
-    /// the *current* value arrived, not whether this call changed it.
+    /// Records `by` as the origin of `bid`'s language unless a higher origin
+    /// asserted it, which is traced. Stamped before the write, so it records
+    /// how the current value arrived whether or not the write changes it.
+    fn claim_language(&mut self, bid: BufferId, by: ConfigOrigin) -> bool {
+        let claimed = by
+            .claim(
+                &mut self.state.buffers.get_mut(bid).language_by,
+                BUFFER_LANGUAGE_TIE,
+            )
+            .is_applied();
+        if !claimed {
+            self.state.report_shadowed(
+                "option",
+                format_args!("'{}' value", BufferIntrinsicOption::Language.key()),
+            );
+        }
+        claimed
+    }
+
+    /// No-op when the value is unchanged (avoids spurious hook fires).
     /// On change: writes `Buffer.language`, fires `OnLanguageSet` with `(bid, name-or-#f)`.
-    fn set_buffer_language_impl(
-        &mut self,
-        bid: BufferId,
-        new_lang: Option<LanguageId>,
-        explicit: bool,
-    ) {
-        self.state.buffers.get_mut(bid).language_explicit = explicit;
+    fn set_buffer_language_impl(&mut self, bid: BufferId, new_lang: Option<LanguageId>) {
         if self.state.buffers.get(bid).language == new_lang {
             return;
         }
@@ -148,6 +175,11 @@ impl Editor {
         if self.state.buffers.get(bid).is_synthetic() {
             return;
         }
+        // A user or script asserted this buffer's language: detection leaves
+        // it as it is.
+        if self.state.buffers.get(bid).language_by.is_some() {
+            return;
+        }
         let detected = {
             let buf = self.state.buffers.get(bid);
             let paths = buf.file().map(|file| DetectPaths {
@@ -205,13 +237,10 @@ impl Editor {
                 // earlier in this same `apply_script_effects` call (e.g.
                 // `(define b (open-buffer! path)) (set-buffer-option! b
                 // "language" "notes")` in one eval), already stamped
-                // `language_explicit`, so detection must not clobber it with whatever plain
-                // detection finds for the path, the same reasoning as
-                // `init_scripting`'s post-reload sweep. `OnBufferOpen` still
-                // fires either way: the buffer was still opened.
-                if !self.state.buffers.get(bid).language_explicit {
-                    self.detect_and_set_language(bid);
-                }
+                // `language_by`, which detection leaves as it is.
+                // `OnBufferOpen` still fires either way: the buffer was
+                // still opened.
+                self.detect_and_set_language(bid);
                 self.state.buffers.get_mut(bid).open_hook_pending = false;
                 self.state
                     .queue_event(EditorEvent::OnBufferOpen { buffer: bid });
@@ -238,32 +267,49 @@ impl Editor {
                     extensions,
                     globs,
                     shebangs,
+                    origin,
                 } => {
-                    self.state.config.languages.register_identity_no_rebuild(
+                    let (_, outcome) = self.state.config.languages.register_identity_no_rebuild(
                         &name,
                         &extensions,
                         &globs,
                         &shebangs,
+                        origin,
                     );
-                    any_identity = true;
+                    match outcome {
+                        WriteOutcome::Applied => any_identity = true,
+                        WriteOutcome::Ignored => self.report(
+                            super::Severity::Warning,
+                            format!(
+                                "define-language! '{name}': already defined; this definition is ignored"
+                            ),
+                        ),
+                        WriteOutcome::Shadowed => self
+                            .state
+                            .report_shadowed("define-language!", format_args!("'{name}' definition")),
+                    }
                 }
                 PendingLanguageReg::Configure {
                     name,
                     fields,
                     origin,
                 } => {
-                    let by = match origin {
-                        ConfigOrigin::User => ConfiguredBy::User,
-                        ConfigOrigin::Plugin => ConfiguredBy::Plugin,
-                    };
-                    self.configure_language(&name, fields, by);
+                    self.configure_language(&name, fields, origin);
                 }
-                PendingLanguageReg::Grammar(reg) => grammar_sweeps.push(
-                    self.state
+                PendingLanguageReg::Grammar(reg) => {
+                    let registered = self
+                        .state
                         .config
                         .languages
-                        .register_grammar(&reg.name, reg.source),
-                ),
+                        .register_grammar(&reg.name, reg.source, reg.origin);
+                    match registered {
+                        Some(id) => grammar_sweeps.push(id),
+                        None => self.state.report_shadowed(
+                            "register-grammar!",
+                            format_args!("'{}' grammar", reg.name),
+                        ),
+                    }
+                }
             }
         }
         if any_identity && let Err(e) = self.state.config.languages.rebuild_glob_set() {
@@ -280,8 +326,8 @@ impl Editor {
     /// Apply one `configure-language!` call made by `by`. A name with no
     /// identity is an error. A field already set by the same tier keeps its
     /// value and the ignored write is logged as a warning; a plugin write
-    /// under a user value is dropped quietly.
-    fn configure_language(&mut self, name: &str, fields: LanguageFields, by: ConfiguredBy) {
+    /// under a user value is dropped and traced.
+    fn configure_language(&mut self, name: &str, fields: LanguageFields, by: ConfigOrigin) {
         let languages = &mut self.state.config.languages;
         let Some(id) = languages.defined_id(name) else {
             self.report(
@@ -290,19 +336,20 @@ impl Editor {
             );
             return;
         };
-        let ignored: Vec<&str> = languages
-            .configure_fields(id, fields, by)
-            .into_iter()
-            .filter(|&(_, outcome)| outcome == ConfigureOutcome::Ignored)
-            .map(|(field, _)| field.key())
-            .collect();
-        for field in ignored {
-            self.report(
-                super::Severity::Warning,
-                format!(
-                    "configure-language! '{name}': {field} is already configured; this value is ignored"
+        for (field, outcome) in languages.configure_fields(id, fields, by) {
+            let key = field.key();
+            match outcome {
+                WriteOutcome::Applied => {}
+                WriteOutcome::Ignored => self.report(
+                    super::Severity::Warning,
+                    format!(
+                        "configure-language! '{name}': {key} is already configured; this value is ignored"
+                    ),
                 ),
-            );
+                WriteOutcome::Shadowed => self
+                    .state
+                    .report_shadowed("configure-language!", format_args!("'{name}' {key}")),
+            }
         }
     }
 }

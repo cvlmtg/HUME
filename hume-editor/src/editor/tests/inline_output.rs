@@ -18,11 +18,12 @@ use crate::editor::tui::Tui;
 /// Bind `cmd` to `\` in Normal mode: the one key every test here uses, so a
 /// bound command's body can be reached with a single `feed_event`.
 fn bind_backslash(ed: &mut Editor, cmd: &str) {
-    ed.state.config.keymap.bind_user_with_extend(
+    ed.state.config.keymap.bind(
         BindMode::Normal,
         &[key('\\')],
         cmd.to_owned().into(),
         false,
+        hume_scripting::ConfigOrigin::User,
     );
 }
 

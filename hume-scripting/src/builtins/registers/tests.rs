@@ -244,8 +244,8 @@ impl crate::host::CommandHost for ValidNameHost {
     fn defined_command(&self, name: &str) -> Option<crate::command_procs::CommandProc> {
         self.inner.defined_command(name)
     }
-    fn unregister_commands_defined_by(&mut self, plugin: &crate::attribution::EntryId) {
-        self.inner.unregister_commands_defined_by(plugin)
+    fn unregister_commands_registered_in(&mut self, activation: &crate::attribution::EntryId) {
+        self.inner.unregister_commands_registered_in(activation)
     }
     fn register_lazy_command(
         &mut self,
@@ -340,8 +340,8 @@ impl crate::host::CommandHost for RegisterCapableHost {
     fn defined_command(&self, name: &str) -> Option<crate::command_procs::CommandProc> {
         self.inner.defined_command(name)
     }
-    fn unregister_commands_defined_by(&mut self, plugin: &crate::attribution::EntryId) {
-        self.inner.unregister_commands_defined_by(plugin)
+    fn unregister_commands_registered_in(&mut self, activation: &crate::attribution::EntryId) {
+        self.inner.unregister_commands_registered_in(activation)
     }
     fn register_lazy_command(
         &mut self,

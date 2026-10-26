@@ -71,6 +71,8 @@ Changes apply to the current session and are not persisted. For persistent confi
 
 Sets the global default. The value is a string, a boolean, or an integer, or for a word-list option such as `shell`, a list of strings. A named value, such as `"soft"` or `"word:80"`, is a string, and `get-option` returns it as the string you would write: `"word"`, not `"word:0"`. A word-list option's `get-option` value is a list of strings: `'("sh" "-c")`. Callable from `init.scm`, a plugin body, or a command/hook body: anywhere Scheme code runs.
 
+A value you set, in your `init.scm`, a hook it registers or with `:set`, beats a plugin's value for the same option, whichever comes first; a plugin's later `set-option!` is ignored and noted in `:messages` at trace level. Per-buffer overrides rank the same way among themselves, and a buffer override still beats the global value, whoever set either.
+
 ```scheme
 (set-option! "gutter-line-numbers" "absolute")
 (set-option! "indent-width" 2)
@@ -120,8 +122,10 @@ Sets the global default. The value is a string, a boolean, or an integer, or for
 `bind-key!` takes an editor command's name (the same names in [Builtin Commands](builtin-commands.md)), never a typed command; there's no way to bind one of those to a key.
 
 `bind-key!`: binds a key in the given mode (`'normal`, `'insert`, `'extend`, `'command`). An `'insert` or `'command` binding is a single key.
-`unbind-key!`: removes a binding.
+`unbind-key!`: unbinds a key.
 `bind-key-extend!`: binds a `'normal` key so it always extends the selection, as the one-shot `Ctrl-` motions do.
+
+A binding from your `init.scm` beats a plugin's binding of the same keys, whichever runs first, and a plugin's beats HUME's own. Unbinding keys in your `init.scm` removes a plugin's or HUME's binding of them, and no plugin can bind them again; a plugin's `unbind-key!` leaves yours alone. Bindings from different places combine under one prefix: your `g x` and HUME's `g g` both work, while binding a bare `g` hides every `g` sequence beneath it. Of two bindings of the same keys in your `init.scm`, the later one wins.
 
 To set several bindings at once, use the plural forms:
 

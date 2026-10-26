@@ -16,7 +16,7 @@ use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, PasteHandler, Remo
 /// Built only by [`open_prompt`].
 pub(in crate::editor) struct PromptLayer {
     minibuf: MiniBuffer,
-    callback: hume_scripting::Rooted,
+    callback: hume_scripting::Callback,
     /// The check this prompt passed as it opened, holding where its answer
     /// records when it belongs to a recorded change.
     input: WaitingInput,
@@ -34,7 +34,7 @@ pub(in crate::editor) fn open_prompt(
     view: &EngineView,
     label: String,
     prefill: String,
-    callback: hume_scripting::Rooted,
+    callback: hume_scripting::Callback,
 ) -> Result<(), String> {
     if let Some(replay) = state.dot_replay.as_mut() {
         return replay

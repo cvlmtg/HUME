@@ -24,7 +24,7 @@ pub trait TimerHost {
     /// this host has no timer wheel to schedule onto right now (`EditorHostImpl`
     /// only carries one at three call sites: command dispatch, hook fire,
     /// queued-call drain; not during init).
-    fn schedule_timer(&mut self, ms: u64, thunk: crate::Rooted) -> Option<TimerHandle>;
+    fn schedule_timer(&mut self, ms: u64, thunk: crate::Callback) -> Option<TimerHandle>;
 
     /// Cancels `timer` from [`Self::schedule_timer`]: its thunk never
     /// runs, even one already due and queued. A no-op once the thunk has

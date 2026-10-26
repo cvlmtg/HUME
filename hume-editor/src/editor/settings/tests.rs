@@ -1,6 +1,7 @@
 use super::*;
 use crate::editor::lsp::diagnostics::DiagSeverity;
 use hume_editing::text::LineEnding;
+use hume_scripting::ConfigOrigin;
 
 // ── Default values match previous hardcoded constants ─────────────────────
 
@@ -169,7 +170,7 @@ fn words(items: &[&str]) -> OptionInput {
 fn shell_reads_back_the_words_it_was_set_to() {
     for value in [text(r#""/opt/my sh" -lc"#), words(&["/opt/my sh", "-lc"])] {
         let mut s = EditorSettings::default();
-        write_global("shell", &value, &mut s).unwrap();
+        write_global("shell", &value, &mut s, ConfigOrigin::User).unwrap();
         assert_eq!(
             setting_value("shell", &s, None),
             Some(OptionValue::List(vec![
@@ -185,7 +186,7 @@ fn shell_reads_back_the_words_it_was_set_to() {
 fn shell_refuses_an_empty_program() {
     for value in [text("  "), text(r#""" -c"#), words(&["", "-c"]), words(&[])] {
         let mut s = EditorSettings::default();
-        let err = write_global("shell", &value, &mut s)
+        let err = write_global("shell", &value, &mut s, ConfigOrigin::User)
             .expect_err(&format!("{value:?} names no program"));
         assert!(err.starts_with("invalid value for 'shell'"), "{err}");
         assert_eq!(s.shell, ShellCommand::default());
@@ -195,11 +196,16 @@ fn shell_refuses_an_empty_program() {
 #[test]
 fn only_the_shell_setting_takes_a_list() {
     let mut s = EditorSettings::default();
-    let err = write_global("word-chars", &words(&["_", "-"]), &mut s)
-        .expect_err("word-chars is not a word list");
+    let err = write_global(
+        "word-chars",
+        &words(&["_", "-"]),
+        &mut s,
+        ConfigOrigin::User,
+    )
+    .expect_err("word-chars is not a word list");
     assert!(err.starts_with("invalid value for 'word-chars'"), "{err}");
     let mut ov = BufferOverrides::default();
-    assert!(write_buffer("indent-width", &words(&["4"]), &mut ov).is_err());
+    assert!(write_buffer("indent-width", &words(&["4"]), &mut ov, ConfigOrigin::User).is_err());
 }
 
 #[test]
@@ -280,7 +286,13 @@ fn setting_value_whitespace_newline_round_trips_through_write_global() {
     // parse_show_newline's inverse.
     for wire in SHOW_NEWLINE_VALUES {
         let mut s = EditorSettings::default();
-        write_global("whitespace-newline", &text(wire), &mut s).unwrap();
+        write_global(
+            "whitespace-newline",
+            &text(wire),
+            &mut s,
+            ConfigOrigin::User,
+        )
+        .unwrap();
         assert_eq!(
             setting_value("whitespace-newline", &s, None),
             Some(OptionValue::Str(wire.to_string()))
@@ -308,7 +320,13 @@ fn setting_value_statusline_round_trips_through_write_global() {
     // parse_statusline's inverse. (get-option "statusline") must return the
     // written value after a successful :set global statusline=... write.
     let mut s = EditorSettings::default();
-    write_global("statusline", &text("Mode,FileName||Position"), &mut s).unwrap();
+    write_global(
+        "statusline",
+        &text("Mode,FileName||Position"),
+        &mut s,
+        ConfigOrigin::User,
+    )
+    .unwrap();
     assert_eq!(
         setting_value("statusline", &s, None),
         Some(OptionValue::Str("Mode,FileName||Position".to_string()))
@@ -390,17 +408,80 @@ fn auto_pairs_ref_enabled_falls_back_to_global_when_no_override() {
     assert_eq!(pairs, hume_ops::auto_pairs::DEFAULT_PAIRS);
 }
 
+// ── Origin ranking ─────────────────────────────────────────────────────────
+
+#[test]
+fn a_global_value_ranks_by_its_writers_origin() {
+    let mut s = EditorSettings::default();
+    let mut write = |value: &str, by| write_global("indent-width", &text(value), &mut s, by);
+    assert_eq!(write("2", ConfigOrigin::User), Ok(true));
+    assert_eq!(write("8", ConfigOrigin::Plugin), Ok(false));
+    assert_eq!(write("3", ConfigOrigin::User), Ok(true));
+    assert_eq!(s.indent_width, 3);
+}
+
+#[test]
+fn a_plugins_global_value_gives_way_to_a_later_plugins_and_a_users() {
+    let mut s = EditorSettings::default();
+    let mut write = |value: &str, by| write_global("indent-width", &text(value), &mut s, by);
+    assert_eq!(write("2", ConfigOrigin::Plugin), Ok(true));
+    assert_eq!(write("5", ConfigOrigin::Plugin), Ok(true));
+    assert_eq!(write("7", ConfigOrigin::User), Ok(true));
+    assert_eq!(s.indent_width, 7);
+}
+
+#[test]
+fn a_shadowed_global_write_still_rejects_a_bad_value() {
+    let mut s = EditorSettings::default();
+    write_global("indent-width", &text("2"), &mut s, ConfigOrigin::User).unwrap();
+    assert!(write_global("indent-width", &text("wide"), &mut s, ConfigOrigin::Plugin).is_err());
+}
+
+#[test]
+fn global_origins_are_per_key() {
+    let mut s = EditorSettings::default();
+    write_global("indent-width", &text("2"), &mut s, ConfigOrigin::User).unwrap();
+    assert_eq!(
+        write_global("scroll-margin", &text("1"), &mut s, ConfigOrigin::Plugin),
+        Ok(true)
+    );
+    assert_eq!(s.scroll_margin, 1);
+}
+
+#[test]
+fn a_buffer_override_ranks_by_its_writers_origin() {
+    let mut ov = BufferOverrides::default();
+    let mut write = |value: &str, by| write_buffer("indent-width", &text(value), &mut ov, by);
+    assert_eq!(write("2", ConfigOrigin::User), Ok(true));
+    assert_eq!(write("8", ConfigOrigin::Plugin), Ok(false));
+    assert_eq!(ov.indent_width, Some(2));
+}
+
+#[test]
+fn default_settings_and_overrides_hold_no_origin() {
+    let mut s = EditorSettings::default();
+    let mut ov = BufferOverrides::default();
+    assert_eq!(
+        write_global("indent-width", &text("2"), &mut s, ConfigOrigin::Bundled),
+        Ok(true)
+    );
+    assert_eq!(
+        write_buffer("indent-width", &text("2"), &mut ov, ConfigOrigin::Bundled),
+        Ok(true)
+    );
+}
+
 // ── write_global ───────────────────────────────────────────────────────────
 
 fn global(key: &str, value: &str) -> Result<EditorSettings, String> {
     let mut s = EditorSettings::default();
-    write_global(key, &text(value), &mut s)?;
+    write_global(key, &text(value), &mut s, ConfigOrigin::User)?;
     Ok(s)
 }
 
 fn buffer(key: &str, value: &str) -> Result<BufferOverrides, String> {
     let mut ov = BufferOverrides::default();
-    write_buffer(key, &text(value), &mut ov)?;
+    write_buffer(key, &text(value), &mut ov, ConfigOrigin::User)?;
     Ok(ov)
 }
 
@@ -887,7 +968,7 @@ fn set_buffer_whitespace_fields_are_independent() {
 #[test]
 fn set_buffer_global_only_setting_errors() {
     let mut ov = BufferOverrides::default();
-    let err = write_buffer("scroll-margin", &text("3"), &mut ov).unwrap_err();
+    let err = write_buffer("scroll-margin", &text("3"), &mut ov, ConfigOrigin::User).unwrap_err();
     assert!(
         err.contains("global-only"),
         "expected 'global-only' in error: {err}"
@@ -904,7 +985,7 @@ fn set_buffer_global_only_all_keys_error() {
         if !matches!(setting_scopes(key), [Scope::Global]) {
             continue;
         }
-        let err = write_buffer(key, &text("1"), &mut ov).unwrap_err();
+        let err = write_buffer(key, &text("1"), &mut ov, ConfigOrigin::User).unwrap_err();
         assert!(
             err.contains("global-only"),
             "key '{key}': expected 'global-only' in error: {err}",
@@ -935,7 +1016,7 @@ fn set_buffer_whitespace_invalid_value_errors() {
 fn set_global_tab_width_propagates_to_unoverridden_buffer() {
     let mut global = EditorSettings::default();
     let ov = BufferOverrides::default();
-    write_global("indent-width", &text("2"), &mut global).unwrap();
+    write_global("indent-width", &text("2"), &mut global, ConfigOrigin::User).unwrap();
     // Text has no override, so it inherits the new global value.
     assert_eq!(ov.indent_width(&global), 2);
 }
@@ -944,7 +1025,13 @@ fn set_global_tab_width_propagates_to_unoverridden_buffer() {
 fn set_global_tab_style_propagates_to_unoverridden_buffer() {
     let mut global = EditorSettings::default();
     let ov = BufferOverrides::default();
-    write_global("indent-style", &text("soft"), &mut global).unwrap();
+    write_global(
+        "indent-style",
+        &text("soft"),
+        &mut global,
+        ConfigOrigin::User,
+    )
+    .unwrap();
     assert_eq!(ov.indent_style(&global), TabStyle::Soft);
 }
 
@@ -952,24 +1039,54 @@ fn set_global_tab_style_propagates_to_unoverridden_buffer() {
 fn apply_statusline_wrong_section_count_errors() {
     let mut s = EditorSettings::default();
     // Two pipes required; one pipe produces only two parts.
-    assert!(write_global("statusline", &text("Mode|Position"), &mut s).is_err());
+    assert!(
+        write_global(
+            "statusline",
+            &text("Mode|Position"),
+            &mut s,
+            ConfigOrigin::User
+        )
+        .is_err()
+    );
     // Three pipes / four sections produce four parts, also rejected.
-    assert!(write_global("statusline", &text("Mode|Position|Cwd|Extra"), &mut s).is_err());
+    assert!(
+        write_global(
+            "statusline",
+            &text("Mode|Position|Cwd|Extra"),
+            &mut s,
+            ConfigOrigin::User
+        )
+        .is_err()
+    );
 }
 
 #[test]
 fn apply_statusline_unknown_element_name_errors() {
     let mut s = EditorSettings::default();
-    assert!(write_global("statusline", &text("NotAnElement||"), &mut s).is_err());
+    assert!(
+        write_global(
+            "statusline",
+            &text("NotAnElement||"),
+            &mut s,
+            ConfigOrigin::User
+        )
+        .is_err()
+    );
 }
 
 #[test]
 fn apply_statusline_empty_element_name_errors() {
     let mut s = EditorSettings::default();
-    let err = write_global("statusline", &text("Mode,,FileName||"), &mut s).unwrap_err();
+    let err = write_global(
+        "statusline",
+        &text("Mode,,FileName||"),
+        &mut s,
+        ConfigOrigin::User,
+    )
+    .unwrap_err();
     assert!(err.contains("empty element name"), "got: {err}");
     assert!(
-        write_global("statusline", &text("Mode,||"), &mut s).is_err(),
+        write_global("statusline", &text("Mode,||"), &mut s, ConfigOrigin::User).is_err(),
         "a trailing comma leaves an empty name too"
     );
 }
@@ -977,7 +1094,7 @@ fn apply_statusline_empty_element_name_errors() {
 #[test]
 fn apply_statusline_text_scope_rejected() {
     let mut ov = BufferOverrides::default();
-    assert!(write_buffer("statusline", &text("||"), &mut ov).is_err());
+    assert!(write_buffer("statusline", &text("||"), &mut ov, ConfigOrigin::User).is_err());
 }
 
 #[test]
@@ -1038,7 +1155,9 @@ fn all_setting_keys_are_recognized_by_apply_setting() {
         assert!(!scopes.is_empty(), "key '{key}' has no declared scope");
         if scopes.contains(&Scope::Global) {
             let mut s = EditorSettings::default();
-            if let Err(err) = write_global(key, &text("\u{0}garbage\u{0}"), &mut s) {
+            if let Err(err) =
+                write_global(key, &text("\u{0}garbage\u{0}"), &mut s, ConfigOrigin::User)
+            {
                 assert!(
                     !err.contains("unknown setting"),
                     "key '{key}' (global) from all_setting_keys() is not recognized: {err}"
@@ -1047,7 +1166,9 @@ fn all_setting_keys_are_recognized_by_apply_setting() {
         }
         if scopes.contains(&Scope::Buffer) {
             let mut ov = BufferOverrides::default();
-            if let Err(err) = write_buffer(key, &text("\u{0}garbage\u{0}"), &mut ov) {
+            if let Err(err) =
+                write_buffer(key, &text("\u{0}garbage\u{0}"), &mut ov, ConfigOrigin::User)
+            {
                 assert!(
                     !err.contains("unknown setting"),
                     "key '{key}' (buffer) from all_setting_keys() is not recognized: {err}"
@@ -1258,15 +1379,33 @@ fn settings_enum_parse_error_lists_every_accepted_value() {
 fn set_names_the_failing_key_in_enum_errors() {
     let mut settings = EditorSettings::default();
     assert_eq!(
-        write_global("whitespace-tab", &text("bogus"), &mut settings).unwrap_err(),
+        write_global(
+            "whitespace-tab",
+            &text("bogus"),
+            &mut settings,
+            ConfigOrigin::User
+        )
+        .unwrap_err(),
         "invalid value for 'whitespace-tab': expected none, all, or trailing, got 'bogus'"
     );
     assert_eq!(
-        write_global("whitespace-space", &text("bogus"), &mut settings).unwrap_err(),
+        write_global(
+            "whitespace-space",
+            &text("bogus"),
+            &mut settings,
+            ConfigOrigin::User
+        )
+        .unwrap_err(),
         "invalid value for 'whitespace-space': expected none, all, or trailing, got 'bogus'"
     );
     assert_eq!(
-        write_global("wrap-mode", &text("sideways:3"), &mut settings).unwrap_err(),
+        write_global(
+            "wrap-mode",
+            &text("sideways:3"),
+            &mut settings,
+            ConfigOrigin::User
+        )
+        .unwrap_err(),
         "invalid value for 'wrap-mode': expected none, soft[:N], word[:N], or indent[:N], got 'sideways:3'"
     );
 }
@@ -1323,7 +1462,7 @@ fn every_parser_kind_names_the_key_once() {
     for (key, value, expected) in cases {
         let mut settings = EditorSettings::default();
         assert_eq!(
-            write_global(key, &text(value), &mut settings).unwrap_err(),
+            write_global(key, &text(value), &mut settings, ConfigOrigin::User).unwrap_err(),
             expected,
             "{key}={value}"
         );
@@ -1490,8 +1629,8 @@ fn whitespace_render_values_round_trip_through_parse() {
 
 #[test]
 fn whitespace_render_to_text_round_trips_through_parse() {
-    // `option_value!`'s `enum_str` kind (settings.rs) reads this type back as
-    // `Symbol(to_text())` for `(get-option "whitespace-space"|"whitespace-tab")`,
+    // `option_value!`'s `from_str` kind (settings.rs) reads this type back as
+    // `Str(to_text())` for `(get-option "whitespace-space"|"whitespace-tab")`,
     // so `to_text` must round-trip through the `parse` that writes it.
     for variant in [
         WhitespaceRender::None,

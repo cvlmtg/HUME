@@ -37,7 +37,7 @@ enum CharThen {
     Dispatch(PendingDispatch),
     /// Call a Steel `(on-next-char! …)` callback with the character, or with
     /// `#f` when none is read.
-    Steel(hume_scripting::Rooted),
+    Steel(hume_scripting::Callback),
     /// The macro register `Q` records into or `q` replays.
     Macro(MacroRead),
     /// The register a `"` prefix names for the next yank/delete/change/paste.
@@ -101,7 +101,7 @@ pub(in crate::editor) fn read_command_char(
 pub(in crate::editor) fn read_steel_char(
     state: &mut EditorState,
     view: &EngineView,
-    callback: hume_scripting::Rooted,
+    callback: hume_scripting::Callback,
 ) -> Result<(), String> {
     read_interactive(state, view, CharThen::Steel(callback), InputOpener::Code)
         .map_err(|refusal| refusal.to_string())

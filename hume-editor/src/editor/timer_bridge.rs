@@ -20,7 +20,7 @@ use super::timers::{TimerId, TimerWheel};
 /// diagnostics-pull debounce, which pulls for the buffer as it is when it
 /// fires).
 pub(super) enum TimerPayload {
-    SteelThunk(hume_scripting::Rooted),
+    SteelThunk(hume_scripting::Callback),
     ViewportDebounce(PaneId),
     DiagnosticPullDebounce(BufferId),
     BeforeSaveTimeout(BufferId),

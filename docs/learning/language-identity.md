@@ -32,9 +32,10 @@ detection logic tries three strategies in order, stopping at the first match:
 1. **Glob patterns** — registered patterns like `Makefile`, `*.config.js`, or
    `{Dockerfile,dockerfile}` are matched against the full filename. This tier
    exists for files that have a meaningful name but no extension, or whose
-   extension alone is ambiguous. Glob patterns are ordered by registration
-   time; the last registered pattern wins, so plugins can override built-in
-   mappings.
+   extension alone is ambiguous. When two languages' patterns match the same
+   file, the language defined last wins. Which definition of one language
+   counts is decided by who made it, not when: the user's beats a plugin's,
+   and a plugin's beats the built-in one.
 
 2. **Extensions** — if no glob matches, the file extension is looked up
    (`.rs` → Rust, `.py` → Python, etc.). This handles the common case: most
@@ -52,7 +53,8 @@ is a valid state: plain text files, scratch buffers, and binary files are all
 language-less.
 
 Detection also runs when a buffer is reloaded, because a file can change what
-language it is.
+language it is. A language set by hand stays, though: detection never
+replaces one the user or a script chose.
 
 ## The funnel
 

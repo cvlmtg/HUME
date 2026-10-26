@@ -10,8 +10,8 @@ use std::cmp::Reverse;
 
 use hume_engine::types::TruncateEnd;
 use hume_platform::process::line_source::SpawnedLineSource;
-use hume_scripting::Rooted;
 use hume_scripting::host::{HostToken, LivePickerOpts, PickerOpts};
+use hume_scripting::{Callback, Rooted};
 use termina::event::KeyEvent;
 
 use super::super::super::fuzzy::{FuzzyMatcher, FuzzyProfile};
@@ -68,7 +68,7 @@ enum PickerMode {
     /// `rebuild_filtered`'s doc for why a live session's ranking is always
     /// the identity permutation over `items`.
     Live {
-        on_query_change: Rooted,
+        on_query_change: Callback,
     },
 }
 
@@ -119,7 +119,7 @@ pub(in crate::editor) struct PickerSession {
     selected: usize,
     /// First visible row index into `filtered`.
     scroll: usize,
-    on_select: Rooted,
+    on_select: Callback,
     /// Label painted before the query in the input line, e.g. `"files: "`.
     /// Empty by default: an empty prompt renders identically to no prompt
     /// at all.
@@ -159,7 +159,7 @@ pub(in crate::editor) struct PickerSession {
     /// built-in picker key. A linear scan, not a map: real sessions carry a
     /// handful of entries at most, so scanning a `Vec` beats hashing into a
     /// map.
-    actions: Vec<(CanonicalKey, Rooted)>,
+    actions: Vec<(CanonicalKey, Callback)>,
     /// Whether every item came from the list `picker!` opened with: no
     /// `#:pending`, no `live-picker!`, and nothing fed since (`push`,
     /// `replace`, an attached source). Only then does a re-run `picker!`
@@ -175,7 +175,7 @@ impl PickerSession {
     /// `pending` because a populated list needs no "still arriving" marker.
     /// Every later feed clears `items_from_opener`.
     pub(in crate::editor) fn new(
-        on_select: Rooted,
+        on_select: Callback,
         opts: PickerOpts,
         items: Vec<PickerItem>,
     ) -> Self {
@@ -206,7 +206,7 @@ impl PickerSession {
     /// `picker-push!`/`picker-replace!`/`picker-source-spawn!`):
     /// `population` starts `Complete` and only changes once a source
     /// actually attaches.
-    pub(in crate::editor) fn new_live(on_select: Rooted, opts: LivePickerOpts) -> Self {
+    pub(in crate::editor) fn new_live(on_select: Callback, opts: LivePickerOpts) -> Self {
         Self::build(
             on_select,
             opts.prompt,
@@ -221,11 +221,11 @@ impl PickerSession {
     }
 
     fn build(
-        on_select: Rooted,
+        on_select: Callback,
         prompt: String,
         query: String,
         truncate: TruncateEnd,
-        actions: Vec<(KeyEvent, Rooted)>,
+        actions: Vec<(KeyEvent, Callback)>,
         population: Population,
         mode: PickerMode,
     ) -> Self {
@@ -486,7 +486,7 @@ impl PickerSession {
     /// `set_query`) a type error instead of a silent desync between the
     /// visible query and a live source.
     #[must_use = "queue this via queue_steel_call, or the query-change notification is silently skipped"]
-    pub(in crate::editor) fn insert_char(&mut self, ch: char) -> Option<Rooted> {
+    pub(in crate::editor) fn insert_char(&mut self, ch: char) -> Option<Callback> {
         self.query.push(ch);
         self.rerank();
         self.notify_query_change()
@@ -497,7 +497,7 @@ impl PickerSession {
     /// single mutation, one `rerank`, and at most one `on_query_change`
     /// callback, rather than one of each per pasted character.
     #[must_use = "queue this via queue_steel_call, or the query-change notification is silently skipped"]
-    pub(in crate::editor) fn insert_str(&mut self, s: &str) -> Option<Rooted> {
+    pub(in crate::editor) fn insert_str(&mut self, s: &str) -> Option<Callback> {
         self.query.push_str(s);
         self.rerank();
         self.notify_query_change()
@@ -510,7 +510,7 @@ impl PickerSession {
     /// [`insert_char`](Self::insert_char)). The query didn't change, so
     /// there is nothing to notify either way.
     #[must_use = "queue this via queue_steel_call, or the query-change notification is silently skipped"]
-    pub(in crate::editor) fn pop_grapheme(&mut self) -> Option<Rooted> {
+    pub(in crate::editor) fn pop_grapheme(&mut self) -> Option<Callback> {
         if self.query.is_empty() {
             return None;
         }
@@ -527,7 +527,7 @@ impl PickerSession {
     /// i.e. only for a live session) arms `requery_armed` so `is_pending`
     /// reads "still arriving" for the whole stop/debounce/respawn gap a
     /// requery opens, not just while a source happens to be attached.
-    fn notify_query_change(&mut self) -> Option<Rooted> {
+    fn notify_query_change(&mut self) -> Option<Callback> {
         let PickerMode::Live { on_query_change } = &self.mode else {
             return None;
         };
@@ -630,7 +630,7 @@ impl PickerSession {
 
     /// Cheap `Rc` clone: the accept/dismiss dispatch fires this via
     /// `queue_steel_call`; the store itself never invokes it.
-    pub(in crate::editor) fn on_select(&self) -> &Rooted {
+    pub(in crate::editor) fn on_select(&self) -> &Callback {
         &self.on_select
     }
 
@@ -638,7 +638,7 @@ impl PickerSession {
     /// built-in picker key, so an entry for a key `picker_input`
     /// (`input_stack/picker/mod.rs`) already matches (movement, `Backspace`,
     /// `Enter`, `Escape`, query input) can never be reached from here.
-    pub(in crate::editor) fn action_for(&self, key: CanonicalKey) -> Option<&Rooted> {
+    pub(in crate::editor) fn action_for(&self, key: CanonicalKey) -> Option<&Callback> {
         self.actions
             .iter()
             .find_map(|(bound, proc)| (*bound == key).then_some(proc))

@@ -191,7 +191,8 @@ impl Editor {
         }
         // `detect_and_set_language` handles a genuine language change
         // (shebang/extension) regardless of `mutated`, re-running setup via
-        // `set_buffer_language` itself.
+        // `set_buffer_language` itself, and leaves an asserted language as it
+        // is.
         self.detect_and_set_language(id);
 
         // Drop stale saved scrolls for the reloaded buffer on every pane:

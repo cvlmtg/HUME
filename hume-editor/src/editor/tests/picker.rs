@@ -19,7 +19,11 @@ fn marker(name: &str) -> SteelVal {
 }
 
 fn open_test_session(ed: &mut Editor, items: &[&str], callback: SteelVal, opts: PickerOpts) {
-    let mut session = PickerSession::new(hume_scripting::Rooted::new(callback), opts, Vec::new());
+    let mut session = PickerSession::new(
+        hume_scripting::Callback::for_test(callback),
+        opts,
+        Vec::new(),
+    );
     let picker_items: Vec<PickerItem> = items
         .iter()
         .map(|s| PickerItem {
@@ -230,7 +234,7 @@ fn bound_action_key_closes_picker_and_fires_its_own_callback_not_on_select() {
         PickerOpts {
             actions: vec![(
                 key_ctrl('t'),
-                hume_scripting::Rooted::new(marker("split-cb")),
+                hume_scripting::Callback::for_test(marker("split-cb")),
             )],
             ..Default::default()
         },
@@ -280,11 +284,11 @@ fn actions_entry_for_a_reserved_key_never_overrides_the_built_in_behavior() {
             actions: vec![
                 (
                     key_enter(),
-                    hume_scripting::Rooted::new(marker("hijacked-enter")),
+                    hume_scripting::Callback::for_test(marker("hijacked-enter")),
                 ),
                 (
                     key_ctrl('n'),
-                    hume_scripting::Rooted::new(marker("hijacked-ctrl-n")),
+                    hume_scripting::Callback::for_test(marker("hijacked-ctrl-n")),
                 ),
             ],
             ..Default::default()
@@ -536,7 +540,7 @@ fn picker_feed_rejects_a_stale_token_and_leaves_items_and_pending_untouched() {
     host.open_picker(
         pane,
         vec![],
-        hume_scripting::Rooted::new(SteelVal::Void),
+        hume_scripting::Callback::for_test(SteelVal::Void),
         PickerOpts {
             pending: true,
             ..Default::default()
@@ -580,7 +584,7 @@ fn picker_feed_replace_mode_rejects_a_stale_token_and_leaves_items_untouched() {
             "a".to_string(),
             hume_scripting::Rooted::new(SteelVal::StringV("a".into())),
         )],
-        hume_scripting::Rooted::new(SteelVal::Void),
+        hume_scripting::Callback::for_test(SteelVal::Void),
         PickerOpts::default(),
     )
     .unwrap();
@@ -617,12 +621,12 @@ fn picker_opens_over_a_live_menu_and_the_menu_resumes_once_it_closes() {
         &ed.view,
         crate::editor::input_stack::MenuLayer::for_test(
             crate::editor::tests::non_empty_strings(&["m0", "m1"]),
-            hume_scripting::Rooted::new(marker("menu-cb")),
+            hume_scripting::Callback::for_test(marker("menu-cb")),
         ),
     );
 
     let mut session = PickerSession::new(
-        hume_scripting::Rooted::new(marker("cb")),
+        hume_scripting::Callback::for_test(marker("cb")),
         PickerOpts::default(),
         Vec::new(),
     );

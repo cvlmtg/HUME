@@ -73,12 +73,14 @@ fn bind_inner(
     // `pop_effect_marks(false)` before the editor ever sees them. Validation
     // above still fails synchronously: a bad mode or key sequence is the
     // script's bug, not a side effect to defer.
+    let origin = ctx.registration_origin();
     ctx.push_effect(Effect::BindKey {
         mode,
         keys,
         cmd: cmd_name,
         force_extend,
         keymap,
+        origin,
     });
     Ok(SteelVal::Void)
 }
@@ -89,6 +91,8 @@ fn bind_inner(
 ///
 /// Binds a key sequence in the given mode to a named command, in the global
 /// keymap or, with `#:keymap`, in the named keymap, creating it if needed.
+/// It ranks as the calling code's origin: a binding a higher origin made of
+/// the same sequence stays in force, whichever came first.
 ///
 /// - `mode`: a symbol: `'normal`, `'extend`, `'insert`, or `'command`.
 ///   `'insert` and `'command` take a single key.
@@ -128,9 +132,10 @@ pub(crate) fn bind_key_extend(
 
 /// `(unbind-key! 'mode key-sequence [#:keymap name])`
 ///
-/// Removes the binding for `key-sequence` in `mode`, from the global keymap
-/// or the named one. A no-op if the sequence is already unbound. A global
-/// unbind is only valid during `init.scm` or plugin load.
+/// Unbinds `key-sequence` in `mode`, in the global keymap or the named one,
+/// for the calling code's origin and every lower one: a binding a higher
+/// origin made stays. A global unbind is only valid during `init.scm` or
+/// plugin load.
 pub(crate) fn unbind_key(
     ctx: &mut SteelCtx,
     mode: SteelVal,
@@ -140,7 +145,13 @@ pub(crate) fn unbind_key(
     let keymap = keymap_target(ctx, keymap)?;
     let mode = mode_from_symbol(&mode)?;
     let keys = parse_key_sequence(&key_str).map_err(generic_err)?;
-    ctx.push_effect(Effect::UnbindKey { mode, keys, keymap });
+    let origin = ctx.registration_origin();
+    ctx.push_effect(Effect::UnbindKey {
+        mode,
+        keys,
+        keymap,
+        origin,
+    });
     Ok(SteelVal::Void)
 }
 
