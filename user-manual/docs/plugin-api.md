@@ -337,7 +337,7 @@ Everyday string work (trimming, splitting on a separator, case conversion, prefi
 | `(data-dir)` | HUME's data directory, or `#f` if unavailable |
 | `(runtime-dir)` | HUME's runtime directory, or `#f` if unavailable |
 | `(cwd)` | HUME's working directory (what `:pwd` prints) |
-| `(set-cwd! path)` | Change HUME's working directory, like `:cd`; a relative `path` is joined onto the current one; raises if `path` is not a directory. Works from `init.scm` too |
+| `(set-cwd! path)` | Change HUME's working directory, the one `:cd` moves. `path` is taken as written (see below): a relative one is joined onto the current directory. Raises if `path` is not a directory. Works from `init.scm` too |
 | `(replace-dir! src dest)` | Move the directory `src` to `dest` (both relative to the working directory), replacing the directory `dest` held and creating `dest`'s parent if needed. Either `src` ends up at `dest` or the call raises and leaves `dest` as it was, even if the script budget runs out during it |
 | `(try-lock-file! path)` | Take an exclusive lock on the file `path` (relative to the working directory), creating the file if needed: `#t` when taken, `#f` when another HUME or program holds it. The lock lasts until `unlock-file!`, until the command, hook or callback that took it returns or is stopped, or until HUME exits, so a lock is never left behind. Taking a lock the same command already holds raises |
 | `(unlock-file! path)` | Release a lock `try-lock-file!` took; raises when this command doesn't hold it |

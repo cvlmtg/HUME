@@ -95,9 +95,9 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
     // ── Buffer lifecycle ─────────────────────────────────────────────────────
     fn open_buffer(&mut self, path: &AbsolutePath) -> Result<BufferId, String> {
         // A missing path is openable here as `:e` opens one; see
-        // `Buffer::from_file_or_new`. Language detection is not done here;
-        // see `Effect::DetectBufferLanguage`'s doc; the `open-buffer!`
-        // builtin queues it once this returns.
+        // `Buffer::from_file_or_new`. The funnel queues language detection
+        // and the open hook rather than running them inside this eval; see
+        // `queue_open_announcement`.
         let (bid, _is_new) = crate::editor::buffer::lifecycle::open_or_dedup_and_notify(
             self.view,
             self.state,

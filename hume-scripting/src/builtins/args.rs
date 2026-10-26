@@ -877,8 +877,10 @@ impl BuiltinArg for Usize {
 
 /// A path argument, taken as written and made absolute by [`under_cwd`]: a
 /// relative one joins onto the editor's working directory, and `~` and
-/// variables are not expanded. A builtin declares its path parameters as
-/// this type in the `builtins!` table, so none resolves one by hand.
+/// variables are not expanded. A builtin declares its positional path
+/// parameters as this type in the `builtins!` table; a keyword or
+/// structured path (`#:cwd`, `register-grammar!`, `goto-location!`) goes
+/// through the same [`under_cwd`].
 #[derive(Debug, Clone)]
 pub(crate) struct ScriptPath(PathBuf);
 
