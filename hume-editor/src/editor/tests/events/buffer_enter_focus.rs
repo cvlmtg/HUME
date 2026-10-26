@@ -337,10 +337,10 @@ fn on_option_change_fires_key_and_value_after_a_set_global() {
     );
 }
 
-/// An enum option's new value reaches the hook as the symbol `get-option`
-/// returns, not the text `:set` was given.
+/// An enum option's new value reaches the hook as the string `get-option`
+/// returns.
 #[test]
-fn on_option_change_passes_an_enum_value_as_a_symbol() {
+fn on_option_change_passes_an_enum_value_as_its_name() {
     use crate::testing::MockHost;
     use hume_scripting::ScriptingHost;
 
@@ -349,7 +349,7 @@ fn on_option_change_passes_an_enum_value_as_a_symbol() {
     let mut mock = MockHost::new();
     host.eval_source(
         r#"(register-hook! 'on-option-change (lambda (key value)
-             (log! 'trace (if (equal? value 'soft) "soft-symbol" "other"))))"#,
+             (log! 'trace (if (equal? value "soft") "soft-name" "other"))))"#,
         &mut mock,
     )
     .unwrap();
@@ -363,7 +363,7 @@ fn on_option_change_passes_an_enum_value_as_a_symbol() {
         ed.state
             .message_log
             .entries()
-            .any(|e| e.severity == Severity::Trace && e.text == "soft-symbol"),
-        "the hook must receive the enum value as a symbol"
+            .any(|e| e.severity == Severity::Trace && e.text == "soft-name"),
+        "the hook must receive the enum value as its name"
     );
 }

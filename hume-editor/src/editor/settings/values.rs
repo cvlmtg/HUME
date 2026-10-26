@@ -151,8 +151,8 @@ settings_enum!(WhitespaceRender, [
 /// `none`, a bare `soft`/`word`/`indent` (wrap at the content width), or
 /// `soft:N`/`word:N`/`indent:N` (wrap at column N, `0` also meaning the
 /// content width). `VALUES` lists the bare keywords only: completion leaves
-/// the column count to the user. `to_text` always writes the width, so it
-/// never emits a bare keyword.
+/// the column count to the user. `to_text` writes the bare keyword for the
+/// content width, the spelling a user writes for it.
 impl SettingText for WrapMode {
     const VALUES: &'static [&'static str] = &["none", "soft", "word", "indent"];
 
@@ -187,6 +187,9 @@ impl SettingText for WrapMode {
     fn to_text(&self) -> String {
         match self {
             Self::None => "none".to_owned(),
+            Self::Soft { width: 0 } => "soft".to_owned(),
+            Self::Word { width: 0 } => "word".to_owned(),
+            Self::Indent { width: 0 } => "indent".to_owned(),
             Self::Soft { width } => format!("soft:{width}"),
             Self::Word { width } => format!("word:{width}"),
             Self::Indent { width } => format!("indent:{width}"),

@@ -45,12 +45,12 @@ HUME has no TOML config file. Every setting and keybinding is a call to a Scheme
 | Setting | Helix `config.toml` | HUME `init.scm` |
 |---|---|---|
 | Theme | `theme = "onedark"` | `(set-option! "theme" "onedark")` |
-| Line numbers | `[editor]`<br>`line-number = "relative"` | `(set-option! "gutter-line-numbers" 'relative)` |
+| Line numbers | `[editor]`<br>`line-number = "relative"` | `(set-option! "gutter-line-numbers" "relative")` |
 | Scroll padding | `scrolloff = 5` | `(set-option! "scroll-margin" 5)` |
 | Mouse | `mouse = false` | `(set-option! "mouse" #f)` |
 | Soft wrap | `[editor.soft-wrap]`<br>`enable = true` | `(set-option! "wrap-mode" "soft")` |
-| Whitespace indicators | `[editor.whitespace]`<br>`render = "all"` | `(set-option! "whitespace-space" 'all)`<br>`(set-option! "whitespace-tab" 'all)`<br>`(set-option! "whitespace-newline" 'all)` |
-| Insert-mode cursor | `[editor.cursor-shape]`<br>`insert = "bar"` | `(set-option! "insert-cursor-shape" 'bar)` |
+| Whitespace indicators | `[editor.whitespace]`<br>`render = "all"` | `(set-option! "whitespace-space" "all")`<br>`(set-option! "whitespace-tab" "all")`<br>`(set-option! "whitespace-newline" "all")` |
+| Insert-mode cursor | `[editor.cursor-shape]`<br>`insert = "bar"` | `(set-option! "insert-cursor-shape" "bar")` |
 | Auto-pairs | `auto-pairs = false` | `(set-option! "insert-auto-pairs" #f)` |
 | Inlay hints | `[editor.lsp]`<br>`display-inlay-hints = true` | `(load-plugin! "core:lsp" #:config (hash "inlay-hints" #t))` |
 | Statusline | `[editor.statusline]`<br>`left = [...]` | `(configure-statusline! '(...) '(...) '(...))`, see [Statusline](#statusline) |
@@ -63,7 +63,7 @@ Indentation (Helix's per-language `indent.tab-width`/`indent.unit` in `languages
   (lambda (pane lang)
     (when (equal? lang "python")
       (set-buffer-option! pane "indent-width" 4)
-      (set-buffer-option! pane "indent-style" 'soft))))
+      (set-buffer-option! pane "indent-style" "soft"))))
 ```
 
 `bind-key!` takes a command *name* (the same names listed in [Builtin Commands](builtin-commands.md)), not a key sequence — there's no key-to-key remapping.

@@ -120,27 +120,32 @@ fn setting_value_usize_key_returns_int() {
 }
 
 #[test]
-fn setting_value_enum_key_returns_symbol() {
+fn setting_value_enum_key_returns_its_name() {
     let global = EditorSettings::default();
     assert_eq!(
         setting_value("indent-style", &global, None),
-        Some(OptionValue::Symbol("hard".to_string()))
+        Some(OptionValue::Str("hard".to_string()))
     );
 }
 
-/// `wrap-mode` and `gutter-signs` take `name:N` forms, so they are not closed
-/// sets and stay strings.
+/// A `name:N` value reads back bare for the content width, and with its
+/// count otherwise.
 #[test]
-fn setting_value_parameterized_keys_return_str() {
-    let global = EditorSettings::default();
-    assert!(matches!(
+fn setting_value_parameterized_keys_return_their_text() {
+    let mut global = EditorSettings::default();
+    assert_eq!(
         setting_value("wrap-mode", &global, None),
-        Some(OptionValue::Str(_))
-    ));
-    assert!(matches!(
+        Some(OptionValue::Str("indent".to_string()))
+    );
+    global.wrap_mode = WrapMode::Word { width: 80 };
+    assert_eq!(
+        setting_value("wrap-mode", &global, None),
+        Some(OptionValue::Str("word:80".to_string()))
+    );
+    assert_eq!(
         setting_value("gutter-signs", &global, None),
-        Some(OptionValue::Str(_))
-    ));
+        Some(OptionValue::Str("always".to_string()))
+    );
 }
 
 #[test]
@@ -259,11 +264,11 @@ fn setting_value_subfield_key_falls_back_to_global_whitespace() {
     global.whitespace.newline = true;
     assert_eq!(
         setting_value("whitespace-space", &global, None),
-        Some(OptionValue::Symbol("trailing".to_string()))
+        Some(OptionValue::Str("trailing".to_string()))
     );
     assert_eq!(
         setting_value("whitespace-newline", &global, None),
-        Some(OptionValue::Symbol("all".to_string()))
+        Some(OptionValue::Str("all".to_string()))
     );
 }
 
@@ -278,7 +283,7 @@ fn setting_value_whitespace_newline_round_trips_through_write_global() {
         write_global("whitespace-newline", &text(wire), &mut s).unwrap();
         assert_eq!(
             setting_value("whitespace-newline", &s, None),
-            Some(OptionValue::Symbol(wire.to_string()))
+            Some(OptionValue::Str(wire.to_string()))
         );
     }
 }
@@ -292,7 +297,7 @@ fn setting_value_subfield_key_buffer_override_wins_over_global() {
     };
     assert_eq!(
         setting_value("whitespace-tab", &global, Some(&ov)),
-        Some(OptionValue::Symbol("all".to_string()))
+        Some(OptionValue::Str("all".to_string()))
     );
 }
 

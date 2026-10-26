@@ -14,25 +14,25 @@ use super::SteelResult;
 use super::args::list_to_strings;
 use super::errors::generic_err;
 
-/// Coerce a Steel string/symbol/bool/int/list-of-strings settings value to
-/// what the settings layer takes: the text `:set` would carry, or a list's
-/// words. `ctx_name` names the argument in the error.
+/// Coerce a Steel string/bool/int/list-of-strings settings value to what the
+/// settings layer takes: the text `:set` would carry, or a list's words.
+/// A named value is a string, the spelling `get-option` reads back, so a
+/// symbol is refused. `ctx_name` names the argument in the error.
 fn coerce_option_value(value: &SteelVal, ctx_name: &str) -> Result<OptionInput, SteelErr> {
     match value {
         SteelVal::StringV(s) => Ok(OptionInput::Text(s.to_string())),
-        SteelVal::SymbolV(s) => Ok(OptionInput::Text(s.to_string())),
         SteelVal::BoolV(b) => Ok(OptionInput::Text(b.to_string())),
         SteelVal::IntV(n) => Ok(OptionInput::Text(n.to_string())),
         SteelVal::ListV(_) => list_to_strings(value.clone(), ctx_name).map(OptionInput::Words),
         _ => steel::stop!(TypeMismatch =>
-            "{ctx_name}: value must be a string, symbol, bool, integer, or list of strings, got {:?}", value),
+            "{ctx_name}: value must be a string, bool, integer, or list of strings, got {:?}", value),
     }
 }
 
 /// `(set-option! key value)`
 ///
 /// Sets the global setting `key` to `value`. The value may be a Steel string,
-/// symbol, boolean, integer, or list of strings; only a word-list setting
+/// boolean, integer, or list of strings; only a word-list setting
 /// (`shell`) takes a list. It is forwarded to the editor's settings layer, which is the single validating chokepoint
 /// (`editor::settings::ops::apply_global`) regardless of caller, so this is
 /// callable from any context: `init.scm`, plugin load, plugin activation, or
@@ -56,8 +56,7 @@ pub(crate) fn set_option(ctx: &mut SteelCtx, key: String, value: SteelVal) -> St
 /// coercion as `set-option!`). The override persists on the buffer until
 /// overwritten, same as `:set buffer key=value`.
 ///
-/// `"line-ending"` takes the symbol `lf` or `crlf` (or a string of that name)
-/// and sets the line ending a save writes; it errors on a read-only buffer.
+/// `"line-ending"` takes `"lf"` or `"crlf"` and sets the line ending a save writes; it errors on a read-only buffer.
 ///
 /// `"language"` takes a string, `""` meaning no language, and is queued as
 /// `Effect::SetBufferLanguage` rather than written here: setting it can
@@ -113,8 +112,8 @@ pub(crate) fn get_option(ctx: &mut SteelCtx, key: String) -> SteelResult {
 /// `(get-buffer-option pane key)`: the effective value of `key` for `pane`'s buffer:
 /// its buffer override if one is set, else the global default. `"language"`
 /// reads the buffer's language name (`""` for none), including a change
-/// queued earlier in this same eval. `"line-ending"` reads the symbol `lf` or
-/// `crlf`; it has no global default.
+/// queued earlier in this same eval. `"line-ending"` reads `"lf"` or
+/// `"crlf"`; it has no global default.
 ///
 /// Command/hook context only (`cmd` kind). The idiomatic caller is an
 /// `on-language-set` hook handler, which receives the target buffer id as an

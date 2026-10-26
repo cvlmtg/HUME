@@ -69,10 +69,10 @@ Changes apply to the current session and are not persisted. For persistent confi
 (set-option! "option-name" value)
 ```
 
-Sets the global default. The value is a string, symbol, boolean, or integer, or for a word-list option such as `shell`, a list of strings. An option that takes one of a fixed set of names also accepts, and `get-option` returns, the name as a symbol: `'soft`. A word-list option's `get-option` value is a list of strings: `'("sh" "-c")`. Callable from `init.scm`, a plugin body, or a command/hook body: anywhere Scheme code runs.
+Sets the global default. The value is a string, a boolean, or an integer, or for a word-list option such as `shell`, a list of strings. A named value, such as `"soft"` or `"word:80"`, is a string, and `get-option` returns it as the string you would write: `"word"`, not `"word:0"`. A word-list option's `get-option` value is a list of strings: `'("sh" "-c")`. Callable from `init.scm`, a plugin body, or a command/hook body: anywhere Scheme code runs.
 
 ```scheme
-(set-option! "gutter-line-numbers" 'absolute)
+(set-option! "gutter-line-numbers" "absolute")
 (set-option! "indent-width" 2)
 ```
 

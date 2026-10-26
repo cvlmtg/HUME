@@ -200,7 +200,7 @@ pub(in crate::editor) enum EditorEvent {
     /// `global`) don't raise this: the payload has no `BufferId` to name,
     /// and `apply_buffer` has no per-key resync effects to piggyback on (see
     /// its doc). `value` is the setting's new value as `(get-option key)`
-    /// reports it: a bool, integer, symbol for an enum option, or string.
+    /// reports it: a bool, integer, string, or list of strings.
     OnOptionChange {
         key: String,
         value: OptionValue,

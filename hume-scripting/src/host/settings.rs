@@ -53,15 +53,14 @@ pub fn language_option_value(value: &str) -> Option<&str> {
 /// build the right `SteelVal`. `hume-scripting` has no dependency on
 /// `hume-editor`'s settings types, so the editor impl converts its own
 /// per-key parser kind (`bool`/`usize`/`enum_str`/…) down to one of these
-/// five shapes at the trait boundary. `Symbol` is a closed set of names
-/// (`indent-style`'s `hard`/`soft`), `Str` free text or a `name:N` form,
-/// `List` a word list (`shell`).
+/// four shapes at the trait boundary. `Str` is every named value, free text
+/// and `name:N` forms alike, in the spelling `set-option!` takes back;
+/// `List` is a word list (`shell`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OptionValue {
     Bool(bool),
     Int(i64),
     Str(String),
-    Symbol(String),
     List(Vec<String>),
 }
 
@@ -71,7 +70,6 @@ impl From<OptionValue> for steel::rvals::SteelVal {
             OptionValue::Bool(b) => Self::BoolV(b),
             OptionValue::Int(n) => Self::IntV(n as isize),
             OptionValue::Str(s) => Self::StringV(s.into()),
-            OptionValue::Symbol(s) => Self::SymbolV(s.into()),
             OptionValue::List(words) => crate::builtins::args::string_list(words),
         }
     }

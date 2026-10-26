@@ -116,9 +116,10 @@ fn set_option_accepts_string_bool_int_values() {
         let result = set_option(&mut ctx, "indent-width".into(), val);
         // NullHost returns Err, but it must NOT be a TypeMismatch error.
         if let Err(e) = result {
-            assert!(
-                !e.to_string().contains("must be a string, bool, or integer"),
-                "valid value type must not produce a type-mismatch error"
+            assert_ne!(
+                e.kind(),
+                steel::rerrs::ErrorKind::TypeMismatch,
+                "valid value type must not produce a type-mismatch error: {e}"
             );
         }
     }
@@ -239,9 +240,10 @@ fn set_buffer_option_accepts_string_bool_int_values() {
         let mut ctx = h.ctx();
         let result = set_buffer_option(&mut ctx, default_pane(), "indent-width".into(), val);
         if let Err(e) = result {
-            assert!(
-                !e.to_string().contains("must be a string, bool, or integer"),
-                "valid value type must not produce a type-mismatch error"
+            assert_ne!(
+                e.kind(),
+                steel::rerrs::ErrorKind::TypeMismatch,
+                "valid value type must not produce a type-mismatch error: {e}"
             );
         }
     }
@@ -451,29 +453,23 @@ fn set_buffer_option_reaches_host() {
     );
 }
 
-/// A symbol value is forwarded as its name, the same string `:set` would
-/// carry, so one parser decodes both spellings.
+/// A named value is a string, the spelling `get-buffer-option` reads back,
+/// so a symbol is refused before it reaches the host.
 #[test]
-fn set_buffer_option_forwards_a_symbol_as_its_name() {
+fn set_buffer_option_refuses_a_symbol_value() {
     let mut h = SteelCtxTestHarness::new();
     let mut host = RecordingBufferOptionHost::default();
     let target = BufferId::default();
     let mut ctx = h.ctx_with_host(&mut host);
-    set_buffer_option(
+    let err = set_buffer_option(
         &mut ctx,
         crate::types::PaneHandle::buffer_only(target),
         "indent-style".into(),
         SteelVal::SymbolV("soft".into()),
     )
-    .expect("a symbol value must be accepted");
-    assert_eq!(
-        host.calls,
-        vec![(
-            "indent-style".to_string(),
-            OptionInput::Text("soft".to_string()),
-            target
-        )]
-    );
+    .expect_err("a symbol value is refused");
+    assert_eq!(err.kind(), steel::rerrs::ErrorKind::TypeMismatch, "{err}");
+    assert!(host.calls.is_empty(), "nothing reaches the host");
 }
 
 #[test]
@@ -490,11 +486,7 @@ fn a_list_option_value_reads_back_as_a_list_of_strings() {
 }
 
 #[test]
-fn an_enum_option_value_reads_back_as_a_symbol() {
-    assert_eq!(
-        SteelVal::from(OptionValue::Symbol("soft".to_string())),
-        SteelVal::SymbolV("soft".into())
-    );
+fn a_named_option_value_reads_back_as_a_string() {
     assert_eq!(
         SteelVal::from(OptionValue::Str("soft".to_string())),
         SteelVal::StringV("soft".into())

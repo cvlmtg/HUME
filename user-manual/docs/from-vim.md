@@ -65,13 +65,13 @@ HUME has no `vimrc`. Every setting and keybinding is a call to a Scheme function
 | Setting | `vimrc` | HUME `init.scm` |
 |---|---|---|
 | Theme | `colorscheme onedark` | `(set-option! "theme" "onedark")` |
-| Line numbers | `set number relativenumber` | `(set-option! "gutter-line-numbers" 'relative)` |
+| Line numbers | `set number relativenumber` | `(set-option! "gutter-line-numbers" "relative")` |
 | Tab width | `set tabstop=4 shiftwidth=4` | `(set-option! "indent-width" 4)` |
-| Spaces vs tabs | `set expandtab` | `(set-option! "indent-style" 'soft)` |
+| Spaces vs tabs | `set expandtab` | `(set-option! "indent-style" "soft")` |
 | Scroll padding | `set scrolloff=5` | `(set-option! "scroll-margin" 5)` |
 | Mouse | `set mouse=a` | `(set-option! "mouse" #t)` |
 | Line wrapping | `set wrap linebreak breakindent` | `(set-option! "wrap-mode" "indent")` |
-| Whitespace indicators | `set list listchars=tab:>-,trail:-` | `(set-option! "whitespace-tab" 'all)`<br>`(set-option! "whitespace-space" 'trailing)` |
+| Whitespace indicators | `set list listchars=tab:>-,trail:-` | `(set-option! "whitespace-tab" "all")`<br>`(set-option! "whitespace-space" "trailing")` |
 | Reload on external change | `set autoread` | `(set-option! "file-reload-prompt" #t)` |
 | Word characters | `set iskeyword+=-` | `(set-option! "word-chars" "-")` |
 | Keybinding | `nnoremap <C-j> ...` | `(bind-key! 'normal "ctrl-j" "move-down")` |
@@ -83,7 +83,7 @@ HUME has no `vimrc`. Every setting and keybinding is a call to a Scheme function
   (lambda (pane lang)
     (when (equal? lang "python")
       (set-buffer-option! pane "indent-width" 4)
-      (set-buffer-option! pane "indent-style" 'soft))))
+      (set-buffer-option! pane "indent-style" "soft"))))
 ```
 
 `bind-key!` takes a command *name* (the same names listed in [Builtin Commands](builtin-commands.md)), not a key sequence — there's no key-to-key remapping.

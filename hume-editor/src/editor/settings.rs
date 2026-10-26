@@ -259,17 +259,12 @@ macro_rules! parse_setting {
 /// Dispatch from a parser-kind token to the `get-option`-facing
 /// [`hume_scripting::host::OptionValue`] shape. Mirrors [`parse_setting!`]'s
 /// kind table so every setting stays readable the moment it's declared:
-/// `bool` fields round-trip as `Bool`, integer-ish fields (`usize`,
-/// `usize_nonzero`, `tab_width`) as `Int`, and closed sets of names
-/// (`enum_str`) as `Symbol`. The remaining `from_str` and `string` fields go
-/// via [`SettingText::to_text`] as `Str`: `wrap-mode` and `gutter-signs` take
-/// `name:N` forms, so they are not closed sets. `from_str` and `enum_str`
-/// types implement [`SettingText`], whose `to_text` round-trips through its
-/// own `parse`.
-/// `show_newline` stores a plain `bool` but its wire format is `none`/`all`,
-/// so it round-trips as `Symbol` via [`format_show_newline`], the inverse of
-/// [`parse_show_newline`]. `shell_command` reads back as `List`, one string
-/// per word.
+/// `bool` fields read back as `Bool`, integer-ish fields (`usize`,
+/// `usize_nonzero`, `tab_width`) as `Int`, and every named value as `Str`
+/// in the text its own parser takes back: [`SettingText::to_text`] for
+/// `from_str` and `enum_str` types, [`format_show_newline`] (the inverse of
+/// [`parse_show_newline`]) for `show_newline`. `shell_command` reads back as
+/// `List`, one string per word.
 macro_rules! option_value {
     ($value:expr, bool) => {
         hume_scripting::host::OptionValue::Bool($value)
@@ -287,13 +282,13 @@ macro_rules! option_value {
         hume_scripting::host::OptionValue::Str($value.to_text())
     };
     ($value:expr, enum_str) => {
-        hume_scripting::host::OptionValue::Symbol($value.to_text())
+        hume_scripting::host::OptionValue::Str($value.to_text())
     };
     ($value:expr, string) => {
         hume_scripting::host::OptionValue::Str($value)
     };
     ($value:expr, show_newline) => {
-        hume_scripting::host::OptionValue::Symbol(format_show_newline($value).to_string())
+        hume_scripting::host::OptionValue::Str(format_show_newline($value).to_string())
     };
     ($value:expr, word_chars) => {
         hume_scripting::host::OptionValue::Str($value.to_string())
@@ -358,9 +353,9 @@ macro_rules! buffer_accessor {
 /// | `usize_nonzero` | `parse_usize_nonzero(value)` |
 /// | `tab_width` | `parse_tab_width(value)` |
 /// | `from_str` | `SettingText::parse` (type inferred from field) |
-/// | `enum_str` | `SettingText::parse`, for a closed set of names; reads back as a symbol |
+/// | `enum_str` | `SettingText::parse`, for a closed set of names |
 /// | `string` | `value.to_owned()` |
-/// | `show_newline` | `parse_show_newline(value)` (`none`/`all` wire format, reads back as a symbol) |
+/// | `show_newline` | `parse_show_newline(value)` (`none`/`all` wire format) |
 /// | `word_chars` | `parse_word_chars(value)` (validated, unlike `string`) |
 /// | `shell_command` | `ShellCommand`'s `SettingText::parse` for text, [`ShellCommand::from_words`] for a script's list; reads back as a list of strings |
 ///

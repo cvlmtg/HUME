@@ -8,7 +8,7 @@
 
 (define (lsp/format-options pane)
   (hash "tabSize" (get-buffer-option pane "indent-width")
-        "insertSpaces" (equal? (get-buffer-option pane "indent-style") 'soft)))
+        "insertSpaces" (equal? (get-buffer-option pane "indent-style") "soft")))
 
 (define (lsp/format-edits res)
   (if (void? res) (list) (json-list res)))

@@ -369,10 +369,10 @@ fn on_option_change_carries_key_and_value_no_buffer_id() {
 }
 
 #[test]
-fn on_option_change_passes_an_enum_value_as_a_symbol() {
+fn on_option_change_passes_an_enum_value_as_its_name() {
     let event = EditorEvent::OnOptionChange {
         key: "indent-style".to_string(),
-        value: OptionValue::Symbol("soft".to_string()),
+        value: OptionValue::Str("soft".to_string()),
     };
-    assert_eq!(event.into_steel_args()[1], SteelVal::SymbolV("soft".into()));
+    assert_eq!(event.into_steel_args()[1], SteelVal::StringV("soft".into()));
 }

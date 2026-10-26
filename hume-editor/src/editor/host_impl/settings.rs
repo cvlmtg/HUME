@@ -39,7 +39,7 @@ impl<'a> SettingsHost for EditorHostImpl<'a> {
             return Err(format!("invalid buffer id {bid:?}"));
         };
         if key == BufferIntrinsicOption::LineEnding.key() {
-            return Ok(OptionValue::Symbol(buf.text().line_ending().to_text()));
+            return Ok(OptionValue::Str(buf.text().line_ending().to_text()));
         }
         crate::editor::settings::setting_value(key, &self.state.settings, Some(&buf.overrides))
             .ok_or_else(|| format!("unknown setting '{key}'"))

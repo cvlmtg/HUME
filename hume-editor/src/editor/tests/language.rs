@@ -261,11 +261,11 @@ fn line_ending_option_round_trips_through_scripts() {
         &mut ed,
         tmp.path(),
         r#"(define-typed-command! "read-ending" "" (lambda (bid)
-             (log! 'info (symbol->string (get-buffer-option bid "line-ending")))))
+             (log! 'info (get-buffer-option bid "line-ending"))))
            (define-typed-command! "to-crlf" "" (lambda (bid)
              (set-buffer-option! bid "line-ending" "crlf")))
            (define-typed-command! "to-lf" "" (lambda (bid)
-             (set-buffer-option! bid "line-ending" 'lf)))"#,
+             (set-buffer-option! bid "line-ending" "lf")))"#,
     );
     let bid = ed.focused_buffer_id();
 

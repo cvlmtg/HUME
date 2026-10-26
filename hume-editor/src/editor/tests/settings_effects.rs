@@ -427,6 +427,48 @@ fn get_buffer_option_round_trips_word_chars() {
     assert_eq!(ed.state.status_msg.clone().unwrap(), "-");
 }
 
+/// A named value reads back as the string it was written as: a bare
+/// `name:N` keyword stays bare, and a closed-set name is a string, not a
+/// symbol.
+#[test]
+fn option_values_read_back_as_the_strings_written() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>b\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "check" "" (lambda (bid)
+             (set-buffer-option! bid "wrap-mode" "word")
+             (set-buffer-option! bid "indent-style" "soft")
+             (log! 'info
+               (string-join
+                 (map (lambda (v) (if (string? v) v "not-a-string"))
+                      (list (get-buffer-option bid "wrap-mode")
+                            (get-buffer-option bid "indent-style")
+                            (get-buffer-option bid "line-ending")
+                            (get-option "whitespace-newline")))
+                 " "))))"#,
+    );
+    type_cmd(&mut ed, ":check");
+    assert_eq!(ed.state.status_msg.clone().unwrap(), "word soft lf none");
+}
+
+/// An option value has one spelling: a symbol is not a string.
+#[test]
+fn a_symbol_option_value_raises() {
+    let mut ed = editor_from("-[a]>b\n");
+    let err = eval_set_option(&mut ed, r#"(set-option! "indent-style" 'soft)"#)
+        .expect_err("a symbol value is refused");
+    assert!(
+        err.contains("value must be a string, bool, integer, or list of strings"),
+        "got: {err}"
+    );
+    assert_eq!(
+        ed.state.settings.indent_style,
+        hume_editing::tab_style::TabStyle::Hard
+    );
+}
+
 /// The feature this scope layer exists for: setting wrap-mode per file type
 /// from an `on-language-set` hook via `set-buffer-option!`. The open pane
 /// (never explicitly `:wrap`'d or `:set pane`'d) picks up the change

@@ -357,7 +357,7 @@ plugin that talks to a language server. They are global options, described in fu
 global option:
 
 ```scheme
-(set-option! "lsp-diagnostics-min-severity" 'warning)
+(set-option! "lsp-diagnostics-min-severity" "warning")
 ```
 
 `core:lsp`'s own options are passed with `#:config` when you load it:
