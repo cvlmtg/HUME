@@ -110,7 +110,7 @@ fn plugin_rebinds_line_and_alternate_motions() {
 /// to the last line.
 #[test]
 fn vim_keybind_leaves_the_native_g_prefix_intact() {
-    use crate::editor::keymap::BindMode;
+    use hume_core::BindMode;
 
     let (mut ed, _guard, _dir) = setup_vim_keybind_editor("-[HELLO]>\nworld\n");
 

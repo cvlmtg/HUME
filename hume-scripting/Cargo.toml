@@ -9,13 +9,10 @@ test-util = []
 
 [dependencies]
 hume-editing = { path = "../hume-editing" }
-hume-engine = { path = "../hume-engine" }
 hume-lsp = { path = "../hume-lsp" }
-hume-origin = { path = "../hume-origin" }
-hume-ops = { path = "../hume-ops" }
+hume-core = { path = "../hume-core" }
 hume-platform = { path = "../hume-platform" }
 hume-rope = { path = "../hume-rope" }
-hume-treesitter = { path = "../hume-treesitter" }
 steel-core.workspace = true
 termina = "0.4.0"
 slotmap = "1"
@@ -25,6 +22,7 @@ rustc-hash.workspace = true
 which = "8.0.6"
 
 [dev-dependencies]
+hume-core = { path = "../hume-core", features = ["test-util"] }
 hume-editing = { path = "../hume-editing", features = ["test-util"] }
 hume-platform = { path = "../hume-platform", features = ["test-util"] }
 insta = "1.47"

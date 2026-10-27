@@ -17,19 +17,19 @@ use crate::editor::commands::FocusedPane;
 use crate::editor::pane_state::PaneView;
 use crate::editor::search::SearchPattern;
 use crate::editor::settings::EditorSettings;
+use hume_core::{BufferId, ConfigOrigin, GrammarSource, PaneId, QueryFiles, Severity};
 use hume_editing::selection::{EditView, SelectionSet};
 use hume_editing::text::BufferText;
-use hume_engine::pipeline::{BufferId, EngineView, PaneId};
+use hume_engine::pipeline::EngineView;
 use hume_engine::types::ScopeId;
-use hume_origin::ConfigOrigin;
 use hume_treesitter::parse_worker::InlineParseBackend;
-use hume_treesitter::registry::{GrammarBundle, GrammarSource, LanguageId, QueryFiles};
+use hume_treesitter::registry::{GrammarBundle, LanguageId};
 use termina::event::{
     Event as TerminalEvent, KeyCode, KeyEvent, Modifiers, MouseButton, MouseEvent, MouseEventKind,
 };
 use test_fixtures::testing::{parse_state, serialize_state};
 
-use super::{Editor, Mode, Severity};
+use super::{Editor, Mode};
 
 // ── Harness ───────────────────────────────────────────────────────────────────
 
@@ -347,7 +347,7 @@ fn fixture_source(name: &str, symbol: &str, queries: &QueryFiles) -> GrammarSour
 
 /// The markdown fixture's highlights with the pinned Helix injections query.
 fn markdown_query_files() -> QueryFiles {
-    let injections = hume_treesitter::registry::OptionalQuery::Injections;
+    let injections = hume_core::OptionalQuery::Injections;
     QueryFiles::new(test_fixtures::grammar_query_path("markdown")).with(
         injections,
         test_fixtures::require_helix_query("markdown", injections.file_name()),

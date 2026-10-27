@@ -1,7 +1,8 @@
 //! Activating a lazily declared plugin when one of its commands, events or
 //! languages is first used.
 
-use crate::editor::{Editor, Severity, host_impl::EditorHostImpl};
+use crate::editor::{Editor, host_impl::EditorHostImpl};
+use hume_core::Severity;
 use hume_scripting::PluginStatus;
 
 impl Editor {

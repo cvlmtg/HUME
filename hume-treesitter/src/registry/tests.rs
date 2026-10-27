@@ -1,11 +1,11 @@
 use std::path::Path;
 
-use super::{
-    ConfigOrigin, DetectPaths, FileExtension, GrammarSource, LanguageField, LanguageFields,
-    LanguageId, LanguageRegistry, OptionalQuery, QueryFiles, ShebangInterpreter, WriteOutcome,
-    detect_language,
+use super::{DetectPaths, LanguageId, LanguageRegistry, detect_language};
+use hume_core::{
+    BlockCommentTokens, ConfigOrigin, FileExtension, GrammarSource, LanguageField, LanguageFields,
+    LanguageIdentity, LineCommentTokens, OptionalQuery, QueryFiles, ShebangInterpreter,
+    WriteOutcome,
 };
-use hume_editing::comment::{BlockCommentTokens, LineCommentTokens};
 use hume_engine::theme::ScopeRegistry;
 use hume_platform::path::AbsolutePath;
 use ropey::Rope;
@@ -367,7 +367,7 @@ fn roots_of_an_interned_language_without_identity_is_empty() {
 fn reregistering_an_identity_keeps_its_configured_roots() {
     let mut reg = LanguageRegistry::new();
     let id = reg
-        .register_identity_no_rebuild("go", &[], &[], &[], ConfigOrigin::Bundled)
+        .register_identity_no_rebuild("go", LanguageIdentity::default(), ConfigOrigin::Bundled)
         .0;
     assert_eq!(
         set_roots(&mut reg, id, &["go.mod"], ConfigOrigin::User),
@@ -383,7 +383,7 @@ fn reregistering_an_identity_keeps_its_configured_roots() {
 fn tsx() -> (LanguageRegistry, LanguageId) {
     let mut reg = LanguageRegistry::new();
     let id = reg
-        .register_identity_no_rebuild("tsx", &[], &[], &[], ConfigOrigin::Bundled)
+        .register_identity_no_rebuild("tsx", LanguageIdentity::default(), ConfigOrigin::Bundled)
         .0;
     (reg, id)
 }
@@ -614,7 +614,7 @@ fn a_plugin_value_after_a_user_value_is_shadowed() {
 fn an_empty_bundled_fill_still_marks_the_language_loaded() {
     let mut reg = LanguageRegistry::new();
     let id = reg
-        .register_identity_no_rebuild("plain", &[], &[], &[], ConfigOrigin::Bundled)
+        .register_identity_no_rebuild("plain", LanguageIdentity::default(), ConfigOrigin::Bundled)
         .0;
 
     reg.fill_bundled(id, LanguageFields::default());
@@ -1496,9 +1496,11 @@ fn define(
     extension: &str,
     by: ConfigOrigin,
 ) -> WriteOutcome {
-    let extension = FileExtension::new(extension.to_owned()).unwrap();
-    reg.register_identity_no_rebuild(name, &[extension], &[], &[], by)
-        .1
+    let identity = LanguageIdentity {
+        extensions: vec![FileExtension::new(extension.to_owned()).unwrap()],
+        ..LanguageIdentity::default()
+    };
+    reg.register_identity_no_rebuild(name, identity, by).1
 }
 
 #[test]

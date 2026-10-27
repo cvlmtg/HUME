@@ -2,14 +2,14 @@ use std::io;
 use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
 use std::path::{Path, PathBuf};
 
+use hume_core::{BufferId, Severity};
 use hume_editing::text::BufferText;
-use hume_engine::pipeline::BufferId;
 use hume_platform::worker_panic::{WorkerPanics, payload_message};
 
 use super::{Buffer, DiskCheckTrigger, ReplaceSource, TextRefusal};
+use crate::editor::Editor;
 use crate::editor::input_stack::{ConfirmAction, ConfirmLayer};
 use crate::editor::pipe_run::PipeRunning;
-use crate::editor::{Editor, Severity};
 
 /// The crash-dump file for the buffer backed by `path`: the same path with
 /// `.dump` appended to the full file name.

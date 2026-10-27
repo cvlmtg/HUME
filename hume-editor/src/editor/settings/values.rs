@@ -1,6 +1,7 @@
 //! The value types settings take, and how each reads from and writes to
 //! its text form (`SettingText`).
 
+use hume_core::DiagSeverity;
 use hume_editing::tab_style::TabStyle;
 use hume_editing::text::LineEnding;
 use hume_engine::builtins::line_number::LineNumberStyle;
@@ -8,8 +9,7 @@ use hume_engine::pane::{WhitespaceRender, WrapMode};
 use hume_ops::WhitespaceSide;
 use hume_platform::process::batch::ShellCommand;
 
-use super::{SettingText, or_list, word_list};
-use crate::editor::lsp::diagnostics::DiagSeverity;
+use super::{SettingText, parse_named, word_list};
 
 // ── SignColumnConfig ──────────────────────────────────────────────────────────
 
@@ -119,12 +119,17 @@ impl SettingText for SignColumnConfig {
     }
 }
 
-settings_enum!(DiagSeverity, [
-    Error => "error",
-    Warning => "warning",
-    Info => "info",
-    Hint => "hint",
-]);
+impl SettingText for DiagSeverity {
+    const VALUES: &'static [&'static str] = &Self::NAMES;
+
+    fn parse(s: &str) -> Result<Self, String> {
+        parse_named(s, Self::VALUES, Self::ALL)
+    }
+
+    fn to_text(&self) -> String {
+        self.name().to_owned()
+    }
+}
 
 settings_enum!(LineEnding, [
     Lf => "lf",

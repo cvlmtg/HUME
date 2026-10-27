@@ -15,9 +15,10 @@ use hume_platform::terminal::SharedTerm;
 
 use hume_grid::{Grid, Rect};
 
+use hume_core::PaneId;
 use hume_engine::pane::Pane;
 use hume_engine::pipeline::{
-    EngineView, PaneId, PaneRenderSettings, PaneSize, RenderContext, ScreenLayout,
+    EngineView, PaneRenderSettings, PaneSize, RenderContext, ScreenLayout,
 };
 use hume_engine::types::EditorMode;
 

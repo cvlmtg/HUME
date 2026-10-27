@@ -4,10 +4,10 @@
 
 use std::time::{Duration, SystemTime};
 
+use hume_core::{BufferId, OnUnsaved, PaneId};
 use hume_editing::changeset::ChangeSet;
 use hume_editing::history::{RevisionId, RevisionNode, RevisionPath};
 use hume_editing::hunk::{ChangeHunk, change_hunks};
-use hume_engine::pipeline::{BufferId, PaneId};
 
 use super::{Buffer, HistoryMark, HistoryWalkResult};
 use crate::editor::EditorState;
@@ -168,21 +168,6 @@ impl Unsaved {
     pub(in crate::editor) fn message(self, state: &EditorState, way_out: &str) -> String {
         let name = state.buffers.get(self.0).display_name();
         format!("{name} has unsaved changes. Use {way_out}")
-    }
-}
-
-/// Whether a close, reload or quit may drop unsaved changes: the consent of
-/// the user (a `!`, a confirm answer) or of a script.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(in crate::editor) enum OnUnsaved {
-    Refuse,
-    Discard,
-}
-
-impl OnUnsaved {
-    /// What a typed command's `!` consents to.
-    pub(in crate::editor) fn from_force(force: bool) -> Self {
-        if force { Self::Discard } else { Self::Refuse }
     }
 }
 

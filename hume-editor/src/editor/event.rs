@@ -4,7 +4,7 @@
 //! compiles in this type, only the `&str` names and `SteelVal` args produced
 //! here (see `hume_scripting::host::EventHost`).
 
-use hume_engine::pipeline::BufferId;
+use hume_core::BufferId;
 use hume_scripting::host::OptionValue;
 use hume_scripting::json::JsonHandle;
 use hume_scripting::{PaneHandle, ServerRef, SteelPane};

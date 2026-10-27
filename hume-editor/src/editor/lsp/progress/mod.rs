@@ -6,7 +6,8 @@ use std::time::{Duration, Instant};
 
 use hume_lsp::backend::ServerId;
 
-use crate::editor::{Editor, Severity};
+use crate::editor::Editor;
+use hume_core::Severity;
 
 /// How often the loading spinner advances a frame, independent of how
 /// often `drain_lsp` itself runs (`next_wake` may wake faster than this

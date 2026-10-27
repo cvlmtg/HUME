@@ -3,6 +3,7 @@
 //! API. Not LSP-specific (any Steel plugin can populate these), but LSP is
 //! the first and heaviest client.
 
+use hume_core::{DiagSeverity, Side};
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
@@ -36,8 +37,8 @@ pub(crate) fn set_inlay_hints(
     let parsed = hash_list(hints, "hints", &[CHAR_OFFSET, "text", "side"], |entry| {
         let pos = entry.usize(CHAR_OFFSET)?;
         let text = entry.string("text")?;
-        let before = side_arg(entry.required("side")?, &entry.label("side"))?;
-        Ok((pos, text, before))
+        let side = side_arg(entry.required("side")?, &entry.label("side"))?;
+        Ok((pos, text, side))
     })?;
     require_cap(ctx.host.decorations())?
         .set_inlay_hints(source, bid, parsed)
@@ -166,9 +167,9 @@ fn virtual_line_spec(entry: &HashEntry) -> Result<VirtualLineSpec, SteelErr> {
     // Leaving `text` untouched also keeps a caller's `'segments` offsets
     // (validated below) trivially aligned with it.
 
-    let before = entry
+    let side = entry
         .optional("anchor")
-        .map_or(Ok(false), |v| side_arg(v, &entry.label("anchor")))?;
+        .map_or(Ok(Side::After), |v| side_arg(v, &entry.label("anchor")))?;
 
     let scope = entry.optional_string("scope")?;
 
@@ -180,7 +181,7 @@ fn virtual_line_spec(entry: &HashEntry) -> Result<VirtualLineSpec, SteelErr> {
     Ok(VirtualLineSpec {
         line,
         text,
-        before,
+        side,
         scope,
         segments,
     })
@@ -207,13 +208,16 @@ fn char_range_scope(entry: &HashEntry) -> Result<(usize, usize, String), SteelEr
     Ok((start, end, entry.string("scope")?))
 }
 
-/// An inlay hint's `'side` or a virtual line's `'anchor`: `'before` → `true`,
-/// `'after` → `false`.
-fn side_arg(val: SteelVal, ctx_name: &str) -> Result<bool, SteelErr> {
+/// An inlay hint's `'side` or a virtual line's `'anchor`.
+fn side_arg(val: SteelVal, ctx_name: &str) -> Result<Side, SteelErr> {
     let SteelVal::SymbolV(s) = val else {
         steel::stop!(Generic => "{}: must be a symbol, 'before or 'after", ctx_name);
     };
-    symbol_enum_arg(&s, ctx_name, &[("before", true), ("after", false)])
+    symbol_enum_arg(
+        &s,
+        ctx_name,
+        &[("before", Side::Before), ("after", Side::After)],
+    )
 }
 
 const LINE_TEXT_SCOPE: &[&str] = &["line", "text", "scope"];
@@ -315,12 +319,20 @@ pub(crate) fn diagnostics_for_buffer(
     range: SteelVal,
 ) -> SteelResult {
     let id = pane.0.buffer();
-    let floor = optional_symbol_arg(severity, "#:severity")?;
+    let floor = optional_symbol_arg(severity, "#:severity")?
+        .map(|name| {
+            symbol_enum_arg(
+                &name,
+                "#:severity",
+                &DiagSeverity::ALL.map(|severity| (severity.name(), severity)),
+            )
+        })
+        .transpose()?;
     let range = optional_hash_entry(range, "#:range", CHAR_RANGE_KEYS)?
         .map(|range| range.char_range())
         .transpose()?;
     let entries = require_cap(ctx.host.decorations())?
-        .diagnostics_for_buffer(id, floor.as_deref(), range)
+        .diagnostics_for_buffer(id, floor, range)
         .map_err(generic_err)?;
     let list: Vec<SteelVal> = entries.into_iter().map(diagnostic_entry_to_steel).collect();
     Ok(SteelVal::ListV(list.into()))
@@ -341,10 +353,10 @@ fn diagnostic_entry_to_steel(entry: DiagnosticEntry) -> SteelVal {
         (START_LINE, SteelVal::IntV(entry.start_line as isize)),
         (END_LINE, SteelVal::IntV(entry.end_line as isize)),
         ("grapheme-col", SteelVal::IntV(entry.grapheme_col as isize)),
-        ("severity", SteelVal::SymbolV(entry.severity.into())),
+        ("severity", SteelVal::SymbolV(entry.severity.name().into())),
         (
             "severity-rank",
-            SteelVal::IntV(entry.severity_rank as isize),
+            SteelVal::IntV(entry.severity.rank().into()),
         ),
         ("message", SteelVal::StringV(entry.message.into())),
         // `None` -> Void, matching json_to_steel's null mapping.

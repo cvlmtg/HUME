@@ -14,6 +14,7 @@ ropey.workspace = true
 unicode-segmentation.workspace = true
 bitflags.workspace = true
 slotmap = "1"
+hume-core = { path = "../hume-core" }
 rustc-hash.workspace = true
 toml = { version = "1", default-features = false, features = ["parse", "serde", "std"] }
 

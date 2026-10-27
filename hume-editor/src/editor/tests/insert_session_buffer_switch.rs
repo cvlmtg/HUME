@@ -155,7 +155,7 @@ fn close_buffer_ends_insert_session_on_focused_pane() {
     assert_eq!(ed.state.mode(), Mode::Insert, "sanity: Insert is open");
 
     live_host!(ed)
-        .close_buffer(old_bid, hume_scripting::host::DiscardUnsaved::Yes)
+        .close_buffer(old_bid, hume_core::OnUnsaved::Discard)
         .expect("close must succeed");
 
     assert_eq!(

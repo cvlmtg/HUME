@@ -3,9 +3,10 @@
 
 use super::*;
 
-use hume_editing::comment::{BlockCommentTokens, LineCommentTokens};
-use hume_origin::{ConfigOrigin, WriteOutcome};
-use hume_treesitter::registry::LanguageFields;
+use hume_core::{
+    BlockCommentTokens, ConfigOrigin, LanguageFields, LanguageIdentity, LineCommentTokens,
+    WriteOutcome,
+};
 
 /// An editor over `src` whose buffer is a language named `name`, with
 /// `line` and `block` configured as its comment tokens.
@@ -13,7 +14,11 @@ fn editor_in(src: &str, name: &str, line: &[&str], block: &[(&str, &str)]) -> Ed
     let mut ed = editor_from(src);
     super::language::attach_host(&mut ed, "");
     let languages = &mut ed.state.config.languages;
-    let (id, _) = languages.register_identity_no_rebuild(name, &[], &[], &[], ConfigOrigin::User);
+    let (id, _) = languages.register_identity_no_rebuild(
+        name,
+        LanguageIdentity::default(),
+        ConfigOrigin::User,
+    );
     let fields = LanguageFields {
         comment_tokens: (!line.is_empty()).then(|| LineCommentTokens::from_strs(line)),
         block_comment_tokens: (!block.is_empty()).then(|| BlockCommentTokens::from_pairs(block)),

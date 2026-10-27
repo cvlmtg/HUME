@@ -10,12 +10,13 @@
 
 use termina::event::KeyEvent;
 
-use hume_engine::pipeline::{BufferId, EngineView, PaneId};
+use hume_core::{BindMode, BufferId, PaneId};
+use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
 
 use super::super::edit_session::InsertSession;
 use super::super::error::CommandError;
-use super::super::keymap::{BindMode, WalkResult};
+use super::super::keymap::WalkResult;
 use super::super::replay::{Input, dispatch_insert_key};
 use super::super::{Editor, EditorState, commands};
 use super::paste::PastedText;

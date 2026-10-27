@@ -5,9 +5,9 @@
 // Requires scripts/fetch-test-grammars.sh (markdown, markdown.inline, rust).
 
 use super::*;
+use hume_core::{OptionalQuery, QueryFiles};
 
 use hume_scripting::ScriptingHost;
-use hume_treesitter::registry::{OptionalQuery, QueryFiles};
 use test_fixtures::{
     grammar_parser_path, grammar_query_path, helix_query_path, require_fixture_file,
     require_grammars, require_helix_query,
@@ -56,13 +56,13 @@ fn require_fixtures() {
 /// Builds the buffer directly (cursor at 0 via `Buffer::at_start`)
 /// rather than through the `editor_from` marker DSL: this file's tests
 /// mostly care about byte-offset edits at position 0, not cursor placement.
-fn markdown_editor(source: &str) -> (Editor, hume_engine::pipeline::BufferId) {
+fn markdown_editor(source: &str) -> (Editor, hume_core::BufferId) {
     markdown_editor_with(source, &Dirs::none())
 }
 
 /// [`markdown_editor`] with a scripting host over `dirs`, so a language's
 /// bundled data file is read from `dirs.runtime`.
-fn markdown_editor_with(source: &str, dirs: &Dirs) -> (Editor, hume_engine::pipeline::BufferId) {
+fn markdown_editor_with(source: &str, dirs: &Dirs) -> (Editor, hume_core::BufferId) {
     markdown_editor_registering(source, dirs, &[])
 }
 
@@ -72,7 +72,7 @@ fn markdown_editor_registering(
     source: &str,
     dirs: &Dirs,
     registered: &[&str],
-) -> (Editor, hume_engine::pipeline::BufferId) {
+) -> (Editor, hume_core::BufferId) {
     markdown_editor_with_rust_queries(source, dirs, registered, &[])
 }
 
@@ -83,7 +83,7 @@ fn markdown_editor_with_rust_queries(
     dirs: &Dirs,
     registered: &[&str],
     rust_helix: &[OptionalQuery],
-) -> (Editor, hume_engine::pipeline::BufferId) {
+) -> (Editor, hume_core::BufferId) {
     let buf = crate::editor::buffer::Buffer::at_start(hume_editing::text::BufferText::from(source));
     let mut ed = Editor::for_testing(buf);
     let bid = ed.focused_buffer_id();
@@ -418,7 +418,7 @@ fn a_fence_grammar_failing_in_a_parse_installed_before_a_key_is_not_its_message(
         .register_grammar(
             "json",
             GrammarSource::missing("json"),
-            hume_origin::ConfigOrigin::User,
+            hume_core::ConfigOrigin::User,
         )
         .expect("a user grammar replaces any other");
     ed.sweep_buffers_for_grammars(vec![json]);
@@ -445,7 +445,7 @@ fn a_fence_grammar_that_fails_to_load_warns_once_and_keeps_the_layers() {
         .register_grammar(
             "json",
             GrammarSource::missing("json"),
-            hume_origin::ConfigOrigin::User,
+            hume_core::ConfigOrigin::User,
         )
         .expect("a user grammar replaces any other");
     ed.sweep_buffers_for_grammars(vec![json]);
@@ -569,7 +569,7 @@ fn a_selection_crossing_a_fence_takes_the_outer_language() {
 /// Types inside the first of two rust fences, then brings the layers
 /// current either by the background path (`reparse_stale_buffers` over the
 /// inline backend) or the foreground one (`ensure_syntax_current`).
-fn fence_edited_editor(foreground: bool) -> (Editor, hume_engine::pipeline::BufferId) {
+fn fence_edited_editor(foreground: bool) -> (Editor, hume_core::BufferId) {
     let source = "# T\n\n```rust\nfn a() {}\n```\n\nText.\n\n```rust\nfn b() {}\n```\n";
     let (mut ed, bid) = markdown_editor(source);
     ed.feed_keys([key('j'), key('j'), key('j')]);
@@ -594,7 +594,7 @@ fn fence_edited_editor(foreground: bool) -> (Editor, hume_engine::pipeline::Buff
 
 fn installed_shapes(
     ed: &Editor,
-    bid: hume_engine::pipeline::BufferId,
+    bid: hume_core::BufferId,
 ) -> Vec<hume_treesitter::layers::LayerShape> {
     let buf = ed.state.buffers.get(bid);
     let syn = buf.syntax.as_ref().unwrap();
@@ -607,7 +607,7 @@ fn installed_shapes(
 
 fn injected_afresh(
     ed: &Editor,
-    bid: hume_engine::pipeline::BufferId,
+    bid: hume_core::BufferId,
 ) -> Vec<hume_treesitter::layers::LayerShape> {
     let buf = ed.state.buffers.get(bid);
     buf.syntax
@@ -616,7 +616,7 @@ fn injected_afresh(
         .injected_shapes_resolved_afresh(buf.text(), &ed.state.config.languages.grammar_snapshot())
 }
 
-fn rust_fence_trees_changed(ed: &Editor, bid: hume_engine::pipeline::BufferId) -> Vec<bool> {
+fn rust_fence_trees_changed(ed: &Editor, bid: hume_core::BufferId) -> Vec<bool> {
     let rust = ed.state.config.languages.id_of("rust");
     ed.state
         .buffers

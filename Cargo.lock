@@ -94,6 +94,9 @@ dependencies = [
 [[package]]
 name = "arch-lints"
 version = "0.17.0"
+dependencies = [
+ "toml",
+]
 
 [[package]]
 name = "arrayvec"
@@ -772,10 +775,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6dbf3de79e51f3d586ab4cb9d5c3e2c14aa28ed23d180cf89b4df0454a69cc87"
 
 [[package]]
+name = "hume-core"
+version = "0.17.0"
+dependencies = [
+ "globset",
+ "slotmap",
+]
+
+[[package]]
 name = "hume-decorations"
 version = "0.17.0"
 dependencies = [
  "criterion",
+ "hume-core",
  "hume-editing",
  "hume-engine",
  "hume-rope",
@@ -787,6 +799,7 @@ dependencies = [
 name = "hume-editing"
 version = "0.17.0"
 dependencies = [
+ "hume-core",
  "hume-rope",
  "pretty_assertions",
  "proptest",
@@ -803,7 +816,7 @@ version = "0.17.0"
 dependencies = [
  "arboard",
  "clap",
- "globset",
+ "hume-core",
  "hume-decorations",
  "hume-editing",
  "hume-editor",
@@ -811,7 +824,6 @@ dependencies = [
  "hume-grid",
  "hume-lsp",
  "hume-ops",
- "hume-origin",
  "hume-platform",
  "hume-rope",
  "hume-scripting",
@@ -842,6 +854,7 @@ name = "hume-engine"
 version = "0.17.0"
 dependencies = [
  "bitflags 2.13.2",
+ "hume-core",
  "hume-grid",
  "hume-rope",
  "ropey",
@@ -891,6 +904,7 @@ version = "0.17.0"
 dependencies = [
  "chrono",
  "criterion",
+ "hume-core",
  "hume-editing",
  "hume-rope",
  "pretty_assertions",
@@ -904,10 +918,6 @@ dependencies = [
  "unicode-segmentation",
  "unicode_titlecase",
 ]
-
-[[package]]
-name = "hume-origin"
-version = "0.17.0"
 
 [[package]]
 name = "hume-platform"
@@ -929,6 +939,7 @@ name = "hume-rope"
 version = "0.17.0"
 dependencies = [
  "criterion",
+ "hume-core",
  "pretty_assertions",
  "ropey",
  "test-fixtures",
@@ -940,14 +951,11 @@ dependencies = [
 name = "hume-scripting"
 version = "0.17.0"
 dependencies = [
+ "hume-core",
  "hume-editing",
- "hume-engine",
  "hume-lsp",
- "hume-ops",
- "hume-origin",
  "hume-platform",
  "hume-rope",
- "hume-treesitter",
  "insta",
  "num-traits",
  "rustc-hash",
@@ -965,9 +973,9 @@ version = "0.17.0"
 dependencies = [
  "criterion",
  "globset",
+ "hume-core",
  "hume-editing",
  "hume-engine",
- "hume-origin",
  "hume-platform",
  "hume-rope",
  "hume-treesitter",
@@ -987,6 +995,7 @@ dependencies = [
 name = "hume-ui"
 version = "0.17.0"
 dependencies = [
+ "hume-core",
  "hume-engine",
  "hume-grid",
  "hume-rope",

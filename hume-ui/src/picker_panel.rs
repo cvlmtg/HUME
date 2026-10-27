@@ -19,12 +19,12 @@ use hume_grid::Rect;
 
 use hume_engine::lock::SharedSlot;
 
+use hume_core::TruncateEnd;
 use hume_engine::providers::OverlayProvider;
 use hume_engine::render::Canvas;
 use hume_engine::theme::Theme;
 use hume_engine::theme::ui_scopes;
 use hume_engine::types::Scope;
-use hume_engine::types::TruncateEnd;
 
 use super::width::{text_width, truncate_marked, truncate_text, truncate_text_tail};
 

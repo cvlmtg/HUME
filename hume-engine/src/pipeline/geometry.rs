@@ -5,9 +5,10 @@ use std::num::NonZeroU16;
 
 use hume_grid::{Position, Rect};
 
+use super::BOTTOM_BANDS;
 use super::layout::{Direction, FocusedLayout, Side};
-use super::{BOTTOM_BANDS, PaneId};
 use crate::pane::ViewGeometry;
+use hume_core::PaneId;
 
 /// Rows each piece of chrome takes, as the editor computes them from its
 /// models.

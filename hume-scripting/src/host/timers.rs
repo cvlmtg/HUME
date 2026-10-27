@@ -1,19 +1,24 @@
 //! Timer scheduling.
 
+use hume_core::TimerId;
+
 /// A timer `after!` scheduled, as Steel holds it: an opaque value only
 /// `cancel-timer!` accepts, so a job's handle can never name a timer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct TimerHandle(u64);
+pub struct TimerHandle(TimerId);
 
 impl TimerHandle {
-    /// Wraps an id the host's timer wheel minted.
-    pub fn from_raw(raw: u64) -> Self {
-        Self(raw)
+    pub fn new(timer: TimerId) -> Self {
+        Self(timer)
+    }
+
+    pub fn timer(self) -> TimerId {
+        self.0
     }
 
     /// The id the host's timer wheel minted.
     pub fn raw(self) -> u64 {
-        self.0
+        self.0.raw()
     }
 }
 
@@ -24,11 +29,11 @@ pub trait TimerHost {
     /// this host has no timer wheel to schedule onto right now (`EditorHostImpl`
     /// only carries one at three call sites: command dispatch, hook fire,
     /// queued-call drain; not during init).
-    fn schedule_timer(&mut self, ms: u64, thunk: crate::Callback) -> Option<TimerHandle>;
+    fn schedule_timer(&mut self, ms: u64, thunk: crate::Callback) -> Option<TimerId>;
 
     /// Cancels `timer` from [`Self::schedule_timer`]: its thunk never
     /// runs, even one already due and queued. A no-op once the thunk has
     /// run, after an earlier cancel, or when this host has no timer wheel
     /// right now.
-    fn cancel_timer(&mut self, timer: TimerHandle);
+    fn cancel_timer(&mut self, timer: TimerId);
 }

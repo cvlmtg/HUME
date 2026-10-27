@@ -8,7 +8,7 @@ use hume_engine::render::Canvas;
 
 use crate::editor::EditorState;
 use colors::EditorColors;
-use hume_engine::pipeline::BufferId;
+use hume_core::BufferId;
 use hume_ui::width::text_width;
 
 pub(crate) mod colors;

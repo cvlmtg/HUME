@@ -7,7 +7,7 @@
 use super::lsp_rig::{LspRig, RigSpec};
 use super::*;
 use crate::editor::lsp::LspState;
-use hume_engine::pipeline::BufferId;
+use hume_core::BufferId;
 use hume_lsp::sync::apply_events_to_string_mirror;
 use hume_lsp::test_util::{NotificationLog, RecordingLspBackend};
 

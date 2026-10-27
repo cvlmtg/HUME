@@ -1,15 +1,4 @@
-/// Log-message severity, defined in the scripting layer so scripting code does
-/// not depend on the editor crate.
-///
-/// The editor maps this to its own `Severity` enum when draining
-/// `ScriptingHost::take_pending_messages()`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LogLevel {
-    Info,
-    Warning,
-    Error,
-    Trace,
-}
+use hume_core::Severity;
 
 // ── log! builtin ──────────────────────────────────────────────────────────────
 
@@ -28,10 +17,10 @@ pub(crate) fn log_msg(
             "log!: severity must be a symbol ('trace 'info 'warn 'error), got {:?}", severity),
     };
     let sev = match sev_str.as_str() {
-        "trace" => LogLevel::Trace,
-        "info" => LogLevel::Info,
-        "warn" => LogLevel::Warning,
-        "error" => LogLevel::Error,
+        "trace" => Severity::Trace,
+        "info" => Severity::Info,
+        "warn" => Severity::Warning,
+        "error" => Severity::Error,
         other => steel::stop!(Generic =>
             "log!: unknown severity '{}', expected 'trace, 'info, 'warn, or 'error", other),
     };

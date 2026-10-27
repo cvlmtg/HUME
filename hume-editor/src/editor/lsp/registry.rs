@@ -5,10 +5,8 @@
 
 use std::path::{Path, PathBuf};
 
-use hume_origin::{ByOrigin, Ranked};
-use hume_scripting::{
-    ConfigOrigin, FeatureFilter, ListEntry, ListTier, SERVER_REGISTRATION_TIE, ServerName,
-};
+use hume_core::{ByOrigin, ConfigOrigin, Ranked};
+use hume_scripting::{FeatureFilter, ListEntry, ListTier, SERVER_REGISTRATION_TIE, ServerName};
 use rustc_hash::FxHashMap;
 
 /// The process a `register-lsp-server!` call spawns and configures.

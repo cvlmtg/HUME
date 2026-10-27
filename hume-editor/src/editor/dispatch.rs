@@ -480,7 +480,7 @@ fn marshal_leading_args(
 #[cfg(test)]
 mod marshal_leading_args_tests {
     use super::marshal_leading_args;
-    use hume_engine::pipeline::BufferId;
+    use hume_core::BufferId;
     use steel::rvals::SteelVal;
 
     fn pane_stand_in() -> SteelVal {

@@ -1,6 +1,6 @@
 //! `EditorHostImpl`'s LSP server introspection.
 
-use hume_engine::pipeline::BufferId;
+use hume_core::BufferId;
 
 use super::EditorHostImpl;
 use hume_lsp::backend::ServerId;
@@ -44,7 +44,7 @@ impl<'a> LspHost for EditorHostImpl<'a> {
     fn lsp_server_origin(
         &self,
         name: &hume_scripting::ServerName,
-    ) -> Option<hume_scripting::ConfigOrigin> {
+    ) -> Option<hume_core::ConfigOrigin> {
         crate::editor::lsp::introspect::server_origin(&self.state.lsp, name)
     }
 

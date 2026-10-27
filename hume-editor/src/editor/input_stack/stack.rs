@@ -19,7 +19,8 @@ use std::any::Any;
 
 use termina::event::{KeyEvent, MouseEvent};
 
-use hume_engine::pipeline::{EngineView, PaneId};
+use hume_core::{PaneId, Severity};
+use hume_engine::pipeline::EngineView;
 use hume_engine::theme::{ScopeRegistry, Theme};
 use hume_engine::types::EditorMode;
 
@@ -27,7 +28,7 @@ use super::super::edit_session::InsertSession;
 use super::super::error::CommandError;
 use super::super::event::mode_name;
 use super::super::minibuf::MiniBuffer;
-use super::super::{Editor, EditorState, Severity};
+use super::super::{Editor, EditorState};
 use super::base::BaseLayer;
 use super::completion::{BufferCompletionLayer, MinibufCompletionLayer};
 use super::paste::PastedText;

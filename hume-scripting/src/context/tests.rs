@@ -1,6 +1,6 @@
 use super::*;
-use crate::log::LogLevel;
 use crate::test_support::SteelCtxTestHarness;
+use hume_core::Severity;
 
 // ── Mode discriminant ─────────────────────────────────────────────────────
 
@@ -66,8 +66,8 @@ fn mode_derives_from_session_and_attribution() {
 /// `call!`ed command too.
 #[test]
 fn registration_origin_follows_the_body_or_the_sessions_behalf() {
-    use crate::ConfigOrigin;
     use crate::attribution::{Owner, PluginId, Provenance};
+    use hume_core::ConfigOrigin;
 
     let plugin = EntryId::main(PluginId::parse("core:test-plugin").unwrap());
     let plugin_owner = || Rc::new(Owner::Plugin(plugin.clone()));
@@ -113,12 +113,12 @@ fn log_pushes_to_pending_messages() {
     let mut h = SteelCtxTestHarness::new();
     {
         let mut ctx = h.ctx_init();
-        ctx.log(LogLevel::Info, "hello".into());
-        ctx.log(LogLevel::Warning, "world".into());
+        ctx.log(Severity::Info, "hello".into());
+        ctx.log(Severity::Warning, "world".into());
     }
     assert_eq!(h.pending_messages.len(), 2);
-    assert_eq!(h.pending_messages[0].0, LogLevel::Info);
-    assert_eq!(h.pending_messages[1].0, LogLevel::Warning);
+    assert_eq!(h.pending_messages[0].0, Severity::Info);
+    assert_eq!(h.pending_messages[1].0, Severity::Warning);
 }
 
 // ── Effect commit/rollback ────────────────────────────────────────────────

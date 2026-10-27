@@ -1,7 +1,6 @@
 use super::*;
-use crate::editor::lsp::diagnostics::DiagSeverity;
+use hume_core::{ConfigOrigin, DiagSeverity};
 use hume_editing::text::LineEnding;
-use hume_scripting::ConfigOrigin;
 
 // ── Default values match previous hardcoded constants ─────────────────────
 

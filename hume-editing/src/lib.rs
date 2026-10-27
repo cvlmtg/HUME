@@ -24,7 +24,6 @@
 #![deny(rustdoc::private_intra_doc_links)]
 
 pub mod changeset;
-pub mod comment;
 pub mod diff;
 pub mod edit;
 pub mod error;

@@ -1,5 +1,5 @@
 #[cfg(unix)]
-use hume_engine::pipeline::BufferId;
+use hume_core::BufferId;
 
 use super::*;
 use pretty_assertions::assert_eq;

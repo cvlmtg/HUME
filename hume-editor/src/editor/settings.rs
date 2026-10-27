@@ -26,12 +26,11 @@
 use std::fmt;
 use std::str::FromStr;
 
+use hume_core::{ConfigOrigin, DiagSeverity, Tie};
 use hume_editing::tab_style::TabStyle;
 use hume_engine::builtins::line_number::LineNumberStyle;
 use hume_engine::pane::{WhitespaceConfig, WhitespaceRender, WrapMode};
-use hume_origin::Tie;
 use hume_platform::process::batch::ShellCommand;
-use hume_scripting::ConfigOrigin;
 use hume_scripting::host::OptionInput;
 use rustc_hash::FxHashMap;
 
@@ -40,8 +39,8 @@ use hume_ops::auto_pairs::Pair;
 
 // ── settings_enum! ────────────────────────────────────────────────────────────
 
-/// `"a"`, `"a or b"`, `"a, b, or c"`: how `settings_enum!`'s parse error
-/// lists the values it would have accepted.
+/// `"a"`, `"a or b"`, `"a, b, or c"`: how [`parse_named`]'s error lists the
+/// values it would have accepted.
 fn or_list(values: &[&str]) -> String {
     match values {
         [] => String::new(),
@@ -49,6 +48,22 @@ fn or_list(values: &[&str]) -> String {
         [a, b] => format!("{a} or {b}"),
         [rest @ .., last] => format!("{}, or {last}", rest.join(", ")),
     }
+}
+
+/// The value whose name in `names` matches `s` ignoring ASCII case, `values`
+/// being in `names`' order: the parse of every closed `:set` value. The error
+/// names every accepted value.
+fn parse_named<T>(
+    s: &str,
+    names: &[&str],
+    values: impl IntoIterator<Item = T>,
+) -> Result<T, String> {
+    names
+        .iter()
+        .zip(values)
+        .find(|(name, _)| name.eq_ignore_ascii_case(s))
+        .map(|(_, value)| value)
+        .ok_or_else(|| format!("expected {}, got '{s}'", or_list(names)))
 }
 
 /// The text form of a `:set` value: the names `:set <key>=<Tab>` completes,
@@ -133,21 +148,15 @@ pub(in crate::editor) fn parse_setting_text<T: SettingText>(
 /// names every accepted value.
 ///
 /// Only the enum declaration stays hand-written, so each variant keeps its
-/// own doc comment. `VALUES`, the parse arms and the print arms all come from
-/// the one list, so a variant cannot be completable but unparseable.
+/// own doc comment. `VALUES`, the parsed values and the print arms all come
+/// from the one list, so a variant cannot be completable but unparseable.
 macro_rules! settings_enum {
     ($ty:ty, [$($variant:ident => $name:literal),+ $(,)?]) => {
         impl SettingText for $ty {
             const VALUES: &'static [&'static str] = &[$($name),+];
 
             fn parse(s: &str) -> Result<Self, String> {
-                match s.to_ascii_lowercase().as_str() {
-                    $($name => Ok(Self::$variant),)+
-                    _ => Err(format!(
-                        "expected {}, got '{s}'",
-                        or_list(Self::VALUES),
-                    )),
-                }
+                parse_named(s, Self::VALUES, [$(Self::$variant),+])
             }
 
             fn to_text(&self) -> String {
@@ -787,7 +796,7 @@ define_settings! {
             parser: usize_nonzero;
         // Hint = most lenient: every severity renders. Gates the diagnostic
         // underline/extra-highlight and gutter-sign render write sides.
-        "lsp-diagnostics-min-severity" => lsp_diagnostics_min_severity: crate::editor::lsp::diagnostics::DiagSeverity = crate::editor::lsp::diagnostics::DiagSeverity::Hint,
+        "lsp-diagnostics-min-severity" => lsp_diagnostics_min_severity: DiagSeverity = DiagSeverity::Hint,
             scope: [Scope::Global],
             parser: from_str;
         // Off hides the diagnostic underline and end-of-line summary on the
@@ -975,14 +984,7 @@ pub(in crate::editor) const SHOW_NEWLINE_VALUES: &[&str] = &["none", "all"];
 /// newline is inherently always at end-of-line, so there's no meaningful
 /// "trailing" distinction, only `none`/`all`.
 fn parse_show_newline(s: &str) -> Result<bool, String> {
-    match s.to_ascii_lowercase().as_str() {
-        "none" => Ok(false),
-        "all" => Ok(true),
-        _ => Err(format!(
-            "expected {}, got '{s}'",
-            or_list(SHOW_NEWLINE_VALUES)
-        )),
-    }
+    parse_named(s, SHOW_NEWLINE_VALUES, [false, true])
 }
 
 /// Render a `whitespace-newline` value back to the wire format

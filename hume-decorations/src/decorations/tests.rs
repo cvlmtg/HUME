@@ -297,7 +297,7 @@ fn virtual_line(line: usize) -> VirtualLineEntry {
     VirtualLineEntry {
         line: cl(line),
         text: "x".to_string(),
-        before: false,
+        side: Side::After,
         scope: ScopeId(0),
         segments: Vec::new(),
     }
@@ -390,11 +390,11 @@ fn remap_through_only_touches_a_buffer_that_has_decorations() {
     );
 }
 
-fn inlay(pos: usize, text: &str, before: bool) -> InlayHintEntry {
+fn inlay(pos: usize, text: &str, side: Side) -> InlayHintEntry {
     InlayHintEntry {
         pos: co(pos),
         text: text.into(),
-        before,
+        side,
     }
 }
 
@@ -407,7 +407,7 @@ fn deleting_a_line_drops_its_decorations_and_shifts_the_later_ones() {
     store.set_inlay_hints(
         "lsp-inlay-hints".to_string(),
         a,
-        vec![inlay(5, ": i32", false)],
+        vec![inlay(5, ": i32", Side::After)],
     );
     store.set_signs("linter".to_string(), a, vec![sign(1, "b"), sign(2, "c")]);
 

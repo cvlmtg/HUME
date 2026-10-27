@@ -6,15 +6,14 @@
 use super::*;
 
 use super::language_config::boot;
+use hume_core::{BindMode, ConfigOrigin, LanguageFields};
 use hume_editing::text::LineEnding;
-use hume_scripting::host::{BindMode as ScriptBindMode, KeymapTarget, OptionInput, OptionValue};
+use hume_scripting::host::{KeymapTarget, OptionInput, OptionValue};
 use hume_scripting::{
-    ConfigOrigin, Effect, FeatureFilter, ListEntry, ListTier, PendingLanguageReg,
-    PendingLspServerOp, PendingLspServerReg, ServerName,
+    Effect, FeatureFilter, ListEntry, ListTier, PendingLanguageReg, PendingLspServerOp,
+    PendingLspServerReg, ServerName,
 };
-use hume_treesitter::registry::LanguageFields;
 
-use crate::editor::keymap::BindMode;
 use crate::editor::settings::ops;
 
 const ORIGINS: [ConfigOrigin; 3] = [
@@ -142,7 +141,7 @@ fn bound_key() -> termina::event::KeyEvent {
 
 fn bind_effect(by: ConfigOrigin, command: &str) -> Effect {
     Effect::BindKey {
-        mode: ScriptBindMode::Normal,
+        mode: BindMode::Normal,
         keys: vec![bound_key()],
         cmd: command.to_string(),
         force_extend: false,
@@ -161,7 +160,7 @@ fn write_binding_or_unbinding(ed: &mut Editor, by: ConfigOrigin, label: u8) {
         bind_effect(by, "cmd-1")
     } else {
         Effect::UnbindKey {
-            mode: ScriptBindMode::Normal,
+            mode: BindMode::Normal,
             keys: vec![bound_key()],
             keymap: KeymapTarget::Global,
             origin: by,
@@ -268,9 +267,7 @@ const LANGUAGE_IDS: [&str; 2] = ["id-1", "id-2"];
 fn define_matrix_language(ed: &mut Editor) {
     ed.apply_script_effects(vec![Effect::LanguageReg(PendingLanguageReg::Identity {
         name: "mx".to_string(),
-        extensions: Vec::new(),
-        globs: Vec::new(),
-        shebangs: Vec::new(),
+        identity: hume_core::LanguageIdentity::default(),
         origin: ConfigOrigin::Bundled,
     })]);
 }

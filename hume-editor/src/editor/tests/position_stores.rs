@@ -342,7 +342,7 @@ fn a_decoration_set_after_an_edit_is_not_moved_by_that_edit() {
     let hint = |pos| hume_decorations::InlayHintEntry {
         pos: co(pos),
         text: "!".to_string(),
-        before: false,
+        side: hume_core::Side::After,
     };
     ed.state
         .config

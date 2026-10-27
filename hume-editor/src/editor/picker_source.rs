@@ -18,8 +18,8 @@ use steel::rvals::SteelVal;
 
 use super::input_stack::PickerItem;
 use super::input_stack::picker::{session_for_feed, session_for_token};
-use super::message_log::Severity;
 use super::{Editor, EditorState};
+use hume_core::Severity;
 
 /// `EditorHostImpl::picker_source_spawn`'s body: attaches a streaming
 /// external-command source to the picker named by `token`. `Ok(false)` (a

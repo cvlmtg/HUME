@@ -1,6 +1,7 @@
 use super::*;
+use hume_core::BufferId;
 use hume_editing::text::BufferText;
-use hume_engine::pipeline::{BufferId, EngineView};
+use hume_engine::pipeline::EngineView;
 use hume_engine::theme::Theme;
 
 fn make_id(ev: &mut EngineView) -> BufferId {

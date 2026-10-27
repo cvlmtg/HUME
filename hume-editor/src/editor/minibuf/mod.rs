@@ -4,9 +4,10 @@ use hume_ui::width::text_width;
 
 use self::history::{HistoryDir, HistoryKind};
 use super::input_stack::{InputEvent, LayerRef, PastedText};
-use super::keymap::{BindMode, WalkResult};
+use super::keymap::WalkResult;
 use super::replay::dispatch_command_line_key;
 use super::{Editor, EditorState};
+use hume_core::BindMode;
 
 /// The one-line input on the statusline, active while the user types a
 /// command, a search or sift pattern, a shell command for `|`, or the

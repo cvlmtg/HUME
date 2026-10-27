@@ -62,12 +62,12 @@ mod mock_host {
     fn reg(grammar_path: &std::path::Path, highlights_path: &std::path::Path) -> GrammarReg {
         GrammarReg {
             name: "rust".into(),
-            source: hume_treesitter::registry::GrammarSource {
+            source: hume_core::GrammarSource {
                 path: grammar_path.to_path_buf(),
                 symbol: "rust_language".into(),
-                queries: hume_treesitter::registry::QueryFiles::new(highlights_path.to_path_buf()),
+                queries: hume_core::QueryFiles::new(highlights_path.to_path_buf()),
             },
-            origin: hume_scripting::ConfigOrigin::User,
+            origin: hume_core::ConfigOrigin::User,
         }
     }
 

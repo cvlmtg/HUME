@@ -1,6 +1,6 @@
 //! Live cursor/selection reads.
 
-use hume_engine::pipeline::BufferId;
+use hume_core::BufferId;
 use hume_rope::line::ContentLine;
 
 use crate::types::PaneHandle;

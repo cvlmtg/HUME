@@ -5,7 +5,8 @@ use hume_engine::theme::error::ThemeError;
 use hume_engine::theme::loader::{LoadedTheme, load_theme};
 
 use crate::editor::input_stack::InputStack;
-use crate::editor::message_log::{MessageLog, Severity};
+use crate::editor::message_log::MessageLog;
+use hume_core::Severity;
 
 /// Replace `view.theme`, record the name it came from in `shown_theme` (empty
 /// for the fallback), and rebuild or drop everything built against its baked

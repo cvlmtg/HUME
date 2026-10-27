@@ -200,7 +200,7 @@ fn switching_onto_a_stale_buffer_checks_disk_state_exactly_once() {
 /// a `:messages` line and no confirm.
 #[test]
 fn inline_output_commands_own_warning_does_not_shadow_its_own_reload_confirm() {
-    use crate::editor::keymap::BindMode;
+    use hume_core::BindMode;
     use hume_scripting::ScriptingHost;
 
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -226,7 +226,7 @@ fn inline_output_commands_own_warning_does_not_shadow_its_own_reload_confirm() {
         &[key('\\')],
         "lint-and-fix".into(),
         false,
-        hume_scripting::ConfigOrigin::User,
+        hume_core::ConfigOrigin::User,
     );
 
     // The command's own subprocess rewrote the focused file while it ran.

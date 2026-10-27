@@ -225,11 +225,11 @@ pub fn str_width(s: &str, start_display_col: usize, tab_width: u8) -> usize {
 
 /// Display columns a cluster of a line's leading whitespace occupies at
 /// `display_col`, or `None` when `first`, the cluster's first char, is not
-/// blank (see [`crate::lines::is_space_char`]): the one rule a line's indent
+/// blank (see [`hume_core::is_space_char`]): the one rule a line's indent
 /// is measured by. A blank char carrying a combining mark is one blank
 /// cluster, as wide as the char alone.
 pub(crate) fn blank_advance(first: char, display_col: usize, tab_width: u8) -> Option<usize> {
-    crate::lines::is_space_char(first)
+    hume_core::is_space_char(first)
         .then(|| grapheme_width(first.encode_utf8(&mut [0; 4]), display_col, tab_width))
 }
 

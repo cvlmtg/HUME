@@ -20,7 +20,7 @@ use hume_platform::path::display_form;
 use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
-use crate::log::LogLevel;
+use hume_core::Severity;
 
 use super::SteelResult;
 use super::errors::generic_err;
@@ -36,7 +36,7 @@ pub(crate) fn compile_grammar(ctx: &mut SteelCtx, src: String, out: String) -> S
         return Ok(SteelVal::Void);
     };
     if ctx.session == crate::context::EvalSession::Init {
-        ctx.log(LogLevel::Warning, format!("compile-grammar!: {msg}"));
+        ctx.log(Severity::Warning, format!("compile-grammar!: {msg}"));
         Ok(SteelVal::Void)
     } else {
         Err(generic_err(msg))
@@ -63,7 +63,7 @@ fn build(ctx: &mut SteelCtx, src: &str, out: &str) -> Result<(), String> {
     let program = display_form(&tool);
 
     ctx.log(
-        LogLevel::Trace,
+        Severity::Trace,
         format!("compile-grammar!: `{program} -o {out} {src}`"),
     );
 

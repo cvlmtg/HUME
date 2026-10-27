@@ -66,7 +66,7 @@ fn set_inlay_hints_composes_with_lsp_position_to_char_offset() {
         "wire char 2 (UTF-16) must land right after the emoji, at char index 1"
     );
     assert_eq!(hints[0].text, "hint");
-    assert!(!hints[0].before);
+    assert_eq!(hints[0].side, hume_core::Side::After);
 }
 
 #[test]
@@ -810,7 +810,7 @@ fn set_virtual_lines_anchor_scope_and_segments_round_trip_into_the_store() {
     assert_eq!(vlines.len(), 1);
     assert_eq!(vlines[0].line, hume_rope::line::ContentLine::new(3));
     assert_eq!(vlines[0].text, "- let x = 5");
-    assert!(vlines[0].before, "'anchor 'before must set before: true");
+    assert_eq!(vlines[0].side, hume_core::Side::Before);
     assert_eq!(scope_name(&ed, vlines[0].scope), "diff.minus");
     assert_eq!(
         vlines[0].segments,
@@ -1042,7 +1042,10 @@ fn diagnostics_for_buffer_and_diagnostic_counts_reflect_the_published_batch() {
            (define-typed-command! "first" "" (lambda (bid)
              (let ((d (car (diagnostics-for-buffer bid))))
                (log! 'info (to-string (hash-ref d 'message) "@" (hash-ref d 'start-char)
-                                      (equal? (hash-ref d 'severity) 'error))))))"#,
+                                      (equal? (hash-ref d 'severity) 'error))))))
+           (define-typed-command! "hint-rank" "" (lambda (bid)
+             (let ((d (car (diagnostics-for-buffer bid #:range (hash 'start-char 5 'end-char 10)))))
+               (log! 'info (to-string (hash-ref d 'severity) (hash-ref d 'severity-rank))))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -1080,6 +1083,13 @@ fn diagnostics_for_buffer_and_diagnostic_counts_reflect_the_published_batch() {
         ed.state.status_msg.clone().unwrap(),
         "an error @ 0 #true",
         "an entry's fields are read by symbol key, its severity a symbol"
+    );
+
+    type_cmd(&mut ed, ":hint-rank");
+    assert_eq!(
+        ed.state.status_msg.clone().unwrap(),
+        "hint 3",
+        "an entry carries its severity as a symbol and its rank, 0 for error to 3 for hint"
     );
 }
 

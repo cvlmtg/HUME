@@ -13,7 +13,7 @@ hume-platform = { path = "../hume-platform" }
 hume-scripting = { path = "../hume-scripting" }
 hume-editing = { path = "../hume-editing" }
 hume-rope = { path = "../hume-rope" }
-hume-origin = { path = "../hume-origin" }
+hume-core = { path = "../hume-core" }
 hume-ops = { path = "../hume-ops" }
 hume-treesitter = { path = "../hume-treesitter" }
 hume-lsp = { path = "../hume-lsp" }
@@ -22,7 +22,6 @@ hume-decorations = { path = "../hume-decorations" }
 lsp-types = "0.97"
 serde.workspace = true
 serde_json.workspace = true
-globset = "0.4"
 slotmap = "1"
 rustc-hash.workspace = true
 steel-core.workspace = true
@@ -72,4 +71,5 @@ hume-platform = { path = "../hume-platform", features = ["test-util"] }
 hume-ops = { path = "../hume-ops", features = ["test-util"] }
 hume-decorations = { path = "../hume-decorations", features = ["test-util"] }
 hume-engine = { path = "../hume-engine", features = ["test-util"] }
+hume-core = { path = "../hume-core", features = ["test-util"] }
 test-fixtures = { path = "../test-fixtures" }

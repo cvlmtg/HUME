@@ -16,20 +16,21 @@
 /// Display label used when the compiled-in fallback theme is active.
 pub(in crate::editor::commands) const FALLBACK_THEME_LABEL: &str = "fallback (built-in)";
 
+use hume_core::{BufferId, PaneId, Severity};
 use hume_editing::selection::SelectionSet;
 use hume_editing::tab_style::TabStyle;
 use hume_engine::display_lines::line_store::FormatKey;
 use hume_engine::display_lines::{DisplayColTarget, DisplayLineMap};
 use hume_engine::pane::{Pane, Viewport};
-use hume_engine::pipeline::{BufferId, ContentWidth, EngineView, PaneId};
+use hume_engine::pipeline::{ContentWidth, EngineView};
 
+use super::EditorState;
 use super::buffer::lifecycle::CloseBufferRefused;
 use super::buffer::{Buffer, TextRefusal};
 use super::doc_ops;
 use super::jump_list::{JumpRule, with_jump};
 use super::pipe_run::{PipeRunning, STOP_KEY_NAME};
 use super::register_ops;
-use super::{EditorState, Severity};
 use crate::editor::error::CommandError;
 use crate::editor::settings::EditorSettings;
 use hume_ops::LineEnd;
@@ -353,7 +354,7 @@ pub(super) fn jump_pane_to(
     state: &mut EditorState,
     view: &mut EngineView,
     t: CommandPane,
-    bid: hume_engine::pipeline::BufferId,
+    bid: hume_core::BufferId,
     pos: hume_rope::cluster::ClusterStart,
 ) {
     let pid = t.pid();

@@ -1,5 +1,5 @@
 use super::super::*;
-use hume_editing::comment::{BlockCommentTokens, CommentTokens, LineCommentTokens};
+use hume_core::{BlockCommentTokens, CommentTokens, LineCommentTokens};
 use hume_editing::selection::SelectionSet;
 use hume_editing::state::EditState;
 use hume_editing::text::BufferText;

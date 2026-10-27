@@ -9,8 +9,9 @@ use std::time::{Duration, Instant};
 
 use rustc_hash::FxHashMap;
 
+use hume_core::{BufferId, Severity};
 use hume_editing::text::{BufferText, TextVersion};
-use hume_engine::pipeline::{BufferId, EngineView};
+use hume_engine::pipeline::EngineView;
 use hume_lsp::backend::ServerId;
 use hume_lsp::client::{Outcome, RequestMeta};
 use hume_lsp::codec::RequestId;
@@ -27,7 +28,6 @@ use steel::rvals::SteelVal;
 use super::route::{Routed, route};
 use super::{ResponseAnchor, per_encoding};
 use crate::editor::EditorState;
-use crate::editor::message_log::Severity;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(in crate::editor) struct DeliveryId(u64);

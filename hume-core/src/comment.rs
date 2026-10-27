@@ -6,7 +6,7 @@
 
 use std::fmt;
 
-use hume_rope::lines::is_space_char;
+use crate::is_space_char;
 
 /// Why a token list was rejected.
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -1,7 +1,7 @@
 //! `EditorHostImpl`'s buffer/pane enumeration, reads, lifecycle, and
 //! viewport geometry.
 
-use hume_engine::pipeline::BufferId;
+use hume_core::{BufferId, OnUnsaved};
 use hume_platform::path::AbsolutePath;
 use hume_rope::line::ContentLine;
 use hume_rope::lines::line_token_content;
@@ -9,10 +9,10 @@ use hume_rope::offset::ExclusiveRange;
 
 use super::EditorHostImpl;
 use crate::editor::buffer::lifecycle::CloseBufferRefused;
-use crate::editor::buffer::{OnUnsaved, TextRefusal, ViewLabel};
+use crate::editor::buffer::{TextRefusal, ViewLabel};
 use crate::editor::commands::FocusedPane;
 use hume_scripting::PaneHandle;
-use hume_scripting::host::{BufferHost, DiscardUnsaved, DisplayPathForm, StoredLanguage};
+use hume_scripting::host::{BufferHost, DisplayPathForm, StoredLanguage};
 
 impl<'a> BufferHost for EditorHostImpl<'a> {
     // ── Enumeration ──────────────────────────────────────────────────────────
@@ -113,14 +113,10 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
         .map_err(|e| format!("{}: {e}", path.display()))?;
         Ok(bid)
     }
-    fn close_buffer(&mut self, id: BufferId, discard: DiscardUnsaved) -> Result<(), String> {
+    fn close_buffer(&mut self, id: BufferId, on_unsaved: OnUnsaved) -> Result<(), String> {
         if self.state.buffers.try_get(id).is_none() {
             return Err(format!("buffer {id:?} does not exist"));
         }
-        let on_unsaved = match discard {
-            DiscardUnsaved::No => OnUnsaved::Refuse,
-            DiscardUnsaved::Yes => OnUnsaved::Discard,
-        };
         crate::editor::buffer::lifecycle::close_buffer_and_notify(
             self.view, self.state, id, on_unsaved,
         )

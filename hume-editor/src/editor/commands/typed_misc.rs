@@ -1,12 +1,13 @@
 use std::time::Duration;
 
-use hume_engine::pipeline::{BufferId, Cycle, Direction, EngineView};
+use hume_core::{BufferId, Severity};
+use hume_engine::pipeline::{Cycle, Direction, EngineView};
 use hume_grid::Rgb;
 use hume_platform::path::AbsolutePath;
 use hume_scripting::host::DecorationHost;
 
 use super::super::Editor;
-use super::super::{EditorState, Severity};
+use super::super::EditorState;
 use super::{CommandPane, FocusedPane, redo_steps, undo_steps};
 use crate::editor::buffer::{Buffer, EditorView, ViewLabel};
 use crate::editor::error::CommandError;
@@ -272,7 +273,7 @@ pub(in crate::editor) fn typed_theme(
         &mut ed.view,
         THEME_KEY,
         &name,
-        hume_scripting::ConfigOrigin::User,
+        hume_core::ConfigOrigin::User,
     )
     .map_err(CommandError::new)
 }

@@ -10,7 +10,8 @@ use hume_rope::offset::CharOffset;
 
 use super::{BindingId, CursorReplacement, Input, Recording, session_feed};
 use crate::editor::edit_session::InsertSession;
-use crate::editor::{Editor, Severity, commands};
+use crate::editor::{Editor, commands};
+use hume_core::Severity;
 
 /// A run of edits that compose into one, plus the primary head in the text
 /// before the first of them.

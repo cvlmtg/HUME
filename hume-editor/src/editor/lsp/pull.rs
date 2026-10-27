@@ -6,7 +6,7 @@
 //! then stops pushing; whether a server pushes is observed, not read from
 //! its capabilities.
 
-use hume_engine::pipeline::BufferId;
+use hume_core::{BufferId, Severity};
 use hume_lsp::backend::ServerId;
 use hume_lsp::diagnostic::{PullReport, parse_pull_report};
 use hume_scripting::{CapabilityQuery, LspFeature};
@@ -14,8 +14,8 @@ use lsp_types::request::{DocumentDiagnosticRequest, Request as _};
 
 use super::bridge::{RustDelivery, RustResponder};
 use super::introspect::provider_of;
+use crate::editor::EditorState;
 use crate::editor::event::EditorEvent;
-use crate::editor::{EditorState, Severity};
 
 const PULL: &str = DocumentDiagnosticRequest::METHOD;
 

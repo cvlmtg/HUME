@@ -16,12 +16,12 @@ use proptest::prelude::*;
 use crate::editor::buffer::Buffer;
 use crate::editor::position_stores::DetachedStores;
 use crate::editor::tests::co;
+use hume_core::{BufferId, PaneId};
 use hume_editing::edit::Edited;
 use hume_editing::selection::{EditView, SelectionSet};
 use hume_editing::state::EditState;
 use hume_editing::text::BufferText;
 use hume_editing::word::WordChars;
-use hume_engine::pipeline::{BufferId, PaneId};
 use hume_ops::edit::yank_selections;
 use hume_ops::edit::{delete_char_backward, delete_char_forward, delete_selection, insert_char};
 use hume_ops::motion::{

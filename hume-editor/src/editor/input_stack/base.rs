@@ -4,14 +4,15 @@
 
 use termina::event::{KeyCode, KeyEvent, Modifiers};
 
-use hume_engine::pipeline::{BufferId, EngineView};
+use hume_core::{BindMode, BufferId};
+use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
 use hume_ops::MotionMode;
 use hume_scripting::host::MAX_COUNT;
 
 use super::super::commands::cmd_clear_search;
 use super::super::error::CommandError;
-use super::super::keymap::{BindMode, WalkResult};
+use super::super::keymap::WalkResult;
 use super::super::{Editor, EditorState};
 use super::char::{CharRead, MacroRead, read_char};
 use super::paste::PastedText;

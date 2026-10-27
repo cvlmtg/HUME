@@ -2,7 +2,7 @@
 //! in the parent.
 
 use super::*;
-use crate::log::LogLevel;
+use hume_core::Severity;
 use std::os::unix::fs::PermissionsExt;
 
 /// Makes `dir` deletable again when the test ends, so the temp dir cleans up.
@@ -47,7 +47,7 @@ fn replace_dir_succeeds_when_the_old_contents_cannot_be_deleted() {
 
     assert_eq!(entries(&dest), ["new"]);
     let (level, message) = h.pending_messages.last().expect("a warning is logged");
-    assert_eq!(*level, LogLevel::Warning);
+    assert_eq!(*level, Severity::Warning);
     assert!(
         message.contains("repo.replaced"),
         "the warning names the leftover backup: {message}"

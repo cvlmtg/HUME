@@ -19,7 +19,7 @@ use hume_editing::text::BufferText;
 /// Works because `setup_buffer_syntax` posts the request *before* the first
 /// `reparse_stale_buffers` call: InlineParseBackend resolves it immediately,
 /// so the first drain installs it.
-fn json_editor(source: &str) -> (Editor, hume_engine::pipeline::BufferId) {
+fn json_editor(source: &str) -> (Editor, hume_core::BufferId) {
     let buf = Buffer::at_start(BufferText::from(source));
     let mut ed = Editor::for_testing(buf);
     let bid = ed.focused_buffer_id();
@@ -377,7 +377,7 @@ fn grammar_swap_clears_pending_and_full_reparses() {
 /// current one, so no full reparse is forced.
 #[test]
 fn an_edit_spanning_several_text_versions_keeps_the_pending_edit_chain_linked() {
-    use hume_engine::pipeline::PaneId;
+    use hume_core::PaneId;
     use hume_ops::edit::insert_str;
 
     require_grammars(&["json"]);

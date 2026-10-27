@@ -137,7 +137,7 @@ fn confirm_still_opens_over_an_open_scrollable_popup() {
     let popup = crate::editor::input_stack::PopupLayer::new(
         "hello".to_string(),
         None,
-        hume_ui::popup::PopupLayout::Cursor,
+        hume_core::PopupLayout::Cursor,
         &mut ed.view.theme,
         &ed.view.registry,
     );

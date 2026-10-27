@@ -3,9 +3,9 @@ use std::num::NonZeroU16;
 use slotmap::SecondaryMap;
 
 use crate::display_lines::DisplayLinePos;
-use crate::pipeline::BufferId;
 use crate::providers::ProviderSet;
 use crate::types::PaintedSelections;
+use hume_core::BufferId;
 use hume_rope::column::DisplayLineCol;
 use hume_rope::line::ContentLine;
 use ropey::Rope;

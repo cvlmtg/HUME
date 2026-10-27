@@ -1,5 +1,20 @@
+# hume-core
+### Used by
+- hume-rope
+- hume-editing
+- hume-ops
+- hume-engine
+- hume-treesitter
+- hume-scripting
+- hume-ui
+- hume-decorations
+- hume-editor
+## Description
+Plain data that two or more crates share and no domain crate owns.
+
 # hume-rope
 ### Depends on
+- hume-core
 - test-fixtures *(dev-only)*
 ### Used by
 - hume-editing
@@ -15,14 +30,6 @@
 - test-fixtures
 ## Description
 Rope-domain primitives: line and column counting, grapheme-cluster boundaries, typed buffer positions, display width, and LSP wire-position conversion.
-
-# hume-origin
-### Used by
-- hume-treesitter
-- hume-scripting
-- hume-editor
-## Description
-Whose code made a registration (`ConfigOrigin`) and the one rule that ranks two writes to a slot, shared by every store that keeps a value per key.
 
 # hume-grid
 ### Depends on
@@ -48,6 +55,7 @@ Platform abstraction layer: terminal control, process spawning, waking the main 
 
 # hume-editing
 ### Depends on
+- hume-core
 - hume-rope
 - test-fixtures *(dev-only)*
 ### Used by
@@ -63,10 +71,10 @@ Core text-editing model: the document, selections, edits as data, and the undo t
 
 # hume-engine
 ### Depends on
+- hume-core
 - hume-grid
 - hume-rope
 ### Used by
-- hume-scripting
 - hume-treesitter
 - hume-editor
 - hume-ui
@@ -76,12 +84,12 @@ Rendering pipeline and pane geometry: the layout tree and its focused pane, fram
 
 # hume-ops
 ### Depends on
+- hume-core
 - hume-editing
 - hume-rope
 - test-fixtures *(dev-only)*
 ### Used by
 - hume-editor
-- hume-scripting
 ## Description
 Named edit and motion commands, as pure functions of buffer and selections.
 
@@ -99,13 +107,10 @@ LSP transport, JSON-RPC codec, client lifecycle state, and protocol-level wire d
 # hume-scripting
 ### Depends on
 - hume-editing
-- hume-engine
 - hume-lsp
-- hume-ops
-- hume-origin
+- hume-core
 - hume-platform
 - hume-rope
-- hume-treesitter
 ### Used by
 - hume-editor
 ## Description
@@ -115,12 +120,11 @@ Steel (Scheme) scripting host: runs plugins and configuration, and exposes edito
 ### Depends on
 - hume-editing
 - hume-engine
-- hume-origin
+- hume-core
 - hume-platform
 - hume-rope
 - test-fixtures *(dev-only)*
 ### Used by
-- hume-scripting
 - hume-editor
 ## Description
 Tree-sitter integration: grammar registry, incremental parsing, syntax highlighting, structural text-object queries, and indentation from the syntax tree.
@@ -140,6 +144,7 @@ Shared test infrastructure: a marker-annotated buffer and selection DSL, Unicode
 
 # hume-ui
 ### Depends on
+- hume-core
 - hume-engine
 - hume-grid
 - hume-rope
@@ -150,6 +155,7 @@ The popup, menu, drawer, and picker overlay widgets.
 
 # hume-decorations
 ### Depends on
+- hume-core
 - hume-editing
 - hume-engine
 - hume-rope
@@ -166,7 +172,7 @@ Stores for the gutter signs, inlay hints, virtual lines, and highlights that scr
 - hume-scripting
 - hume-editing
 - hume-rope
-- hume-origin
+- hume-core
 - hume-ops
 - hume-treesitter
 - hume-lsp

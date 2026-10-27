@@ -10,16 +10,17 @@ use std::time::{Duration, Instant};
 
 use termina::event::Event as TerminalEvent;
 
-use hume_engine::pipeline::{BufferId, EngineView};
+use hume_core::{BufferId, Severity};
+use hume_engine::pipeline::EngineView;
 
 use hume_platform::screen::Screen;
 use hume_platform::terminal::SharedTerm;
 use hume_platform::wake::WakeCallback;
 
+use super::Editor;
 use super::frame::{FramePacer, FrameTarget};
 use super::pipe_run::{Detached, PipeConsole, ReaderConsole, WaitEvent};
 use super::tui::Tui;
-use super::{Editor, Severity};
 use crate::cli::{ConfigSource, FileArg};
 
 /// What drives an editor once [`Editor::start`] has set it up.

@@ -7,9 +7,10 @@ use hume_rope::offset::ExclusiveRange;
 use test_fixtures::{require_grammars, require_helix_indent_corpus, require_helix_query};
 
 use super::*;
-use crate::registry::{GrammarSnapshot, OptionalQuery};
+use crate::registry::GrammarSnapshot;
 use crate::syntax::Syntax;
 use crate::test_support::make_bundle;
+use hume_core::OptionalQuery;
 
 /// A corpus language: its name, the corpus file's extension, its indent
 /// unit (also the tab width it is checked with), the 1-based numbers of

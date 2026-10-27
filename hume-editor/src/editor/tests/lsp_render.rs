@@ -14,7 +14,8 @@ use hume_platform::dirs::Dirs;
 use super::lsp_rig::LspRig;
 use super::*;
 use crate::editor::commands::open_pane_in_layout;
-use hume_engine::pipeline::{Direction, PaneId, RenderContext};
+use hume_core::PaneId;
+use hume_engine::pipeline::{Direction, RenderContext};
 use hume_engine::providers::HighlightTier;
 use hume_scripting::ScriptingHost;
 

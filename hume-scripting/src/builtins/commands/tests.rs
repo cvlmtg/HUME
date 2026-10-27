@@ -39,7 +39,7 @@ fn call_bang_unknown_command_logs_error() {
     assert!(
         h.pending_messages
             .iter()
-            .any(|(level, msg)| *level == LogLevel::Error && msg.contains("plum/ensure-grammars")),
+            .any(|(level, msg)| *level == Severity::Error && msg.contains("plum/ensure-grammars")),
         "unknown command must log an error; got: {:?}",
         h.pending_messages
     );
@@ -55,7 +55,7 @@ fn call_bang_unknown_command_command_mode_logs_error() {
     assert!(
         h.pending_messages
             .iter()
-            .any(|(level, msg)| *level == LogLevel::Error && msg.contains("move-right")),
+            .any(|(level, msg)| *level == Severity::Error && msg.contains("move-right")),
         "unknown command in command mode must log an error; got: {:?}",
         h.pending_messages
     );
@@ -72,11 +72,11 @@ fn call_bang_multiple_unknown_commands_each_log_error() {
     let has_right = h
         .pending_messages
         .iter()
-        .any(|(level, msg)| *level == LogLevel::Error && msg.contains("move-right"));
+        .any(|(level, msg)| *level == Severity::Error && msg.contains("move-right"));
     let has_left = h
         .pending_messages
         .iter()
-        .any(|(level, msg)| *level == LogLevel::Error && msg.contains("move-left"));
+        .any(|(level, msg)| *level == Severity::Error && msg.contains("move-left"));
     assert!(
         has_right && has_left,
         "each unknown command must produce an error"

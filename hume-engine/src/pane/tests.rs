@@ -141,7 +141,7 @@ fn whitespace_config_defaults() {
 fn make_pane_at(rope: &ropey::Rope, head_char: usize) -> Pane {
     Pane {
         selections: Some(cursor_mirror(rope, head_char)),
-        ..Pane::new(crate::pipeline::BufferId::default())
+        ..Pane::new(hume_core::BufferId::default())
     }
 }
 

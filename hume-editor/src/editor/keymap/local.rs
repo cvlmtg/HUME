@@ -2,12 +2,11 @@
 
 use std::borrow::Cow;
 
-use hume_engine::pipeline::BufferId;
-use hume_scripting::ConfigOrigin;
+use hume_core::{BindMode, BufferId, ConfigOrigin};
 use rustc_hash::FxHashMap;
 use termina::event::KeyEvent;
 
-use super::{BindMode, Keymap, WalkResult};
+use super::{Keymap, WalkResult};
 
 /// Every named keymap, and which buffers each is attached to.
 #[derive(Default)]

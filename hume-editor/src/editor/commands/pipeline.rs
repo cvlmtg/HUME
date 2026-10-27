@@ -10,6 +10,7 @@ use hume_engine::pipeline::EngineView;
 use hume_scripting::PaneHandle;
 use hume_scripting::host::CommandArg;
 
+use crate::editor::EditorState;
 use crate::editor::dispatch::CmdCtx;
 use crate::editor::jump_list::{JumpRule, with_jump};
 use crate::editor::registry::{
@@ -18,7 +19,7 @@ use crate::editor::registry::{
 };
 use crate::editor::replay::{Answer, InputOpener, NewChange, record_change};
 use crate::editor::settings::ObjectJumpAlign;
-use crate::editor::{EditorState, Severity};
+use hume_core::Severity;
 use hume_ops::{MotionMode, WordCtx};
 
 use crate::editor::syntax::{SyntaxUse, ensure_syntax_current};

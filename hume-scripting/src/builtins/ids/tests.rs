@@ -1,6 +1,6 @@
 use super::*;
 use crate::types::PaneHandle;
-use hume_engine::pipeline::PaneId;
+use hume_core::{PaneId, TimerIds};
 use steel::rvals::IntoSteelVal;
 
 fn pane_val(handle: PaneHandle) -> SteelVal {
@@ -150,9 +150,11 @@ fn handle_equality_and_hashing(a: SteelVal, b: SteelVal, c: SteelVal) -> Vec<Ste
 
 #[test]
 fn timer_handles_compare_and_hash_by_their_timer() {
-    let timer = |raw| TimerHandle::from_raw(raw).into_steel_val();
+    let mut ids = TimerIds::default();
+    let (first, second) = (ids.mint(), ids.mint());
+    let timer = |id| TimerHandle::new(id).into_steel_val();
     assert_eq!(
-        handle_equality_and_hashing(timer(3), timer(3), timer(4)),
+        handle_equality_and_hashing(timer(first), timer(first), timer(second)),
         vec![
             SteelVal::BoolV(true),
             SteelVal::BoolV(false),
@@ -176,8 +178,9 @@ fn job_handles_compare_and_hash_by_their_job() {
 
 #[test]
 fn a_timer_and_a_job_with_one_id_are_not_equal() {
-    let timer = TimerHandle::from_raw(0).into_steel_val();
-    let job = JobHandle::from_raw(0).into_steel_val();
+    let timer = TimerHandle::new(TimerIds::default().mint());
+    let job = JobHandle::from_raw(timer.raw()).into_steel_val();
+    let timer = timer.into_steel_val();
     assert_eq!(
         handle_equality_and_hashing(timer.clone(), timer, job)[1],
         SteelVal::BoolV(false)

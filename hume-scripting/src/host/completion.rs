@@ -4,19 +4,7 @@
 //! plugin activation's registration is never applied.
 
 use crate::Callback;
-
-/// How a source's items are matched against its token's typed text,
-/// decoded from `register-completion-source!`'s `#:match` symbol
-/// (`'fuzzy`/`'string`/`'delegated`) at the builtin layer, converted into
-/// the editor's own richer internal enum by the host implementation, same
-/// as this crate's `PickerFeedMode`/`TruncateEnd` mirror editor-side
-/// concepts at this same boundary.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MatchKind {
-    Fuzzy,
-    String { case_sensitive: bool },
-    Delegated,
-}
+use hume_core::MatchKind;
 
 /// `register-completion-source!`'s `#:target`: `'buffer` serves Insert
 /// mode (token: the identifier run before the cursor), `'minibuf` the `:`

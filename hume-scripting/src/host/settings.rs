@@ -1,6 +1,6 @@
 //! Global settings and the Steel eval budget.
 
-use hume_engine::pipeline::BufferId;
+use hume_core::BufferId;
 
 /// A buffer option stored on the buffer itself rather than in the settings
 /// tables. Each has no global default and is valid only for `:set buffer`.
@@ -97,7 +97,7 @@ pub trait SettingsHost {
         &mut self,
         key: &str,
         value: OptionInput,
-        origin: crate::ConfigOrigin,
+        origin: hume_core::ConfigOrigin,
     ) -> Result<(), String>;
 
     /// `(set-buffer-option! pane key value)`: writes `key`'s per-buffer
@@ -113,7 +113,7 @@ pub trait SettingsHost {
         key: &str,
         value: OptionInput,
         bid: BufferId,
-        origin: crate::ConfigOrigin,
+        origin: hume_core::ConfigOrigin,
     ) -> Result<(), String>;
 
     /// `(get-option key)`: `key`'s global value, ignoring any buffer

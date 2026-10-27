@@ -157,7 +157,7 @@ fn assert_core_plugin_load_fails(dirs: Dirs, init: &str, plugin: &str, expected:
     let name = format!("core:{plugin}");
     assert!(
         host.peek_pending_messages().iter().any(|(level, msg)| {
-            matches!(level, hume_scripting::LogLevel::Error)
+            matches!(level, hume_core::Severity::Error)
                 && msg.contains(&name)
                 && expected.iter().all(|e| msg.contains(e))
         }),

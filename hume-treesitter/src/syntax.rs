@@ -2,9 +2,9 @@ use std::sync::{Arc, Mutex};
 
 use crate::highlight::layer_highlights_for_line;
 use crate::layers::{SyntaxLayer, SyntaxLayers};
+use hume_core::BufferId;
 use hume_editing::edit::TextChange;
 use hume_editing::text::BufferText;
-use hume_engine::pipeline::BufferId;
 use hume_engine::types::ScopeId;
 use hume_rope::column::ByteCol;
 

@@ -25,8 +25,8 @@ use std::time::Instant;
 
 use rustc_hash::FxHashSet;
 
+use hume_core::{BufferId, PaneId};
 use hume_editing::text::TextVersion;
-use hume_engine::pipeline::{BufferId, PaneId};
 use hume_lsp::backend::{LspBackend, ServerId, ThreadedLspBackend};
 use hume_lsp::client::{LspClient, RequestMeta, ServerState};
 use hume_lsp::codec::RequestId;

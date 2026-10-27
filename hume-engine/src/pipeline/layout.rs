@@ -5,7 +5,8 @@ use hume_grid::box_glyphs::{
 };
 use rustc_hash::FxHashMap;
 
-use super::{PaneId, UnattachedPane};
+use super::UnattachedPane;
+use hume_core::PaneId;
 
 // ---------------------------------------------------------------------------
 // Layout tree

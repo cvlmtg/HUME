@@ -14,7 +14,8 @@ use std::path::Path;
 
 use super::*;
 use crate::editor::commands::open_pane_in_layout;
-use hume_engine::pipeline::{BufferId, RenderContext};
+use hume_core::BufferId;
+use hume_engine::pipeline::RenderContext;
 use hume_lsp::test_util::{RecordingLspBackend, RequestLog};
 
 /// The rig's file, "let x = 1;\n", with the cursor at its start.
@@ -59,7 +60,7 @@ struct TwoServers {
     sid_b: ServerId,
     bid_a: BufferId,
     bid_b: BufferId,
-    pane_b: hume_engine::pipeline::PaneId,
+    pane_b: hume_core::PaneId,
 }
 
 /// Two buffers, each attached to its own server: `rust-analyzer` answers
@@ -248,7 +249,7 @@ fn hints_land_in_the_store_at_the_correct_char_offset() {
     assert_eq!(hints.len(), 1);
     assert_eq!(hints[0].pos, co(4));
     assert_eq!(hints[0].text, ": i32");
-    assert!(hints[0].before);
+    assert_eq!(hints[0].side, hume_core::Side::Before);
 }
 
 fn hint_count(ed: &Editor, bid: BufferId) -> usize {

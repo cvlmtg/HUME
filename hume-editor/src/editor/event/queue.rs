@@ -3,7 +3,7 @@
 
 use std::rc::Rc;
 
-use hume_engine::pipeline::BufferId;
+use hume_core::BufferId;
 use hume_scripting::host::JobHandle;
 use hume_scripting::{PaneHandle, Rooted, SteelCall};
 
@@ -11,8 +11,8 @@ use super::EditorEvent;
 use crate::editor::buffer::store::EditOrigin;
 use crate::editor::lsp::ResponseAnchor;
 use crate::editor::replay::AnswerTicket;
-use crate::editor::timers::TimerId;
 use crate::editor::{Editor, EditorState};
+use hume_core::TimerId;
 
 /// One item of deferred Steel work, queued by a raise site and drained by
 /// `Editor::settle()` in FIFO order. One merged queue closes the stranded-
@@ -223,10 +223,7 @@ impl Editor {
     /// when its tab backgrounds, so the pane's first frame back on screen
     /// reads as a fresh change and re-arms this on its own. This guard only
     /// skips the fire for the frames spent hidden, not the one on return.
-    pub(in crate::editor) fn queue_viewport_change(
-        &mut self,
-        pane_id: hume_engine::pipeline::PaneId,
-    ) {
+    pub(in crate::editor) fn queue_viewport_change(&mut self, pane_id: hume_core::PaneId) {
         if !self.view.layout().contains_leaf(pane_id) {
             return;
         }

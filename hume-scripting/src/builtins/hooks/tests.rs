@@ -126,7 +126,7 @@ fn register_hook_valid_during_plugin_load() {
             .handler
             .provenance()
             .behalf,
-        crate::ConfigOrigin::Plugin,
+        hume_core::ConfigOrigin::Plugin,
         "a plugin's hook runs on the plugin's behalf, as nobody asked for it"
     );
 }

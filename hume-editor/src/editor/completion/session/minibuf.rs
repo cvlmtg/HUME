@@ -17,8 +17,8 @@ use hume_scripting::host::{AnswerEnd, EmittedWord, FirstTab};
 
 use super::super::item::{CandidateKey, CompletionItem};
 use super::super::registry::{MinibufSourceId, SourceRegistry};
-use super::MatchKind;
 use super::slots::{Invocation, SlotSet, SlotTokens};
+use hume_core::MatchKind;
 
 /// Byte range in [`MinibufSession`]'s own `input` that a `Minibuf`
 /// invocation answered for. Never moves: nothing can edit the line while

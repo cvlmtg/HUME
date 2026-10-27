@@ -8,7 +8,7 @@ use crate::editor::buffer::{DiskCheckTrigger, DiskState};
 use crate::editor::input_stack::picker;
 use crate::editor::input_stack::{DrawerLayer, DrawerSelect, MenuLayer};
 use crate::editor::input_stack::{PickerItem, PickerSession};
-use hume_engine::types::TruncateEnd;
+use hume_core::TruncateEnd;
 use hume_scripting::host::{LivePickerOpts, PickerOpts};
 use pretty_assertions::assert_eq;
 use steel::rvals::SteelVal;
@@ -313,7 +313,13 @@ pub(super) fn open_scrollable_test_popup(ed: &mut Editor) {
     ed.feed_key(key('i'));
     let pane = focused_pane(ed);
     EditorHostImpl::new(&mut ed.state, &mut ed.view)
-        .show_popup(pane, "doc".to_string(), PopupKind::Scrollable, false, None)
+        .show_popup(
+            pane,
+            "doc".to_string(),
+            PopupKind::Scrollable,
+            hume_core::PopupLayout::Cursor,
+            None,
+        )
         .expect("show-popup! succeeds");
 }
 

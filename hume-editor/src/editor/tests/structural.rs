@@ -7,7 +7,7 @@
 // Helix-maintained `textobjects.scm`: run scripts/fetch-test-grammars.sh.
 
 use super::*;
-use hume_treesitter::registry::{OptionalQuery, QueryFiles};
+use hume_core::{OptionalQuery, QueryFiles};
 use test_fixtures::{grammar_query_path, require_grammars, require_helix_query};
 
 /// Require the `rust` grammar fixture; see

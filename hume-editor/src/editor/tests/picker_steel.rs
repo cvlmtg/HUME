@@ -20,8 +20,8 @@
 use hume_grid::Rect;
 
 use super::*;
+use hume_core::TruncateEnd;
 use hume_engine::pipeline::RenderContext;
-use hume_engine::types::TruncateEnd;
 use steel::rvals::SteelVal;
 
 fn editor_with(source: &str) -> (Editor, tempfile::TempDir) {

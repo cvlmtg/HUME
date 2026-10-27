@@ -4,7 +4,8 @@ use slotmap::SlotMap;
 
 use crate::pane::Pane;
 
-use super::{DetachedPane, PaneId};
+use super::DetachedPane;
+use hume_core::PaneId;
 
 /// Proof that a pane was just inserted into the pool and isn't yet reachable
 /// from any `LayoutTree`. Minted only by `PanePool::insert`, in this

@@ -1,8 +1,7 @@
 use super::*;
-use crate::ConfigOrigin;
 use crate::host::{OptionInput, OptionValue, StoredLanguage};
 use crate::test_support::{SteelCtxTestHarness, default_pane};
-use hume_engine::pipeline::BufferId;
+use hume_core::{BufferId, ConfigOrigin, OnUnsaved};
 use steel::rvals::IntoSteelVal as _;
 
 /// `set-option!` is registered `open` (`builtins/mod.rs`): no eval-mode
@@ -193,7 +192,7 @@ fn set_buffer_option_language_queues_every_write_with_its_origin() {
         .expect("a string language is accepted");
     }
     drop(ctx);
-    let writes: Vec<(Option<&str>, crate::ConfigOrigin)> = h
+    let writes: Vec<(Option<&str>, hume_core::ConfigOrigin)> = h
         .effects
         .iter()
         .filter_map(|q| match &q.effect {
@@ -206,8 +205,8 @@ fn set_buffer_option_language_queues_every_write_with_its_origin() {
     assert_eq!(
         writes,
         vec![
-            (Some("rust"), crate::ConfigOrigin::User),
-            (Some("rust"), crate::ConfigOrigin::User)
+            (Some("rust"), hume_core::ConfigOrigin::User),
+            (Some("rust"), hume_core::ConfigOrigin::User)
         ]
     );
 }
@@ -356,12 +355,8 @@ impl crate::host::BufferHost for RecordingBufferOptionHost {
     ) -> Result<BufferId, String> {
         self.inner.open_buffer(path)
     }
-    fn close_buffer(
-        &mut self,
-        id: BufferId,
-        discard: crate::host::DiscardUnsaved,
-    ) -> Result<(), String> {
-        self.inner.close_buffer(id, discard)
+    fn close_buffer(&mut self, id: BufferId, on_unsaved: OnUnsaved) -> Result<(), String> {
+        self.inner.close_buffer(id, on_unsaved)
     }
     fn switch_to_buffer(
         &mut self,

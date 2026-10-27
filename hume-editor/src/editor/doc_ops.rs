@@ -7,7 +7,7 @@
 //! and written back afterwards: the stored set stays valid for the whole
 //! edit, so the text change carries it like every other stored position.
 
-use hume_engine::pipeline::{BufferId, PaneId};
+use hume_core::{BufferId, PaneId};
 
 use crate::editor::buffer::store::BufferStore;
 use crate::editor::buffer::{Buffer, HistoryWalkResult};

@@ -9,7 +9,8 @@
 ///   - key 4 → TTL ticks 1→0 → mark_all_seen() fires, summary gone
 #[test]
 fn message_log_summary_ttl() {
-    use crate::editor::{Editor, Severity};
+    use crate::editor::Editor;
+    use hume_core::Severity;
     use termina::event::{KeyCode, KeyEvent, Modifiers};
 
     let noop = KeyEvent::new(KeyCode::Char('h'), Modifiers::NONE);

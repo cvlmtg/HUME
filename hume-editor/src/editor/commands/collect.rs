@@ -10,11 +10,12 @@ use super::super::dispatch::CmdCtx;
 use super::super::input_stack::{open_shell_prompt, read_command_char};
 use super::super::registry::TextPrompt;
 use super::super::replay::{Answer, AnswerTicket, InputOpener, PendingAnswer};
-use super::super::{Editor, EditorState, Severity};
+use super::super::{Editor, EditorState};
 use super::search::{all_cursors, open_search_prompt, open_sift_prompt};
 use super::{
     BoundCommand, FocusedPane, Missing, MissingOperand, PendingDispatch, report_arg_error, run,
 };
+use hume_core::Severity;
 
 /// Read `missing` from the user, then run its command on `pane` as
 /// dispatched with `ctx`. Starting the read commits the open paste session

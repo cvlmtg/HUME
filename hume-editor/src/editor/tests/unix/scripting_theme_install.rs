@@ -19,7 +19,7 @@
 use std::path::{Path, PathBuf};
 
 use super::*;
-use crate::editor::Severity;
+use hume_core::Severity;
 
 /// A theme file whose content no test asserts on: only its presence,
 /// absence, or filename matters.

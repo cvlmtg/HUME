@@ -8,14 +8,13 @@
 //! identically on every platform. This is Neovim's own design for the same
 //! feature.
 
-use hume_engine::pipeline::BufferId;
-
+use crate::editor::Editor;
 use crate::editor::error::CommandError;
 use crate::editor::input_stack::{ConfirmAction, ConfirmLayer, ConfirmPermit};
 use crate::editor::pipe_run::{PipeRefusal, PipeRunning};
-use crate::editor::{Editor, Severity};
+use hume_core::{BufferId, OnUnsaved, Severity};
 
-use super::{Buffer, BufferFile, OnUnsaved, ReplaceSource, TextRefusal, Unsaved};
+use super::{Buffer, BufferFile, ReplaceSource, TextRefusal, Unsaved};
 
 /// Result of comparing a buffer's stored file signature against a fresh stat.
 /// `Changed` carries the freshly-read signature so the caller can store it

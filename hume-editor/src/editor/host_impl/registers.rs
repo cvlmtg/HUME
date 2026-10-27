@@ -1,7 +1,7 @@
 //! `EditorHostImpl`'s register content reads/writes.
 
-use crate::editor::Severity;
 use crate::editor::register_ops;
+use hume_core::Severity;
 
 use super::EditorHostImpl;
 use hume_ops::register::Piece;

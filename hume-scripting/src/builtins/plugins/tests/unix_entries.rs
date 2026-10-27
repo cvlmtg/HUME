@@ -547,7 +547,7 @@ fn load_plugin_inside_a_manifest_errors_and_is_contained() {
         .unwrap();
 
     assert!(host.peek_pending_messages().iter().any(|(level, m)| {
-        matches!(level, crate::log::LogLevel::Error)
+        matches!(level, hume_core::Severity::Error)
             && m.contains("cannot be called from a manifest.scm")
     }));
 }

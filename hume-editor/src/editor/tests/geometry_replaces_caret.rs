@@ -113,7 +113,7 @@ fn a_virtual_line_block_above_the_cursor_replaces_the_caret_even_when_the_cursor
             .map(|_| hume_decorations::VirtualLineEntry {
                 line: hume_rope::line::ContentLine::new(20),
                 text: "V".to_string(),
-                before: true,
+                side: hume_core::Side::Before,
                 scope,
                 segments: Vec::new(),
             })
@@ -229,7 +229,7 @@ fn an_inlay_hint_that_wraps_an_earlier_line_replaces_the_caret_even_when_the_cur
         vec![hume_decorations::InlayHintEntry {
             pos: line19_start,
             text: "XY".to_string(),
-            before: true,
+            side: hume_core::Side::Before,
         }],
     );
 

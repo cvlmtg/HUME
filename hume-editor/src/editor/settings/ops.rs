@@ -19,8 +19,8 @@
 //! `pub(in crate::editor::settings)`, reachable from exactly this module and
 //! `settings::tests`, rather than from every file under `crate::editor`.
 
-use hume_engine::pipeline::{BufferId, EngineView};
-use hume_scripting::ConfigOrigin;
+use hume_core::{BufferId, ConfigOrigin};
+use hume_engine::pipeline::EngineView;
 use hume_scripting::host::{BufferIntrinsicOption, OptionInput};
 
 use super::{ResyncKey, THEME_KEY, parse_setting_text, resync_key};

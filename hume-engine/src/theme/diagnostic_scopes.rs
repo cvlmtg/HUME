@@ -2,25 +2,17 @@
 //! same purpose as `super::ui_scopes`, split into its own file since these
 //! aren't `"ui.*"`-namespaced.
 //!
-//! `ALL`'s trailing four bare names are a fresh, independent declaration of
-//! the four severity words, not a re-export of `hume-editor`'s
-//! `DiagSeverity`/`message_log::Severity` enums: `hume-engine` cannot depend
-//! on `hume-editor` (the dependency runs the other way), so those enums are
-//! simply unreachable from here, regardless of visibility.
-//!
-//! Two of the five scope shapes below have **no Rust call site at all**.
-//! [`ERROR_INLINE`] and its siblings are built by Steel's own
-//! `string-append` (`lsp/severity-scope` in
-//! `runtime/plugins/core/lsp/diagnostics.scm`), and the bare severity names
-//! (`ALL`'s own trailing four, used as a gutter-sign scope) reach Steel via
-//! `DiagSeverity::to_string()` passed straight through
-//! (`hume-editor/src/editor/lsp/introspect.rs`), never interned by a shared
-//! Rust name. Both are declared here anyway, purely so the generator can
-//! still offer the theme editor these names; there is nothing to repoint
-//! on the Rust side for either.
+//! [`ERROR_INLINE`] and its siblings have no Rust call site: Steel's own
+//! `string-append` builds them (`lsp/severity-scope` in
+//! `runtime/plugins/core/lsp/lib/diagnostics.scm`), and they are declared
+//! here so the generator can offer them to the theme editor. The bare
+//! severity names closing [`ALL`] are [`DiagSeverity::NAMES`], which a
+//! diagnostic's `'severity` symbol carries to Steel as its gutter-sign scope.
 //!
 //! `hume-engine/src/theme/loader/vocabulary.rs` renders [`ALL`] into
 //! `tools/theme-editor/src/lib/vocabulary.generated.js`.
+
+use hume_core::{DiagSeverity, Severity};
 
 pub const ERROR: &str = "diagnostic.error";
 pub const WARNING: &str = "diagnostic.warning";
@@ -47,28 +39,70 @@ pub const HINT_INLINE: &str = "hint.diagnostic.inline";
 /// Every name above, in the theme editor catalog's "Diagnostic" display
 /// order: the four `diagnostic.<sev>` scopes, then their `.message`
 /// siblings, then `.message-text`, then the end-of-line summary, then the
-/// bare gutter-sign names, least-to-most-lenient, matching `hume-editor`'s
-/// own `DiagSeverity` discriminant order (kept in step by hand, see this
-/// module's own doc for why a shared const isn't possible).
-pub const ALL: &[&str] = &[
-    ERROR,
-    WARNING,
-    INFO,
-    HINT,
-    ERROR_MESSAGE,
-    WARNING_MESSAGE,
-    INFO_MESSAGE,
-    HINT_MESSAGE,
-    ERROR_MESSAGE_TEXT,
-    WARNING_MESSAGE_TEXT,
-    INFO_MESSAGE_TEXT,
-    HINT_MESSAGE_TEXT,
-    ERROR_INLINE,
-    WARNING_INLINE,
-    INFO_INLINE,
-    HINT_INLINE,
-    "error",
-    "warning",
-    "info",
-    "hint",
-];
+/// bare gutter-sign names, least-to-most-lenient ([`DiagSeverity::NAMES`]).
+pub const ALL: &[&str] = &{
+    let [error, warning, info, hint] = DiagSeverity::NAMES;
+    [
+        ERROR,
+        WARNING,
+        INFO,
+        HINT,
+        ERROR_MESSAGE,
+        WARNING_MESSAGE,
+        INFO_MESSAGE,
+        HINT_MESSAGE,
+        ERROR_MESSAGE_TEXT,
+        WARNING_MESSAGE_TEXT,
+        INFO_MESSAGE_TEXT,
+        HINT_MESSAGE_TEXT,
+        ERROR_INLINE,
+        WARNING_INLINE,
+        INFO_INLINE,
+        HINT_INLINE,
+        error,
+        warning,
+        info,
+        hint,
+    ]
+};
+
+/// Editing-area scope of a diagnostic's highlight.
+pub fn highlight(severity: DiagSeverity) -> &'static str {
+    match severity {
+        DiagSeverity::Error => ERROR,
+        DiagSeverity::Warning => WARNING,
+        DiagSeverity::Info => INFO,
+        DiagSeverity::Hint => HINT,
+    }
+}
+
+/// Theme scope for a message severity's `[label]` badge in `:messages`:
+/// carries a background fill, no underline. `Trace` reuses `hint`, the
+/// lowest-noise diagnostic severity, since it has no diagnostic counterpart.
+///
+/// Sub-keys of `diagnostic.<severity>` rather than edits to it:
+/// `Theme::resolve_raw`'s dot-notation fallback *picks* the first match
+/// rather than layering, so writing directly to `diagnostic.error` here
+/// would strip the `underlined` modifier LSP diagnostic squiggles in code
+/// buffers rely on. Themes that don't define the sub-keys fall back to
+/// plain `diagnostic.<severity>` styling.
+pub fn message_badge(severity: Severity) -> &'static str {
+    match severity {
+        Severity::Info => INFO_MESSAGE,
+        Severity::Warning => WARNING_MESSAGE,
+        Severity::Error => ERROR_MESSAGE,
+        Severity::Trace => HINT_MESSAGE,
+    }
+}
+
+/// Theme scope for a message severity's text in `:messages`: a foreground
+/// tint, distinct from [`message_badge`] so the body doesn't inherit the
+/// badge's background via dot-notation fallback.
+pub fn message_text(severity: Severity) -> &'static str {
+    match severity {
+        Severity::Info => INFO_MESSAGE_TEXT,
+        Severity::Warning => WARNING_MESSAGE_TEXT,
+        Severity::Error => ERROR_MESSAGE_TEXT,
+        Severity::Trace => HINT_MESSAGE_TEXT,
+    }
+}

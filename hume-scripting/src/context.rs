@@ -8,9 +8,9 @@ use std::rc::Rc;
 
 use super::attribution::{AttributionStack, EntryId, Owner, PluginId, Provenance};
 use super::host::EditorHost;
-use super::log::LogLevel;
 use super::types::{Effect, QueuedEffect};
 use super::{HostBundle, ScriptingRegistries};
+use hume_core::Severity;
 
 /// Context struct borrowed into the Steel engine for the duration of each eval
 /// or command call via Steel's `with_mut_reference` API.
@@ -41,7 +41,7 @@ pub(crate) struct SteelCtx<'a> {
     /// Borrowed as a unit, disjoint from `steel`.
     pub(crate) registries: &'a mut ScriptingRegistries,
     /// Log messages accumulated by `(log! …)`.
-    pub(crate) pending_messages: &'a mut Vec<(LogLevel, String)>,
+    pub(crate) pending_messages: &'a mut Vec<(Severity, String)>,
     /// Side effects queued by Steel builtins this eval (and any eval this one
     /// is nested inside), in the exact order they were pushed. Persistent on
     /// `ScriptingHost`, borrowed here; each eval entry point drains its own
@@ -199,9 +199,9 @@ impl<'a> SteelCtx<'a> {
     /// its plugin's, whoever made it run, since a body sets its plugin up;
     /// otherwise as made on the session's behalf. A `call!`ed command runs
     /// on its caller's.
-    pub(crate) fn registration_origin(&self) -> crate::ConfigOrigin {
+    pub(crate) fn registration_origin(&self) -> hume_core::ConfigOrigin {
         if self.attribution.in_body() {
-            crate::ConfigOrigin::Plugin
+            hume_core::ConfigOrigin::Plugin
         } else {
             self.base.behalf
         }
@@ -231,8 +231,8 @@ impl<'a> SteelCtx<'a> {
 
     /// Push a log message. Prefer this over direct `pending_messages.push` so
     /// any future severity filter is applied uniformly.
-    pub(crate) fn log(&mut self, level: LogLevel, msg: String) {
-        self.pending_messages.push((level, msg));
+    pub(crate) fn log(&mut self, severity: Severity, msg: String) {
+        self.pending_messages.push((severity, msg));
     }
 
     /// Queue `effect` (uncommitted). All builtins push through here so the

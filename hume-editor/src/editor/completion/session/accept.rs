@@ -2,8 +2,9 @@
 //! candidate's `textEdit` (or a synthesized token-replacement fallback) at
 //! every cursor, then best-effort `completionItem/resolve`.
 
+use hume_core::{BufferId, PaneId, Severity};
 use hume_editing::changeset::Assoc;
-use hume_engine::pipeline::{BufferId, EngineView, PaneId};
+use hume_engine::pipeline::EngineView;
 use hume_rope::offset::CharOffset;
 
 use hume_lsp::completion_item::parse_additional_text_edits_lenient;
@@ -11,10 +12,10 @@ use hume_lsp::completion_item::parse_additional_text_edits_lenient;
 use super::super::item::CompletionItem;
 use super::buffer::{BufferSession, BufferSpan};
 use super::contains_cursor;
+use crate::editor::EditorState;
 use crate::editor::event::EditorEvent;
 use crate::editor::lsp::{RustDelivery, RustResponder, edits};
 use crate::editor::replay::Interactive;
-use crate::editor::{EditorState, Severity};
 use hume_ops::edit::replace_span_around_cursors;
 
 impl BufferSession {

@@ -97,7 +97,7 @@ fn a_reload_from_disk_keeps_an_asserted_language() {
 
     let buf = ed.state.buffers.get(ed.focused_buffer_id());
     assert_eq!(buf.language, ed.state.config.languages.id_of("notes"));
-    assert_eq!(buf.language_by, Some(hume_scripting::ConfigOrigin::User));
+    assert_eq!(buf.language_by, Some(hume_core::ConfigOrigin::User));
 }
 
 // ── detect_and_set_language ───────────────────────────────────────────────────

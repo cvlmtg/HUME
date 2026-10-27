@@ -18,10 +18,7 @@ fn apply_jump_nav(
     state: &mut EditorState,
     view: &mut EngineView,
     t: CommandPane,
-    nav: Option<(
-        hume_engine::pipeline::BufferId,
-        hume_editing::selection::SelectionSet,
-    )>,
+    nav: Option<(hume_core::BufferId, hume_editing::selection::SelectionSet)>,
 ) {
     if let Some((target_buf, sels)) = nav {
         if target_buf != t.bid(view) {

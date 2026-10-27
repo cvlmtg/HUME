@@ -2,7 +2,7 @@
 
 use std::ffi::OsString;
 
-use hume_engine::pipeline::BufferId;
+use hume_core::{BufferId, OnUnsaved};
 use hume_platform::path::AbsolutePath;
 
 use crate::types::PaneHandle;
@@ -31,7 +31,7 @@ pub struct UndoNode {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct StoredLanguage {
     pub name: Option<String>,
-    pub by: Option<crate::ConfigOrigin>,
+    pub by: Option<hume_core::ConfigOrigin>,
 }
 
 /// Which form of a buffer's display path [`BufferHost::buffer_display_path`]
@@ -44,14 +44,6 @@ pub enum DisplayPathForm {
     /// it, [`Absolute`](Self::Absolute) otherwise. The path as the user typed
     /// it is tried first, then its symlink-resolved form.
     CwdRelative,
-}
-
-/// Whether `close-buffer!` may drop the buffer's unsaved changes: its
-/// `#:discard-unsaved` keyword.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DiscardUnsaved {
-    No,
-    Yes,
 }
 
 /// Buffer/pane enumeration, reads, lifecycle, and viewport geometry,
@@ -129,9 +121,9 @@ pub trait BufferHost {
     /// Returns the `BufferId` (new or existing).
     fn open_buffer(&mut self, path: &AbsolutePath) -> Result<BufferId, String>;
     /// Close `id`. `Err` when `id` does not name an open buffer, when it has
-    /// unsaved changes and `discard` is [`DiscardUnsaved::No`], or while a
+    /// unsaved changes and `on_unsaved` is [`OnUnsaved::Refuse`], or while a
     /// pipe runs in it.
-    fn close_buffer(&mut self, id: BufferId, discard: DiscardUnsaved) -> Result<(), String>;
+    fn close_buffer(&mut self, id: BufferId, on_unsaved: OnUnsaved) -> Result<(), String>;
     /// Switch the focused pane to `target`, recording a jump entry.
     /// Redirect `pane`'s own pane to `target`, recording a jump entry.
     /// Kind-B: raises if `pane` carries no pane, a closed one, or one that
@@ -166,9 +158,9 @@ pub trait BufferHost {
 
     /// `(buffer-line-count bid)`: number of *content* lines in `id`'s live
     /// text. Every HUME buffer ends with a structural `\n`, which ropey
-    /// counts as one extra empty line (see [`hume_engine::pipeline`]
-    /// invariants); this excludes that phantom line, matching what the
-    /// statusline and `:w` report. `None` if `id` is unknown.
+    /// counts as one extra empty line; this excludes that phantom line,
+    /// matching what the statusline and `:w` report. `None` if `id` is
+    /// unknown.
     fn buffer_line_count(&self, id: BufferId) -> Option<usize>;
 
     /// `(buffer-char-count bid)`: length of `id`'s live text in chars, the

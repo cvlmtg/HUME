@@ -16,8 +16,9 @@ use super::args::{
 use super::errors::generic_err;
 use super::ids::{SteelBufferKey, SteelPane};
 use crate::SteelCtx;
-use crate::host::{DiscardUnsaved, DisplayPathForm};
+use crate::host::DisplayPathForm;
 use crate::types::PaneHandle;
+use hume_core::OnUnsaved;
 use hume_platform::path::AbsolutePath;
 
 // ── Focus builtins ─────────────────────────────────────────────────────────────
@@ -323,17 +324,13 @@ pub(crate) fn close_buffer(
     pane: PaneHandle,
     discard_unsaved: SteelVal,
 ) -> SteelResult {
-    let discard = if bool_arg(discard_unsaved, "#:discard-unsaved")? {
-        DiscardUnsaved::Yes
-    } else {
-        DiscardUnsaved::No
-    };
+    let on_unsaved = OnUnsaved::from_force(bool_arg(discard_unsaved, "#:discard-unsaved")?);
     // The host applies the close (and its focus fallout) synchronously, not
     // as a deferred effect: `focused-pane`/`switch-to-buffer!`'s own
     // `focused_pane()` read already sees it on their very next call.
     ctx.host
         .buffers()
-        .close_buffer(pane.buffer(), discard)
+        .close_buffer(pane.buffer(), on_unsaved)
         .map_err(generic_err)?;
     Ok(SteelVal::Void)
 }

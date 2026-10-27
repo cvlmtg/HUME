@@ -12,11 +12,10 @@ use tree_sitter::QueryErrorKind;
 
 use super::query::IndentCapture;
 use super::*;
-use crate::registry::{
-    GrammarBundle, GrammarSnapshot, OptionalQuery, RegisterError, compile_queries,
-};
+use crate::registry::{GrammarBundle, GrammarSnapshot, RegisterError, compile_queries};
 use crate::syntax::Syntax;
 use crate::test_support::{empty_langs, make_bundle, open_grammar};
+use hume_core::OptionalQuery;
 
 const SPLIT: char = '‸';
 

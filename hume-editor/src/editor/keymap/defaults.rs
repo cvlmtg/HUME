@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use hume_scripting::ConfigOrigin;
+use hume_core::ConfigOrigin;
 use termina::event::{KeyCode, KeyEvent, Modifiers};
 
 use super::{KeyTrie, KeyTrieNode, Keymap, KeymapCommand};

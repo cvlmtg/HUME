@@ -295,7 +295,7 @@ fn virtual_line_spec_decodes_every_field() {
     let spec = &specs[0];
     assert_eq!(spec.line, 12);
     assert_eq!(spec.text, "- let x = 5");
-    assert!(spec.before, "'anchor 'before must decode to before: true");
+    assert_eq!(spec.side, Side::Before);
     assert_eq!(spec.scope.as_deref(), Some("diff.minus"));
     // Char offsets, passed through verbatim. This layer does not sort,
     // bounds-check, or validate them.
@@ -316,7 +316,7 @@ fn virtual_line_spec_defaults_anchor_to_after_and_scope_to_none() {
     ]);
     let specs = virtual_line_specs(list(vec![entry])).unwrap();
     let spec = &specs[0];
-    assert!(!spec.before, "default anchor must be 'after");
+    assert_eq!(spec.side, Side::After, "default anchor must be 'after");
     assert_eq!(spec.scope, None);
     assert!(spec.segments.is_empty());
 }

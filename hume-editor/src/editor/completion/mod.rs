@@ -33,7 +33,7 @@ pub(in crate::editor) use registry::{
     BufferSourceEntry, BufferSourceId, MinibufBody, MinibufSourceEntry, RegisterOutcome,
     SourceRegistry,
 };
-pub(in crate::editor) use session::{BufferSession, ItemKey, MatchKind, MinibufSession};
+pub(in crate::editor) use session::{BufferSession, ItemKey, MinibufSession};
 pub(in crate::editor) use set::SET_SOURCE;
 pub(in crate::editor) use simple::{BUFFER_NAME_SOURCE, COMMAND_SOURCE, THEME_SOURCE};
 
@@ -157,8 +157,9 @@ mod testing {
 
     use super::*;
     use crate::editor::buffer::Buffer;
+    use hume_core::BufferId;
     use hume_editing::text::BufferText;
-    use hume_engine::pipeline::{BufferId, EngineView};
+    use hume_engine::pipeline::EngineView;
     use hume_engine::theme::Theme;
 
     pub(in crate::editor::completion) fn make_ctx_parts() -> (CommandRegistry, BufferStore, TempDir)

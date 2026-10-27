@@ -10,11 +10,11 @@
 
 use std::time::Duration;
 
-use hume_engine::pipeline::BufferId;
-use hume_engine::pipeline::PaneId;
+use hume_core::{BufferId, PaneId, Severity};
 use hume_scripting::host::HostToken;
 use rustc_hash::FxHashSet;
 
+use super::Editor;
 use super::buffer::Buffer;
 use super::commands::{
     CommandPane, FocusedPane, WriteError, WriteKind, conclude_write, write_and_continue,
@@ -23,8 +23,7 @@ use super::error::CommandError;
 use super::event::{BEFORE_BUFFER_SAVE, HeldEvent};
 use super::host_token;
 use super::timer_bridge::TimerPayload;
-use super::timers::TimerId;
-use super::{Editor, Severity};
+use hume_core::TimerId;
 use hume_scripting::PaneHandle;
 
 /// Names the writes of one `:wa`.

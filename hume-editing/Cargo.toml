@@ -14,6 +14,7 @@ unicode-segmentation.workspace = true
 similar.workspace = true
 rustc-hash.workspace = true
 hume-rope = { path = "../hume-rope" }
+hume-core = { path = "../hume-core" }
 
 [dev-dependencies]
 pretty_assertions = "1.4.1"

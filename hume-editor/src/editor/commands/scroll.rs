@@ -1,6 +1,7 @@
 use crate::editor::registry::Count;
+use hume_core::PaneId;
 use hume_engine::display_lines::carry;
-use hume_engine::pipeline::{EngineView, PaneId, PaneSize};
+use hume_engine::pipeline::{EngineView, PaneSize};
 use hume_ops::MotionMode;
 
 use super::super::EditorState;

@@ -2,12 +2,12 @@
 //! drawer, minibuffer prompt, and the fuzzy-finder picker.
 
 use super::EditorHostImpl;
-use crate::editor::Severity;
 use crate::editor::input_stack::{
     BaseLayer, DrawerLayer, DrawerSelect, MenuLayer, PickerSession, PopupLayer,
 };
 use crate::editor::input_stack::{menu, picker, prompt};
 use crate::editor::syntax::GrammarLoads;
+use hume_core::Severity;
 use hume_scripting::PaneHandle;
 use hume_scripting::host::{
     BufferHost, DrawerItems, HostToken, LivePickerOpts, NonEmpty, PickerFeedMode, PickerOpts,
@@ -56,15 +56,10 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         pane: PaneHandle,
         text: String,
         kind: PopupKind,
-        docked: bool,
+        layout: hume_core::PopupLayout,
         lang: Option<String>,
     ) -> Result<Option<HostToken>, String> {
         self.require_focused_pane(pane)?;
-        let layout = if docked {
-            hume_ui::popup::PopupLayout::Docked
-        } else {
-            hume_ui::popup::PopupLayout::Cursor
-        };
         let mut loads =
             GrammarLoads::new(&mut self.state.config.languages, &mut self.view.registry);
         let syntax = lang.and_then(|lang| {

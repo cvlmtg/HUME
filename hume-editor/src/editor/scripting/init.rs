@@ -3,13 +3,12 @@
 
 use std::path::PathBuf;
 
-use hume_engine::pipeline::BufferId;
-
+use hume_core::{BufferId, Severity};
 use hume_scripting::Effect;
 
 use crate::cli::ConfigSource;
 use crate::editor::reload::{ExplicitLanguage, ReloadSnapshot};
-use crate::editor::{Editor, Severity, host_impl::EditorHostImpl};
+use crate::editor::{Editor, host_impl::EditorHostImpl};
 
 use super::ConfigPath;
 

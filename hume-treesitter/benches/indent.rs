@@ -3,6 +3,7 @@ use std::sync::{Arc, LazyLock};
 use std::time::{Duration, Instant};
 
 use criterion::{Criterion, criterion_group, criterion_main};
+use hume_core::{GrammarSource, OptionalQuery, QueryFiles};
 use hume_editing::changeset::ChangeSetBuilder;
 use hume_editing::edit::TextChange;
 use hume_editing::indent::ElectricTrigger;
@@ -11,9 +12,7 @@ use hume_editing::word::WordChars;
 use hume_engine::theme::ScopeRegistry;
 use hume_rope::offset::CharOffset;
 use hume_treesitter::indent::{electric_indent, indent_for_new_line};
-use hume_treesitter::registry::{
-    GrammarBundle, GrammarSnapshot, GrammarSource, LanguageRegistry, OptionalQuery, QueryFiles,
-};
+use hume_treesitter::registry::{GrammarBundle, GrammarSnapshot, LanguageRegistry};
 use hume_treesitter::syntax::Syntax;
 use test_fixtures::{
     grammar_parser_path, grammar_query_path, require_grammars, require_helix_indent_corpus,
@@ -54,7 +53,7 @@ static GRAMMARS: LazyLock<Grammars> = LazyLock::new(|| {
                     symbol: symbol.to_owned(),
                     queries,
                 },
-                hume_origin::ConfigOrigin::User,
+                hume_core::ConfigOrigin::User,
                 &mut ScopeRegistry::new(),
             )
             .expect("attach the grammar")

@@ -7,7 +7,7 @@ use super::*;
 use super::super::scripting_grammar::{
     grammar_fixture, grammar_warnings, prelude_source, shipped_grammar,
 };
-use hume_editing::comment::{BlockCommentTokens, CommentTokens, LineCommentTokens};
+use hume_core::{BlockCommentTokens, CommentTokens, LineCommentTokens};
 use hume_treesitter::registry::LanguageId;
 
 /// A session over a [`ReloadFixture`] whose runtime holds the real
@@ -121,7 +121,7 @@ fn tsx(ed: &Editor) -> LanguageId {
 /// bundled data and activates `#:languages` plugins.
 fn open_as_tsx(ed: &mut Editor) {
     let bid = ed.focused_buffer_id();
-    ed.set_buffer_language_by_name(bid, Some("tsx"), hume_scripting::ConfigOrigin::User);
+    ed.set_buffer_language_by_name(bid, Some("tsx"), hume_core::ConfigOrigin::User);
 }
 
 fn roots(ed: &Editor) -> Vec<String> {
@@ -602,7 +602,7 @@ fn k_command(ed: &Editor) -> Option<String> {
     ed.state
         .config
         .keymap
-        .lookup_command(crate::editor::keymap::BindMode::Normal, &[key('K')])
+        .lookup_command(hume_core::BindMode::Normal, &[key('K')])
         .map(|(name, _)| name)
 }
 
@@ -821,7 +821,7 @@ fn a_reload_keeps_the_origin_of_an_asserted_language() {
     assert_eq!(language(&ed).as_deref(), Some("alpha"));
     assert_eq!(
         ed.state.buffers.get(ed.focused_buffer_id()).language_by,
-        Some(hume_scripting::ConfigOrigin::User)
+        Some(hume_core::ConfigOrigin::User)
     );
 }
 

@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use hume_engine::pipeline::BufferId;
+use hume_core::{BufferId, ConfigOrigin};
 use hume_rope::position_encoding::PositionEncoding;
 
 use hume_lsp::backend::ServerId;
@@ -104,7 +104,7 @@ pub trait LspHost {
     /// running), `None` when it is not registered, as of the last applied
     /// effect: the `lsp-server-registered?` builtin applies the ops queued
     /// in its own eval on top of it.
-    fn lsp_server_origin(&self, name: &crate::types::ServerName) -> Option<crate::ConfigOrigin>;
+    fn lsp_server_origin(&self, name: &crate::types::ServerName) -> Option<ConfigOrigin>;
 
     /// A key no other call has returned, for `lsp-supersede-key`.
     fn new_supersede_key(&mut self) -> SupersedeKey;

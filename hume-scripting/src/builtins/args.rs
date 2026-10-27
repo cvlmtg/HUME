@@ -17,7 +17,7 @@ use steel::rerrs::{ErrorKind, SteelErr};
 use steel::rvals::{FromSteelVal, SteelVal};
 use termina::event::KeyEvent;
 
-use hume_engine::pipeline::BufferId;
+use hume_core::BufferId;
 use hume_platform::path::AbsolutePath;
 
 use crate::Rooted;

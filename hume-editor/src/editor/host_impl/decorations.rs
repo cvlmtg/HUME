@@ -7,7 +7,7 @@
 //! as private items directly in `host_impl.rs`, just spelled differently now
 //! that a caller of them lives outside this module.
 
-use hume_engine::pipeline::BufferId;
+use hume_core::{BufferId, DiagSeverity, Side};
 use hume_rope::column::ByteCol;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
@@ -22,17 +22,17 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         &mut self,
         source: String,
         bid: BufferId,
-        hints: Vec<(usize, String, bool)>,
+        hints: Vec<(usize, String, Side)>,
     ) -> Result<(), String> {
         let text = buffer_text(self.state, bid)?;
         let entries = hints
             .into_iter()
-            .map(|(pos, hint_text, before)| {
-                let pos = validate_offset(text, pos, before)?;
+            .map(|(pos, hint_text, side)| {
+                let pos = validate_offset(text, pos, side)?;
                 Ok(hume_decorations::InlayHintEntry {
                     pos,
                     text: hint_text,
-                    before,
+                    side,
                 })
             })
             .collect::<Result<Vec<_>, String>>()?;
@@ -123,7 +123,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
                 Ok(hume_decorations::VirtualLineEntry {
                     line,
                     text: spec.text,
-                    before: spec.before,
+                    side: spec.side,
                     scope,
                     segments,
                 })
@@ -246,7 +246,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
     fn diagnostics_for_buffer(
         &self,
         bid: BufferId,
-        severity_floor: Option<&str>,
+        severity_floor: Option<DiagSeverity>,
         range: Option<(usize, usize)>,
     ) -> Result<Vec<hume_scripting::host::DiagnosticEntry>, String> {
         crate::editor::lsp::diagnostics::diagnostics_for_buffer(
@@ -360,13 +360,13 @@ pub(super) fn content_line(
 
 /// `pos` must address a real char in `text` (`<` its length), `Err`
 /// otherwise. A `pos` inside a grapheme cluster snaps to it: a
-/// `'before` hint (`before == true`) to the cluster's first char, an `'after`
-/// one to its last, so the hint sits before or after the whole character.
+/// `'before` hint to the cluster's first char, an `'after` one to its last,
+/// so the hint sits before or after the whole character.
 /// `pos == len_chars()` is refused: `visible_char_range` is half-open, so
 /// that position never passes its `contains` check and the hint would not
 /// render.
 ///
-/// `before == false` ('after') gets a second check: the render bridge
+/// An 'after' hint gets a second check: the render bridge
 /// (`decoration_providers.rs`'s `update_inlay_hint_providers`) anchors an
 /// 'after' hint at `pos + 1`, so a hint on the buffer's last content char
 /// (its trailing structural `\n`) would resolve to the trailing phantom
@@ -376,7 +376,7 @@ pub(super) fn content_line(
 pub(super) fn validate_offset(
     text: &hume_editing::text::BufferText,
     pos: usize,
-    before: bool,
+    side: Side,
 ) -> Result<CharOffset, String> {
     if pos >= text.len_chars() {
         return Err(format!(
@@ -389,12 +389,11 @@ pub(super) fn validate_offset(
     let cluster = text
         .covering(ExclusiveRange::new(at, at.shift(1)))
         .expect("a char below the text's length lies in a cluster");
-    let pos = if before {
-        cluster.start().offset()
-    } else {
-        cluster.end().offset().retreat(1)
+    let pos = match side {
+        Side::Before => cluster.start().offset(),
+        Side::After => cluster.end().offset().retreat(1),
     };
-    if !before {
+    if side == Side::After {
         // `pos` is a char below `len_chars()`, so `pos` shifted by one
         // codepoint stays `<= len_chars()`: the one past-the-end position
         // `ropey_char_to_line` (ropey domain) accepts, needed to find which

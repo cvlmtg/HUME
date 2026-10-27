@@ -217,7 +217,7 @@ fn declare_plugin_typed_commands_drops_colliding_entry_but_keeps_the_rest() {
     let messages = host.peek_pending_messages();
     assert!(
         messages.iter().any(|(level, msg)| {
-            matches!(level, crate::log::LogLevel::Error)
+            matches!(level, hume_core::Severity::Error)
                 && msg.contains("existing-typed")
                 && msg.contains("activation entry ignored")
         }),
@@ -444,7 +444,7 @@ fn manifest_declaring_different_plugin_name_errors() {
     let messages = host.peek_pending_messages();
     assert!(
         messages.iter().any(|(level, msg)| {
-            matches!(level, crate::log::LogLevel::Error)
+            matches!(level, hume_core::Severity::Error)
                 && msg.contains("user/wrongname")
                 && msg.contains("user/somebody-else")
         }),
@@ -490,7 +490,7 @@ fn manifest_bad_events_names_manifest_scm_and_plugin() {
     let messages = host.peek_pending_messages();
     assert!(
         messages.iter().any(|(level, msg)| {
-            matches!(level, crate::log::LogLevel::Error)
+            matches!(level, hume_core::Severity::Error)
                 && msg.contains("manifest.scm")
                 && msg.contains("user/badevt")
         }),
@@ -530,7 +530,7 @@ fn manifest_whose_declare_has_no_triggers_errors_and_is_contained() {
     let messages = host.peek_pending_messages();
     assert!(
         messages.iter().any(|(level, msg)| {
-            matches!(level, crate::log::LogLevel::Error)
+            matches!(level, hume_core::Severity::Error)
                 && msg.contains("declares no activation entries")
         }),
         "must log an Error naming the missing triggers; messages: {messages:?}"
@@ -567,7 +567,7 @@ fn manifest_that_never_declares_errors() {
     let messages = host.peek_pending_messages();
     assert!(
         messages.iter().any(|(level, msg)| {
-            matches!(level, crate::log::LogLevel::Error) && msg.contains("did not declare")
+            matches!(level, hume_core::Severity::Error) && msg.contains("did not declare")
         }),
         "must log an Error explaining the manifest never declared the plugin; \
          messages: {messages:?}"

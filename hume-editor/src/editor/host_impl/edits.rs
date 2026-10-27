@@ -1,7 +1,7 @@
 //! `EditorHostImpl`'s LSP-driven text edits, workspace edits,
 //! go-to-location, `insert-key!`, `paste-text!` and `edit-text!`.
 
-use hume_engine::pipeline::BufferId;
+use hume_core::BufferId;
 use hume_platform::path::AbsolutePath;
 use hume_rope::column::CharCol;
 use termina::event::KeyEvent;

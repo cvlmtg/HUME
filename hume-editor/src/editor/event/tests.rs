@@ -1,4 +1,4 @@
-use hume_engine::pipeline::{BufferId, PaneId};
+use hume_core::{BufferId, PaneId};
 use hume_scripting::{PaneHandle, ServerRef};
 use steel::rvals::SteelVal;
 

@@ -10,15 +10,16 @@
 //! `open_read_only_view`) are thin delegators; all logic lives here.
 //! Production closes call [`close_buffer_and_notify`] directly.
 
+use hume_core::{BufferId, OnUnsaved, PaneId};
 use hume_editing::text::BufferText;
-use hume_engine::pipeline::{BufferId, EngineView, PaneId};
+use hume_engine::pipeline::EngineView;
 use hume_platform::path::AbsolutePath;
 use hume_rope::column::GraphemeCol;
 use hume_rope::line::ContentLine;
 
 use crate::editor::EditorState;
 use crate::editor::buffer::store::BufferStore;
-use crate::editor::buffer::{Buffer, FileTarget, OnUnsaved, Unsaved, ViewLabel};
+use crate::editor::buffer::{Buffer, FileTarget, Unsaved, ViewLabel};
 use crate::editor::commands::CommandPane;
 use crate::editor::event::EditorEvent;
 use crate::editor::focus::switch_pane_to_buffer;

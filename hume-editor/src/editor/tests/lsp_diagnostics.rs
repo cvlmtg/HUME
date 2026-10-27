@@ -5,7 +5,7 @@
 
 use super::lsp_rig::{LspRig, RigSpec, stop_server};
 use super::*;
-use hume_engine::pipeline::BufferId;
+use hume_core::BufferId;
 use hume_lsp::backend::ServerId;
 use hume_lsp::test_util::RecordingLspBackend;
 
@@ -238,8 +238,7 @@ fn skipped_warnings(ed: &Editor) -> usize {
         .message_log
         .entries()
         .filter(|entry| {
-            entry.severity == crate::editor::Severity::Warning
-                && entry.text.contains("do not parse")
+            entry.severity == hume_core::Severity::Warning && entry.text.contains("do not parse")
         })
         .count()
 }
@@ -476,7 +475,7 @@ fn seed_diagnostic_and_hint(ed: &mut Editor, sid: ServerId, bid: BufferId, uri: 
         vec![hume_decorations::InlayHintEntry {
             pos: co(0),
             text: "x".to_string(),
-            before: true,
+            side: hume_core::Side::Before,
         }],
     );
     assert_eq!(

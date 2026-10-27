@@ -269,7 +269,7 @@ pub(crate) enum Owner {
 #[derive(Debug, Clone)]
 pub(crate) struct Provenance {
     pub(crate) owner: Rc<Owner>,
-    pub(crate) behalf: crate::ConfigOrigin,
+    pub(crate) behalf: hume_core::ConfigOrigin,
 }
 
 impl Provenance {
@@ -277,9 +277,9 @@ impl Provenance {
     /// something it set up to run without anyone asking.
     pub(crate) fn own(owner: Owner) -> Self {
         let behalf = match owner {
-            Owner::Core => crate::ConfigOrigin::Bundled,
-            Owner::User => crate::ConfigOrigin::User,
-            Owner::Plugin(_) => crate::ConfigOrigin::Plugin,
+            Owner::Core => hume_core::ConfigOrigin::Bundled,
+            Owner::User => hume_core::ConfigOrigin::User,
+            Owner::Plugin(_) => hume_core::ConfigOrigin::Plugin,
         };
         Self {
             owner: Rc::new(owner),
@@ -292,7 +292,7 @@ impl Provenance {
     pub(crate) fn invoked_by_user(owner: Rc<Owner>) -> Self {
         Self {
             owner,
-            behalf: crate::ConfigOrigin::User,
+            behalf: hume_core::ConfigOrigin::User,
         }
     }
 }

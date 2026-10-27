@@ -4,12 +4,11 @@
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
-use crate::host::{
-    AnswerEnd, CompletionSourceTarget, EmittedWord, FirstTab, MatchKind, NamedPrefix,
-};
+use crate::host::{AnswerEnd, CompletionSourceTarget, EmittedWord, FirstTab, NamedPrefix};
 use crate::json::json_to_steel;
 use crate::types::{PaneHandle, TriggerKind, TriggerScope};
 use crate::{Callback, Effect, SteelCtx};
+use hume_core::MatchKind;
 
 use super::SteelResult;
 use super::args::{

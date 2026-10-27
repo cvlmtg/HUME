@@ -6,7 +6,7 @@ use std::sync::{
 };
 use std::thread;
 
-use hume_engine::pipeline::BufferId;
+use hume_core::BufferId;
 use hume_platform::wake::{WakeCallback, spawn_waking};
 
 use crate::edited_bytes::EditedBytes;

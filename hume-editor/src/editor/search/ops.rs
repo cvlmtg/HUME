@@ -15,7 +15,8 @@
 use hume_editing::tracked::Tracked;
 use std::sync::Arc;
 
-use hume_engine::pipeline::{BufferId, PaneId, PanePool};
+use hume_core::{BufferId, PaneId};
+use hume_engine::pipeline::PanePool;
 use hume_engine::types::EditorMode;
 
 #[cfg(test)]

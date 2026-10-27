@@ -42,7 +42,7 @@ pub(in crate::editor) struct PopupLayer {
     /// popup on close. No separate invalidation path: the popup's lifetime
     /// IS the syntax's (SSOT).
     pub(in crate::editor) syntax: Option<super::super::popup_syntax::MarkupSyntax>,
-    pub(in crate::editor) layout: hume_ui::popup::PopupLayout,
+    pub(in crate::editor) layout: hume_core::PopupLayout,
     /// Built from `text`/`syntax` against the view's theme when the popup is
     /// created. Its own internal wrap cache is keyed by width, so an
     /// unchanged width across frames is O(1), not a re-wrap. Rebuilt by
@@ -62,7 +62,7 @@ impl PopupLayer {
     pub(in crate::editor) fn new(
         text: String,
         syntax: Option<super::super::popup_syntax::MarkupSyntax>,
-        layout: hume_ui::popup::PopupLayout,
+        layout: hume_core::PopupLayout,
         theme: &mut Theme,
         registry: &ScopeRegistry,
     ) -> Self {
@@ -168,7 +168,7 @@ impl Editor {
     ) -> Option<hume_ui::popup::PopupState> {
         let is_cursor = matches!(
             self.state.input.popup().map(|m| &m.layout),
-            Some(hume_ui::popup::PopupLayout::Cursor)
+            Some(hume_core::PopupLayout::Cursor)
         );
         if !is_cursor {
             return None;
@@ -205,7 +205,7 @@ impl EditorState {
     pub(in crate::editor) fn sync_popup_band_view(&mut self, view: &EngineView) {
         let is_docked = matches!(
             self.input.popup().map(|m| &m.layout),
-            Some(hume_ui::popup::PopupLayout::Docked)
+            Some(hume_core::PopupLayout::Docked)
         );
         if !is_docked {
             if self.views.popup_band.read().is_some() {
@@ -277,13 +277,13 @@ fn popup_paste(
 /// popup's from the rows its band is laid out with.
 fn popup_rows(ed: &mut Editor) -> Option<(usize, usize)> {
     match ed.state.input.popup()?.layout {
-        hume_ui::popup::PopupLayout::Cursor => {
+        hume_core::PopupLayout::Cursor => {
             let screen = ed.state.screen_layout(&ed.view);
             ed.resolve_cursor_popup(&screen, None)
                 .as_ref()
                 .map(boxed_popup_rows)
         }
-        hume_ui::popup::PopupLayout::Docked => {
+        hume_core::PopupLayout::Docked => {
             let area = ed.view.terminal_area();
             let total = ed.state.input.popup()?.docked_total_rows(area.width);
             let visible = hume_ui::popup::band_visible_rows(total, area.height);

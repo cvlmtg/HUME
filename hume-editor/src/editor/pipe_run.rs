@@ -11,8 +11,8 @@ use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex, PoisonError, mpsc};
 use std::time::{Duration, Instant};
 
+use hume_core::{BindMode, BufferId, PaneId, Severity};
 use hume_editing::selection::SelectionSet;
-use hume_engine::pipeline::{BufferId, PaneId};
 use hume_platform::process::batch::{BatchProgress, Captured, ShellBatch, ShellFailure};
 use hume_platform::wake::WakeCallback;
 use termina::EventReader;
@@ -21,9 +21,9 @@ use termina::event::{Event as TerminalEvent, KeyCode, KeyEvent, KeyEventKind, Mo
 use super::buffer::TextHold;
 use super::commands;
 use super::frame::FramePacer;
-use super::keymap::{BindMode, WalkResult};
+use super::keymap::WalkResult;
 use super::replay::{DeferredChange, DeferredOutcome};
-use super::{Editor, EditorState, Severity};
+use super::{Editor, EditorState};
 
 /// What a pipe does with its command's output.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

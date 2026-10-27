@@ -1,8 +1,9 @@
 use std::sync::atomic::AtomicBool;
 
 use super::*;
-use crate::registry::{GrammarBundle, GrammarSnapshot, OptionalQuery};
+use crate::registry::{GrammarBundle, GrammarSnapshot};
 use crate::test_support::fixture_markdown;
+use hume_core::OptionalQuery;
 use test_fixtures::{grammar_query_path, require_grammars};
 
 /// Load a real grammar fixture with an optional custom injections source
@@ -361,7 +362,7 @@ fn an_edit_before_a_fence_moves_the_sites_with_the_text() {
     syntax.record_edit(&hume_editing::edit::TextChange::new(
         &before, &after, &change,
     ));
-    let baked = syntax.frame_tick(hume_engine::pipeline::BufferId::default(), &after, &langs);
+    let baked = syntax.frame_tick(hume_core::BufferId::default(), &after, &langs);
     assert!(baked.chain_break.is_none());
 
     let source = after.to_string();

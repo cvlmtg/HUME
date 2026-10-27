@@ -12,7 +12,8 @@
 
 use slotmap::{SecondaryMap, SlotMap, new_key_type};
 
-use hume_engine::pipeline::{Cycle, FocusedLayout, PaneId};
+use hume_core::PaneId;
+use hume_engine::pipeline::{Cycle, FocusedLayout};
 
 new_key_type! {
     /// Opaque handle to a tab. Minted only in `hume-editor`: the engine has

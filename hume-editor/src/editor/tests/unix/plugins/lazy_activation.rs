@@ -285,7 +285,7 @@ fn a_declared_command_the_body_never_defined_warns() {
         .execute_typed("bar", None)
         .expect_err("`:bar` is unknown");
 
-    assert_eq!(e.severity(), crate::editor::Severity::Warning);
+    assert_eq!(e.severity(), hume_core::Severity::Warning);
 }
 
 /// A lazy plugin body that logs and then raises: its log line is reported
@@ -332,7 +332,7 @@ fn a_lazy_command_with_no_scripting_host_reports_scripting_unavailable() {
         (e.message(), e.severity()),
         (
             "bar: scripting is not available",
-            crate::editor::Severity::Error
+            hume_core::Severity::Error
         )
     );
 }
@@ -524,7 +524,7 @@ fn lazy_cmd_arg_passed_on_first_call() {
 /// implementation claims keys use "for free".
 #[test]
 fn key_press_activates_lazy_plugin_via_keymap() {
-    use crate::editor::keymap::BindMode;
+    use hume_core::BindMode;
     let (mut ed, _dir) = setup_lazy_editor(
         r#"(declare-plugin! "user/tp" #:commands '("bar"))"#,
         r#"(define-command! "bar" "doc" (lambda () (call! "move-right" (focused-pane))))"#,
@@ -536,7 +536,7 @@ fn key_press_activates_lazy_plugin_via_keymap() {
         &[key('z')],
         "bar".into(),
         false,
-        hume_scripting::ConfigOrigin::User,
+        hume_core::ConfigOrigin::User,
     );
     let before = state(&ed);
 
@@ -679,7 +679,7 @@ fn lazy_stub_collision_lazy_vs_lazy_first_writer_wins() {
     // directly, so check the host's queue itself.
     assert!(
         host.peek_pending_messages().iter().any(|(sev, msg)| {
-            matches!(sev, hume_scripting::LogLevel::Error)
+            matches!(sev, hume_core::Severity::Error)
                 && msg.contains("bar")
                 && msg.contains("already claimed")
         }),

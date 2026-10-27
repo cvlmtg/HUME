@@ -101,7 +101,7 @@ fn toggle_extend_closes_a_sticky_popup_shown_from_normal() {
         pane,
         "hi".to_string(),
         hume_scripting::host::PopupKind::Sticky,
-        false,
+        hume_core::PopupLayout::Cursor,
         None,
     )
     .unwrap();
@@ -520,7 +520,7 @@ fn typed_arity_rule_errors_on_arity_4() {
 /// the next ordinary keystroke walk the trie as `[g, <key>]`, swallowing it.
 #[test]
 fn extend_trie_character_command_sequence_clears_pending_keys() {
-    use crate::editor::keymap::BindMode;
+    use hume_core::BindMode;
 
     let mut ed = editor_from("-[h]>ello\n");
     ed.state.input.set_extend(true);
@@ -530,7 +530,7 @@ fn extend_trie_character_command_sequence_clears_pending_keys() {
         &[key('g'), key('r')],
         "find-forward".into(),
         false,
-        hume_scripting::ConfigOrigin::User,
+        hume_core::ConfigOrigin::User,
     );
     // A plain leaf on `x`, distinct from the `g`-prefixed sequence, so a
     // leftover `g` prefix would make this unreachable (NoMatch) instead of
@@ -540,7 +540,7 @@ fn extend_trie_character_command_sequence_clears_pending_keys() {
         &[key('x')],
         "delete-char-forward".into(),
         false,
-        hume_scripting::ConfigOrigin::User,
+        hume_core::ConfigOrigin::User,
     );
 
     ed.handle_key(key('g'));

@@ -1,0 +1,13 @@
+[package]
+name = "hume-core"
+version.workspace = true
+edition = "2024"
+
+[features]
+# The comment-token constructors tests spell tokens with, and a grammar
+# source whose files do not exist.
+test-util = []
+
+[dependencies]
+globset = "0.4"
+slotmap = "1"

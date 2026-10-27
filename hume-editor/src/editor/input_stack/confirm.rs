@@ -5,7 +5,8 @@
 
 use termina::event::{KeyCode, Modifiers};
 
-use hume_engine::pipeline::{BufferId, EngineView};
+use hume_core::BufferId;
+use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
 
 use super::super::mouse::is_fresh_gesture;

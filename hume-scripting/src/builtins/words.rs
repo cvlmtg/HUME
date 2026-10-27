@@ -2,10 +2,9 @@
 //! plugins. `(string-common-prefix strings)`: the grapheme-cluster common
 //! prefix, for the same reason, below.
 //!
-//! Reuses `hume-ops`'s own word-motion scan primitives (`word_runs`, built
-//! on the same grapheme-cluster/combining-mark-safe stepping and
-//! `WordChars::classify` that `w`/`b` motions and text objects already use)
-//! rather than approximating classification in Steel, since Steel has no
+//! Reuses `hume-editing`'s `word_runs`, built on the same
+//! grapheme-cluster/combining-mark-safe stepping and `WordChars::classify`
+//! that `w`/`b` motions and text objects already use, rather than approximating classification in Steel, since Steel has no
 //! Unicode character-category table, so a hand-rolled Steel classifier
 //! either merges non-ASCII punctuation into words or has to special-case
 //! every script by hand. A word this returns is what a `w` motion would
@@ -17,8 +16,7 @@
 //! includes `-` (a CSS buffer, say).
 
 use hume_editing::text::BufferText;
-use hume_editing::word::WordChars;
-use hume_ops::motion::word_runs;
+use hume_editing::word::{WordChars, word_runs};
 use steel::rvals::SteelVal;
 
 use super::SteelResult;

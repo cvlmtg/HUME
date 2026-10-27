@@ -311,7 +311,7 @@ fn a_parked_view_survives_a_decoration_change() {
         vec![hume_decorations::InlayHintEntry {
             pos: co(0),
             text: "X".to_string(),
-            before: true,
+            side: hume_core::Side::Before,
         }],
     );
     ed.render_to_buf(rect);

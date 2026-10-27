@@ -6,7 +6,7 @@
 //! isn't a named editor command, and a second accessor for them would only
 //! duplicate that gate.
 
-use hume_engine::pipeline::BufferId;
+use hume_core::BufferId;
 use hume_platform::path::AbsolutePath;
 use hume_rope::position_encoding::PositionEncoding;
 use termina::event::KeyEvent;

@@ -41,21 +41,6 @@ use super::width::cell_width;
 /// uses [`super::menu_box::MAX_MENU_ROWS`], a row cap, instead).
 const MAX_POPUP_WIDTH: u16 = 120;
 
-/// Where a popup renders: same widget, same model, two placements.
-/// `show-popup!`'s `#:anchor` kwarg selects between them (`hume-editor`'s
-/// `PopupLayer::layout`).
-pub enum PopupLayout {
-    /// Floating, anchored near the focused pane's cursor (`#:anchor
-    /// 'cursor`, the default), painted by `PopupOverlay`.
-    Cursor,
-    /// Docked as a full-width chrome band directly above the statusline,
-    /// reserving pane space like the drawer (`#:anchor 'bottom`), painted
-    /// by `PopupBandWidget`. Used for hover content too tall for the
-    /// cursor layout; keeps popup semantics (plain scroll, no selection,
-    /// close-on-any-other-key) rather than becoming a pick-list.
-    Docked,
-}
-
 /// Popup text, wrapped on demand and memoized by width: a pure function of
 /// `(source, width)`. Source is fixed at construction (a `show-popup!`
 /// builds a fresh `PopupContent`; text/highlights never change during a
@@ -274,7 +259,7 @@ impl OverlayProvider for PopupOverlay {
     }
 }
 
-/// Fully-resolved content for a **docked** popup (`PopupLayout::Docked`):
+/// Fully-resolved content for a **docked** popup (`hume_core::PopupLayout::Docked`):
 /// the `PopupBandWidget` counterpart of [`PopupState`]. No position/size
 /// is stored here: unlike the floating popup, a bottom band's rows come
 /// from the layout ([`band_height`]) and its position from the engine at
@@ -480,8 +465,8 @@ pub fn resolve_side_popup(
     wrapped.popup_state(Rect::new(x, y, outer_w, outer_h), scroll, border)
 }
 
-/// Resolve a docked popup's content for this frame: the [`PopupLayout::
-/// Docked`] counterpart of [`resolve_popup`]. No anchor or pane rect: a
+/// Resolve a docked popup's content for this frame: the
+/// [`hume_core::PopupLayout::Docked`] counterpart of [`resolve_popup`]. No anchor or pane rect: a
 /// bottom band's rows come from the layout ([`band_height`]) and its
 /// position from the engine at render time (mirroring the drawer's own
 /// contract), so this only resolves content. `terminal` is the raw,
@@ -668,7 +653,7 @@ pub fn resolve_menu(
 /// truncated (never wrapped) to their column width, since a menu row is
 /// exactly one screen line.
 fn compose_menu_row(row: &MenuRow, main_col: u16, trail_col: u16) -> String {
-    use hume_engine::types::TruncateEnd;
+    use hume_core::TruncateEnd;
 
     let main = super::width::truncate_marked(&row.main, main_col as usize, TruncateEnd::Tail);
     if trail_col == 0 {

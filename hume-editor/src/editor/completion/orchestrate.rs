@@ -14,7 +14,8 @@
 //! (`rank`) stays here in Rust and only a source flagged `isIncomplete` is
 //! called again as the user types.
 
-use hume_engine::pipeline::{BufferId, EngineView, PaneId};
+use hume_core::{BufferId, PaneId, Severity};
+use hume_engine::pipeline::EngineView;
 use hume_rope::offset::CharOffset;
 use hume_scripting::SteelCall;
 use hume_scripting::host::{AnswerEnd, EmittedWord};
@@ -25,6 +26,7 @@ use super::session::{
     BufferSession, EndingSession, Invocation, LiveDoc, MinibufSession, Reconciled,
 };
 use super::{CompletionCtx, CompletionItem, arg_span};
+use crate::editor::EditorState;
 use crate::editor::buffer::store::BufferStore;
 use crate::editor::input_stack::{BufferCompletionLayer, LayerRef, MinibufCompletionLayer};
 use crate::editor::lsp::{DeliveryKey, EditorDeliveryKey, RustDelivery, RustResponder};
@@ -32,7 +34,6 @@ use crate::editor::minibuf::PromptCompletion;
 use crate::editor::registry::CommandRegistry;
 use crate::editor::replay::Interactive;
 use crate::editor::settings::{CommandCompletion, EditorSettings};
-use crate::editor::{EditorState, Severity};
 
 /// What set an Insert-mode trigger in motion, and so which sources it
 /// invokes.

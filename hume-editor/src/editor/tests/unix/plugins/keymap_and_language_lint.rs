@@ -14,7 +14,7 @@ use hume_scripting::PluginStatus;
 /// the unknown name and is not a lint that fires unconditionally.
 #[test]
 fn keymap_lint_warns_on_unknown_command() {
-    use crate::editor::Severity;
+    use hume_core::Severity;
 
     let (ed, _dirs) =
         setup_editor_with_init_scripting(r#"(bind-key! 'normal "Q" "bogus-unknown-cmd")"#, None);
@@ -44,7 +44,7 @@ fn keymap_lint_warns_on_unknown_command() {
 /// since there is no other kind to name.
 #[test]
 fn keymap_lint_warns_with_kind_hint_for_typed_only_command() {
-    use crate::editor::Severity;
+    use hume_core::Severity;
 
     let (ed, _dirs) = setup_editor_with_init_scripting(r#"(bind-key! 'normal "Q" "write")"#, None);
 
@@ -70,7 +70,7 @@ fn keymap_lint_warns_with_kind_hint_for_typed_only_command() {
 /// it.
 #[test]
 fn no_keymap_lint_warning_for_completion_trigger_without_plugins() {
-    use crate::editor::Severity;
+    use hume_core::Severity;
 
     let (ed, _dirs) = setup_editor_with_init_scripting("", None);
 
@@ -93,7 +93,7 @@ fn no_keymap_lint_warning_for_completion_trigger_without_plugins() {
 /// The parent plugin is marked `Failed` and an `Error` is logged.
 #[test]
 fn load_plugin_in_runtime_plugin_body_fails_fast() {
-    use crate::editor::Severity;
+    use hume_core::Severity;
     use hume_scripting::attribution::PluginId;
 
     let dir = tempfile::tempdir().unwrap();
@@ -160,7 +160,7 @@ fn load_plugin_in_runtime_plugin_body_fails_fast() {
 /// Severity::Error.
 #[test]
 fn define_command_collision_with_builtin_keeps_builtin() {
-    use crate::editor::Severity;
+    use hume_core::Severity;
 
     let (ed, _dirs) = setup_editor_with_init_scripting(
         r#"(define-command! "move-right" "redefine" (lambda () (+ 1 0)))"#,
@@ -226,7 +226,7 @@ fn lazy_plugin_call_bang_at_body_top_level_is_drained_on_runtime_activation() {
 /// `define-language!` has registered.
 #[test]
 fn language_activation_lint_warns_on_unknown_language() {
-    use crate::editor::Severity;
+    use hume_core::Severity;
 
     let (ed, _dirs) =
         setup_lang_lint_editor(r#"(declare-plugin! "user/tp" #:languages '("rsut"))"#);
@@ -252,7 +252,7 @@ fn language_activation_lint_warns_on_unknown_language() {
 /// reached `state.config.languages`.
 #[test]
 fn language_trigger_lint_silent_for_known_language() {
-    use crate::editor::Severity;
+    use hume_core::Severity;
 
     // %define-language! (the Rust primitive) works without prelude.scm
     // (the macro wrapper in languages.scm is absent in the test environment).
@@ -283,7 +283,7 @@ fn language_trigger_lint_silent_for_known_language() {
 /// makes the check order-independent.
 #[test]
 fn language_trigger_lint_silent_for_forward_defined_language() {
-    use crate::editor::Severity;
+    use hume_core::Severity;
 
     // declare-plugin! BEFORE define-language!: the forward-reference case.
     let (ed, _dirs) = setup_lang_lint_editor(
@@ -309,7 +309,7 @@ fn language_trigger_lint_silent_for_forward_defined_language() {
 /// wildcard, not a language identity to look up in the registry.
 #[test]
 fn language_activation_lint_silent_for_wildcard() {
-    use crate::editor::Severity;
+    use hume_core::Severity;
 
     let (ed, _dirs) = setup_lang_lint_editor(r#"(declare-plugin! "user/tp" #:languages '("*"))"#);
 

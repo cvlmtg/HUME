@@ -161,9 +161,7 @@ fn two_sources_on_the_same_line_break_ties_alphabetically_first() {
 
 /// Two-line buffer with one eol entry per `entries` item; returns the
 /// editor in Normal mode with the cursor on line 0.
-fn two_line_editor_with_eol(
-    entries: &[(&str, usize, &str, bool)],
-) -> (Editor, hume_engine::pipeline::PaneId) {
+fn two_line_editor_with_eol(entries: &[(&str, usize, &str, bool)]) -> (Editor, hume_core::PaneId) {
     let mut ed = open_headless(None);
     ed.feed_key(key('i'));
     for ch in "abc\ndef".chars() {
@@ -190,7 +188,7 @@ fn two_line_editor_with_eol(
     (ed, pid)
 }
 
-fn eol_lines(ed: &mut Editor, pid: hume_engine::pipeline::PaneId) -> Vec<usize> {
+fn eol_lines(ed: &mut Editor, pid: hume_core::PaneId) -> Vec<usize> {
     frame(ed, 60, 8);
     let mut lines: Vec<usize> = ed.state.panes.entries[pid]
         .render

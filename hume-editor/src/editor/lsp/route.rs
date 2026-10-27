@@ -2,7 +2,7 @@
 //! is sent: the one place a [`RouteSpec`] meets the live attachments, their
 //! feature filters and each server's capabilities.
 
-use hume_engine::pipeline::BufferId;
+use hume_core::BufferId;
 use hume_lsp::backend::ServerId;
 use hume_lsp::client::ServerState;
 use hume_rope::position_encoding::PositionEncoding;

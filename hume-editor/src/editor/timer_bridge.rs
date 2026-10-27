@@ -7,11 +7,12 @@
 
 use std::time::{Duration, Instant};
 
-use hume_engine::pipeline::{BufferId, PaneId};
+use hume_core::{BufferId, PaneId};
 
 use super::Editor;
 use super::async_source::AsyncSource;
-use super::timers::{TimerId, TimerWheel};
+use super::timers::TimerWheel;
+use hume_core::TimerId;
 
 /// What firing a `TimerId` actually does: a Steel closure (the `after!`
 /// builtin) or a native Rust action (the viewport-change debounce, which has no Steel

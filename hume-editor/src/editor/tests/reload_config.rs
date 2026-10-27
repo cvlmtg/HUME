@@ -23,9 +23,10 @@ use hume_scripting::ScriptingHost;
 
 use super::lsp_rig::{LspRig, RUST_ANALYZER, RigSpec};
 use crate::editor::commands::open_pane_in_layout;
-use crate::editor::keymap::{BindMode, Keymap};
+use crate::editor::keymap::Keymap;
 use crate::editor::reload::ReloadSnapshot;
 use crate::statusline::StatusElement;
+use hume_core::BindMode;
 use hume_lsp::test_util::RecordingLspBackend;
 
 // ── Keymap ───────────────────────────────────────────────────────────────────

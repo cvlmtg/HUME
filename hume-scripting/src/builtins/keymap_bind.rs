@@ -5,9 +5,10 @@
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
-use crate::host::{BindMode, KeymapTarget};
+use crate::host::KeymapTarget;
 use crate::keys::parse_key_sequence;
 use crate::{Effect, PaneHandle, SteelCtx};
+use hume_core::BindMode;
 
 use super::SteelResult;
 use super::args::{optional_symbol_arg, symbol_arg, symbol_enum_arg};

@@ -488,8 +488,8 @@ fn attach_keymap_takes_a_symbol_name() {
 /// user, a plugin body is a plugin.
 #[test]
 fn binds_and_unbinds_record_their_origin() {
-    use crate::ConfigOrigin;
     use crate::attribution::{EntryId, PluginId};
+    use hume_core::ConfigOrigin;
 
     let mut h = SteelCtxTestHarness::new();
     let queue = |ctx: &mut SteelCtx| {

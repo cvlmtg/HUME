@@ -7,9 +7,9 @@ use std::path::Path;
 
 use super::*;
 use crate::editor::input_stack::shell_prompt::ShellPromptLayer;
-use crate::editor::keymap::BindMode;
 use crate::editor::minibuf::history::HistoryKind;
 use crate::editor::pipe_run::{PipeKind, PipeRunning, WaitEvent, wait_event};
+use hume_core::BindMode;
 use termina::WindowSize;
 use termina::event::KeyEventKind;
 
@@ -168,7 +168,7 @@ fn the_prompt_does_not_open_over_another_minibuffer() {
         &[f2],
         "pipe".into(),
         false,
-        hume_scripting::ConfigOrigin::User,
+        hume_core::ConfigOrigin::User,
     );
     ed.handle_key(key(':'));
     ed.handle_key(f2);
@@ -189,7 +189,7 @@ fn call_refuses_pipe() {
         &[f2],
         "f2-body".into(),
         false,
-        hume_scripting::ConfigOrigin::User,
+        hume_core::ConfigOrigin::User,
     );
     ed.handle_key(f2);
     assert!(has_error(&ed, "'pipe': runs only from a key"));
@@ -977,7 +977,7 @@ fn a_refusal_names_ctrl_c_only_while_it_runs_cancel_pipe() {
     ed.state.config.keymap.unbind(
         BindMode::Normal,
         &[key_ctrl('c')],
-        hume_scripting::ConfigOrigin::User,
+        hume_core::ConfigOrigin::User,
     );
     start_sort(&mut ed);
     type_cmd(&mut ed, ":bd");

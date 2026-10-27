@@ -9,7 +9,7 @@ use hume_platform::path::AbsolutePath;
 use hume_platform::wake::no_op_wake;
 use std::path::Path;
 
-use hume_engine::pipeline::BufferId;
+use hume_core::BufferId;
 use hume_lsp::backend::ServerId;
 use hume_lsp::codec::Message;
 use hume_lsp::test_util::{RecordingLspBackend, RequestLog, ResponseLog, ServerNotificationLog};
@@ -231,7 +231,7 @@ impl LspRig {
             .state
             .message_log
             .entries()
-            .filter(|e| e.severity == crate::editor::Severity::Warning)
+            .filter(|e| e.severity == hume_core::Severity::Warning)
             .map(|e| e.text.clone())
             .collect()
     }

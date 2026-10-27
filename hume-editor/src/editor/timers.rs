@@ -8,16 +8,10 @@ use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 use std::time::{Duration, Instant};
 
+use hume_core::{TimerId, TimerIds};
 use rustc_hash::FxHashSet;
 
 use super::async_source::AsyncSource;
-
-/// Opaque handle to a scheduled timer. The inner `u64` is `pub(in crate::editor)` (not
-/// exposed via a method) so the host can convert to/from the
-/// `TimerHandle` Steel's `(after! ms thunk)` returns. This module itself
-/// stays Steel-agnostic (see the module doc).
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
-pub(in crate::editor) struct TimerId(pub(in crate::editor) u64);
 
 /// Min-heap of `(deadline, id)`, plus a lazily-drained cancellation set.
 ///
@@ -30,7 +24,7 @@ pub(in crate::editor) struct TimerId(pub(in crate::editor) u64);
 pub(in crate::editor) struct TimerWheel {
     heap: BinaryHeap<Reverse<(Instant, TimerId)>>,
     cancelled: FxHashSet<TimerId>,
-    next_id: u64,
+    ids: TimerIds,
 }
 
 impl TimerWheel {
@@ -38,15 +32,14 @@ impl TimerWheel {
         Self {
             heap: BinaryHeap::new(),
             cancelled: FxHashSet::default(),
-            next_id: 0,
+            ids: TimerIds::default(),
         }
     }
 
     /// Schedule a timer to fire `after` from now. Returns a handle usable
     /// with [`Self::cancel`].
     pub(in crate::editor) fn schedule(&mut self, after: Duration) -> TimerId {
-        let id = TimerId(self.next_id);
-        self.next_id += 1;
+        let id = self.ids.mint();
         self.heap.push(Reverse((Instant::now() + after, id)));
         id
     }

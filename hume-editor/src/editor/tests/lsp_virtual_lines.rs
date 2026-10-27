@@ -416,7 +416,7 @@ fn clearing_the_store_removes_the_virtual_line_next_frame() {
         vec![hume_decorations::VirtualLineEntry {
             line: hume_rope::line::ContentLine::new(0),
             text: "hint".to_string(),
-            before: false,
+            side: hume_core::Side::After,
             scope,
             segments: Vec::new(),
         }],
@@ -472,7 +472,7 @@ fn same_line_virtual_lines_from_two_sources_order_alphabetically_by_source() {
     let entry = |text: &str| hume_decorations::VirtualLineEntry {
         line: hume_rope::line::ContentLine::new(0),
         text: text.to_string(),
-        before: false,
+        side: hume_core::Side::After,
         scope,
         segments: Vec::new(),
     };

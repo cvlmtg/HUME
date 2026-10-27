@@ -13,7 +13,8 @@
 
 use std::collections::VecDeque;
 
-use hume_engine::pipeline::{BufferId, EngineView};
+use hume_core::BufferId;
+use hume_engine::pipeline::EngineView;
 
 use hume_editing::edit::TextChange;
 use hume_editing::selection::{EditView, Selection, SelectionSet};

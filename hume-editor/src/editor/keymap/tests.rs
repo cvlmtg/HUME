@@ -1,5 +1,5 @@
 use super::*;
-use hume_scripting::ConfigOrigin;
+use hume_core::ConfigOrigin;
 use termina::event::{KeyCode, KeyEvent, KeyEventKind, Modifiers};
 
 // ── bind_sequence / unbind_sequence / Keymap::bind / Keymap::unbind ──────

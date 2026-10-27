@@ -1,14 +1,13 @@
-use hume_engine::pipeline::BufferId;
+use hume_core::{BufferId, OnUnsaved, Severity};
 use hume_platform::io::FileMeta;
 use hume_platform::path::AbsolutePath;
 use hume_scripting::host::OptionInput;
 
 use super::super::Editor;
-use super::super::Severity;
 use super::super::before_save::{AfterWrite, SAVE_IN_PROGRESS};
 use super::{CloseRefused, FocusedPane};
 use crate::editor::buffer::lifecycle::{self, CloseBufferRefused};
-use crate::editor::buffer::{Buffer, BufferFile, OnUnsaved, TextRefusal};
+use crate::editor::buffer::{Buffer, BufferFile, TextRefusal};
 use crate::editor::error::CommandError;
 use crate::editor::settings::ops as settings_ops;
 use crate::editor::settings::{WRAP_MODE_KEY, parse_setting_text};
@@ -238,7 +237,7 @@ pub(in crate::editor) fn typed_set(
     };
     let bid = fp.bid(&ed.view);
     // Only the user runs a typed command: no script reaches `:set`.
-    let by = hume_scripting::ConfigOrigin::User;
+    let by = hume_core::ConfigOrigin::User;
 
     // Buffer-intrinsic options live on the buffer, not in `EditorSettings`/
     // `BufferOverrides`, so they have no `scope:` entry in

@@ -1,8 +1,8 @@
 //! `EditorHostImpl`'s `BufferText` diffing.
 
+use hume_core::BufferId;
 use hume_editing::hunk::{ChangeHunk, text_hunks};
 use hume_editing::text::BufferText;
-use hume_engine::pipeline::BufferId;
 
 use super::EditorHostImpl;
 use hume_scripting::host::DiffHost;

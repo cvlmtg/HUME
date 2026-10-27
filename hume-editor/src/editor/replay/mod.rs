@@ -978,7 +978,7 @@ impl EditorState {
         if let Some(cap) = session.take_dot_capture()
             && let Err(warning) = finalize_dot_capture(&mut self.recording, session, cap)
         {
-            self.report(super::Severity::Warning, warning);
+            self.report(hume_core::Severity::Warning, warning);
         }
         drop(session.release_recording());
     }
@@ -1199,7 +1199,7 @@ impl Editor {
                 }
                 Input::Result(r) => {
                     if let Err(msg) = self.state.apply_cursor_replacement(&self.view, fp, r) {
-                        self.report(super::Severity::Error, msg);
+                        self.report(hume_core::Severity::Error, msg);
                     }
                 }
                 Input::Binding { name, answers, .. } => {

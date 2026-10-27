@@ -6,9 +6,9 @@
 // scripts/fetch-test-grammars.sh.
 
 use super::*;
+use hume_core::{OptionalQuery, QueryFiles};
 use hume_editing::tab_style::TabStyle;
 use hume_scripting::ScriptingHost;
-use hume_treesitter::registry::{OptionalQuery, QueryFiles};
 use pretty_assertions::assert_eq;
 use test_fixtures::{grammar_query_path, require_grammars, require_helix_query};
 

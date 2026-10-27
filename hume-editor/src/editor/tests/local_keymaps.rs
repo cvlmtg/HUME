@@ -2,8 +2,8 @@
 //! looked up before the global keymap in every mode.
 
 use super::*;
-use crate::editor::keymap::BindMode;
 use crate::editor::tests::before_save::warning_texts;
+use hume_core::BindMode;
 use pretty_assertions::assert_eq;
 use std::borrow::Cow;
 
@@ -17,7 +17,7 @@ fn bind_here(ed: &mut Editor, mode: BindMode, keys: &[KeyEvent], command: &'stat
         keys,
         Cow::Borrowed(command),
         false,
-        hume_scripting::ConfigOrigin::User,
+        hume_core::ConfigOrigin::User,
     );
     local.attach(bid, "test").expect("bound above");
 }

@@ -93,7 +93,7 @@ fn syntax_error_transitions_to_failed() {
     let messages = host.peek_pending_messages();
     assert!(
         messages.iter().any(|(level, msg)| {
-            matches!(level, crate::log::LogLevel::Error)
+            matches!(level, hume_core::Severity::Error)
                 && msg.contains("core:bad")
                 && msg.contains("failed to load")
         }),
@@ -134,7 +134,7 @@ fn failed_activation_message_names_plugin_and_location() {
     );
     let (level, msg) = &messages[0];
     assert!(
-        matches!(level, crate::log::LogLevel::Error),
+        matches!(level, hume_core::Severity::Error),
         "must be logged at Error; got: {level:?}"
     );
     assert!(
@@ -717,7 +717,7 @@ fn nested_activation_commit_survives_enclosing_plugin_failure() {
     let messages = host.peek_pending_messages();
     assert!(
         messages.iter().any(|(level, msg)| {
-            matches!(level, crate::log::LogLevel::Error)
+            matches!(level, hume_core::Severity::Error)
                 && msg.contains("core:b")
                 && msg.contains("b fails")
         }),

@@ -22,7 +22,8 @@
 
 use std::ops::Range;
 
-use super::{CompletionCtx, CompletionItem, MatchKind};
+use super::{CompletionCtx, CompletionItem};
+use hume_core::MatchKind;
 
 /// A native minibuffer source that enumerates a stable universe: the
 /// session's own matcher narrows it, and the orchestrator supplies the

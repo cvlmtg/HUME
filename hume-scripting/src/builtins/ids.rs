@@ -17,8 +17,8 @@
 //! Display uses the slotmap `as_ffi` u64 so that `(log! "info" pane)` prints
 //! something readable without revealing internal structure.
 
+use hume_core::BufferId;
 use hume_editing::text::TextVersion;
-use hume_engine::pipeline::BufferId;
 use slotmap::Key as _;
 use steel::{
     gc::ShareableMut as _,

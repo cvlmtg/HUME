@@ -634,7 +634,7 @@ fn tsx_bundled_language_id_is_typescriptreact() {
     };
     ed.init_scripting(&mut Default::default());
     let bid = ed.focused_buffer_id();
-    ed.set_buffer_language_by_name(bid, Some("tsx"), hume_scripting::ConfigOrigin::User);
+    ed.set_buffer_language_by_name(bid, Some("tsx"), hume_core::ConfigOrigin::User);
 
     let id = ed
         .state
@@ -1084,7 +1084,7 @@ fn init_registration_of_a_bogus_library_is_silent_until_a_buffer_needs_it() {
     assert!(ed.state.config.languages.has_grammar("json"));
 
     let bid = ed.focused_buffer_id();
-    ed.set_buffer_language_by_name(bid, Some("json"), hume_scripting::ConfigOrigin::User);
+    ed.set_buffer_language_by_name(bid, Some("json"), hume_core::ConfigOrigin::User);
     ed.reparse_stale_buffers();
 
     assert_eq!(grammar_warnings(&ed, "json").len(), 1);
@@ -1214,8 +1214,8 @@ fn bundled_languages_carry_root_markers() {
     };
     ed.init_scripting(&mut Default::default());
     let bid = ed.focused_buffer_id();
-    ed.set_buffer_language_by_name(bid, Some("go"), hume_scripting::ConfigOrigin::User);
-    ed.set_buffer_language_by_name(bid, Some("gomod"), hume_scripting::ConfigOrigin::User);
+    ed.set_buffer_language_by_name(bid, Some("go"), hume_core::ConfigOrigin::User);
+    ed.set_buffer_language_by_name(bid, Some("gomod"), hume_core::ConfigOrigin::User);
 
     let languages = &ed.state.config.languages;
     let go = languages

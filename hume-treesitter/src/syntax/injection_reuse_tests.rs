@@ -22,10 +22,10 @@ use std::sync::atomic::AtomicBool;
 use proptest::prelude::*;
 use rustc_hash::FxHashMap;
 
+use hume_core::{BufferId, OptionalQuery};
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
 use hume_editing::edit::TextChange;
 use hume_editing::text::BufferText;
-use hume_engine::pipeline::BufferId;
 use hume_rope::offset::CharOffset;
 use test_fixtures::{require_grammars, require_helix_query, unicode};
 
@@ -33,7 +33,7 @@ use super::{ChainBreak, Syntax};
 use crate::edits::input_edits_from_changeset;
 use crate::layers::{LayerField, LayerMismatch, LayerShape, SyntaxLayer, first_layer_mismatch};
 use crate::parse_worker::{MAX_INJECTION_DEPTH, ParseDone, ParseOutcome, run_parse};
-use crate::registry::{GrammarBundle, GrammarSnapshot, OptionalQuery};
+use crate::registry::{GrammarBundle, GrammarSnapshot};
 use crate::test_support::{fresh_bid, make_bundle};
 
 type Langs = Arc<GrammarSnapshot>;

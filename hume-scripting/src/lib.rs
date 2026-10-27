@@ -61,12 +61,11 @@ pub use eval::HeldHandlers;
 pub use host::PendingCompletionSource;
 pub use keys::parse_key_stream;
 pub use lazy::PluginStatus;
-pub use log::LogLevel;
 pub use rooted::{Callback, Rooted, SteelCall};
 pub use types::{
-    BUFFER_LANGUAGE_TIE, CapabilityQuery, ConfigOrigin, DocSpan, Effect, EvalError, FeatureFilter,
-    GrammarReg, ListEntry, ListTier, LspFeature, LspServerStatusEntry, LspServerTarget, PaneHandle,
-    Params, PendingLanguageReg, PendingLspNotify, PendingLspRequest, PendingLspServerOp,
+    BUFFER_LANGUAGE_TIE, CapabilityQuery, DocSpan, Effect, EvalError, FeatureFilter, GrammarReg,
+    ListEntry, ListTier, LspFeature, LspServerStatusEntry, LspServerTarget, PaneHandle, Params,
+    PendingLanguageReg, PendingLspNotify, PendingLspRequest, PendingLspServerOp,
     PendingLspServerReg, RequestMode, RequestParams, RouteSpec, SERVER_REGISTRATION_TIE,
     ServerName, SteelCmdBody, SteelCmdDef, SteelTypedCmdBody, SteelTypedCmdDef, TriggerKind,
     TriggerScope, VirtualLineSpec, WhenUnavailable,
@@ -103,6 +102,7 @@ use steel::steel_vm::engine::Engine;
 
 use attribution::AttributionStack;
 use hooks::HookRegistry;
+use hume_core::Severity;
 use lazy::{LazyRegistry, PluginState};
 
 /// The persistent registry fields bundled as a unit so they can be
@@ -127,7 +127,7 @@ pub(crate) struct ScriptingRegistries {
 pub(crate) struct HostBundle<'a> {
     pub(crate) registries: &'a mut ScriptingRegistries,
     attribution: &'a mut AttributionStack,
-    pending_messages: &'a mut Vec<(LogLevel, String)>,
+    pending_messages: &'a mut Vec<(Severity, String)>,
     effects: &'a mut Vec<types::QueuedEffect>,
     dirs: &'a builtins::dirs::ScriptDirs,
     budget: watchdog::BudgetClock<'a>,
@@ -153,7 +153,7 @@ pub struct ScriptingHost {
     attribution: AttributionStack,
     /// Log messages accumulated by `(log! …)` since the last drain.
     /// Drained by the editor via `take_pending_messages()`.
-    pending_messages: Vec<(LogLevel, String)>,
+    pending_messages: Vec<(Severity, String)>,
     /// Side effects queued by Steel builtins, in push order. Each eval entry
     /// point (`call_steel_cmd`, `fire_hook`, `run_steel_calls`, `eval_init`,
     /// `activate_plugin_inline`) drains exactly what it pushed back out on
@@ -319,7 +319,7 @@ impl ScriptingHost {
     }
 
     /// Drain all accumulated log messages since the last drain.
-    pub fn take_pending_messages(&mut self) -> Vec<(LogLevel, String)> {
+    pub fn take_pending_messages(&mut self) -> Vec<(Severity, String)> {
         std::mem::take(&mut self.pending_messages)
     }
 
@@ -385,7 +385,7 @@ impl ScriptingHost {
 
     /// Peek at pending messages without draining.  Only for test assertions.
     #[cfg(any(test, feature = "test-util"))]
-    pub fn peek_pending_messages(&self) -> &[(LogLevel, String)] {
+    pub fn peek_pending_messages(&self) -> &[(Severity, String)] {
         &self.pending_messages
     }
 

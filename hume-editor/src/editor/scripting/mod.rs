@@ -4,7 +4,8 @@
 
 use std::path::PathBuf;
 
-use super::{Editor, Severity, host_impl::EditorHostImpl};
+use super::{Editor, host_impl::EditorHostImpl};
+use hume_core::Severity;
 
 mod effects;
 mod init;
@@ -59,20 +60,9 @@ impl Editor {
     }
 
     /// Report each drained `(log! …)` message at its own severity.
-    fn report_script_messages(&mut self, msgs: Vec<(hume_scripting::LogLevel, String)>) {
-        for (level, text) in msgs {
-            self.report(log_level_to_severity(level), text);
+    fn report_script_messages(&mut self, msgs: Vec<(Severity, String)>) {
+        for (severity, text) in msgs {
+            self.report(severity, text);
         }
-    }
-}
-
-/// Map scripting `LogLevel` → editor `Severity`.
-fn log_level_to_severity(level: hume_scripting::LogLevel) -> Severity {
-    use hume_scripting::LogLevel;
-    match level {
-        LogLevel::Info => Severity::Info,
-        LogLevel::Warning => Severity::Warning,
-        LogLevel::Error => Severity::Error,
-        LogLevel::Trace => Severity::Trace,
     }
 }

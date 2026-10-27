@@ -14,8 +14,9 @@
 //! focus change from anywhere, so this can't be caught by auditing dispatch
 //! call sites alone).
 
+use hume_core::{BufferId, PaneId};
 use hume_engine::pipeline::{
-    BufferId, DetachedPane, EngineView, FocusKey, FocusedLayout, PaneId, SinglePane, UnattachedPane,
+    DetachedPane, EngineView, FocusKey, FocusedLayout, SinglePane, UnattachedPane,
 };
 
 use super::EditorState;

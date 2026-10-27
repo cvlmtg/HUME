@@ -6,7 +6,7 @@
 //! [`hume_rope::width::CHROME_TAB_WIDTH`], both inert for any non-tab
 //! cluster, the only kind this text has.
 
-use hume_engine::types::TruncateEnd;
+use hume_core::TruncateEnd;
 use hume_rope::width::CHROME_TAB_WIDTH;
 
 /// The truncation marker every chrome truncator (`picker_panel`'s tail

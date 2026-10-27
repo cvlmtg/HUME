@@ -1,11 +1,11 @@
-use hume_engine::pipeline::BufferId;
+use hume_core::{BufferId, Severity};
 use hume_engine::theme::ScopeRegistry;
 use hume_treesitter::parse_worker::ParseDone;
 use hume_treesitter::registry::LanguageId;
 use hume_treesitter::syntax::{ChainBreak, Syntax};
 
 use super::GrammarLoads;
-use crate::editor::{Editor, EditorState, Severity};
+use crate::editor::{Editor, EditorState};
 
 impl EditorState {
     /// Whether `bid` is small enough to carry a syntax tree, per

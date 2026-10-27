@@ -4,7 +4,8 @@ use crate::editor::commands::{
     cmd_pane_focus_right, cmd_pane_focus_up, open_pane_in_layout,
 };
 use crate::editor::registry::Count;
-use hume_engine::pipeline::{Direction, PaneId, RenderContext};
+use hume_core::PaneId;
+use hume_engine::pipeline::{Direction, RenderContext};
 use hume_ops::MotionMode;
 
 type Cmd = crate::editor::registry::FocusedCmdFn;

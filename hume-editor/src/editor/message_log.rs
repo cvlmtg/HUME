@@ -6,72 +6,11 @@
 
 use std::collections::VecDeque;
 
+use hume_core::Severity;
 use hume_engine::theme::diagnostic_scopes;
 
 use super::error::CommandError;
 use super::{Editor, EditorState};
-
-/// Severity level for a message, controlling both logging and display.
-///
-/// | Severity | Logged? | Shown as `status_msg`? |
-/// |----------|---------|------------------------|
-/// | Info     | No      | Yes                    |
-/// | Warning  | Yes     | Yes                    |
-/// | Error    | Yes     | Yes                    |
-/// | Trace    | Yes     | No                     |
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(in crate::editor) enum Severity {
-    /// Ephemeral confirmation (e.g. "Written 42 lines"). Shown, not logged.
-    Info,
-    /// Something the user should review (e.g. unknown config key). Logged and shown.
-    Warning,
-    /// A failure the user must address (e.g. script error). Logged and shown.
-    Error,
-    /// Verbose diagnostic detail (e.g. stack trace). Logged only, not shown in statusline.
-    Trace,
-}
-
-impl Severity {
-    fn label(self) -> &'static str {
-        match self {
-            Severity::Info => "info",
-            Severity::Warning => "warning",
-            Severity::Error => "error",
-            Severity::Trace => "trace",
-        }
-    }
-
-    /// Theme scope for this severity's `[label]` badge in `:messages`:
-    /// carries a background fill, no underline. `Trace` reuses `hint`, the
-    /// lowest-noise diagnostic severity, since it has no diagnostic counterpart.
-    ///
-    /// Sub-keys of `diagnostic.<severity>` rather than edits to it:
-    /// `Theme::resolve_raw`'s dot-notation fallback *picks* the first match
-    /// rather than layering, so writing directly to `diagnostic.error` here
-    /// would strip the `underlined` modifier LSP diagnostic squiggles in code
-    /// buffers rely on. Themes that don't define the sub-keys fall back to
-    /// plain `diagnostic.<severity>` styling.
-    fn badge_scope(self) -> &'static str {
-        match self {
-            Severity::Info => diagnostic_scopes::INFO_MESSAGE,
-            Severity::Warning => diagnostic_scopes::WARNING_MESSAGE,
-            Severity::Error => diagnostic_scopes::ERROR_MESSAGE,
-            Severity::Trace => diagnostic_scopes::HINT_MESSAGE,
-        }
-    }
-
-    /// Theme scope for this severity's message text in `:messages`: a
-    /// foreground tint, distinct from `badge_scope` so the body doesn't
-    /// inherit the badge's background via dot-notation fallback.
-    fn text_scope(self) -> &'static str {
-        match self {
-            Severity::Info => diagnostic_scopes::INFO_MESSAGE_TEXT,
-            Severity::Warning => diagnostic_scopes::WARNING_MESSAGE_TEXT,
-            Severity::Error => diagnostic_scopes::ERROR_MESSAGE_TEXT,
-            Severity::Trace => diagnostic_scopes::HINT_MESSAGE_TEXT,
-        }
-    }
-}
 
 /// A single entry in the persistent message log.
 #[derive(Debug, Clone)]
@@ -152,7 +91,7 @@ impl MessageLog {
     pub(crate) fn write_problems(&self, w: &mut impl std::io::Write) -> std::io::Result<()> {
         for entry in &self.entries {
             if matches!(entry.severity, Severity::Warning | Severity::Error) {
-                writeln!(w, "hume: {}: {}", entry.severity.label(), entry.text)?;
+                writeln!(w, "hume: {}: {}", entry.severity.name(), entry.text)?;
             }
         }
         Ok(())
@@ -247,13 +186,17 @@ impl MessageLog {
         let mut spans = Vec::new();
         let mut pos = 0;
         for entry in &self.entries {
-            let label = entry.severity.label();
+            let label = entry.severity.name();
 
             out.push('[');
             out.push_str(label);
             out.push(']');
             let badge_len = label.len() + 2; // '[' + label + ']'
-            spans.push((pos, pos + badge_len, entry.severity.badge_scope()));
+            spans.push((
+                pos,
+                pos + badge_len,
+                diagnostic_scopes::message_badge(entry.severity),
+            ));
             pos += badge_len;
 
             out.push(' ');
@@ -262,7 +205,11 @@ impl MessageLog {
             let text_len = entry.text.chars().count();
             if text_len > 0 {
                 out.push_str(&entry.text);
-                spans.push((pos, pos + text_len, entry.severity.text_scope()));
+                spans.push((
+                    pos,
+                    pos + text_len,
+                    diagnostic_scopes::message_text(entry.severity),
+                ));
                 pos += text_len;
             }
 

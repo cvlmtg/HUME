@@ -44,7 +44,7 @@ use hume_platform::path::AbsolutePath;
 use steel::rvals::{IntoSteelVal, SteelVal};
 
 use crate::SteelCtx;
-use crate::log::LogLevel;
+use hume_core::Severity;
 
 use super::SteelResult;
 use super::args::{list_to_strings, string_list};
@@ -130,7 +130,7 @@ pub(crate) fn replace_dir(
     .map_err(|e| generic_err(format!("{} -> {}: {e}", src.display(), dest.display())))?;
     if let Err(e) = ctx.while_waiting(|| remove_dir_tree_if_present(&backup)) {
         ctx.log(
-            LogLevel::Warning,
+            Severity::Warning,
             format!(
                 "replace-dir!: {} was replaced, but its old contents in {} were not deleted: {e}",
                 dest.display(),

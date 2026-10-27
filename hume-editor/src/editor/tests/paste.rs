@@ -931,8 +931,8 @@ fn explicit_register_paste_with_equal_text_replaces() {
 /// selected just-pasted text and so would replace it.
 #[test]
 fn repeat_clipboard_paste_with_dead_clipboard_is_noop() {
-    use crate::editor::Severity;
     use crate::editor::commands::{PasteSource, PasteStamp};
+    use hume_core::Severity;
 
     let mut ed = editor_from("-[xy]>\n");
     ed.state.clipboard.force_unavailable();
@@ -1666,7 +1666,7 @@ fn yanking_a_selection_ending_on_a_break_pastes_inline() {
 /// was yanked, from the in-memory mirror and without a warning.
 #[test]
 fn smart_p_after_edit_with_osc52_clipboard_pastes_yank_without_warning() {
-    use crate::editor::Severity;
+    use hume_core::Severity;
 
     let mut ed = editor_from("-[ab]>cd\n");
     ed.state.clipboard = crate::editor::clipboard::SystemClipboard::osc52();

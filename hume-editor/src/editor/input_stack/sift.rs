@@ -1,9 +1,10 @@
 //! The `Sift` layer: the `s`-prompt (sift-within) minibuffer mode.
 
+use hume_core::{BufferId, PaneId};
 use hume_editing::selection::SelectionSet;
 use hume_editing::state::EditState;
 use hume_editing::text::BufferText;
-use hume_engine::pipeline::{BufferId, EngineView, PaneId};
+use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
 use hume_ops::search::compile_search_input;
 use hume_ops::selection_cmd::sift_matches_within;

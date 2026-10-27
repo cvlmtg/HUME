@@ -1,11 +1,12 @@
 use std::hint::black_box;
 
 use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
+use hume_core::BufferId;
 use hume_decorations::decorations::{DecorationStores, SignEntry};
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
 use hume_editing::edit::TextChange;
 use hume_editing::text::BufferText;
-use hume_engine::pipeline::{BufferId, EngineView};
+use hume_engine::pipeline::EngineView;
 use hume_engine::theme::Theme;
 use hume_engine::types::ScopeId;
 use hume_rope::line::ContentLine;

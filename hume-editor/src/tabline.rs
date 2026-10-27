@@ -14,7 +14,7 @@ use hume_grid::Rect;
 
 use crate::editor::tab::TabId;
 use crate::statusline::colors::TablineColors;
-use hume_engine::types::TruncateEnd;
+use hume_core::TruncateEnd;
 
 use hume_engine::lock::SharedSlot;
 use hume_engine::providers::ChromeProvider;

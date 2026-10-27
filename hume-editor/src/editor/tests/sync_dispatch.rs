@@ -330,7 +330,7 @@ fn case_b_sync_cursor_read_reflects_motion() {
 /// Binds `body`, a Steel command taking the pane, to F2 in Normal mode,
 /// after `d` has recorded a change to repeat. Returns the F2 key.
 fn bind_f2_after_a_delete(ed: &mut Editor, body: &str) -> termina::event::KeyEvent {
-    use crate::editor::keymap::BindMode;
+    use hume_core::BindMode;
     use termina::event::KeyCode;
 
     attach_steel(
@@ -343,7 +343,7 @@ fn bind_f2_after_a_delete(ed: &mut Editor, body: &str) -> termina::event::KeyEve
         &[f2],
         "f2-body".into(),
         false,
-        hume_scripting::ConfigOrigin::User,
+        hume_core::ConfigOrigin::User,
     );
     ed.feed_key(key('d'));
     assert!(
@@ -844,7 +844,7 @@ fn steel_zero_arity_lambda_ignores_injection() {
         ed.state
             .message_log
             .entries()
-            .all(|e| !matches!(e.severity, crate::editor::Severity::Error)),
+            .all(|e| !matches!(e.severity, hume_core::Severity::Error)),
         "0-arg Steel command must not produce an error on injection"
     );
 }
@@ -895,7 +895,7 @@ fn steel_arity_1_lambda_receives_bid_only() {
         ed.state
             .message_log
             .entries()
-            .all(|e| !matches!(e.severity, crate::editor::Severity::Error)),
+            .all(|e| !matches!(e.severity, hume_core::Severity::Error)),
         "arity-1 Steel command must not produce an error on injection"
     );
 }
@@ -934,7 +934,7 @@ fn steel_arity_2_lambda_receives_bid_and_count() {
         ed.state
             .message_log
             .entries()
-            .all(|e| !matches!(e.severity, crate::editor::Severity::Error)),
+            .all(|e| !matches!(e.severity, hume_core::Severity::Error)),
         "arity-2 Steel command must not produce an error on injection"
     );
 }
@@ -1347,7 +1347,7 @@ fn native_call_bang_at_init_top_level_warns_and_skips() {
     // A warning must have been produced for the skipped command.
     let msgs = host.take_pending_messages();
     let has_warn = msgs.iter().any(|(lvl, txt)| {
-        matches!(lvl, hume_scripting::LogLevel::Warning) && txt.contains("move-right")
+        matches!(lvl, hume_core::Severity::Warning) && txt.contains("move-right")
     });
     assert!(
         has_warn,
@@ -1360,7 +1360,7 @@ fn native_call_bang_at_init_top_level_warns_and_skips() {
 /// Helper: register all native command names, eval a Steel snippet, attach the
 /// host, and bind the named command to F2 in Normal mode.
 fn setup_steel_f2(ed: &mut Editor, snippet: &str, cmd_name: &str) -> termina::event::KeyEvent {
-    use crate::editor::keymap::BindMode;
+    use hume_core::BindMode;
     use termina::event::KeyCode;
 
     attach_steel(ed, snippet);
@@ -1371,7 +1371,7 @@ fn setup_steel_f2(ed: &mut Editor, snippet: &str, cmd_name: &str) -> termina::ev
         &[f2],
         std::borrow::Cow::Owned(cmd_name.to_owned()),
         false,
-        hume_scripting::ConfigOrigin::User,
+        hume_core::ConfigOrigin::User,
     );
     f2
 }
@@ -1717,7 +1717,7 @@ fn keymap_dispatch_arity_over_3_reports_error() {
         ed.state
             .message_log
             .entries()
-            .any(|e| e.severity == crate::editor::Severity::Error),
+            .any(|e| e.severity == hume_core::Severity::Error),
         "dispatch of arity-4 command via keymap must report a user-facing error"
     );
 }

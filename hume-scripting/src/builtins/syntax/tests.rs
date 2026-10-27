@@ -1,9 +1,10 @@
 use super::super::args::{cons_pair, string_list, symbol_hash};
 use super::*;
+use crate::PendingLanguageReg;
 use crate::test_support::{SteelCtxTestHarness, str_val};
-use crate::{ConfigOrigin, PendingLanguageReg};
-use hume_editing::comment::{BlockCommentTokens, LineCommentTokens};
-use hume_treesitter::registry::{LanguageFields, OptionalQuery};
+use hume_core::{
+    BlockCommentTokens, ConfigOrigin, LanguageFields, LineCommentTokens, OptionalQuery,
+};
 use steel::rvals::IntoSteelVal as _;
 
 fn empty_list() -> SteelVal {

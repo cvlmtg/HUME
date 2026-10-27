@@ -12,8 +12,8 @@
 //! `tag-open` or `tag-closed` for the branch it took.
 
 use super::*;
-use crate::editor::keymap::BindMode;
 use crate::editor::tui::Tui;
+use hume_core::BindMode;
 
 /// Bind `cmd` to `\` in Normal mode: the one key every test here uses, so a
 /// bound command's body can be reached with a single `feed_event`.
@@ -23,7 +23,7 @@ fn bind_backslash(ed: &mut Editor, cmd: &str) {
         &[key('\\')],
         cmd.to_owned().into(),
         false,
-        hume_scripting::ConfigOrigin::User,
+        hume_core::ConfigOrigin::User,
     );
 }
 

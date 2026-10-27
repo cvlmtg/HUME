@@ -1,10 +1,10 @@
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
+use hume_core::BufferId;
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
 use hume_editing::edit::TextChange;
 use hume_editing::text::BufferText;
-use hume_engine::pipeline::BufferId;
 use hume_engine::providers::SyntaxSpans;
 use hume_rope::offset::CharOffset;
 

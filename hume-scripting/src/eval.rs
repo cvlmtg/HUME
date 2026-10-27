@@ -14,11 +14,11 @@ use crate::command_name::CommandNameSet;
 use crate::command_procs::CommandProc;
 use crate::context::SteelCtx;
 use crate::host::{EditorHost, HostToken};
-use crate::log::LogLevel;
 use crate::read_only_host::ReadOnlyHost;
 use crate::types::{Effect, EvalError};
 use crate::watchdog::EvalWatchdog;
 use crate::{Callback, HostBundle, Rooted, ScriptingHost, SteelCall, attribution, builtins};
+use hume_core::Severity;
 
 mod session;
 
@@ -513,7 +513,7 @@ impl ScriptingHost {
                     if first_error.is_none() {
                         first_error = Some(message);
                     } else {
-                        steel_ctx.log(LogLevel::Error, format!("steel call error: {message}"));
+                        steel_ctx.log(Severity::Error, format!("steel call error: {message}"));
                     }
                     if interrupted {
                         break;
@@ -554,7 +554,7 @@ impl ScriptingHost {
         &mut self,
         name: &str,
         host: &mut dyn EditorHost,
-    ) -> Result<Option<hume_treesitter::registry::LanguageFields>, String> {
+    ) -> Result<Option<hume_core::LanguageFields>, String> {
         const CONFIG: &str = "%bundled-language-config";
         let config = self.read_only_call(host, Provenance::own(Owner::Core), |steel| {
             steel.call_function_by_name_with_args(CONFIG, vec![SteelVal::StringV(name.into())])

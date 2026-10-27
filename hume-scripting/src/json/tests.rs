@@ -359,7 +359,7 @@ fn indexed_child_inherits_the_parent_tag() {
 }
 
 fn doc_pos_val(offset: usize) -> SteelVal {
-    let buffer = slotmap::SlotMap::<hume_engine::pipeline::BufferId, ()>::with_key().insert(());
+    let buffer = slotmap::SlotMap::<hume_core::BufferId, ()>::with_key().insert(());
     crate::DocPos {
         buffer,
         version: hume_editing::text::BufferText::from("a\n").version(),

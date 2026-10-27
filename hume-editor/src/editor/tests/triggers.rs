@@ -2,7 +2,8 @@
 // kinds, and the completion sources a typed character invokes.
 
 use super::*;
-use crate::editor::completion::{BufferSourceEntry, MatchKind};
+use crate::editor::completion::BufferSourceEntry;
+use hume_core::MatchKind;
 use hume_scripting::TriggerKind::{Completion, Hook};
 use hume_scripting::TriggerScope;
 use steel::rvals::SteelVal;

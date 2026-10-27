@@ -239,7 +239,7 @@ fn attach_event_does_not_activate_a_plugin_declared_for_a_different_event() {
 /// "unknown command".
 #[test]
 fn every_default_lsp_binding_dispatches_without_error() {
-    use crate::editor::keymap::BindMode;
+    use hume_core::BindMode;
 
     let tmp = tempfile::tempdir().unwrap();
     let file_dir = tempfile::tempdir().unwrap();

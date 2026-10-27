@@ -212,7 +212,7 @@ fn event_trigger_one_to_many_activates_all() {
 fn event_plugin_failure_marks_failed_no_retry() {
     use hume_scripting::attribution::PluginId;
 
-    use crate::editor::Severity;
+    use hume_core::Severity;
 
     let (mut ed, _dir) = setup_lazy_editor(
         r#"(declare-plugin! "user/tp" #:events '(on-buffer-save))"#,
@@ -730,7 +730,7 @@ fn native_command_survives_failed_shadowing_plugin() {
 /// is never applied unless the body that queued it committed.
 #[test]
 fn plugin_keybinding_rolled_back_on_failed_activation() {
-    use crate::editor::keymap::BindMode;
+    use hume_core::BindMode;
     use hume_scripting::attribution::PluginId;
 
     let (mut ed, _dir) = setup_lazy_editor(

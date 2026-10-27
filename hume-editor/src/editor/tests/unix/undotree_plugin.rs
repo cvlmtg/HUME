@@ -215,7 +215,7 @@ fn next_change_secs(ages: &[u64]) -> String {
     ed.state
         .message_log
         .entries()
-        .filter(|e| e.severity == crate::editor::message_log::Severity::Trace)
+        .filter(|e| e.severity == hume_core::Severity::Trace)
         .last()
         .map(|e| e.text.to_string())
         .expect("the probe traced a value")
@@ -521,7 +521,7 @@ fn diff_vlines(ed: &Editor, bid: BufferId) -> Vec<DiffVline> {
         .map(|e| {
             (
                 e.line.index(),
-                e.before,
+                e.side == hume_core::Side::Before,
                 e.text.clone(),
                 e.segments
                     .iter()

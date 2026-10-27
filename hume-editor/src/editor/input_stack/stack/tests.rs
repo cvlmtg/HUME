@@ -17,7 +17,7 @@ fn menu(label: &str) -> MenuLayer {
 fn confirm() -> ConfirmLayer {
     ConfirmLayer::for_test(
         "test?".to_string(),
-        ConfirmAction::ReloadBuffer(hume_engine::pipeline::BufferId::default()),
+        ConfirmAction::ReloadBuffer(hume_core::BufferId::default()),
     )
 }
 
@@ -25,7 +25,7 @@ fn popup_model(text: &str) -> PopupLayer {
     PopupLayer::new(
         text.to_string(),
         None,
-        hume_ui::popup::PopupLayout::Cursor,
+        hume_core::PopupLayout::Cursor,
         &mut hume_engine::theme::Theme::default(),
         &hume_engine::theme::ScopeRegistry::new(),
     )

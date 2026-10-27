@@ -1,7 +1,7 @@
 //! `toggle-comment`: each unit takes the comment tokens of the language at
 //! its text, the innermost syntax layer that has any.
 
-use hume_editing::comment::CommentTokens;
+use hume_core::CommentTokens;
 use hume_engine::pipeline::EngineView;
 use hume_ops::MotionMode;
 use hume_ops::edit::{

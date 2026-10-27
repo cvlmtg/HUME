@@ -1,4 +1,0 @@
-[package]
-name = "hume-origin"
-version.workspace = true
-edition = "2024"

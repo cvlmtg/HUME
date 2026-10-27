@@ -1,10 +1,10 @@
 //! LSP transport, JSON-RPC codec, and client state for HUME.
 //!
-//! Follows the `hume-treesitter` precedent: this crate has zero dependency
-//! on `Editor`, `Buffer`, or anything in `hume-editor`/`hume-engine`. It
-//! speaks `BufferId`-free protocol types (`lsp_types`) plus opaque metadata
-//! the editor glue in `hume-editor/src/editor/lsp/` attaches, so the crate
-//! graph stays acyclic. Its dependency edges are listed in `docs/CRATES.md`.
+//! This crate has zero dependency on `Editor`, `Buffer`, or anything in
+//! `hume-editor`/`hume-engine`. It speaks `BufferId`-free protocol types
+//! (`lsp_types`) plus opaque metadata the editor glue in
+//! `hume-editor/src/editor/lsp/` attaches, so the crate graph stays acyclic.
+//! Its dependency edges are listed in `docs/CRATES.md`.
 //!
 //! ## Modules
 //! - `uri`: path ↔ `file://` URI conversion.

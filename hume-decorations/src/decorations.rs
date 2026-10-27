@@ -18,19 +18,19 @@
 
 use rustc_hash::FxHashMap;
 
+use hume_core::{BufferId, Side};
 use hume_editing::changeset::{Assoc, ChangeSet, PosMapCursor};
 use hume_editing::edit::TextChange;
-use hume_engine::pipeline::BufferId;
 use hume_engine::types::ScopeId;
 use hume_rope::line::ContentLine;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
-/// One `(set-inlay-hints! …)` entry: `text` rendered `before` or after the
-/// char at `pos`.
+/// One `(set-inlay-hints! …)` entry: `text` rendered on `side` of the char
+/// at `pos`.
 pub struct InlayHintEntry {
     pub pos: CharOffset,
     pub text: String,
-    pub before: bool,
+    pub side: Side,
 }
 
 /// One `(set-signs! …)` entry: a gutter marker on `line`, which remaps
@@ -50,7 +50,7 @@ pub struct SignEntry {
 }
 
 /// One `(set-virtual-lines! …)` entry: a synthetic line of text anchored to
-/// `line` (rendered after it, or before when `before` is set), which remaps
+/// `line` (rendered on its `side`), which remaps
 /// through edits as a [`LineAnchored`] kind. `scope` styles bytes `segments` doesn't cover. `hume-editor`'s `host_impl.rs`'s
 /// `set_virtual_lines` resolves the `ui.virtual` fallback itself when the
 /// Steel call passes no scope, so this field is never optional; `segments`
@@ -66,7 +66,7 @@ pub struct SignEntry {
 pub struct VirtualLineEntry {
     pub line: ContentLine,
     pub text: String,
-    pub before: bool,
+    pub side: Side,
     pub scope: ScopeId,
     pub segments: Vec<(
         hume_rope::column::ByteCol,

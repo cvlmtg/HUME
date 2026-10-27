@@ -8,7 +8,7 @@
 //! uncommented, whichever kind it holds; otherwise every unit is commented
 //! in its preferred kind.
 
-use hume_editing::comment::{BlockCommentPair, CommentTokens};
+use hume_core::{BlockCommentPair, CommentTokens};
 use hume_editing::edit::{Edited, Landing, Landings, edit};
 use hume_editing::selection::EditView;
 use hume_editing::state::EditState;

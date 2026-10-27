@@ -3,8 +3,8 @@ use hume_grid::{Rect, Rgb};
 use hume_platform::dirs::Dirs;
 
 use crate::editor::buffer::Buffer;
-use crate::editor::message_log::Severity;
 use crate::editor::minibuf::history::HistoryKind;
+use hume_core::Severity;
 use hume_editing::text::BufferText;
 use hume_engine::pipeline::RenderContext;
 
@@ -328,7 +328,7 @@ fn typed_set_theme_failure_does_not_persist() {
 #[test]
 fn a_failed_theme_load_restores_the_previous_origin() {
     use crate::editor::settings::{THEME_KEY, ops};
-    use hume_scripting::ConfigOrigin;
+    use hume_core::ConfigOrigin;
     use hume_scripting::host::OptionInput;
 
     let mut ed = editor_from("-[h]>ello\n");
@@ -651,7 +651,7 @@ fn set_buffer_option_global_only_key_errors_from_hook() {
 /// id, so the host method's own `try_get` guard must run first.
 #[test]
 fn host_set_buffer_option_invalid_bid_errors() {
-    use hume_engine::pipeline::BufferId;
+    use hume_core::BufferId;
     use hume_scripting::host::EditorHost;
 
     let mut ed = editor_from("-[h]>ello\n");
@@ -660,7 +660,7 @@ fn host_set_buffer_option_invalid_bid_errors() {
         "indent-width",
         hume_scripting::host::OptionInput::Text("8".to_string()),
         BufferId::default(),
-        hume_scripting::ConfigOrigin::User,
+        hume_core::ConfigOrigin::User,
     );
     assert!(result.is_err(), "a stale bid must be rejected, not panic");
     let msg = result.unwrap_err();

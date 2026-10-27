@@ -1,6 +1,6 @@
 use std::fmt;
 
-use super::message_log::Severity;
+use hume_core::Severity;
 
 /// A user-facing error produced when a command fails to execute.
 ///

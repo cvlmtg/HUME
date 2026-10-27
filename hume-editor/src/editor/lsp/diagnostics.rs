@@ -5,8 +5,8 @@
 
 use std::sync::Arc;
 
+use hume_core::{BufferId, DiagSeverity, Severity};
 use hume_editing::changeset::ChangeSet;
-use hume_engine::pipeline::BufferId;
 use hume_lsp::backend::ServerId;
 use hume_lsp::diagnostic::{PublishedDiagnostics, WireDiagnostic};
 use hume_lsp::sync::wire_version;
@@ -17,21 +17,8 @@ use lsp_types::PublishDiagnosticsParams;
 use ropey::Rope;
 use rustc_hash::FxHashMap;
 
-use crate::editor::message_log::Severity;
-use crate::editor::settings::SettingText as _;
 use crate::editor::{Editor, EditorState};
 use hume_decorations::{Anchored, RangeAnchored, SourceStore};
-
-/// Ordered least-to-most-lenient so `severity <= floor` means "at least as
-/// severe as floor": e.g. `floor = Warning` keeps `Error` and `Warning`,
-/// drops `Info`/`Hint`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum DiagSeverity {
-    Error,
-    Warning,
-    Info,
-    Hint,
-}
 
 #[derive(Debug, Clone)]
 pub(in crate::editor) struct StoredDiag {
@@ -571,12 +558,10 @@ impl EditorState {
 /// offset directly. `end-line` is one past the last line the diagnostic touches,
 /// clamped the same way `start-line` is, so `[start-line, end-line)` is
 /// never empty. The diagnostics plugin's gutter-sign pass marks every line
-/// in it. `severity-rank` is `DiagSeverity`'s own `Ord` discriminant (`0`
-/// for error, counting up to `3` for hint) alongside the `severity` string,
-/// so a caller compares severities by this rather than re-deriving the same
-/// order from the string. Errors loudly on an unknown `#:severity` name
-/// (e.g. `'warn` typoed for `'warning`) rather than silently returning
-/// nothing that qualifies. A `#:range` must lie within the buffer's text:
+/// in it. `severity-rank` is [`DiagSeverity::rank`] alongside the
+/// `severity` symbol, so a caller compares severities by it rather than
+/// re-deriving the order from the symbol. A `#:range` must lie within the
+/// buffer's text:
 /// it may end at the text's end, but not past it, and may not end before it
 /// starts.
 ///
@@ -588,15 +573,11 @@ impl EditorState {
 pub(in crate::editor) fn diagnostics_for_buffer(
     state: &EditorState,
     bid: BufferId,
-    severity_floor: Option<&str>,
+    severity_floor: Option<DiagSeverity>,
     range: Option<(usize, usize)>,
 ) -> Result<Vec<hume_scripting::host::DiagnosticEntry>, String> {
     const CAP: usize = 1000;
-    let floor = match severity_floor.map(DiagSeverity::parse) {
-        None => state.settings.lsp_diagnostics_min_severity,
-        Some(Ok(f)) => f,
-        Some(Err(e)) => return Err(format!("invalid severity floor: {e}")),
-    };
+    let floor = severity_floor.unwrap_or(state.settings.lsp_diagnostics_min_severity);
     let Some(text) = state.buffers.try_get(bid).map(|b| b.text()) else {
         return Ok(Vec::new());
     };
@@ -643,8 +624,7 @@ pub(in crate::editor) fn diagnostics_for_buffer(
                 start_line: line.index(),
                 end_line: end_line.index(),
                 grapheme_col: grapheme_col.index(),
-                severity: d.severity.to_text(),
-                severity_rank: d.severity as u8,
+                severity: d.severity,
                 message: d.message.clone(),
                 code: d.code.clone(),
                 source: d.source.clone(),

@@ -11,7 +11,8 @@
 
 use termina::event::KeyCode;
 
-use hume_engine::pipeline::{BufferId, EngineView, PaneId, ScreenLayout};
+use hume_core::{BindMode, BufferId, PaneId, Severity};
+use hume_engine::pipeline::{EngineView, ScreenLayout};
 use hume_engine::theme::Theme;
 use hume_engine::types::EditorMode;
 use hume_ui::popup::SideSlot;
@@ -20,10 +21,10 @@ use super::super::completion::{
     BufferSession, CompletionItem, Documentation, ItemKey, MinibufSession,
 };
 use super::super::error::CommandError;
-use super::super::keymap::{BindMode, WalkResult};
+use super::super::keymap::WalkResult;
 use super::super::popup_syntax::{build_markup_syntax, popup_content};
 use super::super::syntax::GrammarLoads;
-use super::super::{Editor, EditorState, Severity};
+use super::super::{Editor, EditorState};
 use super::paste::PastedText;
 use super::placement::popup_placement;
 use super::popup::{boxed_popup_rows, half_page_key, scroll_box};

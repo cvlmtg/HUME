@@ -7,11 +7,10 @@
 //! the [`ReloadSnapshot`] threaded between them and the orchestrator,
 //! `typed_reload_config`.
 
-use hume_engine::pipeline::BufferId;
-
 use super::event::EditorEvent;
-use super::{ConfigPath, Editor, Severity};
+use super::{ConfigPath, Editor};
 use crate::editor::error::CommandError;
+use hume_core::{BufferId, Severity};
 
 /// State `:reload-config` must carry across the gap between
 /// `Editor::reset_config_state` (which captures it, right before the reset
@@ -42,7 +41,7 @@ pub(super) struct ExplicitLanguage {
     /// reload too, not be repopulated by re-detection.
     pub(super) name: Option<String>,
     /// The origin that asserted it, which still ranks the next write.
-    pub(super) by: hume_scripting::ConfigOrigin,
+    pub(super) by: hume_core::ConfigOrigin,
 }
 
 impl ReloadSnapshot {

@@ -2,13 +2,14 @@ use std::collections::VecDeque;
 use std::sync::Arc;
 use std::sync::atomic::AtomicI32;
 
-use hume_engine::pipeline::{BufferId, EngineView, PaneId};
+use hume_core::{BufferId, OnUnsaved, PaneId};
+use hume_engine::pipeline::EngineView;
 
 use self::registry::CommandRegistry;
 use self::replay::{PendingRepeat, SelectionStep};
+use crate::editor::buffer::Buffer;
 use crate::editor::buffer::lifecycle::CloseBufferRefused;
 use crate::editor::buffer::store::BufferStore;
-use crate::editor::buffer::{Buffer, OnUnsaved};
 use crate::editor::pane_state::PaneView;
 use crate::editor::pipe_run::PipeRunning;
 use crate::editor::settings::EditorSettings;
@@ -84,7 +85,6 @@ use scripting::theme_search_paths;
 pub(in crate::editor) use minibuf::MiniBuffer;
 
 use message_log::MessageLog;
-pub(in crate::editor) use message_log::Severity;
 
 // ── Mode ──────────────────────────────────────────────────────────────────────
 //
@@ -174,7 +174,7 @@ pub(crate) struct ConfigState {
     /// `drain_pending_work` pass drains it; every Steel-eval path also drains
     /// it at the tail of `apply_script_effects`. Nothing drains it while no
     /// scripting host is attached.
-    pub(in crate::editor) pending_language_detection: Vec<hume_engine::pipeline::BufferId>,
+    pub(in crate::editor) pending_language_detection: Vec<BufferId>,
     /// In-flight `spawn-async!` jobs and `path-programs` scans, keyed by
     /// the handle their builtin returned to Steel, each kept until its last
     /// callback has run. Drained by `Editor::drain_async_jobs`; dropping
@@ -610,11 +610,10 @@ pub(crate) struct Editor {
     timers: timer_bridge::Timers,
     /// This pane's currently-pending `OnViewportChange` debounce timer, if
     /// any, looked up to cancel-and-replace on the next change.
-    viewport_debounce: rustc_hash::FxHashMap<hume_engine::pipeline::PaneId, timers::TimerId>,
+    viewport_debounce: rustc_hash::FxHashMap<PaneId, hume_core::TimerId>,
     /// This buffer's currently-pending diagnostics-pull debounce timer, if
     /// any, looked up to cancel-and-replace on the next edit.
-    diagnostic_pull_debounce:
-        rustc_hash::FxHashMap<hume_engine::pipeline::BufferId, timers::TimerId>,
+    diagnostic_pull_debounce: rustc_hash::FxHashMap<BufferId, hume_core::TimerId>,
     /// `(buffer_id, visible range)` as of the last frame this pane was
     /// *visible*, per pane, the range being what `OnViewportChange` carries
     /// (`geometry::pane_visible_range`). `prepare_frame`'s scroll step
@@ -630,7 +629,7 @@ pub(crate) struct Editor {
     /// treated as a change, never a match against a snapshot from before it
     /// left.
     last_visible_range: rustc_hash::FxHashMap<
-        hume_engine::pipeline::PaneId,
+        PaneId,
         (
             BufferId,
             hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>,
@@ -644,7 +643,7 @@ pub(crate) struct Editor {
     /// key so a pane switching buffers always rebuilds, even onto a buffer
     /// whose stamp happens to match the old one; otherwise it would keep
     /// mirroring the previous buffer's virtual lines.
-    virtual_lines_synced: rustc_hash::FxHashMap<hume_engine::pipeline::PaneId, (BufferId, u64)>,
+    virtual_lines_synced: rustc_hash::FxHashMap<PaneId, (BufferId, u64)>,
     /// Whether [`Editor::run`]'s event loop owns the terminal, and the
     /// handle to drive it when it does. See [`Tui`]'s own module doc for
     /// why these are one field. Tests and headless `run_keys` dispatch

@@ -9,10 +9,11 @@
 //! it shares the edit-application path with `apply-workspace-edit!` and
 //! belongs next to it.
 
+use hume_core::{BufferId, OnUnsaved, PaneId};
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
 use hume_editing::edit::apply_keeping_final_break;
 use hume_editing::text::BufferText;
-use hume_engine::pipeline::{BufferId, EngineView, PaneId, PanePool};
+use hume_engine::pipeline::{EngineView, PanePool};
 use hume_lsp::codec::ResponseError;
 use hume_platform::path::AbsolutePath;
 use hume_rope::cluster::ClusterStart;
@@ -481,7 +482,7 @@ fn settle_opened(
             view,
             state,
             bid,
-            crate::editor::buffer::OnUnsaved::Refuse,
+            OnUnsaved::Refuse,
         )
         .expect("a buffer this call just opened has no unsaved changes and runs no pipe");
     }

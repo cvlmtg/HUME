@@ -338,7 +338,7 @@ fn visible_lines_threshold_has_no_off_by_one_from_the_old_inclusive_range() {
     assert!(
         matches!(
             ed.state.input.popup().map(|p| &p.layout),
-            Some(hume_ui::popup::PopupLayout::Docked)
+            Some(hume_core::PopupLayout::Docked)
         ),
         "must be a docked popup, not the drawer"
     );
@@ -375,7 +375,7 @@ fn tall_content_docks_instead_of_using_the_drawer() {
     assert!(
         matches!(
             ed.state.input.popup().map(|p| &p.layout),
-            Some(hume_ui::popup::PopupLayout::Docked)
+            Some(hume_core::PopupLayout::Docked)
         ),
         "tall content must still be a popup, just docked, never the drawer"
     );

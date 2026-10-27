@@ -20,7 +20,7 @@ fn filler() -> &'static BufferText {
 fn entry(char_pos: usize, line: usize) -> JumpEntry {
     let text = filler();
     JumpEntry {
-        buffer_id: hume_engine::pipeline::BufferId::default(),
+        buffer_id: hume_core::BufferId::default(),
         selections: single(text, cursor(text, char_pos)),
         primary_line: hume_rope::line::ContentLine::new(line),
     }

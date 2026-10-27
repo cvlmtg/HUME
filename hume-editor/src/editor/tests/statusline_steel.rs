@@ -2,7 +2,7 @@
 // `steel:<name>` statusline element it feeds (`StatusElement::Custom`).
 
 use super::*;
-use crate::editor::message_log::Severity;
+use hume_core::Severity;
 use hume_platform::dirs::Dirs;
 use hume_scripting::ScriptingHost;
 

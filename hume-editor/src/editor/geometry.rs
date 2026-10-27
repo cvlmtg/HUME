@@ -2,10 +2,11 @@
 //! pane's size, gutter and content widths, its visible line range, and the
 //! layout key whose change reveals the cursor.
 
+use hume_core::{BufferId, PaneId};
 use hume_engine::builtins::sign_column::SignColumn;
 use hume_engine::layout::PaneGeometry;
 use hume_engine::pane::Pane;
-use hume_engine::pipeline::{BufferId, ChromeRows, EngineView, PaneId, PaneSize, ScreenLayout};
+use hume_engine::pipeline::{ChromeRows, EngineView, PaneSize, ScreenLayout};
 use hume_engine::providers::GutterInputs;
 
 use super::{EditorState, commands};
@@ -70,7 +71,7 @@ impl EditorState {
         let popup = self
             .input
             .popup()
-            .filter(|p| matches!(p.layout, hume_ui::popup::PopupLayout::Docked))
+            .filter(|p| matches!(p.layout, hume_core::PopupLayout::Docked))
             .map_or(0, |p| {
                 let lines = p.docked_total_rows(area.width);
                 hume_ui::popup::band_height(lines, area.height)
@@ -189,7 +190,7 @@ impl EditorState {
     pub(in crate::editor) fn layout_key(
         &self,
         view: &hume_engine::pipeline::EngineView,
-        pid: hume_engine::pipeline::PaneId,
+        pid: hume_core::PaneId,
         size: hume_engine::pipeline::PaneSize,
     ) -> LayoutKey {
         LayoutKey {

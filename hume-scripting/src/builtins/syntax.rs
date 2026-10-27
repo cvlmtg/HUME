@@ -2,14 +2,13 @@
 
 use steel::rvals::SteelVal;
 
-use hume_editing::comment::{BlockCommentTokens, LineCommentTokens};
+use hume_core::{
+    BlockCommentTokens, FileExtension, FileGlob, GrammarSource, LanguageField, LanguageFields,
+    LanguageIdentity, LineCommentTokens, OptionalQuery, QueryFiles, ShebangInterpreter,
+};
 use steel::rerrs::SteelErr;
 
 use crate::{Effect, GrammarReg, PendingLanguageReg, SteelCtx};
-use hume_treesitter::registry::{
-    FileExtension, FileGlob, GrammarSource, LanguageField, LanguageFields, OptionalQuery,
-    QueryFiles, ShebangInterpreter,
-};
 
 use super::SteelResult;
 use super::args::{
@@ -55,9 +54,11 @@ pub(crate) fn define_language(
     let origin = ctx.registration_origin();
     ctx.push_effect(Effect::LanguageReg(PendingLanguageReg::Identity {
         name,
-        extensions,
-        globs,
-        shebangs,
+        identity: LanguageIdentity {
+            extensions,
+            globs,
+            shebangs,
+        },
         origin,
     }));
     Ok(SteelVal::Void)

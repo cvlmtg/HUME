@@ -389,7 +389,7 @@ fn language_wildcard_and_specific_entry_coexist() {
 /// comes from the activation path and not from init.
 #[test]
 fn command_trigger_logs_trace_on_activation() {
-    use crate::editor::Severity;
+    use hume_core::Severity;
 
     let (mut ed, _dir) = setup_lazy_editor(
         r#"(declare-plugin! "user/tp" #:typed-commands '("bar"))"#,

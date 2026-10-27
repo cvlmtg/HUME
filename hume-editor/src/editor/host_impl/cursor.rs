@@ -81,7 +81,7 @@ impl<'a> CursorHost for EditorHostImpl<'a> {
 
     fn char_offset_to_line(
         &self,
-        bid: hume_engine::pipeline::BufferId,
+        bid: hume_core::BufferId,
         idx: usize,
     ) -> Result<ContentLine, String> {
         let text = self

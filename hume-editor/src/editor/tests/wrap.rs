@@ -12,7 +12,7 @@ fn focused_pane(ed: &Editor) -> &hume_engine::pane::Pane {
 /// `pane`'s effective wrap mode, resolved pane → buffer → global: the same
 /// path `Editor::focused_wrap_mode` uses, exposed here for panes other than
 /// the focused one.
-fn effective_wrap_mode(ed: &Editor, pid: hume_engine::pipeline::PaneId) -> WrapMode {
+fn effective_wrap_mode(ed: &Editor, pid: hume_core::PaneId) -> WrapMode {
     let pane = &ed.view.panes[pid];
     let doc = ed.state.buffers.get(pane.buffer_id());
     crate::editor::commands::effective_wrap_mode(doc, &ed.state.settings, pane)

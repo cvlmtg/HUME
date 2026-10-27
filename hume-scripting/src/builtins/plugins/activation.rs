@@ -195,7 +195,7 @@ pub(crate) fn abandon_open_activations(ctx: &mut SteelCtx, depth: usize, reason:
     if let Some(id) = ctx.manifest_resolving.take() {
         ctx.pop_effect_marks(false);
         if let Err(e) = fail_manifest_load(ctx, id, reason.clone()) {
-            ctx.log(crate::log::LogLevel::Error, e.to_string());
+            ctx.log(hume_core::Severity::Error, e.to_string());
         }
     }
 }

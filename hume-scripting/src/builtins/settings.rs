@@ -4,7 +4,7 @@
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
-use hume_engine::pipeline::BufferId;
+use hume_core::BufferId;
 
 use crate::host::{BufferIntrinsicOption, OptionInput, language_option_value};
 use crate::types::{Effect, PaneHandle, QueuedEffect};

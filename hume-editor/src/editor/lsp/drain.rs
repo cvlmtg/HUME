@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 use rustc_hash::FxHashSet;
 
-use hume_engine::pipeline::BufferId;
+use hume_core::{BufferId, Severity};
 use hume_lsp::backend::ServerId;
 use hume_lsp::client::{ClientAction, Outcome, RequestMeta, ServerState};
 use hume_lsp::codec::{Message, RequestId};
@@ -17,7 +17,7 @@ use super::LspState;
 use super::diagnostics::{CANONICALIZE_PER_DRAIN, Ingest};
 use crate::editor::commands::FocusedPane;
 use crate::editor::event::EditorEvent;
-use crate::editor::{Editor, EditorState, Severity};
+use crate::editor::{Editor, EditorState};
 use hume_engine::pipeline::EngineView;
 use hume_scripting::PaneHandle;
 

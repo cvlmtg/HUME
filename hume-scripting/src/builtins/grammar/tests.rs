@@ -36,7 +36,7 @@ fn compile_grammar_warns_instead_of_erroring_in_init_mode() {
     assert!(
         h.pending_messages
             .iter()
-            .any(|(level, msg)| *level == LogLevel::Warning && msg.contains("cannot run")),
+            .any(|(level, msg)| *level == Severity::Warning && msg.contains("cannot run")),
         "expected a spawn-failure warning: {:?}",
         h.pending_messages
     );

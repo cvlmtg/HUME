@@ -11,7 +11,8 @@ use std::path::PathBuf;
 
 use rustc_hash::FxHashSet;
 
-use hume_engine::pipeline::{BufferId, EngineView};
+use hume_core::{BufferId, Severity};
+use hume_engine::pipeline::EngineView;
 use hume_lsp::backend::ServerId;
 use hume_scripting::{
     FeatureFilter, ListTier, LspFeature, LspServerTarget, PendingLspServerOp, ServerName,
@@ -23,7 +24,7 @@ use super::document::{Attachment, OpenedAs};
 use super::registry::{LspServerConfig, RegistryWrite, RootCache};
 use crate::editor::buffer::{EditorView, ViewLabel};
 use crate::editor::event::EditorEvent;
-use crate::editor::{Editor, EditorState, Severity};
+use crate::editor::{Editor, EditorState};
 
 /// Whether a detach fires `OnLspDetach`/`OnDiagnosticsChanged`. A buffer
 /// being closed does not: its handlers would run after the buffer is gone,

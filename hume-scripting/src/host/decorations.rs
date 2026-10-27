@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use hume_engine::pipeline::BufferId;
+use hume_core::{BufferId, DiagSeverity, Side};
 use hume_rope::position_encoding::PositionEncoding;
 
 use crate::types::VirtualLineSpec;
@@ -13,14 +13,14 @@ use crate::types::VirtualLineSpec;
 /// [`EditorHost::decorations`](super::EditorHost::decorations).
 pub trait DecorationHost {
     /// `(set-inlay-hints! source pane hints)`: replaces `source`'s inlay
-    /// hints for `bid` wholesale. Each entry is `(offset, text, before)`,
+    /// hints for `bid` wholesale. Each entry is `(offset, text, side)`,
     /// `offset` already a char offset. The Steel builtin accepts char offsets
     /// only (see `lsp-position->char-offset` to convert an LSP wire position).
     fn set_inlay_hints(
         &mut self,
         source: String,
         bid: BufferId,
-        hints: Vec<(usize, String, bool)>,
+        hints: Vec<(usize, String, Side)>,
     ) -> Result<(), String>;
 
     /// `(register-sign-source! name pane priority)`: declares `name` a sign
@@ -119,13 +119,13 @@ pub trait DecorationHost {
     /// one [`DiagnosticEntry`] per diagnostic, filtered then capped at 1000.
     /// `start_char` is an addressing unit (feeds `goto-location!`);
     /// `grapheme_col` is the display unit (the one every HUME surface shows
-    /// the user). `severity_floor` is `None` for "no floor" (everything);
-    /// `range` is `None` for the whole buffer. `Err` on an unknown
-    /// `#:severity` name.
+    /// the user). `severity_floor` is `None` for the
+    /// `lsp-diagnostics-min-severity` option's floor; `range` is `None` for
+    /// the whole buffer.
     fn diagnostics_for_buffer(
         &self,
         bid: BufferId,
-        severity_floor: Option<&str>,
+        severity_floor: Option<DiagSeverity>,
         range: Option<(usize, usize)>,
     ) -> Result<Vec<DiagnosticEntry>, String>;
 
@@ -147,12 +147,7 @@ pub struct DiagnosticEntry {
     pub start_line: usize,
     pub end_line: usize,
     pub grapheme_col: usize,
-    pub severity: String,
-    /// `DiagSeverity`'s own `Ord` discriminant (0 = error … 3 = hint, lower
-    /// is more severe): the single encoding of severity order, so Scheme
-    /// compares by this instead of re-deriving the same ranking from
-    /// `severity`'s string form.
-    pub severity_rank: u8,
+    pub severity: DiagSeverity,
     pub message: String,
     pub code: Option<String>,
     pub source: Option<String>,

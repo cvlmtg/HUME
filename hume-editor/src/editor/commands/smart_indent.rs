@@ -2,8 +2,9 @@
 //! `O` plan their line breaks here, and a typed character or Enter dedents
 //! the line it closes here.
 
+use hume_core::BufferId;
 use hume_editing::indent::ElectricTrigger;
-use hume_engine::pipeline::{BufferId, EngineView};
+use hume_engine::pipeline::EngineView;
 use hume_engine::theme::ScopeRegistry;
 use hume_ops::edit::{
     LineBreak, NewLineIndent, apply_electric_plan, apply_line_break_plan, electric_candidates,

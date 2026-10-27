@@ -1,26 +1,13 @@
 //! `EditorHostImpl`'s completion capability: a source's answer in
 //! (`completion-emit!`), the ranked view out, accept/dismiss.
 
-use crate::editor::Severity;
 use crate::editor::completion::{
     BufferSourceEntry, MinibufBody, MinibufSourceEntry, RegisterOutcome,
 };
+use hume_core::Severity;
 
 use super::EditorHostImpl;
 use hume_scripting::host::{self, AnswerEnd, CompletionHost, EmittedWord};
-
-/// `hume-scripting`'s `MatchKind` is the Steel/host-trait boundary's own
-/// mirror (see its doc), converted here into the editor's richer internal
-/// enum, one-to-one, the same crossing every other Steel-facing option
-/// (`PickerFeedMode`, `TruncateEnd`) makes at this same seam.
-fn match_kind_from_host(m: host::MatchKind) -> crate::editor::completion::MatchKind {
-    use crate::editor::completion::MatchKind as M;
-    match m {
-        host::MatchKind::Fuzzy => M::Fuzzy,
-        host::MatchKind::String { case_sensitive } => M::String { case_sensitive },
-        host::MatchKind::Delegated => M::Delegated,
-    }
-}
 
 impl crate::editor::Editor {
     /// Applies a queued `Effect::RegisterCompletionSource`: a Steel
@@ -40,7 +27,6 @@ impl crate::editor::Editor {
         reg: hume_scripting::PendingCompletionSource,
     ) {
         let name = reg.name;
-        let match_kind = match_kind_from_host(reg.match_kind);
         let outcome = match reg.target {
             host::CompletionSourceTarget::Buffer => self
                 .state
@@ -48,7 +34,7 @@ impl crate::editor::Editor {
                 .completion_sources
                 .register_buffer(BufferSourceEntry {
                     name: name.clone().into(),
-                    match_kind,
+                    match_kind: reg.match_kind,
                     priority: reg.priority,
                     proc: reg.proc,
                     resolve: reg.resolve,
@@ -61,7 +47,7 @@ impl crate::editor::Editor {
                 .completion_sources
                 .register_minibuf(MinibufSourceEntry {
                     name: name.clone().into(),
-                    match_kind,
+                    match_kind: reg.match_kind,
                     priority: reg.priority,
                     body: MinibufBody::Steel {
                         proc: reg.proc,

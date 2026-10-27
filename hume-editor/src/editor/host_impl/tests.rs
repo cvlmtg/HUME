@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use hume_engine::pipeline::BufferId;
+use hume_core::{BufferId, OnUnsaved, Side};
 use hume_scripting::host::{BufferHost, LanguageHost};
 
 use crate::editor::Editor;
@@ -16,10 +16,7 @@ fn close_buffer_errs_when_id_unknown() {
     let mut host = init_host!(ed);
     // BufferId::default() is a zeroed key, not present in any live store.
     let err = host
-        .close_buffer(
-            BufferId::default(),
-            hume_scripting::host::DiscardUnsaved::No,
-        )
+        .close_buffer(BufferId::default(), OnUnsaved::Refuse)
         .unwrap_err();
     assert!(!err.is_empty(), "expected an error message");
 }
@@ -46,14 +43,14 @@ fn attach_grammar_errs_for_bad_path() {
     let err = host
         .attach_grammar(&hume_scripting::GrammarReg {
             name: "rust".into(),
-            source: hume_treesitter::registry::GrammarSource {
+            source: hume_core::GrammarSource {
                 path: Path::new("/no/such/lib.dylib").to_path_buf(),
                 symbol: "rust_language".into(),
-                queries: hume_treesitter::registry::QueryFiles::new(
+                queries: hume_core::QueryFiles::new(
                     Path::new("/no/such/highlights.scm").to_path_buf(),
                 ),
             },
-            origin: hume_scripting::ConfigOrigin::User,
+            origin: hume_core::ConfigOrigin::User,
         })
         .unwrap_err();
     assert!(
@@ -147,12 +144,12 @@ fn validate_offset_snaps_inside_a_combining_sequence() {
     // "e" + U+0301 is chars 0..2, one cluster; "x" is char 2.
     let text = hume_editing::text::BufferText::from("e\u{301}x\n");
     assert_eq!(
-        validate_offset(&text, 1, true).unwrap(),
+        validate_offset(&text, 1, Side::Before).unwrap(),
         co(0),
         "'before inside the character lands on its start"
     );
     assert_eq!(
-        validate_offset(&text, 0, false).unwrap(),
+        validate_offset(&text, 0, Side::After).unwrap(),
         co(1),
         "'after inside the character lands on its last char, so the hint follows the accent"
     );
@@ -162,8 +159,8 @@ fn validate_offset_snaps_inside_a_combining_sequence() {
 fn validate_offset_snaps_inside_a_zwj_sequence() {
     // Man + ZWJ + woman: chars 0..3, one cluster; "x" is char 3.
     let text = hume_editing::text::BufferText::from("\u{1F468}\u{200D}\u{1F469}x\n");
-    assert_eq!(validate_offset(&text, 2, true).unwrap(), co(0));
-    assert_eq!(validate_offset(&text, 0, false).unwrap(), co(2));
+    assert_eq!(validate_offset(&text, 2, Side::Before).unwrap(), co(0));
+    assert_eq!(validate_offset(&text, 0, Side::After).unwrap(), co(2));
 }
 
 // ── `content_line` / `validate_offset`: a decoration position must address
@@ -194,7 +191,7 @@ fn validate_offset_accepts_the_last_real_char() {
     // itself); char offset 4 is one past the end. 'before' anchoring, so
     // the 'after'-only phantom-line check doesn't apply.
     let text = hume_editing::text::BufferText::from("abc\n");
-    validate_offset(&text, 3, true).expect("last real char must be valid");
+    validate_offset(&text, 3, Side::Before).expect("last real char must be valid");
 }
 
 #[test]
@@ -204,7 +201,7 @@ fn validate_offset_rejects_one_past_the_end() {
     // accepted and then silently never rendered. It must error loudly
     // instead, same as every other out-of-range offset.
     let text = hume_editing::text::BufferText::from("abc\n");
-    let err = validate_offset(&text, 4, true).unwrap_err();
+    let err = validate_offset(&text, 4, Side::Before).unwrap_err();
     assert!(err.contains("out of range"), "got: {err}");
 }
 
@@ -214,7 +211,7 @@ fn validate_offset_accepts_after_on_the_last_real_content_char() {
     // trailing '\n'), still on the last content line. Must not be confused
     // with the phantom-line case below.
     let text = hume_editing::text::BufferText::from("abc\n");
-    validate_offset(&text, 2, false).expect("'after on the last content char is valid");
+    validate_offset(&text, 2, Side::After).expect("'after on the last content char is valid");
 }
 
 #[test]
@@ -226,7 +223,7 @@ fn validate_offset_rejects_after_on_the_trailing_newline() {
     // (the same failure class `content_line` already rejects for the
     // line-anchored kinds, reachable here through a char offset instead).
     let text = hume_editing::text::BufferText::from("abc\n");
-    let err = validate_offset(&text, 3, false).unwrap_err();
+    let err = validate_offset(&text, 3, Side::After).unwrap_err();
     assert!(err.contains("trailing"), "got: {err}");
 }
 

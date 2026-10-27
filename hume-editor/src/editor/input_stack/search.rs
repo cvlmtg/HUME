@@ -1,8 +1,9 @@
 //! The `Search` layer: the `/`/`?`-prompt minibuffer mode.
 
+use hume_core::{BufferId, PaneId};
 use hume_editing::selection::SelectionSet;
 use hume_editing::state::EditState;
-use hume_engine::pipeline::{BufferId, EngineView, PaneId};
+use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
 use hume_ops::MotionMode;
 use hume_ops::search::{MatchScan, MatchSeed, SearchDirection};

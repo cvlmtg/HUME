@@ -337,7 +337,7 @@ fn eager_plugin_body_error_is_contained() {
         .expect("a failed plugin load must be contained, not abort eval_init");
     assert!(
         h.peek_pending_messages().iter().any(|(level, msg)| {
-            matches!(level, hume_scripting::LogLevel::Error)
+            matches!(level, hume_core::Severity::Error)
                 && msg.contains("intentional plugin failure")
         }),
         "must log an Error carrying the plugin's own failure; got: {:?}",
@@ -385,7 +385,7 @@ fn manifest_collision_with_builtin_logs_error_continues() {
     // Error logged for the dropped activation entry.
     assert!(
         h.peek_pending_messages().iter().any(|(sev, msg)| {
-            matches!(sev, hume_scripting::LogLevel::Error)
+            matches!(sev, hume_core::Severity::Error)
                 && msg.contains("move-right")
                 && msg.contains("built-in")
         }),
@@ -427,7 +427,7 @@ fn manifest_collision_with_builtin_logs_error_continues() {
     assert!(
         !h2.peek_pending_messages()
             .iter()
-            .any(|(sev, _)| matches!(sev, hume_scripting::LogLevel::Error)),
+            .any(|(sev, _)| matches!(sev, hume_core::Severity::Error)),
         "non-colliding activation entry must not log any Error"
     );
     assert!(
@@ -672,7 +672,7 @@ fn load_then_declare_ignored_with_soft_error() {
     // Soft error: the declare after load is contradictory and must be logged.
     assert!(
         h.peek_pending_messages().iter().any(|(sev, msg)| {
-            matches!(sev, hume_scripting::LogLevel::Error)
+            matches!(sev, hume_core::Severity::Error)
                 && msg.contains("user/tp")
                 && msg.contains("comes after its load-plugin!")
         }),
@@ -715,7 +715,7 @@ fn load_then_declare_on_lazy_plugin_is_reported() {
 
     assert!(
         h.peek_pending_messages().iter().any(|(sev, msg)| {
-            matches!(sev, hume_scripting::LogLevel::Error)
+            matches!(sev, hume_core::Severity::Error)
                 && msg.contains("user/tp")
                 && msg.contains("comes after its load-plugin!")
         }),
@@ -783,7 +783,7 @@ fn load_plugin_in_plugin_body_rejected() {
         .expect("a failed plugin load must be contained, not abort eval_init");
     assert!(
         h.peek_pending_messages().iter().any(|(level, msg)| {
-            matches!(level, hume_scripting::LogLevel::Error)
+            matches!(level, hume_core::Severity::Error)
                 && (msg.contains("top level") || msg.contains("init.scm"))
         }),
         "error must mention top-level restriction; got: {:?}",
@@ -828,7 +828,7 @@ fn declare_plugin_in_plugin_body_rejected() {
         .expect("a failed plugin load must be contained, not abort eval_init");
     assert!(
         h.peek_pending_messages().iter().any(|(level, msg)| {
-            matches!(level, hume_scripting::LogLevel::Error)
+            matches!(level, hume_core::Severity::Error)
                 && (msg.contains("top level") || msg.contains("init.scm"))
         }),
         "error must mention top-level restriction; got: {:?}",
@@ -958,7 +958,7 @@ fn duplicate_declare_remains_silent_noop() {
     // No error-level message about the duplicate declare.
     assert!(
         !h.peek_pending_messages().iter().any(|(sev, msg)| {
-            matches!(sev, hume_scripting::LogLevel::Error) && msg.contains("user/tp")
+            matches!(sev, hume_core::Severity::Error) && msg.contains("user/tp")
         }),
         "duplicate declare must not log an error; got: {:?}",
         h.peek_pending_messages()
@@ -984,7 +984,7 @@ fn duplicate_load_remains_silent_noop() {
     // No error-level message about the duplicate load.
     assert!(
         !h.peek_pending_messages().iter().any(|(sev, msg)| {
-            matches!(sev, hume_scripting::LogLevel::Error) && msg.contains("user/tp")
+            matches!(sev, hume_core::Severity::Error) && msg.contains("user/tp")
         }),
         "duplicate load must not log an error; got: {:?}",
         h.peek_pending_messages()

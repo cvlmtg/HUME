@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 hume-editing = { path = "../hume-editing" }
+hume-core = { path = "../hume-core" }
 hume-engine = { path = "../hume-engine" }
 hume-rope = { path = "../hume-rope" }
 rustc-hash.workspace = true

@@ -215,7 +215,7 @@ fn declare_plugin_core_absent_logs_error() {
     let messages = host.peek_pending_messages();
     assert!(
         messages.iter().any(|(level, msg)| {
-            matches!(level, crate::log::LogLevel::Error)
+            matches!(level, hume_core::Severity::Error)
                 && msg.contains("unknown core plugin")
                 && msg.contains("core:nonexistent-plugin")
         }),
@@ -246,7 +246,7 @@ fn declare_plugin_user_absent_logs_info() {
     let messages = host.peek_pending_messages();
     assert!(
         messages.iter().any(|(level, msg)| {
-            matches!(level, crate::log::LogLevel::Info) && msg.contains("not found on disk")
+            matches!(level, hume_core::Severity::Info) && msg.contains("not found on disk")
         }),
         "must log Info for absent user/ plugin; messages: {messages:?}"
     );
@@ -265,7 +265,7 @@ fn load_plugin_core_absent_logs_error() {
     let messages = host.peek_pending_messages();
     assert!(
         messages.iter().any(|(level, msg)| {
-            matches!(level, crate::log::LogLevel::Error)
+            matches!(level, hume_core::Severity::Error)
                 && msg.contains("unknown core plugin")
                 && msg.contains("core:nonexistent-plugin")
         }),
@@ -474,7 +474,7 @@ fn load_plugin_absent_dir_soft_logs_and_records_declared_plugins() {
     let messages = host.peek_pending_messages();
     assert!(
         messages.iter().any(|(level, msg)| {
-            matches!(level, crate::log::LogLevel::Info) && msg.contains("not found on disk")
+            matches!(level, hume_core::Severity::Info) && msg.contains("not found on disk")
         }),
         "must log Info for an absent user/ plugin directory; messages: {messages:?}"
     );

@@ -15,9 +15,10 @@
 
 use hume_platform::terminal::InlineOutputScreen;
 
+use super::Editor;
 use super::event::EditorEvent;
 use super::tui::ActiveTui;
-use super::{Editor, Severity};
+use hume_core::Severity;
 
 /// One `#:inline-output` command currently on the Steel call stack.
 struct Frame {

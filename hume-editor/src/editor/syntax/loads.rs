@@ -4,7 +4,8 @@ use hume_engine::theme::ScopeRegistry;
 use hume_treesitter::registry::{GrammarBundle, GrammarSnapshot, LanguageId, LanguageRegistry};
 use hume_treesitter::syntax::InjectionLoader;
 
-use crate::editor::{EditorState, Severity};
+use crate::editor::EditorState;
+use hume_core::Severity;
 
 /// Loads registered grammars on the main thread for the parses that need
 /// them: a markup popup's own language, and the language of each injected

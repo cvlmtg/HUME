@@ -6,7 +6,7 @@ contract. The code in `hume-treesitter/src/indent.rs` and `indent/` implements i
 
 | Topic | Where |
 |---|---|
-| Query kind, compile, validation | `hume-treesitter/src/registry.rs` (`OptionalQuery::Indents`), `indent/query.rs` |
+| Query kind, compile, validation | `hume-core/src/language.rs` (`OptionalQuery::Indents`), `hume-treesitter/src/registry.rs`, `indent/query.rs` |
 | Query run and containment walk | `hume-treesitter/src/indent/walk.rs` |
 | Rendering a width as whitespace | `hume-editing/src/tab_style.rs` (`TabStyle::render_indent`) |
 | Planning Enter, `o` and `O` | `hume-ops/src/edit/insert.rs` (`plan_line_breaks`) |

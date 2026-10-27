@@ -8,6 +8,7 @@
 //! in the bootstrap; see `builtins/mod.rs`. The builtins that activate a
 //! declared entry live in `activation`.
 
+use hume_core::Severity;
 use steel::rerrs::SteelErr;
 use steel::rvals::{IntoSteelVal, SteelVal};
 
@@ -33,7 +34,7 @@ use paths::{
 /// installs them (they are bundled), so there is no "install and reload" path.
 fn log_absent_core(ctx: &mut SteelCtx, name: &str, verb: &str) {
     ctx.log(
-        crate::log::LogLevel::Error,
+        Severity::Error,
         format!(
             "{verb}: unknown core plugin '{name}': not found in runtime dir \
              (typo, or HUME_RUNTIME misconfigured)"
@@ -55,7 +56,7 @@ fn absent_plugin(
     match plugin_id {
         PluginId::Core(_) => log_absent_core(ctx, name, verb),
         PluginId::User { .. } => ctx.log(
-            crate::log::LogLevel::Info,
+            Severity::Info,
             format!("{verb}: '{name}' not found on disk; install and reload to activate."),
         ),
         PluginId::Local(_) => {
@@ -93,7 +94,7 @@ fn already_declared(ctx: &mut SteelCtx, entry: &EntryId, name: &str) -> bool {
     match ctx.registries.lazy_registry.plugins.get(entry) {
         Some(PluginState::Loaded) => {
             ctx.log(
-                crate::log::LogLevel::Error,
+                Severity::Error,
                 format!("declare-plugin!: '{name}' is already loaded; ignoring declare"),
             );
             true
@@ -158,7 +159,7 @@ fn filter_and_register_lazy(
     for cmd in cmd_list {
         if ctx.builtin_cmd_names.contains(&cmd) {
             ctx.log(
-                crate::log::LogLevel::Error,
+                Severity::Error,
                 format!(
                     "declare-plugin!: command '{cmd}' conflicts with a built-in; activation entry ignored"
                 ),
@@ -168,7 +169,7 @@ fn filter_and_register_lazy(
         match register(ctx.host.commands(), &cmd, entry) {
             Ok(()) => valid.push(cmd),
             Err(msg) => ctx.log(
-                crate::log::LogLevel::Error,
+                Severity::Error,
                 format!("declare-plugin!: {msg}; activation entry ignored"),
             ),
         }
@@ -227,7 +228,7 @@ pub(crate) fn declare_plugin(
     // exception.
     if ctx.manifest_resolving.is_none() && ctx.registries.plugin_records.was_loaded(&plugin_id) {
         ctx.log(
-            crate::log::LogLevel::Error,
+            Severity::Error,
             format!(
                 "declare-plugin!: '{name}' comes after its load-plugin!; \
                  put declare-plugin! first. Declaration ignored."

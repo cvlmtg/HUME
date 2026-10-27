@@ -1,10 +1,9 @@
-use hume_engine::pipeline::{BufferId, PaneId};
-use hume_treesitter::registry::{GrammarSource, LanguageFields};
+use hume_core::{
+    BindMode, BufferId, ConfigOrigin, GrammarSource, LanguageFields, LanguageIdentity, PaneId,
+    Side, Tie,
+};
 
 use crate::command_procs::{MappableProc, TypedProc};
-
-pub use hume_origin::ConfigOrigin;
-use hume_origin::Tie;
 
 /// A buffer's language: a later write from one origin replaces the earlier,
 /// whether the editor applies it or a script reads it back before then.
@@ -149,9 +148,7 @@ pub struct SteelTypedCmdBody {
 pub enum PendingLanguageReg {
     Identity {
         name: String,
-        extensions: Vec<hume_treesitter::registry::FileExtension>,
-        globs: Vec<hume_treesitter::registry::FileGlob>,
-        shebangs: Vec<hume_treesitter::registry::ShebangInterpreter>,
+        identity: LanguageIdentity,
         origin: ConfigOrigin,
     },
     /// Per-language values; `None` leaves a field as it is.
@@ -191,9 +188,8 @@ pub struct GrammarReg {
 pub struct VirtualLineSpec {
     pub line: usize,
     pub text: String,
-    /// `true` for `'anchor 'before` (render above `line`), `false` for the
-    /// default `'after`.
-    pub before: bool,
+    /// `'anchor 'before` renders above `line`, the default `'after` below.
+    pub side: Side,
     /// Whole-line base style; chars not covered by `segments` fall back to
     /// this (or `ui.virtual` if also absent).
     pub scope: Option<String>,
@@ -244,7 +240,7 @@ pub enum Effect {
     /// overwritten. Mode and key-sequence validation still fails synchronously
     /// inside the builtin.
     BindKey {
-        mode: crate::host::BindMode,
+        mode: BindMode,
         keys: Vec<termina::event::KeyEvent>,
         cmd: String,
         force_extend: bool,
@@ -258,7 +254,7 @@ pub enum Effect {
     /// above so a same-eval bind-then-unbind on one key applies in Steel's
     /// emission order.
     UnbindKey {
-        mode: crate::host::BindMode,
+        mode: BindMode,
         keys: Vec<termina::event::KeyEvent>,
         keymap: crate::host::KeymapTarget,
         origin: ConfigOrigin,

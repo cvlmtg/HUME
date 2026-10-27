@@ -174,7 +174,7 @@ fn show_popup_scrollable_does_not_land_above_an_open_picker() {
         pane,
         "hi".to_string(),
         hume_scripting::host::PopupKind::Scrollable,
-        false,
+        hume_core::PopupLayout::Cursor,
         None,
     )
     .unwrap();

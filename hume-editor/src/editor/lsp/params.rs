@@ -2,8 +2,9 @@
 //! each server receives in its own encoding when the request is sent. No
 //! server is consulted, so a buffer with a path always has params.
 
+use hume_core::BufferId;
 use hume_editing::text::TextVersion;
-use hume_engine::pipeline::{BufferId, EngineView};
+use hume_engine::pipeline::EngineView;
 use hume_rope::cluster::{ClusterBound, ClusterRange};
 use hume_rope::offset::CharOffset;
 use hume_scripting::host::{PositionParams, RangeParams, RangesParams};

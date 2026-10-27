@@ -1,7 +1,7 @@
 //! BufferText diffing against live editor state.
 
+use hume_core::BufferId;
 use hume_editing::hunk::ChangeHunk;
-use hume_engine::pipeline::BufferId;
 
 /// Diffs that need a buffer's live text or undo history, accessed through
 /// [`EditorHost::diff`](super::EditorHost::diff). Backs

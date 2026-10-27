@@ -4,6 +4,7 @@ version.workspace = true
 edition = "2024"
 
 [dependencies]
+hume-core = { path = "../hume-core" }
 hume-engine = { path = "../hume-engine" }
 hume-grid = { path = "../hume-grid" }
 hume-rope = { path = "../hume-rope" }

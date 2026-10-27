@@ -3,7 +3,8 @@ use hume_rope::line::ContentLine;
 use rustc_hash::FxHashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use slotmap::{SecondaryMap, SlotMap, new_key_type};
+use hume_core::{BufferId, PaneId};
+use slotmap::{SecondaryMap, SlotMap};
 
 use crate::pane::Pane;
 use crate::providers::{ChromeProvider, DEFAULT_GUTTER_SCOPE, OverlayProvider, SyntaxSpans};
@@ -29,13 +30,6 @@ pub use layout::{
 };
 pub use pane_pool::{PanePool, UnattachedPane};
 use pane_render::render_pane;
-
-new_key_type! {
-    /// Opaque handle to a buffer.
-    pub struct BufferId;
-    /// Opaque handle to a pane.
-    pub struct PaneId;
-}
 
 // ---------------------------------------------------------------------------
 // Frame scratch buffers

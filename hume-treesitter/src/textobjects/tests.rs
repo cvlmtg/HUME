@@ -4,9 +4,10 @@ use hume_editing::text::BufferText;
 use test_fixtures::{require_grammars, require_helix_query};
 
 use super::*;
-use crate::registry::{GrammarBundle, GrammarSnapshot, OptionalQuery};
+use crate::registry::{GrammarBundle, GrammarSnapshot};
 use crate::syntax::Syntax;
 use crate::test_support::{empty_langs, fresh_bid, make_bundle};
+use hume_core::OptionalQuery;
 use hume_editing::changeset::ChangeSetBuilder;
 use hume_rope::cluster::{ClusterRange, ClusterStart};
 use hume_rope::offset::CharOffset;

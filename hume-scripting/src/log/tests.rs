@@ -15,7 +15,7 @@ fn log_msg_valid_severity() {
     drop(ctx);
     assert_eq!(h.pending_messages.len(), 1);
     assert_eq!(h.pending_messages[0].1, "hello");
-    assert!(matches!(h.pending_messages[0].0, LogLevel::Info));
+    assert!(matches!(h.pending_messages[0].0, Severity::Info));
 }
 
 #[test]

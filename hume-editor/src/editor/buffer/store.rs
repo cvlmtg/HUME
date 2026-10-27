@@ -8,7 +8,8 @@
 
 use slotmap::SecondaryMap;
 
-use hume_engine::pipeline::{BufferId, Cycle};
+use hume_core::BufferId;
+use hume_engine::pipeline::Cycle;
 use hume_platform::path::AbsolutePath;
 
 use crate::editor::buffer::{Buffer, ViewLabel};

@@ -3,7 +3,8 @@
 //! shared `Arc` buffers the engine's providers read during rendering. Driven
 //! by `prepare_frame`'s decoration syncs.
 
-use hume_engine::pipeline::{BufferId, PaneId, PaneSize};
+use hume_core::{BufferId, DiagSeverity, PaneId, Side};
+use hume_engine::pipeline::PaneSize;
 use hume_engine::theme::{CURSOR_MATCH, CURSOR_MATCH_SEARCH, diagnostic_scopes, ui_scopes};
 use hume_engine::types::EditorMode;
 
@@ -199,20 +200,16 @@ impl Editor {
         {
             let floor = self.state.settings.lsp_diagnostics_min_severity;
             let on_insert_line = self.state.settings.lsp_diagnostics_on_insert_line;
-            // Editing-area scope per diagnostic severity, in `DiagSeverity`
-            // discriminant order (`[error, warning, info, hint]`), indexed
-            // below by `d.severity as usize`. The gutter counterpart (the
+            // Indexed by `DiagSeverity::rank`. The gutter counterpart (the
             // bare `error`/`warning`/`info`/`hint` name) is interned by
             // `core:lsp`'s `set-signs!` call, at the Steel boundary in
             // `host_impl.rs`, the same as any other plugin sign source's
             // scope.
-            let diag_scopes = [
-                diagnostic_scopes::ERROR,
-                diagnostic_scopes::WARNING,
-                diagnostic_scopes::INFO,
-                diagnostic_scopes::HINT,
-            ]
-            .map(|name| self.view.registry.intern(name));
+            let diag_scopes = DiagSeverity::ALL.map(|severity| {
+                self.view
+                    .registry
+                    .intern(diagnostic_scopes::highlight(severity))
+            });
             for p in panes {
                 let (pid, bid) = (p.pid, p.bid);
                 let visible = p.chars;
@@ -230,13 +227,12 @@ impl Editor {
                     {
                         let start = d.start.max(visible.start);
                         let end = d.end.min(visible.end);
-                        // Priority = severity discriminant: Error(0) beats
-                        // Warning(1) beats Info(2) beats Hint(3) in overlaps.
+                        // The most severe diagnostic wins an overlap.
                         push_priority_highlight_lines(
                             text,
                             ExclusiveRange::new(start, end),
-                            d.severity as u8,
-                            diag_scopes[d.severity as usize],
+                            d.severity.rank(),
+                            diag_scopes[usize::from(d.severity.rank())],
                             &mut raw,
                         );
                     }
@@ -368,17 +364,16 @@ impl Editor {
                 .decorations
                 .inlay_hints_in_range(bid, visible)
             {
-                // `before`: byte offset of the char at `pos` itself, so the
-                // hint text is spliced in immediately before it. `after`:
-                // the next char boundary, so it's spliced in immediately
-                // after. `char_to_line_byte` resolves a trailing `\n`'s
+                // `Side::Before`: byte offset of the char at `pos` itself, so
+                // the hint text is spliced in immediately before it.
+                // `Side::After`: the next char boundary, so it's spliced in
+                // immediately after. `char_to_line_byte` resolves a trailing `\n`'s
                 // own position to the *same* line (ropey's line boundaries
                 // include their `\n`), so a hint at end-of-line-content
                 // never bleeds onto the following line.
-                let (line, byte_offset) = if entry.before {
-                    text.columns().byte_position(entry.pos)
-                } else {
-                    text.columns().byte_position(entry.pos.shift(1))
+                let (line, byte_offset) = match entry.side {
+                    Side::Before => text.columns().byte_position(entry.pos),
+                    Side::After => text.columns().byte_position(entry.pos.shift(1)),
                 };
                 // Trusted narrow: `host_impl.rs`'s `validate_offset` already
                 // rejects an 'after anchor that would land on the phantom
@@ -478,9 +473,9 @@ impl Editor {
     /// ascending by name, and `DisplayLineMap::block`'s anchor sort is stable, so
     /// they render in alphabetical-by-source order, not registration order.
     ///
-    /// Each entry becomes `Before(line)` or `After(line)` per its `before`
-    /// flag. `entry.scope`, already resolved to the `ui.virtual` fallback
-    /// at the `set-virtual-lines!` boundary when the Steel call passed none
+    /// Each entry becomes `Before(line)` or `After(line)` per its `side`.
+    /// `entry.scope`, already resolved to the `ui.virtual` fallback at the
+    /// `set-virtual-lines!` boundary when the Steel call passed none
     /// (`host_impl.rs`), becomes `VirtualLine::base_scope`: the engine
     /// falls back to it for bytes `segments` doesn't cover, and reads its
     /// `bg` to fill the row past the last grapheme (see
@@ -502,10 +497,9 @@ impl Editor {
                 rustc_hash::FxHashMap::default();
             for entry in self.state.config.decorations.virtual_lines_for_buffer(bid) {
                 let line = entry.line;
-                let anchor = if entry.before {
-                    VirtualLineAnchor::Before(line)
-                } else {
-                    VirtualLineAnchor::After(line)
+                let anchor = match entry.side {
+                    Side::Before => VirtualLineAnchor::Before(line),
+                    Side::After => VirtualLineAnchor::After(line),
                 };
                 let segments = entry
                     .segments

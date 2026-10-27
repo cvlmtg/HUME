@@ -1,6 +1,10 @@
 //! Word-boundary classification: character categories and boundary predicates
 //! for `w`/`W`-style motion and text-object logic.
 
+use hume_rope::cluster::{ClusterBound, ClusterRange};
+
+use crate::text::BufferText;
+
 /// Broad category of a character for word-boundary detection.
 ///
 /// `Eol` is distinct from `Space` so that `w` can stop at newlines (matching
@@ -30,7 +34,7 @@ pub enum CharClass {
 pub(crate) fn classify_char(ch: char) -> CharClass {
     if ch == '\n' {
         CharClass::Eol
-    } else if hume_rope::lines::is_space_char(ch) {
+    } else if hume_core::is_space_char(ch) {
         CharClass::Space
     } else if ch.is_alphanumeric() || ch == '_' {
         CharClass::Word
@@ -125,6 +129,25 @@ impl<'a> WordChars<'a> {
             base => base,
         }
     }
+}
+
+/// Every maximal run of `Word`-class grapheme clusters in `text`, in order.
+/// Each cluster is classified by its first char, the same classification
+/// `w`/`b` step by, so a run found here is what `w`/`b` would select, the
+/// property `core:buffer-words`' Steel-side `split-words` builtin
+/// (`hume-scripting/src/builtins/words.rs`) depends on.
+pub fn word_runs(text: &BufferText, chars: WordChars<'_>) -> Vec<ClusterRange> {
+    let mut runs = Vec::new();
+    let mut open: Option<ClusterRange> = None;
+    for cluster in text.clusters().graphemes_at(ClusterBound::TEXT_START) {
+        if chars.classify(cluster.first()) == CharClass::Word {
+            open = Some(open.map_or(cluster.range(), |run| run.hull(cluster.range())));
+        } else if let Some(run) = open.take() {
+            runs.push(run);
+        }
+    }
+    runs.extend(open);
+    runs
 }
 
 #[cfg(test)]

@@ -10,7 +10,8 @@
 //! per-capability split, since these traits and their impls are what this
 //! type exists to pair up.
 
-use hume_engine::pipeline::{BufferId, EngineView};
+use hume_core::BufferId;
+use hume_engine::pipeline::EngineView;
 
 use crate::editor::timer_bridge::Timers;
 use hume_scripting::host::{

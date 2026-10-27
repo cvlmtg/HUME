@@ -3,6 +3,7 @@ use std::path::Path;
 use super::*;
 use crate::editor::position_stores::DetachedStores;
 use crate::editor::tests::co;
+use hume_core::ConfigOrigin;
 use hume_editing::edit::Edited;
 use hume_editing::state::EditState;
 use hume_ops::edit::yank_selections;
@@ -11,7 +12,6 @@ use hume_ops::edit::{
     paste_before,
 };
 use hume_ops::register::Piece;
-use hume_scripting::ConfigOrigin;
 use pretty_assertions::assert_eq;
 use test_fixtures::testing::{parse_state, serialize_state};
 

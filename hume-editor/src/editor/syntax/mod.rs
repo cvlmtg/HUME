@@ -12,11 +12,10 @@ mod parse;
 pub(in crate::editor) use loads::GrammarLoads;
 pub(in crate::editor) use parse::{SyntaxUse, ensure_syntax_current};
 
-use hume_engine::pipeline::BufferId;
-use hume_origin::WriteOutcome;
+use hume_core::{BufferId, ConfigOrigin, LanguageFields, Severity, WriteOutcome};
+use hume_scripting::BUFFER_LANGUAGE_TIE;
 use hume_scripting::host::BufferIntrinsicOption;
-use hume_scripting::{BUFFER_LANGUAGE_TIE, ConfigOrigin};
-use hume_treesitter::registry::{DetectPaths, LanguageFields, LanguageId, detect_language};
+use hume_treesitter::registry::{DetectPaths, LanguageId, detect_language};
 
 use super::Editor;
 use super::event::EditorEvent;
@@ -52,7 +51,7 @@ impl Editor {
         let new_lang = name.map(|name| {
             if self.state.config.languages.defined_id(name).is_none() {
                 self.report(
-                    super::Severity::Info,
+                    Severity::Info,
                     format!("language '{name}' is not registered"),
                 );
             }
@@ -162,7 +161,7 @@ impl Editor {
             Ok(Some(lang)) => lang,
             Ok(None) => LanguageFields::default(),
             Err(e) => {
-                self.report(super::Severity::Error, format!("language data: {e}"));
+                self.report(Severity::Error, format!("language data: {e}"));
                 LanguageFields::default()
             }
         };
@@ -264,22 +263,18 @@ impl Editor {
             match reg {
                 PendingLanguageReg::Identity {
                     name,
-                    extensions,
-                    globs,
-                    shebangs,
+                    identity,
                     origin,
                 } => {
-                    let (_, outcome) = self.state.config.languages.register_identity_no_rebuild(
-                        &name,
-                        &extensions,
-                        &globs,
-                        &shebangs,
-                        origin,
-                    );
+                    let (_, outcome) = self
+                        .state
+                        .config
+                        .languages
+                        .register_identity_no_rebuild(&name, identity, origin);
                     match outcome {
                         WriteOutcome::Applied => any_identity = true,
                         WriteOutcome::Ignored => self.report(
-                            super::Severity::Warning,
+                            Severity::Warning,
                             format!(
                                 "define-language! '{name}': already defined; this definition is ignored"
                             ),
@@ -314,7 +309,7 @@ impl Editor {
         }
         if any_identity && let Err(e) = self.state.config.languages.rebuild_glob_set() {
             self.state.message_log.push(
-                super::Severity::Warning,
+                Severity::Warning,
                 format!("define-language!: glob set build failed: {e}"),
             );
         }
@@ -331,7 +326,7 @@ impl Editor {
         let languages = &mut self.state.config.languages;
         let Some(id) = languages.defined_id(name) else {
             self.report(
-                super::Severity::Error,
+                Severity::Error,
                 format!("configure-language!: language '{name}' is not defined"),
             );
             return;
@@ -341,7 +336,7 @@ impl Editor {
             match outcome {
                 WriteOutcome::Applied => {}
                 WriteOutcome::Ignored => self.report(
-                    super::Severity::Warning,
+                    Severity::Warning,
                     format!(
                         "configure-language! '{name}': {key} is already configured; this value is ignored"
                     ),

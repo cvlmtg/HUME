@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use rustc_hash::FxHashMap;
 
-use hume_engine::pipeline::BufferId;
+use hume_core::BufferId;
 use hume_platform::wake::{counting_wake, no_op_wake};
 
 use super::ParseBackend as _;

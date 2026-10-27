@@ -10,7 +10,8 @@
 //! `edit_session::open_insert` does for an Insert session.
 
 use crate::editor::registry::Count;
-use hume_engine::pipeline::{BufferId, EngineView, PaneId};
+use hume_core::{BufferId, PaneId, Severity};
+use hume_engine::pipeline::EngineView;
 
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::state::EditState;
@@ -18,7 +19,7 @@ use hume_ops::MotionMode;
 use hume_ops::edit::{paste_after, paste_before};
 use hume_ops::register::{BLACK_HOLE_REGISTER, CLIPBOARD_REGISTER, KILL_RING_REGISTER, Piece};
 
-use super::super::{EditorState, Severity, doc_ops, register_ops};
+use super::super::{EditorState, doc_ops, register_ops};
 use super::FocusedPane;
 use crate::editor::edit_session::{self, EditSessionKind};
 use crate::editor::error::CommandError;

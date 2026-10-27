@@ -148,7 +148,7 @@ fn black_hole_register_via_prefix() {
 /// mirror and logs a Warning. The mirror is then used by `"cp`.
 #[test]
 fn clipboard_register_falls_back_to_memory_when_unavailable() {
-    use crate::editor::Severity;
+    use hume_core::Severity;
     use hume_ops::register::CLIPBOARD_REGISTER;
 
     let mut ed = editor_from("-[hello]>\n");

@@ -6,12 +6,13 @@ use hume_ops::MotionMode;
 use hume_ops::edit::{fit_pipe_output, insert_values, replace_each_selection};
 use hume_platform::process::batch::Captured;
 
+use super::super::EditorState;
 use super::super::doc_ops;
 use super::super::error::CommandError;
 use super::super::pipe_run::{Launch, PipeEnd, PipeKind};
 use super::super::registry::Count;
-use super::super::{EditorState, Severity};
 use super::{CommandPane, ensure_writable};
+use hume_core::Severity;
 
 /// `pipe`: start `command` once per selection of `t`, the selection its
 /// input and the output replacing it. Inside an Insert session on `t` each

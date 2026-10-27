@@ -7,10 +7,10 @@
 //! `Tracked`, and read as absent once the text moves. Dot-repeat's origin
 //! chains text versions.
 
+use hume_core::{BufferId, PaneId};
 use hume_decorations::DecorationStores;
 use hume_editing::edit::TextChange;
 use hume_editing::tracked::Tracked;
-use hume_engine::pipeline::{BufferId, PaneId};
 use hume_rope::cluster::ClusterRange;
 use slotmap::SecondaryMap;
 

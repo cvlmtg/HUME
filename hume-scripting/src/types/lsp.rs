@@ -2,9 +2,7 @@
 //! features, server registrations, request routing and params, and
 //! trigger-char sets.
 
-use hume_engine::pipeline::{BufferId, PaneId};
-use hume_origin::Tie;
-
+use hume_core::{BufferId, ConfigOrigin, PaneId, Tie};
 /// A server registration: a later write from one origin replaces the
 /// earlier, whether the editor applies it or a script reads it back before
 /// then.
@@ -185,8 +183,8 @@ pub struct PendingLspServerReg {
     /// clearing the inherited environment) when the server process spawns.
     pub env: Vec<(String, String)>,
     /// Whose code registered it: a registration never replaces one from a
-    /// higher origin ([`crate::ConfigOrigin::rank`]).
-    pub origin: crate::ConfigOrigin,
+    /// higher origin ([`ConfigOrigin::rank`]).
+    pub origin: ConfigOrigin,
 }
 
 /// `(lsp-stop! target)` / `(lsp-restart! target)`'s target: every server
@@ -215,7 +213,7 @@ pub enum PendingLspServerOp {
     /// Removes `name`'s registration, unless a higher origin made it.
     Unregister {
         name: ServerName,
-        origin: crate::ConfigOrigin,
+        origin: ConfigOrigin,
     },
     /// Sets (`Some`) or clears (`None`) `language`'s `tier` server list from
     /// `origin`. The list from the highest origin that set one in the
@@ -223,7 +221,7 @@ pub enum PendingLspServerOp {
     SetLanguageServers {
         language: String,
         tier: ListTier,
-        origin: crate::ConfigOrigin,
+        origin: ConfigOrigin,
         entries: Option<Vec<ListEntry>>,
     },
     Stop {
@@ -242,9 +240,9 @@ pub struct LspServerStatusEntry {
     pub name: ServerName,
     pub languages: Vec<String>,
     pub root: std::path::PathBuf,
-    /// `ServerState::name`'s lowercase spelling (`"running"`, `"starting"`,
-    /// …), the symbol Steel receives.
-    pub state: &'static str,
+    /// Steel reads it as the symbol [`hume_lsp::client::ServerState::name`]
+    /// spells.
+    pub state: hume_lsp::client::ServerState,
     pub pending: usize,
     pub encoding: hume_rope::position_encoding::PositionEncoding,
 }
@@ -267,7 +265,7 @@ pub enum TriggerKind {
 pub enum TriggerScope {
     Language(String),
     Attachment {
-        buffer: hume_engine::pipeline::BufferId,
+        buffer: BufferId,
         server: hume_lsp::backend::ServerId,
         feature: LspFeature,
     },

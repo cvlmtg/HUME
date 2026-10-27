@@ -1,12 +1,11 @@
 //! Applying the effects a Steel eval queued, and ending a script session.
 
-use hume_engine::pipeline::BufferId;
-
+use hume_core::{BufferId, Severity};
 use hume_scripting::Effect;
 use hume_scripting::host::KeymapTarget;
 
+use crate::editor::Editor;
 use crate::editor::keymap::{LocalKeymaps, UnknownKeymap};
-use crate::editor::{Editor, Severity};
 
 impl Editor {
     /// Apply every effect a Steel eval queued, in the exact order the
@@ -78,7 +77,6 @@ impl Editor {
                     keymap,
                     origin,
                 } => {
-                    let mode = to_editor_bind_mode(mode);
                     let cmd = std::borrow::Cow::Owned(cmd);
                     let hidden = match keymap {
                         KeymapTarget::Global => {
@@ -116,7 +114,6 @@ impl Editor {
                     keymap,
                     origin,
                 } => {
-                    let mode = to_editor_bind_mode(mode);
                     let hidden = match keymap {
                         KeymapTarget::Global => {
                             self.state.config.keymap.unbind(mode, &keys, origin)
@@ -237,19 +234,6 @@ impl Editor {
         if let Err(message) = self.finish_script_session(result) {
             self.report(Severity::Error, format!("{err_prefix}{message}"));
         }
-    }
-}
-
-/// Map the scripting layer's `BindMode` (carried in `Effect::BindKey` and
-/// friends) to the editor's own. Fully qualified on both sides: this module
-/// works with `crate::editor::keymap::BindMode` too, so importing either name
-/// bare would shadow the other.
-fn to_editor_bind_mode(mode: hume_scripting::host::BindMode) -> crate::editor::keymap::BindMode {
-    match mode {
-        hume_scripting::host::BindMode::Normal => crate::editor::keymap::BindMode::Normal,
-        hume_scripting::host::BindMode::Extend => crate::editor::keymap::BindMode::Extend,
-        hume_scripting::host::BindMode::Insert => crate::editor::keymap::BindMode::Insert,
-        hume_scripting::host::BindMode::Command => crate::editor::keymap::BindMode::Command,
     }
 }
 

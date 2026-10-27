@@ -12,12 +12,12 @@
 //! session elsewhere" a single field comparison rather than a scan over
 //! every pane.
 
+use hume_core::{BufferId, PaneId};
 use hume_editing::changeset::{Assoc, ChangeSet};
 use hume_editing::edit::TextChange;
 use hume_editing::selection::SelectionSet;
 use hume_editing::state::EditState;
 use hume_editing::tracked::Tracked;
-use hume_engine::pipeline::{BufferId, PaneId};
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 use crate::editor::buffer::store::BufferStore;

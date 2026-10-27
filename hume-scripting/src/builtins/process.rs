@@ -13,7 +13,7 @@ use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
 use crate::host::exit_code_value;
-use crate::log::LogLevel;
+use hume_core::Severity;
 
 use super::SteelResult;
 use super::args::{
@@ -90,7 +90,7 @@ pub(crate) fn run_capture(
     let search_path = ctx.host.buffers().search_path();
 
     ctx.log(
-        LogLevel::Trace,
+        Severity::Trace,
         format!("run-capture!: running {cmd} {args:?}"),
     );
 

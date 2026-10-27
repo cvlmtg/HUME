@@ -13,6 +13,7 @@ test-util = []
 [dependencies]
 chrono = { version = "0.4.45", default-features = false }
 hume-editing = { path = "../hume-editing" }
+hume-core = { path = "../hume-core" }
 hume-rope = { path = "../hume-rope" }
 ropey.workspace = true
 regex-cursor = "0.1.5"
@@ -24,6 +25,7 @@ unicode-normalization = "0.1.25"
 unicode_titlecase = "2.5.0"
 
 [dev-dependencies]
+hume-core = { path = "../hume-core", features = ["test-util"] }
 test-fixtures = { path = "../test-fixtures" }
 pretty_assertions = "1.4.1"
 criterion = { version = "0.8.2", default-features = false, features = ["cargo_bench_support"] }

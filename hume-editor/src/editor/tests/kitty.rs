@@ -279,14 +279,14 @@ fn kitty_ctrl_close_brace_extends_next_paragraph() {
 /// punctuation key.
 #[test]
 fn kitty_ctrl_dollar_extends_line_end() {
-    use crate::editor::keymap::BindMode;
+    use hume_core::BindMode;
     let mut ed = editor_from_kitty("-[h]>ello world\n");
     ed.state.config.keymap.bind(
         BindMode::Normal,
         &[key('$')],
         "goto-line-end".into(),
         false,
-        hume_scripting::ConfigOrigin::User,
+        hume_core::ConfigOrigin::User,
     );
     ed.handle_key(key_ctrl('$'));
     // goto-line-end extend variant: anchor stays, head moves to last char on line.
@@ -300,14 +300,14 @@ fn kitty_ctrl_dollar_extends_line_end() {
 /// digit key.
 #[test]
 fn kitty_ctrl_0_extends_line_start() {
-    use crate::editor::keymap::BindMode;
+    use hume_core::BindMode;
     let mut ed = editor_from_kitty("hello -[w]>orld\n");
     ed.state.config.keymap.bind(
         BindMode::Normal,
         &[key('0')],
         "goto-line-start".into(),
         false,
-        hume_scripting::ConfigOrigin::User,
+        hume_core::ConfigOrigin::User,
     );
     ed.handle_key(key_ctrl('0'));
     // goto-line-start extend variant: head moves to col 0.
@@ -319,14 +319,14 @@ fn kitty_ctrl_0_extends_line_start() {
 /// The state after pressing `keys`, bound in Normal mode to `goto-line-end`
 /// with `force_extend`.
 fn force_extend_after(keys: &[KeyEvent]) -> String {
-    use crate::editor::keymap::BindMode;
+    use hume_core::BindMode;
     let mut ed = editor_from("-[h]>ello world\n");
     ed.state.config.keymap.bind(
         BindMode::Normal,
         keys,
         "goto-line-end".into(),
         true,
-        hume_scripting::ConfigOrigin::User,
+        hume_core::ConfigOrigin::User,
     );
     for &k in keys {
         ed.handle_key(k);

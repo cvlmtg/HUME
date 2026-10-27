@@ -38,7 +38,7 @@ fn cancel_timer_errors_when_the_host_has_no_timer_support() {
     let mut ctx = h.ctx();
     let msg = cancel_timer(
         &mut ctx,
-        crate::host::TimerHandle::from_raw(0).into_steel_val(),
+        TimerHandle::new(hume_core::TimerIds::default().mint()).into_steel_val(),
     )
     .unwrap_err()
     .to_string();

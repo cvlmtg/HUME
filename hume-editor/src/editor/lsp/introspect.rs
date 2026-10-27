@@ -4,7 +4,7 @@
 //! because they mutate the transport). These run through `EditorHostImpl`
 //! directly since a Steel caller needs the value back inline.
 
-use hume_engine::pipeline::BufferId;
+use hume_core::BufferId;
 use hume_lsp::backend::ServerId;
 
 use super::LspState;
@@ -97,7 +97,7 @@ pub(in crate::editor) fn server_status(
                 .map(str::to_owned)
                 .collect(),
             root: i.client.root().to_path_buf(),
-            state: i.client.state().name(),
+            state: i.client.state(),
             pending: i.client.pending_count(),
             encoding: i.client.encoding(),
         })
@@ -119,7 +119,7 @@ fn sorted_instances(lsp: &LspState) -> Vec<&super::instances::Instance> {
 pub(in crate::editor) fn server_origin(
     lsp: &LspState,
     name: &ServerName,
-) -> Option<hume_scripting::ConfigOrigin> {
+) -> Option<hume_core::ConfigOrigin> {
     lsp.registry.origin(name)
 }
 
@@ -349,7 +349,7 @@ impl crate::editor::Editor {
                 entry.name,
                 entry.languages.join(", "),
                 entry.root.display(),
-                entry.state,
+                entry.state.name(),
                 entry.pending,
                 entry.encoding,
             ));

@@ -88,7 +88,7 @@ pub(super) fn run_steel_session<'a, R>(
     // runtime activation) this session came from.
     for (id, err) in std::mem::take(&mut ctx.failed_activations) {
         ctx.log(
-            crate::log::LogLevel::Error,
+            hume_core::Severity::Error,
             format!(
                 "plugin '{id}' failed to load: {}",
                 describe_steel_error(steel, &err)

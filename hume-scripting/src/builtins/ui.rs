@@ -10,7 +10,7 @@ use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 use termina::event::KeyEvent;
 
-use hume_engine::types::TruncateEnd;
+use hume_core::{PopupLayout, TruncateEnd};
 
 use crate::host::{
     DrawerItems, LivePickerOpts, NonEmpty, PickerFeedMode, PickerOpts, PickerSourceOpts, PopupKind,
@@ -43,7 +43,14 @@ pub(crate) fn show_popup(
 ) -> SteelResult {
     let text = string_arg(text, "text")?;
     let anchor = string_arg(anchor, "#:anchor")?;
-    let docked = symbol_enum_arg(&anchor, "#:anchor", &[("cursor", false), ("bottom", true)])?;
+    let layout = symbol_enum_arg(
+        &anchor,
+        "#:anchor",
+        &[
+            ("cursor", PopupLayout::Cursor),
+            ("bottom", PopupLayout::Docked),
+        ],
+    )?;
     let kind = string_arg(kind, "#:kind")?;
     let kind = symbol_enum_arg(
         &kind,
@@ -55,7 +62,7 @@ pub(crate) fn show_popup(
     )?;
     let lang = optional_string_arg(lang, "#:lang")?;
     let token = require_cap(ctx.host.ui())?
-        .show_popup(pane, text, kind, docked, lang)
+        .show_popup(pane, text, kind, layout, lang)
         .map_err(generic_err)?;
     Ok(token_or_false(token))
 }

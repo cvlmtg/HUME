@@ -411,7 +411,7 @@ pub(crate) fn lsp_server_status(ctx: &mut SteelCtx) -> SteelResult {
                             .into(),
                     ),
                 ),
-                ("state", SteelVal::SymbolV(e.state.into())),
+                ("state", SteelVal::SymbolV(e.state.name().into())),
                 ("pending", SteelVal::IntV(e.pending as isize)),
             ])
         })

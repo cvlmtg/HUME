@@ -58,26 +58,6 @@ pub(crate) fn prev_word_start(
     find_word_start_from(text, pos, is_boundary, chars)
 }
 
-/// Every maximal run of `Word`-class grapheme clusters in `text`, in order:
-/// the whole-text counterpart to `find_word_end_from`'s single-run query.
-/// Each cluster is classified by its first char, the same classification
-/// `w`/`b` step by, so a run found here is what `w`/`b` would select, the
-/// property `core:buffer-words`' Steel-side `split-words` builtin
-/// (`hume-scripting/src/builtins/words.rs`) depends on.
-pub fn word_runs(text: &BufferText, chars: WordChars<'_>) -> Vec<ClusterRange> {
-    let mut runs = Vec::new();
-    let mut open: Option<ClusterRange> = None;
-    for cluster in text.clusters().graphemes_at(ClusterBound::TEXT_START) {
-        if chars.classify(cluster.first()) == CharClass::Word {
-            open = Some(open.map_or(cluster.range(), |run| run.hull(cluster.range())));
-        } else if let Some(run) = open.take() {
-            runs.push(run);
-        }
-    }
-    runs.extend(open);
-    runs
-}
-
 // ── Word-select helpers ───────────────────────────────────────────────────────
 
 /// Find the next word (or WORD) from `pos` and return it.

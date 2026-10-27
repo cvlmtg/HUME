@@ -14,7 +14,7 @@
 //! capability accessor to it, overriding only the one or two
 //! accessors/methods that make them distinct.
 
-use hume_engine::pipeline::BufferId;
+use hume_core::{BufferId, ConfigOrigin, OnUnsaved};
 use hume_platform::path::AbsolutePath;
 use hume_rope::line::ContentLine;
 
@@ -22,10 +22,10 @@ use crate::attribution::EntryId;
 use crate::command_name::fold;
 use crate::command_procs::CommandProc;
 use crate::host::{
-    BufferHost, ClaimRefused, CommandHost, CursorHost, DiscardUnsaved, DisplayPathForm, EditorHost,
-    EventHost, HostToken, LanguageHost, LocationPlace, LspHost, OptionInput, OptionValue,
-    OutputHost, PositionParams, RangeParams, RangesParams, SelectionInfo, SettingsHost,
-    StoredLanguage, TrackedHold,
+    BufferHost, ClaimRefused, CommandHost, CursorHost, DisplayPathForm, EditorHost, EventHost,
+    HostToken, LanguageHost, LocationPlace, LspHost, OptionInput, OptionValue, OutputHost,
+    PositionParams, RangeParams, RangesParams, SelectionInfo, SettingsHost, StoredLanguage,
+    TrackedHold,
 };
 use crate::types::{GrammarReg, PaneHandle, SteelCmdDef, SteelTypedCmdDef};
 
@@ -139,7 +139,7 @@ impl BufferHost for NullHost {
     fn open_buffer(&mut self, _path: &AbsolutePath) -> Result<BufferId, String> {
         Err("NullHost: open_buffer not available".into())
     }
-    fn close_buffer(&mut self, _id: BufferId, _discard: DiscardUnsaved) -> Result<(), String> {
+    fn close_buffer(&mut self, _id: BufferId, _on_unsaved: OnUnsaved) -> Result<(), String> {
         Err("NullHost: close_buffer not available".into())
     }
     fn switch_to_buffer(&mut self, _pane: PaneHandle, _target: BufferId) -> Result<(), String> {
@@ -195,7 +195,7 @@ impl SettingsHost for NullHost {
         &mut self,
         _key: &str,
         _value: OptionInput,
-        _origin: crate::ConfigOrigin,
+        _origin: ConfigOrigin,
     ) -> Result<(), String> {
         Err("NullHost: set_global_option not available".into())
     }
@@ -204,7 +204,7 @@ impl SettingsHost for NullHost {
         _key: &str,
         _value: OptionInput,
         _bid: BufferId,
-        _origin: crate::ConfigOrigin,
+        _origin: ConfigOrigin,
     ) -> Result<(), String> {
         Err("NullHost: set_buffer_option not available".into())
     }
@@ -579,7 +579,7 @@ impl LspHost for EmptyLspHost {
     fn lsp_server_status(&self) -> Vec<crate::types::LspServerStatusEntry> {
         Vec::new()
     }
-    fn lsp_server_origin(&self, _name: &crate::types::ServerName) -> Option<crate::ConfigOrigin> {
+    fn lsp_server_origin(&self, _name: &crate::types::ServerName) -> Option<ConfigOrigin> {
         None
     }
     fn new_supersede_key(&mut self) -> crate::host::SupersedeKey {

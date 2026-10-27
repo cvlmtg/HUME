@@ -10,7 +10,7 @@
 
 use termina::event::KeyEvent;
 
-use hume_engine::types::TruncateEnd;
+use hume_core::{PopupLayout, TruncateEnd};
 
 use super::token::HostToken;
 use crate::types::PaneHandle;
@@ -197,10 +197,8 @@ pub trait UiHost {
     /// here; this just stores the raw content. Replaces any popup already
     /// showing (no stacking).
     ///
-    /// `kind`: see [`PopupKind`] for the two dismiss behaviors. `docked`:
-    /// `#:anchor 'bottom` renders as a full-width chrome band directly
-    /// above the statusline (reserving pane space, like the drawer) instead
-    /// of floating near the cursor. `lang`: when `Some(name)` and a grammar
+    /// `kind`: see [`PopupKind`] for the two dismiss behaviors. `layout`:
+    /// see [`PopupLayout`] for the two placements. `lang`: when `Some(name)` and a grammar
     /// named `name` is registered, `text` is syntax-highlighted like a real
     /// buffer; otherwise (no grammar by that name, or `None`) it renders as
     /// plain text.
@@ -213,7 +211,7 @@ pub trait UiHost {
         pane: PaneHandle,
         text: String,
         kind: PopupKind,
-        docked: bool,
+        layout: PopupLayout,
         lang: Option<String>,
     ) -> Result<Option<HostToken>, String>;
 

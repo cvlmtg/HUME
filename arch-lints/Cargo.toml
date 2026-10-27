@@ -3,3 +3,6 @@ name = "arch-lints"
 version.workspace = true
 edition = "2024"
 publish = false
+
+[dev-dependencies]
+toml = { version = "1", default-features = false, features = ["parse", "serde", "std"] }

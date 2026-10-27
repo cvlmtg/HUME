@@ -1,9 +1,9 @@
 //! Pane creation and splitting: the single source of truth for seeding and
 //! tearing down a pane's per-pane state maps.
 
+use hume_core::{BufferId, PaneId};
 use hume_engine::pipeline::{
-    BufferId, DetachedPane, Direction, EngineView, FocusedLayout, PaneId, SinglePane,
-    UnattachedPane,
+    DetachedPane, Direction, EngineView, FocusedLayout, SinglePane, UnattachedPane,
 };
 
 use crate::editor::EditorState;

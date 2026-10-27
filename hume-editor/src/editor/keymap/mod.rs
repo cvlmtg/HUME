@@ -26,8 +26,7 @@ use defaults::{default_extend_keymap, default_insert_keymap, default_normal_keym
 pub(in crate::editor) use canonical::CanonicalKey;
 pub(in crate::editor) use local::{LocalKeymaps, Resolved, UnknownKeymap};
 
-use hume_origin::ByOrigin;
-use hume_scripting::ConfigOrigin;
+use hume_core::{BindMode, ByOrigin, ConfigOrigin};
 use rustc_hash::FxHashMap;
 use std::borrow::Cow;
 
@@ -227,18 +226,6 @@ impl Bindings {
             layer.collect_command_names(out);
         }
     }
-}
-
-/// Which keymap to apply a user-supplied binding to.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(in crate::editor) enum BindMode {
-    Normal,
-    /// Sparse extend-mode overrides. In extend mode a keymap's overrides are
-    /// checked before its normal trie, whose match runs with `extend = true`.
-    Extend,
-    Insert,
-    /// The command mode prompt: the `:` line and `prompt!` prompts.
-    Command,
 }
 
 /// Per-mode keymap container: the editor's global keymap, and each named

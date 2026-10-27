@@ -4,10 +4,10 @@
 //! buffer some server tracks, and a buffer's queue goes when its last
 //! attachment does. Attachments change only through `attach.rs`.
 
+use hume_core::BufferId;
 use hume_editing::changeset::ChangeSet;
 use hume_editing::edit::TextChange;
 use hume_editing::text::TextVersion;
-use hume_engine::pipeline::BufferId;
 use hume_lsp::backend::ServerId;
 use hume_scripting::{FeatureFilter, LspFeature};
 use ropey::Rope;

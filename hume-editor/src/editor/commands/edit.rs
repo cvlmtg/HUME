@@ -1,9 +1,7 @@
-use crate::editor::registry::Count;
-use hume_engine::pipeline::EngineView;
-
-use crate::editor::buffer::{Buffer, HistoryWalkResult};
+use hume_core::{BufferId, PaneId, Severity};
 use hume_editing::selection::{Facing, Selection};
 use hume_editing::word::WordChars;
+use hume_engine::pipeline::EngineView;
 use hume_ops::MotionMode;
 use hume_ops::edit::yank_selections;
 use hume_ops::edit::{
@@ -14,15 +12,16 @@ use hume_ops::edit::{
 use hume_ops::register::{CLIPBOARD_REGISTER, KILL_RING_REGISTER, Piece};
 use hume_ops::surround::wrap_each_selection;
 
-use super::super::{EditorState, Severity, doc_ops};
+use super::super::{EditorState, doc_ops};
 use super::{
     CommandPane, ExitCursor, FocusedPane, apply_focused_edit_grouped, apply_pane_edit,
     apply_pane_motion, begin_insert_session_preserving_register, begin_typed_run, doc, tab_format,
     word_chars_owned,
 };
+use crate::editor::buffer::{Buffer, HistoryWalkResult};
 use crate::editor::error::CommandError;
 use crate::editor::position_stores::PositionStores;
-use hume_engine::pipeline::{BufferId, PaneId};
+use crate::editor::registry::Count;
 
 // ── Edit composites ───────────────────────────────────────────────────────────
 

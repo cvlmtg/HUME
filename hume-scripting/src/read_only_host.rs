@@ -4,7 +4,7 @@
 
 use std::cell::{Cell, RefCell};
 
-use hume_engine::pipeline::BufferId;
+use hume_core::{BufferId, OnUnsaved};
 use hume_platform::path::AbsolutePath;
 use hume_rope::line::ContentLine;
 use hume_rope::offset::ExclusiveRange;
@@ -12,9 +12,8 @@ use hume_rope::offset::ExclusiveRange;
 use crate::attribution::EntryId;
 use crate::command_procs::CommandProc;
 use crate::host::{
-    BufferHost, CommandHost, CursorHost, DiscardUnsaved, DisplayPathForm, EditorHost, EventHost,
-    HostToken, LanguageHost, OptionInput, OptionValue, SelectionInfo, SettingsHost, StoredLanguage,
-    UndoNode,
+    BufferHost, CommandHost, CursorHost, DisplayPathForm, EditorHost, EventHost, HostToken,
+    LanguageHost, OptionInput, OptionValue, SelectionInfo, SettingsHost, StoredLanguage, UndoNode,
 };
 use crate::types::{GrammarReg, PaneHandle, SteelCmdDef, SteelTypedCmdDef};
 
@@ -174,7 +173,7 @@ impl SettingsHost for ReadOnlyHost<'_> {
         &mut self,
         _key: &str,
         _value: OptionInput,
-        _origin: crate::ConfigOrigin,
+        _origin: hume_core::ConfigOrigin,
     ) -> Result<(), String> {
         Err(self.refuse("set_global_option"))
     }
@@ -183,7 +182,7 @@ impl SettingsHost for ReadOnlyHost<'_> {
         _key: &str,
         _value: OptionInput,
         _bid: BufferId,
-        _origin: crate::ConfigOrigin,
+        _origin: hume_core::ConfigOrigin,
     ) -> Result<(), String> {
         Err(self.refuse("set_buffer_option"))
     }
@@ -253,7 +252,7 @@ impl BufferHost for ReadOnlyHost<'_> {
     fn open_buffer(&mut self, _path: &AbsolutePath) -> Result<BufferId, String> {
         Err(self.refuse("open_buffer"))
     }
-    fn close_buffer(&mut self, _id: BufferId, _discard: DiscardUnsaved) -> Result<(), String> {
+    fn close_buffer(&mut self, _id: BufferId, _on_unsaved: OnUnsaved) -> Result<(), String> {
         Err(self.refuse("close_buffer"))
     }
     fn switch_to_buffer(&mut self, _pane: PaneHandle, _target: BufferId) -> Result<(), String> {

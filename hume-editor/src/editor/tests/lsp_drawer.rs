@@ -99,8 +99,14 @@ fn show_drawer_list_over_a_live_popup_clears_it() {
     let mut ed = editor_from("-[x]>abcdefgh\n");
     let pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.show_popup(pane, "hi".to_string(), PopupKind::Scrollable, false, None)
-        .expect("show-popup! must succeed");
+    host.show_popup(
+        pane,
+        "hi".to_string(),
+        PopupKind::Scrollable,
+        hume_core::PopupLayout::Cursor,
+        None,
+    )
+    .expect("show-popup! must succeed");
     assert!(ed.state.input.popup().is_some(), "sanity: popup open");
 
     let pane = focused_pane(&ed);
@@ -127,8 +133,8 @@ fn show_drawer_list_over_a_live_popup_clears_it() {
 /// for. It drops silently, same as the mode-changed case.
 #[test]
 fn show_drawer_list_drops_silently_when_a_picker_is_open() {
-    use crate::editor::Severity;
     use crate::editor::host_impl::EditorHostImpl;
+    use hume_core::Severity;
     use hume_scripting::host::{PickerOpts, UiHost};
 
     let mut ed = editor_from("-[x]>abcdefgh\n");
@@ -224,8 +230,8 @@ fn insert_above_an_open_drawer_then_esc_leaves_the_drawer_fully_functional() {
 /// accept it.
 #[test]
 fn show_drawer_list_from_insert_warns_instead_of_opening() {
-    use crate::editor::Severity;
     use crate::editor::host_impl::EditorHostImpl;
+    use hume_core::Severity;
     use hume_scripting::host::UiHost;
 
     let mut ed = editor_from("-[x]>abcdefgh\n");

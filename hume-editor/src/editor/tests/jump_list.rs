@@ -971,7 +971,7 @@ fn a_pending_jump_into_a_buffer_the_navigation_closed_is_dropped() {
                 view,
                 state,
                 closing,
-                crate::editor::buffer::OnUnsaved::Refuse,
+                hume_core::OnUnsaved::Refuse,
             )
             .expect("the buffer has no unsaved changes and runs no pipe");
         },

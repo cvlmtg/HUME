@@ -16,14 +16,13 @@
 //! uses a real `Editor` + `EditorHostImpl` instead (see
 //! `editor/tests/plugins.rs`).
 
-use hume_engine::pipeline::BufferId;
+use hume_core::{BufferId, OnUnsaved};
 use hume_rope::line::ContentLine;
 use hume_scripting::PaneHandle;
 use hume_scripting::command_name::fold;
 use hume_scripting::host::{
-    BufferHost, CommandHost, CursorHost, DiscardUnsaved, DisplayPathForm, EditorHost, EventHost,
-    LanguageHost, NativeCall, OptionInput, OptionValue, SelectionInfo, SettingsHost,
-    StoredLanguage,
+    BufferHost, CommandHost, CursorHost, DisplayPathForm, EditorHost, EventHost, LanguageHost,
+    NativeCall, OptionInput, OptionValue, SelectionInfo, SettingsHost, StoredLanguage,
 };
 
 /// One recorded `run_command_sync` call: `(name, pane, call)`; see
@@ -196,7 +195,7 @@ impl BufferHost for MockHost {
     ) -> Result<BufferId, String> {
         Err("MockHost: open_buffer not available".into())
     }
-    fn close_buffer(&mut self, _id: BufferId, _discard: DiscardUnsaved) -> Result<(), String> {
+    fn close_buffer(&mut self, _id: BufferId, _on_unsaved: OnUnsaved) -> Result<(), String> {
         Err("MockHost: close_buffer not available".into())
     }
     fn switch_to_buffer(&mut self, _pane: PaneHandle, _target: BufferId) -> Result<(), String> {
@@ -252,7 +251,7 @@ impl SettingsHost for MockHost {
         &mut self,
         key: &str,
         value: OptionInput,
-        origin: hume_scripting::ConfigOrigin,
+        origin: hume_core::ConfigOrigin,
     ) -> Result<(), String> {
         // MockHost models no editor state to resync derived state against
         // (no history rings, no buffers, no view). write_global is the
@@ -265,7 +264,7 @@ impl SettingsHost for MockHost {
         _key: &str,
         _value: OptionInput,
         _bid: BufferId,
-        _origin: hume_scripting::ConfigOrigin,
+        _origin: hume_core::ConfigOrigin,
     ) -> Result<(), String> {
         // MockHost models no buffers, so no per-buffer override to write to.
         Err("MockHost: set_buffer_option not available".into())

@@ -199,8 +199,8 @@ fn close_menu_drops_the_callback_without_invoking_it() {
 /// `Warning`, naming the mode that refused it.
 #[test]
 fn show_menu_from_insert_warns_instead_of_opening() {
-    use crate::editor::Severity;
     use crate::editor::host_impl::EditorHostImpl;
+    use hume_core::Severity;
     use hume_scripting::host::UiHost;
 
     let mut ed = editor_from("-[x]>abcdefgh\n");
@@ -271,8 +271,8 @@ fn show_menu_accepted_in_normal_mode() {
 /// silently, same as the mode-changed case.
 #[test]
 fn show_menu_drops_silently_when_a_picker_is_open() {
-    use crate::editor::Severity;
     use crate::editor::host_impl::EditorHostImpl;
+    use hume_core::Severity;
     use hume_scripting::host::{PickerOpts, UiHost};
 
     let mut ed = editor_from("-[x]>abcdefgh\n");

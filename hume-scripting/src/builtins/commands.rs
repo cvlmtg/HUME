@@ -22,8 +22,8 @@ use crate::SteelCtx;
 use crate::attribution::Owner;
 use crate::command_procs::{CommandProc, MappableProc, TypedProc};
 use crate::host::{CommandArg, MAX_COUNT, NativeCall};
-use crate::log::LogLevel;
 use crate::types::{SteelCmdBody, SteelCmdDef, SteelTypedCmdBody, SteelTypedCmdDef};
+use hume_core::Severity;
 
 // ── Builtins ──────────────────────────────────────────────────────────────────
 
@@ -190,7 +190,7 @@ pub(crate) fn call_command_primitive(
         Ok(true) => {
             if ctx.session == crate::context::EvalSession::Init {
                 ctx.log(
-                    LogLevel::Warning,
+                    Severity::Warning,
                     format!("skipped runtime command '{name}': it can't run while loading config; bind it to a key or call it from a hook instead"),
                 );
                 return Ok(SteelVal::BoolV(false));
@@ -219,11 +219,11 @@ pub(crate) fn call_command_primitive(
                 .map_err(generic_err)
         }
         Ok(false) => {
-            ctx.log(LogLevel::Error, format!("'{name}' is not a native command"));
+            ctx.log(Severity::Error, format!("'{name}' is not a native command"));
             Ok(SteelVal::BoolV(false))
         }
         Err(msg) => {
-            ctx.log(LogLevel::Error, msg);
+            ctx.log(Severity::Error, msg);
             Ok(SteelVal::BoolV(false))
         }
     }

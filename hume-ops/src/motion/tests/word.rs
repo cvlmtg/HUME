@@ -1,6 +1,5 @@
 use super::super::*;
 use crate::WordCtx;
-use hume_editing::text::BufferText;
 use hume_editing::word::WordChars;
 use test_fixtures::assert_state;
 
@@ -1545,122 +1544,6 @@ fn extend_word_chars_anchor_ending_in_combining_cluster_stays_whole() {
         |(text, sels)| cmd_select_prev_word(test_fixtures::testing::state(text, sels), 1, ctx),
         "<[foo cafe\u{0301}-bar]- baz\n"
     );
-}
-
-// ── word_runs ────────────────────────────────────────────────────────────────
-//
-// The `core:buffer-words` completion plugin's `split-words` builtin reuses
-// this function directly (see `hume-scripting/src/builtins/words.rs`), so its
-// own tokenization is exactly what these tests pin.
-
-fn runs(s: &str, chars: WordChars<'_>) -> Vec<String> {
-    let text = BufferText::from(s);
-    word_runs(&text, chars)
-        .into_iter()
-        .map(|range| text.slice(range.chars()).to_string())
-        .collect()
-}
-
-#[test]
-fn word_runs_splits_a_plain_sentence_on_spaces_and_punctuation() {
-    assert_eq!(
-        runs("hello, world!", WordChars::default()),
-        vec!["hello", "world"]
-    );
-}
-
-#[test]
-fn word_runs_keeps_a_combining_grapheme_cluster_whole() {
-    // "café" = c, a, f, e, U+0301 (combining acute). The trailing mark must
-    // stay attached to its base char, not classify as a separate run (or as
-    // punctuation splitting the run early).
-    assert_eq!(
-        runs("cafe\u{0301} latte", WordChars::default()),
-        vec!["cafe\u{0301}", "latte"]
-    );
-}
-
-#[test]
-fn word_runs_does_not_absorb_non_ascii_punctuation() {
-    // U+2019 (right single quotation mark) is Punctuation per `classify_char`.
-    // Treating every char `>= 128` as a word char would merge the whole
-    // thing into one run.
-    assert_eq!(
-        runs("l\u{2019}\u{e9}l\u{e9}ment", WordChars::default()),
-        vec!["l", "\u{e9}l\u{e9}ment"]
-    );
-}
-
-#[test]
-fn word_runs_does_not_absorb_an_em_dash() {
-    assert_eq!(
-        runs("foo\u{2014}bar", WordChars::default()),
-        vec!["foo", "bar"]
-    );
-}
-
-#[test]
-fn word_runs_honors_word_chars() {
-    assert_eq!(
-        runs("foo-bar baz", WordChars::new("-")),
-        vec!["foo-bar", "baz"]
-    );
-    assert_eq!(
-        runs("foo-bar baz", WordChars::default()),
-        vec!["foo", "bar", "baz"]
-    );
-}
-
-#[test]
-fn word_runs_on_an_empty_or_all_punctuation_string_is_empty() {
-    assert_eq!(runs("", WordChars::default()), Vec::<String>::new());
-    assert_eq!(
-        runs("... !!! ,,,", WordChars::default()),
-        Vec::<String>::new()
-    );
-}
-
-/// Runs of `Word`-class grapheme clusters, from `unicode-segmentation` over a
-/// plain `&str` and classified by each cluster's first char: an
-/// implementation independent of the rope walk `word_runs` uses.
-fn segmentation_runs(s: &str, chars: WordChars<'_>) -> Vec<String> {
-    use hume_editing::word::CharClass;
-    use unicode_segmentation::UnicodeSegmentation;
-    let mut runs = Vec::new();
-    let mut current = String::new();
-    for g in s.graphemes(true) {
-        let first = g.chars().next().expect("a grapheme is never empty");
-        if chars.classify(first) == CharClass::Word {
-            current.push_str(g);
-        } else if !current.is_empty() {
-            runs.push(std::mem::take(&mut current));
-        }
-    }
-    if !current.is_empty() {
-        runs.push(current);
-    }
-    runs
-}
-
-#[test]
-fn word_runs_matches_a_plain_string_segmentation_on_unicode_text() {
-    for s in [
-        "hello, world! foo_bar baz42",
-        "cafe\u{301} au lait, na\u{ef}ve",
-        "l\u{2019}\u{e9}l\u{e9}ment foo\u{2014}bar",
-        "family \u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467} flags \u{1F1EE}\u{1F1F9}\u{1F1EB}\u{1F1F7}",
-        "漢字とかな、句読点。abc",
-        "foo-bar baz\nnext-line qux\n",
-    ] {
-        for word_chars in ["", "-"] {
-            let chars = WordChars::new(word_chars);
-            assert_eq!(
-                runs(s, chars),
-                segmentation_runs(s, chars),
-                "text {s:?}, word-chars {word_chars:?}"
-            );
-        }
-    }
 }
 
 // ── WORD motions over clusters ────────────────────────────────────────────

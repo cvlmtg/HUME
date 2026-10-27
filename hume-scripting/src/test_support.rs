@@ -6,10 +6,10 @@
 use crate::attribution::AttributionStack;
 use crate::builtins::dirs::ScriptDirs;
 use crate::context::SteelCtx;
-use crate::log::LogLevel;
 use crate::null_host::NullHost;
 use crate::types::QueuedEffect;
 use crate::{HostBundle, ScriptingRegistries};
+use hume_core::Severity;
 
 /// A stand-in bid for a builtin test that doesn't care which buffer it
 /// names: [`NullHost`]/[`crate::testing`] mocks don't track real buffers,
@@ -17,8 +17,8 @@ use crate::{HostBundle, ScriptingRegistries};
 /// function (every caller of this) never runs `LivePane`'s liveness check at
 /// all (that only happens inside the `builtins!`-registered Steel
 /// closure), so this needs no "live" counterpart.
-pub(crate) fn default_bid() -> hume_engine::pipeline::BufferId {
-    hume_engine::pipeline::BufferId::default()
+pub(crate) fn default_bid() -> hume_core::BufferId {
+    hume_core::BufferId::default()
 }
 
 /// [`default_bid`]'s `PaneHandle` counterpart: a pane-less handle, for a
@@ -33,7 +33,7 @@ pub(crate) fn default_pane() -> crate::types::PaneHandle {
 /// a kind-A/B builtin exercised only for its decode, never resolved against
 /// real editor state through `NullHost`).
 pub(crate) fn default_pane_with_pane() -> crate::types::PaneHandle {
-    crate::types::PaneHandle::with_pane(default_bid(), hume_engine::pipeline::PaneId::default())
+    crate::types::PaneHandle::with_pane(default_bid(), hume_core::PaneId::default())
 }
 
 /// The Steel symbol `name`.
@@ -55,7 +55,7 @@ pub(crate) struct SteelCtxTestHarness {
     pub(crate) host: NullHost,
     pub(crate) attribution: AttributionStack,
     pub(crate) registries: ScriptingRegistries,
-    pub(crate) pending_messages: Vec<(LogLevel, String)>,
+    pub(crate) pending_messages: Vec<(Severity, String)>,
     pub(crate) effects: Vec<QueuedEffect>,
     pub(crate) dirs: ScriptDirs,
     watchdog: crate::watchdog::EvalWatchdog,
@@ -69,7 +69,7 @@ pub(crate) struct SteelCtxTestHarness {
 fn bundle<'a>(
     registries: &'a mut ScriptingRegistries,
     attribution: &'a mut AttributionStack,
-    pending_messages: &'a mut Vec<(LogLevel, String)>,
+    pending_messages: &'a mut Vec<(Severity, String)>,
     effects: &'a mut Vec<QueuedEffect>,
     dirs: &'a ScriptDirs,
     watchdog: &'a crate::watchdog::EvalWatchdog,

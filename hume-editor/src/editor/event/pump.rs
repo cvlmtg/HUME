@@ -3,10 +3,11 @@
 //! event and call.
 
 use super::{CallGuard, EditorEvent, PendingWork};
+use crate::editor::Editor;
 use crate::editor::buffer::DiskCheckTrigger;
 use crate::editor::buffer::store::EditOrigin;
 use crate::editor::commands::CommandPane;
-use crate::editor::{Editor, Severity};
+use hume_core::Severity;
 use hume_scripting::PaneHandle;
 
 /// Upper bound on total work items processed per `settle()` boundary.

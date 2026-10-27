@@ -1,7 +1,7 @@
 //! `EditorHostImpl`'s global settings, statusline config, and the Steel
 //! eval budget.
 
-use hume_engine::pipeline::BufferId;
+use hume_core::BufferId;
 
 use super::EditorHostImpl;
 use crate::editor::settings::SettingText;
@@ -12,7 +12,7 @@ impl<'a> SettingsHost for EditorHostImpl<'a> {
         &mut self,
         key: &str,
         value: OptionInput,
-        origin: hume_scripting::ConfigOrigin,
+        origin: hume_core::ConfigOrigin,
     ) -> Result<(), String> {
         crate::editor::settings::ops::apply_global(self.state, self.view, key, &value, origin)
     }
@@ -22,7 +22,7 @@ impl<'a> SettingsHost for EditorHostImpl<'a> {
         key: &str,
         value: OptionInput,
         bid: BufferId,
-        origin: hume_scripting::ConfigOrigin,
+        origin: hume_core::ConfigOrigin,
     ) -> Result<(), String> {
         // `settings::ops::apply_buffer`'s `get_mut` panics on a stale id;
         // validate first so a bad `bid` from Steel becomes an `Err`, not a

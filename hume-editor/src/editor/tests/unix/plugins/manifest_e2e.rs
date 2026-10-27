@@ -471,7 +471,7 @@ fn core_git_diff_real_manifest_scm_resolves_via_load_plugin() {
 /// Keymap lint is silent when every bound key targets a registered command.
 #[test]
 fn keymap_lint_silent_for_known_command() {
-    use crate::editor::keymap::BindMode;
+    use hume_core::BindMode;
 
     let (ed, _dirs) =
         setup_editor_with_init_scripting(r#"(bind-key! 'normal "Q" "move-down")"#, None);
@@ -490,7 +490,7 @@ fn keymap_lint_silent_for_known_command() {
     );
     // The lint reads all three tries at once, so it can't tell Normal from
     // Insert. This is what pins `Effect::BindKey`'s mode all the way through
-    // `to_editor_bind_mode` into the right trie.
+    // to the right trie.
     assert!(
         ed.state
             .config

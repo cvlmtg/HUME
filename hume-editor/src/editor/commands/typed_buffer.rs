@@ -1,11 +1,11 @@
-use hume_engine::pipeline::{BufferId, Cycle};
+use hume_core::{BufferId, OnUnsaved, Severity};
+use hume_engine::pipeline::Cycle;
 use hume_platform::path::AbsolutePath;
 
 use super::super::Editor;
-use super::super::Severity;
 use super::jump::goto_buffer_in_order;
 use super::{FocusedPane, jump_pane_to};
-use crate::editor::buffer::{DiskCheckTrigger, OnUnsaved, ReloadError, lifecycle};
+use crate::editor::buffer::{DiskCheckTrigger, ReloadError, lifecycle};
 use crate::editor::error::CommandError;
 use crate::editor::jump_list::{JumpRule, with_jump};
 

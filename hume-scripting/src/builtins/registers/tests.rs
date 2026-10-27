@@ -174,10 +174,9 @@ fn write_then_read_round_trips_through_real_registration() {
 // ── Test hosts ────────────────────────────────────────────────────────────────
 
 /// Register names this crate's builtins must accept, mirroring
-/// `hume_ops::register::is_valid_register_name` without depending on
-/// `hume-ops` (a crate this layer intentionally doesn't pull in; see
-/// `crate::host::EditorHost`'s module doc on the dependency wall). The real
-/// constant is exercised end-to-end by `hume-editor`'s integration test.
+/// `hume_ops::register::is_valid_register_name`, which lives in a crate this
+/// one does not depend on. The real constant is exercised end-to-end by
+/// `hume-editor`'s integration test.
 fn valid_test_register_name(ch: char) -> bool {
     ch.is_ascii_digit() || matches!(ch, 'k' | 'c' | 'b')
 }

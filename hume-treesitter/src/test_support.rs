@@ -7,13 +7,13 @@ use std::sync::{Arc, LazyLock, Mutex};
 
 use slotmap::SlotMap;
 
-use hume_engine::pipeline::BufferId;
+use hume_core::{BufferId, OptionalQuery};
 use hume_engine::theme::ScopeRegistry;
 
 use crate::grammar::LoadedGrammar;
 use crate::registry::{
-    CompiledQueries, GrammarBundle, GrammarSnapshot, LanguageId, LanguageRegistry, OptionalQuery,
-    compile_queries, next_config_gen,
+    CompiledQueries, GrammarBundle, GrammarSnapshot, LanguageId, LanguageRegistry, compile_queries,
+    next_config_gen,
 };
 
 /// The id `name` has across every test bundle, so two bundles built for one

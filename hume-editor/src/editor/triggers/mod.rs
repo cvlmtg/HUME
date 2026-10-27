@@ -15,7 +15,7 @@
 
 use std::sync::Arc;
 
-use hume_engine::pipeline::BufferId;
+use hume_core::BufferId;
 use hume_scripting::{TriggerKind, TriggerScope};
 
 mod table;

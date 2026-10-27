@@ -1,6 +1,5 @@
 use super::params::position_params_value;
 use super::*;
-use crate::ConfigOrigin;
 use crate::json::JsonHandle;
 use crate::null_host::EmptyLspHost;
 use crate::test_support::{SteelCtxTestHarness, default_bid, default_pane, default_pane_with_pane};
@@ -8,6 +7,7 @@ use crate::types::{
     FeatureFilter, ListEntry, ListTier, LspServerTarget, RequestMode, RequestParams, RouteSpec,
     ServerName, WhenUnavailable,
 };
+use hume_core::ConfigOrigin;
 use hume_platform::dirs::Dirs;
 use hume_rope::position_encoding::PositionEncoding;
 use steel::HashMap as SteelHashMap;
@@ -230,7 +230,7 @@ fn unregister_queues_an_unregister_op() {
     match ops[0] {
         PendingLspServerOp::Unregister { name, origin } => {
             assert_eq!(name.as_str(), "rust-analyzer");
-            assert_eq!(*origin, crate::ConfigOrigin::User);
+            assert_eq!(*origin, hume_core::ConfigOrigin::User);
         }
         other => panic!("expected Unregister, got {other:?}"),
     }
@@ -386,10 +386,10 @@ fn lsp_server_registered_is_callable_during_init() {
 }
 
 fn pending_register(name: &str) -> Effect {
-    pending_register_by(name, crate::ConfigOrigin::User)
+    pending_register_by(name, hume_core::ConfigOrigin::User)
 }
 
-fn pending_register_by(name: &str, origin: crate::ConfigOrigin) -> Effect {
+fn pending_register_by(name: &str, origin: hume_core::ConfigOrigin) -> Effect {
     Effect::LspServerOp(PendingLspServerOp::Register(crate::PendingLspServerReg {
         name: server_name(name),
         command: "rust-analyzer".to_string(),
@@ -402,10 +402,10 @@ fn pending_register_by(name: &str, origin: crate::ConfigOrigin) -> Effect {
 }
 
 fn pending_unregister(name: &str) -> Effect {
-    pending_unregister_by(name, crate::ConfigOrigin::User)
+    pending_unregister_by(name, hume_core::ConfigOrigin::User)
 }
 
-fn pending_unregister_by(name: &str, origin: crate::ConfigOrigin) -> Effect {
+fn pending_unregister_by(name: &str, origin: hume_core::ConfigOrigin) -> Effect {
     Effect::LspServerOp(PendingLspServerOp::Unregister {
         name: server_name(name),
         origin,
@@ -440,7 +440,7 @@ fn lsp_server_registered_reads_through_queued_ops() {
 /// does not apply, so the probe does not count it.
 #[test]
 fn lsp_server_registered_skips_an_op_a_higher_origin_shadows() {
-    use crate::ConfigOrigin::{Plugin, User};
+    use hume_core::ConfigOrigin::{Plugin, User};
     let mut h = SteelCtxTestHarness::new();
     let mut host = EmptyLspHost::default();
     let mut ctx = h.ctx_with_host(&mut host);

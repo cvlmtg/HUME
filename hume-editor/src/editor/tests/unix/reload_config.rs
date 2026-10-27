@@ -11,8 +11,9 @@ use super::*;
 
 use super::super::scripting_grammar::grammar_fixture;
 use crate::cli::ConfigSource;
-use crate::editor::keymap::{BindMode, Keymap};
+use crate::editor::keymap::Keymap;
 use crate::editor::minibuf::history::HistoryKind;
+use hume_core::BindMode;
 
 /// `:reload-config`, dispatched through the real minibuffer path against a
 /// real `init.scm` on disk: a bound key and a global option revert to their
@@ -733,7 +734,7 @@ fn reload_config_with_no_config_dir_fails_fast_and_resets_nothing() {
         &[key('Q')],
         "move-down".into(),
         false,
-        hume_scripting::ConfigOrigin::User,
+        hume_core::ConfigOrigin::User,
     );
     assert_eq!(
         ed.state

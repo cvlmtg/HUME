@@ -4,9 +4,8 @@
 
 use crate::ScriptingHost;
 use crate::null_host::NullHost;
-use hume_editing::comment::{BlockCommentTokens, LineCommentTokens};
+use hume_core::{BlockCommentTokens, LanguageFields, LineCommentTokens};
 use hume_platform::dirs::Dirs;
-use hume_treesitter::registry::LanguageFields;
 use std::path::Path;
 
 const HEADER: &str = ";;; generated header\n\n";

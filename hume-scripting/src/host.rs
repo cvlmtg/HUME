@@ -26,11 +26,11 @@ mod ui;
 
 pub(crate) use async_process::exit_code_value;
 pub use async_process::{AsyncProcessHost, JobHandle, async_callback_args, names_callback_args};
-pub use buffers::{BufferHost, DiscardUnsaved, DisplayPathForm, StoredLanguage, UndoNode};
+pub use buffers::{BufferHost, DisplayPathForm, StoredLanguage, UndoNode};
 pub use commands::{CommandArg, CommandHost, MAX_COUNT, NativeCall};
 pub use completion::{
-    AnswerEnd, CompletionHost, CompletionSourceTarget, EmittedWord, FirstTab, MatchKind,
-    NamedPrefix, PendingCompletionSource,
+    AnswerEnd, CompletionHost, CompletionSourceTarget, EmittedWord, FirstTab, NamedPrefix,
+    PendingCompletionSource,
 };
 pub use cursor::{CursorHost, SelectionInfo};
 pub use decorations::{DecorationHost, DiagnosticEntry};
@@ -53,21 +53,6 @@ pub use ui::{
     DrawerItems, LivePickerOpts, NonEmpty, PickerFeedMode, PickerOpts, PickerSourceOpts, PopupKind,
     UiHost,
 };
-
-/// Key-binding mode, as recognised by `bind-key!`/`unbind-key!`.
-///
-/// Defined here (scripting layer) so builtins do not depend on the editor's
-/// internal `crate::editor::keymap::BindMode`.  Travels to the editor inside
-/// [`crate::Effect::BindKey`]/[`UnbindKey`](crate::Effect::UnbindKey), which maps it to the editor's own
-/// `BindMode` as it applies them.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BindMode {
-    Normal,
-    Extend,
-    Insert,
-    /// The command mode prompt: the `:` line and `prompt!` prompts.
-    Command,
-}
 
 /// Which keymap a bind or unbind changes: the global one, or the keymap a
 /// `#:keymap` symbol names.

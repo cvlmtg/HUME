@@ -13,9 +13,9 @@ use steel::rvals::SteelVal;
 
 use super::super::item::CompletionItem;
 use super::super::registry::{BufferSourceId, MinibufBody, MinibufSourceId, SourceRegistry};
-use super::MatchKind;
 use crate::editor::fuzzy::{FuzzyMatcher, FuzzyPattern, FuzzyProfile};
 use crate::editor::host_token;
+use hume_core::MatchKind;
 
 enum InvocationState {
     Pending,

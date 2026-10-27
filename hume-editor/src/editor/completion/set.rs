@@ -55,7 +55,7 @@ fn static_value_candidates(key: &str) -> Option<&'static [&'static str]> {
         "tabline" => crate::editor::settings::TablineVisibility::VALUES,
         "command-completion" => crate::editor::settings::CommandCompletion::VALUES,
         "word-selects-whitespace" => crate::editor::settings::WordSelectsWhitespace::VALUES,
-        "lsp-diagnostics-min-severity" => crate::editor::lsp::diagnostics::DiagSeverity::VALUES,
+        "lsp-diagnostics-min-severity" => hume_core::DiagSeverity::VALUES,
         _ => return None,
     })
 }

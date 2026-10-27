@@ -1,7 +1,7 @@
 use std::io;
 
+use hume_core::{BufferId, Severity};
 use hume_editing::text::BufferText;
-use hume_engine::pipeline::BufferId;
 use hume_platform::path::AbsolutePath;
 
 use crate::editor::buffer::{Buffer, BufferFile, ViewLabel};
@@ -10,7 +10,7 @@ use crate::editor::event::EditorEvent;
 use crate::editor::pipe_run::PipeRunning;
 
 use super::lifecycle;
-use crate::editor::{Editor, EditorState, Severity};
+use crate::editor::{Editor, EditorState};
 
 /// Where the text that replaces a buffer's content comes from, for
 /// [`Editor::reload_buffer_in_place`].
@@ -120,7 +120,7 @@ impl Editor {
             &mut self.view,
             &mut self.state,
             id,
-            super::OnUnsaved::Refuse,
+            hume_core::OnUnsaved::Refuse,
         )
     }
 

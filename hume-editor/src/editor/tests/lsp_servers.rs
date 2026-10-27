@@ -382,7 +382,7 @@ fn a_language_change_reopens_the_document_on_the_same_instance() {
     let sid = rig.sid("tsls");
 
     rig.ed
-        .set_buffer_language_by_name(rig.bid, Some("tsx"), hume_scripting::ConfigOrigin::User);
+        .set_buffer_language_by_name(rig.bid, Some("tsx"), hume_core::ConfigOrigin::User);
 
     assert_eq!(rig.sid("tsls"), sid);
     assert_eq!(rig.attached(), vec![sid]);

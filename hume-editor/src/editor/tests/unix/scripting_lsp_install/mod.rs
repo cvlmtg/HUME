@@ -17,7 +17,7 @@
 use std::path::Path;
 
 use super::*;
-use crate::editor::Severity;
+use hume_core::Severity;
 
 /// Write a receipt + a dummy binary file for `name` directly into
 /// `<data_dir>/servers/<name>/`, matching what `lsp-install/install-server!` would

@@ -193,7 +193,7 @@ fn a_registered_grammar_that_fails_to_load_warns_once() {
         .register_grammar(
             "json",
             GrammarSource::missing("json"),
-            hume_origin::ConfigOrigin::User,
+            hume_core::ConfigOrigin::User,
         )
         .expect("a user grammar replaces any other");
     super::language::attach_host(&mut ed, "");
@@ -494,7 +494,7 @@ fn language_has_grammar_is_true_once_registered_and_false_after_a_failed_load() 
         .register_grammar(
             "json",
             GrammarSource::missing("json"),
-            hume_origin::ConfigOrigin::User,
+            hume_core::ConfigOrigin::User,
         )
         .expect("a user grammar replaces any other");
     assert!(

@@ -19,7 +19,7 @@ use bitflags::bitflags;
 /// A cell holds one of these outright: storing it replaces whatever the
 /// cell held before, with nothing implicitly inherited. Composition, where a
 /// partial style is resolved against what is already painted, belongs to the
-/// drawing layer above (`hume_engine::render::Canvas`), which is the only
+/// drawing layer above ([`crate::Canvas`]), which is the only
 /// place that knows the difference between "the caller had no opinion" and
 /// "the caller wants the terminal's default".
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]

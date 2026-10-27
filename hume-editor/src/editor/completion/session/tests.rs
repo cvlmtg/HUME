@@ -8,6 +8,7 @@ use super::super::registry::{
     SourceRegistry,
 };
 use super::*;
+use hume_core::MatchKind;
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
 use hume_editing::edit::TextChange;
 use hume_editing::text::BufferText;

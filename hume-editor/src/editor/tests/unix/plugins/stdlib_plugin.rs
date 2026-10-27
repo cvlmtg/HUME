@@ -314,12 +314,10 @@ fn core_stdlib_resolve_lang_arg_falls_back_then_warns() {
 
     let (_, outcome) = ed.state.config.languages.register_identity_no_rebuild(
         "python",
-        &[],
-        &[],
-        &[],
-        hume_origin::ConfigOrigin::User,
+        hume_core::LanguageIdentity::default(),
+        hume_core::ConfigOrigin::User,
     );
-    assert_eq!(outcome, hume_origin::WriteOutcome::Applied);
+    assert_eq!(outcome, hume_core::WriteOutcome::Applied);
 
     let define_probe = r#"
 (define-typed-command! "probe-resolve-lang-arg" ""

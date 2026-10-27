@@ -8,12 +8,12 @@ use std::sync::Arc;
 use steel::rvals::{IntoSteelVal, SteelVal};
 use termina::event::{KeyCode, Modifiers};
 
-use hume_engine::pipeline::{BufferId, EngineView};
+use hume_core::{BufferId, Severity};
+use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
 use hume_scripting::SteelCall;
 use hume_scripting::host::{DrawerItems, HostToken, NonEmpty};
 
-use crate::editor::Severity;
 use crate::editor::host_impl::EditorHostImpl;
 
 use super::super::Editor;

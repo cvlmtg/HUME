@@ -11,7 +11,7 @@
 //! its handshake completes a server is sent `FULL`, so nothing queued while
 //! it is `Starting` depends on an encoding not yet negotiated.
 
-use hume_engine::pipeline::BufferId;
+use hume_core::BufferId;
 use hume_lsp::backend::ServerId;
 use hume_lsp::codec::Message;
 use hume_lsp::sync::{changeset_to_content_changes, wire_version};

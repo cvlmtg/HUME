@@ -31,7 +31,7 @@ fn completion_over_a_live_scrollable_popup_clears_it() {
         pane,
         "hover".to_string(),
         PopupKind::Scrollable,
-        false,
+        hume_core::PopupLayout::Cursor,
         None,
     )
     .expect("show-popup! must succeed");
@@ -59,8 +59,14 @@ fn completion_over_a_sticky_popup_leaves_it_open() {
 
     let pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.show_popup(pane, "sig-help".to_string(), PopupKind::Sticky, false, None)
-        .expect("show-popup! must succeed");
+    host.show_popup(
+        pane,
+        "sig-help".to_string(),
+        PopupKind::Sticky,
+        hume_core::PopupLayout::Cursor,
+        None,
+    )
+    .expect("show-popup! must succeed");
     assert!(ed.state.input.popup().is_some(), "sanity: sighelp open");
 
     open_completion_session(&mut ed, &["foo"]);
@@ -99,7 +105,7 @@ fn a_popup_landing_above_a_live_session_does_not_strand_it() {
         pane,
         "hover".to_string(),
         PopupKind::Scrollable,
-        false,
+        hume_core::PopupLayout::Cursor,
         None,
     )
     .expect("show-popup! must succeed");
@@ -137,7 +143,7 @@ fn dismissing_the_session_leaves_a_popup_above_it_open() {
         pane,
         "hover".to_string(),
         PopupKind::Scrollable,
-        false,
+        hume_core::PopupLayout::Cursor,
         None,
     )
     .expect("show-popup! must succeed");

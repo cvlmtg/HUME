@@ -11,7 +11,8 @@
 //! The in-progress insert/paste session is not here, typed-run and
 //! autoindent records included; see [`super::edit_session`].
 
-use hume_engine::pipeline::{BufferId, EngineView, PaneId, PanePool, UnattachedPane};
+use hume_core::{BufferId, PaneId};
+use hume_engine::pipeline::{EngineView, PanePool, UnattachedPane};
 use slotmap::SecondaryMap;
 
 use super::Editor;

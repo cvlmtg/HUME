@@ -11,9 +11,10 @@
 //! lifecycle (`capture` on `Layer::setup`, `restore`/`take_restore` on
 //! `Layer::tear_down`), which is `input_stack/` vocabulary.
 
+use hume_core::{BufferId, PaneId};
 use hume_editing::edit::TextChange;
 use hume_editing::selection::SelectionSet;
-use hume_engine::pipeline::{BufferId, EngineView, PaneId};
+use hume_engine::pipeline::EngineView;
 
 use super::super::EditorState;
 use super::super::buffer::store::BufferStore;

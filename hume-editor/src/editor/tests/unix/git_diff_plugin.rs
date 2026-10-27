@@ -192,7 +192,7 @@ fn vlines_in(ed: &Editor, bid: BufferId, source: &str) -> Vec<VLine> {
         .map(|e| {
             (
                 e.line.index(),
-                e.before,
+                e.side == hume_core::Side::Before,
                 e.text.clone(),
                 Some(scope_name(ed, e.scope).to_string()),
                 e.segments
