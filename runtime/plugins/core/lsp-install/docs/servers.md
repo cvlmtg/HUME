@@ -54,6 +54,10 @@ repair and upgrade path too, and it covers reinstalling over a running client:
 Downloads recreate the install directory right after step 3 purges it, because `curl -o`
 needs the parent to exist and nothing else recreates it in between.
 
+A failure in step 4 or 5 deletes the install directory again before the error is raised,
+so a failed install leaves nothing behind for the scan to find or for a later install to
+build on.
+
 ### Choosing the source
 
 What an install needs is decided when the catalogs are generated, not at runtime.
@@ -96,15 +100,21 @@ macOS and Windows `tar` decompress xz and bzip2 themselves. Linux `tar` shells o
 compressor, so that tool is also required.
 
 The archive is checked against the sha256 recorded in its `sources/` file before anything is
-unpacked, and is deleted on a mismatch. A gz asset is decoded in place next to the
+unpacked, and a mismatch fails the install. A gz asset is decoded in place next to the
 archive, then renamed to its bin path. After extraction the bin path must exist, as a
 regular file on Unix, or the install fails.
 
 Every regular file in the extracted tree is chmod'd, not just the bin path, because a
 server's layout may ship a wrapper script or sibling helpers. The tree is walked with
-`read-dir-iter`, which reports a symlink as a symlink without following it. A symlink is
-neither recursed into nor chmod'd, so one that points outside the server dir cannot have
-its target's permissions changed, and a symlinked bin path fails the check above.
+`read-dir-iter`, which reports a symlink as a symlink without following it, so a symlink
+is neither recursed into nor chmod'd, and a symlinked bin path fails the check above.
+
+Before anything is chmod'd, every symlink in the extracted tree must resolve inside the
+server dir (`first-path-outside`). A dangling one is judged by the path it names, so it
+counts too. One that points outside fails the install, since a link left behind could
+later be written through. The check runs once `unzip` or `tar` has finished, so it judges
+the links extraction left in the tree. A write through a link during extraction is
+outside its reach, and the tool's own handling of link members is what governs it.
 
 ### Toolchain installs
 

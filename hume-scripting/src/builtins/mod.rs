@@ -552,6 +552,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         open "set-cwd!" fs::set_cwd(path: args::ScriptPath);
         open "replace-dir!" fs::replace_dir(src: args::ScriptPath, dest: args::ScriptPath);
         open "remove-dir!" fs::remove_dir(dir: args::ScriptPath);
+        open "first-path-outside" fs::first_path_outside(dir: args::ScriptPath, paths: SteelVal);
         open "try-lock-file!" fs::try_lock_file(path: args::ScriptPath);
         open "unlock-file!" fs::unlock_file(path: args::ScriptPath);
         open "path-entries" fs::path_entries(dir: args::ScriptPath, prefix: String);

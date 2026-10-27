@@ -11,8 +11,9 @@
 //! session ends, and a program lookup on the editor's search path.
 //!
 //! The path arguments of `set-cwd!`, `replace-dir!`, `remove-dir!`,
-//! the lock pair and `path-entries` are
-//! [`ScriptPath`](super::args::ScriptPath)s.
+//! the lock pair, `path-entries` and `first-path-outside` are
+//! [`ScriptPath`](super::args::ScriptPath)s, and so is each of
+//! `first-path-outside`'s `paths`.
 //!
 //! | Steel name      | Signature                      | Notes                                        |
 //! |-----------------|--------------------------------|----------------------------------------------|
@@ -24,6 +25,7 @@
 //! | `remove-dir!`   | `string → void`                | Deletes a directory tree, budget stopped     |
 //! | `try-lock-file!` | `string → bool`               | Exclusive OS lock, held until `unlock-file!` or the session ends |
 //! | `unlock-file!`  | `string → void`                | Releases a lock this session took            |
+//! | `first-path-outside` | `string list → string \| #f` | The first path that, symlinks resolved, lies outside a directory |
 //! | `path-join`     | `string… → string`             | OS-native join; no sandbox, no filesystem access |
 //! | `path->display` | `string → string`               | UNC-strip + `~`-collapse; no filesystem access |
 //! | `safe-path-segment?` | `any → bool`              | `#t` for a string safe as one path segment   |
@@ -41,13 +43,14 @@ use std::path::{Path, PathBuf};
 
 use hume_platform::path::AbsolutePath;
 
+use steel::rerrs::SteelErr;
 use steel::rvals::{IntoSteelVal, SteelVal};
 
 use crate::SteelCtx;
 use hume_core::Severity;
 
 use super::SteelResult;
-use super::args::{list_to_strings, string_list};
+use super::args::{list_to_strings, string_list, under_cwd};
 use super::errors::{generic_err, require_cap};
 
 // ── data-dir / runtime-dir ───────────────────────────────────────────────────
@@ -235,6 +238,40 @@ pub(crate) fn unlock_file(ctx: &mut SteelCtx, path: AbsolutePath) -> SteelResult
         .remove(path.as_path())
         .map(|_| SteelVal::Void)
         .ok_or_else(|| generic_err(format!("this session does not hold {}", path.display())))
+}
+
+// ── Path containment ─────────────────────────────────────────────────────────
+
+/// `(first-path-outside dir paths)`: the first of `paths` that, with every
+/// symlink resolved, lies outside `dir`, resolved the same way, returned as
+/// it was passed; `#f` when none does. `dir` itself counts as inside, and a
+/// relative path joins onto `(cwd)`. A dangling symlink resolves to the path
+/// a write through it would create ([`AbsolutePath::resolve`]), so one naming
+/// a missing path outside `dir` is outside. Raises, naming the path, when
+/// one cannot be resolved, such as for a symlink cycle.
+pub(crate) fn first_path_outside(
+    ctx: &mut SteelCtx,
+    dir: AbsolutePath,
+    paths: SteelVal,
+) -> SteelResult {
+    let given = list_to_strings(paths, "paths")?;
+    let cwd = ctx.host.buffers().cwd();
+    let resolve = |p: &AbsolutePath| {
+        p.resolve()
+            .map_err(|e| generic_err(format!("{}: {e}", p.display())))
+    };
+    ctx.while_waiting(|| -> Result<Option<String>, SteelErr> {
+        let dir = resolve(&dir)?;
+        for as_given in given {
+            let path = under_cwd(Path::new(&as_given), &cwd, "paths")?;
+            if !resolve(&path)?.starts_with(dir.as_path()) {
+                return Ok(Some(as_given));
+            }
+        }
+        Ok(None)
+    })?
+    .into_steelval()
+    .map_err(generic_err)
 }
 
 // ── Completion listings ──────────────────────────────────────────────────────

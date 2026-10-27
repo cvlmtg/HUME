@@ -84,10 +84,7 @@ fn scan_registers_installed_server_with_absolute_managed_path() {
     let mut ed = editor_from("-[x]>\n");
     load_lsp_install_eager(&mut ed, data_tmp.path());
 
-    let expected_cmd = canonical_data_dir(data_tmp.path())
-        .join("servers")
-        .join("rust-analyzer")
-        .join("rust-analyzer");
+    let expected_cmd = server_dir(data_tmp.path(), "rust-analyzer").join("rust-analyzer");
     assert_eq!(
         ed.state.lsp.registered_command_for_test("rust-analyzer"),
         Some(expected_cmd.to_string_lossy().into_owned()),
@@ -218,10 +215,7 @@ fn an_unparsable_receipt_is_an_interrupted_install() {
         "2026-07-06",
         "rust-analyzer",
     );
-    let receipt = canonical_data_dir(data_tmp.path())
-        .join("servers")
-        .join("gopls")
-        .join("receipt.scm");
+    let receipt = server_dir(data_tmp.path(), "gopls").join("receipt.scm");
     std::fs::write(&receipt, "(").unwrap();
 
     let mut ed = editor_from("-[x]>\n");
@@ -249,9 +243,7 @@ fn an_unparsable_receipt_is_an_interrupted_install() {
 #[test]
 fn interrupted_install_is_warned_and_not_registered() {
     let data_tmp = tempfile::tempdir().unwrap();
-    let dir = canonical_data_dir(data_tmp.path())
-        .join("servers")
-        .join("rust-analyzer");
+    let dir = server_dir(data_tmp.path(), "rust-analyzer");
     std::fs::create_dir_all(&dir).unwrap();
     // No receipt.scm written: simulates an install that died mid-flight.
     std::fs::write(dir.join("rust-analyzer"), b"").unwrap();
@@ -296,7 +288,7 @@ fn orphan_server_is_warned_and_not_registered() {
 #[test]
 fn install_lock_sentinel_file_is_never_scanned_as_a_server_directory() {
     let data_tmp = tempfile::tempdir().unwrap();
-    let servers_dir = canonical_data_dir(data_tmp.path()).join("servers");
+    let servers_dir = servers_dir(data_tmp.path());
     std::fs::create_dir_all(&servers_dir).unwrap();
     // A file, not a directory, sitting directly under servers/, exactly
     // where lsp-install/acquire-lock! puts it and register-installed-servers!
@@ -316,7 +308,7 @@ fn install_lock_sentinel_file_is_never_scanned_as_a_server_directory() {
 #[test]
 fn stray_non_directory_file_under_servers_dir_is_never_scanned_as_a_server() {
     let data_tmp = tempfile::tempdir().unwrap();
-    let servers_dir = canonical_data_dir(data_tmp.path()).join("servers");
+    let servers_dir = servers_dir(data_tmp.path());
     std::fs::create_dir_all(&servers_dir).unwrap();
     // A file, not a directory, with no special-cased name (e.g. a
     // Finder-dropped .DS_Store). Must be excluded on being a non-directory,
@@ -400,10 +392,7 @@ fn rescan_registers_the_catalog_server_beside_a_manual_one_of_another_name() {
     );
     type_cmd(&mut ed, ":lsp-install rust-analyzer");
 
-    let expected_cmd = canonical_data_dir(data_tmp.path())
-        .join("servers")
-        .join("rust-analyzer")
-        .join("rust-analyzer");
+    let expected_cmd = server_dir(data_tmp.path(), "rust-analyzer").join("rust-analyzer");
     assert_eq!(
         ed.state.lsp.registered_command_for_test("rust-analyzer"),
         Some(expected_cmd.to_string_lossy().into_owned()),
@@ -539,10 +528,7 @@ fn lazy_lsp_plugin_registers_installed_servers_on_language_activation() {
     let lang = ed.state.config.languages.intern("rust");
     ed.set_buffer_language(bid, Some(lang));
 
-    let expected_cmd = canonical_data_dir(data_tmp.path())
-        .join("servers")
-        .join("rust-analyzer")
-        .join("rust-analyzer");
+    let expected_cmd = server_dir(data_tmp.path(), "rust-analyzer").join("rust-analyzer");
     assert_eq!(
         ed.state.lsp.registered_command_for_test("rust-analyzer"),
         Some(expected_cmd.to_string_lossy().into_owned()),

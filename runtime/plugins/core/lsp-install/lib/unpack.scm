@@ -6,17 +6,28 @@
 
 (define lsp-install/chmod-batch 200)
 
-(define (lsp-install/regular-files dir)
-  (let walk ((dir dir) (files '()))
+(struct unpacked (files links))
+
+(define (lsp-install/tree-entries dir)
+  (let walk ((dir dir) (files '()) (links '()))
     (let ((iter (read-dir-iter dir)))
-      (let loop ((files files))
+      (let loop ((files files) (links links))
         (let ((entry (read-dir-iter-next! iter)))
-          (cond ((not entry) files)
+          (cond ((not entry) (unpacked files links))
+                ((read-dir-entry-is-symlink? entry)
+                 (loop files (cons (read-dir-entry-path entry) links)))
                 ((read-dir-entry-is-dir? entry)
-                 (loop (walk (read-dir-entry-path entry) files)))
+                 (let ((sub (walk (read-dir-entry-path entry) files links)))
+                   (loop (unpacked-files sub) (unpacked-links sub))))
                 ((read-dir-entry-is-file? entry)
-                 (loop (cons (read-dir-entry-path entry) files)))
-                (else (loop files))))))))
+                 (loop (cons (read-dir-entry-path entry) files) links))
+                (else (loop files links))))))))
+
+(define (lsp-install/refuse-escaping-links! links dir)
+  (let ((escaping (first-path-outside dir links)))
+    (when escaping
+      (error (string-append "lsp-install/unpack-archive!: the archive has a symlink pointing "
+                            "outside the server directory: " escaping)))))
 
 (define (lsp-install/take lst n)
   (if (or (null? lst) (= n 0))
@@ -42,7 +53,9 @@
   (create-directory! dir)
   (let ((argv (lsp-install/extract-argv tool archive dir)))
     (run-inline-output! (car argv) (cdr argv)))
-  (lsp-install/mark-executable! (lsp-install/regular-files dir)))
+  (let ((entries (lsp-install/tree-entries dir)))
+    (lsp-install/refuse-escaping-links! (unpacked-links entries) dir)
+    (lsp-install/mark-executable! (unpacked-files entries))))
 
 (define (lsp-install/unpack-gz! archive dest)
   (run-inline-output! "gzip" (list "-d" "-f" archive))

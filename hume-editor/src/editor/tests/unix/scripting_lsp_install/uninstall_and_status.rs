@@ -38,9 +38,7 @@ fn lsp_uninstall_removes_registration_and_directory() {
         None,
         "uninstall must unregister the server"
     );
-    let dir = canonical_data_dir(data_tmp.path())
-        .join("servers")
-        .join("rust-analyzer");
+    let dir = server_dir(data_tmp.path(), "rust-analyzer");
     assert!(
         !dir.exists(),
         "uninstall must remove the server directory once the deferred (after! 0 ...) fires"
@@ -83,7 +81,7 @@ fn lsp_uninstall_refuses_the_delete_when_the_cross_process_lock_is_already_held(
         "2026-07-06",
         "rust-analyzer",
     );
-    let servers_dir = canonical_data_dir(data_tmp.path()).join("servers");
+    let servers_dir = servers_dir(data_tmp.path());
     let other = std::fs::File::create(servers_dir.join(".install-lock")).unwrap();
     other.try_lock().unwrap();
 

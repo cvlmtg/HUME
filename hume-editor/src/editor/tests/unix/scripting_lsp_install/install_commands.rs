@@ -123,9 +123,7 @@ fn install_lock_is_released_after_a_failed_install() {
         "sanity: the install must actually have failed: {log}"
     );
 
-    let lock_path = canonical_data_dir(data_tmp.path())
-        .join("servers")
-        .join(".install-lock");
+    let lock_path = servers_dir(data_tmp.path()).join(".install-lock");
     std::fs::File::open(&lock_path)
         .unwrap()
         .try_lock()
@@ -147,7 +145,7 @@ fn install_lock_is_released_after_a_failed_install() {
 #[test]
 fn lsp_install_refuses_when_the_cross_process_lock_is_already_held() {
     let data_tmp = tempfile::tempdir().unwrap();
-    let servers_dir = canonical_data_dir(data_tmp.path()).join("servers");
+    let servers_dir = servers_dir(data_tmp.path());
     std::fs::create_dir_all(&servers_dir).unwrap();
     let other = std::fs::File::create(servers_dir.join(".install-lock")).unwrap();
     other.try_lock().unwrap();
@@ -169,7 +167,7 @@ fn lsp_install_refuses_when_the_cross_process_lock_is_already_held() {
 #[test]
 fn lsp_install_ignores_a_lock_file_nobody_holds() {
     let data_tmp = tempfile::tempdir().unwrap();
-    let servers_dir = canonical_data_dir(data_tmp.path()).join("servers");
+    let servers_dir = servers_dir(data_tmp.path());
     std::fs::create_dir_all(&servers_dir).unwrap();
     std::fs::write(
         servers_dir.join(".install-lock"),
@@ -250,10 +248,7 @@ fn lsp_install_up_to_date_registers_a_late_fabricated_receipt() {
         Some("LSP: rust-analyzer already installed (v2026-10-05) — up to date"),
         "must report the up-to-date status"
     );
-    let expected_cmd = canonical_data_dir(data_tmp.path())
-        .join("servers")
-        .join("rust-analyzer")
-        .join("rust-analyzer");
+    let expected_cmd = server_dir(data_tmp.path(), "rust-analyzer").join("rust-analyzer");
     assert_eq!(
         ed.state.lsp.registered_command_for_test("rust-analyzer"),
         Some(expected_cmd.to_string_lossy().into_owned()),

@@ -18,7 +18,6 @@
                               expected)))
          (actual (lsp-install/sha256-file path)))
     (unless (equal? actual expected-hex)
-      (call! "stdlib/delete-file!" path)
       (error (string-append "lsp-install/verify-sha256!: sha256 mismatch for '" path
                             "': expected " expected-hex ", got " actual)))))
 
@@ -158,10 +157,15 @@
           (dir    (lsp-install/server-dir name)))
       (unregister-lsp-server! name)
       (call! "stdlib/delete-dir!" dir)
-      (let* ((installed (lsp-install/run-install! name source row dir))
-             (bin-rel   (car installed)))
-        (lsp-install/write-receipt! name (lsp-install/ref source 'version)
-                                    bin-rel (cdr installed))
+      (let ((bin-rel
+              (with-handler
+                (lambda (err)
+                  (call! "stdlib/delete-dir!" dir)
+                  (raise-error err))
+                (let ((installed (lsp-install/run-install! name source row dir)))
+                  (lsp-install/write-receipt! name (lsp-install/ref source 'version)
+                                              (car installed) (cdr installed))
+                  (car installed)))))
         (let ((cmd (lsp-install/ref-or (lsp-install/registration name) 'command name)))
           (when (find-program cmd)
             (log! 'info (string-append "LSP: " cmd " is also on $PATH — the managed install at "

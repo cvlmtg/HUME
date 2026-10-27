@@ -14,16 +14,26 @@
 //     installable
 //   ocamllsp (language "ocaml"): opam, a stub: not installable
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use super::*;
 use hume_core::Severity;
+
+/// `<data_dir>/servers/`, where `core:lsp-install` installs every server.
+fn servers_dir(data_dir_root: &Path) -> PathBuf {
+    canonical_data_dir(data_dir_root).join("servers")
+}
+
+/// `<data_dir>/servers/<name>/`, the install directory of server `name`.
+fn server_dir(data_dir_root: &Path, name: &str) -> PathBuf {
+    servers_dir(data_dir_root).join(name)
+}
 
 /// Write a receipt + a dummy binary file for `name` directly into
 /// `<data_dir>/servers/<name>/`, matching what `lsp-install/install-server!` would
 /// produce, for scan-time tests that don't need a real network install.
 fn fabricate_server(data_dir_root: &Path, name: &str, version: &str, bin: &str) {
-    let dir = canonical_data_dir(data_dir_root).join("servers").join(name);
+    let dir = server_dir(data_dir_root, name);
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(
         dir.join("receipt.scm"),

@@ -57,6 +57,21 @@ fn write_fake_curl_shim(fixture: &Path, args_file: &Path) -> (tempfile::TempDir,
     (shim_dir, path)
 }
 
+/// `payload`'s contents as a gzip tarball at `archive`.
+fn tar_gz(payload: &Path, archive: &Path) {
+    assert!(
+        std::process::Command::new("tar")
+            .arg("-czf")
+            .arg(archive)
+            .arg("-C")
+            .arg(payload)
+            .arg(".")
+            .status()
+            .unwrap()
+            .success()
+    );
+}
+
 #[test]
 fn lsp_install_tar_gz_unpacks_a_nested_binary_and_registers() {
     use std::os::unix::fs::PermissionsExt;
@@ -66,17 +81,7 @@ fn lsp_install_tar_gz_unpacks_a_nested_binary_and_registers() {
     std::fs::create_dir_all(payload.join("pkg/bin")).unwrap();
     std::fs::write(payload.join("pkg/bin/lua-language-server"), b"#!/bin/sh\n").unwrap();
     let archive = work.path().join("lls.tar.gz");
-    assert!(
-        std::process::Command::new("tar")
-            .arg("-czf")
-            .arg(&archive)
-            .arg("-C")
-            .arg(&payload)
-            .arg(".")
-            .status()
-            .unwrap()
-            .success()
-    );
+    tar_gz(&payload, &archive);
     let sources = &github_source(
         "lua-language-server",
         "lls.tar.gz",
@@ -85,9 +90,7 @@ fn lsp_install_tar_gz_unpacks_a_nested_binary_and_registers() {
     );
     let (data_tmp, ed, _runtime) = install_from_fixture(sources, &archive, "lua");
 
-    let server_dir = canonical_data_dir(data_tmp.path())
-        .join("servers")
-        .join("lua-language-server");
+    let server_dir = server_dir(data_tmp.path(), "lua-language-server");
     let bin = server_dir.join("pkg/bin/lua-language-server");
     assert_eq!(
         std::fs::metadata(&bin)
@@ -127,17 +130,7 @@ fn lsp_install_tar_gz_with_empty_directories_marks_every_file_executable() {
         std::fs::write(payload.join(file), b"#!/bin/sh\n").unwrap();
     }
     let archive = work.path().join("lls.tar.gz");
-    assert!(
-        std::process::Command::new("tar")
-            .arg("-czf")
-            .arg(&archive)
-            .arg("-C")
-            .arg(&payload)
-            .arg(".")
-            .status()
-            .unwrap()
-            .success()
-    );
+    tar_gz(&payload, &archive);
     let sources = &github_source(
         "lua-language-server",
         "lls.tar.gz",
@@ -146,9 +139,7 @@ fn lsp_install_tar_gz_with_empty_directories_marks_every_file_executable() {
     );
     let (data_tmp, _ed, _runtime) = install_from_fixture(sources, &archive, "lua");
 
-    let server_dir = canonical_data_dir(data_tmp.path())
-        .join("servers")
-        .join("lua-language-server");
+    let server_dir = server_dir(data_tmp.path(), "lua-language-server");
     for file in &files {
         let mode = std::fs::metadata(server_dir.join(file))
             .unwrap_or_else(|e| panic!("{file} must be unpacked: {e}"))
@@ -169,10 +160,7 @@ fn lsp_install_raw_binary_is_marked_executable_and_kept() {
     let sources = &github_source("marksman", "marksman-fake", &asset, "marksman-fake");
     let (data_tmp, ed, _runtime) = install_from_fixture(sources, &asset, "markdown");
 
-    let bin = canonical_data_dir(data_tmp.path())
-        .join("servers")
-        .join("marksman")
-        .join("marksman-fake");
+    let bin = server_dir(data_tmp.path(), "marksman").join("marksman-fake");
     assert_eq!(
         std::fs::metadata(&bin)
             .expect("the raw download is the binary and must be kept")
@@ -218,10 +206,7 @@ fn lsp_install_replaces_a_manual_registration_of_the_same_name() {
     ed.state.dirs.search_path = Some(path.into());
     type_cmd(&mut ed, ":lsp-install markdown");
 
-    let bin = canonical_data_dir(data_tmp.path())
-        .join("servers")
-        .join("marksman")
-        .join("marksman-fake");
+    let bin = server_dir(data_tmp.path(), "marksman").join("marksman-fake");
     let cmd = ed
         .state
         .lsp
@@ -244,10 +229,7 @@ fn lsp_install_over_an_existing_install_waits_for_the_server_to_stop() {
     fabricate_server(data_tmp.path(), "marksman", "0.0.1", "marksman-fake");
     let mut ed = editor_from("-[x]>\n");
     let _runtime = load_lsp_with_sources(&mut ed, &sources, data_tmp.path());
-    let bin = canonical_data_dir(data_tmp.path())
-        .join("servers")
-        .join("marksman")
-        .join("marksman-fake");
+    let bin = server_dir(data_tmp.path(), "marksman").join("marksman-fake");
     ed.state.dirs.search_path = Some(path.into());
 
     type_cmd(&mut ed, ":lsp-install markdown");
@@ -308,10 +290,7 @@ fn lsp_install_generic_kind_downloads_the_recorded_url_and_registers() {
         Some(url),
         "curl must fetch the url recorded in the row verbatim: {argv}"
     );
-    let bin = canonical_data_dir(data_tmp.path())
-        .join("servers")
-        .join("terraform-ls")
-        .join("terraform-ls");
+    let bin = server_dir(data_tmp.path(), "terraform-ls").join("terraform-ls");
     let cmd = ed
         .state
         .lsp
@@ -418,9 +397,7 @@ fn lsp_install_gz_asset_is_decoded_and_marked_executable() {
 
     let (data_tmp, ed, _runtime) = install_from_fixture(&sources, &archive, "rust");
 
-    let server_dir = canonical_data_dir(data_tmp.path())
-        .join("servers")
-        .join("rust-analyzer");
+    let server_dir = server_dir(data_tmp.path(), "rust-analyzer");
     let bin = server_dir.join("rust-analyzer");
     assert_eq!(std::fs::read(&bin).unwrap(), b"#!/bin/sh\necho decoded\n");
     assert_eq!(
@@ -436,14 +413,60 @@ fn lsp_install_gz_asset_is_decoded_and_marked_executable() {
     assert_eq!(Path::new(&cmd), bin);
 }
 
+/// `payload`'s `pkg` tree as a zip at `archive`, its symlinks stored as links.
+fn zip_pkg(payload: &Path, archive: &Path) {
+    assert!(
+        std::process::Command::new("zip")
+            .current_dir(payload)
+            .arg("-r")
+            .arg("-y")
+            .arg(archive)
+            .arg("pkg")
+            .status()
+            .unwrap()
+            .success()
+    );
+}
+
+/// A file at `work/outside-target`, mode 0o644, for an archive's link to
+/// point at from outside the server dir.
+fn outside_target(work: &Path) -> PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+
+    let outside = work.join("outside-target");
+    std::fs::write(&outside, b"not part of the archive").unwrap();
+    std::fs::set_permissions(&outside, std::fs::Permissions::from_mode(0o644)).unwrap();
+    outside
+}
+
+/// `outside` as [`outside_target`] made it: contents and mode unchanged.
+fn assert_left_alone(outside: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+
+    assert_eq!(std::fs::read(outside).unwrap(), b"not part of the archive");
+    assert_eq!(
+        std::fs::metadata(outside).unwrap().permissions().mode() & 0o777,
+        0o644,
+        "the link's target must be left alone"
+    );
+}
+
+/// A failed install of `name`: no server dir under `data_root`, and no
+/// server registered.
+fn assert_install_left_nothing(data_root: &Path, ed: &Editor, name: &str) {
+    let server_dir = server_dir(data_root, name);
+    assert!(
+        !server_dir.exists(),
+        "a failed install must leave no server dir"
+    );
+    assert!(ed.state.lsp.registered_command_for_test(name).is_none());
+}
+
 #[test]
-fn lsp_install_zip_marks_every_regular_file_executable_and_never_follows_symlinks() {
+fn lsp_install_zip_marks_regular_files_executable_and_leaves_link_targets_alone() {
     use std::os::unix::fs::PermissionsExt;
 
     let work = tempfile::tempdir().unwrap();
-    let outside = work.path().join("outside-target");
-    std::fs::write(&outside, b"not part of the archive").unwrap();
-    std::fs::set_permissions(&outside, std::fs::Permissions::from_mode(0o644)).unwrap();
     let payload = work.path().join("payload");
     std::fs::create_dir_all(payload.join("pkg/bin")).unwrap();
     for name in ["server", "helper"] {
@@ -451,26 +474,21 @@ fn lsp_install_zip_marks_every_regular_file_executable_and_never_follows_symlink
         std::fs::write(&f, b"#!/bin/sh\n").unwrap();
         std::fs::set_permissions(&f, std::fs::Permissions::from_mode(0o644)).unwrap();
     }
-    std::os::unix::fs::symlink(&outside, payload.join("pkg/link")).unwrap();
+    std::fs::create_dir_all(payload.join("pkg/data")).unwrap();
+    std::fs::write(payload.join("pkg/data/table"), b"x").unwrap();
+    std::fs::set_permissions(
+        payload.join("pkg/data"),
+        std::fs::Permissions::from_mode(0o700),
+    )
+    .unwrap();
+    std::os::unix::fs::symlink("data", payload.join("pkg/data-link")).unwrap();
     let archive = work.path().join("tfls.zip");
-    assert!(
-        std::process::Command::new("zip")
-            .current_dir(&payload)
-            .arg("-ry")
-            .arg(&archive)
-            .arg("pkg")
-            .status()
-            .unwrap()
-            .success()
-    );
+    zip_pkg(&payload, &archive);
     let sources = github_source("terraform-ls", "tfls.zip", &archive, "pkg/bin/server");
 
     let (data_tmp, ed, _runtime) = install_from_fixture(&sources, &archive, "hcl");
 
-    let pkg = canonical_data_dir(data_tmp.path())
-        .join("servers")
-        .join("terraform-ls")
-        .join("pkg");
+    let pkg = server_dir(data_tmp.path(), "terraform-ls").join("pkg");
     for name in ["server", "helper"] {
         assert_eq!(
             std::fs::metadata(pkg.join("bin").join(name))
@@ -483,16 +501,19 @@ fn lsp_install_zip_marks_every_regular_file_executable_and_never_follows_symlink
         );
     }
     assert!(
-        std::fs::symlink_metadata(pkg.join("link"))
-            .unwrap()
+        std::fs::symlink_metadata(pkg.join("data-link"))
+            .expect("the link must be unpacked")
             .file_type()
-            .is_symlink(),
-        "the symlink entry must stay a symlink"
+            .is_symlink()
     );
     assert_eq!(
-        std::fs::metadata(&outside).unwrap().permissions().mode() & 0o777,
-        0o644,
-        "a symlink's target must never be chmod'd"
+        std::fs::metadata(pkg.join("data"))
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777,
+        0o700,
+        "a symlink's target must not be chmod'd through it"
     );
     assert!(
         ed.state
@@ -503,23 +524,124 @@ fn lsp_install_zip_marks_every_regular_file_executable_and_never_follows_symlink
 }
 
 #[test]
+fn lsp_install_zip_with_an_escaping_symlink_fails_and_leaves_no_server_dir() {
+    let work = tempfile::tempdir().unwrap();
+    let outside = outside_target(work.path());
+    let payload = work.path().join("payload");
+    std::fs::create_dir_all(payload.join("pkg/bin")).unwrap();
+    std::fs::write(payload.join("pkg/bin/server"), b"#!/bin/sh\n").unwrap();
+    std::os::unix::fs::symlink(&outside, payload.join("pkg/escape")).unwrap();
+    let archive = work.path().join("tfls.zip");
+    zip_pkg(&payload, &archive);
+    let sources = github_source("terraform-ls", "tfls.zip", &archive, "pkg/bin/server");
+
+    let (data_tmp, ed, _runtime) = install_from_fixture(&sources, &archive, "hcl");
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("install terraform-ls failed"),
+        "an escaping link must fail the install: {log}"
+    );
+    assert_left_alone(&outside);
+    assert_install_left_nothing(data_tmp.path(), &ed, "terraform-ls");
+}
+
+#[test]
+fn lsp_install_refuses_an_archive_whose_symlink_points_outside_the_server_dir() {
+    let work = tempfile::tempdir().unwrap();
+    let outside = outside_target(work.path());
+    let payload = work.path().join("payload");
+    std::fs::create_dir_all(payload.join("pkg/bin")).unwrap();
+    std::fs::write(payload.join("pkg/bin/lua-language-server"), b"#!/bin/sh\n").unwrap();
+    std::os::unix::fs::symlink(&outside, payload.join("pkg/escape")).unwrap();
+    let archive = work.path().join("lls.tar.gz");
+    tar_gz(&payload, &archive);
+    let sources = github_source(
+        "lua-language-server",
+        "lls.tar.gz",
+        &archive,
+        "pkg/bin/lua-language-server",
+    );
+
+    let (data_tmp, ed, _runtime) = install_from_fixture(&sources, &archive, "lua");
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("symlink pointing outside the server directory") && log.contains("escape"),
+        "the install must fail naming the escaping link: {log}"
+    );
+    assert_left_alone(&outside);
+    assert_install_left_nothing(data_tmp.path(), &ed, "lua-language-server");
+}
+
+#[test]
+fn lsp_install_keeps_a_symlink_that_stays_inside_the_server_dir() {
+    let work = tempfile::tempdir().unwrap();
+    let payload = work.path().join("payload");
+    std::fs::create_dir_all(payload.join("pkg/bin")).unwrap();
+    std::fs::write(payload.join("pkg/bin/lua-language-server"), b"#!/bin/sh\n").unwrap();
+    std::os::unix::fs::symlink("lua-language-server", payload.join("pkg/bin/run")).unwrap();
+    let archive = work.path().join("lls.tar.gz");
+    tar_gz(&payload, &archive);
+    let sources = github_source(
+        "lua-language-server",
+        "lls.tar.gz",
+        &archive,
+        "pkg/bin/lua-language-server",
+    );
+
+    let (data_tmp, ed, _runtime) = install_from_fixture(&sources, &archive, "lua");
+
+    let run = server_dir(data_tmp.path(), "lua-language-server").join("pkg/bin/run");
+    assert!(
+        std::fs::symlink_metadata(&run)
+            .expect("the link must be unpacked")
+            .file_type()
+            .is_symlink()
+    );
+    assert!(
+        ed.state
+            .lsp
+            .registered_command_for_test("lua-language-server")
+            .is_some()
+    );
+}
+
+#[test]
+fn lsp_install_removes_the_server_dir_when_a_symlink_cannot_be_resolved() {
+    let work = tempfile::tempdir().unwrap();
+    let payload = work.path().join("payload");
+    std::fs::create_dir_all(payload.join("pkg/bin")).unwrap();
+    std::fs::write(payload.join("pkg/bin/lua-language-server"), b"#!/bin/sh\n").unwrap();
+    std::os::unix::fs::symlink("b", payload.join("pkg/a")).unwrap();
+    std::os::unix::fs::symlink("a", payload.join("pkg/b")).unwrap();
+    let archive = work.path().join("lls.tar.gz");
+    tar_gz(&payload, &archive);
+    let sources = github_source(
+        "lua-language-server",
+        "lls.tar.gz",
+        &archive,
+        "pkg/bin/lua-language-server",
+    );
+
+    let (data_tmp, ed, _runtime) = install_from_fixture(&sources, &archive, "lua");
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("install lua-language-server failed"),
+        "a link cycle must fail the install: {log}"
+    );
+    assert_install_left_nothing(data_tmp.path(), &ed, "lua-language-server");
+}
+
+#[test]
 fn lsp_install_missing_binary_after_unpack_fails_loudly() {
     let work = tempfile::tempdir().unwrap();
     let payload = work.path().join("payload");
     std::fs::create_dir_all(&payload).unwrap();
     std::fs::write(payload.join("other"), b"x").unwrap();
     let archive = work.path().join("lls.tar.gz");
-    assert!(
-        std::process::Command::new("tar")
-            .arg("-czf")
-            .arg(&archive)
-            .arg("-C")
-            .arg(&payload)
-            .arg(".")
-            .status()
-            .unwrap()
-            .success()
-    );
+    tar_gz(&payload, &archive);
     let sources = github_source(
         "lua-language-server",
         "lls.tar.gz",
@@ -534,16 +656,7 @@ fn lsp_install_missing_binary_after_unpack_fails_loudly() {
         log.contains("expected binary"),
         "an archive without the recorded binary must fail loudly: {log}"
     );
-    let server_dir = canonical_data_dir(data_tmp.path())
-        .join("servers")
-        .join("lua-language-server");
-    assert!(!server_dir.join("receipt.scm").exists());
-    assert!(
-        ed.state
-            .lsp
-            .registered_command_for_test("lua-language-server")
-            .is_none()
-    );
+    assert_install_left_nothing(data_tmp.path(), &ed, "lua-language-server");
 }
 
 #[test]
@@ -562,15 +675,5 @@ fn lsp_install_sha256_mismatch_deletes_the_archive_and_fails() {
         log.contains("sha256 mismatch"),
         "a digest that differs from the pin must fail loudly: {log}"
     );
-    let server_dir = canonical_data_dir(data_tmp.path())
-        .join("servers")
-        .join("marksman");
-    assert!(!server_dir.join("marksman-fake").exists());
-    assert!(!server_dir.join("receipt.scm").exists());
-    assert!(
-        ed.state
-            .lsp
-            .registered_command_for_test("marksman")
-            .is_none()
-    );
+    assert_install_left_nothing(data_tmp.path(), &ed, "marksman");
 }

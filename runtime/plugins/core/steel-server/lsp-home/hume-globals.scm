@@ -122,6 +122,7 @@
 (#%register-global "find-backward")
 (#%register-global "find-forward")
 (#%register-global "find-program")
+(#%register-global "first-path-outside")
 (#%register-global "flip-selections")
 (#%register-global "focused-pane")
 (#%register-global "get-buffer-option")

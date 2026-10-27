@@ -252,9 +252,7 @@ fn lsp_install_cargo_runs_cargo_install_with_locked_root_and_registers() {
         .lines()
         .map(str::to_string)
         .collect();
-    let server_dir = canonical_data_dir(data_tmp.path())
-        .join("servers")
-        .join("pest-language-server");
+    let server_dir = server_dir(data_tmp.path(), "pest-language-server");
     assert_eq!(
         argv[..5],
         [
@@ -312,9 +310,7 @@ fn lsp_install_cargo_missing_binary_after_install_fails_loudly() {
         "a cargo install that produces no binary must fail loudly: {log}"
     );
 
-    let server_dir = canonical_data_dir(data_tmp.path())
-        .join("servers")
-        .join("pest-language-server");
+    let server_dir = server_dir(data_tmp.path(), "pest-language-server");
     assert!(
         !server_dir.join("receipt.scm").exists(),
         "no receipt must be committed when the post-install binary check fails"

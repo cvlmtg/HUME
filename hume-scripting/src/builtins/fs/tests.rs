@@ -246,11 +246,21 @@ fn data_dir_resolves_through_real_registration() {
 
 // ── completion listings ──────────────────────────────────────────────────
 
-/// `source`'s value, evaluated by a real `ScriptingHost` over `NullHost`.
-fn eval_value(source: &str) -> SteelVal {
+/// `source`'s value or the error it raises, evaluated by a real
+/// `ScriptingHost` over `NullHost`.
+fn eval_result(source: &str) -> Result<SteelVal, String> {
     let mut host = crate::ScriptingHost::new(&Dirs::none());
     host.eval_source_for_value(source, &mut crate::null_host::NullHost)
-        .unwrap_or_else(|e| panic!("{source}: {e}"))
+}
+
+/// `source`'s value, as [`eval_result`] evaluates it.
+fn eval_value(source: &str) -> SteelVal {
+    eval_result(source).unwrap_or_else(|e| panic!("{source}: {e}"))
+}
+
+/// `path` as a Steel string literal.
+fn literal(path: &Path) -> String {
+    crate::steel_path_literal(path).expect("a temp path has no `\"`")
 }
 
 /// The strings of a Steel list.
@@ -267,8 +277,8 @@ fn path_entries_lists_what_a_typed_path_completes_to() {
     std::fs::write(dir.path().join(".hidden"), b"").unwrap();
     let listed = |prefix: &str| {
         strings(eval_value(&format!(
-            "(path-entries {:?} {prefix:?})",
-            dir.path().to_string_lossy()
+            "(path-entries {} {prefix:?})",
+            literal(dir.path())
         )))
     };
     assert_eq!(listed(""), ["a dir/", "b.txt", "other"]);
@@ -282,8 +292,8 @@ fn path_entries_of_an_unreadable_directory_is_empty() {
     let missing = dir.path().join("missing");
     assert_eq!(
         strings(eval_value(&format!(
-            "(path-entries {:?} \"\")",
-            missing.to_string_lossy()
+            "(path-entries {} \"\")",
+            literal(&missing)
         ))),
         Vec::<String>::new()
     );
@@ -415,6 +425,70 @@ fn replace_dir_clears_a_backup_an_earlier_swap_left() {
 
     assert_eq!(entries(&dest), ["new"]);
     assert_eq!(entries(&parent), ["repo"]);
+}
+
+// ── path containment ─────────────────────────────────────────────────────
+
+/// A server dir `srv` holding `lib/x` and an empty `bin`, beside a file
+/// `outside` and a sibling dir `srv-evil` whose name starts with the server
+/// dir's.
+fn server_tree() -> TempDir {
+    let tmp = TempDir::new().unwrap();
+    dir_with(&tmp.path().join("srv/lib"), "x");
+    std::fs::create_dir_all(tmp.path().join("srv/bin")).unwrap();
+    dir_with(&tmp.path().join("srv-evil"), "f");
+    std::fs::write(tmp.path().join("outside"), "").unwrap();
+    tmp
+}
+
+/// `(first-path-outside dir paths)` evaluated by a real `ScriptingHost`,
+/// with `dir` and every one of `paths` under `tmp`: the path it returns,
+/// `None` for `#f`, or the error it raises.
+fn first_outside(tmp: &TempDir, dir: &str, paths: &[&str]) -> Result<Option<String>, String> {
+    let quoted = |name: &str| literal(&tmp.path().join(name));
+    let source = format!(
+        "(first-path-outside {} (list {}))",
+        quoted(dir),
+        paths
+            .iter()
+            .map(|p| quoted(p))
+            .collect::<Vec<_>>()
+            .join(" ")
+    );
+    eval_result(&source).map(|val| match val {
+        SteelVal::StringV(s) => Some(s.to_string()),
+        SteelVal::BoolV(false) => None,
+        other => panic!("expected a path or #f, got {other:?}"),
+    })
+}
+
+/// `name` under `tmp`, spelled as `first_outside` passes it.
+fn under(tmp: &TempDir, name: &str) -> String {
+    tmp.path().join(name).to_string_lossy().into_owned()
+}
+
+#[test]
+fn first_path_outside_is_false_for_a_file_inside_and_for_the_dir_itself() {
+    let tmp = server_tree();
+    assert_eq!(first_outside(&tmp, "srv", &["srv/lib/x", "srv"]), Ok(None));
+}
+
+#[test]
+fn first_path_outside_returns_a_sibling_whose_name_starts_with_the_dir() {
+    let tmp = server_tree();
+    assert_eq!(
+        first_outside(&tmp, "srv", &["srv/lib/x", "srv-evil/f"]),
+        Ok(Some(under(&tmp, "srv-evil/f")))
+    );
+}
+
+#[test]
+fn first_path_outside_returns_the_first_escaping_path_in_list_order() {
+    let tmp = server_tree();
+    assert_eq!(
+        first_outside(&tmp, "srv", &["srv/lib/x", "outside", "srv-evil/f"]),
+        Ok(Some(under(&tmp, "outside")))
+    );
 }
 
 #[cfg(unix)]

@@ -28,9 +28,7 @@ fn lsp_install_golang_runs_go_install_into_gobin_and_registers() {
         "final argv token must be the module@version spec: {argv:?}"
     );
 
-    let server_dir = canonical_data_dir(data_tmp.path())
-        .join("servers")
-        .join("gopls");
+    let server_dir = server_dir(data_tmp.path(), "gopls");
     let cmd = ed
         .state
         .lsp
@@ -100,9 +98,7 @@ fn lsp_install_pypi_creates_a_venv_pip_installs_and_registers() {
     ed.state.dirs.search_path = Some(shim_dir.path().into());
     type_cmd(&mut ed, ":lsp-install python");
 
-    let server_dir = canonical_data_dir(data_tmp.path())
-        .join("servers")
-        .join("ty");
+    let server_dir = server_dir(data_tmp.path(), "ty");
     assert_eq!(
         read_lines(&venv_args),
         ["-m", "venv", server_dir.join("venv").to_str().unwrap()]
@@ -280,9 +276,7 @@ fn lsp_install_gem_installs_into_the_server_dir_and_registers_gem_env() {
     ed.state.dirs.search_path = Some(shim_dir.path().into());
     type_cmd(&mut ed, ":lsp-install ruby");
 
-    let server_dir = canonical_data_dir(data_tmp.path())
-        .join("servers")
-        .join("ruby-lsp");
+    let server_dir = server_dir(data_tmp.path(), "ruby-lsp");
     let argv = read_lines(&args_file);
     assert_eq!(
         argv[..6],
@@ -400,9 +394,7 @@ fn lsp_install_nuget_installs_a_dotnet_tool_and_registers() {
     ed.state.dirs.search_path = Some(shim_dir.path().into());
     type_cmd(&mut ed, ":lsp-install c-sharp");
 
-    let server_dir = canonical_data_dir(data_tmp.path())
-        .join("servers")
-        .join("roslyn-language-server");
+    let server_dir = server_dir(data_tmp.path(), "roslyn-language-server");
     let argv = read_lines(&args_file);
     assert_eq!(
         argv[..5],

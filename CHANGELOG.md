@@ -41,6 +41,8 @@
 - An error from a HUME function starts with the name you called it by, once, and names the argument at fault.
 
 ### Fixes
+- `:lsp-install` refuses a server archive with a symbolic link that points outside the server's directory.
+- A failed `:lsp-install` removes what it had installed.
 - The Linux archive runs on glibc 2.28 and later: Ubuntu 20.04, Debian 10, RHEL 8 and newer.
 - Plugin code that runs later (debounced and timed functions, background process and language server replies, picker actions) no longer reads wrong values or crashes HUME after a while.
 - A plugin error that passes through nested `with-handler`s no longer crashes HUME.

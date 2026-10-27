@@ -53,3 +53,44 @@ fn replace_dir_succeeds_when_the_old_contents_cannot_be_deleted() {
         "the warning names the leftover backup: {message}"
     );
 }
+
+// ── path containment ─────────────────────────────────────────────────────
+
+#[test]
+fn first_path_outside_is_false_for_a_relative_link_that_stays_inside() {
+    let tmp = server_tree();
+    std::os::unix::fs::symlink("../lib/x", tmp.path().join("srv/bin/x")).unwrap();
+    assert_eq!(first_outside(&tmp, "srv", &["srv/bin/x"]), Ok(None));
+}
+
+#[test]
+fn first_path_outside_returns_an_absolute_link_to_a_file_outside() {
+    let tmp = server_tree();
+    std::os::unix::fs::symlink(tmp.path().join("outside"), tmp.path().join("srv/bin/x")).unwrap();
+    assert_eq!(
+        first_outside(&tmp, "srv", &["srv/bin/x"]),
+        Ok(Some(under(&tmp, "srv/bin/x")))
+    );
+}
+
+#[test]
+fn first_path_outside_returns_a_dangling_link_to_a_path_outside() {
+    let tmp = server_tree();
+    std::os::unix::fs::symlink("../../missing", tmp.path().join("srv/bin/x")).unwrap();
+    assert_eq!(
+        first_outside(&tmp, "srv", &["srv/bin/x"]),
+        Ok(Some(under(&tmp, "srv/bin/x")))
+    );
+}
+
+#[test]
+fn first_path_outside_raises_for_a_symlink_cycle_naming_the_path() {
+    let tmp = server_tree();
+    std::os::unix::fs::symlink("b", tmp.path().join("srv/bin/a")).unwrap();
+    std::os::unix::fs::symlink("a", tmp.path().join("srv/bin/b")).unwrap();
+    let err = first_outside(&tmp, "srv", &["srv/bin/a"]).unwrap_err();
+    assert!(
+        err.contains("first-path-outside: ") && err.contains("srv/bin/a"),
+        "the error names the builtin and the path: {err}"
+    );
+}
