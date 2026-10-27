@@ -6,8 +6,8 @@
 ;; ── Config ────────────────────────────────────────────────────────────────────
 
 (define bw/cfg (plugin-config))
-(define bw/match (call! "stdlib/config-enum" "core:buffer-words" bw/cfg "match" 'string '(string fuzzy)))
-(define bw/chars-per-tick (call! "stdlib/config-integer" "core:buffer-words" bw/cfg "chars" 8000 1))
+(define bw/match (call! "stdlib/config-enum" "core:buffer-words" bw/cfg 'match 'string '(string fuzzy)))
+(define bw/chars-per-tick (call! "stdlib/config-integer" "core:buffer-words" bw/cfg 'chars 8000 1))
 
 ;;; Not 0 — see README.md's "Cursor-outward, line-windowed indexing".
 (define bw/tick-delay-ms 16)

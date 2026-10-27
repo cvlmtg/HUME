@@ -39,8 +39,8 @@ plugin that calls `register-lsp-server!` works with `core:lsp` the same way.
 
 | Key | Type | Default | Effect |
 |---|---|---|---|
-| `"inlay-hints"` | boolean | `#f` | Whether a buffer shows inlay hints until `:toggle-inlay-hints` flips it |
-| `"format-max-ranges"` | integer ≥ 1 | `16` | Most disjoint ranges `:format-source` sends one `rangeFormatting` request each for; see [`docs/features.md`](docs/features.md#range-requests) |
+| `'inlay-hints` | boolean | `#f` | Whether a buffer shows inlay hints until `:toggle-inlay-hints` flips it |
+| `'format-max-ranges` | integer ≥ 1 | `16` | Most disjoint ranges `:format-source` sends one `rangeFormatting` request each for; see [`docs/features.md`](docs/features.md#range-requests) |
 
 ## Commands
 

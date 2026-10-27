@@ -3,7 +3,7 @@
 (require "helpers.scm")
 
 (define lsp/inlay-default
-  (call! "stdlib/config-boolean" "core:lsp" (plugin-config) "inlay-hints" #f))
+  (call! "stdlib/config-boolean" "core:lsp" (plugin-config) 'inlay-hints #f))
 
 ;;; Buffers toggled away from `lsp/inlay-default`, keyed by `(buffer-key pane)`.
 (define lsp/*inlay-overrides* (box (hash)))

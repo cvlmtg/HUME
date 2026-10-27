@@ -362,34 +362,59 @@ fn define_typed_command_rejects_name_claimed_by_lazy_plugin() {
 
 // ── #:config / (plugin-config) ────────────────────────────────────────────
 
-/// `(plugin-config)` called outside any plugin body (top-level init.scm) must
-/// return an empty hash, not error.
-///
-/// An attribution frame that outlived its pop would hand back a stale
-/// plugin's config here.
+/// `(plugin-config)` outside any plugin's code (top-level init.scm) raises:
+/// an empty hash would read as "no config passed".
 #[test]
-fn plugin_config_outside_plugin_body_is_empty() {
+fn plugin_config_outside_plugin_code_raises() {
     use crate::{ScriptingHost, null_host::NullHost};
     let mut host = ScriptingHost::new(&Dirs::none());
-    host.eval_source(
-        r#"(when (not (hash-empty? (plugin-config))) (error "expected empty hash"))"#,
-        &mut NullHost,
-    )
-    .expect("plugin-config outside a plugin body must be an empty hash");
+    let err = host
+        .eval_source("(plugin-config)", &mut NullHost)
+        .expect_err("plugin-config outside a plugin's code must raise");
+    assert!(err.contains("outside a plugin's code"), "got: {err}");
+}
+
+/// `#:config` is a hash with symbol keys, checked where the user passes it.
+#[test]
+fn load_plugin_refuses_a_string_config_key() {
+    use crate::{ScriptingHost, null_host::NullHost};
+    let mut host = ScriptingHost::new(&Dirs::none());
+    let err = host
+        .eval_source(
+            r#"(load-plugin! "core:none" #:config (hash 'ok #t "signs" #f))"#,
+            &mut NullHost,
+        )
+        .expect_err("a string key must be refused");
+    assert!(
+        err.contains(r#"key "signs" must be a symbol: 'signs"#),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn load_plugin_refuses_a_config_that_is_not_a_hash() {
+    use crate::{ScriptingHost, null_host::NullHost};
+    let mut host = ScriptingHost::new(&Dirs::none());
+    let err = host
+        .eval_source(
+            r#"(load-plugin! "core:none" #:config '(signs #t))"#,
+            &mut NullHost,
+        )
+        .expect_err("a list must be refused");
+    assert!(err.contains("#:config must be a hash"), "got: {err}");
 }
 
 // ── (plugin-dir) ──────────────────────────────────────────────────────────
 
-/// `(plugin-dir)` outside any plugin body is `#f`.
+/// `(plugin-dir)` outside any plugin's code raises, as `(plugin-config)` does.
 #[test]
-fn plugin_dir_outside_plugin_body_is_false() {
+fn plugin_dir_outside_plugin_code_raises() {
     use crate::{ScriptingHost, null_host::NullHost};
     let mut host = ScriptingHost::new(&Dirs::none());
-    host.eval_source(
-        r#"(when (plugin-dir) (error "expected #f outside a plugin body"))"#,
-        &mut NullHost,
-    )
-    .expect("plugin-dir outside a plugin body must be #f");
+    let err = host
+        .eval_source("(plugin-dir)", &mut NullHost)
+        .expect_err("plugin-dir outside a plugin's code must raise");
+    assert!(err.contains("outside a plugin's code"), "got: {err}");
 }
 
 /// Inside a plugin body `(plugin-dir)` is the directory holding that plugin's

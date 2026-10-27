@@ -38,30 +38,29 @@ a full plugin.
 
 ## Passing configuration
 
-The load call accepts an optional config value — typically a hash — that the plugin
-code can read back for itself. It is the only way to pass configuration:
+The load call accepts an optional config value, a hash with symbol keys, that the
+plugin code can read back for itself. It is the only way to pass configuration:
 
 ```scheme
-(load-plugin! "alice/my-theme" #:config (hash "variant" "dark"))
+(load-plugin! "alice/my-theme" #:config (hash 'variant "dark"))
 ```
 
 ```scheme
 ; alice/my-theme/plugin.scm
 (define cfg (plugin-config))
-(if (and (hash-contains? cfg "variant")
-         (equal? (hash-ref cfg "variant") "dark"))
+(if (and (hash-contains? cfg 'variant)
+         (equal? (hash-ref cfg 'variant) "dark"))
     (load-dark-palette)
     (load-light-palette))
 ```
 
-The config is the calling plugin's own — never another plugin's — and it is readable
-only while the plugin's code is being evaluated: at startup for an eager plugin, or at
-activation time for a lazy one (the value recorded by the load call is kept until then,
-even much later in the session). Called from anywhere else, such as inside a command
-the plugin registers, it is an empty hash — commands run after the code has
-already finished, outside that window. Read the config once at the top, as `cfg` does
-above, and capture whatever a command needs from it in a `define`. A plugin author
-decides what keys their config hash understands and documents them for users.
+The config is the calling plugin's own — never another plugin's. The plugin reads it
+wherever its own code runs: its body, at startup for an eager plugin or at activation
+time for a lazy one (the value recorded by the load call is kept until then, even much
+later in the session), and every command, hook and callback it defines. Code that
+belongs to no plugin, such as `init.scm` itself, gets an error, since an empty answer
+would look like "no config passed". A plugin author decides what keys their config
+hash understands and documents them for users.
 
 A plugin that activates before its load call has run sees an empty config, so a custom
 declaration belongs directly above the load call.

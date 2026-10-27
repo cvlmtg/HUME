@@ -49,7 +49,7 @@ loading the plugin:
 
 ```scheme
 (load-plugin! "core:stdlib")
-(load-plugin! "core:pickers" #:config (hash "untracked" #f))
+(load-plugin! "core:pickers" #:config (hash 'untracked #f))
 ```
 
 | Value          | Effect |

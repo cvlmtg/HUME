@@ -153,7 +153,7 @@ fn declare_plugin_rejects_config_and_records_nothing() {
     let err = host
         .eval_source(
             r#"(declare-plugin! "user/multi" #:entry "extra.scm"
-                 #:typed-commands '("extra-cmd") #:config (hash "k" "v"))"#,
+                 #:typed-commands '("extra-cmd") #:config (hash 'k "v"))"#,
             &mut CommandStoreHost::default(),
         )
         .expect_err("declare-plugin! must reject #:config");
@@ -174,16 +174,13 @@ fn the_main_entrys_config_is_what_every_entry_reads() {
         "multi",
         &[
             ("plugin.scm", ""),
-            (
-                "extra.scm",
-                r#"(log! 'info (hash-ref (plugin-config) "k"))"#,
-            ),
+            ("extra.scm", r#"(log! 'info (hash-ref (plugin-config) 'k))"#),
         ],
     );
     host.eval_source(
         r#"(declare-plugin! "user/multi" #:languages '("zlang"))
            (declare-plugin! "user/multi" #:entry "extra.scm" #:typed-commands '("extra-cmd"))
-           (load-plugin! "user/multi" #:config (hash "k" "from-main"))"#,
+           (load-plugin! "user/multi" #:config (hash 'k "from-main"))"#,
         &mut CommandStoreHost::default(),
     )
     .unwrap();
@@ -513,7 +510,7 @@ fn load_plugin_after_a_declare_keeps_the_declared_triggers_and_skips_the_manifes
 
     host.eval_source(
         r#"(declare-plugin! "user/multi" #:typed-commands '("mine"))
-           (load-plugin! "user/multi" #:config (hash "k" "v"))"#,
+           (load-plugin! "user/multi" #:config (hash 'k "v"))"#,
         &mut editor_host,
     )
     .unwrap();

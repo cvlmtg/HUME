@@ -16,8 +16,8 @@
 //!   entry's triggers.
 //! - States: `Declared -> Loading -> Loaded | Failed`. `Loading` guards
 //!   re-entrant cycles; `Failed` doesn't retry until `:reload-config`.
-//! - `#:config` on `load-plugin!` is opaque per-plugin data read back via
-//!   `(plugin-config)`. Both forms record an installed plugin's name in its
+//! - `#:config` on `load-plugin!` is a symbol-keyed hash of per-plugin data,
+//!   checked for that shape and read back via `(plugin-config)`. Both forms record an installed plugin's name in its
 //!   plugin record up front for PLUM; a local file is not listed.
 
 #![deny(rustdoc::broken_intra_doc_links)]

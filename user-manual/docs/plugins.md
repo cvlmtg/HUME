@@ -28,7 +28,7 @@ If a plugin supports configuration, pass it with `#:config`:
 
 ```scheme
 (load-plugin! "core:stdlib")
-(load-plugin! "core:vim-keybind" #:config (hash "change-to-eol" 'off))
+(load-plugin! "core:vim-keybind" #:config (hash 'change-to-eol 'off))
 ```
 
 See [Configuring a plugin](writing-plugins.md#configuring-a-plugin) for what a plugin does with this value, and the plugin's own docs for which keys it understands.

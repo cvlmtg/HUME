@@ -415,7 +415,7 @@ literal, a plain-text buffer with no server). An empty pattern scores
 *every* haystack `0` (`hume-editor/src/editor/fuzzy.rs`'s
 `empty_query_scores_every_haystack_equally`), so on a bare trigger — buffer-
 words' own headline case — both sources tie at score `0` and priority
-decides. `#:config (hash "match" 'fuzzy)` opts buffer-words into subsequence
+decides. `#:config (hash 'match 'fuzzy)` opts buffer-words into subsequence
 scoring too, at which point it competes with LSP on score like any other
 `'fuzzy` source and the priority tiebreak no longer decides (dedup still
 applies regardless of `#:match` — it runs before scoring, not as part of
@@ -431,7 +431,7 @@ keystroke, via `MatchKind::String` (see that enum's own doc,
 drops the exact-typed token for every source, derived fresh from the live
 cursor on every keystroke, so this source never needs re-invoking just to
 keep that exclusion correct as the token changes (README.md's "Matching").
-`#:config (hash "match" 'fuzzy)` opts a user into subsequence scoring
+`#:config (hash 'match 'fuzzy)` opts a user into subsequence scoring
 instead, at the same per-keystroke, Rust-side cost as `core:lsp`'s own
 matching.
 

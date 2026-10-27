@@ -22,7 +22,7 @@ use hume_lsp::test_util::{RecordingLspBackend, RequestLog};
 const MARKED_FIXTURE: &str = "-[l]>et x = 1;\n";
 
 /// `core:lsp`'s `#:config` turning inlay hints on for every buffer.
-const HINTS_ON: Option<&str> = Some(r#"(hash "inlay-hints" #t)"#);
+const HINTS_ON: Option<&str> = Some(r#"(hash 'inlay-hints #t)"#);
 
 /// A rig with inlay hints on for every buffer.
 fn setup(

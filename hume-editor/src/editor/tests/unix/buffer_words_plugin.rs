@@ -195,7 +195,7 @@ fn a_word_many_lines_past_the_cursor_is_offered() {
     let tmp = tempfile::tempdir().unwrap();
     let guard = RuntimeDirs::new();
     // 20 `filler` lines per tick.
-    let mut ed = setup(&guard, tmp.path(), Some(r#"(hash "chars" 140)"#));
+    let mut ed = setup(&guard, tmp.path(), Some(r#"(hash 'chars 140)"#));
     let file_dir = tempfile::tempdir().unwrap();
     let path = file_dir.path().join("f.txt");
     let mut content = "filler\n".repeat(300);
@@ -213,7 +213,7 @@ fn a_word_many_lines_past_the_cursor_is_offered() {
 fn lines_longer_than_the_budget_are_still_walked_to_both_ends() {
     let tmp = tempfile::tempdir().unwrap();
     let guard = RuntimeDirs::new();
-    let mut ed = setup(&guard, tmp.path(), Some(r#"(hash "chars" 10)"#));
+    let mut ed = setup(&guard, tmp.path(), Some(r#"(hash 'chars 10)"#));
     let file_dir = tempfile::tempdir().unwrap();
     let path = file_dir.path().join("f.txt");
     let filler = "longfiller ".repeat(4);
@@ -387,7 +387,7 @@ fn a_reindex_that_interrupts_a_running_walk_does_not_resurrect_a_removed_word() 
     // tick (anchored at line 0, where "targetword" lives) picks the word up
     // almost immediately, while the walk as a whole takes many further
     // ticks, wide enough a window to land the edit below before it finishes.
-    let mut ed = setup(&guard, tmp.path(), Some(r#"(hash "chars" 35)"#));
+    let mut ed = setup(&guard, tmp.path(), Some(r#"(hash 'chars 35)"#));
     let file_dir = tempfile::tempdir().unwrap();
     let path = file_dir.path().join("f.txt");
     let mut content = "targetword\n".to_string();
@@ -435,7 +435,7 @@ fn fuzzy_match_is_opt_in() {
 
     let tmp2 = tempfile::tempdir().unwrap();
     let guard2 = RuntimeDirs::new();
-    let mut ed2 = setup(&guard2, tmp2.path(), Some(r#"(hash "match" 'fuzzy)"#));
+    let mut ed2 = setup(&guard2, tmp2.path(), Some(r#"(hash 'match 'fuzzy)"#));
     open(&mut ed2, &path);
     ed2.feed_key(key_down());
     ed2.feed_key(key('i'));
@@ -443,7 +443,7 @@ fn fuzzy_match_is_opt_in() {
     trigger(&mut ed2);
     assert!(
         labels(&ed2).contains(&"roundtrip".to_string()),
-        "#:config (hash \"match\" 'fuzzy) must accept a subsequence match"
+        "#:config (hash 'match 'fuzzy) must accept a subsequence match"
     );
 }
 
@@ -542,7 +542,7 @@ fn an_invalid_match_config_fails_the_load() {
     write_core_plugin(&guard, "stdlib", STDLIB_PLUGIN);
     assert_core_plugin_load_fails(
         guard.dirs(),
-        r#"(load-plugin! "core:stdlib") (load-plugin! "core:buffer-words" #:config (hash "match" 'regex))"#,
+        r#"(load-plugin! "core:stdlib") (load-plugin! "core:buffer-words" #:config (hash 'match 'regex))"#,
         "buffer-words",
         &["must be one of"],
     );
@@ -555,7 +555,7 @@ fn a_chars_budget_below_one_fails_the_load() {
     write_core_plugin(&guard, "stdlib", STDLIB_PLUGIN);
     assert_core_plugin_load_fails(
         guard.dirs(),
-        r#"(load-plugin! "core:stdlib") (load-plugin! "core:buffer-words" #:config (hash "chars" 0))"#,
+        r#"(load-plugin! "core:stdlib") (load-plugin! "core:buffer-words" #:config (hash 'chars 0))"#,
         "buffer-words",
         &["must be an integer >= 1"],
     );
@@ -573,7 +573,7 @@ fn a_chars_budget_below_one_fails_the_load() {
 fn closing_a_buffer_drops_its_index() {
     let tmp = tempfile::tempdir().unwrap();
     let guard = RuntimeDirs::new();
-    let mut ed = setup(&guard, tmp.path(), Some(r#"(hash "chars" 1)"#));
+    let mut ed = setup(&guard, tmp.path(), Some(r#"(hash 'chars 1)"#));
     let file_dir = tempfile::tempdir().unwrap();
     let path = file_dir.path().join("f.txt");
     let content = "filler\n".repeat(20);
@@ -599,7 +599,7 @@ fn closing_a_buffer_drops_its_index() {
 fn a_word_before_the_cursor_survives_the_forward_side_emptying_out() {
     let tmp = tempfile::tempdir().unwrap();
     let guard = RuntimeDirs::new();
-    let mut ed = setup(&guard, tmp.path(), Some(r#"(hash "chars" 70)"#));
+    let mut ed = setup(&guard, tmp.path(), Some(r#"(hash 'chars 70)"#));
     let file_dir = tempfile::tempdir().unwrap();
     let path = file_dir.path().join("f.txt");
     // 60 lines, 1-based. The first tick's backward window, anchored at line
@@ -674,7 +674,7 @@ fn typing_in_the_replacement_scratch_after_closing_the_last_buffer_is_indexed() 
 fn restarting_the_walk_mid_flight_still_reaches_both_ends() {
     let tmp = tempfile::tempdir().unwrap();
     let guard = RuntimeDirs::new();
-    let mut ed = setup(&guard, tmp.path(), Some(r#"(hash "chars" 35)"#));
+    let mut ed = setup(&guard, tmp.path(), Some(r#"(hash 'chars 35)"#));
     let file_dir = tempfile::tempdir().unwrap();
     let path = file_dir.path().join("f.txt");
     let text = numbered_text(160, |n| {
@@ -718,7 +718,7 @@ fn restarting_the_walk_mid_flight_still_reaches_both_ends() {
 fn the_index_recovers_when_the_buffer_shrinks_mid_walk() {
     let tmp = tempfile::tempdir().unwrap();
     let guard = RuntimeDirs::new();
-    let mut ed = setup(&guard, tmp.path(), Some(r#"(hash "chars" 35)"#));
+    let mut ed = setup(&guard, tmp.path(), Some(r#"(hash 'chars 35)"#));
     let file_dir = tempfile::tempdir().unwrap();
     let path = file_dir.path().join("f.txt");
     let big_content = "filler\n".repeat(500);
@@ -789,7 +789,7 @@ fn the_exact_token_exclusion_tracks_further_typing() {
 fn a_menu_opened_before_the_walk_finishes_catches_up_once_it_does() {
     let tmp = tempfile::tempdir().unwrap();
     let guard = RuntimeDirs::new();
-    let mut ed = setup(&guard, tmp.path(), Some(r#"(hash "chars" 140)"#));
+    let mut ed = setup(&guard, tmp.path(), Some(r#"(hash 'chars 140)"#));
     let file_dir = tempfile::tempdir().unwrap();
     let path = file_dir.path().join("f.txt");
     let mut content = "filler\n".repeat(300);

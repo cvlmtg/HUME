@@ -132,40 +132,49 @@
 ;; ── Plugin config helpers ────────────────────────────────────────────────────
 
 (define (stdlib/config-value cfg key default)
+  (unless (symbol? key)
+    (error (string-append "stdlib/config: key " (to-string key) " must be a symbol")))
   (if (hash-contains? cfg key) (hash-ref cfg key) default))
+
+(define (stdlib/config-key-error plugin key problem)
+  (error (string-append plugin ": '" (symbol->string key) " " problem)))
 
 (define (stdlib/config-boolean plugin cfg key default)
   (let ([v (stdlib/config-value cfg key default)])
     (unless (boolean? v)
-      (error (string-append plugin ": \"" key "\" must be #t or #f")))
+      (stdlib/config-key-error plugin key "must be #t or #f"))
     v))
 
 (define (stdlib/config-string plugin cfg key default)
   (let ([v (stdlib/config-value cfg key default)])
     (unless (string? v)
-      (error (string-append plugin ": \"" key "\" must be a string")))
+      (stdlib/config-key-error plugin key "must be a string"))
     v))
 
 (define (stdlib/config-enum plugin cfg key default allowed)
   (let ([v (stdlib/config-value cfg key default)])
     (unless (member v allowed)
-      (error (string-append
-              plugin ": \"" key "\" must be one of "
-              (string-join (map (lambda (s) (string-append "'" (symbol->string s))) allowed) ", ")
-              ", got " (to-string v))))
+      (stdlib/config-key-error
+        plugin key
+        (string-append
+          "must be one of "
+          (string-join (map (lambda (s) (string-append "'" (symbol->string s))) allowed) ", ")
+          ", got " (to-string v))))
     v))
 
 (define (stdlib/config-integer plugin cfg key default minimum)
+  (unless (integer? minimum)
+    (error (string-append plugin ": the minimum for '" (to-string key) " must be an integer")))
   (let ([v (stdlib/config-value cfg key default)])
-    (unless (and (integer? v) (or (not minimum) (>= v minimum)))
-      (error (string-append plugin ": \"" key "\" must be an integer"
-                             (if minimum (string-append " >= " (to-string minimum)) ""))))
+    (unless (and (integer? v) (>= v minimum))
+      (stdlib/config-key-error
+        plugin key (string-append "must be an integer >= " (number->string minimum))))
     v))
 
 (define (stdlib/config-list plugin cfg key default)
   (let ([v (stdlib/config-value cfg key default)])
     (unless (and (list? v) (null? (filter (lambda (x) (not (string? x))) v)))
-      (error (string-append plugin ": \"" key "\" must be a list of strings")))
+      (stdlib/config-key-error plugin key "must be a list of strings"))
     v))
 
 ;; ── call!-able commands (public API) ────────────────────────────────────────
@@ -239,7 +248,7 @@
   stdlib/config-enum)
 
 (define-command! "stdlib/config-integer"
-  "A #:config hash's value for the given key, or the given default if absent; errors if it isn't an integer, or is below the given minimum (#f for no minimum)."
+  "A #:config hash's value for the given key, or the given default if absent; errors if it isn't an integer, or is below the given minimum, an integer."
   stdlib/config-integer)
 
 (define-command! "stdlib/config-list"

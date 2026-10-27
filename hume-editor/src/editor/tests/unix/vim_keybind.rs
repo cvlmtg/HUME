@@ -23,7 +23,7 @@ fn setup_vim_keybind_editor(input: &str) -> (Editor, RuntimeDirs, tempfile::Temp
 }
 
 /// Like `setup_vim_keybind_editor`, but passes `config_expr` (a Scheme
-/// expression, e.g. `(hash "change-to-eol" 'off)`) as `core:vim-keybind`'s
+/// expression, e.g. `(hash 'change-to-eol 'off)`) as `core:vim-keybind`'s
 /// `#:config`. Lets tests exercise `#:config` without hand-rolling the
 /// plugin-dir setup or the surrounding `load-plugin!` boilerplate.
 fn setup_vim_keybind_editor_with_config(
@@ -334,14 +334,14 @@ fn shift_c_shadows_copy_selection_command() {
 
 // ── #:config "change-to-eol" ─────────────────────────────────────────────────
 
-/// `#:config (hash "change-to-eol" 'off)` drops the `C` binding, restoring the
+/// `#:config (hash 'change-to-eol 'off)` drops the `C` binding, restoring the
 /// native `copy-selection-on-next-line` (adds a second cursor on the next
 /// line, leaves the buffer untouched) instead of the vim change-to-eol.
 #[test]
 fn shift_c_with_change_to_eol_off_restores_copy_selection() {
     let (mut ed, _guard, _dir) = setup_vim_keybind_editor_with_config(
         "-[h]>ello\nworld\n",
-        Some(r#"(hash "change-to-eol" 'off)"#),
+        Some(r#"(hash 'change-to-eol 'off)"#),
     );
     ed.handle_key(key('C'));
 
@@ -375,7 +375,7 @@ fn shift_c_with_change_to_eol_off_restores_copy_selection() {
 fn change_to_eol_off_leaves_d_bound_to_vim_delete() {
     let (mut ed, _guard, _dir) = setup_vim_keybind_editor_with_config(
         "-[h]>ello\nworld\n",
-        Some(r#"(hash "change-to-eol" 'off)"#),
+        Some(r#"(hash 'change-to-eol 'off)"#),
     );
     ed.handle_key(key('D'));
     assert_eq!(
@@ -385,7 +385,7 @@ fn change_to_eol_off_leaves_d_bound_to_vim_delete() {
     );
 }
 
-/// `#:config (hash "change-to-eol" 'on)` makes `C` change to end of line
+/// `#:config (hash 'change-to-eol 'on)` makes `C` change to end of line
 /// unconditionally, even with a real (multi-char) selection active, unlike
 /// the default `'smart` behavior (see `shift_c_with_selection_copies_to_next_line`),
 /// which falls back to `copy-selection-on-next-line` in that case.
@@ -393,7 +393,7 @@ fn change_to_eol_off_leaves_d_bound_to_vim_delete() {
 fn shift_c_with_change_to_eol_on_ignores_selection_width() {
     let (mut ed, _guard, _dir) = setup_vim_keybind_editor_with_config(
         "-[hello]>\nworld\n",
-        Some(r#"(hash "change-to-eol" 'on)"#),
+        Some(r#"(hash 'change-to-eol 'on)"#),
     );
     ed.handle_key(key('C'));
     assert_eq!(
@@ -452,7 +452,7 @@ fn change_to_eol_off_also_requires_stdlib() {
     // No `write_core_plugin(&guard, "stdlib", ...)`: the test covers its absence.
     assert_core_plugin_load_fails(
         guard.dirs(),
-        r#"(load-plugin! "core:vim-keybind" #:config (hash "change-to-eol" 'off))"#,
+        r#"(load-plugin! "core:vim-keybind" #:config (hash 'change-to-eol 'off))"#,
         "vim-keybind",
         &["core:stdlib"],
     );
@@ -468,7 +468,7 @@ fn change_to_eol_bogus_value_fails_load_with_enum_message() {
     write_core_plugin(&guard, "stdlib", STDLIB_PLUGIN);
     assert_core_plugin_load_fails(
         guard.dirs(),
-        "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:vim-keybind\" #:config (hash \"change-to-eol\" 'bogus))",
+        "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:vim-keybind\" #:config (hash 'change-to-eol 'bogus))",
         "vim-keybind",
         &["change-to-eol", "bogus"],
     );

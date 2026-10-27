@@ -7,7 +7,7 @@ with no native (Rust) picker definitions.
 
 ```scheme
 (load-plugin! "core:stdlib")
-(load-plugin! "core:pickers" #:config (hash "untracked" #f))
+(load-plugin! "core:pickers" #:config (hash 'untracked #f))
 ```
 
 - **Depends on:** `core:stdlib`: config validation calls `stdlib/config-boolean` at load
@@ -23,7 +23,7 @@ with no native (Rust) picker definitions.
 
 | Key | Type | Default | Effect |
 |---|---|---|---|
-| `"untracked"` | boolean | `#t` | `#t` passes `--untracked-files=all` to `git status`, which walks every untracked directory. `#f` passes `no`, which skips the walk and populates sooner. |
+| `'untracked` | boolean | `#t` | `#t` passes `--untracked-files=all` to `git status`, which walks every untracked directory. `#f` passes `no`, which skips the walk and populates sooner. |
 
 ## Commands
 

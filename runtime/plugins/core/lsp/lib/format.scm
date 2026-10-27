@@ -4,7 +4,7 @@
 (require "helpers.scm")
 
 (define lsp/format-max-ranges
-  (call! "stdlib/config-integer" "core:lsp" (plugin-config) "format-max-ranges" 16 1))
+  (call! "stdlib/config-integer" "core:lsp" (plugin-config) 'format-max-ranges 16 1))
 
 (define (lsp/format-options pane)
   (hash "tabSize" (get-buffer-option pane "indent-width")

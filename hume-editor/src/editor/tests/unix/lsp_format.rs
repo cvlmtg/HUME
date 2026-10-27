@@ -373,7 +373,7 @@ fn ranges_formatting_is_not_capped_by_format_max_ranges() {
             "documentFormattingProvider": true,
             "documentRangeFormattingProvider": {"rangesSupport": true}
         }}),
-        Some(r#"(hash "format-max-ranges" 1)"#),
+        Some(r#"(hash 'format-max-ranges 1)"#),
         |backend, _sid| {
             backend.respond_to(
                 "textDocument/rangesFormatting",
@@ -530,7 +530,7 @@ fn fan_out_past_the_cap_warns_and_formats_nothing() {
     let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup_configured(
         tmp.path(),
-        Some(r#"(hash "format-max-ranges" 1)"#),
+        Some(r#"(hash 'format-max-ranges 1)"#),
         |backend, _sid| {
             // Decoy proving no request at all is sent past the cap.
             backend.respond_to(
@@ -563,7 +563,7 @@ fn fan_out_at_the_cap_formats_normally() {
     let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup_configured(
         tmp.path(),
-        Some(r#"(hash "format-max-ranges" 2)"#),
+        Some(r#"(hash 'format-max-ranges 2)"#),
         |backend, _sid| {
             backend.respond_to(
                 "textDocument/rangeFormatting",

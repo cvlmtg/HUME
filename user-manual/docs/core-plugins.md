@@ -137,7 +137,7 @@ commands. A file git doesn't know about yet (untracked, brand-new, or outside a 
 diff.
 
 Also keeps a `"steel:git-branch"` statusline element fresh for the focused buffer, e.g.
-`(main)`, or `⎇ main` with `"branch-style"` set to `'icon` (see below). Just add it to your own `configure-statusline!` call (see
+`(main)`, or `⎇ main` with `'branch-style` set to `'icon` (see below). Just add it to your own `configure-statusline!` call (see
 [Statusline → Custom elements](settings.md#custom-elements)). Updates when you switch to
 a buffer and when you save it; empty for a buffer outside any repo.
 
@@ -156,15 +156,15 @@ Configure with `#:config`:
 ```scheme
 (load-plugin! "core:stdlib")
 (load-plugin! "core:git-diff"
-  #:config (hash "signs" #t "inline" #f "ref" "HEAD" "branch-style" 'parens))
+  #:config (hash 'signs #t 'inline #f 'ref "HEAD" 'branch-style 'parens))
 ```
 
 | Key | Type | Default | Effect |
 |---|---|---|---|
-| `"signs"` | bool | `#t` | Whether gutter signs start on for a newly opened buffer |
-| `"inline"` | bool | `#f` | Whether inline rendering starts on for a newly opened buffer |
-| `"ref"` | string | `"HEAD"` | The default git ref a buffer diffs against, until overridden per-buffer via the toggle commands |
-| `"branch-style"` | `'parens` or `'icon` | `'parens` | How the `"steel:git-branch"` statusline element writes the branch: `(main)` or `⎇ main` |
+| `'signs` | bool | `#t` | Whether gutter signs start on for a newly opened buffer |
+| `'inline` | bool | `#f` | Whether inline rendering starts on for a newly opened buffer |
+| `'ref` | string | `"HEAD"` | The default git ref a buffer diffs against, until overridden per-buffer via the toggle commands |
+| `'branch-style` | `'parens` or `'icon` | `'parens` | How the `"steel:git-branch"` statusline element writes the branch: `(main)` or `⎇ main` |
 
 Inline rendering's background tint and word highlights depend on your theme defining colors
 for them; HUME's bundled themes do.
@@ -232,13 +232,13 @@ Configure with `#:config`:
 
 ```scheme
 (load-plugin! "core:buffer-words"
-  #:config (hash "match" 'string "chars" 8000))
+  #:config (hash 'match 'string 'chars 8000))
 ```
 
 | Key | Type | Default | Effect |
 |---|---|---|---|
-| `"match"` | `'string` \| `'fuzzy` | `'string` | `'string` narrows by prefix as you type (the vim `i_CTRL-N` feel); `'fuzzy` scores subsequence matches like `core:lsp`'s own candidates |
-| `"chars"` | integer (≥ 1) | `8000` | Characters scanned per side of the cursor on each background indexing step, rounded down to whole lines but always at least one line. Lower to trim a pause on a huge buffer, raise to index a large buffer in fewer steps |
+| `'match` | `'string` \| `'fuzzy` | `'string` | `'string` narrows by prefix as you type (the vim `i_CTRL-N` feel); `'fuzzy` scores subsequence matches like `core:lsp`'s own candidates |
+| `'chars` | integer (≥ 1) | `8000` | Characters scanned per side of the cursor on each background indexing step, rounded down to whole lines but always at least one line. Lower to trim a pause on a huge buffer, raise to index a large buffer in fewer steps |
 
 ## core:vim-keybind
 
@@ -254,7 +254,7 @@ Requires `core:stdlib` loaded first.
 By default (`'smart`), `C` is context-sensitive: on a bare cursor with no count it changes to end of line as in vim, but with a real selection, or any count prefix (e.g. `3C`), it runs HUME's own `copy-selection-on-next-line`, so that command stays fully reachable. Change this with `#:config`:
 
 ```scheme
-(load-plugin! "core:vim-keybind" #:config (hash "change-to-eol" 'on))
+(load-plugin! "core:vim-keybind" #:config (hash 'change-to-eol 'on))
 ```
 
 `'on` always changes to end of line; `'off` leaves `C` alone. `core:stdlib` is required for

@@ -74,10 +74,10 @@ Same classification `w`/`b` motions and text objects use, so a word here is exac
 | `(call! "stdlib/config-boolean" plugin cfg key default)` | `cfg`'s value for `key`, or `default` if absent; errors (naming `plugin`) if the resolved value isn't `#t`/`#f` |
 | `(call! "stdlib/config-string" plugin cfg key default)` | Same, erroring if the resolved value isn't a string |
 | `(call! "stdlib/config-enum" plugin cfg key default allowed)` | Same, erroring if the resolved value isn't one of the symbols in `allowed` |
-| `(call! "stdlib/config-integer" plugin cfg key default minimum)` | Same, erroring if the resolved value isn't an integer, or is below `minimum` (`#f` for no minimum) |
+| `(call! "stdlib/config-integer" plugin cfg key default minimum)` | Same, erroring if the resolved value isn't an integer, or is below the integer `minimum` |
 | `(call! "stdlib/config-list" plugin cfg key default)` | Same, erroring if the resolved value isn't a list of strings |
 
-`cfg` is whatever `(plugin-config)` returns. Every error names the calling plugin (`plugin`) and the offending key, so a bad `#:config` value fails at load time pointing at exactly what to fix. See [Configuring a plugin](writing-plugins.md#configuring-a-plugin) for the full picture of reading `#:config`.
+`cfg` is whatever `(plugin-config)` returns, and `key` a symbol, like `'signs`. Every error names the calling plugin (`plugin`) and the offending key, so a bad `#:config` value fails at load time naming what to fix. See [Configuring a plugin](writing-plugins.md#configuring-a-plugin) for the full picture of reading `#:config`.
 
 ## Picker buffer-placement
 

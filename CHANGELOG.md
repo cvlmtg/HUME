@@ -28,6 +28,9 @@
 - A `spawn-async!` callback takes one argument, the `(hash 'stdout 'stderr 'exit)` `run-capture!` returns: write `(lambda (result) ...)` and read `(hash-ref result 'exit)` where the third argument was.
 - `stdlib/selection-anchor`, `stdlib/selection-head`, `stdlib/selection-start-char`, `stdlib/selection-end-char` and `stdlib/selection-primary?` are gone: call the new `selection-anchor`, `selection-head`, `selection-start-char`, `selection-end-char` and `selection-primary?` directly, which need no plugin and raise for anything but a selection.
 - `(get-option "statusline")` returns `(hash 'left 'center 'right)`, each a list of element names as `configure-statusline!` takes them, not the `"a,b|c|d"` text: read a section with `hash-ref`. `set-option!` takes that hash too.
+- A plugin's `#:config` takes symbol keys, and `load-plugin!` raises for a string key or a value that isn't a hash: write `(hash 'signs #f)` for `(hash "signs" #f)`. The `stdlib/config-*` readers take the key as a symbol too, `'signs` for `"signs"`.
+- `plugin-config` and `plugin-dir` raise outside a plugin's code, such as at the top level of `init.scm`, instead of answering an empty hash or `#f`.
+- `stdlib/config-integer` takes an integer minimum: replace a `#f` minimum with the lowest value you accept.
 
 ### Syntax & language awareness
 - HUME starts faster: each installed grammar loads the first time a file or an embedded block needs it, not at startup.

@@ -141,7 +141,7 @@ so placing the element starts the first fetch at once. It reads `(focused-pane)`
 moment: the hook fires for a global setting write with no buffer of its own, and the branch
 shown is the one on screen.
 
-The text comes from the `"branch-style"` config value, which `plugin.scm` passes down
+The text comes from the `'branch-style` config value, which `plugin.scm` passes down
 through `schedule-branch-refresh!` the way the diff pipeline receives `ref`;
 `format-branch` is the one place that turns a name into the element's text.
 

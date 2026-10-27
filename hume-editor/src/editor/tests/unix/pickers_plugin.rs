@@ -36,7 +36,7 @@ fn setup(guard: &RuntimeDirs, tmp: &Path, input: &str, extra_source: &str) -> Ed
 }
 
 /// Like `setup`, but passes `config_expr` (a Scheme expression, e.g.
-/// `(hash "untracked" #f)`) as `core:pickers`'s `#:config`.
+/// `(hash 'untracked #f)`) as `core:pickers`'s `#:config`.
 fn setup_with_config(
     guard: &RuntimeDirs,
     tmp: &Path,
@@ -644,7 +644,7 @@ fn git_modified_picker_untracked_false_config_hides_untracked_files() {
         &guard,
         tmp.path(),
         "-[h]>ello\n",
-        Some("(hash \"untracked\" #f)"),
+        Some("(hash 'untracked #f)"),
         "",
     );
     ed.state
@@ -702,7 +702,7 @@ fn git_modified_picker_invalid_untracked_config_fails_load() {
     write_core_plugin(&guard, "stdlib", STDLIB_PLUGIN);
     assert_core_plugin_load_fails(
         guard.dirs(),
-        "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:pickers\" #:config (hash \"untracked\" 'bogus))",
+        "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:pickers\" #:config (hash 'untracked 'bogus))",
         "pickers",
         &["untracked"],
     );

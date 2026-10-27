@@ -112,83 +112,95 @@ fn core_stdlib_config_commands() {
     let (mut ed, mut host, _guard, _init_dir) = setup_stdlib_editor();
 
     let assertions = r#"
-(unless (equal? (call! "stdlib/config-boolean" "p" (hash "k" #f) "k" #t) #f)
+(unless (equal? (call! "stdlib/config-boolean" "p" (hash 'k #f) 'k #t) #f)
   (error "config-boolean: present key wins over default"))
-(unless (equal? (call! "stdlib/config-boolean" "p" (hash) "k" #t) #t)
+(unless (equal? (call! "stdlib/config-boolean" "p" (hash) 'k #t) #t)
   (error "config-boolean: absent key falls back to default"))
 (with-handler
   (lambda (err)
-    (unless (and (string-contains? (to-string err) "p") (string-contains? (to-string err) "k"))
+    (unless (and (string-contains? (to-string err) "p") (string-contains? (to-string err) "'k"))
       (error (string-append "config-boolean: error must name plugin and key: " (to-string err)))))
   (begin
-    (call! "stdlib/config-boolean" "p" (hash "k" "not-a-bool") "k" #t)
+    (call! "stdlib/config-boolean" "p" (hash 'k "not-a-bool") 'k #t)
     (error "config-boolean: expected a raise on a non-boolean value")))
 
-(unless (equal? (call! "stdlib/config-string" "p" (hash "k" "custom") "k" "default") "custom")
+(unless (equal? (call! "stdlib/config-string" "p" (hash 'k "custom") 'k "default") "custom")
   (error "config-string: present key wins over default"))
-(unless (equal? (call! "stdlib/config-string" "p" (hash) "k" "default") "default")
+(unless (equal? (call! "stdlib/config-string" "p" (hash) 'k "default") "default")
   (error "config-string: absent key falls back to default"))
 (with-handler
   (lambda (err)
-    (unless (and (string-contains? (to-string err) "p") (string-contains? (to-string err) "k"))
+    (unless (and (string-contains? (to-string err) "p") (string-contains? (to-string err) "'k"))
       (error (string-append "config-string: error must name plugin and key: " (to-string err)))))
   (begin
-    (call! "stdlib/config-string" "p" (hash "k" 'not-a-string) "k" "default")
+    (call! "stdlib/config-string" "p" (hash 'k 'not-a-string) 'k "default")
     (error "config-string: expected a raise on a non-string value")))
 
-(unless (equal? (call! "stdlib/config-enum" "p" (hash "k" 'on) "k" 'smart '(on smart off)) 'on)
+(unless (equal? (call! "stdlib/config-enum" "p" (hash 'k 'on) 'k 'smart '(on smart off)) 'on)
   (error "config-enum: present key wins over default"))
-(unless (equal? (call! "stdlib/config-enum" "p" (hash) "k" 'smart '(on smart off)) 'smart)
+(unless (equal? (call! "stdlib/config-enum" "p" (hash) 'k 'smart '(on smart off)) 'smart)
   (error "config-enum: absent key falls back to default"))
 (with-handler
   (lambda (err)
-    (unless (and (string-contains? (to-string err) "p") (string-contains? (to-string err) "k"))
+    (unless (and (string-contains? (to-string err) "p") (string-contains? (to-string err) "'k"))
       (error (string-append "config-enum: error must name plugin and key: " (to-string err)))))
   (begin
-    (call! "stdlib/config-enum" "p" (hash "k" 'bogus) "k" 'smart '(on smart off))
+    (call! "stdlib/config-enum" "p" (hash 'k 'bogus) 'k 'smart '(on smart off))
     (error "config-enum: expected a raise on a disallowed value")))
 
-(unless (equal? (call! "stdlib/config-integer" "p" (hash "k" 5) "k" 1 0) 5)
+(unless (equal? (call! "stdlib/config-integer" "p" (hash 'k 5) 'k 1 0) 5)
   (error "config-integer: present key wins over default"))
-(unless (equal? (call! "stdlib/config-integer" "p" (hash) "k" 1 0) 1)
+(unless (equal? (call! "stdlib/config-integer" "p" (hash) 'k 1 0) 1)
   (error "config-integer: absent key falls back to default"))
-(unless (equal? (call! "stdlib/config-integer" "p" (hash "k" -5) "k" 1 #f) -5)
-  (error "config-integer: negative value allowed when minimum is #f"))
 (with-handler
   (lambda (err)
-    (unless (and (string-contains? (to-string err) "p") (string-contains? (to-string err) "k"))
+    (unless (string-contains? (to-string err) "minimum")
+      (error (string-append "config-integer: error must name the minimum: " (to-string err)))))
+  (begin
+    (call! "stdlib/config-integer" "p" (hash 'k -5) 'k 1 #f)
+    (error "config-integer: expected a raise on a #f minimum")))
+(with-handler
+  (lambda (err)
+    (unless (and (string-contains? (to-string err) "p") (string-contains? (to-string err) "'k"))
       (error (string-append "config-integer: error must name plugin and key: " (to-string err)))))
   (begin
-    (call! "stdlib/config-integer" "p" (hash "k" "not-an-int") "k" 1 0)
+    (call! "stdlib/config-integer" "p" (hash 'k "not-an-int") 'k 1 0)
     (error "config-integer: expected a raise on a non-integer value")))
 (with-handler
   (lambda (err)
-    (unless (and (string-contains? (to-string err) "p") (string-contains? (to-string err) "k"))
+    (unless (and (string-contains? (to-string err) "p") (string-contains? (to-string err) "'k"))
       (error (string-append "config-integer: error must name plugin and key: " (to-string err)))))
   (begin
-    (call! "stdlib/config-integer" "p" (hash "k" -1) "k" 1 0)
+    (call! "stdlib/config-integer" "p" (hash 'k -1) 'k 1 0)
     (error "config-integer: expected a raise on a value below the minimum")))
 
-(unless (equal? (call! "stdlib/config-list" "p" (hash "k" (list "a" "b")) "k" '() ) (list "a" "b"))
+(unless (equal? (call! "stdlib/config-list" "p" (hash 'k (list "a" "b")) 'k '() ) (list "a" "b"))
   (error "config-list: present key wins over default"))
-(unless (equal? (call! "stdlib/config-list" "p" (hash) "k" (list "d")) (list "d"))
+(unless (equal? (call! "stdlib/config-list" "p" (hash) 'k (list "d")) (list "d"))
   (error "config-list: absent key falls back to default"))
-(unless (equal? (call! "stdlib/config-list" "p" (hash "k" '()) "k" (list "d")) '())
+(unless (equal? (call! "stdlib/config-list" "p" (hash 'k '()) 'k (list "d")) '())
   (error "config-list: empty list accepted"))
 (with-handler
   (lambda (err)
-    (unless (and (string-contains? (to-string err) "p") (string-contains? (to-string err) "k"))
+    (unless (and (string-contains? (to-string err) "p") (string-contains? (to-string err) "'k"))
       (error (string-append "config-list: error must name plugin and key: " (to-string err)))))
   (begin
-    (call! "stdlib/config-list" "p" (hash "k" "not-a-list") "k" '())
+    (call! "stdlib/config-list" "p" (hash 'k "not-a-list") 'k '())
     (error "config-list: expected a raise on a non-list value")))
 (with-handler
   (lambda (err)
-    (unless (and (string-contains? (to-string err) "p") (string-contains? (to-string err) "k"))
+    (unless (and (string-contains? (to-string err) "p") (string-contains? (to-string err) "'k"))
       (error (string-append "config-list: error must name plugin and key: " (to-string err)))))
   (begin
-    (call! "stdlib/config-list" "p" (hash "k" (list "a" 'not-a-string)) "k" '())
+    (call! "stdlib/config-list" "p" (hash 'k (list "a" 'not-a-string)) 'k '())
     (error "config-list: expected a raise on a non-string element")))
+(with-handler
+  (lambda (err)
+    (unless (string-contains? (to-string err) "must be a symbol")
+      (error (string-append "config-value: error must ask for a symbol key: " (to-string err)))))
+  (begin
+    (call! "stdlib/config-boolean" "p" (hash) "k" #t)
+    (error "config-value: expected a raise on a string key")))
 "#;
 
     let result = {

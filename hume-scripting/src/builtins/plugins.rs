@@ -393,6 +393,7 @@ pub(crate) fn load_plugin(
     }
     let plugin_id = PluginId::parse_installed(&name).map_err(generic_err)?;
     let git_ref = git_ref_arg(&plugin_id, git_ref)?;
+    check_config(&config)?;
 
     ctx.registries.plugin_records.note(
         plugin_id.clone(),
@@ -503,6 +504,20 @@ pub(crate) fn declared_plugin_ref(ctx: &mut SteelCtx, name: String) -> SteelResu
     })
 }
 
+/// `#:config` is a hash with symbol keys, the shape of every structured value
+/// a script passes.
+fn check_config(config: &SteelVal) -> Result<(), SteelErr> {
+    let SteelVal::HashMapV(map) = config else {
+        steel::stop!(TypeMismatch => "#:config must be a hash, got {}", config);
+    };
+    match map.keys().find(|key| !matches!(key, SteelVal::SymbolV(_))) {
+        Some(SteelVal::StringV(key)) => steel::stop!(TypeMismatch =>
+            "#:config: key {:?} must be a symbol: '{}", key.as_str(), key),
+        Some(key) => steel::stop!(TypeMismatch => "#:config: key {} must be a symbol", key),
+        None => Ok(()),
+    }
+}
+
 /// Empty Steel hash: the `(plugin-config)` default when no config was passed.
 fn empty_config() -> SteelResult {
     std::collections::HashMap::<String, SteelVal>::new()
@@ -511,23 +526,22 @@ fn empty_config() -> SteelResult {
 }
 
 /// The plugin whose code is running: its body, or a command, hook handler
-/// or callback it defined (`SteelCtx::owner`).
-fn calling_plugin<'c>(ctx: &'c SteelCtx) -> Option<&'c PluginId> {
+/// or callback it defined (`SteelCtx::owner`). Raises when no plugin's code
+/// is running, since an empty answer would read as "no config passed".
+fn calling_plugin<'c>(ctx: &'c SteelCtx) -> Result<&'c PluginId, SteelErr> {
     match &**ctx.owner() {
-        Owner::Plugin(id) => Some(&id.plugin),
-        Owner::Core | Owner::User => None,
+        Owner::Plugin(id) => Ok(&id.plugin),
+        Owner::Core | Owner::User => steel::stop!(Generic => "called outside a plugin's code"),
     }
 }
 
 /// `(plugin-config)`: return the calling plugin's `#:config` value, or an
-/// empty hash if none was passed (or if no plugin's code is running).
+/// empty hash if none was passed.
 ///
 /// Its body, eager (`load-plugin!`) or lazy, and every proc it defined read
 /// the same config.
 pub(crate) fn plugin_config(ctx: &mut SteelCtx) -> SteelResult {
-    let Some(plugin) = calling_plugin(ctx) else {
-        return empty_config();
-    };
+    let plugin = calling_plugin(ctx)?;
     match ctx.registries.plugin_records.config(plugin) {
         Some(cfg) => Ok(cfg.clone()),
         None => empty_config(),
@@ -535,10 +549,10 @@ pub(crate) fn plugin_config(ctx: &mut SteelCtx) -> SteelResult {
 }
 
 /// `(plugin-dir)`: the directory holding the calling plugin's own files, or
-/// `#f` when no plugin's code is running (or when the root for that
-/// plugin's kind is unset). The calling plugin is `(plugin-config)`'s.
+/// `#f` when the root for that plugin's kind is unset. The calling plugin is
+/// `(plugin-config)`'s.
 pub(crate) fn plugin_dir(ctx: &mut SteelCtx) -> SteelResult {
-    let dir = calling_plugin(ctx).and_then(|plugin| plugin_dir_for_id(plugin, ctx.dirs));
+    let dir = plugin_dir_for_id(calling_plugin(ctx)?, ctx.dirs);
     Ok(match dir {
         Some(d) => SteelVal::StringV(d.to_string_lossy().into_owned().into()),
         None => SteelVal::BoolV(false),

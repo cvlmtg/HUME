@@ -405,7 +405,7 @@ fn signs_deletion_at_end_of_file_marks_last_content_line() {
 fn inline_change_renders_virtual_line_word_spans_and_tint() {
     // `setup()`'s claim must be held before any `git` spawn below.
     let tmp = tempfile::tempdir().unwrap();
-    let (mut ed, _guard) = setup(tmp.path(), Some(r#"(hash "inline" #t)"#));
+    let (mut ed, _guard) = setup(tmp.path(), Some(r#"(hash 'inline #t)"#));
 
     let repo = tempfile::tempdir().unwrap();
     git_init(repo.path());
@@ -455,7 +455,7 @@ fn inline_tab_indented_deletion_keeps_a_literal_tab_that_still_renders_at_the_ri
 {
     // `setup()`'s claim must be held before any `git` spawn below.
     let tmp = tempfile::tempdir().unwrap();
-    let (mut ed, _guard) = setup(tmp.path(), Some(r#"(hash "inline" #t)"#));
+    let (mut ed, _guard) = setup(tmp.path(), Some(r#"(hash 'inline #t)"#));
     ed.view.theme = crate::testing::build_snapshot_theme();
 
     let repo = tempfile::tempdir().unwrap();
@@ -505,7 +505,7 @@ fn inline_wide_cjk_before_tab_in_a_deletion_shifts_the_tab_on_screen() {
     // tab after a wide CJK grapheme one column early.
     // `setup()`'s claim must be held before any `git` spawn below.
     let tmp = tempfile::tempdir().unwrap();
-    let (mut ed, _guard) = setup(tmp.path(), Some(r#"(hash "inline" #t)"#));
+    let (mut ed, _guard) = setup(tmp.path(), Some(r#"(hash 'inline #t)"#));
     ed.view.theme = crate::testing::build_snapshot_theme();
 
     let repo = tempfile::tempdir().unwrap();
@@ -545,7 +545,7 @@ fn inline_wide_cjk_before_tab_in_a_deletion_shifts_the_tab_on_screen() {
 fn inline_pure_addition_has_no_virtual_line_only_tint() {
     // `setup()`'s claim must be held before any `git` spawn below.
     let tmp = tempfile::tempdir().unwrap();
-    let (mut ed, _guard) = setup(tmp.path(), Some(r#"(hash "inline" #t)"#));
+    let (mut ed, _guard) = setup(tmp.path(), Some(r#"(hash 'inline #t)"#));
 
     let repo = tempfile::tempdir().unwrap();
     git_init(repo.path());
@@ -579,7 +579,7 @@ fn inline_pure_deletion_over_four_lines_renders_every_ghost_line() {
     // deletion). Fixed upstream as of steel-core 0.8.3; kept as end-to-end
     // coverage of the render path, not as a workaround's own pin.
     let tmp = tempfile::tempdir().unwrap();
-    let (mut ed, _guard) = setup(tmp.path(), Some(r#"(hash "inline" #t)"#));
+    let (mut ed, _guard) = setup(tmp.path(), Some(r#"(hash 'inline #t)"#));
 
     let repo = tempfile::tempdir().unwrap();
     git_init(repo.path());
@@ -750,7 +750,7 @@ fn render_diff_with_no_hunks_clears_the_callers_source() {
 
 /// [`setup`] with `"inline"` on, then the [`render_probe_source`] commands.
 fn setup_inline_with_probes(tmp: &Path) -> (Editor, RealRuntimeDirs) {
-    let (mut ed, guard) = setup(tmp, Some(r#"(hash "signs" #t "inline" #t)"#));
+    let (mut ed, guard) = setup(tmp, Some(r#"(hash 'signs #t 'inline #t)"#));
     let mut host = ed.scripting.take().expect("setup() installs a host");
     eval_with_real_host(
         &mut ed,
@@ -959,7 +959,7 @@ fn show_inline_diff_with_a_non_string_ref_raises() {
 fn bare_toggle_off_clears_only_that_rendering() {
     // `setup()`'s claim must be held before any `git` spawn below.
     let tmp = tempfile::tempdir().unwrap();
-    let (mut ed, _guard) = setup(tmp.path(), Some(r#"(hash "signs" #t "inline" #t)"#));
+    let (mut ed, _guard) = setup(tmp.path(), Some(r#"(hash 'signs #t 'inline #t)"#));
 
     let repo = tempfile::tempdir().unwrap();
     git_init(repo.path());
@@ -994,7 +994,7 @@ fn bare_toggle_off_clears_only_that_rendering() {
 fn explicit_ref_toggle_sets_ref_and_re_renders_the_other_enabled_rendering() {
     // `setup()`'s claim must be held before any `git` spawn below.
     let tmp = tempfile::tempdir().unwrap();
-    let (mut ed, _guard) = setup(tmp.path(), Some(r#"(hash "signs" #t "inline" #f)"#));
+    let (mut ed, _guard) = setup(tmp.path(), Some(r#"(hash 'signs #t 'inline #f)"#));
 
     let repo = tempfile::tempdir().unwrap();
     git_init(repo.path());
@@ -1226,7 +1226,7 @@ fn explicit_bad_ref_logs_warning_status_message() {
 fn buffer_save_invalidates_cached_ref_and_refetches() {
     // `setup()`'s claim must be held before any `git` spawn below.
     let tmp = tempfile::tempdir().unwrap();
-    let (mut ed, _guard) = setup(tmp.path(), Some(r#"(hash "inline" #t)"#));
+    let (mut ed, _guard) = setup(tmp.path(), Some(r#"(hash 'inline #t)"#));
 
     let repo = tempfile::tempdir().unwrap();
     git_init(repo.path());
@@ -1335,7 +1335,7 @@ fn git_branch_element_shows_current_branch_for_the_focused_buffer() {
 fn git_branch_element_uses_the_icon_style_when_configured() {
     let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) =
-        setup_with_git_branch_config(tmp.path(), Some("(hash \"branch-style\" 'icon)"));
+        setup_with_git_branch_config(tmp.path(), Some("(hash 'branch-style 'icon)"));
 
     let (_repo, path) = commit_and_checkout("f.txt", "one\ntwo\nthree\n", "feature-x");
     open(&mut ed, &path);
@@ -1350,7 +1350,7 @@ fn bad_branch_style_fails_plugin_load_with_prefixed_error() {
         guard.dirs(),
         &format!(
             "(load-plugin! \"core:stdlib\")\n{}",
-            hume_scripting::eager_load_scm("core:git-diff", Some("(hash \"branch-style\" 'bogus)"))
+            hume_scripting::eager_load_scm("core:git-diff", Some("(hash 'branch-style 'bogus)"))
         ),
         "git-diff",
         &["branch-style", "must be one of 'parens, 'icon"],
@@ -1492,7 +1492,7 @@ fn git_branch_element_activates_when_placed_after_open() {
 fn config_flips_default_signs_and_inline() {
     // `setup()`'s claim must be held before any `git` spawn below.
     let tmp = tempfile::tempdir().unwrap();
-    let (mut ed, _guard) = setup(tmp.path(), Some(r#"(hash "signs" #f "inline" #t)"#));
+    let (mut ed, _guard) = setup(tmp.path(), Some(r#"(hash 'signs #f 'inline #t)"#));
 
     let repo = tempfile::tempdir().unwrap();
     git_init(repo.path());
@@ -1510,12 +1510,12 @@ fn config_flips_default_signs_and_inline() {
 
     assert!(
         signs(&ed, bid).is_empty(),
-        "signs must start off when #:config sets \"signs\" #f"
+        "signs must start off when #:config sets 'signs #f"
     );
     assert_eq!(
         line_bgs(&ed, bid),
         vec![(1, "diff.delta.line".to_string())],
-        "inline must start on when #:config sets \"inline\" #t"
+        "inline must start on when #:config sets 'inline #t"
     );
 }
 
@@ -1526,7 +1526,7 @@ fn bad_config_value_fails_plugin_load_with_prefixed_error() {
         guard.dirs(),
         &format!(
             "(load-plugin! \"core:stdlib\")\n{}",
-            hume_scripting::eager_load_scm("core:git-diff", Some("(hash \"signs\" \"yes\")"))
+            hume_scripting::eager_load_scm("core:git-diff", Some("(hash 'signs \"yes\")"))
         ),
         "git-diff",
         &["must be #t or #f"],
@@ -1575,7 +1575,7 @@ fn dirty_six_line_repo() -> tempfile::TempDir {
 #[test]
 fn toggling_signs_on_after_both_renderings_were_off_paints_the_current_diff() {
     let tmp = tempfile::tempdir().unwrap();
-    let (mut ed, _guard) = setup(tmp.path(), Some(r#"(hash "signs" #f "inline" #f)"#));
+    let (mut ed, _guard) = setup(tmp.path(), Some(r#"(hash 'signs #f 'inline #f)"#));
     let repo = dirty_six_line_repo();
     let bid = open(&mut ed, &repo.path().join("f.txt"));
     ed.settle();
@@ -1607,7 +1607,7 @@ fn drawing_another_sources_hunks_while_signs_wait_for_a_fetch_paints_no_old_sign
     let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup_with_source(
         tmp.path(),
-        Some(r#"(hash "signs" #f "inline" #f)"#),
+        Some(r#"(hash 'signs #f 'inline #f)"#),
         &render_probe_source("(list)"),
     );
     let repo = dirty_six_line_repo();
@@ -1658,7 +1658,7 @@ fn releasing_a_source_right_after_an_edit_draws_the_inline_diff_of_the_current_t
     let tmp = tempfile::tempdir().unwrap();
     let (mut ed, _guard) = setup_with_source(
         tmp.path(),
-        Some(r#"(hash "signs" #f "inline" #t)"#),
+        Some(r#"(hash 'signs #f 'inline #t)"#),
         &render_probe_source("(list)"),
     );
     let repo = dirty_six_line_repo();

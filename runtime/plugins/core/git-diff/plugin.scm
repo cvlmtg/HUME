@@ -11,10 +11,10 @@
 ;; ── Config ────────────────────────────────────────────────────────────────────
 
 (define git-diff/cfg (plugin-config))
-(define git-diff/signs-default (call! "stdlib/config-boolean" "core:git-diff" git-diff/cfg "signs" #t))
-(define git-diff/inline-default (call! "stdlib/config-boolean" "core:git-diff" git-diff/cfg "inline" #f))
-(define git-diff/ref (call! "stdlib/config-string" "core:git-diff" git-diff/cfg "ref" "HEAD"))
-(define git-diff/branch-style (call! "stdlib/config-enum" "core:git-diff" git-diff/cfg "branch-style" 'parens '(parens icon)))
+(define git-diff/signs-default (call! "stdlib/config-boolean" "core:git-diff" git-diff/cfg 'signs #t))
+(define git-diff/inline-default (call! "stdlib/config-boolean" "core:git-diff" git-diff/cfg 'inline #f))
+(define git-diff/ref (call! "stdlib/config-string" "core:git-diff" git-diff/cfg 'ref "HEAD"))
+(define git-diff/branch-style (call! "stdlib/config-enum" "core:git-diff" git-diff/cfg 'branch-style 'parens '(parens icon)))
 
 ;; ── Lifecycle ─────────────────────────────────────────────────────────────────
 

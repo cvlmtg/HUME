@@ -254,7 +254,7 @@ fn plugin_config_survives_lazy_declare_to_activation() {
     std::fs::create_dir_all(&plugin_dir).unwrap();
     std::fs::write(
         plugin_dir.join("plugin.scm"),
-        br#"(log! 'info (hash-ref (plugin-config) "key"))"#,
+        br#"(log! 'info (hash-ref (plugin-config) 'key))"#,
     )
     .unwrap();
 
@@ -265,7 +265,7 @@ fn plugin_config_survives_lazy_declare_to_activation() {
 
     host.eval_source(
         r#"(declare-plugin! "user/cfgtest" #:commands '("probe"))
-           (load-plugin! "user/cfgtest" #:config (hash "key" "val"))"#,
+           (load-plugin! "user/cfgtest" #:config (hash 'key "val"))"#,
         &mut NullHost,
     )
     .expect("declare then load with #:config must succeed");
@@ -335,7 +335,7 @@ fn load_plugin_config_reaches_a_manifest_declared_entry() {
         &[
             (
                 "plugin.scm",
-                r#"(log! 'info (hash-ref (plugin-config) "key"))"#,
+                r#"(log! 'info (hash-ref (plugin-config) 'key))"#,
             ),
             (
                 "manifest.scm",
@@ -345,7 +345,7 @@ fn load_plugin_config_reaches_a_manifest_declared_entry() {
     );
 
     host.eval_source(
-        r#"(load-plugin! "user/cfgmftest" #:config (hash "key" "val"))"#,
+        r#"(load-plugin! "user/cfgmftest" #:config (hash 'key "val"))"#,
         &mut NullHost,
     )
     .expect("load-plugin! with #:config must succeed");

@@ -364,7 +364,7 @@ global option:
 `core:lsp`'s own options are passed with `#:config` when you load it:
 
 ```scheme
-(load-plugin! "core:lsp" #:config (hash "inlay-hints" #t "format-max-ranges" 32))
+(load-plugin! "core:lsp" #:config (hash 'inlay-hints #t 'format-max-ranges 32))
 ```
 
 | Key | Type | Default | Description |

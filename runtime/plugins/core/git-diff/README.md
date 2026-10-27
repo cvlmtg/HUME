@@ -11,7 +11,7 @@ focused buffer; add that element to your own `configure-statusline!` call to sho
 ```scheme
 (load-plugin! "core:stdlib")
 (load-plugin! "core:git-diff"
-  #:config (hash "signs" #t "inline" #f "ref" "HEAD" "branch-style" 'parens))
+  #:config (hash 'signs #t 'inline #f 'ref "HEAD" 'branch-style 'parens))
 ```
 
 - **Depends on:** `core:stdlib`: config validation calls `stdlib/config-boolean`/
@@ -19,10 +19,10 @@ focused buffer; add that element to your own `configure-statusline!` call to sho
 - **Activates on:** the first buffer opened, the first `:toggle-git-signs`/
   `:toggle-inline-diff` typed, or the first call or key press of any `git-diff/*` command
   listed below. Its `manifest.scm` has one entry for `plugin.scm` with
-  `#:events '(on-buffer-open)`, the two typed commands and those commands. `"signs"` defaults on (cheap, no line-shifting side
-  effects); `"inline"` defaults off (it moves virtual lines into the buffer's visual
+  `#:events '(on-buffer-open)`, the two typed commands and those commands. `'signs` defaults on (cheap, no line-shifting side
+  effects); `'inline` defaults off (it moves virtual lines into the buffer's visual
   flow).
-- **`"branch-style"`** is `'parens` (default, `(main)`) or `'icon` (`⎇ main`).
+- **`'branch-style`** is `'parens` (default, `(main)`) or `'icon` (`⎇ main`).
 - **Branch tracking has no on/off flag; placement is the switch.** It does not fetch until
   `"steel:git-branch"` appears in your `configure-statusline!` call, and it starts when it
   does.

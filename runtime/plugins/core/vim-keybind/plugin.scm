@@ -37,7 +37,7 @@
 ;; See README.md's "How it works".
 (define cfg (plugin-config))
 (define change-to-eol
-  (call! "stdlib/config-enum" "core:vim-keybind" cfg "change-to-eol" 'smart '(on smart off)))
+  (call! "stdlib/config-enum" "core:vim-keybind" cfg 'change-to-eol 'smart '(on smart off)))
 (cond
   ((equal? change-to-eol 'on)    (bind-key! 'normal "C" "vim-keybind/change-to-eol"))
   ((equal? change-to-eol 'smart) (bind-key! 'normal "C" "vim-keybind/change-to-eol-or-copy-line"))

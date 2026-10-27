@@ -6,7 +6,7 @@
 ;; ── Config ────────────────────────────────────────────────────────────────────
 
 (define pickers/untracked
-  (call! "stdlib/config-boolean" "core:pickers" (plugin-config) "untracked" #t))
+  (call! "stdlib/config-boolean" "core:pickers" (plugin-config) 'untracked #t))
 
 ;; ── fd binary ─────────────────────────────────────────────────────────────────
 

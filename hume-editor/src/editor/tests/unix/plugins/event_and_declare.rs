@@ -576,7 +576,7 @@ fn plugin_config_scoped_correctly_after_nested_activation() {
     std::fs::write(
         dir_b.join("plugin.scm"),
         "(call! \"a-cmd\")\n\
-         (unless (equal? (hash-ref (plugin-config) \"y\") 2)\n\
+         (unless (equal? (hash-ref (plugin-config) 'y) 2)\n\
          \x20 (error \"B's plugin-config must be B's own after A's nested activation\"))\n\
          (define-command! \"b-cmd\" \"doc\" (lambda () (call! \"move-right\")))",
     )
@@ -587,8 +587,8 @@ fn plugin_config_scoped_correctly_after_nested_activation() {
         &init_path,
         "(declare-plugin! \"user/tpa\" #:commands '(\"a-cmd\"))\n\
          (declare-plugin! \"user/tpb\" #:commands '(\"b-cmd\"))\n\
-         (load-plugin! \"user/tpa\" #:config (hash \"x\" 1))\n\
-         (load-plugin! \"user/tpb\" #:config (hash \"y\" 2))",
+         (load-plugin! \"user/tpa\" #:config (hash 'x 1))\n\
+         (load-plugin! \"user/tpb\" #:config (hash 'y 2))",
     )
     .unwrap();
 
@@ -609,10 +609,10 @@ fn plugin_config_scoped_correctly_after_nested_activation() {
 #[test]
 fn a_plugins_command_and_its_callbacks_read_its_own_config() {
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(load-plugin! "user/tp" #:config (hash "k" "v"))"#,
+        r#"(load-plugin! "user/tp" #:config (hash 'k "v"))"#,
         r#"(define (tp/key)
              (let ((config (plugin-config)))
-               (if (hash-contains? config "k") (hash-ref config "k") "none")))
+               (if (hash-contains? config 'k) (hash-ref config 'k) "none")))
            (define-typed-command! "cfg-cmd" "doc" (lambda ()
              (log! 'warning (string-append "cmd:" (tp/key)))
              (after! 0 (lambda () (log! 'warning (string-append "cb:" (tp/key)))))))"#,
@@ -634,19 +634,20 @@ fn a_plugins_command_and_its_callbacks_read_its_own_config() {
 }
 
 /// A plugin's command reached by `call!` from the user's own command runs as
-/// the plugin: `(plugin-config)` reads its `#:config`, and the user's
-/// command reads none once the call returns.
+/// the plugin: `(plugin-config)` reads its `#:config`, and raises in the
+/// user's command once the call returns.
 #[test]
 fn a_plugins_command_called_from_the_users_runs_as_the_plugin() {
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(load-plugin! "user/tp" #:config (hash "k" "v"))
+        r#"(load-plugin! "user/tp" #:config (hash 'k "v"))
            (define-typed-command! "user-cmd" "doc" (lambda ()
              (call! "tp-cmd")
-             (log! 'warning (if (hash-empty? (plugin-config)) "user:none" "user:some"))))"#,
+             (log! 'warning (with-handler (lambda (err) "user:raised")
+                                          (begin (plugin-config) "user:read")))))"#,
         r#"(define-command! "tp-cmd" "doc" (lambda ()
              (let ((config (plugin-config)))
                (log! 'warning (string-append "plugin:"
-                 (if (hash-contains? config "k") (hash-ref config "k") "none"))))))"#,
+                 (if (hash-contains? config 'k) (hash-ref config 'k) "none"))))))"#,
     );
 
     type_cmd(&mut ed, ":user-cmd");
@@ -658,8 +659,8 @@ fn a_plugins_command_called_from_the_users_runs_as_the_plugin() {
         "the plugin's command reads its config: {log:?}"
     );
     assert!(
-        log.contains("user:none"),
-        "the user's command reads none: {log:?}"
+        log.contains("user:raised"),
+        "the user's command is not a plugin's code: {log:?}"
     );
 }
 

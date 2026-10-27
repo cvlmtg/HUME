@@ -8,7 +8,7 @@ ask.
 
 ```scheme
 (load-plugin! "core:stdlib")
-(load-plugin! "core:buffer-words" #:config (hash "match" 'string "chars" 8000))
+(load-plugin! "core:buffer-words" #:config (hash 'match 'string 'chars 8000))
 ```
 
 - **Depends on:** `core:stdlib`: config validation calls `stdlib/config-enum`/
@@ -22,8 +22,8 @@ ask.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `"match"` | `'string` | `'string`: a case-sensitive prefix gate, the vim `i_CTRL-N` feel. `'fuzzy`: subsequence-scored like `core:lsp`'s own candidates, so the two compete on score rather than priority |
-| `"chars"` | `8000` | Characters fetched and scanned per side (before/after the cursor) on each background indexing tick; an integer of at least 1. Lower trims the pause a keystroke can add near a huge buffer; raising it finishes indexing a large buffer in fewer ticks |
+| `'match` | `'string` | `'string`: a case-sensitive prefix gate, the vim `i_CTRL-N` feel. `'fuzzy`: subsequence-scored like `core:lsp`'s own candidates, so the two compete on score rather than priority |
+| `'chars` | `8000` | Characters fetched and scanned per side (before/after the cursor) on each background indexing tick; an integer of at least 1. Lower trims the pause a keystroke can add near a huge buffer; raising it finishes indexing a large buffer in fewer ticks |
 
 ## How it works
 

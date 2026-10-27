@@ -7,19 +7,19 @@ natively, `o` to flip the selection in Extend mode, and `Ctrl-6` for the alterna
 
 ```scheme
 (load-plugin! "core:stdlib")
-(load-plugin! "core:vim-keybind" #:config (hash "change-to-eol" 'smart))
+(load-plugin! "core:vim-keybind" #:config (hash 'change-to-eol 'smart))
 ```
 
-- **Depends on:** `core:stdlib`: config validation (`"change-to-eol"`) calls
+- **Depends on:** `core:stdlib`: config validation (`'change-to-eol`) calls
   `stdlib/config-enum` via `call!` at this plugin's own load time. The dependency is checked
-  with `(declared-plugins)` at load for every `"change-to-eol"` value, so a missing
+  with `(declared-plugins)` at load for every `'change-to-eol` value, so a missing
   `core:stdlib` is a load error that names it.
 - **Activates on:** its own key bindings only. Most of what it rebinds
   (`goto-line-start`, `goto-line-end`, …) are built-in commands with no typed form or
   hook of their own, so it has no `manifest.scm` and must be loaded eagerly (see the
   [core plugins index](../README.md#loading-model)).
 - **User docs:** [Core Plugins](https://cvlmtg.github.io/HUME/core-plugins.html#core-vim-keybind)
-  for what each `"change-to-eol"` value does.
+  for what each `'change-to-eol` value does.
 
 ## Key bindings
 
@@ -28,7 +28,7 @@ natively, `o` to flip the selection in Extend mode, and `Ctrl-6` for the alterna
 | Normal | `0` | `goto-line-start` | Start of line |
 | Normal | `^` | `goto-first-nonblank` | First non-blank character |
 | Normal | `$` | `goto-line-end` | End of line |
-| Normal | `C` | per `"change-to-eol"` | See below |
+| Normal | `C` | per `'change-to-eol` | See below |
 | Normal | `D` | `vim-keybind/delete-to-eol` | Delete from the cursor to the end of the line |
 | Normal | `Ctrl-6` | `goto-alternate-buffer` | Alternate buffer |
 | Extend | `o` | `flip-selections` | Swap the selection's ends |
@@ -39,7 +39,7 @@ and `vim-keybind/change-to-eol` both extend to the end of the line with `goto-li
 
 ### `C`
 
-| `"change-to-eol"` | `C` binds to | Behavior |
+| `'change-to-eol` | `C` binds to | Behavior |
 |---|---|---|
 | `'on` | `vim-keybind/change-to-eol` | Always changes to end of line, ignoring the selection |
 | `'smart` (default) | `vim-keybind/change-to-eol-or-copy-line` | Context-sensitive (see below) |
