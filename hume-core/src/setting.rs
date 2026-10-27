@@ -6,23 +6,27 @@ named_enum! {
     /// tables. Each has no global default and is valid only for `:set buffer`.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum BufferIntrinsicOption {
-        /// The buffer's language, by name ([`language_option_value`]).
+        /// The buffer's language, by name ([`LanguageOptionText`]).
         Language => "language",
         /// The line ending a save writes (`lf` or `crlf`).
         LineEnding => "line-ending",
     }
 }
 
-impl BufferIntrinsicOption {
-    pub fn from_name(name: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|opt| opt.name() == name)
-    }
-}
+/// The `language` option's text: a language name, with `""` spelling no
+/// language. `:set` and scripts read and write the value through this pair.
+pub struct LanguageOptionText;
 
-/// A `language` option value as a language name: `""` is the spelling of
-/// "no language", so it decodes to `None`.
-pub fn language_option_value(value: &str) -> Option<&str> {
-    Some(value).filter(|name| !name.is_empty())
+impl LanguageOptionText {
+    const NONE: &'static str = "";
+
+    pub fn decode(text: &str) -> Option<&str> {
+        Some(text).filter(|name| *name != Self::NONE)
+    }
+
+    pub fn encode(name: Option<&str>) -> &str {
+        name.unwrap_or(Self::NONE)
+    }
 }
 
 /// A value an option is set to, from `:set` or a script. A list stays a

@@ -1,4 +1,4 @@
-use crate::editor::registry::Count;
+use hume_core::Count;
 use std::sync::Arc;
 
 use super::super::search::SearchPattern;

@@ -27,7 +27,7 @@ fn run_command_sync_motion_moves_cursor() {
             "move-right",
             pane,
             NativeCall {
-                count: Some(1),
+                count: Count::typed(1),
                 ..NativeCall::default()
             },
         )
@@ -48,7 +48,7 @@ fn run_command_sync_editor_cmd_runs_sync() {
     // Buffer "abc\n", selection on 'a'. Delete it via the normal keymap path to
     // create an undoable revision, then undo via run_command_sync.
     let mut ed = editor_from("-[a]>bc\n");
-    ed.execute_keymap_command("delete".into(), Some(1), false);
+    ed.execute_keymap_command("delete".into(), Count::typed(1), false);
     // Buffer is now "bc\n"; cursor should be at 0.
     assert_eq!(
         state(&ed),
@@ -64,7 +64,7 @@ fn run_command_sync_editor_cmd_runs_sync() {
             "undo",
             pane,
             NativeCall {
-                count: Some(1),
+                count: Count::typed(1),
                 ..NativeCall::default()
             },
         )
@@ -90,7 +90,7 @@ fn run_command_sync_unknown_name_errors() {
         "no-such-command-xyzzy",
         pane,
         NativeCall {
-            count: Some(1),
+            count: Count::typed(1),
             ..NativeCall::default()
         },
     );
@@ -121,7 +121,7 @@ fn run_command_sync_returns_false_when_the_split_is_refused() {
             "pane-vsplit",
             pane,
             NativeCall {
-                count: Some(1),
+                count: Count::typed(1),
                 ..NativeCall::default()
             },
         )
@@ -157,7 +157,7 @@ fn run_command_sync_returns_true_on_a_successful_split() {
             "pane-vsplit",
             pane,
             NativeCall {
-                count: Some(1),
+                count: Count::typed(1),
                 ..NativeCall::default()
             },
         )
@@ -191,7 +191,7 @@ fn current_line_number_reads_live_position() {
                 "move-down",
                 pane,
                 NativeCall {
-                    count: Some(1),
+                    count: Count::typed(1),
                     ..NativeCall::default()
                 },
             )
@@ -221,7 +221,7 @@ fn run_command_sync_selection_updates_sel() {
             "select-line",
             pane,
             NativeCall {
-                count: Some(1),
+                count: Count::typed(1),
                 ..NativeCall::default()
             },
         )
@@ -249,7 +249,7 @@ fn call_bang_count_arg_dispatches_synchronously() {
         &mut ed,
         r#"(define-command! "move-right-5" "" (lambda (bid) (call! "move-right" bid 5)))"#,
     );
-    ed.execute_keymap_command("move-right-5".into(), Some(1), false);
+    ed.execute_keymap_command("move-right-5".into(), Count::typed(1), false);
 
     let idx = ed
         .state
@@ -283,7 +283,7 @@ fn call_bang_malformed_arg_to_native_cmd_errors_without_side_effect() {
     // execute_keymap_command reports errors to the status bar rather than panicking;
     // check the cursor did not move (the Steel error aborted the eval).
     let before = state(&ed);
-    ed.execute_keymap_command("move-right-bad".into(), Some(1), false);
+    ed.execute_keymap_command("move-right-bad".into(), Count::typed(1), false);
     let after = state(&ed);
     assert_eq!(
         before, after,
@@ -315,7 +315,7 @@ fn case_b_sync_cursor_read_reflects_motion() {
                      (move-down bid))))"#,
     );
 
-    ed.execute_keymap_command("test-case-b".into(), Some(1), false);
+    ed.execute_keymap_command("test-case-b".into(), Count::typed(1), false);
 
     let final_state = state(&ed);
     // Both moves ran inside the lambda → cursor on line 3, "a\nb\n-[c]>\n".
@@ -479,7 +479,7 @@ fn steel_call_native_respects_register_prefix() {
                    (set-register-prefix! "0")
                    (call! "yank" bid)))"#,
     );
-    ed.execute_keymap_command("yank-to-0".into(), Some(1), false);
+    ed.execute_keymap_command("yank-to-0".into(), Count::typed(1), false);
 
     // Register '0' must hold "hello" (the selection content).
     let contents: Vec<String> = ed
@@ -510,7 +510,7 @@ fn steel_call_repeatable_cmd_sets_dot_repeat() {
                  (lambda (bid) (call! "delete" bid)))"#,
     );
 
-    ed.execute_keymap_command("steel-delete".into(), Some(1), false);
+    ed.execute_keymap_command("steel-delete".into(), Count::typed(1), false);
     // `delete` is repeatable, so the recorded change must be set.
     assert!(
         ed.state.last_action().is_some(),
@@ -555,7 +555,7 @@ fn steel_call_jump_cmd_records_jump_entry() {
     let had_entries_before = ed.state.panes.entries[pane_id]
         .jumps
         .entries_for_buffer(bid);
-    ed.execute_keymap_command("steel-goto-end".into(), Some(1), false);
+    ed.execute_keymap_command("steel-goto-end".into(), Count::typed(1), false);
     let has_entries_after = ed.state.panes.entries[pane_id]
         .jumps
         .entries_for_buffer(bid);
@@ -584,7 +584,7 @@ fn steel_call_paste_then_motion_commits_paste_session() {
                    (call! "paste-after" bid)
                    (call! "move-down" bid)))"#,
     );
-    ed.execute_keymap_command("paste-and-move".into(), Some(1), false);
+    ed.execute_keymap_command("paste-and-move".into(), Count::typed(1), false);
 
     let buf_after_paste = ed.doc().text().to_string();
     assert!(
@@ -622,7 +622,7 @@ fn steel_call_source_order_native_after_steel() {
                    (call! "steel-move-right" bid)
                    (call! "delete" bid)))"#,
     );
-    ed.execute_keymap_command("order-test".into(), Some(1), false);
+    ed.execute_keymap_command("order-test".into(), Count::typed(1), false);
 
     assert_eq!(
         ed.doc().text().to_string(),
@@ -652,7 +652,7 @@ fn steel_native_via_call_preserves_own_count() {
                    (call! "noop-steel")
                    (call! "move-down" bid 3)))"#,
     );
-    ed.execute_keymap_command("count-chain-test".into(), Some(1), false);
+    ed.execute_keymap_command("count-chain-test".into(), Count::typed(1), false);
 
     let _bid = ed.focused_buffer_id();
     let pane = focused_pane(&ed);
@@ -682,7 +682,7 @@ fn steel_unknown_cmd_errors_and_continues() {
                    (call! "this-command-does-not-exist")
                    (call! "move-right" bid)))"#,
     );
-    ed.execute_keymap_command("warn-test".into(), Some(1), false);
+    ed.execute_keymap_command("warn-test".into(), Count::typed(1), false);
 
     // Both move-rights run inline despite the unknown name, so the cursor ends at 2.
     assert_eq!(
@@ -768,7 +768,7 @@ fn steel_lambda_receives_bid_count_and_extend() {
     );
 
     // Dispatch with count=4: cursor must land at position 4.
-    ed.execute_keymap_command("step-right".into(), Some(4), false);
+    ed.execute_keymap_command("step-right".into(), Count::typed(4), false);
     let idx = ed
         .state
         .panes
@@ -784,7 +784,7 @@ fn steel_lambda_receives_bid_count_and_extend() {
         "count=4 must move cursor 4 positions; got {idx:?}"
     );
 
-    ed.execute_keymap_command("step-right".into(), Some(1), false);
+    ed.execute_keymap_command("step-right".into(), Count::typed(1), false);
     let idx2 = ed
         .state
         .panes
@@ -824,7 +824,7 @@ fn steel_zero_arity_lambda_ignores_injection() {
         .primary()
         .head()
         .offset();
-    ed.execute_keymap_command("fixed-right".into(), Some(5), false);
+    ed.execute_keymap_command("fixed-right".into(), Count::typed(5), false);
     let after = ed
         .state
         .panes
@@ -873,7 +873,7 @@ fn steel_arity_1_lambda_receives_bid_only() {
         .primary()
         .head()
         .offset();
-    ed.execute_keymap_command("step-bid-only".into(), Some(5), false);
+    ed.execute_keymap_command("step-bid-only".into(), Count::typed(5), false);
     let after = ed
         .state
         .panes
@@ -913,7 +913,7 @@ fn steel_arity_2_lambda_receives_bid_and_count() {
     );
 
     // Dispatch with count=3: cursor must land 3 positions to the right.
-    ed.execute_keymap_command("step-count-only".into(), Some(3), false);
+    ed.execute_keymap_command("step-count-only".into(), Count::typed(3), false);
     let idx = ed
         .state
         .panes
@@ -958,7 +958,7 @@ fn steel_call_delete_in_extend_exits_extend_mode() {
     );
     ed.state.input.set_extend(true);
 
-    ed.execute_keymap_command("wrap-delete".into(), Some(1), false);
+    ed.execute_keymap_command("wrap-delete".into(), Count::typed(1), false);
 
     assert_eq!(
         ed.state.mode(),
@@ -988,7 +988,7 @@ fn parity_delete_bookkeeping_keypress_vs_steel() {
     // Path A: keypress.
     let mut ed_key = editor_from("-[f]>oo\n");
     let before_key = snapshot_bookkeeping(&ed_key);
-    ed_key.execute_keymap_command("delete".into(), Some(1), false);
+    ed_key.execute_keymap_command("delete".into(), Count::typed(1), false);
     let snap_key = snapshot_bookkeeping(&ed_key);
 
     // Path B: Steel (call! "delete" bid).
@@ -998,7 +998,7 @@ fn parity_delete_bookkeeping_keypress_vs_steel() {
         r#"(define-command! "steel-delete" "" (lambda (bid) (call! "delete" bid)))"#,
     );
     let before_steel = snapshot_bookkeeping(&ed_steel);
-    ed_steel.execute_keymap_command("steel-delete".into(), Some(1), false);
+    ed_steel.execute_keymap_command("steel-delete".into(), Count::typed(1), false);
     let snap_steel = snapshot_bookkeeping(&ed_steel);
 
     // Pre-conditions: both editors start from identical bookkeeping state.
@@ -1022,7 +1022,7 @@ fn parity_jump_bookkeeping_keypress_vs_steel() {
 
     // Path A: keypress.
     let mut ed_key = editor_from(content);
-    ed_key.execute_keymap_command("goto-last-line".into(), Some(1), false);
+    ed_key.execute_keymap_command("goto-last-line".into(), Count::typed(1), false);
     let snap_key = snapshot_bookkeeping(&ed_key);
 
     // Path B: Steel (call! "goto-last-line" bid).
@@ -1031,7 +1031,7 @@ fn parity_jump_bookkeeping_keypress_vs_steel() {
         &mut ed_steel,
         r#"(define-command! "steel-goto-end" "" (lambda (bid) (call! "goto-last-line" bid)))"#,
     );
-    ed_steel.execute_keymap_command("steel-goto-end".into(), Some(1), false);
+    ed_steel.execute_keymap_command("steel-goto-end".into(), Count::typed(1), false);
     let snap_steel = snapshot_bookkeeping(&ed_steel);
 
     assert_eq!(
@@ -1061,7 +1061,7 @@ fn parity_steel_branch_cluster_vs_native() {
     // ── Case 1: repeatable edit — pins the dot-repeat stage ───────────────────
     // Path A: native repeatable edit.
     let mut ed_native = editor_from("-[f]>oo\n");
-    ed_native.execute_keymap_command("delete".into(), Some(1), false);
+    ed_native.execute_keymap_command("delete".into(), Count::typed(1), false);
     let snap_native = snapshot_bookkeeping(&ed_native);
 
     // Path B: a `#:repeatable` Steel command whose body calls `delete`.
@@ -1072,7 +1072,7 @@ fn parity_steel_branch_cluster_vs_native() {
         &mut ed_steel,
         r#"(define-command! "steel-del" "" (lambda (bid) (call! "delete" bid)) #:repeatable #t)"#,
     );
-    ed_steel.execute_keymap_command("steel-del".into(), Some(1), false);
+    ed_steel.execute_keymap_command("steel-del".into(), Count::typed(1), false);
     let snap_steel = snapshot_bookkeeping(&ed_steel);
 
     // jump_len and paste_session_open must match exactly.
@@ -1130,7 +1130,7 @@ fn parity_steel_branch_cluster_vs_native() {
         &mut ed2,
         r#"(define-command! "pure-noop" "" (lambda () (+ 1 0)))"#,
     );
-    ed2.execute_keymap_command("pure-noop".into(), Some(1), false);
+    ed2.execute_keymap_command("pure-noop".into(), Count::typed(1), false);
 
     assert!(
         ed2.state.open_session().is_none(),
@@ -1152,7 +1152,7 @@ fn parity_extend_exit_keypress_vs_steel() {
     // Path A: keypress.
     let mut ed_key = editor_from("-[f]>oo\n");
     ed_key.state.input.set_extend(true);
-    ed_key.execute_keymap_command("delete".into(), Some(1), false);
+    ed_key.execute_keymap_command("delete".into(), Count::typed(1), false);
     let snap_key = snapshot_bookkeeping(&ed_key);
 
     // Path B: Steel (call! "delete" bid).
@@ -1162,7 +1162,7 @@ fn parity_extend_exit_keypress_vs_steel() {
         &mut ed_steel,
         r#"(define-command! "steel-delete" "" (lambda (bid) (call! "delete" bid)))"#,
     );
-    ed_steel.execute_keymap_command("steel-delete".into(), Some(1), false);
+    ed_steel.execute_keymap_command("steel-delete".into(), Count::typed(1), false);
     let snap_steel = snapshot_bookkeeping(&ed_steel);
 
     assert_eq!(
@@ -1184,7 +1184,7 @@ fn parity_typed_run_invalidation_keypress_vs_steel() {
     let mut ed_key = editor_from("-[h]>ello\n");
     ed_key.handle_key(key('i'));
     ed_key.handle_key(key('X')); // pins the typed_run
-    ed_key.execute_keymap_command("move-left".into(), Some(1), false);
+    ed_key.execute_keymap_command("move-left".into(), Count::typed(1), false);
     let snap_key = snapshot_bookkeeping(&ed_key);
     assert!(
         !snap_key.typed_run_open,
@@ -1199,7 +1199,7 @@ fn parity_typed_run_invalidation_keypress_vs_steel() {
         &mut ed_steel,
         r#"(define-command! "steel-move-left" "" (lambda (bid) (call! "move-left" bid)))"#,
     );
-    ed_steel.execute_keymap_command("steel-move-left".into(), Some(1), false);
+    ed_steel.execute_keymap_command("steel-move-left".into(), Count::typed(1), false);
     let snap_steel = snapshot_bookkeeping(&ed_steel);
 
     assert_eq!(
@@ -1242,7 +1242,7 @@ fn plugin_calls_plugin_cursor_read_is_live() {
                    (when (> (buffer-cursor-line bid) 0)
                      (call! "move-down" bid))))"#,
     );
-    ed.execute_keymap_command("outer-cmd".into(), Some(1), false);
+    ed.execute_keymap_command("outer-cmd".into(), Count::typed(1), false);
 
     // Inline: inner-move ran synchronously (line 2 during eval), branch fired → line 3.
     assert_eq!(
@@ -1711,7 +1711,7 @@ fn keymap_dispatch_arity_over_3_reports_error() {
         r#"(define-command! "four-params" "" (lambda (a b c d) (+ a b c d)))"#,
     );
 
-    ed.execute_keymap_command("four-params".into(), Some(1), false);
+    ed.execute_keymap_command("four-params".into(), Count::typed(1), false);
 
     assert!(
         ed.state
@@ -1890,7 +1890,7 @@ fn buffer_selections_steel_roundtrip() {
     .expect("define-command! must succeed");
 
     ed.scripting = Some(host);
-    ed.execute_keymap_command("probe-selections-roundtrip".into(), Some(1), false);
+    ed.execute_keymap_command("probe-selections-roundtrip".into(), Count::typed(1), false);
 
     assert_eq!(
         state(&ed),

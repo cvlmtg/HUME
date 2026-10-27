@@ -258,13 +258,14 @@ fn set_buffer_option_accepts_string_bool_int_values() {
 }
 
 /// A [`crate::null_host::NullHost`] wrapper that reports every buffer id as
-/// existing and records `set_buffer_option` calls, so a test can prove the
-/// builtin's guards were all passed and the exact `(key, value, bid)` the
-/// host received, without a real editor.
+/// existing and records `set_buffer_option` and `set_buffer_line_ending`
+/// calls, so a test can prove the builtin's guards were all passed and the
+/// exact `(key, value, bid)` the host received, without a real editor.
 #[derive(Default)]
 struct RecordingBufferOptionHost {
     inner: crate::null_host::NullHost,
     pub(crate) calls: Vec<(String, OptionInput, BufferId)>,
+    pub(crate) line_endings: Vec<(OptionInput, BufferId)>,
     /// The origin each global or buffer write arrived with, in order.
     pub(crate) origins: Vec<ConfigOrigin>,
 }
@@ -431,11 +432,24 @@ impl crate::host::SettingsHost for RecordingBufferOptionHost {
         self.origins.push(origin);
         Ok(())
     }
+    fn set_buffer_line_ending(
+        &mut self,
+        bid: BufferId,
+        value: OptionInput,
+        origin: ConfigOrigin,
+    ) -> Result<(), String> {
+        self.line_endings.push((value, bid));
+        self.origins.push(origin);
+        Ok(())
+    }
     fn get_global_option(&self, key: &str) -> Result<OptionValue, String> {
         crate::host::SettingsHost::get_global_option(&self.inner, key)
     }
     fn get_buffer_option(&self, key: &str, bid: BufferId) -> Result<OptionValue, String> {
         crate::host::SettingsHost::get_buffer_option(&self.inner, key, bid)
+    }
+    fn buffer_line_ending(&self, bid: BufferId) -> Result<String, String> {
+        crate::host::SettingsHost::buffer_line_ending(&self.inner, bid)
     }
     fn steel_command_budget_ms(&self) -> u64 {
         crate::host::SettingsHost::steel_command_budget_ms(&self.inner)
@@ -535,4 +549,73 @@ fn option_writes_carry_the_callers_origin() {
             ConfigOrigin::Plugin
         ]
     );
+}
+
+/// A value each buffer-intrinsic option accepts on `set-buffer-option!`.
+fn intrinsic_value(opt: BufferIntrinsicOption) -> SteelVal {
+    match opt {
+        BufferIntrinsicOption::Language => SteelVal::StringV("rust".into()),
+        BufferIntrinsicOption::LineEnding => SteelVal::StringV("crlf".into()),
+    }
+}
+
+#[test]
+fn set_option_refuses_a_buffer_intrinsic_key() {
+    for opt in BufferIntrinsicOption::ALL {
+        let mut h = SteelCtxTestHarness::new();
+        let mut host = RecordingBufferOptionHost::default();
+        let mut ctx = h.ctx_with_host(&mut host);
+        let msg = set_option(&mut ctx, opt.name().into(), intrinsic_value(opt))
+            .expect_err("a per-buffer option has no global value to set")
+            .to_string();
+        drop(ctx);
+        assert!(
+            msg.contains("per-buffer") && msg.contains("set-buffer-option!"),
+            "{}: got {msg}",
+            opt.name()
+        );
+        assert!(h.effects.is_empty(), "{}: nothing is queued", opt.name());
+        assert!(
+            host.origins.is_empty() && host.calls.is_empty() && host.line_endings.is_empty(),
+            "{}: nothing reaches the host",
+            opt.name()
+        );
+    }
+}
+
+#[test]
+fn get_option_refuses_a_buffer_intrinsic_key() {
+    for opt in BufferIntrinsicOption::ALL {
+        let mut h = SteelCtxTestHarness::new();
+        let mut host = RecordingBufferOptionHost::default();
+        let mut ctx = h.ctx_with_host(&mut host);
+        let msg = get_option(&mut ctx, opt.name().into())
+            .expect_err("a per-buffer option has no global value to read")
+            .to_string();
+        assert!(
+            msg.contains("per-buffer") && msg.contains("get-buffer-option"),
+            "{}: got {msg}",
+            opt.name()
+        );
+    }
+}
+
+#[test]
+fn set_buffer_option_line_ending_reaches_the_line_ending_setter() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut host = RecordingBufferOptionHost::default();
+    let target = BufferId::default();
+    let mut ctx = h.ctx_with_host(&mut host);
+    set_buffer_option(
+        &mut ctx,
+        hume_core::PaneHandle::buffer_only(target),
+        "line-ending".into(),
+        SteelVal::StringV("crlf".into()),
+    )
+    .expect("the host accepts the write");
+    assert_eq!(
+        host.line_endings,
+        vec![(OptionInput::Text("crlf".to_string()), target)]
+    );
+    assert!(host.calls.is_empty(), "no settings-table write");
 }

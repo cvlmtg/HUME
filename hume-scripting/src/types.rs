@@ -119,7 +119,7 @@ pub struct GrammarReg {
     pub name: String,
     pub source: GrammarSource,
     /// Whose code registered it: it never replaces a grammar a higher
-    /// origin registered ([`ConfigOrigin::rank`]).
+    /// origin registered ([`hume_core::Ranked::rank`]).
     pub origin: ConfigOrigin,
 }
 

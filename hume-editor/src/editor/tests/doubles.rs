@@ -25,9 +25,9 @@
 use std::cell::Cell;
 use std::rc::Rc;
 
+use hume_core::Side;
 use hume_engine::providers::{
     Decoration, DecorationKinds, DecorationSource, InlineInsert, ProviderSet, VirtualLine,
-    VirtualLineAnchor,
 };
 use hume_engine::types::ScopeId;
 
@@ -40,35 +40,43 @@ enum BlockText {
     Ordinal,
 }
 
-/// A VIRTUAL_LINE source emitting `count` display lines at one anchor, and
-/// nothing for any other line.
+/// A VIRTUAL_LINE source emitting `count` display lines on one side of one
+/// line, and nothing for any other line.
 pub(in crate::editor) struct VirtualLineBlock {
-    anchor: VirtualLineAnchor,
+    side: Side,
+    line: hume_rope::line::ContentLine,
     count: usize,
     text: BlockText,
     calls: Option<Rc<Cell<usize>>>,
 }
 
 impl VirtualLineBlock {
-    /// `count` display lines at `anchor`, every one texted `text`.
+    /// `count` display lines on `side` of `line`, every one texted `text`.
     pub(in crate::editor) fn uniform(
-        anchor: VirtualLineAnchor,
+        side: Side,
+        line: hume_rope::line::ContentLine,
         count: usize,
         text: &'static str,
     ) -> Self {
         Self {
-            anchor,
+            side,
+            line,
             count,
             text: BlockText::Same(text),
             calls: None,
         }
     }
 
-    /// `count` display lines at `anchor`, texted "1", "2", … so a test can
-    /// tell which one of the block it is looking at.
-    pub(in crate::editor) fn numbered(anchor: VirtualLineAnchor, count: usize) -> Self {
+    /// `count` display lines on `side` of `line`, texted "1", "2", … so a
+    /// test can tell which one of the block it is looking at.
+    pub(in crate::editor) fn numbered(
+        side: Side,
+        line: hume_rope::line::ContentLine,
+        count: usize,
+    ) -> Self {
         Self {
-            anchor,
+            side,
+            line,
             count,
             text: BlockText::Ordinal,
             calls: None,
@@ -86,12 +94,6 @@ impl VirtualLineBlock {
         self.calls = Some(calls);
         self
     }
-
-    fn line(&self) -> hume_rope::line::ContentLine {
-        match self.anchor {
-            VirtualLineAnchor::Before(n) | VirtualLineAnchor::After(n) => n,
-        }
-    }
 }
 
 impl DecorationSource for VirtualLineBlock {
@@ -104,7 +106,7 @@ impl DecorationSource for VirtualLineBlock {
         line_idx: hume_rope::line::ContentLine,
         out: &mut Vec<Decoration>,
     ) {
-        if line_idx != self.line() {
+        if line_idx != self.line {
             return;
         }
         if let Some(calls) = &self.calls {
@@ -112,7 +114,8 @@ impl DecorationSource for VirtualLineBlock {
         }
         for i in 0..self.count {
             out.push(Decoration::VirtualLine(VirtualLine {
-                anchor: self.anchor,
+                line: self.line,
+                side: self.side,
                 // Ignored downstream: `DisplayLineMap::block_entry` overwrites a
                 // self-reported id with the real one, so there is nothing
                 // here worth parameterising.
@@ -228,11 +231,12 @@ pub(in crate::editor) fn no_providers() -> ProviderSet {
     ProviderSet::new()
 }
 
-/// One `Before(line)` row, the shape most virtual-line tests want.
+/// One row before `line`, the shape most virtual-line tests want.
 pub(in crate::editor) fn providers_with_before_line(line: usize) -> ProviderSet {
     let mut p = ProviderSet::new();
     p.add_decoration_source(Box::new(VirtualLineBlock::uniform(
-        VirtualLineAnchor::Before(hume_rope::line::ContentLine::new(line)),
+        Side::Before,
+        hume_rope::line::ContentLine::new(line),
         1,
         "V",
     )));

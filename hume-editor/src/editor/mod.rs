@@ -50,7 +50,6 @@ mod dispatch;
 mod doc_ops;
 pub(crate) mod event;
 mod fuzzy;
-mod host_token;
 mod jump_list;
 mod keymap;
 pub(crate) mod lsp;
@@ -255,7 +254,7 @@ pub(crate) struct EditorState {
     pub(in crate::editor) input: input_stack::InputStack,
     pub(in crate::editor) pending: input_stack::PendingSequence,
     /// Accumulated numeric prefix for the next command (e.g. `3` in `3w`).
-    pub(super) count: Option<usize>,
+    pub(super) count: hume_core::Count,
     pub(super) registers: RegisterSet,
     /// Kill ring: bounded history of yanked / deleted text.
     pub(super) kill_ring: KillRing,
@@ -480,7 +479,7 @@ impl EditorState {
             config: ConfigState::new(false, 0),
             input: input_stack::InputStack::new(),
             pending: input_stack::PendingSequence::default(),
-            count: None,
+            count: hume_core::Count::UNTYPED,
             registers: RegisterSet::new(),
             kill_ring: KillRing::new(),
             clipboard: clipboard::SystemClipboard::osc52(),

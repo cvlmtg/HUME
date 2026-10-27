@@ -17,7 +17,7 @@ use crate::editor::commands::FocusedPane;
 use crate::editor::pane_state::PaneView;
 use crate::editor::search::SearchPattern;
 use crate::editor::settings::EditorSettings;
-use hume_core::{BufferId, ConfigOrigin, GrammarSource, PaneId, QueryFiles, Severity};
+use hume_core::{BufferId, ConfigOrigin, Count, GrammarSource, PaneId, QueryFiles, Severity};
 use hume_editing::selection::{EditView, SelectionSet};
 use hume_editing::text::BufferText;
 use hume_engine::pipeline::EngineView;
@@ -1016,7 +1016,7 @@ pub(super) fn close_pane_leaving_slot_vacant(ed: &mut Editor) -> (PaneId, Buffer
             "pane-vsplit",
             PaneHandle::with_pane(bid, pid_a),
             NativeCall {
-                count: Some(1),
+                count: Count::typed(1),
                 ..NativeCall::default()
             },
         )
@@ -1028,7 +1028,7 @@ pub(super) fn close_pane_leaving_slot_vacant(ed: &mut Editor) -> (PaneId, Buffer
             "pane-close",
             PaneHandle::with_pane(bid, pid_a),
             NativeCall {
-                count: Some(1),
+                count: Count::typed(1),
                 ..NativeCall::default()
             },
         )
@@ -1379,11 +1379,11 @@ fn install_source(
 
 /// Runs the command `name`, as a key bound to it would.
 fn call(ed: &mut Editor, name: &str) {
-    call_counted(ed, name, None);
+    call_counted(ed, name, Count::UNTYPED);
 }
 
 /// [`call`] with the count prefix `count`.
-fn call_counted(ed: &mut Editor, name: &str, count: Option<usize>) {
+fn call_counted(ed: &mut Editor, name: &str, count: Count) {
     ed.execute_keymap_command(name.to_string().into(), count, false);
 }
 
@@ -1556,7 +1556,7 @@ pub(super) struct BookkeepingSnapshot {
     /// The settled change's (command, count, operand char) if set. The
     /// operand is the change's first answer, when it is a character (what
     /// `r`/`replace` read).
-    pub last_repeatable: Option<(String, usize, Option<char>)>,
+    pub last_repeatable: Option<(String, Count, Option<char>)>,
     /// Total jump entries in the focused pane (not filtered by buffer) after dispatch.
     pub jump_len: usize,
     /// Whether `EditorState::active_session` is open with a Paste kind.

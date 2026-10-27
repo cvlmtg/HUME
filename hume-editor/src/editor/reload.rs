@@ -160,7 +160,7 @@ impl Editor {
             .buffers
             .iter()
             .filter_map(|(bid, buf)| {
-                let by = buf.language_by?;
+                let by = buf.language_by.by()?;
                 let name = buf
                     .language
                     .map(|id| self.state.config.languages.name_of(id).to_owned());

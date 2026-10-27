@@ -7,7 +7,7 @@
 //! and written back afterwards: the stored set stays valid for the whole
 //! edit, so the text change carries it like every other stored position.
 
-use hume_core::{BufferId, PaneId};
+use hume_core::{BufferId, PaneHandle, PaneId};
 
 use crate::editor::buffer::store::BufferStore;
 use crate::editor::buffer::{Buffer, HistoryWalkResult};
@@ -24,18 +24,18 @@ use hume_editing::state::EditState;
 use hume_rope::offset::CharOffset;
 
 /// Shared post-mutation bookkeeping for every text-mutating path: write
-/// `new_sels` back to the acting pane, if there is one, and bump the edit
+/// `new_sels` back to `target`'s pane, if it has one, and bump the edit
 /// seq. Stored positions (other panes, jump lists, prompt snapshots), the
 /// syntax edit chain and the language servers' change queue are not here: the
 /// `Buffer` mutator already carried them through the change.
 fn finish_edit(
     buffers: &mut BufferStore,
     pane_state: &mut PaneEntries,
-    acting: Option<PaneId>,
-    buf_id: BufferId,
+    target: PaneHandle,
     new_sels: SelectionSet,
     cs: &ChangeSet,
 ) {
+    let buf_id = target.buffer();
     // An identity `cs` moved no bytes: `Buffer::apply_edit*` skipped
     // `install` for it directly, and `commit_edit_group` never records it as
     // a revision for `undo`/`redo` to later replay, so the text generation did
@@ -43,7 +43,7 @@ fn finish_edit(
     // edit. Selections are still written: a no-op edit can still move
     // cursors.
     if cs.is_identity() {
-        if let Some(pane_id) = acting {
+        if let Some(pane_id) = target.pane() {
             pane_state
                 .seeded_mut(pane_id, buf_id)
                 .set_selections(new_sels, buffers.get(buf_id).text());
@@ -53,7 +53,7 @@ fn finish_edit(
     // A real edit reveals the acting pane even when it didn't move the
     // primary head (`r` replacing the character under the cursor). `install`
     // left this pane's selections for the new ones to replace.
-    if let Some(pane_id) = acting {
+    if let Some(pane_id) = target.pane() {
         pane_state
             .seeded_mut(pane_id, buf_id)
             .set_selections_after_edit(new_sels);
@@ -75,16 +75,15 @@ pub(in crate::editor) fn text_gate(
         .map_err(CommandError::transient)
 }
 
-/// [`text_gate`], then `Err` when [`check_no_conflicting_session`] refuses
-/// the edit.
+/// [`text_gate`] on `target`'s buffer, then `Err` when
+/// [`check_no_conflicting_session`] refuses an edit through `target`.
 fn admit(
     buffers: &BufferStore,
     stores: &PositionStores<'_>,
-    acting: Option<PaneId>,
-    buf_id: BufferId,
+    target: PaneHandle,
 ) -> Result<(), CommandError> {
-    text_gate(buffers, buf_id)?;
-    check_no_conflicting_session(stores.open_session(), acting, buf_id)
+    text_gate(buffers, target.buffer())?;
+    check_no_conflicting_session(stores.open_session(), target)
 }
 
 /// Apply an edit to `buf_id` through `pane_id`; the buffer carries every
@@ -125,7 +124,8 @@ pub(in crate::editor) fn apply_doc_edit_on(
     sels: SelectionSet,
     cmd: impl FnOnce(EditState) -> Edited,
 ) -> Result<(), CommandError> {
-    admit(buffers, stores, Some(pane_id), buf_id)?;
+    let target = PaneHandle::with_pane(buf_id, pane_id);
+    admit(buffers, stores, target)?;
     if stores.insert_at_mut(pane_id, buf_id).is_some() {
         apply_grouped_from(buffers, stores, pane_id, buf_id, sels, cmd);
         return Ok(());
@@ -143,11 +143,10 @@ pub(in crate::editor) fn apply_doc_edit_on(
     {
         commit_paste_group(buffers, stores.panes, stores.session);
     }
-    let (new_sels, cs) =
-        buffers
-            .get_mut(buf_id)
-            .apply_edit(buf_id, stores, Some(pane_id), sels, cmd);
-    finish_edit(buffers, stores.panes, Some(pane_id), buf_id, new_sels, &cs);
+    let (new_sels, cs) = buffers
+        .get_mut(buf_id)
+        .apply_edit(target, stores, sels, cmd);
+    finish_edit(buffers, stores.panes, target, new_sels, &cs);
     Ok(())
 }
 
@@ -158,10 +157,10 @@ fn edit_from_changes(cs: ChangeSet) -> impl FnOnce(EditState) -> Edited {
     }
 }
 
-/// Applies `cs`, a changeset built against `buf_id`'s current text, as one
-/// edit.
+/// Applies `cs`, a changeset built against `target`'s buffer's current text,
+/// as one edit.
 ///
-/// With `acting`, it goes through [`apply_doc_edit`] and that pane's session
+/// Through a pane, it goes through [`apply_doc_edit`] and that pane's session
 /// rules. Without one, every pane's stored selections are carried through the
 /// change and none is revealed; the undo revision records a cursor at the
 /// first change, which an undo restores into whichever pane walks it. `Err`
@@ -170,14 +169,14 @@ fn edit_from_changes(cs: ChangeSet) -> impl FnOnce(EditState) -> Edited {
 pub(in crate::editor) fn apply_changes(
     buffers: &mut BufferStore,
     stores: &mut PositionStores<'_>,
-    acting: Option<PaneId>,
-    buf_id: BufferId,
+    target: PaneHandle,
     cs: ChangeSet,
 ) -> Result<(), CommandError> {
-    if let Some(pane_id) = acting {
+    let buf_id = target.buffer();
+    if let Some(pane_id) = target.pane() {
         return apply_doc_edit(buffers, stores, pane_id, buf_id, edit_from_changes(cs));
     }
-    admit(buffers, stores, None, buf_id)?;
+    admit(buffers, stores, target)?;
     let text = buffers.get(buf_id).text();
     let first_change = cs
         .edited_regions()
@@ -187,8 +186,8 @@ pub(in crate::editor) fn apply_changes(
     let (new_sels, cs) =
         buffers
             .get_mut(buf_id)
-            .apply_edit(buf_id, stores, None, sels, edit_from_changes(cs));
-    finish_edit(buffers, stores.panes, None, buf_id, new_sels, &cs);
+            .apply_edit(target, stores, sels, edit_from_changes(cs));
+    finish_edit(buffers, stores.panes, target, new_sels, &cs);
     Ok(())
 }
 
@@ -234,7 +233,13 @@ fn apply_grouped_from(
     let (new_sels, cs) = buffers
         .get_mut(buf_id)
         .apply_edit_grouped(buf_id, stores, pane_id, sels, cmd);
-    finish_edit(buffers, stores.panes, Some(pane_id), buf_id, new_sels, &cs);
+    finish_edit(
+        buffers,
+        stores.panes,
+        PaneHandle::with_pane(buf_id, pane_id),
+        new_sels,
+        &cs,
+    );
     let session = stores
         .insert_at_mut(pane_id, buf_id)
         .expect("checked above, and an edit closes no session");
@@ -291,8 +296,7 @@ pub(in crate::editor) fn apply_doc_edit_regrouped(
     finish_edit(
         buffers,
         stores.panes,
-        Some(pane_id),
-        buf_id,
+        PaneHandle::with_pane(buf_id, pane_id),
         new_sels,
         &propagation_cs,
     );
@@ -336,7 +340,8 @@ pub(in crate::editor) fn apply_doc_history_walk(
         PaneId,
     ) -> Result<HistoryWalkResult, CommandError>,
 ) -> Result<usize, CommandError> {
-    admit(buffers, stores, Some(pane_id), buf_id)?;
+    let target = PaneHandle::with_pane(buf_id, pane_id);
+    admit(buffers, stores, target)?;
     if stores.insert_at_mut(pane_id, buf_id).is_some() {
         return Err(session_refuses_walk());
     }
@@ -356,7 +361,7 @@ pub(in crate::editor) fn apply_doc_history_walk(
     else {
         return Ok(0);
     };
-    finish_edit(buffers, stores.panes, Some(pane_id), buf_id, new_sels, &cs);
+    finish_edit(buffers, stores.panes, target, new_sels, &cs);
     // `finish_edit` skips `bump_edit_seq` for an identity `cs` (correctly:
     // a normal edit that cancels to identity records no revision at all, so
     // nothing happened). A history walk is different: `current` moved to a

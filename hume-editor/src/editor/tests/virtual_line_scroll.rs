@@ -17,9 +17,9 @@
 use super::doubles::{InlineHint, VirtualLineBlock};
 use super::*;
 use crate::editor::commands::open_pane_in_layout;
+use hume_core::Side;
 use hume_editing::text::BufferText;
 use hume_engine::pane::WrapMode;
-use hume_engine::providers::VirtualLineAnchor;
 use hume_grid::Rect;
 
 /// Two-line buffer ("x\ny\n"), wrapping on, a `Before(0)` block registered
@@ -33,7 +33,8 @@ fn editor_with_before_line() -> Editor {
     ed.view.panes[pid]
         .providers
         .add_decoration_source(Box::new(VirtualLineBlock::uniform(
-            VirtualLineAnchor::Before(hume_rope::line::ContentLine::new(0)),
+            Side::Before,
+            hume_rope::line::ContentLine::new(0),
             1,
             "V",
         )));
@@ -164,7 +165,8 @@ fn wheel_passes_a_mid_buffer_ghost_block() {
     ed.view.panes[focused_pid]
         .providers
         .add_decoration_source(Box::new(VirtualLineBlock::uniform(
-            VirtualLineAnchor::After(hume_rope::line::ContentLine::new(8)),
+            Side::After,
+            hume_rope::line::ContentLine::new(8),
             4,
             "V",
         )));
@@ -227,7 +229,8 @@ fn trailing_block_editor() -> (Editor, Rect) {
     ed.view.panes[focused_pid]
         .providers
         .add_decoration_source(Box::new(VirtualLineBlock::uniform(
-            VirtualLineAnchor::After(hume_rope::line::ContentLine::new(9)),
+            Side::After,
+            hume_rope::line::ContentLine::new(9),
             5,
             "V",
         )));
@@ -453,7 +456,8 @@ fn view_scroll_cursor_follow_counts_virtual_lines_toward_its_budget() {
         ed.view.panes[pid]
             .providers
             .add_decoration_source(Box::new(VirtualLineBlock::numbered(
-                VirtualLineAnchor::After(hume_rope::line::ContentLine::new(1)),
+                Side::After,
+                hume_rope::line::ContentLine::new(1),
                 3,
             )));
 

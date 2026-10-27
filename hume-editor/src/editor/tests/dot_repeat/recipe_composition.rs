@@ -273,7 +273,7 @@ fn dot_repeat_of_select_word_nearest_on_line_deletes_the_word() {
 
     ed.execute_keymap_command(
         std::borrow::Cow::Borrowed("select-word-nearest-on-line"),
-        Some(1),
+        Count::typed(1),
         false,
     );
     ed.feed_key(key('d'));

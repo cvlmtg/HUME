@@ -820,7 +820,11 @@ fn a_reload_keeps_the_origin_of_an_asserted_language() {
 
     assert_eq!(language(&ed).as_deref(), Some("alpha"));
     assert_eq!(
-        ed.state.buffers.get(ed.focused_buffer_id()).language_by,
+        ed.state
+            .buffers
+            .get(ed.focused_buffer_id())
+            .language_by
+            .by(),
         Some(hume_core::ConfigOrigin::User)
     );
 }

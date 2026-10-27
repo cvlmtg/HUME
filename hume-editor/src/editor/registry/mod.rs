@@ -31,7 +31,7 @@ mod command;
 mod defaults;
 
 pub(in crate::editor) use command::{
-    ArgExpansion, CmdMeta, Count, EditFn, FocusedCmdFn, PaneCharCmdFn, PaneCmdFn, PaneTextCmdFn,
+    ArgExpansion, CmdMeta, EditFn, FocusedCmdFn, PaneCharCmdFn, PaneCmdFn, PaneTextCmdFn,
     SelectionTracking, TextPrompt, TypedBody, TypedCommand,
 };
 // Narrower than the re-exports above: these carry a native command's `fun`

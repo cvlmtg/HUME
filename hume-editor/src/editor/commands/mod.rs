@@ -462,7 +462,7 @@ pub(in crate::editor) use pipeline::{
     BoundCommand, FocusedBindError, Missing, NativeBody, PendingDispatch, report_arg_error, run,
     run_body, step_paste_commit,
 };
-pub(in crate::editor) use target::{CommandPane, FocusedPane, TargetError};
+pub(in crate::editor) use target::{CommandPane, FocusedPane, TargetError, shown_through};
 
 // DisplayLineMap-dependent commands live in visual_move.rs; re-export for the registry glob.
 pub(super) use super::visual_move::{

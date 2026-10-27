@@ -405,8 +405,7 @@ fn close_drawer_with_a_mismatched_token_leaves_it_open() {
 
     let _pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.close_drawer(crate::editor::host_token::mint())
-        .unwrap();
+    host.close_drawer(hume_core::HostToken::mint()).unwrap();
 
     assert!(
         ed.state.input.drawer().is_some(),
@@ -431,7 +430,7 @@ fn update_drawer_list_with_a_mismatched_token_is_a_noop_false() {
     let _pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     let applied = host.update_drawer_list(
-        crate::editor::host_token::mint(),
+        hume_core::HostToken::mint(),
         drawer_items(&["x"]),
         hume_scripting::Callback::for_test(steel::rvals::SteelVal::Void),
         0,
@@ -459,7 +458,7 @@ fn drawer_selected_index_with_a_mismatched_token_reports_none() {
     let _pane = focused_pane(&ed);
     let host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     assert_eq!(
-        host.drawer_selected_index(crate::editor::host_token::mint()),
+        host.drawer_selected_index(hume_core::HostToken::mint()),
         None,
         "a foreign token must read as no selection, even though a drawer is open"
     );

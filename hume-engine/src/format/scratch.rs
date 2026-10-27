@@ -171,8 +171,8 @@ pub struct VirtualFormat {
     /// The laid-out display lines; each indexes `graphemes`.
     pub display_lines: Vec<DisplayLine>,
     /// How many of `display_lines` are `Before`-anchored: the order
-    /// [`crate::providers::VirtualLineAnchor::sort_key`] imposes puts them
-    /// first, so the `i`th `After` one is at index `before + i`.
+    /// [`hume_core::Side`] imposes puts them first, so the `i`th `After` one
+    /// is at index `before + i`.
     pub before: usize,
     /// Each display line's own background scope, parallel to `display_lines`:
     /// every display line a virtual line wraps into carries that virtual

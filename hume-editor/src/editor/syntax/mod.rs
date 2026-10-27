@@ -13,8 +13,7 @@ pub(in crate::editor) use loads::GrammarLoads;
 pub(in crate::editor) use parse::{SyntaxUse, ensure_syntax_current};
 
 use hume_core::{
-    BUFFER_LANGUAGE_TIE, BufferId, BufferIntrinsicOption, ConfigOrigin, LanguageFields, Severity,
-    WriteOutcome,
+    BufferId, BufferIntrinsicOption, ConfigOrigin, LanguageFields, Severity, WriteOutcome,
 };
 use hume_treesitter::registry::{DetectPaths, LanguageId, detect_language};
 
@@ -29,7 +28,7 @@ impl Editor {
     /// for the user/script write paths).
     pub(super) fn set_buffer_language(&mut self, bid: BufferId, new_lang: Option<LanguageId>) {
         debug_assert!(
-            self.state.buffers.get(bid).language_by.is_none(),
+            self.state.buffers.get(bid).language_by.by().is_none(),
             "detection must leave an asserted language alone"
         );
         self.set_buffer_language_impl(bid, new_lang);
@@ -82,11 +81,12 @@ impl Editor {
     /// asserted it, which is traced. Stamped before the write, so it records
     /// how the current value arrived whether or not the write changes it.
     fn claim_language(&mut self, bid: BufferId, by: ConfigOrigin) -> bool {
-        let claimed = by
-            .claim(
-                &mut self.state.buffers.get_mut(bid).language_by,
-                BUFFER_LANGUAGE_TIE,
-            )
+        let claimed = self
+            .state
+            .buffers
+            .get_mut(bid)
+            .language_by
+            .claim(by)
             .is_applied();
         if !claimed {
             self.state.report_shadowed(
@@ -177,7 +177,7 @@ impl Editor {
         }
         // A user or script asserted this buffer's language: detection leaves
         // it as it is.
-        if self.state.buffers.get(bid).language_by.is_some() {
+        if self.state.buffers.get(bid).language_by.by().is_some() {
             return;
         }
         let detected = {

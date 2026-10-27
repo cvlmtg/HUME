@@ -5,12 +5,13 @@
 - hume-ops
 - hume-engine
 - hume-treesitter
+- hume-lsp
 - hume-scripting
 - hume-ui
 - hume-decorations
 - hume-editor
 ## Description
-Plain data that two or more crates share and that no crate they can all see owns. An item lives in the crate whose domain it is, and here when a crate that uses it cannot depend on that crate; a dependency the users have on each other for other reasons never keeps it elsewhere.
+Shared data types for crates that cannot depend on each other.
 
 # hume-rope
 ### Depends on
@@ -95,6 +96,7 @@ Named edit and motion commands, as pure functions of buffer and selections.
 
 # hume-lsp
 ### Depends on
+- hume-core
 - hume-editing
 - hume-platform
 - hume-rope

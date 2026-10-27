@@ -3,6 +3,8 @@
 
 use std::borrow::Cow;
 
+use hume_core::Count;
+
 use crate::editor::EditorState;
 use crate::editor::dispatch::CmdCtx;
 use crate::editor::registry::{CmdMeta, SelectionTracking};
@@ -18,7 +20,7 @@ pub(crate) struct SelectionStep {
     /// Command name (e.g. `"select-line"`, `"surround-paren"`).
     pub command: Cow<'static, str>,
     /// Count prefix originally used.
-    pub count: usize,
+    pub count: Count,
     /// `true` if this step ran in Extend mode (grew the existing selection).
     pub extend: bool,
 }
@@ -97,7 +99,7 @@ impl EditorState {
         }
         self.selection_recipe.push(SelectionStep {
             command: name.clone(),
-            count: ctx.count.unwrap_or(1),
+            count: ctx.count,
             extend: ctx.extend,
         });
     }

@@ -207,11 +207,22 @@ impl SettingsHost for NullHost {
     ) -> Result<(), String> {
         Err("NullHost: set_buffer_option not available".into())
     }
+    fn set_buffer_line_ending(
+        &mut self,
+        _bid: BufferId,
+        _value: OptionInput,
+        _origin: ConfigOrigin,
+    ) -> Result<(), String> {
+        Err("NullHost: set_buffer_line_ending not available".into())
+    }
     fn get_global_option(&self, _key: &str) -> Result<OptionValue, String> {
         Err("NullHost: get_global_option not available".into())
     }
     fn get_buffer_option(&self, _key: &str, _bid: BufferId) -> Result<OptionValue, String> {
         Err("NullHost: get_buffer_option not available".into())
+    }
+    fn buffer_line_ending(&self, _bid: BufferId) -> Result<String, String> {
+        Err("NullHost: buffer_line_ending not available".into())
     }
     fn steel_command_budget_ms(&self) -> u64 {
         10_000
@@ -578,8 +589,11 @@ impl LspHost for EmptyLspHost {
     fn lsp_server_status(&self) -> Vec<crate::types::LspServerStatusEntry> {
         Vec::new()
     }
-    fn lsp_server_origin(&self, _name: &hume_core::ServerName) -> Option<ConfigOrigin> {
-        None
+    fn lsp_server_claim(
+        &self,
+        _name: &hume_core::ServerName,
+    ) -> hume_core::Claim<hume_core::ServerRegistrationTie> {
+        hume_core::Claim::default()
     }
     fn new_supersede_key(&mut self) -> crate::host::SupersedeKey {
         self.supersede_keys.mint()

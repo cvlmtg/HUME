@@ -59,7 +59,7 @@ fn picker_bang_opens_session_and_returns_its_token() {
         .parse()
         .expect("picker! must return the token as an integer");
     assert_eq!(
-        hume_core::HostToken::from_raw(logged_token),
+        hume_core::HostToken::from_script(logged_token),
         session.token()
     );
 }
@@ -639,7 +639,7 @@ fn direct_host_impl_open_push_and_close_with_no_lsp_borrow() {
     let _pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     assert!(!host.picker_feed(
-        crate::editor::host_token::mint(),
+        hume_core::HostToken::mint(),
         vec![("x".to_string(), hume_scripting::Rooted::new(SteelVal::Void))],
         PickerFeedMode::Append
     ));
@@ -684,7 +684,7 @@ fn direct_host_impl_picker_close_with_a_stale_token_is_a_no_op() {
 
     let _pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.picker_close(crate::editor::host_token::mint());
+    host.picker_close(hume_core::HostToken::mint());
     assert!(
         ed.state.input.picker().is_some(),
         "a mismatched token must not close the open picker"

@@ -505,6 +505,17 @@ fn nbsp_renders_as_itself_when_off() {
 }
 
 #[test]
+fn a_blank_with_a_combining_mark_renders_as_itself() {
+    let ws = WhitespaceConfig {
+        space: crate::pane::WhitespaceRender::All,
+        ..WhitespaceConfig::default()
+    };
+    let (_, graphemes, _) = do_format_ws("a\u{A0}\u{301}b\n", ws);
+    let marked = graphemes.iter().find(|g| g.display_col == dc(1)).unwrap();
+    assert!(matches!(marked.content, CellContent::Grapheme));
+}
+
+#[test]
 fn tab_indicator_all_mode() {
     let ws = WhitespaceConfig {
         tab: crate::pane::WhitespaceRender::All,

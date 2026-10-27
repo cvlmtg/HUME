@@ -16,7 +16,6 @@ use hume_rope::offset::CharOffset;
 use hume_scripting::host::{TrackedFate, TrackedHold};
 
 use super::buffer::store::BufferStore;
-use super::host_token;
 
 /// The positions scripts are tracking, each a cursor in one buffer under a
 /// token the script holds. A token nobody minted, or one already released,
@@ -49,7 +48,7 @@ impl TrackedPositions {
         text: &BufferText,
         at: ClusterStart,
     ) -> HostToken {
-        let token = host_token::mint();
+        let token = HostToken::mint();
         let cursor = EditState::with_cursor(text.clone(), at).into_selections();
         self.entries.insert(
             token,

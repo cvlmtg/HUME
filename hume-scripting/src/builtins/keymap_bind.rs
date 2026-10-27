@@ -16,25 +16,9 @@ use super::errors::{self, generic_err};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/// The mode symbols the bind builtins take.
-const MODES: [(&str, BindMode); 4] = [
-    ("normal", BindMode::Normal),
-    ("extend", BindMode::Extend),
-    ("insert", BindMode::Insert),
-    ("command", BindMode::Command),
-];
-
 fn mode_from_symbol(mode: &SteelVal) -> Result<BindMode, SteelErr> {
     let mode_str = symbol_arg(mode, "mode", "a mode symbol like 'normal")?;
-    symbol_enum_arg(mode_str, "mode", &MODES)
-}
-
-fn mode_symbol(mode: BindMode) -> &'static str {
-    MODES
-        .iter()
-        .find(|(_, m)| *m == mode)
-        .map(|(name, _)| *name)
-        .expect("every BindMode has a symbol in MODES")
+    symbol_enum_arg(mode_str, "mode", &BindMode::NAMED)
 }
 
 /// The keymap a `#:keymap` argument names. The global keymap only changes
@@ -64,11 +48,11 @@ fn bind_inner(
     // bound there could never fire.
     if keys.len() > 1 && matches!(mode, BindMode::Insert | BindMode::Command) {
         steel::stop!(Generic =>
-            "a '{} binding takes a single key, got {key_str:?}", mode_symbol(mode));
+            "a '{} binding takes a single key, got {key_str:?}", mode.name());
     }
     if force_extend && mode != BindMode::Normal {
         steel::stop!(Generic =>
-            "only a 'normal binding can extend, got '{}", mode_symbol(mode));
+            "only a 'normal binding can extend, got '{}", mode.name());
     }
     // Queued, not applied: a failed plugin activation's binds are dropped by
     // `pop_effect_marks(false)` before the editor ever sees them. Validation

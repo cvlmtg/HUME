@@ -4,7 +4,7 @@
 
 use termina::event::{KeyCode, KeyEvent, Modifiers};
 
-use hume_core::{BindMode, BufferId, MAX_COUNT};
+use hume_core::{BindMode, BufferId, Count};
 use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
 use hume_ops::MotionMode;
@@ -167,13 +167,13 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
     let buffer = ed.focused_buffer_id();
     if ed.state.pending.started_outside(buffer) {
         ed.state.pending.clear();
-        ed.state.count = None;
+        ed.state.count = Count::UNTYPED;
     }
 
     // ── Hard-reset on Esc ─────────────────────────────────────────────────
     if key.code == KeyCode::Escape {
         ed.state.pending.clear();
-        ed.state.count = None;
+        ed.state.count = Count::UNTYPED;
         ed.state.register_prefix = None; // drop a "<reg> prefix not yet used
         // Esc exits Extend mode; Normal is the reset state.
         ed.state.input.set_extend(false);
@@ -182,7 +182,7 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
             &mut ed.state,
             &mut ed.view,
             t,
-            crate::editor::registry::Count::new(None),
+            Count::UNTYPED,
             MotionMode::Move,
         )
         .expect("clear-search is infallible");
@@ -196,13 +196,10 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
     // trie (unbound by default; core:vim-keybind binds it to goto-line-start).
     // `Q1`/`q1` read `1` as a register name: the char layer above this
     // handler takes the key before it gets here.
-    // Clamped to MAX_COUNT.
     if ed.state.pending.keys().is_empty() && key.modifiers == Modifiers::NONE {
         match key.code {
-            KeyCode::Char(d @ '0'..='9') if d != '0' || ed.state.count.is_some() => {
-                let digit = d as usize - '0' as usize;
-                let n = ed.state.count.unwrap_or(0) * 10 + digit;
-                ed.state.count = Some(n.min(MAX_COUNT));
+            KeyCode::Char(d @ '0'..='9') if d != '0' || ed.state.count.is_typed() => {
+                ed.state.count = ed.state.count.append_digit(d as u32 - '0' as u32);
                 return;
             }
             _ => {}
@@ -223,7 +220,7 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
                 } else if !ed.state.macros.is_replaying() {
                     // A count before `Q<reg>` has no meaning for recording,
                     // and would otherwise reach the first recorded key.
-                    ed.state.count = None;
+                    ed.state.count = Count::UNTYPED;
                     read_char(
                         &mut ed.state,
                         &ed.view,
@@ -235,7 +232,7 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
             KeyCode::Char('q') => {
                 if !ed.state.macros.is_replaying() && ed.state.macros.recording_register().is_none()
                 {
-                    let count = ed.state.count.take().unwrap_or(1);
+                    let count = std::mem::take(&mut ed.state.count);
                     read_char(
                         &mut ed.state,
                         &ed.view,
@@ -309,7 +306,7 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
                     };
                     if !ctrl_extend {
                         ed.state.pending.clear();
-                        ed.state.count = None;
+                        ed.state.count = Count::UNTYPED;
                         return;
                     }
                     (resolved, true)
@@ -363,7 +360,7 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
                     .registry
                     .get_mappable(cmd.name.as_ref())
                     .is_some_and(|r| r.is_extendable());
-            let count = ed.state.count.take();
+            let count = std::mem::take(&mut ed.state.count);
             ed.execute_keymap_command(cmd.name, count, extend);
         }
         WalkResult::Interior => {
@@ -371,7 +368,7 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
         }
         WalkResult::NoMatch => {
             ed.state.pending.clear();
-            ed.state.count = None;
+            ed.state.count = Count::UNTYPED;
         }
     }
 }

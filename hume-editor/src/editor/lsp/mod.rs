@@ -242,7 +242,7 @@ impl LspState {
     #[cfg(test)]
     fn config_for_test(&self, name: &str) -> Option<&hume_core::LspServerConfig> {
         let name = hume_core::ServerName::parse(name).ok()?;
-        self.registry.get(&name)
+        self.registry.get(&name).map(std::sync::Arc::as_ref)
     }
 
     #[cfg(test)]

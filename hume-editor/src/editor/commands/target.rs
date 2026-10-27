@@ -2,7 +2,7 @@
 //! focused pane as a type of its own.
 
 use hume_core::{BufferId, PaneHandle, PaneId};
-use hume_engine::pipeline::EngineView;
+use hume_engine::pipeline::{EngineView, PanePool};
 
 use crate::editor::EditorState;
 use crate::editor::pane_state::{PaneBufferState, PaneEntries};
@@ -77,6 +77,21 @@ impl CommandPane {
     }
 }
 
+/// What a change to `buffer` requested through `requester` acts through:
+/// `requester` while it shows `buffer`, no pane otherwise. Unlike
+/// [`CommandPane::resolve`], a requester that shows another buffer is not an
+/// error, so one request can edit files no pane shows.
+pub(in crate::editor) fn shown_through(
+    panes: &PanePool,
+    requester: Option<PaneId>,
+    buffer: BufferId,
+) -> PaneHandle {
+    match requester.filter(|&pid| panes.get(pid).is_some_and(|p| p.buffer_id() == buffer)) {
+        Some(pid) => PaneHandle::with_pane(buffer, pid),
+        None => PaneHandle::buffer_only(buffer),
+    }
+}
+
 /// A [`CommandPane`] proven to be the focused pane at the
 /// moment it was minted. The single admission point for focus-bound state
 /// (the open Insert/paste session, the sticky Extend flag, dot-repeat), so a
@@ -90,7 +105,8 @@ impl CommandPane {
 /// keypress and `:` dispatch (`dispatch.rs`,
 /// `input_stack/{base,command,insert,search}.rs`), dot-repeat replay, the
 /// `(focused-pane)` builtin, a confirm answer (`buffer/disk.rs`), an effect
-/// applied after its eval (`lsp/registry.rs`), and `Editor`'s own
+/// applied after its eval (`lsp/registry.rs`), a server's
+/// `workspace/applyEdit` request (`lsp/edits.rs`), and `Editor`'s own
 /// focused-pane readers (`mod.rs`). A command body, a typed command, or a
 /// helper they call receives the pane instead of minting it.
 ///

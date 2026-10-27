@@ -23,7 +23,7 @@ use crate::attribution::Owner;
 use crate::command_procs::{CommandProc, MappableProc, TypedProc};
 use crate::host::NativeCall;
 use crate::types::{SteelCmdBody, SteelCmdDef, SteelTypedCmdBody, SteelTypedCmdDef};
-use hume_core::{CommandArg, MAX_COUNT, Severity};
+use hume_core::{CommandArg, Count, Severity};
 
 // ── Builtins ──────────────────────────────────────────────────────────────────
 
@@ -304,30 +304,29 @@ pub(crate) fn leave_command(ctx: &mut SteelCtx, depth: SteelVal) -> SteelResult 
 /// Parse count, extend, and the optional operand from a native command's
 /// args list.
 ///
-/// Valid shapes: `[]` → `(Some(1), false)`; `[n]` → `(decode(n), false)`;
-/// `[n, bool]` → `(decode(n), bool)`; each optionally followed by one string
-/// or char, the command's [`CommandArg`] (`"x"` → `Text`, `#\x` → `Char`).
-/// All other shapes (a second trailing arg, a number or boolean in the
-/// operand's place) return `Err`. Whether the command takes that operand is
-/// checked by the editor, not here.
+/// Valid shapes: `[]` → `(Count::typed(1), false)`; `[n]` → `(decode(n),
+/// false)`; `[n, bool]` → `(decode(n), bool)`; each optionally followed by
+/// one string or char, the command's [`CommandArg`] (`"x"` → `Text`, `#\x` →
+/// `Char`). All other shapes (a second trailing arg, a number or boolean in
+/// the operand's place) return `Err`. Whether the command takes that operand
+/// is checked by the editor, not here.
 ///
-/// `decode(0)` is `None`: the Scheme spelling of "no count typed" (a bare
-/// keypress), since Scheme has no `Option` to pass across the builtin-call
-/// boundary and `0` is otherwise unreachable as an explicit count. `None`
-/// makes `move-down`/`move-up` move by visual line instead of buffer line
-/// (see `EditorHost::run_command_sync`); every other native command treats
-/// it the same as `Some(1)`. Negative counts clamp to `Some(1)`; counts above
-/// [`MAX_COUNT`] clamp there, since a script has no digit-by-digit accumulator to
-/// cap, so this is the only ceiling standing between an arbitrary `isize` and
-/// a command that loops the count with no fixed-point exit.
+/// `decode(0)` is [`Count::UNTYPED`]: the Scheme spelling of "no count typed"
+/// (a bare keypress), since Scheme has no `Option` to pass across the
+/// builtin-call boundary and `0` is otherwise unreachable as an explicit
+/// count. [`count_to_steel`] is its inverse. An untyped count makes
+/// `move-down`/`move-up` move by visual line instead of buffer line (see
+/// `EditorHost::run_command_sync`); every other native command treats it the
+/// same as a count of one. Any other `n` goes through [`Count::typed`], so a
+/// negative count runs once and a huge one is clamped.
 pub(crate) fn parse_native_args(
     args: &[SteelVal],
-) -> Result<(Option<usize>, bool, Option<CommandArg>), String> {
-    fn decode(n: isize) -> Option<usize> {
+) -> Result<(Count, bool, Option<CommandArg>), String> {
+    fn decode(n: isize) -> Count {
         if n == 0 {
-            None
+            Count::UNTYPED
         } else {
-            Some((n.max(1) as usize).min(MAX_COUNT))
+            Count::typed(n.max(1) as usize)
         }
     }
     let (head, arg) = match args.split_last() {
@@ -336,7 +335,7 @@ pub(crate) fn parse_native_args(
         _ => (args, None),
     };
     let (count, extend) = match head {
-        [] => (Some(1), false),
+        [] => (Count::typed(1), false),
         [SteelVal::IntV(n)] => (decode(*n), false),
         [SteelVal::IntV(n), SteelVal::BoolV(ext)] => (decode(*n), *ext),
         _ => {
@@ -347,6 +346,14 @@ pub(crate) fn parse_native_args(
         }
     };
     Ok((count, extend, arg))
+}
+
+/// `count` as a Steel command body's `count` argument: `0` when none was
+/// typed, the encoding `parse_native_args` decodes, so a body that forwards
+/// its `count` to `call!` passes the same count on.
+pub fn count_to_steel(count: Count) -> SteelVal {
+    let n = if count.is_typed() { count.get() } else { 0 };
+    SteelVal::IntV(n as isize)
 }
 
 fn steel_list_to_vec(val: SteelVal) -> Result<Vec<SteelVal>, SteelErr> {

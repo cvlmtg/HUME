@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use hume_core::{BufferId, ConfigOrigin, HostToken, PaneHandle};
+use hume_core::{BufferId, HostToken, PaneHandle};
 use hume_rope::position_encoding::PositionEncoding;
 
 use hume_lsp::backend::ServerId;
@@ -10,7 +10,7 @@ use hume_lsp::backend::ServerId;
 use super::token::TrackedHold;
 use crate::builtins::ids::{DocPos, DocRange, ServerRef};
 use crate::types::CapabilityQuery;
-use hume_core::{ListEntry, LspFeature, ServerName};
+use hume_core::{Claim, ListEntry, LspFeature, ServerName, ServerRegistrationTie};
 
 /// A position request's params before encoding: the document URI and a
 /// position each server receives in its own encoding.
@@ -102,10 +102,10 @@ pub trait LspHost {
     fn lsp_server_status(&self) -> Vec<crate::types::LspServerStatusEntry>;
 
     /// The origin of `name`'s registration (not necessarily attached or
-    /// running), `None` when it is not registered, as of the last applied
+    /// running), empty when it is not registered, as of the last applied
     /// effect: the `lsp-server-registered?` builtin applies the ops queued
     /// in its own eval on top of it.
-    fn lsp_server_origin(&self, name: &ServerName) -> Option<ConfigOrigin>;
+    fn lsp_server_claim(&self, name: &ServerName) -> Claim<ServerRegistrationTie>;
 
     /// A key no other call has returned, for `lsp-supersede-key`.
     fn new_supersede_key(&mut self) -> SupersedeKey;

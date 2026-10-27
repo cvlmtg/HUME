@@ -5,6 +5,7 @@
 
 use super::*;
 use crate::editor::buffer::Buffer;
+use hume_core::PaneHandle;
 
 /// A pane that showed a buffer and moved to another one keeps its selections
 /// for the buffer. A reload while it is away carries them to the new text,
@@ -97,8 +98,7 @@ fn sift_cancel_after_an_out_of_band_edit_restores_the_carried_selection() {
     crate::editor::lsp::edits::apply_text_edits(
         &mut ed.state,
         &ed.view.panes,
-        Some(pid),
-        bid,
+        PaneHandle::with_pane(bid, pid),
         &[(
             hume_lsp::position::from_lsp_range(&delete_prefix.range),
             delete_prefix.new_text.as_str(),
@@ -213,8 +213,7 @@ fn a_tracked_position_follows_an_insertion_above_it() {
     crate::editor::lsp::edits::apply_text_edits(
         &mut ed.state,
         &ed.view.panes,
-        Some(pid),
-        bid,
+        PaneHandle::with_pane(bid, pid),
         &[(
             hume_lsp::position::from_lsp_range(&insert_line.range),
             insert_line.new_text.as_str(),
@@ -323,10 +322,10 @@ fn an_unknown_or_released_token_answers_absent() {
         None
     );
     assert_eq!(
-        ed.state
-            .panes
-            .tracked
-            .position(hume_core::HostToken::from_raw(u64::MAX), &ed.state.buffers),
+        ed.state.panes.tracked.position(
+            hume_core::HostToken::from_script(u64::MAX),
+            &ed.state.buffers
+        ),
         None
     );
 }

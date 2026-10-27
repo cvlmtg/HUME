@@ -9,7 +9,7 @@
 //! it shares the edit-application path with `apply-workspace-edit!` and
 //! belongs next to it.
 
-use hume_core::{BufferId, OnUnsaved, PaneId};
+use hume_core::{BufferId, OnUnsaved, PaneHandle, PaneId};
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
 use hume_editing::edit::apply_keeping_final_break;
 use hume_editing::text::BufferText;
@@ -23,6 +23,7 @@ use hume_rope::position_encoding::{PositionEncoding, WirePos};
 use super::introspect;
 use crate::editor::EditorState;
 use crate::editor::buffer::Buffer;
+use crate::editor::commands::{FocusedPane, shown_through};
 use crate::editor::doc_ops;
 
 /// Shared precondition check for every edit entry point in this module: the
@@ -167,22 +168,7 @@ fn build_changeset_from_char_edits(
     Ok(changes)
 }
 
-/// What an edit to one buffer acts through: the requesting pane while it
-/// shows that buffer, otherwise no pane.
-#[derive(Clone, Copy)]
-struct EditTarget {
-    bid: BufferId,
-    acting: Option<PaneId>,
-}
-
-impl EditTarget {
-    fn for_buffer(panes: &PanePool, requester: Option<PaneId>, bid: BufferId) -> Self {
-        let acting = requester.filter(|&pid| panes.get(pid).is_some_and(|p| p.buffer_id() == bid));
-        Self { bid, acting }
-    }
-}
-
-/// Applies a pre-built `ChangeSet` to `target.bid` as one undo step, through
+/// Applies a pre-built `ChangeSet` to `target`'s buffer as one undo step, through
 /// the same chokepoint every native edit command uses
 /// (`doc_ops::apply_changes`: selection propagation, syntax reparse,
 /// queued LSP `didChange`, all for free). Returns the applied `ChangeSet` so
@@ -191,31 +177,29 @@ impl EditTarget {
 /// forward) can do so without rebuilding it.
 fn commit_changeset(
     state: &mut EditorState,
-    target: EditTarget,
+    target: PaneHandle,
     cs: ChangeSet,
 ) -> Result<ChangeSet, String> {
     let (buffers, mut stores) = state.edit_parts();
-    doc_ops::apply_changes(buffers, &mut stores, target.acting, target.bid, cs.clone())
-        .map_err(|e| e.to_string())?;
+    doc_ops::apply_changes(buffers, &mut stores, target, cs.clone()).map_err(|e| e.to_string())?;
     Ok(cs)
 }
 
 /// `(apply-text-edits! pane edits #:expect-generation gen)`. `encoding` is
 /// the host layer's own resolve: every entry in `edits` decoded from its
-/// own tagged `JsonHandle`, checked there to all agree. `requester` is the
-/// pane the handle named, if any; the edit goes through it only while it
-/// shows `bid`.
+/// own tagged `JsonHandle`, checked there to all agree. The edit goes
+/// through `requester`'s pane only while that pane shows its buffer.
 pub(in crate::editor) fn apply_text_edits(
     state: &mut EditorState,
     panes: &PanePool,
-    requester: Option<PaneId>,
-    bid: BufferId,
+    requester: PaneHandle,
     edits: &[(ExclusiveRange<WirePos>, &str)],
     expect_gen: Option<u64>,
     encoding: PositionEncoding,
 ) -> Result<(), String> {
+    let bid = requester.buffer();
     let cs = build_edit_changeset(state, bid, edits, expect_gen, encoding)?;
-    commit_changeset(state, EditTarget::for_buffer(panes, requester, bid), cs)?;
+    commit_changeset(state, shown_through(panes, requester.pane(), bid), cs)?;
     Ok(())
 }
 
@@ -291,7 +275,7 @@ pub(in crate::editor) fn commit_char_edits(
     }
     let buf = checked_buffer(state, bid, None)?;
     let cs = build_changeset_from_char_edits(buf.text(), char_edits)?;
-    let target = EditTarget::for_buffer(panes, Some(pid), bid);
+    let target = shown_through(panes, Some(pid), bid);
     Ok(Some(commit_changeset(state, target, cs)?))
 }
 
@@ -334,18 +318,18 @@ fn resolve_or_open(
 pub(in crate::editor) fn apply_workspace_edit(
     state: &mut EditorState,
     view: &mut EngineView,
-    requester: Option<PaneId>,
+    requester: PaneHandle,
     we: lsp_types::WorkspaceEdit,
     encoding: PositionEncoding,
-    expect: Option<(BufferId, u64)>,
+    expect_gen: Option<u64>,
 ) -> Result<WorkspaceEditSummary, String> {
-    // Checked against the buffer the request was made from, not any file the
-    // edit touches: "has it changed since," the same staleness
-    // `apply-text-edits!`'s `#:expect-generation` guards. Per-file staleness
-    // (a `documentChanges` entry's own `version`) is checked separately, per
-    // entry, below.
-    if let Some((requesting_bid, expect_gen)) = expect {
-        let current_gen = checked_buffer(state, requesting_bid, None)?
+    // Checked against `requester`'s buffer, the one the request was made
+    // from, not any file the edit touches: "has it changed since," the same
+    // staleness `apply-text-edits!`'s `#:expect-generation` guards. Per-file
+    // staleness (a `documentChanges` entry's own `version`) is checked
+    // separately, per entry, below.
+    if let Some(expect_gen) = expect_gen {
+        let current_gen = checked_buffer(state, requester.buffer(), None)?
             .text()
             .generation();
         if current_gen != expect_gen {
@@ -355,7 +339,7 @@ pub(in crate::editor) fn apply_workspace_edit(
         }
     }
     let entries = hume_lsp::workspace_edit::file_edits(we)?;
-    let mut planned: Vec<(EditTarget, ChangeSet)> = Vec::with_capacity(entries.len());
+    let mut planned: Vec<(PaneHandle, ChangeSet)> = Vec::with_capacity(entries.len());
     for hume_lsp::workspace_edit::FileEdits {
         uri,
         edits,
@@ -386,14 +370,10 @@ pub(in crate::editor) fn apply_workspace_edit(
         // earlier file in this same batch already applied. See this
         // function's own doc for why that's the one thing a multi-file edit
         // must not do.
-        let target = EditTarget::for_buffer(&view.panes, requester, bid);
-        crate::editor::edit_session::check_no_conflicting_session(
-            state.open_session(),
-            target.acting,
-            bid,
-        )
-        .map_err(|e| format!("{}: {e}", display()))?;
-        if planned.iter().any(|(t, _)| t.bid == bid) {
+        let target = shown_through(&view.panes, requester.pane(), bid);
+        crate::editor::edit_session::check_no_conflicting_session(state.open_session(), target)
+            .map_err(|e| format!("{}: {e}", display()))?;
+        if planned.iter().any(|(t, _)| t.buffer() == bid) {
             return Err(format!(
                 "{}: workspace edit contains more than one entry for this file",
                 display()
@@ -589,11 +569,11 @@ pub(in crate::editor) fn apply_edit_request_response(
     };
     // Server-initiated, no Steel invocation pane: the focused pane edits the
     // file it shows and every other file is edited for no pane.
-    let pid = view.focused_pane();
+    let requester = FocusedPane::current(view).handle(view);
     // No request-time buffer to check staleness against: this answers a
     // server-initiated request, not a Steel round-trip with its own
     // captured generation.
-    match apply_workspace_edit(state, view, Some(pid), we, encoding, None) {
+    match apply_workspace_edit(state, view, requester, we, encoding, None) {
         Ok(_summary) => Ok(serde_json::json!({ "applied": true })),
         Err(e) => Ok(serde_json::json!({
             "applied": false,

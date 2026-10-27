@@ -4,6 +4,8 @@
 
 use std::borrow::Cow;
 
+use hume_core::Count;
+
 use termina::event::KeyEvent;
 
 use super::{BindingId, SelectionStep};
@@ -166,7 +168,7 @@ pub(crate) struct RepeatableAction {
     pub command: Cow<'static, str>,
     /// The count prefix the change ran with. Overridden when `.` itself is given a
     /// count.
-    pub count: usize,
+    pub count: Count,
     /// Selection-building recipe to replay BEFORE the command.
     ///
     /// `[]` (the command acted on a pre-existing selection), or a sequence of

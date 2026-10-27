@@ -4,6 +4,25 @@ use hume_platform::process::Launch;
 use lsp_types::ServerCapabilities;
 use std::path::PathBuf;
 
+/// A registration with no initialization options or settings.
+fn plain_config() -> Arc<LspServerConfig> {
+    configured(None, None)
+}
+
+/// A registration carrying `init_options` and `settings`.
+fn configured(
+    init_options: Option<serde_json::Value>,
+    settings: Option<serde_json::Value>,
+) -> Arc<LspServerConfig> {
+    Arc::new(LspServerConfig {
+        command: "server".to_string(),
+        args: Vec::new(),
+        init_options,
+        settings,
+        env: Vec::new(),
+    })
+}
+
 fn canned_result(encoding: Option<PositionEncodingKind>) -> serde_json::Value {
     let caps = ServerCapabilities {
         position_encoding: encoding,
@@ -27,7 +46,7 @@ fn handshake_round_trip_transitions_to_running() {
             &[],
         )
         .unwrap();
-    let mut client = LspClient::new(sid, PathBuf::from("."));
+    let mut client = LspClient::new(sid, PathBuf::from("."), plain_config());
 
     client.start_handshake(&mut backend);
     assert_eq!(client.state, ServerState::Starting);
@@ -62,8 +81,14 @@ fn handshake_sends_did_change_configuration_when_settings_set() {
             &[],
         )
         .unwrap();
-    let mut client = LspClient::new(sid, PathBuf::from("."));
-    client.set_settings(Some(serde_json::json!({"files": {"watcher": "server"}})));
+    let mut client = LspClient::new(
+        sid,
+        PathBuf::from("."),
+        configured(
+            None,
+            Some(serde_json::json!({"files": {"watcher": "server"}})),
+        ),
+    );
 
     client.start_handshake(&mut backend);
     let events = backend.drain();
@@ -107,7 +132,7 @@ fn handshake_omits_did_change_configuration_when_settings_unset() {
             &[],
         )
         .unwrap();
-    let mut client = LspClient::new(sid, PathBuf::from("."));
+    let mut client = LspClient::new(sid, PathBuf::from("."), plain_config());
 
     client.start_handshake(&mut backend);
     let events = backend.drain();
@@ -133,8 +158,11 @@ fn did_change_configuration_is_queued_ahead_of_pending_did_open() {
             &[],
         )
         .unwrap();
-    let mut client = LspClient::new(sid, PathBuf::from("."));
-    client.set_settings(Some(serde_json::json!({"a": 1})));
+    let mut client = LspClient::new(
+        sid,
+        PathBuf::from("."),
+        configured(None, Some(serde_json::json!({"a": 1}))),
+    );
 
     // Queued while Starting, before the handshake completes.
     client.send_or_queue(
@@ -183,9 +211,15 @@ fn initialize_request_carries_initialization_options_when_set() {
             &[],
         )
         .unwrap();
-    let mut client = LspClient::new(sid, PathBuf::from("."));
+    let mut client = LspClient::new(
+        sid,
+        PathBuf::from("."),
+        configured(
+            Some(serde_json::json!({"check": {"command": "clippy"}})),
+            None,
+        ),
+    );
 
-    client.set_init_options(Some(serde_json::json!({"check": {"command": "clippy"}})));
     client.start_handshake(&mut backend);
 
     match &backend.sent[0] {
@@ -215,7 +249,7 @@ fn initialize_request_advertises_ranges_formatting_support() {
             &[],
         )
         .unwrap();
-    let mut client = LspClient::new(sid, PathBuf::from("."));
+    let mut client = LspClient::new(sid, PathBuf::from("."), plain_config());
 
     client.start_handshake(&mut backend);
 
@@ -241,7 +275,7 @@ fn initialize_request_omits_initialization_options_when_unset() {
             &[],
         )
         .unwrap();
-    let mut client = LspClient::new(sid, PathBuf::from("."));
+    let mut client = LspClient::new(sid, PathBuf::from("."), plain_config());
 
     client.start_handshake(&mut backend);
 
@@ -268,7 +302,7 @@ fn handshake_failure_response_crashes() {
             &[],
         )
         .unwrap();
-    let mut client = LspClient::new(sid, PathBuf::from("."));
+    let mut client = LspClient::new(sid, PathBuf::from("."), plain_config());
 
     client.start_handshake(&mut backend);
     let (_id, ev) = backend.drain().into_iter().next().unwrap();
@@ -331,7 +365,7 @@ fn initialize_sweep_is_quiet_before_the_deadline() {
             &[],
         )
         .unwrap();
-    let mut client = LspClient::new(sid, PathBuf::from("."));
+    let mut client = LspClient::new(sid, PathBuf::from("."), plain_config());
     client.start_handshake(&mut backend);
 
     let (completed, actions) = client.take_completed(&mut backend, Instant::now());
@@ -351,7 +385,7 @@ fn initialize_timeout_crashes_via_the_sweep() {
             &[],
         )
         .unwrap();
-    let mut client = LspClient::new(sid, PathBuf::from("."));
+    let mut client = LspClient::new(sid, PathBuf::from("."), plain_config());
     client.start_handshake(&mut backend);
 
     let past_deadline = Instant::now() + std::time::Duration::from_secs(31);
@@ -396,7 +430,7 @@ fn earliest_deadline_none_when_no_pending() {
             &[],
         )
         .unwrap();
-    let client = LspClient::new(sid, PathBuf::from("."));
+    let client = LspClient::new(sid, PathBuf::from("."), plain_config());
     assert_eq!(client.earliest_deadline(), None);
 }
 
@@ -442,7 +476,7 @@ fn messages_sent_while_starting_are_queued_then_flushed_in_order() {
             &[],
         )
         .unwrap();
-    let mut client = LspClient::new(sid, PathBuf::from("."));
+    let mut client = LspClient::new(sid, PathBuf::from("."), plain_config());
 
     client.start_handshake(&mut backend);
     client.send_or_queue(
@@ -527,7 +561,7 @@ fn flushed_after_queueing(queue: Vec<Message>) -> Vec<String> {
             &[],
         )
         .unwrap();
-    let mut client = LspClient::new(sid, PathBuf::from("."));
+    let mut client = LspClient::new(sid, PathBuf::from("."), plain_config());
     client.start_handshake(&mut backend);
     for msg in queue {
         client.send_or_queue(&mut backend, msg);
@@ -627,7 +661,7 @@ fn send_request_while_starting_is_queued_then_flushed_and_still_correlates() {
             &[],
         )
         .unwrap();
-    let mut client = LspClient::new(sid, PathBuf::from("."));
+    let mut client = LspClient::new(sid, PathBuf::from("."), plain_config());
 
     client.start_handshake(&mut backend);
     let meta = RequestMeta {
@@ -706,7 +740,7 @@ fn utf8_negotiated_when_offered() {
             &[],
         )
         .unwrap();
-    let mut client = LspClient::new(sid, PathBuf::from("."));
+    let mut client = LspClient::new(sid, PathBuf::from("."), plain_config());
 
     client.start_handshake(&mut backend);
     let (_id, ev) = backend.drain().into_iter().next().unwrap();
@@ -727,7 +761,7 @@ fn utf16_is_the_default_when_server_omits_the_field() {
             &[],
         )
         .unwrap();
-    let mut client = LspClient::new(sid, PathBuf::from("."));
+    let mut client = LspClient::new(sid, PathBuf::from("."), plain_config());
 
     client.start_handshake(&mut backend);
     let (_id, ev) = backend.drain().into_iter().next().unwrap();
@@ -762,7 +796,7 @@ fn handshaken_client(result: serde_json::Value) -> LspClient {
             &[],
         )
         .unwrap();
-    let mut client = LspClient::new(sid, PathBuf::from("."));
+    let mut client = LspClient::new(sid, PathBuf::from("."), plain_config());
     client.start_handshake(&mut backend);
     let (_id, ev) = backend.drain().into_iter().next().unwrap();
     client.on_event(ev);
@@ -774,7 +808,7 @@ fn change_sync_before_handshake_answers_full() {
     // No `caps` to read yet: a whole-document event is the one form every
     // server accepts, so edits queued while `Starting` never desync the
     // mirror waiting on a declaration that hasn't arrived.
-    let client = LspClient::new(ServerId(0), PathBuf::from("."));
+    let client = LspClient::new(ServerId(0), PathBuf::from("."), plain_config());
     assert_eq!(client.change_sync(), Some(TextDocumentSyncKind::FULL));
 }
 
@@ -835,7 +869,7 @@ fn eof_transitions_to_crashed_and_further_sends_do_not_panic() {
             &[],
         )
         .unwrap();
-    let mut client = LspClient::new(sid, PathBuf::from("."));
+    let mut client = LspClient::new(sid, PathBuf::from("."), plain_config());
 
     let actions = client.on_event(InboundEvent::Eof {
         error: Some("server exited".to_string()),
@@ -876,7 +910,7 @@ fn drain_pending_completes_every_request_as_stopped() {
             &[],
         )
         .unwrap();
-    let mut client = LspClient::new(sid, PathBuf::from("."));
+    let mut client = LspClient::new(sid, PathBuf::from("."), plain_config());
     let meta = || RequestMeta {
         method: "textDocument/hover".to_string(),
         deadline: Instant::now() + std::time::Duration::from_secs(30),
@@ -918,7 +952,7 @@ fn starting_client_with_a_queued_request() -> LspClient {
             &[],
         )
         .unwrap();
-    let mut client = LspClient::new(sid, PathBuf::from("."));
+    let mut client = LspClient::new(sid, PathBuf::from("."), plain_config());
     client.start_handshake(&mut backend);
     let meta = RequestMeta {
         method: "textDocument/hover".to_string(),
@@ -969,7 +1003,7 @@ fn send_request_after_crashed_times_out_immediately_via_the_sweep() {
             &[],
         )
         .unwrap();
-    let mut client = LspClient::new(sid, PathBuf::from("."));
+    let mut client = LspClient::new(sid, PathBuf::from("."), plain_config());
 
     client.on_event(InboundEvent::Eof {
         error: Some("server exited".to_string()),
@@ -1040,7 +1074,7 @@ fn begin_shutdown_sends_nothing_while_still_starting() {
             &[],
         )
         .unwrap();
-    let mut client = LspClient::new(sid, PathBuf::from("."));
+    let mut client = LspClient::new(sid, PathBuf::from("."), plain_config());
     assert_eq!(client.state, ServerState::Starting);
 
     client.begin_shutdown(&mut backend);
@@ -1071,7 +1105,7 @@ fn initialize_response_after_shutdown_while_starting_does_not_resurrect_the_clie
             &[],
         )
         .unwrap();
-    let mut client = LspClient::new(sid, PathBuf::from("."));
+    let mut client = LspClient::new(sid, PathBuf::from("."), plain_config());
 
     client.start_handshake(&mut backend);
     client.begin_shutdown(&mut backend);
@@ -1154,7 +1188,7 @@ fn make_running_client() -> (InlineLspBackend, LspClient) {
             &[],
         )
         .unwrap();
-    let mut client = LspClient::new(sid, PathBuf::from("."));
+    let mut client = LspClient::new(sid, PathBuf::from("."), plain_config());
     client.start_handshake(&mut backend);
     let (_id, ev) = backend.drain().into_iter().next().unwrap();
     client.on_event(ev);
@@ -1257,7 +1291,7 @@ fn cancel_and_timeout_send_no_cancel_request_while_still_starting() {
             &[],
         )
         .unwrap();
-    let mut client = LspClient::new(sid, PathBuf::from("."));
+    let mut client = LspClient::new(sid, PathBuf::from("."), plain_config());
     assert_eq!(client.state, ServerState::Starting);
 
     let meta = RequestMeta {
@@ -1314,7 +1348,7 @@ fn cancelled_request_is_not_flushed_after_handshake_completes() {
             &[],
         )
         .unwrap();
-    let mut client = LspClient::new(sid, PathBuf::from("."));
+    let mut client = LspClient::new(sid, PathBuf::from("."), plain_config());
     client.start_handshake(&mut backend);
 
     let meta = RequestMeta {

@@ -34,7 +34,7 @@ pub(super) fn server_name_arg(val: SteelVal, ctx_name: &str) -> Result<ServerNam
 /// Queues a registration keyed by `name`: applied at the end of the
 /// *current* eval (see `Editor::apply_lsp_server_ops`), replacing an
 /// existing registration of `name` from the same or a lower origin
-/// (`ConfigOrigin::rank`) and attaching already-open matching
+/// (`hume_core::Ranked::rank`) and attaching already-open matching
 /// buffers. `lsp-server-registered?` reads through the effect log, so it
 /// reports this registration as live immediately, within the same eval.
 ///
@@ -88,7 +88,7 @@ pub(crate) fn register_lsp_server(
 /// `register-lsp-server!` of the same name after it, in the same eval, spawns
 /// a fresh server.
 ///
-/// A registration a higher origin made stays (`ConfigOrigin::rank`):
+/// A registration a higher origin made stays (`hume_core::Ranked::rank`):
 /// a plugin cannot remove the user's.
 ///
 /// Idempotent: unregistering a name with no registration and/or no

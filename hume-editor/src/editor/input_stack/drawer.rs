@@ -20,7 +20,6 @@ use super::super::Editor;
 use super::super::EditorState;
 use super::super::buffer::store::BufferStore;
 use super::super::commands::{FocusedPane, half_page};
-use super::super::host_token;
 use super::paste::ignore_paste;
 use super::popup::half_page_key;
 use super::stack::{
@@ -63,7 +62,7 @@ impl DrawerLayer {
             selected: 0,
             scroll: 0,
             select,
-            token: host_token::mint(),
+            token: HostToken::mint(),
         };
         drawer.select_clamped(selected);
         drawer

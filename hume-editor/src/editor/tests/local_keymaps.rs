@@ -321,11 +321,11 @@ fn a_command_can_bind_into_an_attached_keymap() {
         ),
     );
     set_language(&mut ed, "markdown");
-    ed.execute_keymap_command("rebind-l".into(), None, false);
+    ed.execute_keymap_command("rebind-l".into(), Count::UNTYPED, false);
     ed.settle();
     ed.feed_key(key('l'));
     let mut global = editor_from("a-[b]>c\n");
-    global.execute_keymap_command("move-line-end".into(), None, false);
+    global.execute_keymap_command("move-line-end".into(), Count::UNTYPED, false);
     assert_eq!(state(&ed), state(&global));
 }
 

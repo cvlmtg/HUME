@@ -1,4 +1,4 @@
-use crate::editor::registry::Count;
+use hume_core::Count;
 use hume_editing::selection::Selection;
 use hume_editing::state::EditState;
 use hume_engine::pipeline::EngineView;
@@ -287,14 +287,11 @@ pub(in crate::editor) fn cmd_collapse_to_anchor_and_exit_extend(
 ///
 /// Count semantics: if the user typed an explicit count before `.`, that count
 /// replaces `RepeatableAction::count` and is forwarded to the replayed
-/// command's body (`replay_dot`); otherwise the original count is reused.
-/// This is narrower than Vim's `3.`: the selection recipe (`replay_dot`'s
-/// `for step in &action.selection_recipe` loop) always replays with each
-/// step's own recorded `step.count`, never the override, and no built-in
-/// repeatable command body reads its `count` parameter today; every one
-/// takes `_count: usize`. So for every native command, `3.` and `.` produce
-/// identical results; the override is currently observable only by a Steel
-/// `#:repeatable` command that reads its `count` lambda argument.
+/// command's body (`replay_dot`); otherwise the recorded count is passed as
+/// it was given, untyped included, so a `#:repeatable` Steel command sees on
+/// `.` the same `count` its first run saw. The selection recipe
+/// (`replay_dot`'s `for step in &action.selection_recipe` loop) always
+/// replays with each step's own recorded `step.count`, never the override.
 ///
 /// The handler only enqueues a `PendingRepeat` marker; the actual replay
 /// (edit-group bracketing, re-dispatch, insert-key replay) runs in
@@ -315,11 +312,7 @@ pub(in crate::editor) fn cmd_repeat(
         return Ok(());
     };
     // Prefer an explicit user count; fall back to the count from the original action.
-    let effective = if count.is_typed() {
-        count.get()
-    } else {
-        orig_count
-    };
+    let effective = if count.is_typed() { count } else { orig_count };
     debug_assert!(
         state.pending_repeat.is_none(),
         "one key queues at most one repeat"

@@ -70,7 +70,7 @@ fn search_backward_reentry_while_forward_search_open_replaces_and_restashes() {
         "sanity: live `/` search moved the selection"
     );
 
-    ed.execute_keymap_command("search-backward".into(), Some(1), false);
+    ed.execute_keymap_command("search-backward".into(), Count::typed(1), false);
     assert_eq!(
         ed.state.minibuf().unwrap().prompt,
         "?",
@@ -252,7 +252,7 @@ fn clear_search_command_clears_search() {
         "pre-condition: search pattern is set"
     );
 
-    ed.execute_keymap_command("clear-search".into(), Some(1), false);
+    ed.execute_keymap_command("clear-search".into(), Count::typed(1), false);
     ed.sync_search_cache();
 
     assert_eq!(ed.state.mode(), Mode::Normal);

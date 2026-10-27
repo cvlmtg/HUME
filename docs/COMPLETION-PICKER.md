@@ -126,7 +126,7 @@ as unvalidated surface.
 
 ### Invocations and answers
 
-A trigger mints one `Invocation` per source (`host_token::next()` for its
+A trigger mints one `Invocation` per source (`HostToken::mint()` for its
 id), its span already resolved (above) — a native source answers inline; a
 Steel one is *queued* via `EditorState::queue_source_calls` — `(proc id pane
 prefix)` for a buffer source, `(proc id input cursor)` for a `:`-line one —

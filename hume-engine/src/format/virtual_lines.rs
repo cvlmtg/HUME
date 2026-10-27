@@ -5,7 +5,7 @@ use hume_rope::line::{ContentLine, RopeyLine};
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::pane::ResolvedWrap;
-use crate::providers::{VirtualLine, VirtualLineAnchor};
+use crate::providers::VirtualLine;
 use crate::style::highlight::IntervalCursor;
 
 use super::virtual_cells::{VirtualCells, VirtualRun};
@@ -74,7 +74,7 @@ pub(crate) fn format_virtual_lines(
         );
         out.base_scopes
             .resize(out.display_lines.len(), vl.base_scope);
-        if matches!(vl.anchor, VirtualLineAnchor::Before(_)) {
+        if vl.side == hume_core::Side::Before {
             out.before = out.display_lines.len();
         }
     }

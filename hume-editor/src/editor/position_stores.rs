@@ -7,7 +7,7 @@
 //! `Tracked`, and read as absent once the text moves. Dot-repeat's origin
 //! chains text versions.
 
-use hume_core::{BufferId, PaneId};
+use hume_core::{BufferId, PaneHandle, PaneId};
 use hume_decorations::DecorationStores;
 use hume_editing::edit::TextChange;
 use hume_editing::tracked::Tracked;
@@ -122,25 +122,21 @@ impl<'a> PositionStores<'a> {
             .filter(|s| s.owned_by(pane, buffer))
     }
 
-    /// Carry every position stored for `buffer` through `change`: the
-    /// selections of each pane that has shown the buffer, whether or not it
-    /// shows it now, every jump list, the open Insert session's typed run
+    /// Carry every position stored for `target`'s buffer through `change`:
+    /// the selections of each pane that has shown the buffer, whether or not
+    /// it shows it now, every jump list, the open Insert session's typed run
     /// and autoindent records, every position a script is tracking,
     /// every open prompt's snapshot, the open completion session, the
     /// buffer's diagnostics and decorations, and its last insertion. The
     /// change is also queued for the buffer's language servers.
     ///
-    /// `acting` is the pane whose caller replaces its selections with the
-    /// edit's own once this returns, so a real change does not carry them. An
-    /// identity change carries them too: it only retags them for the relabeled
-    /// text.
-    pub(in crate::editor) fn carry(
-        &mut self,
-        buffer: BufferId,
-        change: &TextChange<'_>,
-        acting: Option<PaneId>,
-    ) {
-        let acting = acting.filter(|_| !change.changes().is_identity());
+    /// `target`'s pane, if any, is the one whose caller replaces its
+    /// selections with the edit's own once this returns, so a real change
+    /// does not carry them. An identity change carries them too: it only
+    /// retags them for the relabeled text.
+    pub(in crate::editor) fn carry(&mut self, target: PaneHandle, change: &TextChange<'_>) {
+        let buffer = target.buffer();
+        let acting = target.pane().filter(|_| !change.changes().is_identity());
         for (pane, entry) in self.panes.iter_mut() {
             if Some(pane) != acting
                 && let Some(state) = entry.buffer_mut(buffer)

@@ -12,7 +12,7 @@ use crate::editor::EditorState;
 use crate::editor::dispatch::CmdCtx;
 use crate::editor::jump_list::{JumpRule, with_jump};
 use crate::editor::registry::{
-    CmdMeta, Count, EditFn, EditorCmdBody, FocusedCmdFn, NativeCommand, PaneCharCmdFn, PaneCmdFn,
+    CmdMeta, EditFn, EditorCmdBody, FocusedCmdFn, NativeCommand, PaneCharCmdFn, PaneCmdFn,
     PaneTextCmdFn, SelectionBody, SelectionTracking, TextPrompt,
 };
 use crate::editor::replay::{Answer, InputOpener, NewChange, record_change};
@@ -482,7 +482,7 @@ pub(in crate::editor) fn run_body(
     bound: BoundCommand,
     ctx: &CmdCtx,
 ) -> bool {
-    let count = Count::new(ctx.count);
+    let count = ctx.count;
     let motion_mode = if ctx.extend {
         MotionMode::Extend
     } else {
@@ -679,7 +679,7 @@ pub(in crate::editor) fn run(
     // so `update_recipe` below clears it unconditionally.
     let change = pre_recipe.map(|recipe| NewChange {
         command: name.clone(),
-        count: ctx.count.unwrap_or(1),
+        count: ctx.count,
         seed: bound.operand_answer(),
         recipe,
     });

@@ -225,15 +225,14 @@ pub(crate) fn token_or_false(token: Option<HostToken>) -> SteelVal {
     token.map_or(SteelVal::BoolV(false), token_to_steel)
 }
 
-/// `token_or_false`'s inverse: decodes a `token` argument naming a widget
-/// or a tracked position, which is `#f` either because the call that
-/// produced it already returned `#f` (the open was dropped) or because what
-/// it named is gone. Both are the same stale case, so `#f` decodes to
-/// [`HostToken::NONE`], which the host treats as any other stale token
-/// rather than raising.
+/// `token_or_false`'s inverse: decodes any token argument. `#f` is what a
+/// dropped widget open returned, or what a script holds before it has a
+/// token or once what the token named is gone. Each is the stale case, so
+/// `#f` decodes to [`HostToken::NONE`], which the host treats as any other
+/// stale token rather than raising.
 pub(crate) fn token_arg(val: SteelVal, ctx_name: &str) -> Result<HostToken, SteelErr> {
     Ok(optional_usize_arg(val, ctx_name)?
-        .map_or(HostToken::NONE, |n| HostToken::from_raw(n as u64)))
+        .map_or(HostToken::NONE, |n| HostToken::from_script(n as u64)))
 }
 
 /// A closure's parameter count and whether it also takes a rest parameter;
@@ -298,7 +297,7 @@ pub(crate) fn optional_token_arg(
     val: SteelVal,
     ctx_name: &str,
 ) -> Result<Option<HostToken>, SteelErr> {
-    Ok(optional_usize_arg(val, ctx_name)?.map(|n| HostToken::from_raw(n as u64)))
+    Ok(optional_usize_arg(val, ctx_name)?.map(|n| HostToken::from_script(n as u64)))
 }
 
 pub(crate) fn int_arg(val: SteelVal, ctx_name: &str) -> Result<i64, SteelErr> {

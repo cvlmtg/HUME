@@ -8,20 +8,19 @@
 //! exactly one source).
 
 use hume_scripting::SteelCall;
-use steel::rvals::SteelVal;
+use hume_scripting::host::token_to_steel;
 
 use super::super::item::CompletionItem;
 use super::super::registry::{BufferSourceId, MinibufBody, MinibufSourceId, SourceRegistry};
 use crate::editor::fuzzy::{FuzzyMatcher, FuzzyPattern, FuzzyProfile};
-use crate::editor::host_token;
-use hume_core::{AnswerEnd, MatchKind};
+use hume_core::{AnswerEnd, HostToken, MatchKind};
 
 enum InvocationState {
     Pending,
     Shown {
         /// This part's own id, fresh for each answer or part that lands,
         /// so an [`ItemKey`] from a replaced part names nothing.
-        answer: u64,
+        answer: HostToken,
         items: Vec<CompletionItem>,
         incomplete: bool,
         /// Whether more of the answer may land: a `Final` answer closes its
@@ -39,7 +38,7 @@ enum InvocationState {
 /// own `impl Invocation<ItsSpan>` (in `buffer.rs`/`minibuf.rs`) adds the
 /// constructor and span-specific reads.
 pub(in crate::editor) struct Invocation<S> {
-    pub(super) id: u64,
+    pub(super) id: HostToken,
     pub(super) span: S,
     state: InvocationState,
 }
@@ -47,7 +46,7 @@ pub(in crate::editor) struct Invocation<S> {
 impl<S> Invocation<S> {
     pub(super) fn new(span: S) -> Self {
         Self {
-            id: host_token::next(),
+            id: HostToken::mint(),
             span,
             state: InvocationState::Pending,
         }
@@ -60,7 +59,7 @@ impl<S> Invocation<S> {
         }
     }
 
-    fn answer(&self) -> Option<u64> {
+    fn answer(&self) -> Option<HostToken> {
         match &self.state {
             InvocationState::Shown { answer, .. } => Some(*answer),
             InvocationState::Pending => None,
@@ -114,7 +113,7 @@ impl<S> Invocation<S> {
 /// since every part's id is unique.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(in crate::editor) struct ItemKey {
-    answer: u64,
+    answer: HostToken,
     item: u32,
 }
 
@@ -137,7 +136,7 @@ pub(super) struct SourceSlot<Id, S> {
 impl<Id: Copy + PartialEq, S> SourceSlot<Id, S> {
     /// The request the source still owes an answer to: its call in flight,
     /// else a shown answer with more to follow.
-    fn owed(&self) -> Option<u64> {
+    fn owed(&self) -> Option<HostToken> {
         match &self.inflight {
             Some(inv) => Some(inv.id),
             None => self
@@ -150,7 +149,7 @@ impl<Id: Copy + PartialEq, S> SourceSlot<Id, S> {
 
     /// Ends the request [`Self::owed`] names, returning its id: a call in
     /// flight is dropped, a streaming answer closes at the part shown.
-    fn take_owed(&mut self) -> Option<u64> {
+    fn take_owed(&mut self) -> Option<HostToken> {
         if let Some(inv) = self.inflight.take() {
             return Some(inv.id);
         }
@@ -344,7 +343,7 @@ pub(super) struct SlotSet<Id, S> {
     /// whose token the cursor left ([`Self::drop_shown_where`]), or that
     /// the session's end abandoned ([`Self::end_requests`]). The one record
     /// every such discard writes to.
-    ended: Vec<(Id, u64)>,
+    ended: Vec<(Id, HostToken)>,
 }
 
 impl<Id, S> SlotSet<Id, S> {
@@ -363,7 +362,7 @@ impl<Id: Copy + PartialEq, S> SlotSet<Id, S> {
     /// Records a fresh call of `source`, superseding the request it still
     /// owed an answer to, if any: a call in flight, or a streaming answer,
     /// which takes no further part. Returns the id the answer must carry.
-    pub(super) fn invoke(&mut self, source: Id, invocation: Invocation<S>) -> u64 {
+    pub(super) fn invoke(&mut self, source: Id, invocation: Invocation<S>) -> HostToken {
         let id = invocation.id;
         let slot = match self.slots.iter().position(|s| s.source == source) {
             Some(i) => &mut self.slots[i],
@@ -391,7 +390,7 @@ impl<Id: Copy + PartialEq, S> SlotSet<Id, S> {
     /// earlier answer, or the earlier part of this one.
     pub(super) fn contribute(
         &mut self,
-        id: u64,
+        id: HostToken,
         mut items: Vec<CompletionItem>,
         incomplete: bool,
         end: AnswerEnd,
@@ -416,7 +415,7 @@ impl<Id: Copy + PartialEq, S> SlotSet<Id, S> {
             CompletionItem::carry_resolutions(previous, &mut items);
         }
         invocation.state = InvocationState::Shown {
-            answer: host_token::next(),
+            answer: HostToken::mint(),
             items,
             incomplete,
             end,
@@ -433,7 +432,7 @@ impl<Id: Copy + PartialEq, S> SlotSet<Id, S> {
 
     /// Whether an answer to invocation `id` is a further part of the answer
     /// shown, which has more to follow.
-    pub(super) fn continues_stream(&self, id: u64) -> bool {
+    pub(super) fn continues_stream(&self, id: HostToken) -> bool {
         self.slots.iter().any(|s| {
             s.shown
                 .as_ref()
@@ -443,7 +442,7 @@ impl<Id: Copy + PartialEq, S> SlotSet<Id, S> {
 
     /// The source that still owes an answer to invocation `id`: the one an
     /// answer to `id` would land on.
-    pub(super) fn source_of(&self, id: u64) -> Option<Id> {
+    pub(super) fn source_of(&self, id: HostToken) -> Option<Id> {
         self.slots
             .iter()
             .find(|s| s.owed() == Some(id))
@@ -465,7 +464,7 @@ impl<Id: Copy + PartialEq, S> SlotSet<Id, S> {
     /// in flight is dropped, a streaming answer closes at the part shown,
     /// and either is recorded as ended. `false` when no slot owes an answer
     /// to `id`.
-    pub(super) fn end_request(&mut self, id: u64) -> bool {
+    pub(super) fn end_request(&mut self, id: HostToken) -> bool {
         let Some(slot) = self.slots.iter_mut().find(|s| s.owed() == Some(id)) else {
             return false;
         };
@@ -622,10 +621,7 @@ impl<Id: SourceId, S> SlotSet<Id, S> {
             .into_iter()
             .filter_map(|(source, id)| {
                 let cancel = source.cancel(sources)?;
-                Some(SteelCall::new(
-                    cancel.clone(),
-                    vec![SteelVal::IntV(id as isize)],
-                ))
+                Some(SteelCall::new(cancel.clone(), vec![token_to_steel(id)]))
             })
             .collect()
     }

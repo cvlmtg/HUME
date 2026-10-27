@@ -2,37 +2,13 @@ use std::borrow::Cow;
 
 use crate::editor::commands::{CommandPane, FocusedPane, NativeBody};
 use crate::editor::error::CommandError;
+use hume_core::Count;
 use hume_editing::edit::Edited;
 use hume_editing::state::EditState;
 use hume_engine::pipeline::EngineView;
 use hume_ops::search::SearchDirection;
 use hume_ops::{LineEnd, MotionMode, WordCtx};
 use hume_treesitter::textobjects::{Direction, ObjectKind, ObjectSpan};
-
-// ── Native command count ─────────────────────────────────────────────────────
-
-/// A native command body's repeat count: one the user typed (or a script
-/// passed), or the default of one. Vertical moves read the difference: `9j`
-/// moves nine buffer lines, a bare `j` one visual line.
-#[derive(Clone, Copy)]
-pub(in crate::editor) struct Count(Option<usize>);
-
-impl Count {
-    /// `typed` is [`CmdCtx::count`](crate::editor::dispatch::CmdCtx::count):
-    /// `None` when no count was given.
-    pub(in crate::editor) fn new(typed: Option<usize>) -> Self {
-        Self(typed)
-    }
-
-    /// The repeat count, at least one.
-    pub(in crate::editor) fn get(self) -> usize {
-        self.0.unwrap_or(1).max(1)
-    }
-
-    pub(in crate::editor) fn is_typed(self) -> bool {
-        self.0.is_some()
-    }
-}
 
 // ── Native command target shape ──────────────────────────────────────────────
 

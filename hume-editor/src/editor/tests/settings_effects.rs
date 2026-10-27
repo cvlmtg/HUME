@@ -594,7 +594,7 @@ fn get_buffer_option_explicit_bid_reads_hook_target_not_focused_buffer() {
 }
 
 /// `get-buffer-option` on a closed buffer id must error, matching
-/// `set-buffer-option!`'s own `try_get` guard (`EditorHostImpl::set_buffer_option`)
+/// `set-buffer-option!`'s own stale-id guard (`EditorHostImpl::live_buffer`)
 /// (a stale bid is invalid input, not a request for "whatever the global
 /// default is").
 #[test]
@@ -646,8 +646,8 @@ fn set_buffer_option_global_only_key_errors_from_hook() {
 }
 
 /// `EditorHostImpl::set_buffer_option` returns `Err` for a stale bid instead
-/// of panicking. `settings::ops::apply`'s `get_mut` panics on an unseeded
-/// id, so the host method's own `try_get` guard must run first.
+/// of panicking. `settings::ops::apply_buffer`'s `get_mut` panics on an
+/// unseeded id, so the host's `live_buffer` guard must run first.
 #[test]
 fn host_set_buffer_option_invalid_bid_errors() {
     use hume_core::BufferId;

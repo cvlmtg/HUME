@@ -17,10 +17,9 @@ use super::*;
 use crate::display_lines::line_store::PaneLineStore;
 use crate::pane::{Viewport, WrapMode};
 use crate::pipeline::PaneSize;
-use crate::providers::{
-    Decoration, DecorationKinds, DecorationSource, ProviderSet, VirtualLineAnchor,
-};
+use crate::providers::{Decoration, DecorationKinds, DecorationSource, ProviderSet};
 use crate::test_support::{VirtualLineBlock, at, map};
+use hume_core::Side;
 use hume_rope::cluster::ClusterStart;
 use hume_rope::column::DisplayLineCol;
 use hume_rope::line::ContentLine;
@@ -95,7 +94,8 @@ fn no_providers() -> ProviderSet {
 fn providers_with_before_line(line: usize) -> ProviderSet {
     let mut p = ProviderSet::new();
     p.add_decoration_source(Box::new(VirtualLineBlock::uniform(
-        VirtualLineAnchor::Before(ContentLine::new(line)),
+        Side::Before,
+        ContentLine::new(line),
         1,
         "V",
     )));
@@ -442,7 +442,8 @@ fn scroll_backward_from_cursor_reaches_into_before_line_0() {
     let r = Rope::from_str("a\nb\nc\n");
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(VirtualLineBlock::numbered(
-        VirtualLineAnchor::Before(ContentLine::new(0)),
+        Side::Before,
+        ContentLine::new(0),
         3,
     )));
     let cursor = hume_rope::lines::line_start(&r, hume_rope::line::ContentLine::new(2));
@@ -612,7 +613,8 @@ fn reported_screen_row_agrees_with_a_forward_walk() {
     let r = Rope::from_str("a\nb\nc\nd\ne\nf\ng\nh\ni\nj\n");
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(VirtualLineBlock::numbered(
-        VirtualLineAnchor::Before(ContentLine::new(3)),
+        Side::Before,
+        ContentLine::new(3),
         2,
     )));
 
@@ -899,7 +901,8 @@ fn down_reaches_the_after_last_line_block_until_it_fills_the_bottom_row() {
     let r = Rope::from_str(&"a\n".repeat(2));
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(VirtualLineBlock::numbered(
-        VirtualLineAnchor::After(ContentLine::new(1)),
+        Side::After,
+        ContentLine::new(1),
         3,
     )));
     let mut s = PaneLineStore::new();
@@ -936,7 +939,8 @@ fn down_overshoot_past_after_last_line_clamps_not_resets() {
     let r = Rope::from_str(&"a\n".repeat(2));
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(VirtualLineBlock::numbered(
-        VirtualLineAnchor::After(ContentLine::new(1)),
+        Side::After,
+        ContentLine::new(1),
         3,
     )));
     let mut s = PaneLineStore::new();
@@ -1045,7 +1049,8 @@ fn carry_overshoots_a_virtual_block_that_swallows_the_whole_budget() {
     let r = Rope::from_str("a\nb\n");
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(VirtualLineBlock::numbered(
-        VirtualLineAnchor::Before(ContentLine::new(1)),
+        Side::Before,
+        ContentLine::new(1),
         3,
     )));
     let mut s = PaneLineStore::new();
@@ -1148,7 +1153,8 @@ fn carry_overshoot_past_the_band_gives_up_instead_of_landing_outside_it() {
     let r = Rope::from_str("a\nb\n");
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(VirtualLineBlock::numbered(
-        VirtualLineAnchor::Before(ContentLine::new(1)),
+        Side::Before,
+        ContentLine::new(1),
         8,
     )));
     let mut s = PaneLineStore::new();

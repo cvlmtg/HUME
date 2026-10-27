@@ -7,7 +7,6 @@
 use super::*;
 use crate::editor::input_stack::picker;
 use crate::editor::input_stack::{PickerItem, PickerSession};
-use crate::editor::registry::Count;
 use hume_engine::pipeline::RenderContext;
 use hume_grid::Rect;
 use hume_scripting::host::PickerOpts;
@@ -454,7 +453,7 @@ fn close_picker_tears_down_an_insert_session_stacked_above_it() {
         &mut ed.state,
         &mut ed.view,
         fp,
-        Count::new(Some(1)),
+        Count::typed(1),
         MotionMode::Move,
     )
     .unwrap();
@@ -520,13 +519,13 @@ fn session_for_token_finds_the_open_session_by_matching_token() {
 fn session_for_token_rejects_a_stale_token() {
     let mut ed = editor_from("-[a]>bc\n");
     open_test_picker(&mut ed, &["a"]);
-    assert!(picker::session_for_token(&mut ed.state, crate::editor::host_token::mint()).is_none());
+    assert!(picker::session_for_token(&mut ed.state, hume_core::HostToken::mint()).is_none());
 }
 
 #[test]
 fn session_for_token_is_none_with_no_picker_open() {
     let mut ed = editor_from("-[a]>bc\n");
-    assert!(picker::session_for_token(&mut ed.state, crate::editor::host_token::mint()).is_none());
+    assert!(picker::session_for_token(&mut ed.state, hume_core::HostToken::mint()).is_none());
 }
 
 #[test]
@@ -551,7 +550,7 @@ fn picker_feed_rejects_a_stale_token_and_leaves_items_and_pending_untouched() {
     let _pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     assert!(!host.picker_feed(
-        crate::editor::host_token::mint(),
+        hume_core::HostToken::mint(),
         vec![(
             "x".to_string(),
             hume_scripting::Rooted::new(SteelVal::StringV("p".into()))
@@ -592,7 +591,7 @@ fn picker_feed_replace_mode_rejects_a_stale_token_and_leaves_items_untouched() {
     let _pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     assert!(!host.picker_feed(
-        crate::editor::host_token::mint(),
+        hume_core::HostToken::mint(),
         vec![(
             "z".to_string(),
             hume_scripting::Rooted::new(SteelVal::StringV("z".into()))

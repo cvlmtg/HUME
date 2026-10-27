@@ -40,8 +40,8 @@ pub struct MockHost {
     /// (all commands return `Ok(false)`).  Tests populate this to exercise
     /// the `run_command_sync` path.
     pub native_names: hume_scripting::command_name::CommandNameSet,
-    /// Record of every `run_command_sync` call. `count` is `None`
-    /// when the Steel side passed `0` ("no count typed"). Unlike
+    /// Record of every `run_command_sync` call. `count` is
+    /// `Count::UNTYPED` when the Steel side passed `0` ("no count typed"). Unlike
     /// `EditorHostImpl`, this mock has no pane model to resolve `pane`
     /// against, so every call is recorded regardless of `pane`. See
     /// `run_command_sync`'s own doc.
@@ -268,6 +268,15 @@ impl SettingsHost for MockHost {
         // MockHost models no buffers, so no per-buffer override to write to.
         Err("MockHost: set_buffer_option not available".into())
     }
+    fn set_buffer_line_ending(
+        &mut self,
+        _bid: BufferId,
+        _value: OptionInput,
+        _origin: hume_core::ConfigOrigin,
+    ) -> Result<(), String> {
+        // MockHost models no buffers, so no text to set a line ending on.
+        Err("MockHost: set_buffer_line_ending not available".into())
+    }
     fn get_global_option(&self, key: &str) -> Result<OptionValue, String> {
         hume::editor::settings::setting_value(key, &self.settings, None)
             .ok_or_else(|| format!("unknown setting '{key}'"))
@@ -277,6 +286,9 @@ impl SettingsHost for MockHost {
         // resolve: every key reads its global value.
         hume::editor::settings::setting_value(key, &self.settings, None)
             .ok_or_else(|| format!("unknown setting '{key}'"))
+    }
+    fn buffer_line_ending(&self, _bid: BufferId) -> Result<String, String> {
+        Err("MockHost: buffer_line_ending not available".into())
     }
     fn steel_command_budget_ms(&self) -> u64 {
         self.settings.steel_command_budget_ms as u64

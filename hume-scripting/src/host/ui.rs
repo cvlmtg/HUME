@@ -27,28 +27,31 @@ pub enum DrawerItems {
     },
 }
 
-/// How an open popup reacts to key and mouse input: `show-popup!`'s
-/// `#:kind` symbol, decoded once at the builtin boundary
-/// (`builtins::ui::show_popup`) and carried as-is into the editor's own
-/// popup state, so there is exactly one definition of the two dismiss
-/// behaviors, not a bool pair mapped to a second enum on the other side of
-/// the trait.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PopupKind {
-    /// Untouched by keys and mouse input alike; lives in the current editing
-    /// mode's own slot (`Base`/`Insert` only; anything else has none, so
-    /// `#:kind 'sticky` with any other layer on top is a no-op), and closes
-    /// when that mode ends, via `close-popup!`, or on the next
-    /// `show-popup!`. Default: `#:kind` omitted, or `'sticky`.
-    Sticky,
-    /// Ctrl-u/Ctrl-d scroll the content and are consumed *when it overflows
-    /// one screenful*; every other key or mouse event (and Ctrl-u/d with
-    /// nothing to scroll) closes the popup and falls through to normal
-    /// dispatch (`#:kind 'scrollable`). Covers both scrollable hover and the
-    /// dismiss-on-any-key `gn`/`gp` diagnostic overlay: the two collapse to
-    /// the same behavior once content fits on screen, and a long diagnostic
-    /// gets scrolling for free instead of a hard height cap.
-    Scrollable,
+hume_core::named_enum! {
+    /// How an open popup reacts to key and mouse input: `show-popup!`'s
+    /// `#:kind` symbol, decoded once at the builtin boundary
+    /// (`builtins::ui::show_popup`) and carried as-is into the editor's own
+    /// popup state, so there is exactly one definition of the two dismiss
+    /// behaviors, not a bool pair mapped to a second enum on the other side of
+    /// the trait.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum PopupKind {
+        /// Untouched by keys and mouse input alike; lives in the current
+        /// editing mode's own slot (`Base`/`Insert` only; anything else has
+        /// none, so `#:kind 'sticky` with any other layer on top is a no-op),
+        /// and closes when that mode ends, via `close-popup!`, or on the next
+        /// `show-popup!`. Default: `#:kind` omitted, or `'sticky`.
+        Sticky => "sticky",
+        /// Ctrl-u/Ctrl-d scroll the content and are consumed *when it overflows
+        /// one screenful*; every other key or mouse event (and Ctrl-u/d with
+        /// nothing to scroll) closes the popup and falls through to normal
+        /// dispatch (`#:kind 'scrollable`). Covers both scrollable hover and
+        /// the dismiss-on-any-key `gn`/`gp` diagnostic overlay: the two
+        /// collapse to the same behavior once content fits on screen, and a
+        /// long diagnostic gets scrolling for free instead of a hard height
+        /// cap.
+        Scrollable => "scrollable",
+    }
 }
 
 /// Grouped `picker!` open-time keyword options. [`UiHost::open_picker`] takes

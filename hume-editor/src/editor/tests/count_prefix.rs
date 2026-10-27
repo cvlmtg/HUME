@@ -7,7 +7,7 @@ fn count_prefix_accumulates_multiple_digits() {
     let mut ed = editor_from("-[a]>bcd\n");
     ed.handle_key(key('1'));
     ed.handle_key(key('2'));
-    assert_eq!(ed.state.count, Some(12));
+    assert_eq!(ed.state.count, Count::typed(12));
 }
 
 #[test]
@@ -15,7 +15,8 @@ fn zero_is_a_digit_only_inside_a_count() {
     let mut ed = editor_from("-[a]>bcd\n");
     ed.handle_key(key('0'));
     assert_eq!(
-        ed.state.count, None,
+        ed.state.count,
+        Count::UNTYPED,
         "a bare 0 is not a count digit; it falls through to the trie"
     );
 
@@ -23,7 +24,7 @@ fn zero_is_a_digit_only_inside_a_count() {
     ed.handle_key(key('0'));
     assert_eq!(
         ed.state.count,
-        Some(10),
+        Count::typed(10),
         "0 after an existing count multiplies it"
     );
 }
@@ -37,5 +38,5 @@ fn count_prefix_caps_at_max_count() {
     for _ in 0..25 {
         ed.handle_key(key('9'));
     }
-    assert_eq!(ed.state.count, Some(10_000));
+    assert_eq!(ed.state.count.get(), 10_000);
 }

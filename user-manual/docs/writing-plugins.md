@@ -128,7 +128,7 @@ Together, these make a command that removes trailing spaces and tabs from the se
 
 When nothing matches, `sift-within` leaves the selections as they were and returns `#f`, so the `when` is what keeps the command from deleting them.
 
-When forwarding a `count` argument to another command, a count of `0` means "as if no count was typed". This is how `move-down`/`move-up` decide between visual-line and buffer-line movement, and it lets a key-bound command that forwards its own `count` behave the same way a native keybinding would.
+When forwarding a `count` argument to another command, a count of `0` means "as if no count was typed". This is how `move-down`/`move-up` decide between visual-line and buffer-line movement, and it lets a key-bound command that forwards its own `count` behave the same way a native keybinding would. `.` repeats a `#:repeatable` command with the `count` its first run got, `0` included, unless you type a count before `.`.
 
 ## Reading selections
 
@@ -284,7 +284,7 @@ A few more examples:
 (get-buffer-option pane "option-name")
 ```
 
-`(get-option "option-name")` returns the option's global value, ignoring any buffer override even if one exists. `(get-buffer-option pane "option-name")` returns `pane`'s buffer's effective value (a string for a named value, like `indent-style`'s `"soft"`): its own override if one is set, else the global default. Pass the value explicitly (e.g. inside an `on-language-set` hook, whose handler receives it as an argument) rather than assuming "the buffer I care about" is whichever one is focused. Errors on an unknown option name. `(get-buffer-option pane "language")` returns the buffer's language name, or `""` if it has none. `(get-buffer-option pane "line-ending")` returns `"lf"` or `"crlf"`; it has no global default, so `(get-option "line-ending")` is an error. `(get-option "shell")` returns a list of strings, the program and its first arguments: `'("sh" "-c")`. For `wrap-mode`, `get-buffer-option` reads the buffer/global level only: a pane pinned with `:set pane wrap-mode=…` can show a different style than what it reports.
+`(get-option "option-name")` returns the option's global value, ignoring any buffer override even if one exists. `(get-buffer-option pane "option-name")` returns `pane`'s buffer's effective value (a string for a named value, like `indent-style`'s `"soft"`): its own override if one is set, else the global default. Pass the value explicitly (e.g. inside an `on-language-set` hook, whose handler receives it as an argument) rather than assuming "the buffer I care about" is whichever one is focused. Errors on an unknown option name. `(get-buffer-option pane "language")` returns the buffer's language name, or `""` if it has none. `(get-buffer-option pane "line-ending")` returns `"lf"` or `"crlf"`. `language` and `line-ending` are per-buffer, with no global value, so `get-option` and `set-option!` raise for them. `(get-option "shell")` returns a list of strings, the program and its first arguments: `'("sh" "-c")`. For `wrap-mode`, `get-buffer-option` reads the buffer/global level only: a pane pinned with `:set pane wrap-mode=…` can show a different style than what it reports.
 
 ```scheme
 (get-option "indent-width")           ; the global default indent-width

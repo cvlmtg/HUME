@@ -52,7 +52,8 @@ fn render_display_line_segments_a_virtual_lines_text() {
     // 0, which must be overwritten.
     providers.add_decoration_source(Box::new(NoVirtualLines));
     providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
-        VirtualLineAnchor::Before(ContentLine::new(0)),
+        Side::Before,
+        ContentLine::new(0),
         1,
         "deleted line",
     )));
@@ -76,7 +77,8 @@ fn render_display_line_word_wraps_a_virtual_line_at_whitespace() {
     let rope = Rope::from_str("hi\n");
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
-        VirtualLineAnchor::Before(ContentLine::new(0)),
+        Side::Before,
+        ContentLine::new(0),
         1,
         "aaa bbb ccc",
     )));
@@ -107,7 +109,8 @@ fn render_display_line_indent_wraps_a_virtual_line_at_its_own_indent() {
     let rope = Rope::from_str("hi\n");
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
-        VirtualLineAnchor::Before(ContentLine::new(0)),
+        Side::Before,
+        ContentLine::new(0),
         1,
         "    aaa bbb",
     )));
@@ -131,7 +134,8 @@ fn render_display_line_expands_a_tab_in_a_virtual_lines_text() {
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(NoVirtualLines));
     providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
-        VirtualLineAnchor::Before(ContentLine::new(0)),
+        Side::Before,
+        ContentLine::new(0),
         1,
         "\tx",
     )));
@@ -166,7 +170,8 @@ fn render_display_line_wide_cjk_before_tab_in_a_virtual_lines_text_shifts_the_st
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(NoVirtualLines));
     providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
-        VirtualLineAnchor::Before(ContentLine::new(0)),
+        Side::Before,
+        ContentLine::new(0),
         1,
         "\u{6F22}\tx",
     )));
@@ -240,7 +245,8 @@ fn render_display_line_does_not_reformat_a_line_because_of_its_virtual_lines() {
     let rope = Rope::from_str("abcdef\n");
     let (mut providers, calls) = with_counting_insert(ContentLine::new(0), 0, "hint");
     providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
-        VirtualLineAnchor::Before(ContentLine::new(0)),
+        Side::Before,
+        ContentLine::new(0),
         1,
         "V",
     )));
@@ -266,7 +272,8 @@ fn render_display_line_yields_correct_content_display_lines_after_a_virtual_disp
     let rope = Rope::from_str("abcdefgh\n");
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
-        VirtualLineAnchor::Before(ContentLine::new(0)),
+        Side::Before,
+        ContentLine::new(0),
         1,
         "V",
     )));

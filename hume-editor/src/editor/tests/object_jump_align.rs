@@ -55,7 +55,7 @@ fn goto_next_paragraph_centers_view_in_extend_mode() {
     // from paragraph 0 lands one char before paragraph 16 begins, at the
     // end of paragraph 15's own block (its trailing gap included).
     let mut ed = paragraph_editor(20);
-    ed.execute_keymap_command("goto-next-paragraph".into(), Some(15), true);
+    ed.execute_keymap_command("goto-next-paragraph".into(), Count::typed(15), true);
 
     let head = ed.current_view().primary().head().offset();
     assert_eq!(
@@ -83,7 +83,7 @@ fn goto_next_paragraph_count_past_the_last_paragraph_still_centers() {
     // breaks out of its loop on the first `None`), landing on the last
     // paragraph rather than erroring or overshooting past it.
     let mut ed = paragraph_editor(20);
-    ed.execute_keymap_command("goto-next-paragraph".into(), Some(50), false);
+    ed.execute_keymap_command("goto-next-paragraph".into(), Count::typed(50), false);
 
     let head = ed.current_view().primary().head().offset();
     assert_eq!(
@@ -127,7 +127,7 @@ fn goto_next_paragraph_at_end_of_buffer_does_not_move_the_viewport() {
     key_count(&mut ed, 19, '}');
     // Push the viewport somewhere centering would visibly undo, so a missing
     // `moved` guard has something to disagree with.
-    ed.execute_keymap_command("top-view-on-cursor".into(), None, false);
+    ed.execute_keymap_command("top-view-on-cursor".into(), Count::UNTYPED, false);
     let top_before = ed.viewport().top().line;
 
     ed.handle_key(key('}')); // no paragraph below: a true no-op
@@ -203,7 +203,7 @@ fn goto_next_function_centers_view_by_default() {
     // doesn't silently start depending on that coincidence.
     pin_no_wrap(&mut ed);
 
-    ed.execute_keymap_command("goto-next-function".into(), None, false);
+    ed.execute_keymap_command("goto-next-function".into(), Count::UNTYPED, false);
 
     assert_eq!(
         ed.current_view().primary().head().offset(),

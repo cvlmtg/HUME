@@ -43,23 +43,9 @@ pub(crate) fn show_popup(
 ) -> SteelResult {
     let text = string_arg(text, "text")?;
     let anchor = string_arg(anchor, "#:anchor")?;
-    let layout = symbol_enum_arg(
-        &anchor,
-        "#:anchor",
-        &[
-            ("cursor", PopupLayout::Cursor),
-            ("bottom", PopupLayout::Docked),
-        ],
-    )?;
+    let layout = symbol_enum_arg(&anchor, "#:anchor", &PopupLayout::NAMED)?;
     let kind = string_arg(kind, "#:kind")?;
-    let kind = symbol_enum_arg(
-        &kind,
-        "#:kind",
-        &[
-            ("sticky", PopupKind::Sticky),
-            ("scrollable", PopupKind::Scrollable),
-        ],
-    )?;
+    let kind = symbol_enum_arg(&kind, "#:kind", &PopupKind::NAMED)?;
     let lang = optional_string_arg(lang, "#:lang")?;
     let token = require_cap(ctx.host.ui())?
         .show_popup(pane, text, kind, layout, lang)
@@ -282,7 +268,7 @@ fn truncate_end_arg(val: SteelVal, ctx_name: &str) -> Result<TruncateEnd, SteelE
     symbol_enum_arg(
         string_arg(val, ctx_name)?.as_str(),
         ctx_name,
-        &[("head", TruncateEnd::Head), ("tail", TruncateEnd::Tail)],
+        &TruncateEnd::NAMED,
     )
 }
 

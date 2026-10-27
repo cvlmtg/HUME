@@ -1,7 +1,7 @@
 //! `toggle-comment`: each unit takes the comment tokens of the language at
 //! its text, the innermost syntax layer that has any.
 
-use hume_core::CommentTokens;
+use hume_core::{CommentTokens, Count};
 use hume_engine::pipeline::EngineView;
 use hume_ops::MotionMode;
 use hume_ops::edit::{
@@ -14,7 +14,6 @@ use super::{CommandPane, apply_pane_edit, ensure_writable, pane_view};
 use crate::editor::EditorState;
 use crate::editor::buffer::Buffer;
 use crate::editor::error::CommandError;
-use crate::editor::registry::Count;
 use crate::editor::syntax::{SyntaxUse, ensure_syntax_current};
 
 /// Comment or uncomment the lines of each selection (`G G`).

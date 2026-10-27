@@ -6,7 +6,7 @@
 
 use std::ops::Range;
 
-use hume_core::AnswerEnd;
+use hume_core::{AnswerEnd, HostToken};
 use hume_editing::changeset::{Assoc, ChangeSet, PosMapCursor};
 use hume_editing::edit::TextChange;
 use hume_editing::text::{BufferText, TextVersion};
@@ -255,7 +255,7 @@ impl BufferSession {
         &mut self,
         source: BufferSourceId,
         invocation: Invocation<BufferSpan>,
-    ) -> u64 {
+    ) -> HostToken {
         self.core.invoke(source, invocation)
     }
 
@@ -267,7 +267,7 @@ impl BufferSession {
     pub(in crate::editor) fn contribute(
         &mut self,
         sources: &SourceRegistry,
-        id: u64,
+        id: HostToken,
         items: Vec<CompletionItem>,
         incomplete: bool,
         end: AnswerEnd,
@@ -285,7 +285,7 @@ impl BufferSession {
     }
 
     /// Whether an answer to invocation `id` would land in this session.
-    pub(in crate::editor) fn awaits(&self, id: u64) -> bool {
+    pub(in crate::editor) fn awaits(&self, id: HostToken) -> bool {
         self.core.source_of(id).is_some()
     }
 
@@ -317,7 +317,7 @@ impl BufferSession {
     /// streaming answer closes at the part shown. `false` when this session
     /// owes no answer to `id`. A source that is merely slow is asked again
     /// by the next edit or trigger.
-    pub(in crate::editor) fn end_request(&mut self, id: u64) -> bool {
+    pub(in crate::editor) fn end_request(&mut self, id: HostToken) -> bool {
         self.core.end_request(id)
     }
 

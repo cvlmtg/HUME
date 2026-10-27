@@ -20,6 +20,7 @@
 //! transcript at the seam the input arrives, never by inferring afterward
 //! what a dispatch did.
 
+use hume_core::Count;
 use hume_engine::pipeline::EngineView;
 use std::borrow::Cow;
 use std::collections::VecDeque;
@@ -207,7 +208,7 @@ pub(in crate::editor) fn dispatch_command_line_key(ed: &mut Editor, cmd: Dispatc
 /// `running` set for the whole dispatch.
 fn dispatch_key_binding(ed: &mut Editor, running: Running, cmd: Dispatchable) -> bool {
     let ctx = CmdCtx {
-        count: Some(1),
+        count: Count::typed(1),
         extend: false,
     };
     with_running(ed, Some(running), |ed| ed.dispatch(cmd, ctx))
@@ -217,7 +218,7 @@ fn dispatch_key_binding(ed: &mut Editor, running: Running, cmd: Dispatchable) ->
 /// it.
 pub(in crate::editor) struct NewChange {
     pub(in crate::editor) command: Cow<'static, str>,
-    pub(in crate::editor) count: usize,
+    pub(in crate::editor) count: Count,
     /// The operand the command was dispatched with, recorded as its first
     /// answer.
     pub(in crate::editor) seed: Option<Answer>,
@@ -467,7 +468,7 @@ impl Recording {
     }
 
     /// The count the recorded change ran with, the default `.` replays with.
-    pub(in crate::editor) fn count(&self) -> usize {
+    pub(in crate::editor) fn count(&self) -> Count {
         self.action.count
     }
 
@@ -618,7 +619,7 @@ pub(in crate::editor) enum InputOpener {
 pub(crate) struct PendingRepeat {
     /// Effective replay count, with the explicit-count override already
     /// applied.
-    pub(super) count: usize,
+    pub(super) count: Count,
 }
 
 // ── Recording lifecycle (EditorState) ─────────────────────────────────────────
@@ -1039,7 +1040,7 @@ impl Editor {
     /// Takes the recording out for the whole replay and restores it afterward
     /// so `.` chains, which is also what keeps the replay from recording into
     /// it. Sets [`EditorState::dot_replay`] for the same extent.
-    pub(in crate::editor) fn replay_dot(&mut self, count: usize) {
+    pub(in crate::editor) fn replay_dot(&mut self, count: Count) {
         let Some(recording) = self.state.recording.take() else {
             return;
         };
@@ -1060,7 +1061,7 @@ impl Editor {
     /// the transcript, feeding each input into the path it names (see
     /// [`Input`]). The command and each [`Input::Binding`] run through
     /// [`Editor::dispatch`], the funnel their live keypress went through.
-    fn replay_action(&mut self, action: &RepeatableAction, count: usize) {
+    fn replay_action(&mut self, action: &RepeatableAction, count: Count) {
         // Read once, at entry: recipe steps never move focus.
         let fp = commands::FocusedPane::current(&self.view);
         let pid = fp.pid();
@@ -1144,7 +1145,7 @@ impl Editor {
                 &mut self.view,
                 bound,
                 &CmdCtx {
-                    count: Some(step.count),
+                    count: step.count,
                     extend: step.extend,
                 },
             );
@@ -1162,7 +1163,7 @@ impl Editor {
         let dispatched = self.dispatch(
             edit_cmd,
             CmdCtx {
-                count: Some(count),
+                count,
                 extend: false,
             },
         );

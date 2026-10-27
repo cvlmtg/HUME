@@ -486,7 +486,7 @@ fn goto_next_buffer_from_an_auto_indented_blank_line_records_a_jump_back() {
             "goto-next-buffer",
             pane,
             NativeCall {
-                count: Some(1),
+                count: Count::typed(1),
                 ..NativeCall::default()
             },
         )

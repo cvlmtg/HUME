@@ -44,7 +44,8 @@ fn locate_offsets_the_display_line_by_the_lines_before_block() {
     let rope = Rope::from_str("abcdefgh\n");
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
-        VirtualLineAnchor::Before(ContentLine::new(0)),
+        Side::Before,
+        ContentLine::new(0),
         2,
         "V",
     )));
@@ -394,12 +395,14 @@ fn char_at_on_a_virtual_display_line_clamps_to_the_lines_own_content() {
     let rope = Rope::from_str("a\nb\nc\n");
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
-        VirtualLineAnchor::Before(ContentLine::new(1)),
+        Side::Before,
+        ContentLine::new(1),
         1,
         "V",
     )));
     providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
-        VirtualLineAnchor::After(ContentLine::new(2)),
+        Side::After,
+        ContentLine::new(2),
         1,
         "V",
     )));
@@ -470,7 +473,8 @@ fn content_display_line_clusters_rejects_a_virtual_display_line() {
     let rope = Rope::from_str("abcdefgh\n");
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
-        VirtualLineAnchor::Before(ContentLine::new(0)),
+        Side::Before,
+        ContentLine::new(0),
         1,
         "V",
     )));

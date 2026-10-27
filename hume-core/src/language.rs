@@ -6,11 +6,11 @@ use std::path::{Path, PathBuf};
 
 use globset::Glob;
 
-use crate::{BlockCommentTokens, LineCommentTokens, Tie};
+use crate::{BlockCommentTokens, LaterWins, LineCommentTokens};
 
 /// A buffer's language: a later write from one origin replaces the earlier,
 /// whether the editor applies it or a script reads it back before then.
-pub const BUFFER_LANGUAGE_TIE: Tie = Tie::LaterWins;
+pub type BufferLanguageTie = LaterWins;
 
 /// A glob of a language's detection data, matched against a file's whole
 /// absolute path as Helix matches the `languages.toml` data it
@@ -254,3 +254,6 @@ impl GrammarSource {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

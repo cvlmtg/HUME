@@ -166,24 +166,6 @@ impl GutterCell {
 // Virtual line
 // ---------------------------------------------------------------------------
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum VirtualLineAnchor {
-    /// Insert before the first display line of buffer line `n`.
-    Before(hume_rope::line::ContentLine),
-    /// Insert after the last display line (including wraps) of buffer line `n`.
-    After(hume_rope::line::ContentLine),
-}
-
-impl VirtualLineAnchor {
-    /// Sort key for ordering virtual lines: Before(n) < After(n) < Before/After(n+1).
-    pub fn sort_key(self) -> (usize, u8) {
-        match self {
-            Self::Before(n) => (n.index(), 0),
-            Self::After(n) => (n.index(), 1),
-        }
-    }
-}
-
 /// A virtual (non-buffer) display line injected by a provider.
 ///
 /// Providers supply plain `text` + scoped byte-range `segments` rather than
@@ -194,7 +176,11 @@ impl VirtualLineAnchor {
 /// display line it wraps into carries this line's `base_scope`.
 #[derive(Clone)]
 pub struct VirtualLine {
-    pub anchor: VirtualLineAnchor,
+    /// The buffer line this virtual line is anchored to.
+    pub line: hume_rope::line::ContentLine,
+    /// `Before`: above `line`'s first display line. `After`: below its last,
+    /// wraps included.
+    pub side: hume_core::Side,
     pub provider_id: ProviderId,
     pub text: String,
     /// `(byte_start, byte_end, scope_id)` offsets into `text`, each naming the

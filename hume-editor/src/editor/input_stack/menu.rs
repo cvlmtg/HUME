@@ -8,7 +8,7 @@ use hume_engine::types::EditorMode;
 
 use super::super::mouse::is_fresh_gesture;
 use super::super::replay::{Answer, Choice, InputOpener, PendingAnswer, WaitingInput};
-use super::super::{Editor, EditorState, host_token};
+use super::super::{Editor, EditorState};
 use super::base::BaseLayer;
 use super::paste::ignore_paste;
 use super::placement::{focused_cursor, popup_placement};
@@ -121,7 +121,7 @@ impl MenuLayer {
             rows: items.map(hume_ui::popup::MenuRow::plain),
             selected: 0,
             callback,
-            token: host_token::mint(),
+            token: HostToken::mint(),
             input,
         }
     }

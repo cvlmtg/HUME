@@ -17,7 +17,7 @@ fn lazy_repeatable_round_trip() {
     );
 
     // First dispatch: Lazy miss → plugin activates → SteelBacked runs.
-    ed.execute_keymap_command("tp-del".into(), Some(1), false);
+    ed.execute_keymap_command("tp-del".into(), Count::typed(1), false);
     assert_eq!(ed.doc().text().to_string(), " bar\n");
 
     // Dispatch must have read the activated SteelBacked repeatable entry.
@@ -47,7 +47,7 @@ fn lazy_non_repeatable_wrapper_records_its_inner_change_on_first_dispatch() {
         r#"(define-command! "tp-plain" "" (lambda () (call! "delete" (focused-pane))))"#,
     );
 
-    ed.execute_keymap_command("tp-plain".into(), Some(1), false);
+    ed.execute_keymap_command("tp-plain".into(), Count::typed(1), false);
     assert_eq!(ed.doc().text().to_string(), " bar\n");
     assert_eq!(
         ed.state.last_action().map(|a| a.command.as_ref()),

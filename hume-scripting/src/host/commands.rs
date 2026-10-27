@@ -4,7 +4,7 @@
 use crate::attribution::EntryId;
 use crate::command_procs::CommandProc;
 use crate::types::{SteelCmdDef, SteelTypedCmdDef};
-use hume_core::{CommandArg, PaneHandle};
+use hume_core::{CommandArg, Count, PaneHandle};
 
 /// How a native command is invoked from a script: everything
 /// [`CommandHost::run_command_sync`] takes besides the command and its pane.
@@ -12,11 +12,11 @@ use hume_core::{CommandArg, PaneHandle};
 /// no operand.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct NativeCall {
-    /// `None` means "as if no count was typed". For `move-down`/`move-up`
-    /// this selects visual-line movement instead of buffer-line movement
-    /// (every other native command treats `None` the same as `Some(1)`).
-    /// `parse_native_args` decodes a Steel-side count of `0` to `None`.
-    pub count: Option<usize>,
+    /// [`Count::UNTYPED`] means "as if no count was typed". For
+    /// `move-down`/`move-up` this selects visual-line movement instead of
+    /// buffer-line movement (every other native command runs it once).
+    /// `parse_native_args` decodes a Steel-side count of `0` to it.
+    pub count: Count,
     pub extend: bool,
     /// Armed as `state.register_prefix` before dispatch, so register-aware
     /// commands (`yank`, `delete`, `paste-after`, etc.) route to the right

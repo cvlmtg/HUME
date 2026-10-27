@@ -16,8 +16,12 @@ fn level(origin: ConfigOrigin) -> u8 {
 
 /// The rule stated apart from `rank`'s own comparison: a write applies to an
 /// empty slot or one a lower level set, is shadowed by a higher level, and
-/// meets its own level's tie rule.
-fn expected(held: Option<ConfigOrigin>, by: ConfigOrigin, tie: Tie) -> WriteOutcome {
+/// meets `same_origin` at its own level.
+fn expected(
+    held: Option<ConfigOrigin>,
+    by: ConfigOrigin,
+    same_origin: WriteOutcome,
+) -> WriteOutcome {
     let Some(held) = held else {
         return WriteOutcome::Applied;
     };
@@ -25,61 +29,112 @@ fn expected(held: Option<ConfigOrigin>, by: ConfigOrigin, tie: Tie) -> WriteOutc
         WriteOutcome::Applied
     } else if level(held) > level(by) {
         WriteOutcome::Shadowed
-    } else if tie == Tie::LaterWins {
-        WriteOutcome::Applied
     } else {
-        WriteOutcome::Ignored
+        same_origin
     }
 }
 
-/// Every held origin (or none), writing origin and tie.
-fn cases() -> impl Iterator<Item = (Option<ConfigOrigin>, ConfigOrigin, Tie)> {
+/// Every held origin (or none) and writing origin.
+fn cases() -> impl Iterator<Item = (Option<ConfigOrigin>, ConfigOrigin)> {
     std::iter::once(None)
         .chain(ORIGINS.into_iter().map(Some))
         .flat_map(|held| ORIGINS.into_iter().map(move |by| (held, by)))
-        .flat_map(|(held, by)| [Tie::FirstWins, Tie::LaterWins].map(|tie| (held, by, tie)))
 }
 
-#[test]
-fn rank_follows_the_rule_for_every_pair_and_tie() {
-    for (held, by, tie) in cases() {
+fn slot<P: TiePolicy>(held: Option<ConfigOrigin>) -> Ranked<&'static str, P> {
+    Ranked {
+        held: held.map(|by| ("old", by)),
+        tie: PhantomData,
+    }
+}
+
+fn rank_follows_the_rule<P: TiePolicy>(same_origin: WriteOutcome) {
+    for (held, by) in cases() {
         assert_eq!(
-            by.rank(held, tie),
-            expected(held, by, tie),
-            "{held:?} {by:?} {tie:?}"
+            slot::<P>(held).rank(by),
+            expected(held, by, same_origin),
+            "{held:?} {by:?}"
         );
     }
 }
 
-#[test]
-fn claim_records_the_origin_only_when_the_write_applies() {
-    for (held, by, tie) in cases() {
-        let mut slot = held;
+fn claim_records_the_origin_only_when_the_write_applies<P: TiePolicy>(same_origin: WriteOutcome) {
+    for (held, by) in cases() {
+        let mut claim = slot::<P>(held).as_claim();
 
-        let outcome = by.claim(&mut slot, tie);
+        let outcome = claim.claim(by);
 
-        let want = expected(held, by, tie);
-        assert_eq!(outcome, want);
-        assert_eq!(slot, if want.is_applied() { Some(by) } else { held });
+        let want = expected(held, by, same_origin);
+        assert_eq!(outcome, want, "{held:?} {by:?}");
+        assert_eq!(claim.by(), if want.is_applied() { Some(by) } else { held });
+    }
+}
+
+fn write_replaces_the_value_with_its_origin_only_when_it_applies<P: TiePolicy>(
+    same_origin: WriteOutcome,
+) {
+    for (held, by) in cases() {
+        let mut slot = slot::<P>(held);
+
+        let written = slot.write("new", by);
+
+        let want = expected(held, by, same_origin);
+        assert_eq!(written.outcome, want, "{held:?} {by:?}");
+        let (value, origin, displaced) = match (want.is_applied(), held) {
+            (true, Some(_)) => ("new", Some(by), Some("old")),
+            (true, None) => ("new", Some(by), None),
+            (false, _) => ("old", held, None),
+        };
+        assert_eq!(written.displaced, displaced, "{held:?} {by:?}");
+        assert_eq!(slot.by(), origin);
+        assert_eq!(slot.get().copied(), origin.map(|_| value));
+    }
+}
+
+fn clear_empties_the_slot_only_when_it_applies<P: TiePolicy>(same_origin: WriteOutcome) {
+    for (held, by) in cases() {
+        let mut slot = slot::<P>(held);
+
+        let written = slot.clear(by);
+
+        let want = expected(held, by, same_origin);
+        assert_eq!(written.outcome, want, "{held:?} {by:?}");
+        let (origin, displaced) = match want.is_applied() {
+            true => (None, held.map(|_| "old")),
+            false => (held, None),
+        };
+        assert_eq!(written.displaced, displaced, "{held:?} {by:?}");
+        assert_eq!(slot.by(), origin);
+        assert_eq!(slot.get().copied(), origin.map(|_| "old"));
     }
 }
 
 #[test]
-fn ranked_write_replaces_the_value_with_its_origin_only_when_it_applies() {
-    for (held, by, tie) in cases() {
-        let mut slot = held.map(|by| Ranked { value: "old", by });
+fn rank_follows_the_rule_for_every_pair_under_each_policy() {
+    rank_follows_the_rule::<FirstWins>(WriteOutcome::Ignored);
+    rank_follows_the_rule::<LaterWins>(WriteOutcome::Applied);
+}
 
-        let outcome = Ranked::write(&mut slot, "new", by, tie);
+#[test]
+fn claim_records_the_origin_only_when_the_write_applies_under_each_policy() {
+    claim_records_the_origin_only_when_the_write_applies::<FirstWins>(WriteOutcome::Ignored);
+    claim_records_the_origin_only_when_the_write_applies::<LaterWins>(WriteOutcome::Applied);
+}
 
-        let want = expected(held, by, tie);
-        assert_eq!(outcome, want);
-        let (value, origin) = match want.is_applied() {
-            true => ("new", Some(by)),
-            false => ("old", held),
-        };
-        assert_eq!(slot.as_ref().map(|r| r.by), origin);
-        assert_eq!(slot.as_ref().map(|r| r.value), origin.map(|_| value));
-    }
+#[test]
+fn write_replaces_the_value_with_its_origin_only_when_it_applies_under_each_policy() {
+    write_replaces_the_value_with_its_origin_only_when_it_applies::<FirstWins>(
+        WriteOutcome::Ignored,
+    );
+    write_replaces_the_value_with_its_origin_only_when_it_applies::<LaterWins>(
+        WriteOutcome::Applied,
+    );
+}
+
+#[test]
+fn clear_empties_the_slot_only_when_it_applies_under_each_policy() {
+    clear_empties_the_slot_only_when_it_applies::<FirstWins>(WriteOutcome::Ignored);
+    clear_empties_the_slot_only_when_it_applies::<LaterWins>(WriteOutcome::Applied);
 }
 
 #[test]

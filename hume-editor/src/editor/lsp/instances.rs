@@ -4,6 +4,7 @@
 
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use rustc_hash::FxHashMap;
 
@@ -17,8 +18,9 @@ use super::progress::ProgressTask;
 use super::registry::Registry;
 use hume_core::{LspServerConfig, ServerName};
 
-/// One running server process: its protocol client, the registration name
-/// it was spawned under, and its `$/progress` state.
+/// One running server process: its protocol client (which holds the
+/// registration it was spawned with), the registration name it was spawned
+/// under, and its `$/progress` state.
 pub(in crate::editor::lsp) struct Instance {
     pub(in crate::editor::lsp) client: LspClient,
     pub(in crate::editor::lsp) name: ServerName,
@@ -27,11 +29,9 @@ pub(in crate::editor::lsp) struct Instance {
     /// The statusline shows the most recent (last); a token is removed on
     /// its `end` notification.
     pub(in crate::editor::lsp) progress: Vec<(String, ProgressTask)>,
-    /// The config the process was started with. A registration of `name`
-    /// that differs from it does not reach the running process.
-    spawned: LspServerConfig,
-    /// Set once the difference between `spawned` and the registration has
-    /// been reported, so it is reported once.
+    /// Set once the difference between the client's spawned config and the
+    /// registration of `name` has been reported, so it is reported once. A
+    /// registration that differs does not reach the running process.
     drift_reported: bool,
     /// Set once a diagnostic this server sent that did not parse has been
     /// reported at Warning.
@@ -71,7 +71,7 @@ impl Instances {
         &mut self,
         backend: &mut dyn LspBackend,
         name: &ServerName,
-        config: &LspServerConfig,
+        config: &Arc<LspServerConfig>,
         root: PathBuf,
         search_path: Option<&OsStr>,
     ) -> std::io::Result<ServerId> {
@@ -80,9 +80,7 @@ impl Instances {
             search_path,
         };
         let sid = backend.start(&config.command, &config.args, launch, &config.env)?;
-        let mut client = LspClient::new(sid, root);
-        client.set_init_options(config.init_options.clone());
-        client.set_settings(config.settings.clone());
+        let mut client = LspClient::new(sid, root, Arc::clone(config));
         client.start_handshake(backend);
         self.map.insert(
             sid,
@@ -90,7 +88,6 @@ impl Instances {
                 client,
                 name: name.clone(),
                 progress: Vec::new(),
-                spawned: config.clone(),
                 drift_reported: false,
                 skipped_reported: false,
                 pushed_diagnostics: false,
@@ -109,9 +106,10 @@ impl Instances {
     ) -> Vec<ServerName> {
         let mut names = Vec::new();
         for instance in self.map.values_mut() {
-            let drifted = registry
-                .get(&instance.name)
-                .is_some_and(|config| *config != instance.spawned);
+            let drifted = registry.get(&instance.name).is_some_and(|registered| {
+                let spawned = instance.client.config();
+                !Arc::ptr_eq(registered, spawned) && registered != spawned
+            });
             if drifted && !instance.drift_reported {
                 names.push(instance.name.clone());
             }

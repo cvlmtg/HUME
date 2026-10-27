@@ -15,7 +15,7 @@ fn record_pk(tmp: &std::path::Path, body: &str, keys: &[KeyEvent]) -> Editor {
         tmp,
         &format!(r#"(define-command! "pk" "" (lambda (pane) {body}) #:repeatable #t)"#),
     );
-    ed.execute_keymap_command("pk".into(), Some(1), false);
+    ed.execute_keymap_command("pk".into(), Count::typed(1), false);
     ed.settle();
     assert!(ed.state.input.picker().is_some(), "sanity: picker open");
     for &k in keys {
@@ -136,7 +136,7 @@ fn dot_refuses_a_picker_where_a_read_was_recorded() {
                    (picker! pane (list (cons "a" "A")) (lambda (p) (+ 1 0)))))
              #:repeatable #t)"#,
     );
-    ed.execute_keymap_command("br".into(), Some(1), false);
+    ed.execute_keymap_command("br".into(), Count::typed(1), false);
     ed.settle();
     ed.feed_key(key('z'));
     ed.settle();

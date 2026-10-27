@@ -42,7 +42,7 @@ fn command_binding_runs_in_a_prompt() {
         r#"(bind-key! 'command "ctrl-w" "put-w")
            (define-command! "ask" "" (lambda (pane) (prompt! pane "q: " (lambda (t) (+ 1 0)))))"#,
     );
-    ed.execute_keymap_command("ask".into(), Some(1), false);
+    ed.execute_keymap_command("ask".into(), Count::typed(1), false);
     ed.feed_key(key('a'));
     ed.feed_key(key_ctrl('w'));
     assert_eq!(minibuf_input(&ed), "aW");

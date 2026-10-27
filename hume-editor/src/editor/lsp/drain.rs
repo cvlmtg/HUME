@@ -209,7 +209,7 @@ impl Editor {
                         .lsp
                         .instances
                         .get(server_id)
-                        .and_then(|i| i.client.settings());
+                        .and_then(|i| i.client.config().settings.as_ref());
                     server_request_response(&method, &params, settings)
                 };
                 self.state

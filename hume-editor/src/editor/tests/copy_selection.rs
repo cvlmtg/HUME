@@ -27,7 +27,7 @@ fn run_copy(ed: &mut Editor, down: bool, count: usize) {
     } else {
         "copy-selection-on-prev-line"
     };
-    ed.execute_keymap_command(name.into(), Some(count), false);
+    ed.execute_keymap_command(name.into(), Count::typed(count), false);
 }
 
 /// Build an editor from `initial`, run the copy command, and compare the
@@ -193,15 +193,6 @@ fn copy_next_line_count_3_primary_lands_on_furthest_copy() {
     run_copy(&mut ed, true, 3);
     // "a\nb\nc\nd\ne\n": a(0) b(2) c(4) d(6) e(8). Furthest copy is on 'd'.
     assert_eq!(ed.current_view().primary().head().offset(), co(6));
-}
-
-#[test]
-fn copy_next_line_count_usize_max_returns_instantly() {
-    // A naive `0..count` loop would hang forever on `usize::MAX`; the target
-    // line runs off the buffer after 4 steps, so this must return instantly.
-    let mut ed = copy_test_editor("-[a]>\nb\nc\nd\ne\n");
-    run_copy(&mut ed, true, usize::MAX);
-    assert_eq!(ed.current_view().len(), 5); // original + one copy per remaining line
 }
 
 #[test]

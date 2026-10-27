@@ -15,7 +15,8 @@ use hume_core::{AnswerEnd, FirstTab, MatchKind, NamedPrefix, PaneHandle, Trigger
 use super::SteelResult;
 use super::args::{
     CHAR_RANGE_KEYS, bool_arg, chars_arg, int_arg, json_arg, list_items, optional_callback_arg,
-    optional_hash_entry, optional_string_arg, server_arg, string_arg, symbol_enum_arg, usize_arg,
+    optional_hash_entry, optional_string_arg, server_arg, string_arg, symbol_enum_arg, token_arg,
+    usize_arg,
 };
 use super::errors::{generic_err, require_cap};
 use super::lsp::required_feature_arg;
@@ -49,10 +50,7 @@ fn target_arg(target: SteelVal) -> Result<CompletionSourceTarget, SteelErr> {
     symbol_enum_arg(
         string_arg(target, ctx_name)?.as_str(),
         ctx_name,
-        &[
-            ("buffer", CompletionSourceTarget::Buffer),
-            ("minibuf", CompletionSourceTarget::Minibuf),
-        ],
+        &CompletionSourceTarget::NAMED,
     )
 }
 
@@ -200,7 +198,7 @@ pub(crate) fn register_completion_source(
 /// each crosses `json_arg` (the funnel every JSON-taking builtin uses) with
 /// no deep copy. What each element is only matters to the host
 /// implementation, which decodes them. Returns whether the answer applied
-/// (`#f` for a superseded or already-closed invocation).
+/// (`#f` for a superseded or already-closed invocation, or an `id` of `#f`).
 pub(crate) fn completion_emit(
     ctx: &mut SteelCtx,
     id: SteelVal,
@@ -210,7 +208,7 @@ pub(crate) fn completion_emit(
     span: SteelVal,
     prefix: SteelVal,
 ) -> SteelResult {
-    let id = usize_arg(id, "id")? as u64;
+    let id = token_arg(id, "id")?;
     let incomplete = bool_arg(incomplete, "#:incomplete")?;
     let end = if bool_arg(more, "#:more")? {
         AnswerEnd::More

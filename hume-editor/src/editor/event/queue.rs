@@ -3,7 +3,7 @@
 
 use std::rc::Rc;
 
-use hume_core::{BufferId, PaneHandle};
+use hume_core::{BufferId, HostToken, PaneHandle};
 use hume_scripting::host::JobHandle;
 use hume_scripting::{Rooted, SteelCall};
 
@@ -87,7 +87,7 @@ pub(in crate::editor) enum CallGuard {
     /// or is dropped unrun, the request ends: nothing will answer it
     /// further, and its source gets its `#:cancel`. Every other request is
     /// left waiting.
-    Invocation(u64),
+    Invocation(HostToken),
 }
 
 impl PendingWork {
@@ -150,7 +150,7 @@ impl EditorState {
     /// `id`; see [`CallGuard::Invocation`].
     pub(in crate::editor) fn queue_source_calls(
         &mut self,
-        calls: impl IntoIterator<Item = (u64, SteelCall)>,
+        calls: impl IntoIterator<Item = (HostToken, SteelCall)>,
     ) {
         for (id, call) in calls {
             self.push_work(PendingWork::call(

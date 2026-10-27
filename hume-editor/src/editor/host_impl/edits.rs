@@ -40,8 +40,7 @@ impl<'a> EditHost for EditorHostImpl<'a> {
         crate::editor::lsp::edits::apply_text_edits(
             self.state,
             &self.view.panes,
-            pane.pane(),
-            pane.buffer(),
+            pane,
             &edits
                 .iter()
                 .map(|e| (e.range, e.new_text.as_str()))
@@ -65,12 +64,7 @@ impl<'a> EditHost for EditorHostImpl<'a> {
         let we: lsp_types::WorkspaceEdit = serde::Deserialize::deserialize(edit)
             .map_err(|e: serde_json::Error| format!("malformed WorkspaceEdit: {e}"))?;
         let summary = crate::editor::lsp::edits::apply_workspace_edit(
-            self.state,
-            self.view,
-            pane.pane(),
-            we,
-            encoding,
-            expect_gen.map(|g| (pane.buffer(), g)),
+            self.state, self.view, pane, we, encoding, expect_gen,
         )?;
         Ok(summary.buffers_modified)
     }

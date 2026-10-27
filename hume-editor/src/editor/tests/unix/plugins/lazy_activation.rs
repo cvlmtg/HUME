@@ -216,7 +216,7 @@ fn a_drawer_render_cannot_activate_a_plugin_and_leaves_it_declared() {
             .collect::<Vec<_>>()
     );
 
-    ed.execute_keymap_command("fmt-row".into(), Some(1), false);
+    ed.execute_keymap_command("fmt-row".into(), Count::typed(1), false);
 
     assert!(
         matches!(

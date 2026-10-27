@@ -20,13 +20,13 @@
 //! The `BufferIntrinsicOption`s have no macro entry: they have no global
 //! default and live on the buffer. `language` needs `Editor`-level access
 //! (`OnLanguageSet` hook, registry lookup), so `typed_set` handles it;
-//! `line-ending` is written by `ops::apply_buffer` and read by
-//! `get_buffer_option`.
+//! `line-ending` is written by `ops::set_line_ending` and read by the host's
+//! `buffer_line_ending`.
 
 use std::fmt;
 use std::str::FromStr;
 
-use hume_core::{ConfigOrigin, DiagSeverity, OptionInput, Tie};
+use hume_core::{Claim, ConfigOrigin, DiagSeverity, LaterWins, OptionInput};
 use hume_editing::tab_style::TabStyle;
 use hume_engine::builtins::line_number::LineNumberStyle;
 use hume_engine::pane::{WhitespaceConfig, WhitespaceRender, WrapMode};
@@ -82,43 +82,33 @@ pub(in crate::editor) trait SettingText: Sized {
     fn to_text(&self) -> String;
 }
 
-/// A setting's write from one origin replaces the earlier one.
-const SETTING_TIE: Tie = Tie::LaterWins;
-
 /// The origin of the write behind each value a settings store holds, by
 /// key. A key with none holds its compiled-in default (global) or no
 /// override (buffer). Within one scope a write from an origin below the
 /// recorded one is shadowed, and one from the same or a higher origin
-/// replaces it ([`SETTING_TIE`]).
+/// replaces it.
 #[derive(Clone, Debug, Default)]
-pub(in crate::editor::settings) struct SettingOrigins(FxHashMap<&'static str, ConfigOrigin>);
+pub(in crate::editor::settings) struct SettingOrigins(FxHashMap<&'static str, Claim<LaterWins>>);
 
 impl SettingOrigins {
     /// Whether `by` may write `key`; recorded as its writer when it may.
     fn claim(&mut self, key: &'static str, by: ConfigOrigin) -> bool {
-        let applies = by.rank(self.held(key), SETTING_TIE).is_applied();
-        if applies {
-            self.0.insert(key, by);
-        }
-        applies
+        self.0.entry(key).or_default().claim(by).is_applied()
     }
 
-    /// The origin that wrote `key`, `None` when nothing has.
-    pub(in crate::editor::settings) fn held(&self, key: &str) -> Option<ConfigOrigin> {
-        self.0.get(key).copied()
+    /// `key`'s slot as it stands, for [`Self::restore`].
+    pub(in crate::editor::settings) fn slot(&self, key: &str) -> Claim<LaterWins> {
+        self.0.get(key).copied().unwrap_or_default()
     }
 
-    /// Put back what [`Self::held`] read for `key` before a write that is
+    /// Put back what [`Self::slot`] read for `key` before a write that is
     /// being undone.
     pub(in crate::editor::settings) fn restore(
         &mut self,
         key: &'static str,
-        held: Option<ConfigOrigin>,
+        slot: Claim<LaterWins>,
     ) {
-        match held {
-            Some(by) => self.0.insert(key, by),
-            None => self.0.remove(key),
-        };
+        self.0.insert(key, slot);
     }
 }
 
@@ -605,10 +595,9 @@ macro_rules! define_settings {
         /// the key is buffer-scoped, else the global default. Backs
         /// `(get-option key)` (`overrides` always `None`: global only) and
         /// `(get-buffer-option bid key)` (`overrides` from `bid`'s stored
-        /// `BufferOverrides`). `None` for a key with no generic storage.
-        /// This covers the `BufferIntrinsicOption`s, which live on the
-        /// buffer: the `get-buffer-option` builtin reads `language`, and the
-        /// host's `get_buffer_option` reads `line-ending`.
+        /// `BufferOverrides`). `None` for a key with no generic storage,
+        /// such as a `BufferIntrinsicOption`: the `get-buffer-option`
+        /// builtin routes those to their own readers before reaching here.
         pub fn setting_value(
             key: &str,
             settings: &EditorSettings,
@@ -642,8 +631,8 @@ macro_rules! define_settings {
         /// The `Scope`s a setting accepts, as declared by its `scope: [...]`
         /// list in the `define_settings!` invocation below. Empty for any
         /// key not declared there, notably the `BufferIntrinsicOption`s,
-        /// which have no generic storage and are handled by `typed_set`'s own
-        /// special case, never through this table.
+        /// which have no generic storage: `typed_set` and the option
+        /// builtins match them before consulting this table.
         pub(in crate::editor) fn setting_scopes(key: &str) -> &'static [Scope] {
             match key {
                 $( $gkey => &[$($gscope),+], )*

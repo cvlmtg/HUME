@@ -114,7 +114,8 @@ fn locate_display_line_answers_without_formatting_in_no_wrap() {
     let rope = long_unwrapped_line();
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
-        VirtualLineAnchor::Before(ContentLine::new(0)),
+        Side::Before,
+        ContentLine::new(0),
         2,
         "V",
     )));
@@ -148,7 +149,8 @@ fn locate_display_line_agrees_with_locate_in_both_wrap_modes() {
     let rope = Rope::from_str("a\n\nébc\n");
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
-        VirtualLineAnchor::Before(ContentLine::new(1)),
+        Side::Before,
+        ContentLine::new(1),
         2,
         "V",
     )));

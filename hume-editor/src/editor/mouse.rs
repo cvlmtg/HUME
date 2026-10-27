@@ -19,6 +19,7 @@
 //! `Popup` dismisses on any of them. [`Editor::base_mouse`] is the `Base`
 //! layer's policy, reached only after the stack has let the event through.
 
+use hume_core::Count;
 use hume_engine::pipeline::PaneHit;
 use hume_grid::{Position, Rect};
 use termina::event::{MouseButton, MouseEvent, MouseEventKind};
@@ -125,7 +126,7 @@ impl Editor {
     /// isn't even focused anymore.
     fn clear_pending_input(&mut self) {
         self.state.pending.clear();
-        self.state.count = None;
+        self.state.count = Count::UNTYPED;
         self.state.status_msg = None;
     }
 

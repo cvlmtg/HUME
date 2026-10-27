@@ -8,6 +8,7 @@ use crate::pane::{WhitespaceConfig, WrapMode};
 use crate::providers::DecorationSource;
 use crate::test_support::{VirtualLineBlock, at, co};
 use crate::types::{CellContent, ScopeId};
+use hume_core::Side;
 use hume_rope::column::{BufferLineCol, DisplayLineCol};
 use hume_rope::line::{ContentLine, RopeyLine};
 use hume_rope::lines::content_line_count;

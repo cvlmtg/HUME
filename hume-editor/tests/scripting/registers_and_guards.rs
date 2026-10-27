@@ -2,6 +2,7 @@
 //! builtins.
 
 use super::*;
+use hume_core::Count;
 
 // ── set-register-prefix! ─────────────────────────────────────────────────
 
@@ -34,13 +35,10 @@ fn set_register_prefix_passed_to_dispatch() {
     );
 }
 
-/// `(call! "paste-after" bid 0)` must decode to `count: None` at the
+/// `(call! "paste-after" bid 0)` must decode to an untyped count at the
 /// `run_command_sync` boundary: `0` is the Scheme spelling of "no count
-/// typed" (`parse_native_args`), distinct from `Some(1)` even though both
-/// apply the command once.
-///
-/// Clamping `0` to `1` in `parse_native_args` would make
-/// `dispatched_native[0].2.count` come out `Some(1)`.
+/// typed" (`parse_native_args`), distinct from a typed count of one even
+/// though both apply the command once.
 #[test]
 fn call_native_zero_count_decodes_to_none() {
     let mut h = host();
@@ -60,8 +58,9 @@ fn call_native_zero_count_decodes_to_none() {
     let count = &call.count;
     assert_eq!(name, "paste-after");
     assert_eq!(
-        *count, None,
-        "count 0 from Steel must decode to None, not Some(1)"
+        *count,
+        Count::UNTYPED,
+        "count 0 from Steel must decode to an untyped count, not a count of one"
     );
 }
 

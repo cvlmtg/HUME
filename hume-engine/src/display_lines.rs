@@ -30,9 +30,7 @@ use ropey::Rope;
 
 use crate::format::{FormatBound, LineFormat, format_buffer_line, format_virtual_lines};
 use crate::pipeline::ContentWidth;
-use crate::providers::{
-    Decoration, DecorationKinds, InlineInsert, ProviderSet, VirtualLine, VirtualLineAnchor,
-};
+use crate::providers::{Decoration, DecorationKinds, InlineInsert, ProviderSet, VirtualLine};
 use crate::types::{DisplayLine, Grapheme, ScopeId};
 use hume_rope::column::DisplayLineCol;
 use hume_rope::line::ContentLine;
@@ -249,12 +247,10 @@ impl<'a> DisplayLineMap<'a> {
         // A display line anchored outside the queried line is a provider
         // bug. Drop it rather than count it against a line it does not
         // belong to.
-        self.virtual_lines.retain(|vl| match vl.anchor {
-            VirtualLineAnchor::Before(n) | VirtualLineAnchor::After(n) => n == line,
-        });
+        self.virtual_lines.retain(|vl| vl.line == line);
         // `Before` display lines ahead of `After` display lines; stable, so
         // provider registration order survives within each group.
-        self.virtual_lines.sort_by_key(|vl| vl.anchor.sort_key());
+        self.virtual_lines.sort_by_key(|vl| vl.side);
         // Providers are plugin code and the trait makes no ordering promise
         // enforceable at the boundary. Sort here so `format_virtual_lines`'s
         // cursor scan (which requires sorted, non-overlapping input) never

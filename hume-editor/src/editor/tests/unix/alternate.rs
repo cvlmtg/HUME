@@ -33,7 +33,7 @@ fn goto_alternate_buffer_switches_to_alternate_and_is_involutive() {
             "goto-alternate-buffer",
             pane,
             NativeCall {
-                count: Some(1),
+                count: Count::typed(1),
                 ..NativeCall::default()
             },
         )
@@ -51,7 +51,7 @@ fn goto_alternate_buffer_switches_to_alternate_and_is_involutive() {
             "goto-alternate-buffer",
             pane,
             NativeCall {
-                count: Some(1),
+                count: Count::typed(1),
                 ..NativeCall::default()
             },
         )
@@ -79,7 +79,7 @@ fn goto_alternate_buffer_pushes_jump_entry() {
             "goto-alternate-buffer",
             pane,
             NativeCall {
-                count: Some(1),
+                count: Count::typed(1),
                 ..NativeCall::default()
             },
         )
@@ -96,7 +96,7 @@ fn goto_alternate_buffer_pushes_jump_entry() {
             "jump-backward",
             pane,
             NativeCall {
-                count: Some(1),
+                count: Count::typed(1),
                 ..NativeCall::default()
             },
         )
@@ -173,7 +173,7 @@ fn alternate_follows_focus_order_not_open_order() {
             "goto-alternate-buffer",
             pane,
             NativeCall {
-                count: Some(1),
+                count: Count::typed(1),
                 ..NativeCall::default()
             },
         )
@@ -194,7 +194,7 @@ fn alternate_follows_focus_order_not_open_order() {
             "goto-alternate-buffer",
             pane,
             NativeCall {
-                count: Some(1),
+                count: Count::typed(1),
                 ..NativeCall::default()
             },
         )

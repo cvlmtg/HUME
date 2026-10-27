@@ -508,7 +508,8 @@ fn wrap_toggle_off_does_not_discard_a_still_valid_offset_inside_a_before_block()
     ed.view.panes[focused_pid]
         .providers
         .add_decoration_source(Box::new(VirtualLineBlock::uniform(
-            hume_engine::providers::VirtualLineAnchor::Before(hume_rope::line::ContentLine::new(0)),
+            hume_core::Side::Before,
+            hume_rope::line::ContentLine::new(0),
             3,
             "V",
         )));

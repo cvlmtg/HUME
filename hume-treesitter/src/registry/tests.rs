@@ -3,8 +3,7 @@ use std::path::Path;
 use super::{DetectPaths, LanguageId, LanguageRegistry, detect_language};
 use hume_core::{
     BlockCommentTokens, ConfigOrigin, FileExtension, GrammarSource, LanguageField, LanguageFields,
-    LanguageIdentity, LineCommentTokens, OptionalQuery, QueryFiles, ShebangInterpreter,
-    WriteOutcome,
+    LanguageIdentity, LineCommentTokens, OptionalQuery, QueryFiles, WriteOutcome,
 };
 use hume_engine::theme::ScopeRegistry;
 use hume_platform::path::AbsolutePath;
@@ -1213,22 +1212,6 @@ fn a_bare_version_is_no_interpreter_name() {
     reg.register_identity("python", &[], &[], &["python"])
         .unwrap();
     assert_eq!(detect_at("/x/run", Some("#!/usr/bin/3.12"), &reg), None);
-}
-
-#[test]
-fn a_shebang_interpreter_is_one_name_with_no_space_or_separator() {
-    for invalid in ["", "v run", "bin/python", r"bin\python", " python"] {
-        assert!(
-            ShebangInterpreter::new(invalid.to_owned()).is_err(),
-            "{invalid:?}"
-        );
-    }
-    for valid in ["python", "python3.12", "octave-cli", "R"] {
-        assert_eq!(
-            ShebangInterpreter::new(valid.to_owned()).map(|i| i.as_str().to_owned()),
-            Ok(valid.to_owned())
-        );
-    }
 }
 
 #[test]

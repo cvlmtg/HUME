@@ -12,7 +12,6 @@ use hume_engine::types::EditorMode;
 
 use super::super::commands::half_page;
 use super::super::error::CommandError;
-use super::super::host_token;
 use super::super::{Editor, EditorState};
 use super::paste::PastedText;
 use super::placement::{focused_cursor, popup_placement};
@@ -74,7 +73,7 @@ impl PopupLayer {
             syntax,
             layout,
             content,
-            token: host_token::mint(),
+            token: HostToken::mint(),
         }
     }
 

@@ -242,7 +242,7 @@ mod held {
     ) -> (Vec<HostToken>, Result<(), EvalError>) {
         let handlers = host.held_handlers(HELD_EVENT);
         let holds: Vec<HostToken> = (0..handlers.holds_needed())
-            .map(|i| HostToken::from_raw(100 + i as u64))
+            .map(|_| HostToken::mint())
             .collect();
         let result = host
             .fire_held_hook(handlers, &[SteelVal::IntV(0)], holds.clone(), hosts)

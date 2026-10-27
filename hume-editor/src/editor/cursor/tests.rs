@@ -1,12 +1,13 @@
 use super::*;
 use crate::editor::tests::doubles::{VirtualLineBlock, no_providers, providers_with_before_line};
 use crate::editor::tests::{cluster_at, co};
+use hume_core::Side;
 use hume_engine::display_lines::DisplayLineMap;
 use hume_engine::display_lines::DisplayLinePos;
 use hume_engine::display_lines::line_store::{FormatKey, PaneLineStore};
 use hume_engine::pane::{Viewport, WhitespaceConfig, WrapMode};
 use hume_engine::pipeline::{ContentWidth, PaneSize};
-use hume_engine::providers::{ProviderSet, VirtualLineAnchor};
+use hume_engine::providers::ProviderSet;
 use ropey::Rope;
 
 /// A viewport scrolled to `top_line`, and the size of the pane it belongs to.
@@ -493,7 +494,8 @@ fn content_pos_accounts_for_before_line_0() {
     let cursor_char = co(0); // start of line 0
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
-        VirtualLineAnchor::Before(hume_rope::line::ContentLine::new(0)),
+        Side::Before,
+        hume_rope::line::ContentLine::new(0),
         1,
         "V",
     )));
@@ -525,7 +527,8 @@ fn content_pos_unaffected_by_after_on_cursors_own_last_line() {
         co(hume_rope::lines::line_start_char(&rope, hume_rope::line::RopeyLine::new(1)).index()); // start of the last real line
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(VirtualLineBlock::numbered(
-        VirtualLineAnchor::After(hume_rope::line::ContentLine::new(1)),
+        Side::After,
+        hume_rope::line::ContentLine::new(1),
         3,
     )));
 

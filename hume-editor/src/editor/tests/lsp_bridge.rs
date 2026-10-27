@@ -778,7 +778,7 @@ fn require_focus_drops_the_callback_after_a_pane_split_on_the_same_buffer() {
             "pane-vsplit",
             pane,
             NativeCall {
-                count: Some(1),
+                count: Count::typed(1),
                 ..NativeCall::default()
             },
         )

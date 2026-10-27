@@ -1,7 +1,7 @@
 //! misc.rs: everything left: extend-mode exit rules, undo grouping, line text objects, typed-command arity, and case transforms.
 
 use super::super::*;
-use crate::editor::registry::Count;
+use hume_core::Count;
 use hume_platform::dirs::Dirs;
 use pretty_assertions::assert_eq;
 
@@ -68,7 +68,7 @@ fn toggle_extend_from_insert_is_a_no_op() {
         &mut ed.state,
         &mut ed.view,
         fp,
-        Count::new(None),
+        Count::UNTYPED,
         MotionMode::Move,
     )
     .unwrap();
@@ -112,7 +112,7 @@ fn toggle_extend_closes_a_sticky_popup_shown_from_normal() {
         &mut ed.state,
         &mut ed.view,
         fp,
-        Count::new(None),
+        Count::UNTYPED,
         MotionMode::Move,
     )
     .unwrap();

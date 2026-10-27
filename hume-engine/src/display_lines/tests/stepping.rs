@@ -41,12 +41,14 @@ fn three_line_doc() -> (Rope, ProviderSet, Vec<DisplayLinePos>) {
     let rope = Rope::from_str("a\nb\nc\n");
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
-        VirtualLineAnchor::Before(ContentLine::new(1)),
+        Side::Before,
+        ContentLine::new(1),
         2,
         "V",
     )));
     providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
-        VirtualLineAnchor::After(ContentLine::new(2)),
+        Side::After,
+        ContentLine::new(2),
         1,
         "V",
     )));

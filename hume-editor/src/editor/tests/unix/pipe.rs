@@ -93,7 +93,7 @@ fn run_with(ed: &mut Editor, run: RunId, console: &mut ScriptedConsole) {
 fn the_output_lands_on_the_selections_the_run_started_from() {
     let mut ed = editor_from("-[ab]> cd\n");
     let run = start_run(&mut ed, "tr a-z A-Z", PipeKind::Replace);
-    ed.execute_keymap_command("select-next-word".into(), None, false);
+    ed.execute_keymap_command("select-next-word".into(), Count::UNTYPED, false);
     assert_ne!(state(&ed), "-[ab]> cd\n", "setup: the selection moved");
     let mut console = ScriptedConsole::new(&ed, []);
     run_with(&mut ed, run, &mut console);
@@ -747,7 +747,7 @@ fn close_buffer_from_steel_raises_while_the_run_is_in_flight() {
     );
     let bid = ed.focused_buffer_id();
     let pid = start_sleeper(&mut ed, dir.path());
-    ed.execute_keymap_command("closer".into(), None, false);
+    ed.execute_keymap_command("closer".into(), Count::UNTYPED, false);
     assert!(ed.state.buffers.try_get(bid).is_some(), "the buffer stays");
     assert!(is_alive(pid), "its run goes on");
     assert!(has_error(
@@ -772,7 +772,7 @@ fn calling_cancel_pipe_then_close_buffer_from_steel_closes_it() {
     );
     let bid = ed.focused_buffer_id();
     let pid = start_sleeper(&mut ed, dir.path());
-    ed.execute_keymap_command("closer".into(), None, false);
+    ed.execute_keymap_command("closer".into(), Count::UNTYPED, false);
     assert!(ed.state.buffers.try_get(bid).is_none(), "the buffer closed");
     assert!(!is_alive(pid), "its run's process is gone");
 }
@@ -791,7 +791,7 @@ fn calling_cancel_pipe_says_whether_it_stopped_a_run() {
                     (second (call! "cancel-pipe" pane)))
                (log! 'warning (if (and first (not second)) "stopped once" "wrong")))))"#,
     );
-    ed.execute_keymap_command("stopper".into(), None, false);
+    ed.execute_keymap_command("stopper".into(), Count::UNTYPED, false);
     assert!(!busy(&ed, bid));
     assert!(!is_alive(pid), "its run's process is gone");
     assert!(

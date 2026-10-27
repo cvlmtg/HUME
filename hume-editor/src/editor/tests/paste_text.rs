@@ -54,7 +54,7 @@ fn terminal_paste_then_paste_text(
         );
         setup(&mut ed);
         if scripted {
-            ed.execute_keymap_command(PROBE.into(), Some(1), false);
+            ed.execute_keymap_command(PROBE.into(), Count::typed(1), false);
         } else {
             ed.feed_paste(text);
         }
@@ -137,7 +137,7 @@ fn paste_text_lands_in_a_prompt_like_a_paste() {
     let (pasted, scripted) = terminal_paste_then_paste_text(
         "-[h]>ello\n",
         r#"(define-command! "ask" "" (lambda (pane) (prompt! pane "q: " (lambda (t) (+ 1 0)))))"#,
-        |ed| ed.execute_keymap_command("ask".into(), Some(1), false),
+        |ed| ed.execute_keymap_command("ask".into(), Count::typed(1), false),
         "abc",
     );
     assert_eq!(scripted.minibuf.as_deref(), Some("abc"));
@@ -175,7 +175,7 @@ fn paste_text_ends_a_pending_character_read_like_a_paste() {
     let (pasted, scripted) = terminal_paste_then_paste_text(
         "-[h]>ello\n",
         r#"(define-command! "read" "" (lambda () (on-next-char! (lambda (ch) (+ 1 0)))))"#,
-        |ed| ed.execute_keymap_command("read".into(), Some(1), false),
+        |ed| ed.execute_keymap_command("read".into(), Count::typed(1), false),
         "xyz",
     );
     assert!(!scripted.reading_char);
@@ -227,7 +227,7 @@ fn paste_text_refuses_for_an_unfocused_pane() {
             "pane-vsplit",
             PaneHandle::with_pane(bid, pid_a),
             NativeCall {
-                count: Some(1),
+                count: Count::typed(1),
                 ..NativeCall::default()
             },
         )
@@ -329,7 +329,7 @@ fn paste_text_outside_any_binding_is_recorded_as_a_paste() {
         &format!(r#"(define-command! "{PROBE}" "" (lambda (pane) (paste-text! pane "ab")))"#),
     );
     ed.feed_key(key('i'));
-    ed.execute_keymap_command(PROBE.into(), Some(1), false);
+    ed.execute_keymap_command(PROBE.into(), Count::typed(1), false);
     ed.feed_key(key_esc());
     assert_eq!(ed.doc().text().to_string(), "abhello\n");
 
@@ -348,7 +348,7 @@ fn paste_text_of_a_list_outside_any_binding_replays_placed_again() {
         &format!(r#"(define-command! "{PROBE}" "" (lambda (pane) (paste-text! pane '("x" "y"))))"#),
     );
     ed.feed_key(key('i'));
-    ed.execute_keymap_command(PROBE.into(), Some(1), false);
+    ed.execute_keymap_command(PROBE.into(), Count::typed(1), false);
     ed.feed_key(key_esc());
     assert_eq!(ed.doc().text().to_string(), "xab ycd\n");
 

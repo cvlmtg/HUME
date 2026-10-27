@@ -65,7 +65,7 @@ fn enter_buffer_disk_check_leaves_a_layer_stacked_above_the_confirm_untouched() 
 
     // Lands above the confirm the same ungated way a timer's `prompt!`
     // would (`push_mode_layer` never gates on what's already open).
-    ed.execute_keymap_command("search-forward".into(), Some(1), false);
+    ed.execute_keymap_command("search-forward".into(), Count::typed(1), false);
     for ch in "world".chars() {
         ed.handle_key(key(ch));
     }
@@ -316,9 +316,9 @@ fn message_logged_before_a_macro_replay_survives_its_trailing_settle() {
     ed.report(Severity::Warning, "sentinel message".to_string());
     ed.state.message_logged_this_input = true;
     for ch in ":b #".chars() {
-        ed.state.macros.enqueue(&[key(ch)], 1);
+        ed.state.macros.enqueue(&[key(ch)], Count::typed(1));
     }
-    ed.state.macros.enqueue(&[key_enter()], 1);
+    ed.state.macros.enqueue(&[key_enter()], Count::typed(1));
 
     let (_, warnings_before) = ed.state.message_log.totals();
     ed.drain_replay_queue();

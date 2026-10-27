@@ -1,4 +1,4 @@
-use crate::editor::registry::Count;
+use hume_core::Count;
 use hume_engine::pipeline::{Cycle, Direction, EngineView, Rotation, Side};
 use hume_ops::MotionMode;
 

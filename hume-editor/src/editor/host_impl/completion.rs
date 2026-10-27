@@ -4,7 +4,7 @@
 use crate::editor::completion::{
     BufferSourceEntry, MinibufBody, MinibufSourceEntry, RegisterOutcome,
 };
-use hume_core::{AnswerEnd, Severity};
+use hume_core::{AnswerEnd, HostToken, Severity};
 
 use super::EditorHostImpl;
 use hume_scripting::host::{self, CompletionHost, EmittedWord};
@@ -67,7 +67,7 @@ impl crate::editor::Editor {
 impl<'a> CompletionHost for EditorHostImpl<'a> {
     fn completion_emit(
         &mut self,
-        id: u64,
+        id: HostToken,
         parts: Vec<hume_scripting::json::JsonHandle>,
         incomplete: bool,
         end: AnswerEnd,

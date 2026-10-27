@@ -1,7 +1,7 @@
 use super::doubles::VirtualLineBlock;
 use super::*;
 use crate::editor::commands::half_page;
-use hume_engine::providers::VirtualLineAnchor;
+use hume_core::Side;
 use pretty_assertions::assert_eq;
 
 // ── Page scroll ───────────────────────────────────────────────────────────────
@@ -315,7 +315,7 @@ fn view_top_lands_the_cursor_at_scroll_margin_through_the_real_frame() {
 
     ed.render_to_buf(rect); // settle before `z k` writes the viewport
 
-    ed.execute_keymap_command("top-view-on-cursor".into(), None, false);
+    ed.execute_keymap_command("top-view-on-cursor".into(), Count::UNTYPED, false);
     ed.render_to_buf(rect);
 
     assert_eq!(
@@ -349,7 +349,8 @@ fn half_page_down_overshoots_a_virtual_line_block_taller_than_the_budget() {
     ed.view.panes[pid]
         .providers
         .add_decoration_source(Box::new(VirtualLineBlock::uniform(
-            VirtualLineAnchor::After(hume_rope::line::ContentLine::new(1)),
+            Side::After,
+            hume_rope::line::ContentLine::new(1),
             4,
             "V",
         )));

@@ -3,35 +3,21 @@ use tree_sitter::{
     Language, Query, QueryError, QueryErrorKind, QueryPredicate, QueryPredicateArg as Arg,
 };
 
-/// What an indents-query capture name means to the engine. Any other name
-/// (`@expr-start`, `@_helper`) is a helper the patterns' predicates refer to.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum IndentCapture {
-    Indent,
-    IndentAlways,
-    Outdent,
-    OutdentAlways,
-    Align,
-    Anchor,
-    Extend,
-    ExtendPreventOnce,
-    Opaque,
-}
-
-impl IndentCapture {
-    fn from_name(name: &str) -> Option<Self> {
-        match name {
-            "indent" => Some(Self::Indent),
-            "indent.always" => Some(Self::IndentAlways),
-            "outdent" => Some(Self::Outdent),
-            "outdent.always" => Some(Self::OutdentAlways),
-            "align" => Some(Self::Align),
-            "anchor" => Some(Self::Anchor),
-            "extend" => Some(Self::Extend),
-            "extend.prevent-once" => Some(Self::ExtendPreventOnce),
-            "opaque" => Some(Self::Opaque),
-            _ => None,
-        }
+hume_core::named_enum! {
+    /// What an indents-query capture name means to the engine. Any other
+    /// name (`@expr-start`, `@_helper`) is a helper the patterns' predicates
+    /// refer to.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub(super) enum IndentCapture {
+        Indent => "indent",
+        IndentAlways => "indent.always",
+        Outdent => "outdent",
+        OutdentAlways => "outdent.always",
+        Align => "align",
+        Anchor => "anchor",
+        Extend => "extend",
+        ExtendPreventOnce => "extend.prevent-once",
+        Opaque => "opaque",
     }
 }
 

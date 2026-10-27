@@ -25,7 +25,7 @@ pub struct PendingLspServerReg {
     pub name: ServerName,
     pub config: LspServerConfig,
     /// Whose code registered it: a registration never replaces one from a
-    /// higher origin ([`ConfigOrigin::rank`]).
+    /// higher origin ([`hume_core::Ranked::rank`]).
     pub origin: ConfigOrigin,
 }
 
@@ -226,22 +226,17 @@ impl RequestMode {
     }
 }
 
-/// What a request's callback receives when no server can take it:
-/// `Error` an `'unavailable` error saying why, `Empty` the answer of a
-/// server with nothing to give (void, or `'()` for `lsp-request-all!`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum WhenUnavailable {
-    #[default]
-    Error,
-    Empty,
-}
-
-impl WhenUnavailable {
-    /// `(spelling, value)` pairs for decoding `#:unavailable`.
-    pub const NAMED: [(&'static str, WhenUnavailable); 2] = [
-        ("error", WhenUnavailable::Error),
-        ("empty", WhenUnavailable::Empty),
-    ];
+hume_core::named_enum! {
+    /// What a request's callback receives when no server can take it:
+    /// `Error` an `'unavailable` error saying why, `Empty` the answer of a
+    /// server with nothing to give (void, or `'()` for `lsp-request-all!`).
+    /// `#:unavailable` names it.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+    pub enum WhenUnavailable {
+        #[default]
+        Error => "error",
+        Empty => "empty",
+    }
 }
 
 /// An `lsp-request!`/`lsp-request-all!` call queued during an eval and sent

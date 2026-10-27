@@ -111,7 +111,7 @@ fn a_failed_steel_body_leaves_the_next_change_recordable() {
         "-[f]>oo bar\n",
         r#"(define-command! "boom" "" (lambda (pane) (error "boom")) #:repeatable #t)"#,
     );
-    ed.execute_keymap_command("boom".into(), Some(1), false);
+    ed.execute_keymap_command("boom".into(), Count::typed(1), false);
     assert!(ed.state.recording_scope.running().is_none());
 
     ed.feed_key(key('d'));
@@ -281,11 +281,11 @@ fn dot_repeats_replace() {
 fn explicit_count_on_dot_does_not_corrupt_stored_count() {
     let mut ed = editor_from("-[foo]> bar\n");
 
-    ed.feed_key(key('d')); // delete "foo"; stored count=1
+    ed.feed_key(key('d')); // delete "foo"; no count typed
     assert_eq!(
         ed.state.last_action().unwrap().count,
-        1,
-        "setup: stored count must be 1"
+        Count::UNTYPED,
+        "setup: stored count must be untyped"
     );
 
     ed.feed_key(key('w')); // move to "bar"
@@ -299,10 +299,10 @@ fn explicit_count_on_dot_does_not_corrupt_stored_count() {
         !ed.doc().text().to_string().contains("bar"),
         "bar must be deleted by the repeated command"
     );
-    // Stored count must still be 1: the explicit-count replay must not corrupt it.
+    // Stored count must still be untyped: the explicit-count replay must not corrupt it.
     assert_eq!(
         ed.state.last_action().unwrap().count,
-        1,
+        Count::UNTYPED,
         "stored count must survive explicit-count replay unchanged"
     );
 }
@@ -391,7 +391,7 @@ fn dot_repeats_plain_paste_after() {
     let mut ed = editor_from("-[ab]>cd\n");
 
     seed_ring(&mut ed, &["ab"]);
-    ed.execute_keymap_command("paste-after".into(), Some(1), false);
+    ed.execute_keymap_command("paste-after".into(), Count::typed(1), false);
     // Plain paste never collapses on repeat. Move off the pasted text so
     // the replayed paste lands next to it instead of replacing it.
     ed.feed_key(key('l'));

@@ -889,6 +889,7 @@ dependencies = [
 name = "hume-lsp"
 version = "0.17.0"
 dependencies = [
+ "hume-core",
  "hume-editing",
  "hume-platform",
  "hume-rope",

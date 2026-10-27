@@ -50,7 +50,7 @@ fn two_servers(
 }
 
 fn call_and_pump(ed: &mut Editor, command: &str) {
-    call_counted(ed, command, Some(1));
+    call_counted(ed, command, Count::typed(1));
     pump_lsp(ed);
 }
 

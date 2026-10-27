@@ -7,8 +7,8 @@ use std::rc::Rc;
 
 use super::doubles::{FormatProbe, InlineHint, VirtualLineBlock};
 use super::*;
+use hume_core::Side;
 use hume_engine::pipeline::RenderContext;
-use hume_engine::providers::VirtualLineAnchor;
 use hume_grid::{Grid, Rect};
 
 /// 50 single-char lines, unwrapped. Built on `Editor::open` (not
@@ -101,7 +101,8 @@ fn line_store_does_not_leak_between_panes() {
         .providers
         .add_decoration_source(Box::new(
             VirtualLineBlock::uniform(
-                VirtualLineAnchor::Before(hume_rope::line::ContentLine::new(TARGET)),
+                Side::Before,
+                hume_rope::line::ContentLine::new(TARGET),
                 1,
                 "V",
             )
@@ -126,7 +127,8 @@ fn line_store_does_not_leak_between_panes() {
         .providers
         .add_decoration_source(Box::new(
             VirtualLineBlock::uniform(
-                VirtualLineAnchor::Before(hume_rope::line::ContentLine::new(TARGET)),
+                Side::Before,
+                hume_rope::line::ContentLine::new(TARGET),
                 1,
                 "V",
             )
@@ -160,7 +162,8 @@ fn a_between_frame_walk_does_not_survive_a_frame() {
     let calls = Rc::new(Cell::new(0));
     ed.view.panes[pid].providers.add_decoration_source(Box::new(
         VirtualLineBlock::uniform(
-            VirtualLineAnchor::Before(hume_rope::line::ContentLine::new(TARGET)),
+            Side::Before,
+            hume_rope::line::ContentLine::new(TARGET),
             1,
             "V",
         )

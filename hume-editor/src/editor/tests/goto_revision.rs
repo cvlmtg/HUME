@@ -168,7 +168,7 @@ fn split_with_moved_cursor(ed: &mut Editor) -> (PaneId, PaneId, BufferId) {
             "pane-vsplit",
             handle,
             NativeCall {
-                count: Some(1),
+                count: Count::typed(1),
                 ..NativeCall::default()
             },
         )

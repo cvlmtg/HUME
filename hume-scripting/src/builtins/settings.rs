@@ -4,10 +4,7 @@
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
-use hume_core::{
-    BUFFER_LANGUAGE_TIE, BufferId, BufferIntrinsicOption, OptionInput, PaneHandle,
-    language_option_value,
-};
+use hume_core::{BufferId, BufferIntrinsicOption, LanguageOptionText, OptionInput, PaneHandle};
 
 use crate::SteelCtx;
 use crate::types::{Effect, QueuedEffect};
@@ -31,6 +28,12 @@ fn coerce_option_value(value: &SteelVal, ctx_name: &str) -> Result<OptionInput, 
     }
 }
 
+/// The error a global-option builtin raises for a buffer-intrinsic option,
+/// which has no global value: `builtin` is the per-buffer builtin to use.
+fn per_buffer_err(opt: BufferIntrinsicOption, builtin: &str) -> SteelErr {
+    generic_err(format!("'{}' is per-buffer: use {builtin}", opt.name()))
+}
+
 /// `(set-option! key value)`
 ///
 /// Sets the global setting `key` to `value`. The value may be a Steel string,
@@ -40,8 +43,13 @@ fn coerce_option_value(value: &SteelVal, ctx_name: &str) -> Result<OptionInput, 
 /// callable from any context: `init.scm`, plugin load, plugin activation, or
 /// a plain command/hook body. Use `:set buffer …` from the command line, or
 /// `(set-buffer-option! pane key value)` from a script, to override a setting
-/// for a specific buffer instead.
+/// for a specific buffer instead. A `BufferIntrinsicOption` (`language`,
+/// `line-ending`) has no global value and raises, naming
+/// `set-buffer-option!`.
 pub(crate) fn set_option(ctx: &mut SteelCtx, key: String, value: SteelVal) -> SteelResult {
+    if let Some(opt) = BufferIntrinsicOption::from_name(&key) {
+        return Err(per_buffer_err(opt, "set-buffer-option!"));
+    }
     let value = coerce_option_value(&value, "value")?;
 
     let origin = ctx.registration_origin();
@@ -76,36 +84,48 @@ pub(crate) fn set_buffer_option(
     value: SteelVal,
 ) -> SteelResult {
     let bid = pane.buffer();
-    if key == BufferIntrinsicOption::Language.name() {
-        let SteelVal::StringV(language) = value else {
-            steel::stop!(TypeMismatch =>
-                "\"language\" must be a string, got {:?}", value);
-        };
-        let language = language_option_value(&language).map(str::to_string);
-        let origin = ctx.registration_origin();
-        ctx.push_effect(Effect::SetBufferLanguage {
-            buffer: bid,
-            language,
-            origin,
-        });
-        return Ok(SteelVal::Void);
-    }
-    let value = coerce_option_value(&value, "value")?;
-
     let origin = ctx.registration_origin();
-    ctx.host
-        .settings()
-        .set_buffer_option(&key, value, bid, origin)
-        .map_err(generic_err)?;
-
+    match BufferIntrinsicOption::from_name(&key) {
+        Some(BufferIntrinsicOption::Language) => {
+            let SteelVal::StringV(language) = value else {
+                steel::stop!(TypeMismatch =>
+                    "\"language\" must be a string, got {:?}", value);
+            };
+            let language = LanguageOptionText::decode(&language).map(str::to_string);
+            ctx.push_effect(Effect::SetBufferLanguage {
+                buffer: bid,
+                language,
+                origin,
+            });
+        }
+        Some(BufferIntrinsicOption::LineEnding) => {
+            let value = coerce_option_value(&value, "value")?;
+            ctx.host
+                .settings()
+                .set_buffer_line_ending(bid, value, origin)
+                .map_err(generic_err)?;
+        }
+        None => {
+            let value = coerce_option_value(&value, "value")?;
+            ctx.host
+                .settings()
+                .set_buffer_option(&key, value, bid, origin)
+                .map_err(generic_err)?;
+        }
+    }
     Ok(SteelVal::Void)
 }
 
 /// `(get-option key)`: `key`'s global value, ignoring any buffer override
 /// even if one exists (mirrors `set-option!`, `open` kind: callable from
 /// any context, including `init.scm`). Use `(get-buffer-option pane key)`
-/// for a specific buffer's effective value instead.
+/// for a specific buffer's effective value instead. A
+/// `BufferIntrinsicOption` has no global value and raises, naming
+/// `get-buffer-option`.
 pub(crate) fn get_option(ctx: &mut SteelCtx, key: String) -> SteelResult {
+    if let Some(opt) = BufferIntrinsicOption::from_name(&key) {
+        return Err(per_buffer_err(opt, "get-buffer-option"));
+    }
     ctx.host
         .settings()
         .get_global_option(&key)
@@ -125,18 +145,27 @@ pub(crate) fn get_option(ctx: &mut SteelCtx, key: String) -> SteelResult {
 /// that may differ from the buffer whose language just changed), same
 /// reasoning as `set-buffer-option!`.
 pub(crate) fn get_buffer_option(ctx: &mut SteelCtx, pane: PaneHandle, key: String) -> SteelResult {
-    if key == BufferIntrinsicOption::Language.name() {
-        return Ok(SteelVal::StringV(
-            effective_language(ctx, pane.buffer())
-                .unwrap_or_default()
-                .into(),
-        ));
+    let bid = pane.buffer();
+    match BufferIntrinsicOption::from_name(&key) {
+        Some(BufferIntrinsicOption::Language) => {
+            let language = effective_language(ctx, bid);
+            Ok(SteelVal::StringV(
+                LanguageOptionText::encode(language.as_deref()).into(),
+            ))
+        }
+        Some(BufferIntrinsicOption::LineEnding) => ctx
+            .host
+            .settings()
+            .buffer_line_ending(bid)
+            .map(|text| SteelVal::StringV(text.into()))
+            .map_err(generic_err),
+        None => ctx
+            .host
+            .settings()
+            .get_buffer_option(&key, bid)
+            .map(SteelVal::from)
+            .map_err(generic_err),
     }
-    ctx.host
-        .settings()
-        .get_buffer_option(&key, pane.buffer())
-        .map(SteelVal::from)
-        .map_err(generic_err)
 }
 
 /// `bid`'s language as a script sees it: the buffer's stored language with
@@ -151,9 +180,7 @@ fn effective_language(ctx: &mut SteelCtx, bid: BufferId) -> Option<String> {
             origin,
         } = effect
             && *buffer == bid
-            && origin
-                .claim(&mut language.by, BUFFER_LANGUAGE_TIE)
-                .is_applied()
+            && language.by.claim(*origin).is_applied()
         {
             language.name.clone_from(written);
         }

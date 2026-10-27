@@ -37,7 +37,7 @@ pub(in crate::editor) fn apply_global(
     by: ConfigOrigin,
 ) -> Result<(), String> {
     // Read before the write, for the theme rollback below.
-    let held_theme = state.settings.origins.held(THEME_KEY);
+    let held_theme = state.settings.origins.slot(THEME_KEY);
     if !super::write_global(key, value, &mut state.settings, by)? {
         state.report_shadowed("option", format_args!("'{key}' value"));
         return Ok(());
@@ -149,10 +149,6 @@ pub(in crate::editor) fn apply_pending_theme(state: &mut EditorState, view: &mut
 /// has a derived-state effect today (see [`super::write_buffer`]'s doc), so
 /// unlike [`apply_global`] there is nothing to resync here. A write a higher
 /// origin's override shadows changes nothing and is reported at Trace.
-///
-/// `line-ending` is not an override: it sets the buffer text's line ending,
-/// which changes whether the buffer reads as unsaved, and is refused on a
-/// read-only buffer.
 pub(in crate::editor) fn apply_buffer(
     state: &mut EditorState,
     bid: BufferId,
@@ -160,30 +156,25 @@ pub(in crate::editor) fn apply_buffer(
     value: &OptionInput,
     by: ConfigOrigin,
 ) -> Result<(), String> {
-    if key == BufferIntrinsicOption::LineEnding.name() {
-        return set_line_ending(
-            state,
-            bid,
-            super::for_key(key, super::single_value(value))?,
-            by,
-        );
-    }
     if !super::write_buffer(key, value, &mut state.buffers.get_mut(bid).overrides, by)? {
         state.report_shadowed("option", format_args!("'{key}' value"));
     }
     Ok(())
 }
 
-/// Parse `value` as a line ending and set it on `bid`'s text from `by`. A
-/// write a higher origin's line ending shadows is reported at Trace.
+/// Parse `value` as a line ending and set it on `bid`'s text from `by`:
+/// the one write path for `:set buffer line-ending=` and scripts. It is not
+/// an override: it changes whether the buffer reads as unsaved, and is
+/// refused on a read-only buffer. A write a higher origin's line ending
+/// shadows is reported at Trace.
 pub(in crate::editor) fn set_line_ending(
     state: &mut EditorState,
     bid: BufferId,
-    value: &str,
+    value: &OptionInput,
     by: ConfigOrigin,
 ) -> Result<(), String> {
     let key = BufferIntrinsicOption::LineEnding.name();
-    let line_ending = parse_setting_text(key, value)?;
+    let line_ending = parse_setting_text(key, super::for_key(key, super::single_value(value))?)?;
     if !state
         .buffers
         .get_mut(bid)

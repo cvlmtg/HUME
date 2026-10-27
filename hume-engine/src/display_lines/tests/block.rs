@@ -58,12 +58,14 @@ fn block_counts_before_and_after_virtual_lines() {
     let rope = Rope::from_str("a\nb\nc\nd\ne\nf\n");
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
-        VirtualLineAnchor::Before(ContentLine::new(5)),
+        Side::Before,
+        ContentLine::new(5),
         2,
         "V",
     )));
     providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
-        VirtualLineAnchor::After(ContentLine::new(5)),
+        Side::After,
+        ContentLine::new(5),
         1,
         "V",
     )));
@@ -83,18 +85,57 @@ fn block_counts_before_and_after_virtual_lines() {
 }
 
 #[test]
+fn block_puts_before_lines_ahead_of_after_lines_whatever_the_registration_order() {
+    let rope = Rope::from_str("a\n");
+    let mut providers = ProviderSet::new();
+    providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
+        Side::After,
+        ContentLine::new(0),
+        1,
+        "after",
+    )));
+    providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
+        Side::Before,
+        ContentLine::new(0),
+        2,
+        "before",
+    )));
+    let mut s = PaneLineStore::new();
+    let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
+
+    assert_eq!(
+        dlm.block(ContentLine::new(0)),
+        BlockBreakdown {
+            before: 2,
+            content: 1,
+            after: 1,
+        }
+    );
+    let texts: Vec<String> = (0..4)
+        .map(|slot| {
+            display_line_text(
+                &dlm.render_display_line(DisplayLinePos::new(ContentLine::new(0), slot)),
+            )
+        })
+        .collect();
+    assert_eq!(texts, ["before", "before", "a", "after"]);
+}
+
+#[test]
 fn block_wraps_virtual_lines_under_a_wrapping_mode() {
     // 25 columns at width 10 → 10 / 10 / 5 = 3 display lines; the 5-column
     // After line fits in one.
     let rope = Rope::from_str("a\n");
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
-        VirtualLineAnchor::Before(ContentLine::new(0)),
+        Side::Before,
+        ContentLine::new(0),
         1,
         "xxxxxxxxxxxxxxxxxxxxxxxxx",
     )));
     providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
-        VirtualLineAnchor::After(ContentLine::new(0)),
+        Side::After,
+        ContentLine::new(0),
         1,
         "VVVVV",
     )));
@@ -116,7 +157,8 @@ fn block_keeps_a_virtual_line_whole_without_wrapping() {
     let rope = Rope::from_str("a\n");
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
-        VirtualLineAnchor::Before(ContentLine::new(0)),
+        Side::Before,
+        ContentLine::new(0),
         1,
         "xxxxxxxxxxxxxxxxxxxxxxxxx",
     )));
@@ -131,7 +173,8 @@ fn block_ignores_virtual_lines_anchored_to_other_lines() {
     let rope = Rope::from_str("a\nb\nc\nd\ne\nf\n");
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
-        VirtualLineAnchor::Before(ContentLine::new(2)),
+        Side::Before,
+        ContentLine::new(2),
         3,
         "V",
     )));
@@ -228,12 +271,14 @@ fn no_wrap_block_counts_without_running_the_formatter() {
 fn mixed_block_providers() -> ProviderSet {
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
-        VirtualLineAnchor::Before(ContentLine::new(0)),
+        Side::Before,
+        ContentLine::new(0),
         2,
         "V",
     )));
     providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
-        VirtualLineAnchor::After(ContentLine::new(0)),
+        Side::After,
+        ContentLine::new(0),
         1,
         "V",
     )));
@@ -312,7 +357,8 @@ fn clamp_reaches_the_documents_very_last_display_line() {
     let rope = Rope::from_str("a\nb\nc\n");
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
-        VirtualLineAnchor::After(ContentLine::new(2)),
+        Side::After,
+        ContentLine::new(2),
         1,
         "V",
     )));

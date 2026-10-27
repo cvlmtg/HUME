@@ -3,6 +3,8 @@
 
 use std::collections::VecDeque;
 
+use hume_core::Count;
+
 use termina::event::{Event as TerminalEvent, KeyEvent};
 
 use super::{Editor, EditorState};
@@ -54,8 +56,8 @@ impl MacroState {
         }
     }
 
-    pub(in crate::editor) fn enqueue(&mut self, keys: &[KeyEvent], count: usize) {
-        for _ in 0..count {
+    pub(in crate::editor) fn enqueue(&mut self, keys: &[KeyEvent], count: Count) {
+        for _ in 0..count.get() {
             self.queue.extend(keys.iter().copied());
         }
     }
@@ -92,7 +94,7 @@ impl MacroState {
 impl EditorState {
     /// Queue the keys of the macro in `reg` for replay, `count` times over.
     /// No-op when the register is empty or holds text rather than a macro.
-    pub(in crate::editor) fn enqueue_macro_replay(&mut self, reg: char, count: usize) {
+    pub(in crate::editor) fn enqueue_macro_replay(&mut self, reg: char, count: Count) {
         if let Some(keys) = self.registers.read(reg).and_then(|r| r.as_macro()) {
             self.macros.enqueue(keys, count);
         }

@@ -105,7 +105,7 @@ fn indent_two_levels_at_once() {
 }
 
 /// `hume-ops`'s functions are a public API: a caller (not just the
-/// editor's own count-prefix dispatch, which caps at `MAX_COUNT`) can pass
+/// editor's own count-prefix dispatch, which clamps through `hume_core::Count`) can pass
 /// an arbitrary `levels`. The indent stops at the widest one a terminal can
 /// show: 16383 levels of 4 columns.
 #[test]

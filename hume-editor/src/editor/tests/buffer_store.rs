@@ -182,7 +182,7 @@ fn goto_next_prev_buffer_cycle() {
             "goto-next-buffer",
             pane,
             NativeCall {
-                count: Some(1),
+                count: Count::typed(1),
                 ..NativeCall::default()
             },
         )
@@ -194,7 +194,7 @@ fn goto_next_prev_buffer_cycle() {
             "goto-next-buffer",
             pane,
             NativeCall {
-                count: Some(1),
+                count: Count::typed(1),
                 ..NativeCall::default()
             },
         )
@@ -206,7 +206,7 @@ fn goto_next_prev_buffer_cycle() {
             "goto-next-buffer",
             pane,
             NativeCall {
-                count: Some(1),
+                count: Count::typed(1),
                 ..NativeCall::default()
             },
         )
@@ -219,7 +219,7 @@ fn goto_next_prev_buffer_cycle() {
             "goto-prev-buffer",
             pane,
             NativeCall {
-                count: Some(1),
+                count: Count::typed(1),
                 ..NativeCall::default()
             },
         )
@@ -231,7 +231,7 @@ fn goto_next_prev_buffer_cycle() {
             "goto-prev-buffer",
             pane,
             NativeCall {
-                count: Some(1),
+                count: Count::typed(1),
                 ..NativeCall::default()
             },
         )

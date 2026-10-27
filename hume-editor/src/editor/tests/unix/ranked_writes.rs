@@ -22,6 +22,14 @@ const ORIGINS: [ConfigOrigin; 3] = [
     ConfigOrigin::User,
 ];
 
+fn level(origin: ConfigOrigin) -> u8 {
+    match origin {
+        ConfigOrigin::Bundled => 0,
+        ConfigOrigin::Plugin => 1,
+        ConfigOrigin::User => 2,
+    }
+}
+
 /// Which of two equal-origin writes a store keeps.
 #[derive(Clone, Copy)]
 enum OnTie {
@@ -31,7 +39,7 @@ enum OnTie {
 
 /// Which of two writes, in arrival order, is in force: `1` or `2`.
 fn winner(first: ConfigOrigin, second: ConfigOrigin, on_tie: OnTie) -> u8 {
-    match first.cmp(&second) {
+    match level(first).cmp(&level(second)) {
         std::cmp::Ordering::Greater => 1,
         std::cmp::Ordering::Less => 2,
         std::cmp::Ordering::Equal => match on_tie {
@@ -111,7 +119,8 @@ const LINE_ENDINGS: [&str; 2] = ["crlf", "lf"];
 
 fn write_line_ending(ed: &mut Editor, by: ConfigOrigin, label: u8) {
     let bid = ed.focused_buffer_id();
-    ops::set_line_ending(&mut ed.state, bid, LINE_ENDINGS[label as usize - 1], by).unwrap();
+    let value = OptionInput::Text(LINE_ENDINGS[label as usize - 1].to_string());
+    ops::set_line_ending(&mut ed.state, bid, &value, by).unwrap();
 }
 
 fn read_line_ending(ed: &Editor) -> Option<u8> {
@@ -398,7 +407,10 @@ fn every_ranked_store_keeps_the_higher_origin_whichever_write_came_first() {
 fn a_write_a_higher_origin_shadows_is_traced() {
     for store in STORES {
         for first in ORIGINS {
-            for second in ORIGINS.into_iter().filter(|second| *second < first) {
+            for second in ORIGINS
+                .into_iter()
+                .filter(|second| level(*second) < level(first))
+            {
                 let mut ed = editor_from("-[a]>b\n");
                 (store.prepare)(&mut ed);
 

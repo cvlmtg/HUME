@@ -2,12 +2,12 @@
 //! reads and writes too: server names, registrations, per-language server
 //! lists and the features they filter by.
 
-use crate::Tie;
+use crate::LaterWins;
 
 /// A server registration: a later write from one origin replaces the
 /// earlier, whether the editor applies it or a script reads it back before
 /// then.
-pub const SERVER_REGISTRATION_TIE: Tie = Tie::LaterWins;
+pub type ServerRegistrationTie = LaterWins;
 
 /// A language server's registration name: non-empty, no whitespace, so it
 /// reads unambiguously as a `:lsp-stop`/`:lsp-restart` argument.
@@ -17,12 +17,12 @@ pub struct ServerName(std::sync::Arc<str>);
 impl ServerName {
     /// `Err` names what is wrong with `name`, for a builtin to prefix with
     /// its own name.
-    pub fn parse(name: &str) -> Result<Self, String> {
+    pub fn parse(name: &str) -> Result<Self, InvalidServerName> {
         if name.is_empty() {
-            return Err("server name is empty".to_string());
+            return Err(InvalidServerName::Empty);
         }
         if name.chars().any(char::is_whitespace) {
-            return Err(format!("server name {name:?} contains whitespace"));
+            return Err(InvalidServerName::Whitespace(name.to_owned()));
         }
         Ok(Self(std::sync::Arc::from(name)))
     }
@@ -37,6 +37,24 @@ impl std::fmt::Display for ServerName {
         f.write_str(&self.0)
     }
 }
+
+/// A server name [`ServerName::parse`] refuses.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InvalidServerName {
+    Empty,
+    Whitespace(String),
+}
+
+impl std::fmt::Display for InvalidServerName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Empty => f.write_str("server name is empty"),
+            Self::Whitespace(name) => write!(f, "server name {name:?} contains whitespace"),
+        }
+    }
+}
+
+impl std::error::Error for InvalidServerName {}
 
 named_enum! {
     /// A language-server capability requests are routed by: Helix's
@@ -72,6 +90,9 @@ named_enum! {
 /// A set of [`LspFeature`]s, one bit per variant.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct LspFeatureSet(u32);
+
+// A variant past the 32nd would shift out of the `u32` and alias another bit.
+const _: () = assert!(LspFeature::ALL.len() <= u32::BITS as usize);
 
 impl LspFeatureSet {
     pub fn contains(self, feature: LspFeature) -> bool {
@@ -138,7 +159,7 @@ pub struct LspServerConfig {
     pub init_options: Option<serde_json::Value>,
     /// Pushed as `workspace/didChangeConfiguration` after `initialized`, and
     /// resolved per item to answer `workspace/configuration` pull requests
-    /// from the copy the instance was spawned with.
+    /// from the registration the instance was spawned with.
     pub settings: Option<serde_json::Value>,
     /// `#:env`: applied additively to the spawned process's inherited
     /// environment, never clearing it.

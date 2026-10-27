@@ -29,9 +29,9 @@ Editor commands and builtins are different things. A command, such as `completio
 
 | Call | Effect |
 |------|--------|
-| `(set-option! key value)` | Set a global option. A value from `init.scm`, a hook it registered, or `:set` beats a plugin's in either order; of two from the same place, the later wins |
+| `(set-option! key value)` | Set a global option. A value from `init.scm`, a hook it registered, or `:set` beats a plugin's in either order; of two from the same place, the later wins. `language` and `line-ending` are per-buffer, so it raises for them |
 | `(set-buffer-option! pane key value)` | Set an option on `pane`'s buffer only, ranked against the buffer's own overrides as `set-option!` is against the global value |
-| `(get-option key)` | Read an option's global value, ignoring any buffer override |
+| `(get-option key)` | Read an option's global value, ignoring any buffer override. It raises for the per-buffer `language` and `line-ending` |
 | `(get-buffer-option pane key)` | Read `pane`'s buffer's effective value: its own override if set, else the global default (`language` and `line-ending` are per-buffer and have no global default) |
 | `(configure-statusline! left center right)` | Configure the three statusline sections, each a list of element name strings |
 | `(set-statusline-text! source pane text)` | Push `text` for a `"steel:<source>"` statusline element, scoped to `pane`'s buffer; empty string clears it |
@@ -251,7 +251,7 @@ Full walkthrough (a static source, richer items, trigger characters, an asynchro
 | Call | Effect |
 |------|--------|
 | `(register-completion-source! name proc #:target #:match #:priority #:resolve #:token-chars #:cancel)` | Register `proc` as completion source `name` (see [Source options](writing-plugins.md#source-options)) |
-| `(completion-emit! id items #:incomplete #:more #:span #:prefix)` | Answer request `id` with `items`, or with a part of the answer when `#:more` is `#t`; `#f` if the answer was dropped, because it was out of date or the request was already answered without `#:more` |
+| `(completion-emit! id items #:incomplete #:more #:span #:prefix)` | Answer request `id` with `items`, or with a part of the answer when `#:more` is `#t`; `#f` if the answer was dropped, because it was out of date or the request was already answered without `#:more`. An `id` of `#f` is out of date the same way |
 | `(register-shell-dialect! name #:programs #:program-extensions #:parse #:write)` | How `Tab` on the `\|` prompt reads and writes a word for the shells `#:programs` names (see [Shell dialects](writing-plugins.md#shell-dialects)) |
 | `(set-completion-triggers! source language chars)` | Characters that invoke `'buffer` source `source` when typed in a `language` buffer; replaces the previous set, and `'()` removes it. An unknown `source` is reported in the message log |
 | `(set-hook-triggers! source language chars)` | Characters that fire the `on-trigger-char` hook, tagged `source`, when typed in a `language` buffer; replaces the previous set, and `'()` removes it. For features other than completion, such as signature help |

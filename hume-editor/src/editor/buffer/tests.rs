@@ -30,9 +30,8 @@ impl DocHelper {
     fn apply_edit(&mut self, cmd: impl FnOnce(EditState) -> Edited) {
         let sels = self.sels.clone();
         let (new_sels, _cs) = self.buf.apply_edit(
-            BufferId::default(),
+            PaneHandle::with_pane(BufferId::default(), PaneId::default()),
             &mut DetachedStores::default().stores(),
-            Some(PaneId::default()),
             sels,
             cmd,
         );
@@ -1158,10 +1157,12 @@ fn an_edit_leaves_the_acting_panes_selections_to_its_caller() {
     let (mut stores, pane, id) = DetachedStores::with_pane(&d.buf, d.sels.clone());
     let before = stores.selections(pane, id);
 
-    d.buf
-        .apply_edit(id, &mut stores.stores(), Some(pane), d.sels.clone(), |s| {
-            insert_char(s, 'x')
-        });
+    d.buf.apply_edit(
+        PaneHandle::with_pane(id, pane),
+        &mut stores.stores(),
+        d.sels.clone(),
+        |s| insert_char(s, 'x'),
+    );
 
     assert_eq!(stores.selections(pane, id), before);
 }
@@ -1172,9 +1173,8 @@ fn an_edit_carries_the_selections_of_every_other_pane() {
     let (mut stores, pane, id) = DetachedStores::with_pane(&d.buf, d.sels.clone());
 
     d.buf.apply_edit(
-        id,
+        PaneHandle::with_pane(id, PaneId::default()),
         &mut stores.stores(),
-        Some(PaneId::default()),
         d.sels.clone(),
         |s| insert_char(s, 'x'),
     );

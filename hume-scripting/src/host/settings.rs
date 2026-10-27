@@ -45,7 +45,9 @@ pub trait SettingsHost {
     ) -> Result<(), String>;
 
     /// `(set-buffer-option! pane key value)`: writes `key`'s per-buffer
-    /// override on `pane`'s buffer. Command/hook context (`cmd` kind),
+    /// override on `pane`'s buffer. `key` is a settings-table key: the
+    /// builtins route each `BufferIntrinsicOption` elsewhere. Command/hook
+    /// context (`cmd` kind),
     /// unlike `set_global_option`. `Err` for a stale buffer, a global-only
     /// key, or a bad value. Kind-C: only the buffer matters, `pane`'s own
     /// pane (if any) is ignored: the builtin layer narrows the decoded
@@ -60,6 +62,16 @@ pub trait SettingsHost {
         origin: hume_core::ConfigOrigin,
     ) -> Result<(), String>;
 
+    /// `(set-buffer-option! pane "line-ending" value)`: sets the line ending
+    /// a save writes on `bid`, ranked as `origin`. `Err` for a stale buffer,
+    /// a read-only buffer, or a value other than `lf`/`crlf`.
+    fn set_buffer_line_ending(
+        &mut self,
+        bid: BufferId,
+        value: OptionInput,
+        origin: hume_core::ConfigOrigin,
+    ) -> Result<(), String>;
+
     /// `(get-option key)`: `key`'s global value, ignoring any buffer
     /// override even if one exists. `Err` for an unknown key. No eval-mode
     /// gate (`open` kind), mirroring `set_global_option`: callable from
@@ -68,7 +80,8 @@ pub trait SettingsHost {
 
     /// `(get-buffer-option pane key)`: the effective value of `key` for
     /// `pane`'s buffer: its buffer override if one is set, else the global
-    /// default. `Err` for an unknown key or a stale buffer, same guard as
+    /// default. `key` is a settings-table key, as for `set_buffer_option`.
+    /// `Err` for an unknown key or a stale buffer, same guard as
     /// `set_buffer_option`; a closed buffer's override no longer exists to
     /// read, so silently falling back to the global value would hide a
     /// caller acting on a buffer that already went away. Command/hook
@@ -77,6 +90,10 @@ pub trait SettingsHost {
     /// `on-language-set`, whose buffer may differ from the focused one).
     /// Kind-C, same as `set_buffer_option`.
     fn get_buffer_option(&self, key: &str, bid: BufferId) -> Result<OptionValue, String>;
+
+    /// `(get-buffer-option pane "line-ending")`: in the spelling the setter
+    /// takes back. `Err` for a stale buffer.
+    fn buffer_line_ending(&self, bid: BufferId) -> Result<String, String>;
 
     /// Steel eval budget in milliseconds for command / hook execution.
     fn steel_command_budget_ms(&self) -> u64;

@@ -218,7 +218,7 @@ pub(in crate::editor) fn typed_set(
     _force: bool,
 ) -> Result<(), CommandError> {
     use crate::editor::settings::Scope;
-    use hume_core::{BufferIntrinsicOption, language_option_value};
+    use hume_core::{BufferIntrinsicOption, LanguageOptionText};
 
     const USAGE: &str = "Usage: :set global|buffer|pane key=value";
     let Some(arg) = arg else {
@@ -237,6 +237,7 @@ pub(in crate::editor) fn typed_set(
     let bid = fp.bid(&ed.view);
     // Only the user runs a typed command: no script reaches `:set`.
     let by = hume_core::ConfigOrigin::User;
+    let input = OptionInput::Text(value.to_string());
 
     // Buffer-intrinsic options live on the buffer, not in `EditorSettings`/
     // `BufferOverrides`, so they have no `scope:` entry in
@@ -250,11 +251,11 @@ pub(in crate::editor) fn typed_set(
         }
         return match opt {
             BufferIntrinsicOption::Language => {
-                ed.set_buffer_language_by_name(bid, language_option_value(value), by);
+                ed.set_buffer_language_by_name(bid, LanguageOptionText::decode(value), by);
                 Ok(())
             }
             BufferIntrinsicOption::LineEnding => {
-                settings_ops::set_line_ending(&mut ed.state, bid, value, by)
+                settings_ops::set_line_ending(&mut ed.state, bid, &input, by)
                     .map_err(CommandError::new)
             }
         };
@@ -285,7 +286,6 @@ pub(in crate::editor) fn typed_set(
     }
     let scope = parsed_scope.expect("checked by is_some_and above");
 
-    let input = OptionInput::Text(value.to_string());
     match scope {
         Scope::Global => settings_ops::apply_global(&mut ed.state, &mut ed.view, key, &input, by)
             .map_err(CommandError::new),

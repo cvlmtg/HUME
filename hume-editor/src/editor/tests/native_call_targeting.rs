@@ -40,7 +40,7 @@ fn pane_category_remote_call_edits_target_pane_leaves_focus_untouched() {
             "delete",
             PaneHandle::with_pane(bid_b, pid_b),
             NativeCall {
-                count: Some(1),
+                count: Count::typed(1),
                 ..NativeCall::default()
             },
         )
@@ -70,7 +70,7 @@ fn pane_category_paneless_handle_errors_no_pane() {
             "delete",
             PaneHandle::buffer_only(bid_b),
             NativeCall {
-                count: Some(1),
+                count: Count::typed(1),
                 ..NativeCall::default()
             },
         )
@@ -99,7 +99,7 @@ fn focused_pane_category_errors_on_a_non_focused_pane() {
             "insert-before",
             PaneHandle::with_pane(bid_b, pid_b),
             NativeCall {
-                count: Some(1),
+                count: Count::typed(1),
                 ..NativeCall::default()
             },
         )
@@ -270,7 +270,7 @@ fn closed_buffer_errors_for_every_command() {
             name,
             PaneHandle::buffer_only(bid_b),
             NativeCall {
-                count: Some(1),
+                count: Count::typed(1),
                 ..NativeCall::default()
             },
         );
@@ -374,7 +374,7 @@ fn mock_host_records_a_non_focused_pane_unchanged() {
             "delete",
             pane,
             NativeCall {
-                count: Some(1),
+                count: Count::typed(1),
                 ..NativeCall::default()
             },
         )
@@ -405,7 +405,7 @@ fn remote_edit_is_refused_while_another_pane_has_an_open_insert_session() {
             "pane-vsplit",
             PaneHandle::with_pane(bid, pid_a),
             NativeCall {
-                count: Some(1),
+                count: Count::typed(1),
                 ..NativeCall::default()
             },
         )
@@ -425,7 +425,7 @@ fn remote_edit_is_refused_while_another_pane_has_an_open_insert_session() {
             "delete",
             PaneHandle::with_pane(bid, pid_b),
             NativeCall {
-                count: Some(1),
+                count: Count::typed(1),
                 ..NativeCall::default()
             },
         )
@@ -467,7 +467,7 @@ fn remote_undo_is_refused_while_another_pane_has_an_open_insert_session() {
             "pane-vsplit",
             PaneHandle::with_pane(bid, pid_a),
             NativeCall {
-                count: Some(1),
+                count: Count::typed(1),
                 ..NativeCall::default()
             },
         )
@@ -484,7 +484,7 @@ fn remote_undo_is_refused_while_another_pane_has_an_open_insert_session() {
             "undo",
             PaneHandle::with_pane(bid, pid_b),
             NativeCall {
-                count: Some(1),
+                count: Count::typed(1),
                 ..NativeCall::default()
             },
         )
@@ -522,7 +522,7 @@ fn try_ensure_errors_instead_of_panicking_once_the_pane_s_slot_is_reused() {
             "pane-vsplit",
             PaneHandle::with_pane(bid, pid_a),
             NativeCall {
-                count: Some(1),
+                count: Count::typed(1),
                 ..NativeCall::default()
             },
         )
@@ -536,7 +536,7 @@ fn try_ensure_errors_instead_of_panicking_once_the_pane_s_slot_is_reused() {
             "pane-close",
             PaneHandle::with_pane(bid, pid_a),
             NativeCall {
-                count: Some(1),
+                count: Count::typed(1),
                 ..NativeCall::default()
             },
         )
@@ -555,7 +555,7 @@ fn try_ensure_errors_instead_of_panicking_once_the_pane_s_slot_is_reused() {
             "pane-vsplit",
             PaneHandle::with_pane(bid, pid_b),
             NativeCall {
-                count: Some(1),
+                count: Count::typed(1),
                 ..NativeCall::default()
             },
         )
@@ -632,7 +632,7 @@ fn a_refused_delete_clears_the_register_prefix_and_writes_nothing() {
             "pane-vsplit",
             PaneHandle::with_pane(bid, pid_a),
             NativeCall {
-                count: Some(1),
+                count: Count::typed(1),
                 ..NativeCall::default()
             },
         )
@@ -648,7 +648,7 @@ fn a_refused_delete_clears_the_register_prefix_and_writes_nothing() {
             "delete",
             PaneHandle::with_pane(bid, pid_b),
             NativeCall {
-                count: Some(1),
+                count: Count::typed(1),
                 ..NativeCall::default()
             },
         )

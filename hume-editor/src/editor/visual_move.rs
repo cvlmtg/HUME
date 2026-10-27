@@ -7,8 +7,7 @@
 //! (`C`), which needs the same display-column authority to land a duplicated
 //! selection under a tab or wide grapheme without wrap in play at all.
 
-use crate::editor::registry::Count;
-use hume_core::PaneId;
+use hume_core::{Count, PaneId};
 use hume_editing::selection::{Selection, StickyDisplayCol};
 use hume_editing::state::EditState;
 use hume_editing::text::BufferText;
@@ -558,3 +557,6 @@ pub(super) fn cmd_visual_select_word_nearest_on_line(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests;

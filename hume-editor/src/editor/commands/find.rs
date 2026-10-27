@@ -1,4 +1,4 @@
-use crate::editor::registry::Count;
+use hume_core::Count;
 use hume_editing::state::EditState;
 use hume_engine::pipeline::EngineView;
 use hume_ops::MotionMode;

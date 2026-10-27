@@ -15,7 +15,6 @@ use hume_scripting::{Callback, Rooted};
 use termina::event::KeyEvent;
 
 use super::super::super::fuzzy::{FuzzyMatcher, FuzzyProfile};
-use super::super::super::host_token;
 use super::super::super::keymap::CanonicalKey;
 use super::super::super::replay::{Choice, Picked};
 
@@ -229,7 +228,7 @@ impl PickerSession {
         population: Population,
         mode: PickerMode,
     ) -> Self {
-        let token = host_token::mint();
+        let token = HostToken::mint();
         Self {
             items: Vec::new(),
             query,
@@ -532,7 +531,7 @@ impl PickerSession {
             return None;
         };
         let on_query_change = on_query_change.clone();
-        self.feed_token = host_token::mint();
+        self.feed_token = HostToken::mint();
         self.requery_armed = true;
         Some(on_query_change)
     }

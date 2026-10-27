@@ -254,7 +254,7 @@ impl BufferStore {
     pub(in crate::editor) fn clear_languages_all(&mut self) {
         for buf in self.buffers.values_mut() {
             buf.language = None;
-            buf.language_by = None;
+            buf.language_by = hume_core::Claim::default();
             buf.syntax = None;
         }
     }

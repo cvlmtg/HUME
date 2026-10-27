@@ -14,7 +14,7 @@
 
 use std::collections::VecDeque;
 
-use hume_core::CommandArg;
+use hume_core::{CommandArg, Count};
 use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
 use hume_ops::register::{MACRO_REGISTER, is_valid_macro_register, is_valid_register_name};
@@ -49,7 +49,7 @@ pub(in crate::editor) enum MacroRead {
     Record,
     /// Replay the macro `count` times.
     Replay {
-        count: usize,
+        count: Count,
     },
 }
 
@@ -298,7 +298,7 @@ fn char_input(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
     let Some((ch, _)) = read.filter(|&(ch, plain)| fits(front, ch, plain)) else {
         // Esc resets a count typed before `"`, as it does in Normal mode.
         if escape && matches!(front, CharThen::Register) {
-            ed.state.count = None;
+            ed.state.count = Count::UNTYPED;
         }
         ed.state.truncate_layers(&ed.view, r);
         return;

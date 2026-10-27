@@ -1,4 +1,4 @@
-use hume_core::{BufferId, PaneId, Severity};
+use hume_core::{BufferId, Count, PaneId, Severity};
 use hume_editing::selection::{Facing, Selection};
 use hume_editing::word::WordChars;
 use hume_engine::pipeline::EngineView;
@@ -21,7 +21,6 @@ use super::{
 use crate::editor::buffer::{Buffer, HistoryWalkResult};
 use crate::editor::error::CommandError;
 use crate::editor::position_stores::PositionStores;
-use crate::editor::registry::Count;
 
 // ── Edit composites ───────────────────────────────────────────────────────────
 

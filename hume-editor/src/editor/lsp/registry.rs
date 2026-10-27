@@ -4,10 +4,11 @@
 //! language's list makes a server serve that language.
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use hume_core::{
-    ByOrigin, ConfigOrigin, FeatureFilter, ListEntry, ListTier, LspServerConfig, Ranked,
-    SERVER_REGISTRATION_TIE, ServerName,
+    ByOrigin, Claim, ConfigOrigin, ListEntry, ListTier, LspServerConfig, Ranked, ServerName,
+    ServerRegistrationTie, Written,
 };
 use rustc_hash::FxHashMap;
 
@@ -65,14 +66,8 @@ impl LanguageLists {
 /// a language's buffers attach to, in what order, with what filter.
 #[derive(Debug, Default)]
 pub(in crate::editor::lsp) struct Registry {
-    registrations: FxHashMap<ServerName, Ranked<LspServerConfig>>,
+    registrations: FxHashMap<ServerName, Ranked<Arc<LspServerConfig>, ServerRegistrationTie>>,
     lists: FxHashMap<String, LanguageLists>,
-}
-
-/// One server a language's buffers attach to.
-pub(in crate::editor::lsp) struct Planned<'a> {
-    pub(in crate::editor::lsp) name: &'a ServerName,
-    pub(in crate::editor::lsp) filter: FeatureFilter,
 }
 
 /// What a registration or unregistration from one origin found under its
@@ -84,23 +79,22 @@ pub(in crate::editor::lsp) enum RegistryWrite {
     /// A registration the write replaced or removed.
     Replaced,
     /// A registration a higher origin made, which stays
-    /// ([`SERVER_REGISTRATION_TIE`]).
+    /// ([`ServerRegistrationTie`]).
     Shadowed,
 }
 
-impl Registry {
-    /// What a write from `origin` to `name` finds there.
-    fn rank(&self, name: &ServerName, origin: ConfigOrigin) -> RegistryWrite {
-        let held = self.origin(name);
-        if !origin.rank(held, SERVER_REGISTRATION_TIE).is_applied() {
-            RegistryWrite::Shadowed
-        } else if held.is_some() {
-            RegistryWrite::Replaced
-        } else {
-            RegistryWrite::Unregistered
-        }
+/// What a ranked write or clear of a registration found under its name.
+fn registry_write<T>(written: &Written<T>) -> RegistryWrite {
+    if !written.outcome.is_applied() {
+        RegistryWrite::Shadowed
+    } else if written.displaced.is_some() {
+        RegistryWrite::Replaced
+    } else {
+        RegistryWrite::Unregistered
     }
+}
 
+impl Registry {
     /// Registers `name` as `origin`'s, replacing an earlier registration of
     /// the same name unless a higher origin made it.
     pub(in crate::editor::lsp) fn register(
@@ -109,17 +103,12 @@ impl Registry {
         config: LspServerConfig,
         origin: ConfigOrigin,
     ) -> RegistryWrite {
-        let write = self.rank(&name, origin);
-        if write != RegistryWrite::Shadowed {
-            self.registrations.insert(
-                name,
-                Ranked {
-                    value: config,
-                    by: origin,
-                },
-            );
-        }
-        write
+        let written = self
+            .registrations
+            .entry(name)
+            .or_default()
+            .write(Arc::new(config), origin);
+        registry_write(&written)
     }
 
     /// Removes `name`'s registration unless a higher origin than `origin`
@@ -130,11 +119,14 @@ impl Registry {
         name: &ServerName,
         origin: ConfigOrigin,
     ) -> RegistryWrite {
-        let write = self.rank(name, origin);
-        if write != RegistryWrite::Shadowed {
+        let Some(slot) = self.registrations.get_mut(name) else {
+            return RegistryWrite::Unregistered;
+        };
+        let written = slot.clear(origin);
+        if slot.get().is_none() {
             self.registrations.remove(name);
         }
-        write
+        registry_write(&written)
     }
 
     /// Sets (`Some`) or clears (`None`) `language`'s `tier` list from
@@ -163,13 +155,15 @@ impl Registry {
         self.registrations.contains_key(name)
     }
 
-    pub(in crate::editor::lsp) fn get(&self, name: &ServerName) -> Option<&LspServerConfig> {
-        self.registrations.get(name).map(|reg| &reg.value)
+    pub(in crate::editor::lsp) fn get(&self, name: &ServerName) -> Option<&Arc<LspServerConfig>> {
+        self.registrations.get(name).and_then(Ranked::get)
     }
 
-    /// The origin of `name`'s registration, `None` when it has none.
-    pub(in crate::editor::lsp) fn origin(&self, name: &ServerName) -> Option<ConfigOrigin> {
-        self.registrations.get(name).map(|reg| reg.by)
+    /// The origin of `name`'s registration, empty when it has none.
+    pub(in crate::editor::lsp) fn claim(&self, name: &ServerName) -> Claim<ServerRegistrationTie> {
+        self.registrations
+            .get(name)
+            .map_or_else(Claim::default, Ranked::as_claim)
     }
 
     /// The languages whose servers include `name`, sorted.
@@ -178,7 +172,7 @@ impl Registry {
             .lists
             .keys()
             .map(String::as_str)
-            .filter(|language| self.plan(language).iter().any(|p| p.name == name))
+            .filter(|language| self.plan(language).iter().any(|e| &e.name == name))
             .collect();
         languages.sort_unstable();
         languages
@@ -189,19 +183,13 @@ impl Registry {
     /// no explicit one is set, that name a registered server. An entry naming
     /// an unregistered server is skipped; a registered server no list names
     /// serves nothing.
-    pub(in crate::editor::lsp) fn plan(&self, language: &str) -> Vec<Planned<'_>> {
+    pub(in crate::editor::lsp) fn plan(&self, language: &str) -> Vec<&ListEntry> {
         let Some(entries) = self.lists.get(language).and_then(LanguageLists::deciding) else {
             return Vec::new();
         };
         entries
             .iter()
-            .filter_map(|entry| {
-                let (name, _) = self.registrations.get_key_value(&entry.name)?;
-                Some(Planned {
-                    name,
-                    filter: entry.filter,
-                })
-            })
+            .filter(|entry| self.registrations.contains_key(&entry.name))
             .collect()
     }
 }

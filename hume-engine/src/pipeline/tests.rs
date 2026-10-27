@@ -8,9 +8,7 @@ use super::*;
 use super::layout::split_rect;
 use crate::display_lines::DisplayLinePos;
 use crate::pane::{WhitespaceConfig, WrapMode};
-use crate::providers::{
-    Decoration, DecorationKinds, DecorationSource, VirtualLine, VirtualLineAnchor,
-};
+use crate::providers::{Decoration, DecorationKinds, DecorationSource, VirtualLine};
 use crate::types::{DisplayLineKind, ResolvedStyle};
 use hume_rope::column::ByteCol;
 use hume_rope::line::{ContentLine, RopeyLine};
@@ -97,7 +95,8 @@ impl DecorationSource for ScopedVirtualLine {
     fn decorations_for_line(&self, line_idx: ContentLine, out: &mut Vec<Decoration>) {
         if line_idx == ContentLine::new(0) {
             out.push(Decoration::VirtualLine(VirtualLine {
-                anchor: VirtualLineAnchor::Before(ContentLine::new(0)),
+                line: ContentLine::new(0),
+                side: hume_core::Side::Before,
                 provider_id: 0,
                 text: "H~".to_string(),
                 // "H" (byte 0..1) carries the scope; "~" (byte 1..2) carries
@@ -169,7 +168,8 @@ impl DecorationSource for UnsortedScopedVirtualLine {
     fn decorations_for_line(&self, line_idx: ContentLine, out: &mut Vec<Decoration>) {
         if line_idx == ContentLine::new(0) {
             out.push(Decoration::VirtualLine(VirtualLine {
-                anchor: VirtualLineAnchor::Before(ContentLine::new(0)),
+                line: ContentLine::new(0),
+                side: hume_core::Side::Before,
                 provider_id: 0,
                 text: "ABCD".to_string(),
                 segments: vec![
@@ -238,7 +238,8 @@ fn virtual_display_line_resolves_scopes_from_unsorted_segments() {
 /// line is in the visible range. Smoke-tests the whole virtual-line path
 /// (`ProviderSet::add_decoration_source` → `render_pane`).
 struct FixedVirtualLineSource {
-    anchor: VirtualLineAnchor,
+    side: hume_core::Side,
+    line: ContentLine,
     text: &'static str,
 }
 
@@ -247,12 +248,10 @@ impl DecorationSource for FixedVirtualLineSource {
         DecorationKinds::VIRTUAL_LINE
     }
     fn decorations_for_line(&self, line_idx: ContentLine, out: &mut Vec<Decoration>) {
-        let line = match self.anchor {
-            VirtualLineAnchor::Before(n) | VirtualLineAnchor::After(n) => n,
-        };
-        if line_idx == line {
+        if line_idx == self.line {
             out.push(Decoration::VirtualLine(VirtualLine {
-                anchor: self.anchor,
+                line: self.line,
+                side: self.side,
                 provider_id: 0,
                 text: self.text.to_string(),
                 segments: Vec::new(),
@@ -267,14 +266,19 @@ impl DecorationSource for FixedVirtualLineSource {
 /// "aaaa", "bbbb", "cccc" (each grapheme is 1 column, so Soft splits at the
 /// exact column with no backtracking). `top_slot` controls how many of
 /// those wrap display lines are already scrolled past.
-fn render_wrapped_pane_with_virtual_line(top_slot: u16, anchor: VirtualLineAnchor) -> Grid {
-    render_wrapped_pane_with_virtual_text(top_slot, anchor, "V")
+fn render_wrapped_pane_with_virtual_line(
+    top_slot: u16,
+    side: hume_core::Side,
+    line: ContentLine,
+) -> Grid {
+    render_wrapped_pane_with_virtual_text(top_slot, side, line, "V")
 }
 
 /// [`render_wrapped_pane_with_virtual_line`] with the virtual line's own text.
 fn render_wrapped_pane_with_virtual_text(
     top_slot: u16,
-    anchor: VirtualLineAnchor,
+    side: hume_core::Side,
+    line: ContentLine,
     text: &'static str,
 ) -> Grid {
     let rope = ropey::Rope::from_str("aaaabbbbcccc\nz\n");
@@ -285,7 +289,7 @@ fn render_wrapped_pane_with_virtual_text(
     pane.viewport
         .seed_top_for_test(DisplayLinePos::new(ContentLine::new(0), top_slot as usize));
     pane.providers
-        .add_decoration_source(Box::new(FixedVirtualLineSource { anchor, text }));
+        .add_decoration_source(Box::new(FixedVirtualLineSource { side, line, text }));
 
     let theme = Theme::default();
     let pane_rect = rect(0, 0, 10, 6);
@@ -313,7 +317,7 @@ fn before_virtual_line_skipped_one_display_line_at_a_time() {
     // block uniformly, the same as it would a plain wrap display line: each
     // unit of offset drops exactly one block display line, virtual or real.
     let offset1 =
-        render_wrapped_pane_with_virtual_line(1, VirtualLineAnchor::Before(ContentLine::new(0)));
+        render_wrapped_pane_with_virtual_line(1, hume_core::Side::Before, ContentLine::new(0));
     assert_eq!(
         cell_symbol(&offset1, 0, 0),
         "a",
@@ -326,7 +330,7 @@ fn before_virtual_line_skipped_one_display_line_at_a_time() {
     );
 
     let offset2 =
-        render_wrapped_pane_with_virtual_line(2, VirtualLineAnchor::Before(ContentLine::new(0)));
+        render_wrapped_pane_with_virtual_line(2, hume_core::Side::Before, ContentLine::new(0));
     assert_eq!(
         cell_symbol(&offset2, 0, 0),
         "b",
@@ -334,7 +338,7 @@ fn before_virtual_line_skipped_one_display_line_at_a_time() {
     );
 
     let offset3 =
-        render_wrapped_pane_with_virtual_line(3, VirtualLineAnchor::Before(ContentLine::new(0)));
+        render_wrapped_pane_with_virtual_line(3, hume_core::Side::Before, ContentLine::new(0));
     assert_eq!(
         cell_symbol(&offset3, 0, 0),
         "c",
@@ -342,7 +346,7 @@ fn before_virtual_line_skipped_one_display_line_at_a_time() {
     );
 
     let offset4 =
-        render_wrapped_pane_with_virtual_line(4, VirtualLineAnchor::Before(ContentLine::new(0)));
+        render_wrapped_pane_with_virtual_line(4, hume_core::Side::Before, ContentLine::new(0));
     assert_eq!(
         cell_symbol(&offset4, 0, 0),
         " ",
@@ -356,7 +360,7 @@ fn before_virtual_line_skipped_one_display_line_at_a_time() {
     // top itself every frame). Skipping display lines by the raw offset
     // would carry over into line 1 instead.
     let past_end =
-        render_wrapped_pane_with_virtual_line(5, VirtualLineAnchor::Before(ContentLine::new(0)));
+        render_wrapped_pane_with_virtual_line(5, hume_core::Side::Before, ContentLine::new(0));
     assert_eq!(
         cell_symbol(&past_end, 0, 0),
         " ",
@@ -369,7 +373,7 @@ fn before_virtual_line_renders_when_not_skipped() {
     // top_slot=0: the Before(0) virtual line renders at screen row
     // 0, pushing wrapped display line 0 ("aaaa") down to screen row 1.
     let buf =
-        render_wrapped_pane_with_virtual_line(0, VirtualLineAnchor::Before(ContentLine::new(0)));
+        render_wrapped_pane_with_virtual_line(0, hume_core::Side::Before, ContentLine::new(0));
     assert_eq!(cell_symbol(&buf, 0, 0), "V", "virtual line at screen row 0");
     assert_eq!(
         cell_symbol(&buf, 0, 1),
@@ -385,7 +389,8 @@ fn long_after_virtual_line_wraps_onto_following_rows() {
     // "VVVV" / "VVVV" / "V" on rows 4..=6, then line 1 follows.
     let buf = render_wrapped_pane_with_virtual_text(
         0,
-        VirtualLineAnchor::After(ContentLine::new(0)),
+        hume_core::Side::After,
+        ContentLine::new(0),
         "VVVVVVVVV",
     );
     let row = |y: u16| (0..5).map(|x| cell_symbol(&buf, x, y)).collect::<String>();
@@ -401,8 +406,7 @@ fn after_virtual_line_renders_below_skipped_display_lines() {
     // of which are skipped (the budget is exhausted by wrap display line 0
     // alone). It must still render, after wrap display lines 1, 2, and the
     // sentinel.
-    let buf =
-        render_wrapped_pane_with_virtual_line(1, VirtualLineAnchor::After(ContentLine::new(0)));
+    let buf = render_wrapped_pane_with_virtual_line(1, hume_core::Side::After, ContentLine::new(0));
     assert_eq!(cell_symbol(&buf, 0, 0), "b", "wrap display line 1");
     assert_eq!(cell_symbol(&buf, 0, 1), "c", "wrap display line 2");
     assert_eq!(
@@ -431,7 +435,8 @@ impl DecorationSource for MultiBeforeLine {
         if line_idx == ContentLine::new(0) {
             for i in 0..self.0 {
                 out.push(Decoration::VirtualLine(VirtualLine {
-                    anchor: VirtualLineAnchor::Before(ContentLine::new(0)),
+                    line: ContentLine::new(0),
+                    side: hume_core::Side::Before,
                     provider_id: 0,
                     text: (i + 1).to_string(),
                     segments: Vec::new(),
@@ -492,7 +497,8 @@ fn virtual_before_block_taller_than_viewport_exposes_every_display_line() {
 /// Reports a wrong `provider_id`; the pipeline must not
 /// trust it.
 struct SpoofingVirtualLineSource {
-    anchor: VirtualLineAnchor,
+    side: hume_core::Side,
+    line: ContentLine,
 }
 
 impl DecorationSource for SpoofingVirtualLineSource {
@@ -500,12 +506,10 @@ impl DecorationSource for SpoofingVirtualLineSource {
         DecorationKinds::VIRTUAL_LINE
     }
     fn decorations_for_line(&self, line_idx: ContentLine, out: &mut Vec<Decoration>) {
-        let line = match self.anchor {
-            VirtualLineAnchor::Before(n) | VirtualLineAnchor::After(n) => n,
-        };
-        if line_idx == line {
+        if line_idx == self.line {
             out.push(Decoration::VirtualLine(VirtualLine {
-                anchor: self.anchor,
+                line: self.line,
+                side: self.side,
                 provider_id: 9999, // spoofed, must be overwritten by the pipeline
                 text: "V".to_string(),
                 segments: Vec::new(),
@@ -552,7 +556,8 @@ fn virtual_line_provider_id_is_stamped_by_pipeline_not_self_reported() {
     let real_id = pane
         .providers
         .add_decoration_source(Box::new(SpoofingVirtualLineSource {
-            anchor: VirtualLineAnchor::Before(ContentLine::new(0)),
+            side: hume_core::Side::Before,
+            line: ContentLine::new(0),
         }));
 
     let mut registry = crate::theme::ScopeRegistry::new();

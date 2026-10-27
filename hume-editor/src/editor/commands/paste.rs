@@ -9,8 +9,7 @@
 //! `edit_session::open_or_retarget`, which applies the same open rule as
 //! `edit_session::open_insert` does for an Insert session.
 
-use crate::editor::registry::Count;
-use hume_core::{BufferId, PaneId, Severity};
+use hume_core::{BufferId, Count, PaneId, Severity};
 use hume_engine::pipeline::EngineView;
 
 use hume_editing::selection::{Selection, SelectionSet};

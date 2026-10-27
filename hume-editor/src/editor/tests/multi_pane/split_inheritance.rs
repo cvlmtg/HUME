@@ -130,7 +130,7 @@ fn close_then_focus_next_without_reframe_lands_on_live_pane() {
         &mut ed.state,
         &mut ed.view,
         fp,
-        Count::new(Some(1)),
+        Count::typed(1),
         MotionMode::Move,
     )
     .unwrap();
@@ -171,7 +171,7 @@ fn split_then_focus_left_without_reframe_reaches_new_pane() {
         &mut ed.state,
         &mut ed.view,
         fp,
-        Count::new(Some(1)),
+        Count::typed(1),
         MotionMode::Move,
     )
     .unwrap();

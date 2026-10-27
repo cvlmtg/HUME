@@ -1,5 +1,5 @@
 use super::*;
-use hume_core::{ListTier, LspFeature};
+use hume_core::{FeatureFilter, ListTier, LspFeature};
 
 fn touch(path: &Path) {
     std::fs::write(path, b"").unwrap();
@@ -166,8 +166,11 @@ fn a_lower_origin_neither_replaces_nor_removes_a_higher_origins_registration() {
         registry.unregister(&name("ty"), ConfigOrigin::Plugin),
         RegistryWrite::Shadowed
     );
-    assert_eq!(registry.origin(&name("ty")), Some(ConfigOrigin::User));
-    assert_eq!(registry.get(&name("ty")), Some(&config("ty")));
+    assert_eq!(registry.claim(&name("ty")).by(), Some(ConfigOrigin::User));
+    assert_eq!(
+        registry.get(&name("ty")).map(Arc::as_ref),
+        Some(&config("ty"))
+    );
 }
 
 #[test]
@@ -178,7 +181,7 @@ fn a_higher_origin_replaces_a_lower_origins_registration() {
         register_from(&mut registry, "ty", ConfigOrigin::User),
         RegistryWrite::Replaced
     );
-    assert_eq!(registry.origin(&name("ty")), Some(ConfigOrigin::User));
+    assert_eq!(registry.claim(&name("ty")).by(), Some(ConfigOrigin::User));
 }
 
 #[test]

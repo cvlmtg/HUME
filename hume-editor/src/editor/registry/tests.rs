@@ -330,7 +330,7 @@ fn runtime_register_and_lookup() {
         _state: &mut crate::editor::EditorState,
         _view: &mut hume_engine::pipeline::EngineView,
         _t: crate::editor::commands::CommandPane,
-        _count: crate::editor::registry::Count,
+        _count: hume_core::Count,
         _mode: hume_ops::MotionMode,
     ) -> Result<(), crate::editor::error::CommandError> {
         Ok(())
@@ -533,7 +533,7 @@ fn steel_backed_names_filters_by_variant() {
         _state: &mut crate::editor::EditorState,
         _view: &mut hume_engine::pipeline::EngineView,
         _t: crate::editor::commands::CommandPane,
-        _count: crate::editor::registry::Count,
+        _count: hume_core::Count,
         _mode: hume_ops::MotionMode,
     ) -> Result<(), crate::editor::error::CommandError> {
         Ok(())

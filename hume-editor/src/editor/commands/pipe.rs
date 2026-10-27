@@ -10,9 +10,8 @@ use super::super::EditorState;
 use super::super::doc_ops;
 use super::super::error::CommandError;
 use super::super::pipe_run::{Launch, PipeEnd, PipeKind};
-use super::super::registry::Count;
 use super::{CommandPane, ensure_writable};
-use hume_core::Severity;
+use hume_core::{Count, Severity};
 
 /// `pipe`: start `command` once per selection of `t`, the selection its
 /// input and the output replacing it. Inside an Insert session on `t` each

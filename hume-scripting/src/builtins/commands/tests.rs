@@ -87,14 +87,17 @@ fn call_bang_multiple_unknown_commands_each_log_error() {
 
 #[test]
 fn parse_native_args_empty_gives_defaults() {
-    assert_eq!(parse_native_args(&[]).unwrap(), (Some(1), false, None));
+    assert_eq!(
+        parse_native_args(&[]).unwrap(),
+        (Count::typed(1), false, None)
+    );
 }
 
 #[test]
 fn parse_native_args_count_only() {
     assert_eq!(
         parse_native_args(&[SteelVal::IntV(5)]).unwrap(),
-        (Some(5), false, None)
+        (Count::typed(5), false, None)
     );
 }
 
@@ -102,35 +105,35 @@ fn parse_native_args_count_only() {
 fn parse_native_args_count_and_extend() {
     assert_eq!(
         parse_native_args(&[SteelVal::IntV(3), SteelVal::BoolV(true)]).unwrap(),
-        (Some(3), true, None)
+        (Count::typed(3), true, None)
     );
 }
 
-/// Negative counts clamp to `Some(1)`, same as a native keypress count.
+/// Negative counts run once, same as a native keypress count.
 #[test]
 fn parse_native_args_negative_clamps_to_one() {
     assert_eq!(
         parse_native_args(&[SteelVal::IntV(-7)]).unwrap(),
-        (Some(1), false, None)
+        (Count::typed(1), false, None)
     );
     assert_eq!(
         parse_native_args(&[SteelVal::IntV(-1), SteelVal::BoolV(false)]).unwrap(),
-        (Some(1), false, None)
+        (Count::typed(1), false, None)
     );
 }
 
-/// Zero is the Scheme spelling of "no count typed" and decodes to `None`,
-/// not `Some(1)` (a bare keypress and an explicit count of 1 are different
+/// Zero is the Scheme spelling of "no count typed" and decodes to an untyped
+/// count, not a typed one (a bare keypress and an explicit count of 1 are different
 /// dispatch origins even though both apply a command once).
 #[test]
 fn parse_native_args_zero_means_no_count() {
     assert_eq!(
         parse_native_args(&[SteelVal::IntV(0)]).unwrap(),
-        (None, false, None)
+        (Count::UNTYPED, false, None)
     );
     assert_eq!(
         parse_native_args(&[SteelVal::IntV(0), SteelVal::BoolV(true)]).unwrap(),
-        (None, true, None)
+        (Count::UNTYPED, true, None)
     );
 }
 
@@ -141,16 +144,34 @@ fn parse_native_args_zero_means_no_count() {
 #[test]
 fn parse_native_args_caps_at_max_count() {
     assert_eq!(
-        parse_native_args(&[SteelVal::IntV(isize::MAX)]).unwrap(),
-        (Some(MAX_COUNT), false, None)
+        parse_native_args(&[SteelVal::IntV(isize::MAX)])
+            .unwrap()
+            .0
+            .get(),
+        10_000
     );
+}
+
+/// A Steel body that forwards its `count` to `call!` passes the same count
+/// on, untyped included.
+#[test]
+fn count_to_steel_round_trips_through_parse_native_args() {
+    assert_eq!(count_to_steel(Count::UNTYPED), SteelVal::IntV(0));
+    for count in [Count::UNTYPED, Count::typed(1), Count::typed(42)] {
+        let (decoded, _, _) = parse_native_args(&[count_to_steel(count)]).unwrap();
+        assert_eq!(decoded, count);
+    }
 }
 
 #[test]
 fn parse_native_args_string_alone_is_text_arg() {
     assert_eq!(
         parse_native_args(&[SteelVal::StringV("x".into())]).unwrap(),
-        (Some(1), false, Some(CommandArg::Text("x".to_string())))
+        (
+            Count::typed(1),
+            false,
+            Some(CommandArg::Text("x".to_string()))
+        )
     );
 }
 
@@ -158,7 +179,7 @@ fn parse_native_args_string_alone_is_text_arg() {
 fn parse_native_args_char_alone_is_char_arg() {
     assert_eq!(
         parse_native_args(&[SteelVal::CharV('x')]).unwrap(),
-        (Some(1), false, Some(CommandArg::Char('x')))
+        (Count::typed(1), false, Some(CommandArg::Char('x')))
     );
 }
 
@@ -166,7 +187,11 @@ fn parse_native_args_char_alone_is_char_arg() {
 fn parse_native_args_count_then_arg() {
     assert_eq!(
         parse_native_args(&[SteelVal::IntV(3), SteelVal::StringV("ab".into())]).unwrap(),
-        (Some(3), false, Some(CommandArg::Text("ab".to_string())))
+        (
+            Count::typed(3),
+            false,
+            Some(CommandArg::Text("ab".to_string()))
+        )
     );
 }
 
@@ -179,7 +204,7 @@ fn parse_native_args_count_extend_then_arg() {
             SteelVal::CharV('y')
         ])
         .unwrap(),
-        (Some(3), true, Some(CommandArg::Char('y')))
+        (Count::typed(3), true, Some(CommandArg::Char('y')))
     );
 }
 

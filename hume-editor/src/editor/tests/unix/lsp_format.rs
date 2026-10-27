@@ -168,7 +168,7 @@ fn format_source_and_lsp_fmt_call_produce_the_same_edit() {
     // lsp/format-source is key-bindable, not typed: dispatch through the keymap
     // pipeline, the way an `on-buffer-save` hook's `(call! "lsp/format-source" bid)`
     // would.
-    ed.execute_keymap_command("lsp/format-source".into(), Some(1), false);
+    ed.execute_keymap_command("lsp/format-source".into(), Count::typed(1), false);
     ed.settle();
     ed.drain_lsp();
     ed.settle();

@@ -12,7 +12,7 @@
 //! session elsewhere" a single field comparison rather than a scan over
 //! every pane.
 
-use hume_core::{BufferId, PaneId};
+use hume_core::{BufferId, PaneHandle, PaneId};
 use hume_editing::changeset::{Assoc, ChangeSet};
 use hume_editing::edit::TextChange;
 use hume_editing::selection::SelectionSet;
@@ -263,10 +263,10 @@ pub(in crate::editor) fn open_or_retarget(
     Ok(())
 }
 
-/// `Err` when `open`, the open session, is on `buf_id` and was opened by
-/// some pane other than `exclude` (any pane, for `None`): the
-/// exclusivity check every buffer-mutating chokepoint in `doc_ops` runs
-/// before touching `buf_id`'s text.
+/// `Err` when `open`, the open session, is on `target`'s buffer and was
+/// opened by some pane other than `target`'s (any pane, for a handle with
+/// none): the exclusivity check every buffer-mutating chokepoint in
+/// `doc_ops` runs before touching that buffer's text.
 ///
 /// Remote dispatch (`(call! "cmd" pane)` targeting a pane other than the
 /// focused one) means a *different* pane's own in-progress insert/paste
@@ -286,10 +286,9 @@ pub(in crate::editor) fn open_or_retarget(
 /// through the commit loop.
 pub(in crate::editor) fn check_no_conflicting_session(
     open: Option<OpenSession<'_>>,
-    exclude: Option<PaneId>,
-    buf_id: BufferId,
+    target: PaneHandle,
 ) -> Result<(), CommandError> {
-    if open.is_some_and(|s| Some(s.pane()) != exclude && s.buffer() == buf_id) {
+    if open.is_some_and(|s| Some(s.pane()) != target.pane() && s.buffer() == target.buffer()) {
         return Err(CommandError::new(
             "buffer has an open insert/paste session on another pane",
         ));

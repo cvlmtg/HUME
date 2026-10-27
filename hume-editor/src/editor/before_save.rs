@@ -16,11 +16,10 @@ use rustc_hash::FxHashSet;
 use super::Editor;
 use super::buffer::Buffer;
 use super::commands::{
-    CommandPane, FocusedPane, WriteError, WriteKind, conclude_write, write_and_continue,
+    FocusedPane, WriteError, WriteKind, conclude_write, shown_through, write_and_continue,
 };
 use super::error::CommandError;
 use super::event::{BEFORE_BUFFER_SAVE, HeldEvent};
-use super::host_token;
 use super::timer_bridge::TimerPayload;
 use hume_core::TimerId;
 
@@ -359,12 +358,7 @@ impl Editor {
         let Some(requester) = self.state.pending_writes.unraised_requester(bid) else {
             return;
         };
-        let target = PaneHandle::with_pane(bid, requester);
-        let target = if CommandPane::resolve(&self.state, &self.view, target).is_ok() {
-            target
-        } else {
-            PaneHandle::buffer_only(bid)
-        };
+        let target = shown_through(&self.view.panes, Some(requester), bid);
         let event = HeldEvent::OnBeforeBufferSave { target };
         let name = event.name();
         let args = event.into_steel_args();
@@ -374,7 +368,7 @@ impl Editor {
             return;
         };
         let holds: Vec<HostToken> = (0..handlers.holds_needed())
-            .map(|_| host_token::mint())
+            .map(|_| HostToken::mint())
             .collect();
         let timeout = (!holds.is_empty()).then(|| {
             let after = self.before_save_timeout();

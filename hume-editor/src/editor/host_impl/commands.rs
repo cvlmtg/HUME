@@ -191,7 +191,7 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
             return Err(format!("'{name}': runs only from a key"));
         }
         // `count` came from `parse_native_args`, which decodes a Steel-side
-        // count of 0 to `None`, the script's way of asking for "as if no
+        // count of 0 to `Count::UNTYPED`, the script's way of asking for "as if no
         // count was typed" (move-down/move-up read this as visual-line
         // movement instead of buffer-line movement).
         let ctx = crate::editor::dispatch::CmdCtx { count, extend };

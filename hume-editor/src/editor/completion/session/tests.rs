@@ -8,7 +8,7 @@ use super::super::registry::{
     SourceRegistry,
 };
 use super::*;
-use hume_core::{AnswerEnd, MatchKind};
+use hume_core::{AnswerEnd, HostToken, MatchKind};
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
 use hume_editing::edit::TextChange;
 use hume_editing::text::BufferText;
@@ -100,7 +100,7 @@ fn buffer_invoke(
     source: BufferSourceId,
     text: &BufferText,
     start: usize,
-) -> u64 {
+) -> HostToken {
     session.invoke(
         source,
         Invocation::buffer(text.rope().clone(), CharOffset::new(start)),
@@ -819,7 +819,7 @@ fn step_selection_wraps_at_either_end() {
 
 /// A `Minibuf` session over an empty line, invoked once; returns the
 /// invocation id.
-fn streaming_session(reg: &SourceRegistry) -> (MinibufSession, u64) {
+fn streaming_session(reg: &SourceRegistry) -> (MinibufSession, HostToken) {
     let mut session = MinibufSession::open(String::new(), 0);
     let id = session.invoke(minibuf_id_of(reg, "s"), Invocation::minibuf(0..0));
     (session, id)
@@ -828,7 +828,7 @@ fn streaming_session(reg: &SourceRegistry) -> (MinibufSession, u64) {
 fn emit(
     session: &mut MinibufSession,
     reg: &SourceRegistry,
-    id: u64,
+    id: HostToken,
     labels: &[&str],
     end: AnswerEnd,
 ) -> bool {
@@ -944,11 +944,11 @@ fn prefix_matches_prefix_longer_than_haystack_does_not_panic() {
 // ── Requests that end without their answer ──────────────────────────────────
 
 /// The request id each `#:cancel` call carries.
-fn cancelled_ids(calls: &[hume_scripting::SteelCall]) -> Vec<u64> {
+fn cancelled_ids(calls: &[hume_scripting::SteelCall]) -> Vec<HostToken> {
     calls
         .iter()
         .map(|call| match call.args()[0].value() {
-            SteelVal::IntV(id) => *id as u64,
+            SteelVal::IntV(id) => HostToken::from_script(*id as u64),
             other => panic!("not a request id: {other:?}"),
         })
         .collect()

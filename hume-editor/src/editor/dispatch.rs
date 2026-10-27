@@ -9,6 +9,7 @@
 use super::error::CommandError;
 use super::registry::{Dispatchable, MappableCommand, SteelCommand};
 use super::{Editor, commands, replay};
+use hume_core::Count;
 
 // ── Command dispatch context ──────────────────────────────────────────────────
 
@@ -16,16 +17,15 @@ use super::{Editor, commands, replay};
 /// [`Editor::dispatch`].
 #[derive(Debug, Clone)]
 pub(in crate::editor) struct CmdCtx {
-    /// Numeric count prefix. `None` means "no count was typed": a bare
-    /// keyboard press, which visual-move commands read as one visual line
-    /// (through the [`Count`](super::registry::Count) `run_body` builds from
-    /// this). Producible
-    /// by the keymap trie leaves, and also by Steel: a script
-    /// passes a count of `0` (`parse_native_args` decodes it to `None`) to ask
-    /// for the same "as if no count was typed" behavior. `Some(n)` is every
-    /// other case: an explicit user count, a script's explicit `n`, or a
-    /// non-keybind origin's default (insert-mode leaf, no-arg `call!`).
-    pub count: Option<usize>,
+    /// Numeric count prefix. [`Count::UNTYPED`] means "no count was typed":
+    /// a bare keyboard press, which visual-move commands read as one visual
+    /// line. Producible by the keymap trie leaves, and also by Steel: a
+    /// script passes a count of `0` (`parse_native_args` decodes it to
+    /// `UNTYPED`) to ask for the same "as if no count was typed" behavior. A
+    /// typed count is every other case: an explicit user count, a script's
+    /// explicit `n`, or a non-keybind origin's default (insert-mode leaf,
+    /// no-arg `call!`).
+    pub count: Count,
     /// Whether this command runs in Extend mode.
     pub extend: bool,
 }
@@ -83,7 +83,7 @@ impl Editor {
         let opened = self.state.open_steel_recipe();
         let change = meta.repeatable.then(|| replay::NewChange {
             command: name.clone(),
-            count: ctx.count.unwrap_or(1),
+            count: ctx.count,
             seed: None,
             recipe: opened.recipe().to_vec(),
         });
@@ -153,7 +153,7 @@ impl Editor {
     pub(in crate::editor) fn execute_keymap_command(
         &mut self,
         name: std::borrow::Cow<'static, str>,
-        count: Option<usize>,
+        count: Count,
         extend: bool,
     ) {
         let Some(reg_cmd) = self.resolve_mappable(name.as_ref()) else {
@@ -205,12 +205,6 @@ impl Editor {
     /// Fails, unreported, if the command aborted (scripting error, or
     /// `scripting` is `None`). On error, the caller skips AFTER stages.
     fn run_steel_command(&mut self, cmd: &SteelCommand, ctx: &CmdCtx) -> Result<(), CommandError> {
-        // Injected into the lambda's `count` param verbatim: `0` is the Scheme
-        // spelling of `None` ("no count was typed"), so a wrapper that forwards
-        // this value straight into `(call! "move-down" pane count extend)` round-trips
-        // a bare keypress back to visual-line movement (`parse_native_args`
-        // decodes `0` back to `None` on the way in).
-        let count = ctx.count.unwrap_or(0);
         let extend = ctx.extend;
 
         let name = cmd.name.as_ref();
@@ -221,7 +215,7 @@ impl Editor {
             cmd.body.arity,
             cmd.body.is_variadic,
             crate::editor::commands::FocusedPane::current(&self.view).handle(&self.view),
-            steel::rvals::SteelVal::IntV(count as isize),
+            hume_scripting::count_to_steel(ctx.count),
             steel::rvals::SteelVal::BoolV(extend),
             "keymap injection supplies at most 3 (pane, count, extend)",
         )

@@ -7,7 +7,7 @@
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
-use hume_core::{LspFeature, PaneHandle, SERVER_REGISTRATION_TIE};
+use hume_core::{LspFeature, PaneHandle};
 
 use crate::types::{
     CapabilityQuery, Effect, Params, PendingLspNotify, PendingLspRequest, PendingLspServerOp,
@@ -431,36 +431,32 @@ pub(crate) fn lsp_supersede_key(ctx: &mut SteelCtx) -> SteelResult {
 
 /// `(lsp-server-registered? name)` → bool. Reads through the
 /// `Effect::LspServerOp` entries queued this eval, in emission order, from
-/// the live registry's registration, by the rule
-/// `Editor::apply_lsp_server_ops` applies them by
-/// (`ConfigOrigin::rank` with [`SERVER_REGISTRATION_TIE`]), so a same-eval
-/// registration is visible at once and an op that will not apply is not. A host with no LSP capability
-/// raises whether or not an op is queued.
+/// the live registry's registration, on the registry's own slot type
+/// ([`hume_core::Claim`] of [`hume_core::ServerRegistrationTie`]), so each op
+/// ranks as `Editor::apply_lsp_server_ops` applies it: a same-eval
+/// registration is visible at once and an op that will not apply is not. A
+/// host with no LSP capability raises whether or not an op is queued.
 ///
 /// A pure registry read, so its table entry is `open` kind: callable during
 /// init/plugin load too, which lets `core:lsp-install`'s load-time scan skip
 /// names already registered.
 pub(crate) fn lsp_server_registered(ctx: &mut SteelCtx, name: SteelVal) -> SteelResult {
     let name = server_name_arg(name, "name")?;
-    let held = require_cap(ctx.host.lsp())?.lsp_server_origin(&name);
-    let held = ctx
-        .effects
-        .iter()
-        .fold(held, |held, queued| match &queued.effect {
-            Effect::LspServerOp(PendingLspServerOp::Register(reg))
-                if reg.name == name
-                    && reg.origin.rank(held, SERVER_REGISTRATION_TIE).is_applied() =>
-            {
-                Some(reg.origin)
+    let mut held = require_cap(ctx.host.lsp())?.lsp_server_claim(&name);
+    for queued in ctx.effects.iter() {
+        match &queued.effect {
+            Effect::LspServerOp(PendingLspServerOp::Register(reg)) if reg.name == name => {
+                let _ = held.claim(reg.origin);
             }
             Effect::LspServerOp(PendingLspServerOp::Unregister { name: n, origin })
-                if *n == name && origin.rank(held, SERVER_REGISTRATION_TIE).is_applied() =>
+                if *n == name =>
             {
-                None
+                let _ = held.clear(*origin);
             }
-            _ => held,
-        });
-    Ok(SteelVal::BoolV(held.is_some()))
+            _ => {}
+        }
+    }
+    Ok(SteelVal::BoolV(held.by().is_some()))
 }
 
 #[cfg(test)]

@@ -18,7 +18,7 @@ use hume_scripting::host::EmittedWord;
 use super::super::item::{CandidateKey, CompletionItem};
 use super::super::registry::{MinibufSourceId, SourceRegistry};
 use super::slots::{Invocation, SlotSet, SlotTokens};
-use hume_core::{AnswerEnd, FirstTab, MatchKind};
+use hume_core::{AnswerEnd, FirstTab, HostToken, MatchKind};
 
 /// Byte range in [`MinibufSession`]'s own `input` that a `Minibuf`
 /// invocation answered for. Never moves: nothing can edit the line while
@@ -94,7 +94,7 @@ impl MinibufSession {
         &mut self,
         source: MinibufSourceId,
         invocation: Invocation<MinibufSpan>,
-    ) -> u64 {
+    ) -> HostToken {
         self.core.invoke(source, invocation)
     }
 
@@ -102,7 +102,7 @@ impl MinibufSession {
     /// invocation was minted with.
     pub(in crate::editor) fn contribute(
         &mut self,
-        id: u64,
+        id: HostToken,
         items: Vec<CompletionItem>,
         incomplete: bool,
     ) -> bool {
@@ -124,7 +124,7 @@ impl MinibufSession {
     pub(in crate::editor) fn emit(
         &mut self,
         registry: &SourceRegistry,
-        id: u64,
+        id: HostToken,
         items: Vec<CompletionItem>,
         incomplete: bool,
         end: AnswerEnd,
@@ -166,7 +166,7 @@ impl MinibufSession {
 
     /// The picked candidate, when an answer to `id` continues the answer it
     /// was picked from.
-    fn streamed_pick(&self, id: u64) -> Option<CandidateKey> {
+    fn streamed_pick(&self, id: HostToken) -> Option<CandidateKey> {
         if !self.picked || !self.core.continues_stream(id) {
             return None;
         }
@@ -208,7 +208,7 @@ impl MinibufSession {
     }
 
     /// See `BufferSession::end_request`.
-    pub(in crate::editor) fn end_request(&mut self, id: u64) -> bool {
+    pub(in crate::editor) fn end_request(&mut self, id: HostToken) -> bool {
         self.core.end_request(id)
     }
 

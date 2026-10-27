@@ -115,24 +115,17 @@ fn sorted_instances(lsp: &LspState) -> Vec<&super::instances::Instance> {
     instances
 }
 
-/// The origin of `name`'s registration, `None` when it is not registered.
-pub(in crate::editor) fn server_origin(
+/// The origin of `name`'s registration, empty when it is not registered.
+pub(in crate::editor) fn server_claim(
     lsp: &LspState,
     name: &ServerName,
-) -> Option<hume_core::ConfigOrigin> {
-    lsp.registry.origin(name)
+) -> hume_core::Claim<hume_core::ServerRegistrationTie> {
+    lsp.registry.claim(name)
 }
 
 /// The servers `language`'s buffers attach to, in order, with their filters.
 pub(in crate::editor) fn language_servers(lsp: &LspState, language: &str) -> Vec<ListEntry> {
-    lsp.registry
-        .plan(language)
-        .into_iter()
-        .map(|p| ListEntry {
-            name: p.name.clone(),
-            filter: p.filter,
-        })
-        .collect()
+    lsp.registry.plan(language).into_iter().cloned().collect()
 }
 
 /// A buffer's attached servers' loading state. Drives the statusline's

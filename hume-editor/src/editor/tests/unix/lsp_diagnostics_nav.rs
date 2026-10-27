@@ -51,7 +51,7 @@ fn republish(
 /// not typed) through the keymap pipeline, the way their bound keys
 /// (`g n`/`g p`) would.
 fn call_and_settle(ed: &mut Editor, cmd: &str) {
-    call_counted(ed, cmd, Some(1));
+    call_counted(ed, cmd, Count::typed(1));
     ed.settle();
 }
 

@@ -32,7 +32,7 @@ fn setup(
 fn run_rename(ed: &mut Editor) {
     // lsp/rename is key-bindable, not typed: dispatch through the keymap
     // pipeline, the way its bound key (`G R`) would.
-    ed.execute_keymap_command("lsp/rename".into(), Some(1), false);
+    ed.execute_keymap_command("lsp/rename".into(), Count::typed(1), false);
     ed.settle();
 }
 

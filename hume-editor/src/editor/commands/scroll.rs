@@ -1,5 +1,4 @@
-use crate::editor::registry::Count;
-use hume_core::PaneId;
+use hume_core::{Count, PaneId};
 use hume_engine::display_lines::carry;
 use hume_engine::pipeline::{EngineView, PaneSize};
 use hume_ops::MotionMode;

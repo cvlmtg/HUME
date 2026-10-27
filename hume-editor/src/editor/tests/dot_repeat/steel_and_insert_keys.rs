@@ -32,7 +32,7 @@ fn steel_dot_repeatable_round_trip() {
     );
 
     // Run the repeatable Steel command.
-    ed.execute_keymap_command("del-sel".into(), Some(1), false);
+    ed.execute_keymap_command("del-sel".into(), Count::typed(1), false);
     // "foo" deleted; buffer is " bar\n".
     assert_eq!(ed.doc().text().to_string(), " bar\n", "first run");
 
@@ -51,6 +51,37 @@ fn steel_dot_repeatable_round_trip() {
         " \n",
         "`.` must replay the Steel command and delete the current selection"
     );
+}
+
+/// `.` passes a repeatable Steel command the `count` its first run got, `0`
+/// for a bare keypress, and `3.` passes `3`. The command replaces the
+/// selected character with the first digit of its `count`, so the text shows
+/// what each run saw.
+#[test]
+fn steel_dot_repeat_passes_the_recorded_count() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bc\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "put-count" ""
+             (lambda (pane count)
+               (call! "replace" pane (string-ref (number->string count) 0)))
+             #:repeatable #t)
+           (bind-key! 'normal "ctrl-x" "put-count")"#,
+    );
+
+    ed.feed_key(key_ctrl('x'));
+    assert_eq!(text(&ed), "0bc\n", "a bare keypress passes 0");
+
+    ed.feed_key(key('l'));
+    ed.feed_key(key('.'));
+    assert_eq!(text(&ed), "00c\n", "`.` passes the first run's 0");
+
+    ed.feed_key(key('l'));
+    ed.feed_key(key('3'));
+    ed.feed_key(key('.'));
+    assert_eq!(text(&ed), "003\n", "`3.` passes 3");
 }
 
 /// A plain `define-command!` (non-repeatable) must not overwrite
@@ -76,7 +107,7 @@ fn steel_command_is_not_repeatable() {
     );
 
     // Run the Steel command: it calls (call! "delete" (focused-pane)) internally.
-    ed.execute_keymap_command("del-sel".into(), Some(1), false);
+    ed.execute_keymap_command("del-sel".into(), Count::typed(1), false);
 
     // the recorded change must still be "delete", not "del-sel".
     assert_eq!(
@@ -109,7 +140,7 @@ fn non_repeatable_steel_does_not_hijack_dot() {
     );
 
     // Run the non-repeatable Steel command.
-    ed.execute_keymap_command("noop-move".into(), Some(1), false);
+    ed.execute_keymap_command("noop-move".into(), Count::typed(1), false);
 
     // the recorded change must still be "delete".
     assert_eq!(

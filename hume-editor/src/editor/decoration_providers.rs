@@ -470,10 +470,9 @@ impl Editor {
     /// anchored to the same line stack rather than collapse (unlike the
     /// four line-anchored kinds `last_writer_per_line` folds):
     /// `virtual_lines_for_buffer` (`SourceStore::for_buffer`) yields sources
-    /// ascending by name, and `DisplayLineMap::block`'s anchor sort is stable, so
+    /// ascending by name, and `DisplayLineMap::block`'s side sort is stable, so
     /// they render in alphabetical-by-source order, not registration order.
     ///
-    /// Each entry becomes `Before(line)` or `After(line)` per its `side`.
     /// `entry.scope`, already resolved to the `ui.virtual` fallback at the
     /// `set-virtual-lines!` boundary when the Steel call passed none
     /// (`host_impl.rs`), becomes `VirtualLine::base_scope`: the engine
@@ -484,7 +483,7 @@ impl Editor {
     /// theme that puts a `bg` on `ui.virtual` reaches the row fill exactly
     /// the same way an explicit `scope` would.
     pub(super) fn update_virtual_line_providers(&mut self, panes: &[DecoratedPane]) {
-        use hume_engine::providers::{VirtualLine, VirtualLineAnchor};
+        use hume_engine::providers::VirtualLine;
 
         for p in panes {
             let (pid, bid) = (p.pid, p.bid);
@@ -497,17 +496,14 @@ impl Editor {
                 rustc_hash::FxHashMap::default();
             for entry in self.state.config.decorations.virtual_lines_for_buffer(bid) {
                 let line = entry.line;
-                let anchor = match entry.side {
-                    Side::Before => VirtualLineAnchor::Before(line),
-                    Side::After => VirtualLineAnchor::After(line),
-                };
                 let segments = entry
                     .segments
                     .iter()
                     .map(|(start, end, scope)| (*start, *end, *scope))
                     .collect();
                 by_line.entry(line).or_default().push(VirtualLine {
-                    anchor,
+                    line,
+                    side: entry.side,
                     // Overwritten by the engine at collection time with the
                     // registration-assigned id (see `ProviderSet::add_decoration_source`).
                     provider_id: 0,

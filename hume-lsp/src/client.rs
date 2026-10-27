@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
+use hume_core::LspServerConfig;
 use hume_rope::position_encoding::PositionEncoding;
 use lsp_types::{
     DidChangeConfigurationParams, InitializeResult, InitializedParams, PositionEncodingKind,
@@ -21,23 +22,15 @@ use crate::transport::InboundEvent;
 use lsp_types::notification::Notification as _;
 use lsp_types::request::Request as _;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ServerState {
-    Starting,
-    Running,
-    Crashed,
-    Dead,
-}
-
-impl ServerState {
-    /// The lowercase name scripting sees (`lsp-server-status`'s `'state`).
-    pub fn name(self) -> &'static str {
-        match self {
-            Self::Starting => "starting",
-            Self::Running => "running",
-            Self::Crashed => "crashed",
-            Self::Dead => "dead",
-        }
+hume_core::named_enum! {
+    /// A server's lifecycle state, named as scripting sees it
+    /// (`lsp-server-status`'s `'state`).
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum ServerState {
+        Starting => "starting",
+        Running => "running",
+        Crashed => "crashed",
+        Dead => "dead",
     }
 }
 
@@ -225,16 +218,14 @@ pub struct LspClient {
     /// capabilities by `handle_initialize_response`; `FULL` until then.
     change_sync: Option<TextDocumentSyncKind>,
     root: PathBuf,
-    /// `initializationOptions` for the `initialize` request, set via
-    /// `set_init_options` before `start_handshake` to take effect; `None`
-    /// omits the field entirely (never sent as `null`).
-    init_options: Option<serde_json::Value>,
-    /// Server configuration, set via `set_settings` before `start_handshake`
-    /// to take effect. Pushed once as `workspace/didChangeConfiguration`
-    /// right after `initialized`, and answered to `workspace/configuration`
-    /// pull requests (resolved per item by `server_request_response`). `None`
-    /// sends no push at all, and pull requests fall back to `null` per item.
-    settings: Option<serde_json::Value>,
+    /// The registration this server was spawned with. Its `init_options`
+    /// are the `initialize` request's `initializationOptions`, omitted (never
+    /// `null`) when `None`. Its `settings` are pushed once as
+    /// `workspace/didChangeConfiguration` right after `initialized` and
+    /// resolved per item for `workspace/configuration` pull requests
+    /// (`server_request_response`); `None` sends no push, and each pulled
+    /// item answers `null`.
+    config: Arc<LspServerConfig>,
     /// Messages (e.g. `didOpen`) that arrived while `Starting`, sent, in
     /// order, right after `initialized` once the handshake completes.
     queued: Vec<Message>,
@@ -281,7 +272,7 @@ fn supersedes(last: &Message, new: &Message) -> bool {
 }
 
 impl LspClient {
-    pub fn new(id: ServerId, root: PathBuf) -> Self {
+    pub fn new(id: ServerId, root: PathBuf, config: Arc<LspServerConfig>) -> Self {
         Self {
             id,
             state: ServerState::Starting,
@@ -289,8 +280,7 @@ impl LspClient {
             encoding: PositionEncoding::Utf16,
             change_sync: Some(TextDocumentSyncKind::FULL),
             root,
-            init_options: None,
-            settings: None,
+            config,
             queued: Vec::new(),
             initialize_id: None,
             ids: IdAllocator::default(),
@@ -312,23 +302,11 @@ impl LspClient {
         self.caps_json.as_ref()
     }
 
-    /// Sets `initializationOptions` for the upcoming `initialize` request.
-    /// Must be called before `start_handshake` to take effect.
-    pub fn set_init_options(&mut self, init_options: Option<serde_json::Value>) {
-        self.init_options = init_options;
-    }
-
-    /// Sets the server configuration blob. Must be called before
-    /// `start_handshake` to take effect. Pushed as `workspace/
-    /// didChangeConfiguration` right after `initialized`; also consulted to
-    /// answer `workspace/configuration` pull requests.
-    pub fn set_settings(&mut self, settings: Option<serde_json::Value>) {
-        self.settings = settings;
-    }
-
-    /// The configuration blob the server was started with.
-    pub fn settings(&self) -> Option<&serde_json::Value> {
-        self.settings.as_ref()
+    /// The registration this server was spawned with: its
+    /// `initializationOptions`, and the settings pushed after `initialized`
+    /// and resolved for `workspace/configuration`.
+    pub fn config(&self) -> &Arc<LspServerConfig> {
+        &self.config
     }
 
     pub fn encoding(&self) -> PositionEncoding {
@@ -535,7 +513,7 @@ impl LspClient {
             },
         );
 
-        let params = initialize_params_json(&self.root, self.init_options.clone());
+        let params = initialize_params_json(&self.root, self.config.init_options.clone());
 
         // Sent directly, never via `send_or_queue`: `initialize` is the one
         // request legal on the wire before `initialized`; routing it through
@@ -683,7 +661,7 @@ impl LspClient {
         // `didOpen`: some servers read configuration only from this push
         // and never issue a `workspace/configuration` pull. Omitted
         // entirely when unset, never sent as `settings: null`.
-        if let Some(settings) = self.settings.clone() {
+        if let Some(settings) = self.config.settings.clone() {
             send.push(Message::Notification {
                 method: lsp_types::notification::DidChangeConfiguration::METHOD.to_string(),
                 params: serde_json::to_value(DidChangeConfigurationParams { settings })

@@ -234,11 +234,11 @@ fn hundred_lines() -> String {
 fn half_page_after_close_scrolls_by_the_whole_pane() {
     let mut ed = sized_editor(&hundred_lines());
     ed.execute_typed("split", None).unwrap();
-    ed.execute_keymap_command("pane-close".into(), None, false);
+    ed.execute_keymap_command("pane-close".into(), Count::UNTYPED, false);
     assert_eq!(ed.view.panes.len(), 1);
     let pid = ed.view.focused_pane();
 
-    ed.execute_keymap_command("half-page-down".into(), None, false);
+    ed.execute_keymap_command("half-page-down".into(), Count::UNTYPED, false);
 
     // The lone pane has the 80x25 terminal's 24 rows again.
     assert_eq!(ed.view.panes[pid].viewport.top().line.index(), 12);
@@ -252,14 +252,14 @@ fn half_page_after_rotate_scrolls_by_the_pane_s_new_share() {
     ed.execute_typed("split", None).unwrap();
     let pid = ed.view.focused_pane();
     let before = ed.pane_size(pid).height();
-    ed.execute_keymap_command("pane-rotate-forward".into(), None, false);
+    ed.execute_keymap_command("pane-rotate-forward".into(), Count::UNTYPED, false);
     let after = ed.pane_size(pid).height();
     assert_ne!(
         before, after,
         "setup: the rotation changes the pane's height"
     );
 
-    ed.execute_keymap_command("half-page-down".into(), None, false);
+    ed.execute_keymap_command("half-page-down".into(), Count::UNTYPED, false);
 
     assert_eq!(
         ed.view.panes[pid].viewport.top().line.index(),
@@ -277,7 +277,7 @@ fn half_page_after_split_scrolls_by_the_new_pane_height() {
         .focused_rect(ed.view.focused_layout())
         .height;
 
-    ed.execute_keymap_command("half-page-down".into(), None, false);
+    ed.execute_keymap_command("half-page-down".into(), Count::UNTYPED, false);
 
     assert_eq!(
         ed.view.panes[pid].viewport.top().line.index(),

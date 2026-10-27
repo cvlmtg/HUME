@@ -25,11 +25,11 @@ pub struct UndoNode {
 }
 
 /// A buffer's language as the editor stores it, and the origin of the write
-/// that asserted it (`None` when detection chose it or there is none).
+/// that asserted it (empty when detection chose it or there is none).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct StoredLanguage {
     pub name: Option<String>,
-    pub by: Option<hume_core::ConfigOrigin>,
+    pub by: hume_core::Claim<hume_core::BufferLanguageTie>,
 }
 
 /// Which form of a buffer's display path [`BufferHost::buffer_display_path`]

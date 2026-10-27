@@ -51,13 +51,17 @@ pub(super) fn grapheme_display(
         }
 
         hume_rope::width::Cluster::Plain { width, .. } => {
-            // Space and the invisible Unicode spaces (NBSP, ideographic
-            // space) are gated by the same `space` render mode. NBSP/
-            // ideographic space get a distinct glyph so a stray
-            // non-breaking space stands out from an ordinary one.
-            let content = if matches!(grapheme_str, " " | "\u{A0}" | "\u{3000}")
-                && should_render_whitespace(whitespace.space, is_trailing)
-            {
+            // A one-char blank cluster (`hume_core::is_space_char`; a tab is
+            // `Cluster::Tab`) is gated by the `space` render mode, and every
+            // blank but a space gets the nbsp glyph so a stray one stands out
+            // from an ordinary space. A blank carrying a combining mark draws
+            // as itself, so the mark stays visible.
+            let mut chars = grapheme_str.chars();
+            let blank = matches!(
+                (chars.next(), chars.next()),
+                (Some(ch), None) if hume_core::is_space_char(ch)
+            );
+            let content = if blank && should_render_whitespace(whitespace.space, is_trailing) {
                 let glyph = if grapheme_str == " " {
                     whitespace.space_char
                 } else {

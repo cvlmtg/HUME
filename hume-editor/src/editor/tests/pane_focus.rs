@@ -3,7 +3,6 @@ use crate::editor::commands::{
     FocusedPane, cmd_pane_focus_down, cmd_pane_focus_left, cmd_pane_focus_next,
     cmd_pane_focus_right, cmd_pane_focus_up, open_pane_in_layout,
 };
-use crate::editor::registry::Count;
 use hume_core::PaneId;
 use hume_engine::pipeline::{Direction, RenderContext};
 use hume_ops::MotionMode;
@@ -40,7 +39,7 @@ fn expect_focus(ed: &mut Editor, start: PaneId, expected: PaneId, cmd: Cmd) {
         &mut ed.state,
         &mut ed.view,
         fp,
-        Count::new(Some(1)),
+        Count::typed(1),
         MotionMode::Move,
     )
     .unwrap();
@@ -101,7 +100,7 @@ fn t4_pane_focus_next_cycles_dfs_order_and_wraps() {
             &mut ed.state,
             &mut ed.view,
             fp,
-            Count::new(Some(1)),
+            Count::typed(1),
             MotionMode::Move,
         )
         .unwrap();
@@ -119,7 +118,7 @@ fn t4_pane_focus_next_single_pane_is_noop() {
         &mut ed.state,
         &mut ed.view,
         fp,
-        Count::new(Some(1)),
+        Count::typed(1),
         MotionMode::Move,
     )
     .unwrap();
@@ -142,7 +141,7 @@ fn t4_directional_no_neighbour_is_noop() {
             &mut ed.state,
             &mut ed.view,
             fp,
-            Count::new(Some(1)),
+            Count::typed(1),
             MotionMode::Move,
         )
         .unwrap();

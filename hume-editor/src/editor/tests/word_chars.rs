@@ -109,7 +109,7 @@ fn select_word_nearest_on_line_follows_word_chars() {
     ed.state.settings.word_chars = "-".into();
     ed.execute_keymap_command(
         std::borrow::Cow::Borrowed("select-word-nearest-on-line"),
-        Some(1),
+        Count::typed(1),
         false,
     );
     assert_eq!(state(&ed), "-[foo-bar ]>baz\n");
@@ -133,7 +133,7 @@ fn select_word_nearest_on_line_follows_word_chars_across_a_wrapped_display_line(
     pin_wrap(&mut ed, hume_engine::pane::WrapMode::Indent { width: 12 });
     ed.execute_keymap_command(
         std::borrow::Cow::Borrowed("select-word-nearest-on-line"),
-        Some(1),
+        Count::typed(1),
         false,
     );
     assert_eq!(state(&ed), "hello world -[foo-bar]>\n");

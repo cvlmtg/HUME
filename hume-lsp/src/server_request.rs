@@ -11,9 +11,7 @@ use crate::codec::ResponseError;
 /// glue answers it separately (`apply_edit_request_response`) rather than
 /// through this pure lookup table.
 ///
-/// `settings` is the server's configured blob (if any); the caller resolves
-/// it from the registry keyed by server id, since this function has no
-/// editor state of its own.
+/// `settings` is the requesting server's spawned configuration blob, if any.
 pub fn server_request_response(
     method: &str,
     params: &serde_json::Value,

@@ -213,11 +213,7 @@ fn side_arg(val: SteelVal, ctx_name: &str) -> Result<Side, SteelErr> {
     let SteelVal::SymbolV(s) = val else {
         steel::stop!(Generic => "{}: must be a symbol, 'before or 'after", ctx_name);
     };
-    symbol_enum_arg(
-        &s,
-        ctx_name,
-        &[("before", Side::Before), ("after", Side::After)],
-    )
+    symbol_enum_arg(&s, ctx_name, &Side::NAMED)
 }
 
 const LINE_TEXT_SCOPE: &[&str] = &["line", "text", "scope"];

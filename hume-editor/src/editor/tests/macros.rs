@@ -674,7 +674,7 @@ fn macro_count_prefix_before_record_does_not_leak() {
     );
     // Count must be consumed/cleared.
     assert!(
-        ed.state.count.is_none(),
+        !ed.state.count.is_typed(),
         "count must be cleared after Q<reg> sequence"
     );
 
@@ -944,7 +944,7 @@ fn macro_ending_mid_read_keeps_its_change() {
              #:repeatable #t)
            (bind-key! 'normal "ctrl-x" "rd")"#,
     );
-    ed.state.macros.enqueue(&[key_ctrl('x')], 1);
+    ed.state.macros.enqueue(&[key_ctrl('x')], Count::typed(1));
     ed.drain_replay_queue();
     assert!(reading_char(&ed));
     ed.feed_key(key('z'));

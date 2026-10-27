@@ -97,7 +97,7 @@ fn a_reload_from_disk_keeps_an_asserted_language() {
 
     let buf = ed.state.buffers.get(ed.focused_buffer_id());
     assert_eq!(buf.language, ed.state.config.languages.id_of("notes"));
-    assert_eq!(buf.language_by, Some(hume_core::ConfigOrigin::User));
+    assert_eq!(buf.language_by.by(), Some(hume_core::ConfigOrigin::User));
 }
 
 // ── detect_and_set_language ───────────────────────────────────────────────────
@@ -213,7 +213,7 @@ fn open_buffer_then_set_buffer_language_in_one_eval_keeps_the_explicit_value() {
          detection would have found from the .rs extension"
     );
     assert!(
-        ed.state.buffers.get(bid).language_by.is_some(),
+        ed.state.buffers.get(bid).language_by.by().is_some(),
         "the buffer must be marked explicit, not left looking auto-detected"
     );
 }
@@ -265,8 +265,9 @@ fn language_option_parses_like_set_and_reads_back_a_queued_change() {
     );
 }
 
-/// `line-ending` reads back as a symbol and accepts a string or symbol
-/// through `set-buffer-option!`, the same funnel `:set buffer` uses.
+/// `line-ending` reads back as a string and is set from one through
+/// `set-buffer-option!`, which writes through the same funnel `:set buffer`
+/// uses.
 #[test]
 fn line_ending_option_round_trips_through_scripts() {
     let tmp = tempfile::tempdir().unwrap();

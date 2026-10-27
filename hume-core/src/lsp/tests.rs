@@ -25,3 +25,22 @@ fn feature_filter_only_and_except_admit_inversely() {
         assert!(FeatureFilter::All.admits(feature));
     }
 }
+
+#[test]
+fn feature_set_yields_its_members_in_declaration_order() {
+    let set: LspFeatureSet = [
+        LspFeature::CallHierarchy,
+        LspFeature::Hover,
+        LspFeature::Format,
+    ]
+    .into_iter()
+    .collect();
+    assert_eq!(
+        set.iter().collect::<Vec<_>>(),
+        [
+            LspFeature::Format,
+            LspFeature::Hover,
+            LspFeature::CallHierarchy
+        ]
+    );
+}

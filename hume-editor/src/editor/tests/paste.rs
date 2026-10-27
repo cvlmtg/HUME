@@ -1458,7 +1458,7 @@ fn plain_paste_with_an_empty_kill_ring_is_refused() {
             "paste-after",
             hume_core::PaneHandle::with_pane(bid, pid),
             NativeCall {
-                count: Some(1),
+                count: Count::typed(1),
                 ..NativeCall::default()
             },
         )

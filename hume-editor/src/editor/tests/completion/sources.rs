@@ -154,7 +154,7 @@ fn ctrl_space_outside_insert_mode_only_reports() {
         tmp.path(),
         &completion_source("test", &completion_labels(&["x"]), ""),
     );
-    ed.execute_keymap_command("completion-trigger".into(), None, false);
+    ed.execute_keymap_command("completion-trigger".into(), Count::UNTYPED, false);
     ed.settle();
     assert!(ed.state.input.buffer_completion().is_none());
     assert_eq!(status(&ed), "completion-trigger: only in Insert mode");
@@ -224,7 +224,7 @@ fn the_session_is_open_but_empty_until_the_source_answers() {
         .expect("open while pending");
     assert!(session.is_pending());
     assert!(session.is_empty());
-    ed.execute_keymap_command("answer".into(), None, false);
+    ed.execute_keymap_command("answer".into(), Count::UNTYPED, false);
     assert_eq!(labels(&ed), vec!["late"]);
 }
 
@@ -249,11 +249,38 @@ fn an_answer_to_a_superseded_invocation_is_dropped() {
              (completion-emit! (car calls) (list (hash "label" "fresh")))))"#,
     );
     trigger(&mut ed);
-    ed.execute_keymap_command("answer-first".into(), None, false);
+    ed.execute_keymap_command("answer-first".into(), Count::UNTYPED, false);
     assert_eq!(status(&ed), "dropped");
     assert!(labels(&ed).is_empty(), "the stale answer must not land");
-    ed.execute_keymap_command("answer-second".into(), None, false);
+    ed.execute_keymap_command("answer-second".into(), Count::UNTYPED, false);
     assert_eq!(labels(&ed), vec!["fresh"]);
+}
+
+/// `#f` for the id is a stale id like any other: the answer is dropped
+/// and the pending invocation keeps waiting for its own.
+#[test]
+fn an_answer_with_false_for_its_id_is_dropped() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    insert_with_script(
+        &mut ed,
+        tmp.path(),
+        r#"(register-completion-source! "test"
+             (lambda (id bid prefix) #t)
+             #:target 'buffer)
+           (define-command! "answer-false" "" (lambda ()
+             (log! 'info (if (completion-emit! #f (list (hash "label" "x")))
+                             "applied" "dropped"))))"#,
+    );
+    ed.execute_keymap_command("answer-false".into(), Count::UNTYPED, false);
+    assert_eq!(status(&ed), "dropped");
+    let session = ed
+        .state
+        .input
+        .buffer_completion()
+        .expect("open while pending");
+    assert!(session.is_pending());
+    assert!(session.is_empty());
 }
 
 /// A stale answer changes nothing (`session.contribute` returns `Ok(false)`
@@ -296,7 +323,7 @@ fn a_dropped_stale_answer_does_not_reset_the_selection() {
     assert_eq!(selected_row(&ed), 1, "sanity");
 
     // The stale first invocation's answer lands late.
-    ed.execute_keymap_command("answer-stale".into(), None, false);
+    ed.execute_keymap_command("answer-stale".into(), Count::UNTYPED, false);
     assert_eq!(status(&ed), "dropped");
     assert_eq!(
         selected_row(&ed),
@@ -338,7 +365,7 @@ fn a_landing_answer_resets_the_selection_to_row_zero() {
     assert_eq!(selected_row(&ed), 1, "sanity: moved off row 0");
 
     // b's answer is a fresh, still-latest contribution, not stale.
-    ed.execute_keymap_command("answer-b".into(), None, false);
+    ed.execute_keymap_command("answer-b".into(), Count::UNTYPED, false);
     assert_eq!(
         labels(&ed),
         vec!["zzz", "aaa", "abc"],
@@ -378,7 +405,7 @@ fn an_unrelated_error_leaves_a_buffer_request_waiting() {
             .any(|e| e.severity == Severity::Error && e.text.contains("boom")),
         "sanity: the timer raised"
     );
-    ed.execute_keymap_command("late".into(), None, false);
+    ed.execute_keymap_command("late".into(), Count::UNTYPED, false);
     assert_eq!(labels(&ed), vec!["late"]);
 }
 
@@ -400,7 +427,7 @@ fn a_second_final_answer_to_a_request_is_dropped() {
            (define-command! "again" "" (lambda ()
              (log! 'info (if (completion-emit! saved (list (hash "label" "z"))) "landed" "dropped"))))"#,
     );
-    ed.execute_keymap_command("again".into(), None, false);
+    ed.execute_keymap_command("again".into(), Count::UNTYPED, false);
     assert_eq!(status(&ed), "dropped");
     assert_eq!(labels(&ed), vec!["x", "y"]);
 }
@@ -425,7 +452,7 @@ fn an_answer_after_the_session_closed_is_dropped() {
         Mode::Normal,
         "sanity: Insert ended, session gone"
     );
-    ed.execute_keymap_command("late".into(), None, false);
+    ed.execute_keymap_command("late".into(), Count::UNTYPED, false);
     assert_eq!(status(&ed), "dropped");
     assert!(ed.state.input.buffer_completion().is_none());
 }
@@ -492,7 +519,7 @@ fn an_incomplete_source_is_reinvoked_on_each_keystroke() {
     ed.settle();
     ed.feed_key(key('o'));
     ed.settle();
-    ed.execute_keymap_command("report".into(), None, false);
+    ed.execute_keymap_command("report".into(), Count::UNTYPED, false);
     assert_eq!(status(&ed), "3", "one trigger call plus one per keystroke");
 }
 
@@ -504,7 +531,7 @@ fn a_complete_source_is_not_reinvoked_on_typing() {
     insert_with_script(&mut ed, tmp.path(), &counting_source("#f"));
     ed.feed_key(key('f'));
     ed.settle();
-    ed.execute_keymap_command("report".into(), None, false);
+    ed.execute_keymap_command("report".into(), Count::UNTYPED, false);
     assert_eq!(status(&ed), "1");
     assert_eq!(
         labels(&ed),
@@ -585,7 +612,7 @@ fn calls_after_typing(ed: &mut Editor) -> String {
     ed.settle();
     ed.feed_key(key('o'));
     ed.settle();
-    ed.execute_keymap_command("report".into(), None, false);
+    ed.execute_keymap_command("report".into(), Count::UNTYPED, false);
     status(ed).to_string()
 }
 
@@ -740,7 +767,7 @@ fn a_buffer_source_may_answer_in_parts() {
             .is_some_and(|s| s.is_pending())
     };
     assert!(pending(&ed));
-    ed.execute_keymap_command("last".into(), None, false);
+    ed.execute_keymap_command("last".into(), Count::UNTYPED, false);
     assert_eq!(labels(&ed), vec!["plain", "plainer"]);
     assert!(!pending(&ed));
 }
@@ -817,9 +844,9 @@ fn a_pending_source_is_reinvoked_after_an_edit_and_its_old_call_goes_stale() {
     );
     ed.feed_key(key('f'));
     ed.settle();
-    ed.execute_keymap_command("prefixes".into(), None, false);
+    ed.execute_keymap_command("prefixes".into(), Count::UNTYPED, false);
     assert_eq!(status(&ed), ",f", "the second call saw the typed \"f\"");
-    ed.execute_keymap_command("answer-old".into(), None, false);
+    ed.execute_keymap_command("answer-old".into(), Count::UNTYPED, false);
     assert_eq!(status(&ed), "dropped");
 }
 
@@ -886,7 +913,7 @@ fn top_carries_the_contributing_source_name() {
                  (log! 'info (hash-ref (car (completion-top 1)) "source"))))"#
         ),
     );
-    ed.execute_keymap_command("src".into(), None, false);
+    ed.execute_keymap_command("src".into(), Count::UNTYPED, false);
     assert_eq!(status(&ed), "test-source");
 }
 
@@ -967,7 +994,7 @@ fn ctrl_space_with_the_menu_up_reinvokes_and_keeps_the_session() {
     ed.feed_key(key_tab());
     trigger(&mut ed);
     assert_eq!(labels(&ed), vec!["foobar"]);
-    ed.execute_keymap_command("report".into(), None, false);
+    ed.execute_keymap_command("report".into(), Count::UNTYPED, false);
     assert_eq!(status(&ed), "2");
     assert_eq!(selected_row(&ed), 0, "a fresh layer starts at row 0");
 }

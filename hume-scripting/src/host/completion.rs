@@ -4,15 +4,17 @@
 //! plugin activation's registration is never applied.
 
 use crate::Callback;
-use hume_core::{AnswerEnd, FirstTab, MatchKind};
+use hume_core::{AnswerEnd, FirstTab, HostToken, MatchKind};
 
-/// `register-completion-source!`'s `#:target`: `'buffer` serves Insert
-/// mode (token: the identifier run before the cursor), `'minibuf` the `:`
-/// line (token: the whitespace-delimited argument the cursor is in).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CompletionSourceTarget {
-    Buffer,
-    Minibuf,
+hume_core::named_enum! {
+    /// `register-completion-source!`'s `#:target`: `'buffer` serves Insert
+    /// mode (token: the identifier run before the cursor), `'minibuf` the
+    /// `:` line (token: the whitespace-delimited argument the cursor is in).
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum CompletionSourceTarget {
+        Buffer => "buffer",
+        Minibuf => "minibuf",
+    }
 }
 
 /// A `(register-completion-source! …)` call, queued as an `Effect` for the
@@ -74,7 +76,8 @@ pub trait CompletionHost {
     /// Returns whether the answer applied: `false` when no source in the
     /// open session still owes an answer to `id` (superseded by a later
     /// keystroke, already answered with an `end` of [`AnswerEnd::Final`],
-    /// or the session was replaced or dismissed): expected-normal for a
+    /// the session was replaced or dismissed, or `id` is
+    /// [`HostToken::NONE`], a script's `#f`): expected-normal for a
     /// late async source, never an error. `Err` for a
     /// part that is neither an item nor a response, a caller error, not
     /// dropped.
@@ -82,7 +85,7 @@ pub trait CompletionHost {
     /// `word` is for a `'minibuf` source only, `Err` from a `'buffer` one.
     fn completion_emit(
         &mut self,
-        id: u64,
+        id: HostToken,
         parts: Vec<crate::json::JsonHandle>,
         incomplete: bool,
         end: AnswerEnd,

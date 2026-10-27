@@ -7,7 +7,7 @@ use super::*;
 fn increment_steps_by_the_count() {
     let mut ed = editor_from("-[x]> 9\n");
 
-    call_counted(&mut ed, "increment", Some(3));
+    call_counted(&mut ed, "increment", Count::typed(3));
 
     assert_eq!(state(&ed), "x -[12]>\n");
 }
@@ -16,7 +16,7 @@ fn increment_steps_by_the_count() {
 fn no_count_steps_by_one() {
     let mut ed = editor_from("-[x]> 9\n");
 
-    call_counted(&mut ed, "increment", None);
+    call_counted(&mut ed, "increment", Count::UNTYPED);
 
     assert_eq!(state(&ed), "x -[10]>\n");
 }
@@ -25,7 +25,7 @@ fn no_count_steps_by_one() {
 fn decrement_steps_down_by_the_count() {
     let mut ed = editor_from("-[1]>0\n");
 
-    call_counted(&mut ed, "decrement", Some(4));
+    call_counted(&mut ed, "decrement", Count::typed(4));
 
     assert_eq!(state(&ed), "-[6]>\n");
 }
@@ -34,7 +34,7 @@ fn decrement_steps_down_by_the_count() {
 fn increment_sequence_steps_the_nth_selection_n_times_the_count() {
     let mut ed = editor_from("-{1}>\n-[1]>\n-[1]>\n");
 
-    call_counted(&mut ed, "increment-sequence", Some(2));
+    call_counted(&mut ed, "increment-sequence", Count::typed(2));
 
     assert_eq!(state(&ed), "-{3}>\n-[5]>\n-[7]>\n");
 }
@@ -43,7 +43,7 @@ fn increment_sequence_steps_the_nth_selection_n_times_the_count() {
 fn decrement_sequence_steps_the_nth_selection_down_n_times_the_count() {
     let mut ed = editor_from("-{9}>\n-[9]>\n");
 
-    call_counted(&mut ed, "decrement-sequence", None);
+    call_counted(&mut ed, "decrement-sequence", Count::UNTYPED);
 
     assert_eq!(state(&ed), "-{8}>\n-[7]>\n");
 }
@@ -51,7 +51,7 @@ fn decrement_sequence_steps_the_nth_selection_down_n_times_the_count() {
 #[test]
 fn an_increment_is_one_undo_step() {
     let mut ed = editor_from("-{1}>\n-[2]>\n");
-    call_counted(&mut ed, "increment", None);
+    call_counted(&mut ed, "increment", Count::UNTYPED);
     assert_eq!(state(&ed), "-{2}>\n-[3]>\n", "premise: the increment edits");
 
     ed.handle_key(key('u'));
@@ -64,7 +64,7 @@ fn no_target_refuses_and_records_no_revision() {
     let mut ed = editor_from("-[x]>\n");
     let bid = ed.focused_buffer_id();
 
-    call_counted(&mut ed, "increment", None);
+    call_counted(&mut ed, "increment", Count::UNTYPED);
 
     assert_eq!(state(&ed), "-[x]>\n");
     assert_eq!(
@@ -79,7 +79,7 @@ fn a_result_out_of_range_refuses_and_records_no_revision() {
     let mut ed = editor_from("-[9]>999-12-31\n");
     let bid = ed.focused_buffer_id();
 
-    call_counted(&mut ed, "increment", None);
+    call_counted(&mut ed, "increment", Count::UNTYPED);
 
     assert_eq!(state(&ed), "-[9]>999-12-31\n");
     assert_eq!(ed.state.status_msg.as_deref(), Some("Result out of range"));
@@ -114,7 +114,7 @@ fn a_read_only_buffer_refuses_the_increment() {
     assert!(ed.doc().is_read_only());
     let before = ed.doc().text().to_string();
 
-    call_counted(&mut ed, "increment", None);
+    call_counted(&mut ed, "increment", Count::UNTYPED);
 
     assert_eq!(ed.doc().text().to_string(), before);
     assert_eq!(status(&ed), read_only_refusal(&ed));

@@ -35,11 +35,14 @@
 - New `buffer-char-count` returns a buffer's length in characters.
 - `plugin-config` and `plugin-dir` work in a plugin's commands, hooks and callbacks, not only in its body.
 - `completion-emit!` takes `#:more #t` to answer a request in parts.
+- `completion-emit!` with `#f` for its id returns `#f`, as for an out-of-date request, instead of raising.
 - `register-completion-source!` takes `#:cancel`, so a source can stop the work it started for a request HUME no longer waits on.
 - `set-cwd!` works from `init.scm` too.
+- `set-option!` and `get-option` name `language` and `line-ending` as per-buffer options instead of reporting an unknown setting: use `set-buffer-option!` and `get-buffer-option` for them.
 - New `find-program` looks a program up on the `PATH` HUME started with, and `remove-dir!` deletes a directory tree without the time it takes counting against the script budget.
 - A grammar `register-grammar!` registers from `init.scm` that can't be loaded is reported in `:messages` when a file or an embedded block first needs it, not at startup.
 - An error from a HUME function starts with the name you called it by, once, and names the argument at fault.
+- `.` passes a `#:repeatable` command the same `count` its first run got, `0` when no count was typed.
 
 ### Fixes
 - `:lsp-install` refuses a server archive with a symbolic link that points outside the server's directory.

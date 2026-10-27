@@ -14,7 +14,7 @@ fn with_probe(ed: &mut Editor, body: &str) {
 }
 
 fn run_probe(ed: &mut Editor) {
-    ed.execute_keymap_command("probe".into(), Some(1), false);
+    ed.execute_keymap_command("probe".into(), Count::typed(1), false);
 }
 
 fn probe(ed: &mut Editor, body: &str) {
@@ -93,7 +93,7 @@ fn call_replace_without_a_char_raises() {
 #[test]
 fn replace_dispatched_without_a_char_reads_the_next_key() {
     let mut ed = editor_from("-[h]>ello\n");
-    ed.execute_keymap_command("replace".into(), Some(1), false);
+    ed.execute_keymap_command("replace".into(), Count::typed(1), false);
     ed.feed_key(key('x'));
     assert_eq!(text(&ed), "xello\n");
 }
@@ -353,7 +353,7 @@ fn a_pattern_read_with_prompt_runs_the_search() {
                (prompt! pane "search:"
                  (lambda (pat) (when pat (call! "search-forward" pane pat))))))"#,
     );
-    ed.execute_keymap_command("search-prompt".into(), Some(1), false);
+    ed.execute_keymap_command("search-prompt".into(), Count::typed(1), false);
     type_keys(&mut ed, "wor");
     ed.feed_key(key_enter());
     ed.settle();

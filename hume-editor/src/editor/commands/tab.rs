@@ -16,7 +16,7 @@
 //! `-right`/`-up`/`-down` (which also change the focused pane) carry no `.jump()`
 //! either, while buffer-switch commands (which keep the same pane) do.
 
-use crate::editor::registry::Count;
+use hume_core::Count;
 use hume_engine::pipeline::{Cycle, EngineView};
 use hume_ops::MotionMode;
 

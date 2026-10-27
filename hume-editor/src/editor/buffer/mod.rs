@@ -6,7 +6,7 @@ use super::search::{SearchMatches, SearchPattern};
 use crate::editor::edit_session::EditGroup;
 use crate::editor::position_stores::PositionStores;
 use crate::editor::settings::BufferOverrides;
-use hume_core::{BufferId, ConfigOrigin, PaneId, Tie};
+use hume_core::{BufferId, BufferLanguageTie, Claim, ConfigOrigin, LaterWins, PaneHandle, PaneId};
 use hume_editing::changeset::{ChangeSet, changesets_from_line_diff};
 use hume_editing::edit::{Edited, TextChange};
 use hume_editing::history::{History, RevisionId};
@@ -48,36 +48,15 @@ use hume_treesitter::layers::SyntaxLayers;
 use hume_treesitter::registry::LanguageId;
 use hume_treesitter::syntax::Syntax;
 
-/// A read-only view the editor itself opens. Its name is reserved:
-/// [`ViewLabel::named`] refuses it.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(in crate::editor) enum EditorView {
-    Messages,
-    PluginStatus,
-    LspStatus,
-}
-
-/// Generates `EditorView::name`'s match and `EditorView::ALL` from one
-/// list, so a variant missing from `ALL` is also missing from `name`'s
-/// match and fails to compile.
-macro_rules! editor_views {
-    ($($variant:ident => $name:literal),+ $(,)?) => {
-        impl EditorView {
-            const ALL: &[Self] = &[$(Self::$variant),+];
-
-            fn name(self) -> &'static str {
-                match self {
-                    $(Self::$variant => $name,)+
-                }
-            }
-        }
-    };
-}
-
-editor_views! {
-    Messages => "messages",
-    PluginStatus => "plugin-status",
-    LspStatus => "lsp-status",
+hume_core::named_enum! {
+    /// A read-only view the editor itself opens. Its name is reserved:
+    /// [`ViewLabel::named`] refuses it.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub(in crate::editor) enum EditorView {
+        Messages => "messages",
+        PluginStatus => "plugin-status",
+        LspStatus => "lsp-status",
+    }
 }
 
 /// The label of a read-only view buffer, `[name]`. A plugin's view can
@@ -95,7 +74,7 @@ impl ViewLabel {
         if name.is_empty() {
             return Err("the name must not be empty".into());
         }
-        if EditorView::ALL.iter().any(|v| v.name() == name) {
+        if EditorView::from_name(name).is_some() {
             return Err(format!("[{name}] is one of the editor's own views"));
         }
         Ok(Self::bracketed(name))
@@ -144,9 +123,6 @@ enum Origin {
     /// `[messages]`, named by its label in the statusline and `:ls`.
     View(ViewLabel),
 }
-
-/// A line-ending write from one origin replaces the earlier one.
-const LINE_ENDING_TIE: Tie = Tie::LaterWins;
 
 /// Content-only document: text, undo history, search state, and per-buffer overrides.
 ///
@@ -199,15 +175,16 @@ pub(crate) struct Buffer {
     /// `None` for unrecognised filetypes and scratch buffers.
     pub(crate) language: Option<LanguageId>,
     /// The origin of the `:set buffer language=` or `set-buffer-option!`
-    /// `"language"` write that set `language`, `None` when detection did. A
+    /// `"language"` write that set `language`, empty when detection did. A
     /// later write from a lower origin leaves it, and detection never
     /// replaces it. `:reload-config`'s reset reads this (before clearing it)
     /// to restore the assertion, with its origin, across the reload instead
     /// of letting re-detection pick something else. See `clear_languages_all`.
-    pub(in crate::editor) language_by: Option<ConfigOrigin>,
+    pub(in crate::editor) language_by: Claim<BufferLanguageTie>,
     /// The origin of the `line-ending` write that set the text's line
-    /// ending, `None` when the text it came with decided it.
-    line_ending_by: Option<ConfigOrigin>,
+    /// ending, empty when the text it came with decided it. A line-ending
+    /// write from one origin replaces the earlier one.
+    line_ending_by: Claim<LaterWins>,
     /// The text generation most recently announced as an `on-text-changed`
     /// event. `Buffer` cannot reach the event queue (it holds no
     /// `EditorState`), so the hook is raised by diffing this against the
@@ -322,8 +299,8 @@ impl Buffer {
             search_scans: 0,
             overrides: BufferOverrides::default(),
             language: None,
-            language_by: None,
-            line_ending_by: None,
+            language_by: Claim::default(),
+            line_ending_by: Claim::default(),
             announced_generation,
             announced_history,
             syntax: None,
@@ -420,7 +397,7 @@ impl Buffer {
         self.saved_line_ending = text.line_ending();
         self.search_pattern = None;
         self.search_matches = SearchMatches::default();
-        self.install(id, stores, text, Change::Replace, None);
+        self.install(PaneHandle::buffer_only(id), stores, text, Change::Replace);
     }
 
     /// `true` when the buffer blocks user edits.
@@ -483,11 +460,10 @@ impl Buffer {
     /// every store is retagged while nothing that orders texts sees a change.
     fn install(
         &mut self,
-        id: BufferId,
+        target: PaneHandle,
         stores: &mut PositionStores<'_>,
         text: BufferText,
         change: Change<'_>,
-        acting: Option<PaneId>,
     ) {
         assert!(!self.is_busy(), "install: a held buffer's text changed");
         let relabel = text.generation() == self.text.generation();
@@ -506,9 +482,11 @@ impl Buffer {
                 if !relabel && let Some(syn) = self.syntax.as_mut() {
                     syn.record_edit(&change);
                 }
-                stores.carry(id, &change, acting);
+                stores.carry(target, &change);
             }
-            Change::Replace => stores.reset(id, || crate::editor::pane_state::fresh_from_buf(self)),
+            Change::Replace => stores.reset(target.buffer(), || {
+                crate::editor::pane_state::fresh_from_buf(self)
+            }),
         }
     }
 
@@ -605,7 +583,7 @@ impl Buffer {
         // `install` entirely rather than change the version (and fire
         // `on-text-changed` plus a spurious tree-sitter reparse) for a no-op.
         // Nothing is recorded, as there is nothing to undo to.
-        self.line_ending_by = None;
+        self.line_ending_by = Claim::default();
         if forward.is_identity() {
             self.adopt_line_ending(new_text.line_ending());
             return false;
@@ -626,11 +604,10 @@ impl Buffer {
             |stores: &PositionStores<'_>| stores.panes.seeded(focused, id).selections().clone();
         let pre_sels = recorded(stores);
         self.install(
-            id,
+            PaneHandle::buffer_only(id),
             stores,
             replaced.with_line_ending(new_text.line_ending()),
             Change::Edit(&forward),
-            None,
         );
         let post_sels = recorded(stores);
         self.record_revision(forward, inverse, pre_sels, post_sels);
@@ -674,10 +651,7 @@ impl Buffer {
         by: ConfigOrigin,
     ) -> Result<bool, String> {
         self.check_text_change()?;
-        if !by
-            .claim(&mut self.line_ending_by, LINE_ENDING_TIE)
-            .is_applied()
-        {
+        if !self.line_ending_by.claim(by).is_applied() {
             return Ok(false);
         }
         self.adopt_line_ending(line_ending);
@@ -765,13 +739,12 @@ impl Buffer {
     /// Takes `sels` (the acting pane's current selections) by value and returns
     /// the post-edit selections + the forward `ChangeSet` (for the syntax and
     /// LSP streams); `install` carries every stored position through it.
-    /// `acting` is `None` for an edit no pane owns: `sels` is then only what
+    /// For a `target` with no pane, an edit no pane owns, `sels` is only what
     /// the revision records, and every pane's stored selections are carried.
     pub(crate) fn apply_edit(
         &mut self,
-        id: BufferId,
+        target: PaneHandle,
         stores: &mut PositionStores<'_>,
-        acting: Option<PaneId>,
         sels: SelectionSet,
         cmd: impl FnOnce(EditState) -> Edited,
     ) -> (SelectionSet, ChangeSet) {
@@ -791,7 +764,7 @@ impl Buffer {
         let post_text = post.text().clone();
         let post_sels = post.into_selections();
         self.record_revision(cs.clone(), inverse_cs, pre_sels, post_sels.clone());
-        self.install(id, stores, post_text, Change::Edit(&cs), acting);
+        self.install(target, stores, post_text, Change::Edit(&cs));
         (post_sels, cs)
     }
 
@@ -817,7 +790,12 @@ impl Buffer {
         if cs.is_identity() {
             return (new_sels, cs);
         }
-        self.install(id, stores, new_text, Change::Edit(&cs), Some(acting));
+        self.install(
+            PaneHandle::with_pane(id, acting),
+            stores,
+            new_text,
+            Change::Edit(&cs),
+        );
         (new_sels, cs)
     }
 
@@ -858,11 +836,10 @@ impl Buffer {
             .into_parts();
         if post.text().version() != self.text.version() {
             self.install(
-                id,
+                PaneHandle::with_pane(id, acting),
                 stores,
                 post.text().clone(),
                 Change::Edit(&cs),
-                Some(acting),
             );
         }
         (post.into_selections(), cs, new_cs)
@@ -952,7 +929,12 @@ impl Buffer {
         let new_sels = landed.into_selections();
         let cs = txn.into_changes();
         if new_text.version() != self.text.version() {
-            self.install(id, stores, new_text, Change::Edit(&cs), Some(acting));
+            self.install(
+                PaneHandle::with_pane(id, acting),
+                stores,
+                new_text,
+                Change::Edit(&cs),
+            );
         }
         Some((new_sels, cs, steps))
     }

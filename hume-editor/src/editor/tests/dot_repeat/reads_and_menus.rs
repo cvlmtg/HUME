@@ -37,7 +37,7 @@ fn record_rd(body: &str, keys: &[KeyEvent]) -> Editor {
         "-[h]>ello\nworld\n",
         &format!(r#"(define-command! "rd" "" (lambda (pane) {body}) #:repeatable #t)"#),
     );
-    ed.execute_keymap_command("rd".into(), Some(1), false);
+    ed.execute_keymap_command("rd".into(), Count::typed(1), false);
     ed.settle();
     for &k in keys {
         ed.feed_key(k);
@@ -81,7 +81,7 @@ fn reload_drops_a_pending_reads_hold_on_the_change() {
         "-[h]>ello\nworld\n",
         r#"(define-command! "rd" "" (lambda (pane) (on-next-char! (lambda (c) (+ 1 0)))) #:repeatable #t)"#,
     );
-    ed.execute_keymap_command("rd".into(), Some(1), false);
+    ed.execute_keymap_command("rd".into(), Count::typed(1), false);
     ed.settle();
     assert!(reading_char(&ed));
     ed.reset_config_state();
@@ -162,7 +162,7 @@ fn dot_refuses_a_read_the_recording_has_no_answer_for() {
                    (when (> runs 1) (on-next-char! (lambda (d) (+ 1 0)))))))
              #:repeatable #t)"#,
     );
-    ed.execute_keymap_command("rd".into(), Some(1), false);
+    ed.execute_keymap_command("rd".into(), Count::typed(1), false);
     ed.feed_key(key('z'));
     ed.settle();
     select_marked(&mut ed, "zello\n-[w]>orld\n");
@@ -417,7 +417,7 @@ fn a_drawer_pick_is_no_part_of_the_commands_change() {
                  (lambda (idx tok) (when idx (call! "delete" pane)))))
              #:repeatable #t)"#,
     );
-    ed.execute_keymap_command("dr".into(), Some(1), false);
+    ed.execute_keymap_command("dr".into(), Count::typed(1), false);
     ed.settle();
     assert!(ed.state.input.drawer().is_some(), "sanity: drawer open");
     assert_eq!(ed.doc().text().to_string(), "xello\nworld\n");
@@ -443,7 +443,7 @@ fn dot_refuses_a_menu_choice_missing_from_the_rerun_menu() {
                (set! items (list "three")))
              #:repeatable #t)"#,
     );
-    ed.execute_keymap_command("rd".into(), Some(1), false);
+    ed.execute_keymap_command("rd".into(), Count::typed(1), false);
     ed.settle();
     ed.feed_key(key('j'));
     ed.feed_key(key_enter());

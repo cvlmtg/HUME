@@ -14,11 +14,11 @@
 //! (`rank`) stays here in Rust and only a source flagged `isIncomplete` is
 //! called again as the user types.
 
-use hume_core::{AnswerEnd, BufferId, PaneId, Severity};
+use hume_core::{AnswerEnd, BufferId, HostToken, PaneId, Severity};
 use hume_engine::pipeline::EngineView;
 use hume_rope::offset::CharOffset;
 use hume_scripting::SteelCall;
-use hume_scripting::host::EmittedWord;
+use hume_scripting::host::{EmittedWord, token_to_steel};
 use steel::rvals::SteelVal;
 
 use super::registry::{BufferSourceId, MinibufBody, MinibufSourceId, SourceRegistry};
@@ -447,7 +447,7 @@ impl EditorState {
     pub(in crate::editor) fn contribute(
         &mut self,
         view: &EngineView,
-        id: u64,
+        id: HostToken,
         items: Vec<CompletionItem>,
         incomplete: bool,
         end: AnswerEnd,
@@ -501,7 +501,7 @@ impl EditorState {
     /// that owed it, without its "no completions" report: the user asked,
     /// but the source failed. A no-op when no open session owes an answer
     /// to `id`.
-    pub(in crate::editor) fn end_completion_request(&mut self, view: &EngineView, id: u64) {
+    pub(in crate::editor) fn end_completion_request(&mut self, view: &EngineView, id: HostToken) {
         if let Some(session) = self.input.buffer_completion_mut() {
             if session.end_request(id) {
                 self.settle_buffer_completion(view, false);
@@ -578,7 +578,7 @@ fn invoke_buffer_sources(
     ids: &[BufferSourceId],
     (pid, bid): (PaneId, BufferId),
     head: CharOffset,
-) -> Vec<(u64, SteelCall)> {
+) -> Vec<(HostToken, SteelCall)> {
     let buf = buffers.get(bid);
     let text = buf.text();
     let word_chars = buf.overrides.word_chars(settings);
@@ -593,7 +593,7 @@ fn invoke_buffer_sources(
             let call = SteelCall::new(
                 entry.proc.clone(),
                 vec![
-                    SteelVal::IntV(invocation_id as isize),
+                    token_to_steel(invocation_id),
                     hume_scripting::SteelPane::new(pane).into_steel_val(),
                     SteelVal::StringV(prefix.into()),
                 ],
@@ -629,7 +629,7 @@ fn invoke_minibuf_source(
     input: &str,
     cursor: usize,
     floor: usize,
-) -> Option<(u64, SteelCall)> {
+) -> Option<(HostToken, SteelCall)> {
     let entry = sources.minibuf_get(id);
     let arg = || {
         let span = arg_span(input, cursor, ' ', &[' ']);
@@ -654,7 +654,7 @@ fn invoke_minibuf_source(
             let call = SteelCall::new(
                 proc.clone(),
                 vec![
-                    SteelVal::IntV(invocation_id as isize),
+                    token_to_steel(invocation_id),
                     SteelVal::StringV(input.into()),
                     SteelVal::IntV(cursor_chars as isize),
                 ],

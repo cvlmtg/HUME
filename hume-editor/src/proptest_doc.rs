@@ -16,7 +16,7 @@ use proptest::prelude::*;
 use crate::editor::buffer::Buffer;
 use crate::editor::position_stores::DetachedStores;
 use crate::editor::tests::co;
-use hume_core::{BufferId, PaneId};
+use hume_core::{BufferId, PaneHandle, PaneId};
 use hume_editing::edit::Edited;
 use hume_editing::selection::{EditView, SelectionSet};
 use hume_editing::state::EditState;
@@ -55,9 +55,8 @@ impl DocHelper {
     }
     fn apply_edit(&mut self, cmd: impl FnOnce(EditState) -> Edited) {
         let (new_sels, _cs) = self.buf.apply_edit(
-            BufferId::default(),
+            PaneHandle::with_pane(BufferId::default(), PaneId::default()),
             &mut DetachedStores::default().stores(),
-            Some(PaneId::default()),
             self.sels.clone(),
             cmd,
         );
