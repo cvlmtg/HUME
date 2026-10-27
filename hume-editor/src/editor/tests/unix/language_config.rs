@@ -648,7 +648,7 @@ fn init_option_beats_a_plugin_activated_later_and_fires_no_change() {
             "{DECLARE_TSX_PLUGIN}\n\
              (set-option! \"indent-width\" 2)\n\
              (register-hook! 'on-option-change\n\
-               (lambda (key value) (log! 'warn (string-append \"changed:\" key))))"
+               (lambda (key value) (log! 'warning (string-append \"changed:\" key))))"
         ),
         r#"(set-option! "indent-width" 8)"#,
     );
@@ -873,7 +873,7 @@ fn a_plugins_unregister_leaves_the_users_registration_and_the_probe_agrees() {
     let (mut ed, _fixture) = boot_tsx(
         &format!("{DECLARE_TSX_PLUGIN}\n(register-lsp-server! \"tsls\" #:command \"user-tsls\")"),
         r#"(unregister-lsp-server! "tsls")
-           (log! 'warn (if (lsp-server-registered? "tsls") "probe:registered" "probe:gone"))"#,
+           (log! 'warning (if (lsp-server-registered? "tsls") "probe:registered" "probe:gone"))"#,
     );
 
     open_as_tsx(&mut ed);

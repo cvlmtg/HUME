@@ -435,7 +435,7 @@ fn set_attachment_hook_triggers_fires_for_that_buffer_only() {
         r#"(register-hook! 'on-lsp-attach (lambda (pane server)
              (when (equal? (get-buffer-option pane "language") "rust")
                (set-attachment-hook-triggers! "test" pane server 'diagnostics '(".")))))
-           (register-hook! 'on-trigger-char (lambda (pane ch source) (log! 'warn source)))"#,
+           (register-hook! 'on-trigger-char (lambda (pane ch source) (log! 'warning source)))"#,
         answering_initialize(),
     );
     rig.ed.drain_lsp();
@@ -596,7 +596,7 @@ fn attachment_triggers_vanish_when_the_server_stops() {
         &tmp,
         r#"(register-hook! 'on-lsp-attach (lambda (pane server)
              (set-attachment-hook-triggers! "test" pane server 'diagnostics '("."))))
-           (register-hook! 'on-trigger-char (lambda (pane ch source) (log! 'warn source)))"#,
+           (register-hook! 'on-trigger-char (lambda (pane ch source) (log! 'warning source)))"#,
         answering_initialize(),
     );
     rig.ed.drain_lsp();
@@ -627,7 +627,7 @@ fn a_filter_change_clears_the_attachments_triggers_and_refires_attach() {
     let mut rig = starting_rig(
         &tmp,
         r#"(register-hook! 'on-lsp-attach (lambda (pane server)
-             (log! 'warn "attach")
+             (log! 'warning "attach")
              (when (member server (lsp-servers pane #:feature 'hover))
                (set-attachment-hook-triggers! "test" pane server 'diagnostics '(".")))))"#,
         backend,

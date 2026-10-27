@@ -68,7 +68,7 @@
       (lambda (name)
         (let ((shadowed (plum/theme-owned-elsewhere name slug)))
           (unless (null? shadowed)
-            (log! 'warn (string-append "PLUM: " slug "'s theme \"" name "\" shadows the same "
+            (log! 'warning (string-append "PLUM: " slug "'s theme \"" name "\" shadows the same "
                                        "name from " (string-join shadowed ", ")))))
         (call! "stdlib/write-file!"
                (path-join (plum/themes-dir) (string-append name ".toml"))

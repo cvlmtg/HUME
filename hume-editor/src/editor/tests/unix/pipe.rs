@@ -789,7 +789,7 @@ fn calling_cancel_pipe_says_whether_it_stopped_a_run() {
         r#"(define-command! "stopper" "" (lambda (pane)
              (let* ((first (call! "cancel-pipe" pane))
                     (second (call! "cancel-pipe" pane)))
-               (log! 'warn (if (and first (not second)) "stopped once" "wrong")))))"#,
+               (log! 'warning (if (and first (not second)) "stopped once" "wrong")))))"#,
     );
     ed.execute_keymap_command("stopper".into(), None, false);
     assert!(!busy(&ed, bid));

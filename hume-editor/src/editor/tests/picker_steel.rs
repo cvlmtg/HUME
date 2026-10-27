@@ -882,7 +882,7 @@ fn live_picker_rapid_keystrokes_collapse_to_one_trailing_source_call_with_the_la
         r#"(define-typed-command! "go" "" (lambda (pane)
              (live-picker! pane (lambda (x) (void))
                #:debounce-ms 0
-               #:source (picker-command-source (lambda (q) (log! 'warn (string-append "fired:" q)) #f)))))"#,
+               #:source (picker-command-source (lambda (q) (log! 'warning (string-append "fired:" q)) #f)))))"#,
     );
     type_cmd(&mut ed, ":go");
 
@@ -916,7 +916,7 @@ fn live_picker_backspace_to_empty_cancels_a_pending_nonempty_spawn() {
              (live-picker! pane (lambda (x) (void))
                #:debounce-ms 0
                #:source (picker-command-source (lambda (q)
-                 (unless (equal? q "") (log! 'warn (string-append "spawned:" q)))
+                 (unless (equal? q "") (log! 'warning (string-append "spawned:" q)))
                  #f)))))"#,
     );
     type_cmd(&mut ed, ":go");

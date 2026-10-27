@@ -145,13 +145,13 @@ menu and `git-diff`'s fetch/diff pipeline both follow this.
 
 ### Log severity
 
-`log!` supports `'error`/`'warn`/`'info`/`'trace`. Route by how actionable the failure is
+`log!` supports `'error`/`'warning`/`'info`/`'trace`. Route by how actionable the failure is
 to the user, not by how verbose the plugin author wants to be:
 
 - `'error`: the operation couldn't run (a required tool is missing, a process
   failed to start at all), or a typed argument names nothing the command can act on (an
   unknown name, a bad ref, an invalid or path-traversal name).
-- `'warn`: something worth a persistent record that the user did not just ask for: an
+- `'warning`: something worth a persistent record that the user did not just ask for: an
   unsafe name from a catalog or remote source, an orphan directory.
 - `'trace`: an expected, common failure that would otherwise fill `:messages` for every
   buffer that never opted into the feature (e.g. `git cat-file` failing for a buffer with no

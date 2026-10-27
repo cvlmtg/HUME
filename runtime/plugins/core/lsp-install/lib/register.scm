@@ -40,10 +40,10 @@
           (let ((receipt (lsp-install/read-receipt name)))
             (cond
               ((not receipt)
-               (log! 'warn (string-append "LSP: interrupted install of " name
+               (log! 'warning (string-append "LSP: interrupted install of " name
                                           " — run :lsp-install to redo, or delete the directory")))
               ((not (lsp-install/seeded-server? name))
-               (log! 'warn (string-append "LSP: orphan server " name
+               (log! 'warning (string-append "LSP: orphan server " name
                                           " — not in the seeded catalog, run :lsp-uninstall to remove")))
               (else
                (lsp-install/register-server!

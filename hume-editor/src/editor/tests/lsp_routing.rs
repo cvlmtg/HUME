@@ -53,14 +53,14 @@ fn hover_caps() -> serde_json::Value {
 /// `ok:<answer>`, where a string answer shows as itself, `null` as `null`
 /// and anything else as `json`.
 const LOG_ONE: &str = r#"(lambda (err res)
-  (log! 'warn (if err
+  (log! 'warning (if err
                   (string-append "err:" (hash-ref err 'message))
                   (string-append "ok:" (cond ((string? res) res) ((void? res) "null") (else "json"))))))"#;
 
 /// A callback logging `(err results)` as one Warning: each server's name
 /// and its error or answer, shown as [`LOG_ONE`] shows it, in order.
 const LOG_ALL: &str = r#"(lambda (err results)
-  (log! 'warn
+  (log! 'warning
     (if err
         (string-append "err:" (hash-ref err 'message))
         (apply string-append
@@ -96,9 +96,9 @@ fn lsp_servers_filters_by_capability_and_filter() {
     );
 
     rig.probe(
-        r#"(log! 'warn (to-string (map lsp-server-name (lsp-servers pane #:feature 'hover))))"#,
+        r#"(log! 'warning (to-string (map lsp-server-name (lsp-servers pane #:feature 'hover))))"#,
     );
-    rig.probe(r#"(log! 'warn (to-string (map lsp-server-name (lsp-servers pane))))"#);
+    rig.probe(r#"(log! 'warning (to-string (map lsp-server-name (lsp-servers pane))))"#);
 
     assert_eq!(
         rig.warnings(),
@@ -195,7 +195,7 @@ fn lsp_servers_narrows_a_feature_by_method() {
     );
 
     rig.probe(
-        r#"(log! 'warn (to-string (map lsp-server-name
+        r#"(log! 'warning (to-string (map lsp-server-name
              (lsp-servers pane #:method "textDocument/rangeFormatting"))))"#,
     );
 
@@ -215,7 +215,7 @@ fn lsp_servers_accepts_a_method_alone() {
     );
 
     rig.probe(
-        r#"(log! 'warn (to-string (map lsp-server-name (lsp-servers pane #:method "textDocument/hover"))))"#,
+        r#"(log! 'warning (to-string (map lsp-server-name (lsp-servers pane #:method "textDocument/hover"))))"#,
     );
 
     assert_eq!(rig.warnings(), vec![r#"("ra-lint")"#.to_string()]);
@@ -228,8 +228,8 @@ fn lsp_servers_excludes_starting_when_feature_given() {
     let mut rig = LspRig::open(tmp.path(), spec("-[f]>n main() {}\n"), backend);
 
     rig.probe(
-        r#"(log! 'warn (to-string (map lsp-server-name (lsp-servers pane))))
-           (log! 'warn (to-string (lsp-servers pane #:feature 'hover)))"#,
+        r#"(log! 'warning (to-string (map lsp-server-name (lsp-servers pane))))
+           (log! 'warning (to-string (lsp-servers pane #:feature 'hover)))"#,
     );
 
     assert_eq!(
@@ -253,7 +253,7 @@ fn lsp_servers_rejects_an_unknown_feature() {
         ),
     );
 
-    rig.probe(r#"(log! 'warn (to-string (lsp-servers pane #:feature 'hovering)))"#);
+    rig.probe(r#"(log! 'warning (to-string (lsp-servers pane #:feature 'hovering)))"#);
 
     assert!(rig.warnings().is_empty());
     let log = rig.ed.state.message_log.format_for_display();
@@ -561,7 +561,7 @@ fn all_stale_anchor_drops_whole_delivery_and_releases_tracked() {
     assert!(rig.warnings().is_empty());
     assert_eq!(rig.ed.state.lsp.delivery_count_for_test(), 0);
     assert_eq!(rig.ed.state.lsp.callback_count_for_test(), 0);
-    rig.probe(r#"(log! 'warn (if (tracked-position-params *tok*) "held" "released"))"#);
+    rig.probe(r#"(log! 'warning (if (tracked-position-params *tok*) "held" "released"))"#);
     assert_eq!(rig.warnings(), vec!["released".to_string()]);
 }
 
@@ -851,7 +851,7 @@ fn tracked_position_params_needs_no_server() {
     assert!(rig.attached().is_empty());
 
     rig.probe(
-        r#"(log! 'warn (if (hash-contains? (tracked-position-params (track-position! pane)) "position") "yes" "no"))"#,
+        r#"(log! 'warning (if (hash-contains? (tracked-position-params (track-position! pane)) "position") "yes" "no"))"#,
     );
 
     assert_eq!(rig.warnings(), vec!["yes".to_string()]);
@@ -875,10 +875,10 @@ fn unavailable_tracked_lifetime(request: &str) -> Vec<String> {
              (set! *tok* (track-position! pane))
              ({request} pane "custom/ping" (hash)
                (lambda (err res)
-                 (log! 'warn (if (tracked-position-params *tok*) "held" "released")))
+                 (log! 'warning (if (tracked-position-params *tok*) "held" "released")))
                #:tracked *tok*))"#
     ));
-    rig.probe(r#"(log! 'warn (if (tracked-position-params *tok*) "held" "released"))"#);
+    rig.probe(r#"(log! 'warning (if (tracked-position-params *tok*) "held" "released"))"#);
 
     rig.warnings()
 }
@@ -920,7 +920,7 @@ fn drain_cap_releases_tracked_position_of_dropped_callback() {
     );
 
     rig.probe("(ping-forever pane)");
-    rig.probe(r#"(log! 'warn (if (tracked-position-params *tok*) "held" "released"))"#);
+    rig.probe(r#"(log! 'warning (if (tracked-position-params *tok*) "held" "released"))"#);
 
     assert_eq!(rig.warnings(), vec!["released".to_string()]);
 }
@@ -943,11 +943,11 @@ fn a_request_discarded_with_its_failed_code_releases_its_tracked_position() {
         r#"(begin
              (set! *tok* (track-position! pane))
              (lsp-request! pane "custom/ping" (hash)
-               (lambda (err res) (log! 'warn "called"))
+               (lambda (err res) (log! 'warning "called"))
                #:tracked *tok*)
              (error "the code fails after queuing the request"))"#,
     );
-    rig.probe(r#"(log! 'warn (if (tracked-position-params *tok*) "held" "released"))"#);
+    rig.probe(r#"(log! 'warning (if (tracked-position-params *tok*) "held" "released"))"#);
 
     assert_eq!(rig.warnings(), vec!["released".to_string()]);
 }
@@ -965,7 +965,7 @@ fn notification_hook_receives_server_handle() {
     );
     rig.eval(
         r#"(register-lsp-notification-hook! "custom/hello"
-             (lambda (server method params) (log! 'warn (lsp-server-name server))))"#,
+             (lambda (server method params) (log! 'warning (lsp-server-name server))))"#,
     );
 
     rig.push(
@@ -983,7 +983,7 @@ fn notification_hook_receives_server_handle() {
 /// A callback logging `err`'s `'kind` (and `'code` when there is one), or
 /// `none`.
 const LOG_KIND: &str = r#"(lambda (err res)
-  (log! 'warn (if err
+  (log! 'warning (if err
                   (string-append (symbol->string (hash-ref err 'kind))
                                  (if (hash-contains? err 'code)
                                      (string-append ":" (number->string (hash-ref err 'code)))
@@ -1119,7 +1119,7 @@ fn per_server_member_not_attached_is_unavailable() {
         r#"(lsp-request-all! pane "custom/ping"
              (list (cons (car (lsp-servers pane)) (hash)) (cons *lint* (hash)))
              (lambda (err results)
-               (log! 'warn (to-string (map (lambda (r)
+               (log! 'warning (to-string (map (lambda (r)
                                              (let ((e (hash-ref r 'err)))
                                                (if e (symbol->string (hash-ref e 'kind)) "ok")))
                                            results)))))"#,
@@ -1183,7 +1183,7 @@ fn per_server_request_keeps_its_feature_filter() {
         r#"(lsp-request-all! pane "textDocument/hover"
              (map (lambda (s) (cons s (hash))) (lsp-servers pane))
              (lambda (err results)
-               (log! 'warn (to-string (map (lambda (r)
+               (log! 'warning (to-string (map (lambda (r)
                                              (let ((e (hash-ref r 'err)))
                                                (if e (symbol->string (hash-ref e 'kind)) "ok")))
                                            results)))))"#,
@@ -1324,7 +1324,7 @@ fn a_feature_on_a_standard_method_is_rejected_at_the_call() {
 
     rig.probe(
         r#"(for-each
-             (lambda (thunk) (log! 'warn (with-handler (lambda (e) (to-string e)) (thunk))))
+             (lambda (thunk) (log! 'warning (with-handler (lambda (e) (to-string e)) (thunk))))
              (list
                (lambda () (lsp-request! pane "textDocument/hover" (hash) (lambda (err res) (begin)) #:feature 'completion))
                (lambda () (lsp-request-all! pane "textDocument/hover" (hash) (lambda (err res) (begin)) #:feature 'completion))

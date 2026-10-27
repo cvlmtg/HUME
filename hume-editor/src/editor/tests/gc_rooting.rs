@@ -31,7 +31,7 @@ fn a_command_keeps_its_captured_state_across_a_collection() {
               (let ((n 0))
                 (lambda ()
                   (set! n (+ n 1))
-                  (log! 'warn (string-append "count:" (number->string n))))))"#
+                  (log! 'warning (string-append "count:" (number->string n))))))"#
         ),
     );
 
@@ -54,7 +54,7 @@ fn a_timer_thunk_keeps_its_captured_arguments_across_a_collection() {
         tmp.path(),
         &format!(
             r#"{CHURN}
-            (define tick (debounce 0 (lambda (msg) (log! 'warn (unbox msg)))))
+            (define tick (debounce 0 (lambda (msg) (log! 'warning (unbox msg)))))
             (define-typed-command! "arm" "" (lambda () (tick (box "alive"))))"#
         ),
     );
@@ -80,7 +80,7 @@ fn a_queued_callback_keeps_its_captured_state_while_the_batch_runs() {
             r#"{CHURN}
             (define (request-logging! pane msg)
               (lsp-request! pane "test/none" (hash)
-                (lambda (err result) (log! 'warn (unbox msg)))))
+                (lambda (err result) (log! 'warning (unbox msg)))))
             (define-typed-command! "requests" ""
               (lambda (pane)
                 (lsp-request! pane "test/none" (hash) (lambda (err result) (churn!)))
@@ -109,8 +109,8 @@ fn an_open_picker_keeps_its_callback_and_payloads_across_a_collection() {
             (define (open-picker! pane msg)
               (picker! pane (list (cons "one" (hash 'cell (box "payload-alive"))))
                 (lambda (choice)
-                  (log! 'warn (unbox msg))
-                  (log! 'warn (unbox (hash-ref choice 'cell))))))
+                  (log! 'warning (unbox msg))
+                  (log! 'warning (unbox (hash-ref choice 'cell))))))
             (define-typed-command! "open" ""
               (lambda (pane)
                 (after! 0 churn!)
@@ -141,7 +141,7 @@ fn a_second_source_evaluates_into_the_editors_engine() {
         tmp.path(),
         r#"(define-typed-command! "arm" ""
              (lambda ()
-               (after! 0 (let ((cell (box "alive"))) (lambda () (log! 'warn (unbox cell)))))))"#,
+               (after! 0 (let ((cell (box "alive"))) (lambda () (log! 'warning (unbox cell)))))))"#,
     );
     type_cmd(&mut ed, ":arm");
 

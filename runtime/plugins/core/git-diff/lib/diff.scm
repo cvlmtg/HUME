@@ -50,7 +50,7 @@
       (begin
         (let ([entry (git-diff/buffer-entry pane)])
           (log! (cond [(not exit-code) 'error]
-                      [(hash-ref entry "ref") 'warn]
+                      [(hash-ref entry "ref") 'warning]
                       [else 'trace])
                 (string-append "git-diff: `git cat-file` failed: " (trim stderr))))
         (git-diff/entry-set! pane "ref-text" 'unavailable)

@@ -274,7 +274,7 @@ fn failed_init_eval_salvages_eager_plugin_effects() {
 /// its error.
 #[test]
 fn a_failing_init_scms_log_lands_before_its_error() {
-    let fixture = ReloadFixture::new(r#"(log! 'warn "step 1") (error "boom")"#);
+    let fixture = ReloadFixture::new(r#"(log! 'warning "step 1") (error "boom")"#);
     let mut ed = editor_from("-[a]>b\n");
     ed.state.dirs = fixture.dirs();
 

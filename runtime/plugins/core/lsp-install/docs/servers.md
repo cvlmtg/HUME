@@ -219,6 +219,6 @@ seeded server sorted by name: its name, its languages, and either `installed vX`
 seeded server with no blocker, no receipt, and no registration already in place, so a
 user's own registration suppresses it. The suggestion is to run `:lsp-install`. The dedup
 marker is set whatever the outcome, so a language that fails any of those tests is not
-re-evaluated. The nudge logs `'warn` because `'info` never reaches `:messages` (see the
+re-evaluated. The nudge logs `'warning` because `'info` never reaches `:messages` (see the
 [Log severity](../../README.md#log-severity) section), and a missed nudge should stay
 reviewable.

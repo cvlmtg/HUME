@@ -574,7 +574,7 @@ fn show_read_only_buffer_text_gets_no_language_but_announces_its_open() {
     run(
         &mut ed,
         tmp.path(),
-        r##"(register-hook! 'on-buffer-open (lambda (pane) (log! 'warn "opened")))
+        r##"(register-hook! 'on-buffer-open (lambda (pane) (log! 'warning "opened")))
            (define-typed-command! "probe" "" (lambda (pane)
              (show-read-only-buffer! pane "report" "#!/usr/bin/env python\nprint(1)\n")))"##,
     );

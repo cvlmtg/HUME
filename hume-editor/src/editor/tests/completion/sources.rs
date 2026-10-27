@@ -59,12 +59,12 @@ fn each_source_is_handed_a_prefix_read_with_its_own_token_chars() {
         tmp.path(),
         r#"(register-completion-source! "dashed"
              (lambda (id bid prefix)
-               (log! 'warn (string-append "dashed:" prefix))
+               (log! 'warning (string-append "dashed:" prefix))
                (completion-emit! id '()))
              #:target 'buffer #:token-chars "-")
            (register-completion-source! "plain"
              (lambda (id bid prefix)
-               (log! 'warn (string-append "plain:" prefix))
+               (log! 'warning (string-append "plain:" prefix))
                (completion-emit! id '()))
              #:target 'buffer)"#,
     );

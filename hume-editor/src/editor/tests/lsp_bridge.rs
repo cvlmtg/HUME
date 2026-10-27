@@ -589,7 +589,7 @@ fn lsp_request_with_no_attached_server_fires_callback_with_err() {
     // Clearing the buffer's language detaches its server, so `bid` resolves
     // to no server: the resolution-failure path this test targets.
     rig.probe(r#"(set-buffer-option! pane "language" "")"#);
-    rig.probe(r#"(log! 'warn (to-string (lsp-servers pane)))"#);
+    rig.probe(r#"(log! 'warning (to-string (lsp-servers pane)))"#);
     assert_eq!(
         rig.warnings(),
         vec!["()".to_string()],
@@ -655,7 +655,7 @@ fn lsp_request_against_a_crashed_server_names_it_and_the_restart_command() {
 
     rig.probe(
         r#"(lsp-request! pane "textDocument/hover" (hash) (lambda (err result)
-             (log! 'warn (hash-ref err 'message))))"#,
+             (log! 'warning (hash-ref err 'message))))"#,
     );
 
     assert_eq!(

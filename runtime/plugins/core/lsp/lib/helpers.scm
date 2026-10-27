@@ -40,7 +40,7 @@
 ;; place it names no longer exists.
 (define (lsp/jump-to! location)
   (unless (goto-location! (focused-pane) location)
-    (log! 'warn "lsp: the location no longer exists")))
+    (log! 'warning "lsp: the location no longer exists")))
 
 ;; ── Trigger-char lifecycle ──────────────────────────────────────────────────
 

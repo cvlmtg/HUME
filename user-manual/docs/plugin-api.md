@@ -114,7 +114,7 @@ See [Hooks](writing-plugins.md#hooks) for the full table of hook names and their
 | `(log! severity message)` | Report `message` at `severity`: in the statusline, in `:messages`, or both (see below) |
 | `(print! text)` | Write `text` and a line break to the terminal, inside an `#:inline-output` command; raises outside one |
 
-`severity` is one of `'trace`, `'info`, `'warn`, `'error`; anything else raises. Where a message ends up depends on severity: `'info` only flashes in the statusline (never kept in `:messages`); `'warn` and `'error` do both; `'trace` goes to `:messages` only, never the statusline.
+`severity` is one of `'trace`, `'info`, `'warning`, `'error`; anything else raises. Where a message ends up depends on severity: `'info` only flashes in the statusline (never kept in `:messages`); `'warning` and `'error` do both; `'trace` goes to `:messages` only, never the statusline.
 
 Report from a plugin with `log!`, and write output the user watches with `print!`. Steel's own print functions (`display`, `displayln`, `newline`, …) write straight to the terminal and draw over the editor's screen; HUME does not stop them.
 

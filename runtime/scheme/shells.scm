@@ -403,7 +403,7 @@
         (begin
           (unless (member program *shell-programs-warned*)
             (set! *shell-programs-warned* (cons program *shell-programs-warned*))
-            (log! 'warn (string-append "| completion: no shell dialect for " program
+            (log! 'warning (string-append "| completion: no shell dialect for " program
                                        "; register one with register-shell-dialect!")))
           (completion-emit! id '()))
         (let* ((word (%shell-parse dialect input cursor))

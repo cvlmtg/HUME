@@ -537,7 +537,7 @@ fn steel_close_buffer_prunes_diagnostics_decorations_and_fires_hook() {
     let (mut rig, sid, bid, uri) = plain_rig(&tmp, "one two three\n");
     seed_diagnostic_and_hint(&mut rig.ed, sid, bid, &uri);
     rig.eval(
-        r#"(register-hook! 'on-buffer-close (lambda (bid) (log! 'warn "close-hook-fired")))
+        r#"(register-hook! 'on-buffer-close (lambda (bid) (log! 'warning "close-hook-fired")))
            (define-typed-command! "go" "" (lambda (bid) (close-buffer! bid)))"#,
     );
 

@@ -62,7 +62,7 @@ fn a_failing_typed_commands_log_lands_before_its_error() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "fail" "" (lambda () (log! 'warn "step 1") (error "boom")))"#,
+        r#"(define-typed-command! "fail" "" (lambda () (log! 'warning "step 1") (error "boom")))"#,
     );
 
     ed.execute_typed("fail", None).expect_err("`:fail` raises");

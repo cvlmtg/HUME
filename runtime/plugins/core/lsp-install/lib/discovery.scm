@@ -16,5 +16,5 @@
           (when (and (null? (lsp-language-servers lang))
                      (not (lsp-install/read-receipt name))
                      (not (lsp-install/install-blocker name)))
-            (log! 'warn (string-append "LSP: language server '" name
+            (log! 'warning (string-append "LSP: language server '" name
                                        "' is available for " lang " — run :lsp-install"))))))))

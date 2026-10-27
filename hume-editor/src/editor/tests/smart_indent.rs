@@ -370,7 +370,7 @@ fn enter_bound_through_insert_key_matches_the_enter_key() {
         &mut bound,
         tmp.path(),
         "enter",
-        r#"(begin (log! 'warn "enter-probe") (insert-key! pane "enter"))"#,
+        r#"(begin (log! 'warning "enter-probe") (insert-key! pane "enter"))"#,
     );
     bound.feed_key(key('i'));
     bound.feed_key(key_enter());
@@ -576,7 +576,7 @@ fn a_completion_trigger_sees_the_dedented_line() {
            (register-completion-source! "brace"
              (lambda (id pane prefix)
                (set! brace-calls (+ brace-calls 1))
-               (log! 'warn (buffer-text pane))
+               (log! 'warning (buffer-text pane))
                (completion-emit! id (list (hash "label" (string-append "brace" (number->string brace-calls))))))
              #:target 'buffer)
            (set-completion-triggers! "brace" "rust" (list "}"))"#,

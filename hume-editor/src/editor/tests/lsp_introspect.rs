@@ -174,7 +174,7 @@ fn lsp_servers_names_the_attached_server() {
         serde_json::json!({"capabilities": {}}),
     );
 
-    rig.probe(r#"(log! 'warn (to-string (map lsp-server-name (lsp-servers pane))))"#);
+    rig.probe(r#"(log! 'warning (to-string (map lsp-server-name (lsp-servers pane))))"#);
 
     assert_eq!(rig.warnings(), vec![r#"("rust-analyzer")"#.to_string()]);
 }
@@ -1011,7 +1011,7 @@ fn lsp_position_to_char_offset_decodes_via_the_tag_even_after_the_server_detache
         before,
         "a tagged position must still decode correctly with no server attached"
     );
-    rig.probe(r#"(log! 'warn (to-string (lsp-servers pane)))"#);
+    rig.probe(r#"(log! 'warning (to-string (lsp-servers pane)))"#);
     assert_eq!(rig.warnings(), vec!["()".to_string()], "bid was detached");
 }
 
@@ -1475,12 +1475,12 @@ fn lsp_capability_reads_the_provider_of_a_feature_or_a_method() {
 
     rig.probe(
         r#"(let ((s (car (lsp-servers pane))))
-             (log! 'warn (to-string (lsp-capability s #:feature 'hover)))
-             (log! 'warn (to-string (json-list (json-ref (lsp-capability s #:feature 'completion) "triggerCharacters"))))
-             (log! 'warn (to-string (json-ref (lsp-capability s #:method "textDocument/rangeFormatting") "rangesSupport")))
-             (log! 'warn (to-string (lsp-capability s #:method "textDocument/formatting")))
-             (log! 'warn (to-string (lsp-capability s #:feature 'rename-symbol)))
-             (log! 'warn (to-string (lsp-capability s #:method "custom/method"))))"#,
+             (log! 'warning (to-string (lsp-capability s #:feature 'hover)))
+             (log! 'warning (to-string (json-list (json-ref (lsp-capability s #:feature 'completion) "triggerCharacters"))))
+             (log! 'warning (to-string (json-ref (lsp-capability s #:method "textDocument/rangeFormatting") "rangesSupport")))
+             (log! 'warning (to-string (lsp-capability s #:method "textDocument/formatting")))
+             (log! 'warning (to-string (lsp-capability s #:feature 'rename-symbol)))
+             (log! 'warning (to-string (lsp-capability s #:method "custom/method"))))"#,
     );
 
     assert_eq!(
@@ -1500,8 +1500,8 @@ fn lsp_capability_needs_exactly_one_of_feature_and_method() {
 
     rig.probe(
         r#"(let ((s (car (lsp-servers pane))))
-             (log! 'warn (to-string (with-handler (lambda (e) 'raised) (lsp-capability s))))
-             (log! 'warn (to-string (with-handler (lambda (e) 'raised)
+             (log! 'warning (to-string (with-handler (lambda (e) 'raised) (lsp-capability s))))
+             (log! 'warning (to-string (with-handler (lambda (e) 'raised)
                (lsp-capability s #:feature 'hover #:method "textDocument/hover")))))"#,
     );
 

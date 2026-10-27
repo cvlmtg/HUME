@@ -30,7 +30,7 @@ fn bind_backslash(ed: &mut Editor, cmd: &str) {
 /// Defines `(print-probe tag)`, which logs `tag-open` when `print!` writes
 /// and `tag-closed` when it raises.
 const PRINT_PROBE: &str = r#"(define (print-probe tag)
-  (log! 'warn (with-handler (lambda (_) (string-append tag "-closed"))
+  (log! 'warning (with-handler (lambda (_) (string-append tag "-closed"))
                 (begin (print! "") (string-append tag "-open")))))"#;
 
 fn logged(ed: &Editor, needle: &str) -> bool {
@@ -104,7 +104,7 @@ fn call_bang_to_inline_output_editor_command_opens_a_frame() {
 fn call_bang_to_inline_output_typed_command_is_unreachable() {
     let ed = dispatch_backslash(
         r#"(define-typed-command! "inner-typed-probe" ""
-             (lambda () (log! 'warn "should-not-run"))
+             (lambda () (log! 'warning "should-not-run"))
              #:inline-output #t)
            (define-command! "trigger" "" (lambda () (call! "inner-typed-probe")))"#,
         "trigger",
@@ -160,7 +160,7 @@ fn call_bang_to_a_non_declared_command_never_arms() {
 #[test]
 fn nested_call_bang_restores_the_outer_commands_state() {
     let ed = dispatch_backslash(
-        r#"(define-command! "nested-inner" "" (lambda () (log! 'warn "inner-ran")) #:inline-output #t)
+        r#"(define-command! "nested-inner" "" (lambda () (log! 'warning "inner-ran")) #:inline-output #t)
            (define-command! "nested-outer" ""
              (lambda ()
                (print-probe "outer-before")
@@ -353,8 +353,8 @@ fn caught_error_inside_call_bang_still_closes_bracket_and_drains_state() {
         r#"(define-command! "raiser2" "" (lambda () (error "boom")) #:inline-output #t)
            (define-command! "outer-catches" ""
              (lambda ()
-               (with-handler (lambda (e) (log! 'warn "caught")) (call! "raiser2"))
-               (log! 'warn "outer-continued")))"#,
+               (with-handler (lambda (e) (log! 'warning "caught")) (call! "raiser2"))
+               (log! 'warning "outer-continued")))"#,
     );
     bind_backslash(&mut ed, "outer-catches");
 

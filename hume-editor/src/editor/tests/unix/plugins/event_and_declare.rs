@@ -614,8 +614,8 @@ fn a_plugins_command_and_its_callbacks_read_its_own_config() {
              (let ((config (plugin-config)))
                (if (hash-contains? config "k") (hash-ref config "k") "none")))
            (define-typed-command! "cfg-cmd" "doc" (lambda ()
-             (log! 'warn (string-append "cmd:" (tp/key)))
-             (after! 0 (lambda () (log! 'warn (string-append "cb:" (tp/key)))))))"#,
+             (log! 'warning (string-append "cmd:" (tp/key)))
+             (after! 0 (lambda () (log! 'warning (string-append "cb:" (tp/key)))))))"#,
     );
 
     type_cmd(&mut ed, ":cfg-cmd");
@@ -642,10 +642,10 @@ fn a_plugins_command_called_from_the_users_runs_as_the_plugin() {
         r#"(load-plugin! "user/tp" #:config (hash "k" "v"))
            (define-typed-command! "user-cmd" "doc" (lambda ()
              (call! "tp-cmd")
-             (log! 'warn (if (hash-empty? (plugin-config)) "user:none" "user:some"))))"#,
+             (log! 'warning (if (hash-empty? (plugin-config)) "user:none" "user:some"))))"#,
         r#"(define-command! "tp-cmd" "doc" (lambda ()
              (let ((config (plugin-config)))
-               (log! 'warn (string-append "plugin:"
+               (log! 'warning (string-append "plugin:"
                  (if (hash-contains? config "k") (hash-ref config "k") "none"))))))"#,
     );
 

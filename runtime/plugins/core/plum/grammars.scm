@@ -27,7 +27,7 @@
 (define (plum/fetch-raw-query name filename)
   ;; `name` may be untrusted (an `; inherits:` line).
   (unless (safe-path-segment? name)
-    (log! 'warn (string-append "plum/fetch-raw-query: rejecting unsafe grammar/dependency name \"" name "\""))
+    (log! 'warning (string-append "plum/fetch-raw-query: rejecting unsafe grammar/dependency name \"" name "\""))
     (error (string-append "plum/fetch-raw-query: unsafe grammar/dependency name \"" name "\"")))
   (let ((tmp (path-join (plum/staging-dir) (string-append "_fetch_" name "_" filename))))
     (create-directory! (plum/staging-dir))

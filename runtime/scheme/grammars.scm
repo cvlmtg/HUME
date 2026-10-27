@@ -67,7 +67,7 @@
         (when source
           (let ((hl (grammar-highlights-path name)))
             (if (not (path-exists? hl))
-                (log! 'warn (string-append
+                (log! 'warning (string-append
                               "grammar \"" name "\" is compiled but missing its highlights "
                               "query — run :plum-install-grammar " name " to repair"))
                 (register-grammar-from-sources! name

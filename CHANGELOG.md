@@ -22,6 +22,7 @@
 - A plugin's `bind-key!` and `unbind-key!` no longer replace or remove a binding your `init.scm` made, even when the plugin loads later, as `core:lsp` does for `K` and `g d`. Keys you unbind stay unbound.
 - A plugin's `set-option!` and `set-buffer-option!` no longer replace a value you set, in your `init.scm`, a hook it registered or with `:set`, even when the plugin runs later. This includes a buffer's `language` and `line-ending`.
 - `#:supersede` takes a key from the new `lsp-supersede-key`, not a string, so a plugin can no longer cancel another plugin's request, or HUME's own, by reusing its key's name: make one key at your plugin's top level, `(define my-key (lsp-supersede-key))`, and pass it to each request that replaces the last.
+- `log!` spells its warning severity `'warning`, the name `:messages` shows: replace `'warn` with `'warning`.
 - An option's named value is a string both ways: `set-option!` and `set-buffer-option!` raise for a symbol, and `get-option`, `get-buffer-option` and the `on-option-change` hook give a string. Write `"soft"` for `'soft`, and compare a read value with a string. `wrap-mode` reads back as written: `"word"`, not `"word:0"`.
 
 ### Syntax & language awareness

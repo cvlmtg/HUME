@@ -72,7 +72,7 @@ so a result is dropped when the entry is gone or the slot holds another job (or 
 | Exit code | Severity | Why |
 |---|---|---|
 | `#f` (none) | `'error` | `git` could not run: an environment fault, not a fact about this file |
-| any other nonzero, with a runtime ref override set | `'warn` | A direct answer to a command the user just typed |
+| any other nonzero, with a runtime ref override set | `'warning` | A direct answer to a command the user just typed |
 | any other nonzero, no override | `'trace` | Untracked file, brand-new file, buffer outside any repo, bad `ref` config. These cannot be told apart without parsing `stderr` further; the line is visible in `:messages` for diagnosis and otherwise quiet |
 
 Either way `"ref-text"` becomes `'unavailable`, not `#f`. `#f` means "not fetched yet", and

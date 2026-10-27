@@ -118,7 +118,7 @@ fn debounce_shares_one_pending_timer_across_all_keys() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define tick (debounce 0 (lambda (key) (log! 'warn (string-append "fired:" key)))))
+        r#"(define tick (debounce 0 (lambda (key) (log! 'warning (string-append "fired:" key)))))
            (define-typed-command! "burst" "" (lambda () (tick "a") (tick "b")))"#,
         tmp.path(),
     );
@@ -146,7 +146,7 @@ fn debounce_by_keys_pending_timers_independently() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define tick (debounce-by 0 (lambda (key) (log! 'warn (string-append "fired:" key)))))
+        r#"(define tick (debounce-by 0 (lambda (key) (log! 'warning (string-append "fired:" key)))))
            (define-typed-command! "burst" "" (lambda ()
              (tick "a") (tick "a") (tick "a")
              (tick "b") (tick "b")))"#,

@@ -234,7 +234,7 @@ fn a_drawer_render_cannot_activate_a_plugin_and_leaves_it_declared() {
 fn command_plugin_names_a_typed_stubs_plugin_before_activation() {
     let (ed, _dir) = setup_lazy_editor(
         r#"(declare-plugin! "user/tp" #:typed-commands '("bar"))
-           (log! 'warn (command-plugin "bar"))"#,
+           (log! 'warning (command-plugin "bar"))"#,
         r#"(define-typed-command! "bar" "doc" (lambda () (+ 1 0)))"#,
     );
 
@@ -294,7 +294,7 @@ fn a_declared_command_the_body_never_defined_warns() {
 fn a_failing_activations_log_lands_before_its_error() {
     let (mut ed, _dir) = setup_lazy_editor(
         r#"(declare-plugin! "user/tp" #:typed-commands '("bar"))"#,
-        r#"(log! 'warn "step 1") (error "boom")"#,
+        r#"(log! 'warning "step 1") (error "boom")"#,
     );
 
     ed.execute_typed("bar", None)

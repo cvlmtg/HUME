@@ -14,7 +14,7 @@
   (unless (lsp-server-registered? "steel-language-server")
     (let ([home (steel-server/lsp-home)])
       (unless home
-        (log! 'warn "steel-server: host-globals dir missing — HUME builtins will be flagged as unknown identifiers"))
+        (log! 'warning "steel-server: host-globals dir missing — HUME builtins will be flagged as unknown identifiers"))
       (register-lsp-server! "steel-language-server"
                             #:command "steel-language-server"
                             #:env (if home (list (cons "STEEL_LSP_HOME" home)) '())))))
@@ -36,4 +36,4 @@
 
 (if (find-program "steel-language-server")
     (steel-server/register!)
-    (log! 'warn "steel-server: 'steel-language-server' not found on $PATH — run :steel-server-install"))
+    (log! 'warning "steel-server: 'steel-language-server' not found on $PATH — run :steel-server-install"))

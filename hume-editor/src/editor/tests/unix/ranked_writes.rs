@@ -447,7 +447,7 @@ const PROBING_HOOK: &str = r#"(register-hook! 'on-language-set
   (lambda (pane lang)
     (when (equal? lang "la")
       (set-buffer-option! pane "language" "lb")
-      (log! 'warn (string-append "probe:" (get-buffer-option pane "language"))))))"#;
+      (log! 'warning (string-append "probe:" (get-buffer-option pane "language"))))))"#;
 
 /// A plugin hook writes a language the user's assertion shadows, then reads
 /// the buffer's language back: the read agrees with what the editor applies.
@@ -473,7 +473,7 @@ fn a_hooks_language_read_back_ignores_a_write_the_editor_will_shadow() {
 const PROBING_UNREGISTER: &str = r#"(register-hook! 'on-language-set
   (lambda (pane lang)
     (unregister-lsp-server! "srv")
-    (log! 'warn (if (lsp-server-registered? "srv") "probe:registered" "probe:gone"))))"#;
+    (log! 'warning (if (lsp-server-registered? "srv") "probe:registered" "probe:gone"))))"#;
 
 /// A registration from one origin, then a hook from another unregisters it
 /// and asks whether it is registered in the same eval: the answer agrees

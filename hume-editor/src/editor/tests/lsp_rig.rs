@@ -223,7 +223,7 @@ impl LspRig {
     }
 
     /// The text of every Warning the log holds, oldest first: what a probe
-    /// reports through `(log! 'warn …)`.
+    /// reports through `(log! 'warning …)`.
     pub(in crate::editor) fn warnings(&self) -> Vec<String> {
         self.ed
             .state

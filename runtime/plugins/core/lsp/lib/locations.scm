@@ -20,7 +20,7 @@
 ;; Warns once when `count` locations of an answer name no place to jump to.
 (define (lsp/report-skipped! what count)
   (when (> count 0)
-    (log! 'warn (string-append "lsp " what ": skipped " (number->string count)
+    (log! 'warning (string-append "lsp " what ": skipped " (number->string count)
                                (if (= count 1) " location" " locations")
                                " HUME cannot jump to"))))
 

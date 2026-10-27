@@ -215,7 +215,7 @@ fn inline_output_commands_own_warning_does_not_shadow_its_own_reload_confirm() {
         let mut init_host = init_host!(ed);
         host.eval_source(
             r#"(define-command! "lint-and-fix" "doc"
-                 (lambda () (log! 'warn "lint: 1 issue auto-fixed")) #:inline-output #t)"#,
+                 (lambda () (log! 'warning "lint: 1 issue auto-fixed")) #:inline-output #t)"#,
             &mut init_host,
         )
         .expect("eval failed");

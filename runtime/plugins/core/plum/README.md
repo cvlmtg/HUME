@@ -200,7 +200,7 @@ whether or not PLUM is declared, and registers every already-compiled grammar in
 an embedded block needs it. It lists that directory rather than asking every language for its
 bundled grammar, so a setup with no grammars installed pays one `path-exists?`. It starts no
 subprocess and uses no network. An orphan is skipped. A compiled grammar of a language with
-a bundled grammar but no `highlights.scm` on disk logs a `'warn` pointing at
+a bundled grammar but no `highlights.scm` on disk logs a `'warning` pointing at
 `:plum-install-grammar` and is skipped. A language whose grammar is not compiled stays
 without one until `:plum-install-grammar` runs or `init.scm` calls `plum/ensure-grammars`;
 nothing installs at startup, since a first run that compiled every bundled grammar would
@@ -239,7 +239,7 @@ upstream drops its `themes/` directory and `:plum-update-themes` starts failing 
 #### Name collisions
 
 Two installed repos that provide the same theme name write the same
-`<data>/themes/<name>.toml`. The sync step logs a `'warn` naming the other repos whenever
+`<data>/themes/<name>.toml`. The sync step logs a `'warning` naming the other repos whenever
 it is about to write a name another installed repo also provides.
 
 #### Reinstall

@@ -260,7 +260,7 @@ fn diagnostics_entries_carry_server() {
     rig.publish(lint, serde_json::json!([diagnostic(1, 1)]));
 
     rig.probe(
-        r#"(log! 'warn (to-string (map (lambda (d) (lsp-server-name (hash-ref d 'server)))
+        r#"(log! 'warning (to-string (map (lambda (d) (lsp-server-name (hash-ref d 'server)))
                                        (diagnostics-for-buffer pane))))"#,
     );
 
