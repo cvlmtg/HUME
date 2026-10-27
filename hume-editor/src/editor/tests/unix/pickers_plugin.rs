@@ -708,10 +708,9 @@ fn git_modified_picker_invalid_untracked_config_fails_load() {
     );
 }
 
-/// Loading `core:pickers` without `core:stdlib` declared or loaded first
-/// must fail to load (contained, not aborting `eval_init`), naming
-/// `core:stdlib`: `core:pickers`'s `(declared-plugins)` guard rejects it
-/// before its `pickers/untracked` config read ever reaches `call!`.
+/// Loading `core:pickers` without `core:stdlib` must fail to load
+/// (contained, not aborting `eval_init`): its `pickers/untracked` config
+/// read's `call!` raises, naming the stdlib command.
 #[test]
 fn missing_stdlib_errors_at_load() {
     let guard = RuntimeDirs::new();
@@ -721,7 +720,7 @@ fn missing_stdlib_errors_at_load() {
         guard.dirs(),
         "(load-plugin! \"core:pickers\")",
         "pickers",
-        &["core:stdlib"],
+        &["unknown command: stdlib/config-boolean"],
     );
 }
 

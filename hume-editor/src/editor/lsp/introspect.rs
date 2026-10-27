@@ -4,7 +4,7 @@
 //! because they mutate the transport). These run through `EditorHostImpl`
 //! directly since a Steel caller needs the value back inline.
 
-use hume_core::{BufferId, ListEntry, LspFeature, ServerName};
+use hume_core::{BufferId, DiagSeverity, LspFeature, ServerName};
 use hume_lsp::backend::ServerId;
 
 use super::LspState;
@@ -12,6 +12,7 @@ use super::features::provider;
 use crate::editor::EditorState;
 use hume_platform::path::AbsolutePath;
 use hume_scripting::CapabilityQuery;
+use hume_scripting::host::DiagnosticCounts;
 
 /// The feature a standard request `method` belongs to.
 pub(in crate::editor) fn method_feature(method: &str) -> Option<LspFeature> {
@@ -123,8 +124,20 @@ pub(in crate::editor) fn server_claim(
     lsp.registry.claim(name)
 }
 
+/// `language`'s server lists as they stand.
+pub(in crate::editor) fn language_lists(
+    lsp: &LspState,
+    language: &str,
+) -> hume_core::LanguageLists {
+    lsp.registry.lists(language)
+}
+
 /// The servers `language`'s buffers attach to, in order, with their filters.
-pub(in crate::editor) fn language_servers(lsp: &LspState, language: &str) -> Vec<ListEntry> {
+#[cfg(test)]
+pub(in crate::editor) fn language_servers(
+    lsp: &LspState,
+    language: &str,
+) -> Vec<hume_core::ListEntry> {
     lsp.registry.plan(language).into_iter().cloned().collect()
 }
 
@@ -224,9 +237,15 @@ pub(in crate::editor) fn wire_point_to_char_for_buffer(
     hume_rope::position_encoding::checked_wire_to_char(rope, pos, encoding)
 }
 
-/// `(diagnostic-counts bid)` → `(errors, warnings)`.
-pub(crate) fn diagnostic_counts(state: &EditorState, bid: BufferId) -> (usize, usize) {
-    state.buffer_positions.diagnostics.counts(bid)
+/// `(diagnostic-counts bid #:severity floor)`: with no `floor`,
+/// [`severity_floor`](super::diagnostics::severity_floor)'s default.
+pub(crate) fn diagnostic_counts(
+    state: &EditorState,
+    bid: BufferId,
+    floor: Option<DiagSeverity>,
+) -> DiagnosticCounts {
+    let floor = super::diagnostics::severity_floor(state, floor);
+    state.buffer_positions.diagnostics.counts(bid, floor)
 }
 
 /// Current animation frame for the statusline loading spinner.
@@ -359,7 +378,8 @@ impl crate::editor::Editor {
             if names.is_empty() {
                 continue;
             }
-            let (errors, warnings) = self.state.buffer_positions.diagnostics.counts(bid);
+            let counts = diagnostic_counts(&self.state, bid, None);
+            let (errors, warnings) = (counts.error, counts.warning);
             lines.push(format!(
                 "  {} [{}]: {errors} error(s), {warnings} warning(s)",
                 buf.display_name(),
@@ -369,7 +389,7 @@ impl crate::editor::Editor {
 
         let mut stopped: Vec<String> = lsp
             .stopped
-            .iter()
+            .keys()
             .map(|(name, root)| format!("  {name} @ {}", root.display()))
             .collect();
         if !stopped.is_empty() {

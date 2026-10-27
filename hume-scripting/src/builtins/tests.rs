@@ -90,7 +90,7 @@ fn global_bind_key_rejected_from_command_body_through_real_registration() {
 /// body may do.
 #[test]
 fn named_bind_key_allowed_from_command_body_through_real_registration() {
-    let effects = call_probe(r#"(bind-key! 'normal "Q" "move-down" #:keymap 'probe-keys)"#)
+    let effects = call_probe(r#"(bind-key! 'normal "Q" "move-down" #:keymap "probe-keys")"#)
         .expect("a named bind-key! must be allowed from a command body");
     assert!(
         matches!(
@@ -254,28 +254,28 @@ fn live_pane_builtins_raise_on_a_closed_buffer_through_real_registration() {
         ),
         (
             "set-inlay-hints!",
-            r#"(set-inlay-hints! "src" (focused-pane) (list))"#,
+            r#"(set-inlay-hints! (focused-pane) "src" (list))"#,
         ),
-        ("set-signs!", r#"(set-signs! "src" (focused-pane) (list))"#),
+        ("set-signs!", r#"(set-signs! (focused-pane) "src" (list))"#),
         (
             "set-virtual-lines!",
-            r#"(set-virtual-lines! "src" (focused-pane) (list))"#,
+            r#"(set-virtual-lines! (focused-pane) "src" (list))"#,
         ),
         (
             "set-eol-text!",
-            r#"(set-eol-text! "src" (focused-pane) (list))"#,
+            r#"(set-eol-text! (focused-pane) "src" (list))"#,
         ),
         (
             "set-extra-highlights!",
-            r#"(set-extra-highlights! "src" (focused-pane) (list))"#,
+            r#"(set-extra-highlights! (focused-pane) "src" (list))"#,
         ),
         (
             "set-line-backgrounds!",
-            r#"(set-line-backgrounds! "src" (focused-pane) (list))"#,
+            r#"(set-line-backgrounds! (focused-pane) "src" (list))"#,
         ),
         (
             "set-statusline-text!",
-            r#"(set-statusline-text! "src" (focused-pane) "text")"#,
+            r#"(set-statusline-text! (focused-pane) "src" "text")"#,
         ),
         (
             "set-buffer-option!",
@@ -289,7 +289,7 @@ fn live_pane_builtins_raise_on_a_closed_buffer_through_real_registration() {
         ("lsp-restart!", "(lsp-restart! (focused-pane))"),
         (
             "register-sign-source!",
-            r#"(register-sign-source! "src" (focused-pane) 0)"#,
+            r#"(register-sign-source! (focused-pane) "src" 0)"#,
         ),
     ];
 
@@ -338,7 +338,8 @@ fn lsp_stop_and_restart_reject_false_target_through_real_registration() {
             .err()
             .unwrap_or_else(|| panic!("{expr} must raise on a #f target, got Ok"));
         assert!(
-            err.message.contains("expected a pane or a server name"),
+            err.message
+                .contains("expected a server, a pane or a server name"),
             "{expr}: got {err:?}"
         );
     }

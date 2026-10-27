@@ -2,7 +2,9 @@ use super::params::position_params_value;
 use super::*;
 use crate::json::JsonHandle;
 use crate::null_host::EmptyLspHost;
-use crate::test_support::{SteelCtxTestHarness, default_bid, default_pane, default_pane_with_pane};
+use crate::test_support::{
+    SteelCtxTestHarness, default_bid, default_pane, default_pane_with_pane, hash_field,
+};
 use crate::types::{LspServerTarget, RequestMode, RequestParams, RouteSpec, WhenUnavailable};
 use hume_core::{ConfigOrigin, FeatureFilter, ListEntry, ListTier, LspServerConfig, ServerName};
 use hume_platform::dirs::Dirs;
@@ -315,6 +317,28 @@ fn lsp_stop_queues_a_stop_op_with_the_given_name() {
     }
 }
 
+/// A server value names that one instance, ahead of a pane or a name.
+#[test]
+fn a_server_value_targets_its_instance() {
+    use crate::builtins::args::BuiltinArg;
+    use steel::rvals::FromSteelVal;
+    let server = crate::ServerRef {
+        id: hume_lsp::backend::ServerId(7),
+        name: server_name("rust-analyzer"),
+    }
+    .into_steel_val();
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let target = super::servers::LspTargetArg::from_steelval(&server)
+        .unwrap()
+        .resolve(&mut ctx, "target")
+        .unwrap();
+    assert!(
+        matches!(target, LspServerTarget::Server(id) if id == hume_lsp::backend::ServerId(7)),
+        "got {target:?}"
+    );
+}
+
 #[test]
 fn lsp_stop_queues_a_stop_op_with_the_given_buffer() {
     let mut h = SteelCtxTestHarness::new();
@@ -433,6 +457,61 @@ fn lsp_server_registered_reads_through_queued_ops() {
     );
     ctx.push_effect(pending_register("rust-analyzer"));
     assert_eq!(registered(&mut ctx, "rust-analyzer"), SteelVal::BoolV(true));
+}
+
+fn pending_list(language: &str, names: &[&str]) -> Effect {
+    Effect::LspServerOp(PendingLspServerOp::SetLanguageServers {
+        language: language.to_string(),
+        tier: ListTier::Explicit,
+        origin: hume_core::ConfigOrigin::User,
+        entries: Some(
+            names
+                .iter()
+                .map(|n| ListEntry {
+                    name: server_name(n),
+                    filter: FeatureFilter::All,
+                })
+                .collect(),
+        ),
+    })
+}
+
+fn language_server_names(ctx: &mut SteelCtx, language: &str) -> Vec<String> {
+    let SteelVal::ListV(entries) =
+        lsp_language_servers(ctx, language.into_steelval().unwrap()).unwrap()
+    else {
+        panic!("expected a list");
+    };
+    entries
+        .iter()
+        .map(|entry| match hash_field(entry, "name") {
+            SteelVal::StringV(name) => name.to_string(),
+            other => panic!("expected a name, got {other:?}"),
+        })
+        .collect()
+}
+
+/// `lsp-language-servers` reads through this eval's queued list and
+/// registration ops, as `lsp-server-registered?` does: a list set and a
+/// server registered in the same eval show at once.
+#[test]
+fn lsp_language_servers_reads_through_queued_ops() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut host = EmptyLspHost::default();
+    let mut ctx = h.ctx_with_host(&mut host);
+    ctx.push_effect(pending_list("rust", &["rust-analyzer", "ra-lint"]));
+    assert_eq!(
+        language_server_names(&mut ctx, "rust"),
+        Vec::<String>::new(),
+        "a listed name that is not registered is left out"
+    );
+    ctx.push_effect(pending_register("ra-lint"));
+    assert_eq!(language_server_names(&mut ctx, "rust"), ["ra-lint"]);
+    ctx.push_effect(pending_register("rust-analyzer"));
+    assert_eq!(
+        language_server_names(&mut ctx, "rust"),
+        ["rust-analyzer", "ra-lint"]
+    );
 }
 
 /// A queued op from a lower origin than the registration it would change

@@ -36,7 +36,7 @@ fn virtual_line_renders_after_its_anchor_line() {
         &mut ed,
         tmp.path(),
         r#"(define-typed-command! "go" "" (lambda (bid)
-             (set-virtual-lines! "linter" bid
+             (set-virtual-lines! bid "linter"
                (list (hash 'line 0 'text "^ unused variable" 'scope "diagnostic.warning")))))"#,
     );
     type_cmd(&mut ed, ":go");
@@ -66,7 +66,7 @@ fn scroll_over_a_virtual_line_pushes_the_next_line_down_correctly() {
         &mut ed,
         tmp.path(),
         r#"(define-typed-command! "go" "" (lambda (bid)
-             (set-virtual-lines! "linter" bid
+             (set-virtual-lines! bid "linter"
                (list (hash 'line 0 'text "hint")))))"#,
     );
     type_cmd(&mut ed, ":go");
@@ -102,8 +102,8 @@ fn before_anchored_virtual_line_renders_above_its_line() {
         &mut ed,
         tmp.path(),
         r#"(define-typed-command! "go" "" (lambda (bid)
-             (set-virtual-lines! "git-diff" bid
-               (list (hash 'line 1 'anchor 'before 'text "- deleted line")))))"#,
+             (set-virtual-lines! bid "git-diff"
+               (list (hash 'line 1 'side 'before 'text "- deleted line")))))"#,
     );
     type_cmd(&mut ed, ":go");
 
@@ -125,9 +125,9 @@ fn per_segment_scopes_style_the_virtual_lines_text() {
         &mut ed,
         tmp.path(),
         r#"(define-typed-command! "go" "" (lambda (bid)
-             (set-virtual-lines! "linter" bid
+             (set-virtual-lines! bid "linter"
                (list (hash 'line 0 'text "let x"
-                           'segments (list (hash 'start-char 0 'end-char 3 'scope "keyword") (hash 'start-char 4 'end-char 5 'scope "string")))))))"#,
+                           'segments (list (hash 'start-char-col 0 'end-char-col 3 'scope "keyword") (hash 'start-char-col 4 'end-char-col 5 'scope "string")))))))"#,
     );
     type_cmd(&mut ed, ":go");
 
@@ -148,9 +148,9 @@ fn scope_becomes_the_line_s_base_scope_segments_stay_sparse() {
         &mut ed,
         tmp.path(),
         r#"(define-typed-command! "go" "" (lambda (bid)
-             (set-virtual-lines! "linter" bid
+             (set-virtual-lines! bid "linter"
                (list (hash 'line 0 'text "abcdef" 'scope "base"
-                           'segments (list (hash 'start-char 2 'end-char 4 'scope "kw")))))))"#,
+                           'segments (list (hash 'start-char-col 2 'end-char-col 4 'scope "kw")))))))"#,
     );
     type_cmd(&mut ed, ":go");
 
@@ -184,7 +184,7 @@ fn no_segments_yields_an_empty_segment_list() {
         &mut ed,
         tmp.path(),
         r#"(define-typed-command! "go" "" (lambda (bid)
-             (set-virtual-lines! "linter" bid
+             (set-virtual-lines! bid "linter"
                (list (hash 'line 0 'text "hint" 'scope "base")))))"#,
     );
     type_cmd(&mut ed, ":go");
@@ -214,7 +214,7 @@ fn no_scope_falls_back_to_ui_virtual_as_the_base_scope() {
         &mut ed,
         tmp.path(),
         r#"(define-typed-command! "go" "" (lambda (bid)
-             (set-virtual-lines! "linter" bid
+             (set-virtual-lines! bid "linter"
                (list (hash 'line 0 'text "hint")))))"#,
     );
     type_cmd(&mut ed, ":go");
@@ -264,8 +264,8 @@ fn generic_virtual_line_with_no_scope_tints_the_full_row_when_ui_virtual_has_a_b
         &mut ed,
         tmp.path(),
         r#"(define-typed-command! "go" "" (lambda (bid)
-             (set-virtual-lines! "linter" bid
-               (list (hash 'line 0 'text "V" 'anchor 'before)))))"#,
+             (set-virtual-lines! bid "linter"
+               (list (hash 'line 0 'text "V" 'side 'before)))))"#,
     );
     type_cmd(&mut ed, ":go");
 
@@ -300,8 +300,8 @@ fn virtual_line_background_tints_gutter_content_and_trailing_cells() {
         tmp.path(),
         &format!(
             r#"(define-typed-command! "go" "" (lambda (bid)
-                 (set-virtual-lines! "git-diff" bid
-                   (list (hash 'line 0 'text "V" 'anchor 'before 'scope "{TINT_SCOPE}")))))"#
+                 (set-virtual-lines! bid "git-diff"
+                   (list (hash 'line 0 'text "V" 'side 'before 'scope "{TINT_SCOPE}")))))"#
         ),
     );
     type_cmd(&mut ed, ":go");
@@ -349,8 +349,8 @@ fn virtual_line_with_empty_text_still_renders_its_background_bar() {
         tmp.path(),
         &format!(
             r#"(define-typed-command! "go" "" (lambda (bid)
-                 (set-virtual-lines! "git-diff" bid
-                   (list (hash 'line 0 'text "" 'anchor 'before 'scope "{TINT_SCOPE}")))))"#
+                 (set-virtual-lines! bid "git-diff"
+                   (list (hash 'line 0 'text "" 'side 'before 'scope "{TINT_SCOPE}")))))"#
         ),
     );
     type_cmd(&mut ed, ":go");
@@ -382,9 +382,9 @@ fn segments_touching_both_ends_yield_no_zero_length_filler() {
         &mut ed,
         tmp.path(),
         r#"(define-typed-command! "go" "" (lambda (bid)
-             (set-virtual-lines! "linter" bid
+             (set-virtual-lines! bid "linter"
                (list (hash 'line 0 'text "abcdef"
-                           'segments (list (hash 'start-char 0 'end-char 3 'scope "a") (hash 'start-char 3 'end-char 6 'scope "b")))))))"#,
+                           'segments (list (hash 'start-char-col 0 'end-char-col 3 'scope "a") (hash 'start-char-col 3 'end-char-col 6 'scope "b")))))))"#,
     );
     type_cmd(&mut ed, ":go");
 

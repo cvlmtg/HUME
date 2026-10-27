@@ -523,6 +523,41 @@ fn show_read_only_buffer_opens_the_text_in_the_pane() {
     assert_eq!(ed.current_view().primary().head().offset().index(), 0);
 }
 
+/// `show-read-only-buffer!` returns the pane now showing the view, so the
+/// next call reads the view, not the buffer the value it was given names.
+#[test]
+fn show_read_only_buffer_returns_the_pane_now_showing_the_view() {
+    let mut ed = editor_from("-[h]>ello\n");
+    run_show_probe(
+        &mut ed,
+        r#"(let ((view (show-read-only-buffer! pane "report" "one\n")))
+             (log! 'info (buffer-name view)))"#,
+    );
+
+    assert_eq!(ed.state.status_msg.as_deref(), Some("[report]"));
+}
+
+/// `switch-to-buffer!` and a cross-buffer `goto-location!` return the pane
+/// now showing their target; the value they were called with names the
+/// buffer the pane left.
+#[test]
+fn pane_repointing_calls_return_the_pane_now_showing_the_target() {
+    let mut ed = editor_from("-[h]>ello\n");
+    let original = ed.doc().display_name();
+    run_show_probe(
+        &mut ed,
+        r#"(let* ((view (show-read-only-buffer! pane "report" "one\n"))
+                  (back (switch-to-buffer! view pane))
+                  (view-again (goto-location! back (hash 'target view 'char-offset 0))))
+             (log! 'info (string-append (buffer-name back) "|" (buffer-name view-again))))"#,
+    );
+
+    assert_eq!(
+        ed.state.status_msg.as_deref(),
+        Some(format!("{original}|[report]").as_str())
+    );
+}
+
 /// A second call with the same name replaces the first call's text in the
 /// same buffer. It names the pane through `(focused-pane)`: after the first
 /// call, `pane` names a buffer its pane does not show.

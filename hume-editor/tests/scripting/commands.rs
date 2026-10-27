@@ -356,7 +356,10 @@ fn only_the_statusline_takes_a_sections_hash() {
             &mut mock,
         )
         .unwrap_err();
-    assert!(err.contains("invalid value for 'theme'"), "got: {err}");
+    assert!(
+        err.contains("'theme' takes one value, not a hash"),
+        "got: {err}"
+    );
 }
 
 #[test]

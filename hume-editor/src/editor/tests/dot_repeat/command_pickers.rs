@@ -96,6 +96,49 @@ fn dot_repeats_a_commands_dismissed_picker() {
     assert_eq!(ed.doc().text().to_string(), "(z)ello\n(z)orld\n");
 }
 
+/// Under `.`, `picker!` answers `#f`, as `show-menu!` does: the picker the
+/// replayed body asks for never opens.
+#[test]
+fn a_replayed_picker_returns_false() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = record_pk(
+        tmp.path(),
+        &format!(
+            r#"(log! 'warning (if (picker! pane (list (cons "a" "A")) {PK_SELECT}) "token" "no-token"))"#
+        ),
+        &[key_enter()],
+    );
+    ed.feed_key(key('.'));
+    ed.settle();
+    assert!(
+        ed.state.message_log.entries().any(|e| e.text == "no-token"),
+        "the replayed picker! must answer #f: {}",
+        ed.state.message_log.format_for_display()
+    );
+}
+
+/// The same holds for `live-picker!`.
+#[test]
+fn a_replayed_live_picker_returns_false() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = record_pk(
+        tmp.path(),
+        &format!(
+            r#"(let ((tok (live-picker! pane {PK_SELECT} #:source (picker-command-source (lambda (q) #f)))))
+                 (log! 'warning (if tok "token" "no-token"))
+                 (picker-push! tok (list (cons "b" "B"))))"#
+        ),
+        &[key_enter()],
+    );
+    ed.feed_key(key('.'));
+    ed.settle();
+    assert!(
+        ed.state.message_log.entries().any(|e| e.text == "no-token"),
+        "the replayed live-picker! must answer #f: {}",
+        ed.state.message_log.format_for_display()
+    );
+}
+
 /// A live picker's pick is repeated without feeding it any item.
 #[test]
 fn dot_repeats_a_commands_live_picker_selection() {

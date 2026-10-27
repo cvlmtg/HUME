@@ -129,7 +129,11 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
             ),
         })
     }
-    fn switch_to_buffer(&mut self, pane: PaneHandle, target: BufferId) -> Result<(), String> {
+    fn switch_to_buffer(
+        &mut self,
+        pane: PaneHandle,
+        target: BufferId,
+    ) -> Result<PaneHandle, String> {
         let t = self.command_pane(pane)?;
         crate::editor::buffer::lifecycle::switch_to_buffer_with_jump(
             self.state,
@@ -137,17 +141,18 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
             t.pid(),
             target,
         );
-        Ok(())
+        Ok(PaneHandle::with_pane(target, t.pid()))
     }
     fn show_read_only_buffer(
         &mut self,
         pane: PaneHandle,
         name: &str,
         text: &str,
-    ) -> Result<(), String> {
+    ) -> Result<PaneHandle, String> {
         let t = self.command_pane(pane)?;
+        let pid = t.pid();
         let label = ViewLabel::named(name).map_err(|e| e.to_string())?;
-        crate::editor::buffer::lifecycle::show_read_only_view(
+        let view = crate::editor::buffer::lifecycle::show_read_only_view(
             self.state,
             self.view,
             t,
@@ -155,7 +160,7 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
             text,
             Some(ContentLine::new(0)),
         );
-        Ok(())
+        Ok(PaneHandle::with_pane(view, pid))
     }
 
     fn buffer_undo_tree(&self, id: BufferId) -> Option<Vec<hume_scripting::host::UndoNode>> {

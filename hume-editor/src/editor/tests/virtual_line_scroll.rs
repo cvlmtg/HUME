@@ -8,7 +8,7 @@
 //     can push a line onto an extra wrapped display line.
 //
 // `PaneVirtualLines` can now emit `Before` too (`set-virtual-lines!`'s
-// `'anchor`); these register synthetic
+// `'side`); these register synthetic
 // providers directly on the pane instead, mirroring `cursor/tests.rs`'s and
 // `scroll/tests.rs`'s `OneBeforeLine` doubles, to isolate display-line-
 // counting math from the Steel bridge (that path is exercised separately in

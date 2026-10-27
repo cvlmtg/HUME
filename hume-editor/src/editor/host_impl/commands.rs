@@ -1,7 +1,6 @@
 //! `EditorHostImpl`'s command registry queries, synchronous native
 //! dispatch, and Steel command registration.
 
-use crate::editor::dispatch::unknown_command_text;
 use crate::editor::registry::{
     ArgExpansion, MappableCommand, SteelCommand, TypedBody, TypedCommand,
 };
@@ -163,9 +162,8 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
         self.state
             .config
             .registry
-            .get_mappable(name)
+            .callable_by_script(name)
             .map(MappableCommand::is_native)
-            .ok_or_else(|| unknown_command_text(name))
     }
 
     fn run_command_sync(
@@ -179,17 +177,12 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
             arg,
         }: hume_scripting::host::NativeCall,
     ) -> Result<bool, String> {
-        let Some(cmd) = self.state.config.registry.get_mappable(name).cloned() else {
-            return Err(unknown_command_text(name));
-        };
+        let cmd = self.state.config.registry.callable_by_script(name)?.clone();
         let MappableCommand::Native(cmd) = cmd else {
             return Err(format!(
                 "{name} is not a native command; use call! instead of call-native!"
             ));
         };
-        if cmd.meta().key_only {
-            return Err(format!("'{name}': runs only from a key"));
-        }
         // `count` came from `parse_native_args`, which decodes a Steel-side
         // count of 0 to `Count::UNTYPED`, the script's way of asking for "as if no
         // count was typed" (move-down/move-up read this as visual-line

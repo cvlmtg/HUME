@@ -272,8 +272,11 @@ fn an_empty_list_changes_nothing_in_a_read_only_buffer_either() {
     assert_eq!(error_log(&ed), Vec::<String>::new());
 }
 
+/// Like `apply-text-edits!`, `edit-text!` acts through its pane only while
+/// that pane shows the buffer: through a closed one it edits the buffer for
+/// no pane.
 #[test]
-fn a_closed_pane_raises() {
+fn a_closed_pane_edits_its_buffer_for_no_pane() {
     let mut ed = editor_from("-[a]>bc\n");
     let bid = ed.focused_buffer_id();
     ed.execute_typed("split", None).unwrap();
@@ -284,7 +287,7 @@ fn a_closed_pane_raises() {
         "sanity: the pane is gone"
     );
 
-    let err = EditorHostImpl::new(&mut ed.state, &mut ed.view)
+    EditorHostImpl::new(&mut ed.state, &mut ed.view)
         .edit_text(
             PaneHandle::with_pane(bid, closed),
             vec![CharTextEdit {
@@ -292,8 +295,58 @@ fn a_closed_pane_raises() {
                 end: 0,
                 text: "X".to_string(),
             }],
+            None,
         )
-        .unwrap_err();
-    assert!(err.contains("pane has been closed"), "got: {err}");
-    assert_eq!(state(&ed), "-[a]>bc\n");
+        .expect("a pane that no longer shows the buffer edits for no pane");
+    assert_eq!(ed.state.buffers.get(bid).text().to_string(), "Xabc\n");
+}
+
+/// A pane-less value, such as a `(buffers)` entry, edits its buffer.
+#[test]
+fn a_pane_less_value_edits_its_buffer() {
+    let mut ed = editor_from("-[a]>bc\n");
+    let bid = ed.focused_buffer_id();
+
+    EditorHostImpl::new(&mut ed.state, &mut ed.view)
+        .edit_text(
+            PaneHandle::buffer_only(bid),
+            vec![CharTextEdit {
+                start: 3,
+                end: 3,
+                text: "!".to_string(),
+            }],
+            None,
+        )
+        .expect("a buffer-only value edits");
+    assert_eq!(ed.state.buffers.get(bid).text().to_string(), "abc!\n");
+}
+
+#[test]
+fn a_stale_expected_generation_refuses_the_edit() {
+    let msg = error_for(
+        "-[a]>bc\n",
+        "(list (hash 'start-char 0 'end-char 1 'text \"X\")) #:expect-generation (+ 1 (buffer-generation pane))",
+    );
+    assert!(msg.contains("buffer changed"), "got: {msg}");
+}
+
+/// A stale generation is reported as stale even when an edit's range is
+/// also past the end of the current text: the range was computed for a
+/// text that is gone.
+#[test]
+fn a_stale_expected_generation_is_reported_before_a_range_past_the_end() {
+    let msg = error_for(
+        "-[a]>bc\n",
+        "(list (hash 'start-char 90 'end-char 95 'text \"X\")) #:expect-generation (+ 1 (buffer-generation pane))",
+    );
+    assert!(msg.contains("buffer changed"), "got: {msg}");
+}
+
+#[test]
+fn a_stale_expected_generation_refuses_an_empty_edit_list() {
+    let msg = error_for(
+        "-[a]>bc\n",
+        "'() #:expect-generation (+ 1 (buffer-generation pane))",
+    );
+    assert!(msg.contains("buffer changed"), "got: {msg}");
 }

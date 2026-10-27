@@ -19,7 +19,7 @@ fn diff_lines_returns_zero_based_hunk_hashes() {
         &mut ed,
         ScriptingHost::new(&Dirs::none()),
         tmp.path(),
-        r#"(equal? (diff-lines "a\nb\nc\n" "a\nB\nc\n")
+        r#"(equal? (hash-ref (diff-lines "a\nb\nc\n" "a\nB\nc\n") 'hunks)
                    (list (hash 'old-start-line 1 'old-end-line 2 'new-start-line 1 'new-end-line 2
                               'old-lines (list "b") 'new-lines (list "B")
                               'words (hash 'old (list) 'new (list)))))"#,
@@ -41,7 +41,7 @@ fn diff_buffer_lines_diffs_the_live_buffer_against_the_ref() {
         &mut ed,
         ScriptingHost::new(&Dirs::none()),
         tmp.path(),
-        r#"(equal? (diff-buffer-lines bid "a\nB\nc\n")
+        r#"(equal? (hash-ref (diff-buffer-lines bid "a\nB\nc\n") 'hunks)
                    (list (hash 'old-start-line 1 'old-end-line 2 'new-start-line 1 'new-end-line 2
                               'old-lines (list "B") 'new-lines (list "b")
                               'words (hash 'old (list) 'new (list)))))"#,
@@ -78,7 +78,7 @@ fn diff_buffer_lines_on_a_stale_bid_raises_invalid_buffer_id() {
             r#"(define-typed-command! "probe" "" (lambda ()
                  (define b (open-buffer! {scratch_str}))
                  (close-buffer! b)
-                 (diff-buffer-lines b "a\nb\n")))"#
+                 (hash-ref (diff-buffer-lines b "a\nb\n") 'hunks)))"#
         ),
         tmp.path(),
     );
@@ -111,7 +111,7 @@ fn buffer_revision_diff_returns_hunks_with_word_spans() {
         &mut ed,
         ScriptingHost::new(&Dirs::none()),
         tmp.path(),
-        r#"(equal? (buffer-revision-diff bid 0)
+        r#"(equal? (hash-ref (buffer-revision-diff bid 0) 'hunks)
                    (list (hash 'old-start-line 0 'old-end-line 1 'new-start-line 0 'new-end-line 1
                               'old-lines (list "abc") 'new-lines (list "bc")
                               'words (hash 'old (list (hash 'line 0 'start-char-col 0 'end-char-col 1))
@@ -135,7 +135,7 @@ fn buffer_revision_diff_keeps_words_when_a_span_covers_its_line() {
     let verdict = log_probe(
         &mut ed,
         tmp.path(),
-        r#"(if (equal? (buffer-revision-diff bid 0)
+        r#"(if (equal? (hash-ref (buffer-revision-diff bid 0) 'hunks)
                        (list (hash 'old-start-line 0 'old-end-line 1 'new-start-line 0 'new-end-line 1
                                   'old-lines (list "a") 'new-lines (list "")
                                   'words (hash 'old (list) 'new (list)))))
@@ -156,7 +156,7 @@ fn buffer_revision_diff_on_an_unknown_revision_raises() {
     install_source(
         &mut ed,
         ScriptingHost::new(&Dirs::none()),
-        r#"(define-typed-command! "probe" "" (lambda (bid) (buffer-revision-diff bid 99)))"#,
+        r#"(define-typed-command! "probe" "" (lambda (bid) (hash-ref (buffer-revision-diff bid 99) 'hunks)))"#,
         tmp.path(),
     );
     type_cmd(&mut ed, ":probe");
@@ -205,7 +205,7 @@ fn diff_lines_words_follow_the_edit_across_uneven_sides() {
         &mut ed,
         ScriptingHost::new(&Dirs::none()),
         tmp.path(),
-        r##"(equal? (hash-ref (car (diff-lines "# h\n\nkeep one two\n" "keep two\n")) 'words)
+        r##"(equal? (hash-ref (car (hash-ref (diff-lines "# h\n\nkeep one two\n" "keep two\n") 'hunks)) 'words)
                    (hash 'old (list (hash 'line 2 'start-char-col 4 'end-char-col 8)) 'new (list)))"##,
     );
     assert!(
@@ -227,7 +227,7 @@ fn diff_buffer_lines_words_are_absolute_lines_and_new_text_offsets() {
         &mut ed,
         ScriptingHost::new(&Dirs::none()),
         tmp.path(),
-        r#"(equal? (hash-ref (car (diff-buffer-lines bid "a\nfoo baz\n")) 'words)
+        r#"(equal? (hash-ref (car (hash-ref (diff-buffer-lines bid "a\nfoo baz\n") 'hunks)) 'words)
                    (hash 'old (list (hash 'line 1 'start-char-col 4 'end-char-col 7))
                          'new (list (hash 'start-char 6 'end-char 9))))"#,
     );

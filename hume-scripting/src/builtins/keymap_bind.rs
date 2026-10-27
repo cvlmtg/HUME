@@ -11,7 +11,7 @@ use crate::{Effect, SteelCtx};
 use hume_core::{BindMode, PaneHandle};
 
 use super::SteelResult;
-use super::args::{optional_symbol_arg, symbol_arg, symbol_enum_arg};
+use super::args::{optional_string_arg, string_arg, symbol_arg, symbol_enum_arg};
 use super::errors::{self, generic_err};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -24,7 +24,7 @@ fn mode_from_symbol(mode: &SteelVal) -> Result<BindMode, SteelErr> {
 /// The keymap a `#:keymap` argument names. The global keymap only changes
 /// during `init.scm` or plugin load; a named one may change from anywhere.
 fn keymap_target(ctx: &SteelCtx, keymap: SteelVal) -> Result<KeymapTarget, SteelErr> {
-    match optional_symbol_arg(keymap, "#:keymap")? {
+    match optional_string_arg(keymap, "#:keymap")? {
         Some(name) => Ok(KeymapTarget::Named(name)),
         None => {
             errors::require_config(ctx)?;
@@ -84,7 +84,7 @@ fn bind_inner(
 /// - `key-sequence`: a string parsed by [`parse_key_sequence`].
 /// - `command-name`: the canonical command name (must be registered in
 ///   the editor's `CommandRegistry` at dispatch time; not validated here).
-/// - `name`: a symbol, or `#f` for the global keymap.
+/// - `name`: a string, or `#f` for the global keymap.
 ///
 /// A global bind is only valid during `init.scm` or plugin load.
 pub(crate) fn bind_key(
@@ -141,7 +141,7 @@ pub(crate) fn unbind_key(
 }
 
 fn keymap_name(name: SteelVal) -> Result<String, SteelErr> {
-    symbol_arg(&name, "name", "a keymap name symbol like 'my-keys").map(str::to_owned)
+    string_arg(name, "name")
 }
 
 /// `(attach-keymap! pane name)`

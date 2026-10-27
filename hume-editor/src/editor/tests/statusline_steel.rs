@@ -15,7 +15,7 @@ fn pushed_text_renders_for_the_focused_buffer() {
         &mut ed,
         &mut host,
         r#"(define-typed-command! "arm" "" (lambda (bid)
-             (set-statusline-text! "greeting" bid "hello")))"#,
+             (set-statusline-text! bid "greeting" "hello")))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -38,7 +38,7 @@ fn pushed_text_is_not_shown_once_a_different_buffer_is_focused() {
         &mut host,
         &format!(
             r#"(define-typed-command! "arm" "" (lambda (bid)
-                 (set-statusline-text! "greeting" bid "hello")
+                 (set-statusline-text! bid "greeting" "hello")
                  (switch-to-buffer! bid (open-buffer! {other_str}))))"#
         ),
         tmp.path(),
@@ -66,7 +66,7 @@ fn closing_the_buffer_clears_its_pushed_text() {
         &format!(
             r#"(define-typed-command! "arm" "" (lambda ()
                  (define b (open-buffer! {scratch_str}))
-                 (set-statusline-text! "greeting" b "hello")
+                 (set-statusline-text! b "greeting" "hello")
                  (close-buffer! b)))"#
         ),
         tmp.path(),
@@ -90,9 +90,9 @@ fn empty_text_clears_a_previously_pushed_value() {
         &mut ed,
         &mut host,
         r#"(define-typed-command! "arm" "" (lambda (bid)
-             (set-statusline-text! "greeting" bid "hello")))
+             (set-statusline-text! bid "greeting" "hello")))
            (define-typed-command! "unarm" "" (lambda (bid)
-             (set-statusline-text! "greeting" bid "")))"#,
+             (set-statusline-text! bid "greeting" "")))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -124,7 +124,7 @@ fn set_statusline_text_on_a_stale_bid_raises_unknown_buffer() {
             r#"(define-typed-command! "arm" "" (lambda ()
                  (define b (open-buffer! {scratch_str}))
                  (close-buffer! b)
-                 (set-statusline-text! "greeting" b "hello")))"#
+                 (set-statusline-text! b "greeting" "hello")))"#
         ),
         tmp.path(),
     );
@@ -153,7 +153,7 @@ fn set_statusline_text_on_an_unplaceable_name_raises_an_error() {
         &mut ed,
         &mut host,
         r#"(define-typed-command! "arm" "" (lambda (bid)
-             (set-statusline-text! "a,b" bid "hello")))"#,
+             (set-statusline-text! bid "a,b" "hello")))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);

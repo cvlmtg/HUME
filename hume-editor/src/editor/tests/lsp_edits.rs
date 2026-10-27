@@ -1006,10 +1006,10 @@ fn goto_location_path_target_past_the_last_line_answers_false() {
     assert_eq!(ed.doc().text().to_string(), "abcdef\n", "no jump happened");
 }
 
-/// An existing line answers `#t`, and a file already open stays open when
-/// the answer is `#f`.
+/// An existing line answers the pane, now showing the file, and a file
+/// already open stays open when the answer is `#f`.
 #[test]
-fn goto_location_answers_true_after_a_jump_and_keeps_an_open_buffer_on_false() {
+fn goto_location_answers_the_pane_after_a_jump_and_keeps_an_open_buffer_on_false() {
     let tmp = tempfile::tempdir().unwrap();
     let file = tmp.path().join("other.txt");
     std::fs::write(&file, "one\ntwo\n").unwrap();
@@ -1026,7 +1026,7 @@ fn goto_location_answers_true_after_a_jump_and_keeps_an_open_buffer_on_false() {
             r#"(define-typed-command! "missing" "" (lambda (bid)
                  (log! 'info (to-string (goto-location! bid (hash 'target {target} 'line 5 'char-col 0))))))
                (define-typed-command! "hit" "" (lambda (bid)
-                 (log! 'info (to-string (goto-location! bid (hash 'target {target} 'line 1 'char-col 1))))))"#
+                 (log! 'info (buffer-name (goto-location! bid (hash 'target {target} 'line 1 'char-col 1))))))"#
         ),
     );
 
@@ -1039,7 +1039,7 @@ fn goto_location_answers_true_after_a_jump_and_keeps_an_open_buffer_on_false() {
     );
 
     type_cmd(&mut ed, ":hit");
-    assert_eq!(ed.state.status_msg.as_deref(), Some("#true"));
+    assert_eq!(ed.state.status_msg.as_deref(), Some("other.txt"));
     assert_eq!(ed.focused_buffer_id(), other);
 }
 

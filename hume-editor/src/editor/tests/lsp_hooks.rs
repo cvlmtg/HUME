@@ -97,7 +97,7 @@ fn set_hook_triggers_from_inside_a_hook_handler_takes_effect() {
     let mut rig = starting_rig(
         &tmp,
         r#"(register-hook! 'on-lsp-attach (lambda (pane server)
-             (set-hook-triggers! "test" (get-buffer-option pane "language") '("."))))
+             (set-hook-triggers! (get-buffer-option pane "language") "test" '(#\.))))
            (register-hook! 'on-trigger-char (lambda (pane ch source) (call! "move-right" pane)))"#,
         answering_initialize(),
     );
@@ -137,8 +137,8 @@ fn set_hook_triggers_for_two_languages_under_the_same_source_do_not_clobber_each
            (set-language-servers! "python" '("pylsp"))
            (register-hook! 'on-lsp-attach (lambda (pane server)
              (let ((language (get-buffer-option pane "language")))
-               (set-hook-triggers! "test" language
-                 (if (equal? language "rust") '(".") '(","))))))
+               (set-hook-triggers! language "test"
+                 (if (equal? language "rust") '(#\.) '(#\,))))))
            (register-hook! 'on-trigger-char (lambda (pane ch source) (call! "move-right" pane)))"#,
         backend,
     );
@@ -345,9 +345,9 @@ fn on_trigger_char_fires_only_for_registered_chars_in_insert_mode_after_insertio
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(set-hook-triggers! "test" "rust" '("."))
+        r#"(set-hook-triggers! "rust" "test" '(#\.))
            (register-hook! 'on-trigger-char (lambda (bid ch source)
-             (when (equal? ch ".")
+             (when (equal? ch #\.)
                (call! "move-right" bid))))"#,
         tmp.path(),
     );
@@ -400,7 +400,7 @@ fn on_trigger_char_does_not_fire_in_normal_mode() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(set-hook-triggers! "test" "rust" '("."))
+        r#"(set-hook-triggers! "rust" "test" '(#\.))
            (register-hook! 'on-trigger-char (lambda (bid ch source) (call! "move-right" bid)))"#,
         tmp.path(),
     );
@@ -434,7 +434,7 @@ fn set_attachment_hook_triggers_fires_for_that_buffer_only() {
         &tmp,
         r#"(register-hook! 'on-lsp-attach (lambda (pane server)
              (when (equal? (get-buffer-option pane "language") "rust")
-               (set-attachment-hook-triggers! "test" pane server 'diagnostics '(".")))))
+               (set-attachment-hook-triggers! pane "test" server 'diagnostics '(#\.)))))
            (register-hook! 'on-trigger-char (lambda (pane ch source) (log! 'warning source)))"#,
         answering_initialize(),
     );
@@ -475,7 +475,7 @@ fn attachment_triggers_are_per_buffer_not_per_instance() {
     let lib_bid = rig.ed.focused_buffer_id();
     assert_ne!(lib_bid, rig.bid);
 
-    rig.probe(r#"(set-attachment-hook-triggers! "test" pane (car (lsp-servers pane)) 'diagnostics '("."))"#);
+    rig.probe(r#"(set-attachment-hook-triggers! pane "test" (car (lsp-servers pane)) 'diagnostics '(#\.))"#);
 
     assert_eq!(trigger_count(&rig.ed, lib_bid), 1);
     assert_eq!(trigger_count(&rig.ed, rig.bid), 0);
@@ -491,7 +491,7 @@ fn attachment_triggers_for_an_unadvertised_feature_set_nothing() {
     rig.ed.settle();
 
     rig.probe(
-        r#"(set-attachment-hook-triggers! "test" pane (car (lsp-servers pane)) 'hover '("."))"#,
+        r#"(set-attachment-hook-triggers! pane "test" (car (lsp-servers pane)) 'hover '(#\.))"#,
     );
 
     assert_eq!(trigger_count(&rig.ed, rig.bid), 0);
@@ -506,9 +506,9 @@ fn a_listener_set_in_both_scopes_fires_once() {
     rig.ed.drain_lsp();
     rig.ed.settle();
 
-    rig.probe(r#"(set-hook-triggers! "test" "rust" '("."))"#);
+    rig.probe(r#"(set-hook-triggers! "rust" "test" '(#\.))"#);
     rig.probe(
-        r#"(set-attachment-hook-triggers! "test" pane (car (lsp-servers pane)) 'diagnostics '("."))"#,
+        r#"(set-attachment-hook-triggers! pane "test" (car (lsp-servers pane)) 'diagnostics '(#\.))"#,
     );
 
     let hooks = rig.ed.state.triggered_by('.', rig.bid).hooks;
@@ -544,7 +544,7 @@ fn set_attachment_completion_triggers_fires_the_source_for_that_buffer_only() {
     assert_ne!(lib_bid, rig.bid);
 
     rig.probe(
-        r#"(set-attachment-completion-triggers! "test-src" pane (car (lsp-servers pane)) 'completion '("."))"#,
+        r#"(set-attachment-completion-triggers! pane "test-src" (car (lsp-servers pane)) 'completion '(#\.))"#,
     );
 
     assert_eq!(rig.ed.state.triggered_by('.', lib_bid).completions.len(), 1);
@@ -595,7 +595,7 @@ fn attachment_triggers_vanish_when_the_server_stops() {
     let mut rig = starting_rig(
         &tmp,
         r#"(register-hook! 'on-lsp-attach (lambda (pane server)
-             (set-attachment-hook-triggers! "test" pane server 'diagnostics '("."))))
+             (set-attachment-hook-triggers! pane "test" server 'diagnostics '(#\.))))
            (register-hook! 'on-trigger-char (lambda (pane ch source) (log! 'warning source)))"#,
         answering_initialize(),
     );
@@ -629,7 +629,7 @@ fn a_filter_change_clears_the_attachments_triggers_and_refires_attach() {
         r#"(register-hook! 'on-lsp-attach (lambda (pane server)
              (log! 'warning "attach")
              (when (member server (lsp-servers pane #:feature 'hover))
-               (set-attachment-hook-triggers! "test" pane server 'diagnostics '(".")))))"#,
+               (set-attachment-hook-triggers! pane "test" server 'diagnostics '(#\.)))))"#,
         backend,
     );
     rig.ed.drain_lsp();
@@ -658,7 +658,7 @@ fn reload_clears_attachment_triggers() {
     let mut rig = starting_rig(
         &tmp,
         r#"(register-hook! 'on-lsp-attach (lambda (pane server)
-             (set-attachment-hook-triggers! "test" pane server 'diagnostics '("."))))"#,
+             (set-attachment-hook-triggers! pane "test" server 'diagnostics '(#\.))))"#,
         answering_initialize(),
     );
     rig.ed.drain_lsp();

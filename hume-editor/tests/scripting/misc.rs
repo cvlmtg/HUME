@@ -18,7 +18,7 @@ fn arity1_list_command_rejects_false_arg() {
              (lambda (items)
                (unless (and (list? items) (not (null? items)))
                  (error "needs-list: requires a non-empty list"))
-               (call! "move-right")))"#,
+               #t))"#,
         &mut mock,
     )
     .unwrap();
@@ -45,7 +45,7 @@ fn arity1_list_command_accepts_list_arg() {
              (lambda (items)
                (unless (and (list? items) (not (null? items)))
                  (error "needs-list: requires a non-empty list"))
-               (call! "move-right")))"#,
+               #t))"#,
         &mut mock,
     )
     .unwrap();

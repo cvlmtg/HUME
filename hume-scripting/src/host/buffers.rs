@@ -122,13 +122,18 @@ pub trait BufferHost {
     /// unsaved changes and `on_unsaved` is [`OnUnsaved::Refuse`], or while a
     /// pipe runs in it.
     fn close_buffer(&mut self, id: BufferId, on_unsaved: OnUnsaved) -> Result<(), String>;
-    /// Switch the focused pane to `target`, recording a jump entry.
-    /// Redirect `pane`'s own pane to `target`, recording a jump entry.
-    /// Kind-B: raises if `pane` carries no pane, a closed one, or one that
-    /// no longer shows `pane`'s buffer.
-    fn switch_to_buffer(&mut self, pane: PaneHandle, target: BufferId) -> Result<(), String>;
+    /// Redirect `pane`'s own pane to `target`, recording a jump entry, and
+    /// return the handle naming that pane and `target`. Kind-B: raises if
+    /// `pane` carries no pane, a closed one, or one that no longer shows
+    /// `pane`'s buffer.
+    fn switch_to_buffer(
+        &mut self,
+        pane: PaneHandle,
+        target: BufferId,
+    ) -> Result<PaneHandle, String>;
     /// Show `text` on `pane`'s own pane in the read-only buffer labelled
-    /// `[name]`, opening it on first use and replacing its text after.
+    /// `[name]`, opening it on first use and replacing its text after, and
+    /// return the handle naming that pane and the view.
     /// Kind-B, like [`Self::switch_to_buffer`]. `Err` for an empty name or
     /// one the editor's own views use.
     fn show_read_only_buffer(
@@ -136,7 +141,7 @@ pub trait BufferHost {
         pane: PaneHandle,
         name: &str,
         text: &str,
-    ) -> Result<(), String>;
+    ) -> Result<PaneHandle, String>;
 
     /// Steel-side staleness token for buffer `id` (its text generation, bumped by
     /// every mutation), or `None` if `id` is unknown. Not LSP-specific (any

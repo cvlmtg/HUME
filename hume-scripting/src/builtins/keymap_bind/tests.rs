@@ -120,11 +120,11 @@ fn unbind_key_with_a_keymap_queues_a_named_unbind_in_command_mode() {
     );
 }
 
-/// A keymap is named by a symbol; a string raises and queues nothing.
+/// A keymap is named by a string, like every other open, user-chosen name.
 #[test]
-fn a_keymap_named_by_a_string_is_rejected() {
+fn a_keymap_is_named_by_a_string() {
     let mut h = SteelCtxTestHarness::new();
-    let result = {
+    {
         let mut ctx = h.ctx();
         bind_key(
             &mut ctx,
@@ -133,12 +133,16 @@ fn a_keymap_named_by_a_string_is_rejected() {
             "move-right".into(),
             SteelVal::StringV("md-keys".into()),
         )
-    };
-    let msg = result
-        .expect_err("a string keymap name must raise")
-        .to_string();
-    assert!(msg.contains("#:keymap"), "got: {msg}");
-    assert!(effects(&h).is_empty());
+        .expect("a string keymap name binds");
+    }
+    assert!(
+        matches!(
+            effects(&h).as_slice(),
+            [Effect::BindKey { keymap: KeymapTarget::Named(name), .. }] if name == "md-keys"
+        ),
+        "got: {:?}",
+        effects(&h)
+    );
 }
 
 // ── Mode validation ───────────────────────────────────────────────────────
@@ -465,23 +469,26 @@ fn detach_keymap_queues_a_detach_for_the_panes_buffer() {
 }
 
 #[test]
-fn attach_keymap_takes_a_symbol_name() {
-    use crate::test_support::default_pane;
+fn attach_keymap_takes_a_string_name() {
+    use crate::test_support::{default_bid, default_pane};
     let mut h = SteelCtxTestHarness::new();
-    let result = {
+    {
         let mut ctx = h.ctx();
         attach_keymap(
             &mut ctx,
             default_pane(),
             SteelVal::StringV("md-keys".into()),
         )
-    };
-    let msg = result.expect_err("a string name must raise").to_string();
+        .expect("a string name attaches");
+    }
     assert!(
-        msg.contains("name: expected a keymap name symbol"),
-        "got: {msg}"
+        matches!(
+            effects(&h).as_slice(),
+            [Effect::AttachKeymap { buffer, name }] if *buffer == default_bid() && name == "md-keys"
+        ),
+        "got: {:?}",
+        effects(&h)
     );
-    assert!(effects(&h).is_empty());
 }
 
 /// A bind and an unbind record who made them: init.scm's top level is the

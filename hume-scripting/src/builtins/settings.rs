@@ -10,28 +10,62 @@ use hume_core::{
 };
 
 use crate::SteelCtx;
+use crate::host::OptionValue;
 use crate::types::{Effect, QueuedEffect};
 
 use super::SteelResult;
 use super::args::{hash_entry, list_to_strings, string_list, symbol_hash};
 use super::errors::generic_err;
 
-/// Coerce a Steel string/bool/int/list-of-strings/sections-hash settings
-/// value to what the settings layer takes: the text `:set` would carry, a
-/// list's words, or the statusline's sections. A named value is a string,
-/// the spelling `get-option` reads back, so a symbol is refused. `ctx_name`
-/// names the argument in the error.
-fn coerce_option_value(value: &SteelVal, ctx_name: &str) -> Result<OptionInput, SteelErr> {
-    match value {
-        SteelVal::StringV(s) => Ok(OptionInput::Text(s.to_string())),
-        SteelVal::BoolV(b) => Ok(OptionInput::Text(b.to_string())),
-        SteelVal::IntV(n) => Ok(OptionInput::Text(n.to_string())),
-        SteelVal::ListV(_) => list_to_strings(value.clone(), ctx_name).map(OptionInput::Words),
-        SteelVal::HashMapV(_) => {
-            decode_sections(value.clone(), ctx_name).map(OptionInput::Sections)
+/// What an option takes besides the text `:set` would carry: nothing
+/// (`One`), a list of words, or the statusline's sections.
+#[derive(Clone, Copy)]
+enum Takes {
+    One,
+    Words,
+    Sections,
+}
+
+impl Takes {
+    /// What `key` takes: an option reads back in the shape it is set in, so
+    /// its global value tells. Raises for an unknown `key`.
+    fn of(ctx: &mut SteelCtx, key: &str) -> Result<Self, SteelErr> {
+        let current = ctx
+            .host
+            .settings()
+            .get_global_option(key)
+            .map_err(generic_err)?;
+        Ok(match current {
+            OptionValue::List(_) => Takes::Words,
+            OptionValue::Sections(_) => Takes::Sections,
+            OptionValue::Bool(_) | OptionValue::Int(_) | OptionValue::Str(_) => Takes::One,
+        })
+    }
+}
+
+/// Coerce a Steel string/bool/int/list-of-strings/sections-hash value for
+/// option `key`, which takes `takes`, to what the settings layer takes: the
+/// text `:set` would carry, a list's words, or the statusline's sections. A
+/// list or a hash is refused for an option that does not take one, before
+/// what it holds is read. A named value is a string, the spelling
+/// `get-option` reads back, so a symbol is refused.
+fn coerce_option_value(value: &SteelVal, key: &str, takes: Takes) -> Result<OptionInput, SteelErr> {
+    match (value, takes) {
+        (SteelVal::StringV(s), _) => Ok(OptionInput::Text(s.to_string())),
+        (SteelVal::BoolV(b), _) => Ok(OptionInput::Text(b.to_string())),
+        (SteelVal::IntV(n), _) => Ok(OptionInput::Text(n.to_string())),
+        (SteelVal::ListV(_), Takes::Words) => {
+            list_to_strings(value.clone(), "value").map(OptionInput::Words)
+        }
+        (SteelVal::HashMapV(_), Takes::Sections) => {
+            decode_sections(value.clone()).map(OptionInput::Sections)
+        }
+        (SteelVal::ListV(_), _) => Err(generic_err(format!("'{key}' takes one value, not a list"))),
+        (SteelVal::HashMapV(_), _) => {
+            Err(generic_err(format!("'{key}' takes one value, not a hash")))
         }
         _ => steel::stop!(TypeMismatch =>
-            "{ctx_name}: value must be a string, bool, integer, list of strings, or statusline sections hash, got {:?}", value),
+            "value must be a string, bool, integer, list of strings, or statusline sections hash, got {:?}", value),
     }
 }
 
@@ -40,8 +74,8 @@ fn coerce_option_value(value: &SteelVal, ctx_name: &str) -> Result<OptionInput, 
 const SECTION_KEYS: &[&str] = &["left", "center", "right"];
 
 /// Decodes a statusline sections hash; every section is required.
-fn decode_sections(value: SteelVal, ctx_name: &str) -> Result<StatuslineSections, SteelErr> {
-    let entry = hash_entry(value, ctx_name, SECTION_KEYS)?;
+fn decode_sections(value: SteelVal) -> Result<StatuslineSections, SteelErr> {
+    let entry = hash_entry(value, "value", SECTION_KEYS)?;
     let section = |key: &str| list_to_strings(entry.required(key)?, &entry.label(key));
     Ok(StatuslineSections {
         left: section("left")?,
@@ -82,7 +116,8 @@ pub(crate) fn set_option(ctx: &mut SteelCtx, key: String, value: SteelVal) -> St
     if let Some(opt) = BufferIntrinsicOption::from_name(&key) {
         return Err(per_buffer_err(opt, "set-buffer-option!"));
     }
-    let value = coerce_option_value(&value, "value")?;
+    let takes = Takes::of(ctx, &key)?;
+    let value = coerce_option_value(&value, &key, takes)?;
 
     let origin = ctx.registration_origin();
     ctx.host
@@ -131,14 +166,15 @@ pub(crate) fn set_buffer_option(
             });
         }
         Some(BufferIntrinsicOption::LineEnding) => {
-            let value = coerce_option_value(&value, "value")?;
+            let value = coerce_option_value(&value, &key, Takes::One)?;
             ctx.host
                 .settings()
                 .set_buffer_line_ending(bid, value, origin)
                 .map_err(generic_err)?;
         }
         None => {
-            let value = coerce_option_value(&value, "value")?;
+            let takes = Takes::of(ctx, &key)?;
+            let value = coerce_option_value(&value, &key, takes)?;
             ctx.host
                 .settings()
                 .set_buffer_option(&key, value, bid, origin)

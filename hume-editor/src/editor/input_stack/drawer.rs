@@ -26,23 +26,15 @@ use super::stack::{
     InputEvent, Layer, LayerHandler, LayerRef, PasteHandler, Removal, RemovalScope,
 };
 
-/// What `Enter` on a drawer row does.
-pub(in crate::editor) enum DrawerSelect {
-    /// Calls a Steel `on-select` with the row index and the drawer's token.
-    Steel(hume_scripting::Callback),
-    /// Row `i` names `buffers[i]`: switches the focused pane to it.
-    Buffers(Vec<BufferId>),
-}
-
-/// An open drawer's rows, selection and select action. Cleared by `Esc` or
-/// `close-drawer!`, not by `Enter` (the drawer stays open across selections).
+/// An open drawer's rows, what `Enter` on one does, and its selection.
+/// Cleared by `Esc` or `close-drawer!`, not by `Enter` (the drawer stays
+/// open across selections).
 pub(in crate::editor) struct DrawerLayer {
     pub(in crate::editor) rows: DrawerRows,
     pub(in crate::editor) selected: usize,
     /// Index of the first visible row, clamped to keep `selected` in view
     /// whenever the selection moves ([`clamp_drawer_scroll`]).
     pub(in crate::editor) scroll: usize,
-    pub(in crate::editor) select: DrawerSelect,
     /// Identifies which call opened this drawer; see
     /// [`Self::token`]'s doc.
     token: HostToken,
@@ -56,12 +48,11 @@ impl DrawerLayer {
     /// existing one's token in place, so a stale token a plugin is still
     /// holding can never alias a *different*, later drawer that happens to
     /// reuse the same stack slot.
-    pub(in crate::editor) fn new(rows: DrawerRows, select: DrawerSelect, selected: usize) -> Self {
+    pub(in crate::editor) fn new(rows: DrawerRows, selected: usize) -> Self {
         let mut drawer = Self {
             rows,
             selected: 0,
             scroll: 0,
-            select,
             token: HostToken::mint(),
         };
         drawer.select_clamped(selected);
@@ -81,11 +72,7 @@ impl DrawerLayer {
             .iter()
             .position(|&b| b == current)
             .expect("the focused buffer is in the store");
-        Self::new(
-            DrawerRows::rendered(list.rows),
-            DrawerSelect::Buffers(list.buffers),
-            selected,
-        )
+        Self::new(DrawerRows::buffers(list), selected)
     }
 
     /// Rows the drawer shows from the next frame on: what its band's height
@@ -96,9 +83,9 @@ impl DrawerLayer {
     /// closed since then already counts here. Selection indexes the rows
     /// listed now, so it bounds itself by `rows.len()` instead.
     pub(in crate::editor) fn item_count(&self, store: &BufferStore) -> usize {
-        match self.select {
-            DrawerSelect::Buffers(_) => store.iter().count(),
-            DrawerSelect::Steel(_) => self.rows.len(),
+        match self.rows {
+            DrawerRows::Buffers { .. } => store.iter().count(),
+            DrawerRows::Script { .. } => self.rows.len(),
         }
     }
 
@@ -116,15 +103,14 @@ impl DrawerLayer {
     /// selection on the buffer it was on, or on the nearest row when that
     /// buffer is gone.
     fn set_buffer_list(&mut self, list: BufferList) {
-        let kept = match &self.select {
-            DrawerSelect::Buffers(old) => old.get(self.selected).copied(),
-            DrawerSelect::Steel(_) => None,
+        let kept = match &self.rows {
+            DrawerRows::Buffers { buffers, .. } => buffers.get(self.selected).copied(),
+            DrawerRows::Script { .. } => None,
         };
         let selected = kept
             .and_then(|b| list.buffers.iter().position(|&n| n == b))
             .unwrap_or(self.selected);
-        self.rows = DrawerRows::rendered(list.rows);
-        self.select = DrawerSelect::Buffers(list.buffers);
+        self.rows = DrawerRows::buffers(list);
         self.select_clamped(selected);
     }
 
@@ -145,51 +131,88 @@ impl DrawerLayer {
     }
 }
 
-/// A drawer's rows and, for lazy rows, what renders them. A row's text is
-/// `None` until rendered. The keys and the text are only ever replaced
-/// together, so a rendered text never outlives the key it was rendered from.
-pub(in crate::editor) struct DrawerRows {
-    /// Shared with `hume_ui::drawer::DrawerViewState::rows` (an
-    /// `Arc::clone`, not a deep copy): `sync_drawer_view` runs
-    /// unconditionally every frame while the drawer is open, and a
-    /// references batch can carry thousands of rows.
-    text: Arc<Vec<Option<String>>>,
-    /// For lazy rows: one key per entry of `text`, and the render proc.
-    lazy: Option<(Vec<hume_scripting::Rooted>, hume_scripting::Callback)>,
+/// A drawer's rows and what `Enter` on one does. A row's text is `None`
+/// until rendered. The text is shared with
+/// `hume_ui::drawer::DrawerViewState::rows` (an `Arc::clone`, not a deep
+/// copy): `sync_drawer_view` runs unconditionally every frame while the
+/// drawer is open, and a references batch can carry thousands of rows.
+pub(in crate::editor) enum DrawerRows {
+    /// A script's rows. `Enter` on row `i` calls `on_select` with
+    /// `payloads[i]` and the drawer's token, and a lazy row is rendered
+    /// from its payload by `render`. The payloads and the text are only
+    /// ever replaced together, so a rendered text never outlives the key it
+    /// was rendered from.
+    Script {
+        text: Arc<Vec<Option<String>>>,
+        payloads: Vec<hume_scripting::Rooted>,
+        render: Option<hume_scripting::Callback>,
+        on_select: hume_scripting::Callback,
+    },
+    /// `:ls`'s rows: row `i` names `buffers[i]`, and `Enter` switches the
+    /// focused pane to it.
+    Buffers {
+        text: Arc<Vec<Option<String>>>,
+        buffers: Vec<BufferId>,
+    },
 }
 
 impl DrawerRows {
-    /// Rows whose text is already rendered.
-    pub(in crate::editor) fn rendered(rows: NonEmpty<String>) -> Self {
-        Self {
-            text: Arc::new(rows.into_vec().into_iter().map(Some).collect()),
-            lazy: None,
+    /// The rows a script sent, and the callback `Enter` and a close call.
+    pub(in crate::editor) fn script(
+        items: DrawerItems,
+        on_select: hume_scripting::Callback,
+    ) -> Self {
+        let (text, payloads, render) = match items {
+            DrawerItems::Rows(rows) => {
+                let (text, payloads) = rows
+                    .into_vec()
+                    .into_iter()
+                    .map(|(display, payload)| (Some(display), payload))
+                    .unzip();
+                (text, payloads, None)
+            }
+            DrawerItems::Keys { keys, render } => {
+                (vec![None; keys.len()], keys.into_vec(), Some(render))
+            }
+        };
+        Self::Script {
+            text: Arc::new(text),
+            payloads,
+            render,
+            on_select,
         }
     }
 
-    /// The rows a script sent.
-    pub(in crate::editor) fn from_items(items: DrawerItems) -> Self {
-        match items {
-            DrawerItems::Rows(rows) => Self::rendered(rows),
-            DrawerItems::Keys { keys, render } => Self {
-                text: Arc::new(vec![None; keys.len()]),
-                lazy: Some((keys.into_vec(), render)),
-            },
+    /// The rows of a buffer list.
+    fn buffers(list: BufferList) -> Self {
+        Self::Buffers {
+            text: Arc::new(list.rows.into_vec().into_iter().map(Some).collect()),
+            buffers: list.buffers,
+        }
+    }
+
+    /// The callback a script's drawer calls on `Enter` and on a close.
+    fn on_select(&self) -> Option<&hume_scripting::Callback> {
+        match self {
+            Self::Script { on_select, .. } => Some(on_select),
+            Self::Buffers { .. } => None,
         }
     }
 
     pub(in crate::editor) fn len(&self) -> usize {
-        self.text.len()
+        self.text().len()
     }
 
     /// The last row's index. There is one: both constructors take a
     /// [`NonEmpty`] list.
     fn last_index(&self) -> usize {
-        self.text.len() - 1
+        self.len() - 1
     }
 
     pub(in crate::editor) fn text(&self) -> &Arc<Vec<Option<String>>> {
-        &self.text
+        match self {
+            Self::Script { text, .. } | Self::Buffers { text, .. } => text,
+        }
     }
 
     /// The render call `window` still needs: the first unrendered row in
@@ -199,17 +222,26 @@ impl DrawerRows {
         &self,
         window: Range<usize>,
     ) -> Option<(usize, Vec<SteelVal>, hume_scripting::Callback)> {
-        let (keys, render) = self.lazy.as_ref()?;
-        let window = window.start.min(self.len())..window.end.min(self.len());
-        let first = window.clone().find(|&i| self.text[i].is_none())?;
-        let last = window.rev().find(|&i| self.text[i].is_none())?;
-        let keys = keys[first..=last].iter().map(|key| key.value().clone());
+        let Self::Script {
+            text,
+            payloads,
+            render: Some(render),
+            ..
+        } = self
+        else {
+            return None;
+        };
+        let window = window.start.min(text.len())..window.end.min(text.len());
+        let first = window.clone().find(|&i| text[i].is_none())?;
+        let last = window.rev().find(|&i| text[i].is_none())?;
+        let keys = payloads[first..=last].iter().map(|key| key.value().clone());
         Some((first, keys.collect(), render.clone()))
     }
 
     /// Stores `rendered` as the text of the rows from `start` on.
     fn fill(&mut self, start: usize, rendered: Vec<String>) {
-        let text = Arc::make_mut(&mut self.text);
+        let (Self::Script { text, .. } | Self::Buffers { text, .. }) = self;
+        let text = Arc::make_mut(text);
         for (slot, row) in text[start..].iter_mut().zip(rendered) {
             *slot = Some(row);
         }
@@ -256,7 +288,7 @@ impl Layer for DrawerLayer {
     /// *by value* via `EditorState::take_firing_false` and fires its own
     /// callback explicitly instead.
     fn tear_down(self: Box<Self>, state: &mut EditorState, _view: &EngineView, why: Removal) {
-        if let (Removal::Incidental, DrawerSelect::Steel(callback)) = (why, &self.select) {
+        if let (Removal::Incidental, Some(callback)) = (why, self.rows.on_select()) {
             state.queue_steel_call(SteelCall::new(
                 callback.clone(),
                 self.call_args(SteelVal::BoolV(false)),
@@ -343,8 +375,7 @@ impl EditorState {
             .input
             .at_mut::<DrawerLayer>(r)
             .expect("drawer_ref_with_token names a live DrawerLayer");
-        drawer.rows = DrawerRows::from_items(items);
-        drawer.select = DrawerSelect::Steel(callback);
+        drawer.rows = DrawerRows::script(items, callback);
         drawer.select_clamped(selected);
         self.sync_drawer_view();
         true
@@ -378,7 +409,7 @@ impl EditorState {
 
 impl super::stack::FiresFalseOnReplace for DrawerLayer {
     fn close_firing_false(self: Box<Self>, state: &mut EditorState) {
-        if let DrawerSelect::Steel(callback) = &self.select {
+        if let Some(callback) = self.rows.on_select() {
             state.queue_steel_call(SteelCall::new(
                 callback.clone(),
                 self.call_args(SteelVal::BoolV(false)),
@@ -418,7 +449,7 @@ impl super::stack::InputStack {
 
 /// Handles one key while the bottom drawer is open. Ctrl-d/Ctrl-u page by
 /// half the visible band, bare Down/Up step one row at a time for fine
-/// adjustment, and `Enter` (which runs the drawer's [`DrawerSelect`]
+/// adjustment, and `Enter` (which runs the drawer's [`DrawerRows`] action
 /// repeatedly across a browse session, unlike the menu, without closing the
 /// drawer) is handled in place; `Esc` retires the layer and fires `#f` at a
 /// Steel drawer's callback; any other key, including `j`/`k`, falls through
@@ -472,20 +503,24 @@ pub(in crate::editor) fn drawer_input(ed: &mut Editor, r: LayerRef, ev: InputEve
     }
 }
 
-/// `Enter` on the selected row, per the drawer's [`DrawerSelect`].
+/// `Enter` on the selected row, per the drawer's [`DrawerRows`].
 fn select_row(ed: &mut Editor, r: LayerRef) {
     let drawer = ed
         .state
         .input
         .at::<DrawerLayer>(r)
         .expect("dispatch_at already checked kind(r) == DrawerLayer");
-    match &drawer.select {
-        DrawerSelect::Steel(callback) => {
-            let args = drawer.call_args(SteelVal::IntV(drawer.selected as isize));
-            let callback = callback.clone();
+    match &drawer.rows {
+        DrawerRows::Script {
+            payloads,
+            on_select,
+            ..
+        } => {
+            let args = drawer.call_args(payloads[drawer.selected].value().clone());
+            let callback = on_select.clone();
             ed.state.queue_steel_call(SteelCall::new(callback, args));
         }
-        DrawerSelect::Buffers(buffers) => {
+        DrawerRows::Buffers { buffers, .. } => {
             let target = buffers[drawer.selected];
             if ed.state.buffers.try_get(target).is_none() {
                 ed.report(Severity::Warning, "buffer was closed".to_string());
@@ -513,11 +548,15 @@ impl EditorState {
         let Some(drawer) = self.input.drawer() else {
             return;
         };
-        let DrawerSelect::Buffers(listed) = &drawer.select else {
+        let DrawerRows::Buffers {
+            text,
+            buffers: listed,
+        } = &drawer.rows
+        else {
             return;
         };
         let list = self.buffer_list(current);
-        if *listed == list.buffers && drawer.rows.text().iter().flatten().eq(list.rows.iter()) {
+        if *listed == list.buffers && text.iter().flatten().eq(list.rows.iter()) {
             return;
         }
         self.input

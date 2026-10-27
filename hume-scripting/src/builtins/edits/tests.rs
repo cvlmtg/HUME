@@ -303,7 +303,7 @@ fn edit_entry(entry: Vec<(&'static str, SteelVal)>) -> SteelVal {
 fn edit_text_error(edits: SteelVal) -> String {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
-    edit_text(&mut ctx, default_pane(), edits)
+    edit_text(&mut ctx, default_pane(), edits, SteelVal::BoolV(false))
         .unwrap_err()
         .to_string()
 }
@@ -368,4 +368,33 @@ fn edit_text_rejects_text_that_is_not_a_string() {
         ("text", SteelVal::IntV(1)),
     ]));
     assert!(msg.contains("edits 'text: expected a string"), "got: {msg}");
+}
+
+/// Every builtin taking `#:expect-generation` names that keyword when its
+/// value is not a generation.
+#[test]
+fn a_bad_expected_generation_is_named_by_its_keyword() {
+    type Builtin = fn(&mut crate::SteelCtx, PaneHandle, SteelVal, SteelVal) -> SteelResult;
+    let empty = || SteelVal::ListV(vec![].into());
+    let workspace_edit = || {
+        JsonHandle::server_for_test(serde_json::json!({"changes": {}}), PositionEncoding::Utf16)
+            .into_steel_val()
+    };
+    let builtins: [(&str, Builtin, SteelVal); 3] = [
+        ("apply-text-edits!", apply_text_edits, empty()),
+        (
+            "apply-workspace-edit!",
+            apply_workspace_edit,
+            workspace_edit(),
+        ),
+        ("edit-text!", edit_text, empty()),
+    ];
+    for (name, builtin, edits) in builtins {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
+        let msg = builtin(&mut ctx, default_pane(), edits, str_val("x"))
+            .unwrap_err()
+            .to_string();
+        assert!(msg.contains("#:expect-generation"), "{name}: {msg}");
+    }
 }

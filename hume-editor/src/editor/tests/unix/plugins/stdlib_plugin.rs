@@ -534,13 +534,13 @@ const MARKDOWN_HEADING: &str = r#"
                                 'text prefix)))))
                (anchor-lines pane)))))))
 
-(bind-key! 'normal "G H" "markdown-heading" #:keymap 'markdown-keys)
+(bind-key! 'normal "G H" "markdown-heading" #:keymap "markdown-keys")
 
 (register-hook! 'on-language-set
   (lambda (pane lang)
     (if (equal? lang "markdown")
-        (attach-keymap! pane 'markdown-keys)
-        (detach-keymap! pane 'markdown-keys))))
+        (attach-keymap! pane "markdown-keys")
+        (detach-keymap! pane "markdown-keys"))))
 "#;
 
 /// An editor on `input` in a `language` buffer, with the shipped

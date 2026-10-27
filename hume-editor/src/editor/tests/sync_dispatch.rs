@@ -449,14 +449,26 @@ fn classification_sites_all_agree() {
         );
     }
 
-    // command_is_native() through the live host.
+    // command_is_native() through the live host, which refuses a key-only
+    // command as call! does.
     for (name, _, expected) in &triples {
+        let key_only = ed
+            .state
+            .config
+            .registry
+            .get_mappable(name)
+            .is_some_and(|cmd| cmd.meta().key_only);
         let host = live_host!(ed);
-        assert_eq!(
-            host.command_is_native(name).expect("must be registered"),
-            *expected,
-            "command_is_native() disagrees with the expected native set for '{name}'"
-        );
+        match host.command_is_native(name) {
+            Ok(is_native) => assert_eq!(
+                is_native, *expected,
+                "command_is_native() disagrees with the expected native set for '{name}'"
+            ),
+            Err(msg) => assert!(
+                key_only && msg.contains("runs only from a key"),
+                "only a key-only command is refused, '{name}' got: {msg}"
+            ),
+        }
     }
 }
 
@@ -666,12 +678,10 @@ fn steel_native_via_call_preserves_own_count() {
     );
 }
 
-/// **Unknown errors, no abort**: a body with an unknown command
-/// between two valid moves must execute both valid moves, not abort on the
-/// typo. `call!` logs an `Error` for the miss but never raises into Steel.
+/// A `call!` to an unknown command raises, like any other caller mistake:
+/// the body stops there, so the move after it never runs.
 #[test]
-fn steel_unknown_cmd_errors_and_continues() {
-    // "-[a]>bc\n", cursor at 0. Two moves should bring cursor to 2.
+fn steel_unknown_cmd_raises_and_stops_the_body() {
     let mut ed = editor_from("-[a]>bc\n");
 
     attach_steel(
@@ -684,11 +694,11 @@ fn steel_unknown_cmd_errors_and_continues() {
     );
     ed.execute_keymap_command("warn-test".into(), Count::typed(1), false);
 
-    // Both move-rights run inline despite the unknown name, so the cursor ends at 2.
-    assert_eq!(
-        state(&ed),
-        "ab-[c]>\n",
-        "both moves must execute despite unknown command in between"
+    assert_eq!(state(&ed), "a-[b]>c\n", "only the first move runs");
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("unknown command: this-command-does-not-exist"),
+        "got: {log}"
     );
 }
 

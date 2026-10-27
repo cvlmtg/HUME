@@ -2,7 +2,7 @@
 //! reads and writes too: server names, registrations, per-language server
 //! lists and the features they filter by.
 
-use crate::LaterWins;
+use crate::{ByOrigin, ConfigOrigin, LaterWins};
 
 /// A server registration: a later write from one origin replaces the
 /// earlier, whether the editor applies it or a script reads it back before
@@ -148,6 +148,56 @@ pub struct ListEntry {
 pub enum ListTier {
     Explicit,
     Default,
+}
+
+/// One tier of a language's server lists: the list each origin set, if any.
+/// The highest origin's is the whole answer, whichever was set first, and
+/// clearing it lets the next lower one apply.
+type ListLayers = ByOrigin<Option<Vec<ListEntry>>>;
+
+/// A language's server lists, as the editor applies them and a script reads
+/// them back before then. A default list applies only while no explicit
+/// list is set, whatever the origins of the two.
+#[derive(Debug, Clone, Default)]
+pub struct LanguageLists {
+    explicit: ListLayers,
+    defaults: ListLayers,
+}
+
+impl LanguageLists {
+    /// Sets (`Some`) or clears (`None`) the `tier` list from `origin`,
+    /// leaving the lists other origins set. Returns whether a higher
+    /// origin's list in the same tier hides it.
+    pub fn set(
+        &mut self,
+        tier: ListTier,
+        origin: ConfigOrigin,
+        entries: Option<Vec<ListEntry>>,
+    ) -> bool {
+        let layers = match tier {
+            ListTier::Explicit => &mut self.explicit,
+            ListTier::Default => &mut self.defaults,
+        };
+        *layers.get_mut(origin) = entries;
+        layers.above(origin).any(Option::is_some)
+    }
+
+    /// The servers the language's buffers attach to, in order: the entries
+    /// of the explicit list the highest origin set, or of the default list
+    /// while no explicit one is set, that name a server `registered`
+    /// accepts. An entry naming an unregistered server is skipped.
+    pub fn plan(&self, registered: impl Fn(&ServerName) -> bool) -> Vec<&ListEntry> {
+        let deciding = self
+            .explicit
+            .iter()
+            .chain(self.defaults.iter())
+            .find_map(|(_, list)| list.as_deref());
+        deciding
+            .into_iter()
+            .flatten()
+            .filter(|entry| registered(&entry.name))
+            .collect()
+    }
 }
 
 /// The process a `register-lsp-server!` call spawns and configures.

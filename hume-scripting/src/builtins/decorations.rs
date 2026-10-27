@@ -14,13 +14,13 @@ use crate::types::VirtualLineSpec;
 
 use super::SteelResult;
 use super::args::{
-    ArgPane, CHAR_OFFSET, CHAR_RANGE_KEYS, END_CHAR, END_LINE, HashEntry, START_CHAR, START_LINE,
-    bool_arg, hash_list, int_arg, optional_hash_entry, optional_symbol_arg, string_arg,
-    symbol_enum_arg, symbol_hash,
+    ArgPane, CHAR_OFFSET, CHAR_RANGE_KEYS, END_CHAR, END_CHAR_COL, END_LINE, HashEntry, START_CHAR,
+    START_CHAR_COL, START_LINE, bool_arg, hash_list, int_arg, optional_hash_entry,
+    optional_symbol_arg, string_arg, symbol_enum_arg, symbol_hash,
 };
 use super::errors::{generic_err, require_cap};
 
-/// `(set-inlay-hints! source pane hints)`: `hints`: list of `(hash 'char-offset
+/// `(set-inlay-hints! pane source hints)`: `hints`: list of `(hash 'char-offset
 /// 'text 'side)`, `'char-offset` a char offset, `side` `'before` or `'after`. LSP wire `{"line"
 /// "character"}` positions convert via `lsp-position->char-offset` before
 /// reaching this builtin. The Steel decoration surface speaks editor-native
@@ -28,8 +28,8 @@ use super::errors::{generic_err, require_cap};
 /// wire position came in.
 pub(crate) fn set_inlay_hints(
     ctx: &mut SteelCtx,
-    source: SteelVal,
     pane: PaneHandle,
+    source: SteelVal,
     hints: SteelVal,
 ) -> SteelResult {
     let bid = pane.buffer();
@@ -46,9 +46,9 @@ pub(crate) fn set_inlay_hints(
     Ok(SteelVal::Void)
 }
 
-/// `(register-sign-source! name pane priority)`: declares a sign channel
+/// `(register-sign-source! pane source priority)`: declares a sign channel
 /// *for `pane`'s buffer*: its gutter slot is this call's rank among every source
-/// registered for that same buffer, by `(priority desc, name asc)`, a
+/// registered for that same buffer, by `(priority desc, source asc)`, a
 /// property of the *source*, not of any one `set-signs!` call, and scoped to
 /// that buffer, not shared with any other. A slot is reserved the first time
 /// a source registers for a buffer, even before it's placed any signs there.
@@ -56,35 +56,35 @@ pub(crate) fn set_inlay_hints(
 /// instead of tracking whichever priorities happen to be live right now.
 /// There is no `unregister-sign-source!`: a source holds its slot in a
 /// buffer for that buffer's life, across a reload or a replaced text, until
-/// the buffer closes. Re-registering `name` for the same buffer
+/// the buffer closes. Re-registering `source` for the same buffer
 /// replaces its priority and re-sorts it, same as `register-lsp-server!`'s
 /// last-wins semantics.
 pub(crate) fn register_sign_source(
     ctx: &mut SteelCtx,
-    name: SteelVal,
     pane: PaneHandle,
+    source: SteelVal,
     priority: SteelVal,
 ) -> SteelResult {
     let bid = pane.buffer();
-    let name = string_arg(name, "name")?;
-    if name.trim().is_empty() {
-        steel::stop!(Generic => "name must not be empty");
+    let source = string_arg(source, "source")?;
+    if source.trim().is_empty() {
+        steel::stop!(Generic => "source must not be empty");
     }
     let priority = int_arg(priority, "priority")?;
     require_cap(ctx.host.decorations())?
-        .register_sign_source(name, bid, priority)
+        .register_sign_source(source, bid, priority)
         .map_err(generic_err)?;
     Ok(SteelVal::Void)
 }
 
-/// `(set-signs! source pane signs)`: `signs`: list of `(hash 'line 'text 'scope)`.
+/// `(set-signs! pane source signs)`: `signs`: list of `(hash 'line 'text 'scope)`.
 /// `source` selects the already-registered channel (see
 /// `register-sign-source!`) whose slot every entry here renders in; an
 /// unregistered `source` errors rather than being silently dropped.
 pub(crate) fn set_signs(
     ctx: &mut SteelCtx,
-    source: SteelVal,
     pane: PaneHandle,
+    source: SteelVal,
     signs: SteelVal,
 ) -> SteelResult {
     let bid = pane.buffer();
@@ -112,17 +112,17 @@ pub(crate) fn set_signs(
     Ok(SteelVal::Void)
 }
 
-/// `(set-virtual-lines! source pane lines)`: `lines`: list of hashmaps, each
-/// with required `'line`/`'text`, plus optional `'anchor` (`'before` or
+/// `(set-virtual-lines! pane source lines)`: `lines`: list of hashmaps, each
+/// with required `'line`/`'text`, plus optional `'side` (`'before` or
 /// `'after`, default `'after`), `'scope` (whole-line base style, `ui.virtual`
-/// fallback when absent), and `'segments` (list of `(hash 'start-char 'end-char
-/// 'scope)` char ranges into `text`, styling only the covered chars; chars outside every
-/// segment keep `'scope`'s style). Segment bounds/ordering/overlap are
+/// fallback when absent), and `'segments` (list of `(hash 'start-char-col
+/// 'end-char-col 'scope)` char-column ranges in `text`, styling only the
+/// covered chars; chars outside every segment keep `'scope`'s style). Segment bounds/ordering/overlap are
 /// validated at the host boundary, not here (see `VirtualLineSpec::segments`).
 pub(crate) fn set_virtual_lines(
     ctx: &mut SteelCtx,
-    source: SteelVal,
     pane: PaneHandle,
+    source: SteelVal,
     lines: SteelVal,
 ) -> SteelResult {
     let bid = pane.buffer();
@@ -142,7 +142,7 @@ fn virtual_line_specs(lines: SteelVal) -> Result<Vec<VirtualLineSpec>, SteelErr>
     hash_list(
         lines,
         "lines",
-        &["line", "text", "anchor", "scope", "segments"],
+        &["line", "text", "side", "scope", "segments"],
         virtual_line_spec,
     )
 }
@@ -168,8 +168,8 @@ fn virtual_line_spec(entry: &HashEntry) -> Result<VirtualLineSpec, SteelErr> {
     // (validated below) trivially aligned with it.
 
     let side = entry
-        .optional("anchor")
-        .map_or(Ok(Side::After), |v| side_arg(v, &entry.label("anchor")))?;
+        .optional("side")
+        .map_or(Ok(Side::After), |v| side_arg(v, &entry.label("side")))?;
 
     let scope = entry.optional_string("scope")?;
 
@@ -187,8 +187,8 @@ fn virtual_line_spec(entry: &HashEntry) -> Result<VirtualLineSpec, SteelErr> {
     })
 }
 
-/// Decodes `'segments`: each a `(hash 'start-char 'end-char 'scope)` char range into
-/// `text`. Shape only (keys, types): bounds, ordering and overlap are
+/// Decodes `'segments`: each a `(hash 'start-char-col 'end-char-col 'scope)`
+/// char-column range in `text`. Shape only (keys, types): bounds, ordering and overlap are
 /// validated, and edges inside a grapheme cluster widened, at the host
 /// boundary (`host_impl.rs`'s `set_virtual_lines`), which also converts these
 /// char offsets to the byte offsets the engine needs.
@@ -196,8 +196,8 @@ fn virtual_line_segments(segments: SteelVal) -> Result<Vec<(usize, usize, String
     hash_list(
         segments,
         "'segments",
-        START_END_CHAR_SCOPE,
-        char_range_scope,
+        START_END_CHAR_COL_SCOPE,
+        char_col_range_scope,
     )
 }
 
@@ -208,7 +208,14 @@ fn char_range_scope(entry: &HashEntry) -> Result<(usize, usize, String), SteelEr
     Ok((start, end, entry.string("scope")?))
 }
 
-/// An inlay hint's `'side` or a virtual line's `'anchor`.
+/// One `(hash 'start-char-col 'end-char-col 'scope)` entry, decoded with
+/// [`START_END_CHAR_COL_SCOPE`].
+fn char_col_range_scope(entry: &HashEntry) -> Result<(usize, usize, String), SteelErr> {
+    let (start, end) = entry.char_col_range()?;
+    Ok((start, end, entry.string("scope")?))
+}
+
+/// An inlay hint's or a virtual line's `'side`.
 fn side_arg(val: SteelVal, ctx_name: &str) -> Result<Side, SteelErr> {
     let SteelVal::SymbolV(s) = val else {
         steel::stop!(Generic => "{}: must be a symbol, 'before or 'after", ctx_name);
@@ -218,8 +225,9 @@ fn side_arg(val: SteelVal, ctx_name: &str) -> Result<Side, SteelErr> {
 
 const LINE_TEXT_SCOPE: &[&str] = &["line", "text", "scope"];
 const START_END_CHAR_SCOPE: &[&str] = &[START_CHAR, END_CHAR, "scope"];
+const START_END_CHAR_COL_SCOPE: &[&str] = &[START_CHAR_COL, END_CHAR_COL, "scope"];
 
-/// `(set-eol-text! source pane lines #:hide-on-insert-line #f)`: `lines`: list
+/// `(set-eol-text! pane source lines #:hide-on-insert-line #f)`: `lines`: list
 /// of `(hash 'line 'text 'scope)`. `#:hide-on-insert-line #t` hides every
 /// entry on the primary cursor's line while the pane types in Insert mode.
 /// `bootstrap.scm` defines the public keyword form over this `%` native. Not
@@ -227,8 +235,8 @@ const START_END_CHAR_SCOPE: &[&str] = &[START_CHAR, END_CHAR, "scope"];
 /// owner, same as every other decoration kind is to LSP.
 pub(crate) fn set_eol_text(
     ctx: &mut SteelCtx,
-    source: SteelVal,
     pane: PaneHandle,
+    source: SteelVal,
     lines: SteelVal,
     hide_on_insert_line: SteelVal,
 ) -> SteelResult {
@@ -248,12 +256,12 @@ pub(crate) fn set_eol_text(
     Ok(SteelVal::Void)
 }
 
-/// `(set-extra-highlights! source pane spans)`: `spans`: list of `(hash
+/// `(set-extra-highlights! pane source spans)`: `spans`: list of `(hash
 /// 'start-char 'end-char 'scope)`, char offsets.
 pub(crate) fn set_extra_highlights(
     ctx: &mut SteelCtx,
-    source: SteelVal,
     pane: PaneHandle,
+    source: SteelVal,
     spans: SteelVal,
 ) -> SteelResult {
     let bid = pane.buffer();
@@ -265,14 +273,14 @@ pub(crate) fn set_extra_highlights(
     Ok(SteelVal::Void)
 }
 
-/// `(set-line-backgrounds! source pane entries)`: `entries`: list of `(hash
+/// `(set-line-backgrounds! pane source entries)`: `entries`: list of `(hash
 /// 'line 'scope)`. A full-row background tint on each named line. No `priority`
 /// field: unlike signs, row tints have no single-slot contention; same-line
 /// entries from different sources break ties by source name.
 pub(crate) fn set_line_backgrounds(
     ctx: &mut SteelCtx,
-    source: SteelVal,
     pane: PaneHandle,
+    source: SteelVal,
     entries: SteelVal,
 ) -> SteelResult {
     let bid = pane.buffer();
@@ -286,14 +294,14 @@ pub(crate) fn set_line_backgrounds(
     Ok(SteelVal::Void)
 }
 
-/// `(set-statusline-text! source pane text)`: replaces `source`'s
+/// `(set-statusline-text! pane source text)`: replaces `source`'s
 /// statusline text for `pane`'s buffer wholesale. Rendered by the `steel:<source>`
 /// statusline element (see `configure-statusline!`, defined in the prelude). Placing it is a
 /// separate step, this only pushes the value a placed element will show.
 pub(crate) fn set_statusline_text(
     ctx: &mut SteelCtx,
-    source: SteelVal,
     pane: PaneHandle,
+    source: SteelVal,
     text: SteelVal,
 ) -> SteelResult {
     let bid = pane.buffer();
@@ -315,9 +323,7 @@ pub(crate) fn diagnostics_for_buffer(
     range: SteelVal,
 ) -> SteelResult {
     let id = pane.0.buffer();
-    let floor = optional_symbol_arg(severity, "#:severity")?
-        .map(|name| symbol_enum_arg(&name, "#:severity", &DiagSeverity::NAMED))
-        .transpose()?;
+    let floor = severity_floor_arg(severity)?;
     let range = optional_hash_entry(range, "#:range", CHAR_RANGE_KEYS)?
         .map(|range| range.char_range())
         .transpose()?;
@@ -366,14 +372,31 @@ fn diagnostic_entry_to_steel(entry: DiagnosticEntry) -> SteelVal {
     ])
 }
 
-/// `(diagnostic-counts pane)` → `(hash 'errors n 'warnings n)`.
-pub(crate) fn diagnostic_counts(ctx: &mut SteelCtx, pane: ArgPane) -> SteelResult {
+/// A `#:severity` floor: a diagnostic severity symbol, or `#f` for the
+/// `lsp-diagnostics-min-severity` default.
+fn severity_floor_arg(severity: SteelVal) -> Result<Option<DiagSeverity>, SteelErr> {
+    optional_symbol_arg(severity, "#:severity")?
+        .map(|name| symbol_enum_arg(&name, "#:severity", &DiagSeverity::NAMED))
+        .transpose()
+}
+
+/// `(%diagnostic-counts pane severity)` → `(hash 'error n 'warning n 'info n
+/// 'hint n)`, keyed by each severity's name; `bootstrap.scm`'s
+/// `diagnostic-counts` supplies the `#:severity` floor's `#f` default.
+pub(crate) fn diagnostic_counts(
+    ctx: &mut SteelCtx,
+    pane: ArgPane,
+    severity: SteelVal,
+) -> SteelResult {
     let id = pane.0.buffer();
-    let (errors, warnings) = require_cap(ctx.host.decorations())?.diagnostic_counts(id);
-    Ok(symbol_hash([
-        ("errors", SteelVal::IntV(errors as isize)),
-        ("warnings", SteelVal::IntV(warnings as isize)),
-    ]))
+    let floor = severity_floor_arg(severity)?;
+    let counts = require_cap(ctx.host.decorations())?.diagnostic_counts(id, floor);
+    Ok(symbol_hash(DiagSeverity::ALL.map(|severity| {
+        (
+            severity.name(),
+            SteelVal::IntV(counts.get(severity) as isize),
+        )
+    })))
 }
 
 #[cfg(test)]

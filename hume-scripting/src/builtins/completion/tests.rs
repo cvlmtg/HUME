@@ -192,9 +192,9 @@ fn set_trigger_chars_queues_an_effect_with_the_decoded_fields() {
     let mut ctx = h.ctx_init();
     set_completion_triggers(
         &mut ctx,
-        SteelVal::StringV("src".into()),
         SteelVal::StringV("rust".into()),
-        SteelVal::ListV(vec![SteelVal::StringV(".".into()), SteelVal::StringV(":".into())].into()),
+        SteelVal::StringV("src".into()),
+        SteelVal::ListV(vec![SteelVal::CharV('.'), SteelVal::CharV(':')].into()),
     )
     .expect("valid call");
     drop(ctx);
@@ -230,11 +230,11 @@ fn set_attachment_completion_triggers_queues_an_attachment_scope() {
     let pane = crate::test_support::default_pane();
     set_attachment_completion_triggers(
         &mut ctx,
-        SteelVal::StringV("src".into()),
         pane,
+        SteelVal::StringV("src".into()),
         server.into_steel_val(),
         SteelVal::SymbolV("completion".into()),
-        SteelVal::ListV(vec![SteelVal::StringV(".".into())].into()),
+        SteelVal::ListV(vec![SteelVal::CharV('.')].into()),
     )
     .expect("valid call");
     drop(ctx);
@@ -258,9 +258,9 @@ fn a_language_that_is_not_a_string_raises() {
     let mut ctx = h.ctx();
     let err = set_completion_triggers(
         &mut ctx,
-        SteelVal::StringV("src".into()),
         SteelVal::IntV(3),
-        SteelVal::ListV(vec![SteelVal::StringV(".".into())].into()),
+        SteelVal::StringV("src".into()),
+        SteelVal::ListV(vec![SteelVal::CharV('.')].into()),
     )
     .unwrap_err();
     assert!(err.to_string().contains("expected a string"), "{err}");
@@ -272,11 +272,11 @@ fn an_attachment_server_that_is_not_a_server_raises() {
     let mut ctx = h.ctx();
     let err = set_attachment_hook_triggers(
         &mut ctx,
-        SteelVal::StringV("src".into()),
         crate::test_support::default_pane(),
+        SteelVal::StringV("src".into()),
         SteelVal::StringV("rust".into()),
         SteelVal::SymbolV("completion".into()),
-        SteelVal::ListV(vec![SteelVal::StringV(".".into())].into()),
+        SteelVal::ListV(vec![SteelVal::CharV('.')].into()),
     )
     .unwrap_err();
     assert!(err.to_string().contains("expected a server value"), "{err}");
@@ -292,11 +292,11 @@ fn an_attachment_feature_that_is_not_a_feature_raises() {
     };
     let err = set_attachment_hook_triggers(
         &mut ctx,
-        SteelVal::StringV("src".into()),
         crate::test_support::default_pane(),
+        SteelVal::StringV("src".into()),
         server.into_steel_val(),
         SteelVal::SymbolV("nonsense".into()),
-        SteelVal::ListV(vec![SteelVal::StringV(".".into())].into()),
+        SteelVal::ListV(vec![SteelVal::CharV('.')].into()),
     )
     .unwrap_err();
     assert!(err.to_string().contains("nonsense"), "{err}");
@@ -378,9 +378,9 @@ fn set_hook_triggers_queues_a_hook_kind_effect() {
     let mut ctx = h.ctx_init();
     set_hook_triggers(
         &mut ctx,
-        SteelVal::StringV("sig".into()),
         SteelVal::StringV("rust".into()),
-        SteelVal::ListV(vec![SteelVal::StringV("(".into())].into()),
+        SteelVal::StringV("sig".into()),
+        SteelVal::ListV(vec![SteelVal::CharV('(')].into()),
     )
     .expect("valid call");
     drop(ctx);

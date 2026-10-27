@@ -201,9 +201,9 @@ fn prelude_batch_macros_bind_into_a_named_keymap() {
     h.eval_source(&real_prelude_source(), &mut mock).unwrap();
     let effects = h
         .eval_source(
-            r#"(bind-keys! 'normal #:keymap 'test-keys ("z" "move-left") ("l" "move-right"))
-               (bind-keys-extend! 'normal #:keymap 'test-keys ("Q" "select-line"))
-               (unbind-keys! 'normal #:keymap 'test-keys "h")"#,
+            r#"(bind-keys! 'normal #:keymap "test-keys" ("z" "move-left") ("l" "move-right"))
+               (bind-keys-extend! 'normal #:keymap "test-keys" ("Q" "select-line"))
+               (unbind-keys! 'normal #:keymap "test-keys" "h")"#,
             &mut mock,
         )
         .unwrap();

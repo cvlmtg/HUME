@@ -11,9 +11,8 @@ natively, `o` to flip the selection in Extend mode, and `Ctrl-6` for the alterna
 ```
 
 - **Depends on:** `core:stdlib`: config validation (`'change-to-eol`) calls
-  `stdlib/config-enum` via `call!` at this plugin's own load time. The dependency is checked
-  with `(declared-plugins)` at load for every `'change-to-eol` value, so a missing
-  `core:stdlib` is a load error that names it.
+  `stdlib/config-enum` via `call!` at this plugin's own load time, for every
+  `'change-to-eol` value, so a missing `core:stdlib` is a load error naming that command.
 - **Activates on:** its own key bindings only. Most of what it rebinds
   (`goto-line-start`, `goto-line-end`, …) are built-in commands with no typed form or
   hook of their own, so it has no `manifest.scm` and must be loaded eagerly (see the

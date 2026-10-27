@@ -15,7 +15,7 @@ use crate::editor::EditorState;
 use crate::statusline::StatusElement;
 
 use super::EditorHostImpl;
-use hume_scripting::host::DecorationHost;
+use hume_scripting::host::{DecorationHost, DiagnosticCounts};
 
 impl<'a> DecorationHost for EditorHostImpl<'a> {
     fn set_inlay_hints(
@@ -257,8 +257,8 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         )
     }
 
-    fn diagnostic_counts(&self, bid: BufferId) -> (usize, usize) {
-        crate::editor::lsp::introspect::diagnostic_counts(self.state, bid)
+    fn diagnostic_counts(&self, bid: BufferId, floor: Option<DiagSeverity>) -> DiagnosticCounts {
+        crate::editor::lsp::introspect::diagnostic_counts(self.state, bid, floor)
     }
 }
 

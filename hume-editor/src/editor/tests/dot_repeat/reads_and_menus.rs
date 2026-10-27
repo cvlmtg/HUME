@@ -413,8 +413,8 @@ fn a_drawer_pick_is_no_part_of_the_commands_change() {
         r#"(define-command! "dr" ""
              (lambda (pane)
                (call! "replace" pane #\x)
-               (show-drawer-list! pane (list "a" "b")
-                 (lambda (idx tok) (when idx (call! "delete" pane)))))
+               (show-drawer-list! pane (map (lambda (row) (cons row row)) (list "a" "b"))
+                 (lambda (row tok) (when row (call! "delete" pane)))))
              #:repeatable #t)"#,
     );
     ed.execute_keymap_command("dr".into(), Count::typed(1), false);

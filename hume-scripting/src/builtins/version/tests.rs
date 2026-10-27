@@ -1,17 +1,8 @@
 use super::*;
+use crate::test_support::hash_field;
 
 fn int(n: usize) -> SteelVal {
     SteelVal::IntV(n as isize)
-}
-
-fn field(version: &SteelVal, key: &str) -> SteelVal {
-    match version {
-        SteelVal::HashMapV(map) => map
-            .get(&SteelVal::SymbolV(key.into()))
-            .cloned()
-            .unwrap_or_else(|| panic!("no '{key} in {version:?}")),
-        other => panic!("expected a hash, got {other:?}"),
-    }
 }
 
 #[test]
@@ -23,9 +14,9 @@ fn hume_version_names_package_triple_and_commit() {
         .collect();
     assert_eq!(
         [
-            field(&version, "major"),
-            field(&version, "minor"),
-            field(&version, "patch")
+            hash_field(&version, "major"),
+            hash_field(&version, "minor"),
+            hash_field(&version, "patch")
         ],
         [
             SteelVal::IntV(expected[0]),
@@ -33,7 +24,7 @@ fn hume_version_names_package_triple_and_commit() {
             SteelVal::IntV(expected[2])
         ]
     );
-    let commit = field(&version, "commit");
+    let commit = hash_field(&version, "commit");
     assert!(
         matches!(&commit, SteelVal::StringV(s) if !s.is_empty())
             || commit == SteelVal::BoolV(false),

@@ -16,11 +16,12 @@ use hume_core::{HostToken, NonEmpty, PaneHandle, PopupLayout, TruncateEnd};
 /// them.
 #[derive(Debug)]
 pub enum DrawerItems {
-    /// Rows already rendered.
-    Rows(NonEmpty<String>),
-    /// One opaque key per row. Before a frame shows rows not rendered yet,
-    /// the editor calls `(render start keys)` with those rows' keys, which
-    /// must return one string per key.
+    /// Rows already rendered: each row's text and the payload `on-select`
+    /// gets for it.
+    Rows(NonEmpty<(String, crate::Rooted)>),
+    /// One opaque key per row, also its payload. Before a frame shows rows
+    /// not rendered yet, the editor calls `(render start keys)` with those
+    /// rows' keys, which must return one string per key.
     Keys {
         keys: NonEmpty<crate::Rooted>,
         render: crate::Callback,
@@ -225,10 +226,11 @@ pub trait UiHost {
     fn close_menu(&mut self, token: HostToken) -> Result<(), String>;
 
     /// `(show-drawer-list! items on-select #:selected [0])` opens a scrolling pick-list
-    /// in the bottom chrome band. `items` are pre-formatted display strings;
-    /// the drawer never interprets their content; the jump (if any) is the
-    /// caller's job, typically `(goto-location! ...)` inside `on-select`.
-    /// `on-select` receives the chosen index and the drawer's token, so an owner can tell
+    /// in the bottom chrome band. `items` are the picker's `(display . payload)`
+    /// rows, or render keys (see [`DrawerItems`]). The drawer never interprets
+    /// a payload: the jump (if any) is the caller's job, typically
+    /// `(goto-location! ...)` inside `on-select`.
+    /// `on-select` receives the chosen row's payload and the drawer's token, so an owner can tell
     /// its own drawer's close from a replaced one's, and, unlike the popup/menu's
     /// one-shot callback, may fire more than once: the drawer stays open
     /// across `Enter` (Helix-style browse) until `Esc` or `close-drawer!`.
@@ -240,10 +242,9 @@ pub trait UiHost {
     /// drawer, mirroring [`Self::open_picker`]'s own token: a caller must
     /// hold onto it to touch the drawer it opened again, rather than
     /// whichever drawer happens to be open when it gets around to it.
-    /// `None`, unlike `open_picker`'s bare token: this opener is async (a
-    /// Steel callback answering a request fired earlier), so the request can
-    /// be dropped as stale (`EditorState::async_opener_stale`) before ever
-    /// minting one, and `open_picker` has no such path to report.
+    /// `None` when the request was dropped as stale before minting one: this
+    /// opener is async (a Steel callback answering a request fired earlier),
+    /// checked by `EditorState::async_opener_stale`.
     fn show_drawer_list(
         &mut self,
         pane: PaneHandle,
@@ -285,7 +286,7 @@ pub trait UiHost {
     /// index, or `None` (`#f`) when no drawer is open or `token` doesn't
     /// match its own. Read-only; pairs with [`Self::update_drawer_list`] so
     /// an owner can map its own selection identity across a refresh (Rust
-    /// holds opaque display strings; only the owner knows what a row *is*).
+    /// never interprets a row's payload; only the owner knows what a row *is*).
     fn drawer_selected_index(&self, token: HostToken) -> Option<usize>;
 
     /// `(picker! items on-select #:prompt "…" #:pending [#f] #:query [""])`
@@ -296,7 +297,8 @@ pub trait UiHost {
     /// `(display . payload)` pairs; `payload` is handed back to `on-select`
     /// verbatim, never interpreted by Rust. Returns a token that scopes
     /// later `picker-push!`/`picker-replace!`/`picker-source-spawn!` calls
-    /// to this session. Unlike the menu/drawer, the picker is allowed from
+    /// to this session, or `None` (`#f`) under `.` replay, which opens no
+    /// picker, as [`Self::show_menu`] does. Unlike the menu/drawer, the picker is allowed from
     /// any mode but closes any live completion session first, since only
     /// one modal owner may be active at a time. `on-select` fires exactly
     /// once, queued (never invoked inline): the selected payload on
@@ -318,7 +320,7 @@ pub trait UiHost {
         items: Vec<(String, crate::Rooted)>,
         on_select: crate::Callback,
         opts: PickerOpts,
-    ) -> Result<HostToken, String>;
+    ) -> Result<Option<HostToken>, String>;
 
     /// `(live-picker! on-select #:source source #:prompt "…" #:query [""]
     /// #:debounce-ms [150])`
@@ -342,7 +344,7 @@ pub trait UiHost {
         pane: PaneHandle,
         on_select: crate::Callback,
         opts: LivePickerOpts,
-    ) -> Result<HostToken, String>;
+    ) -> Result<Option<HostToken>, String>;
 
     /// `(picker-push! token items)` / `(picker-replace! token items)`
     /// appends to, or wholesale replaces, the open picker's item list and

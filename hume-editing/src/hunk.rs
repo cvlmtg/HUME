@@ -39,8 +39,28 @@ pub struct ChangeHunk {
     pub new_start: ContentLine,
     pub old_lines: Vec<String>,
     pub new_lines: Vec<String>,
-    /// Lists are empty when no span lies strictly inside a line.
-    pub words: WordSpans,
+    /// `None` when the hunk's word diff was skipped, its tokens outnumbering
+    /// what was left of the word budget. Lists are empty when no span lies
+    /// strictly inside a line.
+    pub words: Option<WordSpans>,
+}
+
+/// A diff's hunks, and whether its line diff's histogram pass missed its
+/// deadline, so the hunks are Myers' fallback answer.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HunkDiff {
+    pub hunks: Vec<ChangeHunk>,
+    pub deadline_hit: bool,
+}
+
+impl HunkDiff {
+    /// Hunks that came from no bounded diff, such as [`change_hunks`]'.
+    pub fn exact(hunks: Vec<ChangeHunk>) -> Self {
+        Self {
+            hunks,
+            deadline_hit: false,
+        }
+    }
 }
 
 /// The changed text inside a hunk's lines, per side.
@@ -179,7 +199,7 @@ fn group_hunk(
         new_start,
         old_lines: old_kept.iter().map(|l| (*l).to_owned()).collect(),
         new_lines: new_kept.iter().map(|l| (*l).to_owned()).collect(),
-        words: WordSpans {
+        words: Some(WordSpans {
             old: line_spans(
                 clipped(&old_lines, &old_ranges, lead..lead + old_kept.len()),
                 lead,
@@ -189,7 +209,7 @@ fn group_hunk(
                 clipped(&new_lines, &new_ranges, lead..lead + new_kept.len()),
                 start,
             ),
-        },
+        }),
     })
 }
 
@@ -201,15 +221,17 @@ fn group_hunk(
 /// Word spans come from a word diff of each hunk's two sides joined by line
 /// breaks, so an edit is marked where it is whatever the line counts on
 /// either side. All hunks share `HUNK_WORDS_BUDGET`.
-pub fn text_hunks(old: &BufferText, new: &BufferText) -> Vec<ChangeHunk> {
+pub fn text_hunks(old: &BufferText, new: &BufferText) -> HunkDiff {
     text_hunks_with_budget(old, new, HUNK_WORDS_BUDGET)
 }
 
-fn text_hunks_with_budget(old: &BufferText, new: &BufferText, budget: usize) -> Vec<ChangeHunk> {
+fn text_hunks_with_budget(old: &BufferText, new: &BufferText, budget: usize) -> HunkDiff {
     let old_tokens: Vec<RopeSlice<'_>> = old.line_tokens().collect();
     let new_tokens: Vec<RopeSlice<'_>> = new.line_tokens().collect();
     let mut left = budget;
-    diff_lines(&old_tokens, &new_tokens)
+    let diff = diff_lines(&old_tokens, &new_tokens);
+    let deadline_hit = diff.deadline_hit();
+    let hunks = diff
         .hunks
         .into_iter()
         .filter(|hunk| hunk.kind != LineHunkKind::Equal)
@@ -240,7 +262,11 @@ fn text_hunks_with_budget(old: &BufferText, new: &BufferText, budget: usize) -> 
                 }
             },
         )
-        .collect()
+        .collect();
+    HunkDiff {
+        hunks,
+        deadline_hit,
+    }
 }
 
 /// `tokens[range]` as owned lines without their line breaks.
@@ -252,25 +278,22 @@ fn token_lines(tokens: &[RopeSlice<'_>], range: Range<usize>) -> Vec<String> {
         .collect()
 }
 
-/// Empty when a side has no lines or its tokens outnumber what is left of
-/// `budget`, which they otherwise come off. Each side is its first line in
-/// its text and its lines; `new_text` is the text the new side's lines are
-/// from.
+/// Empty when a side has no lines, `None` when its tokens outnumber what is
+/// left of `budget`, which they otherwise come off. Each side is its first
+/// line in its text and its lines; `new_text` is the text the new side's
+/// lines are from.
 fn text_hunk_words(
     new_text: &BufferText,
     (old_start, old_lines): (ContentLine, &[String]),
     (new_start, new_lines): (ContentLine, &[String]),
     budget: &mut usize,
-) -> WordSpans {
+) -> Option<WordSpans> {
     if old_lines.is_empty() || new_lines.is_empty() {
-        return WordSpans::default();
+        return Some(WordSpans::default());
     }
-    let Some((old_ranges, new_ranges)) =
-        word_change_ranges(&old_lines.join("\n"), &new_lines.join("\n"), budget)
-    else {
-        return WordSpans::default();
-    };
-    WordSpans {
+    let (old_ranges, new_ranges) =
+        word_change_ranges(&old_lines.join("\n"), &new_lines.join("\n"), budget)?;
+    Some(WordSpans {
         old: line_spans(
             clipped(old_lines, &old_ranges, 0..old_lines.len()),
             0,
@@ -280,7 +303,7 @@ fn text_hunk_words(
             clipped(new_lines, &new_ranges, 0..new_lines.len()),
             new_text.line_to_char(RopeyLine::from(new_start)),
         ),
-    }
+    })
 }
 
 /// `s` split at its line breaks, without them. A trailing break ends the last

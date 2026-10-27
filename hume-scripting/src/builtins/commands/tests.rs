@@ -16,71 +16,35 @@ fn plum_defined(proc: CommandProc) -> crate::null_host::CommandStoreHost {
     host
 }
 
-/// NullHost returns `Ok(false)` for `command_is_native` (no registry) →
-/// "not a native command" path → error logged, `#f` returned.
+/// NullHost answers `Ok(false)` for `command_is_native` (no registry), the
+/// "not a native command" path: a miss raises, naming the command.
 #[test]
-fn call_bang_unknown_command_logs_error() {
+fn call_bang_to_a_name_it_cannot_reach_raises() {
     let mut h = SteelCtxTestHarness::new();
-    let result = {
+    let err = {
         let mut ctx = h.ctx_init();
         call_command_primitive(
             &mut ctx,
             "plum/ensure-grammars".to_string(),
             make_list(vec![]),
         )
-        .unwrap()
+        .expect_err("a miss must raise")
     };
-    assert_eq!(
-        result,
-        SteelVal::BoolV(false),
-        "a miss must return #f, not #void: a Scheme guard like \
-         `(when (call! …) …)` must treat it as a refusal, not a truthy no-op"
-    );
     assert!(
-        h.pending_messages
-            .iter()
-            .any(|(level, msg)| *level == Severity::Error && msg.contains("plum/ensure-grammars")),
-        "unknown command must log an error; got: {:?}",
-        h.pending_messages
+        err.to_string().contains("plum/ensure-grammars"),
+        "got: {err}"
     );
 }
 
 #[test]
-fn call_bang_unknown_command_command_mode_logs_error() {
+fn call_bang_miss_in_command_mode_raises() {
     let mut h = SteelCtxTestHarness::new();
-    {
+    let err = {
         let mut ctx = h.ctx();
-        call_command_primitive(&mut ctx, "move-right".to_string(), make_list(vec![])).unwrap();
-    }
-    assert!(
-        h.pending_messages
-            .iter()
-            .any(|(level, msg)| *level == Severity::Error && msg.contains("move-right")),
-        "unknown command in command mode must log an error; got: {:?}",
-        h.pending_messages
-    );
-}
-
-#[test]
-fn call_bang_multiple_unknown_commands_each_log_error() {
-    let mut h = SteelCtxTestHarness::new();
-    {
-        let mut ctx = h.ctx();
-        call_command_primitive(&mut ctx, "move-right".to_string(), make_list(vec![])).unwrap();
-        call_command_primitive(&mut ctx, "move-left".to_string(), make_list(vec![])).unwrap();
-    }
-    let has_right = h
-        .pending_messages
-        .iter()
-        .any(|(level, msg)| *level == Severity::Error && msg.contains("move-right"));
-    let has_left = h
-        .pending_messages
-        .iter()
-        .any(|(level, msg)| *level == Severity::Error && msg.contains("move-left"));
-    assert!(
-        has_right && has_left,
-        "each unknown command must produce an error"
-    );
+        call_command_primitive(&mut ctx, "move-right".to_string(), make_list(vec![]))
+            .expect_err("a miss must raise")
+    };
+    assert!(err.to_string().contains("move-right"), "got: {err}");
 }
 
 // ── parse_native_args direct tests ───────────────────────────────────────

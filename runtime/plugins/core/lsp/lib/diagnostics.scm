@@ -62,18 +62,18 @@
 
 (define lsp/*diag-drawer* #f)
 
-(define (lsp/diag-select-callback pane diags)
-  (lambda (idx drawer)
-    (when idx
-      (lsp/diag-jump-to! pane (list-ref diags idx)))))
+(define (lsp/diag-select-callback pane)
+  (lambda (d drawer)
+    (when d
+      (lsp/diag-jump-to! pane d))))
 
 (define-typed-command! "diagnostics" ":diagnostics — list this buffer's diagnostics."
   (lambda (pane)
     (let ((diags (diagnostics-for-buffer pane)))
       (if (null? diags)
           (log! 'info "No diagnostics")
-          (let* ((tok (show-drawer-list! pane (map lsp/diag-row diags)
-                                         (lsp/diag-select-callback pane diags))))
+          (let* ((tok (show-drawer-list! pane (lsp/drawer-rows lsp/diag-row diags)
+                                         (lsp/diag-select-callback pane))))
             (when tok
               (set! lsp/*diag-drawer* (list (buffer-key pane) tok diags))))))))
 
@@ -107,8 +107,8 @@
             (if (not sel)
                 (set! lsp/*diag-drawer* #f)
                 (let ((idx (lsp/diag-refresh-index (caddr lsp/*diag-drawer*) sel diags)))
-                  (if (update-drawer-list! tok (map lsp/diag-row diags)
-                                           (lsp/diag-select-callback pane diags)
+                  (if (update-drawer-list! tok (lsp/drawer-rows lsp/diag-row diags)
+                                           (lsp/diag-select-callback pane)
                                            idx)
                       (set! lsp/*diag-drawer* (list (buffer-key pane) tok diags))
                       (set! lsp/*diag-drawer* #f)))))))))
@@ -173,11 +173,11 @@
          groups)))
 
 (define (lsp/refresh-diagnostic-decorations! pane diags)
-  (register-sign-source! "lsp-diagnostics" pane lsp/*sign-priority*)
-  (set-eol-text! "lsp-diagnostics" pane
+  (register-sign-source! pane "lsp-diagnostics" lsp/*sign-priority*)
+  (set-eol-text! pane "lsp-diagnostics"
     (map lsp/line-group->entry (lsp/group-by-line diags))
     #:hide-on-insert-line (not (get-option "lsp-diagnostics-on-insert-line")))
-  (set-signs! "lsp-diagnostics" pane (lsp/diagnostic-signs diags)))
+  (set-signs! pane "lsp-diagnostics" (lsp/diagnostic-signs diags)))
 
 (define (lsp/refresh-diagnostics! pane)
   (let ((diags (diagnostics-for-buffer pane)))

@@ -23,7 +23,7 @@ pub(in crate::editor) mod sync;
 use std::path::PathBuf;
 use std::time::Instant;
 
-use rustc_hash::FxHashSet;
+use rustc_hash::FxHashMap;
 
 use hume_core::{BufferId, PaneId, ServerName};
 use hume_editing::text::TextVersion;
@@ -139,9 +139,11 @@ pub(crate) struct LspState {
     /// over when its `canonicalize()` budget runs out.
     publishes: diagnostics::PublishQueue,
     reconcile: ReconcilePhase,
-    /// The `(name, root)` instances a stop ended. A reconcile does not
-    /// start them again: `:lsp-restart` and registering the name clear them.
-    stopped: FxHashSet<(ServerName, PathBuf)>,
+    /// The `(name, root)` instances a stop ended, each with the id of the
+    /// instance it ended. A reconcile does not start them again:
+    /// `:lsp-restart`, a restart through that instance's server value and
+    /// registering the name clear them.
+    stopped: FxHashMap<(ServerName, PathBuf), ServerId>,
 }
 
 impl LspState {
@@ -157,7 +159,7 @@ impl LspState {
             spinner: SpinnerClock::default(),
             publishes: diagnostics::PublishQueue::default(),
             reconcile: ReconcilePhase::Live,
-            stopped: FxHashSet::default(),
+            stopped: FxHashMap::default(),
         }
     }
 
@@ -197,7 +199,7 @@ impl LspState {
     /// Drops the stop of every root of `name`, so the next reconcile may
     /// start it.
     pub(in crate::editor) fn forget_stopped(&mut self, name: &ServerName) {
-        self.stopped.retain(|(stopped, _)| stopped != name);
+        self.stopped.retain(|(stopped, _), _| stopped != name);
     }
 
     /// Lets attachment changes apply again after a reload's `reset_config`.
@@ -377,10 +379,13 @@ impl AsyncSource for LspState {
 }
 
 impl Editor {
-    /// `(errors, warnings)` for `bid` from the diagnostics store.
+    /// `(errors, warnings)` for `bid` from the diagnostics store, at the
+    /// `lsp-diagnostics-min-severity` floor: the two counts the statusline
+    /// shows.
     #[cfg(test)]
     pub(in crate::editor) fn diagnostic_counts(&self, bid: BufferId) -> (usize, usize) {
-        introspect::diagnostic_counts(&self.state, bid)
+        let counts = introspect::diagnostic_counts(&self.state, bid, None);
+        (counts.error, counts.warning)
     }
 
     /// `bid`'s attached servers' lifecycle/loading state.

@@ -74,7 +74,7 @@ impl<'a> EditHost for EditorHostImpl<'a> {
         pane: PaneHandle,
         loc: &serde_json::Value,
         encoding: hume_rope::position_encoding::PositionEncoding,
-    ) -> Result<bool, String> {
+    ) -> Result<Option<PaneHandle>, String> {
         let t = self.command_pane(pane)?;
         let wl = hume_lsp::location::decode_location(loc)?;
         let target = crate::editor::lsp::edits::GotoTarget::Wire {
@@ -91,7 +91,7 @@ impl<'a> EditHost for EditorHostImpl<'a> {
         path: AbsolutePath,
         line: usize,
         char_col: usize,
-    ) -> Result<bool, String> {
+    ) -> Result<Option<PaneHandle>, String> {
         let t = self.command_pane(pane)?;
         let target = crate::editor::lsp::edits::GotoTarget::Path {
             path,
@@ -106,13 +106,9 @@ impl<'a> EditHost for EditorHostImpl<'a> {
         pane: PaneHandle,
         target: BufferId,
         char_offset: usize,
-    ) -> Result<(), String> {
+    ) -> Result<PaneHandle, String> {
         let t = self.command_pane(pane)?;
-        let goto_target = crate::editor::lsp::edits::GotoTarget::Buffer {
-            bid: target,
-            char_offset,
-        };
-        crate::editor::lsp::edits::goto_location(self.state, self.view, t, goto_target).map(|_| ())
+        crate::editor::lsp::edits::goto_buffer_offset(self.state, self.view, t, target, char_offset)
     }
 
     fn goto_revision(&mut self, pane: PaneHandle, revision: usize) -> Result<(), String> {
@@ -160,10 +156,15 @@ impl<'a> EditHost for EditorHostImpl<'a> {
         }
     }
 
-    fn edit_text(&mut self, pane: PaneHandle, edits: Vec<CharTextEdit>) -> Result<(), String> {
-        let target = self.command_pane(pane)?;
-        let (pid, bid) = (target.pid(), target.bid(self.view));
-        let text = self.state.buffers.get(bid).text();
+    fn edit_text(
+        &mut self,
+        pane: PaneHandle,
+        edits: Vec<CharTextEdit>,
+        expect_gen: Option<u64>,
+    ) -> Result<(), String> {
+        let buf = self.state.buffers.get(pane.buffer());
+        crate::editor::lsp::edits::check_generation(buf, expect_gen)?;
+        let text = buf.text();
         let char_edits = edits
             .iter()
             .map(|e| {
@@ -172,13 +173,7 @@ impl<'a> EditHost for EditorHostImpl<'a> {
                 Ok((widened_to_clusters(text, range), e.text.as_str()))
             })
             .collect::<Result<Vec<_>, String>>()?;
-        crate::editor::lsp::edits::commit_char_edits(
-            self.state,
-            &self.view.panes,
-            pid,
-            bid,
-            char_edits,
-        )
-        .map(|_| ())
+        crate::editor::lsp::edits::commit_char_edits(self.state, &self.view.panes, pane, char_edits)
+            .map(|_| ())
     }
 }

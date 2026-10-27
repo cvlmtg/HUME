@@ -283,11 +283,10 @@ fn register_grammar_two_differently_shaped_keyword_calls_in_one_file_compiles() 
 /// Passive grammar registration: an init that registers installed grammars
 /// directly (like core's `register-installed-grammars!` in
 /// `runtime/scheme/grammars.scm`) succeeds without error and populates the
-/// pending language regs.  A `(call! "unknown-cmd")` in
-/// the same init logs a warning but does not abort: unknown commands are
-/// soft failures during init (buffer access unavailable; command not native).
+/// pending language regs. A `(call! "unknown-cmd")` in the same init raises,
+/// naming the command; caught here, it leaves the registrations in place.
 #[test]
-fn passive_load_registers_grammar_and_unknown_call_logs_warning() {
+fn passive_load_registers_grammar_and_an_unknown_call_raises() {
     require_grammars(&["json"]);
     let (parser, hl) = grammar_fixture("json");
     let ext = test_fixtures::grammar_platform_ext();
@@ -322,7 +321,8 @@ fn passive_load_registers_grammar_and_unknown_call_logs_warning() {
     names))
 
 (do-register! (list "json" "phantom"))
-(call! "plum/ensure-grammars")
+(with-handler (lambda (err) (log! 'warning (to-string err)))
+  (call! "plum/ensure-grammars"))
         "#,
         hl = hl_dest.display(),
         grammar_out = grammar_out.display(),
@@ -351,12 +351,11 @@ fn passive_load_registers_grammar_and_unknown_call_logs_warning() {
         !regs.is_empty(),
         "passive grammar registration must populate the effect log"
     );
-    // Unknown (call!) produced a warning, did not abort.
     let msgs = host.take_pending_messages();
     assert!(
         msgs.iter()
-            .any(|(_, msg)| msg.contains("plum/ensure-grammars")),
-        "unknown command in init must log a warning; got: {:?}",
+            .any(|(_, msg)| msg.contains("unknown command: plum/ensure-grammars")),
+        "the unknown call! must raise naming the command; got: {:?}",
         msgs,
     );
 }

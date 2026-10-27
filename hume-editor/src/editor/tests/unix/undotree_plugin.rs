@@ -747,7 +747,7 @@ fn undotree_redraws_the_diff_only_when_the_revision_changes() {
         hume_scripting::eager_load_scm("core:git-diff", None),
         hume_scripting::eager_load_scm("core:undotree", None),
         r#"(define-command! "clear-diff-probe" "Clear the undotree diff."
-             (lambda (pane) (set-virtual-lines! "undotree" pane (list))))"#,
+             (lambda (pane) (set-virtual-lines! pane "undotree" (list))))"#,
     );
     run(&mut ed, tmp.path(), &load);
     ed.settle();
@@ -1028,7 +1028,7 @@ fn setup_with_foreign_drawer(tmp: &Path) -> (Editor, RealRuntimeDirs) {
         r#"{}
 (define-command! "foreign-drawer" "Open an unrelated drawer."
   (lambda (pane)
-    (show-drawer-list! pane (list "foreign") (lambda (i tok) (begin)))))"#,
+    (show-drawer-list! pane (map (lambda (row) (cons row row)) (list "foreign")) (lambda (i tok) (begin)))))"#,
         hume_scripting::eager_load_scm("core:undotree", None)
     );
     run(&mut ed, tmp, &source);

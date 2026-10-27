@@ -5,10 +5,7 @@
          lsp/with-params
          lsp/visible-lines lsp/resolve-pane
          lsp/setup-trigger-chars! lsp/format-position lsp/cap-field lsp/cap-flag?
-         lsp/with-servers lsp/report-unsupported lsp/jump-to!)
-
-(unless (member "core:stdlib" (declared-plugins))
-  (error "core:lsp: requires core:stdlib — add (load-plugin! \"core:stdlib\") before (load-plugin! \"core:lsp\")"))
+         lsp/with-servers lsp/report-unsupported lsp/jump-to! lsp/drawer-rows)
 
 ;; ── Capabilities ────────────────────────────────────────────────────────────
 
@@ -42,17 +39,29 @@
   (unless (goto-location! (focused-pane) location)
     (log! 'warning "lsp: the location no longer exists")))
 
+(define (lsp/drawer-rows row-text items)
+  (map (lambda (item) (cons (row-text item) item)) items))
+
 ;; ── Trigger-char lifecycle ──────────────────────────────────────────────────
+
+;;; A server's `triggerCharacters` strings, as chars.
+(define (lsp/trigger-chars strings)
+  (map (lambda (s)
+         (if (= (string-length s) 1)
+             (string-ref s 0)
+             (error (string-append "lsp: trigger character \"" s "\" is not one character"))))
+       strings))
 
 (define (lsp/setup-trigger-chars! feature source-name extra-chars on-trigger)
   (define (set-chars! pane server chars)
     (if on-trigger
-        (set-attachment-hook-triggers! source-name pane server feature chars)
-        (set-attachment-completion-triggers! source-name pane server feature chars)))
+        (set-attachment-hook-triggers! pane source-name server feature chars)
+        (set-attachment-completion-triggers! pane source-name server feature chars)))
   (register-hook! 'on-lsp-attach
     (lambda (pane server)
       (let ((tc (lsp/cap-field (lsp-capability server #:feature feature) "triggerCharacters" #f)))
-        (set-chars! pane server (append extra-chars (if tc (json-list tc) (list)))))))
+        (set-chars! pane server
+                    (append extra-chars (if tc (lsp/trigger-chars (json-list tc)) (list)))))))
   (when on-trigger
     (register-hook! 'on-trigger-char
       (lambda (pane ch source)

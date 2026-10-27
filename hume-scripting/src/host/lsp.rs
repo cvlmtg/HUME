@@ -10,7 +10,7 @@ use hume_lsp::backend::ServerId;
 use super::token::TrackedHold;
 use crate::builtins::ids::{DocPos, DocRange, ServerRef};
 use crate::types::CapabilityQuery;
-use hume_core::{Claim, ListEntry, LspFeature, ServerName, ServerRegistrationTie};
+use hume_core::{Claim, LanguageLists, LspFeature, ServerName, ServerRegistrationTie};
 
 /// A position request's params before encoding: the document URI and a
 /// position each server receives in its own encoding.
@@ -110,9 +110,10 @@ pub trait LspHost {
     /// A key no other call has returned, for `lsp-supersede-key`.
     fn new_supersede_key(&mut self) -> SupersedeKey;
 
-    /// The servers `language`'s buffers attach to, in order, each with the
-    /// feature filter its list entry gives it.
-    fn lsp_language_servers(&self, language: &str) -> Vec<ListEntry>;
+    /// `language`'s server lists as they stand, for a reader to replay this
+    /// eval's queued list writes onto and plan from
+    /// ([`hume_core::LanguageLists::plan`]).
+    fn lsp_language_lists(&self, language: &str) -> LanguageLists;
 
     /// The document URI and primary cursor head of `pane`'s own pane.
     /// `Ok(None)` if the buffer has no path. `Err` (kind-B fail-fast) when

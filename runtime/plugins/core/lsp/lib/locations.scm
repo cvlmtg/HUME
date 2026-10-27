@@ -48,12 +48,11 @@
     (close-drawer! (hash-ref lsp/*locations* 'drawer))
     (lsp/end-locations-session!)))
 
-(define (lsp/locations-on-select places)
-  (lambda (idx drawer)
-    (cond
-      (idx (lsp/jump-to! (hash-ref (list-ref places idx) 'location)))
-      ((and lsp/*locations* (equal? (hash-ref lsp/*locations* 'drawer) drawer))
-       (lsp/end-locations-session!)))))
+(define (lsp/locations-on-select place drawer)
+  (cond
+    (place (lsp/jump-to! (hash-ref place 'location)))
+    ((and lsp/*locations* (equal? (hash-ref lsp/*locations* 'drawer) drawer))
+     (lsp/end-locations-session!))))
 
 (define (lsp/place-line-counts pane places)
   (let loop ((places places)
@@ -70,8 +69,8 @@
 ;; maps position params to request params.
 (define (lsp/show-locations! pane tracked places method shape not-found)
   (lsp/end-locations-session!)
-  (let ((drawer (show-drawer-list! (focused-pane) (map lsp/place-display places)
-                                   (lsp/locations-on-select places))))
+  (let ((drawer (show-drawer-list! (focused-pane) (lsp/drawer-rows lsp/place-display places)
+                                   lsp/locations-on-select)))
     (when drawer
       (let ((counts (lsp/place-line-counts pane places)))
         (keep-tracked-position! tracked)
@@ -88,8 +87,8 @@
     (if (not selected)
         (lsp/end-locations-session!)
         (let ((idx (min selected (- (length places) 1))))
-          (if (update-drawer-list! drawer (map lsp/place-display places)
-                                   (lsp/locations-on-select places) idx)
+          (if (update-drawer-list! drawer (lsp/drawer-rows lsp/place-display places)
+                                   lsp/locations-on-select idx)
               (set! lsp/*locations*
                     (hash-insert session 'counts
                                  (lsp/place-line-counts (hash-ref session 'pane) places)))

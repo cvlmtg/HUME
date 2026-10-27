@@ -23,7 +23,7 @@
 (define (undotree/draw-diff! pane node)
   (let ([parent (hash-ref node 'parent)])
     (call! undotree/diff-command pane undotree/*source*
-           (if parent (buffer-revision-diff pane parent) '()))))
+           (if parent (hash-ref (buffer-revision-diff pane parent) 'hunks) '()))))
 
 (define (undotree/clear-diff! pane)
   (when (and (undotree/diff-available?) (buffer-live? pane))
@@ -77,11 +77,11 @@
 (define (undotree/row-id nodes idx)
   (hash-ref (list-ref nodes idx) 'id))
 
-(define (undotree/on-select key nodes)
-  (lambda (idx drawer)
+(define (undotree/on-select key)
+  (lambda (node drawer)
     (when (undotree/session-drawer? drawer)
-      (if idx
-          (undotree/jump! key (list-ref nodes idx))
+      (if node
+          (undotree/jump! key node)
           (undotree/end-session!)))))
 
 ;;; Re-renders the focused pane's tree into the open drawer. See README.md's "Refresh".
@@ -99,7 +99,7 @@
                             (undotree/row-index (lambda (node) (equal? (hash-ref node 'id) wanted))
                                                 nodes)))]
                [highlight (or kept (hash-ref rendered 'current))])
-          (if (update-drawer-list! drawer nodes (undotree/on-select (buffer-key pane) nodes) highlight
+          (if (update-drawer-list! drawer nodes (undotree/on-select (buffer-key pane)) highlight
                                    #:render (hash-ref rendered 'render))
               (undotree/commit! drawer pane rendered)
               (undotree/end-session!))))))
@@ -114,7 +114,7 @@
   (undotree/end-session!)
   (let* ([rendered (undotree/render (buffer-undo-tree pane))]
          [drawer (show-drawer-list! (focused-pane) (hash-ref rendered 'nodes)
-                                    (undotree/on-select (buffer-key pane) (hash-ref rendered 'nodes))
+                                    (undotree/on-select (buffer-key pane))
                                     #:selected (hash-ref rendered 'current)
                                     #:render (hash-ref rendered 'render))])
     (when drawer

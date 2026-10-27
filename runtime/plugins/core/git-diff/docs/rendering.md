@@ -83,7 +83,7 @@ modules:
 (call! "git-diff/render-diff" pane "my-source" hunks)
 ```
 
-`hunks` is a list in the shape `diff-buffer-lines` and `buffer-revision-diff` return.
+`hunks` is the `'hunks` list `diff-buffer-lines` and `buffer-revision-diff` return.
 Each call replaces everything that `source` drew for the buffer, so an empty list draws
 nothing. Signs are not part of it.
 
@@ -127,7 +127,7 @@ of file, where `'before new-start-line` would address the phantom trailing line 
 
 ### Word spans
 
-Every hunk carries `'words`, `(hash 'old spans 'new spans)`. An old-side span is
+Every hunk carries `'words`, `(hash 'old spans 'new spans)`, or `#f` when the hunk was too large to word-diff, which renders it with no word spans. An old-side span is
 `(hash 'line 'start-char-col 'end-char-col)`: a line of the old text and char columns in that line.
 A new-side span is `(hash 'start-char 'end-char)`: char offsets into the new text, the
 buffer. Spans are in ascending order. For a hunk from a text diff, the Rust side word-diffs

@@ -9,6 +9,7 @@ use hume_engine::render::Canvas;
 use crate::editor::EditorState;
 use colors::EditorColors;
 use hume_core::BufferId;
+use hume_scripting::host::DiagnosticCounts;
 use hume_ui::width::text_width;
 
 pub(crate) mod colors;
@@ -105,7 +106,7 @@ pub enum StatusElement {
     /// through Steel's `(diagnostic-counts …)` builtin (that one is for
     /// plugins, not the render path).
     Diagnostics,
-    /// A plugin-defined element, named by `(set-statusline-text! source bid
+    /// A plugin-defined element, named by `(set-statusline-text! bid source
     /// text)`'s `source` argument. Wire name is `steel:<source>`; carries
     /// the name rather than an interned id, which is what costs this enum
     /// its `Copy` derive.
@@ -355,8 +356,8 @@ impl HumeStatusline<'_> {
         self.focused_search_cursor
     }
 
-    pub(in crate::statusline) fn diagnostic_counts(&self, bid: BufferId) -> (usize, usize) {
-        crate::editor::lsp::introspect::diagnostic_counts(self.state, bid)
+    pub(in crate::statusline) fn diagnostic_counts(&self, bid: BufferId) -> DiagnosticCounts {
+        crate::editor::lsp::introspect::diagnostic_counts(self.state, bid, None)
     }
 
     pub(in crate::statusline) fn lsp_activity(

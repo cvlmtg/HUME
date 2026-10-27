@@ -78,7 +78,7 @@ fn half_page_on_a_cursor_popup_opened_with_a_drawer_measures_the_shorter_pane() 
         &format!(
             r#"(define-typed-command! "go" "" (lambda (pane)
                  (begin
-                   (show-drawer-list! pane (list "a" "b" "c" "d" "e") (lambda (idx tok) (begin)))
+                   (show-drawer-list! pane (map (lambda (row) (cons row row)) (list "a" "b" "c" "d" "e")) (lambda (row tok) (begin)))
                    (show-popup! pane "{long}" #:kind 'scrollable))))"#
         ),
     );

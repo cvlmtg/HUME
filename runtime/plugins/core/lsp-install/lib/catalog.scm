@@ -2,7 +2,6 @@
 
 (provide lsp-install/ref
          lsp-install/ref-or
-         lsp-install/require-stdlib!
          lsp-install/data-path
          lsp-install/read-record
          lsp-install/registration
@@ -16,10 +15,6 @@
          lsp-install/primary)
 
 (define lsp-install/dir (plugin-dir))
-
-(define (lsp-install/require-stdlib!)
-  (unless (member "core:stdlib" (declared-plugins))
-    (error "core:lsp-install: requires core:stdlib — add (load-plugin! \"core:stdlib\") before (load-plugin! \"core:lsp-install\")")))
 
 (define (lsp-install/data-path kind)
   (path-join lsp-install/dir "data" kind))

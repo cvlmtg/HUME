@@ -7,7 +7,7 @@
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
-use hume_core::{LspFeature, PaneHandle};
+use hume_core::{LspFeature, PaneHandle, ServerName};
 
 use crate::types::{
     CapabilityQuery, Effect, Params, PendingLspNotify, PendingLspRequest, PendingLspServerOp,
@@ -442,21 +442,28 @@ pub(crate) fn lsp_supersede_key(ctx: &mut SteelCtx) -> SteelResult {
 /// names already registered.
 pub(crate) fn lsp_server_registered(ctx: &mut SteelCtx, name: SteelVal) -> SteelResult {
     let name = server_name_arg(name, "name")?;
-    let mut held = require_cap(ctx.host.lsp())?.lsp_server_claim(&name);
+    Ok(SteelVal::BoolV(registered_now(ctx, &name)?))
+}
+
+/// Whether `name` is registered once this eval's queued registrations and
+/// unregistrations apply, each ranked as `Editor::apply_lsp_server_ops`
+/// applies it.
+fn registered_now(ctx: &mut SteelCtx, name: &ServerName) -> Result<bool, SteelErr> {
+    let mut held = require_cap(ctx.host.lsp())?.lsp_server_claim(name);
     for queued in ctx.effects.iter() {
         match &queued.effect {
-            Effect::LspServerOp(PendingLspServerOp::Register(reg)) if reg.name == name => {
+            Effect::LspServerOp(PendingLspServerOp::Register(reg)) if reg.name == *name => {
                 let _ = held.claim(reg.origin);
             }
             Effect::LspServerOp(PendingLspServerOp::Unregister { name: n, origin })
-                if *n == name =>
+                if n == name =>
             {
                 let _ = held.clear(*origin);
             }
             _ => {}
         }
     }
-    Ok(SteelVal::BoolV(held.by().is_some()))
+    Ok(held.by().is_some())
 }
 
 #[cfg(test)]

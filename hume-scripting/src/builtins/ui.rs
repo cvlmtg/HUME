@@ -14,7 +14,6 @@ use hume_core::{NonEmpty, PaneHandle, PopupLayout, TruncateEnd};
 
 use crate::host::{
     DrawerItems, LivePickerOpts, PickerFeedMode, PickerOpts, PickerSourceOpts, PopupKind,
-    token_to_steel,
 };
 use crate::{Callback, Rooted, SteelCtx};
 
@@ -144,21 +143,22 @@ pub(crate) fn update_drawer_list(
     Ok(SteelVal::BoolV(applied))
 }
 
-/// A drawer's `items`: strings when `render` is `#f`, otherwise opaque keys
-/// rendered on demand by the `render` proc.
+/// A drawer's `items`: `(display . payload)` pairs when `render` is `#f`,
+/// as a picker's are, otherwise opaque keys rendered on demand by the
+/// `render` proc, each its row's payload.
 fn drawer_items(
     ctx: &SteelCtx,
     items: SteelVal,
     render: SteelVal,
 ) -> Result<DrawerItems, SteelErr> {
     Ok(match optional_callback_arg(ctx, render, "#:render")? {
-        None => DrawerItems::Rows(non_empty(list_to_strings(items, "items")?, "items")?),
+        None => DrawerItems::Rows(non_empty(picker_items(items, "items")?, "items")?),
         Some(render) => DrawerItems::Keys {
             keys: non_empty(
                 list_items(items, "items")?
                     .into_iter()
-                    .map(Rooted::new)
-                    .collect(),
+                    .map(|key| row_payload(key, "items"))
+                    .collect::<Result<_, _>>()?,
                 "items",
             )?,
             render,
@@ -230,13 +230,22 @@ fn picker_items(items: SteelVal, ctx_name: &str) -> Result<Vec<(String, Rooted)>
         .into_iter()
         .map(|entry| {
             let (display, payload) = pair_fields(entry, ctx_name, "(display . payload)")?;
-            // absent-decode-safe: #f here is the reserved dismiss sentinel being rejected, not an absent optional
-            if matches!(payload, SteelVal::BoolV(false)) {
-                steel::stop!(Generic => "{}: item payload must not be #f (#f is reserved for the dismiss signal)", ctx_name);
-            }
-            Ok((string_arg(display, ctx_name)?, Rooted::new(payload)))
+            Ok((
+                string_arg(display, ctx_name)?,
+                row_payload(payload, ctx_name)?,
+            ))
         })
         .collect()
+}
+
+/// What a picker or drawer row hands `on-select`: anything but `#f`, which
+/// the callback gets on a dismissal.
+fn row_payload(payload: SteelVal, ctx_name: &str) -> Result<Rooted, SteelErr> {
+    // absent-decode-safe: #f here is the reserved dismiss sentinel being rejected, not an absent optional
+    if matches!(payload, SteelVal::BoolV(false)) {
+        steel::stop!(Generic => "{}: item payload must not be #f (#f is reserved for the dismiss signal)", ctx_name);
+    }
+    Ok(Rooted::new(payload))
 }
 
 /// Decodes `picker!`'s/`live-picker!`'s `#:actions` alist: each entry is a
@@ -307,7 +316,7 @@ pub(crate) fn picker(
     let token = require_cap(ctx.host.ui())?
         .open_picker(pane, items, on_select, opts)
         .map_err(generic_err)?;
-    Ok(token_to_steel(token))
+    Ok(token_or_false(token))
 }
 
 /// `(%live-picker! on-select prompt query on-query-change truncate actions)`: the
@@ -346,7 +355,7 @@ pub(crate) fn live_picker(
     let token = require_cap(ctx.host.ui())?
         .open_live_picker(pane, on_select, opts)
         .map_err(generic_err)?;
-    Ok(token_to_steel(token))
+    Ok(token_or_false(token))
 }
 
 /// Shared body of `picker-push!`/`picker-replace!`: identical shape, differing

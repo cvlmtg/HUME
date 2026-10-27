@@ -2,7 +2,7 @@
 //! candidate's `textEdit` (or a synthesized token-replacement fallback) at
 //! every cursor, then best-effort `completionItem/resolve`.
 
-use hume_core::{BufferId, PaneId, Severity};
+use hume_core::{BufferId, PaneHandle, PaneId, Severity};
 use hume_editing::changeset::Assoc;
 use hume_engine::pipeline::EngineView;
 use hume_rope::offset::CharOffset;
@@ -334,7 +334,12 @@ impl BufferSession {
         // `commit_char_edits` fired, with the buffer still untouched.
         // `commit_char_edits` is a no-op `Ok(None)` for an empty batch, so no
         // separate `is_empty()` branch is needed here.
-        let cs_additional = edits::commit_char_edits(state, &view.panes, pid, bid, additional)?;
+        let cs_additional = edits::commit_char_edits(
+            state,
+            &view.panes,
+            PaneHandle::with_pane(bid, pid),
+            additional,
+        )?;
 
         // `forward` chars ahead of each cursor's own *live* head, plus
         // `per_cursor_back[i]` chars behind it, travels forward through
@@ -443,7 +448,12 @@ impl ResolveBase {
             &resolved_edits,
         )
         .and_then(|char_edits| {
-            edits::commit_char_edits(state, &view.panes, self.pid, self.bid, char_edits)
+            edits::commit_char_edits(
+                state,
+                &view.panes,
+                PaneHandle::with_pane(self.bid, self.pid),
+                char_edits,
+            )
         });
         if let Err(e) = result {
             state.report(Severity::Error, format!("lsp completion resolve: {e}"));

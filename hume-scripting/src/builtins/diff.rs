@@ -7,17 +7,21 @@ use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
 use hume_editing::diff::{WordHunk, WordHunkKind};
-use hume_editing::hunk::{ChangeHunk, LineSpan, text_hunks};
+use hume_editing::hunk::{ChangeHunk, HunkDiff, LineSpan, text_hunks};
 use hume_editing::text::BufferText;
 
 use hume_core::PaneHandle;
 
 use super::SteelResult;
-use super::args::{char_range_value, list_of, not_live_err, string_arg, string_list, symbol_hash};
+use super::args::{
+    END_CHAR_COL, START_CHAR_COL, char_range_value, list_of, not_live_err, string_arg, string_list,
+    symbol_hash,
+};
 use super::errors::{generic_err, require_cap};
 
-/// `(diff-lines old-text new-text)` → list of hunk hashes, oldest side
-/// first. Each hunk is `(hash 'old-start-line 'old-end-line 'new-start-line
+/// `(diff-lines old-text new-text)` → `(hash 'hunks (…) 'deadline-hit b)`:
+/// the hunks oldest side first, and whether the line diff missed its
+/// deadline and fell back to Myers. Each hunk is `(hash 'old-start-line 'old-end-line 'new-start-line
 /// 'new-end-line 'old-lines 'new-lines 'words)`: 0-based lines, end-exclusive,
 /// so a side with no lines has an empty range at the point the other side was
 /// inserted at or deleted from. `Equal` runs are dropped. Both texts are read
@@ -43,10 +47,10 @@ pub(crate) fn diff_buffer_lines(
     let bid = pane.buffer();
     let ref_text = string_arg(ref_text, "ref-text")?;
     // `LivePane` already checked liveness; `None` would be a host disagreeing with itself.
-    let hunks = require_cap(ctx.host.diff())?
+    let diff = require_cap(ctx.host.diff())?
         .diff_buffer_lines(bid, &ref_text)
         .ok_or_else(|| not_live_err("pane", bid))?;
-    Ok(hunks_to_steel(hunks))
+    Ok(hunks_to_steel(diff))
 }
 
 /// `(buffer-revision-diff pane id)` → the hunks that separate `pane`'s buffer's
@@ -59,17 +63,21 @@ pub(crate) fn buffer_revision_diff(
     pane: PaneHandle,
     revision: usize,
 ) -> SteelResult {
-    let hunks = require_cap(ctx.host.diff())?
+    let diff = require_cap(ctx.host.diff())?
         .revision_diff(pane.buffer(), revision)
         .map_err(generic_err)?;
-    Ok(hunks_to_steel(hunks))
+    Ok(hunks_to_steel(diff))
 }
 
-fn hunks_to_steel(hunks: Vec<ChangeHunk>) -> SteelVal {
-    list_of(hunks.into_iter().map(hunk_to_steel))
+fn hunks_to_steel(diff: HunkDiff) -> SteelVal {
+    symbol_hash([
+        ("hunks", list_of(diff.hunks.into_iter().map(hunk_to_steel))),
+        ("deadline-hit", SteelVal::BoolV(diff.deadline_hit)),
+    ])
 }
 
-/// `'words`: `(hash 'old (list span …) 'new (list span …))`. An old-side span is
+/// `'words`: `(hash 'old (list span …) 'new (list span …))`, or `#f` when the
+/// hunk's word diff was skipped for the word budget. An old-side span is
 /// `(hash 'line 'start-char-col 'end-char-col)`: a line of the old text and
 /// char columns in it, end exclusive. A new-side span is `(hash 'start-char
 /// 'end-char)`: char offsets into the new text, end exclusive. For
@@ -93,21 +101,22 @@ fn hunk_to_steel(hunk: ChangeHunk) -> SteelVal {
         ("new-lines", string_list(hunk.new_lines)),
         (
             "words",
-            symbol_hash([
-                (
-                    "old",
-                    list_of(hunk.words.old.into_iter().map(line_span_to_steel)),
-                ),
-                (
-                    "new",
-                    list_of(
-                        hunk.words
-                            .new
-                            .into_iter()
-                            .map(|range| char_range_value(range.start.index(), range.end.index())),
+            hunk.words.map_or(SteelVal::BoolV(false), |words| {
+                symbol_hash([
+                    (
+                        "old",
+                        list_of(words.old.into_iter().map(line_span_to_steel)),
                     ),
-                ),
-            ]),
+                    (
+                        "new",
+                        list_of(
+                            words.new.into_iter().map(|range| {
+                                char_range_value(range.start.index(), range.end.index())
+                            }),
+                        ),
+                    ),
+                ])
+            }),
         ),
     ])
 }
@@ -115,11 +124,8 @@ fn hunk_to_steel(hunk: ChangeHunk) -> SteelVal {
 fn line_span_to_steel(span: LineSpan) -> SteelVal {
     symbol_hash([
         ("line", SteelVal::IntV(span.line.index() as isize)),
-        (
-            "start-char-col",
-            SteelVal::IntV(span.start.index() as isize),
-        ),
-        ("end-char-col", SteelVal::IntV(span.end.index() as isize)),
+        (START_CHAR_COL, SteelVal::IntV(span.start.index() as isize)),
+        (END_CHAR_COL, SteelVal::IntV(span.end.index() as isize)),
     ])
 }
 

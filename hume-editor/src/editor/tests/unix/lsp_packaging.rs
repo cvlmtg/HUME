@@ -318,10 +318,9 @@ fn every_default_lsp_binding_dispatches_without_error() {
     drop(guard);
 }
 
-/// Loading `core:lsp` without `core:stdlib` declared or loaded first must
-/// fail to load (contained, not aborting `eval_init`), naming `core:stdlib`
-/// (`core:lsp`'s `(declared-plugins)` guard rejects a `core:stdlib` that
-/// was never declared or loaded at all).
+/// Loading `core:lsp` without `core:stdlib` must fail to load (contained,
+/// not aborting `eval_init`): its first config read's `call!` raises, naming
+/// the stdlib command.
 #[test]
 fn missing_stdlib_errors_at_load() {
     let guard = RealRuntimeDirs::new();
@@ -329,6 +328,6 @@ fn missing_stdlib_errors_at_load() {
         guard.dirs(),
         r#"(load-plugin! "core:lsp") (%activate-plugin-inline! "core:lsp" #f)"#,
         "lsp",
-        &["core:stdlib"],
+        &["unknown command: stdlib/config-"],
     );
 }

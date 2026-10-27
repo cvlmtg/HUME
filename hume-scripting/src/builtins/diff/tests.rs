@@ -1,6 +1,6 @@
 use super::*;
 use crate::builtins::args::{list_of, string_list, symbol_hash};
-use crate::test_support::SteelCtxTestHarness;
+use crate::test_support::{SteelCtxTestHarness, hash_field};
 
 // ── Gate (init mode rejection) ────────────────────────────────────────────
 //
@@ -64,6 +64,11 @@ fn diff_words_rejects_a_non_string_new_argument() {
 
 // ── NullHost: no DiffHost, buffer_exists=false ──────────────────────────────
 
+/// A line diff's result: its `hunks`, from a diff that finished in time.
+fn lines_result(hunks: SteelVal) -> SteelVal {
+    symbol_hash([("hunks", hunks), ("deadline-hit", SteelVal::BoolV(false))])
+}
+
 fn int(n: isize) -> SteelVal {
     SteelVal::IntV(n)
 }
@@ -109,7 +114,7 @@ fn diff_lines_needs_no_host_capability() {
         SteelVal::StringV("b\n".into()),
     )
     .expect("diff-lines needs no host capability");
-    let expected = list_of([symbol_hash([
+    let expected = lines_result(list_of([symbol_hash([
         ("old-start-line", int(0)),
         ("old-end-line", int(1)),
         ("new-start-line", int(0)),
@@ -120,7 +125,7 @@ fn diff_lines_needs_no_host_capability() {
             "words",
             symbol_hash([("old", list_of([])), ("new", list_of([]))]),
         ),
-    ])]);
+    ])]));
     assert_eq!(result, expected);
 }
 
@@ -137,7 +142,7 @@ fn diff_lines_new_side_offsets_count_a_crlf_as_one_char() {
         SteelVal::StringV("a\r\nlet y = 1;\r\n".into()),
     )
     .expect("diff-lines needs no host capability");
-    let expected = list_of([symbol_hash([
+    let expected = lines_result(list_of([symbol_hash([
         ("old-start-line", int(1)),
         ("old-end-line", int(2)),
         ("new-start-line", int(1)),
@@ -161,8 +166,25 @@ fn diff_lines_new_side_offsets_count_a_crlf_as_one_char() {
                 ),
             ]),
         ),
-    ])]);
+    ])]));
     assert_eq!(result, expected);
+}
+
+/// A hunk whose word diff was skipped for the budget reads `'words #f`, not
+/// the empty spans of a change of whole lines.
+#[test]
+fn a_hunk_over_the_word_budget_reads_words_false() {
+    let hunk = hume_editing::hunk::ChangeHunk {
+        old_start: hume_rope::line::ContentLine::new(0),
+        new_start: hume_rope::line::ContentLine::new(0),
+        old_lines: vec!["a".to_owned()],
+        new_lines: vec!["b".to_owned()],
+        words: None,
+    };
+    assert_eq!(
+        hash_field(&hunk_to_steel(hunk), "words"),
+        SteelVal::BoolV(false)
+    );
 }
 
 /// A changed word carries its text on both sides, at char offsets.

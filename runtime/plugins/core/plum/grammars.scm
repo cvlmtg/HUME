@@ -2,8 +2,6 @@
 
 (require "lib/helpers.scm")
 
-(plum/require-stdlib!)
-
 ;;; Helix commit pin, read once at plugin load.
 (define *plum-helix-pin*
   (read-data-file (path-join (runtime-dir) "scheme" "helix-pin.scm")))

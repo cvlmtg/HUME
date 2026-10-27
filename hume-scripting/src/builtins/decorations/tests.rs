@@ -22,8 +22,8 @@ fn list(items: Vec<SteelVal>) -> SteelVal {
 /// Builds a `(hash 'start-char 'end-char 'scope)` segment.
 fn seg(start: isize, end: isize, scope: &str) -> SteelVal {
     hashmap(vec![
-        ("start-char", SteelVal::IntV(start)),
-        ("end-char", SteelVal::IntV(end)),
+        ("start-char-col", SteelVal::IntV(start)),
+        ("end-char-col", SteelVal::IntV(end)),
         ("scope", SteelVal::StringV(scope.into())),
     ])
 }
@@ -60,7 +60,11 @@ fn diagnostic_reads_without_decoration_host_error() {
         SteelVal::BoolV(false),
         SteelVal::BoolV(false),
     ));
-    assert_unsupported(diagnostic_counts(&mut ctx, ArgPane(default_pane())));
+    assert_unsupported(diagnostic_counts(
+        &mut ctx,
+        ArgPane(default_pane()),
+        SteelVal::BoolV(false),
+    ));
 }
 
 #[test]
@@ -70,8 +74,8 @@ fn set_inlay_hints_without_decoration_host_errors() {
     let empty: SteelVal = Vec::<SteelVal>::new().into_steelval().unwrap();
     let result = set_inlay_hints(
         &mut ctx,
-        SteelVal::StringV("test".into()),
         default_pane(),
+        SteelVal::StringV("test".into()),
         empty,
     );
     assert_unsupported(result);
@@ -83,25 +87,25 @@ fn register_sign_source_without_decoration_host_errors() {
     let mut ctx = h.ctx();
     let result = register_sign_source(
         &mut ctx,
-        SteelVal::StringV("test".into()),
         default_pane(),
+        SteelVal::StringV("test".into()),
         SteelVal::IntV(10),
     );
     assert_unsupported(result);
 }
 
 #[test]
-fn register_sign_source_rejects_an_empty_name() {
+fn register_sign_source_rejects_an_empty_source() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
     let result = register_sign_source(
         &mut ctx,
-        SteelVal::StringV("  ".into()),
         default_pane(),
+        SteelVal::StringV("  ".into()),
         SteelVal::IntV(10),
     );
     let msg = result.unwrap_err().to_string();
-    assert!(msg.contains("name must not be empty"), "got: {msg}");
+    assert!(msg.contains("source must not be empty"), "got: {msg}");
 }
 
 #[test]
@@ -111,8 +115,8 @@ fn set_signs_without_decoration_host_errors() {
     let empty: SteelVal = Vec::<SteelVal>::new().into_steelval().unwrap();
     let result = set_signs(
         &mut ctx,
-        SteelVal::StringV("test".into()),
         default_pane(),
+        SteelVal::StringV("test".into()),
         empty,
     );
     assert_unsupported(result);
@@ -130,8 +134,8 @@ fn set_signs_rejects_a_control_character_in_the_glyph() {
     let mut ctx = h.ctx();
     let result = set_signs(
         &mut ctx,
-        SteelVal::StringV("test".into()),
         default_pane(),
+        SteelVal::StringV("test".into()),
         list(vec![sign(0, "\tS", "ui.sign")]),
     );
     let msg = result.unwrap_err().to_string();
@@ -149,8 +153,8 @@ fn set_signs_accepts_a_multi_codepoint_glyph() {
     let mut ctx = h.ctx();
     let result = set_signs(
         &mut ctx,
-        SteelVal::StringV("test".into()),
         default_pane(),
+        SteelVal::StringV("test".into()),
         list(vec![sign(0, "e\u{0301}", "ui.sign")]),
     );
     // The harness has no decoration host, so validation passing means the
@@ -169,8 +173,8 @@ fn set_signs_rejects_a_positional_list_entry() {
     ]);
     let msg = set_signs(
         &mut ctx,
-        SteelVal::StringV("test".into()),
         default_pane(),
+        SteelVal::StringV("test".into()),
         list(vec![positional]),
     )
     .unwrap_err()
@@ -188,8 +192,8 @@ fn set_signs_rejects_a_missing_key() {
     ]);
     let msg = set_signs(
         &mut ctx,
-        SteelVal::StringV("test".into()),
         default_pane(),
+        SteelVal::StringV("test".into()),
         list(vec![entry]),
     )
     .unwrap_err()
@@ -204,8 +208,8 @@ fn set_virtual_lines_without_decoration_host_errors() {
     let empty: SteelVal = Vec::<SteelVal>::new().into_steelval().unwrap();
     let result = set_virtual_lines(
         &mut ctx,
-        SteelVal::StringV("test".into()),
         default_pane(),
+        SteelVal::StringV("test".into()),
         empty,
     );
     assert_unsupported(result);
@@ -218,8 +222,8 @@ fn set_eol_text_without_decoration_host_errors() {
     let empty: SteelVal = Vec::<SteelVal>::new().into_steelval().unwrap();
     let result = set_eol_text(
         &mut ctx,
-        SteelVal::StringV("test".into()),
         default_pane(),
+        SteelVal::StringV("test".into()),
         empty,
         SteelVal::BoolV(false),
     );
@@ -233,8 +237,8 @@ fn set_eol_text_rejects_a_non_bool_hide_flag() {
     let empty: SteelVal = Vec::<SteelVal>::new().into_steelval().unwrap();
     let result = set_eol_text(
         &mut ctx,
-        SteelVal::StringV("test".into()),
         default_pane(),
+        SteelVal::StringV("test".into()),
         empty,
         SteelVal::StringV("yes".into()),
     );
@@ -249,8 +253,8 @@ fn set_extra_highlights_without_decoration_host_errors() {
     let empty: SteelVal = Vec::<SteelVal>::new().into_steelval().unwrap();
     let result = set_extra_highlights(
         &mut ctx,
-        SteelVal::StringV("test".into()),
         default_pane(),
+        SteelVal::StringV("test".into()),
         empty,
     );
     assert_unsupported(result);
@@ -262,8 +266,8 @@ fn set_statusline_text_without_decoration_host_errors() {
     let mut ctx = h.ctx();
     let result = set_statusline_text(
         &mut ctx,
-        SteelVal::StringV("test".into()),
         default_pane(),
+        SteelVal::StringV("test".into()),
         SteelVal::StringV("main".into()),
     );
     assert_unsupported(result);
@@ -282,7 +286,7 @@ fn set_statusline_text_without_decoration_host_errors() {
 fn virtual_line_spec_decodes_every_field() {
     let entry = hashmap(vec![
         ("line", SteelVal::IntV(12)),
-        ("anchor", SteelVal::SymbolV("before".into())),
+        ("side", SteelVal::SymbolV("before".into())),
         ("text", SteelVal::StringV("- let x = 5".into())),
         ("scope", SteelVal::StringV("diff.minus".into())),
         (
@@ -309,14 +313,14 @@ fn virtual_line_spec_decodes_every_field() {
 }
 
 #[test]
-fn virtual_line_spec_defaults_anchor_to_after_and_scope_to_none() {
+fn virtual_line_spec_defaults_side_to_after_and_scope_to_none() {
     let entry = hashmap(vec![
         ("line", SteelVal::IntV(0)),
         ("text", SteelVal::StringV("x".into())),
     ]);
     let specs = virtual_line_specs(list(vec![entry])).unwrap();
     let spec = &specs[0];
-    assert_eq!(spec.side, Side::After, "default anchor must be 'after");
+    assert_eq!(spec.side, Side::After, "default side must be 'after");
     assert_eq!(spec.scope, None);
     assert!(spec.segments.is_empty());
 }
@@ -352,6 +356,42 @@ fn virtual_line_spec_rejects_unknown_key() {
     assert!(err.contains("unknown key 'segment,"), "got: {err}");
 }
 
+/// A virtual line names its side with `'side`, the key an inlay hint uses.
+#[test]
+fn virtual_line_spec_rejects_an_anchor_key() {
+    let entry = hashmap(vec![
+        ("line", SteelVal::IntV(0)),
+        ("text", SteelVal::StringV("x".into())),
+        ("anchor", SteelVal::SymbolV("before".into())),
+    ]);
+    let err = virtual_line_specs(list(vec![entry]))
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("unknown key 'anchor,"), "got: {err}");
+}
+
+/// A segment's offsets are char columns in the entry's own text, so it
+/// takes the `'start-char-col` pair, not the buffer-offset `'start-char`.
+#[test]
+fn virtual_line_segment_rejects_buffer_offset_keys() {
+    let entry = hashmap(vec![
+        ("line", SteelVal::IntV(0)),
+        ("text", SteelVal::StringV("abc".into())),
+        (
+            "segments",
+            list(vec![hashmap(vec![
+                ("start-char", SteelVal::IntV(0)),
+                ("end-char-col", SteelVal::IntV(1)),
+                ("scope", SteelVal::StringV("x".into())),
+            ])]),
+        ),
+    ]);
+    let err = virtual_line_specs(list(vec![entry]))
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("unknown key 'start-char,"), "got: {err}");
+}
+
 #[test]
 fn virtual_line_spec_rejects_missing_line() {
     let entry = hashmap(vec![("text", SteelVal::StringV("x".into()))]);
@@ -371,11 +411,11 @@ fn virtual_line_spec_rejects_missing_text() {
 }
 
 #[test]
-fn virtual_line_spec_rejects_bad_anchor_symbol() {
+fn virtual_line_spec_rejects_bad_side_symbol() {
     let entry = hashmap(vec![
         ("line", SteelVal::IntV(0)),
         ("text", SteelVal::StringV("x".into())),
-        ("anchor", SteelVal::SymbolV("above".into())),
+        ("side", SteelVal::SymbolV("above".into())),
     ]);
     let err = virtual_line_specs(list(vec![entry]))
         .unwrap_err()
@@ -453,8 +493,8 @@ fn virtual_line_spec_rejects_segment_missing_a_key() {
         (
             "segments",
             list(vec![hashmap(vec![
-                ("start-char", SteelVal::IntV(0)),
-                ("end-char", SteelVal::IntV(1)),
+                ("start-char-col", SteelVal::IntV(0)),
+                ("end-char-col", SteelVal::IntV(1)),
             ])]),
         ),
     ]);

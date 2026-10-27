@@ -2,6 +2,22 @@
 
 use super::*;
 
+/// A mock whose native commands are `names`, so a `call!` to one is
+/// recorded in `dispatched_native`.
+fn mock_with_natives(names: &[&str]) -> MockHost {
+    let mut mock = MockHost::new();
+    mock.native_names = names.iter().copied().collect();
+    mock
+}
+
+/// The native commands `mock` was asked to run, in order.
+fn dispatched(mock: &MockHost) -> Vec<&str> {
+    mock.dispatched_native
+        .iter()
+        .map(|(name, _, _)| name.as_str())
+        .collect()
+}
+
 // ── call! ─────────────────────────────────────────────────────────────────
 
 /// `call_steel_cmd` forwards positional args by value into the invoked
@@ -12,12 +28,12 @@ use super::*;
 fn call_bang_passes_args_to_command() {
     use steel::rvals::SteelVal;
     let mut h = host();
-    let mut mock = MockHost::new();
+    let mut mock = mock_with_natives(&["hello"]);
 
     // Define a command that takes one arg x and calls (call! x).
     // The lambda receives x positionally, then dispatches x as a command name.
     h.eval_source(
-        r#"(define-command! "echo-arg" "" (lambda (x) (call! x)))"#,
+        r#"(define-command! "echo-arg" "" (lambda (x) (call! x (focused-pane))))"#,
         &mut mock,
     )
     .unwrap();
@@ -29,11 +45,10 @@ fn call_bang_passes_args_to_command() {
     )
     .expect("call should succeed");
 
-    let msgs = h.take_pending_messages();
-    assert!(
-        msgs.iter().any(|(_, m)| m.contains("hello")),
-        "call! must dispatch arg value as command name; got: {:?}",
-        msgs
+    assert_eq!(
+        dispatched(&mock),
+        ["hello"],
+        "call! must dispatch arg value as command name"
     );
 }
 
@@ -67,10 +82,11 @@ fn call_bang_forwards_multiple_args_to_lambda() {
     // Each dispatched command name equals the corresponding input arg.
     use steel::rvals::SteelVal;
     let mut h = host();
-    let mut mock = MockHost::new();
+    let mut mock = mock_with_natives(&["x", "y", "z"]);
 
     h.eval_source(
-        r#"(define-command! "route-three" "" (lambda (a b c) (call! a) (call! b) (call! c)))"#,
+        r#"(define-command! "route-three" "" (lambda (a b c)
+             (call! a (focused-pane)) (call! b (focused-pane)) (call! c (focused-pane))))"#,
         &mut mock,
     )
     .unwrap();
@@ -86,19 +102,10 @@ fn call_bang_forwards_multiple_args_to_lambda() {
     )
     .expect("call should succeed");
 
-    let msgs = h.take_pending_messages();
-    let warned: Vec<&str> = msgs
-        .iter()
-        .filter_map(|(_, m)| {
-            m.strip_prefix('\'')
-                .and_then(|s| s.strip_suffix("' is not a native command"))
-        })
-        .collect();
     assert_eq!(
-        warned,
-        vec!["x", "y", "z"],
-        "each arg must reach the corresponding lambda parameter; got: {:?}",
-        msgs
+        dispatched(&mock),
+        ["x", "y", "z"],
+        "each arg must reach the corresponding lambda parameter"
     );
 }
 
@@ -139,10 +146,10 @@ use steel::rvals::SteelVal;
 #[test]
 fn register_hook_fires_on_buffer_open() {
     let mut h = host();
-    let mut mock = MockHost::new();
+    let mut mock = mock_with_natives(&["move-right"]);
 
     h.eval_source(
-        r#"(register-hook! 'on-buffer-open (lambda (bid) (call! "move-right")))"#,
+        r#"(register-hook! 'on-buffer-open (lambda (bid) (call! "move-right" bid)))"#,
         &mut mock,
     )
     .unwrap();
@@ -150,21 +157,20 @@ fn register_hook_fires_on_buffer_open() {
     let val = SteelPane::new(PaneHandle::buffer_only(bid)).into_steel_val();
     h.fire_hook("on-buffer-open", None, &[val], &mut mock)
         .unwrap();
-    let msgs = h.take_pending_messages();
-    assert!(
-        msgs.iter().any(|(_, m)| m.contains("move-right")),
-        "hook handler must have dispatched move-right; got: {:?}",
-        msgs
+    assert_eq!(
+        dispatched(&mock),
+        ["move-right"],
+        "hook handler must have dispatched move-right"
     );
 }
 
 #[test]
 fn register_hook_fires_on_buffer_close() {
     let mut h = host();
-    let mut mock = MockHost::new();
+    let mut mock = mock_with_natives(&["move-left"]);
 
     h.eval_source(
-        r#"(register-hook! 'on-buffer-close (lambda (bid) (call! "move-left")))"#,
+        r#"(register-hook! 'on-buffer-close (lambda (bid) (call! "move-left" bid)))"#,
         &mut mock,
     )
     .unwrap();
@@ -172,21 +178,20 @@ fn register_hook_fires_on_buffer_close() {
     let val = SteelPane::new(PaneHandle::buffer_only(bid)).into_steel_val();
     h.fire_hook("on-buffer-close", None, &[val], &mut mock)
         .unwrap();
-    let msgs = h.take_pending_messages();
-    assert!(
-        msgs.iter().any(|(_, m)| m.contains("move-left")),
-        "hook handler must have dispatched move-left; got: {:?}",
-        msgs
+    assert_eq!(
+        dispatched(&mock),
+        ["move-left"],
+        "hook handler must have dispatched move-left"
     );
 }
 
 #[test]
 fn register_hook_fires_on_buffer_save() {
     let mut h = host();
-    let mut mock = MockHost::new();
+    let mut mock = mock_with_natives(&["move-right"]);
 
     h.eval_source(
-        r#"(register-hook! 'on-buffer-save (lambda (bid) (call! "move-right")))"#,
+        r#"(register-hook! 'on-buffer-save (lambda (bid) (call! "move-right" bid)))"#,
         &mut mock,
     )
     .unwrap();
@@ -194,23 +199,22 @@ fn register_hook_fires_on_buffer_save() {
     let val = SteelPane::new(PaneHandle::buffer_only(bid)).into_steel_val();
     h.fire_hook("on-buffer-save", None, &[val], &mut mock)
         .unwrap();
-    let msgs = h.take_pending_messages();
-    assert!(
-        msgs.iter().any(|(_, m)| m.contains("move-right")),
-        "hook handler must have dispatched move-right; got: {:?}",
-        msgs
+    assert_eq!(
+        dispatched(&mock),
+        ["move-right"],
+        "hook handler must have dispatched move-right"
     );
 }
 
 #[test]
 fn register_hook_fires_on_mode_change() {
     let mut h = host();
-    let mut mock = MockHost::new();
+    let mut mock = mock_with_natives(&["move-right"]);
 
     h.eval_source(
         r#"(register-hook! 'on-mode-change
               (lambda (old new)
-                (when (equal? new 'insert) (call! "move-right"))))"#,
+                (when (equal? new 'insert) (call! "move-right" (focused-pane)))))"#,
         &mut mock,
     )
     .unwrap();
@@ -218,11 +222,10 @@ fn register_hook_fires_on_mode_change() {
     let new_val = SteelVal::SymbolV("insert".into());
     h.fire_hook("on-mode-change", None, &[old_val, new_val], &mut mock)
         .unwrap();
-    let msgs = h.take_pending_messages();
-    assert!(
-        msgs.iter().any(|(_, m)| m.contains("move-right")),
-        "hook handler must have dispatched move-right; got: {:?}",
-        msgs
+    assert_eq!(
+        dispatched(&mock),
+        ["move-right"],
+        "hook handler must have dispatched move-right"
     );
 }
 
@@ -244,12 +247,12 @@ fn register_hook_no_fire_if_no_handlers() {
 #[test]
 fn register_hook_multiple_handlers_all_fire() {
     let mut h = host();
-    let mut mock = MockHost::new();
+    let mut mock = mock_with_natives(&["move-right", "move-left"]);
 
     h.eval_source(
         r#"
-(register-hook! 'on-buffer-save (lambda (bid) (call! "move-right")))
-(register-hook! 'on-buffer-save (lambda (bid) (call! "move-left")))
+(register-hook! 'on-buffer-save (lambda (bid) (call! "move-right" bid)))
+(register-hook! 'on-buffer-save (lambda (bid) (call! "move-left" bid)))
 "#,
         &mut mock,
     )
@@ -258,19 +261,10 @@ fn register_hook_multiple_handlers_all_fire() {
     let val = SteelPane::new(PaneHandle::buffer_only(bid)).into_steel_val();
     h.fire_hook("on-buffer-save", None, &[val], &mut mock)
         .unwrap();
-    let msgs = h.take_pending_messages();
-    let warned: Vec<&str> = msgs
-        .iter()
-        .filter_map(|(_, m)| {
-            m.strip_prefix('\'')
-                .and_then(|s| s.strip_suffix("' is not a native command"))
-        })
-        .collect();
     assert_eq!(
-        warned,
-        vec!["move-right", "move-left"],
-        "both handlers must have fired; got: {:?}",
-        msgs
+        dispatched(&mock),
+        ["move-right", "move-left"],
+        "both handlers must have fired"
     );
 }
 
@@ -316,11 +310,11 @@ fn fire_hook_globals_cleared_between_fires() {
     // fire (e.g. Arc references to a closed buffer) must never leak into a
     // subsequent fire with different args.
     let mut h = host();
-    let mut mock = MockHost::new();
+    let mut mock = mock_with_natives(&["insert", "normal"]);
 
     // Handler reads arg 1 (new mode) and dispatches it as a command name.
     h.eval_source(
-        r#"(register-hook! 'on-mode-change (lambda (old new) (call! (symbol->string new))))"#,
+        r#"(register-hook! 'on-mode-change (lambda (old new) (call! (symbol->string new) (focused-pane))))"#,
         &mut mock,
     )
     .unwrap();
@@ -333,26 +327,19 @@ fn fire_hook_globals_cleared_between_fires() {
         &mut mock,
     )
     .unwrap();
-    let msgs1 = h.take_pending_messages();
-    assert!(
-        msgs1.iter().any(|(_, m)| m.contains("insert")),
-        "first fire must dispatch 'insert'; got: {:?}",
-        msgs1
+    assert_eq!(
+        dispatched(&mock),
+        ["insert"],
+        "first fire must dispatch 'insert'"
     );
 
     // Second fire with different args: any stale first-fire arg would give a wrong result.
     let new_val2 = SteelVal::SymbolV("normal".into());
     h.fire_hook("on-mode-change", None, &[old_val, new_val2], &mut mock)
         .unwrap();
-    let msgs2 = h.take_pending_messages();
-    assert!(
-        msgs2.iter().any(|(_, m)| m.contains("normal")),
-        "second fire must dispatch 'normal'; got: {:?}",
-        msgs2
-    );
-    assert!(
-        !msgs2.iter().any(|(_, m)| m.contains("insert")),
-        "second fire must NOT see stale 'insert' from first; got: {:?}",
-        msgs2
+    assert_eq!(
+        dispatched(&mock),
+        ["insert", "normal"],
+        "second fire must dispatch 'normal', not a stale 'insert' from the first"
     );
 }

@@ -136,7 +136,7 @@ pub struct GrammarReg {
 pub struct VirtualLineSpec {
     pub line: usize,
     pub text: String,
-    /// `'anchor 'before` renders above `line`, the default `'after` below.
+    /// `'side 'before` renders above `line`, the default `'after` below.
     pub side: Side,
     /// Whole-line base style; chars not covered by `segments` fall back to
     /// this (or `ui.virtual` if also absent).
@@ -226,8 +226,8 @@ pub enum Effect {
     /// validation (a callable `proc`, a `#:target` that exists) still fails
     /// synchronously inside the builtin.
     RegisterCompletionSource(crate::host::PendingCompletionSource),
-    /// `(set-hook-triggers! source language chars)`,
-    /// `(set-completion-triggers! source language chars)` or their
+    /// `(set-hook-triggers! language source chars)`,
+    /// `(set-completion-triggers! language source chars)` or their
     /// `set-attachment-…` forms: `listener`'s trigger characters in `scope`,
     /// replacing that pair's previous set; an empty `chars` removes it. A
     /// `Completion` listener must name a registered `Buffer` source, checked

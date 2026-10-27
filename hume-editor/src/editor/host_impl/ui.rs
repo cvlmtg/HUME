@@ -3,7 +3,7 @@
 
 use super::EditorHostImpl;
 use crate::editor::input_stack::{
-    BaseLayer, DrawerLayer, DrawerRows, DrawerSelect, MenuLayer, PickerSession, PopupLayer,
+    BaseLayer, DrawerLayer, DrawerRows, MenuLayer, PickerSession, PopupLayer,
 };
 use crate::editor::input_stack::{menu, picker, prompt};
 use crate::editor::syntax::GrammarLoads;
@@ -166,11 +166,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         {
             return Ok(None);
         }
-        let drawer = DrawerLayer::new(
-            DrawerRows::from_items(items),
-            DrawerSelect::Steel(callback),
-            selected,
-        );
+        let drawer = DrawerLayer::new(DrawerRows::script(items, callback), selected);
         Ok(Some(self.state.open_drawer(self.view, drawer)))
     }
 
@@ -227,7 +223,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         items: Vec<(String, hume_scripting::Rooted)>,
         on_select: hume_scripting::Callback,
         opts: PickerOpts,
-    ) -> Result<HostToken, String> {
+    ) -> Result<Option<HostToken>, String> {
         self.require_focused_pane(pane)?;
         let session = PickerSession::new(on_select, opts, picker::picker_items(items));
         picker::open_picker(self.state, self.view, session)
@@ -238,7 +234,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         pane: PaneHandle,
         on_select: hume_scripting::Callback,
         opts: LivePickerOpts,
-    ) -> Result<HostToken, String> {
+    ) -> Result<Option<HostToken>, String> {
         self.require_focused_pane(pane)?;
         let session = PickerSession::new_live(on_select, opts);
         picker::open_picker(self.state, self.view, session)

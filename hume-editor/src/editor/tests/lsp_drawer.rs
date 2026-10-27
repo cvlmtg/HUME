@@ -1,5 +1,5 @@
 // Bottom drawer: (show-drawer-list!
-// items on-select) / (close-drawer!), the Ctrl-d/Ctrl-u single-step input
+// (map (lambda (row) (cons row row)) items) on-select) / (close-drawer!), the Ctrl-d/Ctrl-u single-step input
 // handling in `drawer_input`, and the engine chrome band (see `hume-engine`'s
 // `pane_area_*` tests for the partition math itself).
 
@@ -14,13 +14,56 @@ fn arm_three_items(ed: &mut Editor, tmp: &Path) {
         ed,
         tmp,
         r#"(define-typed-command! "go" "" (lambda (pane)
-             (show-drawer-list! pane (list "one.rs:1" "two.rs:2" "three.rs:3")
-               (lambda (idx tok) (log! 'info (to-string idx))))))"#,
+             (show-drawer-list! pane (map (lambda (row) (cons row row)) (list "one.rs:1" "two.rs:2" "three.rs:3"))
+               (lambda (row tok) (log! 'info (to-string row))))))"#,
     );
     type_cmd(ed, ":go");
 }
 
 // ── show-drawer-list! / close-drawer! ─────────────────────────────────────────
+
+/// Enter hands `on-select` the selected row's payload, as a picker does.
+#[test]
+fn enter_passes_the_selected_rows_payload() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "go" "" (lambda (pane)
+             (show-drawer-list! pane (list (cons "one" 'first) (cons "two" 'second))
+               (lambda (row tok) (log! 'info (symbol->string row))))))"#,
+    );
+    type_cmd(&mut ed, ":go");
+    ed.feed_key(key_ctrl('d'));
+    ed.feed_key(key_enter());
+    ed.settle();
+
+    assert_eq!(ed.state.status_msg.as_deref(), Some("second"));
+}
+
+/// A row is a `(display . payload)` pair; a bare string raises.
+#[test]
+fn a_bare_string_row_raises() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "go" "" (lambda (pane)
+             (show-drawer-list! pane (list "one") (lambda (row tok) (begin)))))"#,
+    );
+    type_cmd(&mut ed, ":go");
+
+    assert!(ed.state.input.drawer().is_none());
+    assert!(
+        error_log(&ed)
+            .iter()
+            .any(|e| e.contains("(display . payload)")),
+        "got: {:?}",
+        error_log(&ed)
+    );
+}
 
 #[test]
 fn show_drawer_list_populates_model_and_view() {
@@ -39,8 +82,8 @@ fn open_with_selected(ed: &mut Editor, tmp: &Path, rows: usize, selected: usize)
         tmp,
         &format!(
             r#"(define-typed-command! "go" "" (lambda (pane)
-                 (show-drawer-list! pane (map to-string (range 0 {rows}))
-                   (lambda (idx tok) (begin)) #:selected {selected})))"#
+                 (show-drawer-list! pane (map (lambda (row) (cons row row)) (map to-string (range 0 {rows})))
+                   (lambda (row tok) (begin)) #:selected {selected})))"#
         ),
     );
     type_cmd(ed, ":go");
@@ -354,8 +397,8 @@ fn drawer_view_shares_the_model_s_row_list_instead_of_cloning_it() {
         &mut ed,
         tmp.path(),
         r#"(define-typed-command! "refresh" "" (lambda (pane)
-             (show-drawer-list! pane (list "replaced")
-               (lambda (idx tok) (void)))))"#,
+             (show-drawer-list! pane (map (lambda (row) (cons row row)) (list "replaced"))
+               (lambda (row tok) (void)))))"#,
     );
     type_cmd(&mut ed, ":refresh");
     let view_rows_after = {
@@ -542,7 +585,7 @@ fn close_drawer_leaves_a_menu_open_when_one_sits_above_it() {
         &mut ed,
         tmp.path(),
         r#"(define-typed-command! "go-drawer" "" (lambda (pane)
-             (show-drawer-list! pane (list "one.rs:1") (lambda (idx tok) (log! 'info (to-string idx))))))
+             (show-drawer-list! pane (map (lambda (row) (cons row row)) (list "one.rs:1")) (lambda (row tok) (log! 'info (to-string row))))))
            (define-typed-command! "go-menu" "" (lambda (pane)
              (show-menu! pane (list "Extract function") (lambda (idx) (log! 'info (to-string idx))))))"#,
     );
@@ -590,9 +633,9 @@ fn replace_fires_false_to_the_outgoing_callback() {
         &mut ed,
         tmp.path(),
         r#"(define-typed-command! "go" "" (lambda (pane)
-             (show-drawer-list! pane (list "a" "b") (lambda (idx tok) (log! 'info (to-string idx))))))
+             (show-drawer-list! pane (map (lambda (row) (cons row row)) (list "a" "b")) (lambda (row tok) (log! 'info (to-string row))))))
            (define-typed-command! "other" "" (lambda (pane)
-             (show-drawer-list! pane (list "c") (lambda (idx tok) (log! 'info "second")))))"#,
+             (show-drawer-list! pane (map (lambda (row) (cons row row)) (list "c")) (lambda (row tok) (log! 'info "second")))))"#,
     );
     // No settle between the two opens: back-to-back shows are the normal
     // self-replace path (see the `Arc` test above). (The second command is
@@ -619,13 +662,13 @@ fn replace_fires_false_to_the_outgoing_callback() {
 /// so an owner can tell its own drawer's close from a replaced one's.
 const TOKEN_PROBE: &str = r#"(define *tok* #f)
 (define *other* #f)
-(define (probe idx token)
-  (log! 'info (string-append (to-string idx) ":" (to-string (equal? token *tok*))
+(define (probe row token)
+  (log! 'info (string-append (to-string row) ":" (to-string (equal? token *tok*))
                              ":" (to-string (equal? token *other*)))))
 (define-typed-command! "go" "" (lambda (pane)
-  (set! *tok* (show-drawer-list! pane (list "a" "b") probe))))
+  (set! *tok* (show-drawer-list! pane (map (lambda (row) (cons row row)) (list "a" "b")) probe))))
 (define-typed-command! "other" "" (lambda (pane)
-  (set! *other* (show-drawer-list! pane (list "c") probe))))"#;
+  (set! *other* (show-drawer-list! pane (map (lambda (row) (cons row row)) (list "c")) probe))))"#;
 
 #[test]
 fn enter_passes_the_drawers_token() {
@@ -637,7 +680,7 @@ fn enter_passes_the_drawers_token() {
     ed.feed_key(key_enter());
     ed.settle();
 
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "0:#true:#false");
+    assert_eq!(ed.state.status_msg.clone().unwrap(), "a:#true:#false");
 }
 
 #[test]
@@ -679,15 +722,15 @@ fn update_replaces_rows_callback_and_selection_in_place() {
         tmp.path(),
         r#"(define *tok* #f)
            (define-typed-command! "go" "" (lambda (pane)
-             (set! *tok* (show-drawer-list! pane (list "a" "b" "c") (lambda (idx tok) (log! 'info "old"))))))
+             (set! *tok* (show-drawer-list! pane (map (lambda (row) (cons row row)) (list "a" "b" "c")) (lambda (row tok) (log! 'info "old"))))))
            (define-typed-command! "sel" "" (lambda ()
              (log! 'info (to-string (drawer-selected-index *tok*)))))
            (define-typed-command! "upd" "" (lambda ()
-             (log! 'info (to-string (update-drawer-list! *tok* (list "x" "y")
-               (lambda (idx tok) (log! 'info (to-string idx))) 1)))))
+             (log! 'info (to-string (update-drawer-list! *tok* (map (lambda (row) (cons row row)) (list "x" "y"))
+               (lambda (row tok) (log! 'info (to-string row))) 1)))))
            (define-typed-command! "upd-big" "" (lambda ()
-             (log! 'info (to-string (update-drawer-list! *tok* (list "x" "y")
-               (lambda (idx tok) (log! 'info (to-string idx))) 99)))))"#,
+             (log! 'info (to-string (update-drawer-list! *tok* (map (lambda (row) (cons row row)) (list "x" "y"))
+               (lambda (row tok) (log! 'info (to-string row))) 99)))))"#,
     );
     type_cmd(&mut ed, ":go");
     ed.settle();
@@ -722,11 +765,11 @@ fn update_replaces_rows_callback_and_selection_in_place() {
     assert_eq!(drawer_rows(&ed), vec!["x", "y"]);
     assert_eq!(ed.state.views.drawer.read().as_ref().unwrap().selected, 1);
 
-    // The new callback is live: Enter fires it with the kept selection, and
-    // the drawer stays open.
+    // The new callback is live: Enter fires it with the kept selection's
+    // payload, and the drawer stays open.
     ed.feed_key(key_enter());
     ed.settle();
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "1");
+    assert_eq!(ed.state.status_msg.clone().unwrap(), "y");
     assert!(ed.state.input.drawer().is_some());
 
     // Out-of-range selection clamps to the last row, same as the Ctrl-d keys.
@@ -747,8 +790,8 @@ fn update_and_selected_index_with_none_open_report_false() {
         &mut ed,
         tmp.path(),
         r#"(define-typed-command! "upd" "" (lambda ()
-             (log! 'info (to-string (update-drawer-list! 0 (list "x")
-               (lambda (idx tok) (void)) 0)))))
+             (log! 'info (to-string (update-drawer-list! 0 (map (lambda (row) (cons row row)) (list "x"))
+               (lambda (row tok) (void)) 0)))))
            (define-typed-command! "sel" "" (lambda ()
              (log! 'info (to-string (drawer-selected-index 0)))))"#,
     );
@@ -773,7 +816,7 @@ fn show_with_empty_items_raises_and_opens_nothing() {
         &mut ed,
         tmp.path(),
         r#"(define-typed-command! "go" "" (lambda (pane)
-             (show-drawer-list! pane (list) (lambda (idx tok) (void)))))"#,
+             (show-drawer-list! pane (map (lambda (row) (cons row row)) (list)) (lambda (row tok) (void)))))"#,
     );
     type_cmd(&mut ed, ":go");
     ed.settle();
@@ -796,9 +839,9 @@ fn update_with_empty_items_raises_and_keeps_the_rows() {
         tmp.path(),
         r#"(define *tok* #f)
            (define-typed-command! "go" "" (lambda (pane)
-             (set! *tok* (show-drawer-list! pane (list "a" "b") (lambda (idx tok) (void))))))
+             (set! *tok* (show-drawer-list! pane (map (lambda (row) (cons row row)) (list "a" "b")) (lambda (row tok) (void))))))
            (define-typed-command! "upd" "" (lambda ()
-             (update-drawer-list! *tok* (list) (lambda (idx tok) (void)) 0)))"#,
+             (update-drawer-list! *tok* (map (lambda (row) (cons row row)) (list)) (lambda (row tok) (void)) 0)))"#,
     );
     type_cmd(&mut ed, ":go");
     ed.settle();
@@ -847,7 +890,7 @@ fn enter_calls_back_and_the_drawer_stays_open() {
 
     ed.feed_key(key_enter());
     ed.settle();
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "0");
+    assert_eq!(ed.state.status_msg.clone().unwrap(), "one.rs:1");
     assert!(
         ed.state.input.drawer().is_some(),
         "must stay open after Enter"
@@ -858,7 +901,7 @@ fn enter_calls_back_and_the_drawer_stays_open() {
     ed.feed_key(key_ctrl('d'));
     ed.feed_key(key_enter());
     ed.settle();
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "1");
+    assert_eq!(ed.state.status_msg.clone().unwrap(), "two.rs:2");
     assert!(ed.state.input.drawer().is_some());
 }
 
@@ -874,7 +917,7 @@ fn selection_clamps_at_the_top() {
     ed.feed_key(key_ctrl('u'));
     ed.feed_key(key_enter());
     ed.settle();
-    assert_eq!(ed.state.status_msg.clone().unwrap(), "0");
+    assert_eq!(ed.state.status_msg.clone().unwrap(), "one.rs:1");
 }
 
 #[test]
@@ -891,7 +934,7 @@ fn selection_clamps_at_the_bottom() {
     ed.settle();
     assert_eq!(
         ed.state.status_msg.clone().unwrap(),
-        "2",
+        "three.rs:3",
         "clamped, not wrapped"
     );
 }
@@ -1005,8 +1048,8 @@ fn long_list_auto_scrolls_to_keep_selection_visible() {
         tmp.path(),
         &format!(
             r#"(define-typed-command! "go" "" (lambda (pane)
-                 (show-drawer-list! pane (list {items_scm})
-                   (lambda (idx tok) (log! 'info (to-string idx))))))"#
+                 (show-drawer-list! pane (map (lambda (row) (cons row row)) (list {items_scm}))
+                   (lambda (row tok) (log! 'info (to-string row))))))"#
         ),
     );
 
@@ -1055,8 +1098,8 @@ fn arm_twenty_items_in_a_short_terminal(ed: &mut Editor, tmp: &Path) {
         tmp,
         &format!(
             r#"(define-typed-command! "go" "" (lambda (pane)
-                 (show-drawer-list! pane (list {items_scm})
-                   (lambda (idx tok) (log! 'info (to-string idx))))))"#
+                 (show-drawer-list! pane (map (lambda (row) (cons row row)) (list {items_scm}))
+                   (lambda (row tok) (log! 'info (to-string row))))))"#
         ),
     );
     // Record the terminal area before any key handling needs it: the
@@ -1211,8 +1254,8 @@ fn enter_jump_lands_via_goto_location_and_drawer_stays_open() {
         &mut ed,
         tmp.path(),
         r#"(define-typed-command! "go" "" (lambda (bid)
-             (show-drawer-list! bid (list "line 3")
-               (lambda (idx tok) (goto-location! bid (hash 'target bid 'char-offset 9))))))"#,
+             (show-drawer-list! bid (map (lambda (row) (cons row row)) (list "line 3"))
+               (lambda (row tok) (goto-location! bid (hash 'target bid 'char-offset 9))))))"#,
     );
     type_cmd(&mut ed, ":go");
 
@@ -1253,8 +1296,8 @@ fn render_two_row_drawer(popup_border: bool) -> String {
         &mut ed,
         tmp.path(),
         r#"(define-typed-command! "go" "" (lambda (pane)
-             (show-drawer-list! pane (list "src/a.rs:1: unused import" "src/b.rs:9: TODO")
-               (lambda (idx tok) (void)))))"#,
+             (show-drawer-list! pane (map (lambda (row) (cons row row)) (list "src/a.rs:1: unused import" "src/b.rs:9: TODO"))
+               (lambda (row tok) (void)))))"#,
     );
     type_cmd(&mut ed, ":go");
 

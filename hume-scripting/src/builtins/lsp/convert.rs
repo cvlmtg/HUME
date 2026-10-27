@@ -11,7 +11,7 @@ use hume_core::PaneHandle;
 use crate::builtins::SteelResult;
 use crate::builtins::args::{char_range_value, list_items, string_arg, symbol_hash};
 use crate::builtins::errors::{generic_err, require_cap};
-use crate::builtins::ids::SteelPane;
+use crate::builtins::ids::pane_or_false;
 use crate::builtins::wire::{tagged_json_arg, wire_position, wire_range};
 
 /// `(lsp-position->char-offset pane position)` → `pane`'s buffer's char offset
@@ -131,10 +131,7 @@ fn place_hash(place: Place) -> SteelVal {
         ),
         (
             "buffer",
-            match place.buffer {
-                Some(bid) => SteelPane(PaneHandle::buffer_only(bid)).into_steel_val(),
-                None => SteelVal::BoolV(false),
-            },
+            pane_or_false(place.buffer.map(PaneHandle::buffer_only)),
         ),
         ("location", place.location.into_steel_val()),
     ])

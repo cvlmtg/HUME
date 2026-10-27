@@ -402,7 +402,7 @@ fn pending_calls(ed: &Editor) -> Vec<(steel::rvals::SteelVal, Vec<steel::rvals::
 }
 
 /// `StatusElement::Custom(name)`'s rendered text for the focused buffer:
-/// the render side of `(set-statusline-text! name bid text)`.
+/// the render side of `(set-statusline-text! bid name text)`.
 fn custom_text(ed: &Editor, name: &str) -> String {
     let colors = crate::statusline::colors::EditorColors::default();
     let (text, _) = crate::statusline::render_element(
@@ -517,9 +517,20 @@ pub(in crate::editor) fn non_empty_strings(items: &[&str]) -> hume_core::NonEmpt
     hume_core::NonEmpty::new(items).expect("a test list has items")
 }
 
-/// Drawer rows `items`, already rendered.
+/// Drawer rows `items`, already rendered, each its own payload.
 pub(in crate::editor) fn drawer_items(items: &[&str]) -> hume_scripting::host::DrawerItems {
-    hume_scripting::host::DrawerItems::Rows(non_empty_strings(items))
+    let rows = items
+        .iter()
+        .map(|s| {
+            (
+                s.to_string(),
+                hume_scripting::Rooted::new(steel::rvals::SteelVal::StringV((*s).into())),
+            )
+        })
+        .collect();
+    hume_scripting::host::DrawerItems::Rows(
+        hume_core::NonEmpty::new(rows).expect("a test list has items"),
+    )
 }
 
 /// Opens a drawer with `items` through `EditorHostImpl`'s `UiHost` impl

@@ -373,8 +373,7 @@ impl Editor {
             self.state
                 .config
                 .registry
-                .other_kind_hint(name)
-                .unwrap_or(fallback),
+                .unknown_command_message(name, fallback),
         )
     }
 

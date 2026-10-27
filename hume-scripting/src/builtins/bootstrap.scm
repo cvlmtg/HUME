@@ -136,8 +136,11 @@
 (define (diagnostics-for-buffer pane #:severity [severity #f] #:range [range #f])
   (%diagnostics-for-buffer pane severity range))
 
-(define (set-eol-text! source pane lines #:hide-on-insert-line [hide #f])
-  (%set-eol-text! source pane lines hide))
+(define (diagnostic-counts pane #:severity [severity #f])
+  (%diagnostic-counts pane severity))
+
+(define (set-eol-text! pane source lines #:hide-on-insert-line [hide #f])
+  (%set-eol-text! pane source lines hide))
 
 (define (buffer-lines pane #:range [range #f])
   (%buffer-lines pane range))
@@ -159,6 +162,9 @@
 
 (define (apply-text-edits! pane edits #:expect-generation [gen #f])
   (%apply-text-edits! pane edits gen))
+
+(define (edit-text! pane edits #:expect-generation [gen #f])
+  (%edit-text! pane edits gen))
 
 (define (apply-workspace-edit! pane wsedit #:expect-generation [gen #f])
   (let ((n (%apply-workspace-edit! pane wsedit gen)))
@@ -355,12 +361,15 @@
              (else (loop (cdr rest)
                          (hash-insert fields (car (car rest)) (cdr (car rest))))))))))
 
+(define (%language-grammar-fields name)
+  (let ((data (%read-language-data name)))
+    (and data (%language-data-ref data 'grammar))))
+
 (define (bundled-language-grammar name)
-  (let* ((data (%read-language-data name))
-         (fields (and data (%language-data-ref data 'grammar))))
+  (let ((fields (%language-grammar-fields name)))
     (and fields
          (hash 'url (list-ref fields 0) 'rev (list-ref fields 1)
                'symbol (list-ref fields 2) 'subpath (list-ref fields 3)))))
 
 (define (bundled-grammar-languages)
-  (filter bundled-language-grammar (%language-data-names)))
+  (filter %language-grammar-fields (%language-data-names)))

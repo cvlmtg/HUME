@@ -92,8 +92,8 @@ pub use language::{
     QueryFiles, ShebangInterpreter,
 };
 pub use lsp::{
-    FeatureFilter, InvalidServerName, ListEntry, ListTier, LspFeature, LspFeatureSet,
-    LspServerConfig, ServerName, ServerRegistrationTie,
+    FeatureFilter, InvalidServerName, LanguageLists, ListEntry, ListTier, LspFeature,
+    LspFeatureSet, LspServerConfig, ServerName, ServerRegistrationTie,
 };
 pub use non_empty::NonEmpty;
 pub use origin::{

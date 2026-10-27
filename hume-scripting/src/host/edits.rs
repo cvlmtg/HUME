@@ -91,21 +91,22 @@ pub trait EditHost {
     /// `lsp-locations->places` uses for drawer rows. `encoding` is
     /// the builtin's own read of `loc`'s tagged producing-server encoding;
     /// see [`Self::apply_workspace_edit`]'s doc for the same reasoning.
-    /// `Ok(false)` when the location's line no longer exists in its file:
+    /// `Ok(Some(handle))` names the pane and the buffer it now shows;
+    /// `Ok(None)` when the location's line no longer exists in its file:
     /// nothing moves, and a buffer this call opened for it is closed again.
     fn goto_location_value(
         &mut self,
         pane: PaneHandle,
         loc: &serde_json::Value,
         encoding: PositionEncoding,
-    ) -> Result<bool, String>;
+    ) -> Result<Option<PaneHandle>, String>;
 
     /// `(goto-location! pane target)`, `(hash 'target 'line 'char-col)` shape
     /// with a path target, made absolute against the editor's working
     /// directory as written, already char-indexed. `line` and `char_col`
     /// are bare `usize`: the file may not be open, so no rope exists to check
     /// `line` against before the host opens one, and the host mints it with
-    /// `ContentLine::checked` against that text. `Ok(false)` when `line` is
+    /// `ContentLine::checked` against that text. `Ok(None)` when `line` is
     /// past the text's last content line, with the same cleanup as
     /// [`Self::goto_location_value`]; `char_col` clamps to its line and is the
     /// sanctioned addressing-unit exception, same as everywhere else on this
@@ -116,7 +117,7 @@ pub trait EditHost {
         path: AbsolutePath,
         line: usize,
         char_col: usize,
-    ) -> Result<bool, String>;
+    ) -> Result<Option<PaneHandle>, String>;
 
     /// `(goto-location! pane target)`, `(hash 'target 'char-offset)` shape
     /// with a buffer target. `char_offset` is a buffer position at the host
@@ -127,7 +128,7 @@ pub trait EditHost {
         pane: PaneHandle,
         target: BufferId,
         char_offset: usize,
-    ) -> Result<(), String>;
+    ) -> Result<PaneHandle, String>;
 
     /// `(goto-revision! pane revision)`: moves `pane`'s buffer to revision
     /// number `revision` of its undo history, across branches, as one undo
@@ -165,11 +166,17 @@ pub trait EditHost {
     /// a pipe).
     fn paste_text(&mut self, pane: PaneHandle, values: Vec<String>) -> Result<(), String>;
 
-    /// `(edit-text! pane edits)`: applies `edits`, all positioned against the
-    /// text before the call, to `pane`'s buffer as one undo step through
-    /// `pane`, carrying every selection through the change. An empty list
-    /// changes nothing. `Err` for an offset past the end, a reversed or
-    /// overlapping range, a read-only buffer, or a `pane` that names no live
-    /// pane showing its buffer.
-    fn edit_text(&mut self, pane: PaneHandle, edits: Vec<CharTextEdit>) -> Result<(), String>;
+    /// `(edit-text! pane edits #:expect-generation gen)`: applies `edits`,
+    /// all positioned against the text before the call, to `pane`'s buffer
+    /// as one undo step, carrying every selection through the change. It
+    /// acts through `pane` while that pane shows the buffer, through no pane
+    /// otherwise, as `apply-text-edits!` does. An empty list changes nothing.
+    /// `Err` for an offset past the end, a reversed or overlapping range, a
+    /// read-only buffer, or a buffer whose generation is not `expect_gen`.
+    fn edit_text(
+        &mut self,
+        pane: PaneHandle,
+        edits: Vec<CharTextEdit>,
+        expect_gen: Option<u64>,
+    ) -> Result<(), String>;
 }

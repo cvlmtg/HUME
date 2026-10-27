@@ -91,10 +91,10 @@ Use `(call! ...)` to dispatch other commands from within a plugin:
 
 A built-in command has no lambda parameter list of its own to receive one, so `call!` requires a pane as its first *argument* instead: always the pane the command should act through: `(call! "delete-selection" pane)`, `(call! "move-right" pane 5)`. Most built-ins act through whatever pane the value names, not necessarily the one you're focused on, as long as that pane still exists and still shows the buffer the value names; a few (entering insert mode, an open prompt, extend mode, pane focus/split/close, tabs, …) still require it to be the pane you're actually focused on (see [Builtin Commands](builtin-commands.md) for the full breakdown). A Scheme-defined command receives `pane` as its own first parameter already (see above), so `call!` passes whatever arguments that command declares, including `pane` itself, if the caller wants to forward the one it's acting through.
 
-For a built-in command, `call!` returns `#f` when the command refused (a too-small split, the last pane, …) or the name didn't resolve, and `#t` otherwise. That's not a guarantee anything changed, just that nothing was refused; it errors if `pane` doesn't resolve for that command (see above). A Scheme-defined command returns whatever its own body returns.
+For a built-in command, `call!` returns `#f` when the command refused (a too-small split, the last pane, …), and `#t` otherwise. A name it can't reach raises. That's not a guarantee anything changed, just that nothing was refused; it errors if `pane` doesn't resolve for that command (see above). A Scheme-defined command returns whatever its own body returns.
 
 ::: warning `call!` can't run typed commands
-Typed commands like `write`, `quit`, or `edit` are not reachable through `call!`: only editor commands work here. Calling one logs an error and does nothing, so `(call! "write")` will not save.
+Typed commands like `write`, `quit`, or `edit` are not reachable through `call!`: only editor commands work here. Calling one raises, naming the `:` command to type instead, so `(call! "write")` will not save.
 :::
 
 A few built-ins take one more argument, after the optional count and extend flag: what the command acts with.
@@ -158,22 +158,20 @@ See [Standard Library](standard-library.md#selections) for the full list of sele
 
 ## Depending on another plugin
 
-::: warning
-`call!` with an unknown command name logs an error and no-ops instead of aborting the command body: a missing plugin dependency shows up as an error in `:messages`, not as a crash, so check dependencies up front rather than relying on the error to be noticed.
-:::
+If your plugin calls another plugin's commands via `call!`, that plugin has to be declared with `load-plugin!` or `declare-plugin!`. Whether the call sits at your plugin's own top level or inside a command a key press later fires makes no difference: `call!` activates a lazily-declared dependency on demand either way. A `call!` to a command nothing provides raises, naming the command, so a missing dependency fails where it is first called: at load time for a call in your plugin's body, which makes the plugin fail to load and report it in `:messages`.
 
-If your plugin calls another plugin's commands via `call!`, check that the other plugin is available before you rely on it. Whether that call sits at your plugin's own top level or inside a command a key press later fires makes no difference: `call!` activates a lazily-declared dependency on demand either way, so the usual check is `(declared-plugins)`, which lists every plugin named by `load-plugin!` or `declare-plugin!`:
+To name the missing plugin instead, check `(declared-plugins)`, which lists every plugin named by `load-plugin!` or `declare-plugin!`, before the first call:
 
 ```scheme
 (unless (member "core:stdlib" (declared-plugins))
   (error "my-plugin: requires core:stdlib — add (load-plugin! \"core:stdlib\") before it"))
 ```
 
-The list includes a plugin that is named but not installed; that case is reported in `:messages` and shows as `absent` in `:plugin-status`. This is enough as long as the command you're calling is one of the dependency's own activation entries: the entries of its `manifest.scm`, or a custom list a user declared that includes it. If a user declared the dependency with a narrower list that leaves your command out, there's no activation stub for it: `call!` logs an error and returns `#f` instead of raising, and the check above can't catch it, since the plugin is declared, just not for the command you need.
+The list includes a plugin that is named but not installed; that case is reported in `:messages` and shows as `absent` in `:plugin-status`. A dependency declared with a narrower list than its own manifest may not provide the command you call even though it is declared; the `call!` then raises the same way.
 
 `(loaded-plugins)` lists the plugins whose code has finished loading. It suits a dependency without a manifest, which loads at startup. A dependency with a manifest is lazy, so it is not in that list until something triggers it, and checking it there would fail for a plugin that works.
 
-The check fails loudly at load time (startup or `:reload-config`), naming what's missing, instead of leaving the bug to surface later at whatever moment the dependent command actually runs.
+The check fails at load time (startup or `:reload-config`), naming what's missing, even for a dependency your plugin only calls from a command, which would otherwise fail the first time that command runs.
 
 ## Reading characters
 
@@ -247,7 +245,7 @@ Available hooks and their lambda signatures. Every `pane` argument below is the 
 | `on-lsp-detach` | A language server stops serving a buffer that stays open: it was stopped or restarted, or a server list or the buffer's language no longer includes it | `(pane server)` |
 | `on-lsp-notification` | A language server sends a notification HUME doesn't handle itself (it handles `window/logMessage`, `window/showMessage`, `$/progress`, and `publishDiagnostics`) | `(server method params)`: `server` is the sending server's value, `method` a string, `params` a JSON handle. A handler registered here receives every method; to handle only specific ones, use `register-lsp-notification-hook!` instead |
 | `on-viewport-change` | The visible region of a pane changes | `(pane range)`: `range` is `(hash 'start-line s 'end-line e)`, the value `viewport-range` returns, 0-based and end-exclusive; with wrapping on, `'end-line` may run a few lines past the bottom edge |
-| `on-trigger-char` | A registered trigger character is typed | `(pane char source)` |
+| `on-trigger-char` | A registered trigger character is typed | `(pane char source)`: `char` is a Scheme char, like `#\.` |
 | `on-completion-accept` | A completion entry is accepted | `(pane item)` |
 | `on-option-change` | A global setting is changed (`:set global`, `set-option!`, `:theme`) | `(key value)`: `key` is a string, `value` the option's new value as `get-option` returns it |
 | `on-text-changed` | A buffer's text changes | `(pane)` |
@@ -477,13 +475,13 @@ Reading lines and editing char ranges together give a command that turns lines i
                                 'text prefix)))))
                (anchor-lines pane)))))))
 
-(bind-key! 'normal "G H" "markdown-heading" #:keymap 'markdown-keys)
+(bind-key! 'normal "G H" "markdown-heading" #:keymap "markdown-keys")
 
 (register-hook! 'on-language-set
   (lambda (pane lang)
     (if (equal? lang "markdown")
-        (attach-keymap! pane 'markdown-keys)
-        (detach-keymap! pane 'markdown-keys))))
+        (attach-keymap! pane "markdown-keys")
+        (detach-keymap! pane "markdown-keys"))))
 ```
 
 The keys go into a keymap of their own, which the hook turns on in Markdown buffers only (see [Keys for one buffer](configuration.md#keys-for-one-buffer)).
@@ -500,13 +498,13 @@ Two functions compute a line-level diff, useful for anything that shows what cha
 (diff-lines old-text new-text)
 ```
 
-Splits both `old-text` and `new-text` into lines the same way HUME treats file content (every line ending becomes LF, and a missing trailing newline doesn't count as a change), then returns the list of hunks where they differ. Unchanged lines are left out entirely. Each hunk is:
+Splits both `old-text` and `new-text` into lines the same way HUME treats file content (every line ending becomes LF, and a missing trailing newline doesn't count as a change), then returns `(hash 'hunks hunks 'deadline-hit too-long?)`: the hunks where they differ, and whether the diff ran out of time and settled for a coarser answer. Unchanged lines are left out entirely. Each hunk is:
 
 ```scheme
 (hash 'old-start-line s 'old-end-line e 'new-start-line s 'new-end-line e 'old-lines texts 'new-lines texts 'words spans)
 ```
 
-`'old-start-line`/`'new-start-line` are 0-based line numbers and `'old-end-line`/`'new-end-line` the line after the hunk's last one on each side, so the lines of a side are `[start, end)`. `'old-lines`/`'new-lines` are the line contents themselves (no trailing newline). Each hunk also has a `'words` entry, `(hash 'old spans 'new spans)`, naming the words that changed. An old-side span is `(hash 'line 'start-char-col 'end-char-col)`: a line of the old text and character columns in it. A new-side span is `(hash 'start-char 'end-char)`: character offsets into the new text, counting each line ending as one character, ready for `set-extra-highlights!`. Both are end exclusive, and a span covering a whole line is left out. A pure insertion has an empty old range (`'old-start-line` equals `'old-end-line`); a pure deletion has an empty new range. Either way, the empty side's line number is exactly where the change happens, so it feeds straight into `set-signs!` or `set-virtual-lines!` with no adjustment.
+`'old-start-line`/`'new-start-line` are 0-based line numbers and `'old-end-line`/`'new-end-line` the line after the hunk's last one on each side, so the lines of a side are `[start, end)`. `'old-lines`/`'new-lines` are the line contents themselves (no trailing newline). Each hunk also has a `'words` entry, `(hash 'old spans 'new spans)`, naming the words that changed. An old-side span is `(hash 'line 'start-char-col 'end-char-col)`: a line of the old text and character columns in it. A new-side span is `(hash 'start-char 'end-char)`: character offsets into the new text, counting each line ending as one character, ready for `set-extra-highlights!`. Both are end exclusive, and a span covering a whole line is left out. `'words` is `#f` for a hunk too large to compare word by word, so a caller can tell that from a change of whole lines. A pure insertion has an empty old range (`'old-start-line` equals `'old-end-line`); a pure deletion has an empty new range. Either way, the empty side's line number is exactly where the change happens, so it feeds straight into `set-signs!` or `set-virtual-lines!` with no adjustment.
 
 ```scheme
 (diff-buffer-lines pane ref-text)
@@ -530,7 +528,7 @@ The latter never turns it off.
 
 A plugin that has its own hunks, such as a revision's diff from `buffer-revision-diff`, can
 draw them the way `core:git-diff` draws its own with `(call! "git-diff/render-diff" pane source hunks)`. `hunks` is
-the list `diff-buffer-lines` or `buffer-revision-diff` returns and `source` is a name of the
+the `'hunks` list `diff-buffer-lines` or `buffer-revision-diff` returns and `source` is a name of the
 plugin's own, so its drawing never mixes with `core:git-diff`'s. Each call replaces what `source`
 drew for that buffer, and an empty list draws nothing. While a plugin draws, the buffer's own
 inline diff is hidden so changed lines don't show twice; the gutter signs stay.
@@ -584,7 +582,7 @@ Highlighting `TODO` shows `work left to do` above the rendered markdown. Highlig
 To open the menu without `Ctrl-Space`, give the source trigger characters for a language. This one fires whenever `@` is typed in a Markdown buffer:
 
 ```scheme
-(set-completion-triggers! "todo-markers" "markdown" '("@"))
+(set-completion-triggers! "markdown" "todo-markers" '(#\@))
 ```
 
 A source can also complete the argument of a `:` command. A `'minibuf` source is called with the whole command line and the cursor position, counted in characters. Here it answers asynchronously, once `git` has listed the branches. `#:complete` connects it to the command:

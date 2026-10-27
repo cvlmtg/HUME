@@ -447,14 +447,14 @@ pub(crate) fn optional_list_to_string_pairs(
     })
 }
 
-/// A Steel list of single-character strings, unpacked to a `Vec<char>`.
+/// A Steel list of chars, unpacked to a `Vec<char>`.
 pub(crate) fn chars_arg(val: SteelVal, ctx_name: &str) -> Result<Vec<char>, SteelErr> {
-    list_to_strings(val, ctx_name)?
+    list_items(val, ctx_name)?
         .into_iter()
-        .map(|s| match single_char(&s) {
-            Some(c) => Ok(c),
-            None => steel::stop!(Generic =>
-                "{}: each entry must be exactly one character, got {:?}", ctx_name, s),
+        .map(|item| match item {
+            SteelVal::CharV(c) => Ok(c),
+            other => steel::stop!(TypeMismatch =>
+                "{}: each entry must be a char, like #\\., got {}", ctx_name, other),
         })
         .collect()
 }
@@ -591,6 +591,12 @@ impl HashEntry<'_> {
         Ok((self.usize(START_CHAR)?, self.usize(END_CHAR)?))
     }
 
+    /// The `'start-char-col`/`'end-char-col` pair of an entry decoded with
+    /// both keys in its key set, both required.
+    pub(crate) fn char_col_range(&self) -> Result<(usize, usize), SteelErr> {
+        Ok((self.usize(START_CHAR_COL)?, self.usize(END_CHAR_COL)?))
+    }
+
     /// The `'start-line`/`'end-line` pair of an entry decoded with both keys
     /// in its key set, both required.
     pub(crate) fn line_range(&self) -> Result<(usize, usize), SteelErr> {
@@ -601,11 +607,15 @@ impl HashEntry<'_> {
 // ── Position shapes ───────────────────────────────────────────────────────────
 
 /// The keys a position hash names its unit with. A char range is
-/// `(hash 'start-char s 'end-char e)`, a content-line range `(hash
-/// 'start-line s 'end-line e)`, both 0-based and end-exclusive, and one char
-/// position is `'char-offset`.
+/// `(hash 'start-char s 'end-char e)`, char offsets into a whole text (the
+/// buffer, or a text the script passed); a char-column range is `(hash
+/// 'start-char-col s 'end-char-col e)`, char columns within one line; a
+/// content-line range is `(hash 'start-line s 'end-line e)`. All are 0-based
+/// and end-exclusive, and one char position is `'char-offset`.
 pub(crate) const START_CHAR: &str = "start-char";
 pub(crate) const END_CHAR: &str = "end-char";
+pub(crate) const START_CHAR_COL: &str = "start-char-col";
+pub(crate) const END_CHAR_COL: &str = "end-char-col";
 pub(crate) const START_LINE: &str = "start-line";
 pub(crate) const END_LINE: &str = "end-line";
 pub(crate) const CHAR_OFFSET: &str = "char-offset";

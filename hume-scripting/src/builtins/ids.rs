@@ -52,6 +52,13 @@ impl SteelPane {
     }
 }
 
+/// A pane, or `#f` when there is none.
+pub(crate) fn pane_or_false(pane: Option<PaneHandle>) -> SteelVal {
+    pane.map_or(SteelVal::BoolV(false), |pane| {
+        SteelPane(pane).into_steel_val()
+    })
+}
+
 /// `(buffer-key pane)`'s return: `pane`'s buffer, with no pane component.
 /// See this module's own doc for why this is a distinct type rather than a
 /// [`SteelPane`] with its pane field cleared.

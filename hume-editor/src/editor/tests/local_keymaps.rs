@@ -151,7 +151,7 @@ fn a_named_bind_leaves_the_global_keymap_alone() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(bind-key! 'normal "l" "move-left" #:keymap 'test-keys)"#,
+        r#"(bind-key! 'normal "l" "move-left" #:keymap "test-keys")"#,
     );
     assert_eq!(
         ed.state
@@ -172,8 +172,8 @@ fn a_named_unbind_removes_the_binding_from_that_keymap() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(bind-key! 'normal "l" "move-left" #:keymap 'test-keys)
-           (unbind-key! 'normal "l" #:keymap 'test-keys)"#,
+        r#"(bind-key! 'normal "l" "move-left" #:keymap "test-keys")
+           (unbind-key! 'normal "l" #:keymap "test-keys")"#,
     );
     attach_here(&mut ed, "test-keys");
     ed.feed_key(key('l'));
@@ -187,7 +187,7 @@ fn a_named_bind_to_an_unknown_command_is_reported() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(bind-key! 'normal "z" "no-such-command" #:keymap 'test-keys)"#,
+        r#"(bind-key! 'normal "z" "no-such-command" #:keymap "test-keys")"#,
     );
     let warnings = warning_texts(&ed);
     assert!(
@@ -207,7 +207,7 @@ fn run_with_test_keys(ed: &mut Editor, tmp: &std::path::Path, source: &str) {
         ed,
         tmp,
         &format!(
-            r#"(bind-key! 'normal "l" "move-left" #:keymap 'test-keys)
+            r#"(bind-key! 'normal "l" "move-left" #:keymap "test-keys")
                {source}"#
         ),
     );
@@ -230,8 +230,8 @@ const LANGUAGE_RECIPE: &str = r#"
 (register-hook! 'on-language-set
   (lambda (pane lang)
     (if (equal? lang "markdown")
-        (attach-keymap! pane 'test-keys)
-        (detach-keymap! pane 'test-keys))))"#;
+        (attach-keymap! pane "test-keys")
+        (detach-keymap! pane "test-keys"))))"#;
 
 #[test]
 fn the_language_recipe_attaches_for_markdown_and_detaches_on_change() {
@@ -255,8 +255,8 @@ fn a_hook_can_bind_and_attach_in_one_go() {
         tmp.path(),
         r#"(register-hook! 'on-language-set
              (lambda (pane lang)
-               (bind-key! 'normal "l" "move-left" #:keymap 'hook-keys)
-               (attach-keymap! pane 'hook-keys)))"#,
+               (bind-key! 'normal "l" "move-left" #:keymap "hook-keys")
+               (attach-keymap! pane "hook-keys")))"#,
     );
     set_language(&mut ed, "markdown");
     assert_eq!(after_l(&mut ed), "-[a]>bc\n");
@@ -270,7 +270,7 @@ fn attaching_a_keymap_nothing_is_bound_into_warns_and_changes_nothing() {
         &mut ed,
         tmp.path(),
         r#"(register-hook! 'on-language-set
-             (lambda (pane lang) (attach-keymap! pane 'later-keys)))"#,
+             (lambda (pane lang) (attach-keymap! pane "later-keys")))"#,
     );
     set_language(&mut ed, "markdown");
     assert_eq!(after_l(&mut ed), "ab-[c]>\n");
@@ -288,7 +288,7 @@ fn detaching_a_keymap_nothing_is_bound_into_warns() {
         &mut ed,
         tmp.path(),
         r#"(register-hook! 'on-language-set
-             (lambda (pane lang) (detach-keymap! pane 'no-keys)))"#,
+             (lambda (pane lang) (detach-keymap! pane "no-keys")))"#,
     );
     set_language(&mut ed, "markdown");
     assert_eq!(
@@ -317,7 +317,7 @@ fn a_command_can_bind_into_an_attached_keymap() {
         &format!(
             r#"{LANGUAGE_RECIPE}
                (define-command! "rebind-l" ""
-                 (lambda () (bind-key! 'normal "l" "move-line-end" #:keymap 'test-keys)))"#
+                 (lambda () (bind-key! 'normal "l" "move-line-end" #:keymap "test-keys")))"#
         ),
     );
     set_language(&mut ed, "markdown");
@@ -337,7 +337,7 @@ fn a_failed_hook_does_not_attach() {
         &mut ed,
         tmp.path(),
         r#"(register-hook! 'on-language-set
-             (lambda (pane lang) (attach-keymap! pane 'test-keys) (error "boom")))"#,
+             (lambda (pane lang) (attach-keymap! pane "test-keys") (error "boom")))"#,
     );
     set_language(&mut ed, "markdown");
     assert_eq!(after_l(&mut ed), "ab-[c]>\n");

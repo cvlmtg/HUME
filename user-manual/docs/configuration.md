@@ -101,12 +101,12 @@ A value you set, in your `init.scm`, a hook it registers or with `:set`, beats a
       (set-buffer-option! pane "word-chars" "-"))))
 
 ; keys for Markdown buffers only (see "Keys for one buffer" below)
-(bind-key! 'normal "G H" "markdown-heading" #:keymap 'markdown-keys)
+(bind-key! 'normal "G H" "markdown-heading" #:keymap "markdown-keys")
 (register-hook! 'on-language-set
   (lambda (pane lang)
     (if (equal? lang "markdown")
-        (attach-keymap! pane 'markdown-keys)
-        (detach-keymap! pane 'markdown-keys))))
+        (attach-keymap! pane "markdown-keys")
+        (detach-keymap! pane "markdown-keys"))))
 ```
 
 `markdown-heading` is the command from [Example: Markdown headings](writing-plugins.md#example-markdown-headings).
@@ -148,24 +148,24 @@ To set several bindings at once, use the plural forms:
 Add `#:keymap` and a name to put a binding in a keymap of its own instead of the global bindings. The first binding into a name creates that keymap. A keymap does nothing until you attach it to a buffer with `attach-keymap!`, and `detach-keymap!` turns it off again. This makes `Ctrl-j` and `Ctrl-k` jump between paragraphs in Markdown buffers only:
 
 ```scheme
-(bind-keys! 'normal #:keymap 'markdown-keys
+(bind-keys! 'normal #:keymap "markdown-keys"
   ("ctrl-j" "goto-next-paragraph")
   ("ctrl-k" "goto-prev-paragraph"))
 
 (register-hook! 'on-language-set
   (lambda (pane lang)
     (if (equal? lang "markdown")
-        (attach-keymap! pane 'markdown-keys)
-        (detach-keymap! pane 'markdown-keys))))
+        (attach-keymap! pane "markdown-keys")
+        (detach-keymap! pane "markdown-keys"))))
 ```
 
-`bind-key!`, `bind-key-extend!` and `unbind-key!` take `#:keymap` after their other arguments, as in `(unbind-key! 'normal "ctrl-k" #:keymap 'markdown-keys)`, and the plural forms take it right after the mode. The hook detaches the keymap when a buffer's language changes away from Markdown. Detaching removes only that keymap, so the other keymaps attached to the buffer, a plugin's for instance, keep working.
+`bind-key!`, `bind-key-extend!` and `unbind-key!` take `#:keymap` after their other arguments, as in `(unbind-key! 'normal "ctrl-k" #:keymap "markdown-keys")`, and the plural forms take it right after the mode. The hook detaches the keymap when a buffer's language changes away from Markdown. Detaching removes only that keymap, so the other keymaps attached to the buffer, a plugin's for instance, keep working.
 
 In a buffer, keys are looked up in its attached keymaps, the most recently attached first, then in the global bindings. Attaching a keymap that is already attached keeps its place. The first keymap that has the keys, as a binding or as the start of a longer one, decides. So a key bound in a keymap hides the global bindings that start with it (binding `g` hides the global `g g`), and the start of a longer binding hides a global binding of the same keys. Bindings that only share their first keys combine: with `G H` in a keymap and the global `G G`, both work. In Extend mode, each keymap's `'extend` bindings are tried before its `'normal` ones, and both before the next keymap, so a keymap's `'normal` binding wins over a global `'extend` binding of the same keys.
 
 Attaching or detaching a name nothing has been bound into yet does nothing and logs a warning in `:messages`. Bind first: attaching before the first binding has no effect, even once the keymap exists.
 
-Global bindings belong in `init.scm` or a plugin body, but bindings with `#:keymap` and attaching work from commands and hooks too, so you can build and attach a keymap while you edit. Keymap names are shared by every plugin, so a plugin's keymap names start with the plugin's own, like `'my-plugin/keys`. `:reload-config` clears every keymap along with the other bindings, and a hook like the one above attaches its keymap again when it runs.
+Global bindings belong in `init.scm` or a plugin body, but bindings with `#:keymap` and attaching work from commands and hooks too, so you can build and attach a keymap while you edit. Keymap names are shared by every plugin, so a plugin's keymap names start with the plugin's own, like `"my-plugin/keys"`. `:reload-config` clears every keymap along with the other bindings, and a hook like the one above attaches its keymap again when it runs.
 
 ### Falling back to a key's normal Insert-mode behaviour
 

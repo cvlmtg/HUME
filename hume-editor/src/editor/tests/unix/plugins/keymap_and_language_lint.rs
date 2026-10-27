@@ -52,7 +52,7 @@ fn keymap_lint_warns_with_kind_hint_for_typed_only_command() {
         ed.state.message_log.entries().any(|e| {
             e.severity == Severity::Warning
                 && e.text
-                    == "'write' is a typed command: run it as `:write`; it can't be bound to a key"
+                    == "'write' is a typed command: run it as `:write`; keys and call! can't reach it"
         }),
         "expected a kind-aware hint for 'write'; messages: {:?}",
         ed.state

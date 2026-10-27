@@ -49,8 +49,9 @@ pub(crate) fn known_event(ctx: &mut SteelCtx, name: &str) -> Result<(), String> 
 /// named hook.  Must be called during init or plugin load (`EvalMode::Init`,
 /// `PluginLoad`, or `PluginActivation`).
 ///
-/// `on-language-set` fires `(lambda (bid lang-or-#f) …)` on every language
-/// transition.  For lazy-loaded language plugins the typical pattern is:
+/// `on-language-set` fires `(lambda (pane lang) …)` on every language
+/// transition, `lang` `""` for no language. For lazy-loaded language
+/// plugins the typical pattern is:
 /// `#:languages '("lang")` in `declare-plugin!` *activates* the body on the
 /// first matching transition; the body then calls `(register-hook! 'on-language-set …)`
 /// to install a *hook* that reacts on every subsequent transition.

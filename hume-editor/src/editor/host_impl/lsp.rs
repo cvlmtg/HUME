@@ -52,8 +52,8 @@ impl<'a> LspHost for EditorHostImpl<'a> {
         self.state.lsp.new_supersede_key()
     }
 
-    fn lsp_language_servers(&self, language: &str) -> Vec<hume_core::ListEntry> {
-        crate::editor::lsp::introspect::language_servers(&self.state.lsp, language)
+    fn lsp_language_lists(&self, language: &str) -> hume_core::LanguageLists {
+        crate::editor::lsp::introspect::language_lists(&self.state.lsp, language)
     }
 
     fn lsp_position_params(&self, pane: PaneHandle) -> Result<Option<PositionParams>, String> {

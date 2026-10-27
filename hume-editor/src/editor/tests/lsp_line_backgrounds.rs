@@ -30,7 +30,7 @@ fn line_background_tints_gutter_content_and_trailing_cells() {
         tmp.path(),
         &format!(
             r#"(define-typed-command! "go" "" (lambda (bid)
-                 (set-line-backgrounds! "git-diff" bid
+                 (set-line-backgrounds! bid "git-diff"
                    (list (hash 'line 0 'scope "{TINT_SCOPE}")))))"#
         ),
     );
@@ -89,7 +89,7 @@ fn line_background_tint_survives_every_wrap_display_line_of_a_wrapped_line() {
         tmp.path(),
         &format!(
             r#"(define-typed-command! "go" "" (lambda (bid)
-                 (set-line-backgrounds! "git-diff" bid
+                 (set-line-backgrounds! bid "git-diff"
                    (list (hash 'line 0 'scope "{TINT_SCOPE}")))))"#
         ),
     );
@@ -129,7 +129,7 @@ fn cursorline_wins_over_the_line_background_tint() {
         tmp.path(),
         &format!(
             r#"(define-typed-command! "go" "" (lambda (bid)
-                 (set-line-backgrounds! "git-diff" bid
+                 (set-line-backgrounds! bid "git-diff"
                    (list (hash 'line 1 'scope "{TINT_SCOPE}")))))"#
         ),
     );
@@ -195,7 +195,7 @@ fn line_background_shows_through_when_cursorline_has_no_bg() {
         tmp.path(),
         &format!(
             r#"(define-typed-command! "go" "" (lambda (bid)
-                 (set-line-backgrounds! "git-diff" bid
+                 (set-line-backgrounds! bid "git-diff"
                    (list (hash 'line 1 'scope "{TINT_SCOPE}")))))"#
         ),
     );
@@ -262,7 +262,7 @@ fn line_background_reflects_the_post_scroll_viewport_not_the_pre_scroll_one() {
         tmp.path(),
         &format!(
             r#"(define-typed-command! "go" "" (lambda (bid)
-                 (set-line-backgrounds! "git-diff" bid
+                 (set-line-backgrounds! bid "git-diff"
                    (list (hash 'line 8 'scope "{TINT_SCOPE}")))))"#
         ),
     );

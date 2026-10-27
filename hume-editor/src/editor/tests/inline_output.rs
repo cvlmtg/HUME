@@ -115,10 +115,8 @@ fn call_bang_to_inline_output_typed_command_is_unreachable() {
         "a typed command's body must never run via call!"
     );
     assert!(
-        logged(&ed, "unknown command"),
-        "call! to a typed-only name must fall through as unresolvable: it's absent \
-         from the mappable registry `command_is_native` consults, same as any other \
-         name never registered as a mappable command"
+        logged(&ed, "run it as `:inner-typed-probe`"),
+        "call! to a typed-only name raises with the typed-command hint"
     );
     assert_eq!(
         ed.inline_output_enter_count(),

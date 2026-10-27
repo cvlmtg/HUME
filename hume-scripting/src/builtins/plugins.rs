@@ -20,7 +20,7 @@ use crate::{
 };
 
 use super::SteelResult;
-use super::args::{list_items, list_to_strings, optional_string_arg};
+use super::args::{list_items, list_to_strings, optional_string_arg, symbol_hash};
 use super::errors::generic_err;
 use paths::{
     entry_path, installed_plugin_dir, path_exists, plugin_dir_for_id, require_program_for_path,
@@ -518,13 +518,6 @@ fn check_config(config: &SteelVal) -> Result<(), SteelErr> {
     }
 }
 
-/// Empty Steel hash: the `(plugin-config)` default when no config was passed.
-fn empty_config() -> SteelResult {
-    std::collections::HashMap::<String, SteelVal>::new()
-        .into_steelval()
-        .map_err(generic_err)
-}
-
 /// The plugin whose code is running: its body, or a command, hook handler
 /// or callback it defined (`SteelCtx::owner`). Raises when no plugin's code
 /// is running, since an empty answer would read as "no config passed".
@@ -544,7 +537,7 @@ pub(crate) fn plugin_config(ctx: &mut SteelCtx) -> SteelResult {
     let plugin = calling_plugin(ctx)?;
     match ctx.registries.plugin_records.config(plugin) {
         Some(cfg) => Ok(cfg.clone()),
-        None => empty_config(),
+        None => Ok(symbol_hash([])),
     }
 }
 

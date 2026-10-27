@@ -143,10 +143,39 @@ impl CommandRegistry {
             ),
             Command::Typed(_) => {
                 format!(
-                    "'{name}' is a typed command: run it as `:{name}`; it can't be bound to a key"
+                    "'{name}' is a typed command: run it as `:{name}`; keys and call! can't reach it"
                 )
             }
         })
+    }
+
+    /// The message for `name` where a site expected a command it is not:
+    /// [`Self::other_kind_hint`] when `name` is the other kind, else
+    /// `fallback`, the site's own wording for a name nothing registers.
+    pub(in crate::editor) fn unknown_command_message(
+        &self,
+        name: &str,
+        fallback: String,
+    ) -> String {
+        self.other_kind_hint(name).unwrap_or(fallback)
+    }
+
+    /// The mappable command a script's `call!` reaches by `name`. A name that
+    /// is unknown, typed, or bound to a key-only command is refused with the
+    /// message `call!` raises, so `command-exists?` and `call!` agree.
+    pub(in crate::editor) fn callable_by_script(
+        &self,
+        name: &str,
+    ) -> Result<&MappableCommand, String> {
+        let cmd = self.get_mappable(name).ok_or_else(|| {
+            self.unknown_command_message(name, crate::editor::dispatch::unknown_command_text(name))
+        })?;
+        if let MappableCommand::Native(native) = cmd
+            && native.meta().key_only
+        {
+            return Err(format!("'{name}': runs only from a key"));
+        }
+        Ok(cmd)
     }
 
     /// Register a typed command.

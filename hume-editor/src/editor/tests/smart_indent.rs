@@ -579,7 +579,7 @@ fn a_completion_trigger_sees_the_dedented_line() {
                (log! 'warning (buffer-text pane))
                (completion-emit! id (list (hash "label" (string-append "brace" (number->string brace-calls))))))
              #:target 'buffer)
-           (set-completion-triggers! "brace" "rust" (list "}"))"#,
+           (set-completion-triggers! "rust" "brace" (list #\}))"#,
     );
     ed.feed_keys([key('o'), key('}')]);
     ed.settle();

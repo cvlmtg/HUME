@@ -299,10 +299,10 @@ fn on_viewport_change_carries_pane_and_line_range() {
     );
 }
 
-/// `char` renders as a 1-char Steel *string*, not a Steel char. Pins the
-/// documented `on-trigger-char` contract.
+/// `char` is a Steel char, the type `on-next-char!` and `call!` char
+/// operands use.
 #[test]
-fn on_trigger_char_sends_char_as_a_one_char_string() {
+fn on_trigger_char_sends_a_steel_char() {
     let buffer = BufferId::default();
     let pane = sample_pane_id();
     let target = PaneHandle::with_pane(buffer, pane);
@@ -314,7 +314,7 @@ fn on_trigger_char_sends_char_as_a_one_char_string() {
     let args = event.into_steel_args();
     assert_eq!(args.len(), 3);
     assert_steel_pane(&args, 0, target);
-    assert_eq!(steel_string(&args, 1), ".");
+    assert_eq!(args[1], SteelVal::CharV('.'));
     assert_eq!(steel_string(&args, 2), "lsp");
 }
 

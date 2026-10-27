@@ -131,7 +131,7 @@ Available elements:
 | `"Pipe"` | The shell command running after `\|`, and how many of its processes have finished |
 | `"Language"` | Buffer language |
 | `"ReadOnly"` | `[RO]` indicator |
-| `"Diagnostics"` | Error and warning counts from the language server |
+| `"Diagnostics"` | Error and warning counts from the language server, at or above `lsp-diagnostics-min-severity` |
 
 The default is equivalent to:
 
@@ -150,7 +150,7 @@ Place `"steel:<name>"` for any `<name>` of your choosing to add your own element
 (configure-statusline! '("steel:line-count" "FilePath") '() '("Position" "Mode"))
 
 (define (refresh-line-count! pane)
-  (set-statusline-text! "line-count" pane
+  (set-statusline-text! pane "line-count"
     (string-append (number->string (buffer-line-count pane)) "L")))
 
 (register-hook! 'on-text-changed refresh-line-count!)

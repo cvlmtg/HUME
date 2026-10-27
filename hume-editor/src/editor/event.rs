@@ -453,7 +453,7 @@ impl EditorEvent {
             EditorEvent::OnTriggerChar { target, ch, source } => {
                 vec![
                     SteelPane::new(target).into_steel_val(),
-                    SteelVal::StringV(ch.to_string().into()),
+                    SteelVal::CharV(ch),
                     SteelVal::StringV(source.into()),
                 ]
             }

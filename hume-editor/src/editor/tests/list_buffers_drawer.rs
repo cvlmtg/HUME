@@ -4,7 +4,7 @@
 use pretty_assertions::assert_eq;
 
 use super::*;
-use crate::editor::input_stack::DrawerSelect;
+use crate::editor::input_stack::DrawerRows;
 
 /// The drawer's rows, which must all be rendered (a native drawer has no
 /// lazy rows).
@@ -33,9 +33,9 @@ fn drawer_open(ed: &Editor) -> bool {
 
 /// The buffers the drawer's rows name, in row order.
 fn listed(ed: &Editor) -> Vec<BufferId> {
-    match &ed.state.input.drawer().expect("drawer must be open").select {
-        DrawerSelect::Buffers(buffers) => buffers.clone(),
-        DrawerSelect::Steel(_) => panic!("expected a buffer-list drawer"),
+    match &ed.state.input.drawer().expect("drawer must be open").rows {
+        DrawerRows::Buffers { buffers, .. } => buffers.clone(),
+        DrawerRows::Script { .. } => panic!("expected a buffer-list drawer"),
     }
 }
 
@@ -229,7 +229,7 @@ fn replacing_a_steel_drawer_tells_its_owner() {
 (define (on-select i token)
   (set! selections (string-append selections (if i (number->string i) "#f") ";")))
 (define-typed-command! "go" "" (lambda (pane)
-  (show-drawer-list! pane '("a" "b") on-select)))
+  (show-drawer-list! pane (map (lambda (row) (cons row row)) '("a" "b")) on-select)))
 (define-typed-command! "selections" "" (lambda (pane) (log! 'info selections)))"##,
     );
     type_cmd(&mut ed, ":go");

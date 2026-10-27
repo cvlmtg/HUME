@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use hume_core::{
-    ByOrigin, Claim, ConfigOrigin, ListEntry, ListTier, LspServerConfig, Ranked, ServerName,
+    Claim, ConfigOrigin, LanguageLists, ListEntry, ListTier, LspServerConfig, Ranked, ServerName,
     ServerRegistrationTie, Written,
 };
 use rustc_hash::FxHashMap;
@@ -29,36 +29,6 @@ pub(in crate::editor::lsp::registry) fn resolve_root(
         }
     }
     cwd.to_path_buf()
-}
-
-/// One tier of a language's server lists: the list each origin set, if any.
-/// The highest origin's is the whole answer, whichever was set first, and
-/// clearing it lets the next lower one apply.
-type ListLayers = ByOrigin<Option<Vec<ListEntry>>>;
-
-/// A language's server lists. A default list applies only while no explicit
-/// list is set, whatever the origins of the two.
-#[derive(Debug, Default)]
-struct LanguageLists {
-    explicit: ListLayers,
-    defaults: ListLayers,
-}
-
-impl LanguageLists {
-    fn layers_mut(&mut self, tier: ListTier) -> &mut ListLayers {
-        match tier {
-            ListTier::Explicit => &mut self.explicit,
-            ListTier::Default => &mut self.defaults,
-        }
-    }
-
-    /// The list that decides the language's servers.
-    fn deciding(&self) -> Option<&[ListEntry]> {
-        self.explicit
-            .iter()
-            .chain(self.defaults.iter())
-            .find_map(|(_, list)| list.as_deref())
-    }
 }
 
 /// Every server registration and per-language list: pure policy, no
@@ -146,9 +116,12 @@ impl Registry {
                 None => return false,
             },
         };
-        let layers = lists.layers_mut(tier);
-        *layers.get_mut(origin) = entries;
-        layers.above(origin).any(Option::is_some)
+        lists.set(tier, origin, entries)
+    }
+
+    /// `language`'s server lists, empty when nothing set one.
+    pub(in crate::editor::lsp) fn lists(&self, language: &str) -> LanguageLists {
+        self.lists.get(language).cloned().unwrap_or_default()
     }
 
     pub(in crate::editor::lsp) fn contains(&self, name: &ServerName) -> bool {
@@ -178,19 +151,13 @@ impl Registry {
         languages
     }
 
-    /// The servers `language`'s buffers attach to, in order: the entries of
-    /// the explicit list the highest origin set, or of the default list while
-    /// no explicit one is set, that name a registered server. An entry naming
-    /// an unregistered server is skipped; a registered server no list names
-    /// serves nothing.
+    /// The servers `language`'s buffers attach to, in order
+    /// ([`LanguageLists::plan`] over the registered servers); a registered
+    /// server no list names serves nothing.
     pub(in crate::editor::lsp) fn plan(&self, language: &str) -> Vec<&ListEntry> {
-        let Some(entries) = self.lists.get(language).and_then(LanguageLists::deciding) else {
-            return Vec::new();
-        };
-        entries
-            .iter()
-            .filter(|entry| self.registrations.contains_key(&entry.name))
-            .collect()
+        self.lists.get(language).map_or_else(Vec::new, |lists| {
+            lists.plan(|name| self.registrations.contains_key(name))
+        })
     }
 }
 

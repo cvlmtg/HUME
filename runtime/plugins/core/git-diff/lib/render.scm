@@ -28,8 +28,8 @@
 
 ;;; Registers first regardless of `hunks` — see docs/rendering.md's "Signs".
 (define (git-diff/render-signs! pane hunks)
-  (register-sign-source! git-diff/*source* pane git-diff/*sign-priority*)
-  (set-signs! git-diff/*source* pane (apply append (map git-diff/hunk->signs hunks))))
+  (register-sign-source! pane git-diff/*source* git-diff/*sign-priority*)
+  (set-signs! pane git-diff/*source* (apply append (map git-diff/hunk->signs hunks))))
 
 ;; ── Inline: deleted lines + word highlights ─────────────────────────────────
 ;; See docs/rendering.md.
@@ -40,11 +40,12 @@
       (cons 'after (- new-start 1))))
 
 (define (git-diff/virtual-line-hash text anchor segments)
-  (let ([base (hash 'line (cdr anchor) 'text text 'anchor (car anchor) 'scope "diff.minus.line")])
+  (let ([base (hash 'line (cdr anchor) 'text text 'side (car anchor) 'scope "diff.minus.line")])
     (if (null? segments) base (hash-insert base 'segments segments))))
 
-(define (git-diff/word-span start end scope)
-  (hash 'start-char start 'end-char end 'scope scope))
+;;; `span`'s `start-key`/`end-key` pair, with a theme scope.
+(define (git-diff/word-span start-key end-key span scope)
+  (hash start-key (hash-ref span start-key) end-key (hash-ref span end-key) 'scope scope))
 
 ;;; One virtual line per old line, each carrying the `spans` that name its line — see docs/rendering.md.
 (define (git-diff/old-lines->virtual-lines old-lines spans anchor first-line)
@@ -58,8 +59,7 @@
                     (cons (git-diff/virtual-line-hash
                             (car olds) anchor
                             (map (lambda (span)
-                                   (git-diff/word-span (hash-ref span 'start-char-col)
-                                                       (hash-ref span 'end-char-col)
+                                   (git-diff/word-span 'start-char-col 'end-char-col span
                                                        "diff.minus.word"))
                                  (reverse mine)))
                           acc)))))))
@@ -68,13 +68,12 @@
 (define (git-diff/hunk-inline-data hunk)
   (if (= (hash-ref hunk 'old-start-line) (hash-ref hunk 'old-end-line))
       (cons '() '())
-      (let* ([words (hash-ref hunk 'words)]
+      (let* ([words (or (hash-ref hunk 'words) (hash 'old '() 'new '()))]
              [anchor (git-diff/hunk-anchor (hash-ref hunk 'new-start-line))])
         (cons (git-diff/old-lines->virtual-lines
                 (hash-ref hunk 'old-lines) (hash-ref words 'old) anchor (hash-ref hunk 'old-start-line))
               (map (lambda (span)
-                     (git-diff/word-span (hash-ref span 'start-char) (hash-ref span 'end-char)
-                                         "diff.plus.word"))
+                     (git-diff/word-span 'start-char 'end-char span "diff.plus.word"))
                    (hash-ref words 'new))))))
 
 ;;; Two setter calls, not one — see docs/rendering.md.
@@ -82,8 +81,8 @@
   (let* ([results (map git-diff/hunk-inline-data hunks)]
          [virtual-lines (apply append (map car results))]
          [spans (apply append (map cdr results))])
-    (set-virtual-lines! source pane virtual-lines)
-    (set-extra-highlights! source pane spans)))
+    (set-virtual-lines! pane source virtual-lines)
+    (set-extra-highlights! pane source spans)))
 
 ;; ── Line background tint ─────────────────────────────────────────────────────
 
@@ -97,7 +96,7 @@
           (map (lambda (line) (hash 'line line 'scope scope)) (range new-start new-end))))))
 
 (define (git-diff/render-line-bgs! pane source hunks)
-  (set-line-backgrounds! source pane (apply append (map git-diff/hunk->line-bgs hunks))))
+  (set-line-backgrounds! pane source (apply append (map git-diff/hunk->line-bgs hunks))))
 
 ;;; Inline rendering under `source`; the one entry point for any plugin's hunks — see docs/rendering.md.
 (define (git-diff/render-diff! pane source hunks)

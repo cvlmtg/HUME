@@ -426,9 +426,10 @@ fn shift_d_is_dot_repeatable() {
 // ── core:stdlib dependency check ───────────────────────────────────────────────
 
 /// Loading `core:vim-keybind` with the default `'smart` `change-to-eol` but
-/// without `core:stdlib` loaded first must fail to load (contained, not
-/// aborting `eval_init`), naming `core:stdlib`, not silently succeed and
-/// leave `C` picking the wrong branch the first time it's pressed.
+/// without `core:stdlib` must fail to load (contained, not aborting
+/// `eval_init`), naming the stdlib command its config read calls, not
+/// succeed and leave `C` picking the wrong branch the first time it's
+/// pressed.
 #[test]
 fn smart_change_to_eol_without_stdlib_errors_at_load() {
     let guard = RuntimeDirs::new();
@@ -438,13 +439,13 @@ fn smart_change_to_eol_without_stdlib_errors_at_load() {
         guard.dirs(),
         r#"(load-plugin! "core:vim-keybind")"#,
         "vim-keybind",
-        &["core:stdlib"],
+        &["unknown command: stdlib/config-enum"],
     );
 }
 
-/// `core:vim-keybind`'s `core:stdlib` guard is unconditional (its config
-/// read always calls `stdlib/config-enum`, whatever `change-to-eol` resolves
-/// to). `'off` fails to load without `core:stdlib` too, naming it.
+/// `core:vim-keybind`'s config read always calls `stdlib/config-enum`,
+/// whatever `change-to-eol` resolves to, so `'off` fails to load without
+/// `core:stdlib` too.
 #[test]
 fn change_to_eol_off_also_requires_stdlib() {
     let guard = RuntimeDirs::new();
@@ -454,7 +455,7 @@ fn change_to_eol_off_also_requires_stdlib() {
         guard.dirs(),
         r#"(load-plugin! "core:vim-keybind" #:config (hash 'change-to-eol 'off))"#,
         "vim-keybind",
-        &["core:stdlib"],
+        &["unknown command: stdlib/config-enum"],
     );
 }
 

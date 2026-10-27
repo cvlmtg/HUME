@@ -174,11 +174,9 @@ pub(crate) fn define_typed_command(
 ///   and the optional trailing operand, and returns `run_command_sync`'s
 ///   `#t`/`#f`. In init mode it warns and returns `#f`, since buffers aren't
 ///   available yet.
-/// - **Steel command missing from the table** or **unknown**: logs an `Error`
-///   and returns `#f`.
-///
-/// A miss logs at `Error` (a plugin bug, like an unknown `:` command) but does
-/// not raise.
+/// - **Steel command missing from the table**, or a name `call!` cannot
+///   reach (unknown, typed, key-only): raises, naming it, like any other
+///   caller mistake.
 pub(crate) fn call_command_primitive(
     ctx: &mut SteelCtx,
     name: String,
@@ -218,14 +216,8 @@ pub(crate) fn call_command_primitive(
                 .map(SteelVal::BoolV)
                 .map_err(generic_err)
         }
-        Ok(false) => {
-            ctx.log(Severity::Error, format!("'{name}' is not a native command"));
-            Ok(SteelVal::BoolV(false))
-        }
-        Err(msg) => {
-            ctx.log(Severity::Error, msg);
-            Ok(SteelVal::BoolV(false))
-        }
+        Ok(false) => Err(generic_err(format!("'{name}' is not a native command"))),
+        Err(msg) => Err(generic_err(msg)),
     }
 }
 

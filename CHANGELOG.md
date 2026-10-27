@@ -31,11 +31,25 @@
 - A plugin's `#:config` takes symbol keys, and `load-plugin!` raises for a string key or a value that isn't a hash: write `(hash 'signs #f)` for `(hash "signs" #f)`. The `stdlib/config-*` readers take the key as a symbol too, `'signs` for `"signs"`.
 - `plugin-config` and `plugin-dir` raise outside a plugin's code, such as at the top level of `init.scm`, instead of answering an empty hash or `#f`.
 - `stdlib/config-integer` takes an integer minimum: replace a `#f` minimum with the lowest value you accept.
+- `on-trigger-char` passes the typed character as a Scheme char, and `set-hook-triggers!`, `set-completion-triggers!` and their `set-attachment-*` forms take a list of chars: write `'(#\.)` for `'(".")`, and compare a hook's character with `#\.`.
+- `diagnostic-counts` returns `(hash 'error 'warning 'info 'hint)`, not `(hash 'errors 'warnings)`, and counts only severities at or above `lsp-diagnostics-min-severity`, or its new `#:severity`: read `(hash-ref c 'error)` for `(hash-ref c 'errors)`. The statusline's counts follow the same floor.
+- A virtual line's `'segments` take `'start-char-col`/`'end-char-col`, char columns in its `'text`, not `'start-char`/`'end-char`, which always name offsets into a whole text.
+- A virtual line names its side with `'side`, as an inlay hint does: write `'side 'before` for `'anchor 'before`.
+- Keymap names are strings, like command and plugin names: write `#:keymap "my-keys"` and `(attach-keymap! pane "my-keys")` for `'my-keys`.
+- `call!` raises for a command it can't reach (an unknown name, a typed command such as `write`, or a key-only one such as `pipe`) instead of logging an error and returning `#f`, and `command-exists?` answers `#f` for a key-only command: probe an optional command with `command-exists?` first.
+- `edit-text!` edits for no pane when `pane` no longer shows its buffer, as `apply-text-edits!` does, and takes `#:expect-generation`.
+- `switch-to-buffer!`, `show-read-only-buffer!` and `goto-location!` return the pane value now showing their target, not void or `#t`: use it for the next call on that buffer.
+- The decoration and trigger setters take the pane first, and the two language-wide trigger setters the language first: write `(set-signs! pane source signs)` for `(set-signs! source pane signs)`, and the same for `set-inlay-hints!`, `register-sign-source!`, `set-virtual-lines!`, `set-eol-text!`, `set-extra-highlights!`, `set-line-backgrounds!`, `set-statusline-text!`, `set-attachment-hook-triggers!` and `set-attachment-completion-triggers!`; write `(set-hook-triggers! language source chars)` and `(set-completion-triggers! language source chars)`.
+- `show-drawer-list!` and `update-drawer-list!` take `(display . payload)` pairs, as `picker!` does, and `on-select` gets the selected row's payload, or its key with `#:render`, instead of its index: write `(cons text value)` for each row and use the value `on-select` receives.
+- `picker!` and `live-picker!` return `#f` when `.` answers them without opening, as `show-menu!` does.
+- `diff-lines`, `diff-buffer-lines` and `buffer-revision-diff` return `(hash 'hunks … 'deadline-hit …)`, as `diff-words` does, not a list: read the hunks with `(hash-ref result 'hunks)`. A hunk's `'words` is `#f` when it was too large to compare word by word.
 
 ### Syntax & language awareness
 - HUME starts faster: each installed grammar loads the first time a file or an embedded block needs it, not at startup.
 
 ### Plugins & scripting
+- `lsp-stop!` and `lsp-restart!` take a server value, to stop or restart that one running server.
+- `lsp-language-servers` sees a `set-language-servers!` or a registration made earlier in the same call.
 - `steel-command-budget-ms` and `steel-init-budget-ms` stop a script that runs past them, so a plugin stuck in a loop can't freeze HUME.
 - `init.scm` and plugins compile faster, so HUME starts sooner.
 - New `replace-dir!`, `try-lock-file!` and `unlock-file!`.

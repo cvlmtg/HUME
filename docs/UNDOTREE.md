@@ -126,8 +126,8 @@ empty `'words`.
 
 ### Hunks cross the Steel boundary, changesets do not
 
-`(buffer-revision-diff pane id)` returns a list of hunks in the shape
-`diff-buffer-lines` returns.
+`(buffer-revision-diff pane id)` returns `(hash 'hunks … 'deadline-hit #f)`, its hunks in the
+shape `diff-buffer-lines` returns them.
 The revision's text is the old side and the live buffer's the new. Both
 builtins return `hume-editing`'s `ChangeHunk`, the one hunk type behind
 `DiffHost`.

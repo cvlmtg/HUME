@@ -8,8 +8,6 @@
 (require "lib/install.scm")
 (require "lib/lock.scm")
 
-(lsp-install/require-stdlib!)
-
 (define (lsp-install/install! name had-dir?)
   (if (lsp-install/with-lock! (string-append "install " name)
         (lambda ()

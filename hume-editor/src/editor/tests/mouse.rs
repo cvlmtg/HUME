@@ -1,7 +1,7 @@
 use super::*;
 use crate::editor::buffer::{DiskCheckTrigger, DiskState};
 use crate::editor::input_stack::picker;
-use crate::editor::input_stack::{DrawerLayer, DrawerRows, DrawerSelect, MenuLayer};
+use crate::editor::input_stack::{DrawerLayer, DrawerRows, MenuLayer};
 use crate::editor::input_stack::{PickerItem, PickerSession};
 use hume_grid::Rect;
 use hume_scripting::host::PickerOpts;
@@ -1024,8 +1024,10 @@ fn click_under_drawer_falls_through_leaving_it_open() {
     ed.state.push_layer(
         &ed.view,
         DrawerLayer::new(
-            DrawerRows::rendered(non_empty_strings(&["d0"])),
-            DrawerSelect::Steel(hume_scripting::Callback::for_test(marker("drawer-cb"))),
+            DrawerRows::script(
+                drawer_items(&["d0"]),
+                hume_scripting::Callback::for_test(marker("drawer-cb")),
+            ),
             0,
         ),
     );
@@ -1053,8 +1055,10 @@ fn wheel_under_drawer_scrolls_the_pane_leaving_it_open() {
     ed.state.push_layer(
         &ed.view,
         DrawerLayer::new(
-            DrawerRows::rendered(non_empty_strings(&["d0"])),
-            DrawerSelect::Steel(hume_scripting::Callback::for_test(marker("drawer-cb"))),
+            DrawerRows::script(
+                drawer_items(&["d0"]),
+                hume_scripting::Callback::for_test(marker("drawer-cb")),
+            ),
             0,
         ),
     );

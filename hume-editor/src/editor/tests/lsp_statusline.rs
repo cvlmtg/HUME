@@ -102,6 +102,28 @@ fn diagnostics_element_displays_published_error_and_warning_counts() {
     );
 }
 
+/// A warning below `lsp-diagnostics-min-severity` is not counted, as it is
+/// not underlined: the element reads as if only the error was published.
+#[test]
+fn diagnostics_element_counts_only_severities_at_or_above_the_floor() {
+    let render = |ed: &Editor| {
+        let colors = crate::statusline::colors::EditorColors::default();
+        crate::statusline::render_element(
+            &StatusElement::Diagnostics,
+            &ed.statusline(),
+            &colors,
+            "",
+        )
+        .0
+        .into_owned()
+    };
+    let mut floored = setup("abcdefgh\n", &[&[((0, 0), (0, 1), 1), ((0, 2), (0, 3), 2)]]);
+    floored.ed.state.settings.lsp_diagnostics_min_severity = hume_core::DiagSeverity::Error;
+    let error_only = setup("abcdefgh\n", &[&[((0, 0), (0, 1), 1)]]);
+
+    assert_eq!(render(&floored.ed), render(&error_only.ed));
+}
+
 #[test]
 fn severity_mapping_produces_error_only_and_warning_only_counts() {
     let c = setup("abcdefgh\n", &[&[((0, 0), (0, 1), 1)]]);

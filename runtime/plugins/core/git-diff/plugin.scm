@@ -5,9 +5,6 @@
 (require "lib/branch.scm")
 (require "lib/render.scm")
 
-(unless (member "core:stdlib" (declared-plugins))
-  (error "core:git-diff: requires core:stdlib — add (load-plugin! \"core:stdlib\") before (load-plugin! \"core:git-diff\")"))
-
 ;; ── Config ────────────────────────────────────────────────────────────────────
 
 (define git-diff/cfg (plugin-config))
@@ -60,7 +57,7 @@
   (git-diff/refresh! pane git-diff/ref))
 
 (define-command! "git-diff/render-diff"
-  "Draw hunks inline in a buffer: deleted lines as virtual lines, word highlights and a line tint. Arguments: pane, a decoration source name, a list of hunks in the shape `diff-buffer-lines` and `buffer-revision-diff` return. The source keeps the drawing apart from every other source's; an empty list draws nothing. Until `git-diff/release-diff` releases the source, the buffer's own inline git diff is hidden; its gutter signs stay."
+  "Draw hunks inline in a buffer: deleted lines as virtual lines, word highlights and a line tint. Arguments: pane, a decoration source name, the `'hunks` list `diff-buffer-lines` and `buffer-revision-diff` return. The source keeps the drawing apart from every other source's; an empty list draws nothing. Until `git-diff/release-diff` releases the source, the buffer's own inline git diff is hidden; its gutter signs stay."
   git-diff/draw-for-source!)
 
 (define-command! "git-diff/release-diff"

@@ -142,7 +142,7 @@ pub(crate) struct ConfigState {
     /// lines, EOL text, extra highlights, line backgrounds). The render
     /// providers read these.
     pub(in crate::editor) decorations: hume_decorations::DecorationStores,
-    /// Text pushed by `(set-statusline-text! source bid text)`, wholesale
+    /// Text pushed by `(set-statusline-text! bid source text)`, wholesale
     /// per `(bid, source)`, same replace semantics as `decorations`. Nested
     /// rather than flat: the render side needs a
     /// borrowed `(bid, &str)` lookup every frame, and a `HashMap` keyed on

@@ -499,6 +499,30 @@ fn a_symbol_option_value_raises() {
     );
 }
 
+/// A list or a hash given to an option that takes one value is refused for
+/// that, whatever the list or hash holds.
+#[test]
+fn a_composite_value_for_a_one_value_option_raises_takes_one_value() {
+    for value in ["(hash 'n 4)", "'(1 2)"] {
+        let mut ed = editor_from("-[a]>b\n");
+        let err = eval_set_option(&mut ed, &format!(r#"(set-option! "indent-width" {value})"#))
+            .expect_err("a composite value is refused");
+        assert!(
+            err.contains("'indent-width' takes one value"),
+            "{value}: {err}"
+        );
+    }
+}
+
+/// An unknown option name is reported as unknown, whatever its value.
+#[test]
+fn an_unknown_option_with_a_hash_value_raises_unknown_setting() {
+    let mut ed = editor_from("-[a]>b\n");
+    let err = eval_set_option(&mut ed, r#"(set-option! "no-such" (hash 'left '()))"#)
+        .expect_err("an unknown option is refused");
+    assert!(err.contains("unknown setting 'no-such'"), "got: {err}");
+}
+
 /// The feature this scope layer exists for: setting wrap-mode per file type
 /// from an `on-language-set` hook via `set-buffer-option!`. The open pane
 /// (never explicitly `:wrap`'d or `:set pane`'d) picks up the change

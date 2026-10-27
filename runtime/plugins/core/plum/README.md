@@ -69,9 +69,9 @@ source:
   (see [Grammar sources and the Helix pin](#grammar-sources-and-the-helix-pin)).
 - **`themes.scm`** (`#:entry`): third-party theme install, update, list and remove (see
   [Theme install](#theme-install)).
-- **`lib/helpers.scm`**: `plum/require-stdlib!` (the `core:stdlib` check each entry runs),
-  `plum/github-url`, `plum/install-repo!` and `plum/git-sync!` (the one GitHub URL shape,
-  the install every install command shares, and the checkout behind both install and
+- **`lib/helpers.scm`**: `plum/github-url`, `plum/install-repo!` and `plum/git-sync!`
+  (the one GitHub URL shape, the install every install command shares, and the checkout
+  behind both install and
   update; see [Pinned plugins](#pinned-plugins)), `plum/batch-run!`, and
   `plum/two-level-repos` (the `<root>/<user>/<repo>/`
   walk behind plugin and theme-repo discovery). Directory listing, filesystem cleanup, list

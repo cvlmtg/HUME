@@ -122,7 +122,7 @@ fn reload_config_repopulates_statusline_text_pushed_from_on_buffer_enter() {
     // fixture user, which rewrites it via `write_init` before reloading.
     let fixture = ReloadFixture::new(
         r#"(register-hook! 'on-buffer-enter (lambda (bid)
-             (set-statusline-text! "greeting" bid "hello")))"#,
+             (set-statusline-text! bid "greeting" "hello")))"#,
     );
     let mut ed = editor_from("-[a]>b\n");
     ed.state.dirs = fixture.dirs();

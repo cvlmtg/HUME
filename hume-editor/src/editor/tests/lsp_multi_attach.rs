@@ -417,3 +417,74 @@ fn attach_hook_fires_once_per_buffer_and_server() {
         Some(EditorSettings::default().indent_width + 2)
     );
 }
+
+/// `(lsp-stop! server)` stops that one running server: the buffer's other
+/// server keeps running and stays attached.
+#[test]
+fn stopping_through_a_server_value_stops_only_that_server() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut rig = two_servers(&tmp, "-[f]>n main() {}\n");
+    let (ra, lint) = (rig.sid("rust-analyzer"), rig.sid("ra-lint"));
+
+    rig.ed
+        .apply_lsp_server_op(hume_scripting::PendingLspServerOp::Stop {
+            target: hume_scripting::LspServerTarget::Server(lint),
+        });
+
+    assert_eq!(rig.attached(), vec![ra]);
+    assert_eq!(rig.ed.state.lsp.instance_count_for_test(), 1);
+}
+
+/// A server stopped through its value starts again when that same value is
+/// restarted.
+#[test]
+fn restarting_through_the_value_a_stop_used_starts_that_server_again() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut rig = two_servers(&tmp, "-[f]>n main() {}\n");
+    let lint = rig.sid("ra-lint");
+    for op in [
+        hume_scripting::PendingLspServerOp::Stop {
+            target: hume_scripting::LspServerTarget::Server(lint),
+        },
+        hume_scripting::PendingLspServerOp::Restart {
+            target: hume_scripting::LspServerTarget::Server(lint),
+        },
+    ] {
+        rig.ed.apply_lsp_server_op(op);
+    }
+
+    assert_eq!(rig.ed.state.lsp.instance_count_for_test(), 2);
+    assert_eq!(
+        rig.attached(),
+        vec![rig.sid("rust-analyzer"), rig.sid("ra-lint")]
+    );
+    assert_eq!(
+        rig.ed.state.status_msg.as_deref(),
+        Some("lsp: restarted 1 server(s)")
+    );
+}
+
+/// A restart through a server value restarts that server alone; the other
+/// keeps its instance.
+#[test]
+fn restarting_through_a_server_value_restarts_only_that_server() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut rig = two_servers(&tmp, "-[f]>n main() {}\n");
+    let (ra, lint) = (rig.sid("rust-analyzer"), rig.sid("ra-lint"));
+
+    rig.ed
+        .apply_lsp_server_op(hume_scripting::PendingLspServerOp::Restart {
+            target: hume_scripting::LspServerTarget::Server(lint),
+        });
+
+    assert!(
+        rig.attached().contains(&ra),
+        "rust-analyzer keeps its instance"
+    );
+    assert!(
+        !rig.attached().contains(&lint),
+        "ra-lint's old instance is gone: {:?}",
+        rig.attached()
+    );
+    assert_eq!(rig.ed.state.lsp.instance_count_for_test(), 2);
+}

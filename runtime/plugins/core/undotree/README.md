@@ -144,7 +144,7 @@ drawer to it and does not jump.
 While the drawer is open the buffer shows what separates the current revision
 from its parent, drawn inline under the decoration source `"undotree"`:
 the parent's lines as deleted lines, word highlights and a line tint. The
-hunks come from `(buffer-revision-diff pane parent-id)`, so the parent's text
+hunks come from `(buffer-revision-diff pane parent-id)`'s `'hunks`, so the parent's text
 is the old side and the buffer's text the new, and `core:git-diff` draws them
 through its `git-diff/render-diff` command (see its `docs/rendering.md`). The
 root has no parent and shows nothing. From the first draw until the session

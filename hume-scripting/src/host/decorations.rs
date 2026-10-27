@@ -12,7 +12,7 @@ use crate::types::VirtualLineSpec;
 /// text, and the diagnostic pull/count reads, accessed through
 /// [`EditorHost::decorations`](super::EditorHost::decorations).
 pub trait DecorationHost {
-    /// `(set-inlay-hints! source pane hints)`: replaces `source`'s inlay
+    /// `(set-inlay-hints! pane source hints)`: replaces `source`'s inlay
     /// hints for `bid` wholesale. Each entry is `(offset, text, side)`,
     /// `offset` already a char offset. The Steel builtin accepts char offsets
     /// only (see `lsp-position->char-offset` to convert an LSP wire position).
@@ -23,9 +23,9 @@ pub trait DecorationHost {
         hints: Vec<(usize, String, Side)>,
     ) -> Result<(), String>;
 
-    /// `(register-sign-source! name pane priority)`: declares `name` a sign
-    /// channel at `priority` *for `bid`*, replacing any prior registration
-    /// under that name in that buffer (last wins, matching
+    /// `(register-sign-source! pane source priority)`: declares `source` a
+    /// sign channel at `priority` *for `bid`*, replacing any prior
+    /// registration under that source in that buffer (last wins, matching
     /// `register-lsp-server!`). Its gutter slot is its rank among every
     /// source registered for that same buffer, not a property of any one
     /// `set_signs` call, and not shared with any other buffer. A source
@@ -39,7 +39,7 @@ pub trait DecorationHost {
         priority: i64,
     ) -> Result<(), String>;
 
-    /// `(set-signs! source pane signs)`: replaces `source`'s signs for `bid`
+    /// `(set-signs! pane source signs)`: replaces `source`'s signs for `bid`
     /// wholesale. Each entry is `(line, text, scope)`; `line` converts to
     /// that line's line-start char offset at this boundary. `Err`, naming
     /// the builtin, if `line` is out of range or `source` isn't registered
@@ -51,7 +51,7 @@ pub trait DecorationHost {
         signs: Vec<(usize, String, String)>,
     ) -> Result<(), String>;
 
-    /// `(set-virtual-lines! source pane lines)`: replaces `source`'s virtual
+    /// `(set-virtual-lines! pane source lines)`: replaces `source`'s virtual
     /// lines for `bid` wholesale. Each `VirtualLineSpec`'s `segments` are
     /// **unvalidated** char ranges (the Steel boundary only decodes shape,
     /// see `VirtualLineSpec`'s doc), so this method is the sole enforcement
@@ -66,7 +66,7 @@ pub trait DecorationHost {
         lines: Vec<VirtualLineSpec>,
     ) -> Result<(), String>;
 
-    /// `(set-extra-highlights! source pane spans)`: replaces `source`'s
+    /// `(set-extra-highlights! pane source spans)`: replaces `source`'s
     /// extra highlights for `bid` wholesale. Each entry is `(start, end,
     /// scope)`, char offsets. `Err` if the range is empty or out of bounds.
     fn set_extra_highlights(
@@ -76,7 +76,7 @@ pub trait DecorationHost {
         spans: Vec<(usize, usize, String)>,
     ) -> Result<(), String>;
 
-    /// `(set-eol-text! source pane lines)`: replaces `source`'s EOL text for
+    /// `(set-eol-text! pane source lines)`: replaces `source`'s EOL text for
     /// `bid` wholesale. Each entry is `(line, text, scope)`; `text` is
     /// spliced in at the end of `line`, which converts to that line's
     /// line-start char offset at this boundary. `Err` if `line` is out of
@@ -92,7 +92,7 @@ pub trait DecorationHost {
         hide_on_insert_line: bool,
     ) -> Result<(), String>;
 
-    /// `(set-line-backgrounds! source pane entries)`: replaces `source`'s
+    /// `(set-line-backgrounds! pane source entries)`: replaces `source`'s
     /// line backgrounds for `bid` wholesale. Each entry is `(line, scope)`;
     /// `line` converts to that line's line-start char offset at this
     /// boundary. `Err` if `line` is out of range.
@@ -103,7 +103,7 @@ pub trait DecorationHost {
         entries: Vec<(usize, String)>,
     ) -> Result<(), String>;
 
-    /// `(set-statusline-text! source pane text)`: replaces `source`'s
+    /// `(set-statusline-text! pane source text)`: replaces `source`'s
     /// statusline text for `bid` wholesale; an empty `text` clears it.
     /// Rendered by the `steel:<source>` statusline element, reading only the
     /// focused buffer's entry. A `bid` that isn't focused simply isn't
@@ -129,8 +129,36 @@ pub trait DecorationHost {
         range: Option<(usize, usize)>,
     ) -> Result<Vec<DiagnosticEntry>, String>;
 
-    /// `(diagnostic-counts pane)` → `(errors . warnings)`.
-    fn diagnostic_counts(&self, bid: BufferId) -> (usize, usize);
+    /// `(diagnostic-counts pane #:severity floor)`: `bid`'s diagnostics
+    /// counted per severity, those below `floor` (default
+    /// `lsp-diagnostics-min-severity`) as none.
+    fn diagnostic_counts(&self, bid: BufferId, floor: Option<DiagSeverity>) -> DiagnosticCounts;
+}
+
+/// How many of a buffer's diagnostics carry each severity.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct DiagnosticCounts {
+    pub error: usize,
+    pub warning: usize,
+    pub info: usize,
+    pub hint: usize,
+}
+
+impl DiagnosticCounts {
+    /// The count for `severity`.
+    pub fn get(mut self, severity: DiagSeverity) -> usize {
+        *self.of(severity)
+    }
+
+    /// The count for `severity`, to add to.
+    pub fn of(&mut self, severity: DiagSeverity) -> &mut usize {
+        match severity {
+            DiagSeverity::Error => &mut self.error,
+            DiagSeverity::Warning => &mut self.warning,
+            DiagSeverity::Info => &mut self.info,
+            DiagSeverity::Hint => &mut self.hint,
+        }
+    }
 }
 
 /// One `diagnostics-for-buffer` result entry; see

@@ -29,11 +29,11 @@ impl StatuslineElement for DiagnosticsElement {
 
     fn read(editor: &HumeStatusline<'_>) -> Self::Data {
         let bid = editor.focused_buffer_id();
-        let (errors, warnings) = editor.diagnostic_counts(bid);
+        let counts = editor.diagnostic_counts(bid);
         (
             editor.lsp_activity(bid),
-            errors,
-            warnings,
+            counts.error,
+            counts.warning,
             editor.lsp_spinner_frame(),
         )
     }

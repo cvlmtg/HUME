@@ -14,13 +14,13 @@
 (define (git-diff/handle-branch-result! pane style result)
   (let ([exit-code (hash-ref result 'exit)])
     (if (equal? exit-code 0)
-        (set-statusline-text! "git-branch" pane
+        (set-statusline-text! pane "git-branch"
                               (git-diff/format-branch style (trim (hash-ref result 'stdout))))
         (begin
           (when (not exit-code)
             (log! 'error (string-append "git-diff: `git rev-parse` failed: "
                                         (trim (hash-ref result 'stderr)))))
-          (set-statusline-text! "git-branch" pane "")))))
+          (set-statusline-text! pane "git-branch" "")))))
 
 ;;; `git rev-parse --abbrev-ref HEAD`, cwd = `path`'s directory.
 (define (git-diff/fetch-branch! pane style path)

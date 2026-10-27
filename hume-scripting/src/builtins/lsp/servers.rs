@@ -220,10 +220,29 @@ pub(crate) fn set_default_language_servers(
 /// `(lsp-language-servers language)` → the servers `language`'s buffers
 /// attach to, in order: one `(hash 'name n)` per server, with
 /// `'only-features` or `'except-features` (a list of feature symbols) when
-/// its list entry filters it.
+/// its list entry filters it. Reads through this eval's queued list writes
+/// and registrations, as `lsp-server-registered?` does.
 pub(crate) fn lsp_language_servers(ctx: &mut SteelCtx, language: SteelVal) -> SteelResult {
     let language = string_arg(language, "language")?;
-    let entries = require_cap(ctx.host.lsp())?.lsp_language_servers(&language);
+    let mut lists = require_cap(ctx.host.lsp())?.lsp_language_lists(&language);
+    for queued in ctx.effects.iter() {
+        if let Effect::LspServerOp(PendingLspServerOp::SetLanguageServers {
+            language: queued_language,
+            tier,
+            origin,
+            entries,
+        }) = &queued.effect
+            && *queued_language == language
+        {
+            lists.set(*tier, *origin, entries.clone());
+        }
+    }
+    let mut entries: Vec<ListEntry> = Vec::new();
+    for entry in lists.plan(|_| true) {
+        if super::registered_now(ctx, &entry.name)? {
+            entries.push(entry.clone());
+        }
+    }
     let features =
         |set: LspFeatureSet| list_of(set.iter().map(|f| SteelVal::SymbolV(f.name().into())));
     Ok(list_of(entries.into_iter().map(|entry| {
@@ -236,8 +255,9 @@ pub(crate) fn lsp_language_servers(ctx: &mut SteelCtx, language: SteelVal) -> St
     })))
 }
 
-/// `(lsp-stop! target)`: `target` a pane (every server attached to its
-/// buffer) or a string/symbol (every running instance of that server name).
+/// `(lsp-stop! target)`: `target` a server value (that running server), a
+/// pane (every server attached to its buffer) or a string/symbol (every
+/// running instance of that server name).
 /// Queues a stop, applied at the end of the current eval (see
 /// `Editor::apply_lsp_server_ops`); the report of how many servers stopped is
 /// emitted by that same drain.
@@ -266,18 +286,23 @@ pub(crate) fn lsp_show_status(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResu
 }
 
 /// `(lsp-stop! target)` / `(lsp-restart! target)`'s `target` argument, ahead
-/// of [`BuiltinArg::resolve`]'s liveness check on the `Buffer` case. A pane
-/// decodes like [`LivePane`] (only its buffer is used: this is a kind-C,
-/// buffer-only operation), a string or symbol names a registered server
-/// (required: there is no "focused buffer" fallback to decode `#f` into).
+/// of [`BuiltinArg::resolve`]'s liveness check on the `Buffer` case. A
+/// server value names that one instance, a pane decodes like [`LivePane`]
+/// (only its buffer is used: this is a kind-C, buffer-only operation), and a
+/// string or symbol names a registered server (required: there is no
+/// "focused buffer" fallback to decode `#f` into).
 #[derive(Debug)]
 pub(crate) enum LspTargetArg {
+    Server(crate::ServerRef),
     Buffer(LivePane),
     Name(String),
 }
 
 impl FromSteelVal for LspTargetArg {
     fn from_steelval(val: &SteelVal) -> Result<Self, SteelErr> {
+        if let Some(server) = crate::ServerRef::from_steel_val(val) {
+            return Ok(LspTargetArg::Server(server));
+        }
         if let Ok(pane) = LivePane::from_steelval(val) {
             return Ok(LspTargetArg::Buffer(pane));
         }
@@ -286,7 +311,7 @@ impl FromSteelVal for LspTargetArg {
             SteelVal::SymbolV(s) => Ok(LspTargetArg::Name(s.to_string())),
             _ => Err(SteelErr::new(
                 ErrorKind::TypeMismatch,
-                "expected a pane or a server name".to_string(),
+                "expected a server, a pane or a server name".to_string(),
             )),
         }
     }
@@ -300,6 +325,7 @@ impl BuiltinArg for LspTargetArg {
         arg: &'static str,
     ) -> Result<crate::types::LspServerTarget, SteelErr> {
         match self {
+            LspTargetArg::Server(server) => Ok(crate::types::LspServerTarget::Server(server.id)),
             LspTargetArg::Buffer(pane) => Ok(crate::types::LspServerTarget::Buffer(
                 pane.resolve(ctx, arg)?.buffer(),
             )),

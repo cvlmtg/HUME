@@ -633,7 +633,8 @@ fn direct_host_impl_open_push_and_close_with_no_lsp_borrow() {
             hume_scripting::Callback::for_test(SteelVal::Void),
             PickerOpts::default(),
         )
-        .unwrap();
+        .unwrap()
+        .expect("no `.` is in progress");
     assert!(ed.state.input.picker().is_some());
 
     let _pane = focused_pane(&ed);
@@ -680,7 +681,8 @@ fn direct_host_impl_picker_close_with_a_stale_token_is_a_no_op() {
             hume_scripting::Callback::for_test(SteelVal::Void),
             PickerOpts::default(),
         )
-        .unwrap();
+        .unwrap()
+        .expect("no `.` is in progress");
 
     let _pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
@@ -1351,7 +1353,7 @@ fn widget_token_builtins_treat_a_false_token_as_stale_not_an_error() {
              (close-drawer! #f)
              (picker-close! #f)
              (call! "move-right" pane)
-             (when (not (update-drawer-list! #f (list "a") (lambda (x tok) x) 0))
+             (when (not (update-drawer-list! #f (map (lambda (row) (cons row row)) (list "a")) (lambda (x tok) x) 0))
                (call! "move-right" pane))
              (when (not (drawer-selected-index #f))
                (call! "move-right" pane))

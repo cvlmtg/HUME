@@ -29,13 +29,14 @@ pub struct PendingLspServerReg {
     pub origin: ConfigOrigin,
 }
 
-/// `(lsp-stop! target)` / `(lsp-restart! target)`'s target: every server
-/// attached to one buffer, or every running instance of a registration
-/// name. A caller names the buffer explicitly, so a stop/restart queued
-/// from a hook or callback isn't at the mercy of whatever buffer happens to
-/// be focused when the effect log drains.
+/// `(lsp-stop! target)` / `(lsp-restart! target)`'s target: one running
+/// server, every server attached to one buffer, or every running instance
+/// of a registration name. A caller names the buffer explicitly, so a
+/// stop/restart queued from a hook or callback isn't at the mercy of
+/// whatever buffer happens to be focused when the effect log drains.
 #[derive(Debug)]
 pub enum LspServerTarget {
+    Server(hume_lsp::backend::ServerId),
     Buffer(BufferId),
     Name(ServerName),
 }

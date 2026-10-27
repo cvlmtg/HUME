@@ -20,8 +20,8 @@ const PRELUDE: &str = r##"
   (set! requests (string-append requests (number->string start) ":"
                                 (number->string (length keys)) ";"))
   (map (lambda (k) (string-append "row " (number->string k))) keys))
-(define (on-select i token)
-  (set! selections (string-append selections (if i (number->string i) "#f")
+(define (on-select key token)
+  (set! selections (string-append selections (if key (number->string key) "#f")
                                   (if (equal? token drawer) "" "?") ";")))
 (define-typed-command! "requests" "" (lambda (pane) (log! 'info requests)))
 (define-typed-command! "selections" "" (lambda (pane) (log! 'info selections)))
@@ -179,6 +179,21 @@ fn a_taller_terminal_shows_rendered_rows_in_the_same_frame() {
     );
 }
 
+/// Enter hands `on-select` the selected row's key, not its index.
+#[test]
+fn enter_passes_the_selected_rows_key() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>abc\n");
+    open(&mut ed, tmp.path(), "(range 100 130)", "render");
+    frame(&mut ed, WIDTH, HEIGHT);
+    ed.feed_key(key_ctrl('d'));
+    ed.feed_key(key_ctrl('d'));
+    ed.feed_key(key_enter());
+    ed.settle();
+
+    assert_eq!(shown(&mut ed, "selections"), "102;");
+}
+
 #[test]
 fn eager_string_rows_need_no_render_proc() {
     let tmp = tempfile::tempdir().unwrap();
@@ -187,7 +202,7 @@ fn eager_string_rows_need_no_render_proc() {
         &mut ed,
         tmp.path(),
         r#"(define-typed-command! "go" "" (lambda (pane)
-             (show-drawer-list! pane (list "a" "b") (lambda (i tok) (begin)))))"#,
+             (show-drawer-list! pane (list (cons "a" 'a) (cons "b" 'b)) (lambda (row tok) (begin)))))"#,
     );
     type_cmd(&mut ed, ":go");
 

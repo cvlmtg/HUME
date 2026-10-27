@@ -38,8 +38,14 @@ fn hunk(old_start: usize, new_start: usize, old: &[&str], new: &[&str]) -> Chang
         new_start: ContentLine::new(new_start),
         old_lines: strs(old),
         new_lines: strs(new),
-        words: WordSpans::default(),
+        words: Some(WordSpans::default()),
     }
+}
+
+/// `h` with its word diff skipped for the budget.
+fn over_budget(mut h: ChangeHunk) -> ChangeHunk {
+    h.words = None;
+    h
 }
 
 fn span(line: usize, start: usize, end: usize) -> LineSpan {
@@ -59,7 +65,7 @@ fn with_words(
     old: Vec<LineSpan>,
     new: Vec<ExclusiveRange<CharOffset>>,
 ) -> ChangeHunk {
-    h.words = WordSpans { old, new };
+    h.words = Some(WordSpans { old, new });
     h
 }
 
@@ -220,14 +226,19 @@ fn a_whole_line_diff_revision_has_no_word_spans() {
 }
 
 fn text_of(old: &str, new: &str) -> Vec<ChangeHunk> {
-    text_hunks(&BufferText::from(old), &BufferText::from(new))
+    let diff = text_hunks(&BufferText::from(old), &BufferText::from(new));
+    assert!(!diff.deadline_hit, "a test text diffs in time");
+    diff.hunks
 }
 
 /// The words of a text hunk with both sides, which must be its only hunk.
 fn words_of(old: &str, new: &str) -> WordSpans {
     let hunks = text_of(old, new);
     assert_eq!(hunks.len(), 1, "expected one hunk: {hunks:?}");
-    hunks[0].words.clone()
+    hunks[0]
+        .words
+        .clone()
+        .expect("a test hunk fits the word budget")
 }
 
 #[test]
@@ -334,16 +345,21 @@ fn text_hunk_words_split_a_span_across_lines() {
     assert_eq!(words.new, vec![chars(1, 2)]);
 }
 
-/// Once the shared budget is spent, a replaced hunk keeps its lines but
-/// gets no spans.
+/// Once the shared budget is spent, a replaced hunk keeps its lines and says
+/// its word diff was skipped, which no spans could not tell apart from a
+/// change of whole lines.
 #[test]
-fn text_hunks_past_the_word_budget_have_no_spans() {
+fn text_hunks_past_the_word_budget_say_so() {
     let hunks = text_hunks_with_budget(
         &BufferText::from("let x = 1;\n"),
         &BufferText::from("let y = 1;\n"),
         0,
+    )
+    .hunks;
+    assert_eq!(
+        hunks,
+        vec![over_budget(hunk(0, 0, &["let x = 1;"], &["let y = 1;"]))]
     );
-    assert_eq!(hunks, vec![hunk(0, 0, &["let x = 1;"], &["let y = 1;"])]);
 }
 
 /// A hunk with more word tokens than the budget has left gets no spans and
@@ -355,11 +371,12 @@ fn text_hunks_skip_the_spans_of_a_hunk_larger_than_the_budget_left() {
         &BufferText::from("p q r s\nkeep\nm n\n"),
         &BufferText::from("p Q r s\nkeep\nm o\n"),
         6,
-    );
+    )
+    .hunks;
     assert_eq!(
         hunks,
         vec![
-            hunk(0, 0, &["p q r s"], &["p Q r s"]),
+            over_budget(hunk(0, 0, &["p q r s"], &["p Q r s"])),
             with_words(
                 hunk(2, 2, &["m n"], &["m o"]),
                 vec![span(2, 2, 3)],

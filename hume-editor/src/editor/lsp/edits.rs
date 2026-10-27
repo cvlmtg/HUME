@@ -9,7 +9,7 @@
 //! it shares the edit-application path with `apply-workspace-edit!` and
 //! belongs next to it.
 
-use hume_core::{BufferId, OnUnsaved, PaneHandle, PaneId};
+use hume_core::{BufferId, OnUnsaved, PaneHandle};
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
 use hume_editing::edit::apply_keeping_final_break;
 use hume_editing::text::BufferText;
@@ -38,12 +38,24 @@ pub(in crate::editor) fn checked_buffer(
         return Err("no such buffer".to_string());
     };
     buf.check_text_change()?;
-    if let Some(expected_gen) = expect_gen
-        && buf.text().generation() != expected_gen
-    {
-        return Err("buffer changed since these edits were computed".to_string());
-    }
+    check_generation(buf, expect_gen)?;
     Ok(buf)
+}
+
+/// Refuses edits computed against a generation of `buf` other than
+/// `expect_gen`. A caller reading positions out of the edits checks this
+/// before reading them, so a stale edit is reported as stale rather than as
+/// a position the current text lacks.
+pub(in crate::editor) fn check_generation(
+    buf: &Buffer,
+    expect_gen: Option<u64>,
+) -> Result<(), String> {
+    match expect_gen {
+        Some(expected) if buf.text().generation() != expected => {
+            Err("buffer changed since these edits were computed".to_string())
+        }
+        _ => Ok(()),
+    }
 }
 
 /// Converts `edits` (wire positions, any order) into one composite
@@ -257,25 +269,28 @@ pub(in crate::editor) fn build_edits_from_earlier_document<'a>(
 
 /// Commits pre-computed char-offset edits (from
 /// [`build_edits_from_earlier_document`] or any other char-space source)
-/// against `bid`'s *current* text as one `ChangeSet`. Validates
-/// overlap/reversed-range across the batch itself (via
-/// [`build_changeset_from_char_edits`]) immediately before mutating.
+/// against `requester`'s buffer's *current* text as one `ChangeSet`, through
+/// `requester`'s pane while that pane shows the buffer. A caller whose edits
+/// must match a generation checks it with [`check_generation`] before
+/// computing them. Validates overlap/reversed-range
+/// across the batch itself (via [`build_changeset_from_char_edits`])
+/// immediately before mutating.
 /// `Ok(None)` for an empty batch (nothing to commit); `Ok(Some(cs))`
 /// otherwise, so a caller composing this into a larger changeset doesn't need
 /// its own empty-batch branch.
 pub(in crate::editor) fn commit_char_edits(
     state: &mut EditorState,
     panes: &PanePool,
-    pid: PaneId,
-    bid: BufferId,
+    requester: PaneHandle,
     char_edits: Vec<(ExclusiveRange<CharOffset>, &str)>,
 ) -> Result<Option<ChangeSet>, String> {
     if char_edits.is_empty() {
         return Ok(None);
     }
+    let bid = requester.buffer();
     let buf = checked_buffer(state, bid, None)?;
     let cs = build_changeset_from_char_edits(buf.text(), char_edits)?;
-    let target = shown_through(panes, Some(pid), bid);
+    let target = shown_through(panes, requester.pane(), bid);
     Ok(Some(commit_changeset(state, target, cs)?))
 }
 
@@ -328,15 +343,8 @@ pub(in crate::editor) fn apply_workspace_edit(
     // staleness `apply-text-edits!`'s `#:expect-generation` guards. Per-file
     // staleness (a `documentChanges` entry's own `version`) is checked
     // separately, per entry, below.
-    if let Some(expect_gen) = expect_gen {
-        let current_gen = checked_buffer(state, requester.buffer(), None)?
-            .text()
-            .generation();
-        if current_gen != expect_gen {
-            return Err("buffer has changed since the request that produced \
-                 this edit"
-                .to_string());
-        }
+    if expect_gen.is_some() {
+        checked_buffer(state, requester.buffer(), expect_gen)?;
     }
     let entries = hume_lsp::workspace_edit::file_edits(we)?;
     let mut planned: Vec<(PaneHandle, ChangeSet)> = Vec::with_capacity(entries.len());
@@ -400,19 +408,17 @@ pub(in crate::editor) fn apply_workspace_edit(
     Ok(WorkspaceEditSummary { buffers_modified })
 }
 
-/// `(goto-location! pane target)`, in any of its three shapes:
+/// `(goto-location! pane target)`'s two shapes that come from outside and
+/// may be stale:
 /// - a raw `Location`/`LocationLink` (wire positions, converted with
 ///   `encoding`, the host trait layer's own read of the handle's tagged
 ///   producing-server encoding, resolved before this ever needing a `bid`
 ///   or live `LspState` lookup);
-/// - `(hash 'target path 'line 'char-col)`, already char-indexed;
-/// - `(hash 'target pane 'char-offset)`.
+/// - `(hash 'target path 'line 'char-col)`, already char-indexed.
 ///
-/// A position Scheme computed for a live buffer (`Buffer`) is an error when it
-/// lies past the buffer's end. One that comes from outside and may be stale
-/// (`Wire`, `Path`: a server's answer, a file changed on disk) names a place
-/// that no longer exists when its line is past the last content line, and
-/// the jump does not happen.
+/// Either names a place that no longer exists when its line is past the
+/// last content line (a server's answer, a file changed on disk), and the
+/// jump does not happen. The pane shape is [`goto_buffer_offset`]'s.
 pub(in crate::editor) enum GotoTarget {
     Wire {
         uri: lsp_types::Uri,
@@ -423,10 +429,6 @@ pub(in crate::editor) enum GotoTarget {
         path: AbsolutePath,
         line: usize,
         char_col: hume_rope::column::CharCol,
-    },
-    Buffer {
-        bid: BufferId,
-        char_offset: usize,
     },
 }
 
@@ -501,35 +503,57 @@ fn resolve_goto_target(
             let landed = char_indexed_to_cluster(state, bid, line, char_col);
             Ok(settle_opened(state, view, bid, opened, landed))
         }
-        GotoTarget::Buffer { bid, char_offset } => {
-            let text = state
-                .buffers
-                .try_get(bid)
-                .ok_or_else(|| "no such buffer".to_string())?
-                .text();
-            let offset = crate::editor::buffer::offsets::checked_char_offset(text, char_offset)?;
-            Ok(Some((bid, text.snap(offset))))
-        }
     }
 }
 
 /// Moves `t`'s own pane to the destination `target` names, recording a jump
 /// entry only if it exists and the jump actually lands somewhere else: same
 /// "commit point" discipline as `:goto` (`typed_misc.rs`) and buffer
-/// switches (`switch_to_buffer_with_jump`). `Ok(false)` when the
-/// destination's line no longer exists, with nothing moved.
+/// switches (`switch_to_buffer_with_jump`). `Ok(Some(handle))` names the
+/// pane and the buffer it now shows; `Ok(None)` when the destination's line
+/// no longer exists, with nothing moved.
 pub(in crate::editor) fn goto_location(
     state: &mut EditorState,
     view: &mut EngineView,
     t: crate::editor::commands::CommandPane,
     target: GotoTarget,
-) -> Result<bool, String> {
-    let Some((bid, pos)) = resolve_goto_target(state, view, target)? else {
-        return Ok(false);
-    };
-    crate::editor::commands::jump_pane_to(state, view, t, bid, pos);
+) -> Result<Option<PaneHandle>, String> {
+    Ok(resolve_goto_target(state, view, target)?.map(|(bid, pos)| land(state, view, t, bid, pos)))
+}
 
-    Ok(true)
+/// `(goto-location! pane (hash 'target pane 'char-offset o))`: moves `t`'s
+/// own pane to `char_offset` in `bid`, with the same jump entry as
+/// [`goto_location`]. Scheme computed the offset for a live buffer, so one
+/// past the buffer's end is an error.
+pub(in crate::editor) fn goto_buffer_offset(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    t: crate::editor::commands::CommandPane,
+    bid: BufferId,
+    char_offset: usize,
+) -> Result<PaneHandle, String> {
+    let text = state
+        .buffers
+        .try_get(bid)
+        .ok_or_else(|| "no such buffer".to_string())?
+        .text();
+    let offset = crate::editor::buffer::offsets::checked_char_offset(text, char_offset)?;
+    let pos = text.snap(offset);
+    Ok(land(state, view, t, bid, pos))
+}
+
+/// Jumps `t`'s own pane to `pos` in `bid`, and names the pane and the buffer
+/// it now shows.
+fn land(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    t: crate::editor::commands::CommandPane,
+    bid: BufferId,
+    pos: ClusterStart,
+) -> PaneHandle {
+    let pid = t.pid();
+    crate::editor::commands::jump_pane_to(state, view, t, bid, pos);
+    PaneHandle::with_pane(bid, pid)
 }
 
 /// Answers a server-initiated `workspace/applyEdit` request by actually

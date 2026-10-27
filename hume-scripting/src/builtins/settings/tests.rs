@@ -23,12 +23,13 @@ fn set_option_reaches_host_from_command_mode() {
     );
 }
 
-/// `set-option!` rejects value types that are not string, symbol, bool,
-/// integer, or list of strings.
+/// `set-option!` rejects value types that are not string, bool, integer,
+/// list of strings, or a sections hash.
 #[test]
 fn set_option_invalid_value_type_errors() {
     let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx_init();
+    let mut host = RecordingBufferOptionHost::default();
+    let mut ctx = h.ctx_with_host(&mut host);
     let result = set_option(&mut ctx, "indent-width".into(), SteelVal::Void);
     let msg = result.expect_err("void is not a setting value").to_string();
     assert!(msg.contains("must be"), "type error expected, got: {msg}");
@@ -72,7 +73,8 @@ fn a_list_value_is_forwarded_as_words() {
 #[test]
 fn a_list_with_a_non_string_item_errors() {
     let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx_init();
+    let mut host = RecordingBufferOptionHost::default();
+    let mut ctx = h.ctx_with_host(&mut host);
     let list = vec![SteelVal::StringV("sh".into()), SteelVal::IntV(1)]
         .into_steelval()
         .unwrap();
@@ -83,13 +85,13 @@ fn a_list_with_a_non_string_item_errors() {
 }
 
 /// In init mode with valid args, `set-option!` reaches the host (NullHost → Err,
-/// proving the guard was passed and the host was called).
+/// proving the guard was passed and the host was asked for the option).
 #[test]
 fn set_option_init_mode_calls_host() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx_init();
     let result = set_option(&mut ctx, "indent-width".into(), SteelVal::IntV(4));
-    // NullHost.set_global_option returns Err; the error must NOT be the guard error.
+    // NullHost.get_global_option returns Err; the error must NOT be the guard error.
     assert!(result.is_err());
     let msg = result.unwrap_err().to_string();
     assert!(
@@ -98,30 +100,18 @@ fn set_option_init_mode_calls_host() {
     );
 }
 
-/// `set-option!` accepts all three valid value types without type-error.
+/// `set-option!` accepts all three one-value types.
 #[test]
 fn set_option_accepts_string_bool_int_values() {
-    // We only need to reach value-string conversion without type error.
-    // NullHost will reject the host call, but the type conversion is the
-    // interesting path here.
     let mut h = SteelCtxTestHarness::new();
-
-    // All three types must pass the type-check (host error is fine).
     for val in [
         SteelVal::StringV("4".into()),
         SteelVal::BoolV(true),
         SteelVal::IntV(4),
     ] {
-        let mut ctx = h.ctx_init();
-        let result = set_option(&mut ctx, "indent-width".into(), val);
-        // NullHost returns Err, but it must NOT be a TypeMismatch error.
-        if let Err(e) = result {
-            assert_ne!(
-                e.kind(),
-                steel::rerrs::ErrorKind::TypeMismatch,
-                "valid value type must not produce a type-mismatch error: {e}"
-            );
-        }
+        let mut host = RecordingBufferOptionHost::default();
+        let mut ctx = h.ctx_with_host(&mut host);
+        set_option(&mut ctx, "indent-width".into(), val).expect("a one-value type is accepted");
     }
 }
 
@@ -159,12 +149,13 @@ fn get_buffer_option_command_mode_calls_host_with_explicit_bid() {
 
 // ── set-buffer-option! ──────────────────────────────────────────────────────
 
-/// `set-buffer-option!` rejects value types that are not string, bool, or
-/// integer, before ever consulting the host.
+/// `set-buffer-option!` rejects value types that are not string, bool,
+/// integer, list of strings, or a sections hash.
 #[test]
 fn set_buffer_option_invalid_value_type_errors() {
     let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx();
+    let mut host = RecordingBufferOptionHost::default();
+    let mut ctx = h.ctx_with_host(&mut host);
     let result = set_buffer_option(
         &mut ctx,
         default_pane(),
@@ -234,9 +225,7 @@ fn set_buffer_option_language_rejects_a_non_string() {
 // A direct call to this function (as every other test in this file makes)
 // can't reach that check at all, since it bypasses the registration layer.
 
-/// `set-buffer-option!` accepts all three valid value types without a
-/// type-mismatch error (the host may still reject the call for other
-/// reasons; `NullHost` always does).
+/// `set-buffer-option!` accepts all three one-value types.
 #[test]
 fn set_buffer_option_accepts_string_bool_int_values() {
     let mut h = SteelCtxTestHarness::new();
@@ -245,20 +234,16 @@ fn set_buffer_option_accepts_string_bool_int_values() {
         SteelVal::BoolV(true),
         SteelVal::IntV(2),
     ] {
-        let mut ctx = h.ctx();
-        let result = set_buffer_option(&mut ctx, default_pane(), "indent-width".into(), val);
-        if let Err(e) = result {
-            assert_ne!(
-                e.kind(),
-                steel::rerrs::ErrorKind::TypeMismatch,
-                "valid value type must not produce a type-mismatch error: {e}"
-            );
-        }
+        let mut host = RecordingBufferOptionHost::default();
+        let mut ctx = h.ctx_with_host(&mut host);
+        set_buffer_option(&mut ctx, default_pane(), "indent-width".into(), val)
+            .expect("a one-value type is accepted");
     }
 }
 
 /// A [`crate::null_host::NullHost`] wrapper that reports every buffer id as
-/// existing and records `set_buffer_option` and `set_buffer_line_ending`
+/// existing, knows every option (`shell` as a word list, every other one as
+/// one value), and records `set_buffer_option` and `set_buffer_line_ending`
 /// calls, so a test can prove the builtin's guards were all passed and the
 /// exact `(key, value, bid)` the host received, without a real editor.
 #[derive(Default)]
@@ -363,7 +348,7 @@ impl crate::host::BufferHost for RecordingBufferOptionHost {
         &mut self,
         pane: hume_core::PaneHandle,
         target: BufferId,
-    ) -> Result<(), String> {
+    ) -> Result<hume_core::PaneHandle, String> {
         self.inner.switch_to_buffer(pane, target)
     }
     fn show_read_only_buffer(
@@ -371,7 +356,7 @@ impl crate::host::BufferHost for RecordingBufferOptionHost {
         pane: hume_core::PaneHandle,
         name: &str,
         text: &str,
-    ) -> Result<(), String> {
+    ) -> Result<hume_core::PaneHandle, String> {
         self.inner.show_read_only_buffer(pane, name, text)
     }
     fn buffer_generation(&self, id: BufferId) -> Option<u64> {
@@ -443,7 +428,10 @@ impl crate::host::SettingsHost for RecordingBufferOptionHost {
         Ok(())
     }
     fn get_global_option(&self, key: &str) -> Result<OptionValue, String> {
-        crate::host::SettingsHost::get_global_option(&self.inner, key)
+        Ok(match key {
+            "shell" => OptionValue::List(Vec::new()),
+            _ => OptionValue::Int(0),
+        })
     }
     fn get_buffer_option(&self, key: &str, bid: BufferId) -> Result<OptionValue, String> {
         crate::host::SettingsHost::get_buffer_option(&self.inner, key, bid)

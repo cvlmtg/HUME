@@ -141,7 +141,11 @@ impl BufferHost for NullHost {
     fn close_buffer(&mut self, _id: BufferId, _on_unsaved: OnUnsaved) -> Result<(), String> {
         Err("NullHost: close_buffer not available".into())
     }
-    fn switch_to_buffer(&mut self, _pane: PaneHandle, _target: BufferId) -> Result<(), String> {
+    fn switch_to_buffer(
+        &mut self,
+        _pane: PaneHandle,
+        _target: BufferId,
+    ) -> Result<PaneHandle, String> {
         Err("NullHost: switch_to_buffer not available".into())
     }
     fn show_read_only_buffer(
@@ -149,7 +153,7 @@ impl BufferHost for NullHost {
         _pane: PaneHandle,
         _name: &str,
         _text: &str,
-    ) -> Result<(), String> {
+    ) -> Result<PaneHandle, String> {
         Err("NullHost: show_read_only_buffer not available".into())
     }
     fn buffer_generation(&self, _id: BufferId) -> Option<u64> {
@@ -598,8 +602,8 @@ impl LspHost for EmptyLspHost {
     fn new_supersede_key(&mut self) -> crate::host::SupersedeKey {
         self.supersede_keys.mint()
     }
-    fn lsp_language_servers(&self, _language: &str) -> Vec<hume_core::ListEntry> {
-        Vec::new()
+    fn lsp_language_lists(&self, _language: &str) -> hume_core::LanguageLists {
+        hume_core::LanguageLists::default()
     }
     fn lsp_position_params(&self, _pane: PaneHandle) -> Result<Option<PositionParams>, String> {
         Ok(None)

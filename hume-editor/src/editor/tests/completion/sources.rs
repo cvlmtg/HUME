@@ -948,7 +948,7 @@ fn a_trigger_char_reinvokes_only_its_own_source_into_the_open_session() {
            ;; this whole eval returns, and `set-completion-triggers!`
            ;; is queued too (`Effect::SetTriggers`), so the
            ;; two apply in emission order rather than racing each other.
-           (set-completion-triggers! "dot" "rust" (list "."))"#,
+           (set-completion-triggers! "rust" "dot" (list #\.))"#,
     );
     assert_eq!(labels(&ed), vec!["dot1", "other"]);
 

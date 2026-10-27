@@ -525,6 +525,46 @@ fn a_registration_read_back_agrees_with_the_registry_for_every_origin_pair() {
     }
 }
 
+const PROBING_LIST: &str = r#"(register-hook! 'on-language-set
+  (lambda (pane lang)
+    (set-language-servers! "mx" '("s2"))
+    (log! 'warning (string-append "probe:"
+      (string-join (map (lambda (e) (hash-ref e 'name)) (lsp-language-servers "mx")) ",")))))"#;
+
+/// A list from one origin, then a hook from another sets its own and reads
+/// the servers back in the same eval: the answer agrees with the rule and
+/// with what the registry plans once the eval applies.
+#[test]
+fn a_server_list_read_back_agrees_with_the_registry_for_every_origin_pair() {
+    for held_by in ORIGINS {
+        for hook_by in [ConfigOrigin::Plugin, ConfigOrigin::User] {
+            let (init, plugin) = match hook_by {
+                ConfigOrigin::User => (PROBING_LIST, ""),
+                _ => (r#"(load-plugin! "user/tp")"#, PROBING_LIST),
+            };
+            let (mut ed, _fixture) = boot("", &[], init, plugin);
+            register_list_servers(&mut ed);
+            write_server_list(&mut ed, held_by, 1);
+            let bid = ed.focused_buffer_id();
+
+            ed.set_buffer_language_by_name(bid, Some("la"), ConfigOrigin::User);
+            ed.settle();
+
+            let kept = winner(held_by, hook_by, OnTie::LaterWins);
+            let case = format!("held by {held_by:?}, set by {hook_by:?}");
+            let warnings: Vec<&str> = ed
+                .state
+                .message_log
+                .entries()
+                .filter(|e| e.severity == Severity::Warning)
+                .map(|e| e.text.as_str())
+                .collect();
+            assert_eq!(warnings, [format!("probe:s{kept}")], "{case}");
+            assert_eq!(read_server_list(&ed), Some(kept), "{case}");
+        }
+    }
+}
+
 // ── A default list ranks below every explicit list ───────────────────────
 
 const EXPLICIT: &str = r#"(set-language-servers! "mx" '("sa"))"#;

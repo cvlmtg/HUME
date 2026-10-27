@@ -335,10 +335,12 @@ pub(crate) fn close_buffer(
     Ok(SteelVal::Void)
 }
 
-/// `(switch-to-buffer! pane target)` → void.
+/// `(switch-to-buffer! pane target)` → the pane, now showing `target`'s
+/// buffer.
 ///
 /// Redirects `pane`'s own pane to `target`'s buffer, recording the current
-/// position in the jump list. Raises a Steel error for an invalid or
+/// position in the jump list. `pane` itself still names the buffer the pane
+/// left. Raises a Steel error for an invalid or
 /// unknown `target`, or when `pane` carries no pane, a closed one, or one
 /// that no longer shows `pane`'s own buffer.
 pub(crate) fn switch_to_buffer(
@@ -349,11 +351,12 @@ pub(crate) fn switch_to_buffer(
     ctx.host
         .buffers()
         .switch_to_buffer(pane, target.buffer())
-        .map_err(generic_err)?;
-    Ok(SteelVal::Void)
+        .map(|shown| SteelPane::new(shown).into_steel_val())
+        .map_err(generic_err)
 }
 
-/// `(show-read-only-buffer! pane name text)` → void.
+/// `(show-read-only-buffer! pane name text)` → the pane, now showing the
+/// view.
 ///
 /// Shows `text` on `pane`'s own pane in a read-only buffer labelled
 /// `[name]`, cursor on the first line, recording no jump. A later call with
@@ -370,8 +373,8 @@ pub(crate) fn show_read_only_buffer(
     ctx.host
         .buffers()
         .show_read_only_buffer(pane, &name, &text)
-        .map_err(generic_err)?;
-    Ok(SteelVal::Void)
+        .map(|shown| SteelPane::new(shown).into_steel_val())
+        .map_err(generic_err)
 }
 
 // ── Live cursor/selection reads ───────────────────────────────────────────────
@@ -421,17 +424,27 @@ fn selection_entry(sel: SelectionInfo) -> SteelVal {
 
 /// Reads back a [`selection_entry`]; raises for any other value.
 fn decode_selection(entry: &SteelVal) -> Result<SelectionInfo, SteelErr> {
-    let fields: Vec<SteelVal> = match entry {
-        SteelVal::ListV(list) => list.iter().cloned().collect(),
-        _ => Vec::new(),
-    };
-    let offset = |val: &SteelVal| match val {
-        SteelVal::IntV(n) => usize::try_from(*n).ok(),
+    let offset = |val: Option<&SteelVal>| match val {
+        Some(SteelVal::IntV(n)) => usize::try_from(*n).ok(),
         _ => None,
     };
-    if let [anchor, head, start, end, SteelVal::BoolV(primary)] = fields.as_slice()
-        && let (Some(anchor), Some(head), Some(start), Some(end)) =
-            (offset(anchor), offset(head), offset(start), offset(end))
+    if let SteelVal::ListV(list) = entry
+        && let mut fields = list.iter()
+        && let (
+            Some(anchor),
+            Some(head),
+            Some(start),
+            Some(end),
+            Some(SteelVal::BoolV(primary)),
+            None,
+        ) = (
+            offset(fields.next()),
+            offset(fields.next()),
+            offset(fields.next()),
+            offset(fields.next()),
+            fields.next(),
+            fields.next(),
+        )
     {
         return Ok(SelectionInfo {
             anchor,

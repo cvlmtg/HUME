@@ -64,7 +64,7 @@
                   ;; See docs/decorations.md, "Inlay hints", on the response.
                   (unless (or err (not (lsp/inlay-on? pane))
                               (and (pair? results) (lsp/none-answered? results)))
-                    (set-inlay-hints! "lsp-inlay-hints" pane
+                    (set-inlay-hints! pane "lsp-inlay-hints"
                       (filter (lambda (e) e)
                               (map (lambda (h) (lsp/hint->store-entry pane h))
                                    (lsp/answer-items results))))))
@@ -88,7 +88,7 @@
   (lambda (pane server)
     (if (lsp/resolve-pane pane)
         (lsp/refresh-hints-for-buffer pane)
-        (set-inlay-hints! "lsp-inlay-hints" pane '()))))
+        (set-inlay-hints! pane "lsp-inlay-hints" '()))))
 
 (register-hook! 'on-buffer-close
   (lambda (pane)
@@ -106,5 +106,5 @@
                 (hash-insert (unbox lsp/*inlay-overrides*) (buffer-key pane) on?))
       (if on?
           (lsp/refresh-hints pane)
-          (set-inlay-hints! "lsp-inlay-hints" pane '()))
+          (set-inlay-hints! pane "lsp-inlay-hints" '()))
       (log! 'info (if on? "inlay hints on" "inlay hints off")))))

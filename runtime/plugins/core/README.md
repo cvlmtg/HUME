@@ -62,18 +62,16 @@ isolation each plugin gets. All cross-plugin calls go through `call!` by command
 `call!`'s lazy-miss retry means `(load-plugin! "core:stdlib")` is enough to
 satisfy a dependency, even for a call made at the dependent plugin's own load time:
 `call!` notices the target is only declared, not yet loaded, activates it inline, and
-retries. Every core plugin that depends on `stdlib` checks `(declared-plugins)` for it at
-load time and errors immediately if it's missing (the message says to add `(load-plugin! "core:stdlib")` first), rather than letting a missing dependency
-surface later as a `call!` failure buried in a command few users exercise. See the
-manual's [Depending on another plugin](https://cvlmtg.github.io/HUME/writing-plugins.html#depending-on-another-plugin)
-for the full mechanism, including the stronger `(loaded-plugins)` check.
+retries. A core plugin that depends on `stdlib` relies on `call!` raising for a command
+nothing provides: with `core:stdlib` missing, the first stdlib call fails the plugin's
+load, or the command that makes it, naming the stdlib command. See the manual's
+[Depending on another plugin](https://cvlmtg.github.io/HUME/writing-plugins.html#depending-on-another-plugin)
+for the full mechanism.
 
 **Pitfall:** if `core:stdlib` (or any dependency) is declared with an explicit
 `#:commands`/`#:events`/`#:languages`/`#:typed-commands` list that omits a command a
-dependent needs, there is no activation stub for that command. `call!` then logs an error
-and returns `#f` instead of raising, so a dependent's config validation or runtime call
-resolves to `#f` instead of failing. The `(declared-plugins)` check can't catch this,
-since the dependency is declared.
+dependent needs, there is no activation stub for that command, and the dependent's
+`call!` raises even though the dependency is declared.
 
 ## Patterns shared across core plugins
 

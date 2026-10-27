@@ -41,6 +41,21 @@ fn native_and_steel_commands_exist() {
     assert_eq!(got, [true, true]);
 }
 
+/// A key-only command is not something `call!` can reach, so the probe
+/// answers `#f` for it, as `call!` raises.
+#[test]
+fn a_key_only_command_does_not_exist_for_call() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bc\n");
+    let got = exists(
+        &mut ed,
+        tmp.path(),
+        "",
+        &["pipe", "repeat-last-action", "move-right"],
+    );
+    assert_eq!(got, [false, false, true]);
+}
+
 #[test]
 fn lazy_plugin_command_exists_without_activating_the_plugin() {
     let tmp = tempfile::tempdir().unwrap();

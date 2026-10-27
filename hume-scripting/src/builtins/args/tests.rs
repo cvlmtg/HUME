@@ -87,20 +87,20 @@ fn list_to_strings_rejects_non_string_element() {
 }
 
 #[test]
-fn chars_arg_rejects_multi_char_entry() {
-    let err = chars_arg(list_of(&["ab"]), "chars").unwrap_err();
+fn chars_arg_rejects_a_string_entry() {
+    let err = chars_arg(list_of(&["a"]), "chars").unwrap_err();
     assert!(
-        err.to_string().contains("exactly one character"),
+        err.to_string().contains("each entry must be a char"),
         "got: {err}"
     );
 }
 
 #[test]
-fn chars_arg_accepts_single_char_entries() {
-    assert_eq!(
-        chars_arg(list_of(&["a", "b"]), "chars").unwrap(),
-        vec!['a', 'b']
-    );
+fn chars_arg_accepts_char_entries() {
+    let chars: SteelVal = vec![SteelVal::CharV('a'), SteelVal::CharV('b')]
+        .into_steelval()
+        .unwrap();
+    assert_eq!(chars_arg(chars, "chars").unwrap(), vec!['a', 'b']);
 }
 
 #[test]
@@ -296,7 +296,8 @@ fn lsp_target_arg_accepts_a_string_or_symbol_server_name() {
 fn lsp_target_arg_rejects_false() {
     let err = LspTargetArg::from_steelval(&SteelVal::BoolV(false)).unwrap_err();
     assert!(
-        err.to_string().contains("expected a pane or a server name"),
+        err.to_string()
+            .contains("expected a server, a pane or a server name"),
         "got: {err}"
     );
 }

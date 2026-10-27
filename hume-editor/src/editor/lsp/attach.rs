@@ -119,20 +119,24 @@ impl EditorState {
 
     /// Stops `target`'s servers: every buffer attached to one detaches from
     /// it, and the instance stops. Returns the `(name, root)` of each
-    /// instance stopped.
+    /// instance stopped, with its id.
     fn lsp_stop_targets(
         &mut self,
         view: &EngineView,
         target: &LspServerTarget,
-    ) -> Vec<(ServerName, PathBuf)> {
+    ) -> Vec<((ServerName, PathBuf), ServerId)> {
         let sids: Vec<ServerId> = match target {
+            LspServerTarget::Server(sid) => vec![*sid],
             LspServerTarget::Buffer(bid) => self.buffer_positions.lsp.servers(*bid).collect(),
             LspServerTarget::Name(name) => self.lsp.instances.ids_named(name),
         };
         let mut stopped = Vec::new();
         for sid in sids {
             if let Some(instance) = self.lsp.instances.get(sid) {
-                stopped.push((instance.name.clone(), instance.client.root().to_path_buf()));
+                stopped.push((
+                    (instance.name.clone(), instance.client.root().to_path_buf()),
+                    sid,
+                ));
             }
             for bid in self.buffer_positions.lsp.buffers_of(sid) {
                 self.lsp_detach(view, bid, sid, Announce::Hooks);
@@ -143,14 +147,22 @@ impl EditorState {
     }
 
     /// Clears the stopped mark of the instances `target` names, so the next
-    /// reconcile starts them: every root of a name, or the servers a
-    /// buffer's language plans for it. Returns the marks it cleared.
+    /// reconcile starts them: the mark a stop of a value's instance left,
+    /// every root of a name, or the servers a buffer's language plans for
+    /// it. Returns the marks it cleared.
     fn lsp_unstop(&mut self, target: &LspServerTarget) -> Vec<(ServerName, PathBuf)> {
         let cleared: Vec<(ServerName, PathBuf)> = match target {
-            LspServerTarget::Name(name) => self
+            LspServerTarget::Server(sid) => self
                 .lsp
                 .stopped
                 .iter()
+                .filter(|&(_, stopped)| stopped == sid)
+                .map(|(key, _)| key.clone())
+                .collect(),
+            LspServerTarget::Name(name) => self
+                .lsp
+                .stopped
+                .keys()
                 .filter(|(stopped, _)| stopped == name)
                 .cloned()
                 .collect(),
@@ -160,7 +172,7 @@ impl EditorState {
                 .unwrap_or_default()
                 .into_iter()
                 .map(|w| (w.name, w.root))
-                .filter(|key| self.lsp.stopped.contains(key))
+                .filter(|key| self.lsp.stopped.contains_key(key))
                 .collect(),
         };
         for key in &cleared {
@@ -206,7 +218,12 @@ impl EditorState {
             self.lsp_detach_all(view, bid, Announce::Hooks, &mut pass.retired);
             return;
         };
-        wanted.retain(|w| !self.lsp.stopped.contains(&(w.name.clone(), w.root.clone())));
+        wanted.retain(|w| {
+            !self
+                .lsp
+                .stopped
+                .contains_key(&(w.name.clone(), w.root.clone()))
+        });
         if self
             .buffer_positions
             .lsp
@@ -592,7 +609,9 @@ impl Editor {
         if self.report_unknown_target(target) {
             return;
         }
-        let mut ended = self.state.lsp_stop_targets(&self.view, target);
+        let stopped = self.state.lsp_stop_targets(&self.view, target);
+        let mut ended: Vec<(ServerName, PathBuf)> =
+            stopped.iter().map(|(key, _)| key.clone()).collect();
         if op == ServerOp::Restart {
             for key in self.state.lsp_unstop(target) {
                 if !ended.contains(&key) {
@@ -601,7 +620,7 @@ impl Editor {
             }
             self.state.lsp_reconcile_all(&self.view);
         } else {
-            self.state.lsp.stopped.extend(ended.iter().cloned());
+            self.state.lsp.stopped.extend(stopped);
         }
         let n = ended.len();
         let text = if n == 0 {

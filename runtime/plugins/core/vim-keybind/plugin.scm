@@ -1,6 +1,4 @@
 ;;; core:vim-keybind — depends on core:stdlib. See README.md's "How it works".
-(unless (member "core:stdlib" (declared-plugins))
-  (error "core:vim-keybind: requires core:stdlib — add (load-plugin! \"core:stdlib\") before (load-plugin! \"core:vim-keybind\")"))
 
 ;; No #:repeatable needed — see README's dot-repeat note.
 (define-command! "vim-keybind/change-to-eol"

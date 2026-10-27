@@ -203,8 +203,8 @@ pub(in crate::editor) fn session_for_feed(
 /// the recorded payload. It refuses when the next answer is not a pick, when
 /// no item has the recorded text, when a reload forgot the payload, or when
 /// the recorded `#:actions` key is not bound here, and runs nothing for a
-/// pick that never resolved live. The returned token names no open session,
-/// so a later feed through it is a no-op.
+/// pick that never resolved live. Returns `Ok(None)` then, naming no open
+/// picker, as `open_menu` does.
 ///
 /// Takes `state`/`view` rather than `&mut Editor` because its production
 /// caller, `EditorHostImpl::open_picker`, holds those as disjoint borrows,
@@ -213,7 +213,7 @@ pub(in crate::editor) fn open_picker(
     state: &mut super::super::EditorState,
     view: &EngineView,
     session: PickerSession,
-) -> Result<HostToken, String> {
+) -> Result<Option<HostToken>, String> {
     let token = session.token();
     if let Some(replay) = state.dot_replay.as_mut() {
         replay
@@ -245,13 +245,13 @@ pub(in crate::editor) fn open_picker(
                 },
             )
             .map_err(|refusal| refusal.to_string())?;
-        return Ok(token);
+        return Ok(None);
     }
     let input = state
         .waiting_input(InputOpener::Code)
         .map_err(|refusal| refusal.to_string())?;
     state.push_layer(view, PickerLayer { session, input });
-    Ok(token)
+    Ok(Some(token))
 }
 
 /// Which of a picker's callbacks a close fires.

@@ -127,7 +127,7 @@ fn call_bang_does_not_activate_a_typed_only_lazy_stub() {
 
     let (ed, _dir) = setup_lazy_editor(
         r#"(declare-plugin! "user/tp" #:typed-commands '("bar"))
-           (call! "bar")"#,
+           (with-handler (lambda (err) (log! 'info (to-string err))) (call! "bar"))"#,
         r#"(define-typed-command! "bar" "doc" (lambda () (+ 1 0)))"#,
     );
 

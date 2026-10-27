@@ -16,7 +16,14 @@ use super::args::{
     single_key_arg, string_arg, strings_arg, under_cwd,
 };
 use super::errors::{generic_err, require_cap};
+use super::ids::{SteelPane, pane_or_false};
 use super::wire::{tagged_json_arg, wire_text_edit_arg};
+
+/// A `#:expect-generation` argument: the buffer generation the caller's
+/// edits were computed against, or `#f` for none.
+fn expect_generation_arg(val: SteelVal) -> Result<Option<u64>, SteelErr> {
+    Ok(optional_usize_arg(val, "#:expect-generation")?.map(|n| n as u64))
+}
 
 /// `(%apply-text-edits! pane edits expect-gen)`. `edits` is a list of
 /// `JsonHandle`s onto wire `TextEdit`s (unconverted response elements, e.g.
@@ -33,7 +40,7 @@ pub(crate) fn apply_text_edits(
     edits: SteelVal,
     expect_gen: SteelVal,
 ) -> SteelResult {
-    let expect_gen = optional_usize_arg(expect_gen, "expect-gen")?.map(|n| n as u64);
+    let expect_gen = expect_generation_arg(expect_gen)?;
     let parsed = list_items(edits, "edits")?
         .into_iter()
         .map(wire_text_edit_arg)
@@ -58,16 +65,16 @@ pub(crate) fn apply_workspace_edit(
     expect_gen: SteelVal,
 ) -> SteelResult {
     let (handle, encoding) = tagged_json_arg(&wsedit, "wsedit")?;
-    let expect_gen = optional_usize_arg(expect_gen, "expect-gen")?.map(|n| n as u64);
+    let expect_gen = expect_generation_arg(expect_gen)?;
     let count = require_cap(ctx.host.edits())?
         .apply_workspace_edit(pane, handle.value(), encoding, expect_gen)
         .map_err(generic_err)?;
     Ok(SteelVal::IntV(count as isize))
 }
 
-/// `(goto-location! pane loc)` → `#t` after a jump, `#f` when the place `loc`
-/// names no longer exists. `loc` is one of three shapes, dispatched here (not
-/// in Scheme):
+/// `(goto-location! pane loc)` → the pane, now showing the buffer it jumped
+/// into, or `#f` when the place `loc` names no longer exists. `loc` is one
+/// of three shapes, dispatched here (not in Scheme):
 ///
 /// - a JSON handle onto a raw `Location`/`LocationLink` from a server
 ///   response: wire position, decoded and converted using the handle's own
@@ -109,7 +116,7 @@ pub(crate) fn goto_location(ctx: &mut SteelCtx, pane: PaneHandle, loc: SteelVal)
                 let char_offset = fields.usize(CHAR_OFFSET)?;
                 require_cap(ctx.host.edits())?
                     .goto_location_buffer(pane, handle.buffer(), char_offset)
-                    .map(|()| SteelVal::BoolV(true))
+                    .map(|shown| SteelPane::new(shown).into_steel_val())
                     .map_err(generic_err)
             } else {
                 if fields.optional(CHAR_OFFSET).is_some() {
@@ -130,7 +137,7 @@ pub(crate) fn goto_location(ctx: &mut SteelCtx, pane: PaneHandle, loc: SteelVal)
                 let char_col = fields.usize("char-col")?;
                 require_cap(ctx.host.edits())?
                     .goto_location_path(pane, path, line, char_col)
-                    .map(SteelVal::BoolV)
+                    .map(pane_or_false)
                     .map_err(generic_err)
             }
         }
@@ -138,7 +145,7 @@ pub(crate) fn goto_location(ctx: &mut SteelCtx, pane: PaneHandle, loc: SteelVal)
             let (handle, encoding) = tagged_json_arg(&loc, "loc")?;
             require_cap(ctx.host.edits())?
                 .goto_location_value(pane, handle.value(), encoding)
-                .map(SteelVal::BoolV)
+                .map(pane_or_false)
                 .map_err(generic_err)
         }
         _ => steel::stop!(TypeMismatch =>
@@ -182,9 +189,17 @@ pub(crate) fn paste_text(ctx: &mut SteelCtx, pane: PaneHandle, text: SteelVal) -
         .map_err(generic_err)
 }
 
-/// `(edit-text! pane edits)`: replace char ranges of `pane`'s buffer, each
-/// entry a `(hash 'start-char s 'end-char e 'text t)`, as one edit.
-pub(crate) fn edit_text(ctx: &mut SteelCtx, pane: PaneHandle, edits: SteelVal) -> SteelResult {
+/// `(%edit-text! pane edits expect-gen)`: replace char ranges of `pane`'s
+/// buffer, each entry a `(hash 'start-char s 'end-char e 'text t)`, as one
+/// edit; `bootstrap.scm`'s `edit-text!` supplies `#:expect-generation`'s `#f`
+/// default.
+pub(crate) fn edit_text(
+    ctx: &mut SteelCtx,
+    pane: PaneHandle,
+    edits: SteelVal,
+    expect_gen: SteelVal,
+) -> SteelResult {
+    let expect_gen = expect_generation_arg(expect_gen)?;
     let edits = hash_list(edits, "edits", &[START_CHAR, END_CHAR, "text"], |entry| {
         let (start, end) = entry.char_range()?;
         Ok(CharTextEdit {
@@ -194,7 +209,7 @@ pub(crate) fn edit_text(ctx: &mut SteelCtx, pane: PaneHandle, edits: SteelVal) -
         })
     })?;
     require_cap(ctx.host.edits())?
-        .edit_text(pane, edits)
+        .edit_text(pane, edits, expect_gen)
         .map(|()| SteelVal::Void)
         .map_err(generic_err)
 }

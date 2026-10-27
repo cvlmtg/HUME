@@ -400,12 +400,9 @@ fn remove_theme_survives_a_failed_sync() {
     );
 }
 
-/// `core:plum` now `call!`s into `core:stdlib` for path-segment validation
-/// (`plum/parse-slug`, `plum/fetch-raw-query`) as well as the filesystem
-/// helpers it already used. Loading it without `core:stdlib` declared first
-/// must fail loudly at load time, the same guard `core:lsp` has always had
-/// (`lsp/plugin.scm`), rather than leaving every `call!` site to discover
-/// the missing dependency one at a time.
+/// `core:plum` `call!`s into `core:stdlib` from its commands. Without
+/// `core:stdlib`, a command that reaches it fails, naming the stdlib command
+/// it called.
 #[test]
 fn plum_requires_core_stdlib() {
     let data_tmp = tempfile::tempdir().unwrap();
@@ -415,11 +412,14 @@ fn plum_requires_core_stdlib() {
         data_tmp.path(),
         "(load-plugin! \"core:plum\") (%activate-plugin-inline! \"core:plum\" #f)",
     );
+    type_cmd(&mut ed, ":plum-list-grammars");
 
     let errors = error_log(&ed);
     assert!(
-        errors.iter().any(|e| e.contains("core:stdlib")),
-        "loading core:plum without core:stdlib must error naming core:stdlib: {errors:?}"
+        errors
+            .iter()
+            .any(|e| e.contains("unknown command: stdlib/")),
+        "a plum command without core:stdlib must fail naming the stdlib command: {errors:?}"
     );
 }
 

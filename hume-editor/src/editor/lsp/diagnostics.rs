@@ -12,6 +12,7 @@ use hume_lsp::diagnostic::{PublishedDiagnostics, WireDiagnostic};
 use hume_lsp::sync::wire_version;
 use hume_platform::path::AbsolutePath;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
+use hume_scripting::host::DiagnosticCounts;
 #[cfg(test)]
 use lsp_types::PublishDiagnosticsParams;
 use ropey::Rope;
@@ -133,19 +134,16 @@ impl DiagnosticsStore {
         self.store.buffers()
     }
 
-    /// Counts `bid`'s diagnostics by severity, returning `(errors, warnings)`;
-    /// `Info`/`Hint` are not counted.
-    pub(in crate::editor) fn counts(&self, bid: BufferId) -> (usize, usize) {
-        let mut errors = 0;
-        let mut warnings = 0;
+    /// Counts `bid`'s diagnostics by severity; a severity below `floor`
+    /// counts as none.
+    pub(in crate::editor) fn counts(&self, bid: BufferId, floor: DiagSeverity) -> DiagnosticCounts {
+        let mut counts = DiagnosticCounts::default();
         for (_server, d) in self.store.for_buffer(bid) {
-            match d.severity {
-                DiagSeverity::Error => errors += 1,
-                DiagSeverity::Warning => warnings += 1,
-                DiagSeverity::Info | DiagSeverity::Hint => {}
+            if d.severity <= floor {
+                *counts.of(d.severity) += 1;
             }
         }
-        (errors, warnings)
+        counts
     }
 
     /// Each server's own entries are sorted by `start` (`SourceStore::set`),
@@ -545,6 +543,18 @@ impl EditorState {
     }
 }
 
+/// The floor a diagnostics read applies: `requested`, or with none
+/// `lsp-diagnostics-min-severity`, the floor `update_highlight_providers`
+/// draws underlines at, so a caller (the statusline, the diagnostics
+/// plugin's EOL summary and gutter signs) agrees with what's on screen
+/// unless it asks for a different cut.
+pub(in crate::editor) fn severity_floor(
+    state: &EditorState,
+    requested: Option<DiagSeverity>,
+) -> DiagSeverity {
+    requested.unwrap_or(state.settings.lsp_diagnostics_min_severity)
+}
+
 /// `(diagnostics-for-buffer bid #:severity floor #:range (start-char . end-char))`:
 /// decoded, filtered, capped-at-1000 hashmaps. `start-char`/`end-char`
 /// are char offsets, *addressing* units that `goto-location!`'s `'char-offset`
@@ -564,19 +574,15 @@ impl EditorState {
 /// it may end at the text's end, but not past it, and may not end before it
 /// starts.
 ///
-/// With no `#:severity`, defaults to `lsp-diagnostics-min-severity`, the
-/// same floor `update_highlight_providers` applies to underlines, so a
-/// caller (e.g. the diagnostics plugin's EOL summary and gutter signs)
-/// agrees with what's on screen unless it explicitly asks for a different
-/// cut.
+/// With no `#:severity`, the floor is [`severity_floor`]'s default.
 pub(in crate::editor) fn diagnostics_for_buffer(
     state: &EditorState,
     bid: BufferId,
-    severity_floor: Option<DiagSeverity>,
+    floor: Option<DiagSeverity>,
     range: Option<(usize, usize)>,
 ) -> Result<Vec<hume_scripting::host::DiagnosticEntry>, String> {
     const CAP: usize = 1000;
-    let floor = severity_floor.unwrap_or(state.settings.lsp_diagnostics_min_severity);
+    let floor = severity_floor(state, floor);
     let Some(text) = state.buffers.try_get(bid).map(|b| b.text()) else {
         return Ok(Vec::new());
     };

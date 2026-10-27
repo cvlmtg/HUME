@@ -6,7 +6,7 @@
 use super::*;
 use crate::editor::buffer::{DiskCheckTrigger, DiskState};
 use crate::editor::input_stack::picker;
-use crate::editor::input_stack::{DrawerLayer, DrawerRows, DrawerSelect, MenuLayer};
+use crate::editor::input_stack::{DrawerLayer, DrawerRows, MenuLayer};
 use crate::editor::input_stack::{PickerItem, PickerSession};
 use hume_core::TruncateEnd;
 use hume_scripting::host::{LivePickerOpts, PickerOpts};
@@ -292,8 +292,10 @@ fn drawer_paste_is_swallowed_but_clears_the_status_message() {
     ed.state.push_layer(
         &ed.view,
         DrawerLayer::new(
-            DrawerRows::rendered(non_empty_strings(&["d0"])),
-            DrawerSelect::Steel(hume_scripting::Callback::for_test(marker("drawer-cb"))),
+            DrawerRows::script(
+                drawer_items(&["d0"]),
+                hume_scripting::Callback::for_test(marker("drawer-cb")),
+            ),
             0,
         ),
     );

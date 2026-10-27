@@ -48,7 +48,7 @@
     (if (equal? exit-code 0)
         (begin
           (git-diff/entry-set! pane "ref-text" stdout)
-          (git-diff/apply-hunks! pane (diff-buffer-lines pane stdout)))
+          (git-diff/apply-hunks! pane (hash-ref (diff-buffer-lines pane stdout) 'hunks)))
         (begin
           (let ([entry (git-diff/buffer-entry pane)])
             (log! (cond [(not exit-code) 'error]
@@ -77,7 +77,7 @@
           (let ([ref-text (hash-ref entry "ref-text")])
             (cond
               [(string? ref-text)
-               (git-diff/apply-hunks! pane (diff-buffer-lines pane ref-text))]
+               (git-diff/apply-hunks! pane (hash-ref (diff-buffer-lines pane ref-text) 'hunks))]
               [(and (not ref-text) (not (hash-ref entry "job")))
                (git-diff/fetch-ref! pane path (git-diff/buffer-ref pane default-ref))])))))))
 

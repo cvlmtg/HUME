@@ -54,22 +54,22 @@ fn target_arg(target: SteelVal) -> Result<CompletionSourceTarget, SteelErr> {
     )
 }
 
-/// `(set-hook-triggers! source language chars)`: `chars` is a list of 1-char
-/// strings, registered for `(source, language)`. `chars` landing in Insert
+/// `(set-hook-triggers! language source chars)`: `chars` is a list of chars,
+/// registered for `(source, language)`. `chars` landing in Insert
 /// mode fires the `on-trigger-char` hook for any listener named `source`.
 /// `set-completion-triggers!` writes the same table for a completion
 /// source, whose listener invokes the source instead of the hook.
 pub(crate) fn set_hook_triggers(
     ctx: &mut SteelCtx,
-    source: SteelVal,
     language: SteelVal,
+    source: SteelVal,
     chars: SteelVal,
 ) -> SteelResult {
     let scope = TriggerScope::Language(string_arg(language, "language")?);
     queue_triggers(ctx, TriggerListener::Hook, source, scope, chars)
 }
 
-/// `(set-attachment-hook-triggers! source pane server feature chars)`: the
+/// `(set-attachment-hook-triggers! pane source server feature chars)`: the
 /// same table for the one attachment of `pane`'s buffer to `server`, for
 /// `feature`. Callable
 /// from any context, including command bodies and hook handlers: signature
@@ -80,8 +80,8 @@ pub(crate) fn set_hook_triggers(
 /// `feature` and `server` advertises it.
 pub(crate) fn set_attachment_hook_triggers(
     ctx: &mut SteelCtx,
-    source: SteelVal,
     pane: PaneHandle,
+    source: SteelVal,
     server: SteelVal,
     feature: SteelVal,
     chars: SteelVal,
@@ -267,7 +267,7 @@ pub(crate) fn completion_dismiss(ctx: &mut SteelCtx) -> SteelResult {
         .map_err(generic_err)
 }
 
-/// `(set-completion-triggers! source language chars)`: a `'buffer`
+/// `(set-completion-triggers! language source chars)`: a `'buffer`
 /// completion source's own trigger characters for `language`, replacing
 /// that pair's previous set.
 /// Callable from any context, same as `set-hook-triggers!`.
@@ -279,21 +279,21 @@ pub(crate) fn completion_dismiss(ctx: &mut SteelCtx) -> SteelResult {
 /// caller.
 pub(crate) fn set_completion_triggers(
     ctx: &mut SteelCtx,
-    source: SteelVal,
     language: SteelVal,
+    source: SteelVal,
     chars: SteelVal,
 ) -> SteelResult {
     let scope = TriggerScope::Language(string_arg(language, "language")?);
     queue_triggers(ctx, TriggerListener::Completion, source, scope, chars)
 }
 
-/// `(set-attachment-completion-triggers! source pane server feature chars)`:
+/// `(set-attachment-completion-triggers! pane source server feature chars)`:
 /// the same for the one attachment of `pane`'s buffer to `server`, as
 /// `set-attachment-hook-triggers!` is to `set-hook-triggers!`.
 pub(crate) fn set_attachment_completion_triggers(
     ctx: &mut SteelCtx,
-    source: SteelVal,
     pane: PaneHandle,
+    source: SteelVal,
     server: SteelVal,
     feature: SteelVal,
     chars: SteelVal,

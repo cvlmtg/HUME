@@ -32,7 +32,7 @@ pub use completion::{
     CompletionHost, CompletionSourceTarget, EmittedWord, PendingCompletionSource,
 };
 pub use cursor::{CursorHost, SelectionInfo};
-pub use decorations::{DecorationHost, DiagnosticEntry};
+pub use decorations::{DecorationHost, DiagnosticCounts, DiagnosticEntry};
 pub use diff::DiffHost;
 pub use edits::{CharTextEdit, EditHost, WireTextEdit};
 pub use events::EventHost;
@@ -51,7 +51,7 @@ pub use ui::{
 };
 
 /// Which keymap a bind or unbind changes: the global one, or the keymap a
-/// `#:keymap` symbol names.
+/// `#:keymap` name names.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum KeymapTarget {
     Global,

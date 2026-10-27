@@ -21,7 +21,7 @@ fn centring_in_the_steel_call_that_opened_a_drawer_counts_the_drawer() {
         tmp.path(),
         r#"(define-typed-command! "go" "" (lambda (pane)
              (begin
-               (show-drawer-list! pane (list "a") (lambda (idx tok) (begin)))
+               (show-drawer-list! pane (map (lambda (row) (cons row row)) (list "a")) (lambda (row tok) (begin)))
                (call! "center-view-on-cursor" pane))))"#,
     );
     ed.execute_typed("goto", Some("150")).unwrap();
@@ -46,7 +46,7 @@ fn goto_location_in_the_steel_call_that_opened_a_drawer_centres_against_the_draw
         tmp.path(),
         r#"(define-typed-command! "go" "" (lambda (pane)
              (begin
-               (show-drawer-list! pane (list "a") (lambda (idx tok) (begin)))
+               (show-drawer-list! pane (map (lambda (row) (cons row row)) (list "a")) (lambda (row tok) (begin)))
                (goto-location! pane (hash 'target pane 'char-offset 486)))))"#,
     );
     frame(&mut ed, 80, 24);
@@ -162,7 +162,7 @@ fn viewport_range_in_the_steel_call_that_opened_a_drawer_counts_the_drawer() {
         &mut ed,
         tmp.path(),
         r#"(begin
-             (show-drawer-list! bid (list "a") (lambda (idx tok) (begin)))
+             (show-drawer-list! bid (map (lambda (row) (cons row row)) (list "a")) (lambda (row tok) (begin)))
              (to-string (hash-ref (viewport-range bid) 'end-line)))"#,
     );
 
@@ -236,10 +236,10 @@ fn centring_in_the_steel_call_that_grew_a_drawer_counts_the_new_rows() {
         tmp.path(),
         r#"(define *tok* #f)
            (define-typed-command! "open" "" (lambda (pane)
-             (set! *tok* (show-drawer-list! pane (list "a") (lambda (idx tok) (begin))))))
+             (set! *tok* (show-drawer-list! pane (map (lambda (row) (cons row row)) (list "a")) (lambda (row tok) (begin))))))
            (define-typed-command! "grow" "" (lambda (pane)
              (begin
-               (update-drawer-list! *tok* (list "a" "b" "c") (lambda (idx tok) (begin)) 0)
+               (update-drawer-list! *tok* (map (lambda (row) (cons row row)) (list "a" "b" "c")) (lambda (row tok) (begin)) 0)
                (call! "center-view-on-cursor" pane))))"#,
     );
     ed.execute_typed("goto", Some("150")).unwrap();
@@ -263,7 +263,7 @@ fn a_typed_split_after_a_drawer_opens_counts_the_drawer() {
         &mut ed,
         tmp.path(),
         r#"(define-typed-command! "open" "" (lambda (pane)
-             (show-drawer-list! pane (list "a" "b" "c") (lambda (idx tok) (begin)))))"#,
+             (show-drawer-list! pane (map (lambda (row) (cons row row)) (list "a" "b" "c")) (lambda (row tok) (begin)))))"#,
     );
     frame(&mut ed, 80, 10);
 
@@ -313,7 +313,7 @@ fn open_both_bands(ed: &mut Editor, tmp: &std::path::Path) {
         &format!(
             r#"(define-typed-command! "go" "" (lambda (pane)
                  (begin
-                   (show-drawer-list! pane (list "first" "second") (lambda (idx tok) (begin)))
+                   (show-drawer-list! pane (map (lambda (row) (cons row row)) (list "first" "second")) (lambda (row tok) (begin)))
                    (show-popup! pane "{text}" #:anchor 'bottom))))"#
         ),
     );

@@ -48,8 +48,14 @@ fn diag(start: usize, end: usize, severity: DiagSeverity) -> StoredDiag {
     }
 }
 
+/// `bid`'s error and warning counts with no floor.
+fn errors_warnings(store: &DiagnosticsStore, bid: BufferId) -> (usize, usize) {
+    let counts = store.counts(bid, DiagSeverity::Hint);
+    (counts.error, counts.warning)
+}
+
 #[test]
-fn counts_tallies_errors_and_warnings_only() {
+fn counts_tallies_every_severity_at_or_above_the_floor() {
     let mut store = DiagnosticsStore::default();
     let bid = make_bid();
     store.replace(
@@ -63,13 +69,31 @@ fn counts_tallies_errors_and_warnings_only() {
             diag(8, 9, DiagSeverity::Hint),
         ],
     );
-    assert_eq!(store.counts(bid), (2, 1));
+    assert_eq!(
+        store.counts(bid, DiagSeverity::Hint),
+        DiagnosticCounts {
+            error: 2,
+            warning: 1,
+            info: 1,
+            hint: 1
+        }
+    );
+    assert_eq!(
+        store.counts(bid, DiagSeverity::Warning),
+        DiagnosticCounts {
+            error: 2,
+            warning: 1,
+            info: 0,
+            hint: 0
+        },
+        "a severity below the floor counts as none"
+    );
 }
 
 #[test]
 fn counts_is_zero_for_an_unknown_buffer() {
     let store = DiagnosticsStore::default();
-    assert_eq!(store.counts(make_bid()), (0, 0));
+    assert_eq!(errors_warnings(&store, make_bid()), (0, 0));
 }
 
 #[test]
@@ -82,12 +106,12 @@ fn remove_source_for_buffer_clears_that_servers_diagnostics_for_that_buffer_only
 
     assert!(store.remove_source_for_buffer(ServerId(0), bid));
     assert_eq!(
-        store.counts(bid),
+        errors_warnings(&store, bid),
         (0, 1),
         "server 1's diagnostic must survive"
     );
     assert_eq!(
-        store.counts(other),
+        errors_warnings(&store, other),
         (1, 0),
         "server 0's diagnostic for another buffer must survive"
     );
@@ -100,7 +124,7 @@ fn remove_source_for_buffer_drops_the_buffer_entry_once_no_server_remains() {
     store.replace(ServerId(0), bid, vec![diag(0, 1, DiagSeverity::Error)]);
 
     store.remove_source_for_buffer(ServerId(0), bid);
-    assert_eq!(store.counts(bid), (0, 0));
+    assert_eq!(errors_warnings(&store, bid), (0, 0));
     assert!(
         store
             .for_range(bid, ex(0, 100), DiagSeverity::Hint)
@@ -142,7 +166,7 @@ fn remove_source_for_buffer_is_a_no_op_for_a_server_with_nothing_stored() {
         "removing a server with nothing stored must report nothing removed"
     );
     assert_eq!(
-        store.counts(bid),
+        errors_warnings(&store, bid),
         (1, 0),
         "unrelated server's diagnostics must survive"
     );
@@ -163,12 +187,12 @@ fn remove_buffer_clears_every_servers_diagnostics_for_that_buffer() {
     store.remove_buffer(bid);
 
     assert_eq!(
-        store.counts(bid),
+        errors_warnings(&store, bid),
         (0, 0),
         "every server's entry for bid must be gone"
     );
     assert_eq!(
-        store.counts(other_bid),
+        errors_warnings(&store, other_bid),
         (1, 0),
         "an unrelated buffer's diagnostics must survive"
     );
@@ -339,7 +363,7 @@ fn remap_through_drops_a_diagnostic_a_covering_deletion_collapses() {
     // unlike `for_range`, it can't coincidentally exclude a surviving
     // zero-width entry the way a `d.end > lo` check with `lo == 0` would.
     assert_eq!(
-        store.counts(bid),
+        errors_warnings(&store, bid),
         (0, 0),
         "a diagnostic fully covered by a deletion must be dropped, not kept \
          as a zero-width entry"

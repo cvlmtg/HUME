@@ -41,6 +41,18 @@ pub(crate) fn sym(name: &str) -> steel::rvals::SteelVal {
     steel::rvals::SteelVal::SymbolV(name.into())
 }
 
+/// The value under `'key` in the record hash `record`; panics when
+/// `record` is not a hash or has no such key.
+pub(crate) fn hash_field(record: &steel::rvals::SteelVal, key: &str) -> steel::rvals::SteelVal {
+    match record {
+        steel::rvals::SteelVal::HashMapV(map) => map
+            .get(&sym(key))
+            .cloned()
+            .unwrap_or_else(|| panic!("no '{key} in {record:?}")),
+        other => panic!("expected a hash, got {other:?}"),
+    }
+}
+
 /// The Steel string `s`.
 pub(crate) fn str_val(s: &str) -> steel::rvals::SteelVal {
     steel::rvals::SteelVal::StringV(s.into())

@@ -1,7 +1,7 @@
 //! BufferText diffing against live editor state.
 
 use hume_core::BufferId;
-use hume_editing::hunk::ChangeHunk;
+use hume_editing::hunk::HunkDiff;
 
 /// Diffs that need a buffer's live text or undo history, accessed through
 /// [`EditorHost::diff`](super::EditorHost::diff). Backs
@@ -11,11 +11,11 @@ pub trait DiffHost {
     /// as buffer content (see [`text_hunks`](hume_editing::hunk::text_hunks)),
     /// without materializing the buffer as a Steel string. `None` for a
     /// buffer the host has no text for.
-    fn diff_buffer_lines(&self, bid: BufferId, ref_text: &str) -> Option<Vec<ChangeHunk>>;
+    fn diff_buffer_lines(&self, bid: BufferId, ref_text: &str) -> Option<HunkDiff>;
 
     /// What separates `bid`'s live text from revision `revision` of its undo
     /// history: the revision's text is the old side, the live text the new.
     /// `Err` for a revision the history has no record of. Hunks carry the
-    /// word spans the history's own changesets give them.
-    fn revision_diff(&self, bid: BufferId, revision: usize) -> Result<Vec<ChangeHunk>, String>;
+    /// word spans the history's own changesets give them, and no deadline.
+    fn revision_diff(&self, bid: BufferId, revision: usize) -> Result<HunkDiff, String>;
 }

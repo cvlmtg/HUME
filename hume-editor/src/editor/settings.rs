@@ -927,8 +927,9 @@ fn parse_statusline(value: &OptionInput) -> Result<StatusLineConfig, String> {
             section.split(',').map(str::to_string).collect()
         }
     };
+    let parsed;
     let sections = match value {
-        OptionInput::Sections(sections) => sections.clone(),
+        OptionInput::Sections(sections) => sections,
         OptionInput::Text(text) => {
             let parts: Vec<&str> = text.splitn(4, '|').collect();
             let [left, center, right] = parts.as_slice() else {
@@ -937,11 +938,12 @@ fn parse_statusline(value: &OptionInput) -> Result<StatusLineConfig, String> {
                      (e.g. 'Mode,FileName||Position'), got '{text}'"
                 ));
             };
-            StatuslineSections {
+            parsed = StatuslineSections {
                 left: names(left),
                 center: names(center),
                 right: names(right),
-            }
+            };
+            &parsed
         }
         OptionInput::Words(_) => {
             return Err("takes three sections, not a list".to_string());

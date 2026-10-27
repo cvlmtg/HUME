@@ -81,7 +81,7 @@ fn set_signs_for_an_unregistered_source_errors_naming_the_builtin() {
         &mut ed,
         tmp.path(),
         r#"(define-typed-command! "arm" "" (lambda (bid)
-             (set-signs! "nope" bid (list (hash 'line 0 'text "!" 'scope "sc")))))"#,
+             (set-signs! bid "nope" (list (hash 'line 0 'text "!" 'scope "sc")))))"#,
     );
     type_cmd(&mut ed, ":arm");
 
@@ -99,9 +99,9 @@ fn set_signs_for_an_unregistered_source_errors_naming_the_builtin() {
 fn registered_sources_keep_the_gutter_width_stable_as_signs_come_and_go() {
     let (mut ed, pid) = plugin_sign_editor(
         None,
-        r#"(register-sign-source! "a" bid 2)
-           (register-sign-source! "b" bid 1)
-           (set-signs! "a" bid (list (hash 'line 0 'text "+" 'scope "sc")))"#,
+        r#"(register-sign-source! bid "a" 2)
+           (register-sign-source! bid "b" 1)
+           (set-signs! bid "a" (list (hash 'line 0 'text "+" 'scope "sc")))"#,
     );
     assert_eq!(
         sign_column_width(&ed, pid),
@@ -115,7 +115,7 @@ fn registered_sources_keep_the_gutter_width_stable_as_signs_come_and_go() {
         &mut ed,
         tmp.path(),
         r#"(define-typed-command! "arm-b" "" (lambda (bid)
-             (set-signs! "b" bid (list (hash 'line 0 'text "-" 'scope "sc")))))"#,
+             (set-signs! bid "b" (list (hash 'line 0 'text "-" 'scope "sc")))))"#,
     );
     type_cmd(&mut ed, ":arm-b");
     render(&mut ed);
@@ -130,7 +130,7 @@ fn registered_sources_keep_the_gutter_width_stable_as_signs_come_and_go() {
         &mut ed,
         tmp.path(),
         r#"(define-typed-command! "clear-b" "" (lambda (bid)
-             (set-signs! "b" bid '())))"#,
+             (set-signs! bid "b" '())))"#,
     );
     type_cmd(&mut ed, ":clear-b");
     render(&mut ed);
@@ -145,11 +145,11 @@ fn registered_sources_keep_the_gutter_width_stable_as_signs_come_and_go() {
 fn re_registering_a_sign_source_updates_its_priority_and_slot() {
     let (ed, pid) = plugin_sign_editor(
         Some("always:2"),
-        r#"(register-sign-source! "a" bid 1)
-           (register-sign-source! "b" bid 2)
-           (set-signs! "a" bid (list (hash 'line 0 'text "A" 'scope "sc")))
-           (set-signs! "b" bid (list (hash 'line 0 'text "B" 'scope "sc")))
-           (register-sign-source! "a" bid 10)"#,
+        r#"(register-sign-source! bid "a" 1)
+           (register-sign-source! bid "b" 2)
+           (set-signs! bid "a" (list (hash 'line 0 'text "A" 'scope "sc")))
+           (set-signs! bid "b" (list (hash 'line 0 'text "B" 'scope "sc")))
+           (register-sign-source! bid "a" 10)"#,
     );
 
     let signs = pane_signs(&ed, pid);
@@ -169,8 +169,8 @@ fn re_registering_a_sign_source_updates_its_priority_and_slot() {
 fn plugin_sign_via_set_signs_appears_in_the_plugin_map() {
     let (ed, pid) = plugin_sign_editor(
         None,
-        r#"(register-sign-source! "linter" bid 7)
-           (set-signs! "linter" bid (list (hash 'line 0 'text "!" 'scope "warn-scope")))"#,
+        r#"(register-sign-source! bid "linter" 7)
+           (set-signs! bid "linter" (list (hash 'line 0 'text "!" 'scope "warn-scope")))"#,
     );
 
     let signs = pane_signs(&ed, pid);
@@ -203,10 +203,10 @@ fn plugin_sign_via_set_signs_appears_in_the_plugin_map() {
 fn default_gutter_signs_auto_sizes_to_show_every_channel_present() {
     let (ed, pid) = plugin_sign_editor(
         None,
-        r#"(register-sign-source! "linter" bid 3)
-           (register-sign-source! "vcs" bid 9)
-           (set-signs! "linter" bid (list (hash 'line 0 'text "!" 'scope "a")))
-           (set-signs! "vcs" bid (list (hash 'line 0 'text "+" 'scope "b")))"#,
+        r#"(register-sign-source! bid "linter" 3)
+           (register-sign-source! bid "vcs" 9)
+           (set-signs! bid "linter" (list (hash 'line 0 'text "!" 'scope "a")))
+           (set-signs! bid "vcs" (list (hash 'line 0 'text "+" 'scope "b")))"#,
     );
 
     let signs = pane_signs(&ed, pid);
@@ -235,10 +235,10 @@ fn default_gutter_signs_auto_sizes_to_show_every_channel_present() {
 fn bare_auto_auto_sizes_to_multiple_channels_like_bare_always() {
     let (ed, pid) = plugin_sign_editor(
         Some("auto"),
-        r#"(register-sign-source! "linter" bid 3)
-           (register-sign-source! "vcs" bid 9)
-           (set-signs! "linter" bid (list (hash 'line 0 'text "!" 'scope "a")))
-           (set-signs! "vcs" bid (list (hash 'line 0 'text "+" 'scope "b")))"#,
+        r#"(register-sign-source! bid "linter" 3)
+           (register-sign-source! bid "vcs" 9)
+           (set-signs! bid "linter" (list (hash 'line 0 'text "!" 'scope "a")))
+           (set-signs! bid "vcs" (list (hash 'line 0 'text "+" 'scope "b")))"#,
     );
 
     let signs = pane_signs(&ed, pid);
@@ -262,16 +262,16 @@ fn bare_auto_auto_sizes_to_multiple_channels_like_bare_always() {
 fn auto_size_grows_to_five_registered_sources() {
     let (ed, pid) = plugin_sign_editor(
         None,
-        r#"(register-sign-source! "a" bid 5)
-           (register-sign-source! "b" bid 4)
-           (register-sign-source! "c" bid 3)
-           (register-sign-source! "d" bid 2)
-           (register-sign-source! "e" bid 1)
-           (set-signs! "a" bid (list (hash 'line 0 'text "5" 'scope "sc")))
-           (set-signs! "b" bid (list (hash 'line 0 'text "4" 'scope "sc")))
-           (set-signs! "c" bid (list (hash 'line 0 'text "3" 'scope "sc")))
-           (set-signs! "d" bid (list (hash 'line 0 'text "2" 'scope "sc")))
-           (set-signs! "e" bid (list (hash 'line 0 'text "1" 'scope "sc")))"#,
+        r#"(register-sign-source! bid "a" 5)
+           (register-sign-source! bid "b" 4)
+           (register-sign-source! bid "c" 3)
+           (register-sign-source! bid "d" 2)
+           (register-sign-source! bid "e" 1)
+           (set-signs! bid "a" (list (hash 'line 0 'text "5" 'scope "sc")))
+           (set-signs! bid "b" (list (hash 'line 0 'text "4" 'scope "sc")))
+           (set-signs! bid "c" (list (hash 'line 0 'text "3" 'scope "sc")))
+           (set-signs! bid "d" (list (hash 'line 0 'text "2" 'scope "sc")))
+           (set-signs! bid "e" (list (hash 'line 0 'text "1" 'scope "sc")))"#,
     );
 
     let signs = pane_signs(&ed, pid);
@@ -295,10 +295,10 @@ fn auto_size_grows_to_five_registered_sources() {
 fn pinned_single_slot_keeps_only_the_higher_priority_sign() {
     let (ed, pid) = plugin_sign_editor(
         Some("always:1"),
-        r#"(register-sign-source! "linter" bid 3)
-           (register-sign-source! "vcs" bid 9)
-           (set-signs! "linter" bid (list (hash 'line 0 'text "!" 'scope "a")))
-           (set-signs! "vcs" bid (list (hash 'line 0 'text "+" 'scope "b")))"#,
+        r#"(register-sign-source! bid "linter" 3)
+           (register-sign-source! bid "vcs" 9)
+           (set-signs! bid "linter" (list (hash 'line 0 'text "!" 'scope "a")))
+           (set-signs! bid "vcs" (list (hash 'line 0 'text "+" 'scope "b")))"#,
     );
 
     let signs = pane_signs(&ed, pid);
@@ -322,10 +322,10 @@ fn pinned_single_slot_keeps_only_the_higher_priority_sign() {
 fn equal_priority_sign_sources_get_distinct_slots_ordered_by_name() {
     let (ed, pid) = plugin_sign_editor(
         Some("always:2"),
-        r#"(register-sign-source! "vcs" bid 5)
-           (register-sign-source! "linter" bid 5)
-           (set-signs! "vcs" bid (list (hash 'line 0 'text "+" 'scope "b")))
-           (set-signs! "linter" bid (list (hash 'line 0 'text "!" 'scope "a")))"#,
+        r#"(register-sign-source! bid "vcs" 5)
+           (register-sign-source! bid "linter" 5)
+           (set-signs! bid "vcs" (list (hash 'line 0 'text "+" 'scope "b")))
+           (set-signs! bid "linter" (list (hash 'line 0 'text "!" 'scope "a")))"#,
     );
 
     let signs = pane_signs(&ed, pid);
@@ -351,10 +351,10 @@ fn equal_priority_sign_sources_get_distinct_slots_ordered_by_name() {
 fn wider_gutter_signs_keeps_multiple_signs_per_line() {
     let (ed, pid) = plugin_sign_editor(
         Some("always:2"),
-        r#"(register-sign-source! "linter" bid 3)
-           (register-sign-source! "vcs" bid 9)
-           (set-signs! "linter" bid (list (hash 'line 0 'text "!" 'scope "a")))
-           (set-signs! "vcs" bid (list (hash 'line 0 'text "+" 'scope "b")))"#,
+        r#"(register-sign-source! bid "linter" 3)
+           (register-sign-source! bid "vcs" 9)
+           (set-signs! bid "linter" (list (hash 'line 0 'text "!" 'scope "a")))
+           (set-signs! bid "vcs" (list (hash 'line 0 'text "+" 'scope "b")))"#,
     );
 
     let signs = pane_signs(&ed, pid);
@@ -383,12 +383,12 @@ fn wider_gutter_signs_keeps_multiple_signs_per_line() {
 fn a_source_ranked_past_the_resolved_slot_count_is_hidden_not_miscast_into_slot_zero() {
     let (ed, pid) = plugin_sign_editor(
         Some("always:2"),
-        r#"(register-sign-source! "a" bid 3)
-           (register-sign-source! "b" bid 2)
-           (register-sign-source! "c" bid 1)
-           (set-signs! "a" bid (list (hash 'line 0 'text "3" 'scope "sc")))
-           (set-signs! "b" bid (list (hash 'line 0 'text "2" 'scope "sc")))
-           (set-signs! "c" bid (list (hash 'line 0 'text "1" 'scope "sc")))"#,
+        r#"(register-sign-source! bid "a" 3)
+           (register-sign-source! bid "b" 2)
+           (register-sign-source! bid "c" 1)
+           (set-signs! bid "a" (list (hash 'line 0 'text "3" 'scope "sc")))
+           (set-signs! bid "b" (list (hash 'line 0 'text "2" 'scope "sc")))
+           (set-signs! bid "c" (list (hash 'line 0 'text "1" 'scope "sc")))"#,
     );
 
     let signs = pane_signs(&ed, pid);
@@ -418,9 +418,9 @@ fn define_claim_and_place(ed: &mut Editor, tmp: &std::path::Path, extra: &str) {
         tmp,
         &format!(
             r#"(define-typed-command! "claim" "" (lambda (pane)
-                 (register-sign-source! "linter" pane 1)))
+                 (register-sign-source! pane "linter" 1)))
                (define-typed-command! "place" "" (lambda (pane)
-                 (set-signs! "linter" pane (list (hash 'line 0 'text "!" 'scope "sc")))))
+                 (set-signs! pane "linter" (list (hash 'line 0 'text "!" 'scope "sc")))))
                {extra}"#
         ),
     );

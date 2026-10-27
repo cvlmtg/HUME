@@ -541,7 +541,7 @@ fn foreign_replace_kills_refresh_tracking() {
         &mut ed,
         &mut scripting,
         r#"(define-typed-command! "foreign" "" (lambda (pane)
-             (show-drawer-list! pane (list "foreign") (lambda (idx tok) (void)))))"#,
+             (show-drawer-list! pane (map (lambda (row) (cons row row)) (list "foreign")) (lambda (row tok) (void)))))"#,
         &tmp,
     );
     ed.scripting = Some(scripting);

@@ -51,8 +51,8 @@
           #:unavailable 'empty
           #:require-focus #t)))))
 
-(lsp/setup-trigger-chars! 'signature-help "lsp-sighelp" (list ")")
+(lsp/setup-trigger-chars! 'signature-help "lsp-sighelp" (list #\))
   (lambda (pane ch)
-    (if (equal? ch ")")
+    (if (equal? ch #\))
         (lsp/close-sighelp!)
         (lsp/sighelp-request pane))))

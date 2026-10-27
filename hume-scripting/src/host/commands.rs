@@ -36,7 +36,8 @@ pub trait CommandHost {
     /// (`Motion`, `Selection`, `Edit`, or `EditorCmd`) whose only valid `call!`
     /// args are `count`, `extend`, and an optional trailing [`CommandArg`]. Returns `Ok(false)` for Steel-defined
     /// commands (`SteelBacked`, `Lazy`) that accept arbitrary positional args.
-    /// Returns `Err(msg)` if the name is unknown.
+    /// Returns `Err(msg)`, the message `call!` raises, for a name `call!`
+    /// cannot reach: unknown, a typed command, or a key-only command.
     ///
     /// Read-only: never executes the command. Hosts without a registry (test
     /// stubs) return `Ok(false)` to treat all commands as Steel/forward-raw.
